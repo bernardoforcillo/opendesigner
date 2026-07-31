@@ -46,8 +46,18 @@ func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
 		if err := proto.Unmarshal(data, doc); err != nil {
 			return nil, 0, fmt.Errorf("unmarshal snapshot: %w", err)
 		}
-		if s, err := os.ReadFile(b.seqPath()); err == nil {
-			seq, _ = strconv.ParseUint(strings.TrimSpace(string(s)), 10, 64)
+		// snapshot.pb and snapshot.seq are written as a pair (see Snapshot);
+		// if snapshot.pb exists, snapshot.seq must exist and parse cleanly.
+		// Silently defaulting to seq=0 here would hand callers a document
+		// that doesn't match the seq it's paired with, so any read/parse
+		// failure is surfaced instead of swallowed.
+		s, err := os.ReadFile(b.seqPath())
+		if err != nil {
+			return nil, 0, fmt.Errorf("read snapshot seq: %w", err)
+		}
+		seq, err = strconv.ParseUint(strings.TrimSpace(string(s)), 10, 64)
+		if err != nil {
+			return nil, 0, fmt.Errorf("parse snapshot seq %q: %w", s, err)
 		}
 	} else if !os.IsNotExist(err) {
 		return nil, 0, err
@@ -69,6 +79,17 @@ func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
 				break
 			}
 			return nil, 0, fmt.Errorf("read oplog: %w", err)
+		}
+		// Snapshot() truncates the oplog only *after* the new snapshot.pb/
+		// snapshot.seq have already landed on disk. A crash in that window
+		// (after snapshot.seq is written, before Truncate runs) can leave
+		// oplog records whose state is already baked into the snapshot we
+		// just loaded. Re-applying them would hit core.ErrNodeExists on a
+		// duplicate CreateNode and fail Load() permanently, so skip any
+		// record already covered by the persisted snapshot seq -- this
+		// makes replay idempotent/self-healing across that crash window.
+		if rec.GetSeq() <= seq {
+			continue
 		}
 		if err := core.Apply(doc, rec.GetOp()); err != nil {
 			return nil, 0, fmt.Errorf("replay seq %d: %w", rec.GetSeq(), err)
@@ -94,6 +115,16 @@ func (b *Bundle) Append(recrd *brawtv1.OpRecord) error {
 }
 
 // Snapshot riscrive lo snapshot al seq dato e tronca l'oplog.
+//
+// Each of the three writes below (snapshot.pb, snapshot.seq, oplog
+// truncate) is made durable with an explicit fsync before moving to the
+// next step, so a crash never leaves a half-written file. The three steps
+// are still not a single atomic transaction, though: a crash between them
+// can leave the oplog un-truncated even though snapshot.pb/snapshot.seq
+// already reflect the new state. Load() tolerates exactly that by
+// skipping any oplog record whose seq is <= the persisted snapshot seq
+// (see Load), so this ordering is safe to crash into and self-heals on
+// the next Load() instead of failing permanently.
 func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -101,11 +132,58 @@ func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
 	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(b.snapshotPath(), data, 0o644); err != nil {
+	if err := writeFileSync(b.snapshotPath(), data, 0o644); err != nil {
+		return fmt.Errorf("write snapshot: %w", err)
+	}
+	if err := writeFileSync(b.seqPath(), []byte(strconv.FormatUint(seq, 10)), 0o644); err != nil {
+		return fmt.Errorf("write snapshot seq: %w", err)
+	}
+
+	f, err := os.OpenFile(b.oplogPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
+	if err != nil {
+		return fmt.Errorf("truncate oplog: %w", err)
+	}
+	defer f.Close()
+	if err := f.Sync(); err != nil {
+		return fmt.Errorf("sync truncated oplog: %w", err)
+	}
+	return nil
+}
+
+// writeFileSync writes data to a temp file in path's directory, fsyncs it,
+// then atomically renames it over path. Unlike os.WriteFile (write-in-place,
+// no fsync), this guarantees a reader never observes a partially written
+// file, and that once the call returns nil the bytes have actually reached
+// disk rather than just the page cache.
+func writeFileSync(path string, data []byte, perm os.FileMode) (err error) {
+	dir := filepath.Dir(path)
+	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
+	if err != nil {
 		return err
 	}
-	if err := os.WriteFile(b.seqPath(), []byte(strconv.FormatUint(seq, 10)), 0o644); err != nil {
+	tmpName := tmp.Name()
+	defer func() {
+		if err != nil {
+			os.Remove(tmpName)
+		}
+	}()
+
+	if _, err = tmp.Write(data); err != nil {
+		tmp.Close()
 		return err
 	}
-	return os.Truncate(b.oplogPath(), 0)
+	if err = tmp.Sync(); err != nil {
+		tmp.Close()
+		return err
+	}
+	if err = tmp.Close(); err != nil {
+		return err
+	}
+	if err = os.Chmod(tmpName, perm); err != nil {
+		return err
+	}
+	if err = os.Rename(tmpName, path); err != nil {
+		return err
+	}
+	return nil
 }
