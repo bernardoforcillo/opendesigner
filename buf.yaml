@@ -3,5 +3,12 @@ modules:
   - path: proto
 lint:
   use: [STANDARD]
+  # DocumentService intentionally reuses shared message types (OpenRequest/
+  # OpenResponse/DocInfo) and stream-message wrappers (ClientMsg/ServerMsg) as
+  # RPC request/response types. These names are the load-bearing, cross-task
+  # contract, so the default STANDARD naming rules are excepted here.
+  except:
+    - RPC_REQUEST_STANDARD_NAME
+    - RPC_RESPONSE_STANDARD_NAME
 breaking:
   use: [FILE]

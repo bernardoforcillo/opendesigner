@@ -1,0 +1,83 @@
+syntax = "proto3";
+package brawt.v1;
+
+import "google/protobuf/timestamp.proto";
+import "google/protobuf/field_mask.proto";
+
+option go_package = "github.com/bernardoforcillo/brawt/gen/brawt/v1;brawtv1";
+
+// ---------- documento / scene graph ----------
+message Color { float r = 1; float g = 2; float b = 3; float a = 4; } // 0..1
+message SolidPaint { Color color = 1; }
+message Paint { oneof kind { SolidPaint solid = 1; } }
+
+message RectNode { double corner_radius = 1; }
+
+message Node {
+  string id = 1;
+  string parent_id = 2;   // id nodo container OPPURE id Page (per i root)
+  string order_key = 3;   // fractional index
+  string name = 4;
+  bool visible = 5;
+  double opacity = 6;     // 0..1
+  double x = 10; double y = 11; double width = 12; double height = 13; double rotation = 14;
+  repeated Paint fills = 20;
+  oneof shape { RectNode rect = 30; } // M0: solo rettangolo
+}
+
+message Page { string id = 1; string name = 2; }
+
+message Document {
+  string id = 1;
+  string name = 2;
+  uint32 schema_version = 3;
+  repeated Page pages = 4;
+  map<string, Node> nodes = 5;
+}
+
+// ---------- op ----------
+message CreateNode { Node node = 1; }
+message DeleteNode { string id = 1; }
+message SetProperties {
+  string id = 1;
+  Node patch = 2;
+  google.protobuf.FieldMask mask = 3; // path dot su Node, es. "x","y","fills"
+}
+message Op {
+  string op_id = 1;
+  string doc_id = 2;
+  oneof kind {
+    CreateNode    create_node = 10;
+    SetProperties set_props   = 11;
+    DeleteNode    delete_node = 12;
+  }
+}
+message OpRecord {
+  uint64 seq = 1;
+  google.protobuf.Timestamp ts = 2;
+  string client_id = 3;
+  Op op = 4;
+}
+
+// ---------- servizio ----------
+message OpenRequest  { string doc_id = 1; }
+message OpenResponse { Document snapshot = 1; uint64 seq = 2; }
+message CreateDocumentRequest { string name = 1; }
+message DocInfo { string id = 1; string name = 2; }
+message ListDocumentsRequest {}
+message ListDocumentsResponse { repeated DocInfo docs = 1; }
+
+message Hello    { string doc_id = 1; string client_id = 2; uint64 since_seq = 3; }
+message SubmitOp { Op op = 1; }
+message ClientMsg { oneof kind { Hello hello = 1; SubmitOp submit = 2; } }
+
+message Ack      { string op_id = 1; uint64 seq = 2; }
+message ErrorMsg { string op_id = 1; string message = 2; }
+message ServerMsg { oneof kind { OpRecord applied = 1; Ack ack = 2; ErrorMsg error = 3; } }
+
+service DocumentService {
+  rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
+  rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
+  rpc OpenDocument(OpenRequest) returns (OpenResponse);
+  rpc Sync(stream ClientMsg) returns (stream ServerMsg);
+}
