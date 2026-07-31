@@ -82,6 +82,33 @@ func TestApplySetPropertiesMixedMaskIsAllOrNothing(t *testing.T) {
 	}
 }
 
+// TestApplyCreateNodeOnNilNodesMap covers the scenario the review flagged:
+// a *brawtv1.Document not built via NewDocument (e.g. proto.Unmarshal-ed
+// from a snapshot taken while the document had zero nodes — proto3 omits
+// empty map fields from the wire, so the decoded Document has Nodes == nil)
+// must not panic when the oplog replay hits the first CreateNode.
+func TestApplyCreateNodeOnNilNodesMap(t *testing.T) {
+	doc := &brawtv1.Document{
+		Id: "doc1", Name: "Untitled", SchemaVersion: 1,
+		Pages: []*brawtv1.Page{{Id: "page1", Name: "Page 1"}},
+		// Nodes intentionally left nil to simulate a decoded empty-snapshot Document.
+	}
+	if doc.Nodes != nil {
+		t.Fatal("test setup invalid: Nodes must start nil")
+	}
+	op := &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 10, 20)}}}
+	if err := Apply(doc, op); err != nil {
+		t.Fatalf("Apply create on nil Nodes map: %v", err)
+	}
+	got, ok := doc.Nodes["n1"]
+	if !ok {
+		t.Fatal("node n1 not present after create")
+	}
+	if got.X != 10 || got.Y != 20 {
+		t.Fatalf("wrong pos: %v,%v", got.X, got.Y)
+	}
+}
+
 func TestApplyDeleteNode(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})

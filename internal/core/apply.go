@@ -45,6 +45,15 @@ func applyCreate(doc *brawtv1.Document, c *brawtv1.CreateNode) error {
 	if _, exists := doc.Nodes[n.GetId()]; exists {
 		return fmt.Errorf("%w: %s", ErrNodeExists, n.GetId())
 	}
+	if doc.Nodes == nil {
+		// Apply is the authoritative mutator for any *brawtv1.Document, not
+		// only ones built via NewDocument. proto.Unmarshal resets the
+		// destination first, and proto3 omits empty map fields from the
+		// wire, so a Document decoded from a zero-node snapshot has
+		// Nodes == nil. Lazily init it here so replaying the oplog's first
+		// CreateNode doesn't panic on assignment to a nil map.
+		doc.Nodes = map[string]*brawtv1.Node{}
+	}
 	doc.Nodes[n.GetId()] = n
 	return nil
 }
