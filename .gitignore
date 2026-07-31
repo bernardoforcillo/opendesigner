@@ -1,0 +1,11 @@
+/gen/
+/web/src/gen/
+/web/node_modules/
+/web/dist/
+/brawt.exe
+/brawt
+*.brawt/
+.brawt/
+/.superpowers/
+docs/superpowers/plans/
+docs/superpowers/specs/
