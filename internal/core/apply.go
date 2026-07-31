@@ -59,13 +59,24 @@ func applyDelete(doc *brawtv1.Document, d *brawtv1.DeleteNode) error {
 }
 
 // applySetProps copia i campi indicati dalla mask da patch al nodo target.
+// Valida l'intera mask prima di mutare qualsiasi campo: una mask mista
+// (es. ["x","bogus"]) non deve lasciare il documento parzialmente mutato.
 func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 	n, ok := doc.Nodes[s.GetId()]
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
 	}
+	paths := s.GetMask().GetPaths()
+	for _, path := range paths {
+		switch path {
+		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills":
+			// supported
+		default:
+			return fmt.Errorf("core: unsupported mask path %q", path)
+		}
+	}
 	p := s.GetPatch()
-	for _, path := range s.GetMask().GetPaths() {
+	for _, path := range paths {
 		switch path {
 		case "x":
 			n.X = p.GetX()
@@ -85,8 +96,6 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 			n.Visible = p.GetVisible()
 		case "fills":
 			n.Fills = p.GetFills()
-		default:
-			return fmt.Errorf("core: unsupported mask path %q", path)
 		}
 	}
 	return nil

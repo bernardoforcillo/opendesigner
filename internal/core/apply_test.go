@@ -65,6 +65,23 @@ func TestApplySetPropertiesMissingNode(t *testing.T) {
 	}
 }
 
+func TestApplySetPropertiesMixedMaskIsAllOrNothing(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	op := &brawtv1.Op{Kind: &brawtv1.Op_SetProps{SetProps: &brawtv1.SetProperties{
+		Id:    "n1",
+		Patch: &brawtv1.Node{X: 42, Y: 7},
+		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"x", "bogus"}},
+	}}}
+	if err := Apply(doc, op); err == nil {
+		t.Fatal("expected error for unsupported mask path")
+	}
+	got := doc.Nodes["n1"]
+	if got.X != 0 || got.Y != 0 {
+		t.Fatalf("partial mutation leaked despite error: %+v", got)
+	}
+}
+
 func TestApplyDeleteNode(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
