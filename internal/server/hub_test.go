@@ -110,6 +110,47 @@ func TestSubmitDoesNotAliasNodeIntoHistoricalRecord(t *testing.T) {
 	}
 }
 
+// Second fix-round regression tests (2026-08-01): each targets one blocking
+// finding from the re-review of the first fix round (commits
+// 39ffc8b..ea277c5).
+
+// finding: the fix-round hardening above only cloned the caller's op into
+// the retained OpRecord (rec.Op); h.doc was still built by
+// core.Apply(next, op) on the original, un-cloned op, so applyCreate
+// aliased the caller's Node straight into h.doc.Nodes. h.doc kept aliasing
+// caller-owned objects after Submit returned, contradicting the adjacent
+// comment's own claim that "the caller is free to reuse or mutate [op]
+// once Submit returns."
+func TestSubmitDoesNotAliasCallerOpIntoDoc(t *testing.T) {
+	h := newTestHub(t)
+	op := createOp("n1")
+	if _, err := h.Submit("c1", op); err != nil {
+		t.Fatal(err)
+	}
+
+	// Mutate the caller's op after Submit has returned, exactly as the
+	// adjacent comment says callers are free to do.
+	op.GetCreateNode().GetNode().X = 999
+
+	doc, _ := h.Snapshot()
+	if got := doc.GetNodes()["n1"].GetX(); got != 0 {
+		t.Fatalf("h.doc aliased the caller's op: node x = %v after caller mutated op, want 0 (unaffected)", got)
+	}
+}
+
+// finding: Subscribe's returned cancel func unconditionally called
+// close(s.ch) with no guard, so calling cancel() twice panicked (close of
+// closed channel). Nothing documented a single-call-only contract, and it
+// deviated from the idiomatic Go convention (e.g. context.CancelFunc) of
+// idempotent cancel funcs.
+func TestSubscribeCancelIsIdempotent(t *testing.T) {
+	h := newTestHub(t)
+	_, cancel := h.Subscribe(0)
+
+	cancel() // first call: must not panic
+	cancel() // second call: must also not panic
+}
+
 // finding: Subscribe's catch-up loop did a blocking channel send (no
 // select/default) into a fixed 256-capacity channel while holding h.mu.
 // With no compaction wired up, a catch-up backlog exceeding capacity would

@@ -11,7 +11,16 @@ import (
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-type subscriber struct{ ch chan *brawtv1.OpRecord }
+type subscriber struct {
+	ch chan *brawtv1.OpRecord
+	// closeOnce guards close(ch) in the cancel func returned by Subscribe:
+	// cancel must be safe to call more than once (matching the idiomatic
+	// Go convention of idempotent cancel funcs, e.g. context.CancelFunc),
+	// since callers with multiple exit paths (e.g. a Sync handler that
+	// cancels on both an incoming error and a deferred cleanup) may invoke
+	// it more than once. Without this, a second close(ch) panics.
+	closeOnce sync.Once
+}
 
 // subscriberChanCap is the minimum buffered capacity for a subscriber's
 // channel. Subscribe grows it per-subscriber to also fit that subscriber's
@@ -58,8 +67,14 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 	// of h.doc is now a fresh proto.Clone, so a node object touched while
 	// applying one op can never again be the same Go object touched while
 	// applying a later op on that same node id.
+	//
+	// Apply a clone of op (never the caller's op) to next: core.Apply's
+	// CreateNode aliases its op's Node straight into doc.Nodes, so applying
+	// the caller's own op would leave h.doc aliasing caller-owned objects
+	// post-commit, contradicting the promise that the caller is free to
+	// reuse or mutate op once Submit returns.
 	next := proto.Clone(h.doc).(*brawtv1.Document)
-	if err := core.Apply(next, op); err != nil {
+	if err := core.Apply(next, proto.Clone(op).(*brawtv1.Op)); err != nil {
 		return nil, err
 	}
 
@@ -67,12 +82,12 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 		Seq:      h.seq + 1,
 		Ts:       timestamppb.Now(),
 		ClientId: clientID,
-		// Independent clone, never the caller's op pointer: rec is retained
-		// in h.history and handed to subscriber goroutines that read/marshal
-		// it outside h.mu, so it must not alias a node object living inside
-		// h.doc (which a later SetProps on that node would mutate in place),
-		// nor the caller's op (which the caller is free to reuse or mutate
-		// once Submit returns).
+		// A second, independent clone of op — not the pointer applied to
+		// next above, and not the caller's op. rec is retained in h.history
+		// and handed to subscriber goroutines that read/marshal it outside
+		// h.mu, so it must not alias a node object living inside h.doc
+		// (which a later SetProps on that node would mutate in place and so
+		// silently corrupt this historical record), nor the caller's op.
 		Op: proto.Clone(op).(*brawtv1.Op),
 	}
 	if err := h.bundle.Append(rec); err != nil {
@@ -122,9 +137,13 @@ func (h *Hub) Subscribe(sinceSeq uint64) (<-chan *brawtv1.OpRecord, func()) {
 	h.subs[s] = struct{}{}
 	cancel := func() {
 		h.mu.Lock()
-		defer h.mu.Unlock()
 		delete(h.subs, s)
-		close(s.ch)
+		h.mu.Unlock()
+		// Idempotent: cancel is a func(), not a method, so nothing stops a
+		// caller from invoking it more than once (e.g. once on an error
+		// path and once in a deferred cleanup); sync.Once makes a repeat
+		// call a no-op instead of a close-of-closed-channel panic.
+		s.closeOnce.Do(func() { close(s.ch) })
 	}
 	return s.ch, cancel
 }
