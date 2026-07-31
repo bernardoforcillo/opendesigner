@@ -2,6 +2,7 @@
 /web/src/gen/
 /web/node_modules/
 /web/dist/
+*.tsbuildinfo
 /brawt.exe
 /brawt
 *.brawt/
