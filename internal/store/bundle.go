@@ -51,13 +51,8 @@ func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
 		// Silently defaulting to seq=0 here would hand callers a document
 		// that doesn't match the seq it's paired with, so any read/parse
 		// failure is surfaced instead of swallowed.
-		s, err := os.ReadFile(b.seqPath())
-		if err != nil {
-			return nil, 0, fmt.Errorf("read snapshot seq: %w", err)
-		}
-		seq, err = strconv.ParseUint(strings.TrimSpace(string(s)), 10, 64)
-		if err != nil {
-			return nil, 0, fmt.Errorf("parse snapshot seq %q: %w", s, err)
+		if seq, err = b.readSnapshotSeq(); err != nil {
+			return nil, 0, err
 		}
 	} else if !os.IsNotExist(err) {
 		return nil, 0, err
@@ -97,6 +92,74 @@ func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
 		seq = rec.GetSeq()
 	}
 	return doc, seq, nil
+}
+
+// readSnapshotSeq returns the seq persisted in snapshot.seq if snapshot.pb
+// exists on disk, or 0 if the bundle has no snapshot yet. Shared by Load
+// (replay) and History (in-memory catch-up reconstruction) so both agree on
+// exactly which oplog records are already folded into the snapshot.
+func (b *Bundle) readSnapshotSeq() (uint64, error) {
+	if _, err := os.Stat(b.snapshotPath()); err != nil {
+		if os.IsNotExist(err) {
+			return 0, nil
+		}
+		return 0, err
+	}
+	s, err := os.ReadFile(b.seqPath())
+	if err != nil {
+		return 0, fmt.Errorf("read snapshot seq: %w", err)
+	}
+	seq, err := strconv.ParseUint(strings.TrimSpace(string(s)), 10, 64)
+	if err != nil {
+		return 0, fmt.Errorf("parse snapshot seq %q: %w", s, err)
+	}
+	return seq, nil
+}
+
+// History returns the oplog records not yet folded into the snapshot: the
+// same records Load replays on top of snapshot.pb, but returned instead of
+// applied. Load alone only exposes the resulting Document + seq, which
+// isn't enough for a caller (server.NewHub) that needs to reconstruct an
+// in-memory catch-up backlog after a restart — without this, Subscribe on a
+// freshly reopened document has no history to serve for any sinceSeq below
+// the hub's startup seq, even though those records are sitting right there
+// on disk.
+func (b *Bundle) History() ([]*brawtv1.OpRecord, error) {
+	b.mu.Lock()
+	defer b.mu.Unlock()
+
+	snapSeq, err := b.readSnapshotSeq()
+	if err != nil {
+		return nil, err
+	}
+
+	f, err := os.Open(b.oplogPath())
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil, nil
+		}
+		return nil, err
+	}
+	defer f.Close()
+
+	r := newReader(f)
+	var recs []*brawtv1.OpRecord
+	for {
+		rec := &brawtv1.OpRecord{}
+		if err := protodelim.UnmarshalFrom(r, rec); err != nil {
+			if isEOF(err) {
+				break
+			}
+			return nil, fmt.Errorf("read oplog: %w", err)
+		}
+		// Mirrors the skip in Load: a record already folded into snapshot.pb
+		// (seq <= snapSeq) is not part of the post-snapshot history.
+		if rec.GetSeq() <= snapSeq {
+			continue
+		}
+		recs = append(recs, rec)
+	}
+	return recs, nil
 }
 
 // Append aggiunge un OpRecord length-delimited in coda all'oplog.

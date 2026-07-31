@@ -1,11 +1,15 @@
 package server
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"testing"
 	"time"
 
 	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
 	"github.com/bernardoforcillo/brawt/internal/store"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 func createOp(id string) *brawtv1.Op {
@@ -66,5 +70,184 @@ func TestSubscribeCatchUp(t *testing.T) {
 		}
 	case <-time.After(time.Second):
 		t.Fatal("no catch-up record")
+	}
+}
+
+// Fix-round regression tests (2026-08-01): each targets one blocking finding
+// from the Task 6 review of 6f979d0.
+
+// finding: Submit stored the caller's op pointer directly in the retained
+// OpRecord; combined with core.Apply's applyCreate aliasing the Node into
+// doc.Nodes, a later SetProps on the same node silently rewrote the node
+// embedded in the node's earlier, already-broadcast CreateNode OpRecord.
+func TestSubmitDoesNotAliasNodeIntoHistoricalRecord(t *testing.T) {
+	h := newTestHub(t)
+	rec1, err := h.Submit("c1", createOp("n1"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	origX := rec1.GetOp().GetCreateNode().GetNode().GetX()
+	if origX != 0 {
+		t.Fatalf("precondition: want fresh node x=0, got %v", origX)
+	}
+
+	setX := &brawtv1.Op{OpId: "op-set1", DocId: "doc1", Kind: &brawtv1.Op_SetProps{SetProps: &brawtv1.SetProperties{
+		Id:    "n1",
+		Patch: &brawtv1.Node{X: 999},
+		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"x"}},
+	}}}
+	if _, err := h.Submit("c1", setX); err != nil {
+		t.Fatal(err)
+	}
+
+	if got := rec1.GetOp().GetCreateNode().GetNode().GetX(); got != origX {
+		t.Fatalf("historical CreateNode record was mutated by a later SetProps: x = %v, want %v (unchanged)", got, origX)
+	}
+	// Sanity: the live document DID move, so this isn't just a no-op mask.
+	doc, _ := h.Snapshot()
+	if got := doc.GetNodes()["n1"].GetX(); got != 999 {
+		t.Fatalf("live doc x = %v, want 999 (SetProps should still apply)", got)
+	}
+}
+
+// finding: Subscribe's catch-up loop did a blocking channel send (no
+// select/default) into a fixed 256-capacity channel while holding h.mu.
+// With no compaction wired up, a catch-up backlog exceeding capacity would
+// deadlock Subscribe forever while holding the mutex, freezing every other
+// Submit/Subscribe/Snapshot call on the Hub. Populate history directly
+// (bypassing Submit's real fsync-per-op cost) to reproduce the backlog
+// cheaply.
+func TestSubscribeCatchUpBeyondChannelCapacityDoesNotBlock(t *testing.T) {
+	h := newTestHub(t)
+
+	const backlog = subscriberChanCap + 50
+	h.mu.Lock()
+	for i := uint64(1); i <= backlog; i++ {
+		h.history = append(h.history, &brawtv1.OpRecord{Seq: i, Op: createOp(fmt.Sprintf("n%d", i))})
+	}
+	h.seq = backlog
+	h.mu.Unlock()
+
+	type result struct {
+		ch     <-chan *brawtv1.OpRecord
+		cancel func()
+	}
+	done := make(chan result, 1)
+	go func() {
+		ch, cancel := h.Subscribe(0)
+		done <- result{ch, cancel}
+	}()
+
+	select {
+	case r := <-done:
+		defer r.cancel()
+		count := 0
+	drain:
+		for {
+			select {
+			case _, ok := <-r.ch:
+				if !ok {
+					break drain
+				}
+				count++
+			default:
+				break drain
+			}
+		}
+		if count != backlog {
+			t.Fatalf("catch-up delivered %d records, want %d", count, backlog)
+		}
+	case <-time.After(5 * time.Second):
+		t.Fatal("Subscribe deadlocked on a catch-up backlog exceeding channel capacity")
+	}
+}
+
+// finding: core.Apply mutated h.doc in place before h.bundle.Append
+// persisted the record; if Append failed, the mutation and h.seq increment
+// were never rolled back, so a failed Submit still silently diverged the
+// in-memory document from the persisted oplog.
+func TestSubmitDoesNotMutateDocWhenAppendFails(t *testing.T) {
+	dir := t.TempDir()
+	b, err := store.Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h, err := NewHub(b)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	beforeDoc, beforeSeq := h.Snapshot()
+
+	// Force bundle.Append to fail: pre-create "oplog" as a directory so
+	// os.OpenFile for the oplog file errors out.
+	oplogPath := filepath.Join(dir, "doc1.brawt", "oplog")
+	if err := os.Mkdir(oplogPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := h.Submit("c1", createOp("n1")); err == nil {
+		t.Fatal("expected Submit to fail when the oplog can't be appended to")
+	}
+
+	afterDoc, afterSeq := h.Snapshot()
+	if afterSeq != beforeSeq {
+		t.Fatalf("seq changed after a failed Submit: before=%d after=%d", beforeSeq, afterSeq)
+	}
+	if len(afterDoc.GetNodes()) != len(beforeDoc.GetNodes()) {
+		t.Fatalf("doc node count changed after a failed Submit: before=%d after=%d", len(beforeDoc.GetNodes()), len(afterDoc.GetNodes()))
+	}
+	if _, exists := afterDoc.GetNodes()["n1"]; exists {
+		t.Fatal("node n1 present in the document despite its Submit failing to persist")
+	}
+}
+
+// finding: NewHub loaded doc+seq via b.Load() but never reconstructed
+// h.history from the bundle's pre-existing persisted oplog, so Subscribe's
+// catch-up silently returned nothing for any sinceSeq below the hub's
+// startup seq after a server restart/reopen of an existing document.
+func TestNewHubReconstructsHistoryAfterRestart(t *testing.T) {
+	dir := t.TempDir()
+
+	b1, err := store.Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h1, err := NewHub(b1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h1.Submit("c1", createOp("n1")); err != nil {
+		t.Fatal(err)
+	}
+	if _, err := h1.Submit("c1", createOp("n2")); err != nil {
+		t.Fatal(err)
+	}
+
+	// Simulate a server restart: reopen the same on-disk bundle in a brand
+	// new Hub, with no shared in-memory state with h1.
+	b2, err := store.Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, err := NewHub(b2)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	ch, cancel := h2.Subscribe(0)
+	defer cancel()
+
+	got := map[uint64]bool{}
+	for i := 0; i < 2; i++ {
+		select {
+		case rec := <-ch:
+			got[rec.Seq] = true
+		case <-time.After(time.Second):
+			t.Fatalf("timed out waiting for post-restart catch-up record %d (got so far: %v)", i, got)
+		}
+	}
+	if !got[1] || !got[2] {
+		t.Fatalf("post-restart catch-up missing records: got=%v want seq 1 and 2", got)
 	}
 }
