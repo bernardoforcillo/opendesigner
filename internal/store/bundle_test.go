@@ -236,8 +236,12 @@ func TestSnapshotDurablyWritesFiles(t *testing.T) {
 	if strings.TrimSpace(string(seqBytes)) != "1" {
 		t.Fatalf("snapshot.seq = %q, want \"1\"", string(seqBytes))
 	}
-	// No leftover temp files from writeFileSync.
-	entries, err := os.ReadDir(dir)
+	// No leftover temp files from writeFileSync. writeFileSync creates its
+	// temp file via os.CreateTemp(filepath.Dir(path), ...), i.e. inside the
+	// bundle directory (b.dir = "<dir>/doc1.brawt"), not in the workspace
+	// root (dir) itself -- scan b.dir, or a real leftover ".tmp-*" file
+	// would never be seen here.
+	entries, err := os.ReadDir(b.dir)
 	if err != nil {
 		t.Fatal(err)
 	}
