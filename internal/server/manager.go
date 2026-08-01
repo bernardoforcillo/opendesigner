@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"net/http"
 	"sync"
 
@@ -8,6 +9,14 @@ import (
 	"github.com/bernardoforcillo/brawt/internal/store"
 	"github.com/google/uuid"
 )
+
+// errInvalidDocID is returned by HubFor when the client-supplied doc id is not
+// a well-formed document id. docIDs are UUIDs minted by Create; store.Open
+// joins the id straight into a filesystem path (<workspace>/<docID>.brawt), so
+// a hostile doc_id containing ".." segments or path separators could otherwise
+// create or open bundle directories outside the workspace root. Validating the
+// id as a UUID before any filesystem access closes that path-traversal hole.
+var errInvalidDocID = errors.New("invalid doc_id")
 
 // httpMux costruisce un mux con l'handler Connect montato su path.
 func httpMux(path string, handler http.Handler) *http.ServeMux {
@@ -46,6 +55,11 @@ func (m *Manager) Create(name string) (*brawtv1.DocInfo, error) {
 }
 
 func (m *Manager) HubFor(docID string) (*Hub, error) {
+	// Reject a malformed/hostile doc_id before it ever reaches store.Open ->
+	// filepath.Join; see errInvalidDocID.
+	if uuid.Validate(docID) != nil {
+		return nil, errInvalidDocID
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	if h, ok := m.hubs[docID]; ok {
