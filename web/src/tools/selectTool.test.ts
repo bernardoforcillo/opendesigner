@@ -26,25 +26,35 @@ function fakeCtx(): ToolContext {
 
 const at = (x: number, y: number, shiftKey = false) => ({ clientX: x, clientY: y, shiftKey }) as PointerEvent;
 
-// Doppio di SyncClient (stesso pattern di store/gesture.test.ts): registra gli
-// op che finiscono SUL FILO e li applica in ottimistico, così la scena finale
-// riflette davvero il risultato del gesto.
+// Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
+// SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
+// in volo, visibile subito) seguito da apply (l'eco che lo conferma). Senza
+// l'eco ogni op resterebbe in coda per sempre e i test parlerebbero di uno
+// stato che il server non ha mai visto. Lo store dipende solo dalla superficie
+// { submit }, quindi non serve un SyncClient reale (niente rete nei test).
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
     this.sent.push(op);
+    useScene.getState().applyPending(op);
     useScene.getState().apply(op);
   }
 }
 
 beforeEach(() => {
   useScene.setState({
-    scene: { ...emptyScene("doc-1", "u"), nodes: { a: node("a", 0, "a000000"), b: node("b", 100, "a000001") } },
     camera: { x: 0, y: 0, zoom: 1 },
     selection: [],
     marquee: null,
     gesture: null,
     sync: null,
+  });
+  // setScene e non setState({scene}): installa una scena COERENTE (vista e
+  // confermato allineati, coda vuota) -- l'invariante su cui poggia la
+  // riconciliazione confermato/pending (vedi store/store.ts).
+  useScene.getState().setScene({
+    ...emptyScene("doc-1", "u"),
+    nodes: { a: node("a", 0, "a000000"), b: node("b", 100, "a000001") },
   });
 });
 
@@ -170,12 +180,10 @@ describe("selectTool", () => {
     // e l'angolo vuoto del bounding box di un'ellisse cadrebbe dentro quell'AABB
     // pur essendo fuori dall'ellisse (è esattamente ciò che hitTest evita).
     it("a click on empty space inside an ellipse's bounding box selects nothing", () => {
-      useScene.setState({
-        scene: { ...emptyScene("doc-1", "u"), nodes: {
-          e: node("e", 0, "a000000", { width: 100, height: 100, kind: "ellipse" }),
-        } },
-        selection: [],
-      });
+      useScene.setState({ selection: [] });
+      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: {
+        e: node("e", 0, "a000000", { width: 100, height: 100, kind: "ellipse" }),
+      } });
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(2, 2), ctx); // angolo dell'AABB, FUORI dall'ellisse
@@ -185,12 +193,10 @@ describe("selectTool", () => {
     });
 
     it("a sub-slop jitter is still a click, but a real drag selects by bounds", () => {
-      useScene.setState({
-        scene: { ...emptyScene("doc-1", "u"), nodes: {
-          e: node("e", 0, "a000000", { width: 100, height: 100, kind: "ellipse" }),
-        } },
-        selection: [],
-      });
+      useScene.setState({ selection: [] });
+      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: {
+        e: node("e", 0, "a000000", { width: 100, height: 100, kind: "ellipse" }),
+      } });
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(2, 2), ctx);
@@ -206,10 +212,10 @@ describe("selectTool", () => {
 
     it("the click threshold is in screen px, so it scales with the zoom", () => {
       useScene.setState({
-        scene: { ...emptyScene("doc-1", "u"), nodes: { a: node("a", 0, "a000000") } },
         camera: { x: 0, y: 0, zoom: 0.1 }, // 20 unità mondo = 2px schermo
         selection: [],
       });
+      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { a: node("a", 0, "a000000") } });
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(-10, -10), ctx);

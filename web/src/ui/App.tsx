@@ -53,6 +53,13 @@ export function App() {
   const toolRef = useRef<ToolId>("select");
   const [toolId, setToolId] = useState<ToolId>("select");
   const [status, setStatus] = useState<"connecting" | "ready" | "error">("connecting");
+  // Un op rifiutato dal server viene annullato in locale (la modifica
+  // ottimistica sparisce dal canvas, vedi store/store.ts::rejectPending). Un
+  // rollback SILENZIOSO è quasi peggio di nessun rollback: qui è l'unico posto
+  // in cui l'utente può capire perché il rettangolo appena disegnato è sparito.
+  // Sottoscrizioni con selettore: il resto della UI non si ridisegna a ogni op.
+  const lastError = useScene((s) => s.lastError);
+  const clearError = useScene((s) => s.clearError);
 
   // bootstrap: documento + SyncClient + tool
   useEffect(() => {
@@ -204,6 +211,21 @@ export function App() {
           {statusLabel}
         </span>
       </div>
+      {lastError && (
+        <div
+          role="alert"
+          className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
+        >
+          <span className="flex-1">Modifica non salvata e annullata: {lastError}</span>
+          <Button
+            aria-label="Chiudi l'avviso"
+            className="rounded px-2 py-0.5 text-sm hover:bg-red-100"
+            onPress={clearError}
+          >
+            Chiudi
+          </Button>
+        </div>
+      )}
       <div className="relative flex-1">
         {/* Il cursore viene dal tool attivo; durante un pan temporaneo (spazio
             o tasto centrale) è il tool manager a sovrascriverlo sul DOM. */}

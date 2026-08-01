@@ -11,13 +11,17 @@ function node(id: string, orderKey: string): NodeLite {
     x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], kind: "rect", cornerRadius: 0 };
 }
 
-// Doppio di SyncClient (stesso pattern di tools/selectTool.test.ts): registra
-// gli op che finiscono SUL FILO e li applica in ottimistico, così la scena
-// riflette davvero il risultato del gesto.
+// Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
+// SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
+// in volo, visibile subito) seguito da apply (l'eco che lo conferma). Senza
+// l'eco ogni op resterebbe in coda per sempre e i test parlerebbero di uno
+// stato che il server non ha mai visto. Lo store dipende solo dalla superficie
+// { submit }, quindi non serve un SyncClient reale (niente rete nei test).
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
     this.sent.push(op);
+    useScene.getState().applyPending(op);
     useScene.getState().apply(op);
   }
 }
@@ -52,7 +56,6 @@ function createdNode(op: Op) {
 
 beforeEach(() => {
   useScene.setState({
-    scene: emptyScene("doc-1", "Untitled"),
     camera: { x: 0, y: 0, zoom: 1 },
     selection: [],
     marquee: null,
@@ -63,6 +66,10 @@ beforeEach(() => {
     canUndo: false,
     canRedo: false,
   });
+  // setScene e non setState({scene}): installa una scena COERENTE (vista e
+  // confermato allineati, coda vuota) -- l'invariante su cui poggia la
+  // riconciliazione confermato/pending (vedi store/store.ts).
+  useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
 });
 
 describe("rectTool", () => {
@@ -115,7 +122,7 @@ describe("rectTool", () => {
   });
 
   it("derives the order key from the scene so it never collides after a reload", () => {
-    useScene.setState({ scene: { ...emptyScene("doc-1", "u"), nodes: { a: node("a", "a000004") } } });
+    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { a: node("a", "a000004") } });
     const tool = createRectTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(0, 0), ctx);
@@ -194,7 +201,8 @@ describe("rectTool", () => {
   it("does not move or select anything: pointermove without a pending create is inert", () => {
     const tool = createRectTool();
     const { ctx, submitted } = fakeCtx();
-    useScene.setState({ scene: { ...emptyScene("doc-1", "u"), nodes: { a: node("a", "a000000") } }, selection: [] });
+    useScene.setState({ selection: [] });
+    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { a: node("a", "a000000") } });
     tool.onPointerMove!(at(5, 5), ctx);
     tool.onPointerUp!(at(5, 5), ctx);
     expect(submitted).toHaveLength(0);

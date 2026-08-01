@@ -5,14 +5,17 @@ import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { useScene } from "./store";
 import { emptyScene } from "./types";
 
-// Doppio di SyncClient: conta gli op che finiscono SUL FILO e per il resto si
-// comporta come il client vero (apply ottimistico locale, vedi
-// rpc/syncClient.ts). Lo store dipende solo dalla superficie { submit }, quindi
-// non serve costruire un SyncClient reale (niente rete nei test).
+// Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
+// SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
+// in volo, visibile subito) seguito da apply (l'eco che lo conferma). Senza
+// l'eco ogni op resterebbe in coda per sempre e i test parlerebbero di uno
+// stato che il server non ha mai visto. Lo store dipende solo dalla superficie
+// { submit }, quindi non serve un SyncClient reale (niente rete nei test).
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
     this.sent.push(op);
+    useScene.getState().applyPending(op);
     useScene.getState().apply(op);
   }
 }
@@ -61,12 +64,11 @@ describe("gesture coalescing", () => {
 
   beforeEach(() => {
     sync = new FakeSync();
-    useScene.setState({
-      scene: emptyScene("doc1", "Untitled"),
-      selection: [],
-      marquee: null,
-      gesture: null,
-    });
+    useScene.setState({ selection: [], marquee: null, gesture: null });
+    // setScene e non setState({scene}): installa una scena COERENTE (vista e
+    // confermato allineati, coda vuota) -- l'invariante su cui poggia la
+    // riconciliazione confermato/pending (vedi store.ts).
+    useScene.getState().setScene(emptyScene("doc1", "Untitled"));
     useScene.getState().setSync(sync);
     // due nodi di partenza, creati fuori dal gesto
     sync.submit(createOp("n1", 0, 0));
@@ -180,9 +182,11 @@ describe("gesture coalescing", () => {
   });
 
   // --- op autorevoli arrivati MENTRE il gesto era aperto -------------------
-  // apply() è la porta d'ingresso dello stream remoto (rpc/syncClient.ts:44).
-  // SyncClient avanza il proprio seq appena consuma il record: se il rewind di
-  // fine gesto li scartasse, non li rimanderebbe mai più -> desync permanente.
+  // apply() è la porta d'ingresso dello stream remoto (rpc/syncClient.ts): fa
+  // avanzare il documento CONFERMATO, che è anche la base da cui endGesture e
+  // cancelGesture ricostruiscono la scena. Quei record sopravvivono quindi per
+  // costruzione: SyncClient avanza il proprio seq appena li consuma e non li
+  // rivedrà mai più, quindi scartarli sarebbe desync permanente fino al reload.
 
   it("un op remoto arrivato durante il gesto sopravvive a endGesture", () => {
     const st = useScene.getState();

@@ -13,26 +13,48 @@ export interface OpSink {
   submit(op: Op): void;
 }
 
-// Snapshot catturato a inizio gesto. Il documento durante un drag è sempre
-// "snapshot + op autorevoli arrivati nel frattempo + op finali": le anteprime
-// intermedie non fanno parte del modello.
-interface GestureSnapshot {
-  scene: SceneState;
-  selection: string[];
-  // Op AUTOREVOLI (remoti, o comunque passati dal filo) arrivati via apply()
-  // mentre il gesto era aperto. Vanno riapplicati sopra lo snapshot quando il
-  // gesto si chiude o si annulla: SyncClient ha già avanzato il proprio seq
-  // oltre quei record (rpc/syncClient.ts) e non li rimanderà MAI, quindi
-  // scartarli con il rewind significherebbe desync permanente fino al reload.
-  external: Op[];
+// Un op SUBMITTATO ma non ancora tornato indietro dal server. La chiave è
+// l'opId, l'unico identificatore che sopravvive al giro (Hub clona l'Op
+// verbatim dentro l'OpRecord che ribroadcasta), quindi l'unico modo che il
+// client ha di riconoscere il PROPRIO eco.
+export interface PendingOp {
+  opId: string;
+  op: Op;
 }
 
-// Il documento "di base" a fine gesto: snapshot + op autorevoli arrivati
-// durante il gesto, nello stesso ordine in cui li ha visti il server. Gli op
-// finali del gesto vengono submittati DOPO, quindi l'ordine locale coincide con
-// quello che il server assegnerà.
-function rebase(snap: GestureSnapshot): SceneState {
-  return snap.external.reduce((scene, op) => applyOp(scene, op), snap.scene);
+// Stato di un gesto aperto. Non contiene più uno snapshot della scena: la base
+// di un gesto è "confermato + op in volo", che si ricalcola quando serve (vedi
+// viewOf) ed è sempre aggiornata, anche se nel frattempo sono arrivati record
+// dal server o un op in volo è stato rifiutato.
+interface GestureSnapshot {
+  selection: string[];
+  // Op di sola ANTEPRIMA accumulati dal gesto (uno per pointermove). Non sono
+  // mai stati sul filo e non ci andranno: a fine gesto il tool manda gli op
+  // FINALI e questi vengono buttati. Servono a poter RICALCOLARE la vista
+  // quando un record autorevole arriva a metà drag, senza far sparire
+  // l'anteprima sotto le dita dell'utente.
+  preview: Op[];
+}
+
+// LA VISTA. Unica definizione della scena renderizzata:
+//   confermato dal server  ->  op ancora in volo (in ordine di invio)  ->  anteprima del gesto
+// Ogni riconciliazione (record dal filo, rifiuto, fine gesto) ricalcola da qui
+// invece di rattoppare lo stato precedente: è ciò che rende ordine, rollback e
+// rebase definiti invece che ad hoc.
+function viewOf(confirmed: SceneState, pending: readonly PendingOp[], preview: readonly Op[]): SceneState {
+  let scene = confirmed;
+  for (const p of pending) scene = applyOp(scene, p.op);
+  for (const op of preview) scene = applyOp(scene, op);
+  return scene;
+}
+
+// Toglie dalla coda la PRIMA voce con questo opId (la coda è in ordine di
+// invio). Un opId vuoto non identifica niente e non deve poter far uscire dalla
+// coda l'op sbagliato: in quel caso non tocca nulla.
+function dropPending(pending: PendingOp[], opId: string): PendingOp[] {
+  if (opId === "") return pending;
+  const i = pending.findIndex((p) => p.opId === opId);
+  return i < 0 ? pending : [...pending.slice(0, i), ...pending.slice(i + 1)];
 }
 
 // La selezione può SOLO restringersi: contiene esclusivamente id di nodi che
@@ -72,7 +94,22 @@ function invertChain(scene: SceneState, ops: Op[]): Op[] | null {
 }
 
 interface SceneStore {
+  // La VISTA renderizzata: confermato + op in volo + anteprima del gesto (vedi
+  // viewOf). Nessuno la modifica "a mano" se non passando da una delle azioni
+  // qui sotto -- è sempre una funzione degli altri tre.
   scene: SceneState | null;
+  // Il documento CONFERMATO: quello che il server ha applicato e riemesso su
+  // Subscribe. Avanza SOLO da apply(), mai da un op ottimistico.
+  confirmed: SceneState | null;
+  // Op submittati e non ancora tornati indietro, in ordine di invio. Escono da
+  // qui quando il loro eco arriva (confermati) o quando il server li rifiuta
+  // (annullati). Finché sono qui vengono riapplicati sopra ogni nuovo
+  // confermato: è il rebase.
+  pending: PendingOp[];
+  // Ultimo rifiuto da mostrare all'utente. Un rollback SILENZIOSO è quasi
+  // peggio di nessun rollback: la modifica sparirebbe dallo schermo senza che
+  // nessuno sappia perché.
+  lastError: string | null;
   camera: Camera;
   // Invariante: selection contiene SOLO id di nodi che esistono ancora in
   // scene.nodes. Quando un op (anche remoto, via apply) fa sparire un nodo
@@ -97,10 +134,13 @@ interface SceneStore {
   redoStack: Op[][];
   canUndo: boolean;
   canRedo: boolean;
-  setScene: (s: SceneState) => void;
+  setScene: (s: SceneState | null) => void;
   setCamera: (c: Camera) => void;
   setSync: (s: OpSink | null) => void;
   apply: (op: Op) => void;
+  applyPending: (op: Op) => void;
+  rejectPending: (opId: string, message: string) => void;
+  clearError: () => void;
   applyLocal: (op: Op) => void;
   beginGesture: () => void;
   endGesture: (finalOps: Op[]) => void;
@@ -113,20 +153,24 @@ interface SceneStore {
   redo: () => void;
 }
 
-// Riduttore condiviso da apply (op che arrivano dal filo) e applyLocal
-// (anteprima durante un gesto): stessa semantica, due punti d'ingresso con
-// intenzioni diverse.
-function reduce(st: SceneStore, op: Op): Partial<SceneStore> {
-  if (!st.scene) return st;
-  const scene = applyOp(st.scene, op);
-  // Riconvalida la selezione contro i nodi rimasti dopo l'op (non solo
-  // per deleteNode: qualunque op che fa sparire un id -- anche futuro --
-  // deve avere lo stesso effetto).
-  return { scene, selection: pruneSelection(st.selection, scene) };
+// Ricalcolo completo della vista a partire da una nuova base confermata e da
+// una nuova coda. È l'unico modo in cui `scene` cambia quando la riconciliazione
+// entra in gioco (record dal filo, rifiuto): niente aggiustamenti differenziali.
+// L'anteprima del gesto eventualmente aperto viene rimessa in cima, così un
+// record che arriva a metà drag non fa sparire il feedback locale.
+function rebuild(st: SceneStore, confirmed: SceneState, pending: PendingOp[]): Partial<SceneStore> {
+  const scene = viewOf(confirmed, pending, st.gesture?.preview ?? []);
+  // Riconvalida la selezione contro i nodi rimasti (non solo per deleteNode:
+  // qualunque op che fa sparire un id -- anche futuro -- deve avere lo stesso
+  // effetto), e anche contro un rollback che ha tolto un nodo appena creato.
+  return { confirmed, pending, scene, selection: pruneSelection(st.selection, scene) };
 }
 
 export const useScene = createStore<SceneStore>((set, get) => ({
   scene: null,
+  confirmed: null,
+  pending: [],
+  lastError: null,
   camera: { x: 0, y: 0, zoom: 1 },
   selection: [],
   marquee: null,
@@ -136,47 +180,112 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   redoStack: [],
   canUndo: false,
   canRedo: false,
-  setScene: (s) => set({ scene: s }),
+  // Installa un documento: è lo snapshot autorevole di OpenDocument, quindi
+  // vista e confermato COINCIDONO e non c'è nulla in volo. Unico modo sano di
+  // mettere una scena nello store (e l'unico che mantiene l'invariante
+  // confirmed != null <=> scene != null).
+  setScene: (s) => set({ scene: s, confirmed: s, pending: [], lastError: null }),
   setCamera: (c) => set({ camera: c }),
   setSync: (s) => set({ sync: s }),
-  // Op autorevole: viene dal filo (stream remoto o apply ottimistico di un
-  // submit). Se un gesto è aperto lo registriamo anche nello snapshot: la
-  // ricostruzione di fine gesto riparte dallo snapshot e senza questo elenco
-  // perderebbe per sempre le modifiche arrivate durante il drag.
+
+  // RECORD AUTOREVOLE, arrivato da Subscribe. Vale per gli op remoti E per il
+  // proprio eco: in entrambi i casi il documento confermato avanza. Filtrare
+  // gli echi per clientId (com'era in M0) significa non adottare mai la
+  // versione autorevole dei propri op, quindi non conoscere mai l'ORDINE
+  // deciso dal server.
+  //
+  // Se l'op è nostro esce dalla coda: adesso è dentro `confirmed`, lasciarlo
+  // anche in `pending` vorrebbe dire riapplicarlo sopra ogni record successivo
+  // (doppia applicazione, e i record altrui su quel nodo non avrebbero più
+  // effetto). Il resto della coda viene riapplicato sopra la nuova base: è il
+  // rebase, ed è ciò che impedisce a un record remoto di cancellare in
+  // silenzio una modifica ottimistica ancora in volo.
   apply: (op) =>
     set((st) => {
-      if (!st.scene) return st;
-      const next = reduce(st, op);
-      if (!st.gesture) return next;
+      if (!st.confirmed) return st;
+      return rebuild(st, applyOp(st.confirmed, op), dropPending(st.pending, op.opId));
+    }),
+
+  // SUBMIT OTTIMISTICO: l'op parte verso il server ed entra nella coda, la
+  // vista lo mostra subito. Non tocca `confirmed` -- ci arriverà solo quando il
+  // suo eco tornerà indietro (apply), oppure ne uscirà per sempre se il server
+  // lo rifiuta (rejectPending).
+  applyPending: (op) =>
+    set((st) => {
+      if (!st.scene || !st.confirmed) return st;
+      if (op.opId === "") {
+        // Senza opId l'eco è irriconoscibile: l'op resterebbe in coda per
+        // sempre e ogni rebase lo riapplicherebbe sopra il documento
+        // autorevole. Lo trattiamo come già confermato -- si perde il rollback
+        // su rifiuto, non la modifica. Irraggiungibile dai costruttori in
+        // repo: tools/ops.ts e store/history.ts stampano sempre un UUID.
+        console.warn("brawt: submit di un op senza opId — non riconciliabile, applicato come confermato");
+        return rebuild(st, applyOp(st.confirmed, op), st.pending);
+      }
+      // Incrementale, non ricalcolo: la vista è già confermato + coda e l'op si
+      // accoda in fondo. (Un submit non può arrivare a gesto aperto --
+      // endGesture chiude il gesto PRIMA di inviare e undo/redo sono no-op
+      // durante un drag -- quindi non c'è anteprima da scavalcare.)
+      const scene = applyOp(st.scene, op);
       return {
-        ...next,
-        gesture: { ...st.gesture, external: [...st.gesture.external, op] },
+        scene,
+        pending: [...st.pending, { opId: op.opId, op }],
+        selection: pruneSelection(st.selection, scene),
       };
     }),
 
+  // RIFIUTO dal server: l'op esce dalla coda e la vista si ricalcola senza di
+  // lui, cioè la modifica ottimistica sparisce dallo schermo. In M0 restava lì
+  // per sempre, con una sola riga di console.error, e spariva davvero solo al
+  // reload successivo.
+  rejectPending: (opId, message) =>
+    set((st) => {
+      const i = st.pending.findIndex((p) => p.opId === opId);
+      // Non è (più) in coda = è GIÀ CONFERMATO: l'eco è arrivato prima che la
+      // risposta HTTP fallisse (connessione caduta dopo l'append, per dire).
+      // L'op è durabile: non c'è niente da annullare, e mostrare un errore
+      // sarebbe una bugia.
+      if (i < 0 || !st.confirmed) return st;
+      const pending = [...st.pending.slice(0, i), ...st.pending.slice(i + 1)];
+      return { ...rebuild(st, st.confirmed, pending), lastError: message };
+    }),
+
+  clearError: () => set({ lastError: null }),
+
   // Applica SOLO in locale: è il feedback immediato del drag, non passa dal
   // filo. Un pointermove = un applyLocal, e nessuno di questi diventa un op.
-  applyLocal: (op) => set((st) => reduce(st, op)),
+  // Dentro un gesto viene anche REGISTRATO fra le anteprime, così un ricalcolo
+  // della vista (record dal filo, rifiuto) può rimetterlo in cima invece di
+  // spegnere l'anteprima a metà drag.
+  applyLocal: (op) =>
+    set((st) => {
+      if (!st.scene) return st;
+      const scene = applyOp(st.scene, op);
+      const next = { scene, selection: pruneSelection(st.selection, scene) };
+      if (!st.gesture) return next;
+      return { ...next, gesture: { ...st.gesture, preview: [...st.gesture.preview, op] } };
+    }),
 
-  // Apre un gesto fotografando lo stato: è il punto di ripristino sia per
-  // l'annullamento (Esc) sia per la ricostruzione a fine gesto.
+  // Apre un gesto fotografando la SELEZIONE (il punto di ripristino di Esc) e
+  // azzerando l'elenco delle anteprime. La scena non va fotografata: la base
+  // del gesto è "confermato + op in volo", che si ricalcola quando serve.
   beginGesture: () =>
     set((st) => {
       if (!st.scene) return st;
       if (st.gesture) {
-        // Misuso (gesto già aperto): sovrascrivere lo snapshot perderebbe il
-        // vero stato di inizio gesto -- un cancelGesture successivo tornerebbe
-        // a metà drag invece che al punto di partenza. Teniamo il PRIMO
-        // snapshot (e i suoi op esterni) e segnaliamo il bug al chiamante.
+        // Misuso (gesto già aperto): azzerare le anteprime accumulate e la
+        // selezione di partenza perderebbe il vero stato di inizio gesto -- un
+        // cancelGesture successivo tornerebbe a metà drag invece che al punto
+        // di partenza. Teniamo il PRIMO gesto e segnaliamo il bug al chiamante.
         console.warn("brawt: beginGesture() con un gesto già aperto — snapshot iniziale mantenuto");
         return st;
       }
-      return { gesture: { scene: st.scene, selection: st.selection, external: [] } };
+      return { gesture: { selection: st.selection, preview: [] } };
     }),
 
   // Chiude il gesto e manda sul filo UNA sola volta gli op finali: il documento
-  // torna alla base (snapshot + op autorevoli arrivati durante il gesto) e
-  // viene ricostruito da finalOps, così le anteprime intermedie non lasciano
+  // torna alla base (confermato + op ancora in volo, senza anteprime) e viene
+  // ricostruito da finalOps, così le anteprime intermedie non lasciano
   // residui (es. un resize di anteprima che l'op finale non ripete).
   // finalOps vuoto = gesto senza effetto.
   // Nota: la SELEZIONE non viene ripristinata (a differenza di cancelGesture).
@@ -197,11 +306,19 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     // rientra nello store (apply ottimistico), quindi non può stare dentro
     // l'updater di un altro set.
     if (snap) {
-      const scene = rebase(snap);
+      // La base del gesto NON è una fotografia di inizio drag: è il documento
+      // confermato più gli op ancora in volo, ricalcolato ADESSO. I record
+      // autorevoli arrivati durante il drag ci sono già dentro (sono entrati in
+      // `confirmed` via apply), le anteprime no -- è così che spariscono senza
+      // lasciare residui. Un op in volo rifiutato a metà gesto è già uscito
+      // dalla coda, quindi non riappare qui.
+      const confirmed = get().confirmed;
+      const scene = confirmed ? viewOf(confirmed, get().pending, []) : get().scene;
       // Potatura transitoria: mantiene l'invariante selection ⊆ scene.nodes
       // anche a metà flush; la riconciliazione finale la riallarga a quello
       // che il chiamante voleva davvero.
-      set((st) => ({ scene, selection: pruneSelection(st.selection, scene), gesture: null }));
+      if (scene) set((st) => ({ scene, selection: pruneSelection(st.selection, scene), gesture: null }));
+      else set({ gesture: null });
     } else if (finalOps.length > 0) {
       // Misuso (endGesture senza beginGesture): non c'è nessuna base pulita da
       // cui ricostruire, quindi gli op finali si sommano a qualunque anteprima
@@ -244,9 +361,12 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const sync = get().sync;
     for (const op of finalOps) {
       // Senza trasporto registrato restiamo comunque coerenti in locale
-      // invece di perdere il risultato del gesto.
+      // invece di perdere il risultato del gesto. apply() e non applyLocal():
+      // senza filo non esiste un "confermato dal server", quindi l'op È il
+      // documento confermato -- un'anteprima verrebbe cancellata dal primo
+      // ricalcolo della vista.
       if (sync) sync.submit(op);
-      else get().applyLocal(op);
+      else get().apply(op);
     }
     // Riconciliazione finale: la selezione voluta, potata contro la scena
     // realmente prodotta dal gesto. Gli id creati da finalOps ci sono ancora;
@@ -268,7 +388,9 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   cancelGesture: () =>
     set((st) => {
       if (!st.gesture) return st;
-      const scene = rebase(st.gesture);
+      // Stessa base di endGesture: confermato + op in volo, senza anteprime.
+      const scene = st.confirmed ? viewOf(st.confirmed, st.pending, []) : st.scene;
+      if (!scene) return { gesture: null };
       return { scene, selection: pruneSelection(st.gesture.selection, scene), gesture: null };
     }),
 
@@ -290,15 +412,14 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // pre-undo non esiste più.
   //
   // Guardia (bug trovato in review): se un gesto è aperto (drag in corso),
-  // sync.submit -> apply(op) qui sopra farebbe rientrare l'inverso in apply(),
-  // che con st.gesture valorizzato lo tratta come op ESTERNO -- lo applica
-  // alla scena live E lo infila in gesture.external. Al pointerup, endGesture
-  // ribasa external (ora con l'inverso iniettato in mezzo) sopra lo snapshot
-  // e manda un op finale che può riferirsi a un nodo già sparito: il drag
-  // evapora senza lasciare voce di undo, e il nodo sbagliato scompare. Niente
-  // di tutto questo è un rewind pulito -- un gesto ha una sola base valida
-  // (lo snapshot) ed eseguire undo/redo a metà la corromperebbe. Rimandato:
-  // l'utente rifà Ctrl/Cmd+Z dopo che il gesto chiude (pointerup/Esc).
+  // sync.submit farebbe entrare l'inverso nella coda degli op in volo, cioè
+  // NELLA BASE del gesto. Al pointerup endGesture ricalcola quella base (ora
+  // con l'inverso in mezzo) e manda op finali che possono riferirsi a un nodo
+  // appena cancellato dall'undo: il drag evapora senza lasciare voce di undo e
+  // il nodo sbagliato scompare. E gli inversi sono comunque calcolati sulla
+  // VISTA, che a metà drag contiene le anteprime -- uno stato che non
+  // esisterà più appena il gesto chiude. Rimandato: l'utente rifà Ctrl/Cmd+Z
+  // dopo che il gesto chiude (pointerup/Esc).
   undo: () => {
     if (get().gesture) return;
     const entry = get().undoStack[get().undoStack.length - 1];
@@ -312,7 +433,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const sync = get().sync;
     for (const op of entry) {
       if (sync) sync.submit(op);
-      else get().applyLocal(op);
+      else get().apply(op); // nessun filo: l'op è direttamente il confermato (vedi endGesture)
     }
     if (redoEntry && redoEntry.length > 0) {
       set((st) => ({ redoStack: [...st.redoStack, redoEntry], canRedo: true }));
@@ -321,9 +442,8 @@ export const useScene = createStore<SceneStore>((set, get) => ({
 
   // Simmetrico a undo: rimanda avanti gli op che l'undo aveva disfatto, e
   // ricostruisce una nuova voce di undo per poterli ridisfare.
-  // Stessa guardia di undo() sopra, stesso motivo: un gesto aperto ha una
-  // sola base valida (lo snapshot), e redo() durante un drag la corromperebbe
-  // allo stesso modo tramite apply()/gesture.external.
+  // Stessa guardia di undo() sopra, stesso motivo: redo() durante un drag
+  // infilerebbe i suoi op nella coda in volo, cioè nella base del gesto.
   redo: () => {
     if (get().gesture) return;
     const entry = get().redoStack[get().redoStack.length - 1];
@@ -337,7 +457,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const sync = get().sync;
     for (const op of entry) {
       if (sync) sync.submit(op);
-      else get().applyLocal(op);
+      else get().apply(op); // nessun filo: l'op è direttamente il confermato (vedi endGesture)
     }
     if (undoEntry && undoEntry.length > 0) {
       set((st) => ({ undoStack: [...st.undoStack, undoEntry], canUndo: true }));

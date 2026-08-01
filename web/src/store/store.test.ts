@@ -19,7 +19,11 @@ function deleteOp(id: string) {
 
 describe("selection state", () => {
   beforeEach(() => {
-    useScene.setState({ scene: emptyScene("doc1", "Untitled"), selection: [], marquee: null });
+    useScene.setState({ selection: [], marquee: null, gesture: null });
+    // setScene e non setState({scene}): installa una scena COERENTE (vista e
+    // confermato allineati, coda vuota), che è l'invariante su cui poggia la
+    // riconciliazione (vedi store.ts).
+    useScene.getState().setScene(emptyScene("doc1", "Untitled"));
   });
 
   it("setSelection replaces the current selection", () => {

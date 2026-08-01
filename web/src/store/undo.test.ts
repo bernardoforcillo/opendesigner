@@ -5,12 +5,17 @@ import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { useScene } from "./store";
 import { emptyScene } from "./types";
 
-// Stesso doppio di gesture.test.ts: conta gli op che finiscono SUL FILO e per
-// il resto si comporta come SyncClient (apply ottimistico locale via apply()).
+// Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
+// SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
+// in volo, visibile subito) seguito da apply (l'eco che lo conferma). Senza
+// l'eco ogni op resterebbe in coda per sempre e i test parlerebbero di uno
+// stato che il server non ha mai visto. Lo store dipende solo dalla superficie
+// { submit }, quindi non serve un SyncClient reale (niente rete nei test).
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
     this.sent.push(op);
+    useScene.getState().applyPending(op);
     useScene.getState().apply(op);
   }
 }
@@ -71,13 +76,16 @@ describe("undo/redo", () => {
   beforeEach(() => {
     sync = new FakeSync();
     useScene.setState({
-      scene: emptyScene("doc1", "Untitled"),
       selection: [],
       marquee: null,
       gesture: null,
       undoStack: [],
       redoStack: [],
     });
+    // setScene e non setState({scene}): installa una scena COERENTE (vista e
+    // confermato allineati, coda vuota) -- l'invariante su cui poggia la
+    // riconciliazione confermato/pending (vedi store.ts).
+    useScene.getState().setScene(emptyScene("doc1", "Untitled"));
     useScene.getState().setSync(sync);
   });
 
@@ -191,8 +199,8 @@ describe("undo/redo", () => {
     sync.sent = [];
 
     // Nuovo gesto: drag di n1 e n2 insieme. A metà drag un client remoto
-    // cancella n2 -> l'op arriva via apply() e finisce in gesture.external,
-    // quindi la base ribasata a fine gesto non ha più n2.
+    // cancella n2 -> l'op arriva via apply() e fa avanzare il CONFERMATO,
+    // quindi la base ricalcolata a fine gesto non ha più n2.
     st.beginGesture();
     st.apply(deleteOp("n2"));
     st.endGesture([moveOp("n1", 999, 999), moveOp("n2", 999, 0)]);
@@ -214,10 +222,10 @@ describe("undo/redo", () => {
   });
 
   // --- undo/redo con un gesto aperto (bug trovato in review) ---------------
-  // sync.submit -> apply(op) qui sopra fa rientrare l'inverso in apply(): con
-  // st.gesture valorizzato quello viene trattato come op ESTERNO (applicato
-  // alla scena live E infilato in gesture.external), corrompendo sia il drag
-  // in corso sia lo stack. undo()/redo() devono quindi essere no-op finché
+  // sync.submit farebbe entrare l'inverso nella BASE del gesto (il confermato
+  // più gli op in volo), quella da cui endGesture ricostruisce la scena al
+  // pointerup, corrompendo sia il drag in corso sia lo stack.
+  // undo()/redo() devono quindi essere no-op finché
   // il gesto non chiude.
 
   it("undo() durante un gesto aperto è un no-op: non tocca lo stack né manda nulla", () => {
