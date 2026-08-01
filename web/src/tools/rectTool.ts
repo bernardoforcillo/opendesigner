@@ -1,68 +1,81 @@
 import { create } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema } from "../gen/brawt/v1/brawt_pb";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
-import { hitTest } from "../renderer/canvasRenderer";
-import { useScene } from "../store/store";
+import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
+import { normalizeRect } from "../canvas/geometry";
 import { nextOrderKey } from "../store/orderKey";
-import type { SyncClient } from "../rpc/syncClient";
-import { screenToWorld } from "../canvas/camera";
+import { useScene } from "../store/store";
+import { makeCreateNodeOp, uuid } from "./ops";
+import type { Tool, ToolContext } from "./types";
 
-function uuid(): string { return crypto.randomUUID(); }
+// Dimensione di default quando il gesto è un semplice click invece di un drag.
+export const DEFAULT_RECT_WIDTH = 100;
+export const DEFAULT_RECT_HEIGHT = 80;
 
-export function makeRectOp(x: number, y: number, w: number, h: number): Op {
-  const node = create(NodeSchema, {
-    id: uuid(), parentId: "page1", orderKey: nextOrderKey(useScene.getState().scene), name: "Rectangle",
-    visible: true, opacity: 1, x, y, width: w, height: h,
-    fills: [{ kind: { case: "solid", value: { color: { r: 0.6, g: 0.6, b: 0.65, a: 1 } } } }],
-    shape: { case: "rect", value: { cornerRadius: 0 } },
-  });
-  return create(OpSchema, { opId: uuid(), docId: useScene.getState().scene?.id ?? "", kind: { case: "createNode", value: { node } } });
+// Sotto questa soglia (px SCHERMO, quindi indipendente dallo zoom) un drag è
+// considerato un click: senza soglia, a zoom alto un tremolio di mezzo pixel
+// creerebbe un rettangolo largo 0.008 unità mondo, invisibile e inafferrabile.
+const CLICK_SLOP_PX = 3;
+
+// Il tool rettangolo fa SOLO creazione: selezione e spostamento vivono nel
+// select tool. In M0 questo file era un monolite che faceva tutto e tre.
+export function createRectTool(): Tool {
+  let anchor: { x: number; y: number } | null = null;
+
+  // L'anteprima riusa il rettangolo di marquee dello store: è già in
+  // coordinate mondo ed è già disegnato dall'overlay, quindi non serve un
+  // secondo canale solo per il feedback di creazione.
+  const preview = (b: { x: number; y: number; width: number; height: number } | null) =>
+    useScene.getState().setMarquee(b);
+
+  return {
+    id: "rect",
+    cursor: "crosshair",
+
+    onPointerDown(e, ctx) {
+      anchor = ctx.toWorld(e);
+      preview({ ...anchor, width: 0, height: 0 });
+    },
+
+    onPointerMove(e, ctx) {
+      if (!anchor) return;
+      const p = ctx.toWorld(e);
+      preview(normalizeRect(anchor.x, anchor.y, p.x, p.y));
+    },
+
+    onPointerUp(e, ctx) {
+      if (!anchor) return;
+      const p = ctx.toWorld(e);
+      const box = normalizeRect(anchor.x, anchor.y, p.x, p.y);
+      anchor = null;
+      preview(null);
+
+      const slop = CLICK_SLOP_PX / ctx.getCamera().zoom; // px schermo -> unità mondo
+      const width = box.width < slop ? DEFAULT_RECT_WIDTH : box.width;
+      const height = box.height < slop ? DEFAULT_RECT_HEIGHT : box.height;
+
+      const node = create(NodeSchema, {
+        id: uuid(),
+        parentId: "page1",
+        orderKey: nextOrderKey(ctx.getScene()),
+        name: "Rectangle",
+        visible: true,
+        opacity: 1,
+        x: box.x,
+        y: box.y,
+        width,
+        height,
+        fills: [{ kind: { case: "solid", value: { color: { r: 0.6, g: 0.6, b: 0.65, a: 1 } } } }],
+        shape: { case: "rect", value: { cornerRadius: 0 } },
+      });
+      ctx.sync.submit(makeCreateNodeOp(node));
+    },
+
+    // Gesto abbandonato (cambio tool, pointercancel, smontaggio): nessun op.
+    onDeactivate(_ctx: ToolContext) {
+      if (!anchor) return;
+      anchor = null;
+      preview(null);
+    },
+  };
 }
 
-export function makeMoveOp(id: string, x: number, y: number): Op {
-  return create(OpSchema, { opId: uuid(), docId: useScene.getState().scene?.id ?? "", kind: { case: "setProps", value: {
-    id, patch: create(NodeSchema, { x, y }), mask: { paths: ["x", "y"] } } } });
-}
-
-type Mode = "select" | "rect";
-
-export function attachRectTool(canvas: HTMLCanvasElement, sync: SyncClient, getMode: () => Mode): () => void {
-  let dragging: { id: string; offx: number; offy: number } | null = null;
-  let creating: { x: number; y: number } | null = null;
-
-  const toWorld = (e: PointerEvent) => {
-    const cam = useScene.getState().camera;
-    const rect = canvas.getBoundingClientRect();
-    return screenToWorld(cam, e.clientX - rect.left, e.clientY - rect.top);
-  };
-
-  const onDown = (e: PointerEvent) => {
-    const { x, y } = toWorld(e);
-    if (getMode() === "rect") { creating = { x, y }; return; }
-    const id = hitTest(useScene.getState().scene!, x, y);
-    if (id) { const n = useScene.getState().scene!.nodes[id]; dragging = { id, offx: x - n.x, offy: y - n.y }; }
-  };
-  const onMove = (e: PointerEvent) => {
-    if (!dragging) return;
-    const { x, y } = toWorld(e);
-    sync.submit(makeMoveOp(dragging.id, x - dragging.offx, y - dragging.offy));
-  };
-  const onUp = (e: PointerEvent) => {
-    if (creating) {
-      const { x, y } = toWorld(e);
-      const w = Math.abs(x - creating.x) || 100, h = Math.abs(y - creating.y) || 80;
-      sync.submit(makeRectOp(Math.min(x, creating.x), Math.min(y, creating.y), w, h));
-      creating = null;
-    }
-    dragging = null;
-  };
-
-  canvas.addEventListener("pointerdown", onDown);
-  canvas.addEventListener("pointermove", onMove);
-  canvas.addEventListener("pointerup", onUp);
-  return () => {
-    canvas.removeEventListener("pointerdown", onDown);
-    canvas.removeEventListener("pointermove", onMove);
-    canvas.removeEventListener("pointerup", onUp);
-  };
-}
+export const rectTool = createRectTool();

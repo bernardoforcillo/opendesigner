@@ -5,9 +5,26 @@ import { SyncClient } from "../rpc/syncClient";
 import { useScene } from "../store/store";
 import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
 import { drawOverlay } from "../renderer/overlayRenderer";
-import { attachRectTool } from "../tools/rectTool";
+import { screenToWorld } from "../canvas/camera";
+import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
+import type { Tool, ToolContext, ToolId } from "../tools/types";
+import { selectTool } from "../tools/selectTool";
+import { rectTool } from "../tools/rectTool";
+import { handTool } from "../tools/handTool";
 
-type Mode = "select" | "rect";
+// Registro dei tool disponibili: la toolbar sceglie una chiave, attachTools
+// instrada gli eventi al tool corrispondente. L'ellisse arriva col task 10.
+const TOOLS: Partial<Record<ToolId, Tool>> = {
+  select: selectTool,
+  rect: rectTool,
+  hand: handTool,
+};
+
+const TOOL_LABELS: { id: ToolId; label: string }[] = [
+  { id: "select", label: "Seleziona" },
+  { id: "rect", label: "Rettangolo" },
+  { id: "hand", label: "Mano" },
+];
 
 const CLIENT_ID = crypto.randomUUID();
 const DOC_KEY = "brawt.docId";
@@ -15,10 +32,10 @@ const DOC_KEY = "brawt.docId";
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
-  // Il tool legge la modalità da un ref: attachRectTool viene collegato una
+  // Il manager legge il tool attivo da un ref: attachTools viene collegato una
   // volta sola al mount, quindi non deve dipendere dall'identità della closure.
-  const modeRef = useRef<Mode>("select");
-  const [mode, setMode] = useState<Mode>("select");
+  const toolRef = useRef<ToolId>("select");
+  const [toolId, setToolId] = useState<ToolId>("select");
   const [status, setStatus] = useState<"connecting" | "ready" | "error">("connecting");
 
   // bootstrap: documento + SyncClient + tool
@@ -41,7 +58,20 @@ export function App() {
         if (cancelled) return;
         const canvas = canvasRef.current;
         if (!canvas) return;
-        cleanup = attachRectTool(canvas, sync, () => modeRef.current);
+        // Il contesto è l'unico ponte fra i tool e il resto dell'app: store,
+        // camera e la sola conversione schermo -> mondo (via canvas/camera.ts).
+        const ctx: ToolContext = {
+          sync,
+          canvas,
+          getScene: () => useScene.getState().scene,
+          getCamera: () => useScene.getState().camera,
+          setCamera: (c) => useScene.getState().setCamera(c),
+          toWorld: (e) => {
+            const p = eventToCanvasPoint(canvas, e);
+            return screenToWorld(useScene.getState().camera, p.x, p.y);
+          },
+        };
+        cleanup = attachTools(ctx, () => TOOLS[toolRef.current] ?? selectTool);
         setStatus("ready");
       } catch (err) {
         console.error("bootstrap failed", err);
@@ -95,26 +125,23 @@ export function App() {
         <ToggleButtonGroup
           selectionMode="single"
           disallowEmptySelection
-          selectedKeys={[mode]}
+          selectedKeys={[toolId]}
           className="flex gap-1"
           onSelectionChange={(keys) => {
-            const next = (keys.values().next().value as Mode | undefined) ?? "select";
-            modeRef.current = next;
-            setMode(next);
+            const next = (keys.values().next().value as ToolId | undefined) ?? "select";
+            toolRef.current = next;
+            setToolId(next);
           }}
         >
-          <ToggleButton
-            id="select"
-            className="rounded px-3 py-1 text-sm data-[selected]:bg-neutral-800 data-[selected]:text-white"
-          >
-            Seleziona
-          </ToggleButton>
-          <ToggleButton
-            id="rect"
-            className="rounded px-3 py-1 text-sm data-[selected]:bg-neutral-800 data-[selected]:text-white"
-          >
-            Rettangolo
-          </ToggleButton>
+          {TOOL_LABELS.map((t) => (
+            <ToggleButton
+              key={t.id}
+              id={t.id}
+              className="rounded px-3 py-1 text-sm data-[selected]:bg-neutral-800 data-[selected]:text-white"
+            >
+              {t.label}
+            </ToggleButton>
+          ))}
         </ToggleButtonGroup>
         <Button
           className="rounded px-3 py-1 text-sm hover:bg-neutral-100"
@@ -130,10 +157,13 @@ export function App() {
         </span>
       </div>
       <div className="relative flex-1">
+        {/* Il cursore viene dal tool attivo; durante un pan temporaneo (spazio
+            o tasto centrale) è il tool manager a sovrascriverlo sul DOM. */}
         <canvas
           id="scene"
           ref={canvasRef}
-          className={`absolute inset-0 block h-full w-full touch-none ${mode === "rect" ? "cursor-crosshair" : "cursor-default"}`}
+          style={{ cursor: (TOOLS[toolId] ?? selectTool).cursor }}
+          className="absolute inset-0 block h-full w-full touch-none"
         />
         {/* overlay: bbox di selezione + maniglie + marquee, in spazio schermo.
             pointer-events-none: tutti i listener restano sul canvas "scene",
