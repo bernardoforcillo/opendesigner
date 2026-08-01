@@ -213,14 +213,32 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     // stato su cui finalOps stanno per atterrare (get().scene qui è già la
     // scena ribasata dal set() qui sopra, o quella corrente nel caso di
     // misuso) -- PRIMA di sottomettere qualunque op. Dopo, quello stato non
-    // esiste più. Un gesto senza op finali (o i cui inversi non esistono
-    // tutti, es. un id sparito nel frattempo) non produce voce: annullare a
-    // metà lascerebbe la scena in uno stato che nessun redo può recuperare.
+    // esiste più. Un gesto i cui inversi non esistono tutti (es. un id sparito
+    // nel frattempo perché un client remoto l'ha cancellato a metà drag) non
+    // produce voce: annullare a metà lascerebbe la scena in uno stato che
+    // nessun redo può recuperare.
+    //
+    // Lo svuotamento del REDO stack invece NON è condizionato all'esistenza
+    // della voce di undo (bug trovato in review): gli op finali vengono
+    // submittati qui sotto in ogni caso, quindi qualunque gesto con op finali
+    // ha già cambiato il documento per davvero e ha invalidato il "futuro"
+    // registrato nel redo stack -- quelle voci sono inversi calcolati su uno
+    // stato che non esiste più. Lasciarle lì significa che un redo successivo
+    // riscrive in silenzio proprietà appena modificate dall'utente (es.
+    // rimette a (40,40) un nodo appena trascinato a (999,999)) senza alcun
+    // segnale. Il redo stack si svuota quindi appena il gesto ha effetto
+    // reale, indipendentemente da invertChain.
     const base = get().scene;
-    if (finalOps.length > 0 && base) {
-      const inverses = invertChain(base, finalOps);
-      if (inverses && inverses.length > 0) {
-        set((st) => ({ undoStack: [...st.undoStack, inverses], redoStack: [], canUndo: true, canRedo: false }));
+    if (finalOps.length > 0) {
+      const inverses = base ? invertChain(base, finalOps) : null;
+      const entry = inverses && inverses.length > 0 ? inverses : null;
+      // Niente voce da aggiungere e redo già vuoto: nessun cambiamento di
+      // stato, quindi niente set() (sveglierebbe i sottoscrittori a vuoto).
+      if (entry || get().redoStack.length > 0) {
+        set((st) => {
+          const undoStack = entry ? [...st.undoStack, entry] : st.undoStack;
+          return { undoStack, redoStack: [], canUndo: undoStack.length > 0, canRedo: false };
+        });
       }
     }
     const sync = get().sync;

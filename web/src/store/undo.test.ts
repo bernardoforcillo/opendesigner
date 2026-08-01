@@ -50,6 +50,13 @@ function resizeOp(id: string, width: number, height: number): Op {
   });
 }
 
+function deleteOp(id: string): Op {
+  return create(OpSchema, {
+    opId: `del-${id}`, docId: "doc1",
+    kind: { case: "deleteNode", value: { id } },
+  });
+}
+
 // Wrapper: apre e chiude un gesto in un colpo solo, come farebbe un tool a
 // fine drag. È la forma con cui i test costruiscono "un gesto" per lo stack.
 function gesture(finalOps: Op[]) {
@@ -163,6 +170,47 @@ describe("undo/redo", () => {
     st.endGesture([]);
 
     expect(useScene.getState().undoStack).toHaveLength(0);
+  });
+
+  // --- redo stack svuotato anche senza voce di undo (bug trovato in review) --
+  // invertChain() aborta a null al PRIMO op della catena che non si può
+  // invertire, ma gli op finali vengono submittati comunque: il documento è
+  // già cambiato per davvero. Se in quel caso il redo stack restasse pieno, un
+  // redo successivo rimetterebbe in gioco inversi calcolati su uno stato che
+  // non esiste più, riscrivendo in silenzio il lavoro appena fatto.
+
+  it("un gesto con effetto reale svuota il redo stack anche quando la voce di undo non si può costruire", () => {
+    const st = useScene.getState();
+    gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
+    gesture([moveOp("n1", 40, 40)]);
+
+    st.undo(); // n1 torna a (0,0); il redo stack contiene "rimetti n1 a (40,40)"
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().redoStack).toHaveLength(1);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    sync.sent = [];
+
+    // Nuovo gesto: drag di n1 e n2 insieme. A metà drag un client remoto
+    // cancella n2 -> l'op arriva via apply() e finisce in gesture.external,
+    // quindi la base ribasata a fine gesto non ha più n2.
+    st.beginGesture();
+    st.apply(deleteOp("n2"));
+    st.endGesture([moveOp("n1", 999, 999), moveOp("n2", 999, 0)]);
+
+    // Lo spostamento di n1 è avvenuto per davvero (è stato submittato).
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 999, y: 999 });
+    expect(sync.sent).toHaveLength(2);
+    // La catena di inversi non si può costruire (n2 non c'è più): nessuna voce
+    // di undo nuova -- annullare a metà sarebbe peggio.
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    // ...ma il redo stack DEVE essere vuoto lo stesso.
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().canRedo).toBe(false);
+
+    // E un redo() non deve poter riportare n1 a (40,40).
+    st.redo();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 999, y: 999 });
+    expect(useScene.getState().redoStack).toHaveLength(0);
   });
 
   // --- undo/redo con un gesto aperto (bug trovato in review) ---------------
