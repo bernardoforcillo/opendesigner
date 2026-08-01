@@ -18,6 +18,17 @@ func createOp(id string) *brawtv1.Op {
 			Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{}}}}}}
 }
 
+// mustSubscribe subscribes and fails the test if the hub cannot serve the
+// requested catch-up (see ErrHistoryTooOld).
+func mustSubscribe(t *testing.T, h *Hub, sinceSeq uint64) (<-chan *brawtv1.OpRecord, func()) {
+	t.Helper()
+	ch, cancel, err := h.Subscribe(sinceSeq)
+	if err != nil {
+		t.Fatalf("Subscribe(%d): %v", sinceSeq, err)
+	}
+	return ch, cancel
+}
+
 func newTestHub(t *testing.T) *Hub {
 	t.Helper()
 	b, err := store.Open(t.TempDir(), "doc1", "Untitled")
@@ -45,7 +56,7 @@ func TestSubmitAssignsIncrementingSeq(t *testing.T) {
 
 func TestSubscriberReceivesBroadcast(t *testing.T) {
 	h := newTestHub(t)
-	ch, cancel := h.Subscribe(0)
+	ch, cancel := mustSubscribe(t, h, 0)
 	defer cancel()
 	_, _ = h.Submit("c1", createOp("n1"))
 	select {
@@ -61,7 +72,7 @@ func TestSubscriberReceivesBroadcast(t *testing.T) {
 func TestSubscribeCatchUp(t *testing.T) {
 	h := newTestHub(t)
 	_, _ = h.Submit("c1", createOp("n1")) // seq 1, prima della subscribe
-	ch, cancel := h.Subscribe(0)          // sinceSeq 0 → deve ricevere seq 1 in catch-up
+	ch, cancel := mustSubscribe(t, h, 0) // sinceSeq 0 → deve ricevere seq 1 in catch-up
 	defer cancel()
 	select {
 	case rec := <-ch:
@@ -145,7 +156,7 @@ func TestSubmitDoesNotAliasCallerOpIntoDoc(t *testing.T) {
 // idempotent cancel funcs.
 func TestSubscribeCancelIsIdempotent(t *testing.T) {
 	h := newTestHub(t)
-	_, cancel := h.Subscribe(0)
+	_, cancel := mustSubscribe(t, h, 0)
 
 	cancel() // first call: must not panic
 	cancel() // second call: must also not panic
@@ -172,15 +183,21 @@ func TestSubscribeCatchUpBeyondChannelCapacityDoesNotBlock(t *testing.T) {
 	type result struct {
 		ch     <-chan *brawtv1.OpRecord
 		cancel func()
+		err    error
 	}
 	done := make(chan result, 1)
 	go func() {
-		ch, cancel := h.Subscribe(0)
-		done <- result{ch, cancel}
+		// h.Subscribe, not mustSubscribe: t.Fatalf must not be called from a
+		// goroutine other than the test's own.
+		ch, cancel, err := h.Subscribe(0)
+		done <- result{ch, cancel, err}
 	}()
 
 	select {
 	case r := <-done:
+		if r.err != nil {
+			t.Fatalf("Subscribe(0): %v", r.err)
+		}
 		defer r.cancel()
 		count := 0
 	drain:
@@ -276,7 +293,7 @@ func TestNewHubReconstructsHistoryAfterRestart(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	ch, cancel := h2.Subscribe(0)
+	ch, cancel := mustSubscribe(t, h2, 0)
 	defer cancel()
 
 	got := map[uint64]bool{}

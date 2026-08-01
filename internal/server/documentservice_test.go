@@ -17,7 +17,14 @@ import (
 
 func newTestClient(t *testing.T) brawtv1connect.DocumentServiceClient {
 	t.Helper()
-	svc := NewDocumentService(NewManager(t.TempDir()))
+	return newTestClientOn(t, t.TempDir())
+}
+
+// newTestClientOn serves an explicit workspace, so a test can start a second
+// "process" over documents that already exist on disk.
+func newTestClientOn(t *testing.T, workspace string) brawtv1connect.DocumentServiceClient {
+	t.Helper()
+	svc := NewDocumentService(NewManager(workspace))
 	path, handler := brawtv1connect.NewDocumentServiceHandler(svc)
 	mux := httpMux(path, handler)
 	// Enable HTTP/2 via TLS (the canonical connect-go test pattern): srv.Client()

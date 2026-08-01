@@ -13,7 +13,13 @@ type DocumentService struct{ m *Manager }
 func NewDocumentService(m *Manager) *DocumentService { return &DocumentService{m: m} }
 
 func (s *DocumentService) ListDocuments(_ context.Context, _ *connect.Request[brawtv1.ListDocumentsRequest]) (*connect.Response[brawtv1.ListDocumentsResponse], error) {
-	return connect.NewResponse(&brawtv1.ListDocumentsResponse{Docs: s.m.List()}), nil
+	// List reads the workspace directory, so it can fail for reasons the
+	// caller has no part in (permissions, a missing mount).
+	docs, err := s.m.List()
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&brawtv1.ListDocumentsResponse{Docs: docs}), nil
 }
 
 func (s *DocumentService) CreateDocument(_ context.Context, req *connect.Request[brawtv1.CreateDocumentRequest]) (*connect.Response[brawtv1.DocInfo], error) {
@@ -86,7 +92,17 @@ func (s *DocumentService) Subscribe(ctx context.Context, req *connect.Request[br
 	// Hub.Subscribe registers the subscriber and pre-loads its catch-up backlog
 	// under the hub mutex, so an op submitted concurrently with this call is
 	// delivered exactly once: either in the backlog or as a live broadcast.
-	ch, cancel := h.Subscribe(req.Msg.GetSinceSeq())
+	ch, cancel, err := h.Subscribe(req.Msg.GetSinceSeq())
+	if err != nil {
+		if errors.Is(err, ErrHistoryTooOld) {
+			// The records this client is asking to resume from have been
+			// compacted into a snapshot. OUT_OF_RANGE (rather than a partial
+			// stream) tells it to re-open the document and resubscribe from
+			// the seq OpenDocument reports.
+			return connect.NewError(connect.CodeOutOfRange, err)
+		}
+		return connect.NewError(connect.CodeInternal, err)
+	}
 	// Always unregister: the hub would otherwise keep broadcasting into a
 	// channel nobody reads for the rest of the process's life.
 	defer cancel()

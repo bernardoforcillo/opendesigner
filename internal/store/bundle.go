@@ -9,6 +9,7 @@ import (
 	"path/filepath"
 	"runtime"
 	"sync"
+	"time"
 
 	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
 	"github.com/bernardoforcillo/brawt/internal/core"
@@ -19,7 +20,11 @@ type Bundle struct {
 	mu    sync.Mutex
 	dir   string // <workspace>/<docID>.brawt
 	docID string
-	name  string
+	// meta is the document's identity as persisted in meta.json (see
+	// meta.go). It is the single source of the document's name: Load seeds a
+	// fresh document from it, so a bundle can never be opened under one name
+	// and replayed under another.
+	meta Meta
 
 	// openOplog opens the oplog file. It exists so tests can inject the
 	// disk failures this package is written to survive -- a short write, a
@@ -43,8 +48,15 @@ func (b *Bundle) openOplogFile(flag int, perm os.FileMode) (oplogFile, error) {
 	return f, nil
 }
 
+// Open prepares the bundle directory for docID and returns a handle to it.
+//
+// name is only a default: a bundle that already knows its own name (from
+// meta.json) keeps it, so a caller that has no idea what the document is
+// called -- server.Manager.HubFor, resolving a bare doc id -- no longer
+// renames every document it opens to "Untitled". Bundle.Meta() reports the
+// identity that actually applies.
 func Open(workspace, docID, name string) (*Bundle, error) {
-	dir := filepath.Join(workspace, docID+".brawt")
+	dir := filepath.Join(workspace, docID+bundleSuffix)
 	if err := os.MkdirAll(filepath.Join(dir, "assets"), 0o755); err != nil {
 		return nil, err
 	}
@@ -58,7 +70,13 @@ func Open(workspace, docID, name string) (*Bundle, error) {
 	if err := syncDir(workspace); err != nil {
 		return nil, err
 	}
-	return &Bundle{dir: dir, docID: docID, name: name}, nil
+	b := &Bundle{dir: dir, docID: docID}
+	// No other goroutine can reach b yet; initMetaLocked's "locked" contract
+	// is satisfied vacuously.
+	if err := b.initMetaLocked(name); err != nil {
+		return nil, err
+	}
+	return b, nil
 }
 
 func (b *Bundle) snapshotPath() string { return filepath.Join(b.dir, "snapshot.pb") }
@@ -75,7 +93,7 @@ func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
-	doc := core.NewDocument(b.docID, b.name)
+	doc := core.NewDocument(b.docID, b.meta.Name)
 	var seq uint64
 
 	payload, snapSeq, ok, err := b.readSnapshotLocked()
@@ -458,6 +476,15 @@ func appendFrame(f oplogFile, frame []byte) (int64, error) {
 // this order -- compacting first would delete records that the snapshot
 // hasn't committed yet.
 func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
+	// Marshal before taking the lock: it depends only on doc, and b.mu also
+	// serialises Append, so every byte marshalled under it is a byte of
+	// somebody's edit waiting. The document is the one part of a snapshot
+	// that grows with the drawing.
+	data, err := proto.Marshal(doc)
+	if err != nil {
+		return err
+	}
+
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -488,10 +515,6 @@ func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
 		return nil
 	}
 
-	data, err := proto.Marshal(doc)
-	if err != nil {
-		return err
-	}
 	if err := writeFileSync(b.snapshotPath(), encodeSnapshotFile(seq, data), 0o644); err != nil {
 		return fmt.Errorf("write snapshot: %w", err)
 	}
@@ -500,7 +523,21 @@ func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
 	// snapshot over a file that has no readers would be the bigger bug.
 	_ = os.Remove(b.seqPath())
 
-	return b.compactOplogLocked(seq)
+	if err := b.compactOplogLocked(seq); err != nil {
+		return err
+	}
+
+	// A snapshot is the moment the document's content becomes durable as a
+	// whole, which is exactly what "last modified" means for a document
+	// browser -- there is no cheaper place to record it, since the
+	// alternative is rewriting meta.json on every appended op.
+	//
+	// Last, and its own error: the snapshot and the compaction have already
+	// committed by this point, and re-running them is idempotent, so a
+	// failure here costs a retry rather than any data. It is still reported
+	// -- a store that cannot write a 200-byte file is not healthy.
+	b.meta.UpdatedAt = time.Now().UTC()
+	return b.writeMetaLocked()
 }
 
 // compactOplogLocked rewrites the oplog with only the records the snapshot
