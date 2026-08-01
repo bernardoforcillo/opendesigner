@@ -270,7 +270,19 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // sposta la voce nello stack opposto -- ricalcolando i SUOI inversi PRIMA di
   // sottomettere nulla, sullo stesso principio di endGesture: dopo, lo stato
   // pre-undo non esiste più.
+  //
+  // Guardia (bug trovato in review): se un gesto è aperto (drag in corso),
+  // sync.submit -> apply(op) qui sopra farebbe rientrare l'inverso in apply(),
+  // che con st.gesture valorizzato lo tratta come op ESTERNO -- lo applica
+  // alla scena live E lo infila in gesture.external. Al pointerup, endGesture
+  // ribasa external (ora con l'inverso iniettato in mezzo) sopra lo snapshot
+  // e manda un op finale che può riferirsi a un nodo già sparito: il drag
+  // evapora senza lasciare voce di undo, e il nodo sbagliato scompare. Niente
+  // di tutto questo è un rewind pulito -- un gesto ha una sola base valida
+  // (lo snapshot) ed eseguire undo/redo a metà la corromperebbe. Rimandato:
+  // l'utente rifà Ctrl/Cmd+Z dopo che il gesto chiude (pointerup/Esc).
   undo: () => {
+    if (get().gesture) return;
     const entry = get().undoStack[get().undoStack.length - 1];
     if (!entry) return;
     const scene = get().scene;
@@ -291,7 +303,11 @@ export const useScene = createStore<SceneStore>((set, get) => ({
 
   // Simmetrico a undo: rimanda avanti gli op che l'undo aveva disfatto, e
   // ricostruisce una nuova voce di undo per poterli ridisfare.
+  // Stessa guardia di undo() sopra, stesso motivo: un gesto aperto ha una
+  // sola base valida (lo snapshot), e redo() durante un drag la corromperebbe
+  // allo stesso modo tramite apply()/gesture.external.
   redo: () => {
+    if (get().gesture) return;
     const entry = get().redoStack[get().redoStack.length - 1];
     if (!entry) return;
     const scene = get().scene;

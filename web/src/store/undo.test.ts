@@ -165,6 +165,65 @@ describe("undo/redo", () => {
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
+  // --- undo/redo con un gesto aperto (bug trovato in review) ---------------
+  // sync.submit -> apply(op) qui sopra fa rientrare l'inverso in apply(): con
+  // st.gesture valorizzato quello viene trattato come op ESTERNO (applicato
+  // alla scena live E infilato in gesture.external), corrompendo sia il drag
+  // in corso sia lo stack. undo()/redo() devono quindi essere no-op finché
+  // il gesto non chiude.
+
+  it("undo() durante un gesto aperto è un no-op: non tocca lo stack né manda nulla", () => {
+    gesture([createOp("n1", 0, 0)]); // E1 = deleteNode, in cima allo stack
+    sync.sent = [];
+
+    const st = useScene.getState();
+    st.beginGesture(); // il drag di selectTool apre il gesto
+    st.applyLocal(moveOp("n1", 999, 999)); // anteprima a metà drag
+
+    st.undo(); // Ctrl+Z premuto mentre il mouse è ancora giù
+
+    expect(sync.sent).toHaveLength(0); // niente inviato: né l'inverso, né altro
+    expect(useScene.getState().undoStack).toHaveLength(1); // E1 ancora lì
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().gesture).not.toBeNull(); // il gesto resta aperto
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 999, y: 999 }); // anteprima intatta
+
+    // il drag prosegue e chiude normalmente: deve produrre una voce di undo
+    // corretta per lo SPOSTAMENTO, non per la creazione (E1 va ancora bene).
+    st.endGesture([moveOp("n1", 40, 40)]);
+
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().undoStack).toHaveLength(2);
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case).toBe("setProps");
+
+    // e i due undo funzionano nell'ordine giusto: prima disfa il move, poi la creazione.
+    st.undo();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    st.undo();
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+  });
+
+  it("redo() durante un gesto aperto è un no-op: non tocca lo stack né manda nulla", () => {
+    gesture([createOp("n1", 0, 0)]);
+    useScene.getState().undo(); // n1 sparisce, E1 va nel redo stack
+    sync.sent = [];
+
+    const st = useScene.getState();
+    st.beginGesture(); // un altro gesto (es. su un nodo diverso) è aperto
+    st.redo(); // Ctrl+Shift+Z premuto a metà drag
+
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().redoStack).toHaveLength(1); // voce ancora lì
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().gesture).not.toBeNull();
+
+    st.cancelGesture();
+    st.redo(); // fuori dal gesto torna a funzionare
+    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().redoStack).toHaveLength(0);
+  });
+
   it("un gesto multi-nodo (drag di due nodi) si annulla in UN SOLO undo", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
     gesture([moveOp("n1", 10, 10), moveOp("n2", 310, 10)]);

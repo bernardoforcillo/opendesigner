@@ -134,22 +134,27 @@ export function App() {
   // Ctrl+Y) = redo. Ignorate dentro un campo di testo (isTextField) e SEMPRE
   // con preventDefault quando gestite, altrimenti Ctrl+Z fa anche l'undo
   // nativo del browser (es. su un contentEditable) in parallelo al nostro.
+  //
+  // Guardia extra su useScene.getState().gesture (bug trovato in review): un
+  // gesto (drag di selectTool -- sposta/resize) resta aperto finché il
+  // pointerup non arriva, indipendentemente dalla tastiera. Se Ctrl/Cmd+Z
+  // arriva a metà drag, store.ts::undo()/redo() sono già la guardia che
+  // conta (bloccano da soli, per qualunque chiamante): questo controllo qui è
+  // difesa in profondità, non l'unica barriera. preventDefault resta comunque
+  // per evitare l'undo nativo del browser.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTextField(e.target)) return;
       const mod = e.ctrlKey || e.metaKey;
       if (!mod) return;
       const key = e.key.toLowerCase();
-      if (key === "z" && e.shiftKey) {
-        e.preventDefault();
-        useScene.getState().redo();
-      } else if (key === "z") {
-        e.preventDefault();
-        useScene.getState().undo();
-      } else if (key === "y") {
-        e.preventDefault();
-        useScene.getState().redo();
-      }
+      const isRedo = (key === "z" && e.shiftKey) || key === "y";
+      const isUndo = key === "z" && !e.shiftKey;
+      if (!isRedo && !isUndo) return;
+      e.preventDefault();
+      if (useScene.getState().gesture) return; // gesto in corso: rimandato, vedi store.ts
+      if (isRedo) useScene.getState().redo();
+      else useScene.getState().undo();
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
