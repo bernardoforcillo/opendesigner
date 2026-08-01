@@ -3,7 +3,7 @@ import { Button, ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
 import { useScene } from "../store/store";
-import { drawScene } from "../renderer/canvasRenderer";
+import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
 import { attachRectTool } from "../tools/rectTool";
 
 type Mode = "select" | "rect";
@@ -60,8 +60,7 @@ export function App() {
       const canvas = canvasRef.current;
       const scene = useScene.getState().scene;
       if (canvas && scene) {
-        if (canvas.width !== canvas.clientWidth) canvas.width = canvas.clientWidth;
-        if (canvas.height !== canvas.clientHeight) canvas.height = canvas.clientHeight;
+        resizeCanvasToDisplaySize(canvas);
         const ctx = canvas.getContext("2d");
         if (ctx) drawScene(ctx, scene, useScene.getState().camera);
       }
