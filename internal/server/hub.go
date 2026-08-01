@@ -67,10 +67,45 @@ const snapshotEveryOps = 256
 // the seq it is current to) and subscribe from there.
 var ErrHistoryTooOld = errors.New("since_seq is older than the oldest retained record")
 
+// documentBundle is the persistence one Hub needs, which *store.Bundle
+// provides and nothing else implements in production.
+//
+// It is an interface so the hub's lock discipline can be tested against a
+// bundle whose disk work can be held open mid-flight. What has to be proved
+// is what the hub does WHILE the bundle is busy, and a real bundle's writes
+// finish in microseconds -- there is no way to observe the window from
+// outside, and a seam inside the hub cannot model it either, because the
+// contention is between two bundle calls: store.Bundle serialises Append and
+// Snapshot on b.mu (compaction rewrites the very file Append appends to), so
+// a Submit landing during a snapshot waits for it.
+type documentBundle interface {
+	Load() (*brawtv1.Document, uint64, error)
+	History() ([]*brawtv1.OpRecord, error)
+	Append(rec *brawtv1.OpRecord) error
+	Snapshot(doc *brawtv1.Document, seq uint64) error
+}
+
 // Hub serializza gli Op di UN documento e li ritrasmette ai subscriber.
 type Hub struct {
+	// writeMu admits one submitter at a time and is held for the whole of
+	// Submit, bundle.Append included, so the order in which records are
+	// assigned seqs is the order in which they are appended and published.
+	//
+	// It is deliberately not h.mu. Append fsyncs, and it waits on the bundle
+	// lock whenever a background snapshot is compacting the same document --
+	// a wait no lock discipline can remove, since the compaction rewrites the
+	// file Append appends to. Splitting the two locks means that wait delays
+	// other WRITERS to this one document and nothing else: h.mu, which is
+	// what OpenDocument's Snapshot() and Subscribe need, is never held across
+	// any disk work.
+	//
+	// Lock order is writeMu -> mu, and never the reverse. Nothing takes
+	// writeMu while holding mu (runSnapshot takes mu alone, after
+	// Bundle.Snapshot has returned).
+	writeMu sync.Mutex
+
 	mu      sync.Mutex
-	bundle  *store.Bundle
+	bundle  documentBundle
 	doc     *brawtv1.Document
 	seq     uint64
 	history []*brawtv1.OpRecord // record dallo snapshot in poi (per catch-up)
@@ -94,16 +129,13 @@ type Hub struct {
 	// graceful shutdown, when there is one -- can wait for the disk work to
 	// finish instead of racing it.
 	snapshots sync.WaitGroup
-	// snapshotGate, when non-nil, is called on the snapshot goroutine just
-	// before the disk work. It lets a test hold a snapshot open and prove
-	// the hub keeps serving while one is running, which is the whole point
-	// of doing it on a goroutine; it is nil in production. (Same test-seam
-	// pattern as store.Bundle.openOplog.) It is read under h.mu and passed
-	// to the goroutine, so setting it is not a data race.
-	snapshotGate func()
 }
 
-func NewHub(b *store.Bundle) (*Hub, error) {
+func NewHub(b *store.Bundle) (*Hub, error) { return newHub(b) }
+
+// newHub is NewHub over the bundle behaviour the Hub actually uses; see
+// documentBundle.
+func newHub(b documentBundle) (*Hub, error) {
 	doc, seq, err := b.Load()
 	if err != nil {
 		return nil, err
@@ -138,12 +170,23 @@ func NewHub(b *store.Bundle) (*Hub, error) {
 }
 
 func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error) {
+	// One submitter at a time, for the whole call: the seq a record is
+	// assigned must be the order it is appended to the oplog and published
+	// in. See writeMu for why this is not h.mu.
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
+
+	// h.doc and h.seq are written only by a Submit, so writeMu already pins
+	// them for the rest of this call; h.mu is taken for the read itself so a
+	// concurrent reader never sees a torn (doc, seq) pair -- and so the two
+	// goroutines' accesses are properly ordered.
 	h.mu.Lock()
-	defer h.mu.Unlock()
+	base, baseSeq := h.doc, h.seq
+	h.mu.Unlock()
 
 	// core.Apply mutates its Document argument in place, and for CreateNode
 	// it aliases op's Node straight into doc.Nodes without copying it. Apply
-	// to a scratch clone of h.doc first, and only publish it as the new
+	// to a scratch clone of the published document first, and publish it as the new
 	// h.doc after the record has been durably appended: if Append fails,
 	// h.doc/h.seq must be left exactly as they were, or the in-memory
 	// document would silently diverge from the persisted oplog for the rest
@@ -157,13 +200,13 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 	// the caller's own op would leave h.doc aliasing caller-owned objects
 	// post-commit, contradicting the promise that the caller is free to
 	// reuse or mutate op once Submit returns.
-	next := proto.Clone(h.doc).(*brawtv1.Document)
+	next := proto.Clone(base).(*brawtv1.Document)
 	if err := core.Apply(next, proto.Clone(op).(*brawtv1.Op)); err != nil {
 		return nil, err
 	}
 
 	rec := &brawtv1.OpRecord{
-		Seq:      h.seq + 1,
+		Seq:      baseSeq + 1,
 		Ts:       timestamppb.Now(),
 		ClientId: clientID,
 		// A second, independent clone of op — not the pointer applied to
@@ -174,10 +217,21 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 		// silently corrupt this historical record), nor the caller's op.
 		Op: proto.Clone(op).(*brawtv1.Op),
 	}
+	// Durable before published, and outside h.mu. Append fsyncs, and it blocks
+	// on the bundle lock for the length of a whole snapshot whenever one is
+	// compacting this document. Holding the state lock across that is what
+	// made OpenDocument and Subscribe -- which need nothing but memory --
+	// stall behind another client's drag.
 	if err := h.bundle.Append(rec); err != nil {
 		return nil, err
 	}
 
+	// Publish: the new document generation, the record and the broadcast all
+	// become visible in one hold of h.mu, so a Subscribe either registers
+	// before it (and receives rec on its channel) or after it (and finds rec
+	// in its catch-up backlog), never neither and never both.
+	h.mu.Lock()
+	defer h.mu.Unlock()
 	h.doc = next
 	h.seq = rec.Seq
 	h.history = append(h.history, rec)
@@ -194,11 +248,11 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 // maybeSnapshotLocked starts a snapshot when enough ops have been applied
 // since the last one. h.mu must be held.
 //
-// The disk work runs on its own goroutine and takes no hub lock, so Submit
-// returns as soon as its own op is durable: a snapshot marshals the whole
-// document, writes it, fsyncs it, then rewrites and fsyncs the oplog, and
-// doing that under h.mu would stall every concurrent Submit, OpenDocument and
-// Subscribe for the duration.
+// The disk work runs on its own goroutine and takes no hub lock, so the
+// Submit that triggered it returns as soon as its own op is durable: a
+// snapshot marshals the whole document, writes it, fsyncs it, then rewrites
+// and fsyncs the oplog, and doing that inline would add all of it to the
+// latency of one client's pointermove.
 //
 // h.doc is handed over without a clone. That is safe because Submit never
 // mutates a published document: it applies to a fresh proto.Clone and only
@@ -214,25 +268,23 @@ func (h *Hub) maybeSnapshotLocked() {
 	// count towards the next one rather than being lost or double-counted.
 	h.sinceSnapshot = 0
 	h.snapshotting = true
-	doc, seq, gate := h.doc, h.seq, h.snapshotGate
+	doc, seq := h.doc, h.seq
 	h.snapshots.Add(1)
-	go h.runSnapshot(doc, seq, gate)
+	go h.runSnapshot(doc, seq)
 }
 
 // runSnapshot persists doc as the snapshot at seq and, once it is durable,
 // drops the records it now covers from the in-memory history.
 //
 // It holds no hub lock while writing, so OpenDocument, Subscribe and every
-// other reader keep working throughout. A Submit landing in the same window
-// can still wait on the *bundle* lock, and unavoidably so: compaction
-// rewrites the very file Append appends to, so the two have to be ordered.
-// That wait is one snapshot's worth of disk time, and it blocks only writers
-// to this one document.
-func (h *Hub) runSnapshot(doc *brawtv1.Document, seq uint64, gate func()) {
+// other reader keep working throughout -- but only because Submit does not
+// hold one across bundle.Append either. A Submit landing in this window DOES
+// wait for the snapshot, on the bundle's own lock, and unavoidably so:
+// compaction rewrites the very file Append appends to. What that wait must
+// not do is spread: it is taken while holding writeMu alone, so it delays
+// other writers to this one document and no reader anywhere.
+func (h *Hub) runSnapshot(doc *brawtv1.Document, seq uint64) {
 	defer h.snapshots.Done()
-	if gate != nil {
-		gate()
-	}
 	err := h.bundle.Snapshot(doc, seq)
 	// Whether the snapshot is ON DISK is not the same question as whether the
 	// call succeeded. Its last step -- refreshing meta.json's updatedAt --

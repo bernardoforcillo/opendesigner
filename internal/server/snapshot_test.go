@@ -5,10 +5,12 @@ import (
 	"fmt"
 	"os"
 	"path/filepath"
+	"sync"
 	"testing"
 	"time"
 
 	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
+	"github.com/bernardoforcillo/brawt/internal/core"
 	"github.com/bernardoforcillo/brawt/internal/store"
 	"google.golang.org/protobuf/proto"
 )
@@ -195,39 +197,112 @@ func TestReloadAfterRepeatedCompactionRebuildsTheSameDocument(t *testing.T) {
 	}
 }
 
-// The snapshot must run off the Submit path: the naive wiring (hub.Snapshot()
-// then bundle.Snapshot() inline) would hold h.mu -- the lock that also backs
-// OpenDocument and Subscribe -- across a marshal, two fsyncs and a rename.
-// Hold a snapshot open at its disk write and check the hub still answers.
-func TestHubKeepsServingWhileASnapshotIsWriting(t *testing.T) {
-	dir := t.TempDir()
-	h := hubOn(t, dir, "Untitled")
-	h.snapshotEvery = 2
+// gatedBundle is a store.Bundle whose disk work can be held open. It models
+// the one property of the real bundle this test turns on: Append and Snapshot
+// are mutually exclusive (store.Bundle serialises both on b.mu, because
+// compaction rewrites the file Append appends to), so a Submit landing while
+// a snapshot is writing has to wait for it.
+//
+// Nothing else about it is a fake: the hub's own state, locks and goroutines
+// are the production ones. Parking a REAL bundle mid-write is not possible
+// from here -- store's fault-injection seam is unexported -- and parking the
+// hub just before it calls the bundle proves nothing at all, which is exactly
+// what the previous version of this test did.
+type gatedBundle struct {
+	mu sync.Mutex // stands in for store.Bundle.mu
 
-	entered := make(chan struct{})
-	release := make(chan struct{})
-	h.snapshotGate = func() {
-		close(entered)
-		<-release
+	once      sync.Once     // only the FIRST snapshot is held open
+	entered   chan struct{} // closed once Snapshot holds mu
+	release   chan struct{} // close to let Snapshot finish
+	appending chan struct{} // receives once per Append, before it waits on mu
+}
+
+func newGatedBundle() *gatedBundle {
+	return &gatedBundle{
+		entered:   make(chan struct{}),
+		release:   make(chan struct{}),
+		appending: make(chan struct{}, 8),
 	}
+}
 
-	submitN(t, h, 1, 2) // triggers the snapshot
+func (g *gatedBundle) Load() (*brawtv1.Document, uint64, error) {
+	return core.NewDocument("doc1", "Untitled"), 0, nil
+}
+func (g *gatedBundle) History() ([]*brawtv1.OpRecord, error) { return nil, nil }
+
+func (g *gatedBundle) Append(*brawtv1.OpRecord) error {
+	// Announced BEFORE the wait, so a test that has received this knows the
+	// submitting goroutine is already inside Append -- past everything Submit
+	// does under a hub lock -- and is about to block for as long as the
+	// snapshot holds g.mu.
+	g.appending <- struct{}{}
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	return nil
+}
+
+func (g *gatedBundle) Snapshot(*brawtv1.Document, uint64) error {
+	g.mu.Lock()
+	defer g.mu.Unlock()
+	// Only the first one is held open: releasing it lets the queued Submit
+	// through, and that Submit triggers another snapshot which must not park
+	// (and must not close an already-closed channel).
+	g.once.Do(func() {
+		close(g.entered)
+		<-g.release
+	})
+	return nil
+}
+
+// The snapshot runs off the Submit path so that the hub keeps serving while
+// it writes. The wiring that matters is not that the disk work is on a
+// goroutine -- it always was -- but that a Submit which lands mid-snapshot
+// waits for it WITHOUT holding the lock OpenDocument and Subscribe need.
+// Before, Submit held h.mu across bundle.Append, so one client's op arriving
+// during a snapshot stalled every reader of that document for the whole
+// write: a marshal of the entire document, three fsynced atomic writes and a
+// full oplog read.
+func TestSubmitWaitingOnASnapshotDoesNotStallReaders(t *testing.T) {
+	g := newGatedBundle()
+	h, err := newHub(g)
+	if err != nil {
+		t.Fatal(err)
+	}
+	h.snapshotEvery = 1
+
+	// One op: durable, then a snapshot starts and parks holding the bundle
+	// lock -- where a real snapshot spends its whole life.
+	if _, err := h.Submit("c1", createOp("n1")); err != nil {
+		t.Fatal(err)
+	}
+	<-g.appending
 	select {
-	case <-entered:
+	case <-g.entered:
 	case <-time.After(5 * time.Second):
-		t.Fatal("the snapshot goroutine never started")
+		t.Fatal("the snapshot goroutine never reached the bundle")
 	}
 
-	// With the snapshot parked mid-flight, readers must not be blocked.
+	// A second op arrives mid-snapshot. It cannot complete -- Append waits on
+	// the bundle lock -- and that is fine and expected.
+	submitted := make(chan struct{})
+	go func() {
+		defer close(submitted)
+		if _, err := h.Submit("c1", createOp("n2")); err != nil {
+			t.Errorf("Submit during a snapshot: %v", err)
+		}
+	}()
+	<-g.appending // it is now inside Append, waiting
+
+	// What must NOT happen is that wait spreading to the readers.
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
-		if doc, seq := h.Snapshot(); doc == nil || seq != 2 {
-			t.Errorf("Snapshot() during a background snapshot: doc = %v, seq = %d", doc, seq)
+		if doc, seq := h.Snapshot(); doc == nil || seq != 1 {
+			t.Errorf("Snapshot() while a Submit waits on a snapshot: doc = %v, seq = %d", doc, seq)
 			return
 		}
-		if _, cancel, err := h.Subscribe(2); err != nil {
-			t.Errorf("Subscribe() during a background snapshot: %v", err)
+		if _, cancel, err := h.Subscribe(1); err != nil {
+			t.Errorf("Subscribe() while a Submit waits on a snapshot: %v", err)
 		} else {
 			cancel()
 		}
@@ -235,11 +310,64 @@ func TestHubKeepsServingWhileASnapshotIsWriting(t *testing.T) {
 	select {
 	case <-done:
 	case <-time.After(5 * time.Second):
-		t.Fatal("the hub lock was held across the snapshot: OpenDocument/Subscribe blocked behind it")
+		t.Fatal("OpenDocument/Subscribe blocked: the Submit waiting for the snapshot was holding the hub's state lock")
 	}
 
-	close(release)
+	close(g.release)
+	<-submitted
 	h.waitSnapshots()
+
+	// And the op that waited did land, in order.
+	if doc, seq := h.Snapshot(); seq != 2 || len(doc.GetNodes()) != 2 {
+		t.Fatalf("after the snapshot: seq = %d nodes = %d, want 2/2", seq, len(doc.GetNodes()))
+	}
+}
+
+// The same disk work must not stall readers through the snapshot goroutine
+// either: it takes the hub lock only after the bundle has finished with it.
+// This is the real-bundle half of the test above -- no fake anywhere, just a
+// slow enough snapshot to be observed.
+func TestHubKeepsServingWhileASnapshotIsWriting(t *testing.T) {
+	dir := t.TempDir()
+	h := hubOn(t, dir, "Untitled")
+	h.snapshotEvery = 8
+
+	submitN(t, h, 1, 8) // triggers a real snapshot: marshal, fsync, compact
+
+	// Readers must answer while it is in flight. They are not synchronised
+	// with the disk work -- there is no way to be -- so this hammers them
+	// until it has finished, and every single answer must be prompt and
+	// correct.
+	for {
+		done := make(chan struct{})
+		go func() {
+			defer close(done)
+			if doc, seq := h.Snapshot(); doc == nil || seq != 8 {
+				t.Errorf("Snapshot() during a background snapshot: doc = %v, seq = %d", doc, seq)
+				return
+			}
+			if _, cancel, err := h.Subscribe(8); err != nil {
+				t.Errorf("Subscribe() during a background snapshot: %v", err)
+			} else {
+				cancel()
+			}
+		}()
+		select {
+		case <-done:
+		case <-time.After(5 * time.Second):
+			t.Fatal("a reader blocked behind the snapshot")
+		}
+		h.mu.Lock()
+		running := h.snapshotting
+		h.mu.Unlock()
+		if !running {
+			break
+		}
+	}
+	h.waitSnapshots()
+	if err := h.snapshotErr; err != nil {
+		t.Fatalf("background snapshot failed: %v", err)
+	}
 }
 
 // A snapshot is an optimisation: every op is already durable in the oplog
