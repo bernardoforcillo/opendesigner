@@ -3,15 +3,14 @@ import { OpSchema, NodeSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { hitTest } from "../renderer/canvasRenderer";
 import { useScene } from "../store/store";
+import { nextOrderKey } from "../store/orderKey";
 import type { SyncClient } from "../rpc/syncClient";
 
-let orderCounter = 0;
-function nextOrderKey(): string { return "a" + String(orderCounter++).padStart(6, "0"); }
 function uuid(): string { return crypto.randomUUID(); }
 
 export function makeRectOp(x: number, y: number, w: number, h: number): Op {
   const node = create(NodeSchema, {
-    id: uuid(), parentId: "page1", orderKey: nextOrderKey(), name: "Rectangle",
+    id: uuid(), parentId: "page1", orderKey: nextOrderKey(useScene.getState().scene), name: "Rectangle",
     visible: true, opacity: 1, x, y, width: w, height: h,
     fills: [{ kind: { case: "solid", value: { color: { r: 0.6, g: 0.6, b: 0.65, a: 1 } } } }],
     shape: { case: "rect", value: { cornerRadius: 0 } },
