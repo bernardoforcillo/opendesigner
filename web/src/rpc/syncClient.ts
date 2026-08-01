@@ -6,7 +6,12 @@ import { fromDocument } from "../store/types";
 export class SyncClient {
   private seq = 0;
 
-  constructor(private docId: string, private clientId: string) {}
+  constructor(private docId: string, private clientId: string) {
+    // Lo store deve poter mandare op da solo (fine gesto, e in seguito undo):
+    // il client si registra come trasporto appena esiste, così l'app non deve
+    // ricordarsi di collegarli a mano.
+    useScene.getState().setSync(this);
+  }
 
   submit(op: Op) {
     // apply ottimistico + invio
