@@ -104,6 +104,18 @@ func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
 		if err := proto.Unmarshal(payload, doc); err != nil {
 			return nil, 0, fmt.Errorf("unmarshal snapshot: %w", err)
 		}
+		// proto.Unmarshal RESETS the message before decoding (it merges only
+		// with UnmarshalOptions.Merge), so the identity seeded above is gone
+		// and the snapshot's own embedded copy has silently replaced it.
+		// meta.json is the single source of the name -- it is what Scan
+		// lists, and the one file a user can repair by hand -- so put it
+		// back. Without this the two diverge the moment they differ: a
+		// bundle renamed by editing meta.json goes on OPENING under its old
+		// name, and one whose meta.json was lost lists as "Untitled" while
+		// opening as itself. Now that every document acquires a snapshot
+		// after 256 ops, that is the normal case rather than an edge one.
+		doc.Id = b.docID
+		doc.Name = b.meta.Name
 		seq = snapSeq
 	}
 
@@ -150,6 +162,31 @@ func (b *Bundle) readSnapshotLocked() (payload []byte, seq uint64, ok bool, err 
 		return nil, 0, false, fmt.Errorf("read snapshot: %w", err)
 	}
 	return payload, seq, true, nil
+}
+
+// nameFromSnapshotLocked returns the document name embedded in snapshot.pb,
+// or "" when the bundle has no snapshot or it cannot be read.
+//
+// It is the recovery half of "meta.json owns the name": a bundle whose
+// identity file was deleted or corrupted still carries its name inside the
+// snapshot, and adopting it there beats renaming the document to the caller's
+// default -- which is how meta.json and snapshot.pb came to disagree in the
+// first place. Every failure is silent on purpose: this is best-effort
+// recovery of a string, and initMetaLocked's job (giving the bundle an
+// identity it can be listed and opened under) must not fail because the
+// content is damaged. Opening the document still surfaces that damage.
+//
+// b.mu must be held.
+func (b *Bundle) nameFromSnapshotLocked() string {
+	payload, _, ok, err := b.readSnapshotLocked()
+	if err != nil || !ok {
+		return ""
+	}
+	var doc brawtv1.Document
+	if err := proto.Unmarshal(payload, &doc); err != nil {
+		return ""
+	}
+	return doc.GetName()
 }
 
 // readSnapshotSeq returns the seq the persisted snapshot was taken at, or 0

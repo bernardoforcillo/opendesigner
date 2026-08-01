@@ -81,11 +81,22 @@ func (b *Bundle) initMetaLocked(defaultName string) error {
 		b.meta = m
 		return nil
 	}
-	if defaultName == "" {
-		defaultName = DefaultName
+	// The bundle has no identity file. Before falling back to the caller's
+	// default, take the name from the snapshot if there is one: a document
+	// whose meta.json was lost still knows what it is called, and renaming it
+	// to "Untitled" here is exactly the divergence this file exists to
+	// prevent. (A caller-supplied name only loses to a snapshot for an id
+	// that already has content, which Create -- minting a fresh UUID -- never
+	// does.)
+	name := b.nameFromSnapshotLocked()
+	if name == "" {
+		name = defaultName
+	}
+	if name == "" {
+		name = DefaultName
 	}
 	now := time.Now().UTC()
-	return b.writeMetaLocked(Meta{ID: b.docID, Name: defaultName, CreatedAt: now, UpdatedAt: now})
+	return b.writeMetaLocked(Meta{ID: b.docID, Name: name, CreatedAt: now, UpdatedAt: now})
 }
 
 // writeMetaLocked commits m as the bundle's identity atomically (temp file +

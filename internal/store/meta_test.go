@@ -1,6 +1,7 @@
 package store
 
 import (
+	"encoding/json"
 	"os"
 	"path/filepath"
 	"strings"
@@ -41,6 +42,121 @@ func TestOpenKeepsThePersistedNameOverTheCallersDefault(t *testing.T) {
 	}
 	if doc.GetId() != "doc1" {
 		t.Fatalf("Load() document id = %q, want %q", doc.GetId(), "doc1")
+	}
+}
+
+// snapshotNamed gives dir/doc1.brawt a snapshot whose embedded Document
+// carries name -- i.e. the state every document reaches after 256 ops.
+func snapshotNamed(t *testing.T, ws, name string) {
+	t.Helper()
+	b, err := Open(ws, "doc1", name)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append(rec(1, createOp("n1", 5))); err != nil {
+		t.Fatal(err)
+	}
+	doc, seq, err := b.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.GetName() != name {
+		t.Fatalf("precondition: the document to be snapshotted is named %q, want %q", doc.GetName(), name)
+	}
+	if err := b.Snapshot(doc, seq); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// renameByHand edits meta.json the way a user would, which is the stated
+// reason it is JSON rather than proto.
+func renameByHand(t *testing.T, ws, name string) {
+	t.Helper()
+	path := filepath.Join(ws, "doc1"+bundleSuffix, metaFileName)
+	m, ok, err := readMetaFile(path)
+	if err != nil || !ok {
+		t.Fatalf("read %s: ok=%v err=%v", path, ok, err)
+	}
+	m.Name = name
+	data, err := json.MarshalIndent(m, "", "  ")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.WriteFile(path, append(data, '\n'), 0o644); err != nil {
+		t.Fatal(err)
+	}
+}
+
+// finding: meta.json was documented as the single source of the document's
+// name, but Load seeded core.NewDocument from it and then called
+// proto.Unmarshal, which RESETS the message -- so the snapshot's embedded name
+// silently won. Renaming a document by editing meta.json changed what
+// ListDocuments showed and not what OpenDocument returned.
+func TestTheNameComesFromMetaNotFromTheSnapshot(t *testing.T) {
+	ws := t.TempDir()
+	snapshotNamed(t, ws, "Alfa")
+	renameByHand(t, ws, "Beta")
+
+	reopened, err := Open(ws, "doc1", DefaultName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Meta().Name; got != "Beta" {
+		t.Fatalf("Meta().Name = %q, want %q", got, "Beta")
+	}
+	doc, _, err := reopened.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.GetName() != "Beta" {
+		t.Fatalf("Load() document name = %q, want %q: the snapshot's embedded name is still winning", doc.GetName(), "Beta")
+	}
+	if doc.GetId() != "doc1" {
+		t.Fatalf("Load() document id = %q, want %q", doc.GetId(), "doc1")
+	}
+	// The listing and the open agree, which is the whole property.
+	metas, err := Scan(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metas) != 1 || metas[0].Name != "Beta" {
+		t.Fatalf("Scan() = %+v, want one document named Beta", metas)
+	}
+}
+
+// The other direction of the same divergence: a bundle whose meta.json is
+// lost listed as "Untitled" and opened as itself. The name is recovered from
+// the snapshot rather than overwritten with the caller's default, so the
+// listing and the open agree again -- under the real name.
+func TestABundleThatLostItsMetaFileRecoversTheNameFromItsSnapshot(t *testing.T) {
+	ws := t.TempDir()
+	snapshotNamed(t, ws, "Alfa")
+	if err := os.Remove(filepath.Join(ws, "doc1"+bundleSuffix, metaFileName)); err != nil {
+		t.Fatal(err)
+	}
+
+	// server.Manager.HubFor resolving a bare doc id: it has no idea what the
+	// document is called.
+	reopened, err := Open(ws, "doc1", DefaultName)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := reopened.Meta().Name; got != "Alfa" {
+		t.Fatalf("Meta().Name = %q after losing meta.json, want the snapshot's %q", got, "Alfa")
+	}
+	doc, _, err := reopened.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if doc.GetName() != "Alfa" {
+		t.Fatalf("Load() document name = %q, want %q", doc.GetName(), "Alfa")
+	}
+	metas, err := Scan(ws)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(metas) != 1 || metas[0].Name != "Alfa" {
+		t.Fatalf("Scan() = %+v, want one document named Alfa", metas)
 	}
 }
 
