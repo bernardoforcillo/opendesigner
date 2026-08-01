@@ -2,11 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
 import { type SceneState, type NodeLite, toNodeLite } from "./types";
-
-// Path supportati da SetProperties.mask, mirror di applySetProps (Go).
-const SUPPORTED_MASK_PATHS = new Set([
-  "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills",
-]);
+import { type MaskPath, isMaskPath } from "./maskPaths";
 
 // Un SetProperties SENZA patch NON è un no-op. Go legge il patch con i getter
 // nil-safe di protobuf (`p.GetX()` su un *Node nil ritorna lo zero del campo),
@@ -42,9 +38,16 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // l'intero op viene rifiutato (stato invariato) -- non applicato
       // parzialmente. Una mask mista (es. ["x","someFutureField"]) non deve
       // mai mutare "x" mentre scarta silenziosamente il path sconosciuto.
-      if (!paths.every((path) => SUPPORTED_MASK_PATHS.has(path))) return state;
+      // isMaskPath viene da ./maskPaths -- l'UNICA fonte di verità, condivisa
+      // con tools/ops.ts::makeSetPropsOp, che rispecchia lo switch di
+      // core.applySetProps (Go). paths qui è quello che arriva DA UN Op già
+      // decodificato (locale o dal filo via Subscribe): un controllo runtime
+      // resta necessario anche col tipo MaskPath a compile-time ai punti di
+      // costruzione, perché nulla garantisce a runtime che un Op ricevuto dal
+      // filo rispetti quel tipo.
+      if (!paths.every(isMaskPath)) return state;
       const next: NodeLite = { ...cur };
-      for (const path of paths) {
+      for (const path of paths as readonly MaskPath[]) {
         switch (path) {
           case "x": next.x = p.x; break;
           case "y": next.y = p.y; break;
@@ -55,6 +58,15 @@ export function applyOp(state: SceneState, op: Op): SceneState {
           case "name": next.name = p.name; break;
           case "visible": next.visible = p.visible; break;
           case "fills": next.fills = toNodeLite(p).fills; break;
+          default: {
+            // Guardia a compile-time: se MASK_PATHS guadagna un membro senza
+            // un case qui sopra, questa riga smette di compilare invece di
+            // scartare in silenzio il nuovo path a runtime. "Impossibile
+            // dimenticare un caso" è il complemento di "impossibile costruire
+            // un path non valido" (quello è ops.ts::makeSetPropsOp).
+            const exhaustive: never = path;
+            return exhaustive;
+          }
         }
       }
       return { ...state, nodes: { ...state.nodes, [id]: next } };
