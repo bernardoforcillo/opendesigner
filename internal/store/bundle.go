@@ -8,8 +8,6 @@ import (
 	"os"
 	"path/filepath"
 	"runtime"
-	"strconv"
-	"strings"
 	"sync"
 
 	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
@@ -64,8 +62,13 @@ func Open(workspace, docID, name string) (*Bundle, error) {
 }
 
 func (b *Bundle) snapshotPath() string { return filepath.Join(b.dir, "snapshot.pb") }
-func (b *Bundle) seqPath() string      { return filepath.Join(b.dir, "snapshot.seq") }
 func (b *Bundle) oplogPath() string    { return filepath.Join(b.dir, "oplog") }
+
+// seqPath is where the snapshot's seq used to live, back when it was a
+// separate file. Nothing reads it any more -- the seq travels inside
+// snapshot.pb (see snapshotfile.go) -- and Snapshot deletes it, so it exists
+// only to name the leftover from an older build.
+func (b *Bundle) seqPath() string { return filepath.Join(b.dir, "snapshot.seq") }
 
 // Load ricostruisce documento e ultimo seq: snapshot + replay oplog.
 func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
@@ -75,20 +78,15 @@ func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
 	doc := core.NewDocument(b.docID, b.name)
 	var seq uint64
 
-	if data, err := os.ReadFile(b.snapshotPath()); err == nil {
-		if err := proto.Unmarshal(data, doc); err != nil {
+	payload, snapSeq, ok, err := b.readSnapshotLocked()
+	if err != nil {
+		return nil, 0, err
+	}
+	if ok {
+		if err := proto.Unmarshal(payload, doc); err != nil {
 			return nil, 0, fmt.Errorf("unmarshal snapshot: %w", err)
 		}
-		// snapshot.pb and snapshot.seq are written as a pair (see Snapshot);
-		// if snapshot.pb exists, snapshot.seq must exist and parse cleanly.
-		// Silently defaulting to seq=0 here would hand callers a document
-		// that doesn't match the seq it's paired with, so any read/parse
-		// failure is surfaced instead of swallowed.
-		if seq, err = b.readSnapshotSeq(); err != nil {
-			return nil, 0, err
-		}
-	} else if !os.IsNotExist(err) {
-		return nil, 0, err
+		seq = snapSeq
 	}
 
 	recs, err := b.readOplogLocked()
@@ -96,11 +94,10 @@ func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
 		return nil, 0, err
 	}
 	for _, rec := range recs {
-		// Snapshot() truncates the oplog only *after* the new snapshot.pb/
-		// snapshot.seq have already landed on disk. A crash in that window
-		// (after snapshot.seq is written, before Truncate runs) can leave
-		// oplog records whose state is already baked into the snapshot we
-		// just loaded. Re-applying them would hit core.ErrNodeExists on a
+		// Snapshot() rewrites the oplog only *after* the new snapshot has
+		// already landed on disk. A crash in that window leaves oplog
+		// records whose state is already baked into the snapshot we just
+		// loaded. Re-applying them would hit core.ErrNodeExists on a
 		// duplicate CreateNode and fail Load() permanently, so skip any
 		// record already covered by the persisted snapshot seq -- this
 		// makes replay idempotent/self-healing across that crash window.
@@ -115,26 +112,37 @@ func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
 	return doc, seq, nil
 }
 
-// readSnapshotSeq returns the seq persisted in snapshot.seq if snapshot.pb
-// exists on disk, or 0 if the bundle has no snapshot yet. Shared by Load
-// (replay) and History (in-memory catch-up reconstruction) so both agree on
-// exactly which oplog records are already folded into the snapshot.
-func (b *Bundle) readSnapshotSeq() (uint64, error) {
-	if _, err := os.Stat(b.snapshotPath()); err != nil {
+// readSnapshotLocked returns the marshalled Document held in snapshot.pb and
+// the seq it was taken at. ok is false when the bundle has no snapshot yet,
+// which is the only tolerated absence: the document and its seq come out of
+// the same file, so they can never be read as a mismatched pair, and any
+// other failure is surfaced rather than degraded into "no snapshot".
+//
+// b.mu must be held.
+func (b *Bundle) readSnapshotLocked() (payload []byte, seq uint64, ok bool, err error) {
+	data, err := os.ReadFile(b.snapshotPath())
+	if err != nil {
 		if os.IsNotExist(err) {
-			return 0, nil
+			return nil, 0, false, nil
 		}
-		return 0, err
+		return nil, 0, false, err
 	}
-	s, err := os.ReadFile(b.seqPath())
+	seq, payload, err = decodeSnapshotFile(data)
 	if err != nil {
-		return 0, fmt.Errorf("read snapshot seq: %w", err)
+		return nil, 0, false, fmt.Errorf("read snapshot: %w", err)
 	}
-	seq, err := strconv.ParseUint(strings.TrimSpace(string(s)), 10, 64)
-	if err != nil {
-		return 0, fmt.Errorf("parse snapshot seq %q: %w", s, err)
-	}
-	return seq, nil
+	return payload, seq, true, nil
+}
+
+// readSnapshotSeq returns the seq the persisted snapshot was taken at, or 0
+// if the bundle has no snapshot yet. Shared by Load (replay) and History
+// (in-memory catch-up reconstruction) so both agree on exactly which oplog
+// records are already folded into the snapshot.
+//
+// b.mu must be held.
+func (b *Bundle) readSnapshotSeq() (uint64, error) {
+	_, seq, _, err := b.readSnapshotLocked()
+	return seq, err
 }
 
 // History returns the oplog records not yet folded into the snapshot: the
@@ -337,11 +345,10 @@ func (b *Bundle) truncateOplogLocked(n int64) (err error) {
 // framing produced, permanently mis-framing the rest of the file).
 //
 // After the record's own fsync, the containing directory is fsynced too
-// when this call wrote the file header, i.e. when it created the oplog (or
-// re-seeded one Snapshot had truncated): on POSIX the file's *directory
-// entry* is not durable until the directory itself is synced, so without it
-// a brand-new document's very first op could be acked and then disappear
-// entirely on power loss.
+// when this call wrote the file header, i.e. when it created the oplog: on
+// POSIX the file's *directory entry* is not durable until the directory
+// itself is synced, so without it a brand-new document's very first op could
+// be acked and then disappear entirely on power loss.
 //
 // Append is all-or-nothing: if it returns an error, the oplog is left at
 // exactly the size it had on entry. A failing write (ENOSPC, a quota, EIO)
@@ -388,11 +395,11 @@ func (b *Bundle) Append(recrd *brawtv1.OpRecord) error {
 		return err
 	}
 	if preSize == 0 {
-		// The file header went out with this record, so this call either
-		// created the oplog or re-seeded a Snapshot-truncated one; either way
-		// the directory entry still needs to be made durable. Keying off the
-		// header (rather than a pre-open stat for "does the file exist")
-		// also covers the file left behind empty by a rolled-back create.
+		// The file header went out with this record, so this call created
+		// the oplog and its directory entry still needs to be made durable.
+		// Keying off the header (rather than a pre-open stat for "does the
+		// file exist") also covers the file left behind empty by a
+		// rolled-back create.
 		return syncDir(b.dir)
 	}
 	return nil
@@ -412,9 +419,9 @@ func appendFrame(f oplogFile, frame []byte) (int64, error) {
 		return -1, err
 	}
 	preSize := fi.Size()
-	// A fresh (or Snapshot-truncated) oplog gets its file header written in
-	// the same single Write as the first record, so the file is never
-	// observable as "header, but no record" either.
+	// A fresh oplog gets its file header written in the same single Write as
+	// the first record, so the file is never observable as "header, but no
+	// record" either.
 	if preSize == 0 {
 		frame = append(encodeFileHeader(), frame...)
 	}
@@ -427,19 +434,27 @@ func appendFrame(f oplogFile, frame []byte) (int64, error) {
 	return preSize, nil
 }
 
-// Snapshot riscrive lo snapshot al seq dato e tronca l'oplog.
+// Snapshot riscrive lo snapshot al seq dato e compatta l'oplog.
 //
-// Each of the three writes below (snapshot.pb, snapshot.seq, oplog
-// truncate) is made durable with an explicit fsync -- of the file's
-// contents and, for the two renames, of the bundle directory that holds
-// the new entry -- before moving to the next step, so a crash never leaves
-// a half-written file or a rename that hasn't committed. The three steps
-// are still not a single atomic transaction, though: a crash between them
-// can leave the oplog un-truncated even though snapshot.pb/snapshot.seq
-// already reflect the new state. Load() tolerates exactly that by
-// skipping any oplog record whose seq is <= the persisted snapshot seq
-// (see Load), so this ordering is safe to crash into and self-heals on
-// the next Load() instead of failing permanently.
+// doc must be the state produced by applying every op up to and including
+// seq, and nothing after it -- which is precisely what server.Hub.Snapshot
+// returns.
+//
+// The commit is two steps, in this order:
+//
+//  1. Publish the new snapshot. The document and the seq it was taken at
+//     live in ONE file (see snapshotfile.go), so the single rename that
+//     publishes it commits both or neither. There is no window in which a
+//     document is on disk paired with somebody else's seq.
+//  2. Compact the oplog down to the records the snapshot does not already
+//     contain.
+//
+// Step 2 is not part of step 1's atomic commit, and does not need to be: a
+// crash between them leaves records the snapshot already contains sitting in
+// the oplog, and Load skips any record whose seq is <= the snapshot's (see
+// Load). So the pair self-heals rather than failing, and it only works in
+// this order -- compacting first would delete records that the snapshot
+// hasn't committed yet.
 func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -447,35 +462,58 @@ func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
 	if err != nil {
 		return err
 	}
-	if err := writeFileSync(b.snapshotPath(), data, 0o644); err != nil {
+	if err := writeFileSync(b.snapshotPath(), encodeSnapshotFile(seq, data), 0o644); err != nil {
 		return fmt.Errorf("write snapshot: %w", err)
 	}
-	if err := writeFileSync(b.seqPath(), []byte(strconv.FormatUint(seq, 10)), 0o644); err != nil {
-		return fmt.Errorf("write snapshot seq: %w", err)
+	// Nothing reads snapshot.seq any more, so an older build's leftover is
+	// inert and its removal is worth no error path of its own: failing the
+	// snapshot over a file that has no readers would be the bigger bug.
+	_ = os.Remove(b.seqPath())
+
+	return b.compactOplogLocked(seq)
+}
+
+// compactOplogLocked rewrites the oplog with only the records the snapshot
+// at snapSeq does NOT already contain.
+//
+// It replaces a plain O_TRUNC of the whole file, which threw away every
+// record regardless of the seq it was asked to compact to. That is not a
+// crash-only defect: Hub.Snapshot releases the hub lock before Bundle.Snapshot
+// takes b.mu, so ops submitted and acked in between are appended after the
+// snapshot was taken and are not in it. Truncating everything erased exactly
+// those -- invisibly, because the in-memory hub still had them, until the
+// next restart silently rewound the document.
+//
+// The surviving records are re-framed into a fresh file that is fsynced and
+// renamed over the oplog, so the compaction is atomic too: a crash leaves
+// either the old oplog or the new one, never a half-rewritten log.
+//
+// Records are selected by seq rather than by position: a bundle recovering
+// from an interrupted compaction can hold already-snapshotted records after
+// newer ones, and the predicate has to match the skip Load applies.
+//
+// b.mu must be held.
+func (b *Bundle) compactOplogLocked(snapSeq uint64) error {
+	recs, err := b.readOplogLocked()
+	if err != nil {
+		return fmt.Errorf("read oplog to compact it: %w", err)
 	}
 
-	created := false
-	if _, serr := os.Stat(b.oplogPath()); serr != nil {
-		if !os.IsNotExist(serr) {
-			return serr
+	// The file header goes out even when nothing survives, so the oplog is
+	// always a valid, self-describing oplog on disk rather than zero bytes.
+	buf := encodeFileHeader()
+	for _, rec := range recs {
+		if rec.GetSeq() <= snapSeq {
+			continue
 		}
-		created = true
-	}
-	f, err := os.OpenFile(b.oplogPath(), os.O_CREATE|os.O_WRONLY|os.O_TRUNC, 0o644)
-	if err != nil {
-		return fmt.Errorf("truncate oplog: %w", err)
-	}
-	if err := f.Sync(); err != nil {
-		f.Close()
-		return fmt.Errorf("sync truncated oplog: %w", err)
-	}
-	if err := f.Close(); err != nil {
-		return fmt.Errorf("close truncated oplog: %w", err)
-	}
-	if created {
-		if err := syncDir(b.dir); err != nil {
-			return fmt.Errorf("sync bundle dir: %w", err)
+		payload, merr := proto.Marshal(rec)
+		if merr != nil {
+			return fmt.Errorf("re-encode oplog record seq %d: %w", rec.GetSeq(), merr)
 		}
+		buf = append(buf, encodeFrame(payload)...)
+	}
+	if err := writeFileSync(b.oplogPath(), buf, 0o644); err != nil {
+		return fmt.Errorf("compact oplog: %w", err)
 	}
 	return nil
 }
