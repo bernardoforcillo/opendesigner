@@ -244,6 +244,61 @@ describe("gesture coalescing", () => {
     expect(useScene.getState().selection).toEqual(["n1"]);
   });
 
+  // --- selezione di nodi creati DAL gesto stesso ---------------------------
+  // Il flusso "disegna e seleziona" dei Task 8/9: il tool crea il nodo in
+  // anteprima con applyLocal, lo seleziona subito (le maniglie seguono il
+  // drag) e a fine gesto manda il createNode definitivo. La selezione deve
+  // sopravvivere: alla chiusura del gesto il nodo ESISTE.
+
+  it("un nodo creato dagli op finali del gesto resta selezionato", () => {
+    const st = useScene.getState();
+    st.beginGesture();
+    st.applyLocal(createOp("n9", 10, 10)); // anteprima del nodo che si sta disegnando
+    st.setSelection(["n9"]); // il tool lo seleziona subito, a metà drag
+    expect(useScene.getState().selection).toEqual(["n9"]);
+
+    st.endGesture([createOp("n9", 10, 10)]);
+
+    expect(useScene.getState().scene!.nodes["n9"]).toBeDefined();
+    expect(useScene.getState().selection).toEqual(["n9"]);
+  });
+
+  it("resta selezionato anche il nodo creato da un op finale NON primo", () => {
+    // La potatura non può avvenire op per op: dopo il primo createNode il
+    // secondo nodo non esiste ancora e verrebbe buttato fuori per sempre.
+    const st = useScene.getState();
+    st.beginGesture();
+    st.applyLocal(createOp("n9", 10, 10));
+    st.applyLocal(createOp("n10", 20, 20));
+    st.setSelection(["n9", "n10"]);
+
+    st.endGesture([createOp("n9", 10, 10), createOp("n10", 20, 20)]);
+
+    expect(useScene.getState().selection).toEqual(["n9", "n10"]);
+  });
+
+  it("un nodo di sola anteprima, non confermato dagli op finali, esce dalla selezione", () => {
+    const st = useScene.getState();
+    st.beginGesture();
+    st.applyLocal(createOp("n9", 10, 10));
+    st.setSelection(["n1", "n9"]);
+
+    st.endGesture([]); // gesto abortito: nessun op finale, n9 non esiste davvero
+
+    expect(useScene.getState().scene!.nodes["n9"]).toBeUndefined();
+    expect(useScene.getState().selection).toEqual(["n1"]); // niente maniglie appese
+  });
+
+  it("una selezione cambiata a metà gesto su nodi esistenti sopravvive a endGesture", () => {
+    useScene.getState().setSelection(["n1"]);
+    const st = useScene.getState();
+    st.beginGesture();
+    st.setSelection(["n2"]); // il tool cambia selezione durante il gesto
+    st.endGesture([moveOp("n2", 44, 44)]);
+
+    expect(useScene.getState().selection).toEqual(["n2"]);
+  });
+
   // --- guardie sulla macchina a stati --------------------------------------
 
   describe("misusi della macchina a stati", () => {

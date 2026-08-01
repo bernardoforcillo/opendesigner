@@ -43,6 +43,13 @@ function pruneSelection(selection: string[], scene: SceneState): string[] {
     : selection.filter((id) => id in scene.nodes);
 }
 
+// Confronto per contenuto: serve a NON chiamare set() quando la selezione
+// riconciliata coincide con quella già nello store (un set inutile sveglia
+// tutti i sottoscrittori).
+function sameSelection(a: string[], b: string[]): boolean {
+  return a === b || (a.length === b.length && a.every((id, i) => id === b[i]));
+}
+
 interface SceneStore {
   scene: SceneState | null;
   camera: Camera;
@@ -138,14 +145,25 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // Nota: la SELEZIONE non viene ripristinata (a differenza di cancelGesture).
   // È stato di interfaccia, e un tool può volerla cambiare durante il gesto
   // (es. selezionare il nodo appena creato) senza vedersela annullare; viene
-  // solo potata contro i nodi realmente esistenti nella base ricostruita.
+  // solo potata, UNA volta sola e contro la scena FINALE (vedi sotto).
   endGesture: (finalOps) => {
     const snap = get().gesture;
+    // La selezione VOLUTA dal chiamante alla chiusura del gesto. Può già
+    // riferirsi a nodi che esisteranno solo DOPO finalOps -- è esattamente il
+    // caso del tool di disegno che seleziona il nodo mentre lo sta creando.
+    // Va quindi riconciliata alla FINE, contro la scena definitiva: potarla
+    // contro la base ricostruita (che quei nodi non li ha ancora) la
+    // svuoterebbe, e le potature intermedie di apply() possono solo
+    // restringere, mai rimettere dentro un id.
+    const intended = get().selection;
     // Il ripristino e gli invii sono set() distinti e sequenziali: submit
     // rientra nello store (apply ottimistico), quindi non può stare dentro
     // l'updater di un altro set.
     if (snap) {
       const scene = rebase(snap);
+      // Potatura transitoria: mantiene l'invariante selection ⊆ scene.nodes
+      // anche a metà flush; la riconciliazione finale la riallarga a quello
+      // che il chiamante voleva davvero.
       set((st) => ({ scene, selection: pruneSelection(st.selection, scene), gesture: null }));
     } else if (finalOps.length > 0) {
       // Misuso (endGesture senza beginGesture): non c'è nessuna base pulita da
@@ -160,6 +178,15 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       // invece di perdere il risultato del gesto.
       if (sync) sync.submit(op);
       else get().applyLocal(op);
+    }
+    // Riconciliazione finale: la selezione voluta, potata contro la scena
+    // realmente prodotta dal gesto. Gli id creati da finalOps ci sono ancora;
+    // quelli spariti (delete remoto, o anteprima che nessun op finale ha
+    // confermato) restano fuori -- niente maniglie su nodi inesistenti.
+    const scene = get().scene;
+    if (scene) {
+      const next = pruneSelection(intended, scene);
+      if (!sameSelection(next, get().selection)) set({ selection: next });
     }
   },
 
