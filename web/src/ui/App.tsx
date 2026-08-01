@@ -10,19 +10,22 @@ import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
 import { selectTool } from "../tools/selectTool";
 import { rectTool } from "../tools/rectTool";
+import { ellipseTool } from "../tools/ellipseTool";
 import { handTool } from "../tools/handTool";
 
 // Registro dei tool disponibili: la toolbar sceglie una chiave, attachTools
-// instrada gli eventi al tool corrispondente. L'ellisse arriva col task 10.
+// instrada gli eventi al tool corrispondente.
 const TOOLS: Partial<Record<ToolId, Tool>> = {
   select: selectTool,
   rect: rectTool,
+  ellipse: ellipseTool,
   hand: handTool,
 };
 
 const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "select", label: "Seleziona" },
   { id: "rect", label: "Rettangolo" },
+  { id: "ellipse", label: "Ellisse" },
   { id: "hand", label: "Mano" },
 ];
 
