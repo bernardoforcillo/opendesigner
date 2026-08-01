@@ -32,6 +32,19 @@ const TOOL_LABELS: { id: ToolId; label: string }[] = [
 const CLIENT_ID = crypto.randomUUID();
 const DOC_KEY = "brawt.docId";
 
+// Un campo di testo (input/textarea/contentEditable): Ctrl/Cmd+Z lì dentro è
+// affare del campo stesso (annullare la digitazione), non della scena --
+// servirà in M1b quando arriverà il primo campo editabile (testo, proprietà).
+// Duck-typing sul target come in tools/toolManager.ts::swallowsSpace: stesso
+// motivo, i test possono passare eventi senza un vero HTMLElement.
+function isTextField(target: EventTarget | null): boolean {
+  const el = target as { tagName?: string; isContentEditable?: boolean } | null;
+  if (!el) return false;
+  if (el.isContentEditable) return true;
+  const tag = el.tagName?.toUpperCase();
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
@@ -113,6 +126,33 @@ export function App() {
     };
     raf = requestAnimationFrame(tick);
     return () => cancelAnimationFrame(raf);
+  }, []);
+
+  // Scorciatoie undo/redo: sulla window (non sul canvas) perché il canvas non
+  // è focusabile -- stesso motivo per cui toolManager.ts ascolta Escape/Delete
+  // lì. Ctrl (Windows/Linux) o Cmd (Mac, e.metaKey) + Z = undo, + Shift+Z (o
+  // Ctrl+Y) = redo. Ignorate dentro un campo di testo (isTextField) e SEMPRE
+  // con preventDefault quando gestite, altrimenti Ctrl+Z fa anche l'undo
+  // nativo del browser (es. su un contentEditable) in parallelo al nostro.
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTextField(e.target)) return;
+      const mod = e.ctrlKey || e.metaKey;
+      if (!mod) return;
+      const key = e.key.toLowerCase();
+      if (key === "z" && e.shiftKey) {
+        e.preventDefault();
+        useScene.getState().redo();
+      } else if (key === "z") {
+        e.preventDefault();
+        useScene.getState().undo();
+      } else if (key === "y") {
+        e.preventDefault();
+        useScene.getState().redo();
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
   const statusLabel =

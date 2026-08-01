@@ -1,6 +1,7 @@
 import { create as createStore } from "zustand";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
+import { invertOp } from "./history";
 import type { SceneState } from "./types";
 import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
@@ -50,6 +51,26 @@ function sameSelection(a: string[], b: string[]): boolean {
   return a === b || (a.length === b.length && a.every((id, i) => id === b[i]));
 }
 
+// Primitiva condivisa da endGesture/undo/redo: dato lo stato PRIMA che `ops`
+// venga applicato, calcola l'inverso di OGNI op in sequenza (l'inverso del
+// secondo op va calcolato sullo stato dopo il primo, ecc.) e ritorna la
+// catena in ordine INVERSO -- così disfare gli op nell'ordine dello stack
+// ripristina esattamente lo stato di partenza, un op alla volta.
+// null se anche un solo op della catena non ha inverso (id sparito nel
+// frattempo, kind sconosciuto...): un undo/redo PARZIALE lascerebbe la scena
+// a metà strada, peggio di un gesto che semplicemente non si può annullare.
+function invertChain(scene: SceneState, ops: Op[]): Op[] | null {
+  let state = scene;
+  const inverses: Op[] = [];
+  for (const op of ops) {
+    const inv = invertOp(state, op);
+    if (!inv) return null;
+    inverses.push(inv);
+    state = applyOp(state, op);
+  }
+  return inverses.reverse();
+}
+
 interface SceneStore {
   scene: SceneState | null;
   camera: Camera;
@@ -66,6 +87,16 @@ interface SceneStore {
   sync: OpSink | null;
   // Gesto in corso (null = nessun gesto aperto).
   gesture: GestureSnapshot | null;
+  // Uno stack di UNDO/REDO, non di scene: ogni voce è un gesto intero (gli op
+  // che lo disfano, uno o molti), così un drag che ha spostato dieci nodi si
+  // annulla in un colpo solo. Riempiti SOLO da endGesture -- gli op remoti
+  // (Subscribe di un altro client) arrivano via apply() e non toccano mai
+  // questi stack, per costruzione: è così che "solo i propri op" è garantito
+  // senza bisogno di etichettare gli op per provenienza.
+  undoStack: Op[][];
+  redoStack: Op[][];
+  canUndo: boolean;
+  canRedo: boolean;
   setScene: (s: SceneState) => void;
   setCamera: (c: Camera) => void;
   setSync: (s: OpSink | null) => void;
@@ -78,6 +109,8 @@ interface SceneStore {
   toggleSelection: (id: string) => void;
   clearSelection: () => void;
   setMarquee: (b: Bounds | null) => void;
+  undo: () => void;
+  redo: () => void;
 }
 
 // Riduttore condiviso da apply (op che arrivano dal filo) e applyLocal
@@ -99,6 +132,10 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   marquee: null,
   sync: null,
   gesture: null,
+  undoStack: [],
+  redoStack: [],
+  canUndo: false,
+  canRedo: false,
   setScene: (s) => set({ scene: s }),
   setCamera: (c) => set({ camera: c }),
   setSync: (s) => set({ sync: s }),
@@ -172,6 +209,20 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       // sarebbe peggio) ma il chiamante deve saperlo.
       console.warn("brawt: endGesture() senza un gesto aperto — op inviati senza ricostruzione");
     }
+    // Voce di undo: gli INVERSI di finalOps, calcolati sulla base -- lo stesso
+    // stato su cui finalOps stanno per atterrare (get().scene qui è già la
+    // scena ribasata dal set() qui sopra, o quella corrente nel caso di
+    // misuso) -- PRIMA di sottomettere qualunque op. Dopo, quello stato non
+    // esiste più. Un gesto senza op finali (o i cui inversi non esistono
+    // tutti, es. un id sparito nel frattempo) non produce voce: annullare a
+    // metà lascerebbe la scena in uno stato che nessun redo può recuperare.
+    const base = get().scene;
+    if (finalOps.length > 0 && base) {
+      const inverses = invertChain(base, finalOps);
+      if (inverses && inverses.length > 0) {
+        set((st) => ({ undoStack: [...st.undoStack, inverses], redoStack: [], canUndo: true, canRedo: false }));
+      }
+    }
     const sync = get().sync;
     for (const op of finalOps) {
       // Senza trasporto registrato restiamo comunque coerenti in locale
@@ -212,4 +263,50 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     })),
   clearSelection: () => set({ selection: [] }),
   setMarquee: (b) => set({ marquee: b }),
+
+  // L'undo NON è un rewind dell'op-log: è altro lavoro in avanti, come da
+  // design (vedi history.ts). Manda gli op invertiti tramite sync.submit
+  // esattamente come farebbe un gesto normale (apply ottimistico + invio), e
+  // sposta la voce nello stack opposto -- ricalcolando i SUOI inversi PRIMA di
+  // sottomettere nulla, sullo stesso principio di endGesture: dopo, lo stato
+  // pre-undo non esiste più.
+  undo: () => {
+    const entry = get().undoStack[get().undoStack.length - 1];
+    if (!entry) return;
+    const scene = get().scene;
+    const redoEntry = scene ? invertChain(scene, entry) : null;
+    set((st) => ({
+      undoStack: st.undoStack.slice(0, -1),
+      canUndo: st.undoStack.length - 1 > 0,
+    }));
+    const sync = get().sync;
+    for (const op of entry) {
+      if (sync) sync.submit(op);
+      else get().applyLocal(op);
+    }
+    if (redoEntry && redoEntry.length > 0) {
+      set((st) => ({ redoStack: [...st.redoStack, redoEntry], canRedo: true }));
+    }
+  },
+
+  // Simmetrico a undo: rimanda avanti gli op che l'undo aveva disfatto, e
+  // ricostruisce una nuova voce di undo per poterli ridisfare.
+  redo: () => {
+    const entry = get().redoStack[get().redoStack.length - 1];
+    if (!entry) return;
+    const scene = get().scene;
+    const undoEntry = scene ? invertChain(scene, entry) : null;
+    set((st) => ({
+      redoStack: st.redoStack.slice(0, -1),
+      canRedo: st.redoStack.length - 1 > 0,
+    }));
+    const sync = get().sync;
+    for (const op of entry) {
+      if (sync) sync.submit(op);
+      else get().applyLocal(op);
+    }
+    if (undoEntry && undoEntry.length > 0) {
+      set((st) => ({ undoStack: [...st.undoStack, undoEntry], canUndo: true }));
+    }
+  },
 }));
