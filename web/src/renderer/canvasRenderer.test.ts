@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { hitTest, resizeCanvasToDisplaySize } from "./canvasRenderer";
+import { hitTest, resizeCanvasToDisplaySize, drawScene } from "./canvasRenderer";
+import type { Camera } from "../canvas/camera";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
 
@@ -43,6 +44,61 @@ describe("hitTest", () => {
     const onlyInvisible = emptyScene("d", "n");
     onlyInvisible.nodes["a"] = rect("a", 0, 0, "a0", false);
     expect(hitTest(onlyInvisible, 25, 25)).toBeNull();
+  });
+});
+
+function textNode(over: Partial<NodeLite> = {}): NodeLite {
+  return { id: "t", parentId: "page1", orderKey: "a1", name: "Text", visible: true, opacity: 1,
+    x: 10, y: 20, width: 200, height: 40, rotation: 0, fills: [{ r: 0, g: 0, b: 0, a: 1 }],
+    kind: "text", cornerRadius: 0,
+    text: { content: "hi", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } },
+    ...over };
+}
+
+// ctx duck-typed: jsdom non ha né il canvas 2D né Path2D. Una scena di solo
+// testo non passa mai da nodePath, quindi drawScene è testabile qui.
+function fakeCtx() {
+  const fillText: { text: string; x: number; y: number }[] = [];
+  const fills: unknown[] = [];
+  const ctx = {
+    canvas: { width: 800, height: 600 },
+    font: "", textBaseline: "", textAlign: "", fillStyle: "", globalAlpha: 1,
+    setTransform: () => {},
+    clearRect: () => {},
+    measureText: (s: string) => ({ width: s.length * 10 }),
+    fillText: (t: string, x: number, y: number) => { fillText.push({ text: t, x, y }); },
+    fill: (p: unknown) => { fills.push(p); },
+  };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, fillText, fills };
+}
+
+describe("drawScene", () => {
+  it("routes a text node to drawText instead of filling its box", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["t"] = textNode();
+    const f = fakeCtx();
+    drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+    expect(f.fillText.map((c) => c.text)).toEqual(["hi"]);
+    expect(f.fills).toEqual([]); // niente riempimento del rettangolo sotto il testo
+  });
+
+  it("still draws a text node whose height has not been measured yet", () => {
+    // L'altezza di un testo la produce il LAYOUT, non il box: un nodo con
+    // height 0 deve comunque comparire, altrimenti il testo appena scritto
+    // resterebbe invisibile finché qualcuno non aggiorna height.
+    const s = emptyScene("d", "n");
+    s.nodes["t"] = textNode({ height: 0 });
+    const f = fakeCtx();
+    drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+    expect(f.fillText.map((c) => c.text)).toEqual(["hi"]);
+  });
+
+  it("skips an invisible text node", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["t"] = textNode({ visible: false });
+    const f = fakeCtx();
+    drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+    expect(f.fillText).toEqual([]);
   });
 });
 

@@ -26,4 +26,24 @@ describe("hitTestNode", () => {
     const z = { ...node("ellipse"), width: 0, height: 0 };
     expect(hitTestNode(z, 0, 0)).toBe(false);
   });
+
+  it("text: hits the whole bounding box, not the glyphs", () => {
+    const t: NodeLite = {
+      ...node("rect"), kind: "text",
+      text: { content: "a  b", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } },
+    };
+    expect(hitTestNode(t, 50, 25)).toBe(true);   // dentro il box, fra due glifi
+    expect(hitTestNode(t, 99, 49)).toBe(true);   // angolo del box, ben oltre il testo
+    expect(hitTestNode(t, 101, 25)).toBe(false); // fuori dal box
+  });
+
+  it("text: empty content is still hittable on its box", () => {
+    // Un nodo testo appena creato è vuoto: se non fosse selezionabile
+    // l'utente non potrebbe più raggiungerlo dal canvas.
+    const t: NodeLite = {
+      ...node("rect"), kind: "text",
+      text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+    };
+    expect(hitTestNode(t, 50, 25)).toBe(true);
+  });
 });

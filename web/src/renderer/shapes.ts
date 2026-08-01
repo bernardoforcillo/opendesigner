@@ -24,6 +24,13 @@ export function nodePath(n: NodeLite): Path2D {
 // dell'ellisse include gli angoli, che sono fuori dall'ellisse stessa).
 export function hitTestNode(n: NodeLite, wx: number, wy: number): boolean {
   if (n.width <= 0 || n.height <= 0) return false;
+  // Il testo si colpisce sul suo BOUNDING BOX, mai sui glifi: è il
+  // comportamento atteso in un editor (cliccare fra due lettere, o nello spazio
+  // vuoto a destra di una riga corta, seleziona comunque il nodo) ed è anche
+  // l'unico test possibile senza misurare il font. Ramo esplicito e non
+  // implicito nel fallback: se un giorno il ramo "rect" imparasse i corner
+  // radius, il testo non deve seguirlo.
+  if (n.kind === "text") return insideBox(n, wx, wy);
   if (n.kind === "ellipse") {
     const cx = n.x + n.width / 2;
     const cy = n.y + n.height / 2;
@@ -33,5 +40,9 @@ export function hitTestNode(n: NodeLite, wx: number, wy: number): boolean {
     const ny = (wy - cy) / ry;
     return nx * nx + ny * ny <= 1;
   }
+  return insideBox(n, wx, wy);
+}
+
+function insideBox(n: NodeLite, wx: number, wy: number): boolean {
   return wx >= n.x && wx <= n.x + n.width && wy >= n.y && wy <= n.y + n.height;
 }

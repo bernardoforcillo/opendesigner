@@ -1,6 +1,7 @@
 import type { SceneState, NodeLite } from "../store/types";
 import type { Camera } from "../canvas/camera";
 import { nodePath, hitTestNode } from "./shapes";
+import { drawText } from "./text";
 
 function sortedVisible(state: SceneState): NodeLite[] {
   return Object.values(state.nodes)
@@ -40,9 +41,17 @@ export function drawScene(ctx: CanvasRenderingContext2D, state: SceneState, cam:
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(cam.zoom * dpr, 0, 0, cam.zoom * dpr, cam.x * dpr, cam.y * dpr);
   for (const n of sortedVisible(state)) {
-    if (n.width <= 0 || n.height <= 0) continue;
+    // Il guard sulla dimensione NON vale per il testo: l'altezza di un nodo
+    // testo la produce il layout (e la width è solo la larghezza di wrap),
+    // quindi un testo con height 0 -- un nodo appena creato -- deve comunque
+    // disegnarsi. Una forma degenere invece non ha niente da riempire.
+    if (n.kind !== "text" && (n.width <= 0 || n.height <= 0)) continue;
     ctx.globalAlpha = n.opacity;
     ctx.fillStyle = cssColor(n);
+    if (n.kind === "text") {
+      drawText(ctx, n);
+      continue;
+    }
     ctx.fill(nodePath(n));
   }
   ctx.globalAlpha = 1;
