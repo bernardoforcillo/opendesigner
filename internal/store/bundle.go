@@ -438,7 +438,9 @@ func appendFrame(f oplogFile, frame []byte) (int64, error) {
 //
 // doc must be the state produced by applying every op up to and including
 // seq, and nothing after it -- which is precisely what server.Hub.Snapshot
-// returns.
+// returns. That contract is not merely documented: a call whose seq is older
+// than the one already persisted is a no-op (see the guard below), so a stale
+// clone cannot lose data, it just does nothing.
 //
 // The commit is two steps, in this order:
 //
@@ -458,6 +460,34 @@ func appendFrame(f oplogFile, frame []byte) (int64, error) {
 func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
+
+	// Snapshots only move forward. Publishing an older one would not just
+	// rewind snapshot.pb: step 2 then compacts the oplog against that older
+	// seq, and the records that could have replayed the difference back are
+	// already gone -- the newer snapshot's own compaction dropped them. Both
+	// files end up rewound, permanently, and nothing returns an error.
+	//
+	// This is a no-op rather than a failure because no caller has to have
+	// done anything wrong to reach it: Hub.Snapshot releases h.mu before this
+	// takes b.mu, so two overlapping snapshots can arrive here in the opposite
+	// order to the seqs they captured. What the loser asked for -- a persisted
+	// snapshot at least as new as its seq -- is already true.
+	//
+	// seq == persisted is deliberately allowed through: rewriting the same
+	// snapshot is idempotent, and it finishes a compaction that a crash
+	// interrupted between the two steps below.
+	persisted, err := b.readSnapshotSeq()
+	if err != nil {
+		// The persisted seq is unreadable, so there is no way to tell whether
+		// this call moves the bundle forward or backward. Refuse: a snapshot
+		// is also a compaction, and compacting against an unknown baseline is
+		// exactly how the oplog gets destroyed.
+		return fmt.Errorf("read persisted snapshot seq: %w", err)
+	}
+	if seq < persisted {
+		return nil
+	}
+
 	data, err := proto.Marshal(doc)
 	if err != nil {
 		return err

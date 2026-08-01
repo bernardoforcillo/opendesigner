@@ -2,7 +2,9 @@ package store
 
 import (
 	"bytes"
+	"fmt"
 	"os"
+	"slices"
 	"strings"
 	"testing"
 
@@ -51,6 +53,26 @@ func writeOplogRaw(t *testing.T, b *Bundle, data []byte) {
 	if err := os.WriteFile(b.oplogPath(), data, 0o644); err != nil {
 		t.Fatalf("write oplog: %v", err)
 	}
+}
+
+// oplogSeqsOnDisk returns the seq of every record actually present in the
+// oplog file. It is the only way to tell "compaction dropped the prefix" from
+// "Load merely skipped it": both Load and History filter out records whose seq
+// is <= the persisted snapshot's, so every document-level assertion is
+// identical whether the records are gone or still sitting there.
+func oplogSeqsOnDisk(t *testing.T, b *Bundle) []uint64 {
+	t.Helper()
+	b.mu.Lock()
+	defer b.mu.Unlock()
+	recs, err := b.readOplogLocked()
+	if err != nil {
+		t.Fatalf("read oplog: %v", err)
+	}
+	seqs := make([]uint64, 0, len(recs))
+	for _, r := range recs {
+		seqs = append(seqs, r.GetSeq())
+	}
+	return seqs
 }
 
 func mustLoad(t *testing.T, dir string) (*brawtv1.Document, uint64) {
@@ -378,5 +400,198 @@ func TestLoadRejectsTruncatedSnapshot(t *testing.T) {
 	}
 	if _, _, err := b2.Load(); err == nil {
 		t.Fatal("Load() accepted a truncated snapshot file, want an error")
+	}
+}
+
+// TestSnapshotDropsRecordsItAlreadyContains is the half of compaction that no
+// document-level assertion can see. A snapshot at the tip must leave the oplog
+// EMPTY, not merely full of records everybody agrees to ignore: Load and
+// History both skip seq <= the snapshot's, so disabling compaction entirely
+// changes no reloaded document anywhere -- it only makes the log, and the
+// startup parse of it, grow without bound. This asserts the file itself.
+func TestSnapshotDropsRecordsItAlreadyContains(t *testing.T) {
+	dir := t.TempDir()
+	b, err := Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 5; i++ {
+		mustAppend(t, b, rec(uint64(i), createOp(fmt.Sprintf("n%d", i), float64(i))))
+	}
+	before := len(readOplogRaw(t, b))
+
+	doc, seq, err := b.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seq != 5 {
+		t.Fatalf("setup: seq = %d, want 5", seq)
+	}
+	if err := b.Snapshot(doc, seq); err != nil {
+		t.Fatalf("Snapshot(): %v", err)
+	}
+
+	if got := oplogSeqsOnDisk(t, b); len(got) != 0 {
+		t.Fatalf("oplog still holds records %v after a snapshot at seq 5: the covered prefix was not dropped, so the log grows without bound", got)
+	}
+	after := len(readOplogRaw(t, b))
+	if int64(after) != oplogHeaderSize {
+		t.Fatalf("oplog is %d bytes after compaction (was %d), want the %d byte file header alone", after, before, oplogHeaderSize)
+	}
+}
+
+// TestSnapshotDropsOnlyThePrefixItCovers: compaction is a predicate over seq,
+// not "empty the file". With a snapshot at seq 2 over an oplog holding 1..5,
+// exactly [3 4 5] may survive on disk -- dropping less leaks the covered
+// prefix forever, dropping more destroys acked ops.
+func TestSnapshotDropsOnlyThePrefixItCovers(t *testing.T) {
+	dir := t.TempDir()
+	b, err := Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, b, rec(1, createOp("n1", 1)))
+	mustAppend(t, b, rec(2, createOp("n2", 2)))
+	docAt2, seqAt2, err := b.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seqAt2 != 2 {
+		t.Fatalf("setup: seq = %d, want 2", seqAt2)
+	}
+	// Appended after the snapshot was taken from the hub, before it commits.
+	mustAppend(t, b, rec(3, createOp("n3", 3)))
+	mustAppend(t, b, rec(4, createOp("n4", 4)))
+	mustAppend(t, b, rec(5, createOp("n5", 5)))
+
+	if err := b.Snapshot(docAt2, seqAt2); err != nil {
+		t.Fatalf("Snapshot(): %v", err)
+	}
+
+	got := oplogSeqsOnDisk(t, b)
+	if !slices.Equal(got, []uint64{3, 4, 5}) {
+		t.Fatalf("oplog holds %v after a snapshot at seq 2, want [3 4 5]", got)
+	}
+	// History is the same predicate read back through the public API, so the
+	// two must agree: nothing was left behind for Load to paper over.
+	hist, err := b.History()
+	if err != nil {
+		t.Fatalf("History(): %v", err)
+	}
+	if len(hist) != 3 {
+		t.Fatalf("History() = %d records, want 3", len(hist))
+	}
+
+	doc, seq := mustLoad(t, dir)
+	if seq != 5 || len(doc.Nodes) != 5 {
+		t.Fatalf("reload: seq = %d, nodes = %d, want 5 and 5", seq, len(doc.Nodes))
+	}
+}
+
+// TestSnapshotRefusesAnUnreadablePersistedSeq: deciding whether a snapshot
+// moves the bundle forward requires reading the seq already on disk. When that
+// read fails the answer is unknown, and Snapshot is also a compaction --
+// compacting against an unknown baseline is precisely how acked ops get
+// deleted. It must refuse and leave the oplog exactly as it found it.
+func TestSnapshotRefusesAnUnreadablePersistedSeq(t *testing.T) {
+	dir := t.TempDir()
+	b, err := Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, b, rec(1, createOp("n1", 1)))
+	mustAppend(t, b, rec(2, createOp("n2", 2)))
+	docAt2, seqAt2, err := b.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Snapshot(docAt2, seqAt2); err != nil {
+		t.Fatalf("Snapshot(): %v", err)
+	}
+	mustAppend(t, b, rec(3, createOp("n3", 3)))
+	mustAppend(t, b, rec(4, createOp("n4", 4)))
+	oplogBefore := readOplogRaw(t, b)
+
+	// Rot in place: the bytes still look like a snapshot file, but the
+	// checksum no longer matches, so the seq they carry cannot be trusted.
+	data, err := os.ReadFile(b.snapshotPath())
+	if err != nil {
+		t.Fatal(err)
+	}
+	data[len(data)-1] ^= 0xff
+	if err := os.WriteFile(b.snapshotPath(), data, 0o644); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := b.Snapshot(docAt2, 9); err == nil {
+		t.Fatal("Snapshot() compacted the oplog against an unreadable baseline, want an error")
+	}
+	if got := readOplogRaw(t, b); !bytes.Equal(got, oplogBefore) {
+		t.Fatalf("oplog changed under a refused snapshot: %d bytes, was %d", len(got), len(oplogBefore))
+	}
+}
+
+// TestSnapshotIgnoresASeqOlderThanThePersistedOne guards the direction that
+// destroys data outright. Snapshot(doc, seq) both overwrites snapshot.pb and
+// compacts the oplog against seq, so a call carrying an OLDER seq than the one
+// already on disk rewinds the snapshot and then deletes the very records that
+// would have replayed the difference back -- every op in between is gone from
+// both files, with no error anywhere.
+//
+// This is reachable, not theoretical: Hub.Snapshot releases h.mu before
+// Bundle.Snapshot takes b.mu, so two overlapping snapshot goroutines can
+// arrive here in the opposite order to the seqs they captured. Neither caller
+// did anything wrong, so the older one is a no-op rather than an error.
+func TestSnapshotIgnoresASeqOlderThanThePersistedOne(t *testing.T) {
+	dir := t.TempDir()
+	b, err := Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, b, rec(1, createOp("n1", 1)))
+	mustAppend(t, b, rec(2, createOp("n2", 2)))
+	// The stale clone: goroutine B captured the hub at seq 2 and is slow.
+	docAt2, seqAt2, err := b.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	mustAppend(t, b, rec(3, createOp("n3", 3)))
+	mustAppend(t, b, rec(4, createOp("n4", 4)))
+	docAt4, seqAt4, err := b.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	if seqAt4 != 4 {
+		t.Fatalf("setup: seq = %d, want 4", seqAt4)
+	}
+	// Goroutine A wins the lock and commits the newer snapshot, which also
+	// compacts the oplog down to its header -- 3 and 4 now live only in
+	// snapshot.pb.
+	if err := b.Snapshot(docAt4, seqAt4); err != nil {
+		t.Fatalf("Snapshot(4): %v", err)
+	}
+
+	// Goroutine B arrives second with the older state.
+	if err := b.Snapshot(docAt2, seqAt2); err != nil {
+		t.Fatalf("Snapshot(2) on top of a newer snapshot: %v", err)
+	}
+
+	b.mu.Lock()
+	persisted, err := b.readSnapshotSeq()
+	b.mu.Unlock()
+	if err != nil {
+		t.Fatalf("read back snapshot seq: %v", err)
+	}
+	if persisted != 4 {
+		t.Fatalf("persisted snapshot seq = %d, want 4 (a stale snapshot overwrote a newer one)", persisted)
+	}
+
+	doc, seq := mustLoad(t, dir)
+	if seq != 4 {
+		t.Fatalf("seq = %d, want 4 (ops 3..4 were destroyed: rewound snapshot + compaction against the older seq)", seq)
+	}
+	if len(doc.Nodes) != 4 {
+		t.Fatalf("nodes = %d, want 4 (ops 3..4 were destroyed)", len(doc.Nodes))
 	}
 }
