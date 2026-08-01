@@ -4,6 +4,29 @@ import { docClient } from "./client";
 import { useScene } from "../store/store";
 import { fromDocument } from "../store/types";
 
+// DEADLINE del singolo SubmitOp. createConnectTransport non ne ha una di
+// default (rpc/client.ts) e con l'outbox serializzato una fetch che non si
+// risolve MAI non perde più solo se stessa: blocca il drain, e ogni gesto
+// successivo viene applicato in ottimistico, accodato e mai spedito. Un handler
+// bloccato, una connessione TCP finita nel nulla o un laptop che va in
+// sospensione producono esattamente questo, per minuti o per sempre.
+//
+// La deadline sta sulla CHIAMATA e non su `defaultTimeoutMs` del trasporto:
+// quest'ultimo varrebbe anche per Subscribe, che è uno stream long-lived e deve
+// poter restare aperto per ore. 10s sono un ordine di grandezza sopra un
+// SubmitOp sano (append su op-log locale + broadcast) e ben sotto la soglia in
+// cui l'utente ha già disegnato mezza pagina sopra un backlog invisibile.
+const SUBMIT_TIMEOUT_MS = 10_000;
+
+// Tetto alla coda: quanto lavoro può essere a rischio contemporaneamente.
+// Con la deadline sopra il backlog è già limitato nel TEMPO; questo lo limita
+// anche nella QUANTITÀ, perché è la quantità che l'utente perde tutta insieme
+// se la richiesta in testa fallisce davvero. 64 è largo rispetto a una raffica
+// di gesti reali (il coalescing di M1a riduce un drag intero a un op) e stretto
+// rispetto a "cresce finché c'è memoria".
+// Esportata perché il test del tetto lo verifichi senza ricopiarne il valore.
+export const MAX_OUTBOX = 64;
+
 // Il client tiene lo stato CONFERMATO (quello che il server ha applicato e
 // riemesso) più gli op PENDING (submittati, non ancora tornati indietro). La
 // vista è confermato + pending. Ogni record che arriva da Subscribe fa avanzare
@@ -48,8 +71,38 @@ export class SyncClient {
     // Subscribe. Resta SINCRONO -- è solo l'invio che viene serializzato, il
     // feedback sullo schermo no.
     useScene.getState().applyPending(op);
+    if (this.outbox.length >= MAX_OUTBOX) {
+      // Coda satura: la testa non si muove da un pezzo. Rifiutiamo il NUOVO op
+      // invece di buttare via quelli già accodati -- sono l'intento più
+      // vecchio, e potrebbero partire da un momento all'altro. Il rifiuto passa
+      // dalla stessa porta di un rifiuto del server (applyPending seguito da
+      // rejectPending): stesso rollback della vista, stesso riavvolgimento
+      // della voce di undo, stesso banner. Un op che non parte deve costare
+      // esattamente come un op che parte e viene respinto.
+      useScene.getState().rejectPending(
+        op.opId,
+        `troppe modifiche in attesa (${MAX_OUTBOX}): il server non sta rispondendo`,
+      );
+      return;
+    }
     this.outbox.push(op);
     void this.drain();
+  }
+
+  // L'op è ancora nella coda degli op in volo dello store? Se NON c'è più, il
+  // suo eco è già arrivato da Subscribe: il server l'ha applicato e messo
+  // nell'op-log, quindi è DURABILE anche se la risposta HTTP non è mai tornata.
+  // Hub.Submit fa broadcast ai subscriber PRIMA di scrivere la risposta
+  // (internal/server/hub.go), quindi questa finestra non è teorica.
+  //
+  // Un opId vuoto non entra mai in `pending` (applyPending lo tratta come già
+  // confermato): non distinguerebbe i due casi, quindi si sceglie la lettura
+  // prudente -- "non atterrato". `confirmed` nullo vuol dire store non ancora
+  // inizializzato: idem.
+  private landed(op: Op): boolean {
+    const st = useScene.getState();
+    if (op.opId === "" || !st.confirmed) return false;
+    return !st.pending.some((p) => p.opId === op.opId);
   }
 
   // Svuota l'outbox una richiesta alla volta. Rientrante-sicura: `draining` fa
@@ -62,7 +115,10 @@ export class SyncClient {
       while (this.outbox.length > 0) {
         const op = this.outbox[0];
         try {
-          await docClient.submitOp({ docId: this.docId, clientId: this.clientId, op });
+          await docClient.submitOp(
+            { docId: this.docId, clientId: this.clientId, op },
+            { timeoutMs: SUBMIT_TIMEOUT_MS },
+          );
           // L'Ack della unary NON conferma nulla: porta solo il seq assegnato.
           // La conferma vera è l'eco su Subscribe, l'unico punto in cui il
           // client conosce l'ORDINE che il server ha deciso rispetto agli op
@@ -85,8 +141,21 @@ export class SyncClient {
           // successivo è di nuovo costruito su una premessa vera e parte
           // normalmente. Latchare per sempre al primo InvalidArgument (un id
           // duplicato, per dire) congelerebbe l'editor senza motivo.
+          //
+          // E vale solo se la premessa è DAVVERO falsa: `landed()` qui sotto è
+          // il caso in cui non lo è.
           const message = ConnectError.from(err).message;
           console.error("submitOp failed", err);
+          if (this.landed(op)) {
+            // La richiesta è morta DOPO che il server aveva applicato e
+            // ribroadcastato l'op: l'eco è già arrivato, l'op è durabile. La
+            // premessa della coda dietro ("il predecessore è sul server") è
+            // quindi VERA e fermarla butterebbe via lavoro valido mostrando un
+            // errore per un op riuscito. Si prosegue: niente rollback, nessun
+            // banner, solo la riga di log.
+            this.outbox.shift();
+            continue;
+          }
           const dropped = this.outbox.splice(0, this.outbox.length);
           // Dal fondo: così nessuno stato intermedio mostra un op applicato
           // sopra una base a cui manca il suo predecessore.

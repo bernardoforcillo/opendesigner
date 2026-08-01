@@ -20,6 +20,27 @@ class FakeSync {
   }
 }
 
+// Doppio del server che RIFIUTA: applyPending (l'op si vede subito, in
+// ottimistico) seguito da rejectPending (il rifiuto che lo toglie). È
+// esattamente la coppia di chiamate che SyncClient.drain fa quando la unary
+// fallisce -- InvalidArgument dal server, richiesta scaduta, o op scartato
+// perché stava dietro a uno fallito.
+class RejectingSync {
+  sent: Op[] = [];
+  constructor(private message = "node already exists") {}
+  submit(op: Op) {
+    this.sent.push(op);
+    useScene.getState().applyPending(op);
+    useScene.getState().rejectPending(op.opId, this.message);
+  }
+}
+
+// Il nodo che un op di cancellazione bersaglia (null se non è un deleteNode):
+// serve a distinguere QUALE voce di undo è stata consumata.
+function deletedId(op: Op): string | null {
+  return op.kind.case === "deleteNode" ? op.kind.value.id : null;
+}
+
 function rectNode(id: string, x: number, y: number, width = 100, height = 80) {
   return create(NodeSchema, {
     id, parentId: "page1", orderKey: "a0", name: "Rect", visible: true, opacity: 1,
@@ -290,5 +311,90 @@ describe("undo/redo", () => {
 
     expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
     expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+  });
+
+  // --- rollback e storia (bug trovato in review) -----------------------------
+  // endGesture spinge la voce di undo e svuota il redo PRIMA che gli op siano
+  // stati accettati -- deve, altrimenti Ctrl+Z subito dopo un drag dovrebbe
+  // aspettare il giro di rete. Se poi il server li rifiuta, quella voce resta
+  // sullo stack con inversi calcolati su uno stato che il server non ha MAI
+  // raggiunto: il rollback toglieva la modifica dalla vista e lasciava intatta
+  // la storia.
+
+  it("un gesto RIFIUTATO non lascia una voce di undo fantasma", () => {
+    gesture([createOp("n1", 0, 0)]); // gesto VERO, accettato ed ecoato
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    useScene.getState().setSync(new RejectingSync());
+    gesture([createOp("n5", 10, 10)]); // il server lo rifiuta
+
+    // La modifica sparisce dalla vista (già così) E dalla storia (il fix): la
+    // sua voce sarebbe [deleteNode n5], e n5 sul server non è mai esistito.
+    expect(useScene.getState().scene!.nodes["n5"]).toBeUndefined();
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().canUndo).toBe(true);
+    expect(useScene.getState().lastError).toContain("node already exists");
+
+    // Il Ctrl+Z successivo deve annullare il gesto VERO. Senza la riparazione
+    // consumerebbe la voce fantasma mandando deleteNode n5 -> ErrNodeNotFound
+    // -> InvalidArgument -> altro rollback e altro banner, e il gesto
+    // precedente resterebbe NON annullato.
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+
+    expect(sync.sent).toHaveLength(1);
+    expect(deletedId(sync.sent[0])).toBe("n1");
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+  });
+
+  it("il redo svuotato da un gesto RIFIUTATO torna disponibile", () => {
+    gesture([createOp("n1", 0, 0)]);
+    useScene.getState().undo(); // il "futuro" (ricrea n1) entra nel redo stack
+    expect(useScene.getState().redoStack).toHaveLength(1);
+
+    useScene.getState().setSync(new RejectingSync());
+    gesture([createOp("n5", 10, 10)]); // svuota il redo... e viene rifiutato
+
+    // Il redo era stato invalidato da una modifica MAI avvenuta: deve tornare.
+    expect(useScene.getState().scene!.nodes["n5"]).toBeUndefined();
+    expect(useScene.getState().redoStack).toHaveLength(1);
+    expect(useScene.getState().canRedo).toBe(true);
+
+    useScene.getState().setSync(sync);
+    useScene.getState().redo();
+    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+  });
+
+  it("un undo RIFIUTATO non consuma la sua voce", () => {
+    gesture([createOp("n1", 0, 0)]);
+
+    useScene.getState().setSync(new RejectingSync("disk full"));
+    useScene.getState().undo(); // l'inverso non arriva mai al documento
+
+    // La vista è tornata indietro (n1 c'è ancora), quindi anche la storia deve:
+    // la voce va rimessa dov'era e il redo non ha guadagnato niente.
+    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().canUndo).toBe(true);
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().canRedo).toBe(false);
+
+    // ...e riprovare deve funzionare: il rifiuto non brucia l'annullamento.
+    useScene.getState().setSync(sync);
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+  });
+
+  it("un gesto CONFERMATO non è più annullabile da un rifiuto successivo", () => {
+    gesture([createOp("n1", 0, 0)]); // confermato dall'eco di FakeSync
+
+    useScene.getState().setSync(new RejectingSync());
+    gesture([moveOp("n1", 40, 40)]); // rifiutato
+
+    // Solo la transizione rifiutata viene riavvolta: quella confermata resta.
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().canUndo).toBe(true);
   });
 });

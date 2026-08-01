@@ -22,6 +22,31 @@ export interface PendingOp {
   op: Op;
 }
 
+// Una TRANSIZIONE degli stack di undo/redo prodotta da op SUBMITTATI e non
+// ancora confermati.
+//
+// endGesture spinge la voce di undo e svuota il redo PRIMA che gli op siano
+// stati accettati (deve: Ctrl+Z subito dopo un drag non può aspettare il giro
+// di rete). Se poi il server li rifiuta, quella voce resta lì con inversi
+// calcolati su uno stato che il server non ha MAI raggiunto: un rettangolo il
+// cui createNode è stato rifiutato lascia un [deleteNode n5] in cima allo
+// stack, Ctrl+Z lo consuma, il server risponde ErrNodeNotFound
+// (internal/core/apply.go) -> altro rollback, altro banner, la voce è bruciata
+// e il gesto PRECEDENTE -- quello vero -- non viene annullato. E il redo stack
+// era già stato svuotato per una modifica mai avvenuta.
+//
+// Il mark tiene gli stack com'erano PRIMA della transizione. Un rifiuto ci
+// torna sopra (revertHistory), l'eco dell'ultimo op del gruppo la rende
+// durabile e il mark sparisce (confirmHistory). È lo stesso principio di
+// `pending` applicato alla storia: finché gli op sono in dubbio, lo è anche la
+// voce di undo che hanno prodotto.
+interface HistoryMark {
+  // opId di questa transizione ancora in volo; l'eco li toglie uno a uno.
+  opIds: string[];
+  undoStack: Op[][];
+  redoStack: Op[][];
+}
+
 // Stato di un gesto aperto. Non contiene più uno snapshot della scena: la base
 // di un gesto è "confermato + op in volo", che si ricalcola quando serve (vedi
 // viewOf) ed è sempre aggiornata, anche se nel frattempo sono arrivati record
@@ -85,6 +110,42 @@ function dropPending(pending: PendingOp[], opId: string): PendingOp[] {
   if (opId === "") return pending;
   const i = pending.findIndex((p) => p.opId === opId);
   return i < 0 ? pending : [...pending.slice(0, i), ...pending.slice(i + 1)];
+}
+
+// Un eco autorevole toglie l'op dalle transizioni ancora in dubbio. Quando una
+// transizione non ha più op in volo è DURABILE: il mark sparisce e da lì in poi
+// nessun rollback può più toccare quella voce di undo.
+function confirmHistory(history: HistoryMark[], opId: string): HistoryMark[] {
+  if (opId === "" || !history.some((m) => m.opIds.includes(opId))) return history;
+  const next: HistoryMark[] = [];
+  for (const m of history) {
+    if (!m.opIds.includes(opId)) {
+      next.push(m);
+      continue;
+    }
+    const opIds = m.opIds.filter((id) => id !== opId);
+    if (opIds.length > 0) next.push({ ...m, opIds });
+  }
+  return next;
+}
+
+// Rifiuto di un op: la transizione che l'ha prodotto non è mai avvenuta sul
+// server, quindi gli stack tornano a com'erano PRIMA di essa -- e con loro
+// spariscono anche le transizioni successive, che poggiavano su di essa.
+// null = quest'op non ha prodotto nessuna transizione (submit fuori da
+// gesto/undo/redo, o transizione già confermata): niente da annullare.
+type HistoryPatch = Pick<SceneStore, "history" | "undoStack" | "redoStack" | "canUndo" | "canRedo">;
+function revertHistory(history: HistoryMark[], opId: string): HistoryPatch | null {
+  const i = history.findIndex((m) => m.opIds.includes(opId));
+  if (i < 0) return null;
+  const { undoStack, redoStack } = history[i];
+  return {
+    history: history.slice(0, i),
+    undoStack,
+    redoStack,
+    canUndo: undoStack.length > 0,
+    canRedo: redoStack.length > 0,
+  };
 }
 
 // La selezione può SOLO restringersi: contiene esclusivamente id di nodi che
@@ -175,6 +236,11 @@ interface SceneStore {
   redoStack: Op[][];
   canUndo: boolean;
   canRedo: boolean;
+  // Transizioni degli stack ancora "in dubbio", in ordine di invio: una per
+  // gesto/undo/redo i cui op sono stati submittati e non ancora confermati.
+  // Vedi HistoryMark: è ciò che rende un rollback capace di riparare anche la
+  // storia, non solo la vista.
+  history: HistoryMark[];
   setScene: (s: SceneState | null) => void;
   setCamera: (c: Camera) => void;
   setSync: (s: OpSink | null) => void;
@@ -223,11 +289,14 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   redoStack: [],
   canUndo: false,
   canRedo: false,
+  history: [],
   // Installa un documento: è lo snapshot autorevole di OpenDocument, quindi
   // vista e confermato COINCIDONO e non c'è nulla in volo. Unico modo sano di
   // mettere una scena nello store (e l'unico che mantiene l'invariante
   // confirmed != null <=> scene != null).
-  setScene: (s) => set({ scene: s, confirmed: s, pending: [], lastError: null }),
+  // `history` si svuota con `pending`: i mark riferiscono opId di quella coda,
+  // e senza la coda nessun eco potrebbe più confermarli.
+  setScene: (s) => set({ scene: s, confirmed: s, pending: [], lastError: null, history: [] }),
   setCamera: (c) => set({ camera: c }),
   setSync: (s) => set({ sync: s }),
 
@@ -246,7 +315,12 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   apply: (op) =>
     set((st) => {
       if (!st.confirmed) return st;
-      return rebuild(st, applyOp(st.confirmed, op), dropPending(st.pending, op.opId));
+      return {
+        ...rebuild(st, applyOp(st.confirmed, op), dropPending(st.pending, op.opId)),
+        // L'op è durabile: la voce di undo che l'aveva prodotto smette di
+        // essere annullabile da un rollback (vedi HistoryMark).
+        history: confirmHistory(st.history, op.opId),
+      };
     }),
 
   // SUBMIT OTTIMISTICO: l'op parte verso il server ed entra nella coda, la
@@ -290,7 +364,16 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       // sarebbe una bugia.
       if (i < 0 || !st.confirmed) return st;
       const pending = [...st.pending.slice(0, i), ...st.pending.slice(i + 1)];
-      return { ...rebuild(st, st.confirmed, pending), lastError: message };
+      // Non basta togliere l'op dalla vista: la voce di undo che questo gesto
+      // aveva già spinto sullo stack (e il redo che aveva svuotato) descrivono
+      // una modifica che il server non ha mai visto. Vanno riavvolti insieme
+      // alla vista, altrimenti il prossimo Ctrl+Z manda l'inverso di qualcosa
+      // che non esiste e brucia la voce sbagliata. Vedi HistoryMark.
+      return {
+        ...rebuild(st, st.confirmed, pending),
+        ...(revertHistory(st.history, opId) ?? {}),
+        lastError: message,
+      };
     }),
 
   clearError: () => set({ lastError: null }),
@@ -405,19 +488,37 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     // segnale. Il redo stack si svuota quindi appena il gesto ha effetto
     // reale, indipendentemente da invertChain.
     const base = get().scene;
+    const sync = get().sync;
+    // Gli stack PRIMA di questa transizione: se uno degli op finali viene poi
+    // rifiutato, è qui che si torna (vedi HistoryMark).
+    const prevUndo = get().undoStack;
+    const prevRedo = get().redoStack;
+    let changedHistory = false;
     if (finalOps.length > 0) {
       const inverses = base ? invertChain(base, finalOps) : null;
       const entry = inverses && inverses.length > 0 ? inverses : null;
       // Niente voce da aggiungere e redo già vuoto: nessun cambiamento di
       // stato, quindi niente set() (sveglierebbe i sottoscrittori a vuoto).
-      if (entry || get().redoStack.length > 0) {
+      if (entry || prevRedo.length > 0) {
+        changedHistory = true;
         set((st) => {
           const undoStack = entry ? [...st.undoStack, entry] : st.undoStack;
           return { undoStack, redoStack: [], canUndo: undoStack.length > 0, canRedo: false };
         });
       }
     }
-    const sync = get().sync;
+    // Il mark va registrato PRIMA di sottomettere: un submit può fallire in
+    // modo SINCRONO (outbox pieno, vedi rpc/syncClient.ts) e il rollback deve
+    // già trovare la transizione da riavvolgere. Senza trasporto non serve --
+    // gli op diventano confermati all'istante e non c'è nulla da rifiutare.
+    if (changedHistory && sync) {
+      const opIds = finalOps.map((o) => o.opId).filter((id) => id !== "");
+      if (opIds.length > 0) {
+        set((st) => ({
+          history: [...st.history, { opIds, undoStack: prevUndo, redoStack: prevRedo }],
+        }));
+      }
+    }
     for (const op of finalOps) {
       // Senza trasporto registrato restiamo comunque coerenti in locale
       // invece di perdere il risultato del gesto. apply() e non applyLocal():
@@ -481,21 +582,37 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // dopo che il gesto chiude (pointerup/Esc).
   undo: () => {
     if (get().gesture) return;
-    const entry = get().undoStack[get().undoStack.length - 1];
+    const prevUndo = get().undoStack;
+    const prevRedo = get().redoStack;
+    const entry = prevUndo[prevUndo.length - 1];
     if (!entry) return;
     const scene = get().scene;
     const redoEntry = scene ? invertChain(scene, entry) : null;
-    set((st) => ({
-      undoStack: st.undoStack.slice(0, -1),
-      canUndo: st.undoStack.length - 1 > 0,
-    }));
+    // Pop dell'undo e push del redo in UN SOLO set, prima di qualunque invio:
+    // il submit può rientrare nello store (apply ottimistico, e in caso di
+    // rifiuto sincrono anche rejectPending, che riavvolge gli stack). Spingere
+    // il redo dopo l'invio, com'era prima, significherebbe rimetterlo sopra
+    // stack già riavvolti.
+    set((st) => {
+      const undoStack = st.undoStack.slice(0, -1);
+      const redoStack = redoEntry && redoEntry.length > 0 ? [...st.redoStack, redoEntry] : st.redoStack;
+      return { undoStack, redoStack, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 };
+    });
     const sync = get().sync;
+    // Anche l'undo è una transizione in dubbio finché i suoi inversi non sono
+    // confermati: se il server li rifiuta, la voce tornata nel redo va tolta e
+    // quella consumata dall'undo va rimessa dov'era (vedi HistoryMark).
+    if (sync) {
+      const opIds = entry.map((o) => o.opId).filter((id) => id !== "");
+      if (opIds.length > 0) {
+        set((st) => ({
+          history: [...st.history, { opIds, undoStack: prevUndo, redoStack: prevRedo }],
+        }));
+      }
+    }
     for (const op of entry) {
       if (sync) sync.submit(op);
       else get().apply(op); // nessun filo: l'op è direttamente il confermato (vedi endGesture)
-    }
-    if (redoEntry && redoEntry.length > 0) {
-      set((st) => ({ redoStack: [...st.redoStack, redoEntry], canRedo: true }));
     }
   },
 
@@ -505,21 +622,30 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // infilerebbe i suoi op nella coda in volo, cioè nella base del gesto.
   redo: () => {
     if (get().gesture) return;
-    const entry = get().redoStack[get().redoStack.length - 1];
+    const prevUndo = get().undoStack;
+    const prevRedo = get().redoStack;
+    const entry = prevRedo[prevRedo.length - 1];
     if (!entry) return;
     const scene = get().scene;
     const undoEntry = scene ? invertChain(scene, entry) : null;
-    set((st) => ({
-      redoStack: st.redoStack.slice(0, -1),
-      canRedo: st.redoStack.length - 1 > 0,
-    }));
+    // Un solo set prima degli invii, stesso motivo di undo().
+    set((st) => {
+      const redoStack = st.redoStack.slice(0, -1);
+      const undoStack = undoEntry && undoEntry.length > 0 ? [...st.undoStack, undoEntry] : st.undoStack;
+      return { undoStack, redoStack, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 };
+    });
     const sync = get().sync;
+    if (sync) {
+      const opIds = entry.map((o) => o.opId).filter((id) => id !== "");
+      if (opIds.length > 0) {
+        set((st) => ({
+          history: [...st.history, { opIds, undoStack: prevUndo, redoStack: prevRedo }],
+        }));
+      }
+    }
     for (const op of entry) {
       if (sync) sync.submit(op);
       else get().apply(op); // nessun filo: l'op è direttamente il confermato (vedi endGesture)
-    }
-    if (undoEntry && undoEntry.length > 0) {
-      set((st) => ({ undoStack: [...st.undoStack, undoEntry], canUndo: true }));
     }
   },
 }));

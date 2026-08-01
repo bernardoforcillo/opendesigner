@@ -14,7 +14,7 @@ const rpc = vi.hoisted(() => ({
 }));
 vi.mock("./client", () => ({ docClient: rpc }));
 
-import { SyncClient } from "./syncClient";
+import { MAX_OUTBOX, SyncClient } from "./syncClient";
 import { useScene } from "../store/store";
 
 const CLIENT = "client-A";
@@ -35,6 +35,13 @@ function moveOp(opId: string, id: string, x: number, y: number): Op {
       case: "setProps",
       value: { id, patch: create(NodeSchema, { x, y }), mask: { paths: ["x", "y"] } },
     },
+  });
+}
+
+function createOp(opId: string, id: string): Op {
+  return create(OpSchema, {
+    opId, docId: "doc1",
+    kind: { case: "createNode", value: { node: rectNode(id, 0, 0) } },
   });
 }
 
@@ -165,7 +172,7 @@ describe("SyncClient: modello confermato/pending", () => {
     useScene.setState({
       scene: null, confirmed: null, pending: [], lastError: null, syncError: null,
       selection: [], marquee: null, gesture: null, sync: null,
-      undoStack: [], redoStack: [], canUndo: false, canRedo: false,
+      undoStack: [], redoStack: [], canUndo: false, canRedo: false, history: [],
     });
   });
 
@@ -359,6 +366,171 @@ describe("SyncClient: modello confermato/pending", () => {
     expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 100 });
     expect(useScene.getState().lastError).toContain("node already exists");
     expect(logged).toHaveBeenCalled();
+
+    stream.close();
+    await flush();
+  });
+
+  // Hub.Submit prende writeMu, appende, e fa il BROADCAST ai subscriber PRIMA
+  // di scrivere la risposta della unary (internal/server/hub.go). Se la
+  // connessione muore in quella finestra il client vede fallire una richiesta
+  // che sul server è invece andata a buon fine -- e l'eco lo dimostra, perché è
+  // già arrivato.
+  it("un submit fallito DOPO che il server ha già applicato l'op non trascina giù la coda", async () => {
+    const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
+
+    const sent: string[] = [];
+    let killFirst!: (e: unknown) => void;
+    rpc.submitOp.mockReset();
+    rpc.submitOp.mockImplementation((req: { op: Op }) => {
+      sent.push(req.op.opId);
+      if (req.op.opId === "op-1") {
+        return new Promise((_res, rej) => {
+          killFirst = rej;
+        });
+      }
+      return Promise.resolve({ ack: { opId: req.op.opId, seq: 2n } });
+    });
+
+    sync.submit(moveOp("op-1", "n1", 100, 0));
+    sync.submit(moveOp("op-2", "n1", 200, 0));
+    await flush();
+    expect(sent).toEqual(["op-1"]); // op-2 aspetta il suo turno
+
+    // Il broadcast è già passato: op-1 è nell'op-log, quindi DURABILE.
+    stream.push(applied(1, CLIENT, moveOp("op-1", "n1", 100, 0)));
+    await flush();
+    expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-2"]);
+
+    // ...e solo ADESSO la risposta HTTP muore.
+    killFirst(new ConnectError("connection closed", Code.Unavailable));
+    await flush();
+
+    // La premessa di op-2 ("op-1 è sul server") è VERA: fermarlo butterebbe
+    // via lavoro valido e mostrerebbe un errore per un op riuscito.
+    expect(sent).toEqual(["op-1", "op-2"]);
+    expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-2"]);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().lastError).toBeNull();
+    expect(logged).toHaveBeenCalled(); // resta comunque in console
+
+    stream.close();
+    await flush();
+  });
+
+  // --- deadline e tetto della coda -------------------------------------------
+  // Con l'outbox serializzato una richiesta che non si risolve mai non perde
+  // più solo se stessa: blocca la testa, e ogni gesto successivo viene
+  // applicato in ottimistico, accodato e mai spedito -- senza che nulla lo
+  // segnali (lastError vuoto, syncError riguarda solo Subscribe, pillola
+  // "connesso").
+
+  it("un submit che NON SI RISOLVE MAI non blocca la coda per sempre: c'è una deadline", async () => {
+    const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
+
+    // Trasporto che ONORA la deadline della chiamata (come quello vero:
+    // CallOptions.timeoutMs) e per il resto non risponde mai -- handler
+    // bloccato, connessione finita nel nulla, laptop sospeso.
+    const sent: { opId: string; timeoutMs?: number }[] = [];
+    rpc.submitOp.mockReset();
+    rpc.submitOp.mockImplementation(
+      (req: { op: Op }, opts?: { timeoutMs?: number }) =>
+        new Promise((_res, rej) => {
+          sent.push({ opId: req.op.opId, timeoutMs: opts?.timeoutMs });
+          if (opts?.timeoutMs && opts.timeoutMs > 0) {
+            setTimeout(
+              () => rej(new ConnectError("the operation timed out", Code.DeadlineExceeded)),
+              opts.timeoutMs,
+            );
+          }
+        }),
+    );
+
+    vi.useFakeTimers();
+    try {
+      sync.submit(moveOp("op-1", "n1", 100, 0));
+      await vi.advanceTimersByTimeAsync(0);
+      // Senza deadline richiesta la promise resta appesa e il drain non
+      // riparte MAI: è l'unica cosa che rende il blocco finito.
+      expect(sent[0].timeoutMs).toBeGreaterThan(0);
+
+      // Nel frattempo l'utente continua a lavorare: tutto si accoda, niente parte.
+      sync.submit(moveOp("op-2", "n1", 200, 0));
+      await vi.advanceTimersByTimeAsync(1_000);
+      expect(sent).toHaveLength(1);
+      expect(useScene.getState().pending).toHaveLength(2);
+
+      // Scaduta la deadline la richiesta muore: il wedge diventa un fallimento
+      // osservabile invece di durare per sempre in silenzio.
+      await vi.advanceTimersByTimeAsync(60_000);
+    } finally {
+      vi.useRealTimers();
+    }
+
+    expect(useScene.getState().lastError).toContain("timed out");
+    expect(useScene.getState().pending).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+
+    stream.close();
+    await flush();
+  });
+
+  it("la coda ha un TETTO: il lavoro a rischio resta finito e il blocco visibile", async () => {
+    const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
+
+    // Caso peggiore: testa bloccata e nemmeno la deadline la salva (rete che
+    // non risponde e timer fermi). Solo il tetto limita il danno.
+    rpc.submitOp.mockReset();
+    rpc.submitOp.mockImplementation(() => new Promise(() => {}));
+
+    for (let i = 0; i < MAX_OUTBOX; i++) sync.submit(moveOp(`op-${i}`, "n1", i + 1, 0));
+    await flush();
+    expect(useScene.getState().pending).toHaveLength(MAX_OUTBOX);
+    expect(useScene.getState().lastError).toBeNull();
+
+    // L'op che sfonda il tetto non entra: viene rifiutato subito, con lo stesso
+    // rollback e lo stesso banner di un rifiuto del server. Quelli già accodati
+    // restano -- sono l'intento più vecchio e possono ancora partire.
+    sync.submit(moveOp("op-over", "n1", 999, 0));
+    await flush();
+
+    expect(useScene.getState().pending).toHaveLength(MAX_OUTBOX);
+    expect(useScene.getState().pending.some((p) => p.opId === "op-over")).toBe(false);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: MAX_OUTBOX });
+    expect(useScene.getState().lastError).toContain("troppe modifiche in attesa");
+
+    stream.close();
+    await flush();
+  });
+
+  // --- storia e rollback -----------------------------------------------------
+  // endGesture spinge la voce di undo PRIMA di mandare l'op: se il tail-drop
+  // scarta N gesti, senza riparazione restano N voci di undo i cui inversi
+  // invertono uno stato che il server non ha mai avuto.
+
+  it("un fallimento che scarta la coda riavvolge le voci di undo di TUTTA la raffica", async () => {
+    const { stream } = await boot({});
+    const net = reorderingTransport();
+    net.failOn("op-a", new ConnectError("node already exists", Code.InvalidArgument));
+
+    const st = useScene.getState();
+    st.beginGesture();
+    st.endGesture([createOp("op-a", "n1")]);
+    st.beginGesture();
+    st.endGesture([createOp("op-b", "n2")]);
+    // Le voci ci sono subito: Ctrl+Z non può aspettare il giro di rete.
+    expect(useScene.getState().undoStack).toHaveLength(2);
+    await flush();
+
+    // op-a rifiutato, op-b scartato con lui: nessuno dei due nodi esiste, e
+    // nessuna delle due voci di undo ha più un senso -- annullarle manderebbe
+    // deleteNode di nodi che il server non ha mai visto (ErrNodeNotFound), una
+    // per volta, bruciando le voci dei gesti VERI più sotto.
+    expect(net.arrived).toEqual(["op-a"]);
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
 
     stream.close();
     await flush();
