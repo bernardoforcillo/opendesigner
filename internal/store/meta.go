@@ -85,15 +85,20 @@ func (b *Bundle) initMetaLocked(defaultName string) error {
 		defaultName = DefaultName
 	}
 	now := time.Now().UTC()
-	b.meta = Meta{ID: b.docID, Name: defaultName, CreatedAt: now, UpdatedAt: now}
-	return b.writeMetaLocked()
+	return b.writeMetaLocked(Meta{ID: b.docID, Name: defaultName, CreatedAt: now, UpdatedAt: now})
 }
 
-// writeMetaLocked commits meta.json atomically (temp file + rename + fsync),
-// so a crash mid-write can never leave a document with a half-written
-// identity. b.mu must be held.
-func (b *Bundle) writeMetaLocked() error {
-	data, err := json.MarshalIndent(b.meta, "", "  ")
+// writeMetaLocked commits m as the bundle's identity atomically (temp file +
+// rename + fsync), so a crash mid-write can never leave a document with a
+// half-written identity, and adopts it in memory only once that has
+// succeeded. b.mu must be held.
+//
+// The order is the point. Snapshot used to bump b.meta.UpdatedAt and then
+// write, so a failed write left Meta() -- and therefore ListDocuments --
+// reporting a "last modified" that is on no disk anywhere and disappears at
+// the next restart.
+func (b *Bundle) writeMetaLocked(m Meta) error {
+	data, err := json.MarshalIndent(m, "", "  ")
 	if err != nil {
 		return err
 	}
@@ -106,6 +111,7 @@ func (b *Bundle) writeMetaLocked() error {
 	if err != nil {
 		return fmt.Errorf("write %s: %w", metaFileName, err)
 	}
+	b.meta = m
 	return nil
 }
 

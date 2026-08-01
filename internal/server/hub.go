@@ -234,6 +234,15 @@ func (h *Hub) runSnapshot(doc *brawtv1.Document, seq uint64, gate func()) {
 		gate()
 	}
 	err := h.bundle.Snapshot(doc, seq)
+	// Whether the snapshot is ON DISK is not the same question as whether the
+	// call succeeded. Its last step -- refreshing meta.json's updatedAt --
+	// runs after the document and the compacted oplog have both been fsynced,
+	// and reports its own failure as store.ErrSnapshotCommitted. Reading that
+	// as "no snapshot happened" would keep every record the snapshot already
+	// covers in h.history for the life of the process while historyBase fell
+	// permanently behind the seq on disk: the unbounded-history fix would
+	// silently stop applying, for a stale timestamp.
+	committed := err == nil || errors.Is(err, store.ErrSnapshotCommitted)
 
 	// h.mu is taken only after Bundle.Snapshot has returned, i.e. after it has
 	// released the bundle lock. That keeps one lock order everywhere (h.mu then
@@ -243,7 +252,15 @@ func (h *Hub) runSnapshot(doc *brawtv1.Document, seq uint64, gate func()) {
 	defer h.mu.Unlock()
 	h.snapshotting = false
 	h.snapshotErr = err
-	if err != nil {
+	switch {
+	case err == nil:
+	case committed:
+		// Logged, not swallowed: the document is as durable as after a clean
+		// snapshot, but its recorded "last modified" is stale until the next
+		// one, and a workspace whose identity files cannot be written is
+		// worth knowing about.
+		log.Printf("brawt: snapshot of document %s at seq %d committed, but its identity file was not refreshed: %v", doc.GetId(), seq, err)
+	default:
 		// Not fatal: every op is already in the oplog, so the document is
 		// intact and simply stays uncompacted. Retrying immediately would
 		// hammer a disk that is out of space or failing, so the reset in

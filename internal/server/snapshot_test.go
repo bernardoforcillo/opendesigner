@@ -281,6 +281,57 @@ func TestAFailedSnapshotLosesNothing(t *testing.T) {
 	}
 }
 
+// finding: a snapshot whose ONLY failure is the meta.json refresh has already
+// committed -- document published, oplog compacted, both fsynced -- but
+// runSnapshot treated every error alike and skipped trimHistoryLocked. The
+// unbounded-history fix then silently stops applying: history keeps every
+// record for the life of the process while historyBase falls permanently
+// behind the seq on disk, so Subscribe also keeps serving a backlog the
+// snapshot has already absorbed.
+func TestASnapshotThatOnlyFailedToRefreshMetaStillTrimsHistory(t *testing.T) {
+	dir := t.TempDir()
+	h := hubOn(t, dir, "Untitled")
+	h.snapshotEvery = 4
+
+	// Break the identity refresh and nothing else (see the store-side test):
+	// the temp+rename commit cannot replace a directory.
+	metaPath := filepath.Join(dir, "doc1.brawt", "meta.json")
+	if err := os.Remove(metaPath); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(metaPath, 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	submitN(t, h, 1, 4)
+	h.waitSnapshots()
+
+	h.mu.Lock()
+	n, base, snapErr := len(h.history), h.historyBase, h.snapshotErr
+	h.mu.Unlock()
+	if n != 0 || base != 4 {
+		t.Fatalf("history holds %d records (base %d) after a snapshot that committed, want 0 (base 4)", n, base)
+	}
+	if snapErr == nil || !errors.Is(snapErr, store.ErrSnapshotCommitted) {
+		t.Fatalf("snapshotErr = %v, want the failed meta refresh recorded (not swallowed) as ErrSnapshotCommitted", snapErr)
+	}
+	// The catch-up the snapshot absorbed is genuinely gone, not merely
+	// unreported.
+	if _, _, err := h.Subscribe(0); !errors.Is(err, ErrHistoryTooOld) {
+		t.Fatalf("Subscribe(0) after the snapshot: err = %v, want ErrHistoryTooOld", err)
+	}
+
+	// And the document really is on disk at that seq: put meta.json back and
+	// reload.
+	if err := os.Remove(metaPath); err != nil {
+		t.Fatal(err)
+	}
+	reloaded := hubOn(t, dir, store.DefaultName)
+	if doc, seq := reloaded.Snapshot(); seq != 4 || len(doc.GetNodes()) != 4 {
+		t.Fatalf("reload gives seq = %d nodes = %d, want 4/4", seq, len(doc.GetNodes()))
+	}
+}
+
 // Records are trimmed by seq, and the trim must release the memory it claims
 // to: re-slicing h.history would keep the whole original backing array (and
 // every dropped record) alive.

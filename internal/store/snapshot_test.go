@@ -2,6 +2,7 @@ package store
 
 import (
 	"bytes"
+	"errors"
 	"fmt"
 	"os"
 	"slices"
@@ -124,6 +125,67 @@ func TestSnapshotKeepsRecordsNewerThanItsSeq(t *testing.T) {
 	}
 	if len(doc.Nodes) != 3 {
 		t.Fatalf("nodes = %d, want 3 (records newer than the snapshot were destroyed)", len(doc.Nodes))
+	}
+}
+
+// finding: the meta.json refresh is the last step of Snapshot and shared its
+// error return, so a failure there reported an ALREADY-COMMITTED snapshot as
+// failed -- document published, oplog compacted, both fsynced. The hub reads
+// that as "no snapshot happened" and keeps every covered record in memory for
+// the life of the process.
+func TestSnapshotThatCannotRefreshMetaIsStillCommitted(t *testing.T) {
+	dir := t.TempDir()
+	b, err := Open(dir, "doc1", "Alfa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	for i := 1; i <= 3; i++ {
+		mustAppend(t, b, rec(uint64(i), createOp(fmt.Sprintf("n%d", i), float64(i))))
+	}
+	doc, seq, err := b.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	before := b.Meta()
+
+	// Break the identity refresh and nothing else: writeFileSync commits by
+	// renaming its temp file onto meta.json, and no rename can replace a
+	// directory.
+	if err := os.Remove(b.metaPath()); err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Mkdir(b.metaPath(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	err = b.Snapshot(doc, seq)
+	if err == nil {
+		t.Fatal("a snapshot that could not refresh meta.json reported no error at all")
+	}
+	if !errors.Is(err, ErrSnapshotCommitted) {
+		t.Fatalf("Snapshot() error = %v, want one wrapping ErrSnapshotCommitted so a caller can tell it from a lost snapshot", err)
+	}
+
+	// Everything the error says committed, committed.
+	b.mu.Lock()
+	persisted, perr := b.readSnapshotSeq()
+	b.mu.Unlock()
+	if perr != nil {
+		t.Fatalf("read the persisted snapshot seq: %v", perr)
+	}
+	if persisted != seq {
+		t.Fatalf("persisted snapshot seq = %d, want %d: the snapshot did not commit", persisted, seq)
+	}
+	if got := oplogSeqsOnDisk(t, b); len(got) != 0 {
+		t.Fatalf("oplog still holds %v after a snapshot at seq %d: it did not compact", got, seq)
+	}
+
+	// And the in-memory identity still describes what is on disk: UpdatedAt
+	// was bumped before the write, so Meta() went on reporting a "last
+	// modified" no reader would ever see and that vanished on the next
+	// restart.
+	if got := b.Meta(); !got.UpdatedAt.Equal(before.UpdatedAt) {
+		t.Fatalf("Meta().UpdatedAt = %v after a failed refresh, want the persisted %v", got.UpdatedAt, before.UpdatedAt)
 	}
 }
 

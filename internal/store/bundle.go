@@ -452,6 +452,18 @@ func appendFrame(f oplogFile, frame []byte) (int64, error) {
 	return preSize, nil
 }
 
+// ErrSnapshotCommitted reports that a snapshot committed -- the document is
+// published and the oplog is compacted, both fsynced -- but the identity
+// refresh that follows it (meta.json's updatedAt) did not.
+//
+// It exists so the one step of Snapshot that happens AFTER the point of no
+// return is distinguishable from the steps before it. Nothing durable was
+// lost when this is returned: the document is exactly as safe as it is after
+// a fully successful snapshot, only its "last modified" is stale until the
+// next one rewrites it. errors.Is(err, ErrSnapshotCommitted) is therefore the
+// test for "may I act on this snapshot having happened?".
+var ErrSnapshotCommitted = errors.New("snapshot committed but meta.json was not refreshed")
+
 // Snapshot riscrive lo snapshot al seq dato e compatta l'oplog.
 //
 // doc must be the state produced by applying every op up to and including
@@ -532,12 +544,22 @@ func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
 	// browser -- there is no cheaper place to record it, since the
 	// alternative is rewriting meta.json on every appended op.
 	//
-	// Last, and its own error: the snapshot and the compaction have already
-	// committed by this point, and re-running them is idempotent, so a
-	// failure here costs a retry rather than any data. It is still reported
-	// -- a store that cannot write a 200-byte file is not healthy.
-	b.meta.UpdatedAt = time.Now().UTC()
-	return b.writeMetaLocked()
+	// It runs last, and its failure is reported as ErrSnapshotCommitted rather
+	// than as a plain error, because by this point BOTH commits above are on
+	// disk and fsynced: the snapshot is published and the oplog is compacted.
+	// A caller that reads any error as "the snapshot did not happen" then
+	// skips whatever it does after a successful one -- server.Hub drops the
+	// history records the new snapshot covers -- and so grows an in-memory
+	// history for ever while the on-disk snapshot moves on without it. The
+	// failure is still reported (a store that cannot write a 200-byte file is
+	// not healthy, and the timestamp really is stale until the next snapshot
+	// rewrites it), just not as a lost snapshot.
+	updated := b.meta
+	updated.UpdatedAt = time.Now().UTC()
+	if err := b.writeMetaLocked(updated); err != nil {
+		return fmt.Errorf("%w: %w", ErrSnapshotCommitted, err)
+	}
+	return nil
 }
 
 // compactOplogLocked rewrites the oplog with only the records the snapshot
