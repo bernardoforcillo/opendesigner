@@ -11,3 +11,4 @@
 docs/superpowers/plans/
 docs/superpowers/specs/
 /.playwright-mcp/
+/.brawt-e2e/

@@ -11,20 +11,34 @@ function node(id: string, orderKey: string): NodeLite {
     x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], kind: "rect", cornerRadius: 0 };
 }
 
+// Doppio di SyncClient (stesso pattern di tools/selectTool.test.ts): registra
+// gli op che finiscono SUL FILO e li applica in ottimistico, così la scena
+// riflette davvero il risultato del gesto.
+class FakeSync {
+  sent: Op[] = [];
+  submit(op: Op) {
+    this.sent.push(op);
+    useScene.getState().apply(op);
+  }
+}
+
 // Doppio del ToolContext: toWorld è l'identità su clientX/clientY, così i test
 // ragionano direttamente in coordinate mondo. La conversione vera è testata in
 // canvas/camera.test.ts.
+// Il trasporto va registrato SULLO STORE, non solo sul contesto: la creazione
+// passa da endGesture, che submitta tramite lo store (come ogni altro gesto).
 function fakeCtx(zoom = 1) {
-  const submitted: Op[] = [];
+  const sync = new FakeSync();
+  useScene.getState().setSync(sync);
   const ctx = {
-    sync: { submit: (op: Op) => submitted.push(op) },
+    sync,
     getScene: () => useScene.getState().scene,
     getCamera: () => ({ ...useScene.getState().camera, zoom }),
     setCamera: vi.fn(),
     canvas: {} as HTMLCanvasElement,
     toWorld: (e: PointerEvent) => ({ x: e.clientX, y: e.clientY }),
   } as unknown as ToolContext;
-  return { ctx, submitted };
+  return { ctx, submitted: sync.sent };
 }
 
 const at = (x: number, y: number) => ({ clientX: x, clientY: y }) as PointerEvent;
@@ -42,6 +56,12 @@ beforeEach(() => {
     camera: { x: 0, y: 0, zoom: 1 },
     selection: [],
     marquee: null,
+    sync: null,
+    gesture: null,
+    undoStack: [],
+    redoStack: [],
+    canUndo: false,
+    canRedo: false,
   });
 });
 
@@ -124,6 +144,51 @@ describe("rectTool", () => {
 
     tool.onPointerUp!(at(60, 80), ctx);
     expect(submitted).toHaveLength(0);
+  });
+
+  // Il disegno è un gesto come tutti gli altri: passa da beginGesture/
+  // endGesture, quindi lascia UNA voce di undo -- senza cambiare il conto
+  // degli op sul filo, che resta uno solo (un gesto = un submit).
+  it("records exactly one undo entry without adding ops to the wire", () => {
+    const tool = createRectTool();
+    const { ctx, submitted } = fakeCtx();
+    tool.onPointerDown!(at(10, 20), ctx);
+    tool.onPointerMove!(at(60, 80), ctx);
+    tool.onPointerUp!(at(60, 80), ctx);
+
+    expect(submitted).toHaveLength(1);
+    const st = useScene.getState();
+    expect(st.undoStack).toHaveLength(1);
+    expect(st.canUndo).toBe(true);
+    expect(st.gesture).toBeNull(); // il gesto è chiuso: undo/redo non sono bloccati
+  });
+
+  it("undoing a freshly drawn rect removes the node (and redo puts it back)", () => {
+    const tool = createRectTool();
+    const { ctx, submitted } = fakeCtx();
+    tool.onPointerDown!(at(10, 20), ctx);
+    tool.onPointerUp!(at(60, 80), ctx);
+    const id = createdNode(submitted[0]).id;
+    expect(useScene.getState().scene!.nodes[id]).toBeDefined();
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().canRedo).toBe(true);
+
+    useScene.getState().redo();
+    expect(useScene.getState().scene!.nodes[id]).toBeDefined();
+    expect(useScene.getState().scene!.nodes[id].width).toBe(50);
+  });
+
+  it("an abandoned gesture leaves no undo entry", () => {
+    const tool = createRectTool();
+    const { ctx } = fakeCtx();
+    tool.onPointerDown!(at(10, 20), ctx);
+    tool.onPointerMove!(at(60, 80), ctx);
+    tool.onDeactivate!(ctx);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
   });
 
   it("does not move or select anything: pointermove without a pending create is inert", () => {

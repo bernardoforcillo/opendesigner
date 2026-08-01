@@ -17,6 +17,16 @@ import type { Tool, ToolContext } from "./types";
 
 const DEFAULT_CURSOR = "default";
 
+// Sotto questa soglia (px SCHERMO, come la CLICK_SLOP_PX di shapeTool) un
+// "marquee" non è un marquee: è un CLICK sul vuoto. La distinzione conta perché
+// il marquee seleziona per intersezione di BOUNDS (AABB), mentre il click passa
+// da hitTest (che per un'ellisse è la vera equazione dell'ellisse). Senza
+// soglia, un click nell'angolo vuoto del bounding box di un'ellisse apre un
+// marquee 0x0 che "interseca" quel bounding box e seleziona l'ellisse: la
+// stessa selezione per AABB che hitTest esiste apposta per evitare. Il click sul
+// vuoto deve solo azzerare la selezione (o lasciarla intatta con shift).
+const MARQUEE_SLOP_PX = 3;
+
 // Il cursore vive sul DOM del canvas (come fa toolManager quando cambia tool).
 // Duck-typing su style: nei test ctx.canvas è un doppio, non un HTMLCanvasElement.
 function setCursor(ctx: ToolContext, cursor: string): void {
@@ -280,7 +290,10 @@ export function createSelectTool(): Tool {
         const scene = ctx.getScene();
         const world = ctx.toWorld(e);
         const box = normalizeRect(marqueeAnchor.x, marqueeAnchor.y, world.x, world.y);
-        const inside = scene ? nodesInMarquee(scene, box) : [];
+        // px schermo -> unità mondo, così la soglia non dipende dallo zoom.
+        const slop = MARQUEE_SLOP_PX / ctx.getCamera().zoom;
+        const isClick = box.width < slop && box.height < slop;
+        const inside = scene && !isClick ? nodesInMarquee(scene, box) : [];
         useScene.getState().setSelection(union(marqueeBase ?? [], inside));
         resetMarquee();
         return;

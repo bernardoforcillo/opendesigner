@@ -166,6 +166,67 @@ describe("selectTool", () => {
       expect(useScene.getState().selection).toEqual(["b", "a"]);
     });
 
+    // Un CLICK sul vuoto non è un marquee 0x0: il marquee seleziona per AABB,
+    // e l'angolo vuoto del bounding box di un'ellisse cadrebbe dentro quell'AABB
+    // pur essendo fuori dall'ellisse (è esattamente ciò che hitTest evita).
+    it("a click on empty space inside an ellipse's bounding box selects nothing", () => {
+      useScene.setState({
+        scene: { ...emptyScene("doc-1", "u"), nodes: {
+          e: node("e", 0, "a000000", { width: 100, height: 100, kind: "ellipse" }),
+        } },
+        selection: [],
+      });
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(2, 2), ctx); // angolo dell'AABB, FUORI dall'ellisse
+      tool.onPointerUp!(at(2, 2), ctx);
+      expect(useScene.getState().selection).toEqual([]);
+      expect(useScene.getState().marquee).toBeNull();
+    });
+
+    it("a sub-slop jitter is still a click, but a real drag selects by bounds", () => {
+      useScene.setState({
+        scene: { ...emptyScene("doc-1", "u"), nodes: {
+          e: node("e", 0, "a000000", { width: 100, height: 100, kind: "ellipse" }),
+        } },
+        selection: [],
+      });
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(2, 2), ctx);
+      tool.onPointerMove!(at(4, 4), ctx); // 2px: sotto la soglia
+      tool.onPointerUp!(at(4, 4), ctx);
+      expect(useScene.getState().selection).toEqual([]);
+
+      tool.onPointerDown!(at(2, 2), ctx);
+      tool.onPointerMove!(at(10, 10), ctx); // 8px: marquee vero
+      tool.onPointerUp!(at(10, 10), ctx);
+      expect(useScene.getState().selection).toEqual(["e"]);
+    });
+
+    it("the click threshold is in screen px, so it scales with the zoom", () => {
+      useScene.setState({
+        scene: { ...emptyScene("doc-1", "u"), nodes: { a: node("a", 0, "a000000") } },
+        camera: { x: 0, y: 0, zoom: 0.1 }, // 20 unità mondo = 2px schermo
+        selection: [],
+      });
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(-10, -10), ctx);
+      tool.onPointerMove!(at(10, 10), ctx);
+      tool.onPointerUp!(at(10, 10), ctx);
+      expect(useScene.getState().selection).toEqual([]);
+    });
+
+    it("shift-clicking empty space keeps the selection instead of re-selecting by bounds", () => {
+      useScene.getState().setSelection(["b"]);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(900, 900, true), ctx);
+      tool.onPointerUp!(at(900, 900, true), ctx);
+      expect(useScene.getState().selection).toEqual(["b"]);
+    });
+
     it("Esc during a marquee restores the pre-marquee selection", () => {
       useScene.getState().setSelection(["b"]);
       const tool = createSelectTool();

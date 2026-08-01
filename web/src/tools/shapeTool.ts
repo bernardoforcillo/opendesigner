@@ -75,7 +75,16 @@ export function makeShapeTool(config: ShapeToolConfig): Tool {
         fills: [{ kind: { case: "solid", value: { color: { r: 0.6, g: 0.6, b: 0.65, a: 1 } } } }],
         shape: config.shape(),
       });
-      ctx.sync.submit(makeCreateNodeOp(node));
+      // La creazione passa dal ciclo di gesto come QUALUNQUE altra modifica
+      // (sposta, resize, cancella): beginGesture + endGesture con l'unico op
+      // finale. Non è una formalità -- la voce di undo viene costruita SOLO
+      // dentro endGesture (store.ts), quindi un submit diretto qui renderebbe
+      // il disegno l'unica azione dell'editor non annullabile. Il gesto a un
+      // solo op resta comunque UN solo op sul filo: endGesture submitta
+      // esattamente finalOps.
+      const store = useScene.getState();
+      store.beginGesture();
+      store.endGesture([makeCreateNodeOp(node)]);
     },
 
     // Gesto abbandonato (cambio tool, pointercancel, smontaggio): nessun op.
