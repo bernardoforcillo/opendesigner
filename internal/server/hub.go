@@ -186,11 +186,11 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 
 	// core.Apply mutates its Document argument in place, and for CreateNode
 	// it aliases op's Node straight into doc.Nodes without copying it. Apply
-	// to a scratch clone of the published document first, and publish it as the new
-	// h.doc after the record has been durably appended: if Append fails,
-	// h.doc/h.seq must be left exactly as they were, or the in-memory
-	// document would silently diverge from the persisted oplog for the rest
-	// of the process's life. As a side benefit, every successful generation
+	// to a scratch clone of the published document first, and publish it as
+	// the new h.doc only after the record has been durably appended: if
+	// Append fails, h.doc/h.seq must be left exactly as they were, or the
+	// in-memory document would silently diverge from the persisted oplog for
+	// the rest of the process's life. As a side benefit, every successful generation
 	// of h.doc is now a fresh proto.Clone, so a node object touched while
 	// applying one op can never again be the same Go object touched while
 	// applying a later op on that same node id.

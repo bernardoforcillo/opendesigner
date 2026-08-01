@@ -56,9 +56,10 @@ func (b *Bundle) Meta() Meta {
 	return b.meta
 }
 
-// initMetaLocked loads meta.json into b, creating it from defaultName when the
-// bundle has none (a document being created now, or one written before
-// meta.json existed).
+// initMetaLocked loads meta.json into b, synthesising one when the bundle has
+// none (a document being created now, one written before meta.json existed,
+// or one whose identity file was deleted). The synthesised name is the
+// snapshot's if there is one, otherwise defaultName.
 //
 // A meta.json that exists but cannot be read or parsed is an error, not a
 // reason to fall back to defaultName: overwriting it would silently rename the
