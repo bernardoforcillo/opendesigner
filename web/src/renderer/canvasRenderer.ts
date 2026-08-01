@@ -1,6 +1,5 @@
 import type { SceneState, NodeLite } from "../store/types";
-
-export interface Camera { x: number; y: number; zoom: number; }
+import type { Camera } from "../canvas/camera";
 
 function sortedVisible(state: SceneState): NodeLite[] {
   return Object.values(state.nodes)

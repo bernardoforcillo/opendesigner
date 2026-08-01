@@ -5,6 +5,7 @@ import { hitTest } from "../renderer/canvasRenderer";
 import { useScene } from "../store/store";
 import { nextOrderKey } from "../store/orderKey";
 import type { SyncClient } from "../rpc/syncClient";
+import { screenToWorld } from "../canvas/camera";
 
 function uuid(): string { return crypto.randomUUID(); }
 
@@ -32,7 +33,7 @@ export function attachRectTool(canvas: HTMLCanvasElement, sync: SyncClient, getM
   const toWorld = (e: PointerEvent) => {
     const cam = useScene.getState().camera;
     const rect = canvas.getBoundingClientRect();
-    return { x: (e.clientX - rect.left - cam.x) / cam.zoom, y: (e.clientY - rect.top - cam.y) / cam.zoom };
+    return screenToWorld(cam, e.clientX - rect.left, e.clientY - rect.top);
   };
 
   const onDown = (e: PointerEvent) => {
