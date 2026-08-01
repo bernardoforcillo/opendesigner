@@ -359,6 +359,56 @@ function revertHistory(history: HistoryMark[], opId: string): HistoryPatch | nul
   };
 }
 
+// Rimette dentro la macchina della storia la voce di undo di un rollback
+// REVOCATO -- l'eco tardivo ha dimostrato che l'op era durabile (vedi apply).
+//
+// Scriverla direttamente su `undoStack` è corretto solo quando non c'è più
+// niente in dubbio. Se una transizione è ancora in volo, gli stack VIVI non
+// sono uno stato autonomo: sono il replay di `history` sulla base della sua
+// TESTA (replayHistory), e il prossimo rifiuto li ricalcola da lì -- da una base
+// fotografata PRIMA della revoca, che quindi la cancella di nuovo. La finestra
+// è quella normale, non un'acrobazia: l'utente continua a disegnare mentre la
+// pillola dice "riconnessione…", quindi quando il backlog rigioca l'op
+// rinnegato c'è quasi sempre un suo gesto ancora in volo. Il risultato sarebbe
+// una modifica durabile, sullo schermo e di nuovo non annullabile: lo stato
+// esatto che la revoca esiste per togliere.
+//
+// La voce va quindi nella BASE del replay -- la testa è l'unica che
+// replayHistory legge, e settleHistory la propaga in avanti quando decanta --
+// e gli stack vivi si RICALCOLANO da lì. L'op revocato è atterrato sul server
+// prima delle transizioni ancora in volo, quindi la sua voce finisce SOTTO le
+// loro: Ctrl+Z disfa prima le più recenti, che è l'ordine giusto.
+//
+// `inv` null = l'inverso non esiste (il nodo non c'è più): nessuna voce da
+// rimettere, ma il redo si svuota lo stesso -- l'op è avvenuto per davvero,
+// quindi le voci di redo invertono uno stato che non esiste più (stessa regola
+// che applyMark applica ai gesti).
+function restoreRevoked(
+  history: HistoryMark[],
+  undoStack: Op[][],
+  redoStack: Op[][],
+  inv: Op | null,
+): HistoryPatch {
+  const head = history[0];
+  if (!head) {
+    const next = inv ? [...undoStack, [inv]] : undoStack;
+    return { history, undoStack: next, redoStack: [], canUndo: next.length > 0, canRedo: false };
+  }
+  const patched: HistoryMark[] = [
+    { ...head, undoStack: inv ? [...head.undoStack, [inv]] : head.undoStack, redoStack: [] },
+    ...history.slice(1),
+  ];
+  // patched non è vuoto, quindi replayHistory non può dare null; il fallback
+  // tiene comunque gli stack correnti invece di inventarne di vuoti.
+  const stacks = replayHistory(patched) ?? { undoStack, redoStack };
+  return {
+    history: patched,
+    ...stacks,
+    canUndo: stacks.undoStack.length > 0,
+    canRedo: stacks.redoStack.length > 0,
+  };
+}
+
 // La selezione può SOLO restringersi: contiene esclusivamente id di nodi che
 // esistono ancora. Se non cambia nulla riusa lo stesso array per non forzare
 // re-render inutili.
@@ -596,21 +646,20 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       //    schermo e sul server non è più annullabile, e il prossimo Ctrl+Z
       //    disferebbe in silenzio il gesto PRECEDENTE. La ricostruiamo
       //    dall'inverso calcolato sul confermato PRIMA di applicare l'op:
-      //    è esattamente quello che endGesture avrebbe messo sullo stack.
+      //    è esattamente quello che endGesture avrebbe messo sullo stack. La
+      //    voce NON va scritta sugli stack a mano: finché una transizione è in
+      //    dubbio gli stack sono il replay di `history`, e il prossimo rifiuto
+      //    la ricancellerebbe (vedi restoreRevoked).
       // Il redo torna vuoto: l'op è passato per davvero, quindi le voci di redo
       // invertono uno stato che non esiste più (stessa regola di applyMark per i
       // gesti). Sulla forma: la voce ricostruita è per-op, non per-gesto -- un
       // gruppo revocato op per op lascia una voce per op invece di una sola.
       // Annullabile in più passi, ma annullabile.
       const inv = invertOp(st.confirmed, op);
-      const undoStack = inv ? [...st.undoStack, [inv]] : st.undoStack;
       return {
         ...next,
+        ...restoreRevoked(next.history, st.undoStack, st.redoStack, inv),
         disowned: [...st.disowned.slice(0, i), ...st.disowned.slice(i + 1)],
-        undoStack,
-        canUndo: undoStack.length > 0,
-        redoStack: [],
-        canRedo: false,
         lastError: st.lastError === st.disowned[i].message ? null : st.lastError,
         notice: REVOKED,
       };

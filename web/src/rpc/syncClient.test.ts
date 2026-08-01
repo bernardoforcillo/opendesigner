@@ -1021,6 +1021,70 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
   });
 
+  // La revoca RICOSTRUISCE una voce di undo, ma gli stack vivi non sono uno
+  // stato autonomo finché c'è una transizione in dubbio: sono il replay di
+  // `history` sulla base della sua testa, fotografata PRIMA della revoca.
+  // Scrivere la voce solo sugli stack la fa cancellare dal primo rifiuto
+  // successivo -- e la finestra è quella normale, non un'acrobazia: l'utente
+  // continua a disegnare mentre la pillola dice "riconnessione…", quindi quando
+  // il backlog rigioca l'op rinnegato c'è quasi sempre un suo gesto in volo.
+  it("la voce RESTITUITA dalla revoca sopravvive al rifiuto di un op ancora in volo", async () => {
+    const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+
+    const kill = new Map<string, (e: unknown) => void>();
+    rpc.submitOp.mockReset();
+    rpc.submitOp.mockImplementation(
+      (req: { op: Op }) => new Promise((_res, rej) => kill.set(req.op.opId, rej)),
+    );
+
+    const st = useScene.getState();
+    st.beginGesture();
+    st.endGesture([moveOp("op-a", "n1", 200, 0)]);
+    await settle();
+
+    // Riavvio del server: muore lo stream e con lui la richiesta in volo. L'op
+    // però può benissimo essere già nell'op-log (broadcast prima della risposta).
+    last(opened).stream.close();
+    await settle();
+    kill.get("op-a")!(new ConnectError("connection closed", Code.Unavailable));
+    await settle();
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().disowned.map((d) => d.opId)).toEqual(["op-a"]);
+
+    // L'utente continua a lavorare durante la riconnessione: il gesto B parte e
+    // resta in volo, quindi la sua transizione è in dubbio (history non vuota).
+    st.beginGesture();
+    st.endGesture([moveOp("op-b", "n1", 300, 0)]);
+    await settle();
+    expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-b"]);
+    expect(useScene.getState().history).toHaveLength(1);
+
+    // Il backlog della riconnessione rigioca op-a: il rollback era una bugia, e
+    // la sua voce di undo torna.
+    await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
+    last(opened).stream.push(applied(1, CLIENT, moveOp("op-a", "n1", 200, 0)));
+    await settle();
+    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    // ...e ADESSO muore anche op-b. Il suo rollback deve riavvolgere la SUA
+    // transizione e basta: la voce appena restituita descrive una modifica che
+    // il server ha confermato ed è sullo schermo: cancellarla la renderebbe di
+    // nuovo durabile, visibile e non annullabile -- lo stato esatto che la
+    // revoca esiste per togliere.
+    kill.get("op-b")!(new ConnectError("connection closed", Code.Unavailable));
+    await settle();
+
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().canUndo).toBe(true);
+
+    // ...ed è la voce GIUSTA: annulla la modifica di op-a, non un'altra.
+    useScene.getState().undo();
+    await settle();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+  });
+
   it("un op RIFIUTATO dal server non è revocabile: nessun eco potrà mai arrivare", async () => {
     const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
     const net = reorderingTransport();
