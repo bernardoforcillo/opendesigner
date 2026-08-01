@@ -161,10 +161,38 @@ function dropPending(pending: PendingOp[], opId: string): PendingOp[] {
   return i < 0 ? pending : [...pending.slice(0, i), ...pending.slice(i + 1)];
 }
 
+// Dove sta, nello stack, la voce CONSUMATA da un mark di undo/redo.
+//
+// NON è "la cima": la cima è dov'era la voce quando l'undo è partito, e il
+// replay rigioca i mark su stack che i mark PRECEDENTI hanno già rimaneggiato.
+// Se il gesto davanti è stato riavvolto, la voce di questo undo è scesa di
+// posizione (o non c'è mai stata); prendere la cima toglierebbe la voce
+// SBAGLIATA -- o, su stack vuoto, ne inventerebbe una.
+//
+// La voce si riconosce dagli OP che contiene, per identità di riferimento: gli
+// Op non vengono mai clonati dopo la costruzione, quindi `===` su un op è un
+// nome stabile. Il confronto è "coda di `ops`" e non uguaglianza perché il
+// replay di un mark precedente può aver RISTRETTO la voce a una sua coda (un
+// gesto atterrato a metà lascia gli inversi degli op sopravvissuti, che sono la
+// coda della voce) o averla semplicemente ricostruita (array nuovo, stessi op).
+// Cerca dalla cima: fra due voci compatibili la più recente è quella giusta.
+function findConsumed(stack: Op[][], ops: Op[]): number {
+  for (let i = stack.length - 1; i >= 0; i--) {
+    const slot = stack[i];
+    const off = ops.length - slot.length;
+    if (slot.length > 0 && off >= 0 && slot.every((op, k) => op === ops[off + k])) return i;
+  }
+  return -1;
+}
+
 // Rigioca UNA transizione sugli stack, RISTRETTA ai suoi primi `kept` op.
 // kept === opIds.length è la transizione intera (quella che endGesture/undo/
 // redo hanno già applicato); kept === 0 è l'identità, cioè "non è mai
 // avvenuta"; i valori in mezzo sono il gesto atterrato a metà.
+//
+// Ogni forma deve essere l'IDENTITÀ a kept === 0 e componibile con le altre:
+// il replay le incatena, e a un mark non è dato sapere se quelli davanti a lui
+// sono stati riavvolti per intero, a metà o per niente.
 function applyMark(
   m: HistoryMark,
   undoStack: Op[][],
@@ -173,7 +201,8 @@ function applyMark(
   const shape = m.shape;
   const n = m.opIds.length;
   // Gli inversi degli op sopravvissuti sono la CODA della voce (entry[i]
-  // inverte l'op n-1-i). Senza voce non c'è nulla da spingere.
+  // inverte l'op n-1-i). Senza voce non c'è nulla da spingere; a kept === 0 la
+  // coda è vuota, quindi push è già l'identità.
   const kept = shape.entry.length === n ? shape.entry.slice(n - m.kept) : [];
   const push = (stack: Op[][]) => (kept.length > 0 ? [...stack, kept] : stack);
   if (shape.kind === "gesture") {
@@ -183,14 +212,30 @@ function applyMark(
     // rifiutato se lo riprende.
     return { undoStack: push(undoStack), redoStack: m.kept > 0 ? [] : redoStack };
   }
-  // Gli op NON ancora fatti restano sullo stack da cui erano stati tolti: un
-  // undo atterrato a metà lascia da annullare solo quello che manca.
-  const rest = shape.ops.slice(m.kept);
-  const pop = (stack: Op[][]) =>
-    rest.length > 0 ? [...stack.slice(0, -1), rest] : stack.slice(0, -1);
+  // Toglie dallo stack la parte di voce che questo undo/redo ha DAVVERO
+  // disfatto -- i suoi primi `kept` op. Quello che resta della voce ci resta:
+  // un undo atterrato a metà lascia da annullare solo quello che manca.
+  //
+  // A kept === 0 non è stato disfatto niente: la transizione non è avvenuta e
+  // lo stack non si tocca. È il caso più frequente (il drain scarta la coda dal
+  // fondo, quindi un undo che non parte viene rifiutato per intero) ed è quello
+  // che, trattato come "togli la cima", cancellava la voce di un ALTRO gesto --
+  // o ne spingeva una fantasma su uno stack vuoto.
+  const done = new Set(shape.ops.slice(0, m.kept));
+  const consume = (stack: Op[][]) => {
+    if (done.size === 0) return stack;
+    const i = findConsumed(stack, shape.ops);
+    // La voce non c'è più (un mark davanti l'ha riavvolta insieme al gesto che
+    // l'aveva prodotta): non c'è niente da consumare, e di sicuro non la cima.
+    if (i < 0) return stack;
+    const rest = stack[i].filter((op) => !done.has(op));
+    return rest.length > 0
+      ? [...stack.slice(0, i), rest, ...stack.slice(i + 1)]
+      : [...stack.slice(0, i), ...stack.slice(i + 1)];
+  };
   return shape.kind === "undo"
-    ? { undoStack: pop(undoStack), redoStack: push(redoStack) }
-    : { undoStack: push(undoStack), redoStack: pop(redoStack) };
+    ? { undoStack: consume(undoStack), redoStack: push(redoStack) }
+    : { undoStack: push(undoStack), redoStack: consume(redoStack) };
 }
 
 // Ricalcola gli stack rigiocando OGNI transizione ancora in dubbio a partire da

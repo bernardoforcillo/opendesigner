@@ -584,6 +584,165 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
   });
 
+  // --- PIÙ transizioni in dubbio INSIEME (bug trovato in review round 3) ------
+  // Ogni test qui sopra tiene UNA sola transizione in dubbio alla volta, quindi
+  // `history` ha sempre al massimo un mark e la COMPOSIZIONE fra mark non viene
+  // mai esercitata -- ed è proprio la composizione la proprietà che il replay
+  // esiste per garantire ("la riparazione non dipende dall'ordine in cui i
+  // rifiuti arrivano"). Due mark insieme non sono un caso limite: basta un
+  // SubmitOp lento (deadline 10s, vedi rpc/syncClient.ts) perché tutto quello
+  // che l'utente fa nel frattempo si accodi dietro, ancora in dubbio.
+
+  it("un gesto e il suo undo entrambi in dubbio, entrambi rifiutati: nessuna voce fantasma", () => {
+    gesture([createOp("n0", 0, 0)]); // gesto VERO, confermato dall'eco
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    // Disegna un rettangolo e premi subito Ctrl+Z, con la create ancora in
+    // volo: due transizioni in dubbio insieme, [gesto, undo].
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    const c1 = createOp("n1", 100, 100);
+    gesture([c1]);
+    useScene.getState().undo();
+    const [, undoOp] = manual.sent;
+    expect(useScene.getState().undoStack).toHaveLength(1); // consumata la voce di n1
+    expect(useScene.getState().redoStack).toHaveLength(1);
+
+    // La create fallisce; il drain scarta la coda DAL FONDO, quindi il rifiuto
+    // dell'op dell'undo arriva per primo.
+    manual.reject(undoOp);
+    manual.reject(c1);
+
+    // n1 non è mai esistito sul server: né la sua voce di undo né il suo redo
+    // devono sopravvivere, e la voce del gesto VERO deve essere ancora lì.
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(deletedId(useScene.getState().undoStack[0][0])).toBe("n0");
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().canRedo).toBe(false);
+
+    // Il Ctrl+Z successivo annulla il gesto vero. Con la voce fantasma manderebbe
+    // deleteNode n1 -> ErrNodeNotFound -> altro rollback e altro banner, e n0
+    // resterebbe non annullato.
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+
+    expect(sync.sent).toHaveLength(1);
+    expect(deletedId(sync.sent[0])).toBe("n0");
+    expect(useScene.getState().scene!.nodes["n0"]).toBeUndefined();
+  });
+
+  it("due undo in dubbio, entrambi rifiutati: nessuna voce persa né duplicata", () => {
+    gesture([createOp("n1", 0, 0)]);
+    gesture([createOp("n2", 300, 0)]);
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    // Due Ctrl+Z mentre il trasporto è fermo: due mark di undo insieme, il
+    // secondo consuma la voce che sta SOTTO quella consumata dal primo.
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    useScene.getState().undo(); // consuma E2 (deleteNode n2)
+    useScene.getState().undo(); // consuma E1 (deleteNode n1)
+    const [first, second] = manual.sent;
+    expect(useScene.getState().undoStack).toHaveLength(0);
+
+    // Il trasporto muore: entrambi rifiutati, dal fondo.
+    manual.reject(second);
+    manual.reject(first);
+
+    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes["n2"]).toBeDefined();
+    // Gli stack tornano ESATTAMENTE com'erano: due voci DIVERSE, nell'ordine
+    // giusto. Con la riparazione rotta si otteneva [E1, E1] -- la voce del gesto
+    // più recente persa, quella più vecchia duplicata.
+    const stack = useScene.getState().undoStack;
+    expect(stack).toHaveLength(2);
+    expect(stack.map((e) => deletedId(e[0]))).toEqual(["n1", "n2"]);
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().canRedo).toBe(false);
+
+    // E riprovare disfa i due gesti, non due volte lo stesso: con lo stack
+    // duplicato il secondo Ctrl+Z rimandava deleteNode n1 su un nodo già
+    // cancellato, e n2 restava per sempre.
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+    useScene.getState().undo();
+
+    expect(sync.sent.map(deletedId)).toEqual(["n2", "n1"]);
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
+  });
+
+  it("un gesto riavvolto solo a METÀ mentre il suo undo è in dubbio tiene la metà atterrata", () => {
+    gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]); // confermato
+
+    // Drag di n1+n2 (due setProps, una sola voce) e subito Ctrl+Z: il mark del
+    // gesto e quello dell'undo sono in dubbio insieme.
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    const mv1 = moveOp("n1", 40, 40);
+    const mv2 = moveOp("n2", 340, 40);
+    gesture([mv1, mv2]);
+    useScene.getState().undo();
+    const [, , inv2, inv1] = manual.sent;
+
+    // L'undo non passa affatto; del gesto passa solo il primo op.
+    manual.reject(inv1);
+    manual.reject(inv2);
+    manual.land(mv1);
+    manual.reject(mv2);
+
+    // Sul server è successo solo mv1: n1 è mosso e va ancora annullato, n2 no.
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+    expect(useScene.getState().undoStack).toHaveLength(2);
+    // La voce del gesto resta RISTRETTA alla metà atterrata: il replay dell'undo
+    // non deve poterla riportare intera (rimanderebbe l'inverso di un mv2 mai
+    // avvenuto).
+    expect(useScene.getState().undoStack[1]).toHaveLength(1);
+    expect(useScene.getState().redoStack).toHaveLength(0);
+
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+
+    expect(sync.sent).toHaveLength(1);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+  });
+
+  it("un undo atterrato a metà trova la sua voce anche sotto il replay del gesto che la aveva prodotta", () => {
+    gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]); // confermato
+
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    const mv1 = moveOp("n1", 40, 40);
+    const mv2 = moveOp("n2", 340, 40);
+    gesture([mv1, mv2]);
+    manual.land(mv1); // il gesto resta in dubbio (mv2 non è ancora deciso)
+    useScene.getState().undo(); // mark dell'undo: consuma la voce del gesto
+    const [, , inv2, inv1] = manual.sent;
+
+    // L'undo atterra a metà: il replay deve ritrovare la voce consumata anche
+    // se il mark del gesto l'ha appena RICOSTRUITA (non è più lo stesso array).
+    manual.land(inv2);
+    manual.reject(inv1);
+
+    // Solo l'annullamento di mv2 è avvenuto: resta da annullare mv1, cioè UN
+    // solo op.
+    expect(useScene.getState().undoStack).toHaveLength(2);
+    expect(useScene.getState().undoStack[1]).toHaveLength(1);
+
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+
+    expect(sync.sent).toHaveLength(1);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+  });
+
   it("un redo atterrato a metà lascia sullo stack solo la parte non rifatta", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
     useScene.getState().undo(); // entrambi spariscono; il redo li ricrea
