@@ -13,10 +13,34 @@ export interface OpSink {
 }
 
 // Snapshot catturato a inizio gesto. Il documento durante un drag è sempre
-// "snapshot + op finali": le anteprime intermedie non fanno parte del modello.
+// "snapshot + op autorevoli arrivati nel frattempo + op finali": le anteprime
+// intermedie non fanno parte del modello.
 interface GestureSnapshot {
   scene: SceneState;
   selection: string[];
+  // Op AUTOREVOLI (remoti, o comunque passati dal filo) arrivati via apply()
+  // mentre il gesto era aperto. Vanno riapplicati sopra lo snapshot quando il
+  // gesto si chiude o si annulla: SyncClient ha già avanzato il proprio seq
+  // oltre quei record (rpc/syncClient.ts) e non li rimanderà MAI, quindi
+  // scartarli con il rewind significherebbe desync permanente fino al reload.
+  external: Op[];
+}
+
+// Il documento "di base" a fine gesto: snapshot + op autorevoli arrivati
+// durante il gesto, nello stesso ordine in cui li ha visti il server. Gli op
+// finali del gesto vengono submittati DOPO, quindi l'ordine locale coincide con
+// quello che il server assegnerà.
+function rebase(snap: GestureSnapshot): SceneState {
+  return snap.external.reduce((scene, op) => applyOp(scene, op), snap.scene);
+}
+
+// La selezione può SOLO restringersi: contiene esclusivamente id di nodi che
+// esistono ancora. Se non cambia nulla riusa lo stesso array per non forzare
+// re-render inutili.
+function pruneSelection(selection: string[], scene: SceneState): string[] {
+  return selection.every((id) => id in scene.nodes)
+    ? selection
+    : selection.filter((id) => id in scene.nodes);
 }
 
 interface SceneStore {
@@ -57,12 +81,8 @@ function reduce(st: SceneStore, op: Op): Partial<SceneStore> {
   const scene = applyOp(st.scene, op);
   // Riconvalida la selezione contro i nodi rimasti dopo l'op (non solo
   // per deleteNode: qualunque op che fa sparire un id -- anche futuro --
-  // deve avere lo stesso effetto). Se non cambia nulla riusa lo stesso
-  // array per non forzare re-render inutili.
-  const selection = st.selection.every((id) => id in scene.nodes)
-    ? st.selection
-    : st.selection.filter((id) => id in scene.nodes);
-  return { scene, selection };
+  // deve avere lo stesso effetto).
+  return { scene, selection: pruneSelection(st.selection, scene) };
 }
 
 export const useScene = createStore<SceneStore>((set, get) => ({
@@ -75,7 +95,20 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   setScene: (s) => set({ scene: s }),
   setCamera: (c) => set({ camera: c }),
   setSync: (s) => set({ sync: s }),
-  apply: (op) => set((st) => reduce(st, op)),
+  // Op autorevole: viene dal filo (stream remoto o apply ottimistico di un
+  // submit). Se un gesto è aperto lo registriamo anche nello snapshot: la
+  // ricostruzione di fine gesto riparte dallo snapshot e senza questo elenco
+  // perderebbe per sempre le modifiche arrivate durante il drag.
+  apply: (op) =>
+    set((st) => {
+      if (!st.scene) return st;
+      const next = reduce(st, op);
+      if (!st.gesture) return next;
+      return {
+        ...next,
+        gesture: { ...st.gesture, external: [...st.gesture.external, op] },
+      };
+    }),
 
   // Applica SOLO in locale: è il feedback immediato del drag, non passa dal
   // filo. Un pointermove = un applyLocal, e nessuno di questi diventa un op.
@@ -86,22 +119,41 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   beginGesture: () =>
     set((st) => {
       if (!st.scene) return st;
-      return { gesture: { scene: st.scene, selection: st.selection } };
+      if (st.gesture) {
+        // Misuso (gesto già aperto): sovrascrivere lo snapshot perderebbe il
+        // vero stato di inizio gesto -- un cancelGesture successivo tornerebbe
+        // a metà drag invece che al punto di partenza. Teniamo il PRIMO
+        // snapshot (e i suoi op esterni) e segnaliamo il bug al chiamante.
+        console.warn("brawt: beginGesture() con un gesto già aperto — snapshot iniziale mantenuto");
+        return st;
+      }
+      return { gesture: { scene: st.scene, selection: st.selection, external: [] } };
     }),
 
   // Chiude il gesto e manda sul filo UNA sola volta gli op finali: il documento
-  // torna allo snapshot e viene ricostruito da finalOps, così le anteprime
-  // intermedie non lasciano residui (es. un resize di anteprima che l'op finale
-  // non ripete). finalOps vuoto = gesto senza effetto.
+  // torna alla base (snapshot + op autorevoli arrivati durante il gesto) e
+  // viene ricostruito da finalOps, così le anteprime intermedie non lasciano
+  // residui (es. un resize di anteprima che l'op finale non ripete).
+  // finalOps vuoto = gesto senza effetto.
   // Nota: la SELEZIONE non viene ripristinata (a differenza di cancelGesture).
   // È stato di interfaccia, e un tool può volerla cambiare durante il gesto
-  // (es. selezionare il nodo appena creato) senza vedersela annullare.
+  // (es. selezionare il nodo appena creato) senza vedersela annullare; viene
+  // solo potata contro i nodi realmente esistenti nella base ricostruita.
   endGesture: (finalOps) => {
     const snap = get().gesture;
     // Il ripristino e gli invii sono set() distinti e sequenziali: submit
     // rientra nello store (apply ottimistico), quindi non può stare dentro
     // l'updater di un altro set.
-    if (snap) set({ scene: snap.scene, gesture: null });
+    if (snap) {
+      const scene = rebase(snap);
+      set((st) => ({ scene, selection: pruneSelection(st.selection, scene), gesture: null }));
+    } else if (finalOps.length > 0) {
+      // Misuso (endGesture senza beginGesture): non c'è nessuna base pulita da
+      // cui ricostruire, quindi gli op finali si sommano a qualunque anteprima
+      // sia rimasta appesa. Li mandiamo comunque (perdere il lavoro dell'utente
+      // sarebbe peggio) ma il chiamante deve saperlo.
+      console.warn("brawt: endGesture() senza un gesto aperto — op inviati senza ricostruzione");
+    }
     const sync = get().sync;
     for (const op of finalOps) {
       // Senza trasporto registrato restiamo comunque coerenti in locale
@@ -111,13 +163,17 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     }
   },
 
-  // Esc / gesto abbandonato: torna esattamente allo stato di inizio gesto,
-  // selezione compresa (un gesto di cancellazione l'aveva potata), e non manda
-  // nulla sul filo.
+  // Esc / gesto abbandonato: torna allo stato di inizio gesto, selezione
+  // compresa (un gesto di cancellazione l'aveva potata), e non manda nulla sul
+  // filo. Annullare il PROPRIO gesto non annulla però le modifiche ALTRUI:
+  // gli op autorevoli arrivati nel frattempo restano applicati.
+  // cancelGesture senza gesto aperto è un no-op legittimo (Esc premuto fuori da
+  // un drag), non un misuso: nessun warning.
   cancelGesture: () =>
     set((st) => {
       if (!st.gesture) return st;
-      return { scene: st.gesture.scene, selection: st.gesture.selection, gesture: null };
+      const scene = rebase(st.gesture);
+      return { scene, selection: pruneSelection(st.gesture.selection, scene), gesture: null };
     }),
 
   setSelection: (ids) => set({ selection: ids }),

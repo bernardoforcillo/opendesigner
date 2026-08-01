@@ -1,4 +1,4 @@
-import { describe, it, expect, beforeEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
@@ -177,5 +177,127 @@ describe("gesture coalescing", () => {
     useScene.getState().applyLocal(moveOp("n1", 12, 34));
     expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 12, y: 34 });
     expect(sync.sent).toHaveLength(0);
+  });
+
+  // --- op autorevoli arrivati MENTRE il gesto era aperto -------------------
+  // apply() è la porta d'ingresso dello stream remoto (rpc/syncClient.ts:44).
+  // SyncClient avanza il proprio seq appena consuma il record: se il rewind di
+  // fine gesto li scartasse, non li rimanderebbe mai più -> desync permanente.
+
+  it("un op remoto arrivato durante il gesto sopravvive a endGesture", () => {
+    const st = useScene.getState();
+    st.beginGesture();
+    st.applyLocal(moveOp("n1", 5, 5)); // anteprima del drag locale
+
+    // l'altra tab crea un nodo e ne sposta un altro: arriva via apply()
+    st.apply(createOp("n3", 700, 700));
+    st.apply(moveOp("n2", 333, 44));
+
+    st.applyLocal(moveOp("n1", 200, 100)); // il drag continua
+
+    st.endGesture([moveOp("n1", 200, 100)]);
+
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["n1"]).toMatchObject({ x: 200, y: 100 }); // gesto locale
+    expect(scene.nodes["n3"]).toBeDefined(); // creazione remota NON persa
+    expect(scene.nodes["n2"]).toMatchObject({ x: 333, y: 44 }); // modifica remota NON persa
+    expect(sync.sent).toHaveLength(1); // e sempre un solo op sul filo
+  });
+
+  it("un op remoto arrivato durante il gesto sopravvive a cancelGesture", () => {
+    const st = useScene.getState();
+    st.beginGesture();
+    st.applyLocal(moveOp("n1", 900, 900));
+    st.apply(createOp("n3", 700, 700));
+    st.cancelGesture();
+
+    const scene = useScene.getState().scene!;
+    // annullare il PROPRIO gesto non annulla le modifiche ALTRUI
+    expect(scene.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(scene.nodes["n3"]).toBeDefined();
+    expect(sync.sent).toHaveLength(0);
+  });
+
+  it("un delete remoto durante il gesto non resuscita il nodo con cancelGesture", () => {
+    useScene.getState().setSelection(["n1", "n2"]);
+    const st = useScene.getState();
+    st.beginGesture();
+    st.applyLocal(moveOp("n1", 40, 40));
+    st.apply(deleteOp("n2")); // l'altra tab cancella n2
+
+    st.cancelGesture();
+
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["n2"]).toBeUndefined();
+    // la selezione ripristinata resta potata: niente maniglie su un nodo morto
+    expect(useScene.getState().selection).toEqual(["n1"]);
+  });
+
+  it("un delete remoto durante il gesto pota la selezione anche dopo endGesture", () => {
+    useScene.getState().setSelection(["n1", "n2"]);
+    const st = useScene.getState();
+    st.beginGesture();
+    st.apply(deleteOp("n2"));
+    st.endGesture([moveOp("n1", 40, 40)]);
+
+    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
+    expect(useScene.getState().selection).toEqual(["n1"]);
+  });
+
+  // --- guardie sulla macchina a stati --------------------------------------
+
+  describe("misusi della macchina a stati", () => {
+    // Il misuso deve essere RUMOROSO: si verifica il warning, non solo lo stato.
+    const silenceWarn = () => vi.spyOn(console, "warn").mockImplementation(() => {});
+    let warn: ReturnType<typeof silenceWarn>;
+    beforeEach(() => {
+      warn = silenceWarn();
+    });
+    afterEach(() => {
+      warn.mockRestore();
+    });
+
+    it("beginGesture con un gesto già aperto segnala e tiene lo snapshot INIZIALE", () => {
+      const st = useScene.getState();
+      st.beginGesture();
+      st.applyLocal(moveOp("n1", 40, 40));
+      st.beginGesture(); // misuso: il tool ha dimenticato di chiudere il primo
+      st.applyLocal(moveOp("n1", 90, 90));
+      st.cancelGesture();
+
+      // deve tornare al vero inizio (0,0), non allo stato di metà drag (40,40)
+      expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain("beginGesture");
+    });
+
+    it("beginGesture ripetuto non perde gli op remoti già registrati", () => {
+      const st = useScene.getState();
+      st.beginGesture();
+      st.apply(createOp("n3", 700, 700));
+      st.beginGesture(); // misuso
+      st.cancelGesture();
+
+      expect(useScene.getState().scene!.nodes["n3"]).toBeDefined();
+    });
+
+    it("endGesture senza gesto aperto segnala ma manda comunque gli op", () => {
+      const st = useScene.getState();
+      st.endGesture([moveOp("n1", 40, 40)]); // misuso: nessun beginGesture
+
+      expect(sync.sent).toHaveLength(1);
+      expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+      expect(warn).toHaveBeenCalledTimes(1);
+      expect(String(warn.mock.calls[0][0])).toContain("endGesture");
+    });
+
+    it("endGesture([]) senza gesto aperto è un no-op silenzioso", () => {
+      const before = useScene.getState().scene;
+      useScene.getState().endGesture([]);
+
+      expect(useScene.getState().scene).toEqual(before);
+      expect(sync.sent).toHaveLength(0);
+      expect(warn).not.toHaveBeenCalled();
+    });
   });
 });
