@@ -23,8 +23,21 @@
 // come "cornerRadius" farebbe THROW in fase di serializzazione, non silenzioso
 // ma comunque invisibile all'utente (submit() lo applica in ottimistico PRIMA
 // di serializzare, quindi l'errore finisce in un console.error e la scena
-// mostra un cambiamento che il server non riceverà mai). Vedi
-// applyOp.test.ts per il round-trip che pin-a questa convenzione.
+// mostra un cambiamento che il server non riceverà mai).
+//
+// QUESTO COMMENTO NON È LA GUARDIA -- lo sono i test in maskPaths.test.ts, e
+// vale la pena sapere quali prima di toccare l'elenco:
+//   - it.each(MASK_PATHS) fa passare OGNI path da toJson -> fromJson e pretende
+//     che torni identico: un "cornerRadius" scritto qui non compila un elenco
+//     verde, fa fallire quel caso con l'errore "irreversible" esatto che si
+//     vedrebbe in produzione. Lo stesso caso verifica anche che il path sia un
+//     nome di campo reale di brawt.v1.Node e che applyOp lo applichi davvero.
+//   - una guardia cross-language LEGGE internal/core/apply.go e ne estrae i
+//     letterali dei `case`: aggiungere un path qui (o solo là) senza l'altro
+//     lato fa fallire la suite TypeScript. Go resta l'autorità; questo elenco
+//     esiste per non dover ripetere la stessa lista a ogni call site.
+//   - il tipo mappato PROBE in quel test costringe chi aggiunge un path ad
+//     aggiungergli anche un valore sonda, altrimenti `tsc -b` non passa.
 export const MASK_PATHS = [
   "x",
   "y",
