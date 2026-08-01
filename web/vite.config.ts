@@ -10,4 +10,10 @@ export default defineConfig({
       "/assets-api": { target: "http://localhost:8080", changeOrigin: true },
     },
   },
+  test: {
+    // I pannelli (M1b) sono componenti React: servono DOM + matcher jest-dom.
+    // I test finora sono su funzioni pure e girano invariati sotto jsdom.
+    environment: "jsdom",
+    setupFiles: ["@testing-library/jest-dom/vitest"],
+  },
 });

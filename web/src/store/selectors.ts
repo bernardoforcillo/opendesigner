@@ -1,0 +1,74 @@
+import type { FillLite, NodeLite, SceneState } from "./types";
+
+// Il pannello livelli mostra il PRIMO PIANO in cima alla lista: è l'ordine
+// INVERSO del disegno (che va dal fondo alla cima, orderKey crescente). Un
+// nuovo Object.values() a ogni chiamata: la mappa dei nodi non è ordinata e
+// l'ordine di iterazione non è quello di orderKey, quindi c'è comunque un
+// sort da fare -- niente da guadagnare a farlo "in place".
+export function layersInDrawOrder(scene: SceneState): NodeLite[] {
+  return Object.values(scene.nodes).sort((a, b) => (a.orderKey < b.orderKey ? 1 : a.orderKey > b.orderKey ? -1 : 0));
+}
+
+// Marcatore di "valore misto" per un campo che differisce fra i nodi
+// selezionati. Un Symbol e non una stringa sentinella ("mixed"): un nodo di
+// testo potrebbe legittimamente chiamarsi "mixed", e una stringa letterale
+// sarebbe indistinguibile da quel valore vero. Il Symbol non collide con
+// nessun valore che un NodeLite possa mai contenere.
+export const MIXED = Symbol("mixed");
+export type Mixed = typeof MIXED;
+export type OrMixed<T> = T | Mixed;
+
+export interface SelectionSummary {
+  count: number;
+  name: OrMixed<string>;
+  kind: OrMixed<NodeLite["kind"]>;
+  visible: OrMixed<boolean>;
+  opacity: OrMixed<number>;
+  x: OrMixed<number>;
+  y: OrMixed<number>;
+  width: OrMixed<number>;
+  height: OrMixed<number>;
+  rotation: OrMixed<number>;
+  cornerRadius: OrMixed<number>;
+  fills: OrMixed<FillLite[]>;
+}
+
+function sameFills(a: FillLite[], b: FillLite[]): boolean {
+  return a.length === b.length && a.every((f, i) => f.r === b[i].r && f.g === b[i].g && f.b === b[i].b && f.a === b[i].a);
+}
+
+// Confronta un campo su tutti i nodi selezionati rispetto al PRIMO: appena
+// uno diverge il campo è MIXED, e il resto dei nodi non conta più (short
+// circuit, non serve continuare a leggerli). `eq` di default è `Object.is`
+// (numeri, stringhe, booleani); fills passa `sameFills` perché due array
+// distinti con lo stesso contenuto sono lo STESSO valore per l'utente.
+function summarize<T>(nodes: readonly NodeLite[], get: (n: NodeLite) => T, eq: (a: T, b: T) => boolean = Object.is): OrMixed<T> {
+  const value = get(nodes[0]);
+  for (let i = 1; i < nodes.length; i++) {
+    if (!eq(get(nodes[i]), value)) return MIXED;
+  }
+  return value;
+}
+
+// Riassume la selezione per il pannello proprietà: per ogni campo, il valore
+// comune a tutti i nodi selezionati o MIXED se differisce. null per una
+// selezione vuota (o ridotta a niente perché gli id non esistono più nella
+// scena): il pannello proprietà, in quel caso, resta vuoto/disabilitato.
+export function selectionSummary(scene: SceneState, ids: readonly string[]): SelectionSummary | null {
+  const nodes = ids.map((id) => scene.nodes[id]).filter((n): n is NodeLite => n !== undefined);
+  if (nodes.length === 0) return null;
+  return {
+    count: nodes.length,
+    name: summarize(nodes, (n) => n.name),
+    kind: summarize(nodes, (n) => n.kind),
+    visible: summarize(nodes, (n) => n.visible),
+    opacity: summarize(nodes, (n) => n.opacity),
+    x: summarize(nodes, (n) => n.x),
+    y: summarize(nodes, (n) => n.y),
+    width: summarize(nodes, (n) => n.width),
+    height: summarize(nodes, (n) => n.height),
+    rotation: summarize(nodes, (n) => n.rotation),
+    cornerRadius: summarize(nodes, (n) => n.cornerRadius),
+    fills: summarize(nodes, (n) => n.fills, sameFills),
+  };
+}
