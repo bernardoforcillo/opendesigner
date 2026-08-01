@@ -34,6 +34,36 @@ export interface PendingOp {
   op: Op;
 }
 
+// Un op che il CLIENT ha annullato di sua iniziativa (rollback dopo un submit
+// fallito) ma il cui esito sul server era in realtà IGNOTO: Hub.Submit fa il
+// broadcast PRIMA di rispondere alla unary (internal/server/hub.go), quindi una
+// richiesta morta può benissimo aver lasciato l'op nell'op-log.
+//
+// Finché lo stream non tornava più (M0/M1a prima del ciclo di vita) la
+// differenza non era osservabile: l'eco non sarebbe mai arrivato. Con la
+// riconnessione ci arriva, e dice che il rollback era una BUGIA -- la modifica è
+// durabile, ma l'utente ha letto "annullata" e la sua voce di undo è stata
+// riavvolta. Tenere l'opId (e il messaggio che gli abbiamo mostrato) è ciò che
+// permette di REVOCARE il rollback quando la prova arriva.
+interface DisownedOp {
+  opId: string;
+  message: string;
+}
+
+// Tetto alla memoria dei rollback revocabili. Un op davvero rifiutato dal server
+// non produce nessun eco, quindi la sua voce non verrebbe mai consumata: il
+// tetto è ciò che le fa invecchiare invece di accumularsi per tutta la sessione.
+// Stesso ordine di grandezza dell'outbox (rpc/syncClient.ts): la finestra di
+// dubbio è al più lunga quanto la coda che l'ha prodotta.
+const MAX_DISOWNED = 64;
+
+// Il testo che accompagna una revoca. Non è un errore -- è il contrario: una
+// modifica data per persa era in realtà salvata. Passa da `notice` e non da
+// `lastError` proprio per questo (il banner rosso dice "non salvata e
+// annullata": ripeterlo qui sarebbe la seconda bugia dopo la prima).
+const REVOKED =
+  "una modifica data per persa era in realtà stata salvata: è tornata sul canvas, con il suo annulla";
+
 // La FORMA di una transizione degli stack: cosa ha spinto, cosa ha tolto, cosa
 // ha svuotato. Tenere la forma e non solo il risultato è ciò che permette di
 // RICOSTRUIRE la transizione su un PREFISSO dei suoi op -- il caso, tutt'altro
@@ -382,6 +412,16 @@ interface SceneStore {
   // peggio di nessun rollback: la modifica sparirebbe dallo schermo senza che
   // nessuno sappia perché.
   lastError: string | null;
+  // Notizia NON di errore da mostrare all'utente. Oggi ne esiste una sola: la
+  // revoca di un rollback (vedi DisownedOp). Serve un canale separato da
+  // `lastError` perché il messaggio dice l'OPPOSTO di quello -- "era salvata" --
+  // e riusare il banner rosso vorrebbe dire annunciare una buona notizia con la
+  // parola "annullata" davanti.
+  notice: string | null;
+  // Op annullati in locale il cui esito sul server era ignoto, in ordine di
+  // rollback e con il messaggio che abbiamo mostrato. Un eco tardivo li revoca
+  // (vedi apply). Bounded a MAX_DISOWNED.
+  disowned: DisownedOp[];
   // Stato del collegamento col server, scritto da SyncClient. È lo stream
   // Subscribe a definirlo: è l'UNICA cosa che conferma gli op e svuota
   // `pending` (vedi apply), quindi quando non c'è ogni modifica resta
@@ -425,13 +465,14 @@ interface SceneStore {
   // Vedi HistoryMark: è ciò che rende un rollback capace di riparare anche la
   // storia, non solo la vista.
   history: HistoryMark[];
-  setScene: (s: SceneState | null) => void;
+  setScene: (s: SceneState | null, discardedReason?: string) => void;
   setCamera: (c: Camera) => void;
   setSync: (s: OpSink | null) => void;
   apply: (op: Op) => void;
   applyPending: (op: Op) => void;
-  rejectPending: (opId: string, message: string) => void;
+  rejectPending: (opId: string, message: string, revocable?: boolean) => void;
   clearError: () => void;
+  clearNotice: () => void;
   setConnection: (status: ConnectionStatus, message?: string | null) => void;
   applyLocal: (op: Op) => void;
   beginGesture: () => void;
@@ -463,6 +504,8 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   confirmed: null,
   pending: [],
   lastError: null,
+  notice: null,
+  disowned: [],
   connection: "connecting",
   syncError: null,
   camera: { x: 0, y: 0, zoom: 1 },
@@ -479,9 +522,42 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // vista e confermato COINCIDONO e non c'è nulla in volo. Unico modo sano di
   // mettere una scena nello store (e l'unico che mantiene l'invariante
   // confirmed != null <=> scene != null).
-  // `history` si svuota con `pending`: i mark riferiscono opId di quella coda,
-  // e senza la coda nessun eco potrebbe più confermarli.
-  setScene: (s) => set({ scene: s, confirmed: s, pending: [], lastError: null, history: [] }),
+  //
+  // È una SOSTITUZIONE IN BLOCCO, e da quando esiste la risincronizzazione di
+  // metà sessione (CodeOutOfRange -> rpc/syncClient.ts::open) non è più solo il
+  // bootstrap: tutto ciò che descriveva il documento PRECEDENTE va via insieme
+  // a lui, non solo la coda.
+  //  - `pending` e `history`: i mark riferiscono opId di quella coda, e senza la
+  //    coda nessun eco potrebbe più confermarli;
+  //  - `undoStack`/`redoStack`: le loro voci sono INVERSI calcolati su uno stato
+  //    che lo snapshot ha appena buttato via. Lasciarle in piedi vuol dire un
+  //    Ctrl+Z che manda il deleteNode di un nodo che qui non esiste (o che
+  //    rimette a (40,40) un nodo che lo snapshot dà altrove), per di più senza
+  //    più il mark che permetteva a un rifiuto di riavvolgerle;
+  //  - `disowned`: gli echi che potevano revocare quei rollback appartengono a
+  //    una history che il server ha compattato e non rimanderà.
+  // La selezione invece si POTA (non si svuota): gli id che lo snapshot ancora
+  // contiene restano legittimamente selezionati.
+  //
+  // `discardedReason`, se passato, è il messaggio da mostrare quando la
+  // sostituzione butta via lavoro non confermato: senza, le modifiche
+  // ottimistiche sparirebbero dal canvas con `lastError` nullo -- nessun banner,
+  // nessuna spiegazione.
+  setScene: (s, discardedReason) =>
+    set((st) => ({
+      scene: s,
+      confirmed: s,
+      pending: [],
+      history: [],
+      undoStack: [],
+      redoStack: [],
+      canUndo: false,
+      canRedo: false,
+      disowned: [],
+      notice: null,
+      selection: s ? pruneSelection(st.selection, s) : [],
+      lastError: discardedReason !== undefined && st.pending.length > 0 ? discardedReason : null,
+    })),
   setCamera: (c) => set({ camera: c }),
   setSync: (s) => set({ sync: s }),
 
@@ -500,11 +576,43 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   apply: (op) =>
     set((st) => {
       if (!st.confirmed) return st;
-      return {
+      const next = {
         ...rebuild(st, applyOp(st.confirmed, op), dropPending(st.pending, op.opId)),
         // L'op è durabile: la voce di undo che l'aveva prodotto smette di
         // essere annullabile da un rollback (vedi HistoryMark).
         history: confirmHistory(st.history, op.opId),
+      };
+      const i = st.disowned.findIndex((d) => d.opId === op.opId);
+      if (i < 0) return next;
+      // REVOCA DEL ROLLBACK. Questo op l'avevamo dato per perso e annullato in
+      // locale, ma eccolo tornare dall'op-log: era durabile fin dall'inizio (la
+      // richiesta HTTP è morta DOPO il broadcast). La vista si ripara da sola --
+      // l'op entra in `confirmed` qui sopra -- ma le altre due conseguenze del
+      // rollback no:
+      //  - il banner ha detto "modifica non salvata e annullata": va ritirato,
+      //    e solo se è ancora QUELLO (nel frattempo può essere arrivato un
+      //    rifiuto vero, che non va nascosto);
+      //  - la voce di undo è stata riavvolta, quindi una modifica che è sullo
+      //    schermo e sul server non è più annullabile, e il prossimo Ctrl+Z
+      //    disferebbe in silenzio il gesto PRECEDENTE. La ricostruiamo
+      //    dall'inverso calcolato sul confermato PRIMA di applicare l'op:
+      //    è esattamente quello che endGesture avrebbe messo sullo stack.
+      // Il redo torna vuoto: l'op è passato per davvero, quindi le voci di redo
+      // invertono uno stato che non esiste più (stessa regola di applyMark per i
+      // gesti). Sulla forma: la voce ricostruita è per-op, non per-gesto -- un
+      // gruppo revocato op per op lascia una voce per op invece di una sola.
+      // Annullabile in più passi, ma annullabile.
+      const inv = invertOp(st.confirmed, op);
+      const undoStack = inv ? [...st.undoStack, [inv]] : st.undoStack;
+      return {
+        ...next,
+        disowned: [...st.disowned.slice(0, i), ...st.disowned.slice(i + 1)],
+        undoStack,
+        canUndo: undoStack.length > 0,
+        redoStack: [],
+        canRedo: false,
+        lastError: st.lastError === st.disowned[i].message ? null : st.lastError,
+        notice: REVOKED,
       };
     }),
 
@@ -540,7 +648,13 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // lui, cioè la modifica ottimistica sparisce dallo schermo. In M0 restava lì
   // per sempre, con una sola riga di console.error, e spariva davvero solo al
   // reload successivo.
-  rejectPending: (opId, message) =>
+  //
+  // `revocable` = "il server potrebbe averlo applicato lo stesso": è vero solo
+  // per l'op che era DAVVERO in volo quando la richiesta è morta (vedi
+  // DisownedOp). Per tutto il resto -- la coda dietro, che non è mai partita, e
+  // il rifiuto per outbox piena -- non esiste nessun eco possibile, quindi
+  // niente da revocare.
+  rejectPending: (opId, message, revocable = false) =>
     set((st) => {
       const i = st.pending.findIndex((p) => p.opId === opId);
       // Non è (più) in coda = è GIÀ CONFERMATO: l'eco è arrivato prima che la
@@ -557,11 +671,18 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       return {
         ...rebuild(st, st.confirmed, pending),
         ...(revertHistory(st.history, opId) ?? {}),
+        // In coda (la più vecchia esce per prima): un op rifiutato davvero dal
+        // server non riceverà mai un eco, quindi la sua voce resterebbe qui per
+        // sempre se non ci fosse il tetto.
+        disowned: revocable
+          ? [...st.disowned, { opId, message }].slice(-MAX_DISOWNED)
+          : st.disowned,
         lastError: message,
       };
     }),
 
   clearError: () => set({ lastError: null }),
+  clearNotice: () => set({ notice: null }),
 
   // Stato dello stream, scritto da SyncClient. Stato e motivo si muovono
   // INSIEME (una sola set): "connected" con un messaggio di errore appeso, o

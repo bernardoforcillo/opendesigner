@@ -60,6 +60,18 @@ function backoffMs(attempt: number): number {
 const CLOSED_BY_SERVER = "il server ha chiuso lo stream degli aggiornamenti";
 const SEQUENCE_GAP = "buco nella sequenza degli aggiornamenti";
 
+// Messaggio del rollback quando lo snapshot autorevole rimpiazza il documento a
+// metà sessione: la coda in volo non è più collocabile e sparisce dal canvas.
+// Senza un messaggio l'utente vedrebbe le proprie modifiche svanire con la
+// pillola su "connesso" e nessuna spiegazione da nessuna parte.
+const RESYNCED =
+  "il server ha risincronizzato il documento e le modifiche non ancora confermate sono andate perse";
+
+// Messaggio del rifiuto quando il client si è arreso: da qui in poi nessun op
+// può più essere confermato, quindi accettarlo vorrebbe dire tenerlo sullo
+// schermo (e in coda) fino al reload che lo cancellerà.
+const GAVE_UP = "connessione al server persa: ricarica la pagina per riprendere a lavorare";
+
 // Il client tiene lo stato CONFERMATO (quello che il server ha applicato e
 // riemesso) più gli op PENDING (submittati, non ancora tornati indietro). La
 // vista è confermato + pending. Ogni record che arriva da Subscribe fa avanzare
@@ -100,6 +112,23 @@ export class SyncClient {
   // continua a scrivere nello store di una app smontata.
   private started = false;
   private stopped = false;
+  // GENERAZIONE del documento. Cambia a ogni risincronizzazione (open() dal ramo
+  // CodeOutOfRange): lo snapshot sostituisce il documento in blocco e svuota
+  // `pending`, quindi tutto ciò che era in volo appartiene a un mondo che non
+  // esiste più. Una richiesta partita nella generazione precedente non deve poter
+  // decidere niente quando torna -- né togliere la testa dalla coda (che nel
+  // frattempo è un ALTRO op) né, peggio, leggere `pending` per dedurre se è
+  // atterrata: dopo un resync `pending` è vuoto e `landed()` direbbe "sì" per
+  // qualunque op, riaprendo la strada agli op costruiti su una premessa che il
+  // server non ha mai raggiunto.
+  private epoch = 0;
+  // Il client si è arreso (tentativi di riconnessione esauriti). Non è `stopped`:
+  // il posto di trasporto nello store resta NOSTRO -- toglierlo farebbe prendere
+  // a endGesture il ramo senza filo (`get().apply(op)`), che applica le modifiche
+  // in locale come se fossero confermate e non le manda a nessuno. Qui invece
+  // ogni submit viene RIFIUTATO visibilmente: stesso rollback e stesso banner di
+  // un rifiuto del server.
+  private givenUp = false;
   // Il controller della subscription CORRENTE: è il solo modo di chiudere
   // davvero la richiesta HTTP: senza abort la fetch resta aperta, il server
   // continua a tenere il subscriber registrato e il for-await non finisce mai.
@@ -110,12 +139,9 @@ export class SyncClient {
   // Tentativi consecutivi SENZA progresso (vedi RECONNECT_STABLE_MS).
   private attempts = 0;
 
-  constructor(private docId: string, private clientId: string) {
-    // Lo store deve poter mandare op da solo (fine gesto, e in seguito undo):
-    // il client si registra come trasporto appena esiste, così l'app non deve
-    // ricordarsi di collegarli a mano.
-    useScene.getState().setSync(this);
-  }
+  // Costruire un client non ha effetti: la registrazione come trasporto avviene
+  // in start() (vedi lì il perché).
+  constructor(private docId: string, private clientId: string) {}
 
   submit(op: Op) {
     if (this.stopped) {
@@ -132,6 +158,16 @@ export class SyncClient {
     // Subscribe. Resta SINCRONO -- è solo l'invio che viene serializzato, il
     // feedback sullo schermo no.
     useScene.getState().applyPending(op);
+    if (this.givenUp) {
+      // Arreso: lo stream non tornerà più, quindi NIENTE potrà più confermare
+      // questo op. Mandarlo comunque lo farebbe applicare in modo durabile sul
+      // server mentre qui resta per sempre in `pending` -- rigiocato da viewOf a
+      // ogni aggiornamento dello store (quadratico sulla lunghezza della
+      // sessione) e con un mark di storia che non si deciderà mai. Rifiutarlo
+      // costa una modifica; accettarlo costa la sessione.
+      useScene.getState().rejectPending(op.opId, GAVE_UP);
+      return;
+    }
     if (this.outbox.length >= MAX_OUTBOX) {
       // Coda satura: la testa non si muove da un pezzo. Rifiutiamo il NUOVO op
       // invece di buttare via quelli già accodati -- sono l'intento più
@@ -177,6 +213,10 @@ export class SyncClient {
       // nessun rollback tocca più lo store (vedi il catch).
       while (this.outbox.length > 0 && !this.stopped) {
         const op = this.outbox[0];
+        // La generazione in cui questa richiesta parte. Se cambia mentre è in
+        // volo, il documento è stato sostituito da uno snapshot: questa
+        // richiesta non ha più niente da dire su una coda che non è più la sua.
+        const epoch = this.epoch;
         try {
           await docClient.submitOp(
             { docId: this.docId, clientId: this.clientId, op },
@@ -187,6 +227,11 @@ export class SyncClient {
           // client conosce l'ORDINE che il server ha deciso rispetto agli op
           // altrui. Qui serve solo a sapere che è arrivato, cioè che il
           // prossimo può partire senza scavalcarlo.
+          //
+          // ...a meno che nel frattempo non sia arrivato un resync: la coda è
+          // stata svuotata e in testa c'è, semmai, un op costruito sul NUOVO
+          // documento. Uno shift() qui butterebbe via quello sbagliato.
+          if (this.epoch !== epoch) continue;
           this.outbox.shift();
         } catch (err) {
           // POLITICA IN CASO DI FALLIMENTO: la coda si FERMA e si svuota.
@@ -214,6 +259,13 @@ export class SyncClient {
           // rollback, e scriverlo mentre un client nuovo ha già preso il posto
           // farebbe sparire dalla scena un op che nemmeno è suo.
           if (this.stopped) return;
+          // Resync mentre la richiesta era in volo: la coda è già stata buttata
+          // via e l'utente ha già visto il rollback (setScene con il suo
+          // messaggio). Soprattutto: `landed()` qui NON è utilizzabile, perché
+          // legge `pending` -- che il resync ha svuotato -- e risponderebbe
+          // "atterrato" a qualunque op, facendo partire la coda dietro come se
+          // la sua premessa fosse vera.
+          if (this.epoch !== epoch) continue;
           if (this.landed(op)) {
             // La richiesta è morta DOPO che il server aveva applicato e
             // ribroadcastato l'op: l'eco è già arrivato, l'op è durabile. La
@@ -227,8 +279,14 @@ export class SyncClient {
           const dropped = this.outbox.splice(0, this.outbox.length);
           // Dal fondo: così nessuno stato intermedio mostra un op applicato
           // sopra una base a cui manca il suo predecessore.
+          //
+          // Solo la TESTA è revocabile (store.ts::DisownedOp): è l'unica che era
+          // davvero in volo, quindi l'unica che il server può aver applicato
+          // nonostante la richiesta sia morta. La coda dietro non è mai partita:
+          // nessun eco potrà mai arrivare, e segnarla revocabile occuperebbe
+          // solo posti nella memoria dei rollback.
           for (let i = dropped.length - 1; i >= 0; i--) {
-            useScene.getState().rejectPending(dropped[i].opId, message);
+            useScene.getState().rejectPending(dropped[i].opId, message, i === 0);
           }
         }
       }
@@ -242,6 +300,22 @@ export class SyncClient {
   async start() {
     if (this.started || this.stopped) return;
     this.started = true;
+    // REGISTRAZIONE come trasporto dello store. Qui e non nel costruttore: il
+    // posto è uno solo e chi si registra per ULTIMO lo prende, quindi
+    // registrarsi alla costruzione vuol dire che un client mai avviato può
+    // rubare il posto a uno vivo -- e il suo stop(), che azzera il posto solo se
+    // è ancora suo, lo trova suo e lascia l'editor senza trasporto.
+    //
+    // Non è teorico: è la forma del bootstrap di ui/App.tsx al primo caricamento
+    // (nessun `brawt.docId` in localStorage) sotto StrictMode. I due giri
+    // dell'effetto aspettano ciascuno la propria createDocument; se la seconda
+    // risposta arriva per prima, il client del PRIMO giro viene costruito dopo
+    // che quello del secondo si è già registrato, e subito fermato dalla
+    // guardia `if (cancelled)`. Da lì in poi `sync` è null, ogni endGesture
+    // prende il ramo senza filo (store.ts: `get().apply(op)`) e ogni modifica
+    // viene applicata in locale come confermata, mai inviata e persa al reload,
+    // con la pillola che continua a dire "connesso".
+    useScene.getState().setSync(this);
     await this.open();
     // stop() può essere arrivato durante l'await (unmount rapido): non avviare
     // un loop che nessuno fermerà più.
@@ -275,10 +349,32 @@ export class SyncClient {
   // loro eco arriverà e li rimetterà nella scena -- ma il client non ha più
   // modo di collocarli rispetto a uno snapshot che non sa in quale punto della
   // storia si trovi.
-  private async open() {
+  //
+  // `resync` distingue il bootstrap dalla sostituzione a metà sessione, che è
+  // un'altra cosa: c'è un documento vivo sotto, con una coda, una storia e --
+  // fuori dallo store -- un OUTBOX. Svuotare la coda senza svuotare anche
+  // l'outbox li disallinea, e da lì in poi `landed()` ("non è in pending, quindi
+  // il server ce l'ha") risponde "atterrato" a op che non hanno mai lasciato il
+  // browser. La generazione (`epoch`) è ciò che rende quel disallineamento
+  // impossibile anche per la richiesta già in volo.
+  //
+  // CodeOutOfRange non è ipotetico: l'hub compatta ogni 256 op
+  // (internal/server/hub.go: snapshotEveryOps) e un hub riavviato riparte con
+  // historyBase al seq caricato (internal/server/bundle.go), quindi basta
+  // riprendere una sessione da un punto più vecchio.
+  private async open(resync = false) {
     const open = await docClient.openDocument({ docId: this.docId });
     if (this.stopped) return;
-    if (open.snapshot) useScene.getState().setScene(fromDocument(open.snapshot));
+    if (resync) {
+      this.epoch += 1;
+      // Questi op non sono mai partiti e non partiranno: sono stati costruiti
+      // su un documento che lo snapshot ha appena sostituito. setScene li toglie
+      // dalla vista (e mostra il perché); qui si toglie il loro invio.
+      this.outbox.length = 0;
+    }
+    if (open.snapshot) {
+      useScene.getState().setScene(fromDocument(open.snapshot), resync ? RESYNCED : undefined);
+    }
     this.seq = Number(open.seq);
     useScene.getState().setConnection("connected");
   }
@@ -329,6 +425,18 @@ export class SyncClient {
       if (Date.now() - openedAt >= RECONNECT_STABLE_MS) this.attempts = 0;
       this.attempts += 1;
       if (this.attempts > MAX_RECONNECT_ATTEMPTS) {
+        // ARRESA. Il loop finisce qui, e con lui l'unica cosa che può confermare
+        // un op: da adesso `submit()` rifiuta invece di accodare (vedi
+        // `givenUp`). Senza questo il client resta "vivo a metà" -- accetta op,
+        // li manda, il server li applica in modo durabile -- e la coda in
+        // attesa, la storia in dubbio e il replay di viewOf crescono per tutto
+        // il resto della sessione, senza che MAX_OUTBOX possa intervenire
+        // (l'outbox si svuota a ogni successo, `pending` no).
+        //
+        // Quello che è GIÀ in coda parte lo stesso: è al più MAX_OUTBOX op, ha
+        // già superato il punto di non ritorno del rollback, e il server è
+        // l'unico posto in cui possa ancora sopravvivere al reload.
+        this.givenUp = true;
         useScene.getState().setConnection("error", reason);
         return;
       }
@@ -338,7 +446,9 @@ export class SyncClient {
       if (this.stopped) return;
       if (reopen) {
         try {
-          await this.open();
+          // RISINCRONIZZAZIONE, non bootstrap: c'è un documento vivo che lo
+          // snapshot sta per sostituire (vedi open()).
+          await this.open(true);
         } catch (err) {
           // Se nemmeno OpenDocument risponde, il server è giù: il giro
           // successivo di subscribe fallirà a sua volta e consumerà un

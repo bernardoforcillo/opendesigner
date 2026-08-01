@@ -163,6 +163,7 @@ let live: SyncClient | null = null;
 function resetStore() {
   useScene.setState({
     scene: null, confirmed: null, pending: [], lastError: null, syncError: null,
+    notice: null, disowned: [],
     connection: "connecting",
     selection: [], marquee: null, gesture: null, sync: null,
     undoStack: [], redoStack: [], canUndo: false, canRedo: false, history: [],
@@ -867,6 +868,242 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     const attempts = opened.length;
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW * 10);
     expect(opened).toHaveLength(attempts);
+  });
+
+  // --- risincronizzazione a metà sessione ------------------------------------
+  // Il ramo CodeOutOfRange è il primo posto in cui setScene viene chiamato con
+  // un documento GIÀ VIVO sotto: c'è una coda in volo, una storia in dubbio e --
+  // fuori dallo store -- un outbox. Svuotare solo una parte di quella roba le
+  // disallinea, e il disallineamento non è visibile finché non arriva la
+  // risposta della richiesta rimasta in volo.
+  //
+  // Non è un caso di laboratorio: l'hub compatta ogni 256 op
+  // (internal/server/hub.go, snapshotEveryOps) e un hub riavviato riparte con
+  // historyBase al seq caricato (internal/server/bundle.go), quindi qualunque
+  // client che riprenda da più indietro ci finisce dentro.
+
+  it("una risincronizzazione svuota anche l'OUTBOX: la coda dietro non parte per un fantasma", async () => {
+    const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+
+    const sent: string[] = [];
+    let killFirst!: (e: unknown) => void;
+    rpc.submitOp.mockReset();
+    rpc.submitOp.mockImplementation((req: { op: Op }) => {
+      sent.push(req.op.opId);
+      if (req.op.opId === "op-1") {
+        return new Promise((_res, rej) => {
+          killFirst = rej;
+        });
+      }
+      return Promise.resolve({ ack: { opId: req.op.opId, seq: 2n } });
+    });
+
+    sync.submit(moveOp("op-1", "n1", 100, 0));
+    sync.submit(moveOp("op-2", "n1", 200, 0));
+    await settle();
+    expect(sent).toEqual(["op-1"]); // op-2 aspetta il suo turno
+    expect(useScene.getState().pending).toHaveLength(2);
+
+    // La history da cui volevamo ripartire è stata compattata: l'unica via
+    // d'uscita è riaprire il documento e adottarne lo snapshot.
+    rpc.openDocument.mockResolvedValue({
+      snapshot: snapshotOf({ n1: rectNode("n1", 7, 0) }), seq: 42n,
+    });
+    last(opened).stream.fail(new ConnectError("since_seq too old", Code.OutOfRange));
+    await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
+
+    // Lo snapshot ha sostituito il documento: le due modifiche ottimistiche sono
+    // sparite dal canvas. L'utente deve poterlo LEGGERE da qualche parte --
+    // prima di questo fix sparivano con `lastError` nullo e la pillola su
+    // "connesso", cioè senza nessuna spiegazione da nessuna parte.
+    expect(useScene.getState().pending).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 7 });
+    expect(useScene.getState().lastError).not.toBeNull();
+
+    // ...e solo ADESSO muore la richiesta di op-1. `pending` è vuoto, quindi
+    // `landed()` ("non è più in coda, quindi il server ce l'ha") direbbe di sì
+    // per un op che non ha mai lasciato il browser, e op-2 -- costruito su
+    // x=100, uno stato che il server non ha mai avuto -- partirebbe lo stesso,
+    // in silenzio e in modo durabile.
+    killFirst(new ConnectError("connection closed", Code.Unavailable));
+    await settle();
+
+    expect(sent).toEqual(["op-1"]);
+    expect(rpc.submitOp).toHaveBeenCalledTimes(1);
+  });
+
+  it("una risincronizzazione butta via anche undo/redo: invertivano un documento sostituito", async () => {
+    const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+
+    const st = useScene.getState();
+    st.beginGesture();
+    st.endGesture([moveOp("op-1", "n1", 40, 40)]);
+    await settle();
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().canUndo).toBe(true);
+    expect(useScene.getState().history).toHaveLength(1);
+
+    // Lo snapshot non contiene nemmeno più il nodo su cui la voce di undo
+    // lavorava (un altro client l'ha cancellato prima della compattazione).
+    rpc.openDocument.mockResolvedValue({
+      snapshot: snapshotOf({ n2: rectNode("n2", 0, 0) }), seq: 42n,
+    });
+    last(opened).stream.fail(new ConnectError("since_seq too old", Code.OutOfRange));
+    await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
+
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    // Una voce sopravvissuta manderebbe l'inverso di un op calcolato su uno
+    // stato che lo snapshot ha appena buttato via -- e senza il suo mark
+    // (`history` è stata svuotata) nemmeno un rifiuto potrebbe più riavvolgerla.
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().history).toHaveLength(0);
+  });
+
+  // --- revoca del rollback ----------------------------------------------------
+  // Hub.Submit fa il broadcast PRIMA di rispondere alla unary: una richiesta
+  // morta non dice che l'op non è stato applicato. Finché lo stream non tornava
+  // più la differenza non era osservabile; con la riconnessione l'eco arriva, e
+  // dice che il rollback era una bugia.
+
+  it("l'eco TARDIVO di un op annullato revoca il rollback: modifica e annulla tornano", async () => {
+    const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+
+    let killSubmit!: (e: unknown) => void;
+    rpc.submitOp.mockReset();
+    rpc.submitOp.mockImplementation(
+      () =>
+        new Promise((_res, rej) => {
+          killSubmit = rej;
+        }),
+    );
+
+    const st = useScene.getState();
+    st.beginGesture();
+    st.endGesture([moveOp("op-mine", "n1", 200, 0)]);
+    await settle();
+    expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-mine"]);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    // Riavvio del server: muore lo stream E la richiesta in volo. L'op però può
+    // benissimo essere già nell'op-log.
+    last(opened).stream.close();
+    await settle();
+    killSubmit(new ConnectError("connection closed", Code.Unavailable));
+    await settle();
+
+    // Politica invariata: rollback visibile (client-fix-3). Quello che cambia è
+    // che adesso è REVOCABILE.
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().lastError).toContain("connection closed");
+
+    // La riconnessione rigioca il backlog: l'op era sul server dall'inizio.
+    await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
+    expect(opened).toHaveLength(2);
+    last(opened).stream.push(applied(1, CLIENT, moveOp("op-mine", "n1", 200, 0)));
+    await settle();
+
+    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 200 });
+    // La modifica è durabile e di nuovo sullo schermo: il banner che la dava per
+    // annullata va ritirato, e va detto che è invece salvata.
+    expect(useScene.getState().lastError).toBeNull();
+    expect(useScene.getState().notice).not.toBeNull();
+    // E deve tornare ANNULLABILE: senza voce, il prossimo Ctrl+Z disferebbe in
+    // silenzio il gesto precedente invece di questo.
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().canUndo).toBe(true);
+
+    // ...e la voce ripristinata annulla davvero QUESTA modifica.
+    useScene.getState().undo();
+    await settle();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+  });
+
+  it("un op RIFIUTATO dal server non è revocabile: nessun eco potrà mai arrivare", async () => {
+    const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+    const net = reorderingTransport();
+    net.failOn("op-1", new ConnectError("node already exists", Code.InvalidArgument));
+
+    sync.submit(moveOp("op-1", "n1", 100, 0));
+    sync.submit(moveOp("op-2", "n1", 200, 0));
+    await settle();
+    // op-1 rifiutato dal server, op-2 mai partito: due rollback, ma solo il
+    // primo era in volo, quindi solo il primo ha un esito ignoto.
+    expect(useScene.getState().pending).toHaveLength(0);
+    expect(useScene.getState().disowned.map((d) => d.opId)).toEqual(["op-1"]);
+
+    last(opened).stream.close();
+    await settle();
+  });
+
+  // --- ciclo di vita e posto di trasporto -------------------------------------
+
+  it("costruire un client non gli dà il posto di trasporto: fermarlo non stacca quello vivo", async () => {
+    const { sync } = await bootLive({ n1: rectNode("n1", 0, 0) });
+    expect(useScene.getState().sync).toBe(sync);
+
+    // È la forma del bootstrap di ui/App.tsx al primo caricamento (nessun
+    // `brawt.docId` in localStorage) sotto StrictMode: i due giri dell'effetto
+    // aspettano ciascuno la propria createDocument, e se la seconda risposta
+    // arriva per prima il client del PRIMO giro viene costruito DOPO che quello
+    // del secondo si è già registrato.
+    const stale = new SyncClient("doc1", CLIENT);
+    expect(useScene.getState().sync).toBe(sync);
+
+    // ...e subito fermato dalla guardia `if (cancelled)` (App.tsx). La guardia
+    // "azzera il posto solo se è ancora mio" non basta se il costruttore lo ha
+    // appena rubato.
+    stale.stop();
+    expect(useScene.getState().sync).toBe(sync);
+
+    // Senza trasporto ogni gesto prenderebbe il ramo `get().apply(op)` di
+    // endGesture: applicato in locale come se fosse confermato, mai inviato,
+    // perso al reload -- con la pillola che continua a dire "connesso".
+    const st = useScene.getState();
+    st.beginGesture();
+    st.endGesture([moveOp("op-1", "n1", 40, 40)]);
+    await settle();
+    expect(rpc.submitOp).toHaveBeenCalledTimes(1);
+    expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-1"]);
+  });
+
+  it("arreso vuol dire fermo: gli op submittati dopo la resa vengono RIFIUTATI, non accodati", async () => {
+    const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+
+    let guard = 0;
+    while (useScene.getState().connection !== "error" && guard < 40) {
+      last(opened).stream.fail(new ConnectError("connection refused", Code.Unavailable));
+      await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
+      guard += 1;
+    }
+    expect(useScene.getState().connection).toBe("error");
+    const before = rpc.submitOp.mock.calls.length;
+
+    // Da qui in poi lo stream non torna: NIENTE potrà più confermare un op.
+    // Accettarli vorrebbe dire mandarli (il server li applica in modo durabile)
+    // e tenerli in `pending` per sempre -- rigiocati da viewOf a ogni
+    // aggiornamento dello store, con un mark di storia che non si decide mai.
+    // MAX_OUTBOX non è un argine: l'outbox si svuota a ogni successo.
+    const st = useScene.getState();
+    for (let i = 0; i < 5; i++) {
+      st.beginGesture();
+      st.endGesture([moveOp(`op-${i}`, "n1", i + 1, 0)]);
+    }
+    await settle();
+
+    expect(rpc.submitOp).toHaveBeenCalledTimes(before);
+    expect(useScene.getState().pending).toHaveLength(0);
+    expect(useScene.getState().history).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().lastError).toContain("ricarica");
+
+    // Il posto di trasporto resta NOSTRO: liberarlo (stop()) farebbe applicare
+    // ogni gesto in locale come confermato senza mandarlo a nessuno, che è la
+    // perdita silenziosa che il rifiuto qui sopra serve a evitare.
+    expect(useScene.getState().sync).toBe(sync);
   });
 
   it("CodeOutOfRange (history compattata) fa RIAPRIRE il documento e ripartire dal seq dello snapshot", async () => {

@@ -60,6 +60,12 @@ export function App() {
   // Sottoscrizioni con selettore: il resto della UI non si ridisegna a ogni op.
   const lastError = useScene((s) => s.lastError);
   const clearError = useScene((s) => s.clearError);
+  // Il contrario di lastError: una modifica data per persa che si è invece
+  // rivelata salvata (store.ts: revoca del rollback). Va detto, e va detto in un
+  // banner DIVERSO -- annunciarlo in quello rosso, sotto la scritta "modifica
+  // non salvata e annullata", sarebbe la seconda bugia dopo la prima.
+  const notice = useScene((s) => s.notice);
+  const clearNotice = useScene((s) => s.clearNotice);
   // Stato del collegamento (store.ts::ConnectionStatus) e il suo perché. Non è
   // dismissibile come lastError: la condizione non passa perché l'utente chiude
   // un avviso, e finché dura le modifiche restano ottimistiche -- deve poterlo
@@ -274,6 +280,21 @@ export function App() {
             aria-label="Chiudi l'avviso"
             className="rounded px-2 py-0.5 text-sm hover:bg-red-100"
             onPress={clearError}
+          >
+            Chiudi
+          </Button>
+        </div>
+      )}
+      {notice && (
+        <div
+          role="status"
+          className="flex items-center gap-2 border-b border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900"
+        >
+          <span className="flex-1">{notice}</span>
+          <Button
+            aria-label="Chiudi l'avviso"
+            className="rounded px-2 py-0.5 text-sm hover:bg-sky-100"
+            onPress={clearNotice}
           >
             Chiudi
           </Button>
