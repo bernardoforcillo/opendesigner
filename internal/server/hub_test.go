@@ -1,6 +1,7 @@
 package server
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"path/filepath"
@@ -221,9 +222,13 @@ func TestSubscribeCatchUpBeyondChannelCapacityDoesNotBlock(t *testing.T) {
 }
 
 // finding: core.Apply mutated h.doc in place before h.bundle.Append
-// persisted the record; if Append failed, the mutation and h.seq increment
-// were never rolled back, so a failed Submit still silently diverged the
-// in-memory document from the persisted oplog.
+// persisted the record; if Append failed, the mutation was never rolled
+// back, so a failed Submit still silently diverged the in-memory document
+// from the persisted oplog.
+//
+// The seq is a separate story (see TestFailedAppendBurnsTheSeqSoARetryNeverReusesIt):
+// it MUST change even though the document must not, because leaving it
+// unchanged is exactly what lets a later, successful Submit reuse it.
 func TestSubmitDoesNotMutateDocWhenAppendFails(t *testing.T) {
 	dir := t.TempDir()
 	b, err := store.Open(dir, "doc1", "Untitled")
@@ -249,14 +254,158 @@ func TestSubmitDoesNotMutateDocWhenAppendFails(t *testing.T) {
 	}
 
 	afterDoc, afterSeq := h.Snapshot()
-	if afterSeq != beforeSeq {
-		t.Fatalf("seq changed after a failed Submit: before=%d after=%d", beforeSeq, afterSeq)
+	if afterSeq != beforeSeq+1 {
+		t.Fatalf("seq after a failed Submit = %d, want %d (burned exactly once so a later Submit cannot reuse it)", afterSeq, beforeSeq+1)
 	}
 	if len(afterDoc.GetNodes()) != len(beforeDoc.GetNodes()) {
 		t.Fatalf("doc node count changed after a failed Submit: before=%d after=%d", len(beforeDoc.GetNodes()), len(afterDoc.GetNodes()))
 	}
 	if _, exists := afterDoc.GetNodes()["n1"]; exists {
 		t.Fatal("node n1 present in the document despite its Submit failing to persist")
+	}
+}
+
+// flakyAppendBundle wraps a real *store.Bundle and can be told to fail the
+// NEXT Append call with an injected error, without the underlying bundle's
+// Append ever being invoked -- the on-disk oplog is left completely
+// untouched by that call, exactly modelling "Append rolled itself back
+// cleanly". Submit cannot distinguish that case from "the bytes actually
+// landed despite the error" (see Submit's comment on why it burns the seq
+// unconditionally), so this fake is enough to pin the behaviour that
+// matters: whichever really happened on disk, seq 2 must never be reissued.
+type flakyAppendBundle struct {
+	*store.Bundle
+	failNext bool
+}
+
+func (f *flakyAppendBundle) Append(rec *brawtv1.OpRecord) error {
+	if f.failNext {
+		f.failNext = false
+		return errors.New("injected append failure")
+	}
+	return f.Bundle.Append(rec)
+}
+
+// finding (IMPORTANT, hub.go): a failed Append did not burn the seq, so the
+// next successful Submit reused it -- producing two oplog records that both
+// claim the same seq. Load's replay keeps whichever record comes first in
+// the file and silently skips the other (its skip is "seq <= running seq",
+// not "seq == running seq + 1"), regardless of which Submit the server
+// actually told the client had succeeded.
+func TestFailedAppendBurnsTheSeqSoARetryNeverReusesIt(t *testing.T) {
+	dir := t.TempDir()
+	b, err := store.Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	fb := &flakyAppendBundle{Bundle: b}
+	h, err := newHub(fb)
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if rec, err := h.Submit("c1", createOp("n1")); err != nil || rec.Seq != 1 {
+		t.Fatalf("Submit n1: rec=%v err=%v, want seq 1, no error", rec, err)
+	}
+
+	fb.failNext = true
+	if _, err := h.Submit("c1", createOp("n2")); err == nil {
+		t.Fatal("expected the injected Append failure to surface as a Submit error")
+	}
+
+	// The retry must NOT be assigned seq 2 again: that seq is burned.
+	rec3, err := h.Submit("c1", createOp("n3"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rec3.Seq != 3 {
+		t.Fatalf("seq of the op after a failed Append = %d, want 3 (seq 2 must be burned, not reused)", rec3.Seq)
+	}
+
+	doc, seq := h.Snapshot()
+	if seq != 3 {
+		t.Fatalf("hub seq = %d, want 3", seq)
+	}
+	if _, exists := doc.GetNodes()["n2"]; exists {
+		t.Fatal("n2 present in the document despite its Submit failing to persist")
+	}
+	if _, exists := doc.GetNodes()["n3"]; !exists {
+		t.Fatal("n3 (the successful retry) missing from the document")
+	}
+
+	// A fresh reload from the real, untouched-by-the-fake underlying bundle
+	// must agree: exactly n1 and n3, at seq 3, with no trace of the burned
+	// seq 2 and no replay confusion from the gap it leaves in the sequence.
+	reloaded := hubOn(t, dir, "Untitled")
+	rdoc, rseq := reloaded.Snapshot()
+	if rseq != 3 {
+		t.Fatalf("reloaded seq = %d, want 3", rseq)
+	}
+	if len(rdoc.GetNodes()) != 2 {
+		t.Fatalf("reloaded document has %d nodes, want 2 (n1, n3): %v", len(rdoc.GetNodes()), rdoc.GetNodes())
+	}
+	if _, ok := rdoc.GetNodes()["n1"]; !ok {
+		t.Fatal("reloaded document missing n1")
+	}
+	if _, ok := rdoc.GetNodes()["n3"]; !ok {
+		t.Fatal("reloaded document missing n3")
+	}
+}
+
+// finding (IMPORTANT, hub.go): a broadcast to a subscriber whose channel was
+// full was silently dropped and the loop moved on, leaving the stream open.
+// Nothing about an open stream ever told the client to reconnect, so the
+// since_seq re-alignment the design relies on never triggered: the
+// subscriber missed the record forever with no signal to recover it.
+func TestBroadcastEndsStreamWhenSubscriberCannotKeepUp(t *testing.T) {
+	h := newTestHub(t)
+	ch, cancel := mustSubscribe(t, h, 0)
+	defer cancel() // idempotent even once the hub has already closed ch
+
+	// Fill the subscriber's channel to capacity without draining it, then
+	// submit one more: that one must not be silently dropped.
+	for i := 0; i < subscriberChanCap+1; i++ {
+		if _, err := h.Submit("c1", createOp(fmt.Sprintf("n%d", i))); err != nil {
+			t.Fatalf("Submit n%d: %v", i, err)
+		}
+	}
+	// subscriberChanCap+1 submits cross the production snapshotEveryOps
+	// threshold, which starts a background snapshot goroutine; wait for it
+	// so it isn't still holding an open file handle in this test's TempDir
+	// when the test returns and cleanup tries to remove it (this races on
+	// Windows, which refuses to delete a file that is still open).
+	h.waitSnapshots()
+
+	drained := 0
+	closed := false
+drain:
+	for {
+		select {
+		case rec, ok := <-ch:
+			if !ok {
+				closed = true
+				break drain
+			}
+			if rec.GetSeq() != uint64(drained+1) {
+				t.Fatalf("record %d out of order: seq = %d, want %d", drained, rec.GetSeq(), drained+1)
+			}
+			drained++
+		case <-time.After(time.Second):
+			t.Fatal("timed out draining subscriber channel")
+		}
+	}
+	if !closed {
+		t.Fatal("subscriber channel was never closed after it fell behind")
+	}
+	if drained != subscriberChanCap {
+		t.Fatalf("drained %d records before the stream ended, want exactly %d (the channel's capacity)", drained, subscriberChanCap)
+	}
+
+	// The hub must also have forgotten the subscriber: if it hadn't, this
+	// broadcast would attempt to send on a channel that is now closed, which
+	// panics.
+	if _, err := h.Submit("c1", createOp("n-after")); err != nil {
+		t.Fatalf("Submit after the slow subscriber's stream ended: %v", err)
 	}
 }
 

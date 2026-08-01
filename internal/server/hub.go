@@ -188,10 +188,12 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 	// it aliases op's Node straight into doc.Nodes without copying it. Apply
 	// to a scratch clone of the published document first, and publish it as
 	// the new h.doc only after the record has been durably appended: if
-	// Append fails, h.doc/h.seq must be left exactly as they were, or the
-	// in-memory document would silently diverge from the persisted oplog for
-	// the rest of the process's life. As a side benefit, every successful generation
-	// of h.doc is now a fresh proto.Clone, so a node object touched while
+	// Append fails, h.doc must be left exactly as it was, or the in-memory
+	// document would silently diverge from the persisted oplog for the rest
+	// of the process's life. h.seq is a different story -- see the Append
+	// error handling below, which burns it precisely so it is NOT left as it
+	// was. As a side benefit, every successful generation of h.doc is now a
+	// fresh proto.Clone, so a node object touched while
 	// applying one op can never again be the same Go object touched while
 	// applying a later op on that same node id.
 	//
@@ -223,6 +225,27 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 	// made OpenDocument and Subscribe -- which need nothing but memory --
 	// stall behind another client's drag.
 	if err := h.bundle.Append(rec); err != nil {
+		// Burn rec.Seq before returning. Append documents itself as
+		// all-or-nothing, but its own rollback can itself fail (a second,
+		// independent disk fault while truncating the partial write it just
+		// detected), and there is no way for Submit to tell "definitely not
+		// persisted" apart from "persisted despite the error" -- both surface
+		// identically as err != nil here. Reusing rec.Seq for a later op is
+		// safe if the former is true and catastrophic if the latter is: Load
+		// would then find two records claiming the same seq and silently
+		// keep whichever comes first in the file, discarding the other --
+		// regardless of which Submit the client was actually told succeeded.
+		//
+		// h.doc is deliberately NOT advanced to next: base is exactly what
+		// Bundle.Load can reconstruct from disk right now, so the failed op's
+		// mutation must not appear in memory either. If Append's bytes did
+		// land despite the error, a restart -- which recomputes h.seq purely
+		// by replaying whatever is actually on disk, not from this counter
+		// -- independently picks that record up; burning the seq here only
+		// has to hold until then.
+		h.mu.Lock()
+		h.seq = rec.Seq
+		h.mu.Unlock()
 		return nil, err
 	}
 
@@ -238,7 +261,20 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 	for s := range h.subs {
 		select {
 		case s.ch <- rec:
-		default: // subscriber lento: drop, si riallinea via since_seq alla riconnessione
+		default:
+			// Subscriber too slow to keep up: dropping rec and leaving the
+			// stream open would give it a permanent, silent hole in its op
+			// sequence -- nothing about an open stream ever tells a client to
+			// resync, so the since_seq re-alignment the design relies on
+			// would never trigger. End the stream instead: unregister and
+			// close its channel right here, exactly what cancel() below does,
+			// made idempotent by closeOnce so the Subscribe RPC handler's own
+			// deferred cancel() on this same subscriber is a no-op when it
+			// runs afterwards. Its next receive reports closed, the handler
+			// returns, and the client's reconnect (resuming from its last
+			// applied seq) is what catches it up.
+			delete(h.subs, s)
+			s.closeOnce.Do(func() { close(s.ch) })
 		}
 	}
 	h.maybeSnapshotLocked()
@@ -361,6 +397,30 @@ func (h *Hub) waitSnapshots() { h.snapshots.Wait() }
 
 // Subscribe registers a subscriber and returns its channel, a cancel func,
 // and an error when the requested catch-up cannot be served (ErrHistoryTooOld).
+//
+// The whole function runs under one hold of h.mu, and that was deliberately
+// NOT narrowed to just the h.subs[s] = ... registration. It cannot be split
+// without breaking one of the two guarantees callers rely on:
+//
+//   - Filling the channel (backlog copy) must finish BEFORE registration, or
+//     a concurrent Submit landing in between could broadcast a live record
+//     into s.ch ahead of the backlog this call already decided to send --
+//     the subscriber would see that record before its own catch-up, which
+//     breaks the seq-ordering guarantee every caller depends on.
+//   - Registration must happen in the SAME critical section as the backlog
+//     read (h.history / historyBase), or a concurrent Submit landing between
+//     "read backlog" and "register" would be neither in the backlog (it
+//     wasn't applied yet when this call read history) nor broadcast live
+//     (this subscriber wasn't registered yet) -- silently lost, exactly the
+//     failure mode the broadcast fix in Submit exists to prevent on the
+//     other side of this same handoff.
+//
+// Together those force backlog-read, channel-fill and registration into one
+// atomic unit. What used to make that unit expensive -- an unbounded
+// h.history -- is already fixed by the snapshot/compaction wiring (history
+// is now capped at roughly snapshotEveryOps records), so what remains under
+// the lock is a bounded, in-memory copy, not the unbounded-and-growing one
+// the finding this comment answers was written against.
 func (h *Hub) Subscribe(sinceSeq uint64) (<-chan *brawtv1.OpRecord, func(), error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()

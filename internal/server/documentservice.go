@@ -48,6 +48,15 @@ func (s *DocumentService) OpenDocument(_ context.Context, req *connect.Request[b
 // "unknown op kind <nil>" from core.Apply.
 var errMissingOp = errors.New("submit_op: op is required")
 
+// errOpDocIDMismatch rejects a SubmitOp whose op.doc_id disagrees with the
+// request's own doc_id (including an empty op.doc_id, the client's
+// "scene not loaded yet" default). core.Apply ignores op.doc_id entirely --
+// it only ever touches the hub resolved from the request's doc_id -- so
+// nothing upstream would otherwise catch a stale or empty client-side scene
+// id before it is durably persisted into the wrong (or an unaddressable)
+// document's oplog.
+var errOpDocIDMismatch = errors.New("submit_op: op.doc_id does not match doc_id")
+
 // SubmitOp è la metà client→server del vecchio stream bidi Sync: una unary RPC
 // che applica l'operazione sull'hub del documento e restituisce l'Ack.
 // Il broadcast dell'OpRecord applicato a TUTTI i client (incluso il mittente)
@@ -64,10 +73,15 @@ func (s *DocumentService) SubmitOp(_ context.Context, req *connect.Request[brawt
 	}
 	// HubFor validates/sanitizes the client-supplied doc_id (see errInvalidDocID)
 	// before any filesystem access, exactly as the old Sync handler did with the
-	// Hello message's doc_id.
+	// Hello message's doc_id. It runs before the doc_id-agreement check below
+	// so a malformed/traversal doc_id is still reported as NotFound, not
+	// InvalidArgument, regardless of what op.doc_id happens to contain.
 	h, err := s.m.HubFor(req.Msg.GetDocId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	if op.GetDocId() != req.Msg.GetDocId() {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errOpDocIDMismatch)
 	}
 	rec, err := h.Submit(req.Msg.GetClientId(), op)
 	if err != nil {

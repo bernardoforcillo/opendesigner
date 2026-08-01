@@ -289,6 +289,50 @@ func TestSubmitOpErrors(t *testing.T) {
 	}
 }
 
+// finding (MINOR, documentservice.go): op.doc_id was never checked against
+// SubmitOpRequest.doc_id and was persisted as-is -- a stale/empty scene id
+// on the client (a doc switch, a failed bootstrap) would silently write a
+// record claiming the wrong document into a valid oplog, with core.Apply
+// none the wiser since it ignores op.doc_id entirely.
+func TestSubmitOpRejectsOpDocIDMismatch(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	info, _ := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "M"}))
+	docID := info.Msg.GetId()
+
+	// op.doc_id empty (the client's "scene not loaded yet" default).
+	if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+		DocId: docID, ClientId: "c1", Op: createNodeOp("", "n1")})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("SubmitOp(empty op.doc_id) code = %v (err %v), want invalid_argument", connect.CodeOf(err), err)
+	}
+
+	// op.doc_id set, but to a different document than the request addresses.
+	other, _ := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "Other"}))
+	if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+		DocId: docID, ClientId: "c1", Op: createNodeOp(other.Msg.GetId(), "n1")})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("SubmitOp(mismatched op.doc_id) code = %v (err %v), want invalid_argument", connect.CodeOf(err), err)
+	}
+
+	// Neither rejected op may have consumed a seq or touched either
+	// document: a correctly-addressed op right after must still land at 1.
+	res, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+		DocId: docID, ClientId: "c1", Op: createNodeOp(docID, "n1")}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Msg.GetAck().GetSeq(); got != 1 {
+		t.Fatalf("ack seq = %d, want 1 (the rejected mismatched ops must not have consumed a seq)", got)
+	}
+
+	open, err := c.OpenDocument(ctx, connect.NewRequest(&brawtv1.OpenRequest{DocId: other.Msg.GetId()}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open.Msg.GetSeq() != 0 || len(open.Msg.GetSnapshot().GetNodes()) != 0 {
+		t.Fatalf("the other document was touched by a mismatched op: seq = %d, nodes = %v", open.Msg.GetSeq(), open.Msg.GetSnapshot().GetNodes())
+	}
+}
+
 // TestSubscribeRejectsTraversalDocID checks the doc_id sanitization on the
 // streaming half too: the error may surface either from the call itself or from
 // the first Receive, depending on when the handler runs.
