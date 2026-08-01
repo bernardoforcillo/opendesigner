@@ -1,5 +1,6 @@
 import type { SceneState, NodeLite } from "../store/types";
 import type { Camera } from "../canvas/camera";
+import { nodePath, hitTestNode } from "./shapes";
 
 function sortedVisible(state: SceneState): NodeLite[] {
   return Object.values(state.nodes)
@@ -13,15 +14,36 @@ function cssColor(n: NodeLite): string {
   return `rgba(${to255(f.r)}, ${to255(f.g)}, ${to255(f.b)}, ${f.a})`;
 }
 
+// La camera resta sempre in pixel CSS: il devicePixelRatio non deve mai
+// entrare nel modello né nei tool, solo qui nel disegno effettivo sul canvas.
+function devicePixelRatio(): number {
+  return typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
+}
+
+// Allinea la risoluzione del backing store del canvas alla sua dimensione CSS
+// * devicePixelRatio, per evitare il blur su schermi HiDPI. Ritorna true se la
+// dimensione è cambiata (utile per evitare resize/clear superflui ogni frame).
+export function resizeCanvasToDisplaySize(canvas: HTMLCanvasElement): boolean {
+  const dpr = devicePixelRatio();
+  const width = Math.round(canvas.clientWidth * dpr);
+  const height = Math.round(canvas.clientHeight * dpr);
+  if (canvas.width === width && canvas.height === height) return false;
+  canvas.width = width;
+  canvas.height = height;
+  return true;
+}
+
 export function drawScene(ctx: CanvasRenderingContext2D, state: SceneState, cam: Camera): void {
   const { canvas } = ctx;
+  const dpr = devicePixelRatio();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
-  ctx.setTransform(cam.zoom, 0, 0, cam.zoom, cam.x, cam.y);
+  ctx.setTransform(cam.zoom * dpr, 0, 0, cam.zoom * dpr, cam.x * dpr, cam.y * dpr);
   for (const n of sortedVisible(state)) {
+    if (n.width <= 0 || n.height <= 0) continue;
     ctx.globalAlpha = n.opacity;
     ctx.fillStyle = cssColor(n);
-    ctx.fillRect(n.x, n.y, n.width, n.height);
+    ctx.fill(nodePath(n));
   }
   ctx.globalAlpha = 1;
 }
@@ -31,7 +53,7 @@ export function hitTest(state: SceneState, wx: number, wy: number): string | nul
   const nodes = sortedVisible(state);
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
-    if (wx >= n.x && wx <= n.x + n.width && wy >= n.y && wy <= n.y + n.height) return n.id;
+    if (hitTestNode(n, wx, wy)) return n.id;
   }
   return null;
 }
