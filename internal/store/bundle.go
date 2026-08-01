@@ -22,6 +22,27 @@ type Bundle struct {
 	dir   string // <workspace>/<docID>.brawt
 	docID string
 	name  string
+
+	// openOplog opens the oplog file. It exists so tests can inject the
+	// disk failures this package is written to survive -- a short write, a
+	// failing fsync, a read that returns EIO -- which cannot be produced
+	// from a real filesystem. nil (always, in production) means the real
+	// file.
+	openOplog func(path string, flag int, perm os.FileMode) (oplogFile, error)
+}
+
+// openOplogFile opens the bundle's oplog, honouring the test seam.
+func (b *Bundle) openOplogFile(flag int, perm os.FileMode) (oplogFile, error) {
+	if b.openOplog != nil {
+		return b.openOplog(b.oplogPath(), flag, perm)
+	}
+	f, err := os.OpenFile(b.oplogPath(), flag, perm)
+	if err != nil {
+		// Returning f directly would hand back a non-nil interface holding
+		// a nil *os.File.
+		return nil, err
+	}
+	return f, nil
 }
 
 func Open(workspace, docID, name string) (*Bundle, error) {
@@ -167,9 +188,15 @@ func (b *Bundle) History() ([]*brawtv1.OpRecord, error) {
 //     healthy records, so the offset is reported instead and nothing is
 //     modified.
 //
+// A third case is deliberately NOT damage: a read that fails for any reason
+// other than hitting the end of the file. The bytes may be perfectly fine
+// and merely unreadable right now, so such an error is propagated and the
+// file is left exactly as it is -- repairing on an I/O fault would answer a
+// transient problem by permanently deleting records.
+//
 // b.mu must be held.
 func (b *Bundle) readOplogLocked() ([]*brawtv1.OpRecord, error) {
-	f, err := os.Open(b.oplogPath())
+	f, err := b.openOplogFile(os.O_RDONLY, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
 			return nil, nil
@@ -236,20 +263,32 @@ func (b *Bundle) readOplogLocked() ([]*brawtv1.OpRecord, error) {
 // is reached. On damage it returns the records read so far plus the offset
 // the file must be truncated to; it returns an error only when the damage
 // is unrecoverable (see readOplogLocked).
-func scanFrames(f *os.File, fr *frameReader, size int64) ([]*brawtv1.OpRecord, int64, error) {
+func scanFrames(f oplogFile, fr *frameReader, size int64) ([]*brawtv1.OpRecord, int64, error) {
 	var recs []*brawtv1.OpRecord
 	for {
 		start := fr.off
 		payload, err := fr.next()
-		if errors.Is(err, io.EOF) {
-			break
-		}
 		if err != nil {
+			// Damage first: an *errTornFrame wraps io.ErrUnexpectedEOF, so
+			// checking for a clean EOF before it would misread a torn frame
+			// as the end of the file.
 			torn, ok := asTornFrame(err)
 			if !ok {
+				if errors.Is(err, io.EOF) {
+					break // clean end of file
+				}
+				// An I/O failure, not damage. Report it and repair nothing:
+				// repairAt stays -1 so the file is not touched.
 				return nil, -1, fmt.Errorf("read oplog: %w", err)
 			}
-			if findFrameAfter(f, torn.Offset+1, size) {
+			intact, ferr := findFrameAfter(f, torn.Offset+1, size)
+			if ferr != nil {
+				// Whether healthy records follow the damage is exactly what
+				// decides if truncating is safe, and that question could not
+				// be answered. Refuse to guess.
+				return nil, -1, fmt.Errorf("read oplog: %w", ferr)
+			}
+			if intact {
 				return nil, -1, fmt.Errorf("read oplog: %w; intact records follow it, so this is corruption in the middle of the file rather than a torn tail -- truncating would destroy them, so the oplog is left untouched for manual repair", torn)
 			}
 			return recs, torn.Offset, nil
@@ -269,7 +308,11 @@ func scanFrames(f *os.File, fr *frameReader, size int64) ([]*brawtv1.OpRecord, i
 // truncateOplogLocked cuts the oplog back to n bytes and fsyncs it.
 // b.mu must be held.
 func (b *Bundle) truncateOplogLocked(n int64) (err error) {
-	f, ferr := os.OpenFile(b.oplogPath(), os.O_WRONLY, 0o644)
+	// O_WRONLY, deliberately not O_APPEND: Windows opens an append handle
+	// with FILE_APPEND_DATA instead of GENERIC_WRITE, and truncating through
+	// it fails with "Access is denied". Append therefore closes its own
+	// handle and calls this rather than truncating in place.
+	f, ferr := b.openOplogFile(os.O_WRONLY, 0o644)
 	if ferr != nil {
 		return ferr
 	}
@@ -294,11 +337,23 @@ func (b *Bundle) truncateOplogLocked(n int64) (err error) {
 // framing produced, permanently mis-framing the rest of the file).
 //
 // After the record's own fsync, the containing directory is fsynced too
-// when this call created the oplog: on POSIX the file's *directory entry*
-// is not durable until the directory itself is synced, so without it a
-// brand-new document's very first op could be acked and then disappear
+// when this call wrote the file header, i.e. when it created the oplog (or
+// re-seeded one Snapshot had truncated): on POSIX the file's *directory
+// entry* is not durable until the directory itself is synced, so without it
+// a brand-new document's very first op could be acked and then disappear
 // entirely on power loss.
-func (b *Bundle) Append(recrd *brawtv1.OpRecord) (err error) {
+//
+// Append is all-or-nothing: if it returns an error, the oplog is left at
+// exactly the size it had on entry. A failing write (ENOSPC, a quota, EIO)
+// can leave part of the frame on disk, and leaving those bytes there is what
+// turns a transient, survivable failure into permanent corruption -- the
+// next successful Append lands a complete frame directly after the fragment,
+// producing damage in the MIDDLE of the file with healthy records after it,
+// which readOplogLocked must (correctly) refuse to repair. No crash is
+// needed for that; a freed-up disk is enough. So any failure here rolls the
+// file back to its pre-write size, and the caller's op is simply not
+// persisted -- which is what Hub.Submit already assumes when Append fails.
+func (b *Bundle) Append(recrd *brawtv1.OpRecord) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -308,46 +363,68 @@ func (b *Bundle) Append(recrd *brawtv1.OpRecord) (err error) {
 	}
 	frame := encodeFrame(payload)
 
-	// A fresh (or Snapshot-truncated) oplog gets its file header written in
-	// the same single Write as the first record, so the file is never
-	// observable as "header, but no record" either.
-	created, needHeader := false, false
-	if fi, serr := os.Stat(b.oplogPath()); serr != nil {
-		if !os.IsNotExist(serr) {
-			return serr
-		}
-		created, needHeader = true, true
-	} else if fi.Size() == 0 {
-		needHeader = true
-	}
-	if needHeader {
-		frame = append(encodeFileHeader(), frame...)
-	}
-
-	f, err := os.OpenFile(b.oplogPath(), os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
+	f, err := b.openOplogFile(os.O_CREATE|os.O_WRONLY|os.O_APPEND, 0o644)
 	if err != nil {
 		return err
 	}
+
+	preSize, err := appendFrame(f, frame)
 	// Close can report deferred write errors (and always releases the
 	// handle), so its failure must not be discarded: reporting success on
 	// an append that never landed is exactly how the in-memory document
 	// silently diverges from the oplog.
-	defer func() {
-		if cerr := f.Close(); cerr != nil && err == nil {
-			err = cerr
+	if cerr := f.Close(); cerr != nil && err == nil {
+		err = cerr
+	}
+	if err != nil {
+		// preSize < 0 means the pre-write size was never established, so
+		// there is no size to roll back to; truncating to a guess would be
+		// far worse than leaving the file alone.
+		if preSize >= 0 {
+			if rerr := b.truncateOplogLocked(preSize); rerr != nil {
+				err = errors.Join(err, fmt.Errorf("roll back partial oplog append to %d bytes: %w", preSize, rerr))
+			}
 		}
-	}()
-
-	if _, err = f.Write(frame); err != nil {
 		return err
 	}
-	if err = f.Sync(); err != nil {
-		return err
-	}
-	if created {
+	if preSize == 0 {
+		// The file header went out with this record, so this call either
+		// created the oplog or re-seeded a Snapshot-truncated one; either way
+		// the directory entry still needs to be made durable. Keying off the
+		// header (rather than a pre-open stat for "does the file exist")
+		// also covers the file left behind empty by a rolled-back create.
 		return syncDir(b.dir)
 	}
 	return nil
+}
+
+// appendFrame writes frame at the end of f and fsyncs it, returning the size
+// f had before the write so a failed append can be rolled back to it. That
+// size is -1 when it could not be determined.
+//
+// The rollback itself is Append's job, not this function's: the truncate has
+// to happen on a fresh O_WRONLY handle, because Windows opens an O_APPEND
+// handle with FILE_APPEND_DATA rather than GENERIC_WRITE and rejects a
+// truncate through it with "Access is denied" (verified on Windows 11).
+func appendFrame(f oplogFile, frame []byte) (int64, error) {
+	fi, err := f.Stat()
+	if err != nil {
+		return -1, err
+	}
+	preSize := fi.Size()
+	// A fresh (or Snapshot-truncated) oplog gets its file header written in
+	// the same single Write as the first record, so the file is never
+	// observable as "header, but no record" either.
+	if preSize == 0 {
+		frame = append(encodeFileHeader(), frame...)
+	}
+	if _, werr := f.Write(frame); werr != nil {
+		return preSize, fmt.Errorf("append oplog record: %w", werr)
+	}
+	if serr := f.Sync(); serr != nil {
+		return preSize, fmt.Errorf("sync oplog: %w", serr)
+	}
+	return preSize, nil
 }
 
 // Snapshot riscrive lo snapshot al seq dato e tronca l'oplog.

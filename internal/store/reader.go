@@ -52,6 +52,35 @@ const (
 
 var crcTable = crc32.MakeTable(crc32.Castagnoli)
 
+// oplogFile is the subset of *os.File the oplog code uses. It is an
+// interface only so tests can inject the failures this code exists to
+// survive -- a short write (ENOSPC/quota), a failing fsync, a read that
+// returns EIO -- none of which a test can provoke from a real filesystem.
+// *os.File satisfies it; production code never uses anything else.
+type oplogFile interface {
+	io.Reader
+	io.ReaderAt
+	io.Seeker
+	io.Writer
+	Stat() (os.FileInfo, error)
+	Sync() error
+	Truncate(size int64) error
+	Close() error
+}
+
+// isTruncationErr reports whether err means "the file ended sooner than the
+// framing said it would" -- the signature of a torn write, and the only
+// read failure that may be treated as recoverable damage.
+//
+// Every other read failure (EIO, a bad sector, a disconnected volume) says
+// nothing about what is actually stored in those bytes. Treating one as a
+// torn frame would make readOplogLocked truncate the oplog at that offset
+// and permanently destroy every record after it in response to a transient
+// fault, so those errors must propagate to the caller untouched.
+func isTruncationErr(err error) bool {
+	return errors.Is(err, io.EOF) || errors.Is(err, io.ErrUnexpectedEOF)
+}
+
 // encodeFileHeader returns the bytes every oplog starts with.
 func encodeFileHeader() []byte {
 	hdr := make([]byte, oplogHeaderSize)
@@ -65,13 +94,16 @@ func encodeFileHeader() []byte {
 // very first append tore before anything usable landed, so the file can be
 // reset), and a plain error when the header is present but says this is not
 // a format this build understands.
-func checkFileHeader(f *os.File, size int64) error {
+func checkFileHeader(f oplogFile, size int64) error {
 	if size < oplogHeaderSize {
 		return &errTornFrame{Offset: 0, Reason: fmt.Sprintf("file header is %d bytes, want %d", size, oplogHeaderSize)}
 	}
 	hdr := make([]byte, oplogHeaderSize)
 	if _, err := f.ReadAt(hdr, 0); err != nil {
-		return err
+		// Deliberately not an *errTornFrame: size already says the bytes are
+		// there, so this is an I/O fault, and answering it with a repair
+		// would truncate the whole oplog away.
+		return fmt.Errorf("read oplog file header: %w", err)
 	}
 	if string(hdr[:len(oplogFileMagic)]) != oplogFileMagic {
 		return fmt.Errorf("not a brawt oplog: file header is %q, want %q (an oplog written before the framed/checksummed format change reads like this; brawt is pre-release and does not migrate it -- delete the bundle to start fresh)", hdr[:len(oplogFileMagic)], oplogFileMagic)
@@ -85,14 +117,26 @@ func checkFileHeader(f *os.File, size int64) error {
 // errTornFrame reports that the frame starting at Offset is damaged. It
 // says nothing about whether the damage is recoverable -- that depends on
 // whether intact records follow it (see Bundle.readOplogLocked).
+//
+// It is only ever produced for damage the bytes themselves prove: a frame
+// that ends before its framing said it would (Err is io.EOF /
+// io.ErrUnexpectedEOF), a bad magic, an implausible length, or a checksum
+// mismatch. Err is kept so callers can still reach the underlying cause
+// with errors.Is/As instead of getting a string.
 type errTornFrame struct {
 	Offset int64
 	Reason string
+	Err    error // underlying cause, if the damage came from a read
 }
 
 func (e *errTornFrame) Error() string {
+	if e.Err != nil {
+		return fmt.Sprintf("oplog frame at offset %d is damaged: %s: %v", e.Offset, e.Reason, e.Err)
+	}
 	return fmt.Sprintf("oplog frame at offset %d is damaged: %s", e.Offset, e.Reason)
 }
+
+func (e *errTornFrame) Unwrap() error { return e.Err }
 
 // encodeFrame builds the complete on-disk frame for payload in one buffer,
 // so Append can hand the kernel a single Write.
@@ -120,16 +164,20 @@ func newFrameReader(r io.Reader, startOff int64) *frameReader {
 }
 
 // next returns the payload of the next frame. It returns io.EOF at a clean
-// record boundary, and *errTornFrame when the bytes at the current offset
-// are not an intact frame.
+// record boundary, *errTornFrame when the bytes at the current offset are
+// not an intact frame, and any other error verbatim (wrapped for context) --
+// an I/O fault must never be laundered into "damaged frame", because that is
+// what authorises a destructive repair.
 func (fr *frameReader) next() ([]byte, error) {
 	var hdr [12]byte
 	n, err := io.ReadFull(fr.br, hdr[:])
 	switch {
 	case err == io.EOF && n == 0:
 		return nil, io.EOF // clean end of file
+	case err != nil && !isTruncationErr(err):
+		return nil, fmt.Errorf("read oplog frame header at offset %d: %w", fr.off, err)
 	case err != nil:
-		return nil, &errTornFrame{Offset: fr.off, Reason: fmt.Sprintf("header is %d bytes, want %d", n, frameHeaderSize)}
+		return nil, &errTornFrame{Offset: fr.off, Reason: fmt.Sprintf("header is %d bytes, want %d", n, frameHeaderSize), Err: err}
 	}
 
 	if magic := binary.BigEndian.Uint32(hdr[0:4]); magic != frameMagic {
@@ -143,7 +191,10 @@ func (fr *frameReader) next() ([]byte, error) {
 
 	payload := make([]byte, length)
 	if n, err := io.ReadFull(fr.br, payload); err != nil {
-		return nil, &errTornFrame{Offset: fr.off, Reason: fmt.Sprintf("payload is %d bytes, header declared %d", n, length)}
+		if !isTruncationErr(err) {
+			return nil, fmt.Errorf("read oplog frame payload at offset %d: %w", fr.off+frameHeaderSize, err)
+		}
+		return nil, &errTornFrame{Offset: fr.off, Reason: fmt.Sprintf("payload is %d bytes, header declared %d", n, length), Err: err}
 	}
 	if got := crc32.Checksum(payload, crcTable); got != want {
 		return nil, &errTornFrame{Offset: fr.off, Reason: fmt.Sprintf("checksum mismatch: computed 0x%08x, header declared 0x%08x", got, want)}
@@ -163,9 +214,14 @@ func (fr *frameReader) next() ([]byte, error) {
 // A false positive would need four magic bytes, a plausible length and a
 // matching CRC-32C to line up by chance, and errs on the safe side anyway:
 // it reports corruption rather than discarding data.
-func findFrameAfter(f *os.File, start, end int64) bool {
+//
+// A read failure during the scan is returned as an error rather than as
+// "no intact frame follows": the answer decides whether the caller may
+// truncate, so guessing "no" on an unreadable stretch of file would let a
+// transient I/O fault authorise deleting healthy records.
+func findFrameAfter(f oplogFile, start, end int64) (bool, error) {
 	if start >= end {
-		return false
+		return false, nil
 	}
 	br := bufio.NewReader(io.NewSectionReader(f, start, end-start))
 	var window uint32
@@ -173,40 +229,55 @@ func findFrameAfter(f *os.File, start, end int64) bool {
 	for {
 		c, err := br.ReadByte()
 		if err != nil {
-			return false
+			if isTruncationErr(err) {
+				return false, nil // scanned to the end, nothing intact found
+			}
+			return false, fmt.Errorf("scan oplog for intact frames after offset %d: %w", start, err)
 		}
 		window = window<<8 | uint32(c)
 		off++
 		if off-start >= 4 && window == frameMagic {
-			if frameIsIntactAt(f, off-4, end) {
-				return true
+			intact, err := frameIsIntactAt(f, off-4, end)
+			if err != nil {
+				return false, err
+			}
+			if intact {
+				return true, nil
 			}
 		}
 	}
 }
 
 // frameIsIntactAt reports whether a complete, checksum-valid frame starts
-// at off and ends at or before end.
-func frameIsIntactAt(f *os.File, off, end int64) bool {
+// at off and ends at or before end. Running off the end of the file means
+// "not a frame"; any other read failure is propagated, for the reason given
+// on findFrameAfter.
+func frameIsIntactAt(f oplogFile, off, end int64) (bool, error) {
 	if off+frameHeaderSize > end {
-		return false
+		return false, nil
 	}
 	var hdr [12]byte
 	if _, err := f.ReadAt(hdr[:], off); err != nil {
-		return false
+		if isTruncationErr(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read oplog frame header at offset %d: %w", off, err)
 	}
 	if binary.BigEndian.Uint32(hdr[0:4]) != frameMagic {
-		return false
+		return false, nil
 	}
 	length := binary.BigEndian.Uint32(hdr[4:8])
 	if length > maxFrameSize || off+frameHeaderSize+int64(length) > end {
-		return false
+		return false, nil
 	}
 	payload := make([]byte, length)
 	if _, err := f.ReadAt(payload, off+frameHeaderSize); err != nil {
-		return false
+		if isTruncationErr(err) {
+			return false, nil
+		}
+		return false, fmt.Errorf("read oplog frame payload at offset %d: %w", off+frameHeaderSize, err)
 	}
-	return crc32.Checksum(payload, crcTable) == binary.BigEndian.Uint32(hdr[8:12])
+	return crc32.Checksum(payload, crcTable) == binary.BigEndian.Uint32(hdr[8:12]), nil
 }
 
 // asTornFrame extracts the *errTornFrame from err, if any.
