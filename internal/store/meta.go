@@ -7,6 +7,7 @@ import (
 	"path/filepath"
 	"sort"
 	"strings"
+	"sync"
 	"time"
 )
 
@@ -97,16 +98,47 @@ func (b *Bundle) writeMetaLocked() error {
 		return err
 	}
 	data = append(data, '\n')
-	if err := writeFileSync(b.metaPath(), data, 0o644); err != nil {
+	// Exclude readers for the duration of the temp+rename commit: see
+	// metaFileMu.
+	metaFileMu.Lock()
+	err = writeFileSync(b.metaPath(), data, 0o644)
+	metaFileMu.Unlock()
+	if err != nil {
 		return fmt.Errorf("write %s: %w", metaFileName, err)
 	}
 	return nil
 }
 
+// metaFileMu serialises meta.json's readers against the rename that publishes
+// a new one.
+//
+// meta.json is the only file in a bundle that is read WITHOUT holding b.mu:
+// Scan reads every bundle's copy, lock-free, on every ListDocuments -- the
+// call the editor makes at boot -- so it is the only file whose reader can
+// overlap its own writer. On Windows that overlap is fatal rather than
+// merely racy: os.Rename is MoveFileEx(MOVEFILE_REPLACE_EXISTING)
+// (GOROOT/src/internal/syscall/windows/syscall_windows.go), which refuses to
+// replace a file that any handle is open on -- verified here in every sharing
+// mode, including FILE_SHARE_DELETE -- and fails immediately with "Access is
+// denied" instead of waiting. With four goroutines scanning, the very first
+// snapshot of a document failed to refresh its meta.json that way.
+//
+// A lock rather than a retry loop because the collision is entirely
+// in-process and therefore entirely preventable: the store already serialises
+// every other file in a bundle through b.mu, and this restores that
+// discipline for the one file that escaped it. Readers do not exclude each
+// other, and the writer runs once per document plus once per snapshot, so
+// nothing here is on a hot path. (A handle held by another *process* -- a
+// text editor, an indexer -- can still delay a rename; no in-process
+// coordination can fix that, and it is not what this defect was.)
+var metaFileMu sync.RWMutex
+
 // readMetaFile reads one meta.json. ok is false only when the file is absent,
 // which is the single tolerated absence (see initMetaLocked).
 func readMetaFile(path string) (Meta, bool, error) {
+	metaFileMu.RLock()
 	data, err := os.ReadFile(path)
+	metaFileMu.RUnlock()
 	if err != nil {
 		if os.IsNotExist(err) {
 			return Meta{}, false, nil

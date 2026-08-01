@@ -4,6 +4,7 @@ import (
 	"os"
 	"path/filepath"
 	"strings"
+	"sync"
 	"testing"
 )
 
@@ -218,6 +219,66 @@ func TestScanStillListsABundleWithADamagedMetaFile(t *testing.T) {
 	}
 	if byID["doc2"].Name != DefaultName || byID["doc3"].Name != DefaultName {
 		t.Fatalf("a bundle with no usable identity should be listed as %q: %+v %+v", DefaultName, byID["doc2"], byID["doc3"])
+	}
+}
+
+// finding: Scan read every bundle's meta.json with no coordination against
+// the process's own writer. On Windows os.Rename cannot replace a file that
+// any handle is open on, so a Scan running while a snapshot refreshed
+// meta.json made the rename fail with "Access is denied" -- and, because that
+// write is the last step of Bundle.Snapshot, an already-committed snapshot
+// reported failure. Manager.List calls Scan on every ListDocuments, i.e. the
+// call the editor makes at boot.
+func TestSnapshotSucceedsWhileTheWorkspaceIsBeingScanned(t *testing.T) {
+	ws := t.TempDir()
+	b, err := Open(ws, "doc1", "Alfa")
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := b.Append(rec(1, createOp("n1", 5))); err != nil {
+		t.Fatal(err)
+	}
+	doc, seq, err := b.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	stop := make(chan struct{})
+	var wg sync.WaitGroup
+	for i := 0; i < 4; i++ {
+		wg.Add(1)
+		go func() {
+			defer wg.Done()
+			for {
+				select {
+				case <-stop:
+					return
+				default:
+				}
+				metas, err := Scan(ws)
+				if err != nil {
+					t.Errorf("Scan while a snapshot was running: %v", err)
+					return
+				}
+				// A reader must also never observe a half-published
+				// identity: the rename is atomic, so it sees the old
+				// meta.json or the new one and both name the document.
+				if len(metas) != 1 || metas[0].Name != "Alfa" {
+					t.Errorf("Scan saw %+v, want one document named Alfa", metas)
+					return
+				}
+			}
+		}()
+	}
+	defer func() {
+		close(stop)
+		wg.Wait()
+	}()
+
+	for i := 0; i < 30; i++ {
+		if err := b.Snapshot(doc, seq); err != nil {
+			t.Fatalf("snapshot %d failed while the workspace was being scanned: %v", i, err)
+		}
 	}
 }
 
