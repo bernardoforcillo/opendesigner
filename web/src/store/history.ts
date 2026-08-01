@@ -26,20 +26,22 @@ function createNodeOp(docId: string, node: PbNode): Op {
 // invertOp va chiamato PRIMA che op venga applicato: l'inverso è fatto dei
 // valori che l'op sta per sovrascrivere (o del nodo che sta per sparire), e
 // dopo l'apply quello stato non esiste più.
-// Ritorna null quando un inverso non esiste: op che applyOp scarterebbe
-// comunque (id inesistente, createNode senza nodo, kind sconosciuto). In quei
-// casi l'op diretto non cambia la scena, quindi "nessun inverso" è corretto,
-// non una perdita.
+// Ritorna null quando un inverso non esiste: op che applyOp -- e prima ancora
+// core.Apply (Go), che è l'autorità -- scarterebbero comunque (id inesistente,
+// createNode senza nodo o su un id già preso, kind sconosciuto). In quei casi
+// l'op diretto non cambia la scena, quindi "nessun inverso" è corretto, non una
+// perdita.
 export function invertOp(scene: SceneState, op: Op): Op | null {
   switch (op.kind.case) {
     case "createNode": {
       const node = op.kind.value.node;
-      if (!node) return null;
-      const prev = scene.nodes[node.id];
-      // applyOp tratta createNode su un id già presente come SOVRASCRITTURA:
-      // lì l'inverso non è cancellare (perderebbe il nodo preesistente) ma
-      // ricreare il nodo com'era.
-      if (prev) return createNodeOp(op.docId, toPbNode(prev));
+      if (!node || node.id === "") return null;
+      // Id già presente: core.applyCreate (Go) risponde ErrNodeExists e applyOp
+      // fa lo stesso: l'op diretto viene RIFIUTATO, la scena non cambia, quindi
+      // non c'è niente da annullare. Inventare qui un inverso (una delete, o la
+      // ri-creazione del nodo precedente) manderebbe al server l'undo di un op
+      // che il server non ha mai accettato -- cioè una vera divergenza.
+      if (scene.nodes[node.id]) return null;
       return create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "deleteNode", value: { id: node.id } },
@@ -51,11 +53,14 @@ export function invertOp(scene: SceneState, op: Op): Op | null {
       return createNodeOp(op.docId, toPbNode(prev));
     }
     case "setProps": {
-      const { id, patch, mask } = op.kind.value;
-      // Senza patch l'op è un no-op per applyOp (parità con Go): niente da
-      // annullare.
+      // Il patch dell'op diretto non serve: l'inverso è fatto dei valori
+      // PRECEDENTI. E attenzione, un op SENZA patch non è un no-op — Go lo
+      // legge con i getter nil-safe e azzera i campi in mask (applyOp fa
+      // altrettanto, vedi NIL_PATCH), quindi ha un inverso come tutti gli
+      // altri: rimettere a posto quei campi.
+      const { id, mask } = op.kind.value;
       const prev = scene.nodes[id];
-      if (!prev || !patch) return null;
+      if (!prev) return null;
       // Patch = il nodo com'era, mask = la STESSA dell'op diretto. La mask è il
       // contratto -- TS e Go leggono solo i path elencati e ignorano il resto
       // del patch -- quindi ricopiare qui la tabella dei path duplicherebbe (e

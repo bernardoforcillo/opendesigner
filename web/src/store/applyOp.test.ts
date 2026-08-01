@@ -47,6 +47,45 @@ describe("applyOp", () => {
     expect(s.nodes["n1"]).toBeUndefined();
   });
 
+  it("rejects createNode on an id that already exists (parity with core.applyCreate: ErrNodeExists)", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 10, 20));
+    // Go returns ErrNodeExists and mutates nothing, so the server would refuse
+    // this op. Overwriting locally would silently diverge from the document
+    // the server actually holds.
+    const s2 = applyOp(s, createRectOp("n1", 999, 999));
+    expect(s2).toEqual(s);
+    expect(s2.nodes["n1"].x).toBe(10);
+  });
+
+  it("rejects a createNode whose node has an empty id (parity with core.applyCreate: ErrNilNode)", () => {
+    const node = create(NodeSchema, { id: "", parentId: "page1", shape: { case: "rect", value: { cornerRadius: 0 } } });
+    const op = create(OpSchema, { opId: "op-empty", docId: "doc1", kind: { case: "createNode", value: { node } } });
+    const s = applyOp(emptyScene("doc1", "Untitled"), op);
+    expect(Object.keys(s.nodes)).toEqual([]);
+  });
+
+  it("zeroes the masked fields when setProps carries no patch (parity with Go's nil-safe getters)", () => {
+    const node = create(NodeSchema, {
+      id: "n1", parentId: "page1", orderKey: "a0", name: "Rect", visible: true, opacity: 1,
+      x: 10, y: 20, width: 100, height: 80,
+      fills: [{ kind: { case: "solid", value: { color: { r: 0.5, g: 0.5, b: 0.5, a: 1 } } } }],
+      shape: { case: "rect", value: { cornerRadius: 0 } },
+    });
+    let s = applyOp(emptyScene("doc1", "Untitled"),
+      create(OpSchema, { opId: "op-n1", docId: "doc1", kind: { case: "createNode", value: { node } } }));
+    expect(s.nodes["n1"].fills.length).toBe(1);
+    // Go reads the patch through p.GetX() & co., which return the field's zero
+    // value on a nil *Node: applySetProps ZEROES x and fills here, it does not
+    // skip the op.
+    const noPatch = create(OpSchema, { opId: "np", docId: "doc1", kind: { case: "setProps", value: {
+      id: "n1", mask: { paths: ["x", "fills"] } } } });
+    s = applyOp(s, noPatch);
+    expect(s.nodes["n1"].x).toBe(0);
+    expect(s.nodes["n1"].fills).toEqual([]);
+    expect(s.nodes["n1"].y).toBe(20); // outside the mask: untouched
+    expect(s.nodes["n1"].width).toBe(100);
+  });
+
   it("rejects the whole setProps op atomically when the mask has an unsupported path (parity with core.applySetProps in Go)", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
     const badMove = create(OpSchema, { opId: "m2", docId: "doc1", kind: { case: "setProps", value: {

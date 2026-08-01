@@ -84,11 +84,15 @@ describe("invertOp: createNode", () => {
     expect(inv.kind.case === "deleteNode" && inv.kind.value.id).toBe("n1");
   });
 
-  it("round-trips anche quando l'id esiste già (createNode sovrascrive)", () => {
-    // applyOp tratta createNode su un id esistente come una sovrascrittura:
-    // l'inverso non può essere una delete, deve ripristinare il nodo di prima.
+  it("null quando l'id esiste già: l'op diretto è rifiutato (ErrNodeExists in Go)", () => {
+    // core.applyCreate (Go) rifiuta un id già presente e applyOp lo mirrora:
+    // l'op diretto non cambia NIENTE, quindi non c'è niente da annullare.
+    // Generare un inverso qui manderebbe al server l'undo di un op che il
+    // server ha respinto.
     const scene = sceneWith(richRect());
-    expectRoundTrip(scene, createOp(richEllipse("n1")));
+    const op = createOp(richEllipse("n1"));
+    expect(applyOp(scene, op)).toEqual(scene);
+    expect(invertOp(scene, op)).toBeNull();
   });
 });
 
@@ -125,6 +129,24 @@ describe("invertOp: setProps", () => {
   it("round-trips una mask a un solo path senza toccare il resto", () => {
     const scene = sceneWith(richRect(), richEllipse());
     expectRoundTrip(scene, setPropsOp("e1", { x: 42 }, ["x"]));
+  });
+
+  it("round-trips un op SENZA patch, che AZZERA i campi in mask (getter nil-safe di Go)", () => {
+    // Go legge il patch con p.GetX() & co.: su un patch nil ritornano lo zero
+    // del campo, quindi l'op azzera x e fills invece di essere un no-op.
+    // Verifico prima che l'op diretto morda davvero -- se fosse un no-op il
+    // round-trip passerebbe per finta.
+    const scene = sceneWith(richRect());
+    const op = create(OpSchema, {
+      opId: "op-set", docId: "doc1",
+      kind: { case: "setProps", value: { id: "n1", mask: { paths: ["x", "fills"] } } },
+    });
+    const after = applyOp(scene, op);
+    expect(after.nodes["n1"].x).toBe(0);
+    expect(after.nodes["n1"].fills).toEqual([]);
+    expect(after.nodes["n1"].y).toBe(-20); // fuori mask: intatto
+
+    expectRoundTrip(scene, op);
   });
 });
 
@@ -163,6 +185,11 @@ describe("invertOp: nessun inverso possibile", () => {
 
   it("null per createNode senza nodo", () => {
     const op = create(OpSchema, { opId: "x", docId: "doc1", kind: { case: "createNode", value: {} } });
+    expect(invertOp(emptyScene("doc1", "Untitled"), op)).toBeNull();
+  });
+
+  it("null per createNode con id vuoto (ErrNilNode in Go)", () => {
+    const op = createOp(create(NodeSchema, { id: "", parentId: "page1" }));
     expect(invertOp(emptyScene("doc1", "Untitled"), op)).toBeNull();
   });
 

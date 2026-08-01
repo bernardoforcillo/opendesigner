@@ -1,0 +1,21 @@
+{
+  "docId": "doc1",
+  "ops": [
+    { "opId": "op1", "docId": "doc1", "createNode": { "node": {
+      "id": "n1", "parentId": "page1", "orderKey": "a0", "name": "Rect",
+      "visible": true, "opacity": 1, "x": 10, "y": 20, "width": 100, "height": 80,
+      "fills": [{ "solid": { "color": { "r": 0.2, "g": 0.4, "b": 0.9, "a": 1 } } }],
+      "rect": { "cornerRadius": 0 }
+    } } },
+    { "opId": "op2", "docId": "doc1", "setProps": { "id": "n1", "mask": "x,fills" } }
+  ],
+  "expected": {
+    "id": "doc1", "name": "Untitled", "schemaVersion": 1,
+    "pages": [{ "id": "page1", "name": "Page 1" }],
+    "nodes": { "n1": {
+      "id": "n1", "parentId": "page1", "orderKey": "a0", "name": "Rect",
+      "visible": true, "opacity": 1, "x": 0, "y": 20, "width": 100, "height": 80,
+      "rect": { "cornerRadius": 0 }
+    } }
+  }
+}
