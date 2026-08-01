@@ -536,6 +536,47 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
   });
 
+  // Il tail-drop lavora per OP, il gesto è l'unità dell'UNDO: i due granuli non
+  // coincidono, e i gesti multi-op sono la norma (selectTool manda un setProps
+  // per nodo selezionato sul drag e sul resize, un deleteNode per nodo su
+  // Canc). Se la coda si ferma a metà gruppo, la parte davanti è già durabile:
+  // buttare via la voce di undo intera renderebbe quella parte NON annullabile.
+  it("un gesto MULTI-OP fermato a metà tiene la voce di undo della parte passata", async () => {
+    const { stream } = await boot({
+      n1: rectNode("n1", 0, 0),
+      n2: rectNode("n2", 300, 0),
+    });
+    const net = reorderingTransport();
+    net.failOn("op-b", new ConnectError("connection closed", Code.Unavailable));
+
+    const st = useScene.getState();
+    st.beginGesture();
+    st.endGesture([moveOp("op-a", "n1", 40, 40), moveOp("op-b", "n2", 340, 40)]);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    await flush();
+
+    // op-a è passato (200 OK) e il suo eco non è ancora arrivato; op-b muore.
+    expect(net.arrived).toEqual(["op-a", "op-b"]);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+
+    // La voce sopravvive, ristretta all'op che è davvero sul server.
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().undoStack[0]).toHaveLength(1);
+    expect(useScene.getState().canUndo).toBe(true);
+
+    // L'eco arrivato DOPO il rifiuto non la cancella: prima del fix il mark era
+    // già sparito e la conferma diventava un no-op.
+    stream.push(applied(1, CLIENT, moveOp("op-a", "n1", 40, 40)));
+    await flush();
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().pending).toHaveLength(0);
+    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+
+    stream.close();
+    await flush();
+  });
+
   it("lo stop è per la coda, non per il client: un submit successivo riparte", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
     const net = reorderingTransport();

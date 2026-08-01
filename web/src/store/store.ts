@@ -22,6 +22,30 @@ export interface PendingOp {
   op: Op;
 }
 
+// La FORMA di una transizione degli stack: cosa ha spinto, cosa ha tolto, cosa
+// ha svuotato. Tenere la forma e non solo il risultato è ciò che permette di
+// RICOSTRUIRE la transizione su un PREFISSO dei suoi op -- il caso, tutt'altro
+// che raro, in cui una parte del gruppo è atterrata sul server e il resto no.
+//
+// Tre forme, una per sorgente:
+//  - "gesture": endGesture spinge `entry` (gli inversi degli op finali, in
+//    ordine di stack) sull'undo e SVUOTA il redo;
+//  - "undo": undo() toglie `ops` dall'undo -- sono esattamente gli op che
+//    submette -- e spinge `entry` sul redo;
+//  - "redo": simmetrico.
+//
+// In tutte e tre vale la stessa corrispondenza POSIZIONALE: `entry[i]` inverte
+// l'op in posizione `n-1-i` (invertChain ritorna la catena rovesciata), quindi
+// al prefisso di op sopravvissuti corrisponde la CODA di `entry`. È questa
+// corrispondenza che rende la ricostruzione parziale possibile senza dover
+// etichettare gli inversi uno a uno.
+// `entry` vuoto = la transizione non ha prodotto nessuna voce (invertChain
+// fallito): può comunque aver svuotato il redo.
+type HistoryShape =
+  | { kind: "gesture"; entry: Op[] }
+  | { kind: "undo"; ops: Op[]; entry: Op[] }
+  | { kind: "redo"; ops: Op[]; entry: Op[] };
+
 // Una TRANSIZIONE degli stack di undo/redo prodotta da op SUBMITTATI e non
 // ancora confermati.
 //
@@ -35,16 +59,41 @@ export interface PendingOp {
 // e il gesto PRECEDENTE -- quello vero -- non viene annullato. E il redo stack
 // era già stato svuotato per una modifica mai avvenuta.
 //
-// Il mark tiene gli stack com'erano PRIMA della transizione. Un rifiuto ci
-// torna sopra (revertHistory), l'eco dell'ultimo op del gruppo la rende
-// durabile e il mark sparisce (confirmHistory). È lo stesso principio di
-// `pending` applicato alla storia: finché gli op sono in dubbio, lo è anche la
-// voce di undo che hanno prodotto.
+// Il mark tiene gli stack com'erano PRIMA della transizione più la sua forma.
+// Un rifiuto abbassa `kept` e la storia viene RIGIOCATA (revertHistory), l'eco
+// dell'ultimo op del gruppo la rende durabile e il mark sparisce
+// (confirmHistory). È lo stesso principio di `pending` applicato alla storia:
+// finché gli op sono in dubbio, lo è anche la voce di undo che hanno prodotto.
+//
+// Il mark NON è atomico, ed è il punto che la prima versione sbagliava: la
+// politica di scarto del trasporto lavora per OP (l'outbox ne manda uno alla
+// volta e un fallimento butta via solo la coda dietro), mentre i gesti
+// multi-op sono la norma -- selectTool emette un setProps per nodo selezionato
+// sul drag e sul resize, e un deleteNode per nodo su Canc. Riavvolgere l'intera
+// voce perché l'ULTIMO op del gruppo è caduto cancella l'annullabilità della
+// metà che si è invece persistita: nel caso di Canc, un nodo cancellato per
+// sempre senza Ctrl+Z possibile.
 interface HistoryMark {
-  // opId di questa transizione ancora in volo; l'eco li toglie uno a uno.
+  // TUTTI gli op submittati dalla transizione, in ORDINE DI INVIO. Immutabile:
+  // è la POSIZIONE dentro questa lista a dire quanta parte della transizione
+  // un rifiuto porta via.
   opIds: string[];
+  // Quelli ancora in volo. L'eco li toglie uno a uno, un rifiuto toglie tutti
+  // quelli dalla posizione rifiutata in poi (non arriveranno mai). A lista
+  // vuota la transizione è DECISA e il mark può sparire.
+  awaiting: string[];
+  // Quanti op INIZIALI della transizione sono ancora validi. Parte dal totale;
+  // un rifiuto lo abbassa all'indice dell'op rifiutato. I sopravvissuti sono
+  // sempre un PREFISSO: l'outbox manda un op alla volta e in ordine, gli echi
+  // tornano nell'ordine di seq deciso dal server, e un fallimento scarta tutta
+  // la coda dietro (rpc/syncClient.ts).
+  kept: number;
+  // Gli stack com'erano PRIMA di questa transizione. Fanno da base al replay
+  // solo per la PRIMA voce di `history`; le successive se li portano dietro
+  // per poter diventare la prima quando quelle davanti si confermano.
   undoStack: Op[][];
   redoStack: Op[][];
+  shape: HistoryShape;
 }
 
 // Stato di un gesto aperto. Non contiene più uno snapshot della scena: la base
@@ -112,39 +161,114 @@ function dropPending(pending: PendingOp[], opId: string): PendingOp[] {
   return i < 0 ? pending : [...pending.slice(0, i), ...pending.slice(i + 1)];
 }
 
-// Un eco autorevole toglie l'op dalle transizioni ancora in dubbio. Quando una
-// transizione non ha più op in volo è DURABILE: il mark sparisce e da lì in poi
-// nessun rollback può più toccare quella voce di undo.
-function confirmHistory(history: HistoryMark[], opId: string): HistoryMark[] {
-  if (opId === "" || !history.some((m) => m.opIds.includes(opId))) return history;
-  const next: HistoryMark[] = [];
-  for (const m of history) {
-    if (!m.opIds.includes(opId)) {
-      next.push(m);
-      continue;
-    }
-    const opIds = m.opIds.filter((id) => id !== opId);
-    if (opIds.length > 0) next.push({ ...m, opIds });
+// Rigioca UNA transizione sugli stack, RISTRETTA ai suoi primi `kept` op.
+// kept === opIds.length è la transizione intera (quella che endGesture/undo/
+// redo hanno già applicato); kept === 0 è l'identità, cioè "non è mai
+// avvenuta"; i valori in mezzo sono il gesto atterrato a metà.
+function applyMark(
+  m: HistoryMark,
+  undoStack: Op[][],
+  redoStack: Op[][],
+): { undoStack: Op[][]; redoStack: Op[][] } {
+  const shape = m.shape;
+  const n = m.opIds.length;
+  // Gli inversi degli op sopravvissuti sono la CODA della voce (entry[i]
+  // inverte l'op n-1-i). Senza voce non c'è nulla da spingere.
+  const kept = shape.entry.length === n ? shape.entry.slice(n - m.kept) : [];
+  const push = (stack: Op[][]) => (kept.length > 0 ? [...stack, kept] : stack);
+  if (shape.kind === "gesture") {
+    // Il redo resta svuotato appena UN op del gesto è passato: il documento è
+    // cambiato per davvero e le voci di redo invertono uno stato che non
+    // esiste più (vedi il commento in endGesture). Solo un gesto interamente
+    // rifiutato se lo riprende.
+    return { undoStack: push(undoStack), redoStack: m.kept > 0 ? [] : redoStack };
   }
-  return next;
+  // Gli op NON ancora fatti restano sullo stack da cui erano stati tolti: un
+  // undo atterrato a metà lascia da annullare solo quello che manca.
+  const rest = shape.ops.slice(m.kept);
+  const pop = (stack: Op[][]) =>
+    rest.length > 0 ? [...stack.slice(0, -1), rest] : stack.slice(0, -1);
+  return shape.kind === "undo"
+    ? { undoStack: pop(undoStack), redoStack: push(redoStack) }
+    : { undoStack: push(undoStack), redoStack: pop(redoStack) };
 }
 
-// Rifiuto di un op: la transizione che l'ha prodotto non è mai avvenuta sul
-// server, quindi gli stack tornano a com'erano PRIMA di essa -- e con loro
-// spariscono anche le transizioni successive, che poggiavano su di essa.
+// Ricalcola gli stack rigiocando OGNI transizione ancora in dubbio a partire da
+// com'erano prima della più vecchia. Stessa scelta che viewOf fa per il
+// documento: si RICOSTRUISCE invece di rattoppare, così una riparazione
+// parziale non deve sapere niente delle transizioni che le stanno intorno e
+// l'ordine in cui arrivano i rifiuti smette di contare.
+// null = niente in dubbio, non c'è nessuna base da cui ripartire.
+function replayHistory(history: HistoryMark[]): { undoStack: Op[][]; redoStack: Op[][] } | null {
+  const head = history[0];
+  if (!head) return null;
+  let stacks = { undoStack: head.undoStack, redoStack: head.redoStack };
+  for (const m of history) stacks = applyMark(m, stacks.undoStack, stacks.redoStack);
+  return stacks;
+}
+
+// Toglie dalla TESTA le transizioni ormai decise (nessun op più in volo): il
+// loro effetto viene fuso nella base della successiva, che diventa la nuova
+// testa del replay. Da lì in poi nessun rifiuto può più toccarle -- è ciò che
+// rende una voce di undo definitivamente durabile.
+function settleHistory(history: HistoryMark[]): HistoryMark[] {
+  let out = history;
+  while (out.length > 0 && out[0].awaiting.length === 0) {
+    const [head, ...rest] = out;
+    if (rest.length === 0) return [];
+    out = [{ ...rest[0], ...applyMark(head, head.undoStack, head.redoStack) }, ...rest.slice(1)];
+  }
+  return out;
+}
+
+// Un eco autorevole toglie l'op dall'attesa delle transizioni ancora in dubbio.
+// Quando una transizione non ha più op in volo è DURABILE (vedi settleHistory).
+function confirmHistory(history: HistoryMark[], opId: string): HistoryMark[] {
+  if (opId === "" || !history.some((m) => m.awaiting.includes(opId))) return history;
+  return settleHistory(
+    history.map((m) =>
+      m.awaiting.includes(opId) ? { ...m, awaiting: m.awaiting.filter((id) => id !== opId) } : m,
+    ),
+  );
+}
+
+// Rifiuto di un op: la parte di transizione che parte da quell'op non è mai
+// avvenuta sul server. `kept` scende alla posizione dell'op rifiutato e gli
+// stack si ricalcolano rigiocando la storia -- non si torna a uno snapshot.
+// Tornare allo stato PRE-transizione (com'era prima) è corretto solo quando
+// l'op rifiutato è il PRIMO del gruppo; per un op successivo cancellerebbe
+// l'annullabilità degli op del gruppo che invece sono passati, e riarmerebbe
+// un redo stack che il gesto aveva svuotato a ragione.
 // null = quest'op non ha prodotto nessuna transizione (submit fuori da
-// gesto/undo/redo, o transizione già confermata): niente da annullare.
+// gesto/undo/redo, o transizione già confermata), oppure era già stato
+// scartato: niente da annullare.
 type HistoryPatch = Pick<SceneStore, "history" | "undoStack" | "redoStack" | "canUndo" | "canRedo">;
 function revertHistory(history: HistoryMark[], opId: string): HistoryPatch | null {
   const i = history.findIndex((m) => m.opIds.includes(opId));
   if (i < 0) return null;
-  const { undoStack, redoStack } = history[i];
+  const m = history[i];
+  const kept = Math.min(m.kept, m.opIds.indexOf(opId));
+  // Già fuori dal prefisso sopravvissuto: un rifiuto precedente dello stesso
+  // gruppo l'ha già contato. Succede a ogni raffica -- il drain annulla la coda
+  // DAL FONDO -- e ricalcolare darebbe lo stesso risultato: meglio nessun set().
+  if (kept === m.kept) return null;
+  const patched: HistoryMark = {
+    ...m,
+    kept,
+    // Gli op oltre il prefisso non arriveranno mai: toglierli dall'attesa è ciò
+    // che permette al mark di diventare DECISO quando la parte atterrata si
+    // conferma, invece di restare appeso per sempre.
+    awaiting: m.awaiting.filter((id) => m.opIds.indexOf(id) < kept),
+  };
+  const next = [...history.slice(0, i), patched, ...history.slice(i + 1)];
+  const stacks = replayHistory(next);
+  if (!stacks) return null;
   return {
-    history: history.slice(0, i),
-    undoStack,
-    redoStack,
-    canUndo: undoStack.length > 0,
-    canRedo: redoStack.length > 0,
+    history: settleHistory(next),
+    undoStack: stacks.undoStack,
+    redoStack: stacks.redoStack,
+    canUndo: stacks.undoStack.length > 0,
+    canRedo: stacks.redoStack.length > 0,
   };
 }
 
@@ -493,16 +617,16 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     // rifiutato, è qui che si torna (vedi HistoryMark).
     const prevUndo = get().undoStack;
     const prevRedo = get().redoStack;
+    let entry: Op[] = [];
     let changedHistory = false;
     if (finalOps.length > 0) {
-      const inverses = base ? invertChain(base, finalOps) : null;
-      const entry = inverses && inverses.length > 0 ? inverses : null;
+      entry = (base ? invertChain(base, finalOps) : null) ?? [];
       // Niente voce da aggiungere e redo già vuoto: nessun cambiamento di
       // stato, quindi niente set() (sveglierebbe i sottoscrittori a vuoto).
-      if (entry || prevRedo.length > 0) {
+      if (entry.length > 0 || prevRedo.length > 0) {
         changedHistory = true;
         set((st) => {
-          const undoStack = entry ? [...st.undoStack, entry] : st.undoStack;
+          const undoStack = entry.length > 0 ? [...st.undoStack, entry] : st.undoStack;
           return { undoStack, redoStack: [], canUndo: undoStack.length > 0, canRedo: false };
         });
       }
@@ -511,11 +635,27 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     // modo SINCRONO (outbox pieno, vedi rpc/syncClient.ts) e il rollback deve
     // già trovare la transizione da riavvolgere. Senza trasporto non serve --
     // gli op diventano confermati all'istante e non c'è nulla da rifiutare.
+    //
+    // `opIds` tiene TUTTI gli op finali, anche quelli senza opId: è una lista
+    // POSIZIONALE, e il suo indice è ciò che allinea un rifiuto alla voce di
+    // undo. In attesa vanno invece solo quelli riconoscibili (un opId vuoto non
+    // entra mai in `pending`, quindi nessun eco potrebbe mai toglierlo).
     if (changedHistory && sync) {
-      const opIds = finalOps.map((o) => o.opId).filter((id) => id !== "");
-      if (opIds.length > 0) {
+      const opIds = finalOps.map((o) => o.opId);
+      const awaiting = opIds.filter((id) => id !== "");
+      if (awaiting.length > 0) {
         set((st) => ({
-          history: [...st.history, { opIds, undoStack: prevUndo, redoStack: prevRedo }],
+          history: [
+            ...st.history,
+            {
+              opIds,
+              awaiting,
+              kept: opIds.length,
+              undoStack: prevUndo,
+              redoStack: prevRedo,
+              shape: { kind: "gesture", entry },
+            },
+          ],
         }));
       }
     }
@@ -601,12 +741,24 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const sync = get().sync;
     // Anche l'undo è una transizione in dubbio finché i suoi inversi non sono
     // confermati: se il server li rifiuta, la voce tornata nel redo va tolta e
-    // quella consumata dall'undo va rimessa dov'era (vedi HistoryMark).
+    // quella consumata dall'undo va rimessa dov'era -- e se ne è passata solo
+    // una parte, va rimessa la sola parte NON disfatta (vedi HistoryMark).
     if (sync) {
-      const opIds = entry.map((o) => o.opId).filter((id) => id !== "");
-      if (opIds.length > 0) {
+      const opIds = entry.map((o) => o.opId);
+      const awaiting = opIds.filter((id) => id !== "");
+      if (awaiting.length > 0) {
         set((st) => ({
-          history: [...st.history, { opIds, undoStack: prevUndo, redoStack: prevRedo }],
+          history: [
+            ...st.history,
+            {
+              opIds,
+              awaiting,
+              kept: opIds.length,
+              undoStack: prevUndo,
+              redoStack: prevRedo,
+              shape: { kind: "undo", ops: entry, entry: redoEntry ?? [] },
+            },
+          ],
         }));
       }
     }
@@ -636,10 +788,21 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     });
     const sync = get().sync;
     if (sync) {
-      const opIds = entry.map((o) => o.opId).filter((id) => id !== "");
-      if (opIds.length > 0) {
+      const opIds = entry.map((o) => o.opId);
+      const awaiting = opIds.filter((id) => id !== "");
+      if (awaiting.length > 0) {
         set((st) => ({
-          history: [...st.history, { opIds, undoStack: prevUndo, redoStack: prevRedo }],
+          history: [
+            ...st.history,
+            {
+              opIds,
+              awaiting,
+              kept: opIds.length,
+              undoStack: prevUndo,
+              redoStack: prevRedo,
+              shape: { kind: "redo", ops: entry, entry: undoEntry ?? [] },
+            },
+          ],
         }));
       }
     }

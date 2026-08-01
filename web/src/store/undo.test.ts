@@ -35,6 +35,28 @@ class RejectingSync {
   }
 }
 
+// Doppio di un trasporto PILOTATO A MANO: submit fa solo l'apply ottimistico
+// (come SyncClient, che accoda e ritorna subito) e il test decide op per op
+// quale ATTERRA (`land`, l'eco da Subscribe) e quale viene RIFIUTATO
+// (`reject`). Serve a riprodurre il caso che né FakeSync né RejectingSync
+// coprono -- accettano/rifiutano *tutto* -- cioè un gruppo di op submittati
+// insieme di cui solo una PARTE arriva sul server. È esattamente ciò che
+// SyncClient.drain produce: manda un op alla volta, e quando uno fallisce
+// quelli davanti sono già passati e quelli dietro vengono scartati.
+class ManualSync {
+  sent: Op[] = [];
+  submit(op: Op) {
+    this.sent.push(op);
+    useScene.getState().applyPending(op);
+  }
+  land(op: Op) {
+    useScene.getState().apply(op);
+  }
+  reject(op: Op, message = "connection closed") {
+    useScene.getState().rejectPending(op.opId, message);
+  }
+}
+
 // Il nodo che un op di cancellazione bersaglia (null se non è un deleteNode):
 // serve a distinguere QUALE voce di undo è stata consumata.
 function deletedId(op: Op): string | null {
@@ -396,5 +418,193 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
+  });
+
+  // --- gesti MULTI-OP atterrati a metà (bug trovato in review round 2) --------
+  // Un gesto è il pezzo unitario dell'undo, ma NON del trasporto: l'outbox
+  // manda un op alla volta e un fallimento scarta solo la coda dietro
+  // (rpc/syncClient.ts). E i gesti multi-op sono la norma, non un caso limite:
+  // selectTool emette un setProps per nodo selezionato sul drag e sul resize, e
+  // un deleteNode per nodo su Canc. Riavvolgere l'INTERA voce di undo perché
+  // l'ultimo op del gruppo è caduto cancella l'annullabilità della metà che
+  // invece si è persistita.
+
+  it("un gesto multi-op atterrato a METÀ tiene la voce di undo della parte passata", () => {
+    gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    // Drag di n1+n2: due setProps, un solo gesto, una sola voce di undo.
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    const mv1 = moveOp("n1", 40, 40);
+    const mv2 = moveOp("n2", 340, 40);
+    gesture([mv1, mv2]);
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    // mv1 passa (200 OK) ma il suo eco non è ancora arrivato; mv2 muore.
+    manual.reject(mv2);
+
+    // La vista: n1 è rimasto spostato (ottimistico, in volo), n2 è tornato.
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+    // La voce di undo NON sparisce: coprirebbe uno spostamento che sul server
+    // è avvenuto per davvero, e senza di lei n1 resta mosso e non annullabile.
+    // Resta però ristretta alla sola metà atterrata.
+    expect(useScene.getState().undoStack).toHaveLength(2);
+    expect(useScene.getState().undoStack[1]).toHaveLength(1);
+    expect(useScene.getState().canUndo).toBe(true);
+
+    // ...e l'eco che arriva DOPO il rifiuto non la cancella (prima del fix il
+    // mark era già sparito e confirmHistory era un no-op).
+    manual.land(mv1);
+    expect(useScene.getState().undoStack).toHaveLength(2);
+    expect(useScene.getState().pending).toHaveLength(0);
+
+    // Ctrl+Z annulla esattamente la metà che è passata: un solo op sul filo,
+    // n1 torna al punto di partenza, n2 non viene toccato.
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+
+    expect(sync.sent).toHaveLength(1);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+  });
+
+  it("una CANCELLAZIONE multi-nodo atterrata a metà resta annullabile per il nodo cancellato", () => {
+    gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
+
+    // Canc con due nodi selezionati: un deleteNode per nodo, un solo gesto.
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    const del1 = deleteOp("n1");
+    const del2 = deleteOp("n2");
+    gesture([del1, del2]);
+
+    manual.land(del1); // il primo è nell'op-log: n1 è cancellato per davvero
+    manual.reject(del2); // il secondo no
+
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes["n2"]).toBeDefined();
+    // Senza la riparazione la voce [createNode n1, createNode n2] veniva
+    // buttata via intera: n1 cancellato per sempre, nessun Ctrl+Z possibile.
+    expect(useScene.getState().undoStack).toHaveLength(2);
+    expect(useScene.getState().undoStack[1]).toHaveLength(1);
+
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case).toBe("createNode");
+    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+  });
+
+  it("un gesto atterrato a metà NON riarma il redo stack che aveva svuotato", () => {
+    gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
+    gesture([moveOp("n1", 40, 40)]);
+    useScene.getState().undo(); // n1 torna a (0,0); il redo ha "rimettilo a (40,40)"
+    expect(useScene.getState().redoStack).toHaveLength(1);
+
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    const mv1 = moveOp("n1", 999, 999);
+    const mv2 = moveOp("n2", 999, 0);
+    gesture([mv1, mv2]); // svuota il redo; mv1 passa, mv2 no
+    manual.land(mv1);
+    manual.reject(mv2);
+
+    // Il documento è cambiato per davvero (n1 è a 999,999 sul server): la voce
+    // di redo inverte uno stato che non esiste più. Riarmarla è la stessa
+    // sovrascrittura silenziosa che lo svuotamento incondizionato esiste per
+    // impedire (vedi endGesture) -- un redo rimetterebbe n1 a (40,40).
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().canRedo).toBe(false);
+
+    useScene.getState().setSync(sync);
+    useScene.getState().redo();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 999, y: 999 });
+  });
+
+  it("un gesto multi-op rifiutato dal PRIMO op riavvolge tutta la voce", () => {
+    gesture([createOp("n1", 0, 0)]);
+
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    const c2 = createOp("n2", 300, 0);
+    const c3 = createOp("n3", 600, 0);
+    gesture([c2, c3]);
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    // Nessuno dei due è atterrato: il drain annulla la coda DAL FONDO.
+    manual.reject(c3);
+    manual.reject(c2);
+
+    // Qui il riavvolgimento totale è quello giusto: la transizione non è mai
+    // avvenuta, quindi la voce sparisce e il redo torna com'era.
+    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes["n3"]).toBeUndefined();
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(deletedId(sync.sent[0])).toBe("n1"); // il gesto VERO
+  });
+
+  it("un undo atterrato a metà lascia sullo stack solo la parte non disfatta", () => {
+    gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
+    // La voce è [deleteNode n2, deleteNode n1]: si disfa nell'ordine inverso.
+    expect(useScene.getState().undoStack[0]).toHaveLength(2);
+
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    useScene.getState().undo();
+    const [first, second] = manual.sent;
+
+    manual.land(first); // n2 è cancellato sul server
+    manual.reject(second); // n1 no
+
+    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    // Rimettere la voce INTERA (com'era prima del fix) significherebbe che il
+    // Ctrl+Z successivo rimanda deleteNode n2 su un nodo che il server ha già
+    // cancellato -> ErrNodeNotFound -> altro rollback, voce bruciata.
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().undoStack[0]).toHaveLength(1);
+    // ...e la metà DISFATTA è ridiventata rifacibile.
+    expect(useScene.getState().redoStack).toHaveLength(1);
+    expect(useScene.getState().redoStack[0]).toHaveLength(1);
+
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(1);
+    expect(deletedId(sync.sent[0])).toBe("n1");
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+  });
+
+  it("un redo atterrato a metà lascia sullo stack solo la parte non rifatta", () => {
+    gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
+    useScene.getState().undo(); // entrambi spariscono; il redo li ricrea
+    expect(useScene.getState().redoStack[0]).toHaveLength(2);
+
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    useScene.getState().redo();
+    const [first, second] = manual.sent;
+
+    manual.land(first); // il primo nodo è di nuovo nell'op-log
+    manual.reject(second); // il secondo no
+
+    expect(useScene.getState().redoStack).toHaveLength(1);
+    expect(useScene.getState().redoStack[0]).toHaveLength(1);
+    // ...e la metà rifatta è di nuovo annullabile.
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().undoStack[0]).toHaveLength(1);
+
+    useScene.getState().setSync(sync);
+    useScene.getState().redo();
+    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["n1", "n2"]);
   });
 });
