@@ -292,3 +292,91 @@ func TestNewHubReconstructsHistoryAfterRestart(t *testing.T) {
 		t.Fatalf("post-restart catch-up missing records: got=%v want seq 1 and 2", got)
 	}
 }
+
+// finding (CRITICAL): a torn oplog append permanently bricked the document.
+// bundle.Append used protodelim's two-Write framing, so a crash between the
+// length prefix and the payload left a dangling prefix; Load's isEOF check
+// only matched io.EOF, not the io.ErrUnexpectedEOF protodelim returns for a
+// truncated payload, so NewHub -- and therefore every OpenDocument and
+// SubmitOp for that doc_id -- failed forever with "read oplog: unexpected
+// EOF" while the healthy records sat right there on disk.
+//
+// This is the end-to-end assertion for the whole fix: a document whose
+// oplog ends mid-record must still open, must expose every intact record,
+// and must accept new ops afterwards.
+func TestNewHubOpensDocumentWithTornOplogTail(t *testing.T) {
+	dir := t.TempDir()
+
+	b1, err := store.Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h1, err := NewHub(b1)
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, id := range []string{"n1", "n2", "n3"} {
+		if _, err := h1.Submit("c1", createOp(id)); err != nil {
+			t.Fatal(err)
+		}
+	}
+
+	oplogPath := filepath.Join(dir, "doc1.brawt", "oplog")
+	fi, err := os.Stat(oplogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	good := fi.Size()
+
+	// A fourth op starts to hit the disk, then the machine loses power
+	// partway through the record.
+	if _, err := h1.Submit("c1", createOp("n4")); err != nil {
+		t.Fatal(err)
+	}
+	torn, err := os.Stat(oplogPath)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if err := os.Truncate(oplogPath, good+(torn.Size()-good)/2); err != nil {
+		t.Fatal(err)
+	}
+
+	// Restart: the document must still open.
+	b2, err := store.Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h2, err := NewHub(b2)
+	if err != nil {
+		t.Fatalf("NewHub must open a document whose oplog tail is torn, got: %v", err)
+	}
+	doc, seq := h2.Snapshot()
+	if seq != 3 {
+		t.Fatalf("seq = %d, want 3", seq)
+	}
+	if len(doc.GetNodes()) != 3 {
+		t.Fatalf("nodes = %d, want 3", len(doc.GetNodes()))
+	}
+
+	// The oplog must be genuinely repaired: editing continues from seq 3
+	// and survives another restart.
+	rec, err := h2.Submit("c1", createOp("n4"))
+	if err != nil {
+		t.Fatalf("Submit after torn-tail recovery: %v", err)
+	}
+	if rec.Seq != 4 {
+		t.Fatalf("post-recovery seq = %d, want 4", rec.Seq)
+	}
+	b3, err := store.Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	h3, err := NewHub(b3)
+	if err != nil {
+		t.Fatalf("NewHub after repair+append: %v", err)
+	}
+	doc3, seq3 := h3.Snapshot()
+	if seq3 != 4 || len(doc3.GetNodes()) != 4 {
+		t.Fatalf("after repair+append: seq = %d nodes = %d, want 4/4", seq3, len(doc3.GetNodes()))
+	}
+}
