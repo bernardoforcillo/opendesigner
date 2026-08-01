@@ -74,6 +74,29 @@ export function createSelectTool(): Tool {
     useScene.getState().setMarquee(null);
   }
 
+  // Abbandona QUALUNQUE gesto locale in corso (drag di spostamento o marquee),
+  // riportando sia lo store sia lo stato del tool al punto di partenza -- senza
+  // mandare nulla sul filo. Condivisa da Esc, Delete/Backspace e onDeactivate:
+  // tutti e tre i punti in cui il tool deve poter "staccarsi" pulito da un
+  // gesto a metà. Cruciale per Delete/Backspace in particolare -- senza questo
+  // richiamo PRIMA di cancellare, un Delete premuto a metà drag chiuderebbe il
+  // gesto dello STORE (via il proprio beginGesture/endGesture per la
+  // cancellazione) ma lascerebbe dragAnchor/dragStart/dragStarted del tool
+  // stale: il successivo pointerup li troverebbe ancora validi e chiamerebbe
+  // endGesture() una seconda volta SENZA gesto aperto, che (mis)uso previsto
+  // da store.ts) manda comunque sul filo un setProps fasullo per un nodo ormai
+  // cancellato.
+  function cancelActiveGesture() {
+    if (marqueeAnchor) {
+      useScene.getState().setSelection(preMarqueeSelection ?? []);
+      resetMarquee();
+    }
+    if (dragAnchor) {
+      if (dragStarted) useScene.getState().cancelGesture();
+      resetDrag();
+    }
+  }
+
   return {
     id: "select",
     cursor: "default",
@@ -156,16 +179,16 @@ export function createSelectTool(): Tool {
 
     onKeyDown(e) {
       if (e.key === "Escape") {
-        if (marqueeAnchor) {
-          useScene.getState().setSelection(preMarqueeSelection ?? []);
-          resetMarquee();
-        } else if (dragAnchor) {
-          if (dragStarted) useScene.getState().cancelGesture();
-          resetDrag();
-        }
+        cancelActiveGesture();
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
+        // Un drag o un marquee possono essere a metà (pulsante ancora premuto)
+        // quando arriva il tasto: vanno abbandonati PRIMA di cancellare, così
+        // dragAnchor/dragStart/dragStarted (o marqueeAnchor) non restano stale
+        // e il pointerup che arriverà comunque dopo non trova nulla da fare
+        // (vedi commento su cancelActiveGesture più sopra).
+        cancelActiveGesture();
         const store = useScene.getState();
         const ids = store.selection;
         if (ids.length === 0) return;
@@ -176,14 +199,7 @@ export function createSelectTool(): Tool {
 
     // Gesto abbandonato (cambio tool, pointercancel, smontaggio): nessun op.
     onDeactivate() {
-      if (marqueeAnchor) {
-        useScene.getState().setSelection(preMarqueeSelection ?? []);
-        resetMarquee();
-      }
-      if (dragAnchor) {
-        if (dragStarted) useScene.getState().cancelGesture();
-        resetDrag();
-      }
+      cancelActiveGesture();
     },
   };
 }

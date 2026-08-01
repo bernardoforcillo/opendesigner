@@ -300,5 +300,57 @@ describe("selectTool", () => {
       createSelectTool().onKeyDown!({ key: "Delete" } as KeyboardEvent, fakeCtx());
       expect(sync.sent).toHaveLength(0);
     });
+
+    it("Delete mid-drag deletes the node, does not leave a stale drag, and the eventual pointerup sends nothing more", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(at(90, 90), ctx); // apre il gesto di drag nello store, anteprima x:80 y:80
+
+      tool.onKeyDown!({ key: "Delete" } as KeyboardEvent, ctx);
+      expect(sync.sent).toHaveLength(1);
+      expect(sync.sent[0].kind.case).toBe("deleteNode");
+      expect(useScene.getState().scene!.nodes["a"]).toBeUndefined();
+      expect(useScene.getState().gesture).toBeNull();
+
+      // Il pulsante è ancora giù nel mondo reale: arrivano ancora move/up per
+      // il drag che Delete ha interrotto. Non devono fare nulla -- in
+      // particolare NON un secondo setProps fasullo per "a" (ormai cancellato).
+      tool.onPointerMove!(at(95, 95), ctx);
+      tool.onPointerUp!(at(95, 95), ctx);
+      expect(sync.sent).toHaveLength(1);
+      expect(sync.sent.every((op) => op.kind.case === "deleteNode")).toBe(true);
+    });
+
+    it("Delete mid-marquee cancels the marquee (restoring the pre-marquee selection) before deleting", () => {
+      useScene.getState().setSelection(["b"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(-10, -10), ctx); // vuoto: azzera la selezione, apre il marquee
+      tool.onPointerMove!(at(60, 60), ctx);
+      expect(useScene.getState().marquee).not.toBeNull();
+
+      tool.onKeyDown!({ key: "Delete" } as KeyboardEvent, ctx);
+      // Il marquee viene abbandonato (selezione ripristinata a "b" prima della
+      // cancellazione), quindi è "b" (non nulla, non un id fantasma) a essere
+      // cancellato con un solo op.
+      expect(sync.sent).toHaveLength(1);
+      expect(sync.sent[0].kind.case).toBe("deleteNode");
+      expect(useScene.getState().scene!.nodes["b"]).toBeUndefined();
+      expect(useScene.getState().marquee).toBeNull();
+      expect(useScene.getState().selection).toEqual([]);
+
+      // Il pointerup del marquee interrotto non deve rimettere "b" in
+      // selezione (sarebbe un id di un nodo ormai cancellato).
+      tool.onPointerUp!(at(60, 60), ctx);
+      expect(useScene.getState().selection).toEqual([]);
+    });
   });
 });
