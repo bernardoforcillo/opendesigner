@@ -1,9 +1,43 @@
 import { hitTest } from "../renderer/canvasRenderer";
 import { normalizeRect, boundsOfNode, boundsIntersect, type Bounds } from "../canvas/geometry";
+import { worldToScreen } from "../canvas/camera";
+import { selectionWorldBounds } from "../renderer/overlayRenderer";
+import {
+  cursorForHandle,
+  hitTestHandle,
+  resizeTransform,
+  transformBounds,
+  type HandleId,
+} from "../selection/handles";
 import { useScene } from "../store/store";
 import { makeDeleteOp, makeSetPropsOp } from "./ops";
 import type { SceneState } from "../store/types";
-import type { Tool } from "./types";
+import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Tool, ToolContext } from "./types";
+
+const DEFAULT_CURSOR = "default";
+
+// Il cursore vive sul DOM del canvas (come fa toolManager quando cambia tool).
+// Duck-typing su style: nei test ctx.canvas è un doppio, non un HTMLCanvasElement.
+function setCursor(ctx: ToolContext, cursor: string): void {
+  const style = (ctx.canvas as unknown as { style?: { cursor: string } } | undefined)?.style;
+  if (style) style.cursor = cursor;
+}
+
+// Le maniglie si testano in px SCHERMO (area di presa costante a ogni zoom),
+// ma ToolContext espone solo toWorld: si torna in schermo passando ANCORA da
+// canvas/camera.ts, mai ricalcolando la trasformazione a mano. Il round-trip
+// world -> screen è l'inverso esatto di toWorld, quindi non serve conoscere il
+// rettangolo del canvas qui.
+function handleUnderPointer(ctx: ToolContext, world: { x: number; y: number }): HandleId | null {
+  const scene = ctx.getScene();
+  if (!scene) return null;
+  const box = selectionWorldBounds(scene, useScene.getState().selection);
+  if (!box) return null;
+  const cam = ctx.getCamera();
+  const p = worldToScreen(cam, world.x, world.y);
+  return hitTestHandle(box, cam, p.x, p.y);
+}
 
 export type PickResult =
   | { mode: "marquee" }
@@ -56,6 +90,18 @@ export function createSelectTool(): Tool {
   let dragStart: Record<string, { x: number; y: number }> | null = null;
   let dragStarted = false;
 
+  // --- resize con le maniglie -------------------------------------------------
+  // Stessa struttura del drag di spostamento: ancora MONDO + stato iniziale, e
+  // apertura PIGRA del gesto al primo move vero (un click su una maniglia non
+  // deve produrre nessun op). resizeStartBox è il bbox di GRUPPO a inizio
+  // gesto: ogni nodo viene poi mappato con la stessa trasformazione, così una
+  // selezione multipla scala (e si specchia) in blocco.
+  let resizeHandle: HandleId | null = null;
+  let resizeAnchor: { x: number; y: number } | null = null;
+  let resizeStartBox: Bounds | null = null;
+  let resizeStartNodes: Record<string, Bounds> | null = null;
+  let resizeStarted = false;
+
   // --- marquee ---------------------------------------------------------------
   let marqueeAnchor: { x: number; y: number } | null = null;
   let marqueeBase: string[] | null = null;
@@ -67,6 +113,33 @@ export function createSelectTool(): Tool {
     dragStarted = false;
   }
 
+  function resetResize() {
+    resizeHandle = null;
+    resizeAnchor = null;
+    resizeStartBox = null;
+    resizeStartNodes = null;
+    resizeStarted = false;
+  }
+
+  // Gli op del resize per la posizione corrente del puntatore, ricalcolati
+  // SEMPRE dai bounds iniziali (mai dal delta dell'ultimo move): niente
+  // accumulo di errori, e l'op finale è identico all'ultima anteprima.
+  function resizeOps(e: PointerEvent, ctx: ToolContext): Op[] {
+    if (!resizeHandle || !resizeAnchor || !resizeStartBox || !resizeStartNodes) return [];
+    const world = ctx.toWorld(e);
+    const t = resizeTransform(
+      resizeStartBox,
+      resizeHandle,
+      world.x - resizeAnchor.x,
+      world.y - resizeAnchor.y,
+      { keepAspect: e.shiftKey },
+    );
+    return Object.entries(resizeStartNodes).map(([id, start]) => {
+      const b = transformBounds(start, t);
+      return makeSetPropsOp(id, b, ["x", "y", "width", "height"]);
+    });
+  }
+
   function resetMarquee() {
     marqueeAnchor = null;
     marqueeBase = null;
@@ -74,7 +147,7 @@ export function createSelectTool(): Tool {
     useScene.getState().setMarquee(null);
   }
 
-  // Abbandona QUALUNQUE gesto locale in corso (drag di spostamento o marquee),
+  // Abbandona QUALUNQUE gesto locale in corso (spostamento, marquee o resize),
   // riportando sia lo store sia lo stato del tool al punto di partenza -- senza
   // mandare nulla sul filo. Condivisa da Esc, Delete/Backspace e onDeactivate:
   // tutti e tre i punti in cui il tool deve poter "staccarsi" pulito da un
@@ -95,6 +168,10 @@ export function createSelectTool(): Tool {
       if (dragStarted) useScene.getState().cancelGesture();
       resetDrag();
     }
+    if (resizeHandle) {
+      if (resizeStarted) useScene.getState().cancelGesture();
+      resetResize();
+    }
   }
 
   return {
@@ -106,6 +183,27 @@ export function createSelectTool(): Tool {
       if (!scene) return;
       const world = ctx.toWorld(e);
       const store = useScene.getState();
+
+      // Le maniglie hanno PRIORITÀ sui nodi: la maniglia se di un rettangolo
+      // cade dentro (o sul bordo di) il rettangolo stesso, e quelle esterne
+      // cadono sul vuoto -- senza priorità un pointerdown lì lo sposterebbe o
+      // farebbe partire un marquee azzerando la selezione.
+      const handle = handleUnderPointer(ctx, world);
+      if (handle) {
+        const start: Record<string, Bounds> = {};
+        for (const sid of store.selection) {
+          const n = scene.nodes[sid];
+          if (n) start[sid] = boundsOfNode(n);
+        }
+        resizeHandle = handle;
+        resizeAnchor = world;
+        resizeStartBox = selectionWorldBounds(scene, store.selection);
+        resizeStartNodes = start;
+        resizeStarted = false;
+        setCursor(ctx, cursorForHandle(handle));
+        return;
+      }
+
       const target = pickTarget(scene, world, e.shiftKey, store.selection);
 
       if (target.mode === "marquee") {
@@ -137,12 +235,29 @@ export function createSelectTool(): Tool {
     },
 
     onPointerMove(e, ctx) {
+      if (resizeHandle) {
+        // Il cursore resta quello della maniglia afferrata per tutto il drag,
+        // anche quando il puntatore si allontana da dove stava la maniglia.
+        setCursor(ctx, cursorForHandle(resizeHandle));
+        if (!resizeStarted) {
+          resizeStarted = true;
+          useScene.getState().beginGesture();
+        }
+        for (const op of resizeOps(e, ctx)) useScene.getState().applyLocal(op);
+        return;
+      }
       if (marqueeAnchor) {
         const world = ctx.toWorld(e);
         useScene.getState().setMarquee(normalizeRect(marqueeAnchor.x, marqueeAnchor.y, world.x, world.y));
         return;
       }
-      if (!dragAnchor || !dragStart) return;
+      if (!dragAnchor || !dragStart) {
+        // Nessun gesto in corso: è un semplice hover. Il cursore anticipa la
+        // maniglia afferrabile sotto il puntatore (step 4 del brief).
+        const hover = handleUnderPointer(ctx, ctx.toWorld(e));
+        setCursor(ctx, hover ? cursorForHandle(hover) : DEFAULT_CURSOR);
+        return;
+      }
       if (!dragStarted) {
         dragStarted = true;
         useScene.getState().beginGesture();
@@ -156,6 +271,11 @@ export function createSelectTool(): Tool {
     },
 
     onPointerUp(e, ctx) {
+      if (resizeHandle) {
+        if (resizeStarted) useScene.getState().endGesture(resizeOps(e, ctx));
+        resetResize();
+        return;
+      }
       if (marqueeAnchor) {
         const scene = ctx.getScene();
         const world = ctx.toWorld(e);

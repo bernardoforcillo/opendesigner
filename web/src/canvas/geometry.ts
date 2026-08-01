@@ -1,4 +1,5 @@
 import type { NodeLite } from "../store/types";
+import { type Camera, worldToScreen } from "./camera";
 
 export interface Bounds { x: number; y: number; width: number; height: number }
 
@@ -32,4 +33,19 @@ export function boundsIntersect(a: Bounds, b: Bounds): boolean {
 
 export function pointInBounds(b: Bounds, x: number, y: number): boolean {
   return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
+}
+
+// Converte bounds MONDO in bounds SCHERMO (px CSS) passando SEMPRE da
+// canvas/camera.ts, mai ricalcolando la trasformazione a mano. Vive qui (e non
+// nel renderer) perché serve sia all'overlay che a selection/handles.ts, e
+// tenerla nel renderer costringerebbe le maniglie a importare da lui -- ciclo.
+export function worldBoundsToScreen(b: Bounds, cam: Camera): Bounds {
+  const p0 = worldToScreen(cam, b.x, b.y);
+  const p1 = worldToScreen(cam, b.x + b.width, b.y + b.height);
+  return { x: p0.x, y: p0.y, width: p1.x - p0.x, height: p1.y - p0.y };
+}
+
+// Allarga (o restringe, con pad negativo) un rettangolo di pad px su ogni lato.
+export function inflateBounds(b: Bounds, pad: number): Bounds {
+  return { x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2 };
 }

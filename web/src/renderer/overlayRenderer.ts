@@ -1,14 +1,13 @@
 import type { SceneState } from "../store/types";
 import type { Camera } from "../canvas/camera";
-import { worldToScreen } from "../canvas/camera";
-import { type Bounds, boundsOfNode, unionBounds } from "../canvas/geometry";
+import { type Bounds, boundsOfNode, unionBounds, worldBoundsToScreen } from "../canvas/geometry";
+import { HANDLE_SIZE, handlePositions } from "../selection/handles";
 
-export type HandleId = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
-
-// px SCHERMO: lato del quadratino maniglia. La geometria di hit-test/resize
-// vera e propria (handleScreenRects, hitTestHandle, resizeBounds) vive in
-// selection/handles.ts (Task 9); qui serve solo per disegnare.
-export const HANDLE_SIZE = 8;
+// La geometria delle maniglie (posizioni, hit-test, resize) è UNA sola e vive
+// in selection/handles.ts: qui si disegna soltanto. Ri-esportata perché il
+// renderer resta il punto d'ingresso naturale per chi disegna l'overlay.
+export { HANDLE_SIZE, handlePositions, type HandleId } from "../selection/handles";
+export { worldBoundsToScreen } from "../canvas/geometry";
 
 function devicePixelRatio(): number {
   return typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
@@ -26,33 +25,6 @@ export function selectionWorldBounds(state: SceneState, selection: string[]): Bo
     if (n) boxes.push(boundsOfNode(n));
   }
   return unionBounds(boxes);
-}
-
-// Converte bounds MONDO in bounds SCHERMO (px CSS) via la camera -- sempre
-// attraverso canvas/camera.ts, mai ricalcolando la trasformazione a mano.
-export function worldBoundsToScreen(b: Bounds, cam: Camera): Bounds {
-  const p0 = worldToScreen(cam, b.x, b.y);
-  const p1 = worldToScreen(cam, b.x + b.width, b.y + b.height);
-  return { x: p0.x, y: p0.y, width: p1.x - p0.x, height: p1.y - p0.y };
-}
-
-// Le 8 posizioni (centro maniglia) attorno a un bbox SCHERMO: angoli + punti
-// medi dei lati.
-export function handlePositions(b: Bounds): Record<HandleId, { x: number; y: number }> {
-  const midX = b.x + b.width / 2;
-  const midY = b.y + b.height / 2;
-  const right = b.x + b.width;
-  const bottom = b.y + b.height;
-  return {
-    nw: { x: b.x, y: b.y },
-    n: { x: midX, y: b.y },
-    ne: { x: right, y: b.y },
-    e: { x: right, y: midY },
-    se: { x: right, y: bottom },
-    s: { x: midX, y: bottom },
-    sw: { x: b.x, y: bottom },
-    w: { x: b.x, y: midY },
-  };
 }
 
 // Disegna il bbox della selezione, le sue 8 maniglie e il rettangolo del

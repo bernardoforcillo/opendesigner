@@ -17,7 +17,9 @@ function fakeCtx(): ToolContext {
     getScene: () => useScene.getState().scene,
     getCamera: () => useScene.getState().camera,
     setCamera: vi.fn(),
-    canvas: {} as HTMLCanvasElement,
+    // style.cursor: il tool ci scrive il cursore della maniglia sotto il
+    // puntatore (Task 9, step 4); nei test è un oggetto qualunque.
+    canvas: { style: { cursor: "" } } as unknown as HTMLCanvasElement,
     toWorld: (e: PointerEvent) => ({ x: e.clientX, y: e.clientY }),
   } as unknown as ToolContext;
 }
@@ -263,6 +265,182 @@ describe("selectTool", () => {
 
       expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0 });
       expect(sync.sent).toHaveLength(0);
+    });
+  });
+
+  // --- resize con le maniglie ------------------------------------------------
+  // I nodi del beforeEach sono 50x50: "a" a (0,0), "b" a (100,0). Con camera
+  // identità le coordinate schermo dell'evento coincidono con quelle mondo,
+  // quindi le maniglie di "a" stanno a (0,0) nw ... (50,50) se.
+
+  describe("resizing with the handles", () => {
+    it("dragging the se handle resizes the selected node with ONE setProps op", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 50), ctx); // maniglia se
+      tool.onPointerMove!(at(70, 80), ctx); // dx=20 dy=30
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 70, height: 80 });
+      expect(sync.sent).toHaveLength(0); // niente sul filo durante il gesto
+
+      tool.onPointerUp!(at(70, 80), ctx);
+      expect(sync.sent).toHaveLength(1);
+      expect(sync.sent[0].kind.case).toBe("setProps");
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 70, height: 80 });
+    });
+
+    it("the nw handle moves the origin while resizing", () => {
+      useScene.getState().setSelection(["a"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(0, 0), ctx); // maniglia nw
+      tool.onPointerMove!(at(10, 20), ctx);
+      tool.onPointerUp!(at(10, 20), ctx);
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 10, y: 20, width: 40, height: 30 });
+    });
+
+    it("handles win over the node under the pointer (no move, no selection change)", () => {
+      useScene.getState().setSelection(["a"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 25), ctx); // maniglia e, DENTRO i bounds di "a"
+      expect(useScene.getState().selection).toEqual(["a"]);
+      tool.onPointerMove!(at(90, 45), ctx);
+      // resize sull'asse x soltanto: se avesse vinto il nodo, "a" si sarebbe MOSSO
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 90, height: 50 });
+    });
+
+    it("flips through the gesture keeping a positive width", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(0, 25), ctx); // maniglia w
+      tool.onPointerMove!(at(100, 25), ctx); // oltre il bordo destro (x=50)
+      tool.onPointerUp!(at(100, 25), ctx);
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 50, y: 0, width: 50, height: 50 });
+    });
+
+    it("shift keeps the aspect ratio", () => {
+      useScene.getState().setSelection(["a"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 50, true), ctx); // maniglia se
+      tool.onPointerMove!(at(150, 50, true), ctx); // solo dx: senza shift sarebbe 150x50
+      tool.onPointerUp!(at(150, 50, true), ctx);
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ width: 150, height: 150 });
+    });
+
+    it("resizes a MULTIPLE selection as a group, one op per node", () => {
+      useScene.getState().setSelection(["a", "b"]); // bbox di gruppo (0,0,150,50)
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(150, 50), ctx); // maniglia se del gruppo
+      tool.onPointerMove!(at(300, 50), ctx); // larghezza x2, altezza invariata
+      tool.onPointerUp!(at(300, 50), ctx);
+
+      expect(sync.sent).toHaveLength(2);
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
+      expect(useScene.getState().scene!.nodes["b"]).toMatchObject({ x: 200, y: 0, width: 100, height: 50 });
+    });
+
+    it("a click on a handle without moving sends nothing", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 50), ctx);
+      tool.onPointerUp!(at(50, 50), ctx);
+      expect(sync.sent).toHaveLength(0);
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
+    });
+
+    it("Esc during a resize restores the original size and sends nothing", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 50), ctx);
+      tool.onPointerMove!(at(150, 150), ctx);
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ width: 150, height: 150 });
+
+      tool.onKeyDown!({ key: "Escape" } as KeyboardEvent, ctx);
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
+      expect(sync.sent).toHaveLength(0);
+
+      tool.onPointerUp!(at(150, 150), ctx);
+      expect(sync.sent).toHaveLength(0);
+    });
+
+    it("onDeactivate abandons an in-progress resize without emitting an op", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 50), ctx);
+      tool.onPointerMove!(at(150, 150), ctx);
+      tool.onDeactivate!(ctx);
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
+      expect(sync.sent).toHaveLength(0);
+    });
+
+    it("with nothing selected there are no handles: the pointer falls through to the node", () => {
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(25, 25), ctx);
+      tool.onPointerMove!(at(35, 35), ctx);
+      tool.onPointerUp!(at(35, 35), ctx);
+      // spostato, NON ridimensionato
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 10, y: 10, width: 50, height: 50 });
+    });
+
+    it("the canvas cursor reflects the handle under the pointer", () => {
+      useScene.getState().setSelection(["a"]);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      const cursor = () => (ctx.canvas as unknown as { style: { cursor: string } }).style.cursor;
+
+      tool.onPointerMove!(at(0, 0), ctx); // sopra nw
+      expect(cursor()).toBe("nwse-resize");
+      tool.onPointerMove!(at(50, 25), ctx); // sopra e
+      expect(cursor()).toBe("ew-resize");
+      tool.onPointerMove!(at(25, 25), ctx); // dentro il box, nessuna maniglia
+      expect(cursor()).toBe("default");
+    });
+
+    it("keeps the handle cursor for the whole resize drag", () => {
+      useScene.getState().setSelection(["a"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      const cursor = () => (ctx.canvas as unknown as { style: { cursor: string } }).style.cursor;
+
+      tool.onPointerDown!(at(50, 50), ctx);
+      tool.onPointerMove!(at(400, 400), ctx); // lontano da ogni maniglia iniziale
+      expect(cursor()).toBe("nwse-resize");
+      tool.onPointerUp!(at(400, 400), ctx);
     });
   });
 
