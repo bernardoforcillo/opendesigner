@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema, OpSchema, TextStyleSchema, TextAlign } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, toNodeLite, toPbNode, type NodeLite, type SceneState } from "./types";
@@ -30,6 +30,26 @@ function richEllipse(id = "e1"): PbNode {
     x: 3, y: 4, width: 60, height: 30, rotation: 0,
     fills: [{ kind: { case: "solid", value: { color: { r: 0, g: 0.5, b: 1, a: 1 } } } }],
     shape: { case: "ellipse", value: {} },
+  });
+}
+
+function richText(id = "t1"): PbNode {
+  return create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a5", name: "Titolo",
+    visible: true, opacity: 0.75,
+    x: 8, y: 9, width: 320, height: 48, rotation: 0,
+    fills: [{ kind: { case: "solid", value: { color: { r: 0, g: 0, b: 0, a: 1 } } } }],
+    shape: { case: "text", value: {
+      content: "ciao\nmondo",
+      style: { fontFamily: "Inter", fontSize: 24, fontWeight: "700", lineHeight: 1.5, align: TextAlign.RIGHT },
+    } },
+  });
+}
+
+function setTextOp(id: string, content: string, style?: MessageInitShape<typeof TextStyleSchema>): Op {
+  return create(OpSchema, {
+    opId: "op-settext", docId: "doc1",
+    kind: { case: "setText", value: { id, content, style, stylePresent: style !== undefined } },
   });
 }
 
@@ -72,6 +92,18 @@ describe("toPbNode", () => {
     const lite = toNodeLite(richEllipse());
     const back = toPbNode(lite);
     expect(back.shape.case).toBe("ellipse");
+    expect(toNodeLite(back)).toEqual(lite);
+  });
+
+  it("is the inverse of toNodeLite (text: contenuto E stile)", () => {
+    const lite = toNodeLite(richText());
+    const back = toPbNode(lite);
+    expect(back.shape.case).toBe("text");
+    if (back.shape.case !== "text") throw new Error("wrong shape");
+    expect(back.shape.value.content).toBe("ciao\nmondo");
+    expect(back.shape.value.style?.fontSize).toBe(24);
+    expect(back.shape.value.style?.fontWeight).toBe("700");
+    expect(back.shape.value.style?.align).toBe(TextAlign.RIGHT);
     expect(toNodeLite(back)).toEqual(lite);
   });
 });
@@ -171,6 +203,41 @@ describe("invertOp: deleteNode", () => {
     const scene = sceneWith(richRect(), richEllipse());
     const inv = expectRoundTrip(scene, deleteOp("e1"));
     expect(inv.kind.case === "createNode" && inv.kind.value.node?.shape.case).toBe("ellipse");
+  });
+});
+
+describe("invertOp: setText", () => {
+  it("round-trips un cambio di solo contenuto", () => {
+    const scene = sceneWith(richText());
+    const inv = expectRoundTrip(scene, setTextOp("t1", "altro contenuto"));
+    expect(inv.kind.case).toBe("setText");
+    if (inv.kind.case !== "setText") throw new Error("wrong kind");
+    expect(inv.kind.value.content).toBe("ciao\nmondo");
+    // L'inverso porta SEMPRE stylePresent=true: rimettere lo stile precedente è
+    // un no-op quando l'op diretto non l'aveva toccato, mentre ometterlo
+    // lascerebbe in piedi lo stile NUOVO dopo l'undo di un op che l'aveva
+    // cambiato. Un solo ramo, sempre esatto.
+    expect(inv.kind.value.stylePresent).toBe(true);
+    expect(inv.kind.value.style?.fontSize).toBe(24);
+  });
+
+  it("round-trips un cambio di stile (stylePresent=true)", () => {
+    const scene = sceneWith(richText());
+    const op = setTextOp("t1", "ciao\nmondo", { fontFamily: "Inter", fontSize: 12, fontWeight: "400", lineHeight: 1, align: TextAlign.CENTER });
+    // L'op diretto morde davvero: senza questo, il round-trip passerebbe per finta.
+    expect(applyOp(scene, op).nodes["t1"].text?.style.fontSize).toBe(12);
+    expectRoundTrip(scene, op);
+  });
+
+  it("null su un id inesistente", () => {
+    expect(invertOp(sceneWith(richText()), setTextOp("ghost", "x"))).toBeNull();
+  });
+
+  it("null su un nodo NON di testo: l'op diretto è rifiutato (ErrNotTextNode in Go)", () => {
+    const scene = sceneWith(richRect());
+    const op = setTextOp("n1", "x");
+    expect(applyOp(scene, op)).toEqual(scene);
+    expect(invertOp(scene, op)).toBeNull();
   });
 });
 

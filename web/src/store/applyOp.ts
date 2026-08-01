@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
-import { type SceneState, type NodeLite, toNodeLite } from "./types";
+import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 
 // Un SetProperties SENZA patch NON è un no-op. Go legge il patch con i getter
@@ -70,6 +70,31 @@ export function applyOp(state: SceneState, op: Op): SceneState {
         }
       }
       return { ...state, nodes: { ...state.nodes, [id]: next } };
+    }
+    // Op dedicato e non un path della mask di setProps: il contenuto vive
+    // DENTRO il oneof `shape` del Node, mentre la mask indirizza campi di primo
+    // livello. Parità con core.applySetText (Go).
+    case "setText": {
+      const { id, content, style, stylePresent } = op.kind.value;
+      const cur = state.nodes[id];
+      // Nodo inesistente = ErrNodeNotFound in Go.
+      if (!cur) return state;
+      // Nodo non di testo = ErrNotTextNode in Go: l'op è rifiutato in blocco.
+      // Scriverci dentro un `text` trasformerebbe la forma del nodo in locale
+      // (un rettangolo diventato testo) mentre il server l'ha respinto.
+      if (cur.kind !== "text" || !cur.text) return state;
+      // Il contenuto si scrive SEMPRE (anche vuoto: è il testo cancellato).
+      // Lo stile solo se stylePresent: il flag distingue "non specificato" da
+      // "azzera" (in proto3 uno stile assente e uno tutto a zero non si
+      // distinguono dopo il round-trip protojson, quindi senza il flag ogni
+      // battuta di tasto porterebbe il font a 0). Il flag ha la precedenza
+      // sulla presenza del sotto-messaggio: uno `style` con stylePresent=false
+      // va ignorato, esattamente come fa Go che legge solo GetStylePresent().
+      const text = {
+        content,
+        style: stylePresent ? toTextStyleLite(style) : cur.text.style,
+      };
+      return { ...state, nodes: { ...state.nodes, [id]: { ...cur, text } } };
     }
     case "deleteNode": {
       const { id } = op.kind.value;

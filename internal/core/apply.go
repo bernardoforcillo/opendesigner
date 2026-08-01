@@ -12,6 +12,7 @@ var (
 	ErrNilNode      = errors.New("core: nil node")
 	ErrNodeExists   = errors.New("core: node already exists")
 	ErrNodeNotFound = errors.New("core: node not found")
+	ErrNotTextNode  = errors.New("core: not a text node")
 )
 
 // NewDocument crea un documento vuoto con una pagina di default ("page1").
@@ -32,6 +33,8 @@ func Apply(doc *brawtv1.Document, op *brawtv1.Op) error {
 		return applySetProps(doc, k.SetProps)
 	case *brawtv1.Op_DeleteNode:
 		return applyDelete(doc, k.DeleteNode)
+	case *brawtv1.Op_SetText:
+		return applySetText(doc, k.SetText)
 	default:
 		return fmt.Errorf("core: unknown op kind %T", op.GetKind())
 	}
@@ -106,6 +109,42 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 		case "fills":
 			n.Fills = p.GetFills()
 		}
+	}
+	return nil
+}
+
+// applySetText scrive il contenuto (e, se richiesto, lo stile) di un nodo testo.
+//
+// Op dedicato e non un path della mask di SetProperties: il contenuto vive
+// DENTRO il oneof `shape`, mentre la mask indirizza campi di primo livello del
+// Node -- un path annidato costringerebbe questa funzione e la sua gemella TS
+// (web/src/store/applyOp.ts) a un parser di path.
+//
+// Il contenuto si scrive SEMPRE (anche vuoto: è il testo cancellato
+// dall'utente). Lo stile no: `style_present` distingue "non specificato" da
+// "azzera". In proto3 un sotto-messaggio assente e uno con tutti i campi a zero
+// non si distinguono dopo il round-trip protojson, quindi senza il flag ogni
+// SetText di solo contenuto -- cioè ogni battuta di tasto -- porterebbe il font
+// a 0 e renderebbe il nodo invisibile. Con il flag: false => lo stile esistente
+// resta intatto, true => viene sostituito da `style` (nil incluso, che è
+// l'azzeramento esplicito).
+func applySetText(doc *brawtv1.Document, s *brawtv1.SetText) error {
+	n, ok := doc.Nodes[s.GetId()]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
+	}
+	// Il oneof `shape` è la NATURA del nodo, non un suo campo: un SetText su un
+	// rettangolo non è "un campo mancante da riempire", è un op sul nodo
+	// sbagliato. Scriverci dentro trasformerebbe la forma in silenzio (e, dato
+	// che l'op non ha inverso per il rect che c'era prima, in modo non
+	// annullabile), quindi si rifiuta l'op senza toccare niente.
+	t, isText := n.GetShape().(*brawtv1.Node_Text)
+	if !isText || t.Text == nil {
+		return fmt.Errorf("%w: %s", ErrNotTextNode, s.GetId())
+	}
+	t.Text.Content = s.GetContent()
+	if s.GetStylePresent() {
+		t.Text.Style = s.GetStyle()
 	}
 	return nil
 }

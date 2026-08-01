@@ -14,6 +14,25 @@ message Paint { oneof kind { SolidPaint solid = 1; } }
 message RectNode { double corner_radius = 1; }
 message EllipseNode {} // cx/cy/rx/ry derivano da x/y/width/height, come per RectNode
 
+enum TextAlign {
+  TEXT_ALIGN_UNSPECIFIED = 0;
+  TEXT_ALIGN_LEFT = 1;
+  TEXT_ALIGN_CENTER = 2;
+  TEXT_ALIGN_RIGHT = 3;
+}
+
+message TextStyle {
+  string font_family = 1;    // "" => default del renderer
+  double font_size = 2;      // px in coordinate mondo
+  string font_weight = 3;    // "400" | "700" | ...
+  double line_height = 4;    // moltiplicatore, 0 => 1.2
+  TextAlign align = 5;       // LEFT | CENTER | RIGHT
+}
+
+// Il box del testo è x/y/width/height del Node (come rect/ellipse): width è la
+// larghezza di wrap, height quella misurata dal layout.
+message TextNode { string content = 1; TextStyle style = 2; }
+
 message Node {
   string id = 1;
   string parent_id = 2;   // id nodo container OPPURE id Page (per i root)
@@ -26,6 +45,7 @@ message Node {
   oneof shape {
     RectNode rect = 30;
     EllipseNode ellipse = 31;
+    TextNode text = 32;
   }
 }
 
@@ -47,6 +67,22 @@ message SetProperties {
   Node patch = 2;
   google.protobuf.FieldMask mask = 3; // path dot su Node, es. "x","y","fills"
 }
+// Op dedicato invece di un path della mask di SetProperties: il contenuto del
+// testo vive DENTRO il oneof `shape`, mentre la mask di SetProperties indirizza
+// campi di primo livello del Node. Un path annidato ("text.content") costringerebbe
+// entrambe le implementazioni di apply a un parser di path.
+//
+// `style_present` distingue "non specificato" da "azzera": in proto3 un
+// sotto-messaggio assente e uno con tutti i campi a zero sono indistinguibili
+// dopo il round-trip protojson, quindi senza il flag un SetText di solo
+// contenuto azzererebbe lo stile del nodo. style_present=false => lascia stare
+// lo stile esistente; true => sostituiscilo con `style` (anche se vuoto).
+message SetText {
+  string id = 1;
+  string content = 2;
+  TextStyle style = 3;
+  bool style_present = 4;
+}
 message Op {
   string op_id = 1;
   string doc_id = 2;
@@ -54,6 +90,7 @@ message Op {
     CreateNode    create_node = 10;
     SetProperties set_props   = 11;
     DeleteNode    delete_node = 12;
+    SetText       set_text    = 13;
   }
 }
 message OpRecord {

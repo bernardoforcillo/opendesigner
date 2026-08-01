@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
-import { toPbNode, type SceneState } from "./types";
+import { toPbNode, toPbTextStyle, type SceneState } from "./types";
 
 // Primitive di undo: dato lo stato PRIMA di un op, l'op che lo annulla.
 //
@@ -72,6 +72,31 @@ export function invertOp(scene: SceneState, op: Op): Op | null {
         kind: {
           case: "setProps",
           value: { id, patch: toPbNode(prev), mask: { paths: [...(mask?.paths ?? [])] } },
+        },
+      });
+    }
+    case "setText": {
+      // Stessa forma dell'inverso di setProps: i valori PRECEDENTI, non il
+      // payload dell'op diretto. Null quando l'op diretto sarebbe rifiutato --
+      // id inesistente o nodo non di testo (ErrNotTextNode in Go): la scena non
+      // cambierebbe, quindi non c'è niente da annullare.
+      const { id } = op.kind.value;
+      const prev = scene.nodes[id];
+      if (!prev || prev.kind !== "text" || !prev.text) return null;
+      // stylePresent SEMPRE true, anche quando l'op diretto non toccava lo
+      // stile: rimettere lo stile precedente è un no-op in quel caso, mentre
+      // ometterlo lascerebbe in piedi lo stile NUOVO dopo l'undo di un op che
+      // l'aveva cambiato. Un solo ramo, sempre esatto.
+      return create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: {
+          case: "setText",
+          value: {
+            id,
+            content: prev.text.content,
+            style: toPbTextStyle(prev.text.style),
+            stylePresent: true,
+          },
         },
       });
     }

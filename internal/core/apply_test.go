@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"testing"
 
 	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
@@ -106,6 +107,102 @@ func TestApplyCreateNodeOnNilNodesMap(t *testing.T) {
 	}
 	if got.X != 10 || got.Y != 20 {
 		t.Fatalf("wrong pos: %v,%v", got.X, got.Y)
+	}
+}
+
+func textNode(id, content string) *brawtv1.Node {
+	return &brawtv1.Node{
+		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Text", Visible: true, Opacity: 1,
+		X: 0, Y: 0, Width: 200, Height: 24,
+		Shape: &brawtv1.Node_Text{Text: &brawtv1.TextNode{
+			Content: content,
+			Style: &brawtv1.TextStyle{
+				FontFamily: "Inter", FontSize: 16, FontWeight: "400", LineHeight: 1.2,
+				Align: brawtv1.TextAlign_TEXT_ALIGN_LEFT,
+			},
+		}},
+	}
+}
+
+func setTextOp(s *brawtv1.SetText) *brawtv1.Op {
+	return &brawtv1.Op{Kind: &brawtv1.Op_SetText{SetText: s}}
+}
+
+func TestApplySetTextChangesContent(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: textNode("t1", "ciao")}}})
+	if err := Apply(doc, setTextOp(&brawtv1.SetText{Id: "t1", Content: "nuovo testo"})); err != nil {
+		t.Fatalf("Apply setText: %v", err)
+	}
+	if got := doc.Nodes["t1"].GetText().GetContent(); got != "nuovo testo" {
+		t.Fatalf("content not applied: %q", got)
+	}
+}
+
+func TestApplySetTextOnNonTextNodeFails(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	err := Apply(doc, setTextOp(&brawtv1.SetText{Id: "n1", Content: "x"}))
+	if err == nil {
+		t.Fatal("expected error setting text on a non-text node")
+	}
+	if doc.Nodes["n1"].GetShape() == nil {
+		t.Fatal("shape clobbered by a rejected setText")
+	}
+	if _, ok := doc.Nodes["n1"].GetShape().(*brawtv1.Node_Rect); !ok {
+		t.Fatalf("rect turned into %T by a rejected setText", doc.Nodes["n1"].GetShape())
+	}
+}
+
+func TestApplySetTextMissingNode(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	err := Apply(doc, setTextOp(&brawtv1.SetText{Id: "ghost", Content: "x"}))
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	}
+}
+
+// Il caso che distingue "non specificato" da "azzera": in proto3 uno stile
+// assente e uno con tutti i campi a zero sono indistinguibili dopo il
+// round-trip protojson, quindi senza style_present un SetText di solo contenuto
+// azzererebbe lo stile del nodo (font a 0 => testo invisibile).
+func TestApplySetTextWithoutStylePresentKeepsStyle(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: textNode("t1", "ciao")}}})
+	if err := Apply(doc, setTextOp(&brawtv1.SetText{Id: "t1", Content: "altro"})); err != nil {
+		t.Fatalf("Apply setText: %v", err)
+	}
+	st := doc.Nodes["t1"].GetText().GetStyle()
+	if st.GetFontSize() != 16 || st.GetFontFamily() != "Inter" || st.GetLineHeight() != 1.2 {
+		t.Fatalf("style clobbered by a style-less setText: %+v", st)
+	}
+	// Anche uno `style` esplicito ma con style_present=false va ignorato: è il
+	// flag, non la presenza del sotto-messaggio, a decidere.
+	op := setTextOp(&brawtv1.SetText{Id: "t1", Content: "terzo", Style: &brawtv1.TextStyle{FontSize: 99}})
+	if err := Apply(doc, op); err != nil {
+		t.Fatalf("Apply setText: %v", err)
+	}
+	if doc.Nodes["t1"].GetText().GetStyle().GetFontSize() != 16 {
+		t.Fatalf("style applied despite style_present=false: %+v", doc.Nodes["t1"].GetText().GetStyle())
+	}
+}
+
+func TestApplySetTextWithStylePresentReplacesStyle(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: textNode("t1", "ciao")}}})
+	op := setTextOp(&brawtv1.SetText{
+		Id: "t1", Content: "ciao", StylePresent: true,
+		Style: &brawtv1.TextStyle{
+			FontFamily: "Inter", FontSize: 32, FontWeight: "700", LineHeight: 1.5,
+			Align: brawtv1.TextAlign_TEXT_ALIGN_CENTER,
+		},
+	})
+	if err := Apply(doc, op); err != nil {
+		t.Fatalf("Apply setText: %v", err)
+	}
+	st := doc.Nodes["t1"].GetText().GetStyle()
+	if st.GetFontSize() != 32 || st.GetFontWeight() != "700" || st.GetAlign() != brawtv1.TextAlign_TEXT_ALIGN_CENTER {
+		t.Fatalf("style not replaced: %+v", st)
 	}
 }
 

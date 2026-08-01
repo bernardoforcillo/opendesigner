@@ -1,0 +1,40 @@
+{
+  "docId": "doc1",
+  "ops": [
+    { "opId": "op1", "docId": "doc1", "createNode": { "node": {
+      "id": "t1", "parentId": "page1", "orderKey": "a0", "name": "Text",
+      "visible": true, "opacity": 1, "x": 20, "y": 30, "width": 240, "height": 24,
+      "fills": [{ "solid": { "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } }],
+      "text": {
+        "content": "ciao",
+        "style": { "fontFamily": "Inter", "fontSize": 16, "fontWeight": "400", "lineHeight": 1.5, "align": "TEXT_ALIGN_LEFT" }
+      }
+    } } },
+    { "opId": "op2", "docId": "doc1", "setText": {
+      "id": "t1", "content": "ciao\nmondo"
+    } },
+    { "opId": "op3", "docId": "doc1", "setText": {
+      "id": "t1", "content": "ciao\nmondo", "stylePresent": true,
+      "style": { "fontFamily": "Inter", "fontSize": 32, "fontWeight": "700", "lineHeight": 1.5, "align": "TEXT_ALIGN_CENTER" }
+    } },
+    { "opId": "op4", "docId": "doc1", "setText": {
+      "id": "t1", "content": "ciao\nmondo!",
+      "style": { "fontFamily": "Comic Sans", "fontSize": 99, "fontWeight": "100", "lineHeight": 9, "align": "TEXT_ALIGN_RIGHT" }
+    } }
+  ],
+  "expected": {
+    "id": "doc1", "name": "Untitled", "schemaVersion": 1,
+    "pages": [{ "id": "page1", "name": "Page 1" }],
+    "nodes": {
+      "t1": {
+        "id": "t1", "parentId": "page1", "orderKey": "a0", "name": "Text",
+        "visible": true, "opacity": 1, "x": 20, "y": 30, "width": 240, "height": 24,
+        "fills": [{ "solid": { "color": { "r": 0, "g": 0, "b": 0, "a": 1 } } }],
+        "text": {
+          "content": "ciao\nmondo!",
+          "style": { "fontFamily": "Inter", "fontSize": 32, "fontWeight": "700", "lineHeight": 1.5, "align": "TEXT_ALIGN_CENTER" }
+        }
+      }
+    }
+  }
+}

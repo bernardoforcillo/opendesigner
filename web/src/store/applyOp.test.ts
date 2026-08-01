@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
-import { create } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema } from "../gen/brawt/v1/brawt_pb";
+import { create, type MessageInitShape } from "@bufbuild/protobuf";
+import { OpSchema, NodeSchema, SetTextSchema, TextAlign } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene } from "./types";
 
@@ -96,5 +96,91 @@ describe("applyOp", () => {
     // partially applied here.
     expect(s.nodes["n1"].x).toBe(0);
     expect(s.nodes["n1"].y).toBe(0);
+  });
+});
+
+// --- setText ---------------------------------------------------------------
+// Speculari a internal/core/apply_test.go (TestApplySetText*): stessa scena,
+// stesse asserzioni. applyOp e core.applySetText devono restare semanticamente
+// identici, e questa è la metà TS della guardia (l'altra è testdata/golden/text.json).
+
+function createTextOp(id: string, content: string) {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
+    x: 0, y: 0, width: 200, height: 24,
+    shape: { case: "text", value: {
+      content,
+      style: { fontFamily: "Inter", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: TextAlign.LEFT },
+    } },
+  });
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+function setTextOp(value: MessageInitShape<typeof SetTextSchema>) {
+  return create(OpSchema, { opId: "op-settext", docId: "doc1", kind: { case: "setText", value } });
+}
+
+describe("applyOp: setText", () => {
+  it("creates a text node", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
+    expect(s.nodes["t1"].kind).toBe("text");
+    expect(s.nodes["t1"].text).toEqual({
+      content: "ciao",
+      style: { fontFamily: "Inter", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "left" },
+    });
+  });
+
+  it("changes the content of a text node", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
+    s = applyOp(s, setTextOp({ id: "t1", content: "nuovo testo" }));
+    expect(s.nodes["t1"].text?.content).toBe("nuovo testo");
+  });
+
+  it("is a no-op on a non-text node (parity with core.applySetText: ErrNotTextNode)", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 10, 20));
+    const s2 = applyOp(s, setTextOp({ id: "n1", content: "x" }));
+    // Go rifiuta l'op e non tocca il documento: scrivere qui un `text` dentro
+    // un rettangolo lo trasformerebbe in un nodo che il server non ha.
+    expect(s2).toEqual(s);
+    expect(s2.nodes["n1"].kind).toBe("rect");
+    expect(s2.nodes["n1"].text).toBeUndefined();
+  });
+
+  it("is a no-op on a missing id (parity with core.applySetText: ErrNodeNotFound)", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
+    expect(applyOp(s, setTextOp({ id: "ghost", content: "x" }))).toEqual(s);
+  });
+
+  it("leaves the existing style alone when stylePresent is false", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
+    s = applyOp(s, setTextOp({ id: "t1", content: "altro" }));
+    expect(s.nodes["t1"].text?.style.fontSize).toBe(16);
+    expect(s.nodes["t1"].text?.style.fontFamily).toBe("Inter");
+    // È il FLAG a decidere, non la presenza del sotto-messaggio: uno `style`
+    // esplicito con stylePresent=false va ignorato lo stesso.
+    s = applyOp(s, setTextOp({ id: "t1", content: "terzo", style: { fontSize: 99 } }));
+    expect(s.nodes["t1"].text?.style.fontSize).toBe(16);
+    expect(s.nodes["t1"].text?.content).toBe("terzo");
+  });
+
+  it("replaces the style when stylePresent is true", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
+    s = applyOp(s, setTextOp({
+      id: "t1", content: "ciao", stylePresent: true,
+      style: { fontFamily: "Inter", fontSize: 32, fontWeight: "700", lineHeight: 1.5, align: TextAlign.CENTER },
+    }));
+    expect(s.nodes["t1"].text?.style).toEqual({
+      fontFamily: "Inter", fontSize: 32, fontWeight: "700", lineHeight: 1.5, align: "center",
+    });
+  });
+
+  it("clears the style when stylePresent is true and no style is carried (parity with Go's nil style)", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
+    s = applyOp(s, setTextOp({ id: "t1", content: "ciao", stylePresent: true }));
+    // Go assegna nil e legge poi i campi con i getter nil-safe (tutti a zero);
+    // NodeLite appiattisce, quindi la controparte è uno stile tutto a zero.
+    expect(s.nodes["t1"].text?.style).toEqual({
+      fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left",
+    });
   });
 });
