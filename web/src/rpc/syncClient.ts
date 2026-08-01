@@ -526,7 +526,14 @@ export class SyncClient {
       // store.apply li toglie dalla coda proprio in base all'opId, quindi
       // l'op non viene applicato due volte, nemmeno quando è il backlog di una
       // riconnessione a riportarlo indietro.
-      if (rec.op) useScene.getState().apply(rec.op);
+      //
+      // Il clientId però serve, per un'altra decisione: un record ALTRUI può
+      // aver reso non più valide delle voci di undo/redo (store.ts::markStale),
+      // uno nostro no. È l'unico posto in cui la provenienza conta, e il
+      // confronto è volutamente stretto -- un clientId vuoto non è una prova di
+      // niente, quindi il record va trattato come altrui.
+      const own = rec.clientId !== "" && rec.clientId === this.clientId;
+      if (rec.op) useScene.getState().apply(rec.op, own);
       this.seq = seq;
       // Progresso: il budget dei tentativi riparte da zero.
       this.attempts = 0;

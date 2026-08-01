@@ -55,6 +55,13 @@ class ManualSync {
   reject(op: Op, message = "connection closed") {
     useScene.getState().rejectPending(op.opId, message);
   }
+  // Rifiuto con esito IGNOTO: la richiesta è morta senza risposta, ma l'op può
+  // benissimo essere già nell'op-log (Hub.Submit fa il broadcast PRIMA di
+  // rispondere). Il rollback resta quindi REVOCABILE da un eco tardivo --
+  // `land` dopo un `disown` è esattamente quella prova. Vedi store.ts::DisownedOp.
+  disown(op: Op, message = "connection closed") {
+    useScene.getState().rejectPending(op.opId, message, true);
+  }
 }
 
 // Il nodo che un op di cancellazione bersaglia (null se non è un deleteNode):
@@ -741,6 +748,201 @@ describe("undo/redo", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+  });
+
+  // --- voci rese STALE da un op REMOTO (finding parcheggiata a fine M1a) -----
+  // Una voce di undo/redo è fatta di inversi ASSOLUTI -- un setProps porta i
+  // valori per intero, non un delta -- calcolati su uno stato preciso. Resta
+  // valida finché i nodi che tocca non li cambia QUALCUN ALTRO. Dopo non c'è
+  // nessun rebase sensato: due scritture assolute sullo stesso campo non si
+  // fondono, una delle due vince. E mandarla comunque ha due esiti, tutti e due
+  // silenziosi -- riscrive la modifica remota (il nodo c'è ancora) o viene
+  // scartata dal server (il nodo non c'è più) e la voce evapora senza che
+  // nessuno sappia perché. Quindi l'op stale esce dalla voce, e l'utente lo
+  // legge dal banner.
+
+  it("uno spostamento REMOTO invalida il redo in coda: ripeti non riscrive la modifica altrui", () => {
+    gesture([createOp("n1", 0, 0)]);
+    gesture([moveOp("n1", 40, 40)]);
+
+    useScene.getState().undo(); // n1 torna a (0,0); il redo ha "rimettilo a (40,40)"
+    expect(useScene.getState().redoStack).toHaveLength(1);
+    expect(useScene.getState().canRedo).toBe(true);
+
+    // Un altro client sposta n1 a (500,500): arriva via apply(), come ogni
+    // record di Subscribe che non è un nostro eco.
+    useScene.getState().apply(moveOp("n1", 500, 500));
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 500, y: 500 });
+
+    // La voce di redo scriveva x,y dello STESSO nodo: non è più valida.
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().canRedo).toBe(false);
+    // E nemmeno la voce di undo della creazione lo è: annullarla vuol dire
+    // cancellare il nodo, cioè buttare via la modifica remota per intero.
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    // Sparire in silenzio sarebbe l'altra metà del bug: va detto.
+    expect(useScene.getState().notice).not.toBeNull();
+
+    // Ctrl+Shift+Z adesso non manda niente, e soprattutto non riporta n1 a
+    // (40,40) sopra la modifica di un altro.
+    sync.sent = [];
+    useScene.getState().redo();
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 500, y: 500 });
+  });
+
+  it("una CANCELLAZIONE remota invalida la voce: il ripeti non evapora in silenzio", () => {
+    gesture([createOp("n1", 0, 0)]);
+    gesture([moveOp("n1", 40, 40)]);
+    useScene.getState().undo();
+    expect(useScene.getState().redoStack).toHaveLength(1);
+
+    // Un altro client cancella n1.
+    useScene.getState().apply(deleteOp("n1"));
+
+    // Il redo era [setProps n1 x=40,y=40]: sul server ErrNodeNotFound, in
+    // locale un no-op di applyOp. Mandato lo stesso, la voce sarebbe sparita
+    // dallo stack senza fare niente e senza dire niente.
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().canRedo).toBe(false);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    sync.sent = [];
+    useScene.getState().redo();
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+  });
+
+  it("un op remoto su campi DISGIUNTI (o su un altro nodo) non tocca la voce", () => {
+    gesture([createOp("n1", 0, 0)]);
+    gesture([createOp("n2", 300, 0)]);
+    gesture([moveOp("n1", 40, 40)]);
+    useScene.getState().undo(); // redo = [setProps n1 x=40,y=40]
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    // Un altro client RIDIMENSIONA n1: scrive width/height, non x/y.
+    useScene.getState().apply(resizeOp("n1", 300, 300));
+
+    // La voce di redo scrive solo x,y: continua a valere -- invalidarla
+    // significherebbe buttare via la storia a ogni modifica remota di qualunque
+    // campo, e non c'è nessuna sovrascrittura da evitare.
+    expect(useScene.getState().redoStack).toHaveLength(1);
+    expect(useScene.getState().canRedo).toBe(true);
+    // Cade solo la voce che cancellerebbe n1; quella di n2 non c'entra nulla.
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(deletedId(useScene.getState().undoStack[0][0])).toBe("n2");
+
+    // ...e il redo rimette a posto x,y SENZA disfare il resize remoto.
+    useScene.getState().redo();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({
+      x: 40, y: 40, width: 300, height: 300,
+    });
+  });
+
+  it("senza trasporto un gesto non invalida la PROPRIA voce", () => {
+    // Ramo senza filo di endGesture/undo/redo: l'op non viene submittato, viene
+    // applicato con apply() -- la stessa porta da cui entrano i record remoti.
+    // È nostro, quindi non può rendere stale la voce che il gesto ha appena
+    // spinto: senza la distinzione, ogni gesto si cancellerebbe da solo.
+    useScene.getState().setSync(null);
+
+    gesture([createOp("n1", 0, 0)]);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().notice).toBeNull();
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().redoStack).toHaveLength(1);
+
+    useScene.getState().redo();
+    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().notice).toBeNull();
+  });
+
+  it("un op reso stale non torna sugli stack quando un rifiuto rigioca la storia", () => {
+    gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
+    // La voce è [deleteNode n2, deleteNode n1].
+    expect(useScene.getState().undoStack[0]).toHaveLength(2);
+
+    // Un gesto su n2 resta IN VOLO: la sua transizione è in dubbio, quindi gli
+    // stack vivi sono il replay di `history` sulla base della sua testa --
+    // una base fotografata PRIMA dell'op remoto.
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+    const mv = moveOp("n2", 340, 40);
+    gesture([mv]);
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    // Un altro client cancella n1: l'op [deleteNode n1] dentro la prima voce
+    // non è più valido (il server risponderebbe ErrNodeNotFound), ma il resto
+    // della voce sì -- n2 esiste ancora ed è ancora nostro da annullare.
+    useScene.getState().apply(deleteOp("n1"));
+    expect(useScene.getState().undoStack[0]).toHaveLength(1);
+    expect(deletedId(useScene.getState().undoStack[0][0])).toBe("n2");
+
+    // Il gesto in volo viene rifiutato: la storia si rigioca dalla base. L'op
+    // stale non deve rientrare da lì.
+    manual.reject(mv);
+
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().undoStack[0]).toHaveLength(1);
+    expect(deletedId(useScene.getState().undoStack[0][0])).toBe("n2");
+
+    // E l'unico op che parte sul filo è quello ancora valido.
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent.map(deletedId)).toEqual(["n2"]);
+  });
+
+  it("un op reso stale non torna nemmeno dalla REVOCA di un rollback", () => {
+    gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]); // confermato
+
+    const manual = new ManualSync();
+    useScene.getState().setSync(manual);
+
+    // Gesto A su n1: la richiesta muore senza risposta, quindi il rollback è
+    // visibile ma REVOCABILE (l'op può essere già nell'op-log).
+    const mvA = moveOp("n1", 40, 40);
+    gesture([mvA]);
+    manual.disown(mvA);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    // L'utente continua a lavorare mentre il client si riconnette: il gesto B
+    // su n2 resta in volo, quindi la sua transizione è in dubbio.
+    const mvB = moveOp("n2", 340, 40);
+    gesture([mvB]);
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    // Un altro client cancella n2: cade la voce di B (rimetterebbe n2 a (300,0))
+    // e cade l'op [deleteNode n2] dentro la voce della creazione.
+    useScene.getState().apply(deleteOp("n2"));
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().undoStack[0]).toHaveLength(1);
+
+    // Il backlog rigioca mvA: il rollback era una bugia, e la sua voce di undo
+    // torna dentro la BASE della storia (restoreRevoked). Quel replay riparte da
+    // stack fotografati prima della cancellazione remota: gli op stale non
+    // devono rientrare da lì.
+    manual.land(mvA);
+
+    const stack = useScene.getState().undoStack;
+    expect(stack).toHaveLength(2); // la creazione (ridotta) + la voce revocata
+    expect(stack.flat().some((op) => op.kind.case === "setProps" && op.kind.value.id === "n2")).toBe(false);
+    expect(stack.flat().some((op) => deletedId(op) === "n2")).toBe(false);
+
+    // ...e i due Ctrl+Z che restano fanno solo cose ancora valide: rimettono n1
+    // al suo posto e poi lo cancellano. n2 non viene mai toccato.
+    useScene.getState().setSync(sync);
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(sync.sent).toHaveLength(2);
   });
 
   it("un redo atterrato a metà lascia sullo stack solo la parte non rifatta", () => {

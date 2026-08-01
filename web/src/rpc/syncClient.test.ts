@@ -599,6 +599,39 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
   });
 
+  // Un record ALTRUI non fa avanzare solo il documento: può rendere non più
+  // valide le voci di undo/redo che riguardano i nodi che tocca
+  // (store.ts::markStale). È l'UNICO posto in cui la provenienza di un record
+  // conta -- applicarlo si applica comunque, echi compresi -- e qui la si legge
+  // dal clientId, che è la prova che il record non è nostro.
+  it("un record di un ALTRO client invalida le voci di undo su quel nodo", async () => {
+    const { stream } = await boot({ n1: rectNode("n1", 0, 0) });
+
+    const st = useScene.getState();
+    st.beginGesture();
+    st.endGesture([moveOp("op-1", "n1", 40, 40)]);
+    await flush();
+    // Il nostro eco: conferma l'op e NON tocca la storia (è nostro, per clientId
+    // e perché è ancora in coda).
+    stream.push(applied(1, CLIENT, moveOp("op-1", "n1", 40, 40)));
+    await flush();
+    expect(useScene.getState().pending).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    // Un altro client sposta n1 altrove. La voce di undo rimetterebbe (0,0)
+    // sopra la sua modifica, in silenzio: non è più valida.
+    stream.push(applied(2, OTHER, moveOp("op-them", "n1", 500, 500)));
+    await flush();
+
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 500, y: 500 });
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    stream.close();
+    await flush();
+  });
+
   it("lo stop è per la coda, non per il client: un submit successivo riparte", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
     const net = reorderingTransport();

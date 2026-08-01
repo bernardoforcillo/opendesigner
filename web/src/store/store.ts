@@ -64,6 +64,16 @@ const MAX_DISOWNED = 64;
 const REVOKED =
   "una modifica data per persa era in realtà stata salvata: è tornata sul canvas, con il suo annulla";
 
+// Il testo che accompagna l'invalidazione di voci di undo/redo rese STALE da un
+// op remoto (vedi markStale). Va detto per la stessa ragione per cui va detto un
+// rollback: se gli stack si accorciano in silenzio, il Ctrl+Z successivo disfa
+// un gesto PIÙ VECCHIO di quello che l'utente si aspetta -- che è di nuovo una
+// modifica non richiesta e non spiegata. Passa da `notice` e non da `lastError`:
+// nessuna modifica dell'utente è stata annullata, è la sua storia ad aver perso
+// dei passi.
+const STALE =
+  "un'altra persona ha modificato questi elementi: i passi di annulla/ripeti che li riguardavano non sono più validi e sono stati tolti";
+
 // La FORMA di una transizione degli stack: cosa ha spinto, cosa ha tolto, cosa
 // ha svuotato. Tenere la forma e non solo il risultato è ciò che permette di
 // RICOSTRUIRE la transizione su un PREFISSO dei suoi op -- il caso, tutt'altro
@@ -203,6 +213,135 @@ function dropPending(pending: PendingOp[], opId: string): PendingOp[] {
   return i < 0 ? pending : [...pending.slice(0, i), ...pending.slice(i + 1)];
 }
 
+// --- voci rese STALE da un op remoto ---------------------------------------
+// Una voce di undo/redo è fatta di inversi ASSOLUTI (un setProps porta i valori
+// per intero, non un delta) calcolati su uno stato preciso: quello in cui la
+// voce è stata creata. Resta valida finché i nodi che tocca non li cambia
+// QUALCUN ALTRO -- gli op locali, invece, la mantengono valida per costruzione
+// (un gesto spinge la propria voce sopra, un undo la consuma).
+//
+// Dopo una modifica remota non esiste nessun rebase sensato: due scritture
+// ASSOLUTE sullo stesso campo non si fondono, una delle due vince, e far vincere
+// la nostra è esattamente la sovrascrittura silenziosa da evitare (l'utente non
+// ha chiesto di annullare il lavoro di un altro, ha chiesto di annullare il
+// PROPRIO). L'op stale viene quindi tolto dalla voce, e l'utente lo legge dal
+// banner (STALE).
+//
+// Granularità: per OP, non per voce intera. Un gesto multi-nodo è una voce sola
+// (selectTool manda un setProps per nodo selezionato) e buttarla via tutta
+// perché un altro client ha toccato UNO dei nodi renderebbe non annullabile
+// anche la parte che è ancora interamente nostra. È la stessa scelta che la
+// riparazione dei rollback fa già sui gesti atterrati a metà.
+
+// Il BERSAGLIO di un op: il nodo che tocca e, per un setProps, i CAMPI che gli
+// scrive. `paths: null` = tutto il nodo -- createNode e deleteNode non toccano
+// un campo, toccano l'ESISTENZA del nodo, che è sotto ogni campo.
+interface OpTarget {
+  id: string;
+  paths: readonly string[] | null;
+}
+
+function targetOf(op: Op): OpTarget | null {
+  switch (op.kind.case) {
+    case "createNode": {
+      const node = op.kind.value.node;
+      return node && node.id !== "" ? { id: node.id, paths: null } : null;
+    }
+    case "deleteNode": {
+      const { id } = op.kind.value;
+      return id === "" ? null : { id, paths: null };
+    }
+    case "setProps": {
+      const { id, mask } = op.kind.value;
+      return id === "" ? null : { id, paths: mask?.paths ?? [] };
+    }
+    // Un kind sconosciuto non ha bersaglio noto: non può invalidare niente, ma
+    // non è nemmeno invalidabile (applyOp lo ignora, quindi non è mai finito in
+    // una voce).
+    default:
+      return null;
+  }
+}
+
+// Due op sono in CONFLITTO quando toccano lo STESSO nodo e almeno un campo in
+// comune.
+//
+// Il taglio sui campi non è un dettaglio: senza, qualunque modifica remota a
+// qualunque proprietà di un nodo cancellerebbe la storia che lo riguarda -- un
+// rename altrui brucerebbe l'annullamento del tuo spostamento. Due setProps su
+// mask DISGIUNTE invece non si toccano davvero: applyOp legge e scrive solo i
+// path della mask, quindi l'inverso resta esatto e non c'è niente da
+// sovrascrivere.
+//
+// L'esistenza (`paths: null`) invece confligge con tutto, in entrambi i versi:
+// cancellare un nodo che un altro ha appena modificato ne butta via la modifica
+// per INTERO (peggio che sovrascriverne un campo), e un nodo cancellato o
+// ricreato da un altro non è più lo stato su cui l'inverso è stato calcolato.
+function conflicts(a: OpTarget, b: OpTarget): boolean {
+  if (a.id !== b.id) return false;
+  const pa = a.paths;
+  const pb = b.paths;
+  if (pa === null || pb === null) return true;
+  return pa.some((p) => pb.includes(p));
+}
+
+// Tutte le voci che un record remoto può rendere stale: gli stack VIVI e quelle
+// custodite dai mark ancora in dubbio. I mark vanno guardati anche se non si
+// vedono: le loro basi sono ciò da cui replayHistory ricostruisce gli stack al
+// prossimo rifiuto, quindi un op stale lasciato lì dentro RITORNEREBBE.
+function allEntries(undoStack: Op[][], redoStack: Op[][], history: HistoryMark[]): Op[][] {
+  const out: Op[][] = [...undoStack, ...redoStack];
+  for (const m of history) out.push(...m.undoStack, ...m.redoStack, m.shape.entry);
+  return out;
+}
+
+// Marca gli op resi stale da `remote`. Ritorna true se ne ha marcato almeno uno
+// di nuovo.
+//
+// L'insieme è un WeakSet e non un Set per una ragione precisa: un op stale esce
+// subito da ogni stack, quindi tenerlo in una struttura FORTE vorrebbe dire
+// tenerlo vivo per tutta la sessione solo per poterlo riconoscere. Con il
+// WeakSet l'appartenenza sopravvive esattamente quanto l'op che la usa (i mark
+// ne tengono una copia finché sono in dubbio), e non un istante di più.
+function markStale(remote: Op, stale: WeakSet<Op>, entries: Op[][]): boolean {
+  const t = targetOf(remote);
+  if (!t) return false;
+  let hit = false;
+  for (const entry of entries) {
+    for (const op of entry) {
+      if (stale.has(op)) continue;
+      const u = targetOf(op);
+      if (u && conflicts(t, u)) {
+        stale.add(op);
+        hit = true;
+      }
+    }
+  }
+  return hit;
+}
+
+// Toglie da ogni voce gli op marcati stale; una voce che resta vuota sparisce.
+//
+// Si applica al CONFINE -- dove uno stack diventa quello vivo -- e mai dentro i
+// mark: `applyMark` allinea la voce agli op per POSIZIONE (entry[i] inverte
+// l'op n-1-i) e `findConsumed` riconosce una voce per identità di riferimento,
+// quindi filtrare le strutture della storia romperebbe entrambe. Filtrare in
+// uscita dà lo stesso risultato senza toccare nessuna delle due.
+//
+// Ritorna lo STESSO array quando non c'è niente da togliere: gli stack sono
+// letti da selettori zustand, e un array nuovo a ogni record remoto sveglierebbe
+// la UI per niente.
+function pruneStale(stack: Op[][], stale: WeakSet<Op>): Op[][] {
+  if (!stack.some((entry) => entry.some((op) => stale.has(op)))) return stack;
+  const out: Op[][] = [];
+  for (const entry of stack) {
+    const kept = entry.filter((op) => !stale.has(op));
+    if (kept.length === entry.length) out.push(entry);
+    else if (kept.length > 0) out.push(kept);
+  }
+  return out;
+}
+
 // Dove sta, nello stack, la voce CONSUMATA da un mark di undo/redo.
 //
 // NON è "la cima": la cima è dov'era la voce quando l'undo è partito, e il
@@ -330,7 +469,7 @@ function confirmHistory(history: HistoryMark[], opId: string): HistoryMark[] {
 // gesto/undo/redo, o transizione già confermata), oppure era già stato
 // scartato: niente da annullare.
 type HistoryPatch = Pick<SceneStore, "history" | "undoStack" | "redoStack" | "canUndo" | "canRedo">;
-function revertHistory(history: HistoryMark[], opId: string): HistoryPatch | null {
+function revertHistory(history: HistoryMark[], opId: string, stale: WeakSet<Op>): HistoryPatch | null {
   const i = history.findIndex((m) => m.opIds.includes(opId));
   if (i < 0) return null;
   const m = history[i];
@@ -350,12 +489,17 @@ function revertHistory(history: HistoryMark[], opId: string): HistoryPatch | nul
   const next = [...history.slice(0, i), patched, ...history.slice(i + 1)];
   const stacks = replayHistory(next);
   if (!stacks) return null;
+  // Il replay riparte da basi fotografate PRIMA di qualunque op remoto arrivato
+  // nel frattempo: senza la potatura, un rifiuto rimetterebbe sugli stack gli op
+  // che quell'op remoto ha reso stale (vedi pruneStale).
+  const undoStack = pruneStale(stacks.undoStack, stale);
+  const redoStack = pruneStale(stacks.redoStack, stale);
   return {
     history: settleHistory(next),
-    undoStack: stacks.undoStack,
-    redoStack: stacks.redoStack,
-    canUndo: stacks.undoStack.length > 0,
-    canRedo: stacks.redoStack.length > 0,
+    undoStack,
+    redoStack,
+    canUndo: undoStack.length > 0,
+    canRedo: redoStack.length > 0,
   };
 }
 
@@ -388,6 +532,7 @@ function restoreRevoked(
   undoStack: Op[][],
   redoStack: Op[][],
   inv: Op | null,
+  stale: WeakSet<Op>,
 ): HistoryPatch {
   const head = history[0];
   if (!head) {
@@ -399,8 +544,13 @@ function restoreRevoked(
     ...history.slice(1),
   ];
   // patched non è vuoto, quindi replayHistory non può dare null; il fallback
-  // tiene comunque gli stack correnti invece di inventarne di vuoti.
-  const stacks = replayHistory(patched) ?? { undoStack, redoStack };
+  // tiene comunque gli stack correnti invece di inventarne di vuoti. Potato per
+  // lo stesso motivo di revertHistory: le basi sono più vecchie degli op remoti.
+  const replayed = replayHistory(patched) ?? { undoStack, redoStack };
+  const stacks = {
+    undoStack: pruneStale(replayed.undoStack, stale),
+    redoStack: pruneStale(replayed.redoStack, stale),
+  };
   return {
     history: patched,
     ...stacks,
@@ -515,10 +665,24 @@ interface SceneStore {
   // Vedi HistoryMark: è ciò che rende un rollback capace di riparare anche la
   // storia, non solo la vista.
   history: HistoryMark[];
+  // Gli op di undo/redo che un record REMOTO ha reso non più validi (vedi
+  // markStale). Non è uno stato che la UI legge: è il filtro che tiene quegli op
+  // fuori dagli stack anche quando un rifiuto li rigioca da una base più vecchia
+  // del record remoto. WeakSet: l'appartenenza vive quanto l'op, non quanto la
+  // sessione.
+  stale: WeakSet<Op>;
   setScene: (s: SceneState | null, discardedReason?: string) => void;
   setCamera: (c: Camera) => void;
   setSync: (s: OpSink | null) => void;
-  apply: (op: Op) => void;
+  // `own` = "questo record è NOSTRO", e serve solo a decidere se può invalidare
+  // la storia: un op locale non la invalida mai (per costruzione la mantiene
+  // valida), un op di un altro client sì. Lo passano SyncClient (che riconosce
+  // i propri record dal clientId) e il ramo senza trasporto di
+  // endGesture/undo/redo, dove l'op è locale e diventa confermato all'istante.
+  // Il default è false: un record che arriva senza nessuna prova di essere
+  // nostro va trattato come altrui -- l'errore in quella direzione toglie un
+  // passo di annulla, nell'altra riscrive il lavoro di qualcun altro.
+  apply: (op: Op, own?: boolean) => void;
   applyPending: (op: Op) => void;
   rejectPending: (opId: string, message: string, revocable?: boolean) => void;
   clearError: () => void;
@@ -568,6 +732,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   canUndo: false,
   canRedo: false,
   history: [],
+  stale: new WeakSet<Op>(),
   // Installa un documento: è lo snapshot autorevole di OpenDocument, quindi
   // vista e confermato COINCIDONO e non c'è nulla in volo. Unico modo sano di
   // mettere una scena nello store (e l'unico che mantiene l'invariante
@@ -603,6 +768,10 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       redoStack: [],
       canUndo: false,
       canRedo: false,
+      // Gli op che il filtro conosceva appartenevano a voci che questa
+      // sostituzione ha appena buttato via: niente da filtrare, e nessuna
+      // ragione di tenerli in vita.
+      stale: new WeakSet<Op>(),
       disowned: [],
       notice: null,
       selection: s ? pruneSelection(st.selection, s) : [],
@@ -623,7 +792,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // effetto). Il resto della coda viene riapplicato sopra la nuova base: è il
   // rebase, ed è ciò che impedisce a un record remoto di cancellare in
   // silenzio una modifica ottimistica ancora in volo.
-  apply: (op) =>
+  apply: (op, own = false) =>
     set((st) => {
       if (!st.confirmed) return st;
       const next = {
@@ -633,7 +802,33 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         history: confirmHistory(st.history, op.opId),
       };
       const i = st.disowned.findIndex((d) => d.opId === op.opId);
-      if (i < 0) return next;
+      if (i < 0) {
+        // NOSTRO in tre modi: ce lo dice il chiamante (`own`), è ancora nella
+        // nostra coda (il suo eco), oppure -- più sotto -- è un op che avevamo
+        // rinnegato e che torna. Tutto il resto viene da un ALTRO client e può
+        // aver reso stale delle voci di undo/redo (vedi markStale).
+        // (Il controllo sulla coda prima di costruire l'elenco delle voci: un
+        // eco è il caso NORMALE, e non deve pagare la scansione della storia.)
+        if (own || st.pending.some((p) => p.opId === op.opId)) return next;
+        if (!markStale(op, st.stale, allEntries(st.undoStack, st.redoStack, next.history))) {
+          return next;
+        }
+        const undoStack = pruneStale(st.undoStack, st.stale);
+        const redoStack = pruneStale(st.redoStack, st.stale);
+        // Marcato solo roba che vive dentro un mark: la voce è già stata
+        // consumata da una transizione in volo, quindi gli stack VIVI non
+        // cambiano ora e non c'è niente da annunciare -- se un rifiuto la
+        // rimetterà in gioco, la rimetterà già potata.
+        if (undoStack === st.undoStack && redoStack === st.redoStack) return next;
+        return {
+          ...next,
+          undoStack,
+          redoStack,
+          canUndo: undoStack.length > 0,
+          canRedo: redoStack.length > 0,
+          notice: STALE,
+        };
+      }
       // REVOCA DEL ROLLBACK. Questo op l'avevamo dato per perso e annullato in
       // locale, ma eccolo tornare dall'op-log: era durabile fin dall'inizio (la
       // richiesta HTTP è morta DOPO il broadcast). La vista si ripara da sola --
@@ -658,7 +853,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       const inv = invertOp(st.confirmed, op);
       return {
         ...next,
-        ...restoreRevoked(next.history, st.undoStack, st.redoStack, inv),
+        ...restoreRevoked(next.history, st.undoStack, st.redoStack, inv, st.stale),
         disowned: [...st.disowned.slice(0, i), ...st.disowned.slice(i + 1)],
         lastError: st.lastError === st.disowned[i].message ? null : st.lastError,
         notice: REVOKED,
@@ -719,7 +914,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       // che non esiste e brucia la voce sbagliata. Vedi HistoryMark.
       return {
         ...rebuild(st, st.confirmed, pending),
-        ...(revertHistory(st.history, opId) ?? {}),
+        ...(revertHistory(st.history, opId, st.stale) ?? {}),
         // In coda (la più vecchia esce per prima): un op rifiutato davvero dal
         // server non riceverà mai un eco, quindi la sua voce resterebbe qui per
         // sempre se non ci fosse il tetto.
@@ -899,8 +1094,11 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       // senza filo non esiste un "confermato dal server", quindi l'op È il
       // documento confermato -- un'anteprima verrebbe cancellata dal primo
       // ricalcolo della vista.
+      // `true` = l'op è NOSTRO: senza questo verrebbe scambiato per un record
+      // remoto e invaliderebbe la voce di undo che questo stesso gesto ha
+      // appena spinto (vedi apply).
       if (sync) sync.submit(op);
-      else get().apply(op);
+      else get().apply(op, true);
     }
     // Riconciliazione finale: la selezione voluta, potata contro la scena
     // realmente prodotta dal gesto. Gli id creati da finalOps ci sono ancora;
@@ -998,7 +1196,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     }
     for (const op of entry) {
       if (sync) sync.submit(op);
-      else get().apply(op); // nessun filo: l'op è direttamente il confermato (vedi endGesture)
+      else get().apply(op, true); // nessun filo: l'op è direttamente il confermato (vedi endGesture)
     }
   },
 
@@ -1042,7 +1240,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     }
     for (const op of entry) {
       if (sync) sync.submit(op);
-      else get().apply(op); // nessun filo: l'op è direttamente il confermato (vedi endGesture)
+      else get().apply(op, true); // nessun filo: l'op è direttamente il confermato (vedi endGesture)
     }
   },
 }));
