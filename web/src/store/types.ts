@@ -1,3 +1,5 @@
+import { create } from "@bufbuild/protobuf";
+import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Document, Node as PbNode } from "../gen/brawt/v1/brawt_pb";
 
 export interface PageLite { id: string; name: string; }
@@ -29,6 +31,27 @@ export function toNodeLite(n: PbNode): NodeLite {
     fills, kind: n.shape.case === "ellipse" ? "ellipse" : "rect",
     cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
   };
+}
+
+// Inverso esatto di toNodeLite: ricostruisce il Node protobuf da un NodeLite.
+// Sta qui, accanto a toNodeLite, di proposito: un campo aggiunto a NodeLite
+// deve comparire in ENTRAMBE le direzioni, e l'adiacenza è la guardia.
+// Serve all'undo (history.invertOp): l'inverso di una delete è la create del
+// nodo com'era, e il modello in memoria tiene solo NodeLite.
+export function toPbNode(n: NodeLite): PbNode {
+  return create(NodeSchema, {
+    id: n.id, parentId: n.parentId, orderKey: n.orderKey, name: n.name,
+    visible: n.visible, opacity: n.opacity,
+    x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation,
+    // NodeLite conosce solo tinte piatte (toNodeLite appiattisce qualsiasi
+    // paint non-solid in un colore): il ritorno è sempre un SolidPaint.
+    fills: n.fills.map((f) => ({
+      kind: { case: "solid" as const, value: { color: { r: f.r, g: f.g, b: f.b, a: f.a } } },
+    })),
+    shape: n.kind === "ellipse"
+      ? { case: "ellipse" as const, value: {} }
+      : { case: "rect" as const, value: { cornerRadius: n.cornerRadius } },
+  });
 }
 
 export function fromDocument(doc: Document): SceneState {
