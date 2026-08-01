@@ -50,7 +50,10 @@ func TestAppendReplay(t *testing.T) {
 	}
 }
 
-func TestSnapshotTruncatesOplog(t *testing.T) {
+// TestSnapshotCompactsOplog: when the snapshot covers everything in the
+// oplog, nothing survives compaction and the next op simply continues from
+// seq+1 on top of the snapshot.
+func TestSnapshotCompactsOplog(t *testing.T) {
 	dir := t.TempDir()
 	b, _ := Open(dir, "doc1", "Untitled")
 	_ = b.Append(rec(1, createOp("n1", 5)))
@@ -69,8 +72,8 @@ func TestSnapshotTruncatesOplog(t *testing.T) {
 }
 
 // TestLoadSelfHealsStaleOplogAfterSnapshot reproduces the crash window
-// between Snapshot() persisting snapshot.pb/snapshot.seq and it truncating
-// the oplog: leftover oplog records whose Seq is already baked into the
+// between Snapshot() publishing the new snapshot and it compacting the
+// oplog: leftover oplog records whose Seq is already baked into the
 // snapshot must not be re-applied (which would hit core.ErrNodeExists for
 // a duplicate CreateNode and fail Load() permanently) -- Load() must skip
 // them and self-heal instead.
@@ -94,9 +97,9 @@ func TestLoadSelfHealsStaleOplogAfterSnapshot(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Simulate the crash: snapshot.pb/snapshot.seq (seq=2) landed and were
-	// fsync'd, but the oplog truncate never happened -- so re-append the
-	// exact same already-applied records back onto the oplog.
+	// Simulate the crash: the snapshot (seq=2) landed and was fsync'd, but
+	// the oplog compaction never happened -- so re-append the exact same
+	// already-applied records back onto the oplog.
 	if err := b.Append(r1); err != nil {
 		t.Fatal(err)
 	}
@@ -136,7 +139,7 @@ func TestLoadSelfHealsStaleOplogWithNewerTail(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// Leftover stale record from the interrupted truncate, followed by a
+	// Leftover stale record from the interrupted compaction, followed by a
 	// genuinely new op appended after the "crash".
 	if err := b.Append(r1); err != nil {
 		t.Fatal(err)
@@ -158,62 +161,16 @@ func TestLoadSelfHealsStaleOplogWithNewerTail(t *testing.T) {
 	}
 }
 
-// TestLoadSurfacesMissingSnapshotSeq: if snapshot.pb exists but its paired
-// snapshot.seq is missing, Load() must return an error rather than
-// silently defaulting to seq=0 (which would hand a caller a document whose
-// seq doesn't match what's actually persisted).
-func TestLoadSurfacesMissingSnapshotSeq(t *testing.T) {
-	dir := t.TempDir()
-	b, _ := Open(dir, "doc1", "Untitled")
-	_ = b.Append(rec(1, createOp("n1", 5)))
-	doc, seq, err := b.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := b.Snapshot(doc, seq); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.Remove(b.seqPath()); err != nil {
-		t.Fatal(err)
-	}
-
-	if _, _, err := b.Load(); err == nil {
-		t.Fatal("Load() should error when snapshot.pb exists but snapshot.seq is missing, got nil")
-	}
-}
-
-// TestLoadSurfacesCorruptSnapshotSeq: a snapshot.seq that fails to parse as
-// a uint64 must surface as an error, not silently become seq=0.
-func TestLoadSurfacesCorruptSnapshotSeq(t *testing.T) {
-	dir := t.TempDir()
-	b, _ := Open(dir, "doc1", "Untitled")
-	_ = b.Append(rec(1, createOp("n1", 5)))
-	doc, seq, err := b.Load()
-	if err != nil {
-		t.Fatal(err)
-	}
-	if err := b.Snapshot(doc, seq); err != nil {
-		t.Fatal(err)
-	}
-
-	if err := os.WriteFile(b.seqPath(), []byte("not-a-number"), 0o644); err != nil {
-		t.Fatal(err)
-	}
-
-	_, _, err = b.Load()
-	if err == nil {
-		t.Fatal("Load() should error on a corrupt snapshot.seq, got nil")
-	}
-	if !strings.Contains(err.Error(), "parse snapshot seq") {
-		t.Fatalf("error = %v, want it to mention parse snapshot seq", err)
-	}
-}
-
-// TestSnapshotDurablyWritesFiles asserts Snapshot() leaves snapshot.pb and
-// snapshot.seq present and correctly readable back -- i.e. the temp-file +
-// fsync + rename path in writeFileSync actually lands the data, it isn't
-// just a no-op refactor.
+// TestSnapshotDurablyWritesFiles asserts Snapshot() leaves snapshot.pb
+// present and correctly readable back -- i.e. the temp-file + fsync + rename
+// path in writeFileSync actually lands the data, it isn't just a no-op
+// refactor -- and that the seq it was taken at comes back out of that one
+// file, with no second file involved.
+//
+// (The two-file version of this test asserted that a missing or unparseable
+// snapshot.seq made Load() fail. That was the crash window, not a desirable
+// invariant: see TestSnapshotIsSelfContained and
+// TestLoadIgnoresStaleSnapshotSeqFile in snapshot_test.go.)
 func TestSnapshotDurablyWritesFiles(t *testing.T) {
 	dir := t.TempDir()
 	b, _ := Open(dir, "doc1", "Untitled")
@@ -229,12 +186,17 @@ func TestSnapshotDurablyWritesFiles(t *testing.T) {
 	if _, err := os.Stat(b.snapshotPath()); err != nil {
 		t.Fatalf("snapshot.pb missing after Snapshot(): %v", err)
 	}
-	seqBytes, err := os.ReadFile(b.seqPath())
+	b.mu.Lock()
+	gotSeq, err := b.readSnapshotSeq()
+	b.mu.Unlock()
 	if err != nil {
-		t.Fatalf("snapshot.seq missing after Snapshot(): %v", err)
+		t.Fatalf("read back snapshot seq: %v", err)
 	}
-	if strings.TrimSpace(string(seqBytes)) != "1" {
-		t.Fatalf("snapshot.seq = %q, want \"1\"", string(seqBytes))
+	if gotSeq != 1 {
+		t.Fatalf("snapshot seq = %d, want 1", gotSeq)
+	}
+	if _, err := os.Stat(b.seqPath()); !os.IsNotExist(err) {
+		t.Fatalf("snapshot.seq still exists after Snapshot(): stat err = %v", err)
 	}
 	// No leftover temp files from writeFileSync. writeFileSync creates its
 	// temp file via os.CreateTemp(filepath.Dir(path), ...), i.e. inside the

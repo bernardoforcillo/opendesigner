@@ -6,6 +6,7 @@ import (
 	"net/http/httptest"
 	"os"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -17,7 +18,25 @@ import (
 
 func newTestClient(t *testing.T) brawtv1connect.DocumentServiceClient {
 	t.Helper()
-	svc := NewDocumentService(NewManager(t.TempDir()))
+	return newTestClientOn(t, t.TempDir())
+}
+
+// newTestClientOn serves an explicit workspace, so a test can start a second
+// "process" over documents that already exist on disk.
+func newTestClientOn(t *testing.T, workspace string) brawtv1connect.DocumentServiceClient {
+	t.Helper()
+	c, _ := newTestClientWithManager(t, workspace)
+	return c
+}
+
+// newTestClientWithManager is newTestClientOn plus the Manager the handler is
+// serving from, so a test can reach the very Hub the RPC is talking to and put
+// it into a state only the hub itself can produce (see
+// TestSubscribeReportsAnEndedStreamAsAnError).
+func newTestClientWithManager(t *testing.T, workspace string) (brawtv1connect.DocumentServiceClient, *Manager) {
+	t.Helper()
+	m := NewManager(workspace)
+	svc := NewDocumentService(m)
 	path, handler := brawtv1connect.NewDocumentServiceHandler(svc)
 	mux := httpMux(path, handler)
 	// Enable HTTP/2 via TLS (the canonical connect-go test pattern): srv.Client()
@@ -29,7 +48,7 @@ func newTestClient(t *testing.T) brawtv1connect.DocumentServiceClient {
 	srv.EnableHTTP2 = true
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
-	return brawtv1connect.NewDocumentServiceClient(srv.Client(), srv.URL)
+	return brawtv1connect.NewDocumentServiceClient(srv.Client(), srv.URL), m
 }
 
 func TestCreateOpenDocument(t *testing.T) {
@@ -282,6 +301,50 @@ func TestSubmitOpErrors(t *testing.T) {
 	}
 }
 
+// finding (MINOR, documentservice.go): op.doc_id was never checked against
+// SubmitOpRequest.doc_id and was persisted as-is -- a stale/empty scene id
+// on the client (a doc switch, a failed bootstrap) would silently write a
+// record claiming the wrong document into a valid oplog, with core.Apply
+// none the wiser since it ignores op.doc_id entirely.
+func TestSubmitOpRejectsOpDocIDMismatch(t *testing.T) {
+	c := newTestClient(t)
+	ctx := context.Background()
+	info, _ := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "M"}))
+	docID := info.Msg.GetId()
+
+	// op.doc_id empty (the client's "scene not loaded yet" default).
+	if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+		DocId: docID, ClientId: "c1", Op: createNodeOp("", "n1")})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("SubmitOp(empty op.doc_id) code = %v (err %v), want invalid_argument", connect.CodeOf(err), err)
+	}
+
+	// op.doc_id set, but to a different document than the request addresses.
+	other, _ := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "Other"}))
+	if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+		DocId: docID, ClientId: "c1", Op: createNodeOp(other.Msg.GetId(), "n1")})); connect.CodeOf(err) != connect.CodeInvalidArgument {
+		t.Fatalf("SubmitOp(mismatched op.doc_id) code = %v (err %v), want invalid_argument", connect.CodeOf(err), err)
+	}
+
+	// Neither rejected op may have consumed a seq or touched either
+	// document: a correctly-addressed op right after must still land at 1.
+	res, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+		DocId: docID, ClientId: "c1", Op: createNodeOp(docID, "n1")}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if got := res.Msg.GetAck().GetSeq(); got != 1 {
+		t.Fatalf("ack seq = %d, want 1 (the rejected mismatched ops must not have consumed a seq)", got)
+	}
+
+	open, err := c.OpenDocument(ctx, connect.NewRequest(&brawtv1.OpenRequest{DocId: other.Msg.GetId()}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if open.Msg.GetSeq() != 0 || len(open.Msg.GetSnapshot().GetNodes()) != 0 {
+		t.Fatalf("the other document was touched by a mismatched op: seq = %d, nodes = %v", open.Msg.GetSeq(), open.Msg.GetSnapshot().GetNodes())
+	}
+}
+
 // TestSubscribeRejectsTraversalDocID checks the doc_id sanitization on the
 // streaming half too: the error may surface either from the call itself or from
 // the first Receive, depending on when the handler runs.
@@ -300,6 +363,90 @@ func TestSubscribeRejectsTraversalDocID(t *testing.T) {
 	}
 	if connect.CodeOf(err) != connect.CodeNotFound {
 		t.Fatalf("Subscribe(../../evil) code = %v (err %v), want not_found", connect.CodeOf(err), err)
+	}
+}
+
+// finding (IMPORTANT, documentservice.go): when the hub ended a backlogged
+// subscriber's stream, the handler returned nil -- a clean, SUCCESSFUL
+// end-of-stream, indistinguishable on the wire from a graceful server shutdown
+// or from the client cancelling itself. The whole point of ending the stream is
+// to tell the client to reconnect and resync from since_seq, and a clean EOF
+// carries no such signal: the tab would just stop receiving anything, forever.
+// The client must get a code it can branch on, alongside the OUT_OF_RANGE that
+// ErrHistoryTooOld already returns.
+//
+// The state is constructed, not hoped for: making a real subscriber overflow a
+// 256-record channel across a live HTTP/2 stream is not deterministic, but the
+// hub's own end-of-stream path (endSubscriberLocked, the exact call Submit's
+// "cannot keep up" branch makes -- see
+// TestBroadcastEndsStreamWhenSubscriberCannotKeepUp for the proof that Submit
+// reaches it) is reachable directly from this package.
+func TestSubscribeReportsAnEndedStreamAsAnError(t *testing.T) {
+	c, m := newTestClientWithManager(t, t.TempDir())
+	ctx := context.Background()
+	info, err := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "T"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	docID := info.Msg.GetId()
+
+	streamCtx, cancelStream := context.WithCancel(ctx)
+	defer cancelStream()
+	done := make(chan error, 1)
+	go func() {
+		stream, err := c.Subscribe(streamCtx, connect.NewRequest(&brawtv1.SubscribeRequest{
+			DocId: docID, ClientId: "c1", SinceSeq: 0}))
+		if err != nil {
+			done <- err
+			return
+		}
+		defer stream.Close()
+		for stream.Receive() { // drain whatever arrives before the hub gives up on us
+		}
+		done <- stream.Err()
+	}()
+
+	// Wait until the handler has actually registered its subscriber with the
+	// hub -- ending a stream that does not exist yet would prove nothing.
+	h, err := m.HubFor(docID)
+	if err != nil {
+		t.Fatal(err)
+	}
+	deadline := time.Now().Add(10 * time.Second)
+	for {
+		h.mu.Lock()
+		n := len(h.subs)
+		h.mu.Unlock()
+		if n == 1 {
+			break
+		}
+		if time.Now().After(deadline) {
+			t.Fatal("the Subscribe handler never registered a subscriber with the hub")
+		}
+		time.Sleep(5 * time.Millisecond)
+	}
+
+	// The hub decides this subscriber cannot keep up, exactly as Submit's
+	// broadcast loop does when its channel is full.
+	h.mu.Lock()
+	for s := range h.subs {
+		h.endSubscriberLocked(s)
+	}
+	h.mu.Unlock()
+
+	select {
+	case err := <-done:
+		if err == nil {
+			t.Fatal("Subscribe returned a clean end-of-stream after the hub ENDED the stream; the client cannot tell that from a graceful shutdown and will never resync")
+		}
+		if got := connect.CodeOf(err); got != connect.CodeResourceExhausted {
+			t.Fatalf("Subscribe code = %v (err %v), want resource_exhausted", got, err)
+		}
+		if !strings.Contains(err.Error(), ErrSubscriberTooSlow.Error()) {
+			t.Fatalf("Subscribe error = %q, want it to carry %q", err, ErrSubscriberTooSlow)
+		}
+	case <-time.After(10 * time.Second):
+		t.Fatal("timed out waiting for the Subscribe stream to end")
 	}
 }
 
