@@ -525,14 +525,33 @@ var ErrSnapshotCommitted = errors.New("snapshot committed but meta.json was not 
 // this order -- compacting first would delete records that the snapshot
 // hasn't committed yet.
 func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
-	// Marshal before taking the lock: it depends only on doc, and b.mu also
-	// serialises Append, so every byte marshalled under it is a byte of
-	// somebody's edit waiting. The document is the one part of a snapshot
-	// that grows with the drawing.
+	// Marshal AND write the new snapshot before taking the lock. b.mu also
+	// serialises Append, so every microsecond spent holding it is an edit
+	// waiting on an fsync, and the document is the one part of a snapshot
+	// whose size grows with the drawing: marshalling it, writing it out and
+	// fsyncing it is by far the longest thing a snapshot does.
+	//
+	// None of it is observable until the rename below, so none of it needs
+	// the lock. What the lock does have to cover is the decision to publish
+	// together with the publishing itself -- otherwise two overlapping
+	// snapshots could both pass the "only move forward" guard and then commit
+	// in the opposite order.
 	data, err := proto.Marshal(doc)
 	if err != nil {
 		return err
 	}
+	staged, err := stageFileSync(b.snapshotPath(), encodeSnapshotFile(seq, data), 0o644)
+	if err != nil {
+		return fmt.Errorf("write snapshot: %w", err)
+	}
+	committed := false
+	defer func() {
+		if !committed {
+			// Either the guard below rejected this snapshot or the commit
+			// failed; nothing must be left behind in the bundle either way.
+			os.Remove(staged)
+		}
+	}()
 
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -564,9 +583,12 @@ func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
 		return nil
 	}
 
-	if err := writeFileSync(b.snapshotPath(), encodeSnapshotFile(seq, data), 0o644); err != nil {
+	// One rename publishes the document and its seq together (they are one
+	// file), so this is the instant the snapshot exists.
+	if err := commitStagedFile(staged, b.snapshotPath()); err != nil {
 		return fmt.Errorf("write snapshot: %w", err)
 	}
+	committed = true
 	// Nothing reads snapshot.seq any more, so an older build's leftover is
 	// inert and its removal is worth no error path of its own: failing the
 	// snapshot over a file that has no readers would be the bigger bug.
@@ -653,11 +675,32 @@ func (b *Bundle) compactOplogLocked(snapSeq uint64) error {
 // fsyncing the file only commits its contents, and a crash could otherwise
 // leave the directory entry still pointing at the old file (or at nothing,
 // for a fresh create) even though this call returned nil.
-func writeFileSync(path string, data []byte, perm os.FileMode) (err error) {
+func writeFileSync(path string, data []byte, perm os.FileMode) error {
+	tmpName, err := stageFileSync(path, data, perm)
+	if err != nil {
+		return err
+	}
+	if err := commitStagedFile(tmpName, path); err != nil {
+		os.Remove(tmpName)
+		return err
+	}
+	return nil
+}
+
+// stageFileSync writes data to a temp file next to path, fsyncs it and
+// returns its name. Nothing at path changes: the staged file becomes the file
+// only when commitStagedFile renames it there.
+//
+// The split exists so the expensive half can happen without whatever lock
+// protects path. Bundle.Snapshot writes a file the size of the whole document
+// while b.mu -- the lock every Append needs -- would otherwise be held.
+//
+// The caller owns the returned temp file and must either commit or remove it.
+func stageFileSync(path string, data []byte, perm os.FileMode) (name string, err error) {
 	dir := filepath.Dir(path)
 	tmp, err := os.CreateTemp(dir, filepath.Base(path)+".tmp-*")
 	if err != nil {
-		return err
+		return "", err
 	}
 	tmpName := tmp.Name()
 	defer func() {
@@ -668,22 +711,29 @@ func writeFileSync(path string, data []byte, perm os.FileMode) (err error) {
 
 	if _, err = tmp.Write(data); err != nil {
 		tmp.Close()
-		return err
+		return "", err
 	}
 	if err = tmp.Sync(); err != nil {
 		tmp.Close()
-		return err
+		return "", err
 	}
 	if err = tmp.Close(); err != nil {
-		return err
+		return "", err
 	}
 	if err = os.Chmod(tmpName, perm); err != nil {
+		return "", err
+	}
+	return tmpName, nil
+}
+
+// commitStagedFile publishes a file staged by stageFileSync: one rename, then
+// an fsync of the directory so the rename itself is durable and not just the
+// bytes it points at.
+func commitStagedFile(tmpName, path string) error {
+	if err := os.Rename(tmpName, path); err != nil {
 		return err
 	}
-	if err = os.Rename(tmpName, path); err != nil {
-		return err
-	}
-	return syncDir(dir)
+	return syncDir(filepath.Dir(path))
 }
 
 // syncDir fsyncs a directory so that entries created or renamed inside it

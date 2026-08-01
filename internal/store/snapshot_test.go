@@ -5,9 +5,11 @@ import (
 	"errors"
 	"fmt"
 	"os"
+	"path/filepath"
 	"slices"
 	"strings"
 	"testing"
+	"time"
 
 	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
 	"github.com/bernardoforcillo/brawt/internal/core"
@@ -655,5 +657,98 @@ func TestSnapshotIgnoresASeqOlderThanThePersistedOne(t *testing.T) {
 	}
 	if len(doc.Nodes) != 4 {
 		t.Fatalf("nodes = %d, want 4 (ops 3..4 were destroyed)", len(doc.Nodes))
+	}
+	// The rejected snapshot was written out before the guard ever saw it (it
+	// is staged outside b.mu, so an Append does not wait for a document-sized
+	// fsync). It must not be left lying in the bundle.
+	if leftovers := stagedFiles(t, b); len(leftovers) != 0 {
+		t.Fatalf("a rejected snapshot left %v behind in the bundle", leftovers)
+	}
+}
+
+// stagedFiles returns the temp files sitting in the bundle directory.
+func stagedFiles(t *testing.T, b *Bundle) []string {
+	t.Helper()
+	names, err := filepath.Glob(filepath.Join(b.dir, "*.tmp-*"))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return names
+}
+
+// finding (the disk half of "a snapshot must not block Submit while it
+// writes"): b.mu was held across the whole snapshot, including the write and
+// fsync of a file the size of the entire document -- and b.mu is the lock
+// every Append needs, so an op submitted mid-snapshot waited for all of it.
+//
+// The document is now written and fsynced BEFORE the lock is taken; only the
+// rename that publishes it, the oplog compaction and the identity refresh
+// happen under it. Constructed by holding b.mu exactly as a concurrent Append
+// would and watching the staged snapshot appear anyway.
+func TestSnapshotWritesTheDocumentBeforeTakingTheBundleLock(t *testing.T) {
+	dir := t.TempDir()
+	b, err := Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, b, rec(1, createOp("n1", 1)))
+	doc, seq, err := b.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	b.mu.Lock() // stands in for an Append in flight
+	done := make(chan error, 1)
+	go func() { done <- b.Snapshot(doc, seq) }()
+
+	staged := false
+	for deadline := time.Now().Add(3 * time.Second); time.Now().Before(deadline); {
+		if len(stagedFiles(t, b)) > 0 {
+			staged = true
+			break
+		}
+		time.Sleep(2 * time.Millisecond)
+	}
+	b.mu.Unlock()
+
+	if err := <-done; err != nil {
+		t.Fatalf("Snapshot(): %v", err)
+	}
+	if !staged {
+		t.Fatal("the snapshot wrote nothing until the bundle lock was free: an Append landing mid-snapshot waits for a document-sized fsync")
+	}
+	if leftovers := stagedFiles(t, b); len(leftovers) != 0 {
+		t.Fatalf("staged files left behind after a successful snapshot: %v", leftovers)
+	}
+}
+
+// The other half of staging the snapshot outside the lock: when the commit
+// itself fails, the file that was staged for it must not survive as litter in
+// the bundle.
+func TestASnapshotThatCannotCommitLeavesNothingStaged(t *testing.T) {
+	dir := t.TempDir()
+	b, err := Open(dir, "doc1", "Untitled")
+	if err != nil {
+		t.Fatal(err)
+	}
+	mustAppend(t, b, rec(1, createOp("n1", 1)))
+	doc, seq, err := b.Load()
+	if err != nil {
+		t.Fatal(err)
+	}
+	// No rename can replace a directory.
+	if err := os.Mkdir(b.snapshotPath(), 0o755); err != nil {
+		t.Fatal(err)
+	}
+
+	if err := b.Snapshot(doc, seq); err == nil {
+		t.Fatal("Snapshot succeeded although its commit could not happen")
+	}
+	if leftovers := stagedFiles(t, b); len(leftovers) != 0 {
+		t.Fatalf("a snapshot that could not commit left %v behind in the bundle", leftovers)
+	}
+	// And the oplog was not compacted against a snapshot that never landed.
+	if got := oplogSeqsOnDisk(t, b); len(got) != 1 || got[0] != 1 {
+		t.Fatalf("oplog holds %v, want [1]: the compaction ran on a snapshot that did not commit", got)
 	}
 }

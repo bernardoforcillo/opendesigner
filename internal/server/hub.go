@@ -278,11 +278,13 @@ func (h *Hub) maybeSnapshotLocked() {
 //
 // It holds no hub lock while writing, so OpenDocument, Subscribe and every
 // other reader keep working throughout -- but only because Submit does not
-// hold one across bundle.Append either. A Submit landing in this window DOES
-// wait for the snapshot, on the bundle's own lock, and unavoidably so:
-// compaction rewrites the very file Append appends to. What that wait must
-// not do is spread: it is taken while holding writeMu alone, so it delays
-// other writers to this one document and no reader anywhere.
+// hold one across bundle.Append either. A Submit landing in this window can
+// still wait on the bundle's own lock, and irreducibly so: the compaction
+// rewrites the very file Append appends to. What that wait must not do is
+// spread, and it does not -- it is taken holding writeMu alone, so it delays
+// other writers to this one document and no reader anywhere. Bundle.Snapshot
+// keeps it short by writing and fsyncing the document (the part that grows
+// with the drawing) before it takes that lock at all.
 func (h *Hub) runSnapshot(doc *brawtv1.Document, seq uint64) {
 	defer h.snapshots.Done()
 	err := h.bundle.Snapshot(doc, seq)
