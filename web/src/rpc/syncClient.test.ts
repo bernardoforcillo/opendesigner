@@ -56,6 +56,11 @@ function applied(seq: number, clientId: string, op: Op): ServerMsg {
 // su una promise che nessuno risolve), `fail` lo fa MORIRE con un errore --
 // esattamente i due modi in cui il server lo termina di sua iniziativa
 // (subscriber troppo lento, since_seq fuori range).
+//
+// I record già in coda restano consegnabili anche dopo `close`: è il caso reale
+// in cui un messaggio è già arrivato nel buffer quando il client decide di
+// staccare, ed è l'unico modo di verificare che sia il CLIENT a rifiutarsi di
+// applicarlo (guardia su stop) e non il trasporto a non consegnarlo più.
 function channel<T>() {
   const queue: T[] = [];
   let wake: (() => void) | null = null;
@@ -142,18 +147,36 @@ function reorderingTransport() {
   };
 }
 
+function snapshotOf(nodes: Record<string, PbNode>) {
+  return create(DocumentSchema, {
+    id: "doc1", name: "Untitled", schemaVersion: 1,
+    pages: [{ id: "page1", name: "Page 1" }], nodes,
+  });
+}
+
+// Il client vivo del test in corso. Ogni SyncClient tiene aperti uno stream e
+// (dal fix sul ciclo di vita) dei timer di riconnessione: senza uno stop in
+// afterEach un client sopravviverebbe al proprio test e continuerebbe a
+// riconnettersi DENTRO il successivo, scrivendo nello stesso store globale.
+let live: SyncClient | null = null;
+
+function resetStore() {
+  useScene.setState({
+    scene: null, confirmed: null, pending: [], lastError: null, syncError: null,
+    connection: "connecting",
+    selection: [], marquee: null, gesture: null, sync: null,
+    undoStack: [], redoStack: [], canUndo: false, canRedo: false, history: [],
+  });
+}
+
 async function boot(nodes: Record<string, PbNode>) {
   const stream = channel<ServerMsg>();
-  rpc.openDocument.mockResolvedValue({
-    snapshot: create(DocumentSchema, {
-      id: "doc1", name: "Untitled", schemaVersion: 1,
-      pages: [{ id: "page1", name: "Page 1" }], nodes,
-    }),
-    seq: 0n,
-  });
+  rpc.openDocument.mockResolvedValue({ snapshot: snapshotOf(nodes), seq: 0n });
+  rpc.subscribe.mockReset();
   rpc.subscribe.mockReturnValue(stream);
   rpc.submitOp.mockResolvedValue({ ack: { opId: "", seq: 1n } });
   const sync = new SyncClient("doc1", CLIENT);
+  live = sync;
   await sync.start();
   await flush();
   return { sync, stream };
@@ -169,14 +192,12 @@ describe("SyncClient: modello confermato/pending", () => {
   beforeEach(() => {
     vi.clearAllMocks();
     logged = vi.spyOn(console, "error").mockImplementation(() => {});
-    useScene.setState({
-      scene: null, confirmed: null, pending: [], lastError: null, syncError: null,
-      selection: [], marquee: null, gesture: null, sync: null,
-      undoStack: [], redoStack: [], canUndo: false, canRedo: false, history: [],
-    });
+    resetStore();
   });
 
   afterEach(() => {
+    live?.stop();
+    live = null;
     logged.mockRestore();
   });
 
@@ -599,5 +620,273 @@ describe("SyncClient: modello confermato/pending", () => {
 
     stream.close();
     await flush();
+  });
+});
+
+// ---------------------------------------------------------------------------
+// CICLO DI VITA dello stream: abort, riconnessione, gap.
+//
+// Subscribe è l'unica cosa che fa avanzare il documento confermato, e il
+// backend CHIUDE di sua iniziativa lo stream di un subscriber rimasto indietro
+// (internal/server/hub.go: il canale pieno fa endSubscriberLocked) proprio
+// perché il client si riconnetta con since_seq all'ultimo record applicato e
+// recuperi il backlog. Senza riconnessione quel disegno non funziona: la
+// prima raffica un po' fitta stacca il client per il resto della sessione.
+//
+// Qui ogni chiamata a Subscribe apre un canale NUOVO, così i test possono
+// guardare quante subscription esistono, da quale since_seq ripartono e se il
+// trasporto precedente è stato davvero abortito.
+describe("SyncClient: ciclo di vita dello stream", () => {
+  let logged: ReturnType<typeof vi.spyOn>;
+  let warned: ReturnType<typeof vi.spyOn>;
+
+  // Più lungo del backoff massimo di una riconnessione e più corto della
+  // finestra oltre la quale uno stream è considerato "stabile" (e quindi il
+  // budget dei tentativi si azzera): un avanzamento di questa durata fa
+  // scattare esattamente un tentativo.
+  const RETRY_WINDOW = 15_000;
+
+  interface Opened {
+    since: bigint;
+    signal: AbortSignal | undefined;
+    stream: ReturnType<typeof channel<ServerMsg>>;
+  }
+
+  function liveStreams(): Opened[] {
+    const opened: Opened[] = [];
+    rpc.subscribe.mockReset();
+    rpc.subscribe.mockImplementation(
+      (req: { sinceSeq: bigint }, opts?: { signal?: AbortSignal }) => {
+        const stream = channel<ServerMsg>();
+        // Il trasporto vero muore quando il segnale viene abortito: qui il
+        // doppio fa lo stesso, così "abortito" e "stream finito" restano legati
+        // come nella realtà.
+        opts?.signal?.addEventListener("abort", () => stream.close());
+        opened.push({ since: req.sinceSeq, signal: opts?.signal, stream });
+        return stream;
+      },
+    );
+    return opened;
+  }
+
+  const settle = () => vi.advanceTimersByTimeAsync(0);
+
+  async function bootLive(nodes: Record<string, PbNode>, seq = 0) {
+    rpc.openDocument.mockResolvedValue({ snapshot: snapshotOf(nodes), seq: BigInt(seq) });
+    rpc.submitOp.mockResolvedValue({ ack: { opId: "", seq: 1n } });
+    const opened = liveStreams();
+    const sync = new SyncClient("doc1", CLIENT);
+    live = sync;
+    await sync.start();
+    await settle();
+    return { sync, opened };
+  }
+
+  const last = (opened: Opened[]) => opened[opened.length - 1];
+
+  beforeEach(() => {
+    vi.clearAllMocks();
+    vi.useFakeTimers();
+    logged = vi.spyOn(console, "error").mockImplementation(() => {});
+    warned = vi.spyOn(console, "warn").mockImplementation(() => {});
+    resetStore();
+  });
+
+  afterEach(() => {
+    live?.stop();
+    live = null;
+    vi.useRealTimers();
+    logged.mockRestore();
+    warned.mockRestore();
+  });
+
+  it("uno stream CHIUSO dal server fa ripartire la subscription dall'ultimo seq applicato", async () => {
+    const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+    expect(opened).toHaveLength(1);
+    expect(opened[0].since).toBe(0n);
+    expect(useScene.getState().connection).toBe("connected");
+
+    last(opened).stream.push(applied(1, OTHER, moveOp("op-them-1", "n1", 100, 0)));
+    await settle();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 100 });
+
+    // Il subscriber è rimasto indietro: l'hub chiude il canale. In M0 il client
+    // smetteva semplicemente di ricevere per il resto della sessione.
+    last(opened).stream.close();
+    await settle();
+    expect(useScene.getState().connection).toBe("reconnecting");
+    // ...ma non in un ciclo stretto: un riavvio del server non deve trasformarsi
+    // in una raffica di POST.
+    expect(opened).toHaveLength(1);
+
+    await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
+    expect(opened).toHaveLength(2);
+    // IL punto: si riparte da DOPO l'ultimo record applicato (since_seq è
+    // esclusivo, hub.go: `rec.Seq > sinceSeq`), non da capo e non dal futuro.
+    expect(opened[1].since).toBe(1n);
+    expect(useScene.getState().connection).toBe("connected");
+    expect(useScene.getState().syncError).toBeNull();
+
+    // E la nuova subscription è viva davvero.
+    last(opened).stream.push(applied(2, OTHER, moveOp("op-them-2", "n1", 200, 0)));
+    await settle();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
+  });
+
+  it("un BUCO nella sequenza non viene accettato in silenzio: si risincronizza dall'ultimo seq buono", async () => {
+    const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+
+    last(opened).stream.push(applied(1, OTHER, moveOp("op-1", "n1", 100, 0)));
+    await settle();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 100 });
+
+    // seq 2 non è mai arrivato. Applicare il 3 vorrebbe dire proseguire con un
+    // documento a cui manca un op: se il buco conteneva un CreateNode, ogni
+    // SetProps successivo su quel nodo viene inghiottito da applyOp e la forma
+    // non compare più (e nessuno se ne accorge).
+    last(opened).stream.push(applied(3, OTHER, moveOp("op-3", "n1", 300, 0)));
+    await settle();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 100 });
+    expect(logged).toHaveBeenCalled();
+
+    await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
+    expect(opened).toHaveLength(2);
+    // Si riparte dall'ultimo seq BUONO, così il server rimanda il record
+    // mancante insieme a quelli dopo.
+    expect(opened[1].since).toBe(1n);
+    expect(opened[0].signal!.aborted).toBe(true);
+
+    last(opened).stream.push(applied(2, OTHER, moveOp("op-2", "n1", 200, 0)));
+    last(opened).stream.push(applied(3, OTHER, moveOp("op-3", "n1", 300, 0)));
+    await settle();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 300 });
+    expect(useScene.getState().connection).toBe("connected");
+  });
+
+  it("stop() stacca il trasporto e impedisce qualunque altra mutazione dello store", async () => {
+    const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+
+    // Record già nel buffer del trasporto quando l'utente lascia la pagina (o
+    // React smonta il componente): il client deve rifiutarsi di applicarlo.
+    last(opened).stream.push(applied(1, OTHER, moveOp("op-them", "n1", 999, 0)));
+    sync.stop();
+    await settle();
+
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    // ...e il trasporto è stato ABORTITO, non solo ignorato: senza segnale la
+    // richiesta HTTP resta aperta e il server continua a tenere il subscriber.
+    expect(opened[0].signal!.aborted).toBe(true);
+    // Nessuno stop trasformato in riconnessione: un client fermato resta fermo.
+    expect(useScene.getState().connection).not.toBe("reconnecting");
+
+    await vi.advanceTimersByTimeAsync(RETRY_WINDOW * 4);
+    expect(opened).toHaveLength(1);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+
+    // Anche l'altra metà: un op submittato su un client fermato non deve
+    // entrare nella vista. Nessuno lo manderebbe (la coda è ferma) e in
+    // StrictMode lo store è ormai di un ALTRO client: resterebbe in `pending`
+    // per sempre, visibile e mai confermato da niente.
+    sync.submit(moveOp("op-late", "n1", 42, 0));
+    await settle();
+    expect(useScene.getState().pending).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(rpc.submitOp).not.toHaveBeenCalled();
+  });
+
+  it("due start() di fila (StrictMode) lasciano UNA sola subscription", async () => {
+    rpc.openDocument.mockResolvedValue({
+      snapshot: snapshotOf({ n1: rectNode("n1", 0, 0) }), seq: 0n,
+    });
+    const opened = liveStreams();
+    const sync = new SyncClient("doc1", CLIENT);
+    live = sync;
+
+    // StrictMode invoca l'effetto due volte: prima del fix la seconda start()
+    // apriva un secondo stream (due goroutine sul server, due copie di ogni
+    // record applicate nello stesso store globale).
+    await Promise.all([sync.start(), sync.start()]);
+    await settle();
+
+    expect(opened).toHaveLength(1);
+    expect(rpc.subscribe).toHaveBeenCalledTimes(1);
+  });
+
+  it("gli op PENDING sopravvivono a una riconnessione e non vengono applicati due volte", async () => {
+    const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+
+    sync.submit(moveOp("op-mine", "n1", 200, 0));
+    await settle();
+    expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-mine"]);
+
+    // Lo stream muore PRIMA che l'eco torni indietro: l'op non è confermato ma
+    // può benissimo essere già nell'op-log (Hub.Submit fa broadcast prima di
+    // rispondere). Buttarlo via inventerebbe un rollback che nessuno ha chiesto.
+    last(opened).stream.close();
+    await settle();
+    expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-mine"]);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
+
+    await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
+    expect(opened).toHaveLength(2);
+    // Niente è ancora confermato: si riparte da 0.
+    expect(opened[1].since).toBe(0n);
+
+    // Il backlog rigioca l'eco dell'op in volo: è la sua CONFERMA, non una
+    // seconda applicazione -- deve uscire dalla coda.
+    last(opened).stream.push(applied(1, CLIENT, moveOp("op-mine", "n1", 200, 0)));
+    await settle();
+    expect(useScene.getState().pending).toHaveLength(0);
+    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 200 });
+
+    // Se fosse rimasto in coda, il rebase lo rimetterebbe sopra ogni record
+    // successivo e questo spostamento remoto non si vedrebbe mai.
+    last(opened).stream.push(applied(2, OTHER, moveOp("op-them", "n1", 50, 0)));
+    await settle();
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 50 });
+  });
+
+  it("la riconnessione non è infinita: dopo un tetto di tentativi si arrende e lo dichiara", async () => {
+    const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+
+    // Server spento: ogni tentativo muore subito. Ritentare per sempre
+    // consumerebbe batteria e nasconderebbe il problema dietro una pillola che
+    // dice "riconnessione" da mezz'ora.
+    let guard = 0;
+    while (useScene.getState().connection !== "error" && guard < 40) {
+      last(opened).stream.fail(new ConnectError("connection refused", Code.Unavailable));
+      await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
+      guard += 1;
+    }
+
+    expect(useScene.getState().connection).toBe("error");
+    expect(useScene.getState().syncError).toContain("connection refused");
+    expect(opened.length).toBeGreaterThan(1); // ha davvero ritentato...
+    expect(opened.length).toBeLessThanOrEqual(20); // ...ma non all'infinito
+
+    const attempts = opened.length;
+    await vi.advanceTimersByTimeAsync(RETRY_WINDOW * 10);
+    expect(opened).toHaveLength(attempts);
+  });
+
+  it("CodeOutOfRange (history compattata) fa RIAPRIRE il documento e ripartire dal seq dello snapshot", async () => {
+    const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
+    last(opened).stream.push(applied(1, OTHER, moveOp("op-1", "n1", 100, 0)));
+    await settle();
+
+    // Il server dice: i record da cui vuoi ripartire non esistono più, riapri il
+    // documento (internal/server/documentservice.go). Riabbonarsi allo stesso
+    // since_seq darebbe lo stesso errore per sempre.
+    rpc.openDocument.mockResolvedValue({
+      snapshot: snapshotOf({ n1: rectNode("n1", 777, 0) }), seq: 42n,
+    });
+    last(opened).stream.fail(new ConnectError("since_seq too old", Code.OutOfRange));
+    await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
+
+    expect(rpc.openDocument).toHaveBeenCalledTimes(2);
+    expect(opened).toHaveLength(2);
+    expect(opened[1].since).toBe(42n);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 777 });
+    expect(useScene.getState().connection).toBe("connected");
   });
 });

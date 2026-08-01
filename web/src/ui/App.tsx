@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { ConnectError } from "@connectrpc/connect";
 import { Button, ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
@@ -52,7 +53,6 @@ export function App() {
   // volta sola al mount, quindi non deve dipendere dall'identità della closure.
   const toolRef = useRef<ToolId>("select");
   const [toolId, setToolId] = useState<ToolId>("select");
-  const [status, setStatus] = useState<"connecting" | "ready" | "error">("connecting");
   // Un op rifiutato dal server viene annullato in locale (la modifica
   // ottimistica sparisce dal canvas, vedi store/store.ts::rejectPending). Un
   // rollback SILENZIOSO è quasi peggio di nessun rollback: qui è l'unico posto
@@ -60,16 +60,23 @@ export function App() {
   // Sottoscrizioni con selettore: il resto della UI non si ridisegna a ogni op.
   const lastError = useScene((s) => s.lastError);
   const clearError = useScene((s) => s.clearError);
-  // Stream Subscribe morto (vedi store.ts::syncError). Non è dismissibile come
-  // lastError: la condizione non passa da sola, e finché dura le modifiche
-  // restano ottimistiche -- l'utente deve poterlo sapere PRIMA di continuare a
-  // lavorare, non al reload successivo.
+  // Stato del collegamento (store.ts::ConnectionStatus) e il suo perché. Non è
+  // dismissibile come lastError: la condizione non passa perché l'utente chiude
+  // un avviso, e finché dura le modifiche restano ottimistiche -- deve poterlo
+  // sapere PRIMA di continuare a lavorare, non al reload successivo.
+  const connection = useScene((s) => s.connection);
   const syncError = useScene((s) => s.syncError);
 
   // bootstrap: documento + SyncClient + tool
   useEffect(() => {
     let cleanup = () => {};
     let cancelled = false;
+    // Il client va tenuto QUI e non dentro l'async: la cleanup deve poterlo
+    // fermare anche quando lo smontaggio arriva mentre il bootstrap è ancora a
+    // metà. Senza stop(), StrictMode (main.tsx) lascia una subscription
+    // orfana per tutta la sessione: due stream sul server e ogni record remoto
+    // applicato due volte nello stesso store.
+    let sync: SyncClient | null = null;
 
     (async () => {
       try {
@@ -79,7 +86,13 @@ export function App() {
           docId = info.id;
           localStorage.setItem(DOC_KEY, docId);
         }
-        const sync = new SyncClient(docId, CLIENT_ID);
+        sync = new SyncClient(docId, CLIENT_ID);
+        // Smontati mentre creavamo il client: fermarlo prima ancora di
+        // aprire il documento (start() su un client fermato è un no-op).
+        if (cancelled) {
+          sync.stop();
+          return;
+        }
         await sync.start();
         // L'effetto può essere già stato smontato (StrictMode in dev, o unmount
         // rapido): in quel caso non agganciare listener che nessuno rimuoverà.
@@ -100,15 +113,19 @@ export function App() {
           },
         };
         cleanup = attachTools(ctx, () => TOOLS[toolRef.current] ?? selectTool);
-        setStatus("ready");
       } catch (err) {
         console.error("bootstrap failed", err);
-        if (!cancelled) setStatus("error");
+        // Il bootstrap fallito è uno stato di collegamento come gli altri: non
+        // si riprende da solo (nessuno stream da riabbonare), quindi "error".
+        if (!cancelled) {
+          useScene.getState().setConnection("error", ConnectError.from(err).message);
+        }
       }
     })();
 
     return () => {
       cancelled = true;
+      sync?.stop();
       cleanup();
     };
   }, []);
@@ -173,15 +190,17 @@ export function App() {
   }, []);
 
   // La pillola diceva "connesso" anche a stream morto: il bootstrap era andato
-  // a buon fine e nessuno rivedeva più quello stato. syncError ha la
-  // precedenza su tutto -- è l'informazione più recente che abbiamo.
-  const statusLabel = syncError
-    ? "sconnesso"
-    : status === "ready"
+  // a buon fine e nessuno rivedeva più quello stato. Adesso è SyncClient a
+  // tenere aggiornato `connection` per tutta la vita dello stream, riconnessioni
+  // comprese, e la pillola non fa che leggerlo.
+  const statusLabel =
+    connection === "connected"
       ? "connesso"
-      : status === "error"
-        ? "errore di connessione"
-        : "connessione…";
+      : connection === "reconnecting"
+        ? "riconnessione…"
+        : connection === "error"
+          ? "sconnesso"
+          : "connessione…";
 
   return (
     <div className="flex h-screen flex-col">
@@ -224,13 +243,25 @@ export function App() {
           {statusLabel}
         </span>
       </div>
-      {syncError && (
+      {/* Due avvisi diversi perché le due situazioni chiedono cose diverse: in
+          riconnessione l'utente può aspettare (le modifiche restano in coda e
+          il backlog le confermerà), a tentativi esauriti no. */}
+      {connection === "reconnecting" && (
         <div
           role="alert"
           className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
         >
-          Connessione al server persa ({syncError}). Le modifiche non vengono più confermate:
-          ricarica la pagina per riprendere.
+          Connessione al server persa ({syncError}). Riconnessione in corso: le modifiche fatte
+          nel frattempo restano in attesa e verranno confermate al rientro.
+        </div>
+      )}
+      {connection === "error" && (
+        <div
+          role="alert"
+          className="border-b border-amber-300 bg-amber-100 px-3 py-2 text-sm text-amber-900"
+        >
+          Connessione al server persa ({syncError}). I tentativi di riconnessione sono finiti: le
+          modifiche non vengono più confermate, ricarica la pagina per riprendere.
         </div>
       )}
       {lastError && (

@@ -13,6 +13,18 @@ export interface OpSink {
   submit(op: Op): void;
 }
 
+// Lo stato del collegamento col server, nel modo in cui la UI deve poterlo
+// dire all'utente:
+//  - "connecting"   apertura iniziale (snapshot + subscribe) non ancora finita;
+//  - "connected"    lo stream è aperto: gli op vengono confermati;
+//  - "reconnecting" lo stream è caduto e il client sta ritentando da solo --
+//                   le modifiche restano ottimistiche ma non sono perse;
+//  - "error"        i tentativi sono finiti (o il bootstrap è fallito): da qui
+//                   in poi non si riprende da soli, serve un reload.
+// La differenza fra "reconnecting" e "error" è l'unica che l'utente deve
+// davvero capire: nel primo caso può aspettare, nel secondo no.
+export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error";
+
 // Un op SUBMITTATO ma non ancora tornato indietro dal server. La chiave è
 // l'opId, l'unico identificatore che sopravvive al giro (Hub clona l'Op
 // verbatim dentro l'OpRecord che ribroadcasta), quindi l'unico modo che il
@@ -370,16 +382,19 @@ interface SceneStore {
   // peggio di nessun rollback: la modifica sparirebbe dallo schermo senza che
   // nessuno sappia perché.
   lastError: string | null;
-  // Lo stream Subscribe è MORTO (errore, o chiuso dal server): messaggio da
-  // mostrare, null finché è vivo. È uno stato a sé e non un `lastError` perché
-  // la conseguenza è diversa e permanente: lo stream è l'UNICA cosa che
-  // conferma gli op e svuota `pending` (vedi apply), quindi da qui in poi ogni
-  // modifica resta ottimistica per sempre e la coda non si drena più. Il
-  // server lo chiude di sua iniziativa in due casi raggiungibili -- subscriber
-  // troppo lento (internal/server/hub.go) e since_seq più vecchio della
-  // history compattata (CodeOutOfRange) -- quindi non è un caso ipotetico.
-  // Riconnessione e resync restano fuori scope (finding "SyncClient lifecycle"):
-  // qui il fallimento smette almeno di essere INVISIBILE.
+  // Stato del collegamento col server, scritto da SyncClient. È lo stream
+  // Subscribe a definirlo: è l'UNICA cosa che conferma gli op e svuota
+  // `pending` (vedi apply), quindi quando non c'è ogni modifica resta
+  // ottimistica e la coda non si drena più. Il server chiude lo stream di sua
+  // iniziativa in due casi raggiungibili -- subscriber troppo lento
+  // (internal/server/hub.go) e since_seq più vecchio della history compattata
+  // (CodeOutOfRange) -- quindi non è un caso ipotetico, ed è anzi il modo in
+  // cui il backend CHIEDE al client di riallinearsi.
+  connection: ConnectionStatus;
+  // Il perché dell'ultimo stato non-"connected": messaggio da mostrare,
+  // null quando il collegamento è sano. Separato da `lastError` perché la
+  // conseguenza è diversa: `lastError` è una singola modifica annullata, questo
+  // è tutto il documento che smette di avanzare.
   syncError: string | null;
   camera: Camera;
   // Invariante: selection contiene SOLO id di nodi che esistono ancora in
@@ -417,7 +432,7 @@ interface SceneStore {
   applyPending: (op: Op) => void;
   rejectPending: (opId: string, message: string) => void;
   clearError: () => void;
-  setSyncError: (message: string | null) => void;
+  setConnection: (status: ConnectionStatus, message?: string | null) => void;
   applyLocal: (op: Op) => void;
   beginGesture: () => void;
   endGesture: (finalOps: Op[]) => void;
@@ -448,6 +463,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   confirmed: null,
   pending: [],
   lastError: null,
+  connection: "connecting",
   syncError: null,
   camera: { x: 0, y: 0, zoom: 1 },
   selection: [],
@@ -547,12 +563,15 @@ export const useScene = createStore<SceneStore>((set, get) => ({
 
   clearError: () => set({ lastError: null }),
 
-  // Stato dello stream, scritto da SyncClient: un messaggio quando muore, null
-  // quando (in futuro) una riconnessione riesce. Non azzera `pending`: quegli
-  // op possono essere arrivati al server -- buttarli via inventerebbe un
-  // rollback che nessuno ha chiesto. Restano in coda, visibili, in attesa di un
-  // resync o di un reload.
-  setSyncError: (message) => set({ syncError: message }),
+  // Stato dello stream, scritto da SyncClient. Stato e motivo si muovono
+  // INSIEME (una sola set): "connected" con un messaggio di errore appeso, o
+  // "reconnecting" senza motivo, sarebbero due modi di mentire alla UI.
+  //
+  // Non azzera `pending`: quegli op possono essere arrivati al server (Hub.Submit
+  // fa broadcast PRIMA di rispondere) -- buttarli via inventerebbe un rollback
+  // che nessuno ha chiesto. Restano in coda, in attesa che la riconnessione
+  // rigiochi il backlog e li confermi (o che l'utente ricarichi).
+  setConnection: (status, message = null) => set({ connection: status, syncError: message }),
 
   // Applica SOLO in locale: è il feedback immediato del drag, non passa dal
   // filo. Un pointermove = un applyLocal, e nessuno di questi diventa un op.

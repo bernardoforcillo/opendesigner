@@ -1,4 +1,4 @@
-import { ConnectError } from "@connectrpc/connect";
+import { Code, ConnectError } from "@connectrpc/connect";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { docClient } from "./client";
 import { useScene } from "../store/store";
@@ -26,6 +26,39 @@ const SUBMIT_TIMEOUT_MS = 10_000;
 // rispetto a "cresce finché c'è memoria".
 // Esportata perché il test del tetto lo verifichi senza ricopiarne il valore.
 export const MAX_OUTBOX = 64;
+
+// RICONNESSIONE. Lo stream Subscribe non è un extra: è l'unico canale che fa
+// avanzare il documento confermato e che svuota la coda degli op in volo. Il
+// backend lo CHIUDE di sua iniziativa quando un subscriber resta indietro
+// (internal/server/hub.go: canale pieno -> endSubscriberLocked) proprio perché
+// il client si riconnetta con since_seq all'ultimo record applicato e si
+// recuperi il backlog: senza riconnessione quel disegno non funziona, e la
+// prima raffica un po' fitta stacca il client per il resto della sessione.
+//
+// Backoff esponenziale, senza jitter: qui c'è un solo browser per utente contro
+// un server locale, non una flotta che può sincronizzarsi in un thundering
+// herd, e un ritardo deterministico è quello che rende i test una specifica
+// invece di una scommessa.
+const RECONNECT_BASE_MS = 500;
+const RECONNECT_MAX_MS = 10_000;
+// Tetto ai tentativi CONSECUTIVI senza progresso. Ritentare per sempre
+// consumerebbe batteria e, soprattutto, nasconderebbe un problema vero dietro
+// una pillola che dice "riconnessione" da mezz'ora: a un certo punto la
+// risposta onesta è "non ce la faccio da solo, ricarica".
+const MAX_RECONNECT_ATTEMPTS = 6;
+// Uno stream vissuto almeno così a lungo conta come progresso anche se non ha
+// consegnato nemmeno un record: un documento fermo (nessuno sta disegnando) è
+// silenzioso per definizione, e senza questa clausola sei cadute di rete
+// sparse in una giornata di lavoro basterebbero a dichiarare morto un
+// collegamento che invece si riprende ogni volta.
+const RECONNECT_STABLE_MS = 60_000;
+
+function backoffMs(attempt: number): number {
+  return Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** (attempt - 1));
+}
+
+const CLOSED_BY_SERVER = "il server ha chiuso lo stream degli aggiornamenti";
+const SEQUENCE_GAP = "buco nella sequenza degli aggiornamenti";
 
 // Il client tiene lo stato CONFERMATO (quello che il server ha applicato e
 // riemesso) più gli op PENDING (submittati, non ancora tornati indietro). La
@@ -58,6 +91,25 @@ export class SyncClient {
   private outbox: Op[] = [];
   private draining = false;
 
+  // --- ciclo di vita ---------------------------------------------------------
+  // `started` rende start() idempotente: React in StrictMode invoca l'effetto di
+  // bootstrap due volte, e una seconda subscription vorrebbe dire due goroutine
+  // sul server e OGNI record applicato due volte nello stesso store globale.
+  // `stopped` è definitivo: un client fermato non riparte (se ne costruisce uno
+  // nuovo), così una cleanup di React non può mai lasciare in giro un loop che
+  // continua a scrivere nello store di una app smontata.
+  private started = false;
+  private stopped = false;
+  // Il controller della subscription CORRENTE: è il solo modo di chiudere
+  // davvero la richiesta HTTP: senza abort la fetch resta aperta, il server
+  // continua a tenere il subscriber registrato e il for-await non finisce mai.
+  private controller: AbortController | null = null;
+  // Sveglia anticipata dell'attesa di backoff, così stop() è immediato e non
+  // deve aspettare fino a 10s prima di avere effetto.
+  private wake: (() => void) | null = null;
+  // Tentativi consecutivi SENZA progresso (vedi RECONNECT_STABLE_MS).
+  private attempts = 0;
+
   constructor(private docId: string, private clientId: string) {
     // Lo store deve poter mandare op da solo (fine gesto, e in seguito undo):
     // il client si registra come trasporto appena esiste, così l'app non deve
@@ -66,6 +118,15 @@ export class SyncClient {
   }
 
   submit(op: Op) {
+    if (this.stopped) {
+      // Client staccato: la coda non parte più e lo store, in StrictMode, è
+      // già di un ALTRO client. Applicare in ottimistico lascerebbe un op in
+      // `pending` per sempre -- visibile sulla scena, non inviato a nessuno e
+      // impossibile da confermare, perché l'unico stream vivo è quello del
+      // client nuovo, che di questo op non sa niente.
+      console.warn("brawt: submit su un SyncClient fermato — op ignorato", op.opId);
+      return;
+    }
     // Apply OTTIMISTICO: entra nella coda degli op in volo e si vede subito.
     // Non è ancora confermato: lo diventerà quando il suo eco tornerà da
     // Subscribe. Resta SINCRONO -- è solo l'invio che viene serializzato, il
@@ -112,7 +173,9 @@ export class SyncClient {
     if (this.draining) return;
     this.draining = true;
     try {
-      while (this.outbox.length > 0) {
+      // `stopped` chiude anche questa metà: dopo stop() nessun altro op parte e
+      // nessun rollback tocca più lo store (vedi il catch).
+      while (this.outbox.length > 0 && !this.stopped) {
         const op = this.outbox[0];
         try {
           await docClient.submitOp(
@@ -146,6 +209,11 @@ export class SyncClient {
           // il caso in cui non lo è.
           const message = ConnectError.from(err).message;
           console.error("submitOp failed", err);
+          // Client fermato mentre la richiesta era in volo (abort della fetch a
+          // pagina chiusa, tipicamente): non c'è più nessuno a cui mostrare un
+          // rollback, e scriverlo mentre un client nuovo ha già preso il posto
+          // farebbe sparire dalla scena un op che nemmeno è suo.
+          if (this.stopped) return;
           if (this.landed(op)) {
             // La richiesta è morta DOPO che il server aveva applicato e
             // ribroadcastato l'op: l'eco è già arrivato, l'op è durabile. La
@@ -169,63 +237,190 @@ export class SyncClient {
     }
   }
 
+  // Apre il documento e avvia il loop dello stream. Idempotente: due chiamate
+  // di fila (StrictMode) lasciano UNA sola subscription viva.
   async start() {
+    if (this.started || this.stopped) return;
+    this.started = true;
+    await this.open();
+    // stop() può essere arrivato durante l'await (unmount rapido): non avviare
+    // un loop che nessuno fermerà più.
+    if (this.stopped) return;
+    // Il loop gira in background: start() deve risolversi appena lo snapshot è
+    // caricato, non quando la subscription finisce (cioè: mai).
+    void this.loop();
+  }
+
+  // Stacca tutto: la subscription in corso (abort del segnale, che è ciò che
+  // chiude davvero la richiesta HTTP e libera il subscriber sul server),
+  // l'attesa di backoff, e il posto di trasporto nello store. Da chiamare dalla
+  // cleanup dell'effetto di bootstrap: senza, uno smontaggio lascia un loop che
+  // continua a riconnettersi e a scrivere in uno store che nessuno guarda più.
+  stop() {
+    if (this.stopped) return;
+    this.stopped = true;
+    this.controller?.abort();
+    this.controller = null;
+    this.wake?.();
+    // Solo se il posto è ancora NOSTRO: in StrictMode il client successivo si è
+    // già registrato prima che questa cleanup giri, e azzerarlo lascerebbe
+    // l'editor senza trasporto (ogni gesto applicato in locale e mai inviato).
+    if (useScene.getState().sync === this) useScene.getState().setSync(null);
+  }
+
+  // Snapshot autorevole: allinea vista, confermato e seq di partenza. È anche
+  // la sola risposta possibile a CodeOutOfRange (la history da cui volevamo
+  // ripartire è stata compattata), e in quel caso setScene svuota `pending`:
+  // gli op ancora in volo restano legittimi sul server -- se sono atterrati il
+  // loro eco arriverà e li rimetterà nella scena -- ma il client non ha più
+  // modo di collocarli rispetto a uno snapshot che non sa in quale punto della
+  // storia si trovi.
+  private async open() {
     const open = await docClient.openDocument({ docId: this.docId });
-    // Lo snapshot di OpenDocument è per definizione confermato: setScene
-    // allinea vista e confermato e svuota la coda.
+    if (this.stopped) return;
     if (open.snapshot) useScene.getState().setScene(fromDocument(open.snapshot));
     this.seq = Number(open.seq);
-
-    useScene.getState().setSyncError(null);
-    // consuma lo stream in background: start() deve risolversi subito dopo
-    // aver caricato lo snapshot, senza attendere la subscription per sempre.
-    void this.run();
+    useScene.getState().setConnection("connected");
   }
 
-  // Lo stream è l'UNICA cosa che fa avanzare il confermato e che svuota la coda
-  // degli op in volo: se muore, ogni gesto successivo si accoda a `pending` e
-  // NIENTE lo toglie più da lì. Il server lo chiude di sua iniziativa in due
-  // casi raggiungibili -- subscriber troppo lento (l'hub chiude il canale) e
-  // since_seq più vecchio della history compattata (CodeOutOfRange) -- quindi
-  // `void this.consume()` senza catch non era "difensivo": era la fine dello
-  // stream che diventava una unhandled rejection, con la pillola di stato che
-  // continuava a dire "connesso".
+  // Il loop di vita dello stream: consuma, e quando lo stream finisce (in
+  // qualunque modo) aspetta e si riabbona da `this.seq`, cioè da DOPO l'ultimo
+  // record applicato -- since_seq è esclusivo (hub.go: `rec.Seq > sinceSeq`),
+  // quindi il backlog riparte esattamente dal primo record che ci manca.
   //
-  // Qui non c'è ancora riconnessione (finding a parte: niente abort, niente
-  // resync, niente gap detection): c'è la garanzia MINIMA che il fallimento sia
-  // osservabile, in console e nella UI.
-  private async run() {
-    let message: string;
-    try {
-      await this.consume();
-      // for-await finito senza errore: il server ha chiuso lo stream. Non è
-      // meno grave di un errore -- da qui in poi non arriva più nessun record.
-      message = "il server ha chiuso lo stream degli aggiornamenti";
-      console.error("subscribe stream closed by the server");
-    } catch (err) {
-      message = ConnectError.from(err).message;
-      console.error("subscribe stream failed", err);
-    }
-    useScene.getState().setSyncError(message);
-  }
+  // Prima di questo fix `void this.consume()` non aveva né catch né retry: la
+  // fine dello stream era una unhandled rejection e nient'altro, il documento
+  // confermato restava fermo per sempre e ogni gesto successivo si accodava a
+  // `pending` senza che niente potesse più toglierlo da lì.
+  private async loop() {
+    while (!this.stopped) {
+      const controller = new AbortController();
+      this.controller = controller;
+      const openedAt = Date.now();
+      let reason: string;
+      let reopen = false;
+      try {
+        const end = await this.consume(controller.signal);
+        if (this.stopped) return;
+        // for-await finito senza errore: il server ha chiuso lo stream. Non è
+        // meno grave di un errore -- da qui in poi non arriva più nessun record.
+        reason = end === "gap" ? SEQUENCE_GAP : CLOSED_BY_SERVER;
+        console.error("subscribe stream ended:", reason);
+      } catch (err) {
+        if (this.stopped) return;
+        const ce = ConnectError.from(err);
+        reason = ce.message;
+        // OutOfRange = "i record da cui vuoi ripartire sono stati compattati in
+        // uno snapshot" (documentservice.go). Riabbonarsi allo stesso since_seq
+        // darebbe lo stesso errore all'infinito: l'unica via d'uscita è
+        // riaprire il documento e ripartire dal seq che OpenDocument riporta.
+        reopen = ce.code === Code.OutOfRange;
+        console.error("subscribe stream failed", err);
+      } finally {
+        // Anche quando siamo NOI a uscire dal for-await (gap): lo stream non è
+        // finito, e senza abort la richiesta resterebbe aperta con il server
+        // che continua a spingerci record dentro un canale che nessuno legge.
+        controller.abort();
+        this.controller = null;
+      }
 
-  private async consume() {
-    for await (const msg of docClient.subscribe({
-      docId: this.docId,
-      clientId: this.clientId,
-      sinceSeq: BigInt(this.seq),
-    })) {
-      if (msg.kind.case === "applied") {
-        const rec = msg.kind.value;
-        // ANCHE i propri echi. Scartarli per clientId (com'era in M0) vuol dire
-        // non adottare mai la versione autorevole dei propri op: il client non
-        // sa mai come il server li ha ordinati rispetto a quelli altrui, e i
-        // suoi op restano ottimistici per sempre. È l'eco che li conferma --
-        // store.apply li toglie dalla coda proprio in base all'opId, quindi
-        // l'op non viene applicato due volte.
-        if (rec.op) useScene.getState().apply(rec.op);
-        this.seq = Number(rec.seq);
+      // Uno stream vissuto a lungo ha fatto il suo lavoro anche se il documento
+      // era fermo: il budget dei tentativi vale per le cadute CONSECUTIVE.
+      if (Date.now() - openedAt >= RECONNECT_STABLE_MS) this.attempts = 0;
+      this.attempts += 1;
+      if (this.attempts > MAX_RECONNECT_ATTEMPTS) {
+        useScene.getState().setConnection("error", reason);
+        return;
+      }
+      useScene.getState().setConnection("reconnecting", reason);
+
+      await this.wait(backoffMs(this.attempts));
+      if (this.stopped) return;
+      if (reopen) {
+        try {
+          await this.open();
+        } catch (err) {
+          // Se nemmeno OpenDocument risponde, il server è giù: il giro
+          // successivo di subscribe fallirà a sua volta e consumerà un
+          // tentativo come tutti gli altri, quindi il tetto vale anche qui.
+          console.error("resync (openDocument) failed", err);
+        }
+        if (this.stopped) return;
       }
     }
+  }
+
+  // Attesa interrompibile: stop() la sveglia subito invece di lasciare in piedi
+  // un timer che si risolverebbe dentro una app già smontata.
+  private wait(ms: number): Promise<void> {
+    return new Promise((resolve) => {
+      const timer = setTimeout(() => {
+        this.wake = null;
+        resolve();
+      }, ms);
+      this.wake = () => {
+        clearTimeout(timer);
+        this.wake = null;
+        resolve();
+      };
+    });
+  }
+
+  // Un giro di subscription. Ritorna "closed" se lo stream è finito (il server
+  // l'ha chiuso), "gap" se è stato il client a staccare per un buco nella
+  // sequenza; un errore del trasporto esce come eccezione.
+  private async consume(signal: AbortSignal): Promise<"closed" | "gap"> {
+    const stream = docClient.subscribe(
+      { docId: this.docId, clientId: this.clientId, sinceSeq: BigInt(this.seq) },
+      { signal },
+    );
+    // "Connesso" appena la subscription è aperta, non al primo record: un
+    // documento su cui nessuno sta disegnando è silenzioso per definizione, e
+    // aspettare un record vorrebbe dire lasciare la pillola su "riconnessione"
+    // a tempo indeterminato con il collegamento perfettamente sano. Il prezzo è
+    // un lampeggio di "connesso" a ogni tentativo mentre il server è giù --
+    // ma il tentativo dura millisecondi e l'attesa di backoff, che è quella che
+    // l'utente vede, resta "riconnessione".
+    useScene.getState().setConnection("connected");
+    for await (const msg of stream) {
+      // Un record può essere già nel buffer quando arriva lo stop: la guardia
+      // qui è ciò che garantisce che dopo stop() NIENTE entri più nello store.
+      if (this.stopped || signal.aborted) return "closed";
+      if (msg.kind.case !== "applied") continue;
+      const rec = msg.kind.value;
+      const seq = Number(rec.seq);
+
+      if (seq <= this.seq) {
+        // Già visto. Non dovrebbe succedere (since_seq è esclusivo e l'hub
+        // consegna esattamente una volta), ma riapplicare un op perché il
+        // backlog si è sovrapposto sarebbe una mutazione silenziosa del
+        // documento: si scarta e si va avanti.
+        console.warn(`brawt: record duplicato seq=${seq} (già a ${this.seq}), ignorato`);
+        continue;
+      }
+      if (seq !== this.seq + 1) {
+        // BUCO. Proseguire vorrebbe dire tenersi un documento a cui manca un
+        // op, in modo permanente e invisibile: se il buco conteneva un
+        // CreateNode, ogni SetProps successivo su quel nodo viene inghiottito
+        // da applyOp (`if (!cur) return state`) e la forma non compare mai.
+        // Si stacca e ci si riabbona dall'ultimo seq BUONO, che è quello che
+        // fa rimandare al server i record mancanti.
+        console.error(`brawt: gap nello stream (atteso ${this.seq + 1}, ricevuto ${seq})`);
+        return "gap";
+      }
+
+      // ANCHE i propri echi. Scartarli per clientId (com'era in M0) vuol dire
+      // non adottare mai la versione autorevole dei propri op: il client non
+      // sa mai come il server li ha ordinati rispetto a quelli altrui, e i
+      // suoi op restano ottimistici per sempre. È l'eco che li conferma --
+      // store.apply li toglie dalla coda proprio in base all'opId, quindi
+      // l'op non viene applicato due volte, nemmeno quando è il backlog di una
+      // riconnessione a riportarlo indietro.
+      if (rec.op) useScene.getState().apply(rec.op);
+      this.seq = seq;
+      // Progresso: il budget dei tentativi riparte da zero.
+      this.attempts = 0;
+    }
+    return "closed";
   }
 }
