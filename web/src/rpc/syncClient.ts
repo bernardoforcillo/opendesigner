@@ -16,6 +16,24 @@ import { fromDocument } from "../store/types";
 // rejectPending (rifiuto).
 export class SyncClient {
   private seq = 0;
+  // OUTBOX: gli op ancora da mandare, in ordine di invio. Il primo elemento è
+  // quello in volo (o il prossimo a partire); ne parte UNO ALLA VOLTA.
+  //
+  // Il seq lo assegna il SERVER in ordine di ARRIVO (internal/server/hub.go:
+  // Submit serializza sul mutex e chi entra prima prende il seq più basso).
+  // Finché i submit erano fire-and-forget, l'ordine persistito era quello con
+  // cui le richieste raggiungevano l'hub -- deciso dallo scheduler, non
+  // dall'utente: due unary partite insieme sono due goroutine indipendenti
+  // anche sulla stessa connessione multiplexata. Con op19 = x=100 e op20 =
+  // x=200 emessi insieme, l'oplog poteva finire [x=200, x=100], il documento
+  // ricaricato a x=100 e il canvas a x=200. Non c'è nulla nel protocollo che
+  // possa accorgersene: SubmitOpRequest porta solo doc_id/client_id/op.
+  //
+  // La coda è normalmente corta -- il coalescing di M1a riduce un intero drag a
+  // un solo op finale (store.endGesture) -- quindi qui la correttezza ovvia
+  // vale più del throughput: nessuna pipeline, nessun batching.
+  private outbox: Op[] = [];
+  private draining = false;
 
   constructor(private docId: string, private clientId: string) {
     // Lo store deve poter mandare op da solo (fine gesto, e in seguito undo):
@@ -27,22 +45,59 @@ export class SyncClient {
   submit(op: Op) {
     // Apply OTTIMISTICO: entra nella coda degli op in volo e si vede subito.
     // Non è ancora confermato: lo diventerà quando il suo eco tornerà da
-    // Subscribe.
+    // Subscribe. Resta SINCRONO -- è solo l'invio che viene serializzato, il
+    // feedback sullo schermo no.
     useScene.getState().applyPending(op);
-    docClient
-      .submitOp({ docId: this.docId, clientId: this.clientId, op })
-      // L'Ack della unary NON conferma nulla: porta solo il seq assegnato. La
-      // conferma vera è l'eco su Subscribe, l'unico punto in cui il client
-      // conosce l'ORDINE che il server ha deciso rispetto agli op altrui.
-      .catch((err) => {
-        // Rifiuto (o rete caduta prima che l'op arrivasse): l'op esce dalla
-        // coda e la vista si ricalcola senza di lui -- la modifica ottimistica
-        // sparisce. In M0 finiva in un console.error e restava sullo schermo
-        // per sempre, persa solo al reload successivo.
-        const message = ConnectError.from(err).message;
-        console.error("submitOp failed", err);
-        useScene.getState().rejectPending(op.opId, message);
-      });
+    this.outbox.push(op);
+    void this.drain();
+  }
+
+  // Svuota l'outbox una richiesta alla volta. Rientrante-sicura: `draining` fa
+  // sì che esista un solo drain vivo, quindi un submit fatto mentre una
+  // richiesta è in volo si limita ad accodarsi e verrà preso dal giro corrente.
+  private async drain() {
+    if (this.draining) return;
+    this.draining = true;
+    try {
+      while (this.outbox.length > 0) {
+        const op = this.outbox[0];
+        try {
+          await docClient.submitOp({ docId: this.docId, clientId: this.clientId, op });
+          // L'Ack della unary NON conferma nulla: porta solo il seq assegnato.
+          // La conferma vera è l'eco su Subscribe, l'unico punto in cui il
+          // client conosce l'ORDINE che il server ha deciso rispetto agli op
+          // altrui. Qui serve solo a sapere che è arrivato, cioè che il
+          // prossimo può partire senza scavalcarlo.
+          this.outbox.shift();
+        } catch (err) {
+          // POLITICA IN CASO DI FALLIMENTO: la coda si FERMA e si svuota.
+          // L'op fallito esce dalla vista (rollback, come già faceva il .catch
+          // di prima), e con lui TUTTI quelli ancora in coda dietro: sono stati
+          // costruiti su uno stato che includeva il suo effetto, cioè su una
+          // premessa che il server non ha mai raggiunto. Mandarli comunque
+          // persisterebbe una modifica basata su un documento che non esiste
+          // (es. un setProps su un nodo la cui createNode è appena stata
+          // rifiutata). Meglio perdere le modifiche, visibilmente, che
+          // scriverne di incoerenti in silenzio.
+          //
+          // Lo stop è della CODA, non del client: dopo il rollback la vista
+          // torna a "confermato + op davvero accettati", quindi un submit
+          // successivo è di nuovo costruito su una premessa vera e parte
+          // normalmente. Latchare per sempre al primo InvalidArgument (un id
+          // duplicato, per dire) congelerebbe l'editor senza motivo.
+          const message = ConnectError.from(err).message;
+          console.error("submitOp failed", err);
+          const dropped = this.outbox.splice(0, this.outbox.length);
+          // Dal fondo: così nessuno stato intermedio mostra un op applicato
+          // sopra una base a cui manca il suo predecessore.
+          for (let i = dropped.length - 1; i >= 0; i--) {
+            useScene.getState().rejectPending(dropped[i].opId, message);
+          }
+        }
+      }
+    } finally {
+      this.draining = false;
+    }
   }
 
   async start() {

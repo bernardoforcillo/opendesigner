@@ -88,6 +88,53 @@ function channel<T>() {
 // (submitOp.then/.catch) sia il risveglio del for-await su channel.
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
+// Attesa deterministica lunga `n` turni di microtask. Due catene avviate
+// insieme finiscono in ordine di LUNGHEZZA, non di partenza: è il modo (senza
+// timer, quindi senza flakiness) di simulare una rete che consegna le richieste
+// fuori ordine.
+function turns(n: number): Promise<void> {
+  let p = Promise.resolve();
+  for (let i = 0; i < n; i++) p = p.then(() => undefined);
+  return p;
+}
+
+// Trasporto AVVERSARIALE. Il server assegna il seq in ordine di ARRIVO
+// (internal/server/hub.go: Submit serializza sul mutex, chi arriva prima
+// vince), quindi l'ordine persistito è quello con cui le richieste raggiungono
+// l'hub -- NON quello con cui il client le ha emesse. Qui ogni richiesta
+// "viaggia" per un numero DECRESCENTE di turni: se il client ne lascia più di
+// una in volo insieme, arrivano in ordine INVERTITO. L'unico modo di far
+// arrivare gli op in ordine di invio è mandarne uno alla volta.
+const TRAVEL = 32; // > del numero di op usati nei test, così i turni restano positivi
+
+function reorderingTransport() {
+  const arrived: string[] = [];
+  const failures = new Map<string, unknown>();
+  let dispatched = 0;
+  let inFlight = 0;
+  let maxInFlight = 0;
+  let seq = 0;
+  // mockReset: butta via il mockResolvedValue di boot() e qualunque coda di
+  // *Once lasciata da un test precedente, così l'implementazione qui sotto è
+  // l'unica che risponde.
+  rpc.submitOp.mockReset();
+  rpc.submitOp.mockImplementation(async (req: { op: Op }) => {
+    inFlight += 1;
+    maxInFlight = Math.max(maxInFlight, inFlight);
+    await turns(TRAVEL - dispatched++);
+    inFlight -= 1;
+    arrived.push(req.op.opId);
+    const err = failures.get(req.op.opId);
+    if (err) throw err;
+    return { ack: { opId: req.op.opId, seq: BigInt(++seq) } };
+  });
+  return {
+    arrived,
+    failOn: (opId: string, err: unknown) => failures.set(opId, err),
+    maxInFlight: () => maxInFlight,
+  };
+}
+
 async function boot(nodes: Record<string, PbNode>) {
   const stream = channel<ServerMsg>();
   rpc.openDocument.mockResolvedValue({
@@ -257,5 +304,87 @@ describe("SyncClient: modello confermato/pending", () => {
 
     expect(useScene.getState().syncError).toContain("stream");
     expect(logged).toHaveBeenCalled();
+  });
+
+  // --- ordine di invio -------------------------------------------------------
+  // Il seq lo assegna il SERVER in ordine di arrivo, quindi l'ordine persistito
+  // è deciso dalla rete e non dall'utente. Con submit fire-and-forget più
+  // richieste sono in volo insieme e il documento ricaricato può legittimamente
+  // differire da quello sullo schermo: op19 (x=100) e op20 (x=200) partiti
+  // insieme, op20 che arriva per primo, oplog [x=200, x=100], reload a x=100
+  // mentre il canvas mostra 200.
+
+  it("submit CONCORRENTI raggiungono il server nell'ORDINE DI INVIO", async () => {
+    const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
+    const net = reorderingTransport();
+
+    // Cinque modifiche in rapida successione (due gesti ravvicinati, o un undo
+    // subito dopo un drag): l'intento dell'utente È questo ordine, e x=500 deve
+    // essere l'ultima cosa che il server persiste.
+    const ids = ["op-1", "op-2", "op-3", "op-4", "op-5"];
+    ids.forEach((opId, i) => sync.submit(moveOp(opId, "n1", (i + 1) * 100, 0)));
+    await flush();
+
+    expect(net.arrived).toEqual(ids);
+    // ...e il modo in cui ci si arriva: una sola richiesta in volo alla volta.
+    // Senza questo, l'ordine sarebbe solo una coincidenza dello scheduler.
+    expect(net.maxInFlight()).toBe(1);
+
+    stream.close();
+    await flush();
+  });
+
+  it("se un op FALLISCE la coda si FERMA: i successivi non partono mai", async () => {
+    const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
+    const net = reorderingTransport();
+    net.failOn("op-2", new ConnectError("node already exists", Code.InvalidArgument));
+
+    sync.submit(moveOp("op-1", "n1", 100, 0));
+    sync.submit(moveOp("op-2", "n1", 200, 0));
+    sync.submit(moveOp("op-3", "n1", 300, 0));
+    sync.submit(moveOp("op-4", "n1", 400, 0));
+    // Apply ottimistico: tutti e quattro si vedono subito.
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 400 });
+    await flush();
+
+    // op-3 e op-4 erano costruiti su uno stato (x=200) che il server non ha mai
+    // raggiunto: mandarli vorrebbe dire persistere una modifica basata su una
+    // premessa falsa. Non partono.
+    expect(net.arrived).toEqual(["op-1", "op-2"]);
+    expect(rpc.submitOp).toHaveBeenCalledTimes(2);
+
+    // op-1 è passato e resta in volo in attesa del suo eco; op-2 (rifiutato) e
+    // la coda dietro di lui escono dalla vista.
+    expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-1"]);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 100 });
+    expect(useScene.getState().lastError).toContain("node already exists");
+    expect(logged).toHaveBeenCalled();
+
+    stream.close();
+    await flush();
+  });
+
+  it("lo stop è per la coda, non per il client: un submit successivo riparte", async () => {
+    const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
+    const net = reorderingTransport();
+    net.failOn("op-1", new ConnectError("disk full", Code.InvalidArgument));
+
+    sync.submit(moveOp("op-1", "n1", 100, 0));
+    await flush();
+    expect(useScene.getState().pending).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+
+    // Il rollback ha riportato la vista a quello che il server HA davvero: un
+    // op successivo è costruito su una premessa vera e va mandato. Latchare il
+    // client per sempre al primo InvalidArgument (un id duplicato, per dire)
+    // vorrebbe dire congelare l'editor.
+    sync.submit(moveOp("op-2", "n1", 700, 0));
+    await flush();
+
+    expect(net.arrived).toEqual(["op-1", "op-2"]);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 700 });
+
+    stream.close();
+    await flush();
   });
 });
