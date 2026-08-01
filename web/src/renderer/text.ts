@@ -25,12 +25,19 @@ export interface TextLayout {
   height: number;
 }
 
-function fontSizeOf(style: TextStyleLite): number {
-  return style.fontSize > 0 ? style.fontSize : DEFAULT_FONT_SIZE;
+// Accettano anche uno stile ASSENTE: un nodo testo senza `text` non è uno
+// stato che toNodeLite produce (store/types.ts), ma chi risolve una metrica
+// non deve esplodere per questo -- ricade sui default del renderer come per
+// ogni altro campo non specificato.
+function fontSizeOf(style: TextStyleLite | undefined): number {
+  return style && style.fontSize > 0 ? style.fontSize : DEFAULT_FONT_SIZE;
 }
 
-function lineHeightOf(style: TextStyleLite): number {
-  const mult = style.lineHeight > 0 ? style.lineHeight : DEFAULT_LINE_HEIGHT;
+// Esportata perché è anche la misura minima di un nodo testo per chi non può
+// misurare i glifi (l'hit-test in shapes.ts): l'altezza di UNA riga è
+// calcolabile dal solo stile, senza ctx.
+export function lineHeightOf(style: TextStyleLite | undefined): number {
+  const mult = style && style.lineHeight > 0 ? style.lineHeight : DEFAULT_LINE_HEIGHT;
   return fontSizeOf(style) * mult;
 }
 
@@ -92,7 +99,13 @@ function wrapParagraph(
   if (!(maxWidth > 0) || !Number.isFinite(maxWidth)) { out.push(para); return; }
 
   const fits = (s: string) => measure(visible(s)) <= maxWidth;
-  let line = "";
+  // null = NIENTE piazzato ancora su questa riga; "" = riga che finora
+  // contiene una parola vuota, cioè uno spazio in arrivo. La distinzione è il
+  // motivo del sentinella: con `line === ""` per entrambi, gli spazi che
+  // aprono una riga ("  ciao", o una riga indentata dopo un \n) sparivano --
+  // ogni parola vuota veniva ri-piazzata "da sola" invece di essere unita alla
+  // successiva con il suo spazio.
+  let line: string | null = null;
   // Piazza una parola su una riga vuota, spezzandola se da sola non ci sta.
   // Ritorna il residuo che resta in riga.
   const placeAlone = (word: string): string => {
@@ -103,13 +116,19 @@ function wrapParagraph(
   };
 
   for (const word of para.split(" ")) {
-    if (line === "") { line = placeAlone(word); continue; }
-    const candidate = `${line} ${word}`;
+    if (line === null) { line = placeAlone(word); continue; }
+    // Annotazione necessaria: senza, l'inferenza gira in tondo (il tipo
+    // ristretto di `line` dipende da `candidate`, che dipende da `line`) e tsc
+    // ferma il build con TS7022.
+    const candidate: string = `${line} ${word}`;
     if (fits(candidate)) { line = candidate; continue; }
     out.push(line);
     line = placeAlone(word);
   }
-  out.push(line);
+  // split(" ") ritorna sempre almeno un elemento e il paragrafo vuoto è già
+  // uscito sopra, quindi qui `line` è sempre una stringa; il ?? è solo per il
+  // tipo.
+  out.push(line ?? "");
 }
 
 // Layout greedy del testo dentro una larghezza di wrap.

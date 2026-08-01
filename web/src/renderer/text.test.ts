@@ -117,6 +117,30 @@ describe("layoutText", () => {
     expect(l.width).toBe(70);
   });
 
+  it("keeps the whitespace that opens a line", () => {
+    // Una riga "vuota" e una riga "su cui non è ancora stato piazzato niente"
+    // non sono la stessa cosa: confonderle faceva sparire gli spazi iniziali,
+    // cioè l'indentazione appena digitata dall'utente.
+    expect(layoutText(measure, "  aaa", style(), 1000).lines).toEqual(["  aaa"]);
+    expect(layoutText(measure, "aaa\n  bbb", style(), 1000).lines).toEqual(["aaa", "  bbb"]);
+    expect(layoutText(measure, "aaa  bbb", style(), 1000).lines).toEqual(["aaa  bbb"]);
+  });
+
+  it("keeps a line made only of spaces", () => {
+    const l = layoutText(measure, "  ", style(), 1000);
+    expect(l.lines).toEqual(["  "]);
+    expect(l.width).toBe(0); // gli spazi non si disegnano: larghezza 0
+    expect(l.height).toBeCloseTo(19.2);
+  });
+
+  it("still terminates when a line opens with spaces", () => {
+    // Gli spazi iniziali conservati non devono mandare in loop il breaker.
+    // Delle due spaziature iniziali ne resta una: quella su cui avviene il
+    // wrap viene consumata dal wrap stesso, come nei browser.
+    const l = layoutText(measure, "  aaaaaaaaaa", style(), 35);
+    expect(l.lines).toEqual([" ", "aaa", "aaa", "aaa", "a"]);
+  });
+
   it("wraps each paragraph independently", () => {
     const l = layoutText(measure, "aaa bbb\nccc ddd eee", style(), 70);
     expect(l.lines).toEqual(["aaa bbb", "ccc ddd", "eee"]);
@@ -165,6 +189,14 @@ describe("drawText", () => {
     const empty = fakeCtx();
     drawText(empty.ctx, textNode({}, ""));
     expect(empty.calls).toEqual([]);
+  });
+
+  it("does not paint a line of only spaces but keeps its slot", () => {
+    // Gli spazi si conservano nel layout (sono contenuto) ma non si disegnano.
+    const f = fakeCtx();
+    drawText(f.ctx, textNode({ width: 1000 }, "a\n  \nb"));
+    expect(f.calls.map((c) => c.text)).toEqual(["a", "b"]);
+    expect(f.calls[1].y - f.calls[0].y).toBeCloseTo(2 * 19.2);
   });
 
   it("skips empty lines but keeps their vertical slot", () => {

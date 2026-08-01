@@ -8,6 +8,16 @@ function node(kind: "rect" | "ellipse"): NodeLite {
     fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind, cornerRadius: 0 };
 }
 
+// Stile con lineHeight non specificato (0): il default 1.2 lo risolve il
+// renderer, quindi una riga è alta 16 * 1.2 = 19.2.
+function textNode(over: Partial<NodeLite> = {}, content = "hi"): NodeLite {
+  return {
+    ...node("rect"), kind: "text",
+    text: { content, style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } },
+    ...over,
+  };
+}
+
 describe("hitTestNode", () => {
   it("rect: inside and outside", () => {
     expect(hitTestNode(node("rect"), 50, 25)).toBe(true);
@@ -25,6 +35,10 @@ describe("hitTestNode", () => {
   it("handles zero-size nodes without dividing by zero", () => {
     const z = { ...node("ellipse"), width: 0, height: 0 };
     expect(hitTestNode(z, 0, 0)).toBe(false);
+    // Una FORMA degenere resta non colpibile: non c'è niente di disegnato da
+    // colpire (drawScene la scarta con lo stesso guard). L'esenzione qui sotto
+    // è solo del testo.
+    expect(hitTestNode({ ...node("rect"), height: 0 }, 50, 0)).toBe(false);
   });
 
   it("text: hits the whole bounding box, not the glyphs", () => {
@@ -45,5 +59,35 @@ describe("hitTestNode", () => {
       text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
     };
     expect(hitTestNode(t, 50, 25)).toBe(true);
+  });
+
+  it("text: a node whose height the layout has not produced yet is hittable on one line", () => {
+    // Lo stesso nodo che drawScene disegna comunque (canvasRenderer.ts): se
+    // l'hit-test lo scartasse per height 0, il testo appena creato sarebbe
+    // visibile ma impossibile da cliccare. Il minimo è una riga: 16 * 1.2.
+    const t = textNode({ height: 0 });
+    expect(hitTestNode(t, 50, 0)).toBe(true);
+    expect(hitTestNode(t, 50, 19)).toBe(true);
+    expect(hitTestNode(t, 50, 20)).toBe(false);   // sotto la riga, di nuovo fuori
+  });
+
+  it("text: a caret-sized node keeps a click target on both axes", () => {
+    // width 0 = nessuna larghezza di wrap: il box del modello è un punto, ma
+    // il caret sullo schermo no.
+    const t = textNode({ width: 0, height: 0 }, "");
+    expect(hitTestNode(t, 0, 0)).toBe(true);
+    expect(hitTestNode(t, 19, 19)).toBe(true);
+    expect(hitTestNode(t, 20, 19)).toBe(false);
+  });
+
+  it("text: a missing text payload falls back to the renderer defaults", () => {
+    // Stato che toNodeLite non produce, ma l'hit-test non deve esplodere.
+    const t: NodeLite = { ...node("rect"), kind: "text", width: 0, height: 0 };
+    expect(hitTestNode(t, 5, 5)).toBe(true);
+    expect(hitTestNode(t, 25, 5)).toBe(false);
+  });
+
+  it("text: a box larger than one line is not shrunk to it", () => {
+    expect(hitTestNode(textNode(), 99, 49)).toBe(true);
   });
 });
