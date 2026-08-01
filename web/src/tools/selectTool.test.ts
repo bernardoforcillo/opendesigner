@@ -26,6 +26,12 @@ function fakeCtx(): ToolContext {
 
 const at = (x: number, y: number, shiftKey = false) => ({ clientX: x, clientY: y, shiftKey }) as PointerEvent;
 
+// Come `at`, ma con un timeStamp esplicito: serve solo al doppio click
+// (rilevato per ID + e.timeStamp, vedi selectTool.ts), e tenerlo fuori da `at`
+// evita di dover assegnare un timeStamp a TUTTI gli altri test di questo file.
+const atT = (x: number, y: number, timeStamp: number, shiftKey = false) =>
+  ({ clientX: x, clientY: y, shiftKey, timeStamp }) as PointerEvent;
+
 // Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
 // SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
 // in volo, visibile subito) seguito da apply (l'eco che lo conferma). Senza
@@ -611,6 +617,104 @@ describe("selectTool", () => {
       // selezione (sarebbe un id di un nodo ormai cancellato).
       tool.onPointerUp!(at(60, 60), ctx);
       expect(useScene.getState().selection).toEqual([]);
+    });
+  });
+
+  // --- doppio click su un nodo testo: entra in editing (Task 4, step 3) ----
+
+  describe("double click on a text node enters editing", () => {
+    beforeEach(() => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          t: node("t", 0, "a000000", {
+            kind: "text",
+            text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+          }),
+        },
+      });
+      useScene.setState({ editingNodeId: null });
+    });
+
+    it("enters editing on the second click, within the threshold, on the SAME node", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(atT(10, 10, 0), ctx);
+      tool.onPointerUp!(atT(10, 10, 0), ctx);
+      expect(useScene.getState().editingNodeId).toBeNull(); // il primo click seleziona soltanto
+
+      tool.onPointerDown!(atT(10, 10, 200), ctx);
+      expect(useScene.getState().editingNodeId).toBe("t");
+      expect(useScene.getState().selection).toEqual(["t"]);
+    });
+
+    it("does not start a drag on the click that enters editing", () => {
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(atT(10, 10, 0), ctx);
+      tool.onPointerUp!(atT(10, 10, 0), ctx);
+      tool.onPointerDown!(atT(10, 10, 200), ctx);
+      tool.onPointerMove!(atT(40, 40, 210), ctx);
+      tool.onPointerUp!(atT(40, 40, 220), ctx);
+
+      expect(sync.sent).toHaveLength(0); // nessun setProps: non si è mosso nulla
+      expect(useScene.getState().scene!.nodes["t"]).toMatchObject({ x: 0, y: 0 });
+    });
+
+    it("does not enter editing when the second click arrives too late", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(atT(10, 10, 0), ctx);
+      tool.onPointerUp!(atT(10, 10, 0), ctx);
+      tool.onPointerDown!(atT(10, 10, 5000), ctx);
+      expect(useScene.getState().editingNodeId).toBeNull();
+    });
+
+    it("does not enter editing when the second click lands on a different node", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          t: node("t", 0, "a000000", {
+            kind: "text",
+            text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+          }),
+          t2: node("t2", 200, "a000001", {
+            kind: "text",
+            text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+          }),
+        },
+      });
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(atT(10, 10, 0), ctx);
+      tool.onPointerUp!(atT(10, 10, 0), ctx);
+      tool.onPointerDown!(atT(210, 10, 50), ctx);
+      expect(useScene.getState().editingNodeId).toBeNull();
+    });
+
+    it("a double click on a NON-text node does nothing special", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: { r: node("r", 0, "a000000") }, // kind: "rect" di default
+      });
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(atT(10, 10, 0), ctx);
+      tool.onPointerUp!(atT(10, 10, 0), ctx);
+      tool.onPointerDown!(atT(10, 10, 50), ctx);
+      expect(useScene.getState().editingNodeId).toBeNull();
+      expect(useScene.getState().selection).toEqual(["r"]); // il click normale continua a selezionare
+    });
+
+    it("shift+double click does not enter editing (resta il toggle multi-selezione)", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(atT(10, 10, 0, true), ctx);
+      tool.onPointerUp!(atT(10, 10, 0, true), ctx);
+      tool.onPointerDown!(atT(10, 10, 50, true), ctx);
+      expect(useScene.getState().editingNodeId).toBeNull();
     });
   });
 });

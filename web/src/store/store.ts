@@ -1,4 +1,6 @@
 import { create as createStore } from "zustand";
+import { create } from "@bufbuild/protobuf";
+import { OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
@@ -650,6 +652,12 @@ interface SceneStore {
   sync: OpSink | null;
   // Gesto in corso (null = nessun gesto aperto).
   gesture: GestureSnapshot | null;
+  // Id del nodo testo attualmente in editing (overlay <textarea>, Task 5), o
+  // null fuori editing. Non è di per sé un gesto: la sessione di editing apre
+  // il PROPRIO gesto (beginGesture) quando l'overlay monta, non quando
+  // editingNodeId cambia -- textTool lo imposta subito dopo aver creato il
+  // nodo (il SUO gesto di creazione è già chiuso a quel punto).
+  editingNodeId: string | null;
   // Uno stack di UNDO/REDO, non di scene: ogni voce è un gesto intero (gli op
   // che lo disfano, uno o molti), così un drag che ha spostato dieci nodi si
   // annulla in un colpo solo. Riempiti SOLO da endGesture -- gli op remoti
@@ -696,6 +704,14 @@ interface SceneStore {
   toggleSelection: (id: string) => void;
   clearSelection: () => void;
   setMarquee: (b: Bounds | null) => void;
+  // Accende il flag di editing: textTool lo chiama subito dopo aver creato il
+  // nodo, il doppio click di selectTool lo chiama su un nodo testo esistente.
+  beginTextEditing: (id: string) => void;
+  // Spegne il flag e, se il nodo che si stava editando è un testo rimasto
+  // VUOTO, lo elimina -- comportamento standard (non lasciare nodi fantasma
+  // cliccando a vuoto, vedi Task 4 brief). La cancellazione passa da un gesto
+  // come ogni altra modifica, quindi resta annullabile.
+  endTextEditing: () => void;
   undo: () => void;
   redo: () => void;
 }
@@ -727,6 +743,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   marquee: null,
   sync: null,
   gesture: null,
+  editingNodeId: null,
   undoStack: [],
   redoStack: [],
   canUndo: false,
@@ -1135,6 +1152,32 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     })),
   clearSelection: () => set({ selection: [] }),
   setMarquee: (b) => set({ marquee: b }),
+
+  beginTextEditing: (id) => set({ editingNodeId: id }),
+
+  // Esce dall'editing e, se il nodo era un testo rimasto vuoto, lo cancella.
+  // La cancellazione passa da beginGesture/endGesture come QUALUNQUE altra
+  // modifica (stesso principio del disegno in shapeTool.ts): submittarla
+  // direttamente qui la renderebbe l'unica azione dell'editor non annullabile.
+  //
+  // L'op non passa da tools/ops.ts::makeDeleteOp per non invertire la
+  // dipendenza fra i due moduli (tools/ importa da store/, mai il contrario);
+  // è comunque la stessa identica costruzione, tre campi.
+  endTextEditing: () => {
+    const id = get().editingNodeId;
+    if (id === null) return;
+    set({ editingNodeId: null });
+    const scene = get().scene;
+    const node = scene?.nodes[id];
+    if (!node || node.kind !== "text" || (node.text?.content ?? "") !== "") return;
+    const op: Op = create(OpSchema, {
+      opId: crypto.randomUUID(),
+      docId: scene?.id ?? "",
+      kind: { case: "deleteNode", value: { id } },
+    });
+    get().beginGesture();
+    get().endGesture([op]);
+  },
 
   // L'undo NON è un rewind dell'op-log: è altro lavoro in avanti, come da
   // design (vedi history.ts). Manda gli op invertiti tramite sync.submit

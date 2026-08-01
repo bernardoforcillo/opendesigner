@@ -27,6 +27,13 @@ const DEFAULT_CURSOR = "default";
 // vuoto deve solo azzerare la selezione (o lasciarla intatta con shift).
 const MARQUEE_SLOP_PX = 3;
 
+// Soglia di doppio click, in ms fra i due timeStamp dei pointerdown (Task 4,
+// step 3: doppio click con Seleziona su un nodo testo entra in editing).
+// toolManager.ts non inoltra un evento nativo "dblclick": rilevarlo qui per
+// ID + tempo (invece che introdurre un secondo canale di eventi) resta
+// testabile senza timer finti, bastano due PointerEvent con timeStamp diversi.
+const DOUBLE_CLICK_MS = 400;
+
 // Il cursore vive sul DOM del canvas (come fa toolManager quando cambia tool).
 // Duck-typing su style: nei test ctx.canvas è un doppio, non un HTMLCanvasElement.
 function setCursor(ctx: ToolContext, cursor: string): void {
@@ -116,6 +123,9 @@ export function createSelectTool(): Tool {
   let marqueeAnchor: { x: number; y: number } | null = null;
   let marqueeBase: string[] | null = null;
   let preMarqueeSelection: string[] | null = null;
+
+  // --- doppio click su un nodo testo -----------------------------------------
+  let lastClick: { id: string; time: number } | null = null;
 
   function resetDrag() {
     dragAnchor = null;
@@ -212,6 +222,30 @@ export function createSelectTool(): Tool {
         resizeStarted = false;
         setCursor(ctx, cursorForHandle(handle));
         return;
+      }
+
+      // Doppio click su un nodo TESTO: entra in editing invece di iniziare un
+      // drag (Task 4, step 3). Rilevato per ID + e.timeStamp: ricalcola
+      // hitTest invece di leggerlo da pickTarget qui sotto, che per un nodo
+      // GIÀ selezionato non lo restituisce (pickTarget ritorna "single" senza
+      // id apposta, vedi il suo commento) -- e qui serve SEMPRE, selezionato o
+      // no. Shift-click resta riservato al toggle multi-selezione, non a
+      // questo: uno shift+doppio click non fa nulla di speciale.
+      const hitId = hitTest(scene, world.x, world.y);
+      if (hitId && !e.shiftKey) {
+        const isDoubleClick =
+          lastClick !== null &&
+          lastClick.id === hitId &&
+          e.timeStamp - lastClick.time <= DOUBLE_CLICK_MS;
+        if (isDoubleClick && scene.nodes[hitId]?.kind === "text") {
+          lastClick = null;
+          store.setSelection([hitId]);
+          store.beginTextEditing(hitId);
+          return; // niente drag: la sessione di editing (Task 5) prende da qui
+        }
+        lastClick = { id: hitId, time: e.timeStamp };
+      } else {
+        lastClick = null;
       }
 
       const target = pickTarget(scene, world, e.shiftKey, store.selection);
