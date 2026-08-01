@@ -303,6 +303,78 @@ describe("gesture coalescing", () => {
     expect(useScene.getState().selection).toEqual(["n2"]);
   });
 
+  // --- costo dell'anteprima ------------------------------------------------
+  // Gli op di anteprima non finiscono sul filo, ma restano nello stato del
+  // gesto finché il gesto è aperto: viewOf li RIGIOCA tutti (con un clone
+  // completo della mappa dei nodi per op) a ogni ricalcolo della vista, cioè a
+  // ogni record autorevole che atterra a metà drag. Accumularne uno per
+  // pointermove PER NODO rende il drag quadratico nella sua stessa durata --
+  // 50 nodi per 5s a 60Hz = 15.000 voci. Coalescendo per bersaglio l'anteprima
+  // resta grande quanto la selezione, per sempre.
+
+  it("un drag lungo NON accumula un'anteprima per pointermove", () => {
+    const st = useScene.getState();
+    st.beginGesture();
+    for (let i = 1; i <= 200; i++) st.applyLocal(moveOp("n1", i * 10, i * 5));
+
+    expect(useScene.getState().gesture!.preview.size).toBe(1);
+    // ...e l'ultima posizione è comunque quella giusta.
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 2000, y: 1000 });
+  });
+
+  it("un drag su più nodi tiene UNA voce di anteprima per nodo", () => {
+    const st = useScene.getState();
+    st.beginGesture();
+    for (let i = 1; i <= 50; i++) {
+      st.applyLocal(moveOp("n1", i, i));
+      st.applyLocal(moveOp("n2", 300 + i, i));
+    }
+
+    expect(useScene.getState().gesture!.preview.size).toBe(2);
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["n1"]).toMatchObject({ x: 50, y: 50 });
+    expect(scene.nodes["n2"]).toMatchObject({ x: 350, y: 50 });
+  });
+
+  it("anteprime con mask DIVERSE sullo stesso nodo non si schiacciano a vicenda", () => {
+    const st = useScene.getState();
+    st.beginGesture();
+    st.applyLocal(resizeOp("n1", 500, 400)); // mask {width,height}
+    for (let i = 1; i <= 10; i++) st.applyLocal(moveOp("n1", i, i)); // mask {x,y}
+
+    expect(useScene.getState().gesture!.preview.size).toBe(2);
+    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({
+      x: 10, y: 10, width: 500, height: 400,
+    });
+  });
+
+  it("le anteprime di CREAZIONE non si coalescono fra loro", () => {
+    const st = useScene.getState();
+    st.beginGesture();
+    st.applyLocal(createOp("n9", 10, 10));
+    st.applyLocal(createOp("n10", 20, 20));
+
+    expect(useScene.getState().gesture!.preview.size).toBe(2);
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["n9"]).toBeDefined();
+    expect(scene.nodes["n10"]).toBeDefined();
+  });
+
+  it("un record autorevole a metà drag lungo rigioca l'anteprima coalesced", () => {
+    const st = useScene.getState();
+    st.beginGesture();
+    st.applyLocal(resizeOp("n1", 500, 400));
+    for (let i = 1; i <= 100; i++) st.applyLocal(moveOp("n1", i, i));
+
+    st.apply(moveOp("n2", 333, 44)); // l'altra tab muove n2: la vista si ricalcola
+
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["n2"]).toMatchObject({ x: 333, y: 44 }); // remoto applicato
+    // ...e l'anteprima locale è ancora tutta lì, entrambe le mask comprese.
+    expect(scene.nodes["n1"]).toMatchObject({ x: 100, y: 100, width: 500, height: 400 });
+    expect(useScene.getState().gesture!.preview.size).toBe(2);
+  });
+
   // --- guardie sulla macchina a stati --------------------------------------
 
   describe("misusi della macchina a stati", () => {

@@ -1,4 +1,5 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "@bufbuild/protobuf";
 import { DocumentSchema, NodeSchema, OpSchema, ServerMsgSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op, ServerMsg } from "../gen/brawt/v1/brawt_pb";
@@ -45,11 +46,14 @@ function applied(seq: number, clientId: string, op: Op): ServerMsg {
 
 // Stream server->client pilotabile a mano: `push` consegna un record al loop di
 // consume(), `close` lo fa terminare a fine test (altrimenti resterebbe appeso
-// su una promise che nessuno risolve).
+// su una promise che nessuno risolve), `fail` lo fa MORIRE con un errore --
+// esattamente i due modi in cui il server lo termina di sua iniziativa
+// (subscriber troppo lento, since_seq fuori range).
 function channel<T>() {
   const queue: T[] = [];
   let wake: (() => void) | null = null;
   let closed = false;
+  let failure: unknown = null;
   return {
     push(v: T) {
       queue.push(v);
@@ -61,9 +65,16 @@ function channel<T>() {
       wake?.();
       wake = null;
     },
+    fail(err: unknown) {
+      failure = err;
+      closed = true;
+      wake?.();
+      wake = null;
+    },
     async *[Symbol.asyncIterator](): AsyncGenerator<T> {
       for (;;) {
         while (queue.length > 0) yield queue.shift() as T;
+        if (failure) throw failure;
         if (closed) return;
         await new Promise<void>((r) => {
           wake = r;
@@ -95,19 +106,27 @@ async function boot(nodes: Record<string, PbNode>) {
 }
 
 describe("SyncClient: modello confermato/pending", () => {
+  // Il console.error resta (serve allo sviluppatore) ma non è più l'UNICO
+  // posto in cui i fallimenti finiscono: qui li zittiamo e li verifichiamo.
+  // Spy condiviso perché ogni test chiude il proprio stream in fondo, e la
+  // chiusura è di per sé un fallimento che va loggato.
+  let logged: ReturnType<typeof vi.spyOn>;
+
   beforeEach(() => {
     vi.clearAllMocks();
+    logged = vi.spyOn(console, "error").mockImplementation(() => {});
     useScene.setState({
-      scene: null, confirmed: null, pending: [], lastError: null,
+      scene: null, confirmed: null, pending: [], lastError: null, syncError: null,
       selection: [], marquee: null, gesture: null, sync: null,
       undoStack: [], redoStack: [], canUndo: false, canRedo: false,
     });
   });
 
+  afterEach(() => {
+    logged.mockRestore();
+  });
+
   it("un op RIFIUTATO dal server sparisce dalla vista e riporta l'errore", async () => {
-    // Il console.error resta (serve allo sviluppatore) ma non è più l'UNICO
-    // posto in cui il fallimento finisce: qui lo zittiamo e lo verifichiamo.
-    const logged = vi.spyOn(console, "error").mockImplementation(() => {});
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
 
     let rejectSubmit!: (e: unknown) => void;
@@ -134,7 +153,6 @@ describe("SyncClient: modello confermato/pending", () => {
 
     stream.close();
     await flush();
-    logged.mockRestore();
   });
 
   it("un op remoto arrivato mentre il proprio è in volo NON schiaccia la modifica ottimistica (rebase)", async () => {
@@ -196,5 +214,48 @@ describe("SyncClient: modello confermato/pending", () => {
 
     stream.close();
     await flush();
+  });
+
+  // --- morte dello stream ----------------------------------------------------
+  // Subscribe è l'UNICA cosa che fa avanzare il confermato e che svuota la coda
+  // degli op in volo: la sua morte non può restare invisibile. Prima di questo
+  // fix `void this.consume()` non aveva né catch né try/catch, quindi la fine
+  // dello stream era una unhandled rejection e NIENT'ALTRO -- confermato
+  // congelato, coda che cresceva a ogni gesto, e la pillola di stato che
+  // continuava a dire "connesso".
+
+  it("uno stream che MUORE non resta silenzioso", async () => {
+    const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
+    expect(useScene.getState().syncError).toBeNull();
+
+    // Caso reale: Subscribe risponde CodeOutOfRange quando since_seq è più
+    // vecchio della history ormai compattata (l'altro è l'hub che chiude un
+    // subscriber troppo lento). Entrambi partono dal SERVER: non serve una rete
+    // che cade perché succeda.
+    stream.fail(new ConnectError("since_seq too old", Code.OutOfRange));
+    await flush();
+
+    expect(useScene.getState().syncError).toContain("since_seq too old");
+    expect(logged).toHaveBeenCalled();
+
+    // Da qui in poi nessun eco può più confermare niente: l'op resta in coda
+    // per sempre. È il wedge -- che adesso è però OSSERVABILE (pillola
+    // "sconnesso" + banner in App.tsx) invece che silenzioso.
+    sync.submit(moveOp("op-mine", "n1", 200, 0));
+    await flush();
+    expect(useScene.getState().pending).toHaveLength(1);
+    expect(useScene.getState().syncError).not.toBeNull();
+  });
+
+  it("uno stream CHIUSO dal server è un fallimento come gli altri", async () => {
+    const { stream } = await boot({ n1: rectNode("n1", 0, 0) });
+
+    // Fine "pulita" del for-await: nessuna eccezione, ma il risultato per il
+    // client è identico -- non arriverà più nessun record.
+    stream.close();
+    await flush();
+
+    expect(useScene.getState().syncError).toContain("stream");
+    expect(logged).toHaveBeenCalled();
   });
 });

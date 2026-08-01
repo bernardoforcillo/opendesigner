@@ -52,9 +52,37 @@ export class SyncClient {
     if (open.snapshot) useScene.getState().setScene(fromDocument(open.snapshot));
     this.seq = Number(open.seq);
 
+    useScene.getState().setSyncError(null);
     // consuma lo stream in background: start() deve risolversi subito dopo
     // aver caricato lo snapshot, senza attendere la subscription per sempre.
-    void this.consume();
+    void this.run();
+  }
+
+  // Lo stream è l'UNICA cosa che fa avanzare il confermato e che svuota la coda
+  // degli op in volo: se muore, ogni gesto successivo si accoda a `pending` e
+  // NIENTE lo toglie più da lì. Il server lo chiude di sua iniziativa in due
+  // casi raggiungibili -- subscriber troppo lento (l'hub chiude il canale) e
+  // since_seq più vecchio della history compattata (CodeOutOfRange) -- quindi
+  // `void this.consume()` senza catch non era "difensivo": era la fine dello
+  // stream che diventava una unhandled rejection, con la pillola di stato che
+  // continuava a dire "connesso".
+  //
+  // Qui non c'è ancora riconnessione (finding a parte: niente abort, niente
+  // resync, niente gap detection): c'è la garanzia MINIMA che il fallimento sia
+  // osservabile, in console e nella UI.
+  private async run() {
+    let message: string;
+    try {
+      await this.consume();
+      // for-await finito senza errore: il server ha chiuso lo stream. Non è
+      // meno grave di un errore -- da qui in poi non arriva più nessun record.
+      message = "il server ha chiuso lo stream degli aggiornamenti";
+      console.error("subscribe stream closed by the server");
+    } catch (err) {
+      message = ConnectError.from(err).message;
+      console.error("subscribe stream failed", err);
+    }
+    useScene.getState().setSyncError(message);
   }
 
   private async consume() {

@@ -28,12 +28,42 @@ export interface PendingOp {
 // dal server o un op in volo è stato rifiutato.
 interface GestureSnapshot {
   selection: string[];
-  // Op di sola ANTEPRIMA accumulati dal gesto (uno per pointermove). Non sono
-  // mai stati sul filo e non ci andranno: a fine gesto il tool manda gli op
-  // FINALI e questi vengono buttati. Servono a poter RICALCOLARE la vista
-  // quando un record autorevole arriva a metà drag, senza far sparire
-  // l'anteprima sotto le dita dell'utente.
-  preview: Op[];
+  // Op di sola ANTEPRIMA del gesto. Non sono mai stati sul filo e non ci
+  // andranno: a fine gesto il tool manda gli op FINALI e questi vengono
+  // buttati. Servono a poter RICALCOLARE la vista quando un record autorevole
+  // arriva a metà drag, senza far sparire l'anteprima sotto le dita
+  // dell'utente.
+  //
+  // COALESCED per bersaglio (vedi previewKey), non accumulati uno per
+  // pointermove: un drag di 5s a 60Hz su 50 nodi produce 15.000 applyLocal, e
+  // una lista li terrebbe tutti e 15.000 -- copiata a ogni chiamata (quadratico
+  // sull'hot path del drag) e RIGIOCATA per intero da viewOf a ogni record che
+  // atterra a metà drag, con un clone completo della mappa dei nodi per op.
+  // Coalescendo, l'anteprima resta grande quanto la selezione (una voce per
+  // nodo e forma di mask), indipendentemente da quanto dura il drag.
+  preview: ReadonlyMap<string, Op>;
+}
+
+// Chiave di COALESCING di un op di anteprima: due op con la stessa chiave
+// scrivono ESATTAMENTE gli stessi campi dello stesso nodo, quindi il più
+// recente rende il precedente irrilevante e può sostituirlo.
+//
+// Vale solo per setProps, e solo perché gli op di anteprima sono ASSOLUTI
+// (selectTool ricalcola x/y/width/height dai bounds di inizio gesto, mai dal
+// delta dell'ultimo move): un setProps assoluto con la stessa mask riscrive per
+// intero l'effetto del precedente. Op di mask DIVERSA restano voci separate --
+// un'anteprima di resize {width,height} non deve sparire perché ne arriva una
+// di spostamento {x,y}. createNode/deleteNode non si coalescono affatto (chiave
+// unica): non sono idempotenti fra loro e nessun tool li emette per
+// pointermove, quindi non sono sull'hot path.
+let previewCounter = 0;
+function previewKey(op: Op): string {
+  if (op.kind.case === "setProps") {
+    const { id, mask } = op.kind.value;
+    // Ordinata: ["x","y"] e ["y","x"] scrivono gli stessi campi.
+    return `s|${id}|${[...(mask?.paths ?? [])].sort().join(",")}`;
+  }
+  return `#${previewCounter++}`;
 }
 
 // LA VISTA. Unica definizione della scena renderizzata:
@@ -41,7 +71,7 @@ interface GestureSnapshot {
 // Ogni riconciliazione (record dal filo, rifiuto, fine gesto) ricalcola da qui
 // invece di rattoppare lo stato precedente: è ciò che rende ordine, rollback e
 // rebase definiti invece che ad hoc.
-function viewOf(confirmed: SceneState, pending: readonly PendingOp[], preview: readonly Op[]): SceneState {
+function viewOf(confirmed: SceneState, pending: readonly PendingOp[], preview: Iterable<Op>): SceneState {
   let scene = confirmed;
   for (const p of pending) scene = applyOp(scene, p.op);
   for (const op of preview) scene = applyOp(scene, op);
@@ -110,6 +140,17 @@ interface SceneStore {
   // peggio di nessun rollback: la modifica sparirebbe dallo schermo senza che
   // nessuno sappia perché.
   lastError: string | null;
+  // Lo stream Subscribe è MORTO (errore, o chiuso dal server): messaggio da
+  // mostrare, null finché è vivo. È uno stato a sé e non un `lastError` perché
+  // la conseguenza è diversa e permanente: lo stream è l'UNICA cosa che
+  // conferma gli op e svuota `pending` (vedi apply), quindi da qui in poi ogni
+  // modifica resta ottimistica per sempre e la coda non si drena più. Il
+  // server lo chiude di sua iniziativa in due casi raggiungibili -- subscriber
+  // troppo lento (internal/server/hub.go) e since_seq più vecchio della
+  // history compattata (CodeOutOfRange) -- quindi non è un caso ipotetico.
+  // Riconnessione e resync restano fuori scope (finding "SyncClient lifecycle"):
+  // qui il fallimento smette almeno di essere INVISIBILE.
+  syncError: string | null;
   camera: Camera;
   // Invariante: selection contiene SOLO id di nodi che esistono ancora in
   // scene.nodes. Quando un op (anche remoto, via apply) fa sparire un nodo
@@ -141,6 +182,7 @@ interface SceneStore {
   applyPending: (op: Op) => void;
   rejectPending: (opId: string, message: string) => void;
   clearError: () => void;
+  setSyncError: (message: string | null) => void;
   applyLocal: (op: Op) => void;
   beginGesture: () => void;
   endGesture: (finalOps: Op[]) => void;
@@ -159,7 +201,7 @@ interface SceneStore {
 // L'anteprima del gesto eventualmente aperto viene rimessa in cima, così un
 // record che arriva a metà drag non fa sparire il feedback locale.
 function rebuild(st: SceneStore, confirmed: SceneState, pending: PendingOp[]): Partial<SceneStore> {
-  const scene = viewOf(confirmed, pending, st.gesture?.preview ?? []);
+  const scene = viewOf(confirmed, pending, st.gesture?.preview.values() ?? []);
   // Riconvalida la selezione contro i nodi rimasti (non solo per deleteNode:
   // qualunque op che fa sparire un id -- anche futuro -- deve avere lo stesso
   // effetto), e anche contro un rollback che ha tolto un nodo appena creato.
@@ -171,6 +213,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   confirmed: null,
   pending: [],
   lastError: null,
+  syncError: null,
   camera: { x: 0, y: 0, zoom: 1 },
   selection: [],
   marquee: null,
@@ -252,6 +295,13 @@ export const useScene = createStore<SceneStore>((set, get) => ({
 
   clearError: () => set({ lastError: null }),
 
+  // Stato dello stream, scritto da SyncClient: un messaggio quando muore, null
+  // quando (in futuro) una riconnessione riesce. Non azzera `pending`: quegli
+  // op possono essere arrivati al server -- buttarli via inventerebbe un
+  // rollback che nessuno ha chiesto. Restano in coda, visibili, in attesa di un
+  // resync o di un reload.
+  setSyncError: (message) => set({ syncError: message }),
+
   // Applica SOLO in locale: è il feedback immediato del drag, non passa dal
   // filo. Un pointermove = un applyLocal, e nessuno di questi diventa un op.
   // Dentro un gesto viene anche REGISTRATO fra le anteprime, così un ricalcolo
@@ -263,7 +313,16 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       const scene = applyOp(st.scene, op);
       const next = { scene, selection: pruneSelection(st.selection, scene) };
       if (!st.gesture) return next;
-      return { ...next, gesture: { ...st.gesture, preview: [...st.gesture.preview, op] } };
+      // Anteprima COALESCED: la voce con la stessa chiave viene sostituita e
+      // rimessa IN FONDO (delete + set), così l'ordine di rigioco resta quello
+      // dell'ultima scrittura di ogni bersaglio -- l'unica cosa che conta
+      // quando due mask si sovrappongono parzialmente. Vedi previewKey per
+      // perché sostituire non cambia il risultato.
+      const preview = new Map(st.gesture.preview);
+      const key = previewKey(op);
+      preview.delete(key);
+      preview.set(key, op);
+      return { ...next, gesture: { ...st.gesture, preview } };
     }),
 
   // Apre un gesto fotografando la SELEZIONE (il punto di ripristino di Esc) e
@@ -280,7 +339,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         console.warn("brawt: beginGesture() con un gesto già aperto — snapshot iniziale mantenuto");
         return st;
       }
-      return { gesture: { selection: st.selection, preview: [] } };
+      return { gesture: { selection: st.selection, preview: new Map() } };
     }),
 
   // Chiude il gesto e manda sul filo UNA sola volta gli op finali: il documento

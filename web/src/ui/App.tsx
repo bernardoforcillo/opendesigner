@@ -60,6 +60,11 @@ export function App() {
   // Sottoscrizioni con selettore: il resto della UI non si ridisegna a ogni op.
   const lastError = useScene((s) => s.lastError);
   const clearError = useScene((s) => s.clearError);
+  // Stream Subscribe morto (vedi store.ts::syncError). Non è dismissibile come
+  // lastError: la condizione non passa da sola, e finché dura le modifiche
+  // restano ottimistiche -- l'utente deve poterlo sapere PRIMA di continuare a
+  // lavorare, non al reload successivo.
+  const syncError = useScene((s) => s.syncError);
 
   // bootstrap: documento + SyncClient + tool
   useEffect(() => {
@@ -167,8 +172,16 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  const statusLabel =
-    status === "ready" ? "connesso" : status === "error" ? "errore di connessione" : "connessione…";
+  // La pillola diceva "connesso" anche a stream morto: il bootstrap era andato
+  // a buon fine e nessuno rivedeva più quello stato. syncError ha la
+  // precedenza su tutto -- è l'informazione più recente che abbiamo.
+  const statusLabel = syncError
+    ? "sconnesso"
+    : status === "ready"
+      ? "connesso"
+      : status === "error"
+        ? "errore di connessione"
+        : "connessione…";
 
   return (
     <div className="flex h-screen flex-col">
@@ -211,6 +224,15 @@ export function App() {
           {statusLabel}
         </span>
       </div>
+      {syncError && (
+        <div
+          role="alert"
+          className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
+        >
+          Connessione al server persa ({syncError}). Le modifiche non vengono più confermate:
+          ricarica la pagina per riprendere.
+        </div>
+      )}
       {lastError && (
         <div
           role="alert"
