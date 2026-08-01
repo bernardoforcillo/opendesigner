@@ -9,8 +9,6 @@ import (
 
 	"github.com/bernardoforcillo/brawt/gen/brawt/v1/brawtv1connect"
 	"github.com/bernardoforcillo/brawt/internal/server"
-	"golang.org/x/net/http2"
-	"golang.org/x/net/http2/h2c"
 )
 
 func main() {
@@ -36,9 +34,19 @@ func main() {
 		mux.Handle("/", http.FileServer(http.Dir(*web)))
 	}
 
+	// h2c (HTTP/2 in chiaro) serve allo streaming Connect in locale, dove non c'è TLS.
+	// Dalla stdlib Go 1.24 lo si abilita con Server.Protocols: niente golang.org/x/net.
+	protocols := new(http.Protocols)
+	protocols.SetHTTP1(true)
+	protocols.SetUnencryptedHTTP2(true)
+	srv := &http.Server{
+		Addr:      *addr,
+		Handler:   mux,
+		Protocols: protocols,
+	}
+
 	log.Printf("brawt serve on %s (workspace=%s)", *addr, *workspace)
-	// h2c: HTTP/2 senza TLS in locale, richiesto dallo streaming Connect/gRPC.
-	if err := http.ListenAndServe(*addr, h2c.NewHandler(mux, &http2.Server{})); err != nil {
+	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }

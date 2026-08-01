@@ -2,6 +2,7 @@ package server
 
 import (
 	"context"
+	"errors"
 
 	"connectrpc.com/connect"
 	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
@@ -36,103 +37,72 @@ func (s *DocumentService) OpenDocument(_ context.Context, req *connect.Request[b
 	return connect.NewResponse(&brawtv1.OpenResponse{Snapshot: doc, Seq: seq}), nil
 }
 
-// Sync: il primo messaggio DEVE essere Hello; poi il client invia SubmitOp,
-// mentre una goroutine drena il canale del subscriber verso lo stream.
-func (s *DocumentService) Sync(ctx context.Context, stream *connect.BidiStream[brawtv1.ClientMsg, brawtv1.ServerMsg]) error {
-	first, err := stream.Receive()
+// errMissingOp rejects a SubmitOp request whose op field is unset: there is
+// nothing to apply, and letting it through would only produce an opaque
+// "unknown op kind <nil>" from core.Apply.
+var errMissingOp = errors.New("submit_op: op is required")
+
+// SubmitOp è la metà client→server del vecchio stream bidi Sync: una unary RPC
+// che applica l'operazione sull'hub del documento e restituisce l'Ack.
+// Il broadcast dell'OpRecord applicato a TUTTI i client (incluso il mittente)
+// passa da Subscribe, non da qui.
+//
+// Bidi streaming è irraggiungibile dal browser (@connectrpc/connect-web rifiuta
+// qualunque methodKind diverso da server_streaming perché fetch non supporta i
+// request body in streaming), quindi la coppia unary + server-stream sostituisce
+// Sync mantenendone identica la semantica lato Hub.
+func (s *DocumentService) SubmitOp(_ context.Context, req *connect.Request[brawtv1.SubmitOpRequest]) (*connect.Response[brawtv1.SubmitOpResponse], error) {
+	op := req.Msg.GetOp()
+	if op == nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errMissingOp)
+	}
+	// HubFor validates/sanitizes the client-supplied doc_id (see errInvalidDocID)
+	// before any filesystem access, exactly as the old Sync handler did with the
+	// Hello message's doc_id.
+	h, err := s.m.HubFor(req.Msg.GetDocId())
 	if err != nil {
-		return err
+		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
-	hello := first.GetHello()
-	if hello == nil {
-		return connect.NewError(connect.CodeInvalidArgument, errFirstMsgMustBeHello)
+	rec, err := h.Submit(req.Msg.GetClientId(), op)
+	if err != nil {
+		// A core.Apply failure is the caller's fault (duplicate node id, unknown
+		// op kind, missing target...). Surface it instead of swallowing it into
+		// an in-band ErrorMsg the way the bidi stream had to.
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	h, err := s.m.HubFor(hello.GetDocId())
+	return connect.NewResponse(&brawtv1.SubmitOpResponse{Ack: &brawtv1.Ack{
+		OpId: op.GetOpId(), Seq: rec.GetSeq(),
+	}}), nil
+}
+
+// Subscribe è la metà server→client: catch-up dei record con seq > since_seq,
+// poi live, ciascuno inviato come ServerMsg{applied}. Un solo goroutine (questo)
+// scrive sullo stream, quindi non serve più il writer multiplexer di Sync.
+func (s *DocumentService) Subscribe(ctx context.Context, req *connect.Request[brawtv1.SubscribeRequest], stream *connect.ServerStream[brawtv1.ServerMsg]) error {
+	h, err := s.m.HubFor(req.Msg.GetDocId())
 	if err != nil {
 		return connect.NewError(connect.CodeNotFound, err)
 	}
-	ch, cancel := h.Subscribe(hello.GetSinceSeq())
+	// Hub.Subscribe registers the subscriber and pre-loads its catch-up backlog
+	// under the hub mutex, so an op submitted concurrently with this call is
+	// delivered exactly once: either in the backlog or as a live broadcast.
+	ch, cancel := h.Subscribe(req.Msg.GetSinceSeq())
+	// Always unregister: the hub would otherwise keep broadcasting into a
+	// channel nobody reads for the rest of the process's life.
 	defer cancel()
 
-	// connect-go forbids concurrent stream.Send calls on a single BidiStream,
-	// so ALL sends go through one writer goroutine. It multiplexes two sources:
-	// broadcast records from the subscriber channel (ServerMsg.Applied) and the
-	// reader loop's per-op replies (Ack/Error) handed over via `out`. The reader
-	// never calls stream.Send itself.
-	out := make(chan *brawtv1.ServerMsg)
-	writerDone := make(chan struct{})
-	var writerErr error
-	go func() {
-		defer close(writerDone)
-		for {
-			select {
-			case <-ctx.Done():
-				writerErr = ctx.Err()
-				return
-			case rec, ok := <-ch:
-				if !ok {
-					return
-				}
-				if err := stream.Send(&brawtv1.ServerMsg{Kind: &brawtv1.ServerMsg_Applied{Applied: rec}}); err != nil {
-					writerErr = err
-					return
-				}
-			case msg := <-out:
-				if err := stream.Send(msg); err != nil {
-					writerErr = err
-					return
-				}
-			}
-		}
-	}()
-
-	// send hands a reply to the writer goroutine. It returns false if the writer
-	// has already exited (its Send failed or ctx was cancelled), so the reader
-	// never blocks forever on a writer that is gone.
-	send := func(msg *brawtv1.ServerMsg) bool {
-		select {
-		case out <- msg:
-			return true
-		case <-writerDone:
-			return false
-		}
-	}
-
-	// reader: SubmitOp → Hub.Submit
-	clientID := hello.GetClientId()
 	for {
-		msg, err := stream.Receive()
-		if err != nil {
-			// Client closed its send side (EOF) or the RPC failed. Signal the
-			// writer to stop (cancel closes the subscriber channel) and JOIN it
-			// before returning, so no stream.Send is still in flight when
-			// connect-go finalizes the RPC after Sync returns.
-			cancel()
-			<-writerDone
-			return writerErr
-		}
-		sub := msg.GetSubmit()
-		if sub == nil {
-			continue
-		}
-		var reply *brawtv1.ServerMsg
-		if rec, aerr := h.Submit(clientID, sub.GetOp()); aerr != nil {
-			reply = &brawtv1.ServerMsg{Kind: &brawtv1.ServerMsg_Error{Error: &brawtv1.ErrorMsg{
-				OpId: sub.GetOp().GetOpId(), Message: aerr.Error()}}}
-		} else {
-			reply = &brawtv1.ServerMsg{Kind: &brawtv1.ServerMsg_Ack{Ack: &brawtv1.Ack{
-				OpId: sub.GetOp().GetOpId(), Seq: rec.GetSeq()}}}
-		}
-		if !send(reply) {
-			// Writer already gone; the stream is finished. writerDone is closed,
-			// so writerErr is safely readable here.
-			return writerErr
+		select {
+		case <-ctx.Done():
+			// Client went away (or the server is shutting down).
+			return ctx.Err()
+		case rec, ok := <-ch:
+			if !ok {
+				return nil
+			}
+			if err := stream.Send(&brawtv1.ServerMsg{Kind: &brawtv1.ServerMsg_Applied{Applied: rec}}); err != nil {
+				return err
+			}
 		}
 	}
 }
-
-var errFirstMsgMustBeHello = connectError("first sync message must be Hello")
-
-type connectError string
-
-func (e connectError) Error() string { return string(e) }

@@ -67,9 +67,14 @@ message DocInfo { string id = 1; string name = 2; }
 message ListDocumentsRequest {}
 message ListDocumentsResponse { repeated DocInfo docs = 1; }
 
-message Hello    { string doc_id = 1; string client_id = 2; uint64 since_seq = 3; }
-message SubmitOp { Op op = 1; }
-message ClientMsg { oneof kind { Hello hello = 1; SubmitOp submit = 2; } }
+// Il canale live è diviso in due RPC invece di uno stream bidirezionale: il
+// `fetch` dei browser non supporta i request body in streaming, quindi un bidi
+// non è raggiungibile dall'editor. Un unary in salita + un server-stream in
+// discesa danno la stessa semantica e funzionano ovunque.
+message SubmitOpRequest  { string doc_id = 1; string client_id = 2; Op op = 3; }
+message SubmitOpResponse { Ack ack = 1; }
+
+message SubscribeRequest { string doc_id = 1; string client_id = 2; uint64 since_seq = 3; }
 
 message Ack      { string op_id = 1; uint64 seq = 2; }
 message ErrorMsg { string op_id = 1; string message = 2; }
@@ -79,5 +84,8 @@ service DocumentService {
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
   rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
   rpc OpenDocument(OpenRequest) returns (OpenResponse);
-  rpc Sync(stream ClientMsg) returns (stream ServerMsg);
+  // Invia un'operazione. Il broadcast a tutti i client passa da Subscribe.
+  rpc SubmitOp(SubmitOpRequest) returns (SubmitOpResponse);
+  // Stream degli OpRecord applicati: catch-up da since_seq, poi live.
+  rpc Subscribe(SubscribeRequest) returns (stream ServerMsg);
 }
