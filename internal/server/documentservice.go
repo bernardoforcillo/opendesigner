@@ -128,7 +128,25 @@ func (s *DocumentService) Subscribe(ctx context.Context, req *connect.Request[br
 			return ctx.Err()
 		case rec, ok := <-ch:
 			if !ok {
-				return nil
+				// Inside this loop, the hub is the ONLY goroutine that can
+				// have closed ch: the other closer is the cancel func above,
+				// and that runs in the deferred cleanup, i.e. strictly after
+				// this loop has returned. So a closed channel here means one
+				// thing -- the hub gave up on this subscriber because it fell
+				// too far behind (see ErrSubscriberTooSlow).
+				//
+				// Returning nil would report that as a clean, SUCCESSFUL
+				// end-of-stream: on the wire it is indistinguishable from a
+				// graceful server shutdown or from the client cancelling
+				// itself, so a client would simply stop receiving ops with no
+				// hint that it must resync -- strictly worse than the silent
+				// single-record drop this whole mechanism replaced.
+				// RESOURCE_EXHAUSTED is the signal, and it is the contract
+				// the client codes against, alongside the OUT_OF_RANGE that
+				// ErrHistoryTooOld returns above: re-subscribe with since_seq
+				// at the last applied record (or, if that then comes back
+				// OUT_OF_RANGE, re-open the document first).
+				return connect.NewError(connect.CodeResourceExhausted, ErrSubscriberTooSlow)
 			}
 			if err := stream.Send(&brawtv1.ServerMsg{Kind: &brawtv1.ServerMsg_Applied{Applied: rec}}); err != nil {
 				return err

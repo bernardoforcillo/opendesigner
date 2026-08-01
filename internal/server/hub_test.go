@@ -546,3 +546,65 @@ func TestNewHubOpensDocumentWithTornOplogTail(t *testing.T) {
 		t.Fatalf("after repair+append: seq = %d nodes = %d, want 4/4", seq3, len(doc3.GetNodes()))
 	}
 }
+
+// Third fix-round regression tests (2026-08-01), from the review of
+// ab707e9 ("end the stream on a backlogged subscriber").
+//
+// finding (IMPORTANT, hub.go:449): Subscribe sized the channel to
+// max(subscriberChanCap, len(backlog)) and then pushed all len(backlog)
+// records into it, leaving ZERO headroom for any subscriber whose backlog was
+// >= subscriberChanCap. Combined with the new "end the stream when the channel
+// is full" branch in Submit, the very next live op took the default branch and
+// disconnected a subscriber that had not had the chance to read a single
+// record. That is a routine state, not an exotic one: h.history holds up to
+// snapshotEveryOps (== subscriberChanCap, 256) records between snapshots, and
+// NewHub rebuilds a backlog exactly that size from the oplog after a restart.
+//
+// The backlog is populated directly (as in
+// TestSubscribeCatchUpBeyondChannelCapacityDoesNotBlock) so the state is
+// constructed rather than hoped for, and without paying 256 real fsyncs.
+func TestSubscribeLeavesHeadroomSoAFullBacklogDoesNotEndTheStream(t *testing.T) {
+	h := newTestHub(t)
+
+	// Exactly subscriberChanCap: the smallest backlog that filled the channel
+	// to 100% under the old max() sizing.
+	const backlog = subscriberChanCap
+	h.mu.Lock()
+	for i := uint64(1); i <= backlog; i++ {
+		h.history = append(h.history, &brawtv1.OpRecord{Seq: i, Op: createOp(fmt.Sprintf("n%d", i))})
+	}
+	h.seq = backlog
+	h.mu.Unlock()
+
+	ch, cancel := mustSubscribe(t, h, 0)
+	defer cancel()
+
+	// A live op lands before this (perfectly healthy) subscriber has read
+	// anything at all -- the caller has only just been handed the channel.
+	rec, err := h.Submit("c1", createOp("live"))
+	if err != nil {
+		t.Fatalf("Submit: %v", err)
+	}
+	if rec.GetSeq() != backlog+1 {
+		t.Fatalf("live record seq = %d, want %d", rec.GetSeq(), backlog+1)
+	}
+
+	drained := 0
+	for {
+		select {
+		case got, ok := <-ch:
+			if !ok {
+				t.Fatalf("the hub ENDED the stream of a subscriber that had drained %d of %d backlog records and never fell behind; only a subscriber that fails to keep up with %d LIVE records may be disconnected", drained, backlog, subscriberChanCap)
+			}
+			drained++
+			if got.GetSeq() != uint64(drained) {
+				t.Fatalf("record %d out of order: seq = %d, want %d", drained, got.GetSeq(), drained)
+			}
+			if drained == backlog+1 {
+				return // backlog + the live op, in order, stream still open
+			}
+		case <-time.After(5 * time.Second):
+			t.Fatalf("timed out after %d records: the live op never arrived", drained)
+		}
+	}
+}

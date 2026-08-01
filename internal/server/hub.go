@@ -25,9 +25,10 @@ type subscriber struct {
 	closeOnce sync.Once
 }
 
-// subscriberChanCap is the minimum buffered capacity for a subscriber's
-// channel. Subscribe grows it per-subscriber to also fit that subscriber's
-// own catch-up backlog (see Subscribe) so registering never blocks.
+// subscriberChanCap is how many LIVE records a subscriber may fall behind by
+// before Submit ends its stream. Subscribe adds it on top of that
+// subscriber's own catch-up backlog (see Subscribe), so the backlog never
+// eats into this allowance and registering never blocks.
 const subscriberChanCap = 256
 
 // snapshotEveryOps is how many applied ops trigger a snapshot.
@@ -66,6 +67,20 @@ const snapshotEveryOps = 256
 // recovery is to re-open the document (OpenDocument returns a snapshot and
 // the seq it is current to) and subscribe from there.
 var ErrHistoryTooOld = errors.New("since_seq is older than the oldest retained record")
+
+// ErrSubscriberTooSlow reports that the hub ended a subscriber's stream
+// because it fell subscriberChanCap live records behind and the next record
+// had nowhere to go.
+//
+// It is the reason the RPC layer needs it: a stream the hub ended looks, on
+// the wire, exactly like a stream that ended because the server shut down or
+// because the client cancelled -- unless the handler says so. Reporting this
+// as a clean end-of-stream would turn "the client silently misses one op"
+// into "the client silently stops receiving anything, forever". The client's
+// recovery is the same one ErrHistoryTooOld asks for, only cheaper: reconnect
+// with since_seq at its last applied record and let the catch-up backlog fill
+// the gap.
+var ErrSubscriberTooSlow = errors.New("subscriber fell behind the op stream and its records could not be buffered")
 
 // documentBundle is the persistence one Hub needs, which *store.Bundle
 // provides and nothing else implements in production.
@@ -271,14 +286,29 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 			// made idempotent by closeOnce so the Subscribe RPC handler's own
 			// deferred cancel() on this same subscriber is a no-op when it
 			// runs afterwards. Its next receive reports closed, the handler
-			// returns, and the client's reconnect (resuming from its last
-			// applied seq) is what catches it up.
-			delete(h.subs, s)
-			s.closeOnce.Do(func() { close(s.ch) })
+			// reports ErrSubscriberTooSlow, and the client's reconnect
+			// (resuming from its last applied seq) is what catches it up.
+			//
+			// Reaching this at all means the subscriber failed to drain
+			// subscriberChanCap LIVE records: Subscribe sizes its channel to
+			// its catch-up backlog PLUS that allowance, so a client is never
+			// disconnected merely for having just connected.
+			h.endSubscriberLocked(s)
 		}
 	}
 	h.maybeSnapshotLocked()
 	return rec, nil
+}
+
+// endSubscriberLocked unregisters s and closes its channel -- the hub's only
+// way of telling a subscriber's stream to stop. h.mu must be held.
+//
+// It is the same pair of steps the cancel func returned by Subscribe performs,
+// and closeOnce makes running both safe: the RPC handler's deferred cancel()
+// still fires after the hub has ended the stream from under it.
+func (h *Hub) endSubscriberLocked(s *subscriber) {
+	delete(h.subs, s)
+	s.closeOnce.Do(func() { close(s.ch) })
 }
 
 // maybeSnapshotLocked starts a snapshot when enough ops have been applied
@@ -438,19 +468,32 @@ func (h *Hub) Subscribe(sinceSeq uint64) (<-chan *brawtv1.OpRecord, func(), erro
 		}
 	}
 
-	// Size the channel to fit the whole catch-up backlog up front so
-	// registering a subscriber can never block. The backlog is bounded by
-	// the snapshot policy now, but it is still routinely larger than
-	// subscriberChanCap between snapshots; a blocking send here — while
-	// still holding h.mu, before the caller has any chance to drain a
-	// channel it hasn't even received yet — would deadlock this call
-	// forever and, because h.mu is held, every other Submit/Subscribe/
-	// Snapshot on the Hub right along with it.
-	capacity := subscriberChanCap
-	if n := len(backlog); n > capacity {
-		capacity = n
-	}
-	s := &subscriber{ch: make(chan *brawtv1.OpRecord, capacity)}
+	// Size the channel to the whole catch-up backlog PLUS a full
+	// subscriberChanCap of live headroom -- a sum, deliberately not a
+	// max(). Two separate requirements ride on this number:
+	//
+	//   - Fitting the backlog up front is what keeps registering a
+	//     subscriber from ever blocking. The backlog is bounded by the
+	//     snapshot policy now, but it is still routinely larger than
+	//     subscriberChanCap between snapshots; a blocking send here -- while
+	//     still holding h.mu, before the caller has any chance to drain a
+	//     channel it hasn't even received yet -- would deadlock this call
+	//     forever and, because h.mu is held, every other Submit/Subscribe/
+	//     Snapshot on the Hub right along with it.
+	//   - The headroom is what makes "cannot keep up" mean it. Submit now
+	//     ENDS the stream of a subscriber whose channel is full instead of
+	//     dropping the record, so a max() -- which leaves a backlogged
+	//     subscriber's channel exactly 100% full the instant Subscribe
+	//     returns -- would disconnect a perfectly healthy client on the very
+	//     next op, before it had read a single record. That is a routine
+	//     state, not an exotic one: h.history holds up to snapshotEveryOps
+	//     (== subscriberChanCap) records between snapshots, and NewHub
+	//     rebuilds a backlog exactly that size from the oplog after a
+	//     restart, so every reconnecting client would hit it -- and hit it
+	//     again on each reconnect. With the sum, being disconnected means the
+	//     subscriber genuinely failed to drain subscriberChanCap LIVE records
+	//     on top of everything it asked to catch up on.
+	s := &subscriber{ch: make(chan *brawtv1.OpRecord, len(backlog)+subscriberChanCap)}
 	for _, rec := range backlog {
 		s.ch <- rec
 	}
