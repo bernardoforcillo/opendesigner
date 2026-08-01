@@ -141,8 +141,21 @@ export function resizeTransform(
     const scaleX = signedW / start.width;
     const scaleY = signedH / start.height;
     if (movesH && movesV) {
-      // Angolo: comanda l'asse trascinato di più, in proporzione.
-      const s = Math.max(Math.abs(scaleX), Math.abs(scaleY));
+      // Angolo: comanda l'asse trascinato di più, in proporzione. "Di più" NON
+      // è il |fattore| più grande: max(|scaleX|, |scaleY|) premia l'asse mosso
+      // MENO ogni volta che il drag rimpicciolisce -- se con dx=-50, dy=0 dava
+      // max(0.75, 1) = 1, cioè il neutro dell'asse fermo, e il resize non
+      // faceva nulla. È lo stesso errore che i lati qui sotto evitano già.
+      //
+      // La misura giusta è quanto il bordo mobile ha VIAGGIATO in proporzione
+      // al lato: |signedW - startW| / startW === |scaleX - 1|. Vale 0 per un
+      // asse fermo, cresce sia allargando sia stringendo, e supera 1 quando il
+      // drag ha oltrepassato l'ancora (flip). Vinto l'asse, il fattore comune è
+      // il suo |scale|; i SEGNI restano per-asse, così shift + flip continua a
+      // specchiare solo l'asse davvero trascinato oltre l'ancora.
+      const travelX = Math.abs(scaleX - 1);
+      const travelY = Math.abs(scaleY - 1);
+      const s = travelX >= travelY ? Math.abs(scaleX) : Math.abs(scaleY);
       signedW = signOf(scaleX) * s * start.width;
       signedH = signOf(scaleY) * s * start.height;
     } else if (movesH) {

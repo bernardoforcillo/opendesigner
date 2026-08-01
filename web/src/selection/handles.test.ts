@@ -74,6 +74,31 @@ describe("resizeBounds, altri casi", () => {
     expect(r.x).toBeCloseTo(100, 6);
     expect(r.y).toBeCloseTo(100, 6);
   });
+  it("keepAspect on a corner SHRINKS when the drag goes inward", () => {
+    // se trascinata 50px verso l'interno: senza keepAspect darebbe width 150.
+    // Con keepAspect deve rimpicciolire in proporzione, NON restare ferma:
+    // con la regola del max(|scale|) vinceva l'1.0 dell'asse y immobile.
+    const r = resizeBounds(b, "se", -50, 0, { keepAspect: true });
+    expect(r).toEqual({ x: 100, y: 100, width: 150, height: 75 });
+  });
+  it("keepAspect on a corner: the axis dragged MORE commands, also shrinking", () => {
+    // dx porta x a scala 0.5, dy porta y a scala 0.9: comanda lo 0.5.
+    const r = resizeBounds(b, "se", -100, -10, { keepAspect: true });
+    expect(r).toEqual({ x: 100, y: 100, width: 100, height: 50 });
+  });
+  it("keepAspect on a corner: a shrink beats a smaller growth on the other axis", () => {
+    // x cresce del 10% (scala 1.1), y si dimezza (scala 0.5): comanda y.
+    const r = resizeBounds(b, "se", 20, -50, { keepAspect: true });
+    expect(r).toEqual({ x: 100, y: 100, width: 100, height: 50 });
+  });
+  it("keepAspect on the nw corner shrinks toward the anchored se corner", () => {
+    const r = resizeBounds(b, "nw", 50, 0, { keepAspect: true });
+    expect(r).toEqual({ x: 150, y: 125, width: 150, height: 75 });
+  });
+  it("keepAspect on a corner still grows by the more-dragged axis", () => {
+    const r = resizeBounds(b, "se", 100, 0, { keepAspect: true });
+    expect(r).toEqual({ x: 100, y: 100, width: 300, height: 150 });
+  });
   it("keepAspect keeps the ratio through a flip", () => {
     const r = resizeBounds(b, "se", -300, 0, { keepAspect: true });
     expect(r.width / r.height).toBeCloseTo(b.width / b.height, 6);

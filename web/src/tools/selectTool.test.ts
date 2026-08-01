@@ -342,6 +342,21 @@ describe("selectTool", () => {
       expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ width: 150, height: 150 });
     });
 
+    it("shift keeps the aspect ratio while SHRINKING from a corner", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 50, true), ctx); // maniglia se
+      tool.onPointerMove!(at(30, 50, true), ctx); // dx=-20 verso l'interno, dy=0
+      // 50x50 * 0.6: il drag deve rimpicciolire, non lasciare il nodo com'è
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 30, height: 30 });
+      tool.onPointerUp!(at(30, 50, true), ctx);
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ width: 30, height: 30 });
+    });
+
     it("resizes a MULTIPLE selection as a group, one op per node", () => {
       useScene.getState().setSelection(["a", "b"]); // bbox di gruppo (0,0,150,50)
       const sync = new FakeSync();
