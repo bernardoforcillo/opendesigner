@@ -12,6 +12,7 @@ message SolidPaint { Color color = 1; }
 message Paint { oneof kind { SolidPaint solid = 1; } }
 
 message RectNode { double corner_radius = 1; }
+message EllipseNode {} // cx/cy/rx/ry derivano da x/y/width/height, come per RectNode
 
 message Node {
   string id = 1;
@@ -22,7 +23,10 @@ message Node {
   double opacity = 6;     // 0..1
   double x = 10; double y = 11; double width = 12; double height = 13; double rotation = 14;
   repeated Paint fills = 20;
-  oneof shape { RectNode rect = 30; } // M0: solo rettangolo
+  oneof shape {
+    RectNode rect = 30;
+    EllipseNode ellipse = 31;
+  }
 }
 
 message Page { string id = 1; string name = 2; }

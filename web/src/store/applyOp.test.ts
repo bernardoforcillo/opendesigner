@@ -20,6 +20,17 @@ describe("applyOp", () => {
     expect(s.nodes["n1"].kind).toBe("rect");
   });
 
+  it("creates an ellipse node", () => {
+    const node = create(NodeSchema, {
+      id: "n1", parentId: "page1", orderKey: "a0", name: "Ellipse", visible: true, opacity: 1,
+      x: 10, y: 20, width: 100, height: 80,
+      shape: { case: "ellipse", value: {} },
+    });
+    const op = create(OpSchema, { opId: "op-n1", docId: "doc1", kind: { case: "createNode", value: { node } } });
+    const s = applyOp(emptyScene("doc1", "Untitled"), op);
+    expect(s.nodes["n1"].kind).toBe("ellipse");
+  });
+
   it("moves via setProperties + mask", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
     const move = create(OpSchema, { opId: "m", docId: "doc1", kind: { case: "setProps", value: {

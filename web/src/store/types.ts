@@ -6,7 +6,7 @@ export interface NodeLite {
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
-  fills: FillLite[]; kind: "rect"; cornerRadius: number;
+  fills: FillLite[]; kind: "rect" | "ellipse"; cornerRadius: number;
 }
 export interface SceneState {
   id: string; name: string; schemaVersion: number;
@@ -26,7 +26,8 @@ export function toNodeLite(n: PbNode): NodeLite {
     id: n.id, parentId: n.parentId, orderKey: n.orderKey, name: n.name,
     visible: n.visible, opacity: n.opacity,
     x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation,
-    fills, kind: "rect", cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
+    fills, kind: n.shape.case === "ellipse" ? "ellipse" : "rect",
+    cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
   };
 }
 
