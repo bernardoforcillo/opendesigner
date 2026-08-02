@@ -1,6 +1,7 @@
 import { describe, it, expect } from "vitest";
 import {
   drawOverlay,
+  selectionFrame,
   selectionWorldBounds,
   worldBoundsToScreen,
   handlePositions,
@@ -45,6 +46,50 @@ describe("selectionWorldBounds", () => {
     s.nodes["a"] = rect("a", 0, 0, 50, 50);
     expect(selectionWorldBounds(s, ["a", "ghost"])).toEqual({ x: 0, y: 0, width: 50, height: 50 });
   });
+
+  it("takes each node's ROTATION into account: the union is of what they really occupy", () => {
+    const s = emptyScene("d", "n");
+    // 100x50 in (0,0) ruotato di 90°: occupa davvero x in [25,75], y in [-25,75]
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    const u = selectionWorldBounds(s, ["a"])!;
+    expect(u.x).toBeCloseTo(25, 9);
+    expect(u.y).toBeCloseTo(-25, 9);
+    expect(u.width).toBeCloseTo(50, 9);
+    expect(u.height).toBeCloseTo(100, 9);
+  });
+});
+
+// Il FRAME della selezione: il rettangolo su cui vivono le maniglie PIÙ il suo
+// angolo. La convenzione è dichiarata qui e vale ovunque: un nodo solo porta la
+// PROPRIA rotazione, una selezione multipla è ASSE-ALLINEATA (non esiste un
+// angolo comune a nodi ruotati diversamente).
+describe("selectionFrame", () => {
+  it("is null when there is nothing to frame", () => {
+    const s = emptyScene("d", "n");
+    expect(selectionFrame(s, [])).toBeNull();
+    expect(selectionFrame(s, ["ghost"])).toBeNull();
+  });
+
+  it("a single node hands over its own bounds and its own rotation", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = { ...rect("a", 10, 20, 100, 50), rotation: 30 };
+    expect(selectionFrame(s, ["a"])).toEqual({
+      bounds: { x: 10, y: 20, width: 100, height: 50 },
+      rotation: 30,
+    });
+  });
+
+  it("a multiple selection is axis-aligned, around what the nodes really occupy", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 }; // x [25,75], y [-25,75]
+    s.nodes["b"] = rect("b", 100, 100, 50, 50);
+    const f = selectionFrame(s, ["a", "b"])!;
+    expect(f.rotation).toBe(0);
+    expect(f.bounds.x).toBeCloseTo(25, 9);
+    expect(f.bounds.y).toBeCloseTo(-25, 9);
+    expect(f.bounds.width).toBeCloseTo(125, 9);
+    expect(f.bounds.height).toBeCloseTo(175, 9);
+  });
 });
 
 describe("worldBoundsToScreen", () => {
@@ -80,17 +125,26 @@ describe("handlePositions", () => {
 // verificare i pixel esatti (nessun canvas reale in Node qui).
 function fakeCtx(width: number, height: number) {
   const calls: string[] = [];
+  // Le chiamate di trasformazione con i loro argomenti: servono al caso
+  // ruotato, dove ciò che conta non è QUANTE volte si disegna ma ATTORNO A
+  // COSA (il centro del riquadro, in px schermo).
+  const xform: { op: string; args: number[] }[] = [];
+  const record = (op: string) => (...args: number[]) => { calls.push(op); xform.push({ op, args }); };
   const ctx: Record<string, unknown> = {
     canvas: { width, height },
     setTransform: (..._a: unknown[]) => { calls.push("setTransform"); },
     clearRect: (..._a: unknown[]) => { calls.push("clearRect"); },
     strokeRect: (..._a: unknown[]) => { calls.push("strokeRect"); },
     fillRect: (..._a: unknown[]) => { calls.push("fillRect"); },
+    save: record("save"),
+    restore: record("restore"),
+    translate: record("translate"),
+    rotate: record("rotate"),
     lineWidth: 0,
     strokeStyle: "",
     fillStyle: "",
   };
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls, xform };
 }
 
 describe("drawOverlay smoke test", () => {
@@ -139,5 +193,43 @@ describe("drawOverlay smoke test", () => {
 
   it("HANDLE_SIZE is exported and used to size the handle squares (8px, constant regardless of zoom)", () => {
     expect(HANDLE_SIZE).toBe(8);
+  });
+
+  it("turns the whole selection frame -- border AND handles -- with the node's rotation", () => {
+    const s = emptyScene("d", "n");
+    // box (0,0) 100x50 -> centro schermo (50, 25) a camera identità
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    const { ctx, calls, xform } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], null);
+
+    expect(xform.map((e) => e.op)).toEqual(["save", "translate", "rotate", "translate", "restore"]);
+    expect(xform[1].args).toEqual([50, 25]);
+    expect(xform[2].args[0]).toBeCloseTo(Math.PI / 2, 12);
+    expect(xform[3].args).toEqual([-50, -25]);
+    // il riquadro e le 8 maniglie si disegnano come sempre: a ruotare è il
+    // contesto, non la loro geometria
+    expect(calls.filter((c) => c === "fillRect")).toHaveLength(8);
+    expect(calls.filter((c) => c === "strokeRect")).toHaveLength(9);
+    // e la trasformazione è chiusa PRIMA di ogni altra cosa
+    expect(calls.indexOf("restore")).toBeGreaterThan(calls.lastIndexOf("strokeRect"));
+  });
+
+  it("leaves the marquee out of the rotation", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    const { ctx, calls } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], { x: 200, y: 200, width: 20, height: 20 });
+    // le ultime due chiamate di disegno (fill + stroke del marquee) stanno DOPO
+    // il restore: il rettangolo di selezione è sempre asse-allineato
+    expect(calls.lastIndexOf("fillRect")).toBeGreaterThan(calls.indexOf("restore"));
+    expect(calls.lastIndexOf("strokeRect")).toBeGreaterThan(calls.indexOf("restore"));
+  });
+
+  it("emits no transform for an unrotated selection", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = rect("a", 0, 0);
+    const { ctx, xform } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], null);
+    expect(xform).toEqual([]);
   });
 });

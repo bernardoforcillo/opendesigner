@@ -148,6 +148,14 @@ describe("selectTool", () => {
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 50, height: 50 })).toEqual([]);
     });
 
+    it("measures a rotated node by what it really occupies, not by its unrotated box", () => {
+      // 100x50 a 90°: il box fermo è y in [0,50], ma il nodo occupa y in [-25,75].
+      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+        turned: node("turned", 0, "a000000", { width: 100, height: 50, rotation: 90 }),
+      } };
+      expect(nodesInMarquee(scene, { x: 20, y: 60, width: 10, height: 10 })).toEqual(["turned"]);
+    });
+
     it("excludes invisible nodes even when their bounds intersect", () => {
       const scene = { ...emptyScene("doc-1", "u"), nodes: {
         hidden: node("hidden", 5, "a000000", { visible: false }),
@@ -529,6 +537,216 @@ describe("selectTool", () => {
       tool.onPointerMove!(at(400, 400), ctx); // lontano da ogni maniglia iniziale
       expect(cursor()).toBe("nwse-resize");
       tool.onPointerUp!(at(400, 400), ctx);
+    });
+  });
+
+  // --- rotazione -------------------------------------------------------------
+  // La zona di presa della rotazione è l'anello appena FUORI da ogni angolo
+  // (selection/handles.ts). Con "a" (0,0,50,50) selezionato il centro è (25,25)
+  // e l'angolo se sta a (50,50): (58,58) cade nella zona, a 45° dal centro.
+  // Il punto d'arrivo dei test è quello di partenza ruotato di 90° attorno al
+  // centro, così il delta atteso è esattamente un quarto di giro.
+
+  describe("rotating from the corner zones", () => {
+    const rotationOf = (id: string) => useScene.getState().scene!.nodes[id].rotation;
+
+    it("dragging outside a corner rotates the node about its centre: one gesture, one op", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(58, 58), ctx);   // zona di rotazione dell'angolo se
+      expect(useScene.getState().selection).toEqual(["a"]); // niente marquee, niente deselezione
+      tool.onPointerMove!(at(-8, 58), ctx);   // stesso raggio, +90°
+      expect(rotationOf("a")).toBeCloseTo(90, 9);
+      expect(sync.sent).toHaveLength(0);      // anteprima locale, niente sul filo
+
+      tool.onPointerUp!(at(-8, 58), ctx);
+      expect(sync.sent).toHaveLength(1);
+      expect(sync.sent[0].kind.case).toBe("setProps");
+      expect(rotationOf("a")).toBeCloseTo(90, 9);
+      // il nodo NON si sposta: ruota attorno al proprio centro
+      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
+    });
+
+    it("undoes in ONE step", () => {
+      useScene.getState().setSelection(["a"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(58, 58), ctx);
+      tool.onPointerMove!(at(20, 60), ctx);
+      tool.onPointerMove!(at(-8, 58), ctx);
+      tool.onPointerUp!(at(-8, 58), ctx);
+      expect(rotationOf("a")).toBeCloseTo(90, 9);
+
+      useScene.getState().undo();
+      expect(rotationOf("a")).toBe(0);
+    });
+
+    it("shift snaps the angle to 15 degrees", () => {
+      useScene.getState().setSelection(["a"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      // partenza a 45°, arrivo a 100°: delta 55° -> scatta a 60°
+      const a = (100 * Math.PI) / 180;
+      const to = at(25 + 40 * Math.cos(a), 25 + 40 * Math.sin(a), true);
+      tool.onPointerDown!(at(58, 58, true), ctx);
+      tool.onPointerMove!(to, ctx);
+      expect(rotationOf("a")).toBeCloseTo(60, 9);
+      tool.onPointerUp!(to, ctx);
+      expect(rotationOf("a")).toBeCloseTo(60, 9);
+    });
+
+    it("keeps the angle in [0, 360) instead of piling up turns", () => {
+      useScene.getState().setSelection(["a"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(58, 58), ctx);
+      tool.onPointerMove!(at(58, -8), ctx); // -90°
+      tool.onPointerUp!(at(58, -8), ctx);
+      expect(rotationOf("a")).toBeCloseTo(270, 9);
+    });
+
+    it("rotates a MULTIPLE selection rigidly about the group centre", () => {
+      // gruppo (0,0,150,50), centro (75,25); angolo se a (150,50)
+      useScene.getState().setSelection(["a", "b"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(158, 58), ctx);
+      tool.onPointerMove!(at(42, 108), ctx); // il punto di prima ruotato di +90°
+      tool.onPointerUp!(at(42, 108), ctx);
+
+      expect(sync.sent).toHaveLength(2); // un op per nodo, un gesto solo
+      const a = useScene.getState().scene!.nodes["a"];
+      const b = useScene.getState().scene!.nodes["b"];
+      expect(a.rotation).toBeCloseTo(90, 9);
+      expect(b.rotation).toBeCloseTo(90, 9);
+      // i centri girano attorno a quello di gruppo: a (25,25) -> (75,-25), b (125,25) -> (75,75)
+      expect(a.x).toBeCloseTo(50, 9);
+      expect(a.y).toBeCloseTo(-50, 9);
+      expect(b.x).toBeCloseTo(50, 9);
+      expect(b.y).toBeCloseTo(50, 9);
+    });
+
+    it("a click on the rotate zone without moving sends nothing", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(58, 58), ctx);
+      tool.onPointerUp!(at(58, 58), ctx);
+      expect(sync.sent).toHaveLength(0);
+      expect(rotationOf("a")).toBe(0);
+    });
+
+    it("Esc during a rotation restores the original angle and sends nothing", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(58, 58), ctx);
+      tool.onPointerMove!(at(-8, 58), ctx);
+      expect(rotationOf("a")).toBeCloseTo(90, 9);
+
+      tool.onKeyDown!({ key: "Escape" } as KeyboardEvent, ctx);
+      expect(rotationOf("a")).toBe(0);
+      expect(sync.sent).toHaveLength(0);
+
+      tool.onPointerUp!(at(-8, 58), ctx);
+      expect(sync.sent).toHaveLength(0);
+    });
+
+    it("onDeactivate abandons an in-progress rotation", () => {
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(58, 58), ctx);
+      tool.onPointerMove!(at(-8, 58), ctx);
+      tool.onDeactivate!(ctx);
+      expect(rotationOf("a")).toBe(0);
+      expect(sync.sent).toHaveLength(0);
+    });
+
+    it("the cursor announces the rotate zone, and holds through the drag", () => {
+      useScene.getState().setSelection(["a"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      const cursor = () => (ctx.canvas as unknown as { style: { cursor: string } }).style.cursor;
+
+      tool.onPointerMove!(at(58, 58), ctx); // hover appena fuori dall'angolo
+      expect(cursor()).toBe("grab");
+      tool.onPointerMove!(at(50, 50), ctx); // sull'angolo: è il resize a vincere
+      expect(cursor()).toBe("nwse-resize");
+
+      tool.onPointerDown!(at(58, 58), ctx);
+      tool.onPointerMove!(at(-8, 58), ctx);
+      expect(cursor()).toBe("grabbing");
+      tool.onPointerUp!(at(-8, 58), ctx);
+    });
+  });
+
+  // --- resize di un nodo GIÀ ruotato -----------------------------------------
+
+  describe("resizing a rotated node", () => {
+    function selectRotated(deg: number) {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: { a: node("a", 0, "a000000", { rotation: deg }) },
+      });
+      useScene.getState().setSelection(["a"]);
+      useScene.getState().setSync(new FakeSync());
+    }
+
+    it("widens along the node's OWN axis: the e handle follows a vertical drag at 90 degrees", () => {
+      selectRotated(90);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      // il nodo è (0,0,50,50) a 90°: la maniglia e sta a (25,50), non a (50,25)
+      tool.onPointerDown!(at(25, 50), ctx);
+      tool.onPointerMove!(at(25, 70), ctx); // 20px in GIÙ = 20px lungo il suo asse x
+      tool.onPointerUp!(at(25, 70), ctx);
+
+      const a = useScene.getState().scene!.nodes["a"];
+      expect(a.width).toBeCloseTo(70, 9);
+      expect(a.height).toBeCloseTo(50, 9);
+      // il lato ancorato resta inchiodato nel MONDO: il box scivola per compensare
+      expect(a.x).toBeCloseTo(-10, 9);
+      expect(a.y).toBeCloseTo(10, 9);
+      expect(a.rotation).toBe(90); // il resize non tocca l'angolo
+    });
+
+    it("ignores the drag across that axis", () => {
+      selectRotated(90);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(25, 50), ctx);
+      tool.onPointerMove!(at(45, 50), ctx); // 20px a DESTRA: trasversale
+      tool.onPointerUp!(at(45, 50), ctx);
+
+      const a = useScene.getState().scene!.nodes["a"];
+      expect(a.width).toBeCloseTo(50, 9);
+      expect(a.height).toBeCloseTo(50, 9);
     });
   });
 

@@ -1,7 +1,9 @@
 import type { SceneState, NodeLite } from "../store/types";
 import type { Camera } from "../canvas/camera";
-import { nodePath, hitTestNode } from "./shapes";
+import { nodePath, hitTestNode, nodeCenter } from "./shapes";
 import { drawText } from "./text";
+
+const DEG_TO_RAD = Math.PI / 180;
 
 function sortedVisible(state: SceneState): NodeLite[] {
   return Object.values(state.nodes)
@@ -50,13 +52,28 @@ export function drawScene(ctx: CanvasRenderingContext2D, state: SceneState, cam:
     // quindi un testo con height 0 -- un nodo appena creato -- deve comunque
     // disegnarsi. Una forma degenere invece non ha niente da riempire.
     if (n.kind !== "text" && (n.width <= 0 || n.height <= 0)) continue;
+    // ROTAZIONE: attorno al CENTRO del box del nodo (nodeCenter, la stessa
+    // funzione che usa l'hit-test per andare nel verso opposto -- vedi
+    // canvas/transform.ts per la convenzione). È il CONTESTO a ruotare, non la
+    // geometria: nodePath e drawText continuano a disegnare alle coordinate
+    // mondo del modello, che restano asse-allineate.
+    //
+    // save/restore SOLO quando serve davvero: una scena ferma non deve pagare
+    // due chiamate per nodo per frame, e i nodi non ruotati devono attraversare
+    // esattamente lo stesso codice di prima.
+    const rotated = n.rotation % 360 !== 0;
+    if (rotated) {
+      const c = nodeCenter(n);
+      ctx.save();
+      ctx.translate(c.x, c.y);
+      ctx.rotate(n.rotation * DEG_TO_RAD);
+      ctx.translate(-c.x, -c.y);
+    }
     ctx.globalAlpha = n.opacity;
     ctx.fillStyle = cssColor(n);
-    if (n.kind === "text") {
-      drawText(ctx, n);
-      continue;
-    }
-    ctx.fill(nodePath(n));
+    if (n.kind === "text") drawText(ctx, n);
+    else ctx.fill(nodePath(n));
+    if (rotated) ctx.restore();
   }
   ctx.globalAlpha = 1;
 }

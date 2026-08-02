@@ -1,13 +1,18 @@
 import { hitTest } from "../renderer/canvasRenderer";
-import { normalizeRect, boundsOfNode, boundsIntersect, type Bounds } from "../canvas/geometry";
+import { normalizeRect, boundsOfNode, boundsIntersect, worldAabbOfNode, type Bounds } from "../canvas/geometry";
 import { worldToScreen } from "../canvas/camera";
-import { selectionWorldBounds } from "../renderer/overlayRenderer";
+import { angleOf, centerOf, normalizeDegrees, rotateAround, snapDegrees } from "../canvas/transform";
+import { selectionFrame } from "../renderer/overlayRenderer";
 import {
+  applyFrameResize,
+  cursorForFrameHit,
   cursorForHandle,
-  hitTestHandle,
-  resizeTransform,
-  transformBounds,
+  hitTestFrame,
+  resizeFrame,
+  ROTATING_CURSOR,
+  type FrameHit,
   type HandleId,
+  type SelectionFrame,
 } from "../selection/handles";
 import { useScene } from "../store/store";
 import { makeDeleteOp, makeSetPropsOp } from "./ops";
@@ -40,6 +45,10 @@ const DOUBLE_CLICK_MS = 400;
 // pointer è un DRAG e basta: vedi il commento su pendingTextEdit.
 const DOUBLE_CLICK_SLOP_PX = 3;
 
+// Con Shift premuto la rotazione scatta a multipli di 15° (la convenzione degli
+// editor di design: 15 divide 45, 90 e 360).
+const ROTATE_SNAP_DEG = 15;
+
 // Il cursore vive sul DOM del canvas (come fa toolManager quando cambia tool).
 // Duck-typing su style: nei test ctx.canvas è un doppio, non un HTMLCanvasElement.
 function setCursor(ctx: ToolContext, cursor: string): void {
@@ -52,14 +61,22 @@ function setCursor(ctx: ToolContext, cursor: string): void {
 // canvas/camera.ts, mai ricalcolando la trasformazione a mano. Il round-trip
 // world -> screen è l'inverso esatto di toWorld, quindi non serve conoscere il
 // rettangolo del canvas qui.
-function handleUnderPointer(ctx: ToolContext, world: { x: number; y: number }): HandleId | null {
-  const scene = ctx.getScene();
-  if (!scene) return null;
-  const box = selectionWorldBounds(scene, useScene.getState().selection);
-  if (!box) return null;
+//
+// Ritorna il colpo COMPLETO dell'overlay: una delle 8 maniglie di resize
+// oppure una delle 4 zone di rotazione appena fuori dagli angoli (l'ordine di
+// precedenza sta in selection/handles.ts::hitTestFrame).
+function frameUnderPointer(ctx: ToolContext, world: { x: number; y: number }): FrameHit | null {
+  const frame = frameOfSelection(ctx);
+  if (!frame) return null;
   const cam = ctx.getCamera();
   const p = worldToScreen(cam, world.x, world.y);
-  return hitTestHandle(box, cam, p.x, p.y);
+  return hitTestFrame(frame, cam, p.x, p.y);
+}
+
+function frameOfSelection(ctx: ToolContext): SelectionFrame | null {
+  const scene = ctx.getScene();
+  if (!scene) return null;
+  return selectionFrame(scene, useScene.getState().selection);
 }
 
 export type PickResult =
@@ -90,7 +107,9 @@ export function pickTarget(
 // l'ordine di inserimento per chiavi stringa).
 export function nodesInMarquee(scene: SceneState, bounds: Bounds): string[] {
   return Object.values(scene.nodes)
-    .filter((n) => n.visible && boundsIntersect(boundsOfNode(n), bounds))
+    // worldAabbOfNode e non boundsOfNode: di un nodo RUOTATO conta quello che
+    // occupa davvero, non il rettangolo che il modello tiene in x/y/w/h.
+    .filter((n) => n.visible && boundsIntersect(worldAabbOfNode(n), bounds))
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0))
     .map((n) => n.id);
 }
@@ -121,9 +140,30 @@ export function createSelectTool(): Tool {
   // selezione multipla scala (e si specchia) in blocco.
   let resizeHandle: HandleId | null = null;
   let resizeAnchor: { x: number; y: number } | null = null;
-  let resizeStartBox: Bounds | null = null;
+  let resizeStartFrame: SelectionFrame | null = null;
   let resizeStartNodes: Record<string, Bounds> | null = null;
   let resizeStarted = false;
+
+  // --- rotazione dalle zone d'angolo ------------------------------------------
+  // Stessa forma degli altri due gesti (ancora + stato iniziale + apertura
+  // PIGRA del gesto al primo move vero). L'ancora qui è ANGOLARE: l'angolo del
+  // raggio centro->puntatore a pointerdown, da cui si misura il delta.
+  //
+  // rotateCenter è il centro del FRAME, che per una selezione multipla non è il
+  // centro di nessun nodo: i nodi ruotano attorno a quello (i loro centri si
+  // spostano) e ciascuno gira anche su sé stesso dello stesso delta -- cioè la
+  // selezione ruota come un CORPO RIGIDO.
+  let rotateCenter: { x: number; y: number } | null = null;
+  let rotateStartAngle = 0;
+  // L'angolo di riferimento a cui si applica lo scatto con Shift: quello del
+  // PRIMO nodo selezionato. Scattare l'angolo di ciascun nodo separatamente
+  // spezzerebbe la rigidità del gruppo (nodi con angoli iniziali diversi
+  // convergerebbero); scattare il DELTA di un nodo solo non darebbe mai un
+  // angolo tondo. Si scatta il totale del riferimento e si usa il delta che ne
+  // risulta per tutti.
+  let rotateRef = 0;
+  let rotateStartNodes: Record<string, { bounds: Bounds; rotation: number }> | null = null;
+  let rotateStarted = false;
 
   // --- marquee ---------------------------------------------------------------
   let marqueeAnchor: { x: number; y: number } | null = null;
@@ -155,27 +195,61 @@ export function createSelectTool(): Tool {
   function resetResize() {
     resizeHandle = null;
     resizeAnchor = null;
-    resizeStartBox = null;
+    resizeStartFrame = null;
     resizeStartNodes = null;
     resizeStarted = false;
+  }
+
+  function resetRotate() {
+    rotateCenter = null;
+    rotateStartAngle = 0;
+    rotateRef = 0;
+    rotateStartNodes = null;
+    rotateStarted = false;
   }
 
   // Gli op del resize per la posizione corrente del puntatore, ricalcolati
   // SEMPRE dai bounds iniziali (mai dal delta dell'ultimo move): niente
   // accumulo di errori, e l'op finale è identico all'ultima anteprima.
   function resizeOps(e: PointerEvent, ctx: ToolContext): Op[] {
-    if (!resizeHandle || !resizeAnchor || !resizeStartBox || !resizeStartNodes) return [];
+    if (!resizeHandle || !resizeAnchor || !resizeStartFrame || !resizeStartNodes) return [];
     const world = ctx.toWorld(e);
-    const t = resizeTransform(
-      resizeStartBox,
+    // resizeFrame porta il delta del puntatore nello spazio LOCALE del frame
+    // (così la maniglia e allarga il nodo lungo il SUO asse, comunque sia
+    // girato) e calcola l'offset che tiene l'ancora ferma nel MONDO. La
+    // matematica del resize -- flip e keepAspect compresi -- resta quella di
+    // resizeTransform, invariata: qui la si avvolge, non la si riscrive.
+    const r = resizeFrame(
+      resizeStartFrame,
       resizeHandle,
       world.x - resizeAnchor.x,
       world.y - resizeAnchor.y,
       { keepAspect: e.shiftKey },
     );
-    return Object.entries(resizeStartNodes).map(([id, start]) => {
-      const b = transformBounds(start, t);
-      return makeSetPropsOp(id, b, ["x", "y", "width", "height"]);
+    return Object.entries(resizeStartNodes).map(([id, start]) =>
+      makeSetPropsOp(id, applyFrameResize(start, r), ["x", "y", "width", "height"]));
+  }
+
+  // Gli op della rotazione per la posizione corrente del puntatore. Come il
+  // resize: SEMPRE ricalcolati dallo stato iniziale, mai dall'ultimo delta.
+  function rotateOps(e: PointerEvent, ctx: ToolContext): Op[] {
+    if (!rotateCenter || !rotateStartNodes) return [];
+    const world = ctx.toWorld(e);
+    const raw = angleOf(rotateCenter, world) - rotateStartAngle;
+    // Con Shift lo scatto è sul TOTALE del riferimento, non sul delta: si
+    // ottiene un angolo tondo (0, 15, 30...) invece di uno spostamento tondo a
+    // partire da un angolo qualsiasi.
+    const delta = e.shiftKey ? snapDegrees(rotateRef + raw, ROTATE_SNAP_DEG) - rotateRef : raw;
+    return Object.entries(rotateStartNodes).map(([id, start]) => {
+      // Il centro del nodo gira attorno a quello del frame (per una selezione
+      // singola i due coincidono e questo è l'identità esatta), e il nodo gira
+      // su sé stesso dello stesso delta: insieme, una rotazione rigida.
+      const c = rotateAround(centerOf(start.bounds), rotateCenter!, delta);
+      return makeSetPropsOp(id, {
+        x: c.x - start.bounds.width / 2,
+        y: c.y - start.bounds.height / 2,
+        rotation: normalizeDegrees(start.rotation + delta),
+      }, ["x", "y", "rotation"]);
     });
   }
 
@@ -215,6 +289,10 @@ export function createSelectTool(): Tool {
       if (resizeStarted) useScene.getState().cancelGesture();
       resetResize();
     }
+    if (rotateCenter) {
+      if (rotateStarted) useScene.getState().cancelGesture();
+      resetRotate();
+    }
   }
 
   return {
@@ -235,20 +313,41 @@ export function createSelectTool(): Tool {
       // cade dentro (o sul bordo di) il rettangolo stesso, e quelle esterne
       // cadono sul vuoto -- senza priorità un pointerdown lì lo sposterebbe o
       // farebbe partire un marquee azzerando la selezione.
-      const handle = handleUnderPointer(ctx, world);
-      if (handle) {
+      const overlay = frameUnderPointer(ctx, world);
+      if (overlay?.kind === "resize") {
         const start: Record<string, Bounds> = {};
         for (const sid of store.selection) {
           const n = scene.nodes[sid];
           if (n) start[sid] = boundsOfNode(n);
         }
-        resizeHandle = handle;
+        resizeHandle = overlay.handle;
         resizeAnchor = world;
-        resizeStartBox = selectionWorldBounds(scene, store.selection);
+        resizeStartFrame = frameOfSelection(ctx);
         resizeStartNodes = start;
         resizeStarted = false;
-        setCursor(ctx, cursorForHandle(handle));
+        setCursor(ctx, cursorForHandle(overlay.handle));
         return;
+      }
+      // La ROTAZIONE, dalla zona appena fuori dall'angolo. Ha la stessa
+      // priorità delle maniglie sul nodo sotto il puntatore (in realtà cade
+      // sempre sul vuoto attorno alla selezione: senza questo ramo un
+      // pointerdown lì aprirebbe un marquee azzerando la selezione).
+      if (overlay?.kind === "rotate") {
+        const frame = frameOfSelection(ctx);
+        if (frame) {
+          const start: Record<string, { bounds: Bounds; rotation: number }> = {};
+          for (const sid of store.selection) {
+            const n = scene.nodes[sid];
+            if (n) start[sid] = { bounds: boundsOfNode(n), rotation: n.rotation };
+          }
+          rotateCenter = centerOf(frame.bounds);
+          rotateStartAngle = angleOf(rotateCenter, world);
+          rotateRef = scene.nodes[store.selection[0]]?.rotation ?? 0;
+          rotateStartNodes = start;
+          rotateStarted = false;
+          setCursor(ctx, ROTATING_CURSOR);
+          return;
+        }
       }
 
       // Doppio click su un nodo TESTO: entra in editing invece di iniziare un
@@ -311,6 +410,15 @@ export function createSelectTool(): Tool {
     },
 
     onPointerMove(e, ctx) {
+      if (rotateCenter) {
+        setCursor(ctx, ROTATING_CURSOR);
+        if (!rotateStarted) {
+          rotateStarted = true;
+          useScene.getState().beginGesture();
+        }
+        for (const op of rotateOps(e, ctx)) useScene.getState().applyLocal(op);
+        return;
+      }
       if (resizeHandle) {
         // Il cursore resta quello della maniglia afferrata per tutto il drag,
         // anche quando il puntatore si allontana da dove stava la maniglia.
@@ -328,10 +436,11 @@ export function createSelectTool(): Tool {
         return;
       }
       if (!dragAnchor || !dragStart) {
-        // Nessun gesto in corso: è un semplice hover. Il cursore anticipa la
-        // maniglia afferrabile sotto il puntatore (step 4 del brief).
-        const hover = handleUnderPointer(ctx, ctx.toWorld(e));
-        setCursor(ctx, hover ? cursorForHandle(hover) : DEFAULT_CURSOR);
+        // Nessun gesto in corso: è un semplice hover. Il cursore anticipa quel
+        // che si può afferrare sotto il puntatore -- maniglia di resize o zona
+        // di rotazione (step 4 del brief, esteso alla rotazione).
+        const hover = frameUnderPointer(ctx, ctx.toWorld(e));
+        setCursor(ctx, hover ? cursorForFrameHit(hover) : DEFAULT_CURSOR);
         return;
       }
       if (pendingTextEdit) {
@@ -357,6 +466,11 @@ export function createSelectTool(): Tool {
     },
 
     onPointerUp(e, ctx) {
+      if (rotateCenter) {
+        if (rotateStarted) useScene.getState().endGesture(rotateOps(e, ctx));
+        resetRotate();
+        return;
+      }
       if (resizeHandle) {
         if (resizeStarted) useScene.getState().endGesture(resizeOps(e, ctx));
         resetResize();

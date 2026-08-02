@@ -1,7 +1,13 @@
-import type { Camera } from "../canvas/camera";
+import { type Camera, worldToScreen } from "../canvas/camera";
 import { type Bounds, inflateBounds, pointInBounds, worldBoundsToScreen } from "../canvas/geometry";
+import { centerOf, localToWorld, rotateAround, rotateVector, type Point } from "../canvas/transform";
 
 export type HandleId = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
+
+// Le sole 4 maniglie che portano anche una zona di ROTAZIONE (la convenzione
+// degli editor: si ruota dagli angoli, non dai lati).
+export type CornerId = "nw" | "ne" | "se" | "sw";
+export const CORNER_IDS: readonly CornerId[] = ["nw", "ne", "se", "sw"];
 
 // Lato (px SCHERMO) del quadratino disegnato dall'overlay.
 export const HANDLE_SIZE = 8;
@@ -77,6 +83,102 @@ export function hitTestHandle(b: Bounds, cam: Camera, sx: number, sy: number): H
   const rects = handleScreenRects(b, cam);
   for (const id of HANDLE_IDS) {
     if (pointInBounds(inflateBounds(rects[id], HANDLE_GRAB_PADDING), sx, sy)) return id;
+  }
+  return null;
+}
+
+// ---------------------------------------------------------------------------
+// FRAME: il bbox della selezione PIÙ la sua rotazione
+// ---------------------------------------------------------------------------
+//
+// Tutto ciò che sta sopra ragiona su un rettangolo asse-allineato, ed è giusto
+// così: il resize (flip e keepAspect compresi) è definito in quello spazio, ed
+// è già testato lì. La rotazione non lo riscrive, lo AVVOLGE -- il frame è
+// quello stesso rettangolo più un angolo, e ogni funzione qui sotto si limita a
+// portare punti e delta dentro o fuori dallo spazio locale del frame passando
+// SEMPRE da canvas/transform.ts (gradi, orari, attorno al centro del bbox).
+//
+// Un frame con rotation 0 attraversa esattamente il codice di prima, numero per
+// numero: rotateVector/rotateAround riconoscono l'angolo nullo e restituiscono
+// le coordinate identiche, e l'offset qui sotto vale 0.
+
+export interface SelectionFrame {
+  bounds: Bounds;
+  // Gradi, orari, attorno al CENTRO di `bounds`.
+  rotation: number;
+}
+
+export type FrameHit =
+  | { kind: "resize"; handle: HandleId }
+  | { kind: "rotate"; corner: CornerId };
+
+// Lato (px SCHERMO) del quadrato di presa della rotazione, centrato sull'angolo.
+// Più grande dell'area di presa del resize apposta: la parte che avanza è
+// l'anello ESTERNO all'angolo, che è tutto ciò che la rotazione occupa (vedi
+// hitTestFrame). 22 lascia ~5px di anello per lato oltre i 12 del resize.
+export const ROTATE_GRAB_SIZE = 22;
+
+// Il CSS non ha un cursore "ruota": "grab"/"grabbing" è la coppia più vicina al
+// gesto (afferrare l'angolo e girarlo) e non finge un'operazione diversa, come
+// farebbe "crosshair".
+export const ROTATE_CURSOR = "grab";
+export const ROTATING_CURSOR = "grabbing";
+
+export function cursorForFrameHit(hit: FrameHit): string {
+  return hit.kind === "rotate" ? ROTATE_CURSOR : cursorForHandle(hit.handle);
+}
+
+export function frameCenter(f: SelectionFrame): Point {
+  return centerOf(f.bounds);
+}
+
+// Centri delle 8 maniglie in coordinate MONDO, rotazione inclusa.
+export function handleWorldPoints(f: SelectionFrame): Record<HandleId, Point> {
+  const c = centerOf(f.bounds);
+  const flat = handlePositions(f.bounds);
+  const out = {} as Record<HandleId, Point>;
+  for (const id of HANDLE_IDS) out[id] = localToWorld(flat[id], c, f.rotation);
+  return out;
+}
+
+// Gli stessi centri in px SCHERMO: è dove l'overlay disegna i quadratini (che
+// restano di HANDLE_SIZE px a ogni zoom, vedi handleScreenRects).
+export function handleScreenPoints(f: SelectionFrame, cam: Camera): Record<HandleId, Point> {
+  const world = handleWorldPoints(f);
+  const out = {} as Record<HandleId, Point>;
+  for (const id of HANDLE_IDS) out[id] = worldToScreen(cam, world[id].x, world[id].y);
+  return out;
+}
+
+// Il punto schermo riportato nello spazio schermo NON ruotato del frame: da lì
+// in poi valgono tutte le funzioni asse-allineate qui sopra. La camera è una
+// similitudine (scala uniforme + traslazione), quindi la rotazione del mondo è
+// la STESSA rotazione sullo schermo -- basta girare attorno al centro del frame
+// convertito in px schermo.
+function unrotateScreenPoint(f: SelectionFrame, cam: Camera, sx: number, sy: number): Point {
+  if (f.rotation % 360 === 0) return { x: sx, y: sy };
+  const c = centerOf(f.bounds);
+  const screenCenter = worldToScreen(cam, c.x, c.y);
+  return rotateAround({ x: sx, y: sy }, screenCenter, -f.rotation);
+}
+
+// L'hit-test COMPLETO dell'overlay: prima le 8 maniglie di resize, poi le 4
+// zone di rotazione. In quest'ordine perché la zona di rotazione contiene
+// l'angolo, e sull'angolo l'utente vuole ridimensionare.
+//
+// La zona di rotazione è quel che resta di un quadrato ROTATE_GRAB_SIZE
+// centrato sull'angolo una volta tolto tutto ciò che sta DENTRO il riquadro di
+// selezione: si ruota afferrando appena FUORI dall'angolo, e un click dentro la
+// forma resta un click sulla forma (spostamento) come è sempre stato.
+export function hitTestFrame(f: SelectionFrame, cam: Camera, sx: number, sy: number): FrameHit | null {
+  const p = unrotateScreenPoint(f, cam, sx, sy);
+  const handle = hitTestHandle(f.bounds, cam, p.x, p.y);
+  if (handle) return { kind: "resize", handle };
+  if (pointInBounds(worldBoundsToScreen(f.bounds, cam), p.x, p.y)) return null;
+  const rects = handleScreenRects(f.bounds, cam);
+  const pad = (ROTATE_GRAB_SIZE - HANDLE_SIZE) / 2;
+  for (const id of CORNER_IDS) {
+    if (pointInBounds(inflateBounds(rects[id], pad), p.x, p.y)) return { kind: "rotate", corner: id };
   }
   return null;
 }
@@ -196,4 +298,65 @@ export function resizeBounds(
   opts?: { keepAspect?: boolean },
 ): Bounds {
   return transformBounds(start, resizeTransform(start, h, dxWorld, dyWorld, opts));
+}
+
+// Il resize di un frame RUOTATO. Due sole aggiunte a resizeTransform, che resta
+// intatta (flip e keepAspect sono già suoi, e già testati):
+//
+//  1. il delta del puntatore entra nello spazio LOCALE del frame, così la
+//     maniglia e allarga il nodo lungo il SUO asse x -- che sullo schermo può
+//     puntare in qualunque direzione -- e ignora la componente trasversale;
+//  2. un OFFSET che rimette a posto l'ancora. resizeTransform tiene fermo il
+//     bordo opposto alla maniglia in coordinate LOCALI, ma il nodo ruota
+//     attorno al proprio CENTRO, e il resize sposta quel centro: senza
+//     correzione il nodo scivolerebbe via mentre lo si ridimensiona.
+//
+//     Detti c e c' il centro prima e dopo, il punto d'ancora A finisce da
+//     c + R(A − c) a c' + R(A − c'), quindi la correzione è
+//         (c + R(A − c)) − (c' + R(A − c')) = (c − c') − R(c − c')
+//     che non dipende da A: una sola traslazione per TUTTI i nodi del frame.
+export interface FrameResize {
+  transform: ResizeTransform;
+  offsetX: number;
+  offsetY: number;
+}
+
+export function resizeFrame(
+  f: SelectionFrame,
+  h: HandleId,
+  dxWorld: number,
+  dyWorld: number,
+  opts?: { keepAspect?: boolean },
+): FrameResize {
+  const d = rotateVector({ x: dxWorld, y: dyWorld }, -f.rotation);
+  const transform = resizeTransform(f.bounds, h, d.x, d.y, opts);
+  const c = centerOf(f.bounds);
+  const after = centerOf(transformBounds(f.bounds, transform));
+  const dc = { x: c.x - after.x, y: c.y - after.y };
+  const rdc = rotateVector(dc, f.rotation);
+  return { transform, offsetX: dc.x - rdc.x, offsetY: dc.y - rdc.y };
+}
+
+// Applica al bbox di UN nodo la trasformazione di frame calcolata sopra. Il
+// ramo senza offset non è un'ottimizzazione: è la garanzia che un frame non
+// ruotato restituisca gli stessi identici numeri di transformBounds (un +0 su
+// un -0 non è un no-op, e i test sul resize confrontano numeri esatti).
+export function applyFrameResize(b: Bounds, r: FrameResize): Bounds {
+  const out = transformBounds(b, r.transform);
+  if (r.offsetX === 0 && r.offsetY === 0) return out;
+  return { x: out.x + r.offsetX, y: out.y + r.offsetY, width: out.width, height: out.height };
+}
+
+// Il caso "un nodo solo", per intero: comodo ai test e ai chiamanti che non
+// hanno una selezione multipla da mappare.
+export function resizeRotatedBounds(
+  start: Bounds,
+  rotation: number,
+  h: HandleId,
+  dxWorld: number,
+  dyWorld: number,
+  opts?: { keepAspect?: boolean },
+): Bounds {
+  const f: SelectionFrame = { bounds: start, rotation };
+  return applyFrameResize(start, resizeFrame(f, h, dxWorld, dyWorld, opts));
 }

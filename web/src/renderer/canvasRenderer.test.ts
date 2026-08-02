@@ -60,16 +60,25 @@ function textNode(over: Partial<NodeLite> = {}): NodeLite {
 function fakeCtx() {
   const fillText: { text: string; x: number; y: number }[] = [];
   const fills: unknown[] = [];
+  // Le chiamate che compongono la trasformazione di un nodo RUOTATO, in ordine:
+  // drawScene le emette solo attorno ai nodi con rotation != 0 (vedi il
+  // commento lì), quindi una scena ferma deve lasciare questa lista vuota.
+  const xform: { op: string; args: number[] }[] = [];
+  const record = (op: string) => (...args: number[]) => { xform.push({ op, args }); };
   const ctx = {
     canvas: { width: 800, height: 600 },
     font: "", textBaseline: "", textAlign: "", fillStyle: "", globalAlpha: 1,
     setTransform: () => {},
     clearRect: () => {},
+    save: record("save"),
+    restore: record("restore"),
+    translate: record("translate"),
+    rotate: record("rotate"),
     measureText: (s: string) => ({ width: s.length * 10 }),
     fillText: (t: string, x: number, y: number) => { fillText.push({ text: t, x, y }); },
     fill: (p: unknown) => { fills.push(p); },
   };
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, fillText, fills };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, fillText, fills, xform };
 }
 
 describe("drawScene", () => {
@@ -99,6 +108,36 @@ describe("drawScene", () => {
     const f = fakeCtx();
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
     expect(f.fillText).toEqual([]);
+  });
+
+  // --- rotazione ------------------------------------------------------------
+  // Il nodo si disegna sempre col suo path NON ruotato: a ruotare è il
+  // CONTESTO, attorno al CENTRO del box (la convenzione di canvas/transform.ts).
+
+  it("rotates a node about the CENTRE of its box, and undoes the transform after", () => {
+    const s = emptyScene("d", "n");
+    // box (10,20) 200x40 -> centro (110, 40)
+    s.nodes["t"] = textNode({ rotation: 90 });
+    const f = fakeCtx();
+    drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+
+    expect(f.xform.map((e) => e.op)).toEqual(["save", "translate", "rotate", "translate", "restore"]);
+    expect(f.xform[1].args).toEqual([110, 40]);
+    expect(f.xform[2].args[0]).toBeCloseTo(Math.PI / 2, 12); // gradi -> radianti
+    expect(f.xform[3].args).toEqual([-110, -40]);
+    // e il nodo viene comunque disegnato, alle sue coordinate di sempre
+    expect(f.fillText.map((c) => c.text)).toEqual(["hi"]);
+  });
+
+  it("emits no transform at all for an unrotated scene", () => {
+    // Solo testo: nodePath (e quindi Path2D, che qui non esiste) non entra in
+    // gioco -- stessa ragione per cui lo evitano i test qui sopra.
+    const s = emptyScene("d", "n");
+    s.nodes["t"] = textNode();
+    s.nodes["u"] = textNode({ id: "u", orderKey: "a2", rotation: 0 });
+    const f = fakeCtx();
+    drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+    expect(f.xform).toEqual([]);
   });
 });
 

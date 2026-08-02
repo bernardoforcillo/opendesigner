@@ -1,8 +1,23 @@
 import type { NodeLite } from "../store/types";
+import { boundsOfNode } from "../canvas/geometry";
+import { centerOf, worldToLocal, type Point } from "../canvas/transform";
 import { lineHeightOf } from "./text";
+
+// Il centro attorno a cui il nodo RUOTA: il centro del suo box NON ruotato.
+// Una funzione sola, usata dal renderer (che ci applica ctx.rotate) e
+// dall'hit-test (che ci applica la rotazione inversa): la convenzione di
+// canvas/transform.ts vale solo se i due la leggono dallo stesso posto.
+export function nodeCenter(n: NodeLite): Point {
+  return centerOf(boundsOfNode(n));
+}
 
 // Costruisce il Path2D del nodo in coordinate mondo (nessuna trasformazione
 // camera qui: la camera è applicata dal chiamante via ctx.setTransform).
+//
+// Il path è quello NON ruotato: la rotazione è una trasformazione del contesto
+// (drawScene la applica attorno a nodeCenter), non una geometria diversa --
+// così il path resta lo stesso oggetto per qualunque angolo e l'hit-test può
+// specchiarla portando il punto nello spazio locale.
 export function nodePath(n: NodeLite): Path2D {
   const path = new Path2D();
   if (n.kind === "ellipse") {
@@ -23,7 +38,17 @@ export function nodePath(n: NodeLite): Path2D {
 // rect: AABB inclusivo dei bordi. ellisse: equazione normalizzata
 // ((wx-cx)/rx)^2 + ((wy-cy)/ry)^2 <= 1, che è il test corretto (l'AABB
 // dell'ellisse include gli angoli, che sono fuori dall'ellisse stessa).
+// Il punto arriva in coordinate MONDO e viene portato nello spazio LOCALE del
+// nodo (rotazione inversa attorno a nodeCenter) PRIMA di testare la forma: è
+// l'unico modo perché un'ellisse ruotata resti colpita da ellisse invece che
+// dal suo rettangolo contenitore -- lo stesso errore che il test normalizzato
+// qui sotto esiste per evitare, ma introdotto dalla rotazione.
 export function hitTestNode(n: NodeLite, wx: number, wy: number): boolean {
+  const local = worldToLocal({ x: wx, y: wy }, nodeCenter(n), n.rotation);
+  return hitTestLocal(n, local.x, local.y);
+}
+
+function hitTestLocal(n: NodeLite, wx: number, wy: number): boolean {
   // Il guard sulla dimensione NON vale per il testo, esattamente come in
   // drawScene (canvasRenderer.ts): un testo con height 0 -- un nodo appena
   // creato, la cui altezza la produce il layout -- viene disegnato, e ciò che

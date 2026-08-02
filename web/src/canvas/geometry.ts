@@ -1,10 +1,22 @@
 import type { NodeLite } from "../store/types";
 import { type Camera, worldToScreen } from "./camera";
+import { rotatedAabb } from "./transform";
 
 export interface Bounds { x: number; y: number; width: number; height: number }
 
+// I bounds LOCALI del nodo: il rettangolo asse-allineato che il modello tiene
+// in x/y/width/height, PRIMA della rotazione. È lo spazio in cui lavorano il
+// resize e le maniglie (vedi selection/handles.ts).
 export function boundsOfNode(n: NodeLite): Bounds {
   return { x: n.x, y: n.y, width: n.width, height: n.height };
+}
+
+// Il rettangolo asse-allineato che il nodo occupa DAVVERO nel mondo, rotazione
+// inclusa. Serve a chiunque ragioni per rettangoli su forme che ruotate non lo
+// sono più: l'unione dei bounds di una selezione multipla e l'intersezione col
+// marquee. Per un nodo fermo è identico (numeri compresi) a boundsOfNode.
+export function worldAabbOfNode(n: NodeLite): Bounds {
+  return rotatedAabb(boundsOfNode(n), n.rotation);
 }
 
 export function unionBounds(list: Bounds[]): Bounds | null {

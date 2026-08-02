@@ -91,3 +91,54 @@ describe("hitTestNode", () => {
     expect(hitTestNode(textNode(), 99, 49)).toBe(true);
   });
 });
+
+// --- rotazione ---------------------------------------------------------------
+// Il punto di test viene portato nello spazio LOCALE del nodo (rotazione
+// inversa attorno al CENTRO del box, vedi canvas/transform.ts) PRIMA di
+// testare la forma: così un'ellisse ruotata continua a colpirsi da ellisse, e
+// non dal suo rettangolo contenitore. I nodi qui sono 100x50 nell'origine,
+// centro (50, 25).
+describe("hitTestNode con rotazione", () => {
+  it("ellipse: the rotated end of the major axis hits, its own AABB corner still misses", () => {
+    const e = { ...node("ellipse"), rotation: 90 };
+    // (99,25) era l'estremo dell'asse maggiore da fermo: a 90° quel punto
+    // locale finisce a (50,74) e l'estremo NON è più dove era.
+    expect(hitTestNode(e, 50, 74)).toBe(true);
+    expect(hitTestNode(e, 99, 25)).toBe(false);
+    // Il caso che l'AABB sbagliava, ruotato: l'angolo del rettangolo
+    // contenitore della forma ruotata (che ora è alto 100 e largo 50) resta
+    // fuori dall'ellisse.
+    expect(hitTestNode(e, 27, -23)).toBe(false);
+    expect(hitTestNode(e, 50, 25)).toBe(true); // il centro è fermo, sempre
+  });
+
+  it("ellipse: a 45 degree rotation still misses the four corners of its AABB", () => {
+    const e = { ...node("ellipse"), width: 100, height: 100, rotation: 45 };
+    // Un cerchio ruotato è sé stesso: gli angoli del box restano fuori.
+    expect(hitTestNode(e, 4, 2)).toBe(false);
+    expect(hitTestNode(e, 96, 98)).toBe(false);
+    expect(hitTestNode(e, 50, 50)).toBe(true);
+  });
+
+  it("rect: hits where the shape actually IS, not where its unrotated box was", () => {
+    const r = { ...node("rect"), rotation: 90 };
+    // A 90° il rettangolo occupa x in [25,75] e y in [-25,75].
+    expect(hitTestNode(r, 50, 70)).toBe(true);   // fuori dal box fermo, dentro quello ruotato
+    expect(hitTestNode(r, 90, 25)).toBe(false);  // dentro il box fermo, fuori da quello ruotato
+  });
+
+  it("text: its box rotates with the node too", () => {
+    const t = textNode({ rotation: 90 });
+    expect(hitTestNode(t, 50, 70)).toBe(true);
+    expect(hitTestNode(t, 90, 25)).toBe(false);
+  });
+
+  it("a full turn is indistinguishable from no rotation", () => {
+    expect(hitTestNode({ ...node("ellipse"), rotation: 360 }, 99, 25)).toBe(true);
+    expect(hitTestNode({ ...node("ellipse"), rotation: 360 }, 4, 2)).toBe(false);
+  });
+
+  it("a degenerate shape stays unhittable however it is rotated", () => {
+    expect(hitTestNode({ ...node("ellipse"), width: 0, height: 0, rotation: 30 }, 0, 0)).toBe(false);
+  });
+});
