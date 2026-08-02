@@ -46,6 +46,14 @@ message Node {
     RectNode rect = 30;
     EllipseNode ellipse = 31;
     TextNode text = 32;
+    // Numeri assegnati in anticipo alle quattro tracce parallele. Ogni traccia
+    // sostituisce SOLO la propria riga con la dichiarazione vera (e definisce il
+    // messaggio corrispondente): righe distinte si fondono senza conflitti.
+    // 33 = GroupNode     (traccia 1 — annidamento)
+    // 34 = FrameNode     (traccia 1 — annidamento)
+    // 35 = ImageNode     (traccia 3 — periferia)
+    // 36 = VectorNode    (traccia 4 — vettoriale)
+    // 37 = InstanceNode  (M4 — componenti)
   }
 }
 
@@ -91,6 +99,10 @@ message Op {
     SetProperties set_props   = 11;
     DeleteNode    delete_node = 12;
     SetText       set_text    = 13;
+    // Come sopra: una riga per traccia, sostituita dalla dichiarazione vera.
+    // 14 = ReparentNode    (traccia 1 — sposta un nodo sotto un altro parent)
+    // 15 = SetVectorPath   (traccia 4 — sostituisce i subpath di un VectorNode)
+    // 16 = CreateComponent (M4)
   }
 }
 message OpRecord {
