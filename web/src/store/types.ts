@@ -55,13 +55,30 @@ export interface NodeLite {
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
-  fills: FillLite[]; kind: "rect" | "ellipse" | "text" | "vector"; cornerRadius: number;
+  // "unknown" = il oneof `shape` porta una forma PRESENTE che questo modello non
+  // conosce (le tracce parallele stanno aggiungendo group/frame/image/instance).
+  // NON è la stessa cosa di una forma ASSENTE, che resta "rect": Go accetta un
+  // Node senza shape come rettangolo implicito e va accettato anche qui.
+  //
+  // Esiste perché il ripiego "tutto il resto è rect" faceva divergere i due
+  // lati nel modo che la whitelist di core.applySetProps esiste per impedire: un
+  // setProps{corner_radius} su un GroupNode sarebbe stato ACCETTATO qui (kind
+  // ricadeva su "rect", cornerRadius scritto) e rifiutato da core.Apply con
+  // ErrNotRectNode. Un default che REGALA una forma è lo stesso errore di una
+  // blacklist, solo dall'altro lato del filo.
+  fills: FillLite[]; kind: "rect" | "ellipse" | "text" | "vector" | "unknown"; cornerRadius: number;
   // Presente se e solo se kind === "text": il contenuto vive DENTRO il oneof
   // `shape` del proto, quindi è per costruzione esclusivo con rect/ellipse.
   text?: TextLite;
   // Presente se e solo se kind === "vector", per la stessa ragione: la
   // geometria è un ramo del oneof `shape`, quindi esclusiva con le altre forme.
   vector?: VectorLite;
+  // Presente se e solo se kind === "unknown": il ramo del oneof così com'è
+  // arrivato, OPACO. Non lo si legge mai -- serve solo a toPbNode per rimetterlo
+  // dov'era. Senza, l'inverso di una delete (history.invertOp ricostruisce il
+  // Node da NodeLite) riporterebbe in vita un GroupNode trasformato in
+  // rettangolo: un cambio di forma silenzioso dentro un Ctrl+Z.
+  unknownShape?: PbNode["shape"];
 }
 
 export interface SceneState {
@@ -155,26 +172,46 @@ export function toPbFills(fills: readonly FillLite[]) {
   }));
 }
 
+// La forma del nodo nel vocabolario del modello. Il default è RIFIUTARE, non
+// ricadere su "rect": vale qui la stessa ragione per cui core.applySetProps (Go)
+// elenca le forme che ACCETTA invece di quelle che rifiuta. Le altre tracce
+// stanno aggiungendo forme al oneof adesso (33 Group, 34 Frame, 35 Image, 37
+// Instance), e con un ripiego su "rect" ognuna di quelle, appena fusa, farebbe
+// accettare a questo lato un setProps{corner_radius} che Go rifiuta -- la
+// divergenza client/documento autorevole, semplicemente specchiata.
+//
+// Forma ASSENTE => "rect", e non è un'eccezione alla regola ma la regola stessa:
+// Go tratta un Node senza shape da rettangolo implicito (whitelist `nil` o
+// `*brawtv1.Node_Rect`), quindi trattarlo diversamente qui sarebbe la
+// divergenza.
+function kindOf(shape: PbNode["shape"]): NodeLite["kind"] {
+  switch (shape.case) {
+    case undefined: return "rect";
+    case "rect": return "rect";
+    case "ellipse": return "ellipse";
+    case "text": return "text";
+    case "vector": return "vector";
+    default: return "unknown";
+  }
+}
+
 export function toNodeLite(n: PbNode): NodeLite {
   const fills: FillLite[] = n.fills.map((f) =>
     f.kind.case === "solid" && f.kind.value.color
       ? { r: f.kind.value.color.r, g: f.kind.value.color.g, b: f.kind.value.color.b, a: f.kind.value.color.a }
       : { r: 0, g: 0, b: 0, a: 1 });
+  const kind = kindOf(n.shape);
   return {
     id: n.id, parentId: n.parentId, orderKey: n.orderKey, name: n.name,
     visible: n.visible, opacity: n.opacity,
     x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation,
     fills,
-    // "rect" resta il fallback per una forma assente o sconosciuta: un nodo
-    // senza shape è comunque un rettangolo disegnabile, mentre un "text" senza
-    // contenuto non lo sarebbe.
-    kind: n.shape.case === "ellipse" ? "ellipse"
-      : n.shape.case === "text" ? "text"
-        : n.shape.case === "vector" ? "vector"
-          : "rect",
+    kind,
     cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
     ...(n.shape.case === "text" ? { text: toTextLite(n.shape.value) } : {}),
     ...(n.shape.case === "vector" ? { vector: toVectorLite(n.shape.value) } : {}),
+    // Il ramo sconosciuto viaggia intero e intatto: vedi NodeLite.unknownShape.
+    ...(kind === "unknown" ? { unknownShape: n.shape } : {}),
   };
 }
 
@@ -184,12 +221,19 @@ export function toNodeLite(n: PbNode): NodeLite {
 // Serve all'undo (history.invertOp): l'inverso di una delete è la create del
 // nodo com'era, e il modello in memoria tiene solo NodeLite.
 export function toPbNode(n: NodeLite): PbNode {
-  return create(NodeSchema, {
+  const node = create(NodeSchema, {
     id: n.id, parentId: n.parentId, orderKey: n.orderKey, name: n.name,
     visible: n.visible, opacity: n.opacity,
     x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation,
     fills: toPbFills(n.fills),
-    shape: n.kind === "ellipse"
+    shape: n.kind === "unknown"
+      // La forma sconosciuta non si può COSTRUIRE (non c'è un ramo del oneof da
+      // nominare), quindi si rimette dov'era subito dopo la create. Lasciarla
+      // qui a `undefined` per un istante è l'unico modo di NON scriverci sopra
+      // un rettangolo: era esattamente il baco -- un GroupNode che tornava
+      // rettangolo passando da un undo.
+      ? undefined
+      : n.kind === "ellipse"
       ? { case: "ellipse" as const, value: {} }
       : n.kind === "vector"
         // Come per il testo: un `vector` mancante su un nodo vettoriale è uno
@@ -209,6 +253,8 @@ export function toPbNode(n: NodeLite): PbNode {
           } }
         : { case: "rect" as const, value: { cornerRadius: n.cornerRadius } },
   });
+  if (n.kind === "unknown" && n.unknownShape) node.shape = n.unknownShape;
+  return node;
 }
 
 export function fromDocument(doc: Document): SceneState {

@@ -19,17 +19,56 @@ export function nodePath(n: NodeLite): Path2D {
   return path;
 }
 
+// Vero quando l'INCHIOSTRO del nodo è il suo box, cioè quando un box degenere
+// significa davvero "niente da disegnare e niente da colpire". Vale per rect ed
+// ellipse (e per una forma sconosciuta, che questo lato può solo trattare da
+// rettangolo), NON per testo e vettoriale:
+//   - il testo ha l'altezza prodotta dal layout, quindi un nodo appena creato ha
+//     height 0 ed è comunque disegnato;
+//   - il vettoriale ha l'inchiostro negli ancoraggi, e per l'invariante del
+//     proto il box è la bbox ESATTA della geometria -- quindi un path di un solo
+//     punto (il pen tool dopo il primo click) o un segmento orizzontale hanno
+//     legittimamente un lato a zero. Scartarli qui li renderebbe invisibili E
+//     non cliccabili: raggiungibili solo dal pannello livelli, cancellabili solo
+//     da lì.
+// Esportata perché drawScene (canvasRenderer.ts) deve fare la STESSA scelta: due
+// elenchi di eccezioni divergerebbero al primo tipo aggiunto.
+export function inkIsBox(n: NodeLite): boolean {
+  return n.kind !== "text" && n.kind !== "vector";
+}
+
+// Lato minimo (unità MONDO) del box su cui si afferra un nodo vettoriale. È una
+// TOLLERANZA DI SELEZIONE, non un fatto sulla geometria: il modello continua a
+// dire il vero (vectorBounds è esatta, e un segmento orizzontale ha davvero
+// height 0), ma un box di area zero è colpibile solo da un click con la
+// coordinata ESATTA -- cioè mai. Stesso compromesso di textHitBox qui sotto, e
+// per lo stesso motivo: l'hit-test non conosce la camera, quindi la tolleranza è
+// in unità mondo e non in px schermo. Quando arriverà il renderer del path
+// questa diventa la distanza di presa dalla curva, e allora avrà i suoi px.
+export const VECTOR_MIN_GRAB = 4;
+
+// Il box su cui un nodo si SELEZIONA (click e marquee), che non è sempre il box
+// del modello. Una sola definizione perché hit-test e marquee devono essere
+// d'accordo: un nodo che si clicca ma che il marquee non prende (o viceversa)
+// è la peggiore delle due possibilità.
+export function selectionBoundsOfNode(n: NodeLite): Box {
+  if (n.kind !== "vector") return { x: n.x, y: n.y, width: n.width, height: n.height };
+  // Solo l'asse DEGENERE si allarga, e centrato sull'inchiostro: un path normale
+  // resta com'è (e non ruba click alle forme sotto), un segmento orizzontale
+  // diventa afferrabile da sopra come da sotto.
+  const dw = Math.max(0, VECTOR_MIN_GRAB - n.width);
+  const dh = Math.max(0, VECTOR_MIN_GRAB - n.height);
+  return { x: n.x - dw / 2, y: n.y - dh / 2, width: n.width + dw, height: n.height + dh };
+}
+
 // Hit-test geometrico puro (nessun ctx / DOM), così resta testabile in Node.
 // rect: AABB inclusivo dei bordi. ellisse: equazione normalizzata
 // ((wx-cx)/rx)^2 + ((wy-cy)/ry)^2 <= 1, che è il test corretto (l'AABB
 // dell'ellisse include gli angoli, che sono fuori dall'ellisse stessa).
 export function hitTestNode(n: NodeLite, wx: number, wy: number): boolean {
-  // Il guard sulla dimensione NON vale per il testo, esattamente come in
-  // drawScene (canvasRenderer.ts): un testo con height 0 -- un nodo appena
-  // creato, la cui altezza la produce il layout -- viene disegnato, e ciò che
-  // si vede deve potersi cliccare. Una forma degenere invece non ha né
-  // riempimento né area da colpire.
-  if (n.kind !== "text" && (n.width <= 0 || n.height <= 0)) return false;
+  // Il guard sulla dimensione vale solo per le forme il cui inchiostro È il box
+  // (vedi inkIsBox), esattamente come in drawScene (canvasRenderer.ts).
+  if (inkIsBox(n) && (n.width <= 0 || n.height <= 0)) return false;
   // Il testo si colpisce sul suo BOUNDING BOX, mai sui glifi: è il
   // comportamento atteso in un editor (cliccare fra due lettere, o nello spazio
   // vuoto a destra di una riga corta, seleziona comunque il nodo) ed è anche
@@ -37,6 +76,11 @@ export function hitTestNode(n: NodeLite, wx: number, wy: number): boolean {
   // implicito nel fallback: se un giorno il ramo "rect" imparasse i corner
   // radius, il testo non deve seguirlo.
   if (n.kind === "text") return insideBox(textHitBox(n), wx, wy);
+  // Il vettoriale si colpisce (per ora) sul suo box di selezione, non sul path:
+  // la prossimità alla curva arriva col renderer del path. Passa comunque da
+  // selectionBoundsOfNode e non dal box grezzo, così un path degenere -- che per
+  // l'invariante del proto ha un lato a zero -- resta afferrabile.
+  if (n.kind === "vector") return insideBox(selectionBoundsOfNode(n), wx, wy);
   if (n.kind === "ellipse") {
     const cx = n.x + n.width / 2;
     const cy = n.y + n.height / 2;
@@ -49,7 +93,7 @@ export function hitTestNode(n: NodeLite, wx: number, wy: number): boolean {
   return insideBox(n, wx, wy);
 }
 
-interface Box { x: number; y: number; width: number; height: number }
+export interface Box { x: number; y: number; width: number; height: number }
 
 // Il box su cui si colpisce un nodo testo, che NON coincide sempre con il box
 // del modello: l'altezza la produce il layout e la width è solo la larghezza di

@@ -93,11 +93,34 @@ message SubPath { repeated Anchor anchors = 1; bool closed = 2; }
 // Cioè: chi riscrive i subpath normalizza (trasla gli ancoraggi in modo che il
 // minimo sia (0,0)) e manda nello STESSO GESTO il SetProperties che aggiorna
 // x/y/width/height. Così un nodo vettoriale è indistinguibile da un rettangolo
-// per tutto il resto dell'editor: la selezione lo circonda, il renderer non lo
-// scarta, il resize ha un box su cui lavorare, e il pen tool è l'unico posto
-// che conosce la regola. web/src/store/vectorGeometry.ts::vectorBounds è
-// l'unica implementazione della bbox, così "scritto due volte" non è nemmeno
-// possibile.
+// per tutto il resto dell'editor: la selezione lo circonda, il resize ha un box
+// su cui lavorare, e il pen tool è l'unico posto che conosce la regola.
+// web/src/store/vectorGeometry.ts::vectorBounds è l'unica implementazione della
+// bbox, così "scritto due volte" non è nemmeno possibile. Ed è la bbox VERA
+// della curva (derivata risolta per asse, e solo sui segmenti effettivamente
+// disegnati), non l'inviluppo dei punti di controllo: su quest'ultimo il box
+// dichiarato qui sarebbe un sovrainsieme -- fino a un 33% di vuoto su una sola
+// cubica -- e a pagarlo sarebbe la SELEZIONE, con maniglie di resize che non
+// toccano il path e un marquee che afferra senza sfiorare l'inchiostro.
+//
+// Vale nei DUE VERSI, ed è il secondo a costare qualcosa: nemmeno il BOX può
+// cambiare senza che la geometria lo segua, altrimenti un drag delle 8 maniglie
+// di resize (che è un solo SetProperties{x,y,width,height}) violerebbe
+// l'invariante senza nessun SetVectorPath in vista -- box cresciuto, inchiostro
+// della misura di prima. Chi ridimensiona un nodo vettoriale riscrive quindi gli
+// ancoraggi con la stessa trasformazione, NELLO STESSO GESTO
+// (web/src/store/vectorGeometry.ts::resizeVector, emesso da
+// web/src/tools/selectTool.ts). Gli ancoraggi restano lunghezze in coordinate
+// locali e NON frazioni 0..1 del box: normalizzati sarebbero indefiniti per ogni
+// path con un asse degenere (un segmento orizzontale: divisione per zero) e
+// costringerebbero il pen tool a rinormalizzare tutta la geometria a ogni punto
+// aggiunto.
+//
+// Un asse DEGENERE è uno stato legittimo e il box non lo falsa: un path di un
+// solo ancoraggio ha width e height 0, un segmento orizzontale ha height 0. Chi
+// ci deve cliccare sopra allarga per conto suo
+// (web/src/renderer/shapes.ts::selectionBoundsOfNode) -- quella è una tolleranza
+// di selezione, non un fatto sulla geometria.
 message VectorNode { repeated SubPath subpaths = 1; }
 
 message Node {

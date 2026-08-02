@@ -18,6 +18,10 @@ function textNode(over: Partial<NodeLite> = {}, content = "hi"): NodeLite {
   };
 }
 
+function vectorNode(over: Partial<NodeLite> = {}): NodeLite {
+  return { ...node("rect"), kind: "vector", vector: { subpaths: [] }, ...over };
+}
+
 describe("hitTestNode", () => {
   it("rect: inside and outside", () => {
     expect(hitTestNode(node("rect"), 50, 25)).toBe(true);
@@ -35,9 +39,10 @@ describe("hitTestNode", () => {
   it("handles zero-size nodes without dividing by zero", () => {
     const z = { ...node("ellipse"), width: 0, height: 0 };
     expect(hitTestNode(z, 0, 0)).toBe(false);
-    // Una FORMA degenere resta non colpibile: non c'è niente di disegnato da
-    // colpire (drawScene la scarta con lo stesso guard). L'esenzione qui sotto
-    // è solo del testo.
+    // Una forma il cui INCHIOSTRO È IL BOX (rect, ellisse) resta non colpibile
+    // da degenere: non c'è niente di disegnato da colpire, e drawScene la scarta
+    // con lo stesso guard. Le esenzioni più sotto -- testo e vettoriale -- sono
+    // i due casi in cui l'inchiostro NON è il box.
     expect(hitTestNode({ ...node("rect"), height: 0 }, 50, 0)).toBe(false);
   });
 
@@ -89,5 +94,33 @@ describe("hitTestNode", () => {
 
   it("text: a box larger than one line is not shrunk to it", () => {
     expect(hitTestNode(textNode(), 99, 49)).toBe(true);
+  });
+
+  // Il vettoriale è il SECONDO caso in cui l'inchiostro non è il box, e per una
+  // ragione diversa dal testo: il box è la bbox ESATTA della geometria (è
+  // l'invariante scritta nel proto), quindi un asse a zero non è uno stato
+  // transitorio ma il valore giusto -- un path di un solo ancoraggio (il pen
+  // tool dopo il primo click) o un segmento orizzontale. Con il guard generico
+  // quel nodo sarebbe invisibile E non cliccabile: raggiungibile solo dal
+  // pannello livelli, e cancellabile solo da lì.
+  it("vector: a path with a degenerate axis is still clickable", () => {
+    const line = vectorNode({ width: 40, height: 0 });
+    expect(hitTestNode(line, 20, 0)).toBe(true);
+    expect(hitTestNode(line, 20, 1.5)).toBe(true);    // dentro la tolleranza di presa
+    expect(hitTestNode(line, 20, -1.5)).toBe(true);   // centrata: si afferra da sopra come da sotto
+    expect(hitTestNode(line, 20, 10)).toBe(false);
+  });
+
+  it("vector: a single-anchor path (both axes degenerate) is still clickable", () => {
+    const dot = vectorNode({ width: 0, height: 0 });
+    expect(hitTestNode(dot, 0, 0)).toBe(true);
+    expect(hitTestNode(dot, 10, 10)).toBe(false);
+  });
+
+  it("vector: a normal path is NOT inflated (no clicks stolen from the shapes below)", () => {
+    const v = vectorNode({ width: 100, height: 50 });
+    expect(hitTestNode(v, 100, 50)).toBe(true);
+    expect(hitTestNode(v, 101, 25)).toBe(false);
+    expect(hitTestNode(v, 50, 51)).toBe(false);
   });
 });

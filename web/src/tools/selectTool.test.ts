@@ -5,10 +5,28 @@ import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
+import { vectorBounds } from "../store/vectorGeometry";
 
 function node(id: string, x: number, orderKey: string, extra: Partial<NodeLite> = {}): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,
     x, y: 0, width: 50, height: 50, rotation: 0, fills: [], kind: "rect", cornerRadius: 0, ...extra };
+}
+
+// Un nodo vettoriale 50x50 la cui geometria RIEMPIE il box, come vuole
+// l'invariante del proto: bbox locale (0,0)-(50,50). Le maniglie bézier sono
+// asimmetriche e non nulle, così una scala dimenticata su di esse non può
+// cadere sul valore giusto per caso.
+function curvyVector(): NodeLite {
+  return node("v", 0, "a000000", {
+    kind: "vector",
+    vector: { subpaths: [{
+      anchors: [
+        { x: 0, y: 0, inX: 0, inY: 0, outX: 20, outY: 0 },
+        { x: 50, y: 50, inX: 0, inY: -20, outX: 0, outY: 0 },
+      ],
+      closed: false,
+    }] },
+  });
 }
 
 function fakeCtx(): ToolContext {
@@ -154,6 +172,25 @@ describe("selectTool", () => {
         shown: node("shown", 5, "a000001"),
       } };
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 20, height: 20 })).toEqual(["shown"]);
+    });
+
+    it("gives a degenerate VECTOR the same grab tolerance the click has", () => {
+      // Il box di un vettoriale è la bbox ESATTA della geometria (invariante del
+      // proto), quindi un segmento orizzontale ha davvero height 0. Con il box
+      // grezzo un marquee lo prende solo SCAVALCANDOLO in senso stretto
+      // (boundsIntersect confronta con < e >), mentre un click lo prende già a
+      // 2 unità di distanza: due porte diverse per lo stesso nodo. Qui il
+      // marquee sta tutto SOTTO la linea, alla distanza a cui il click
+      // funziona.
+      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+        line: node("line", 5, "a000000", { kind: "vector", vector: { subpaths: [] }, height: 0 }),
+        flatRect: node("flatRect", 5, "a000001", { height: 0 }),
+      } };
+      expect(nodesInMarquee(scene, { x: 0, y: 1, width: 60, height: 9 })).toEqual(["line"]);
+      // ...e uno che le scavalca entrambe le prende entrambe: la tolleranza
+      // AGGIUNGE un caso, non ne toglie.
+      expect(nodesInMarquee(scene, { x: 0, y: -10, width: 60, height: 20 }))
+        .toEqual(["line", "flatRect"]);
     });
   });
 
@@ -444,6 +481,64 @@ describe("selectTool", () => {
       expect(sync.sent).toHaveLength(2);
       expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
       expect(useScene.getState().scene!.nodes["b"]).toMatchObject({ x: 200, y: 0, width: 100, height: 50 });
+    });
+
+    // L'invariante del box (proto, su VectorNode) nel verso che costa: dopo un
+    // SetVectorPath la bbox locale della geometria è (0,0)-(width,height), e
+    // quindi nemmeno il BOX può muoversi da solo. Le 8 maniglie di resize sono
+    // spedite da M1 e mandano un setProps{x,y,width,height} kind-agnostico: senza
+    // il secondo op il box crescerebbe e l'inchiostro resterebbe della misura di
+    // prima, violando l'invariante con un gesto ordinario e senza nessun
+    // SetVectorPath in vista.
+    it("resizing a VECTOR node rewrites its geometry in the SAME gesture", () => {
+      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { v: curvyVector() } });
+      useScene.getState().setSelection(["v"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 50), ctx);  // maniglia se
+      tool.onPointerMove!(at(100, 50), ctx); // larghezza x2, altezza invariata
+      const mid = useScene.getState().scene!.nodes["v"];
+      expect(mid).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
+      // Già in ANTEPRIMA l'invariante regge: le due chiavi di coalescing
+      // (`s|v|...` e `v|v`) sono distinte, quindi la geometria non schiaccia il
+      // box né viceversa.
+      expect(vectorBounds(mid.vector!.subpaths)).toEqual({ x: 0, y: 0, width: 100, height: 50 });
+
+      tool.onPointerUp!(at(100, 50), ctx);
+      expect(sync.sent.map((o) => o.kind.case)).toEqual(["setProps", "setVectorPath"]);
+      const after = useScene.getState().scene!.nodes["v"];
+      expect(after).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
+      expect(vectorBounds(after.vector!.subpaths)).toEqual({ x: 0, y: 0, width: 100, height: 50 });
+      // Le maniglie bézier sono OFFSET e si scalano con la parte lineare: se
+      // restassero ferme la curvatura non seguirebbe il path, e la bbox qui
+      // sopra non tornerebbe.
+      expect(after.vector!.subpaths[0].anchors[0].outX).toBe(40);
+      expect(after.vector!.subpaths[0].anchors[1].inY).toBe(-20); // asse non scalato
+
+      // UN gesto: una sola voce di undo, e annullare rimette a posto ENTRAMBI.
+      expect(useScene.getState().undoStack).toHaveLength(1);
+      useScene.getState().undo();
+      const undone = useScene.getState().scene!.nodes["v"];
+      expect(undone).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
+      expect(undone.vector!.subpaths).toEqual(curvyVector().vector!.subpaths);
+    });
+
+    it("resizing a NON-vector node still sends exactly one op", () => {
+      // Il secondo op è del solo vettoriale: un rettangolo non deve guadagnare
+      // un setVectorPath (che Go rifiuterebbe con ErrNotVectorNode).
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 50), ctx);
+      tool.onPointerMove!(at(100, 100), ctx);
+      tool.onPointerUp!(at(100, 100), ctx);
+      expect(sync.sent.map((o) => o.kind.case)).toEqual(["setProps"]);
     });
 
     it("a click on a handle without moving sends nothing", () => {

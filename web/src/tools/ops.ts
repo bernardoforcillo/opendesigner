@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Node, Op } from "../gen/brawt/v1/brawt_pb";
 import { useScene } from "../store/store";
-import { toPbTextStyle } from "../store/types";
-import type { TextStyleLite } from "../store/types";
+import { toPbSubPaths, toPbTextStyle } from "../store/types";
+import type { SubPathLite, TextStyleLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Costruzione centralizzata degli Op: ogni tool passa da qui, così opId e docId
@@ -65,6 +65,22 @@ export function makeSetTextOp(id: string, content: string, style?: TextStyleLite
         ? { id, content, style: toPbTextStyle(style), stylePresent: true }
         : { id, content },
     },
+  });
+}
+
+// SetVectorPath è un op DEDICATO per la stessa ragione di SetText: la geometria
+// vive DENTRO il oneof `shape` del Node, mentre la mask di SetProperties
+// indirizza campi di primo livello (vedi store/applyOp.ts e
+// core.applySetVectorPath).
+//
+// Sostituisce i subpath IN BLOCCO, quindi non ha bisogno del flag `present` di
+// setText: l'op È i subpath, e una lista vuota è il path svuotato -- uno stato
+// legittimo, non un "non specificato".
+export function makeSetVectorPathOp(id: string, subpaths: readonly SubPathLite[]): Op {
+  return create(OpSchema, {
+    opId: uuid(),
+    docId: docId(),
+    kind: { case: "setVectorPath", value: { id, subpaths: toPbSubPaths(subpaths) } },
   });
 }
 

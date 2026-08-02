@@ -1,7 +1,10 @@
 import { hitTest } from "../renderer/canvasRenderer";
+import { selectionBoundsOfNode } from "../renderer/shapes";
 import { normalizeRect, boundsOfNode, boundsIntersect, type Bounds } from "../canvas/geometry";
 import { worldToScreen } from "../canvas/camera";
 import { selectionWorldBounds } from "../renderer/overlayRenderer";
+import { resizeVector } from "../store/vectorGeometry";
+import type { SubPathLite } from "../store/types";
 import {
   cursorForHandle,
   hitTestHandle,
@@ -10,7 +13,7 @@ import {
   type HandleId,
 } from "../selection/handles";
 import { useScene } from "../store/store";
-import { makeDeleteOp, makeSetPropsOp } from "./ops";
+import { makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp } from "./ops";
 import type { SceneState } from "../store/types";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import type { Tool, ToolContext } from "./types";
@@ -88,9 +91,16 @@ export function pickTarget(
 // Id dei nodi VISIBILI i cui bounds intersecano il marquee, ordinati per
 // orderKey per un risultato deterministico (Object.values non garantisce
 // l'ordine di inserimento per chiavi stringa).
+// Il box è quello di SELEZIONE (renderer/shapes.ts), non quello grezzo del
+// modello: è lo STESSO da cui passa l'hit-test del click, così un nodo che si
+// può cliccare è un nodo che il marquee può prendere. Conta per il vettoriale,
+// il cui box può legittimamente avere un lato a zero (un segmento orizzontale,
+// un path di un solo ancoraggio): con il box grezzo un marquee lo prende solo
+// se lo SCAVALCA in senso stretto -- passargli accanto, alla stessa distanza
+// che basta a cliccarlo, non basterebbe.
 export function nodesInMarquee(scene: SceneState, bounds: Bounds): string[] {
   return Object.values(scene.nodes)
-    .filter((n) => n.visible && boundsIntersect(boundsOfNode(n), bounds))
+    .filter((n) => n.visible && boundsIntersect(selectionBoundsOfNode(n), bounds))
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0))
     .map((n) => n.id);
 }
@@ -123,6 +133,11 @@ export function createSelectTool(): Tool {
   let resizeAnchor: { x: number; y: number } | null = null;
   let resizeStartBox: Bounds | null = null;
   let resizeStartNodes: Record<string, Bounds> | null = null;
+  // La GEOMETRIA di partenza dei soli nodi vettoriali selezionati. Catturata a
+  // pointerdown come i bounds e per lo stesso motivo: gli op di anteprima sono
+  // assoluti e si ricalcolano sempre dallo stato iniziale, mai dall'ultima
+  // anteprima -- che, applicata in locale, è già la geometria scalata.
+  let resizeStartVectors: Record<string, SubPathLite[]> | null = null;
   let resizeStarted = false;
 
   // --- marquee ---------------------------------------------------------------
@@ -157,6 +172,7 @@ export function createSelectTool(): Tool {
     resizeAnchor = null;
     resizeStartBox = null;
     resizeStartNodes = null;
+    resizeStartVectors = null;
     resizeStarted = false;
   }
 
@@ -173,10 +189,29 @@ export function createSelectTool(): Tool {
       world.y - resizeAnchor.y,
       { keepAspect: e.shiftKey },
     );
-    return Object.entries(resizeStartNodes).map(([id, start]) => {
+    const ops: Op[] = [];
+    for (const [id, start] of Object.entries(resizeStartNodes)) {
       const b = transformBounds(start, t);
-      return makeSetPropsOp(id, b, ["x", "y", "width", "height"]);
-    });
+      ops.push(makeSetPropsOp(id, b, ["x", "y", "width", "height"]));
+      // Un nodo VETTORIALE porta la sua geometria dentro il gesto. Gli ancoraggi
+      // sono lunghezze in coordinate locali, non frazioni del box: senza questo
+      // secondo op il box crescerebbe e l'inchiostro resterebbe della sua
+      // misura, violando l'invariante del proto (dopo un SetVectorPath la bbox
+      // locale della geometria è (0,0)-(width,height)) con un gesto ordinario.
+      //
+      // È lo STESSO gesto, non un secondo: una voce di undo sola, un solo invio
+      // sul filo, e in anteprima due chiavi di coalescing distinte (`s|id|...` e
+      // `v|id`, vedi store.ts::previewKey) che non si schiacciano a vicenda.
+      const start0 = resizeStartVectors?.[id];
+      if (!start0) continue;
+      ops.push(makeSetVectorPathOp(id, resizeVector(
+        start0,
+        start,
+        { signed: t.signedW, start: t.startW },
+        { signed: t.signedH, start: t.startH },
+      )));
+    }
+    return ops;
   }
 
   function resetMarquee() {
@@ -238,14 +273,18 @@ export function createSelectTool(): Tool {
       const handle = handleUnderPointer(ctx, world);
       if (handle) {
         const start: Record<string, Bounds> = {};
+        const startVectors: Record<string, SubPathLite[]> = {};
         for (const sid of store.selection) {
           const n = scene.nodes[sid];
-          if (n) start[sid] = boundsOfNode(n);
+          if (!n) continue;
+          start[sid] = boundsOfNode(n);
+          if (n.kind === "vector" && n.vector) startVectors[sid] = n.vector.subpaths;
         }
         resizeHandle = handle;
         resizeAnchor = world;
         resizeStartBox = selectionWorldBounds(scene, store.selection);
         resizeStartNodes = start;
+        resizeStartVectors = startVectors;
         resizeStarted = false;
         setCursor(ctx, cursorForHandle(handle));
         return;

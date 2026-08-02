@@ -55,6 +55,14 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // x. Nota che kind "rect" comprende anche il nodo SENZA shape (vedi
       // toNodeLite): Go lo accetta allo stesso modo, materializzando il
       // rettangolo implicito.
+      //
+      // Ed è una WHITELIST esattamente come quella di Go, non "tutto tranne
+      // ellisse e testo": kindOf (store/types.ts) mappa su "unknown" ogni forma
+      // che questo modello non conosce, quindi una forma aggiunta da un'altra
+      // traccia è rifiutata di default QUI come lo è di là. Con il vecchio
+      // ripiego "sconosciuto => rect" questa riga la lasciava passare e Go
+      // rispondeva ErrNotRectNode: la divergenza client/documento autorevole che
+      // la whitelist esiste per impedire, solo dall'altro lato del filo.
       if (cur.kind !== "rect" && paths.includes("corner_radius")) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {

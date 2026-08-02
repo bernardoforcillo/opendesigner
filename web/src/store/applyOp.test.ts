@@ -3,8 +3,9 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import {
   OpSchema, NodeSchema, SetTextSchema, SetVectorPathSchema, VectorNodeSchema, TextAlign,
 } from "../gen/brawt/v1/brawt_pb";
+import type { Node as PbNode } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
-import { emptyScene } from "./types";
+import { emptyScene, toNodeLite, toPbNode } from "./types";
 
 function createRectOp(id: string, x: number, y: number) {
   const node = create(NodeSchema, {
@@ -175,6 +176,90 @@ describe("applyOp: corner_radius", () => {
     expect(after.nodes["v1"].x).toBe(0);
     expect(after.nodes["v1"].kind).toBe("vector");
     expect(after.nodes["v1"].vector?.subpaths).toEqual([{ anchors: RICH_ANCHORS, closed: true }]);
+  });
+});
+
+// --- una forma SCONOSCIUTA non è un rettangolo -----------------------------
+//
+// core.applySetProps (Go) accetta `nil` o `*brawtv1.Node_Rect` e rifiuta tutto
+// il resto: una WHITELIST, così una forma aggiunta domani è rifiutata di default
+// invece di finire nel ramo che materializza il rettangolo implicito e ne
+// distrugge la geometria. Questo lato aveva la guardia speculare (`cur.kind !==
+// "rect"`) ma la derivava da un `kind` che RIPIEGAVA su "rect" per ogni forma
+// sconosciuta: la stessa divergenza, semplicemente specchiata -- op accettato
+// qui, ErrNotRectNode di là. Le altre tre tracce stanno aggiungendo forme al
+// oneof adesso (33 Group, 34 Frame, 35 Image, 37 Instance), quindi il caso non è
+// ipotetico: è il giorno del merge.
+
+// Una forma PRESENTE nel oneof che questo modello non conosce. Il cast è l'unico
+// modo di scriverla oggi (il generato non ha ancora GroupNode) ed è fedele a ciò
+// che il decoder produrrà il giorno in cui ce l'avrà: `shape.case` valorizzato
+// con un nome che store/types.ts non elenca.
+function nodeWithUnknownShape(id: string) {
+  const n = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Group", visible: true, opacity: 1,
+    x: 10, y: 20, width: 100, height: 80,
+  });
+  (n as unknown as { shape: unknown }).shape = { case: "group", value: { children: ["c1"] } };
+  return n;
+}
+
+function createNodeOp(node: PbNode) {
+  return create(OpSchema, {
+    opId: "op-" + node.id, docId: "doc1", kind: { case: "createNode", value: { node } },
+  });
+}
+
+describe("applyOp: forma sconosciuta", () => {
+  it("non ricade su rect -- ma una forma ASSENTE sì", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createNodeOp(nodeWithUnknownShape("g1")));
+    expect(s.nodes["g1"].kind).toBe("unknown");
+    // Shape ASSENTE resta "rect", e non è un'eccezione alla regola ma la regola
+    // stessa: Go la accetta come rettangolo implicito (il ramo `case nil` della
+    // whitelist), quindi trattarla diversamente qui sarebbe la divergenza.
+    const noShape = create(NodeSchema, {
+      id: "r1", parentId: "page1", orderKey: "a0", name: "Node", visible: true, opacity: 1,
+      x: 0, y: 0, width: 10, height: 10,
+    });
+    const s2 = applyOp(s, createNodeOp(noShape));
+    expect(s2.nodes["r1"].kind).toBe("rect");
+  });
+
+  it("corner_radius su una forma sconosciuta rifiuta l'INTERO op (parità con ErrNotRectNode)", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createNodeOp(nodeWithUnknownShape("g1")));
+    // "x" viaggia nella STESSA mask: il rifiuto è in blocco, nemmeno la x si
+    // muove. Prima del fix questo op passava (kind ricadeva su "rect") e
+    // scriveva un cornerRadius su un nodo che Go rifiuta.
+    const after = applyOp(s, setCornerRadiusOp("g1", 12, 42));
+    expect(after).toEqual(s);
+    expect(after.nodes["g1"].x).toBe(10);
+    expect(after.nodes["g1"].cornerRadius).toBe(0);
+  });
+
+  it("setVectorPath e setText la rifiutano come rifiutano un rettangolo", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createNodeOp(nodeWithUnknownShape("g1")));
+    const setVector = create(OpSchema, {
+      opId: "op-sv", docId: "doc1",
+      kind: { case: "setVectorPath", value: { id: "g1", subpaths: [{ anchors: [], closed: true }] } },
+    });
+    expect(applyOp(s, setVector)).toEqual(s);
+    const setText = create(OpSchema, {
+      opId: "op-st", docId: "doc1", kind: { case: "setText", value: { id: "g1", content: "x" } },
+    });
+    expect(applyOp(s, setText)).toEqual(s);
+  });
+
+  it("toPbNode la rimette dov'era: un undo non converte un GroupNode in rettangolo", () => {
+    // history.invertOp ricostruisce il Node da NodeLite per invertire una
+    // delete. Con il ripiego su "rect" il nodo tornava in vita come RETTANGOLO
+    // -- un cambio di forma silenzioso dentro un Ctrl+Z, e nessun modo di
+    // accorgersene se non guardando il documento del server.
+    const pb = nodeWithUnknownShape("g1");
+    const back = toPbNode(toNodeLite(pb));
+    expect(back.shape.case).toBe("group");
+    expect(back.shape.value).toEqual({ children: ["c1"] });
+    // ...e il resto del nodo sopravvive al giro come per ogni altra forma.
+    expect(back).toMatchObject({ id: "g1", x: 10, y: 20, width: 100, height: 80 });
   });
 });
 

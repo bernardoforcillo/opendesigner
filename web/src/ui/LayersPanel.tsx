@@ -24,6 +24,11 @@ function fallbackName(n: NodeLite): string {
   if (n.kind === "rect") return "Rectangle";
   if (n.kind === "ellipse") return "Ellipse";
   if (n.kind === "vector") return "Vector";
+  // Forma PRESENTE ma non riconosciuta da questo modello (una delle tracce
+  // parallele l'ha aggiunta al oneof `shape`): nome neutro. Il ramo esiste
+  // perché senza di esso il nodo cadrebbe nel ripiego del TESTO qui sotto e la
+  // riga direbbe "Text" per qualcosa che testo non è.
+  if (n.kind === "unknown") return "Shape";
   // n.kind === "text": a-capo e spazi ripetuti collassati, così l'etichetta
   // resta su una riga sola anche per un testo multilinea.
   const flat = (n.text?.content ?? "").replace(/\s+/g, " ").trim();

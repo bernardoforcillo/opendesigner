@@ -6,7 +6,7 @@ import { emptyScene } from "./types";
 import type { AnchorLite, SubPathLite } from "./types";
 import {
   anchorPoint, inHandlePoint, outHandlePoint,
-  hasInHandle, hasOutHandle, vectorBounds, normalizeVector,
+  hasInHandle, hasOutHandle, vectorBounds, normalizeVector, resizeVector,
 } from "./vectorGeometry";
 
 // La regola dei DUE SPAZI, che il proto (su `Anchor`) enuncia e questo file
@@ -104,15 +104,65 @@ describe("vectorGeometry: spostare il nodo sposta la geometria", () => {
 });
 
 describe("vectorGeometry: bounds e normalizzazione", () => {
-  it("la bbox comprende i punti di CONTROLLO, non solo gli ancoraggi", () => {
-    // Una cubica sta dentro l'inviluppo dei suoi quattro punti: prendere solo
-    // gli ancoraggi darebbe un box più stretto dell'inchiostro, e il renderer
-    // scarterebbe (o la selezione mancherebbe) pezzi di path davvero disegnati.
+  // La cubica del rapporto: A=(0,0) out=(100,0) -> B=(0,100) in=(100,0). I due
+  // ancoraggi stanno entrambi su x=0, i controlli spingono fino a x=100, e la
+  // curva arriva a 75 (l'estremo è a t=0.5).
+  const CURVY: SubPathLite[] = [{
+    anchors: [anchor({ x: 0, y: 0, outX: 100, outY: 0 }), anchor({ x: 0, y: 100, inX: 100, inY: 0 })],
+    closed: false,
+  }];
+
+  it("la bbox è quella VERA della curva, non l'inviluppo dei punti di controllo", () => {
+    // Il box degli ancoraggi (width 0) sarebbe più STRETTO dell'inchiostro,
+    // l'inviluppo dei controlli (width 100) più largo di un terzo. Nessuno dei
+    // due è "il verso giusto in cui sbagliare": il proto dichiara questo box la
+    // bbox locale della geometria, e sono le 8 maniglie di resize
+    // (overlayRenderer) e il marquee (selectTool::nodesInMarquee) a leggerlo --
+    // sbagliare in grande significa maniglie che non toccano il path e una
+    // selezione che afferra senza sfiorare l'inchiostro.
+    expect(vectorBounds(CURVY)).toEqual({ x: 0, y: 0, width: 75, height: 100 });
+  });
+
+  it("le maniglie che NESSUN segmento usa non gonfiano il box (contorno aperto)", () => {
+    // In un contorno APERTO la maniglia entrante del primo ancoraggio e quella
+    // uscente dell'ultimo non appartengono a nessuna curva. Un pen tool che
+    // tiene le maniglie speculari le ha comunque valorizzate: prenderle per
+    // buone gonfierebbe il box per geometria che non esiste.
     const sp: SubPathLite[] = [{
-      anchors: [anchor({ x: 0, y: 0, outX: -5, outY: 0 }), anchor({ x: 10, y: 10, inX: 0, inY: 8 })],
+      anchors: [
+        anchor({ x: 0, y: 0, inX: -1000, inY: -1000 }),
+        anchor({ x: 10, y: 10, outX: 1000, outY: 1000 }),
+      ],
       closed: false,
     }];
-    expect(vectorBounds(sp)).toEqual({ x: -5, y: 0, width: 15, height: 18 });
+    expect(vectorBounds(sp)).toEqual({ x: 0, y: 0, width: 10, height: 10 });
+  });
+
+  it("chiudendo il contorno quelle stesse maniglie contano: il segmento di ritorno le usa", () => {
+    // Il complemento del test precedente: non è "le maniglie degli estremi si
+    // ignorano", è "contano solo i segmenti disegnati". Chiuso, il segmento
+    // ultimo -> primo esiste e usa entrambe.
+    const sp: SubPathLite[] = [{
+      anchors: [
+        anchor({ x: 0, y: 0, inX: -1000, inY: -1000 }),
+        anchor({ x: 10, y: 10, outX: 1000, outY: 1000 }),
+      ],
+      closed: true,
+    }];
+    const b = vectorBounds(sp);
+    expect(b.x).toBeLessThan(0);
+    expect(b.x + b.width).toBeGreaterThan(10);
+    // ...e comunque MOLTO dentro l'inviluppo dei controlli (-1000..1010): la
+    // curva non arriva dove arrivano i suoi punti di controllo.
+    expect(b.x).toBeGreaterThan(-1000);
+    expect(b.x + b.width).toBeLessThan(1010);
+  });
+
+  it("un contorno di UN SOLO ancoraggio è il suo punto: non c'è curva che usi le maniglie", () => {
+    const sp: SubPathLite[] = [
+      { anchors: [anchor({ x: 5, y: 7, inX: -50, inY: -50, outX: 50, outY: 50 })], closed: true },
+    ];
+    expect(vectorBounds(sp)).toEqual({ x: 5, y: 7, width: 0, height: 0 });
   });
 
   it("una geometria vuota dà un box degenere in (0,0)", () => {
@@ -152,5 +202,58 @@ describe("vectorGeometry: bounds e normalizzazione", () => {
       // contorno chiuso a ogni modifica.
       expect(subpaths[i].closed).toBe(before.closed);
     }
+  });
+});
+
+// L'invariante del box nel verso che costa: il BOX non può cambiare da solo. Le
+// 8 maniglie di resize sono già spedite da M1 e mandano un
+// setProps{x,y,width,height} per ogni nodo selezionato, kind-agnostico; senza
+// questa riscrittura un nodo vettoriale finirebbe con il path della misura di
+// prima dentro un box cresciuto -- l'invariante violata da un gesto ordinario e
+// senza nessun SetVectorPath in vista.
+describe("vectorGeometry: il resize riscrive la geometria", () => {
+  // bbox = (0,0)-(75,100), vedi il test della cubica qui sopra.
+  const CURVY: SubPathLite[] = [{
+    anchors: [anchor({ x: 0, y: 0, outX: 100, outY: 0 }), anchor({ x: 0, y: 100, inX: 100, inY: 0 })],
+    closed: false,
+  }];
+  const FROM = { width: 75, height: 100 };
+
+  it("scalare il box scala l'inchiostro: la bbox locale resta (0,0)-(w',h')", () => {
+    const out = resizeVector(CURVY, FROM, { signed: 150, start: 75 }, { signed: 50, start: 100 });
+    expect(vectorBounds(out)).toEqual({ x: 0, y: 0, width: 150, height: 50 });
+    // Le maniglie sono OFFSET: si scalano con la sola parte lineare. Se non lo
+    // facessero, la curvatura resterebbe della misura di prima dentro un path
+    // scalato -- e la bbox qui sopra non tornerebbe.
+    expect(out[0].anchors[0].outX).toBe(200);
+    expect(out[0].anchors[1].inX).toBe(200);
+  });
+
+  it("un FLIP specchia l'inchiostro dentro il box invece di mandarlo in negativo", () => {
+    const out = resizeVector(CURVY, FROM, { signed: -75, start: 75 }, { signed: 100, start: 100 });
+    // Stesso box (transformBounds normalizza width/height a >= 0)...
+    expect(vectorBounds(out)).toEqual({ x: 0, y: 0, width: 75, height: 100 });
+    // ...ma la curva è specchiata: gli ancoraggi erano sul bordo SINISTRO del
+    // box (x locale 0) e ora sono su quello destro, con le maniglie girate.
+    expect(out[0].anchors[0].x).toBe(75);
+    expect(out[0].anchors[0].outX).toBe(-100);
+  });
+
+  it("un asse senza fattore di scala definito (lato di partenza 0) resta invariato", () => {
+    // Stessa regola di selection/handles.ts::mapAxis: un lato degenere non ha
+    // un rapporto, e produrre Infinity/NaN sarebbe peggio che non scalare.
+    const flat: SubPathLite[] = [{ anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 0 })], closed: false }];
+    const out = resizeVector(flat, { width: 10, height: 0 }, { signed: 20, start: 10 }, { signed: 0, start: 0 });
+    expect(out[0].anchors.map((a) => [a.x, a.y])).toEqual([[0, 0], [20, 0]]);
+  });
+
+  it("non tocca `closed` né inventa ancoraggi", () => {
+    const sp: SubPathLite[] = [
+      { anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 10 })], closed: true },
+      { anchors: [anchor({ x: 2, y: 2 })], closed: false },
+    ];
+    const out = resizeVector(sp, { width: 10, height: 10 }, { signed: 20, start: 10 }, { signed: 10, start: 10 });
+    expect(out.map((s) => s.closed)).toEqual([true, false]);
+    expect(out.map((s) => s.anchors.length)).toEqual([2, 1]);
   });
 });

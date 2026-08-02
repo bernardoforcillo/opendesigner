@@ -100,6 +100,35 @@ describe("drawScene", () => {
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
     expect(f.fillText).toEqual([]);
   });
+
+  it("still draws a vector node with a degenerate axis, but not a degenerate RECT", () => {
+    // Il box di un nodo vettoriale è la bbox ESATTA della sua geometria
+    // (invariante del proto), quindi un segmento orizzontale ha davvero height
+    // 0 e un path di un solo ancoraggio ha entrambi i lati a 0. Scartarli qui
+    // li renderebbe invisibili -- e, con lo stesso guard nell'hit-test, nemmeno
+    // cliccabili: raggiungibili solo dal pannello livelli.
+    //
+    // Il rettangolo degenere invece resta scartato: lì l'inchiostro È il box e
+    // non c'è niente da riempire. È la distinzione che vive in
+    // shapes.ts::inkIsBox, condivisa da disegno e hit-test.
+    class FakePath2D { rect() {} ellipse() {} roundRect() {} }
+    vi.stubGlobal("Path2D", FakePath2D);
+    try {
+      const s = emptyScene("d", "n");
+      s.nodes["v"] = { ...rect("v", 0, 0, "a0"), kind: "vector", height: 0, vector: { subpaths: [] } };
+      const f = fakeCtx();
+      drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+      expect(f.fills).toHaveLength(1);
+
+      const s2 = emptyScene("d", "n");
+      s2.nodes["r"] = { ...rect("r", 0, 0, "a0"), height: 0 };
+      const f2 = fakeCtx();
+      drawScene(f2.ctx, s2, { x: 0, y: 0, zoom: 1 } as Camera);
+      expect(f2.fills).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
 });
 
 describe("resizeCanvasToDisplaySize", () => {
