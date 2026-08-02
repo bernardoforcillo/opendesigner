@@ -1,6 +1,15 @@
 import type { SceneState, NodeLite } from "../store/types";
 import type { Camera } from "../canvas/camera";
-import { applyTransform, invertTransform, localTransformOf } from "../canvas/transform";
+import {
+  IDENTITY,
+  applyTransform,
+  compose,
+  invertTransform,
+  localTransformOf,
+  mapBounds,
+  type Transform,
+} from "../canvas/transform";
+import { type Bounds, boundsIntersect, boundsOfNode } from "../canvas/geometry";
 import { childIndexOf } from "../store/tree";
 import { nodePath, hitTestNode } from "./shapes";
 import { drawText } from "./text";
@@ -156,4 +165,51 @@ function pickIn(children: ChildIndex, siblings: NodeLite[], px: number, py: numb
     if (hitTestNode(n, px, py)) return n.id;
   }
   return null;
+}
+
+// I nodi il cui box MONDO interseca `bounds`, in ordine di DISEGNO. È la
+// domanda del marquee ("cosa c'è dentro questo rettangolo"), e sta qui insieme
+// a drawScene/hitTest perché deve rispondere con gli STESSI nodi: un marquee
+// che seleziona ciò che il renderer non disegna è la stessa divergenza
+// vedi-vs-clicca che l'hit-test evita, solo presa dall'altro lato -- la
+// selezione finirebbe con una cornice e 8 maniglie su canvas vuoto, e il drag
+// successivo manderebbe setProps per una geometria che l'utente non vede.
+// Quindi la stessa discesa: si parte dai figli delle pagine (chi non è
+// raggiungibile non ha un posto nel mondo) e un container invisibile porta via
+// con sé tutto il sottoalbero.
+//
+// A differenza di pickIn qui si accumula la trasformazione ANDANDO (locale ->
+// mondo) invece di invertirla: il rettangolo del marquee è uno solo e sta nel
+// mondo, mentre i box da confrontare sono uno per nodo.
+export function nodesIntersecting(state: SceneState, bounds: Bounds): string[] {
+  const children = childIndexOf(state);
+  const out: string[] = [];
+  collectIn(children, rootsOf(state, children), IDENTITY, bounds, out, new Set());
+  return out;
+}
+
+// `toWorld` porta al mondo lo spazio in cui sono scritte le coordinate di
+// QUESTI fratelli, cioè quello del loro parent (identità per i figli di una
+// pagina): la stessa direzione dell'avvertenza su worldTransformOf.
+//
+// La discesa non si pota quando il box di un container manca il marquee: un
+// gruppo non contiene per forza i propri figli (il suo box è il suo, non
+// l'unione), quindi un figlio dentro il marquee resterebbe fuori dalla
+// selezione. Si salta solo ciò che non si vede.
+function collectIn(
+  children: ChildIndex,
+  siblings: NodeLite[],
+  toWorld: Transform,
+  bounds: Bounds,
+  out: string[],
+  seen: Set<string>,
+): void {
+  for (const n of siblings) {
+    if (!n.visible || seen.has(n.id)) continue;
+    seen.add(n.id);
+    if (boundsIntersect(mapBounds(toWorld, boundsOfNode(n)), bounds)) out.push(n.id);
+    const kids = children.get(n.id);
+    if (!kids || kids.length === 0) continue;
+    collectIn(children, kids, compose(toWorld, localTransformOf(n)), bounds, out, seen);
+  }
 }

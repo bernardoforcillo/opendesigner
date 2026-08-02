@@ -1,5 +1,5 @@
-import { hitTest } from "../renderer/canvasRenderer";
-import { normalizeRect, boundsIntersect, type Bounds } from "../canvas/geometry";
+import { hitTest, nodesIntersecting } from "../renderer/canvasRenderer";
+import { normalizeRect, type Bounds } from "../canvas/geometry";
 import {
   type Transform,
   invertTransform,
@@ -103,18 +103,24 @@ export function pickTarget(
   return selection.includes(id) ? { mode: "single" } : { mode: "single", id };
 }
 
-// Id dei nodi VISIBILI i cui bounds intersecano il marquee, ordinati per
-// orderKey per un risultato deterministico (Object.values non garantisce
-// l'ordine di inserimento per chiavi stringa).
+// Id dei nodi che il marquee seleziona: quelli VISIBILI (nell'intero cammino
+// dalla pagina in giù) il cui box MONDO interseca il rettangolo, in ordine di
+// disegno.
 //
-// Il marquee è in coordinate MONDO (viene dal puntatore), quindi il confronto
-// va fatto con il box MONDO del nodo: quello del modello è relativo al parent,
-// e per un nodo annidato i due non coincidono più.
+// Il marquee è in coordinate MONDO (viene dal puntatore) e le coordinate del
+// modello sono relative al parent: la conversione, insieme alle regole
+// dell'albero, sta in renderer/canvasRenderer.ts::nodesIntersecting -- la
+// STESSA discesa di drawScene e hitTest. Non si può filtrare la mappa piatta
+// leggendo solo `n.visible`: un flag proprio a true dentro un gruppo nascosto
+// (o su un nodo orfano) selezionerebbe qualcosa che non è sullo schermo, e
+// l'unica traccia visibile sarebbero cornice e maniglie sul vuoto -- seguite,
+// al primo drag, da setProps per una geometria che l'utente non vede.
+//
+// L'ordine è quello dell'albero (container prima dei figli, fratelli per order
+// key) e non un confronto piatto di order key: per una scena piatta sono la
+// stessa lista, per una annidata solo il primo ha un significato.
 export function nodesInMarquee(scene: SceneState, bounds: Bounds): string[] {
-  return Object.values(scene.nodes)
-    .filter((n) => n.visible && boundsIntersect(worldBoundsOfNode(scene, n), bounds))
-    .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0))
-    .map((n) => n.id);
+  return nodesIntersecting(scene, bounds);
 }
 
 function union(base: string[], extra: string[]): string[] {
@@ -296,8 +302,22 @@ export function createSelectTool(): Tool {
       // farebbe partire un marquee azzerando la selezione.
       const handle = handleUnderPointer(ctx, world);
       if (handle) {
+        // Un op per nodo PIÙ IN ALTO, non per id selezionato -- stessa potatura
+        // e stessa funzione della cancellazione (vedi onKeyDown), per una
+        // ragione geometrica invece che di cascata: le coordinate di un figlio
+        // sono relative al suo container, quindi trasformare il container
+        // trasforma GIÀ il figlio. Dare un op anche al figlio lo trasforma due
+        // volte: il suo box mondo viene riscalato dalla stessa t mentre
+        // l'origine del container gli si sposta sotto, e il figlio scappa fuori
+        // dal rettangolo che l'utente sta trascinando.
+        //
+        // Il bbox di GRUPPO resta invece quello dell'INTERA selezione: è il
+        // rettangolo su cui l'overlay ha disegnato le maniglie che l'utente ha
+        // appena afferrato, e t deve nascere esattamente da quello. Anche la
+        // selezione resta intatta: il discendente è ancora selezionato (la
+        // cornice lo comprende, i pannelli lo mostrano), solo non riceve un op.
         const start: Record<string, { world: Bounds; toLocal: Transform }> = {};
-        for (const sid of store.selection) {
+        for (const sid of topmostOf(scene, store.selection)) {
           const n = scene.nodes[sid];
           if (n) start[sid] = { world: worldBoundsOfNode(scene, n), toLocal: parentToLocal(scene, n.parentId) };
         }
@@ -358,9 +378,12 @@ export function createSelectTool(): Tool {
       // target.mode === "single" senza id: nodo già selezionato, nessun
       // cambio -- il drag qui sotto userà la selezione (multipla) esistente.
 
+      // topmostOf come nel resize qui sopra (e nella cancellazione): un
+      // discendente si sposta GIÀ perché si sposta il suo container, quindi un
+      // op suo lo porterebbe a 2*delta dal punto di partenza.
       const selection = useScene.getState().selection;
       const start: Record<string, { x: number; y: number; toLocal: Transform }> = {};
-      for (const sid of selection) {
+      for (const sid of topmostOf(scene, selection)) {
         const n = scene.nodes[sid];
         if (n) start[sid] = { x: n.x, y: n.y, toLocal: parentToLocal(scene, n.parentId) };
       }

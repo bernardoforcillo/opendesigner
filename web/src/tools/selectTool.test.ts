@@ -3,6 +3,7 @@ import { createSelectTool, pickTarget, nodesInMarquee } from "./selectTool";
 import type { ToolContext } from "./types";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { useScene } from "../store/store";
+import { worldBoundsOfNode } from "../canvas/transform";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
 
@@ -888,6 +889,47 @@ describe("selectTool with nesting", () => {
     expect(nodesInMarquee(scene, { x: 5, y: 5, width: 10, height: 10 })).toEqual([]);
   });
 
+  // Il marquee deve obbedire alle STESSE regole d'albero del renderer: quello
+  // che non si disegna non si seleziona. Altrimenti la selezione finisce con
+  // una cornice e 8 maniglie su canvas vuoto, e il primo drag manda setProps
+  // per una geometria che l'utente non vede.
+  it("a marquee over a hidden container does not select its (visible) children", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: {
+        g: node("g", 100, "a000000", { y: 50, width: 400, height: 400, visible: false }),
+        c: node("c", 10, "a000000", { parentId: "g", y: 10 }), // visible: true
+      },
+    });
+    const scene = useScene.getState().scene!;
+    expect(nodesInMarquee(scene, { x: 105, y: 55, width: 20, height: 20 })).toEqual([]);
+  });
+
+  it("a marquee over a node unreachable from any page selects nothing", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: { orfano: node("orfano", 0, "a000000", { parentId: "sparito" }) },
+    });
+    const scene = useScene.getState().scene!;
+    expect(nodesInMarquee(scene, { x: -10, y: -10, width: 100, height: 100 })).toEqual([]);
+  });
+
+  it("dragging a marquee over a hidden subtree leaves the selection (and the handles) empty", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: {
+        g: node("g", 100, "a000000", { y: 50, width: 400, height: 400, visible: false }),
+        c: node("c", 10, "a000000", { parentId: "g", y: 10 }),
+      },
+    });
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(at(100, 50), ctx);
+    tool.onPointerMove!(at(200, 150), ctx);
+    tool.onPointerUp!(at(200, 150), ctx);
+    expect(useScene.getState().selection).toEqual([]);
+  });
+
   it("dragging a nested node writes coordinates that stay LOCAL", () => {
     useScene.getState().setSync(new FakeSync());
     const tool = createSelectTool();
@@ -925,5 +967,82 @@ describe("selectTool with nesting", () => {
     tool.onPointerUp!(at(120, 70), ctx);
     // Nel mondo il nodo va da (120,70) a (160,110): in locale (20,20) 40x40.
     expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 20, y: 20, width: 40, height: 40 });
+  });
+
+  // --- container E discendente selezionati insieme ---------------------------
+  // Le coordinate di un figlio sono relative al suo container: trasformare il
+  // container trasforma GIÀ il figlio. Un op anche per il figlio lo trasforma
+  // due volte -- ed è la stessa potatura (topmostOf) che la cancellazione fa
+  // per un'altra ragione.
+
+  it("moving a container and a descendant selected together transforms the descendant ONCE", () => {
+    useScene.getState().setSelection(["g", "c"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes["c"]);
+    tool.onPointerDown!(at(400, 400), ctx); // dentro "g", fuori da "c": selezione invariata
+    expect(useScene.getState().selection).toEqual(["g", "c"]);
+    tool.onPointerMove!(at(420, 410), ctx); // +20, +10 nel mondo
+    tool.onPointerUp!(at(420, 410), ctx);
+
+    expect(sync.sent).toHaveLength(1); // un op solo: il nodo più in alto
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["g"]).toMatchObject({ x: 120, y: 60 });
+    expect(scene.nodes["c"]).toMatchObject({ x: 10, y: 10 }); // il locale non si tocca
+    // Nel MONDO il figlio si è spostato del delta, non del doppio: 110 -> 130.
+    const after = worldBoundsOfNode(scene, scene.nodes["c"]);
+    expect(after).toMatchObject({ x: before.x + 20, y: before.y + 10 });
+  });
+
+  it("resizing a container and a descendant selected together does not rescale the descendant twice", () => {
+    useScene.getState().setSelection(["g", "c"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    // Il bbox di gruppo è quello dell'INTERA selezione -- (100,50) 400x400,
+    // "c" ci sta dentro -- quindi la maniglia se sta al suo angolo mondo.
+    tool.onPointerDown!(at(500, 450), ctx);
+    tool.onPointerMove!(at(900, 850), ctx); // raddoppia il bbox attorno all'ancora nw
+    tool.onPointerUp!(at(900, 850), ctx);
+
+    expect(sync.sent).toHaveLength(1);
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["g"]).toMatchObject({ x: 100, y: 50, width: 800, height: 800 });
+    // Senza la potatura "c" riceverebbe (20,20) 100x100: il suo box mondo
+    // riscalato dalla stessa t mentre l'origine del container gli si sposta
+    // sotto.
+    expect(scene.nodes["c"]).toMatchObject({ x: 10, y: 10, width: 50, height: 50 });
+  });
+
+  it("the pruning is about the ops, not about the selection: both stay selected", () => {
+    useScene.getState().setSelection(["g", "c"]);
+    useScene.getState().setSync(new FakeSync());
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    tool.onPointerDown!(at(400, 400), ctx);
+    tool.onPointerMove!(at(420, 410), ctx);
+    tool.onPointerUp!(at(420, 410), ctx);
+    expect(useScene.getState().selection).toEqual(["g", "c"]);
+  });
+
+  it("a descendant selected WITHOUT its container still gets its own op", () => {
+    useScene.getState().setSelection(["c"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    tool.onPointerDown!(at(135, 85), ctx); // centro mondo di "c"
+    tool.onPointerMove!(at(155, 95), ctx);
+    tool.onPointerUp!(at(155, 95), ctx);
+
+    expect(sync.sent).toHaveLength(1);
+    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 30, y: 20 });
   });
 });

@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { hitTest, resizeCanvasToDisplaySize, drawScene } from "./canvasRenderer";
+import { hitTest, nodesIntersecting, resizeCanvasToDisplaySize, drawScene } from "./canvasRenderer";
 import type { Camera } from "../canvas/camera";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
@@ -107,6 +107,52 @@ describe("hitTest with nesting", () => {
     const s = emptyScene("d", "n");
     s.nodes["orfano"] = childRect("orfano", "sparito", 0, 0, "a0");
     expect(hitTest(s, 25, 25)).toBeNull();
+  });
+});
+
+// La terza domanda sulla stessa discesa (la prima è "disegna", la seconda
+// "cosa c'è sotto il puntatore"): "cosa c'è dentro questo rettangolo mondo".
+// Deve rispondere con gli stessi nodi delle altre due, altrimenti il marquee
+// seleziona ciò che non si vede.
+describe("nodesIntersecting", () => {
+  it("returns the visible nodes whose WORLD box intersects, in draw order", () => {
+    const s = nestedScene();
+    // Il box mondo di "k" è (113,74)-(163,124): un rettangolo attorno al suo
+    // angolo prende k, e con lui gli antenati che lo contengono.
+    expect(nodesIntersecting(s, { x: 105, y: 70, width: 20, height: 20 })).toEqual(["g", "h", "k"]);
+    // Le coordinate LOCALI di "k" (3,4) non sono un suo punto nel mondo.
+    expect(nodesIntersecting(s, { x: 0, y: 0, width: 10, height: 10 })).toEqual([]);
+  });
+
+  it("skips the whole subtree of an invisible container", () => {
+    const s = nestedScene();
+    s.nodes["h"] = { ...s.nodes["h"], visible: false };
+    // "k" ha visible: true, ma sta dentro un contenitore nascosto: non si
+    // disegna, quindi non si può nemmeno selezionare col marquee -- resta "g".
+    // Un filtro piatto su n.visible risponderebbe ["g", "k"].
+    expect(nodesIntersecting(s, { x: 105, y: 70, width: 20, height: 20 })).toEqual(["g"]);
+  });
+
+  it("ignores a node unreachable from any page", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["orfano"] = childRect("orfano", "sparito", 0, 0, "a0");
+    expect(nodesIntersecting(s, { x: 0, y: 0, width: 100, height: 100 })).toEqual([]);
+  });
+
+  it("keeps descending when a container's own box misses the rectangle", () => {
+    // Il box di un gruppo è il SUO, non l'unione dei figli: potare la discesa
+    // sull'intersezione del container perderebbe un figlio che sta dentro il
+    // marquee mentre il suo container ne sta fuori.
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = childRect("g", "page1", 0, 0, "a0", { width: 10, height: 10 });
+    s.nodes["c"] = childRect("c", "g", 500, 500, "a0");
+    expect(nodesIntersecting(s, { x: 490, y: 490, width: 30, height: 30 })).toEqual(["c"]);
+  });
+
+  it("excludes a node that only touches the rectangle at an edge", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = rect("a", 50, 0, "a0"); // 50x50 -> (50,0)-(100,50)
+    expect(nodesIntersecting(s, { x: 0, y: 0, width: 50, height: 50 })).toEqual([]);
   });
 });
 
