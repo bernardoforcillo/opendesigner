@@ -3,6 +3,7 @@ import { create } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { useScene } from "./store";
+import { parentExists } from "./tree";
 import { emptyScene } from "./types";
 
 // Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
@@ -61,6 +62,35 @@ class ManualSync {
   // `land` dopo un `disown` è esattamente quella prova. Vedi store.ts::DisownedOp.
   disown(op: Op, message = "connection closed") {
     useScene.getState().rejectPending(op.opId, message, true);
+  }
+}
+
+// Doppio di un server che VALIDA il container come core.Apply: un createNode
+// (o un reparent) verso un parent che il documento confermato non contiene
+// viene RIFIUTATO con ErrParentNotFound (internal/core/apply.go); tutto il
+// resto atterra e viene ecoato subito, come FakeSync. Serve dove il rifiuto non
+// deve essere una scelta del test ma una CONSEGUENZA dell'albero: è ciò che
+// succede quando una voce di undo ricrea un nodo dentro un container che un
+// altro client ha appena cancellato.
+class ValidatingSync {
+  sent: Op[] = [];
+  submit(op: Op) {
+    this.sent.push(op);
+    const confirmed = useScene.getState().confirmed!;
+    // Le stesse due dipendenze che core.Apply valida contro l'albero (vedi
+    // requiredParent in store.ts).
+    const parent =
+      op.kind.case === "createNode"
+        ? (op.kind.value.node?.parentId ?? null)
+        : op.kind.case === "reparentNode"
+          ? op.kind.value.newParentId
+          : null;
+    useScene.getState().applyPending(op);
+    if (parent !== null && !parentExists(confirmed, parent)) {
+      useScene.getState().rejectPending(op.opId, "parent not found");
+      return;
+    }
+    useScene.getState().apply(op);
   }
 }
 
@@ -1304,5 +1334,98 @@ describe("undo/redo", () => {
     useScene.getState().redo();
     expect(sync.sent).toHaveLength(0);
     expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["c1", "g1"]);
+  });
+
+  // --- la cascata remota porta via anche le DIPENDENZE, non solo i bersagli --
+  // Il confronto per bersaglio guarda il nodo che un op NOMINA. Da quando la
+  // scena è un albero, un op può dipendere da un nodo che non nomina: una
+  // createNode pretende che il proprio CONTAINER esista (ErrParentNotFound), e
+  // quel container può essere finito dentro la cascata di una delete remota
+  // senza che nessun bersaglio lo dica. Vedi requiredParent/markStale in
+  // store.ts.
+
+  it("una cancellazione remota del PARENT invalida la voce che ricreerebbe il figlio", () => {
+    const strict = new ValidatingSync();
+    useScene.getState().setSync(strict);
+
+    gesture([createChildOp("g1", "page1", "a1")]); // A: voce [deleteNode g1]
+    gesture([createChildOp("c1", "g1", "a1")]);    // B: voce [deleteNode c1]
+    gesture([deleteOp("c1")]);                     // C: voce [createNode c1 SOTTO g1]
+    expect(useScene.getState().undoStack).toHaveLength(3);
+    expect(useScene.getState().undoStack.flatMap(createdIds)).toEqual(["c1"]);
+
+    // Un altro client cancella il GRUPPO. La cascata, misurata sul documento su
+    // cui l'op remoto atterra, è il solo g1: c1 lì dentro non c'è già più
+    // (l'abbiamo cancellato noi), quindi nessun bersaglio dell'op remoto NOMINA
+    // c1 -- e la voce C non nomina g1 da nessuna parte.
+    useScene.getState().apply(deleteOp("g1"));
+
+    // ...ma C ricrea c1 DENTRO g1, e g1 non esiste più: la voce non può più
+    // atterrare, quindi non deve restare sullo stack.
+    expect(useScene.getState().undoStack.flatMap(createdIds)).toEqual([]);
+    for (const entry of useScene.getState().undoStack) expectParentsSatisfied(entry);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    // E lo stack DRENA. Senza l'invalidazione, Ctrl+Z mandava createNode c1
+    // sotto un g1 inesistente: il server rifiutava (ErrParentNotFound), il
+    // banner rosso compariva, invertOp ritornava null (nessun redo registrato)
+    // e revertHistory rimetteva C sullo stack -- il Ctrl+Z successivo la
+    // ripescava, per sempre.
+    strict.sent = [];
+    for (let i = 0; i < 5 && useScene.getState().canUndo; i++) useScene.getState().undo();
+    expect(useScene.getState().undoStack).toEqual([]);
+    expect(useScene.getState().lastError).toBeNull();
+  });
+
+  // Il verso opposto della stessa regola: potare una voce SENZA causa perde in
+  // silenzio un passo di annulla dell'utente, che è un difetto pari all'altro.
+  // Solo una delete fa SPARIRE dei nodi; un reparent li lascia tutti in piedi,
+  // solo altrove, quindi ogni container che una voce pretende c'è ancora.
+
+  it("un reparent REMOTO che sposta il container non invalida la voce che ricrea il figlio", () => {
+    const strict = new ValidatingSync();
+    useScene.getState().setSync(strict);
+
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("f1", "page1", "a2"),
+      createChildOp("c1", "g1", "a1"),
+    ]);
+    gesture([deleteOp("c1")]); // voce: [createNode c1 sotto g1]
+
+    // Un altro client infila g1 dentro f1: il container della voce esiste
+    // ancora, ha solo cambiato casa.
+    useScene.getState().apply(reparentOp("g1", "f1", "a1"));
+
+    const stack = useScene.getState().undoStack;
+    expect(stack.flatMap(createdIds)).toEqual(["c1"]);
+    for (const entry of stack) expectParentsSatisfied(entry);
+
+    // ...e il Ctrl+Z ricrea c1 per davvero, sotto g1, dove g1 si trova ADESSO.
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["c1"]).toMatchObject({ parentId: "g1" });
+    expect(useScene.getState().lastError).toBeNull();
+  });
+
+  it("una cancellazione remota ALTROVE non tocca la voce che ricrea sotto un altro container", () => {
+    const strict = new ValidatingSync();
+    useScene.getState().setSync(strict);
+
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("g2", "page1", "a2"),
+      createChildOp("c1", "g1", "a1"),
+    ]);
+    gesture([deleteOp("c1")]); // voce: [createNode c1 sotto g1]
+
+    // La cascata remota si porta via g2, che con c1 non c'entra nulla: la voce
+    // resta esattamente com'era.
+    useScene.getState().apply(deleteOp("g2"));
+
+    expect(useScene.getState().undoStack.flatMap(createdIds)).toEqual(["c1"]);
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["c1"]).toMatchObject({ parentId: "g1" });
+    expect(useScene.getState().lastError).toBeNull();
   });
 });

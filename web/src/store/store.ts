@@ -398,6 +398,11 @@ function allEntries(undoStack: Op[][], redoStack: Op[][], history: HistoryMark[]
 // Le voci restano comunque calcolate su stati più vecchi, quindi `after` è per
 // loro un'approssimazione -- ma è quella del momento in cui verrebbero
 // mandate, che è il solo momento che conta.
+//
+// Il confronto per BERSAGLIO non basta da solo: guarda il nodo che un op
+// NOMINA, e da quando la scena è un albero un op può dipendere da un nodo che
+// non nomina affatto -- il proprio CONTAINER (requiredParent). Quella
+// dipendenza va confrontata con i nodi che il remoto fa SPARIRE, vedi sotto.
 function markStale(
   remote: Op,
   stale: WeakSet<Op>,
@@ -407,10 +412,38 @@ function markStale(
 ): boolean {
   const targets = targetsOf(remote, before);
   if (targets.length === 0) return false;
+  // I nodi che il remoto PORTA VIA dal documento: la radice nominata e tutta la
+  // sua cascata (targetsOf la espande su `before`, l'unico documento che sa che
+  // cosa la delete si è portata via).
+  //
+  // Solo una deleteNode ne fa sparire. Un reparent li lascia tutti in piedi,
+  // solo altrove: ogni container che una voce pretende esiste ancora, e
+  // invalidare lì sarebbe potare SENZA CAUSA -- una voce tolta per niente è un
+  // passo di annulla che l'utente perde in silenzio, cioè il difetto simmetrico
+  // di quello che questo controllo ripara.
+  const removed = remote.kind.case === "deleteNode" ? new Set(targets.map((t) => t.id)) : null;
   let hit = false;
   for (const entry of entries) {
     for (const op of entry) {
       if (stale.has(op)) continue;
+      // Il container di cui l'op ha BISOGNO è finito dentro la cascata remota:
+      // l'op non potrà più atterrare (ErrParentNotFound in core.applyCreate /
+      // applyReparent) per quanto il suo bersaglio sia intatto.
+      //
+      // È il caso che sfugge interamente al confronto per bersaglio: la voce
+      // che ricrea c1 dentro g1 (l'inverso della nostra delete di c1) non nomina
+      // g1 da nessuna parte, e c1 -- già fuori dal documento -- non compare
+      // nella cascata che l'op remoto si porta via. Nessun conflitto, la voce
+      // resta, Ctrl+Z la manda, il server la rifiuta; e siccome invertOp su di
+      // lei ritorna null (il parent non esiste) non si registra nessuna voce di
+      // redo, mentre revertHistory la rimette sull'undo stack: banner rosso a
+      // ogni Ctrl+Z successivo, e la voce non drena mai.
+      const parent = requiredParent(op);
+      if (parent !== null && removed !== null && removed.has(parent)) {
+        stale.add(op);
+        hit = true;
+        continue;
+      }
       const us = targetsOf(op, after);
       if (us.some((u) => targets.some((t) => conflicts(t, u)))) {
         stale.add(op);
@@ -433,6 +466,11 @@ function createdId(op: Op): string | null {
 // core.Apply valida contro l'albero: una createNode con un parent ignoto e un
 // reparent verso un parent ignoto vengono entrambi rifiutati
 // (ErrParentNotFound). null = l'op non dipende da nessun container.
+//
+// È l'unica dipendenza di un op che il suo BERSAGLIO non dice, quindi la
+// leggono i due posti che devono conoscerla: markStale (il container portato
+// via da una cascata REMOTA) e pruneEntry (il container che la voce stessa non
+// ricrea più).
 function requiredParent(op: Op): string | null {
   if (op.kind.case === "createNode") {
     const node = op.kind.value.node;
