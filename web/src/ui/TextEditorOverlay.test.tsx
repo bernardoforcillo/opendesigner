@@ -302,12 +302,10 @@ describe("Enter", () => {
 
 describe("scorciatoie globali mentre si scrive", () => {
   it("Ctrl+Z dentro il campo non arriva all'undo dell'app (e fuori sì)", () => {
-    render(
-      <>
-        <App />
-        <TextEditorOverlay nodeId="t1" />
-      </>,
-    );
+    // Il campo qui viene dall'App vera (che lo monta da sé quando
+    // editingNodeId è valorizzato): la guardia si verifica sull'app montata,
+    // non su un overlay affiancato a mano.
+    render(<App />);
 
     // La guardia isTextField di App.tsx esce PRIMA di preventDefault: se
     // l'evento non è stato cancellato, la scorciatoia non l'ha nemmeno
@@ -326,12 +324,7 @@ describe("scorciatoie globali mentre si scrive", () => {
   });
 
   it("Backspace nel campo non cancella il nodo selezionato", async () => {
-    render(
-      <>
-        <App />
-        <TextEditorOverlay nodeId="t1" />
-      </>,
-    );
+    render(<App />);
     expect(useScene.getState().selection).toEqual(["t1"]);
 
     await userEvent.type(field(), "{Backspace}{Backspace}");
@@ -370,6 +363,110 @@ describe("accenti e IME", () => {
     expect(content()).toBe("ciao に");
     fireEvent.blur(ta);
     expect(sync.sent[0].kind.case === "setText" && sync.sent[0].kind.value.content).toBe("ciao に");
+  });
+
+  // Bug trovato in review: Escape era gestito INCONDIZIONATAMENTE. Con un IME
+  // aperto quel tasto è il modo standard di rifiutare una conversione (chiude
+  // la finestra dei candidati), e trattarlo come "annulla tutto" buttava via
+  // l'intera sessione di editing -- proprio con le lingue per cui l'overlay
+  // del DOM esiste.
+  describe("Escape mentre l'IME sta componendo", () => {
+    it("non chiude la sessione: quel tasto è dell'IME", () => {
+      render(<TextEditorOverlay nodeId="t1" />);
+      const ta = field();
+
+      fireEvent.compositionStart(ta);
+      fireEvent.change(ta, { target: { value: "ciao に" } });
+      // L'utente rifiuta il candidato: l'IME si chiude, l'editing NO.
+      fireEvent.keyDown(ta, { key: "Escape" });
+
+      expect(screen.queryByRole("textbox")).not.toBeNull();
+      expect(useScene.getState().editingNodeId).toBe("t1");
+      expect(useScene.getState().gesture).not.toBeNull();
+      expect(content()).toBe("ciao に");
+      expect(sync.sent).toHaveLength(0);
+    });
+
+    it("torna a essere nostro appena la composizione finisce", () => {
+      render(<TextEditorOverlay nodeId="t1" />);
+      const ta = field();
+
+      fireEvent.compositionStart(ta);
+      fireEvent.change(ta, { target: { value: "ciao に" } });
+      fireEvent.compositionEnd(ta, { data: "に" });
+
+      fireEvent.keyDown(ta, { key: "Escape" });
+
+      // Adesso Escape annulla come sempre: contenuto di partenza, niente sul
+      // filo, niente nella storia.
+      expect(useScene.getState().editingNodeId).toBeNull();
+      expect(useScene.getState().gesture).toBeNull();
+      expect(content()).toBe("ciao");
+      expect(sync.sent).toHaveLength(0);
+    });
+
+    it("rispetta anche isComposing e il keyCode 229, che alcuni browser mandano da soli", () => {
+      render(<TextEditorOverlay nodeId="t1" />);
+      const ta = field();
+
+      // Nessun compositionstart visto da noi (l'ordine degli eventi cambia da
+      // browser a browser): resta il flag standard sull'evento...
+      fireEvent.keyDown(ta, { key: "Escape", isComposing: true });
+      expect(useScene.getState().editingNodeId).toBe("t1");
+
+      // ...e il vecchio "tasto in lavorazione dall'IME".
+      fireEvent.keyDown(ta, { key: "Escape", keyCode: 229 });
+      expect(useScene.getState().editingNodeId).toBe("t1");
+      expect(useScene.getState().gesture).not.toBeNull();
+
+      // Un Escape normale, invece, esce.
+      fireEvent.keyDown(ta, { key: "Escape" });
+      expect(useScene.getState().editingNodeId).toBeNull();
+    });
+  });
+});
+
+// --- il wiring nell'app -----------------------------------------------------
+
+// Un componente che nessuno monta è codice morto: il testo si potrebbe creare
+// ma non scrivere. Questi test tengono chiuso quel buco -- è la stessa forma
+// del bug "il tool testo non era nella toolbar" (vedi App.test.tsx).
+describe("App monta l'overlay", () => {
+  it("quando c'è un nodo in editing il campo esiste ed è VIVO", async () => {
+    render(<App />);
+
+    const ta = field();
+    expect(ta.value).toBe("ciao");
+    expect(document.activeElement).toBe(ta);
+
+    await userEvent.type(ta, " mondo");
+    fireEvent.blur(ta);
+
+    // Non basta che il campo compaia: deve essere collegato allo store vero.
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case).toBe("setText");
+    expect(content()).toBe("ciao mondo");
+    expect(useScene.getState().editingNodeId).toBeNull();
+  });
+
+  it("senza editing non c'è nessun campo (e nessun gesto aperto)", () => {
+    useScene.setState({ editingNodeId: null });
+    render(<App />);
+
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("cambiare nodo in editing sposta il campo sull'altro nodo", () => {
+    installScene(textNode("t1", "primo"), textNode("t2", "secondo", { x: 300 }));
+    useScene.setState({ editingNodeId: "t1" });
+    render(<App />);
+    expect(field().value).toBe("primo");
+
+    act(() => useScene.getState().beginTextEditing("t2"));
+
+    expect(field().value).toBe("secondo");
+    expect(field().style.left).toBe("300px");
   });
 });
 

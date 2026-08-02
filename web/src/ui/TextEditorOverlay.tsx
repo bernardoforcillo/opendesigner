@@ -58,6 +58,11 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   // Una sessione è chiusa UNA volta sola: Escape chiude, e il blur che arriva
   // subito dopo (il campo sta per essere smontato) non deve richiudere niente.
   const done = useRef(false);
+  // C'è una composizione IME in corso? Serve solo a Escape: mentre l'IME è
+  // aperto quel tasto è SUO (chiude la finestra dei candidati), non nostro.
+  // Un ref e non uno stato: nessun ridisegno dipende da questo valore, e il
+  // keydown lo deve leggere aggiornato nello stesso giro di eventi.
+  const composing = useRef(false);
 
   // Il contenuto della sessione. La sorgente di verità mentre si scrive è il
   // CAMPO, non lo store: lo store riceve un'anteprima a ogni tasto, ma è il
@@ -174,7 +179,26 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
       // la finestra che perde il fuoco non deve poter perdere quello che
       // l'utente ha scritto.
       onBlur={() => finish(true)}
+      // Composizione IME (giapponese, cinese, coreano, ma anche le tastiere
+      // predittive del mobile): fra compositionstart e compositionend i tasti
+      // appartengono all'IME, non a noi. Vedi la guardia in onKeyDown.
+      onCompositionStart={() => {
+        composing.current = true;
+      }}
+      onCompositionEnd={() => {
+        composing.current = false;
+      }}
       onKeyDown={(e) => {
+        // Escape MENTRE l'IME sta componendo chiude la finestra dei candidati:
+        // è il modo standard di rifiutare una conversione, e buttare via
+        // l'intera sessione di editing per quel tasto renderebbe l'editor
+        // inusabile con un IME -- cioè con le lingue per cui l'overlay del DOM
+        // esiste. Tre segnali per lo stesso stato perché i browser non
+        // concordano: isComposing (lo standard), keyCode 229 (il tasto
+        // "in lavorazione dall'IME", che vecchi WebKit mandano senza
+        // isComposing) e il nostro ref, che copre l'ordine in cui il keydown
+        // arriva prima che il browser marchi l'evento.
+        if (composing.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
         // Escape annulla. Enter no: va a capo (è un editor multilinea) ed è
         // quindi affare del campo, non nostro.
         if (e.key === "Escape") {

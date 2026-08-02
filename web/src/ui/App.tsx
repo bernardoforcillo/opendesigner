@@ -8,6 +8,7 @@ import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer
 import { drawOverlay } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
+import { TextEditorOverlay } from "./TextEditorOverlay";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
 import { selectTool } from "../tools/selectTool";
 import { rectTool } from "../tools/rectTool";
@@ -81,6 +82,13 @@ export function App() {
   // sapere PRIMA di continuare a lavorare, non al reload successivo.
   const connection = useScene((s) => s.connection);
   const syncError = useScene((s) => s.syncError);
+  // Il nodo che si sta scrivendo (lo accendono textTool alla creazione e il
+  // doppio click di selectTool). È l'UNICO punto in cui il campo di editing
+  // diventa raggiungibile dall'utente: senza questa riga TextEditorOverlay è
+  // codice compilato che nessuno monta, e il testo si può creare ma non
+  // scrivere. Selettore, quindi l'app si ridisegna solo quando si entra o si
+  // esce dall'editing.
+  const editingNodeId = useScene((s) => s.editingNodeId);
 
   // bootstrap: documento + SyncClient + tool
   useEffect(() => {
@@ -322,6 +330,12 @@ export function App() {
             pointer-events-none: tutti i listener restano sul canvas "scene",
             l'overlay è puramente visivo e non deve rubare eventi. */}
         <canvas id="overlay" ref={overlayRef} className="pointer-events-none absolute inset-0 block h-full w-full" />
+        {/* Il campo di editing del testo: DENTRO questo contenitore perché si
+            posiziona in `absolute` sulle coordinate schermo del nodo, e sopra
+            i due canvas perché li deve coprire. `key`: una sessione per nodo,
+            così passare da un testo a un altro rimonta il campo invece di
+            riusarlo. */}
+        {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
       </div>
     </div>
   );
