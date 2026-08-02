@@ -375,19 +375,43 @@ function allEntries(undoStack: Op[][], redoStack: Op[][], history: HistoryMark[]
 // tenerlo vivo per tutta la sessione solo per poterlo riconoscere. Con il
 // WeakSet l'appartenenza sopravvive esattamente quanto l'op che la usa (i mark
 // ne tengono una copia finché sono in dubbio), e non un istante di più.
-// `scene` è il documento CONFERMATO su cui `remote` sta per atterrare: serve a
-// espandere le delete a cascata (vedi targetsOf), da entrambi i lati del
-// confronto. Le voci sono state calcolate su stati più vecchi, quindi per loro
-// è un'approssimazione -- ma è la migliore disponibile, e sbagliare in questa
-// direzione toglie un passo di annulla invece di riscrivere il lavoro altrui.
-function markStale(remote: Op, stale: WeakSet<Op>, entries: Op[][], scene: SceneState): boolean {
-  const targets = targetsOf(remote, scene);
+// Le due scene NON sono la stessa, e non possono esserlo: i due lati del
+// confronto rispondono a due domande diverse (vedi targetsOf, che espande le
+// cascate).
+//  - `before` -- il confermato PRIMA di `remote` -- è il documento su cui
+//    l'op remoto atterra, cioè l'unico che sa che cosa una sua deleteNode si
+//    è portata via: dopo, quel sottoalbero non esiste più e l'espansione
+//    ricadrebbe sul solo id nominato (le voci che toccano i FIGLI di un gruppo
+//    cancellato da un altro resterebbero in piedi).
+//  - `after` -- il confermato DOPO -- è invece il documento su cui atterrerà
+//    il prossimo Ctrl+Z, cioè l'unico che sa che cosa una deleteNode DI UNA
+//    VOCE si porterebbe via ADESSO. Un op remoto che INFILA un nodo in un
+//    sottoalbero (createNode con quel parent, o un reparent verso l'interno)
+//    non tocca nessun nodo che la scena precedente contenesse: guardato sul
+//    documento vecchio non confligge con niente, la voce sopravvive, e il
+//    Ctrl+Z successivo cancella a cascata il nodo di un ALTRO client -- in
+//    silenzio, perché senza conflitto non c'è nemmeno il banner STALE.
+// Il verso opposto (un remoto che PORTA VIA un nodo da un sottoalbero) è
+// simmetrico e vale sul documento nuovo: la voce non lo distruggerebbe più,
+// quindi non c'è niente da invalidare e il passo di annulla resta.
+//
+// Le voci restano comunque calcolate su stati più vecchi, quindi `after` è per
+// loro un'approssimazione -- ma è quella del momento in cui verrebbero
+// mandate, che è il solo momento che conta.
+function markStale(
+  remote: Op,
+  stale: WeakSet<Op>,
+  entries: Op[][],
+  before: SceneState,
+  after: SceneState,
+): boolean {
+  const targets = targetsOf(remote, before);
   if (targets.length === 0) return false;
   let hit = false;
   for (const entry of entries) {
     for (const op of entry) {
       if (stale.has(op)) continue;
-      const us = targetsOf(op, scene);
+      const us = targetsOf(op, after);
       if (us.some((u) => targets.some((t) => conflicts(t, u)))) {
         stale.add(op);
         hit = true;
@@ -962,8 +986,12 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   apply: (op, own = false) =>
     set((st) => {
       if (!st.confirmed) return st;
+      // Il confermato DOPO l'op, tenuto a portata: è la scena su cui
+      // atterrerebbe il prossimo Ctrl+Z, e markStale ne ha bisogno insieme a
+      // quella di prima.
+      const confirmed = applyOp(st.confirmed, op);
       const next = {
-        ...rebuild(st, applyOp(st.confirmed, op), dropPending(st.pending, op.opId)),
+        ...rebuild(st, confirmed, dropPending(st.pending, op.opId)),
         // L'op è durabile: la voce di undo che l'aveva prodotto smette di
         // essere annullabile da un rollback (vedi HistoryMark).
         history: confirmHistory(st.history, op.opId),
@@ -977,7 +1005,8 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         // (Il controllo sulla coda prima di costruire l'elenco delle voci: un
         // eco è il caso NORMALE, e non deve pagare la scansione della storia.)
         if (own || st.pending.some((p) => p.opId === op.opId)) return next;
-        if (!markStale(op, st.stale, allEntries(st.undoStack, st.redoStack, next.history), st.confirmed)) {
+        const entries = allEntries(st.undoStack, st.redoStack, next.history);
+        if (!markStale(op, st.stale, entries, st.confirmed, confirmed)) {
           return next;
         }
         const undoStack = pruneStale(st.undoStack, st.stale);

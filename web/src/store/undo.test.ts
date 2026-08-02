@@ -1210,11 +1210,99 @@ describe("undo/redo", () => {
 
     useScene.getState().apply(reparentOp("c1", "page1", "a7"));
 
-    // Restano lo spostamento (x/y non c'entrano con la riparentazione) e...
-    // niente altro: il riordino scrive order_key, che il reparent riscrive, e
-    // la voce di creazione cancellerebbe i nodi appena spostati da un altro.
+    // Cade il riordino (scrive order_key, che il reparent riscrive) e cade il
+    // [deleteNode c1] della voce di creazione (cancellerebbe il nodo appena
+    // spostato da un altro). Restano lo spostamento -- x/y non c'entrano con la
+    // riparentazione -- e il [deleteNode g1] della creazione: DOPO il reparent
+    // il gruppo è vuoto, quindi cancellarlo non porta più via c1.
     const stack = useScene.getState().undoStack;
-    expect(stack).toHaveLength(1);
-    expect(stack[0][0].kind.case === "setProps" && stack[0][0].kind.value.mask?.paths).toEqual(["x", "y"]);
+    expect(stack).toHaveLength(2);
+    expect(stack[0].map(deletedId)).toEqual(["g1"]);
+    expect(stack[1][0].kind.case === "setProps" && stack[1][0].kind.value.mask?.paths).toEqual(["x", "y"]);
+  });
+
+  // La cascata guarda in DUE direzioni, e le due vogliono due scene diverse
+  // (vedi markStale). Un op remoto che INFILA un nodo in un sottoalbero non
+  // tocca nessun nodo che il documento precedente contenesse: misurata su
+  // quello, una voce che cancella il container non confligge con niente e
+  // sopravvive -- e il Ctrl+Z successivo porta via il nodo dell'altro client
+  // in silenzio, senza nemmeno il banner STALE.
+
+  it("un createNode REMOTO dentro un gruppo invalida la voce che cancellerebbe il gruppo", () => {
+    gesture([createChildOp("g1", "page1", "a1")]); // voce: [deleteNode g1]
+    expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
+
+    // Un altro client crea un nodo DENTRO g1.
+    useScene.getState().apply(createChildOp("c1", "g1", "a1"));
+    expect(useScene.getState().scene!.nodes["c1"]).toBeDefined();
+
+    // Da adesso [deleteNode g1] cascata su c1: non è più annullabile.
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    // Ctrl+Z non manda niente, e soprattutto non distrugge il nodo altrui.
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(0);
+    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["c1", "g1"]);
+  });
+
+  it("un reparent REMOTO che INFILA un nodo nel gruppo invalida la voce che lo cancellerebbe", () => {
+    gesture([createChildOp("g1", "page1", "a1")]); // voce: [deleteNode g1]
+
+    // Il nodo dell'altro client nasce FUORI da g1: la nostra voce cancella un
+    // gruppo vuoto e resta legittima (invalidarla qui sarebbe buttare via un
+    // passo di annulla per niente).
+    useScene.getState().apply(createChildOp("c1", "page1", "a9"));
+    expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
+    expect(useScene.getState().notice).toBeNull();
+
+    // ...poi lo INFILA dentro g1, e da lì la voce distruggerebbe il suo lavoro.
+    useScene.getState().apply(reparentOp("c1", "g1", "a1"));
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(0);
+    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["c1", "g1"]);
+  });
+
+  it("un reparent REMOTO che PORTA VIA un nodo dal gruppo lascia in piedi la voce che lo cancella", () => {
+    gesture([createChildOp("g1", "page1", "a1")]);
+    gesture([createChildOp("c1", "g1", "a1")]);
+    expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"], ["c1"]]);
+
+    // Il verso opposto: un altro client tira c1 FUORI da g1.
+    useScene.getState().apply(reparentOp("c1", "page1", "a7"));
+
+    // La voce su c1 muore (il reparent ne riscrive parent e order_key), quella
+    // su g1 no: sul documento NUOVO cancellare g1 non tocca più c1, quindi non
+    // c'è nessun lavoro altrui da riscrivere e il passo di annulla resta.
+    expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["g1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes["c1"]).toMatchObject({ parentId: "page1" });
+  });
+
+  it("una voce di REDO che ricancella un gruppo cade se un remoto ci ha messo dentro qualcosa", () => {
+    gesture([createChildOp("g1", "page1", "a1")]);
+    gesture([deleteOp("g1")]);   // voce di undo: [createNode g1]
+    useScene.getState().undo();  // g1 torna; il redo ha "ricancellalo"
+    expect(useScene.getState().redoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
+
+    // Un altro client lavora dentro g1 mentre il redo è in coda.
+    useScene.getState().apply(createChildOp("c1", "g1", "a1"));
+
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().canRedo).toBe(false);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    sync.sent = [];
+    useScene.getState().redo();
+    expect(sync.sent).toHaveLength(0);
+    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["c1", "g1"]);
   });
 });
