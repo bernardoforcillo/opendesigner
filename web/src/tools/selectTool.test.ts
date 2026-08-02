@@ -636,19 +636,48 @@ describe("selectTool", () => {
       useScene.setState({ editingNodeId: null });
     });
 
-    it("enters editing on the second click, within the threshold, on the SAME node", () => {
+    it("enters editing on the RELEASE of the second click, not on its pointerdown", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
       expect(useScene.getState().editingNodeId).toBeNull(); // il primo click seleziona soltanto
 
+      // Il secondo pointerdown da solo NON decide: fino al rilascio quel
+      // pointer può ancora diventare un drag (vedi il test qui sotto).
       tool.onPointerDown!(atT(10, 10, 200), ctx);
+      expect(useScene.getState().editingNodeId).toBeNull();
+
+      tool.onPointerUp!(atT(10, 10, 200), ctx);
       expect(useScene.getState().editingNodeId).toBe("t");
       expect(useScene.getState().selection).toEqual(["t"]);
     });
 
-    it("does not start a drag on the click that enters editing", () => {
+    // Il difetto: un secondo click RAPIDO seguito da un trascinamento veniva
+    // inghiottito dall'editing e il nodo non si spostava più. Il puntatore, non
+    // il solo pointerdown, decide: superata la soglia è un drag come un altro.
+    it("a quick second click that then DRAGS moves the node and does not open editing", () => {
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(atT(10, 10, 0), ctx);
+      tool.onPointerUp!(atT(10, 10, 0), ctx);
+      tool.onPointerDown!(atT(10, 10, 200), ctx); // secondo click, entro soglia
+      tool.onPointerMove!(atT(40, 40, 210), ctx); // ma si muove: dx=30 dy=30
+      expect(useScene.getState().scene!.nodes["t"]).toMatchObject({ x: 30, y: 30 }); // anteprima
+      tool.onPointerUp!(atT(40, 40, 220), ctx);
+
+      expect(useScene.getState().editingNodeId).toBeNull(); // niente editing
+      expect(useScene.getState().scene!.nodes["t"]).toMatchObject({ x: 30, y: 30 });
+      expect(sync.sent).toHaveLength(1); // un solo setProps, come un move normale
+      expect(sync.sent[0].kind.case).toBe("setProps");
+    });
+
+    // Rilasciare il secondo click FERMO (a meno di un tremolio sotto soglia)
+    // resta un doppio click: apre l'editing e non muove nulla.
+    it("a sub-slop jitter on the second click still opens editing and moves nothing", () => {
       const sync = new FakeSync();
       useScene.getState().setSync(sync);
       const tool = createSelectTool();
@@ -656,11 +685,45 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
       tool.onPointerDown!(atT(10, 10, 200), ctx);
-      tool.onPointerMove!(atT(40, 40, 210), ctx);
-      tool.onPointerUp!(atT(40, 40, 220), ctx);
+      tool.onPointerMove!(atT(12, 12, 210), ctx); // 2px: sotto la soglia
+      tool.onPointerUp!(atT(12, 12, 220), ctx);
 
+      expect(useScene.getState().editingNodeId).toBe("t");
       expect(sync.sent).toHaveLength(0); // nessun setProps: non si è mosso nulla
       expect(useScene.getState().scene!.nodes["t"]).toMatchObject({ x: 0, y: 0 });
+    });
+
+    // La soglia è in px SCHERMO come quella del marquee: a zoom 10 UN'unità
+    // mondo vale 10px ed è già un drag, mentre a zoom 1 la stessa unità
+    // resterebbe sotto i 3px (il test qui sopra ne muove 2 e resta un click).
+    it("the drag threshold is in screen px, so it scales with the zoom", () => {
+      useScene.setState({ camera: { x: 0, y: 0, zoom: 10 } });
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(atT(10, 10, 0), ctx);
+      tool.onPointerUp!(atT(10, 10, 0), ctx);
+      tool.onPointerDown!(atT(10, 10, 200), ctx);
+      tool.onPointerMove!(atT(11, 11, 210), ctx); // 1 unità mondo = 10px schermo
+      tool.onPointerUp!(atT(11, 11, 220), ctx);
+
+      expect(useScene.getState().editingNodeId).toBeNull();
+      expect(useScene.getState().scene!.nodes["t"]).toMatchObject({ x: 1, y: 1 });
+      expect(sync.sent).toHaveLength(1);
+    });
+
+    // Esc fra il pointerdown e il rilascio abbandona il gesto: il pointerup che
+    // arriva comunque dopo non deve aprire un editing "in ritardo".
+    it("Esc between the second pointerdown and its release cancels the pending editing", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(atT(10, 10, 0), ctx);
+      tool.onPointerUp!(atT(10, 10, 0), ctx);
+      tool.onPointerDown!(atT(10, 10, 200), ctx);
+      tool.onKeyDown!({ key: "Escape" } as KeyboardEvent, ctx);
+      tool.onPointerUp!(atT(10, 10, 200), ctx);
+      expect(useScene.getState().editingNodeId).toBeNull();
     });
 
     it("does not enter editing when the second click arrives too late", () => {
@@ -669,6 +732,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
       tool.onPointerDown!(atT(10, 10, 5000), ctx);
+      tool.onPointerUp!(atT(10, 10, 5000), ctx);
       expect(useScene.getState().editingNodeId).toBeNull();
     });
 
@@ -691,6 +755,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
       tool.onPointerDown!(atT(210, 10, 50), ctx);
+      tool.onPointerUp!(atT(210, 10, 50), ctx);
       expect(useScene.getState().editingNodeId).toBeNull();
     });
 
@@ -704,6 +769,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
       tool.onPointerDown!(atT(10, 10, 50), ctx);
+      tool.onPointerUp!(atT(10, 10, 50), ctx);
       expect(useScene.getState().editingNodeId).toBeNull();
       expect(useScene.getState().selection).toEqual(["r"]); // il click normale continua a selezionare
     });
@@ -714,6 +780,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(10, 10, 0, true), ctx);
       tool.onPointerUp!(atT(10, 10, 0, true), ctx);
       tool.onPointerDown!(atT(10, 10, 50, true), ctx);
+      tool.onPointerUp!(atT(10, 10, 50, true), ctx);
       expect(useScene.getState().editingNodeId).toBeNull();
     });
 
@@ -739,10 +806,11 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      // doppio click su t1: entra in editing.
+      // doppio click su t1: entra in editing (al rilascio del secondo click).
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
       tool.onPointerDown!(atT(10, 10, 200), ctx);
+      tool.onPointerUp!(atT(10, 10, 200), ctx);
       expect(useScene.getState().editingNodeId).toBe("t1");
       expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
 
@@ -751,6 +819,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(210, 10, 1000), ctx);
       tool.onPointerUp!(atT(210, 10, 1000), ctx);
       tool.onPointerDown!(atT(210, 10, 1200), ctx);
+      tool.onPointerUp!(atT(210, 10, 1200), ctx);
 
       expect(useScene.getState().editingNodeId).toBe("t2");
       expect(useScene.getState().scene!.nodes["t1"]).toBeUndefined(); // niente nodo fantasma

@@ -34,6 +34,12 @@ const MARQUEE_SLOP_PX = 3;
 // testabile senza timer finti, bastano due PointerEvent con timeStamp diversi.
 const DOUBLE_CLICK_MS = 400;
 
+// Quanto può spostarsi il puntatore (px SCHERMO, come MARQUEE_SLOP_PX qui sopra
+// e CLICK_SLOP_PX di shapeTool) fra il pointerdown del secondo click e il suo
+// rilascio senza smettere di essere un doppio click. Sopra la soglia quel
+// pointer è un DRAG e basta: vedi il commento su pendingTextEdit.
+const DOUBLE_CLICK_SLOP_PX = 3;
+
 // Il cursore vive sul DOM del canvas (come fa toolManager quando cambia tool).
 // Duck-typing su style: nei test ctx.canvas è un doppio, non un HTMLCanvasElement.
 function setCursor(ctx: ToolContext, cursor: string): void {
@@ -127,6 +133,19 @@ export function createSelectTool(): Tool {
   // --- doppio click su un nodo testo -----------------------------------------
   let lastClick: { id: string; time: number } | null = null;
 
+  // Id del nodo testo CANDIDATO all'editing: il secondo click entro soglia è
+  // arrivato, ma la decisione è rinviata al rilascio. Il pointerdown da solo
+  // non basta a dire "doppio click" -- un ri-click rapido che poi TRASCINA è un
+  // normale spostamento, e deciderlo al down lo inghiottiva in una sessione di
+  // editing lasciando il nodo inchiodato dov'era (stessa forma del marquee 0x0
+  // curato in M1a: non impegnarsi finché non ci sono abbastanza prove).
+  // Finché è valorizzato il drag è PREPARATO ma non avviato (dragStarted resta
+  // false, nessun gesto aperto sullo store): a pointerup si apre l'editing, e
+  // se invece il puntatore supera DOUBLE_CLICK_SLOP_PX il candidato cade e il
+  // drag prosegue esattamente come un move qualunque -- delta calcolato da
+  // dragAnchor, quindi anche i px "spesi" per superare la soglia contano.
+  let pendingTextEdit: string | null = null;
+
   function resetDrag() {
     dragAnchor = null;
     dragStart = null;
@@ -180,6 +199,10 @@ export function createSelectTool(): Tool {
   // da store.ts) manda comunque sul filo un setProps fasullo per un nodo ormai
   // cancellato.
   function cancelActiveGesture() {
+    // Anche il candidato all'editing è "gesto in corso": senza azzerarlo, il
+    // pointerup che arriva comunque dopo Esc/Delete aprirebbe una sessione di
+    // editing in ritardo (su un nodo che Delete può pure aver cancellato).
+    pendingTextEdit = null;
     if (marqueeAnchor) {
       useScene.getState().setSelection(preMarqueeSelection ?? []);
       resetMarquee();
@@ -203,6 +226,10 @@ export function createSelectTool(): Tool {
       if (!scene) return;
       const world = ctx.toWorld(e);
       const store = useScene.getState();
+      // Ogni nuovo pointerdown riparte senza candidati: un down non risolto (un
+      // secondo dito, un up mai arrivato) non deve poter aprire l'editing molto
+      // dopo. Prima delle maniglie, che escono dal metodo per la loro strada.
+      pendingTextEdit = null;
 
       // Le maniglie hanno PRIORITÀ sui nodi: la maniglia se di un rettangolo
       // cade dentro (o sul bordo di) il rettangolo stesso, e quelle esterne
@@ -231,6 +258,11 @@ export function createSelectTool(): Tool {
       // id apposta, vedi il suo commento) -- e qui serve SEMPRE, selezionato o
       // no. Shift-click resta riservato al toggle multi-selezione, non a
       // questo: uno shift+doppio click non fa nulla di speciale.
+      //
+      // Il secondo click segna solo un CANDIDATO (pendingTextEdit) e prosegue:
+      // selezione e drag si preparano come per un click qualunque, così se il
+      // puntatore si muove il gesto è già armato e lo spostamento parte da
+      // questo stesso down. Chi decide è il rilascio (onPointerUp), non il down.
       const hitId = hitTest(scene, world.x, world.y);
       if (hitId && !e.shiftKey) {
         const isDoubleClick =
@@ -238,12 +270,12 @@ export function createSelectTool(): Tool {
           lastClick.id === hitId &&
           e.timeStamp - lastClick.time <= DOUBLE_CLICK_MS;
         if (isDoubleClick && scene.nodes[hitId]?.kind === "text") {
+          // lastClick azzerato: un terzo click non incatena un altro doppio.
           lastClick = null;
-          store.setSelection([hitId]);
-          store.beginTextEditing(hitId);
-          return; // niente drag: la sessione di editing (Task 5) prende da qui
+          pendingTextEdit = hitId;
+        } else {
+          lastClick = { id: hitId, time: e.timeStamp };
         }
-        lastClick = { id: hitId, time: e.timeStamp };
       } else {
         lastClick = null;
       }
@@ -302,6 +334,16 @@ export function createSelectTool(): Tool {
         setCursor(ctx, hover ? cursorForHandle(hover) : DEFAULT_CURSOR);
         return;
       }
+      if (pendingTextEdit) {
+        // px schermo -> unità mondo, così la soglia non dipende dallo zoom
+        // (stessa conversione della soglia di click del marquee).
+        const p = ctx.toWorld(e);
+        const slop = DOUBLE_CLICK_SLOP_PX / ctx.getCamera().zoom;
+        if (Math.abs(p.x - dragAnchor.x) < slop && Math.abs(p.y - dragAnchor.y) < slop) {
+          return; // tremolio: resta un doppio click, nessun gesto aperto
+        }
+        pendingTextEdit = null; // soglia superata: da qui è un drag come un altro
+      }
       if (!dragStarted) {
         dragStarted = true;
         useScene.getState().beginGesture();
@@ -331,6 +373,19 @@ export function createSelectTool(): Tool {
         useScene.getState().setSelection(union(marqueeBase ?? [], inside));
         resetMarquee();
         return;
+      }
+      // Il secondo click è arrivato al rilascio senza superare la soglia: ORA
+      // è un doppio click, e apre l'editing. dragStarted è false per
+      // costruzione (onPointerMove non apre nessun gesto finché il candidato è
+      // vivo), quindi non c'è niente da chiudere né da mandare sul filo.
+      if (pendingTextEdit) {
+        const id = pendingTextEdit;
+        pendingTextEdit = null;
+        resetDrag();
+        const store = useScene.getState();
+        store.setSelection([id]);
+        store.beginTextEditing(id);
+        return; // la sessione di editing (Task 5) prende da qui
       }
       if (!dragAnchor || !dragStart) return;
       if (dragStarted) {
