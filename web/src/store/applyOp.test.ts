@@ -158,6 +158,24 @@ describe("applyOp: corner_radius", () => {
       create(OpSchema, { opId: "op-t1", docId: "doc1", kind: { case: "createNode", value: { node } } }));
     expect(applyOp(s, setCornerRadiusOp("t1", 12, 42))).toEqual(s);
   });
+
+  // La metà TS della riga "vector" di TestApplySetPropertiesCornerRadiusOnNonRectFails.
+  // Questo lato rifiutava già (`cur.kind !== "rect"`); era GO ad accettare,
+  // perché la sua guardia elencava le forme da rifiutare ({Ellipse, Text}) e
+  // una forma nuova ci passava attraverso -- finendo nel ramo che materializza
+  // il rettangolo implicito e SOSTITUENDO lo shape del nodo. Risultato: il
+  // client teneva il path, il documento autorevole diventava un rettangolo. È
+  // la divergenza esatta che questa coppia di test esiste per impedire, quindi
+  // il caso sta su ENTRAMBI i lati anche se solo uno dei due era rotto.
+  it("su un nodo VETTORIALE rifiuta l'INTERO op e non tocca la geometria", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"),
+      createVectorOp("v1", [{ anchors: RICH_ANCHORS, closed: true }]));
+    const after = applyOp(s, setCornerRadiusOp("v1", 12, 42));
+    expect(after).toEqual(s);
+    expect(after.nodes["v1"].x).toBe(0);
+    expect(after.nodes["v1"].kind).toBe("vector");
+    expect(after.nodes["v1"].vector?.subpaths).toEqual([{ anchors: RICH_ANCHORS, closed: true }]);
+  });
 });
 
 // --- setText ---------------------------------------------------------------
@@ -252,11 +270,13 @@ describe("applyOp: setText", () => {
 // semanticamente identici, e questa è la metà TS della guardia (l'altra è
 // testdata/golden/vector_path.json).
 
-// Maniglie bézier ASIMMETRICHE e mai coincidenti con l'ancoraggio: un lato che
-// le scartasse (o le ricavasse per specchiatura) non può passare per caso.
+// Maniglie bézier ASIMMETRICHE e mai nulle: un lato che le scartasse (o le
+// ricavasse per specchiatura) non può passare per caso. Sono OFFSET relativi
+// all'ancoraggio (vedi il proto), quindi piccoli e centrati sullo zero: nulle
+// significherebbe "nessuna maniglia".
 const RICH_ANCHORS = [
-  { x: 10, y: 20, inX: 8, inY: 19, outX: 14, outY: 26 },
-  { x: 60, y: 70, inX: 55, inY: 62, outX: 66, outY: 71 },
+  { x: 10, y: 20, inX: -2, inY: -1, outX: 4, outY: 6 },
+  { x: 60, y: 70, inX: -5, inY: -8, outX: 6, outY: 1 },
 ];
 
 function createVectorOp(id: string, subpaths: MessageInitShape<typeof VectorNodeSchema>["subpaths"]) {

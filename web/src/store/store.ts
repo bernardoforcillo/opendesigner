@@ -202,6 +202,23 @@ function previewKey(op: Op): string {
     const { id, stylePresent } = op.kind.value;
     return `t|${id}|${stylePresent ? "style" : ""}`;
   }
+  if (op.kind.case === "setVectorPath") {
+    // Stessa sorgente del drag, e la PEGGIORE: il pen tool (e il trascinamento
+    // di un ancoraggio) fa un applyLocal per POINTERMOVE, e ogni op porta i
+    // subpath INTERI -- non un delta. Senza coalescing un solo trascinamento di
+    // 5s a 60Hz lascia 300 op di anteprima, ognuno con tutta la geometria
+    // dentro, copiati a ogni applyLocal e RIGIOCATI da viewOf a ogni record
+    // autorevole che atterra a metà gesto: esattamente il quadratico che
+    // previewKey esiste per evitare.
+    //
+    // La chiave è il solo id: setVectorPath è wholesale e ASSOLUTO (sostituisce
+    // i subpath in blocco), quindi due op sullo stesso nodo scrivono per
+    // definizione gli stessi campi e l'ultimo rende il precedente irrilevante.
+    // Nessuna variante come lo `style` di setText: l'op È i subpath, non ne
+    // porta un secondo pezzo che possa restare intatto.
+    const { id } = op.kind.value;
+    return `v|${id}`;
+  }
   return `#${previewCounter++}`;
 }
 

@@ -33,9 +33,16 @@ export interface TextLite { content: string; style: TextStyleLite; }
 // indistinguibile da quello che core.Apply (Go) tiene in memoria, e ogni
 // derivazione fatta qui sarebbe una regola in più da tenere identica di là.
 //
-// Le maniglie in/out sono in coordinate ASSOLUTE (come nel proto), cioè nello
-// stesso spazio mondo di x/y. Una maniglia coincidente con l'ancoraggio
-// significa "nessuna maniglia": il segmento è una retta.
+// I DUE SPAZI (regola completa e motivata nel proto, su `Anchor`; l'unica
+// implementazione è ./vectorGeometry.ts, e nient'altro deve rifarla a mano):
+//   - x/y sono LOCALI al nodo: il punto mondo è (node.x + a.x, node.y + a.y).
+//     Così la geometria si sposta col nodo, e un drag resta il setProps{x,y}
+//     che selectTool manda già oggi.
+//   - inX/inY e outX/outY sono OFFSET RELATIVI all'ancoraggio: il controllo
+//     entrante è (x + inX, y + inY). (0,0) significa maniglia coincidente con
+//     l'ancoraggio, cioè NESSUNA maniglia -- il segmento è una retta. È anche
+//     il default di proto3, quindi un ancoraggio d'angolo si scrive omettendo
+//     i campi invece di riempirli.
 export interface AnchorLite {
   x: number; y: number;
   inX: number; inY: number;

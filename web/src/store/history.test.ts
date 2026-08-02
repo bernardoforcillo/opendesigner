@@ -47,14 +47,15 @@ function richText(id = "t1"): PbNode {
 }
 
 // Un nodo vettoriale "ricco": due subpath che differiscono SOLO per `closed`, e
-// maniglie bézier asimmetriche mai coincidenti con l'ancoraggio. Una conversione
+// maniglie bézier asimmetriche mai nulle (sono OFFSET relativi all'ancoraggio,
+// vedi il proto: nulle significherebbe "nessuna maniglia"). Una conversione
 // che perdesse `closed`, che scartasse in/out o che le ricavasse per
 // specchiatura produrrebbe qui un round-trip diverso -- e in produzione
 // distruggerebbe in silenzio le curve dell'utente al primo undo.
 function richVector(id = "v1"): PbNode {
   const anchors = [
     { x: 0, y: 0, inX: -4, inY: -3, outX: 5, outY: 2 },
-    { x: 40, y: 12, inX: 35, inY: -6, outX: 46, outY: 7 },
+    { x: 40, y: 12, inX: -5, inY: -6, outX: 6, outY: 7 },
   ];
   return create(NodeSchema, {
     id, parentId: "page1", orderKey: "a9", name: "Path",
@@ -151,7 +152,7 @@ describe("toPbNode", () => {
     expect(back.shape.value.subpaths).toHaveLength(2);
     expect(back.shape.value.subpaths.map((sp) => sp.closed)).toEqual([true, false]);
     const a = back.shape.value.subpaths[0].anchors[1];
-    expect([a.x, a.y, a.inX, a.inY, a.outX, a.outY]).toEqual([40, 12, 35, -6, 46, 7]);
+    expect([a.x, a.y, a.inX, a.inY, a.outX, a.outY]).toEqual([40, 12, -5, -6, 6, 7]);
 
     expect(toNodeLite(back)).toEqual(lite);
   });
@@ -314,7 +315,7 @@ describe("invertOp: setVectorPath", () => {
     // due contorni di richVector, altrimenti identici.
     expect(inv.kind.value.subpaths.map((sp) => sp.closed)).toEqual([true, false]);
     const a = inv.kind.value.subpaths[0].anchors[1];
-    expect([a.x, a.y, a.inX, a.inY, a.outX, a.outY]).toEqual([40, 12, 35, -6, 46, 7]);
+    expect([a.x, a.y, a.inX, a.inY, a.outX, a.outY]).toEqual([40, 12, -5, -6, 6, 7]);
   });
 
   // Il caso che l'op dedicato rende banale: SVUOTARE un path è annullabile

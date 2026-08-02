@@ -111,8 +111,25 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 			// kind "rect"), quindi rifiutarlo qui farebbe divergere client e
 			// server proprio sul nodo che entrambi disegnano come rettangolo.
 			// Il rettangolo implicito viene materializzato più sotto.
+			//
+			// La guardia è una WHITELIST (che cosa è un rettangolo) e non una
+			// lista delle forme da rifiutare, ed è una differenza con i denti:
+			// elencare i "cattivi" fa passare in silenzio OGNI forma aggiunta
+			// dopo, che finisce dritta nel ramo qui sotto -- quello che
+			// materializza il rettangolo implicito -- e si vede SOSTITUIRE lo
+			// `shape` da un Node_Rect, distruggendo la propria geometria. È
+			// successo esattamente così con VectorNode: la lista diceva
+			// {Ellipse, Text}, un setProps{corner_radius} su un nodo vettoriale
+			// passava la validazione e ne cancellava tutti i subpath, mentre il
+			// gemello TS (web/src/store/applyOp.ts, `cur.kind !== "rect"`)
+			// rifiutava lo stesso op -- documento autorevole e client
+			// desincronizzati per sempre. Con la whitelist una forma nuova è
+			// rifiutata di default: il peggio che può fare è costringere chi la
+			// aggiunge a decidere, invece di perdere il lavoro dell'utente.
 			switch n.GetShape().(type) {
-			case *brawtv1.Node_Ellipse, *brawtv1.Node_Text:
+			case nil, *brawtv1.Node_Rect:
+				// Rettangolo esplicito, o implicito (shape assente).
+			default:
 				return fmt.Errorf("%w: %s", ErrNotRectNode, s.GetId())
 			}
 		default:

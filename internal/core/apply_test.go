@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
@@ -147,9 +148,23 @@ func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 	}{
 		{"ellipse", ellipseNode("n1")},
 		{"text", textNode("n1", "ciao")},
+		// La riga che mancava, e che sarebbe bastata: finché la guardia di
+		// applySetProps elencava le forme da RIFIUTARE ({Ellipse, Text}), un
+		// nodo vettoriale passava la validazione, finiva nel ramo che
+		// materializza il rettangolo implicito e si vedeva SOSTITUIRE lo shape
+		// da un Node_Rect -- ogni subpath dell'utente distrutto, e per giunta in
+		// divergenza con il gemello TS (applyOp.ts rifiuta lo stesso op). Ora la
+		// guardia è una whitelist, quindi questa riga non è più solo un caso in
+		// più: è il campione di TUTTE le forme che le altre tracce aggiungeranno.
+		{"vector", vectorNode("n1", richSubPath(false))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := NewDocument("doc1", "Untitled")
+			// Fotografate PRIMA di Apply: applyCreate mette nel documento lo
+			// stesso puntatore, quindi confrontare il nodo con tc.node dopo
+			// l'op sarebbe confrontarlo con se stesso.
+			wantShape := fmt.Sprintf("%T", tc.node.GetShape())
+			wantSubpaths := len(tc.node.GetVector().GetSubpaths())
 			_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: tc.node}}})
 			op := setPropsOp(&brawtv1.SetProperties{
 				Id: "n1",
@@ -166,8 +181,14 @@ func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 			if got.GetX() != 0 {
 				t.Fatalf("partial mutation leaked despite error: x=%v", got.GetX())
 			}
-			if _, isRect := got.GetShape().(*brawtv1.Node_Rect); isRect {
-				t.Fatal("shape turned into a rect by a rejected setProps")
+			// Non basta "non è diventato un rect": la forma deve essere ANCORA
+			// quella di prima, con dentro la stessa roba. Un nodo vettoriale
+			// svuotato dei subpath sarebbe ancora un Node_Vector.
+			if gotShape := fmt.Sprintf("%T", got.GetShape()); gotShape != wantShape {
+				t.Fatalf("shape replaced by a rejected setProps: %s -> %s", wantShape, gotShape)
+			}
+			if n := len(got.GetVector().GetSubpaths()); n != wantSubpaths {
+				t.Fatalf("geometry lost by a rejected setProps: %d subpaths -> %d", wantSubpaths, n)
 			}
 		})
 	}
@@ -324,14 +345,15 @@ func TestApplySetTextWithStylePresentReplacesStyle(t *testing.T) {
 // SetVectorPath (op 15) -- la geometria vettoriale.
 // ---------------------------------------------------------------------------
 
-// Un subpath "ricco": maniglie bézier ASIMMETRICHE e mai coincidenti con
-// l'ancoraggio, così un lato che dimenticasse in_/out_ (o li ricavasse per
-// specchiatura) non potrebbe passare per caso.
+// Un subpath "ricco": maniglie bézier ASIMMETRICHE e mai nulle, così un lato
+// che dimenticasse in_/out_ (o li ricavasse per specchiatura) non potrebbe
+// passare per caso. Sono OFFSET relativi all'ancoraggio (vedi il proto), quindi
+// piccoli e centrati sullo zero: nulle significherebbe "nessuna maniglia".
 func richSubPath(closed bool) *brawtv1.SubPath {
 	return &brawtv1.SubPath{
 		Anchors: []*brawtv1.Anchor{
-			{X: 10, Y: 20, InX: 8, InY: 19, OutX: 14, OutY: 26},
-			{X: 60, Y: 70, InX: 55, InY: 62, OutX: 66, OutY: 71},
+			{X: 10, Y: 20, InX: -2, InY: -1, OutX: 4, OutY: 6},
+			{X: 60, Y: 70, InX: -5, InY: -8, OutX: 6, OutY: 1},
 		},
 		Closed: closed,
 	}
@@ -366,7 +388,7 @@ func TestApplySetVectorPathReplacesSubpaths(t *testing.T) {
 		t.Fatal("closed dropped by setVectorPath")
 	}
 	a := got[0].GetAnchors()[0]
-	if a.GetInX() != 8 || a.GetInY() != 19 || a.GetOutX() != 14 || a.GetOutY() != 26 {
+	if a.GetInX() != -2 || a.GetInY() != -1 || a.GetOutX() != 4 || a.GetOutY() != 6 {
 		t.Fatalf("bezier handles dropped or mangled: %+v", a)
 	}
 }

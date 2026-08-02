@@ -33,21 +33,40 @@ message TextStyle {
 // larghezza di wrap, height quella misurata dal layout.
 message TextNode { string content = 1; TextStyle style = 2; }
 
-// Un punto d'ancoraggio di un path vettoriale, in coordinate MONDO come ogni
-// altra coordinata del modello.
+// Un punto d'ancoraggio di un path vettoriale.
 //
-// Le maniglie bézier `in`/`out` sono in coordinate ASSOLUTE (come nel design
-// doc), non relative all'ancoraggio: sono i due punti di controllo della curva
-// che ENTRA nell'ancoraggio (in) e di quella che ne ESCE (out). Assolute perché
-// è la forma che il renderer consuma direttamente -- ctx.bezierCurveTo vuole
-// punti, non delta -- e perché così una maniglia trascinata dall'utente è
-// esattamente il valore che finisce nel modello, senza una sottrazione in mezzo
-// che ogni lato dovrebbe replicare identica.
+// DUE SPAZI, ed è la regola più importante di tutto il messaggio -- il renderer,
+// l'hit-test e il pen tool devono leggerla nello stesso identico modo, in Go e
+// in TypeScript (web/src/store/vectorGeometry.ts è l'unica implementazione).
 //
-// Una maniglia COINCIDENTE con l'ancoraggio (in == x,y) significa "nessuna
-// maniglia": il segmento è una retta. Non serve un flag, e lo zero di proto3
-// non è un caso speciale da distinguere -- un ancoraggio in (0,0) con maniglie
-// a (0,0) è un punto d'angolo nell'origine, che è esattamente ciò che descrive.
+// 1. `x`/`y` sono in coordinate LOCALI AL NODO: l'origine è (Node.x, Node.y),
+//    quindi il punto in coordinate mondo è (Node.x + x, Node.y + y).
+//    NON in coordinate mondo, e non è un capriccio: ogni consumatore esistente
+//    lavora sul box del nodo -- selectTool manda un setProps{x,y} per
+//    trascinare, l'overlay disegna la selezione da x/y/width/height, il
+//    renderer scarta un nodo con width/height <= 0. Con ancoraggi in coordinate
+//    mondo, trascinare un nodo vettoriale sposterebbe il box e lascerebbe il
+//    path dov'era, a meno di riscrivere TUTTA la geometria a ogni spostamento
+//    (una regola in più che nessuno applica). Locali, la geometria viaggia col
+//    nodo gratis -- e sarà così anche quando la traccia 1 renderà le coordinate
+//    relative al parent: un vettoriale dentro un gruppo si sposterà col gruppo
+//    senza una riga in più.
+//
+// 2. `in_`/`out_` sono OFFSET RELATIVI ALL'ANCORAGGIO (non punti): il punto di
+//    controllo della curva che ENTRA nell'ancoraggio è (x + in_x, y + in_y),
+//    quello della curva che ne ESCE è (x + out_x, y + out_y).
+//    Relativi perché così -- e SOLO così -- il default di proto3 dice il vero:
+//    (0,0) è la maniglia COINCIDENTE con l'ancoraggio, cioè "nessuna maniglia,
+//    il segmento è una retta". Con maniglie assolute un ancoraggio decodificato
+//    senza in_/out_ avrebbe le maniglie nell'ORIGINE del nodo, cioè una curva
+//    che ci va a sbattere: il caso più comune di tutti (un punto d'angolo)
+//    sarebbe l'unico non rappresentabile allo zero, e ogni scrittore dovrebbe
+//    ricordarsi di riempire i sei campi anche quando non servono.
+//    È anche la ragione per cui la maggior parte dei formati le tiene relative.
+//    Il prezzo -- una somma nel renderer -- lo paga un solo posto
+//    (vectorGeometry.ts), e per giunta gratis: bezierCurveTo con entrambi i
+//    controlli coincidenti agli estremi disegna esattamente la retta, quindi il
+//    caso "nessuna maniglia" non ha nemmeno bisogno di un ramo.
 message Anchor {
   double x = 1; double y = 2;
   double in_x = 3; double in_y = 4;
@@ -61,6 +80,24 @@ message SubPath { repeated Anchor anchors = 1; bool closed = 2; }
 
 // Più subpath per nodo: un contorno esterno e i suoi buchi (o più contorni
 // scollegati) sono UN oggetto per l'utente, quindi un nodo solo.
+//
+// IL BOX. Node.x/y/width/height restano quello che sono per rect ed ellipse: il
+// box del nodo. Non sono derivati dalla geometria da chi applica l'op -- né
+// core.Apply né applyOp li ricalcolano -- perché la bbox di una cubica non è
+// una copia di due righe e due implementazioni "identiche" di quella
+// matematica divergerebbero al primo caso limite, proprio sull'invariante che
+// questa traccia esiste per difendere.
+//
+// L'invariante è quindi del SCRITTORE, e vale la pena scriverla per esteso:
+// dopo un SetVectorPath, la bbox locale della geometria è (0,0)-(width,height).
+// Cioè: chi riscrive i subpath normalizza (trasla gli ancoraggi in modo che il
+// minimo sia (0,0)) e manda nello STESSO GESTO il SetProperties che aggiorna
+// x/y/width/height. Così un nodo vettoriale è indistinguibile da un rettangolo
+// per tutto il resto dell'editor: la selezione lo circonda, il renderer non lo
+// scarta, il resize ha un box su cui lavorare, e il pen tool è l'unico posto
+// che conosce la regola. web/src/store/vectorGeometry.ts::vectorBounds è
+// l'unica implementazione della bbox, così "scritto due volte" non è nemmeno
+// possibile.
 message VectorNode { repeated SubPath subpaths = 1; }
 
 message Node {
