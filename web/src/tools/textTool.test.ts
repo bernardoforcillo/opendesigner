@@ -238,11 +238,57 @@ describe("textTool", () => {
 
     tool.onPointerDown!(at(300, 20), ctx);
     tool.onPointerUp!(at(300, 20), ctx);
-    const second = createdNode(submitted[1]).id;
+    // La pulizia del primo nodo viaggia PRIMA della seconda creazione (vedi
+    // il test sull'ordine qui sotto): l'op di creazione è l'ultimo del filo.
+    const second = createdNode(submitted[submitted.length - 1]).id;
 
     expect(useScene.getState().editingNodeId).toBe(second);
     expect(useScene.getState().scene!.nodes[first]).toBeUndefined(); // niente nodo fantasma
     expect(useScene.getState().scene!.nodes[second]).toBeDefined();
+  });
+
+  // Secondo rilievo della review (fix round): la pulizia del nodo precedente
+  // lasciava la sua voce di undo DOPO quella della nuova creazione -- il primo
+  // Ctrl+Z resuscitava il nodo vuoto appena ripulito invece di annullare il
+  // nodo appena creato. L'ordine deve essere quello cronologico dell'utente.
+  it("la pulizia del nodo precedente entra nella storia PRIMA della nuova creazione (Ctrl+Z disfa l'ultima cosa fatta)", () => {
+    const tool = createTextTool();
+    const { ctx, submitted } = fakeCtx();
+
+    tool.onPointerDown!(at(10, 20), ctx);
+    tool.onPointerUp!(at(10, 20), ctx);
+    const first = createdNode(submitted[0]).id;
+
+    tool.onPointerDown!(at(300, 20), ctx);
+    tool.onPointerUp!(at(300, 20), ctx);
+
+    // sul filo: crea t1, cancella t1 (rimasto vuoto), crea t2 -- in quest'ordine.
+    expect(submitted.map((op) => op.kind.case)).toEqual(["createNode", "deleteNode", "createNode"]);
+    const second = createdNode(submitted[2]).id;
+    expect(useScene.getState().undoStack).toHaveLength(3);
+
+    // il primo Ctrl+Z annulla la creazione appena fatta...
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes[second]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes[first]).toBeUndefined();
+
+    // ...e solo il secondo riporta indietro il nodo ripulito.
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes[first]).toBeDefined();
+  });
+
+  it("la seconda creazione non riusa l'order key del nodo appena ripulito", () => {
+    const tool = createTextTool();
+    const { ctx, submitted } = fakeCtx();
+
+    tool.onPointerDown!(at(10, 20), ctx);
+    tool.onPointerUp!(at(10, 20), ctx);
+    tool.onPointerDown!(at(300, 20), ctx);
+    tool.onPointerUp!(at(300, 20), ctx);
+
+    const firstKey = createdNode(submitted[0]).orderKey;
+    const secondKey = createdNode(submitted[2]).orderKey;
+    expect(secondKey > firstKey).toBe(true);
   });
 });
 

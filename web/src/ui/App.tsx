@@ -12,21 +12,30 @@ import type { Tool, ToolContext, ToolId } from "../tools/types";
 import { selectTool } from "../tools/selectTool";
 import { rectTool } from "../tools/rectTool";
 import { ellipseTool } from "../tools/ellipseTool";
+import { textTool } from "../tools/textTool";
 import { handTool } from "../tools/handTool";
 
 // Registro dei tool disponibili: la toolbar sceglie una chiave, attachTools
 // instrada gli eventi al tool corrispondente.
-const TOOLS: Partial<Record<ToolId, Tool>> = {
+//
+// Esportati (con TOOL_LABELS) perché sono l'UNICO punto in cui un ToolId
+// diventa raggiungibile davvero: una voce in TOOL_LABELS senza la sua entry
+// qui ricadrebbe in silenzio su selectTool (vedi il `?? selectTool` più
+// sotto), cioè un pulsante che non fa quello che dice. È un invariante, e
+// come tale ha un test (App.test.tsx) invece di una convenzione a memoria.
+export const TOOLS: Partial<Record<ToolId, Tool>> = {
   select: selectTool,
   rect: rectTool,
   ellipse: ellipseTool,
+  text: textTool,
   hand: handTool,
 };
 
-const TOOL_LABELS: { id: ToolId; label: string }[] = [
+export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "select", label: "Seleziona" },
   { id: "rect", label: "Rettangolo" },
   { id: "ellipse", label: "Ellisse" },
+  { id: "text", label: "Testo" },
   { id: "hand", label: "Mano" },
 ];
 

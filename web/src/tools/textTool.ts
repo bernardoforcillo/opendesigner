@@ -111,12 +111,27 @@ export function createTextTool(): Tool {
         shape: { case: "text", value: { content: "", style: toPbTextStyle(DEFAULT_TEXT_STYLE) } },
       });
 
+      const store = useScene.getState();
+
+      // Chiude l'eventuale sessione di editing precedente PRIMA di aprire il
+      // gesto di creazione. store.beginTextEditing la chiuderebbe comunque da
+      // solo (guardia nello store, per ogni chiamante), ma lo farebbe DOPO --
+      // e l'ordine conta, perché ogni chiusura può cancellare un nodo rimasto
+      // vuoto, cioè può lasciare una voce di undo. Chiudendo dopo, lo stack
+      // diventerebbe [crea t1, crea t2, cancella t1]: il primo Ctrl+Z
+      // RESUSCITEREBBE il nodo vuoto t1 invece di annullare la creazione
+      // appena fatta. Chiudendo qui l'ordine è quello cronologico dell'utente
+      // ([crea t1, cancella t1, crea t2]) e Ctrl+Z disfa sempre l'ultima cosa
+      // vista. L'order key resta comunque derivata dalla scena PRIMA della
+      // pulizia (node è già costruito): un id cancellato non libera la sua
+      // chiave per il nodo successivo.
+      store.endTextEditing();
+
       // Creazione = un gesto (una voce di undo), come ogni altro tool. Il
       // nodo si seleziona SUBITO, a gesto ancora aperto: lo store riconcilia
       // la selezione contro la scena FINALE a endGesture (store.ts), quindi
       // può riferirsi a un id che esiste solo dopo l'op finale (lo stesso
       // meccanismo descritto nel commento di endGesture).
-      const store = useScene.getState();
       store.beginGesture();
       store.setSelection([id]);
       store.endGesture([makeCreateNodeOp(node)]);
