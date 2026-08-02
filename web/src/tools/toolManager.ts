@@ -35,7 +35,11 @@ export function wheelZoomFactor(e: WheelEvent): number {
 // Un campo di testo: input, textarea, select, contentEditable. Duck-typing
 // invece di instanceof: i test girano senza HTMLElement, e il target di un
 // evento sintetico non è mai un vero elemento.
-function isTextField(target: EventTarget | null): boolean {
+// Esportata perché ogni canale di tasti globali ha bisogno della STESSA
+// guardia (le scorciatoie della clipboard, tools/clipboard.ts): due copie che
+// divergono vorrebbero dire una scorciatoia che ruba i tasti a un campo di
+// testo e l'altra no.
+export function isTextField(target: EventTarget | null): boolean {
   const el = target as { tagName?: string; isContentEditable?: boolean } | null;
   if (!el) return false;
   if (el.isContentEditable) return true;

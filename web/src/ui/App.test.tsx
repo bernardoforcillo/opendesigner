@@ -7,6 +7,8 @@ import { render, screen, fireEvent, cleanup } from "@testing-library/react";
 import { App, TOOLS, TOOL_LABELS } from "./App";
 import { textTool } from "../tools/textTool";
 import { selectTool } from "../tools/selectTool";
+import { useScene } from "../store/store";
+import { emptyScene } from "../store/types";
 
 // Il bootstrap di App parla con la rete (createDocument + SyncClient): qui
 // serve solo la toolbar, quindi il trasporto è un doppio inerte. Senza, ogni
@@ -137,3 +139,36 @@ describe("layout a tre colonne", () => {
   });
 });
 
+
+// Stesso principio del registro dei tool: tools/clipboard.ts è completo e
+// testato, ma finché App non lo monta Ctrl+C/V/D non esistono per chi usa
+// l'app. Qui si verifica solo il MONTAGGIO (il comportamento è in
+// tools/clipboard.test.ts) e il fatto che lo smontaggio stacchi i listener.
+describe("scorciatoie della clipboard", () => {
+  function installScene() {
+    const scene = emptyScene("doc-1", "Untitled");
+    scene.nodes["n1"] = {
+      id: "n1", parentId: "page1", orderKey: "a000001", name: "Rettangolo",
+      visible: true, opacity: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0,
+      fills: [], kind: "rect", cornerRadius: 0,
+    };
+    useScene.setState({ selection: [], gesture: null, undoStack: [], redoStack: [], sync: null });
+    useScene.getState().setScene(scene);
+    useScene.getState().setSelection(["n1"]);
+  }
+
+  it("Ctrl+D duplica: l'app monta davvero le scorciatoie", () => {
+    render(<App />);
+    installScene();
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true });
+    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(2);
+  });
+
+  it("smontare l'app le stacca", () => {
+    const { unmount } = render(<App />);
+    installScene();
+    unmount();
+    fireEvent.keyDown(window, { key: "d", ctrlKey: true });
+    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(1);
+  });
+});

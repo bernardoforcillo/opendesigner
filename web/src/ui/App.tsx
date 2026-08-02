@@ -8,6 +8,7 @@ import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer
 import { drawOverlay } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
+import { attachClipboardShortcuts } from "../tools/clipboard";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -213,6 +214,12 @@ export function App() {
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
+
+  // Copia / incolla / duplica (Ctrl/Cmd+C, +V, +D). Sulla finestra come le
+  // scorciatoie qui sopra e per lo stesso motivo (il canvas non è focusabile);
+  // la logica sta tutta in tools/clipboard.ts, qui c'è solo il montaggio --
+  // che però è l'unico punto in cui la funzione diventa raggiungibile.
+  useEffect(() => attachClipboardShortcuts(), []);
 
   // La pillola diceva "connesso" anche a stream morto: il bootstrap era andato
   // a buon fine e nessuno rivedeva più quello stato. Adesso è SyncClient a
