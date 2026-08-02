@@ -58,7 +58,9 @@ function isKnownKind(kind: unknown): kind is NodeLite["kind"] {
 // vanno tenute distinte:
 //  - "foreign": non è roba nostra (testo di un'altra applicazione, JSON di
 //    qualcun altro, appunti vuoti). Non è un errore: semplicemente non c'è
-//    niente da incollare da lì, e si può ripiegare sul buffer in memoria.
+//    niente da incollare da lì. Attenzione, non è nemmeno un lasciapassare per
+//    il buffer in memoria: se gli appunti si sono lasciati leggere, quel testo
+//    È la copia più recente dell'utente (vedi pasteClipboard).
 //  - "unsupported": è un payload brawt, ma di una versione o con un tipo di
 //    nodo che questa build non sa ricostruire. Qui il ripiego sarebbe SBAGLIATO
 //    (l'utente ha copiato QUELLO), e degradare il nodo lo sarebbe di più: si
@@ -208,19 +210,41 @@ export function pasteOps(
   offset: number = PASTE_OFFSET,
 ): PasteOps {
   const sorted = [...nodes].sort(byOrderKey);
+  // Un id nuovo per POSIZIONE nell'elenco, non per id di partenza. La
+  // differenza conta perché gli id del payload non sono garantiti: parseClipboard
+  // tollera un nodo senza `id` (lo legge come "") e niente vieta a un payload
+  // scritto a mano di ripetere due volte lo stesso id. Indicizzando sull'id,
+  // quei nodi collasserebbero su UN SOLO uuid e uscirebbero da qui due CreateNode
+  // con lo stesso id: in locale applyOp scarta il secondo (parità con
+  // core.applyCreate, ErrNodeExists) e la scena guadagna un nodo mentre `ids` e
+  // la voce di undo ne dichiarano due; contro il server l'op viene RIFIUTATO a
+  // gesto iniziato e parte il rollback. N nodi passati, N nodi creati, sempre.
+  const freshIds = sorted.map(() => uuid());
+
   // La corrispondenza vecchio id -> nuovo id, calcolata PRIMA di costruire gli
-  // op: serve a rimappare i parent (vedi sotto), che possono puntare a un nodo
-  // che viene dopo nell'elenco.
-  const fresh = new Map<string, string>();
-  for (const n of sorted) fresh.set(n.id, uuid());
+  // op: serve SOLO a rimappare i parent (vedi sotto), che possono puntare a un
+  // nodo che viene dopo nell'elenco. Due esclusioni, entrambe necessarie:
+  //  - l'id VUOTO non è un'identità: mapparlo attaccherebbe ogni nodo senza
+  //    parent (parentId "") alla copia del nodo senza id;
+  //  - un id RIPETUTO è ambiguo (a quale delle due copie si riferisce un
+  //    figlio?): si registra `null` e non si rimappa affatto, così il parent
+  //    ricade sui casi 2/3 qui sotto invece di essere tirato a sorte.
+  const byOldId = new Map<string, string | null>();
+  sorted.forEach((n, i) => {
+    if (n.id === "") return;
+    byOldId.set(n.id, byOldId.has(n.id) ? null : freshIds[i]);
+  });
 
   const fallbackParent = scene.pages[0]?.id ?? "";
   let key = nextOrderKey(scene);
   const ops: Op[] = [];
   const ids: string[] = [];
 
-  for (const n of sorted) {
-    const id = fresh.get(n.id) as string;
+  for (const [i, n] of sorted.entries()) {
+    const id = freshIds[i];
+    // Un nodo che dichiara sé stesso come proprio parent è un ciclo: non lo si
+    // rimappa (oggi sarebbe innocuo, con l'annidamento della traccia 1 no).
+    const mapped = n.parentId === n.id ? null : (byOldId.get(n.parentId) ?? null);
     // Tre casi, in quest'ordine:
     //  1. il parent è anch'esso nel payload -> il figlio segue la COPIA, non
     //     l'originale (senza questo, incollare un gruppo lascerebbe i figli
@@ -229,12 +253,13 @@ export function pasteOps(
     //  3. non esiste (incolla in un ALTRO documento) -> il nodo atterra sulla
     //     pagina, invece di restare orfano di un parent inesistente.
     const parentId =
-      fresh.get(n.parentId) ?? (existsInScene(scene, n.parentId) ? n.parentId : fallbackParent);
+      mapped ?? (existsInScene(scene, n.parentId) ? n.parentId : fallbackParent);
     // L'offset lo prendono solo le RADICI dell'insieme incollato. Oggi le
     // coordinate sono tutte mondo e la scena è piatta, quindi sono tutti i
     // nodi; quando le coordinate diventeranno relative al parent, spostare
-    // anche i figli li sposterebbe due volte.
-    const moved = fresh.has(n.parentId) ? { x: n.x, y: n.y } : { x: n.x + offset, y: n.y + offset };
+    // anche i figli li sposterebbe due volte. "Radice" = parent NON rimappato:
+    // un parent ambiguo o inesistente lascia il nodo scoperto, quindi radice.
+    const moved = mapped !== null ? { x: n.x, y: n.y } : { x: n.x + offset, y: n.y + offset };
     // toPbNode è l'inverso ESATTO di toNodeLite (store/types.ts): passare da lì
     // invece di ricostruire il Node a mano è ciò che fa sopravvivere alla copia
     // ogni campo del modello, compresi quelli aggiunti dopo.
@@ -255,7 +280,16 @@ export function pasteOps(
 // quanto la pagina, e "non è mai stata fatta una copia" è uno stato di partenza
 // legittimo che va poter essere ripristinato (i test lo azzerano come azzerano
 // lo store). `null` = nessuna copia in questa finestra.
-export const clipboardMemory: { text: string | null } = { text: null };
+//
+// `onSystem` dice se l'ultima copia è ARRIVATA sulla clipboard di sistema. È
+// ciò che distingue "il buffer è una comodità, la copia vera è là fuori" da "il
+// buffer è l'UNICA copia che esiste": solo nel secondo caso ripiegarci sopra è
+// legittimo quando gli appunti si leggono ma contengono roba di qualcun altro
+// (vedi pasteClipboard).
+export const clipboardMemory: { text: string | null; onSystem: boolean } = {
+  text: null,
+  onSystem: false,
+};
 
 // Un incolla per volta. La lettura degli appunti è ASINCRONA e può restare
 // appesa a lungo -- Chromium non risolve `readText()` finché il documento non
@@ -317,7 +351,7 @@ export async function copySelection(): Promise<boolean> {
   // è disponibile: se la scrittura di sistema fallisce a metà (permesso, focus
   // perso) l'incolla dentro questa finestra deve comunque funzionare.
   clipboardMemory.text = text;
-  await writeSystem(text);
+  clipboardMemory.onSystem = await writeSystem(text);
   return true;
 }
 
@@ -345,9 +379,10 @@ function pasteNodes(nodes: readonly NodeLite[]): string[] {
 }
 
 /**
- * Ctrl+V. Legge prima la clipboard di SISTEMA (così un payload copiato in
- * un'altra finestra o in un altro documento si incolla qui) e ripiega sul
- * buffer in memoria solo quando lì non c'è niente di nostro.
+ * Ctrl+V. Legge la clipboard di SISTEMA (così un payload copiato in un'altra
+ * finestra o in un altro documento si incolla qui) e ripiega sul buffer in
+ * memoria solo quando quella clipboard non è arrivabile -- non quando è
+ * arrivabile e contiene qualcos'altro.
  */
 export async function pasteClipboard(): Promise<string[]> {
   if (pasting) return [];
@@ -355,10 +390,20 @@ export async function pasteClipboard(): Promise<string[]> {
   try {
     const fromSystem = await readSystem();
     let parsed: ClipboardParse | null = fromSystem === null ? null : parseClipboard(fromSystem);
-    // Sugli appunti c'è roba di qualcun altro (o non si sono lasciati leggere):
-    // l'ultima copia fatta qui è la cosa più sensata da incollare. Un payload
-    // NOSTRO ma illeggibile (`unsupported`) non ripiega: vedi ClipboardParse.
-    if (parsed === null || (!parsed.ok && parsed.reason === "foreign")) {
+    // Quando si può ripiegare sul buffer in memoria. NON basta che gli appunti
+    // contengano roba di qualcun altro: una lettura RIUSCITA è l'ultima copia
+    // che l'utente ha fatto davvero (testo selezionato nel pannello livelli e
+    // Ctrl+C -- che qui cede al browser apposta -- oppure una copia in un'altra
+    // applicazione), e incollarci sopra un rettangolo copiato dieci minuti
+    // prima sarebbe incollare una cosa per un'altra, in silenzio: lo stesso
+    // motivo per cui un payload `unsupported` non ripiega. Restano i due casi
+    // in cui il buffer è l'unica copia che esiste:
+    //  - gli appunti non hanno risposto (`null`: API assente fuori dai contesti
+    //    sicuri, oppure lettura negata/fallita);
+    //  - la nostra copia non è mai arrivata fin lì (scrittura negata o senza
+    //    fuoco), quindi là fuori non c'è nulla che la rappresenti.
+    const mayFallBack = fromSystem === null || !clipboardMemory.onSystem;
+    if (mayFallBack && (parsed === null || (!parsed.ok && parsed.reason === "foreign"))) {
       parsed = clipboardMemory.text === null ? null : parseClipboard(clipboardMemory.text);
     }
     if (parsed === null) return [];

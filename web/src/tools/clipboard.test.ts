@@ -100,6 +100,7 @@ beforeEach(() => {
   // Il buffer di ripiego è stato di MODULO: senza azzerarlo, una copia fatta da
   // un test precedente resterebbe incollabile in quello dopo.
   clipboardMemory.text = null;
+  clipboardMemory.onSystem = false;
 });
 
 afterEach(() => {
@@ -263,6 +264,72 @@ describe("pasteOps", () => {
     const node = ops[0].kind.case === "createNode" ? ops[0].kind.value.node! : null;
     expect(node?.parentId).toBe("page1");
   });
+
+  // Gli id del payload NON sono garantiti: parseClipboard tollera un nodo senza
+  // `id` (lo legge come "") e un payload scritto a mano può ripeterne uno. Se il
+  // nuovo id si scegliesse per id di partenza invece che per posizione, quei
+  // nodi collasserebbero su un solo uuid: due CreateNode con lo stesso id, che
+  // in locale applyOp scarta (la scena guadagna UN nodo mentre `ids` ne
+  // dichiara due) e che il server rifiuta con ErrNodeExists a gesto iniziato.
+  it("dà id DISTINTI anche a nodi del payload senza id", () => {
+    const scene = useScene.getState().scene!;
+    const { ops, ids } = pasteOps(scene, [rect("", { x: 1 }), rect("", { x: 2 })]);
+    expect(ops).toHaveLength(2);
+    expect(ids).toHaveLength(2);
+    const created = ops.map((op) => (op.kind.case === "createNode" ? op.kind.value.node!.id : ""));
+    expect(new Set(created).size).toBe(2);
+    expect(created).toEqual(ids);
+    expect(created).not.toContain("");
+  });
+
+  it("dà id DISTINTI anche a nodi del payload che ripetono lo stesso id", () => {
+    const scene = useScene.getState().scene!;
+    const { ops, ids } = pasteOps(scene, [
+      rect("stesso", { orderKey: "a000001" }),
+      rect("stesso", { orderKey: "a000002" }),
+    ]);
+    const created = ops.map((op) => (op.kind.case === "createNode" ? op.kind.value.node!.id : ""));
+    expect(new Set(created).size).toBe(2);
+    expect(ids).toEqual(created);
+  });
+
+  // L'id vuoto non è un'identità: senza questa distinzione un nodo con
+  // parentId "" verrebbe "rimappato" sotto la copia del nodo senza id.
+  it("non attacca un nodo senza parent alla copia del nodo senza id", () => {
+    const scene = useScene.getState().scene!;
+    const { ops, ids } = pasteOps(scene, [
+      rect("", { orderKey: "a000001" }),
+      rect("n2", { parentId: "", orderKey: "a000002" }),
+    ]);
+    const nodes = ops.map((op) => (op.kind.case === "createNode" ? op.kind.value.node! : null));
+    expect(nodes[1]?.parentId).toBe("page1");
+    expect(nodes[1]?.parentId).not.toBe(ids[0]);
+    // E poiché non è figlio di niente, resta una RADICE: prende l'offset.
+    expect(nodes[1]?.x).toBe(10 + PASTE_OFFSET);
+  });
+
+  // Un parent ambiguo (due nodi con lo stesso id) non si tira a sorte: il nodo
+  // ricade sui casi "esiste nel documento" / "atterra sulla pagina".
+  it("non rimappa un parent ambiguo", () => {
+    const scene = useScene.getState().scene!;
+    const { ops, ids } = pasteOps(scene, [
+      rect("dup", { orderKey: "a000001" }),
+      rect("dup", { orderKey: "a000002" }),
+      rect("c1", { parentId: "dup", orderKey: "a000003" }),
+    ]);
+    const child = ops[2].kind.case === "createNode" ? ops[2].kind.value.node! : null;
+    expect(child?.parentId).toBe("page1");
+    expect(ids).not.toContain(child?.parentId);
+  });
+
+  it("non crea un nodo figlio di sé stesso", () => {
+    installScene([]);
+    const scene = useScene.getState().scene!;
+    const { ops, ids } = pasteOps(scene, [rect("n1", { parentId: "n1" })]);
+    const node = ops[0].kind.case === "createNode" ? ops[0].kind.value.node! : null;
+    expect(node?.parentId).not.toBe(ids[0]);
+    expect(node?.parentId).toBe("page1");
+  });
 });
 
 // --- copia ------------------------------------------------------------------
@@ -387,6 +454,65 @@ describe("pasteClipboard", () => {
 
     expect(cb.readText).toHaveBeenCalledTimes(1);
     expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(1);
+  });
+
+  // Il caso end-to-end del payload scritto male: due nodi senza `id`. Devono
+  // diventare DUE nodi, e la selezione (che è anche ciò che la voce di undo
+  // toglierà) deve corrispondere a quello che è davvero nella scena.
+  it("incolla due nodi anche se il payload non dà loro un id", async () => {
+    const payload = JSON.stringify({
+      format: CLIPBOARD_FORMAT,
+      version: CLIPBOARD_VERSION,
+      nodes: [{ kind: "rect" }, { kind: "rect" }],
+    });
+    setClipboard(clipboardStub(payload));
+    installScene([]);
+
+    const ids = await pasteClipboard();
+
+    const nodes = Object.keys(useScene.getState().scene!.nodes);
+    expect(ids).toHaveLength(2);
+    expect(new Set(ids).size).toBe(2);
+    expect(nodes.sort()).toEqual([...ids].sort());
+    expect(useScene.getState().selection).toEqual(ids);
+
+    useScene.getState().undo();
+    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+  });
+
+  // Il ripiego sul buffer in memoria NON è per "sugli appunti c'è altro": una
+  // lettura riuscita è l'ultima copia che l'utente ha fatto davvero (testo
+  // selezionato nella pagina e Ctrl+C, o una copia in un'altra applicazione).
+  // Incollare al suo posto un rettangolo copiato prima sarebbe incollare una
+  // cosa per un'altra, senza dirlo.
+  it("NON ripiega sulla copia precedente quando gli appunti si leggono e contengono altro", async () => {
+    const cb = clipboardStub();
+    setClipboard(cb);
+    installScene([rect("n1")]);
+    useScene.getState().setSelection(["n1"]);
+    await copySelection();
+    // Qualcun altro (il browser, un'altra applicazione) sovrascrive gli appunti.
+    cb.readText.mockResolvedValue("del testo copiato altrove");
+
+    expect(await pasteClipboard()).toEqual([]);
+    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual(["n1"]);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+  });
+
+  // ...ma se la nostra copia sulla clipboard di sistema non c'è mai arrivata
+  // (scrittura negata, documento senza fuoco), il buffer in memoria è l'UNICA
+  // copia che esiste: lì il ripiego resta l'unica cosa sensata.
+  it("ripiega comunque quando la SCRITTURA di sistema era fallita", async () => {
+    const cb = clipboardStub();
+    cb.writeText.mockRejectedValue(new Error("permesso negato"));
+    setClipboard(cb);
+    installScene([rect("n1")]);
+    useScene.getState().setSelection(["n1"]);
+    await copySelection();
+    cb.readText.mockResolvedValue("del testo copiato altrove");
+
+    await pasteClipboard();
+    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(2);
   });
 
   it("non incolla a gesto aperto (un drag in corso): rimandato, come undo/redo", async () => {
