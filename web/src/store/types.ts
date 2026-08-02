@@ -81,6 +81,19 @@ export function toPbTextStyle(s: TextStyleLite) {
   };
 }
 
+// Le tinte del modello nella forma di init di brawt.v1.Node.fills.
+//
+// NodeLite conosce solo tinte PIATTE (toNodeLite appiattisce qualsiasi paint
+// non-solid in un colore), quindi il ritorno è sempre una lista di SolidPaint.
+// Estratta da toPbNode perché il pannello proprietà (ui/PropertiesPanel.tsx)
+// costruisce lo STESSO patch per il suo op di riempimento: due mappature
+// indipendenti dello stesso campo divergerebbero al primo paint non-solid.
+export function toPbFills(fills: readonly FillLite[]) {
+  return fills.map((f) => ({
+    kind: { case: "solid" as const, value: { color: { r: f.r, g: f.g, b: f.b, a: f.a } } },
+  }));
+}
+
 export function toNodeLite(n: PbNode): NodeLite {
   const fills: FillLite[] = n.fills.map((f) =>
     f.kind.case === "solid" && f.kind.value.color
@@ -110,11 +123,7 @@ export function toPbNode(n: NodeLite): PbNode {
     id: n.id, parentId: n.parentId, orderKey: n.orderKey, name: n.name,
     visible: n.visible, opacity: n.opacity,
     x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation,
-    // NodeLite conosce solo tinte piatte (toNodeLite appiattisce qualsiasi
-    // paint non-solid in un colore): il ritorno è sempre un SolidPaint.
-    fills: n.fills.map((f) => ({
-      kind: { case: "solid" as const, value: { color: { r: f.r, g: f.g, b: f.b, a: f.a } } },
-    })),
+    fills: toPbFills(n.fills),
     shape: n.kind === "ellipse"
       ? { case: "ellipse" as const, value: {} }
       : n.kind === "text"

@@ -99,6 +99,65 @@ describe("applyOp", () => {
   });
 });
 
+// --- corner_radius ---------------------------------------------------------
+// Speculari a internal/core/apply_test.go (TestApplySetPropertiesCornerRadius*).
+// È l'unico path della mask che indirizza un campo DENTRO il oneof `shape`,
+// quindi è anche l'unico che può trovare il nodo della forma SBAGLIATA -- e in
+// quel caso Go risponde ErrNotRectNode e rifiuta l'op in blocco.
+
+// `x` opzionale = "fai viaggiare anche una x nella STESSA mask", per provare
+// che il rifiuto è in blocco e non parziale.
+function setCornerRadiusOp(id: string, cornerRadius: number, x?: number) {
+  return create(OpSchema, { opId: "op-cr", docId: "doc1", kind: { case: "setProps", value: {
+    id,
+    patch: create(NodeSchema, { x: x ?? 0, shape: { case: "rect", value: { cornerRadius } } }),
+    mask: { paths: x === undefined ? ["corner_radius"] : ["x", "corner_radius"] },
+  } } });
+}
+
+describe("applyOp: corner_radius", () => {
+  it("scrive il raggio di un rettangolo", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
+    s = applyOp(s, setCornerRadiusOp("n1", 12));
+    expect(s.nodes["n1"].cornerRadius).toBe(12);
+  });
+
+  it("un patch senza rect AZZERA il raggio (parità con i getter nil-safe di Go)", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
+    s = applyOp(s, setCornerRadiusOp("n1", 8));
+    const nilPatch = create(OpSchema, { opId: "op-cr2", docId: "doc1", kind: { case: "setProps", value: {
+      id: "n1", mask: { paths: ["corner_radius"] } } } });
+    s = applyOp(s, nilPatch);
+    expect(s.nodes["n1"].cornerRadius).toBe(0);
+  });
+
+  it("su un'ellisse rifiuta l'INTERO op (parità con ErrNotRectNode)", () => {
+    const node = create(NodeSchema, {
+      id: "n1", parentId: "page1", orderKey: "a0", name: "Ellipse", visible: true, opacity: 1,
+      x: 0, y: 0, width: 100, height: 80, shape: { case: "ellipse", value: {} },
+    });
+    const s = applyOp(emptyScene("doc1", "Untitled"),
+      create(OpSchema, { opId: "op-n1", docId: "doc1", kind: { case: "createNode", value: { node } } }));
+    // "x" viaggia nella STESSA mask: come per un path ignoto, il rifiuto è in
+    // blocco e nemmeno la x si muove.
+    const after = applyOp(s, setCornerRadiusOp("n1", 12, 42));
+    expect(after).toEqual(s);
+    expect(after.nodes["n1"].x).toBe(0);
+    expect(after.nodes["n1"].kind).toBe("ellipse");
+  });
+
+  it("su un nodo di testo rifiuta l'INTERO op", () => {
+    const node = create(NodeSchema, {
+      id: "t1", parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
+      x: 0, y: 0, width: 200, height: 24,
+      shape: { case: "text", value: { content: "ciao" } },
+    });
+    const s = applyOp(emptyScene("doc1", "Untitled"),
+      create(OpSchema, { opId: "op-t1", docId: "doc1", kind: { case: "createNode", value: { node } } }));
+    expect(applyOp(s, setCornerRadiusOp("t1", 12, 42))).toEqual(s);
+  });
+});
+
 // --- setText ---------------------------------------------------------------
 // Speculari a internal/core/apply_test.go (TestApplySetText*): stessa scena,
 // stesse asserzioni. applyOp e core.applySetText devono restare semanticamente

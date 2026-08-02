@@ -83,6 +83,120 @@ func TestApplySetPropertiesMixedMaskIsAllOrNothing(t *testing.T) {
 	}
 }
 
+func ellipseNode(id string) *brawtv1.Node {
+	return &brawtv1.Node{
+		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Ellipse", Visible: true, Opacity: 1,
+		X: 0, Y: 0, Width: 100, Height: 80,
+		Shape: &brawtv1.Node_Ellipse{Ellipse: &brawtv1.EllipseNode{}},
+	}
+}
+
+func setPropsOp(s *brawtv1.SetProperties) *brawtv1.Op {
+	return &brawtv1.Op{Kind: &brawtv1.Op_SetProps{SetProps: s}}
+}
+
+// corner_radius è l'UNICO path della mask che indirizza un campo DENTRO il
+// oneof `shape` (RectNode.corner_radius) invece che un campo di primo livello
+// del Node. Il patch lo porta quindi annidato nella forma, esattamente come
+// farebbe un CreateNode.
+func TestApplySetPropertiesCornerRadius(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	op := setPropsOp(&brawtv1.SetProperties{
+		Id:    "n1",
+		Patch: &brawtv1.Node{Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{CornerRadius: 12}}},
+		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"corner_radius"}},
+	})
+	if err := Apply(doc, op); err != nil {
+		t.Fatalf("Apply corner_radius: %v", err)
+	}
+	if got := doc.Nodes["n1"].GetRect().GetCornerRadius(); got != 12 {
+		t.Fatalf("corner radius not applied: %v", got)
+	}
+}
+
+// Un patch SENZA rect azzera il raggio, come ogni altro path: applySetProps
+// legge il patch con i getter nil-safe di protobuf (vedi il commento su
+// NIL_PATCH in web/src/store/applyOp.ts, che documenta la stessa scelta dal
+// lato TypeScript).
+func TestApplySetPropertiesCornerRadiusNilPatchZeroes(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	n := rectNode("n1", 0, 0)
+	n.Shape = &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{CornerRadius: 8}}
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: n}}})
+	op := setPropsOp(&brawtv1.SetProperties{
+		Id:   "n1",
+		Mask: &fieldmaskpb.FieldMask{Paths: []string{"corner_radius"}},
+	})
+	if err := Apply(doc, op); err != nil {
+		t.Fatalf("Apply corner_radius senza patch: %v", err)
+	}
+	if got := doc.Nodes["n1"].GetRect().GetCornerRadius(); got != 0 {
+		t.Fatalf("corner radius non azzerato dal patch nil: %v", got)
+	}
+}
+
+// Il oneof `shape` è la NATURA del nodo: un corner_radius su un'ellisse (o su un
+// testo) è un op sul nodo sbagliato, non un campo da riempire -- stessa regola
+// di applySetText su un rettangolo (ErrNotTextNode). L'op viene rifiutato in
+// BLOCCO, quindi nemmeno la "x" che viaggia nella stessa mask si muove.
+func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
+	for _, tc := range []struct {
+		name string
+		node *brawtv1.Node
+	}{
+		{"ellipse", ellipseNode("n1")},
+		{"text", textNode("n1", "ciao")},
+	} {
+		t.Run(tc.name, func(t *testing.T) {
+			doc := NewDocument("doc1", "Untitled")
+			_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: tc.node}}})
+			op := setPropsOp(&brawtv1.SetProperties{
+				Id: "n1",
+				Patch: &brawtv1.Node{
+					X:     42,
+					Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{CornerRadius: 12}},
+				},
+				Mask: &fieldmaskpb.FieldMask{Paths: []string{"x", "corner_radius"}},
+			})
+			if err := Apply(doc, op); !errors.Is(err, ErrNotRectNode) {
+				t.Fatalf("expected ErrNotRectNode, got %v", err)
+			}
+			got := doc.Nodes["n1"]
+			if got.GetX() != 0 {
+				t.Fatalf("partial mutation leaked despite error: x=%v", got.GetX())
+			}
+			if _, isRect := got.GetShape().(*brawtv1.Node_Rect); isRect {
+				t.Fatal("shape turned into a rect by a rejected setProps")
+			}
+		})
+	}
+}
+
+// Un Node senza `shape` è comunque un RETTANGOLO per chiunque legga il
+// documento: web/src/store/types.ts::toNodeLite lo mappa esplicitamente su
+// kind "rect" ("un nodo senza shape è comunque un rettangolo disegnabile").
+// Rifiutare qui il corner_radius farebbe divergere le due implementazioni --
+// il client lo applicherebbe, il server no -- quindi il rettangolo implicito
+// viene materializzato.
+func TestApplySetPropertiesCornerRadiusOnShapelessNodeMaterializesRect(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	n := rectNode("n1", 0, 0)
+	n.Shape = nil
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: n}}})
+	op := setPropsOp(&brawtv1.SetProperties{
+		Id:    "n1",
+		Patch: &brawtv1.Node{Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{CornerRadius: 4}}},
+		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"corner_radius"}},
+	})
+	if err := Apply(doc, op); err != nil {
+		t.Fatalf("Apply corner_radius su nodo senza shape: %v", err)
+	}
+	if got := doc.Nodes["n1"].GetRect().GetCornerRadius(); got != 4 {
+		t.Fatalf("corner radius not applied: %v", got)
+	}
+}
+
 // TestApplyCreateNodeOnNilNodesMap covers the scenario the review flagged:
 // a *brawtv1.Document not built via NewDocument (e.g. proto.Unmarshal-ed
 // from a snapshot taken while the document had zero nodes — proto3 omits

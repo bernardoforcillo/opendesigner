@@ -137,6 +137,22 @@ describe("MASK_PATHS è ancorato a core.applySetProps (Go), non a una copia loca
 
 const NODE_FIELD_NAMES = NodeSchema.fields.map((f) => f.name);
 
+// I nomi dei campi delle FORME (RectNode/EllipseNode/TextNode), letti dal oneof
+// `shape` del Node generato invece che elencati a mano -- una lista scritta qui
+// smetterebbe di seguire il .proto al primo campo aggiunto.
+//
+// Servono perché "corner_radius" (M1b, Task 10) è l'unico path della mask che
+// NON è un campo di primo livello del Node: vive dentro RectNode. Il resto della
+// guardia (b) sotto resta intatto -- un camelCase inventato o un campo
+// rinominato nel .proto continua a non comparire in nessuno dei due elenchi --
+// ma l'elenco accettato smette di essere "solo Node" e diventa "il modello",
+// cioè esattamente ciò che NodeLite appiattisce in un unico oggetto.
+const SHAPE_FIELD_NAMES = NodeSchema.fields
+  .filter((f) => f.oneof?.name === "shape")
+  .flatMap((f) => (f.fieldKind === "message" ? f.message.fields.map((sf) => sf.name) : []));
+
+const MODEL_FIELD_NAMES = [...NODE_FIELD_NAMES, ...SHAPE_FIELD_NAMES];
+
 // Il path è snake_case (la convenzione del .proto, e la forma in cui Go e
 // MASK_PATHS lo scrivono); il campo di NodeLite è camelCase. Per i path
 // monoparola le due forme coincidono, per "order_key" no -- e senza questa
@@ -172,6 +188,14 @@ const PROBE: Probe = {
     expected: [{ r: 1, g: 0, b: 0, a: 1 }],
   },
   order_key: { patch: { orderKey: "a5" }, expected: "a5" },
+  // L'unica sonda il cui patch è ANNIDATO: corner_radius sta dentro RectNode,
+  // cioè dentro il oneof `shape`, non fra i campi di primo livello del Node.
+  // baseScene() crea n1 come rettangolo, quindi la forma combacia (su
+  // un'ellisse o un testo l'op sarebbe rifiutato in blocco, vedi il blocco 6).
+  corner_radius: {
+    patch: { shape: { case: "rect", value: { cornerRadius: 12 } } },
+    expected: 12,
+  },
 };
 
 describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", () => {
@@ -185,10 +209,12 @@ describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", ()
       const wired = overWire(setPropsOp([path], PROBE[path].patch));
       expect(maskOf(wired)).toEqual([path]);
 
-      // (b) ed è un nome di campo che esiste davvero nel Node generato -- non
-      // un camelCase inventato, non un campo rinominato nel .proto e mai
-      // propagato qui. Sopravvivere al filo non basta: "bogus" sopravvive.
-      expect(NODE_FIELD_NAMES).toContain(path);
+      // (b) ed è un nome di campo che esiste davvero nel modello generato --
+      // sul Node, o su una delle forme del oneof `shape` (è il caso di
+      // corner_radius) -- non un camelCase inventato, non un campo rinominato
+      // nel .proto e mai propagato qui. Sopravvivere al filo non basta:
+      // "bogus" sopravvive.
+      expect(MODEL_FIELD_NAMES).toContain(path);
 
       // (c) e dopo quel giro applyOp lo applica DAVVERO, scrivendo quel campo
       // e nessun altro (un `case "y": next.x = ...` fallirebbe qui).
@@ -207,12 +233,12 @@ describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", ()
 
 // Tutti round-trippabili sul filo (nessun underscore irreversibile): il motivo
 // per cui vengono rifiutati è che core.applySetProps non li ha, non che la
-// codifica li rompe. "corner_radius" è il prossimo candidato naturale (M1b,
-// RectNode.corner_radius): quando Go guadagnerà quel case, la guardia
-// cross-language del blocco 1 fallirà e costringerà ad aggiornare MASK_PATHS,
-// PROBE e questa lista insieme -- è esattamente com'è andata per "order_key",
-// che stava qui fino al riordino del pannello livelli (Task 8).
-const NOT_IN_GO_SWITCH = ["corner_radius", "parent_id", "id", "shape", "bogus"];
+// codifica li rompe. Questa lista si è già accorciata due volte -- "order_key"
+// l'ha lasciata con il riordino del pannello livelli (Task 8) e
+// "corner_radius" con il pannello proprietà (Task 10): in entrambi i casi è
+// stata la guardia cross-language del blocco 1 a fallire per prima e a
+// costringere ad aggiornare MASK_PATHS, PROBE e questa lista insieme.
+const NOT_IN_GO_SWITCH = ["parent_id", "id", "shape", "bogus"];
 
 describe("un path fuori da MASK_PATHS fa rifiutare l'INTERO op", () => {
   it.each(NOT_IN_GO_SWITCH)("%s: isMaskPath false, e la scena resta invariata anche in mask mista", (path) => {

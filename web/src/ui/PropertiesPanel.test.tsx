@@ -2,11 +2,13 @@ import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
+import { toJson, fromJson } from "@bufbuild/protobuf";
+import { OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
+import type { NodeLite, TextLite } from "../store/types";
 
 // Doppio di SyncClient: registra gli op che finiscono SUL FILO e modella un
 // server che accetta ed ECOA subito (applyPending + apply), come
@@ -25,6 +27,23 @@ function rectNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): N
     id, parentId: "page1", orderKey, name: "", visible: true, opacity: 1,
     x: 10, y: 20, width: 30, height: 40, rotation: 0,
     fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0,
+    ...over,
+  };
+}
+
+function ellipseNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): NodeLite {
+  return { ...rectNode(id, orderKey), kind: "ellipse", cornerRadius: 0, ...over };
+}
+
+const TEXT_STYLE: TextLite["style"] = {
+  fontFamily: "Inter, sans-serif", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "left",
+};
+
+function textNode(id: string, orderKey: string, content = "ciao", over: Partial<NodeLite> = {}): NodeLite {
+  return {
+    ...rectNode(id, orderKey),
+    kind: "text", cornerRadius: 0,
+    text: { content, style: { ...TEXT_STYLE } },
     ...over,
   };
 }
@@ -269,5 +288,378 @@ describe("nessun avviso di controllo react-stately", () => {
     } finally {
       warn.mockRestore();
     }
+  });
+});
+
+// --- Task 10: aspetto (riempimento, opacità, raggio degli angoli) ----------
+
+function maskOf(op: Op): readonly string[] {
+  if (op.kind.case !== "setProps") throw new Error("non è un op setProps");
+  return op.kind.value.mask?.paths ?? [];
+}
+
+describe("riempimento", () => {
+  it("mostra la tinta corrente in esadecimale", () => {
+    installScene(rectNode("a", "a0", { fills: [{ r: 1, g: 0.5, b: 0, a: 1 }] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+
+    // 1 / 0.5 / 0 float -> FF 80 00. La conversione vive solo nel campo.
+    expect(screen.getByRole("textbox", { name: "Riempimento" })).toHaveValue("#FF8000");
+  });
+
+  it("emette UN SetProperties mask `fills` con RGBA float 0..1", async () => {
+    installScene(rectNode("a", "a0", { fills: [{ r: 0, g: 0, b: 0, a: 1 }] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    const input = screen.getByRole("textbox", { name: "Riempimento" });
+    await user.clear(input);
+    await user.type(input, "#FF8000{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("setProps");
+    if (op.kind.case === "setProps") {
+      expect(maskOf(op)).toEqual(["fills"]);
+      const paint = op.kind.value.patch?.fills[0];
+      expect(paint?.kind.case).toBe("solid");
+      if (paint?.kind.case === "solid") {
+        const c = paint.kind.value.color;
+        // FLOAT 0..1, non 0..255: è il modello, non la forma della UI.
+        expect(c?.r).toBeCloseTo(1, 5);
+        expect(c?.g).toBeCloseTo(128 / 255, 5);
+        expect(c?.b).toBeCloseTo(0, 5);
+        // L'alfa della tinta precedente sopravvive: l'esadecimale non la porta.
+        expect(c?.a).toBe(1);
+      }
+    }
+    expect(useScene.getState().scene?.nodes.a.fills[0].r).toBeCloseTo(1, 5);
+    // Un gesto, una voce di undo.
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("conserva l'alfa DEL NODO, non una qualunque", async () => {
+    installScene(rectNode("a", "a0", { fills: [{ r: 0, g: 0, b: 0, a: 0.25 }] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    const input = screen.getByRole("textbox", { name: "Riempimento" });
+    await user.clear(input);
+    await user.type(input, "#00FF00{Enter}");
+
+    // Il colore È cambiato (senza questo, l'assert sull'alfa passerebbe anche
+    // se il campo non avesse emesso NIENTE) ma l'alfa no.
+    const fill = useScene.getState().scene?.nodes.a.fills[0];
+    expect(fill?.g).toBeCloseTo(1, 5);
+    expect(fill?.a).toBe(0.25);
+  });
+
+  it("riconfermare lo STESSO colore non manda nessun op", async () => {
+    installScene(rectNode("a", "a0", { fills: [{ r: 1, g: 0, b: 0, a: 1 }] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    const input = screen.getByRole("textbox", { name: "Riempimento" });
+    await user.click(input);
+    await user.keyboard("{Enter}");
+
+    expect(sync.sent).toHaveLength(0);
+  });
+});
+
+// Il track di un Slider di react-aria-components misura SÉ STESSO con
+// getBoundingClientRect per convertire i pixel trascinati in valore; in jsdom
+// ogni elemento misura 0x0, quindi senza questo stub la conversione darebbe
+// NaN. È l'equivalente, per lo slider, del setPointerCapture che jsdom non
+// implementa (vedi il try/catch in fields/NumberField.tsx).
+function stubTrackWidth(px: number): () => void {
+  const original = HTMLElement.prototype.getBoundingClientRect;
+  HTMLElement.prototype.getBoundingClientRect = function (): DOMRect {
+    return {
+      width: px, height: 8, top: 0, left: 0, right: px, bottom: 8, x: 0, y: 0,
+      toJSON: () => ({}),
+    } as DOMRect;
+  };
+  return () => {
+    HTMLElement.prototype.getBoundingClientRect = original;
+  };
+}
+
+// Il div che porta i gestori di trascinamento (useMove) è il GENITORE del
+// wrapper VisuallyHidden che contiene l'input range: l'input è solo il canale
+// di tastiera e accessibilità. Se react-aria-components cambiasse questa
+// struttura, l'errore qui lo direbbe subito invece di far fallire il drag in
+// modo oscuro.
+function sliderThumb(name: string): HTMLElement {
+  const input = screen.getByRole("slider", { name });
+  const thumb = input.parentElement?.parentElement;
+  if (!thumb) throw new Error("struttura del SliderThumb inattesa");
+  return thumb;
+}
+
+// Trascina il cursore dello slider `name` di `dx` px, in due passi intermedi.
+// useMove apre il trascinamento sul pointerdown del cursore e poi ascolta sulla
+// FINESTRA, quindi move e up vanno mandati lì.
+function dragSlider(name: string, dx: number) {
+  const thumb = sliderThumb(name);
+  const base = { pointerId: 1, pointerType: "mouse", isPrimary: true, button: 0 };
+  fireEvent.pointerDown(thumb, { ...base, clientX: 0, pageX: 0 });
+  fireEvent.pointerMove(window, { ...base, clientX: dx / 2, pageX: dx / 2 });
+  fireEvent.pointerMove(window, { ...base, clientX: dx, pageX: dx });
+  fireEvent.pointerUp(window, { ...base, clientX: dx, pageX: dx });
+}
+
+describe("opacità", () => {
+  let restore: () => void;
+  beforeEach(() => {
+    restore = stubTrackWidth(100);
+  });
+  afterEach(() => restore());
+
+  it("mostra l'opacità corrente in percentuale", () => {
+    installScene(rectNode("a", "a0", { opacity: 0.4 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+
+    expect(screen.getByRole("slider", { name: "Opacità" })).toHaveValue("0.4");
+    expect(screen.getByText("40%")).toBeInTheDocument();
+  });
+
+  it("un trascinamento è UN gesto: un op sul filo, una voce di undo", () => {
+    installScene(rectNode("a", "a0", { opacity: 1 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    // -50px su un track largo 100 = -50% di opacità: 1 -> 0.5.
+    dragSlider("Opacità", -50);
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("setProps");
+    if (op.kind.case === "setProps") {
+      expect(maskOf(op)).toEqual(["opacity"]);
+      expect(op.kind.value.patch?.opacity).toBeCloseTo(0.5, 5);
+    }
+    expect(useScene.getState().scene?.nodes.a.opacity).toBeCloseTo(0.5, 5);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("durante il trascinamento aggiorna in ANTEPRIMA, senza mandare niente", () => {
+    installScene(rectNode("a", "a0", { opacity: 1 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+
+    const thumb = sliderThumb("Opacità");
+    const base = { pointerId: 1, pointerType: "mouse", isPrimary: true, button: 0 };
+    fireEvent.pointerDown(thumb, { ...base, clientX: 0, pageX: 0 });
+    fireEvent.pointerMove(window, { ...base, clientX: -20, pageX: -20 });
+
+    expect(useScene.getState().scene?.nodes.a.opacity).toBeCloseTo(0.8, 5);
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().gesture).not.toBeNull();
+
+    fireEvent.pointerUp(window, { ...base, clientX: -20, pageX: -20 });
+    expect(sync.sent).toHaveLength(1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("un click sul cursore senza spostarlo non apre nessun gesto", () => {
+    installScene(rectNode("a", "a0", { opacity: 1 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    dragSlider("Opacità", 0);
+
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+});
+
+describe("raggio degli angoli", () => {
+  it("compare SOLO per i rettangoli", () => {
+    installScene(rectNode("a", "a0"), ellipseNode("e", "a1"), textNode("t", "a2"));
+
+    useScene.getState().setSelection(["a"]);
+    const { rerender } = render(<PropertiesPanel />);
+    expect(screen.getByRole("textbox", { name: "R" })).toBeInTheDocument();
+
+    useScene.getState().setSelection(["e"]);
+    rerender(<PropertiesPanel />);
+    expect(screen.queryByRole("textbox", { name: "R" })).toBeNull();
+
+    useScene.getState().setSelection(["t"]);
+    rerender(<PropertiesPanel />);
+    expect(screen.queryByRole("textbox", { name: "R" })).toBeNull();
+
+    // Selezione mista rettangolo+ellisse: non c'è un raggio da mostrare.
+    useScene.getState().setSelection(["a", "e"]);
+    rerender(<PropertiesPanel />);
+    expect(screen.queryByRole("textbox", { name: "R" })).toBeNull();
+  });
+
+  it("emette la mask `corner_radius` e sopravvive al round-trip protojson", async () => {
+    installScene(rectNode("a", "a0", { cornerRadius: 0 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.clear(screen.getByRole("textbox", { name: "R" }));
+    await user.type(screen.getByRole("textbox", { name: "R" }), "12{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(maskOf(op)).toEqual(["corner_radius"]);
+
+    // IL test del path multiparola: sul filo il FieldMask viaggia in
+    // lowerCamelCase ("cornerRadius"), e fieldMaskToJson LANCIA se la
+    // conversione non è reversibile. Un "cornerRadius" scritto a mano in
+    // MASK_PATHS farebbe fallire QUESTA riga, non un test lontano.
+    const wire = toJson(OpSchema, op) as { setProps?: { mask?: string } };
+    expect(wire.setProps?.mask).toBe("cornerRadius");
+    const back = fromJson(OpSchema, wire);
+    expect(maskOf(back)).toEqual(["corner_radius"]);
+    if (back.kind.case === "setProps") {
+      const patch = back.kind.value.patch;
+      expect(patch?.shape.case).toBe("rect");
+      if (patch?.shape.case === "rect") expect(patch.shape.value.cornerRadius).toBe(12);
+    }
+
+    expect(useScene.getState().scene?.nodes.a.cornerRadius).toBe(12);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("trascinare la sua etichetta resta UN gesto", () => {
+    installScene(rectNode("a", "a0", { cornerRadius: 2 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    dragLabel("R", 6);
+
+    expect(sync.sent).toHaveLength(1);
+    expect(maskOf(sync.sent[0])).toEqual(["corner_radius"]);
+    expect(useScene.getState().scene?.nodes.a.cornerRadius).toBe(8);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+  });
+});
+
+// --- Step 3: per i nodi testo, i controlli di stile ------------------------
+
+describe("stile del testo", () => {
+  it("compare SOLO per i nodi testo", () => {
+    installScene(rectNode("a", "a0"), textNode("t", "a1"));
+
+    useScene.getState().setSelection(["a"]);
+    const { rerender } = render(<PropertiesPanel />);
+    expect(screen.queryByRole("textbox", { name: "Dimensione" })).toBeNull();
+
+    useScene.getState().setSelection(["t"]);
+    rerender(<PropertiesPanel />);
+    expect(screen.getByRole("textbox", { name: "Dimensione" })).toHaveValue("16");
+    expect(screen.getByRole("radio", { name: "Normale" })).toBeChecked();
+    expect(screen.getByRole("radio", { name: "Sinistra" })).toBeChecked();
+  });
+
+  it("la dimensione emette UN SetText con stylePresent e il contenuto invariato", async () => {
+    installScene(textNode("t", "a0", "ciao"));
+    useScene.getState().setSelection(["t"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.clear(screen.getByRole("textbox", { name: "Dimensione" }));
+    await user.type(screen.getByRole("textbox", { name: "Dimensione" }), "32{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("setText");
+    if (op.kind.case === "setText") {
+      expect(op.kind.value.id).toBe("t");
+      // Il contenuto si scrive SEMPRE (core.applySetText): ometterlo lo
+      // cancellerebbe.
+      expect(op.kind.value.content).toBe("ciao");
+      expect(op.kind.value.stylePresent).toBe(true);
+      expect(op.kind.value.style?.fontSize).toBe(32);
+      // Gli altri campi dello stile restano quelli del nodo.
+      expect(op.kind.value.style?.fontWeight).toBe("400");
+      expect(op.kind.value.style?.fontFamily).toBe("Inter, sans-serif");
+    }
+    expect(useScene.getState().scene?.nodes.t.text?.style.fontSize).toBe(32);
+    expect(useScene.getState().scene?.nodes.t.text?.content).toBe("ciao");
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("il peso emette SetText con stylePresent", async () => {
+    installScene(textNode("t", "a0", "ciao"));
+    useScene.getState().setSelection(["t"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("radio", { name: "Grassetto" }));
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("setText");
+    if (op.kind.case === "setText") {
+      expect(op.kind.value.stylePresent).toBe(true);
+      expect(op.kind.value.style?.fontWeight).toBe("700");
+      expect(op.kind.value.style?.fontSize).toBe(16);
+    }
+    expect(useScene.getState().scene?.nodes.t.text?.style.fontWeight).toBe("700");
+  });
+
+  it("l'allineamento emette SetText con stylePresent", async () => {
+    installScene(textNode("t", "a0", "ciao"));
+    useScene.getState().setSelection(["t"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.click(screen.getByRole("radio", { name: "Centro" }));
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("setText");
+    if (op.kind.case === "setText") {
+      expect(op.kind.value.stylePresent).toBe(true);
+      // TextAlign.CENTER === 2 nel generato; il modello lo rilegge come "center".
+      expect(op.kind.value.style?.align).toBe(2);
+    }
+    expect(useScene.getState().scene?.nodes.t.text?.style.align).toBe("center");
+  });
+
+  it("su più testi è UN gesto solo, e ogni nodo tiene il PROPRIO contenuto", async () => {
+    installScene(
+      textNode("t1", "a0", "uno"),
+      textNode("t2", "a1", "due", { text: { content: "due", style: { ...TEXT_STYLE, fontWeight: "700" } } }),
+    );
+    useScene.getState().setSelection(["t1", "t2"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.clear(screen.getByRole("textbox", { name: "Dimensione" }));
+    await user.type(screen.getByRole("textbox", { name: "Dimensione" }), "20{Enter}");
+
+    expect(sync.sent).toHaveLength(2);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    const scene = useScene.getState().scene;
+    expect(scene?.nodes.t1.text).toEqual({ content: "uno", style: { ...TEXT_STYLE, fontSize: 20 } });
+    // Il peso diverso di t2 non viene uniformato da un cambio di dimensione.
+    expect(scene?.nodes.t2.text).toEqual({
+      content: "due", style: { ...TEXT_STYLE, fontSize: 20, fontWeight: "700" },
+    });
   });
 });

@@ -13,6 +13,7 @@ var (
 	ErrNodeExists   = errors.New("core: node already exists")
 	ErrNodeNotFound = errors.New("core: node not found")
 	ErrNotTextNode  = errors.New("core: not a text node")
+	ErrNotRectNode  = errors.New("core: not a rect node")
 )
 
 // NewDocument crea un documento vuoto con una pagina di default ("page1").
@@ -83,6 +84,31 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 		switch path {
 		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "order_key":
 			// supported
+		case "corner_radius":
+			// UNICO path della mask che indirizza un campo DENTRO il oneof
+			// `shape` (RectNode.corner_radius) invece che un campo di primo
+			// livello del Node: il patch lo porta annidato nella forma, e il
+			// nodo bersaglio deve essere un rettangolo.
+			//
+			// Il oneof `shape` è la NATURA del nodo, non un suo campo: un
+			// corner_radius su un'ellisse o su un testo non è "un campo
+			// mancante da riempire", è un op sul nodo sbagliato -- la stessa
+			// regola per cui applySetText rifiuta un rettangolo
+			// (ErrNotTextNode). Il rifiuto sta QUI, nel giro di validazione,
+			// per la stessa ragione per cui ci sta quello dei path ignoti:
+			// una mask mista (es. ["x","corner_radius"]) non deve lasciare il
+			// documento mutato a metà.
+			//
+			// Uno `shape` ASSENTE invece passa: un Node senza forma è comunque
+			// un rettangolo per chiunque legga il documento
+			// (web/src/store/types.ts::toNodeLite lo mappa esplicitamente su
+			// kind "rect"), quindi rifiutarlo qui farebbe divergere client e
+			// server proprio sul nodo che entrambi disegnano come rettangolo.
+			// Il rettangolo implicito viene materializzato più sotto.
+			switch n.GetShape().(type) {
+			case *brawtv1.Node_Ellipse, *brawtv1.Node_Text:
+				return fmt.Errorf("%w: %s", ErrNotRectNode, s.GetId())
+			}
 		default:
 			return fmt.Errorf("core: unsupported mask path %q", path)
 		}
@@ -116,6 +142,18 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 			// della mask -- sul filo JSON viaggia come "orderKey" (vedi
 			// web/src/store/maskPaths.ts).
 			n.OrderKey = p.GetOrderKey()
+		case "corner_radius":
+			// Il giro di validazione ha già escluso ellisse e testo: qui resta
+			// un rettangolo, esplicito o implicito. Nel secondo caso (shape
+			// assente, oppure Node_Rect con Rect nil dopo un round-trip) il
+			// rettangolo va materializzato prima di scriverci dentro --
+			// altrimenti l'assegnazione andrebbe su un puntatore nil.
+			r := n.GetRect()
+			if r == nil {
+				r = &brawtv1.RectNode{}
+				n.Shape = &brawtv1.Node_Rect{Rect: r}
+			}
+			r.CornerRadius = p.GetRect().GetCornerRadius()
 		}
 	}
 	return nil

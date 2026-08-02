@@ -53,6 +53,15 @@ export const MASK_PATHS = [
   // "orderKey" e torna indietro così com'è -- è tutto il motivo per cui questo
   // file esiste, vedi il commento in cima.
   "order_key",
+  // M1b, Task 10 (pannello proprietà, aspetto). L'UNICO path della mask che
+  // indirizza un campo DENTRO il oneof `shape` -- RectNode.corner_radius --
+  // invece che un campo di primo livello del Node: il patch lo porta annidato
+  // nella forma (`{ shape: { case: "rect", value: { cornerRadius } } }`) e
+  // l'op vale solo su un rettangolo (su un'ellisse o un testo Go risponde
+  // ErrNotRectNode e rifiuta l'op intero, vedi applyOp). Multiparola come
+  // order_key: sul filo JSON viaggia come "cornerRadius" e torna indietro
+  // così com'è -- scriverlo camelCase qui farebbe THROW in serializzazione.
+  "corner_radius",
 ] as const;
 
 // L'UNICO tipo che un path di mask può avere ai punti di costruzione di un op

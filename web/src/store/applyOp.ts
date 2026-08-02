@@ -46,6 +46,16 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // costruzione, perché nulla garantisce a runtime che un Op ricevuto dal
       // filo rispetti quel tipo.
       if (!paths.every(isMaskPath)) return state;
+      // Seconda validazione PREVENTIVA, per lo stesso motivo della prima:
+      // "corner_radius" è l'unico path che indirizza un campo DENTRO il oneof
+      // `shape` (RectNode.corner_radius), quindi è l'unico che può trovare il
+      // nodo della forma sbagliata. Go risponde ErrNotRectNode e rifiuta l'op
+      // INTERO (internal/core/apply.go), quindi una mask mista
+      // (es. ["x","corner_radius"]) su un'ellisse non deve muovere nemmeno la
+      // x. Nota che kind "rect" comprende anche il nodo SENZA shape (vedi
+      // toNodeLite): Go lo accetta allo stesso modo, materializzando il
+      // rettangolo implicito.
+      if (cur.kind !== "rect" && paths.includes("corner_radius")) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -62,6 +72,13 @@ export function applyOp(state: SceneState, op: Op): SceneState {
           // del modello è camelCase: le due forme coincidevano per tutti i path
           // monoparola di M0/M1a, questo è il primo in cui divergono.
           case "order_key": next.orderKey = p.orderKey; break;
+          // Come per "fills", il valore si estrae dal patch passando da
+          // toNodeLite invece di leggerlo a mano: è la STESSA funzione che
+          // traduce un Node del filo, quindi il patch senza rect ricade sullo
+          // zero esattamente come fa il getter nil-safe `p.GetRect()
+          // .GetCornerRadius()` in Go, senza una seconda regola da tenere
+          // allineata.
+          case "corner_radius": next.cornerRadius = toNodeLite(p).cornerRadius; break;
           default: {
             // Guardia a compile-time: se MASK_PATHS guadagna un membro senza
             // un case qui sopra, questa riga smette di compilare invece di

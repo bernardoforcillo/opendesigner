@@ -58,6 +58,14 @@ export interface NumberFieldProps {
    */
   dragSensitivity?: number;
   minValue?: number;
+  /**
+   * Classi CSS della LARGHEZZA dell'etichetta. Esiste perché lo stesso campo
+   * serve etichette di una lettera (X/Y/W/H/R, la griglia compatta del
+   * pannello) ed etichette a parola intera (Dimensione, per lo stile del
+   * testo): una larghezza fissa dentro il componente sarebbe sbagliata per
+   * metà dei casi d'uso.
+   */
+  labelWidth?: string;
   isDisabled?: boolean;
 }
 
@@ -69,6 +77,7 @@ export function NumberField({
   onScrubEnd,
   dragSensitivity = 1,
   minValue,
+  labelWidth = "w-4",
   isDisabled,
 }: NumberFieldProps) {
   // Stato del trascinamento in corso. Un ref e non uno state: ogni pixel di
@@ -158,7 +167,7 @@ export function NumberField({
         // scorrere il pannello (stesso motivo della maniglia di riordino in
         // ui/LayersPanel.tsx). select-none: uno scrub non deve selezionare il
         // testo dell'etichetta mentre il puntatore si muove.
-        className="w-4 shrink-0 cursor-ew-resize touch-none select-none text-neutral-400"
+        className={`${labelWidth} shrink-0 cursor-ew-resize touch-none select-none text-neutral-400`}
       >
         {label}
       </Label>
