@@ -169,8 +169,16 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 			// kind "rect"), quindi rifiutarlo qui farebbe divergere client e
 			// server proprio sul nodo che entrambi disegnano come rettangolo.
 			// Il rettangolo implicito viene materializzato più sotto.
+			//
+			// Un GRUPPO non è una forma affatto: è un contenitore senza
+			// geometria propria (i suoi bounds sono l'unione dei figli, vedi
+			// web/src/store/groups.ts), quindi non ha né riempimento né angoli
+			// da arrotondare. Sta nella stessa lista di rifiuti perché la
+			// controparte TS lo rifiuta con lo stesso guard
+			// (`cur.kind !== "rect"`, web/src/store/applyOp.ts): fuori da qui
+			// sarebbe una divergenza fra client e server.
 			switch n.GetShape().(type) {
-			case *brawtv1.Node_Ellipse, *brawtv1.Node_Text:
+			case *brawtv1.Node_Ellipse, *brawtv1.Node_Text, *brawtv1.Node_Group:
 				return fmt.Errorf("%w: %s", ErrNotRectNode, s.GetId())
 			}
 		default:

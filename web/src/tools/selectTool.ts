@@ -18,7 +18,9 @@ import {
   type HandleId,
 } from "../selection/handles";
 import { useScene } from "../store/store";
+import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "../store/groups";
 import { topmostOf } from "../store/tree";
+import { groupOps, ungroupOps } from "./grouping";
 import { makeDeleteOp, makeSetPropsOp } from "./ops";
 import type { SceneState } from "../store/types";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
@@ -97,8 +99,16 @@ export function pickTarget(
   shiftKey: boolean,
   selection: string[],
 ): PickResult {
-  const id = hitTest(scene, world.x, world.y);
-  if (!id) return { mode: "marquee" };
+  const hit = hitTest(scene, world.x, world.y);
+  if (!hit) return { mode: "marquee" };
+  // hitTest risponde "quale nodo c'è sotto il puntatore" -- il più INTERNO,
+  // sempre. Quale nodo si SELEZIONA è un'altra domanda, e la risposta è la
+  // politica dei gruppi (store/groups.ts): il gruppo più esterno, a meno che
+  // la selezione corrente non dica che ci siamo già entrati. Vale anche per lo
+  // shift-click: si aggiunge alla selezione la stessa cosa che un click
+  // selezionerebbe, o shift diventerebbe il modo per prendere un figlio senza
+  // entrare nel gruppo.
+  const id = selectionTargetOf(scene, hit, selection);
   if (shiftKey) return { mode: "toggle", id };
   return selection.includes(id) ? { mode: "single" } : { mode: "single", id };
 }
@@ -316,8 +326,15 @@ export function createSelectTool(): Tool {
         // appena afferrato, e t deve nascere esattamente da quello. Anche la
         // selezione resta intatta: il discendente è ancora selezionato (la
         // cornice lo comprende, i pannelli lo mostrano), solo non riceve un op.
+        //
+        // transformTargetsOf oltre alla potatura: un GRUPPO non ha un box
+        // proprio da riscrivere (i suoi bounds sono l'unione dei figli), e la
+        // sua trasformazione è una traslazione -- scrivergli width/height non
+        // scalerebbe niente. Ridimensionare un gruppo è ridimensionare il suo
+        // contenuto, quindi il gesto scende ai figli. Lo SPOSTAMENTO no: lì
+        // basta il gruppo, perché la sua x/y trasla già tutti i figli.
         const start: Record<string, { world: Bounds; toLocal: Transform }> = {};
-        for (const sid of topmostOf(scene, store.selection)) {
+        for (const sid of transformTargetsOf(scene, topmostOf(scene, store.selection))) {
           const n = scene.nodes[sid];
           if (n) start[sid] = { world: worldBoundsOfNode(scene, n), toLocal: parentToLocal(scene, n.parentId) };
         }
@@ -348,10 +365,25 @@ export function createSelectTool(): Tool {
           lastClick !== null &&
           lastClick.id === hitId &&
           e.timeStamp - lastClick.time <= DOUBLE_CLICK_MS;
-        if (isDoubleClick && scene.nodes[hitId]?.kind === "text") {
+        if (isDoubleClick) {
           // lastClick azzerato: un terzo click non incatena un altro doppio.
           lastClick = null;
-          pendingTextEdit = hitId;
+          // I due significati del doppio click stanno IN FILA, non in
+          // concorrenza: prima si ENTRA nei gruppi (un livello per doppio
+          // click, vedi store/groups.ts::enterTargetOf), e solo quando non c'è
+          // più niente in cui entrare il doppio click torna a essere quello
+          // del testo. Su un testo dentro un gruppo servono quindi due doppi
+          // click: il primo entra, il secondo scrive -- che è anche l'ordine
+          // in cui l'utente li pensa.
+          const enter = enterTargetOf(scene, hitId, store.selection);
+          if (enter) {
+            // SUBITO, non a pointerup: il drag preparato qui sotto deve agire
+            // sul nodo in cui si è appena entrati (doppio click e trascina
+            // sposta il figlio, non il gruppo).
+            store.setSelection([enter]);
+          } else if (scene.nodes[hitId]?.kind === "text") {
+            pendingTextEdit = hitId;
+          }
         } else {
           lastClick = { id: hitId, time: e.timeStamp };
         }
@@ -359,7 +391,9 @@ export function createSelectTool(): Tool {
         lastClick = null;
       }
 
-      const target = pickTarget(scene, world, e.shiftKey, store.selection);
+      // Selezione LETTA ADESSO e non da `store`: entrare in un gruppo (qui
+      // sopra) l'ha appena cambiata, e `store` è la fotografia di prima.
+      const target = pickTarget(scene, world, e.shiftKey, useScene.getState().selection);
 
       if (target.mode === "marquee") {
         // shift+click sul vuoto non azzera: è l'inizio di un'aggiunta (unione
@@ -446,7 +480,15 @@ export function createSelectTool(): Tool {
         // px schermo -> unità mondo, così la soglia non dipende dallo zoom.
         const slop = MARQUEE_SLOP_PX / ctx.getCamera().zoom;
         const isClick = box.width < slop && box.height < slop;
-        const inside = scene && !isClick ? nodesInMarquee(scene, box) : [];
+        // Stessa politica del click (store/groups.ts): la banda elastica
+        // seleziona il gruppo, non i suoi figli -- altrimenti sarebbe l'unico
+        // modo per prendere il contenuto di un gruppo senza entrarci. Il
+        // contesto è la selezione PRE-marquee: quella corrente è stata
+        // azzerata a pointerdown.
+        const inside =
+          scene && !isClick
+            ? selectionTargetsOf(scene, nodesInMarquee(scene, box), preMarqueeSelection ?? [])
+            : [];
         useScene.getState().setSelection(union(marqueeBase ?? [], inside));
         resetMarquee();
         return;
@@ -472,6 +514,39 @@ export function createSelectTool(): Tool {
     onKeyDown(e) {
       if (e.key === "Escape") {
         cancelActiveGesture();
+        return;
+      }
+      // Ctrl/Cmd+G raggruppa la selezione, Ctrl/Cmd+Shift+G la separa. Un
+      // GESTO ciascuno: gli op (createNode + N reparentNode, oppure N
+      // reparentNode + deleteNode) vanno tutti in un solo endGesture, quindi un
+      // solo invio in rete e UNA voce di undo -- un Ctrl+Z disfa il
+      // raggruppamento intero, non l'ultimo figlio riparentato.
+      //
+      // Sul tool e non sulla finestra come undo/redo (ui/App.tsx): raggruppare
+      // è un'operazione sulla SELEZIONE, cioè roba di questo tool, esattamente
+      // come Delete qui sotto -- e toolManager filtra già i tasti quando il
+      // fuoco è in un campo di testo.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
+        // Sempre preventDefault: in un browser Ctrl+G è "trova successivo".
+        e.preventDefault();
+        // Un drag o un marquee a metà vanno abbandonati PRIMA, per la stessa
+        // ragione di Delete qui sotto: un gesto aperto ne renderebbe un altro
+        // annidato (beginGesture avvisa e tiene il primo) e il pointerup
+        // successivo troverebbe uno stato del tool ormai stale.
+        cancelActiveGesture();
+        const store = useScene.getState();
+        const scene = store.scene;
+        if (!scene) return;
+        const res = e.shiftKey ? ungroupOps(scene, store.selection) : groupOps(scene, store.selection);
+        // Niente da raggruppare (selezione vuota) o niente da separare (nessun
+        // gruppo selezionato): nessun gesto, nessun op, nessuna voce di undo.
+        if (!res) return;
+        store.beginGesture();
+        // La selezione voluta PRIMA di chiudere: endGesture la riconcilia
+        // contro la scena finale, quindi può già nominare il gruppo che gli op
+        // stanno per creare.
+        store.setSelection(res.selection);
+        store.endGesture(res.ops);
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {

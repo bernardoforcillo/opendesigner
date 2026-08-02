@@ -108,6 +108,19 @@ describe("hitTest with nesting", () => {
     s.nodes["orfano"] = childRect("orfano", "sparito", 0, 0, "a0");
     expect(hitTest(s, 25, 25)).toBeNull();
   });
+
+  // Un gruppo non è mai la risposta dell'hit-test: non ha geometria propria e
+  // non disegna niente, quindi non c'è nessun pixel suo sotto il puntatore. Che
+  // il CLICK poi selezioni il gruppo è una politica di selezione
+  // (store/groups.ts), e sta là apposta.
+  it("never returns a group: it returns the child, and nothing in the empty space between children", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 400, height: 400 };
+    s.nodes["c"] = childRect("c", "g", 10, 10, "a0");
+    expect(hitTest(s, 25, 25)).toBe("c");
+    // Dentro l'unione dei figli ma su nessun figlio: niente da selezionare.
+    expect(hitTest(s, 300, 300)).toBeNull();
+  });
 });
 
 // La terza domanda sulla stessa discesa (la prima è "disegna", la seconda
@@ -296,6 +309,29 @@ describe("drawScene with nesting", () => {
     drawScene(f.ctx, s, identityCam);
     expect(f.fills).toEqual([]); // niente Path2D per il contenitore degenere
     expect(f.fillText).toEqual([{ text: "C", x: 103, y: 54 + ASCENT }]);
+  });
+
+  // Il test qui sopra copre il contenitore DEGENERE; un gruppo non si disegna
+  // MAI, nemmeno con un box addosso -- non ha geometria propria (i suoi bounds
+  // sono l'unione dei figli, vedi store/groups.ts). Senza il ramo esplicito
+  // comparirebbe un rettangolo pieno che l'utente non ha mai disegnato.
+  it("never fills a group, whatever box it carries, but draws its children", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = { ...rect("g", 100, 50, "a0"), kind: "group", width: 400, height: 400 };
+    s.nodes["C"] = textAt("C", "g", 3, 4);
+    const f = fakeCtx();
+    drawScene(f.ctx, s, identityCam);
+    expect(f.fills).toEqual([]);
+    expect(f.fillText).toEqual([{ text: "C", x: 103, y: 54 + ASCENT }]);
+  });
+
+  it("hides the whole subtree of an invisible group, like any other container", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = { ...rect("g", 0, 0, "a0"), kind: "group", visible: false };
+    s.nodes["C"] = textAt("C", "g", 3, 4);
+    const f = fakeCtx();
+    drawScene(f.ctx, s, identityCam);
+    expect(f.fillText).toEqual([]);
   });
 
   it("hides the whole subtree of an invisible container", () => {

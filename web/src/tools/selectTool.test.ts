@@ -1046,3 +1046,286 @@ describe("selectTool with nesting", () => {
     expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 30, y: 20 });
   });
 });
+
+// --- gruppi ------------------------------------------------------------------
+// La convenzione: un click seleziona il gruppo PIÙ ESTERNO, un doppio click
+// entra e seleziona il figlio (vedi store/groups.ts). Raggruppare e separare
+// sono UN gesto ciascuno: un invio, una voce di undo.
+describe("selectTool and groups", () => {
+  //   page1
+  //   ├── g  (gruppo, nessuna geometria propria)
+  //   │   ├── c1 (10,10 50x50)  -> mondo (10,10)-(60,60)
+  //   │   └── c2 (100,0 20x20)  -> mondo (100,0)-(120,20)
+  //   └── solo (200,200 50x50)
+  // I bounds del gruppo sono l'unione: (10,0) 110x60.
+  function groupedScene() {
+    // editingNodeId non è nel beforeEach globale: una sessione di editing
+    // lasciata aperta da un altro test renderebbe vera per sbaglio l'asserzione
+    // "non è ancora in editing" qui sotto.
+    useScene.setState({ editingNodeId: null });
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: {
+        g: node("g", 0, "a000001", { kind: "group", width: 0, height: 0 }),
+        c1: node("c1", 10, "a000001", { parentId: "g", y: 10 }),
+        c2: node("c2", 100, "a000002", { parentId: "g", y: 0, width: 20, height: 20 }),
+        solo: node("solo", 200, "a000002", { y: 200 }),
+      },
+    });
+  }
+
+  const ctrl = (key: string, shiftKey = false) =>
+    ({ key, ctrlKey: true, metaKey: false, shiftKey, preventDefault: vi.fn() }) as unknown as KeyboardEvent;
+
+  beforeEach(groupedScene);
+
+  it("a click on a child of a group selects the GROUP", () => {
+    createSelectTool().onPointerDown!(at(30, 30), fakeCtx()); // dentro c1
+    expect(useScene.getState().selection).toEqual(["g"]);
+  });
+
+  it("a double click enters the group and selects the child", () => {
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(atT(30, 30, 1000), ctx);
+    expect(useScene.getState().selection).toEqual(["g"]);
+    tool.onPointerDown!(atT(30, 30, 1100), ctx);
+    expect(useScene.getState().selection).toEqual(["c1"]);
+    // Entrati nel gruppo, un click su un fratello seleziona il fratello.
+    tool.onPointerUp!(atT(30, 30, 1110), ctx);
+    tool.onPointerDown!(atT(110, 10, 2000), ctx);
+    expect(useScene.getState().selection).toEqual(["c2"]);
+  });
+
+  it("a click outside the entered group leaves it", () => {
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    useScene.getState().setSelection(["c1"]);
+    tool.onPointerDown!(at(220, 220), ctx); // "solo", fuori dal gruppo
+    expect(useScene.getState().selection).toEqual(["solo"]);
+    tool.onPointerDown!(at(30, 30), ctx);   // di nuovo dentro c1: il gruppo
+    expect(useScene.getState().selection).toEqual(["g"]);
+  });
+
+  // Il doppio click su un testo ha già un significato (l'editing). Dentro un
+  // gruppo i due si mettono in fila invece che in concorrenza: prima si entra,
+  // poi si scrive.
+  it("on a text node inside a group, the first double click enters and the second opens the editor", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: {
+        g: node("g", 0, "a000001", { kind: "group", width: 0, height: 0 }),
+        t: node("t", 10, "a000001", { parentId: "g", y: 10, kind: "text",
+          text: { content: "ciao", style: { fontFamily: "", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "left" } } }),
+      },
+    });
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(atT(30, 30, 1000), ctx);
+    tool.onPointerDown!(atT(30, 30, 1100), ctx);
+    tool.onPointerUp!(atT(30, 30, 1110), ctx);
+    expect(useScene.getState().selection).toEqual(["t"]);
+    expect(useScene.getState().editingNodeId).toBeNull();
+
+    tool.onPointerDown!(atT(30, 30, 2000), ctx);
+    tool.onPointerDown!(atT(30, 30, 2100), ctx);
+    tool.onPointerUp!(atT(30, 30, 2110), ctx);
+    expect(useScene.getState().editingNodeId).toBe("t");
+  });
+
+  it("a marquee over a child of a group selects the group, once", () => {
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(at(-5, -5), ctx);
+    tool.onPointerMove!(at(130, 70), ctx); // prende c1 E c2
+    tool.onPointerUp!(at(130, 70), ctx);
+    expect(useScene.getState().selection).toEqual(["g"]);
+  });
+
+  // Il gruppo non ha un box proprio: la cornice (e quindi le maniglie) stanno
+  // sull'unione dei figli, ed è da lì che il resize deve partire.
+  it("moving a group moves its children, with ONE op", () => {
+    useScene.getState().setSelection(["g"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes["c1"]);
+
+    tool.onPointerDown!(at(30, 30), ctx);
+    tool.onPointerMove!(at(50, 40), ctx); // +20, +10
+    tool.onPointerUp!(at(50, 40), ctx);
+
+    expect(sync.sent).toHaveLength(1);
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["g"]).toMatchObject({ x: 20, y: 10 });
+    expect(scene.nodes["c1"]).toMatchObject({ x: 10, y: 10 }); // il locale non si tocca
+    expect(worldBoundsOfNode(scene, scene.nodes["c1"])).toMatchObject({ x: before.x + 20, y: before.y + 10 });
+  });
+
+  it("resizing a group resizes its children: the group has no box of its own to rewrite", () => {
+    useScene.getState().setSelection(["g"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    // Maniglia se dell'UNIONE (10,0)-(120,60), trascinata a raddoppiare.
+    tool.onPointerDown!(at(120, 60), ctx);
+    tool.onPointerMove!(at(230, 120), ctx);
+    tool.onPointerUp!(at(230, 120), ctx);
+
+    const scene = useScene.getState().scene!;
+    expect(sync.sent).toHaveLength(2); // un op per figlio, nessuno per il gruppo
+    expect(scene.nodes["g"]).toMatchObject({ x: 0, y: 0, width: 0, height: 0 });
+    expect(scene.nodes["c1"]).toMatchObject({ x: 10, y: 20, width: 100, height: 100 });
+    expect(scene.nodes["c2"]).toMatchObject({ x: 190, y: 0, width: 40, height: 40 });
+  });
+
+  // IL TRAPPOLONE del task 1: con l'annidamento una selezione che contiene un
+  // antenato E un suo discendente produrrebbe un secondo deleteNode che il
+  // server rifiuta (il discendente è già sparito nella cascata) -- e invertChain
+  // tornerebbe null per l'INTERO gesto: un gruppo cancellato e non annullabile.
+  it("Delete on a group AND one of its children sends ONE op, and the gesture stays undoable", () => {
+    useScene.getState().setSelection(["g", "c1"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    createSelectTool().onKeyDown!({ key: "Delete" } as KeyboardEvent, fakeCtx());
+
+    const deleted = sync.sent.map((op) => (op.kind.case === "deleteNode" ? op.kind.value.id : ""));
+    expect(deleted).toEqual(["g"]);
+    expect(useScene.getState().scene!.nodes["c1"]).toBeUndefined();
+    const stack = useScene.getState().undoStack;
+    expect(stack).toHaveLength(undoBefore + 1);
+    expect(stack[stack.length - 1]).toHaveLength(3); // g + c1 + c2 da ricreare
+
+    useScene.getState().undo();
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["g"]?.kind).toBe("group");
+    expect(scene.nodes["c1"]?.parentId).toBe("g");
+    expect(scene.nodes["c2"]?.parentId).toBe("g");
+  });
+
+  describe("Ctrl+G / Ctrl+Shift+G", () => {
+    beforeEach(() => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          r1: node("r1", 0, "a000001"),
+          r2: node("r2", 100, "a000002"),
+          r3: node("r3", 200, "a000003"),
+        },
+      });
+    });
+
+    it("Ctrl+G groups the selection in ONE gesture, and one Ctrl+Z undoes the whole thing", () => {
+      useScene.getState().setSelection(["r1", "r3"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const undoBefore = useScene.getState().undoStack.length;
+
+      createSelectTool().onKeyDown!(ctrl("g"), fakeCtx());
+
+      expect(sync.sent.map((o) => o.kind.case)).toEqual(["createNode", "reparentNode", "reparentNode"]);
+      const gid = useScene.getState().selection[0];
+      const scene = useScene.getState().scene!;
+      expect(scene.nodes[gid].kind).toBe("group");
+      expect(scene.nodes["r1"].parentId).toBe(gid);
+      expect(scene.nodes["r3"].parentId).toBe(gid);
+      expect(scene.nodes["r2"].parentId).toBe("page1"); // non selezionato, non toccato
+      // UNA sola voce di undo per i tre op.
+      expect(useScene.getState().undoStack).toHaveLength(undoBefore + 1);
+
+      useScene.getState().undo();
+      const after = useScene.getState().scene!;
+      expect(after.nodes[gid]).toBeUndefined();
+      expect(after.nodes["r1"]).toMatchObject({ parentId: "page1", orderKey: "a000001" });
+      expect(after.nodes["r3"]).toMatchObject({ parentId: "page1", orderKey: "a000003" });
+
+      useScene.getState().redo();
+      expect(useScene.getState().scene!.nodes["r1"].parentId).toBe(gid);
+    });
+
+    it("Ctrl+Shift+G ungroups in one gesture, and one Ctrl+Z puts the group back", () => {
+      useScene.getState().setSelection(["r1", "r3"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onKeyDown!(ctrl("g"), ctx);
+      const gid = useScene.getState().selection[0];
+      const undoAfterGroup = useScene.getState().undoStack.length;
+
+      tool.onKeyDown!(ctrl("g", true), ctx);
+
+      const scene = useScene.getState().scene!;
+      expect(scene.nodes[gid]).toBeUndefined();
+      expect(scene.nodes["r1"].parentId).toBe("page1");
+      expect(scene.nodes["r3"].parentId).toBe("page1");
+      // I figli liberati restano selezionati, e nel loro ordine.
+      expect(useScene.getState().selection).toEqual(["r1", "r3"]);
+      expect(useScene.getState().undoStack).toHaveLength(undoAfterGroup + 1);
+
+      useScene.getState().undo();
+      const after = useScene.getState().scene!;
+      expect(after.nodes[gid]?.kind).toBe("group");
+      expect(after.nodes["r1"].parentId).toBe(gid);
+      expect(after.nodes["r3"].parentId).toBe(gid);
+    });
+
+    it("Ctrl+G keeps the world position of a node that comes from another group", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          g: node("g", 100, "a000001", { kind: "group", width: 0, height: 0, y: 100 }),
+          inner: node("inner", 10, "a000001", { parentId: "g", y: 10 }),
+          solo: node("solo", 300, "a000002", { y: 300 }),
+        },
+      });
+      useScene.getState().setSelection(["inner", "solo"]);
+      useScene.getState().setSync(new FakeSync());
+      const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes["inner"]);
+
+      createSelectTool().onKeyDown!(ctrl("g"), fakeCtx());
+
+      const scene = useScene.getState().scene!;
+      const gid = useScene.getState().selection[0];
+      expect(scene.nodes[gid].kind).toBe("group");
+      // "inner" è uscito dallo spazio di "g" (che traslava di 100,100) per
+      // entrare nel gruppo nuovo, che sta sotto la pagina: senza riscriverne le
+      // coordinate si sposterebbe di 100px.
+      expect(scene.nodes["inner"]).toMatchObject({ parentId: gid, x: 110, y: 110 });
+      expect(worldBoundsOfNode(scene, scene.nodes["inner"])).toEqual(before);
+    });
+
+    it("Ctrl+G with nothing selected, and Ctrl+Shift+G with no group selected, send nothing", () => {
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onKeyDown!(ctrl("g"), ctx);
+      useScene.getState().setSelection(["r1"]);
+      tool.onKeyDown!(ctrl("g", true), ctx);
+      expect(sync.sent).toHaveLength(0);
+      expect(useScene.getState().undoStack).toHaveLength(0);
+    });
+
+    it("Ctrl+G abandons a gesture in progress instead of nesting one inside it", () => {
+      useScene.getState().setSelection(["r1"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(at(30, 10), ctx); // drag aperto
+      tool.onKeyDown!(ctrl("g"), ctx);
+      // Il drag è stato abbandonato (nessun setProps sul filo) e il
+      // raggruppamento è passato.
+      expect(sync.sent.map((o) => o.kind.case)).toEqual(["createNode", "reparentNode"]);
+      // Il pointerup che arriva comunque dopo non manda nient'altro.
+      tool.onPointerUp!(at(30, 10), ctx);
+      expect(sync.sent).toHaveLength(2);
+    });
+  });
+});

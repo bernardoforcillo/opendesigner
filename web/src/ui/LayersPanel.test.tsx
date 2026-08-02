@@ -310,6 +310,13 @@ describe("layerDisplayName", () => {
     expect(layerDisplayName(ellipseNode("a", "a0", { name: "" }))).toBe("Ellipse");
   });
 
+  // Un gruppo nasce già con un nome (tools/grouping.ts::GROUP_NAME); questo è
+  // il ripiego per un gruppo rinominato a stringa vuota. Senza il suo ramo
+  // cadrebbe in quello del TESTO e mostrerebbe "Text".
+  it("ricade su 'Group' per un gruppo senza nome", () => {
+    expect(layerDisplayName(rectNode("a", "a0", { name: "", kind: "group" }))).toBe("Group");
+  });
+
   it("ricade sul contenuto (troncato) per un nodo testo senza nome", () => {
     expect(layerDisplayName(textNode("a", "a0", "ciao mondo", { name: "" }))).toBe("ciao mondo");
     const long = "a".repeat(50);

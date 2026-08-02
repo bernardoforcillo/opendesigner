@@ -68,6 +68,23 @@ export function makeSetTextOp(id: string, content: string, style?: TextStyleLite
   });
 }
 
+// Sposta un nodo sotto un altro container (o direttamente sotto una Page) e ne
+// riscrive l'ordine fra i nuovi pari. Op DEDICATO e non un path della mask,
+// perché la riparentazione ha una validazione che nessun campo ha -- il nuovo
+// parent deve esistere e non può essere il nodo stesso né un suo discendente
+// (vedi core.applyReparent e store/applyOp.ts).
+//
+// `orderKey` viaggia INSIEME e non è opzionale: cambiare parent senza
+// riordinare lascerebbe il nodo con la chiave calcolata fra i pari VECCHI,
+// cioè in una posizione arbitraria fra i nuovi.
+export function makeReparentOp(id: string, newParentId: string, orderKey: string): Op {
+  return create(OpSchema, {
+    opId: uuid(),
+    docId: docId(),
+    kind: { case: "reparentNode", value: { id, newParentId, orderKey } },
+  });
+}
+
 export function makeDeleteOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteNode", value: { id } } });
 }

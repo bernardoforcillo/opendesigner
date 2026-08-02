@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { emptyScene, type NodeLite, type SceneState } from "./types";
-import { childrenOf, subtreeOf, descendantsOf, ancestorsOf, isAncestorOf, topmostOf } from "./tree";
+import { childrenOf, documentOrder, subtreeOf, descendantsOf, ancestorsOf, isAncestorOf, topmostOf } from "./tree";
 
 function node(id: string, parentId: string, orderKey: string): NodeLite {
   return {
@@ -56,6 +56,38 @@ describe("childrenOf", () => {
   it("lista vuota per un parent senza figli o inesistente", () => {
     expect(childrenOf(tree(), "d1")).toEqual([]);
     expect(childrenOf(tree(), "ghost")).toEqual([]);
+  });
+});
+
+describe("documentOrder", () => {
+  it("ritorna TUTTO il documento in ordine di disegno: container prima dei figli", () => {
+    expect(ids(documentOrder(tree()))).toEqual(["g1", "c1", "d1", "c2", "other"]);
+  });
+
+  it("salta i nodi non raggiungibili da una pagina", () => {
+    const s = tree();
+    s.nodes["orfano"] = node("orfano", "sparito", "a0");
+    expect(ids(documentOrder(s))).not.toContain("orfano");
+  });
+
+  it("termina su un documento con un ciclo", () => {
+    const s = emptyScene("doc1", "Untitled");
+    s.nodes["a"] = node("a", "b", "a1");
+    s.nodes["b"] = node("b", "a", "a1");
+    // Nessuno dei due pende da una pagina: il ciclo non è nemmeno raggiungibile.
+    expect(documentOrder(s)).toEqual([]);
+  });
+
+  // È la ragione per cui esiste: fra due parent diversi le order key non sono
+  // confrontabili, e il raggruppamento deve sapere qual è il nodo più in alto.
+  it("l'albero domina un confronto piatto di order key", () => {
+    const s = emptyScene("doc1", "Untitled");
+    for (const n of [
+      node("sotto", "page1", "a1"),
+      node("figlioSotto", "sotto", "z9"), // order key altissima, ma dentro "sotto"
+      node("sopra", "page1", "a2"),
+    ]) s.nodes[n.id] = n;
+    expect(ids(documentOrder(s))).toEqual(["sotto", "figlioSotto", "sopra"]);
   });
 });
 

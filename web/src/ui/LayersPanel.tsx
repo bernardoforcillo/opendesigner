@@ -24,6 +24,10 @@ const TEXT_FALLBACK_MAX = 30;
 function fallbackName(n: NodeLite): string {
   if (n.kind === "rect") return "Rectangle";
   if (n.kind === "ellipse") return "Ellipse";
+  // Un gruppo nasce già con un nome (tools/grouping.ts::GROUP_NAME): questo è
+  // il ripiego per un gruppo rinominato a stringa vuota, o arrivato da un
+  // documento che non lo aveva.
+  if (n.kind === "group") return "Group";
   // n.kind === "text": a-capo e spazi ripetuti collassati, così l'etichetta
   // resta su una riga sola anche per un testo multilinea.
   const flat = (n.text?.content ?? "").replace(/\s+/g, " ").trim();

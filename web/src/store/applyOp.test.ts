@@ -31,6 +31,40 @@ describe("applyOp", () => {
     expect(s.nodes["n1"].kind).toBe("ellipse");
   });
 
+  // Un gruppo è un CONTENITORE, non una forma: il oneof `shape` dice cosa un
+  // nodo è, e "group" ci sta dentro come le altre (proto: GroupNode = 33).
+  it("creates a group node", () => {
+    const node = create(NodeSchema, {
+      id: "g1", parentId: "page1", orderKey: "a0", name: "Gruppo", visible: true, opacity: 1,
+      shape: { case: "group", value: {} },
+    });
+    const op = create(OpSchema, { opId: "op-g1", docId: "doc1", kind: { case: "createNode", value: { node } } });
+    const s = applyOp(emptyScene("doc1", "Untitled"), op);
+    expect(s.nodes["g1"].kind).toBe("group");
+  });
+
+  // Parità con core.applySetProps (Go), che risponde ErrNotRectNode su un
+  // gruppo: un gruppo non ha niente da riempire, quindi nessun angolo da
+  // arrotondare. L'op è rifiutato in BLOCCO -- nemmeno la "x" della stessa mask
+  // si muove.
+  it("rejects corner_radius on a group, x included", () => {
+    const node = create(NodeSchema, {
+      id: "g1", parentId: "page1", orderKey: "a0", name: "Gruppo", visible: true, opacity: 1,
+      shape: { case: "group", value: {} },
+    });
+    let s = applyOp(emptyScene("doc1", "Untitled"),
+      create(OpSchema, { opId: "c", docId: "doc1", kind: { case: "createNode", value: { node } } }));
+    const before = s;
+    s = applyOp(s, create(OpSchema, { opId: "r", docId: "doc1", kind: { case: "setProps", value: {
+      id: "g1",
+      patch: create(NodeSchema, { x: 42, shape: { case: "rect", value: { cornerRadius: 12 } } }),
+      mask: { paths: ["x", "corner_radius"] },
+    } } }));
+    expect(s).toBe(before);
+    expect(s.nodes["g1"].x).toBe(0);
+    expect(s.nodes["g1"].kind).toBe("group");
+  });
+
   it("moves via setProperties + mask", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
     const move = create(OpSchema, { opId: "m", docId: "doc1", kind: { case: "setProps", value: {

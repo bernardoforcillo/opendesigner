@@ -1,7 +1,7 @@
 import type { SceneState } from "../store/types";
 import type { Camera } from "../canvas/camera";
 import { type Bounds, unionBounds, worldBoundsToScreen } from "../canvas/geometry";
-import { worldBoundsOfNode } from "../canvas/transform";
+import { contentWorldBounds } from "../store/groups";
 import { HANDLE_SIZE, handlePositions } from "../selection/handles";
 
 // La geometria delle maniglie (posizioni, hit-test, resize) è UNA sola e vive
@@ -20,16 +20,24 @@ function devicePixelRatio(): number {
 // difensiva così l'overlay non esplode su uno stato transitorio incoerente.
 // Estratta apposta così è testabile senza ctx/DOM.
 //
-// worldBoundsOfNode e non boundsOfNode: il box del modello è scritto nello
-// spazio del PARENT, mentre tutto ciò che sta a valle di qui (la cornice, le
-// maniglie, il loro hit-test) lavora in mondo e poi in schermo. Per un nodo
-// figlio di una pagina le due cose coincidono, ed è ciò che tiene fermi i
-// documenti già esistenti.
+// Bounds MONDO e non del modello: il box del modello è scritto nello spazio del
+// PARENT, mentre tutto ciò che sta a valle di qui (la cornice, le maniglie, il
+// loro hit-test) lavora in mondo e poi in schermo. Per un nodo figlio di una
+// pagina le due cose coincidono, ed è ciò che tiene fermi i documenti già
+// esistenti.
+//
+// contentWorldBounds e non worldBoundsOfNode: un GRUPPO non ha un box proprio
+// (store/groups.ts), i suoi bounds sono l'unione dei figli. Leggere il suo box
+// darebbe un rettangolo 0x0 all'origine del gruppo -- cornice e maniglie
+// nell'angolo sbagliato dello schermo, su un gruppo che si vede benissimo.
+// Un gruppo vuoto non contribuisce nulla (null), esattamente come un id sparito.
 export function selectionWorldBounds(state: SceneState, selection: string[]): Bounds | null {
   const boxes: Bounds[] = [];
   for (const id of selection) {
     const n = state.nodes[id];
-    if (n) boxes.push(worldBoundsOfNode(state, n));
+    if (!n) continue;
+    const b = contentWorldBounds(state, n);
+    if (b) boxes.push(b);
   }
   return unionBounds(boxes);
 }

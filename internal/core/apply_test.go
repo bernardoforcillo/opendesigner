@@ -91,6 +91,16 @@ func ellipseNode(id string) *brawtv1.Node {
 	}
 }
 
+// Un GRUPPO: contenitore senza clipping e senza geometria propria (i suoi
+// bounds sono l'unione dei figli, vedi web/src/store/groups.ts). x/y sono la
+// traslazione che contribuisce ai figli e valgono 0 alla creazione.
+func groupNode(id string) *brawtv1.Node {
+	return &brawtv1.Node{
+		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Gruppo", Visible: true, Opacity: 1,
+		Shape: &brawtv1.Node_Group{Group: &brawtv1.GroupNode{}},
+	}
+}
+
 func setPropsOp(s *brawtv1.SetProperties) *brawtv1.Op {
 	return &brawtv1.Op{Kind: &brawtv1.Op_SetProps{SetProps: s}}
 }
@@ -147,6 +157,12 @@ func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 	}{
 		{"ellipse", ellipseNode("n1")},
 		{"text", textNode("n1", "ciao")},
+		// Un gruppo non è una forma: non ha niente da riempire, quindi nessun
+		// angolo da arrotondare. Senza questo caso il server accetterebbe un
+		// corner_radius che il client (web/src/store/applyOp.ts, il guard
+		// `cur.kind !== "rect"`) rifiuta -- cioè esattamente la divergenza che
+		// le fixture golden esistono per impedire.
+		{"group", groupNode("n1")},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := NewDocument("doc1", "Untitled")

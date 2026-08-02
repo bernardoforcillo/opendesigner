@@ -27,7 +27,11 @@ export interface NodeLite {
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
-  fills: FillLite[]; kind: "rect" | "ellipse" | "text"; cornerRadius: number;
+  // "group" è un CONTENITORE, non una forma: non si disegna e non si colpisce,
+  // e i suoi bounds sono l'unione dei figli (vedi store/groups.ts). Sta nello
+  // stesso campo delle forme perché nel proto è lo stesso oneof `shape`: ciò
+  // che un nodo È, non un flag a parte che potrebbe contraddirlo.
+  fills: FillLite[]; kind: "rect" | "ellipse" | "text" | "group"; cornerRadius: number;
   // Presente se e solo se kind === "text": il contenuto vive DENTRO il oneof
   // `shape` del proto, quindi è per costruzione esclusivo con rect/ellipse.
   text?: TextLite;
@@ -107,7 +111,11 @@ export function toNodeLite(n: PbNode): NodeLite {
     // "rect" resta il fallback per una forma assente o sconosciuta: un nodo
     // senza shape è comunque un rettangolo disegnabile, mentre un "text" senza
     // contenuto non lo sarebbe.
-    kind: n.shape.case === "ellipse" ? "ellipse" : n.shape.case === "text" ? "text" : "rect",
+    kind:
+      n.shape.case === "ellipse" ? "ellipse"
+      : n.shape.case === "text" ? "text"
+      : n.shape.case === "group" ? "group"
+      : "rect",
     cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
     ...(n.shape.case === "text" ? { text: toTextLite(n.shape.value) } : {}),
   };
@@ -126,6 +134,13 @@ export function toPbNode(n: NodeLite): PbNode {
     fills: toPbFills(n.fills),
     shape: n.kind === "ellipse"
       ? { case: "ellipse" as const, value: {} }
+      // Un gruppo non ha campi propri: ciò che lo rende un gruppo è il caso del
+      // oneof (più i figli che gli puntano). Il ramo esiste comunque, e non è
+      // pedanteria: senza, l'inverso di una delete ricostruirebbe un
+      // RETTANGOLO al posto del gruppo -- un cambio di forma silenzioso dentro
+      // un undo, per giunta con un box 0x0 che non si vedrebbe mai.
+      : n.kind === "group"
+      ? { case: "group" as const, value: {} }
       : n.kind === "text"
         // `text` mancante su un nodo di testo è uno stato che toNodeLite non
         // produce mai (i due si muovono insieme). Il fallback a testo vuoto

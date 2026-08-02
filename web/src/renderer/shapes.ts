@@ -31,6 +31,13 @@ export function nodePath(n: NodeLite): Path2D {
 // ((wx-cx)/rx)^2 + ((wy-cy)/ry)^2 <= 1, che è il test corretto (l'AABB
 // dell'ellisse include gli angoli, che sono fuori dall'ellisse stessa).
 export function hitTestNode(n: NodeLite, wx: number, wy: number): boolean {
+  // Un GRUPPO non si colpisce mai direttamente: non ha geometria propria (i
+  // suoi bounds sono l'unione dei figli, vedi store/groups.ts) e non disegna
+  // niente, quindi non c'è nessun pixel suo sotto il puntatore. A selezionarlo
+  // ci pensa la POLITICA di selezione, che risale l'albero dal figlio colpito
+  // (groups.ts::selectionTargetOf) -- e deve poterlo fare da un figlio, non da
+  // un rettangolo invisibile che ruberebbe i click a ciò che gli sta sotto.
+  if (n.kind === "group") return false;
   // Il guard sulla dimensione NON vale per il testo, esattamente come in
   // drawScene (canvasRenderer.ts): un testo con height 0 -- un nodo appena
   // creato, la cui altezza la produce il layout -- viene disegnato, e ciò che

@@ -58,6 +58,30 @@ describe("selectionWorldBounds", () => {
     // Unione di due nodi a profondità DIVERSE: entrambi in coordinate mondo.
     expect(selectionWorldBounds(s, ["g", "k"])).toEqual({ x: 100, y: 50, width: 400, height: 400 });
   });
+
+  // Un gruppo non ha un box proprio: leggerlo darebbe un rettangolo 0x0
+  // all'origine, cioè cornice e maniglie nell'angolo sbagliato dello schermo
+  // per un gruppo che si vede benissimo (vedi store/groups.ts).
+  it("for a group it is the union of its CHILDREN, translated by the group", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = { ...rect("g", 0, 0, 0, 0), kind: "group" };
+    s.nodes["c1"] = { ...rect("c1", 10, 10, 50, 50), parentId: "g" };
+    s.nodes["c2"] = { ...rect("c2", 100, 0, 20, 20), parentId: "g" };
+    expect(selectionWorldBounds(s, ["g"])).toEqual({ x: 10, y: 0, width: 110, height: 60 });
+
+    // Trascinato il gruppo, la cornice lo segue: la sua x/y è la traslazione
+    // dei figli.
+    s.nodes["g"] = { ...s.nodes["g"], x: 5, y: 7 };
+    expect(selectionWorldBounds(s, ["g"])).toEqual({ x: 15, y: 7, width: 110, height: 60 });
+  });
+
+  it("skips an empty group instead of framing its origin", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = { ...rect("g", 300, 300, 0, 0), kind: "group" };
+    s.nodes["a"] = rect("a", 0, 0, 50, 50);
+    expect(selectionWorldBounds(s, ["g"])).toBeNull();
+    expect(selectionWorldBounds(s, ["a", "g"])).toEqual({ x: 0, y: 0, width: 50, height: 50 });
+  });
 });
 
 describe("worldBoundsToScreen", () => {

@@ -67,6 +67,42 @@ export function childIndexOf(scene: SceneState): Map<string, NodeLite[]> {
   return index;
 }
 
+// TUTTO il documento in ordine di DISEGNO: si parte dai figli delle pagine
+// (nell'ordine delle pagine) e si scende in pre-ordine -- un container prima
+// dei suoi figli, i fratelli per order key. È lo stesso cammino di
+// renderer/canvasRenderer.ts::drawScene, quindi l'ultimo elemento è il nodo
+// disegnato PIÙ IN ALTO di tutto il documento.
+//
+// Serve a chi deve confrontare la posizione di due nodi che NON sono fratelli
+// -- il raggruppamento, che deve sapere qual è il nodo più in alto della
+// selezione per sapere dove nasce il gruppo: fra due parent diversi le order
+// key non sono confrontabili, è l'albero a decidere.
+//
+// Chi NON è raggiungibile da una pagina non compare: non ha un posto nel mondo,
+// esattamente come per il renderer.
+//
+// Come childIndexOf, non ha una controparte in Go (il server non disegna); le
+// REGOLE sono quelle di childrenOf, che la controparte ce l'ha.
+export function documentOrder(scene: SceneState): NodeLite[] {
+  const children = childIndexOf(scene);
+  const out: NodeLite[] = [];
+  const seen = new Set<string>();
+  const roots = scene.pages.flatMap((p) => children.get(p.id) ?? []);
+  // Pila esplicita e figli in ordine INVERSO, come subtreeOf: stessa ragione
+  // (profondità decisa dall'utente) e stesso ordine di uscita.
+  const stack: NodeLite[] = [];
+  for (let i = roots.length - 1; i >= 0; i--) stack.push(roots[i]);
+  while (stack.length > 0) {
+    const n = stack.pop() as NodeLite;
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    out.push(n);
+    const kids = children.get(n.id) ?? [];
+    for (let i = kids.length - 1; i >= 0; i--) stack.push(kids[i]);
+  }
+  return out;
+}
+
 // Il nodo E tutti i suoi discendenti, in PRE-ORDINE: ogni nodo compare sempre
 // dopo il proprio parent, i fratelli in ordine di order key.
 //

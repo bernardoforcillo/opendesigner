@@ -14,6 +14,22 @@ message Paint { oneof kind { SolidPaint solid = 1; } }
 message RectNode { double corner_radius = 1; }
 message EllipseNode {} // cx/cy/rx/ry derivano da x/y/width/height, come per RectNode
 
+// Un GRUPPO è un contenitore SENZA clipping e senza geometria propria: i suoi
+// bounds sono l'UNIONE di quelli dei figli (derivati, non memorizzati) e non ha
+// niente da riempire -- non si disegna e non si colpisce, si colpiscono i figli.
+//
+// Il messaggio è quindi vuoto, e non è un difetto: ciò che rende un nodo un
+// gruppo è la sua POSIZIONE nell'albero (i figli) più il caso del oneof, che
+// dice a renderer, hit-test e politica di selezione come trattarlo. Un
+// FrameNode (34) avrà invece campi propri (clips_content) e bounds propri.
+//
+// x/y restano significativi: sono la TRASLAZIONE che il gruppo contribuisce ai
+// figli (vedi web/src/canvas/transform.ts::localTransformOf) -- valgono 0 alla
+// creazione, così raggruppare non sposta nulla, e cambiano quando il gruppo
+// viene trascinato. width/height non sono usati da nessuno: i bounds sono
+// l'unione dei figli.
+message GroupNode {}
+
 enum TextAlign {
   TEXT_ALIGN_UNSPECIFIED = 0;
   TEXT_ALIGN_LEFT = 1;
@@ -49,7 +65,7 @@ message Node {
     // Numeri assegnati in anticipo alle quattro tracce parallele. Ogni traccia
     // sostituisce SOLO la propria riga con la dichiarazione vera (e definisce il
     // messaggio corrispondente): righe distinte si fondono senza conflitti.
-    // 33 = GroupNode     (traccia 1 — annidamento)
+    GroupNode group = 33;
     // 34 = FrameNode     (traccia 1 — annidamento)
     // 35 = ImageNode     (traccia 3 — periferia)
     // 36 = VectorNode    (traccia 4 — vettoriale)

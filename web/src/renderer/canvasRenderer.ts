@@ -115,6 +115,13 @@ function drawSiblings(ctx: CanvasRenderingContext2D, children: ChildIndex, sibli
 // guard sta QUI e non nella discesa, perché un gruppo non ha un box proprio da
 // riempire e i suoi figli devono comunque comparire.
 function drawNode(ctx: CanvasRenderingContext2D, n: NodeLite): void {
+  // Un GRUPPO non si disegna: è un contenitore senza geometria propria (i suoi
+  // bounds sono l'unione dei figli) e ciò che si vede sono i figli. Il ramo è
+  // esplicito e non affidato al guard sulla dimensione qui sotto: un gruppo con
+  // width/height diversi da zero -- scritti da chi non lo sa, o da un documento
+  // di un'altra versione -- comparirebbe come un rettangolo pieno che l'utente
+  // non ha mai disegnato.
+  if (n.kind === "group") return;
   // Il guard sulla dimensione NON vale per il testo: l'altezza di un nodo
   // testo la produce il layout (e la width è solo la larghezza di wrap),
   // quindi un testo con height 0 -- un nodo appena creato -- deve comunque

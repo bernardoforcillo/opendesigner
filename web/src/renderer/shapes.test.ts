@@ -25,6 +25,17 @@ describe("hitTestNode", () => {
     expect(hitTestNode(node("rect"), 120, 25)).toBe(false);
   });
 
+  // Un gruppo non ha geometria propria: non si disegna e non si colpisce. A
+  // selezionarlo ci pensa la politica dei gruppi risalendo dal FIGLIO colpito
+  // (store/groups.ts), non un rettangolo invisibile che ruberebbe i click a
+  // quello che gli sta sotto. Il box è valorizzato apposta: nemmeno un gruppo
+  // con width/height addosso deve diventare colpibile.
+  it("group: never hit, whatever box it carries", () => {
+    const g: NodeLite = { ...node("rect"), kind: "group" };
+    expect(hitTestNode(g, 50, 25)).toBe(false);
+    expect(hitTestNode({ ...g, width: 0, height: 0 }, 0, 0)).toBe(false);
+  });
+
   it("ellipse: center hits, corner misses", () => {
     const e = node("ellipse");
     expect(hitTestNode(e, 50, 25)).toBe(true);
