@@ -1,7 +1,8 @@
-import type { NodeLite, TextStyleLite } from "../store/types";
+import type { NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
 import { resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
+import type { MeasureText } from "../renderer/text";
 
 // EXPORT SVG — markup a partire dai NODI.
 //
@@ -14,13 +15,13 @@ import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../rende
 // strumento a valle, e l'unico vantaggio (l'indipendenza dal font installato)
 // non vale quella perdita in un editor di design.
 
-// Misura di UNA riga con lo stile dato, in unità mondo.
-//
-// È un parametro e non un dettaglio interno perché misurare i glifi richiede un
-// contesto 2D: in produzione arriva da un canvas (vedi export/exportScene.ts),
-// così l'andata a capo dell'SVG è ESATTAMENTE quella del canvas; nei test
-// arriva una misura finta e deterministica.
-export type MeasureText = (text: string, style: TextStyleLite) => number;
+// La misura del testo è un PARAMETRO e non un dettaglio interno perché misurare
+// i glifi richiede un contesto 2D: in produzione arriva da un canvas (vedi
+// export/exportScene.ts), così l'andata a capo dell'SVG è ESATTAMENTE quella del
+// canvas; nei test arriva una misura finta e deterministica. Il tipo sta in
+// renderer/text.ts (lo condivide con export/region.ts) e si ri-esporta da qui
+// perché è parte della firma di nodesToSvg.
+export type { MeasureText };
 
 // Cifre decimali tenute nel markup. 3 sono ampiamente sotto il pixel a ogni
 // scala ragionevole, e tolgono di mezzo le code della virgola mobile

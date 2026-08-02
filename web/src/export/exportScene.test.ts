@@ -14,6 +14,20 @@ function node(over: Partial<NodeLite> & { id: string }): NodeLite {
   };
 }
 
+// Un nodo testo con il box di un nodo appena creato con un click: larghezza di
+// wrap 100 e altezza di UNA riga (16 * 1.2 = 19.2). Con la misura finta (10
+// unità per carattere) "abcdefghij klm" ne occupa DUE: è il caso in cui il box
+// del modello e ciò che il canvas dipinge non coincidono.
+function overflowingText(id: string): NodeLite {
+  return node({
+    id, kind: "text", x: 0, y: 0, width: 100, height: 19.2,
+    text: {
+      content: "abcdefghij klm",
+      style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" },
+    },
+  });
+}
+
 function install(scene: SceneState | null, selection: string[] = []): void {
   useScene.setState({ scene, selection, gesture: null, notice: null, camera: { x: 0, y: 0, zoom: 1 } });
 }
@@ -102,6 +116,22 @@ describe("runExport — SVG", () => {
     await runExport({ format: "svg", scope: "page", scale: 1 }, d2);
     expect(await d2.saved[0].blob.text()).toBe(first);
   });
+
+  it("il testo che trabocca il suo box resta DENTRO il viewBox", async () => {
+    // Il viewBox è il ritaglio del file: la radice SVG nasconde tutto ciò che
+    // ne resta fuori. Con l'altezza del box del modello (19.2) i tspan della
+    // seconda riga sarebbero comunque scritti nel file, e comunque invisibili
+    // -- un export che sembra riuscito e ha perso metà del testo.
+    install(sceneWith("Untitled", overflowingText("t")));
+    const d = deps();
+    await runExport({ format: "svg", scope: "page", scale: 1 }, d);
+    const text = await d.saved[0].blob.text();
+    expect(text).toContain('viewBox="0 0 100 38.4"');
+    expect(text).toContain('height="38.4"');
+    // le due righe, entrambe sopra il bordo inferiore del viewBox
+    expect(text).toContain('<tspan x="0" y="14.4">abcdefghij</tspan>');
+    expect(text).toContain('<tspan x="0" y="33.6">klm</tspan>');
+  });
 });
 
 describe("runExport — PNG", () => {
@@ -133,6 +163,34 @@ describe("runExport — PNG", () => {
     // del canvas, non del documento.
     await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(true);
     await expect(runExport({ format: "svg", scope: "page", scale: 3 }, d)).resolves.toBe(true);
+  });
+
+  it("il canvas è alto quanto il testo dipinto, anche senza una misura iniettata", async () => {
+    // Nessun `measure` nelle deps: la misura la costruisce runExport dal
+    // canvas, e serve al PNG tanto quanto all'SVG -- è quella che dice quanto
+    // deve essere alto il canvas fuori schermo. Senza, il PNG verrebbe alto
+    // 20 px (il box) invece di 39 (le due righe) e taglierebbe la seconda.
+    install(sceneWith("Untitled", overflowingText("t")));
+    const d = deps();
+    d.measure = undefined;
+    const canvases: HTMLCanvasElement[] = [];
+    d.createCanvas = () => { const c = fakeCanvas(); canvases.push(c); return c; };
+    await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(true);
+    expect(canvases.at(-1)!.width).toBe(100);
+    expect(canvases.at(-1)!.height).toBe(39); // ceil(38.4)
+  });
+
+  it("senza contesto 2D l'export lo DICE, invece di esplodere", async () => {
+    // La misura del testo si costruisce da un canvas, e ora serve prima ancora
+    // di sapere quanto è grande la regione: se quel canvas non dà un contesto,
+    // il motivo deve uscire dallo stesso canale di ogni altro export fallito.
+    install(sceneWith("Untitled", node({ id: "a" })));
+    const d = deps();
+    d.measure = undefined;
+    d.createCanvas = () => ({ getContext: () => null }) as unknown as HTMLCanvasElement;
+    await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(false);
+    expect(d.saved).toHaveLength(0);
+    expect(useScene.getState().notice).toMatch(/contesto 2D/i);
   });
 
   it("a 1x il nome del file non porta nessun suffisso di scala", async () => {

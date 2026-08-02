@@ -63,8 +63,13 @@ function sceneWith(...nodes: NodeLite[]): SceneState {
   return s;
 }
 
+// La stessa misura finta del ctx qui sopra (10 unità per carattere): la
+// regione la usa per sapere quanto è alto il testo, quindi quanto deve essere
+// alto il canvas.
+const measure = (s: string) => s.length * 10;
+
 function regionOf(scene: SceneState, selection: string[] = [], scope: "page" | "selection" = "page") {
-  const r = exportRegion(scene, selection, scope);
+  const r = exportRegion(scene, selection, scope, measure);
   if (!r) throw new Error("regione vuota nel test");
   return r;
 }
@@ -143,18 +148,41 @@ describe("renderRegionToCanvas", () => {
 
   it("un canvas non è mai di lato zero", () => {
     vi.stubGlobal("Path2D", FakePath2D);
-    // Un testo alto 0 (altezza non ancora misurata) è esportabile ma darebbe
-    // un canvas 100x0, e toBlob su un canvas di area nulla fallisce.
+    // Un testo ancora VUOTO dentro un box alto 0: nessuna riga da misurare,
+    // quindi la regione resta alta 0 -- e un canvas di area nulla fa fallire
+    // toBlob invece di produrre un'immagine vuota.
     const region = regionOf(
       sceneWith(node({
         id: "t", kind: "text", width: 100, height: 0,
-        text: { content: "ciao", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } },
+        text: { content: "", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } },
       })),
     );
     const { canvas } = fakeCanvas();
     renderRegionToCanvas(region, 1, () => canvas);
     expect(canvas.width).toBe(100);
     expect(canvas.height).toBe(1);
+  });
+
+  it("il canvas è alto quanto il testo DIPINTO, non quanto il suo box", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    // Due righe (10 unità per carattere, wrap a 100) dentro un box alto una
+    // riga sola: con l'altezza del box il canvas sarebbe alto 20 px e la
+    // seconda riga finirebbe fuori dal PNG senza un solo avviso.
+    const region = regionOf(
+      sceneWith(node({
+        id: "t", kind: "text", x: 0, y: 0, width: 100, height: 19.2,
+        text: {
+          content: "abcdefghij klm",
+          style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" },
+        },
+      })),
+    );
+    const { canvas, rec } = fakeCanvas();
+    renderRegionToCanvas(region, 2, () => canvas);
+    expect(canvas.width).toBe(200);
+    expect(canvas.height).toBe(Math.ceil(38.4 * 2)); // 77, non 39
+    // e le due righe ci sono davvero entrambe
+    expect(rec.texts).toEqual(["abcdefghij", "klm"]);
   });
 
   it("disegna SOLO i nodi della regione", () => {

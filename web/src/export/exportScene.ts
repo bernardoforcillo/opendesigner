@@ -125,12 +125,12 @@ async function exportBlob(
   req: ExportRequest,
   deps: ExportDeps,
   createCanvas: () => HTMLCanvasElement,
+  measure: MeasureText,
 ): Promise<Blob> {
   if (req.format === "png") {
     const canvas = renderRegionToCanvas(region, req.scale, createCanvas);
     return (deps.toPngBlob ?? canvasToPngBlob)(canvas);
   }
-  const measure = deps.measure ?? canvasMeasure(createCanvas);
   return new Blob([nodesToSvg(region.nodes, region.bounds, measure)], { type: SVG_MIME });
 }
 
@@ -147,14 +147,23 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
   const { scene, selection } = useScene.getState();
   if (!scene) return false;
 
-  const region = exportRegion(scene, selection, req.scope);
-  if (!region) {
-    useScene.setState({ notice: req.scope === "selection" ? NOTHING_SELECTED : EMPTY_PAGE });
-    return false;
-  }
-
+  const createCanvas = deps.createCanvas ?? defaultCanvas;
   try {
-    const blob = await exportBlob(region, req, deps, deps.createCanvas ?? defaultCanvas);
+    // La misura del testo si costruisce PRIMA della regione, e per ENTRAMBI i
+    // formati: non serve solo a mandare a capo l'SVG, serve a sapere quanto è
+    // alto il testo -- cioè a dimensionare la regione, quindi anche il canvas
+    // del PNG (vedi export/region.ts). Sta dentro il try perché costruirla
+    // vuole un contesto 2D, che può non esserci: un motivo in più per cui un
+    // export può non riuscire, e passa dal canale di tutti gli altri.
+    const measure = deps.measure ?? canvasMeasure(createCanvas);
+
+    const region = exportRegion(scene, selection, req.scope, measure);
+    if (!region) {
+      useScene.setState({ notice: req.scope === "selection" ? NOTHING_SELECTED : EMPTY_PAGE });
+      return false;
+    }
+
+    const blob = await exportBlob(region, req, deps, createCanvas, measure);
     (deps.download ?? downloadBlob)(blob, exportFileName(scene.name, req));
     return true;
   } catch (err) {
