@@ -32,16 +32,27 @@ export function wheelZoomFactor(e: WheelEvent): number {
   return Math.min(MAX_FACTOR, Math.max(1 / MAX_FACTOR, factor));
 }
 
-// Elementi per cui lo spazio è affare loro: campi di testo (deve scrivere uno
-// spazio) e controlli attivabili come i bottoni della toolbar (lo spazio li
-// preme). Rubarglielo per il pan darebbe doppia attivazione o testo mangiato.
-// Duck-typing invece di instanceof: i test girano in Node, senza HTMLElement.
-function swallowsSpace(target: EventTarget | null): boolean {
+// Un campo di testo: input, textarea, select, contentEditable. Duck-typing
+// invece di instanceof: i test girano senza HTMLElement, e il target di un
+// evento sintetico non è mai un vero elemento.
+function isTextField(target: EventTarget | null): boolean {
   const el = target as { tagName?: string; isContentEditable?: boolean } | null;
   if (!el) return false;
   if (el.isContentEditable) return true;
   const tag = el.tagName?.toUpperCase();
-  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT" || tag === "BUTTON" || tag === "A";
+  return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
+}
+
+// Elementi per cui lo spazio è affare loro: i campi di testo (deve scrivere uno
+// spazio) e i controlli attivabili come i bottoni della toolbar (lo spazio li
+// preme). Rubarglielo per il pan darebbe doppia attivazione o testo mangiato.
+// I primi sono già coperti dalla guardia generale di onKeyDown; questi due tag
+// no -- un pulsante non è un campo di testo, ma lo spazio resta suo.
+function swallowsSpace(target: EventTarget | null): boolean {
+  if (isTextField(target)) return true;
+  const el = target as { tagName?: string } | null;
+  const tag = el?.tagName?.toUpperCase();
+  return tag === "BUTTON" || tag === "A";
 }
 
 const MOUSE_LEFT = 0;
@@ -143,6 +154,16 @@ export function attachTools(ctx: ToolContext, getActive: () => Tool): () => void
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
+    // Un campo di testo ha la precedenza su OGNI scorciatoia del canvas. Questi
+    // listener stanno sulla FINESTRA (il canvas non è focusabile), quindi
+    // ricevono anche i tasti battuti nel textarea di editing
+    // (ui/TextEditorOverlay.tsx) e nei campi del pannello proprietà: senza la
+    // guardia, Backspace mentre si scrive cancella il NODO selezionato -- cioè
+    // proprio quello che si sta editando -- ed Escape abbandona il gesto del
+    // tool invece di uscire dall'editing. È lo stesso principio della guardia
+    // isTextField di ui/App.tsx sulle scorciatoie di undo/redo, applicato
+    // all'altro canale di tasti globali.
+    if (isTextField(e.target)) return;
     if (e.code === "Space" && !swallowsSpace(e.target)) {
       e.preventDefault(); // niente scroll della pagina
       if (!spaceDown) {

@@ -167,6 +167,39 @@ describe("attachTools routing", () => {
     detach();
   });
 
+  // Le scorciatoie del canvas ascoltano sulla FINESTRA (il canvas non è
+  // focusabile), quindi ricevono anche i tasti battuti dentro un campo di
+  // testo: il textarea di editing (ui/TextEditorOverlay.tsx) e i campi del
+  // pannello proprietà. Senza guardia, Backspace mentre si scrive cancella il
+  // NODO selezionato -- cioè proprio quello che si sta editando -- ed Escape
+  // abbandona il gesto del tool invece di uscire dall'editing.
+  it.each([["Backspace"], ["Delete"], ["Escape"]])(
+    "non inoltra %s al tool quando il focus è in un campo di testo",
+    (k) => {
+      const { canvas, ctx } = setup();
+      const detach = attachTools(ctx, getActive);
+      canvas.view.dispatch("keydown", key(k, { target: { tagName: "TEXTAREA" } }));
+      expect(active.onKeyDown).not.toHaveBeenCalled();
+      detach();
+    },
+  );
+
+  it.each([["INPUT"], ["SELECT"]])("non inoltra i tasti battuti dentro un %s", (tagName) => {
+    const { canvas, ctx } = setup();
+    const detach = attachTools(ctx, getActive);
+    canvas.view.dispatch("keydown", key("Delete", { target: { tagName } }));
+    expect(active.onKeyDown).not.toHaveBeenCalled();
+    detach();
+  });
+
+  it("non inoltra i tasti battuti dentro un contentEditable", () => {
+    const { canvas, ctx } = setup();
+    const detach = attachTools(ctx, getActive);
+    canvas.view.dispatch("keydown", key("Delete", { target: { tagName: "DIV", isContentEditable: true } }));
+    expect(active.onKeyDown).not.toHaveBeenCalled();
+    detach();
+  });
+
   it("removes every listener on detach and deactivates the current tool", () => {
     const { canvas, ctx } = setup();
     const detach = attachTools(ctx, getActive);

@@ -112,6 +112,25 @@ function deleteOp(id: string): Op {
   });
 }
 
+function createTextOp(id: string, content: string): Op {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
+    x: 0, y: 0, width: 200, height: 20,
+    shape: { case: "text", value: { content } },
+  });
+  return create(OpSchema, {
+    opId: "new-" + id, docId: "doc1",
+    kind: { case: "createNode", value: { node } },
+  });
+}
+
+function setTextOp(id: string, content: string): Op {
+  return create(OpSchema, {
+    opId: `txt-${id}-${content}`, docId: "doc1",
+    kind: { case: "setText", value: { id, content } },
+  });
+}
+
 // Wrapper: apre e chiude un gesto in un colpo solo, come farebbe un tool a
 // fine drag. È la forma con cui i test costruiscono "un gesto" per lo stack.
 function gesture(finalOps: Op[]) {
@@ -813,6 +832,46 @@ describe("undo/redo", () => {
     useScene.getState().redo();
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+  });
+
+  // setText è un op DEDICATO (il contenuto vive dentro il oneof `shape`, non in
+  // un path della mask), quindi ha bisogno del suo bersaglio: senza, un
+  // setText remoto non renderebbe stale NIENTE e una voce di undo che contiene
+  // un setText non verrebbe MAI invalidata -- il Ctrl+Z successivo
+  // riscriverebbe in silenzio il testo appena scritto da un altro.
+  it("un setText REMOTO invalida la voce di undo di un editing sullo stesso nodo", () => {
+    gesture([createTextOp("t1", "ciao")]);
+    gesture([setTextOp("t1", "ciao mondo")]); // una sessione di editing = una voce
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    // Un altro client riscrive il testo di t1.
+    useScene.getState().apply(setTextOp("t1", "scritto da un altro"));
+
+    // La voce dell'editing scriveva il contenuto dello STESSO nodo; quella
+    // della creazione cancellerebbe t1 (e con lui la modifica remota).
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["t1"].text!.content).toBe("scritto da un altro");
+  });
+
+  it("un setText remoto non tocca una voce che scrive campi DISGIUNTI", () => {
+    gesture([createTextOp("t1", "ciao")]);
+    gesture([moveOp("t1", 40, 40)]); // voce: [setProps x,y]
+
+    useScene.getState().apply(setTextOp("t1", "altro"));
+
+    // Spostare un nodo e riscriverne il contenuto non si sovrascrivono a
+    // vicenda: annullare lo spostamento resta legittimo. Cade solo la voce
+    // della creazione, che cancellerebbe il nodo per intero.
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["t1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes["t1"].text!.content).toBe("altro");
   });
 
   it("un op remoto su campi DISGIUNTI (o su un altro nodo) non tocca la voce", () => {

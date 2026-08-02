@@ -176,20 +176,31 @@ interface GestureSnapshot {
 // scrivono ESATTAMENTE gli stessi campi dello stesso nodo, quindi il più
 // recente rende il precedente irrilevante e può sostituirlo.
 //
-// Vale solo per setProps, e solo perché gli op di anteprima sono ASSOLUTI
+// Vale per setProps e setText, e solo perché gli op di anteprima sono ASSOLUTI
 // (selectTool ricalcola x/y/width/height dai bounds di inizio gesto, mai dal
-// delta dell'ultimo move): un setProps assoluto con la stessa mask riscrive per
-// intero l'effetto del precedente. Op di mask DIVERSA restano voci separate --
-// un'anteprima di resize {width,height} non deve sparire perché ne arriva una
-// di spostamento {x,y}. createNode/deleteNode non si coalescono affatto (chiave
-// unica): non sono idempotenti fra loro e nessun tool li emette per
-// pointermove, quindi non sono sull'hot path.
+// delta dell'ultimo move; il textarea di editing manda il contenuto INTERO a
+// ogni tasto, mai il carattere aggiunto): un op assoluto sugli stessi campi
+// riscrive per intero l'effetto del precedente. Op di mask DIVERSA restano voci
+// separate -- un'anteprima di resize {width,height} non deve sparire perché ne
+// arriva una di spostamento {x,y} -- e per lo stesso motivo un setText che
+// porta anche lo STILE non si schiaccia con uno di solo contenuto.
+// createNode/deleteNode non si coalescono affatto (chiave unica): non sono
+// idempotenti fra loro e nessun tool li emette per pointermove, quindi non sono
+// sull'hot path.
 let previewCounter = 0;
 function previewKey(op: Op): string {
   if (op.kind.case === "setProps") {
     const { id, mask } = op.kind.value;
     // Ordinata: ["x","y"] e ["y","x"] scrivono gli stessi campi.
     return `s|${id}|${[...(mask?.paths ?? [])].sort().join(",")}`;
+  }
+  if (op.kind.case === "setText") {
+    // Una sessione di editing (ui/TextEditorOverlay.tsx) fa un applyLocal per
+    // TASTO e dura quanto dura la scrittura: senza coalescing, mille caratteri
+    // sono mille op di anteprima, tutti rigiocati da viewOf a ogni record
+    // autorevole che atterra mentre si scrive.
+    const { id, stylePresent } = op.kind.value;
+    return `t|${id}|${stylePresent ? "style" : ""}`;
   }
   return `#${previewCounter++}`;
 }
@@ -256,6 +267,20 @@ function targetOf(op: Op): OpTarget | null {
     case "setProps": {
       const { id, mask } = op.kind.value;
       return id === "" ? null : { id, paths: mask?.paths ?? [] };
+    }
+    // "text" NON è un path di FieldMask (non è in MASK_PATHS, e Go lo
+    // rifiuterebbe dentro un setProps): è l'ETICHETTA del campo che un setText
+    // scrive, e serve solo qui, a decidere i conflitti. Sta nello stesso spazio
+    // dei nomi dei path di setProps proprio perché deve essere disgiunto da
+    // TUTTI: riscrivere il contenuto e spostare il nodo sono modifiche
+    // indipendenti, e un rename altrui non deve bruciare l'annullamento di una
+    // sessione di editing (né viceversa).
+    // Senza questo ramo un setText remoto non renderebbe stale niente e una
+    // voce di undo contenente un setText non sarebbe MAI invalidata: il Ctrl+Z
+    // successivo riscriverebbe in silenzio il testo di qualcun altro.
+    case "setText": {
+      const { id } = op.kind.value;
+      return id === "" ? null : { id, paths: ["text"] };
     }
     // Un kind sconosciuto non ha bersaglio noto: non può invalidare niente, ma
     // non è nemmeno invalidabile (applyOp lo ignora, quindi non è mai finito in

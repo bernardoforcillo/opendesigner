@@ -1,0 +1,398 @@
+// I matcher di jest-dom sono già installati dai setupFiles (vite.config.ts);
+// l'import qui serve a TYPE-SCRIPT (tsc -b non legge i setupFiles).
+import "@testing-library/jest-dom/vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
+import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
+import userEvent from "@testing-library/user-event";
+import { create } from "@bufbuild/protobuf";
+import { OpSchema } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/brawt/v1/brawt_pb";
+import { TextEditorOverlay } from "./TextEditorOverlay";
+import { App } from "./App";
+import { useScene } from "../store/store";
+import { emptyScene } from "../store/types";
+import type { NodeLite } from "../store/types";
+
+// App parla con la rete al bootstrap (createDocument + SyncClient): serve solo
+// nel test della guardia undo/redo, e lì basta un trasporto inerte.
+vi.mock("../rpc/client", () => ({
+  docClient: { createDocument: vi.fn(async () => ({ id: "doc-1" })) },
+}));
+vi.mock("../rpc/syncClient", () => ({
+  SyncClient: class {
+    async start() {}
+    stop() {}
+  },
+}));
+// jsdom qui non espone localStorage (Node lo disabilita senza
+// --localstorage-file): con un docId in cache il bootstrap di App non fallisce.
+vi.stubGlobal("localStorage", {
+  getItem: () => "doc-1",
+  setItem: () => {},
+  removeItem: () => {},
+});
+
+// Doppio di SyncClient: registra gli op che finiscono SUL FILO e modella un
+// server che accetta ed ECOA subito (applyPending + apply), come negli altri
+// test dello store.
+class FakeSync {
+  sent: Op[] = [];
+  submit(op: Op) {
+    this.sent.push(op);
+    useScene.getState().applyPending(op);
+    useScene.getState().apply(op);
+  }
+}
+
+function textNode(id: string, content: string, over: Partial<NodeLite> = {}): NodeLite {
+  return {
+    id, parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
+    x: 10, y: 20, width: 200, height: 24, rotation: 0,
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }],
+    kind: "text", cornerRadius: 0,
+    text: {
+      content,
+      style: { fontFamily: "Inter", fontSize: 16, fontWeight: "400", lineHeight: 1.5, align: "left" },
+    },
+    ...over,
+  };
+}
+
+function installScene(...nodes: NodeLite[]) {
+  const scene = emptyScene("doc-1", "Untitled");
+  for (const n of nodes) scene.nodes[n.id] = n;
+  // setScene e non setState({scene}): installa una scena COERENTE (vista e
+  // confermato allineati, coda vuota) -- l'invariante della riconciliazione.
+  useScene.getState().setScene(scene);
+}
+
+function deleteOp(id: string): Op {
+  return create(OpSchema, { opId: "del-" + id, docId: "doc-1", kind: { case: "deleteNode", value: { id } } });
+}
+
+let sync: FakeSync;
+
+function field(): HTMLTextAreaElement {
+  return screen.getByRole("textbox") as HTMLTextAreaElement;
+}
+
+function content(id = "t1"): string | undefined {
+  return useScene.getState().scene?.nodes[id]?.text?.content;
+}
+
+beforeEach(() => {
+  sync = new FakeSync();
+  useScene.setState({
+    camera: { x: 0, y: 0, zoom: 1 },
+    selection: [],
+    marquee: null,
+    gesture: null,
+    editingNodeId: null,
+  });
+  installScene(textNode("t1", "ciao"));
+  useScene.getState().setSync(sync);
+  useScene.getState().setSelection(["t1"]);
+  // Il flag lo accende chi entra in editing (textTool / doppio click di
+  // selectTool): l'overlay lo trova già acceso e lo spegne uscendo.
+  useScene.setState({ editingNodeId: "t1" });
+});
+
+afterEach(cleanup);
+
+// --- Step 1: posizionamento -------------------------------------------------
+
+describe("posizionamento", () => {
+  it("si mette sul nodo: origine da worldToScreen, misure in px SCHERMO", () => {
+    useScene.setState({ camera: { x: 5, y: 7, zoom: 2 } });
+    render(<TextEditorOverlay nodeId="t1" />);
+    const ta = field();
+
+    expect(ta.style.left).toBe("25px"); // 10 * 2 + 5
+    expect(ta.style.top).toBe("47px"); // 20 * 2 + 7
+    expect(ta.style.width).toBe("400px"); // 200 * 2
+    expect(ta.style.fontSize).toBe("32px"); // 16 * 2
+    expect(ta.style.lineHeight).toBe("48px"); // 16 * 1.5 * 2
+    // Il campo copre almeno il box del nodo: è lui a nascondere il testo
+    // disegnato sul canvas (vedi il commento del componente).
+    expect(ta.style.minHeight).toBe("48px"); // 24 * 2
+  });
+
+  it("risolve i default del renderer quando lo stile non li specifica", () => {
+    installScene(textNode("t1", "ciao", {
+      text: { content: "ciao", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+    }));
+    useScene.setState({ editingNodeId: "t1" });
+    render(<TextEditorOverlay nodeId="t1" />);
+
+    // DEFAULT_FONT_SIZE = 16, DEFAULT_LINE_HEIGHT = 1.2 (renderer/text.ts)
+    expect(field().style.fontSize).toBe("16px");
+    expect(field().style.lineHeight).toBe("19.2px");
+  });
+
+  it("resta OPACO anche su un nodo semitrasparente: è lui a coprire il testo del canvas", () => {
+    installScene(textNode("t1", "ciao", { opacity: 0.2 }));
+    useScene.setState({ editingNodeId: "t1" });
+    render(<TextEditorOverlay nodeId="t1" />);
+
+    // Con l'opacità del nodo applicata al campo, lo sfondo diventerebbe
+    // semitrasparente e il testo disegnato sotto trasparirebbe: due testi
+    // sovrapposti e sfalsati, cioè il difetto che la copertura evita.
+    expect(field().style.opacity).toBe("");
+  });
+
+  it("si riposiziona a ogni cambio di camera: pan e zoom non lo scollano dal nodo", () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    expect(field().style.left).toBe("10px");
+
+    act(() => useScene.getState().setCamera({ x: 100, y: 40, zoom: 1 }));
+    expect(field().style.left).toBe("110px");
+    expect(field().style.top).toBe("60px");
+
+    act(() => useScene.getState().setCamera({ x: 0, y: 0, zoom: 4 }));
+    expect(field().style.left).toBe("40px");
+    expect(field().style.width).toBe("800px");
+    expect(field().style.fontSize).toBe("64px");
+  });
+});
+
+// --- Step 5: fuoco e cursore ------------------------------------------------
+
+describe("ingresso in editing", () => {
+  it("prende il fuoco da solo e mette il cursore a FINE testo", () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    const ta = field();
+
+    expect(document.activeElement).toBe(ta);
+    expect(ta.value).toBe("ciao");
+    expect(ta.selectionStart).toBe(4);
+    expect(ta.selectionEnd).toBe(4);
+  });
+
+  it("apre UN gesto al montaggio (la sessione intera è un solo gesto)", () => {
+    expect(useScene.getState().gesture).toBeNull();
+    render(<TextEditorOverlay nodeId="t1" />);
+    expect(useScene.getState().gesture).not.toBeNull();
+  });
+});
+
+// --- Step 2: ciclo di vita del gesto ---------------------------------------
+
+describe("anteprima durante la scrittura", () => {
+  it("ogni modifica è un applyLocal: si vede sul canvas ma non va sul filo", async () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    await userEvent.type(field(), " mondo");
+
+    expect(content()).toBe("ciao mondo");
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().gesture).not.toBeNull();
+  });
+
+  it("una sessione lunga non accumula un'anteprima per tasto", async () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    await userEvent.type(field(), "0123456789");
+
+    expect(useScene.getState().gesture!.preview.size).toBe(1);
+    expect(content()).toBe("ciao0123456789");
+  });
+});
+
+describe("uscita con conferma", () => {
+  it("manda UN SOLO setText e lascia UNA voce di undo", async () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    await userEvent.type(field(), " mondo");
+    fireEvent.blur(field());
+
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case).toBe("setText");
+    expect(sync.sent[0].kind.case === "setText" && sync.sent[0].kind.value.content).toBe("ciao mondo");
+    expect(content()).toBe("ciao mondo");
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().gesture).toBeNull();
+    expect(useScene.getState().editingNodeId).toBeNull();
+  });
+
+  it("TUTTA la sessione è UNA voce di undo: dieci tasti, un solo Ctrl+Z", async () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    await userEvent.type(field(), "0123456789");
+    fireEvent.blur(field());
+    expect(content()).toBe("ciao0123456789");
+
+    act(() => useScene.getState().undo());
+
+    // Un solo passo indietro riporta al contenuto di PARTENZA, non al
+    // penultimo carattere.
+    expect(content()).toBe("ciao");
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().canRedo).toBe(true);
+  });
+
+  it("Tab conferma (il fuoco esce dal campo)", async () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    await userEvent.type(field(), "!");
+    await userEvent.tab();
+
+    expect(sync.sent).toHaveLength(1);
+    expect(content()).toBe("ciao!");
+    expect(useScene.getState().editingNodeId).toBeNull();
+  });
+
+  it("uscire senza aver cambiato nulla non manda niente e non sporca la storia", () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    fireEvent.blur(field());
+
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().editingNodeId).toBeNull();
+    expect(content()).toBe("ciao");
+  });
+});
+
+// --- Step 3: uscita ---------------------------------------------------------
+
+describe("uscita con Escape", () => {
+  it("annulla: niente sul filo, niente nella storia, contenuto di partenza", async () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    await userEvent.type(field(), " buttato via");
+    expect(content()).toBe("ciao buttato via");
+
+    fireEvent.keyDown(field(), { key: "Escape" });
+
+    expect(sync.sent).toHaveLength(0);
+    expect(content()).toBe("ciao");
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().gesture).toBeNull();
+    expect(useScene.getState().editingNodeId).toBeNull();
+  });
+
+  it("su un nodo appena creato (vuoto) l'annullamento lo fa sparire, in modo annullabile", async () => {
+    installScene(textNode("t1", ""));
+    useScene.setState({ editingNodeId: "t1" });
+    render(<TextEditorOverlay nodeId="t1" />);
+    await userEvent.type(field(), "abc");
+
+    fireEvent.keyDown(field(), { key: "Escape" });
+
+    // Il nodo era rimasto vuoto: la politica dello store (endTextEditing) lo
+    // cancella invece di lasciare un fantasma sulla scena -- ma passando da un
+    // gesto, quindi con il suo Ctrl+Z.
+    expect(useScene.getState().scene!.nodes["t1"]).toBeUndefined();
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case).toBe("deleteNode");
+    act(() => useScene.getState().undo());
+    expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+  });
+});
+
+describe("Enter", () => {
+  it("va a capo e NON conferma: è un editor multilinea", async () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    await userEvent.type(field(), "{Enter}riga2");
+
+    expect(field().value).toBe("ciao\nriga2");
+    expect(content()).toBe("ciao\nriga2");
+    expect(useScene.getState().editingNodeId).toBe("t1");
+    expect(useScene.getState().gesture).not.toBeNull();
+    expect(sync.sent).toHaveLength(0);
+  });
+});
+
+// --- Step 4: le scorciatoie globali restano fuori ---------------------------
+
+describe("scorciatoie globali mentre si scrive", () => {
+  it("Ctrl+Z dentro il campo non arriva all'undo dell'app (e fuori sì)", () => {
+    render(
+      <>
+        <App />
+        <TextEditorOverlay nodeId="t1" />
+      </>,
+    );
+
+    // La guardia isTextField di App.tsx esce PRIMA di preventDefault: se
+    // l'evento non è stato cancellato, la scorciatoia non l'ha nemmeno
+    // considerato -- l'undo nativo del campo resta quello del browser.
+    const inField = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      field().dispatchEvent(inField);
+    });
+    expect(inField.defaultPrevented).toBe(false);
+
+    const outside = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true });
+    act(() => {
+      document.body.dispatchEvent(outside);
+    });
+    expect(outside.defaultPrevented).toBe(true);
+  });
+
+  it("Backspace nel campo non cancella il nodo selezionato", async () => {
+    render(
+      <>
+        <App />
+        <TextEditorOverlay nodeId="t1" />
+      </>,
+    );
+    expect(useScene.getState().selection).toEqual(["t1"]);
+
+    await userEvent.type(field(), "{Backspace}{Backspace}");
+
+    expect(field().value).toBe("ci");
+    expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+    expect(sync.sent).toHaveLength(0);
+  });
+});
+
+// --- Step 5: accenti e IME --------------------------------------------------
+
+describe("accenti e IME", () => {
+  it("gli accenti arrivano interi fino all'op finale", async () => {
+    installScene(textNode("t1", ""));
+    useScene.setState({ editingNodeId: "t1" });
+    render(<TextEditorOverlay nodeId="t1" />);
+
+    await userEvent.type(field(), "però{Enter}àèìòù");
+    fireEvent.blur(field());
+
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case === "setText" && sync.sent[0].kind.value.content).toBe("però\nàèìòù");
+  });
+
+  it("una composizione IME non viene persa: conta il valore del campo, non i tasti", () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    const ta = field();
+
+    // Sequenza tipica di un IME: nessun keydown utile, solo composition +
+    // input. L'overlay legge il VALORE del campo, quindi la vede tutta.
+    fireEvent.compositionStart(ta);
+    fireEvent.change(ta, { target: { value: "ciao に" } });
+    fireEvent.compositionEnd(ta, { data: "に" });
+
+    expect(content()).toBe("ciao に");
+    fireEvent.blur(ta);
+    expect(sync.sent[0].kind.case === "setText" && sync.sent[0].kind.value.content).toBe("ciao に");
+  });
+});
+
+// --- robustezza -------------------------------------------------------------
+
+describe("il nodo sparisce mentre lo si edita", () => {
+  it("un delete remoto chiude la sessione senza lasciare un gesto aperto", async () => {
+    render(<TextEditorOverlay nodeId="t1" />);
+    await userEvent.type(field(), " mondo");
+
+    act(() => useScene.getState().apply(deleteOp("t1")));
+
+    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(useScene.getState().gesture).toBeNull();
+    expect(useScene.getState().editingNodeId).toBeNull();
+    expect(sync.sent).toHaveLength(0);
+  });
+
+  it("un nodo che non è di testo non apre nessun campo", () => {
+    installScene({ ...textNode("t1", "ciao"), kind: "rect", text: undefined });
+    useScene.setState({ editingNodeId: "t1" });
+    render(<TextEditorOverlay nodeId="t1" />);
+
+    expect(screen.queryByRole("textbox")).toBeNull();
+  });
+});

@@ -59,6 +59,32 @@ function deleteOp(id: string): Op {
   return create(OpSchema, { opId: "del-" + id, docId: "doc1", kind: { case: "deleteNode", value: { id } } });
 }
 
+function createTextOp(id: string, content: string): Op {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a1", name: "Text", visible: true, opacity: 1,
+    x: 0, y: 0, width: 200, height: 20,
+    shape: { case: "text", value: { content } },
+  });
+  return create(OpSchema, {
+    opId: "new-" + id, docId: "doc1", kind: { case: "createNode", value: { node } },
+  });
+}
+
+// `fontSize` presente => l'op porta anche lo STILE (style_present), come farà
+// il pannello proprietà del Task 10; assente => solo contenuto, come il
+// textarea dell'overlay di editing.
+function setTextOp(id: string, content: string, fontSize?: number): Op {
+  return create(OpSchema, {
+    opId: `txt-${id}-${content}-${fontSize ?? ""}`, docId: "doc1",
+    kind: {
+      case: "setText",
+      value: fontSize === undefined
+        ? { id, content }
+        : { id, content, style: { fontSize }, stylePresent: true },
+    },
+  });
+}
+
 describe("gesture coalescing", () => {
   let sync: FakeSync;
 
@@ -358,6 +384,39 @@ describe("gesture coalescing", () => {
     const scene = useScene.getState().scene!;
     expect(scene.nodes["n9"]).toBeDefined();
     expect(scene.nodes["n10"]).toBeDefined();
+  });
+
+  // Stesso problema del drag, sorgente diversa: una sessione di editing del
+  // testo (ui/TextEditorOverlay.tsx) fa UN applyLocal per TASTO e dura quanto
+  // dura la scrittura. Senza coalescing, mille caratteri = mille op di
+  // anteprima, tutti rigiocati a ogni record autorevole che atterra mentre si
+  // scrive. Due setText sullo stesso nodo sono ASSOLUTI (portano il contenuto
+  // intero, non un delta), quindi l'ultimo rende il precedente irrilevante --
+  // esattamente come due setProps con la stessa mask.
+  it("le anteprime di setText si coalescono per nodo: una sessione di editing non accumula un op per tasto", () => {
+    sync.submit(createTextOp("t1", ""));
+    const st = useScene.getState();
+    st.beginGesture();
+    for (const s of ["c", "ci", "cia", "ciao"]) st.applyLocal(setTextOp("t1", s));
+
+    expect(useScene.getState().gesture!.preview.size).toBe(1);
+    expect(useScene.getState().scene!.nodes["t1"].text!.content).toBe("ciao");
+  });
+
+  it("un setText di solo CONTENUTO non schiaccia quello che porta anche lo STILE", () => {
+    sync.submit(createTextOp("t1", ""));
+    const st = useScene.getState();
+    st.beginGesture();
+    // Il pannello proprietà (stile) e il textarea (contenuto) sono due
+    // sorgenti diverse dentro lo stesso gesto: la seconda non deve far sparire
+    // il font della prima.
+    st.applyLocal(setTextOp("t1", "ciao", 42));
+    st.applyLocal(setTextOp("t1", "ciao mondo"));
+
+    expect(useScene.getState().gesture!.preview.size).toBe(2);
+    const t = useScene.getState().scene!.nodes["t1"].text!;
+    expect(t.content).toBe("ciao mondo");
+    expect(t.style.fontSize).toBe(42);
   });
 
   it("un record autorevole a metà drag lungo rigioca l'anteprima coalesced", () => {

@@ -29,7 +29,12 @@ export interface TextLayout {
 // stato che toNodeLite produce (store/types.ts), ma chi risolve una metrica
 // non deve esplodere per questo -- ricade sui default del renderer come per
 // ogni altro campo non specificato.
-function fontSizeOf(style: TextStyleLite | undefined): number {
+//
+// Esportata per la stessa ragione di lineHeightOf: il textarea di editing
+// (ui/TextEditorOverlay.tsx) deve mostrare il testo con lo STESSO corpo con cui
+// il canvas lo disegnerà, e ricalcolare qui il default (o peggio, scriverlo di
+// nuovo) è il modo in cui le due misure divergono al primo cambio.
+export function fontSizeOf(style: TextStyleLite | undefined): number {
   return style && style.fontSize > 0 ? style.fontSize : DEFAULT_FONT_SIZE;
 }
 

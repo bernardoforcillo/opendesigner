@@ -9,7 +9,11 @@ function sortedVisible(state: SceneState): NodeLite[] {
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0));
 }
 
-function cssColor(n: NodeLite): string {
+// Esportata perché il colore di un nodo serve anche FUORI dal canvas: il
+// textarea di editing (ui/TextEditorOverlay.tsx) deve scrivere con lo stesso
+// colore con cui il canvas disegnerà quel testo. Una seconda conversione
+// RGBA-float -> CSS altrove sarebbe la solita coppia destinata a divergere.
+export function cssColor(n: NodeLite): string {
   const f = n.fills[0] ?? { r: 0.8, g: 0.8, b: 0.8, a: 1 };
   const to255 = (v: number) => Math.round(v * 255);
   return `rgba(${to255(f.r)}, ${to255(f.g)}, ${to255(f.b)}, ${f.a})`;
