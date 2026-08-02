@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { emptyScene, type NodeLite, type SceneState } from "./types";
-import { childrenOf, subtreeOf, descendantsOf, ancestorsOf, isAncestorOf } from "./tree";
+import { childrenOf, subtreeOf, descendantsOf, ancestorsOf, isAncestorOf, topmostOf } from "./tree";
 
 function node(id: string, parentId: string, orderKey: string): NodeLite {
   return {
@@ -100,6 +100,41 @@ describe("ancestorsOf / isAncestorOf", () => {
     expect(isAncestorOf(s, "d1", "g1")).toBe(false);
     expect(isAncestorOf(s, "other", "d1")).toBe(false);
     expect(isAncestorOf(s, "g1", "g1")).toBe(false);
+  });
+});
+
+describe("topmostOf", () => {
+  it("toglie gli id che hanno un ANTENATO nella selezione, a qualunque profondità", () => {
+    const s = tree();
+    // g1 porta via c1, d1 e c2 con la cascata: resta un op solo, più "other".
+    expect(topmostOf(s, ["g1", "c1", "d1", "c2", "other"])).toEqual(["g1", "other"]);
+    // Anche quando l'antenato è selezionato DOPO il discendente: la potatura
+    // guarda l'insieme, non l'ordine di selezione.
+    expect(topmostOf(s, ["d1", "g1"])).toEqual(["g1"]);
+    // Un antenato intermedio basta: c1 copre d1 anche senza g1.
+    expect(topmostOf(s, ["c1", "d1"])).toEqual(["c1"]);
+  });
+
+  it("lascia intatta una selezione di soli fratelli o cugini, nell'ordine dato", () => {
+    const s = tree();
+    expect(topmostOf(s, ["c2", "c1"])).toEqual(["c2", "c1"]);
+    expect(topmostOf(s, ["d1", "other"])).toEqual(["d1", "other"]);
+    expect(topmostOf(s, [])).toEqual([]);
+  });
+
+  it("toglie i duplicati e tiene gli id sconosciuti (non è lui a validarli)", () => {
+    const s = tree();
+    expect(topmostOf(s, ["g1", "g1"])).toEqual(["g1"]);
+    expect(topmostOf(s, ["ghost", "g1"])).toEqual(["ghost", "g1"]);
+  });
+
+  it("un ciclo in un documento malformato non manda in loop la potatura", () => {
+    const s = emptyScene("doc1", "Untitled");
+    s.nodes["a"] = node("a", "b", "a1");
+    s.nodes["b"] = node("b", "a", "a1");
+    // Ognuno dei due è antenato dell'altro: la risalita si ferma comunque, e
+    // il risultato è vuoto invece che un ciclo infinito.
+    expect(topmostOf(s, ["a", "b"])).toEqual([]);
   });
 });
 

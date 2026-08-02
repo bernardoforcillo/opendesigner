@@ -109,6 +109,36 @@ export function isAncestorOf(scene: SceneState, ancestorId: string, id: string):
   return false;
 }
 
+// I nodi PIÙ IN ALTO di un insieme: toglie ogni id che ha un ANTENATO
+// nell'insieme stesso, mantenendo l'ordine di quelli che restano (e senza
+// duplicati).
+//
+// Serve a chi costruisce op che agiscono su un SOTTOALBERO -- oggi la
+// cancellazione (deleteNode cascata, vedi applyOp e core.applyDelete). Con la
+// scena piatta "un op per id selezionato" era corretto; con l'albero non lo è
+// più: se la selezione contiene un gruppo E un suo figlio, il secondo op
+// nomina un nodo che la cascata del primo ha già portato via. Il server lo
+// rifiuta (ErrNodeNotFound -> rollback e banner rosso) e, molto peggio,
+// invertOp su quel secondo op ritorna null, quindi invertChain fa saltare la
+// voce di undo dell'INTERO gesto: un gruppo cancellato per sempre, senza
+// nessun Ctrl+Z possibile. Potare qui è ciò che rende il gesto UNO e
+// annullabile.
+//
+// Gli id che non stanno nella scena restano (nessun antenato da trovare): non
+// è questa funzione a decidere se un id è valido.
+export function topmostOf(scene: SceneState, ids: readonly string[]): string[] {
+  const set = new Set(ids);
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const id of ids) {
+    if (seen.has(id)) continue;
+    seen.add(id);
+    if (ancestorsOf(scene, id).some((a) => set.has(a.id))) continue;
+    out.push(id);
+  }
+  return out;
+}
+
 // Un parent VALIDO: un nodo esistente oppure una Page del documento. La stringa
 // vuota non è né l'uno né l'altro -- un nodo senza parent non è raggiungibile da
 // nessuna pagina, quindi non è disegnabile né selezionabile: esisterebbe solo

@@ -397,6 +397,64 @@ function markStale(remote: Op, stale: WeakSet<Op>, entries: Op[][], scene: Scene
   return hit;
 }
 
+// L'id che un op fa ESISTERE. È l'unico modo in cui un op di una voce può
+// essere il PRESUPPOSTO di un altro op della stessa voce (vedi pruneEntry).
+function createdId(op: Op): string | null {
+  if (op.kind.case !== "createNode") return null;
+  const node = op.kind.value.node;
+  return node && node.id !== "" ? node.id : null;
+}
+
+// Il container che un op PRETENDE già esistente. Sono i due op che
+// core.Apply valida contro l'albero: una createNode con un parent ignoto e un
+// reparent verso un parent ignoto vengono entrambi rifiutati
+// (ErrParentNotFound). null = l'op non dipende da nessun container.
+function requiredParent(op: Op): string | null {
+  if (op.kind.case === "createNode") {
+    const node = op.kind.value.node;
+    return node ? node.parentId : null;
+  }
+  if (op.kind.case === "reparentNode") return op.kind.value.newParentId;
+  return null;
+}
+
+// Toglie da UNA voce gli op marcati stale -- e con loro gli op della stessa
+// voce che non potrebbero più atterrare.
+//
+// Il filtro op-per-op da solo non basta da quando l'inverso di una delete è una
+// CASCATA di createNode (history.ts): la voce che ripristina g1>c1>d1 è
+// [createNode g1, createNode c1, createNode d1] e vale solo INTERA, perché ogni
+// createNode pretende che il proprio parent esista già. Un op remoto che tocca
+// il solo c1 marca stale la sua createNode e non quella di d1 (bersagli
+// diversi, vedi targetsOf): togliere solo c1 lascerebbe una voce che viola
+// esattamente l'invariante che era stata costruita per soddisfare -- Ctrl+Z
+// manderebbe createNode d1 sotto un parent inesistente, il server risponde
+// ErrParentNotFound e per di più invertChain, che su quella voce ritorna null,
+// non registra nessuna voce di redo: banner rosso e documento a metà.
+//
+// La staleness si PROPAGA quindi verso il basso: tolta una createNode, cade
+// tutto ciò che aveva bisogno del nodo che creava. Una sola passata in avanti
+// basta perché una voce valida è già in ordine di dipendenza (subtreeOf visita
+// in pre-ordine, invertChain rovescia i GRUPPI e non gli op dentro un gruppo);
+// una voce che non lo fosse sarebbe già irricevibile per il server, e l'ordine
+// della potatura non la peggiora.
+function pruneEntry(entry: Op[], stale: WeakSet<Op>): Op[] {
+  const out: Op[] = [];
+  // Gli id che questa voce non farà più esistere: quelli delle createNode
+  // tolte, più -- transitivamente -- quelli delle createNode cadute con loro.
+  const missing = new Set<string>();
+  for (const op of entry) {
+    const parent = requiredParent(op);
+    if (stale.has(op) || (parent !== null && missing.has(parent))) {
+      const id = createdId(op);
+      if (id !== null) missing.add(id);
+      continue;
+    }
+    out.push(op);
+  }
+  return out;
+}
+
 // Toglie da ogni voce gli op marcati stale; una voce che resta vuota sparisce.
 //
 // Si applica al CONFINE -- dove uno stack diventa quello vivo -- e mai dentro i
@@ -412,7 +470,7 @@ function pruneStale(stack: Op[][], stale: WeakSet<Op>): Op[][] {
   if (!stack.some((entry) => entry.some((op) => stale.has(op)))) return stack;
   const out: Op[][] = [];
   for (const entry of stack) {
-    const kept = entry.filter((op) => !stale.has(op));
+    const kept = pruneEntry(entry, stale);
     if (kept.length === entry.length) out.push(entry);
     else if (kept.length > 0) out.push(kept);
   }

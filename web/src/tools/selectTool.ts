@@ -10,6 +10,7 @@ import {
   type HandleId,
 } from "../selection/handles";
 import { useScene } from "../store/store";
+import { topmostOf } from "../store/tree";
 import { makeDeleteOp, makeSetPropsOp } from "./ops";
 import type { SceneState } from "../store/types";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
@@ -412,7 +413,14 @@ export function createSelectTool(): Tool {
         // (vedi commento su cancelActiveGesture più sopra).
         cancelActiveGesture();
         const store = useScene.getState();
-        const ids = store.selection;
+        const scene = store.scene;
+        if (!scene) return;
+        // Un op per nodo TOPMOST, non per id selezionato: deleteNode cascata
+        // sul sottoalbero, quindi un figlio selezionato insieme al suo gruppo
+        // è già sparito quando il suo op arriva. Vedi topmostOf -- senza la
+        // potatura il secondo op viene rifiutato dal server E l'intero gesto
+        // resta senza voce di undo.
+        const ids = topmostOf(scene, store.selection);
         if (ids.length === 0) return;
         store.beginGesture();
         store.endGesture(ids.map((id) => makeDeleteOp(id)));

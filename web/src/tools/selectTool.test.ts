@@ -551,6 +551,38 @@ describe("selectTool", () => {
       expect(useScene.getState().selection).toEqual([]);
     });
 
+    // deleteNode cancella un SOTTOALBERO (applyOp / core.applyDelete): un
+    // figlio selezionato insieme al suo gruppo non ha bisogno di un op suo --
+    // e non può averlo, perché quando arriverebbe il nodo è già sparito.
+    it("Delete su un gruppo E un suo discendente manda UN solo op, e il gesto resta annullabile", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          g1: node("g1", 0, "a000000"),
+          c1: node("c1", 0, "a000000", { parentId: "g1" }),
+          d1: node("d1", 0, "a000000", { parentId: "c1" }),
+          other: node("other", 200, "a000001"),
+        },
+      });
+      useScene.getState().setSelection(["g1", "d1", "other"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const undoBefore = useScene.getState().undoStack.length;
+
+      createSelectTool().onKeyDown!({ key: "Delete" } as KeyboardEvent, fakeCtx());
+
+      // d1 sparisce nella cascata di g1: un suo op sarebbe stato rifiutato dal
+      // server (ErrNodeNotFound) e avrebbe fatto saltare la voce di undo
+      // dell'INTERO gesto (invertOp -> null su un nodo già cancellato).
+      const deleted = sync.sent.map((op) => (op.kind.case === "deleteNode" ? op.kind.value.id : ""));
+      expect(deleted).toEqual(["g1", "other"]);
+      expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+      // UNA voce di undo, e completa: quattro nodi da ricreare.
+      const stack = useScene.getState().undoStack;
+      expect(stack).toHaveLength(undoBefore + 1);
+      expect(stack[stack.length - 1]).toHaveLength(4);
+    });
+
     it("Backspace does the same as Delete", () => {
       useScene.getState().setSelection(["a"]);
       const sync = new FakeSync();

@@ -163,6 +163,31 @@ function setTextOp(id: string, content: string): Op {
   });
 }
 
+// Gli id che una voce RICREA, nell'ordine in cui li ricrea.
+function createdIds(entry: readonly Op[]): string[] {
+  return entry.flatMap((op) =>
+    op.kind.case === "createNode" && op.kind.value.node ? [op.kind.value.node.id] : []);
+}
+
+// L'INVARIANTE che una voce di ripristino deve soddisfare per essere
+// applicabile: ogni createNode trova il proprio parent già esistente -- la
+// pagina, un nodo che l'op remoto non ha toccato, o un nodo ricreato PRIMA
+// nella stessa voce. È esattamente ciò che core.applyCreate pretende
+// (ErrParentNotFound), quindi una voce che lo viola è una voce che il server
+// rifiuterà a metà.
+function expectParentsSatisfied(entry: readonly Op[]) {
+  const scene = useScene.getState().scene!;
+  const exists = new Set<string>(Object.keys(scene.nodes));
+  for (const p of scene.pages) exists.add(p.id);
+  for (const op of entry) {
+    if (op.kind.case !== "createNode") continue;
+    const node = op.kind.value.node!;
+    expect({ id: node.id, parent: node.parentId, esiste: exists.has(node.parentId) })
+      .toEqual({ id: node.id, parent: node.parentId, esiste: true });
+    exists.add(node.id);
+  }
+}
+
 // Wrapper: apre e chiude un gesto in un colpo solo, come farebbe un tool a
 // fine drag. È la forma con cui i test costruiscono "un gesto" per lo stack.
 function gesture(finalOps: Op[]) {
@@ -1111,6 +1136,67 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(0);
+  });
+
+  // Una voce che RIPRISTINA una cascata ([createNode g1, c1, d1]) vale solo
+  // finché ogni createNode trova il proprio parent già ricreato. Filtrarla
+  // op-per-op contro gli op resi stale la spezza: un op remoto tocca UN nodo,
+  // quindi marca la sua createNode e non quelle dei suoi figli. Vedi pruneEntry
+  // in store.ts.
+
+  it("un op remoto su un DISCENDENTE porta via dalla voce di ripristino anche i suoi figli", () => {
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("c1", "g1", "a1"),
+      createChildOp("d1", "c1", "a1"),
+    ]);
+    gesture([deleteOp("g1")]); // voce: [createNode g1, createNode c1, createNode d1]
+    expect(useScene.getState().undoStack[1]).toHaveLength(3);
+
+    // Un altro client aveva mosso c1 PRIMA della nostra delete: l'op arriva
+    // ora e rende stale la createNode di c1 -- ma non quella di d1, che ha un
+    // bersaglio diverso e resterebbe nella voce come ORFANA.
+    useScene.getState().apply(moveOp("c1", 5, 5));
+
+    const stack = useScene.getState().undoStack;
+    const entry = stack[stack.length - 1];
+    expect(createdIds(entry)).toEqual(["g1"]);
+    expectParentsSatisfied(entry);
+
+    // E l'undo passa PER INTERO: un solo op sul filo, atterrato, con la sua
+    // voce di redo. Senza la potatura invertChain ritornava null su createNode
+    // d1 (nessun redo registrato) e il server rifiutava l'op con
+    // ErrParentNotFound -- banner rosso e documento a metà.
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(1);
+    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual(["g1"]);
+    expect(useScene.getState().canRedo).toBe(true);
+  });
+
+  it("un op remoto sulla RADICE della cascata porta via l'intera voce di ripristino", () => {
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("c1", "g1", "a1"),
+      createChildOp("d1", "c1", "a1"),
+    ]);
+    gesture([deleteOp("g1")]);
+    const before = useScene.getState().undoStack.length;
+
+    // Stale sulla sola createNode di g1: c1 e d1 non sono bersagli dell'op
+    // remoto, e senza propagazione la voce resterebbe fatta di due createNode
+    // senza il loro container.
+    useScene.getState().apply(moveOp("g1", 5, 5));
+
+    const stack = useScene.getState().undoStack;
+    expect(stack).toHaveLength(before - 1);
+    for (const entry of stack) expectParentsSatisfied(entry);
+
+    // Niente da annullare per quella cancellazione: il Ctrl+Z successivo tocca
+    // il gesto PRECEDENTE (la creazione), non manda mezzo sottoalbero al server.
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent.every((op) => op.kind.case === "deleteNode")).toBe(true);
   });
 
   it("un reparent REMOTO invalida un riordino locale dello stesso nodo, non uno spostamento", () => {

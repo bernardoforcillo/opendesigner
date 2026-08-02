@@ -267,6 +267,32 @@ describe("eliminazione", () => {
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
+
+  // deleteNode cancella un SOTTOALBERO (applyOp / core.applyDelete): un figlio
+  // selezionato insieme al suo gruppo non deve produrre un secondo op --
+  // sarebbe rifiutato (il nodo è già sparito nella cascata) e farebbe saltare
+  // la voce di undo dell'INTERO gesto.
+  it("un gruppo E un suo discendente selezionati insieme emettono UN solo deleteNode", async () => {
+    installScene(
+      rectNode("g1", "a0", { name: "G" }),
+      rectNode("c1", "a0", { name: "C", parentId: "g1" }),
+      rectNode("other", "a1", { name: "Other" }),
+    );
+    useScene.getState().setSelection(["g1", "c1"]);
+    render(<LayersPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.click(screen.getByRole("button", { name: "Elimina i livelli selezionati" }));
+
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case === "deleteNode" && sync.sent[0].kind.value.id).toBe("g1");
+    expect(useScene.getState().scene?.nodes.c1).toBeUndefined();
+    expect(useScene.getState().scene?.nodes.other).toBeDefined();
+    // La voce c'è ed è completa: g1 e c1 da ricreare, in un solo Ctrl+Z.
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().undoStack[useScene.getState().undoStack.length - 1]).toHaveLength(2);
+  });
 });
 
 // --- Step 3: il nome mostrato -----------------------------------------------

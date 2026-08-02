@@ -4,6 +4,7 @@ import type { Selection } from "react-aria-components";
 import { useScene } from "../store/store";
 import { layersInDrawOrder } from "../store/selectors";
 import { orderKeyBetween } from "../store/orderKey";
+import { topmostOf } from "../store/tree";
 import { makeDeleteOp, makeSetPropsOp } from "../tools/ops";
 import type { NodeLite } from "../store/types";
 
@@ -303,7 +304,12 @@ export function LayersPanel() {
 
   function deleteSelected() {
     const store = useScene.getState();
-    const ids = store.selection;
+    const scene = store.scene;
+    if (!scene) return;
+    // Solo i nodi PIÙ IN ALTO della selezione: deleteNode cascata, quindi un
+    // figlio selezionato insieme al suo gruppo produrrebbe un op rifiutato dal
+    // server e lascerebbe l'intero gesto senza voce di undo (vedi topmostOf).
+    const ids = topmostOf(scene, store.selection);
     if (ids.length === 0) return;
     store.beginGesture();
     store.endGesture(ids.map((id) => makeDeleteOp(id)));
