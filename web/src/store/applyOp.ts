@@ -58,6 +58,10 @@ export function applyOp(state: SceneState, op: Op): SceneState {
           case "name": next.name = p.name; break;
           case "visible": next.visible = p.visible; break;
           case "fills": next.fills = toNodeLite(p).fills; break;
+          // Il path è snake_case (la convenzione del .proto e di Go), il campo
+          // del modello è camelCase: le due forme coincidevano per tutti i path
+          // monoparola di M0/M1a, questo è il primo in cui divergono.
+          case "order_key": next.orderKey = p.orderKey; break;
           default: {
             // Guardia a compile-time: se MASK_PATHS guadagna un membro senza
             // un case qui sopra, questa riga smette di compilare invece di

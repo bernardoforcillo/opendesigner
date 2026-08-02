@@ -81,7 +81,7 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 	paths := s.GetMask().GetPaths()
 	for _, path := range paths {
 		switch path {
-		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills":
+		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "order_key":
 			// supported
 		default:
 			return fmt.Errorf("core: unsupported mask path %q", path)
@@ -108,6 +108,14 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 			n.Visible = p.GetVisible()
 		case "fills":
 			n.Fills = p.GetFills()
+		case "order_key":
+			// L'ordine di disegno (e quello del pannello livelli) è un CAMPO
+			// come gli altri, non un op dedicato: riordinare è scrivere una
+			// order key nuova, calcolata dal client come indice frazionario fra
+			// i due vicini della posizione d'arrivo. Primo path multiparola
+			// della mask -- sul filo JSON viaggia come "orderKey" (vedi
+			// web/src/store/maskPaths.ts).
+			n.OrderKey = p.GetOrderKey()
 		}
 	}
 	return nil

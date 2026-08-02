@@ -1,13 +1,14 @@
 // I matcher di jest-dom sono già installati dai setupFiles (vite.config.ts);
 // l'import qui serve a TYPE-SCRIPT (tsc -b non legge i setupFiles).
 import "@testing-library/jest-dom/vitest";
-import { describe, it, expect, beforeEach, afterEach } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within, cleanup, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
-import { LayersPanel, layerDisplayName } from "./LayersPanel";
+import { LayersPanel, layerDisplayName, reorderKey } from "./LayersPanel";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
+import { layersInDrawOrder } from "../store/selectors";
 import type { NodeLite } from "../store/types";
 
 // Doppio di SyncClient: registra gli op che finiscono SUL FILO e modella un
@@ -300,5 +301,334 @@ describe("layerDisplayName", () => {
     render(<LayersPanel />);
     expect(screen.getByText("Rectangle")).toBeInTheDocument();
     expect(screen.getByText("Ellipse")).toBeInTheDocument();
+  });
+});
+
+// --- Task 8, step 1: rinomina inline ---------------------------------------
+
+function nameField(): HTMLInputElement {
+  return screen.getByRole("textbox", { name: "Nome del livello" }) as HTMLInputElement;
+}
+
+describe("rinomina inline", () => {
+  it("il doppio click sul nome apre un campo, seminato col nome VERO e col nome mostrato come placeholder", async () => {
+    installScene(rectNode("a", "a0", { name: "" }));
+    render(<LayersPanel />);
+    const user = userEvent.setup();
+
+    await user.dblClick(screen.getByText("Rectangle"));
+
+    const field = nameField();
+    // Seminato col nome vero (vuoto), non con il fallback: premere Enter senza
+    // scrivere niente non deve PERSISTERE "Rectangle" come nome esplicito.
+    expect(field).toHaveValue("");
+    expect(field).toHaveAttribute("placeholder", "Rectangle");
+    expect(field).toHaveFocus();
+  });
+
+  it("Enter conferma con un SetProperties mask name, in un solo gesto", async () => {
+    installScene(rectNode("a", "a0", { name: "A" }));
+    render(<LayersPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.dblClick(screen.getByText("A"));
+    await user.clear(nameField());
+    await user.type(nameField(), "Pulsante{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("setProps");
+    if (op.kind.case === "setProps") {
+      expect(op.kind.value.id).toBe("a");
+      expect(op.kind.value.mask?.paths).toEqual(["name"]);
+      expect(op.kind.value.patch?.name).toBe("Pulsante");
+    }
+    expect(useScene.getState().scene?.nodes.a.name).toBe("Pulsante");
+    // Un gesto, una voce di undo -- come ogni altra modifica del pannello.
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+    // Il campo si chiude e la riga torna a mostrare il nome.
+    expect(screen.queryByRole("textbox", { name: "Nome del livello" })).toBeNull();
+    expect(screen.getByText("Pulsante")).toBeInTheDocument();
+  });
+
+  it("Escape annulla: niente op, niente voce di undo, nome invariato", async () => {
+    installScene(rectNode("a", "a0", { name: "A" }));
+    render(<LayersPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.dblClick(screen.getByText("A"));
+    await user.clear(nameField());
+    await user.type(nameField(), "Scartato{Escape}");
+
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().scene?.nodes.a.name).toBe("A");
+    expect(useScene.getState().undoStack.length).toBe(undoBefore);
+    expect(screen.queryByRole("textbox", { name: "Nome del livello" })).toBeNull();
+    expect(screen.getByText("A")).toBeInTheDocument();
+  });
+
+  it("confermare senza aver cambiato niente non manda nessun op", async () => {
+    installScene(rectNode("a", "a0", { name: "A" }));
+    render(<LayersPanel />);
+    const user = userEvent.setup();
+
+    await user.dblClick(screen.getByText("A"));
+    await user.type(nameField(), "{Enter}");
+
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+  });
+
+  it("mentre il campo ha il fuoco le scorciatoie globali restano inattive", async () => {
+    installScene(rectNode("a", "a0", { name: "Alfa" }), rectNode("b", "a1", { name: "Beta" }));
+    useScene.getState().setSelection(["a"]);
+    render(<LayersPanel />);
+    const user = userEvent.setup();
+
+    await user.dblClick(screen.getByText("Alfa"));
+    const selectionBefore = useScene.getState().selection;
+
+    // Le scorciatoie globali dell'app (undo/redo in ui/App.tsx, Escape/Canc in
+    // tools/toolManager.ts) ascoltano sulla FINESTRA: se un tasto battuto nel
+    // campo arriva fin lì, Canc cancella il nodo che si sta rinominando e
+    // Ctrl+Z annulla il gesto precedente invece del testo digitato.
+    const onWindowKey = vi.fn();
+    window.addEventListener("keydown", onWindowKey);
+    try {
+      await user.type(nameField(), "Beta{Backspace}{Delete}");
+      await user.keyboard("{Control>}z{/Control}");
+      expect(onWindowKey).not.toHaveBeenCalled();
+    } finally {
+      window.removeEventListener("keydown", onWindowKey);
+    }
+
+    // E nemmeno le scorciatoie della GridList stessa: scrivere "Beta" non deve
+    // far scattare il typeahead sulla riga omonima.
+    expect(useScene.getState().selection).toEqual(selectionBefore);
+    expect(useScene.getState().selection).not.toContain("b");
+  });
+});
+
+// --- Task 8, step 2/3: riordino con drag ------------------------------------
+
+// L'ordine come lo vede il RESTO dell'app: layersInDrawOrder sulla scena dello
+// store, non le righe del DOM. È il punto del brief -- il riordino deve cambiare
+// l'ordine di disegno sul canvas, non solo l'aspetto del pannello.
+function order(): string[] {
+  const scene = useScene.getState().scene;
+  return scene ? layersInDrawOrder(scene).map((n) => n.id) : [];
+}
+
+function rowOf(label: string): HTMLElement {
+  return screen.getByText(label).closest('[role="row"]') as HTMLElement;
+}
+
+// Trascina la riga `from` sopra la riga `onto` e rilascia. Il rilascio arriva
+// sulla FINESTRA (non sulla riga): è dove il pannello lo ascolta, perché il
+// pointer può benissimo essere rilasciato fuori dalla lista.
+function dragOnto(from: string, onto: string) {
+  const handle = screen.getByRole("button", { name: `Riordina ${from}` });
+  const base = { pointerId: 1, pointerType: "mouse", isPrimary: true };
+  fireEvent.pointerDown(handle, { ...base, button: 0, pressure: 0.5 });
+  fireEvent.pointerMove(rowOf(onto), base);
+  fireEvent.pointerUp(window, { ...base, pressure: 0 });
+}
+
+describe("riordino con drag", () => {
+  it("trascinare una riga su un'altra cambia l'ordine di disegno", () => {
+    installScene(
+      rectNode("a", "a0", { name: "A" }),
+      rectNode("b", "a1", { name: "B" }),
+      rectNode("c", "a2", { name: "C" }),
+    );
+    render(<LayersPanel />);
+    // Lista (primo piano in cima): C, B, A.
+    expect(order()).toEqual(["c", "b", "a"]);
+
+    // C dal primo piano fino al posto di A (il fondo).
+    dragOnto("C", "A");
+
+    expect(order()).toEqual(["b", "a", "c"]);
+  });
+
+  it("emette UN SOLO SetProperties con mask order_key, in un solo gesto", () => {
+    installScene(
+      rectNode("a", "a0", { name: "A" }),
+      rectNode("b", "a1", { name: "B" }),
+      rectNode("c", "a2", { name: "C" }),
+    );
+    render(<LayersPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    dragOnto("C", "A");
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("setProps");
+    if (op.kind.case === "setProps") {
+      expect(op.kind.value.id).toBe("c");
+      expect(op.kind.value.mask?.paths).toEqual(["order_key"]);
+      // La chiave calcolata è quella che il nodo ha davvero adesso, ed è
+      // strettamente sotto quella di "a" (che è rimasta dov'era).
+      const key = op.kind.value.patch?.orderKey ?? "";
+      expect(useScene.getState().scene?.nodes.c.orderKey).toBe(key);
+      expect(key < "a0").toBe(true);
+    }
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("trascinare una riga su sé stessa non emette niente", () => {
+    installScene(rectNode("a", "a0", { name: "A" }), rectNode("b", "a1", { name: "B" }));
+    render(<LayersPanel />);
+
+    dragOnto("B", "B");
+
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+  });
+
+  it("gli estremi sono aperti: si può portare una riga in cima e in fondo", () => {
+    installScene(
+      rectNode("a", "a0", { name: "A" }),
+      rectNode("b", "a1", { name: "B" }),
+      rectNode("c", "a2", { name: "C" }),
+    );
+    render(<LayersPanel />);
+
+    // Dal fondo alla cima: nessun vicino sopra, l'estremo superiore è aperto.
+    dragOnto("A", "C");
+    expect(order()).toEqual(["a", "c", "b"]);
+
+    // E ritorno: dalla cima al fondo, estremo inferiore aperto.
+    dragOnto("A", "B");
+    expect(order()).toEqual(["c", "b", "a"]);
+  });
+
+  it("riordinare RIPETUTAMENTE nello stesso punto continua a funzionare", () => {
+    installScene(
+      rectNode("a", "a0", { name: "A" }),
+      rectNode("b", "a1", { name: "B" }),
+      rectNode("c", "a2", { name: "C" }),
+    );
+    render(<LayersPanel />);
+
+    // Ogni giro infila la riga di fondo FRA le altre due: è esattamente il caso
+    // che l'indice frazionario del Task 2 esiste per sostenere (il formato
+    // "a" + 6 cifre di M0/M1a non ammetteva nessuna chiave fra due vicine, e
+    // dal secondo inserimento nello stesso punto sarebbe stato impossibile).
+    let expected = ["c", "b", "a"];
+    const labels: Record<string, string> = { a: "A", b: "B", c: "C" };
+    for (let i = 0; i < 20; i++) {
+      dragOnto(labels[expected[2]], labels[expected[1]]);
+      expected = [expected[0], expected[2], expected[1]];
+      expect(order()).toEqual(expected);
+    }
+    // Venti op, venti gesti: nessuno è stato scartato per una chiave impossibile.
+    expect(sync.sent).toHaveLength(20);
+  });
+
+  it("Alt+freccia sulla maniglia riordina da tastiera, con lo stesso op e lo stesso gesto", () => {
+    installScene(
+      rectNode("a", "a0", { name: "A" }),
+      rectNode("b", "a1", { name: "B" }),
+      rectNode("c", "a2", { name: "C" }),
+    );
+    render(<LayersPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    // Senza mouse il riordino sarebbe l'unica funzione del pannello
+    // irraggiungibile: la maniglia è un <button> vero apposta. ALT+freccia e
+    // non la freccia liscia: react-aria riserva ArrowUp/ArrowDown alla
+    // navigazione fra righe e le ferma in capture prima dei figli della riga
+    // (vedi il commento sulla maniglia in LayersPanel.tsx).
+    fireEvent.keyDown(screen.getByRole("button", { name: "Riordina A" }), {
+      key: "ArrowUp",
+      altKey: true,
+    });
+
+    expect(order()).toEqual(["c", "a", "b"]);
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case).toBe("setProps");
+    if (sync.sent[0].kind.case === "setProps") {
+      expect(sync.sent[0].kind.value.mask?.paths).toEqual(["order_key"]);
+    }
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+  });
+
+  it("la freccia che uscirebbe dalla lista non fa niente", () => {
+    installScene(rectNode("a", "a0", { name: "A" }), rectNode("b", "a1", { name: "B" }));
+    render(<LayersPanel />);
+
+    // B è già in cima (primo piano): sopra non c'è nessun posto.
+    fireEvent.keyDown(screen.getByRole("button", { name: "Riordina B" }), {
+      key: "ArrowUp",
+      altKey: true,
+    });
+
+    expect(order()).toEqual(["b", "a"]);
+    expect(sync.sent).toHaveLength(0);
+  });
+
+  it("la freccia SENZA Alt resta a react-aria (navigazione fra righe), non riordina", () => {
+    installScene(rectNode("a", "a0", { name: "A" }), rectNode("b", "a1", { name: "B" }));
+    render(<LayersPanel />);
+
+    fireEvent.keyDown(screen.getByRole("button", { name: "Riordina A" }), { key: "ArrowUp" });
+
+    expect(order()).toEqual(["b", "a"]);
+    expect(sync.sent).toHaveLength(0);
+  });
+});
+
+// --- Task 8, step 2: la chiave calcolata (funzione pura) ---------------------
+
+describe("reorderKey", () => {
+  // Le righe come le mostra il pannello: primo piano in cima, orderKey
+  // DECRESCENTE.
+  const layers = [
+    rectNode("c", "a2"),
+    rectNode("b", "a1"),
+    rectNode("a", "a0"),
+  ];
+
+  it("null quando la riga non si muove", () => {
+    expect(reorderKey(layers, 1, 1)).toBeNull();
+  });
+
+  it("null per indici fuori dalla lista", () => {
+    expect(reorderKey(layers, -1, 1)).toBeNull();
+    expect(reorderKey(layers, 0, 3)).toBeNull();
+  });
+
+  it("in cima: chiave sopra a tutte (estremo superiore aperto)", () => {
+    const key = reorderKey(layers, 2, 0);
+    expect(key).not.toBeNull();
+    expect(key! > "a2").toBe(true);
+  });
+
+  it("in fondo: chiave sotto a tutte (estremo inferiore aperto)", () => {
+    const key = reorderKey(layers, 0, 2);
+    expect(key).not.toBeNull();
+    expect(key! < "a0").toBe(true);
+  });
+
+  it("in mezzo: chiave strettamente fra i due vicini della posizione d'arrivo", () => {
+    const key = reorderKey(layers, 0, 1);
+    expect(key).not.toBeNull();
+    expect(key! > "a0").toBe(true);
+    expect(key! < "a1").toBe(true);
+  });
+
+  it("null (invece di lanciare) quando i due vicini hanno la STESSA chiave", () => {
+    // Non è raggiungibile dalla UI, ma nemmeno impossibile nel modello (niente
+    // impedisce a due nodi di condividere una order key): orderKeyBetween
+    // lancerebbe, e lanciare dentro il gestore di un pointerup vorrebbe dire
+    // rompere l'app durante un trascinamento.
+    const dup = [rectNode("x", "a1"), rectNode("y", "a1"), rectNode("z", "a1")];
+    expect(reorderKey(dup, 0, 1)).toBeNull();
   });
 });

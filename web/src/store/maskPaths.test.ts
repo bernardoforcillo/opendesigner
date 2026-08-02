@@ -137,13 +137,26 @@ describe("MASK_PATHS è ancorato a core.applySetProps (Go), non a una copia loca
 
 const NODE_FIELD_NAMES = NodeSchema.fields.map((f) => f.name);
 
+// Il path è snake_case (la convenzione del .proto, e la forma in cui Go e
+// MASK_PATHS lo scrivono); il campo di NodeLite è camelCase. Per i path
+// monoparola le due forme coincidono, per "order_key" no -- e senza questa
+// conversione la sonda sotto pretenderebbe un campo "order_key" che NodeLite
+// non ha (a compile time) e l'assert confronterebbe una chiave inesistente
+// (a runtime).
+type CamelCase<S extends string> = S extends `${infer H}_${infer T}`
+  ? `${H}${Capitalize<CamelCase<T>>}`
+  : S;
+const camelOf = (path: string): string => path.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
+
 // Un valore sonda per ogni path, diverso dal valore che baseScene() dà a n1.
 // Il tipo mappato NON è decorativo: aggiungere un path a MASK_PATHS senza
 // aggiungere la sua sonda qui è un errore di compilazione (`tsc -b` in
 // `pnpm build`), quindi il nuovo path non può sfuggire a it.each. E
-// `NodeLite[P]` costringe MaskPath a restare un sottoinsieme delle chiavi di
-// NodeLite: un path che non corrisponde a nessun campo del modello non compila.
-type Probe = { [P in MaskPath]: { patch: MessageInitShape<typeof NodeSchema>; expected: NodeLite[P] } };
+// `NodeLite[CamelCase<P>]` costringe MaskPath a restare un sottoinsieme delle
+// chiavi di NodeLite: un path che non corrisponde a nessun campo del modello
+// ricade su `never`, e non esiste nessun valore da scrivere in `expected`.
+type Field<P extends MaskPath> = CamelCase<P> extends keyof NodeLite ? NodeLite[CamelCase<P>] : never;
+type Probe = { [P in MaskPath]: { patch: MessageInitShape<typeof NodeSchema>; expected: Field<P> } };
 
 const PROBE: Probe = {
   x: { patch: { x: 42 }, expected: 42 },
@@ -158,6 +171,7 @@ const PROBE: Probe = {
     patch: { fills: [{ kind: { case: "solid", value: { color: { r: 1, g: 0, b: 0, a: 1 } } } }] },
     expected: [{ r: 1, g: 0, b: 0, a: 1 }],
   },
+  order_key: { patch: { orderKey: "a5" }, expected: "a5" },
 };
 
 describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", () => {
@@ -180,7 +194,7 @@ describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", ()
       // e nessun altro (un `case "y": next.x = ...` fallirebbe qui).
       const before = baseScene().nodes["n1"];
       const after = applyOp(baseScene(), wired).nodes["n1"];
-      expect(after).toEqual({ ...before, [path]: PROBE[path].expected });
+      expect(after).toEqual({ ...before, [camelOf(path)]: PROBE[path].expected });
     },
   );
 });
@@ -196,8 +210,9 @@ describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", ()
 // codifica li rompe. "corner_radius" è il prossimo candidato naturale (M1b,
 // RectNode.corner_radius): quando Go guadagnerà quel case, la guardia
 // cross-language del blocco 1 fallirà e costringerà ad aggiornare MASK_PATHS,
-// PROBE e questa lista insieme.
-const NOT_IN_GO_SWITCH = ["corner_radius", "parent_id", "order_key", "id", "shape", "bogus"];
+// PROBE e questa lista insieme -- è esattamente com'è andata per "order_key",
+// che stava qui fino al riordino del pannello livelli (Task 8).
+const NOT_IN_GO_SWITCH = ["corner_radius", "parent_id", "id", "shape", "bogus"];
 
 describe("un path fuori da MASK_PATHS fa rifiutare l'INTERO op", () => {
   it.each(NOT_IN_GO_SWITCH)("%s: isMaskPath false, e la scena resta invariata anche in mask mista", (path) => {

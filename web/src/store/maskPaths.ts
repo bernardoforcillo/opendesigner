@@ -18,9 +18,9 @@
 // snake_case "di libreria" (identica a quella usata da Go), MAI nella forma
 // camelCase istintiva per chi scrive TypeScript. Per i 9 path di M0 le due
 // forme coincidono perché sono tutti monoparola -- il che ha nascosto il
-// problema fino ad ora. Il primo path multiparola (es. "corner_radius", il
-// prossimo candidato naturale per M1b: RectNode.corner_radius) scritto qui
-// come "cornerRadius" farebbe THROW in fase di serializzazione, non silenzioso
+// problema fino a M1b, quando "order_key" (il riordino del pannello livelli,
+// Task 8) è diventato il primo path multiparola. Un path del genere scritto qui
+// come "orderKey" farebbe THROW in fase di serializzazione, non silenzioso
 // ma comunque invisibile all'utente (submit() lo applica in ottimistico PRIMA
 // di serializzare, quindi l'errore finisce in un console.error e la scena
 // mostra un cambiamento che il server non riceverà mai).
@@ -28,7 +28,7 @@
 // QUESTO COMMENTO NON È LA GUARDIA -- lo sono i test in maskPaths.test.ts, e
 // vale la pena sapere quali prima di toccare l'elenco:
 //   - it.each(MASK_PATHS) fa passare OGNI path da toJson -> fromJson e pretende
-//     che torni identico: un "cornerRadius" scritto qui non compila un elenco
+//     che torni identico: un "orderKey" scritto qui non compila un elenco
 //     verde, fa fallire quel caso con l'errore "irreversible" esatto che si
 //     vedrebbe in produzione. Lo stesso caso verifica anche che il path sia un
 //     nome di campo reale di brawt.v1.Node e che applyOp lo applichi davvero.
@@ -48,6 +48,11 @@ export const MASK_PATHS = [
   "name",
   "visible",
   "fills",
+  // Primo path MULTIPAROLA della mask (M1b, Task 8: il riordino del pannello
+  // livelli). Scritto snake_case come lo scrive Go; sul filo JSON diventa
+  // "orderKey" e torna indietro così com'è -- è tutto il motivo per cui questo
+  // file esiste, vedi il commento in cima.
+  "order_key",
 ] as const;
 
 // L'UNICO tipo che un path di mask può avere ai punti di costruzione di un op
