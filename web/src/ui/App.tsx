@@ -9,6 +9,7 @@ import { drawOverlay } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { attachClipboardShortcuts } from "../tools/clipboard";
+import { ExportButton } from "./ExportButton";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -271,6 +272,10 @@ export function App() {
         >
           Nuovo documento
         </Button>
+        {/* Export PNG/SVG (traccia 3, task 2). Tutta la logica sta in
+            export/ e in ui/ExportButton.tsx: qui c'è solo il montaggio, che
+            però è l'unico punto in cui la funzione diventa raggiungibile. */}
+        <ExportButton />
         <span aria-live="polite" className="ml-auto text-sm text-neutral-500">
           {statusLabel}
         </span>

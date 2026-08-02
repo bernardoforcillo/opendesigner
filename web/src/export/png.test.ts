@@ -1,0 +1,200 @@
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { renderRegionToCanvas, canvasToPngBlob, EXPORT_SCALES } from "./png";
+import { exportRegion } from "./region";
+import { emptyScene } from "../store/types";
+import type { NodeLite, SceneState } from "../store/types";
+
+// jsdom non ha né il contesto 2D né Path2D: il canvas è un doppio che REGISTRA
+// invece di disegnare. È esattamente ciò che serve qui -- la prova a pixel è in
+// browser, quella che si può fare in Node è che il canvas fuori schermo sia
+// grande quanto deve e trasformato come deve.
+class FakePath2D {
+  rect() {}
+  roundRect() {}
+  ellipse() {}
+}
+
+interface Recorded {
+  transforms: number[][];
+  fills: number;
+  texts: string[];
+}
+
+function fakeCanvas(): { canvas: HTMLCanvasElement; rec: Recorded } {
+  const rec: Recorded = { transforms: [], fills: 0, texts: [] };
+  const canvas = {
+    width: 0,
+    height: 0,
+    getContext: () => ctx,
+  } as unknown as HTMLCanvasElement;
+  const ctx = {
+    canvas,
+    font: "", textBaseline: "", textAlign: "", fillStyle: "", globalAlpha: 1,
+    setTransform: (a: number, b: number, c: number, d: number, e: number, f: number) => {
+      rec.transforms.push([a, b, c, d, e, f]);
+    },
+    clearRect: () => {},
+    measureText: (s: string) => ({ width: s.length * 10 }),
+    fillText: (t: string) => { rec.texts.push(t); },
+    fill: () => { rec.fills++; },
+  } as unknown as CanvasRenderingContext2D;
+  return { canvas, rec };
+}
+
+function node(over: Partial<NodeLite> & { id: string }): NodeLite {
+  return {
+    parentId: "page1", orderKey: "a1", name: over.id, visible: true, opacity: 1,
+    x: 0, y: 0, width: 10, height: 10, rotation: 0,
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0,
+    ...over,
+  };
+}
+
+function sceneWith(...nodes: NodeLite[]): SceneState {
+  const s = emptyScene("doc", "Untitled");
+  for (const n of nodes) s.nodes[n.id] = n;
+  return s;
+}
+
+function regionOf(scene: SceneState, selection: string[] = [], scope: "page" | "selection" = "page") {
+  const r = exportRegion(scene, selection, scope);
+  if (!r) throw new Error("regione vuota nel test");
+  return r;
+}
+
+// L'ULTIMA setTransform è quella con cui si disegna (la prima azzera prima di
+// pulire il canvas).
+//
+// `+ 0` normalizza lo zero NEGATIVO: una regione che parte da x = 0 produce una
+// traslazione -0, che per il canvas è la stessa traslazione di 0 ma che
+// toEqual distingue (confronta con Object.is). Il segno dello zero non è
+// un'informazione, e non deve diventare un motivo per contorcere il codice che
+// calcola la trasformazione.
+function drawTransform(rec: Recorded): number[] {
+  return rec.transforms[rec.transforms.length - 1].map((v) => v + 0);
+}
+
+describe("renderRegionToCanvas", () => {
+  afterEach(() => {
+    vi.unstubAllGlobals();
+  });
+
+  it("il canvas fuori schermo è grande quanto la regione per la scala", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const region = regionOf(sceneWith(node({ id: "a", x: 10, y: 20, width: 100, height: 50 })));
+    const { canvas } = fakeCanvas();
+    renderRegionToCanvas(region, 2, () => canvas);
+    expect(canvas.width).toBe(200);
+    expect(canvas.height).toBe(100);
+  });
+
+  it("la trasformazione porta l'ANGOLO della regione nell'origine, scalato", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const region = regionOf(sceneWith(node({ id: "a", x: 10, y: 20, width: 100, height: 50 })));
+    const { canvas, rec } = fakeCanvas();
+    renderRegionToCanvas(region, 2, () => canvas);
+    // scale 2, e la traslazione è -origine * scala: il pixel (0,0)
+    // dell'immagine è il punto mondo (10, 20).
+    expect(drawTransform(rec)).toEqual([2, 0, 0, 2, -20, -40]);
+  });
+
+  it("ognuna delle scale offerte", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const region = regionOf(sceneWith(node({ id: "a", x: 0, y: 0, width: 30, height: 40 })));
+    for (const scale of EXPORT_SCALES) {
+      const { canvas, rec } = fakeCanvas();
+      renderRegionToCanvas(region, scale, () => canvas);
+      expect(canvas.width).toBe(30 * scale);
+      expect(canvas.height).toBe(40 * scale);
+      expect(drawTransform(rec)).toEqual([scale, 0, 0, scale, 0, 0]);
+    }
+  });
+
+  it("il devicePixelRatio della macchina NON entra nell'export", () => {
+    // Il canvas dello schermo scala per il dpr (canvasRenderer.ts) e deve
+    // farlo; un canvas fuori schermo non ha un dispositivo. Senza questa
+    // regola lo stesso documento esportato a 2x darebbe un file grande il
+    // doppio su un portatile HiDPI -- e ritagliato, perché il canvas sarebbe
+    // comunque della dimensione richiesta.
+    vi.stubGlobal("Path2D", FakePath2D);
+    vi.stubGlobal("window", { devicePixelRatio: 3 });
+    const region = regionOf(sceneWith(node({ id: "a", x: 0, y: 0, width: 100, height: 100 })));
+    const { canvas, rec } = fakeCanvas();
+    renderRegionToCanvas(region, 2, () => canvas);
+    expect(canvas.width).toBe(200);
+    expect(drawTransform(rec)).toEqual([2, 0, 0, 2, 0, 0]);
+  });
+
+  it("una regione frazionaria non viene TAGLIATA: si arrotonda per eccesso", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const region = regionOf(sceneWith(node({ id: "a", x: 0, y: 0, width: 10.2, height: 10.6 })));
+    const { canvas } = fakeCanvas();
+    renderRegionToCanvas(region, 1, () => canvas);
+    expect(canvas.width).toBe(11);
+    expect(canvas.height).toBe(11);
+  });
+
+  it("un canvas non è mai di lato zero", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    // Un testo alto 0 (altezza non ancora misurata) è esportabile ma darebbe
+    // un canvas 100x0, e toBlob su un canvas di area nulla fallisce.
+    const region = regionOf(
+      sceneWith(node({
+        id: "t", kind: "text", width: 100, height: 0,
+        text: { content: "ciao", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } },
+      })),
+    );
+    const { canvas } = fakeCanvas();
+    renderRegionToCanvas(region, 1, () => canvas);
+    expect(canvas.width).toBe(100);
+    expect(canvas.height).toBe(1);
+  });
+
+  it("disegna SOLO i nodi della regione", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const scene = sceneWith(
+      node({ id: "a", orderKey: "a1" }),
+      node({ id: "b", orderKey: "a2", x: 100 }),
+    );
+    const { canvas, rec } = fakeCanvas();
+    renderRegionToCanvas(regionOf(scene, ["b"], "selection"), 1, () => canvas);
+    expect(rec.fills).toBe(1);
+    // e il canvas è grande quanto il solo nodo selezionato
+    expect(canvas.width).toBe(10);
+  });
+
+  it("riusa il renderer vero: un nodo testo passa da drawText", () => {
+    const scene = sceneWith(node({
+      id: "t", kind: "text", x: 0, y: 0, width: 100, height: 40,
+      text: { content: "ciao", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } },
+    }));
+    const { canvas, rec } = fakeCanvas();
+    renderRegionToCanvas(regionOf(scene), 1, () => canvas);
+    expect(rec.texts).toEqual(["ciao"]);
+  });
+
+  it("se il contesto 2D non c'è, lo dice invece di ritornare un canvas vuoto", () => {
+    const canvas = { width: 0, height: 0, getContext: () => null } as unknown as HTMLCanvasElement;
+    const region = regionOf(sceneWith(node({ id: "a" })));
+    expect(() => renderRegionToCanvas(region, 1, () => canvas)).toThrow(/contesto 2D/i);
+  });
+});
+
+describe("canvasToPngBlob", () => {
+  it("chiede image/png e risolve con il blob", async () => {
+    const blob = new Blob(["x"], { type: "image/png" });
+    const types: (string | undefined)[] = [];
+    const canvas = {
+      toBlob: (cb: (b: Blob | null) => void, type?: string) => { types.push(type); cb(blob); },
+    } as unknown as HTMLCanvasElement;
+    await expect(canvasToPngBlob(canvas)).resolves.toBe(blob);
+    expect(types).toEqual(["image/png"]);
+  });
+
+  it("un blob nullo diventa un errore, non un download vuoto", async () => {
+    const canvas = {
+      toBlob: (cb: (b: Blob | null) => void) => cb(null),
+    } as unknown as HTMLCanvasElement;
+    await expect(canvasToPngBlob(canvas)).rejects.toThrow();
+  });
+});

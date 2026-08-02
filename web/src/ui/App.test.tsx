@@ -3,7 +3,7 @@
 // toBeInTheDocument/toHaveAttribute non esistono per il compilatore.
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
 import { App, TOOLS, TOOL_LABELS } from "./App";
 import { textTool } from "../tools/textTool";
 import { selectTool } from "../tools/selectTool";
@@ -170,5 +170,18 @@ describe("scorciatoie della clipboard", () => {
     unmount();
     fireEvent.keyDown(window, { key: "d", ctrlKey: true });
     expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(1);
+  });
+});
+
+
+// Stesso principio del registro dei tool e delle scorciatoie: export/ è
+// completo e testato, ma finché la toolbar non lo monta l'export non esiste per
+// chi usa l'app. Qui si verifica solo il montaggio (il comportamento è in
+// ui/ExportButton.test.tsx).
+describe("export", () => {
+  it("la toolbar ha il pulsante Esporta", () => {
+    render(<App />);
+    const toolbar = screen.getByRole("toolbar", { name: "Strumenti" });
+    expect(within(toolbar).getByRole("button", { name: "Esporta" })).toBeInTheDocument();
   });
 });
