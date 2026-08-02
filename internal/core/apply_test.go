@@ -320,6 +320,97 @@ func TestApplySetTextWithStylePresentReplacesStyle(t *testing.T) {
 	}
 }
 
+// ---------------------------------------------------------------------------
+// SetVectorPath (op 15) -- la geometria vettoriale.
+// ---------------------------------------------------------------------------
+
+// Un subpath "ricco": maniglie bézier ASIMMETRICHE e mai coincidenti con
+// l'ancoraggio, così un lato che dimenticasse in_/out_ (o li ricavasse per
+// specchiatura) non potrebbe passare per caso.
+func richSubPath(closed bool) *brawtv1.SubPath {
+	return &brawtv1.SubPath{
+		Anchors: []*brawtv1.Anchor{
+			{X: 10, Y: 20, InX: 8, InY: 19, OutX: 14, OutY: 26},
+			{X: 60, Y: 70, InX: 55, InY: 62, OutX: 66, OutY: 71},
+		},
+		Closed: closed,
+	}
+}
+
+func vectorNode(id string, subpaths ...*brawtv1.SubPath) *brawtv1.Node {
+	return &brawtv1.Node{
+		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Vector", Visible: true, Opacity: 1,
+		X: 0, Y: 0, Width: 100, Height: 80,
+		Shape: &brawtv1.Node_Vector{Vector: &brawtv1.VectorNode{Subpaths: subpaths}},
+	}
+}
+
+func setVectorPathOp(s *brawtv1.SetVectorPath) *brawtv1.Op {
+	return &brawtv1.Op{Kind: &brawtv1.Op_SetVectorPath{SetVectorPath: s}}
+}
+
+func TestApplySetVectorPathReplacesSubpaths(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: vectorNode("v1", richSubPath(false))}}})
+
+	next := []*brawtv1.SubPath{richSubPath(true), {Anchors: []*brawtv1.Anchor{{X: 1, Y: 2}}}}
+	if err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "v1", Subpaths: next})); err != nil {
+		t.Fatalf("Apply setVectorPath: %v", err)
+	}
+	got := doc.Nodes["v1"].GetVector().GetSubpaths()
+	// Sostituzione WHOLESALE: non un merge, non un append.
+	if len(got) != 2 {
+		t.Fatalf("expected 2 subpaths, got %d", len(got))
+	}
+	if !got[0].GetClosed() {
+		t.Fatal("closed dropped by setVectorPath")
+	}
+	a := got[0].GetAnchors()[0]
+	if a.GetInX() != 8 || a.GetInY() != 19 || a.GetOutX() != 14 || a.GetOutY() != 26 {
+		t.Fatalf("bezier handles dropped or mangled: %+v", a)
+	}
+}
+
+// Una lista VUOTA è legittima: è il path che l'utente ha svuotato, non un
+// "campo non specificato" da ignorare (a differenza di SetText.style).
+func TestApplySetVectorPathEmptyListClearsPath(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: vectorNode("v1", richSubPath(true))}}})
+	if err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "v1"})); err != nil {
+		t.Fatalf("Apply setVectorPath: %v", err)
+	}
+	if n := len(doc.Nodes["v1"].GetVector().GetSubpaths()); n != 0 {
+		t.Fatalf("expected an emptied path, got %d subpaths", n)
+	}
+	// Il nodo resta un nodo vettoriale (svuotato), non perde la forma: un
+	// successivo setVectorPath deve ancora essere accettato.
+	if _, ok := doc.Nodes["v1"].GetShape().(*brawtv1.Node_Vector); !ok {
+		t.Fatalf("shape lost by an emptying setVectorPath: %T", doc.Nodes["v1"].GetShape())
+	}
+}
+
+// Stesso precedente di applySetText su un rettangolo (ErrNotTextNode): il oneof
+// `shape` è la NATURA del nodo, non un campo da riempire.
+func TestApplySetVectorPathOnNonVectorNodeFails(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "n1", Subpaths: []*brawtv1.SubPath{richSubPath(false)}}))
+	if !errors.Is(err, ErrNotVectorNode) {
+		t.Fatalf("expected ErrNotVectorNode, got %v", err)
+	}
+	if _, ok := doc.Nodes["n1"].GetShape().(*brawtv1.Node_Rect); !ok {
+		t.Fatalf("rect turned into %T by a rejected setVectorPath", doc.Nodes["n1"].GetShape())
+	}
+}
+
+func TestApplySetVectorPathMissingNode(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "ghost"}))
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
+	}
+}
+
 func TestApplyDeleteNode(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})

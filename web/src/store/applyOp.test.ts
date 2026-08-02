@@ -1,6 +1,8 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, SetTextSchema, TextAlign } from "../gen/brawt/v1/brawt_pb";
+import {
+  OpSchema, NodeSchema, SetTextSchema, SetVectorPathSchema, VectorNodeSchema, TextAlign,
+} from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene } from "./types";
 
@@ -241,5 +243,81 @@ describe("applyOp: setText", () => {
     expect(s.nodes["t1"].text?.style).toEqual({
       fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left",
     });
+  });
+});
+
+// --- setVectorPath ---------------------------------------------------------
+// Speculari a internal/core/apply_test.go (TestApplySetVectorPath*): stessa
+// scena, stesse asserzioni. applyOp e core.applySetVectorPath devono restare
+// semanticamente identici, e questa è la metà TS della guardia (l'altra è
+// testdata/golden/vector_path.json).
+
+// Maniglie bézier ASIMMETRICHE e mai coincidenti con l'ancoraggio: un lato che
+// le scartasse (o le ricavasse per specchiatura) non può passare per caso.
+const RICH_ANCHORS = [
+  { x: 10, y: 20, inX: 8, inY: 19, outX: 14, outY: 26 },
+  { x: 60, y: 70, inX: 55, inY: 62, outX: 66, outY: 71 },
+];
+
+function createVectorOp(id: string, subpaths: MessageInitShape<typeof VectorNodeSchema>["subpaths"]) {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Path", visible: true, opacity: 1,
+    x: 0, y: 0, width: 100, height: 80,
+    shape: { case: "vector", value: { subpaths } },
+  });
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+function setVectorPathOp(value: MessageInitShape<typeof SetVectorPathSchema>) {
+  return create(OpSchema, { opId: "op-setvector", docId: "doc1", kind: { case: "setVectorPath", value } });
+}
+
+describe("applyOp: setVectorPath", () => {
+  const base = () =>
+    applyOp(emptyScene("doc1", "Untitled"), createVectorOp("v1", [{ anchors: RICH_ANCHORS, closed: false }]));
+
+  it("creates a vector node carrying anchors and bezier handles", () => {
+    const n = base().nodes["v1"];
+    expect(n.kind).toBe("vector");
+    expect(n.vector?.subpaths).toEqual([{ anchors: RICH_ANCHORS, closed: false }]);
+  });
+
+  it("replaces the subpaths wholesale (no merge, no append)", () => {
+    const next = [
+      { anchors: RICH_ANCHORS, closed: true },
+      { anchors: [{ x: 1, y: 2, inX: 0, inY: 0, outX: 0, outY: 0 }], closed: false },
+    ];
+    const s = applyOp(base(), setVectorPathOp({ id: "v1", subpaths: next }));
+    expect(s.nodes["v1"].vector?.subpaths).toEqual(next);
+  });
+
+  // Una lista VUOTA è legittima: è il path che l'utente ha svuotato, non un
+  // "non specificato" da ignorare (a differenza di setText senza stylePresent).
+  it("an empty subpath list empties the path and keeps the node a vector", () => {
+    const s = applyOp(base(), setVectorPathOp({ id: "v1" }));
+    expect(s.nodes["v1"].vector?.subpaths).toEqual([]);
+    expect(s.nodes["v1"].kind).toBe("vector");
+  });
+
+  it("is a no-op on a non-vector node (parity with core: ErrNotVectorNode)", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
+    const after = applyOp(s, setVectorPathOp({ id: "n1", subpaths: [{ anchors: RICH_ANCHORS, closed: true }] }));
+    expect(after).toEqual(s);
+    // In particolare la FORMA non cambia: scriverci dentro trasformerebbe il
+    // rettangolo in un path in locale mentre il server ha respinto l'op.
+    expect(after.nodes["n1"].kind).toBe("rect");
+  });
+
+  it("is a no-op on a missing id (parity with core: ErrNodeNotFound)", () => {
+    const s = base();
+    expect(applyOp(s, setVectorPathOp({ id: "ghost" }))).toEqual(s);
+  });
+
+  it("does not mutate the previous state (applyOp is pure)", () => {
+    const s = base();
+    const before = s.nodes["v1"].vector?.subpaths;
+    applyOp(s, setVectorPathOp({ id: "v1", subpaths: [{ anchors: [], closed: true }] }));
+    expect(s.nodes["v1"].vector?.subpaths).toBe(before);
+    expect(before).toEqual([{ anchors: RICH_ANCHORS, closed: false }]);
   });
 });

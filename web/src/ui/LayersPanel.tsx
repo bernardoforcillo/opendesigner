@@ -23,6 +23,7 @@ const TEXT_FALLBACK_MAX = 30;
 function fallbackName(n: NodeLite): string {
   if (n.kind === "rect") return "Rectangle";
   if (n.kind === "ellipse") return "Ellipse";
+  if (n.kind === "vector") return "Vector";
   // n.kind === "text": a-capo e spazi ripetuti collassati, così l'etichetta
   // resta su una riga sola anche per un testo multilinea.
   const flat = (n.text?.content ?? "").replace(/\s+/g, " ").trim();

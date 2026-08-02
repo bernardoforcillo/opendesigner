@@ -33,6 +33,36 @@ message TextStyle {
 // larghezza di wrap, height quella misurata dal layout.
 message TextNode { string content = 1; TextStyle style = 2; }
 
+// Un punto d'ancoraggio di un path vettoriale, in coordinate MONDO come ogni
+// altra coordinata del modello.
+//
+// Le maniglie bézier `in`/`out` sono in coordinate ASSOLUTE (come nel design
+// doc), non relative all'ancoraggio: sono i due punti di controllo della curva
+// che ENTRA nell'ancoraggio (in) e di quella che ne ESCE (out). Assolute perché
+// è la forma che il renderer consuma direttamente -- ctx.bezierCurveTo vuole
+// punti, non delta -- e perché così una maniglia trascinata dall'utente è
+// esattamente il valore che finisce nel modello, senza una sottrazione in mezzo
+// che ogni lato dovrebbe replicare identica.
+//
+// Una maniglia COINCIDENTE con l'ancoraggio (in == x,y) significa "nessuna
+// maniglia": il segmento è una retta. Non serve un flag, e lo zero di proto3
+// non è un caso speciale da distinguere -- un ancoraggio in (0,0) con maniglie
+// a (0,0) è un punto d'angolo nell'origine, che è esattamente ciò che descrive.
+message Anchor {
+  double x = 1; double y = 2;
+  double in_x = 3; double in_y = 4;
+  double out_x = 5; double out_y = 6;
+}
+
+// Un contorno: una sequenza di ancoraggi, chiusa o aperta. `closed` è dato e
+// non derivato (primo ancoraggio == ultimo): un path chiuso si riempie e si
+// hit-testa sul riempimento, uno aperto sulla prossimità alla linea.
+message SubPath { repeated Anchor anchors = 1; bool closed = 2; }
+
+// Più subpath per nodo: un contorno esterno e i suoi buchi (o più contorni
+// scollegati) sono UN oggetto per l'utente, quindi un nodo solo.
+message VectorNode { repeated SubPath subpaths = 1; }
+
 message Node {
   string id = 1;
   string parent_id = 2;   // id nodo container OPPURE id Page (per i root)
@@ -52,7 +82,7 @@ message Node {
     // 33 = GroupNode     (traccia 1 — annidamento)
     // 34 = FrameNode     (traccia 1 — annidamento)
     // 35 = ImageNode     (traccia 3 — periferia)
-    // 36 = VectorNode    (traccia 4 — vettoriale)
+    VectorNode vector = 36;
     // 37 = InstanceNode  (M4 — componenti)
   }
 }
@@ -91,6 +121,25 @@ message SetText {
   TextStyle style = 3;
   bool style_present = 4;
 }
+// Sostituisce IN BLOCCO i subpath di un VectorNode. Op dedicato invece di un
+// path della mask di SetProperties per la stessa ragione di SetText: la
+// geometria vive DENTRO il oneof `shape`, mentre la mask indirizza campi di
+// primo livello del Node.
+//
+// La sostituzione è wholesale e non incrementale (nessun "sposta l'ancoraggio
+// i-esimo"): un gesto della penna può aggiungere, spostare e cancellare
+// ancoraggi tutti insieme, e un op per micro-modifica moltiplicherebbe i casi
+// da tenere identici fra Go e TS senza aggiungere nulla -- l'inverso è
+// comunque i subpath PRECEDENTI per intero.
+//
+// Una lista VUOTA è legittima e non è "non specificato": è il path che l'utente
+// ha svuotato. Nessun flag `present` serve qui (a differenza di
+// SetText.style_present) perché non esiste nessun altro campo dell'op che
+// possa restare intatto: l'op È i subpath.
+message SetVectorPath {
+  string id = 1;
+  repeated SubPath subpaths = 2;
+}
 message Op {
   string op_id = 1;
   string doc_id = 2;
@@ -101,7 +150,7 @@ message Op {
     SetText       set_text    = 13;
     // Come sopra: una riga per traccia, sostituita dalla dichiarazione vera.
     // 14 = ReparentNode    (traccia 1 — sposta un nodo sotto un altro parent)
-    // 15 = SetVectorPath   (traccia 4 — sostituisce i subpath di un VectorNode)
+    SetVectorPath set_vector_path = 15;
     // 16 = CreateComponent (M4)
   }
 }

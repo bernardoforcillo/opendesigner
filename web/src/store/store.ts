@@ -282,6 +282,18 @@ function targetOf(op: Op): OpTarget | null {
       const { id } = op.kind.value;
       return id === "" ? null : { id, paths: ["text"] };
     }
+    // Stessa ragione di "text": "subpaths" è l'ETICHETTA del campo che un
+    // setVectorPath scrive (non un path di FieldMask -- Go lo rifiuterebbe
+    // dentro un setProps), e sta nello stesso spazio dei nomi proprio perché
+    // deve essere disgiunto da TUTTI: ridisegnare un path e spostare il nodo
+    // sono modifiche indipendenti. Senza questo ramo, un setVectorPath remoto
+    // non renderebbe stale niente e una voce di undo che ne contiene uno non
+    // sarebbe MAI invalidata: il Ctrl+Z successivo cancellerebbe in silenzio la
+    // geometria appena disegnata da un altro.
+    case "setVectorPath": {
+      const { id } = op.kind.value;
+      return id === "" ? null : { id, paths: ["subpaths"] };
+    }
     // Un kind sconosciuto non ha bersaglio noto: non può invalidare niente, ma
     // non è nemmeno invalidabile (applyOp lo ignora, quindi non è mai finito in
     // una voce).

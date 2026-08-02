@@ -1,0 +1,115 @@
+{
+  "_comment": [
+    "SetVectorPath (op 15) e VectorNode (shape 36). Eseguita da ENTRAMBI i lati:",
+    "internal/core/golden_test.go e web/src/store/golden.test.ts.",
+    "",
+    "Tre nodi, tre casi:",
+    " v1 -- creazione + sostituzione wholesale. I due subpath finali hanno gli",
+    "       STESSI ancoraggi e differiscono SOLO per `closed`: un lato che",
+    "       ignorasse quel campo produrrebbe due contorni identici e fallirebbe",
+    "       qui invece che sul canvas dell'utente.",
+    " v2 -- gli ancoraggi finali hanno le STESSE x/y di quelli iniziali e solo le",
+    "       maniglie bézier cambiano: un lato che copiasse i punti scartando",
+    "       in_/out_ (o che le ricavasse per specchiatura da out_) passerebbe",
+    "       ogni controllo sulle coordinate e fallirebbe solo qui. Le maniglie",
+    "       sono asimmetriche apposta.",
+    " v3 -- lista VUOTA: il path che l'utente ha svuotato è uno stato legittimo,",
+    "       non un 'non specificato' da ignorare. Il nodo resta vettoriale.",
+    "",
+    "Il primo ancoraggio di v1 non ha maniglie: in proto3 gli zeri sono OMESSI",
+    "dal JSON, quindi è anche il caso 'campo assente' del round-trip."
+  ],
+  "docId": "doc1",
+  "ops": [
+    { "opId": "op1", "docId": "doc1", "createNode": { "node": {
+      "id": "v1", "parentId": "page1", "orderKey": "a000001", "name": "Path",
+      "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 120, "height": 90,
+      "fills": [{ "solid": { "color": { "r": 0.25, "g": 0.5, "b": 0.75, "a": 1 } } }],
+      "vector": { "subpaths": [
+        { "anchors": [
+          { "x": 10, "y": 20 },
+          { "x": 60, "y": 70, "inX": 55, "inY": 62, "outX": 66, "outY": 71 }
+        ] }
+      ] }
+    } } },
+
+    { "opId": "op2", "docId": "doc1", "createNode": { "node": {
+      "id": "v2", "parentId": "page1", "orderKey": "a000002", "name": "Curve",
+      "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 80, "height": 40,
+      "vector": { "subpaths": [
+        { "anchors": [
+          { "x": 0, "y": 0, "inX": -4, "inY": -3, "outX": 5, "outY": 2 },
+          { "x": 40, "y": 0, "inX": 35, "inY": -6, "outX": 46, "outY": 7 }
+        ], "closed": false }
+      ] }
+    } } },
+
+    { "opId": "op3", "docId": "doc1", "createNode": { "node": {
+      "id": "v3", "parentId": "page1", "orderKey": "a000003", "name": "Scarabocchio",
+      "visible": true, "opacity": 1, "x": 5, "y": 5, "width": 10, "height": 10,
+      "vector": { "subpaths": [
+        { "anchors": [{ "x": 1, "y": 1 }, { "x": 2, "y": 2 }], "closed": true }
+      ] }
+    } } },
+
+    { "opId": "op4", "docId": "doc1", "setVectorPath": {
+      "id": "v1", "subpaths": [
+        { "anchors": [
+          { "x": 0, "y": 0, "inX": -4, "inY": -3, "outX": 5, "outY": 2 },
+          { "x": 40, "y": 0, "inX": 35, "inY": -6, "outX": 46, "outY": 7 }
+        ], "closed": true },
+        { "anchors": [
+          { "x": 0, "y": 0, "inX": -4, "inY": -3, "outX": 5, "outY": 2 },
+          { "x": 40, "y": 0, "inX": 35, "inY": -6, "outX": 46, "outY": 7 }
+        ], "closed": false }
+      ]
+    } },
+
+    { "opId": "op5", "docId": "doc1", "setVectorPath": {
+      "id": "v2", "subpaths": [
+        { "anchors": [
+          { "x": 0, "y": 0, "inX": -9, "inY": 1, "outX": 2, "outY": 8 },
+          { "x": 40, "y": 0, "inX": 31, "inY": 4, "outX": 44, "outY": -5 }
+        ], "closed": false }
+      ]
+    } },
+
+    { "opId": "op6", "docId": "doc1", "setVectorPath": { "id": "v3" } }
+  ],
+  "expected": {
+    "id": "doc1", "name": "Untitled", "schemaVersion": 1,
+    "pages": [{ "id": "page1", "name": "Page 1" }],
+    "nodes": {
+      "v1": {
+        "id": "v1", "parentId": "page1", "orderKey": "a000001", "name": "Path",
+        "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 120, "height": 90,
+        "fills": [{ "solid": { "color": { "r": 0.25, "g": 0.5, "b": 0.75, "a": 1 } } }],
+        "vector": { "subpaths": [
+          { "anchors": [
+            { "x": 0, "y": 0, "inX": -4, "inY": -3, "outX": 5, "outY": 2 },
+            { "x": 40, "y": 0, "inX": 35, "inY": -6, "outX": 46, "outY": 7 }
+          ], "closed": true },
+          { "anchors": [
+            { "x": 0, "y": 0, "inX": -4, "inY": -3, "outX": 5, "outY": 2 },
+            { "x": 40, "y": 0, "inX": 35, "inY": -6, "outX": 46, "outY": 7 }
+          ], "closed": false }
+        ] }
+      },
+      "v2": {
+        "id": "v2", "parentId": "page1", "orderKey": "a000002", "name": "Curve",
+        "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 80, "height": 40,
+        "vector": { "subpaths": [
+          { "anchors": [
+            { "x": 0, "y": 0, "inX": -9, "inY": 1, "outX": 2, "outY": 8 },
+            { "x": 40, "y": 0, "inX": 31, "inY": 4, "outX": 44, "outY": -5 }
+          ], "closed": false }
+        ] }
+      },
+      "v3": {
+        "id": "v3", "parentId": "page1", "orderKey": "a000003", "name": "Scarabocchio",
+        "visible": true, "opacity": 1, "x": 5, "y": 5, "width": 10, "height": 10,
+        "vector": {}
+      }
+    }
+  }
+}

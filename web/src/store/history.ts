@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
-import { toPbNode, toPbTextStyle, type SceneState } from "./types";
+import { toPbNode, toPbTextStyle, toPbSubPaths, type SceneState } from "./types";
 
 // Primitive di undo: dato lo stato PRIMA di un op, l'op che lo annulla.
 //
@@ -98,6 +98,31 @@ export function invertOp(scene: SceneState, op: Op): Op | null {
             stylePresent: true,
           },
         },
+      });
+    }
+    case "setVectorPath": {
+      // Stessa forma dell'inverso di setText: i subpath PRECEDENTI per intero,
+      // non il payload dell'op diretto. È tutto ciò che serve proprio perché
+      // SetVectorPath sostituisce in blocco -- se l'op fosse incrementale
+      // ("sposta l'ancoraggio i-esimo") l'inverso dovrebbe ricostruire quale
+      // pezzo è stato toccato, e ogni caso in più sarebbe un caso in più da
+      // tenere identico fra Go e TS.
+      //
+      // Senza questo ramo l'editing di un path non produrrebbe NESSUNA voce di
+      // undo (invertOp null => il gesto non entra nello stack), che per una
+      // traccia il cui punto è la geometria modificabile sarebbe il difetto
+      // peggiore possibile.
+      const { id } = op.kind.value;
+      const prev = scene.nodes[id];
+      // Null quando l'op diretto sarebbe rifiutato -- id inesistente o nodo non
+      // vettoriale (ErrNotVectorNode in Go): la scena non cambierebbe, quindi
+      // non c'è niente da annullare.
+      if (!prev || prev.kind !== "vector" || !prev.vector) return null;
+      // Una lista vuota è un inverso legittimo come un'altra: annullare il
+      // riempimento di un path prima vuoto lo rimette vuoto.
+      return create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setVectorPath", value: { id, subpaths: toPbSubPaths(prev.vector.subpaths) } },
       });
     }
     default:

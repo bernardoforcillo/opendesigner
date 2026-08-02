@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema, TextStyleSchema, TextAlign } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema, OpSchema, TextStyleSchema, SetVectorPathSchema, TextAlign } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, toNodeLite, toPbNode, type NodeLite, type SceneState } from "./types";
@@ -43,6 +43,35 @@ function richText(id = "t1"): PbNode {
       content: "ciao\nmondo",
       style: { fontFamily: "Inter", fontSize: 24, fontWeight: "700", lineHeight: 1.5, align: TextAlign.RIGHT },
     } },
+  });
+}
+
+// Un nodo vettoriale "ricco": due subpath che differiscono SOLO per `closed`, e
+// maniglie bézier asimmetriche mai coincidenti con l'ancoraggio. Una conversione
+// che perdesse `closed`, che scartasse in/out o che le ricavasse per
+// specchiatura produrrebbe qui un round-trip diverso -- e in produzione
+// distruggerebbe in silenzio le curve dell'utente al primo undo.
+function richVector(id = "v1"): PbNode {
+  const anchors = [
+    { x: 0, y: 0, inX: -4, inY: -3, outX: 5, outY: 2 },
+    { x: 40, y: 12, inX: 35, inY: -6, outX: 46, outY: 7 },
+  ];
+  return create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a9", name: "Path",
+    visible: true, opacity: 0.5,
+    x: 1, y: 2, width: 80, height: 40, rotation: 0,
+    fills: [{ kind: { case: "solid", value: { color: { r: 0.25, g: 0.5, b: 0.75, a: 1 } } } }],
+    shape: { case: "vector", value: { subpaths: [
+      { anchors, closed: true },
+      { anchors, closed: false },
+    ] } },
+  });
+}
+
+function setVectorPathOp(id: string, subpaths: MessageInitShape<typeof SetVectorPathSchema>["subpaths"]): Op {
+  return create(OpSchema, {
+    opId: "op-setvector", docId: "doc1",
+    kind: { case: "setVectorPath", value: { id, subpaths } },
   });
 }
 
@@ -104,6 +133,36 @@ describe("toPbNode", () => {
     expect(back.shape.value.style?.fontSize).toBe(24);
     expect(back.shape.value.style?.fontWeight).toBe("700");
     expect(back.shape.value.style?.align).toBe(TextAlign.RIGHT);
+    expect(toNodeLite(back)).toEqual(lite);
+  });
+
+  // La conversione della geometria è il punto in cui una perdita non fa rumore:
+  // un campo dimenticato non rompe niente subito, cancella le curve dell'utente
+  // al primo undo (l'inverso di una delete è la create del nodo com'era, e il
+  // modello in memoria tiene solo NodeLite).
+  it("is the inverse of toNodeLite (vector: subpath, ancoraggi E maniglie)", () => {
+    const lite = toNodeLite(richVector());
+    const back = toPbNode(lite);
+    expect(back.shape.case).toBe("vector");
+    if (back.shape.case !== "vector") throw new Error("wrong shape");
+
+    // Esplicito prima del round-trip: `toEqual` da solo passerebbe anche se
+    // ENTRAMBE le direzioni perdessero lo stesso campo nello stesso modo.
+    expect(back.shape.value.subpaths).toHaveLength(2);
+    expect(back.shape.value.subpaths.map((sp) => sp.closed)).toEqual([true, false]);
+    const a = back.shape.value.subpaths[0].anchors[1];
+    expect([a.x, a.y, a.inX, a.inY, a.outX, a.outY]).toEqual([40, 12, 35, -6, 46, 7]);
+
+    expect(toNodeLite(back)).toEqual(lite);
+  });
+
+  // Un path SVUOTATO resta un nodo vettoriale: ricostruirlo come rettangolo
+  // sarebbe un cambio di forma silenzioso dentro un undo (stessa ragione per
+  // cui il ramo "text" non ricade su rect quando il contenuto manca).
+  it("un vector senza subpath resta un vector (non ricade su rect)", () => {
+    const lite: NodeLite = { ...toNodeLite(richVector()), vector: { subpaths: [] } };
+    const back = toPbNode(lite);
+    expect(back.shape.case).toBe("vector");
     expect(toNodeLite(back)).toEqual(lite);
   });
 });
@@ -236,6 +295,54 @@ describe("invertOp: setText", () => {
   it("null su un nodo NON di testo: l'op diretto è rifiutato (ErrNotTextNode in Go)", () => {
     const scene = sceneWith(richRect());
     const op = setTextOp("n1", "x");
+    expect(applyOp(scene, op)).toEqual(scene);
+    expect(invertOp(scene, op)).toBeNull();
+  });
+});
+
+describe("invertOp: setVectorPath", () => {
+  it("round-trips una sostituzione di path portando i subpath PRECEDENTI", () => {
+    const scene = sceneWith(richVector());
+    const op = setVectorPathOp("v1", [{ anchors: [{ x: 5, y: 5, inX: 1, inY: 1, outX: 9, outY: 9 }], closed: false }]);
+    // L'op diretto morde davvero: senza questo, il round-trip passerebbe per finta.
+    expect(applyOp(scene, op).nodes["v1"].vector?.subpaths).toHaveLength(1);
+    const inv = expectRoundTrip(scene, op);
+
+    expect(inv.kind.case).toBe("setVectorPath");
+    if (inv.kind.case !== "setVectorPath") throw new Error("wrong kind");
+    // I due subpath precedenti, `closed` compreso: è il campo che distingue i
+    // due contorni di richVector, altrimenti identici.
+    expect(inv.kind.value.subpaths.map((sp) => sp.closed)).toEqual([true, false]);
+    const a = inv.kind.value.subpaths[0].anchors[1];
+    expect([a.x, a.y, a.inX, a.inY, a.outX, a.outY]).toEqual([40, 12, 35, -6, 46, 7]);
+  });
+
+  // Il caso che l'op dedicato rende banale: SVUOTARE un path è annullabile
+  // esattamente come riempirlo, perché l'inverso è sempre "i subpath di prima".
+  it("round-trips lo SVUOTAMENTO di un path", () => {
+    const scene = sceneWith(richVector());
+    const op = setVectorPathOp("v1", []);
+    expect(applyOp(scene, op).nodes["v1"].vector?.subpaths).toEqual([]);
+    expectRoundTrip(scene, op);
+  });
+
+  it("round-trips il RIEMPIMENTO di un path prima vuoto (inverso = lista vuota)", () => {
+    const empty = create(NodeSchema, {
+      id: "v0", parentId: "page1", orderKey: "a1", name: "Vuoto", visible: true, opacity: 1,
+      shape: { case: "vector", value: {} },
+    });
+    const scene = sceneWith(empty);
+    const inv = expectRoundTrip(scene, setVectorPathOp("v0", [{ anchors: [{ x: 1, y: 2 }], closed: false }]));
+    expect(inv.kind.case === "setVectorPath" && inv.kind.value.subpaths).toEqual([]);
+  });
+
+  it("null su un id inesistente", () => {
+    expect(invertOp(sceneWith(richVector()), setVectorPathOp("ghost", []))).toBeNull();
+  });
+
+  it("null su un nodo NON vettoriale: l'op diretto è rifiutato (ErrNotVectorNode in Go)", () => {
+    const scene = sceneWith(richRect());
+    const op = setVectorPathOp("n1", [{ anchors: [{ x: 1, y: 2 }], closed: true }]);
     expect(applyOp(scene, op)).toEqual(scene);
     expect(invertOp(scene, op)).toBeNull();
   });

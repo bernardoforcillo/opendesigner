@@ -131,6 +131,24 @@ function setTextOp(id: string, content: string): Op {
   });
 }
 
+function createVectorOp(id: string): Op {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Path", visible: true, opacity: 1,
+    x: 0, y: 0, width: 100, height: 80,
+    shape: { case: "vector", value: { subpaths: [{ anchors: [{ x: 0, y: 0 }], closed: false }] } },
+  });
+  return create(OpSchema, { opId: "new-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+// `x` è la sola cosa che cambia fra un'invocazione e l'altra: basta a
+// distinguere "il path è quello mio" da "il path è quello dell'altro client".
+function setVectorPathOp(id: string, x: number): Op {
+  return create(OpSchema, {
+    opId: `vec-${id}-${x}`, docId: "doc1",
+    kind: { case: "setVectorPath", value: { id, subpaths: [{ anchors: [{ x, y: 0 }], closed: false }] } },
+  });
+}
+
 // Wrapper: apre e chiude un gesto in un colpo solo, come farebbe un tool a
 // fine drag. È la forma con cui i test costruiscono "un gesto" per lo stack.
 function gesture(finalOps: Op[]) {
@@ -857,6 +875,41 @@ describe("undo/redo", () => {
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().scene!.nodes["t1"].text!.content).toBe("scritto da un altro");
+  });
+
+  // Stessa ragione di setText, sul campo che questa traccia introduce: senza un
+  // bersaglio per setVectorPath, un op remoto sulla geometria non renderebbe
+  // stale niente e il Ctrl+Z successivo cancellerebbe in silenzio il path
+  // appena disegnato da un altro.
+  it("un setVectorPath REMOTO invalida la voce di undo di un editing sullo stesso path", () => {
+    gesture([createVectorOp("v1")]);
+    gesture([setVectorPathOp("v1", 1)]); // un trascinamento di ancoraggio = una voce
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    useScene.getState().apply(setVectorPathOp("v1", 2));
+
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["v1"].vector!.subpaths[0].anchors[0].x).toBe(2);
+  });
+
+  it("un setVectorPath remoto non tocca una voce che scrive campi DISGIUNTI", () => {
+    gesture([createVectorOp("v1")]);
+    gesture([moveOp("v1", 40, 40)]); // voce: [setProps x,y]
+
+    useScene.getState().apply(setVectorPathOp("v1", 7));
+
+    // Spostare il nodo e ridisegnarne la geometria non si sovrascrivono a
+    // vicenda. Cade solo la voce della creazione, che cancellerebbe il nodo.
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["v1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes["v1"].vector!.subpaths[0].anchors[0].x).toBe(7);
   });
 
   it("un setText remoto non tocca una voce che scrive campi DISGIUNTI", () => {
