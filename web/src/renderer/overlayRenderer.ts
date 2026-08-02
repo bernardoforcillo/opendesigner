@@ -33,8 +33,20 @@ function devicePixelRatio(): number {
   return typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
 }
 
-// Unione (in coordinate MONDO) di ciò che i nodi selezionati OCCUPANO davvero,
-// rotazione inclusa (worldAabbOfNode). null se la selezione è vuota o non punta
+// Unione (in coordinate MONDO) dei box dei nodi selezionati, rotazione inclusa
+// (worldAabbOfNode).
+//
+// GEOMETRIA, non il dipinto: il tratto NON entra qui, di proposito. Questo
+// rettangolo è il frame su cui vivono le maniglie, e il resize scrive proprio
+// in x/y/width/height -- se il riquadro includesse la sporgenza del tratto, le
+// maniglie starebbero staccate dal bordo della forma e ogni trascinamento
+// scriverebbe un box gonfiato di quella sporgenza. Un tratto esterno sborda
+// quindi dal riquadro di selezione: è la convenzione degli editor di design
+// (la selezione mostra la GEOMETRIA che si sta modificando), e chi ha bisogno
+// di quello che il nodo DIPINGE -- marquee, hit-test, export -- passa da
+// canvas/geometry.ts::worldVisualAabbOfNode.
+//
+// null se la selezione è vuota o non punta
 // più a nodi esistenti -- lo store toglie già gli id spariti dalla selezione
 // (vedi store.ts), ma questa funzione resta difensiva così l'overlay non
 // esplode su uno stato transitorio incoerente. Estratta apposta così è

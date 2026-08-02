@@ -5,7 +5,7 @@ import type { NodeLite } from "../store/types";
 function node(kind: "rect" | "ellipse"): NodeLite {
   return { id: "n", parentId: "page1", orderKey: "a0", name: kind, visible: true, opacity: 1,
     x: 0, y: 0, width: 100, height: 50, rotation: 0,
-    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind, cornerRadius: 0 };
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind, cornerRadius: 0 };
 }
 
 // Stile con lineHeight non specificato (0): il default 1.2 lo risolve il
@@ -89,6 +89,80 @@ describe("hitTestNode", () => {
 
   it("text: a box larger than one line is not shrunk to it", () => {
     expect(hitTestNode(textNode(), 99, 49)).toBe(true);
+  });
+});
+
+// --- il TRATTO è colpibile ---------------------------------------------------
+//
+// Il tratto è pixel dipinti come il riempimento: quello che si vede si deve
+// poter cliccare. Un tratto OUTSIDE da 20 su un rettangolo disegna una fascia
+// larga 20 tutt'attorno, e senza questo l'unico modo di afferrarla sarebbe
+// centrare la forma -- proprio il bordo, che è la parte che si mira quando si
+// vuole spostare una forma senza riempimento, resterebbe cliccabile a vuoto.
+describe("hitTestNode con il tratto", () => {
+  function withStroke(n: NodeLite, weight: number, align: "center" | "inside" | "outside"): NodeLite {
+    return { ...n, strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight, align }] };
+  }
+
+  it("rect: un tratto ESTERNO si colpisce per tutta la sua larghezza", () => {
+    const r = withStroke(node("rect"), 20, "outside");
+    expect(hitTestNode(r, -19, 25)).toBe(true);   // dentro la fascia
+    expect(hitTestNode(r, -20, 25)).toBe(true);   // sul suo bordo esterno
+    expect(hitTestNode(r, -21, 25)).toBe(false);  // appena oltre
+  });
+
+  it("rect: un tratto CENTRATO sporge di metà peso", () => {
+    const r = withStroke(node("rect"), 20, "center");
+    expect(hitTestNode(r, -10, 25)).toBe(true);
+    expect(hitTestNode(r, -11, 25)).toBe(false);
+  });
+
+  it("rect: un tratto INTERNO non allarga il bersaglio di un pixel", () => {
+    const r = withStroke(node("rect"), 20, "inside");
+    expect(hitTestNode(r, -1, 25)).toBe(false);
+    expect(hitTestNode(r, 0, 25)).toBe(true);
+  });
+
+  it("ellipse: la fascia cresce sui RAGGI, non sull'AABB (l'angolo resta un miss)", () => {
+    const e = withStroke(node("ellipse"), 20, "outside");
+    // Estremo dell'asse maggiore + tutto il peso.
+    expect(hitTestNode(e, 119, 25)).toBe(true);
+    expect(hitTestNode(e, 121, 25)).toBe(false);
+    // E l'angolo del rettangolo contenitore ALLARGATO resta fuori: il tratto
+    // di un'ellisse è un anello, non una cornice quadrata.
+    expect(hitTestNode(e, -19, -9)).toBe(false);
+  });
+
+  it("prende il tratto che sporge di più, non l'ultimo né la somma", () => {
+    const r: NodeLite = { ...node("rect"), strokes: [
+      { color: { r: 0, g: 0, b: 0, a: 1 }, weight: 20, align: "outside" },
+      { color: { r: 0, g: 0, b: 0, a: 1 }, weight: 2, align: "center" },
+    ] };
+    expect(hitTestNode(r, -20, 25)).toBe(true);
+    expect(hitTestNode(r, -21, 25)).toBe(false);
+  });
+
+  it("la fascia gira col nodo (è nello spazio LOCALE, non su quello dello schermo)", () => {
+    const r = { ...withStroke(node("rect"), 20, "outside"), rotation: 90 };
+    // Da fermo il rect occupa x∈[0,100], y∈[0,50] e il tratto arriva a x=-20.
+    // A 90° attorno al centro (50,25) quella fascia finisce SOTTO: y=95.
+    expect(hitTestNode(r, 50, 94)).toBe(true);
+    expect(hitTestNode(r, 50, 96)).toBe(false);
+    expect(hitTestNode(r, -19, 25)).toBe(false); // dov'era da ferma: ora è vuoto
+  });
+
+  it("un peso nullo lascia il bersaglio esattamente com'era", () => {
+    const r = withStroke(node("rect"), 0, "outside");
+    expect(hitTestNode(r, -1, 25)).toBe(false);
+    expect(hitTestNode(r, 0, 25)).toBe(true);
+  });
+
+  it("una forma DEGENERE con un tratto resta non colpibile", () => {
+    // Nessun perimetro da tracciare: il renderer la scarta con lo stesso
+    // guard, e l'hit-test non deve inventare un bersaglio da 40x40 attorno a
+    // un nodo che non si vede.
+    const z = withStroke({ ...node("rect"), width: 0, height: 0 }, 20, "outside");
+    expect(hitTestNode(z, 0, 0)).toBe(false);
   });
 });
 

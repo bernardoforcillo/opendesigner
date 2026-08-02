@@ -10,8 +10,8 @@ import { makeSetPropsOp, makeSetTextOp } from "../tools/ops";
 import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
 import type { RgbLite } from "./fields/ColorField";
-import { toPbFills } from "../store/types";
-import type { NodeLite, TextAlignLite, TextStyleLite } from "../store/types";
+import { toPbFills, toPbStrokes } from "../store/types";
+import type { NodeLite, StrokeAlignLite, StrokeLite, TextAlignLite, TextStyleLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 
@@ -120,6 +120,39 @@ function fillOps(ids: readonly string[], rgb: RgbLite): Op[] {
   });
 }
 
+// Il tratto che il pannello mostra e scrive quando un nodo non ne ha nessuno.
+// Il peso è 1 e non 0 di proposito: scrivere un COLORE su un nodo senza tratti
+// deve produrre qualcosa che si VEDE, altrimenti l'utente sceglie un colore e
+// non succede niente. Il centro è il default del canvas 2D (l'unico
+// allineamento che sa fare da solo, vedi renderer/canvasRenderer.ts) ed è anche
+// quello che StrokeAlign_UNSPECIFIED significa nel modello.
+const DEFAULT_STROKE: StrokeLite = { color: { r: 0, g: 0, b: 0, a: 1 }, weight: 1, align: "center" };
+
+// Op di TRATTO. Stessa forma di fillOps -- e per le stesse ragioni:
+//
+//  - si tocca solo il PRIMO tratto e gli altri restano dove sono (il pannello
+//    ne mostra uno solo; perdere gli altri sarebbe una modifica che l'utente
+//    non ha chiesto e non vede);
+//  - il patch parte dal tratto DEL NODO, non da quello riassunto per il
+//    pannello: in una selezione mista, cambiare lo spessore non deve uniformare
+//    anche colore e posizione;
+//  - un nodo senza tratti parte da DEFAULT_STROKE, cioè scrivere un qualunque
+//    campo CREA il tratto.
+//
+// La mask è `strokes` e sostituisce l'INTERA lista (vedi store/applyOp.ts e
+// core.applySetProps): per questo la lista va ricostruita per intero, non
+// "modificata".
+function strokeOps(ids: readonly string[], patch: Partial<StrokeLite>): Op[] {
+  const scene = useScene.getState().scene;
+  if (!scene) return [];
+  return ids.flatMap((id) => {
+    const n = scene.nodes[id];
+    if (!n) return [];
+    const first: StrokeLite = { ...(n.strokes[0] ?? DEFAULT_STROKE), ...patch };
+    return [makeSetPropsOp(id, { strokes: toPbStrokes([first, ...n.strokes.slice(1)]) }, ["strokes"])];
+  });
+}
+
 // Op di STILE del testo. SetText e non un path della mask: il contenuto e lo
 // stile vivono DENTRO il oneof `shape` del Node (vedi core.applySetText).
 //
@@ -178,6 +211,16 @@ const ALIGNMENTS: readonly { value: TextAlignLite; label: string }[] = [
   { value: "left", label: "Sinistra" },
   { value: "center", label: "Centro" },
   { value: "right", label: "Destra" },
+];
+
+// La POSIZIONE del tratto rispetto al perimetro. Il gruppo si chiama
+// "Posizione" e non "Allineamento" apposta: su un nodo TESTO con un tratto i
+// due gruppi convivono nel pannello, e l'etichetta è anche il nome accessibile
+// -- due gruppi omonimi sarebbero indistinguibili per chi naviga a voce.
+const STROKE_ALIGNMENTS: readonly { value: StrokeAlignLite; label: string }[] = [
+  { value: "inside", label: "Interno" },
+  { value: "center", label: "Centro" },
+  { value: "outside", label: "Esterno" },
 ];
 
 // Un valore riassunto pronto per un RadioGroup CONTROLLATO: null (e non
@@ -332,6 +375,22 @@ export function PropertiesPanel() {
     store.endGesture(opacityOps(store.selection, value));
   }
 
+  // Le stesse due fasi per lo SPESSORE del tratto: si trascina come ogni altro
+  // campo numerico, ma l'op ricostruisce la lista dei tratti invece di scrivere
+  // un campo (vedi strokeOps).
+  function scrubStroke(patch: Partial<StrokeLite>) {
+    const store = useScene.getState();
+    if (store.selection.length === 0) return;
+    if (!store.gesture) store.beginGesture();
+    for (const op of strokeOps(store.selection, patch)) store.applyLocal(op);
+  }
+
+  function scrubStrokeEnd(patch: Partial<StrokeLite>) {
+    const store = useScene.getState();
+    if (!store.gesture) return;
+    store.endGesture(strokeOps(store.selection, patch));
+  }
+
   // Le stesse due fasi per la DIMENSIONE del testo, che si trascina come ogni
   // altro campo numerico ma emette SetText invece di SetProperties.
   function scrubTextStyle(patch: Partial<TextStyleLite>) {
@@ -358,6 +417,12 @@ export function PropertiesPanel() {
 
   const opacity: number | Mixed = summary.opacity;
   const fill = summary.fills === MIXED ? null : (summary.fills[0] ?? null);
+  // Il PRIMO tratto della selezione, o null se non c'è un valore solo da
+  // mostrare (selezione mista). Un nodo senza tratti non è "misto": è un tratto
+  // che non c'è, e si legge come colore vuoto + spessore 0 + posizione al
+  // centro -- lo stato da cui scrivere un campo qualunque ne crea uno.
+  const stroke = summary.strokes === MIXED ? null : (summary.strokes[0] ?? null);
+  const strokesMixed = summary.strokes === MIXED;
 
   return (
     <div className="flex h-full flex-col overflow-auto text-sm text-neutral-700">
@@ -459,6 +524,59 @@ export function PropertiesPanel() {
             onScrubEnd={(v) => scrubEnd(CORNER_RADIUS_FIELD, v)}
           />
         )}
+      </div>
+
+      {/* IL TRATTO. Sezione propria e non dentro "Aspetto": sono tre controlli
+          che descrivono UNA cosa sola (il tratto del nodo), e mescolarli al
+          riempimento renderebbe ambiguo a quale delle due il colore appartiene.
+          Vale per OGNI forma -- `strokes` è un campo di primo livello del Node,
+          non un campo dentro il oneof `shape` come corner_radius -- quindi la
+          sezione c'è sempre, testo compreso. */}
+      <SectionTitle>Tratto</SectionTitle>
+      <div className="flex flex-col gap-1.5 p-2">
+        <ColorField
+          label="Tratto"
+          // Come il riempimento: null su MIXED o su "nessun tratto". Scrivere
+          // un colore resta possibile in entrambi i casi -- ed è il modo in cui
+          // un tratto si CREA (vedi DEFAULT_STROKE).
+          value={stroke?.color ?? null}
+          placeholder={strokesMixed ? MIXED_LABEL : undefined}
+          onCommit={(rgb) => runGesture((ids) => strokeOps(ids, { color: { ...rgb, a: stroke?.color.a ?? 1 } }))}
+        />
+
+        <NumberField
+          label="Spessore"
+          labelWidth="w-20"
+          // Nessun tratto = spessore 0, e 0 resta scrivibile: è il modo di
+          // spegnere un tratto senza toglierlo dalla lista (peso non positivo
+          // = niente disegnato e nessuna sporgenza nei bounds, vedi
+          // canvas/geometry.ts::strokeOutset).
+          minValue={0}
+          value={strokesMixed ? NaN : (stroke?.weight ?? 0)}
+          placeholder={strokesMixed ? MIXED_LABEL : undefined}
+          onCommit={(v) => runGesture((ids) => strokeOps(ids, { weight: v }))}
+          onScrub={(v) => scrubStroke({ weight: v })}
+          onScrubEnd={(v) => scrubStrokeEnd({ weight: v })}
+        />
+
+        <RadioGroup
+          // Su MIXED nessuna scelta selezionata (null, come per i pesi del
+          // testo); su un nodo senza tratti si mostra il default, che è anche
+          // quello che verrebbe scritto.
+          value={strokesMixed ? null : (stroke?.align ?? DEFAULT_STROKE.align)}
+          onChange={(v) => runGesture((ids) => strokeOps(ids, { align: v as StrokeAlignLite }))}
+          orientation="horizontal"
+          className="flex items-center gap-1.5"
+        >
+          <Label className={ROW_LABEL_CLASS}>Posizione</Label>
+          <div className="flex gap-1">
+            {STROKE_ALIGNMENTS.map((a) => (
+              <Radio key={a.value} value={a.value} className={RADIO_CLASS}>
+                {a.label}
+              </Radio>
+            ))}
+          </div>
+        </RadioGroup>
       </div>
 
       {/* Per i nodi testo il pannello mostra INVECE i controlli di stile: sono

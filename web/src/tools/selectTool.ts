@@ -1,5 +1,5 @@
 import { hitTest } from "../renderer/canvasRenderer";
-import { normalizeRect, boundsOfNode, boundsIntersect, worldAabbOfNode, type Bounds } from "../canvas/geometry";
+import { normalizeRect, boundsOfNode, boundsIntersect, worldVisualAabbOfNode, type Bounds } from "../canvas/geometry";
 import { worldToScreen } from "../canvas/camera";
 import { angleOf, centerOf, normalizeDegrees, rotateAround, snapDegrees } from "../canvas/transform";
 import { selectionFrame } from "../renderer/overlayRenderer";
@@ -107,9 +107,12 @@ export function pickTarget(
 // l'ordine di inserimento per chiavi stringa).
 export function nodesInMarquee(scene: SceneState, bounds: Bounds): string[] {
   return Object.values(scene.nodes)
-    // worldAabbOfNode e non boundsOfNode: di un nodo RUOTATO conta quello che
-    // occupa davvero, non il rettangolo che il modello tiene in x/y/w/h.
-    .filter((n) => n.visible && boundsIntersect(worldAabbOfNode(n), bounds))
+    // worldVisualAabbOfNode e non boundsOfNode: conta quello che il nodo
+    // DIPINGE -- ruotato (il rettangolo del modello non è più dove si vede) e
+    // tratto compreso (un tratto esterno da 20 è una fascia larga 20 che sta
+    // tutta fuori dal box). Trascinare un riquadro attorno a ciò che si vede
+    // deve prenderlo: è tutto quello che il marquee promette.
+    .filter((n) => n.visible && boundsIntersect(worldVisualAabbOfNode(n), bounds))
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0))
     .map((n) => n.id);
 }

@@ -82,7 +82,7 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 	paths := s.GetMask().GetPaths()
 	for _, path := range paths {
 		switch path {
-		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "order_key":
+		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "order_key":
 			// supported
 		case "corner_radius":
 			// UNICO path della mask che indirizza un campo DENTRO il oneof
@@ -134,6 +134,19 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 			n.Visible = p.GetVisible()
 		case "fills":
 			n.Fills = p.GetFills()
+		case "strokes":
+			// SOSTITUZIONE dell'intera lista, esattamente come `fills` qui
+			// sopra -- non una fusione elemento per elemento. È il campo
+			// RIPETUTO su cui le due implementazioni di apply potrebbero
+			// divergere in silenzio (una lista più corta che lascia in coda i
+			// tratti vecchi si nota solo guardando il canvas), quindi la
+			// semantica è fissata da un test per lato e dalla fixture
+			// testdata/golden/strokes.json, che il runner esegue da entrambi.
+			//
+			// A differenza di corner_radius NON c'è nessuna forma da
+			// controllare: il tratto è un campo di primo livello del Node, e
+			// vale per un rettangolo come per un'ellisse o un testo.
+			n.Strokes = p.GetStrokes()
 		case "order_key":
 			// L'ordine di disegno (e quello del pannello livelli) è un CAMPO
 			// come gli altri, non un op dedicato: riordinare è scrivere una

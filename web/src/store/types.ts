@@ -1,9 +1,27 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema, TextAlign } from "../gen/brawt/v1/brawt_pb";
-import type { Document, Node as PbNode, TextNode as PbTextNode, TextStyle as PbTextStyle } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema, StrokeAlign, TextAlign } from "../gen/brawt/v1/brawt_pb";
+import type {
+  Document, Node as PbNode, Paint as PbPaint, Stroke as PbStroke,
+  TextNode as PbTextNode, TextStyle as PbTextStyle,
+} from "../gen/brawt/v1/brawt_pb";
 
 export interface PageLite { id: string; name: string; }
 export interface FillLite { r: number; g: number; b: number; a: number; }
+
+// L'allineamento del tratto come stringa, per la stessa ragione di
+// TextAlignLite: il modello in memoria è ciò che leggono renderer e pannelli, e
+// una stringa si legge (e si scrive in un test) senza importare il generato.
+// STROKE_ALIGN_UNSPECIFIED collassa su "center" -- è il default del canvas 2D,
+// quindi la distinzione non è osservabile.
+export type StrokeAlignLite = "center" | "inside" | "outside";
+
+// Un tratto APPIATTITO, come FillLite lo è per un Paint: il colore risolto e
+// basta. Il peso è in coordinate MONDO (come fontSize), quindi un tratto da 4
+// resta spesso 4 unità a ogni zoom -- si ingrandisce col nodo, non con lo
+// schermo. Il default 0 è "nessun tratto da disegnare", non "sottilissimo":
+// un peso non positivo non produce né pixel né sporgenza dei bounds (vedi
+// canvas/geometry.ts::strokeOutsetOf).
+export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlignLite; }
 
 // L'allineamento come stringa e non come enum numerico, per la stessa ragione
 // per cui `kind` è "rect" | "ellipse" | "text" invece del discriminante del
@@ -27,7 +45,8 @@ export interface NodeLite {
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
-  fills: FillLite[]; kind: "rect" | "ellipse" | "text"; cornerRadius: number;
+  fills: FillLite[]; strokes: StrokeLite[];
+  kind: "rect" | "ellipse" | "text"; cornerRadius: number;
   // Presente se e solo se kind === "text": il contenuto vive DENTRO il oneof
   // `shape` del proto, quindi è per costruzione esclusivo con rect/ellipse.
   text?: TextLite;
@@ -52,6 +71,18 @@ const ALIGN_TO_PB: Record<TextAlignLite, TextAlign> = {
   left: TextAlign.LEFT,
   center: TextAlign.CENTER,
   right: TextAlign.RIGHT,
+};
+
+const STROKE_ALIGN_TO_LITE: Record<StrokeAlign, StrokeAlignLite> = {
+  [StrokeAlign.UNSPECIFIED]: "center",
+  [StrokeAlign.CENTER]: "center",
+  [StrokeAlign.INSIDE]: "inside",
+  [StrokeAlign.OUTSIDE]: "outside",
+};
+const STROKE_ALIGN_TO_PB: Record<StrokeAlignLite, StrokeAlign> = {
+  center: StrokeAlign.CENTER,
+  inside: StrokeAlign.INSIDE,
+  outside: StrokeAlign.OUTSIDE,
 };
 
 // Uno stile ASSENTE non è un errore: in Go `t.Text.GetStyle()` è nil-safe e
@@ -89,21 +120,48 @@ export function toPbTextStyle(s: TextStyleLite) {
 // costruisce lo STESSO patch per il suo op di riempimento: due mappature
 // indipendenti dello stesso campo divergerebbero al primo paint non-solid.
 export function toPbFills(fills: readonly FillLite[]) {
-  return fills.map((f) => ({
-    kind: { case: "solid" as const, value: { color: { r: f.r, g: f.g, b: f.b, a: f.a } } },
+  return fills.map(toPbPaint);
+}
+
+// I TRATTI del modello nella forma di init di brawt.v1.Node.strokes. Gemella di
+// toPbFills, ed esportata per la stessa ragione: il pannello proprietà
+// (ui/PropertiesPanel.tsx) costruisce lo STESSO patch per il suo op di tratto.
+export function toPbStrokes(strokes: readonly StrokeLite[]) {
+  return strokes.map((s) => ({
+    paint: toPbPaint(s.color),
+    weight: s.weight,
+    align: STROKE_ALIGN_TO_PB[s.align] ?? StrokeAlign.CENTER,
   }));
 }
 
+function toPbPaint(c: FillLite) {
+  return { kind: { case: "solid" as const, value: { color: { r: c.r, g: c.g, b: c.b, a: c.a } } } };
+}
+
+// Un Paint del filo APPIATTITO nel colore che il renderer disegna. Una funzione
+// sola per riempimenti e tratti: sono lo stesso messaggio nel proto, e due
+// appiattimenti indipendenti divergerebbero al primo paint non-solid (oggi
+// l'unico caso è un paint ASSENTE, ma il oneof `kind` esiste per crescere).
+function toFillLite(p: PbPaint | undefined): FillLite {
+  const c = p?.kind.case === "solid" ? p.kind.value.color : undefined;
+  return c ? { r: c.r, g: c.g, b: c.b, a: c.a } : { r: 0, g: 0, b: 0, a: 1 };
+}
+
+export function toStrokeLite(s: PbStroke): StrokeLite {
+  return {
+    color: toFillLite(s.paint),
+    weight: s.weight,
+    align: STROKE_ALIGN_TO_LITE[s.align] ?? "center",
+  };
+}
+
 export function toNodeLite(n: PbNode): NodeLite {
-  const fills: FillLite[] = n.fills.map((f) =>
-    f.kind.case === "solid" && f.kind.value.color
-      ? { r: f.kind.value.color.r, g: f.kind.value.color.g, b: f.kind.value.color.b, a: f.kind.value.color.a }
-      : { r: 0, g: 0, b: 0, a: 1 });
   return {
     id: n.id, parentId: n.parentId, orderKey: n.orderKey, name: n.name,
     visible: n.visible, opacity: n.opacity,
     x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation,
-    fills,
+    fills: n.fills.map(toFillLite),
+    strokes: n.strokes.map(toStrokeLite),
     // "rect" resta il fallback per una forma assente o sconosciuta: un nodo
     // senza shape è comunque un rettangolo disegnabile, mentre un "text" senza
     // contenuto non lo sarebbe.
@@ -124,6 +182,7 @@ export function toPbNode(n: NodeLite): PbNode {
     visible: n.visible, opacity: n.opacity,
     x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation,
     fills: toPbFills(n.fills),
+    strokes: toPbStrokes(n.strokes),
     shape: n.kind === "ellipse"
       ? { case: "ellipse" as const, value: {} }
       : n.kind === "text"

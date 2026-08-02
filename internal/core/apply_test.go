@@ -197,6 +197,107 @@ func TestApplySetPropertiesCornerRadiusOnShapelessNodeMaterializesRect(t *testin
 	}
 }
 
+// --- strokes (traccia 2) ----------------------------------------------------
+//
+// `strokes` è RIPETUTO come `fills`, e la semantica di scrittura è la stessa:
+// la mask SOSTITUISCE l'intera lista, non fonde elemento per elemento. È il
+// punto in cui le due implementazioni (qui e web/src/store/applyOp.ts)
+// potrebbero divergere in silenzio -- una lista più corta che lascia in coda i
+// tratti vecchi si nota solo guardando il canvas -- quindi la sostituzione è
+// fissata da un test da entrambi i lati, oltre che dalla fixture golden
+// testdata/golden/strokes.json.
+
+func stroke(weight float64, align brawtv1.StrokeAlign, r, g, b float32) *brawtv1.Stroke {
+	return &brawtv1.Stroke{
+		Paint: &brawtv1.Paint{Kind: &brawtv1.Paint_Solid{
+			Solid: &brawtv1.SolidPaint{Color: &brawtv1.Color{R: r, G: g, B: b, A: 1}},
+		}},
+		Weight: weight,
+		Align:  align,
+	}
+}
+
+func TestApplySetPropertiesStrokesReplacesTheWholeList(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	n := rectNode("n1", 0, 0)
+	n.Strokes = []*brawtv1.Stroke{
+		stroke(4, brawtv1.StrokeAlign_STROKE_ALIGN_CENTER, 1, 0, 0),
+		stroke(2, brawtv1.StrokeAlign_STROKE_ALIGN_INSIDE, 0, 1, 0),
+	}
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: n}}})
+
+	op := setPropsOp(&brawtv1.SetProperties{
+		Id: "n1",
+		Patch: &brawtv1.Node{Strokes: []*brawtv1.Stroke{
+			stroke(9, brawtv1.StrokeAlign_STROKE_ALIGN_OUTSIDE, 0, 0, 1),
+		}},
+		Mask: &fieldmaskpb.FieldMask{Paths: []string{"strokes"}},
+	})
+	if err := Apply(doc, op); err != nil {
+		t.Fatalf("Apply strokes: %v", err)
+	}
+	got := doc.Nodes["n1"].GetStrokes()
+	// UNO, non tre: la lista nuova sostituisce la vecchia. Se le due
+	// implementazioni divergessero qui, il documento autorevole e quello del
+	// client mostrerebbero un numero DIVERSO di tratti sullo stesso nodo.
+	if len(got) != 1 {
+		t.Fatalf("la lista non è stata sostituita: %d tratti", len(got))
+	}
+	if got[0].GetWeight() != 9 {
+		t.Fatalf("peso sbagliato: %v", got[0].GetWeight())
+	}
+	if got[0].GetAlign() != brawtv1.StrokeAlign_STROKE_ALIGN_OUTSIDE {
+		t.Fatalf("allineamento sbagliato: %v", got[0].GetAlign())
+	}
+	if c := got[0].GetPaint().GetSolid().GetColor(); c.GetB() != 1 {
+		t.Fatalf("colore sbagliato: %+v", c)
+	}
+}
+
+// Come ogni altro path: un patch SENZA strokes azzera la lista, perché
+// applySetProps legge il patch con i getter nil-safe di protobuf. È la
+// controparte del NIL_PATCH di web/src/store/applyOp.ts, ed è anche il modo in
+// cui il pannello proprietà toglie il tratto da un nodo.
+func TestApplySetPropertiesStrokesNilPatchClearsTheList(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	n := rectNode("n1", 0, 0)
+	n.Strokes = []*brawtv1.Stroke{stroke(4, brawtv1.StrokeAlign_STROKE_ALIGN_CENTER, 1, 0, 0)}
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: n}}})
+
+	op := setPropsOp(&brawtv1.SetProperties{
+		Id:   "n1",
+		Mask: &fieldmaskpb.FieldMask{Paths: []string{"strokes"}},
+	})
+	if err := Apply(doc, op); err != nil {
+		t.Fatalf("Apply strokes senza patch: %v", err)
+	}
+	if got := doc.Nodes["n1"].GetStrokes(); len(got) != 0 {
+		t.Fatalf("lista non azzerata dal patch nil: %d tratti", len(got))
+	}
+}
+
+// Il tratto vive su OGNI nodo, non dentro il oneof `shape`: a differenza di
+// corner_radius non c'è nessuna forma da controllare, e un'ellisse o un testo
+// lo accettano come un rettangolo.
+func TestApplySetPropertiesStrokesOnAnyShape(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: ellipseNode("e1")}}})
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: textNode("t1", "ciao")}}})
+	for _, id := range []string{"e1", "t1"} {
+		op := setPropsOp(&brawtv1.SetProperties{
+			Id:    id,
+			Patch: &brawtv1.Node{Strokes: []*brawtv1.Stroke{stroke(3, brawtv1.StrokeAlign_STROKE_ALIGN_CENTER, 0, 0, 0)}},
+			Mask:  &fieldmaskpb.FieldMask{Paths: []string{"strokes"}},
+		})
+		if err := Apply(doc, op); err != nil {
+			t.Fatalf("Apply strokes su %s: %v", id, err)
+		}
+		if got := doc.Nodes[id].GetStrokes(); len(got) != 1 || got[0].GetWeight() != 3 {
+			t.Fatalf("tratto non applicato su %s: %+v", id, got)
+		}
+	}
+}
+
 // TestApplyCreateNodeOnNilNodesMap covers the scenario the review flagged:
 // a *brawtv1.Document not built via NewDocument (e.g. proto.Unmarshal-ed
 // from a snapshot taken while the document had zero nodes — proto3 omits

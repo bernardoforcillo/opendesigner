@@ -48,6 +48,14 @@ export const MASK_PATHS = [
   "name",
   "visible",
   "fills",
+  // M2, traccia 2 (stroke). Ripetuto come "fills" e con la STESSA semantica di
+  // scrittura: la mask sostituisce l'INTERA lista, non fonde elemento per
+  // elemento. Monoparola, quindi il round-trip sul filo è l'identità -- ma la
+  // fixture testdata/golden/strokes.json esiste comunque, perché il rischio qui
+  // non è la codifica: è che le due implementazioni di apply divergano sulla
+  // sostituzione (una lista più corta che lascia in coda i tratti vecchi si
+  // nota solo guardando il canvas).
+  "strokes",
   // Primo path MULTIPAROLA della mask (M1b, Task 8: il riordino del pannello
   // livelli). Scritto snake_case come lo scrive Go; sul filo JSON diventa
   // "orderKey" e torna indietro così com'è -- è tutto il motivo per cui questo

@@ -48,7 +48,7 @@ function textNode(id: string, content: string, over: Partial<NodeLite> = {}): No
   return {
     id, parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
     x: 10, y: 20, width: 200, height: 24, rotation: 0,
-    fills: [{ r: 0, g: 0, b: 0, a: 1 }],
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [],
     kind: "text", cornerRadius: 0,
     text: {
       content,

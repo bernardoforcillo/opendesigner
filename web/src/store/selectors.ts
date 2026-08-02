@@ -1,4 +1,4 @@
-import type { FillLite, NodeLite, SceneState } from "./types";
+import type { FillLite, NodeLite, SceneState, StrokeLite } from "./types";
 
 // Il pannello livelli mostra il PRIMO PIANO in cima alla lista: è l'ordine
 // INVERSO del disegno (che va dal fondo alla cima, orderKey crescente). Un
@@ -31,10 +31,24 @@ export interface SelectionSummary {
   rotation: OrMixed<number>;
   cornerRadius: OrMixed<number>;
   fills: OrMixed<FillLite[]>;
+  strokes: OrMixed<StrokeLite[]>;
+}
+
+function sameColor(a: FillLite, b: FillLite): boolean {
+  return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
 }
 
 function sameFills(a: FillLite[], b: FillLite[]): boolean {
-  return a.length === b.length && a.every((f, i) => f.r === b[i].r && f.g === b[i].g && f.b === b[i].b && f.a === b[i].a);
+  return a.length === b.length && a.every((f, i) => sameColor(f, b[i]));
+}
+
+// Come sameFills: due array distinti con lo stesso contenuto sono lo STESSO
+// valore per l'utente. Peso e allineamento oltre al colore -- due tratti dello
+// stesso colore ma di spessore diverso non sono "lo stesso tratto", e il
+// pannello deve dire "Misto".
+function sameStrokes(a: StrokeLite[], b: StrokeLite[]): boolean {
+  return a.length === b.length
+    && a.every((s, i) => s.weight === b[i].weight && s.align === b[i].align && sameColor(s.color, b[i].color));
 }
 
 // Confronta un campo su tutti i nodi selezionati rispetto al PRIMO: appena
@@ -70,5 +84,6 @@ export function selectionSummary(scene: SceneState, ids: readonly string[]): Sel
     rotation: summarize(nodes, (n) => n.rotation),
     cornerRadius: summarize(nodes, (n) => n.cornerRadius),
     fills: summarize(nodes, (n) => n.fills, sameFills),
+    strokes: summarize(nodes, (n) => n.strokes, sameStrokes),
   };
 }

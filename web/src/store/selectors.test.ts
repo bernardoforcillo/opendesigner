@@ -7,7 +7,7 @@ function node(over: Partial<NodeLite> & { id: string; orderKey: string }): NodeL
   return {
     parentId: "page1", name: "n", visible: true, opacity: 1,
     x: 0, y: 0, width: 10, height: 10, rotation: 0,
-    fills: [{ r: 1, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0,
+    fills: [{ r: 1, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0,
     ...over,
   };
 }
@@ -66,6 +66,7 @@ describe("selectionSummary", () => {
       name: "Rect", kind: "rect", visible: false, opacity: 0.5,
       x: 10, y: 20, width: 30, height: 40, rotation: 5, cornerRadius: 2,
       fills: [{ r: 0.1, g: 0.2, b: 0.3, a: 1 }],
+      strokes: [],
     });
   });
 
@@ -95,6 +96,37 @@ describe("selectionSummary", () => {
       node({ id: "n2", orderKey: "a000001", fills: [{ r: 0, g: 1, b: 0, a: 1 }] }),
     ]);
     expect(selectionSummary(s2, ["n1", "n2"])?.fills).toBe(MIXED);
+  });
+
+  it("confronta i tratti su TUTTI e tre i campi, non solo sul colore", () => {
+    const black = { r: 0, g: 0, b: 0, a: 1 };
+    const same = sceneWith([
+      node({ id: "n1", orderKey: "a000000", strokes: [{ color: black, weight: 2, align: "center" }] }),
+      node({ id: "n2", orderKey: "a000001", strokes: [{ color: black, weight: 2, align: "center" }] }),
+    ]);
+    expect(selectionSummary(same, ["n1", "n2"])?.strokes)
+      .toEqual([{ color: black, weight: 2, align: "center" }]);
+
+    // Stesso colore, spessore diverso: NON è lo stesso tratto.
+    const byWeight = sceneWith([
+      node({ id: "n1", orderKey: "a000000", strokes: [{ color: black, weight: 2, align: "center" }] }),
+      node({ id: "n2", orderKey: "a000001", strokes: [{ color: black, weight: 8, align: "center" }] }),
+    ]);
+    expect(selectionSummary(byWeight, ["n1", "n2"])?.strokes).toBe(MIXED);
+
+    // Stesso colore e spessore, posizione diversa: nemmeno.
+    const byAlign = sceneWith([
+      node({ id: "n1", orderKey: "a000000", strokes: [{ color: black, weight: 2, align: "inside" }] }),
+      node({ id: "n2", orderKey: "a000001", strokes: [{ color: black, weight: 2, align: "outside" }] }),
+    ]);
+    expect(selectionSummary(byAlign, ["n1", "n2"])?.strokes).toBe(MIXED);
+
+    // E "nessun tratto" contro "un tratto" è misto, non un valore comune.
+    const byCount = sceneWith([
+      node({ id: "n1", orderKey: "a000000", strokes: [] }),
+      node({ id: "n2", orderKey: "a000001", strokes: [{ color: black, weight: 2, align: "center" }] }),
+    ]);
+    expect(selectionSummary(byCount, ["n1", "n2"])?.strokes).toBe(MIXED);
   });
 
   it("is MIXED across three nodes when only the third differs", () => {

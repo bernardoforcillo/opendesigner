@@ -1,5 +1,5 @@
 import type { NodeLite } from "../store/types";
-import { boundsOfNode } from "../canvas/geometry";
+import { boundsOfNode, inflateBounds, strokeOutsetOfNode } from "../canvas/geometry";
 import { centerOf, worldToLocal, type Point } from "../canvas/transform";
 import { lineHeightOf } from "./text";
 
@@ -53,25 +53,36 @@ function hitTestLocal(n: NodeLite, wx: number, wy: number): boolean {
   // drawScene (canvasRenderer.ts): un testo con height 0 -- un nodo appena
   // creato, la cui altezza la produce il layout -- viene disegnato, e ciò che
   // si vede deve potersi cliccare. Una forma degenere invece non ha né
-  // riempimento né area da colpire.
+  // riempimento né area da colpire -- e NEMMENO un tratto: senza perimetro non
+  // c'è niente da tracciare, quindi il guard sta PRIMA della sporgenza.
   if (n.kind !== "text" && (n.width <= 0 || n.height <= 0)) return false;
+  // La sporgenza del tratto ALLARGA il bersaglio: quello che si vede si deve
+  // poter cliccare, e un tratto esterno da 20 è una fascia larga 20 tutt'attorno
+  // alla forma -- esattamente la parte che si mira per afferrare una forma dal
+  // bordo. La misura è quella di canvas/geometry.ts, la stessa che usano
+  // marquee ed export: due nozioni diverse di "quanto sporge" darebbero un
+  // bersaglio che non coincide con ciò che è dipinto.
+  const outset = strokeOutsetOfNode(n);
   // Il testo si colpisce sul suo BOUNDING BOX, mai sui glifi: è il
   // comportamento atteso in un editor (cliccare fra due lettere, o nello spazio
   // vuoto a destra di una riga corta, seleziona comunque il nodo) ed è anche
   // l'unico test possibile senza misurare il font. Ramo esplicito e non
   // implicito nel fallback: se un giorno il ramo "rect" imparasse i corner
   // radius, il testo non deve seguirlo.
-  if (n.kind === "text") return insideBox(textHitBox(n), wx, wy);
+  if (n.kind === "text") return insideBox(inflateBounds(textHitBox(n), outset), wx, wy);
   if (n.kind === "ellipse") {
+    // La sporgenza si somma ai RAGGI, non all'AABB: il tratto di un'ellisse è
+    // un anello, non una cornice quadrata, quindi l'angolo del rettangolo
+    // contenitore allargato deve restare un miss come lo era quello del box.
     const cx = n.x + n.width / 2;
     const cy = n.y + n.height / 2;
-    const rx = n.width / 2;
-    const ry = n.height / 2;
+    const rx = n.width / 2 + outset;
+    const ry = n.height / 2 + outset;
     const nx = (wx - cx) / rx;
     const ny = (wy - cy) / ry;
     return nx * nx + ny * ny <= 1;
   }
-  return insideBox(n, wx, wy);
+  return insideBox(inflateBounds(boundsOfNode(n), outset), wx, wy);
 }
 
 interface Box { x: number; y: number; width: number; height: number }

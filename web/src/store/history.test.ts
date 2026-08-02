@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema, TextStyleSchema, TextAlign } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema, OpSchema, StrokeAlign, TextStyleSchema, TextAlign } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, toNodeLite, toPbNode, type NodeLite, type SceneState } from "./types";
@@ -18,6 +18,12 @@ function richRect(id = "n1"): PbNode {
     fills: [
       { kind: { case: "solid", value: { color: { r: 0.25, g: 0.5, b: 0.75, a: 1 } } } },
       { kind: { case: "solid", value: { color: { r: 1, g: 0, b: 0, a: 0.5 } } } },
+    ],
+    strokes: [
+      { paint: { kind: { case: "solid", value: { color: { r: 0.5, g: 0, b: 0, a: 1 } } } },
+        weight: 4, align: StrokeAlign.OUTSIDE },
+      { paint: { kind: { case: "solid", value: { color: { r: 0, g: 0, b: 0.25, a: 0.5 } } } },
+        weight: 1.5, align: StrokeAlign.INSIDE },
     ],
     shape: { case: "rect", value: { cornerRadius: 12 } },
   });
@@ -156,6 +162,24 @@ describe("invertOp: setProps", () => {
         ["fills", "name", "visible", "opacity", "rotation"],
       ),
     );
+  });
+
+  // Il campo RIPETUTO su cui l'inverso è più facile da sbagliare: la mask
+  // sostituisce l'intera lista, quindi l'inverso deve riportare TUTTI i tratti
+  // di prima, non solo il primo -- e l'op diretto qui ne toglie uno apposta.
+  it("round-trips su strokes: una lista più corta torna lunga com'era", () => {
+    const scene = sceneWith(richRect());
+    const op = setPropsOp(
+      "n1",
+      { strokes: [{ paint: { kind: { case: "solid", value: { color: { r: 1, g: 1, b: 1, a: 1 } } } }, weight: 9, align: StrokeAlign.CENTER }] },
+      ["strokes"],
+    );
+    const after = applyOp(scene, op);
+    // L'op diretto morde davvero: senza questo, il round-trip passerebbe per
+    // finta anche su un applyOp che ignora il path.
+    expect(after.nodes["n1"].strokes).toHaveLength(1);
+    expect(after.nodes["n1"].strokes[0].weight).toBe(9);
+    expectRoundTrip(scene, op);
   });
 
   it("round-trips una mask a un solo path senza toccare il resto", () => {

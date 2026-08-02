@@ -10,7 +10,7 @@ import { selectionFrame } from "../renderer/overlayRenderer";
 
 function node(id: string, x: number, orderKey: string, extra: Partial<NodeLite> = {}): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,
-    x, y: 0, width: 50, height: 50, rotation: 0, fills: [], kind: "rect", cornerRadius: 0, ...extra };
+    x, y: 0, width: 50, height: 50, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, ...extra };
 }
 
 function fakeCtx(): ToolContext {
@@ -164,6 +164,30 @@ describe("selectTool", () => {
         shown: node("shown", 5, "a000001"),
       } };
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 20, height: 20 })).toEqual(["shown"]);
+    });
+
+    it("un marquee che tocca SOLO il tratto prende comunque il nodo", () => {
+      // 50x50 in (100,0) con un tratto esterno da 20: dipinge da x=80.
+      // Un marquee che arriva a x=85 non tocca la geometria, ma tocca quello
+      // che si VEDE -- e trascinare una selezione attorno a ciò che si vede è
+      // tutto quello che il marquee promette.
+      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+        outlined: node("outlined", 100, "a000000", {
+          strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 20, align: "outside" }],
+        }),
+      } };
+      expect(nodesInMarquee(scene, { x: 0, y: 0, width: 85, height: 50 })).toEqual(["outlined"]);
+      // E un marquee che si ferma PRIMA della fascia continua a non prenderlo.
+      expect(nodesInMarquee(scene, { x: 0, y: 0, width: 79, height: 50 })).toEqual([]);
+    });
+
+    it("un tratto INTERNO non allarga il bersaglio del marquee", () => {
+      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+        outlined: node("outlined", 100, "a000000", {
+          strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 20, align: "inside" }],
+        }),
+      } };
+      expect(nodesInMarquee(scene, { x: 0, y: 0, width: 85, height: 50 })).toEqual([]);
     });
   });
 

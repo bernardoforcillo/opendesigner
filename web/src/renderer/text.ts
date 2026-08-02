@@ -174,6 +174,30 @@ export function layoutText(
 // chiamante (drawScene mette fillStyle e globalAlpha dal nodo): qui si tocca
 // solo ciò che riguarda il testo.
 export function drawText(ctx: CanvasRenderingContext2D, n: NodeLite): void {
+  paintText(ctx, n, (line, x, y) => ctx.fillText(line, x, y));
+}
+
+// Il TRATTO del testo. Gemella di drawText -- stesso layout, stesse coordinate,
+// stessa riga per riga -- e non una seconda misura: due percorsi di layout
+// indipendenti sfaserebbero i glifi tracciati da quelli riempiti al primo
+// cambio del wrap.
+//
+// APPROSSIMAZIONE DICHIARATA: il tratto di un testo è SEMPRE centrato sul
+// contorno del glifo, qualunque sia `align`. INSIDE e OUTSIDE si ottengono
+// ritagliando col path della forma (vedi canvasRenderer.ts::strokeShape), e un
+// glifo un Path2D non ce l'ha -- il canvas 2D non espone il contorno del testo.
+// La sporgenza contata nei bounds segue la STESSA regola (metà peso per un nodo
+// testo, sempre: canvas/geometry.ts::strokeOutsetOfNode), così quello che si
+// misura e quello che si dipinge restano la stessa cosa.
+export function strokeText(ctx: CanvasRenderingContext2D, n: NodeLite): void {
+  paintText(ctx, n, (line, x, y) => ctx.strokeText(line, x, y));
+}
+
+function paintText(
+  ctx: CanvasRenderingContext2D,
+  n: NodeLite,
+  paintLine: (line: string, x: number, y: number) => void,
+): void {
   const t = n.text;
   if (n.kind !== "text" || !t || t.content === "") return;
   const style = t.style;
@@ -198,6 +222,6 @@ export function drawText(ctx: CanvasRenderingContext2D, n: NodeLite): void {
     // Una riga vuota non si disegna ma occupa comunque il suo slot verticale.
     if (line === "") continue;
     const x = n.x + alignOffsetX(style.align, ctx.measureText(line).width, n.width);
-    ctx.fillText(line, x, n.y + layout.ascent + i * layout.lineHeight);
+    paintLine(line, x, n.y + layout.ascent + i * layout.lineHeight);
   }
 }
