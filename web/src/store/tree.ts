@@ -1,0 +1,118 @@
+import type { NodeLite, SceneState } from "./types";
+
+// ATTRAVERSAMENTO DEL DOCUMENTO COME ALBERO.
+//
+// `parentId` esisteva da M0 ma nessuno lo leggeva: la scena era piatta e ogni
+// nodo figlio di "page1". Da qui in poi è la struttura portante -- gruppi,
+// frame e componenti sono tutti sottoalberi -- e questi sono gli unici
+// attraversamenti che il resto del codice deve usare: renderer, pannello
+// livelli, hit-test e le altre tracce.
+//
+// Metà TS di internal/core/tree.go: stesse regole, stesso ORDINE, stessa
+// tolleranza a un documento malformato. Le due implementazioni devono restare
+// indistinguibili come applyOp e core.Apply -- l'ordine dei figli decide
+// l'ordine di disegno, e l'ordine del sottoalbero decide la sequenza con cui
+// una delete a cascata viene annullata.
+//
+// I nodi vivono in una MAPPA piatta (`scene.nodes`) e i figli non sono
+// indicizzati: ogni chiamata scansiona la mappa. È la stessa scelta di
+// selectors.ts::layersInDrawOrder (un sort a ogni chiamata) e per la stessa
+// ragione: `scene` è immutabile e ricostruita a ogni op, quindi qualunque
+// indice andrebbe invalidato di continuo. Se un giorno il costo si vedrà, il
+// posto dove metterlo è QUESTO modulo, non i chiamanti.
+
+// Ordine dei fratelli: order key crescente (dal fondo alla cima nell'ordine di
+// disegno), id come spareggio. Lo spareggio non è pedanteria: l'ordine di
+// Object.values su una mappa non è definito dal linguaggio, quindi senza di
+// esso due chiamate identiche potrebbero dare liste diverse -- e la sequenza di
+// ripristino di una delete a cascata cambierebbe a ogni esecuzione.
+// Confronto per code unit come in Go (byte-wise), non localeCompare: le order
+// key sono indici frazionari ASCII, e una collazione locale le ordinerebbe
+// diversamente dal server.
+function bySiblingOrder(a: NodeLite, b: NodeLite): number {
+  if (a.orderKey !== b.orderKey) return a.orderKey < b.orderKey ? -1 : 1;
+  return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
+}
+
+// I figli DIRETTI di un container, ordinati. `parentId` può essere l'id di un
+// nodo o quello di una Page (i root di quella pagina).
+export function childrenOf(scene: SceneState, parentId: string): NodeLite[] {
+  return Object.values(scene.nodes).filter((n) => n.parentId === parentId).sort(bySiblingOrder);
+}
+
+// Il nodo E tutti i suoi discendenti, in PRE-ORDINE: ogni nodo compare sempre
+// dopo il proprio parent, i fratelli in ordine di order key.
+//
+// L'ordine non è estetico: è ciò che rende la lista riusabile come sequenza di
+// RICREAZIONE (l'inverso di una delete a cascata, vedi history.ts::invertOp).
+// Ricrearli in quest'ordine soddisfa l'invariante "il parent esiste" a ogni
+// passo; in ordine inverso ogni figlio verrebbe rifiutato.
+//
+// Lista vuota se il nodo non esiste.
+export function subtreeOf(scene: SceneState, id: string): NodeLite[] {
+  const root = scene.nodes[id];
+  if (!root) return [];
+  const out: NodeLite[] = [];
+  const seen = new Set<string>();
+  // Pila esplicita e non ricorsione: la profondità la decide l'utente (gruppi
+  // dentro gruppi dentro frame) e un documento malformato potrebbe renderla
+  // illimitata. In pila i figli vanno in ordine INVERSO, così escono in ordine
+  // di order key.
+  const stack: NodeLite[] = [root];
+  while (stack.length > 0) {
+    const n = stack.pop() as NodeLite;
+    // Ciclo in un documento malformato: già visitato, rivisitarlo non
+    // finirebbe mai.
+    if (seen.has(n.id)) continue;
+    seen.add(n.id);
+    out.push(n);
+    const children = childrenOf(scene, n.id);
+    for (let i = children.length - 1; i >= 0; i--) stack.push(children[i]);
+  }
+  return out;
+}
+
+// Il sottoalbero SENZA la radice, stesso ordine.
+export function descendantsOf(scene: SceneState, id: string): NodeLite[] {
+  return subtreeOf(scene, id).slice(1);
+}
+
+// Gli antenati di un nodo, dal più VICINO al più lontano. Si ferma alla pagina:
+// una Page non è un NodeLite, quindi un root di pagina non ha antenati.
+export function ancestorsOf(scene: SceneState, id: string): NodeLite[] {
+  const out: NodeLite[] = [];
+  const seen = new Set<string>([id]);
+  let cur = scene.nodes[id];
+  while (cur) {
+    const parent = scene.nodes[cur.parentId];
+    // seen: un ciclo in un documento malformato non deve far salire per sempre.
+    if (!parent || seen.has(parent.id)) break;
+    seen.add(parent.id);
+    out.push(parent);
+    cur = parent;
+  }
+  return out;
+}
+
+// Relazione STRETTA: nessuno è antenato di se stesso. Risale la catena invece
+// di scendere l'albero -- la profondità è tipicamente molto minore del numero
+// di discendenti, ed è la direzione in cui va fatto il controllo dei cicli di
+// un reparent.
+export function isAncestorOf(scene: SceneState, ancestorId: string, id: string): boolean {
+  const seen = new Set<string>();
+  let cur = scene.nodes[id];
+  while (cur && !seen.has(cur.id)) {
+    seen.add(cur.id);
+    if (cur.parentId === ancestorId) return true;
+    cur = scene.nodes[cur.parentId];
+  }
+  return false;
+}
+
+// Un parent VALIDO: un nodo esistente oppure una Page del documento. La stringa
+// vuota non è né l'uno né l'altro -- un nodo senza parent non è raggiungibile da
+// nessuna pagina, quindi non è disegnabile né selezionabile: esisterebbe solo
+// dentro la mappa. Parità con core.parentExists (Go).
+export function parentExists(scene: SceneState, parentId: string): boolean {
+  return parentId in scene.nodes || scene.pages.some((p) => p.id === parentId);
+}

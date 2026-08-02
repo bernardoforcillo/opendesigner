@@ -112,6 +112,38 @@ function deleteOp(id: string): Op {
   });
 }
 
+// Un nodo DENTRO un altro nodo: la scena non è più piatta, e un deleteNode
+// sull'antenato porta via anche questo (cascata).
+function createChildOp(id: string, parentId: string, orderKey: string): Op {
+  return create(OpSchema, {
+    opId: "new-" + id, docId: "doc1",
+    kind: { case: "createNode", value: { node: create(NodeSchema, {
+      id, parentId, orderKey, name: id, visible: true, opacity: 1,
+      x: 0, y: 0, width: 10, height: 10,
+      shape: { case: "rect", value: { cornerRadius: 0 } },
+    }) } },
+  });
+}
+
+// Riordino fra pari: un CAMPO come gli altri (mask "order_key"), a differenza
+// della riparentazione, che ha un op tutto suo.
+function reorderOp(id: string, orderKey: string): Op {
+  return create(OpSchema, {
+    opId: `ord-${id}-${orderKey}`, docId: "doc1",
+    kind: {
+      case: "setProps",
+      value: { id, patch: create(NodeSchema, { orderKey }), mask: { paths: ["order_key"] } },
+    },
+  });
+}
+
+function reparentOp(id: string, newParentId: string, orderKey: string): Op {
+  return create(OpSchema, {
+    opId: `rep-${id}`, docId: "doc1",
+    kind: { case: "reparentNode", value: { id, newParentId, orderKey } },
+  });
+}
+
 function createTextOp(id: string, content: string): Op {
   const node = create(NodeSchema, {
     id, parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
@@ -1026,5 +1058,77 @@ describe("undo/redo", () => {
     useScene.getState().setSync(sync);
     useScene.getState().redo();
     expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["n1", "n2"]);
+  });
+  // --- l'albero: cascata e storia -------------------------------------------
+  // deleteNode cancella un SOTTOALBERO (core.applyDelete / applyOp), quindi
+  // l'inverso di UN op sono molte createNode. È l'unico caso in cui la voce di
+  // undo è più lunga del gesto che l'ha prodotta, e il posto dove si rompeva
+  // l'ipotesi "un op diretto, un inverso" su cui poggiava invertChain.
+
+  it("un gesto che cancella un gruppo si annulla in UNA voce, con tutto il sottoalbero", () => {
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("c1", "g1", "a1"),
+      createChildOp("d1", "c1", "a1"),
+      createChildOp("c2", "g1", "a2"),
+    ]);
+    const before = useScene.getState().scene;
+
+    gesture([deleteOp("g1")]); // un op solo: il server cascata da sé
+    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+
+    // Una voce sola (un gesto = un Ctrl+Z), fatta di quattro createNode.
+    const entry = useScene.getState().undoStack[1];
+    expect(entry).toHaveLength(4);
+    expect(entry.every((op) => op.kind.case === "createNode")).toBe(true);
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene).toEqual(before);
+
+    // ...e il redo ricancella tutto con l'op singolo di partenza.
+    useScene.getState().redo();
+    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+  });
+
+  it("una cancellazione REMOTA a cascata invalida anche le voci che toccano i DISCENDENTI", () => {
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("c1", "g1", "a1"),
+    ]);
+    gesture([moveOp("c1", 40, 40)]); // voce: [setProps c1 x,y]
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    // Un altro client cancella il GRUPPO: l'op nomina g1, ma porta via c1.
+    useScene.getState().apply(deleteOp("g1"));
+
+    // Senza l'espansione della cascata la voce su c1 resterebbe lì, e il
+    // Ctrl+Z successivo manderebbe un setProps su un nodo che non esiste più
+    // (rifiuto dal server, banner rosso, voce bruciata).
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(0);
+  });
+
+  it("un reparent REMOTO invalida un riordino locale dello stesso nodo, non uno spostamento", () => {
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("c1", "g1", "a1"),
+    ]);
+    gesture([moveOp("c1", 40, 40)]);        // voce: [setProps c1 x,y]
+    gesture([reorderOp("c1", "a5")]);       // voce: [setProps c1 order_key]
+    expect(useScene.getState().undoStack).toHaveLength(3);
+
+    useScene.getState().apply(reparentOp("c1", "page1", "a7"));
+
+    // Restano lo spostamento (x/y non c'entrano con la riparentazione) e...
+    // niente altro: il riordino scrive order_key, che il reparent riscrive, e
+    // la voce di creazione cancellerebbe i nodi appena spostati da un altro.
+    const stack = useScene.getState().undoStack;
+    expect(stack).toHaveLength(1);
+    expect(stack[0][0].kind.case === "setProps" && stack[0][0].kind.value.mask?.paths).toEqual(["x", "y"]);
   });
 });

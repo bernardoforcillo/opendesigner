@@ -75,11 +75,26 @@ function sceneWith(...nodes: PbNode[]): SceneState {
 // LA proprietà: applicare un op e poi il suo inverso riporta la scena
 // ESATTAMENTE allo stato di partenza. Asserire sul round-trip invece che sui
 // singoli campi coglie anche i campi che nessuno si è ricordato di controllare.
-function expectRoundTrip(scene: SceneState, op: Op): Op {
+//
+// L'inverso è una LISTA da applicare in ordine: la cancellazione di un
+// sottoalbero si annulla ricreando ogni nodo, e nell'ordine giusto (vedi
+// invertOp). Per tutti gli altri op è una lista di uno.
+function expectRoundTrip(scene: SceneState, op: Op): Op[] {
   const inv = invertOp(scene, op);
   expect(inv).not.toBeNull();
-  expect(applyOp(applyOp(scene, op), inv as Op)).toEqual(scene);
-  return inv as Op;
+  const ops = inv as Op[];
+  expect(ops.length).toBeGreaterThan(0);
+  let after = applyOp(scene, op);
+  for (const i of ops) after = applyOp(after, i);
+  expect(after).toEqual(scene);
+  return ops;
+}
+
+// Comodità per gli op il cui inverso è UNO solo.
+function expectSingleRoundTrip(scene: SceneState, op: Op): Op {
+  const ops = expectRoundTrip(scene, op);
+  expect(ops.length).toBe(1);
+  return ops[0];
 }
 
 describe("toPbNode", () => {
@@ -111,7 +126,7 @@ describe("toPbNode", () => {
 describe("invertOp: createNode", () => {
   it("round-trips: create + inverso = scena vuota di partenza", () => {
     const scene = emptyScene("doc1", "Untitled");
-    const inv = expectRoundTrip(scene, createOp(richRect()));
+    const inv = expectSingleRoundTrip(scene, createOp(richRect()));
     expect(inv.kind.case).toBe("deleteNode");
     expect(inv.kind.case === "deleteNode" && inv.kind.value.id).toBe("n1");
   });
@@ -131,7 +146,7 @@ describe("invertOp: createNode", () => {
 describe("invertOp: setProps", () => {
   it("round-trips su una mask multipla (x,y,width,height)", () => {
     const scene = sceneWith(richRect());
-    const inv = expectRoundTrip(
+    const inv = expectSingleRoundTrip(
       scene,
       setPropsOp("n1", { x: 999, y: 888, width: 7, height: 6 }, ["x", "y", "width", "height"]),
     );
@@ -185,7 +200,7 @@ describe("invertOp: setProps", () => {
 describe("invertOp: deleteNode", () => {
   it("ripristina TUTTI i campi del rect (fills, orderKey, kind, cornerRadius)", () => {
     const scene = sceneWith(richRect());
-    const inv = expectRoundTrip(scene, deleteOp("n1"));
+    const [inv] = expectRoundTrip(scene, deleteOp("n1"));
     expect(inv.kind.case).toBe("createNode");
     if (inv.kind.case !== "createNode") throw new Error("wrong kind");
     const restored = inv.kind.value.node as PbNode;
@@ -201,15 +216,110 @@ describe("invertOp: deleteNode", () => {
 
   it("ripristina un ellipse mantenendo il discriminante di forma", () => {
     const scene = sceneWith(richRect(), richEllipse());
-    const inv = expectRoundTrip(scene, deleteOp("e1"));
+    const inv = expectSingleRoundTrip(scene, deleteOp("e1"));
     expect(inv.kind.case === "createNode" && inv.kind.value.node?.shape.case).toBe("ellipse");
+  });
+});
+
+// --- l'albero: cascata e riparentazione ------------------------------------
+
+function childNode(id: string, parentId: string, orderKey = "a1"): PbNode {
+  return create(NodeSchema, {
+    id, parentId, orderKey, name: id, visible: true, opacity: 1,
+    x: 1, y: 2, width: 10, height: 10,
+    shape: { case: "rect", value: { cornerRadius: 3 } },
+  });
+}
+
+function reparentOp(id: string, newParentId: string, orderKey: string): Op {
+  return create(OpSchema, {
+    opId: "op-reparent", docId: "doc1",
+    kind: { case: "reparentNode", value: { id, newParentId, orderKey } },
+  });
+}
+
+//   page1
+//   ├── g1
+//   │   ├── c1
+//   │   │   └── d1
+//   │   └── c2
+//   └── other
+function treeScene(): SceneState {
+  return sceneWith(
+    childNode("g1", "page1", "a1"),
+    childNode("c1", "g1", "a1"),
+    childNode("d1", "c1", "a1"),
+    childNode("c2", "g1", "a2"),
+    childNode("other", "page1", "a2"),
+  );
+}
+
+describe("invertOp: deleteNode a cascata", () => {
+  it("ripristina TUTTO il sottoalbero (round-trip esatto)", () => {
+    const scene = treeScene();
+    const inv = expectRoundTrip(scene, deleteOp("g1"));
+    expect(inv.length).toBe(4);
+    expect(inv.every((o) => o.kind.case === "createNode")).toBe(true);
+  });
+
+  it("ricrea i PARENT prima dei figli (altrimenti ogni figlio sarebbe rifiutato)", () => {
+    const scene = treeScene();
+    const inv = invertOp(scene, deleteOp("g1")) as Op[];
+    const ids = inv.map((o) => (o.kind.case === "createNode" ? o.kind.value.node?.id : undefined));
+    expect(ids).toEqual(["g1", "c1", "d1", "c2"]);
+    // La prova vera non è l'ordine in sé ma che l'invariante regga a ogni
+    // passo: applicati uno a uno, nessuno viene scartato.
+    let s = applyOp(scene, deleteOp("g1"));
+    for (const o of inv) {
+      const before = Object.keys(s.nodes).length;
+      s = applyOp(s, o);
+      expect(Object.keys(s.nodes).length).toBe(before + 1);
+    }
+  });
+
+  it("l'ordine INVERSO verrebbe rifiutato — è il motivo per cui l'ordine conta", () => {
+    const scene = treeScene();
+    const inv = (invertOp(scene, deleteOp("g1")) as Op[]).slice().reverse();
+    let s = applyOp(scene, deleteOp("g1"));
+    for (const o of inv) s = applyOp(s, o);
+    // Solo la radice atterra: i figli, mandati per primi, trovano il parent
+    // ancora inesistente (ErrParentNotFound in Go).
+    expect(Object.keys(s.nodes).sort()).toEqual(["g1", "other"]);
+  });
+});
+
+describe("invertOp: reparentNode", () => {
+  it("round-trips: rimette il nodo sotto il vecchio parent con la vecchia chiave", () => {
+    const scene = treeScene();
+    const inv = expectSingleRoundTrip(scene, reparentOp("c1", "other", "a9"));
+    expect(inv.kind.case).toBe("reparentNode");
+    if (inv.kind.case !== "reparentNode") throw new Error("wrong kind");
+    expect(inv.kind.value.newParentId).toBe("g1");
+    expect(inv.kind.value.orderKey).toBe("a1");
+  });
+
+  it("round-trips un riordino fra pari (stesso parent, chiave nuova)", () => {
+    expectRoundTrip(treeScene(), reparentOp("c1", "g1", "a5"));
+  });
+
+  it("null quando l'op diretto sarebbe rifiutato (ciclo, parent o nodo inesistente)", () => {
+    const scene = treeScene();
+    for (const op of [
+      reparentOp("g1", "d1", "a9"),   // ciclo
+      reparentOp("g1", "g1", "a9"),   // se stesso
+      reparentOp("c1", "ghost", "a9"),
+      reparentOp("ghost", "page1", "a9"),
+    ]) {
+      expect(applyOp(scene, op)).toEqual(scene);
+      expect(invertOp(scene, op)).toBeNull();
+    }
   });
 });
 
 describe("invertOp: setText", () => {
   it("round-trips un cambio di solo contenuto", () => {
     const scene = sceneWith(richText());
-    const inv = expectRoundTrip(scene, setTextOp("t1", "altro contenuto"));
+    const inv = expectSingleRoundTrip(scene, setTextOp("t1", "altro contenuto"));
     expect(inv.kind.case).toBe("setText");
     if (inv.kind.case !== "setText") throw new Error("wrong kind");
     expect(inv.kind.value.content).toBe("ciao\nmondo");
@@ -260,6 +370,13 @@ describe("invertOp: nessun inverso possibile", () => {
     expect(invertOp(emptyScene("doc1", "Untitled"), op)).toBeNull();
   });
 
+  it("null per createNode con un parent inesistente (ErrParentNotFound in Go)", () => {
+    const scene = emptyScene("doc1", "Untitled");
+    const op = createOp(childNode("n1", "ghost"));
+    expect(applyOp(scene, op)).toEqual(scene);
+    expect(invertOp(scene, op)).toBeNull();
+  });
+
   it("null per un op senza kind", () => {
     expect(invertOp(emptyScene("doc1", "Untitled"), create(OpSchema, { opId: "x", docId: "doc1" }))).toBeNull();
   });
@@ -269,8 +386,8 @@ describe("invertOp: identità dell'op", () => {
   it("eredita il docId dell'op diretto e riceve un opId nuovo e unico", () => {
     const scene = sceneWith(richRect());
     const op = deleteOp("n1");
-    const a = invertOp(scene, op) as Op;
-    const b = invertOp(scene, op) as Op;
+    const [a] = invertOp(scene, op) as Op[];
+    const [b] = invertOp(scene, op) as Op[];
     expect(a.docId).toBe("doc1");
     expect(a.opId).not.toBe("");
     expect(a.opId).not.toBe(op.opId);

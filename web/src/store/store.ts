@@ -4,6 +4,7 @@ import { OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
+import { subtreeOf } from "./tree";
 import type { SceneState } from "./types";
 import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
@@ -93,12 +94,21 @@ const STALE =
 // al prefisso di op sopravvissuti corrisponde la CODA di `entry`. È questa
 // corrispondenza che rende la ricostruzione parziale possibile senza dover
 // etichettare gli inversi uno a uno.
+//
+// `entry` è quindi una lista di GRUPPI e non di op: l'inverso di UN op può
+// essere fatto di più op (un deleteNode cancella a cascata, e disfarlo vuol
+// dire ricreare tutto il sottoalbero, vedi history.ts). Appiattirlo qui
+// spezzerebbe proprio la corrispondenza posizionale -- `entry[i]` non
+// corrisponderebbe più a un op -- e la riparazione di un gesto atterrato a
+// metà rimetterebbe sullo stack la porzione sbagliata di voce. Le voci degli
+// stack restano invece PIATTE (un gesto = una voce = gli op che lo disfano):
+// l'appiattimento avviene al confine, quando la voce viene spinta.
 // `entry` vuoto = la transizione non ha prodotto nessuna voce (invertChain
 // fallito): può comunque aver svuotato il redo.
 type HistoryShape =
-  | { kind: "gesture"; entry: Op[] }
-  | { kind: "undo"; ops: Op[]; entry: Op[] }
-  | { kind: "redo"; ops: Op[]; entry: Op[] };
+  | { kind: "gesture"; entry: Op[][] }
+  | { kind: "undo"; ops: Op[]; entry: Op[][] }
+  | { kind: "redo"; ops: Op[]; entry: Op[][] };
 
 // Una TRANSIZIONE degli stack di undo/redo prodotta da op SUBMITTATI e non
 // ancora confermati.
@@ -282,12 +292,47 @@ function targetOf(op: Op): OpTarget | null {
       const { id } = op.kind.value;
       return id === "" ? null : { id, paths: ["text"] };
     }
+    // Un reparent scrive DUE campi: il container e la posizione fra i pari.
+    // Sono nello stesso spazio dei nomi dei path di setProps proprio perché
+    // "order_key" è anche un path della mask (il riordino del pannello
+    // livelli): un reparent remoto deve invalidare l'annullamento di un
+    // riordino locale dello stesso nodo, mentre non deve toccare quello di uno
+    // spostamento (x/y), che resta esatto.
+    case "reparentNode": {
+      const { id } = op.kind.value;
+      return id === "" ? null : { id, paths: ["parent_id", "order_key"] };
+    }
     // Un kind sconosciuto non ha bersaglio noto: non può invalidare niente, ma
     // non è nemmeno invalidabile (applyOp lo ignora, quindi non è mai finito in
     // una voce).
     default:
       return null;
   }
+}
+
+// I bersagli di un op, ESPANSI contro la scena su cui l'op atterra.
+//
+// Serve solo a deleteNode, ed è la conseguenza della cascata: l'op nomina un
+// nodo ma ne porta via un SOTTOALBERO (vedi applyOp). Un op che tocca un
+// discendente è quindi in conflitto con questa delete tanto quanto uno che
+// tocca la radice -- senza l'espansione, un gruppo cancellato da un altro
+// client lascerebbe in piedi le voci di undo che riguardano i suoi figli, e il
+// Ctrl+Z successivo manderebbe al server un setProps su un nodo che non esiste
+// più (rifiuto, banner rosso, voce bruciata).
+//
+// Per tutti gli altri kind è il bersaglio singolo di targetOf.
+function targetsOf(op: Op, scene: SceneState): OpTarget[] {
+  if (op.kind.case !== "deleteNode") {
+    const t = targetOf(op);
+    return t ? [t] : [];
+  }
+  const { id } = op.kind.value;
+  if (id === "") return [];
+  const sub = subtreeOf(scene, id);
+  // Nodo già assente dalla scena data: resta il bersaglio nominato, così un op
+  // di una voce (calcolata su uno stato più vecchio) continua a confliggere.
+  if (sub.length === 0) return [{ id, paths: null }];
+  return sub.map((n) => ({ id: n.id, paths: null }));
 }
 
 // Due op sono in CONFLITTO quando toccano lo STESSO nodo e almeno un campo in
@@ -318,7 +363,7 @@ function conflicts(a: OpTarget, b: OpTarget): boolean {
 // prossimo rifiuto, quindi un op stale lasciato lì dentro RITORNEREBBE.
 function allEntries(undoStack: Op[][], redoStack: Op[][], history: HistoryMark[]): Op[][] {
   const out: Op[][] = [...undoStack, ...redoStack];
-  for (const m of history) out.push(...m.undoStack, ...m.redoStack, m.shape.entry);
+  for (const m of history) out.push(...m.undoStack, ...m.redoStack, m.shape.entry.flat());
   return out;
 }
 
@@ -330,15 +375,20 @@ function allEntries(undoStack: Op[][], redoStack: Op[][], history: HistoryMark[]
 // tenerlo vivo per tutta la sessione solo per poterlo riconoscere. Con il
 // WeakSet l'appartenenza sopravvive esattamente quanto l'op che la usa (i mark
 // ne tengono una copia finché sono in dubbio), e non un istante di più.
-function markStale(remote: Op, stale: WeakSet<Op>, entries: Op[][]): boolean {
-  const t = targetOf(remote);
-  if (!t) return false;
+// `scene` è il documento CONFERMATO su cui `remote` sta per atterrare: serve a
+// espandere le delete a cascata (vedi targetsOf), da entrambi i lati del
+// confronto. Le voci sono state calcolate su stati più vecchi, quindi per loro
+// è un'approssimazione -- ma è la migliore disponibile, e sbagliare in questa
+// direzione toglie un passo di annulla invece di riscrivere il lavoro altrui.
+function markStale(remote: Op, stale: WeakSet<Op>, entries: Op[][], scene: SceneState): boolean {
+  const targets = targetsOf(remote, scene);
+  if (targets.length === 0) return false;
   let hit = false;
   for (const entry of entries) {
     for (const op of entry) {
       if (stale.has(op)) continue;
-      const u = targetOf(op);
-      if (u && conflicts(t, u)) {
+      const us = targetsOf(op, scene);
+      if (us.some((u) => targets.some((t) => conflicts(t, u)))) {
         stale.add(op);
         hit = true;
       }
@@ -411,7 +461,11 @@ function applyMark(
   // Gli inversi degli op sopravvissuti sono la CODA della voce (entry[i]
   // inverte l'op n-1-i). Senza voce non c'è nulla da spingere; a kept === 0 la
   // coda è vuota, quindi push è già l'identità.
-  const kept = shape.entry.length === n ? shape.entry.slice(n - m.kept) : [];
+  //
+  // La coda si prende sui GRUPPI e si appiattisce dopo: un gruppo è l'inverso
+  // (anche multiplo) di UN op diretto, quindi tagliare sulla lista piatta
+  // porterebbe via mezza cascata di ricreazione.
+  const kept = shape.entry.length === n ? shape.entry.slice(n - m.kept).flat() : [];
   const push = (stack: Op[][]) => (kept.length > 0 ? [...stack, kept] : stack);
   if (shape.kind === "gesture") {
     // Il redo resta svuotato appena UN op del gesto è passato: il documento è
@@ -553,21 +607,23 @@ function revertHistory(history: HistoryMark[], opId: string, stale: WeakSet<Op>)
 // `inv` null = l'inverso non esiste (il nodo non c'è più): nessuna voce da
 // rimettere, ma il redo si svuota lo stesso -- l'op è avvenuto per davvero,
 // quindi le voci di redo invertono uno stato che non esiste più (stessa regola
-// che applyMark applica ai gesti).
+// che applyMark applica ai gesti). `inv` è una LISTA (l'inverso di un solo op
+// può essere multiplo, vedi history.ts) e forma UNA voce di undo.
 function restoreRevoked(
   history: HistoryMark[],
   undoStack: Op[][],
   redoStack: Op[][],
-  inv: Op | null,
+  inv: Op[] | null,
   stale: WeakSet<Op>,
 ): HistoryPatch {
+  const entry = inv && inv.length > 0 ? inv : null;
   const head = history[0];
   if (!head) {
-    const next = inv ? [...undoStack, [inv]] : undoStack;
+    const next = entry ? [...undoStack, entry] : undoStack;
     return { history, undoStack: next, redoStack: [], canUndo: next.length > 0, canRedo: false };
   }
   const patched: HistoryMark[] = [
-    { ...head, undoStack: inv ? [...head.undoStack, [inv]] : head.undoStack, redoStack: [] },
+    { ...head, undoStack: entry ? [...head.undoStack, entry] : head.undoStack, redoStack: [] },
     ...history.slice(1),
   ];
   // patched non è vuoto, quindi replayHistory non può dare null; il fallback
@@ -610,9 +666,17 @@ function sameSelection(a: string[], b: string[]): boolean {
 // null se anche un solo op della catena non ha inverso (id sparito nel
 // frattempo, kind sconosciuto...): un undo/redo PARZIALE lascerebbe la scena
 // a metà strada, peggio di un gesto che semplicemente non si può annullare.
-function invertChain(scene: SceneState, ops: Op[]): Op[] | null {
+//
+// Ritorna un GRUPPO per op diretto, non una lista piatta: l'inverso di un
+// singolo op può essere fatto di più op (un deleteNode cancella a cascata, e
+// disfarlo vuol dire ricreare l'intero sottoalbero -- vedi history.ts). I
+// gruppi sono in ordine inverso rispetto a `ops`, mentre DENTRO ogni gruppo
+// l'ordine è quello in cui gli op vanno applicati. È la corrispondenza
+// posizionale su cui si regge la riparazione di un gesto atterrato a metà
+// (vedi HistoryMark e applyMark): il gruppo i-esimo inverte l'op n-1-i.
+function invertChain(scene: SceneState, ops: Op[]): Op[][] | null {
   let state = scene;
-  const inverses: Op[] = [];
+  const inverses: Op[][] = [];
   for (const op of ops) {
     const inv = invertOp(state, op);
     if (!inv) return null;
@@ -855,7 +919,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         // (Il controllo sulla coda prima di costruire l'elenco delle voci: un
         // eco è il caso NORMALE, e non deve pagare la scansione della storia.)
         if (own || st.pending.some((p) => p.opId === op.opId)) return next;
-        if (!markStale(op, st.stale, allEntries(st.undoStack, st.redoStack, next.history))) {
+        if (!markStale(op, st.stale, allEntries(st.undoStack, st.redoStack, next.history), st.confirmed)) {
           return next;
         }
         const undoStack = pruneStale(st.undoStack, st.stale);
@@ -1091,10 +1155,15 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     // rifiutato, è qui che si torna (vedi HistoryMark).
     const prevUndo = get().undoStack;
     const prevRedo = get().redoStack;
+    // `groups` tiene la corrispondenza op -> suoi inversi (vedi invertChain e
+    // HistoryShape); `entry` è la stessa cosa appiattita, cioè la voce di undo
+    // come la vedono gli stack.
+    let groups: Op[][] = [];
     let entry: Op[] = [];
     let changedHistory = false;
     if (finalOps.length > 0) {
-      entry = (base ? invertChain(base, finalOps) : null) ?? [];
+      groups = (base ? invertChain(base, finalOps) : null) ?? [];
+      entry = groups.flat();
       // Niente voce da aggiungere e redo già vuoto: nessun cambiamento di
       // stato, quindi niente set() (sveglierebbe i sottoscrittori a vuoto).
       if (entry.length > 0 || prevRedo.length > 0) {
@@ -1127,7 +1196,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
               kept: opIds.length,
               undoStack: prevUndo,
               redoStack: prevRedo,
-              shape: { kind: "gesture", entry },
+              shape: { kind: "gesture", entry: groups },
             },
           ],
         }));
@@ -1248,7 +1317,10 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const entry = prevUndo[prevUndo.length - 1];
     if (!entry) return;
     const scene = get().scene;
-    const redoEntry = scene ? invertChain(scene, entry) : null;
+    // Gruppi (uno per op disfatto) per il mark, appiattiti per lo stack: vedi
+    // invertChain e HistoryShape.
+    const redoGroups = scene ? invertChain(scene, entry) : null;
+    const redoEntry = redoGroups?.flat() ?? null;
     // Pop dell'undo e push del redo in UN SOLO set, prima di qualunque invio:
     // il submit può rientrare nello store (apply ottimistico, e in caso di
     // rifiuto sincrono anche rejectPending, che riavvolge gli stack). Spingere
@@ -1277,7 +1349,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
               kept: opIds.length,
               undoStack: prevUndo,
               redoStack: prevRedo,
-              shape: { kind: "undo", ops: entry, entry: redoEntry ?? [] },
+              shape: { kind: "undo", ops: entry, entry: redoGroups ?? [] },
             },
           ],
         }));
@@ -1300,7 +1372,8 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const entry = prevRedo[prevRedo.length - 1];
     if (!entry) return;
     const scene = get().scene;
-    const undoEntry = scene ? invertChain(scene, entry) : null;
+    const undoGroups = scene ? invertChain(scene, entry) : null;
+    const undoEntry = undoGroups?.flat() ?? null;
     // Un solo set prima degli invii, stesso motivo di undo().
     set((st) => {
       const redoStack = st.redoStack.slice(0, -1);
@@ -1321,7 +1394,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
               kept: opIds.length,
               undoStack: prevUndo,
               redoStack: prevRedo,
-              shape: { kind: "redo", ops: entry, entry: undoEntry ?? [] },
+              shape: { kind: "redo", ops: entry, entry: undoGroups ?? [] },
             },
           ],
         }));

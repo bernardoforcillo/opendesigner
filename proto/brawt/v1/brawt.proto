@@ -91,6 +91,26 @@ message SetText {
   TextStyle style = 3;
   bool style_present = 4;
 }
+// Sposta un nodo sotto un altro container (o direttamente sotto una Page) e ne
+// riscrive l'ordine fra i nuovi pari.
+//
+// Op dedicato e non un path della mask di SetProperties -- a differenza di
+// `order_key`, che è un campo come gli altri -- perché la riparentazione ha una
+// VALIDAZIONE propria che nessun altro campo ha: il nuovo parent deve esistere
+// (nodo o pagina) e non può essere il nodo stesso né un suo discendente,
+// altrimenti il sottoalbero si stacca dal documento e diventa un ciclo
+// irraggiungibile. Una mask che scrivesse `parent_id` costringerebbe
+// applySetProps (e la sua gemella TS) a portarsi dentro l'attraversamento
+// dell'albero solo per un path.
+//
+// `order_key` viaggia INSIEME: cambiare parent senza riordinare lascerebbe il
+// nodo con la chiave calcolata fra i pari VECCHI, cioè in una posizione
+// arbitraria fra i nuovi. Un solo op, una sola posizione finale.
+message ReparentNode {
+  string id = 1;
+  string new_parent_id = 2; // id nodo container OPPURE id Page
+  string order_key = 3;     // fractional index fra i nuovi pari
+}
 message Op {
   string op_id = 1;
   string doc_id = 2;
@@ -99,8 +119,8 @@ message Op {
     SetProperties set_props   = 11;
     DeleteNode    delete_node = 12;
     SetText       set_text    = 13;
+    ReparentNode  reparent_node = 14; // traccia 1 — sposta un nodo sotto un altro parent
     // Come sopra: una riga per traccia, sostituita dalla dichiarazione vera.
-    // 14 = ReparentNode    (traccia 1 — sposta un nodo sotto un altro parent)
     // 15 = SetVectorPath   (traccia 4 — sostituisce i subpath di un VectorNode)
     // 16 = CreateComponent (M4)
   }

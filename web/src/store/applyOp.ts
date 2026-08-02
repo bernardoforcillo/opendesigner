@@ -3,6 +3,7 @@ import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
 import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
+import { isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Un SetProperties SENZA patch NON è un no-op. Go legge il patch con i getter
 // nil-safe di protobuf (`p.GetX()` su un *Node nil ritorna lo zero del campo),
@@ -23,6 +24,12 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // dal documento autorevole (e l'undo di quell'op sarebbe l'undo di
       // qualcosa che il server non ha mai accettato).
       if (!pb || pb.id === "" || state.nodes[pb.id]) return state;
+      // Il parent deve ESISTERE (un altro nodo, o una Page per i root):
+      // ErrParentNotFound in core.applyCreate (Go). Un nodo con un parent
+      // inesistente non è raggiungibile da nessuna pagina -- invisibile sul
+      // canvas e nel pannello livelli, ma presente nella mappa -- e il server
+      // l'ha comunque rifiutato: crearlo qui è la solita divergenza silenziosa.
+      if (!parentExists(state, pb.parentId)) return state;
       return { ...state, nodes: { ...state.nodes, [pb.id]: toNodeLite(pb) } };
     }
     case "setProps": {
@@ -117,11 +124,39 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       };
       return { ...state, nodes: { ...state.nodes, [id]: { ...cur, text } } };
     }
+    // Cancella il nodo E TUTTO il suo sottoalbero. Parità con core.applyDelete
+    // (Go): senza la cascata i figli resterebbero nella mappa con un parentId
+    // che non esiste più -- gli stessi orfani che il ramo createNode qui sopra
+    // rifiuta di creare.
     case "deleteNode": {
       const { id } = op.kind.value;
+      // Id inesistente = ErrNodeNotFound in Go: op rifiutato, scena invariata
+      // (e nessun oggetto nuovo, così i selettori non si svegliano a vuoto).
+      if (!state.nodes[id]) return state;
       const nodes = { ...state.nodes };
-      delete nodes[id];
+      for (const n of subtreeOf(state, id)) delete nodes[n.id];
       return { ...state, nodes };
+    }
+    // Op dedicato e non un path della mask di setProps (a differenza di
+    // `order_key`) perché ha una validazione che nessun campo ha: il nuovo
+    // parent deve esistere e non può essere il nodo stesso né un suo
+    // discendente. Parità con core.applyReparent (Go).
+    case "reparentNode": {
+      const { id, newParentId, orderKey } = op.kind.value;
+      const cur = state.nodes[id];
+      if (!cur) return state;                                   // ErrNodeNotFound
+      if (!parentExists(state, newParentId)) return state;      // ErrParentNotFound
+      // Un ciclo staccherebbe il sottoalbero dal documento (nessuna pagina ci
+      // arriverebbe più) lasciandolo però nella mappa: invisibile e non
+      // cancellabile. Il nodo stesso è il caso degenere -- isAncestorOf è
+      // stretta -- quindi va escluso a parte. ErrCycle in Go.
+      if (newParentId === id || isAncestorOf(state, id, newParentId)) return state;
+      return {
+        ...state,
+        // Il sottoalbero segue il nodo senza essere riscritto: i figli puntano
+        // al nodo, non al nonno.
+        nodes: { ...state.nodes, [id]: { ...cur, parentId: newParentId, orderKey } },
+      };
     }
     default:
       return state;

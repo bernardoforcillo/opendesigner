@@ -9,11 +9,13 @@ import (
 )
 
 var (
-	ErrNilNode      = errors.New("core: nil node")
-	ErrNodeExists   = errors.New("core: node already exists")
-	ErrNodeNotFound = errors.New("core: node not found")
-	ErrNotTextNode  = errors.New("core: not a text node")
-	ErrNotRectNode  = errors.New("core: not a rect node")
+	ErrNilNode        = errors.New("core: nil node")
+	ErrNodeExists     = errors.New("core: node already exists")
+	ErrNodeNotFound   = errors.New("core: node not found")
+	ErrNotTextNode    = errors.New("core: not a text node")
+	ErrNotRectNode    = errors.New("core: not a rect node")
+	ErrParentNotFound = errors.New("core: parent not found")
+	ErrCycle          = errors.New("core: reparent would create a cycle")
 )
 
 // NewDocument crea un documento vuoto con una pagina di default ("page1").
@@ -36,6 +38,8 @@ func Apply(doc *brawtv1.Document, op *brawtv1.Op) error {
 		return applyDelete(doc, k.DeleteNode)
 	case *brawtv1.Op_SetText:
 		return applySetText(doc, k.SetText)
+	case *brawtv1.Op_ReparentNode:
+		return applyReparent(doc, k.ReparentNode)
 	default:
 		return fmt.Errorf("core: unknown op kind %T", op.GetKind())
 	}
@@ -48,6 +52,17 @@ func applyCreate(doc *brawtv1.Document, c *brawtv1.CreateNode) error {
 	}
 	if _, exists := doc.Nodes[n.GetId()]; exists {
 		return fmt.Errorf("%w: %s", ErrNodeExists, n.GetId())
+	}
+	// Il parent deve ESISTERE: un altro nodo (annidamento) o una Page (i root).
+	// Senza questo controllo un id sbagliato -- un typo, un op che arriva fuori
+	// ordine, un client che riferisce un gruppo appena cancellato da un altro --
+	// produce un nodo che nessuna pagina raggiunge: invisibile sul canvas e
+	// invisibile nel pannello livelli, ma presente nel documento e nello
+	// snapshot per sempre. È la stessa ragione per cui applyDelete cascata: la
+	// mappa `nodes` è piatta, ma il DOCUMENTO è l'albero, e solo ciò che pende
+	// da una pagina ne fa parte.
+	if !parentExists(doc, n.GetParentId()) {
+		return fmt.Errorf("%w: %s (node %s)", ErrParentNotFound, n.GetParentId(), n.GetId())
 	}
 	if doc.Nodes == nil {
 		// Apply is the authoritative mutator for any *brawtv1.Document, not
@@ -62,12 +77,61 @@ func applyCreate(doc *brawtv1.Document, c *brawtv1.CreateNode) error {
 	return nil
 }
 
+// applyDelete cancella il nodo E TUTTO il suo sottoalbero.
+//
+// La cascata non è una comodità: senza, cancellare un gruppo lascerebbe i figli
+// nella mappa con un parent_id che non esiste più -- esattamente gli orfani che
+// applyCreate rifiuta di creare. Sarebbero nodi non raggiungibili da nessuna
+// pagina (quindi invisibili) ma ancora nel documento, e un CreateNode
+// successivo che riusasse quell'id verrebbe respinto con ErrNodeExists per un
+// nodo che l'utente ha cancellato.
+//
+// L'op resta UNO solo: il client manda `deleteNode(g1)` e sia il server sia
+// applyOp (TS) espandono la cascata allo stesso modo. L'INVERSO invece è
+// necessariamente multiplo -- un CreateNode per nodo, parent prima dei figli --
+// e vive lato client (web/src/store/history.ts), l'unico che tiene una storia.
 func applyDelete(doc *brawtv1.Document, d *brawtv1.DeleteNode) error {
 	if _, ok := doc.Nodes[d.GetId()]; !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, d.GetId())
 	}
-	// M0: nessun figlio annidato ancora → nessuna cascata. (Aggiunta in M1+.)
-	delete(doc.Nodes, d.GetId())
+	for _, n := range SubtreeOf(doc, d.GetId()) {
+		delete(doc.Nodes, n.GetId())
+	}
+	return nil
+}
+
+// applyReparent sposta un nodo sotto un altro container (o direttamente sotto
+// una Page) e ne riscrive la order key fra i nuovi pari.
+//
+// Op dedicato e non un path della mask di SetProperties (a differenza di
+// `order_key`, che è un campo come gli altri) perché ha una VALIDAZIONE che
+// nessun altro campo ha: il nuovo parent deve esistere e non può essere il nodo
+// stesso né un suo discendente. Un ciclo staccherebbe il sottoalbero dal
+// documento -- non sarebbe più raggiungibile da nessuna pagina -- lasciandolo
+// però nella mappa: invisibile, non cancellabile a cascata (nessuna pagina ci
+// arriva) e capace di mandare in loop qualunque attraversamento ingenuo.
+//
+// Come per una mask mista in applySetProps, il rifiuto è in BLOCCO: si valida
+// tutto prima di scrivere qualsiasi campo, così un reparent respinto non lascia
+// il nodo con la order key nuova e il parent vecchio.
+func applyReparent(doc *brawtv1.Document, r *brawtv1.ReparentNode) error {
+	n, ok := doc.Nodes[r.GetId()]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, r.GetId())
+	}
+	if !parentExists(doc, r.GetNewParentId()) {
+		return fmt.Errorf("%w: %s (node %s)", ErrParentNotFound, r.GetNewParentId(), r.GetId())
+	}
+	// Il nodo stesso è il caso degenere del ciclo: IsAncestorOf è STRETTA
+	// (nessuno è antenato di sé), quindi va escluso a parte.
+	if r.GetNewParentId() == r.GetId() || IsAncestorOf(doc, r.GetId(), r.GetNewParentId()) {
+		return fmt.Errorf("%w: %s under %s", ErrCycle, r.GetId(), r.GetNewParentId())
+	}
+	n.ParentId = r.GetNewParentId()
+	// Scritta SEMPRE, anche vuota: come per ogni altro campo di un op assoluto,
+	// il valore che arriva è il valore finale. Un reparent che tiene lo stesso
+	// parent è il riordino fra pari del pannello livelli.
+	n.OrderKey = r.GetOrderKey()
 	return nil
 }
 

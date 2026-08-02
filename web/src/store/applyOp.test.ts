@@ -99,6 +99,127 @@ describe("applyOp", () => {
   });
 });
 
+// --- albero: parent, cascata, riparentazione -------------------------------
+// Speculari a internal/core/tree_test.go. Le fixture in testdata/golden/
+// (cascade_delete, reparent, reparent_cycle_rejected, create_orphan_rejected)
+// fanno girare gli STESSI casi da entrambi i lati; questi test coprono il lato
+// TS con la granularità che una fixture non ha (quale stato resta invariato).
+
+function createChildOp(id: string, parentId: string, orderKey = "a1") {
+  const node = create(NodeSchema, {
+    id, parentId, orderKey, name: id, visible: true, opacity: 1,
+    x: 0, y: 0, width: 10, height: 10,
+    shape: { case: "rect", value: { cornerRadius: 0 } },
+  });
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+function reparentOp(id: string, newParentId: string, orderKey: string) {
+  return create(OpSchema, {
+    opId: `rp-${id}`, docId: "doc1",
+    kind: { case: "reparentNode", value: { id, newParentId, orderKey } },
+  });
+}
+
+//   page1
+//   ├── g1
+//   │   ├── c1
+//   │   │   └── d1
+//   │   └── c2
+//   └── other
+function treeScene() {
+  return [
+    createChildOp("g1", "page1", "a1"),
+    createChildOp("c1", "g1", "a1"),
+    createChildOp("d1", "c1", "a1"),
+    createChildOp("c2", "g1", "a2"),
+    createChildOp("other", "page1", "a2"),
+  ].reduce((s, op) => applyOp(s, op), emptyScene("doc1", "Untitled"));
+}
+
+describe("applyOp: createNode e il parent", () => {
+  it("accetta un parent che è un NODO (annidamento)", () => {
+    const s = applyOp(applyOp(emptyScene("doc1", "Untitled"), createChildOp("g1", "page1")), createChildOp("c1", "g1"));
+    expect(s.nodes["c1"].parentId).toBe("g1");
+  });
+
+  it("rifiuta un parent inesistente (parità con ErrParentNotFound in Go)", () => {
+    const s = emptyScene("doc1", "Untitled");
+    // Il server rifiuta l'op: crearlo qui vorrebbe dire tenere in locale un
+    // nodo che nessuna pagina raggiunge e che il documento autorevole non ha.
+    expect(applyOp(s, createChildOp("n1", "ghost"))).toEqual(s);
+  });
+
+  it("rifiuta un parent vuoto", () => {
+    const s = emptyScene("doc1", "Untitled");
+    expect(applyOp(s, createChildOp("n1", ""))).toEqual(s);
+  });
+});
+
+describe("applyOp: deleteNode a cascata", () => {
+  it("cancella il nodo E tutti i discendenti", () => {
+    const s = applyOp(treeScene(), create(OpSchema, {
+      opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "g1" } },
+    }));
+    expect(Object.keys(s.nodes)).toEqual(["other"]);
+  });
+
+  it("cancellare una foglia non tocca i fratelli", () => {
+    const s = applyOp(treeScene(), create(OpSchema, {
+      opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "c2" } },
+    }));
+    expect(Object.keys(s.nodes).sort()).toEqual(["c1", "d1", "g1", "other"]);
+  });
+
+  it("id inesistente: scena invariata (ErrNodeNotFound in Go)", () => {
+    const s = treeScene();
+    expect(applyOp(s, create(OpSchema, {
+      opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "ghost" } },
+    }))).toEqual(s);
+  });
+});
+
+describe("applyOp: reparentNode", () => {
+  it("sposta il nodo e riscrive la order key; il sottoalbero lo segue", () => {
+    const s = applyOp(treeScene(), reparentOp("c1", "other", "a9"));
+    expect(s.nodes["c1"].parentId).toBe("other");
+    expect(s.nodes["c1"].orderKey).toBe("a9");
+    // I figli puntano al nodo, non al nonno: nessuno li riscrive.
+    expect(s.nodes["d1"].parentId).toBe("c1");
+  });
+
+  it("accetta una PAGINA come nuovo parent", () => {
+    const s = applyOp(treeScene(), reparentOp("d1", "page1", "a3"));
+    expect(s.nodes["d1"].parentId).toBe("page1");
+  });
+
+  it("stesso parent + nuova chiave = riordino fra pari", () => {
+    const s = applyOp(treeScene(), reparentOp("c1", "g1", "a3"));
+    expect(s.nodes["c1"].parentId).toBe("g1");
+    expect(s.nodes["c1"].orderKey).toBe("a3");
+  });
+
+  it.each([
+    ["se stesso", "g1", "g1"],
+    ["un figlio diretto", "g1", "c1"],
+    ["un discendente profondo", "g1", "d1"],
+  ])("rifiuta il ciclo: %s (parità con ErrCycle in Go)", (_name, id, parent) => {
+    const s = treeScene();
+    // Rifiuto in BLOCCO: nemmeno la order key si muove.
+    expect(applyOp(s, reparentOp(id, parent, "a9"))).toEqual(s);
+  });
+
+  it("rifiuta un nuovo parent inesistente", () => {
+    const s = treeScene();
+    expect(applyOp(s, reparentOp("c1", "ghost", "a9"))).toEqual(s);
+  });
+
+  it("rifiuta un nodo inesistente", () => {
+    const s = treeScene();
+    expect(applyOp(s, reparentOp("ghost", "page1", "a9"))).toEqual(s);
+  });
+});
+
 // --- corner_radius ---------------------------------------------------------
 // Speculari a internal/core/apply_test.go (TestApplySetPropertiesCornerRadius*).
 // È l'unico path della mask che indirizza un campo DENTRO il oneof `shape`,
