@@ -1,6 +1,7 @@
 import type { NodeLite, SubPathLite } from "../store/types";
 import {
   anchorPoint, inHandlePoint, outHandlePoint, subpathFills, hitVectorGeometry,
+  hasAnyAnchor,
 } from "../store/vectorGeometry";
 import { lineHeightOf } from "./text";
 
@@ -46,6 +47,23 @@ export function inkIsBox(n: NodeLite): boolean {
   return n.kind !== "text" && n.kind !== "vector";
 }
 
+// Vero quando il nodo dipinge qualcosa, cioè quando esiste un bersaglio da
+// selezionare. Serve al MARQUEE (tools/selectTool.ts::nodesInMarquee), che
+// lavora su bounds e da solo non se ne accorgerebbe: un vettoriale senza
+// nessun ancoraggio conserva comunque il width/height che aveva, quindi un
+// rettangolo di selezione lo prenderebbe pur essendo l'unico stato in cui il
+// nodo non produce nessun Path2D (vectorPaths) e nessun hit (hitTestNode).
+// Selezionare col marquee qualcosa che non si vede e non si può cliccare è
+// esattamente la sorpresa da evitare.
+//
+// Discrimina il solo VETTORIALE di proposito: per le forme il cui inchiostro È
+// il box il caso analogo è il box degenere, che è comportamento di M1 condiviso
+// con le altre tracce e non si cambia da qui.
+export function hasInk(n: NodeLite): boolean {
+  if (n.kind !== "vector") return true;
+  return hasAnyAnchor(n.vector?.subpaths ?? []);
+}
+
 // --- il path vettoriale ------------------------------------------------------
 
 // Distanza di presa da un contorno APERTO, in px SCHERMO: una linea sottile
@@ -69,11 +87,11 @@ export const VECTOR_HIT_PX = 5;
 // differenza che nessuno può osservare.
 export const VECTOR_FLATTEN_PX = 0.25;
 
-// Spessore (px SCHERMO) con cui si disegna un contorno APERTO. Il modello non
-// ha un tratto: un contorno aperto non si riempie, quindi senza questo tratto
-// non esisterebbe sullo schermo e il pen tool disegnerebbe alla cieca. Il
-// colore è quello del riempimento del nodo -- l'unica tinta che il modello
-// conosce.
+// Spessore (px SCHERMO) con cui si traccia OGNI contorno. Il modello non ha un
+// paint di tratto: il colore è quello del riempimento del nodo, l'unica tinta
+// che conosce, quindi su un contorno che riempie il tratto è invisibile (mezzo
+// spessore in più di forma, dello stesso colore) e su uno che non riempie --
+// aperto, o chiuso ma di area nulla -- è tutto ciò che esiste sullo schermo.
 export const VECTOR_STROKE_PX = 1.5;
 
 // La regola di riempimento, EVEN-ODD, e la ragione della scelta.
@@ -94,12 +112,13 @@ export const VECTOR_STROKE_PX = 1.5;
 // che si vede ma si clicca.
 export const VECTOR_FILL_RULE: CanvasFillRule = "evenodd";
 
-// I due path di un nodo vettoriale, in coordinate MONDO. Sono DUE perché il
-// canvas chiude implicitamente ogni contorno che riempie: un contorno aperto
-// messo nello stesso Path2D verrebbe riempito come se fosse chiuso, cioè
-// esattamente ciò che non deve succedere. `null` (non un Path2D vuoto) quando
-// non c'è niente in quel secchio, così il chiamante non paga una fill o una
-// stroke a vuoto.
+// I due path di un nodo vettoriale, in coordinate MONDO. `stroke` li contiene
+// TUTTI (ogni contorno si traccia); `fill` solo quelli che riempiono. Sono due
+// Path2D e non uno perché il canvas chiude implicitamente ogni contorno che
+// riempie: un contorno aperto messo nel path del riempimento verrebbe riempito
+// come se fosse chiuso, cioè esattamente ciò che non deve succedere. `null`
+// (non un Path2D vuoto) quando non c'è niente in quel secchio, così il
+// chiamante non paga una fill o una stroke a vuoto.
 export interface VectorPaths { fill: Path2D | null; stroke: Path2D | null }
 
 // Traccia UN contorno su `p`: moveTo sul primo ancoraggio, poi una
@@ -139,15 +158,21 @@ export function vectorPaths(n: NodeLite): VectorPaths {
   let stroke: Path2D | null = null;
   for (const sp of n.vector?.subpaths ?? []) {
     if (sp.anchors.length === 0) continue;
-    // Un contorno riempie se e solo se è chiuso e ha almeno due ancoraggi. Il
+    // OGNI contorno si traccia, chiuso o aperto. Per un contorno aperto è
+    // l'unico modo di esistere sullo schermo; per uno chiuso è ciò che gli
+    // impedisce di sparire quando il riempimento non dipinge niente -- e
+    // `closed` NON implica area: due ancoraggi chiusi percorrono A->B->A e tre
+    // ancoraggi allineati una spezzata schiacciata, due stati che il pen tool
+    // raggiunge con tre click. Senza tratto quel path diventerebbe invisibile e
+    // non cliccabile nell'istante in cui l'utente lo chiude.
+    stroke ??= new Path2D();
+    traceSubpath(stroke, n, sp);
+    // In PIÙ, un contorno chiuso con almeno due ancoraggi va nel riempimento. Il
     // predicato sta in vectorGeometry perché lo condivide con l'hit-test:
     // riempimento e area colpibile devono essere la stessa cosa.
     if (subpathFills(sp)) {
       fill ??= new Path2D();
       traceSubpath(fill, n, sp);
-    } else {
-      stroke ??= new Path2D();
-      traceSubpath(stroke, n, sp);
     }
   }
   return { fill, stroke };
@@ -160,16 +185,26 @@ export function vectorPaths(n: NodeLite): VectorPaths {
 // e sfuggirebbe a qualunque marquee che non lo scavalchi in senso stretto.
 //
 // Il CLICK non passa più di qui: da quando il path si disegna davvero,
-// hitTestNode colpisce l'inchiostro (riempimento o vicinanza alla curva) e ha
-// la sua tolleranza in px schermo, VECTOR_HIT_PX. Questa resta in unità mondo
-// perché nodesInMarquee (tools/selectTool.ts) lavora su bounds e non conosce
-// la camera.
+// hitTestNode colpisce l'inchiostro (vicinanza al tratto, più il riempimento di
+// un contorno chiuso) e ha la sua tolleranza in px schermo, VECTOR_HIT_PX.
+// Questa resta in unità mondo perché nodesInMarquee (tools/selectTool.ts)
+// lavora su bounds e non conosce la camera -- ed è la ragione per cui le due
+// tolleranze sono, e devono restare, due numeri diversi.
 export const VECTOR_MIN_GRAB = 4;
 
-// Il box su cui un nodo si SELEZIONA (click e marquee), che non è sempre il box
-// del modello. Una sola definizione perché hit-test e marquee devono essere
-// d'accordo: un nodo che si clicca ma che il marquee non prende (o viceversa)
-// è la peggiore delle due possibilità.
+// Il box su cui il MARQUEE afferra un nodo, che non è sempre il box del
+// modello. NON è (più) il bersaglio del click: da quando il path si disegna
+// davvero, hitTestNode colpisce l'inchiostro -- riempimento even-odd e
+// vicinanza al tratto -- e non passa di qui.
+//
+// Le due porte NON possono essere la stessa funzione: la presa del click è in
+// px SCHERMO (VECTOR_HIT_PX) perché una linea deve afferrarsi allo stesso modo a
+// ogni zoom, mentre il marquee confronta bounds in coordinate MONDO e non
+// conosce la camera. Restano però d'accordo dove conta -- che è "un nodo che non
+// si vede e non si clicca non deve nemmeno essere preso dal marquee": lo
+// garantisce il filtro `hasInk` in tools/selectTool.ts::nodesInMarquee, non
+// questo box. Qui sotto c'è solo la tolleranza per l'asse degenere, che è un
+// caso in cui il nodo l'inchiostro ce l'ha eccome.
 export function selectionBoundsOfNode(n: NodeLite): Box {
   if (n.kind !== "vector") return { x: n.x, y: n.y, width: n.width, height: n.height };
   // Solo l'asse DEGENERE si allarga, e centrato sull'inchiostro: un path normale
@@ -203,13 +238,14 @@ export function hitTestNode(n: NodeLite, wx: number, wy: number, zoom: number): 
   // implicito nel fallback: se un giorno il ramo "rect" imparasse i corner
   // radius, il testo non deve seguirlo.
   if (n.kind === "text") return insideBox(textHitBox(n), wx, wy);
-  // Il vettoriale si colpisce sull'INCHIOSTRO, mai sul box: un contorno chiuso
-  // sul suo riempimento (con la stessa regola even-odd con cui è dipinto,
-  // quindi un buco è un buco anche per il click), uno aperto per vicinanza alla
-  // curva entro VECTOR_HIT_PX px schermo. Il box sarebbe il bersaglio sbagliato
-  // in entrambi i versi: una "C" larga mezzo schermo si prenderebbe cliccando
-  // nel suo vuoto -- rubando il click a tutto ciò che ci sta dentro -- e un
-  // path degenere non si prenderebbe affatto.
+  // Il vettoriale si colpisce sull'INCHIOSTRO, mai sul box: ogni contorno per
+  // vicinanza al tratto entro VECTOR_HIT_PX px schermo (perché ogni contorno si
+  // traccia), e in più un contorno chiuso su tutto il suo riempimento -- con la
+  // stessa regola even-odd con cui è dipinto, quindi un buco è un buco anche per
+  // il click. Il box sarebbe il bersaglio sbagliato in entrambi i versi: una "C"
+  // larga mezzo schermo si prenderebbe cliccando nel suo vuoto -- rubando il
+  // click a tutto ciò che ci sta dentro -- e un path degenere non si
+  // prenderebbe affatto.
   //
   // Il punto passa in coordinate LOCALI (una sottrazione sola, qui): gli
   // ancoraggi lo sono, e portarli in mondo uno a uno costerebbe una somma per

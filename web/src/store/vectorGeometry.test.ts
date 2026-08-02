@@ -8,6 +8,7 @@ import {
   anchorPoint, inHandlePoint, outHandlePoint,
   hasInHandle, hasOutHandle, vectorBounds, normalizeVector, resizeVector,
   flattenSubpath, distanceToPolyline, pointInRingsEvenOdd, subpathFills, hitVectorGeometry,
+  hasAnyAnchor,
 } from "./vectorGeometry";
 
 // La regola dei DUE SPAZI, che il proto (su `Anchor`) enuncia e questo file
@@ -404,7 +405,7 @@ describe("vectorGeometry: even-odd", () => {
 });
 
 describe("vectorGeometry: subpathFills", () => {
-  it("riempie se e solo se è chiuso e ha almeno due ancoraggi", () => {
+  it("va ANCHE nel riempimento se e solo se è chiuso e ha almeno due ancoraggi", () => {
     const two = [anchor({ x: 0, y: 0 }), anchor({ x: 1, y: 1 })];
     expect(subpathFills({ anchors: two, closed: true })).toBe(true);
     expect(subpathFills({ anchors: two, closed: false })).toBe(false);
@@ -412,6 +413,37 @@ describe("vectorGeometry: subpathFills", () => {
     // riempie non disegna niente. Disegno e hit-test devono dire la stessa cosa.
     expect(subpathFills({ anchors: [anchor({ x: 0, y: 0 })], closed: true })).toBe(false);
     expect(subpathFills({ anchors: [], closed: true })).toBe(false);
+  });
+
+  it("`true` NON vuol dire 'si vede solo se riempie': il tratto c'è comunque", () => {
+    // Questo predicato dice "va anche nel secchio del riempimento", non "è
+    // visibile". Il caso qui sopra -- due ancoraggi chiusi -- ne è la prova: il
+    // predicato è vero ma il riempimento non dipinge niente (il contorno
+    // percorre A->B->A e even-odd non contiene nessun punto), quindi ciò che si
+    // vede e ciò che si colpisce è il TRATTO. Provato qui sotto in
+    // hitVectorGeometry e in renderer/shapes.test.ts su vectorPaths.
+    const two: SubPathLite[] = [{
+      anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 100, y: 0 })], closed: true,
+    }];
+    expect(subpathFills(two[0])).toBe(true);
+    expect(pointInRingsEvenOdd([flattenSubpath(two[0], 0.25)], 50, 0)).toBe(false);
+    expect(hitVectorGeometry(two, 50, 0, 5, 0.25)).toBe(true);
+  });
+});
+
+describe("vectorGeometry: hasAnyAnchor", () => {
+  it("distingue 'niente geometria' da 'geometria degenere'", () => {
+    // È la distinzione che serve al marquee (tools/selectTool.ts): un path
+    // schiacciato si vede e si clicca, uno senza ancoraggi no.
+    expect(hasAnyAnchor([])).toBe(false);
+    expect(hasAnyAnchor([{ anchors: [], closed: true }])).toBe(false);
+    expect(hasAnyAnchor([{ anchors: [], closed: false }, { anchors: [], closed: true }])).toBe(false);
+    expect(hasAnyAnchor([{ anchors: [anchor({ x: 0, y: 0 })], closed: false }])).toBe(true);
+    // Basta UN ancoraggio in UN contorno qualsiasi.
+    expect(hasAnyAnchor([
+      { anchors: [], closed: false },
+      { anchors: [anchor({ x: 5, y: 5 })], closed: true },
+    ])).toBe(true);
   });
 });
 
@@ -442,17 +474,45 @@ describe("vectorGeometry: hitVectorGeometry", () => {
     expect(hitVectorGeometry(u, 50, 98, GRAB, FLAT)).toBe(true); // vicino al lato basso
   });
 
-  it("un contorno CHIUSO si colpisce sul RIEMPIMENTO", () => {
+  it("un contorno CHIUSO si colpisce sul RIEMPIMENTO e sul suo TRATTO", () => {
     const square: SubPathLite[] = [{
       anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 100, y: 0 }),
         anchor({ x: 100, y: 100 }), anchor({ x: 0, y: 100 })],
       closed: true,
     }];
     expect(hitVectorGeometry(square, 50, 50, GRAB, FLAT)).toBe(true);
-    // E NON su un alone attorno: fuori è fuori, come per un rettangolo o
-    // un'ellisse. L'alone ruberebbe i click alle forme sottostanti su tutto il
-    // perimetro, e il riempimento è già un bersaglio grande.
-    expect(hitVectorGeometry(square, 103, 50, GRAB, FLAT)).toBe(false);
+    // Anche il contorno chiuso si TRACCIA (shapes.ts::vectorPaths), quindi si
+    // prende per vicinanza come uno aperto: il bersaglio è l'inchiostro, e il
+    // tratto esce dal riempimento. La presa è la stessa `grab` di sempre.
+    expect(hitVectorGeometry(square, 103, 50, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(square, 104.9, 50, GRAB, FLAT)).toBe(true);
+    // Oltre la presa è fuori: la tolleranza è una presa, non un alone infinito.
+    expect(hitVectorGeometry(square, 105.1, 50, GRAB, FLAT)).toBe(false);
+    expect(hitVectorGeometry(square, 50, 110, GRAB, FLAT)).toBe(false);
+  });
+
+  it("un contorno CHIUSO di AREA NULLA resta colpibile: è il tratto a tenerlo vivo", () => {
+    // Il caso che il pen tool raggiunge in tre click (A, B, di nuovo A per
+    // chiudere): `closed` è vero e subpathFills dice `true`, ma il contorno
+    // percorre A->B->A e even-odd non contiene NESSUN punto. Se il riempimento
+    // fosse l'unico bersaglio il nodo diventerebbe non cliccabile nell'istante
+    // in cui l'utente lo chiude -- e invisibile, visto che disegno e hit-test
+    // seguono la stessa regola.
+    const twoPoint: SubPathLite[] = [{
+      anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 100, y: 0 })], closed: true,
+    }];
+    expect(hitVectorGeometry(twoPoint, 50, 0, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(twoPoint, 50, 4.9, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(twoPoint, 50, 5.1, GRAB, FLAT)).toBe(false);
+    // Stessa storia per un contorno chiuso di ancoraggi ALLINEATI: sono tre
+    // punti, ma l'area è comunque zero.
+    const collinear: SubPathLite[] = [{
+      anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 50, y: 0 }), anchor({ x: 100, y: 0 })],
+      closed: true,
+    }];
+    expect(hitVectorGeometry(collinear, 75, 0, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(collinear, 75, 4.9, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(collinear, 75, 5.1, GRAB, FLAT)).toBe(false);
   });
 
   it("due contorni chiusi COMPONGONO: quello interno è un buco", () => {
@@ -464,6 +524,9 @@ describe("vectorGeometry: hitVectorGeometry", () => {
     ];
     expect(hitVectorGeometry(ring, 10, 10, GRAB, FLAT)).toBe(true);
     expect(hitVectorGeometry(ring, 50, 50, GRAB, FLAT)).toBe(false);
+    // Il bordo del buco è comunque INCHIOSTRO (si traccia), quindi lì si
+    // colpisce: il buco è il vuoto, non il suo contorno.
+    expect(hitVectorGeometry(ring, 50, 32, GRAB, FLAT)).toBe(true);
   });
 
   it("il riempimento segue la CURVA vera, non il poligono degli ancoraggi", () => {
@@ -475,7 +538,10 @@ describe("vectorGeometry: hitVectorGeometry", () => {
       closed: true,
     }];
     expect(hitVectorGeometry(lens, 40, 50, GRAB, FLAT)).toBe(true);
-    expect(hitVectorGeometry(lens, 80, 50, GRAB, FLAT)).toBe(false);
+    // 85 e non 80: la curva arriva a x=75 e il TRATTO si prende entro GRAB=5,
+    // quindi 80 sarebbe sul filo della presa e non direbbe niente sul
+    // riempimento, che è ciò che questo test misura.
+    expect(hitVectorGeometry(lens, 85, 50, GRAB, FLAT)).toBe(false);
   });
 
   it("un contorno di UN ancoraggio si colpisce come un punto", () => {

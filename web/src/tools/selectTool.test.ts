@@ -174,16 +174,28 @@ describe("selectTool", () => {
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 20, height: 20 })).toEqual(["shown"]);
     });
 
-    it("gives a degenerate VECTOR the same grab tolerance the click has", () => {
+    it("prende un VETTORIALE con un asse degenere, che il suo box grezzo non basterebbe a prendere", () => {
       // Il box di un vettoriale è la bbox ESATTA della geometria (invariante del
       // proto), quindi un segmento orizzontale ha davvero height 0. Con il box
-      // grezzo un marquee lo prende solo SCAVALCANDOLO in senso stretto
-      // (boundsIntersect confronta con < e >), mentre un click lo prende già a
-      // 2 unità di distanza: due porte diverse per lo stesso nodo. Qui il
-      // marquee sta tutto SOTTO la linea, alla distanza a cui il click
-      // funziona.
+      // grezzo un marquee lo prenderebbe solo SCAVALCANDOLO in senso stretto
+      // (boundsIntersect confronta con < e >): passargli accanto non basterebbe,
+      // pur essendo un nodo che si vede e si clicca. Qui il marquee sta tutto
+      // SOTTO la linea, e VECTOR_MIN_GRAB glielo fa prendere.
+      //
+      // La geometria è VERA (due ancoraggi), non `subpaths: []`: la tolleranza
+      // parla di un path che esiste. Un vettoriale senza ancoraggi non si vede,
+      // non si clicca e non lo prende nemmeno il marquee -- test qui sotto.
       const scene = { ...emptyScene("doc-1", "u"), nodes: {
-        line: node("line", 5, "a000000", { kind: "vector", vector: { subpaths: [] }, height: 0 }),
+        line: node("line", 5, "a000000", {
+          kind: "vector", height: 0,
+          vector: { subpaths: [{
+            anchors: [
+              { x: 0, y: 0, inX: 0, inY: 0, outX: 0, outY: 0 },
+              { x: 50, y: 0, inX: 0, inY: 0, outX: 0, outY: 0 },
+            ],
+            closed: false,
+          }] },
+        }),
         flatRect: node("flatRect", 5, "a000001", { height: 0 }),
       } };
       expect(nodesInMarquee(scene, { x: 0, y: 1, width: 60, height: 9 })).toEqual(["line"]);
@@ -191,6 +203,20 @@ describe("selectTool", () => {
       // AGGIUNGE un caso, non ne toglie.
       expect(nodesInMarquee(scene, { x: 0, y: -10, width: 60, height: 20 }))
         .toEqual(["line", "flatRect"]);
+    });
+
+    it("NON prende un vettoriale senza geometria, che non si vede e non si clicca", () => {
+      // Il marquee lavora su bounds e da solo non se ne accorgerebbe: un nodo
+      // vettoriale svuotato conserva il width/height che aveva, quindi un
+      // rettangolo di selezione lo prenderebbe pur non producendo nessun path e
+      // nessun hit (renderer/shapes.ts::hasInk, hitTestNode). Sarebbe l'unico
+      // modo di selezionare qualcosa di invisibile: click e marquee non possono
+      // essere la stessa funzione, ma su questo devono concordare.
+      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+        ghost: node("ghost", 5, "a000000", { kind: "vector", vector: { subpaths: [] } }),
+        real: node("real", 5, "a000001"),
+      } };
+      expect(nodesInMarquee(scene, { x: 0, y: 0, width: 100, height: 100 })).toEqual(["real"]);
     });
   });
 

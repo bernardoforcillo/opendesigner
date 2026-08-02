@@ -117,8 +117,10 @@ message SubPath { repeated Anchor anchors = 1; bool closed = 2; }
 // aggiunto.
 //
 // Un asse DEGENERE è uno stato legittimo e il box non lo falsa: un path di un
-// solo ancoraggio ha width e height 0, un segmento orizzontale ha height 0. Chi
-// ci deve cliccare sopra allarga per conto suo
+// solo ancoraggio ha width e height 0, un segmento orizzontale ha height 0. Il
+// click non passa dal box (colpisce l'inchiostro,
+// web/src/renderer/shapes.ts::hitTestNode), e chi ci deve far passare sopra un
+// MARQUEE allarga per conto suo
 // (web/src/renderer/shapes.ts::selectionBoundsOfNode) -- quella è una tolleranza
 // di selezione, non un fatto sulla geometria.
 message VectorNode { repeated SubPath subpaths = 1; }

@@ -184,7 +184,7 @@ describe("drawScene", () => {
     }
   });
 
-  it("un vettoriale CHIUSO si riempie con la regola even-odd", () => {
+  it("un vettoriale CHIUSO si riempie con la regola even-odd, e si traccia comunque", () => {
     // La regola non è il default del canvas ("nonzero"), quindi va passata
     // esplicitamente -- ed è la stessa che usa l'hit-test. Con nonzero un
     // contorno interno percorso nello stesso verso di quello esterno NON
@@ -200,7 +200,29 @@ describe("drawScene", () => {
       drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
       expect(f.fills).toHaveLength(1);
       expect(f.fills[0].rule).toBe("evenodd");
-      expect(f.strokes).toEqual([]);   // niente tratto: il riempimento è già visibile
+      // Il tratto c'è anche qui. Sul colore è invisibile (è la stessa tinta del
+      // riempimento, mezzo spessore in più di forma), ma è ciò che tiene visibile
+      // un contorno chiuso di AREA NULLA -- vedi il test qui sotto.
+      expect(f.strokes).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("un vettoriale CHIUSO di AREA NULLA si dipinge lo stesso: il tratto c'è", () => {
+    // A -> B -> A, ciò che il pen tool produce chiudendo un path di due punti.
+    // La fill non dipinge niente (even-odd su un contorno senza area), quindi
+    // senza la stroke il nodo sarebbe INVISIBILE. Il caso è raggiungibile con
+    // tre click, non è un limite.
+    vi.stubGlobal("Path2D", FakePath2D);
+    try {
+      const s = emptyScene("d", "n");
+      s.nodes["v"] = vectorNode("v", [{
+        anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 50, y: 0 })], closed: true,
+      }], { height: 0 });
+      const f = fakeCtx();
+      drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+      expect(f.strokes).toHaveLength(1);
     } finally {
       vi.unstubAllGlobals();
     }

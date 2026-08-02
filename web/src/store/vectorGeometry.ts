@@ -107,8 +107,10 @@ function addCubicExtrema(
 //
 // Geometria vuota => box degenere in (0,0): un path senza ancoraggi non ha
 // posizione, e inventargliene una sarebbe peggio. Il box degenere è un valore
-// legittimo e non va falsato qui: chi deve poterci CLICCARE sopra allarga per
-// conto suo (renderer/shapes.ts::selectionBoundsOfNode), che è una tolleranza di
+// legittimo e non va falsato qui: il CLICK non passa da questo box (colpisce
+// l'inchiostro, renderer/shapes.ts::hitTestNode), e chi ci deve far passare
+// sopra un MARQUEE allarga per conto suo
+// (renderer/shapes.ts::selectionBoundsOfNode), che è una tolleranza di
 // selezione e non un fatto sulla geometria.
 export function vectorBounds(subpaths: readonly SubPathLite[]): BoxLite {
   let minX = Infinity, minY = Infinity, maxX = -Infinity, maxY = -Infinity;
@@ -160,15 +162,33 @@ function segmentCount(sp: SubPathLite): number {
   return sp.closed ? n : n - 1;
 }
 
-// Un contorno RIEMPIE se e solo se è chiuso e ha almeno due ancoraggi: un
-// punto solo non ha area, e `closed` non gliela regala (il canvas che lo
-// riempie non dipinge niente). Predicato UNICO perché disegno (shapes.ts
-// sceglie il secchio "riempimento" o "contorno") e hit-test (riempimento o
-// vicinanza) devono classificare allo stesso modo: due elenchi separati
-// darebbero un path che si vede riempito e si colpisce per vicinanza, o
-// viceversa.
+// Un contorno finisce ANCHE nel secchio del riempimento se e solo se è chiuso e
+// ha almeno due ancoraggi: un punto solo non ha area, e `closed` non gliela
+// regala (il canvas che lo riempie non dipinge niente).
+//
+// "ANCHE" è la parola importante: questo predicato NON decide se il contorno si
+// disegna: OGNI contorno si traccia (shapes.ts::vectorPaths), chiuso o aperto, e
+// OGNI contorno si prende per vicinanza (hitVectorGeometry). Il riempimento è un
+// bersaglio in PIÙ, non alternativo -- vedi hitVectorGeometry qui sotto per la
+// ragione: `closed` non implica area, e un contorno chiuso di area nulla (due
+// ancoraggi, o tre allineati) è un caso RAGGIUNGIBILE con il pen tool. Se il
+// riempimento fosse l'unico bersaglio, quel path sparirebbe dal canvas e
+// diventerebbe non cliccabile nello stesso istante in cui l'utente lo chiude.
+//
+// Predicato UNICO perché disegno e hit-test devono classificare allo stesso
+// modo: due elenchi separati darebbero un path che si vede riempito e si
+// colpisce solo per vicinanza, o viceversa.
 export function subpathFills(sp: SubPathLite): boolean {
   return sp.closed && sp.anchors.length >= 2;
+}
+
+// Vero se c'è ALMENO un ancoraggio in tutta la geometria, cioè se il nodo
+// dipinge qualcosa. È l'unico stato in cui un vettoriale non produce nessun
+// Path2D (shapes.ts::vectorPaths) e nessun hit (hitVectorGeometry), e chi
+// seleziona deve saperlo distinguere da un path degenere -- che invece si vede
+// e si clicca eccome.
+export function hasAnyAnchor(subpaths: readonly SubPathLite[]): boolean {
+  return subpaths.some((sp) => sp.anchors.length > 0);
 }
 
 // Distanza di (px,py) dal SEGMENTO ab -- non dalla retta che lo contiene: con
@@ -314,11 +334,32 @@ export function pointInRingsEvenOdd(
 // L'hit-test della geometria, in coordinate LOCALI (il chiamante sottrae
 // l'origine del nodo una volta sola).
 //
-// Le due regole non sono una scelta di comodo ma il riflesso di ciò che si
-// VEDE: un contorno chiuso è un'area dipinta e si prende sull'area; un contorno
-// aperto è una linea sottile e si prende per vicinanza, con una tolleranza che
-// il chiamante misura in px SCHERMO -- una linea deve essere altrettanto facile
-// da afferrare a ogni zoom, e con una tolleranza in unità mondo diventerebbe
+// La regola è il riflesso esatto di ciò che si DIPINGE (shapes.ts::vectorPaths,
+// canvasRenderer.ts::drawVector):
+//   - OGNI contorno si traccia, quindi ogni contorno si prende per VICINANZA
+//     alla curva, entro `grab`;
+//   - in più, un contorno che riempie si prende su tutta la sua AREA, con la
+//     stessa regola even-odd con cui è dipinta (un buco è un buco anche per il
+//     click).
+//
+// Il tratto anche sui contorni CHIUSI non è cosmesi. `closed` non implica area:
+// un contorno chiuso di due ancoraggi percorre A->B->A e un contorno di tre
+// ancoraggi allineati percorre una spezzata schiacciata -- in entrambi i casi
+// even-odd non dipinge nulla e non contiene nessun punto. Sono stati
+// RAGGIUNGIBILI con il pen tool (click, click, click sul primo per chiudere), e
+// con il solo riempimento il nodo sparirebbe dal canvas e diventerebbe non
+// cliccabile nello stesso istante in cui l'utente lo chiude, restando
+// raggiungibile solo dal pannello livelli. Tracciarlo lo tiene visibile, e la
+// vicinanza lo tiene afferrabile: disegno e hit-test restano la stessa cosa.
+//
+// Il prezzo è una presa di `grab` attorno al perimetro di un contorno chiuso.
+// È la stessa che vale già per un contorno aperto e la stessa che si aspetta chi
+// ha usato un editor vettoriale (il bordo si afferra), e il tratto ESCE
+// davvero dal riempimento di mezzo spessore: senza la presa il bersaglio non
+// coinciderebbe più con l'inchiostro.
+//
+// La tolleranza la misura il chiamante in px SCHERMO -- una linea deve essere
+// altrettanto facile da afferrare a ogni zoom, e in unità mondo diventerebbe
 // impossibile da centrare a zoom 0.1 e larga mezzo schermo a zoom 64.
 //
 // `grab` e `flatten` sono già in unità MONDO: la conversione dai px sta in un
@@ -332,10 +373,7 @@ export function hitVectorGeometry(
   for (const sp of subpaths) {
     const pts = flattenSubpath(sp, flatten);
     if (pts.length === 0) continue;
-    if (subpathFills(sp)) {
-      rings.push(pts);
-      continue;
-    }
+    if (subpathFills(sp)) rings.push(pts);
     if (distanceToPolyline(pts, lx, ly) <= grab) return true;
   }
   return pointInRingsEvenOdd(rings, lx, ly);

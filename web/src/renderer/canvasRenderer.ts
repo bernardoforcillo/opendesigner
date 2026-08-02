@@ -70,11 +70,15 @@ export function drawScene(ctx: CanvasRenderingContext2D, state: SceneState, cam:
   ctx.globalAlpha = 1;
 }
 
-// Un nodo vettoriale in DUE passate, perché i suoi contorni non si dipingono
-// tutti allo stesso modo: quelli chiusi si riempiono, quelli aperti si
-// tracciano. Un contorno aperto messo nello stesso Path2D del riempimento
-// verrebbe chiuso implicitamente dal canvas e riempito -- ed è per questo che
-// vectorPaths ne restituisce due.
+// Un nodo vettoriale in DUE passate: OGNI contorno si traccia, e in più quelli
+// che hanno area si riempiono. Il tratto non è decorazione -- è ciò che tiene
+// visibile un contorno aperto e un contorno chiuso di area nulla (due
+// ancoraggi, o tre allineati: due stati che il pen tool raggiunge in tre click,
+// e che il solo riempimento non dipingerebbe affatto).
+//
+// I due Path2D sono separati perché un contorno aperto messo in quello del
+// riempimento verrebbe chiuso implicitamente dal canvas e riempito -- ed è per
+// questo che vectorPaths ne restituisce due.
 function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, zoom: number): void {
   const { fill, stroke } = vectorPaths(n);
   // La regola even-odd è una SCELTA (motivata su shapes.ts::VECTOR_FILL_RULE)

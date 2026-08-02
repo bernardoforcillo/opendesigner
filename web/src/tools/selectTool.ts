@@ -1,5 +1,5 @@
 import { hitTest } from "../renderer/canvasRenderer";
-import { selectionBoundsOfNode } from "../renderer/shapes";
+import { selectionBoundsOfNode, hasInk } from "../renderer/shapes";
 import { normalizeRect, boundsOfNode, boundsIntersect, type Bounds } from "../canvas/geometry";
 import { worldToScreen } from "../canvas/camera";
 import { selectionWorldBounds } from "../renderer/overlayRenderer";
@@ -95,15 +95,22 @@ export function pickTarget(
 // orderKey per un risultato deterministico (Object.values non garantisce
 // l'ordine di inserimento per chiavi stringa).
 // Il box è quello di SELEZIONE (renderer/shapes.ts), non quello grezzo del
-// modello: è lo STESSO da cui passa l'hit-test del click, così un nodo che si
-// può cliccare è un nodo che il marquee può prendere. Conta per il vettoriale,
-// il cui box può legittimamente avere un lato a zero (un segmento orizzontale,
-// un path di un solo ancoraggio): con il box grezzo un marquee lo prende solo
-// se lo SCAVALCA in senso stretto -- passargli accanto, alla stessa distanza
-// che basta a cliccarlo, non basterebbe.
+// modello. NON è lo stesso bersaglio del click: hitTest colpisce l'inchiostro
+// del path e misura la presa in px SCHERMO, mentre qui si confrontano bounds in
+// coordinate MONDO e la camera non c'è. Le due porte non possono coincidere, ma
+// devono concordare sui due estremi, ed è quello che fanno le due condizioni
+// qui sotto:
+//   - `hasInk`: un vettoriale senza NESSUN ancoraggio non si vede e non si
+//     clicca, quindi non deve nemmeno finire in un marquee -- altrimenti
+//     resterebbe l'unica porta verso un nodo invisibile, e selezionerebbe il
+//     nulla per sorpresa;
+//   - `selectionBoundsOfNode`: un vettoriale il cui box ha legittimamente un
+//     lato a zero (un segmento orizzontale, un path di un solo ancoraggio) si
+//     vede e si clicca eccome, ma con il box grezzo un marquee lo prenderebbe
+//     solo SCAVALCANDOLO in senso stretto -- passargli accanto non basterebbe.
 export function nodesInMarquee(scene: SceneState, bounds: Bounds): string[] {
   return Object.values(scene.nodes)
-    .filter((n) => n.visible && boundsIntersect(selectionBoundsOfNode(n), bounds))
+    .filter((n) => n.visible && hasInk(n) && boundsIntersect(selectionBoundsOfNode(n), bounds))
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0))
     .map((n) => n.id);
 }

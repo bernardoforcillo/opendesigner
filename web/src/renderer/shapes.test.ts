@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach, afterEach } from "vitest";
-import { hitTestNode, vectorPaths, VECTOR_HIT_PX } from "./shapes";
+import { hitTestNode, vectorPaths, hasInk, VECTOR_HIT_PX } from "./shapes";
 import type { NodeLite, SubPathLite, AnchorLite } from "../store/types";
 
 function node(kind: "rect" | "ellipse"): NodeLite {
@@ -157,11 +157,39 @@ describe("hitTestNode: vettoriale", () => {
     expect(hitTestNode(line, 20, 0, Z1)).toBe(false);   // dov'era prima di spostarlo
   });
 
-  it("un contorno CHIUSO si colpisce sul riempimento, e NON su un alone attorno", () => {
+  it("un contorno CHIUSO si colpisce sul riempimento E sul suo tratto", () => {
     const v = vectorNode(SQUARE);
     expect(hitTestNode(v, 50, 25, Z1)).toBe(true);
-    expect(hitTestNode(v, 103, 25, Z1)).toBe(false);  // 3 px fuori: nessun alone
-    expect(hitTestNode(v, 50, 53, Z1)).toBe(false);
+    // Anche un contorno chiuso si traccia, quindi ha la stessa presa di uno
+    // aperto attorno alla curva: il bersaglio è l'INCHIOSTRO, e il tratto esce
+    // dal riempimento.
+    expect(hitTestNode(v, 103, 25, Z1)).toBe(true);
+    expect(hitTestNode(v, 50, 53, Z1)).toBe(true);
+    // La presa resta una presa: oltre VECTOR_HIT_PX il click torna alle forme
+    // sotto.
+    expect(hitTestNode(v, 110, 25, Z1)).toBe(false);
+    expect(hitTestNode(v, 50, 60, Z1)).toBe(false);
+  });
+
+  it("un contorno CHIUSO di AREA NULLA resta visibile e colpibile", () => {
+    // Il pen tool ci arriva in tre click: A, B, di nuovo A per chiudere. Il
+    // contorno percorre A->B->A, even-odd non riempie niente, e senza il tratto
+    // il nodo sparirebbe dal canvas e smetterebbe di essere cliccabile nello
+    // stesso istante in cui l'utente lo chiude.
+    const flat = vectorNode([{
+      anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 40, y: 0 })], closed: true,
+    }], { width: 40, height: 0 });
+    expect(hitTestNode(flat, 20, 0, Z1)).toBe(true);
+    expect(hitTestNode(flat, 20, 4, Z1)).toBe(true);
+    expect(hitTestNode(flat, 20, 10, Z1)).toBe(false);
+    // E lo stesso per un contorno chiuso di ancoraggi ALLINEATI, che ha tre
+    // punti ma area comunque zero.
+    const collinear = vectorNode([{
+      anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 20, y: 0 }), anchor({ x: 40, y: 0 })],
+      closed: true,
+    }], { width: 40, height: 0 });
+    expect(hitTestNode(collinear, 30, 0, Z1)).toBe(true);
+    expect(hitTestNode(collinear, 30, 10, Z1)).toBe(false);
   });
 
   it("un contorno APERTO non riempie: l'interno resta delle forme sotto", () => {
@@ -184,6 +212,33 @@ describe("hitTestNode: vettoriale", () => {
     expect(hitTestNode(vectorNode([]), 50, 25, Z1)).toBe(false);
     const noPayload: NodeLite = { ...node("rect"), kind: "vector" };
     expect(hitTestNode(noPayload, 50, 25, Z1)).toBe(false);
+  });
+});
+
+describe("hasInk", () => {
+  it("è falso SOLO per un vettoriale senza nessun ancoraggio, e concorda con l'hit-test", () => {
+    // Il predicato che il marquee usa per non prendere ciò che non si vede
+    // (tools/selectTool.ts::nodesInMarquee). L'accordo con hitTestNode è la
+    // proprietà che conta: dove hasInk è falso, il click non colpisce.
+    const empty = vectorNode([]);
+    expect(hasInk(empty)).toBe(false);
+    expect(hitTestNode(empty, 50, 25, Z1)).toBe(false);
+    expect(hasInk(vectorNode([{ anchors: [], closed: true }]))).toBe(false);
+    const noPayload: NodeLite = { ...node("rect"), kind: "vector" };
+    expect(hasInk(noPayload)).toBe(false);
+
+    // Un path DEGENERE (un solo ancoraggio) ha inchiostro eccome: si vede e si
+    // clicca, quindi il marquee deve poterlo prendere.
+    const dot = vectorNode([{ anchors: [anchor({ x: 0, y: 0 })], closed: false }],
+      { width: 0, height: 0 });
+    expect(hasInk(dot)).toBe(true);
+    expect(hitTestNode(dot, 0, 0, Z1)).toBe(true);
+
+    // Le forme il cui inchiostro È il box non passano di qui: il loro caso
+    // degenere è comportamento di M1 e non si cambia da questa traccia.
+    expect(hasInk(node("rect"))).toBe(true);
+    expect(hasInk({ ...node("rect"), height: 0 })).toBe(true);
+    expect(hasInk(textNode())).toBe(true);
   });
 });
 
@@ -225,23 +280,41 @@ describe("vectorPaths", () => {
     ]);
   });
 
-  it("un contorno CHIUSO va nel path del RIEMPIMENTO, con il ritorno e il closePath", () => {
+  it("un contorno CHIUSO va in ENTRAMBI i path, con il ritorno e il closePath", () => {
     const n = vectorNode([{
       anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 0 }), anchor({ x: 10, y: 10 })],
       closed: true,
     }]);
     const { fill, stroke } = vectorPaths(n);
-    expect(stroke).toBeNull();
     // Il segmento di ritorno ultimo -> primo è una CURVA come le altre (le sue
     // maniglie esistono), quindi si disegna esplicitamente; closePath dopo non
     // aggiunge lunghezza -- serve a chiudere il contorno per il riempimento.
-    expect(callsOf(fill)).toEqual([
+    const shape = [
       "M 0 0",
       "C 0 0 10 0 10 0",
       "C 10 0 10 10 10 10",
       "C 10 10 0 0 0 0",
       "Z",
-    ]);
+    ];
+    expect(callsOf(fill)).toEqual(shape);
+    // ...e anche nel TRATTO: un contorno chiuso non ha per forza area, e il
+    // tratto è ciò che gli impedisce di sparire quando non ce l'ha.
+    expect(callsOf(stroke)).toEqual(shape);
+  });
+
+  it("un contorno CHIUSO di AREA NULLA si traccia comunque", () => {
+    // A -> B -> A: il riempimento non dipinge niente (even-odd non contiene
+    // nessun punto), il tratto sì. Senza, il pen tool farebbe sparire il nodo
+    // al click che lo chiude.
+    const n = vectorNode([{
+      anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 40, y: 0 })], closed: true,
+    }]);
+    const { fill, stroke } = vectorPaths(n);
+    const shape = ["M 0 0", "C 0 0 40 0 40 0", "C 40 0 0 0 0 0", "Z"];
+    // Il riempimento c'è (il predicato è vero) ma non dipinge: è il tratto a
+    // rendere visibile il path, ed è per questo che deve esserci.
+    expect(callsOf(fill)).toEqual(shape);
+    expect(callsOf(stroke)).toEqual(shape);
   });
 
   it("un ancoraggio senza maniglie dà una bezier con i controlli sugli estremi (la retta)", () => {
@@ -259,10 +332,14 @@ describe("vectorPaths", () => {
       { anchors: [anchor({ x: 50, y: 0 }), anchor({ x: 50, y: 30 })], closed: false },
     ]);
     const { fill, stroke } = vectorPaths(n);
-    // Uno si riempie, l'altro no: se stessero nello stesso Path2D il canvas
-    // chiuderebbe implicitamente anche l'aperto e lo riempirebbe.
+    // Uno solo dei due riempie: se l'aperto finisse nel path del RIEMPIMENTO il
+    // canvas lo chiuderebbe implicitamente e lo riempirebbe. Nel tratto invece
+    // ci stanno entrambi, e l'ordine è quello dei contorni.
     expect(callsOf(fill)?.filter((c) => c === "Z")).toEqual(["Z"]);
-    expect(callsOf(stroke)).toEqual(["M 50 0", "C 50 0 50 30 50 30"]);
+    expect(callsOf(stroke)).toEqual([
+      "M 0 0", "C 0 0 10 0 10 0", "C 10 0 0 10 0 10", "C 0 10 0 0 0 0", "Z",
+      "M 50 0", "C 50 0 50 30 50 30",
+    ]);
   });
 
   it("un contorno di un solo ancoraggio è un PUNTO nel path del contorno", () => {
