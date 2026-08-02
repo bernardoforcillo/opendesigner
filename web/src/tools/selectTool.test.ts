@@ -716,5 +716,45 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(10, 10, 50, true), ctx);
       expect(useScene.getState().editingNodeId).toBeNull();
     });
+
+    // Repro concreto del bug di review (Task 4, fix round): due nodi testo
+    // VUOTI preesistenti, doppio click sul primo poi sul secondo. Senza la
+    // guardia in store.ts::beginTextEditing, il primo nodo non passava MAI da
+    // endTextEditing -- editingNodeId veniva sovrascritto in silenzio e il
+    // nodo restava fantasma (vuoto, mai ripulito) per sempre.
+    it("un doppio click su un ALTRO nodo testo chiude/pulisce l'editing del primo (vuoto), senza lasciarlo fantasma", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          t1: node("t1", 0, "a000000", {
+            kind: "text",
+            text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+          }),
+          t2: node("t2", 200, "a000001", {
+            kind: "text",
+            text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+          }),
+        },
+      });
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      // doppio click su t1: entra in editing.
+      tool.onPointerDown!(atT(10, 10, 0), ctx);
+      tool.onPointerUp!(atT(10, 10, 0), ctx);
+      tool.onPointerDown!(atT(10, 10, 200), ctx);
+      expect(useScene.getState().editingNodeId).toBe("t1");
+      expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+
+      // doppio click su t2 (ben oltre la soglia dei 400ms dal precedente, ma è
+      // un doppio click NUOVO: due click su t2 entro soglia fra loro).
+      tool.onPointerDown!(atT(210, 10, 1000), ctx);
+      tool.onPointerUp!(atT(210, 10, 1000), ctx);
+      tool.onPointerDown!(atT(210, 10, 1200), ctx);
+
+      expect(useScene.getState().editingNodeId).toBe("t2");
+      expect(useScene.getState().scene!.nodes["t1"]).toBeUndefined(); // niente nodo fantasma
+      expect(useScene.getState().scene!.nodes["t2"]).toBeDefined();
+    });
   });
 });

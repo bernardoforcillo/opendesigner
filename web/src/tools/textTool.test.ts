@@ -219,6 +219,31 @@ describe("textTool", () => {
     useScene.getState().redo();
     expect(useScene.getState().scene!.nodes[id].kind).toBe("text");
   });
+
+  // Repro concreto del bug di review (Task 4, fix round): due creazioni
+  // consecutive con textTool, senza mai uscire esplicitamente dall'editing fra
+  // le due. onPointerUp chiama beginTextEditing(id) INCONDIZIONATAMENTE a ogni
+  // click -- senza la guardia in store.ts, il primo nodo (rimasto vuoto)
+  // sarebbe stato abbandonato: mai passato da endTextEditing, mai ripulito, un
+  // nodo fantasma permanente.
+  it("un secondo click del tool testo chiude/pulisce l'editing del primo nodo (ancora vuoto) invece di abbandonarlo come fantasma", () => {
+    const tool = createTextTool();
+    const { ctx, submitted } = fakeCtx();
+
+    tool.onPointerDown!(at(10, 20), ctx);
+    tool.onPointerUp!(at(10, 20), ctx);
+    const first = createdNode(submitted[0]).id;
+    expect(useScene.getState().editingNodeId).toBe(first);
+    expect(useScene.getState().scene!.nodes[first]).toBeDefined();
+
+    tool.onPointerDown!(at(300, 20), ctx);
+    tool.onPointerUp!(at(300, 20), ctx);
+    const second = createdNode(submitted[1]).id;
+
+    expect(useScene.getState().editingNodeId).toBe(second);
+    expect(useScene.getState().scene!.nodes[first]).toBeUndefined(); // niente nodo fantasma
+    expect(useScene.getState().scene!.nodes[second]).toBeDefined();
+  });
 });
 
 describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
@@ -298,5 +323,77 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
     useScene.getState().beginTextEditing("a");
     useScene.getState().endTextEditing();
     expect(useScene.getState().scene!.nodes["a"]).toBeDefined();
+  });
+
+  // Bug trovato in review: beginTextEditing sovrascriveva editingNodeId senza
+  // MAI passare la sessione precedente da endTextEditing -- un secondo
+  // beginTextEditing (doppio click su un altro nodo testo, o una seconda
+  // creazione col tool testo) abbandonava in silenzio il nodo precedente, che
+  // se rimasto vuoto restava fantasma sulla scena per sempre.
+  describe("beginTextEditing chiude/pulisce una sessione già aperta", () => {
+    beforeEach(() => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          t1: {
+            id: "t1", parentId: "page1", orderKey: "a000000", name: "Text", visible: true, opacity: 1,
+            x: 0, y: 0, width: 100, height: 20, rotation: 0,
+            fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "text", cornerRadius: 0,
+            text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+          },
+          t2: {
+            id: "t2", parentId: "page1", orderKey: "a000001", name: "Text", visible: true, opacity: 1,
+            x: 200, y: 0, width: 100, height: 20, rotation: 0,
+            fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "text", cornerRadius: 0,
+            text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+          },
+        },
+      });
+    });
+
+    it("passare da un nodo testo VUOTO a un altro lo elimina (nessun fantasma), in un gesto annullabile", () => {
+      useScene.getState().beginTextEditing("t1");
+      expect(useScene.getState().editingNodeId).toBe("t1");
+      const undoDepthAfterFirstEdit = useScene.getState().undoStack.length;
+
+      useScene.getState().beginTextEditing("t2");
+
+      expect(useScene.getState().editingNodeId).toBe("t2");
+      expect(useScene.getState().scene!.nodes["t1"]).toBeUndefined(); // t1 ripulito, non fantasma
+      expect(useScene.getState().scene!.nodes["t2"]).toBeDefined();
+      expect(useScene.getState().undoStack.length).toBe(undoDepthAfterFirstEdit + 1);
+
+      // annullabile come qualunque altra pulizia (vedi endTextEditing).
+      useScene.getState().undo();
+      expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+    });
+
+    it("passare da un nodo testo CON contenuto a un altro non lo elimina", () => {
+      useScene.getState().setScene({
+        ...useScene.getState().scene!,
+        nodes: {
+          ...useScene.getState().scene!.nodes,
+          t1: { ...useScene.getState().scene!.nodes["t1"], text: { content: "ciao", style: useScene.getState().scene!.nodes["t1"].text!.style } },
+        },
+      });
+
+      useScene.getState().beginTextEditing("t1");
+      useScene.getState().beginTextEditing("t2");
+
+      expect(useScene.getState().editingNodeId).toBe("t2");
+      expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+      expect(useScene.getState().scene!.nodes["t1"].text?.content).toBe("ciao");
+    });
+
+    it("richiamare beginTextEditing con lo STESSO nodo già in editing è un no-op (non lo cancella)", () => {
+      useScene.getState().beginTextEditing("t1");
+      const undoDepth = useScene.getState().undoStack.length;
+
+      useScene.getState().beginTextEditing("t1");
+
+      expect(useScene.getState().editingNodeId).toBe("t1");
+      expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+      expect(useScene.getState().undoStack.length).toBe(undoDepth); // nessuna cancellazione spuria
+    });
   });
 });

@@ -706,6 +706,9 @@ interface SceneStore {
   setMarquee: (b: Bounds | null) => void;
   // Accende il flag di editing: textTool lo chiama subito dopo aver creato il
   // nodo, il doppio click di selectTool lo chiama su un nodo testo esistente.
+  // Se una sessione era già aperta su un ALTRO nodo, la chiude/pulisce prima
+  // (stessa logica di endTextEditing, nodo vuoto compreso) -- mai due
+  // sessioni aperte in silenzio, mai un nodo fantasma abbandonato a metà.
   beginTextEditing: (id: string) => void;
   // Spegne il flag e, se il nodo che si stava editando è un testo rimasto
   // VUOTO, lo elimina -- comportamento standard (non lasciare nodi fantasma
@@ -1153,7 +1156,25 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   clearSelection: () => set({ selection: [] }),
   setMarquee: (b) => set({ marquee: b }),
 
-  beginTextEditing: (id) => set({ editingNodeId: id }),
+  // Chiude/pulisce QUALUNQUE sessione già aperta PRIMA di aprirne una nuova
+  // (bug trovato in review): senza questo, una seconda beginTextEditing --
+  // doppio click su un ALTRO nodo testo mentre uno resta in editing, o due
+  // creazioni consecutive di textTool.ts -- sovrascriveva editingNodeId in
+  // silenzio, e il nodo precedente non passava MAI da endTextEditing: se era
+  // rimasto vuoto restava sulla scena per sempre, un nodo fantasma permanente
+  // (esattamente ciò che endTextEditing esiste per evitare quando l'utente
+  // esce con Escape/click-sul-vuoto). Riusa endTextEditing così ogni FUTURO
+  // chiamante (l'overlay del Task 5 incluso) lo eredita gratis, invece di
+  // doversene ricordare da solo.
+  // Stesso id già in editing = no-op: NON richiamare endTextEditing (che
+  // cancellerebbe un nodo ancora vuoto per poi riaprirlo su un id ormai
+  // sparito dalla scena).
+  beginTextEditing: (id) => {
+    const current = get().editingNodeId;
+    if (current === id) return;
+    if (current !== null) get().endTextEditing();
+    set({ editingNodeId: id });
+  },
 
   // Esce dall'editing e, se il nodo era un testo rimasto vuoto, lo cancella.
   // La cancellazione passa da beginGesture/endGesture come QUALUNQUE altra
