@@ -116,6 +116,60 @@ describe("un nodo selezionato", () => {
     expect(field("W")).toHaveValue("30");
     expect(field("H")).toHaveValue("40");
   });
+
+  // La maniglia dell'overlay dà il GESTO; questo campo dà il NUMERO. Senza, un
+  // nodo ruotato non ha nessun posto dove dire a che angolo sta, e un angolo
+  // esatto (90, 45, o 0 per rimetterlo dritto) non si può scrivere.
+  it("il campo Rot mostra l'angolo del nodo", () => {
+    installScene(rectNode("a", "a0", { rotation: 45 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+
+    expect(field("Rot")).toHaveValue("45");
+  });
+});
+
+describe("il campo Rot", () => {
+  it("scrive l'angolo con UN SetProperties sulla sola mask rotation", async () => {
+    installScene(rectNode("a", "a0", { rotation: 0 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.clear(field("Rot"));
+    await user.type(field("Rot"), "90{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("setProps");
+    if (op.kind.case === "setProps") {
+      expect(op.kind.value.mask?.paths).toEqual(["rotation"]);
+      expect(op.kind.value.patch?.rotation).toBe(90);
+    }
+    expect(useScene.getState().scene!.nodes["a"].rotation).toBe(90);
+    expect(useScene.getState().undoStack).toHaveLength(1); // un campo, un gesto
+  });
+
+  it("accetta un angolo NEGATIVO (-30 si scrive più volentieri di 330)", async () => {
+    installScene(rectNode("a", "a0", { rotation: 0 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.clear(field("Rot"));
+    await user.type(field("Rot"), "-30{Enter}");
+
+    expect(useScene.getState().scene!.nodes["a"].rotation).toBe(-30);
+  });
+
+  it("su una selezione con angoli diversi dice Misto invece di inventarne uno", () => {
+    installScene(rectNode("a", "a0", { rotation: 0 }), rectNode("b", "a1", { rotation: 90 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+
+    expect(field("Rot")).toHaveValue("");
+    expect(field("Rot")).toHaveAttribute("placeholder", "Misto");
+  });
 });
 
 describe("digitare e confermare", () => {

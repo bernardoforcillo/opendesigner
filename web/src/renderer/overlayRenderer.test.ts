@@ -6,6 +6,9 @@ import {
   worldBoundsToScreen,
   handlePositions,
   HANDLE_SIZE,
+  ROTATE_MARKER_OFFSET,
+  ROTATE_MARKER_RADIUS,
+  rotateMarkerPositions,
 } from "./overlayRenderer";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
@@ -129,6 +132,10 @@ function fakeCtx(width: number, height: number) {
   // ruotato, dove ciò che conta non è QUANTE volte si disegna ma ATTORNO A
   // COSA (il centro del riquadro, in px schermo).
   const xform: { op: string; args: number[] }[] = [];
+  // Gli archi della maniglia di ROTAZIONE, con centro e raggio: è l'unico
+  // disegno dell'overlay che non sia un rettangolo, e ciò che conta è DOVE
+  // finisce (dentro la propria zona di presa, vedi selection/handles.test.ts).
+  const arcs: { x: number; y: number; r: number }[] = [];
   const record = (op: string) => (...args: number[]) => { calls.push(op); xform.push({ op, args }); };
   const ctx: Record<string, unknown> = {
     canvas: { width, height },
@@ -136,6 +143,9 @@ function fakeCtx(width: number, height: number) {
     clearRect: (..._a: unknown[]) => { calls.push("clearRect"); },
     strokeRect: (..._a: unknown[]) => { calls.push("strokeRect"); },
     fillRect: (..._a: unknown[]) => { calls.push("fillRect"); },
+    beginPath: () => { calls.push("beginPath"); },
+    arc: (x: number, y: number, r: number, ..._a: number[]) => { calls.push("arc"); arcs.push({ x, y, r }); },
+    stroke: () => { calls.push("stroke"); },
     save: record("save"),
     restore: record("restore"),
     translate: record("translate"),
@@ -144,7 +154,7 @@ function fakeCtx(width: number, height: number) {
     strokeStyle: "",
     fillStyle: "",
   };
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls, xform };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls, xform, arcs };
 }
 
 describe("drawOverlay smoke test", () => {
@@ -223,6 +233,54 @@ describe("drawOverlay smoke test", () => {
     // il restore: il rettangolo di selezione è sempre asse-allineato
     expect(calls.lastIndexOf("fillRect")).toBeGreaterThan(calls.indexOf("restore"));
     expect(calls.lastIndexOf("strokeRect")).toBeGreaterThan(calls.indexOf("restore"));
+  });
+
+  // La maniglia di rotazione ESISTE sullo schermo. Prima non si disegnava
+  // affatto: il gesto c'era, ma l'unico modo di scoprirlo era passarci sopra
+  // col mouse e notare il cursore.
+  it("draws a rotate marker just outside each of the 4 corners", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = rect("a", 0, 0, 100, 50);
+    const { ctx, calls, arcs } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], null);
+
+    expect(calls.filter((c) => c === "arc")).toHaveLength(4);
+    const d = ROTATE_MARKER_OFFSET;
+    const at = (x: number, y: number) => arcs.some((a) => a.x === x && a.y === y && a.r === ROTATE_MARKER_RADIUS);
+    expect(at(-d, -d)).toBe(true); // nw
+    expect(at(100 + d, -d)).toBe(true); // ne
+    expect(at(100 + d, 50 + d)).toBe(true); // se
+    expect(at(-d, 50 + d)).toBe(true); // sw
+    // e non è un quadratino: i rettangoli disegnati restano quelli di prima
+    expect(calls.filter((c) => c === "fillRect")).toHaveLength(8);
+    expect(calls.filter((c) => c === "strokeRect")).toHaveLength(9);
+  });
+
+  it("puts the markers exactly where rotateMarkerPositions says (one geometry, not two)", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = rect("a", 10, 20, 100, 50);
+    const cam: Camera = { x: 7, y: 3, zoom: 2 };
+    const { ctx, arcs } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, cam, ["a"], null);
+
+    const expected = rotateMarkerPositions(worldBoundsToScreen({ x: 10, y: 20, width: 100, height: 50 }, cam));
+    for (const p of Object.values(expected)) {
+      expect(arcs.some((a) => a.x === p.x && a.y === p.y)).toBe(true);
+    }
+  });
+
+  it("turns the markers with the frame, and closes the transform after them", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    const { ctx, calls, arcs } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], null);
+
+    // disegnati nello spazio NON ruotato del frame (è il contesto a girare,
+    // come per il riquadro e le maniglie)...
+    expect(arcs).toHaveLength(4);
+    expect(arcs.some((a) => a.x === -ROTATE_MARKER_OFFSET && a.y === -ROTATE_MARKER_OFFSET)).toBe(true);
+    // ...e dentro il save/restore, non dopo
+    expect(calls.indexOf("restore")).toBeGreaterThan(calls.lastIndexOf("arc"));
   });
 
   it("emits no transform for an unrotated selection", () => {

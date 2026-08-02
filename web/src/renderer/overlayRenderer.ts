@@ -1,15 +1,33 @@
 import type { SceneState } from "../store/types";
 import type { Camera } from "../canvas/camera";
 import { type Bounds, boundsOfNode, unionBounds, worldAabbOfNode, worldBoundsToScreen } from "../canvas/geometry";
-import { HANDLE_SIZE, handlePositions, type SelectionFrame } from "../selection/handles";
+import {
+  CORNER_IDS,
+  HANDLE_SIZE,
+  handlePositions,
+  ROTATE_CORNER_DIRS,
+  ROTATE_MARKER_RADIUS,
+  rotateMarkerPositions,
+  type SelectionFrame,
+} from "../selection/handles";
 
 // La geometria delle maniglie (posizioni, hit-test, resize) è UNA sola e vive
 // in selection/handles.ts: qui si disegna soltanto. Ri-esportata perché il
 // renderer resta il punto d'ingresso naturale per chi disegna l'overlay.
-export { HANDLE_SIZE, handlePositions, type HandleId, type SelectionFrame } from "../selection/handles";
+export {
+  HANDLE_SIZE, handlePositions, ROTATE_MARKER_OFFSET, ROTATE_MARKER_RADIUS, rotateMarkerPositions,
+  type HandleId, type SelectionFrame,
+} from "../selection/handles";
 export { worldBoundsToScreen } from "../canvas/geometry";
 
 const DEG_TO_RAD = Math.PI / 180;
+const TAU = Math.PI * 2;
+
+// Apertura dell'arco del segno di rotazione: un quarto di giro, rivolto verso
+// l'angolo. Un cerchio chiuso si leggerebbe come un'altra maniglia; un arco
+// aperto è il segno con cui gli editor dicono "gira".
+const ROTATE_ARC_GAP = Math.PI / 2;
+const ROTATE_MARKER_WIDTH = 1.5;
 
 function devicePixelRatio(): number {
   return typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
@@ -101,10 +119,24 @@ export function drawOverlay(
       ctx.strokeStyle = "#2f6fed";
       ctx.strokeRect(p.x - half + 0.5, p.y - half + 0.5, HANDLE_SIZE - 1, HANDLE_SIZE - 1);
     }
-    // La zona di presa della ROTAZIONE non si disegna: è l'anello appena fuori
-    // da ogni angolo (selection/handles.ts::hitTestFrame) e si annuncia col
-    // cursore, come in ogni editor. Disegnarla riempirebbe l'overlay di
-    // quadratini che non si possono ridimensionare.
+    // La MANIGLIA DI ROTAZIONE: un arco aperto appena FUORI da ogni angolo,
+    // dentro la zona di presa che selection/handles.ts::hitTestFrame già
+    // riconosce (stessa geometria, un'unica fonte -- vedi
+    // rotateMarkerPositions). Non un quadratino: quello vuol dire "trascina per
+    // ridimensionare", e qui non si ridimensiona niente. L'apertura guarda
+    // verso il riquadro, così il segno "abbraccia" l'angolo che gira.
+    const markers = rotateMarkerPositions(box);
+    ctx.lineWidth = ROTATE_MARKER_WIDTH;
+    ctx.strokeStyle = "#2f6fed";
+    for (const id of CORNER_IDS) {
+      const p = markers[id];
+      const d = ROTATE_CORNER_DIRS[id];
+      // Verso l'INTERNO: la direzione opposta alla diagonale uscente.
+      const inward = Math.atan2(-d.y, -d.x);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, ROTATE_MARKER_RADIUS, inward + ROTATE_ARC_GAP / 2, inward - ROTATE_ARC_GAP / 2 + TAU);
+      ctx.stroke();
+    }
     if (rotated) ctx.restore();
   }
 

@@ -5,6 +5,8 @@ import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
+import { worldAabbOfNode } from "../canvas/geometry";
+import { selectionFrame } from "../renderer/overlayRenderer";
 
 function node(id: string, x: number, orderKey: string, extra: Partial<NodeLite> = {}): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,
@@ -747,6 +749,131 @@ describe("selectTool", () => {
       const a = useScene.getState().scene!.nodes["a"];
       expect(a.width).toBeCloseTo(50, 9);
       expect(a.height).toBeCloseTo(50, 9);
+    });
+  });
+
+  // --- resize di un GRUPPO che contiene un nodo ruotato -----------------------
+  // Il riquadro di gruppo è asse-allineato attorno a ciò che i nodi OCCUPANO:
+  // la scala vale lungo gli assi dello SCHERMO, e un membro girato va mappato
+  // per assi -- scalare il suo box locale lo allungava nella direzione
+  // sbagliata e lo faceva uscire dal riquadro.
+  describe("resizing a MULTIPLE selection containing a rotated node", () => {
+    beforeEach(() => {
+      // A: 100x50 in (0,0) a 90° -> occupa x [25,75], y [-25,75]
+      // B: 50x50 in (200,0)      -> il gruppo sta su x [25,250], y [-25,75]
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          a: node("a", 0, "a000000", { width: 100, height: 50, rotation: 90 }),
+          b: node("b", 200, "a000001"),
+        },
+      });
+      useScene.getState().setSelection(["a", "b"]);
+    });
+
+    it("stretches the rotated member along the SCREEN axis the pointer is dragging", () => {
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(250, 75), ctx); // maniglia se del gruppo
+      tool.onPointerMove!(at(475, 75), ctx); // +225 in orizzontale: scala x2
+      tool.onPointerUp!(at(475, 75), ctx);
+
+      const a = useScene.getState().scene!.nodes["a"];
+      // il box del modello: la larghezza (asse locale VERTICALE sullo schermo)
+      // resta, l'altezza (asse locale ORIZZONTALE) raddoppia
+      expect(a.width).toBeCloseTo(100, 9);
+      expect(a.height).toBeCloseTo(100, 9);
+      expect(a.rotation).toBeCloseTo(90, 9);
+      expect(a.x).toBeCloseTo(25, 9);
+      expect(a.y).toBeCloseTo(-25, 9);
+
+      const b = useScene.getState().scene!.nodes["b"];
+      expect(b).toMatchObject({ y: 0, width: 100, height: 50 });
+      expect(b.x).toBeCloseTo(375, 9);
+      expect(sync.sent).toHaveLength(2); // un op per nodo, un gesto solo
+    });
+
+    it("keeps the rotated member inside the group frame it started in", () => {
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(250, 75), ctx);
+      tool.onPointerMove!(at(475, 75), ctx);
+      tool.onPointerUp!(at(475, 75), ctx);
+
+      // Il riquadro dopo il resize: x [25,475], y [-25,75] (l'altezza non è
+      // stata toccata). Quello che il nodo occupa DAVVERO deve starci dentro --
+      // prima diventava alto 200 e sfondava il riquadro sopra e sotto.
+      const aabb = worldAabbOfNode(useScene.getState().scene!.nodes["a"]);
+      expect(aabb.y).toBeGreaterThanOrEqual(-25 - 1e-6);
+      expect(aabb.y + aabb.height).toBeLessThanOrEqual(75 + 1e-6);
+      expect(aabb.height).toBeCloseTo(100, 6);
+      expect(aabb.width).toBeCloseTo(100, 6);
+    });
+
+    it("sends the new angle only when it really changes", () => {
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      // Scala UNIFORME (shift): nessun angolo cambia, e la mask resta quella di
+      // sempre -- niente `rotation` di troppo sul filo.
+      tool.onPointerDown!(at(250, 75, true), ctx);
+      tool.onPointerMove!(at(475, 300, true), ctx);
+      tool.onPointerUp!(at(475, 300, true), ctx);
+
+      expect(useScene.getState().scene!.nodes["a"].rotation).toBe(90);
+      for (const op of sync.sent) {
+        expect(op.kind.case === "setProps" && op.kind.value.mask?.paths)
+          .toEqual(["x", "y", "width", "height"]);
+      }
+    });
+
+    it("MIRRORS the angle of a rotated member when the group flips, and says so in the mask", () => {
+      // 30° invece di 90: uno specchio orizzontale a 90° lascerebbe l'angolo
+      // dov'è (l'asse locale x punta in giù), e non si vedrebbe niente.
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          a: node("a", 0, "a000000", { width: 100, height: 50, rotation: 30 }),
+          b: node("b", 200, "a000001"),
+        },
+      });
+      useScene.getState().setSelection(["a", "b"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      // Dove sia la maniglia e del gruppo lo dice il frame stesso (a 30° i
+      // bordi non sono numeri tondi): qui si testa il RESIZE, non dove stanno
+      // le maniglie -- quello è coperto da handles.test.ts.
+      const f = selectionFrame(useScene.getState().scene!, ["a", "b"])!;
+      const east = { x: f.bounds.x + f.bounds.width, y: f.bounds.y + f.bounds.height / 2 };
+      const past = east.x - 2 * f.bounds.width; // oltre l'ancora: ribaltamento
+
+      tool.onPointerDown!(at(east.x, east.y), ctx);
+      tool.onPointerMove!(at(past, east.y), ctx);
+      tool.onPointerUp!(at(past, east.y), ctx);
+
+      const a = useScene.getState().scene!.nodes["a"];
+      expect(a.rotation).toBeCloseTo(150, 3); // 30 specchiato
+      // uno specchio non deforma: le misure restano quelle
+      expect(a.width).toBeCloseTo(100, 3);
+      expect(a.height).toBeCloseTo(50, 3);
+
+      const forA = sync.sent.find((op) => op.kind.case === "setProps" && op.kind.value.id === "a");
+      expect(forA!.kind.case === "setProps" && forA!.kind.value.mask?.paths)
+        .toEqual(["x", "y", "width", "height", "rotation"]);
+      // il membro NON ruotato viaggia con la mask di sempre
+      const forB = sync.sent.find((op) => op.kind.case === "setProps" && op.kind.value.id === "b");
+      expect(forB!.kind.case === "setProps" && forB!.kind.value.mask?.paths)
+        .toEqual(["x", "y", "width", "height"]);
     });
   });
 

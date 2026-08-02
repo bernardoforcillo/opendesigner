@@ -4,7 +4,7 @@ import { worldToScreen } from "../canvas/camera";
 import { angleOf, centerOf, normalizeDegrees, rotateAround, snapDegrees } from "../canvas/transform";
 import { selectionFrame } from "../renderer/overlayRenderer";
 import {
-  applyFrameResize,
+  applyFrameResizeToNode,
   cursorForFrameHit,
   cursorForHandle,
   hitTestFrame,
@@ -141,7 +141,10 @@ export function createSelectTool(): Tool {
   let resizeHandle: HandleId | null = null;
   let resizeAnchor: { x: number; y: number } | null = null;
   let resizeStartFrame: SelectionFrame | null = null;
-  let resizeStartNodes: Record<string, Bounds> | null = null;
+  // Bounds E angolo iniziale: un nodo ruotato dentro una selezione multipla non
+  // si mappa come gli altri (vedi handles.ts::applyFrameResizeToNode), e per un
+  // ribaltamento o una scala non uniforme anche il suo angolo cambia.
+  let resizeStartNodes: Record<string, { bounds: Bounds; rotation: number }> | null = null;
   let resizeStarted = false;
 
   // --- rotazione dalle zone d'angolo ------------------------------------------
@@ -226,8 +229,21 @@ export function createSelectTool(): Tool {
       world.y - resizeAnchor.y,
       { keepAspect: e.shiftKey },
     );
-    return Object.entries(resizeStartNodes).map(([id, start]) =>
-      makeSetPropsOp(id, applyFrameResize(start, r), ["x", "y", "width", "height"]));
+    return Object.entries(resizeStartNodes).map(([id, start]) => {
+      const next = applyFrameResizeToNode(start.bounds, start.rotation, r);
+      // L'angolo entra nella mask SOLO quando cambia davvero (un nodo allineato
+      // al frame -- il caso normale -- manda esattamente l'op di prima). Cambia
+      // quando una scala non uniforme o un ribaltamento girano gli assi del
+      // nodo: senza spedirlo, il nodo si vedrebbe con la forma nuova e l'angolo
+      // vecchio, cioè fuori dal riquadro.
+      return next.rotation === start.rotation
+        ? makeSetPropsOp(id, next.bounds, ["x", "y", "width", "height"])
+        : makeSetPropsOp(
+            id,
+            { ...next.bounds, rotation: next.rotation },
+            ["x", "y", "width", "height", "rotation"],
+          );
+    });
   }
 
   // Gli op della rotazione per la posizione corrente del puntatore. Come il
@@ -315,10 +331,10 @@ export function createSelectTool(): Tool {
       // farebbe partire un marquee azzerando la selezione.
       const overlay = frameUnderPointer(ctx, world);
       if (overlay?.kind === "resize") {
-        const start: Record<string, Bounds> = {};
+        const start: Record<string, { bounds: Bounds; rotation: number }> = {};
         for (const sid of store.selection) {
           const n = scene.nodes[sid];
-          if (n) start[sid] = boundsOfNode(n);
+          if (n) start[sid] = { bounds: boundsOfNode(n), rotation: n.rotation };
         }
         resizeHandle = overlay.handle;
         resizeAnchor = world;

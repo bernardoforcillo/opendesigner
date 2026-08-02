@@ -13,7 +13,15 @@ import {
   handleScreenPoints,
   hitTestFrame,
   resizeRotatedBounds,
+  applyFrameResize,
+  applyFrameResizeToNode,
+  resizeFrame,
+  rotateMarkerPositions,
+  ROTATE_MARKER_OFFSET,
+  ROTATE_MARKER_RADIUS,
+  CORNER_IDS,
 } from "./handles";
+import { rotatedAabb } from "../canvas/transform";
 
 const b = { x: 100, y: 100, width: 200, height: 100 };
 const cam = { x: 0, y: 0, zoom: 1 };
@@ -321,6 +329,120 @@ describe("resizeRotatedBounds", () => {
     expect(flipped.height).toBeGreaterThan(0);
     const kept = resizeRotatedBounds(small, 90, "se", 0, 100, { keepAspect: true });
     expect(kept.width / kept.height).toBeCloseTo(small.width / small.height, 9);
+  });
+});
+
+// La maniglia di rotazione DISEGNATA. Prima non si disegnava affatto: l'unica
+// affordance era il cursore su un anello invisibile, cioè nessuna affordance.
+describe("rotateMarkerPositions", () => {
+  const box = { x: 0, y: 0, width: 100, height: 50 };
+
+  it("puts one marker outside each corner, along its outgoing diagonal", () => {
+    const m = rotateMarkerPositions(box);
+    const d = ROTATE_MARKER_OFFSET;
+    expect(m.nw).toEqual({ x: -d, y: -d });
+    expect(m.ne).toEqual({ x: 100 + d, y: -d });
+    expect(m.se).toEqual({ x: 100 + d, y: 50 + d });
+    expect(m.sw).toEqual({ x: -d, y: 50 + d });
+    expect(Object.keys(m)).toHaveLength(4);
+  });
+
+  // L'invariante che tiene insieme il disegno e l'hit-test: se un giorno una
+  // delle costanti cambia, è QUI che si rompe -- non in mano all'utente, che
+  // vedrebbe un segno che, cliccato, ridimensiona o non fa niente.
+  it("draws only where it grabs: every pixel of every marker is that corner's rotate zone", () => {
+    const f = { bounds: b, rotation: 0 };
+    const m = rotateMarkerPositions(b); // camera identità: schermo === mondo
+    for (const id of CORNER_IDS) {
+      expect(hitTestFrame(f, cam, m[id].x, m[id].y)).toEqual({ kind: "rotate", corner: id });
+      for (let k = 0; k < 16; k++) {
+        const a = (k * Math.PI) / 8;
+        const x = m[id].x + Math.cos(a) * ROTATE_MARKER_RADIUS;
+        const y = m[id].y + Math.sin(a) * ROTATE_MARKER_RADIUS;
+        expect(hitTestFrame(f, cam, x, y)).toEqual({ kind: "rotate", corner: id });
+      }
+    }
+  });
+});
+
+// Il resize di una selezione MULTIPLA che contiene un nodo RUOTATO. Il riquadro
+// di gruppo è asse-allineato (vedi overlayRenderer::selectionFrame): la scala
+// vale lungo gli assi dello SCHERMO, e un membro girato va mappato per assi,
+// non scalando il suo box locale.
+describe("applyFrameResizeToNode", () => {
+  it("is applyFrameResize, number for number, when the node is aligned with the frame", () => {
+    const f = { bounds: b, rotation: 0 };
+    for (const h of HANDLE_IDS) {
+      const r = resizeFrame(f, h, 37, -11);
+      const node = { x: 120, y: 110, width: 40, height: 20 };
+      expect(applyFrameResizeToNode(node, 0, r)).toEqual({ bounds: applyFrameResize(node, r), rotation: 0 });
+    }
+  });
+
+  // Il caso della review, numero per numero. Gruppo = A (0,0,100,50) a 90° +
+  // B (200,0,50,50): il riquadro sta su x [25,250], y [-25,75]. Si tira la
+  // maniglia e di +225 (scala x2 in orizzontale, 1 in verticale).
+  it("grows a 90-degree member along the axis the pointer is really dragging", () => {
+    const group = { x: 25, y: -25, width: 225, height: 100 };
+    const r = resizeFrame({ bounds: group, rotation: 0 }, "e", 225, 0);
+    const out = applyFrameResizeToNode({ x: 0, y: 0, width: 100, height: 50 }, 90, r);
+
+    // il box del modello: 100x50 diventa 100x100 (la larghezza segue l'asse
+    // VERTICALE dello schermo, che il drag non ha toccato; l'altezza segue
+    // quello orizzontale, raddoppiato)
+    expectBounds(out.bounds, 25, -25, 100, 100);
+    expect(out.rotation).toBeCloseTo(90, 9);
+  });
+
+  it("keeps that member INSIDE the resized group frame (it used to overflow it)", () => {
+    const group = { x: 25, y: -25, width: 225, height: 100 };
+    const r = resizeFrame({ bounds: group, rotation: 0 }, "e", 225, 0);
+    const after = transformBounds(group, r.transform);
+    const out = applyFrameResizeToNode({ x: 0, y: 0, width: 100, height: 50 }, 90, r);
+    const aabb = rotatedAabb(out.bounds, out.rotation);
+
+    expect(aabb.x).toBeGreaterThanOrEqual(after.x - 1e-9);
+    expect(aabb.y).toBeGreaterThanOrEqual(after.y - 1e-9);
+    expect(aabb.x + aabb.width).toBeLessThanOrEqual(after.x + after.width + 1e-9);
+    expect(aabb.y + aabb.height).toBeLessThanOrEqual(after.y + after.height + 1e-9);
+
+    // e quello che occupa DAVVERO è cresciuto in orizzontale, non in verticale:
+    // 50x100 -> 100x100 (prima diventava 50 largo e 200 alto)
+    expect(aabb.width).toBeCloseTo(100, 9);
+    expect(aabb.height).toBeCloseTo(100, 9);
+  });
+
+  it("leaves the angle alone (exactly) under a uniform scale", () => {
+    const group = { x: 0, y: 0, width: 100, height: 100 };
+    const r = resizeFrame({ bounds: group, rotation: 0 }, "se", 100, 100, { keepAspect: true });
+    const out = applyFrameResizeToNode({ x: 0, y: 0, width: 40, height: 20 }, 30, r);
+
+    expect(out.rotation).toBe(30); // non 29.999999999999996
+    expectBounds(out.bounds, 0, 0, 80, 40);
+  });
+
+  it("MIRRORS the angle when the group flips: 30 degrees becomes 150", () => {
+    const group = { x: 0, y: 0, width: 100, height: 100 };
+    // maniglia e trascinata 200px a sinistra: supera l'ancora (x=0) e ribalta
+    const r = resizeFrame({ bounds: group, rotation: 0 }, "e", -200, 0);
+    const out = applyFrameResizeToNode({ x: 0, y: 0, width: 40, height: 20 }, 30, r);
+
+    expect(out.rotation).toBeCloseTo(150, 9);
+    // uno specchio non deforma: le misure restano quelle
+    expect(out.bounds.width).toBeCloseTo(40, 9);
+    expect(out.bounds.height).toBeCloseTo(20, 9);
+    // e il centro passa dall'altra parte dell'ancora
+    expect(out.bounds.x + out.bounds.width / 2).toBeCloseTo(-20, 9);
+  });
+
+  it("swaps the axes at 90 degrees whichever handle is dragged", () => {
+    const group = { x: 0, y: 0, width: 100, height: 100 };
+    const r = resizeFrame({ bounds: group, rotation: 0 }, "s", 0, 100); // scala y x2
+    const out = applyFrameResizeToNode({ x: 0, y: 0, width: 40, height: 20 }, 90, r);
+    // a 90° l'asse x locale punta lungo lo schermo IN GIÙ: è la larghezza a
+    // raddoppiare, non l'altezza
+    expect(out.bounds.width).toBeCloseTo(80, 9);
+    expect(out.bounds.height).toBeCloseTo(20, 9);
   });
 });
 

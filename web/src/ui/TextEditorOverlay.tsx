@@ -36,6 +36,14 @@ import type { NodeLite } from "../store/types";
 // un parametro "tranne questo nodo" che qualcuno deve ricordarsi di passare --
 // e senza il quale il testo si vedrebbe DOPPIO. Il costo è che, per la durata
 // dell'editing, il rettangolo del campo copre anche ciò che gli sta sotto.
+//
+// La copertura è quindi un INVARIANTE, non un dettaglio estetico: tutto ciò che
+// muove i glifi sul canvas deve muovere anche il campo. La ROTAZIONE è
+// esattamente questo -- drawScene gira il contesto attorno al centro del box
+// del nodo (renderer/canvasRenderer.ts), e il campo la ripete con la stessa
+// convenzione (gradi, orari, stesso centro) via `transform`. Senza, il campo
+// resterebbe dritto sopra glifi storti: il testo doppio che questa scelta
+// esiste per evitare.
 
 export interface TextEditorOverlayProps {
   // Il nodo in editing. Lo decide lo store (editingNodeId): ce lo passa chi
@@ -166,6 +174,16 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   // qui come per il resto della UI.
   const fontSize = fontSizeOf(style) * camera.zoom;
   const lineHeight = lineHeightOf(style) * camera.zoom;
+  const width = node.width * camera.zoom;
+  // Un angolo nullo NON scrive nessuna trasformazione: un campo dritto deve
+  // restare esattamente il DOM di prima (stessa ragione per cui rotateVector
+  // riconosce l'angolo nullo, vedi canvas/transform.ts).
+  const rotated = node.rotation % 360 !== 0;
+  // Il perno è il centro del box del NODO, non quello del campo: il campo può
+  // essersi allungato oltre il box (cresce col contenuto, vedi minHeight qui
+  // sopra) e ruotare attorno al proprio centro lo scollerebbe dai glifi.
+  // In px dall'angolo alto-sinistra del campo, che è l'origine del nodo.
+  const transformOrigin = `${width / 2}px ${minHeight / 2}px`;
 
   return (
     <textarea
@@ -210,8 +228,10 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
       style={{
         left: `${origin.x}px`,
         top: `${origin.y}px`,
-        width: `${node.width * camera.zoom}px`,
+        width: `${width}px`,
         minHeight: `${minHeight}px`,
+        transform: rotated ? `rotate(${node.rotation}deg)` : undefined,
+        transformOrigin: rotated ? transformOrigin : undefined,
         fontFamily: style?.fontFamily || DEFAULT_FONT_FAMILY,
         fontWeight: style?.fontWeight || DEFAULT_FONT_WEIGHT,
         fontSize: `${fontSize}px`,

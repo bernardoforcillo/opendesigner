@@ -1,6 +1,10 @@
 import { type Camera, worldToScreen } from "../canvas/camera";
 import { type Bounds, inflateBounds, pointInBounds, worldBoundsToScreen } from "../canvas/geometry";
-import { centerOf, localToWorld, rotateAround, rotateVector, type Point } from "../canvas/transform";
+import {
+  centerOf, localToWorld, normalizeDegrees, rotateAround, rotateVector, type Point,
+} from "../canvas/transform";
+
+const DEG_TO_RAD = Math.PI / 180;
 
 export type HandleId = "nw" | "n" | "ne" | "e" | "se" | "s" | "sw" | "w";
 
@@ -183,6 +187,56 @@ export function hitTestFrame(f: SelectionFrame, cam: Camera, sx: number, sy: num
   return null;
 }
 
+// LA MANIGLIA DI ROTAZIONE DISEGNATA. La zona di presa qui sopra è un'AREA
+// (l'anello a L attorno all'angolo); questo è il punto in cui l'overlay ne
+// disegna il segno. Un segno che si vede è il punto: senza, l'unica affordance
+// era il cursore, e una maniglia che non si disegna è una maniglia che non si
+// trova.
+//
+// Il segno sta TUTTO dentro la propria zona di presa, e la geometria è una
+// sola (queste costanti) invece di due copie destinate a scollarsi. I due
+// vincoli, con un disco di raggio R centrato a distanza D dall'angolo sulla
+// diagonale uscente:
+//
+//   1. DENTRO la zona di rotazione: D + R <= 11 (il semilato di
+//      ROTATE_GRAB_SIZE attorno all'angolo). 8 + 2.5 = 10.5, sta.
+//   2. FUORI dal quadrato di presa del RESIZE, che vince sull'angolo
+//      (semilato HANDLE_SIZE/2 + HANDLE_GRAB_PADDING = 6): il punto del
+//      quadrato più vicino al centro del disco è il suo angolo (6, 6), a
+//      distanza sqrt((8−6)² + (8−6)²) = 2.83 > 2.5. Non si toccano.
+//
+// Ne segue anche che ogni pixel disegnato cade FUORI dal riquadro di selezione,
+// dove il click è una rotazione e non uno spostamento. Il test
+// "draws only where it grabs" campiona il disco e lo verifica.
+
+// Direzione USCENTE della diagonale di ogni angolo, in spazio schermo del
+// frame NON ruotato (y in giù, come il canvas).
+export const ROTATE_CORNER_DIRS: Record<CornerId, Point> = {
+  nw: { x: -1, y: -1 },
+  ne: { x: 1, y: -1 },
+  se: { x: 1, y: 1 },
+  sw: { x: -1, y: 1 },
+};
+
+// Quanto il segno sta FUORI dall'angolo, e quanto è grande (px SCHERMO, come
+// HANDLE_SIZE: costante a ogni zoom).
+export const ROTATE_MARKER_OFFSET = 8;
+export const ROTATE_MARKER_RADIUS = 2.5;
+
+// Centri dei 4 segni, per un bbox già in spazio SCHERMO (come handlePositions).
+export function rotateMarkerPositions(b: Bounds): Record<CornerId, Point> {
+  const corners = handlePositions(b);
+  const out = {} as Record<CornerId, Point>;
+  for (const id of CORNER_IDS) {
+    const d = ROTATE_CORNER_DIRS[id];
+    out[id] = {
+      x: corners[id].x + d.x * ROTATE_MARKER_OFFSET,
+      y: corners[id].y + d.y * ROTATE_MARKER_OFFSET,
+    };
+  }
+  return out;
+}
+
 // Trasformazione affine (solo scala + ancora) prodotta da un drag di resize.
 // Tenerla separata da resizeBounds serve al resize di una selezione MULTIPLA:
 // ogni nodo viene mappato con la stessa trasformazione del bbox di gruppo, e
@@ -319,6 +373,10 @@ export interface FrameResize {
   transform: ResizeTransform;
   offsetX: number;
   offsetY: number;
+  // La rotazione del FRAME (gradi). Serve a chi mappa un nodo il cui angolo è
+  // diverso da quello del frame: la scala vale lungo gli assi del frame, quindi
+  // conta solo la differenza fra i due angoli (vedi applyFrameResizeToNode).
+  rotation: number;
 }
 
 export function resizeFrame(
@@ -334,7 +392,7 @@ export function resizeFrame(
   const after = centerOf(transformBounds(f.bounds, transform));
   const dc = { x: c.x - after.x, y: c.y - after.y };
   const rdc = rotateVector(dc, f.rotation);
-  return { transform, offsetX: dc.x - rdc.x, offsetY: dc.y - rdc.y };
+  return { transform, offsetX: dc.x - rdc.x, offsetY: dc.y - rdc.y, rotation: f.rotation };
 }
 
 // Applica al bbox di UN nodo la trasformazione di frame calcolata sopra. Il
@@ -345,6 +403,74 @@ export function applyFrameResize(b: Bounds, r: FrameResize): Bounds {
   const out = transformBounds(b, r.transform);
   if (r.offsetX === 0 && r.offsetY === 0) return out;
   return { x: out.x + r.offsetX, y: out.y + r.offsetY, width: out.width, height: out.height };
+}
+
+// Lo stesso, per un nodo il cui angolo NON è quello del frame -- il caso di una
+// selezione MULTIPLA (il riquadro di gruppo è asse-allineato, vedi
+// overlayRenderer::selectionFrame) che contiene un nodo ruotato.
+//
+// applyFrameResize da sola sbaglia, e sbaglia in modo visibile: scala il box
+// LOCALE del nodo, cioè lo allunga lungo i suoi assi invece che lungo quelli
+// dello schermo su cui l'utente sta trascinando. Un nodo a 90° dentro un gruppo
+// tirato in ORIZZONTALE cresceva in VERTICALE e usciva dal riquadro.
+//
+// Quello che la scala di gruppo fa davvero è mappare gli ASSI del nodo: l'asse
+// x locale (cos θ, sin θ) diventa (kx·cos θ, ky·sin θ) e l'asse y (−sin θ,
+// cos θ) diventa (−kx·sin θ, ky·cos θ), dove θ è l'angolo del nodo RELATIVO al
+// frame. Da lì si leggono le tre cose che servono: la nuova larghezza (la
+// lunghezza del primo asse), la nuova altezza (quella del secondo) e il nuovo
+// angolo (la direzione del primo).
+//
+// È ESATTO per una scala uniforme, per θ multiplo di 90° (gli assi si
+// scambiano) e per un ribaltamento (kx·ky < 0: l'angolo si specchia da sé,
+// perché atan2 legge la direzione vera dell'asse). Per un angolo qualunque con
+// scala non uniforme il risultato esatto sarebbe un PARALLELOGRAMMA, che il
+// modello (x/y/w/h + un angolo) non sa rappresentare: si tiene il rettangolo
+// con gli stessi assi e le stesse lunghezze, che è l'approssimazione standard
+// -- e comunque dentro il riquadro di gruppo, non fuori.
+export interface RotatedBounds {
+  bounds: Bounds;
+  rotation: number;
+}
+
+export function applyFrameResizeToNode(b: Bounds, rotation: number, r: FrameResize): RotatedBounds {
+  const theta = rotation - r.rotation;
+  // Nodo ALLINEATO al frame (selezione singola, o gruppo di nodi non ruotati):
+  // i suoi assi sono quelli del frame e la mappa di sempre è già esatta. Ramo
+  // separato per garantire gli stessi identici numeri, non per velocità.
+  if (theta % 360 === 0) return { bounds: applyFrameResize(b, r), rotation };
+
+  const t = r.transform;
+  const kx = t.startW === 0 ? 1 : t.signedW / t.startW;
+  const ky = t.startH === 0 ? 1 : t.signedH / t.startH;
+  const rad = theta * DEG_TO_RAD;
+  const cos = Math.cos(rad);
+  const sin = Math.sin(rad);
+
+  // Il CENTRO segue la trasformazione di gruppo come qualunque altro punto: è
+  // lui a tenere il nodo dentro il riquadro.
+  const c = centerOf(b);
+  const cx = mapAxis(c.x, t.anchorX, t.signedW, t.startW) + r.offsetX;
+  const cy = mapAxis(c.y, t.anchorY, t.signedH, t.startH) + r.offsetY;
+
+  // Scala UNIFORME e positiva: la forma ruotata resta simile a sé stessa,
+  // l'angolo non si tocca e i numeri restano esatti (niente giro per atan2).
+  if (kx === ky && kx > 0) {
+    const width = b.width * kx;
+    const height = b.height * kx;
+    return { bounds: { x: cx - width / 2, y: cy - height / 2, width, height }, rotation };
+  }
+
+  const ux = kx * cos;
+  const uy = ky * sin;
+  const vx = -kx * sin;
+  const vy = ky * cos;
+  const width = b.width * Math.hypot(ux, uy);
+  const height = b.height * Math.hypot(vx, vy);
+  return {
+    bounds: { x: cx - width / 2, y: cy - height / 2, width, height },
+    rotation: normalizeDegrees(r.rotation + Math.atan2(uy, ux) / DEG_TO_RAD),
+  };
 }
 
 // Il caso "un nodo solo", per intero: comodo ai test e ai chiamanti che non

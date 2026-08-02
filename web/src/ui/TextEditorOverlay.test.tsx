@@ -147,6 +147,43 @@ describe("posizionamento", () => {
     expect(field().style.opacity).toBe("");
   });
 
+  // Il campo COPRE i glifi disegnati sul canvas: è l'invariante su cui poggia
+  // tutta la scelta del campo opaco (vedi il commento del componente). Un nodo
+  // RUOTATO lo rompeva: drawScene disegnava il testo girato (ruota il contesto
+  // attorno al centro del box) e il campo restava dritto sopra -- il testo si
+  // vedeva DOPPIO, a due angoli diversi.
+  describe("su un nodo RUOTATO", () => {
+    it("gira con il nodo, attorno al centro del suo box", () => {
+      installScene(textNode("t1", "ciao", { rotation: 30 }));
+      useScene.setState({ editingNodeId: "t1" });
+      render(<TextEditorOverlay nodeId="t1" />);
+      const ta = field();
+
+      // stessa convenzione del renderer: gradi, orari, attorno al CENTRO del
+      // box del nodo (200x24 a zoom 1 -> 100px, 12px dall'angolo del campo)
+      expect(ta.style.transform).toBe("rotate(30deg)");
+      expect(ta.style.transformOrigin).toBe("100px 12px");
+      // l'origine resta quella del modello: a ruotare è il campo, non il punto
+      expect(ta.style.left).toBe("10px");
+      expect(ta.style.top).toBe("20px");
+    });
+
+    it("tiene il perno in px SCHERMO anche sotto zoom", () => {
+      installScene(textNode("t1", "ciao", { rotation: 90 }));
+      useScene.setState({ editingNodeId: "t1", camera: { x: 0, y: 0, zoom: 2 } });
+      render(<TextEditorOverlay nodeId="t1" />);
+
+      expect(field().style.transform).toBe("rotate(90deg)");
+      expect(field().style.transformOrigin).toBe("200px 24px"); // (200/2, 24/2) * 2
+    });
+
+    it("un angolo NULLO non scrive nessuna trasformazione", () => {
+      render(<TextEditorOverlay nodeId="t1" />);
+      expect(field().style.transform).toBe("");
+      expect(field().style.transformOrigin).toBe("");
+    });
+  });
+
   it("si riposiziona a ogni cambio di camera: pan e zoom non lo scollano dal nodo", () => {
     render(<TextEditorOverlay nodeId="t1" />);
     expect(field().style.left).toBe("10px");

@@ -31,17 +31,30 @@ import type { Op } from "../gen/brawt/v1/brawt_pb";
 // non nel campo stesso: è una proprietà del CAMPO (larghezza/altezza non hanno
 // senso negative), non del widget generico.
 interface NumericField {
-  key: "x" | "y" | "width" | "height" | "cornerRadius";
+  key: "x" | "y" | "width" | "height" | "rotation" | "cornerRadius";
   label: string;
   mask: MaskPath;
   minValue?: number;
+  // Solo per le etichette più larghe di una lettera (la griglia è tarata su
+  // X/Y/W/H): vedi NumberField::labelWidth.
+  labelWidth?: string;
 }
 
+// "Rot" e non una lettera sola: "R" è già il raggio del rettangolo, e
+// l'etichetta è anche il NOME ACCESSIBILE del campo -- due campi omonimi nello
+// stesso pannello sarebbero indistinguibili per chi naviga a voce.
+//
+// La rotazione è qui, con la geometria, e non solo sulla maniglia dell'overlay:
+// la maniglia dà il gesto, il campo dà il NUMERO. Senza, non c'è modo di sapere
+// a che angolo è un nodo né di scriverne uno esatto -- e un angolo si scrive
+// spesso esatto (90, 45, 0 per rimetterlo dritto). Nessun minValue: gli angoli
+// negativi sono legittimi (−30 si scrive più volentieri di 330).
 const GEOMETRY_FIELDS: readonly NumericField[] = [
   { key: "x", label: "X", mask: "x" },
   { key: "y", label: "Y", mask: "y" },
   { key: "width", label: "W", mask: "width", minValue: 0 },
   { key: "height", label: "H", mask: "height", minValue: 0 },
+  { key: "rotation", label: "Rot", mask: "rotation", labelWidth: "w-7" },
 ];
 
 // "R" come raggio: stessa convenzione a UNA LETTERA di X/Y/W/H, che negli
@@ -67,6 +80,8 @@ function patchFor(key: NumericField["key"], value: number) {
       return { width: value };
     case "height":
       return { height: value };
+    case "rotation":
+      return { rotation: value };
     case "cornerRadius":
       // ANNIDATO dentro il oneof `shape`: "corner_radius" è l'unico path della
       // mask che non indirizza un campo di primo livello del Node (vedi
@@ -353,6 +368,7 @@ export function PropertiesPanel() {
           <NumberField
             key={field.key}
             label={field.label}
+            labelWidth={field.labelWidth}
             minValue={field.minValue}
             // MIXED (selezione multipla con valori diversi) diventa NaN:
             // NumberField lo mostra vuoto e non ne fa un cambio di
