@@ -289,3 +289,69 @@ describe("downloadBlob", () => {
     vi.useRealTimers();
   });
 });
+
+// --- immagini nell'export (traccia 3) ----------------------------------------
+
+function imageNode(id: string, hash: string): NodeLite {
+  return node({ id, kind: "image", x: 0, y: 0, width: 200, height: 100, image: { assetHash: hash } });
+}
+
+describe("runExport — immagini", () => {
+  it("l'SVG INCORPORA i byte come data URI, non un link al server locale", async () => {
+    // Un href a /assets-api/... sarebbe rotto appena il file esce da questa
+    // macchina, cioè appena serve a qualcosa.
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const d = { ...deps(), loadAssetDataUrl: async () => "data:image/png;base64,QUJD" };
+    await expect(runExport({ format: "svg", scope: "page", scale: 1 }, d)).resolves.toBe(true);
+    const text = await d.saved[0].blob.text();
+    expect(text).toContain("<image");
+    expect(text).toContain("data:image/png;base64,QUJD");
+    expect(text).not.toContain("/assets-api/");
+  });
+
+  it("chiede i byte UNA volta per hash, anche con lo stesso asset ripetuto", async () => {
+    install(sceneWith("Untitled",
+      imageNode("i1", "abc"),
+      node({ ...imageNode("i2", "abc"), id: "i2", orderKey: "a2", x: 300 }),
+      node({ ...imageNode("i3", "def"), id: "i3", orderKey: "a3", x: 600 }),
+    ));
+    const asked: string[] = [];
+    const d = {
+      ...deps(),
+      loadAssetDataUrl: async (_docId: string, hash: string) => {
+        asked.push(hash);
+        return `data:image/png;base64,${hash}`;
+      },
+    };
+    await runExport({ format: "svg", scope: "page", scale: 1 }, d);
+    expect(asked.sort()).toEqual(["abc", "def"]);
+  });
+
+  it("un asset irraggiungibile non fa fallire l'export: esce il segnaposto", async () => {
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const d = { ...deps(), loadAssetDataUrl: async () => { throw new Error("404"); } };
+    await expect(runExport({ format: "svg", scope: "page", scale: 1 }, d)).resolves.toBe(true);
+    const text = await d.saved[0].blob.text();
+    expect(text).not.toContain("<image");
+    expect(text).toContain("<path");
+    // L'export è riuscito: il documento contiene un'immagine mancante, e il
+    // file lo dice invece di non esistere.
+    expect(useScene.getState().notice).toBeNull();
+  });
+
+  it("il PNG non chiede nessun asset: i pixel arrivano dalla cache del renderer", async () => {
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const load = vi.fn(async () => "data:image/png;base64,QUJD");
+    const d = { ...deps(), loadAssetDataUrl: load };
+    await runExport({ format: "png", scope: "page", scale: 1 }, d);
+    expect(load).not.toHaveBeenCalled();
+  });
+
+  it("la regione tiene conto del box dell'immagine", async () => {
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const d = { ...deps(), loadAssetDataUrl: async () => null };
+    await runExport({ format: "svg", scope: "page", scale: 1 }, d);
+    const text = await d.saved[0].blob.text();
+    expect(text).toContain('viewBox="0 0 200 100"');
+  });
+});

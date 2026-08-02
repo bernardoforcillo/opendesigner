@@ -105,8 +105,16 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 			// kind "rect"), quindi rifiutarlo qui farebbe divergere client e
 			// server proprio sul nodo che entrambi disegnano come rettangolo.
 			// Il rettangolo implicito viene materializzato più sotto.
+			//
+			// L'IMMAGINE (traccia 3) sta in questo elenco per una ragione più
+			// forte del raggio: la sua forma PORTA UN DATO -- l'hash dei byte --
+			// e il ramo qui sotto materializza un rettangolo SOSTITUENDO la
+			// forma. Senza questo caso, un corner_radius su un'immagine non
+			// darebbe un raggio a un'immagine: la trasformerebbe in un
+			// rettangolo grigio, buttando via il riferimento all'asset, senza
+			// errori e senza un inverso capace di rimetterlo.
 			switch n.GetShape().(type) {
-			case *brawtv1.Node_Ellipse, *brawtv1.Node_Text:
+			case *brawtv1.Node_Ellipse, *brawtv1.Node_Text, *brawtv1.Node_Image:
 				return fmt.Errorf("%w: %s", ErrNotRectNode, s.GetId())
 			}
 		default:

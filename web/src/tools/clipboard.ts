@@ -48,7 +48,20 @@ const UNSUPPORTED_NOTICE =
 // NodeLite["kind"] e non un array di stringhe: aggiungere un kind al modello
 // senza elencarlo qui diventa un errore di COMPILAZIONE, invece di un payload
 // che si incolla come rettangolo perché il campo non è stato riconosciuto.
-const KNOWN_KINDS: Record<NodeLite["kind"], true> = { rect: true, ellipse: true, text: true };
+// `image` è qui, e con lui si copia solo l'HASH: i byte restano nella cartella
+// assets del documento di partenza. Incollare in un ALTRO documento produce
+// quindi un nodo il cui asset non c'è -- che il renderer disegna come
+// segnaposto invece di sparire o esplodere. È il comportamento onesto: la copia
+// dice a quale immagine si riferisce, e se quell'immagine non è raggiungibile
+// da lì lo si vede. (Copiare anche i byte vorrebbe dire mettere una foto negli
+// appunti di sistema come JSON: proprio ciò che l'indirizzamento per contenuto
+// esiste per evitare.)
+const KNOWN_KINDS: Record<NodeLite["kind"], true> = {
+  rect: true,
+  ellipse: true,
+  text: true,
+  image: true,
+};
 
 function isKnownKind(kind: unknown): kind is NodeLite["kind"] {
   return typeof kind === "string" && Object.prototype.hasOwnProperty.call(KNOWN_KINDS, kind);
@@ -167,6 +180,13 @@ export function parseClipboard(text: string): ClipboardParse {
       kind,
       cornerRadius: num(n.cornerRadius, 0),
       ...(kind === "text" ? { text: toText(n.text) } : {}),
+      // Un'immagine senza hash leggibile non è un payload da rifiutare: è un
+      // nodo il cui asset non si trova, cioè esattamente il caso che il
+      // renderer già disegna come segnaposto. Stessa scelta di toText su un
+      // testo troncato.
+      ...(kind === "image"
+        ? { image: { assetHash: str((n.image as Record<string, unknown> | undefined)?.assetHash, "") } }
+        : {}),
     });
   }
   return { ok: true, nodes };

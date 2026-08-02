@@ -23,6 +23,10 @@ const TEXT_FALLBACK_MAX = 30;
 function fallbackName(n: NodeLite): string {
   if (n.kind === "rect") return "Rectangle";
   if (n.kind === "ellipse") return "Ellipse";
+  // Un'immagine di solito ha già un nome (tools/imageDrop.ts usa quello del
+  // file), quindi questo ripiego si vede solo per un nodo rinominato a vuoto o
+  // arrivato da un incolla senza nome.
+  if (n.kind === "image") return "Image";
   // n.kind === "text": a-capo e spazi ripetuti collassati, così l'etichetta
   // resta su una riga sola anche per un testo multilinea.
   const flat = (n.text?.content ?? "").replace(/\s+/g, " ").trim();

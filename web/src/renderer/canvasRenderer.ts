@@ -2,6 +2,7 @@ import type { FillLite, SceneState, NodeLite } from "../store/types";
 import type { Camera } from "../canvas/camera";
 import { nodePath, hitTestNode, isPaintable } from "./shapes";
 import { drawText } from "./text";
+import { imageCache, type CachedImage } from "./imageCache";
 
 // Esportata perché l'ORDINE DI DISEGNO non è solo un affare del canvas:
 // l'export (export/region.ts) deve scegliere e ordinare i nodi esattamente
@@ -59,6 +60,78 @@ export function resizeCanvasToDisplaySize(canvas: HTMLCanvasElement): boolean {
 // immagine su un portatile HiDPI e su un monitor esterno.
 export interface DrawOptions {
   dpr?: number;
+  // Da dove arrivano le immagini già decodificate. Il default è la cache
+  // condivisa (renderer/imageCache.ts); si inietta nei test, dove non esiste
+  // nessun caricamento vero.
+  images?: ImageSource;
+}
+
+/** Il minimo che il disegno chiede alla cache delle immagini. */
+export interface ImageSource {
+  get(docId: string, hash: string): CachedImage;
+}
+
+// I colori del SEGNAPOSTO -- un'immagine che non c'è (o non è ancora arrivata).
+// Un nodo il cui asset manca deve VEDERSI: sparire vorrebbe dire un buco nel
+// documento senza spiegazione, e lanciare vorrebbe dire spegnere il render loop
+// per l'intera scena.
+const PLACEHOLDER_FILL = "rgba(0, 0, 0, 0.06)";
+const PLACEHOLDER_LINE = "rgba(0, 0, 0, 0.35)";
+
+// Il segnaposto. Disegnato con fillRect/strokeRect/moveTo e NON con un Path2D:
+// così resta l'unico ramo di drawScene interamente verificabile in questa suite
+// (jsdom non ha Path2D), che è esattamente il ramo di cui conta di più sapere
+// che non lancia.
+//
+// `px` è quanto vale UN pixel schermo in coordinate mondo: il ctx qui è già
+// trasformato dalla camera, quindi una lineWidth costante sparirebbe a zoom
+// basso e ingrasserebbe a zoom alto.
+function drawImagePlaceholder(
+  ctx: CanvasRenderingContext2D,
+  n: NodeLite,
+  px: number,
+  missing: boolean,
+): void {
+  ctx.fillStyle = PLACEHOLDER_FILL;
+  ctx.fillRect(n.x, n.y, n.width, n.height);
+  ctx.strokeStyle = PLACEHOLDER_LINE;
+  ctx.lineWidth = px;
+  // Il bordo rientra di mezzo pixel per stare DENTRO il box: uno strokeRect sul
+  // bordo esatto disegna metà tratto fuori, e l'immagine risulterebbe più grande
+  // delle sue maniglie di selezione.
+  ctx.strokeRect(n.x + px / 2, n.y + px / 2, n.width - px, n.height - px);
+  // La croce distingue "l'asset non c'è" da "sta arrivando": senza, i due stati
+  // sarebbero lo stesso rettangolo grigio e un'immagine persa sembrerebbe in
+  // caricamento per sempre.
+  if (!missing) return;
+  ctx.beginPath();
+  ctx.moveTo(n.x, n.y);
+  ctx.lineTo(n.x + n.width, n.y + n.height);
+  ctx.moveTo(n.x + n.width, n.y);
+  ctx.lineTo(n.x, n.y + n.height);
+  ctx.stroke();
+}
+
+// Un nodo immagine: i pixel se ci sono, il segnaposto altrimenti.
+//
+// L'immagine è tirata sul box del nodo (`drawImage` a quattro coordinate), non
+// ritagliata né lettera-boxata: il box nasce dall'aspetto naturale del file
+// (tools/imageDrop.ts) e da lì in poi ridimensionarlo è una scelta dell'utente,
+// che deve vedere l'effetto che chiede. Le modalità "riempi/adatta" sono una
+// funzione a parte, non un default da indovinare.
+function drawImageNode(
+  ctx: CanvasRenderingContext2D,
+  state: SceneState,
+  n: NodeLite,
+  px: number,
+  images: ImageSource,
+): void {
+  const entry = images.get(state.id, n.image?.assetHash ?? "");
+  if (entry.status === "ready" && entry.image) {
+    ctx.drawImage(entry.image, n.x, n.y, n.width, n.height);
+    return;
+  }
+  drawImagePlaceholder(ctx, n, px, entry.status === "missing");
 }
 
 export function drawScene(
@@ -69,6 +142,10 @@ export function drawScene(
 ): void {
   const { canvas } = ctx;
   const dpr = opts?.dpr ?? devicePixelRatio();
+  const images = opts?.images ?? imageCache;
+  // Un pixel schermo in unità mondo, per i tratti che devono restare della
+  // stessa grossezza a ogni zoom (oggi: il bordo del segnaposto).
+  const px = 1 / (cam.zoom || 1);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(cam.zoom * dpr, 0, 0, cam.zoom * dpr, cam.x * dpr, cam.y * dpr);
@@ -78,6 +155,10 @@ export function drawScene(
     ctx.fillStyle = cssColor(n);
     if (n.kind === "text") {
       drawText(ctx, n);
+      continue;
+    }
+    if (n.kind === "image") {
+      drawImageNode(ctx, state, n, px, images);
       continue;
     }
     ctx.fill(nodePath(n));

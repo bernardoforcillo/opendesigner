@@ -30,6 +30,12 @@ func main() {
 	mux := http.NewServeMux()
 	path, handler := brawtv1connect.NewDocumentServiceHandler(svc)
 	mux.Handle(path, handler)
+	// Le immagini: POST /assets-api/{docId} per caricarle, GET
+	// /assets-api/{docId}/{hash} per servirle a un <img>. HTTP semplice e non
+	// l'RPC UploadAsset del design -- il perché sta in internal/server/assets.go.
+	// Il prefisso NON è /assets/ perché lì sotto il file server qui accanto serve
+	// i bundle di Vite.
+	server.MountAssets(mux, *workspace)
 	if *web != "" {
 		mux.Handle("/", http.FileServer(http.Dir(*web)))
 	}

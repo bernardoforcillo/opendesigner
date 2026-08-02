@@ -1,7 +1,9 @@
 import { useScene } from "../store/store";
 import { fontString } from "../renderer/text";
+import { assetUrl } from "../rpc/assets";
+import type { NodeLite } from "../store/types";
 import { exportRegion, type ExportRegion, type ExportScope } from "./region";
-import { nodesToSvg, type MeasureText } from "./svg";
+import { nodesToSvg, type MeasureText, type ResolveImageHref } from "./svg";
 import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "./png";
 
 // EXPORT — il comando.
@@ -37,6 +39,9 @@ export interface ExportDeps {
   toPngBlob?: (canvas: HTMLCanvasElement) => Promise<Blob>;
   download?: (blob: Blob, filename: string) => void;
   measure?: MeasureText;
+  // I byte di un asset come data URI, per l'SVG. Iniettabile come le altre:
+  // vuole `fetch` e `FileReader`, che in un test non ci sono.
+  loadAssetDataUrl?: (docId: string, hash: string) => Promise<string | null>;
 }
 
 const NOTHING_SELECTED =
@@ -116,6 +121,68 @@ function defaultCanvas(): HTMLCanvasElement {
 // aperto da un browser viene interpretato in latin-1.
 const SVG_MIME = "image/svg+xml;charset=utf-8";
 
+/**
+ * I byte di un asset come `data:` URI, presi dalla route che li serve.
+ *
+ * Passa dai BYTE ORIGINALI e non da un ri-encoding del canvas: un JPEG
+ * riscritto in PNG cambierebbe peso e (per un'immagine con perdita) qualità,
+ * dentro un file che l'utente esporta proprio per consegnarlo a qualcun altro.
+ * L'immagine decodificata nella cache del renderer non serve qui: quello che
+ * serve sono i byte, e la risposta arriva quasi sempre dalla cache HTTP del
+ * browser (la route è `immutable`).
+ */
+export async function fetchAssetDataUrl(docId: string, hash: string): Promise<string | null> {
+  const res = await fetch(assetUrl(docId, hash));
+  if (!res.ok) return null;
+  const blob = await res.blob();
+  return await new Promise<string | null>((resolve) => {
+    const reader = new FileReader();
+    reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
+    // Un asset illeggibile non fa fallire l'export: diventa un segnaposto, come
+    // sul canvas.
+    reader.onerror = () => resolve(null);
+    reader.readAsDataURL(blob);
+  });
+}
+
+/**
+ * Risolve in anticipo gli asset dei nodi immagine e ritorna la funzione che
+ * `nodesToSvg` userà per gli href.
+ *
+ * Prima e non durante: `nodesToSvg` è una funzione PURA e sincrona, e deve
+ * restarlo -- è ciò che rende verificabile a tavolino la correttezza del
+ * markup. Gli hash sono deduplicati: la stessa immagine usata da dieci nodi si
+ * scarica (e si incorpora) una volta sola.
+ */
+async function imageHrefs(
+  nodes: readonly NodeLite[],
+  docId: string,
+  load: (docId: string, hash: string) => Promise<string | null>,
+): Promise<ResolveImageHref> {
+  const hashes = [
+    ...new Set(
+      nodes
+        .filter((n) => n.kind === "image")
+        .map((n) => n.image?.assetHash ?? "")
+        .filter((h) => h !== ""),
+    ),
+  ];
+  const resolved = new Map<string, string>();
+  await Promise.all(
+    hashes.map(async (hash) => {
+      try {
+        const uri = await load(docId, hash);
+        if (uri !== null) resolved.set(hash, uri);
+      } catch {
+        // Un asset che non si scarica è un'immagine MANCANTE, non un export
+        // fallito: il documento contiene davvero un riferimento rotto, e il
+        // file lo mostra invece di non esistere.
+      }
+    }),
+  );
+  return (hash) => resolved.get(hash) ?? null;
+}
+
 // I byte del file. Le due strade sono davvero diverse -- il PNG passa da un
 // canvas e da una codifica asincrona, l'SVG da una funzione pura -- e tenerle
 // in due rami leggibili invece che in un ternario annidato è tutto il vantaggio
@@ -126,12 +193,16 @@ async function exportBlob(
   deps: ExportDeps,
   createCanvas: () => HTMLCanvasElement,
   measure: MeasureText,
+  docId: string,
 ): Promise<Blob> {
   if (req.format === "png") {
+    // Nessun asset da scaricare: il PNG passa da drawScene, che prende le
+    // immagini già decodificate dalla cache del renderer.
     const canvas = renderRegionToCanvas(region, req.scale, createCanvas);
     return (deps.toPngBlob ?? canvasToPngBlob)(canvas);
   }
-  return new Blob([nodesToSvg(region.nodes, region.bounds, measure)], { type: SVG_MIME });
+  const href = await imageHrefs(region.nodes, docId, deps.loadAssetDataUrl ?? fetchAssetDataUrl);
+  return new Blob([nodesToSvg(region.nodes, region.bounds, measure, href)], { type: SVG_MIME });
 }
 
 /**
@@ -163,7 +234,7 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
       return false;
     }
 
-    const blob = await exportBlob(region, req, deps, createCanvas, measure);
+    const blob = await exportBlob(region, req, deps, createCanvas, measure, scene.id);
     (deps.download ?? downloadBlob)(blob, exportFileName(scene.name, req));
     return true;
   } catch (err) {

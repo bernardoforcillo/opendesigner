@@ -233,3 +233,72 @@ describe("nodesToSvg — i numeri", () => {
     expect(svg).not.toContain('x="-0"');
   });
 });
+
+// --- immagini (traccia 3) ----------------------------------------------------
+//
+// Prima di questo giro un nodo immagine cadeva nel ramo di ripiego di
+// `element()` e usciva come un <rect> GRIGIO: un file che non mostra quello che
+// mostra il canvas, e senza un solo avviso. I due esiti possibili sono ora
+// entrambi espliciti -- l'immagine, oppure il segnaposto.
+
+function image(over: Partial<NodeLite> & { id: string }): NodeLite {
+  return node({ kind: "image", width: 200, height: 100, image: { assetHash: "abc" }, ...over });
+}
+
+describe("nodesToSvg — immagini", () => {
+  it("scrive un <image> con l'href risolto e il box del nodo", () => {
+    const svg = nodesToSvg([image({ id: "i", x: 10, y: 20 })], FULL, measure, () => "data:image/png;base64,AAA");
+    expect(svg).toContain("<image");
+    expect(svg).toContain('href="data:image/png;base64,AAA"');
+    expect(svg).toContain('x="10"');
+    expect(svg).toContain('y="20"');
+    expect(svg).toContain('width="200"');
+    expect(svg).toContain('height="100"');
+    // Nessun <rect> sotto: il segnaposto e l'immagine sono alternativi.
+    expect(svg).not.toContain("<rect");
+  });
+
+  it("l'href viene chiesto per l'HASH del nodo", () => {
+    const asked: string[] = [];
+    nodesToSvg([image({ id: "i", image: { assetHash: "deadbeef" } })], FULL, measure, (h) => {
+      asked.push(h);
+      return null;
+    });
+    expect(asked).toEqual(["deadbeef"]);
+  });
+
+  it("l'opacità del nodo arriva sull'<image>", () => {
+    const svg = nodesToSvg([image({ id: "i", opacity: 0.5 })], FULL, measure, () => "u");
+    expect(svg).toContain('opacity="0.5"');
+  });
+
+  it("preserveAspectRatio=none: il box comanda, come sul canvas", () => {
+    // Il canvas disegna con drawImage a quattro coordinate, cioè TIRA
+    // l'immagine sul box. Il default SVG ("xMidYMid meet") la adatterebbe
+    // dentro lasciando dei margini: stesso documento, due risultati diversi.
+    const svg = nodesToSvg([image({ id: "i" })], FULL, measure, () => "u");
+    expect(svg).toContain('preserveAspectRatio="none"');
+  });
+
+  it("un asset non risolvibile diventa il SEGNAPOSTO, non un rettangolo grigio", () => {
+    const svg = nodesToSvg([image({ id: "i", x: 0, y: 0, width: 200, height: 100 })], FULL, measure, () => null);
+    expect(svg).not.toContain("<image");
+    // Un gruppo con il rettangolo e la croce: si vede che lì c'era un'immagine e
+    // che manca, esattamente come sul canvas.
+    expect(svg).toContain("<g");
+    expect(svg).toContain("<rect");
+    expect(svg).toContain("<path");
+    expect(svg).toContain("M0 0L200 100");
+  });
+
+  it("senza risolutore ogni immagine è un segnaposto (default prudente)", () => {
+    const svg = nodesToSvg([image({ id: "i" })], FULL, measure);
+    expect(svg).not.toContain("<image");
+    expect(svg).toContain("<g");
+  });
+
+  it("l'href è ESCAPATO: un URL con & non deve rompere il file", () => {
+    const svg = nodesToSvg([image({ id: "i" })], FULL, measure, () => "/a?x=1&y=2");
+    expect(svg).toContain('href="/a?x=1&amp;y=2"');
+  });
+});

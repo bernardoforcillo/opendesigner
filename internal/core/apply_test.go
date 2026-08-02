@@ -5,6 +5,7 @@ import (
 	"testing"
 
 	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -147,6 +148,11 @@ func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 	}{
 		{"ellipse", ellipseNode("n1")},
 		{"text", textNode("n1", "ciao")},
+		// Un'immagine è un nodo la cui forma PORTA UN DATO (l'hash
+		// dell'asset): materializzare un rettangolo sopra di lei non
+		// azzererebbe solo un raggio, cancellerebbe il riferimento ai byte --
+		// e l'inverso dell'op non saprebbe rimetterli.
+		{"image", imageNode("n1", testAssetHash)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := NewDocument("doc1", "Untitled")
@@ -328,5 +334,79 @@ func TestApplyDeleteNode(t *testing.T) {
 	}
 	if _, ok := doc.Nodes["n1"]; ok {
 		t.Fatal("node still present after delete")
+	}
+}
+
+// --- ImageNode (traccia 3) ---------------------------------------------------
+
+// L'hash di un asset è 64 esadecimali minuscoli (lo sha256 dei byte, vedi
+// internal/store/assets.go). Qui ne serve uno solo per forma.
+const testAssetHash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+func imageNode(id, hash string) *brawtv1.Node {
+	return &brawtv1.Node{
+		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Image", Visible: true, Opacity: 1,
+		X: 0, Y: 0, Width: 160, Height: 90,
+		Shape: &brawtv1.Node_Image{Image: &brawtv1.ImageNode{AssetHash: hash}},
+	}
+}
+
+// Un ImageNode porta un RIFERIMENTO, mai dei byte: l'op che lo crea pesa quanto
+// un hash, e l'op-log resta un registro di intenzioni invece di un archivio di
+// immagini.
+func TestApplyCreateImageNodeCarriesOnlyTheHash(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	op := &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: imageNode("i1", testAssetHash)}}}
+	if err := Apply(doc, op); err != nil {
+		t.Fatalf("Apply create: %v", err)
+	}
+	got := doc.Nodes["i1"]
+	if got.GetImage().GetAssetHash() != testAssetHash {
+		t.Fatalf("asset hash = %q, want %q", got.GetImage().GetAssetHash(), testAssetHash)
+	}
+	// La prova che nessun byte di immagine viaggia nell'op: l'op serializzato
+	// è dell'ordine dell'hash, non dell'ordine di una foto.
+	wire, err := proto.Marshal(op)
+	if err != nil {
+		t.Fatal(err)
+	}
+	if len(wire) > 256 {
+		t.Fatalf("un CreateNode con immagine pesa %d byte: qualcosa oltre l'hash sta viaggiando", len(wire))
+	}
+}
+
+// Spostare e ridimensionare un'immagine è un setProps come per qualunque altro
+// nodo: la forma non c'entra, e soprattutto non viene toccata.
+func TestApplySetPropertiesOnImageKeepsTheAssetHash(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: imageNode("i1", testAssetHash)}}})
+	op := setPropsOp(&brawtv1.SetProperties{
+		Id:    "i1",
+		Patch: &brawtv1.Node{X: 300, Y: 400},
+		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"x", "y"}},
+	})
+	if err := Apply(doc, op); err != nil {
+		t.Fatalf("Apply setProps: %v", err)
+	}
+	got := doc.Nodes["i1"]
+	if got.GetX() != 300 || got.GetY() != 400 {
+		t.Fatalf("move not applied: x=%v y=%v", got.GetX(), got.GetY())
+	}
+	if got.GetImage().GetAssetHash() != testAssetHash {
+		t.Fatalf("asset hash lost on a move: %q", got.GetImage().GetAssetHash())
+	}
+}
+
+// Stessa regola di un rettangolo (ErrNotTextNode): scrivere del testo dentro
+// un'immagine non è "riempire un campo mancante", è un op sul nodo sbagliato --
+// e sostituirebbe la forma, cioè butterebbe via il riferimento all'asset.
+func TestApplySetTextOnImageNodeFails(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: imageNode("i1", testAssetHash)}}})
+	if err := Apply(doc, setTextOp(&brawtv1.SetText{Id: "i1", Content: "x"})); !errors.Is(err, ErrNotTextNode) {
+		t.Fatalf("expected ErrNotTextNode, got %v", err)
+	}
+	if doc.Nodes["i1"].GetImage().GetAssetHash() != testAssetHash {
+		t.Fatal("a rejected setText clobbered the image")
 	}
 }

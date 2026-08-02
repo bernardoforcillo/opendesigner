@@ -136,9 +136,73 @@ function textElement(n: NodeLite, measure: MeasureText): string {
   ])} xml:space="preserve">${spans}</text>`;
 }
 
-function element(n: NodeLite, measure: MeasureText): string {
+/**
+ * Da un hash di asset all'URI da scrivere nell'href, oppure null quando i byte
+ * non sono raggiungibili.
+ *
+ * In produzione è un `data:` (vedi export/exportScene.ts): un SVG che
+ * riferisse `/assets-api/...` sarebbe rotto appena il file esce da questa
+ * macchina, cioè sempre, visto che esportare vuol dire proprio mandarlo
+ * altrove.
+ */
+export type ResolveImageHref = (assetHash: string) => string | null;
+
+// I colori del segnaposto. Sono di proposito gli stessi valori del segnaposto
+// del canvas (renderer/canvasRenderer.ts): un'immagine mancante deve avere lo
+// stesso aspetto sullo schermo e nel file.
+const PLACEHOLDER_FILL = "rgb(0,0,0)";
+const PLACEHOLDER_FILL_OPACITY = 0.06;
+const PLACEHOLDER_LINE = "rgb(0,0,0)";
+const PLACEHOLDER_LINE_OPACITY = 0.35;
+
+// Un'immagine che c'è: <image> sul box del nodo.
+//
+// `preserveAspectRatio="none"` non è un dettaglio: il canvas disegna con
+// `drawImage` a quattro coordinate, cioè TIRA l'immagine sul box del nodo,
+// mentre il default SVG ("xMidYMid meet") la adatterebbe dentro lasciando dei
+// margini. Senza questo attributo lo stesso documento avrebbe due aspetti
+// diversi a seconda di dove lo si guarda.
+function imageElement(n: NodeLite, href: string): string {
+  return `<image${attrs([
+    attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height),
+    attr("href", href),
+    { name: "preserveAspectRatio", value: "none" },
+    n.opacity === 1 ? null : attr("opacity", n.opacity),
+  ])}/>`;
+}
+
+// Un'immagine che NON c'è: lo stesso segnaposto del canvas -- rettangolo
+// tenue, bordo, croce -- invece del <rect> grigio in cui cadeva prima.
+//
+// Un rettangolo pieno sarebbe la forma sbagliata due volte: non dice che lì
+// c'era un'immagine, e si confonde con un rettangolo VERO che l'utente ha
+// disegnato. Lo spessore del tratto è in unità del documento (un SVG non ha uno
+// zoom da cui dedurre un pixel) e resta sottile su qualunque figura.
+function imagePlaceholderElement(n: NodeLite): string {
+  const w = n.width;
+  const h = n.height;
+  const cross = `M${fmt(n.x)} ${fmt(n.y)}L${fmt(n.x + w)} ${fmt(n.y + h)}` +
+    `M${fmt(n.x + w)} ${fmt(n.y)}L${fmt(n.x)} ${fmt(n.y + h)}`;
+  const body =
+    `<rect${attrs([
+      attr("x", n.x), attr("y", n.y), attr("width", w), attr("height", h),
+      attr("fill", PLACEHOLDER_FILL), attr("fill-opacity", PLACEHOLDER_FILL_OPACITY),
+      attr("stroke", PLACEHOLDER_LINE), attr("stroke-opacity", PLACEHOLDER_LINE_OPACITY),
+    ])}/>` +
+    `<path${attrs([
+      attr("d", cross), { name: "fill", value: "none" },
+      attr("stroke", PLACEHOLDER_LINE), attr("stroke-opacity", PLACEHOLDER_LINE_OPACITY),
+    ])}/>`;
+  return `<g${attrs([n.opacity === 1 ? null : attr("opacity", n.opacity)])}>${body}</g>`;
+}
+
+function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref): string {
   if (n.kind === "text") return textElement(n, measure);
   if (n.kind === "ellipse") return ellipseElement(n);
+  if (n.kind === "image") {
+    const uri = href(n.image?.assetHash ?? "");
+    return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri);
+  }
   return rectElement(n);
 }
 
@@ -158,9 +222,13 @@ export function nodesToSvg(
   nodes: readonly NodeLite[],
   bounds: Bounds,
   measure: MeasureText,
+  // Il default è "nessun asset risolvibile", cioè il segnaposto: un chiamante
+  // che si dimentica di passare il risolutore ottiene un file ONESTO invece di
+  // uno che riferisce URL locali destinati a rompersi altrove.
+  href: ResolveImageHref = () => null,
 ): string {
   const body = nodes
-    .map((n) => element(n, measure))
+    .map((n) => element(n, measure, href))
     .filter((s) => s !== "")
     .map((s) => `  ${s}`)
     .join("\n");

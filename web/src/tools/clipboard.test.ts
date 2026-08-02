@@ -653,3 +653,44 @@ describe("attachClipboardShortcuts", () => {
     expect(other.defaultPrevented).toBe(false);
   });
 });
+
+// --- immagini (traccia 3) ----------------------------------------------------
+
+function imageNode(id: string, hash: string, over: Partial<NodeLite> = {}): NodeLite {
+  return rect(id, { kind: "image", cornerRadius: 0, name: "logo.png", image: { assetHash: hash }, ...over });
+}
+
+describe("clipboard: immagini", () => {
+  it("copia e rilegge un nodo immagine tenendo il suo hash", () => {
+    // `image` è in KNOWN_KINDS: senza, questo payload sarebbe stato rifiutato
+    // come "unsupported" -- che è la garanzia che un tipo NUOVO non si incolla
+    // mai degradato a rettangolo.
+    const parsed = parseClipboard(serializeNodes([imageNode("n1", "abc123")]));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.nodes[0].kind).toBe("image");
+    expect(parsed.nodes[0].image?.assetHash).toBe("abc123");
+  });
+
+  it("un'immagine senza hash leggibile si incolla come segnaposto, non fa fallire l'incolla", () => {
+    const parsed = parseClipboard(JSON.stringify({
+      format: CLIPBOARD_FORMAT,
+      version: CLIPBOARD_VERSION,
+      nodes: [{ id: "n1", kind: "image" }],
+    }));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) return;
+    expect(parsed.nodes[0].image?.assetHash).toBe("");
+  });
+
+  it("l'incolla dà un id NUOVO ma lo STESSO hash: i byte non si duplicano", () => {
+    // È l'indirizzamento per contenuto a rendere questo corretto: due nodi che
+    // puntano allo stesso sha256 sono un file solo su disco.
+    const scene = emptyScene("doc-1", "Untitled");
+    const { ops } = pasteOps(scene, [imageNode("n1", "abc123")]);
+    const node = ops[0].kind.case === "createNode" ? ops[0].kind.value.node! : null;
+    expect(node?.id).not.toBe("n1");
+    expect(node?.shape.case).toBe("image");
+    expect(node?.shape.case === "image" ? node.shape.value.assetHash : "").toBe("abc123");
+  });
+});

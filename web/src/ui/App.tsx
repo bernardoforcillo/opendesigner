@@ -9,6 +9,7 @@ import { drawOverlay } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { attachClipboardShortcuts } from "../tools/clipboard";
+import { attachImageDrop } from "../tools/imageDrop";
 import { ExportButton } from "./ExportButton";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { LayersPanel } from "./LayersPanel";
@@ -139,7 +140,18 @@ export function App() {
             return screenToWorld(useScene.getState().camera, p.x, p.y);
           },
         };
-        cleanup = attachTools(ctx, () => TOOLS[toolRef.current] ?? selectTool);
+        const detachTools = attachTools(ctx, () => TOOLS[toolRef.current] ?? selectTool);
+        // Trascinare un'immagine sul canvas (traccia 3, task 3). Sta accanto ai
+        // tool e non dentro il registro perché non è un tool: non ha un pulsante
+        // in toolbar e non ha modo -- il rilascio funziona qualunque tool sia
+        // attivo. Il punto passa dalla STESSA conversione schermo -> mondo dei
+        // tool (ctx.toWorld); un DragEvent ha clientX/clientY come un
+        // PointerEvent, che è tutto ciò che quella conversione legge.
+        const detachDrop = attachImageDrop(canvas, (e) => ctx.toWorld(e as PointerEvent));
+        cleanup = () => {
+          detachTools();
+          detachDrop();
+        };
       } catch (err) {
         console.error("bootstrap failed", err);
         // Il bootstrap fallito è uno stato di collegamento come gli altri: non

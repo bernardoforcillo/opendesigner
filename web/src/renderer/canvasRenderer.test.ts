@@ -1,5 +1,6 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
 import { hitTest, resizeCanvasToDisplaySize, drawScene } from "./canvasRenderer";
+import type { CachedImage } from "./imageCache";
 import type { Camera } from "../canvas/camera";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
@@ -144,5 +145,136 @@ describe("resizeCanvasToDisplaySize", () => {
     resizeCanvasToDisplaySize(canvas);
     expect(canvas.width).toBe(400);
     expect(canvas.height).toBe(300);
+  });
+});
+
+// --- immagini (traccia 3) ----------------------------------------------------
+
+function imageNode(over: Partial<NodeLite> = {}): NodeLite {
+  return { id: "i", parentId: "page1", orderKey: "a1", name: "Image", visible: true, opacity: 1,
+    x: 10, y: 20, width: 320, height: 180, rotation: 0, fills: [], kind: "image", cornerRadius: 0,
+    image: { assetHash: "abc" }, ...over };
+}
+
+// Il ctx finto guadagna quello che serve al ramo immagine. Il segnaposto è
+// disegnato con fillRect/strokeRect/moveTo e NON con un Path2D proprio perché
+// deve restare verificabile qui: jsdom non ha Path2D.
+function imageCtx() {
+  const drawn: { src: unknown; x: number; y: number; w: number; h: number }[] = [];
+  const fillRects: { x: number; y: number; w: number; h: number }[] = [];
+  const strokeRects: { x: number; y: number; w: number; h: number }[] = [];
+  const lines: { x: number; y: number }[] = [];
+  const ctx = {
+    canvas: { width: 800, height: 600 },
+    fillStyle: "", strokeStyle: "", lineWidth: 0, globalAlpha: 1,
+    setTransform: () => {},
+    clearRect: () => {},
+    fill: () => {},
+    drawImage: (src: unknown, x: number, y: number, w: number, h: number) => {
+      drawn.push({ src, x, y, w, h });
+    },
+    fillRect: (x: number, y: number, w: number, h: number) => { fillRects.push({ x, y, w, h }); },
+    strokeRect: (x: number, y: number, w: number, h: number) => { strokeRects.push({ x, y, w, h }); },
+    beginPath: () => {},
+    moveTo: (x: number, y: number) => { lines.push({ x, y }); },
+    lineTo: (x: number, y: number) => { lines.push({ x, y }); },
+    stroke: () => {},
+  };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, drawn, fillRects, strokeRects, lines };
+}
+
+function images(entry: CachedImage) {
+  const asked: { docId: string; hash: string }[] = [];
+  return {
+    asked,
+    source: {
+      get(docId: string, hash: string) {
+        asked.push({ docId, hash });
+        return entry;
+      },
+    },
+  };
+}
+
+const READY = { status: "ready", image: { naturalWidth: 40, naturalHeight: 20 } as HTMLImageElement } as CachedImage;
+
+describe("drawScene: immagini", () => {
+  it("disegna l'immagine decodificata nel box del nodo", () => {
+    const s = emptyScene("doc-1", "n");
+    s.nodes["i"] = imageNode();
+    const f = imageCtx();
+    const src = images(READY);
+    drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera, { images: src.source });
+
+    expect(f.drawn).toEqual([{ src: READY.image, x: 10, y: 20, w: 320, h: 180 }]);
+    // L'hash lo si chiede per il DOCUMENTO della scena: lo stesso hash in un
+    // altro documento è un altro file.
+    expect(src.asked).toEqual([{ docId: "doc-1", hash: "abc" }]);
+    // Niente riempimento sotto: un rettangolo grigio dietro un'immagine con
+    // trasparenza si vedrebbe attraverso.
+    expect(f.fillRects).toEqual([]);
+  });
+
+  it("un asset MANCANTE diventa un segnaposto visibile, non un'eccezione", () => {
+    const s = emptyScene("doc-1", "n");
+    s.nodes["i"] = imageNode();
+    const f = imageCtx();
+    const src = images({ status: "missing", image: null });
+
+    expect(() =>
+      drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera, { images: src.source }),
+    ).not.toThrow();
+
+    expect(f.drawn).toEqual([]);
+    expect(f.fillRects).toEqual([{ x: 10, y: 20, w: 320, h: 180 }]);
+    expect(f.strokeRects.length).toBe(1);
+    // La croce: due diagonali, cioè quattro punti. È ciò che distingue "manca"
+    // da "sto caricando", che altrimenti sarebbero lo stesso rettangolo grigio.
+    expect(f.lines.length).toBe(4);
+  });
+
+  it("un asset ANCORA IN CARICAMENTO è un segnaposto SENZA croce", () => {
+    const s = emptyScene("doc-1", "n");
+    s.nodes["i"] = imageNode();
+    const f = imageCtx();
+    const src = images({ status: "loading", image: null });
+    drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera, { images: src.source });
+
+    expect(f.drawn).toEqual([]);
+    expect(f.fillRects.length).toBe(1);
+    expect(f.lines).toEqual([]);
+  });
+
+  it("il bordo del segnaposto è spesso un PIXEL SCHERMO a ogni zoom", () => {
+    // Il ctx è trasformato in coordinate mondo: una lineWidth in unità mondo
+    // sparirebbe a zoom 0.1 e diventerebbe un bordo grasso a zoom 8.
+    const s = emptyScene("doc-1", "n");
+    s.nodes["i"] = imageNode();
+    for (const zoom of [0.25, 1, 4]) {
+      const f = imageCtx();
+      drawScene(f.ctx, s, { x: 0, y: 0, zoom } as Camera, {
+        images: images({ status: "missing", image: null }).source,
+      });
+      expect(f.ctx.lineWidth).toBeCloseTo(1 / zoom);
+    }
+  });
+
+  it("un nodo immagine degenere non disegna niente (come ogni forma senza area)", () => {
+    const s = emptyScene("doc-1", "n");
+    s.nodes["i"] = imageNode({ width: 0 });
+    const f = imageCtx();
+    drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera, { images: images(READY).source });
+    expect(f.drawn).toEqual([]);
+    expect(f.fillRects).toEqual([]);
+  });
+
+  it("senza una sorgente iniettata usa la cache condivisa, e non lancia", () => {
+    // È il percorso VERO (App.tsx non inietta niente): in jsdom l'immagine non
+    // si carica mai, quindi resta "loading" -- ma il loop non deve morire.
+    const s = emptyScene("doc-1", "n");
+    s.nodes["i"] = imageNode();
+    const f = imageCtx();
+    expect(() => drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera)).not.toThrow();
+    expect(f.drawn).toEqual([]);
   });
 });
