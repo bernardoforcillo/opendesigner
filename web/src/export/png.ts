@@ -18,6 +18,53 @@ import type { ExportRegion } from "./region";
 export const EXPORT_SCALES = [1, 2, 3] as const;
 export type ExportScale = (typeof EXPORT_SCALES)[number];
 
+// IL TETTO DEL CANVAS, e perché serve un controllo NOSTRO.
+//
+// Un canvas troppo grande non fallisce nello stesso modo dappertutto. Firefox
+// non alloca e `getContext("2d")` ritorna `null` -- rumoroso, e lo intercetta
+// il controllo più sotto. Chrome invece ritorna un contesto REGOLARE su un
+// bitmap che non esiste: `drawScene` disegna senza errori, non si vede niente,
+// e `toBlob` produce un PNG valido e VUOTO. Senza questo tetto l'utente
+// scaricherebbe un'immagine bianca senza un solo messaggio -- il modo peggiore
+// di fallire, perché sembra riuscito.
+//
+// I due numeri sono limiti veri dei motori, non stime, e sono DUE perché i
+// motori ne impongono due indipendenti:
+//   - 32 767 px per LATO: il più stretto dei limiti per lato in circolazione
+//     (Firefox; Chrome e Safari arrivano a 65 535). Un nastro 40 000 × 100 ha
+//     un'area minuscola e resta comunque impossibile.
+//   - 268 435 456 px di AREA (2^28, il limite di Chrome, il più stretto fra
+//     quelli di area): è questo che una regione di 6000 × 6000 unità a 3x
+//     supera, con 324 Mpx e nessun lato fuori norma.
+// Sotto entrambi il canvas si alloca; sopra ci sarebbero comunque più di un
+// miliardo di byte di pixel da codificare.
+export const MAX_CANVAS_SIDE = 32_767;
+export const MAX_CANVAS_AREA = 268_435_456;
+
+function megapixels(px: number): string {
+  return `${(px / 1e6).toFixed(1)} Mpx`;
+}
+
+/**
+ * `null` se un canvas di `width × height` è allocabile, altrimenti il MOTIVO
+ * per cui non lo è -- già scritto per essere letto dall'utente, perché è
+ * esattamente quello che ne farà `runExport` (un `notice`, come ogni altro
+ * modo in cui questo export può non riuscire).
+ *
+ * Il messaggio dice la dimensione chiesta, il limite e le vie d'uscita: un
+ * avviso che dicesse solo "troppo grande" lascerebbe l'utente a indovinare.
+ */
+export function canvasLimitMessage(width: number, height: number): string | null {
+  const area = width * height;
+  if (width <= MAX_CANVAS_SIDE && height <= MAX_CANVAS_SIDE && area <= MAX_CANVAS_AREA) return null;
+  return (
+    `l'immagine chiesta è troppo grande: ${width}×${height} px (${megapixels(area)}), ` +
+    `oltre il limite del canvas del browser (${MAX_CANVAS_SIDE} px per lato, ` +
+    `${megapixels(MAX_CANVAS_AREA)} in tutto); ` +
+    `scegli una scala più bassa, esporta una selezione più piccola, o usa l'SVG`
+  );
+}
+
 function defaultCanvas(): HTMLCanvasElement {
   return document.createElement("canvas");
 }
@@ -41,6 +88,12 @@ export function renderRegionToCanvas(
   // toBlob invece di produrre un'immagine vuota.
   const width = Math.max(1, Math.ceil(bounds.width * scale));
   const height = Math.max(1, Math.ceil(bounds.height * scale));
+
+  // Il tetto si controlla PRIMA di allocare: oltre il limite Chrome non
+  // fallisce, disegna nel vuoto (vedi MAX_CANVAS_AREA). L'errore diventa un
+  // avviso in runExport, come ogni altro modo in cui l'export non riesce.
+  const tooBig = canvasLimitMessage(width, height);
+  if (tooBig) throw new Error(tooBig);
 
   const canvas = createCanvas();
   canvas.width = width;

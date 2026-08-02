@@ -1,5 +1,12 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
-import { renderRegionToCanvas, canvasToPngBlob, EXPORT_SCALES } from "./png";
+import {
+  renderRegionToCanvas,
+  canvasToPngBlob,
+  canvasLimitMessage,
+  EXPORT_SCALES,
+  MAX_CANVAS_SIDE,
+  MAX_CANVAS_AREA,
+} from "./png";
 import { exportRegion } from "./region";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
@@ -177,6 +184,67 @@ describe("renderRegionToCanvas", () => {
     const canvas = { width: 0, height: 0, getContext: () => null } as unknown as HTMLCanvasElement;
     const region = regionOf(sceneWith(node({ id: "a" })));
     expect(() => renderRegionToCanvas(region, 1, () => canvas)).toThrow(/contesto 2D/i);
+  });
+
+  // Il controllo del contesto nullo qui sopra NON basta, ed è il motivo di
+  // questi tre test: oltre il tetto Chrome ritorna un contesto regolare su un
+  // bitmap che non esiste, disegna nel vuoto e produce un PNG valido e VUOTO.
+  // Senza il tetto l'utente scaricherebbe un'immagine bianca senza nessun
+  // avviso -- il modo peggiore di fallire, perché sembra riuscito.
+  it("una regione oltre il limite di AREA si ferma con un messaggio, non con un PNG vuoto", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    // 6000×6000 unità a 3x = 18000×18000 = 324 Mpx, oltre i 268,4 del canvas.
+    const region = regionOf(sceneWith(node({ id: "a", x: 0, y: 0, width: 6000, height: 6000 })));
+    let created = 0;
+    const create = () => { created++; return fakeCanvas().canvas; };
+    expect(() => renderRegionToCanvas(region, 3, create)).toThrow(/troppo grande/i);
+    // e si ferma PRIMA di allocare: non c'è nessun canvas da 324 Mpx in giro.
+    expect(created).toBe(0);
+  });
+
+  it("anche un solo LATO oltre il limite si ferma, per quanto sottile sia la regione", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    // Un nastro lunghissimo: l'area sta larga (327 680 px, un millesimo del
+    // tetto) ma il lato no, e un canvas con un lato oltre il massimo è vuoto
+    // tanto quanto uno di area eccessiva.
+    const region = regionOf(
+      sceneWith(node({ id: "a", x: 0, y: 0, width: MAX_CANVAS_SIDE + 1, height: 10 })),
+    );
+    expect(() => renderRegionToCanvas(region, 1, () => fakeCanvas().canvas)).toThrow(/troppo grande/i);
+  });
+
+  it("esattamente al limite di area passa: il tetto non è un margine inventato", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const side = Math.sqrt(MAX_CANVAS_AREA); // 16384, e nessun lato fuori norma
+    const region = regionOf(sceneWith(node({ id: "a", x: 0, y: 0, width: side, height: side })));
+    const { canvas } = fakeCanvas();
+    renderRegionToCanvas(region, 1, () => canvas);
+    expect(canvas.width * canvas.height).toBe(MAX_CANVAS_AREA);
+  });
+});
+
+describe("canvasLimitMessage", () => {
+  it("sotto i due limiti non ha niente da dire", () => {
+    expect(canvasLimitMessage(1, 1)).toBeNull();
+    expect(canvasLimitMessage(16_384, 16_384)).toBeNull();
+    expect(canvasLimitMessage(MAX_CANVAS_SIDE, 8_000)).toBeNull();
+  });
+
+  it("l'area e il lato sono due limiti INDIPENDENTI, e basta superarne uno", () => {
+    // Area oltre (327 Mpx), lati entrambi dentro.
+    expect(canvasLimitMessage(MAX_CANVAS_SIDE, 10_000)).toBeTruthy();
+    // Lato oltre, area ampiamente dentro (65 536 px).
+    expect(canvasLimitMessage(MAX_CANVAS_SIDE + 1, 2)).toBeTruthy();
+  });
+
+  it("dice la dimensione chiesta, il limite e come uscirne", () => {
+    // Un avviso che dicesse solo "troppo grande" lascerebbe l'utente a
+    // indovinare che cosa cambiare.
+    const msg = canvasLimitMessage(18000, 18000)!;
+    expect(msg).toContain("18000×18000");
+    expect(msg).toContain("324.0 Mpx");
+    expect(msg).toContain("268.4 Mpx");
+    expect(msg).toMatch(/scala più bassa/i);
   });
 });
 

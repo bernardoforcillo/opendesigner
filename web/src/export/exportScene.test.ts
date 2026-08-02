@@ -118,6 +118,23 @@ describe("runExport — PNG", () => {
     expect(canvases.at(-1)!.height).toBe(80);
   });
 
+  it("un'immagine oltre il tetto del canvas diventa un AVVISO, non un PNG bianco", async () => {
+    // 6000×6000 unità a 3x = 324 Mpx: oltre il massimo del canvas. Il browser
+    // non lo direbbe -- Chrome ritorna un contesto che non disegna e toBlob
+    // produce un PNG valido e vuoto -- quindi lo deve dire l'app, e lo dice
+    // dallo stesso canale di ogni altro export non riuscito.
+    install(sceneWith("Untitled", node({ id: "a", x: 0, y: 0, width: 6000, height: 6000 })));
+    const d = deps();
+    await expect(runExport({ format: "png", scope: "page", scale: 3 }, d)).resolves.toBe(false);
+    expect(d.saved).toHaveLength(0);
+    expect(useScene.getState().notice).toMatch(/troppo grande/i);
+
+    // ...e la stessa regione a 1x, o in SVG, esce senza problemi: il tetto è
+    // del canvas, non del documento.
+    await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(true);
+    await expect(runExport({ format: "svg", scope: "page", scale: 3 }, d)).resolves.toBe(true);
+  });
+
   it("a 1x il nome del file non porta nessun suffisso di scala", async () => {
     install(sceneWith("Untitled", node({ id: "a" })));
     const d = deps();
