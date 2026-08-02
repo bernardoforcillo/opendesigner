@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useScene } from "../store/store";
 import { worldToScreen } from "../canvas/camera";
+import { worldTransformOf } from "../canvas/transform";
 import { makeSetTextOp } from "../tools/ops";
 import { cssColor } from "../renderer/canvasRenderer";
 import {
@@ -53,6 +54,18 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   // dal nodo) e quando cambia il nodo, non a ogni op del documento.
   const node = useScene((s) => s.scene?.nodes[nodeId]);
   const camera = useScene((s) => s.camera);
+  // L'origine MONDO del nodo. Le sue x/y sono relative al PARENT (vedi
+  // canvas/transform.ts), quindi per un nodo annidato non dicono da sole dove
+  // il canvas lo disegna -- e il campo, che deve coprirlo, finirebbe altrove.
+  // La traslazione della trasformazione mondo del nodo È la sua origine
+  // (l'immagine del punto (0,0) del suo spazio locale).
+  //
+  // Due selettori che ritornano NUMERI e non un punto: un oggetto nuovo a ogni
+  // chiamata farebbe ridisegnare l'overlay a ogni op del documento, mentre
+  // così si ridisegna solo quando l'origine cambia davvero -- il nodo o un suo
+  // antenato si è mosso.
+  const worldX = useScene((s) => (s.scene ? worldTransformOf(s.scene, nodeId).e : 0));
+  const worldY = useScene((s) => (s.scene ? worldTransformOf(s.scene, nodeId).f : 0));
 
   const ref = useRef<HTMLTextAreaElement | null>(null);
   // Una sessione è chiusa UNA volta sola: Escape chiude, e il blur che arriva
@@ -161,7 +174,7 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   if (!node || !editable) return null;
 
   const style = node.text?.style;
-  const origin = worldToScreen(camera, node.x, node.y);
+  const origin = worldToScreen(camera, worldX, worldY);
   // Tutto in px SCHERMO: il modello resta in unità mondo, la conversione vive
   // qui come per il resto della UI.
   const fontSize = fontSizeOf(style) * camera.zoom;

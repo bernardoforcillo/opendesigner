@@ -61,6 +61,12 @@ export function makeShapeTool(config: ShapeToolConfig): Tool {
       const width = box.width < slop ? config.defaultWidth : box.width;
       const height = box.height < slop ? config.defaultHeight : box.height;
 
+      // `box` è in coordinate MONDO e finisce nel nodo così com'è. Le
+      // coordinate del modello sono relative al PARENT (canvas/transform.ts) e
+      // qui il parent è una PAGINA, che contribuisce l'identità: le due cose
+      // coincidono. Il giorno in cui si potrà disegnare DENTRO un container,
+      // il box va prima portato nello spazio locale di quel container
+      // (transform.ts::worldToLocal).
       const node = create(NodeSchema, {
         id: uuid(),
         parentId: "page1",

@@ -20,6 +20,13 @@ export function nodePath(n: NodeLite): Path2D {
 }
 
 // Hit-test geometrico puro (nessun ctx / DOM), così resta testabile in Node.
+//
+// (wx, wy) è il punto nello STESSO spazio delle coordinate del nodo, cioè
+// quello del suo PARENT: per un nodo figlio di una pagina è il mondo, per un
+// nodo annidato no. È chi chiama (renderer/canvasRenderer.ts::hitTest) a
+// portarcelo scendendo l'albero -- qui dentro non c'è nessuna trasformazione,
+// esattamente come nodePath disegna nello spazio corrente del ctx.
+//
 // rect: AABB inclusivo dei bordi. ellisse: equazione normalizzata
 // ((wx-cx)/rx)^2 + ((wy-cy)/ry)^2 <= 1, che è il test corretto (l'AABB
 // dell'ellisse include gli angoli, che sono fuori dall'ellisse stessa).

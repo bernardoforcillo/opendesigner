@@ -1,5 +1,13 @@
 import { hitTest } from "../renderer/canvasRenderer";
-import { normalizeRect, boundsOfNode, boundsIntersect, type Bounds } from "../canvas/geometry";
+import { normalizeRect, boundsIntersect, type Bounds } from "../canvas/geometry";
+import {
+  type Transform,
+  invertTransform,
+  mapBounds,
+  mapVector,
+  worldBoundsOfNode,
+  worldTransformOf,
+} from "../canvas/transform";
 import { worldToScreen } from "../canvas/camera";
 import { selectionWorldBounds } from "../renderer/overlayRenderer";
 import {
@@ -63,6 +71,15 @@ function handleUnderPointer(ctx: ToolContext, world: { x: number; y: number }): 
   return hitTestHandle(box, cam, p.x, p.y);
 }
 
+// Dal MONDO allo spazio in cui sono scritte le coordinate di un nodo, cioè lo
+// spazio locale del suo parent. È la conversione che ogni gesto deve fare
+// prima di scrivere nel modello: il puntatore parla mondo, il documento parla
+// relativo al parent. Per un nodo figlio di una pagina è l'identità -- ed è
+// per questo che un documento già esistente non si muove di un pixel.
+function parentToLocal(scene: SceneState, parentId: string): Transform {
+  return invertTransform(worldTransformOf(scene, parentId));
+}
+
 export type PickResult =
   | { mode: "marquee" }
   | { mode: "single"; id?: string }
@@ -89,9 +106,13 @@ export function pickTarget(
 // Id dei nodi VISIBILI i cui bounds intersecano il marquee, ordinati per
 // orderKey per un risultato deterministico (Object.values non garantisce
 // l'ordine di inserimento per chiavi stringa).
+//
+// Il marquee è in coordinate MONDO (viene dal puntatore), quindi il confronto
+// va fatto con il box MONDO del nodo: quello del modello è relativo al parent,
+// e per un nodo annidato i due non coincidono più.
 export function nodesInMarquee(scene: SceneState, bounds: Bounds): string[] {
   return Object.values(scene.nodes)
-    .filter((n) => n.visible && boundsIntersect(boundsOfNode(n), bounds))
+    .filter((n) => n.visible && boundsIntersect(worldBoundsOfNode(scene, n), bounds))
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0))
     .map((n) => n.id);
 }
@@ -110,8 +131,17 @@ export function createSelectTool(): Tool {
   // altrimenti ogni click su un nodo già selezionato spamerebbe un
   // beginGesture "misuso" nei test che testano solo onPointerDown (vedi
   // store.ts: beginGesture con un gesto già aperto avvisa e non annidano).
+  //
+  // `toLocal` è l'inversa della trasformazione del PARENT del nodo, fotografata
+  // a pointerdown (durante un gesto nessuno riparenta): il puntatore si muove
+  // nel MONDO, ma x/y del modello sono relative al parent, e per un nodo
+  // annidato i due spostamenti non sono lo stesso numero. Finché i container
+  // contribuiscono solo traslazioni la parte lineare è l'identità e i due
+  // coincidono; il giorno della rotazione (altra traccia) è questa conversione
+  // a evitare che trascinare un figlio di un container ruotato lo mandi di
+  // traverso.
   let dragAnchor: { x: number; y: number } | null = null;
-  let dragStart: Record<string, { x: number; y: number }> | null = null;
+  let dragStart: Record<string, { x: number; y: number; toLocal: Transform }> | null = null;
   let dragStarted = false;
 
   // --- resize con le maniglie -------------------------------------------------
@@ -120,10 +150,16 @@ export function createSelectTool(): Tool {
   // deve produrre nessun op). resizeStartBox è il bbox di GRUPPO a inizio
   // gesto: ogni nodo viene poi mappato con la stessa trasformazione, così una
   // selezione multipla scala (e si specchia) in blocco.
+  //
+  // Il bbox di gruppo è in coordinate MONDO (ci vivono le maniglie e il
+  // puntatore), quindi anche i box di partenza dei singoli nodi lo sono:
+  // mappare un box LOCALE con una trasformazione calcolata nel mondo darebbe
+  // un rettangolo senza senso. Il ritorno al locale avviene alla fine, quando
+  // si scrive nel modello -- vedi resizeOps.
   let resizeHandle: HandleId | null = null;
   let resizeAnchor: { x: number; y: number } | null = null;
   let resizeStartBox: Bounds | null = null;
-  let resizeStartNodes: Record<string, Bounds> | null = null;
+  let resizeStartNodes: Record<string, { world: Bounds; toLocal: Transform }> | null = null;
   let resizeStarted = false;
 
   // --- marquee ---------------------------------------------------------------
@@ -164,6 +200,11 @@ export function createSelectTool(): Tool {
   // Gli op del resize per la posizione corrente del puntatore, ricalcolati
   // SEMPRE dai bounds iniziali (mai dal delta dell'ultimo move): niente
   // accumulo di errori, e l'op finale è identico all'ultima anteprima.
+  //
+  // Il conto si fa tutto nel MONDO (è lì che sta il puntatore) e il risultato
+  // torna nello spazio del parent PRIMA di finire in un op: nel documento le
+  // coordinate sono relative al parent, e scriverci un box mondo sposterebbe
+  // ogni nodo annidato del passo del suo container.
   function resizeOps(e: PointerEvent, ctx: ToolContext): Op[] {
     if (!resizeHandle || !resizeAnchor || !resizeStartBox || !resizeStartNodes) return [];
     const world = ctx.toWorld(e);
@@ -175,8 +216,25 @@ export function createSelectTool(): Tool {
       { keepAspect: e.shiftKey },
     );
     return Object.entries(resizeStartNodes).map(([id, start]) => {
-      const b = transformBounds(start, t);
+      const b = mapBounds(start.toLocal, transformBounds(start.world, t));
       return makeSetPropsOp(id, b, ["x", "y", "width", "height"]);
+    });
+  }
+
+  // Gli op dello spostamento per la posizione corrente del puntatore. Stessa
+  // regola del resize: sempre dalle posizioni INIZIALI, mai dall'ultimo delta,
+  // e un solo posto a produrli così l'anteprima di ogni move e l'op finale del
+  // pointerup non possono divergere.
+  function moveOps(e: PointerEvent, ctx: ToolContext): Op[] {
+    if (!dragAnchor || !dragStart) return [];
+    const world = ctx.toWorld(e);
+    const dx = world.x - dragAnchor.x;
+    const dy = world.y - dragAnchor.y;
+    return Object.entries(dragStart).map(([id, start]) => {
+      // Uno SPOSTAMENTO passa per la sola parte lineare (mapVector): non è un
+      // punto, la traslazione del parent non lo tocca.
+      const d = mapVector(start.toLocal, dx, dy);
+      return makeSetPropsOp(id, { x: start.x + d.x, y: start.y + d.y }, ["x", "y"]);
     });
   }
 
@@ -238,10 +296,10 @@ export function createSelectTool(): Tool {
       // farebbe partire un marquee azzerando la selezione.
       const handle = handleUnderPointer(ctx, world);
       if (handle) {
-        const start: Record<string, Bounds> = {};
+        const start: Record<string, { world: Bounds; toLocal: Transform }> = {};
         for (const sid of store.selection) {
           const n = scene.nodes[sid];
-          if (n) start[sid] = boundsOfNode(n);
+          if (n) start[sid] = { world: worldBoundsOfNode(scene, n), toLocal: parentToLocal(scene, n.parentId) };
         }
         resizeHandle = handle;
         resizeAnchor = world;
@@ -301,10 +359,10 @@ export function createSelectTool(): Tool {
       // cambio -- il drag qui sotto userà la selezione (multipla) esistente.
 
       const selection = useScene.getState().selection;
-      const start: Record<string, { x: number; y: number }> = {};
+      const start: Record<string, { x: number; y: number; toLocal: Transform }> = {};
       for (const sid of selection) {
         const n = scene.nodes[sid];
-        if (n) start[sid] = { x: n.x, y: n.y };
+        if (n) start[sid] = { x: n.x, y: n.y, toLocal: parentToLocal(scene, n.parentId) };
       }
       dragAnchor = world;
       dragStart = start;
@@ -349,12 +407,7 @@ export function createSelectTool(): Tool {
         dragStarted = true;
         useScene.getState().beginGesture();
       }
-      const world = ctx.toWorld(e);
-      const dx = world.x - dragAnchor.x;
-      const dy = world.y - dragAnchor.y;
-      for (const [id, start] of Object.entries(dragStart)) {
-        useScene.getState().applyLocal(makeSetPropsOp(id, { x: start.x + dx, y: start.y + dy }, ["x", "y"]));
-      }
+      for (const op of moveOps(e, ctx)) useScene.getState().applyLocal(op);
     },
 
     onPointerUp(e, ctx) {
@@ -389,14 +442,7 @@ export function createSelectTool(): Tool {
         return; // la sessione di editing (Task 5) prende da qui
       }
       if (!dragAnchor || !dragStart) return;
-      if (dragStarted) {
-        const world = ctx.toWorld(e);
-        const dx = world.x - dragAnchor.x;
-        const dy = world.y - dragAnchor.y;
-        const finalOps = Object.entries(dragStart).map(([id, start]) =>
-          makeSetPropsOp(id, { x: start.x + dx, y: start.y + dy }, ["x", "y"]));
-        useScene.getState().endGesture(finalOps);
-      }
+      if (dragStarted) useScene.getState().endGesture(moveOps(e, ctx));
       resetDrag();
     },
 

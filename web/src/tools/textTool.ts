@@ -96,6 +96,9 @@ export function createTextTool(): Tool {
       const height = box.height < slop ? DEFAULT_TEXT_HEIGHT : box.height;
 
       const id = uuid();
+      // `box` è MONDO e il modello vuole coordinate relative al PARENT: qui
+      // coincidono perché il parent è una pagina (identità). Stessa nota di
+      // shapeTool.ts -- creare dentro un container richiederà un worldToLocal.
       const node = create(NodeSchema, {
         id,
         parentId: "page1",

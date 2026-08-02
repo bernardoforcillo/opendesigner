@@ -40,6 +40,33 @@ export function childrenOf(scene: SceneState, parentId: string): NodeLite[] {
   return Object.values(scene.nodes).filter((n) => n.parentId === parentId).sort(bySiblingOrder);
 }
 
+// TUTTI i figli di TUTTI i container in una passata sola: la stessa lista che
+// childrenOf produrrebbe (stesso filtro, stesso ordine), indicizzata per
+// parentId. Una chiave esiste solo se ha almeno un figlio.
+//
+// È l'indice che il commento in cima a questo modulo prevedeva: chi deve
+// scendere l'INTERO albero (il renderer, a ogni frame, e l'hit-test) farebbe
+// altrimenti una childrenOf -- cioè una scansione della mappa -- per ogni nodo
+// visitato, che su una scena di N nodi è N scansioni, N^2 confronti a frame.
+// Costruirlo una volta e passarlo alla discesa lo riporta a una passata più un
+// sort per container. Resta un indice USA E GETTA, ricostruito a ogni
+// chiamata: `scene` è immutabile e ricostruita a ogni op, quindi un indice
+// conservato andrebbe invalidato di continuo.
+//
+// Non ha una controparte in Go: il server non disegna e non fa hit-test, non
+// scende mai l'albero intero a ripetizione. Le REGOLE (chi è figlio di chi, in
+// che ordine) restano quelle di childrenOf, che la controparte ce l'ha.
+export function childIndexOf(scene: SceneState): Map<string, NodeLite[]> {
+  const index = new Map<string, NodeLite[]>();
+  for (const n of Object.values(scene.nodes)) {
+    const siblings = index.get(n.parentId);
+    if (siblings) siblings.push(n);
+    else index.set(n.parentId, [n]);
+  }
+  for (const siblings of index.values()) siblings.sort(bySiblingOrder);
+  return index;
+}
+
 // Il nodo E tutti i suoi discendenti, in PRE-ORDINE: ogni nodo compare sempre
 // dopo il proprio parent, i fratelli in ordine di order key.
 //

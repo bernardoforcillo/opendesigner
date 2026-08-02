@@ -45,6 +45,19 @@ describe("selectionWorldBounds", () => {
     s.nodes["a"] = rect("a", 0, 0, 50, 50);
     expect(selectionWorldBounds(s, ["a", "ghost"])).toEqual({ x: 0, y: 0, width: 50, height: 50 });
   });
+
+  it("puts a nested node's box where the node is drawn: MONDO, not local", () => {
+    // page1 > g(100,50) > h(10,20) > k(3,4): il box di "k" nel mondo parte a
+    // (113,74). Il bbox della selezione è disegnato in spazio schermo a partire
+    // da qui: se restasse locale, la cornice comparirebbe lontanissima dal nodo.
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = { ...rect("g", 100, 50, 400, 400), parentId: "page1" };
+    s.nodes["h"] = { ...rect("h", 10, 20, 200, 200), parentId: "g" };
+    s.nodes["k"] = { ...rect("k", 3, 4, 50, 50), parentId: "h" };
+    expect(selectionWorldBounds(s, ["k"])).toEqual({ x: 113, y: 74, width: 50, height: 50 });
+    // Unione di due nodi a profondità DIVERSE: entrambi in coordinate mondo.
+    expect(selectionWorldBounds(s, ["g", "k"])).toEqual({ x: 100, y: 50, width: 400, height: 400 });
+  });
 });
 
 describe("worldBoundsToScreen", () => {

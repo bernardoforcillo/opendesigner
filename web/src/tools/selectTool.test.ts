@@ -859,3 +859,71 @@ describe("selectTool", () => {
     });
   });
 });
+
+// --- annidamento -------------------------------------------------------------
+// Il puntatore parla MONDO (px schermo convertiti dalla camera), il modello
+// parla LOCALE (coordinate relative al parent). Tutto ciò che sta in mezzo --
+// hit-test, marquee, maniglie -- deve fare la conversione nel verso giusto e
+// riscrivere nel modello coordinate ancora locali.
+describe("selectTool with nesting", () => {
+  // page1 > g(100,50, 400x400) > c(10,10, 50x50): "c" nel MONDO occupa
+  // (110,60)-(160,110).
+  function nestedScene() {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: {
+        g: node("g", 100, "a000000", { y: 50, width: 400, height: 400 }),
+        c: node("c", 10, "a000000", { parentId: "g", y: 10 }),
+      },
+    });
+  }
+
+  beforeEach(nestedScene);
+
+  it("nodesInMarquee compares the marquee with the WORLD box of a nested node", () => {
+    const scene = useScene.getState().scene!;
+    // Attorno all'angolo mondo di "c".
+    expect(nodesInMarquee(scene, { x: 105, y: 55, width: 20, height: 20 })).toContain("c");
+    // Attorno alle sue coordinate LOCALI: lì non c'è niente, nemmeno "g".
+    expect(nodesInMarquee(scene, { x: 5, y: 5, width: 10, height: 10 })).toEqual([]);
+  });
+
+  it("dragging a nested node writes coordinates that stay LOCAL", () => {
+    useScene.getState().setSync(new FakeSync());
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    tool.onPointerDown!(at(135, 85), ctx); // centro mondo di "c"
+    expect(useScene.getState().selection).toEqual(["c"]);
+    tool.onPointerMove!(at(155, 95), ctx); // +20, +10 nel mondo
+    tool.onPointerUp!(at(155, 95), ctx);
+    // Il modello resta relativo al parent: 10+20, 10+10 -- non 130,80.
+    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 30, y: 20 });
+  });
+
+  it("the se handle of a nested node sits at its WORLD corner and resizes it", () => {
+    useScene.getState().setSelection(["c"]);
+    useScene.getState().setSync(new FakeSync());
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    tool.onPointerDown!(at(160, 110), ctx); // maniglia se, in coordinate mondo
+    tool.onPointerMove!(at(210, 110), ctx); // dx=50
+    tool.onPointerUp!(at(210, 110), ctx);
+    // Larghezza raddoppiata, origine ferma: e l'origine è quella LOCALE.
+    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 10, y: 10, width: 100, height: 50 });
+  });
+
+  it("the nw handle of a nested node moves its LOCAL origin", () => {
+    useScene.getState().setSelection(["c"]);
+    useScene.getState().setSync(new FakeSync());
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    tool.onPointerDown!(at(110, 60), ctx); // maniglia nw, in coordinate mondo
+    tool.onPointerMove!(at(120, 70), ctx);
+    tool.onPointerUp!(at(120, 70), ctx);
+    // Nel mondo il nodo va da (120,70) a (160,110): in locale (20,20) 40x40.
+    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 20, y: 20, width: 40, height: 40 });
+  });
+});

@@ -1,6 +1,7 @@
 import type { SceneState } from "../store/types";
 import type { Camera } from "../canvas/camera";
-import { type Bounds, boundsOfNode, unionBounds, worldBoundsToScreen } from "../canvas/geometry";
+import { type Bounds, unionBounds, worldBoundsToScreen } from "../canvas/geometry";
+import { worldBoundsOfNode } from "../canvas/transform";
 import { HANDLE_SIZE, handlePositions } from "../selection/handles";
 
 // La geometria delle maniglie (posizioni, hit-test, resize) è UNA sola e vive
@@ -18,11 +19,17 @@ function devicePixelRatio(): number {
 // gli id spariti dalla selezione (vedi store.ts), ma questa funzione resta
 // difensiva così l'overlay non esplode su uno stato transitorio incoerente.
 // Estratta apposta così è testabile senza ctx/DOM.
+//
+// worldBoundsOfNode e non boundsOfNode: il box del modello è scritto nello
+// spazio del PARENT, mentre tutto ciò che sta a valle di qui (la cornice, le
+// maniglie, il loro hit-test) lavora in mondo e poi in schermo. Per un nodo
+// figlio di una pagina le due cose coincidono, ed è ciò che tiene fermi i
+// documenti già esistenti.
 export function selectionWorldBounds(state: SceneState, selection: string[]): Bounds | null {
   const boxes: Bounds[] = [];
   for (const id of selection) {
     const n = state.nodes[id];
-    if (n) boxes.push(boundsOfNode(n));
+    if (n) boxes.push(worldBoundsOfNode(state, n));
   }
   return unionBounds(boxes);
 }
