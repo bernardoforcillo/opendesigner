@@ -299,17 +299,57 @@ function targetOf(op: Op): OpTarget | null {
       const { id } = op.kind.value;
       return id === "" ? null : { id, paths: ["text"] };
     }
-    // Stessa ragione di "text": "subpaths" è l'ETICHETTA del campo che un
-    // setVectorPath scrive (non un path di FieldMask -- Go lo rifiuterebbe
-    // dentro un setProps), e sta nello stesso spazio dei nomi proprio perché
-    // deve essere disgiunto da TUTTI: ridisegnare un path e spostare il nodo
-    // sono modifiche indipendenti. Senza questo ramo, un setVectorPath remoto
-    // non renderebbe stale niente e una voce di undo che ne contiene uno non
-    // sarebbe MAI invalidata: il Ctrl+Z successivo cancellerebbe in silenzio la
-    // geometria appena disegnata da un altro.
+    // "subpaths" è l'ETICHETTA del campo che un setVectorPath scrive (non un
+    // path di FieldMask -- Go lo rifiuterebbe dentro un setProps), esattamente
+    // come "text" per setText. Senza, un setVectorPath remoto non renderebbe
+    // stale niente e una voce di undo che ne contiene uno non sarebbe MAI
+    // invalidata: il Ctrl+Z successivo cancellerebbe in silenzio la geometria
+    // appena disegnata da un altro.
+    //
+    // A differenza di "text", però, l'etichetta da sola NON basta -- ed è
+    // l'unico op con più di un campo nel bersaglio. Per un nodo vettoriale il
+    // box È la bbox del path (invariante del proto su VectorNode), quindi
+    // x/y/width/height e subpaths non sono campi indipendenti: sono due METÀ
+    // dello stesso valore. Si scrivono con DUE op -- un resize è un gesto solo
+    // che emette setProps{x,y,width,height} + setVectorPath (vedi
+    // tools/selectTool.ts::resizeOps) -- mentre la potatura degli op stale
+    // lavora per OP. Con un bersaglio ristretto a "subpaths" un record remoto
+    // ne potava UNO SOLO e teneva l'altro:
+    //  - un DRAG remoto (setProps{x,y}) potava l'inverso del box e teneva
+    //    quello della geometria -> Ctrl+Z rimetteva l'inchiostro VECCHIO nel
+    //    box nuovo;
+    //  - un setVectorPath remoto potava l'inverso della geometria e teneva
+    //    quello del box -> Ctrl+Z rimetteva il box VECCHIO intorno
+    //    all'inchiostro dell'altro.
+    // In entrambi i casi resta un nodo il cui box non è più la bbox del suo
+    // path: le 8 maniglie di resize non toccano l'inchiostro (overlayRenderer
+    // le disegna dal box) e il marquee afferra il vuoto.
+    //
+    // Il bersaglio comprende quindi il box INTERO. Su width/height è ovvio: li
+    // determina. Su x/y meno, perché uno spostamento da solo non scollerebbe
+    // niente -- gli ancoraggi sono LOCALI, quindi l'inchiostro viaggia col
+    // nodo. Ci sono lo stesso, per due ragioni:
+    //  1. sono l'unico modo di chiudere la prima traccia: là il record remoto è
+    //     un setProps{x,y}, e senza x/y qui il bersaglio resta disgiunto
+    //     dall'inverso della geometria, che sopravvive da solo -- cioè
+    //     esattamente il mezzo undo da evitare;
+    //  2. non costano un passo di annulla che non stesse già per cadere: chi
+    //     riscrive i subpath manda NELLO STESSO GESTO il setProps{x,y,width,
+    //     height} che rinormalizza il box (l'invariante è dello scrittore, vedi
+    //     vectorGeometry.ts::normalizeVector), quindi quel secondo record
+    //     avrebbe potato le stesse voci un istante dopo. Anticipare la potatura
+    //     non toglie di più: toglie la FINESTRA in cui metà voce sopravvive.
+    // Non è "un op remoto su questo nodo brucia tutta la sua storia": il taglio
+    // per campo resta, e con un rename, l'opacità o il riempimento non c'è
+    // nessun conflitto.
+    //
+    // Una modifica sola basta per entrambi i versi perché `conflicts` interseca
+    // i due elenchi: allargato qui, il bersaglio morde sia quando il
+    // setVectorPath è il record REMOTO sia quando è l'op dentro la voce (dove a
+    // fargli da controparte è il setProps sul box di un altro client).
     case "setVectorPath": {
       const { id } = op.kind.value;
-      return id === "" ? null : { id, paths: ["subpaths"] };
+      return id === "" ? null : { id, paths: ["subpaths", "x", "y", "width", "height"] };
     }
     // Un kind sconosciuto non ha bersaglio noto: non può invalidare niente, ma
     // non è nemmeno invalidabile (applyOp lo ignora, quindi non è mai finito in
