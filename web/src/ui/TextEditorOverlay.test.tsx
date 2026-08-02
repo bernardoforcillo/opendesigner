@@ -72,8 +72,15 @@ function deleteOp(id: string): Op {
 
 let sync: FakeSync;
 
+// Il campo di editing, cercato per NOME ACCESSIBILE e non per il solo ruolo:
+// da quando App monta anche il pannello proprietà (ui/App.tsx, le tre colonne)
+// un "textbox" qualunque può essere il campo X del pannello. Il nome è quello
+// che l'overlay dichiara (aria-label), quindi la query resta identica sia per
+// l'overlay montato da solo sia per l'app intera.
+const FIELD_NAME = "Contenuto del testo";
+
 function field(): HTMLTextAreaElement {
-  return screen.getByRole("textbox") as HTMLTextAreaElement;
+  return screen.getByRole("textbox", { name: FIELD_NAME }) as HTMLTextAreaElement;
 }
 
 function content(id = "t1"): string | undefined {
@@ -380,7 +387,7 @@ describe("accenti e IME", () => {
       // L'utente rifiuta il candidato: l'IME si chiude, l'editing NO.
       fireEvent.keyDown(ta, { key: "Escape" });
 
-      expect(screen.queryByRole("textbox")).not.toBeNull();
+      expect(screen.queryByRole("textbox", { name: FIELD_NAME })).not.toBeNull();
       expect(useScene.getState().editingNodeId).toBe("t1");
       expect(useScene.getState().gesture).not.toBeNull();
       expect(content()).toBe("ciao に");
@@ -453,7 +460,7 @@ describe("App monta l'overlay", () => {
     useScene.setState({ editingNodeId: null });
     render(<App />);
 
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: FIELD_NAME })).toBeNull();
     expect(useScene.getState().gesture).toBeNull();
   });
 
@@ -479,7 +486,7 @@ describe("il nodo sparisce mentre lo si edita", () => {
 
     act(() => useScene.getState().apply(deleteOp("t1")));
 
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: FIELD_NAME })).toBeNull();
     expect(useScene.getState().gesture).toBeNull();
     expect(useScene.getState().editingNodeId).toBeNull();
     expect(sync.sent).toHaveLength(0);
@@ -490,6 +497,6 @@ describe("il nodo sparisce mentre lo si edita", () => {
     useScene.setState({ editingNodeId: "t1" });
     render(<TextEditorOverlay nodeId="t1" />);
 
-    expect(screen.queryByRole("textbox")).toBeNull();
+    expect(screen.queryByRole("textbox", { name: FIELD_NAME })).toBeNull();
   });
 });

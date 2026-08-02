@@ -102,3 +102,38 @@ describe("toolbar", () => {
     expect(textTool.cursor).toBe("text");
   });
 });
+
+// Gli stessi test della toolbar, per lo stesso motivo, applicati ai PANNELLI:
+// LayersPanel e PropertiesPanel sono componenti completi e testati, ma finché
+// nessuno li monta non esistono per chi usa l'app. App.tsx è l'unico posto in
+// cui diventano raggiungibili.
+describe("layout a tre colonne", () => {
+  it("monta il pannello livelli a SINISTRA del canvas e quello proprietà a DESTRA", () => {
+    const { container } = render(<App />);
+    const canvas = container.querySelector("#scene") as HTMLCanvasElement;
+    const layers = screen.getByRole("grid", { name: "Livelli" });
+    const props = screen.getByText("Proprietà");
+
+    expect(layers).toBeInTheDocument();
+    expect(props).toBeInTheDocument();
+
+    // L'ORDINE nel documento è l'ordine delle colonne: livelli, canvas,
+    // proprietà. compareDocumentPosition è il modo diretto di chiederlo al DOM
+    // senza dipendere dalle classi Tailwind.
+    const before = Node.DOCUMENT_POSITION_FOLLOWING;
+    expect(layers.compareDocumentPosition(canvas) & before).toBeTruthy();
+    expect(canvas.compareDocumentPosition(props) & before).toBeTruthy();
+  });
+
+  it("i pannelli non stanno SOPRA il canvas: sono suoi fratelli, non lo coprono", () => {
+    const { container } = render(<App />);
+    const canvas = container.querySelector("#scene") as HTMLCanvasElement;
+    const layers = screen.getByRole("grid", { name: "Livelli" });
+    // Se un pannello contenesse il canvas (o viceversa) il layout sarebbe a
+    // sovrapposizione: i suoi eventi arriverebbero al canvas sotto e la sua
+    // larghezza non verrebbe tolta dal calcolo di resizeCanvasToDisplaySize.
+    expect(layers.contains(canvas)).toBe(false);
+    expect(canvas.contains(layers)).toBe(false);
+  });
+});
+

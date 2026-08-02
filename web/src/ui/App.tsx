@@ -9,6 +9,8 @@ import { drawOverlay } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { TextEditorOverlay } from "./TextEditorOverlay";
+import { LayersPanel } from "./LayersPanel";
+import { PropertiesPanel } from "./PropertiesPanel";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
 import { selectTool } from "../tools/selectTool";
 import { rectTool } from "../tools/rectTool";
@@ -317,25 +319,52 @@ export function App() {
           </Button>
         </div>
       )}
-      <div className="relative flex-1">
-        {/* Il cursore viene dal tool attivo; durante un pan temporaneo (spazio
-            o tasto centrale) è il tool manager a sovrascriverlo sul DOM. */}
-        <canvas
-          id="scene"
-          ref={canvasRef}
-          style={{ cursor: (TOOLS[toolId] ?? selectTool).cursor }}
-          className="absolute inset-0 block h-full w-full touch-none"
-        />
-        {/* overlay: bbox di selezione + maniglie + marquee, in spazio schermo.
-            pointer-events-none: tutti i listener restano sul canvas "scene",
-            l'overlay è puramente visivo e non deve rubare eventi. */}
-        <canvas id="overlay" ref={overlayRef} className="pointer-events-none absolute inset-0 block h-full w-full" />
-        {/* Il campo di editing del testo: DENTRO questo contenitore perché si
-            posiziona in `absolute` sulle coordinate schermo del nodo, e sopra
-            i due canvas perché li deve coprire. `key`: una sessione per nodo,
-            così passare da un testo a un altro rimonta il campo invece di
-            riusarlo. */}
-        {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
+      {/* LE TRE COLONNE: livelli a sinistra, canvas al centro, proprietà a
+          destra. `min-h-0` sulla riga e `min-w-0` sulla colonna centrale non
+          sono decorazioni: senza, un figlio flex non scende MAI sotto la
+          propria dimensione naturale (min-height/min-width valgono `auto`), e
+          basta un elenco di livelli lungo perché la riga sfondi l'altezza
+          della finestra spingendo il canvas fuori schermo. */}
+      <div className="flex min-h-0 flex-1">
+        {/* I pannelli sono FRATELLI del canvas, non gli stanno sopra: non c'è
+            nessun evento da rubargli, e la larghezza che occupano la toglie
+            il layout al canvas invece di coprirla. Il canvas si ridimensiona
+            di conseguenza da solo -- resizeCanvasToDisplaySize legge
+            clientWidth/clientHeight ad ogni frame -- e eventToCanvasPoint
+            parte da getBoundingClientRect, quindi le coordinate del puntatore
+            restano giuste anche con una colonna a sinistra. */}
+        <aside
+          aria-label="Livelli"
+          className="w-56 shrink-0 overflow-hidden border-r border-neutral-200 bg-white"
+        >
+          <LayersPanel />
+        </aside>
+        <div className="relative min-w-0 flex-1">
+          {/* Il cursore viene dal tool attivo; durante un pan temporaneo (spazio
+              o tasto centrale) è il tool manager a sovrascriverlo sul DOM. */}
+          <canvas
+            id="scene"
+            ref={canvasRef}
+            style={{ cursor: (TOOLS[toolId] ?? selectTool).cursor }}
+            className="absolute inset-0 block h-full w-full touch-none"
+          />
+          {/* overlay: bbox di selezione + maniglie + marquee, in spazio schermo.
+              pointer-events-none: tutti i listener restano sul canvas "scene",
+              l'overlay è puramente visivo e non deve rubare eventi. */}
+          <canvas id="overlay" ref={overlayRef} className="pointer-events-none absolute inset-0 block h-full w-full" />
+          {/* Il campo di editing del testo: DENTRO questo contenitore perché si
+              posiziona in `absolute` sulle coordinate schermo del nodo, e sopra
+              i due canvas perché li deve coprire. `key`: una sessione per nodo,
+              così passare da un testo a un altro rimonta il campo invece di
+              riusarlo. */}
+          {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
+        </div>
+        <aside
+          aria-label="Proprietà"
+          className="w-64 shrink-0 overflow-hidden border-l border-neutral-200 bg-white"
+        >
+          <PropertiesPanel />
+        </aside>
       </div>
     </div>
   );
