@@ -431,6 +431,21 @@ describe("opacità", () => {
     expect(screen.getByText("40%")).toBeInTheDocument();
   });
 
+  it("ANNUNCIA la stessa percentuale che si legge accanto al cursore", () => {
+    installScene(rectNode("a", "a0", { opacity: 0.4 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+
+    // aria-valuetext è ciò che uno screen reader legge AL POSTO del numero
+    // grezzo di aria-valuenow (0.4): deve essere la stessa cosa che si vede,
+    // altrimenti chi ascolta e chi guarda leggono due valori diversi.
+    const slider = screen.getByRole("slider", { name: "Opacità" });
+    expect(slider).toHaveAttribute("aria-valuetext", "40%");
+    expect(screen.getByText("40%")).toBeInTheDocument();
+    // Selezione OMOGENEA: nessuno stato "misto" da nessuna parte.
+    expect(sliderThumb("Opacità").closest("[data-mixed]")).toBeNull();
+  });
+
   it("un trascinamento è UN gesto: un op sul filo, una voce di undo", () => {
     installScene(rectNode("a", "a0", { opacity: 1 }));
     useScene.getState().setSelection(["a"]);
@@ -482,6 +497,102 @@ describe("opacità", () => {
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().undoStack.length).toBe(undoBefore);
     expect(useScene.getState().gesture).toBeNull();
+  });
+});
+
+// Selezione con opacità DIVERSE: il cursore non ha nessun valore da mostrare.
+// Un cursore però una posizione ce l'ha sempre, e il valore accessibile di un
+// <input type=range> è il suo numero: mettergliene uno plausibile (1, cioè il
+// 100%) significa ANNUNCIARE un valore che non esiste -- e mostrarlo, con la
+// pastiglia a fondo corsa, mentre il testo accanto dice il contrario. Questi
+// test bloccano quel ritorno: "misto" deve arrivare a chi guarda E a chi
+// ascolta, e deve essere la STESSA parola.
+describe("opacità mista", () => {
+  let restore: () => void;
+  beforeEach(() => {
+    restore = stubTrackWidth(100);
+  });
+  afterEach(() => restore());
+
+  function installMixed() {
+    installScene(rectNode("a", "a0", { opacity: 0.2 }), rectNode("b", "a1", { opacity: 0.9 }));
+    useScene.getState().setSelection(["a", "b"]);
+  }
+
+  it("il valore ANNUNCIATO dice misto, non una percentuale inventata", () => {
+    installMixed();
+    render(<PropertiesPanel />);
+
+    const slider = screen.getByRole("slider", { name: "Opacità" });
+    expect(slider).toHaveAttribute("aria-valuetext", "Misto");
+    // Nessuna percentuale, da nessuna parte del pannello: né annunciata né
+    // scritta. "100%" sarebbe esattamente il valore inventato.
+    expect(screen.queryByText(/%/)).toBeNull();
+  });
+
+  it("mostrato e annunciato sono la STESSA parola", () => {
+    installMixed();
+    render(<PropertiesPanel />);
+
+    const shown = screen.getByText("Misto");
+    const slider = screen.getByRole("slider", { name: "Opacità" });
+    expect(slider.getAttribute("aria-valuetext")).toBe(shown.textContent);
+  });
+
+  it("il cursore si disegna VUOTO: nessuna posizione finta", () => {
+    installMixed();
+    render(<PropertiesPanel />);
+
+    // Lo stato "misto" sta nel DOM (sul track, che porta anche la pastiglia),
+    // non in una stringa di classi: è da lì che il CSS toglie il riempimento
+    // al binario e alla pastiglia, come ColorField/NumberField si svuotano.
+    expect(sliderThumb("Opacità").closest("[data-mixed]")).not.toBeNull();
+  });
+
+  it("resta usabile: trascinarlo assegna la stessa opacità a tutti, in UN gesto", () => {
+    installMixed();
+    render(<PropertiesPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    dragSlider("Opacità", -50);
+
+    // Un op per nodo ma UN solo gesto: una voce di undo, come per ogni altra
+    // modifica multipla del pannello.
+    expect(sync.sent).toHaveLength(2);
+    for (const op of sync.sent) expect(maskOf(op)).toEqual(["opacity"]);
+    const scene = useScene.getState().scene;
+    expect(scene?.nodes.a.opacity).toBeCloseTo(0.5, 5);
+    expect(scene?.nodes.b.opacity).toBeCloseTo(0.5, 5);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+    // Assegnato un valore, il "misto" sparisce da entrambi i canali.
+    expect(screen.getByRole("slider", { name: "Opacità" })).toHaveAttribute("aria-valuetext", "50%");
+    expect(sliderThumb("Opacità").closest("[data-mixed]")).toBeNull();
+  });
+
+  it("cambiando selezione il 'Misto' non resta appeso", () => {
+    installScene(
+      rectNode("a", "a0", { opacity: 0.2 }),
+      rectNode("b", "a1", { opacity: 0.9 }),
+      // Opacità 1: ESATTAMENTE il valore di ripiego che il cursore usa nel
+      // caso misto per avere una posizione. Il numero che React vede quindi
+      // NON cambia passando da misto a singolo, e un attributo scritto una
+      // volta sola resterebbe fermo su "Misto" -- annunciando "misto" per un
+      // nodo con un'opacità precisa. È il motivo per cui il valore annunciato
+      // si riscrive a ogni render.
+      rectNode("c", "a2", { opacity: 1 }),
+    );
+    useScene.getState().setSelection(["a", "b"]);
+    const { rerender } = render(<PropertiesPanel />);
+    expect(screen.getByRole("slider", { name: "Opacità" })).toHaveAttribute("aria-valuetext", "Misto");
+
+    useScene.getState().setSelection(["c"]);
+    rerender(<PropertiesPanel />);
+
+    expect(screen.getByRole("slider", { name: "Opacità" })).toHaveAttribute("aria-valuetext", "100%");
+    expect(screen.getByText("100%")).toBeInTheDocument();
+    expect(screen.queryByText("Misto")).toBeNull();
+    expect(sliderThumb("Opacità").closest("[data-mixed]")).toBeNull();
   });
 });
 

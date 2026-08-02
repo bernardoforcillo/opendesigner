@@ -1,4 +1,8 @@
-import { Label, Radio, RadioGroup, Slider, SliderOutput, SliderThumb, SliderTrack } from "react-aria-components";
+import { useContext, useLayoutEffect, useRef } from "react";
+import type { RefObject } from "react";
+import {
+  Label, Radio, RadioGroup, Slider, SliderOutput, SliderStateContext, SliderThumb, SliderTrack,
+} from "react-aria-components";
 import { useScene } from "../store/store";
 import { selectionSummary, MIXED } from "../store/selectors";
 import type { Mixed, OrMixed } from "../store/selectors";
@@ -169,12 +173,69 @@ function radioValue<T extends string>(v: OrMixed<T>): T | null {
   return v === MIXED ? null : (v as T);
 }
 
+// L'opacità è un float 0..1 nel modello e una percentuale per chi la legge: la
+// conversione la fa Intl, dentro lo stato del cursore, una volta sola -- e la
+// stessa stringa serve poi sia il testo mostrato sia il valore annunciato.
+// Costante di modulo e non un letterale inline: `useNumberFormatter` memoizza
+// sull'IDENTITÀ dell'oggetto, e un letterale nuovo a ogni render
+// ricostruirebbe l'Intl.NumberFormat a ogni frame di trascinamento.
+const PERCENT_FORMAT: Intl.NumberFormatOptions = { style: "percent" };
+
+// L'UNICA parola con cui il pannello dice "questa selezione non ha un valore
+// solo" su un cursore.
+const MIXED_LABEL = "Misto";
+
+// Il valore del cursore: quello che si LEGGE e quello che si SENTE, dalla
+// stessa variabile.
+//
+// I campi di testo e di colore, su MIXED, si mostrano VUOTI: "nessun valore
+// singolo" si disegna come niente. Un cursore non può -- una posizione ce l'ha
+// per forza, e il suo valore accessibile è un NUMERO: react-aria mette
+// `aria-valuetext` sull'`<input type=range>` prendendolo dallo stato, quindi il
+// valore di ripiego che serve a dare una posizione (1, cioè "100%") verrebbe
+// anche ANNUNCIATO come se fosse quello vero. Uno screen reader leggerebbe
+// "100%" su una selezione che un'opacità sola non ce l'ha.
+//
+// Il rimedio è possedere l'attributo: `inputRef` è la prop pubblica con cui
+// RAC dà accesso proprio a quell'input. Si scrive a OGNI render, senza array
+// di dipendenze: fuori da MIXED si riscrive quello che RAC aveva già calcolato
+// (`getThumbValueLabel`, cioè la stessa percentuale del testo mostrato), così
+// non resta mai un "Misto" appeso quando il valore torna a esistere -- React
+// non riscriverebbe un attributo il cui valore di partenza non è cambiato.
+// useLayoutEffect e non useEffect: l'attributo è a posto prima che il browser
+// dipinga, non un frame dopo.
+function SliderValueText({
+  inputRef, mixed, className,
+}: { inputRef: RefObject<HTMLInputElement | null>; mixed: boolean; className: string }) {
+  const state = useContext(SliderStateContext);
+  const text = mixed ? MIXED_LABEL : (state?.getThumbValueLabel(0) ?? "");
+  useLayoutEffect(() => {
+    inputRef.current?.setAttribute("aria-valuetext", text);
+  });
+  return <SliderOutput className={className}>{text}</SliderOutput>;
+}
+
 const RADIO_CLASS =
   "cursor-pointer rounded px-1.5 py-0.5 text-neutral-600 outline-none " +
   "data-[selected]:bg-sky-100 data-[selected]:text-sky-700 " +
   "data-[focus-visible]:ring-1 data-[focus-visible]:ring-sky-500";
 
 const ROW_LABEL_CLASS = "w-20 shrink-0 select-none text-neutral-400";
+
+// Il binario e la pastiglia del cursore dell'opacità, con il loro stato VUOTO:
+// su `data-mixed` (messo sul track, che è il `group`) perdono riempimento e
+// bordo pieno e restano un tratteggio, perché non c'è nessun valore da
+// indicare. La pastiglia però resta lì -- focalizzabile, trascinabile e con il
+// suo anello di focus.
+const SLIDER_RAIL_CLASS =
+  "absolute top-1/2 h-1 w-full -translate-y-1/2 rounded bg-neutral-200 " +
+  "group-data-[mixed]:border group-data-[mixed]:border-dashed " +
+  "group-data-[mixed]:border-neutral-300 group-data-[mixed]:bg-transparent";
+
+const SLIDER_THUMB_CLASS =
+  "top-1/2 size-3 rounded-full border border-neutral-400 bg-white shadow-sm outline-none " +
+  "group-data-[mixed]:border-transparent group-data-[mixed]:bg-transparent group-data-[mixed]:shadow-none " +
+  "data-[focus-visible]:ring-2 data-[focus-visible]:ring-sky-500";
 
 function SectionTitle({ children }: { children: string }) {
   return (
@@ -190,6 +251,10 @@ export function PropertiesPanel() {
   const summary = scene ? selectionSummary(scene, selection) : null;
   const nodes = scene ? selection.map((id) => scene.nodes[id]).filter((n): n is NodeLite => n !== undefined) : [];
   const style = summary?.kind === "text" ? textStyleSummary(nodes) : null;
+  // L'input nascosto del cursore dell'opacità: SliderValueText gli scrive il
+  // valore ANNUNCIATO. Sta qui, prima di ogni ritorno anticipato, perché è un
+  // hook.
+  const opacityInputRef = useRef<HTMLInputElement>(null);
 
   // Digitare + confermare (Invio o blur, dentro NumberField): UN gesto i cui
   // op finali assegnano lo stesso valore a ogni nodo selezionato -- una sola
@@ -313,33 +378,49 @@ export function PropertiesPanel() {
         />
 
         <Slider
-          // MIXED ricade su 1 solo per avere una POSIZIONE da disegnare: il
-          // valore vero "non c'è", e infatti l'uscita accanto mostra "—" e non
-          // "100%". Il cursore resta però usabile -- trascinarlo assegna la
+          // Su MIXED il numero qui sotto è solo il PUNTO DI PARTENZA di
+          // tastiera e trascinamento: non viene disegnato (il cursore si mostra
+          // vuoto, vedi data-mixed) e non viene annunciato (vedi
+          // SliderValueText). Il cursore resta usabile -- muoverlo assegna la
           // stessa opacità a tutta la selezione, esattamente come un campo
-          // geometrico misto accetta un valore digitato.
+          // geometrico misto accetta un valore digitato -- e appena un valore
+          // c'è, "misto" sparisce da entrambi i canali.
           value={opacity === MIXED ? 1 : opacity}
           minValue={0}
           maxValue={1}
           // 1% è il passo con cui l'opacità si legge in percentuale intera;
           // niente arrotondamenti invisibili sotto quella soglia.
           step={0.01}
+          // La percentuale la formatta lo STATO, non il pannello: è la stessa
+          // stringa che finisce nel testo mostrato e in `aria-valuetext`. Con
+          // il calcolo a mano di prima si vedeva "40%" e si annunciava "0.4".
+          formatOptions={PERCENT_FORMAT}
           onChange={scrubOpacity}
           onChangeEnd={scrubOpacityEnd}
           className="flex items-center gap-1.5"
         >
           <Label className={ROW_LABEL_CLASS}>Opacità</Label>
-          <SliderTrack className="relative h-4 flex-1 min-w-0">
+          <SliderTrack
+            // "Misto" è uno STATO del controllo, non solo un testo: sta nel DOM
+            // sul track (che contiene sia il binario sia la pastiglia) e di lì
+            // il CSS li svuota entrambi. Un attributo e non due className
+            // calcolate: la stessa forma dei `data-*` che RAC stessa espone
+            // (data-selected, data-focus-visible).
+            data-mixed={opacity === MIXED || undefined}
+            className="group relative h-4 flex-1 min-w-0"
+          >
             {/* Il binario disegnato è un figlio del track e non il track
                 stesso: il track deve restare alto abbastanza da essere
                 afferrabile col dito, la riga colorata sottile abbastanza da
                 leggersi come un cursore. */}
-            <div className="absolute top-1/2 h-1 w-full -translate-y-1/2 rounded bg-neutral-200" />
-            <SliderThumb className="top-1/2 size-3 rounded-full border border-neutral-400 bg-white shadow-sm outline-none data-[focus-visible]:ring-2 data-[focus-visible]:ring-sky-500" />
+            <div className={SLIDER_RAIL_CLASS} />
+            <SliderThumb inputRef={opacityInputRef} className={SLIDER_THUMB_CLASS} />
           </SliderTrack>
-          <SliderOutput className="w-10 shrink-0 text-right tabular-nums text-neutral-500">
-            {({ state }) => (opacity === MIXED ? "—" : `${Math.round(state.getThumbValue(0) * 100)}%`)}
-          </SliderOutput>
+          <SliderValueText
+            inputRef={opacityInputRef}
+            mixed={opacity === MIXED}
+            className="w-10 shrink-0 text-right tabular-nums text-neutral-500"
+          />
         </Slider>
 
         {/* SOLO per i rettangoli: corner_radius vive dentro RectNode, e su
