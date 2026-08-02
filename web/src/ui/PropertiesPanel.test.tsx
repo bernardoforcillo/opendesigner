@@ -1092,6 +1092,63 @@ describe("tratto", () => {
     expect(useScene.getState().gesture).toBeNull();
   });
 
+  // L'alfa NON passa dal campo esadecimale (vedi fields/ColorField.tsx): la
+  // rimette strokeOps prendendola dal tratto DEL NODO. Gemello di "conserva
+  // l'alfa DEL NODO, non una qualunque" per il riempimento.
+  it("cambiare il colore conserva l'alfa DEL NODO", async () => {
+    installScene(rectNode("a", "a0", { strokes: [strokeOf(4, "inside", { r: 0, g: 0, b: 0, a: 0.25 })] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    const input = screen.getByRole("textbox", { name: "Tratto" });
+    await user.clear(input);
+    await user.type(input, "#00FF00{Enter}");
+
+    // Il colore È cambiato (senza questo, l'assert sull'alfa passerebbe anche
+    // se il campo non avesse emesso NIENTE) ma l'alfa no -- e nemmeno spessore
+    // e posizione.
+    const s = useScene.getState().scene?.nodes.a.strokes[0];
+    expect(s?.color.g).toBeCloseTo(1, 5);
+    expect(s?.color.a).toBe(0.25);
+    expect(s?.weight).toBe(4);
+    expect(s?.align).toBe("inside");
+  });
+
+  // Il caso che il riassunto della selezione non può servire: su tratti diversi
+  // `summary.strokes` è MIXED, cioè NESSUN valore da cui leggere un'alfa.
+  // Prenderla da lì (o dal suo ripiego 1) distruggerebbe in silenzio lo 0.3 di
+  // A -- una modifica che l'utente non ha chiesto e non vede finché non guarda
+  // il canvas.
+  it("su tratti diversi il colore va a tutti ma ciascuno tiene la PROPRIA alfa", async () => {
+    installScene(
+      rectNode("a", "a0", { strokes: [strokeOf(2, "center", { r: 1, g: 0, b: 0, a: 0.3 })] }),
+      rectNode("b", "a1", { strokes: [strokeOf(9, "outside", { r: 0, g: 0, b: 1, a: 1 })] }),
+    );
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    const input = screen.getByRole("textbox", { name: "Tratto" });
+    expect(input).toHaveValue("");
+    await user.type(input, "#00FF00{Enter}");
+
+    expect(sync.sent).toHaveLength(2);
+    for (const op of sync.sent) expect(maskOf(op)).toEqual(["strokes"]);
+    const scene = useScene.getState().scene;
+    expect(scene?.nodes.a.strokes[0].color.g).toBeCloseTo(1, 5);
+    expect(scene?.nodes.b.strokes[0].color.g).toBeCloseTo(1, 5);
+    expect(scene?.nodes.a.strokes[0].color.a).toBe(0.3);
+    expect(scene?.nodes.b.strokes[0].color.a).toBe(1);
+    // ...e il resto del tratto di ciascuno resta suo.
+    expect(scene?.nodes.a.strokes[0].weight).toBe(2);
+    expect(scene?.nodes.b.strokes[0].align).toBe("outside");
+    // Due op, UN gesto: una sola voce di undo.
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
   it("cambiare lo spessore conserva colore e posizione del tratto", async () => {
     installScene(rectNode("a", "a0", { strokes: [strokeOf(4, "inside", { r: 0, g: 1, b: 0, a: 0.5 })] }));
     useScene.getState().setSelection(["a"]);

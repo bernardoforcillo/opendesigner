@@ -11,7 +11,7 @@ import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
 import type { RgbLite } from "./fields/ColorField";
 import { toPbFills, toPbStrokes } from "../store/types";
-import type { NodeLite, StrokeAlignLite, StrokeLite, TextAlignLite, TextStyleLite } from "../store/types";
+import type { FillLite, NodeLite, StrokeAlignLite, StrokeLite, TextAlignLite, TextStyleLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 
@@ -128,6 +128,13 @@ function fillOps(ids: readonly string[], rgb: RgbLite): Op[] {
 // quello che StrokeAlign_UNSPECIFIED significa nel modello.
 const DEFAULT_STROKE: StrokeLite = { color: { r: 0, g: 0, b: 0, a: 1 }, weight: 1, align: "center" };
 
+// Il patch che i controlli del tratto emettono. Il COLORE ci sta senza alfa --
+// RgbLite e non FillLite -- per la stessa ragione per cui ColorField non la
+// porta: l'esadecimale a 6 cifre non la contiene, e l'alfa la rimette ogni nodo
+// dal PROPRIO tratto (vedi strokeOps). È un tipo e non un `Partial<StrokeLite>`
+// proprio per rendere IMPOSSIBILE far arrivare qui un'alfa presa da altrove.
+type StrokePatch = Partial<Omit<StrokeLite, "color">> & { color?: RgbLite };
+
 // Op di TRATTO. Stessa forma di fillOps -- e per le stesse ragioni:
 //
 //  - si tocca solo il PRIMO tratto e gli altri restano dove sono (il pannello
@@ -135,20 +142,27 @@ const DEFAULT_STROKE: StrokeLite = { color: { r: 0, g: 0, b: 0, a: 1 }, weight: 
 //    non ha chiesto e non vede);
 //  - il patch parte dal tratto DEL NODO, non da quello riassunto per il
 //    pannello: in una selezione mista, cambiare lo spessore non deve uniformare
-//    anche colore e posizione;
+//    anche colore e posizione -- e cambiare il COLORE non deve uniformare
+//    l'alfa, che viene rimessa qui dal tratto di ciascun nodo;
 //  - un nodo senza tratti parte da DEFAULT_STROKE, cioè scrivere un qualunque
 //    campo CREA il tratto.
 //
 // La mask è `strokes` e sostituisce l'INTERA lista (vedi store/applyOp.ts e
 // core.applySetProps): per questo la lista va ricostruita per intero, non
 // "modificata".
-function strokeOps(ids: readonly string[], patch: Partial<StrokeLite>): Op[] {
+function strokeOps(ids: readonly string[], patch: StrokePatch): Op[] {
   const scene = useScene.getState().scene;
   if (!scene) return [];
   return ids.flatMap((id) => {
     const n = scene.nodes[id];
     if (!n) return [];
-    const first: StrokeLite = { ...(n.strokes[0] ?? DEFAULT_STROKE), ...patch };
+    const base = n.strokes[0] ?? DEFAULT_STROKE;
+    // L'alfa del tratto DI QUESTO NODO, risolta nodo per nodo dentro il ciclo:
+    // leggerla dal riassunto della selezione la azzererebbe a 1 ogni volta che
+    // i nodi differiscono (il riassunto in quel caso è MIXED, cioè nessun
+    // valore), cioè proprio quando conta.
+    const color: FillLite = patch.color ? { ...patch.color, a: base.color.a } : base.color;
+    const first: StrokeLite = { ...base, ...patch, color };
     return [makeSetPropsOp(id, { strokes: toPbStrokes([first, ...n.strokes.slice(1)]) }, ["strokes"])];
   });
 }
@@ -378,14 +392,14 @@ export function PropertiesPanel() {
   // Le stesse due fasi per lo SPESSORE del tratto: si trascina come ogni altro
   // campo numerico, ma l'op ricostruisce la lista dei tratti invece di scrivere
   // un campo (vedi strokeOps).
-  function scrubStroke(patch: Partial<StrokeLite>) {
+  function scrubStroke(patch: StrokePatch) {
     const store = useScene.getState();
     if (store.selection.length === 0) return;
     if (!store.gesture) store.beginGesture();
     for (const op of strokeOps(store.selection, patch)) store.applyLocal(op);
   }
 
-  function scrubStrokeEnd(patch: Partial<StrokeLite>) {
+  function scrubStrokeEnd(patch: StrokePatch) {
     const store = useScene.getState();
     if (!store.gesture) return;
     store.endGesture(strokeOps(store.selection, patch));
@@ -541,7 +555,11 @@ export function PropertiesPanel() {
           // un tratto si CREA (vedi DEFAULT_STROKE).
           value={stroke?.color ?? null}
           placeholder={strokesMixed ? MIXED_LABEL : undefined}
-          onCommit={(rgb) => runGesture((ids) => strokeOps(ids, { color: { ...rgb, a: stroke?.color.a ?? 1 } }))}
+          // Il colore va giù NUDO, senza alfa: la rimette strokeOps prendendola
+          // dal tratto di ciascun nodo, esattamente come fillOps. Comporla qui
+          // da `stroke` la leggerebbe dal RIASSUNTO della selezione -- che su
+          // tratti diversi è null -- e riscriverebbe 1 su tutti.
+          onCommit={(rgb) => runGesture((ids) => strokeOps(ids, { color: rgb }))}
         />
 
         <NumberField
