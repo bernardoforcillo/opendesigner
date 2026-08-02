@@ -1,6 +1,7 @@
 import type { SceneState } from "../store/types";
-import type { Camera } from "../canvas/camera";
+import { type Camera, worldToScreen } from "../canvas/camera";
 import { type Bounds, boundsOfNode, unionBounds, worldAabbOfNode, worldBoundsToScreen } from "../canvas/geometry";
+import type { SnapGuide } from "../selection/snap";
 import {
   CORNER_IDS,
   HANDLE_SIZE,
@@ -28,6 +29,14 @@ const TAU = Math.PI * 2;
 // aperto è il segno con cui gli editor dicono "gira".
 const ROTATE_ARC_GAP = Math.PI / 2;
 const ROTATE_MARKER_WIDTH = 1.5;
+
+// Le guide di snap sono ROSSE e non blu come il resto dell'overlay, di
+// proposito: il blu dice "questo è selezionato", il rosso dice "questa è la
+// retta su cui stai scattando". Sono due informazioni diverse e compaiono
+// insieme -- con lo stesso colore la guida si leggerebbe come un altro bordo
+// del riquadro. È anche la convenzione degli editor di design.
+const SNAP_GUIDE_COLOR = "#f24822";
+const SNAP_GUIDE_WIDTH = 1;
 
 function devicePixelRatio(): number {
   return typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
@@ -93,12 +102,17 @@ export function selectionFrame(state: SceneState, selection: string[]): Selectio
 // solo, girati con il nodo. La camera è una similitudine, quindi l'angolo
 // mondo e l'angolo schermo coincidono e le maniglie NON si deformano con lo
 // zoom. Il marquee resta fuori dalla trasformazione: è sempre asse-allineato.
+// Le GUIDE di snap (in coordinate mondo, vedi selection/snap.ts) si disegnano
+// per ultime e FUORI da qualunque rotazione del frame: una guida è per
+// definizione una retta dello schermo -- è la retta su cui i bordi combaciano
+// -- e girarla con il nodo la renderebbe una retta qualunque.
 export function drawOverlay(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
   cam: Camera,
   selection: string[],
   marquee: Bounds | null,
+  guides: readonly SnapGuide[] = [],
 ): void {
   const { canvas } = ctx;
   const dpr = devicePixelRatio();
@@ -159,5 +173,27 @@ export function drawOverlay(
     ctx.lineWidth = 1;
     ctx.strokeStyle = "#2f6fed";
     ctx.strokeRect(m.x + 0.5, m.y + 0.5, m.width, m.height);
+  }
+
+  if (guides.length > 0) {
+    ctx.lineWidth = SNAP_GUIDE_WIDTH;
+    ctx.strokeStyle = SNAP_GUIDE_COLOR;
+    for (const g of guides) {
+      // Gli estremi passano dalla camera come ogni altra coordinata: la retta
+      // vive nel MONDO, il segmento sullo schermo. Il +0.5 sulla sola coordinata
+      // costante è lo stesso trucco del riquadro (un tratto da 1px su un confine
+      // di pixel netto invece che sbavato su due righe).
+      const a = worldToScreen(cam, g.axis === "x" ? g.pos : g.from, g.axis === "x" ? g.from : g.pos);
+      const b = worldToScreen(cam, g.axis === "x" ? g.pos : g.to, g.axis === "x" ? g.to : g.pos);
+      ctx.beginPath();
+      if (g.axis === "x") {
+        ctx.moveTo(a.x + 0.5, a.y);
+        ctx.lineTo(b.x + 0.5, b.y);
+      } else {
+        ctx.moveTo(a.x, a.y + 0.5);
+        ctx.lineTo(b.x, b.y + 0.5);
+      }
+      ctx.stroke();
+    }
   }
 }

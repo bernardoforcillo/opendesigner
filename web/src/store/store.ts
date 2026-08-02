@@ -7,6 +7,7 @@ import { invertOp } from "./history";
 import type { SceneState } from "./types";
 import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
+import type { SnapGuide } from "../selection/snap";
 
 // Il minimo che lo store chiede al trasporto: "manda questo op" (e applicalo in
 // ottimistico). SyncClient lo soddisfa strutturalmente; i test possono passare
@@ -672,6 +673,12 @@ interface SceneStore {
   // Rettangolo del marquee in corso, in coordinate MONDO (come tutto il resto
   // del modello). null quando non si sta trascinando un marquee.
   marquee: Bounds | null;
+  // Le guide di allineamento ATTIVE in questo istante, in coordinate MONDO
+  // (vedi selection/snap.ts). Vuoto fuori da un gesto, e vuoto durante un gesto
+  // che non sta scattando su niente. È stato puramente VISIVO -- lo scatto vero
+  // è già dentro gli op che il tool applica -- ma vive nello store come il
+  // marquee, e per la stessa ragione: il ciclo di disegno legge da lì.
+  snapGuides: SnapGuide[];
   // Trasporto verso il server: null finché SyncClient non si registra (test
   // isolati, bootstrap non ancora completato).
   sync: OpSink | null;
@@ -729,6 +736,7 @@ interface SceneStore {
   toggleSelection: (id: string) => void;
   clearSelection: () => void;
   setMarquee: (b: Bounds | null) => void;
+  setSnapGuides: (g: SnapGuide[]) => void;
   // Accende il flag di editing: textTool lo chiama subito dopo aver creato il
   // nodo, il doppio click di selectTool lo chiama su un nodo testo esistente.
   // Se una sessione era già aperta su un ALTRO nodo, la chiude/pulisce prima
@@ -769,6 +777,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   camera: { x: 0, y: 0, zoom: 1 },
   selection: [],
   marquee: null,
+  snapGuides: [],
   sync: null,
   gesture: null,
   editingNodeId: null,
@@ -1180,6 +1189,12 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     })),
   clearSelection: () => set({ selection: [] }),
   setMarquee: (b) => set({ marquee: b }),
+  // Le guide di snap del gesto in corso. Riusa lo STESSO array quando non c'è
+  // niente da mostrare e niente c'era: un gesto lungo chiama questa ad ogni
+  // pointermove, e un array nuovo ogni volta sveglierebbe i sottoscrittori a
+  // ogni pixel anche quando nessuno scatto è attivo.
+  setSnapGuides: (g) =>
+    set((st) => (g.length === 0 && st.snapGuides.length === 0 ? st : { snapGuides: g })),
 
   // Chiude/pulisce QUALUNQUE sessione già aperta PRIMA di aprirne una nuova
   // (bug trovato in review): senza questo, una seconda beginTextEditing --

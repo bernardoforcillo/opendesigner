@@ -136,9 +136,18 @@ function fakeCtx(width: number, height: number) {
   // disegno dell'overlay che non sia un rettangolo, e ciò che conta è DOVE
   // finisce (dentro la propria zona di presa, vedi selection/handles.test.ts).
   const arcs: { x: number; y: number; r: number }[] = [];
+  // I SEGMENTI (moveTo + lineTo): le guide di snap sono l'unico disegno
+  // dell'overlay fatto di rette, e ciò che conta è dove cominciano e finiscono.
+  const segments: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  let pen = { x: 0, y: 0 };
   const record = (op: string) => (...args: number[]) => { calls.push(op); xform.push({ op, args }); };
   const ctx: Record<string, unknown> = {
     canvas: { width, height },
+    moveTo: (x: number, y: number) => { calls.push("moveTo"); pen = { x, y }; },
+    lineTo: (x: number, y: number) => {
+      calls.push("lineTo");
+      segments.push({ x0: pen.x, y0: pen.y, x1: x, y1: y });
+    },
     setTransform: (..._a: unknown[]) => { calls.push("setTransform"); },
     clearRect: (..._a: unknown[]) => { calls.push("clearRect"); },
     strokeRect: (..._a: unknown[]) => { calls.push("strokeRect"); },
@@ -154,7 +163,7 @@ function fakeCtx(width: number, height: number) {
     strokeStyle: "",
     fillStyle: "",
   };
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls, xform, arcs };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls, xform, arcs, segments };
 }
 
 describe("drawOverlay smoke test", () => {
@@ -289,5 +298,62 @@ describe("drawOverlay smoke test", () => {
     const { ctx, xform } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null);
     expect(xform).toEqual([]);
+  });
+});
+
+describe("drawOverlay — guide di snap", () => {
+  it("draws nothing extra when there is no active snap", () => {
+    const s = emptyScene("d", "n");
+    const { ctx, calls } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, [], null, []);
+    expect(calls).not.toContain("lineTo");
+  });
+
+  it("draws a vertical guide as a segment in SCREEN space", () => {
+    const s = emptyScene("d", "n");
+    const { ctx, segments } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, [], null, [{ axis: "x", pos: 100, from: 20, to: 300 }]);
+    // +0.5 come il resto dell'overlay: un tratto da 1px cade su un confine
+    // netto invece di sbavare su due righe.
+    expect(segments).toEqual([{ x0: 100.5, y0: 20, x1: 100.5, y1: 300 }]);
+  });
+
+  it("draws a horizontal guide the other way round", () => {
+    const s = emptyScene("d", "n");
+    const { ctx, segments } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, [], null, [{ axis: "y", pos: 40, from: 0, to: 200 }]);
+    expect(segments).toEqual([{ x0: 0, y0: 40.5, x1: 200, y1: 40.5 }]);
+  });
+
+  it("passes through the camera: a zoomed guide lands where the camera puts it", () => {
+    const s = emptyScene("d", "n");
+    const cam: Camera = { x: 10, y: 5, zoom: 2 };
+    const { ctx, segments } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, cam, [], null, [{ axis: "x", pos: 100, from: 20, to: 300 }]);
+    // worldToScreen: world * zoom + cam
+    expect(segments).toEqual([
+      { x0: 100 * 2 + 10 + 0.5, y0: 20 * 2 + 5, x1: 100 * 2 + 10 + 0.5, y1: 300 * 2 + 5 },
+    ]);
+  });
+
+  it("draws the guides OUTSIDE the frame's rotation — they are always axis-aligned", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    const { ctx, calls } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], null, [{ axis: "x", pos: 10, from: 0, to: 50 }]);
+    // Il segmento cade DOPO il restore del riquadro ruotato: una guida girata
+    // di 90° non sarebbe più la retta su cui i bordi combaciano.
+    expect(calls.lastIndexOf("lineTo")).toBeGreaterThan(calls.lastIndexOf("restore"));
+  });
+
+  it("draws one segment per guide", () => {
+    const s = emptyScene("d", "n");
+    const { ctx, segments } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, [], null, [
+      { axis: "x", pos: 0, from: 0, to: 10 },
+      { axis: "x", pos: 5, from: 0, to: 10 },
+      { axis: "y", pos: 7, from: 0, to: 10 },
+    ]);
+    expect(segments).toHaveLength(3);
   });
 });

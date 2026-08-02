@@ -39,6 +39,26 @@ const MOVES: Record<HandleId, { left: boolean; right: boolean; top: boolean; bot
   w: { left: true, right: false, top: false, bottom: false },
 };
 
+// Le coordinate che una maniglia MUOVE, lette dallo stesso MOVES da cui
+// discende tutto il resize -- una fonte sola, non una tabella parallela.
+//
+// Serve allo snap durante un ridimensionamento (vedi tools/selectTool.ts): può
+// scattare solo un bordo che si sta davvero muovendo. Far scattare il bordo
+// FERMO sposterebbe il nodo invece di ridimensionarlo, cioè esattamente ciò che
+// l'utente non ha chiesto trascinando una maniglia. Il centro non è fra i
+// candidati per la stessa ragione: si muove, ma di mezzo delta -- allinearlo
+// vorrebbe dire spostare un bordo che deve restare fermo.
+export function movingEdgeLines(b: Bounds, h: HandleId): { x: number[]; y: number[] } {
+  const m = MOVES[h];
+  const x: number[] = [];
+  const y: number[] = [];
+  if (m.left) x.push(b.x);
+  if (m.right) x.push(b.x + b.width);
+  if (m.top) y.push(b.y);
+  if (m.bottom) y.push(b.y + b.height);
+  return { x, y };
+}
+
 const CURSORS: Record<HandleId, string> = {
   nw: "nwse-resize", se: "nwse-resize",
   ne: "nesw-resize", sw: "nesw-resize",

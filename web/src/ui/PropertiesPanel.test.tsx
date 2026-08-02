@@ -1253,3 +1253,74 @@ describe("tratto", () => {
     expect(field("Spessore")).toHaveValue("5");
   });
 });
+
+// --- ALLINEAMENTO (M2, traccia 2, task 3) ------------------------------------
+//
+// La MATEMATICA dell'allineamento è testata dov'è, come funzione pura
+// (selection/align.test.ts). Qui si verifica solo che il pannello sia il modo di
+// raggiungerla: che i pulsanti ci siano, che abbiano un nome leggibile e che
+// muovano davvero la selezione con UN gesto.
+describe("allineamento", () => {
+  it("non mostra i pulsanti senza selezione", () => {
+    installScene(rectNode("a", "a0"));
+    render(<PropertiesPanel />);
+    expect(screen.queryByRole("button", { name: "Allinea a sinistra" })).toBeNull();
+  });
+
+  it("allinea la selezione multipla al suo riquadro comune, in un gesto solo", () => {
+    installScene(
+      rectNode("a", "a0", { x: 0, y: 0, width: 50, height: 50 }),
+      rectNode("b", "a1", { x: 100, y: 30, width: 50, height: 50 }),
+    );
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Allinea a sinistra" }));
+
+    const scene = useScene.getState().scene;
+    expect(scene?.nodes.a.x).toBe(0);
+    expect(scene?.nodes.b.x).toBe(0);
+    expect(scene?.nodes.b.y).toBe(30); // l'asse che non riguarda non si muove
+    expect(sync.sent).toHaveLength(1); // solo "b" si è mosso
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("distribuisce tre nodi con un pulsante solo", () => {
+    installScene(
+      rectNode("a", "a0", { x: 0, y: 0, width: 10, height: 10 }),
+      rectNode("b", "a1", { x: 15, y: 0, width: 10, height: 10 }),
+      rectNode("c", "a2", { x: 90, y: 0, width: 10, height: 10 }),
+    );
+    useScene.getState().setSelection(["a", "b", "c"]);
+    render(<PropertiesPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Distribuisci orizzontalmente" }));
+
+    expect(useScene.getState().scene?.nodes.b.x).toBe(45);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+  });
+
+  it("con un nodo solo allinea alla PAGINA", () => {
+    installScene(rectNode("a", "a0", { x: 500, y: 500, width: 50, height: 50 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Allinea a sinistra" }));
+    expect(useScene.getState().scene?.nodes.a.x).toBe(0);
+  });
+
+  it("ogni comando ha il suo pulsante con un nome leggibile", () => {
+    installScene(rectNode("a", "a0"), rectNode("b", "a1", { x: 100 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    for (const name of [
+      "Allinea a sinistra", "Centra orizzontalmente", "Allinea a destra",
+      "Distribuisci orizzontalmente",
+      "Allinea in alto", "Centra verticalmente", "Allinea in basso",
+      "Distribuisci verticalmente",
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
+  });
+});

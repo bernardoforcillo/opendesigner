@@ -2,18 +2,21 @@ import { hitTest } from "../renderer/canvasRenderer";
 import { normalizeRect, boundsOfNode, boundsIntersect, worldVisualAabbOfNode, type Bounds } from "../canvas/geometry";
 import { worldToScreen } from "../canvas/camera";
 import { angleOf, centerOf, normalizeDegrees, rotateAround, snapDegrees } from "../canvas/transform";
-import { selectionFrame } from "../renderer/overlayRenderer";
+import { selectionFrame, selectionWorldBounds } from "../renderer/overlayRenderer";
 import {
+  applyFrameResize,
   applyFrameResizeToNode,
   cursorForFrameHit,
   cursorForHandle,
   hitTestFrame,
+  movingEdgeLines,
   resizeFrame,
   ROTATING_CURSOR,
   type FrameHit,
   type HandleId,
   type SelectionFrame,
 } from "../selection/handles";
+import { snapBounds, snapMoving, snapTargets, worldThreshold, type SnapGuide } from "../selection/snap";
 import { useScene } from "../store/store";
 import { makeDeleteOp, makeSetPropsOp } from "./ops";
 import type { SceneState } from "../store/types";
@@ -134,6 +137,14 @@ export function createSelectTool(): Tool {
   let dragAnchor: { x: number; y: number } | null = null;
   let dragStart: Record<string, { x: number; y: number }> | null = null;
   let dragStarted = false;
+  // Lo SNAP del trascinamento, fotografato a pointerdown: il riquadro che la
+  // selezione occupa (è LUI a scattare, non i singoli nodi -- altrimenti una
+  // selezione multipla si sfalderebbe, ogni nodo tirato dalla propria guida) e i
+  // rettangoli a cui può scattare. Calcolati una volta per gesto e non a ogni
+  // pointermove: i bersagli non si muovono durante il trascinamento, e
+  // ricalcolarli 60 volte al secondo vorrebbe dire rileggere tutta la scena.
+  let dragBox: Bounds | null = null;
+  let dragTargets: Bounds[] | null = null;
 
   // --- resize con le maniglie -------------------------------------------------
   // Stessa struttura del drag di spostamento: ancora MONDO + stato iniziale, e
@@ -149,6 +160,9 @@ export function createSelectTool(): Tool {
   // ribaltamento o una scala non uniforme anche il suo angolo cambia.
   let resizeStartNodes: Record<string, { bounds: Bounds; rotation: number }> | null = null;
   let resizeStarted = false;
+  // I bersagli dello snap per il ridimensionamento, fotografati come quelli del
+  // trascinamento (stessa ragione).
+  let resizeTargets: Bounds[] | null = null;
 
   // --- rotazione dalle zone d'angolo ------------------------------------------
   // Stessa forma degli altri due gesti (ancora + stato iniziale + apertura
@@ -192,10 +206,20 @@ export function createSelectTool(): Tool {
   // dragAnchor, quindi anche i px "spesi" per superare la soglia contano.
   let pendingTextEdit: string | null = null;
 
+  // Le guide vivono quanto il GESTO che le ha prodotte: si spengono dovunque un
+  // gesto finisca -- rilascio, Esc, Canc, cambio tool -- perché tutte quelle
+  // strade passano da un reset.
+  function clearGuides() {
+    useScene.getState().setSnapGuides([]);
+  }
+
   function resetDrag() {
     dragAnchor = null;
     dragStart = null;
     dragStarted = false;
+    dragBox = null;
+    dragTargets = null;
+    clearGuides();
   }
 
   function resetResize() {
@@ -204,6 +228,8 @@ export function createSelectTool(): Tool {
     resizeStartFrame = null;
     resizeStartNodes = null;
     resizeStarted = false;
+    resizeTargets = null;
+    clearGuides();
   }
 
   function resetRotate() {
@@ -214,25 +240,86 @@ export function createSelectTool(): Tool {
     rotateStarted = false;
   }
 
+  // --- LO SNAP, DENTRO IL GESTO ---------------------------------------------
+  //
+  // Lo scatto NON è un'altra modifica: corregge la posizione del puntatore
+  // PRIMA che il gesto la usi, quindi entra nell'anteprima e nell'op finale
+  // esattamente allo stesso modo. Il gesto resta uno, l'op resta uno per nodo,
+  // la voce di undo resta una. È il punto in cui l'implementazione poteva
+  // sbandare: uno snap applicato "dopo" avrebbe voluto un op suo.
+  //
+  // ALT lo spegne per quel gesto: è la convenzione, e senza una via d'uscita un
+  // nodo diventerebbe impossibile da posare a 2 px da un altro.
+
+  // Il delta del TRASCINAMENTO, scatto compreso. Il riquadro della selezione
+  // viene spostato del delta grezzo e lì gli si chiede lo scatto: sono le sue
+  // sei linee (bordi e centri, su entrambi gli assi) a competere.
+  function dragDelta(e: PointerEvent, ctx: ToolContext): { dx: number; dy: number; guides: SnapGuide[] } {
+    const world = ctx.toWorld(e);
+    const dx = world.x - dragAnchor!.x;
+    const dy = world.y - dragAnchor!.y;
+    if (e.altKey || !dragBox || !dragTargets || dragTargets.length === 0) return { dx, dy, guides: [] };
+    const moved = { ...dragBox, x: dragBox.x + dx, y: dragBox.y + dy };
+    const s = snapBounds(moved, dragTargets, worldThreshold(ctx.getCamera()));
+    return { dx: dx + s.dx, dy: dy + s.dy, guides: s.guides };
+  }
+
+  // Il delta del RIDIMENSIONAMENTO, scatto compreso. Tre casi in cui lo snap si
+  // fa da parte, e nessuno dei tre è una rinuncia per pigrizia:
+  //
+  //  - ALT: disattivazione esplicita, come nel trascinamento.
+  //  - SHIFT: l'utente ha chiesto il RAPPORTO D'ASPETTO, che è un vincolo più
+  //    forte -- far scattare un asse romperebbe l'altro, cioè disobbedirebbe
+  //    all'unica cosa che ha chiesto a voce alta.
+  //  - FRAME RUOTATO: i suoi bordi non sono rette dello schermo, e una guida
+  //    che non è una retta dello schermo non allinea niente (vedi la scelta
+  //    dichiarata in selection/snap.ts). I bersagli restano AABB anche per i
+  //    nodi ruotati; è il riquadro che si sta TIRANDO a dover essere dritto.
+  //
+  // Correggere il delta del puntatore (invece del risultato) è ciò che tiene lo
+  // scatto dentro la matematica esistente: resizeFrame resta l'unica a
+  // calcolare il resize, flip e ancora compresi.
+  function resizeDelta(e: PointerEvent, ctx: ToolContext): { dx: number; dy: number; guides: SnapGuide[] } {
+    const world = ctx.toWorld(e);
+    const dx = world.x - resizeAnchor!.x;
+    const dy = world.y - resizeAnchor!.y;
+    const frame = resizeStartFrame;
+    if (
+      e.altKey || e.shiftKey || !frame || !resizeHandle
+      || !resizeTargets || resizeTargets.length === 0
+      || frame.rotation % 360 !== 0
+    ) {
+      return { dx, dy, guides: [] };
+    }
+    const r = resizeFrame(frame, resizeHandle, dx, dy);
+    const box = applyFrameResize(frame.bounds, r);
+    const lines = movingEdgeLines(box, resizeHandle);
+    // RIBALTAMENTO in corso: il bordo mobile ha superato l'ancora, quindi in
+    // `box` (normalizzato) il minimo e il massimo si sono scambiati e
+    // movingEdgeLines starebbe indicando il bordo FERMO. Su quell'asse non si
+    // scatta: farlo sposterebbe l'ancora, cioè l'unico punto che il resize
+    // promette di non muovere.
+    if (r.transform.signedW < 0) lines.x = [];
+    if (r.transform.signedH < 0) lines.y = [];
+    const s = snapMoving(box, lines, resizeTargets, worldThreshold(ctx.getCamera()));
+    return { dx: dx + s.dx, dy: dy + s.dy, guides: s.guides };
+  }
+
   // Gli op del resize per la posizione corrente del puntatore, ricalcolati
   // SEMPRE dai bounds iniziali (mai dal delta dell'ultimo move): niente
   // accumulo di errori, e l'op finale è identico all'ultima anteprima.
-  function resizeOps(e: PointerEvent, ctx: ToolContext): Op[] {
-    if (!resizeHandle || !resizeAnchor || !resizeStartFrame || !resizeStartNodes) return [];
-    const world = ctx.toWorld(e);
+  function resizeOps(e: PointerEvent, ctx: ToolContext): { ops: Op[]; guides: SnapGuide[] } {
+    if (!resizeHandle || !resizeAnchor || !resizeStartFrame || !resizeStartNodes) {
+      return { ops: [], guides: [] };
+    }
+    const { dx, dy, guides } = resizeDelta(e, ctx);
     // resizeFrame porta il delta del puntatore nello spazio LOCALE del frame
     // (così la maniglia e allarga il nodo lungo il SUO asse, comunque sia
     // girato) e calcola l'offset che tiene l'ancora ferma nel MONDO. La
     // matematica del resize -- flip e keepAspect compresi -- resta quella di
     // resizeTransform, invariata: qui la si avvolge, non la si riscrive.
-    const r = resizeFrame(
-      resizeStartFrame,
-      resizeHandle,
-      world.x - resizeAnchor.x,
-      world.y - resizeAnchor.y,
-      { keepAspect: e.shiftKey },
-    );
-    return Object.entries(resizeStartNodes).map(([id, start]) => {
+    const r = resizeFrame(resizeStartFrame, resizeHandle, dx, dy, { keepAspect: e.shiftKey });
+    const ops = Object.entries(resizeStartNodes).map(([id, start]) => {
       const next = applyFrameResizeToNode(start.bounds, start.rotation, r);
       // L'angolo entra nella mask SOLO quando cambia davvero (un nodo allineato
       // al frame -- il caso normale -- manda esattamente l'op di prima). Cambia
@@ -247,6 +334,17 @@ export function createSelectTool(): Tool {
             ["x", "y", "width", "height", "rotation"],
           );
     });
+    return { ops, guides };
+  }
+
+  // Gli op del TRASCINAMENTO per la posizione corrente del puntatore. Come il
+  // resize: ricalcolati dallo stato iniziale, mai dall'ultimo delta.
+  function dragOps(e: PointerEvent, ctx: ToolContext): { ops: Op[]; guides: SnapGuide[] } {
+    if (!dragAnchor || !dragStart) return { ops: [], guides: [] };
+    const { dx, dy, guides } = dragDelta(e, ctx);
+    const ops = Object.entries(dragStart).map(([id, start]) =>
+      makeSetPropsOp(id, { x: start.x + dx, y: start.y + dy }, ["x", "y"]));
+    return { ops, guides };
   }
 
   // Gli op della rotazione per la posizione corrente del puntatore. Come il
@@ -343,6 +441,7 @@ export function createSelectTool(): Tool {
         resizeAnchor = world;
         resizeStartFrame = frameOfSelection(ctx);
         resizeStartNodes = start;
+        resizeTargets = snapTargets(scene, store.selection);
         resizeStarted = false;
         setCursor(ctx, cursorForHandle(overlay.handle));
         return;
@@ -426,6 +525,10 @@ export function createSelectTool(): Tool {
       dragAnchor = world;
       dragStart = start;
       dragStarted = false;
+      // È il RIQUADRO della selezione a scattare, non i singoli nodi: con una
+      // selezione multipla ogni nodo tirato dalla propria guida la sfalderebbe.
+      dragBox = selectionWorldBounds(scene, selection);
+      dragTargets = snapTargets(scene, selection);
     },
 
     onPointerMove(e, ctx) {
@@ -446,7 +549,9 @@ export function createSelectTool(): Tool {
           resizeStarted = true;
           useScene.getState().beginGesture();
         }
-        for (const op of resizeOps(e, ctx)) useScene.getState().applyLocal(op);
+        const step = resizeOps(e, ctx);
+        useScene.getState().setSnapGuides(step.guides);
+        for (const op of step.ops) useScene.getState().applyLocal(op);
         return;
       }
       if (marqueeAnchor) {
@@ -476,12 +581,9 @@ export function createSelectTool(): Tool {
         dragStarted = true;
         useScene.getState().beginGesture();
       }
-      const world = ctx.toWorld(e);
-      const dx = world.x - dragAnchor.x;
-      const dy = world.y - dragAnchor.y;
-      for (const [id, start] of Object.entries(dragStart)) {
-        useScene.getState().applyLocal(makeSetPropsOp(id, { x: start.x + dx, y: start.y + dy }, ["x", "y"]));
-      }
+      const step = dragOps(e, ctx);
+      useScene.getState().setSnapGuides(step.guides);
+      for (const op of step.ops) useScene.getState().applyLocal(op);
     },
 
     onPointerUp(e, ctx) {
@@ -491,7 +593,7 @@ export function createSelectTool(): Tool {
         return;
       }
       if (resizeHandle) {
-        if (resizeStarted) useScene.getState().endGesture(resizeOps(e, ctx));
+        if (resizeStarted) useScene.getState().endGesture(resizeOps(e, ctx).ops);
         resetResize();
         return;
       }
@@ -521,14 +623,9 @@ export function createSelectTool(): Tool {
         return; // la sessione di editing (Task 5) prende da qui
       }
       if (!dragAnchor || !dragStart) return;
-      if (dragStarted) {
-        const world = ctx.toWorld(e);
-        const dx = world.x - dragAnchor.x;
-        const dy = world.y - dragAnchor.y;
-        const finalOps = Object.entries(dragStart).map(([id, start]) =>
-          makeSetPropsOp(id, { x: start.x + dx, y: start.y + dy }, ["x", "y"]));
-        useScene.getState().endGesture(finalOps);
-      }
+      // Gli op finali portano la posizione SCATTATA, la stessa dell'ultima
+      // anteprima: lo snap corregge il delta, non aggiunge un secondo op.
+      if (dragStarted) useScene.getState().endGesture(dragOps(e, ctx).ops);
       resetDrag();
     },
 

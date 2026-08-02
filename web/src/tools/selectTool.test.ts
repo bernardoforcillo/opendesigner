@@ -49,11 +49,17 @@ class FakeSync {
   }
 }
 
+// Come `at`, ma con i modificatori che valgono per lo SNAP: Alt lo disattiva
+// per quel gesto, Shift è già il rapporto d'aspetto del resize.
+const atMod = (x: number, y: number, mod: { altKey?: boolean; shiftKey?: boolean }) =>
+  ({ clientX: x, clientY: y, shiftKey: false, ...mod }) as PointerEvent;
+
 beforeEach(() => {
   useScene.setState({
     camera: { x: 0, y: 0, zoom: 1 },
     selection: [],
     marquee: null,
+    snapGuides: [],
     gesture: null,
     sync: null,
   });
@@ -347,7 +353,10 @@ describe("selectTool", () => {
       const ctx = fakeCtx();
 
       tool.onPointerDown!(at(10, 10), ctx);
-      tool.onPointerMove!(at(90, 90), ctx);
+      // Alt: qui si misura l'ABBANDONO del gesto, non lo snap (che ha i suoi
+      // test più sotto) -- senza, il riquadro mosso scatterebbe sul bordo di
+      // "b" e la posizione intermedia non sarebbe più quella del puntatore.
+      tool.onPointerMove!(atMod(90, 90, { altKey: true }), ctx);
       expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 80, y: 80 });
 
       tool.onKeyDown!({ key: "Escape" } as KeyboardEvent, ctx);
@@ -406,8 +415,11 @@ describe("selectTool", () => {
       const ctx = fakeCtx();
 
       tool.onPointerDown!(at(0, 0), ctx); // maniglia nw
-      tool.onPointerMove!(at(10, 20), ctx);
-      tool.onPointerUp!(at(10, 20), ctx);
+      // Alt: qui si misura la matematica del resize, non lo snap -- il bordo
+      // alto a 20 cadrebbe altrimenti sul centro di "b" (25), che è corretto
+      // ma è un'altra cosa (vedi "selectTool — snap" più sotto).
+      tool.onPointerMove!(atMod(10, 20, { altKey: true }), ctx);
+      tool.onPointerUp!(atMod(10, 20, { altKey: true }), ctx);
       expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 10, y: 20, width: 40, height: 30 });
     });
 
@@ -1229,6 +1241,182 @@ describe("selectTool", () => {
       expect(useScene.getState().editingNodeId).toBe("t2");
       expect(useScene.getState().scene!.nodes["t1"]).toBeUndefined(); // niente nodo fantasma
       expect(useScene.getState().scene!.nodes["t2"]).toBeDefined();
+    });
+  });
+});
+
+// --- SNAP DURANTE IL GESTO ---------------------------------------------------
+//
+// La DECISIONE dello snap è testata dov'è, come funzione pura
+// (selection/snap.test.ts). Qui si verifica solo il collegamento al gesto: che
+// lo scatto entri nell'anteprima E nell'op finale (non due valori diversi), che
+// Alt lo spenga, che la soglia sia in px SCHERMO e che le guide compaiano e
+// spariscano insieme al gesto.
+describe("selectTool — snap", () => {
+  let sync: FakeSync;
+
+  beforeEach(() => {
+    sync = new FakeSync();
+    useScene.setState({ sync });
+  });
+
+  const lastPatch = () => sync.sent[sync.sent.length - 1].kind.value as {
+    id: string; patch?: { x: number; y: number; width: number; height: number };
+  };
+
+  describe("trascinamento", () => {
+    it("snaps the dragged edge onto another node's edge", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx); // seleziona "a" (0..50)
+      // dx = 48: il bordo destro finisce a 98, a 2 unità dal bordo sinistro di
+      // "b" (100) -- dentro la soglia, quindi scatta a 100.
+      tool.onPointerMove!(at(58, 10), ctx);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(50);
+    });
+
+    it("shows a guide on the line it snapped to", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(at(58, 10), ctx);
+      expect(useScene.getState().snapGuides).toContainEqual({ axis: "x", pos: 100, from: 0, to: 50 });
+    });
+
+    it("the op that lands on the wire carries the SNAPPED value, not the pointer's", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(at(58, 10), ctx);
+      tool.onPointerUp!(at(58, 10), ctx);
+      expect(lastPatch().patch?.x).toBe(50);
+      // Un gesto, un op per nodo: lo scatto non ne aggiunge un secondo.
+      expect(sync.sent).toHaveLength(1);
+      expect(useScene.getState().undoStack).toHaveLength(1);
+    });
+
+    it("clears the guides when the gesture ends", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(at(58, 10), ctx);
+      expect(useScene.getState().snapGuides.length).toBeGreaterThan(0);
+      tool.onPointerUp!(at(58, 10), ctx);
+      expect(useScene.getState().snapGuides).toEqual([]);
+    });
+
+    it("clears the guides when the gesture is abandoned (Esc)", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(at(58, 10), ctx);
+      tool.onKeyDown!({ key: "Escape" } as KeyboardEvent, ctx);
+      expect(useScene.getState().snapGuides).toEqual([]);
+    });
+
+    it("Alt turns snapping off for that drag", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(48);
+      expect(useScene.getState().snapGuides).toEqual([]);
+    });
+
+    it("measures the threshold in SCREEN pixels: the same drag snaps at 100% and not at 200%", () => {
+      // dx = 46 -> bordo destro a 96, cioè 4 unità mondo dal bordo di "b".
+      // A zoom 1 sono 4 px schermo (dentro la soglia), a zoom 2 sono 8 (fuori).
+      const run = (zoom: number) => {
+        useScene.getState().setScene({
+          ...emptyScene("doc-1", "u"),
+          nodes: { a: node("a", 0, "a000000"), b: node("b", 100, "a000001") },
+        });
+        useScene.setState({ camera: { x: 0, y: 0, zoom }, selection: [] });
+        const tool = createSelectTool();
+        const ctx = fakeCtx();
+        tool.onPointerDown!(at(10, 10), ctx);
+        tool.onPointerMove!(at(56, 10), ctx);
+        return useScene.getState().scene!.nodes.a.x;
+      };
+      expect(run(1)).toBe(50);
+      expect(run(2)).toBe(46);
+    });
+
+    it("never snaps to a node that is being dragged along", () => {
+      useScene.getState().setSelection(["a", "b"]);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx); // "a" è già selezionato: resta la coppia
+      tool.onPointerMove!(at(58, 10), ctx);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(48);
+      expect(useScene.getState().scene!.nodes.b.x).toBe(148);
+      expect(useScene.getState().snapGuides).toEqual([]);
+    });
+  });
+
+  describe("ridimensionamento", () => {
+    // Afferra la maniglia "e" di "a" (bordo destro, a metà altezza) dopo averlo
+    // selezionato con un click.
+    function grabEast(tool: ReturnType<typeof createSelectTool>, ctx: ToolContext) {
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerUp!(at(10, 10), ctx);
+      tool.onPointerDown!(at(50, 25), ctx);
+    }
+
+    it("snaps the edge being dragged, and leaves the opposite edge alone", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      grabEast(tool, ctx);
+      tool.onPointerMove!(at(98, 25), ctx); // bordo destro a 98, scatta a 100
+      expect(useScene.getState().scene!.nodes.a.width).toBe(100);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(0);
+      expect(useScene.getState().snapGuides).toContainEqual({ axis: "x", pos: 100, from: 0, to: 50 });
+    });
+
+    it("sends the snapped size, not the pointer's", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      grabEast(tool, ctx);
+      tool.onPointerMove!(at(98, 25), ctx);
+      tool.onPointerUp!(at(98, 25), ctx);
+      expect(lastPatch().patch?.width).toBe(100);
+      expect(useScene.getState().snapGuides).toEqual([]);
+    });
+
+    it("Alt turns it off here too", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      grabEast(tool, ctx);
+      tool.onPointerMove!(atMod(98, 25, { altKey: true }), ctx);
+      expect(useScene.getState().scene!.nodes.a.width).toBe(98);
+      expect(useScene.getState().snapGuides).toEqual([]);
+    });
+
+    it("stands aside when Shift is keeping the aspect ratio", () => {
+      // Il rapporto d'aspetto è un vincolo più forte: scattare un asse
+      // romperebbe l'altro, e l'utente ha chiesto ESPLICITAMENTE il rapporto.
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      grabEast(tool, ctx);
+      tool.onPointerMove!(atMod(98, 25, { shiftKey: true }), ctx);
+      expect(useScene.getState().scene!.nodes.a.width).toBe(98);
+      expect(useScene.getState().snapGuides).toEqual([]);
+    });
+
+    it("stands aside on a ROTATED frame — its edges are not lines of the screen", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: { a: node("a", 0, "a000000", { rotation: 90 }), b: node("b", 100, "a000001") },
+      });
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerUp!(at(10, 10), ctx);
+      // La maniglia "e" di un quadrato 50x50 ruotato di 90° sta in (25, 50).
+      tool.onPointerDown!(at(25, 50), ctx);
+      tool.onPointerMove!(at(25, 98), ctx);
+      expect(useScene.getState().scene!.nodes.a.width).toBeCloseTo(98, 9);
+      expect(useScene.getState().snapGuides).toEqual([]);
     });
   });
 });

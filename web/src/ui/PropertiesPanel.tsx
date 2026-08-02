@@ -4,6 +4,8 @@ import {
   Label, Radio, RadioGroup, Slider, SliderOutput, SliderStateContext, SliderThumb, SliderTrack,
 } from "react-aria-components";
 import { useScene } from "../store/store";
+import { ALIGN_COMMANDS, alignSelection } from "../selection/align";
+import type { AlignCommand } from "../selection/align";
 import { selectionSummary, MIXED } from "../store/selectors";
 import type { Mixed, OrMixed } from "../store/selectors";
 import { makeSetPropsOp, makeSetTextOp } from "../tools/ops";
@@ -309,6 +311,75 @@ const SLIDER_THUMB_CLASS =
   "group-data-[mixed]:border-transparent group-data-[mixed]:bg-transparent group-data-[mixed]:shadow-none " +
   "data-[focus-visible]:ring-2 data-[focus-visible]:ring-sky-500";
 
+// --- ALLINEAMENTO -----------------------------------------------------------
+//
+// I pulsanti sono ICONE, come in ogni editor: otto etichette scritte per esteso
+// occuperebbero mezzo pannello e si leggerebbero peggio di un pittogramma. Il
+// NOME resta però quello per esteso (`aria-label`, dall'elenco ALIGN_COMMANDS)
+// -- è l'unica cosa che uno screen reader legge, ed è anche il testo del
+// tooltip: la stessa stringa nei due canali, mai due formulazioni diverse.
+//
+// Le icone sono disegnate qui e non importate: sono otto rettangoli su una
+// griglia di 24, e una dipendenza per questo sarebbe più codice, non meno.
+// `RULE`/`BAR` descrivono le due parti di ogni segno -- la riga su cui si
+// allinea e i due blocchi che ci si appoggiano.
+const RULE = "fill-neutral-400";
+const BAR = "fill-neutral-500";
+
+// I rettangoli di ogni icona, in coordinate SVG 0..24. Per gli allineamenti:
+// la riga (spessa 1.5) più due blocchi di lunghezza diversa appoggiati a lei --
+// due blocchi uguali non mostrerebbero da quale lato si allineano. Per le
+// distribuzioni: tre blocchi a distanza uguale, che è ciò che il comando fa.
+const ICONS: Record<AlignCommand, { x: number; y: number; w: number; h: number; rule?: boolean }[]> = {
+  left: [
+    { x: 2, y: 3, w: 1.5, h: 18, rule: true },
+    { x: 5, y: 6, w: 14, h: 4 }, { x: 5, y: 14, w: 9, h: 4 },
+  ],
+  hcenter: [
+    { x: 11.25, y: 3, w: 1.5, h: 18, rule: true },
+    { x: 5, y: 6, w: 14, h: 4 }, { x: 7.5, y: 14, w: 9, h: 4 },
+  ],
+  right: [
+    { x: 20.5, y: 3, w: 1.5, h: 18, rule: true },
+    { x: 5, y: 6, w: 14, h: 4 }, { x: 10, y: 14, w: 9, h: 4 },
+  ],
+  "distribute-h": [
+    { x: 3, y: 4, w: 3, h: 16 }, { x: 10.5, y: 4, w: 3, h: 16 }, { x: 18, y: 4, w: 3, h: 16 },
+  ],
+  top: [
+    { x: 3, y: 2, w: 18, h: 1.5, rule: true },
+    { x: 6, y: 5, w: 4, h: 14 }, { x: 14, y: 5, w: 4, h: 9 },
+  ],
+  middle: [
+    { x: 3, y: 11.25, w: 18, h: 1.5, rule: true },
+    { x: 6, y: 5, w: 4, h: 14 }, { x: 14, y: 7.5, w: 4, h: 9 },
+  ],
+  bottom: [
+    { x: 3, y: 20.5, w: 18, h: 1.5, rule: true },
+    { x: 6, y: 5, w: 4, h: 14 }, { x: 14, y: 10, w: 4, h: 9 },
+  ],
+  "distribute-v": [
+    { x: 4, y: 3, w: 16, h: 3 }, { x: 4, y: 10.5, w: 16, h: 3 }, { x: 4, y: 18, w: 16, h: 3 },
+  ],
+};
+
+// `aria-hidden`: il pittogramma non aggiunge niente al nome del pulsante, che
+// arriva già da aria-label. Senza, uno screen reader annuncerebbe un "image"
+// senza nome accanto all'etichetta buona.
+function AlignIcon({ id }: { id: AlignCommand }) {
+  return (
+    <svg viewBox="0 0 24 24" className="size-4" aria-hidden="true">
+      {ICONS[id].map((r, i) => (
+        <rect key={i} x={r.x} y={r.y} width={r.w} height={r.h} rx={r.rule ? 0.75 : 1} className={r.rule ? RULE : BAR} />
+      ))}
+    </svg>
+  );
+}
+
+const ALIGN_BUTTON_CLASS =
+  "flex items-center justify-center rounded p-1 outline-none hover:bg-neutral-100 " +
+  "focus-visible:ring-1 focus-visible:ring-sky-500";
+
 function SectionTitle({ children }: { children: string }) {
   return (
     <div className="border-b border-t border-neutral-200 px-2 py-1 text-xs font-medium uppercase tracking-wide text-neutral-400">
@@ -461,6 +532,31 @@ export function PropertiesPanel() {
             onScrub={(v) => scrub(field, v)}
             onScrubEnd={(v) => scrubEnd(field, v)}
           />
+        ))}
+      </div>
+
+      {/* ALLINEAMENTO. Sta con la geometria (è geometria: sposta x/y e
+          nient'altro) e prima dell'aspetto. Ogni pulsante è UN gesto, quindi UNA
+          voce di undo, anche quando muove dieci nodi -- vedi
+          selection/align.ts::alignSelection. Con un nodo solo il riferimento è
+          la PAGINA, con più di uno il loro riquadro comune. */}
+      <div role="group" aria-label="Allinea" className="grid grid-cols-4 gap-0.5 border-t border-neutral-200 p-2">
+        {ALIGN_COMMANDS.map((c) => (
+          // <button> nativo e non il Button di react-aria (che qui non porta
+          // niente in più e non accetta `title`): per un pittogramma il tooltip
+          // è l'unico modo che un utente VEDENTE ha di leggere il nome del
+          // comando, e deve essere lo STESSO testo del nome accessibile --
+          // altrimenti sono due interfacce.
+          <button
+            key={c.id}
+            type="button"
+            aria-label={c.label}
+            title={c.label}
+            className={ALIGN_BUTTON_CLASS}
+            onClick={() => alignSelection(c.id)}
+          >
+            <AlignIcon id={c.id} />
+          </button>
         ))}
       </div>
 
