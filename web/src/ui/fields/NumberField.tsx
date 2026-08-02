@@ -67,6 +67,13 @@ export interface NumberFieldProps {
    */
   labelWidth?: string;
   isDisabled?: boolean;
+  /**
+   * Testo temporaneo mostrato quando il campo è VUOTO (`value` NaN). Il
+   * pannello proprietà lo usa per "Misto": una selezione con valori diversi
+   * deve leggersi come "questi nodi differiscono", non come un campo
+   * accidentalmente svuotato -- vedi ui/PropertiesPanel.tsx::MIXED_LABEL.
+   */
+  placeholder?: string;
 }
 
 export function NumberField({
@@ -79,6 +86,7 @@ export function NumberField({
   minValue,
   labelWidth = "w-4",
   isDisabled,
+  placeholder,
 }: NumberFieldProps) {
   // Stato del trascinamento in corso. Un ref e non uno state: ogni pixel di
   // move non deve ri-renderizzare QUESTO componente (lo fa già il chiamante,
@@ -171,7 +179,10 @@ export function NumberField({
       >
         {label}
       </Label>
-      <Input className="w-full min-w-0 rounded border border-neutral-200 bg-white px-1 py-0.5 text-right text-sm outline-none focus:border-sky-500 disabled:opacity-40" />
+      <Input
+        placeholder={placeholder}
+        className="w-full min-w-0 rounded border border-neutral-200 bg-white px-1 py-0.5 text-right text-sm outline-none focus:border-sky-500 disabled:opacity-40"
+      />
     </AriaNumberField>
   );
 }

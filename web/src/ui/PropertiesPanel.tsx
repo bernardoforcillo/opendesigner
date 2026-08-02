@@ -357,8 +357,11 @@ export function PropertiesPanel() {
             // MIXED (selezione multipla con valori diversi) diventa NaN:
             // NumberField lo mostra vuoto e non ne fa un cambio di
             // controllato/non controllato (vedi il commento sulla sua
-            // prop `value`).
+            // prop `value`). Il placeholder "Misto" ci va SOLO in quel caso:
+            // un campo vuoto senza altro contesto sembrerebbe svuotato per
+            // sbaglio, non "questi nodi differiscono".
             value={summary[field.key] === MIXED ? NaN : (summary[field.key] as number)}
+            placeholder={summary[field.key] === MIXED ? MIXED_LABEL : undefined}
             onCommit={(v) => commit(field, v)}
             onScrub={(v) => scrub(field, v)}
             onScrubEnd={(v) => scrubEnd(field, v)}
@@ -374,6 +377,7 @@ export function PropertiesPanel() {
           // mostrare". Scrivere un colore da lì resta possibile e lo assegna
           // a tutta la selezione, come per i campi geometrici.
           value={fill}
+          placeholder={summary.fills === MIXED ? MIXED_LABEL : undefined}
           onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
         />
 
@@ -433,6 +437,7 @@ export function PropertiesPanel() {
             label={CORNER_RADIUS_FIELD.label}
             minValue={CORNER_RADIUS_FIELD.minValue}
             value={summary.cornerRadius === MIXED ? NaN : (summary.cornerRadius as number)}
+            placeholder={summary.cornerRadius === MIXED ? MIXED_LABEL : undefined}
             onCommit={(v) => commit(CORNER_RADIUS_FIELD, v)}
             onScrub={(v) => scrub(CORNER_RADIUS_FIELD, v)}
             onScrubEnd={(v) => scrubEnd(CORNER_RADIUS_FIELD, v)}
@@ -453,6 +458,7 @@ export function PropertiesPanel() {
               labelWidth="w-20"
               minValue={1}
               value={style.fontSize === MIXED ? NaN : (style.fontSize as number)}
+              placeholder={style.fontSize === MIXED ? MIXED_LABEL : undefined}
               onCommit={(v) => runGesture((ids) => textStyleOps(ids, { fontSize: v }))}
               onScrub={(v) => scrubTextStyle({ fontSize: v })}
               onScrubEnd={(v) => scrubTextStyleEnd({ fontSize: v })}

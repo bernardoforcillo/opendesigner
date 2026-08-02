@@ -666,6 +666,203 @@ describe("raggio degli angoli", () => {
   });
 });
 
+// --- Task 11: selezione multipla con valori misti ---------------------------
+//
+// L'architettura dei gesti (commit/scrub operano già su TUTTA store.selection,
+// non su un singolo id) e il riassunto MIXED (selectors.ts::selectionSummary)
+// esistono da Task 9/10: questi test bloccano il comportamento che il brief
+// richiede esplicitamente, alcuni dei quali erano finora provati solo per
+// l'opacità (che ha il suo canale dedicato, il cursore). Qui la stessa
+// garanzia si estende ai campi NumberField/ColorField/RadioGroup: un valore
+// diverso fra i nodi selezionati si mostra VUOTO con un placeholder "Misto"
+// (mai "0", che l'utente leggerebbe come il valore vero), lo stesso valore
+// ovunque si mostra per quello che è, e confermare un valore nel campo misto
+// lo scrive su OGNI nodo selezionato in UN gesto solo.
+
+describe("selezione multipla — campi geometrici misti", () => {
+  it("un campo con valori diversi si mostra VUOTO con placeholder 'Misto', non 0", () => {
+    installScene(rectNode("a", "a0", { x: 10 }), rectNode("b", "a1", { x: 50 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+
+    const x = field("X");
+    expect(x).toHaveValue("");
+    expect(x).not.toHaveValue("0");
+    expect(x).toHaveAttribute("placeholder", "Misto");
+  });
+
+  it("un campo con lo STESSO valore su tutti i nodi lo mostra, senza placeholder", () => {
+    installScene(rectNode("a", "a0", { y: 7 }), rectNode("b", "a1", { y: 7 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+
+    const y = field("Y");
+    expect(y).toHaveValue("7");
+    expect(y).not.toHaveAttribute("placeholder");
+  });
+
+  it("digitare in un campo misto lo applica a TUTTI i nodi selezionati in UN gesto", async () => {
+    installScene(rectNode("a", "a0", { x: 10 }), rectNode("b", "a1", { x: 50 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.clear(field("X"));
+    await user.type(field("X"), "99{Enter}");
+
+    // Un op PER NODO, ma un solo gesto: il patch di ogni op porta lo stesso
+    // valore assoluto digitato, non una traslazione relativa alla posizione
+    // di partenza di ciascun nodo.
+    expect(sync.sent).toHaveLength(2);
+    for (const op of sync.sent) {
+      expect(op.kind.case).toBe("setProps");
+      if (op.kind.case === "setProps") {
+        expect(op.kind.value.mask?.paths).toEqual(["x"]);
+        expect(op.kind.value.patch?.x).toBe(99);
+      }
+    }
+    expect(useScene.getState().scene?.nodes.a.x).toBe(99);
+    expect(useScene.getState().scene?.nodes.b.x).toBe(99);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+    // Un valore ora esiste per tutta la selezione: "misto" sparisce.
+    expect(field("X")).toHaveValue("99");
+    expect(field("X")).not.toHaveAttribute("placeholder");
+  });
+
+  it("trascinare l'etichetta di un campo misto non apre nessun gesto: non c'è un valore di partenza da cui scrubare", () => {
+    installScene(rectNode("a", "a0", { x: 10 }), rectNode("b", "a1", { x: 50 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    dragLabel("X", 25);
+
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().scene?.nodes.a.x).toBe(10);
+    expect(useScene.getState().scene?.nodes.b.x).toBe(50);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+});
+
+describe("selezione multipla — raggio degli angoli", () => {
+  it("valori diversi fra rettangoli si mostrano VUOTI con placeholder, il campo resta VISIBILE (stesso kind)", () => {
+    installScene(rectNode("a", "a0", { cornerRadius: 2 }), rectNode("b", "a1", { cornerRadius: 8 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+
+    const r = screen.getByRole("textbox", { name: "R" });
+    expect(r).toHaveValue("");
+    expect(r).toHaveAttribute("placeholder", "Misto");
+  });
+
+  it("confermare un raggio misto lo applica a TUTTI i rettangoli selezionati in UN gesto", async () => {
+    installScene(rectNode("a", "a0", { cornerRadius: 2 }), rectNode("b", "a1", { cornerRadius: 8 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.clear(screen.getByRole("textbox", { name: "R" }));
+    await user.type(screen.getByRole("textbox", { name: "R" }), "5{Enter}");
+
+    expect(sync.sent).toHaveLength(2);
+    for (const op of sync.sent) expect(maskOf(op)).toEqual(["corner_radius"]);
+    expect(useScene.getState().scene?.nodes.a.cornerRadius).toBe(5);
+    expect(useScene.getState().scene?.nodes.b.cornerRadius).toBe(5);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("una selezione che mischia rettangoli e non-rettangoli non mostra il campo: nessun raggio vale per TUTTI i tipi", () => {
+    installScene(rectNode("a", "a0", { cornerRadius: 2 }), ellipseNode("e", "a1"));
+    useScene.getState().setSelection(["a", "e"]);
+    render(<PropertiesPanel />);
+
+    expect(screen.queryByRole("textbox", { name: "R" })).toBeNull();
+  });
+});
+
+describe("selezione multipla — riempimento", () => {
+  it("tinte diverse si mostrano VUOTE con placeholder 'Misto', non un colore a caso", () => {
+    installScene(
+      rectNode("a", "a0", { fills: [{ r: 1, g: 0, b: 0, a: 1 }] }),
+      rectNode("b", "a1", { fills: [{ r: 0, g: 1, b: 0, a: 0.5 }] }),
+    );
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+
+    const input = screen.getByRole("textbox", { name: "Riempimento" });
+    expect(input).toHaveValue("");
+    expect(input).toHaveAttribute("placeholder", "Misto");
+  });
+
+  it("confermare un colore su un riempimento misto lo applica a TUTTI in UN gesto, ciascuno con la PROPRIA alfa", async () => {
+    installScene(
+      rectNode("a", "a0", { fills: [{ r: 1, g: 0, b: 0, a: 1 }] }),
+      rectNode("b", "a1", { fills: [{ r: 0, g: 1, b: 0, a: 0.5 }] }),
+    );
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    const input = screen.getByRole("textbox", { name: "Riempimento" });
+    await user.clear(input);
+    await user.type(input, "#0000FF{Enter}");
+
+    expect(sync.sent).toHaveLength(2);
+    for (const op of sync.sent) expect(maskOf(op)).toEqual(["fills"]);
+    const scene = useScene.getState().scene;
+    expect(scene?.nodes.a.fills[0].b).toBeCloseTo(1, 5);
+    expect(scene?.nodes.a.fills[0].a).toBe(1);
+    expect(scene?.nodes.b.fills[0].b).toBeCloseTo(1, 5);
+    // L'alfa di ciascun nodo sopravvive: il campo non la porta.
+    expect(scene?.nodes.b.fills[0].a).toBe(0.5);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+});
+
+describe("selezione multipla — stile del testo", () => {
+  it("un peso diverso fra i testi non mostra nessuna scelta selezionata", () => {
+    installScene(
+      textNode("t1", "a0", "uno", { text: { content: "uno", style: { ...TEXT_STYLE, fontWeight: "400" } } }),
+      textNode("t2", "a1", "due", { text: { content: "due", style: { ...TEXT_STYLE, fontWeight: "700" } } }),
+    );
+    useScene.getState().setSelection(["t1", "t2"]);
+    render(<PropertiesPanel />);
+
+    expect(screen.getByRole("radio", { name: "Normale" })).not.toBeChecked();
+    expect(screen.getByRole("radio", { name: "Grassetto" })).not.toBeChecked();
+  });
+
+  it("scegliere un peso lo applica a TUTTI i testi selezionati in UN gesto, mantenendo il contenuto di ciascuno", async () => {
+    installScene(
+      textNode("t1", "a0", "uno", { text: { content: "uno", style: { ...TEXT_STYLE, fontWeight: "400" } } }),
+      textNode("t2", "a1", "due", { text: { content: "due", style: { ...TEXT_STYLE, fontWeight: "700" } } }),
+    );
+    useScene.getState().setSelection(["t1", "t2"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.click(screen.getByRole("radio", { name: "Grassetto" }));
+
+    expect(sync.sent).toHaveLength(2);
+    for (const op of sync.sent) expect(op.kind.case).toBe("setText");
+    const scene = useScene.getState().scene;
+    expect(scene?.nodes.t1.text?.style.fontWeight).toBe("700");
+    expect(scene?.nodes.t2.text?.style.fontWeight).toBe("700");
+    expect(scene?.nodes.t1.text?.content).toBe("uno");
+    expect(scene?.nodes.t2.text?.content).toBe("due");
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+});
+
 // --- Step 3: per i nodi testo, i controlli di stile ------------------------
 
 describe("stile del testo", () => {

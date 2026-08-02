@@ -77,6 +77,11 @@ export interface ColorFieldProps {
   /** Classi CSS della larghezza dell'etichetta (vedi NumberField::labelWidth). */
   labelWidth?: string;
   isDisabled?: boolean;
+  /**
+   * Testo temporaneo mostrato quando il campo è VUOTO (`value` null). Stessa
+   * ragione del gemello in NumberField -- vedi NumberFieldProps::placeholder.
+   */
+  placeholder?: string;
 }
 
 // L'<Input> del campo, separato SOLO per poter leggere ColorFieldStateContext:
@@ -90,10 +95,11 @@ export interface ColorFieldProps {
 // colore, si preme Invio e ci si aspetta di vederlo applicato, non di dover
 // uscire dal campo. Senza questa riga il colore digitato resterebbe nel campo
 // e non diventerebbe mai un op.
-function HexInput() {
+function HexInput({ placeholder }: { placeholder?: string }) {
   const state = useContext(ColorFieldStateContext);
   return (
     <Input
+      placeholder={placeholder}
       onKeyDown={(e) => {
         if (e.key !== "Enter") return;
         // Il campo può stare dentro un <form> (oggi non ci sta, ma è la
@@ -106,7 +112,7 @@ function HexInput() {
   );
 }
 
-export function ColorField({ label, value, onCommit, labelWidth = "w-20", isDisabled }: ColorFieldProps) {
+export function ColorField({ label, value, onCommit, labelWidth = "w-20", isDisabled, placeholder }: ColorFieldProps) {
   const hex = value ? rgbToHex(value) : null;
   return (
     <AriaColorField
@@ -137,7 +143,7 @@ export function ColorField({ label, value, onCommit, labelWidth = "w-20", isDisa
         className="size-4 shrink-0 rounded border border-neutral-300"
         style={{ backgroundColor: hex ?? "transparent" }}
       />
-      <HexInput />
+      <HexInput placeholder={placeholder} />
     </AriaColorField>
   );
 }
