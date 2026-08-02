@@ -135,6 +135,212 @@ export function vectorBounds(subpaths: readonly SubPathLite[]): BoxLite {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
+// --- appiattimento e hit-test ------------------------------------------------
+
+// I punti di controllo del segmento che va dall'ancoraggio i al successivo, in
+// coordinate LOCALI. È la stessa lettura che fa vectorBounds (e che shapes.ts
+// traduce in una bezierCurveTo): l'ordine dei quattro punti è quello del canvas
+// -- ancoraggio, maniglia USCENTE del primo, maniglia ENTRANTE del secondo,
+// ancoraggio.
+function segmentControls(a: AnchorLite, b: AnchorLite): [PointLite, PointLite, PointLite, PointLite] {
+  return [
+    { x: a.x, y: a.y },
+    { x: a.x + a.outX, y: a.y + a.outY },
+    { x: b.x + b.inX, y: b.y + b.inY },
+    { x: b.x, y: b.y },
+  ];
+}
+
+// Quanti segmenti DISEGNATI ha un contorno. Chiuso: c'è anche il ritorno
+// ultimo -> primo. Stessa regola di vectorBounds, e non è un caso -- il box
+// deve contenere esattamente ciò che si disegna e ciò che si colpisce.
+function segmentCount(sp: SubPathLite): number {
+  const n = sp.anchors.length;
+  if (n < 2) return 0;
+  return sp.closed ? n : n - 1;
+}
+
+// Un contorno RIEMPIE se e solo se è chiuso e ha almeno due ancoraggi: un
+// punto solo non ha area, e `closed` non gliela regala (il canvas che lo
+// riempie non dipinge niente). Predicato UNICO perché disegno (shapes.ts
+// sceglie il secchio "riempimento" o "contorno") e hit-test (riempimento o
+// vicinanza) devono classificare allo stesso modo: due elenchi separati
+// darebbero un path che si vede riempito e si colpisce per vicinanza, o
+// viceversa.
+export function subpathFills(sp: SubPathLite): boolean {
+  return sp.closed && sp.anchors.length >= 2;
+}
+
+// Distanza di (px,py) dal SEGMENTO ab -- non dalla retta che lo contiene: con
+// la retta un path corto sarebbe afferrabile su tutto il suo prolungamento.
+function distanceToSegment(ax: number, ay: number, bx: number, by: number, px: number, py: number): number {
+  const dx = bx - ax;
+  const dy = by - ay;
+  const len2 = dx * dx + dy * dy;
+  // Segmento di lunghezza nulla (due ancoraggi coincidenti): è un punto.
+  let t = len2 === 0 ? 0 : ((px - ax) * dx + (py - ay) * dy) / len2;
+  t = t < 0 ? 0 : t > 1 ? 1 : t;
+  return Math.hypot(px - (ax + t * dx), py - (ay + t * dy));
+}
+
+export function distanceToPolyline(pts: readonly PointLite[], px: number, py: number): number {
+  if (pts.length === 0) return Infinity;
+  // Un punto solo (un contorno di un ancoraggio) è la distanza dal punto: il
+  // ciclo non gira e questo è il valore giusto, non un ripiego.
+  let best = Math.hypot(px - pts[0].x, py - pts[0].y);
+  for (let i = 1; i < pts.length; i++) {
+    const d = distanceToSegment(pts[i - 1].x, pts[i - 1].y, pts[i].x, pts[i].y, px, py);
+    if (d < best) best = d;
+  }
+  return best;
+}
+
+// Profondità massima della suddivisione. Ogni livello DIMEZZA la corda e
+// divide per ~4 lo scarto, quindi 10 livelli sono 1024 segmenti e una
+// riduzione dello scarto di 4^10 ≈ 10^6: una curva larga un milione di unità
+// mondo rientrerebbe comunque sotto un quarto di pixel. Il tetto esiste solo
+// perché una ricorsione senza fondo su coordinate NaN/Infinite (uno stato che
+// il filo può sempre consegnare) appenderebbe il thread dell'interfaccia.
+const MAX_FLATTEN_DEPTH = 10;
+
+// "Piatta" = entrambi i punti di controllo distano meno di `tol` dalla CORDA
+// p0-p3. La cubica sta dentro l'inviluppo convesso dei suoi quattro punti di
+// controllo, quindi se p1 e p2 stanno in una fascia di semilarghezza tol
+// attorno alla corda ci sta anche tutta la curva: il criterio è un limite
+// SUPERIORE vero sullo scarto, non una stima.
+//
+// La distanza è dal SEGMENTO e non dalla retta apposta: due controlli allineati
+// alla corda ma lontanissimi lungo di essa (p1 a mille unità oltre p3) fanno una
+// curva che esce dagli estremi e torna, e sostituirla con la corda perderebbe
+// tutta quell'andata e ritorno. Dalla retta disterebbero zero, e il criterio
+// direbbe "piatta" a una curva che non lo è.
+//
+// Il caso comune -- nessuna maniglia, quindi p1 = p0 e p2 = p3 -- dà distanza
+// zero al primo colpo: una spezzata da pen tool si appiattisce in se stessa,
+// senza un punto in più. Un criterio basato sulla derivata seconda (che è
+// grande anche quando la curva è una retta percorsa non uniformemente) la
+// spezzerebbe in una ventina di pezzi per niente.
+function isFlat(p0: PointLite, p1: PointLite, p2: PointLite, p3: PointLite, tol: number): boolean {
+  return distanceToSegment(p0.x, p0.y, p3.x, p3.y, p1.x, p1.y) <= tol
+    && distanceToSegment(p0.x, p0.y, p3.x, p3.y, p2.x, p2.y) <= tol;
+}
+
+function mid(a: PointLite, b: PointLite): PointLite {
+  return { x: (a.x + b.x) / 2, y: (a.y + b.y) / 2 };
+}
+
+// de Casteljau a t = 0.5, ricorsivo finché il pezzo non è piatto. Spinge SOLO
+// i punti successivi al primo (che il chiamante ha già messo), e spinge p3
+// esatto invece di ricalcolarlo: gli estremi di ogni segmento restano i punti
+// del modello, senza deriva in virgola mobile.
+function flattenCubic(
+  p0: PointLite, p1: PointLite, p2: PointLite, p3: PointLite,
+  tol: number, depth: number, out: PointLite[],
+): void {
+  if (depth >= MAX_FLATTEN_DEPTH || isFlat(p0, p1, p2, p3, tol)) {
+    out.push(p3);
+    return;
+  }
+  const p01 = mid(p0, p1);
+  const p12 = mid(p1, p2);
+  const p23 = mid(p2, p3);
+  const p012 = mid(p01, p12);
+  const p123 = mid(p12, p23);
+  const m = mid(p012, p123);
+  flattenCubic(p0, p01, p012, m, tol, depth + 1, out);
+  flattenCubic(m, p123, p23, p3, tol, depth + 1, out);
+}
+
+// Il contorno ridotto a spezzata, in coordinate LOCALI, con scarto dalla curva
+// vera minore di `tol`. Un contorno CHIUSO include il segmento di ritorno,
+// quindi l'ultimo punto coincide con il primo: il poligono è già chiuso e chi
+// lo usa non deve ricordarsi di chiuderlo.
+//
+// La tolleranza è in unità MONDO. Chi chiama la ricava dai px SCHERMO
+// dividendo per lo zoom (renderer/shapes.ts): appiattire in unità mondo
+// significherebbe una spezzata visibilmente spigolosa a zoom alto e migliaia
+// di punti inutili a zoom basso.
+export function flattenSubpath(sp: SubPathLite, tol: number): PointLite[] {
+  const n = sp.anchors.length;
+  if (n === 0) return [];
+  const out: PointLite[] = [{ x: sp.anchors[0].x, y: sp.anchors[0].y }];
+  const segments = segmentCount(sp);
+  for (let i = 0; i < segments; i++) {
+    const [p0, p1, p2, p3] = segmentControls(sp.anchors[i], sp.anchors[(i + 1) % n]);
+    flattenCubic(p0, p1, p2, p3, tol, 0, out);
+  }
+  return out;
+}
+
+// Il punto è dentro il riempimento di questi anelli secondo la regola EVEN-ODD:
+// conteggio delle intersezioni di una semiretta con TUTTI gli anelli insieme,
+// dentro se il totale è dispari.
+//
+// La scelta di even-odd invece di nonzero è deliberata e vive anche in
+// renderer/shapes.ts (VECTOR_FILL_RULE), che la passa a ctx.fill: disegno e
+// hit-test devono usare la STESSA regola, o si finisce con un buco che si vede
+// ma si clicca. La ragione: con nonzero un contorno interno è un buco solo se
+// è percorso nel VERSO OPPOSTO a quello esterno, e questo modello non ha
+// nessun modo di controllare il verso -- niente "inverti contorno" fra gli op,
+// e il pen tool produce il verso in cui l'utente ha cliccato. Un buco che
+// dipende da una proprietà invisibile e non modificabile è un buco che non si
+// riesce a fare apposta. Con even-odd decide la sola CONTENENZA: un contorno
+// dentro un altro è sempre un buco, e per toglierlo basta spostarlo fuori.
+//
+// Un punto esattamente SUL bordo è indeterminato (dipende da come cade il
+// confronto in virgola mobile). Non è un problema pratico: quel caso richiede
+// coordinate esatte al bit, e il bordo di un contorno chiuso è comunque
+// circondato dal suo riempimento su un lato.
+export function pointInRingsEvenOdd(
+  rings: readonly (readonly PointLite[])[], px: number, py: number,
+): boolean {
+  let inside = false;
+  for (const ring of rings) {
+    for (let i = 0, j = ring.length - 1; i < ring.length; j = i++) {
+      const yi = ring[i].y, yj = ring[j].y;
+      // Il lato attraversa la quota py (uno dei due estremi sopra, l'altro no):
+      // il confronto asimmetrico > / <= conta ogni vertice UNA volta sola, che
+      // è ciò che evita il doppio conteggio quando py cade esattamente su un
+      // vertice.
+      if ((yi > py) === (yj > py)) continue;
+      const xi = ring[i].x, xj = ring[j].x;
+      // Ascissa dell'intersezione con la semiretta orizzontale verso destra.
+      if (px < xi + ((py - yi) * (xj - xi)) / (yj - yi)) inside = !inside;
+    }
+  }
+  return inside;
+}
+
+// L'hit-test della geometria, in coordinate LOCALI (il chiamante sottrae
+// l'origine del nodo una volta sola).
+//
+// Le due regole non sono una scelta di comodo ma il riflesso di ciò che si
+// VEDE: un contorno chiuso è un'area dipinta e si prende sull'area; un contorno
+// aperto è una linea sottile e si prende per vicinanza, con una tolleranza che
+// il chiamante misura in px SCHERMO -- una linea deve essere altrettanto facile
+// da afferrare a ogni zoom, e con una tolleranza in unità mondo diventerebbe
+// impossibile da centrare a zoom 0.1 e larga mezzo schermo a zoom 64.
+//
+// `grab` e `flatten` sono già in unità MONDO: la conversione dai px sta in un
+// posto solo (renderer/shapes.ts), che è anche l'unico che conosce lo zoom.
+export function hitVectorGeometry(
+  subpaths: readonly SubPathLite[],
+  lx: number, ly: number,
+  grab: number, flatten: number,
+): boolean {
+  const rings: PointLite[][] = [];
+  for (const sp of subpaths) {
+    const pts = flattenSubpath(sp, flatten);
+    if (pts.length === 0) continue;
+    if (subpathFills(sp)) {
+      rings.push(pts);
+      continue;
+    }
+    if (distanceToPolyline(pts, lx, ly) <= grab) return true;
+  }
+  return pointInRingsEvenOdd(rings, lx, ly);
+}
+
 export interface NormalizedVector {
   // La geometria traslata perché la sua bbox locale parta da (0,0).
   subpaths: SubPathLite[];

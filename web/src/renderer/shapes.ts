@@ -1,8 +1,17 @@
-import type { NodeLite } from "../store/types";
+import type { NodeLite, SubPathLite } from "../store/types";
+import {
+  anchorPoint, inHandlePoint, outHandlePoint, subpathFills, hitVectorGeometry,
+} from "../store/vectorGeometry";
 import { lineHeightOf } from "./text";
 
 // Costruisce il Path2D del nodo in coordinate mondo (nessuna trasformazione
 // camera qui: la camera è applicata dal chiamante via ctx.setTransform).
+//
+// Il vettoriale NON passa di qui: la sua geometria si divide in due path
+// (vedi vectorPaths qui sotto) e drawScene lo dirotta prima, come già fa con il
+// testo. Il ripiego sul rettangolo qui in fondo vale per le forme il cui
+// inchiostro è il box -- incluse quelle "unknown" delle altre tracce, che
+// questo lato può solo trattare da rettangolo.
 export function nodePath(n: NodeLite): Path2D {
   const path = new Path2D();
   if (n.kind === "ellipse") {
@@ -37,14 +46,124 @@ export function inkIsBox(n: NodeLite): boolean {
   return n.kind !== "text" && n.kind !== "vector";
 }
 
-// Lato minimo (unità MONDO) del box su cui si afferra un nodo vettoriale. È una
-// TOLLERANZA DI SELEZIONE, non un fatto sulla geometria: il modello continua a
-// dire il vero (vectorBounds è esatta, e un segmento orizzontale ha davvero
-// height 0), ma un box di area zero è colpibile solo da un click con la
-// coordinata ESATTA -- cioè mai. Stesso compromesso di textHitBox qui sotto, e
-// per lo stesso motivo: l'hit-test non conosce la camera, quindi la tolleranza è
-// in unità mondo e non in px schermo. Quando arriverà il renderer del path
-// questa diventa la distanza di presa dalla curva, e allora avrà i suoi px.
+// --- il path vettoriale ------------------------------------------------------
+
+// Distanza di presa da un contorno APERTO, in px SCHERMO: una linea sottile
+// deve essere altrettanto facile da afferrare a ogni zoom, quindi la tolleranza
+// vive in px e si divide per lo zoom al momento dell'uso.
+//
+// 5 px sta nella stessa famiglia delle altre soglie di puntamento del progetto
+// -- il quadratino di una maniglia di resize si afferra entro 6 px dal centro
+// (HANDLE_SIZE/2 + HANDLE_GRAB_PADDING, selection/handles.ts) e un marquee
+// diventa un click sotto i 3 px -- ed è la misura che serve: abbastanza
+// generosa da prendere una linea da 1.5 px senza andare a caccia del pixel,
+// abbastanza stretta che due tratti a 10 px l'uno dall'altro restino
+// selezionabili separatamente.
+export const VECTOR_HIT_PX = 5;
+
+// Scarto massimo (px SCHERMO) fra la curva vera e la spezzata su cui si misura
+// la distanza. Un quarto di pixel: sotto la soglia di ciò che si vede e di ciò
+// che si riesce a puntare, e venti volte più fine della presa qui sopra --
+// quindi l'appiattimento non può spostare in modo percepibile il confine fra
+// "preso" e "mancato". Più fine di così si pagherebbero segmenti in più per una
+// differenza che nessuno può osservare.
+export const VECTOR_FLATTEN_PX = 0.25;
+
+// Spessore (px SCHERMO) con cui si disegna un contorno APERTO. Il modello non
+// ha un tratto: un contorno aperto non si riempie, quindi senza questo tratto
+// non esisterebbe sullo schermo e il pen tool disegnerebbe alla cieca. Il
+// colore è quello del riempimento del nodo -- l'unica tinta che il modello
+// conosce.
+export const VECTOR_STROKE_PX = 1.5;
+
+// La regola di riempimento, EVEN-ODD, e la ragione della scelta.
+//
+// Con nonzero un contorno interno è un buco solo se percorso nel VERSO OPPOSTO
+// a quello esterno. Questo modello non ha nessun modo di controllare il verso:
+// non esiste un op "inverti contorno", e il pen tool produce l'ordine in cui
+// l'utente ha cliccato. Un buco che dipende da una proprietà invisibile e non
+// modificabile è un buco che non si riesce a fare apposta -- e, peggio, che
+// compare o sparisce a seconda di come si è girato attorno alla forma.
+//
+// Con even-odd decide la sola CONTENENZA: un contorno dentro un altro è sempre
+// un buco, e per toglierlo basta spostarlo fuori. Prevedibile con gli strumenti
+// che ci sono.
+//
+// Il valore è UNO e lo condividono ctx.fill (canvasRenderer) e l'hit-test
+// (vectorGeometry::pointInRingsEvenOdd): due regole diverse darebbero un buco
+// che si vede ma si clicca.
+export const VECTOR_FILL_RULE: CanvasFillRule = "evenodd";
+
+// I due path di un nodo vettoriale, in coordinate MONDO. Sono DUE perché il
+// canvas chiude implicitamente ogni contorno che riempie: un contorno aperto
+// messo nello stesso Path2D verrebbe riempito come se fosse chiuso, cioè
+// esattamente ciò che non deve succedere. `null` (non un Path2D vuoto) quando
+// non c'è niente in quel secchio, così il chiamante non paga una fill o una
+// stroke a vuoto.
+export interface VectorPaths { fill: Path2D | null; stroke: Path2D | null }
+
+// Traccia UN contorno su `p`: moveTo sul primo ancoraggio, poi una
+// bezierCurveTo per ogni segmento DISEGNATO. Le maniglie escono da
+// vectorGeometry (la regola dei due spazi ha una sola implementazione) e non
+// hanno bisogno di rami: una maniglia assente vale (0,0), il controllo cade
+// sull'ancoraggio e la bezier è la retta.
+function traceSubpath(p: Path2D, n: NodeLite, sp: SubPathLite): void {
+  const count = sp.anchors.length;
+  const first = anchorPoint(n, sp.anchors[0]);
+  p.moveTo(first.x, first.y);
+  if (count === 1) {
+    // Un ancoraggio solo (il pen tool dopo il primo click): un segmento di
+    // lunghezza nulla, che con lineCap tondo il canvas disegna come un
+    // pallino. Un moveTo e basta non dipingerebbe niente, e il nodo appena
+    // nato sarebbe invisibile finché non arriva il secondo click.
+    p.lineTo(first.x, first.y);
+    return;
+  }
+  // Chiuso: c'è anche il segmento di ritorno ultimo -> primo, ed è una curva
+  // come le altre (le sue maniglie esistono), quindi si disegna. Il closePath
+  // che segue non aggiunge lunghezza: chiude il contorno.
+  const segments = sp.closed ? count : count - 1;
+  for (let i = 0; i < segments; i++) {
+    const a = sp.anchors[i];
+    const b = sp.anchors[(i + 1) % count];
+    const c1 = outHandlePoint(n, a);
+    const c2 = inHandlePoint(n, b);
+    const to = anchorPoint(n, b);
+    p.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, to.x, to.y);
+  }
+  if (sp.closed) p.closePath();
+}
+
+export function vectorPaths(n: NodeLite): VectorPaths {
+  let fill: Path2D | null = null;
+  let stroke: Path2D | null = null;
+  for (const sp of n.vector?.subpaths ?? []) {
+    if (sp.anchors.length === 0) continue;
+    // Un contorno riempie se e solo se è chiuso e ha almeno due ancoraggi. Il
+    // predicato sta in vectorGeometry perché lo condivide con l'hit-test:
+    // riempimento e area colpibile devono essere la stessa cosa.
+    if (subpathFills(sp)) {
+      fill ??= new Path2D();
+      traceSubpath(fill, n, sp);
+    } else {
+      stroke ??= new Path2D();
+      traceSubpath(stroke, n, sp);
+    }
+  }
+  return { fill, stroke };
+}
+
+// Lato minimo (unità MONDO) del box su cui il MARQUEE afferra un nodo
+// vettoriale. È una TOLLERANZA DI SELEZIONE, non un fatto sulla geometria: il
+// modello continua a dire il vero (vectorBounds è esatta, e un segmento
+// orizzontale ha davvero height 0), ma un box di area zero non interseca nulla
+// e sfuggirebbe a qualunque marquee che non lo scavalchi in senso stretto.
+//
+// Il CLICK non passa più di qui: da quando il path si disegna davvero,
+// hitTestNode colpisce l'inchiostro (riempimento o vicinanza alla curva) e ha
+// la sua tolleranza in px schermo, VECTOR_HIT_PX. Questa resta in unità mondo
+// perché nodesInMarquee (tools/selectTool.ts) lavora su bounds e non conosce
+// la camera.
 export const VECTOR_MIN_GRAB = 4;
 
 // Il box su cui un nodo si SELEZIONA (click e marquee), che non è sempre il box
@@ -65,7 +184,15 @@ export function selectionBoundsOfNode(n: NodeLite): Box {
 // rect: AABB inclusivo dei bordi. ellisse: equazione normalizzata
 // ((wx-cx)/rx)^2 + ((wy-cy)/ry)^2 <= 1, che è il test corretto (l'AABB
 // dell'ellisse include gli angoli, che sono fuori dall'ellisse stessa).
-export function hitTestNode(n: NodeLite, wx: number, wy: number): boolean {
+//
+// `zoom` serve al solo vettoriale, e serve davvero: la presa attorno a un
+// contorno aperto è in px SCHERMO (VECTOR_HIT_PX), quindi va convertita in
+// unità mondo, e questa è l'unica funzione che sa quale nodo la richiede.
+// Parametro OBBLIGATORIO e non con un default a 1: un default renderebbe
+// silenzioso il caso in cui un chiamante nuovo si dimentica della camera, e il
+// sintomo (una linea che si afferra male solo fuori da zoom 1) è di quelli che
+// nessuno collega alla causa.
+export function hitTestNode(n: NodeLite, wx: number, wy: number, zoom: number): boolean {
   // Il guard sulla dimensione vale solo per le forme il cui inchiostro È il box
   // (vedi inkIsBox), esattamente come in drawScene (canvasRenderer.ts).
   if (inkIsBox(n) && (n.width <= 0 || n.height <= 0)) return false;
@@ -76,11 +203,25 @@ export function hitTestNode(n: NodeLite, wx: number, wy: number): boolean {
   // implicito nel fallback: se un giorno il ramo "rect" imparasse i corner
   // radius, il testo non deve seguirlo.
   if (n.kind === "text") return insideBox(textHitBox(n), wx, wy);
-  // Il vettoriale si colpisce (per ora) sul suo box di selezione, non sul path:
-  // la prossimità alla curva arriva col renderer del path. Passa comunque da
-  // selectionBoundsOfNode e non dal box grezzo, così un path degenere -- che per
-  // l'invariante del proto ha un lato a zero -- resta afferrabile.
-  if (n.kind === "vector") return insideBox(selectionBoundsOfNode(n), wx, wy);
+  // Il vettoriale si colpisce sull'INCHIOSTRO, mai sul box: un contorno chiuso
+  // sul suo riempimento (con la stessa regola even-odd con cui è dipinto,
+  // quindi un buco è un buco anche per il click), uno aperto per vicinanza alla
+  // curva entro VECTOR_HIT_PX px schermo. Il box sarebbe il bersaglio sbagliato
+  // in entrambi i versi: una "C" larga mezzo schermo si prenderebbe cliccando
+  // nel suo vuoto -- rubando il click a tutto ciò che ci sta dentro -- e un
+  // path degenere non si prenderebbe affatto.
+  //
+  // Il punto passa in coordinate LOCALI (una sottrazione sola, qui): gli
+  // ancoraggi lo sono, e portarli in mondo uno a uno costerebbe una somma per
+  // ogni punto della spezzata.
+  if (n.kind === "vector") {
+    return hitVectorGeometry(
+      n.vector?.subpaths ?? [],
+      wx - n.x, wy - n.y,
+      VECTOR_HIT_PX / zoom,
+      VECTOR_FLATTEN_PX / zoom,
+    );
+  }
   if (n.kind === "ellipse") {
     const cx = n.x + n.width / 2;
     const cy = n.y + n.height / 2;

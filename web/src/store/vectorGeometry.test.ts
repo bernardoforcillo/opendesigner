@@ -7,6 +7,7 @@ import type { AnchorLite, SubPathLite } from "./types";
 import {
   anchorPoint, inHandlePoint, outHandlePoint,
   hasInHandle, hasOutHandle, vectorBounds, normalizeVector, resizeVector,
+  flattenSubpath, distanceToPolyline, pointInRingsEvenOdd, subpathFills, hitVectorGeometry,
 } from "./vectorGeometry";
 
 // La regola dei DUE SPAZI, che il proto (su `Anchor`) enuncia e questo file
@@ -255,5 +256,260 @@ describe("vectorGeometry: il resize riscrive la geometria", () => {
     const out = resizeVector(sp, { width: 10, height: 10 }, { signed: 20, start: 10 }, { signed: 10, start: 10 });
     expect(out.map((s) => s.closed)).toEqual([true, false]);
     expect(out.map((s) => s.anchors.length)).toEqual([2, 1]);
+  });
+});
+
+// --- appiattimento, distanza, riempimento ------------------------------------
+// La matematica su cui poggiano il disegno del path (renderer/shapes.ts) e il
+// suo hit-test. Sta qui, con le altre letture della geometria, e si prova con
+// curve NOTE e risposte NOTE: shapes.ts si limita a tradurre il punto in
+// coordinate locali e a scegliere le tolleranze in px SCHERMO.
+
+describe("vectorGeometry: appiattimento", () => {
+  // La solita cubica del rapporto: due ancoraggi su x=0, controlli fino a
+  // x=100, curva che arriva a 75.
+  const CURVY: SubPathLite = {
+    anchors: [anchor({ x: 0, y: 0, outX: 100, outY: 0 }), anchor({ x: 0, y: 100, inX: 100, inY: 0 })],
+    closed: false,
+  };
+
+  it("un segmento SENZA maniglie non viene suddiviso: i suoi due estremi e basta", () => {
+    // Il caso più comune di un pen tool (una spezzata) non deve pagare niente:
+    // i controlli coincidono con gli ancoraggi, quindi la corda È la curva.
+    const line: SubPathLite = { anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 100, y: 0 })], closed: false };
+    expect(flattenSubpath(line, 0.25)).toEqual([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+  });
+
+  it("una cubica degenere in una RETTA resta due punti (i controlli sono sulla corda)", () => {
+    // P1 e P2 stanno sulla corda: la curva ci sta sopra tutta, per quanto la
+    // sua parametrizzazione non sia lineare. Il criterio "quanto distano i
+    // controlli dalla corda" lo vede; uno basato sulla derivata seconda no, e
+    // spezzerebbe in una ventina di pezzi una linea dritta.
+    const straight: SubPathLite = {
+      anchors: [anchor({ x: 0, y: 0, outX: 30, outY: 0 }), anchor({ x: 100, y: 0, inX: -30, inY: 0 })],
+      closed: false,
+    };
+    expect(flattenSubpath(straight, 0.25)).toEqual([{ x: 0, y: 0 }, { x: 100, y: 0 }]);
+  });
+
+  it("gli ESTREMI sono esatti, e la spezzata arriva dove arriva la curva vera", () => {
+    const pts = flattenSubpath(CURVY, 0.01);
+    expect(pts[0]).toEqual({ x: 0, y: 0 });
+    expect(pts[pts.length - 1]).toEqual({ x: 0, y: 100 });
+    // 75 è l'estremo VERO (vedi vectorBounds qui sopra). Se qualcuno
+    // appiattisse sui punti di controllo, questo numero sarebbe 100.
+    const maxX = Math.max(...pts.map((p) => p.x));
+    expect(maxX).toBeLessThanOrEqual(75);
+    expect(maxX).toBeGreaterThan(75 - 0.01);
+  });
+
+  it("la tolleranza è RISPETTATA: ogni punto della curva vera dista meno di tol dalla spezzata", () => {
+    // Il contratto vero e proprio dell'appiattimento, campionato sulla cubica
+    // esatta. Vale a ogni tolleranza, che è ciò che rende sicuro scalare la
+    // tolleranza con lo zoom.
+    for (const tol of [1, 0.1, 0.01]) {
+      const pts = flattenSubpath(CURVY, tol);
+      let worst = 0;
+      for (let i = 0; i <= 200; i++) {
+        const t = i / 200;
+        const u = 1 - t;
+        // B(t) per P0=(0,0) P1=(100,0) P2=(100,100) P3=(0,100).
+        const bx = 3 * u * u * t * 100 + 3 * u * t * t * 100;
+        const by = 3 * u * t * t * 100 + t * t * t * 100;
+        worst = Math.max(worst, distanceToPolyline(pts, bx, by));
+      }
+      expect(worst).toBeLessThanOrEqual(tol);
+    }
+  });
+
+  it("una tolleranza più stretta produce più segmenti, non di meno", () => {
+    expect(flattenSubpath(CURVY, 0.01).length).toBeGreaterThan(flattenSubpath(CURVY, 1).length);
+  });
+
+  it("un contorno CHIUSO include il segmento di ritorno ultimo -> primo", () => {
+    const tri: SubPathLite = {
+      anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 0 }), anchor({ x: 10, y: 10 })],
+      closed: true,
+    };
+    expect(flattenSubpath(tri, 0.25)).toEqual([
+      { x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 0 },
+    ]);
+  });
+
+  it("un contorno di UN ancoraggio è un punto, uno vuoto è niente", () => {
+    expect(flattenSubpath({ anchors: [anchor({ x: 3, y: 4 })], closed: false }, 0.25)).toEqual([{ x: 3, y: 4 }]);
+    // `closed` non cambia niente: un punto non ha segmenti da chiudere.
+    expect(flattenSubpath({ anchors: [anchor({ x: 3, y: 4 })], closed: true }, 0.25)).toEqual([{ x: 3, y: 4 }]);
+    expect(flattenSubpath({ anchors: [], closed: false }, 0.25)).toEqual([]);
+  });
+});
+
+describe("vectorGeometry: distanza da una spezzata", () => {
+  const SEG = [{ x: 0, y: 0 }, { x: 10, y: 0 }];
+
+  it("è la perpendicolare quando il piede cade DENTRO il segmento", () => {
+    expect(distanceToPolyline(SEG, 5, 3)).toBe(3);
+    expect(distanceToPolyline(SEG, 5, -3)).toBe(3);
+    expect(distanceToPolyline(SEG, 5, 0)).toBe(0);
+  });
+
+  it("è la distanza dall'ESTREMO quando il piede cade fuori (segmento, non retta)", () => {
+    // Con la distanza dalla RETTA questo sarebbe 0: il path sarebbe afferrabile
+    // su tutto il suo prolungamento, all'infinito.
+    expect(distanceToPolyline(SEG, -4, 0)).toBe(4);
+    expect(distanceToPolyline(SEG, 14, 0)).toBe(4);
+    expect(distanceToPolyline(SEG, -3, 4)).toBe(5);
+  });
+
+  it("prende il MINIMO su tutti i segmenti", () => {
+    const l = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }];
+    expect(distanceToPolyline(l, 12, 5)).toBe(2);
+  });
+
+  it("un solo punto è la distanza dal punto; nessun punto è distanza infinita", () => {
+    expect(distanceToPolyline([{ x: 2, y: 2 }], 5, 6)).toBe(5);
+    expect(distanceToPolyline([], 0, 0)).toBe(Infinity);
+  });
+});
+
+describe("vectorGeometry: even-odd", () => {
+  // Quadrato esterno e quadrato interno percorsi nello STESSO verso: con la
+  // regola NONZERO il buco non sarebbe un buco (avvolgimento 2), con even-odd
+  // sì. È il test che pianta la scelta della regola.
+  const OUTER = [{ x: 0, y: 0 }, { x: 10, y: 0 }, { x: 10, y: 10 }, { x: 0, y: 10 }];
+  const HOLE = [{ x: 3, y: 3 }, { x: 7, y: 3 }, { x: 7, y: 7 }, { x: 3, y: 7 }];
+
+  it("un anello solo: dentro è dentro, fuori è fuori", () => {
+    expect(pointInRingsEvenOdd([OUTER], 5, 5)).toBe(true);
+    expect(pointInRingsEvenOdd([OUTER], 20, 5)).toBe(false);
+    expect(pointInRingsEvenOdd([OUTER], 5, 20)).toBe(false);
+    expect(pointInRingsEvenOdd([OUTER], -5, 5)).toBe(false);
+  });
+
+  it("due anelli concentrici NELLO STESSO VERSO fanno un buco", () => {
+    expect(pointInRingsEvenOdd([OUTER, HOLE], 5, 5)).toBe(false);  // nel buco
+    expect(pointInRingsEvenOdd([OUTER, HOLE], 1, 1)).toBe(true);   // nella corona
+    expect(pointInRingsEvenOdd([OUTER, HOLE], 20, 20)).toBe(false);
+  });
+
+  it("il verso di percorrenza non conta: è tutto il punto di even-odd", () => {
+    const reversed = [...HOLE].reverse();
+    expect(pointInRingsEvenOdd([OUTER, reversed], 5, 5)).toBe(false);
+    expect(pointInRingsEvenOdd([OUTER, reversed], 1, 1)).toBe(true);
+  });
+
+  it("nessun anello: nessun punto è dentro", () => {
+    expect(pointInRingsEvenOdd([], 0, 0)).toBe(false);
+  });
+});
+
+describe("vectorGeometry: subpathFills", () => {
+  it("riempie se e solo se è chiuso e ha almeno due ancoraggi", () => {
+    const two = [anchor({ x: 0, y: 0 }), anchor({ x: 1, y: 1 })];
+    expect(subpathFills({ anchors: two, closed: true })).toBe(true);
+    expect(subpathFills({ anchors: two, closed: false })).toBe(false);
+    // Un punto non ha area: `closed` non gliela regala, e il canvas che lo
+    // riempie non disegna niente. Disegno e hit-test devono dire la stessa cosa.
+    expect(subpathFills({ anchors: [anchor({ x: 0, y: 0 })], closed: true })).toBe(false);
+    expect(subpathFills({ anchors: [], closed: true })).toBe(false);
+  });
+});
+
+describe("vectorGeometry: hitVectorGeometry", () => {
+  const GRAB = 5;
+  const FLAT = 0.25;
+  const open = (anchors: AnchorLite[]): SubPathLite[] => [{ anchors, closed: false }];
+
+  it("un contorno APERTO si colpisce per VICINANZA alla curva", () => {
+    const seg = open([anchor({ x: 0, y: 0 }), anchor({ x: 100, y: 0 })]);
+    expect(hitVectorGeometry(seg, 50, 0, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(seg, 50, 4.9, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(seg, 50, -4.9, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(seg, 50, 5.1, GRAB, FLAT)).toBe(false);
+    // Oltre l'estremo: la presa è attorno al segmento, non alla sua retta.
+    expect(hitVectorGeometry(seg, 110, 0, GRAB, FLAT)).toBe(false);
+  });
+
+  it("un contorno aperto NON si riempie: il suo interno non è colpibile", () => {
+    // Tre lati di un quadrato, non chiusi: il centro non è inchiostro, e il
+    // canvas non lo dipinge. Se l'hit-test lo colpisse, un path a U ruberebbe
+    // i click a tutto ciò che ci sta dentro.
+    const u = open([
+      anchor({ x: 0, y: 0 }), anchor({ x: 0, y: 100 }),
+      anchor({ x: 100, y: 100 }), anchor({ x: 100, y: 0 }),
+    ]);
+    expect(hitVectorGeometry(u, 50, 50, GRAB, FLAT)).toBe(false);
+    expect(hitVectorGeometry(u, 50, 98, GRAB, FLAT)).toBe(true); // vicino al lato basso
+  });
+
+  it("un contorno CHIUSO si colpisce sul RIEMPIMENTO", () => {
+    const square: SubPathLite[] = [{
+      anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 100, y: 0 }),
+        anchor({ x: 100, y: 100 }), anchor({ x: 0, y: 100 })],
+      closed: true,
+    }];
+    expect(hitVectorGeometry(square, 50, 50, GRAB, FLAT)).toBe(true);
+    // E NON su un alone attorno: fuori è fuori, come per un rettangolo o
+    // un'ellisse. L'alone ruberebbe i click alle forme sottostanti su tutto il
+    // perimetro, e il riempimento è già un bersaglio grande.
+    expect(hitVectorGeometry(square, 103, 50, GRAB, FLAT)).toBe(false);
+  });
+
+  it("due contorni chiusi COMPONGONO: quello interno è un buco", () => {
+    const ring: SubPathLite[] = [
+      { anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 100, y: 0 }),
+        anchor({ x: 100, y: 100 }), anchor({ x: 0, y: 100 })], closed: true },
+      { anchors: [anchor({ x: 30, y: 30 }), anchor({ x: 70, y: 30 }),
+        anchor({ x: 70, y: 70 }), anchor({ x: 30, y: 70 })], closed: true },
+    ];
+    expect(hitVectorGeometry(ring, 10, 10, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(ring, 50, 50, GRAB, FLAT)).toBe(false);
+  });
+
+  it("il riempimento segue la CURVA vera, non il poligono degli ancoraggi", () => {
+    // Due ancoraggi su x=0 con le maniglie che spingono a destra: la curva,
+    // chiusa dal segmento di ritorno, racchiude un'area che arriva a x=75. Il
+    // poligono dei soli ancoraggi sarebbe degenere e non conterrebbe niente.
+    const lens: SubPathLite[] = [{
+      anchors: [anchor({ x: 0, y: 0, outX: 100, outY: 0 }), anchor({ x: 0, y: 100, inX: 100, inY: 0 })],
+      closed: true,
+    }];
+    expect(hitVectorGeometry(lens, 40, 50, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(lens, 80, 50, GRAB, FLAT)).toBe(false);
+  });
+
+  it("un contorno di UN ancoraggio si colpisce come un punto", () => {
+    // Il pen tool dopo il primo click: senza questo il nodo appena nato sarebbe
+    // raggiungibile solo dal pannello livelli.
+    const dot = open([anchor({ x: 10, y: 20 })]);
+    expect(hitVectorGeometry(dot, 10, 20, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(dot, 13, 20, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(dot, 20, 20, GRAB, FLAT)).toBe(false);
+  });
+
+  it("un contorno CHIUSO di un solo ancoraggio non riempie niente", () => {
+    const dot: SubPathLite[] = [{ anchors: [anchor({ x: 10, y: 20 })], closed: true }];
+    expect(hitVectorGeometry(dot, 12, 20, GRAB, FLAT)).toBe(true);
+    expect(hitVectorGeometry(dot, 40, 20, GRAB, FLAT)).toBe(false);
+  });
+
+  it("geometria VUOTA: niente inchiostro, niente da colpire", () => {
+    // Il nodo non disegna niente (riempire un Path2D vuoto non dipinge nulla),
+    // quindi non deve nemmeno rubare click alle forme sotto. Resta
+    // raggiungibile dal pannello livelli, che è l'unico posto in cui esiste
+    // ancora qualcosa da toccare.
+    expect(hitVectorGeometry([], 0, 0, GRAB, FLAT)).toBe(false);
+    expect(hitVectorGeometry([{ anchors: [], closed: true }], 0, 0, GRAB, FLAT)).toBe(false);
+  });
+
+  it("aperto e chiuso nello stesso nodo: si colpisce l'uno O l'altro", () => {
+    const mixed: SubPathLite[] = [
+      { anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 0 }),
+        anchor({ x: 10, y: 10 }), anchor({ x: 0, y: 10 })], closed: true },
+      { anchors: [anchor({ x: 50, y: 0 }), anchor({ x: 50, y: 100 })], closed: false },
+    ];
+    expect(hitVectorGeometry(mixed, 5, 5, GRAB, FLAT)).toBe(true);    // riempimento
+    expect(hitVectorGeometry(mixed, 52, 50, GRAB, FLAT)).toBe(true);  // vicinanza
+    expect(hitVectorGeometry(mixed, 30, 50, GRAB, FLAT)).toBe(false);
   });
 });

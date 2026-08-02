@@ -122,28 +122,28 @@ describe("selectTool", () => {
         under: node("under", 0, "a000000"),
         over: node("over", 0, "a000001"), // orderKey più alto = disegnato sopra
       } };
-      expect(pickTarget(scene, { x: 10, y: 10 }, false, [])).toEqual({ mode: "single", id: "over" });
+      expect(pickTarget(scene, { x: 10, y: 10 }, false, [], 1)).toEqual({ mode: "single", id: "over" });
     });
 
     it("plain click on an unselected node returns single with its id", () => {
       const scene = useScene.getState().scene!;
-      expect(pickTarget(scene, { x: 120, y: 10 }, false, [])).toEqual({ mode: "single", id: "b" });
+      expect(pickTarget(scene, { x: 120, y: 10 }, false, [], 1)).toEqual({ mode: "single", id: "b" });
     });
 
     it("plain click on an already-selected node returns single WITHOUT an id (keeps the current selection for a group drag)", () => {
       const scene = useScene.getState().scene!;
-      expect(pickTarget(scene, { x: 120, y: 10 }, false, ["b"])).toEqual({ mode: "single" });
+      expect(pickTarget(scene, { x: 120, y: 10 }, false, ["b"], 1)).toEqual({ mode: "single" });
     });
 
     it("shift-click always returns toggle with the id, selected or not", () => {
       const scene = useScene.getState().scene!;
-      expect(pickTarget(scene, { x: 120, y: 10 }, true, [])).toEqual({ mode: "toggle", id: "b" });
-      expect(pickTarget(scene, { x: 120, y: 10 }, true, ["b"])).toEqual({ mode: "toggle", id: "b" });
+      expect(pickTarget(scene, { x: 120, y: 10 }, true, [], 1)).toEqual({ mode: "toggle", id: "b" });
+      expect(pickTarget(scene, { x: 120, y: 10 }, true, ["b"], 1)).toEqual({ mode: "toggle", id: "b" });
     });
 
     it("clicking empty space returns marquee", () => {
       const scene = useScene.getState().scene!;
-      expect(pickTarget(scene, { x: 900, y: 900 }, false, [])).toEqual({ mode: "marquee" });
+      expect(pickTarget(scene, { x: 900, y: 900 }, false, [], 1)).toEqual({ mode: "marquee" });
     });
   });
 

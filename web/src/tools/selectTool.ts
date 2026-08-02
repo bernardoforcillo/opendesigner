@@ -71,7 +71,9 @@ export type PickResult =
   | { mode: "toggle"; id: string };
 
 // Decide il TIPO di gesto senza toccare lo store: pura funzione di scena +
-// input, testabile senza DOM (Task 8, step 1). id assente in mode "single"
+// input (`zoom` incluso: la presa attorno a un path vettoriale aperto è in px
+// SCHERMO, vedi renderer/shapes.ts::VECTOR_HIT_PX), testabile senza DOM
+// (Task 8, step 1). id assente in mode "single"
 // significa "il nodo è già selezionato, non toccare la selezione" -- è la
 // lettura di "selezione singola (SE NON GIÀ selezionato)" del brief: così un
 // drag successivo sposta l'INTERA selezione (anche multipla) invece di
@@ -81,8 +83,9 @@ export function pickTarget(
   world: { x: number; y: number },
   shiftKey: boolean,
   selection: string[],
+  zoom: number,
 ): PickResult {
-  const id = hitTest(scene, world.x, world.y);
+  const id = hitTest(scene, world.x, world.y, zoom);
   if (!id) return { mode: "marquee" };
   if (shiftKey) return { mode: "toggle", id };
   return selection.includes(id) ? { mode: "single" } : { mode: "single", id };
@@ -302,7 +305,8 @@ export function createSelectTool(): Tool {
       // selezione e drag si preparano come per un click qualunque, così se il
       // puntatore si muove il gesto è già armato e lo spostamento parte da
       // questo stesso down. Chi decide è il rilascio (onPointerUp), non il down.
-      const hitId = hitTest(scene, world.x, world.y);
+      const zoom = ctx.getCamera().zoom;
+      const hitId = hitTest(scene, world.x, world.y, zoom);
       if (hitId && !e.shiftKey) {
         const isDoubleClick =
           lastClick !== null &&
@@ -319,7 +323,7 @@ export function createSelectTool(): Tool {
         lastClick = null;
       }
 
-      const target = pickTarget(scene, world, e.shiftKey, store.selection);
+      const target = pickTarget(scene, world, e.shiftKey, store.selection, zoom);
 
       if (target.mode === "marquee") {
         // shift+click sul vuoto non azzera: è l'inizio di un'aggiunta (unione
