@@ -423,14 +423,66 @@ export function applyFrameResize(b: Bounds, r: FrameResize): Bounds {
 //
 // È ESATTO per una scala uniforme, per θ multiplo di 90° (gli assi si
 // scambiano) e per un ribaltamento (kx·ky < 0: l'angolo si specchia da sé,
-// perché atan2 legge la direzione vera dell'asse). Per un angolo qualunque con
-// scala non uniforme il risultato esatto sarebbe un PARALLELOGRAMMA, che il
-// modello (x/y/w/h + un angolo) non sa rappresentare: si tiene il rettangolo
-// con gli stessi assi e le stesse lunghezze, che è l'approssimazione standard
-// -- e comunque dentro il riquadro di gruppo, non fuori.
+// perché atan2 legge la direzione vera dell'asse).
+//
+// PER OGNI ALTRO ANGOLO con scala NON uniforme il risultato esatto è un
+// PARALLELOGRAMMA, che il modello (x/y/w/h + un angolo) non sa rappresentare, e
+// il rettangolo con quegli assi da solo NON basta: ha le direzioni giuste ma un
+// AABB troppo grande su un lato. Un 100x50 a 45° (AABB 106.07x106.07) dentro un
+// riquadro tirato per la maniglia e (kx=2, ky=1) diventava 158.11x79.06 a
+// 26.565°, cioè un AABB di 176.78x141.42: il 33% più alto di un riquadro che
+// l'utente non ha MAI trascinato in verticale. Usciva sopra e sotto.
+//
+// Perciò il rettangolo viene RIDOTTO, attorno al centro mappato, del fattore
+// che lo rimette dentro il posto che la scala di gruppo riserva davvero a
+// questo nodo -- l'AABB di partenza scalato per (|kx|, |ky|), che sta nel
+// riquadro perché il riquadro è l'unione degli AABB dei membri (vedi
+// containScale). Il fattore vale 1, esatto, in tutti i casi esatti qui sopra:
+// una similitudine e uno scambio d'assi mandano l'AABB esattamente sull'AABB
+// scalato, quindi non c'è niente da ridurre e i numeri non si toccano.
+//
+// Il prezzo è che il membro RIEMPIE MENO del suo posto (a 45°, 132.58x106.07 su
+// 212.13x106.07: tocca sopra e sotto, avanza a destra). È il prezzo giusto:
+// l'alternativa "riempi esattamente" -- risolvere w,h col nuovo angolo perché
+// l'AABB coincida -- ha soluzione non negativa solo per |θ| <= 45° e degenera
+// proprio lì: a 44°, sempre con kx=2 e ky=1, un 100x50 diventerebbe 235x3.6,
+// una scheggia. Un membro un po' più piccolo del previsto si corregge
+// trascinandolo; un membro schiacciato a zero, o fuori dal riquadro, no.
 export interface RotatedBounds {
   bounds: Bounds;
   rotation: number;
+}
+
+// Una riduzione più piccola di questa è rumore in virgola mobile, non un
+// traboccamento: applicarla toglierebbe l'esattezza ai casi esatti (cos(90°)
+// vale 6.1e-17, non 0) senza spostare nulla di visibile -- 1e-12 in RELATIVO su
+// un riquadro di 1e6 unità è un miliardesimo di unità.
+const CONTAIN_EPS = 1e-12;
+
+// Di quanto ridurre il rettangolo dagli assi mappati perché stia nel posto che
+// la scala di gruppo riserva al nodo. Tutto in spazio del FRAME: (cos, sin)
+// sono quelli di θ, (cosN, sinN) i VALORI ASSOLUTI di quelli del nuovo angolo
+// (letti dall'asse mappato, senza ripassare da atan2/cos/sin).
+//
+// L'AABB di un box w x h a un angolo di coseno/seno assoluti (ca, sa) è
+// (w·ca + h·sa) x (w·sa + h·ca) -- rotatedAabb, scritto per lati invece che per
+// angoli. Serve prima (per sapere quale posto la scala riserva al nodo) e dopo
+// (per sapere quanto il rettangolo mappato occupa davvero).
+function containScale(
+  b: Bounds, cos: number, sin: number, kx: number, ky: number,
+  w: number, h: number, cosN: number, sinN: number,
+): number {
+  const ca = Math.abs(cos);
+  const sa = Math.abs(sin);
+  const roomW = Math.abs(kx) * (b.width * ca + b.height * sa);
+  const roomH = Math.abs(ky) * (b.width * sa + b.height * ca);
+  const gotW = w * cosN + h * sinN;
+  const gotH = w * sinN + h * cosN;
+  // Box degenere (o scala nulla): niente da contenere, e nessuna divisione per
+  // zero da fare.
+  if (!(gotW > 0) || !(gotH > 0)) return 1;
+  const s = Math.min(roomW / gotW, roomH / gotH);
+  return s < 1 - CONTAIN_EPS ? s : 1;
 }
 
 export function applyFrameResizeToNode(b: Bounds, rotation: number, r: FrameResize): RotatedBounds {
@@ -454,7 +506,9 @@ export function applyFrameResizeToNode(b: Bounds, rotation: number, r: FrameResi
   const cy = mapAxis(c.y, t.anchorY, t.signedH, t.startH) + r.offsetY;
 
   // Scala UNIFORME e positiva: la forma ruotata resta simile a sé stessa,
-  // l'angolo non si tocca e i numeri restano esatti (niente giro per atan2).
+  // l'angolo non si tocca, l'AABB si scala per lo stesso fattore (quindi il
+  // nodo è già dentro il suo posto: containScale darebbe 1) e i numeri restano
+  // esatti (niente giro per atan2).
   if (kx === ky && kx > 0) {
     const width = b.width * kx;
     const height = b.height * kx;
@@ -465,8 +519,18 @@ export function applyFrameResizeToNode(b: Bounds, rotation: number, r: FrameResi
   const uy = ky * sin;
   const vx = -kx * sin;
   const vy = ky * cos;
-  const width = b.width * Math.hypot(ux, uy);
-  const height = b.height * Math.hypot(vx, vy);
+  const nu = Math.hypot(ux, uy);
+  const nv = Math.hypot(vx, vy);
+  // Coseno e seno ASSOLUTI del nuovo angolo, letti direttamente dall'asse
+  // mappato: è lo stesso angolo che atan2 restituisce qui sotto, senza il giro
+  // gradi -> radianti -> cos/sin che ci rimetterebbe dell'errore. nu === 0
+  // vuol dire asse x mappato a zero (quindi larghezza zero): il nodo è
+  // degenere e non c'è nessun angolo da leggere.
+  const cosN = nu === 0 ? 1 : Math.abs(ux) / nu;
+  const sinN = nu === 0 ? 0 : Math.abs(uy) / nu;
+  const s = containScale(b, cos, sin, kx, ky, b.width * nu, b.height * nv, cosN, sinN);
+  const width = b.width * nu * s;
+  const height = b.height * nv * s;
   return {
     bounds: { x: cx - width / 2, y: cy - height / 2, width, height },
     rotation: normalizeDegrees(r.rotation + Math.atan2(uy, ux) / DEG_TO_RAD),

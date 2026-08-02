@@ -22,6 +22,7 @@ import {
   CORNER_IDS,
 } from "./handles";
 import { rotatedAabb } from "../canvas/transform";
+import { unionBounds } from "../canvas/geometry";
 
 const b = { x: 100, y: 100, width: 200, height: 100 };
 const cam = { x: 0, y: 0, zoom: 1 };
@@ -410,6 +411,91 @@ describe("applyFrameResizeToNode", () => {
     // 50x100 -> 100x100 (prima diventava 50 largo e 200 alto)
     expect(aabb.width).toBeCloseTo(100, 9);
     expect(aabb.height).toBeCloseTo(100, 9);
+  });
+
+  // 90° è il caso FACILE: gli assi si scambiano e il rettangolo mappato cade
+  // esattamente sull'AABB scalato, quindi il contenimento veniva da sé. A 45°
+  // no, ed è lì che il giro 1 usciva ancora dal riquadro. Il caso della review,
+  // numero per numero: 100x50 a 45° (AABB 106.07x106.07) + un vicino dritto,
+  // maniglia e, kx=2, ky=1 (l'altezza del riquadro NON viene mai trascinata).
+  const at45 = () => {
+    const node = { x: 0, y: 0, width: 100, height: 50 };
+    const group = unionBounds([rotatedAabb(node, 45), { x: 200, y: 0, width: 50, height: 50 }])!;
+    const r = resizeFrame({ bounds: group, rotation: 0 }, "e", group.width, 0);
+    return { node, group, r, after: transformBounds(group, r.transform) };
+  };
+
+  it("keeps a 45-degree member inside the frame under a NON-uniform scale", () => {
+    const { node, r, after } = at45();
+    const out = applyFrameResizeToNode(node, 45, r);
+    const aabb = rotatedAabb(out.bounds, out.rotation);
+
+    expect(aabb.x).toBeGreaterThanOrEqual(after.x - 1e-9);
+    expect(aabb.y).toBeGreaterThanOrEqual(after.y - 1e-9);
+    expect(aabb.x + aabb.width).toBeLessThanOrEqual(after.x + after.width + 1e-9);
+    expect(aabb.y + aabb.height).toBeLessThanOrEqual(after.y + after.height + 1e-9);
+
+    // Il vincolo VERO, quello che il giro 1 rompeva: la maniglia e non ha
+    // toccato l'altezza del riquadro, quindi non deve toccare nemmeno quella
+    // del membro. Prima: 141.42 dentro un riquadro alto 106.07 (+33%).
+    expect(aabb.height).toBeCloseTo(rotatedAabb(node, 45).height, 9);
+    expect(aabb.height).toBeCloseTo(after.height, 9);
+  });
+
+  // Il PREZZO del contenimento, messo nero su bianco: il membro riempie MENO
+  // del suo posto lungo l'asse trascinato. Se un giorno si trova di meglio,
+  // questi numeri devono cambiare a mano -- non in silenzio.
+  it("pins what a 45-degree member becomes: contained, and under-filling the dragged axis", () => {
+    const { node, r } = at45();
+    const out = applyFrameResizeToNode(node, 45, r);
+
+    // gli ASSI restano quelli mappati (26.565° = atan(1/2)): cambiano solo le
+    // lunghezze, ridotte del fattore 0.75 che rimette l'AABB nel suo posto
+    expect(out.rotation).toBeCloseTo(26.56505117707799, 9);
+    expect(out.bounds.width).toBeCloseTo(158.11388300841898 * 0.75, 9);
+    expect(out.bounds.height).toBeCloseTo(79.05694150420948 * 0.75, 9);
+
+    const aabb = rotatedAabb(out.bounds, out.rotation);
+    // il posto riservato è largo 212.13: ne occupa 132.58, e li tocca in alto
+    // e in basso (dove il posto è 106.07)
+    expect(aabb.width).toBeCloseTo(132.58252147247765, 9);
+    expect(aabb.height).toBeCloseTo(106.06601717798212, 9);
+    // il centro resta quello mappato dalla trasformazione di gruppo, intatto
+    expect(aabb.x + aabb.width / 2).toBeCloseTo(103.03300858899107, 9);
+    expect(aabb.y + aabb.height / 2).toBeCloseTo(25, 9);
+  });
+
+  // L'invariante, non un caso fortunato: QUALUNQUE angolo, QUALUNQUE scala
+  // (ribaltamenti compresi). Un membro che parte dentro il riquadro ci resta.
+  it("never lets a member escape the frame, at any angle and any scale", () => {
+    // Il riquadro è ESATTAMENTE l'AABB del nodo (il membro che tocca tutti e
+    // quattro i bordi del gruppo -- il caso più stretto, e l'unico che
+    // distingue davvero: un nodo piccolo al centro resta dentro anche quando la
+    // mappa sbaglia).
+    const node = { x: 0, y: 0, width: 100, height: 50 };
+    for (let deg = 0; deg < 360; deg += 5) {
+      const group = rotatedAabb(node, deg);
+      // Frazioni del lato, non px: il riquadro cambia misura a ogni angolo, e
+      // un delta fisso finirebbe per posare un bordo ESATTAMENTE sull'ancora
+      // (scala 0, cioè un nodo schiacciato per davvero e non per colpa della
+      // mappa). Con la maniglia se: kx = 1 + fx, ky = 1 + fy.
+      for (const [fx, fy] of [
+        [1, 0], [0, 1], [3, -0.5], [-0.5, 3], [-2.5, 0], [0, -2.5], [-2.5, -4], [0.5, 0.5],
+      ]) {
+        const r = resizeFrame({ bounds: group, rotation: 0 }, "se", fx * group.width, fy * group.height);
+        const after = transformBounds(group, r.transform);
+        const out = applyFrameResizeToNode(node, deg, r);
+        const aabb = rotatedAabb(out.bounds, out.rotation);
+        const where = `deg=${deg} k=(${1 + fx},${1 + fy})`;
+        expect(aabb.x, where).toBeGreaterThanOrEqual(after.x - 1e-6);
+        expect(aabb.y, where).toBeGreaterThanOrEqual(after.y - 1e-6);
+        expect(aabb.x + aabb.width, where).toBeLessThanOrEqual(after.x + after.width + 1e-6);
+        expect(aabb.y + aabb.height, where).toBeLessThanOrEqual(after.y + after.height + 1e-6);
+        // e non si annulla: contenere non vuol dire sparire
+        expect(out.bounds.width, where).toBeGreaterThan(0);
+        expect(out.bounds.height, where).toBeGreaterThan(0);
+      }
+    }
   });
 
   it("leaves the angle alone (exactly) under a uniform scale", () => {

@@ -875,6 +875,42 @@ describe("selectTool", () => {
       expect(forB!.kind.case === "setProps" && forB!.kind.value.mask?.paths)
         .toEqual(["x", "y", "width", "height"]);
     });
+
+    // 90° è il caso FACILE (gli assi si scambiano e il conto torna da sé). A
+    // 45° con una scala NON uniforme non torna: l'immagine esatta è un
+    // parallelogramma, e il rettangolo con quegli assi era il 33% più alto del
+    // riquadro. Qui si controlla il vincolo che l'utente VEDE -- si trascina
+    // solo in orizzontale, quindi in verticale non si deve muovere niente.
+    it("keeps a 45-degree member inside the frame when the group is stretched sideways", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          a: node("a", 0, "a000000", { width: 100, height: 50, rotation: 45 }),
+          b: node("b", 200, "a000001"),
+        },
+      });
+      useScene.getState().setSelection(["a", "b"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      const f = selectionFrame(useScene.getState().scene!, ["a", "b"])!;
+      const top = f.bounds.y;
+      const bottom = f.bounds.y + f.bounds.height;
+      const east = { x: f.bounds.x + f.bounds.width, y: f.bounds.y + f.bounds.height / 2 };
+
+      tool.onPointerDown!(at(east.x, east.y), ctx);
+      tool.onPointerMove!(at(east.x + f.bounds.width, east.y), ctx); // x2 in larghezza, y intatta
+      tool.onPointerUp!(at(east.x + f.bounds.width, east.y), ctx);
+
+      const aabb = worldAabbOfNode(useScene.getState().scene!.nodes["a"]);
+      expect(aabb.y).toBeGreaterThanOrEqual(top - 1e-6);
+      expect(aabb.y + aabb.height).toBeLessThanOrEqual(bottom + 1e-6);
+      // l'altezza del riquadro non è stata trascinata: nemmeno quella del
+      // membro deve cambiare (prima passava da 106.07 a 141.42)
+      expect(aabb.height).toBeCloseTo(106.06601717798212, 6);
+      expect(bottom - top).toBeCloseTo(106.06601717798212, 6);
+    });
   });
 
   // --- cancellazione ---------------------------------------------------------
