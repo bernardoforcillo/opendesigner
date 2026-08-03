@@ -9,7 +9,7 @@ import type { NodeLite } from "../store/types";
 
 function node(id: string, x: number, orderKey: string, extra: Partial<NodeLite> = {}): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,
-    x, y: 0, width: 50, height: 50, rotation: 0, fills: [], kind: "rect", cornerRadius: 0, ...extra };
+    x, y: 0, width: 50, height: 50, rotation: 0, fills: [], kind: "rect", cornerRadius: 0, clipsContent: false, ...extra };
 }
 
 function fakeCtx(): ToolContext {

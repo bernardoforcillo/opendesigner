@@ -3,7 +3,7 @@ import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
 import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
-import { isAncestorOf, parentExists, subtreeOf } from "./tree";
+import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Un SetProperties SENZA patch NON è un no-op. Go legge il patch con i getter
 // nil-safe di protobuf (`p.GetX()` su un *Node nil ritorna lo zero del campo),
@@ -157,6 +157,50 @@ export function applyOp(state: SceneState, op: Op): SceneState {
         // al nodo, non al nonno.
         nodes: { ...state.nodes, [id]: { ...cur, parentId: newParentId, orderKey } },
       };
+    }
+    // --- pagine -------------------------------------------------------------
+    // Le pagine sono i container RADICE (un parentId può essere l'id di un nodo
+    // o quello di una Page): un op che le tocca cambia dove i nodi possono
+    // vivere, non un nodo. Parità con core.applyCreatePage / applyDeletePage /
+    // applyRenamePage (Go).
+    case "createPage": {
+      const page = op.kind.value.page;
+      // Pagina assente o senza id = ErrNilPage; id GIÀ PRESO -- da un'altra
+      // pagina o da un NODO -- = ErrPageExists. La collisione con un nodo conta
+      // quanto quella con una pagina: parentExists risponde "sì" per entrambi,
+      // quindi due container omonimi renderebbero ambiguo il parent di chiunque
+      // li nomini.
+      if (!page || page.id === "" || parentExists(state, page.id)) return state;
+      // In CODA, come Go: la posizione nell'elenco è l'ordine del selettore di
+      // pagina, non una proprietà del documento.
+      return { ...state, pages: [...state.pages, { id: page.id, name: page.name }] };
+    }
+    // Cancella la pagina E TUTTI i nodi che le pendono sotto. Stessa cascata di
+    // deleteNode portata alla radice: ciò che non è raggiungibile da nessuna
+    // pagina non fa parte del documento, quindi lasciarne i nodi nella mappa
+    // sarebbero gli orfani che createNode rifiuta di creare.
+    case "deletePage": {
+      const { id } = op.kind.value;
+      const i = state.pages.findIndex((p) => p.id === id);
+      if (i < 0) return state;                    // ErrPageNotFound
+      // L'ULTIMA pagina non si cancella: senza pagine non esiste nessun parent
+      // valido, quindi nessun nodo potrebbe più essere creato. ErrLastPage.
+      if (state.pages.length === 1) return state;
+      const nodes = { ...state.nodes };
+      for (const root of childrenOf(state, id)) {
+        for (const n of subtreeOf(state, root.id)) delete nodes[n.id];
+      }
+      return { ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes };
+    }
+    case "renamePage": {
+      const { id, name } = op.kind.value;
+      const i = state.pages.findIndex((p) => p.id === id);
+      if (i < 0) return state;                    // ErrPageNotFound
+      const pages = [...state.pages];
+      // Scritto SEMPRE, anche vuoto: il valore che arriva è il valore finale, e
+      // il ripiego per un nome vuoto è della UI (come per Node.name).
+      pages[i] = { ...pages[i], name };
+      return { ...state, pages };
     }
     default:
       return state;

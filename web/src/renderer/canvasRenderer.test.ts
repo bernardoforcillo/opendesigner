@@ -13,7 +13,7 @@ function fakeCanvas(clientWidth: number, clientHeight: number, width = 0, height
 
 function rect(id: string, x: number, y: number, order: string, visible = true): NodeLite {
   return { id, parentId: "page1", orderKey: order, name: id, visible, opacity: 1,
-    x, y, width: 50, height: 50, rotation: 0, fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0 };
+    x, y, width: 50, height: 50, rotation: 0, fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0, clipsContent: false };
 }
 
 function childRect(id: string, parentId: string, x: number, y: number, order: string, over: Partial<NodeLite> = {}): NodeLite {
@@ -201,7 +201,7 @@ describe("nodesIntersecting", () => {
 function textNode(over: Partial<NodeLite> = {}): NodeLite {
   return { id: "t", parentId: "page1", orderKey: "a1", name: "Text", visible: true, opacity: 1,
     x: 10, y: 20, width: 200, height: 40, rotation: 0, fills: [{ r: 0, g: 0, b: 0, a: 1 }],
-    kind: "text", cornerRadius: 0,
+    kind: "text", cornerRadius: 0, clipsContent: false,
     text: { content: "hi", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } },
     ...over };
 }

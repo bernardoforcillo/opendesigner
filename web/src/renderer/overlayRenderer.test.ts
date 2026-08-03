@@ -13,7 +13,7 @@ import type { Camera } from "../canvas/camera";
 function rect(id: string, x: number, y: number, w = 50, h = 50): NodeLite {
   return {
     id, parentId: "page1", orderKey: "a0", name: id, visible: true, opacity: 1,
-    x, y, width: w, height: h, rotation: 0, fills: [], kind: "rect", cornerRadius: 0,
+    x, y, width: w, height: h, rotation: 0, fills: [], kind: "rect", cornerRadius: 0, clipsContent: false,
   };
 }
 

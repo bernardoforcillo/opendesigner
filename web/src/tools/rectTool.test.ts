@@ -8,7 +8,7 @@ import type { NodeLite } from "../store/types";
 
 function node(id: string, orderKey: string): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,
-    x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], kind: "rect", cornerRadius: 0 };
+    x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], kind: "rect", cornerRadius: 0, clipsContent: false };
 }
 
 // Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono

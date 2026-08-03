@@ -12,7 +12,7 @@ import {
 function node(id: string, parentId: string, x: number, y: number, extra: Partial<NodeLite> = {}): NodeLite {
   return {
     id, parentId, orderKey: "a000000", name: id, visible: true, opacity: 1,
-    x, y, width: 50, height: 50, rotation: 0, fills: [], kind: "rect", cornerRadius: 0, ...extra,
+    x, y, width: 50, height: 50, rotation: 0, fills: [], kind: "rect", cornerRadius: 0, clipsContent: false, ...extra,
   };
 }
 

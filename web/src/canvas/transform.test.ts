@@ -18,7 +18,7 @@ import type { NodeLite, SceneState } from "../store/types";
 function node(id: string, parentId: string, x: number, y: number, w = 50, h = 50): NodeLite {
   return {
     id, parentId, orderKey: "a0", name: id, visible: true, opacity: 1,
-    x, y, width: w, height: h, rotation: 0, fills: [], kind: "rect", cornerRadius: 0,
+    x, y, width: w, height: h, rotation: 0, fills: [], kind: "rect", cornerRadius: 0, clipsContent: false,
   };
 }
 

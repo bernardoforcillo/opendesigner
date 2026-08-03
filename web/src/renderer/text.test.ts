@@ -20,7 +20,7 @@ function textNode(over: Partial<NodeLite> = {}, content = "aaa bbb ccc", st: Tex
   return {
     id: "t", parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
     x: 100, y: 50, width: 200, height: 40, rotation: 0,
-    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "text", cornerRadius: 0,
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "text", cornerRadius: 0, clipsContent: false,
     text: { content, style: st },
     ...over,
   };

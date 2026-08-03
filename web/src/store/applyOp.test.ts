@@ -398,3 +398,111 @@ describe("applyOp: setText", () => {
     });
   });
 });
+
+// ---------------------------------------------------------------------------
+// FRAME (proto: FrameNode = 34) — un contenitore CON geometria propria.
+// ---------------------------------------------------------------------------
+
+function createFrameOp(id: string, clipsContent: boolean, parentId = "page1") {
+  const node = create(NodeSchema, {
+    id, parentId, orderKey: "a0", name: "Frame", visible: true, opacity: 1,
+    x: 10, y: 10, width: 200, height: 150,
+    shape: { case: "frame", value: { clipsContent } },
+  });
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+describe("applyOp — frame", () => {
+  it("crea un frame con il suo box e il suo clipping", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", true));
+    expect(s.nodes["f1"].kind).toBe("frame");
+    expect(s.nodes["f1"].clipsContent).toBe(true);
+    // Il box è SUO (a differenza di un gruppo, i cui bounds sono l'unione dei
+    // figli): arriva dal createNode e resta lì.
+    expect(s.nodes["f1"].width).toBe(200);
+  });
+
+  it("clipsContent false è un valore legittimo, non 'non impostato'", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", false));
+    expect(s.nodes["f1"].kind).toBe("frame");
+    expect(s.nodes["f1"].clipsContent).toBe(false);
+  });
+
+  // Parità con core.applySetProps (Go), che risponde ErrNotRectNode: un frame è
+  // disegnato come una forma ma la sua forma è il FrameNode, e corner_radius
+  // vive dentro RectNode. L'op è rifiutato in BLOCCO, "x" compresa.
+  it("rifiuta corner_radius su un frame, x inclusa", () => {
+    const before = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", true));
+    const after = applyOp(before, create(OpSchema, { opId: "r", docId: "doc1", kind: { case: "setProps", value: {
+      id: "f1",
+      patch: create(NodeSchema, { x: 999, shape: { case: "rect", value: { cornerRadius: 12 } } }),
+      mask: { paths: ["x", "corner_radius"] },
+    } } }));
+    expect(after).toEqual(before);
+    expect(after.nodes["f1"].kind).toBe("frame");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PAGINE — i container RADICE del documento (parità con core.applyCreatePage /
+// applyDeletePage / applyRenamePage). Le fixture golden provano la parità
+// end-to-end; questi test fissano il comportamento visto dal client, compresa
+// l'identità dell'oggetto restituito su un op rifiutato (un oggetto nuovo
+// sveglierebbe i selettori per niente).
+// ---------------------------------------------------------------------------
+
+function createPageOp(id: string, name: string) {
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createPage", value: { page: { id, name } } } });
+}
+
+function deletePageOp(id: string) {
+  return create(OpSchema, { opId: "del-" + id, docId: "doc1", kind: { case: "deletePage", value: { id } } });
+}
+
+function renamePageOp(id: string, name: string) {
+  return create(OpSchema, { opId: "ren-" + id, docId: "doc1", kind: { case: "renamePage", value: { id, name } } });
+}
+
+describe("applyOp — pagine", () => {
+  it("aggiunge la pagina IN CODA e la rende un parent valido", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
+    expect(s.pages).toEqual([{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }]);
+    s = applyOp(s, createChildOp("n1", "page2"));
+    expect(s.nodes["n1"]?.parentId).toBe("page2");
+  });
+
+  it("rifiuta un id già preso da una pagina o da un NODO (parità: ErrPageExists)", () => {
+    const base = applyOp(applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2")), createChildOp("n1", "page1"));
+    // Stesso OGGETTO, non solo stesso contenuto: un op rifiutato non deve
+    // svegliare i sottoscrittori dello store.
+    expect(applyOp(base, createPageOp("page2", "Doppione"))).toBe(base);
+    expect(applyOp(base, createPageOp("n1", "Id di un nodo"))).toBe(base);
+    expect(applyOp(base, createPageOp("", "Senza id"))).toBe(base);
+  });
+
+  it("cancella la pagina e TUTTI i suoi nodi a cascata, lasciando in pace le altre", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
+    s = applyOp(s, createChildOp("g1", "page1"));
+    s = applyOp(s, createChildOp("c1", "g1"));
+    s = applyOp(s, createChildOp("d1", "c1"));
+    s = applyOp(s, createChildOp("keep", "page2"));
+    s = applyOp(s, deletePageOp("page1"));
+    expect(s.pages).toEqual([{ id: "page2", name: "Page 2" }]);
+    expect(Object.keys(s.nodes)).toEqual(["keep"]);
+  });
+
+  it("non cancella l'ULTIMA pagina (parità: ErrLastPage) né una inesistente", () => {
+    const base = applyOp(emptyScene("doc1", "Untitled"), createChildOp("n1", "page1"));
+    expect(applyOp(base, deletePageOp("page1"))).toBe(base);
+    expect(applyOp(base, deletePageOp("ghost"))).toBe(base);
+  });
+
+  it("rinomina una pagina, e ignora un id inesistente (parità: ErrPageNotFound)", () => {
+    const base = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
+    const renamed = applyOp(base, renamePageOp("page2", "Copertina"));
+    expect(renamed.pages).toEqual([{ id: "page1", name: "Page 1" }, { id: "page2", name: "Copertina" }]);
+    expect(applyOp(base, renamePageOp("ghost", "x"))).toBe(base);
+    // Il nome vuoto è un valore come un altro: il ripiego è della UI.
+    expect(applyOp(base, renamePageOp("page2", "")).pages[1].name).toBe("");
+  });
+});

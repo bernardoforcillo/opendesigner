@@ -34,6 +34,12 @@ describe("golden parity", () => {
       });
       const expected = fromDocument(fromJson(DocumentSchema, raw.expected));
       expect(scene.nodes).toEqual(expected.nodes);
+      // Le PAGINE fanno parte del documento quanto i nodi: dal lato Go il
+      // confronto è un proto.Equal sull'intero Document, quindi una fixture con
+      // op sulle pagine (createPage/deletePage/renamePage) proverebbe la parità
+      // solo a metà se qui si guardassero i soli nodi -- e l'ORDINE conta,
+      // perché è quello del selettore di pagina.
+      expect(scene.pages).toEqual(expected.pages);
     });
   }
 });

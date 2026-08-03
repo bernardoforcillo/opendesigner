@@ -1,0 +1,55 @@
+{
+  "docId": "doc1",
+  "ops": [
+    { "opId": "op1", "docId": "doc1", "createNode": { "node": {
+      "id": "f1", "parentId": "page1", "orderKey": "a000001", "name": "Frame",
+      "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 200, "height": 150,
+      "frame": { "clipsContent": true }
+    } } },
+    { "opId": "op2", "docId": "doc1", "createNode": { "node": {
+      "id": "r1", "parentId": "f1", "orderKey": "a000001", "name": "Rect 1",
+      "visible": true, "opacity": 1, "x": 20, "y": 20, "width": 50, "height": 50,
+      "rect": { "cornerRadius": 0 }
+    } } },
+
+    { "opId": "op3", "docId": "doc1", "createNode": { "node": {
+      "id": "f2", "parentId": "f1", "orderKey": "a000002", "name": "Frame annidato",
+      "visible": true, "opacity": 1, "x": 100, "y": 100, "width": 80, "height": 80,
+      "frame": { "clipsContent": false }
+    } } },
+    { "opId": "op4", "docId": "doc1", "createNode": { "node": {
+      "id": "r2", "parentId": "f2", "orderKey": "a000001", "name": "Rect 2",
+      "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 200, "height": 200,
+      "rect": { "cornerRadius": 0 }
+    } } },
+
+    { "opId": "op5", "docId": "doc1", "setProps": {
+      "id": "f1", "patch": { "rect": { "cornerRadius": 12 } }, "mask": "cornerRadius"
+    } },
+    { "opId": "op6", "docId": "doc1", "setProps": {
+      "id": "f1", "patch": { "x": 30, "y": 40 }, "mask": "x,y"
+    } },
+    { "opId": "op7", "docId": "doc1", "setProps": {
+      "id": "f2", "patch": { "x": 999, "rect": { "cornerRadius": 4 } }, "mask": "x,cornerRadius"
+    } },
+
+    { "opId": "op8", "docId": "doc1", "deleteNode": { "id": "f2" } }
+  ],
+  "rejected": [4, 6],
+  "expected": {
+    "id": "doc1", "name": "Untitled", "schemaVersion": 1,
+    "pages": [{ "id": "page1", "name": "Page 1" }],
+    "nodes": {
+      "f1": {
+        "id": "f1", "parentId": "page1", "orderKey": "a000001", "name": "Frame",
+        "visible": true, "opacity": 1, "x": 30, "y": 40, "width": 200, "height": 150,
+        "frame": { "clipsContent": true }
+      },
+      "r1": {
+        "id": "r1", "parentId": "f1", "orderKey": "a000001", "name": "Rect 1",
+        "visible": true, "opacity": 1, "x": 20, "y": 20, "width": 50, "height": 50,
+        "rect": { "cornerRadius": 0 }
+      }
+    }
+  }
+}

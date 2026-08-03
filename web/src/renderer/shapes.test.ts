@@ -5,7 +5,7 @@ import type { NodeLite } from "../store/types";
 function node(kind: "rect" | "ellipse"): NodeLite {
   return { id: "n", parentId: "page1", orderKey: "a0", name: kind, visible: true, opacity: 1,
     x: 0, y: 0, width: 100, height: 50, rotation: 0,
-    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind, cornerRadius: 0 };
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind, cornerRadius: 0, clipsContent: false };
 }
 
 // Stile con lineHeight non specificato (0): il default 1.2 lo risolve il

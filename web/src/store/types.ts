@@ -31,7 +31,14 @@ export interface NodeLite {
   // e i suoi bounds sono l'unione dei figli (vedi store/groups.ts). Sta nello
   // stesso campo delle forme perché nel proto è lo stesso oneof `shape`: ciò
   // che un nodo È, non un flag a parte che potrebbe contraddirlo.
-  fills: FillLite[]; kind: "rect" | "ellipse" | "text" | "group"; cornerRadius: number;
+  // "frame" è il complemento del gruppo: un contenitore CON geometria propria
+  // (il box è suo, non l'unione dei figli), disegnato e colpito come una forma.
+  // È l'artboard, e `clipsContent` dice se ritaglia i figli al proprio box.
+  fills: FillLite[]; kind: "rect" | "ellipse" | "text" | "group" | "frame"; cornerRadius: number;
+  // Significativo se e solo se kind === "frame" (per tutti gli altri è false,
+  // come il default proto3): il ritaglio vale per il disegno, per l'hit-test e
+  // per la banda elastica insieme -- ciò che non si vede non si clicca.
+  clipsContent: boolean;
   // Presente se e solo se kind === "text": il contenuto vive DENTRO il oneof
   // `shape` del proto, quindi è per costruzione esclusivo con rect/ellipse.
   text?: TextLite;
@@ -115,8 +122,10 @@ export function toNodeLite(n: PbNode): NodeLite {
       n.shape.case === "ellipse" ? "ellipse"
       : n.shape.case === "text" ? "text"
       : n.shape.case === "group" ? "group"
+      : n.shape.case === "frame" ? "frame"
       : "rect",
     cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
+    clipsContent: n.shape.case === "frame" ? n.shape.value.clipsContent : false,
     ...(n.shape.case === "text" ? { text: toTextLite(n.shape.value) } : {}),
   };
 }
@@ -141,6 +150,12 @@ export function toPbNode(n: NodeLite): PbNode {
       // un undo, per giunta con un box 0x0 che non si vedrebbe mai.
       : n.kind === "group"
       ? { case: "group" as const, value: {} }
+      // Stesso motivo del ramo `group`, più un campo: senza, l'inverso di una
+      // delete ricostruirebbe un RETTANGOLO al posto del frame, e un frame
+      // ricostruito senza `clipsContent` smetterebbe di ritagliare i figli --
+      // un undo che cambia ciò che si vede.
+      : n.kind === "frame"
+      ? { case: "frame" as const, value: { clipsContent: n.clipsContent } }
       : n.kind === "text"
         // `text` mancante su un nodo di testo è uno stato che toNodeLite non
         // produce mai (i due si muovono insieme). Il fallback a testo vuoto

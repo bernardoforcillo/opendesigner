@@ -49,7 +49,7 @@ function textNode(id: string, content: string, over: Partial<NodeLite> = {}): No
     id, parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
     x: 10, y: 20, width: 200, height: 24, rotation: 0,
     fills: [{ r: 0, g: 0, b: 0, a: 1 }],
-    kind: "text", cornerRadius: 0,
+    kind: "text", cornerRadius: 0, clipsContent: false,
     text: {
       content,
       style: { fontFamily: "Inter", fontSize: 16, fontWeight: "400", lineHeight: 1.5, align: "left" },
@@ -153,7 +153,7 @@ describe("posizionamento", () => {
     // (10,20) -- lontanissimo dal nodo che sta editando.
     const g: NodeLite = {
       id: "g", parentId: "page1", orderKey: "a0", name: "g", visible: true, opacity: 1,
-      x: 100, y: 50, width: 400, height: 400, rotation: 0, fills: [], kind: "rect", cornerRadius: 0,
+      x: 100, y: 50, width: 400, height: 400, rotation: 0, fills: [], kind: "rect", cornerRadius: 0, clipsContent: false,
     };
     installScene(g, textNode("t1", "ciao", { parentId: "g" }));
     useScene.setState({ camera: { x: 0, y: 0, zoom: 1 }, editingNodeId: "t1" });

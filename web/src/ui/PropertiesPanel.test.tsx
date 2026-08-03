@@ -27,13 +27,13 @@ function rectNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): N
   return {
     id, parentId: "page1", orderKey, name: "", visible: true, opacity: 1,
     x: 10, y: 20, width: 30, height: 40, rotation: 0,
-    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0,
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0, clipsContent: false,
     ...over,
   };
 }
 
 function ellipseNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): NodeLite {
-  return { ...rectNode(id, orderKey), kind: "ellipse", cornerRadius: 0, ...over };
+  return { ...rectNode(id, orderKey), kind: "ellipse", cornerRadius: 0, clipsContent: false, ...over };
 }
 
 // Un gruppo NASCE a (0,0) e senza geometria propria: la sua cornice è l'unione
@@ -49,7 +49,7 @@ const TEXT_STYLE: TextLite["style"] = {
 function textNode(id: string, orderKey: string, content = "ciao", over: Partial<NodeLite> = {}): NodeLite {
   return {
     ...rectNode(id, orderKey),
-    kind: "text", cornerRadius: 0,
+    kind: "text", cornerRadius: 0, clipsContent: false,
     text: { content, style: { ...TEXT_STYLE } },
     ...over,
   };

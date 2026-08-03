@@ -7,7 +7,7 @@ function node(over: Partial<NodeLite> & { id: string; orderKey: string }): NodeL
   return {
     parentId: "page1", name: "n", visible: true, opacity: 1,
     x: 0, y: 0, width: 10, height: 10, rotation: 0,
-    fills: [{ r: 1, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0,
+    fills: [{ r: 1, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0, clipsContent: false,
     ...over,
   };
 }
@@ -57,7 +57,7 @@ describe("selectionSummary", () => {
   it("reports every field as its actual value for a single selected node", () => {
     const s = sceneWith([
       node({ id: "n1", orderKey: "a000000", name: "Rect", x: 10, y: 20, width: 30, height: 40,
-        rotation: 5, opacity: 0.5, visible: false, cornerRadius: 2, kind: "rect",
+        rotation: 5, opacity: 0.5, visible: false, cornerRadius: 2, clipsContent: false, kind: "rect",
         fills: [{ r: 0.1, g: 0.2, b: 0.3, a: 1 }] }),
     ]);
     const sum = selectionSummary(s, ["n1"]);
