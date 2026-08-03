@@ -5,6 +5,7 @@ import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
 import { useScene } from "../store/store";
 import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
+import { attachImageRecovery } from "../renderer/imageCache";
 import { drawOverlay } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
@@ -233,6 +234,12 @@ export function App() {
   // la logica sta tutta in tools/clipboard.ts, qui c'è solo il montaggio --
   // che però è l'unico punto in cui la funzione diventa raggiungibile.
   useEffect(() => attachClipboardShortcuts(), []);
+
+  // Le immagini che non si erano caricate si riprovano quando la rete torna o
+  // quando la scheda torna in primo piano (traccia 3, task 3). Senza, un
+  // disservizio di un istante lascerebbe quel nodo come segnaposto per tutta la
+  // vita della pagina, con il file ancora lì sul disco.
+  useEffect(() => attachImageRecovery(), []);
 
   // La pillola diceva "connesso" anche a stream morto: il bootstrap era andato
   // a buon fine e nessuno rivedeva più quello stato. Adesso è SyncClient a

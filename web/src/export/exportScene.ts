@@ -1,6 +1,7 @@
 import { useScene } from "../store/store";
 import { fontString } from "../renderer/text";
 import { assetUrl } from "../rpc/assets";
+import type { ImageSource } from "../renderer/canvasRenderer";
 import type { NodeLite } from "../store/types";
 import { exportRegion, type ExportRegion, type ExportScope } from "./region";
 import { nodesToSvg, type MeasureText, type ResolveImageHref } from "./svg";
@@ -39,9 +40,13 @@ export interface ExportDeps {
   toPngBlob?: (canvas: HTMLCanvasElement) => Promise<Blob>;
   download?: (blob: Blob, filename: string) => void;
   measure?: MeasureText;
-  // I byte di un asset come data URI, per l'SVG. Iniettabile come le altre:
-  // vuole `fetch` e `FileReader`, che in un test non ci sono.
+  // I byte di un asset come data URI. Iniettabile come le altre: vuole `fetch`
+  // e `FileReader`, che in un test non ci sono. La usano ENTRAMBI i formati --
+  // l'SVG per incorporarli, il PNG per decodificarli e disegnarli.
   loadAssetDataUrl?: (docId: string, hash: string) => Promise<string | null>;
+  // Come si passa da quei byte a qualcosa che `drawImage` sa disegnare, per il
+  // PNG. Iniettabile perché vuole `new Image()` e una decodifica vera.
+  decodeImage?: (dataUrl: string) => Promise<HTMLImageElement | null>;
 }
 
 const NOTHING_SELECTED =
@@ -146,33 +151,76 @@ export async function fetchAssetDataUrl(docId: string, hash: string): Promise<st
 }
 
 /**
- * Risolve in anticipo gli asset dei nodi immagine e ritorna la funzione che
- * `nodesToSvg` userà per gli href.
+ * Un data URI in un elemento disegnabile. Non lancia MAI: un asset che non si
+ * decodifica è un'immagine mancante, non un export fallito.
  *
- * Prima e non durante: `nodesToSvg` è una funzione PURA e sincrona, e deve
- * restarlo -- è ciò che rende verificabile a tavolino la correttezza del
- * markup. Gli hash sono deduplicati: la stessa immagine usata da dieci nodi si
- * scarica (e si incorpora) una volta sola.
+ * Dimensioni nulle valgono come fallimento per la stessa ragione della cache
+ * del renderer: alcuni browser emettono `load` su byte illeggibili, e disegnare
+ * quell'elemento non produce pixel -- meglio il segnaposto del nulla.
  */
-async function imageHrefs(
+export function decodeDataUrl(dataUrl: string): Promise<HTMLImageElement | null> {
+  return new Promise((resolve) => {
+    const img = new Image();
+    img.onload = () => resolve(img.naturalWidth > 0 && img.naturalHeight > 0 ? img : null);
+    img.onerror = () => resolve(null);
+    img.src = dataUrl;
+  });
+}
+
+// Gli asset della regione, RISOLTI e ATTESI: gli href per l'SVG, le immagini
+// decodificate per il PNG, e quanti nodi immagine resteranno un segnaposto.
+interface ResolvedAssets {
+  href: ResolveImageHref;
+  images: ImageSource;
+  missing: number;
+}
+
+// Nessuna immagine per quell'hash. Non ritorna MAI "loading": l'export ha già
+// aspettato, quindi ogni nodo è o disegnato o segnaposto -- non "in arrivo".
+const NO_IMAGE = { status: "missing", image: null } as const;
+
+/**
+ * Risolve in anticipo gli asset dei nodi immagine, per entrambi i formati.
+ *
+ * PRIMA e non durante, per due ragioni diverse e ugualmente vincolanti.
+ * `nodesToSvg` è una funzione PURA e sincrona e deve restarlo -- è ciò che
+ * rende verificabile a tavolino la correttezza del markup. E `drawScene` è
+ * SINCRONA per costruzione (gira in un render loop): se le immagini non sono
+ * già pronte quando comincia a disegnare, disegna il segnaposto e non c'è un
+ * secondo giro. Prendere i pixel dalla cache del renderer -- che si riempie da
+ * sé, quando può -- vorrebbe dire che lo stesso documento esportato due volte
+ * dà due file diversi a seconda di che cosa questa sessione ha già visto
+ * passare: esportare appena aperto darebbe le croci del segnaposto, esportare
+ * un secondo dopo le fotografie. Qui i byte si chiedono e si ASPETTANO, sempre,
+ * e la sorgente delle immagini è LOCALE a questo export.
+ *
+ * Gli hash sono deduplicati: la stessa immagine usata da dieci nodi si scarica
+ * (e si decodifica) una volta sola. La decodifica la fa solo il PNG: all'SVG i
+ * byte bastano così come sono, ed è anche il motivo per cui l'SVG incorpora il
+ * file ORIGINALE invece di un ri-encoding.
+ */
+async function resolveAssets(
   nodes: readonly NodeLite[],
   docId: string,
-  load: (docId: string, hash: string) => Promise<string | null>,
-): Promise<ResolveImageHref> {
-  const hashes = [
-    ...new Set(
-      nodes
-        .filter((n) => n.kind === "image")
-        .map((n) => n.image?.assetHash ?? "")
-        .filter((h) => h !== ""),
-    ),
-  ];
-  const resolved = new Map<string, string>();
+  format: ExportFormat,
+  deps: ExportDeps,
+): Promise<ResolvedAssets> {
+  const load = deps.loadAssetDataUrl ?? fetchAssetDataUrl;
+  const decode = deps.decodeImage ?? decodeDataUrl;
+  const imageNodes = nodes.filter((n) => n.kind === "image");
+  const hashes = [...new Set(imageNodes.map((n) => n.image?.assetHash ?? "").filter((h) => h !== ""))];
+
+  const uris = new Map<string, string>();
+  const decoded = new Map<string, HTMLImageElement>();
   await Promise.all(
     hashes.map(async (hash) => {
       try {
         const uri = await load(docId, hash);
-        if (uri !== null) resolved.set(hash, uri);
+        if (uri === null) return;
+        uris.set(hash, uri);
+        if (format !== "png") return;
+        const img = await decode(uri);
+        if (img) decoded.set(hash, img);
       } catch {
         // Un asset che non si scarica è un'immagine MANCANTE, non un export
         // fallito: il documento contiene davvero un riferimento rotto, e il
@@ -180,7 +228,30 @@ async function imageHrefs(
       }
     }),
   );
-  return (hash) => resolved.get(hash) ?? null;
+
+  // Si contano i NODI e non gli hash: è quello che l'utente vede mancare nel
+  // file, ed è anche l'unico modo di contare i nodi il cui hash è vuoto -- che
+  // non hanno niente da chiedere e restano comunque un segnaposto.
+  const ok = format === "png" ? decoded : uris;
+  const missing = imageNodes.filter((n) => !ok.has(n.image?.assetHash ?? "")).length;
+
+  return {
+    href: (hash) => uris.get(hash) ?? null,
+    images: {
+      get: (_docId, hash) => {
+        const img = decoded.get(hash);
+        return img ? { status: "ready", image: img } : NO_IMAGE;
+      },
+    },
+    missing,
+  };
+}
+
+/** Quel che si dice quando il file esce con dei buchi. */
+function missingImagesNotice(count: number): string {
+  return count === 1
+    ? "un'immagine non è stata inclusa: il suo file non è raggiungibile, e al suo posto c'è un segnaposto"
+    : `${count} immagini non sono state incluse: i loro file non sono raggiungibili, e al loro posto ci sono dei segnaposti`;
 }
 
 // I byte del file. Le due strade sono davvero diverse -- il PNG passa da un
@@ -193,16 +264,15 @@ async function exportBlob(
   deps: ExportDeps,
   createCanvas: () => HTMLCanvasElement,
   measure: MeasureText,
-  docId: string,
+  assets: ResolvedAssets,
 ): Promise<Blob> {
   if (req.format === "png") {
-    // Nessun asset da scaricare: il PNG passa da drawScene, che prende le
-    // immagini già decodificate dalla cache del renderer.
-    const canvas = renderRegionToCanvas(region, req.scale, createCanvas);
+    // Le immagini arrivano da qui e NON dalla cache del renderer: sono già
+    // decodificate e già attese, quindi il disegno è deterministico.
+    const canvas = renderRegionToCanvas(region, req.scale, createCanvas, assets.images);
     return (deps.toPngBlob ?? canvasToPngBlob)(canvas);
   }
-  const href = await imageHrefs(region.nodes, docId, deps.loadAssetDataUrl ?? fetchAssetDataUrl);
-  return new Blob([nodesToSvg(region.nodes, region.bounds, measure, href)], { type: SVG_MIME });
+  return new Blob([nodesToSvg(region.nodes, region.bounds, measure, assets.href)], { type: SVG_MIME });
 }
 
 /**
@@ -234,8 +304,13 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
       return false;
     }
 
-    const blob = await exportBlob(region, req, deps, createCanvas, measure, scene.id);
+    const assets = await resolveAssets(region.nodes, scene.id, req.format, deps);
+    const blob = await exportBlob(region, req, deps, createCanvas, measure, assets);
     (deps.download ?? downloadBlob)(blob, exportFileName(scene.name, req));
+    // Il file c'è ed è quello chiesto, ma contiene dei segnaposti al posto di
+    // delle fotografie: un export che riesce a METÀ e non lo dice è il modo
+    // peggiore di fallire, perché l'utente se ne accorge da qualcun altro.
+    if (assets.missing > 0) useScene.setState({ notice: missingImagesNotice(assets.missing) });
     return true;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);

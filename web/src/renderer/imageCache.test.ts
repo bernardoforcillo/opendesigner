@@ -1,5 +1,12 @@
 import { describe, it, expect, vi } from "vitest";
-import { ImageCache, imageCache } from "./imageCache";
+import {
+  ImageCache,
+  imageCache,
+  attachImageRecovery,
+  retryDelay,
+  RETRY_BASE_MS,
+  RETRY_MAX_MS,
+} from "./imageCache";
 
 const HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
 const OTHER = "fedcba9876543210fedcba9876543210fedcba9876543210fedcba9876543210";
@@ -64,15 +71,16 @@ describe("ImageCache", () => {
     expect(after.image?.naturalWidth).toBe(40);
   });
 
-  it("un asset che non si carica diventa 'missing', e non lo si richiede più", () => {
+  it("un asset che non si carica diventa 'missing', e il render loop non lo richiede più", () => {
     const l = fakeLoader();
-    const cache = new ImageCache(l.load);
+    const cache = new ImageCache(l.load, () => {}, () => 0);
 
     cache.get("doc1", HASH);
     settle(l.created[0], false);
 
     // Il render loop continua a chiedere: senza questo la cache riproverebbe il
-    // fetch 60 volte al secondo su un'immagine che non c'è.
+    // fetch 60 volte al secondo su un'immagine che non c'è. L'orologio è fermo,
+    // quindi qui dentro non scade nessun tentativo: 60 frame = un frame.
     for (let i = 0; i < 60; i++) expect(cache.get("doc1", HASH).status).toBe("missing");
     expect(l.created.length).toBe(1);
   });
@@ -121,17 +129,6 @@ describe("ImageCache", () => {
     expect(l.created.length).toBe(0);
   });
 
-  it("clear() dimentica tutto, e la richiesta successiva ricarica", () => {
-    const l = fakeLoader();
-    const cache = new ImageCache(l.load);
-    cache.get("doc1", HASH);
-    settle(l.created[0], false);
-
-    cache.clear();
-    expect(cache.get("doc1", HASH).status).toBe("loading");
-    expect(l.created.length).toBe(2);
-  });
-
   it("non lancia quando il caricatore stesso fallisce", () => {
     // `new Image()` non esiste in ogni ambiente (un test in Node, un worker):
     // il render loop non deve morire per questo, deve disegnare il segnaposto.
@@ -159,5 +156,242 @@ describe("ImageCache", () => {
     expect(onChange).not.toHaveBeenCalled();
     settle(l.created[0], true);
     expect(onChange).toHaveBeenCalledTimes(1);
+  });
+});
+
+// --- si torna indietro da un fallimento ---------------------------------------
+//
+// "Non si riprova a ogni frame" è la regola giusta per un loop a 60 fps, ma
+// "non si riprova mai" è un'altra cosa: un server riavviato, un 5xx, una
+// richiesta in volo quando la scheda finisce in secondo piano inchioderebbero
+// quel nodo al segnaposto per tutta la vita della pagina -- con il file ancora
+// lì sul disco, e (finché l'export leggeva questa cache) anche dentro i file
+// esportati.
+
+function clocked() {
+  const l = fakeLoader();
+  let now = 1_000;
+  const onChange = vi.fn();
+  const cache = new ImageCache(l.load, onChange, () => now);
+  return { ...l, cache, onChange, tick: (ms: number) => { now += ms; } };
+}
+
+describe("ImageCache — recupero da un fallimento transitorio", () => {
+  it("dopo l'attesa riprova, e l'immagine tornata raggiungibile si ripara", () => {
+    const c = clocked();
+    c.cache.get("doc1", HASH);
+    settle(c.created[0], false);
+    expect(c.cache.get("doc1", HASH).status).toBe("missing");
+
+    // Un istante prima della scadenza non si muove niente.
+    c.tick(RETRY_BASE_MS - 1);
+    expect(c.cache.get("doc1", HASH).status).toBe("missing");
+    expect(c.created.length).toBe(1);
+
+    // Scaduta l'attesa, la richiesta riparte da sé: nessuno deve ricaricare la
+    // pagina per rivedere un'immagine che il server ha ricominciato a servire.
+    c.tick(1);
+    expect(c.cache.get("doc1", HASH).status).toBe("loading");
+    expect(c.created.length).toBe(2);
+    settle(c.created[1], true);
+    expect(c.cache.get("doc1", HASH).status).toBe("ready");
+  });
+
+  it("nemmeno dopo la scadenza il loop parte due volte: una richiesta, non sessanta", () => {
+    const c = clocked();
+    c.cache.get("doc1", HASH);
+    settle(c.created[0], false);
+    c.tick(RETRY_BASE_MS);
+    // 60 frame dopo la scadenza: il primo riparte, gli altri 59 leggono la voce
+    // "loading" che ha creato lui.
+    for (let i = 0; i < 60; i++) c.cache.get("doc1", HASH);
+    expect(c.created.length).toBe(2);
+  });
+
+  it("l'attesa raddoppia a ogni fallimento, fino a un tetto", () => {
+    // Il raddoppio distingue i due casi senza doverli riconoscere: un
+    // disservizio di un istante si recupera in due secondi, un asset che
+    // davvero non c'è finisce a costare una richiesta ogni mezzo minuto.
+    expect(retryDelay(1)).toBe(RETRY_BASE_MS);
+    expect(retryDelay(2)).toBe(RETRY_BASE_MS * 2);
+    expect(retryDelay(3)).toBe(RETRY_BASE_MS * 4);
+    expect(retryDelay(50)).toBe(RETRY_MAX_MS);
+    // ...e il tetto non diventa mai "smetti": un asset resta recuperabile.
+    expect(retryDelay(1_000)).toBe(RETRY_MAX_MS);
+
+    const c = clocked();
+    c.cache.get("doc1", HASH);
+    settle(c.created[0], false);
+    c.tick(RETRY_BASE_MS);
+    c.cache.get("doc1", HASH);
+    settle(c.created[1], false);
+
+    // Secondo fallimento: la prima attesa non basta più.
+    c.tick(RETRY_BASE_MS);
+    expect(c.cache.get("doc1", HASH).status).toBe("missing");
+    expect(c.created.length).toBe(2);
+    c.tick(RETRY_BASE_MS);
+    expect(c.cache.get("doc1", HASH).status).toBe("loading");
+    expect(c.created.length).toBe(3);
+  });
+
+  it("retryMissing() riporta l'attesa alla base: il mondo è cambiato, non è un terzo tentativo", () => {
+    const c = clocked();
+    c.cache.get("doc1", HASH);
+    settle(c.created[0], false);
+    c.tick(RETRY_BASE_MS);
+    c.cache.get("doc1", HASH);
+    settle(c.created[1], false); // due fallimenti: l'attesa sarebbe 4 * BASE
+
+    c.cache.retryMissing();
+    c.cache.get("doc1", HASH);
+    settle(c.created[2], false);
+
+    // Riparte dalla base e non da dove era arrivata: dopo un segnale esplicito
+    // ("la rete è tornata") l'attesa accumulata parlava di un mondo che non c'è
+    // più.
+    c.tick(RETRY_BASE_MS);
+    expect(c.cache.get("doc1", HASH).status).toBe("loading");
+    expect(c.created.length).toBe(4);
+  });
+
+  it("retryMissing() riprova SUBITO, senza aspettare la scadenza", () => {
+    const c = clocked();
+    c.cache.get("doc1", HASH);
+    settle(c.created[0], false);
+
+    expect(c.cache.retryMissing()).toBe(1);
+    expect(c.cache.get("doc1", HASH).status).toBe("loading");
+    expect(c.created.length).toBe(2);
+    settle(c.created[1], true);
+    expect(c.cache.get("doc1", HASH).status).toBe("ready");
+  });
+
+  it("retryMissing() NON ributta via le immagini già pronte", () => {
+    // Il nome È il contenuto: i byte a quell'URL non possono essere cambiati, e
+    // ricaricarli sarebbe solo un lampeggio di segnaposto su ogni foto della
+    // pagina a ogni riconnessione.
+    const c = clocked();
+    c.cache.get("doc1", HASH);
+    settle(c.created[0], true);
+    c.cache.get("doc1", OTHER);
+    settle(c.created[1], false);
+
+    expect(c.cache.retryMissing()).toBe(1);
+    // L'immagine pronta si legge senza nessuna richiesta nuova...
+    expect(c.cache.get("doc1", HASH).status).toBe("ready");
+    expect(c.created.length).toBe(2);
+    // ...e solo quella mancante riparte.
+    expect(c.cache.get("doc1", OTHER).status).toBe("loading");
+    expect(c.created.length).toBe(3);
+  });
+
+  it("un fallimento DEFINITIVO non si riprova: né a scadenza né a comando", () => {
+    // Un ambiente senza `new Image()` non ne guadagna uno aspettando, e un hash
+    // vuoto non ha niente da chiedere: riprovare sarebbe solo rumore.
+    let calls = 0;
+    let now = 0;
+    const cache = new ImageCache(
+      () => { calls++; throw new Error("no Image in this environment"); },
+      () => {},
+      () => now,
+    );
+    expect(cache.get("doc1", HASH).status).toBe("missing");
+    now += RETRY_MAX_MS * 10;
+    expect(cache.get("doc1", HASH).status).toBe("missing");
+    expect(cache.retryMissing()).toBe(0);
+    expect(cache.get("doc1", HASH).status).toBe("missing");
+    expect(calls).toBe(1);
+
+    expect(cache.get("doc1", "").status).toBe("missing");
+    expect(calls).toBe(1);
+  });
+
+  it("la risposta di una richiesta abbandonata non cancella il tentativo nuovo", () => {
+    // Fra la partenza e la risposta può essersi infilato un retryMissing() e un
+    // secondo tentativo: l'errore che arriva tardi dal primo non deve
+    // riportare a "missing" un'immagine che nel frattempo sta arrivando.
+    const c = clocked();
+    c.cache.get("doc1", HASH);
+    settle(c.created[0], false);
+    c.cache.retryMissing();
+    c.cache.get("doc1", HASH); // secondo tentativo, in volo
+
+    settle(c.created[0], false); // la risposta VECCHIA arriva adesso
+    expect(c.cache.get("doc1", HASH).status).toBe("loading");
+    settle(c.created[1], true);
+    expect(c.cache.get("doc1", HASH).status).toBe("ready");
+  });
+
+  it("un caricamento a dimensioni nulle è recuperabile: una risposta troncata arriva così", () => {
+    const c = clocked();
+    c.cache.get("doc1", HASH);
+    c.created[0].onload?.(); // load, ma 0x0
+    expect(c.cache.get("doc1", HASH).status).toBe("missing");
+    c.tick(RETRY_BASE_MS);
+    expect(c.cache.get("doc1", HASH).status).toBe("loading");
+    expect(c.created.length).toBe(2);
+  });
+
+  it("riprovare notifica il ridisegno, e non riprovare niente non lo notifica", () => {
+    const c = clocked();
+    c.cache.get("doc1", HASH);
+    settle(c.created[0], false);
+    c.onChange.mockClear();
+
+    c.cache.retryMissing();
+    expect(c.onChange).toHaveBeenCalledTimes(1);
+    c.onChange.mockClear();
+    c.cache.retryMissing();
+    expect(c.onChange).not.toHaveBeenCalled();
+  });
+});
+
+describe("attachImageRecovery", () => {
+  function fakeTarget() {
+    const listeners = new Map<string, () => void>();
+    return {
+      listeners,
+      addEventListener: (type: string, fn: () => void) => { listeners.set(type, fn); },
+      removeEventListener: (type: string, fn: () => void) => {
+        if (listeners.get(type) === fn) listeners.delete(type);
+      },
+    };
+  }
+
+  it("la rete tornata e la scheda tornata in primo piano riprovano; nascosta no", () => {
+    const c = clocked();
+    c.cache.get("doc1", HASH);
+    settle(c.created[0], false);
+
+    const win = fakeTarget();
+    const doc = { ...fakeTarget(), visibilityState: "hidden" };
+    const detach = attachImageRecovery(c.cache, win, doc);
+
+    // Nascosta: il browser non disegna niente, riprovare adesso vorrebbe dire
+    // spendere una richiesta per un frame che nessuno vedrà.
+    doc.listeners.get("visibilitychange")?.();
+    expect(c.created.length).toBe(1);
+
+    doc.visibilityState = "visible";
+    doc.listeners.get("visibilitychange")?.();
+    expect(c.cache.get("doc1", HASH).status).toBe("loading");
+    expect(c.created.length).toBe(2);
+
+    settle(c.created[1], false);
+    win.listeners.get("online")?.();
+    expect(c.cache.get("doc1", HASH).status).toBe("loading");
+    expect(c.created.length).toBe(3);
+
+    detach();
+    expect(win.listeners.size).toBe(0);
+    expect(doc.listeners.size).toBe(0);
+  });
+
+  it("aggancia sulla cache condivisa e sulla finestra vera, senza argomenti", () => {
+    // È così che la chiama App.tsx: un solo `useEffect`, nessun parametro.
+    const detach = attachImageRecovery();
+    expect(() => window.dispatchEvent(new Event("online"))).not.toThrow();
+    detach();
   });
 });

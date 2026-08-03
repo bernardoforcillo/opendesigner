@@ -54,13 +54,25 @@ function fakeCanvas(): HTMLCanvasElement {
   } as unknown as HTMLCanvasElement;
   const ctx = {
     canvas,
-    font: "", textBaseline: "", textAlign: "", fillStyle: "", globalAlpha: 1,
+    font: "", textBaseline: "", textAlign: "", fillStyle: "", strokeStyle: "", lineWidth: 0,
+    globalAlpha: 1,
     setTransform: () => {}, clearRect: () => {},
     measureText: (s: string) => ({ width: s.length * 10 }),
     fillText: () => {}, fill: () => {},
+    // Il ramo immagine di drawScene: o `drawImage`, o il segnaposto. Registrati
+    // perché è l'unico modo, senza pixel veri, di sapere QUALE dei due è
+    // finito nel file.
+    drawImage: (img: unknown) => { drawn.push(img); },
+    fillRect: () => {}, strokeRect: () => {},
+    beginPath: () => {}, moveTo: () => {}, lineTo: () => {}, stroke: () => { crosses++; },
   } as unknown as CanvasRenderingContext2D;
   return canvas;
 }
+
+// Che cosa il PNG ha davvero disegnato nell'ultimo export: le immagini passate
+// a drawImage e quanti segnaposto (l'unico `stroke()` di drawScene è il loro).
+let drawn: unknown[] = [];
+let crosses = 0;
 
 function deps(): ExportDeps & { saved: { blob: Blob; filename: string }[] } {
   const saved: { blob: Blob; filename: string }[] = [];
@@ -76,6 +88,8 @@ function deps(): ExportDeps & { saved: { blob: Blob; filename: string }[] } {
 beforeEach(() => {
   vi.stubGlobal("Path2D", FakePath2D);
   install(null);
+  drawn = [];
+  crosses = 0;
 });
 
 describe("runExport — SVG", () => {
@@ -327,24 +341,36 @@ describe("runExport — immagini", () => {
     expect(asked.sort()).toEqual(["abc", "def"]);
   });
 
-  it("un asset irraggiungibile non fa fallire l'export: esce il segnaposto", async () => {
+  it("un asset irraggiungibile non fa fallire l'export: esce il segnaposto, e l'utente lo SA", async () => {
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const d = { ...deps(), loadAssetDataUrl: async () => { throw new Error("404"); } };
     await expect(runExport({ format: "svg", scope: "page", scale: 1 }, d)).resolves.toBe(true);
     const text = await d.saved[0].blob.text();
     expect(text).not.toContain("<image");
     expect(text).toContain("<path");
-    // L'export è riuscito: il documento contiene un'immagine mancante, e il
-    // file lo dice invece di non esistere.
+    // L'export è riuscito -- il documento contiene davvero un riferimento
+    // rotto, e il file lo mostra invece di non esistere -- ma un file consegnato
+    // con dei buchi al posto delle fotografie non può uscire in silenzio.
+    expect(useScene.getState().notice).toMatch(/un'immagine non è stata inclusa/);
+  });
+
+  it("un export senza buchi non lascia nessun avviso", async () => {
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const d = { ...deps(), loadAssetDataUrl: async () => "data:image/png;base64,QUJD" };
+    await runExport({ format: "svg", scope: "page", scale: 1 }, d);
     expect(useScene.getState().notice).toBeNull();
   });
 
-  it("il PNG non chiede nessun asset: i pixel arrivano dalla cache del renderer", async () => {
-    install(sceneWith("Untitled", imageNode("i", "abc")));
-    const load = vi.fn(async () => "data:image/png;base64,QUJD");
-    const d = { ...deps(), loadAssetDataUrl: load };
-    await runExport({ format: "png", scope: "page", scale: 1 }, d);
-    expect(load).not.toHaveBeenCalled();
+  it("l'avviso conta i NODI che restano segnaposto, hash vuoto compreso", async () => {
+    install(sceneWith("Untitled",
+      imageNode("i1", "abc"),
+      node({ ...imageNode("i2", ""), id: "i2", orderKey: "a2", x: 300 }),
+    ));
+    const d = { ...deps(), loadAssetDataUrl: async () => null };
+    await runExport({ format: "svg", scope: "page", scale: 1 }, d);
+    // Il nodo con l'hash vuoto non ha niente da chiedere e non lo chiede, ma
+    // nel file è un buco esattamente come l'altro.
+    expect(useScene.getState().notice).toMatch(/^2 immagini non sono state incluse/);
   });
 
   it("la regione tiene conto del box dell'immagine", async () => {
@@ -353,5 +379,114 @@ describe("runExport — immagini", () => {
     await runExport({ format: "svg", scope: "page", scale: 1 }, d);
     const text = await d.saved[0].blob.text();
     expect(text).toContain('viewBox="0 0 200 100"');
+  });
+});
+
+// --- il PNG ASPETTA le immagini ----------------------------------------------
+//
+// Il difetto che questi test chiudono: il PNG passava da `drawScene` con la
+// sorgente di default, cioè la cache MUTABILE del renderer, e non aspettava
+// niente. Aprire un documento ed esportare subito dava un file con i segnaposto;
+// esportare un secondo dopo dava le fotografie. Stesso documento, due file, e
+// nessun avviso -- per di più in disaccordo con l'SVG dello stesso documento,
+// che i byte se li è sempre riscaricati.
+
+const PIXEL = { naturalWidth: 4, naturalHeight: 4 } as unknown as HTMLImageElement;
+
+describe("runExport — PNG e immagini", () => {
+  it("chiede i byte, li decodifica e li ASPETTA prima di disegnare", async () => {
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const asked: string[] = [];
+    const decoded: string[] = [];
+    const d = {
+      ...deps(),
+      loadAssetDataUrl: async (_doc: string, hash: string) => { asked.push(hash); return `data:image/png;base64,${hash}`; },
+      decodeImage: async (uri: string) => { decoded.push(uri); return PIXEL; },
+    };
+    await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(true);
+    expect(asked).toEqual(["abc"]);
+    expect(decoded).toEqual(["data:image/png;base64,abc"]);
+    // I pixel veri sono finiti sul canvas, e nessun segnaposto con loro.
+    expect(drawn).toEqual([PIXEL]);
+    expect(crosses).toBe(0);
+    expect(useScene.getState().notice).toBeNull();
+  });
+
+  it("NON legge la cache del renderer: due export dello stesso documento danno lo stesso file", async () => {
+    // La cache condivisa si riempie da sé mentre l'utente guarda lo schermo: se
+    // l'export la leggesse, il file dipenderebbe da quanto tempo il documento è
+    // aperto. Qui la sorgente è locale all'export, quindi il primo export e il
+    // secondo disegnano esattamente le stesse cose.
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const d = {
+      ...deps(),
+      loadAssetDataUrl: async () => "data:image/png;base64,QUJD",
+      decodeImage: async () => PIXEL,
+    };
+    await runExport({ format: "png", scope: "page", scale: 1 }, d);
+    const first = [...drawn];
+    drawn = [];
+    await runExport({ format: "png", scope: "page", scale: 1 }, d);
+    expect(drawn).toEqual(first);
+    expect(drawn).toEqual([PIXEL]);
+  });
+
+  it("chiede e decodifica UNA volta per hash, anche con lo stesso asset ripetuto", async () => {
+    install(sceneWith("Untitled",
+      imageNode("i1", "abc"),
+      node({ ...imageNode("i2", "abc"), id: "i2", orderKey: "a2", x: 300 }),
+    ));
+    const asked: string[] = [];
+    const decode = vi.fn(async () => PIXEL);
+    const d = {
+      ...deps(),
+      loadAssetDataUrl: async (_doc: string, hash: string) => { asked.push(hash); return "data:x"; },
+      decodeImage: decode,
+    };
+    await runExport({ format: "png", scope: "page", scale: 1 }, d);
+    expect(asked).toEqual(["abc"]);
+    expect(decode).toHaveBeenCalledTimes(1);
+    // Un asset solo, ma disegnato su tutti e due i nodi.
+    expect(drawn).toEqual([PIXEL, PIXEL]);
+  });
+
+  it("un asset irraggiungibile diventa il segnaposto, e l'export lo DICE", async () => {
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const d = { ...deps(), loadAssetDataUrl: async () => null, decodeImage: async () => PIXEL };
+    await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(true);
+    expect(drawn).toEqual([]);
+    expect(crosses).toBe(1); // la croce del segnaposto, non un'immagine
+    expect(useScene.getState().notice).toMatch(/un'immagine non è stata inclusa/);
+  });
+
+  it("byte scaricati ma non decodificabili: segnaposto e avviso, non un'eccezione", async () => {
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const d = { ...deps(), loadAssetDataUrl: async () => "data:x", decodeImage: async () => null };
+    await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(true);
+    expect(drawn).toEqual([]);
+    expect(useScene.getState().notice).toMatch(/un'immagine non è stata inclusa/);
+  });
+
+  it("l'SVG non paga la decodifica: gli bastano i byte", async () => {
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const decode = vi.fn(async () => PIXEL);
+    const d = { ...deps(), loadAssetDataUrl: async () => "data:x", decodeImage: decode };
+    await runExport({ format: "svg", scope: "page", scale: 1 }, d);
+    expect(decode).not.toHaveBeenCalled();
+  });
+
+  it("PNG e SVG dello stesso documento sono d'accordo su che cosa manca", async () => {
+    // Prima erano due percorsi diversi: l'SVG riscaricava i byte, il PNG
+    // leggeva la cache. Lo stesso documento poteva uscire con l'immagine in un
+    // formato e con il segnaposto nell'altro.
+    install(sceneWith("Untitled", imageNode("i", "abc")));
+    const d = { ...deps(), loadAssetDataUrl: async () => null, decodeImage: async () => PIXEL };
+    await runExport({ format: "png", scope: "page", scale: 1 }, d);
+    const pngNotice = useScene.getState().notice;
+    useScene.setState({ notice: null });
+    await runExport({ format: "svg", scope: "page", scale: 1 }, d);
+    expect(useScene.getState().notice).toBe(pngNotice);
+    expect(await d.saved[1].blob.text()).not.toContain("<image");
+    expect(crosses).toBe(1); // il PNG ha disegnato la stessa croce
   });
 });

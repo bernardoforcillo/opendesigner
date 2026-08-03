@@ -1,4 +1,4 @@
-import { drawScene } from "../renderer/canvasRenderer";
+import { drawScene, type ImageSource } from "../renderer/canvasRenderer";
 import type { ExportRegion } from "./region";
 
 // EXPORT PNG — un canvas FUORI SCHERMO, alla scala scelta.
@@ -76,11 +76,18 @@ function defaultCanvas(): HTMLCanvasElement {
  * contesto 2D vero (jsdom non ne ha uno): la prova che i PIXEL siano giusti
  * arriva dalla verifica in browser, quella che si può fare qui è che il canvas
  * sia della dimensione giusta e trasformato nel modo giusto.
+ *
+ * `images` sono gli asset GIÀ risolti e GIÀ attesi (li prepara
+ * export/exportScene.ts). Vanno passati: `drawScene` è sincrona e senza una
+ * sorgente pronta disegnerebbe il segnaposto, quindi lasciarla al suo default
+ * -- la cache condivisa del renderer, che si riempie quando può -- vorrebbe
+ * dire un file che dipende da che cosa questa sessione ha già visto passare.
  */
 export function renderRegionToCanvas(
   region: ExportRegion,
   scale: number,
   createCanvas: () => HTMLCanvasElement = defaultCanvas,
+  images?: ImageSource,
 ): HTMLCanvasElement {
   const { bounds } = region;
   // Per ECCESSO, e mai sotto 1: arrotondare per difetto taglierebbe l'ultima
@@ -103,8 +110,9 @@ export function renderRegionToCanvas(
 
   // La camera dell'export: zoom = scala scelta, origine spostata sull'angolo
   // della regione. Non è la camera dell'utente e non la legge -- è costruita
-  // qui apposta, ed è ciò che garantisce che due export dello stesso documento
-  // diano lo stesso file da qualunque posizione della vista.
+  // qui apposta. Insieme alle immagini risolte dal chiamante è ciò che
+  // garantisce che due export dello stesso documento diano lo stesso file: né
+  // da dove è la vista, né da che cosa è già passato dallo schermo.
   //
   // dpr: 1 perché un canvas fuori schermo non ha un dispositivo. La scala la
   // decide l'utente (1x/2x/3x) e il devicePixelRatio della macchina non deve
@@ -113,7 +121,7 @@ export function renderRegionToCanvas(
     ctx,
     region.scene,
     { x: -bounds.x * scale, y: -bounds.y * scale, zoom: scale },
-    { dpr: 1 },
+    { dpr: 1, images },
   );
   return canvas;
 }
