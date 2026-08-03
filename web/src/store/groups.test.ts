@@ -81,6 +81,41 @@ describe("contentWorldBounds", () => {
     const s = scene([group("g", "page1")]);
     expect(contentWorldBounds(s, s.nodes["g"])).toBeNull();
   });
+
+  // VEDI-vs-SELEZIONA, dal lato della cornice. Il renderer salta un nodo
+  // invisibile e con lui tutto il suo sottoalbero (canvasRenderer.ts:
+  // drawSiblings, pickIn, collectIn fanno `continue` su !visible PRIMA di
+  // scendere). Se l'unione dei figli non facesse lo stesso, la cornice di un
+  // gruppo -- e le sue 8 maniglie, e la X del pannello -- misurerebbero una
+  // geometria che non si disegna: rettangolo su canvas vuoto.
+  it("skips an INVISIBLE child: the frame measures only what is drawn", () => {
+    const s = grouped();
+    s.nodes["r1"] = { ...s.nodes["r1"], visible: false };
+    // Solo r2: (100,0)-(120,20). Con r1 dentro sarebbe {10,0,110,60}.
+    expect(contentWorldBounds(s, s.nodes["g"])).toEqual({ x: 100, y: 0, width: 20, height: 20 });
+
+    // E simmetricamente dall'altro lato.
+    const s2 = grouped();
+    s2.nodes["r2"] = { ...s2.nodes["r2"], visible: false };
+    expect(contentWorldBounds(s2, s2.nodes["g"])).toEqual({ x: 10, y: 10, width: 50, height: 50 });
+  });
+
+  it("an invisible GROUP child takes its whole subtree with it, as the renderer's descent does", () => {
+    const s = scene([
+      group("g", "page1"),
+      group("inner", "g", { orderKey: "a000001", visible: false }),
+      node("hidden", "inner", 500, 500, { orderKey: "a000001" }),
+      node("seen", "g", 10, 10, { orderKey: "a000002" }),
+    ]);
+    expect(contentWorldBounds(s, s.nodes["g"])).toEqual({ x: 10, y: 10, width: 50, height: 50 });
+  });
+
+  it("is null for a group whose children are ALL invisible: it behaves like an empty one", () => {
+    const s = grouped();
+    s.nodes["r1"] = { ...s.nodes["r1"], visible: false };
+    s.nodes["r2"] = { ...s.nodes["r2"], visible: false };
+    expect(contentWorldBounds(s, s.nodes["g"])).toBeNull();
+  });
 });
 
 // L'ANGOLO ALTO-SINISTRA DELLA CORNICE, nello spazio del PARENT: è ciò che il
@@ -122,6 +157,24 @@ describe("frameOriginOf", () => {
 
   it("falls back to the group's own x/y when the group is empty: there is no frame", () => {
     const s = scene([group("g", "page1", { x: 3, y: 4 })]);
+    expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 3, y: 4 });
+  });
+
+  // Il numero che il pannello proprietà mostra come X (selectors.ts::
+  // selectionSummary) e su cui scrive (PropertiesPanel.tsx::positionValueFor).
+  // Se contasse un figlio nascosto, digitare una X porterebbe il bordo del
+  // figlio NASCOSTO a quel numero -- e il contenuto visibile finirebbe altrove.
+  it("is the left edge of the VISIBLE content, not of a hidden child", () => {
+    const s = grouped();
+    s.nodes["r1"] = { ...s.nodes["r1"], visible: false };
+    expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 100, y: 0 });
+  });
+
+  it("falls back to the group's own x/y when EVERY child is hidden: same as empty", () => {
+    const s = grouped();
+    s.nodes["g"] = { ...s.nodes["g"], x: 3, y: 4 };
+    s.nodes["r1"] = { ...s.nodes["r1"], visible: false };
+    s.nodes["r2"] = { ...s.nodes["r2"], visible: false };
     expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 3, y: 4 });
   });
 });

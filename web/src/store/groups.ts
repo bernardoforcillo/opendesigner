@@ -32,8 +32,9 @@ export function isGroup(n: NodeLite | undefined): boolean {
 // chiunque altro il proprio.
 //
 // null quando non c'è niente da incorniciare: un gruppo vuoto (o fatto solo di
-// gruppi vuoti) non ha bounds, e chi disegna la cornice di selezione deve
-// saltarlo invece di disegnare un rettangolo degenere all'origine.
+// gruppi vuoti, o i cui figli sono tutti NASCOSTI) non ha bounds, e chi disegna
+// la cornice di selezione deve saltarlo invece di disegnare un rettangolo
+// degenere all'origine.
 export function contentWorldBounds(scene: SceneState, n: NodeLite): Bounds | null {
   return contentIn(scene, n, new Set());
 }
@@ -46,6 +47,19 @@ function contentIn(scene: SceneState, n: NodeLite, seen: Set<string>): Bounds | 
   seen.add(n.id);
   const boxes: Bounds[] = [];
   for (const c of childrenOf(scene, n.id)) {
+    // Un figlio INVISIBILE non è contenuto: la stessa regola, identica, delle
+    // tre discese del renderer -- drawSiblings, pickIn e collectIn fanno
+    // `continue` su !visible PRIMA di scendere, quindi un nodo nascosto (e con
+    // lui tutto il suo sottoalbero: non si disegna il figlio di qualcosa che
+    // non c'è) non si vede, non si clicca e il marquee non lo prende.
+    // Includerlo qui darebbe a un gruppo una cornice e 8 maniglie su canvas
+    // VUOTO -- la stessa divergenza vedi-vs-seleziona che quelle tre discese
+    // esistono per evitare -- e, peggio, il pannello proprietà (via
+    // frameOriginOf) direbbe come X il bordo del figlio nascosto: digitarci
+    // dentro un numero manderebbe il contenuto visibile da un'altra parte.
+    // Un gruppo con TUTTI i figli nascosti ricade sul ramo del gruppo vuoto
+    // (unionBounds di niente => null), che è esattamente come si comporta.
+    if (!c.visible) continue;
     const b = contentIn(scene, c, seen);
     if (b) boxes.push(b);
   }

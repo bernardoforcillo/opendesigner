@@ -1107,6 +1107,71 @@ describe("gruppi — campi geometrici", () => {
     expect(useScene.getState().gesture).toBeNull();
   });
 
+  // Un figlio NASCOSTO non è contenuto: il renderer non lo disegna (e non lo
+  // colpisce, e il marquee non lo prende). La X del pannello è il bordo
+  // sinistro della CORNICE, e la cornice è ciò che si vede: se contasse anche
+  // il nascosto, il numero mostrato sarebbe il suo bordo, e digitarci dentro
+  // porterebbe LUI a quella X lasciando il contenuto visibile altrove.
+  function groupWithHiddenChild() {
+    installScene(
+      groupNode("g", "a1"),
+      rectNode("nascosto", "a0", { parentId: "g", x: 10, y: 20, width: 30, height: 40, visible: false }),
+      rectNode("visibile", "a1", { parentId: "g", x: 100, y: 0, width: 20, height: 20 }),
+    );
+  }
+
+  it("X/Y mostrano il bordo del contenuto VISIBILE: un figlio nascosto non allarga la cornice", () => {
+    groupWithHiddenChild();
+    useScene.getState().setSelection(["g"]);
+    render(<PropertiesPanel />);
+
+    // Con il figlio nascosto dentro l'unione, X direbbe 10 e Y direbbe 0.
+    expect(field("X")).toHaveValue("100");
+    expect(field("Y")).toHaveValue("0");
+  });
+
+  it("digitare X su quel gruppo porta il contenuto VISIBILE a quella X", async () => {
+    groupWithHiddenChild();
+    useScene.getState().setSelection(["g"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.clear(field("X"));
+    await user.type(field("X"), "99{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    expect(maskOf(sync.sent[0])).toEqual(["x"]);
+    // 0 + (99 - 100): la traslazione del gruppo si sposta di -1, non di +89
+    // (che è quello che darebbe il bordo del figlio nascosto).
+    if (sync.sent[0].kind.case === "setProps") expect(sync.sent[0].kind.value.patch?.x).toBe(-1);
+
+    const scene = useScene.getState().scene!;
+    expect(contentWorldBounds(scene, scene.nodes.g)!.x).toBe(99);
+    // Il figlio visibile è davvero lì: 100 + (-1).
+    expect(scene.nodes.g.x + scene.nodes.visibile.x).toBe(99);
+  });
+
+  it("un gruppo con TUTTI i figli nascosti si comporta come uno vuoto: X è la sua traslazione", async () => {
+    installScene(
+      groupNode("g", "a1", { x: 3, y: 4 }),
+      rectNode("h1", "a0", { parentId: "g", x: 10, y: 20, visible: false }),
+      rectNode("h2", "a1", { parentId: "g", x: 100, y: 0, visible: false }),
+    );
+    useScene.getState().setSelection(["g"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    expect(field("X")).toHaveValue("3");
+
+    // E la X si scrive ASSOLUTA, come per ogni gruppo senza cornice.
+    await user.clear(field("X"));
+    await user.type(field("X"), "50{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    if (sync.sent[0].kind.case === "setProps") expect(sync.sent[0].kind.value.patch?.x).toBe(50);
+    expect(useScene.getState().scene?.nodes.g.x).toBe(50);
+  });
+
   it("un gruppo VUOTO non ha cornice: X/Y restano la sua traslazione, scritta com'è", async () => {
     installScene(groupNode("g", "a0", { x: 3, y: 4 }));
     useScene.getState().setSelection(["g"]);

@@ -82,6 +82,43 @@ describe("selectionWorldBounds", () => {
     expect(selectionWorldBounds(s, ["g"])).toBeNull();
     expect(selectionWorldBounds(s, ["a", "g"])).toEqual({ x: 0, y: 0, width: 50, height: 50 });
   });
+
+  // Il renderer salta un nodo invisibile e tutto il suo sottoalbero
+  // (canvasRenderer.ts): la cornice della selezione deve misurare LA STESSA
+  // geometria, o cornice e maniglie si allungano su canvas vuoto -- la
+  // divergenza vedi-vs-seleziona, presa dal lato dell'overlay.
+  function groupWithHiddenChild() {
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = { ...rect("g", 0, 0, 0, 0), kind: "group" };
+    s.nodes["c1"] = { ...rect("c1", 10, 10, 50, 50), parentId: "g", visible: false };
+    s.nodes["c2"] = { ...rect("c2", 100, 0, 20, 20), parentId: "g" };
+    return s;
+  }
+
+  it("a group frames only its VISIBLE children: a hidden one does not stretch the box", () => {
+    const s = groupWithHiddenChild();
+    // Con c1 (nascosto) dentro l'unione sarebbe {10,0,110,60}.
+    expect(selectionWorldBounds(s, ["g"])).toEqual({ x: 100, y: 0, width: 20, height: 20 });
+  });
+
+  it("the 8 handles sit on the visible content, not around empty canvas", () => {
+    const s = groupWithHiddenChild();
+    const box = worldBoundsToScreen(selectionWorldBounds(s, ["g"])!, identityCam);
+    const p = handlePositions(box);
+    // Il box visibile è (100,0)-(120,20): ogni maniglia ci sta sopra.
+    expect(p.nw).toEqual({ x: 100, y: 0 });
+    expect(p.se).toEqual({ x: 120, y: 20 });
+    expect(p.n).toEqual({ x: 110, y: 0 });
+    expect(p.w).toEqual({ x: 100, y: 10 });
+    // Nessuna maniglia sul figlio nascosto (che vive a sinistra, da x=10).
+    for (const q of Object.values(p)) expect(q.x).toBeGreaterThanOrEqual(100);
+  });
+
+  it("a group whose children are ALL hidden behaves like an empty one: no frame at all", () => {
+    const s = groupWithHiddenChild();
+    s.nodes["c2"] = { ...s.nodes["c2"], visible: false };
+    expect(selectionWorldBounds(s, ["g"])).toBeNull();
+  });
 });
 
 describe("worldBoundsToScreen", () => {
@@ -172,6 +209,16 @@ describe("drawOverlay smoke test", () => {
     drawOverlay(ctx, s, identityCam, ["a"], { x: 200, y: 200, width: 20, height: 20 });
     expect(calls.filter((c) => c === "strokeRect")).toHaveLength(10); // 9 selezione + 1 marquee
     expect(calls.filter((c) => c === "fillRect")).toHaveLength(9); // 8 maniglie + 1 marquee
+  });
+
+  it("draws nothing for a group whose children are all hidden: it is an empty group", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = { ...rect("g", 0, 0, 0, 0), kind: "group" };
+    s.nodes["c"] = { ...rect("c", 10, 10, 50, 50), parentId: "g", visible: false };
+    const { ctx, calls } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["g"], null);
+    expect(calls).not.toContain("strokeRect"); // né cornice né bordi delle maniglie
+    expect(calls).not.toContain("fillRect");
   });
 
   it("HANDLE_SIZE is exported and used to size the handle squares (8px, constant regardless of zoom)", () => {
