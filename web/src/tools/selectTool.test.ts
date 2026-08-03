@@ -1142,6 +1142,34 @@ describe("selectTool and groups", () => {
     expect(useScene.getState().selection).toEqual(["g"]);
   });
 
+  // Il verso opposto, e il motivo per cui il gruppo non entra MAI da solo nel
+  // marquee: "g" nasce 0x0 in (0,0), cioè sull'origine del suo parent. Una
+  // banda attorno all'origine non tocca nessun figlio (c1 parte a 10,10 e c2 a
+  // 100,0), quindi non deve selezionare niente. Prendendo il box proprio del
+  // gruppo la selezione finirebbe con cornice e 8 maniglie attorno a un
+  // contenuto tutto fuori dalla banda -- e il drag successivo manderebbe
+  // setProps per una geometria che l'utente non ha inquadrato.
+  it("a marquee that misses every child does NOT select the group by its own 0x0 box at the origin", () => {
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(at(-5, -5), ctx);
+    tool.onPointerMove!(at(5, 5), ctx);
+    tool.onPointerUp!(at(5, 5), ctx);
+    expect(useScene.getState().selection).toEqual([]);
+  });
+
+  // ...e il gruppo resta raggiungibile col marquee anche quando il suo box
+  // proprio è FUORI dalla banda: a metterlo in selezione è la politica che
+  // risale dai figli, non un rettangolo invisibile all'origine.
+  it("a marquee on one child alone still selects the group, whose own box is outside the band", () => {
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(at(95, -5), ctx);
+    tool.onPointerMove!(at(125, 25), ctx); // solo c2: (100,0)-(120,20)
+    tool.onPointerUp!(at(125, 25), ctx);
+    expect(useScene.getState().selection).toEqual(["g"]);
+  });
+
   // Il gruppo non ha un box proprio: la cornice (e quindi le maniglie) stanno
   // sull'unione dei figli, ed è da lì che il resize deve partire.
   it("moving a group moves its children, with ONE op", () => {

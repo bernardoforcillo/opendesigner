@@ -167,6 +167,35 @@ describe("nodesIntersecting", () => {
     s.nodes["a"] = rect("a", 50, 0, "a0"); // 50x50 -> (50,0)-(100,50)
     expect(nodesIntersecting(s, { x: 0, y: 0, width: 50, height: 50 })).toEqual([]);
   });
+
+  // La stessa regola di hitTest, dall'altro lato: un gruppo non si disegna,
+  // quindi non lo si può nemmeno prendere col marquee. Il suo box NON è la sua
+  // cornice, e alla creazione è 0x0 sull'origine del parent: senza il ramo
+  // esplicito una banda attorno all'origine lo prenderebbe -- boundsIntersect
+  // confronta bordi opposti con < / >, e un box degenere STRETTAMENTE dentro la
+  // banda interseca. A metterlo in selezione ci pensa la politica
+  // (store/groups.ts::selectionTargetsOf) partendo dai figli.
+  it("never returns a group: its degenerate box at the parent origin is not a frame", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 0, height: 0 };
+    s.nodes["c"] = childRect("c", "g", 100, 100, "a0"); // 50x50 -> (100,100)-(150,150)
+    // Una banda attorno all'origine: il contenuto del gruppo è 100px fuori.
+    expect(nodesIntersecting(s, { x: -5, y: -5, width: 10, height: 10 })).toEqual([]);
+    // E quando la banda prende il figlio, la risposta è il FIGLIO: il gruppo lo
+    // aggiunge selectionTargetsOf, non questa discesa.
+    expect(nodesIntersecting(s, { x: 90, y: 90, width: 30, height: 30 })).toEqual(["c"]);
+  });
+
+  it("never returns a group even when it carries a non-zero box", () => {
+    // width/height su un gruppo non li scrive nessun gesto, ma possono arrivare
+    // da un documento di un'altra versione: il ramo è sul KIND, non sul box
+    // degenere, esattamente come in drawNode e in hitTestNode.
+    const s = emptyScene("d", "n");
+    s.nodes["g"] = { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 400, height: 400 };
+    s.nodes["c"] = childRect("c", "g", 300, 300, "a0");
+    expect(nodesIntersecting(s, { x: 10, y: 10, width: 20, height: 20 })).toEqual([]);
+    expect(nodesIntersecting(s, { x: 310, y: 310, width: 20, height: 20 })).toEqual(["c"]);
+  });
 });
 
 function textNode(over: Partial<NodeLite> = {}): NodeLite {

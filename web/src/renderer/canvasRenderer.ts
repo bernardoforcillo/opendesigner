@@ -188,6 +188,9 @@ function pickIn(children: ChildIndex, siblings: NodeLite[], px: number, py: numb
 // A differenza di pickIn qui si accumula la trasformazione ANDANDO (locale ->
 // mondo) invece di invertirla: il rettangolo del marquee è uno solo e sta nel
 // mondo, mentre i box da confrontare sono uno per nodo.
+//
+// Come hitTest, non risponde MAI con un gruppo (vedi collectIn): risponde con
+// ciò che si vede, e a risalire ai gruppi è la politica di selezione.
 export function nodesIntersecting(state: SceneState, bounds: Bounds): string[] {
   const children = childIndexOf(state);
   const out: string[] = [];
@@ -214,7 +217,18 @@ function collectIn(
   for (const n of siblings) {
     if (!n.visible || seen.has(n.id)) continue;
     seen.add(n.id);
-    if (boundsIntersect(mapBounds(toWorld, boundsOfNode(n)), bounds)) out.push(n.id);
+    // Un GRUPPO non entra MAI per conto suo, come non si disegna (drawNode) e
+    // non si colpisce (shapes.ts::hitTestNode): il suo box non è la sua
+    // cornice. Alla creazione è 0x0 all'ORIGINE del parent, e boundsIntersect
+    // confronta con < / > su bordi opposti, quindi un box degenere STRETTAMENTE
+    // dentro la banda interseca: senza questo ramo un marquee tirato attorno
+    // all'origine prenderebbe ogni gruppo appena creato -- cornice e 8 maniglie
+    // attorno a un contenuto che sta cento pixel fuori dalla banda, cioè
+    // esattamente la divergenza vedi-vs-seleziona descritta qui sopra.
+    // A selezionarlo ci pensa la POLITICA (store/groups.ts::selectionTargetsOf),
+    // che risale ai gruppi dai FIGLI presi qui sotto: un gruppo entra nella
+    // selezione quando il marquee prende qualcosa che si vede di lui.
+    if (n.kind !== "group" && boundsIntersect(mapBounds(toWorld, boundsOfNode(n)), bounds)) out.push(n.id);
     const kids = children.get(n.id);
     if (!kids || kids.length === 0) continue;
     collectIn(children, kids, compose(toWorld, localTransformOf(n)), bounds, out, seen);
