@@ -202,6 +202,30 @@ export function topmostOf(scene: SceneState, ids: readonly string[]): string[] {
   return out;
 }
 
+// Un nodo è RAGGIUNGIBILE da una pagina quando, risalendo la catena dei parent,
+// si incontra quella pagina come container di un antenato (o del nodo stesso).
+// È esattamente il criterio con cui il renderer decide se disegnarlo:
+// canvasRenderer.ts::rootsOf prende i figli diretti della pagina e drawSiblings
+// ne scende il sottoalbero, quindi un nodo si vede su currentPageId sse e solo
+// se un suo antenato-o-sé ha parentId === pageId. Tenere questa funzione
+// allineata a rootsOf è ciò che impedisce la divergenza vedi-vs-seleziona
+// quando la selezione va potata per pagina (store.ts).
+//
+// false per un id assente (scene.nodes[id] undefined): un nodo che non esiste
+// non è raggiungibile da nessuna pagina, quindi questa funzione sussume anche il
+// controllo di esistenza. `seen` come in ancestorsOf: un ciclo in un documento
+// malformato non deve far risalire per sempre.
+export function isReachableFrom(scene: SceneState, id: string, pageId: string): boolean {
+  const seen = new Set<string>();
+  let cur = scene.nodes[id];
+  while (cur && !seen.has(cur.id)) {
+    if (cur.parentId === pageId) return true;
+    seen.add(cur.id);
+    cur = scene.nodes[cur.parentId];
+  }
+  return false;
+}
+
 // Un parent VALIDO: un nodo esistente oppure una Page del documento. La stringa
 // vuota non è né l'uno né l'altro -- un nodo senza parent non è raggiungibile da
 // nessuna pagina, quindi non è disegnabile né selezionabile: esisterebbe solo

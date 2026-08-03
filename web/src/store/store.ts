@@ -4,7 +4,7 @@ import { OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
-import { subtreeOf } from "./tree";
+import { isReachableFrom, subtreeOf } from "./tree";
 import type { PageLite, SceneState } from "./types";
 import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
@@ -771,6 +771,31 @@ function pruneSelection(selection: string[], scene: SceneState): string[] {
     : selection.filter((id) => id in scene.nodes);
 }
 
+// La selezione potata per PAGINA: tiene solo gli id RAGGIUNGIBILI dalla pagina
+// corrente, lo stesso scoping-per-pagina che il renderer applica a disegno,
+// hit-test e marquee (canvasRenderer.ts::rootsOf). È l'invariante vedi-vs-
+// seleziona portata sulla selezione: un nodo che un op remoto sposta su
+// un'altra pagina esiste ANCORA -- quindi la sola potatura per esistenza lo
+// terrebbe -- ma il canvas non lo disegna più, e lasciarlo selezionato
+// disegnerebbe cornice e 8 maniglie sul vuoto (overlayRenderer.ts) e farebbe
+// leggere/editare le sue proprietà al pannello alla cieca. setCurrentPage
+// azzera la selezione al cambio pagina LOCALE; questo la corregge quando il
+// cambio arriva da un op REMOTO (via rebuild).
+//
+// isReachableFrom sussume l'esistenza (un id assente non è raggiungibile da
+// nulla), quindi questa rimpiazza pruneSelection dentro rebuild senza doppio
+// filtro. pageId è quello RISOLTO da validCurrentPage: null solo per un
+// documento senza pagine (che il core non produce), dove nulla è raggiungibile
+// e la selezione si svuota -- coerente con rootsOf, che senza pagina non ha
+// radici da disegnare. Riusa lo stesso array quando non cambia niente, per non
+// svegliare i sottoscrittori zustand.
+function pruneSelectionToPage(selection: string[], scene: SceneState, pageId: string | null): string[] {
+  if (pageId === null) return selection.length === 0 ? selection : [];
+  return selection.every((id) => isReachableFrom(scene, id, pageId))
+    ? selection
+    : selection.filter((id) => isReachableFrom(scene, id, pageId));
+}
+
 // Confronto per contenuto: serve a NON chiamare set() quando la selezione
 // riconciliata coincide con quella già nello store (un set inutile sveglia
 // tutti i sottoscrittori).
@@ -869,10 +894,14 @@ interface SceneStore {
   // cambio di scene.pages, anche remoto). null solo prima del bootstrap
   // (scene === null).
   currentPageId: string | null;
-  // Invariante: selection contiene SOLO id di nodi che esistono ancora in
-  // scene.nodes. Quando un op (anche remoto, via apply) fa sparire un nodo
-  // selezionato, va tolto anche dalla selezione -- altrimenti le maniglie di
-  // resize restano "appese" a un nodo inesistente.
+  // Invariante: selection contiene SOLO id di nodi RAGGIUNGIBILI dalla pagina
+  // corrente (che è più forte di "esistono ancora in scene.nodes"). Quando un op
+  // (anche remoto, via apply) fa sparire un nodo selezionato O lo sposta su
+  // un'altra pagina, va tolto dalla selezione -- altrimenti cornice e maniglie
+  // di resize restano "appese" a un nodo che il canvas non disegna (rebuild via
+  // pruneSelectionToPage lo garantisce, come setCurrentPage per il cambio pagina
+  // locale). È lo stesso scoping-per-pagina di disegno, hit-test e marquee
+  // (canvasRenderer.ts::rootsOf): vedi-vs-seleziona anche per la cornice.
   selection: string[];
   // Rettangolo del marquee in corso, in coordinate MONDO (come tutto il resto
   // del modello). null quando non si sta trascinando un marquee.
@@ -962,20 +991,25 @@ interface SceneStore {
 // record che arriva a metà drag non fa sparire il feedback locale.
 function rebuild(st: SceneStore, confirmed: SceneState, pending: PendingOp[]): Partial<SceneStore> {
   const scene = viewOf(confirmed, pending, st.gesture?.preview.values() ?? []);
-  // Riconvalida la selezione contro i nodi rimasti (non solo per deleteNode:
-  // qualunque op che fa sparire un id -- anche futuro -- deve avere lo stesso
-  // effetto), e anche contro un rollback che ha tolto un nodo appena creato.
   // currentPageId si corregge QUI perché ogni ricostruzione della vista (record
   // dal filo via apply, rifiuto via rejectPending) può aver cambiato scene.pages
-  // -- una DeletePage remota della pagina corrente, per dire. La selezione dei
-  // nodi della pagina sparita è già stata potata qui sopra (i loro id non sono
-  // più in scene.nodes), quindi ripiegare non lascia maniglie appese.
+  // -- una DeletePage remota della pagina corrente, per dire. Va risolto PRIMA
+  // della selezione: quest'ultima si pota contro la pagina EFFETTIVA (quella su
+  // cui si ripiega), non contro quella vecchia ormai sparita.
+  const currentPageId = validCurrentPage(scene.pages, st.currentPageId);
+  // Riconvalida la selezione ai soli nodi RAGGIUNGIBILI dalla pagina corrente
+  // (isReachableFrom sussume l'esistenza, quindi copre anche il vecchio caso:
+  // qualunque op che fa sparire un id, o un rollback che toglie un nodo appena
+  // creato). Lo scoping-per-pagina è ciò che tiene la selezione in accordo con
+  // ciò che il canvas disegna: un nodo che un op remoto ha spostato su un'altra
+  // pagina, o che stava sulla pagina appena cancellata, esce di qui e non lascia
+  // cornice/maniglie/pannello appesi al vuoto (vedi pruneSelectionToPage).
   return {
     confirmed,
     pending,
     scene,
-    selection: pruneSelection(st.selection, scene),
-    currentPageId: validCurrentPage(scene.pages, st.currentPageId),
+    selection: pruneSelectionToPage(st.selection, scene, currentPageId),
+    currentPageId,
   };
 }
 

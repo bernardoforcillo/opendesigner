@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { emptyScene, type NodeLite, type SceneState } from "./types";
-import { childrenOf, documentOrder, subtreeOf, descendantsOf, ancestorsOf, isAncestorOf, topmostOf } from "./tree";
+import { childrenOf, documentOrder, subtreeOf, descendantsOf, ancestorsOf, isAncestorOf, isReachableFrom, topmostOf } from "./tree";
 
 function node(id: string, parentId: string, orderKey: string): NodeLite {
   return {
@@ -183,5 +183,45 @@ describe("documento malformato", () => {
     // propria catena di antenati.
     expect(ids(ancestorsOf(s, "a"))).toEqual(["b"]);
     expect(isAncestorOf(s, "a", "b")).toBe(true);
+  });
+});
+
+// Raggiungibilità da una pagina: stesso criterio con cui rootsOf decide se
+// disegnare un nodo, quindi ciò che tiene la selezione scoping-per-pagina in
+// accordo col canvas (store.ts::pruneSelectionToPage).
+describe("isReachableFrom", () => {
+  // Come tree() ma con una seconda pagina e un nodo che le pende sotto:
+  //   page1 ── g1 ── c1 ── d1 ; g1 ── c2 ; page1 ── other
+  //   page2 ── far
+  function twoPages(): SceneState {
+    const s = tree();
+    s.pages.push({ id: "page2", name: "Page 2" });
+    s.nodes["far"] = node("far", "page2", "a1");
+    return s;
+  }
+
+  it("è vero per un figlio DIRETTO della pagina", () => {
+    expect(isReachableFrom(twoPages(), "g1", "page1")).toBe(true);
+    expect(isReachableFrom(twoPages(), "far", "page2")).toBe(true);
+  });
+
+  it("è vero per un discendente PROFONDO (risale g1>c1>d1 fino a page1)", () => {
+    expect(isReachableFrom(twoPages(), "d1", "page1")).toBe(true);
+  });
+
+  it("è falso per un nodo che pende da un'ALTRA pagina", () => {
+    expect(isReachableFrom(twoPages(), "d1", "page2")).toBe(false);
+    expect(isReachableFrom(twoPages(), "far", "page1")).toBe(false);
+  });
+
+  it("è falso per un id inesistente (sussume l'esistenza)", () => {
+    expect(isReachableFrom(twoPages(), "ghost", "page1")).toBe(false);
+  });
+
+  it("non manda in loop su un ciclo staccato da ogni pagina", () => {
+    const s = emptyScene("doc1", "Untitled");
+    s.nodes["a"] = node("a", "b", "a1");
+    s.nodes["b"] = node("b", "a", "a1");
+    expect(isReachableFrom(s, "a", "page1")).toBe(false);
   });
 });

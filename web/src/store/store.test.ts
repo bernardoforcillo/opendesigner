@@ -147,3 +147,65 @@ describe("currentPageId (stato di vista)", () => {
     expect(useScene.getState().scene!.pages.find((p) => p.id === "page1")!.name).toBe("Cover");
   });
 });
+
+function reparentOp(id: string, newParentId: string, orderKey: string) {
+  return create(OpSchema, {
+    opId: "op-rep-" + id, docId: "doc1",
+    kind: { case: "reparentNode", value: { id, newParentId, orderKey } },
+  });
+}
+
+function createGroupOp(id: string) {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Group", visible: true, opacity: 1,
+    shape: { case: "group", value: {} },
+  });
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+// VEDI-vs-SELEZIONA dal lato della cornice: la selezione è stato di vista
+// scoping-per-pagina come disegno/hit-test/marquee (canvasRenderer.ts::rootsOf).
+// Un op REMOTO che sposta il nodo selezionato su un'altra pagina lo lascia
+// esistente ma non più raggiungibile dalla pagina corrente: tenerlo selezionato
+// disegnerebbe cornice e 8 maniglie sul vuoto (overlayRenderer.ts) e il pannello
+// proprietà lo editerebbe alla cieca. setCurrentPage azzera la selezione al
+// cambio pagina LOCALE; questo copre l'arrivo REMOTO, che passa da rebuild.
+describe("selezione scoping-per-pagina (rebuild da op remoto)", () => {
+  beforeEach(() => {
+    useScene.setState({ selection: [], marquee: null, gesture: null });
+    useScene.getState().setScene(emptyScene("doc1", "Untitled"));
+  });
+
+  it("REGRESSION: un reparent remoto del nodo selezionato su un'altra pagina lo toglie dalla selezione", () => {
+    useScene.getState().apply(createPageOp("page2", "Page 2"));
+    useScene.getState().apply(createRectOp("n1")); // figlio di page1
+    useScene.getState().setSelection(["n1"]);
+    // client B sposta n1 su page2 mentre A guarda page1
+    useScene.getState().apply(reparentOp("n1", "page2", "a0"));
+    // n1 esiste ANCORA (non è una delete), ma non è più raggiungibile da page1:
+    // il canvas non lo disegna, quindi cornice/maniglie/pannello non devono più
+    // puntarci.
+    expect(useScene.getState().scene?.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().currentPageId).toBe("page1");
+    expect(useScene.getState().selection).toEqual([]);
+  });
+
+  it("un reparent remoto DENTRO la pagina corrente (in un gruppo) mantiene la selezione", () => {
+    useScene.getState().apply(createGroupOp("g1")); // figlio di page1
+    useScene.getState().apply(createRectOp("n1")); // figlio di page1
+    useScene.getState().setSelection(["n1"]);
+    // n1 finisce sotto g1: cambia parent ma resta raggiungibile da page1.
+    useScene.getState().apply(reparentOp("n1", "g1", "a0"));
+    expect(useScene.getState().selection).toEqual(["n1"]);
+  });
+
+  it("toglie SOLO i nodi finiti fuori pagina da una selezione multipla, tenendo il resto in ordine", () => {
+    useScene.getState().apply(createPageOp("page2", "Page 2"));
+    useScene.getState().apply(createRectOp("n1"));
+    useScene.getState().apply(createRectOp("n2"));
+    useScene.getState().apply(createRectOp("n3"));
+    useScene.getState().setSelection(["n1", "n2", "n3"]);
+    useScene.getState().apply(reparentOp("n2", "page2", "a0"));
+    expect(useScene.getState().selection).toEqual(["n1", "n3"]);
+  });
+});
