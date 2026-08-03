@@ -5,9 +5,12 @@ import {
   worldBoundsToScreen,
   handlePositions,
   HANDLE_SIZE,
+  PEN_ANCHOR_SIZE,
+  PEN_ANCHOR_GRAB_PX,
 } from "./overlayRenderer";
 import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
+import type { AnchorLite, NodeLite } from "../store/types";
+import type { PenPreview } from "../store/vectorGeometry";
 import type { Camera } from "../canvas/camera";
 
 function rect(id: string, x: number, y: number, w = 50, h = 50): NodeLite {
@@ -139,5 +142,154 @@ describe("drawOverlay smoke test", () => {
 
   it("HANDLE_SIZE is exported and used to size the handle squares (8px, constant regardless of zoom)", () => {
     expect(HANDLE_SIZE).toBe(8);
+  });
+});
+
+// --- il path in corso del PEN TOOL ------------------------------------------
+
+// Come fakeCtx, ma registra anche gli ARGOMENTI: l'anteprima del pen tool è
+// fatta di curve, e "ha chiamato bezierCurveTo" non basta a dire che le ha
+// disegnate nel posto giusto.
+function penCtx() {
+  const calls: string[] = [];
+  const args: Record<string, unknown[][]> = {};
+  const rec = (name: string) => (...a: unknown[]) => {
+    calls.push(name);
+    (args[name] ??= []).push(a);
+  };
+  const ctx: Record<string, unknown> = {
+    canvas: { width: 800, height: 600 },
+    setTransform: rec("setTransform"),
+    clearRect: rec("clearRect"),
+    strokeRect: rec("strokeRect"),
+    fillRect: rec("fillRect"),
+    beginPath: rec("beginPath"),
+    moveTo: rec("moveTo"),
+    lineTo: rec("lineTo"),
+    bezierCurveTo: rec("bezierCurveTo"),
+    arc: rec("arc"),
+    stroke: rec("stroke"),
+    fill: rec("fill"),
+    setLineDash: rec("setLineDash"),
+    lineWidth: 0,
+    strokeStyle: "",
+    fillStyle: "",
+  };
+  const count = (name: string) => calls.filter((c) => c === name).length;
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls, args, count };
+}
+
+const corner = (x: number, y: number): AnchorLite => ({ x, y, inX: 0, inY: 0, outX: 0, outY: 0 });
+const preview = (p: Partial<PenPreview> & Pick<PenPreview, "anchors">): PenPreview => ({
+  next: null, active: null, ...p,
+});
+
+describe("drawOverlay: l'anteprima del pen tool", () => {
+  const scene = emptyScene("d", "n");
+
+  it("senza anteprima non disegna nessun path (l'overlay resta quello di M1)", () => {
+    const { ctx, calls } = penCtx();
+    drawOverlay(ctx, scene, identityCam, [], null, null);
+    expect(calls).not.toContain("bezierCurveTo");
+    expect(calls).not.toContain("fillRect");
+  });
+
+  it("un'anteprima SENZA ancoraggi non disegna niente", () => {
+    const { ctx, calls } = penCtx();
+    drawOverlay(ctx, scene, identityCam, [], null, preview({ anchors: [] }));
+    expect(calls).not.toContain("beginPath");
+    expect(calls).not.toContain("fillRect");
+  });
+
+  it("un solo ancoraggio: nessun segmento, solo il suo quadratino", () => {
+    const { ctx, count } = penCtx();
+    drawOverlay(ctx, scene, identityCam, [], null, preview({ anchors: [corner(10, 10)] }));
+    expect(count("bezierCurveTo")).toBe(0); // niente da cui partire
+    expect(count("fillRect")).toBe(1);
+    expect(count("strokeRect")).toBe(1);
+  });
+
+  it("disegna una curva per segmento e un quadratino per ancoraggio", () => {
+    const { ctx, count } = penCtx();
+    drawOverlay(ctx, scene, identityCam, [], null, preview({
+      anchors: [corner(0, 0), corner(50, 0), corner(50, 50)],
+    }));
+    expect(count("bezierCurveTo")).toBe(2); // 3 ancoraggi = 2 segmenti
+    expect(count("stroke")).toBe(1); // un solo tratto per tutto il contorno
+    expect(count("fillRect")).toBe(3);
+  });
+
+  it("è disegnata in spazio SCHERMO: la camera converte ogni punto di controllo", () => {
+    const cam: Camera = { x: 10, y: 20, zoom: 2 };
+    const { ctx, args } = penCtx();
+    drawOverlay(ctx, scene, cam, [], null, preview({
+      // Il secondo ancoraggio ha una maniglia entrante: il suo punto di
+      // controllo deve passare dalla camera come tutti gli altri.
+      anchors: [corner(0, 0), { x: 50, y: 0, inX: -10, inY: 0, outX: 0, outY: 0 }],
+    }));
+    expect(args["moveTo"][0]).toEqual([10, 20]); // mondo (0,0)
+    // c1 = uscente del primo (nulla, quindi l'ancoraggio stesso), c2 =
+    // entrante del secondo (mondo 40,0), arrivo = mondo (50,0).
+    expect(args["bezierCurveTo"][0]).toEqual([10, 20, 90, 20, 110, 20]);
+  });
+
+  it("il segmento PENDENTE segue il cursore ed è tratteggiato", () => {
+    const { ctx, count, args } = penCtx();
+    drawOverlay(ctx, scene, identityCam, [], null, preview({
+      anchors: [corner(0, 0)],
+      next: { x: 60, y: 20 },
+    }));
+    expect(count("bezierCurveTo")).toBe(1);
+    // Il punto d'arrivo non ha maniglia: il secondo controllo cade su di lui.
+    expect(args["bezierCurveTo"][0]).toEqual([0, 0, 60, 20, 60, 20]);
+    // Tratteggio acceso e SPENTO: lasciarlo acceso sporcherebbe il prossimo
+    // disegno dell'overlay (i quadratini qui sotto, e il frame successivo).
+    expect(args["setLineDash"].map((a) => a[0])).toEqual([[4, 3], []]);
+  });
+
+  it("mostra le maniglie del solo ancoraggio ATTIVO, e solo quelle esistenti", () => {
+    const { ctx, count } = penCtx();
+    drawOverlay(ctx, scene, identityCam, [], null, preview({
+      anchors: [
+        { x: 0, y: 0, inX: -10, inY: 0, outX: 10, outY: 0 },
+        { x: 50, y: 0, inX: -5, inY: 0, outX: 5, outY: 0 },
+      ],
+      active: 0,
+    }));
+    // Due bastoncini e due pallini per l'ancoraggio 0. Quelle dell'ancoraggio 1
+    // NON si disegnano: è geometria già decisa, e mostrarle tutte
+    // trasformerebbe l'anteprima in una ragnatela.
+    expect(count("lineTo")).toBe(2);
+    expect(count("arc")).toBe(2);
+    expect(count("fill")).toBe(2);
+  });
+
+  it("un ancoraggio attivo d'ANGOLO non disegna maniglie a lunghezza zero", () => {
+    const { ctx, count } = penCtx();
+    drawOverlay(ctx, scene, identityCam, [], null, preview({
+      anchors: [corner(0, 0)],
+      active: 0,
+    }));
+    expect(count("lineTo")).toBe(0);
+    expect(count("arc")).toBe(0);
+  });
+
+  it("convive con la selezione e col marquee senza cancellarli", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = rect("a", 0, 0);
+    const { ctx, count } = penCtx();
+    drawOverlay(ctx, s, identityCam, ["a"], { x: 0, y: 0, width: 10, height: 10 },
+      preview({ anchors: [corner(200, 200)] }));
+    // 8 maniglie + 1 marquee + 1 ancoraggio del pen
+    expect(count("fillRect")).toBe(10);
+    // 1 bbox + 8 bordi maniglia + 1 marquee + 1 ancoraggio del pen
+    expect(count("strokeRect")).toBe(11);
+  });
+
+  it("le misure dell'ancoraggio sono px SCHERMO e la presa è più generosa del disegno", () => {
+    // Stessa relazione delle maniglie di resize (8px disegnati, 6px di raggio
+    // di presa): il bersaglio non è mai più piccolo di quello che si vede.
+    expect(PEN_ANCHOR_SIZE).toBe(6);
+    expect(PEN_ANCHOR_GRAB_PX).toBeGreaterThanOrEqual(PEN_ANCHOR_SIZE / 2);
   });
 });

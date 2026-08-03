@@ -37,6 +37,31 @@ export function outHandlePoint(o: Origin, a: AnchorLite): PointLite {
   return { x: o.x + a.x + a.outX, y: o.y + a.y + a.outY };
 }
 
+// Il path che il PEN TOOL sta disegnando, in coordinate MONDO -- il nodo non
+// esiste ancora (l'intera creazione è UN gesto e produce UN solo op alla fine),
+// quindi non c'è nessuna origine a cui gli ancoraggi possano essere locali.
+//
+// È il canale con cui il tool parla all'OVERLAY: lo scrive tools/penTool.ts, lo
+// tiene lo store accanto al marquee (stessa forma: stato di anteprima in
+// coordinate mondo che l'overlay disegna) e lo legge
+// renderer/overlayRenderer.ts. La geometria vive qui e non nel tool perché la
+// leggono in due, e questo modulo è già l'unico posto in cui si legge un path.
+export interface PenPreview {
+  // Gli ancoraggi già posati. Il contorno è sempre APERTO: chiudere finisce il
+  // path, quindi un'anteprima chiusa non esiste.
+  readonly anchors: readonly AnchorLite[];
+  // Dove cadrebbe il prossimo ancoraggio: l'overlay ci disegna il segmento che
+  // segue il cursore. null durante un trascinamento (il cursore sta definendo
+  // una MANIGLIA, non un punto nuovo: disegnare il segmento pendente direbbe
+  // una cosa falsa).
+  readonly next: PointLite | null;
+  // L'indice dell'ancoraggio le cui maniglie si stanno trascinando, o null
+  // fuori dal trascinamento. Solo le SUE maniglie si disegnano: quelle degli
+  // ancoraggi già posati sono geometria decisa, e mostrarle tutte
+  // trasformerebbe l'anteprima in una ragnatela.
+  readonly active: number | null;
+}
+
 // "Ha una maniglia" = l'offset non è nullo. Serve all'overlay (una maniglia
 // inesistente non si disegna e non si può afferrare) e al pen tool, non al
 // renderer del path -- vedi sopra: disegnare non ha bisogno di distinguere.

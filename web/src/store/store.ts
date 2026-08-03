@@ -5,6 +5,7 @@ import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
 import type { SceneState } from "./types";
+import type { PenPreview } from "./vectorGeometry";
 import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
 
@@ -741,6 +742,14 @@ interface SceneStore {
   // Rettangolo del marquee in corso, in coordinate MONDO (come tutto il resto
   // del modello). null quando non si sta trascinando un marquee.
   marquee: Bounds | null;
+  // Il path che il pen tool sta disegnando, in coordinate MONDO (vedi
+  // store/vectorGeometry.ts::PenPreview). null quando non si sta disegnando.
+  //
+  // Sta qui per la stessa ragione del marquee: è ANTEPRIMA, non documento. Il
+  // nodo vettoriale non esiste finché il path non è finito -- l'intera
+  // creazione è un gesto e produce un solo op -- quindi il path in corso non
+  // può passare da `scene`, e l'overlay è l'unico posto in cui può vedersi.
+  penPreview: PenPreview | null;
   // Trasporto verso il server: null finché SyncClient non si registra (test
   // isolati, bootstrap non ancora completato).
   sync: OpSink | null;
@@ -798,6 +807,7 @@ interface SceneStore {
   toggleSelection: (id: string) => void;
   clearSelection: () => void;
   setMarquee: (b: Bounds | null) => void;
+  setPenPreview: (p: PenPreview | null) => void;
   // Accende il flag di editing: textTool lo chiama subito dopo aver creato il
   // nodo, il doppio click di selectTool lo chiama su un nodo testo esistente.
   // Se una sessione era già aperta su un ALTRO nodo, la chiude/pulisce prima
@@ -838,6 +848,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   camera: { x: 0, y: 0, zoom: 1 },
   selection: [],
   marquee: null,
+  penPreview: null,
   sync: null,
   gesture: null,
   editingNodeId: null,
@@ -1249,6 +1260,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     })),
   clearSelection: () => set({ selection: [] }),
   setMarquee: (b) => set({ marquee: b }),
+  setPenPreview: (p) => set({ penPreview: p }),
 
   // Chiude/pulisce QUALUNQUE sessione già aperta PRIMA di aprirne una nuova
   // (bug trovato in review): senza questo, una seconda beginTextEditing --
