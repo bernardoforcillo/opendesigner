@@ -9,7 +9,7 @@ import {
   mapBounds,
   type Transform,
 } from "../canvas/transform";
-import { type Bounds, boundsIntersect, boundsOfNode } from "../canvas/geometry";
+import { type Bounds, boundsIntersect, boundsOfNode, intersectBounds } from "../canvas/geometry";
 import { childIndexOf } from "../store/tree";
 import { nodePath, hitTestNode } from "./shapes";
 import { drawText } from "./text";
@@ -105,6 +105,18 @@ function drawSiblings(ctx: CanvasRenderingContext2D, children: ChildIndex, sibli
     ctx.save();
     const t = localTransformOf(n);
     ctx.transform(t.a, t.b, t.c, t.d, t.e, t.f);
+    // Un FRAME con clipsContent ritaglia i figli al PROPRIO box. Il clip sta
+    // qui, DENTRO il save/restore e DOPO la trasformazione: è quindi nello
+    // spazio locale dei figli, dove il box del frame è (0,0,width,height) --
+    // l'origine del frame è l'origine dei figli. È lo STESSO ritaglio che pickIn
+    // applica al punto e collectIn alla banda (via intersectBounds): vedi-vs-
+    // seleziona, ciò che il clip nasconde al disegno non si clicca e il marquee
+    // non lo prende. Un frame senza clipsContent lascia sporgere i figli.
+    if (n.kind === "frame" && n.clipsContent) {
+      const clip = new Path2D();
+      clip.rect(0, 0, n.width, n.height);
+      ctx.clip(clip);
+    }
     drawSiblings(ctx, children, kids, seen);
     ctx.restore();
   }
@@ -122,6 +134,12 @@ function drawNode(ctx: CanvasRenderingContext2D, n: NodeLite): void {
   // di un'altra versione -- comparirebbe come un rettangolo pieno che l'utente
   // non ha mai disegnato.
   if (n.kind === "group") return;
+  // Un FRAME invece SI DISEGNA: ha geometria propria (il box è suo, non
+  // l'unione dei figli) e qui cade sul ramo forma qui sotto -- box riempito coi
+  // suoi fills come un rettangolo (nodePath lo tiene a spigoli vivi). drawNode
+  // gira PRIMA della discesa nei figli (drawSiblings), quindi il box del frame
+  // finisce dietro il proprio contenuto: è lo sfondo dell'artboard. Il clip
+  // eventuale dei figli è nella discesa, non qui.
   // Il guard sulla dimensione NON vale per il testo: l'altezza di un nodo
   // testo la produce il layout (e la width è solo la larghezza di wrap),
   // quindi un testo con height 0 -- un nodo appena creato -- deve comunque
@@ -166,8 +184,19 @@ function pickIn(children: ChildIndex, siblings: NodeLite[], px: number, py: numb
     const kids = children.get(n.id);
     if (kids && kids.length > 0) {
       const inner = applyTransform(invertTransform(localTransformOf(n)), px, py);
-      const hit = pickIn(children, kids, inner.x, inner.y, seen);
-      if (hit) return hit;
+      // Un FRAME con clipsContent nasconde i figli fuori dal proprio box: se il
+      // punto (già nello spazio locale del frame, dove il box è
+      // (0,0,width,height)) cade fuori, quei figli sono ritagliati via -- non si
+      // disegnano lì (drawSiblings) e non si devono cliccare. Stessa geometria,
+      // stesso risultato: vedi-vs-seleziona. Il frame stesso resta colpibile sul
+      // suo box (hitTestNode qui sotto). Senza clip la discesa è come sempre.
+      const clipsAway =
+        n.kind === "frame" && n.clipsContent &&
+        !(inner.x >= 0 && inner.x <= n.width && inner.y >= 0 && inner.y <= n.height);
+      if (!clipsAway) {
+        const hit = pickIn(children, kids, inner.x, inner.y, seen);
+        if (hit) return hit;
+      }
     }
     if (hitTestNode(n, px, py)) return n.id;
   }
@@ -228,9 +257,23 @@ function collectIn(
     // A selezionarlo ci pensa la POLITICA (store/groups.ts::selectionTargetsOf),
     // che risale ai gruppi dai FIGLI presi qui sotto: un gruppo entra nella
     // selezione quando il marquee prende qualcosa che si vede di lui.
-    if (n.kind !== "group" && boundsIntersect(mapBounds(toWorld, boundsOfNode(n)), bounds)) out.push(n.id);
+    const worldBox = mapBounds(toWorld, boundsOfNode(n));
+    if (n.kind !== "group" && boundsIntersect(worldBox, bounds)) out.push(n.id);
     const kids = children.get(n.id);
     if (!kids || kids.length === 0) continue;
-    collectIn(children, kids, compose(toWorld, localTransformOf(n)), bounds, out, seen);
+    // Un FRAME con clipsContent restringe la banda al proprio box MONDO prima di
+    // scendere: i figli contano solo per la parte che si VEDE dentro il frame,
+    // esattamente come il disegno li ritaglia (drawSiblings) e l'hit-test li
+    // nasconde (pickIn). intersectBounds torna null quando la banda non tocca
+    // affatto il box del frame -- lì non c'è niente di visibile da prendere, e
+    // la discesa si ferma. Senza clip la banda scende intatta e i figli possono
+    // sporgere. Ritagli annidati (frame dentro frame) si compongono da soli:
+    // ogni livello restringe ancora.
+    let childBounds: Bounds | null = bounds;
+    if (n.kind === "frame" && n.clipsContent) {
+      childBounds = intersectBounds(bounds, worldBox);
+      if (!childBounds) continue;
+    }
+    collectIn(children, kids, compose(toWorld, localTransformOf(n)), childBounds, out, seen);
   }
 }

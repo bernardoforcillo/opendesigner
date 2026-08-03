@@ -1,8 +1,25 @@
-import { describe, it, expect, afterEach, vi } from "vitest";
+import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { hitTest, nodesIntersecting, resizeCanvasToDisplaySize, drawScene } from "./canvasRenderer";
 import type { Camera } from "../canvas/camera";
 import { emptyScene } from "../store/types";
-import type { NodeLite } from "../store/types";
+import type { NodeLite, SceneState } from "../store/types";
+
+// jsdom non ha Path2D: lo stub registra le sub-path costruite (rect/roundRect/
+// ellipse) così un test può leggere COSA è stato disegnato o ritagliato senza
+// un canvas vero. Va installato con vi.stubGlobal PRIMA di una drawScene che
+// tocchi nodePath (una scena di solo testo non lo tocca).
+class FakePath2D {
+  ops: { op: string; args: number[] }[] = [];
+  rect(x: number, y: number, w: number, h: number): void { this.ops.push({ op: "rect", args: [x, y, w, h] }); }
+  roundRect(x: number, y: number, w: number, h: number, r: number): void { this.ops.push({ op: "roundRect", args: [x, y, w, h, r] }); }
+  ellipse(cx: number, cy: number, rx: number, ry: number): void { this.ops.push({ op: "ellipse", args: [cx, cy, rx, ry] }); }
+}
+
+function frameNode(id: string, parentId: string, x: number, y: number, w: number, h: number, clips: boolean, order = "a0"): NodeLite {
+  return { id, parentId, orderKey: order, name: id, visible: true, opacity: 1,
+    x, y, width: w, height: h, rotation: 0, fills: [{ r: 0.9, g: 0.9, b: 0.9, a: 1 }],
+    kind: "frame", cornerRadius: 0, clipsContent: clips };
+}
 
 // Duck-typed stand-in for HTMLCanvasElement: resizeCanvasToDisplaySize only
 // touches clientWidth/clientHeight/width/height, so a plain object is enough
@@ -123,6 +140,41 @@ describe("hitTest with nesting", () => {
   });
 });
 
+// VEDI-vs-SELEZIONA per un FRAME, lato hit-test. Un frame si colpisce sul
+// PROPRIO box (cliccare il vuoto = selezionare il frame), e -- se clipsContent
+// -- un punto sulla parte RITAGLIATA VIA di un figlio non colpisce il figlio,
+// esattamente come lì non si disegna. Senza clip il figlio sporge e si clicca.
+describe("hitTest with a frame", () => {
+  // Frame F (0,0 100x100) con un figlio C (local 80,80 50x50): C sporge oltre
+  // il bordo destro/basso del frame (il suo box mondo arriva a 130,130, il
+  // frame finisce a 100,100).
+  function framed(clips: boolean): SceneState {
+    const s = emptyScene("d", "n");
+    s.nodes["F"] = frameNode("F", "page1", 0, 0, 100, 100, clips);
+    s.nodes["C"] = childRect("C", "F", 80, 80, "a0");
+    return s;
+  }
+
+  it("clicking the empty body of a frame selects the FRAME (artboard convention)", () => {
+    expect(hitTest(framed(true), 10, 10)).toBe("F");
+  });
+
+  it("clicking a child inside the frame selects the child, not the frame", () => {
+    expect(hitTest(framed(true), 90, 90)).toBe("C");
+  });
+
+  it("does NOT hit a child on the part the frame clips away", () => {
+    // (120,120) sta sul figlio ma FUORI dal box del frame: il clip lo nasconde,
+    // e lì non c'è nemmeno il frame -- quindi niente.
+    expect(hitTest(framed(true), 120, 120)).toBeNull();
+  });
+
+  it("DOES hit the overflowing child when the frame does not clip", () => {
+    // Stesso punto, ma senza clip il figlio sporge e si vede: si clicca.
+    expect(hitTest(framed(false), 120, 120)).toBe("C");
+  });
+});
+
 // La terza domanda sulla stessa discesa (la prima è "disegna", la seconda
 // "cosa c'è sotto il puntatore"): "cosa c'è dentro questo rettangolo mondo".
 // Deve rispondere con gli stessi nodi delle altre due, altrimenti il marquee
@@ -198,6 +250,35 @@ describe("nodesIntersecting", () => {
   });
 });
 
+// VEDI-vs-SELEZIONA per un FRAME, lato marquee. La banda prende il frame sul
+// suo box (come un rettangolo); e -- se clipsContent -- NON prende un figlio
+// nell'area che il frame ritaglia via, perché lì il figlio non si vede. Senza
+// clip il figlio sporge e la banda lo prende.
+describe("nodesIntersecting with a frame", () => {
+  function framed(clips: boolean): SceneState {
+    const s = emptyScene("d", "n");
+    s.nodes["F"] = frameNode("F", "page1", 0, 0, 100, 100, clips);
+    s.nodes["C"] = childRect("C", "F", 80, 80, "a0"); // box mondo (80,80)-(130,130)
+    return s;
+  }
+
+  it("takes the frame on its own box, and a child on its visible (in-frame) part", () => {
+    // Banda (85,85)-(95,95): dentro il frame e sulla parte visibile di C.
+    expect(nodesIntersecting(framed(true), { x: 85, y: 85, width: 10, height: 10 })).toEqual(["F", "C"]);
+  });
+
+  it("does NOT take a child through the area the frame clips away", () => {
+    // Banda (110,110)-(120,120): tutta oltre il bordo del frame, sul pezzo di C
+    // ritagliato via. Non prende C (clip) né F (la banda è fuori dal suo box).
+    expect(nodesIntersecting(framed(true), { x: 110, y: 110, width: 10, height: 10 })).toEqual([]);
+  });
+
+  it("takes the overflowing child there when the frame does not clip", () => {
+    // Stessa banda: senza clip il pezzo di C che sporge si vede, e si prende.
+    expect(nodesIntersecting(framed(false), { x: 110, y: 110, width: 10, height: 10 })).toEqual(["C"]);
+  });
+});
+
 function textNode(over: Partial<NodeLite> = {}): NodeLite {
   return { id: "t", parentId: "page1", orderKey: "a1", name: "Text", visible: true, opacity: 1,
     x: 10, y: 20, width: 200, height: 40, rotation: 0, fills: [{ r: 0, g: 0, b: 0, a: 1 }],
@@ -218,6 +299,7 @@ function textNode(over: Partial<NodeLite> = {}): NodeLite {
 function fakeCtx() {
   const fillText: { text: string; x: number; y: number }[] = [];
   const fills: unknown[] = [];
+  const clips: unknown[] = [];
   let cur = { x: 0, y: 0 };
   const stack: { x: number; y: number }[] = [];
   const ctx = {
@@ -238,11 +320,15 @@ function fakeCtx() {
     measureText: (s: string) => ({ width: s.length * 10 }),
     fillText: (t: string, x: number, y: number) => { fillText.push({ text: t, x: cur.x + x, y: cur.y + y }); },
     fill: (p: unknown) => { fills.push(p); },
+    // Il clip di un frame: si registra la sub-path ricevuta (uno stub FakePath2D
+    // con le sue ops) così il test può leggere il box a cui il frame ritaglia.
+    clip: (p: unknown) => { clips.push(p); },
   };
   return {
     ctx: ctx as unknown as CanvasRenderingContext2D,
     fillText,
     fills,
+    clips,
     // Quanti save() non hanno ancora ricevuto il loro restore().
     open: () => stack.length,
   };
@@ -388,6 +474,67 @@ describe("drawScene with nesting", () => {
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.open()).toBe(0);
+  });
+});
+
+// UN FRAME SI DISEGNA (a differenza del gruppo): il suo box riempito coi suoi
+// fills, PRIMA dei figli (è lo sfondo dell'artboard). Se clipsContent, i figli
+// sono ritagliati al box del frame -- nello STESSO spazio locale in cui sono
+// disegnati (l'origine del frame è l'origine dei figli), quindi il box del clip
+// è (0,0,width,height).
+describe("drawScene with a frame", () => {
+  beforeEach(() => { vi.stubGlobal("Path2D", FakePath2D); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+
+  it("fills the frame's box (at its parent-space position) and still draws its children", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["F"] = frameNode("F", "page1", 20, 30, 100, 80, true);
+    s.nodes["C"] = textAt("C", "F", 5, 5);
+    const f = fakeCtx();
+    drawScene(f.ctx, s, identityCam);
+    // Il box del frame è riempito (una sola fill: il testo non passa da fill).
+    expect(f.fills.length).toBe(1);
+    expect((f.fills[0] as FakePath2D).ops).toEqual([{ op: "rect", args: [20, 30, 100, 80] }]);
+    // E i figli si disegnano comunque, alla loro posizione mondo (dentro F).
+    expect(f.fillText.map((c) => c.text)).toEqual(["C"]);
+  });
+
+  it("draws a plain rect even if the frame carries a corner radius: a frame is rectangular", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["F"] = { ...frameNode("F", "page1", 0, 0, 100, 80, false), cornerRadius: 40 };
+    const f = fakeCtx();
+    drawScene(f.ctx, s, identityCam);
+    expect((f.fills[0] as FakePath2D).ops).toEqual([{ op: "rect", args: [0, 0, 100, 80] }]);
+  });
+
+  it("clips its children to its OWN local box when clipsContent", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["F"] = frameNode("F", "page1", 20, 30, 100, 80, true);
+    s.nodes["C"] = textAt("C", "F", 5, 5);
+    const f = fakeCtx();
+    drawScene(f.ctx, s, identityCam);
+    // Il clip è al box LOCALE (0,0,w,h) -- lo spazio dei figli -- non alla x/y
+    // del frame nel parent.
+    expect(f.clips.length).toBe(1);
+    expect((f.clips[0] as FakePath2D).ops).toEqual([{ op: "rect", args: [0, 0, 100, 80] }]);
+  });
+
+  it("does NOT clip when clipsContent is false: the children may overflow", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["F"] = frameNode("F", "page1", 20, 30, 100, 80, false);
+    s.nodes["C"] = textAt("C", "F", 5, 5);
+    const f = fakeCtx();
+    drawScene(f.ctx, s, identityCam);
+    expect(f.clips.length).toBe(0);
+    expect(f.fillText.map((c) => c.text)).toEqual(["C"]); // comunque disegnati
+  });
+
+  it("does not clip for a childless clipping frame (nothing to clip)", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["F"] = frameNode("F", "page1", 0, 0, 100, 80, true);
+    const f = fakeCtx();
+    drawScene(f.ctx, s, identityCam);
+    expect(f.clips.length).toBe(0);
   });
 });
 

@@ -36,6 +36,25 @@ describe("hitTestNode", () => {
     expect(hitTestNode({ ...g, width: 0, height: 0 }, 0, 0)).toBe(false);
   });
 
+  // Un FRAME ha geometria PROPRIA (a differenza del gruppo): si colpisce sul
+  // suo box, come un rettangolo. È la convenzione artboard -- cliccare la parte
+  // VUOTA del frame lo seleziona. Il corner radius non lo tocca: un frame è
+  // rettangolare.
+  it("frame: hits its own box like a rect, ignoring corner radius", () => {
+    const f: NodeLite = { ...node("rect"), kind: "frame" };
+    expect(hitTestNode(f, 50, 25)).toBe(true);   // dentro il box
+    expect(hitTestNode(f, 0, 0)).toBe(true);      // l'angolo appartiene al box
+    expect(hitTestNode(f, 100, 50)).toBe(true);   // l'angolo opposto
+    expect(hitTestNode(f, 120, 25)).toBe(false);  // fuori
+    // Un corner radius eventuale non restringe l'area colpibile del frame.
+    expect(hitTestNode({ ...f, cornerRadius: 40 }, 2, 2)).toBe(true);
+  });
+
+  it("frame: a degenerate box is not hittable, like any other shape", () => {
+    const f: NodeLite = { ...node("rect"), kind: "frame", width: 0, height: 0 };
+    expect(hitTestNode(f, 0, 0)).toBe(false);
+  });
+
   it("ellipse: center hits, corner misses", () => {
     const e = node("ellipse");
     expect(hitTestNode(e, 50, 25)).toBe(true);

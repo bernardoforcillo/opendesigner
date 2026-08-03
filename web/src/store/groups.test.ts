@@ -6,6 +6,7 @@ import {
   frameOriginOf,
   isGroup,
   selectionTargetOf,
+  selectionTargetsOf,
   transformTargetsOf,
 } from "./groups";
 
@@ -20,6 +21,13 @@ function node(id: string, parentId: string, x: number, y: number, extra: Partial
 // l'unione dei figli, e la sua x/y è la traslazione che contribuisce loro.
 function group(id: string, parentId: string, extra: Partial<NodeLite> = {}): NodeLite {
   return node(id, parentId, 0, 0, { kind: "group", width: 0, height: 0, ...extra });
+}
+
+// Un FRAME, invece, ha geometria PROPRIA: il suo box (x/y/width/height) è suo,
+// non l'unione dei figli, e -- a differenza del gruppo -- NON cattura il click
+// dei figli (convenzione artboard). `clipsContent` di default true.
+function frame(id: string, parentId: string, x: number, y: number, extra: Partial<NodeLite> = {}): NodeLite {
+  return node(id, parentId, x, y, { kind: "frame", clipsContent: true, ...extra });
 }
 
 function scene(nodes: NodeLite[]): SceneState {
@@ -115,6 +123,31 @@ describe("contentWorldBounds", () => {
     s.nodes["r1"] = { ...s.nodes["r1"], visible: false };
     s.nodes["r2"] = { ...s.nodes["r2"], visible: false };
     expect(contentWorldBounds(s, s.nodes["g"])).toBeNull();
+  });
+});
+
+// LA CORNICE DI UN FRAME è il SUO box, non l'unione dei figli: un frame non è
+// un gruppo, quindi contentWorldBounds torna il suo box proprio (come per un
+// rect/ellipse), anche se un figlio sporge ben oltre.
+describe("contentWorldBounds for a frame", () => {
+  it("is the frame's OWN box, not the union of its children", () => {
+    const s = scene([
+      frame("f", "page1", 10, 20, { width: 100, height: 80 }),
+      // Un figlio che sporge ampiamente: se il frame fosse trattato come un
+      // gruppo, la cornice si allargherebbe fino a contenerlo.
+      node("child", "f", 5, 5, { width: 500, height: 500 }),
+    ]);
+    expect(contentWorldBounds(s, s.nodes["f"])).toEqual({ x: 10, y: 20, width: 100, height: 80 });
+  });
+
+  it("maps the frame box through an ancestor's translation", () => {
+    const s = scene([
+      group("g", "page1", { x: 1000, y: 100 }),
+      frame("f", "g", 10, 20, { width: 100, height: 80 }),
+    ]);
+    // f.x/y sono scritte nello spazio di g (traslato di 1000,100): il box mondo
+    // del frame cade a (1010,120).
+    expect(contentWorldBounds(s, s.nodes["f"])).toEqual({ x: 1010, y: 120, width: 100, height: 80 });
   });
 });
 
@@ -238,6 +271,47 @@ describe("selectionTargetOf", () => {
   it("returns the id untouched when it is not in the scene", () => {
     expect(selectionTargetOf(grouped(), "sparito", [])).toBe("sparito");
   });
+
+  // UN FRAME NON CATTURA IL CLICK (a differenza del gruppo): solo i GRUPPI lo
+  // fanno (isGroup nel prefisso di selezione). Cliccare un figlio di un frame
+  // seleziona il FIGLIO, non il frame -- è la convenzione artboard.
+  it("a frame does NOT capture the click: a child of a frame selects the child", () => {
+    const s = scene([frame("f", "page1", 0, 0, { width: 100, height: 100 }), node("child", "f", 10, 10)]);
+    expect(selectionTargetOf(s, "child", [])).toBe("child");
+  });
+
+  it("clicking the frame's own body selects the frame itself", () => {
+    const s = scene([frame("f", "page1", 0, 0, { width: 100, height: 100 })]);
+    expect(selectionTargetOf(s, "f", [])).toBe("f");
+  });
+
+  // Un frame ANNIDATO dentro un gruppo non intercetta la risalita: è il gruppo
+  // esterno a catturare, il frame resta trasparente al click come ogni
+  // contenitore non-gruppo.
+  it("still finds the outer group when a frame sits between it and the child", () => {
+    const s = scene([group("g", "page1"), frame("f", "g", 0, 0, { width: 100, height: 100 }), node("r", "f", 0, 0)]);
+    expect(selectionTargetOf(s, "r", [])).toBe("g");
+  });
+
+  // Al contrario, un GRUPPO annidato dentro un frame cattura: solo il gruppo lo
+  // fa, il frame lo lascia passare.
+  it("finds a group nested inside a frame: only the group captures", () => {
+    const s = scene([frame("f", "page1", 0, 0, { width: 200, height: 200 }), group("g", "f"), node("r", "g", 0, 0)]);
+    expect(selectionTargetOf(s, "r", [])).toBe("g");
+  });
+});
+
+// La stessa politica su una LISTA (i figli di un frame presi da un marquee):
+// nessuno viene sostituito dal frame, perché il frame non cattura.
+describe("selectionTargetsOf with a frame", () => {
+  it("leaves a frame's children as themselves: no frame is captured", () => {
+    const s = scene([
+      frame("f", "page1", 0, 0, { width: 100, height: 100 }),
+      node("a", "f", 10, 10),
+      node("b", "f", 20, 20),
+    ]);
+    expect(selectionTargetsOf(s, ["a", "b"], [])).toEqual(["a", "b"]);
+  });
 });
 
 describe("enterTargetOf", () => {
@@ -274,6 +348,13 @@ describe("transformTargetsOf", () => {
   it("leaves anything that is not a group alone, container or not", () => {
     const s = scene([node("box", "page1", 0, 0), node("child", "box", 0, 0)]);
     expect(transformTargetsOf(s, ["box"])).toEqual(["box"]);
+  });
+
+  // Un FRAME ha un box PROPRIO da ridimensionare: non si espande nei figli come
+  // un gruppo, resta se stesso.
+  it("keeps a frame: it has a box of its own to resize", () => {
+    const s = scene([frame("f", "page1", 0, 0, { width: 100, height: 100 }), node("c", "f", 0, 0)]);
+    expect(transformTargetsOf(s, ["f"])).toEqual(["f"]);
   });
 
   it("drops an empty group: there is nothing to transform", () => {

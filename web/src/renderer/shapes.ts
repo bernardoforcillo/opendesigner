@@ -11,7 +11,12 @@ export function nodePath(n: NodeLite): Path2D {
     const rx = n.width / 2;
     const ry = n.height / 2;
     path.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
-  } else if (n.cornerRadius > 0) {
+  // Il corner radius è del RETTANGOLO: un FRAME è rettangolare per definizione
+  // (è l'artboard) e si disegna a spigoli vivi anche se porta con sé un
+  // cornerRadius -- scritto da chi non lo sa, o da un documento di un'altra
+  // versione. La condizione sul kind lo tiene esplicito invece di affidarlo al
+  // fatto che un frame di solito ha cornerRadius 0.
+  } else if (n.kind === "rect" && n.cornerRadius > 0) {
     path.roundRect(n.x, n.y, n.width, n.height, n.cornerRadius);
   } else {
     path.rect(n.x, n.y, n.width, n.height);
