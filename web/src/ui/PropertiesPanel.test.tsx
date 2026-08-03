@@ -1301,13 +1301,42 @@ describe("allineamento", () => {
     expect(useScene.getState().undoStack).toHaveLength(1);
   });
 
-  it("con un nodo solo allinea alla PAGINA", () => {
+  // UN NODO SOLO: i pulsanti sono DISABILITATI e il nodo non si muove. Non
+  // esiste nessuna pagina contro cui allinearlo (selection/align.ts), e un
+  // pulsante vivo che non fa niente non si distingue da uno rotto.
+  it("con un nodo solo disabilita i pulsanti e non muove niente", () => {
     installScene(rectNode("a", "a0", { x: 500, y: 500, width: 50, height: 50 }));
     useScene.getState().setSelection(["a"]);
     render(<PropertiesPanel />);
 
-    fireEvent.click(screen.getByRole("button", { name: "Allinea a sinistra" }));
-    expect(useScene.getState().scene?.nodes.a.x).toBe(0);
+    const b = screen.getByRole("button", { name: "Allinea a sinistra" });
+    expect(b).toBeDisabled();
+    fireEvent.click(b);
+    expect(useScene.getState().scene?.nodes.a.x).toBe(500); // dov'era
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+  });
+
+  it("con DUE nodi i sei allineamenti si accendono, le distribuzioni no", () => {
+    installScene(rectNode("a", "a0"), rectNode("b", "a1", { x: 100 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    for (const name of [
+      "Allinea a sinistra", "Centra orizzontalmente", "Allinea a destra",
+      "Allinea in alto", "Centra verticalmente", "Allinea in basso",
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeEnabled();
+    }
+    expect(screen.getByRole("button", { name: "Distribuisci orizzontalmente" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Distribuisci verticalmente" })).toBeDisabled();
+  });
+
+  it("con TRE nodi si accende tutto", () => {
+    installScene(rectNode("a", "a0"), rectNode("b", "a1", { x: 100 }), rectNode("c", "a2", { x: 200 }));
+    useScene.getState().setSelection(["a", "b", "c"]);
+    render(<PropertiesPanel />);
+    expect(screen.getByRole("button", { name: "Distribuisci orizzontalmente" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Distribuisci verticalmente" })).toBeEnabled();
   });
 
   it("ogni comando ha il suo pulsante con un nome leggibile", () => {

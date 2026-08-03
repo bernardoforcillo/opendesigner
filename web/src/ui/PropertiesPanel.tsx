@@ -4,7 +4,7 @@ import {
   Label, Radio, RadioGroup, Slider, SliderOutput, SliderStateContext, SliderThumb, SliderTrack,
 } from "react-aria-components";
 import { useScene } from "../store/store";
-import { ALIGN_COMMANDS, alignSelection } from "../selection/align";
+import { ALIGN_COMMANDS, alignSelection, minSelection } from "../selection/align";
 import type { AlignCommand } from "../selection/align";
 import { selectionSummary, MIXED } from "../store/selectors";
 import type { Mixed, OrMixed } from "../store/selectors";
@@ -378,7 +378,10 @@ function AlignIcon({ id }: { id: AlignCommand }) {
 
 const ALIGN_BUTTON_CLASS =
   "flex items-center justify-center rounded p-1 outline-none hover:bg-neutral-100 " +
-  "focus-visible:ring-1 focus-visible:ring-sky-500";
+  "focus-visible:ring-1 focus-visible:ring-sky-500 " +
+  // Disabilitato: si SPEGNE (niente sfondo all'hover, pittogramma sbiadito),
+  // che è il segno che dice "non c'è abbastanza selezione per questo comando".
+  "disabled:opacity-40 disabled:hover:bg-transparent";
 
 function SectionTitle({ children }: { children: string }) {
   return (
@@ -538,8 +541,9 @@ export function PropertiesPanel() {
       {/* ALLINEAMENTO. Sta con la geometria (è geometria: sposta x/y e
           nient'altro) e prima dell'aspetto. Ogni pulsante è UN gesto, quindi UNA
           voce di undo, anche quando muove dieci nodi -- vedi
-          selection/align.ts::alignSelection. Con un nodo solo il riferimento è
-          la PAGINA, con più di uno il loro riquadro comune. */}
+          selection/align.ts::alignSelection. Il riferimento è SEMPRE il riquadro
+          comune della selezione: non esiste nessuna pagina contro cui allineare
+          (vedi il commento su alignTarget). */}
       <div role="group" aria-label="Allinea" className="grid grid-cols-4 gap-0.5 border-t border-neutral-200 p-2">
         {ALIGN_COMMANDS.map((c) => (
           // <button> nativo e non il Button di react-aria (che qui non porta
@@ -547,11 +551,17 @@ export function PropertiesPanel() {
           // è l'unico modo che un utente VEDENTE ha di leggere il nome del
           // comando, e deve essere lo STESSO testo del nome accessibile --
           // altrimenti sono due interfacce.
+          //
+          // DISABILITATO sotto il minimo di nodi che il comando richiede (due
+          // per allineare, tre per distribuire): sotto quella soglia il riquadro
+          // comune coincide con la selezione e non c'è niente da fare. Un
+          // pulsante vivo che non fa niente non si distingue da uno rotto.
           <button
             key={c.id}
             type="button"
             aria-label={c.label}
             title={c.label}
+            disabled={selection.length < minSelection(c.id)}
             className={ALIGN_BUTTON_CLASS}
             onClick={() => alignSelection(c.id)}
           >

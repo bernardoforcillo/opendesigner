@@ -25,22 +25,6 @@ export type AlignKind = "left" | "hcenter" | "right" | "top" | "middle" | "botto
 export type DistributeKind = "distribute-h" | "distribute-v";
 export type AlignCommand = AlignKind | DistributeKind;
 
-// LA PAGINA. `brawt.v1.Page` porta oggi solo `id` e `name`: nel modello non
-// esiste nessuna geometria di pagina (e aggiungerla è lavoro della traccia 1,
-// che possiede pagine e frame). Serve però un rettangolo contro cui allineare
-// un nodo SOLO -- allinearlo contro sé stesso non farebbe niente -- e questo è
-// quel rettangolo: un foglio 1920x1080 con l'origine nell'origine del mondo, la
-// stessa area che la camera inquadra all'apertura.
-//
-// È dichiarato qui, in un posto solo e con questo commento, proprio perché è
-// una CONVENZIONE e non una misura: quando la pagina avrà bounds veri,
-// pageBounds() diventa una lettura dal documento e nient'altro cambia.
-export const PAGE_BOUNDS: Bounds = { x: 0, y: 0, width: 1920, height: 1080 };
-
-export function pageBounds(_scene: SceneState): Bounds {
-  return PAGE_BOUNDS;
-}
-
 // I comandi come DATI, con l'etichetta che il pannello mostra: aggiungerne uno
 // è aggiungere una riga qui, e il pannello non ha nessun elenco parallelo da
 // tenere allineato. L'ordine è quello in cui i pulsanti compaiono.
@@ -140,18 +124,41 @@ export function distributeDeltas(boxes: readonly Bounds[], axis: "x" | "y"): Del
   return out;
 }
 
-// Il rettangolo contro cui si allinea:
-//  - UN nodo solo -> la PAGINA. Contro sé stesso non ci sarebbe niente da fare,
-//    e "allinea a sinistra" con un elemento solo significa, in ogni editor,
-//    "portalo a sinistra del foglio".
-//  - PIÙ nodi -> il loro riquadro comune (l'unione degli AABB), cioè lo stesso
-//    riquadro che l'overlay disegna attorno alla selezione.
-// null solo per una selezione vuota.
+// Il rettangolo contro cui si allinea: SEMPRE il riquadro comune della
+// selezione (l'unione degli AABB), cioè lo stesso riquadro che l'overlay
+// disegna. null solo per una selezione vuota.
+//
+// UN NODO SOLO non si muove, ed è voluto: il suo riquadro comune è lui stesso,
+// quindi tutti e sei gli allineamenti sono l'identità e alignOps non produce
+// nessun op. È il comportamento di Figma per un oggetto solo sulla tela.
+//
+// NON esiste una pagina contro cui allinearlo. `brawt.v1.Page` porta oggi solo
+// `id` e `name`: nel modello non c'è nessuna geometria di pagina (ed è lavoro
+// della traccia 1, che possiede pagine e frame). Inventarne una -- un foglio
+// 1920x1080 all'origine -- non sarebbe una convenzione innocua ma una
+// TELETRASPORTAZIONE: la tela è infinita e un documento può vivere
+// legittimamente a x = 10000, dove "allinea a sinistra" su un rettangolo solo
+// lo spedirebbe a x = 0, fuori schermo, senza nessun segno che si sia mosso
+// invece di sparire (e la camera parte a {0, 0, zoom: 1}, quindi nemmeno
+// "l'area che si inquadra all'apertura" sarebbe quel foglio). Quando la
+// traccia 1 darà bounds veri a pagine e frame, il riferimento di un nodo solo
+// diventerà il suo CONTENITORE -- una LETTURA dal documento, non un numero
+// scritto qui.
 export function alignTarget(scene: SceneState, ids: readonly string[]): Bounds | null {
   const boxes = boxesOf(scene, ids);
   if (boxes.length === 0) return null;
-  if (boxes.length === 1) return pageBounds(scene);
   return unionBounds(boxes.map((b) => b.box));
+}
+
+// Quanti nodi servono perché il comando possa fare qualcosa: DUE per allineare
+// (il riferimento è il riquadro comune, e con un nodo solo quel riquadro è il
+// nodo stesso), TRE per distribuire (i due estremi non si muovono, quindi sotto
+// i tre non c'è niente in mezzo da spartire).
+//
+// Il pannello ci disabilita i pulsanti: un comando che non farà niente deve
+// DIRLO prima, perché un no-op silenzioso è indistinguibile da un comando rotto.
+export function minSelection(cmd: AlignCommand): number {
+  return isDistribute(cmd) ? 3 : 2;
 }
 
 function boxesOf(scene: SceneState, ids: readonly string[]): { id: string; box: Bounds }[] {

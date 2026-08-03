@@ -125,7 +125,43 @@ function union(base: string[], extra: string[]): string[] {
   return [...base, ...extra.filter((id) => !seen.has(id))];
 }
 
+// I MODIFICATORI che decidono la forma di un gesto: Alt spegne lo snap, Shift
+// tiene il rapporto d'aspetto (nel resize) e scatta l'angolo (nella rotazione).
+interface Mods { alt: boolean; shift: boolean }
+
+function modsOf(e: { altKey?: boolean; shiftKey?: boolean }): Mods {
+  return { alt: e.altKey === true, shift: e.shiftKey === true };
+}
+
 export function createSelectTool(): Tool {
+  // --- I MODIFICATORI DELL'ULTIMA ANTEPRIMA ---------------------------------
+  //
+  // L'op finale si ricalcola dalla posizione del POINTERUP, ma i modificatori
+  // NO: si usano quelli dell'ultimo pointermove, cioè quelli che hanno prodotto
+  // l'anteprima che l'utente sta guardando quando lascia il pulsante.
+  //
+  // Leggerli dall'evento di pointerup è un bug che si vede solo quando conta:
+  // Alt tenuto per tutto un trascinamento (anteprime esattamente sotto il dito,
+  // per posare un nodo a 2 px dal vicino), Alt lasciato un istante PRIMA del
+  // pulsante -- e il pointerup arriva con altKey false, lo snap scatta al
+  // commit e il nodo salta fino a SNAP_THRESHOLD_PX/zoom. endGesture ricostruisce
+  // la scena da quegli op, quindi il salto è ciò che finisce sul filo e nella
+  // voce di undo. Il verso opposto (premere Alt appena prima di lasciare, per
+  // sfuggire a uno scatto già mostrato) è altrettanto raggiungibile. Alt è
+  // proprio la via d'uscita dallo snap: leggerlo al rilascio disfa la funzione
+  // nell'unico momento in cui serve.
+  //
+  // Vale identico per Shift: lasciarlo prima del pulsante commetterebbe un
+  // resize NON vincolato dopo un'anteprima vincolata, e un angolo non scattato
+  // dopo un'anteprima scattata.
+  //
+  // Si LATCHA all'ultima anteprima (non al pointerdown) perché premere o
+  // lasciare un modificatore a metà gesto deve continuare a cambiare l'anteprima
+  // subito, come in ogni editor: la regola è "si commette ciò che si è visto",
+  // non "si commette ciò che si era premuto all'inizio". Un latch solo per tutti
+  // e tre i gesti: ne è aperto al massimo uno per volta.
+  let lastMods: Mods = { alt: false, shift: false };
+
   // --- drag di spostamento --------------------------------------------------
   // Ancora MONDO e posizione di partenza (MONDO) di ogni nodo trascinato,
   // catturate a pointerdown. Il gesto sullo store (beginGesture) viene aperto
@@ -254,11 +290,11 @@ export function createSelectTool(): Tool {
   // Il delta del TRASCINAMENTO, scatto compreso. Il riquadro della selezione
   // viene spostato del delta grezzo e lì gli si chiede lo scatto: sono le sue
   // sei linee (bordi e centri, su entrambi gli assi) a competere.
-  function dragDelta(e: PointerEvent, ctx: ToolContext): { dx: number; dy: number; guides: SnapGuide[] } {
+  function dragDelta(e: PointerEvent, ctx: ToolContext, mods: Mods): { dx: number; dy: number; guides: SnapGuide[] } {
     const world = ctx.toWorld(e);
     const dx = world.x - dragAnchor!.x;
     const dy = world.y - dragAnchor!.y;
-    if (e.altKey || !dragBox || !dragTargets || dragTargets.length === 0) return { dx, dy, guides: [] };
+    if (mods.alt || !dragBox || !dragTargets || dragTargets.length === 0) return { dx, dy, guides: [] };
     const moved = { ...dragBox, x: dragBox.x + dx, y: dragBox.y + dy };
     const s = snapBounds(moved, dragTargets, worldThreshold(ctx.getCamera()));
     return { dx: dx + s.dx, dy: dy + s.dy, guides: s.guides };
@@ -279,13 +315,13 @@ export function createSelectTool(): Tool {
   // Correggere il delta del puntatore (invece del risultato) è ciò che tiene lo
   // scatto dentro la matematica esistente: resizeFrame resta l'unica a
   // calcolare il resize, flip e ancora compresi.
-  function resizeDelta(e: PointerEvent, ctx: ToolContext): { dx: number; dy: number; guides: SnapGuide[] } {
+  function resizeDelta(e: PointerEvent, ctx: ToolContext, mods: Mods): { dx: number; dy: number; guides: SnapGuide[] } {
     const world = ctx.toWorld(e);
     const dx = world.x - resizeAnchor!.x;
     const dy = world.y - resizeAnchor!.y;
     const frame = resizeStartFrame;
     if (
-      e.altKey || e.shiftKey || !frame || !resizeHandle
+      mods.alt || mods.shift || !frame || !resizeHandle
       || !resizeTargets || resizeTargets.length === 0
       || frame.rotation % 360 !== 0
     ) {
@@ -308,17 +344,17 @@ export function createSelectTool(): Tool {
   // Gli op del resize per la posizione corrente del puntatore, ricalcolati
   // SEMPRE dai bounds iniziali (mai dal delta dell'ultimo move): niente
   // accumulo di errori, e l'op finale è identico all'ultima anteprima.
-  function resizeOps(e: PointerEvent, ctx: ToolContext): { ops: Op[]; guides: SnapGuide[] } {
+  function resizeOps(e: PointerEvent, ctx: ToolContext, mods: Mods): { ops: Op[]; guides: SnapGuide[] } {
     if (!resizeHandle || !resizeAnchor || !resizeStartFrame || !resizeStartNodes) {
       return { ops: [], guides: [] };
     }
-    const { dx, dy, guides } = resizeDelta(e, ctx);
+    const { dx, dy, guides } = resizeDelta(e, ctx, mods);
     // resizeFrame porta il delta del puntatore nello spazio LOCALE del frame
     // (così la maniglia e allarga il nodo lungo il SUO asse, comunque sia
     // girato) e calcola l'offset che tiene l'ancora ferma nel MONDO. La
     // matematica del resize -- flip e keepAspect compresi -- resta quella di
     // resizeTransform, invariata: qui la si avvolge, non la si riscrive.
-    const r = resizeFrame(resizeStartFrame, resizeHandle, dx, dy, { keepAspect: e.shiftKey });
+    const r = resizeFrame(resizeStartFrame, resizeHandle, dx, dy, { keepAspect: mods.shift });
     const ops = Object.entries(resizeStartNodes).map(([id, start]) => {
       const next = applyFrameResizeToNode(start.bounds, start.rotation, r);
       // L'angolo entra nella mask SOLO quando cambia davvero (un nodo allineato
@@ -339,9 +375,9 @@ export function createSelectTool(): Tool {
 
   // Gli op del TRASCINAMENTO per la posizione corrente del puntatore. Come il
   // resize: ricalcolati dallo stato iniziale, mai dall'ultimo delta.
-  function dragOps(e: PointerEvent, ctx: ToolContext): { ops: Op[]; guides: SnapGuide[] } {
+  function dragOps(e: PointerEvent, ctx: ToolContext, mods: Mods): { ops: Op[]; guides: SnapGuide[] } {
     if (!dragAnchor || !dragStart) return { ops: [], guides: [] };
-    const { dx, dy, guides } = dragDelta(e, ctx);
+    const { dx, dy, guides } = dragDelta(e, ctx, mods);
     const ops = Object.entries(dragStart).map(([id, start]) =>
       makeSetPropsOp(id, { x: start.x + dx, y: start.y + dy }, ["x", "y"]));
     return { ops, guides };
@@ -349,14 +385,14 @@ export function createSelectTool(): Tool {
 
   // Gli op della rotazione per la posizione corrente del puntatore. Come il
   // resize: SEMPRE ricalcolati dallo stato iniziale, mai dall'ultimo delta.
-  function rotateOps(e: PointerEvent, ctx: ToolContext): Op[] {
+  function rotateOps(e: PointerEvent, ctx: ToolContext, mods: Mods): Op[] {
     if (!rotateCenter || !rotateStartNodes) return [];
     const world = ctx.toWorld(e);
     const raw = angleOf(rotateCenter, world) - rotateStartAngle;
     // Con Shift lo scatto è sul TOTALE del riferimento, non sul delta: si
     // ottiene un angolo tondo (0, 15, 30...) invece di uno spostamento tondo a
     // partire da un angolo qualsiasi.
-    const delta = e.shiftKey ? snapDegrees(rotateRef + raw, ROTATE_SNAP_DEG) - rotateRef : raw;
+    const delta = mods.shift ? snapDegrees(rotateRef + raw, ROTATE_SNAP_DEG) - rotateRef : raw;
     return Object.entries(rotateStartNodes).map(([id, start]) => {
       // Il centro del nodo gira attorno a quello del frame (per una selezione
       // singola i due coincidono e questo è l'identità esatta), e il nodo gira
@@ -419,6 +455,10 @@ export function createSelectTool(): Tool {
     onPointerDown(e, ctx) {
       const scene = ctx.getScene();
       if (!scene) return;
+      // Il latch riparte dal gesto che sta per iniziare, così non porta dentro
+      // i modificatori di un hover o di un gesto precedente. (Non basta da solo
+      // a decidere niente: senza almeno un pointermove nessun gesto si apre.)
+      lastMods = modsOf(e);
       const world = ctx.toWorld(e);
       const store = useScene.getState();
       // Ogni nuovo pointerdown riparte senza candidati: un down non risolto (un
@@ -532,13 +572,16 @@ export function createSelectTool(): Tool {
     },
 
     onPointerMove(e, ctx) {
+      // Ogni anteprima LATCHA i suoi modificatori: è questa coppia, e non
+      // quella del pointerup, che l'op finale userà (vedi lastMods).
+      lastMods = modsOf(e);
       if (rotateCenter) {
         setCursor(ctx, ROTATING_CURSOR);
         if (!rotateStarted) {
           rotateStarted = true;
           useScene.getState().beginGesture();
         }
-        for (const op of rotateOps(e, ctx)) useScene.getState().applyLocal(op);
+        for (const op of rotateOps(e, ctx, lastMods)) useScene.getState().applyLocal(op);
         return;
       }
       if (resizeHandle) {
@@ -549,7 +592,7 @@ export function createSelectTool(): Tool {
           resizeStarted = true;
           useScene.getState().beginGesture();
         }
-        const step = resizeOps(e, ctx);
+        const step = resizeOps(e, ctx, lastMods);
         useScene.getState().setSnapGuides(step.guides);
         for (const op of step.ops) useScene.getState().applyLocal(op);
         return;
@@ -581,19 +624,23 @@ export function createSelectTool(): Tool {
         dragStarted = true;
         useScene.getState().beginGesture();
       }
-      const step = dragOps(e, ctx);
+      const step = dragOps(e, ctx, lastMods);
       useScene.getState().setSnapGuides(step.guides);
       for (const op of step.ops) useScene.getState().applyLocal(op);
     },
 
+    // POSIZIONE dall'evento di rilascio, MODIFICATORI dall'ultima anteprima
+    // (lastMods): si commette ciò che si è visto. Vedi il commento su lastMods
+    // per il motivo -- leggere e.altKey qui fa scattare al commit un gesto che
+    // l'utente aveva tenuto libero per tutto il tempo.
     onPointerUp(e, ctx) {
       if (rotateCenter) {
-        if (rotateStarted) useScene.getState().endGesture(rotateOps(e, ctx));
+        if (rotateStarted) useScene.getState().endGesture(rotateOps(e, ctx, lastMods));
         resetRotate();
         return;
       }
       if (resizeHandle) {
-        if (resizeStarted) useScene.getState().endGesture(resizeOps(e, ctx).ops);
+        if (resizeStarted) useScene.getState().endGesture(resizeOps(e, ctx, lastMods).ops);
         resetResize();
         return;
       }
@@ -625,7 +672,7 @@ export function createSelectTool(): Tool {
       if (!dragAnchor || !dragStart) return;
       // Gli op finali portano la posizione SCATTATA, la stessa dell'ultima
       // anteprima: lo snap corregge il delta, non aggiunge un secondo op.
-      if (dragStarted) useScene.getState().endGesture(dragOps(e, ctx).ops);
+      if (dragStarted) useScene.getState().endGesture(dragOps(e, ctx, lastMods).ops);
       resetDrag();
     },
 

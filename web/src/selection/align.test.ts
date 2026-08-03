@@ -1,13 +1,14 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import {
   ALIGN_COMMANDS,
-  PAGE_BOUNDS,
   alignDelta,
   alignOps,
   alignSelection,
   alignTarget,
   distributeDeltas,
+  minSelection,
 } from "./align";
+import type { AlignKind } from "./align";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
@@ -181,9 +182,13 @@ describe("distributeDeltas", () => {
 });
 
 describe("alignTarget", () => {
-  it("uses the PAGE for a single node — there is nothing else to align against", () => {
+  // Un nodo solo si allinea CONTRO SÉ STESSO, cioè non si muove. Non esiste
+  // nessuna pagina nel modello contro cui allinearlo, e inventarne una lo
+  // spedirebbe dove il documento non è: vedi il commento su alignTarget e i
+  // test "un nodo solo" più sotto.
+  it("uses the node's OWN box for a single node — there is no page to align it to", () => {
     const scene = sceneWith([node({ id: "a", x: 5, y: 5 })]);
-    expect(alignTarget(scene, ["a"])).toEqual(PAGE_BOUNDS);
+    expect(alignTarget(scene, ["a"])).toEqual({ x: 5, y: 5, width: 10, height: 10 });
   });
 
   it("uses the common bounding box for several", () => {
@@ -283,16 +288,47 @@ describe("alignOps", () => {
     expect(alignOps(scene, ids, "distribute-h")).toEqual([]);
   });
 
-  it("aligns a lone node against the page", () => {
-    const scene = sceneWith([node({ id: "a", x: 500, y: 500 })]);
-    const ops = alignOps(scene, ["a"], "left");
-    const v = ops[0].kind.value as { patch?: { x: number } };
-    expect(v.patch?.x).toBe(PAGE_BOUNDS.x);
-  });
+  // UN NODO SOLO NON SI MUOVE, per NESSUNO degli otto comandi.
+  //
+  // La tela è INFINITA e la camera parte a {0, 0, zoom: 1}: un documento può
+  // vivere legittimamente a x = 10000 e non c'è nessun foglio 1920x1080 lì
+  // sotto. Allineare un rettangolo solo contro un rettangolo inventato
+  // all'origine lo teletrasporterebbe fuori dallo schermo -- e siccome sparisce
+  // dalla vista, non si distingue da "l'ho cancellato per sbaglio": l'unico
+  // rimedio sarebbe indovinare un Ctrl+Z.
+  describe("un nodo solo", () => {
+    const ALIGNS: AlignKind[] = ["left", "hcenter", "right", "top", "middle", "bottom"];
 
-  it("has nothing to distribute with a lone node", () => {
-    const scene = sceneWith([node({ id: "a", x: 500 })]);
-    expect(alignOps(scene, ["a"], "distribute-h")).toEqual([]);
+    it("non si muove: nessun comando produce un op", () => {
+      const scene = sceneWith([node({ id: "a", x: 500, y: 500 })]);
+      for (const cmd of ALIGN_COMMANDS) {
+        expect({ cmd: cmd.id, ops: alignOps(scene, ["a"], cmd.id) }).toEqual({ cmd: cmd.id, ops: [] });
+      }
+    });
+
+    it("resta dov'è anche lontanissimo dall'origine (x = 10000)", () => {
+      const scene = sceneWith([node({ id: "far", x: 10000, y: 10000, width: 50, height: 50 })]);
+      for (const kind of ALIGNS) {
+        expect(alignDelta(
+          { x: 10000, y: 10000, width: 50, height: 50 },
+          alignTarget(scene, ["far"])!,
+          kind,
+        )).toEqual({ dx: 0, dy: 0 });
+      }
+      expect(alignOps(scene, ["far"], "left")).toEqual([]);
+      expect(alignOps(scene, ["far"], "hcenter")).toEqual([]);
+    });
+
+    it("nemmeno se è RUOTATO (il suo AABB è comunque il riquadro comune)", () => {
+      const scene = sceneWith([node({ id: "r", x: 700, y: 700, width: 10, height: 10, rotation: 30 })]);
+      expect(alignOps(scene, ["r"], "left")).toEqual([]);
+      expect(alignOps(scene, ["r"], "middle")).toEqual([]);
+    });
+
+    it("has nothing to distribute with a lone node", () => {
+      const scene = sceneWith([node({ id: "a", x: 500 })]);
+      expect(alignOps(scene, ["a"], "distribute-h")).toEqual([]);
+    });
   });
 
   it("covers every command in ALIGN_COMMANDS", () => {
@@ -354,5 +390,52 @@ describe("alignSelection", () => {
     alignSelection("left"); // già allineati
     expect(sync.sent).toHaveLength(0);
     begin.mockRestore();
+  });
+
+  it("con un nodo SOLO non manda niente e non apre nessun gesto", () => {
+    useScene.setState({ selection: ["a"] });
+    for (const cmd of ALIGN_COMMANDS) alignSelection(cmd.id);
+    expect(useScene.getState().scene!.nodes.a).toMatchObject({ x: 0, y: 0 });
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+});
+
+// La soglia che il pannello usa per DISABILITARE un pulsante. Sta qui, accanto
+// alla regola che descrive, e non nel pannello: è la stessa cosa che alignOps
+// fa in silenzio (sotto il minimo non produce op), detta prima e a voce alta.
+describe("minSelection", () => {
+  it("chiede DUE nodi per allineare e TRE per distribuire", () => {
+    for (const cmd of ["left", "hcenter", "right", "top", "middle", "bottom"] as const) {
+      expect({ cmd, n: minSelection(cmd) }).toEqual({ cmd, n: 2 });
+    }
+    for (const cmd of ["distribute-h", "distribute-v"] as const) {
+      expect({ cmd, n: minSelection(cmd) }).toEqual({ cmd, n: 3 });
+    }
+  });
+
+  it("copre ogni comando dell'elenco", () => {
+    for (const cmd of ALIGN_COMMANDS) expect(minSelection(cmd.id)).toBeGreaterThanOrEqual(2);
+  });
+
+  // LA GUARDIA: la soglia non è un numero scritto a mano accanto ai pulsanti,
+  // deve essere il punto in cui alignOps smette di produrre op. Con esattamente
+  // minSelection - 1 nodi (tutti fuori posto) non deve partire NIENTE; con
+  // minSelection nodi deve partire qualcosa.
+  it("è esattamente il punto in cui alignOps comincia a produrre op", () => {
+    const nodes = [
+      node({ id: "a", x: 0, y: 0 }),
+      node({ id: "b", x: 40, y: 40 }),
+      node({ id: "c", x: 200, y: 90 }),
+    ];
+    const scene = sceneWith(nodes);
+    const ids = ["a", "b", "c"];
+    for (const cmd of ALIGN_COMMANDS) {
+      const n = minSelection(cmd.id);
+      expect({ cmd: cmd.id, ops: alignOps(scene, ids.slice(0, n - 1), cmd.id) })
+        .toEqual({ cmd: cmd.id, ops: [] });
+      expect(alignOps(scene, ids.slice(0, n), cmd.id).length).toBeGreaterThan(0);
+    }
   });
 });

@@ -1354,6 +1354,110 @@ describe("selectTool — snap", () => {
     });
   });
 
+  // --- I MODIFICATORI SONO QUELLI DELL'ULTIMA ANTEPRIMA -----------------------
+  //
+  // L'op finale si ricalcola dalla POSIZIONE del pointerup, ma i modificatori
+  // arrivano dall'ultimo pointermove. Leggerli dall'evento di rilascio fa
+  // scattare al commit un gesto che l'utente aveva tenuto libero per tutto il
+  // tempo: le dita lasciano Alt un istante prima del pulsante -- è il gesto
+  // normale di chi sta per finire -- e il nodo salta di SNAP_THRESHOLD_PX/zoom
+  // unità mondo. endGesture ricostruisce la scena da quegli op, quindi il salto
+  // è ciò che finisce sul filo E nella voce di undo, e Alt è proprio la via
+  // d'uscita dallo snap: il bug disfa la funzione nell'unico momento in cui
+  // serve.
+  describe("i modificatori dell'ultima anteprima", () => {
+    it("Alt lasciato PRIMA del pulsante non fa scattare il commit", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(48); // l'anteprima è a 48
+      // Le dita lasciano Alt, poi il pulsante: il pointerup arriva con altKey
+      // false. Senza il latch il commit scatterebbe a 50 -- un salto di 2 unità
+      // mondo che nessuna anteprima ha mai mostrato.
+      tool.onPointerUp!(atMod(58, 10, {}), ctx);
+      expect(lastPatch().patch?.x).toBe(48);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(48);
+      expect(useScene.getState().snapGuides).toEqual([]);
+    });
+
+    it("Alt premuto PRIMA del pulsante non annulla uno scatto già mostrato", () => {
+      // Il verso opposto, altrettanto raggiungibile: l'anteprima è scattata a
+      // 50, Alt scende un istante prima del rilascio. Il commit deve restare
+      // quello che si vedeva.
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(at(58, 10), ctx);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(50);
+      tool.onPointerUp!(atMod(58, 10, { altKey: true }), ctx);
+      expect(lastPatch().patch?.x).toBe(50);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(50);
+    });
+
+    it("la VOCE DI UNDO porta quello che si è visto, non un salto in più", () => {
+      // Il salto non finisce solo sul filo: endGesture ricostruisce la scena
+      // dagli op finali, quindi la voce di undo (e il suo redo) è quella del
+      // valore scattato. Il giro completo undo -> redo lo dimostra.
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
+      tool.onPointerUp!(atMod(58, 10, {}), ctx);
+      expect(useScene.getState().undoStack).toHaveLength(1);
+      useScene.getState().undo();
+      expect(useScene.getState().scene!.nodes.a.x).toBe(0);
+      useScene.getState().redo();
+      expect(useScene.getState().scene!.nodes.a.x).toBe(48);
+    });
+
+    // LA CONTROPROVA del latch: si fotografa l'ULTIMA anteprima, non lo stato
+    // dei tasti a inizio gesto. Premere o lasciare Alt a metà trascinamento deve
+    // continuare a cambiare l'anteprima subito -- se il latch fosse al
+    // pointerdown, questo test resterebbe a 50 per sempre.
+    it("Alt premuto a METÀ gesto cambia l'anteprima subito, e il commit con lei", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(at(58, 10), ctx);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(50); // scattato
+      tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(48); // Alt: liberato
+      expect(useScene.getState().snapGuides).toEqual([]);
+      tool.onPointerUp!(atMod(58, 10, {}), ctx);
+      expect(lastPatch().patch?.x).toBe(48);
+    });
+
+    it("e lasciato a metà gesto lo fa riscattare, sempre subito", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(48);
+      tool.onPointerMove!(at(58, 10), ctx);
+      expect(useScene.getState().scene!.nodes.a.x).toBe(50);
+      tool.onPointerUp!(at(58, 10), ctx);
+      expect(lastPatch().patch?.x).toBe(50);
+    });
+
+    it("la ROTAZIONE commette l'angolo scattato che l'anteprima mostrava, anche se Shift risale prima", () => {
+      // Stesso difetto sul terzo gesto: Shift lasciato prima del pulsante
+      // commetterebbe 55° dopo un'anteprima a 60°.
+      useScene.getState().setSelection(["a"]);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      const a = (100 * Math.PI) / 180;
+      const to = at(25 + 40 * Math.cos(a), 25 + 40 * Math.sin(a), true);
+      tool.onPointerDown!(at(58, 58, true), ctx); // zona di rotazione dell'angolo se
+      tool.onPointerMove!(to, ctx);
+      expect(useScene.getState().scene!.nodes.a.rotation).toBeCloseTo(60, 9);
+      tool.onPointerUp!(at(to.clientX, to.clientY, false), ctx);
+      expect(useScene.getState().scene!.nodes.a.rotation).toBeCloseTo(60, 9);
+      const v = sync.sent[sync.sent.length - 1].kind.value as { patch?: { rotation: number } };
+      expect(v.patch?.rotation).toBeCloseTo(60, 9);
+    });
+  });
+
   describe("ridimensionamento", () => {
     // Afferra la maniglia "e" di "a" (bordo destro, a metà altezza) dopo averlo
     // selezionato con un click.
@@ -1486,6 +1590,32 @@ describe("selectTool — snap", () => {
         expect(guides).toContainEqual({ axis: "y", pos: 100, from: -2, to: 250 });
         expect(guides.every((g) => g.axis === "y")).toBe(true);
       });
+    });
+
+    it("commits the size the preview showed when Alt is released before the button", () => {
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      grabEast(tool, ctx);
+      tool.onPointerMove!(atMod(98, 25, { altKey: true }), ctx);
+      expect(useScene.getState().scene!.nodes.a.width).toBe(98);
+      tool.onPointerUp!(atMod(98, 25, {}), ctx); // Alt lasciato prima del pulsante
+      expect(lastPatch().patch?.width).toBe(98);
+      expect(useScene.getState().scene!.nodes.a.width).toBe(98);
+    });
+
+    it("keeps the ASPECT RATIO the preview showed when Shift is released before the button", () => {
+      // Il gemello del caso Alt su un modificatore diverso: e.shiftKey letto al
+      // rilascio commetterebbe un resize LIBERO (150x50) dopo un'anteprima
+      // vincolata (150x150). Stessa causa, stesso rimedio, altro tasto.
+      useScene.getState().setSelection(["a"]);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(50, 50, true), ctx); // maniglia se
+      tool.onPointerMove!(at(150, 50, true), ctx);
+      expect(useScene.getState().scene!.nodes.a).toMatchObject({ width: 150, height: 150 });
+      tool.onPointerUp!(at(150, 50, false), ctx); // Shift lasciato prima del pulsante
+      expect(useScene.getState().scene!.nodes.a).toMatchObject({ width: 150, height: 150 });
+      expect(lastPatch().patch?.height).toBe(150);
     });
 
     it("stands aside on a ROTATED frame — its edges are not lines of the screen", () => {
