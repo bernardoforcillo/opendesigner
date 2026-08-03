@@ -128,6 +128,56 @@ describe("distributeDeltas", () => {
     const at = boxes.map((b, i) => b.x + d[i].dx);
     expect(at[1] - at[0]).toBeCloseTo(at[2] - at[1], 10);
   });
+
+  // I due test qui sotto guardano lo ZERO ESATTO degli estremi, che i casi a
+  // numeri tondi qui sopra non possono vedere: 0/15/90 con larghezze 10/20/10 fa
+  // tornare i conti anche con un accumulatore, perché ogni somma è esatta in
+  // binario. Su coordinate qualunque no -- e "quasi zero" non è zero per
+  // alignOps, che ci manda sopra un op.
+  it("keeps the two extremes EXACTLY put, on coordinates that are not round", () => {
+    // Caso trovato per forza bruta: con `cursor += size + gap` accumulato,
+    // l'ultimo box (a 969.9) riceve -1.1368683772161603e-13 invece di 0.
+    const boxes = [
+      { x: 969.9, y: 0, width: 31.8, height: 10 },
+      { x: 309.3, y: 0, width: 38.7, height: 10 },
+      { x: 456.6, y: 0, width: 28.9, height: 10 },
+    ];
+    const d = distributeDeltas(boxes, "x");
+    expect(d[0]).toEqual({ dx: 0, dy: 0 }); // l'ultimo in ordine di posizione
+    expect(d[1]).toEqual({ dx: 0, dy: 0 }); // il primo
+    expect(d[2].dx).toBeCloseTo(187.9, 10); // quello di mezzo si muove davvero
+  });
+
+  it("keeps them exact over thousands of arbitrary layouts, not just the lucky ones", () => {
+    // PRNG deterministico (mulberry32): il test non è casuale, è sempre la
+    // STESSA batteria di layout -- solo scelti in modo da non essere tondi.
+    let s = 0x2f6e2b1;
+    const rnd = () => {
+      s = (s + 0x6d2b79f5) | 0;
+      let t = Math.imul(s ^ (s >>> 15), 1 | s);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+    // Le violazioni si RACCOLGONO e si asseriscono una volta sola: un expect
+    // per giro costerebbe secondi, e il messaggio d'errore utile è comunque il
+    // primo layout che sbaglia, non il numero del giro.
+    const bad: unknown[] = [];
+    for (let iter = 0; iter < 5000; iter++) {
+      const n = 3 + Math.floor(rnd() * 4);
+      const boxes = Array.from({ length: n }, () => ({
+        x: rnd() * 1000, y: rnd() * 1000, width: 1 + rnd() * 200, height: 1 + rnd() * 200,
+      }));
+      for (const axis of ["x", "y"] as const) {
+        const d = distributeDeltas(boxes, axis);
+        const min = (b: typeof boxes[number]) => (axis === "x" ? b.x : b.y);
+        const order = boxes.map((_, i) => i).sort((a, b) => min(boxes[a]) - min(boxes[b]) || a - b);
+        for (const k of [order[0], order[n - 1]]) {
+          if (d[k].dx !== 0 || d[k].dy !== 0) bad.push({ axis, boxes, delta: d[k] });
+        }
+      }
+    }
+    expect(bad.slice(0, 1)).toEqual([]);
+  });
 });
 
 describe("alignTarget", () => {
@@ -202,6 +252,35 @@ describe("alignOps", () => {
     const v = ops[0].kind.value as { id: string; patch?: { x: number } };
     expect(v.id).toBe("b");
     expect(v.patch?.x).toBe(45);
+  });
+
+  // IL CASO CHE SI VEDE: distribuisci, poi ridistribuisci. La seconda volta il
+  // layout è già giusto, quindi non deve viaggiare NIENTE sul filo -- altrimenti
+  // si impila una voce di undo che non disfa niente (il Ctrl+Z successivo non fa
+  // nulla di visibile). Con l'accumulatore in virgola mobile l'estremo riceveva
+  // un delta di -1.1e-13 e l'op partiva a ogni click, all'infinito.
+  it("emits nothing on a SECOND distribute — and on a third", () => {
+    const ids = ["a", "b", "c"];
+    const nodes = [
+      node({ id: "a", x: 969.9, width: 31.8 }),
+      node({ id: "b", x: 309.3, width: 38.7 }),
+      node({ id: "c", x: 456.6, width: 28.9 }),
+    ];
+    let scene = sceneWith(nodes);
+    const apply = (ops: Op[]) => {
+      const next = sceneWith(ids.map((id) => scene.nodes[id]));
+      for (const op of ops) {
+        const v = op.kind.value as { id: string; patch?: { x: number; y: number } };
+        next.nodes[v.id] = { ...next.nodes[v.id], x: v.patch!.x, y: v.patch!.y };
+      }
+      scene = next;
+    };
+
+    const first = alignOps(scene, ids, "distribute-h");
+    expect(first).toHaveLength(1); // solo quello di mezzo si muove
+    apply(first);
+    expect(alignOps(scene, ids, "distribute-h")).toEqual([]);
+    expect(alignOps(scene, ids, "distribute-h")).toEqual([]);
   });
 
   it("aligns a lone node against the page", () => {

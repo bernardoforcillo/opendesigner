@@ -114,9 +114,27 @@ export function distributeDeltas(boxes: readonly Bounds[], axis: "x" | "y"): Del
   for (const b of boxes) total += size(b);
   const gap = (end - start - total) / (n - 1);
   let cursor = start;
-  for (const i of order) {
-    const d = cursor - min(boxes[i]);
-    out[i] = horiz ? { dx: d, dy: 0 } : { dx: 0, dy: d };
+  for (let k = 0; k < n; k++) {
+    const i = order[k];
+    // I DUE ESTREMI non si muovono: è la DEFINIZIONE della distribuzione (sono
+    // loro a delimitare lo spazio da spartire), non il risultato di un conto --
+    // e quindi il loro zero va IMPOSTO, non sperato.
+    //
+    // Sperarlo non funziona: `cursor` accumula (size + gap) in virgola mobile e
+    // su coordinate qualunque arriva all'ultimo box a min(last) meno un pelo
+    // (con box a 969.9 / 309.3 / 456.6 il delta è -1.1e-13). Un delta di 1e-13
+    // non è zero, quindi alignOps -- che confronta con lo zero ESATTO, e deve:
+    // un epsilon lì sarebbe una soglia arbitraria su una grandezza che nessuno
+    // percepisce -- gli manda un op. Sul filo viaggia uno spostamento
+    // invisibile, nell'undo finisce una voce che non disfa niente, e il caso
+    // non converge: ridistribuire di nuovo produce lo STESSO delta, per sempre.
+    //
+    // Il primo estremo verrebbe zero da sé (cursor parte esattamente da lì);
+    // resta escluso qui perché la ragione è la stessa e vale per entrambi.
+    if (k > 0 && k < n - 1) {
+      const d = cursor - min(boxes[i]);
+      out[i] = horiz ? { dx: d, dy: 0 } : { dx: 0, dy: d };
+    }
     cursor += size(boxes[i]) + gap;
   }
   return out;

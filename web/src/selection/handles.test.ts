@@ -16,6 +16,7 @@ import {
   applyFrameResize,
   applyFrameResizeToNode,
   resizeFrame,
+  movingEdgeLines,
   rotateMarkerPositions,
   ROTATE_MARKER_OFFSET,
   ROTATE_MARKER_RADIUS,
@@ -529,6 +530,58 @@ describe("applyFrameResizeToNode", () => {
     // raddoppiare, non l'altezza
     expect(out.bounds.width).toBeCloseTo(80, 9);
     expect(out.bounds.height).toBeCloseTo(20, 9);
+  });
+});
+
+// --- movingEdgeLines ---------------------------------------------------------
+//
+// La tabella da cui lo snap del ridimensionamento decide QUALI linee possono
+// scattare (vedi tools/selectTool.ts::resizeDelta). Sbagliarne una non si vede
+// mai direttamente -- il riquadro cresce comunque -- ma fa scattare il bordo
+// FERMO, cioè l'ancora: il nodo si SPOSTA invece di ridimensionarsi, e l'unico
+// punto che il resize promette di non muovere si muove.
+describe("movingEdgeLines", () => {
+  // Quattro bordi tutti diversi, così uno scambio left/right o top/bottom non
+  // può passare inosservato: sinistra 10, destra 110, alto 20, basso 60.
+  const box = { x: 10, y: 20, width: 100, height: 40 };
+
+  it("names the exact edges of each of the eight handles", () => {
+    expect(movingEdgeLines(box, "nw")).toEqual({ x: [10], y: [20] });
+    expect(movingEdgeLines(box, "n")).toEqual({ x: [], y: [20] });
+    expect(movingEdgeLines(box, "ne")).toEqual({ x: [110], y: [20] });
+    expect(movingEdgeLines(box, "e")).toEqual({ x: [110], y: [] });
+    expect(movingEdgeLines(box, "se")).toEqual({ x: [110], y: [60] });
+    expect(movingEdgeLines(box, "s")).toEqual({ x: [], y: [60] });
+    expect(movingEdgeLines(box, "sw")).toEqual({ x: [10], y: [60] });
+    expect(movingEdgeLines(box, "w")).toEqual({ x: [10], y: [] });
+  });
+
+  // LA GUARDIA VERA: la tabella è ancorata alla matematica del resize invece
+  // che a una seconda lista scritta a mano. Se MOVES e movingEdgeLines si
+  // scollassero (uno scambio left/right, un bordo dimenticato), qui il bordo
+  // dichiarato non sarebbe più quello che il drag muove davvero.
+  it("names exactly the edges that a drag on that handle MOVES, and no others", () => {
+    for (const h of HANDLE_IDS) {
+      // Delta piccolo e su entrambi gli assi: nessun ribaltamento, e ogni asse
+      // che la maniglia tocca si muove davvero.
+      const out = resizeBounds(box, h, 7, 5);
+      const moved = { x: [] as number[], y: [] as number[] };
+      if (out.x !== box.x) moved.x.push(box.x);
+      if (out.x + out.width !== box.x + box.width) moved.x.push(box.x + box.width);
+      if (out.y !== box.y) moved.y.push(box.y);
+      if (out.y + out.height !== box.y + box.height) moved.y.push(box.y + box.height);
+      expect({ handle: h, ...movingEdgeLines(box, h) }).toEqual({ handle: h, ...moved });
+    }
+  });
+
+  it("never offers the CENTRE — it moves by half a delta, so snapping it would move an anchored edge", () => {
+    const cx = box.x + box.width / 2; // 60
+    const cy = box.y + box.height / 2; // 40
+    for (const h of HANDLE_IDS) {
+      const lines = movingEdgeLines(box, h);
+      expect(lines.x).not.toContain(cx);
+      expect(lines.y).not.toContain(cy);
+    }
   });
 });
 

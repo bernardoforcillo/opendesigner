@@ -1403,6 +1403,91 @@ describe("selectTool — snap", () => {
       expect(useScene.getState().snapGuides).toEqual([]);
     });
 
+    it("snaps the LEFT edge when it is the w handle being dragged", () => {
+      // La controprova della maniglia "e": qui il bordo che si muove è il
+      // MINIMO. Con left/right scambiati in movingEdgeLines si offrirebbe 150
+      // (il bordo fermo), che non è vicino a nessun bersaglio: niente scatto.
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: { a: node("a", 100, "a000001"), c: node("c", 0, "a000000") },
+      });
+      useScene.getState().setSelection(["a"]);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(100, 25), ctx); // maniglia "w" di "a" (100..150)
+      tool.onPointerMove!(at(52, 25), ctx); // bordo sinistro a 52, scatta a 50
+      expect(useScene.getState().scene!.nodes.a.x).toBe(50);
+      expect(useScene.getState().scene!.nodes.a.width).toBe(100);
+      expect(useScene.getState().snapGuides).toContainEqual({ axis: "x", pos: 50, from: 0, to: 50 });
+    });
+
+    // IL RIBALTAMENTO. Superata l'ancora, in un box normalizzato il minimo e il
+    // massimo si sono scambiati: movingEdgeLines -- che ragiona sul box, non sul
+    // gesto -- indicherebbe il bordo FERMO, cioè l'ANCORA. Scattarla sposterebbe
+    // l'unico punto che il ridimensionamento promette di non muovere.
+    describe("ribaltamento", () => {
+      // "a" in 0..50 su entrambi gli assi; "c" offre linee a 2 (e 27, 52) su
+      // entrambi gli assi, cioè a due unità dall'ancora di "e" e di "s".
+      function flipScene() {
+        useScene.getState().setScene({
+          ...emptyScene("doc-1", "u"),
+          nodes: {
+            a: node("a", 0, "a000001"),
+            c: node("c", 2, "a000000", { y: 2 }),
+          },
+        });
+        useScene.getState().setSelection(["a"]);
+      }
+
+      it("does not snap the ANCHOR when the x axis flips (e dragged past the left edge)", () => {
+        flipScene();
+        const tool = createSelectTool();
+        const ctx = fakeCtx();
+        tool.onPointerDown!(at(50, 25), ctx); // maniglia "e"
+        tool.onPointerMove!(at(-2, 25), ctx); // 2 oltre l'ancora (x = 0)
+        // Senza la guardia l'ancora (0) scatterebbe sul bordo di "c" (2):
+        // larghezza 0 invece di 2, e una guida rossa su una retta che il bordo
+        // trascinato non ha mai sfiorato.
+        expect(useScene.getState().scene!.nodes.a.x).toBe(-2);
+        expect(useScene.getState().scene!.nodes.a.width).toBe(2);
+        expect(useScene.getState().snapGuides).toEqual([]);
+      });
+
+      it("does not snap the ANCHOR when the y axis flips (s dragged past the top edge)", () => {
+        flipScene();
+        const tool = createSelectTool();
+        const ctx = fakeCtx();
+        tool.onPointerDown!(at(25, 50), ctx); // maniglia "s"
+        tool.onPointerMove!(at(25, -2), ctx); // 2 oltre l'ancora (y = 0)
+        expect(useScene.getState().scene!.nodes.a.y).toBe(-2);
+        expect(useScene.getState().scene!.nodes.a.height).toBe(2);
+        expect(useScene.getState().snapGuides).toEqual([]);
+      });
+
+      it("silences ONLY the axis that flipped — the other one still snaps", () => {
+        useScene.getState().setScene({
+          ...emptyScene("doc-1", "u"),
+          nodes: {
+            a: node("a", 0, "a000001"),
+            c: node("c", 2, "a000000", { y: 2 }), // linea x a 2, accanto all'ancora
+            d: node("d", 200, "a000002", { y: 100 }), // linea y a 100, sotto
+          },
+        });
+        useScene.getState().setSelection(["a"]);
+        const tool = createSelectTool();
+        const ctx = fakeCtx();
+        tool.onPointerDown!(at(50, 50), ctx); // maniglia "se"
+        // x ribaltato (2 oltre l'ancora), y no: il bordo basso arriva a 98 e
+        // deve scattare a 100 come sempre.
+        tool.onPointerMove!(at(-2, 98), ctx);
+        expect(useScene.getState().scene!.nodes.a.height).toBe(100); // y scatta
+        expect(useScene.getState().scene!.nodes.a.width).toBe(2); // x no
+        const guides = useScene.getState().snapGuides;
+        expect(guides).toContainEqual({ axis: "y", pos: 100, from: -2, to: 250 });
+        expect(guides.every((g) => g.axis === "y")).toBe(true);
+      });
+    });
+
     it("stands aside on a ROTATED frame — its edges are not lines of the screen", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
