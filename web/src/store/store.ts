@@ -5,6 +5,7 @@ import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
 import type { SceneState } from "./types";
+import type { PenPreview } from "./vectorGeometry";
 import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
 import type { SnapGuide } from "../selection/snap";
@@ -203,6 +204,23 @@ function previewKey(op: Op): string {
     const { id, stylePresent } = op.kind.value;
     return `t|${id}|${stylePresent ? "style" : ""}`;
   }
+  if (op.kind.case === "setVectorPath") {
+    // Stessa sorgente del drag, e la PEGGIORE: il pen tool (e il trascinamento
+    // di un ancoraggio) fa un applyLocal per POINTERMOVE, e ogni op porta i
+    // subpath INTERI -- non un delta. Senza coalescing un solo trascinamento di
+    // 5s a 60Hz lascia 300 op di anteprima, ognuno con tutta la geometria
+    // dentro, copiati a ogni applyLocal e RIGIOCATI da viewOf a ogni record
+    // autorevole che atterra a metà gesto: esattamente il quadratico che
+    // previewKey esiste per evitare.
+    //
+    // La chiave è il solo id: setVectorPath è wholesale e ASSOLUTO (sostituisce
+    // i subpath in blocco), quindi due op sullo stesso nodo scrivono per
+    // definizione gli stessi campi e l'ultimo rende il precedente irrilevante.
+    // Nessuna variante come lo `style` di setText: l'op È i subpath, non ne
+    // porta un secondo pezzo che possa restare intatto.
+    const { id } = op.kind.value;
+    return `v|${id}`;
+  }
   return `#${previewCounter++}`;
 }
 
@@ -282,6 +300,58 @@ function targetOf(op: Op): OpTarget | null {
     case "setText": {
       const { id } = op.kind.value;
       return id === "" ? null : { id, paths: ["text"] };
+    }
+    // "subpaths" è l'ETICHETTA del campo che un setVectorPath scrive (non un
+    // path di FieldMask -- Go lo rifiuterebbe dentro un setProps), esattamente
+    // come "text" per setText. Senza, un setVectorPath remoto non renderebbe
+    // stale niente e una voce di undo che ne contiene uno non sarebbe MAI
+    // invalidata: il Ctrl+Z successivo cancellerebbe in silenzio la geometria
+    // appena disegnata da un altro.
+    //
+    // A differenza di "text", però, l'etichetta da sola NON basta -- ed è
+    // l'unico op con più di un campo nel bersaglio. Per un nodo vettoriale il
+    // box È la bbox del path (invariante del proto su VectorNode), quindi
+    // x/y/width/height e subpaths non sono campi indipendenti: sono due METÀ
+    // dello stesso valore. Si scrivono con DUE op -- un resize è un gesto solo
+    // che emette setProps{x,y,width,height} + setVectorPath (vedi
+    // tools/selectTool.ts::resizeOps) -- mentre la potatura degli op stale
+    // lavora per OP. Con un bersaglio ristretto a "subpaths" un record remoto
+    // ne potava UNO SOLO e teneva l'altro:
+    //  - un DRAG remoto (setProps{x,y}) potava l'inverso del box e teneva
+    //    quello della geometria -> Ctrl+Z rimetteva l'inchiostro VECCHIO nel
+    //    box nuovo;
+    //  - un setVectorPath remoto potava l'inverso della geometria e teneva
+    //    quello del box -> Ctrl+Z rimetteva il box VECCHIO intorno
+    //    all'inchiostro dell'altro.
+    // In entrambi i casi resta un nodo il cui box non è più la bbox del suo
+    // path: le 8 maniglie di resize non toccano l'inchiostro (overlayRenderer
+    // le disegna dal box) e il marquee afferra il vuoto.
+    //
+    // Il bersaglio comprende quindi il box INTERO. Su width/height è ovvio: li
+    // determina. Su x/y meno, perché uno spostamento da solo non scollerebbe
+    // niente -- gli ancoraggi sono LOCALI, quindi l'inchiostro viaggia col
+    // nodo. Ci sono lo stesso, per due ragioni:
+    //  1. sono l'unico modo di chiudere la prima traccia: là il record remoto è
+    //     un setProps{x,y}, e senza x/y qui il bersaglio resta disgiunto
+    //     dall'inverso della geometria, che sopravvive da solo -- cioè
+    //     esattamente il mezzo undo da evitare;
+    //  2. non costano un passo di annulla che non stesse già per cadere: chi
+    //     riscrive i subpath manda NELLO STESSO GESTO il setProps{x,y,width,
+    //     height} che rinormalizza il box (l'invariante è dello scrittore, vedi
+    //     vectorGeometry.ts::normalizeVector), quindi quel secondo record
+    //     avrebbe potato le stesse voci un istante dopo. Anticipare la potatura
+    //     non toglie di più: toglie la FINESTRA in cui metà voce sopravvive.
+    // Non è "un op remoto su questo nodo brucia tutta la sua storia": il taglio
+    // per campo resta, e con un rename, l'opacità o il riempimento non c'è
+    // nessun conflitto.
+    //
+    // Una modifica sola basta per entrambi i versi perché `conflicts` interseca
+    // i due elenchi: allargato qui, il bersaglio morde sia quando il
+    // setVectorPath è il record REMOTO sia quando è l'op dentro la voce (dove a
+    // fargli da controparte è il setProps sul box di un altro client).
+    case "setVectorPath": {
+      const { id } = op.kind.value;
+      return id === "" ? null : { id, paths: ["subpaths", "x", "y", "width", "height"] };
     }
     // Un kind sconosciuto non ha bersaglio noto: non può invalidare niente, ma
     // non è nemmeno invalidabile (applyOp lo ignora, quindi non è mai finito in
@@ -682,6 +752,14 @@ interface SceneStore {
   // è già dentro gli op che il tool applica -- ma vive nello store come il
   // marquee, e per la stessa ragione: il ciclo di disegno legge da lì.
   snapGuides: SnapGuide[];
+  // Il path che il pen tool sta disegnando, in coordinate MONDO (vedi
+  // store/vectorGeometry.ts::PenPreview). null quando non si sta disegnando.
+  //
+  // Sta qui per la stessa ragione del marquee: è ANTEPRIMA, non documento. Il
+  // nodo vettoriale non esiste finché il path non è finito -- l'intera
+  // creazione è un gesto e produce un solo op -- quindi il path in corso non
+  // può passare da `scene`, e l'overlay è l'unico posto in cui può vedersi.
+  penPreview: PenPreview | null;
   // Trasporto verso il server: null finché SyncClient non si registra (test
   // isolati, bootstrap non ancora completato).
   sync: OpSink | null;
@@ -740,6 +818,7 @@ interface SceneStore {
   clearSelection: () => void;
   setMarquee: (b: Bounds | null) => void;
   setSnapGuides: (g: SnapGuide[]) => void;
+  setPenPreview: (p: PenPreview | null) => void;
   // Accende il flag di editing: textTool lo chiama subito dopo aver creato il
   // nodo, il doppio click di selectTool lo chiama su un nodo testo esistente.
   // Se una sessione era già aperta su un ALTRO nodo, la chiude/pulisce prima
@@ -781,6 +860,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   selection: [],
   marquee: null,
   snapGuides: [],
+  penPreview: null,
   sync: null,
   gesture: null,
   editingNodeId: null,
@@ -1198,6 +1278,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // ogni pixel anche quando nessuno scatto è attivo.
   setSnapGuides: (g) =>
     set((st) => (g.length === 0 && st.snapGuides.length === 0 ? st : { snapGuides: g })),
+  setPenPreview: (p) => set({ penPreview: p }),
 
   // Chiude/pulisce QUALUNQUE sessione già aperta PRIMA di aprirne una nuova
   // (bug trovato in review): senza questo, una seconda beginTextEditing --
@@ -1259,8 +1340,16 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // VISTA, che a metà drag contiene le anteprime -- uno stato che non
   // esisterà più appena il gesto chiude. Rimandato: l'utente rifà Ctrl/Cmd+Z
   // dopo che il gesto chiude (pointerup/Esc).
+  // Seconda guardia, stesso principio: un PATH in corso col pen tool
+  // (penPreview != null) è un gesto lungo che non tiene occupato lo slot
+  // `gesture` -- non tocca il documento finché non finisce, quindi tenerlo
+  // aperto per minuti impedirebbe a chiunque altro di aprire il proprio (vedi
+  // tools/penTool.ts::finish). Undo/redo restano comunque rimandati: a metà
+  // path Ctrl+Z toglierebbe un gesto PRECEDENTE mentre l'utente sta guardando
+  // il disegno in corso, cioè disferebbe qualcosa di diverso da quello che si
+  // ha davanti. Basta finire o abbandonare il path (Invio/Esc) e riprovare.
   undo: () => {
-    if (get().gesture) return;
+    if (get().gesture || get().penPreview) return;
     const prevUndo = get().undoStack;
     const prevRedo = get().redoStack;
     const entry = prevUndo[prevUndo.length - 1];
@@ -1312,7 +1401,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // Stessa guardia di undo() sopra, stesso motivo: redo() durante un drag
   // infilerebbe i suoi op nella coda in volo, cioè nella base del gesto.
   redo: () => {
-    if (get().gesture) return;
+    if (get().gesture || get().penPreview) return;
     const prevUndo = get().undoStack;
     const prevRedo = get().redoStack;
     const entry = prevRedo[prevRedo.length - 1];

@@ -2,6 +2,7 @@ package core
 
 import (
 	"errors"
+	"fmt"
 	"testing"
 
 	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
@@ -153,9 +154,20 @@ func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 		// azzererebbe solo un raggio, cancellerebbe il riferimento ai byte --
 		// e l'inverso dell'op non saprebbe rimetterli.
 		{"image", imageNode("n1", testAssetHash)},
+		// E il vettoriale, il campione di TUTTE le forme che le altre tracce
+		// aggiungono: con la vecchia blacklist {Ellipse, Text} un
+		// setProps{corner_radius} su un nodo vettoriale passava la validazione e
+		// ne cancellava i subpath (in divergenza con applyOp.ts). La whitelist
+		// lo rifiuta come ogni non-rettangolo.
+		{"vector", vectorNode("n1", richSubPath(false))},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := NewDocument("doc1", "Untitled")
+			// Fotografate PRIMA di Apply: applyCreate mette nel documento lo
+			// stesso puntatore, quindi confrontare il nodo con tc.node dopo
+			// l'op sarebbe confrontarlo con se stesso.
+			wantShape := fmt.Sprintf("%T", tc.node.GetShape())
+			wantSubpaths := len(tc.node.GetVector().GetSubpaths())
 			_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: tc.node}}})
 			op := setPropsOp(&brawtv1.SetProperties{
 				Id: "n1",
@@ -172,8 +184,14 @@ func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 			if got.GetX() != 0 {
 				t.Fatalf("partial mutation leaked despite error: x=%v", got.GetX())
 			}
-			if _, isRect := got.GetShape().(*brawtv1.Node_Rect); isRect {
-				t.Fatal("shape turned into a rect by a rejected setProps")
+			// Non basta "non è diventato un rect": la forma deve essere ANCORA
+			// quella di prima, con dentro la stessa roba. Un nodo vettoriale
+			// svuotato dei subpath sarebbe ancora un Node_Vector.
+			if gotShape := fmt.Sprintf("%T", got.GetShape()); gotShape != wantShape {
+				t.Fatalf("shape replaced by a rejected setProps: %s -> %s", wantShape, gotShape)
+			}
+			if n := len(got.GetVector().GetSubpaths()); n != wantSubpaths {
+				t.Fatalf("geometry lost by a rejected setProps: %d subpaths -> %d", wantSubpaths, n)
 			}
 		})
 	}
@@ -424,6 +442,98 @@ func TestApplySetTextWithStylePresentReplacesStyle(t *testing.T) {
 	st := doc.Nodes["t1"].GetText().GetStyle()
 	if st.GetFontSize() != 32 || st.GetFontWeight() != "700" || st.GetAlign() != brawtv1.TextAlign_TEXT_ALIGN_CENTER {
 		t.Fatalf("style not replaced: %+v", st)
+	}
+}
+
+// ---------------------------------------------------------------------------
+// SetVectorPath (op 15) -- la geometria vettoriale.
+// ---------------------------------------------------------------------------
+
+// Un subpath "ricco": maniglie bézier ASIMMETRICHE e mai nulle, così un lato
+// che dimenticasse in_/out_ (o li ricavasse per specchiatura) non potrebbe
+// passare per caso. Sono OFFSET relativi all'ancoraggio (vedi il proto), quindi
+// piccoli e centrati sullo zero: nulle significherebbe "nessuna maniglia".
+func richSubPath(closed bool) *brawtv1.SubPath {
+	return &brawtv1.SubPath{
+		Anchors: []*brawtv1.Anchor{
+			{X: 10, Y: 20, InX: -2, InY: -1, OutX: 4, OutY: 6},
+			{X: 60, Y: 70, InX: -5, InY: -8, OutX: 6, OutY: 1},
+		},
+		Closed: closed,
+	}
+}
+
+func vectorNode(id string, subpaths ...*brawtv1.SubPath) *brawtv1.Node {
+	return &brawtv1.Node{
+		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Vector", Visible: true, Opacity: 1,
+		X: 0, Y: 0, Width: 100, Height: 80,
+		Shape: &brawtv1.Node_Vector{Vector: &brawtv1.VectorNode{Subpaths: subpaths}},
+	}
+}
+
+func setVectorPathOp(s *brawtv1.SetVectorPath) *brawtv1.Op {
+	return &brawtv1.Op{Kind: &brawtv1.Op_SetVectorPath{SetVectorPath: s}}
+}
+
+func TestApplySetVectorPathReplacesSubpaths(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: vectorNode("v1", richSubPath(false))}}})
+
+	next := []*brawtv1.SubPath{richSubPath(true), {Anchors: []*brawtv1.Anchor{{X: 1, Y: 2}}}}
+	if err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "v1", Subpaths: next})); err != nil {
+		t.Fatalf("Apply setVectorPath: %v", err)
+	}
+	got := doc.Nodes["v1"].GetVector().GetSubpaths()
+	// Sostituzione WHOLESALE: non un merge, non un append.
+	if len(got) != 2 {
+		t.Fatalf("expected 2 subpaths, got %d", len(got))
+	}
+	if !got[0].GetClosed() {
+		t.Fatal("closed dropped by setVectorPath")
+	}
+	a := got[0].GetAnchors()[0]
+	if a.GetInX() != -2 || a.GetInY() != -1 || a.GetOutX() != 4 || a.GetOutY() != 6 {
+		t.Fatalf("bezier handles dropped or mangled: %+v", a)
+	}
+}
+
+// Una lista VUOTA è legittima: è il path che l'utente ha svuotato, non un
+// "campo non specificato" da ignorare (a differenza di SetText.style).
+func TestApplySetVectorPathEmptyListClearsPath(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: vectorNode("v1", richSubPath(true))}}})
+	if err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "v1"})); err != nil {
+		t.Fatalf("Apply setVectorPath: %v", err)
+	}
+	if n := len(doc.Nodes["v1"].GetVector().GetSubpaths()); n != 0 {
+		t.Fatalf("expected an emptied path, got %d subpaths", n)
+	}
+	// Il nodo resta un nodo vettoriale (svuotato), non perde la forma: un
+	// successivo setVectorPath deve ancora essere accettato.
+	if _, ok := doc.Nodes["v1"].GetShape().(*brawtv1.Node_Vector); !ok {
+		t.Fatalf("shape lost by an emptying setVectorPath: %T", doc.Nodes["v1"].GetShape())
+	}
+}
+
+// Stesso precedente di applySetText su un rettangolo (ErrNotTextNode): il oneof
+// `shape` è la NATURA del nodo, non un campo da riempire.
+func TestApplySetVectorPathOnNonVectorNodeFails(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "n1", Subpaths: []*brawtv1.SubPath{richSubPath(false)}}))
+	if !errors.Is(err, ErrNotVectorNode) {
+		t.Fatalf("expected ErrNotVectorNode, got %v", err)
+	}
+	if _, ok := doc.Nodes["n1"].GetShape().(*brawtv1.Node_Rect); !ok {
+		t.Fatalf("rect turned into %T by a rejected setVectorPath", doc.Nodes["n1"].GetShape())
+	}
+}
+
+func TestApplySetVectorPathMissingNode(t *testing.T) {
+	doc := NewDocument("doc1", "Untitled")
+	err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "ghost"}))
+	if !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
 }
 

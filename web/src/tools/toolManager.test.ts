@@ -72,6 +72,12 @@ function spyTool(id: ToolId, cursor = "default") {
   } satisfies Tool;
 }
 
+// Un tool che dichiara di sopravvivere al pan temporaneo: il suo gesto dura
+// più di un drag (è il caso del pen tool, che disegna in più click).
+function suspendableTool(id: ToolId, cursor = "crosshair") {
+  return { ...spyTool(id, cursor), onSuspend: vi.fn() } satisfies Tool;
+}
+
 function setup(camera: Camera = { x: 0, y: 0, zoom: 1 }) {
   const canvas = new FakeCanvas();
   let cam = camera;
@@ -260,6 +266,86 @@ describe("temporary hand tool", () => {
       detach();
     },
   );
+
+  // Un tool il cui gesto dura più click (il pen tool) non può perdere il
+  // lavoro perché l'utente ha spostato la vista: panare a metà disegno è
+  // routine in qualunque editor vettoriale, e il pan temporaneo NON è un cambio
+  // di strumento -- la mano restituisce il posto tra un istante.
+  it("il pan con lo spazio SOSPENDE un tool che lo dichiara, non lo disattiva", () => {
+    const { canvas, ctx } = setup();
+    const pen = suspendableTool("pen");
+    active = pen;
+    const detach = attachTools(ctx, getActive);
+
+    canvas.view.dispatch("keydown", key("Space"));
+    expect(pen.onSuspend).toHaveBeenCalledTimes(1);
+    expect(pen.onDeactivate).not.toHaveBeenCalled();
+    expect(canvas.style.cursor).toBe("grab");
+
+    canvas.view.dispatch("keyup", key("Space"));
+    expect(canvas.style.cursor).toBe("crosshair");
+    canvas.dispatch("pointerdown", pointer(0, 0));
+    // Ripreso senza essere mai stato disattivato: il path a metà è ancora suo.
+    expect(pen.onPointerDown).toHaveBeenCalledTimes(1);
+    expect(pen.onDeactivate).not.toHaveBeenCalled();
+    detach();
+  });
+
+  it("anche il pan col tasto CENTRALE sospende invece di disattivare", () => {
+    const { canvas, ctx } = setup();
+    const pen = suspendableTool("pen");
+    active = pen;
+    const detach = attachTools(ctx, getActive);
+
+    canvas.dispatch("pointerdown", pointer(100, 100, { button: 1 }));
+    canvas.dispatch("pointermove", pointer(120, 100));
+    canvas.dispatch("pointerup", pointer(120, 100, { button: 1 }));
+    expect(pen.onSuspend).toHaveBeenCalledTimes(1);
+    expect(pen.onDeactivate).not.toHaveBeenCalled();
+    expect(pen.onPointerDown).not.toHaveBeenCalled(); // il down era della mano
+    detach();
+  });
+
+  it("un tool SENZA onSuspend continua a essere disattivato dal pan (gesto col pulsante premuto)", () => {
+    const { canvas, ctx } = setup();
+    const shape = active; // spyTool, nessun onSuspend
+    const detach = attachTools(ctx, getActive);
+
+    canvas.view.dispatch("keydown", key("Space"));
+    expect(shape.onDeactivate).toHaveBeenCalledTimes(1);
+    detach();
+  });
+
+  // Sospendere non è tenere in vita per sempre: se durante il pan la toolbar
+  // passa a un altro strumento, il sospeso va abbandonato come qualunque tool
+  // che perde il posto -- altrimenti resterebbe con un gesto a metà e
+  // un'anteprima che nessuno spegne.
+  it("cambiare strumento mentre si pana abbandona il tool sospeso", () => {
+    const { canvas, ctx } = setup();
+    const pen = suspendableTool("pen");
+    active = pen;
+    const detach = attachTools(ctx, getActive);
+
+    canvas.view.dispatch("keydown", key("Space"));
+    const select = spyTool("select");
+    active = select;
+    canvas.view.dispatch("keyup", key("Space"));
+
+    expect(pen.onDeactivate).toHaveBeenCalledTimes(1);
+    expect(select.onDeactivate).not.toHaveBeenCalled();
+    detach();
+  });
+
+  it("smontare mentre si pana disattiva anche il tool sospeso", () => {
+    const { canvas, ctx } = setup();
+    const pen = suspendableTool("pen");
+    active = pen;
+    const detach = attachTools(ctx, getActive);
+
+    canvas.view.dispatch("keydown", key("Space"));
+    detach();
+    expect(pen.onDeactivate).toHaveBeenCalledTimes(1);
+  });
 
   it("the middle button pans for the duration of the drag", () => {
     const { canvas, ctx, camera } = setup();

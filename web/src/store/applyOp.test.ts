@@ -1,8 +1,11 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, SetTextSchema, TextAlign } from "../gen/brawt/v1/brawt_pb";
+import {
+  OpSchema, NodeSchema, SetTextSchema, SetVectorPathSchema, VectorNodeSchema, TextAlign,
+} from "../gen/brawt/v1/brawt_pb";
+import type { Node as PbNode } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
-import { emptyScene } from "./types";
+import { emptyScene, toNodeLite, toPbNode } from "./types";
 
 function createRectOp(id: string, x: number, y: number) {
   const node = create(NodeSchema, {
@@ -167,6 +170,108 @@ describe("applyOp: corner_radius", () => {
       create(OpSchema, { opId: "op-t1", docId: "doc1", kind: { case: "createNode", value: { node } } }));
     expect(applyOp(s, setCornerRadiusOp("t1", 12, 42))).toEqual(s);
   });
+
+  // La metà TS della riga "vector" di TestApplySetPropertiesCornerRadiusOnNonRectFails.
+  // Questo lato rifiutava già (`cur.kind !== "rect"`); era GO ad accettare,
+  // perché la sua guardia elencava le forme da rifiutare ({Ellipse, Text}) e
+  // una forma nuova ci passava attraverso -- finendo nel ramo che materializza
+  // il rettangolo implicito e SOSTITUENDO lo shape del nodo. Risultato: il
+  // client teneva il path, il documento autorevole diventava un rettangolo. È
+  // la divergenza esatta che questa coppia di test esiste per impedire, quindi
+  // il caso sta su ENTRAMBI i lati anche se solo uno dei due era rotto.
+  it("su un nodo VETTORIALE rifiuta l'INTERO op e non tocca la geometria", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"),
+      createVectorOp("v1", [{ anchors: RICH_ANCHORS, closed: true }]));
+    const after = applyOp(s, setCornerRadiusOp("v1", 12, 42));
+    expect(after).toEqual(s);
+    expect(after.nodes["v1"].x).toBe(0);
+    expect(after.nodes["v1"].kind).toBe("vector");
+    expect(after.nodes["v1"].vector?.subpaths).toEqual([{ anchors: RICH_ANCHORS, closed: true }]);
+  });
+});
+
+// --- una forma SCONOSCIUTA non è un rettangolo -----------------------------
+//
+// core.applySetProps (Go) accetta `nil` o `*brawtv1.Node_Rect` e rifiuta tutto
+// il resto: una WHITELIST, così una forma aggiunta domani è rifiutata di default
+// invece di finire nel ramo che materializza il rettangolo implicito e ne
+// distrugge la geometria. Questo lato aveva la guardia speculare (`cur.kind !==
+// "rect"`) ma la derivava da un `kind` che RIPIEGAVA su "rect" per ogni forma
+// sconosciuta: la stessa divergenza, semplicemente specchiata -- op accettato
+// qui, ErrNotRectNode di là. Le altre tre tracce stanno aggiungendo forme al
+// oneof adesso (33 Group, 34 Frame, 35 Image, 37 Instance), quindi il caso non è
+// ipotetico: è il giorno del merge.
+
+// Una forma PRESENTE nel oneof che questo modello non conosce. Il cast è l'unico
+// modo di scriverla oggi (il generato non ha ancora GroupNode) ed è fedele a ciò
+// che il decoder produrrà il giorno in cui ce l'avrà: `shape.case` valorizzato
+// con un nome che store/types.ts non elenca.
+function nodeWithUnknownShape(id: string) {
+  const n = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Group", visible: true, opacity: 1,
+    x: 10, y: 20, width: 100, height: 80,
+  });
+  (n as unknown as { shape: unknown }).shape = { case: "group", value: { children: ["c1"] } };
+  return n;
+}
+
+function createNodeOp(node: PbNode) {
+  return create(OpSchema, {
+    opId: "op-" + node.id, docId: "doc1", kind: { case: "createNode", value: { node } },
+  });
+}
+
+describe("applyOp: forma sconosciuta", () => {
+  it("non ricade su rect -- ma una forma ASSENTE sì", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createNodeOp(nodeWithUnknownShape("g1")));
+    expect(s.nodes["g1"].kind).toBe("unknown");
+    // Shape ASSENTE resta "rect", e non è un'eccezione alla regola ma la regola
+    // stessa: Go la accetta come rettangolo implicito (il ramo `case nil` della
+    // whitelist), quindi trattarla diversamente qui sarebbe la divergenza.
+    const noShape = create(NodeSchema, {
+      id: "r1", parentId: "page1", orderKey: "a0", name: "Node", visible: true, opacity: 1,
+      x: 0, y: 0, width: 10, height: 10,
+    });
+    const s2 = applyOp(s, createNodeOp(noShape));
+    expect(s2.nodes["r1"].kind).toBe("rect");
+  });
+
+  it("corner_radius su una forma sconosciuta rifiuta l'INTERO op (parità con ErrNotRectNode)", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createNodeOp(nodeWithUnknownShape("g1")));
+    // "x" viaggia nella STESSA mask: il rifiuto è in blocco, nemmeno la x si
+    // muove. Prima del fix questo op passava (kind ricadeva su "rect") e
+    // scriveva un cornerRadius su un nodo che Go rifiuta.
+    const after = applyOp(s, setCornerRadiusOp("g1", 12, 42));
+    expect(after).toEqual(s);
+    expect(after.nodes["g1"].x).toBe(10);
+    expect(after.nodes["g1"].cornerRadius).toBe(0);
+  });
+
+  it("setVectorPath e setText la rifiutano come rifiutano un rettangolo", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createNodeOp(nodeWithUnknownShape("g1")));
+    const setVector = create(OpSchema, {
+      opId: "op-sv", docId: "doc1",
+      kind: { case: "setVectorPath", value: { id: "g1", subpaths: [{ anchors: [], closed: true }] } },
+    });
+    expect(applyOp(s, setVector)).toEqual(s);
+    const setText = create(OpSchema, {
+      opId: "op-st", docId: "doc1", kind: { case: "setText", value: { id: "g1", content: "x" } },
+    });
+    expect(applyOp(s, setText)).toEqual(s);
+  });
+
+  it("toPbNode la rimette dov'era: un undo non converte un GroupNode in rettangolo", () => {
+    // history.invertOp ricostruisce il Node da NodeLite per invertire una
+    // delete. Con il ripiego su "rect" il nodo tornava in vita come RETTANGOLO
+    // -- un cambio di forma silenzioso dentro un Ctrl+Z, e nessun modo di
+    // accorgersene se non guardando il documento del server.
+    const pb = nodeWithUnknownShape("g1");
+    const back = toPbNode(toNodeLite(pb));
+    expect(back.shape.case).toBe("group");
+    expect(back.shape.value).toEqual({ children: ["c1"] });
+    // ...e il resto del nodo sopravvive al giro come per ogni altra forma.
+    expect(back).toMatchObject({ id: "g1", x: 10, y: 20, width: 100, height: 80 });
+  });
 });
 
 // --- setText ---------------------------------------------------------------
@@ -310,5 +415,83 @@ describe("applyOp: image", () => {
     const after = applyOp(s, setTextOp({ id: "i1", content: "x" }));
     expect(after).toEqual(s);
     expect(after.nodes["i1"].kind).toBe("image");
+  });
+});
+
+// --- setVectorPath ---------------------------------------------------------
+// Speculari a internal/core/apply_test.go (TestApplySetVectorPath*): stessa
+// scena, stesse asserzioni. applyOp e core.applySetVectorPath devono restare
+// semanticamente identici, e questa è la metà TS della guardia (l'altra è
+// testdata/golden/vector_path.json).
+
+// Maniglie bézier ASIMMETRICHE e mai nulle: un lato che le scartasse (o le
+// ricavasse per specchiatura) non può passare per caso. Sono OFFSET relativi
+// all'ancoraggio (vedi il proto), quindi piccoli e centrati sullo zero: nulle
+// significherebbe "nessuna maniglia".
+const RICH_ANCHORS = [
+  { x: 10, y: 20, inX: -2, inY: -1, outX: 4, outY: 6 },
+  { x: 60, y: 70, inX: -5, inY: -8, outX: 6, outY: 1 },
+];
+
+function createVectorOp(id: string, subpaths: MessageInitShape<typeof VectorNodeSchema>["subpaths"]) {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Path", visible: true, opacity: 1,
+    x: 0, y: 0, width: 100, height: 80,
+    shape: { case: "vector", value: { subpaths } },
+  });
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+function setVectorPathOp(value: MessageInitShape<typeof SetVectorPathSchema>) {
+  return create(OpSchema, { opId: "op-setvector", docId: "doc1", kind: { case: "setVectorPath", value } });
+}
+
+describe("applyOp: setVectorPath", () => {
+  const base = () =>
+    applyOp(emptyScene("doc1", "Untitled"), createVectorOp("v1", [{ anchors: RICH_ANCHORS, closed: false }]));
+
+  it("creates a vector node carrying anchors and bezier handles", () => {
+    const n = base().nodes["v1"];
+    expect(n.kind).toBe("vector");
+    expect(n.vector?.subpaths).toEqual([{ anchors: RICH_ANCHORS, closed: false }]);
+  });
+
+  it("replaces the subpaths wholesale (no merge, no append)", () => {
+    const next = [
+      { anchors: RICH_ANCHORS, closed: true },
+      { anchors: [{ x: 1, y: 2, inX: 0, inY: 0, outX: 0, outY: 0 }], closed: false },
+    ];
+    const s = applyOp(base(), setVectorPathOp({ id: "v1", subpaths: next }));
+    expect(s.nodes["v1"].vector?.subpaths).toEqual(next);
+  });
+
+  // Una lista VUOTA è legittima: è il path che l'utente ha svuotato, non un
+  // "non specificato" da ignorare (a differenza di setText senza stylePresent).
+  it("an empty subpath list empties the path and keeps the node a vector", () => {
+    const s = applyOp(base(), setVectorPathOp({ id: "v1" }));
+    expect(s.nodes["v1"].vector?.subpaths).toEqual([]);
+    expect(s.nodes["v1"].kind).toBe("vector");
+  });
+
+  it("is a no-op on a non-vector node (parity with core: ErrNotVectorNode)", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
+    const after = applyOp(s, setVectorPathOp({ id: "n1", subpaths: [{ anchors: RICH_ANCHORS, closed: true }] }));
+    expect(after).toEqual(s);
+    // In particolare la FORMA non cambia: scriverci dentro trasformerebbe il
+    // rettangolo in un path in locale mentre il server ha respinto l'op.
+    expect(after.nodes["n1"].kind).toBe("rect");
+  });
+
+  it("is a no-op on a missing id (parity with core: ErrNodeNotFound)", () => {
+    const s = base();
+    expect(applyOp(s, setVectorPathOp({ id: "ghost" }))).toEqual(s);
+  });
+
+  it("does not mutate the previous state (applyOp is pure)", () => {
+    const s = base();
+    const before = s.nodes["v1"].vector?.subpaths;
+    applyOp(s, setVectorPathOp({ id: "v1", subpaths: [{ anchors: [], closed: true }] }));
+    expect(s.nodes["v1"].vector?.subpaths).toBe(before);
+    expect(before).toEqual([{ anchors: RICH_ANCHORS, closed: false }]);
   });
 });

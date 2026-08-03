@@ -58,15 +58,27 @@ const UNSUPPORTED_NOTICE =
 // da lì lo si vede. (Copiare anche i byte vorrebbe dire mettere una foto negli
 // appunti di sistema come JSON: proprio ciò che l'indirizzamento per contenuto
 // esiste per evitare.)
-const KNOWN_KINDS: Record<NodeLite["kind"], true> = {
+// Il valore è `boolean` (non `true`) di proposito: il Record resta ESAUSTIVO su
+// NodeLite["kind"] -- aggiungere un kind al modello senza elencarlo qui è ancora
+// un errore di compilazione -- ma un kind PRESENTE nel modello che questo file
+// non sa ancora ricostruire dal JSON si segna `false` invece di ometterlo. Oggi
+// è il caso di `vector` (la geometria degli ancoraggi non ha un ramo di
+// ricostruzione in parseClipboard) e di `unknown` (una forma opaca che nemmeno
+// il modello sa nominare): entrambi vanno rifiutati in blocco su incolla, non
+// degradati a rettangolo.
+const KNOWN_KINDS: Record<NodeLite["kind"], boolean> = {
   rect: true,
   ellipse: true,
   text: true,
   image: true,
+  vector: false,
+  unknown: false,
 };
 
 function isKnownKind(kind: unknown): kind is NodeLite["kind"] {
-  return typeof kind === "string" && Object.prototype.hasOwnProperty.call(KNOWN_KINDS, kind);
+  return typeof kind === "string"
+    && Object.prototype.hasOwnProperty.call(KNOWN_KINDS, kind)
+    && KNOWN_KINDS[kind as NodeLite["kind"]];
 }
 
 // L'esito di una lettura degli appunti. Le due forme di rifiuto sono diverse e

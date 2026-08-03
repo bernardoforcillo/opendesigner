@@ -4,6 +4,8 @@ import { NodeSchema, OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { useScene } from "./store";
 import { emptyScene } from "./types";
+import { vectorBounds } from "./vectorGeometry";
+import type { BoxLite } from "./vectorGeometry";
 
 // Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
 // SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
@@ -129,6 +131,96 @@ function setTextOp(id: string, content: string): Op {
     opId: `txt-${id}-${content}`, docId: "doc1",
     kind: { case: "setText", value: { id, content } },
   });
+}
+
+function createVectorOp(id: string): Op {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Path", visible: true, opacity: 1,
+    x: 0, y: 0, width: 100, height: 80,
+    shape: { case: "vector", value: { subpaths: [{ anchors: [{ x: 0, y: 0 }], closed: false }] } },
+  });
+  return create(OpSchema, { opId: "new-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+// `x` è la sola cosa che cambia fra un'invocazione e l'altra: basta a
+// distinguere "il path è quello mio" da "il path è quello dell'altro client".
+function setVectorPathOp(id: string, x: number): Op {
+  return create(OpSchema, {
+    opId: `vec-${id}-${x}`, docId: "doc1",
+    kind: { case: "setVectorPath", value: { id, subpaths: [{ anchors: [{ x, y: 0 }], closed: false }] } },
+  });
+}
+
+// --- un nodo vettoriale che rispetta l'INVARIANTE DEL BOX -------------------
+// Proto, su VectorNode: dopo un SetVectorPath la bbox LOCALE della geometria è
+// (0,0)-(width,height). Non è una formalità: quel box è ciò su cui
+// overlayRenderer disegna le 8 maniglie e su cui selectTool::nodesInMarquee
+// seleziona, quindi quando si scolla dall'inchiostro le maniglie non toccano
+// più il path e il marquee afferra il vuoto. I test qui sotto lo asseriscono
+// come proprietà (boxAndInk), non come conta di voci sullo stack: è il danno
+// VISIBILE, ed è ciò che deve reggere qualunque strada prenda la potatura.
+type Anchors = { anchors: { x: number; y: number }[]; closed: boolean }[];
+
+// Un contorno rettangolare che riempie esattamente (0,0)-(w,h).
+function boxPath(w: number, h: number): Anchors {
+  return [{ anchors: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }], closed: true }];
+}
+
+// Stessa bbox, disegno DIVERSO: è il path rimaneggiato da un altro client
+// (un ancoraggio interno spostato). Stessa bbox di proposito -- così il record
+// remoto vale da solo, senza doversi portare dietro anche il cambio di box.
+function triPath(w: number, h: number): Anchors {
+  return [{ anchors: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w / 2, y: h }], closed: true }];
+}
+
+function createVectorBoxOp(id: string, w: number, h: number): Op {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Path", visible: true, opacity: 1,
+    x: 0, y: 0, width: w, height: h,
+    shape: { case: "vector", value: { subpaths: boxPath(w, h) } },
+  });
+  return create(OpSchema, { opId: "new-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+function vectorPathOp(id: string, subpaths: Anchors, tag: string): Op {
+  return create(OpSchema, {
+    opId: `vec-${id}-${tag}`, docId: "doc1",
+    kind: { case: "setVectorPath", value: { id, subpaths } },
+  });
+}
+
+// Il setProps che accompagna SEMPRE una riscrittura della geometria (e che
+// selectTool::resizeOps emette per ogni nodo del resize): il box per intero.
+function boxOp(id: string, x: number, y: number, width: number, height: number): Op {
+  return create(OpSchema, {
+    opId: `box-${id}-${width}x${height}`, docId: "doc1",
+    kind: {
+      case: "setProps",
+      value: { id, patch: create(NodeSchema, { x, y, width, height }), mask: { paths: ["x", "y", "width", "height"] } },
+    },
+  });
+}
+
+function renameOp(id: string, name: string): Op {
+  return create(OpSchema, {
+    opId: `nm-${id}-${name}`, docId: "doc1",
+    kind: {
+      case: "setProps",
+      value: { id, patch: create(NodeSchema, { name }), mask: { paths: ["name"] } },
+    },
+  });
+}
+
+// Il box e l'inchiostro nella forma in cui vanno confrontati. `toEqual` fra i
+// due dice l'invariante per intero e, quando fallisce, stampa DI QUANTO si sono
+// scollati -- che è l'informazione utile.
+function boxAndInk(id: string): { box: BoxLite; ink: BoxLite } {
+  const n = useScene.getState().scene!.nodes[id];
+  const b = vectorBounds(n.vector!.subpaths);
+  return {
+    box: { x: 0, y: 0, width: n.width, height: n.height },
+    ink: { x: b.x, y: b.y, width: b.width, height: b.height },
+  };
 }
 
 // Wrapper: apre e chiude un gesto in un colpo solo, come farebbe un tool a
@@ -857,6 +949,142 @@ describe("undo/redo", () => {
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().scene!.nodes["t1"].text!.content).toBe("scritto da un altro");
+  });
+
+  // Stessa ragione di setText, sul campo che questa traccia introduce: senza un
+  // bersaglio per setVectorPath, un op remoto sulla geometria non renderebbe
+  // stale niente e il Ctrl+Z successivo cancellerebbe in silenzio il path
+  // appena disegnato da un altro.
+  it("un setVectorPath REMOTO invalida la voce di undo di un editing sullo stesso path", () => {
+    gesture([createVectorOp("v1")]);
+    gesture([setVectorPathOp("v1", 1)]); // un trascinamento di ancoraggio = una voce
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    useScene.getState().apply(setVectorPathOp("v1", 2));
+
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["v1"].vector!.subpaths[0].anchors[0].x).toBe(2);
+  });
+
+  // --- il box e la geometria sono DUE METÀ DELLO STESSO VALORE --------------
+  // Per un nodo vettoriale il box È la bbox del path (invariante del proto su
+  // VectorNode), quindi width/height/x/y e subpaths non sono campi
+  // indipendenti. Ma un resize è UN gesto con DUE op, e la potatura degli op
+  // stale lavora per op: se un record remoto ne pota uno solo, la voce
+  // sopravvive a metà e il Ctrl+Z successivo rimette UNA delle due metà --
+  // l'inchiostro nel box sbagliato, o il box intorno all'inchiostro sbagliato.
+  // I due test qui sotto sono le due direzioni dello stesso difetto.
+
+  it("un DRAG remoto non lascia annullare METÀ di un resize vettoriale (la geometria senza il box)", () => {
+    gesture([createVectorBoxOp("v1", 100, 80)]);
+    // UN gesto, DUE op: è esattamente ciò che selectTool::resizeOps emette per
+    // un nodo vettoriale (il box + la geometria riscritta perché continui a
+    // riempirlo). Voce: [inv(setVectorPath), inv(setProps x,y,width,height)].
+    gesture([boxOp("v1", 0, 0, 200, 160), vectorPathOp("v1", boxPath(200, 160), "resize")]);
+    expect(boxAndInk("v1").ink).toEqual(boxAndInk("v1").box);
+
+    // Un altro client si limita a SPOSTARE lo stesso nodo: scrive solo x,y.
+    // Non tocca né la geometria né la misura del box, quindi l'invariante
+    // regge -- ed è la voce di undo locale a doverla continuare a rispettare.
+    useScene.getState().apply(moveOp("v1", 40, 40));
+
+    sync.sent = [];
+    useScene.getState().undo();
+
+    // IL DANNO: prima del fix inv(setProps) veniva potato (condivide x,y) e
+    // inv(setVectorPath) restava (bersaglio "subpaths", disgiunto), quindi
+    // Ctrl+Z rimetteva la geometria 100x80 dentro il box 200x160 -- maniglie
+    // di resize che non toccano il path e marquee che afferra il vuoto.
+    const g = boxAndInk("v1");
+    expect(g.ink).toEqual(g.box);
+    // ...e la forma con cui ci si arriva: la voce del resize cade INTERA (con
+    // lei quella della creazione, che cancellerebbe il nodo). Niente da
+    // annullare, quindi niente sul filo.
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().notice).not.toBeNull();
+  });
+
+  it("un setVectorPath remoto non lascia annullare l'ALTRA metà del resize (il box senza la geometria)", () => {
+    gesture([createVectorBoxOp("v1", 100, 80)]);
+    gesture([boxOp("v1", 0, 0, 200, 160), vectorPathOp("v1", boxPath(200, 160), "resize")]);
+
+    // Un altro client rimaneggia il path spostandone un ancoraggio INTERNO: la
+    // bbox non cambia, quindi il record vale da solo. (Anche quando il gesto
+    // remoto porta pure il suo setProps, i record di Subscribe arrivano UNO
+    // ALLA VOLTA e markStale gira per record: la finestra fra i due è
+    // osservabile da un Ctrl+Z.)
+    useScene.getState().apply(vectorPathOp("v1", triPath(200, 160), "altro"));
+
+    sync.sent = [];
+    useScene.getState().undo();
+
+    // IL DANNO SPECULARE: prima del fix il record remoto potava
+    // inv(setVectorPath) e lasciava inv(setProps), quindi Ctrl+Z rimetteva il
+    // box 100x80 intorno all'inchiostro 200x160 dell'altro.
+    const g = boxAndInk("v1");
+    expect(g.ink).toEqual(g.box);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().notice).not.toBeNull();
+  });
+
+  // Questo test diceva "un setVectorPath remoto non tocca una voce che scrive
+  // campi DISGIUNTI" e lo dimostrava su uno SPOSTAMENTO -- l'unico setProps per
+  // cui box e geometria sono davvero indipendenti (gli ancoraggi sono locali,
+  // quindi l'inchiostro viaggia col nodo) -- generalizzandolo però a TUTTI i
+  // setProps, resize compreso, dove indipendenti non sono. Era l'assunzione
+  // sbagliata scritta come garanzia, ed è la ragione per cui i due test qui
+  // sopra passavano inosservati.
+  //
+  // La versione giusta è questa, e non costa un passo di annulla che non stesse
+  // già per cadere: chi riscrive i subpath manda nello STESSO gesto il
+  // setProps{x,y,width,height} che rinormalizza il box (l'invariante è dello
+  // scrittore), quindi quel record avrebbe potato la voce dello spostamento un
+  // istante dopo comunque. Anticipare la potatura non toglie niente in più --
+  // toglie la FINESTRA in cui metà voce sopravvive.
+  it("un setVectorPath remoto invalida ANCHE la voce che ha solo SPOSTATO il nodo", () => {
+    gesture([createVectorBoxOp("v1", 100, 80)]);
+    gesture([moveOp("v1", 40, 40)]); // voce: [setProps x,y]
+
+    useScene.getState().apply(vectorPathOp("v1", triPath(100, 80), "altro"));
+
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(0);
+    // Il nodo resta dove l'ha lasciato l'ULTIMA scrittura di ciascuna metà:
+    // spostato da noi, ridisegnato dall'altro. Nessuna delle due sovrascrive
+    // l'altra in silenzio.
+    expect(useScene.getState().scene!.nodes["v1"]).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes["v1"].vector!.subpaths[0].anchors).toHaveLength(3);
+  });
+
+  // Il complemento del test qui sopra, e la metà LEGITTIMA di quello che ha
+  // sostituito: il taglio per campo esiste ancora. Allargare il bersaglio di
+  // setVectorPath al box non lo degrada in "un op remoto su questo nodo
+  // brucia tutta la sua storia" -- un rename resta un rename.
+  it("un setVectorPath remoto NON tocca una voce che scrive campi davvero disgiunti", () => {
+    gesture([createVectorBoxOp("v1", 100, 80)]);
+    gesture([renameOp("v1", "Contorno")]); // voce: [setProps name]
+
+    useScene.getState().apply(vectorPathOp("v1", triPath(100, 80), "altro"));
+
+    // Cade solo la voce della creazione, che cancellerebbe il nodo (e con lui
+    // il path dell'altro).
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["v1"].name).toBe("Path");
+    // ...senza toccare la geometria remota.
+    expect(useScene.getState().scene!.nodes["v1"].vector!.subpaths[0].anchors).toHaveLength(3);
   });
 
   it("un setText remoto non tocca una voce che scrive campi DISGIUNTI", () => {

@@ -1,7 +1,10 @@
 import type { SceneState, NodeLite, FillLite, StrokeLite } from "../store/types";
 import type { Camera } from "../canvas/camera";
 import { boundsOfNode, inflateBounds } from "../canvas/geometry";
-import { nodePath, hitTestNode, isPaintable, nodeCenter } from "./shapes";
+import {
+  nodePath, hitTestNode, inkIsBox, nodeCenter, vectorPaths,
+  VECTOR_FILL_RULE, VECTOR_STROKE_PX,
+} from "./shapes";
 import { drawText, strokeText } from "./text";
 import { imageCache, type CachedImage } from "./imageCache";
 
@@ -161,10 +164,13 @@ export function drawScene(
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(cam.zoom * dpr, 0, 0, cam.zoom * dpr, cam.x * dpr, cam.y * dpr);
   for (const n of sortedVisible(state)) {
-    // isPaintable (traccia 3) copre insieme la forma degenere e l'eccezione del
-    // testo (la sua altezza la produce il layout): ciò che non lascia pixel non
-    // si disegna. È la stessa condizione del vecchio guard sulla dimensione.
-    if (!isPaintable(n)) continue;
+    // Il guard sulla dimensione vale solo per le forme il cui inchiostro È il
+    // box (rect, ellisse, immagine): per testo e vettoriale un lato a zero è uno
+    // stato legittimo e disegnabile. L'elenco delle eccezioni sta in UN posto
+    // solo (shapes.ts::inkIsBox), condiviso con l'hit-test: un nodo che si
+    // disegna ma non si clicca -- o il contrario -- è il modo in cui i due
+    // divergono.
+    if (inkIsBox(n) && (n.width <= 0 || n.height <= 0)) continue;
     // ROTAZIONE (traccia 2): è il CONTESTO a ruotare attorno al centro del box
     // (nodeCenter, la stessa funzione che l'hit-test usa nel verso opposto),
     // non la geometria -- nodePath e drawText restano asse-allineati. save/
@@ -179,7 +185,8 @@ export function drawScene(
       ctx.translate(-c.x, -c.y);
     }
     ctx.globalAlpha = n.opacity;
-    ctx.fillStyle = cssColor(n);
+    const color = cssColor(n);
+    ctx.fillStyle = color;
     if (n.kind === "text") {
       drawText(ctx, n);
       drawStrokes(ctx, n, null);
@@ -187,6 +194,12 @@ export function drawScene(
       // Un'immagine disegna sé stessa sul proprio box (traccia 3): niente
       // riempimento sotto, e il tratto non fa parte del suo design.
       drawImageNode(ctx, state, n, px, images);
+    } else if (n.kind === "vector") {
+      // Il vettoriale ha la sua doppia passata (riempimento even-odd + tratto di
+      // ogni contorno): NON è il box del modello, quindi non passa dal ramo
+      // rettangolo qui sotto. Il tratto vettoriale è quello di drawVector, non
+      // drawStrokes (che è per il perimetro di un box).
+      drawVector(ctx, n, color, cam.zoom);
     } else {
       // UN SOLO Path2D per nodo: quello del riempimento è anche quello del
       // tratto (e quello del ritaglio). Costruirne un secondo sarebbe la solita
@@ -274,12 +287,46 @@ function outsideClip(n: NodeLite, path: Path2D, weight: number): Path2D {
   return clip;
 }
 
+// Un nodo vettoriale in DUE passate: OGNI contorno si traccia, e in più quelli
+// che hanno area si riempiono. Il tratto non è decorazione -- è ciò che tiene
+// visibile un contorno aperto e un contorno chiuso di area nulla (due
+// ancoraggi, o tre allineati: due stati che il pen tool raggiunge in tre click,
+// e che il solo riempimento non dipingerebbe affatto).
+//
+// I due Path2D sono separati perché un contorno aperto messo in quello del
+// riempimento verrebbe chiuso implicitamente dal canvas e riempito -- ed è per
+// questo che vectorPaths ne restituisce due.
+function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, zoom: number): void {
+  const { fill, stroke } = vectorPaths(n);
+  // La regola even-odd è una SCELTA (motivata su shapes.ts::VECTOR_FILL_RULE)
+  // e non il default del canvas, quindi va passata a ogni fill. È la stessa
+  // che usa l'hit-test: un buco che si vede ma si clicca sarebbe la firma di
+  // due regole diverse.
+  if (fill) ctx.fill(fill, VECTOR_FILL_RULE);
+  if (stroke) {
+    ctx.strokeStyle = color;
+    // Il ctx è in trasformazione MONDO (drawScene applica zoom * dpr), quindi
+    // uno spessore costante sullo schermo si ottiene dividendo per lo zoom --
+    // il dpr si cura da sé, essendo nella stessa matrice. Senza, la linea di un
+    // path si ingrasserebbe insieme al disegno e a zoom 64 sarebbe una banda.
+    ctx.lineWidth = VECTOR_STROKE_PX / zoom;
+    // Giunti e capi tondi: sono anche ciò che rende visibile un contorno di UN
+    // solo ancoraggio, che shapes.ts traccia come un segmento di lunghezza
+    // nulla (il pallino del pen tool dopo il primo click).
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    ctx.stroke(stroke);
+  }
+}
+
 // hitTest in coordinate mondo (già trasformate). Ritorna il nodo più in alto.
-export function hitTest(state: SceneState, wx: number, wy: number): string | null {
+// `zoom` arriva fino a hitTestNode perché la presa attorno a un contorno
+// vettoriale APERTO è in px SCHERMO: vedi shapes.ts::VECTOR_HIT_PX.
+export function hitTest(state: SceneState, wx: number, wy: number, zoom: number): string | null {
   const nodes = sortedVisible(state);
   for (let i = nodes.length - 1; i >= 0; i--) {
     const n = nodes[i];
-    if (hitTestNode(n, wx, wy)) return n.id;
+    if (hitTestNode(n, wx, wy, zoom)) return n.id;
   }
   return null;
 }

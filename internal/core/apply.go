@@ -14,6 +14,10 @@ var (
 	ErrNodeNotFound = errors.New("core: node not found")
 	ErrNotTextNode  = errors.New("core: not a text node")
 	ErrNotRectNode  = errors.New("core: not a rect node")
+	// ErrNotVectorNode: stesso precedente di ErrNotTextNode -- il oneof `shape`
+	// è la NATURA del nodo, quindi un SetVectorPath su un rettangolo è un op sul
+	// nodo sbagliato, non un campo mancante da riempire.
+	ErrNotVectorNode = errors.New("core: not a vector node")
 )
 
 // NewDocument crea un documento vuoto con una pagina di default ("page1").
@@ -36,6 +40,8 @@ func Apply(doc *brawtv1.Document, op *brawtv1.Op) error {
 		return applyDelete(doc, k.DeleteNode)
 	case *brawtv1.Op_SetText:
 		return applySetText(doc, k.SetText)
+	case *brawtv1.Op_SetVectorPath:
+		return applySetVectorPath(doc, k.SetVectorPath)
 	default:
 		return fmt.Errorf("core: unknown op kind %T", op.GetKind())
 	}
@@ -106,15 +112,26 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 			// server proprio sul nodo che entrambi disegnano come rettangolo.
 			// Il rettangolo implicito viene materializzato più sotto.
 			//
-			// L'IMMAGINE (traccia 3) sta in questo elenco per una ragione più
-			// forte del raggio: la sua forma PORTA UN DATO -- l'hash dei byte --
-			// e il ramo qui sotto materializza un rettangolo SOSTITUENDO la
-			// forma. Senza questo caso, un corner_radius su un'immagine non
-			// darebbe un raggio a un'immagine: la trasformerebbe in un
-			// rettangolo grigio, buttando via il riferimento all'asset, senza
-			// errori e senza un inverso capace di rimetterlo.
+			// La guardia è una WHITELIST (che cosa è un rettangolo) e non una
+			// lista delle forme da rifiutare, ed è una differenza con i denti:
+			// elencare i "cattivi" fa passare in silenzio OGNI forma aggiunta
+			// dopo (immagine della traccia 3, vettoriale della traccia 4, gruppo/
+			// frame della traccia 1), che finisce dritta nel ramo qui sotto --
+			// quello che materializza il rettangolo implicito -- e si vede
+			// SOSTITUIRE lo `shape` da un Node_Rect, distruggendo la propria
+			// geometria (o, per un'immagine, l'hash dei byte). È successo
+			// esattamente così con VectorNode: la lista diceva {Ellipse, Text},
+			// un setProps{corner_radius} su un nodo vettoriale passava la
+			// validazione e ne cancellava tutti i subpath, mentre il gemello TS
+			// (web/src/store/applyOp.ts, `cur.kind !== "rect"`) rifiutava lo
+			// stesso op -- documento autorevole e client desincronizzati per
+			// sempre. Con la whitelist una forma nuova è rifiutata di default: il
+			// peggio che può fare è costringere chi la aggiunge a decidere,
+			// invece di perdere il lavoro dell'utente.
 			switch n.GetShape().(type) {
-			case *brawtv1.Node_Ellipse, *brawtv1.Node_Text, *brawtv1.Node_Image:
+			case nil, *brawtv1.Node_Rect:
+				// Rettangolo esplicito, o implicito (shape assente).
+			default:
 				return fmt.Errorf("%w: %s", ErrNotRectNode, s.GetId())
 			}
 		default:
@@ -213,5 +230,37 @@ func applySetText(doc *brawtv1.Document, s *brawtv1.SetText) error {
 	if s.GetStylePresent() {
 		t.Text.Style = s.GetStyle()
 	}
+	return nil
+}
+
+// applySetVectorPath sostituisce IN BLOCCO i subpath di un nodo vettoriale.
+//
+// Op dedicato e non un path della mask di SetProperties per la stessa ragione
+// di applySetText: la geometria vive DENTRO il oneof `shape`, mentre la mask
+// indirizza campi di primo livello del Node.
+//
+// La lista si scrive SEMPRE, anche vuota -- è il path che l'utente ha svuotato,
+// non un "non specificato" da ignorare. Nessun flag `present` come
+// SetText.style_present: là il flag serviva perché un SetText porta DUE cose
+// (contenuto e stile) e una delle due doveva poter restare intatta; qui l'op È
+// i subpath, quindi "assente" e "vuoto" descrivono lo stesso stato e la
+// distinzione proto3 non è osservabile.
+func applySetVectorPath(doc *brawtv1.Document, s *brawtv1.SetVectorPath) error {
+	n, ok := doc.Nodes[s.GetId()]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
+	}
+	// Stesso rifiuto di applySetText su un non-testo: scrivere una geometria
+	// dentro un rettangolo ne cambierebbe la FORMA in silenzio, e l'op non ha
+	// inverso per il rettangolo che c'era prima -- quindi in modo non
+	// annullabile. Nota che qui NON c'è il ripiego "shape assente = rettangolo
+	// implicito" di applySetProps: un nodo senza forma è un rettangolo per
+	// chiunque legga il documento (web/src/store/types.ts::toNodeLite), quindi
+	// è esattamente il caso che va rifiutato.
+	v, isVector := n.GetShape().(*brawtv1.Node_Vector)
+	if !isVector || v.Vector == nil {
+		return fmt.Errorf("%w: %s", ErrNotVectorNode, s.GetId())
+	}
+	v.Vector.Subpaths = s.GetSubpaths()
 	return nil
 }

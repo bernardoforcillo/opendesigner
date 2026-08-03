@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
-import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite } from "./types";
+import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite, toSubPathsLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 
 // Un SetProperties SENZA patch NON è un no-op. Go legge il patch con i getter
@@ -55,6 +55,14 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // x. Nota che kind "rect" comprende anche il nodo SENZA shape (vedi
       // toNodeLite): Go lo accetta allo stesso modo, materializzando il
       // rettangolo implicito.
+      //
+      // Ed è una WHITELIST esattamente come quella di Go, non "tutto tranne
+      // ellisse e testo": kindOf (store/types.ts) mappa su "unknown" ogni forma
+      // che questo modello non conosce, quindi una forma aggiunta da un'altra
+      // traccia è rifiutata di default QUI come lo è di là. Con il vecchio
+      // ripiego "sconosciuto => rect" questa riga la lasciava passare e Go
+      // rispondeva ErrNotRectNode: la divergenza client/documento autorevole che
+      // la whitelist esiste per impedire, solo dall'altro lato del filo.
       if (cur.kind !== "rect" && paths.includes("corner_radius")) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
@@ -122,6 +130,27 @@ export function applyOp(state: SceneState, op: Op): SceneState {
         style: stylePresent ? toTextStyleLite(style) : cur.text.style,
       };
       return { ...state, nodes: { ...state.nodes, [id]: { ...cur, text } } };
+    }
+    // Op dedicato e non un path della mask, per la stessa ragione di setText: la
+    // geometria vive DENTRO il oneof `shape`. Parità con core.applySetVectorPath (Go).
+    case "setVectorPath": {
+      const { id, subpaths } = op.kind.value;
+      const cur = state.nodes[id];
+      // Nodo inesistente = ErrNodeNotFound in Go.
+      if (!cur) return state;
+      // Nodo non vettoriale = ErrNotVectorNode in Go: l'op è rifiutato in
+      // blocco. Nota che qui NON vale il ripiego "kind rect comprende anche il
+      // nodo senza shape" di corner_radius: quel nodo è un RETTANGOLO per
+      // entrambi i lati, quindi è esattamente il caso da rifiutare.
+      if (cur.kind !== "vector" || !cur.vector) return state;
+      // La lista si scrive SEMPRE, anche vuota: è il path che l'utente ha
+      // svuotato, non un "non specificato" da ignorare. Nessun flag `present`
+      // come stylePresent -- là serviva perché un setText porta due cose e una
+      // doveva poter restare intatta; qui l'op È i subpath.
+      return {
+        ...state,
+        nodes: { ...state.nodes, [id]: { ...cur, vector: { subpaths: toSubPathsLite(subpaths) } } },
+      };
     }
     case "deleteNode": {
       const { id } = op.kind.value;

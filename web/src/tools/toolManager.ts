@@ -71,20 +71,49 @@ export function attachTools(ctx: ToolContext, getActive: () => Tool): () => void
   // centrale del mouse => mano.
   let temp: Tool | null = null;
   let seen: Tool | null = null;
+  // Il tool messo da parte dal pan TEMPORANEO, non disattivato: riprenderà il
+  // suo posto (col suo gesto intatto) appena il pan finisce. Vedi Tool.onSuspend.
+  let suspended: Tool | null = null;
   let spaceDown = false;
   let middlePan = false;
   let captured: number | null = null;
 
-  // Risolve il tool effettivo e, se è cambiato dall'ultima volta, abbandona il
+  // Risolve il tool effettivo e, se è cambiato dall'ultima volta, chiude il
   // gesto del precedente e aggiorna il cursore.
+  //
+  // "Chiude" ha due forme, e la differenza conta da quando esiste uno strumento
+  // (il pen tool) il cui gesto dura più click invece di un drag solo:
+  //  - SOSTITUZIONE TEMPORANEA (spazio o tasto centrale => mano): il tool
+  //    tornerà tra un istante, quindi se dichiara onSuspend lo si sospende e
+  //    basta. Panare mentre si disegna è routine in qualunque editor
+  //    vettoriale, e trattarlo come un cambio di strumento butterebbe via il
+  //    lavoro in corso senza avviso.
+  //  - CAMBIO VERO (toolbar, pointercancel, smontaggio): onDeactivate come
+  //    sempre, il gesto a metà si abbandona.
   function active(): Tool {
     const next = temp ?? getActive();
-    if (seen !== next) {
-      seen?.onDeactivate?.(ctx);
-      seen = next;
-      const style = (canvas as { style?: { cursor: string } }).style;
-      if (style) style.cursor = next.cursor;
+    if (seen === next) return next;
+    const prev = seen;
+    seen = next;
+    if (prev && next === temp && prev.onSuspend) {
+      suspended = prev;
+      prev.onSuspend(ctx);
+    } else {
+      prev?.onDeactivate?.(ctx);
+      // Il pan è FINITO (temp è tornato null): il tool sospeso riprende il suo
+      // posto in silenzio se è lui a tornare attivo; se nel frattempo la
+      // toolbar è passata a un altro strumento, quello sospeso va invece
+      // abbandonato -- altrimenti resterebbe per sempre con un gesto a metà e
+      // un'anteprima che nessuno spegne. Finché temp c'è ancora si sta ancora
+      // panando (es. un pointercancel a metà pan) e non si decide niente.
+      if (suspended && temp === null) {
+        const s = suspended;
+        suspended = null;
+        if (s !== next) s.onDeactivate?.(ctx);
+      }
     }
+    const style = (canvas as { style?: { cursor: string } }).style;
+    if (style) style.cursor = next.cursor;
     return next;
   }
 
@@ -214,6 +243,10 @@ export function attachTools(ctx: ToolContext, getActive: () => Tool): () => void
     view?.removeEventListener("keyup", onKeyUp);
     release();
     seen?.onDeactivate?.(ctx);
+    // Anche il sospeso: smontare non è una pausa, e un tool sospeso durante il
+    // pan (spazio ancora premuto) non deve restare col suo gesto appeso.
+    if (suspended !== seen) suspended?.onDeactivate?.(ctx);
     seen = null;
+    suspended = null;
   };
 }

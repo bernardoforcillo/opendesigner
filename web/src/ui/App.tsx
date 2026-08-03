@@ -20,6 +20,7 @@ import { selectTool } from "../tools/selectTool";
 import { rectTool } from "../tools/rectTool";
 import { ellipseTool } from "../tools/ellipseTool";
 import { textTool } from "../tools/textTool";
+import { penTool } from "../tools/penTool";
 import { handTool } from "../tools/handTool";
 
 // Registro dei tool disponibili: la toolbar sceglie una chiave, attachTools
@@ -35,6 +36,7 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
   rect: rectTool,
   ellipse: ellipseTool,
   text: textTool,
+  pen: penTool,
   hand: handTool,
 };
 
@@ -43,6 +45,7 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "rect", label: "Rettangolo" },
   { id: "ellipse", label: "Ellisse" },
   { id: "text", label: "Testo" },
+  { id: "pen", label: "Penna" },
   { id: "hand", label: "Mano" },
 ];
 
@@ -188,8 +191,13 @@ export function App() {
       if (overlay && scene) {
         resizeCanvasToDisplaySize(overlay);
         const octx = overlay.getContext("2d");
-        const { camera, selection, marquee, snapGuides } = useScene.getState();
-        if (octx) drawOverlay(octx, scene, camera, selection, marquee, snapGuides);
+        // snapGuides: le guide di allineamento del gesto in corso (T2).
+        // penPreview: il path che il pen tool sta disegnando. Nessuno dei due è
+        // documento (il nodo vettoriale non esiste finché il path non è finito),
+        // quindi passano dallo store all'overlay come il marquee -- ed è l'UNICO
+        // modo in cui chi disegna vede quello che sta facendo.
+        const { camera, selection, marquee, snapGuides, penPreview } = useScene.getState();
+        if (octx) drawOverlay(octx, scene, camera, selection, marquee, snapGuides, penPreview);
       }
       raf = requestAnimationFrame(tick);
     };

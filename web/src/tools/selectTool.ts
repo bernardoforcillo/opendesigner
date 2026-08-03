@@ -1,8 +1,11 @@
 import { hitTest } from "../renderer/canvasRenderer";
+import { selectionBoundsOfNode, hasInk } from "../renderer/shapes";
 import { normalizeRect, boundsOfNode, boundsIntersect, worldVisualAabbOfNode, type Bounds } from "../canvas/geometry";
 import { worldToScreen } from "../canvas/camera";
 import { angleOf, centerOf, normalizeDegrees, rotateAround, snapDegrees } from "../canvas/transform";
 import { selectionFrame, selectionWorldBounds } from "../renderer/overlayRenderer";
+import { resizeVector } from "../store/vectorGeometry";
+import type { SubPathLite } from "../store/types";
 import {
   applyFrameResize,
   applyFrameResizeToNode,
@@ -18,7 +21,7 @@ import {
 } from "../selection/handles";
 import { snapBounds, snapMoving, snapTargets, worldThreshold, type SnapGuide } from "../selection/snap";
 import { useScene } from "../store/store";
-import { makeDeleteOp, makeSetPropsOp } from "./ops";
+import { makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp } from "./ops";
 import type { SceneState } from "../store/types";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import type { Tool, ToolContext } from "./types";
@@ -88,7 +91,9 @@ export type PickResult =
   | { mode: "toggle"; id: string };
 
 // Decide il TIPO di gesto senza toccare lo store: pura funzione di scena +
-// input, testabile senza DOM (Task 8, step 1). id assente in mode "single"
+// input (`zoom` incluso: la presa attorno a un path vettoriale aperto è in px
+// SCHERMO, vedi renderer/shapes.ts::VECTOR_HIT_PX), testabile senza DOM
+// (Task 8, step 1). id assente in mode "single"
 // significa "il nodo è già selezionato, non toccare la selezione" -- è la
 // lettura di "selezione singola (SE NON GIÀ selezionato)" del brief: così un
 // drag successivo sposta l'INTERA selezione (anche multipla) invece di
@@ -98,8 +103,9 @@ export function pickTarget(
   world: { x: number; y: number },
   shiftKey: boolean,
   selection: string[],
+  zoom: number,
 ): PickResult {
-  const id = hitTest(scene, world.x, world.y);
+  const id = hitTest(scene, world.x, world.y, zoom);
   if (!id) return { mode: "marquee" };
   if (shiftKey) return { mode: "toggle", id };
   return selection.includes(id) ? { mode: "single" } : { mode: "single", id };
@@ -108,14 +114,36 @@ export function pickTarget(
 // Id dei nodi VISIBILI i cui bounds intersecano il marquee, ordinati per
 // orderKey per un risultato deterministico (Object.values non garantisce
 // l'ordine di inserimento per chiavi stringa).
+// Il box è quello di SELEZIONE (renderer/shapes.ts), non quello grezzo del
+// modello. NON è lo stesso bersaglio del click: hitTest colpisce l'inchiostro
+// del path e misura la presa in px SCHERMO, mentre qui si confrontano bounds in
+// coordinate MONDO e la camera non c'è. Le due porte non possono coincidere, ma
+// devono concordare sui due estremi, ed è quello che fanno le due condizioni
+// qui sotto:
+//   - `hasInk`: un vettoriale senza NESSUN ancoraggio non si vede e non si
+//     clicca, quindi non deve nemmeno finire in un marquee -- altrimenti
+//     resterebbe l'unica porta verso un nodo invisibile, e selezionerebbe il
+//     nulla per sorpresa;
+//   - `selectionBoundsOfNode`: un vettoriale il cui box ha legittimamente un
+//     lato a zero (un segmento orizzontale, un path di un solo ancoraggio) si
+//     vede e si clicca eccome, ma con il box grezzo un marquee lo prenderebbe
+//     solo SCAVALCANDOLO in senso stretto -- passargli accanto non basterebbe.
 export function nodesInMarquee(scene: SceneState, bounds: Bounds): string[] {
   return Object.values(scene.nodes)
-    // worldVisualAabbOfNode e non boundsOfNode: conta quello che il nodo
-    // DIPINGE -- ruotato (il rettangolo del modello non è più dove si vede) e
-    // tratto compreso (un tratto esterno da 20 è una fascia larga 20 che sta
-    // tutta fuori dal box). Trascinare un riquadro attorno a ciò che si vede
-    // deve prenderlo: è tutto quello che il marquee promette.
-    .filter((n) => n.visible && boundsIntersect(worldVisualAabbOfNode(n), bounds))
+    // Le forme il cui inchiostro È il box (rect/ellisse/testo/immagine) usano
+    // worldVisualAabbOfNode: conta quello che il nodo DIPINGE -- ruotato (il
+    // rettangolo del modello non è più dove si vede) e tratto compreso (un
+    // tratto esterno da 20 è una fascia larga 20 tutta fuori dal box). Il
+    // VETTORIALE usa selectionBoundsOfNode, che allarga il solo asse degenere
+    // (un segmento orizzontale, un path di un ancoraggio) così un marquee che ci
+    // passa accanto lo prende comunque. `hasInk` tiene fuori un vettoriale senza
+    // NESSUN ancoraggio: non si vede e non si clicca, quindi non deve nemmeno
+    // finire in un marquee (per gli altri kind è sempre vero, quindi non cambia
+    // niente).
+    .filter((n) => n.visible && hasInk(n) && boundsIntersect(
+      n.kind === "vector" ? selectionBoundsOfNode(n) : worldVisualAabbOfNode(n),
+      bounds,
+    ))
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0))
     .map((n) => n.id);
 }
@@ -195,6 +223,11 @@ export function createSelectTool(): Tool {
   // si mappa come gli altri (vedi handles.ts::applyFrameResizeToNode), e per un
   // ribaltamento o una scala non uniforme anche il suo angolo cambia.
   let resizeStartNodes: Record<string, { bounds: Bounds; rotation: number }> | null = null;
+  // La GEOMETRIA di partenza dei soli nodi vettoriali selezionati. Catturata a
+  // pointerdown come i bounds e per lo stesso motivo: gli op di anteprima sono
+  // assoluti e si ricalcolano sempre dallo stato iniziale, mai dall'ultima
+  // anteprima -- che, applicata in locale, è già la geometria scalata.
+  let resizeStartVectors: Record<string, SubPathLite[]> | null = null;
   let resizeStarted = false;
   // I bersagli dello snap per il ridimensionamento, fotografati come quelli del
   // trascinamento (stessa ragione).
@@ -263,6 +296,7 @@ export function createSelectTool(): Tool {
     resizeAnchor = null;
     resizeStartFrame = null;
     resizeStartNodes = null;
+    resizeStartVectors = null;
     resizeStarted = false;
     resizeTargets = null;
     clearGuides();
@@ -355,21 +389,41 @@ export function createSelectTool(): Tool {
     // matematica del resize -- flip e keepAspect compresi -- resta quella di
     // resizeTransform, invariata: qui la si avvolge, non la si riscrive.
     const r = resizeFrame(resizeStartFrame, resizeHandle, dx, dy, { keepAspect: mods.shift });
-    const ops = Object.entries(resizeStartNodes).map(([id, start]) => {
+    const ops: Op[] = [];
+    for (const [id, start] of Object.entries(resizeStartNodes)) {
       const next = applyFrameResizeToNode(start.bounds, start.rotation, r);
       // L'angolo entra nella mask SOLO quando cambia davvero (un nodo allineato
       // al frame -- il caso normale -- manda esattamente l'op di prima). Cambia
       // quando una scala non uniforme o un ribaltamento girano gli assi del
       // nodo: senza spedirlo, il nodo si vedrebbe con la forma nuova e l'angolo
       // vecchio, cioè fuori dal riquadro.
-      return next.rotation === start.rotation
-        ? makeSetPropsOp(id, next.bounds, ["x", "y", "width", "height"])
-        : makeSetPropsOp(
-            id,
-            { ...next.bounds, rotation: next.rotation },
-            ["x", "y", "width", "height", "rotation"],
-          );
-    });
+      ops.push(
+        next.rotation === start.rotation
+          ? makeSetPropsOp(id, next.bounds, ["x", "y", "width", "height"])
+          : makeSetPropsOp(
+              id,
+              { ...next.bounds, rotation: next.rotation },
+              ["x", "y", "width", "height", "rotation"],
+            ),
+      );
+      // Un nodo VETTORIALE porta la sua geometria dentro lo STESSO gesto: gli
+      // ancoraggi sono lunghezze in coordinate locali, non frazioni del box,
+      // quindi senza questo secondo op il box crescerebbe e l'inchiostro
+      // resterebbe della sua misura -- violando l'invariante del proto (dopo un
+      // SetVectorPath la bbox locale della geometria è (0,0)-(width,height)). La
+      // scala viene dalla trasformazione di gruppo (r.transform), la stessa che
+      // ha appena mappato il box; in anteprima le due chiavi di coalescing
+      // (`s|id|...` e `v|id`, vedi store.ts::previewKey) non si schiacciano a
+      // vicenda, ed è un'unica voce di undo.
+      const start0 = resizeStartVectors?.[id];
+      if (!start0) continue;
+      ops.push(makeSetVectorPathOp(id, resizeVector(
+        start0,
+        start.bounds,
+        { signed: r.transform.signedW, start: r.transform.startW },
+        { signed: r.transform.signedH, start: r.transform.startH },
+      )));
+    }
     return { ops, guides };
   }
 
@@ -473,14 +527,20 @@ export function createSelectTool(): Tool {
       const overlay = frameUnderPointer(ctx, world);
       if (overlay?.kind === "resize") {
         const start: Record<string, { bounds: Bounds; rotation: number }> = {};
+        // La geometria di partenza dei soli nodi vettoriali: serve a resizeOps
+        // per scalare gli ancoraggi insieme al box (vedi resizeStartVectors).
+        const startVectors: Record<string, SubPathLite[]> = {};
         for (const sid of store.selection) {
           const n = scene.nodes[sid];
-          if (n) start[sid] = { bounds: boundsOfNode(n), rotation: n.rotation };
+          if (!n) continue;
+          start[sid] = { bounds: boundsOfNode(n), rotation: n.rotation };
+          if (n.kind === "vector" && n.vector) startVectors[sid] = n.vector.subpaths;
         }
         resizeHandle = overlay.handle;
         resizeAnchor = world;
         resizeStartFrame = frameOfSelection(ctx);
         resizeStartNodes = start;
+        resizeStartVectors = startVectors;
         resizeTargets = snapTargets(scene, store.selection);
         resizeStarted = false;
         setCursor(ctx, cursorForHandle(overlay.handle));
@@ -520,7 +580,8 @@ export function createSelectTool(): Tool {
       // selezione e drag si preparano come per un click qualunque, così se il
       // puntatore si muove il gesto è già armato e lo spostamento parte da
       // questo stesso down. Chi decide è il rilascio (onPointerUp), non il down.
-      const hitId = hitTest(scene, world.x, world.y);
+      const zoom = ctx.getCamera().zoom;
+      const hitId = hitTest(scene, world.x, world.y, zoom);
       if (hitId && !e.shiftKey) {
         const isDoubleClick =
           lastClick !== null &&
@@ -537,7 +598,7 @@ export function createSelectTool(): Tool {
         lastClick = null;
       }
 
-      const target = pickTarget(scene, world, e.shiftKey, store.selection);
+      const target = pickTarget(scene, world, e.shiftKey, store.selection, zoom);
 
       if (target.mode === "marquee") {
         // shift+click sul vuoto non azzera: è l'inizio di un'aggiunta (unione

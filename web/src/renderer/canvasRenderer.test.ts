@@ -1,9 +1,10 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
 import { hitTest, resizeCanvasToDisplaySize, drawScene } from "./canvasRenderer";
 import type { CachedImage } from "./imageCache";
+import { VECTOR_STROKE_PX } from "./shapes";
 import type { Camera } from "../canvas/camera";
 import { emptyScene } from "../store/types";
-import type { FillLite, NodeLite } from "../store/types";
+import type { FillLite, NodeLite, AnchorLite, SubPathLite } from "../store/types";
 
 // Duck-typed stand-in for HTMLCanvasElement: resizeCanvasToDisplaySize only
 // touches clientWidth/clientHeight/width/height, so a plain object is enough
@@ -18,14 +19,45 @@ function rect(id: string, x: number, y: number, order: string, visible = true): 
     kind: "rect", cornerRadius: 0 };
 }
 
+function anchor(a: Partial<AnchorLite>): AnchorLite {
+  return { x: 0, y: 0, inX: 0, inY: 0, outX: 0, outY: 0, ...a };
+}
+
+// Path2D finto: jsdom non ce l'ha. Registra le primitive chiamate, così un test
+// può dire non solo "ha ritagliato/tracciato" ma "con QUESTA forma". Superset
+// che serve sia al tratto (rect/roundRect/ellipse/addPath) sia al vettoriale
+// (moveTo/lineTo/bezierCurveTo/closePath): la forma esatta di un path
+// vettoriale è comunque provata in shapes.test.ts, qui interessa QUALE path
+// finisce in fill e quale in stroke.
+class FakePath2D {
+  ops: { op: string; args: unknown[] }[] = [];
+  rect(...args: number[]) { this.ops.push({ op: "rect", args }); }
+  roundRect(...args: unknown[]) { this.ops.push({ op: "roundRect", args }); }
+  ellipse(...args: number[]) { this.ops.push({ op: "ellipse", args }); }
+  addPath(p: unknown) { this.ops.push({ op: "addPath", args: [p] }); }
+  moveTo(...args: number[]) { this.ops.push({ op: "moveTo", args }); }
+  lineTo(...args: number[]) { this.ops.push({ op: "lineTo", args }); }
+  bezierCurveTo(...args: number[]) { this.ops.push({ op: "bezierCurveTo", args }); }
+  closePath() { this.ops.push({ op: "closePath", args: [] }); }
+}
+
+function vectorNode(id: string, subpaths: SubPathLite[], over: Partial<NodeLite> = {}): NodeLite {
+  return { ...rect(id, 0, 0, "a0"), kind: "vector", vector: { subpaths }, ...over };
+}
+
+// Lo zoom entra solo nella tolleranza di presa del vettoriale: a zoom 1 px
+// schermo e unità mondo coincidono, ed è quello che usano i test sulle forme
+// il cui bersaglio non dipende dalla camera.
+const Z1 = 1;
+
 describe("hitTest", () => {
   it("returns the topmost node under the point", () => {
     const s = emptyScene("d", "n");
     s.nodes["a"] = rect("a", 0, 0, "a0");
     s.nodes["b"] = rect("b", 10, 10, "a1"); // sopra (orderKey maggiore)
-    expect(hitTest(s, 25, 25)).toBe("b");
-    expect(hitTest(s, 5, 5)).toBe("a");
-    expect(hitTest(s, 200, 200)).toBeNull();
+    expect(hitTest(s, 25, 25, Z1)).toBe("b");
+    expect(hitTest(s, 5, 5, Z1)).toBe("a");
+    expect(hitTest(s, 200, 200, Z1)).toBeNull();
   });
 
   it("returns the topmost node by orderKey when two nodes overlap", () => {
@@ -33,7 +65,7 @@ describe("hitTest", () => {
     // Stesso rettangolo esattamente sovrapposto: "b" ha orderKey maggiore quindi vince.
     s.nodes["a"] = rect("a", 0, 0, "a0");
     s.nodes["b"] = rect("b", 0, 0, "a1");
-    expect(hitTest(s, 25, 25)).toBe("b");
+    expect(hitTest(s, 25, 25, Z1)).toBe("b");
   });
 
   it("skips invisible nodes", () => {
@@ -41,11 +73,38 @@ describe("hitTest", () => {
     s.nodes["a"] = rect("a", 0, 0, "a0", false); // visible: false, in cima per orderKey
     s.nodes["b"] = rect("b", 0, 0, "a-1", true); // sotto, ma visibile
     // "a" ha orderKey maggiore ma non è visibile: non deve mai essere ritornato.
-    expect(hitTest(s, 25, 25)).toBe("b");
+    expect(hitTest(s, 25, 25, Z1)).toBe("b");
 
     const onlyInvisible = emptyScene("d", "n");
     onlyInvisible.nodes["a"] = rect("a", 0, 0, "a0", false);
-    expect(hitTest(onlyInvisible, 25, 25)).toBeNull();
+    expect(hitTest(onlyInvisible, 25, 25, Z1)).toBeNull();
+  });
+
+  it("porta lo ZOOM fino alla tolleranza di presa del vettoriale", () => {
+    // Il tramite: senza, un path si afferrerebbe a distanze diverse a seconda
+    // dello zoom, e a zoom alto diventerebbe quasi impossibile da cliccare.
+    const s = emptyScene("d", "n");
+    s.nodes["v"] = vectorNode("v", [{
+      anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 100, y: 0 })], closed: false,
+    }], { width: 100, height: 0 });
+    expect(hitTest(s, 50, 3, 1)).toBe("v");     // 3 unità mondo = 3 px
+    expect(hitTest(s, 50, 3, 4)).toBeNull();    // 3 unità mondo = 12 px
+    expect(hitTest(s, 50, 12, 0.25)).toBe("v"); // 12 unità mondo = 3 px
+  });
+
+  it("un vettoriale APERTO non ruba i click alle forme che gli stanno dentro", () => {
+    // Il rettangolo sotto e, sopra, tre lati di un quadrato che lo circondano
+    // senza chiudersi. Cliccare al centro deve prendere il rettangolo: il
+    // contorno aperto lì non ha inchiostro.
+    const s = emptyScene("d", "n");
+    s.nodes["r"] = rect("r", 0, 0, "a0");
+    s.nodes["v"] = vectorNode("v", [{
+      anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 0, y: 50 }),
+        anchor({ x: 50, y: 50 }), anchor({ x: 50, y: 0 })],
+      closed: false,
+    }], { orderKey: "a1" });
+    expect(hitTest(s, 25, 25, Z1)).toBe("r");
+    expect(hitTest(s, 25, 49, Z1)).toBe("v");  // sul lato, dove l'inchiostro c'è
   });
 });
 
@@ -61,7 +120,8 @@ function textNode(over: Partial<NodeLite> = {}): NodeLite {
 // testo non passa mai da nodePath, quindi drawScene è testabile qui.
 function fakeCtx() {
   const fillText: { text: string; x: number; y: number }[] = [];
-  const fills: unknown[] = [];
+  const fills: { path: unknown; rule: unknown }[] = [];
+  const strokes: { path: unknown; lineWidth: number; strokeStyle: string; cap: string }[] = [];
   // Le chiamate che compongono la trasformazione di un nodo RUOTATO, in ordine:
   // drawScene le emette solo attorno ai nodi con rotation != 0 (vedi il
   // commento lì), quindi una scena ferma deve lasciare questa lista vuota.
@@ -70,6 +130,7 @@ function fakeCtx() {
   const ctx = {
     canvas: { width: 800, height: 600 },
     font: "", textBaseline: "", textAlign: "", fillStyle: "", globalAlpha: 1,
+    strokeStyle: "", lineWidth: 0, lineCap: "", lineJoin: "",
     setTransform: () => {},
     clearRect: () => {},
     save: record("save"),
@@ -78,9 +139,12 @@ function fakeCtx() {
     rotate: record("rotate"),
     measureText: (s: string) => ({ width: s.length * 10 }),
     fillText: (t: string, x: number, y: number) => { fillText.push({ text: t, x, y }); },
-    fill: (p: unknown) => { fills.push(p); },
+    fill: (p: unknown, rule?: unknown) => { fills.push({ path: p, rule }); },
+    stroke: (p: unknown) => {
+      strokes.push({ path: p, lineWidth: ctx.lineWidth, strokeStyle: ctx.strokeStyle, cap: ctx.lineCap });
+    },
   };
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, fillText, fills, xform };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, fillText, fills, strokes, xform };
 }
 
 describe("drawScene", () => {
@@ -150,16 +214,6 @@ describe("drawScene", () => {
 // chiesto) e RITAGLIANDO il lato che non serve. Questi test fissano le tre
 // ricette, perché sono l'unico posto in cui "align" diventa qualcosa di
 // osservabile sul canvas.
-
-// Path2D finto: jsdom non ce l'ha. Registra le primitive chiamate, così un
-// test può dire non solo "ha ritagliato" ma "ha ritagliato CON QUESTA forma".
-class FakePath2D {
-  ops: { op: string; args: unknown[] }[] = [];
-  rect(...args: number[]) { this.ops.push({ op: "rect", args }); }
-  roundRect(...args: unknown[]) { this.ops.push({ op: "roundRect", args }); }
-  ellipse(...args: number[]) { this.ops.push({ op: "ellipse", args }); }
-  addPath(p: unknown) { this.ops.push({ op: "addPath", args: [p] }); }
-}
 
 interface StrokeCall { path: unknown; lineWidth: number; strokeStyle: string }
 interface ClipCall { path: unknown; rule?: string }
@@ -328,6 +382,142 @@ describe("drawScene: tratto", () => {
     drawScene(f.ctx, sceneWith(n), { x: 0, y: 0, zoom: 1 } as Camera);
     expect(f.clips).toEqual([]);
     expect(f.order).toEqual(["fillText", "strokeText"]);
+  });
+
+  it("still draws a vector node with a degenerate axis, but not a degenerate RECT", () => {
+    // Il box di un nodo vettoriale è la bbox ESATTA della sua geometria
+    // (invariante del proto), quindi un segmento orizzontale ha davvero height
+    // 0. Scartarlo qui lo renderebbe invisibile -- e, con lo stesso guard
+    // nell'hit-test, nemmeno cliccabile: raggiungibile solo dal pannello
+    // livelli.
+    //
+    // Il rettangolo degenere invece resta scartato: lì l'inchiostro È il box e
+    // non c'è niente da riempire. È la distinzione che vive in
+    // shapes.ts::inkIsBox, condivisa da disegno e hit-test.
+    vi.stubGlobal("Path2D", FakePath2D);
+    try {
+      const s = emptyScene("d", "n");
+      s.nodes["v"] = vectorNode("v", [{
+        anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 50, y: 0 })], closed: false,
+      }], { height: 0 });
+      const f = fakeCtx();
+      drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+      expect(f.strokes).toHaveLength(1);
+
+      const s2 = emptyScene("d", "n");
+      s2.nodes["r"] = { ...rect("r", 0, 0, "a0"), height: 0 };
+      const f2 = fakeCtx();
+      drawScene(f2.ctx, s2, { x: 0, y: 0, zoom: 1 } as Camera);
+      expect(f2.fills).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("un vettoriale CHIUSO si riempie con la regola even-odd, e si traccia comunque", () => {
+    // La regola non è il default del canvas ("nonzero"), quindi va passata
+    // esplicitamente -- ed è la stessa che usa l'hit-test. Con nonzero un
+    // contorno interno percorso nello stesso verso di quello esterno NON
+    // sarebbe un buco, e il disegno smetterebbe di corrispondere al click.
+    vi.stubGlobal("Path2D", FakePath2D);
+    try {
+      const s = emptyScene("d", "n");
+      s.nodes["v"] = vectorNode("v", [{
+        anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 0 }), anchor({ x: 10, y: 10 })],
+        closed: true,
+      }]);
+      const f = fakeCtx();
+      drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+      expect(f.fills).toHaveLength(1);
+      expect(f.fills[0].rule).toBe("evenodd");
+      // Il tratto c'è anche qui. Sul colore è invisibile (è la stessa tinta del
+      // riempimento, mezzo spessore in più di forma), ma è ciò che tiene visibile
+      // un contorno chiuso di AREA NULLA -- vedi il test qui sotto.
+      expect(f.strokes).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("un vettoriale CHIUSO di AREA NULLA si dipinge lo stesso: il tratto c'è", () => {
+    // A -> B -> A, ciò che il pen tool produce chiudendo un path di due punti.
+    // La fill non dipinge niente (even-odd su un contorno senza area), quindi
+    // senza la stroke il nodo sarebbe INVISIBILE. Il caso è raggiungibile con
+    // tre click, non è un limite.
+    vi.stubGlobal("Path2D", FakePath2D);
+    try {
+      const s = emptyScene("d", "n");
+      s.nodes["v"] = vectorNode("v", [{
+        anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 50, y: 0 })], closed: true,
+      }], { height: 0 });
+      const f = fakeCtx();
+      drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+      expect(f.strokes).toHaveLength(1);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("un vettoriale APERTO si TRACCIA, con uno spessore costante in px schermo", () => {
+    // Un contorno aperto non si riempie: senza tratto non esisterebbe sullo
+    // schermo, e il pen tool disegnerebbe alla cieca. Il ctx è già in
+    // trasformazione mondo (zoom applicato), quindi lo spessore va diviso per
+    // lo zoom -- altrimenti la linea si ingrasserebbe insieme al disegno.
+    vi.stubGlobal("Path2D", FakePath2D);
+    try {
+      const s = emptyScene("d", "n");
+      s.nodes["v"] = vectorNode("v", [{
+        anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 50, y: 50 })], closed: false,
+      }]);
+      for (const zoom of [1, 4, 0.5]) {
+        const f = fakeCtx();
+        drawScene(f.ctx, s, { x: 0, y: 0, zoom } as Camera);
+        expect(f.fills).toEqual([]);
+        expect(f.strokes).toHaveLength(1);
+        expect(f.strokes[0].lineWidth).toBeCloseTo(VECTOR_STROKE_PX / zoom, 10);
+        // Il modello non ha un colore di tratto: si usa quello del riempimento,
+        // l'unica tinta che conosce.
+        expect(f.strokes[0].strokeStyle).toBe("rgba(0, 0, 0, 1)");
+      }
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("un nodo con contorni aperti E chiusi paga una fill e una stroke", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    try {
+      const s = emptyScene("d", "n");
+      s.nodes["v"] = vectorNode("v", [
+        { anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 0 }), anchor({ x: 0, y: 10 })], closed: true },
+        { anchors: [anchor({ x: 50, y: 0 }), anchor({ x: 50, y: 30 })], closed: false },
+      ]);
+      const f = fakeCtx();
+      drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+      expect(f.fills).toHaveLength(1);
+      expect(f.strokes).toHaveLength(1);
+      // Due Path2D DIVERSI: nello stesso, il canvas chiuderebbe implicitamente
+      // anche il contorno aperto e lo riempirebbe.
+      expect(f.fills[0].path).not.toBe(f.strokes[0].path);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("un vettoriale senza geometria non dipinge niente", () => {
+    // Nessuna fill a vuoto e nessuna stroke a vuoto: è anche la ragione per cui
+    // l'hit-test non lo colpisce (niente inchiostro, niente bersaglio).
+    vi.stubGlobal("Path2D", FakePath2D);
+    try {
+      const s = emptyScene("d", "n");
+      s.nodes["v"] = vectorNode("v", []);
+      const f = fakeCtx();
+      drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
+      expect(f.fills).toEqual([]);
+      expect(f.strokes).toEqual([]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
   });
 });
 

@@ -7,10 +7,28 @@ import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
 import { worldAabbOfNode } from "../canvas/geometry";
 import { selectionFrame } from "../renderer/overlayRenderer";
+import { vectorBounds } from "../store/vectorGeometry";
 
 function node(id: string, x: number, orderKey: string, extra: Partial<NodeLite> = {}): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,
     x, y: 0, width: 50, height: 50, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, ...extra };
+}
+
+// Un nodo vettoriale 50x50 la cui geometria RIEMPIE il box, come vuole
+// l'invariante del proto: bbox locale (0,0)-(50,50). Le maniglie bézier sono
+// asimmetriche e non nulle, così una scala dimenticata su di esse non può
+// cadere sul valore giusto per caso.
+function curvyVector(): NodeLite {
+  return node("v", 0, "a000000", {
+    kind: "vector",
+    vector: { subpaths: [{
+      anchors: [
+        { x: 0, y: 0, inX: 0, inY: 0, outX: 20, outY: 0 },
+        { x: 50, y: 50, inX: 0, inY: -20, outX: 0, outY: 0 },
+      ],
+      closed: false,
+    }] },
+  });
 }
 
 function fakeCtx(): ToolContext {
@@ -112,28 +130,28 @@ describe("selectTool", () => {
         under: node("under", 0, "a000000"),
         over: node("over", 0, "a000001"), // orderKey più alto = disegnato sopra
       } };
-      expect(pickTarget(scene, { x: 10, y: 10 }, false, [])).toEqual({ mode: "single", id: "over" });
+      expect(pickTarget(scene, { x: 10, y: 10 }, false, [], 1)).toEqual({ mode: "single", id: "over" });
     });
 
     it("plain click on an unselected node returns single with its id", () => {
       const scene = useScene.getState().scene!;
-      expect(pickTarget(scene, { x: 120, y: 10 }, false, [])).toEqual({ mode: "single", id: "b" });
+      expect(pickTarget(scene, { x: 120, y: 10 }, false, [], 1)).toEqual({ mode: "single", id: "b" });
     });
 
     it("plain click on an already-selected node returns single WITHOUT an id (keeps the current selection for a group drag)", () => {
       const scene = useScene.getState().scene!;
-      expect(pickTarget(scene, { x: 120, y: 10 }, false, ["b"])).toEqual({ mode: "single" });
+      expect(pickTarget(scene, { x: 120, y: 10 }, false, ["b"], 1)).toEqual({ mode: "single" });
     });
 
     it("shift-click always returns toggle with the id, selected or not", () => {
       const scene = useScene.getState().scene!;
-      expect(pickTarget(scene, { x: 120, y: 10 }, true, [])).toEqual({ mode: "toggle", id: "b" });
-      expect(pickTarget(scene, { x: 120, y: 10 }, true, ["b"])).toEqual({ mode: "toggle", id: "b" });
+      expect(pickTarget(scene, { x: 120, y: 10 }, true, [], 1)).toEqual({ mode: "toggle", id: "b" });
+      expect(pickTarget(scene, { x: 120, y: 10 }, true, ["b"], 1)).toEqual({ mode: "toggle", id: "b" });
     });
 
     it("clicking empty space returns marquee", () => {
       const scene = useScene.getState().scene!;
-      expect(pickTarget(scene, { x: 900, y: 900 }, false, [])).toEqual({ mode: "marquee" });
+      expect(pickTarget(scene, { x: 900, y: 900 }, false, [], 1)).toEqual({ mode: "marquee" });
     });
   });
 
@@ -194,6 +212,51 @@ describe("selectTool", () => {
         }),
       } };
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 85, height: 50 })).toEqual([]);
+    });
+
+    it("prende un VETTORIALE con un asse degenere, che il suo box grezzo non basterebbe a prendere", () => {
+      // Il box di un vettoriale è la bbox ESATTA della geometria (invariante del
+      // proto), quindi un segmento orizzontale ha davvero height 0. Con il box
+      // grezzo un marquee lo prenderebbe solo SCAVALCANDOLO in senso stretto
+      // (boundsIntersect confronta con < e >): passargli accanto non basterebbe,
+      // pur essendo un nodo che si vede e si clicca. Qui il marquee sta tutto
+      // SOTTO la linea, e VECTOR_MIN_GRAB glielo fa prendere.
+      //
+      // La geometria è VERA (due ancoraggi), non `subpaths: []`: la tolleranza
+      // parla di un path che esiste. Un vettoriale senza ancoraggi non si vede,
+      // non si clicca e non lo prende nemmeno il marquee -- test qui sotto.
+      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+        line: node("line", 5, "a000000", {
+          kind: "vector", height: 0,
+          vector: { subpaths: [{
+            anchors: [
+              { x: 0, y: 0, inX: 0, inY: 0, outX: 0, outY: 0 },
+              { x: 50, y: 0, inX: 0, inY: 0, outX: 0, outY: 0 },
+            ],
+            closed: false,
+          }] },
+        }),
+        flatRect: node("flatRect", 5, "a000001", { height: 0 }),
+      } };
+      expect(nodesInMarquee(scene, { x: 0, y: 1, width: 60, height: 9 })).toEqual(["line"]);
+      // ...e uno che le scavalca entrambe le prende entrambe: la tolleranza
+      // AGGIUNGE un caso, non ne toglie.
+      expect(nodesInMarquee(scene, { x: 0, y: -10, width: 60, height: 20 }))
+        .toEqual(["line", "flatRect"]);
+    });
+
+    it("NON prende un vettoriale senza geometria, che non si vede e non si clicca", () => {
+      // Il marquee lavora su bounds e da solo non se ne accorgerebbe: un nodo
+      // vettoriale svuotato conserva il width/height che aveva, quindi un
+      // rettangolo di selezione lo prenderebbe pur non producendo nessun path e
+      // nessun hit (renderer/shapes.ts::hasInk, hitTestNode). Sarebbe l'unico
+      // modo di selezionare qualcosa di invisibile: click e marquee non possono
+      // essere la stessa funzione, ma su questo devono concordare.
+      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+        ghost: node("ghost", 5, "a000000", { kind: "vector", vector: { subpaths: [] } }),
+        real: node("real", 5, "a000001"),
+      } };
+      expect(nodesInMarquee(scene, { x: 0, y: 0, width: 100, height: 100 })).toEqual(["real"]);
     });
   });
 
@@ -490,6 +553,64 @@ describe("selectTool", () => {
       expect(sync.sent).toHaveLength(2);
       expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
       expect(useScene.getState().scene!.nodes["b"]).toMatchObject({ x: 200, y: 0, width: 100, height: 50 });
+    });
+
+    // L'invariante del box (proto, su VectorNode) nel verso che costa: dopo un
+    // SetVectorPath la bbox locale della geometria è (0,0)-(width,height), e
+    // quindi nemmeno il BOX può muoversi da solo. Le 8 maniglie di resize sono
+    // spedite da M1 e mandano un setProps{x,y,width,height} kind-agnostico: senza
+    // il secondo op il box crescerebbe e l'inchiostro resterebbe della misura di
+    // prima, violando l'invariante con un gesto ordinario e senza nessun
+    // SetVectorPath in vista.
+    it("resizing a VECTOR node rewrites its geometry in the SAME gesture", () => {
+      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { v: curvyVector() } });
+      useScene.getState().setSelection(["v"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 50), ctx);  // maniglia se
+      tool.onPointerMove!(at(100, 50), ctx); // larghezza x2, altezza invariata
+      const mid = useScene.getState().scene!.nodes["v"];
+      expect(mid).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
+      // Già in ANTEPRIMA l'invariante regge: le due chiavi di coalescing
+      // (`s|v|...` e `v|v`) sono distinte, quindi la geometria non schiaccia il
+      // box né viceversa.
+      expect(vectorBounds(mid.vector!.subpaths)).toEqual({ x: 0, y: 0, width: 100, height: 50 });
+
+      tool.onPointerUp!(at(100, 50), ctx);
+      expect(sync.sent.map((o) => o.kind.case)).toEqual(["setProps", "setVectorPath"]);
+      const after = useScene.getState().scene!.nodes["v"];
+      expect(after).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
+      expect(vectorBounds(after.vector!.subpaths)).toEqual({ x: 0, y: 0, width: 100, height: 50 });
+      // Le maniglie bézier sono OFFSET e si scalano con la parte lineare: se
+      // restassero ferme la curvatura non seguirebbe il path, e la bbox qui
+      // sopra non tornerebbe.
+      expect(after.vector!.subpaths[0].anchors[0].outX).toBe(40);
+      expect(after.vector!.subpaths[0].anchors[1].inY).toBe(-20); // asse non scalato
+
+      // UN gesto: una sola voce di undo, e annullare rimette a posto ENTRAMBI.
+      expect(useScene.getState().undoStack).toHaveLength(1);
+      useScene.getState().undo();
+      const undone = useScene.getState().scene!.nodes["v"];
+      expect(undone).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
+      expect(undone.vector!.subpaths).toEqual(curvyVector().vector!.subpaths);
+    });
+
+    it("resizing a NON-vector node still sends exactly one op", () => {
+      // Il secondo op è del solo vettoriale: un rettangolo non deve guadagnare
+      // un setVectorPath (che Go rifiuterebbe con ErrNotVectorNode).
+      useScene.getState().setSelection(["a"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+
+      tool.onPointerDown!(at(50, 50), ctx);
+      tool.onPointerMove!(at(100, 100), ctx);
+      tool.onPointerUp!(at(100, 100), ctx);
+      expect(sync.sent.map((o) => o.kind.case)).toEqual(["setProps"]);
     });
 
     it("a click on a handle without moving sends nothing", () => {

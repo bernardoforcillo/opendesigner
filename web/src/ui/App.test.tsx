@@ -3,12 +3,14 @@
 // toBeInTheDocument/toHaveAttribute non esistono per il compilatore.
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { render, screen, fireEvent, cleanup, within } from "@testing-library/react";
+import { render, screen, fireEvent, cleanup, within, waitFor } from "@testing-library/react";
 import { App, TOOLS, TOOL_LABELS } from "./App";
 import { textTool } from "../tools/textTool";
+import { penTool } from "../tools/penTool";
 import { selectTool } from "../tools/selectTool";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
+import * as overlayRenderer from "../renderer/overlayRenderer";
 
 // Il bootstrap di App parla con la rete (createDocument + SyncClient): qui
 // serve solo la toolbar, quindi il trasporto è un doppio inerte. Senza, ogni
@@ -34,6 +36,10 @@ vi.stubGlobal("localStorage", {
 });
 
 afterEach(cleanup);
+// I doppi installati con spyOn (getContext, drawOverlay) vanno tolti anche
+// quando un'asserzione fallisce a metà test: senza, un rosso ne trascinerebbe
+// altri dietro di sé e la causa vera sparirebbe nel rumore.
+afterEach(() => vi.restoreAllMocks());
 
 // Il registro dei tool è l'unico punto in cui un ToolId diventa RAGGIUNGIBILE:
 // il tool testo era completo e testato ma non compariva né in TOOLS né nella
@@ -71,8 +77,13 @@ describe("registro dei tool", () => {
       "Rettangolo",
       "Ellisse",
       "Testo",
+      "Penna",
       "Mano",
     ]);
+  });
+
+  it("il pen tool è registrato ed è il penTool vero", () => {
+    expect(TOOLS.pen).toBe(penTool);
   });
 });
 
@@ -102,6 +113,58 @@ describe("toolbar", () => {
     // ("default") senza dire niente a nessuno.
     expect(canvas.style.cursor).toBe(textTool.cursor);
     expect(textTool.cursor).toBe("text");
+  });
+
+  it("premere Penna attiva davvero il pen tool", () => {
+    render(<App />);
+    const penna = screen.getByRole("radio", { name: "Penna" });
+    fireEvent.click(penna);
+    expect(penna).toHaveAttribute("aria-checked", "true");
+    // Il cursore da solo non basterebbe a distinguerlo (rect ed ellisse usano
+    // lo stesso "crosshair"): è TOOLS.pen === penTool, verificato qui sopra, a
+    // dire che il pulsante instrada davvero al pen tool.
+    expect(TOOLS.pen!.cursor).toBe("crosshair");
+  });
+});
+
+// L'anteprima del pen tool esiste solo se qualcuno la DISEGNA: App è l'unico
+// posto in cui il canale dello store (penPreview) incontra l'overlay. Senza
+// questa riga il pen tool funzionerebbe -- op giusti, gesto giusto -- e
+// l'utente disegnerebbe alla cieca fino all'ultimo click. È lo stesso buco del
+// tool non registrato in TOOLS, un piano più in basso.
+describe("ciclo di disegno", () => {
+  it("passa l'anteprima del pen tool all'overlay", async () => {
+    // jsdom non implementa getContext: senza doppio, drawOverlay non verrebbe
+    // mai chiamata (App salta il disegno quando il contesto manca). Il doppio è
+    // un Proxy che risponde a QUALUNQUE metodo con un no-op: il ciclo disegna
+    // prima la scena e poi l'overlay, e un metodo mancante nel mezzo
+    // spegnerebbe il ciclo (l'eccezione muore dentro il requestAnimationFrame)
+    // prima di arrivare a quello che stiamo misurando.
+    const target: Record<string | symbol, unknown> = { canvas: { width: 800, height: 600 } };
+    const fakeCtx = new Proxy(target, {
+      get: (t, p) => (p in t ? t[p] : () => {}),
+    }) as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx);
+    const drawOverlay = vi.spyOn(overlayRenderer, "drawOverlay").mockImplementation(() => {});
+    vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
+
+    const pen = {
+      anchors: [{ x: 1, y: 2, inX: 0, inY: 0, outX: 0, outY: 0 }],
+      next: { x: 9, y: 9 },
+      active: null,
+      closed: false,
+    };
+    useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
+    useScene.getState().setPenPreview(pen);
+
+    render(<App />);
+
+    await waitFor(() => expect(drawOverlay).toHaveBeenCalled());
+    // Settimo argomento: l'anteprima del pen tool, esattamente quella dello
+    // store (il sesto è ora `snapGuides`, aggiunto dalla traccia rotazione).
+    expect(drawOverlay.mock.calls.at(-1)![6]).toBe(pen);
+
+    useScene.getState().setPenPreview(null);
   });
 });
 

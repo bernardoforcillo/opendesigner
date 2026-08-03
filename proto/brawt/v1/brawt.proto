@@ -71,6 +71,98 @@ message TextNode { string content = 1; TextStyle style = 2; }
 // giro degli op.
 message ImageNode { string asset_hash = 1; }
 
+// Un punto d'ancoraggio di un path vettoriale.
+//
+// DUE SPAZI, ed è la regola più importante di tutto il messaggio -- il renderer,
+// l'hit-test e il pen tool devono leggerla nello stesso identico modo, in Go e
+// in TypeScript (web/src/store/vectorGeometry.ts è l'unica implementazione).
+//
+// 1. `x`/`y` sono in coordinate LOCALI AL NODO: l'origine è (Node.x, Node.y),
+//    quindi il punto in coordinate mondo è (Node.x + x, Node.y + y).
+//    NON in coordinate mondo, e non è un capriccio: ogni consumatore esistente
+//    lavora sul box del nodo -- selectTool manda un setProps{x,y} per
+//    trascinare, l'overlay disegna la selezione da x/y/width/height, il
+//    renderer scarta un nodo con width/height <= 0. Con ancoraggi in coordinate
+//    mondo, trascinare un nodo vettoriale sposterebbe il box e lascerebbe il
+//    path dov'era, a meno di riscrivere TUTTA la geometria a ogni spostamento
+//    (una regola in più che nessuno applica). Locali, la geometria viaggia col
+//    nodo gratis -- e sarà così anche quando la traccia 1 renderà le coordinate
+//    relative al parent: un vettoriale dentro un gruppo si sposterà col gruppo
+//    senza una riga in più.
+//
+// 2. `in_`/`out_` sono OFFSET RELATIVI ALL'ANCORAGGIO (non punti): il punto di
+//    controllo della curva che ENTRA nell'ancoraggio è (x + in_x, y + in_y),
+//    quello della curva che ne ESCE è (x + out_x, y + out_y).
+//    Relativi perché così -- e SOLO così -- il default di proto3 dice il vero:
+//    (0,0) è la maniglia COINCIDENTE con l'ancoraggio, cioè "nessuna maniglia,
+//    il segmento è una retta". Con maniglie assolute un ancoraggio decodificato
+//    senza in_/out_ avrebbe le maniglie nell'ORIGINE del nodo, cioè una curva
+//    che ci va a sbattere: il caso più comune di tutti (un punto d'angolo)
+//    sarebbe l'unico non rappresentabile allo zero, e ogni scrittore dovrebbe
+//    ricordarsi di riempire i sei campi anche quando non servono.
+//    È anche la ragione per cui la maggior parte dei formati le tiene relative.
+//    Il prezzo -- una somma nel renderer -- lo paga un solo posto
+//    (vectorGeometry.ts), e per giunta gratis: bezierCurveTo con entrambi i
+//    controlli coincidenti agli estremi disegna esattamente la retta, quindi il
+//    caso "nessuna maniglia" non ha nemmeno bisogno di un ramo.
+message Anchor {
+  double x = 1; double y = 2;
+  double in_x = 3; double in_y = 4;
+  double out_x = 5; double out_y = 6;
+}
+
+// Un contorno: una sequenza di ancoraggi, chiusa o aperta. `closed` è dato e
+// non derivato (primo ancoraggio == ultimo): un path chiuso si riempie e si
+// hit-testa sul riempimento, uno aperto sulla prossimità alla linea.
+message SubPath { repeated Anchor anchors = 1; bool closed = 2; }
+
+// Più subpath per nodo: un contorno esterno e i suoi buchi (o più contorni
+// scollegati) sono UN oggetto per l'utente, quindi un nodo solo.
+//
+// IL BOX. Node.x/y/width/height restano quello che sono per rect ed ellipse: il
+// box del nodo. Non sono derivati dalla geometria da chi applica l'op -- né
+// core.Apply né applyOp li ricalcolano -- perché la bbox di una cubica non è
+// una copia di due righe e due implementazioni "identiche" di quella
+// matematica divergerebbero al primo caso limite, proprio sull'invariante che
+// questa traccia esiste per difendere.
+//
+// L'invariante è quindi del SCRITTORE, e vale la pena scriverla per esteso:
+// dopo un SetVectorPath, la bbox locale della geometria è (0,0)-(width,height).
+// Cioè: chi riscrive i subpath normalizza (trasla gli ancoraggi in modo che il
+// minimo sia (0,0)) e manda nello STESSO GESTO il SetProperties che aggiorna
+// x/y/width/height. Così un nodo vettoriale è indistinguibile da un rettangolo
+// per tutto il resto dell'editor: la selezione lo circonda, il resize ha un box
+// su cui lavorare, e il pen tool è l'unico posto che conosce la regola.
+// web/src/store/vectorGeometry.ts::vectorBounds è l'unica implementazione della
+// bbox, così "scritto due volte" non è nemmeno possibile. Ed è la bbox VERA
+// della curva (derivata risolta per asse, e solo sui segmenti effettivamente
+// disegnati), non l'inviluppo dei punti di controllo: su quest'ultimo il box
+// dichiarato qui sarebbe un sovrainsieme -- fino a un 33% di vuoto su una sola
+// cubica -- e a pagarlo sarebbe la SELEZIONE, con maniglie di resize che non
+// toccano il path e un marquee che afferra senza sfiorare l'inchiostro.
+//
+// Vale nei DUE VERSI, ed è il secondo a costare qualcosa: nemmeno il BOX può
+// cambiare senza che la geometria lo segua, altrimenti un drag delle 8 maniglie
+// di resize (che è un solo SetProperties{x,y,width,height}) violerebbe
+// l'invariante senza nessun SetVectorPath in vista -- box cresciuto, inchiostro
+// della misura di prima. Chi ridimensiona un nodo vettoriale riscrive quindi gli
+// ancoraggi con la stessa trasformazione, NELLO STESSO GESTO
+// (web/src/store/vectorGeometry.ts::resizeVector, emesso da
+// web/src/tools/selectTool.ts). Gli ancoraggi restano lunghezze in coordinate
+// locali e NON frazioni 0..1 del box: normalizzati sarebbero indefiniti per ogni
+// path con un asse degenere (un segmento orizzontale: divisione per zero) e
+// costringerebbero il pen tool a rinormalizzare tutta la geometria a ogni punto
+// aggiunto.
+//
+// Un asse DEGENERE è uno stato legittimo e il box non lo falsa: un path di un
+// solo ancoraggio ha width e height 0, un segmento orizzontale ha height 0. Il
+// click non passa dal box (colpisce l'inchiostro,
+// web/src/renderer/shapes.ts::hitTestNode), e chi ci deve far passare sopra un
+// MARQUEE allarga per conto suo
+// (web/src/renderer/shapes.ts::selectionBoundsOfNode) -- quella è una tolleranza
+// di selezione, non un fatto sulla geometria.
+message VectorNode { repeated SubPath subpaths = 1; }
+
 message Node {
   string id = 1;
   string parent_id = 2;   // id nodo container OPPURE id Page (per i root)
@@ -93,8 +185,8 @@ message Node {
     // messaggio corrispondente): righe distinte si fondono senza conflitti.
     // 33 = GroupNode     (traccia 1 — annidamento)
     // 34 = FrameNode     (traccia 1 — annidamento)
-    ImageNode image = 35;  // traccia 3 — periferia (vedi ImageNode sopra)
-    // 36 = VectorNode    (traccia 4 — vettoriale)
+    ImageNode image = 35;   // traccia 3 — periferia (vedi ImageNode sopra)
+    VectorNode vector = 36; // traccia 4 — vettoriale (vedi VectorNode sopra)
     // 37 = InstanceNode  (M4 — componenti)
   }
 }
@@ -133,6 +225,25 @@ message SetText {
   TextStyle style = 3;
   bool style_present = 4;
 }
+// Sostituisce IN BLOCCO i subpath di un VectorNode. Op dedicato invece di un
+// path della mask di SetProperties per la stessa ragione di SetText: la
+// geometria vive DENTRO il oneof `shape`, mentre la mask indirizza campi di
+// primo livello del Node.
+//
+// La sostituzione è wholesale e non incrementale (nessun "sposta l'ancoraggio
+// i-esimo"): un gesto della penna può aggiungere, spostare e cancellare
+// ancoraggi tutti insieme, e un op per micro-modifica moltiplicherebbe i casi
+// da tenere identici fra Go e TS senza aggiungere nulla -- l'inverso è
+// comunque i subpath PRECEDENTI per intero.
+//
+// Una lista VUOTA è legittima e non è "non specificato": è il path che l'utente
+// ha svuotato. Nessun flag `present` serve qui (a differenza di
+// SetText.style_present) perché non esiste nessun altro campo dell'op che
+// possa restare intatto: l'op È i subpath.
+message SetVectorPath {
+  string id = 1;
+  repeated SubPath subpaths = 2;
+}
 message Op {
   string op_id = 1;
   string doc_id = 2;
@@ -143,7 +254,7 @@ message Op {
     SetText       set_text    = 13;
     // Come sopra: una riga per traccia, sostituita dalla dichiarazione vera.
     // 14 = ReparentNode    (traccia 1 — sposta un nodo sotto un altro parent)
-    // 15 = SetVectorPath   (traccia 4 — sostituisce i subpath di un VectorNode)
+    SetVectorPath set_vector_path = 15;
     // 16 = CreateComponent (M4)
   }
 }

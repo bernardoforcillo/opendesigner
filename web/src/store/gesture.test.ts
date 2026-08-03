@@ -85,6 +85,29 @@ function setTextOp(id: string, content: string, fontSize?: number): Op {
   });
 }
 
+function createVectorOp(id: string): Op {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a2", name: "Path", visible: true, opacity: 1,
+    x: 0, y: 0, width: 100, height: 80,
+    shape: { case: "vector", value: { subpaths: [{ anchors: [{ x: 0, y: 0 }], closed: false }] } },
+  });
+  return create(OpSchema, {
+    opId: "new-" + id, docId: "doc1", kind: { case: "createNode", value: { node } },
+  });
+}
+
+// Un trascinamento di ancoraggio: l'op porta la geometria INTERA a ogni
+// pointermove (setVectorPath è wholesale), non il delta del punto mosso.
+function setVectorPathOp(id: string, x: number, y: number): Op {
+  return create(OpSchema, {
+    opId: `vec-${id}-${x}-${y}`, docId: "doc1",
+    kind: {
+      case: "setVectorPath",
+      value: { id, subpaths: [{ anchors: [{ x: 0, y: 0 }, { x, y }], closed: false }] },
+    },
+  });
+}
+
 describe("gesture coalescing", () => {
   let sync: FakeSync;
 
@@ -417,6 +440,46 @@ describe("gesture coalescing", () => {
     const t = useScene.getState().scene!.nodes["t1"].text!;
     expect(t.content).toBe("ciao mondo");
     expect(t.style.fontSize).toBe(42);
+  });
+
+  // Terza sorgente, la più fitta di tutte: il pen tool e il trascinamento di un
+  // ancoraggio fanno un applyLocal per POINTERMOVE, e ogni setVectorPath porta
+  // i subpath INTERI (è wholesale, non incrementale). Senza coalescing un solo
+  // trascinamento lascia centinaia di op di anteprima, ognuno con tutta la
+  // geometria dentro, copiati a ogni applyLocal e rigiocati da viewOf a ogni
+  // record autorevole.
+  it("le anteprime di setVectorPath si coalescono per nodo: un trascinamento non accumula un op per pointermove", () => {
+    sync.submit(createVectorOp("v1"));
+    const st = useScene.getState();
+    st.beginGesture();
+    for (let i = 1; i <= 200; i++) st.applyLocal(setVectorPathOp("v1", i * 3, i * 2));
+
+    expect(useScene.getState().gesture!.preview.size).toBe(1);
+    // ...e l'ultima geometria è comunque quella giusta.
+    expect(useScene.getState().scene!.nodes["v1"].vector!.subpaths).toEqual([
+      { anchors: [
+        { x: 0, y: 0, inX: 0, inY: 0, outX: 0, outY: 0 },
+        { x: 600, y: 400, inX: 0, inY: 0, outX: 0, outY: 0 },
+      ], closed: false },
+    ]);
+  });
+
+  // Geometria e BOX sono due scritture indipendenti dello stesso gesto (il pen
+  // tool tiene x/y/width/height allineati alla bbox del path mentre disegna):
+  // schiacciarle a vicenda perderebbe l'una o l'altra.
+  it("un setVectorPath non schiaccia l'anteprima di setProps sullo stesso nodo", () => {
+    sync.submit(createVectorOp("v1"));
+    const st = useScene.getState();
+    st.beginGesture();
+    for (let i = 1; i <= 10; i++) {
+      st.applyLocal(setVectorPathOp("v1", i * 3, i * 2));
+      st.applyLocal(resizeOp("v1", i * 3, i * 2));
+    }
+
+    expect(useScene.getState().gesture!.preview.size).toBe(2);
+    const n = useScene.getState().scene!.nodes["v1"];
+    expect(n).toMatchObject({ width: 30, height: 20 });
+    expect(n.vector!.subpaths[0].anchors[1]).toMatchObject({ x: 30, y: 20 });
   });
 
   it("un record autorevole a metà drag lungo rigioca l'anteprima coalesced", () => {
