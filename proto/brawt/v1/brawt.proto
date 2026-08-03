@@ -11,6 +11,32 @@ message Color { float r = 1; float g = 2; float b = 3; float a = 4; } // 0..1
 message SolidPaint { Color color = 1; }
 message Paint { oneof kind { SolidPaint solid = 1; } }
 
+// Allineamento del tratto rispetto al PERIMETRO della forma. CENTER è il
+// default del disegno (metà dentro, metà fuori): è l'unico che il canvas 2D sa
+// fare da solo, gli altri due si ottengono raddoppiando la larghezza e
+// ritagliando il lato che non serve (vedi web/src/renderer/canvasRenderer.ts).
+//
+// UNSPECIFIED = 0 come in TextAlign, e per la stessa ragione: in proto3 lo zero
+// non si distingue da "campo assente", quindi il valore 0 non può essere una
+// scelta vera dell'utente -- collassa su CENTER al bordo del renderer, dove
+// vivono tutti i default (web/src/store/types.ts::toStrokeLite).
+enum StrokeAlign {
+  STROKE_ALIGN_UNSPECIFIED = 0;
+  STROKE_ALIGN_CENTER = 1;
+  STROKE_ALIGN_INSIDE = 2;
+  STROKE_ALIGN_OUTSIDE = 3;
+}
+
+// Un tratto: la stessa Paint dei riempimenti, più la larghezza (in coordinate
+// MONDO, come font_size) e l'allineamento. Messaggio a sé e non tre campi
+// paralleli sul Node, perché `strokes` è ripetuto esattamente come `fills`: un
+// nodo può avere più tratti sovrapposti, e ciascuno ha il PROPRIO peso.
+message Stroke {
+  Paint paint = 1;
+  double weight = 2;      // >= 0, in coordinate mondo
+  StrokeAlign align = 3;
+}
+
 message RectNode { double corner_radius = 1; }
 message EllipseNode {} // cx/cy/rx/ry derivano da x/y/width/height, come per RectNode
 
@@ -54,6 +80,10 @@ message Node {
   double opacity = 6;     // 0..1
   double x = 10; double y = 11; double width = 12; double height = 13; double rotation = 14;
   repeated Paint fills = 20;
+  // Il numero 21 era RISERVATO dal design fin dall'inizio e ora è implementato
+  // (traccia 2). Ripetuto come `fills`, e con la stessa semantica di scrittura:
+  // la mask "strokes" SOSTITUISCE l'intera lista, non ne fonde gli elementi.
+  repeated Stroke strokes = 21;
   oneof shape {
     RectNode rect = 30;
     EllipseNode ellipse = 31;

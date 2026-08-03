@@ -1,10 +1,14 @@
 import { describe, it, expect } from "vitest";
 import {
   drawOverlay,
+  selectionFrame,
   selectionWorldBounds,
   worldBoundsToScreen,
   handlePositions,
   HANDLE_SIZE,
+  ROTATE_MARKER_OFFSET,
+  ROTATE_MARKER_RADIUS,
+  rotateMarkerPositions,
 } from "./overlayRenderer";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
@@ -13,7 +17,7 @@ import type { Camera } from "../canvas/camera";
 function rect(id: string, x: number, y: number, w = 50, h = 50): NodeLite {
   return {
     id, parentId: "page1", orderKey: "a0", name: id, visible: true, opacity: 1,
-    x, y, width: w, height: h, rotation: 0, fills: [], kind: "rect", cornerRadius: 0,
+    x, y, width: w, height: h, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0,
   };
 }
 
@@ -44,6 +48,50 @@ describe("selectionWorldBounds", () => {
     const s = emptyScene("d", "n");
     s.nodes["a"] = rect("a", 0, 0, 50, 50);
     expect(selectionWorldBounds(s, ["a", "ghost"])).toEqual({ x: 0, y: 0, width: 50, height: 50 });
+  });
+
+  it("takes each node's ROTATION into account: the union is of what they really occupy", () => {
+    const s = emptyScene("d", "n");
+    // 100x50 in (0,0) ruotato di 90°: occupa davvero x in [25,75], y in [-25,75]
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    const u = selectionWorldBounds(s, ["a"])!;
+    expect(u.x).toBeCloseTo(25, 9);
+    expect(u.y).toBeCloseTo(-25, 9);
+    expect(u.width).toBeCloseTo(50, 9);
+    expect(u.height).toBeCloseTo(100, 9);
+  });
+});
+
+// Il FRAME della selezione: il rettangolo su cui vivono le maniglie PIÙ il suo
+// angolo. La convenzione è dichiarata qui e vale ovunque: un nodo solo porta la
+// PROPRIA rotazione, una selezione multipla è ASSE-ALLINEATA (non esiste un
+// angolo comune a nodi ruotati diversamente).
+describe("selectionFrame", () => {
+  it("is null when there is nothing to frame", () => {
+    const s = emptyScene("d", "n");
+    expect(selectionFrame(s, [])).toBeNull();
+    expect(selectionFrame(s, ["ghost"])).toBeNull();
+  });
+
+  it("a single node hands over its own bounds and its own rotation", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = { ...rect("a", 10, 20, 100, 50), rotation: 30 };
+    expect(selectionFrame(s, ["a"])).toEqual({
+      bounds: { x: 10, y: 20, width: 100, height: 50 },
+      rotation: 30,
+    });
+  });
+
+  it("a multiple selection is axis-aligned, around what the nodes really occupy", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 }; // x [25,75], y [-25,75]
+    s.nodes["b"] = rect("b", 100, 100, 50, 50);
+    const f = selectionFrame(s, ["a", "b"])!;
+    expect(f.rotation).toBe(0);
+    expect(f.bounds.x).toBeCloseTo(25, 9);
+    expect(f.bounds.y).toBeCloseTo(-25, 9);
+    expect(f.bounds.width).toBeCloseTo(125, 9);
+    expect(f.bounds.height).toBeCloseTo(175, 9);
   });
 });
 
@@ -80,17 +128,42 @@ describe("handlePositions", () => {
 // verificare i pixel esatti (nessun canvas reale in Node qui).
 function fakeCtx(width: number, height: number) {
   const calls: string[] = [];
+  // Le chiamate di trasformazione con i loro argomenti: servono al caso
+  // ruotato, dove ciò che conta non è QUANTE volte si disegna ma ATTORNO A
+  // COSA (il centro del riquadro, in px schermo).
+  const xform: { op: string; args: number[] }[] = [];
+  // Gli archi della maniglia di ROTAZIONE, con centro e raggio: è l'unico
+  // disegno dell'overlay che non sia un rettangolo, e ciò che conta è DOVE
+  // finisce (dentro la propria zona di presa, vedi selection/handles.test.ts).
+  const arcs: { x: number; y: number; r: number }[] = [];
+  // I SEGMENTI (moveTo + lineTo): le guide di snap sono l'unico disegno
+  // dell'overlay fatto di rette, e ciò che conta è dove cominciano e finiscono.
+  const segments: { x0: number; y0: number; x1: number; y1: number }[] = [];
+  let pen = { x: 0, y: 0 };
+  const record = (op: string) => (...args: number[]) => { calls.push(op); xform.push({ op, args }); };
   const ctx: Record<string, unknown> = {
     canvas: { width, height },
+    moveTo: (x: number, y: number) => { calls.push("moveTo"); pen = { x, y }; },
+    lineTo: (x: number, y: number) => {
+      calls.push("lineTo");
+      segments.push({ x0: pen.x, y0: pen.y, x1: x, y1: y });
+    },
     setTransform: (..._a: unknown[]) => { calls.push("setTransform"); },
     clearRect: (..._a: unknown[]) => { calls.push("clearRect"); },
     strokeRect: (..._a: unknown[]) => { calls.push("strokeRect"); },
     fillRect: (..._a: unknown[]) => { calls.push("fillRect"); },
+    beginPath: () => { calls.push("beginPath"); },
+    arc: (x: number, y: number, r: number, ..._a: number[]) => { calls.push("arc"); arcs.push({ x, y, r }); },
+    stroke: () => { calls.push("stroke"); },
+    save: record("save"),
+    restore: record("restore"),
+    translate: record("translate"),
+    rotate: record("rotate"),
     lineWidth: 0,
     strokeStyle: "",
     fillStyle: "",
   };
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, calls, xform, arcs, segments };
 }
 
 describe("drawOverlay smoke test", () => {
@@ -139,5 +212,148 @@ describe("drawOverlay smoke test", () => {
 
   it("HANDLE_SIZE is exported and used to size the handle squares (8px, constant regardless of zoom)", () => {
     expect(HANDLE_SIZE).toBe(8);
+  });
+
+  it("turns the whole selection frame -- border AND handles -- with the node's rotation", () => {
+    const s = emptyScene("d", "n");
+    // box (0,0) 100x50 -> centro schermo (50, 25) a camera identità
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    const { ctx, calls, xform } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], null);
+
+    expect(xform.map((e) => e.op)).toEqual(["save", "translate", "rotate", "translate", "restore"]);
+    expect(xform[1].args).toEqual([50, 25]);
+    expect(xform[2].args[0]).toBeCloseTo(Math.PI / 2, 12);
+    expect(xform[3].args).toEqual([-50, -25]);
+    // il riquadro e le 8 maniglie si disegnano come sempre: a ruotare è il
+    // contesto, non la loro geometria
+    expect(calls.filter((c) => c === "fillRect")).toHaveLength(8);
+    expect(calls.filter((c) => c === "strokeRect")).toHaveLength(9);
+    // e la trasformazione è chiusa PRIMA di ogni altra cosa
+    expect(calls.indexOf("restore")).toBeGreaterThan(calls.lastIndexOf("strokeRect"));
+  });
+
+  it("leaves the marquee out of the rotation", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    const { ctx, calls } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], { x: 200, y: 200, width: 20, height: 20 });
+    // le ultime due chiamate di disegno (fill + stroke del marquee) stanno DOPO
+    // il restore: il rettangolo di selezione è sempre asse-allineato
+    expect(calls.lastIndexOf("fillRect")).toBeGreaterThan(calls.indexOf("restore"));
+    expect(calls.lastIndexOf("strokeRect")).toBeGreaterThan(calls.indexOf("restore"));
+  });
+
+  // La maniglia di rotazione ESISTE sullo schermo. Prima non si disegnava
+  // affatto: il gesto c'era, ma l'unico modo di scoprirlo era passarci sopra
+  // col mouse e notare il cursore.
+  it("draws a rotate marker just outside each of the 4 corners", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = rect("a", 0, 0, 100, 50);
+    const { ctx, calls, arcs } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], null);
+
+    expect(calls.filter((c) => c === "arc")).toHaveLength(4);
+    const d = ROTATE_MARKER_OFFSET;
+    const at = (x: number, y: number) => arcs.some((a) => a.x === x && a.y === y && a.r === ROTATE_MARKER_RADIUS);
+    expect(at(-d, -d)).toBe(true); // nw
+    expect(at(100 + d, -d)).toBe(true); // ne
+    expect(at(100 + d, 50 + d)).toBe(true); // se
+    expect(at(-d, 50 + d)).toBe(true); // sw
+    // e non è un quadratino: i rettangoli disegnati restano quelli di prima
+    expect(calls.filter((c) => c === "fillRect")).toHaveLength(8);
+    expect(calls.filter((c) => c === "strokeRect")).toHaveLength(9);
+  });
+
+  it("puts the markers exactly where rotateMarkerPositions says (one geometry, not two)", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = rect("a", 10, 20, 100, 50);
+    const cam: Camera = { x: 7, y: 3, zoom: 2 };
+    const { ctx, arcs } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, cam, ["a"], null);
+
+    const expected = rotateMarkerPositions(worldBoundsToScreen({ x: 10, y: 20, width: 100, height: 50 }, cam));
+    for (const p of Object.values(expected)) {
+      expect(arcs.some((a) => a.x === p.x && a.y === p.y)).toBe(true);
+    }
+  });
+
+  it("turns the markers with the frame, and closes the transform after them", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    const { ctx, calls, arcs } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], null);
+
+    // disegnati nello spazio NON ruotato del frame (è il contesto a girare,
+    // come per il riquadro e le maniglie)...
+    expect(arcs).toHaveLength(4);
+    expect(arcs.some((a) => a.x === -ROTATE_MARKER_OFFSET && a.y === -ROTATE_MARKER_OFFSET)).toBe(true);
+    // ...e dentro il save/restore, non dopo
+    expect(calls.indexOf("restore")).toBeGreaterThan(calls.lastIndexOf("arc"));
+  });
+
+  it("emits no transform for an unrotated selection", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = rect("a", 0, 0);
+    const { ctx, xform } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], null);
+    expect(xform).toEqual([]);
+  });
+});
+
+describe("drawOverlay — guide di snap", () => {
+  it("draws nothing extra when there is no active snap", () => {
+    const s = emptyScene("d", "n");
+    const { ctx, calls } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, [], null, []);
+    expect(calls).not.toContain("lineTo");
+  });
+
+  it("draws a vertical guide as a segment in SCREEN space", () => {
+    const s = emptyScene("d", "n");
+    const { ctx, segments } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, [], null, [{ axis: "x", pos: 100, from: 20, to: 300 }]);
+    // +0.5 come il resto dell'overlay: un tratto da 1px cade su un confine
+    // netto invece di sbavare su due righe.
+    expect(segments).toEqual([{ x0: 100.5, y0: 20, x1: 100.5, y1: 300 }]);
+  });
+
+  it("draws a horizontal guide the other way round", () => {
+    const s = emptyScene("d", "n");
+    const { ctx, segments } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, [], null, [{ axis: "y", pos: 40, from: 0, to: 200 }]);
+    expect(segments).toEqual([{ x0: 0, y0: 40.5, x1: 200, y1: 40.5 }]);
+  });
+
+  it("passes through the camera: a zoomed guide lands where the camera puts it", () => {
+    const s = emptyScene("d", "n");
+    const cam: Camera = { x: 10, y: 5, zoom: 2 };
+    const { ctx, segments } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, cam, [], null, [{ axis: "x", pos: 100, from: 20, to: 300 }]);
+    // worldToScreen: world * zoom + cam
+    expect(segments).toEqual([
+      { x0: 100 * 2 + 10 + 0.5, y0: 20 * 2 + 5, x1: 100 * 2 + 10 + 0.5, y1: 300 * 2 + 5 },
+    ]);
+  });
+
+  it("draws the guides OUTSIDE the frame's rotation — they are always axis-aligned", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    const { ctx, calls } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, ["a"], null, [{ axis: "x", pos: 10, from: 0, to: 50 }]);
+    // Il segmento cade DOPO il restore del riquadro ruotato: una guida girata
+    // di 90° non sarebbe più la retta su cui i bordi combaciano.
+    expect(calls.lastIndexOf("lineTo")).toBeGreaterThan(calls.lastIndexOf("restore"));
+  });
+
+  it("draws one segment per guide", () => {
+    const s = emptyScene("d", "n");
+    const { ctx, segments } = fakeCtx(800, 600);
+    drawOverlay(ctx, s, identityCam, [], null, [
+      { axis: "x", pos: 0, from: 0, to: 10 },
+      { axis: "x", pos: 5, from: 0, to: 10 },
+      { axis: "y", pos: 7, from: 0, to: 10 },
+    ]);
+    expect(segments).toHaveLength(3);
   });
 });

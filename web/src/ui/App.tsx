@@ -188,8 +188,8 @@ export function App() {
       if (overlay && scene) {
         resizeCanvasToDisplaySize(overlay);
         const octx = overlay.getContext("2d");
-        const { camera, selection, marquee } = useScene.getState();
-        if (octx) drawOverlay(octx, scene, camera, selection, marquee);
+        const { camera, selection, marquee, snapGuides } = useScene.getState();
+        if (octx) drawOverlay(octx, scene, camera, selection, marquee, snapGuides);
       }
       raf = requestAnimationFrame(tick);
     };

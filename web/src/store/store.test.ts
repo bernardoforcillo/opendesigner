@@ -56,6 +56,23 @@ describe("selection state", () => {
     expect(useScene.getState().marquee).toBeNull();
   });
 
+  it("setSnapGuides stores and clears the active guides", () => {
+    const g = [{ axis: "x" as const, pos: 100, from: 0, to: 50 }];
+    useScene.getState().setSnapGuides(g);
+    expect(useScene.getState().snapGuides).toEqual(g);
+    useScene.getState().setSnapGuides([]);
+    expect(useScene.getState().snapGuides).toEqual([]);
+  });
+
+  it("setSnapGuides reuses the same array when there is nothing to show and nothing was shown", () => {
+    // Un trascinamento la chiama a ogni pointermove: un array nuovo ogni volta
+    // sveglierebbe i sottoscrittori a ogni pixel anche senza nessuno scatto.
+    useScene.getState().setSnapGuides([]);
+    const before = useScene.getState().snapGuides;
+    useScene.getState().setSnapGuides([]);
+    expect(useScene.getState().snapGuides).toBe(before);
+  });
+
   it("REGRESSION: applying a deleteNode op for a selected node also removes it from the selection", () => {
     useScene.getState().apply(createRectOp("n1"));
     useScene.getState().apply(createRectOp("n2"));

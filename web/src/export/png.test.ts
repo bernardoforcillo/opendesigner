@@ -52,7 +52,7 @@ function node(over: Partial<NodeLite> & { id: string }): NodeLite {
   return {
     parentId: "page1", orderKey: "a1", name: over.id, visible: true, opacity: 1,
     x: 0, y: 0, width: 10, height: 10, rotation: 0,
-    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0,
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0,
     ...over,
   };
 }

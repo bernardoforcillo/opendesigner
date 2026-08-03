@@ -7,6 +7,8 @@ import {
   type FillLite,
   type NodeLite,
   type SceneState,
+  type StrokeAlignLite,
+  type StrokeLite,
   type TextAlignLite,
   type TextLite,
 } from "../store/types";
@@ -107,6 +109,32 @@ function toFills(v: unknown): FillLite[] {
   });
 }
 
+const STROKE_ALIGNS: Record<StrokeAlignLite, true> = { center: true, inside: true, outside: true };
+
+function toStrokeAlign(v: unknown): StrokeAlignLite {
+  return typeof v === "string" && Object.prototype.hasOwnProperty.call(STROKE_ALIGNS, v)
+    ? (v as StrokeAlignLite)
+    : "center";
+}
+
+// Come toFills, dal lato del tratto: il payload della clipboard è JSON del
+// nostro stesso formato, riletto in modo difensivo -- un campo mancante o
+// storto ricade sul default onesto (nessun tratto, peso 0) invece di far
+// esplodere l'incolla. Preserva lo stroke di un nodo copiato attraverso il
+// round-trip serializza/incolla.
+function toStrokes(v: unknown): StrokeLite[] {
+  if (!Array.isArray(v)) return [];
+  return v.map((s) => {
+    const o = (s ?? {}) as Record<string, unknown>;
+    const c = (o.color ?? {}) as Record<string, unknown>;
+    return {
+      color: { r: num(c.r, 0), g: num(c.g, 0), b: num(c.b, 0), a: num(c.a, 1) },
+      weight: num(o.weight, 0),
+      align: toStrokeAlign(o.align),
+    };
+  });
+}
+
 const ALIGNS: Record<TextAlignLite, true> = { left: true, center: true, right: true };
 
 function toAlign(v: unknown): TextAlignLite {
@@ -177,6 +205,7 @@ export function parseClipboard(text: string): ClipboardParse {
       height: num(n.height, 0),
       rotation: num(n.rotation, 0),
       fills: toFills(n.fills),
+      strokes: toStrokes(n.strokes),
       kind,
       cornerRadius: num(n.cornerRadius, 0),
       ...(kind === "text" ? { text: toText(n.text) } : {}),

@@ -1,6 +1,6 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
-import { render, screen, cleanup, fireEvent } from "@testing-library/react";
+import { render, screen, cleanup, fireEvent, within } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { toJson, fromJson } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/brawt/v1/brawt_pb";
@@ -8,7 +8,7 @@ import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
-import type { NodeLite, TextLite } from "../store/types";
+import type { NodeLite, StrokeAlignLite, StrokeLite, TextLite } from "../store/types";
 
 // Doppio di SyncClient: registra gli op che finiscono SUL FILO e modella un
 // server che accetta ed ECOA subito (applyPending + apply), come
@@ -26,7 +26,7 @@ function rectNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): N
   return {
     id, parentId: "page1", orderKey, name: "", visible: true, opacity: 1,
     x: 10, y: 20, width: 30, height: 40, rotation: 0,
-    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0,
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0,
     ...over,
   };
 }
@@ -115,6 +115,60 @@ describe("un nodo selezionato", () => {
     expect(field("Y")).toHaveValue("20");
     expect(field("W")).toHaveValue("30");
     expect(field("H")).toHaveValue("40");
+  });
+
+  // La maniglia dell'overlay dà il GESTO; questo campo dà il NUMERO. Senza, un
+  // nodo ruotato non ha nessun posto dove dire a che angolo sta, e un angolo
+  // esatto (90, 45, o 0 per rimetterlo dritto) non si può scrivere.
+  it("il campo Rot mostra l'angolo del nodo", () => {
+    installScene(rectNode("a", "a0", { rotation: 45 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+
+    expect(field("Rot")).toHaveValue("45");
+  });
+});
+
+describe("il campo Rot", () => {
+  it("scrive l'angolo con UN SetProperties sulla sola mask rotation", async () => {
+    installScene(rectNode("a", "a0", { rotation: 0 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.clear(field("Rot"));
+    await user.type(field("Rot"), "90{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("setProps");
+    if (op.kind.case === "setProps") {
+      expect(op.kind.value.mask?.paths).toEqual(["rotation"]);
+      expect(op.kind.value.patch?.rotation).toBe(90);
+    }
+    expect(useScene.getState().scene!.nodes["a"].rotation).toBe(90);
+    expect(useScene.getState().undoStack).toHaveLength(1); // un campo, un gesto
+  });
+
+  it("accetta un angolo NEGATIVO (-30 si scrive più volentieri di 330)", async () => {
+    installScene(rectNode("a", "a0", { rotation: 0 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.clear(field("Rot"));
+    await user.type(field("Rot"), "-30{Enter}");
+
+    expect(useScene.getState().scene!.nodes["a"].rotation).toBe(-30);
+  });
+
+  it("su una selezione con angoli diversi dice Misto invece di inventarne uno", () => {
+    installScene(rectNode("a", "a0", { rotation: 0 }), rectNode("b", "a1", { rotation: 90 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+
+    expect(field("Rot")).toHaveValue("");
+    expect(field("Rot")).toHaveAttribute("placeholder", "Misto");
   });
 });
 
@@ -935,7 +989,10 @@ describe("stile del testo", () => {
     render(<PropertiesPanel />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("radio", { name: "Centro" }));
+    // Dentro il gruppo "Allineamento": da M2 esiste anche una "Posizione" del
+    // tratto con un suo "Centro" (il gruppo, non l'opzione, è ciò che li
+    // distingue -- vedi STROKE_ALIGNMENTS in PropertiesPanel.tsx).
+    await user.click(radioIn("Allineamento", "Centro"));
 
     expect(sync.sent).toHaveLength(1);
     const op = sync.sent[0];
@@ -969,5 +1026,330 @@ describe("stile del testo", () => {
     expect(scene?.nodes.t2.text).toEqual({
       content: "due", style: { ...TEXT_STYLE, fontSize: 20, fontWeight: "700" },
     });
+  });
+});
+
+// --- M2, traccia 2: il TRATTO ------------------------------------------------
+//
+// Stessa forma dei controlli di riempimento/opacità: colore in esadecimale al
+// bordo UI, valori assoluti su tutta la selezione, e la regola dei gesti (un
+// trascinamento = UN gesto, quindi un op sul filo e una voce di undo).
+
+function strokeOf(weight: number, align: StrokeAlignLite, color = { r: 0, g: 0, b: 0, a: 1 }): StrokeLite {
+  return { color, weight, align };
+}
+
+// Il radio `name` DENTRO il gruppo `group`: "Centro" esiste sia fra le
+// posizioni del tratto sia fra gli allineamenti del testo, e su un nodo testo
+// con un tratto i due gruppi convivono nel pannello.
+function radioIn(group: string, name: string): HTMLElement {
+  return within(screen.getByRole("radiogroup", { name: group })).getByRole("radio", { name });
+}
+
+describe("tratto", () => {
+  it("mostra colore, spessore e posizione del primo tratto", () => {
+    installScene(rectNode("a", "a0", { strokes: [strokeOf(4, "outside", { r: 1, g: 0.5, b: 0, a: 1 })] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+
+    expect(screen.getByRole("textbox", { name: "Tratto" })).toHaveValue("#FF8000");
+    expect(field("Spessore")).toHaveValue("4");
+    expect(radioIn("Posizione", "Esterno")).toBeChecked();
+  });
+
+  it("un nodo SENZA tratti mostra il campo vuoto, spessore 0 e posizione al centro", () => {
+    installScene(rectNode("a", "a0", { strokes: [] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+
+    expect(screen.getByRole("textbox", { name: "Tratto" })).toHaveValue("");
+    expect(field("Spessore")).toHaveValue("0");
+    expect(radioIn("Posizione", "Centro")).toBeChecked();
+  });
+
+  it("scrivere un colore su un nodo senza tratti NE CREA uno visibile (1 px, centrato)", async () => {
+    installScene(rectNode("a", "a0", { strokes: [] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    const input = screen.getByRole("textbox", { name: "Tratto" });
+    await user.clear(input);
+    await user.type(input, "#FF0000{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    expect(maskOf(sync.sent[0])).toEqual(["strokes"]);
+    const strokes = useScene.getState().scene?.nodes.a.strokes ?? [];
+    expect(strokes).toHaveLength(1);
+    expect(strokes[0].color.r).toBeCloseTo(1, 5);
+    // Un peso di ripiego > 0: un tratto creato con peso 0 non si vedrebbe, e
+    // l'utente avrebbe scritto un colore senza nessun effetto visibile.
+    expect(strokes[0].weight).toBe(1);
+    expect(strokes[0].align).toBe("center");
+    // Un gesto, una voce di undo.
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  // L'alfa NON passa dal campo esadecimale (vedi fields/ColorField.tsx): la
+  // rimette strokeOps prendendola dal tratto DEL NODO. Gemello di "conserva
+  // l'alfa DEL NODO, non una qualunque" per il riempimento.
+  it("cambiare il colore conserva l'alfa DEL NODO", async () => {
+    installScene(rectNode("a", "a0", { strokes: [strokeOf(4, "inside", { r: 0, g: 0, b: 0, a: 0.25 })] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    const input = screen.getByRole("textbox", { name: "Tratto" });
+    await user.clear(input);
+    await user.type(input, "#00FF00{Enter}");
+
+    // Il colore È cambiato (senza questo, l'assert sull'alfa passerebbe anche
+    // se il campo non avesse emesso NIENTE) ma l'alfa no -- e nemmeno spessore
+    // e posizione.
+    const s = useScene.getState().scene?.nodes.a.strokes[0];
+    expect(s?.color.g).toBeCloseTo(1, 5);
+    expect(s?.color.a).toBe(0.25);
+    expect(s?.weight).toBe(4);
+    expect(s?.align).toBe("inside");
+  });
+
+  // Il caso che il riassunto della selezione non può servire: su tratti diversi
+  // `summary.strokes` è MIXED, cioè NESSUN valore da cui leggere un'alfa.
+  // Prenderla da lì (o dal suo ripiego 1) distruggerebbe in silenzio lo 0.3 di
+  // A -- una modifica che l'utente non ha chiesto e non vede finché non guarda
+  // il canvas.
+  it("su tratti diversi il colore va a tutti ma ciascuno tiene la PROPRIA alfa", async () => {
+    installScene(
+      rectNode("a", "a0", { strokes: [strokeOf(2, "center", { r: 1, g: 0, b: 0, a: 0.3 })] }),
+      rectNode("b", "a1", { strokes: [strokeOf(9, "outside", { r: 0, g: 0, b: 1, a: 1 })] }),
+    );
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    const input = screen.getByRole("textbox", { name: "Tratto" });
+    expect(input).toHaveValue("");
+    await user.type(input, "#00FF00{Enter}");
+
+    expect(sync.sent).toHaveLength(2);
+    for (const op of sync.sent) expect(maskOf(op)).toEqual(["strokes"]);
+    const scene = useScene.getState().scene;
+    expect(scene?.nodes.a.strokes[0].color.g).toBeCloseTo(1, 5);
+    expect(scene?.nodes.b.strokes[0].color.g).toBeCloseTo(1, 5);
+    expect(scene?.nodes.a.strokes[0].color.a).toBe(0.3);
+    expect(scene?.nodes.b.strokes[0].color.a).toBe(1);
+    // ...e il resto del tratto di ciascuno resta suo.
+    expect(scene?.nodes.a.strokes[0].weight).toBe(2);
+    expect(scene?.nodes.b.strokes[0].align).toBe("outside");
+    // Due op, UN gesto: una sola voce di undo.
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("cambiare lo spessore conserva colore e posizione del tratto", async () => {
+    installScene(rectNode("a", "a0", { strokes: [strokeOf(4, "inside", { r: 0, g: 1, b: 0, a: 0.5 })] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.clear(field("Spessore"));
+    await user.type(field("Spessore"), "12{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    expect(maskOf(sync.sent[0])).toEqual(["strokes"]);
+    expect(useScene.getState().scene?.nodes.a.strokes).toEqual([
+      { color: { r: 0, g: 1, b: 0, a: 0.5 }, weight: 12, align: "inside" },
+    ]);
+  });
+
+  it("la posizione conserva colore e spessore", async () => {
+    installScene(rectNode("a", "a0", { strokes: [strokeOf(4, "center", { r: 0, g: 0, b: 1, a: 1 })] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.click(radioIn("Posizione", "Interno"));
+
+    expect(sync.sent).toHaveLength(1);
+    expect(maskOf(sync.sent[0])).toEqual(["strokes"]);
+    expect(useScene.getState().scene?.nodes.a.strokes).toEqual([
+      { color: { r: 0, g: 0, b: 1, a: 1 }, weight: 4, align: "inside" },
+    ]);
+  });
+
+  it("trascinare l'etichetta Spessore è UN gesto, non uno per pixel", () => {
+    installScene(rectNode("a", "a0", { strokes: [strokeOf(2, "center")] }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    dragLabel("Spessore", 10);
+
+    expect(sync.sent).toHaveLength(1);
+    expect(maskOf(sync.sent[0])).toEqual(["strokes"]);
+    expect(useScene.getState().scene?.nodes.a.strokes[0].weight).toBe(12);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("un tratto oltre il primo non si perde", async () => {
+    installScene(rectNode("a", "a0", {
+      strokes: [strokeOf(2, "center"), strokeOf(8, "outside", { r: 1, g: 0, b: 0, a: 1 })],
+    }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.clear(field("Spessore"));
+    await user.type(field("Spessore"), "5{Enter}");
+
+    const strokes = useScene.getState().scene?.nodes.a.strokes ?? [];
+    expect(strokes).toHaveLength(2);
+    expect(strokes[0].weight).toBe(5);
+    expect(strokes[1]).toEqual(strokeOf(8, "outside", { r: 1, g: 0, b: 0, a: 1 }));
+  });
+
+  it("su una selezione con tratti diversi dice Misto, e scriverci assegna a tutti", async () => {
+    installScene(
+      rectNode("a", "a0", { strokes: [strokeOf(2, "center")] }),
+      rectNode("b", "a1", { strokes: [strokeOf(9, "outside")] }),
+    );
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    expect(field("Spessore")).toHaveValue("");
+    expect(field("Spessore")).toHaveAttribute("placeholder", "Misto");
+    expect(screen.getByRole("textbox", { name: "Tratto" })).toHaveValue("");
+
+    await user.type(field("Spessore"), "3{Enter}");
+
+    // Due op (uno per nodo) ma UN gesto solo: una voce di undo.
+    expect(sync.sent).toHaveLength(2);
+    const scene = useScene.getState().scene;
+    expect(scene?.nodes.a.strokes[0].weight).toBe(3);
+    expect(scene?.nodes.b.strokes[0].weight).toBe(3);
+    // ...e ogni nodo tiene la PROPRIA posizione: cambiare lo spessore non
+    // uniforma il resto.
+    expect(scene?.nodes.a.strokes[0].align).toBe("center");
+    expect(scene?.nodes.b.strokes[0].align).toBe("outside");
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+  });
+
+  it("il tratto c'è anche su un'ellisse e su un testo (non è dentro il oneof shape)", () => {
+    installScene(ellipseNode("e", "a0", { strokes: [strokeOf(3, "center")] }));
+    useScene.getState().setSelection(["e"]);
+    const { unmount } = render(<PropertiesPanel />);
+    expect(field("Spessore")).toHaveValue("3");
+    unmount();
+
+    installScene(textNode("t", "a0", "ciao", { strokes: [strokeOf(5, "center")] }));
+    useScene.getState().setSelection(["t"]);
+    render(<PropertiesPanel />);
+    expect(field("Spessore")).toHaveValue("5");
+  });
+});
+
+// --- ALLINEAMENTO (M2, traccia 2, task 3) ------------------------------------
+//
+// La MATEMATICA dell'allineamento è testata dov'è, come funzione pura
+// (selection/align.test.ts). Qui si verifica solo che il pannello sia il modo di
+// raggiungerla: che i pulsanti ci siano, che abbiano un nome leggibile e che
+// muovano davvero la selezione con UN gesto.
+describe("allineamento", () => {
+  it("non mostra i pulsanti senza selezione", () => {
+    installScene(rectNode("a", "a0"));
+    render(<PropertiesPanel />);
+    expect(screen.queryByRole("button", { name: "Allinea a sinistra" })).toBeNull();
+  });
+
+  it("allinea la selezione multipla al suo riquadro comune, in un gesto solo", () => {
+    installScene(
+      rectNode("a", "a0", { x: 0, y: 0, width: 50, height: 50 }),
+      rectNode("b", "a1", { x: 100, y: 30, width: 50, height: 50 }),
+    );
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Allinea a sinistra" }));
+
+    const scene = useScene.getState().scene;
+    expect(scene?.nodes.a.x).toBe(0);
+    expect(scene?.nodes.b.x).toBe(0);
+    expect(scene?.nodes.b.y).toBe(30); // l'asse che non riguarda non si muove
+    expect(sync.sent).toHaveLength(1); // solo "b" si è mosso
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("distribuisce tre nodi con un pulsante solo", () => {
+    installScene(
+      rectNode("a", "a0", { x: 0, y: 0, width: 10, height: 10 }),
+      rectNode("b", "a1", { x: 15, y: 0, width: 10, height: 10 }),
+      rectNode("c", "a2", { x: 90, y: 0, width: 10, height: 10 }),
+    );
+    useScene.getState().setSelection(["a", "b", "c"]);
+    render(<PropertiesPanel />);
+
+    fireEvent.click(screen.getByRole("button", { name: "Distribuisci orizzontalmente" }));
+
+    expect(useScene.getState().scene?.nodes.b.x).toBe(45);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+  });
+
+  // UN NODO SOLO: i pulsanti sono DISABILITATI e il nodo non si muove. Non
+  // esiste nessuna pagina contro cui allinearlo (selection/align.ts), e un
+  // pulsante vivo che non fa niente non si distingue da uno rotto.
+  it("con un nodo solo disabilita i pulsanti e non muove niente", () => {
+    installScene(rectNode("a", "a0", { x: 500, y: 500, width: 50, height: 50 }));
+    useScene.getState().setSelection(["a"]);
+    render(<PropertiesPanel />);
+
+    const b = screen.getByRole("button", { name: "Allinea a sinistra" });
+    expect(b).toBeDisabled();
+    fireEvent.click(b);
+    expect(useScene.getState().scene?.nodes.a.x).toBe(500); // dov'era
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+  });
+
+  it("con DUE nodi i sei allineamenti si accendono, le distribuzioni no", () => {
+    installScene(rectNode("a", "a0"), rectNode("b", "a1", { x: 100 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    for (const name of [
+      "Allinea a sinistra", "Centra orizzontalmente", "Allinea a destra",
+      "Allinea in alto", "Centra verticalmente", "Allinea in basso",
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeEnabled();
+    }
+    expect(screen.getByRole("button", { name: "Distribuisci orizzontalmente" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Distribuisci verticalmente" })).toBeDisabled();
+  });
+
+  it("con TRE nodi si accende tutto", () => {
+    installScene(rectNode("a", "a0"), rectNode("b", "a1", { x: 100 }), rectNode("c", "a2", { x: 200 }));
+    useScene.getState().setSelection(["a", "b", "c"]);
+    render(<PropertiesPanel />);
+    expect(screen.getByRole("button", { name: "Distribuisci orizzontalmente" })).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Distribuisci verticalmente" })).toBeEnabled();
+  });
+
+  it("ogni comando ha il suo pulsante con un nome leggibile", () => {
+    installScene(rectNode("a", "a0"), rectNode("b", "a1", { x: 100 }));
+    useScene.getState().setSelection(["a", "b"]);
+    render(<PropertiesPanel />);
+    for (const name of [
+      "Allinea a sinistra", "Centra orizzontalmente", "Allinea a destra",
+      "Distribuisci orizzontalmente",
+      "Allinea in alto", "Centra verticalmente", "Allinea in basso",
+      "Distribuisci verticalmente",
+    ]) {
+      expect(screen.getByRole("button", { name })).toBeInTheDocument();
+    }
   });
 });

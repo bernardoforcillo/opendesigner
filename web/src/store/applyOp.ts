@@ -68,6 +68,12 @@ export function applyOp(state: SceneState, op: Op): SceneState {
           case "name": next.name = p.name; break;
           case "visible": next.visible = p.visible; break;
           case "fills": next.fills = toNodeLite(p).fills; break;
+          // SOSTITUZIONE dell'intera lista, come "fills" e come `n.Strokes =
+          // p.GetStrokes()` in core.applySetProps (Go): mai una fusione
+          // elemento per elemento. Un patch SENZA strokes azzera la lista --
+          // è il getter nil-safe di Go, ed è anche il modo in cui il pannello
+          // proprietà toglie il tratto da un nodo (vedi NIL_PATCH qui sopra).
+          case "strokes": next.strokes = toNodeLite(p).strokes; break;
           // Il path è snake_case (la convenzione del .proto e di Go), il campo
           // del modello è camelCase: le due forme coincidevano per tutti i path
           // monoparola di M0/M1a, questo è il primo in cui divergono.

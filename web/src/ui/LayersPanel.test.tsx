@@ -27,7 +27,7 @@ function rectNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): N
   return {
     id, parentId: "page1", orderKey, name: "", visible: true, opacity: 1,
     x: 0, y: 0, width: 100, height: 100, rotation: 0,
-    fills: [{ r: 0, g: 0, b: 0, a: 1 }], kind: "rect", cornerRadius: 0,
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0,
     ...over,
   };
 }

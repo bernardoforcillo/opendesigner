@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema } from "../gen/brawt/v1/brawt_pb";
+import { OpSchema, NodeSchema, StrokeAlign } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, type NodeLite } from "./types";
@@ -186,6 +186,19 @@ const PROBE: Probe = {
   fills: {
     patch: { fills: [{ kind: { case: "solid", value: { color: { r: 1, g: 0, b: 0, a: 1 } } } }] },
     expected: [{ r: 1, g: 0, b: 0, a: 1 }],
+  },
+  // Il tratto è ripetuto come fills e viaggia con la stessa forma: un Paint
+  // annidato più peso e allineamento. L'enum sul filo è il suo NOME
+  // ("STROKE_ALIGN_OUTSIDE"), qui è la costante generata.
+  strokes: {
+    patch: {
+      strokes: [{
+        paint: { kind: { case: "solid", value: { color: { r: 0, g: 0, b: 1, a: 1 } } } },
+        weight: 4,
+        align: StrokeAlign.OUTSIDE,
+      }],
+    },
+    expected: [{ color: { r: 0, g: 0, b: 1, a: 1 }, weight: 4, align: "outside" }],
   },
   order_key: { patch: { orderKey: "a5" }, expected: "a5" },
   // L'unica sonda il cui patch è ANNIDATO: corner_radius sta dentro RectNode,
