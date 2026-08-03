@@ -34,12 +34,22 @@ import { drawText } from "./text";
 // della mappa, e il renderer gira a ogni frame.
 type ChildIndex = Map<string, NodeLite[]>;
 
-// I nodi radice del documento: i figli DIRETTI delle pagine, nell'ordine delle
-// pagine. Oggi il documento ha una pagina sola e la scena disegna tutto ciò che
-// è raggiungibile; quando arriveranno le pagine multiple (stessa traccia) sarà
-// qui che si passerà alla sola pagina corrente.
-function rootsOf(state: SceneState, children: ChildIndex): NodeLite[] {
-  return state.pages.flatMap((p) => children.get(p.id) ?? []);
+// I nodi radice della PAGINA CORRENTE: i suoi figli diretti, in ordine di order
+// key. Il canvas mostra UNA pagina alla volta, quindi disegno, hit-test e
+// marquee scendono tutti da qui -- è l'unico punto in cui la scelta della
+// pagina entra nel renderer, ed è ciò che tiene vedi-vs-seleziona in accordo (i
+// tre condividono rootsOf, quindi non possono divergere sulla pagina).
+//
+// currentPageId è un PARAMETRO, non un campo della scena: la pagina corrente è
+// stato di vista dello store (store.ts), e il renderer resta una funzione pura
+// di (scene, camera, currentPageId). Assente (o null) ripiega sulla PRIMA
+// pagina -- il default dello store -- così le scene a pagina singola non hanno
+// bisogno di dirlo. Un id che non è (più) una pagina non ha radici: children
+// non lo conosce e la lista è vuota (canvas bianco), ma l'invariante dello store
+// fa sì che non capiti se non per un istante durante una transizione.
+function rootsOf(state: SceneState, children: ChildIndex, currentPageId?: string | null): NodeLite[] {
+  const pageId = currentPageId ?? state.pages[0]?.id;
+  return pageId !== undefined ? children.get(pageId) ?? [] : [];
 }
 
 // Esportata perché il colore di un nodo serve anche FUORI dal canvas: il
@@ -71,14 +81,14 @@ export function resizeCanvasToDisplaySize(canvas: HTMLCanvasElement): boolean {
   return true;
 }
 
-export function drawScene(ctx: CanvasRenderingContext2D, state: SceneState, cam: Camera): void {
+export function drawScene(ctx: CanvasRenderingContext2D, state: SceneState, cam: Camera, currentPageId?: string | null): void {
   const { canvas } = ctx;
   const dpr = devicePixelRatio();
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(cam.zoom * dpr, 0, 0, cam.zoom * dpr, cam.x * dpr, cam.y * dpr);
   const children = childIndexOf(state);
-  drawSiblings(ctx, children, rootsOf(state, children), new Set());
+  drawSiblings(ctx, children, rootsOf(state, children, currentPageId), new Set());
   ctx.globalAlpha = 1;
 }
 
@@ -162,9 +172,9 @@ function drawNode(ctx: CanvasRenderingContext2D, n: NodeLite): void {
 // proprio container. Chi selezionerà il GRUPPO invece del figlio (il click
 // seleziona il gruppo, il doppio click entra) risale da qui con l'albero: è
 // una politica di selezione, non di hit-test, e non va nascosta qui dentro.
-export function hitTest(state: SceneState, wx: number, wy: number): string | null {
+export function hitTest(state: SceneState, wx: number, wy: number, currentPageId?: string | null): string | null {
   const children = childIndexOf(state);
-  return pickIn(children, rootsOf(state, children), wx, wy, new Set());
+  return pickIn(children, rootsOf(state, children, currentPageId), wx, wy, new Set());
 }
 
 // Lo STESSO cammino di drawSiblings, al contrario: fratelli dall'ultimo al
@@ -220,10 +230,10 @@ function pickIn(children: ChildIndex, siblings: NodeLite[], px: number, py: numb
 //
 // Come hitTest, non risponde MAI con un gruppo (vedi collectIn): risponde con
 // ciò che si vede, e a risalire ai gruppi è la politica di selezione.
-export function nodesIntersecting(state: SceneState, bounds: Bounds): string[] {
+export function nodesIntersecting(state: SceneState, bounds: Bounds, currentPageId?: string | null): string[] {
   const children = childIndexOf(state);
   const out: string[] = [];
-  collectIn(children, rootsOf(state, children), IDENTITY, bounds, out, new Set());
+  collectIn(children, rootsOf(state, children, currentPageId), IDENTITY, bounds, out, new Set());
   return out;
 }
 

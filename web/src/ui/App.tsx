@@ -11,6 +11,7 @@ import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { PageBar } from "./PageBar";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
 import { selectTool } from "../tools/selectTool";
 import { rectTool } from "../tools/rectTool";
@@ -168,7 +169,7 @@ export function App() {
       if (canvas && scene) {
         resizeCanvasToDisplaySize(canvas);
         const ctx = canvas.getContext("2d");
-        if (ctx) drawScene(ctx, scene, useScene.getState().camera);
+        if (ctx) drawScene(ctx, scene, useScene.getState().camera, useScene.getState().currentPageId);
       }
       if (overlay && scene) {
         resizeCanvasToDisplaySize(overlay);
@@ -319,6 +320,10 @@ export function App() {
           </Button>
         </div>
       )}
+      {/* Selettore di pagina: una riga AGGIUNTIVA sopra le tre colonne, così il
+          layout a tre colonne resta intatto. Il canvas mostra la sola pagina
+          corrente (currentPageId, stato di vista nello store). */}
+      <PageBar />
       {/* LE TRE COLONNE: livelli a sinistra, canvas al centro, proprietà a
           destra. `min-h-0` sulla riga e `min-w-0` sulla colonna centrale non
           sono decorazioni: senza, un figlio flex non scende MAI sotto la

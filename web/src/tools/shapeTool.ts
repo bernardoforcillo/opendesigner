@@ -67,9 +67,14 @@ export function makeShapeTool(config: ShapeToolConfig): Tool {
       // coincidono. Il giorno in cui si potrà disegnare DENTRO un container,
       // il box va prima portato nello spazio locale di quel container
       // (transform.ts::worldToLocal).
+      //
+      // Il parent è la PAGINA CORRENTE (stato di vista dello store), non un
+      // "page1" fisso: disegnare mentre si è su un'altra pagina crea il nodo lì.
+      // Il ripiego a "page1" copre solo il caso -- irraggiungibile con una scena
+      // installata -- in cui currentPageId non è ancora stato risolto.
       const node = create(NodeSchema, {
         id: uuid(),
-        parentId: "page1",
+        parentId: useScene.getState().currentPageId ?? "page1",
         orderKey: nextOrderKey(ctx.getScene()),
         name: config.name,
         visible: true,

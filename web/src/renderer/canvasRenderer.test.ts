@@ -538,6 +538,61 @@ describe("drawScene with a frame", () => {
   });
 });
 
+// SCOPING PER PAGINA CORRENTE. Il canvas mostra UNA pagina alla volta: ciò che
+// si DISEGNA, ciò che l'hit-test COLPISCE e ciò che il marquee PRENDE rispondono
+// tutti sulle radici della SOLA pagina corrente (rootsOf). currentPageId è un
+// parametro del renderer, non un campo della scena; assente ripiega sulla prima
+// pagina (il default dello store), che è il comportamento a pagina singola dei
+// test qui sopra.
+describe("scoping alla pagina corrente", () => {
+  // Due pagine, un nodo per pagina, ESATTAMENTE sovrapposti nel mondo
+  // (entrambi a (0,0), 50x50): il punto (25,25) e una banda su (0,0)-(50,50)
+  // cadono su tutti e due, quindi solo lo scoping decide quale risponde.
+  function twoPages(): SceneState {
+    const s = emptyScene("d", "n");
+    s.pages = [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }];
+    s.nodes["a"] = rect("a", 0, 0, "a0"); // parentId "page1"
+    s.nodes["b"] = childRect("b", "page2", 0, 0, "a0");
+    return s;
+  }
+
+  it("hitTest colpisce solo il nodo della pagina corrente", () => {
+    const s = twoPages();
+    expect(hitTest(s, 25, 25, "page1")).toBe("a");
+    expect(hitTest(s, 25, 25, "page2")).toBe("b");
+    // Default (nessun currentPageId): la PRIMA pagina.
+    expect(hitTest(s, 25, 25)).toBe("a");
+  });
+
+  it("nodesIntersecting prende solo i nodi della pagina corrente", () => {
+    const s = twoPages();
+    const band = { x: 0, y: 0, width: 50, height: 50 };
+    expect(nodesIntersecting(s, band, "page1")).toEqual(["a"]);
+    expect(nodesIntersecting(s, band, "page2")).toEqual(["b"]);
+    expect(nodesIntersecting(s, band)).toEqual(["a"]);
+  });
+
+  it("drawScene disegna solo le radici della pagina corrente", () => {
+    const s = emptyScene("d", "n");
+    s.pages = [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }];
+    s.nodes["A"] = textAt("A", "page1", 0, 0);
+    s.nodes["B"] = textAt("B", "page2", 0, 0);
+
+    const f1 = fakeCtx();
+    drawScene(f1.ctx, s, identityCam, "page1");
+    expect(f1.fillText.map((c) => c.text)).toEqual(["A"]);
+
+    const f2 = fakeCtx();
+    drawScene(f2.ctx, s, identityCam, "page2");
+    expect(f2.fillText.map((c) => c.text)).toEqual(["B"]);
+
+    // Default: la prima pagina.
+    const f3 = fakeCtx();
+    drawScene(f3.ctx, s, identityCam);
+    expect(f3.fillText.map((c) => c.text)).toEqual(["A"]);
+  });
+});
+
 describe("resizeCanvasToDisplaySize", () => {
   afterEach(() => {
     vi.unstubAllGlobals();

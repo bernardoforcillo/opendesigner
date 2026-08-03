@@ -290,6 +290,20 @@ describe("textTool", () => {
     const secondKey = createdNode(submitted[2]).orderKey;
     expect(secondKey > firstKey).toBe(true);
   });
+
+  // Come rect/ellipse, il testo nasce SOTTO la pagina corrente.
+  it("crea il nodo testo sotto la pagina corrente", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      pages: [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }],
+    });
+    useScene.getState().setCurrentPage("page2");
+    const tool = createTextTool();
+    const { ctx, submitted } = fakeCtx();
+    tool.onPointerDown!(at(10, 20), ctx);
+    tool.onPointerUp!(at(10, 20), ctx);
+    expect(createdNode(submitted[0]).parentId).toBe("page2");
+  });
 });
 
 describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {

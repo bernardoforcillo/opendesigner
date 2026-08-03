@@ -5,7 +5,7 @@ import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
 import { subtreeOf } from "./tree";
-import type { SceneState } from "./types";
+import type { PageLite, SceneState } from "./types";
 import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
 
@@ -778,6 +778,20 @@ function sameSelection(a: string[], b: string[]): boolean {
   return a === b || (a.length === b.length && a.every((id, i) => id === b[i]));
 }
 
+// currentPageId è STATO DI VISTA (come camera e selezione), NON del documento:
+// non viaggia sul filo. Ma deve restare SEMPRE valido -- il renderer disegna la
+// SOLA pagina corrente (canvasRenderer.ts::rootsOf), quindi un id che non punta
+// più a nessuna pagina lascerebbe il canvas vuoto e i tool a creare sotto un
+// parent inesistente. Va quindi corretto a OGNI cambio di scene.pages, anche
+// quando arriva da un op remoto: se la pagina corrente sparisce (DeletePage) si
+// ripiega sulla PRIMA rimasta; se è ancora lì (CreatePage/RenamePage altrui,
+// risync) non si tocca. null solo per un documento senza pagine -- che il core
+// non produce (l'ultima pagina non si cancella, ErrLastPage).
+function validCurrentPage(pages: readonly PageLite[], currentPageId: string | null): string | null {
+  if (currentPageId !== null && pages.some((p) => p.id === currentPageId)) return currentPageId;
+  return pages[0]?.id ?? null;
+}
+
 // Primitiva condivisa da endGesture/undo/redo: dato lo stato PRIMA che `ops`
 // venga applicato, calcola l'inverso di OGNI op in sequenza (l'inverso del
 // secondo op va calcolato sullo stato dopo il primo, ecc.) e ritorna la
@@ -848,6 +862,13 @@ interface SceneStore {
   // è tutto il documento che smette di avanzare.
   syncError: string | null;
   camera: Camera;
+  // La pagina VISUALIZZATA sul canvas, stato di vista come camera e selezione
+  // (NON del documento: non è un op, non viaggia sul filo). Il renderer disegna
+  // le sole radici di questa pagina; i tool creano sotto di essa. Invariante:
+  // punta SEMPRE a una pagina esistente (validCurrentPage la corregge a ogni
+  // cambio di scene.pages, anche remoto). null solo prima del bootstrap
+  // (scene === null).
+  currentPageId: string | null;
   // Invariante: selection contiene SOLO id di nodi che esistono ancora in
   // scene.nodes. Quando un op (anche remoto, via apply) fa sparire un nodo
   // selezionato, va tolto anche dalla selezione -- altrimenti le maniglie di
@@ -913,6 +934,12 @@ interface SceneStore {
   toggleSelection: (id: string) => void;
   clearSelection: () => void;
   setMarquee: (b: Bounds | null) => void;
+  // Cambia la pagina visualizzata. AZZERA la selezione (i nodi di un'altra
+  // pagina non restano selezionati) e NON è una voce di undo -- è stato di
+  // vista, come spostare la camera. No-op se la pagina è già quella corrente
+  // (un ri-click non deve buttare via la selezione) o se l'id non esiste (che
+  // romperebbe l'invariante "sempre valido").
+  setCurrentPage: (id: string) => void;
   // Accende il flag di editing: textTool lo chiama subito dopo aver creato il
   // nodo, il doppio click di selectTool lo chiama su un nodo testo esistente.
   // Se una sessione era già aperta su un ALTRO nodo, la chiude/pulisce prima
@@ -938,7 +965,18 @@ function rebuild(st: SceneStore, confirmed: SceneState, pending: PendingOp[]): P
   // Riconvalida la selezione contro i nodi rimasti (non solo per deleteNode:
   // qualunque op che fa sparire un id -- anche futuro -- deve avere lo stesso
   // effetto), e anche contro un rollback che ha tolto un nodo appena creato.
-  return { confirmed, pending, scene, selection: pruneSelection(st.selection, scene) };
+  // currentPageId si corregge QUI perché ogni ricostruzione della vista (record
+  // dal filo via apply, rifiuto via rejectPending) può aver cambiato scene.pages
+  // -- una DeletePage remota della pagina corrente, per dire. La selezione dei
+  // nodi della pagina sparita è già stata potata qui sopra (i loro id non sono
+  // più in scene.nodes), quindi ripiegare non lascia maniglie appese.
+  return {
+    confirmed,
+    pending,
+    scene,
+    selection: pruneSelection(st.selection, scene),
+    currentPageId: validCurrentPage(scene.pages, st.currentPageId),
+  };
 }
 
 export const useScene = createStore<SceneStore>((set, get) => ({
@@ -951,6 +989,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   connection: "connecting",
   syncError: null,
   camera: { x: 0, y: 0, zoom: 1 },
+  currentPageId: null,
   selection: [],
   marquee: null,
   sync: null,
@@ -1004,6 +1043,10 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       disowned: [],
       notice: null,
       selection: s ? pruneSelection(st.selection, s) : [],
+      // Un nuovo documento può avere altre pagine: si tiene la corrente se
+      // esiste ancora, altrimenti la prima. Al bootstrap (currentPageId null)
+      // diventa la prima pagina del documento.
+      currentPageId: s ? validCurrentPage(s.pages, st.currentPageId) : null,
       lastError: discardedReason !== undefined && st.pending.length > 0 ? discardedReason : null,
     })),
   setCamera: (c) => set({ camera: c }),
@@ -1119,6 +1162,10 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         scene,
         pending: [...st.pending, { opId: op.opId, op }],
         selection: pruneSelection(st.selection, scene),
+        // Un op OTTIMISTICO può cambiare le pagine (una CreatePage/DeletePage
+        // locale prima ancora dell'eco): la pagina corrente si corregge subito,
+        // come fa rebuild per i record autorevoli.
+        currentPageId: validCurrentPage(scene.pages, st.currentPageId),
       };
     }),
 
@@ -1374,6 +1421,21 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     })),
   clearSelection: () => set({ selection: [] }),
   setMarquee: (b) => set({ marquee: b }),
+
+  // Cambia la pagina visualizzata. NON è un op e NON è una voce di undo: è
+  // stato di vista, come setCamera. Azzera la selezione (i nodi dell'altra
+  // pagina non restano selezionati -- il pannello proprietà e l'overlay
+  // rimarrebbero altrimenti appesi a nodi che il canvas non disegna più).
+  setCurrentPage: (id) =>
+    set((st) => {
+      // Ri-selezionare la pagina corrente non deve buttare via la selezione.
+      if (id === st.currentPageId) return st;
+      // Solo una pagina che ESISTE: mantiene l'invariante "sempre valido" anche
+      // se un chiamante passa un id sbagliato. A scene nulla (bootstrap non
+      // ancora arrivato) si accetta comunque -- validCurrentPage la correggerà.
+      if (st.scene && !st.scene.pages.some((p) => p.id === id)) return st;
+      return { currentPageId: id, selection: [] };
+    }),
 
   // Chiude/pulisce QUALUNQUE sessione già aperta PRIMA di aprirne una nuova
   // (bug trovato in review): senza questo, una seconda beginTextEditing --

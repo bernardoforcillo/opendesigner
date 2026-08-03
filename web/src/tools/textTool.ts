@@ -99,9 +99,11 @@ export function createTextTool(): Tool {
       // `box` è MONDO e il modello vuole coordinate relative al PARENT: qui
       // coincidono perché il parent è una pagina (identità). Stessa nota di
       // shapeTool.ts -- creare dentro un container richiederà un worldToLocal.
+      // Il parent è la PAGINA CORRENTE (stato di vista dello store): il testo
+      // nasce sulla pagina che si sta guardando, non su un "page1" fisso.
       const node = create(NodeSchema, {
         id,
-        parentId: "page1",
+        parentId: useScene.getState().currentPageId ?? "page1",
         orderKey: nextOrderKey(ctx.getScene()),
         name: "Text",
         visible: true,

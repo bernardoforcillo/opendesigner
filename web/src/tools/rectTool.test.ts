@@ -208,4 +208,21 @@ describe("rectTool", () => {
     expect(submitted).toHaveLength(0);
     expect(useScene.getState().selection).toEqual([]);
   });
+
+  // Il nodo nasce SOTTO la pagina corrente, non sempre "page1": disegnare
+  // mentre si è su una seconda pagina crea il nodo lì.
+  it("creates the node under the CURRENT page", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      pages: [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }],
+    });
+    useScene.getState().setCurrentPage("page2");
+    const tool = createRectTool();
+    const { ctx, submitted } = fakeCtx();
+    tool.onPointerDown!(at(10, 20), ctx);
+    tool.onPointerUp!(at(60, 80), ctx);
+    expect(createdNode(submitted[0]).parentId).toBe("page2");
+    // E il nodo è davvero atterrato sotto page2 nella scena.
+    expect(useScene.getState().scene!.nodes[createdNode(submitted[0]).id].parentId).toBe("page2");
+  });
 });

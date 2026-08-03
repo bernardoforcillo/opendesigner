@@ -98,8 +98,12 @@ export function pickTarget(
   world: { x: number; y: number },
   shiftKey: boolean,
   selection: string[],
+  currentPageId?: string | null,
 ): PickResult {
-  const hit = hitTest(scene, world.x, world.y);
+  // Scoped alla pagina corrente, come il disegno: un click non colpisce un nodo
+  // di un'ALTRA pagina (che il canvas non mostra). currentPageId assente ripiega
+  // sulla prima pagina, il default dello store -- vedi canvasRenderer::rootsOf.
+  const hit = hitTest(scene, world.x, world.y, currentPageId);
   if (!hit) return { mode: "marquee" };
   // hitTest risponde "quale nodo c'è sotto il puntatore" -- il più INTERNO,
   // sempre. Quale nodo si SELEZIONA è un'altra domanda, e la risposta è la
@@ -129,8 +133,8 @@ export function pickTarget(
 // L'ordine è quello dell'albero (container prima dei figli, fratelli per order
 // key) e non un confronto piatto di order key: per una scena piatta sono la
 // stessa lista, per una annidata solo il primo ha un significato.
-export function nodesInMarquee(scene: SceneState, bounds: Bounds): string[] {
-  return nodesIntersecting(scene, bounds);
+export function nodesInMarquee(scene: SceneState, bounds: Bounds, currentPageId?: string | null): string[] {
+  return nodesIntersecting(scene, bounds, currentPageId);
 }
 
 function union(base: string[], extra: string[]): string[] {
@@ -359,7 +363,7 @@ export function createSelectTool(): Tool {
       // selezione e drag si preparano come per un click qualunque, così se il
       // puntatore si muove il gesto è già armato e lo spostamento parte da
       // questo stesso down. Chi decide è il rilascio (onPointerUp), non il down.
-      const hitId = hitTest(scene, world.x, world.y);
+      const hitId = hitTest(scene, world.x, world.y, store.currentPageId);
       if (hitId && !e.shiftKey) {
         const isDoubleClick =
           lastClick !== null &&
@@ -393,7 +397,7 @@ export function createSelectTool(): Tool {
 
       // Selezione LETTA ADESSO e non da `store`: entrare in un gruppo (qui
       // sopra) l'ha appena cambiata, e `store` è la fotografia di prima.
-      const target = pickTarget(scene, world, e.shiftKey, useScene.getState().selection);
+      const target = pickTarget(scene, world, e.shiftKey, useScene.getState().selection, store.currentPageId);
 
       if (target.mode === "marquee") {
         // shift+click sul vuoto non azzera: è l'inizio di un'aggiunta (unione
@@ -487,7 +491,7 @@ export function createSelectTool(): Tool {
         // azzerata a pointerdown.
         const inside =
           scene && !isClick
-            ? selectionTargetsOf(scene, nodesInMarquee(scene, box), preMarqueeSelection ?? [])
+            ? selectionTargetsOf(scene, nodesInMarquee(scene, box, useScene.getState().currentPageId), preMarqueeSelection ?? [])
             : [];
         useScene.getState().setSelection(union(marqueeBase ?? [], inside));
         resetMarquee();

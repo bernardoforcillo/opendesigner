@@ -1357,3 +1357,42 @@ describe("selectTool and groups", () => {
     });
   });
 });
+
+// SCOPING ALLA PAGINA CORRENTE. Click e marquee rispondono sulle radici della
+// SOLA pagina corrente, esattamente come il renderer le disegna: vedi-vs-
+// seleziona. pickTarget/nodesInMarquee ricevono currentPageId (assente =
+// prima pagina, il default dello store); il tool lo legge dallo store.
+describe("scoping alla pagina corrente", () => {
+  // Due pagine, un nodo per pagina, sovrapposti nel mondo (entrambi 50x50 a
+  // (0,0)): il punto (25,25) e la banda (0,0)-(50,50) cadono su entrambi.
+  function twoPages() {
+    const s = emptyScene("doc-1", "u");
+    s.pages = [{ id: "page1", name: "P1" }, { id: "page2", name: "P2" }];
+    s.nodes["a"] = node("a", 0, "a000000");
+    s.nodes["b"] = node("b", 0, "a000001", { parentId: "page2" });
+    return s;
+  }
+
+  it("pickTarget colpisce solo il nodo della pagina corrente", () => {
+    const s = twoPages();
+    expect(pickTarget(s, { x: 25, y: 25 }, false, [], "page1")).toEqual({ mode: "single", id: "a" });
+    expect(pickTarget(s, { x: 25, y: 25 }, false, [], "page2")).toEqual({ mode: "single", id: "b" });
+  });
+
+  it("nodesInMarquee prende solo i nodi della pagina corrente", () => {
+    const s = twoPages();
+    const band = { x: 0, y: 0, width: 50, height: 50 };
+    expect(nodesInMarquee(s, band, "page1")).toEqual(["a"]);
+    expect(nodesInMarquee(s, band, "page2")).toEqual(["b"]);
+  });
+
+  it("un click con Seleziona sulla seconda pagina seleziona il SUO nodo, non quello della prima", () => {
+    useScene.getState().setScene(twoPages());
+    useScene.getState().setCurrentPage("page2");
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(at(25, 25), ctx);
+    tool.onPointerUp!(at(25, 25), ctx);
+    expect(useScene.getState().selection).toEqual(["b"]);
+  });
+});
