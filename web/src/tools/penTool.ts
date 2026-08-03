@@ -59,16 +59,29 @@ export type PenState =
   // Nessun ancoraggio posato: nessun gesto aperto, niente da annullare.
   | { readonly name: "idle" }
   // Pulsante PREMUTO su un ancoraggio: finché non si rilascia, il cursore ne
-  // definisce le maniglie. `base` è l'ancoraggio com'era al pointerdown, ed è
-  // da lui che le maniglie si ricalcolano a ogni move -- mai dall'ultimo
-  // valore, che sarebbe un accumulo. È anche il punto da cui si misura il
-  // trascinamento: l'ANCORAGGIO, non il pixel cliccato (un click 2px fuori
-  // centro sul primo ancoraggio non deve regalare una maniglia).
+  // definisce le maniglie.
+  //
+  // DUE punti distinti, e la distinzione è tutto il fix del round 2:
+  //  - `base` è l'ancoraggio com'era al pointerdown. È l'ORIGINE DEL VETTORE
+  //    maniglia (le maniglie sono offset dall'ancoraggio) e si ricalcola da lui
+  //    a ogni move -- mai dall'ultimo valore, che sarebbe un accumulo;
+  //  - `origin` è il punto in cui il PUNTATORE è sceso. È da lui che si misura
+  //    "questo gesto è un click o un trascinamento?".
+  //
+  // Confonderli è un bug vero e non un dettaglio: sul primo ancoraggio la presa
+  // di chiusura è 6px (PEN_ANCHOR_GRAB_PX) mentre la soglia del click è 3px
+  // (PEN_CLICK_SLOP_PX), quindi esiste una corona di 3-6px in cui si CHIUDE ma
+  // si è oltre soglia. Misurando dall'ancoraggio, un click fermo lì dentro --
+  // zero movimento del puntatore -- verrebbe letto come un trascinamento e
+  // curverebbe il segmento di ritorno che l'anteprima aveva appena disegnato
+  // dritto. E lo curverebbe in unità MONDO: a zoom 0.25 quei 6px sono 24 unità,
+  // che tornando a zoom 4 diventano un gonfiore da ~96px sullo schermo.
   | {
       readonly name: "placing";
       readonly anchors: readonly AnchorLite[];
       readonly grip: PenGrip;
       readonly base: AnchorLite;
+      readonly origin: PointLite;
     }
   // Pulsante rilasciato, path in corso: il prossimo click posa un ancoraggio (o
   // chiude, se cade sul primo). `cursor` è dove cadrebbe: l'overlay ci disegna
@@ -130,13 +143,26 @@ function corner(p: PointLite): AnchorLite {
 // nella soglia torna esattamente da dove era partito (nessuna isteresi, perché
 // il calcolo riparte sempre da base e non dall'ultimo valore).
 //
-// Le maniglie sono OFFSET relativi all'ancoraggio (regola dei due spazi, vedi
-// il proto su `Anchor`), quindi il delta cursore-ancoraggio È già la maniglia:
-// nessuna sottrazione in più, e la simmetria è un semplice cambio di segno.
-function pulled(base: AnchorLite, cursor: PointLite, slop: number, grip: PenGrip): AnchorLite {
+// I DUE punti hanno due mestieri diversi, e vanno tenuti separati:
+//  - `origin` (dove è sceso il puntatore) decide SE c'è un trascinamento. Un
+//    click è un puntatore che non si è mosso, e questo è vero anche quando
+//    cade a 5px dal centro dell'ancoraggio che sta chiudendo -- la presa è
+//    generosa APPOSTA per invitarlo, e non può poi far pagare quella distanza
+//    come se fosse un gesto;
+//  - `base` (l'ancoraggio) è l'ORIGINE del vettore maniglia. Le maniglie sono
+//    OFFSET relativi all'ancoraggio (regola dei due spazi, vedi il proto su
+//    `Anchor`), quindi il delta cursore-ancoraggio È già la maniglia: nessuna
+//    sottrazione in più, e la simmetria è un semplice cambio di segno.
+function pulled(
+  base: AnchorLite,
+  origin: PointLite,
+  cursor: PointLite,
+  slop: number,
+  grip: PenGrip,
+): AnchorLite {
+  if (Math.hypot(cursor.x - origin.x, cursor.y - origin.y) < slop) return base;
   const dx = cursor.x - base.x;
   const dy = cursor.y - base.y;
-  if (Math.hypot(dx, dy) < slop) return base;
   return grip === "close"
     ? { ...base, inX: dx, inY: dy }
     : { ...base, outX: dx, outY: dy, inX: -dx, inY: -dy };
@@ -150,7 +176,7 @@ type Placing = Extract<PenState, { name: "placing" }>;
 function dragged(s: Placing, cursor: PointLite, slop: number): AnchorLite[] {
   const i = s.grip === "close" ? 0 : s.anchors.length - 1;
   const next = [...s.anchors];
-  next[i] = pulled(s.base, cursor, slop, s.grip);
+  next[i] = pulled(s.base, s.origin, cursor, slop, s.grip);
   return next;
 }
 
@@ -163,7 +189,14 @@ export function penReduce(state: PenState, ev: PenEvent): PenStep {
     case "idle": {
       if (ev.kind === "down") {
         const a = corner(ev.at);
-        return { state: { name: "placing", anchors: [a], grip: "new", base: a }, effect: "none" };
+        // Qui `origin` e la posizione di `base` COINCIDONO -- l'ancoraggio nasce
+        // sotto il puntatore -- ma restano due cose diverse, e sul grip "close"
+        // divergono. Portarli entrambi anche quando coincidono è ciò che rende
+        // `dragged` una regola sola invece di due casi.
+        return {
+          state: { name: "placing", anchors: [a], grip: "new", base: a, origin: ev.at },
+          effect: "none",
+        };
       }
       // Escape a mano alzata: non c'è nessun path da terminare e nessun nodo da
       // creare -- ed è precisamente ciò che deve succedere. Idem per move/up
@@ -221,14 +254,31 @@ export function penReduce(state: PenState, ev: PenEvent): PenStep {
           // non finisce qui: il rilascio può ancora tirarne la maniglia
           // entrante, che è la curva del segmento di ritorno.
           if (Math.hypot(ev.at.x - first.x, ev.at.y - first.y) <= ev.grab) {
+            // L'UNICO caso in cui `origin` e `base` non coincidono: il click di
+            // chiusura è sceso VICINO al primo ancoraggio, non esattamente su di
+            // lui. La maniglia si misurerà dall'ancoraggio (`base`), ma se c'è
+            // un trascinamento lo dirà il puntatore (`origin`) -- altrimenti la
+            // sola generosità della presa passerebbe per un gesto.
             return {
-              state: { name: "placing", anchors: state.anchors, grip: "close", base: first },
+              state: {
+                name: "placing",
+                anchors: state.anchors,
+                grip: "close",
+                base: first,
+                origin: ev.at,
+              },
               effect: "none",
             };
           }
           const a = corner(ev.at);
           return {
-            state: { name: "placing", anchors: [...state.anchors, a], grip: "new", base: a },
+            state: {
+              name: "placing",
+              anchors: [...state.anchors, a],
+              grip: "new",
+              base: a,
+              origin: ev.at,
+            },
             effect: "none",
           };
         }

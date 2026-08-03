@@ -146,10 +146,13 @@ describe("penReduce: la macchina a stati", () => {
     expect(down.state.name).toBe("placing");
     if (down.state.name !== "placing") throw new Error("unreachable");
     expect(down.state.grip).toBe("close");
-    // La base del trascinamento è l'ANCORAGGIO, non il pixel cliccato: le
-    // maniglie si misurano da lì, altrimenti un click 2px fuori centro
-    // regalerebbe una maniglia che nessuno ha chiesto.
+    // DUE punti, due mestieri. `base` è l'ANCORAGGIO: è da lì che si misura la
+    // maniglia, perché una maniglia è un offset dall'ancoraggio. `origin` è il
+    // pixel effettivamente CLICCATO: è da lì che si misura se il puntatore si è
+    // mosso, cioè se c'è un trascinamento. Confonderli fa pagare la generosità
+    // della presa come se fosse un gesto (vedi il test sulla corona 3-6px).
     expect(down.state.base).toEqual(corner(0, 0));
+    expect(down.state.origin).toEqual({ x: 2, y: 1 });
     // Nessun ancoraggio in più: chiudere non ne aggiunge uno sopra il primo.
     expect(anchorsOf(down.state)).toHaveLength(3);
 
@@ -158,6 +161,58 @@ describe("penReduce: la macchina a stati", () => {
     expect(up.path?.closed).toBe(true);
     expect(up.path?.anchors).toHaveLength(3);
     expect(up.state).toBe(PEN_IDLE);
+  });
+
+  // LA CORONA 3-6px. La presa che chiude il contorno vale 6px SCHERMO
+  // (PEN_ANCHOR_GRAB_PX) mentre la soglia click/trascinamento ne vale 3
+  // (PEN_CLICK_SLOP_PX): esattamente il doppio. Esiste quindi un anello attorno
+  // al primo ancoraggio in cui un click CHIUDE ed è già oltre la soglia se la
+  // soglia si misura dall'ANCORAGGIO. Lì dentro un click fermo -- puntatore che
+  // non si muove di un pixel -- diventerebbe un trascinamento mai fatto, e il
+  // segmento di ritorno nascerebbe curvo. Quell'anello è precisamente dove la
+  // presa generosa INVITA a cliccare, quindi non è un caso limite: è il caso
+  // normale di chi non centra il quadratino.
+  it("un click FERMO nella corona 3-6px della presa NON regala nessuna maniglia", () => {
+    const s = drawn([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]);
+    // 5 unità mondo dal primo ancoraggio: dentro la presa (6), oltre la soglia
+    // (3). Il puntatore però non si muove: down e up nello stesso punto.
+    const down = penReduce(s, { kind: "down", at: { x: 5, y: 0 }, grab: 6 });
+    const up = penReduce(down.state, { kind: "up", at: { x: 5, y: 0 }, slop: 3 });
+
+    expect(up.effect).toBe("finish");
+    expect(up.path?.closed).toBe(true);
+    // Il primo ancoraggio è ancora un ANGOLO: nessuna entrante inventata.
+    expect(up.path?.anchors[0]).toEqual(corner(0, 0));
+  });
+
+  // WYSIWYG: l'anteprima al pointerdown disegna il segmento di ritorno DRITTO
+  // (penPreviewOf non tocca gli ancoraggi). Se il commit lo curvasse, il nodo
+  // creato sarebbe diverso da quello che si stava guardando -- la peggiore
+  // delle sorprese in uno strumento di disegno.
+  it("nella corona, ciò che si vede al pointerdown è ciò che si ottiene al rilascio", () => {
+    const s = drawn([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]);
+    const down = penReduce(s, { kind: "down", at: { x: 4, y: 3 }, grab: 6 }); // dist 5
+    const shown = anchorsOf(down.state);
+    const up = penReduce(down.state, { kind: "up", at: { x: 4, y: 3 }, slop: 3 });
+    expect(up.path?.anchors).toEqual(shown);
+  });
+
+  it("ma un trascinamento VERO partito nella corona tira la maniglia, misurata dall'ANCORAGGIO", () => {
+    const s = drawn([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]);
+    const down = penReduce(s, { kind: "down", at: { x: 5, y: 0 }, grab: 6 });
+    // Il puntatore si muove davvero (40 unità dal punto di discesa): adesso è un
+    // trascinamento, e la maniglia è il delta cursore-ANCORAGGIO -- non
+    // cursore-punto di discesa, perché una maniglia è un offset dall'ancoraggio.
+    const move = penReduce(down.state, { kind: "move", at: { x: 5, y: 40 }, slop: 3 });
+    expect(anchorsOf(move.state)[0]).toEqual({ x: 0, y: 0, inX: 5, inY: 40, outX: 0, outY: 0 });
+  });
+
+  it("un trascinamento che RIENTRA nella soglia torna all'angolo (nessuna isteresi)", () => {
+    const s = drawn([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]);
+    const down = penReduce(s, { kind: "down", at: { x: 5, y: 0 }, grab: 6 });
+    let m = penReduce(down.state, { kind: "move", at: { x: 5, y: 40 }, slop: 3 }).state;
+    m = penReduce(m, { kind: "move", at: { x: 6, y: 1 }, slop: 3 }).state; // di nuovo entro 3 dal down
+    expect(anchorsOf(m)[0]).toEqual(corner(0, 0));
   });
 
   it("trascinare sul primo ancoraggio tira la sua maniglia ENTRANTE e lascia stare l'uscente", () => {
@@ -433,6 +488,54 @@ describe("penTool", () => {
     const sp = createdSubpath(submitted[0]);
     expect(sp.closed).toBe(true);
     expect(sp.anchors).toHaveLength(3); // il click di chiusura non ne aggiunge uno
+  });
+
+  // La corona 3-6px vista dal tool: la presa (6px) è il DOPPIO della soglia
+  // (3px), quindi un click che chiude senza centrare il quadratino cade
+  // regolarmente dove la soglia, misurata male, lo leggerebbe come un
+  // trascinamento.
+  it("un click di chiusura fuori centro (ma fermo) NON curva il segmento di ritorno", () => {
+    const tool = createPenTool();
+    const { ctx, submitted } = fakeCtx();
+
+    for (const [x, y] of [[0, 0], [100, 0], [100, 100]]) {
+      tool.onPointerDown!(at(x, y), ctx);
+      tool.onPointerUp!(at(x, y), ctx);
+    }
+    // 5px dal primo ancoraggio: dentro la presa (6), oltre la soglia (3).
+    tool.onPointerDown!(at(5, 0), ctx);
+    // L'anteprima in questo istante mostra il ritorno DRITTO: l'ancoraggio non
+    // è stato toccato. È il patto che il commit deve rispettare.
+    expect(useScene.getState().penPreview!.anchors[0]).toEqual(corner(0, 0));
+    tool.onPointerUp!(at(5, 0), ctx);
+
+    const sp = createdSubpath(submitted[0]);
+    expect(sp.closed).toBe(true);
+    expect({ inX: sp.anchors[0].inX, inY: sp.anchors[0].inY }).toEqual({ inX: 0, inY: 0 });
+  });
+
+  // L'errore non era solo "una maniglia in più": era una maniglia in unità
+  // MONDO. La presa vale 6px SCHERMO, quindi a zoom 0.25 sono 24 unità mondo di
+  // curvatura cotte dentro il documento, che tornando a zoom 4 diventano un
+  // gonfiore da ~96px. Lo stesso click a zoom 1 ne avrebbe lasciate 6: la
+  // gravità del bug dipendeva dallo zoom, il che è il modo peggiore per un
+  // documento di essere sbagliato.
+  it("e a zoom 0.25 non ci bagna 20 unità MONDO di curvatura nel documento", () => {
+    const tool = createPenTool();
+    const { ctx, submitted } = fakeCtx(0.25);
+
+    for (const [x, y] of [[0, 0], [100, 0], [100, 100]]) {
+      tool.onPointerDown!(at(x, y), ctx);
+      tool.onPointerUp!(at(x, y), ctx);
+    }
+    // presa = 6/0.25 = 24 unità mondo, soglia = 3/0.25 = 12. Un click fermo a
+    // 20 unità dal primo ancoraggio chiude ed è dentro la corona.
+    tool.onPointerDown!(at(20, 0), ctx);
+    tool.onPointerUp!(at(20, 0), ctx);
+
+    const sp = createdSubpath(submitted[0]);
+    expect(sp.closed).toBe(true);
+    expect({ inX: sp.anchors[0].inX, inY: sp.anchors[0].inY }).toEqual({ inX: 0, inY: 0 });
   });
 
   it("la presa di chiusura è in px SCHERMO: a zoom 4 lo stesso click sul vuoto NON chiude", () => {
