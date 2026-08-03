@@ -30,4 +30,16 @@ export interface Tool {
   // pointercancel, smontaggio): serve ad abbandonare un gesto a metà senza
   // emettere op.
   onDeactivate?(ctx: ToolContext): void;
+  // Chiamato al posto di onDeactivate quando a togliere il posto è il PAN
+  // TEMPORANEO (spazio premuto o tasto centrale, vedi toolManager): non è un
+  // cambio di strumento, la mano restituirà il posto tra un istante. Un tool
+  // che lo implementa dichiara che il suo gesto SOPRAVVIVE al pan; chi non lo
+  // implementa riceve onDeactivate come prima (per un gesto che richiede il
+  // pulsante premuto, il pan è comunque un'interruzione).
+  //
+  // Non c'è una richiamata simmetrica di ripresa: il tool sospeso non ha nulla
+  // da ricostruire e riprende dal primo evento che gli torna. Se il tool
+  // ATTIVO cambia mentre il pan è in corso, il sospeso riceve onDeactivate --
+  // sospendere non è tenerlo vivo per sempre.
+  onSuspend?(ctx: ToolContext): void;
 }

@@ -105,14 +105,19 @@ export interface PenPath {
 
 // Cosa deve fare il chiamante DOPO la transizione. L'effetto è dichiarato dalla
 // macchina e prodotto dall'adattatore: è ciò che tiene la macchina pura.
-//  - "none"   niente;
-//  - "begin"  aprire il gesto (primo ancoraggio del path);
-//  - "finish" creare il nodo con `path` e CHIUDERE il gesto: un op sul filo,
-//             una voce di annulla, per l'intero disegno;
-//  - "cancel" abbandonare il gesto senza emettere nessun op.
+//  - "none"   niente: l'unica conseguenza è lo stato nuovo (e quindi
+//             l'anteprima, che ne è derivata). Vale anche per l'abbandono --
+//             il path in corso non ha mai toccato il documento, quindi
+//             lasciarlo cadere non chiede nessun lavoro all'adattatore;
+//  - "finish" creare il nodo con `path`: UN op sul filo, UNA voce di annulla,
+//             per l'intero disegno.
+//
+// Non esiste un effetto "apri il gesto": il gesto dello store è uno SOLO per
+// tutta l'applicazione, e il pen tool non lo occupa per i minuti che passano
+// fra il primo click e l'ultimo -- vedi finish() qui sotto.
 export interface PenStep {
   readonly state: PenState;
-  readonly effect: "none" | "begin" | "finish" | "cancel";
+  readonly effect: "none" | "finish";
   readonly path?: PenPath;
 }
 
@@ -158,7 +163,7 @@ export function penReduce(state: PenState, ev: PenEvent): PenStep {
     case "idle": {
       if (ev.kind === "down") {
         const a = corner(ev.at);
-        return { state: { name: "placing", anchors: [a], grip: "new", base: a }, effect: "begin" };
+        return { state: { name: "placing", anchors: [a], grip: "new", base: a }, effect: "none" };
       }
       // Escape a mano alzata: non c'è nessun path da terminare e nessun nodo da
       // creare -- ed è precisamente ciò che deve succedere. Idem per move/up
@@ -181,12 +186,23 @@ export function penReduce(state: PenState, ev: PenEvent): PenStep {
             : { state: { name: "drawing", anchors, cursor: ev.at }, effect: "none" };
         }
         case "commit":
-          // Il tasto è arrivato prima del rilascio: termina il path APERTO con
-          // gli ancoraggi come stanno adesso. La chiusura avviene al RILASCIO
-          // sul primo ancoraggio, e qui quel rilascio non c'è stato.
-          return { state: PEN_IDLE, effect: "finish", path: { anchors: state.anchors, closed: false } };
+          // Il tasto è arrivato prima del rilascio: termina il path con gli
+          // ancoraggi come stanno adesso (state.anchors porta già la maniglia
+          // che il trascinamento sta tirando). CHIUSO se il puntatore è premuto
+          // sul primo ancoraggio: l'anteprima in quel momento sta disegnando il
+          // segmento di ritorno, e finire aperto darebbe un nodo diverso da
+          // quello che si sta guardando. Stessa soglia del rilascio -- con un
+          // ancoraggio solo non esiste nessun segmento di ritorno.
+          return {
+            state: PEN_IDLE,
+            effect: "finish",
+            path: {
+              anchors: state.anchors,
+              closed: state.grip === "close" && state.anchors.length >= 2,
+            },
+          };
         case "abort":
-          return { state: PEN_IDLE, effect: "cancel" };
+          return { state: PEN_IDLE, effect: "none" };
         case "down":
           // Un SECONDO pointer premuto mentre il primo trascina: il path è già
           // impegnato, quel punto non è un ancoraggio.
@@ -219,7 +235,7 @@ export function penReduce(state: PenState, ev: PenEvent): PenStep {
         case "commit":
           return { state: PEN_IDLE, effect: "finish", path: { anchors: state.anchors, closed: false } };
         case "abort":
-          return { state: PEN_IDLE, effect: "cancel" };
+          return { state: PEN_IDLE, effect: "none" };
         case "up":
           // Rilascio spaiato (il commit da tastiera è arrivato col pulsante
           // ancora premuto): niente da fare.
@@ -237,13 +253,19 @@ function penPreviewOf(state: PenState): PenPreview | null {
     case "idle":
       return null;
     case "drawing":
-      return { anchors: state.anchors, next: state.cursor, active: null };
+      return { anchors: state.anchors, next: state.cursor, active: null, closed: false };
     case "placing":
       return {
         anchors: state.anchors,
         // Niente segmento pendente: il cursore sta tirando una maniglia.
         next: null,
         active: state.grip === "close" ? 0 : state.anchors.length - 1,
+        // Il puntatore è premuto sul primo ancoraggio: il rilascio (o Invio)
+        // chiude, quindi l'anteprima mostra GIÀ il segmento di ritorno. È
+        // proprio quello che il trascinamento sta modellando, e la stessa
+        // condizione che decide `closed` nel path finito -- una sola regola per
+        // ciò che si vede e ciò che si ottiene.
+        closed: state.grip === "close" && state.anchors.length >= 2,
       };
   }
 }
@@ -288,14 +310,38 @@ export function createPenTool(): Tool {
       shape: { case: "vector", value: { subpaths: toPbSubPaths(subpaths) } },
     });
     const store = useScene.getState();
-    // Il nodo si seleziona a gesto ancora APERTO: endGesture riconcilia la
-    // selezione contro la scena FINALE, quindi può riferirsi a un id che
-    // esisterà solo dopo l'op (stesso meccanismo di textTool.ts). Selezionarlo
-    // è anche ciò che rende immediatamente visibili i suoi punti quando
-    // l'editing degli ancoraggi arriverà.
+    // IL GESTO SI APRE QUI, non al primo ancoraggio.
+    //
+    // Il gesto dello store è UNO SOLO per tutta l'applicazione (store.gesture è
+    // un singolo slot). Tutti gli altri strumenti lo tengono aperto quanto dura
+    // un drag col pulsante premuto, cioè una finestra in cui nient'altro può
+    // succedere; il pen tool invece disegna in più click, con pause di durata
+    // arbitraria in mezzo, durante le quali l'utente può benissimo usare il
+    // pannello proprietà o quello dei livelli -- che aprono e CHIUDONO il loro
+    // gesto (ui/PropertiesPanel.tsx::scrub/scrubEnd, ui/LayersPanel.tsx). Un
+    // gesto tenuto aperto dal primo click verrebbe chiuso da sotto: al
+    // finish troveremmo lo slot vuoto e store.ts::endGesture cadrebbe nel ramo
+    // di misuso ("op inviati senza ricostruzione"), cioè un createNode
+    // sottomesso senza ribasare sulla base del gesto.
+    //
+    // Aprire e chiudere qui dà comunque UNA voce di annulla per l'intero
+    // disegno (è endGesture a spingerla, e gli op finali sono uno solo) e una
+    // base ricalcolata nell'istante giusto. È lo stesso schema di
+    // store.ts::endTextEditing.
+    //
+    // `if (!store.gesture)`: se un gesto altrui è aperto proprio adesso ci si
+    // accoda invece di aprirne un secondo (stessa convenzione di
+    // PropertiesPanel::scrub) -- aprirlo comunque non farebbe che stampare un
+    // warning e usare lo stesso slot.
+    if (!store.gesture) store.beginGesture();
+    // Il nodo si seleziona a gesto APERTO: endGesture riconcilia la selezione
+    // contro la scena FINALE, quindi può riferirsi a un id che esisterà solo
+    // dopo l'op (stesso meccanismo di textTool.ts). Selezionarlo è anche ciò
+    // che rende immediatamente visibili i suoi punti quando l'editing degli
+    // ancoraggi arriverà.
     store.setSelection([id]);
     // UN solo op finale per l'INTERO disegno: una voce di annulla, un invio sul
-    // filo. Il gesto era aperto dal primo ancoraggio, non da qui.
+    // filo.
     store.endGesture([makeCreateNodeOp(node)]);
   }
 
@@ -310,18 +356,17 @@ export function createPenTool(): Tool {
     // dello store a ogni pixel di puntatore.
     if (state !== before) useScene.getState().setPenPreview(penPreviewOf(state));
     switch (out.effect) {
-      case "begin":
-        useScene.getState().beginGesture();
-        break;
       case "finish":
         // `path` c'è sempre con "finish" (lo produce solo penReduce, che li
         // costruisce insieme); la guardia è per il tipo, non per un caso reale.
         if (out.path) finish(out.path, ctx);
         break;
-      case "cancel":
-        useScene.getState().cancelGesture();
-        break;
       case "none":
+        // Compreso l'abbandono: il path in corso vive SOLO nell'anteprima (già
+        // spenta qui sopra dal cambio di stato), non nel documento. Nessun
+        // cancelGesture: non c'è nessun gesto nostro da annullare, e chiamarlo
+        // annullerebbe quello di qualcun ALTRO -- il pannello proprietà a metà
+        // scrub, per esempio.
         break;
     }
   }
@@ -350,16 +395,26 @@ export function createPenTool(): Tool {
     },
 
     // Gesto abbandonato: cambio tool, pointercancel, smontaggio. Nessun op.
-    //
-    // Anche il pan TEMPORANEO (spazio premuto o tasto centrale) passa di qui:
-    // toolManager sostituisce il tool attivo con la mano, e sostituire un tool
-    // significa disattivare il precedente. Un path a metà si perde. È il
-    // contratto di onDeactivate ("abbandonare un gesto a metà senza emettere
-    // op") applicato a un gesto che dura più click invece di un drag solo, e
-    // non c'è modo di distinguere qui un pan momentaneo da un cambio di
-    // strumento: il tool riceve lo stesso identico richiamo.
     onDeactivate(ctx) {
       step({ kind: "abort" }, ctx);
+    },
+
+    // Il PAN TEMPORANEO (spazio premuto o tasto centrale) non è un cambio di
+    // strumento: la mano prende il posto del pen tool per il tempo di una
+    // trascinata e poi glielo restituisce. Il path in corso resta dov'è --
+    // stato e anteprima compresi, così durante il pan si continua a vederlo.
+    //
+    // Serve una richiamata sua (toolManager la chiama al posto di onDeactivate
+    // solo per la sostituzione temporanea) perché il pen tool è il primo
+    // strumento il cui gesto dura più click: per gli altri il pan a metà drag è
+    // irraggiungibile -- il loro gesto richiede il pulsante premuto -- e senza
+    // questa distinzione spostare la vista mentre si disegna butterebbe via
+    // ogni ancoraggio posato, senza avviso e senza niente da annullare per
+    // recuperarli.
+    onSuspend() {
+      // Di proposito vuoto: sospendere è NON fare niente. La simmetrica
+      // (riprendere) non esiste per lo stesso motivo -- non c'è niente da
+      // ricostruire, il tool riceve il prossimo evento com'era rimasto.
     },
   };
 }

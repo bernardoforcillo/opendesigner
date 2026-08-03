@@ -94,13 +94,14 @@ beforeEach(() => {
 // ============================================================================
 
 describe("penReduce: la macchina a stati", () => {
-  it("idle + down piazza il PRIMO ancoraggio e chiede di aprire il gesto", () => {
+  it("idle + down piazza il PRIMO ancoraggio, e non chiede NIENTE al chiamante", () => {
     const step = penReduce(PEN_IDLE, { kind: "down", at: { x: 10, y: 20 }, grab: 6 });
     expect(step.state.name).toBe("placing");
     expect(anchorsOf(step.state)).toEqual([corner(10, 20)]);
-    // L'INTERA creazione è un gesto solo: si apre qui, al primo ancoraggio, e
-    // si chiude solo al finish.
-    expect(step.effect).toBe("begin");
+    // Nessun effetto: il path in corso vive solo nell'anteprima, e lo slot del
+    // gesto dello store resta libero per chiunque altro finché il disegno non
+    // finisce (vedi il test "non occupa lo slot del gesto" più sotto).
+    expect(step.effect).toBe("none");
     expect(step.path).toBeUndefined();
   });
 
@@ -136,7 +137,6 @@ describe("penReduce: la macchina a stati", () => {
     const step = penReduce(s, { kind: "down", at: { x: 100, y: 0 }, grab: 6 });
     expect(step.state.name).toBe("placing");
     expect(anchorsOf(step.state)).toEqual([corner(0, 0), corner(100, 0)]);
-    // Il gesto è già aperto: non se ne apre un secondo.
     expect(step.effect).toBe("none");
   });
 
@@ -175,6 +175,28 @@ describe("penReduce: la macchina a stati", () => {
     expect(anchorsOf(move.state)[0]).toEqual({ x: 0, y: 0, inX: 0, inY: 40, outX: 0, outY: -50 });
   });
 
+  it("Invio col puntatore premuto sul primo ancoraggio finisce CHIUSO, come l'anteprima mostra", () => {
+    // Il commit da tastiera arriva prima del rilascio. L'anteprima in quel
+    // momento sta già disegnando il segmento di ritorno (grip "close"):
+    // terminare APERTO darebbe un nodo diverso da quello che si ha davanti.
+    const s = drawn([{ x: 0, y: 0 }, { x: 100, y: 0 }, { x: 100, y: 100 }]);
+    const down = penReduce(s, { kind: "down", at: { x: 0, y: 0 }, grab: 6 });
+    const move = penReduce(down.state, { kind: "move", at: { x: -40, y: 20 }, slop: 3 });
+    const step = penReduce(move.state, { kind: "commit" });
+    expect(step.effect).toBe("finish");
+    expect(step.path?.closed).toBe(true);
+    // E con la maniglia di chiusura tirata fin lì: gli ancoraggi del commit
+    // sono quelli dello stato, che il trascinamento ha già aggiornato.
+    expect(step.path?.anchors[0]).toEqual({ x: 0, y: 0, inX: -40, inY: 20, outX: 0, outY: 0 });
+  });
+
+  it("un commit di chiusura con UN SOLO ancoraggio resta APERTO", () => {
+    const s = drawn([{ x: 0, y: 0 }]);
+    const down = penReduce(s, { kind: "down", at: { x: 0, y: 0 }, grab: 6 });
+    const step = penReduce(down.state, { kind: "commit" });
+    expect(step.path?.closed).toBe(false);
+  });
+
   it("con UN SOLO ancoraggio non c'è niente da chiudere: il path finisce APERTO", () => {
     const s = drawn([{ x: 0, y: 0 }]);
     const down = penReduce(s, { kind: "down", at: { x: 0, y: 0 }, grab: 6 });
@@ -201,10 +223,12 @@ describe("penReduce: la macchina a stati", () => {
     expect(step.state).toBe(PEN_IDLE);
   });
 
-  it("abort abbandona il path in corso e chiede di annullare il gesto", () => {
+  it("abort abbandona il path in corso senza chiedere nessun op", () => {
     const s = drawn([{ x: 0, y: 0 }, { x: 50, y: 0 }]);
     const step = penReduce(s, { kind: "abort" });
-    expect(step.effect).toBe("cancel");
+    // Niente da annullare nello store: il path non era mai entrato nel
+    // documento, e un cancelGesture qui annullerebbe il gesto di QUALCUN ALTRO.
+    expect(step.effect).toBe("none");
     expect(step.path).toBeUndefined();
     expect(step.state).toBe(PEN_IDLE);
   });
@@ -285,20 +309,93 @@ describe("penTool", () => {
     expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
   });
 
-  it("il gesto resta APERTO per tutta la creazione e si chiude solo alla fine", () => {
+  // Lo slot del gesto (store.gesture) è UNO SOLO per tutta l'applicazione.
+  // Tenerlo occupato fra un click e l'altro -- una finestra lunga quanto
+  // l'utente vuole -- significa che il primo pannello che apre il proprio gesto
+  // se lo prende e lo CHIUDE da sotto (PropertiesPanel::scrubEnd,
+  // LayersPanel), e il createNode finale finirebbe nel ramo di misuso di
+  // endGesture: sottomesso senza ribasare sulla base del gesto.
+  it("NON occupa lo slot del gesto tra un click e l'altro", () => {
     const tool = createPenTool();
     const { ctx } = fakeCtx();
 
     expect(useScene.getState().gesture).toBeNull();
     tool.onPointerDown!(at(0, 0), ctx);
-    expect(useScene.getState().gesture).not.toBeNull();
     tool.onPointerUp!(at(0, 0), ctx);
+    expect(useScene.getState().gesture).toBeNull();
     tool.onPointerDown!(at(50, 0), ctx);
     tool.onPointerUp!(at(50, 0), ctx);
-    expect(useScene.getState().gesture).not.toBeNull();
+    expect(useScene.getState().gesture).toBeNull();
 
     tool.onKeyDown!(key("Enter"), ctx);
     expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("un gesto ALTRUI a metà disegno non rompe la creazione (né la chiude a metà)", () => {
+    const tool = createPenTool();
+    const { ctx, submitted } = fakeCtx();
+    const warn = vi.spyOn(console, "warn").mockImplementation(() => {});
+
+    tool.onPointerDown!(at(0, 0), ctx);
+    tool.onPointerUp!(at(0, 0), ctx);
+    tool.onPointerDown!(at(100, 0), ctx);
+    tool.onPointerUp!(at(100, 0), ctx);
+
+    // Il pannello proprietà a metà disegno: la selezione precedente è ancora
+    // viva (il pen tool non la svuota), quindi scrub/scrubEnd sono
+    // raggiungibilissimi. Apre e chiude il SUO gesto.
+    useScene.getState().beginGesture();
+    useScene.getState().endGesture([]);
+
+    tool.onKeyDown!(key("Enter"), ctx);
+
+    // Nessun warning di misuso: il gesto del pen tool si apre al finish, e a
+    // quel punto lo slot è libero.
+    expect(warn).not.toHaveBeenCalled();
+    expect(submitted).toHaveLength(1);
+    expect(createdSubpath(submitted[0]).anchors).toHaveLength(2);
+    expect(useScene.getState().gesture).toBeNull();
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    warn.mockRestore();
+  });
+
+  it("abbandonare il path non annulla il gesto di QUALCUN ALTRO", () => {
+    const tool = createPenTool();
+    const { ctx } = fakeCtx();
+
+    tool.onPointerDown!(at(0, 0), ctx);
+    tool.onPointerUp!(at(0, 0), ctx);
+    // Un gesto altrui aperto (un pannello a metà scrub) mentre il pen tool
+    // viene disattivato: cancelGesture qui riavvolgerebbe il LORO lavoro.
+    useScene.getState().beginGesture();
+    tool.onDeactivate!(ctx);
+
+    expect(useScene.getState().gesture).not.toBeNull();
+    expect(useScene.getState().penPreview).toBeNull();
+  });
+
+  it("Ctrl+Z a metà path non fa niente: il disegno in corso non è ancora documento", () => {
+    const tool = createPenTool();
+    const { ctx } = fakeCtx();
+
+    // Un gesto già concluso da annullare (un path finito prima di questo).
+    tool.onPointerDown!(at(0, 0), ctx);
+    tool.onPointerUp!(at(0, 0), ctx);
+    tool.onKeyDown!(key("Enter"), ctx);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    // Adesso un path NUOVO in corso: l'undo è rimandato, altrimenti
+    // disferebbe qualcosa di diverso da ciò che l'utente sta guardando.
+    tool.onPointerDown!(at(200, 200), ctx);
+    tool.onPointerUp!(at(200, 200), ctx);
+    useScene.getState().undo();
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    // Finito il path, l'undo torna a funzionare.
+    tool.onKeyDown!(key("Enter"), ctx);
+    useScene.getState().undo();
+    expect(useScene.getState().undoStack).toHaveLength(1);
+    expect(useScene.getState().redoStack).toHaveLength(1);
   });
 
   it("click-e-TRASCINA posa un ancoraggio morbido con le maniglie simmetriche", () => {
@@ -432,6 +529,42 @@ describe("penTool", () => {
     expect(p!.anchors[0].outY).toBe(40);
   });
 
+  // Il segmento di RITORNO (ultimo -> primo) è quello che il trascinamento di
+  // chiusura sta modellando: tira la maniglia entrante del primo ancoraggio,
+  // che ne è il secondo punto di controllo. Senza dirlo all'anteprima si
+  // vedrebbero solo un bastoncino e un pallino, e la curva comparirebbe solo a
+  // nodo creato -- la peggiore delle sorprese in uno strumento di disegno.
+  it("premendo sul primo ancoraggio l'anteprima si CHIUDE: il segmento di ritorno si vede", () => {
+    const tool = createPenTool();
+    const { ctx } = fakeCtx();
+
+    for (const [x, y] of [[0, 0], [100, 0], [100, 100]]) {
+      tool.onPointerDown!(at(x, y), ctx);
+      tool.onPointerUp!(at(x, y), ctx);
+    }
+    expect(useScene.getState().penPreview!.closed).toBe(false);
+
+    tool.onPointerDown!(at(1, 1), ctx); // sul primo ancoraggio
+    expect(useScene.getState().penPreview!.closed).toBe(true);
+
+    // E il trascinamento modella proprio la maniglia di quel segmento.
+    tool.onPointerMove!(at(-30, 20), ctx);
+    const p = useScene.getState().penPreview!;
+    expect(p.closed).toBe(true);
+    expect(p.active).toBe(0);
+    expect(p.anchors[0]).toEqual({ x: 0, y: 0, inX: -30, inY: 20, outX: 0, outY: 0 });
+  });
+
+  it("con un ancoraggio solo l'anteprima non si dichiara chiusa (non c'è ritorno)", () => {
+    const tool = createPenTool();
+    const { ctx } = fakeCtx();
+
+    tool.onPointerDown!(at(0, 0), ctx);
+    tool.onPointerUp!(at(0, 0), ctx);
+    tool.onPointerDown!(at(0, 0), ctx); // di nuovo sul primo: chiusura di niente
+    expect(useScene.getState().penPreview!.closed).toBe(false);
+  });
+
   it("l'anteprima sparisce quando il path è finito", () => {
     const tool = createPenTool();
     const { ctx } = fakeCtx();
@@ -458,6 +591,32 @@ describe("penTool", () => {
     expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(0);
     expect(useScene.getState().gesture).toBeNull();
     expect(useScene.getState().penPreview).toBeNull();
+  });
+
+  // Spostare la vista mentre si disegna è routine in qualunque editor
+  // vettoriale, e con una gesture che dura più click è pure inevitabile: il
+  // punto successivo può stare fuori schermo. Il pan temporaneo (spazio o tasto
+  // centrale) non è un cambio di strumento e non deve costare il path.
+  it("onSuspend (pan temporaneo) NON butta via il path: si riprende da dov'era", () => {
+    const tool = createPenTool();
+    const { ctx, submitted } = fakeCtx();
+
+    tool.onPointerDown!(at(0, 0), ctx);
+    tool.onPointerUp!(at(0, 0), ctx);
+    tool.onPointerDown!(at(100, 0), ctx);
+    tool.onPointerUp!(at(100, 0), ctx);
+
+    tool.onSuspend!(ctx);
+    // L'anteprima resta accesa: durante il pan il disegno si continua a vedere.
+    expect(useScene.getState().penPreview!.anchors).toHaveLength(2);
+
+    // Ripresa: il click successivo aggiunge il TERZO ancoraggio, non il primo.
+    tool.onPointerDown!(at(100, 100), ctx);
+    tool.onPointerUp!(at(100, 100), ctx);
+    tool.onKeyDown!(key("Enter"), ctx);
+
+    expect(submitted).toHaveLength(1);
+    expect(createdSubpath(submitted[0]).anchors).toHaveLength(3);
   });
 
   it("dopo un abbandono il tool riparte pulito (nessun ancoraggio fantasma nel path successivo)", () => {

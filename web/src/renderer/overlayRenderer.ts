@@ -75,14 +75,26 @@ function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPrev
 
   // 1. Il contorno già posato. Un ancoraggio solo non ha segmenti: si vede il
   //    suo quadratino e basta.
+  //
+  //    Se l'anteprima è CHIUSA c'è un segmento in più, quello di ritorno
+  //    (ultimo -> primo): stesso ciclo, indice del bersaglio modulo n --
+  //    identico a renderer/shapes.ts::traceSubpath, perché è la stessa
+  //    geometria e deve venire dalla stessa regola. È il segmento che il
+  //    trascinamento di chiusura sta modellando (tira la maniglia ENTRANTE del
+  //    primo ancoraggio, cioè il secondo punto di controllo di QUESTA curva):
+  //    senza disegnarlo, di quel trascinamento si vedrebbero solo il bastoncino
+  //    e il pallino, e la curva comparirebbe solo a nodo creato.
   if (n > 1) {
+    const segments = pen.closed ? n : n - 1;
     ctx.beginPath();
     const start = to(anchorPoint(PEN_ORIGIN, anchors[0]));
     ctx.moveTo(start.x, start.y);
-    for (let i = 1; i < n; i++) {
-      const c1 = to(outHandlePoint(PEN_ORIGIN, anchors[i - 1]));
-      const c2 = to(inHandlePoint(PEN_ORIGIN, anchors[i]));
-      const p = to(anchorPoint(PEN_ORIGIN, anchors[i]));
+    for (let i = 1; i <= segments; i++) {
+      const a = anchors[i - 1];
+      const b = anchors[i % n];
+      const c1 = to(outHandlePoint(PEN_ORIGIN, a));
+      const c2 = to(inHandlePoint(PEN_ORIGIN, b));
+      const p = to(anchorPoint(PEN_ORIGIN, b));
       ctx.bezierCurveTo(c1.x, c1.y, c2.x, c2.y, p.x, p.y);
     }
     ctx.stroke();

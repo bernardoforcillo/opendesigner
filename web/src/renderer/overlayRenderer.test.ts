@@ -181,7 +181,7 @@ function penCtx() {
 
 const corner = (x: number, y: number): AnchorLite => ({ x, y, inX: 0, inY: 0, outX: 0, outY: 0 });
 const preview = (p: Partial<PenPreview> & Pick<PenPreview, "anchors">): PenPreview => ({
-  next: null, active: null, ...p,
+  next: null, active: null, closed: false, ...p,
 });
 
 describe("drawOverlay: l'anteprima del pen tool", () => {
@@ -217,6 +217,47 @@ describe("drawOverlay: l'anteprima del pen tool", () => {
     expect(count("bezierCurveTo")).toBe(2); // 3 ancoraggi = 2 segmenti
     expect(count("stroke")).toBe(1); // un solo tratto per tutto il contorno
     expect(count("fillRect")).toBe(3);
+  });
+
+  // Il segmento di ritorno (ultimo -> primo) esiste in anteprima appena il
+  // puntatore preme sul primo ancoraggio: è quello che il trascinamento di
+  // chiusura sta modellando, e senza disegnarlo l'utente tirerebbe una maniglia
+  // di cui non vede la curva.
+  it("un'anteprima CHIUSA disegna anche il segmento di ritorno, ultimo -> primo", () => {
+    const { ctx, count } = penCtx();
+    drawOverlay(ctx, scene, identityCam, [], null, preview({
+      anchors: [corner(0, 0), corner(50, 0), corner(50, 50)],
+      closed: true,
+    }));
+    // 3 ancoraggi chiusi = 3 segmenti (2 + il ritorno), un solo tratto.
+    expect(count("bezierCurveTo")).toBe(3);
+    expect(count("stroke")).toBe(1);
+  });
+
+  it("il segmento di ritorno è disegnato dalla maniglia ENTRANTE del primo ancoraggio", () => {
+    const { ctx, args } = penCtx();
+    drawOverlay(ctx, scene, identityCam, [], null, preview({
+      anchors: [
+        // La entrante del primo è ciò che il trascinamento di chiusura tira.
+        { x: 0, y: 0, inX: -20, inY: 10, outX: 0, outY: 0 },
+        corner(50, 0),
+      ],
+      closed: true,
+      active: 0,
+    }));
+    // Ultima curva: c1 = uscente dell'ultimo ancoraggio (nulla, quindi
+    // l'ancoraggio stesso), c2 = entrante del PRIMO (-20,10 rispetto a lui),
+    // arrivo = il primo ancoraggio.
+    expect(args["bezierCurveTo"].at(-1)).toEqual([50, 0, -20, 10, 0, 0]);
+  });
+
+  it("due ancoraggi chiusi percorrono A->B->A: il ritorno c'è comunque", () => {
+    const { ctx, count } = penCtx();
+    drawOverlay(ctx, scene, identityCam, [], null, preview({
+      anchors: [corner(0, 0), corner(50, 0)],
+      closed: true,
+    }));
+    expect(count("bezierCurveTo")).toBe(2);
   });
 
   it("è disegnata in spazio SCHERMO: la camera converte ogni punto di controllo", () => {

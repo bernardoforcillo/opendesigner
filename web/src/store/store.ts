@@ -1322,8 +1322,16 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // VISTA, che a metà drag contiene le anteprime -- uno stato che non
   // esisterà più appena il gesto chiude. Rimandato: l'utente rifà Ctrl/Cmd+Z
   // dopo che il gesto chiude (pointerup/Esc).
+  // Seconda guardia, stesso principio: un PATH in corso col pen tool
+  // (penPreview != null) è un gesto lungo che non tiene occupato lo slot
+  // `gesture` -- non tocca il documento finché non finisce, quindi tenerlo
+  // aperto per minuti impedirebbe a chiunque altro di aprire il proprio (vedi
+  // tools/penTool.ts::finish). Undo/redo restano comunque rimandati: a metà
+  // path Ctrl+Z toglierebbe un gesto PRECEDENTE mentre l'utente sta guardando
+  // il disegno in corso, cioè disferebbe qualcosa di diverso da quello che si
+  // ha davanti. Basta finire o abbandonare il path (Invio/Esc) e riprovare.
   undo: () => {
-    if (get().gesture) return;
+    if (get().gesture || get().penPreview) return;
     const prevUndo = get().undoStack;
     const prevRedo = get().redoStack;
     const entry = prevUndo[prevUndo.length - 1];
@@ -1375,7 +1383,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // Stessa guardia di undo() sopra, stesso motivo: redo() durante un drag
   // infilerebbe i suoi op nella coda in volo, cioè nella base del gesto.
   redo: () => {
-    if (get().gesture) return;
+    if (get().gesture || get().penPreview) return;
     const prevUndo = get().undoStack;
     const prevRedo = get().redoStack;
     const entry = prevRedo[prevRedo.length - 1];

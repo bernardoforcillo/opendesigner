@@ -47,9 +47,16 @@ export function outHandlePoint(o: Origin, a: AnchorLite): PointLite {
 // renderer/overlayRenderer.ts. La geometria vive qui e non nel tool perché la
 // leggono in due, e questo modulo è già l'unico posto in cui si legge un path.
 export interface PenPreview {
-  // Gli ancoraggi già posati. Il contorno è sempre APERTO: chiudere finisce il
-  // path, quindi un'anteprima chiusa non esiste.
+  // Gli ancoraggi già posati.
   readonly anchors: readonly AnchorLite[];
+  // Il segmento di RITORNO (ultimo -> primo) fa parte dell'anteprima: il
+  // puntatore è premuto sul primo ancoraggio e il rilascio chiuderà il
+  // contorno. Non è un dettaglio cosmetico -- quel segmento è disegnato dalla
+  // maniglia ENTRANTE del primo ancoraggio, che è esattamente ciò che il
+  // trascinamento di chiusura sta tirando (e che può essere stata decisa
+  // parecchi click prima, posando il primo ancoraggio con un trascinamento):
+  // senza, l'utente modella una curva che non vede finché il nodo non esiste.
+  readonly closed: boolean;
   // Dove cadrebbe il prossimo ancoraggio: l'overlay ci disegna il segmento che
   // segue il cursore. null durante un trascinamento (il cursore sta definendo
   // una MANIGLIA, non un punto nuovo: disegnare il segmento pendente direbbe

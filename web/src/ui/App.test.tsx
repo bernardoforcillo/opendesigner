@@ -148,7 +148,12 @@ describe("ciclo di disegno", () => {
     const drawOverlay = vi.spyOn(overlayRenderer, "drawOverlay").mockImplementation(() => {});
     vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
 
-    const pen = { anchors: [{ x: 1, y: 2, inX: 0, inY: 0, outX: 0, outY: 0 }], next: { x: 9, y: 9 }, active: null };
+    const pen = {
+      anchors: [{ x: 1, y: 2, inX: 0, inY: 0, outX: 0, outY: 0 }],
+      next: { x: 9, y: 9 },
+      active: null,
+      closed: false,
+    };
     useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
     useScene.getState().setPenPreview(pen);
 
