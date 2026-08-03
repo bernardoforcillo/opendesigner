@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { hitTestNode } from "./shapes";
+import { hitTestNode, isPaintable } from "./shapes";
 import type { NodeLite } from "../store/types";
 
 function node(kind: "rect" | "ellipse"): NodeLite {
@@ -89,5 +89,39 @@ describe("hitTestNode", () => {
 
   it("text: a box larger than one line is not shrunk to it", () => {
     expect(hitTestNode(textNode(), 99, 49)).toBe(true);
+  });
+});
+
+// --- immagini (traccia 3) ----------------------------------------------------
+//
+// Un'immagine si colpisce e si disegna sul suo BOX, esattamente come un
+// rettangolo: nessun ramo dedicato in shapes.ts, ed è voluto -- ma va ASSERITO,
+// perché è la ragione per cui aggiungere un tipo di nodo non ha richiesto di
+// toccare né l'hit-test né la geometria.
+
+function imageNode(over: Partial<NodeLite> = {}): NodeLite {
+  return { ...node("rect"), kind: "image", image: { assetHash: "abc" }, ...over };
+}
+
+describe("hitTestNode: immagini", () => {
+  it("colpisce sul box, bordi compresi", () => {
+    expect(hitTestNode(imageNode(), 50, 25)).toBe(true);
+    expect(hitTestNode(imageNode(), 0, 0)).toBe(true);
+    expect(hitTestNode(imageNode(), 100, 50)).toBe(true);
+    expect(hitTestNode(imageNode(), 101, 25)).toBe(false);
+  });
+
+  it("un'immagine senza area non si colpisce e non si dipinge", () => {
+    // Il testo è l'unica eccezione (la sua altezza la produce il layout):
+    // un'immagine senza area non lascia pixel, quindi non deve rubare click.
+    expect(isPaintable(imageNode({ height: 0 }))).toBe(false);
+    expect(hitTestNode(imageNode({ height: 0 }), 50, 0)).toBe(false);
+    expect(isPaintable(imageNode())).toBe(true);
+  });
+
+  it("un asset MANCANTE resta selezionabile: il segnaposto è un nodo come gli altri", () => {
+    // Senza questo, un'immagine il cui file è sparito diventerebbe impossibile
+    // da selezionare e quindi da cancellare.
+    expect(hitTestNode(imageNode({ image: { assetHash: "" } }), 50, 25)).toBe(true);
   });
 });

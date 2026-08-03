@@ -13,6 +13,17 @@ function createRectOp(id: string, x: number, y: number) {
   return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
 }
 
+const HASH = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef";
+
+function createImageOp(id: string) {
+  const node = create(NodeSchema, {
+    id, parentId: "page1", orderKey: "a0", name: "Image", visible: true, opacity: 1,
+    x: 10, y: 20, width: 320, height: 180,
+    shape: { case: "image", value: { assetHash: HASH } },
+  });
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
 describe("applyOp", () => {
   it("creates a rect node", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 10, 20));
@@ -241,5 +252,63 @@ describe("applyOp: setText", () => {
     expect(s.nodes["t1"].text?.style).toEqual({
       fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left",
     });
+  });
+
+});
+
+// --- ImageNode (traccia 3) ---------------------------------------------------
+describe("applyOp: image", () => {
+  //
+  // Le fixture golden NON coprono questo: confrontano `scene.nodes` con
+  // `fromDocument(expected).nodes`, cioè fanno passare entrambi i lati dalla
+  // STESSA toNodeLite -- un'immagine degradata a rettangolo da tutte e due le
+  // parti si confronta uguale a sé stessa. Il tipo del nodo e il suo hash vanno
+  // quindi asseriti qui, esplicitamente.
+
+  it("crea un nodo immagine tenendo l'hash dell'asset (e NON i byte)", () => {
+    const node = create(NodeSchema, {
+      id: "i1", parentId: "page1", orderKey: "a0", name: "logo.png", visible: true, opacity: 1,
+      x: 10, y: 20, width: 320, height: 180,
+      shape: { case: "image", value: { assetHash: HASH } },
+    });
+    const op = create(OpSchema, { opId: "op-i1", docId: "doc1", kind: { case: "createNode", value: { node } } });
+    const s = applyOp(emptyScene("doc1", "Untitled"), op);
+    expect(s.nodes["i1"].kind).toBe("image");
+    expect(s.nodes["i1"].image?.assetHash).toBe(HASH);
+  });
+
+  it("sposta e ridimensiona un'immagine senza toccare l'hash", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createImageOp("i1"));
+    const move = create(OpSchema, { opId: "m", docId: "doc1", kind: { case: "setProps", value: {
+      id: "i1", patch: create(NodeSchema, { x: 300, y: 400 }), mask: { paths: ["x", "y"] } } } });
+    s = applyOp(s, move);
+    expect(s.nodes["i1"].x).toBe(300);
+    expect(s.nodes["i1"].image?.assetHash).toBe(HASH);
+    expect(s.nodes["i1"].kind).toBe("image");
+  });
+
+  // Parità con core.applySetProps: l'immagine è nell'elenco delle forme che
+  // rifiutano corner_radius, e per la ragione più forte -- il ramo che applica
+  // il raggio SOSTITUISCE la forma con un rettangolo, cioè butterebbe via il
+  // riferimento all'asset.
+  it("rifiuta corner_radius su un'immagine, mask mista compresa (parità: ErrNotRectNode)", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createImageOp("i1"));
+    const op = create(OpSchema, { opId: "r", docId: "doc1", kind: { case: "setProps", value: {
+      id: "i1",
+      patch: create(NodeSchema, { x: 42, shape: { case: "rect", value: { cornerRadius: 12 } } }),
+      mask: { paths: ["x", "corner_radius"] },
+    } } });
+    const after = applyOp(s, op);
+    expect(after).toEqual(s);
+    expect(after.nodes["i1"].kind).toBe("image");
+    expect(after.nodes["i1"].image?.assetHash).toBe(HASH);
+    expect(after.nodes["i1"].x).toBe(10);
+  });
+
+  it("rifiuta un setText su un'immagine (parità: ErrNotTextNode)", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createImageOp("i1"));
+    const after = applyOp(s, setTextOp({ id: "i1", content: "x" }));
+    expect(after).toEqual(s);
+    expect(after.nodes["i1"].kind).toBe("image");
   });
 });

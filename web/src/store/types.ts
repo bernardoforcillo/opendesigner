@@ -23,14 +23,26 @@ export interface TextStyleLite {
 }
 export interface TextLite { content: string; style: TextStyleLite; }
 
+// Un'immagine è un RIFERIMENTO, mai dei byte: `assetHash` è lo sha256
+// (esadecimale minuscolo) dei byte, che stanno in <doc>.brawt/assets/ e si
+// caricano dall'URL che costruisce rpc/assets.ts::assetUrl.
+//
+// Il modello non contiene pixel, e questa è la proprietà da non perdere: un
+// NodeLite finisce dentro gli op, dentro lo snapshot e dentro il payload della
+// clipboard, e nessuno di quei tre posti deve mai trasportare un'immagine.
+export interface ImageLite { assetHash: string; }
+
 export interface NodeLite {
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
-  fills: FillLite[]; kind: "rect" | "ellipse" | "text"; cornerRadius: number;
+  fills: FillLite[]; kind: "rect" | "ellipse" | "text" | "image"; cornerRadius: number;
   // Presente se e solo se kind === "text": il contenuto vive DENTRO il oneof
   // `shape` del proto, quindi è per costruzione esclusivo con rect/ellipse.
   text?: TextLite;
+  // Presente se e solo se kind === "image", ed esclusivo con `text` per la
+  // stessa ragione (sono due rami dello stesso oneof).
+  image?: ImageLite;
 }
 
 export interface SceneState {
@@ -107,9 +119,14 @@ export function toNodeLite(n: PbNode): NodeLite {
     // "rect" resta il fallback per una forma assente o sconosciuta: un nodo
     // senza shape è comunque un rettangolo disegnabile, mentre un "text" senza
     // contenuto non lo sarebbe.
-    kind: n.shape.case === "ellipse" ? "ellipse" : n.shape.case === "text" ? "text" : "rect",
+    kind:
+      n.shape.case === "ellipse" ? "ellipse"
+      : n.shape.case === "text" ? "text"
+      : n.shape.case === "image" ? "image"
+      : "rect",
     cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
     ...(n.shape.case === "text" ? { text: toTextLite(n.shape.value) } : {}),
+    ...(n.shape.case === "image" ? { image: { assetHash: n.shape.value.assetHash } } : {}),
   };
 }
 
@@ -126,7 +143,15 @@ export function toPbNode(n: NodeLite): PbNode {
     fills: toPbFills(n.fills),
     shape: n.kind === "ellipse"
       ? { case: "ellipse" as const, value: {} }
-      : n.kind === "text"
+      : n.kind === "image"
+        // L'hash e basta: è tutto ciò che un ImageNode contiene, e ricostruirlo
+        // qui è ciò che fa sopravvivere un'immagine all'undo di una delete e a
+        // un incolla (entrambi passano da toPbNode). `image` mancante ricade su
+        // un hash vuoto -- cioè su un'immagine il cui asset non si trova, che il
+        // renderer disegna come segnaposto -- e mai su un rettangolo: un cambio
+        // di forma silenzioso dentro un undo sarebbe molto peggio.
+        ? { case: "image" as const, value: { assetHash: n.image?.assetHash ?? "" } }
+        : n.kind === "text"
         // `text` mancante su un nodo di testo è uno stato che toNodeLite non
         // produce mai (i due si muovono insieme). Il fallback a testo vuoto
         // evita comunque di ricostruire un RETTANGOLO da un nodo di testo --

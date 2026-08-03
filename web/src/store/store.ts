@@ -639,8 +639,11 @@ interface SceneStore {
   // peggio di nessun rollback: la modifica sparirebbe dallo schermo senza che
   // nessuno sappia perché.
   lastError: string | null;
-  // Notizia NON di errore da mostrare all'utente. Oggi ne esiste una sola: la
-  // revoca di un rollback (vedi DisownedOp). Serve un canale separato da
+  // Notizia NON di errore da mostrare all'utente: la revoca di un rollback
+  // (vedi DisownedOp) e un incolla rifiutato perché gli appunti parlano di un
+  // tipo di nodo che questa build non conosce (tools/clipboard.ts, che lo
+  // scrive con setState -- non serve un'azione dedicata per un canale che la
+  // UI legge e basta). Serve un canale separato da
   // `lastError` perché il messaggio dice l'OPPOSTO di quello -- "era salvata" --
   // e riusare il banner rosso vorrebbe dire annunciare una buona notizia con la
   // parola "annullata" davanti.

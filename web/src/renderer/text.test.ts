@@ -1,5 +1,5 @@
 import { describe, it, expect } from "vitest";
-import { fontString, layoutText, alignOffsetX, drawText } from "./text";
+import { fontString, layoutText, alignOffsetX, drawText, placeTextLines, textPaintBounds } from "./text";
 import type { NodeLite, TextStyleLite } from "../store/types";
 
 // Misura finta DETERMINISTICA: 10px per carattere. È il motivo per cui
@@ -204,5 +204,65 @@ describe("drawText", () => {
     drawText(f.ctx, textNode({ width: 1000 }, "a\n\nb"));
     expect(f.calls.map((c) => c.text)).toEqual(["a", "b"]);
     expect(f.calls[1].y - f.calls[0].y).toBeCloseTo(2 * 19.2);
+  });
+});
+
+describe("placeTextLines", () => {
+  it("reports the painted width of each line", () => {
+    // La larghezza serve a chi deve sapere quanto spazio occupa il testo
+    // (textPaintBounds): senza, la misurerebbe una seconda volta.
+    const lines = placeTextLines(measure, textNode({ width: 70 }));
+    expect(lines.map((l) => l.text)).toEqual(["aaa bbb", "ccc"]);
+    expect(lines.map((l) => l.width)).toEqual([70, 30]);
+  });
+
+  it("measures the PAINTED text, without the trailing spaces", () => {
+    const lines = placeTextLines(measure, textNode({ width: 1000 }, "aaa   "));
+    expect(lines[0].width).toBe(30);
+  });
+});
+
+// Il box del modello non limita il disegno del testo: drawText piazza la riga i
+// a y = n.y + ascent + i * lineHeight senza guardare n.height, drawScene non
+// ritaglia, e nessuno riscrive l'altezza misurata dentro al nodo. Chi disegna
+// se ne accorge appena (il canvas è grande quanto la finestra); chi RITAGLIA --
+// l'export, che dimensiona il file sui bounds -- butterebbe via il testo di
+// sotto in silenzio.
+describe("textPaintBounds", () => {
+  it("unites the model box with the lines the layout actually paints", () => {
+    // Box di UNA riga (19.2) e due righe di contenuto: il caso di ogni giorno,
+    // perché un nodo creato con un click nasce alto una riga.
+    const b = textPaintBounds(measure, textNode({ x: 0, y: 0, width: 70, height: 19.2 }));
+    expect(b).toEqual({ x: 0, y: 0, width: 70, height: 38.4 });
+  });
+
+  it("keeps a box that is larger than the text", () => {
+    // Unione, non sostituzione: un box trascinato dall'utente resta parte di
+    // ciò che si vede, quindi di ciò che si esporta.
+    const b = textPaintBounds(measure, textNode({ x: 0, y: 0, width: 200, height: 100 }, "a"));
+    expect(b).toEqual({ x: 0, y: 0, width: 200, height: 100 });
+  });
+
+  it("follows a line that overflows to the right when there is no wrap width", () => {
+    // Larghezza 0 = nessun wrap (layoutText): la riga è lunga quanto è.
+    const b = textPaintBounds(measure, textNode({ x: 0, y: 0, width: 0, height: 0 }, "ciao"));
+    expect(b).toEqual({ x: 0, y: 0, width: 40, height: 19.2 });
+  });
+
+  it("follows a right-aligned overflow to the LEFT of the box", () => {
+    // breakWord non rifiuta mai un carattere solo (o non terminerebbe): un
+    // glifo più largo del box trabocca, e con align=right trabocca a sinistra.
+    const b = textPaintBounds(
+      measure,
+      textNode({ x: 0, y: 0, width: 5, height: 0 }, "ab", style({ align: "right" })),
+    );
+    expect(b).toEqual({ x: -5, y: 0, width: 10, height: 38.4 });
+  });
+
+  it("is the plain box for an empty text and for a shape", () => {
+    const box = { x: 1, y: 2, width: 3, height: 4 };
+    expect(textPaintBounds(measure, textNode({ ...box }, ""))).toEqual(box);
+    expect(textPaintBounds(measure, { ...textNode({ ...box }), kind: "rect", text: undefined }))
+      .toEqual(box);
   });
 });

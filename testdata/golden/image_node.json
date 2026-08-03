@@ -1,0 +1,30 @@
+{
+  "docId": "doc1",
+  "ops": [
+    { "opId": "op1", "docId": "doc1", "createNode": { "node": {
+      "id": "i1", "parentId": "page1", "orderKey": "a000001", "name": "logo.png",
+      "visible": true, "opacity": 1, "x": 40, "y": 60, "width": 320, "height": 180,
+      "image": { "assetHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
+    } } },
+    { "opId": "op2", "docId": "doc1", "setProps": {
+      "id": "i1", "patch": { "x": 100, "y": 200 }, "mask": "x,y"
+    } },
+    { "opId": "op3", "docId": "doc1", "setProps": {
+      "id": "i1", "patch": { "width": 160, "height": 90 }, "mask": "width,height"
+    } },
+    { "opId": "op4", "docId": "doc1", "setProps": {
+      "id": "i1", "patch": { "opacity": 0.25, "name": "Sfondo" }, "mask": "opacity,name"
+    } }
+  ],
+  "expected": {
+    "id": "doc1", "name": "Untitled", "schemaVersion": 1,
+    "pages": [{ "id": "page1", "name": "Page 1" }],
+    "nodes": {
+      "i1": {
+        "id": "i1", "parentId": "page1", "orderKey": "a000001", "name": "Sfondo",
+        "visible": true, "opacity": 0.25, "x": 100, "y": 200, "width": 160, "height": 90,
+        "image": { "assetHash": "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef" }
+      }
+    }
+  }
+}

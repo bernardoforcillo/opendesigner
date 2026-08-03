@@ -1,4 +1,5 @@
 import type { NodeLite, TextAlignLite, TextStyleLite } from "../store/types";
+import type { Bounds } from "../canvas/geometry";
 
 // I default del testo vivono QUI e in nessun altro posto. Il modello conserva
 // gli zeri (uno stile assente diventa uno stile tutto a zero, vedi
@@ -46,11 +47,20 @@ export function lineHeightOf(style: TextStyleLite | undefined): number {
   return fontSizeOf(style) * mult;
 }
 
+// Come fontSizeOf, e per lo stesso motivo: l'export SVG (export/svg.ts) scrive
+// famiglia e peso in ATTRIBUTI separati, non nello shorthand CSS di ctx.font,
+// ma il default di "non specificato" deve restare quello del renderer.
+export function fontFamilyOf(style: TextStyleLite | undefined): string {
+  return style && style.fontFamily !== "" ? style.fontFamily : DEFAULT_FONT_FAMILY;
+}
+
+export function fontWeightOf(style: TextStyleLite | undefined): string {
+  return style && style.fontWeight !== "" ? style.fontWeight : DEFAULT_FONT_WEIGHT;
+}
+
 // Shorthand CSS accettato da ctx.font: "<weight> <size>px <family>".
 export function fontString(style: TextStyleLite): string {
-  const weight = style.fontWeight !== "" ? style.fontWeight : DEFAULT_FONT_WEIGHT;
-  const family = style.fontFamily !== "" ? style.fontFamily : DEFAULT_FONT_FAMILY;
-  return `${weight} ${fontSizeOf(style)}px ${family}`;
+  return `${fontWeightOf(style)} ${fontSizeOf(style)}px ${fontFamilyOf(style)}`;
 }
 
 // Offset x di UNA riga dentro il box, in coordinate relative al box.
@@ -169,6 +179,117 @@ export function layoutText(
   return { lines, lineHeight, ascent, width, height: lines.length * lineHeight };
 }
 
+// Misura di UNA riga con lo stile dato, in unità mondo.
+//
+// È una funzione e non un ctx per la stessa ragione di layoutText: misurare i
+// glifi richiede un contesto 2D, ma chi deve solo SAPERE dove finisce il testo
+// (l'export, vedi export/region.ts) non deve per questo diventare impuro. In
+// produzione arriva da un canvas vero (export/exportScene.ts::canvasMeasure),
+// nei test da una misura finta e deterministica.
+//
+// Vive qui e non in export/svg.ts (dov'è nata) perché ormai la usano DUE
+// moduli di export -- il generatore SVG e il calcolo della regione -- e il tipo
+// che li mette d'accordo è una proprietà del testo, non di un formato.
+export type MeasureText = (text: string, style: TextStyleLite) => number;
+
+// Una riga di testo GIÀ POSIZIONATA, in coordinate MONDO. La y è quella della
+// BASELINE alfabetica (vedi drawText), non del bordo superiore della riga.
+// `width` è la larghezza DIPINTA della riga (senza gli spazi in coda, che non
+// si vedono): chi disegna la ignora, chi deve sapere quanto spazio occupa il
+// testo la usa invece di misurare una seconda volta.
+export interface PlacedLine { text: string; x: number; y: number; width: number }
+
+// Le righe che un nodo testo produce, con la loro posizione: esattamente
+// quelle che il canvas dipinge, e nello stesso posto.
+//
+// Estratta da drawText perché serve a DUE consumatori che devono restare
+// d'accordo: il canvas (drawText, qui sotto) e l'export SVG
+// (export/svg.ts, che ne fa dei <tspan>). Se la posizione delle righe fosse
+// calcolata due volte, il testo esportato scivolerebbe rispetto a quello
+// disegnato al primo cambiamento del layout -- ed è proprio la cosa che
+// nell'immagine esportata si nota.
+//
+// `measure` è una funzione per lo stesso motivo di layoutText: così questo
+// pezzo resta verificabile senza un ctx. Chi disegna passa
+// (s) => ctx.measureText(s).width con ctx.font GIÀ impostato.
+export function placeTextLines(measure: (s: string) => number, n: NodeLite): PlacedLine[] {
+  const t = n.text;
+  if (n.kind !== "text" || !t || t.content === "") return [];
+  return placeLines(measure, n, t.style, layoutText(measure, t.content, t.style, n.width));
+}
+
+// Il piazzamento vero, a partire da un layout GIÀ calcolato: è privata perché
+// esiste solo per non far girare layoutText due volte a chi (textPaintBounds)
+// ha bisogno sia delle righe piazzate sia dell'altezza del layout.
+function placeLines(
+  measure: (s: string) => number,
+  n: NodeLite,
+  style: TextStyleLite,
+  layout: TextLayout,
+): PlacedLine[] {
+  const out: PlacedLine[] = [];
+  for (let i = 0; i < layout.lines.length; i++) {
+    // Gli spazi in coda non si disegnano (sono invisibili) ma allargherebbero
+    // la misura, e con align center/right sposterebbero la riga.
+    const line = visible(layout.lines[i]);
+    // Una riga vuota non si disegna ma occupa comunque il suo slot verticale.
+    if (line === "") continue;
+    const width = measure(line);
+    out.push({
+      text: line,
+      x: n.x + alignOffsetX(style.align, width, n.width),
+      y: n.y + layout.ascent + i * layout.lineHeight,
+      width,
+    });
+  }
+  return out;
+}
+
+/**
+ * Il rettangolo che un nodo testo DIPINGE davvero, che non è il suo box.
+ *
+ * Il box del modello non è un limite per il disegno e non lo è mai stato:
+ * `drawText` piazza la riga `i` a `y = n.y + ascent + i * lineHeight` senza
+ * guardare `n.height`, `drawScene` non ritaglia niente, e nessuno riscrive
+ * l'altezza misurata dentro al nodo (il textarea di editing cresce, il nodo
+ * no). Un nodo creato con un click è alto UNA riga: basta andare a capo una
+ * volta perché il testo esca dal box e continui a vedersi sullo schermo.
+ *
+ * Chi disegna può permettersi di ignorarlo -- il canvas dello schermo è grande
+ * quanto la finestra. Chi RITAGLIA no: l'export dimensiona il file sui bounds,
+ * quindi con il box del modello butterebbe via tutto quello che sta sotto la
+ * prima riga, in silenzio e con un file che sembra riuscito. Per questo la
+ * misura del testo entra fin dentro al calcolo della regione da esportare.
+ *
+ * È l'UNIONE del box e delle righe, mai una sostituzione: un box più alto del
+ * testo (trascinato dall'utente, o rimasto tale dopo aver cancellato delle
+ * righe) resta parte di ciò che si esporta, esattamente come lo è a schermo.
+ * Il traboccamento orizzontale conta come quello verticale, ed esiste in
+ * entrambe le direzioni: una parola più larga del box viene spezzata ma un
+ * singolo glifo no (breakWord non rifiuta mai un carattere solo), e con
+ * l'allineamento a destra quel residuo sporge a SINISTRA del box.
+ */
+export function textPaintBounds(measure: MeasureText, n: NodeLite): Bounds {
+  const box = { x: n.x, y: n.y, width: n.width, height: n.height };
+  const t = n.text;
+  if (n.kind !== "text" || !t || t.content === "") return box;
+
+  const m = (s: string) => measure(s, t.style);
+  const layout = layoutText(m, t.content, t.style, n.width);
+  let minX = n.x;
+  let maxX = n.x + n.width;
+  for (const line of placeLines(m, n, t.style, layout)) {
+    minX = Math.min(minX, line.x);
+    maxX = Math.max(maxX, line.x + line.width);
+  }
+  // In verticale si usa l'altezza del LAYOUT e non l'ultima riga piazzata: le
+  // righe vuote non dipingono niente ma occupano il loro slot, e l'altezza del
+  // testo è quella che il layout dichiara (invariante di layoutText:
+  // height === lines.length * lineHeight).
+  const height = Math.max(n.height, layout.height);
+  return { x: minX, y: n.y, width: maxX - minX, height };
+}
+
 // Disegna il testo del nodo in coordinate MONDO (la camera è già nella
 // trasformazione del ctx, come per le altre forme). Il colore lo imposta il
 // chiamante (drawScene mette fillStyle e globalAlpha dal nodo): qui si tocca
@@ -176,10 +297,9 @@ export function layoutText(
 export function drawText(ctx: CanvasRenderingContext2D, n: NodeLite): void {
   const t = n.text;
   if (n.kind !== "text" || !t || t.content === "") return;
-  const style = t.style;
 
   // ctx.font va impostato PRIMA di misurare: measureText usa il font corrente.
-  ctx.font = fontString(style);
+  ctx.font = fontString(t.style);
   // Mai il default: il valore iniziale di textBaseline è "alphabetic" per
   // specifica, ma lasciarlo implicito significa dipendere dallo stato lasciato
   // da chi ha disegnato prima. La y delle righe è calcolata rispetto alla
@@ -190,14 +310,7 @@ export function drawText(ctx: CanvasRenderingContext2D, n: NodeLite): void {
   // rispetto al box del nodo, non il ctx.
   ctx.textAlign = "left";
 
-  const layout = layoutText((s) => ctx.measureText(s).width, t.content, style, n.width);
-  for (let i = 0; i < layout.lines.length; i++) {
-    // Gli spazi in coda non si disegnano (sono invisibili) ma allargherebbero
-    // la misura, e con align center/right sposterebbero la riga.
-    const line = visible(layout.lines[i]);
-    // Una riga vuota non si disegna ma occupa comunque il suo slot verticale.
-    if (line === "") continue;
-    const x = n.x + alignOffsetX(style.align, ctx.measureText(line).width, n.width);
-    ctx.fillText(line, x, n.y + layout.ascent + i * layout.lineHeight);
+  for (const line of placeTextLines((s) => ctx.measureText(s).width, n)) {
+    ctx.fillText(line.text, line.x, line.y);
   }
 }

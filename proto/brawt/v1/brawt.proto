@@ -33,6 +33,18 @@ message TextStyle {
 // larghezza di wrap, height quella misurata dal layout.
 message TextNode { string content = 1; TextStyle style = 2; }
 
+// L'immagine è un RIFERIMENTO, mai dei byte. `asset_hash` è lo sha256 dei byte
+// in esadecimale minuscolo; i byte vivono UNA volta sola in
+// <workspace>/<docId>.brawt/assets/ e si servono via GET /assets-api/{docId}/{hash}.
+//
+// È il punto dell'indirizzamento per contenuto: un CreateNode con dentro
+// un'immagine porterebbe quei byte nell'op-log, cioè in un file append-only che
+// non si compatta mai per intero -- la stessa foto trascinata dieci volte
+// pesherebbe dieci volte, e ogni catch-up di Subscribe la rimanderebbe sul filo.
+// Con l'hash l'op resta di poche decine di byte e i pixel non entrano mai nel
+// giro degli op.
+message ImageNode { string asset_hash = 1; }
+
 message Node {
   string id = 1;
   string parent_id = 2;   // id nodo container OPPURE id Page (per i root)
@@ -51,7 +63,7 @@ message Node {
     // messaggio corrispondente): righe distinte si fondono senza conflitti.
     // 33 = GroupNode     (traccia 1 — annidamento)
     // 34 = FrameNode     (traccia 1 — annidamento)
-    // 35 = ImageNode     (traccia 3 — periferia)
+    ImageNode image = 35;  // traccia 3 — periferia (vedi ImageNode sopra)
     // 36 = VectorNode    (traccia 4 — vettoriale)
     // 37 = InstanceNode  (M4 — componenti)
   }

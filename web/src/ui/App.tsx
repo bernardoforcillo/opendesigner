@@ -5,9 +5,13 @@ import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
 import { useScene } from "../store/store";
 import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
+import { attachImageRecovery } from "../renderer/imageCache";
 import { drawOverlay } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
+import { attachClipboardShortcuts } from "../tools/clipboard";
+import { attachImageDrop } from "../tools/imageDrop";
+import { ExportButton } from "./ExportButton";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { LayersPanel } from "./LayersPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
@@ -137,7 +141,18 @@ export function App() {
             return screenToWorld(useScene.getState().camera, p.x, p.y);
           },
         };
-        cleanup = attachTools(ctx, () => TOOLS[toolRef.current] ?? selectTool);
+        const detachTools = attachTools(ctx, () => TOOLS[toolRef.current] ?? selectTool);
+        // Trascinare un'immagine sul canvas (traccia 3, task 3). Sta accanto ai
+        // tool e non dentro il registro perché non è un tool: non ha un pulsante
+        // in toolbar e non ha modo -- il rilascio funziona qualunque tool sia
+        // attivo. Il punto passa dalla STESSA conversione schermo -> mondo dei
+        // tool (ctx.toWorld); un DragEvent ha clientX/clientY come un
+        // PointerEvent, che è tutto ciò che quella conversione legge.
+        const detachDrop = attachImageDrop(canvas, (e) => ctx.toWorld(e as PointerEvent));
+        cleanup = () => {
+          detachTools();
+          detachDrop();
+        };
       } catch (err) {
         console.error("bootstrap failed", err);
         // Il bootstrap fallito è uno stato di collegamento come gli altri: non
@@ -214,6 +229,18 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Copia / incolla / duplica (Ctrl/Cmd+C, +V, +D). Sulla finestra come le
+  // scorciatoie qui sopra e per lo stesso motivo (il canvas non è focusabile);
+  // la logica sta tutta in tools/clipboard.ts, qui c'è solo il montaggio --
+  // che però è l'unico punto in cui la funzione diventa raggiungibile.
+  useEffect(() => attachClipboardShortcuts(), []);
+
+  // Le immagini che non si erano caricate si riprovano quando la rete torna o
+  // quando la scheda torna in primo piano (traccia 3, task 3). Senza, un
+  // disservizio di un istante lascerebbe quel nodo come segnaposto per tutta la
+  // vita della pagina, con il file ancora lì sul disco.
+  useEffect(() => attachImageRecovery(), []);
+
   // La pillola diceva "connesso" anche a stream morto: il bootstrap era andato
   // a buon fine e nessuno rivedeva più quello stato. Adesso è SyncClient a
   // tenere aggiornato `connection` per tutta la vita dello stream, riconnessioni
@@ -264,6 +291,10 @@ export function App() {
         >
           Nuovo documento
         </Button>
+        {/* Export PNG/SVG (traccia 3, task 2). Tutta la logica sta in
+            export/ e in ui/ExportButton.tsx: qui c'è solo il montaggio, che
+            però è l'unico punto in cui la funzione diventa raggiungibile. */}
+        <ExportButton />
         <span aria-live="polite" className="ml-auto text-sm text-neutral-500">
           {statusLabel}
         </span>

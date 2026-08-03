@@ -19,17 +19,32 @@ export function nodePath(n: NodeLite): Path2D {
   return path;
 }
 
+// "Questo nodo lascia dei pixel?" -- indipendentemente da `visible`, che è una
+// scelta dell'utente, mentre questa è una proprietà della GEOMETRIA. Una forma
+// degenere (larghezza o altezza <= 0) non ha niente da riempire.
+//
+// Il guard NON vale per il testo: l'altezza di un nodo testo la produce il
+// layout (e la width è solo la larghezza di wrap), quindi un testo appena
+// creato può avere height 0 pur essendo disegnato.
+//
+// Vive qui, in una funzione sola, perché la stessa regola serve in tre punti
+// che devono restare d'accordo: chi disegna (drawScene), chi colpisce
+// (hitTestNode) e chi calcola la regione da esportare (export/region.ts). Una
+// terza copia del predicato sarebbe la solita coppia destinata a divergere --
+// e una divergenza qui si vede come "l'export ha ritagliato l'immagine attorno
+// a un nodo invisibile".
+export function isPaintable(n: NodeLite): boolean {
+  return n.kind === "text" || (n.width > 0 && n.height > 0);
+}
+
 // Hit-test geometrico puro (nessun ctx / DOM), così resta testabile in Node.
 // rect: AABB inclusivo dei bordi. ellisse: equazione normalizzata
 // ((wx-cx)/rx)^2 + ((wy-cy)/ry)^2 <= 1, che è il test corretto (l'AABB
 // dell'ellisse include gli angoli, che sono fuori dall'ellisse stessa).
 export function hitTestNode(n: NodeLite, wx: number, wy: number): boolean {
-  // Il guard sulla dimensione NON vale per il testo, esattamente come in
-  // drawScene (canvasRenderer.ts): un testo con height 0 -- un nodo appena
-  // creato, la cui altezza la produce il layout -- viene disegnato, e ciò che
-  // si vede deve potersi cliccare. Una forma degenere invece non ha né
-  // riempimento né area da colpire.
-  if (n.kind !== "text" && (n.width <= 0 || n.height <= 0)) return false;
+  // Ciò che non si disegna non si colpisce: quello che si vede deve potersi
+  // cliccare, e nient'altro.
+  if (!isPaintable(n)) return false;
   // Il testo si colpisce sul suo BOUNDING BOX, mai sui glifi: è il
   // comportamento atteso in un editor (cliccare fra due lettere, o nello spazio
   // vuoto a destra di una riga corta, seleziona comunque il nodo) ed è anche
