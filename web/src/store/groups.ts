@@ -1,4 +1,4 @@
-import { unionBounds, type Bounds } from "../canvas/geometry";
+import { intersectBounds, unionBounds, type Bounds } from "../canvas/geometry";
 import { worldBoundsOfNode, worldToLocal } from "../canvas/transform";
 import { ancestorsOf, childrenOf } from "./tree";
 import type { NodeLite, SceneState } from "./types";
@@ -39,8 +39,37 @@ export function contentWorldBounds(scene: SceneState, n: NodeLite): Bounds | nul
   return contentIn(scene, n, new Set());
 }
 
+// Il box MONDO di un nodo, RITAGLIATO ai frame antenati con clipsContent. È la
+// stessa regola, identica, delle tre discese del renderer: un FRAME con
+// clipsContent nasconde i figli fuori dal proprio box, e quel taglio vale
+// insieme per il DISEGNO (drawSiblings), l'HIT-TEST (pickIn) e il MARQUEE
+// (collectIn, che interseca il box mondo del frame -- la stessa intersectBounds
+// usata qui). La cornice di selezione e le sue 8 MANIGLIE leggono da qui (via
+// contentWorldBounds -> selectionWorldBounds): senza il taglio, un figlio che
+// sporge da un frame ritagliante avrebbe maniglie disegnate -- e AFFERRABILI
+// (selectTool.ts::handleUnderPointer usa lo stesso box) -- su canvas vuoto oltre
+// il bordo del frame, dove nessun pixel si disegna. È la divergenza
+// vedi-vs-seleziona che contentIn evita già per i figli INVISIBILI di un gruppo,
+// presa dal lato del clip.
+//
+// Un nodo INTERAMENTE fuori dal clip non ha box (null): niente cornice, come un
+// gruppo con tutti i figli nascosti. I clip annidati si compongono -- ogni frame
+// antenato restringe ancora. (Solo traslazioni qui: la rotazione arriva in
+// un'altra traccia, e collectIn stesso usa un'intersezione axis-aligned.)
+function clippedWorldBoundsOf(scene: SceneState, n: NodeLite): Bounds | null {
+  let box: Bounds = worldBoundsOfNode(scene, n);
+  for (const anc of ancestorsOf(scene, n.id)) {
+    if (anc.kind === "frame" && anc.clipsContent) {
+      const next = intersectBounds(box, worldBoundsOfNode(scene, anc));
+      if (!next) return null;
+      box = next;
+    }
+  }
+  return box;
+}
+
 function contentIn(scene: SceneState, n: NodeLite, seen: Set<string>): Bounds | null {
-  if (!isGroup(n)) return worldBoundsOfNode(scene, n);
+  if (!isGroup(n)) return clippedWorldBoundsOf(scene, n);
   // Ciclo in un documento malformato: già visitato, rivisitarlo non finirebbe
   // mai (stessa guardia di tree.ts::subtreeOf).
   if (seen.has(n.id)) return null;

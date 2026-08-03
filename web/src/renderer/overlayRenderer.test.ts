@@ -119,6 +119,49 @@ describe("selectionWorldBounds", () => {
     s.nodes["c2"] = { ...s.nodes["c2"], visible: false };
     expect(selectionWorldBounds(s, ["g"])).toBeNull();
   });
+
+  // STESSA regola, dal lato del CLIP di un frame: il renderer non disegna (né
+  // clicca, né il marquee prende) un figlio oltre il box di un frame con
+  // clipsContent. La cornice e le 8 maniglie devono misurare quella stessa
+  // geometria, o compaiono -- e diventano AFFERRABILI -- su canvas vuoto fuori
+  // dal frame.
+  function frameWithOverflowingChild() {
+    const s = emptyScene("d", "n");
+    s.nodes["f"] = { ...rect("f", 10, 20, 100, 80), kind: "frame", clipsContent: true };
+    s.nodes["c"] = { ...rect("c", 5, 5, 500, 500), parentId: "f" }; // mondo (15,25)-(515,525)
+    return s;
+  }
+
+  it("clips an overflowing child's frame to the visible region inside the frame", () => {
+    const s = frameWithOverflowingChild();
+    // Solo la parte dentro f (10,20)-(110,100): (15,25)-(110,100).
+    expect(selectionWorldBounds(s, ["c"])).toEqual({ x: 15, y: 25, width: 95, height: 75 });
+  });
+
+  it("keeps every one of the 8 handles inside the frame box, none on clipped-away canvas", () => {
+    const s = frameWithOverflowingChild();
+    const box = worldBoundsToScreen(selectionWorldBounds(s, ["c"])!, identityCam);
+    const p = handlePositions(box);
+    // Il frame arriva a (110,100): nessuna maniglia lo supera.
+    for (const q of Object.values(p)) {
+      expect(q.x).toBeLessThanOrEqual(110);
+      expect(q.y).toBeLessThanOrEqual(100);
+    }
+    expect(p.se).toEqual({ x: 110, y: 100 });
+  });
+
+  it("is null for a child ENTIRELY outside a clipping frame: no frame, no grabbable handles", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["f"] = { ...rect("f", 0, 0, 100, 100), kind: "frame", clipsContent: true };
+    s.nodes["c"] = { ...rect("c", 200, 200, 50, 50), parentId: "f" };
+    expect(selectionWorldBounds(s, ["c"])).toBeNull();
+  });
+
+  it("does NOT clip when the frame's clipsContent is false: the child is framed whole", () => {
+    const s = frameWithOverflowingChild();
+    s.nodes["f"] = { ...s.nodes["f"], clipsContent: false };
+    expect(selectionWorldBounds(s, ["c"])).toEqual({ x: 15, y: 25, width: 500, height: 500 });
+  });
 });
 
 describe("worldBoundsToScreen", () => {

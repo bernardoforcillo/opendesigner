@@ -151,6 +151,61 @@ describe("contentWorldBounds for a frame", () => {
   });
 });
 
+// VEDI-vs-SELEZIONA, dal lato del CLIP. Un frame con clipsContent nasconde i
+// figli fuori dal proprio box: il renderer non li disegna (drawSiblings), non
+// li clicca (pickIn) e il marquee non li prende (collectIn). La cornice di
+// selezione e le sue 8 maniglie leggono da contentWorldBounds (via
+// selectionWorldBounds): se NON ritagliasse, un figlio che sporge avrebbe
+// maniglie disegnate -- e AFFERRABILI (selectTool.ts::handleUnderPointer usa lo
+// stesso box) -- su canvas vuoto oltre il bordo del frame. È la stessa
+// divergenza che contentIn evita già per i figli invisibili di un gruppo.
+describe("contentWorldBounds clipped by an ancestor frame", () => {
+  it("clips an overflowing child to the visible region inside the clipping frame", () => {
+    const s = scene([
+      frame("f", "page1", 10, 20, { width: 100, height: 80 }), // mondo (10,20)-(110,100)
+      node("child", "f", 5, 5, { width: 500, height: 500 }), // mondo (15,25)-(515,525)
+    ]);
+    // Solo la parte dentro il frame: (15,25)-(110,100).
+    expect(contentWorldBounds(s, s.nodes["child"])).toEqual({ x: 15, y: 25, width: 95, height: 75 });
+  });
+
+  it("is null for a child ENTIRELY outside a clipping frame: no frame, no grabbable handles", () => {
+    const s = scene([
+      frame("f", "page1", 0, 0, { width: 100, height: 100 }),
+      node("child", "f", 200, 200, { width: 50, height: 50 }), // mondo (200,200)-(250,250), fuori
+    ]);
+    expect(contentWorldBounds(s, s.nodes["child"])).toBeNull();
+  });
+
+  it("does NOT clip when the ancestor frame has clipsContent=false: the child may overflow", () => {
+    const s = scene([
+      frame("f", "page1", 10, 20, { width: 100, height: 80, clipsContent: false }),
+      node("child", "f", 5, 5, { width: 500, height: 500 }),
+    ]);
+    expect(contentWorldBounds(s, s.nodes["child"])).toEqual({ x: 15, y: 25, width: 500, height: 500 });
+  });
+
+  it("composes NESTED clipping frames: each ancestor frame narrows further", () => {
+    const s = scene([
+      frame("outer", "page1", 0, 0, { width: 100, height: 100 }), // mondo (0,0)-(100,100)
+      frame("inner", "outer", 50, 50, { width: 100, height: 100 }), // mondo (50,50)-(150,150)
+      node("child", "inner", 10, 10, { width: 200, height: 200 }), // mondo (60,60)-(260,260)
+    ]);
+    // child ∩ inner = (60,60)-(150,150); poi ∩ outer = (60,60)-(100,100).
+    expect(contentWorldBounds(s, s.nodes["child"])).toEqual({ x: 60, y: 60, width: 40, height: 40 });
+  });
+
+  it("a group inside a clipping frame frames only the VISIBLE part of an overflowing child", () => {
+    const s = scene([
+      frame("f", "page1", 0, 0, { width: 100, height: 100 }),
+      group("g", "f", { orderKey: "a000001" }),
+      node("r", "g", 80, 80, { orderKey: "a000001", width: 500, height: 500 }), // mondo (80,80)-(580,580)
+    ]);
+    // r ritagliato a f (0,0)-(100,100) -> (80,80)-(100,100); il gruppo unisce solo quello.
+    expect(contentWorldBounds(s, s.nodes["g"])).toEqual({ x: 80, y: 80, width: 20, height: 20 });
+  });
+});
+
 // L'ANGOLO ALTO-SINISTRA DELLA CORNICE, nello spazio del PARENT: è ciò che il
 // pannello proprietà chiama X/Y. Per ogni nodo che non è un gruppo coincide con
 // le sue coordinate; per un gruppo NO -- x/y di un gruppo sono la traslazione
