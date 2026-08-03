@@ -193,6 +193,28 @@ function setTextOp(id: string, content: string): Op {
   });
 }
 
+// --- op di pagina: i container RADICE, non un nodo -------------------------
+function createPageOp(id: string, name: string): Op {
+  return create(OpSchema, {
+    opId: "cp-" + id, docId: "doc1",
+    kind: { case: "createPage", value: { page: { id, name } } },
+  });
+}
+
+function deletePageOp(id: string): Op {
+  return create(OpSchema, {
+    opId: "dp-" + id, docId: "doc1",
+    kind: { case: "deletePage", value: { id } },
+  });
+}
+
+function renamePageOp(id: string, name: string): Op {
+  return create(OpSchema, {
+    opId: `rp-${id}-${name}`, docId: "doc1",
+    kind: { case: "renamePage", value: { id, name } },
+  });
+}
+
 // Gli id che una voce RICREA, nell'ordine in cui li ricrea.
 function createdIds(entry: readonly Op[]): string[] {
   return entry.flatMap((op) =>
@@ -1427,5 +1449,103 @@ describe("undo/redo", () => {
     useScene.getState().undo();
     expect(useScene.getState().scene!.nodes["c1"]).toMatchObject({ parentId: "g1" });
     expect(useScene.getState().lastError).toBeNull();
+  });
+});
+
+// --- undo/redo delle AZIONI DI PAGINA --------------------------------------
+// Le pagine sono i container RADICE (un parentId può essere l'id di un nodo o
+// quello di una Page): crearle, rinominarle e cancellarle passa dallo stesso
+// percorso di gesto dei tool (PageBar -> beginGesture/endGesture), quindi vale
+// la stessa regola di tutti gli altri pannelli -- un gesto = una voce di undo.
+// La cancellazione è la più insidiosa: come deleteNode porta via a CASCATA un
+// intero sottoalbero, e senza voce di undo la pagina e i suoi nodi sparirebbero
+// per sempre.
+describe("undo/redo delle azioni di pagina", () => {
+  let sync: FakeSync;
+
+  beforeEach(() => {
+    sync = new FakeSync();
+    useScene.setState({
+      selection: [],
+      marquee: null,
+      gesture: null,
+      undoStack: [],
+      redoStack: [],
+    });
+    useScene.getState().setScene(emptyScene("doc1", "Untitled"));
+    useScene.getState().setSync(sync);
+  });
+
+  it("eliminare una pagina è annullabile: Ctrl+Z ripristina la pagina E i suoi nodi", () => {
+    const st = useScene.getState();
+    // page2 con 3 rettangoli, esattamente lo scenario del finding.
+    gesture([createPageOp("page2", "Page 2")]);
+    gesture([createChildOp("r1", "page2", "a1")]);
+    gesture([createChildOp("r2", "page2", "a2")]);
+    gesture([createChildOp("r3", "page2", "a3")]);
+
+    const before = useScene.getState().scene;
+    expect(before!.pages.map((p) => p.id)).toEqual(["page1", "page2"]);
+    expect(["r1", "r2", "r3"].every((id) => before!.nodes[id])).toBe(true);
+    expect(useScene.getState().undoStack).toHaveLength(4);
+
+    // Elimina page2: la cascata porta via page2 e i suoi 3 nodi.
+    gesture([deletePageOp("page2")]);
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1"]);
+    for (const id of ["r1", "r2", "r3"]) expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+    // La voce di undo del gesto ESISTE: prima del fix invertChain cadeva su null
+    // e il gesto non lasciava nessuna voce, mentre l'op partiva lo stesso.
+    expect(useScene.getState().undoStack).toHaveLength(5);
+
+    // Ctrl+Z: page2 e i 3 rettangoli tornano, identici a com'erano.
+    st.undo();
+    expect(useScene.getState().scene).toEqual(before);
+    expect(useScene.getState().lastError).toBeNull();
+
+    // ...e il redo li ri-cancella (simmetria del gesto).
+    st.redo();
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1"]);
+    for (const id of ["r1", "r2", "r3"]) expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+  });
+
+  it("l'inverso di una eliminazione ricrea la PAGINA prima dei nodi, ogni parent prima dei figli", () => {
+    gesture([createPageOp("page2", "Page 2")]);
+    gesture([createChildOp("g1", "page2", "a1")]);
+    gesture([createChildOp("c1", "g1", "a1")]);
+    gesture([createChildOp("d1", "c1", "a1")]);
+
+    gesture([deletePageOp("page2")]);
+    // La voce di undo è createPage + 3 createNode, in ordine parent-prima:
+    // applicandola, ogni createNode trova il proprio container già ricreato.
+    // (expectParentsSatisfied non serve qui: presuppone la pagina già presente
+    // nella scena, mentre questa voce la RICREA -- la prova che i parent reggono
+    // è il vero Ctrl+Z del test qui sopra, che ricompone la scena senza errori.)
+    const entry = useScene.getState().undoStack[useScene.getState().undoStack.length - 1];
+    expect(entry[0].kind.case).toBe("createPage");
+    expect(createdIds(entry)).toEqual(["g1", "c1", "d1"]);
+  });
+
+  it("creare una pagina è annullabile: Ctrl+Z la rimuove", () => {
+    gesture([createPageOp("page2", "Page 2")]);
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1", "page2"]);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1"]);
+    expect(useScene.getState().redoStack).toHaveLength(1);
+
+    useScene.getState().redo();
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1", "page2"]);
+  });
+
+  it("rinominare una pagina è annullabile: Ctrl+Z ripristina il nome precedente", () => {
+    gesture([renamePageOp("page1", "Copertina")]);
+    expect(useScene.getState().scene!.pages[0].name).toBe("Copertina");
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.pages[0].name).toBe("Page 1");
+
+    useScene.getState().redo();
+    expect(useScene.getState().scene!.pages[0].name).toBe("Copertina");
   });
 });

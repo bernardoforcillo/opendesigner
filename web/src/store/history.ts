@@ -2,7 +2,7 @@ import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
 import { toPbNode, toPbTextStyle, type SceneState } from "./types";
-import { isAncestorOf, parentExists, subtreeOf } from "./tree";
+import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Primitive di undo: dato lo stato PRIMA di un op, l'op che lo annulla.
 //
@@ -137,6 +137,65 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
             stylePresent: true,
           },
         },
+      })];
+    }
+    // --- pagine -------------------------------------------------------------
+    // Le pagine sono i container RADICE (un parentId può essere l'id di un nodo
+    // o quello di una Page). Il loro inverso è speculare a quello dei nodi: una
+    // createPage si annulla con una deletePage, una renamePage rimettendo il
+    // nome precedente, una deletePage -- che come deleteNode porta via a CASCATA
+    // un intero sottoalbero (vedi applyOp) -- ricreando prima la pagina e poi
+    // ogni nodo che le pendeva sotto, parent prima dei figli.
+    //
+    // La regola del null resta quella dei nodi: si ritorna null ESATTAMENTE
+    // quando l'op diretto sarebbe rifiutato (parità con applyOp e core), perché
+    // in quel caso la scena non cambia e non c'è niente da annullare -- e un
+    // inverso inventato manderebbe al server l'undo di un op mai accettato.
+    case "createPage": {
+      const page = op.kind.value.page;
+      // Pagina assente o senza id (ErrNilPage), o id GIÀ PRESO -- da un'altra
+      // pagina o da un NODO: parentExists risponde "sì" per entrambi, e la
+      // collisione con un nodo conta quanto quella con una pagina (ErrPageExists).
+      if (!page || page.id === "" || parentExists(scene, page.id)) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "deletePage", value: { id: page.id } },
+      })];
+    }
+    case "deletePage": {
+      const { id } = op.kind.value;
+      const page = scene.pages.find((p) => p.id === id);
+      // Pagina inesistente (ErrPageNotFound) o ULTIMA pagina (ErrLastPage): in
+      // entrambi i casi applyOp lascia la scena invariata.
+      if (!page || scene.pages.length === 1) return null;
+      // Prima la pagina, poi ogni nodo che la cascata sta per portare via. Uso
+      // lo `scene` PRE-apply che invertOp riceve per enumerare quei nodi con la
+      // STESSA visita di applyDeletePage (childrenOf per i root della pagina,
+      // subtreeOf in pre-ordine per ciascuno): ogni createNode trova così il
+      // proprio container -- la pagina appena ricreata o un nodo ricreato prima
+      // -- già esistente. Nell'ordine opposto la prima ricreazione di un root
+      // verrebbe respinta con ErrParentNotFound e l'undo lascerebbe la scena a
+      // metà, peggio di un undo che non si può fare.
+      const ops: Op[] = [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "createPage", value: { page: { id: page.id, name: page.name } } },
+      })];
+      for (const root of childrenOf(scene, id)) {
+        for (const n of subtreeOf(scene, root.id)) ops.push(createNodeOp(op.docId, toPbNode(n)));
+      }
+      return ops;
+    }
+    case "renamePage": {
+      const { id } = op.kind.value;
+      const page = scene.pages.find((p) => p.id === id);
+      // Pagina inesistente: ErrPageNotFound, applyOp no-op.
+      if (!page) return null;
+      // Il nome PRECEDENTE (letto dallo scene pre-apply), non quello dell'op
+      // diretto: simmetrico a se stesso. Scritto SEMPRE, anche vuoto, come
+      // applyOp -- il ripiego per un nome vuoto è della UI, non del modello.
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "renamePage", value: { id, name: page.name } },
       })];
     }
     default:

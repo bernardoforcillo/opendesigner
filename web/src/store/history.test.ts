@@ -72,6 +72,26 @@ function sceneWith(...nodes: PbNode[]): SceneState {
   return nodes.reduce((s, n) => applyOp(s, createOp(n)), emptyScene("doc1", "Untitled"));
 }
 
+// --- op di pagina ----------------------------------------------------------
+function createPageOp(id: string, name: string): Op {
+  return create(OpSchema, { opId: "op-createpage", docId: "doc1", kind: { case: "createPage", value: { page: { id, name } } } });
+}
+
+function deletePageOp(id: string): Op {
+  return create(OpSchema, { opId: "op-deletepage", docId: "doc1", kind: { case: "deletePage", value: { id } } });
+}
+
+function renamePageOp(id: string, name: string): Op {
+  return create(OpSchema, { opId: "op-renamepage", docId: "doc1", kind: { case: "renamePage", value: { id, name } } });
+}
+
+// Scena con una SECONDA pagina (page2, "Page 2") in coda e i nodi passati
+// sotto di essa.
+function sceneWithPage2(...nodes: PbNode[]): SceneState {
+  const base = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
+  return nodes.reduce((s, n) => applyOp(s, createOp(n)), base);
+}
+
 // LA proprietà: applicare un op e poi il suo inverso riporta la scena
 // ESATTAMENTE allo stato di partenza. Asserire sul round-trip invece che sui
 // singoli campi coglie anche i campi che nessuno si è ricordato di controllare.
@@ -346,6 +366,141 @@ describe("invertOp: setText", () => {
   it("null su un nodo NON di testo: l'op diretto è rifiutato (ErrNotTextNode in Go)", () => {
     const scene = sceneWith(richRect());
     const op = setTextOp("n1", "x");
+    expect(applyOp(scene, op)).toEqual(scene);
+    expect(invertOp(scene, op)).toBeNull();
+  });
+});
+
+// --- le pagine: creazione, rinomina e cancellazione a cascata --------------
+// Le pagine sono i container RADICE. Il loro inverso è speculare a quello dei
+// nodi -- una create si annulla con una delete, una rename rimettendo il nome
+// precedente -- salvo la cancellazione, che come deleteNode porta via un intero
+// sottoalbero e disfarla vuol dire ricrearlo tutto, parent prima dei figli.
+
+describe("invertOp: createPage", () => {
+  it("round-trips: crea la pagina, l'inverso la elimina", () => {
+    const scene = emptyScene("doc1", "Untitled");
+    const inv = expectSingleRoundTrip(scene, createPageOp("page2", "Page 2"));
+    expect(inv.kind.case).toBe("deletePage");
+    expect(inv.kind.case === "deletePage" && inv.kind.value.id).toBe("page2");
+  });
+
+  it("null quando l'id è già preso da un'altra pagina (ErrPageExists in Go)", () => {
+    const scene = emptyScene("doc1", "Untitled");
+    const op = createPageOp("page1", "Doppione");
+    expect(applyOp(scene, op)).toEqual(scene);
+    expect(invertOp(scene, op)).toBeNull();
+  });
+
+  it("null quando l'id collide con un NODO (parentExists copre entrambi)", () => {
+    const scene = sceneWith(richRect("n1"));
+    const op = createPageOp("n1", "Come il nodo");
+    expect(applyOp(scene, op)).toEqual(scene);
+    expect(invertOp(scene, op)).toBeNull();
+  });
+
+  it("null per una pagina con id vuoto (ErrNilPage in Go)", () => {
+    const scene = emptyScene("doc1", "Untitled");
+    const op = createPageOp("", "Senza id");
+    expect(applyOp(scene, op)).toEqual(scene);
+    expect(invertOp(scene, op)).toBeNull();
+  });
+});
+
+describe("invertOp: renamePage", () => {
+  it("round-trips: rimette il nome PRECEDENTE (letto dalla scena pre-apply)", () => {
+    const scene = emptyScene("doc1", "Untitled"); // page1 = "Page 1"
+    const inv = expectSingleRoundTrip(scene, renamePageOp("page1", "Nuovo nome"));
+    expect(inv.kind.case).toBe("renamePage");
+    if (inv.kind.case !== "renamePage") throw new Error("wrong kind");
+    expect(inv.kind.value.id).toBe("page1");
+    expect(inv.kind.value.name).toBe("Page 1");
+  });
+
+  it("round-trips anche un rinominare a nome VUOTO", () => {
+    expectRoundTrip(emptyScene("doc1", "Untitled"), renamePageOp("page1", ""));
+  });
+
+  it("null su una pagina inesistente (ErrPageNotFound in Go)", () => {
+    const scene = emptyScene("doc1", "Untitled");
+    const op = renamePageOp("ghost", "x");
+    expect(applyOp(scene, op)).toEqual(scene);
+    expect(invertOp(scene, op)).toBeNull();
+  });
+});
+
+describe("invertOp: deletePage a cascata", () => {
+  it("round-trips una pagina VUOTA: solo la ri-creazione della pagina", () => {
+    const scene = sceneWithPage2();
+    const inv = expectRoundTrip(scene, deletePageOp("page2"));
+    expect(inv.length).toBe(1);
+    expect(inv[0].kind.case).toBe("createPage");
+    expect(inv[0].kind.case === "createPage" && inv[0].kind.value.page?.name).toBe("Page 2");
+  });
+
+  //   page2
+  //   ├── g1
+  //   │   ├── c1
+  //   │   │   └── d1
+  //   │   └── c2
+  //   └── other
+  function pageTree(): SceneState {
+    return sceneWithPage2(
+      childNode("g1", "page2", "a1"),
+      childNode("c1", "g1", "a1"),
+      childNode("d1", "c1", "a1"),
+      childNode("c2", "g1", "a2"),
+      childNode("other", "page2", "a2"),
+    );
+  }
+
+  it("ripristina la pagina E TUTTO il suo sottoalbero (round-trip esatto)", () => {
+    const inv = expectRoundTrip(pageTree(), deletePageOp("page2"));
+    // createPage + una createNode per ognuno dei 5 nodi.
+    expect(inv.length).toBe(6);
+    expect(inv[0].kind.case).toBe("createPage");
+    expect(inv.slice(1).every((o) => o.kind.case === "createNode")).toBe(true);
+  });
+
+  it("ricrea la PAGINA prima dei nodi, e ogni parent prima dei figli", () => {
+    const scene = pageTree();
+    const inv = invertOp(scene, deletePageOp("page2")) as Op[];
+    expect(inv[0].kind.case).toBe("createPage");
+    const ids = inv.slice(1).map((o) => (o.kind.case === "createNode" ? o.kind.value.node?.id : undefined));
+    expect(ids).toEqual(["g1", "c1", "d1", "c2", "other"]);
+    // La prova vera non è l'ordine in sé ma che l'invariante del container regga
+    // a ogni passo: applicati uno a uno sulla scena post-delete, nessuno viene
+    // scartato (createPage aggiunge la pagina, ogni createNode un nodo).
+    let s = applyOp(scene, deletePageOp("page2"));
+    for (const o of inv) {
+      const before = s.pages.length + Object.keys(s.nodes).length;
+      s = applyOp(s, o);
+      expect(s.pages.length + Object.keys(s.nodes).length).toBe(before + 1);
+    }
+  });
+
+  it("l'ordine INVERSO verrebbe rifiutato — è il motivo per cui l'ordine conta", () => {
+    const scene = pageTree();
+    const inv = (invertOp(scene, deletePageOp("page2")) as Op[]).slice().reverse();
+    let s = applyOp(scene, deletePageOp("page2"));
+    for (const o of inv) s = applyOp(s, o);
+    // I nodi, mandati prima della loro pagina/parent, trovano il container
+    // ancora inesistente (ErrParentNotFound): solo page1 e la page2 ri-creata
+    // atterrano, nessun nodo.
+    expect(Object.keys(s.nodes)).toEqual([]);
+    expect(s.pages.map((p) => p.id).sort()).toEqual(["page1", "page2"]);
+  });
+
+  it("null sull'ULTIMA pagina: l'op diretto è rifiutato (ErrLastPage in Go)", () => {
+    const scene = emptyScene("doc1", "Untitled"); // solo page1
+    const op = deletePageOp("page1");
+    expect(applyOp(scene, op)).toEqual(scene);
+    expect(invertOp(scene, op)).toBeNull();
+  });
+
+  it("null su una pagina inesistente (ErrPageNotFound in Go)", () => {
+    const scene = sceneWithPage2();
+    const op = deletePageOp("ghost");
     expect(applyOp(scene, op)).toEqual(scene);
     expect(invertOp(scene, op)).toBeNull();
   });
