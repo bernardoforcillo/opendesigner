@@ -1,5 +1,5 @@
 import { unionBounds, type Bounds } from "../canvas/geometry";
-import { worldBoundsOfNode } from "../canvas/transform";
+import { worldBoundsOfNode, worldToLocal } from "../canvas/transform";
 import { ancestorsOf, childrenOf } from "./tree";
 import type { NodeLite, SceneState } from "./types";
 
@@ -50,6 +50,31 @@ function contentIn(scene: SceneState, n: NodeLite, seen: Set<string>): Bounds | 
     if (b) boxes.push(b);
   }
   return unionBounds(boxes);
+}
+
+// L'angolo ALTO-SINISTRA della cornice di un nodo, nello spazio del PARENT --
+// cioè lo stesso spazio in cui sono scritte le sue x/y, e quello in cui il
+// pannello proprietà (ui/PropertiesPanel.tsx) legge e scrive X/Y.
+//
+// Per qualunque nodo che non sia un gruppo è banalmente la sua x/y: il box del
+// modello È la cornice. Per un GRUPPO no, e senza questa funzione il pannello
+// direbbe un numero diverso da quello che l'overlay disegna: x/y di un gruppo
+// sono la TRASLAZIONE che contribuisce ai figli (0 alla creazione -- raggruppare
+// non sposta un pixel), mentre la cornice è l'unione dei figli e può stare
+// ovunque. "X" deve voler dire per un gruppo quello che vuol dire per tutti gli
+// altri: dove si vede il bordo sinistro.
+//
+// Un gruppo VUOTO non ha cornice (contentWorldBounds null): resta la sua
+// traslazione, che è l'unica coordinata che possiede -- e che il pannello
+// scrive allora in modo assoluto, come per ogni altro nodo.
+export function frameOriginOf(scene: SceneState, n: NodeLite): { x: number; y: number } {
+  if (!isGroup(n)) return { x: n.x, y: n.y };
+  const b = contentWorldBounds(scene, n);
+  if (!b) return { x: n.x, y: n.y };
+  // Dal MONDO (in cui contentWorldBounds risponde) allo spazio del parent: la
+  // stessa direzione che l'hit-test usa per il puntatore, e l'unico spazio in
+  // cui il numero è confrontabile con la x/y del nodo.
+  return worldToLocal(scene, n.parentId, b.x, b.y);
 }
 
 // I contenitori in cui la selezione corrente è ENTRATA. Non è uno stato a

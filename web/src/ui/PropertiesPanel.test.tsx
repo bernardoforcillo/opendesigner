@@ -6,6 +6,7 @@ import { toJson, fromJson } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { PropertiesPanel } from "./PropertiesPanel";
+import { contentWorldBounds } from "../store/groups";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite, TextLite } from "../store/types";
@@ -33,6 +34,12 @@ function rectNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): N
 
 function ellipseNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): NodeLite {
   return { ...rectNode(id, orderKey), kind: "ellipse", cornerRadius: 0, ...over };
+}
+
+// Un gruppo NASCE a (0,0) e senza geometria propria: la sua cornice è l'unione
+// dei figli (store/groups.ts), non il suo box.
+function groupNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): NodeLite {
+  return { ...rectNode(id, orderKey), kind: "group", x: 0, y: 0, width: 0, height: 0, fills: [], ...over };
 }
 
 const TEXT_STYLE: TextLite["style"] = {
@@ -969,5 +976,150 @@ describe("stile del testo", () => {
     expect(scene?.nodes.t2.text).toEqual({
       content: "due", style: { ...TEXT_STYLE, fontSize: 20, fontWeight: "700" },
     });
+  });
+});
+
+// --- Gruppi: il pannello dice la stessa cosa che disegna l'overlay ----------
+//
+// Un gruppo non ha geometria propria (store/groups.ts): la sua cornice è
+// l'unione dei figli e le sue x/y sono la TRASLAZIONE che contribuisce loro.
+// Il pannello mostrava invece i campi grezzi -- W=0 H=0 su un gruppo che si
+// vede benissimo, e una X che non è il bordo sinistro della cornice.
+//   - W/H spariscono appena la selezione contiene un gruppo: non c'è un box da
+//     riscrivere, e l'op partirebbe lo stesso (accettato da entrambe le
+//     implementazioni di apply, invisibile su canvas, una voce di undo sprecata);
+//   - X/Y restano e significano per un gruppo quello che significano per tutti
+//     gli altri: l'angolo alto-sinistra della cornice, nello spazio del parent.
+
+function groupWithChild() {
+  installScene(
+    groupNode("g", "a1"),
+    rectNode("c", "a0", { parentId: "g", x: 10, y: 20, width: 30, height: 40 }),
+    rectNode("solo", "a2", { x: 200, y: 200 }),
+  );
+}
+
+describe("gruppi — campi geometrici", () => {
+  it("un gruppo non mostra W/H: non ha un box proprio da riscrivere", () => {
+    groupWithChild();
+
+    useScene.getState().setSelection(["g"]);
+    const { rerender } = render(<PropertiesPanel />);
+    expect(field("X")).toBeInTheDocument();
+    expect(field("Y")).toBeInTheDocument();
+    expect(screen.queryByRole("textbox", { name: "W" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "H" })).toBeNull();
+
+    // Il figlio è un rettangolo come un altro: i quattro campi tornano.
+    useScene.getState().setSelection(["c"]);
+    rerender(<PropertiesPanel />);
+    expect(screen.getByRole("textbox", { name: "W" })).toBeInTheDocument();
+    expect(screen.getByRole("textbox", { name: "H" })).toBeInTheDocument();
+  });
+
+  it("nemmeno in una selezione MISTA gruppo+rettangolo: l'op andrebbe anche al gruppo", () => {
+    groupWithChild();
+    useScene.getState().setSelection(["g", "solo"]);
+    render(<PropertiesPanel />);
+
+    expect(screen.queryByRole("textbox", { name: "W" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "H" })).toBeNull();
+    expect(field("X")).toBeInTheDocument();
+  });
+
+  it("X/Y mostrano l'origine della CORNICE, non la traslazione (0,0) del gruppo", () => {
+    groupWithChild();
+    useScene.getState().setSelection(["g"]);
+    render(<PropertiesPanel />);
+
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes.g.x).toBe(0); // la traslazione del gruppo È zero...
+    // ...ma la cornice che l'overlay disegna sta a (10,20), ed è quella che il
+    // pannello deve dire.
+    const frame = contentWorldBounds(scene, scene.nodes.g)!;
+    expect(field("X")).toHaveValue(String(frame.x));
+    expect(field("Y")).toHaveValue(String(frame.y));
+    expect(field("X")).toHaveValue("10");
+    expect(field("Y")).toHaveValue("20");
+  });
+
+  it("digitare X su un gruppo porta il BORDO SINISTRO della cornice lì: UN op, UNA voce di undo", async () => {
+    groupWithChild();
+    useScene.getState().setSelection(["g"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.clear(field("X"));
+    await user.type(field("X"), "99{Enter}");
+
+    // Un solo op, e ASSOLUTO come ogni altro setProps: il delta si risolve
+    // quando l'op si costruisce, non viaggia sul filo -- altrimenti un rebase
+    // (o un redo) lo applicherebbe una seconda volta.
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(maskOf(op)).toEqual(["x"]);
+    if (op.kind.case === "setProps") expect(op.kind.value.patch?.x).toBe(89); // 0 + (99 - 10)
+
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes.g.x).toBe(89);
+    expect(scene.nodes.c.x).toBe(10); // il figlio non si muove nel suo spazio
+    expect(contentWorldBounds(scene, scene.nodes.g)!.x).toBe(99);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+
+    // E si annulla come qualunque altra modifica: la cornice torna a 10.
+    useScene.getState().undo();
+    const after = useScene.getState().scene!;
+    expect(after.nodes.g.x).toBe(0);
+    expect(contentWorldBounds(after, after.nodes.g)!.x).toBe(10);
+  });
+
+  it("confermare la X che il campo già mostra non manda nessun op", async () => {
+    groupWithChild();
+    useScene.getState().setSelection(["g"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.click(field("X"));
+    await user.keyboard("{Enter}");
+
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().scene?.nodes.g.x).toBe(0);
+  });
+
+  it("trascinare l'etichetta X di un gruppo resta UN gesto e porta la cornice dove dice il campo", () => {
+    groupWithChild();
+    useScene.getState().setSelection(["g"]);
+    render(<PropertiesPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    dragLabel("X", 25); // dalla cornice a 10 -> 35
+
+    expect(sync.sent).toHaveLength(1);
+    expect(maskOf(sync.sent[0])).toEqual(["x"]);
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes.g.x).toBe(25);
+    // I passi intermedi dell'anteprima non si sommano: la cornice finisce
+    // esattamente dove il campo dice, non a 10+12+25.
+    expect(contentWorldBounds(scene, scene.nodes.g)!.x).toBe(35);
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("un gruppo VUOTO non ha cornice: X/Y restano la sua traslazione, scritta com'è", async () => {
+    installScene(groupNode("g", "a0", { x: 3, y: 4 }));
+    useScene.getState().setSelection(["g"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    expect(field("X")).toHaveValue("3");
+
+    await user.clear(field("X"));
+    await user.type(field("X"), "50{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    if (sync.sent[0].kind.case === "setProps") expect(sync.sent[0].kind.value.patch?.x).toBe(50);
+    expect(useScene.getState().scene?.nodes.g.x).toBe(50);
   });
 });

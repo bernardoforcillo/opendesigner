@@ -97,6 +97,20 @@ describe("selectionSummary", () => {
     expect(selectionSummary(s2, ["n1", "n2"])?.fills).toBe(MIXED);
   });
 
+  // x/y sono l'ORIGINE DELLA CORNICE (store/groups.ts::frameOriginOf), non il
+  // campo grezzo: per un gruppo le due cose non coincidono -- x/y di un gruppo
+  // sono la traslazione che contribuisce ai figli, e mostrarle come "X" farebbe
+  // dire al pannello un numero diverso da quello dove la cornice si vede.
+  it("reports a group's x/y as the origin of its FRAME, not its translation", () => {
+    const s = sceneWith([
+      node({ id: "g", orderKey: "a000000", kind: "group", x: 0, y: 0, width: 0, height: 0, fills: [] }),
+      node({ id: "c", orderKey: "a000000", parentId: "g", x: 10, y: 20, width: 30, height: 40 }),
+    ]);
+    const sum = selectionSummary(s, ["g"]);
+    expect(sum?.x).toBe(10);
+    expect(sum?.y).toBe(20);
+  });
+
   it("is MIXED across three nodes when only the third differs", () => {
     const s = sceneWith([
       node({ id: "n1", orderKey: "a000000", opacity: 1 }),

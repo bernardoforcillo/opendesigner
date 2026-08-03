@@ -6,12 +6,13 @@ import {
 import { useScene } from "../store/store";
 import { selectionSummary, MIXED } from "../store/selectors";
 import type { Mixed, OrMixed } from "../store/selectors";
+import { frameOriginOf } from "../store/groups";
 import { makeSetPropsOp, makeSetTextOp } from "../tools/ops";
 import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
 import type { RgbLite } from "./fields/ColorField";
 import { toPbFills } from "../store/types";
-import type { NodeLite, TextAlignLite, TextStyleLite } from "../store/types";
+import type { NodeLite, SceneState, TextAlignLite, TextStyleLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 
@@ -37,12 +38,24 @@ interface NumericField {
   minValue?: number;
 }
 
-const GEOMETRY_FIELDS: readonly NumericField[] = [
+// POSIZIONE e DIMENSIONE separate perché un GRUPPO ha la prima e non la
+// seconda: un gruppo non ha un box proprio (store/groups.ts) -- la sua cornice
+// è l'unione dei figli, e width/height sul nodo restano gli zeri con cui è
+// nato. Mostrare W/H su un gruppo non è solo un numero sbagliato: digitarci
+// dentro manda un op che ENTRAMBE le implementazioni di apply accettano, che
+// non cambia un pixel su canvas, e che costa lo stesso un invio in rete e una
+// voce di undo.
+const POSITION_FIELDS: readonly NumericField[] = [
   { key: "x", label: "X", mask: "x" },
   { key: "y", label: "Y", mask: "y" },
+];
+
+const SIZE_FIELDS: readonly NumericField[] = [
   { key: "width", label: "W", mask: "width", minValue: 0 },
   { key: "height", label: "H", mask: "height", minValue: 0 },
 ];
+
+const GEOMETRY_FIELDS: readonly NumericField[] = [...POSITION_FIELDS, ...SIZE_FIELDS];
 
 // "R" come raggio: stessa convenzione a UNA LETTERA di X/Y/W/H, che negli
 // editor di design è la norma e tiene la griglia stretta. L'etichetta è anche
@@ -77,11 +90,39 @@ function patchFor(key: NumericField["key"], value: number) {
   }
 }
 
+// Il valore da SCRIVERE su x/y di un nodo perché la sua CORNICE finisca dove
+// il campo dice.
+//
+// Per tutto ciò che non è un gruppo il campo È la cornice, e il valore va
+// scritto tale e quale (`value` e non `n[key] + (value - n[key])`: la seconda
+// forma è algebricamente identica ma non in virgola mobile, e la X digitata
+// deve arrivare al modello esatta come è stata scritta).
+//
+// Per un GRUPPO no: x/y sono la traslazione che contribuisce ai figli, mentre
+// la cornice sta dove stanno i figli (store/groups.ts::frameOriginOf). Il campo
+// mostra la cornice -- come per ogni altra selezione, e come la disegna
+// l'overlay -- quindi qui si traduce lo spostamento richiesto in una nuova
+// traslazione. Il DELTA si risolve adesso: l'op che parte resta ASSOLUTO come
+// ogni altro setProps, quindi un rebase o un redo non lo applicano due volte.
+function positionValueFor(scene: SceneState, n: NodeLite, key: "x" | "y", value: number): number {
+  if (n.kind !== "group") return value;
+  return n[key] + (value - frameOriginOf(scene, n)[key]);
+}
+
 // Op di scrittura di UN campo numerico su OGNI nodo selezionato: come il
 // toggle di visibilità e la rinomina del pannello livelli, lo stesso valore
 // ASSOLUTO va a tutti i nodi selezionati -- non una traslazione relativa.
+// L'unica traduzione è quella di positionValueFor, che porta ogni nodo alla
+// stessa POSIZIONE anche quando il suo x/y non è il suo bordo.
 function numericOps(ids: readonly string[], field: NumericField, value: number): Op[] {
-  return ids.map((id) => makeSetPropsOp(id, patchFor(field.key, value), [field.mask]));
+  const scene = useScene.getState().scene;
+  return ids.map((id) => {
+    const n = scene?.nodes[id];
+    const v = scene && n && (field.key === "x" || field.key === "y")
+      ? positionValueFor(scene, n, field.key, value)
+      : value;
+    return makeSetPropsOp(id, patchFor(field.key, v), [field.mask]);
+  });
 }
 
 function opacityOps(ids: readonly string[], value: number): Op[] {
@@ -344,12 +385,24 @@ export function PropertiesPanel() {
   const opacity: number | Mixed = summary.opacity;
   const fill = summary.fills === MIXED ? null : (summary.fills[0] ?? null);
 
+  // W/H spariscono appena UN nodo selezionato è un gruppo, non solo quando lo
+  // sono tutti (`summary.kind === "group"`): il campo scrive lo stesso valore
+  // su OGNI nodo della selezione, quindi in una selezione mista l'op arriverebbe
+  // al gruppo comunque. E il numero mostrato sarebbe già una bugia -- gli zeri
+  // del gruppo entrano nel riassunto e lo rendono "Misto" anche quando ogni
+  // forma vera ha la stessa larghezza.
+  //
+  // X/Y invece RESTANO, e per un gruppo significano quello che significano per
+  // tutti gli altri: l'angolo alto-sinistra della cornice (vedi
+  // selectionSummary e positionValueFor).
+  const geometryFields = nodes.some((n) => n.kind === "group") ? POSITION_FIELDS : GEOMETRY_FIELDS;
+
   return (
     <div className="flex h-full flex-col overflow-auto text-sm text-neutral-700">
       <div className="border-b border-neutral-200 px-2 py-1.5 font-medium text-neutral-500">Proprietà</div>
 
       <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 p-2">
-        {GEOMETRY_FIELDS.map((field) => (
+        {geometryFields.map((field) => (
           <NumberField
             key={field.key}
             label={field.label}

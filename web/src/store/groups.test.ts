@@ -3,6 +3,7 @@ import { emptyScene, type NodeLite, type SceneState } from "./types";
 import {
   contentWorldBounds,
   enterTargetOf,
+  frameOriginOf,
   isGroup,
   selectionTargetOf,
   transformTargetsOf,
@@ -79,6 +80,49 @@ describe("contentWorldBounds", () => {
   it("is null for an empty group: there is nothing to frame", () => {
     const s = scene([group("g", "page1")]);
     expect(contentWorldBounds(s, s.nodes["g"])).toBeNull();
+  });
+});
+
+// L'ANGOLO ALTO-SINISTRA DELLA CORNICE, nello spazio del PARENT: è ciò che il
+// pannello proprietà chiama X/Y. Per ogni nodo che non è un gruppo coincide con
+// le sue coordinate; per un gruppo NO -- x/y di un gruppo sono la traslazione
+// che contribuisce ai figli, non il punto in cui la cornice si vede.
+describe("frameOriginOf", () => {
+  it("is the node's own x/y for anything that is not a group", () => {
+    const s = grouped();
+    expect(frameOriginOf(s, s.nodes["solo"])).toEqual({ x: 200, y: 200 });
+    // Anche per un figlio DENTRO un gruppo: le sue x/y sono già scritte nello
+    // spazio del parent, che è lo spazio in cui questa funzione risponde.
+    expect(frameOriginOf(s, s.nodes["r1"])).toEqual({ x: 10, y: 10 });
+  });
+
+  it("is the top-left of the CONTENT for a group, not its (0,0) translation", () => {
+    const s = grouped();
+    expect(s.nodes["g"].x).toBe(0);
+    expect(s.nodes["g"].y).toBe(0);
+    expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 10, y: 0 });
+  });
+
+  it("moves with the group", () => {
+    const s = grouped();
+    s.nodes["g"] = { ...s.nodes["g"], x: 5, y: 7 };
+    expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 15, y: 7 });
+  });
+
+  it("is expressed in the PARENT's space for a nested group, not in world", () => {
+    const s = scene([
+      group("g1", "page1", { x: 1000, y: 0 }),
+      group("g2", "g1", { x: 100, y: 100 }),
+      node("r", "g2", 5, 5, { width: 10, height: 10 }),
+    ]);
+    expect(contentWorldBounds(s, s.nodes["g2"])).toEqual({ x: 1105, y: 105, width: 10, height: 10 });
+    // Lo spazio di g1 è quello in cui x/y di g2 sono scritte: 1105 - 1000.
+    expect(frameOriginOf(s, s.nodes["g2"])).toEqual({ x: 105, y: 105 });
+  });
+
+  it("falls back to the group's own x/y when the group is empty: there is no frame", () => {
+    const s = scene([group("g", "page1", { x: 3, y: 4 })]);
+    expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 3, y: 4 });
   });
 });
 
