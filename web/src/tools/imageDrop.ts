@@ -136,8 +136,17 @@ export async function dropImages(
   // Misura e upload in PARALLELO fra i file (sono indipendenti e ognuno è un
   // giro di rete), ma il risultato resta indicizzato: l'ordine dei nodi creati
   // è quello dei file rilasciati, non quello in cui il server ha risposto.
+  //
+  // Ogni esito riuscito si porta dietro l'INDICE del file da cui viene. È
+  // l'unico modo di risalire al file dopo che i falliti sono stati scartati:
+  // reindicizzare `files` con la posizione nell'elenco filtrato significa
+  // leggere il nome del file SBAGLIATO appena uno dei precedenti fallisce -- e
+  // quel nome finisce in un op CreateNode, cioè sul disco e nel pannello.
   const results = await Promise.all(
-    files.map(async (file): Promise<{ ref: AssetRef; size: NaturalSize } | string> => {
+    files.map(async (
+      file,
+      index,
+    ): Promise<{ ref: AssetRef; size: NaturalSize; index: number } | string> => {
       // Il tipo dichiarato dal sistema operativo è un filtro A BUON MERCATO,
       // non l'autorità: serve a non decodificare (e non caricare) il video da
       // due gigabyte che qualcuno ha trascinato per sbaglio. Un tipo VUOTO --
@@ -156,7 +165,7 @@ export async function dropImages(
         return `${file.name || "il file"}: ${NOT_AN_IMAGE}`;
       }
       try {
-        return { ref: await deps.upload(docId, file), size };
+        return { ref: await deps.upload(docId, file), size, index };
       } catch (err) {
         return `${file.name || "il file"}: ${err instanceof Error ? err.message : String(err)}`;
       }
@@ -164,7 +173,9 @@ export async function dropImages(
   );
 
   const failures = results.filter((r): r is string => typeof r === "string");
-  const ok = results.filter((r): r is { ref: AssetRef; size: NaturalSize } => typeof r !== "string");
+  const ok = results.filter(
+    (r): r is { ref: AssetRef; size: NaturalSize; index: number } => typeof r !== "string",
+  );
 
   // Lo store si rilegge ADESSO: fra l'inizio e la fine degli upload l'utente ha
   // continuato a lavorare, e la scena (le order key, un gesto appena aperto,
@@ -179,7 +190,11 @@ export async function dropImages(
   let key = nextOrderKey(scene);
   const ops: Op[] = [];
   const ids: string[] = [];
-  ok.forEach(({ ref, size }, i) => {
+  // `i` è la posizione fra i RIUSCITI e `index` quella fra i file rilasciati:
+  // sono due cose diverse e servono a due cose diverse. Lo scostamento va con
+  // `i`, così tre immagini di cui la prima fallita atterrano attaccate invece
+  // che con un buco; il nome va con `index`, perché è il file a portarlo.
+  ok.forEach(({ ref, size, index }, i) => {
     const id = uuid();
     const box = dropBox(size, { x: point.x + i * STACK_OFFSET, y: point.y + i * STACK_OFFSET });
     ops.push(
@@ -190,7 +205,7 @@ export async function dropImages(
           orderKey: key,
           // Il nome del file come nome del livello: è così che l'utente
           // riconosce l'immagine nel pannello, e non costa niente.
-          name: files[i]?.name ?? "Image",
+          name: files[index]?.name ?? "Image",
           visible: true,
           opacity: 1,
           ...box,

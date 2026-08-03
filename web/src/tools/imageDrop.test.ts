@@ -172,7 +172,60 @@ describe("dropImages", () => {
     );
     expect(ids.length).toBe(1);
     expect(nodes().length).toBe(1);
+    // Il superstite porta il nome del PROPRIO file, non quello del fallito:
+    // scartare i falliti accorcia l'elenco, e riusarne la posizione per leggere
+    // `files` significa leggere il nome sbagliato.
+    expect(nodes()[0].name).toBe("b.png");
     expect(useScene.getState().notice).toBeTruthy();
+  });
+
+  // Il nome finisce in un op CreateNode, cioè sul DISCO (op-log) e nel pannello
+  // livelli: sbagliarlo non è cosmesi passeggera, è un dato persistito storto.
+  it("il nome dei nodi segue i file di ORIGINE anche quando i primi falliscono", async () => {
+    // L'esito è legato al FILE e non all'ordine delle chiamate: gli upload
+    // partono in parallelo, e un test che contasse le chiamate starebbe
+    // asserendo l'ordine di risoluzione invece del comportamento.
+    const ids = await dropImages(
+      [
+        fakeFile("primo-fallito.png", "image/png"),
+        fakeFile("secondo.png", "image/png"),
+        fakeFile("terzo.png", "image/png"),
+      ],
+      { x: 0, y: 0 },
+      deps({
+        upload: async (_docId, file) => {
+          if ((file as File).name === "primo-fallito.png") throw new Error("boom");
+          return { hash: HASH2, size: 1, contentType: "image/png" };
+        },
+      }),
+    );
+
+    expect(ids.length).toBe(2);
+    // Ordinati per x: lo scostamento della pila cresce con la posizione fra i
+    // RIUSCITI, quindi l'ordine sull'asse è quello di creazione.
+    const sorted = nodes().sort((a, b) => a.x - b.x);
+    expect(sorted.map((nd) => nd.name)).toEqual(["secondo.png", "terzo.png"]);
+    // E i due riusciti restano ATTACCATI: lo scostamento non lascia il buco del
+    // file fallito.
+    expect(sorted[1].x - sorted[0].x).toBe(STACK_OFFSET);
+  });
+
+  // Lo specchio del caso sopra: quando fallisce uno in MEZZO, il nome dell'ultimo
+  // file non deve sparire dietro quello del precedente.
+  it("il nome dei nodi segue i file di ORIGINE anche con un buco in mezzo", async () => {
+    const ids = await dropImages(
+      [
+        fakeFile("primo.png", "image/png"),
+        fakeFile("in-mezzo.txt", "text/plain"),
+        fakeFile("ultimo.png", "image/png"),
+      ],
+      { x: 0, y: 0 },
+      deps(),
+    );
+
+    expect(ids.length).toBe(2);
+    const sorted = nodes().sort((a, b) => a.x - b.x);
+    expect(sorted.map((nd) => nd.name)).toEqual(["primo.png", "ultimo.png"]);
   });
 
   it("a gesto APERTO il rilascio non fa niente", async () => {
