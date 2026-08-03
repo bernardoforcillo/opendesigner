@@ -1053,36 +1053,49 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   //    più il mark che permetteva a un rifiuto di riavvolgerle;
   //  - `disowned`: gli echi che potevano revocare quei rollback appartengono a
   //    una history che il server ha compattato e non rimanderà.
-  // La selezione invece si POTA (non si svuota): gli id che lo snapshot ancora
-  // contiene restano legittimamente selezionati.
+  // La selezione invece si POTA (non si svuota): gli id ancora RAGGIUNGIBILI
+  // dalla pagina corrente restano legittimamente selezionati -- lo stesso
+  // scoping-per-pagina di rebuild (pruneSelectionToPage), non la sola esistenza,
+  // altrimenti un nodo che lo snapshot mostra su un'ALTRA pagina resterebbe
+  // selezionato con cornice e maniglie disegnate sul vuoto.
   //
   // `discardedReason`, se passato, è il messaggio da mostrare quando la
   // sostituzione butta via lavoro non confermato: senza, le modifiche
   // ottimistiche sparirebbero dal canvas con `lastError` nullo -- nessun banner,
   // nessuna spiegazione.
   setScene: (s, discardedReason) =>
-    set((st) => ({
-      scene: s,
-      confirmed: s,
-      pending: [],
-      history: [],
-      undoStack: [],
-      redoStack: [],
-      canUndo: false,
-      canRedo: false,
-      // Gli op che il filtro conosceva appartenevano a voci che questa
-      // sostituzione ha appena buttato via: niente da filtrare, e nessuna
-      // ragione di tenerli in vita.
-      stale: new WeakSet<Op>(),
-      disowned: [],
-      notice: null,
-      selection: s ? pruneSelection(st.selection, s) : [],
+    set((st) => {
       // Un nuovo documento può avere altre pagine: si tiene la corrente se
       // esiste ancora, altrimenti la prima. Al bootstrap (currentPageId null)
-      // diventa la prima pagina del documento.
-      currentPageId: s ? validCurrentPage(s.pages, st.currentPageId) : null,
-      lastError: discardedReason !== undefined && st.pending.length > 0 ? discardedReason : null,
-    })),
+      // diventa la prima pagina del documento. Risolta PRIMA della selezione,
+      // esattamente come in rebuild: quest'ultima si pota contro la pagina
+      // EFFETTIVA (quella su cui il documento ripiega), non contro quella
+      // vecchia ormai sparita.
+      const pageId = s ? validCurrentPage(s.pages, st.currentPageId) : null;
+      return {
+        scene: s,
+        confirmed: s,
+        pending: [],
+        history: [],
+        undoStack: [],
+        redoStack: [],
+        canUndo: false,
+        canRedo: false,
+        // Gli op che il filtro conosceva appartenevano a voci che questa
+        // sostituzione ha appena buttato via: niente da filtrare, e nessuna
+        // ragione di tenerli in vita.
+        stale: new WeakSet<Op>(),
+        disowned: [],
+        notice: null,
+        // Scoping-per-pagina come rebuild (non la sola esistenza): uno snapshot
+        // di resync in cui un nodo selezionato è passato a un'altra pagina lo
+        // lascia esistente ma non più raggiungibile da pageId, e va tolto --
+        // altrimenti cornice/maniglie/pannello restano appesi al vuoto.
+        selection: s ? pruneSelectionToPage(st.selection, s, pageId) : [],
+        currentPageId: pageId,
+        lastError: discardedReason !== undefined && st.pending.length > 0 ? discardedReason : null,
+      };
+    }),
   setCamera: (c) => set({ camera: c }),
   setSync: (s) => set({ sync: s }),
 
@@ -1192,14 +1205,20 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       // endGesture chiude il gesto PRIMA di inviare e undo/redo sono no-op
       // durante un drag -- quindi non c'è anteprima da scavalcare.)
       const scene = applyOp(st.scene, op);
+      // Un op OTTIMISTICO può cambiare le pagine (una CreatePage/DeletePage
+      // locale prima ancora dell'eco): la pagina corrente si corregge subito,
+      // come fa rebuild per i record autorevoli. Risolta PRIMA della selezione,
+      // che si pota contro di essa.
+      const currentPageId = validCurrentPage(scene.pages, st.currentPageId);
       return {
         scene,
         pending: [...st.pending, { opId: op.opId, op }],
-        selection: pruneSelection(st.selection, scene),
-        // Un op OTTIMISTICO può cambiare le pagine (una CreatePage/DeletePage
-        // locale prima ancora dell'eco): la pagina corrente si corregge subito,
-        // come fa rebuild per i record autorevoli.
-        currentPageId: validCurrentPage(scene.pages, st.currentPageId),
+        // Scoping-per-pagina come rebuild/setScene, non la sola esistenza: un op
+        // locale che sposta il nodo selezionato fuori dalla pagina corrente lo
+        // toglie dalla selezione. Rende l'invariante "selection ⊆ raggiungibili
+        // da currentPage" airtight anche sul percorso del submit.
+        selection: pruneSelectionToPage(st.selection, scene, currentPageId),
+        currentPageId,
       };
     }),
 
