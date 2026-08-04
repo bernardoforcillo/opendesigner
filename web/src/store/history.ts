@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbTextStyle, toPbSubPaths, type SceneState } from "./types";
+import { toPbNode, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Primitive di undo: dato lo stato PRIMA di un op, l'op che lo annulla.
@@ -224,6 +224,40 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "setVectorPath", value: { id, subpaths: toPbSubPaths(prev.vector.subpaths) } },
+      })];
+    }
+    // --- componenti / istanze (M4) ------------------------------------------
+    case "createComponent":
+      // NON annullabile in M4 (minimo): il proto non ha un op DeleteComponent,
+      // quindi non esiste un inverso da restituire. Ritorna null -- come un op
+      // che non cambia la scena -- finché una traccia futura non aggiunge la
+      // cancellazione di un componente. (Registrare un componente non tocca
+      // `nodes`: il master era già lì, quindi l'undo della sua create resta
+      // quello del nodo, non del componente.)
+      return null;
+    case "setInstanceOverride": {
+      const { instanceId, override } = op.kind.value;
+      const prev = scene.nodes[instanceId];
+      // Null quando l'op diretto sarebbe rifiutato (parità con applyOp/core):
+      // nodo inesistente, non-istanza, o master_node_id vuoto -- la scena non
+      // cambia, quindi non c'è niente da annullare.
+      if (!prev || prev.kind !== "instance" || !prev.instance) return null;
+      if (!override || override.masterNodeId === "") return null;
+      // L'inverso RI-IMPOSTA l'override PRECEDENTE per quel master_node_id, letto
+      // dallo scene pre-apply: se ce n'era uno, l'undo lo rimette (i flag
+      // *_present si ricavano dalla presenza dei campi Lite, vedi
+      // toPbInstanceOverride, ed è LOSSLESS); se non ce n'era, l'inverso è una
+      // RIMOZIONE -- un SetInstanceOverride con nessun *_present, che toglie
+      // esattamente ciò che l'op diretto aveva aggiunto. In entrambi i casi il
+      // master_node_id resta quello dell'op diretto (già verificato non vuoto),
+      // quindi l'inverso non viene a sua volta rifiutato.
+      const existing = prev.instance.overrides.find((o) => o.masterNodeId === override.masterNodeId);
+      const invOverride = existing
+        ? toPbInstanceOverride(existing)
+        : { masterNodeId: override.masterNodeId };
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setInstanceOverride", value: { instanceId, override: invOverride } },
       })];
     }
     default:

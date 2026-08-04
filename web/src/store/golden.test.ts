@@ -34,6 +34,13 @@ describe("golden parity", () => {
       });
       const expected = fromDocument(fromJson(DocumentSchema, raw.expected));
       expect(scene.nodes).toEqual(expected.nodes);
+      // I COMPONENTI fanno parte del documento quanto i nodi: dal lato Go il
+      // confronto è un proto.Equal sull'intero Document (Document.components
+      // compreso), quindi una fixture con op sui componenti
+      // (createComponent/setInstanceOverride) proverebbe la parità solo a metà se
+      // qui si guardassero i soli nodi. Un master referenziato per rootNodeId,
+      // mai copiato.
+      expect(scene.components).toEqual(expected.components);
       // Le PAGINE fanno parte del documento quanto i nodi: dal lato Go il
       // confronto è un proto.Equal sull'intero Document, quindi una fixture con
       // op sulle pagine (createPage/deletePage/renamePage) proverebbe la parità

@@ -4,6 +4,7 @@ import type {
   Document, Node as PbNode, Paint as PbPaint, Stroke as PbStroke,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
+  InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
 } from "../gen/opendesigner/v1/opendesigner_pb";
 
 export interface PageLite { id: string; name: string; }
@@ -76,6 +77,38 @@ export interface AnchorLite {
 export interface SubPathLite { anchors: AnchorLite[]; closed: boolean; }
 export interface VectorLite { subpaths: SubPathLite[]; }
 
+// M4 — un override per-istanza su UN nodo del master, APPIATTITO come le altre
+// Lite. La PRESENZA è l'optional, non due flag booleani: `fills` è definito se e
+// solo se il proto ha fills_present, `text` se e solo se text_present. Così
+// l'ASSENZA del campo nel modello È il "non sovrascritto" del proto, e distingue
+// "non sovrascrivo il fill" da "sovrascrivo il fill a lista vuota" (o il testo a
+// stringa vuota) senza portarsi dietro un fill che l'utente non ha toccato --
+// come style_present per SetText. Un override senza né fills né text non esiste
+// nel modello: nel proto è la RIMOZIONE (torna a ereditare dal master), e
+// applyOp/core lo tolgono invece di conservarlo.
+export interface InstanceOverrideLite {
+  masterNodeId: string;
+  fills?: FillLite[];
+  text?: string;
+}
+
+// M4 — un'istanza di un componente: il componentId che rende, più gli override
+// per nodo del master. I figli NON stanno qui (né in `nodes`): sono derivati dal
+// master a ogni lettura (renderer, hit-test, bounds).
+export interface InstanceLite {
+  componentId: string;
+  overrides: InstanceOverrideLite[];
+}
+
+// M4 — un componente indicizzato in SceneState.components (componentId ->
+// master): la radice del master, che è un nodo VIVO in `nodes`, più un nome. Non
+// copia il sottoalbero -- lo referenzia, quindi la propagazione master->istanze
+// è gratis.
+export interface ComponentLite {
+  rootNodeId: string;
+  name: string;
+}
+
 export interface NodeLite {
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
@@ -98,7 +131,10 @@ export interface NodeLite {
   // (il box è suo, non l'unione dei figli), disegnato e colpito come una forma.
   // È l'artboard, e `clipsContent` dice se ritaglia i figli al proprio box.
   fills: FillLite[]; strokes: StrokeLite[];
-  kind: "rect" | "ellipse" | "text" | "image" | "vector" | "unknown" | "group" | "frame"; cornerRadius: number;
+  // "instance" è un'ISTANZA di un componente (proto: InstanceNode = 37): sta nel
+  // oneof `shape` come le forme, ma il suo sottoalbero è VIRTUALE -- derivato dal
+  // master a ogni lettura, mai in `nodes`. Il payload è in `instance`.
+  kind: "rect" | "ellipse" | "text" | "image" | "vector" | "unknown" | "group" | "frame" | "instance"; cornerRadius: number;
   // Significativo se e solo se kind === "frame" (per tutti gli altri è false,
   // come il default proto3): il ritaglio vale per il disegno, per l'hit-test e
   // per la banda elastica insieme -- ciò che non si vede non si clicca.
@@ -112,6 +148,10 @@ export interface NodeLite {
   // Presente se e solo se kind === "vector", per la stessa ragione: la
   // geometria è un ramo del oneof `shape`, quindi esclusiva con le altre forme.
   vector?: VectorLite;
+  // Presente se e solo se kind === "instance", ed esclusivo con le altre forme
+  // per la stessa ragione (è un ramo del oneof `shape`). Porta il componentId
+  // reso e gli override per nodo del master.
+  instance?: InstanceLite;
   // Presente se e solo se kind === "unknown": il ramo del oneof così com'è
   // arrivato, OPACO. Non lo si legge mai -- serve solo a toPbNode per rimetterlo
   // dov'era. Senza, l'inverso di una delete (history.invertOp ricostruisce il
@@ -123,10 +163,14 @@ export interface NodeLite {
 export interface SceneState {
   id: string; name: string; schemaVersion: number;
   pages: PageLite[]; nodes: Record<string, NodeLite>;
+  // M4 — componenti indicizzati per id (componentId -> master). Fa parte del
+  // documento quanto `nodes` e `pages`: un CreateComponent lo popola, e
+  // fromDocument lo ricostruisce dallo snapshot.
+  components: Record<string, ComponentLite>;
 }
 
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: {}, components: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -189,6 +233,23 @@ export function toVectorLite(v: PbVectorNode): VectorLite {
   return { subpaths: toSubPathsLite(v.subpaths) };
 }
 
+// M4 — un override del filo APPIATTITO. La PRESENZA segue i flag *_present del
+// proto, non i valori: `fills` compare solo se fills_present, `text` solo se
+// text_present. Così l'assenza del campo nel modello È il "non sovrascritto" del
+// proto (vedi InstanceOverrideLite), e un override di solo testo non si porta
+// dietro un fill vuoto (né viceversa). Inverso esatto di toPbInstanceOverride.
+export function toInstanceOverrideLite(o: PbInstanceOverride): InstanceOverrideLite {
+  return {
+    masterNodeId: o.masterNodeId,
+    ...(o.fillsPresent ? { fills: o.fills.map(toFillLite) } : {}),
+    ...(o.textPresent ? { text: o.text } : {}),
+  };
+}
+
+export function toInstanceLite(n: PbInstanceNode): InstanceLite {
+  return { componentId: n.componentId, overrides: n.overrides.map(toInstanceOverrideLite) };
+}
+
 // Inverso di toSubPathsLite. Come toPbTextStyle ritorna la forma di INIT (non
 // messaggi creati): i chiamanti la annidano dentro il `create(...)` di un Node
 // (toPbNode) o di un Op (history.invertOp, e il pen tool quando arriverà).
@@ -236,6 +297,24 @@ function toPbPaint(c: FillLite) {
   return { kind: { case: "solid" as const, value: { color: { r: c.r, g: c.g, b: c.b, a: c.a } } } };
 }
 
+// Inverso di toInstanceOverrideLite. Ritorna la forma di INIT (non un messaggio
+// creato): i chiamanti la annidano dentro `create(...)` di un Node (toPbNode) o
+// di un Op (history.invertOp e applyOp non ne hanno bisogno, ma il pen dei
+// componenti sì). I flag *_present si ricavano dalla PRESENZA del campo Lite --
+// `fills` definito => fills_present, `text` definito => text_present -- così il
+// round-trip con toInstanceOverrideLite è LOSSLESS: un override di solo fill
+// non guadagna un testo vuoto passando di qui, né perde la distinzione fra
+// "fill assente" e "fill svuotato".
+export function toPbInstanceOverride(o: InstanceOverrideLite) {
+  return {
+    masterNodeId: o.masterNodeId,
+    fills: o.fills ? toPbFills(o.fills) : [],
+    fillsPresent: o.fills !== undefined,
+    text: o.text ?? "",
+    textPresent: o.text !== undefined,
+  };
+}
+
 // Un Paint del filo APPIATTITO nel colore che il renderer disegna. Una funzione
 // sola per riempimenti e tratti: sono lo stesso messaggio nel proto, e due
 // appiattimenti indipendenti divergerebbero al primo paint non-solid (oggi
@@ -275,6 +354,7 @@ function kindOf(shape: PbNode["shape"]): NodeLite["kind"] {
     case "vector": return "vector";
     case "group": return "group";
     case "frame": return "frame";
+    case "instance": return "instance";
     default: return "unknown";
   }
 }
@@ -293,6 +373,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(n.shape.case === "text" ? { text: toTextLite(n.shape.value) } : {}),
     ...(n.shape.case === "image" ? { image: { assetHash: n.shape.value.assetHash } } : {}),
     ...(n.shape.case === "vector" ? { vector: toVectorLite(n.shape.value) } : {}),
+    ...(n.shape.case === "instance" ? { instance: toInstanceLite(n.shape.value) } : {}),
     // Il ramo sconosciuto viaggia intero e intatto: vedi NodeLite.unknownShape.
     ...(kind === "unknown" ? { unknownShape: n.shape } : {}),
   };
@@ -334,6 +415,17 @@ export function toPbNode(n: NodeLite): PbNode {
         // da un path -- che dentro un undo sarebbe un cambio di forma
         // silenzioso. Un path svuotato resta un path.
         ? { case: "vector" as const, value: { subpaths: toPbSubPaths(n.vector?.subpaths ?? []) } }
+      : n.kind === "instance"
+        // Un'istanza: il componentId reso più gli override per nodo del master,
+        // ricostruiti con i flag *_present dalla presenza del campo Lite (vedi
+        // toPbInstanceOverride). Come per gli altri rami, un `instance` mancante
+        // ricade su componentId vuoto e nessun override -- MAI su un rettangolo:
+        // un cambio di forma silenzioso dentro un undo di una delete sarebbe
+        // molto peggio di un'istanza che punta al vuoto.
+        ? { case: "instance" as const, value: {
+            componentId: n.instance?.componentId ?? "",
+            overrides: (n.instance?.overrides ?? []).map(toPbInstanceOverride),
+          } }
       // Un gruppo non ha campi propri: ciò che lo rende un gruppo è il caso del
       // oneof (più i figli che gli puntano). Il ramo esiste comunque, e non è
       // pedanteria: senza, l'inverso di una delete ricostruirebbe un
@@ -365,5 +457,12 @@ export function toPbNode(n: NodeLite): PbNode {
 export function fromDocument(doc: Document): SceneState {
   const nodes: Record<string, NodeLite> = {};
   for (const [id, n] of Object.entries(doc.nodes)) nodes[id] = toNodeLite(n);
-  return { id: doc.id, name: doc.name, schemaVersion: doc.schemaVersion, pages: doc.pages.map((p) => ({ id: p.id, name: p.name })), nodes };
+  // I componenti fanno parte del documento quanto i nodi: un master non copiato
+  // ma referenziato per rootNodeId (vedi ComponentLite).
+  const components: Record<string, ComponentLite> = {};
+  for (const [id, c] of Object.entries(doc.components)) components[id] = { rootNodeId: c.rootNodeId, name: c.name };
+  return {
+    id: doc.id, name: doc.name, schemaVersion: doc.schemaVersion,
+    pages: doc.pages.map((p) => ({ id: p.id, name: p.name })), nodes, components,
+  };
 }

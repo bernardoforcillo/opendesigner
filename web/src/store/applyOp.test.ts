@@ -2,6 +2,7 @@ import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import {
   OpSchema, NodeSchema, SetTextSchema, SetVectorPathSchema, VectorNodeSchema, TextAlign,
+  InstanceOverrideSchema,
 } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
@@ -353,26 +354,25 @@ describe("applyOp: corner_radius", () => {
 // distrugge la geometria. Questo lato aveva la guardia speculare (`cur.kind !==
 // "rect"`) ma la derivava da un `kind` che RIPIEGAVA su "rect" per ogni forma
 // sconosciuta: la stessa divergenza, semplicemente specchiata -- op accettato
-// qui, ErrNotRectNode di là. Le altre tre tracce stanno aggiungendo forme al
-// oneof adesso (33 Group, 34 Frame, 35 Image, 37 Instance), quindi il caso non è
-// ipotetico: è il giorno del merge.
-
-// Una forma PRESENTE nel oneof che questo modello non conosce. Il cast è l'unico
-// modo di scriverla oggi (il generato non ha ancora GroupNode) ed è fedele a ciò
-// che il decoder produrrà il giorno in cui ce l'avrà: `shape.case` valorizzato
-// con un nome che store/types.ts non elenca.
-// Un Node con una forma che QUESTO build non sa mappare su un NodeLite["kind"].
-// group/frame sono ORA forme conosciute (traccia 1), quindi non servono più da
-// esempio di "sconosciuto": si fabbrica un ramo del oneof che il modello non
-// nomina (`instance`, riservato nel proto per una traccia futura). kindOf ci
-// ricade su "unknown" e toNodeLite/toPbNode lo devono conservare OPACO, senza
-// appiattirlo su un rettangolo.
+// qui, ErrNotRectNode di là.
+//
+// Dopo M4 OGNI ramo del oneof `shape` generato mappa su un kind noto (rect,
+// ellipse, text, group, frame, image, vector, instance): "unknown" non è più
+// raggiungibile da una forma che QUESTO build dichiara. Resta però raggiungibile
+// -- ed è ciò che questi test difendono -- da una forma che un server PIÙ NUOVO
+// manda e che questo build non conosce ancora: `shape.case` valorizzato con un
+// nome che store/types.ts non elenca. È la compatibilità in avanti, e va provata
+// col solo modo di fabbricarla oggi (un cast a un case che il generato non ha).
+// kindOf ci ricade su "unknown" e toNodeLite/toPbNode lo devono conservare
+// OPACO, senza appiattirlo su un rettangolo. (Il ramo `instance`, che PRIMA di
+// M4 questi test usavano come finto sconosciuto, è ora una forma vera: vedi il
+// blocco "istanza e componenti" più sotto.)
 function nodeWithUnknownShape(id: string) {
   const n = create(NodeSchema, {
     id, parentId: "page1", orderKey: "a0", name: "Sconosciuto", visible: true, opacity: 1,
     x: 10, y: 20, width: 100, height: 80,
   });
-  (n as unknown as { shape: unknown }).shape = { case: "instance", value: { children: ["c1"] } };
+  (n as unknown as { shape: unknown }).shape = { case: "reservedShape", value: { marker: "opaque" } };
   return n;
 }
 
@@ -429,10 +429,138 @@ describe("applyOp: forma sconosciuta", () => {
     // (NodeLite.unknownShape) lo rimette esattamente dov'era.
     const pb = nodeWithUnknownShape("g1");
     const back = toPbNode(toNodeLite(pb));
-    expect(back.shape.case).toBe("instance");
-    expect(back.shape.value).toEqual({ children: ["c1"] });
+    expect(back.shape.case).toBe("reservedShape");
+    expect(back.shape.value).toEqual({ marker: "opaque" });
     // ...e il resto del nodo sopravvive al giro come per ogni altra forma.
     expect(back).toMatchObject({ id: "g1", x: 10, y: 20, width: 100, height: 80 });
+  });
+});
+
+// --- istanza e componenti (M4) ---------------------------------------------
+// Speculari a core.applyCreateComponent / applyCreate (ramo istanza) /
+// applySetInstanceOverride (Go). Le fixture testdata/golden/components.json e
+// component_rejections.json provano la parità end-to-end da entrambi i lati;
+// questi test fissano il lato TS con la granularità che una fixture non ha:
+// quale stato resta INVARIATO su un op rifiutato (stesso oggetto, così i
+// selettori non si svegliano), il tipo del nodo, e il round-trip LOSSLESS degli
+// override (che le golden non vedono, confrontando entrambi i lati dopo la STESSA
+// toNodeLite).
+
+const RED = { r: 1, g: 0, b: 0, a: 1 };
+
+function createComponentOp(componentId: string, rootNodeId: string, name: string) {
+  return create(OpSchema, {
+    opId: "cc-" + componentId, docId: "doc1",
+    kind: { case: "createComponent", value: { componentId, rootNodeId, name } },
+  });
+}
+
+function createInstanceOp(id: string, componentId: string, parentId = "page1") {
+  const node = create(NodeSchema, {
+    id, parentId, orderKey: "a0", name: "Instance", visible: true, opacity: 1,
+    x: 5, y: 6, width: 0, height: 0,
+    shape: { case: "instance", value: { componentId } },
+  });
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+function setInstanceOverrideOp(instanceId: string, override: MessageInitShape<typeof InstanceOverrideSchema>) {
+  return create(OpSchema, {
+    opId: "sio-" + instanceId, docId: "doc1",
+    kind: { case: "setInstanceOverride", value: { instanceId, override } },
+  });
+}
+
+describe("applyOp: istanza e componenti", () => {
+  it("registra un componente e crea un'istanza che lo referenzia", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("m1", 0, 0));
+    s = applyOp(s, createComponentOp("cmp1", "m1", "Button"));
+    expect(s.components["cmp1"]).toEqual({ rootNodeId: "m1", name: "Button" });
+    s = applyOp(s, createInstanceOp("inst1", "cmp1"));
+    expect(s.nodes["inst1"].kind).toBe("instance");
+    // Nessun figlio in `nodes`: il sottoalbero è VIRTUALE (derivato dal master).
+    expect(s.nodes["inst1"].instance).toEqual({ componentId: "cmp1", overrides: [] });
+  });
+
+  it("rifiuta createComponent con id vuoto, id già preso o radice inesistente (parità con Go)", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("m1", 0, 0));
+    s = applyOp(s, createComponentOp("cmp1", "m1", "Button"));
+    // id già preso = ErrComponentExists; radice non in nodes = ErrNodeNotFound;
+    // id vuoto = rifiutato in Go. Stesso OGGETTO su ogni rifiuto.
+    expect(applyOp(s, createComponentOp("cmp1", "m1", "Doppione"))).toBe(s);
+    expect(applyOp(s, createComponentOp("cmp2", "ghost", "X"))).toBe(s);
+    expect(applyOp(s, createComponentOp("", "m1", "Vuoto"))).toBe(s);
+  });
+
+  it("rifiuta un'istanza di un componente inesistente (parità: ErrComponentNotFound)", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("m1", 0, 0));
+    // Il server la rifiuta: renderebbe il vuoto e nessuna pagina se ne
+    // accorgerebbe. Stesso oggetto, scena invariata.
+    expect(applyOp(s, createInstanceOp("inst1", "ghost"))).toBe(s);
+  });
+
+  it("imposta, sostituisce e rimuove un override (upsert per master_node_id)", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("m1", 0, 0));
+    s = applyOp(s, createComponentOp("cmp1", "m1", "Button"));
+    s = applyOp(s, createInstanceOp("inst1", "cmp1"));
+    // fill: `fills` presente <=> fillsPresent, quindi l'override porta solo fills.
+    s = applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "m1", fills: [{ kind: { case: "solid", value: { color: RED } } }], fillsPresent: true }));
+    expect(s.nodes["inst1"].instance?.overrides).toEqual([{ masterNodeId: "m1", fills: [RED] }]);
+    // sostituzione con testo: l'upsert TOGLIE il fill con lo stesso master e
+    // rimette solo il nuovo -- nessun residuo, e `text` presente <=> textPresent.
+    s = applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "m1", text: "Ciao", textPresent: true }));
+    expect(s.nodes["inst1"].instance?.overrides).toEqual([{ masterNodeId: "m1", text: "Ciao" }]);
+    // rimozione: né fills né text presenti => l'override sparisce, il nodo resta
+    // un'istanza (torna a ereditare dal master).
+    s = applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "m1" }));
+    expect(s.nodes["inst1"].instance?.overrides).toEqual([]);
+    expect(s.nodes["inst1"].kind).toBe("instance");
+  });
+
+  it("rifiuta un override su un non-istanza, su un id inesistente, e con master_node_id vuoto (parità con Go)", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("m1", 0, 0));
+    // m1 è un rettangolo: ErrNotInstanceNode. Un id inesistente: ErrNodeNotFound.
+    expect(applyOp(s, setInstanceOverrideOp("m1", { masterNodeId: "x", text: "y", textPresent: true }))).toBe(s);
+    expect(applyOp(s, setInstanceOverrideOp("ghost", { masterNodeId: "x", text: "y", textPresent: true }))).toBe(s);
+    s = applyOp(s, createComponentOp("cmp1", "m1", "Button"));
+    s = applyOp(s, createInstanceOp("inst1", "cmp1"));
+    // master_node_id vuoto: Go lo rifiuta esplicitamente.
+    expect(applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "", text: "y", textPresent: true }))).toBe(s);
+  });
+
+  // La parte che le golden NON vedono: il round-trip degli override. `fills`
+  // presente <=> fills_present e `text` presente <=> text_present in ENTRAMBE le
+  // direzioni, così un undo di una delete (history.invertOp passa da toPbNode)
+  // non degrada un'istanza né perde/inventa override.
+  it("un'istanza con override sopravvive al round-trip toNodeLite/toPbNode (LOSSLESS)", () => {
+    const node = create(NodeSchema, {
+      id: "inst1", parentId: "page1", orderKey: "a0", name: "Instance", visible: true, opacity: 1,
+      x: 5, y: 6, width: 0, height: 0,
+      shape: { case: "instance", value: { componentId: "cmp1", overrides: [
+        { masterNodeId: "m1", fills: [{ kind: { case: "solid", value: { color: RED } } }], fillsPresent: true },
+        { masterNodeId: "lbl", text: "Etichetta", textPresent: true },
+      ] } },
+    });
+    const lite = toNodeLite(node);
+    expect(lite.kind).toBe("instance");
+    // Un override di solo fill NON porta un testo vuoto; uno di solo testo NON
+    // porta un fill vuoto: è la distinzione dei flag *_present resa dall'assenza.
+    expect(lite.instance).toEqual({
+      componentId: "cmp1",
+      overrides: [
+        { masterNodeId: "m1", fills: [RED] },
+        { masterNodeId: "lbl", text: "Etichetta" },
+      ],
+    });
+    const back = toPbNode(lite);
+    if (back.shape.case !== "instance") throw new Error("atteso instance");
+    expect(back.shape.value.componentId).toBe("cmp1");
+    // I flag *_present si ricostruiscono dalla presenza del campo Lite.
+    expect(back.shape.value.overrides).toMatchObject([
+      { masterNodeId: "m1", fillsPresent: true, textPresent: false, text: "" },
+      { masterNodeId: "lbl", fillsPresent: false, textPresent: true, text: "Etichetta" },
+    ]);
+    expect(back.shape.value.overrides[0].fills[0]?.kind).toMatchObject({ case: "solid" });
   });
 });
 

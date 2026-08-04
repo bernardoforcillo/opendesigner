@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite, toSubPathsLite } from "./types";
+import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
@@ -30,6 +30,13 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // canvas e nel pannello livelli, ma presente nella mappa -- e il server
       // l'ha comunque rifiutato: crearlo qui è la solita divergenza silenziosa.
       if (!parentExists(state, pb.parentId)) return state;
+      // Un'ISTANZA deve referenziare un componente ESISTENTE: parità con
+      // core.applyCreate (Go), che risponde ErrComponentNotFound. Senza, l'istanza
+      // renderebbe il vuoto -- il suo sottoalbero è derivato dal master -- e il
+      // server l'ha comunque rifiutata: crearla qui è la stessa divergenza
+      // silenziosa dei rami parent/id-già-preso. Ordine come in Go: prima il
+      // parent, poi il componente.
+      if (pb.shape.case === "instance" && !state.components[pb.shape.value.componentId]) return state;
       return { ...state, nodes: { ...state.nodes, [pb.id]: toNodeLite(pb) } };
     }
     case "setProps": {
@@ -236,6 +243,41 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // il ripiego per un nome vuoto è della UI (come per Node.name).
       pages[i] = { ...pages[i], name };
       return { ...state, pages };
+    }
+    // --- componenti / istanze (M4) ------------------------------------------
+    // Parità con core.applyCreateComponent / applySetInstanceOverride (Go).
+    case "createComponent": {
+      const { componentId, rootNodeId, name } = op.kind.value;
+      // id vuoto (Go risponde ErrComponentNotFound "(empty id)"), id GIÀ PRESO
+      // (ErrComponentExists) o radice non in `nodes` (ErrNodeNotFound): in tutti
+      // e tre i casi il server rifiuta l'op e non registra nulla, quindi qui la
+      // scena resta invariata (stesso oggetto, così i selettori non si svegliano
+      // a vuoto).
+      if (componentId === "" || state.components[componentId] || !state.nodes[rootNodeId]) return state;
+      // Non copia il sottoalbero: lo referenzia. Il master resta vivo in `nodes`,
+      // e la propagazione master->istanze è quindi gratis.
+      return { ...state, components: { ...state.components, [componentId]: { rootNodeId, name } } };
+    }
+    case "setInstanceOverride": {
+      const { instanceId, override } = op.kind.value;
+      const cur = state.nodes[instanceId];
+      // Nodo inesistente = ErrNodeNotFound; nodo NON-istanza = ErrNotInstanceNode
+      // (un override su un rettangolo è un op sul nodo sbagliato, non un campo da
+      // riempire); master_node_id vuoto = rifiutato in Go. In tutti i casi scena
+      // invariata.
+      if (!cur) return state;
+      if (cur.kind !== "instance" || !cur.instance) return state;
+      if (!override || override.masterNodeId === "") return state;
+      // Upsert per master_node_id, ESATTAMENTE come core.applySetInstanceOverride:
+      // togli l'override con lo stesso master, poi rimetti quello nuovo SOLO se
+      // sovrascrive davvero qualcosa (fills_present || text_present). Altrimenti
+      // l'op È una rimozione -- il nodo del master torna a ereditare dal master.
+      const kept = cur.instance.overrides.filter((o) => o.masterNodeId !== override.masterNodeId);
+      if (override.fillsPresent || override.textPresent) kept.push(toInstanceOverrideLite(override));
+      return {
+        ...state,
+        nodes: { ...state.nodes, [instanceId]: { ...cur, instance: { ...cur.instance, overrides: kept } } },
+      };
     }
     default:
       return state;

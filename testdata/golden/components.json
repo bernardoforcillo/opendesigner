@@ -1,0 +1,84 @@
+{
+  "docId": "doc1",
+  "ops": [
+    { "opId": "op1", "docId": "doc1", "createNode": { "node": {
+      "id": "m1", "parentId": "page1", "orderKey": "a000001", "name": "Button master",
+      "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 120, "height": 40,
+      "rect": { "cornerRadius": 4 }
+    } } },
+    { "opId": "op2", "docId": "doc1", "createNode": { "node": {
+      "id": "m1lbl", "parentId": "m1", "orderKey": "a000001", "name": "Label",
+      "visible": true, "opacity": 1, "x": 8, "y": 8, "width": 104, "height": 24,
+      "text": {
+        "content": "Master",
+        "style": { "fontFamily": "Inter", "fontSize": 16, "fontWeight": "400", "lineHeight": 1.2, "align": "TEXT_ALIGN_LEFT" }
+      }
+    } } },
+
+    { "opId": "op3", "docId": "doc1", "createComponent": {
+      "componentId": "cmp1", "rootNodeId": "m1", "name": "Button"
+    } },
+
+    { "opId": "op4", "docId": "doc1", "createNode": { "node": {
+      "id": "inst1", "parentId": "page1", "orderKey": "a000002", "name": "Istanza",
+      "visible": true, "opacity": 1, "x": 200, "y": 50,
+      "instance": { "componentId": "cmp1" }
+    } } },
+
+    { "opId": "op5", "docId": "doc1", "createNode": { "node": {
+      "id": "bad", "parentId": "page1", "orderKey": "a000003", "name": "Istanza rotta",
+      "visible": true, "opacity": 1, "x": 0, "y": 0,
+      "instance": { "componentId": "nope" }
+    } } },
+
+    { "opId": "op6", "docId": "doc1", "setInstanceOverride": {
+      "instanceId": "inst1",
+      "override": { "masterNodeId": "m1", "fills": [{ "solid": { "color": { "r": 1, "g": 0, "b": 0, "a": 1 } } }], "fillsPresent": true }
+    } },
+    { "opId": "op7", "docId": "doc1", "setInstanceOverride": {
+      "instanceId": "inst1",
+      "override": { "masterNodeId": "m1", "text": "Ciao", "textPresent": true }
+    } },
+    { "opId": "op8", "docId": "doc1", "setInstanceOverride": {
+      "instanceId": "inst1",
+      "override": { "masterNodeId": "m1lbl", "text": "Etichetta", "textPresent": true }
+    } },
+    { "opId": "op9", "docId": "doc1", "setInstanceOverride": {
+      "instanceId": "inst1",
+      "override": { "masterNodeId": "m1" }
+    } }
+  ],
+  "rejected": [4],
+  "expected": {
+    "id": "doc1", "name": "Untitled", "schemaVersion": 1,
+    "pages": [{ "id": "page1", "name": "Page 1" }],
+    "nodes": {
+      "m1": {
+        "id": "m1", "parentId": "page1", "orderKey": "a000001", "name": "Button master",
+        "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 120, "height": 40,
+        "rect": { "cornerRadius": 4 }
+      },
+      "m1lbl": {
+        "id": "m1lbl", "parentId": "m1", "orderKey": "a000001", "name": "Label",
+        "visible": true, "opacity": 1, "x": 8, "y": 8, "width": 104, "height": 24,
+        "text": {
+          "content": "Master",
+          "style": { "fontFamily": "Inter", "fontSize": 16, "fontWeight": "400", "lineHeight": 1.2, "align": "TEXT_ALIGN_LEFT" }
+        }
+      },
+      "inst1": {
+        "id": "inst1", "parentId": "page1", "orderKey": "a000002", "name": "Istanza",
+        "visible": true, "opacity": 1, "x": 200, "y": 50,
+        "instance": {
+          "componentId": "cmp1",
+          "overrides": [
+            { "masterNodeId": "m1lbl", "text": "Etichetta", "textPresent": true }
+          ]
+        }
+      }
+    },
+    "components": {
+      "cmp1": { "rootNodeId": "m1", "name": "Button" }
+    }
+  }
+}

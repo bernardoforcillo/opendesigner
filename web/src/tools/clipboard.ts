@@ -78,6 +78,12 @@ const KNOWN_KINDS: Record<NodeLite["kind"], boolean> = {
   // rifiutati in blocco su incolla invece di degradati a un rettangolo vuoto.
   group: false,
   frame: false,
+  // Un'istanza (traccia M4) referenzia un componente per id: incollarla in un
+  // documento che quel componente non ha darebbe un nodo che rende il vuoto (e
+  // core.applyCreate lo rifiuterebbe con ErrComponentNotFound). Finché il
+  // clipboard non porta con sé anche il componente, va rifiutata in blocco --
+  // come vector/unknown/group/frame -- invece di degradata a un rettangolo.
+  instance: false,
 };
 
 function isKnownKind(kind: unknown): kind is NodeLite["kind"] {

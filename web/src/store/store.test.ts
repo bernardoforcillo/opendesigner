@@ -263,7 +263,7 @@ describe("selezione scoping-per-pagina (setScene: resync/snapshot)", () => {
     const snapshot: SceneState = {
       id: "doc1", name: "Untitled", schemaVersion: 1,
       pages: [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }],
-      nodes: { n1: rectLite("n1", "page2") },
+      nodes: { n1: rectLite("n1", "page2") }, components: {},
     };
     useScene.getState().setScene(snapshot);
     expect(useScene.getState().scene?.nodes["n1"]).toBeDefined();
@@ -277,7 +277,7 @@ describe("selezione scoping-per-pagina (setScene: resync/snapshot)", () => {
     const snapshot: SceneState = {
       id: "doc1", name: "Untitled", schemaVersion: 1,
       pages: [{ id: "page1", name: "Page 1" }],
-      nodes: { n1: rectLite("n1", "page1") },
+      nodes: { n1: rectLite("n1", "page1") }, components: {},
     };
     useScene.getState().setScene(snapshot);
     expect(useScene.getState().selection).toEqual(["n1"]);
