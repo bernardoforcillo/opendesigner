@@ -1,4 +1,4 @@
-import { useContext, useLayoutEffect, useRef } from "react";
+import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import {
   Label, Radio, RadioGroup, Slider, SliderOutput, SliderStateContext, SliderThumb, SliderTrack,
@@ -9,13 +9,17 @@ import type { AlignCommand } from "../selection/align";
 import { selectionSummary, MIXED } from "../store/selectors";
 import type { Mixed, OrMixed } from "../store/selectors";
 import { frameOriginOf } from "../store/groups";
-import { makeSetPropsOp, makeSetTextOp } from "../tools/ops";
+import { instanceOverrideMap } from "../store/instances";
+import { subtreeOf } from "../store/tree";
+import { makeSetInstanceOverrideOp, makeSetPropsOp, makeSetTextOp } from "../tools/ops";
+import { layerDisplayName } from "./LayersPanel";
 import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
 import type { RgbLite } from "./fields/ColorField";
 import { toPbFills, toPbStrokes } from "../store/types";
 import type {
-  FillLite, NodeLite, SceneState, StrokeAlignLite, StrokeLite, TextAlignLite, TextStyleLite,
+  FillLite, InstanceOverrideLite, NodeLite, SceneState,
+  StrokeAlignLite, StrokeLite, TextAlignLite, TextStyleLite,
 } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -426,6 +430,73 @@ function SectionTitle({ children }: { children: string }) {
   );
 }
 
+// --- OVERRIDE DELLE ISTANZE (M4) --------------------------------------------
+//
+// Quando la selezione è UNA sola istanza, il pannello mostra una sezione
+// "Override": una riga per ogni nodo del MASTER che sia un testo o abbia un
+// riempimento (sottoalbero da components[componentId].rootNodeId, in
+// pre-ordine). Ogni riga mostra il valore EFFETTIVO -- l'override dell'istanza
+// per quel nodo del master se c'è, altrimenti il valore proprio del nodo del
+// master -- e scriverci emette UN SetInstanceOverride.
+//
+// Le due metà dell'override (fills e text) sono INDIPENDENTI: modificare una
+// conserva l'altra così com'era (vedi InstanceOverrideLite), altrimenti un
+// override di solo testo azzererebbe il fill ereditato. Il "Ripristina" emette
+// un override VUOTO, che per il reducer è la RIMOZIONE (il nodo torna a
+// ereditare dal master).
+
+// Campo di testo per il contenuto di un nodo testo del master. Gemello (più
+// semplice) di RenameField/PageRenameField: la sessione ha uno stato suo (il
+// testo digitato) che riparte quando il valore cambia dall'esterno -- commit
+// andato a buon fine, o cambio di selezione. Conferma su Invio o blur, una
+// volta sola.
+function OverrideTextField({
+  label,
+  value,
+  onCommit,
+}: {
+  label: string;
+  value: string;
+  onCommit: (v: string) => void;
+}) {
+  const [draft, setDraft] = useState(value);
+  const done = useRef(false);
+  useEffect(() => {
+    setDraft(value);
+    done.current = false;
+  }, [value]);
+  function settle() {
+    if (done.current) return;
+    done.current = true;
+    // Niente op se il testo non è cambiato: un override "che non cambia niente"
+    // costerebbe un giro di rete e una voce di undo a vuoto.
+    if (draft !== value) onCommit(draft);
+  }
+  return (
+    <div className="flex items-center gap-1.5">
+      <Label className="w-20 shrink-0 select-none truncate text-neutral-400">{label}</Label>
+      <input
+        aria-label={label}
+        value={draft}
+        spellCheck={false}
+        onChange={(e) => setDraft(e.target.value)}
+        onBlur={settle}
+        onKeyDown={(e) => {
+          // Nessun tasto esce da qui: le scorciatoie globali (undo/redo su
+          // window, Escape/Canc su toolManager) non devono agire mentre si
+          // scrive -- stesso stop di LayersPanel/PageBar::RenameField.
+          e.stopPropagation();
+          if (e.key === "Enter") {
+            e.preventDefault();
+            settle();
+          }
+        }}
+        className="w-full min-w-0 rounded border border-neutral-200 bg-white px-1 py-0.5 text-sm outline-none focus:border-sky-500"
+      />
+    </div>
+  );
+}
+
 export function PropertiesPanel() {
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
@@ -478,6 +549,62 @@ export function PropertiesPanel() {
     if (ops.length === 0) return;
     store.beginGesture();
     store.endGesture(ops);
+  }
+
+  // --- OVERRIDE (M4) --------------------------------------------------------
+  // Gli handler rileggono l'istanza FRESCA dallo store: un op nel frattempo
+  // (o un record remoto) può averla cambiata, e la closure di render sarebbe
+  // vecchia. null se la selezione non è più esattamente un'istanza.
+  function currentInstance(): NodeLite | null {
+    const store = useScene.getState();
+    const s = store.scene;
+    if (!s || store.selection.length !== 1) return null;
+    const n = s.nodes[store.selection[0]];
+    return n && n.kind === "instance" && n.instance ? n : null;
+  }
+
+  // Un override = UN gesto, come ogni altra scrittura del pannello.
+  function commitOverride(inst: NodeLite, override: InstanceOverrideLite) {
+    const store = useScene.getState();
+    store.beginGesture();
+    store.endGesture([makeSetInstanceOverrideOp(inst.id, override)]);
+  }
+
+  // Modifica il RIEMPIMENTO effettivo di un nodo del master. Parte dai fills
+  // effettivi (override se c'è, altrimenti quelli del master) e ne sostituisce
+  // solo il PRIMO, tenendo alfa e resto della lista -- come fillOps per i nodi
+  // veri. Conserva il testo dell'override se c'era.
+  function editOverrideFill(masterNodeId: string, rgb: RgbLite) {
+    const store = useScene.getState();
+    const s = store.scene;
+    const inst = currentInstance();
+    if (!s || !inst) return;
+    const master = s.nodes[masterNodeId];
+    if (!master) return;
+    const existing = instanceOverrideMap(inst).get(masterNodeId);
+    const effFills = existing?.fills ?? master.fills;
+    const first: FillLite = { ...rgb, a: effFills[0]?.a ?? 1 };
+    const override: InstanceOverrideLite = { masterNodeId, fills: [first, ...effFills.slice(1)] };
+    if (existing?.text !== undefined) override.text = existing.text;
+    commitOverride(inst, override);
+  }
+
+  // Modifica il CONTENUTO effettivo di un nodo testo del master. Conserva i
+  // fills dell'override se c'erano.
+  function editOverrideText(masterNodeId: string, text: string) {
+    const inst = currentInstance();
+    if (!inst) return;
+    const existing = instanceOverrideMap(inst).get(masterNodeId);
+    const override: InstanceOverrideLite = { masterNodeId, text };
+    if (existing?.fills !== undefined) override.fills = existing.fills;
+    commitOverride(inst, override);
+  }
+
+  // Ripristina un nodo del master: override VUOTO = rimozione (torna a ereditare).
+  function resetOverride(masterNodeId: string) {
+    const inst = currentInstance();
+    if (!inst) return;
+    commitOverride(inst, { masterNodeId });
   }
 
   // OPACITÀ. Il cursore di react-aria-components distingue da sé le due fasi
@@ -558,6 +685,17 @@ export function PropertiesPanel() {
   // tutti gli altri: l'angolo alto-sinistra della cornice (vedi
   // selectionSummary e positionValueFor).
   const geometryFields = nodes.some((n) => n.kind === "group") ? POSITION_FIELDS : GEOMETRY_FIELDS;
+
+  // La sezione Override compare solo per UNA sola istanza selezionata. Le sue
+  // righe sono i nodi del MASTER (sottoalbero dalla radice del componente, in
+  // pre-ordine) che siano un testo o abbiano un riempimento -- gli unici
+  // sovrascrivibili in M4. `overrideMap` indicizza gli override correnti
+  // dell'istanza per masterNodeId, per leggere il valore effettivo di ogni riga.
+  const instanceNode = nodes.length === 1 && nodes[0].kind === "instance" && nodes[0].instance ? nodes[0] : null;
+  const overrideMap = instanceNode ? instanceOverrideMap(instanceNode) : new Map<string, InstanceOverrideLite>();
+  const master = instanceNode && scene ? scene.components[instanceNode.instance!.componentId] : undefined;
+  const overrideRows: NodeLite[] =
+    master && scene ? subtreeOf(scene, master.rootNodeId).filter((n) => n.kind === "text" || n.fills.length > 0) : [];
 
   return (
     <div className="flex h-full flex-col overflow-auto text-sm text-neutral-700">
@@ -802,6 +940,65 @@ export function PropertiesPanel() {
                 ))}
               </div>
             </RadioGroup>
+          </div>
+        </>
+      )}
+
+      {/* OVERRIDE: solo per UNA sola istanza selezionata. Ogni riga è un nodo
+          del master (testo o con riempimento) con il suo valore EFFETTIVO e un
+          "Ripristina" -- vedi il commento su OverrideTextField. */}
+      {instanceNode && (
+        <>
+          <SectionTitle>Override</SectionTitle>
+          <div className="flex flex-col gap-1.5 p-2">
+            {overrideRows.length === 0 ? (
+              <div className="text-neutral-400">Nessun elemento sovrascrivibile</div>
+            ) : (
+              overrideRows.map((mn) => {
+                const name = layerDisplayName(mn);
+                const ov = overrideMap.get(mn.id);
+                return (
+                  <div key={mn.id} className="flex items-center gap-1">
+                    <div className="min-w-0 flex-1">
+                      {mn.kind === "text" ? (
+                        <OverrideTextField
+                          label={name}
+                          // Valore effettivo: il testo dell'override se c'è,
+                          // altrimenti il contenuto del nodo del master.
+                          value={ov?.text ?? mn.text?.content ?? ""}
+                          onCommit={(v) => editOverrideText(mn.id, v)}
+                        />
+                      ) : (
+                        <ColorField
+                          label={name}
+                          // Valore effettivo: il primo fill dell'override se c'è,
+                          // altrimenti quello del master.
+                          value={(ov?.fills ?? mn.fills)[0] ?? null}
+                          onCommit={(rgb) => editOverrideFill(mn.id, rgb)}
+                        />
+                      )}
+                    </div>
+                    {/* Ripristina: solo quando c'è davvero un override da
+                        togliere. Emettere una rimozione dove non c'è niente
+                        costerebbe un op e una voce di undo a vuoto. */}
+                    <button
+                      type="button"
+                      aria-label={`Ripristina ${name}`}
+                      title="Ripristina dal master"
+                      disabled={ov === undefined}
+                      onClick={() => resetOverride(mn.id)}
+                      className={
+                        "shrink-0 rounded px-1.5 py-0.5 text-neutral-500 outline-none hover:bg-neutral-100 " +
+                        "focus-visible:ring-1 focus-visible:ring-sky-500 " +
+                        "disabled:opacity-40 disabled:hover:bg-transparent"
+                      }
+                    >
+                      {"↺"}
+                    </button>
+                  </div>
+                );
+              })
+            )}
           </div>
         </>
       )}

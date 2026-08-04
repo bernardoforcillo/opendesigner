@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbSubPaths, toPbTextStyle } from "../store/types";
-import type { SubPathLite, TextStyleLite } from "../store/types";
+import { toPbInstanceOverride, toPbSubPaths, toPbTextStyle } from "../store/types";
+import type { InstanceOverrideLite, SubPathLite, TextStyleLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Costruzione centralizzata degli Op: ogni tool passa da qui, così opId e docId
@@ -126,4 +126,72 @@ export function makeDeletePageOp(id: string): Op {
 
 export function makeRenamePageOp(id: string, name: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "renamePage", value: { id, name } } });
+}
+
+// --- componenti / istanze (M4) ---------------------------------------------
+// I componenti sono sottoalberi MASTER già vivi in `nodes`; le istanze li
+// referenziano. Questi op esistono già in proto + core + store/applyOp.ts: qui
+// si costruisce soltanto l'Op, come per tutto il resto (opId e docId in un posto
+// solo). Il core rifiuta un componentId già preso, una radice assente, un
+// override su un non-nodo/non-istanza: il chiamante non manda un op che si sa
+// già invalido (id fresco, nodo che esiste), il resto è del server.
+
+// Registra il sottoalbero radicato in `rootNodeId` come master del componente
+// `componentId`. Non copia nulla -- il master resta dov'è, e le istanze lo
+// leggono vivo (propagazione gratis). componentId è FORNITO dal chiamante
+// (uuid()) così è noto prima del submit, come l'id di una pagina.
+export function makeCreateComponentOp(componentId: string, rootNodeId: string, name: string): Op {
+  return create(OpSchema, {
+    opId: uuid(),
+    docId: docId(),
+    kind: { case: "createComponent", value: { componentId, rootNodeId, name } },
+  });
+}
+
+// Imposta (o AZZERA) l'override di un'istanza su un nodo del master. L'override
+// arriva come Lite e la sua PRESENZA di campi diventa fills_present/text_present
+// via toPbInstanceOverride: un override senza né fills né text è la RIMOZIONE --
+// il nodo del master torna a ereditare (vedi store/applyOp.ts::
+// setInstanceOverride e core.applySetInstanceOverride). L'upsert per
+// masterNodeId è del reducer, non di qui.
+export function makeSetInstanceOverrideOp(instanceId: string, override: InstanceOverrideLite): Op {
+  return create(OpSchema, {
+    opId: uuid(),
+    docId: docId(),
+    kind: { case: "setInstanceOverride", value: { instanceId, override: toPbInstanceOverride(override) } },
+  });
+}
+
+export interface InstanceNodeParams {
+  id: string;
+  parentId: string;
+  orderKey: string;
+  name: string;
+  x: number;
+  y: number;
+  width: number;
+  height: number;
+  componentId: string;
+}
+
+// Costruisce il Node di un'ISTANZA (kind "instance") pronto per makeCreateNodeOp:
+// la forma `instance` col componentId reso e NESSUN override. x/y sono dove cade
+// l'ORIGINE del master quando l'istanza lo disegna (store/instances.ts::
+// instanceDescentLocal); width/height sono metadati mostrati dal pannello -- i
+// bounds veri sono derivati dal master a ogni lettura. visible/opacity ai
+// default di una forma appena creata, come le fa shapeTool.
+export function makeInstanceNode(p: InstanceNodeParams): Node {
+  return create(NodeSchema, {
+    id: p.id,
+    parentId: p.parentId,
+    orderKey: p.orderKey,
+    name: p.name,
+    visible: true,
+    opacity: 1,
+    x: p.x,
+    y: p.y,
+    width: p.width,
+    height: p.height,
+    shape: { case: "instance", value: { componentId: p.componentId, overrides: [] } },
+  });
 }

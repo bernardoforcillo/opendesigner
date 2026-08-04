@@ -9,7 +9,7 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { contentWorldBounds } from "../store/groups";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
-import type { NodeLite, StrokeAlignLite, StrokeLite, TextLite } from "../store/types";
+import type { InstanceOverrideLite, NodeLite, StrokeAlignLite, StrokeLite, TextLite } from "../store/types";
 
 // Doppio di SyncClient: registra gli op che finiscono SUL FILO e modella un
 // server che accetta ed ECOA subito (applyPending + apply), come
@@ -1568,5 +1568,143 @@ describe("gruppi — campi geometrici", () => {
     expect(sync.sent).toHaveLength(1);
     if (sync.sent[0].kind.case === "setProps") expect(sync.sent[0].kind.value.patch?.x).toBe(50);
     expect(useScene.getState().scene?.nodes.g.x).toBe(50);
+  });
+});
+
+// --- M4: OVERRIDE DELLE ISTANZE ---------------------------------------------
+//
+// Per UNA sola istanza selezionata il pannello mostra una sezione "Override":
+// una riga per ogni nodo del MASTER che sia un testo o abbia un riempimento, col
+// suo valore EFFETTIVO (l'override dell'istanza se c'è, altrimenti il valore del
+// master). Scriverci emette UN SetInstanceOverride; "Ripristina" ne emette uno
+// VUOTO (rimozione, torna a ereditare). Le due metà (fills/text) sono
+// indipendenti: modificarne una conserva l'altra.
+
+// Installa un master (frame `m` con un rect "Sfondo" rosso e un testo
+// "Etichetta") registrato come componente cmp1, più un'istanza `inst` che lo
+// rende. `overrides` semina gli override dell'istanza.
+function installInstance(overrides: InstanceOverrideLite[] = []) {
+  const scene = emptyScene("doc-1", "Untitled");
+  const m: NodeLite = {
+    ...rectNode("m", "a1"), kind: "frame", fills: [], x: 0, y: 0, width: 100, height: 100,
+  };
+  const mr: NodeLite = {
+    ...rectNode("mr", "a1", { parentId: "m", name: "Sfondo", fills: [{ r: 1, g: 0, b: 0, a: 1 }] }),
+  };
+  const mt: NodeLite = { ...textNode("mt", "a2", "Ciao", { parentId: "m", name: "Etichetta" }) };
+  const inst: NodeLite = {
+    ...rectNode("inst", "a9"), kind: "instance", instance: { componentId: "cmp1", overrides },
+  };
+  for (const n of [m, mr, mt, inst]) scene.nodes[n.id] = n;
+  scene.components["cmp1"] = { rootNodeId: "m", name: "Frame" };
+  useScene.getState().setScene(scene);
+  useScene.getState().setSelection(["inst"]);
+}
+
+function overrideOf(op: Op) {
+  if (op.kind.case !== "setInstanceOverride") throw new Error("non è un op setInstanceOverride");
+  return op.kind.value;
+}
+
+describe("override delle istanze", () => {
+  it("per un'istanza mostra la sezione Override con una riga per ogni nodo sovrascrivibile del master", () => {
+    installInstance();
+    render(<PropertiesPanel />);
+
+    expect(screen.getByText("Override")).toBeInTheDocument();
+    // Valore EFFETTIVO ereditato dal master: il rosso del rect e il testo.
+    expect(screen.getByRole("textbox", { name: "Sfondo" })).toHaveValue("#FF0000");
+    expect(screen.getByRole("textbox", { name: "Etichetta" })).toHaveValue("Ciao");
+  });
+
+  it("modificare il riempimento di un nodo del master emette UN SetInstanceOverride e aggiorna il valore mostrato", async () => {
+    installInstance();
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    const input = screen.getByRole("textbox", { name: "Sfondo" });
+    await user.clear(input);
+    await user.type(input, "#00FF00{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    const o = overrideOf(sync.sent[0]);
+    expect(o.instanceId).toBe("inst");
+    expect(o.override?.masterNodeId).toBe("mr");
+    expect(o.override?.fillsPresent).toBe(true);
+    // Il testo NON è toccato: text_present resta false.
+    expect(o.override?.textPresent).toBe(false);
+    if (o.override?.fills[0]?.kind.case === "solid") {
+      expect(o.override.fills[0].kind.value.color?.g).toBeCloseTo(1, 5);
+    }
+    // Il modello ora ha l'override, e il campo mostra il nuovo valore.
+    const inst = useScene.getState().scene!.nodes["inst"];
+    expect(inst.instance?.overrides).toHaveLength(1);
+    expect(screen.getByRole("textbox", { name: "Sfondo" })).toHaveValue("#00FF00");
+    // Un gesto, una voce di undo.
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("modificare il testo di un nodo del master emette UN SetInstanceOverride con text_present", async () => {
+    installInstance();
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    const input = screen.getByRole("textbox", { name: "Etichetta" });
+    await user.clear(input);
+    await user.type(input, "Nuovo{Enter}");
+
+    expect(sync.sent).toHaveLength(1);
+    const o = overrideOf(sync.sent[0]);
+    expect(o.override?.masterNodeId).toBe("mt");
+    expect(o.override?.textPresent).toBe(true);
+    expect(o.override?.text).toBe("Nuovo");
+    expect(o.override?.fillsPresent).toBe(false);
+    expect(useScene.getState().scene!.nodes["inst"].instance?.overrides[0].text).toBe("Nuovo");
+    expect(screen.getByRole("textbox", { name: "Etichetta" })).toHaveValue("Nuovo");
+  });
+
+  it("il Ripristina è disabilitato senza override e attivo con override; premerlo emette una RIMOZIONE", async () => {
+    // Semina un override di fill su "mr".
+    installInstance([{ masterNodeId: "mr", fills: [{ r: 0, g: 0, b: 1, a: 1 }] }]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    // Il campo mostra il valore SOVRASCRITTO (blu), non quello del master.
+    expect(screen.getByRole("textbox", { name: "Sfondo" })).toHaveValue("#0000FF");
+    // Ripristina attivo per "mr" (c'è un override), disabilitato per "mt" (non c'è).
+    const resetSfondo = screen.getByRole("button", { name: "Ripristina Sfondo" });
+    expect(resetSfondo).toBeEnabled();
+    expect(screen.getByRole("button", { name: "Ripristina Etichetta" })).toBeDisabled();
+
+    await user.click(resetSfondo);
+
+    expect(sync.sent).toHaveLength(1);
+    const o = overrideOf(sync.sent[0]);
+    expect(o.override?.masterNodeId).toBe("mr");
+    // Override VUOTO = rimozione: entrambi i *_present a false.
+    expect(o.override?.fillsPresent).toBe(false);
+    expect(o.override?.textPresent).toBe(false);
+    // L'override è sparito, e il campo torna al valore del master (rosso).
+    expect(useScene.getState().scene!.nodes["inst"].instance?.overrides).toHaveLength(0);
+    expect(screen.getByRole("textbox", { name: "Sfondo" })).toHaveValue("#FF0000");
+  });
+
+  it("un override si annulla con Ctrl+Z (un solo gesto)", async () => {
+    installInstance();
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    const input = screen.getByRole("textbox", { name: "Sfondo" });
+    await user.clear(input);
+    await user.type(input, "#00FF00{Enter}");
+    expect(useScene.getState().scene!.nodes["inst"].instance?.overrides).toHaveLength(1);
+
+    useScene.getState().undo();
+
+    expect(useScene.getState().scene!.nodes["inst"].instance?.overrides).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().redoStack).toHaveLength(1);
   });
 });

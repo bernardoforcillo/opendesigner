@@ -2289,6 +2289,67 @@ describe("selectTool and groups", () => {
   });
 });
 
+// CREAZIONE DI UN COMPONENTE (Ctrl/Cmd+Alt+K). Il nodo selezionato diventa il
+// MASTER: resta dov'è (nessun op lo sposta) e una sola CreateComponent lo
+// registra. Solo con ESATTAMENTE un nodo selezionato -- avvolgere una
+// multi-selezione è lavoro successivo, quindi zero o più di uno è un no-op.
+describe("creazione di un componente (Ctrl+Alt+K)", () => {
+  const cmk = () =>
+    ({
+      key: "k", code: "KeyK", ctrlKey: true, metaKey: false, altKey: true, shiftKey: false,
+      preventDefault: vi.fn(),
+    }) as unknown as KeyboardEvent;
+
+  it("con UN nodo selezionato emette una sola CreateComponent con quel nodo come radice", () => {
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    useScene.getState().setSelection(["a"]);
+
+    createSelectTool().onKeyDown!(cmk(), fakeCtx());
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("createComponent");
+    if (op.kind.case === "createComponent") {
+      expect(op.kind.value.rootNodeId).toBe("a");
+      expect(op.kind.value.componentId).not.toBe("");
+    }
+    const comps = Object.values(useScene.getState().scene!.components);
+    expect(comps).toHaveLength(1);
+    expect(comps[0].rootNodeId).toBe("a");
+    // createComponent NON è annullabile in M4: il proto non ha un DeleteComponent
+    // e invertOp ritorna null (vedi store/history.ts), quindi l'op parte e
+    // registra il componente ma non spinge nessuna voce di undo. Il nodo NON si
+    // sposta: diventa il master dov'è.
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes["a"].x).toBe(0);
+  });
+
+  it("preventDefault sempre (in un browser la combinazione può avere un suo significato)", () => {
+    const e = cmk();
+    useScene.getState().setSync(new FakeSync());
+    useScene.getState().setSelection(["b"]);
+    createSelectTool().onKeyDown!(e, fakeCtx());
+    expect(e.preventDefault).toHaveBeenCalled();
+  });
+
+  it("è un NO-OP con zero o più di un nodo selezionato (nessun gesto lasciato aperto)", () => {
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+
+    useScene.getState().setSelection([]);
+    tool.onKeyDown!(cmk(), fakeCtx());
+    useScene.getState().setSelection(["a", "b"]);
+    tool.onKeyDown!(cmk(), fakeCtx());
+
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().scene!.components).toEqual({});
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+});
+
 // SCOPING ALLA PAGINA CORRENTE. Click e marquee rispondono sulle radici della
 // SOLA pagina corrente, esattamente come il renderer le disegna: vedi-vs-
 // seleziona. pickTarget/nodesInMarquee ricevono currentPageId (assente =

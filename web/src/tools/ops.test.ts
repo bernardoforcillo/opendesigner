@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, makeSetTextOp } from "./ops";
+import {
+  makeCreateComponentOp, makeCreateNodeOp, makeDeleteOp, makeInstanceNode,
+  makeSetInstanceOverrideOp, makeSetPropsOp, makeSetTextOp,
+} from "./ops";
 import { useScene } from "../store/store";
 import { applyOp } from "../store/applyOp";
 import { emptyScene } from "../store/types";
@@ -95,6 +98,78 @@ describe("makeDeleteOp", () => {
     expect(op.docId).toBe("doc-1");
     expect(op.kind.case).toBe("deleteNode");
     expect(op.kind.case === "deleteNode" && op.kind.value.id).toBe("n1");
+  });
+});
+
+// --- componenti / istanze (M4) ---------------------------------------------
+
+describe("makeCreateComponentOp", () => {
+  it("carries componentId, rootNodeId and name, with docId + a fresh opId", () => {
+    const a = makeCreateComponentOp("cmp1", "root1", "Bottone");
+    const b = makeCreateComponentOp("cmp1", "root1", "Bottone");
+    expect(a.docId).toBe("doc-1");
+    expect(a.opId).not.toBe("");
+    expect(a.opId).not.toBe(b.opId);
+    expect(a.kind.case).toBe("createComponent");
+    if (a.kind.case !== "createComponent") throw new Error("wrong kind");
+    expect(a.kind.value.componentId).toBe("cmp1");
+    expect(a.kind.value.rootNodeId).toBe("root1");
+    expect(a.kind.value.name).toBe("Bottone");
+  });
+
+  it("round-trips through applyOp: the component is registered pointing at the master", () => {
+    let scene = applyOp(
+      emptyScene("doc-1", "Untitled"),
+      makeCreateNodeOp(create(NodeSchema, { id: "root1", parentId: "page1", orderKey: "a000001" })),
+    );
+    scene = applyOp(scene, makeCreateComponentOp("cmp1", "root1", "Bottone"));
+    expect(scene.components["cmp1"]).toEqual({ rootNodeId: "root1", name: "Bottone" });
+  });
+});
+
+describe("makeSetInstanceOverrideOp", () => {
+  it("marks fills_present when fills are given, and maps them to solid paints", () => {
+    const op = makeSetInstanceOverrideOp("inst1", {
+      masterNodeId: "m1",
+      fills: [{ r: 1, g: 0, b: 0, a: 1 }],
+    });
+    expect(op.kind.case).toBe("setInstanceOverride");
+    if (op.kind.case !== "setInstanceOverride") throw new Error("wrong kind");
+    expect(op.kind.value.instanceId).toBe("inst1");
+    const o = op.kind.value.override;
+    expect(o?.masterNodeId).toBe("m1");
+    expect(o?.fillsPresent).toBe(true);
+    // Il testo NON è stato dato: text_present resta false (non azzera il testo
+    // ereditato).
+    expect(o?.textPresent).toBe(false);
+    expect(o?.fills[0]?.kind.case).toBe("solid");
+  });
+
+  it("an override with neither fills nor text is a REMOVAL: both *_present false", () => {
+    const op = makeSetInstanceOverrideOp("inst1", { masterNodeId: "m1" });
+    if (op.kind.case !== "setInstanceOverride") throw new Error("wrong kind");
+    const o = op.kind.value.override;
+    expect(o?.fillsPresent).toBe(false);
+    expect(o?.textPresent).toBe(false);
+  });
+});
+
+describe("makeInstanceNode", () => {
+  it("builds a kind-instance Node carrying the componentId and no overrides", () => {
+    const node = makeInstanceNode({
+      id: "inst1", parentId: "page1", orderKey: "a000005", name: "Bottone",
+      x: 30, y: 40, width: 100, height: 50, componentId: "cmp1",
+    });
+    expect(node.id).toBe("inst1");
+    expect(node.parentId).toBe("page1");
+    expect(node.visible).toBe(true);
+    expect(node.opacity).toBe(1);
+    expect(node.x).toBe(30);
+    expect(node.width).toBe(100);
+    expect(node.shape.case).toBe("instance");
+    if (node.shape.case !== "instance") throw new Error("wrong shape");
+    expect(node.shape.value.componentId).toBe("cmp1");
+    expect(node.shape.value.overrides).toEqual([]);
   });
 });
 

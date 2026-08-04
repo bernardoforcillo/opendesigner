@@ -31,7 +31,7 @@ import { useScene } from "../store/store";
 import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "../store/groups";
 import { subtreeOf, topmostOf } from "../store/tree";
 import { groupOps, ungroupOps } from "./grouping";
-import { makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp } from "./ops";
+import { makeCreateComponentOp, makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp, uuid } from "./ops";
 import type { SceneState } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Tool, ToolContext } from "./types";
@@ -872,6 +872,43 @@ export function createSelectTool(): Tool {
         // stanno per creare.
         store.setSelection(res.selection);
         store.endGesture(res.ops);
+        return;
+      }
+      // Ctrl/Cmd+Alt+K crea un COMPONENTE dal nodo selezionato: quel nodo
+      // diventa il MASTER (resta esattamente dov'è, nessun op lo sposta) e una
+      // sola CreateComponent lo registra. UN gesto, un op. Non annullabile in M4:
+      // il proto non ha un DeleteComponent e invertOp ritorna null (store/
+      // history.ts), quindi il gesto non spinge nessuna voce di undo -- il
+      // master era già in `nodes`, e l'undo della SUA creazione resta quello del
+      // nodo, non del componente.
+      //
+      // Solo con ESATTAMENTE un nodo selezionato: avvolgere una multi-selezione
+      // in un nuovo master è lavoro successivo, quindi zero o più di uno è un
+      // NO-OP -- nessun gesto, nessun op (aprire beginGesture per poi non
+      // chiudere niente lascerebbe un gesto vuoto appeso). Il core rifiuta
+      // comunque un componentId già preso o una radice assente: un uuid fresco e
+      // la garanzia che il nodo esiste bastano a non mandare un op noto invalido.
+      //
+      // e.code oltre a e.key: con Alt premuto molti layout mappano "k" su un
+      // carattere diverso (e.key), mentre e.code resta "KeyK". preventDefault
+      // sempre, come per Ctrl+G: la combinazione può avere un significato nel
+      // browser.
+      if ((e.ctrlKey || e.metaKey) && e.altKey && (e.code === "KeyK" || e.key.toLowerCase() === "k")) {
+        e.preventDefault();
+        cancelActiveGesture();
+        const store = useScene.getState();
+        const scene = store.scene;
+        if (!scene) return;
+        if (store.selection.length !== 1) return;
+        const rootNodeId = store.selection[0];
+        const master = scene.nodes[rootNodeId];
+        if (!master) return;
+        const name =
+          master.name.trim() !== ""
+            ? master.name
+            : `Component ${Object.keys(scene.components).length + 1}`;
+        store.beginGesture();
+        store.endGesture([makeCreateComponentOp(uuid(), rootNodeId, name)]);
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {

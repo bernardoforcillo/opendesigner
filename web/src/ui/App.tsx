@@ -14,6 +14,7 @@ import { attachImageDrop } from "../tools/imageDrop";
 import { ExportButton } from "./ExportButton";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { LayersPanel } from "./LayersPanel";
+import { ComponentsPanel } from "./ComponentsPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { PageBar } from "./PageBar";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
@@ -377,11 +378,18 @@ export function App() {
             clientWidth/clientHeight ad ogni frame -- e eventToCanvasPoint
             parte da getBoundingClientRect, quindi le coordinate del puntatore
             restano giuste anche con una colonna a sinistra. */}
+        {/* Colonna sinistra: i livelli in alto (occupano lo spazio, min-h-0 così
+            un elenco lungo scrolla invece di sfondare) e i componenti sotto,
+            AGGIUNTIVI -- il pannello componenti (M4) è montato qui senza toccare
+            il resto del layout a tre colonne. */}
         <aside
-          aria-label="Livelli"
-          className="w-56 shrink-0 overflow-hidden border-r border-neutral-200 bg-white"
+          aria-label="Livelli e componenti"
+          className="flex w-56 shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-white"
         >
-          <LayersPanel />
+          <div className="min-h-0 flex-1 overflow-hidden">
+            <LayersPanel />
+          </div>
+          <ComponentsPanel />
         </aside>
         <div className="relative min-w-0 flex-1">
           {/* Il cursore viene dal tool attivo; durante un pan temporaneo (spazio
