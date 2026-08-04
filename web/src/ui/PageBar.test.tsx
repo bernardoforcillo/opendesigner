@@ -8,7 +8,7 @@ import { PageBar } from "./PageBar";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { SceneState } from "../store/types";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
 // Doppio di SyncClient: registra gli op sul filo e modella un server che accetta
 // ed ECOA subito (applyPending + apply), come nei test dei tool. Serve a

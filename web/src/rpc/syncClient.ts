@@ -1,5 +1,5 @@
 import { Code, ConnectError } from "@connectrpc/connect";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { docClient } from "./client";
 import { useScene } from "../store/store";
 import { fromDocument } from "../store/types";
@@ -150,7 +150,7 @@ export class SyncClient {
       // `pending` per sempre -- visibile sulla scena, non inviato a nessuno e
       // impossibile da confermare, perché l'unico stream vivo è quello del
       // client nuovo, che di questo op non sa niente.
-      console.warn("brawt: submit su un SyncClient fermato — op ignorato", op.opId);
+      console.warn("opendesigner: submit su un SyncClient fermato — op ignorato", op.opId);
       return;
     }
     // Apply OTTIMISTICO: entra nella coda degli op in volo e si vede subito.
@@ -307,7 +307,7 @@ export class SyncClient {
     // è ancora suo, lo trova suo e lascia l'editor senza trasporto.
     //
     // Non è teorico: è la forma del bootstrap di ui/App.tsx al primo caricamento
-    // (nessun `brawt.docId` in localStorage) sotto StrictMode. I due giri
+    // (nessun `opendesigner.docId` in localStorage) sotto StrictMode. I due giri
     // dell'effetto aspettano ciascuno la propria createDocument; se la seconda
     // risposta arriva per prima, il client del PRIMO giro viene costruito dopo
     // che quello del secondo si è già registrato, e subito fermato dalla
@@ -505,7 +505,7 @@ export class SyncClient {
         // consegna esattamente una volta), ma riapplicare un op perché il
         // backlog si è sovrapposto sarebbe una mutazione silenziosa del
         // documento: si scarta e si va avanti.
-        console.warn(`brawt: record duplicato seq=${seq} (già a ${this.seq}), ignorato`);
+        console.warn(`opendesigner: record duplicato seq=${seq} (già a ${this.seq}), ignorato`);
         continue;
       }
       if (seq !== this.seq + 1) {
@@ -515,7 +515,7 @@ export class SyncClient {
         // da applyOp (`if (!cur) return state`) e la forma non compare mai.
         // Si stacca e ci si riabbona dall'ultimo seq BUONO, che è quello che
         // fa rimandare al server i record mancanti.
-        console.error(`brawt: gap nello stream (atteso ${this.seq + 1}, ricevuto ${seq})`);
+        console.error(`opendesigner: gap nello stream (atteso ${this.seq + 1}, ricevuto ${seq})`);
         return "gap";
       }
 

@@ -1,5 +1,5 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import { nextOrderKey } from "../store/orderKey";
 import { useScene } from "../store/store";
 import { normalizeVector } from "../store/vectorGeometry";

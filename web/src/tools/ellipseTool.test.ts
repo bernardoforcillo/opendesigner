@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createEllipseTool, DEFAULT_ELLIPSE_HEIGHT, DEFAULT_ELLIPSE_WIDTH } from "./ellipseTool";
 import type { ToolContext } from "./types";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";

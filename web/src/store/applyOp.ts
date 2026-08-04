@@ -1,6 +1,6 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
-import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite, toSubPathsLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";

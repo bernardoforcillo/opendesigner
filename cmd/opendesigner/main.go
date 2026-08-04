@@ -7,13 +7,13 @@ import (
 	"os"
 	"path/filepath"
 
-	"github.com/bernardoforcillo/brawt/gen/brawt/v1/brawtv1connect"
-	"github.com/bernardoforcillo/brawt/internal/server"
+	"github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1/opendesignerv1connect"
+	"github.com/bernardoforcillo/opendesigner/internal/server"
 )
 
 func main() {
 	if len(os.Args) < 2 || os.Args[1] != "serve" {
-		log.Fatal("usage: brawt serve [-addr :8080] [-workspace ~/.brawt] [-web web/dist]")
+		log.Fatal("usage: opendesigner serve [-addr :8080] [-workspace ~/.opendesigner] [-web web/dist]")
 	}
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	addr := fs.String("addr", ":8080", "listen address")
@@ -28,7 +28,7 @@ func main() {
 	svc := server.NewDocumentService(mgr)
 
 	mux := http.NewServeMux()
-	path, handler := brawtv1connect.NewDocumentServiceHandler(svc)
+	path, handler := opendesignerv1connect.NewDocumentServiceHandler(svc)
 	mux.Handle(path, handler)
 	// Le immagini: POST /assets-api/{docId} per caricarle, GET
 	// /assets-api/{docId}/{hash} per servirle a un <img>. HTTP semplice e non
@@ -51,7 +51,7 @@ func main() {
 		Protocols: protocols,
 	}
 
-	log.Printf("brawt serve on %s (workspace=%s)", *addr, *workspace)
+	log.Printf("opendesigner serve on %s (workspace=%s)", *addr, *workspace)
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
@@ -60,7 +60,7 @@ func main() {
 func defaultWorkspace() string {
 	home, err := os.UserHomeDir()
 	if err != nil {
-		return ".brawt"
+		return ".opendesigner"
 	}
-	return filepath.Join(home, ".brawt")
+	return filepath.Join(home, ".opendesigner")
 }

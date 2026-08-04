@@ -26,7 +26,7 @@ import (
 //	seq     uint64   big endian, the oplog seq this document includes up to.
 //	length  uint32   big endian, payload byte count.
 //	crc     uint32   big endian, CRC-32C (Castagnoli) of the payload.
-//	payload          the marshalled brawtv1.Document.
+//	payload          the marshalled opendesignerv1.Document.
 //
 // The checksum is not there to catch torn writes -- the temp-file + rename
 // commit already makes a half-written snapshot unobservable -- but rot in
@@ -34,7 +34,7 @@ import (
 // usually still decodes, into a document that is quietly wrong. Reading is
 // the only chance to notice.
 const (
-	snapshotFileMagic     = "BRAWTSNP"
+	snapshotFileMagic     = "OPENDSNP"
 	snapshotFormatVersion = uint32(1)
 	// magic + version + seq + length + crc
 	snapshotHeaderSize = len(snapshotFileMagic) + 4 + 8 + 4 + 4
@@ -64,7 +64,7 @@ func decodeSnapshotFile(data []byte) (uint64, []byte, error) {
 	}
 	n := len(snapshotFileMagic)
 	if string(data[:n]) != snapshotFileMagic {
-		return 0, nil, fmt.Errorf("not a brawt snapshot: file header is %q, want %q (a snapshot written before the single-file format change reads like this; brawt is pre-release and does not migrate it -- delete snapshot.pb and snapshot.seq to rebuild from the oplog)", data[:n], snapshotFileMagic)
+		return 0, nil, fmt.Errorf("not a opendesigner snapshot: file header is %q, want %q (a snapshot written before the single-file format change reads like this; opendesigner is pre-release and does not migrate it -- delete snapshot.pb and snapshot.seq to rebuild from the oplog)", data[:n], snapshotFileMagic)
 	}
 	if v := binary.BigEndian.Uint32(data[n:]); v != snapshotFormatVersion {
 		return 0, nil, fmt.Errorf("unsupported snapshot format version %d, this build understands %d", v, snapshotFormatVersion)

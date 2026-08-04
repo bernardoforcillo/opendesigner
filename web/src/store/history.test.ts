@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema, StrokeAlign, TextStyleSchema, SetVectorPathSchema, TextAlign } from "../gen/brawt/v1/brawt_pb";
-import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema, OpSchema, StrokeAlign, TextStyleSchema, SetVectorPathSchema, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, toNodeLite, toPbNode, type NodeLite, type SceneState } from "./types";
 import { invertOp } from "./history";

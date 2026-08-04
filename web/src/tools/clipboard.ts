@@ -1,4 +1,4 @@
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import { nextOrderKey, orderKeyBetween } from "../store/orderKey";
 import {
@@ -29,7 +29,7 @@ import { isTextField } from "./toolManager";
 // anche il testo di chiunque altro, e un incolla non deve tentare di
 // interpretare come scena qualunque cosa capiti lì dentro.
 
-export const CLIPBOARD_FORMAT = "brawt/clipboard";
+export const CLIPBOARD_FORMAT = "opendesigner/clipboard";
 export const CLIPBOARD_VERSION = 1;
 
 // Scostamento (unità MONDO) dei nodi incollati o duplicati. Serve a rendere la
@@ -93,7 +93,7 @@ function isKnownKind(kind: unknown): kind is NodeLite["kind"] {
 //    niente da incollare da lì. Attenzione, non è nemmeno un lasciapassare per
 //    il buffer in memoria: se gli appunti si sono lasciati leggere, quel testo
 //    È la copia più recente dell'utente (vedi pasteClipboard).
-//  - "unsupported": è un payload brawt, ma di una versione o con un tipo di
+//  - "unsupported": è un payload opendesigner, ma di una versione o con un tipo di
 //    nodo che questa build non sa ricostruire. Qui il ripiego sarebbe SBAGLIATO
 //    (l'utente ha copiato QUELLO), e degradare il nodo lo sarebbe di più: si
 //    rifiuta e lo si dice.

@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, StrokeAlign } from "../gen/brawt/v1/brawt_pb";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import { OpSchema, NodeSchema, StrokeAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, type NodeLite } from "./types";
 import { MASK_PATHS, isMaskPath, type MaskPath } from "./maskPaths";
@@ -213,7 +213,7 @@ const PROBE: Probe = {
 
 describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", () => {
   it.each(MASK_PATHS)(
-    "%s: identico dopo toJson -> fromJson, campo reale di brawt.v1.Node, applicato da applyOp",
+    "%s: identico dopo toJson -> fromJson, campo reale di opendesigner.v1.Node, applicato da applyOp",
     (path) => {
       // (a) il path esce e rientra IDENTICO dalla codifica JSON del FieldMask.
       // Questa è l'asserzione che un "cornerRadius" in MASK_PATHS non può

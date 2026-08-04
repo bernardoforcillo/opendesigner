@@ -45,7 +45,7 @@ func TestOpenKeepsThePersistedNameOverTheCallersDefault(t *testing.T) {
 	}
 }
 
-// snapshotNamed gives dir/doc1.brawt a snapshot whose embedded Document
+// snapshotNamed gives dir/doc1.opendesigner a snapshot whose embedded Document
 // carries name -- i.e. the state every document reaches after 256 ops.
 func snapshotNamed(t *testing.T, ws, name string) {
 	t.Helper()

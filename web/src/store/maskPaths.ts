@@ -31,7 +31,7 @@
 //     che torni identico: un "orderKey" scritto qui non compila un elenco
 //     verde, fa fallire quel caso con l'errore "irreversible" esatto che si
 //     vedrebbe in produzione. Lo stesso caso verifica anche che il path sia un
-//     nome di campo reale di brawt.v1.Node e che applyOp lo applichi davvero.
+//     nome di campo reale di opendesigner.v1.Node e che applyOp lo applichi davvero.
 //   - una guardia cross-language LEGGE internal/core/apply.go e ne estrae i
 //     letterali dei `case`: aggiungere un path qui (o solo là) senza l'altro
 //     lato fa fallire la suite TypeScript. Go resta l'autorità; questo elenco

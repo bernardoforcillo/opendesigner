@@ -13,7 +13,7 @@ import (
 
 const (
 	// bundleSuffix is what makes a directory in the workspace a document.
-	bundleSuffix = ".brawt"
+	bundleSuffix = ".opendesigner"
 	// metaFileName holds the bundle's identity (see Meta).
 	metaFileName = "meta.json"
 	// DefaultName is the name given to a document that has none: a bundle

@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, makeSetTextOp } from "./ops";
 import { useScene } from "../store/store";
 import { applyOp } from "../store/applyOp";

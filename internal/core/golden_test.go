@@ -6,7 +6,7 @@ import (
 	"path/filepath"
 	"testing"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"google.golang.org/protobuf/encoding/protojson"
 	"google.golang.org/protobuf/proto"
 )
@@ -62,7 +62,7 @@ func TestGolden(t *testing.T) {
 			}
 			doc := NewDocument(gf.DocID, "Untitled")
 			for i, opRaw := range gf.Ops {
-				op := &brawtv1.Op{}
+				op := &opendesignerv1.Op{}
 				if err := protojson.Unmarshal(opRaw, op); err != nil {
 					t.Fatalf("op %d unmarshal: %v", i, err)
 				}
@@ -77,7 +77,7 @@ func TestGolden(t *testing.T) {
 					t.Fatalf("apply op %d: %v", i, err)
 				}
 			}
-			want := &brawtv1.Document{}
+			want := &opendesignerv1.Document{}
 			if err := protojson.Unmarshal(gf.Expected, want); err != nil {
 				t.Fatal(err)
 			}

@@ -11,8 +11,8 @@ import (
 	"testing"
 	"time"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
-	"github.com/bernardoforcillo/brawt/internal/core"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/core"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
@@ -25,13 +25,13 @@ import (
 
 // setXOp is a SetProperties op, so these tests cover an op kind that mutates
 // an existing node rather than only appending new ones.
-func setXOp(id string, x float64) *brawtv1.Op {
-	return &brawtv1.Op{OpId: "op-set-" + id, DocId: "doc1", Kind: &brawtv1.Op_SetProps{SetProps: &brawtv1.SetProperties{
-		Id: id, Patch: &brawtv1.Node{X: x}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"x"}},
+func setXOp(id string, x float64) *opendesignerv1.Op {
+	return &opendesignerv1.Op{OpId: "op-set-" + id, DocId: "doc1", Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: id, Patch: &opendesignerv1.Node{X: x}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"x"}},
 	}}}
 }
 
-func mustAppend(t *testing.T, b *Bundle, r *brawtv1.OpRecord) {
+func mustAppend(t *testing.T, b *Bundle, r *opendesignerv1.OpRecord) {
 	t.Helper()
 	if err := b.Append(r); err != nil {
 		t.Fatalf("append seq %d: %v", r.GetSeq(), err)
@@ -78,7 +78,7 @@ func oplogSeqsOnDisk(t *testing.T, b *Bundle) []uint64 {
 	return seqs
 }
 
-func mustLoad(t *testing.T, dir string) (*brawtv1.Document, uint64) {
+func mustLoad(t *testing.T, dir string) (*opendesignerv1.Document, uint64) {
 	t.Helper()
 	b, err := Open(dir, "doc1", "Untitled")
 	if err != nil {
@@ -199,8 +199,8 @@ func TestSnapshotRoundTripMatchesFullReplay(t *testing.T) {
 	// pointers with the records handed to Append (applySetProps mutates the
 	// node in place, which would otherwise rewrite an op before it is
 	// persisted).
-	records := func() []*brawtv1.OpRecord {
-		return []*brawtv1.OpRecord{
+	records := func() []*opendesignerv1.OpRecord {
+		return []*opendesignerv1.OpRecord{
 			rec(1, createOp("n1", 1)),
 			rec(2, createOp("n2", 2)),
 			rec(3, setXOp("n1", 11)),

@@ -5,19 +5,19 @@ import (
 	"strings"
 	"testing"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
-func rec(seq uint64, op *brawtv1.Op) *brawtv1.OpRecord {
-	return &brawtv1.OpRecord{Seq: seq, Ts: timestamppb.New(timeZero()), ClientId: "c1", Op: op}
+func rec(seq uint64, op *opendesignerv1.Op) *opendesignerv1.OpRecord {
+	return &opendesignerv1.OpRecord{Seq: seq, Ts: timestamppb.New(timeZero()), ClientId: "c1", Op: op}
 }
 
-func createOp(id string, x float64) *brawtv1.Op {
-	return &brawtv1.Op{OpId: "op-" + id, DocId: "doc1", Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{
-		Node: &brawtv1.Node{Id: id, ParentId: "page1", OrderKey: "a0", Visible: true, Opacity: 1, X: x,
-			Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{}}},
+func createOp(id string, x float64) *opendesignerv1.Op {
+	return &opendesignerv1.Op{OpId: "op-" + id, DocId: "doc1", Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{
+		Node: &opendesignerv1.Node{Id: id, ParentId: "page1", OrderKey: "a0", Visible: true, Opacity: 1, X: x,
+			Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}},
 	}}}
 }
 
@@ -62,8 +62,8 @@ func TestSnapshotCompactsOplog(t *testing.T) {
 		t.Fatal(err)
 	}
 	// dopo lo snapshot, un nuovo op continua da seq+1
-	_ = b.Append(rec(2, &brawtv1.Op{OpId: "m", DocId: "doc1", Kind: &brawtv1.Op_SetProps{SetProps: &brawtv1.SetProperties{
-		Id: "n1", Patch: &brawtv1.Node{X: 99}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"x"}}}}}))
+	_ = b.Append(rec(2, &opendesignerv1.Op{OpId: "m", DocId: "doc1", Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: "n1", Patch: &opendesignerv1.Node{X: 99}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"x"}}}}}))
 	b2, _ := Open(dir, "doc1", "Untitled")
 	doc2, seq2, _ := b2.Load()
 	if seq2 != 2 || doc2.Nodes["n1"].X != 99 {
@@ -200,7 +200,7 @@ func TestSnapshotDurablyWritesFiles(t *testing.T) {
 	}
 	// No leftover temp files from writeFileSync. writeFileSync creates its
 	// temp file via os.CreateTemp(filepath.Dir(path), ...), i.e. inside the
-	// bundle directory (b.dir = "<dir>/doc1.brawt"), not in the workspace
+	// bundle directory (b.dir = "<dir>/doc1.opendesigner"), not in the workspace
 	// root (dir) itself -- scan b.dir, or a real leftover ".tmp-*" file
 	// would never be seen here.
 	entries, err := os.ReadDir(b.dir)

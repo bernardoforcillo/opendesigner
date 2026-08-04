@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { Button } from "react-aria-components";
 import { useScene } from "../store/store";
 import { makeCreatePageOp, makeDeletePageOp, makeRenamePageOp, uuid } from "../tools/ops";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
 // SELETTORE DI PAGINA (traccia annidamento, parte client). Il canvas mostra UNA
 // pagina alla volta (canvasRenderer.ts::rootsOf legge currentPageId); questa

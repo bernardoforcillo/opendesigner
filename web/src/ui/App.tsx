@@ -51,7 +51,7 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
 ];
 
 const CLIENT_ID = crypto.randomUUID();
-const DOC_KEY = "brawt.docId";
+const DOC_KEY = "opendesigner.docId";
 
 // Un campo di testo (input/textarea/contentEditable): Ctrl/Cmd+Z lì dentro è
 // affare del campo stesso (annullare la digitazione), non della scena --

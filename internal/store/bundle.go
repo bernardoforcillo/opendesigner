@@ -11,14 +11,14 @@ import (
 	"sync"
 	"time"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
-	"github.com/bernardoforcillo/brawt/internal/core"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/core"
 	"google.golang.org/protobuf/proto"
 )
 
 type Bundle struct {
 	mu    sync.Mutex
-	dir   string // <workspace>/<docID>.brawt
+	dir   string // <workspace>/<docID>.opendesigner
 	docID string
 	// meta is the document's identity as persisted in meta.json (see
 	// meta.go). It is the single source of the document's name: Load seeds a
@@ -89,7 +89,7 @@ func (b *Bundle) oplogPath() string    { return filepath.Join(b.dir, "oplog") }
 func (b *Bundle) seqPath() string { return filepath.Join(b.dir, "snapshot.seq") }
 
 // Load ricostruisce documento e ultimo seq: snapshot + replay oplog.
-func (b *Bundle) Load() (*brawtv1.Document, uint64, error) {
+func (b *Bundle) Load() (*opendesignerv1.Document, uint64, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -182,7 +182,7 @@ func (b *Bundle) nameFromSnapshotLocked() string {
 	if err != nil || !ok {
 		return ""
 	}
-	var doc brawtv1.Document
+	var doc opendesignerv1.Document
 	if err := proto.Unmarshal(payload, &doc); err != nil {
 		return ""
 	}
@@ -208,7 +208,7 @@ func (b *Bundle) readSnapshotSeq() (uint64, error) {
 // freshly reopened document has no history to serve for any sinceSeq below
 // the hub's startup seq, even though those records are sitting right there
 // on disk.
-func (b *Bundle) History() ([]*brawtv1.OpRecord, error) {
+func (b *Bundle) History() ([]*opendesignerv1.OpRecord, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -221,7 +221,7 @@ func (b *Bundle) History() ([]*brawtv1.OpRecord, error) {
 	if err != nil {
 		return nil, err
 	}
-	var recs []*brawtv1.OpRecord
+	var recs []*opendesignerv1.OpRecord
 	for _, rec := range all {
 		// Mirrors the skip in Load: a record already folded into snapshot.pb
 		// (seq <= snapSeq) is not part of the post-snapshot history.
@@ -258,7 +258,7 @@ func (b *Bundle) History() ([]*brawtv1.OpRecord, error) {
 // transient problem by permanently deleting records.
 //
 // b.mu must be held.
-func (b *Bundle) readOplogLocked() ([]*brawtv1.OpRecord, error) {
+func (b *Bundle) readOplogLocked() ([]*opendesignerv1.OpRecord, error) {
 	f, err := b.openOplogFile(os.O_RDONLY, 0)
 	if err != nil {
 		if os.IsNotExist(err) {
@@ -282,7 +282,7 @@ func (b *Bundle) readOplogLocked() ([]*brawtv1.OpRecord, error) {
 		return nil, nil
 	}
 
-	var recs []*brawtv1.OpRecord
+	var recs []*opendesignerv1.OpRecord
 	repairAt := int64(-1)
 
 	if herr := checkFileHeader(f, size); herr != nil {
@@ -326,8 +326,8 @@ func (b *Bundle) readOplogLocked() ([]*brawtv1.OpRecord, error) {
 // is reached. On damage it returns the records read so far plus the offset
 // the file must be truncated to; it returns an error only when the damage
 // is unrecoverable (see readOplogLocked).
-func scanFrames(f oplogFile, fr *frameReader, size int64) ([]*brawtv1.OpRecord, int64, error) {
-	var recs []*brawtv1.OpRecord
+func scanFrames(f oplogFile, fr *frameReader, size int64) ([]*opendesignerv1.OpRecord, int64, error) {
+	var recs []*opendesignerv1.OpRecord
 	for {
 		start := fr.off
 		payload, err := fr.next()
@@ -356,7 +356,7 @@ func scanFrames(f oplogFile, fr *frameReader, size int64) ([]*brawtv1.OpRecord, 
 			}
 			return recs, torn.Offset, nil
 		}
-		rec := &brawtv1.OpRecord{}
+		rec := &opendesignerv1.OpRecord{}
 		if err := proto.Unmarshal(payload, rec); err != nil {
 			// The checksum matched, so these are exactly the bytes that
 			// were written: this is not torn-write damage and truncation
@@ -415,7 +415,7 @@ func (b *Bundle) truncateOplogLocked(n int64) (err error) {
 // needed for that; a freed-up disk is enough. So any failure here rolls the
 // file back to its pre-write size, and the caller's op is simply not
 // persisted -- which is what Hub.Submit already assumes when Append fails.
-func (b *Bundle) Append(recrd *brawtv1.OpRecord) error {
+func (b *Bundle) Append(recrd *opendesignerv1.OpRecord) error {
 	b.mu.Lock()
 	defer b.mu.Unlock()
 
@@ -524,7 +524,7 @@ var ErrSnapshotCommitted = errors.New("snapshot committed but meta.json was not 
 // Load). So the pair self-heals rather than failing, and it only works in
 // this order -- compacting first would delete records that the snapshot
 // hasn't committed yet.
-func (b *Bundle) Snapshot(doc *brawtv1.Document, seq uint64) error {
+func (b *Bundle) Snapshot(doc *opendesignerv1.Document, seq uint64) error {
 	// Marshal AND write the new snapshot before taking the lock. b.mu also
 	// serialises Append, so every microsecond spent holding it is an edit
 	// waiting on an fsync, and the document is the one part of a snapshot

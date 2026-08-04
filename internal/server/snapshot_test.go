@@ -9,9 +9,9 @@ import (
 	"testing"
 	"time"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
-	"github.com/bernardoforcillo/brawt/internal/core"
-	"github.com/bernardoforcillo/brawt/internal/store"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/core"
+	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"google.golang.org/protobuf/proto"
 )
 
@@ -34,7 +34,7 @@ func hubOn(t *testing.T, dir, name string) *Hub {
 
 func oplogSize(t *testing.T, dir string) int64 {
 	t.Helper()
-	fi, err := os.Stat(filepath.Join(dir, "doc1.brawt", "oplog"))
+	fi, err := os.Stat(filepath.Join(dir, "doc1.opendesigner", "oplog"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -225,12 +225,12 @@ func newGatedBundle() *gatedBundle {
 	}
 }
 
-func (g *gatedBundle) Load() (*brawtv1.Document, uint64, error) {
+func (g *gatedBundle) Load() (*opendesignerv1.Document, uint64, error) {
 	return core.NewDocument("doc1", "Untitled"), 0, nil
 }
-func (g *gatedBundle) History() ([]*brawtv1.OpRecord, error) { return nil, nil }
+func (g *gatedBundle) History() ([]*opendesignerv1.OpRecord, error) { return nil, nil }
 
-func (g *gatedBundle) Append(*brawtv1.OpRecord) error {
+func (g *gatedBundle) Append(*opendesignerv1.OpRecord) error {
 	// Announced BEFORE the wait, so a test that has received this knows the
 	// submitting goroutine is already inside Append -- past everything Submit
 	// does under a hub lock -- and is about to block for as long as the
@@ -241,7 +241,7 @@ func (g *gatedBundle) Append(*brawtv1.OpRecord) error {
 	return nil
 }
 
-func (g *gatedBundle) Snapshot(*brawtv1.Document, uint64) error {
+func (g *gatedBundle) Snapshot(*opendesignerv1.Document, uint64) error {
 	g.mu.Lock()
 	defer g.mu.Unlock()
 	// Only the first one is held open: releasing it lets the queued Submit
@@ -380,7 +380,7 @@ func TestAFailedSnapshotLosesNothing(t *testing.T) {
 
 	// Make the snapshot's final rename fail: writeFileSync renames its temp
 	// file onto snapshot.pb, which cannot replace a directory.
-	snapPath := filepath.Join(dir, "doc1.brawt", "snapshot.pb")
+	snapPath := filepath.Join(dir, "doc1.opendesigner", "snapshot.pb")
 	if err := os.Mkdir(snapPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -423,7 +423,7 @@ func TestASnapshotThatOnlyFailedToRefreshMetaStillTrimsHistory(t *testing.T) {
 
 	// Break the identity refresh and nothing else (see the store-side test):
 	// the temp+rename commit cannot replace a directory.
-	metaPath := filepath.Join(dir, "doc1.brawt", "meta.json")
+	metaPath := filepath.Join(dir, "doc1.opendesigner", "meta.json")
 	if err := os.Remove(metaPath); err != nil {
 		t.Fatal(err)
 	}
@@ -468,7 +468,7 @@ func TestTrimHistoryReleasesTheDroppedRecords(t *testing.T) {
 
 	h.mu.Lock()
 	for i := uint64(1); i <= 10; i++ {
-		h.history = append(h.history, &brawtv1.OpRecord{Seq: i})
+		h.history = append(h.history, &opendesignerv1.OpRecord{Seq: i})
 	}
 	h.seq = 10
 	h.trimHistoryLocked(6)

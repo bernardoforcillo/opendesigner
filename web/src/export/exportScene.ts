@@ -64,7 +64,7 @@ const ILLEGAL_IN_FILENAME = /[\\/:*?"<>|\x00-\x1f]/g;
 // appena tolti (un documento chiamato "///" darebbe "---").
 const TRIM_FROM_FILENAME = /^[-\s.]+|[-\s.]+$/g;
 
-const FALLBACK_NAME = "brawt";
+const FALLBACK_NAME = "opendesigner";
 
 /**
  * Il nome del file proposto per il download: nome del documento, l'ambito se è

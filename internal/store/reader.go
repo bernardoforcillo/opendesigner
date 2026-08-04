@@ -22,7 +22,7 @@ import (
 //	               record whose bytes were only partly flushed, or were
 //	               corrupted in place, fails this check instead of being
 //	               decoded as if it were intact.
-//	payload        the marshalled brawtv1.OpRecord.
+//	payload        the marshalled opendesignerv1.OpRecord.
 //
 // The previous format was protodelim's varint length prefix, which
 // protodelim.MarshalTo writes with two separate Write calls (a varint, then
@@ -36,7 +36,7 @@ import (
 // protodelim framing) is reported as such instead of being mistaken for a
 // single enormous torn record and truncated away.
 const (
-	oplogFileMagic     = "BRAWTLOG"
+	oplogFileMagic     = "OPENDLOG"
 	oplogFormatVersion = uint32(1)
 	oplogHeaderSize    = int64(len(oplogFileMagic) + 4)
 )
@@ -106,7 +106,7 @@ func checkFileHeader(f oplogFile, size int64) error {
 		return fmt.Errorf("read oplog file header: %w", err)
 	}
 	if string(hdr[:len(oplogFileMagic)]) != oplogFileMagic {
-		return fmt.Errorf("not a brawt oplog: file header is %q, want %q (an oplog written before the framed/checksummed format change reads like this; brawt is pre-release and does not migrate it -- delete the bundle to start fresh)", hdr[:len(oplogFileMagic)], oplogFileMagic)
+		return fmt.Errorf("not a opendesigner oplog: file header is %q, want %q (an oplog written before the framed/checksummed format change reads like this; opendesigner is pre-release and does not migrate it -- delete the bundle to start fresh)", hdr[:len(oplogFileMagic)], oplogFileMagic)
 	}
 	if v := binary.BigEndian.Uint32(hdr[len(oplogFileMagic):]); v != oplogFormatVersion {
 		return fmt.Errorf("unsupported oplog format version %d, this build understands %d", v, oplogFormatVersion)

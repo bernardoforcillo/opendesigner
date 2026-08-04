@@ -1,4 +1,4 @@
-module github.com/bernardoforcillo/brawt
+module github.com/bernardoforcillo/opendesigner
 
 go 1.25.0
 

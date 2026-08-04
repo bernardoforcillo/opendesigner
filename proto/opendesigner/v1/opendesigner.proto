@@ -1,10 +1,10 @@
 syntax = "proto3";
-package brawt.v1;
+package opendesigner.v1;
 
 import "google/protobuf/timestamp.proto";
 import "google/protobuf/field_mask.proto";
 
-option go_package = "github.com/bernardoforcillo/brawt/gen/brawt/v1;brawtv1";
+option go_package = "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1;opendesignerv1";
 
 // ---------- documento / scene graph ----------
 message Color { float r = 1; float g = 2; float b = 3; float a = 4; } // 0..1
@@ -104,7 +104,7 @@ message TextNode { string content = 1; TextStyle style = 2; }
 
 // L'immagine è un RIFERIMENTO, mai dei byte. `asset_hash` è lo sha256 dei byte
 // in esadecimale minuscolo; i byte vivono UNA volta sola in
-// <workspace>/<docId>.brawt/assets/ e si servono via GET /assets-api/{docId}/{hash}.
+// <workspace>/<docId>.opendesigner/assets/ e si servono via GET /assets-api/{docId}/{hash}.
 //
 // È il punto dell'indirizzamento per contenuto: un CreateNode con dentro
 // un'immagine porterebbe quei byte nell'op-log, cioè in un file append-only che

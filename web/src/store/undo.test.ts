@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema } from "../gen/brawt/v1/brawt_pb";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "./store";
 import { parentExists } from "./tree";
 import { emptyScene } from "./types";

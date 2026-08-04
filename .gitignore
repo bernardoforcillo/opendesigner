@@ -3,12 +3,12 @@
 /web/node_modules/
 /web/dist/
 *.tsbuildinfo
-/brawt.exe
-/brawt
-*.brawt/
-.brawt/
+/opendesigner.exe
+/opendesigner
+*.opendesigner/
+.opendesigner/
 /.superpowers/
 docs/superpowers/plans/
 docs/superpowers/specs/
 /.playwright-mcp/
-/.brawt-e2e/
+/.opendesigner-e2e/

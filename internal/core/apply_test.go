@@ -5,22 +5,22 @@ import (
 	"fmt"
 	"testing"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-func rectNode(id string, x, y float64) *brawtv1.Node {
-	return &brawtv1.Node{
+func rectNode(id string, x, y float64) *opendesignerv1.Node {
+	return &opendesignerv1.Node{
 		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Rect", Visible: true, Opacity: 1,
 		X: x, Y: y, Width: 100, Height: 80,
-		Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{}},
+		Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}},
 	}
 }
 
 func TestApplyCreateNode(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	op := &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 10, 20)}}}
+	op := &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 10, 20)}}}
 	if err := Apply(doc, op); err != nil {
 		t.Fatalf("Apply create: %v", err)
 	}
@@ -35,8 +35,8 @@ func TestApplyCreateNode(t *testing.T) {
 
 func TestApplyCreateDuplicateFails(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
-	err := Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 5, 5)}}})
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	err := Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 5, 5)}}})
 	if err == nil {
 		t.Fatal("expected error on duplicate create")
 	}
@@ -44,10 +44,10 @@ func TestApplyCreateDuplicateFails(t *testing.T) {
 
 func TestApplySetPropertiesMoves(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
-	op := &brawtv1.Op{Kind: &brawtv1.Op_SetProps{SetProps: &brawtv1.SetProperties{
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	op := &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
 		Id:    "n1",
-		Patch: &brawtv1.Node{X: 42, Y: 7},
+		Patch: &opendesignerv1.Node{X: 42, Y: 7},
 		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"x", "y"}},
 	}}}
 	if err := Apply(doc, op); err != nil {
@@ -60,8 +60,8 @@ func TestApplySetPropertiesMoves(t *testing.T) {
 
 func TestApplySetPropertiesMissingNode(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	err := Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_SetProps{SetProps: &brawtv1.SetProperties{
-		Id: "ghost", Patch: &brawtv1.Node{X: 1}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"x"}},
+	err := Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: "ghost", Patch: &opendesignerv1.Node{X: 1}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"x"}},
 	}}})
 	if err == nil {
 		t.Fatal("expected ErrNodeNotFound")
@@ -70,10 +70,10 @@ func TestApplySetPropertiesMissingNode(t *testing.T) {
 
 func TestApplySetPropertiesMixedMaskIsAllOrNothing(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
-	op := &brawtv1.Op{Kind: &brawtv1.Op_SetProps{SetProps: &brawtv1.SetProperties{
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	op := &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
 		Id:    "n1",
-		Patch: &brawtv1.Node{X: 42, Y: 7},
+		Patch: &opendesignerv1.Node{X: 42, Y: 7},
 		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"x", "bogus"}},
 	}}}
 	if err := Apply(doc, op); err == nil {
@@ -85,37 +85,37 @@ func TestApplySetPropertiesMixedMaskIsAllOrNothing(t *testing.T) {
 	}
 }
 
-func ellipseNode(id string) *brawtv1.Node {
-	return &brawtv1.Node{
+func ellipseNode(id string) *opendesignerv1.Node {
+	return &opendesignerv1.Node{
 		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Ellipse", Visible: true, Opacity: 1,
 		X: 0, Y: 0, Width: 100, Height: 80,
-		Shape: &brawtv1.Node_Ellipse{Ellipse: &brawtv1.EllipseNode{}},
+		Shape: &opendesignerv1.Node_Ellipse{Ellipse: &opendesignerv1.EllipseNode{}},
 	}
 }
 
 // Un GRUPPO: contenitore senza clipping e senza geometria propria (i suoi
 // bounds sono l'unione dei figli, vedi web/src/store/groups.ts). x/y sono la
 // traslazione che contribuisce ai figli e valgono 0 alla creazione.
-func groupNode(id string) *brawtv1.Node {
-	return &brawtv1.Node{
+func groupNode(id string) *opendesignerv1.Node {
+	return &opendesignerv1.Node{
 		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Gruppo", Visible: true, Opacity: 1,
-		Shape: &brawtv1.Node_Group{Group: &brawtv1.GroupNode{}},
+		Shape: &opendesignerv1.Node_Group{Group: &opendesignerv1.GroupNode{}},
 	}
 }
 
 // Un FRAME: contenitore CON geometria propria (il box è suo, non derivato dai
 // figli) e clipping opzionale. È l'artboard -- si disegna e si colpisce come una
 // forma, a differenza di un gruppo.
-func frameNode(id string, clips bool) *brawtv1.Node {
-	return &brawtv1.Node{
+func frameNode(id string, clips bool) *opendesignerv1.Node {
+	return &opendesignerv1.Node{
 		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Frame", Visible: true, Opacity: 1,
 		X: 0, Y: 0, Width: 200, Height: 150,
-		Shape: &brawtv1.Node_Frame{Frame: &brawtv1.FrameNode{ClipsContent: clips}},
+		Shape: &opendesignerv1.Node_Frame{Frame: &opendesignerv1.FrameNode{ClipsContent: clips}},
 	}
 }
 
-func setPropsOp(s *brawtv1.SetProperties) *brawtv1.Op {
-	return &brawtv1.Op{Kind: &brawtv1.Op_SetProps{SetProps: s}}
+func setPropsOp(s *opendesignerv1.SetProperties) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: s}}
 }
 
 // corner_radius è l'UNICO path della mask che indirizza un campo DENTRO il
@@ -124,10 +124,10 @@ func setPropsOp(s *brawtv1.SetProperties) *brawtv1.Op {
 // farebbe un CreateNode.
 func TestApplySetPropertiesCornerRadius(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
-	op := setPropsOp(&brawtv1.SetProperties{
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	op := setPropsOp(&opendesignerv1.SetProperties{
 		Id:    "n1",
-		Patch: &brawtv1.Node{Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{CornerRadius: 12}}},
+		Patch: &opendesignerv1.Node{Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: 12}}},
 		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"corner_radius"}},
 	})
 	if err := Apply(doc, op); err != nil {
@@ -145,9 +145,9 @@ func TestApplySetPropertiesCornerRadius(t *testing.T) {
 func TestApplySetPropertiesCornerRadiusNilPatchZeroes(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	n := rectNode("n1", 0, 0)
-	n.Shape = &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{CornerRadius: 8}}
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: n}}})
-	op := setPropsOp(&brawtv1.SetProperties{
+	n.Shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: 8}}
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: n}}})
+	op := setPropsOp(&opendesignerv1.SetProperties{
 		Id:   "n1",
 		Mask: &fieldmaskpb.FieldMask{Paths: []string{"corner_radius"}},
 	})
@@ -166,7 +166,7 @@ func TestApplySetPropertiesCornerRadiusNilPatchZeroes(t *testing.T) {
 func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		node *brawtv1.Node
+		node *opendesignerv1.Node
 	}{
 		{"ellipse", ellipseNode("n1")},
 		{"text", textNode("n1", "ciao")},
@@ -197,12 +197,12 @@ func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 			// l'op sarebbe confrontarlo con se stesso.
 			wantShape := fmt.Sprintf("%T", tc.node.GetShape())
 			wantSubpaths := len(tc.node.GetVector().GetSubpaths())
-			_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: tc.node}}})
-			op := setPropsOp(&brawtv1.SetProperties{
+			_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: tc.node}}})
+			op := setPropsOp(&opendesignerv1.SetProperties{
 				Id: "n1",
-				Patch: &brawtv1.Node{
+				Patch: &opendesignerv1.Node{
 					X:     42,
-					Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{CornerRadius: 12}},
+					Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: 12}},
 				},
 				Mask: &fieldmaskpb.FieldMask{Paths: []string{"x", "corner_radius"}},
 			})
@@ -236,10 +236,10 @@ func TestApplySetPropertiesCornerRadiusOnShapelessNodeMaterializesRect(t *testin
 	doc := NewDocument("doc1", "Untitled")
 	n := rectNode("n1", 0, 0)
 	n.Shape = nil
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: n}}})
-	op := setPropsOp(&brawtv1.SetProperties{
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: n}}})
+	op := setPropsOp(&opendesignerv1.SetProperties{
 		Id:    "n1",
-		Patch: &brawtv1.Node{Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{CornerRadius: 4}}},
+		Patch: &opendesignerv1.Node{Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: 4}}},
 		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"corner_radius"}},
 	})
 	if err := Apply(doc, op); err != nil {
@@ -260,10 +260,10 @@ func TestApplySetPropertiesCornerRadiusOnShapelessNodeMaterializesRect(t *testin
 // fissata da un test da entrambi i lati, oltre che dalla fixture golden
 // testdata/golden/strokes.json.
 
-func stroke(weight float64, align brawtv1.StrokeAlign, r, g, b float32) *brawtv1.Stroke {
-	return &brawtv1.Stroke{
-		Paint: &brawtv1.Paint{Kind: &brawtv1.Paint_Solid{
-			Solid: &brawtv1.SolidPaint{Color: &brawtv1.Color{R: r, G: g, B: b, A: 1}},
+func stroke(weight float64, align opendesignerv1.StrokeAlign, r, g, b float32) *opendesignerv1.Stroke {
+	return &opendesignerv1.Stroke{
+		Paint: &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Solid{
+			Solid: &opendesignerv1.SolidPaint{Color: &opendesignerv1.Color{R: r, G: g, B: b, A: 1}},
 		}},
 		Weight: weight,
 		Align:  align,
@@ -273,16 +273,16 @@ func stroke(weight float64, align brawtv1.StrokeAlign, r, g, b float32) *brawtv1
 func TestApplySetPropertiesStrokesReplacesTheWholeList(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	n := rectNode("n1", 0, 0)
-	n.Strokes = []*brawtv1.Stroke{
-		stroke(4, brawtv1.StrokeAlign_STROKE_ALIGN_CENTER, 1, 0, 0),
-		stroke(2, brawtv1.StrokeAlign_STROKE_ALIGN_INSIDE, 0, 1, 0),
+	n.Strokes = []*opendesignerv1.Stroke{
+		stroke(4, opendesignerv1.StrokeAlign_STROKE_ALIGN_CENTER, 1, 0, 0),
+		stroke(2, opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE, 0, 1, 0),
 	}
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: n}}})
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: n}}})
 
-	op := setPropsOp(&brawtv1.SetProperties{
+	op := setPropsOp(&opendesignerv1.SetProperties{
 		Id: "n1",
-		Patch: &brawtv1.Node{Strokes: []*brawtv1.Stroke{
-			stroke(9, brawtv1.StrokeAlign_STROKE_ALIGN_OUTSIDE, 0, 0, 1),
+		Patch: &opendesignerv1.Node{Strokes: []*opendesignerv1.Stroke{
+			stroke(9, opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE, 0, 0, 1),
 		}},
 		Mask: &fieldmaskpb.FieldMask{Paths: []string{"strokes"}},
 	})
@@ -299,7 +299,7 @@ func TestApplySetPropertiesStrokesReplacesTheWholeList(t *testing.T) {
 	if got[0].GetWeight() != 9 {
 		t.Fatalf("peso sbagliato: %v", got[0].GetWeight())
 	}
-	if got[0].GetAlign() != brawtv1.StrokeAlign_STROKE_ALIGN_OUTSIDE {
+	if got[0].GetAlign() != opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE {
 		t.Fatalf("allineamento sbagliato: %v", got[0].GetAlign())
 	}
 	if c := got[0].GetPaint().GetSolid().GetColor(); c.GetB() != 1 {
@@ -314,10 +314,10 @@ func TestApplySetPropertiesStrokesReplacesTheWholeList(t *testing.T) {
 func TestApplySetPropertiesStrokesNilPatchClearsTheList(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	n := rectNode("n1", 0, 0)
-	n.Strokes = []*brawtv1.Stroke{stroke(4, brawtv1.StrokeAlign_STROKE_ALIGN_CENTER, 1, 0, 0)}
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: n}}})
+	n.Strokes = []*opendesignerv1.Stroke{stroke(4, opendesignerv1.StrokeAlign_STROKE_ALIGN_CENTER, 1, 0, 0)}
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: n}}})
 
-	op := setPropsOp(&brawtv1.SetProperties{
+	op := setPropsOp(&opendesignerv1.SetProperties{
 		Id:   "n1",
 		Mask: &fieldmaskpb.FieldMask{Paths: []string{"strokes"}},
 	})
@@ -334,12 +334,12 @@ func TestApplySetPropertiesStrokesNilPatchClearsTheList(t *testing.T) {
 // lo accettano come un rettangolo.
 func TestApplySetPropertiesStrokesOnAnyShape(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: ellipseNode("e1")}}})
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: textNode("t1", "ciao")}}})
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: ellipseNode("e1")}}})
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "ciao")}}})
 	for _, id := range []string{"e1", "t1"} {
-		op := setPropsOp(&brawtv1.SetProperties{
+		op := setPropsOp(&opendesignerv1.SetProperties{
 			Id:    id,
-			Patch: &brawtv1.Node{Strokes: []*brawtv1.Stroke{stroke(3, brawtv1.StrokeAlign_STROKE_ALIGN_CENTER, 0, 0, 0)}},
+			Patch: &opendesignerv1.Node{Strokes: []*opendesignerv1.Stroke{stroke(3, opendesignerv1.StrokeAlign_STROKE_ALIGN_CENTER, 0, 0, 0)}},
 			Mask:  &fieldmaskpb.FieldMask{Paths: []string{"strokes"}},
 		})
 		if err := Apply(doc, op); err != nil {
@@ -352,20 +352,20 @@ func TestApplySetPropertiesStrokesOnAnyShape(t *testing.T) {
 }
 
 // TestApplyCreateNodeOnNilNodesMap covers the scenario the review flagged:
-// a *brawtv1.Document not built via NewDocument (e.g. proto.Unmarshal-ed
+// a *opendesignerv1.Document not built via NewDocument (e.g. proto.Unmarshal-ed
 // from a snapshot taken while the document had zero nodes — proto3 omits
 // empty map fields from the wire, so the decoded Document has Nodes == nil)
 // must not panic when the oplog replay hits the first CreateNode.
 func TestApplyCreateNodeOnNilNodesMap(t *testing.T) {
-	doc := &brawtv1.Document{
+	doc := &opendesignerv1.Document{
 		Id: "doc1", Name: "Untitled", SchemaVersion: 1,
-		Pages: []*brawtv1.Page{{Id: "page1", Name: "Page 1"}},
+		Pages: []*opendesignerv1.Page{{Id: "page1", Name: "Page 1"}},
 		// Nodes intentionally left nil to simulate a decoded empty-snapshot Document.
 	}
 	if doc.Nodes != nil {
 		t.Fatal("test setup invalid: Nodes must start nil")
 	}
-	op := &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 10, 20)}}}
+	op := &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 10, 20)}}}
 	if err := Apply(doc, op); err != nil {
 		t.Fatalf("Apply create on nil Nodes map: %v", err)
 	}
@@ -378,28 +378,28 @@ func TestApplyCreateNodeOnNilNodesMap(t *testing.T) {
 	}
 }
 
-func textNode(id, content string) *brawtv1.Node {
-	return &brawtv1.Node{
+func textNode(id, content string) *opendesignerv1.Node {
+	return &opendesignerv1.Node{
 		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Text", Visible: true, Opacity: 1,
 		X: 0, Y: 0, Width: 200, Height: 24,
-		Shape: &brawtv1.Node_Text{Text: &brawtv1.TextNode{
+		Shape: &opendesignerv1.Node_Text{Text: &opendesignerv1.TextNode{
 			Content: content,
-			Style: &brawtv1.TextStyle{
+			Style: &opendesignerv1.TextStyle{
 				FontFamily: "Inter", FontSize: 16, FontWeight: "400", LineHeight: 1.2,
-				Align: brawtv1.TextAlign_TEXT_ALIGN_LEFT,
+				Align: opendesignerv1.TextAlign_TEXT_ALIGN_LEFT,
 			},
 		}},
 	}
 }
 
-func setTextOp(s *brawtv1.SetText) *brawtv1.Op {
-	return &brawtv1.Op{Kind: &brawtv1.Op_SetText{SetText: s}}
+func setTextOp(s *opendesignerv1.SetText) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetText{SetText: s}}
 }
 
 func TestApplySetTextChangesContent(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: textNode("t1", "ciao")}}})
-	if err := Apply(doc, setTextOp(&brawtv1.SetText{Id: "t1", Content: "nuovo testo"})); err != nil {
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "ciao")}}})
+	if err := Apply(doc, setTextOp(&opendesignerv1.SetText{Id: "t1", Content: "nuovo testo"})); err != nil {
 		t.Fatalf("Apply setText: %v", err)
 	}
 	if got := doc.Nodes["t1"].GetText().GetContent(); got != "nuovo testo" {
@@ -409,22 +409,22 @@ func TestApplySetTextChangesContent(t *testing.T) {
 
 func TestApplySetTextOnNonTextNodeFails(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
-	err := Apply(doc, setTextOp(&brawtv1.SetText{Id: "n1", Content: "x"}))
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	err := Apply(doc, setTextOp(&opendesignerv1.SetText{Id: "n1", Content: "x"}))
 	if err == nil {
 		t.Fatal("expected error setting text on a non-text node")
 	}
 	if doc.Nodes["n1"].GetShape() == nil {
 		t.Fatal("shape clobbered by a rejected setText")
 	}
-	if _, ok := doc.Nodes["n1"].GetShape().(*brawtv1.Node_Rect); !ok {
+	if _, ok := doc.Nodes["n1"].GetShape().(*opendesignerv1.Node_Rect); !ok {
 		t.Fatalf("rect turned into %T by a rejected setText", doc.Nodes["n1"].GetShape())
 	}
 }
 
 func TestApplySetTextMissingNode(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	err := Apply(doc, setTextOp(&brawtv1.SetText{Id: "ghost", Content: "x"}))
+	err := Apply(doc, setTextOp(&opendesignerv1.SetText{Id: "ghost", Content: "x"}))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -436,8 +436,8 @@ func TestApplySetTextMissingNode(t *testing.T) {
 // azzererebbe lo stile del nodo (font a 0 => testo invisibile).
 func TestApplySetTextWithoutStylePresentKeepsStyle(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: textNode("t1", "ciao")}}})
-	if err := Apply(doc, setTextOp(&brawtv1.SetText{Id: "t1", Content: "altro"})); err != nil {
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "ciao")}}})
+	if err := Apply(doc, setTextOp(&opendesignerv1.SetText{Id: "t1", Content: "altro"})); err != nil {
 		t.Fatalf("Apply setText: %v", err)
 	}
 	st := doc.Nodes["t1"].GetText().GetStyle()
@@ -446,7 +446,7 @@ func TestApplySetTextWithoutStylePresentKeepsStyle(t *testing.T) {
 	}
 	// Anche uno `style` esplicito ma con style_present=false va ignorato: è il
 	// flag, non la presenza del sotto-messaggio, a decidere.
-	op := setTextOp(&brawtv1.SetText{Id: "t1", Content: "terzo", Style: &brawtv1.TextStyle{FontSize: 99}})
+	op := setTextOp(&opendesignerv1.SetText{Id: "t1", Content: "terzo", Style: &opendesignerv1.TextStyle{FontSize: 99}})
 	if err := Apply(doc, op); err != nil {
 		t.Fatalf("Apply setText: %v", err)
 	}
@@ -457,19 +457,19 @@ func TestApplySetTextWithoutStylePresentKeepsStyle(t *testing.T) {
 
 func TestApplySetTextWithStylePresentReplacesStyle(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: textNode("t1", "ciao")}}})
-	op := setTextOp(&brawtv1.SetText{
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "ciao")}}})
+	op := setTextOp(&opendesignerv1.SetText{
 		Id: "t1", Content: "ciao", StylePresent: true,
-		Style: &brawtv1.TextStyle{
+		Style: &opendesignerv1.TextStyle{
 			FontFamily: "Inter", FontSize: 32, FontWeight: "700", LineHeight: 1.5,
-			Align: brawtv1.TextAlign_TEXT_ALIGN_CENTER,
+			Align: opendesignerv1.TextAlign_TEXT_ALIGN_CENTER,
 		},
 	})
 	if err := Apply(doc, op); err != nil {
 		t.Fatalf("Apply setText: %v", err)
 	}
 	st := doc.Nodes["t1"].GetText().GetStyle()
-	if st.GetFontSize() != 32 || st.GetFontWeight() != "700" || st.GetAlign() != brawtv1.TextAlign_TEXT_ALIGN_CENTER {
+	if st.GetFontSize() != 32 || st.GetFontWeight() != "700" || st.GetAlign() != opendesignerv1.TextAlign_TEXT_ALIGN_CENTER {
 		t.Fatalf("style not replaced: %+v", st)
 	}
 }
@@ -482,9 +482,9 @@ func TestApplySetTextWithStylePresentReplacesStyle(t *testing.T) {
 // che dimenticasse in_/out_ (o li ricavasse per specchiatura) non potrebbe
 // passare per caso. Sono OFFSET relativi all'ancoraggio (vedi il proto), quindi
 // piccoli e centrati sullo zero: nulle significherebbe "nessuna maniglia".
-func richSubPath(closed bool) *brawtv1.SubPath {
-	return &brawtv1.SubPath{
-		Anchors: []*brawtv1.Anchor{
+func richSubPath(closed bool) *opendesignerv1.SubPath {
+	return &opendesignerv1.SubPath{
+		Anchors: []*opendesignerv1.Anchor{
 			{X: 10, Y: 20, InX: -2, InY: -1, OutX: 4, OutY: 6},
 			{X: 60, Y: 70, InX: -5, InY: -8, OutX: 6, OutY: 1},
 		},
@@ -492,24 +492,24 @@ func richSubPath(closed bool) *brawtv1.SubPath {
 	}
 }
 
-func vectorNode(id string, subpaths ...*brawtv1.SubPath) *brawtv1.Node {
-	return &brawtv1.Node{
+func vectorNode(id string, subpaths ...*opendesignerv1.SubPath) *opendesignerv1.Node {
+	return &opendesignerv1.Node{
 		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Vector", Visible: true, Opacity: 1,
 		X: 0, Y: 0, Width: 100, Height: 80,
-		Shape: &brawtv1.Node_Vector{Vector: &brawtv1.VectorNode{Subpaths: subpaths}},
+		Shape: &opendesignerv1.Node_Vector{Vector: &opendesignerv1.VectorNode{Subpaths: subpaths}},
 	}
 }
 
-func setVectorPathOp(s *brawtv1.SetVectorPath) *brawtv1.Op {
-	return &brawtv1.Op{Kind: &brawtv1.Op_SetVectorPath{SetVectorPath: s}}
+func setVectorPathOp(s *opendesignerv1.SetVectorPath) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetVectorPath{SetVectorPath: s}}
 }
 
 func TestApplySetVectorPathReplacesSubpaths(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: vectorNode("v1", richSubPath(false))}}})
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: vectorNode("v1", richSubPath(false))}}})
 
-	next := []*brawtv1.SubPath{richSubPath(true), {Anchors: []*brawtv1.Anchor{{X: 1, Y: 2}}}}
-	if err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "v1", Subpaths: next})); err != nil {
+	next := []*opendesignerv1.SubPath{richSubPath(true), {Anchors: []*opendesignerv1.Anchor{{X: 1, Y: 2}}}}
+	if err := Apply(doc, setVectorPathOp(&opendesignerv1.SetVectorPath{Id: "v1", Subpaths: next})); err != nil {
 		t.Fatalf("Apply setVectorPath: %v", err)
 	}
 	got := doc.Nodes["v1"].GetVector().GetSubpaths()
@@ -530,8 +530,8 @@ func TestApplySetVectorPathReplacesSubpaths(t *testing.T) {
 // "campo non specificato" da ignorare (a differenza di SetText.style).
 func TestApplySetVectorPathEmptyListClearsPath(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: vectorNode("v1", richSubPath(true))}}})
-	if err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "v1"})); err != nil {
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: vectorNode("v1", richSubPath(true))}}})
+	if err := Apply(doc, setVectorPathOp(&opendesignerv1.SetVectorPath{Id: "v1"})); err != nil {
 		t.Fatalf("Apply setVectorPath: %v", err)
 	}
 	if n := len(doc.Nodes["v1"].GetVector().GetSubpaths()); n != 0 {
@@ -539,7 +539,7 @@ func TestApplySetVectorPathEmptyListClearsPath(t *testing.T) {
 	}
 	// Il nodo resta un nodo vettoriale (svuotato), non perde la forma: un
 	// successivo setVectorPath deve ancora essere accettato.
-	if _, ok := doc.Nodes["v1"].GetShape().(*brawtv1.Node_Vector); !ok {
+	if _, ok := doc.Nodes["v1"].GetShape().(*opendesignerv1.Node_Vector); !ok {
 		t.Fatalf("shape lost by an emptying setVectorPath: %T", doc.Nodes["v1"].GetShape())
 	}
 }
@@ -548,19 +548,19 @@ func TestApplySetVectorPathEmptyListClearsPath(t *testing.T) {
 // `shape` è la NATURA del nodo, non un campo da riempire.
 func TestApplySetVectorPathOnNonVectorNodeFails(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
-	err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "n1", Subpaths: []*brawtv1.SubPath{richSubPath(false)}}))
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	err := Apply(doc, setVectorPathOp(&opendesignerv1.SetVectorPath{Id: "n1", Subpaths: []*opendesignerv1.SubPath{richSubPath(false)}}))
 	if !errors.Is(err, ErrNotVectorNode) {
 		t.Fatalf("expected ErrNotVectorNode, got %v", err)
 	}
-	if _, ok := doc.Nodes["n1"].GetShape().(*brawtv1.Node_Rect); !ok {
+	if _, ok := doc.Nodes["n1"].GetShape().(*opendesignerv1.Node_Rect); !ok {
 		t.Fatalf("rect turned into %T by a rejected setVectorPath", doc.Nodes["n1"].GetShape())
 	}
 }
 
 func TestApplySetVectorPathMissingNode(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	err := Apply(doc, setVectorPathOp(&brawtv1.SetVectorPath{Id: "ghost"}))
+	err := Apply(doc, setVectorPathOp(&opendesignerv1.SetVectorPath{Id: "ghost"}))
 	if !errors.Is(err, ErrNodeNotFound) {
 		t.Fatalf("expected ErrNodeNotFound, got %v", err)
 	}
@@ -568,8 +568,8 @@ func TestApplySetVectorPathMissingNode(t *testing.T) {
 
 func TestApplyDeleteNode(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
-	if err := Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_DeleteNode{DeleteNode: &brawtv1.DeleteNode{Id: "n1"}}}); err != nil {
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
+	if err := Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteNode{DeleteNode: &opendesignerv1.DeleteNode{Id: "n1"}}}); err != nil {
 		t.Fatalf("delete: %v", err)
 	}
 	if _, ok := doc.Nodes["n1"]; ok {
@@ -583,11 +583,11 @@ func TestApplyDeleteNode(t *testing.T) {
 // internal/store/assets.go). Qui ne serve uno solo per forma.
 const testAssetHash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
-func imageNode(id, hash string) *brawtv1.Node {
-	return &brawtv1.Node{
+func imageNode(id, hash string) *opendesignerv1.Node {
+	return &opendesignerv1.Node{
 		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Image", Visible: true, Opacity: 1,
 		X: 0, Y: 0, Width: 160, Height: 90,
-		Shape: &brawtv1.Node_Image{Image: &brawtv1.ImageNode{AssetHash: hash}},
+		Shape: &opendesignerv1.Node_Image{Image: &opendesignerv1.ImageNode{AssetHash: hash}},
 	}
 }
 
@@ -596,7 +596,7 @@ func imageNode(id, hash string) *brawtv1.Node {
 // immagini.
 func TestApplyCreateImageNodeCarriesOnlyTheHash(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	op := &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: imageNode("i1", testAssetHash)}}}
+	op := &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: imageNode("i1", testAssetHash)}}}
 	if err := Apply(doc, op); err != nil {
 		t.Fatalf("Apply create: %v", err)
 	}
@@ -619,10 +619,10 @@ func TestApplyCreateImageNodeCarriesOnlyTheHash(t *testing.T) {
 // nodo: la forma non c'entra, e soprattutto non viene toccata.
 func TestApplySetPropertiesOnImageKeepsTheAssetHash(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: imageNode("i1", testAssetHash)}}})
-	op := setPropsOp(&brawtv1.SetProperties{
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: imageNode("i1", testAssetHash)}}})
+	op := setPropsOp(&opendesignerv1.SetProperties{
 		Id:    "i1",
-		Patch: &brawtv1.Node{X: 300, Y: 400},
+		Patch: &opendesignerv1.Node{X: 300, Y: 400},
 		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"x", "y"}},
 	})
 	if err := Apply(doc, op); err != nil {
@@ -642,8 +642,8 @@ func TestApplySetPropertiesOnImageKeepsTheAssetHash(t *testing.T) {
 // e sostituirebbe la forma, cioè butterebbe via il riferimento all'asset.
 func TestApplySetTextOnImageNodeFails(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: imageNode("i1", testAssetHash)}}})
-	if err := Apply(doc, setTextOp(&brawtv1.SetText{Id: "i1", Content: "x"})); !errors.Is(err, ErrNotTextNode) {
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: imageNode("i1", testAssetHash)}}})
+	if err := Apply(doc, setTextOp(&opendesignerv1.SetText{Id: "i1", Content: "x"})); !errors.Is(err, ErrNotTextNode) {
 		t.Fatalf("expected ErrNotTextNode, got %v", err)
 	}
 	if doc.Nodes["i1"].GetImage().GetAssetHash() != testAssetHash {

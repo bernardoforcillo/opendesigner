@@ -7,7 +7,7 @@ import (
 	"testing"
 
 	"connectrpc.com/connect"
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
 // finding: Manager.infos was purely in-memory and the workspace directory was
@@ -73,13 +73,13 @@ func TestListDocumentsAfterARestartOverTheWire(t *testing.T) {
 	ctx := context.Background()
 
 	first := newTestClientOn(t, ws)
-	info, err := first.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "Progetto Alfa"}))
+	info, err := first.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Progetto Alfa"}))
 	if err != nil {
 		t.Fatal(err)
 	}
 
 	second := newTestClientOn(t, ws)
-	list, err := second.ListDocuments(ctx, connect.NewRequest(&brawtv1.ListDocumentsRequest{}))
+	list, err := second.ListDocuments(ctx, connect.NewRequest(&opendesignerv1.ListDocumentsRequest{}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -89,7 +89,7 @@ func TestListDocumentsAfterARestartOverTheWire(t *testing.T) {
 			docs, info.Msg.GetId(), "Progetto Alfa")
 	}
 
-	open, err := second.OpenDocument(ctx, connect.NewRequest(&brawtv1.OpenRequest{DocId: docs[0].GetId()}))
+	open, err := second.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: docs[0].GetId()}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -99,7 +99,7 @@ func TestListDocumentsAfterARestartOverTheWire(t *testing.T) {
 }
 
 // The workspace holds bundle directories, but nothing stops a user (or another
-// tool) from leaving other files in it. Only <uuid>.brawt directories are
+// tool) from leaving other files in it. Only <uuid>.opendesigner directories are
 // documents, and an id the Manager would refuse to open (HubFor validates it as
 // a UUID) must not be advertised as openable.
 func TestListIgnoresEntriesThatAreNotBundles(t *testing.T) {
@@ -111,7 +111,7 @@ func TestListIgnoresEntriesThatAreNotBundles(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	for _, name := range []string{"notes.txt", "random-dir", "not-a-uuid.brawt"} {
+	for _, name := range []string{"notes.txt", "random-dir", "not-a-uuid.opendesigner"} {
 		path := filepath.Join(ws, name)
 		if filepath.Ext(name) == ".txt" {
 			if err := os.WriteFile(path, []byte("hi"), 0o644); err != nil {

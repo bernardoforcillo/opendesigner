@@ -4,7 +4,7 @@ import type { Color } from "react-aria-components";
 import type { FillLite } from "../../store/types";
 
 // CAMPO COLORE (Task 10). Il modello tiene le tinte in RGBA FLOAT 0..1 -- è la
-// forma che il .proto trasporta (brawt.v1.Color) e quella che il renderer
+// forma che il .proto trasporta (opendesigner.v1.Color) e quella che il renderer
 // disegna -- mentre l'utente le legge e le scrive in ESADECIMALE. La
 // conversione fra le due forme vive QUI dentro e in nessun altro posto: è il
 // "bordo UI" del brief. Nessun altro modulo (né lo store, né tools/ops.ts, né

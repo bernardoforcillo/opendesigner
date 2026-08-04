@@ -1,8 +1,8 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { create } from "@bufbuild/protobuf";
-import { DocumentSchema, NodeSchema, OpSchema, ServerMsgSchema } from "../gen/brawt/v1/brawt_pb";
-import type { Node as PbNode, Op, ServerMsg } from "../gen/brawt/v1/brawt_pb";
+import { DocumentSchema, NodeSchema, OpSchema, ServerMsgSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Node as PbNode, Op, ServerMsg } from "../gen/opendesigner/v1/opendesigner_pb";
 
 // Doppio del trasporto Connect: SyncClient importa `docClient` da ./client, e
 // questo è l'unico punto in cui tocca la rete. vi.hoisted perché la factory di
@@ -1142,7 +1142,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().sync).toBe(sync);
 
     // È la forma del bootstrap di ui/App.tsx al primo caricamento (nessun
-    // `brawt.docId` in localStorage) sotto StrictMode: i due giri dell'effetto
+    // `opendesigner.docId` in localStorage) sotto StrictMode: i due giri dell'effetto
     // aspettano ciascuno la propria createDocument, e se la seconda risposta
     // arriva per prima il client del PRIMO giro viene costruito DOPO che quello
     // del secondo si è già registrato.

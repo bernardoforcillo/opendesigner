@@ -14,7 +14,7 @@ import (
 	"strings"
 	"testing"
 
-	"github.com/bernardoforcillo/brawt/internal/store"
+	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -128,7 +128,7 @@ func TestAssetUploadTwiceStoresOneFile(t *testing.T) {
 	if first != second {
 		t.Fatalf("the same bytes gave two hashes: %q and %q", first, second)
 	}
-	entries, err := os.ReadDir(filepath.Join(ws, docID+".brawt", "assets"))
+	entries, err := os.ReadDir(filepath.Join(ws, docID+".opendesigner", "assets"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -153,7 +153,7 @@ func TestAssetGetUnknownHashIs404(t *testing.T) {
 // must certainly not answer with the bundle's own files.
 func TestAssetGetRefusesPathTraversal(t *testing.T) {
 	srv, ws, docID := assetServer(t)
-	meta, err := os.ReadFile(filepath.Join(ws, docID+".brawt", "meta.json"))
+	meta, err := os.ReadFile(filepath.Join(ws, docID+".opendesigner", "meta.json"))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -188,7 +188,7 @@ func TestAssetUploadToAnUnknownDocumentIs404(t *testing.T) {
 	if res.StatusCode != http.StatusNotFound {
 		t.Fatalf("status = %d, want 404", res.StatusCode)
 	}
-	if _, err := os.Stat(filepath.Join(ws, ghost+".brawt")); !os.IsNotExist(err) {
+	if _, err := os.Stat(filepath.Join(ws, ghost+".opendesigner")); !os.IsNotExist(err) {
 		t.Fatal("the upload created a bundle for a document that does not exist")
 	}
 }

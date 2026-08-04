@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readdirSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { fromJson } from "@bufbuild/protobuf";
-import { OpSchema, DocumentSchema } from "../gen/brawt/v1/brawt_pb";
+import { OpSchema, DocumentSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, fromDocument } from "./types";
 

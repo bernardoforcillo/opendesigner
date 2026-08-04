@@ -2,7 +2,7 @@ import { type Bounds, unionBounds, worldAabbOfNode } from "../canvas/geometry";
 import { useScene } from "../store/store";
 import { makeSetPropsOp } from "../tools/ops";
 import type { SceneState } from "../store/types";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
 // ALLINEAMENTO E DISTRIBUZIONE.
 //
@@ -132,7 +132,7 @@ export function distributeDeltas(boxes: readonly Bounds[], axis: "x" | "y"): Del
 // quindi tutti e sei gli allineamenti sono l'identità e alignOps non produce
 // nessun op. È il comportamento di Figma per un oggetto solo sulla tela.
 //
-// NON esiste una pagina contro cui allinearlo. `brawt.v1.Page` porta oggi solo
+// NON esiste una pagina contro cui allinearlo. `opendesigner.v1.Page` porta oggi solo
 // `id` e `name`: nel modello non c'è nessuna geometria di pagina (ed è lavoro
 // della traccia 1, che possiede pagine e frame). Inventarne una -- un foglio
 // 1920x1080 all'origine -- non sarebbe una convenzione innocua ma una

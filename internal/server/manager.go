@@ -5,14 +5,14 @@ import (
 	"net/http"
 	"sync"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
-	"github.com/bernardoforcillo/brawt/internal/store"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"github.com/google/uuid"
 )
 
 // errInvalidDocID is returned by HubFor when the client-supplied doc id is not
 // a well-formed document id. docIDs are UUIDs minted by Create; store.Open
-// joins the id straight into a filesystem path (<workspace>/<docID>.brawt), so
+// joins the id straight into a filesystem path (<workspace>/<docID>.opendesigner), so
 // a hostile doc_id containing ".." segments or path separators could otherwise
 // create or open bundle directories outside the workspace root. Validating the
 // id as a UUID before any filesystem access closes that path-traversal hole.
@@ -35,7 +35,7 @@ func NewManager(workspace string) *Manager {
 	return &Manager{workspace: workspace, hubs: map[string]*Hub{}}
 }
 
-func (m *Manager) Create(name string) (*brawtv1.DocInfo, error) {
+func (m *Manager) Create(name string) (*opendesignerv1.DocInfo, error) {
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id := uuid.NewString()
@@ -52,7 +52,7 @@ func (m *Manager) Create(name string) (*brawtv1.DocInfo, error) {
 	}
 	m.hubs[id] = h
 	meta := b.Meta()
-	return &brawtv1.DocInfo{Id: meta.ID, Name: meta.Name}, nil
+	return &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name}, nil
 }
 
 func (m *Manager) HubFor(docID string) (*Hub, error) {
@@ -94,14 +94,14 @@ func (m *Manager) HubFor(docID string) (*Hub, error) {
 // copied into the workspace by hand shows up, and it keeps the answer honest
 // if a document is created by another process. The cost is one ReadDir plus a
 // small JSON read per document, on a call the editor makes when it boots.
-func (m *Manager) List() ([]*brawtv1.DocInfo, error) {
+func (m *Manager) List() ([]*opendesignerv1.DocInfo, error) {
 	// No lock: m.workspace is immutable and nothing here touches m.hubs, so
 	// a directory scan never blocks a Submit the way holding m.mu would.
 	metas, err := store.Scan(m.workspace)
 	if err != nil {
 		return nil, err
 	}
-	out := make([]*brawtv1.DocInfo, 0, len(metas))
+	out := make([]*opendesignerv1.DocInfo, 0, len(metas))
 	for _, meta := range metas {
 		// HubFor refuses any id that is not a UUID (path traversal), so a
 		// directory this Manager could never open must not be advertised as
@@ -109,7 +109,7 @@ func (m *Manager) List() ([]*brawtv1.DocInfo, error) {
 		if uuid.Validate(meta.ID) != nil {
 			continue
 		}
-		out = append(out, &brawtv1.DocInfo{Id: meta.ID, Name: meta.Name})
+		out = append(out, &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name})
 	}
 	return out, nil
 }

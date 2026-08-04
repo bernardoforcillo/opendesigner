@@ -18,7 +18,7 @@ import type {
   FillLite, NodeLite, SceneState, StrokeAlignLite, StrokeLite, TextAlignLite, TextStyleLite,
 } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
 // PANNELLO PROPRIETÀ — geometria (Task 9) + aspetto e stile del testo (Task 10).
 //

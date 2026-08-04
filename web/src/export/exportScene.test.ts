@@ -261,8 +261,8 @@ describe("exportFileName", () => {
   });
 
   it("un nome vuoto (o fatto di soli caratteri tolti) ricade su un nome buono", () => {
-    expect(exportFileName("", { format: "png", scope: "page", scale: 1 })).toBe("brawt.png");
-    expect(exportFileName("///", { format: "svg", scope: "page", scale: 1 })).toBe("brawt.svg");
+    expect(exportFileName("", { format: "png", scope: "page", scale: 1 })).toBe("opendesigner.png");
+    expect(exportFileName("///", { format: "svg", scope: "page", scale: 1 })).toBe("opendesigner.svg");
   });
 
   it("scala e ambito compaiono nel nome", () => {

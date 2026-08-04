@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createSelectTool, pickTarget, nodesInMarquee } from "./selectTool";
 import type { ToolContext } from "./types";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import { worldBoundsOfNode } from "../canvas/transform";
 import { emptyScene } from "../store/types";

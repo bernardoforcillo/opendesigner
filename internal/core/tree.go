@@ -3,7 +3,7 @@ package core
 import (
 	"sort"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
 // Attraversamento del documento come ALBERO. `Node.parent_id` esisteva da M0 ma
@@ -30,8 +30,8 @@ import (
 // spareggio due chiamate sullo stesso documento potrebbero dare ordini diversi
 // -- e la cascata di delete, che ne dipende, produrrebbe inversi diversi a ogni
 // esecuzione.
-func ChildrenOf(doc *brawtv1.Document, parentID string) []*brawtv1.Node {
-	var out []*brawtv1.Node
+func ChildrenOf(doc *opendesignerv1.Document, parentID string) []*opendesignerv1.Node {
+	var out []*opendesignerv1.Node
 	for _, n := range doc.GetNodes() {
 		if n.GetParentId() == parentID {
 			out = append(out, n)
@@ -56,18 +56,18 @@ func ChildrenOf(doc *brawtv1.Document, parentID string) []*brawtv1.Node {
 // verrebbe rifiutato.
 //
 // Lista vuota se il nodo non esiste.
-func SubtreeOf(doc *brawtv1.Document, id string) []*brawtv1.Node {
+func SubtreeOf(doc *opendesignerv1.Document, id string) []*opendesignerv1.Node {
 	root := doc.GetNodes()[id]
 	if root == nil {
 		return nil
 	}
-	var out []*brawtv1.Node
+	var out []*opendesignerv1.Node
 	seen := map[string]bool{}
 	// PILA esplicita e non ricorsione: la profondità dell'albero la decide
 	// l'utente (gruppi dentro gruppi dentro frame), e un documento malformato
 	// potrebbe renderla illimitata. In pila i figli vanno in ordine INVERSO,
 	// così escono in ordine di order_key.
-	stack := []*brawtv1.Node{root}
+	stack := []*opendesignerv1.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
@@ -90,7 +90,7 @@ func SubtreeOf(doc *brawtv1.Document, id string) []*brawtv1.Node {
 // antenato di se stesso). Sale la catena dei parent invece di scendere
 // l'albero: la profondità è tipicamente molto minore del numero di discendenti,
 // ed è la direzione in cui il controllo dei cicli va fatto (vedi applyReparent).
-func IsAncestorOf(doc *brawtv1.Document, ancestorID, id string) bool {
+func IsAncestorOf(doc *opendesignerv1.Document, ancestorID, id string) bool {
 	seen := map[string]bool{}
 	cur := doc.GetNodes()[id]
 	for cur != nil && !seen[cur.GetId()] {
@@ -107,7 +107,7 @@ func IsAncestorOf(doc *brawtv1.Document, ancestorID, id string) bool {
 // oppure una Page del documento. Una stringa vuota non è né l'uno né l'altro --
 // un nodo senza parent non è raggiungibile da nessuna pagina, quindi non è
 // disegnabile né selezionabile: esisterebbe solo dentro la mappa.
-func parentExists(doc *brawtv1.Document, parentID string) bool {
+func parentExists(doc *opendesignerv1.Document, parentID string) bool {
 	if _, ok := doc.GetNodes()[parentID]; ok {
 		return true
 	}

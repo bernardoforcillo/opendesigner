@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema, OpSchema } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene } from "./types";
 import type { AnchorLite, SubPathLite } from "./types";

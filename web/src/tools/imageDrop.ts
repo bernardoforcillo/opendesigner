@@ -1,6 +1,6 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema } from "../gen/brawt/v1/brawt_pb";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import { nextOrderKey, orderKeyBetween } from "../store/orderKey";
 import { uploadAsset, type AssetRef } from "../rpc/assets";

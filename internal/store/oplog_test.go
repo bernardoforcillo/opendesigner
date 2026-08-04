@@ -318,7 +318,7 @@ func TestLoadRejectsForeignOplogFormat(t *testing.T) {
 	if err == nil {
 		t.Fatal("Load() must reject an oplog that isn't in the current format, got nil")
 	}
-	if !strings.Contains(err.Error(), "brawt oplog") {
+	if !strings.Contains(err.Error(), "opendesigner oplog") {
 		t.Fatalf("error = %v, want it to explain the format mismatch", err)
 	}
 	after, rerr := os.ReadFile(b.oplogPath())

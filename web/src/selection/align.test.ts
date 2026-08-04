@@ -12,7 +12,7 @@ import type { AlignKind } from "./align";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
 function node(over: Partial<NodeLite> & { id: string }): NodeLite {
   return {

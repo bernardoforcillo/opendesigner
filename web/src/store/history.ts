@@ -1,12 +1,12 @@
 import { create } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/brawt/v1/brawt_pb";
-import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
+import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { toPbNode, toPbTextStyle, toPbSubPaths, type SceneState } from "./types";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Primitive di undo: dato lo stato PRIMA di un op, l'op che lo annulla.
 //
-// L'undo in brawt non è un rewind dell'op-log: è altro lavoro in avanti
+// L'undo in opendesigner non è un rewind dell'op-log: è altro lavoro in avanti
 // (l'inverso viene submittato come un op qualsiasi). Quindi l'inverso è un Op
 // vero, con:
 //  - un opId NUOVO (il server deduplica per opId: riusare quello dell'op

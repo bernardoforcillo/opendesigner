@@ -17,7 +17,7 @@ describe("assetUrl", () => {
   });
 
   it("il prefisso NON è /assets/ (là sotto ci sono i bundle di Vite)", () => {
-    // `brawt serve` serve il frontend compilato dalla radice e Vite scrive i
+    // `opendesigner serve` serve il frontend compilato dalla radice e Vite scrive i
     // propri file in dist/assets/: le due route si coprirebbero a vicenda.
     expect(ASSET_PREFIX).toBe("/assets-api");
   });

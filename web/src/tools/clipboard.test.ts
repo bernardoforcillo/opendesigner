@@ -127,7 +127,7 @@ describe("il payload della clipboard", () => {
     expect(payload.nodes).toHaveLength(1);
   });
 
-  it("tratta come ESTRANEO tutto ciò che non è un payload brawt", () => {
+  it("tratta come ESTRANEO tutto ciò che non è un payload opendesigner", () => {
     for (const t of ["", "   ", "ciao mondo", "{ non json", JSON.stringify({ hello: "world" })]) {
       const parsed = parseClipboard(t);
       expect(parsed.ok, t).toBe(false);
@@ -337,7 +337,7 @@ describe("pasteOps", () => {
 // --- copia ------------------------------------------------------------------
 
 describe("copySelection", () => {
-  it("scrive la selezione sulla clipboard di SISTEMA come payload brawt", async () => {
+  it("scrive la selezione sulla clipboard di SISTEMA come payload opendesigner", async () => {
     const cb = clipboardStub();
     setClipboard(cb);
     installScene([rect("n1"), rect("n2")]);
@@ -346,7 +346,7 @@ describe("copySelection", () => {
     expect(await copySelection()).toBe(true);
     expect(cb.writeText).toHaveBeenCalledTimes(1);
     const parsed = parseClipboard(cb.writeText.mock.calls[0][0] as string);
-    if (!parsed.ok) throw new Error("dovrebbe essere un payload brawt");
+    if (!parsed.ok) throw new Error("dovrebbe essere un payload opendesigner");
     expect(parsed.nodes.map((n) => n.id)).toEqual(["n1"]);
   });
 

@@ -8,7 +8,7 @@ import {
   type PenState,
 } from "./penTool";
 import type { ToolContext } from "./types";
-import type { Node as PbNode, Op } from "../gen/brawt/v1/brawt_pb";
+import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { AnchorLite } from "../store/types";

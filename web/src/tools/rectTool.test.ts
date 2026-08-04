@@ -1,7 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createRectTool, DEFAULT_RECT_HEIGHT, DEFAULT_RECT_WIDTH } from "./rectTool";
 import type { ToolContext } from "./types";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";

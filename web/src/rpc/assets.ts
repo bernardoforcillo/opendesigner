@@ -10,7 +10,7 @@
 // montare a mano. Il percorso asset sta quindi tutto dietro
 // internal/server/assets.go.
 
-// Il prefisso è /assets-api/ e NON /assets/: `brawt serve` serve il frontend
+// Il prefisso è /assets-api/ e NON /assets/: `opendesigner serve` serve il frontend
 // compilato dalla radice, e Vite scrive i propri bundle in dist/assets/. Il
 // proxy di sviluppo (web/vite.config.ts) inoltra già questo prefisso a :8080.
 export const ASSET_PREFIX = "/assets-api";

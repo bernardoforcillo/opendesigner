@@ -33,7 +33,7 @@ import { subtreeOf, topmostOf } from "../store/tree";
 import { groupOps, ungroupOps } from "./grouping";
 import { makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp } from "./ops";
 import type { SceneState } from "../store/types";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Tool, ToolContext } from "./types";
 
 const DEFAULT_CURSOR = "default";

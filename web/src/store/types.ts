@@ -1,10 +1,10 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema, StrokeAlign, TextAlign } from "../gen/brawt/v1/brawt_pb";
+import { NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Node as PbNode, Paint as PbPaint, Stroke as PbStroke,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
-} from "../gen/brawt/v1/brawt_pb";
+} from "../gen/opendesigner/v1/opendesigner_pb";
 
 export interface PageLite { id: string; name: string; }
 export interface FillLite { r: number; g: number; b: number; a: number; }
@@ -43,7 +43,7 @@ export interface TextStyleLite {
 export interface TextLite { content: string; style: TextStyleLite; }
 
 // Un'immagine è un RIFERIMENTO, mai dei byte: `assetHash` è lo sha256
-// (esadecimale minuscolo) dei byte, che stanno in <doc>.brawt/assets/ e si
+// (esadecimale minuscolo) dei byte, che stanno in <doc>.opendesigner/assets/ e si
 // caricano dall'URL che costruisce rpc/assets.ts::assetUrl.
 //
 // Il modello non contiene pixel, e questa è la proprietà da non perdere: un
@@ -51,7 +51,7 @@ export interface TextLite { content: string; style: TextStyleLite; }
 // clipboard, e nessuno di quei tre posti deve mai trasportare un'immagine.
 export interface ImageLite { assetHash: string; }
 
-// La geometria vettoriale. Specchia brawt.v1.Anchor/SubPath/VectorNode uno a
+// La geometria vettoriale. Specchia opendesigner.v1.Anchor/SubPath/VectorNode uno a
 // uno: nessun default risolto qui e nessuna forma "comoda" (niente segmenti
 // precalcolati, niente maniglie relative), per la stessa ragione per cui
 // TextStyleLite non risolve lineHeight -- questo modello deve restare
@@ -210,7 +210,7 @@ export function toPbTextStyle(s: TextStyleLite) {
   };
 }
 
-// Le tinte del modello nella forma di init di brawt.v1.Node.fills.
+// Le tinte del modello nella forma di init di opendesigner.v1.Node.fills.
 //
 // NodeLite conosce solo tinte PIATTE (toNodeLite appiattisce qualsiasi paint
 // non-solid in un colore), quindi il ritorno è sempre una lista di SolidPaint.
@@ -221,7 +221,7 @@ export function toPbFills(fills: readonly FillLite[]) {
   return fills.map(toPbPaint);
 }
 
-// I TRATTI del modello nella forma di init di brawt.v1.Node.strokes. Gemella di
+// I TRATTI del modello nella forma di init di opendesigner.v1.Node.strokes. Gemella di
 // toPbFills, ed esportata per la stessa ragione: il pannello proprietà
 // (ui/PropertiesPanel.tsx) costruisce lo STESSO patch per il suo op di tratto.
 export function toPbStrokes(strokes: readonly StrokeLite[]) {
@@ -263,7 +263,7 @@ export function toStrokeLite(s: PbStroke): StrokeLite {
 //
 // Forma ASSENTE => "rect", e non è un'eccezione alla regola ma la regola stessa:
 // Go tratta un Node senza shape da rettangolo implicito (whitelist `nil` o
-// `*brawtv1.Node_Rect`), quindi trattarlo diversamente qui sarebbe la
+// `*opendesignerv1.Node_Rect`), quindi trattarlo diversamente qui sarebbe la
 // divergenza.
 function kindOf(shape: PbNode["shape"]): NodeLite["kind"] {
   switch (shape.case) {

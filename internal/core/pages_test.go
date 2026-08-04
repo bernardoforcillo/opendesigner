@@ -4,22 +4,22 @@ import (
 	"errors"
 	"testing"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-func createPageOp(p *brawtv1.Page) *brawtv1.Op {
-	return &brawtv1.Op{Kind: &brawtv1.Op_CreatePage{CreatePage: &brawtv1.CreatePage{Page: p}}}
+func createPageOp(p *opendesignerv1.Page) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreatePage{CreatePage: &opendesignerv1.CreatePage{Page: p}}}
 }
 
-func deletePageOp(id string) *brawtv1.Op {
-	return &brawtv1.Op{Kind: &brawtv1.Op_DeletePage{DeletePage: &brawtv1.DeletePage{Id: id}}}
+func deletePageOp(id string) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeletePage{DeletePage: &opendesignerv1.DeletePage{Id: id}}}
 }
 
-func renamePageOp(id, name string) *brawtv1.Op {
-	return &brawtv1.Op{Kind: &brawtv1.Op_RenamePage{RenamePage: &brawtv1.RenamePage{Id: id, Name: name}}}
+func renamePageOp(id, name string) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_RenamePage{RenamePage: &opendesignerv1.RenamePage{Id: id, Name: name}}}
 }
 
-func pageIDs(doc *brawtv1.Document) []string {
+func pageIDs(doc *opendesignerv1.Document) []string {
 	out := make([]string, 0, len(doc.GetPages()))
 	for _, p := range doc.GetPages() {
 		out = append(out, p.GetId())
@@ -29,7 +29,7 @@ func pageIDs(doc *brawtv1.Document) []string {
 
 func TestApplyCreatePage(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	if err := Apply(doc, createPageOp(&brawtv1.Page{Id: "page2", Name: "Page 2"})); err != nil {
+	if err := Apply(doc, createPageOp(&opendesignerv1.Page{Id: "page2", Name: "Page 2"})); err != nil {
 		t.Fatalf("Apply createPage: %v", err)
 	}
 	if got := pageIDs(doc); len(got) != 2 || got[1] != "page2" {
@@ -45,13 +45,13 @@ func TestApplyCreatePage(t *testing.T) {
 func TestApplyCreatePageRejectsEmptyAndDuplicate(t *testing.T) {
 	for _, tc := range []struct {
 		name string
-		page *brawtv1.Page
+		page *opendesignerv1.Page
 	}{
 		{"nil", nil},
-		{"id vuoto", &brawtv1.Page{Name: "senza id"}},
+		{"id vuoto", &opendesignerv1.Page{Name: "senza id"}},
 		// Un id già preso da una PAGINA: la seconda renderebbe la prima
 		// irraggiungibile e i nodi di entrambe indistinguibili.
-		{"id di una pagina esistente", &brawtv1.Page{Id: "page1", Name: "doppione"}},
+		{"id di una pagina esistente", &opendesignerv1.Page{Id: "page1", Name: "doppione"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := NewDocument("doc1", "Untitled")
@@ -75,7 +75,7 @@ func TestApplyCreatePageRejectsNodeIDCollision(t *testing.T) {
 	if err := Apply(doc, createOp(rectNode("n1", 0, 0))); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
-	if err := Apply(doc, createPageOp(&brawtv1.Page{Id: "n1", Name: "collide"})); err == nil {
+	if err := Apply(doc, createPageOp(&opendesignerv1.Page{Id: "n1", Name: "collide"})); err == nil {
 		t.Fatal("createPage con l'id di un nodo accettata: doveva essere rifiutata")
 	}
 	if len(doc.GetPages()) != 1 {
@@ -106,7 +106,7 @@ func TestApplyRenamePageMissing(t *testing.T) {
 // applyCreate rifiuta di creare.
 func TestApplyDeletePageCascadesOverItsNodes(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	mustApply(t, doc, createPageOp(&brawtv1.Page{Id: "page2", Name: "Page 2"}))
+	mustApply(t, doc, createPageOp(&opendesignerv1.Page{Id: "page2", Name: "Page 2"}))
 	mustApply(t, doc, createOp(groupNode("g1")))                // page1
 	mustApply(t, doc, createOp(childOf("c1", "g1", "a1")))      // page1 > g1
 	mustApply(t, doc, createOp(childOf("d1", "c1", "a1")))      // page1 > g1 > c1
@@ -149,7 +149,7 @@ func TestApplyDeletePageRefusesTheLastOne(t *testing.T) {
 
 func TestApplyDeletePageMissing(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	mustApply(t, doc, createPageOp(&brawtv1.Page{Id: "page2", Name: "Page 2"}))
+	mustApply(t, doc, createPageOp(&opendesignerv1.Page{Id: "page2", Name: "Page 2"}))
 	if err := Apply(doc, deletePageOp("ghost")); !errors.Is(err, ErrPageNotFound) {
 		t.Fatalf("expected ErrPageNotFound, got %v", err)
 	}

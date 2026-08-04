@@ -7,7 +7,7 @@ plugins:
     out: gen
     opt: [paths=source_relative]
   # protoc-gen-es v2 emits the DocumentService descriptor (GenService) directly
-  # into brawt_pb.ts, which the @connectrpc/connect v2 client consumes via
+  # into opendesigner_pb.ts, which the @connectrpc/connect v2 client consumes via
   # createClient(DocumentService, transport). The separate connectrpc/es plugin
   # is therefore dropped: its remote version resolves to connect-es v1 (v1.6.1),
   # whose MethodKind-based output is incompatible with the v2 runtime.

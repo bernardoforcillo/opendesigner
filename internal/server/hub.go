@@ -7,15 +7,15 @@ import (
 	"log"
 	"sync"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
-	"github.com/bernardoforcillo/brawt/internal/core"
-	"github.com/bernardoforcillo/brawt/internal/store"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/core"
+	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/timestamppb"
 )
 
 type subscriber struct {
-	ch chan *brawtv1.OpRecord
+	ch chan *opendesignerv1.OpRecord
 	// closeOnce guards close(ch) in the cancel func returned by Subscribe:
 	// cancel must be safe to call more than once (matching the idiomatic
 	// Go convention of idempotent cancel funcs, e.g. context.CancelFunc),
@@ -94,10 +94,10 @@ var ErrSubscriberTooSlow = errors.New("subscriber fell behind the op stream and 
 // Snapshot on b.mu (compaction rewrites the very file Append appends to), so
 // a Submit landing during a snapshot waits for it.
 type documentBundle interface {
-	Load() (*brawtv1.Document, uint64, error)
-	History() ([]*brawtv1.OpRecord, error)
-	Append(rec *brawtv1.OpRecord) error
-	Snapshot(doc *brawtv1.Document, seq uint64) error
+	Load() (*opendesignerv1.Document, uint64, error)
+	History() ([]*opendesignerv1.OpRecord, error)
+	Append(rec *opendesignerv1.OpRecord) error
+	Snapshot(doc *opendesignerv1.Document, seq uint64) error
 }
 
 // Hub serializza gli Op di UN documento e li ritrasmette ai subscriber.
@@ -121,9 +121,9 @@ type Hub struct {
 
 	mu      sync.Mutex
 	bundle  documentBundle
-	doc     *brawtv1.Document
+	doc     *opendesignerv1.Document
 	seq     uint64
-	history []*brawtv1.OpRecord // record dallo snapshot in poi (per catch-up)
+	history []*opendesignerv1.OpRecord // record dallo snapshot in poi (per catch-up)
 	subs    map[*subscriber]struct{}
 
 	// historyBase is the seq of the newest record NOT in history: everything
@@ -184,7 +184,7 @@ func newHub(b documentBundle) (*Hub, error) {
 	}, nil
 }
 
-func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error) {
+func (h *Hub) Submit(clientID string, op *opendesignerv1.Op) (*opendesignerv1.OpRecord, error) {
 	// One submitter at a time, for the whole call: the seq a record is
 	// assigned must be the order it is appended to the oplog and published
 	// in. See writeMu for why this is not h.mu.
@@ -217,12 +217,12 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 	// the caller's own op would leave h.doc aliasing caller-owned objects
 	// post-commit, contradicting the promise that the caller is free to
 	// reuse or mutate op once Submit returns.
-	next := proto.Clone(base).(*brawtv1.Document)
-	if err := core.Apply(next, proto.Clone(op).(*brawtv1.Op)); err != nil {
+	next := proto.Clone(base).(*opendesignerv1.Document)
+	if err := core.Apply(next, proto.Clone(op).(*opendesignerv1.Op)); err != nil {
 		return nil, err
 	}
 
-	rec := &brawtv1.OpRecord{
+	rec := &opendesignerv1.OpRecord{
 		Seq:      baseSeq + 1,
 		Ts:       timestamppb.Now(),
 		ClientId: clientID,
@@ -232,7 +232,7 @@ func (h *Hub) Submit(clientID string, op *brawtv1.Op) (*brawtv1.OpRecord, error)
 		// h.mu, so it must not alias a node object living inside h.doc
 		// (which a later SetProps on that node would mutate in place and so
 		// silently corrupt this historical record), nor the caller's op.
-		Op: proto.Clone(op).(*brawtv1.Op),
+		Op: proto.Clone(op).(*opendesignerv1.Op),
 	}
 	// Durable before published, and outside h.mu. Append fsyncs, and it blocks
 	// on the bundle lock for the length of a whole snapshot whenever one is
@@ -351,7 +351,7 @@ func (h *Hub) maybeSnapshotLocked() {
 // other writers to this one document and no reader anywhere. Bundle.Snapshot
 // keeps it short by writing and fsyncing the document (the part that grows
 // with the drawing) before it takes that lock at all.
-func (h *Hub) runSnapshot(doc *brawtv1.Document, seq uint64) {
+func (h *Hub) runSnapshot(doc *opendesignerv1.Document, seq uint64) {
 	defer h.snapshots.Done()
 	err := h.bundle.Snapshot(doc, seq)
 	// Whether the snapshot is ON DISK is not the same question as whether the
@@ -379,7 +379,7 @@ func (h *Hub) runSnapshot(doc *brawtv1.Document, seq uint64) {
 		// snapshot, but its recorded "last modified" is stale until the next
 		// one, and a workspace whose identity files cannot be written is
 		// worth knowing about.
-		log.Printf("brawt: snapshot of document %s at seq %d committed, but its identity file was not refreshed: %v", doc.GetId(), seq, err)
+		log.Printf("opendesigner: snapshot of document %s at seq %d committed, but its identity file was not refreshed: %v", doc.GetId(), seq, err)
 	default:
 		// Not fatal: every op is already in the oplog, so the document is
 		// intact and simply stays uncompacted. Retrying immediately would
@@ -387,7 +387,7 @@ func (h *Hub) runSnapshot(doc *brawtv1.Document, seq uint64) {
 		// maybeSnapshotLocked already gives this a full snapshotEvery-op
 		// backoff. Logged because a durability failure that only ever shows
 		// up as unexplained memory growth is worse than a noisy line.
-		log.Printf("brawt: snapshot of document %s at seq %d failed: %v", doc.GetId(), seq, err)
+		log.Printf("opendesigner: snapshot of document %s at seq %d failed: %v", doc.GetId(), seq, err)
 		return
 	}
 	h.trimHistoryLocked(seq)
@@ -415,7 +415,7 @@ func (h *Hub) trimHistoryLocked(seq uint64) {
 	// Copy into a right-sized slice rather than re-slicing: h.history[i:]
 	// keeps the whole original backing array (and every dropped record)
 	// reachable, so the memory this exists to release would never be freed.
-	rest := make([]*brawtv1.OpRecord, len(h.history)-i)
+	rest := make([]*opendesignerv1.OpRecord, len(h.history)-i)
 	copy(rest, h.history[i:])
 	h.history = rest
 }
@@ -451,7 +451,7 @@ func (h *Hub) waitSnapshots() { h.snapshots.Wait() }
 // is now capped at roughly snapshotEveryOps records), so what remains under
 // the lock is a bounded, in-memory copy, not the unbounded-and-growing one
 // the finding this comment answers was written against.
-func (h *Hub) Subscribe(sinceSeq uint64) (<-chan *brawtv1.OpRecord, func(), error) {
+func (h *Hub) Subscribe(sinceSeq uint64) (<-chan *opendesignerv1.OpRecord, func(), error) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 
@@ -461,7 +461,7 @@ func (h *Hub) Subscribe(sinceSeq uint64) (<-chan *brawtv1.OpRecord, func(), erro
 		return nil, nil, fmt.Errorf("%w: since_seq %d, oldest retained record %d", ErrHistoryTooOld, sinceSeq, h.historyBase+1)
 	}
 
-	var backlog []*brawtv1.OpRecord
+	var backlog []*opendesignerv1.OpRecord
 	for _, rec := range h.history {
 		if rec.Seq > sinceSeq {
 			backlog = append(backlog, rec)
@@ -493,7 +493,7 @@ func (h *Hub) Subscribe(sinceSeq uint64) (<-chan *brawtv1.OpRecord, func(), erro
 	//     again on each reconnect. With the sum, being disconnected means the
 	//     subscriber genuinely failed to drain subscriberChanCap LIVE records
 	//     on top of everything it asked to catch up on.
-	s := &subscriber{ch: make(chan *brawtv1.OpRecord, len(backlog)+subscriberChanCap)}
+	s := &subscriber{ch: make(chan *opendesignerv1.OpRecord, len(backlog)+subscriberChanCap)}
 	for _, rec := range backlog {
 		s.ch <- rec
 	}
@@ -512,8 +512,8 @@ func (h *Hub) Subscribe(sinceSeq uint64) (<-chan *brawtv1.OpRecord, func(), erro
 	return s.ch, cancel, nil
 }
 
-func (h *Hub) Snapshot() (*brawtv1.Document, uint64) {
+func (h *Hub) Snapshot() (*opendesignerv1.Document, uint64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
-	return proto.Clone(h.doc).(*brawtv1.Document), h.seq
+	return proto.Clone(h.doc).(*opendesignerv1.Document), h.seq
 }

@@ -4,36 +4,36 @@ import (
 	"errors"
 	"testing"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
 // childOf costruisce un rettangolo dentro un parent preciso. Il resto dei campi
 // non conta per gli invarianti dell'albero: quello che conta è parent_id.
-func childOf(id, parentID, orderKey string) *brawtv1.Node {
-	return &brawtv1.Node{
+func childOf(id, parentID, orderKey string) *opendesignerv1.Node {
+	return &opendesignerv1.Node{
 		Id: id, ParentId: parentID, OrderKey: orderKey, Name: id, Visible: true, Opacity: 1,
 		Width: 10, Height: 10,
-		Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{}},
+		Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}},
 	}
 }
 
-func createOp(n *brawtv1.Node) *brawtv1.Op {
-	return &brawtv1.Op{Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{Node: n}}}
+func createOp(n *opendesignerv1.Node) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: n}}}
 }
 
-func deleteOp(id string) *brawtv1.Op {
-	return &brawtv1.Op{Kind: &brawtv1.Op_DeleteNode{DeleteNode: &brawtv1.DeleteNode{Id: id}}}
+func deleteOp(id string) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteNode{DeleteNode: &opendesignerv1.DeleteNode{Id: id}}}
 }
 
-func reparentOp(id, newParent, orderKey string) *brawtv1.Op {
-	return &brawtv1.Op{Kind: &brawtv1.Op_ReparentNode{ReparentNode: &brawtv1.ReparentNode{
+func reparentOp(id, newParent, orderKey string) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_ReparentNode{ReparentNode: &opendesignerv1.ReparentNode{
 		Id: id, NewParentId: newParent, OrderKey: orderKey,
 	}}}
 }
 
 // mustApply applica una sequenza di op che DEVE passare: è il setup dei test
 // sull'albero, non la cosa che stanno provando.
-func mustApply(t *testing.T, doc *brawtv1.Document, ops ...*brawtv1.Op) {
+func mustApply(t *testing.T, doc *opendesignerv1.Document, ops ...*opendesignerv1.Op) {
 	t.Helper()
 	for i, op := range ops {
 		if err := Apply(doc, op); err != nil {
@@ -50,7 +50,7 @@ func mustApply(t *testing.T, doc *brawtv1.Document, ops ...*brawtv1.Op) {
 //	│   │   └── d1
 //	│   └── c2
 //	└── other
-func treeDoc(t *testing.T) *brawtv1.Document {
+func treeDoc(t *testing.T) *opendesignerv1.Document {
 	t.Helper()
 	doc := NewDocument("doc1", "Untitled")
 	mustApply(t, doc,
@@ -221,7 +221,7 @@ func TestApplyReparentSameParentReorders(t *testing.T) {
 
 // --- attraversamento --------------------------------------------------------
 
-func ids(nodes []*brawtv1.Node) []string {
+func ids(nodes []*opendesignerv1.Node) []string {
 	out := make([]string, len(nodes))
 	for i, n := range nodes {
 		out[i] = n.GetId()

@@ -11,19 +11,19 @@ import (
 	"time"
 
 	"connectrpc.com/connect"
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
-	"github.com/bernardoforcillo/brawt/gen/brawt/v1/brawtv1connect"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1/opendesignerv1connect"
 	"github.com/google/uuid"
 )
 
-func newTestClient(t *testing.T) brawtv1connect.DocumentServiceClient {
+func newTestClient(t *testing.T) opendesignerv1connect.DocumentServiceClient {
 	t.Helper()
 	return newTestClientOn(t, t.TempDir())
 }
 
 // newTestClientOn serves an explicit workspace, so a test can start a second
 // "process" over documents that already exist on disk.
-func newTestClientOn(t *testing.T, workspace string) brawtv1connect.DocumentServiceClient {
+func newTestClientOn(t *testing.T, workspace string) opendesignerv1connect.DocumentServiceClient {
 	t.Helper()
 	c, _ := newTestClientWithManager(t, workspace)
 	return c
@@ -33,32 +33,32 @@ func newTestClientOn(t *testing.T, workspace string) brawtv1connect.DocumentServ
 // serving from, so a test can reach the very Hub the RPC is talking to and put
 // it into a state only the hub itself can produce (see
 // TestSubscribeReportsAnEndedStreamAsAnError).
-func newTestClientWithManager(t *testing.T, workspace string) (brawtv1connect.DocumentServiceClient, *Manager) {
+func newTestClientWithManager(t *testing.T, workspace string) (opendesignerv1connect.DocumentServiceClient, *Manager) {
 	t.Helper()
 	m := NewManager(workspace)
 	svc := NewDocumentService(m)
-	path, handler := brawtv1connect.NewDocumentServiceHandler(svc)
+	path, handler := opendesignerv1connect.NewDocumentServiceHandler(svc)
 	mux := httpMux(path, handler)
 	// Enable HTTP/2 via TLS (the canonical connect-go test pattern): srv.Client()
 	// trusts the test cert and negotiates h2 over ALPN. Server streaming
 	// (Subscribe) would also work over HTTP/1.1 chunked responses, but h2 is what
-	// browsers and `brawt serve` actually use, so exercise that here; the
+	// browsers and `opendesigner serve` actually use, so exercise that here; the
 	// cleartext h2c variant is covered by h2c_test.go.
 	srv := httptest.NewUnstartedServer(mux)
 	srv.EnableHTTP2 = true
 	srv.StartTLS()
 	t.Cleanup(srv.Close)
-	return brawtv1connect.NewDocumentServiceClient(srv.Client(), srv.URL), m
+	return opendesignerv1connect.NewDocumentServiceClient(srv.Client(), srv.URL), m
 }
 
 func TestCreateOpenDocument(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
-	info, err := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "Test"}))
+	info, err := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Test"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	open, err := c.OpenDocument(ctx, connect.NewRequest(&brawtv1.OpenRequest{DocId: info.Msg.GetId()}))
+	open, err := c.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: info.Msg.GetId()}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -71,10 +71,10 @@ func TestCreateOpenDocument(t *testing.T) {
 }
 
 // createNodeOp builds a well-formed CreateNode op for node id `nodeID`.
-func createNodeOp(docID, nodeID string) *brawtv1.Op {
-	return &brawtv1.Op{OpId: "op-" + nodeID, DocId: docID, Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{
-		Node: &brawtv1.Node{Id: nodeID, ParentId: "page1", OrderKey: "a0", Visible: true, Opacity: 1,
-			Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{}}}}}}
+func createNodeOp(docID, nodeID string) *opendesignerv1.Op {
+	return &opendesignerv1.Op{OpId: "op-" + nodeID, DocId: docID, Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{
+		Node: &opendesignerv1.Node{Id: nodeID, ParentId: "page1", OrderKey: "a0", Visible: true, Opacity: 1,
+			Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}}}}}
 }
 
 // subscribeAsync opens a Subscribe stream on its own goroutine and forwards the
@@ -93,10 +93,10 @@ func createNodeOp(docID, nodeID string) *brawtv1.Op {
 // Cleanup cancels the subscription and waits for the goroutine, so no stream is
 // still live when httptest's server Close runs (that cleanup was registered
 // earlier by newTestClient, hence runs later).
-func subscribeAsync(t *testing.T, parent context.Context, c brawtv1connect.DocumentServiceClient, req *brawtv1.SubscribeRequest) <-chan *brawtv1.ServerMsg {
+func subscribeAsync(t *testing.T, parent context.Context, c opendesignerv1connect.DocumentServiceClient, req *opendesignerv1.SubscribeRequest) <-chan *opendesignerv1.ServerMsg {
 	t.Helper()
 	ctx, cancel := context.WithCancel(parent)
-	out := make(chan *brawtv1.ServerMsg, 256)
+	out := make(chan *opendesignerv1.ServerMsg, 256)
 	done := make(chan struct{})
 	go func() {
 		defer close(done)
@@ -129,7 +129,7 @@ func subscribeAsync(t *testing.T, parent context.Context, c brawtv1connect.Docum
 
 // nextMsg waits for the next streamed ServerMsg, failing the test rather than
 // hanging if the broadcast never arrives.
-func nextMsg(t *testing.T, ch <-chan *brawtv1.ServerMsg) *brawtv1.ServerMsg {
+func nextMsg(t *testing.T, ch <-chan *opendesignerv1.ServerMsg) *opendesignerv1.ServerMsg {
 	t.Helper()
 	select {
 	case msg, ok := <-ch:
@@ -152,12 +152,12 @@ func nextMsg(t *testing.T, ch <-chan *brawtv1.ServerMsg) *brawtv1.ServerMsg {
 func TestSubmitOpAndSubscribeRoundTrip(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
-	info, _ := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "T"}))
+	info, _ := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "T"}))
 	docID := info.Msg.GetId()
 
-	msgs := subscribeAsync(t, ctx, c, &brawtv1.SubscribeRequest{DocId: docID, ClientId: "c1", SinceSeq: 0})
+	msgs := subscribeAsync(t, ctx, c, &opendesignerv1.SubscribeRequest{DocId: docID, ClientId: "c1", SinceSeq: 0})
 
-	res, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+	res, err := c.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
 		DocId: docID, ClientId: "c1", Op: createNodeOp(docID, "n1")}))
 	if err != nil {
 		t.Fatal(err)
@@ -189,15 +189,15 @@ func TestSubmitOpAndSubscribeRoundTrip(t *testing.T) {
 func TestSubmitOpsBroadcastToSubscriber(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
-	info, _ := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "M"}))
+	info, _ := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "M"}))
 	docID := info.Msg.GetId()
 
-	msgs := subscribeAsync(t, ctx, c, &brawtv1.SubscribeRequest{DocId: docID, ClientId: "c1", SinceSeq: 0})
+	msgs := subscribeAsync(t, ctx, c, &opendesignerv1.SubscribeRequest{DocId: docID, ClientId: "c1", SinceSeq: 0})
 
 	const n = 25
 	for i := 0; i < n; i++ {
 		id := fmt.Sprintf("n%d", i)
-		res, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+		res, err := c.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
 			DocId: docID, ClientId: "c1", Op: createNodeOp(docID, id)}))
 		if err != nil {
 			t.Fatalf("SubmitOp %s: %v", id, err)
@@ -233,17 +233,17 @@ func TestSubscribeCatchUpFromSinceSeq(t *testing.T) {
 	c := newTestClient(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	info, _ := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "C"}))
+	info, _ := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "C"}))
 	docID := info.Msg.GetId()
 
 	for _, id := range []string{"n1", "n2", "n3"} {
-		if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+		if _, err := c.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
 			DocId: docID, ClientId: "c1", Op: createNodeOp(docID, id)})); err != nil {
 			t.Fatalf("SubmitOp %s: %v", id, err)
 		}
 	}
 
-	stream, err := c.Subscribe(ctx, connect.NewRequest(&brawtv1.SubscribeRequest{
+	stream, err := c.Subscribe(ctx, connect.NewRequest(&opendesignerv1.SubscribeRequest{
 		DocId: docID, ClientId: "c2", SinceSeq: 1}))
 	if err != nil {
 		t.Fatal(err)
@@ -277,25 +277,25 @@ func TestSubscribeCatchUpFromSinceSeq(t *testing.T) {
 func TestSubmitOpErrors(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
-	info, _ := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "E"}))
+	info, _ := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "E"}))
 	docID := info.Msg.GetId()
 
-	if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+	if _, err := c.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
 		DocId: "../../evil", ClientId: "c1", Op: createNodeOp(docID, "n1")})); connect.CodeOf(err) != connect.CodeNotFound {
 		t.Fatalf("SubmitOp(traversal doc_id) code = %v (err %v), want not_found", connect.CodeOf(err), err)
 	}
 
-	if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+	if _, err := c.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
 		DocId: docID, ClientId: "c1"})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("SubmitOp(no op) code = %v (err %v), want invalid_argument", connect.CodeOf(err), err)
 	}
 
-	if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+	if _, err := c.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
 		DocId: docID, ClientId: "c1", Op: createNodeOp(docID, "n1")})); err != nil {
 		t.Fatalf("first SubmitOp: %v", err)
 	}
 	// Same node id again: core.Apply rejects it.
-	if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+	if _, err := c.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
 		DocId: docID, ClientId: "c1", Op: createNodeOp(docID, "n1")})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("SubmitOp(duplicate node) code = %v (err %v), want invalid_argument", connect.CodeOf(err), err)
 	}
@@ -309,25 +309,25 @@ func TestSubmitOpErrors(t *testing.T) {
 func TestSubmitOpRejectsOpDocIDMismatch(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
-	info, _ := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "M"}))
+	info, _ := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "M"}))
 	docID := info.Msg.GetId()
 
 	// op.doc_id empty (the client's "scene not loaded yet" default).
-	if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+	if _, err := c.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
 		DocId: docID, ClientId: "c1", Op: createNodeOp("", "n1")})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("SubmitOp(empty op.doc_id) code = %v (err %v), want invalid_argument", connect.CodeOf(err), err)
 	}
 
 	// op.doc_id set, but to a different document than the request addresses.
-	other, _ := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "Other"}))
-	if _, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+	other, _ := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Other"}))
+	if _, err := c.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
 		DocId: docID, ClientId: "c1", Op: createNodeOp(other.Msg.GetId(), "n1")})); connect.CodeOf(err) != connect.CodeInvalidArgument {
 		t.Fatalf("SubmitOp(mismatched op.doc_id) code = %v (err %v), want invalid_argument", connect.CodeOf(err), err)
 	}
 
 	// Neither rejected op may have consumed a seq or touched either
 	// document: a correctly-addressed op right after must still land at 1.
-	res, err := c.SubmitOp(ctx, connect.NewRequest(&brawtv1.SubmitOpRequest{
+	res, err := c.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
 		DocId: docID, ClientId: "c1", Op: createNodeOp(docID, "n1")}))
 	if err != nil {
 		t.Fatal(err)
@@ -336,7 +336,7 @@ func TestSubmitOpRejectsOpDocIDMismatch(t *testing.T) {
 		t.Fatalf("ack seq = %d, want 1 (the rejected mismatched ops must not have consumed a seq)", got)
 	}
 
-	open, err := c.OpenDocument(ctx, connect.NewRequest(&brawtv1.OpenRequest{DocId: other.Msg.GetId()}))
+	open, err := c.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: other.Msg.GetId()}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -352,7 +352,7 @@ func TestSubscribeRejectsTraversalDocID(t *testing.T) {
 	c := newTestClient(t)
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
-	stream, err := c.Subscribe(ctx, connect.NewRequest(&brawtv1.SubscribeRequest{
+	stream, err := c.Subscribe(ctx, connect.NewRequest(&opendesignerv1.SubscribeRequest{
 		DocId: "../../evil", ClientId: "c1", SinceSeq: 0}))
 	if err == nil {
 		defer stream.Close()
@@ -384,7 +384,7 @@ func TestSubscribeRejectsTraversalDocID(t *testing.T) {
 func TestSubscribeReportsAnEndedStreamAsAnError(t *testing.T) {
 	c, m := newTestClientWithManager(t, t.TempDir())
 	ctx := context.Background()
-	info, err := c.CreateDocument(ctx, connect.NewRequest(&brawtv1.CreateDocumentRequest{Name: "T"}))
+	info, err := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "T"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -394,7 +394,7 @@ func TestSubscribeReportsAnEndedStreamAsAnError(t *testing.T) {
 	defer cancelStream()
 	done := make(chan error, 1)
 	go func() {
-		stream, err := c.Subscribe(streamCtx, connect.NewRequest(&brawtv1.SubscribeRequest{
+		stream, err := c.Subscribe(streamCtx, connect.NewRequest(&opendesignerv1.SubscribeRequest{
 			DocId: docID, ClientId: "c1", SinceSeq: 0}))
 		if err != nil {
 			done <- err
@@ -502,7 +502,7 @@ func TestHubForRejectsPathTraversalDocID(t *testing.T) {
 func TestOpenDocumentRejectsTraversalDocID(t *testing.T) {
 	c := newTestClient(t)
 	ctx := context.Background()
-	if _, err := c.OpenDocument(ctx, connect.NewRequest(&brawtv1.OpenRequest{DocId: "../../evil"})); err == nil {
+	if _, err := c.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: "../../evil"})); err == nil {
 		t.Fatal("OpenDocument(../../evil) = nil error, want rejection")
 	}
 }

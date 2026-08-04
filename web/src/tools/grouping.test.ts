@@ -4,7 +4,7 @@ import { applyOp } from "../store/applyOp";
 import { useScene } from "../store/store";
 import { worldBoundsOfNode } from "../canvas/transform";
 import { emptyScene, type NodeLite, type SceneState } from "../store/types";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
 function node(id: string, parentId: string, x: number, y: number, orderKey: string, extra: Partial<NodeLite> = {}): NodeLite {
   return {

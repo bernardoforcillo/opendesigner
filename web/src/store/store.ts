@@ -1,7 +1,7 @@
 import { create as createStore } from "zustand";
 import { create } from "@bufbuild/protobuf";
-import { OpSchema } from "../gen/brawt/v1/brawt_pb";
-import type { Op } from "../gen/brawt/v1/brawt_pb";
+import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
 import { isReachableFrom, subtreeOf } from "./tree";
@@ -1289,7 +1289,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         // autorevole. Lo trattiamo come già confermato -- si perde il rollback
         // su rifiuto, non la modifica. Irraggiungibile dai costruttori in
         // repo: tools/ops.ts e store/history.ts stampano sempre un UUID.
-        console.warn("brawt: submit di un op senza opId — non riconciliabile, applicato come confermato");
+        console.warn("opendesigner: submit di un op senza opId — non riconciliabile, applicato come confermato");
         return rebuild(st, applyOp(st.confirmed, op), st.pending);
       }
       // Incrementale, non ricalcolo: la vista è già confermato + coda e l'op si
@@ -1398,7 +1398,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         // selezione di partenza perderebbe il vero stato di inizio gesto -- un
         // cancelGesture successivo tornerebbe a metà drag invece che al punto
         // di partenza. Teniamo il PRIMO gesto e segnaliamo il bug al chiamante.
-        console.warn("brawt: beginGesture() con un gesto già aperto — snapshot iniziale mantenuto");
+        console.warn("opendesigner: beginGesture() con un gesto già aperto — snapshot iniziale mantenuto");
         return st;
       }
       return { gesture: { selection: st.selection, preview: new Map() } };
@@ -1445,7 +1445,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       // cui ricostruire, quindi gli op finali si sommano a qualunque anteprima
       // sia rimasta appesa. Li mandiamo comunque (perdere il lavoro dell'utente
       // sarebbe peggio) ma il chiamante deve saperlo.
-      console.warn("brawt: endGesture() senza un gesto aperto — op inviati senza ricostruzione");
+      console.warn("opendesigner: endGesture() senza un gesto aperto — op inviati senza ricostruzione");
     }
     // Voce di undo: gli INVERSI di finalOps, calcolati sulla base -- lo stesso
     // stato su cui finalOps stanno per atterrare (get().scene qui è già la

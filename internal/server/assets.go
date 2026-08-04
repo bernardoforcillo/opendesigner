@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/bernardoforcillo/brawt/internal/store"
+	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"github.com/google/uuid"
 )
 
@@ -29,7 +29,7 @@ import (
 // "POST", body: file})` dalla parte del client: nessun framing di chunk da
 // inventare, il body lo mette in streaming il browser al livello di trasporto.
 //
-// Il prefisso è `/assets-api/` e non `/assets/` perché `cmd/brawt` serve il
+// Il prefisso è `/assets-api/` e non `/assets/` perché `cmd/opendesigner` serve il
 // frontend compilato dalla radice, e Vite scrive i propri bundle in
 // `dist/assets/`: le due cose si coprirebbero a vicenda. Il proxy di sviluppo
 // (web/vite.config.ts) inoltra già questo prefisso.

@@ -8,20 +8,20 @@ import (
 	"testing"
 	"time"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
-	"github.com/bernardoforcillo/brawt/internal/store"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-func createOp(id string) *brawtv1.Op {
-	return &brawtv1.Op{OpId: "op-" + id, DocId: "doc1", Kind: &brawtv1.Op_CreateNode{CreateNode: &brawtv1.CreateNode{
-		Node: &brawtv1.Node{Id: id, ParentId: "page1", OrderKey: "a0", Visible: true, Opacity: 1,
-			Shape: &brawtv1.Node_Rect{Rect: &brawtv1.RectNode{}}}}}}
+func createOp(id string) *opendesignerv1.Op {
+	return &opendesignerv1.Op{OpId: "op-" + id, DocId: "doc1", Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{
+		Node: &opendesignerv1.Node{Id: id, ParentId: "page1", OrderKey: "a0", Visible: true, Opacity: 1,
+			Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}}}}}
 }
 
 // mustSubscribe subscribes and fails the test if the hub cannot serve the
 // requested catch-up (see ErrHistoryTooOld).
-func mustSubscribe(t *testing.T, h *Hub, sinceSeq uint64) (<-chan *brawtv1.OpRecord, func()) {
+func mustSubscribe(t *testing.T, h *Hub, sinceSeq uint64) (<-chan *opendesignerv1.OpRecord, func()) {
 	t.Helper()
 	ch, cancel, err := h.Subscribe(sinceSeq)
 	if err != nil {
@@ -73,7 +73,7 @@ func TestSubscriberReceivesBroadcast(t *testing.T) {
 func TestSubscribeCatchUp(t *testing.T) {
 	h := newTestHub(t)
 	_, _ = h.Submit("c1", createOp("n1")) // seq 1, prima della subscribe
-	ch, cancel := mustSubscribe(t, h, 0) // sinceSeq 0 → deve ricevere seq 1 in catch-up
+	ch, cancel := mustSubscribe(t, h, 0)  // sinceSeq 0 → deve ricevere seq 1 in catch-up
 	defer cancel()
 	select {
 	case rec := <-ch:
@@ -103,9 +103,9 @@ func TestSubmitDoesNotAliasNodeIntoHistoricalRecord(t *testing.T) {
 		t.Fatalf("precondition: want fresh node x=0, got %v", origX)
 	}
 
-	setX := &brawtv1.Op{OpId: "op-set1", DocId: "doc1", Kind: &brawtv1.Op_SetProps{SetProps: &brawtv1.SetProperties{
+	setX := &opendesignerv1.Op{OpId: "op-set1", DocId: "doc1", Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
 		Id:    "n1",
-		Patch: &brawtv1.Node{X: 999},
+		Patch: &opendesignerv1.Node{X: 999},
 		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"x"}},
 	}}}
 	if _, err := h.Submit("c1", setX); err != nil {
@@ -176,13 +176,13 @@ func TestSubscribeCatchUpBeyondChannelCapacityDoesNotBlock(t *testing.T) {
 	const backlog = subscriberChanCap + 50
 	h.mu.Lock()
 	for i := uint64(1); i <= backlog; i++ {
-		h.history = append(h.history, &brawtv1.OpRecord{Seq: i, Op: createOp(fmt.Sprintf("n%d", i))})
+		h.history = append(h.history, &opendesignerv1.OpRecord{Seq: i, Op: createOp(fmt.Sprintf("n%d", i))})
 	}
 	h.seq = backlog
 	h.mu.Unlock()
 
 	type result struct {
-		ch     <-chan *brawtv1.OpRecord
+		ch     <-chan *opendesignerv1.OpRecord
 		cancel func()
 		err    error
 	}
@@ -244,7 +244,7 @@ func TestSubmitDoesNotMutateDocWhenAppendFails(t *testing.T) {
 
 	// Force bundle.Append to fail: pre-create "oplog" as a directory so
 	// os.OpenFile for the oplog file errors out.
-	oplogPath := filepath.Join(dir, "doc1.brawt", "oplog")
+	oplogPath := filepath.Join(dir, "doc1.opendesigner", "oplog")
 	if err := os.Mkdir(oplogPath, 0o755); err != nil {
 		t.Fatal(err)
 	}
@@ -278,7 +278,7 @@ type flakyAppendBundle struct {
 	failNext bool
 }
 
-func (f *flakyAppendBundle) Append(rec *brawtv1.OpRecord) error {
+func (f *flakyAppendBundle) Append(rec *opendesignerv1.OpRecord) error {
 	if f.failNext {
 		f.failNext = false
 		return errors.New("injected append failure")
@@ -487,7 +487,7 @@ func TestNewHubOpensDocumentWithTornOplogTail(t *testing.T) {
 		}
 	}
 
-	oplogPath := filepath.Join(dir, "doc1.brawt", "oplog")
+	oplogPath := filepath.Join(dir, "doc1.opendesigner", "oplog")
 	fi, err := os.Stat(oplogPath)
 	if err != nil {
 		t.Fatal(err)
@@ -571,7 +571,7 @@ func TestSubscribeLeavesHeadroomSoAFullBacklogDoesNotEndTheStream(t *testing.T) 
 	const backlog = subscriberChanCap
 	h.mu.Lock()
 	for i := uint64(1); i <= backlog; i++ {
-		h.history = append(h.history, &brawtv1.OpRecord{Seq: i, Op: createOp(fmt.Sprintf("n%d", i))})
+		h.history = append(h.history, &opendesignerv1.OpRecord{Seq: i, Op: createOp(fmt.Sprintf("n%d", i))})
 	}
 	h.seq = backlog
 	h.mu.Unlock()

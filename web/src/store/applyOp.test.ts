@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import {
   OpSchema, NodeSchema, SetTextSchema, SetVectorPathSchema, VectorNodeSchema, TextAlign,
-} from "../gen/brawt/v1/brawt_pb";
-import type { Node as PbNode } from "../gen/brawt/v1/brawt_pb";
+} from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Node as PbNode } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, toNodeLite, toPbNode } from "./types";
 
@@ -347,7 +347,7 @@ describe("applyOp: corner_radius", () => {
 
 // --- una forma SCONOSCIUTA non è un rettangolo -----------------------------
 //
-// core.applySetProps (Go) accetta `nil` o `*brawtv1.Node_Rect` e rifiuta tutto
+// core.applySetProps (Go) accetta `nil` o `*opendesignerv1.Node_Rect` e rifiuta tutto
 // il resto: una WHITELIST, così una forma aggiunta domani è rifiutata di default
 // invece di finire nel ramo che materializza il rettangolo implicito e ne
 // distrugge la geometria. Questo lato aveva la guardia speculare (`cur.kind !==

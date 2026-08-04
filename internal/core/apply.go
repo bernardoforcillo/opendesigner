@@ -5,7 +5,7 @@ import (
 	"errors"
 	"fmt"
 
-	brawtv1 "github.com/bernardoforcillo/brawt/gen/brawt/v1"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
 var (
@@ -27,41 +27,41 @@ var (
 )
 
 // NewDocument crea un documento vuoto con una pagina di default ("page1").
-func NewDocument(id, name string) *brawtv1.Document {
-	return &brawtv1.Document{
+func NewDocument(id, name string) *opendesignerv1.Document {
+	return &opendesignerv1.Document{
 		Id: id, Name: name, SchemaVersion: 1,
-		Pages: []*brawtv1.Page{{Id: "page1", Name: "Page 1"}},
-		Nodes: map[string]*brawtv1.Node{},
+		Pages: []*opendesignerv1.Page{{Id: "page1", Name: "Page 1"}},
+		Nodes: map[string]*opendesignerv1.Node{},
 	}
 }
 
 // Apply muta doc applicando op. Ritorna errore se l'op viola un'invariante.
-func Apply(doc *brawtv1.Document, op *brawtv1.Op) error {
+func Apply(doc *opendesignerv1.Document, op *opendesignerv1.Op) error {
 	switch k := op.GetKind().(type) {
-	case *brawtv1.Op_CreateNode:
+	case *opendesignerv1.Op_CreateNode:
 		return applyCreate(doc, k.CreateNode)
-	case *brawtv1.Op_SetProps:
+	case *opendesignerv1.Op_SetProps:
 		return applySetProps(doc, k.SetProps)
-	case *brawtv1.Op_DeleteNode:
+	case *opendesignerv1.Op_DeleteNode:
 		return applyDelete(doc, k.DeleteNode)
-	case *brawtv1.Op_SetText:
+	case *opendesignerv1.Op_SetText:
 		return applySetText(doc, k.SetText)
-	case *brawtv1.Op_SetVectorPath:
+	case *opendesignerv1.Op_SetVectorPath:
 		return applySetVectorPath(doc, k.SetVectorPath)
-	case *brawtv1.Op_ReparentNode:
+	case *opendesignerv1.Op_ReparentNode:
 		return applyReparent(doc, k.ReparentNode)
-	case *brawtv1.Op_CreatePage:
+	case *opendesignerv1.Op_CreatePage:
 		return applyCreatePage(doc, k.CreatePage)
-	case *brawtv1.Op_DeletePage:
+	case *opendesignerv1.Op_DeletePage:
 		return applyDeletePage(doc, k.DeletePage)
-	case *brawtv1.Op_RenamePage:
+	case *opendesignerv1.Op_RenamePage:
 		return applyRenamePage(doc, k.RenamePage)
 	default:
 		return fmt.Errorf("core: unknown op kind %T", op.GetKind())
 	}
 }
 
-func applyCreate(doc *brawtv1.Document, c *brawtv1.CreateNode) error {
+func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode) error {
 	n := c.GetNode()
 	if n == nil || n.GetId() == "" {
 		return ErrNilNode
@@ -81,13 +81,13 @@ func applyCreate(doc *brawtv1.Document, c *brawtv1.CreateNode) error {
 		return fmt.Errorf("%w: %s (node %s)", ErrParentNotFound, n.GetParentId(), n.GetId())
 	}
 	if doc.Nodes == nil {
-		// Apply is the authoritative mutator for any *brawtv1.Document, not
+		// Apply is the authoritative mutator for any *opendesignerv1.Document, not
 		// only ones built via NewDocument. proto.Unmarshal resets the
 		// destination first, and proto3 omits empty map fields from the
 		// wire, so a Document decoded from a zero-node snapshot has
 		// Nodes == nil. Lazily init it here so replaying the oplog's first
 		// CreateNode doesn't panic on assignment to a nil map.
-		doc.Nodes = map[string]*brawtv1.Node{}
+		doc.Nodes = map[string]*opendesignerv1.Node{}
 	}
 	doc.Nodes[n.GetId()] = n
 	return nil
@@ -106,7 +106,7 @@ func applyCreate(doc *brawtv1.Document, c *brawtv1.CreateNode) error {
 // applyOp (TS) espandono la cascata allo stesso modo. L'INVERSO invece è
 // necessariamente multiplo -- un CreateNode per nodo, parent prima dei figli --
 // e vive lato client (web/src/store/history.ts), l'unico che tiene una storia.
-func applyDelete(doc *brawtv1.Document, d *brawtv1.DeleteNode) error {
+func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) error {
 	if _, ok := doc.Nodes[d.GetId()]; !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, d.GetId())
 	}
@@ -130,7 +130,7 @@ func applyDelete(doc *brawtv1.Document, d *brawtv1.DeleteNode) error {
 // Come per una mask mista in applySetProps, il rifiuto è in BLOCCO: si valida
 // tutto prima di scrivere qualsiasi campo, così un reparent respinto non lascia
 // il nodo con la order key nuova e il parent vecchio.
-func applyReparent(doc *brawtv1.Document, r *brawtv1.ReparentNode) error {
+func applyReparent(doc *opendesignerv1.Document, r *opendesignerv1.ReparentNode) error {
 	n, ok := doc.Nodes[r.GetId()]
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, r.GetId())
@@ -166,7 +166,7 @@ func applyReparent(doc *brawtv1.Document, r *brawtv1.ReparentNode) error {
 //	   valido, quindi nessun nodo potrebbe più essere creato.
 
 // pageIndex ritorna la posizione di una pagina in doc.Pages, o -1.
-func pageIndex(doc *brawtv1.Document, id string) int {
+func pageIndex(doc *opendesignerv1.Document, id string) int {
 	for i, p := range doc.GetPages() {
 		if p.GetId() == id {
 			return i
@@ -183,7 +183,7 @@ func pageIndex(doc *brawtv1.Document, id string) int {
 // inverso che dipende dalla posizione. L'unica conseguenza è che annullare la
 // cancellazione di una pagina di mezzo la riporta in fondo -- il suo CONTENUTO
 // torna intatto, che è ciò che un undo deve garantire.
-func applyCreatePage(doc *brawtv1.Document, c *brawtv1.CreatePage) error {
+func applyCreatePage(doc *opendesignerv1.Document, c *opendesignerv1.CreatePage) error {
 	p := c.GetPage()
 	if p == nil || p.GetId() == "" {
 		return ErrNilPage
@@ -203,7 +203,7 @@ func applyCreatePage(doc *brawtv1.Document, c *brawtv1.CreatePage) error {
 // il server sia applyOp (TS) espandono la cascata allo stesso modo. L'inverso è
 // necessariamente multiplo (createPage + una createNode per nodo, parent prima
 // dei figli) e vive lato client, in web/src/store/history.ts.
-func applyDeletePage(doc *brawtv1.Document, d *brawtv1.DeletePage) error {
+func applyDeletePage(doc *opendesignerv1.Document, d *opendesignerv1.DeletePage) error {
 	i := pageIndex(doc, d.GetId())
 	if i < 0 {
 		return fmt.Errorf("%w: %s", ErrPageNotFound, d.GetId())
@@ -223,7 +223,7 @@ func applyDeletePage(doc *brawtv1.Document, d *brawtv1.DeletePage) error {
 	return nil
 }
 
-func applyRenamePage(doc *brawtv1.Document, r *brawtv1.RenamePage) error {
+func applyRenamePage(doc *opendesignerv1.Document, r *opendesignerv1.RenamePage) error {
 	i := pageIndex(doc, r.GetId())
 	if i < 0 {
 		return fmt.Errorf("%w: %s", ErrPageNotFound, r.GetId())
@@ -237,7 +237,7 @@ func applyRenamePage(doc *brawtv1.Document, r *brawtv1.RenamePage) error {
 // applySetProps copia i campi indicati dalla mask da patch al nodo target.
 // Valida l'intera mask prima di mutare qualsiasi campo: una mask mista
 // (es. ["x","bogus"]) non deve lasciare il documento parzialmente mutato.
-func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
+func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties) error {
 	n, ok := doc.Nodes[s.GetId()]
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
@@ -286,7 +286,7 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 			// rifiutati di default: il peggio che può fare è costringere chi la
 			// aggiunge a decidere, invece di perdere il lavoro dell'utente.
 			switch n.GetShape().(type) {
-			case nil, *brawtv1.Node_Rect:
+			case nil, *opendesignerv1.Node_Rect:
 				// Rettangolo esplicito, o implicito (shape assente).
 			default:
 				return fmt.Errorf("%w: %s", ErrNotRectNode, s.GetId())
@@ -345,8 +345,8 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 			// altrimenti l'assegnazione andrebbe su un puntatore nil.
 			r := n.GetRect()
 			if r == nil {
-				r = &brawtv1.RectNode{}
-				n.Shape = &brawtv1.Node_Rect{Rect: r}
+				r = &opendesignerv1.RectNode{}
+				n.Shape = &opendesignerv1.Node_Rect{Rect: r}
 			}
 			r.CornerRadius = p.GetRect().GetCornerRadius()
 		}
@@ -369,7 +369,7 @@ func applySetProps(doc *brawtv1.Document, s *brawtv1.SetProperties) error {
 // a 0 e renderebbe il nodo invisibile. Con il flag: false => lo stile esistente
 // resta intatto, true => viene sostituito da `style` (nil incluso, che è
 // l'azzeramento esplicito).
-func applySetText(doc *brawtv1.Document, s *brawtv1.SetText) error {
+func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText) error {
 	n, ok := doc.Nodes[s.GetId()]
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
@@ -379,7 +379,7 @@ func applySetText(doc *brawtv1.Document, s *brawtv1.SetText) error {
 	// sbagliato. Scriverci dentro trasformerebbe la forma in silenzio (e, dato
 	// che l'op non ha inverso per il rect che c'era prima, in modo non
 	// annullabile), quindi si rifiuta l'op senza toccare niente.
-	t, isText := n.GetShape().(*brawtv1.Node_Text)
+	t, isText := n.GetShape().(*opendesignerv1.Node_Text)
 	if !isText || t.Text == nil {
 		return fmt.Errorf("%w: %s", ErrNotTextNode, s.GetId())
 	}
@@ -402,7 +402,7 @@ func applySetText(doc *brawtv1.Document, s *brawtv1.SetText) error {
 // (contenuto e stile) e una delle due doveva poter restare intatta; qui l'op È
 // i subpath, quindi "assente" e "vuoto" descrivono lo stesso stato e la
 // distinzione proto3 non è osservabile.
-func applySetVectorPath(doc *brawtv1.Document, s *brawtv1.SetVectorPath) error {
+func applySetVectorPath(doc *opendesignerv1.Document, s *opendesignerv1.SetVectorPath) error {
 	n, ok := doc.Nodes[s.GetId()]
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
@@ -414,7 +414,7 @@ func applySetVectorPath(doc *brawtv1.Document, s *brawtv1.SetVectorPath) error {
 	// implicito" di applySetProps: un nodo senza forma è un rettangolo per
 	// chiunque legga il documento (web/src/store/types.ts::toNodeLite), quindi
 	// è esattamente il caso che va rifiutato.
-	v, isVector := n.GetShape().(*brawtv1.Node_Vector)
+	v, isVector := n.GetShape().(*opendesignerv1.Node_Vector)
 	if !isVector || v.Vector == nil {
 		return fmt.Errorf("%w: %s", ErrNotVectorNode, s.GetId())
 	}
