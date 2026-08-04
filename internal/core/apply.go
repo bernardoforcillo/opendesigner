@@ -24,6 +24,10 @@ var (
 	ErrPageExists     = errors.New("core: page id already taken")
 	ErrPageNotFound   = errors.New("core: page not found")
 	ErrLastPage       = errors.New("core: cannot delete the last page")
+	// M4 — componenti.
+	ErrComponentExists   = errors.New("core: component id already taken")
+	ErrComponentNotFound = errors.New("core: component not found")
+	ErrNotInstanceNode   = errors.New("core: not an instance node")
 )
 
 // NewDocument crea un documento vuoto con una pagina di default ("page1").
@@ -56,6 +60,10 @@ func Apply(doc *opendesignerv1.Document, op *opendesignerv1.Op) error {
 		return applyDeletePage(doc, k.DeletePage)
 	case *opendesignerv1.Op_RenamePage:
 		return applyRenamePage(doc, k.RenamePage)
+	case *opendesignerv1.Op_CreateComponent:
+		return applyCreateComponent(doc, k.CreateComponent)
+	case *opendesignerv1.Op_SetInstanceOverride:
+		return applySetInstanceOverride(doc, k.SetInstanceOverride)
 	default:
 		return fmt.Errorf("core: unknown op kind %T", op.GetKind())
 	}
@@ -79,6 +87,14 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode) err
 	// da una pagina ne fa parte.
 	if !parentExists(doc, n.GetParentId()) {
 		return fmt.Errorf("%w: %s (node %s)", ErrParentNotFound, n.GetParentId(), n.GetId())
+	}
+	// Un'ISTANZA deve referenziare un componente ESISTENTE: senza, renderebbe il
+	// vuoto (il suo sottoalbero è derivato dal master), e nessun apply se ne
+	// accorgerebbe -- lo stesso motivo per cui il parent deve esistere.
+	if inst := n.GetInstance(); inst != nil {
+		if doc.Components[inst.GetComponentId()] == nil {
+			return fmt.Errorf("%w: %s (node %s)", ErrComponentNotFound, inst.GetComponentId(), n.GetId())
+		}
 	}
 	if doc.Nodes == nil {
 		// Apply is the authoritative mutator for any *opendesignerv1.Document, not
@@ -419,5 +435,65 @@ func applySetVectorPath(doc *opendesignerv1.Document, s *opendesignerv1.SetVecto
 		return fmt.Errorf("%w: %s", ErrNotVectorNode, s.GetId())
 	}
 	v.Vector.Subpaths = s.GetSubpaths()
+	return nil
+}
+
+// applyCreateComponent registra un sottoalbero ESISTENTE come master di un
+// componente. Non copia nulla: il master resta in `nodes`, le istanze lo
+// referenziano per component_id, e la propagazione master->istanze è quindi
+// gratis (le istanze leggono il master vivo). Rifiutato se l'id è già preso o se
+// la radice non esiste -- un componente che punta al vuoto darebbe istanze che
+// non rendono nulla, senza modo di accorgersene all'apply.
+func applyCreateComponent(doc *opendesignerv1.Document, c *opendesignerv1.CreateComponent) error {
+	if c.GetComponentId() == "" {
+		return fmt.Errorf("%w: (empty id)", ErrComponentNotFound)
+	}
+	if _, exists := doc.Components[c.GetComponentId()]; exists {
+		return fmt.Errorf("%w: %s", ErrComponentExists, c.GetComponentId())
+	}
+	if _, ok := doc.Nodes[c.GetRootNodeId()]; !ok {
+		return fmt.Errorf("%w: %s (component %s)", ErrNodeNotFound, c.GetRootNodeId(), c.GetComponentId())
+	}
+	if doc.Components == nil {
+		doc.Components = map[string]*opendesignerv1.Component{}
+	}
+	doc.Components[c.GetComponentId()] = &opendesignerv1.Component{
+		RootNodeId: c.GetRootNodeId(),
+		Name:       c.GetName(),
+	}
+	return nil
+}
+
+// applySetInstanceOverride imposta, sostituisce o RIMUOVE l'override di
+// un'istanza su un nodo del master. L'override sostituito è quello con lo stesso
+// master_node_id; se quello che arriva non sovrascrive nulla
+// (fills_present=false && text_present=false) l'override viene tolto -- il nodo
+// torna a ereditare dal master. Rifiutato se il nodo non è un'istanza: un
+// override su un rettangolo è un op sul nodo sbagliato, non un campo da riempire.
+func applySetInstanceOverride(doc *opendesignerv1.Document, s *opendesignerv1.SetInstanceOverride) error {
+	n, ok := doc.Nodes[s.GetInstanceId()]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetInstanceId())
+	}
+	inst := n.GetInstance()
+	if inst == nil {
+		return fmt.Errorf("%w: %s", ErrNotInstanceNode, s.GetInstanceId())
+	}
+	ov := s.GetOverride()
+	if ov == nil || ov.GetMasterNodeId() == "" {
+		return fmt.Errorf("core: instance override with empty master_node_id: %s", s.GetInstanceId())
+	}
+	// Togli l'override con lo stesso master_node_id, poi rimetti quello nuovo solo
+	// se sovrascrive davvero qualcosa (altrimenti l'op È una rimozione).
+	kept := make([]*opendesignerv1.InstanceOverride, 0, len(inst.GetOverrides())+1)
+	for _, o := range inst.GetOverrides() {
+		if o.GetMasterNodeId() != ov.GetMasterNodeId() {
+			kept = append(kept, o)
+		}
+	}
+	if ov.GetFillsPresent() || ov.GetTextPresent() {
+		kept = append(kept, ov)
+	}
+	inst.Overrides = kept
 	return nil
 }

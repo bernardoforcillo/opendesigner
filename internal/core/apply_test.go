@@ -650,3 +650,99 @@ func TestApplySetTextOnImageNodeFails(t *testing.T) {
 		t.Fatal("a rejected setText clobbered the image")
 	}
 }
+
+// --- M4: componenti / istanze -------------------------------------------------
+
+func instanceNode(id, componentID string, overrides ...*opendesignerv1.InstanceOverride) *opendesignerv1.Node {
+	return &opendesignerv1.Node{
+		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Instance", Visible: true, Opacity: 1,
+		X: 0, Y: 0, Width: 100, Height: 100,
+		Shape: &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{
+			ComponentId: componentID, Overrides: overrides,
+		}},
+	}
+}
+
+func mkCreate(n *opendesignerv1.Node) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: n}}}
+}
+
+func mkCreateComponent(componentID, rootID, name string) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateComponent{CreateComponent: &opendesignerv1.CreateComponent{
+		ComponentId: componentID, RootNodeId: rootID, Name: name,
+	}}}
+}
+
+func mkSetOverride(instanceID string, ov *opendesignerv1.InstanceOverride) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetInstanceOverride{SetInstanceOverride: &opendesignerv1.SetInstanceOverride{
+		InstanceId: instanceID, Override: ov,
+	}}}
+}
+
+func TestApplyCreateComponent(t *testing.T) {
+	doc := NewDocument("d", "U")
+	_ = Apply(doc, mkCreate(rectNode("master", 0, 0)))
+	if err := Apply(doc, mkCreateComponent("c1", "master", "Button")); err != nil {
+		t.Fatalf("create component: %v", err)
+	}
+	if doc.Components["c1"].GetRootNodeId() != "master" || doc.Components["c1"].GetName() != "Button" {
+		t.Fatalf("component not registered: %+v", doc.Components["c1"])
+	}
+	if err := Apply(doc, mkCreateComponent("c1", "master", "X")); !errors.Is(err, ErrComponentExists) {
+		t.Fatalf("expected ErrComponentExists, got %v", err)
+	}
+	if err := Apply(doc, mkCreateComponent("c2", "ghost", "X")); !errors.Is(err, ErrNodeNotFound) {
+		t.Fatalf("expected ErrNodeNotFound for missing root, got %v", err)
+	}
+}
+
+func TestApplyCreateInstanceValidatesComponent(t *testing.T) {
+	doc := NewDocument("d", "U")
+	if err := Apply(doc, mkCreate(instanceNode("i1", "nope"))); !errors.Is(err, ErrComponentNotFound) {
+		t.Fatalf("expected ErrComponentNotFound, got %v", err)
+	}
+	if _, ok := doc.Nodes["i1"]; ok {
+		t.Fatal("a rejected instance must not be created")
+	}
+	_ = Apply(doc, mkCreate(rectNode("master", 0, 0)))
+	_ = Apply(doc, mkCreateComponent("c1", "master", "Button"))
+	if err := Apply(doc, mkCreate(instanceNode("i1", "c1"))); err != nil {
+		t.Fatalf("create valid instance: %v", err)
+	}
+}
+
+func TestApplySetInstanceOverride(t *testing.T) {
+	doc := NewDocument("d", "U")
+	_ = Apply(doc, mkCreate(rectNode("master", 0, 0)))
+	_ = Apply(doc, mkCreateComponent("c1", "master", "Button"))
+	_ = Apply(doc, mkCreate(instanceNode("i1", "c1")))
+
+	red := &opendesignerv1.InstanceOverride{
+		MasterNodeId: "master",
+		Fills:        []*opendesignerv1.Paint{{Kind: &opendesignerv1.Paint_Solid{Solid: &opendesignerv1.SolidPaint{Color: &opendesignerv1.Color{R: 1, A: 1}}}}},
+		FillsPresent: true,
+	}
+	if err := Apply(doc, mkSetOverride("i1", red)); err != nil {
+		t.Fatalf("set override: %v", err)
+	}
+	ovs := doc.Nodes["i1"].GetInstance().GetOverrides()
+	if len(ovs) != 1 || !ovs[0].GetFillsPresent() {
+		t.Fatalf("override not set: %+v", ovs)
+	}
+	// Stesso master_node_id: SOSTITUISCE, resta uno solo.
+	_ = Apply(doc, mkSetOverride("i1", &opendesignerv1.InstanceOverride{MasterNodeId: "master", Text: "x", TextPresent: true}))
+	ovs = doc.Nodes["i1"].GetInstance().GetOverrides()
+	if len(ovs) != 1 || !ovs[0].GetTextPresent() || ovs[0].GetFillsPresent() {
+		t.Fatalf("override not replaced: %+v", ovs)
+	}
+	// Override che non sovrascrive nulla = RIMOZIONE.
+	_ = Apply(doc, mkSetOverride("i1", &opendesignerv1.InstanceOverride{MasterNodeId: "master"}))
+	if len(doc.Nodes["i1"].GetInstance().GetOverrides()) != 0 {
+		t.Fatal("an empty override should remove it")
+	}
+	// Override su un non-istanza -> rifiutato.
+	_ = Apply(doc, mkCreate(rectNode("r", 0, 0)))
+	if err := Apply(doc, mkSetOverride("r", red)); !errors.Is(err, ErrNotInstanceNode) {
+		t.Fatalf("expected ErrNotInstanceNode, got %v", err)
+	}
+}

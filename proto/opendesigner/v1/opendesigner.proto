@@ -206,6 +206,37 @@ message SubPath { repeated Anchor anchors = 1; bool closed = 2; }
 // di selezione, non un fatto sulla geometria.
 message VectorNode { repeated SubPath subpaths = 1; }
 
+// M4 — un COMPONENTE è un sottoalbero MASTER che vive in `nodes` come qualunque
+// altro (si vede e si modifica sul canvas). Document.components lo indicizza per
+// id; il valore punta al nodo radice del master e porta un nome. Un'ISTANZA
+// (InstanceNode) lo rende VIRTUALMENTE alla propria trasformazione, quindi la
+// propagazione master->istanze è gratis: le istanze leggono il master vivo.
+message Component {
+  string root_node_id = 1; // radice del master, dentro Document.nodes
+  string name = 2;
+}
+
+// Un override per-istanza su UN nodo del master. Minimo (design M4): fill e
+// testo. I flag *_present distinguono "non sovrascritto" da "sovrascritto a
+// vuoto", come SetText.style_present: senza, un override di solo testo
+// azzererebbe il fill ereditato dal master.
+message InstanceOverride {
+  string master_node_id = 1;
+  repeated Paint fills = 2;
+  bool fills_present = 3;
+  string text = 4;
+  bool text_present = 5;
+}
+
+// shape 37: un'istanza di un componente. Rende il sottoalbero master di
+// `component_id` alla trasformazione del Node (x/y), con gli override applicati
+// per nodo del master. I figli dell'istanza NON stanno in `nodes`: sono
+// derivati dal master a ogni lettura (renderer, hit-test, bounds).
+message InstanceNode {
+  string component_id = 1;
+  repeated InstanceOverride overrides = 2;
+}
+
 message Node {
   string id = 1;
   string parent_id = 2;   // id nodo container OPPURE id Page (per i root)
@@ -230,7 +261,7 @@ message Node {
     FrameNode frame = 34;   // traccia 1 — annidamento (vedi FrameNode sopra)
     ImageNode image = 35;   // traccia 3 — periferia (vedi ImageNode sopra)
     VectorNode vector = 36; // traccia 4 — vettoriale (vedi VectorNode sopra)
-    // 37 = InstanceNode  (M4 — componenti)
+    InstanceNode instance = 37; // M4 — istanza di un componente (vedi InstanceNode sopra)
   }
 }
 
@@ -242,6 +273,8 @@ message Document {
   uint32 schema_version = 3;
   repeated Page pages = 4;
   map<string, Node> nodes = 5;
+  // M4 — componenti: componentId -> master (nodo radice in `nodes` + nome).
+  map<string, Component> components = 6;
 }
 
 // ---------- op ----------
@@ -327,6 +360,23 @@ message CreatePage { Page page = 1; }
 // pagine non ha nessun posto in cui creare un nodo.
 message DeletePage { string id = 1; }
 message RenamePage { string id = 1; string name = 2; }
+
+// op 16 (M4): registra un sottoalbero ESISTENTE (radice root_node_id) come
+// master di un componente. Non copia nulla: il master resta dov'è in `nodes`, e
+// da qui in poi le istanze lo referenziano per component_id.
+message CreateComponent {
+  string component_id = 1;
+  string root_node_id = 2;
+  string name = 3;
+}
+
+// op 20 (M4): imposta (o azzera) l'override di un'istanza su un nodo del master.
+// L'override sostituito è quello con lo stesso master_node_id; un override con
+// entrambi i *_present a false lo RIMUOVE (torna a ereditare dal master).
+message SetInstanceOverride {
+  string instance_id = 1;
+  InstanceOverride override = 2;
+}
 message Op {
   string op_id = 1;
   string doc_id = 2;
@@ -343,7 +393,8 @@ message Op {
     DeletePage    delete_page   = 18;
     RenamePage    rename_page   = 19;
     SetVectorPath set_vector_path = 15; // traccia 4 — sostituisce i subpath di un VectorNode
-    // 16 = CreateComponent (M4)
+    CreateComponent     create_component      = 16; // M4 — registra un sottoalbero come master
+    SetInstanceOverride set_instance_override = 20; // M4 — override fill/testo su un'istanza
   }
 }
 message OpRecord {
