@@ -201,6 +201,17 @@ describe("selectionFrame", () => {
     expect(f.rotation).toBe(0);
     expect(f.bounds).toEqual({ x: 0, y: 0, width: 150, height: 150 });
   });
+
+  // Un'istanza, come un gruppo, non ha un box proprio: la sua cornice è quella
+  // del contenuto del master (derivata, store/groups.ts), asse-allineata -- non
+  // il rettangolo 0x0 all'origine che il suo box grezzo darebbe.
+  it("frames a single instance by its derived content bounds, axis-aligned like a group", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["mr"] = { ...rect("mr", 10, 10, 50, 50), parentId: "components" };
+    s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
+    s.nodes["i"] = { ...rect("i", 100, 100, 50, 50), kind: "instance", instance: { componentId: "comp", overrides: [] } };
+    expect(selectionFrame(s, ["i"])).toEqual({ bounds: { x: 100, y: 100, width: 50, height: 50 }, rotation: 0 });
+  });
 });
 
 describe("worldBoundsToScreen", () => {

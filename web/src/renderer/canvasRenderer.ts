@@ -1,4 +1,4 @@
-import type { SceneState, NodeLite, FillLite, StrokeLite } from "../store/types";
+import type { SceneState, NodeLite, FillLite, StrokeLite, InstanceOverrideLite } from "../store/types";
 import type { Camera } from "../canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, intersectBounds, worldVisualAabbOfNode } from "../canvas/geometry";
 import {
@@ -11,6 +11,8 @@ import {
   type Transform,
 } from "../canvas/transform";
 import { childIndexOf } from "../store/tree";
+import { contentWorldBounds } from "../store/groups";
+import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../store/instances";
 import {
   nodePath, hitTestNode, inkIsBox, nodeCenter, vectorPaths, hasInk, selectionBoundsOfNode,
   VECTOR_FILL_RULE, VECTOR_STROKE_PX,
@@ -223,8 +225,27 @@ export function drawScene(
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(cam.zoom * dpr, 0, 0, cam.zoom * dpr, cam.x * dpr, cam.y * dpr);
   const children = childIndexOf(state);
-  drawSiblings(ctx, state, children, rootsOf(state, children, currentPageId), cam, px, images, new Set());
+  drawSiblings(ctx, state, children, rootsOf(state, children, currentPageId), cam, px, images, new Set(), null, new Set());
   ctx.globalAlpha = 1;
+}
+
+// La mappa degli override che scende insieme al sottoalbero di un'istanza
+// (masterNodeId -> override), oppure `null` fuori da ogni istanza (la pagina, il
+// contenuto di un gruppo o di un frame normale). Vedi store/instances.ts.
+type OverrideMap = ReadonlyMap<string, InstanceOverrideLite> | null;
+
+// Il nodo del master COL SUO override applicato, se ce n'è uno: `fills`
+// dell'override al posto dei suoi se presente, e -- per un testo -- il `text`
+// dell'override al posto del suo contenuto se presente. Ritorna il nodo INTATTO
+// quando non c'è override (nessuna copia inutile). Non tocca mai la geometria
+// (x/y/width/height/rotation): un override cambia solo ciò che il nodo dipinge,
+// non dove sta -- la stessa scelta dei bounds in store/groups.ts.
+function withOverride(n: NodeLite, ov: InstanceOverrideLite | undefined): NodeLite {
+  if (!ov) return n;
+  let eff = n;
+  if (ov.fills !== undefined) eff = { ...eff, fills: ov.fills };
+  if (ov.text !== undefined && eff.text) eff = { ...eff, text: { ...eff.text, content: ov.text } };
+  return eff;
 }
 
 // Disegna una lista di fratelli (già ordinata) nello spazio CORRENTE del ctx,
@@ -244,11 +265,20 @@ function drawSiblings(
   px: number,
   images: ImageSource,
   seen: Set<string>,
+  overrides: OverrideMap,
+  visited: ReadonlySet<string>,
 ): void {
   for (const n of siblings) {
     if (!n.visible || seen.has(n.id)) continue;
     seen.add(n.id);
-    drawNode(ctx, state, n, cam, px, images);
+    drawNode(ctx, state, n, cam, px, images, overrides);
+    // Un'ISTANZA non ha figli in `children` (il suo sottoalbero è virtuale):
+    // disegna il master sotto la trasformazione di discesa, con i PROPRI
+    // override, e senza scendere oltre qui. drawNode ha già saltato il suo box.
+    if (n.kind === "instance") {
+      drawInstance(ctx, state, children, n, cam, px, images, visited);
+      continue;
+    }
     const kids = children.get(n.id);
     if (!kids || kids.length === 0) continue;
     // Il container entra nella trasformazione SOLO per i figli: le sue
@@ -272,9 +302,44 @@ function drawSiblings(
       clip.rect(0, 0, n.width, n.height);
       ctx.clip(clip);
     }
-    drawSiblings(ctx, state, children, kids, cam, px, images, seen);
+    drawSiblings(ctx, state, children, kids, cam, px, images, seen, overrides, visited);
     ctx.restore();
   }
+}
+
+// Il sottoalbero VIRTUALE di un'istanza. Come per un container normale il
+// contenuto entra nella trasformazione dentro un save/restore, ma la matrice è
+// quella di DISCESA (instanceDescentLocal: posizione dell'istanza più lo
+// scostamento che porta l'origine del master all'origine dell'istanza), e i
+// "fratelli" sono la sola radice del master -- da lì la ricorsione di
+// drawSiblings scende il resto come per qualunque albero.
+//
+// `visited` sono i componentId già in corso di rendering su questo ramo: se il
+// componente dell'istanza è già dentro, ci si ferma (un componente il cui master
+// contiene un'istanza di sé stesso ricorrerebbe all'infinito). Un `seen` FRESCO
+// per il master, non quello della pagina: lo stesso componente reso da due
+// istanze deve disegnarsi due volte, e col `seen` condiviso la seconda lo
+// salterebbe come "già visto".
+function drawInstance(
+  ctx: CanvasRenderingContext2D,
+  state: SceneState,
+  children: ChildIndex,
+  n: NodeLite,
+  cam: Camera,
+  px: number,
+  images: ImageSource,
+  visited: ReadonlySet<string>,
+): void {
+  if (!n.instance || visited.has(n.instance.componentId)) return;
+  const resolved = resolveInstance(state, n);
+  if (!resolved) return;
+  const nextVisited = new Set(visited).add(n.instance.componentId);
+  const overrides = instanceOverrideMap(n);
+  ctx.save();
+  const t = instanceDescentLocal(n, resolved.masterRoot);
+  ctx.transform(t.a, t.b, t.c, t.d, t.e, t.f);
+  drawSiblings(ctx, state, children, [resolved.masterRoot], cam, px, images, new Set(), overrides, nextVisited);
+  ctx.restore();
 }
 
 // Il nodo e basta, nello spazio del suo parent (che è quello corrente del ctx).
@@ -288,57 +353,65 @@ function drawNode(
   cam: Camera,
   px: number,
   images: ImageSource,
+  overrides: OverrideMap,
 ): void {
   // Un GRUPPO non si disegna: contenitore senza geometria propria (i suoi
   // bounds sono l'unione dei figli, store/groups.ts) e ciò che si vede sono i
   // figli. Esplicito e non affidato al guard sulla dimensione: un gruppo con
   // width/height != 0 -- scritti da chi non lo sa, o da un documento di un'altra
   // versione -- comparirebbe come un rettangolo pieno mai disegnato dall'utente.
-  if (n.kind === "group") return;
+  // Un'ISTANZA non si disegna qui per la stessa ragione: non ha un box proprio,
+  // il suo contenuto è il master (drawInstance lo disegna dopo questa chiamata).
+  if (n.kind === "group" || n.kind === "instance") return;
+  // Il nodo COL SUO override, se sta scendendo dentro un'istanza che lo
+  // sovrascrive: da qui in poi si disegna `eff`, non `n`. L'override tocca solo
+  // fills/text -- la geometria (box, rotazione) resta quella del master, quindi
+  // i guard e i centri di rotazione qui sotto sono identici con o senza.
+  const eff = withOverride(n, overrides?.get(n.id));
   // Il guard sulla dimensione vale solo per le forme il cui inchiostro È il box
   // (rect, ellisse, immagine, frame): per testo e vettoriale un lato a zero è
   // uno stato legittimo e disegnabile. L'elenco delle eccezioni sta in UN posto
   // solo (shapes.ts::inkIsBox), condiviso con l'hit-test: un nodo che si disegna
   // ma non si clicca -- o il contrario -- è il modo in cui i due divergono.
-  if (inkIsBox(n) && (n.width <= 0 || n.height <= 0)) return;
+  if (inkIsBox(eff) && (eff.width <= 0 || eff.height <= 0)) return;
   // ROTAZIONE (traccia 2): è il CONTESTO a ruotare attorno al centro del box
   // (nodeCenter, la stessa funzione che l'hit-test usa nel verso opposto), non
   // la geometria -- nodePath e drawText restano asse-allineati. Il nodo si
   // disegna nello spazio del proprio parent (quello corrente del ctx); questa
   // rotazione è la SUA, distinta da quella che drawSiblings applica scendendo
   // nei suoi figli. save/restore SOLO quando serve.
-  const rotated = n.rotation % 360 !== 0;
+  const rotated = eff.rotation % 360 !== 0;
   if (rotated) {
-    const c = nodeCenter(n);
+    const c = nodeCenter(eff);
     ctx.save();
     ctx.translate(c.x, c.y);
-    ctx.rotate(n.rotation * DEG_TO_RAD);
+    ctx.rotate(eff.rotation * DEG_TO_RAD);
     ctx.translate(-c.x, -c.y);
   }
-  ctx.globalAlpha = n.opacity;
-  const color = cssColor(n);
+  ctx.globalAlpha = eff.opacity;
+  const color = cssColor(eff);
   ctx.fillStyle = color;
-  if (n.kind === "text") {
-    drawText(ctx, n);
-    drawStrokes(ctx, n, null);
-  } else if (n.kind === "image") {
+  if (eff.kind === "text") {
+    drawText(ctx, eff);
+    drawStrokes(ctx, eff, null);
+  } else if (eff.kind === "image") {
     // Un'immagine disegna sé stessa sul proprio box (traccia 3): niente
     // riempimento sotto, e il tratto non fa parte del suo design.
-    drawImageNode(ctx, state, n, px, images);
-  } else if (n.kind === "vector") {
+    drawImageNode(ctx, state, eff, px, images);
+  } else if (eff.kind === "vector") {
     // Il vettoriale ha la sua doppia passata (riempimento even-odd + tratto di
     // ogni contorno): NON è il box del modello, quindi non passa dal ramo
     // rettangolo qui sotto. Il tratto vettoriale è quello di drawVector, non
     // drawStrokes (che è per il perimetro di un box).
-    drawVector(ctx, n, color, cam.zoom);
+    drawVector(ctx, eff, color, cam.zoom);
   } else {
     // rect / ellisse / FRAME. Un frame si disegna come un rettangolo coi suoi
     // fills (nodePath lo tiene a spigoli vivi anche con un cornerRadius), dietro
     // al proprio contenuto -- drawNode gira PRIMA della discesa nei figli. UN
     // SOLO Path2D per nodo: quello del riempimento è anche quello del tratto.
-    const path = nodePath(n);
+    const path = nodePath(eff);
     ctx.fill(path);
-    drawStrokes(ctx, n, path);
+    drawStrokes(ctx, eff, path);
   }
   if (rotated) ctx.restore();
 }
@@ -458,7 +531,7 @@ export function hitTest(
   currentPageId?: string | null,
 ): string | null {
   const children = childIndexOf(state);
-  return pickIn(children, rootsOf(state, children, currentPageId), wx, wy, zoom, new Set());
+  return pickIn(state, children, rootsOf(state, children, currentPageId), wx, wy, zoom, new Set(), new Set());
 }
 
 // Lo STESSO cammino di drawSiblings, al contrario: fratelli dall'ultimo al
@@ -471,17 +544,29 @@ export function hitTest(
 // che il renderer applica al ctx -- la stessa localTransformOf (rotazione
 // inclusa), letta nell'altro verso.
 function pickIn(
+  state: SceneState,
   children: ChildIndex,
   siblings: NodeLite[],
   px: number,
   py: number,
   zoom: number,
   seen: Set<string>,
+  visited: ReadonlySet<string>,
 ): string | null {
   for (let i = siblings.length - 1; i >= 0; i--) {
     const n = siblings[i];
     if (!n.visible || seen.has(n.id)) continue;
     seen.add(n.id);
+    // Un'ISTANZA è OPACA alla selezione dall'esterno: si scende nel master (col
+    // punto portato nello spazio del master dall'inversa della discesa) e, se
+    // qualcosa lì viene colpito, la risposta è l'ISTANZA -- mai un nodo del
+    // master, che dall'esterno non è selezionabile per conto suo. Se non colpisce
+    // niente, `continue`: un'istanza non ha un box proprio da colpire (come un
+    // gruppo), quindi non ruba il click a ciò che le sta sotto.
+    if (n.kind === "instance") {
+      if (hitInstance(state, children, n, px, py, zoom, visited)) return n.id;
+      continue;
+    }
     const kids = children.get(n.id);
     if (kids && kids.length > 0) {
       const inner = applyTransform(invertTransform(localTransformOf(n)), px, py);
@@ -495,13 +580,36 @@ function pickIn(
         n.kind === "frame" && n.clipsContent &&
         !(inner.x >= 0 && inner.x <= n.width && inner.y >= 0 && inner.y <= n.height);
       if (!clipsAway) {
-        const hit = pickIn(children, kids, inner.x, inner.y, zoom, seen);
+        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited);
         if (hit) return hit;
       }
     }
     if (hitTestNode(n, px, py, zoom)) return n.id;
   }
   return null;
+}
+
+// L'hit-test del sottoalbero VIRTUALE di un'istanza: porta il punto nello spazio
+// del master (inversa della trasformazione di discesa) e lo prova sul master;
+// `true` se COLPISCE qualcosa lì dentro -- il chiamante ritorna allora l'id
+// DELL'ISTANZA, non del nodo del master colpito. `visited` e il `seen` fresco
+// come in drawInstance: il ciclo di un componente auto-referenziale si ferma, e
+// lo stesso master colpito da due istanze non si "auto-esclude".
+function hitInstance(
+  state: SceneState,
+  children: ChildIndex,
+  n: NodeLite,
+  px: number,
+  py: number,
+  zoom: number,
+  visited: ReadonlySet<string>,
+): boolean {
+  if (!n.instance || visited.has(n.instance.componentId)) return false;
+  const resolved = resolveInstance(state, n);
+  if (!resolved) return false;
+  const inner = applyTransform(invertTransform(instanceDescentLocal(n, resolved.masterRoot)), px, py);
+  const nextVisited = new Set(visited).add(n.instance.componentId);
+  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited) !== null;
 }
 
 // I nodi il cui box MONDO interseca `bounds`, in ordine di DISEGNO. È la
@@ -522,7 +630,7 @@ function pickIn(
 export function nodesIntersecting(state: SceneState, bounds: Bounds, currentPageId?: string | null): string[] {
   const children = childIndexOf(state);
   const out: string[] = [];
-  collectIn(children, rootsOf(state, children, currentPageId), IDENTITY, bounds, out, new Set());
+  collectIn(state, children, rootsOf(state, children, currentPageId), IDENTITY, bounds, out, new Set());
   return out;
 }
 
@@ -535,6 +643,7 @@ export function nodesIntersecting(state: SceneState, bounds: Bounds, currentPage
 // l'unione), quindi un figlio dentro il marquee resterebbe fuori dalla
 // selezione. Si salta solo ciò che non si vede.
 function collectIn(
+  state: SceneState,
   children: ChildIndex,
   siblings: NodeLite[],
   toWorld: Transform,
@@ -545,6 +654,17 @@ function collectIn(
   for (const n of siblings) {
     if (!n.visible || seen.has(n.id)) continue;
     seen.add(n.id);
+    // Un'ISTANZA entra nel marquee sui suoi bounds DERIVATI (il sottoalbero del
+    // master mappato dalla discesa, store/groups.ts::contentWorldBounds -- la
+    // stessa cornice che l'overlay disegna): niente discesa nel master (i suoi
+    // figli non sono selezionabili dall'esterno), si aggiunge l'istanza e basta.
+    // Un master mancante non ha bounds e non entra, come non si disegna e non si
+    // colpisce. La guardia ai cicli è dentro contentWorldBounds.
+    if (n.kind === "instance") {
+      const b = contentWorldBounds(state, n);
+      if (b && boundsIntersect(b, bounds)) out.push(n.id);
+      continue;
+    }
     // Il box su cui il MARQUEE afferra il nodo è quello VISUALE, non il box
     // grezzo del modello (traccia 2/4): worldVisualAabbOfNode per le forme il cui
     // inchiostro È il box -- rotazione inclusa e sporgenza del tratto compresa --
@@ -574,6 +694,6 @@ function collectIn(
       childBounds = intersectBounds(bounds, frameBox);
       if (!childBounds) continue;
     }
-    collectIn(children, kids, compose(toWorld, localTransformOf(n)), childBounds, out, seen);
+    collectIn(state, children, kids, compose(toWorld, localTransformOf(n)), childBounds, out, seen);
   }
 }

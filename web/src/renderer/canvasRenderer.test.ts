@@ -1178,3 +1178,180 @@ describe("drawScene: immagini", () => {
     expect(f.drawn).toEqual([]);
   });
 });
+
+// --- ISTANZE (M4) ------------------------------------------------------------
+//
+// Un'istanza rende il sottoalbero del suo MASTER, spostato all'origine
+// dell'istanza, con gli override per nodo. È OPACA dall'esterno: si disegna, si
+// colpisce e si prende col marquee come UN'UNITÀ, mai i nodi del master singoli.
+// I master qui vivono sotto parentId "components", NON raggiungibile da page1:
+// così non si disegnano per conto loro e si vede solo la resa virtuale
+// dell'istanza (esattamente come un componente reale sta su una pagina a parte).
+
+function instanceNode(
+  id: string, componentId: string, x: number, y: number,
+  overrides: import("../store/types").InstanceOverrideLite[] = [], over: Partial<NodeLite> = {},
+): NodeLite {
+  return { ...rect(id, x, y, "a0"), kind: "instance", fills: [], instance: { componentId, overrides }, ...over };
+}
+
+// Un ctx che REGISTRA la fillStyle al momento della fill: serve a osservare che
+// un override cambia il COLORE del solo nodo sovrascritto. jsdom non ha Path2D,
+// quindi i test che passano di qui stubano FakePath2D.
+function fillStyleCtx() {
+  const fills: string[] = [];
+  const ctx = {
+    canvas: { width: 800, height: 600 },
+    font: "", textBaseline: "", textAlign: "", fillStyle: "", strokeStyle: "",
+    lineWidth: 0, globalAlpha: 1, lineCap: "", lineJoin: "",
+    setTransform: () => {}, clearRect: () => {}, save: () => {}, restore: () => {},
+    translate: () => {}, rotate: () => {}, transform: () => {},
+    measureText: (s: string) => ({ width: s.length * 10 }),
+    fill: () => { fills.push(ctx.fillStyle); },
+    stroke: () => {}, clip: () => {}, fillText: () => {}, strokeText: () => {},
+  };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, fills };
+}
+
+describe("drawScene with an instance", () => {
+  it("draws the master subtree at the instance origin, shifted by -masterRoot.x/y", () => {
+    const s = emptyScene("d", "n");
+    // Master: un gruppo a (20,10) con un testo figlio a (5,5), fuori da page1.
+    s.nodes["gm"] = { ...rect("gm", 20, 10, "a0"), kind: "group", parentId: "components", width: 0, height: 0 };
+    s.nodes["tc"] = textAt("tc", "gm", 5, 5);
+    s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
+    s.nodes["i"] = instanceNode("i", "comp", 100, 50);
+    const f = fakeCtx();
+    drawScene(f.ctx, s, identityCam);
+    // L'origine del master (20,10) cade sull'origine dell'istanza (100,50); il
+    // figlio a (5,5) DAL master finisce a (105,55). La resa non dipende da DOVE
+    // sta la radice del master, solo dall'origine dell'istanza.
+    expect(f.fillText).toEqual([{ text: "tc", x: 105, y: 55 + ASCENT }]);
+  });
+
+  it("does not draw the master standalone when it is unreachable from the page", () => {
+    // Solo l'istanza è figlia di page1; il master no. Una sola resa: quella
+    // virtuale. (Se il master fosse su page1 comparirebbe DUE volte, ed è
+    // corretto -- ma qui verifichiamo che l'irraggiungibile non si disegna.)
+    const s = emptyScene("d", "n");
+    s.nodes["mt"] = textAt("mt", "components", 0, 0);
+    s.components["comp"] = { rootNodeId: "mt", name: "Comp" };
+    s.nodes["i"] = instanceNode("i", "comp", 100, 50);
+    const f = fakeCtx();
+    drawScene(f.ctx, s, identityCam);
+    expect(f.fillText).toEqual([{ text: "mt", x: 100, y: 50 + ASCENT }]);
+  });
+
+  it("applies a TEXT override to the overridden node only, leaving siblings from the master", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["gm"] = { ...rect("gm", 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 };
+    s.nodes["mt"] = textAt("mt", "gm", 0, 0, "a0");
+    s.nodes["mt2"] = textAt("mt2", "gm", 0, 20, "a1");
+    s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
+    s.nodes["i"] = instanceNode("i", "comp", 0, 0, [{ masterNodeId: "mt", text: "OVR" }]);
+    const f = fakeCtx();
+    drawScene(f.ctx, s, identityCam);
+    // mt sovrascritto, mt2 dal master intatto.
+    expect(f.fillText.map((c) => c.text)).toEqual(["OVR", "mt2"]);
+  });
+
+  it("applies a FILL override to the overridden node only", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    try {
+      const s = emptyScene("d", "n");
+      s.nodes["gm"] = { ...rect("gm", 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 };
+      // Due rettangoli neri nel master; l'override rende ROSSO solo il primo.
+      s.nodes["mr1"] = { ...rect("mr1", 0, 0, "a0"), parentId: "gm" };
+      s.nodes["mr2"] = { ...rect("mr2", 0, 60, "a1"), parentId: "gm" };
+      s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
+      s.nodes["i"] = instanceNode("i", "comp", 0, 0, [{ masterNodeId: "mr1", fills: [{ r: 1, g: 0, b: 0, a: 1 }] }]);
+      const f = fillStyleCtx();
+      drawScene(f.ctx, s, identityCam);
+      // mr1 col colore dell'override, mr2 col nero del master.
+      expect(f.fills).toEqual(["rgba(255, 0, 0, 1)", "rgba(0, 0, 0, 1)"]);
+    } finally {
+      vi.unstubAllGlobals();
+    }
+  });
+
+  it("a missing component (or missing master) renders nothing", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["i"] = instanceNode("i", "nope", 100, 50);
+    // componente presente ma radice assente
+    s.nodes["j"] = instanceNode("j", "comp", 100, 50, [], { orderKey: "a1" });
+    s.components["comp"] = { rootNodeId: "gone", name: "Comp" };
+    const f = fakeCtx();
+    expect(() => drawScene(f.ctx, s, identityCam)).not.toThrow();
+    expect(f.fillText).toEqual([]);
+  });
+});
+
+describe("hitTest with an instance", () => {
+  // Master: un rettangolo 50x50 a (0,0), fuori da page1. L'istanza a (100,100)
+  // ne rende il contenuto a (100,100)-(150,150).
+  function withInstance(): SceneState {
+    const s = emptyScene("d", "n");
+    s.nodes["mr"] = { ...rect("mr", 0, 0, "a0"), parentId: "components" };
+    s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
+    s.nodes["i"] = instanceNode("i", "comp", 100, 100);
+    return s;
+  }
+
+  it("a point over the instance content returns the INSTANCE id, never a master node", () => {
+    const s = withInstance();
+    expect(hitTest(s, 110, 110, Z1)).toBe("i");
+  });
+
+  it("a point outside the rendered content returns null (an instance has no box of its own)", () => {
+    const s = withInstance();
+    expect(hitTest(s, 200, 200, Z1)).toBeNull();
+  });
+
+  it("a missing component is not hit where its content would be", () => {
+    const s = emptyScene("d", "n");
+    s.nodes["i"] = instanceNode("i", "nope", 100, 100);
+    expect(hitTest(s, 110, 110, Z1)).toBeNull();
+  });
+});
+
+describe("nodesIntersecting with an instance", () => {
+  function withInstance(): SceneState {
+    const s = emptyScene("d", "n");
+    s.nodes["mr"] = { ...rect("mr", 0, 0, "a0"), parentId: "components" };
+    s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
+    s.nodes["i"] = instanceNode("i", "comp", 100, 100);
+    return s;
+  }
+
+  it("collects the instance by its derived bounds, returning the instance id", () => {
+    const s = withInstance();
+    expect(nodesIntersecting(s, { x: 105, y: 105, width: 10, height: 10 })).toEqual(["i"]);
+  });
+
+  it("does not collect the instance when the band misses its content", () => {
+    const s = withInstance();
+    expect(nodesIntersecting(s, { x: 300, y: 300, width: 10, height: 10 })).toEqual([]);
+  });
+});
+
+// CICLO: un componente il cui master (transitivamente) contiene un'istanza di sé
+// stesso ricorrerebbe all'infinito. La guardia per componentId lo ferma; qui
+// verifichiamo solo che le tre discese TERMINANO.
+describe("instance cycle guard", () => {
+  function selfRef(): SceneState {
+    const s = emptyScene("d", "n");
+    s.nodes["gs"] = { ...rect("gs", 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 };
+    s.nodes["ci"] = instanceNode("ci", "self", 0, 0, [], { parentId: "gs" });
+    s.components["self"] = { rootNodeId: "gs", name: "Self" };
+    s.nodes["i"] = instanceNode("i", "self", 0, 0);
+    return s;
+  }
+
+  it("draw, hit-test and marquee all terminate on a self-referential component", () => {
+    const s = selfRef();
+    const f = fakeCtx();
+    expect(() => drawScene(f.ctx, s, identityCam)).not.toThrow();
+    expect(hitTest(s, 10, 10, Z1)).toBeNull();
+    expect(nodesIntersecting(s, { x: 0, y: 0, width: 100, height: 100 })).toEqual([]);
+  });
+});

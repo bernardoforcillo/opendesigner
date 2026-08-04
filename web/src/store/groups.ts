@@ -1,6 +1,7 @@
 import { intersectBounds, unionBounds, worldAabbOfNode, type Bounds } from "../canvas/geometry";
-import { mapBounds, worldBoundsOfNode, worldToLocal, worldTransformOf } from "../canvas/transform";
+import { IDENTITY, compose, localTransformOf, mapBounds, type Transform, worldBoundsOfNode, worldToLocal, worldTransformOf } from "../canvas/transform";
 import { ancestorsOf, childrenOf } from "./tree";
+import { instanceDescentLocal, isInstance, resolveInstance } from "./instances";
 import type { NodeLite, SceneState } from "./types";
 
 // I GRUPPI: cosa sono, dove finiscono i loro bounds e quale nodo seleziona un
@@ -22,6 +23,19 @@ import type { NodeLite, SceneState } from "./types";
 // canvasRenderer.ts::hitTest): l'hit-test risponde "quale nodo c'è sotto il
 // puntatore" -- il più interno, sempre -- e queste funzioni rispondono "quale
 // nodo va selezionato", che è un'altra domanda e ha un'altra risposta.
+//
+// UN'ISTANZA (kind "instance", store/instances.ts) è, per i bounds, un GRUPPO il
+// cui contenuto è il sottoalbero del master: nessun box proprio (x/y sono la sua
+// traslazione, width/height non li legge nessuno), bounds DERIVATI dal master
+// mappato dalla trasformazione di discesa (contentIn -> instanceContentBounds).
+// La cornice di selezione, le 8 maniglie e la X del pannello leggono da qui,
+// come per un gruppo. SEMPLIFICAZIONE consapevole: il ritaglio di un frame
+// INTERNO al master (un frame con clipsContent DENTRO il componente, con figli
+// che gli sporgono) non è applicato ai bounds derivati -- accumulateMaster
+// unisce i box senza rifare la catena clip-aware di clippedWorldBoundsOf, che
+// segue gli antenati REALI e non il contesto virtuale dell'istanza. È un caso di
+// bordo; l'istanza resta comunque OPACA (marquee e cornice sono un box solo),
+// quindi la divergenza è al più una cornice leggermente più larga del dipinto.
 
 export function isGroup(n: NodeLite | undefined): boolean {
   return n?.kind === "group";
@@ -75,6 +89,11 @@ function clippedWorldBoundsOf(scene: SceneState, n: NodeLite): Bounds | null {
 }
 
 function contentIn(scene: SceneState, n: NodeLite, seen: Set<string>): Bounds | null {
+  // Un'ISTANZA deriva i suoi bounds dal MASTER, come un gruppo li deriva dai
+  // figli: il sottoalbero del master mappato dalla trasformazione di discesa
+  // (vedi instanceContentBounds). Non ha un box proprio da leggere -- x/y sono la
+  // sua traslazione, width/height non li legge nessuno, come per un gruppo.
+  if (isInstance(n)) return instanceContentBounds(scene, n, new Set());
   if (!isGroup(n)) return clippedWorldBoundsOf(scene, n);
   // Ciclo in un documento malformato: già visitato, rivisitarlo non finirebbe
   // mai (stessa guardia di tree.ts::subtreeOf).
@@ -101,6 +120,75 @@ function contentIn(scene: SceneState, n: NodeLite, seen: Set<string>): Bounds | 
   return unionBounds(boxes);
 }
 
+// I bounds MONDO del contenuto di un'istanza: il box del sottoalbero del master,
+// mappato dalla trasformazione di discesa. Segue alla lettera la formula della
+// traccia:
+//
+//   contentWorldBounds(istanza)
+//     = mapBounds( worldTransformOf(parent) ∘ localTransformOf(n) ∘ translate(-master.x,-master.y),
+//                  <bounds locali del sottoalbero del master> )
+//
+// I bounds locali del master sono l'unione dei box del suo sottoalbero nello
+// spazio in cui è scritta la x/y della sua radice (accumulateMaster con base
+// IDENTITÀ); poi una sola mapBounds attraverso la discesa MONDO li porta dove
+// l'istanza li disegna. Così la rotazione PROPRIA dell'istanza compone da sé
+// (sta in localTransformOf(n) dentro descentWorld, e mapBounds prende l'AABB del
+// box ruotato) -- disegno, hit-test e cornice scendono con la stessa matrice.
+//
+// `null` (niente cornice) quando il master manca o non disegna niente, e quando
+// il componente è già in `visited` (auto-referenza): esattamente come un gruppo
+// vuoto.
+function instanceContentBounds(scene: SceneState, n: NodeLite, visited: Set<string>): Bounds | null {
+  const resolved = resolveInstance(scene, n);
+  if (!resolved) return null;
+  if (visited.has(resolved.componentId)) return null;
+  const nextVisited = new Set(visited).add(resolved.componentId);
+  const boxes: Bounds[] = [];
+  accumulateMaster(scene, resolved.masterRoot, IDENTITY, boxes, new Set(), nextVisited);
+  const local = unionBounds(boxes);
+  if (!local) return null;
+  const descentWorld = compose(worldTransformOf(scene, n.parentId), instanceDescentLocal(n, resolved.masterRoot));
+  return mapBounds(descentWorld, local);
+}
+
+// Accumula i box del sottoalbero di un master nello spazio in cui `toBase`
+// mappa. Rispecchia la discesa del renderer, per tenere vedi-vs-seleziona:
+//   - un nodo (o container) INVISIBILE porta via con sé tutto il suo sottoalbero;
+//   - un GRUPPO e un'ISTANZA non hanno box PROPRIO (i loro bounds sono derivati);
+//   - un'istanza ANNIDATA contribuisce il proprio contenuto derivato, con la
+//     stessa guardia ai cicli per componentId;
+//   - ogni altro nodo contribuisce il suo box (AABB ruotato) mappato in base.
+// `seen` è la guardia ai cicli STRUTTURALI (parent malformati); `visited` quella
+// ai cicli di COMPONENTE. NB: il ritaglio dei frame INTERNI al master non è
+// applicato ai bounds -- vedi il commento in cima al file per la scelta.
+function accumulateMaster(
+  scene: SceneState,
+  node: NodeLite,
+  toBase: Transform,
+  boxes: Bounds[],
+  seen: Set<string>,
+  visited: ReadonlySet<string>,
+): void {
+  if (!node.visible || seen.has(node.id)) return;
+  seen.add(node.id);
+  if (isInstance(node)) {
+    const resolved = resolveInstance(scene, node);
+    if (resolved && !visited.has(resolved.componentId)) {
+      const nextVisited = new Set(visited).add(resolved.componentId);
+      const inner: Bounds[] = [];
+      accumulateMaster(scene, resolved.masterRoot, IDENTITY, inner, new Set(), nextVisited);
+      const innerLocal = unionBounds(inner);
+      if (innerLocal) boxes.push(mapBounds(compose(toBase, instanceDescentLocal(node, resolved.masterRoot)), innerLocal));
+    }
+    // Un'istanza non ha figli in `nodes`: niente discesa oltre qui.
+    return;
+  }
+  // Gruppo: nessun box proprio (i suoi bounds sono l'unione dei figli, qui sotto).
+  if (!isGroup(node)) boxes.push(mapBounds(toBase, worldAabbOfNode(node)));
+  const childBase = compose(toBase, localTransformOf(node));
+  for (const c of childrenOf(scene, node.id)) accumulateMaster(scene, c, childBase, boxes, seen, visited);
+}
+
 // L'angolo ALTO-SINISTRA della cornice di un nodo, nello spazio del PARENT --
 // cioè lo stesso spazio in cui sono scritte le sue x/y, e quello in cui il
 // pannello proprietà (ui/PropertiesPanel.tsx) legge e scrive X/Y.
@@ -117,7 +205,9 @@ function contentIn(scene: SceneState, n: NodeLite, seen: Set<string>): Bounds | 
 // traslazione, che è l'unica coordinata che possiede -- e che il pannello
 // scrive allora in modo assoluto, come per ogni altro nodo.
 export function frameOriginOf(scene: SceneState, n: NodeLite): { x: number; y: number } {
-  if (!isGroup(n)) return { x: n.x, y: n.y };
+  // Un'ISTANZA è come un gruppo qui: x/y sono la sua traslazione, non l'angolo
+  // della cornice (che è quello del contenuto del master). Vedi contentIn.
+  if (!isGroup(n) && !isInstance(n)) return { x: n.x, y: n.y };
   const b = contentWorldBounds(scene, n);
   if (!b) return { x: n.x, y: n.y };
   // Dal MONDO (in cui contentWorldBounds risponde) allo spazio del parent: la

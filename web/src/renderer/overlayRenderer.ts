@@ -2,6 +2,7 @@ import type { SceneState } from "../store/types";
 import { type Camera, worldToScreen } from "../canvas/camera";
 import { type Bounds, unionBounds, worldBoundsToScreen } from "../canvas/geometry";
 import { contentWorldBounds, isGroup } from "../store/groups";
+import { isInstance } from "../store/instances";
 import { worldBoundsOfNode } from "../canvas/transform";
 import type { SnapGuide } from "../selection/snap";
 import {
@@ -238,7 +239,11 @@ export function selectionFrame(state: SceneState, selection: string[]): Selectio
     // (contentWorldBounds, clip-aware), null quando non c'è niente da
     // incorniciare (gruppo vuoto o con tutti i figli nascosti) -- così l'overlay
     // non disegna cornice né maniglie su canvas vuoto.
-    if (isGroup(n)) {
+    // Un'ISTANZA, come un gruppo, non ha box proprio: la cornice è quella del
+    // contenuto del master (contentWorldBounds), asse-allineata -- la sua
+    // rotazione propria è già cotta dentro quel box (store/groups.ts::
+    // instanceContentBounds), quindi rotation 0 qui, come per un gruppo.
+    if (isGroup(n) || isInstance(n)) {
       const b = contentWorldBounds(state, n);
       return b ? { bounds: b, rotation: 0 } : null;
     }

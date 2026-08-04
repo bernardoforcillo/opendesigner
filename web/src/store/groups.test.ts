@@ -421,3 +421,105 @@ describe("transformTargetsOf", () => {
     expect(transformTargetsOf(grouped(), ["sparito"])).toEqual(["sparito"]);
   });
 });
+
+// LE ISTANZE (M4), lato BOUNDS e POLITICA DI SELEZIONE. Un'istanza è, qui, un
+// GRUPPO il cui contenuto è il sottoalbero del master spostato all'origine
+// dell'istanza: bounds DERIVATI, nessun box proprio, selezionata come un'unità.
+// I master vivono sotto parentId "components" (non è una pagina), come un
+// componente reale sta su una pagina a parte.
+function instance(id: string, parentId: string, x: number, y: number, componentId: string, overrides: import("./types").InstanceOverrideLite[] = []): NodeLite {
+  return node(id, parentId, x, y, { kind: "instance", instance: { componentId, overrides }, fills: [] });
+}
+
+describe("contentWorldBounds for an instance", () => {
+  it("is the master root's box, shifted so the root origin lands at the instance origin", () => {
+    const s = scene([
+      node("mr", "components", 10, 10), // master rect 50x50 a (10,10)
+      instance("i", "page1", 100, 100, "comp"),
+    ]);
+    s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
+    expect(contentWorldBounds(s, s.nodes["i"])).toEqual({ x: 100, y: 100, width: 50, height: 50 });
+  });
+
+  it("unions a group master's children, shifted to the instance origin", () => {
+    const s = scene([
+      group("gm", "components"),
+      node("r1", "gm", 0, 0),
+      node("r2", "gm", 100, 0, { width: 20, height: 20 }),
+      instance("i", "page1", 200, 200, "comp"),
+    ]);
+    s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
+    // Unione locale del master: (0,0,50,50) ∪ (100,0,20,20) = (0,0,120,50).
+    expect(contentWorldBounds(s, s.nodes["i"])).toEqual({ x: 200, y: 200, width: 120, height: 50 });
+  });
+
+  it("maps the content through an ancestor's translation, like any other node", () => {
+    const s = scene([
+      group("wrap", "page1", { x: 1000, y: 0 }),
+      node("mr", "components", 0, 0),
+      instance("i", "wrap", 100, 100, "comp"),
+    ]);
+    s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
+    // i.x/y sono nello spazio di wrap (traslato di 1000,0): mondo (1100,100).
+    expect(contentWorldBounds(s, s.nodes["i"])).toEqual({ x: 1100, y: 100, width: 50, height: 50 });
+  });
+
+  it("is null when the component is missing (nothing to frame)", () => {
+    const s = scene([instance("i", "page1", 0, 0, "nope")]);
+    expect(contentWorldBounds(s, s.nodes["i"])).toBeNull();
+  });
+
+  it("is null when the master root node is missing", () => {
+    const s = scene([instance("i", "page1", 0, 0, "comp")]);
+    s.components["comp"] = { rootNodeId: "gone", name: "Comp" };
+    expect(contentWorldBounds(s, s.nodes["i"])).toBeNull();
+  });
+
+  it("ignores fill/text overrides: an override changes paint, not geometry", () => {
+    const s = scene([
+      node("mr", "components", 10, 10),
+      instance("i", "page1", 100, 100, "comp", [{ masterNodeId: "mr", fills: [{ r: 1, g: 0, b: 0, a: 1 }] }]),
+    ]);
+    s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
+    expect(contentWorldBounds(s, s.nodes["i"])).toEqual({ x: 100, y: 100, width: 50, height: 50 });
+  });
+
+  it("does not infinite-loop on a self-referential component: null, and it returns", () => {
+    const s = scene([
+      group("gs", "components"),
+      instance("ci", "gs", 0, 0, "self"),
+      instance("i", "page1", 0, 0, "self"),
+    ]);
+    s.components["self"] = { rootNodeId: "gs", name: "Self" };
+    expect(contentWorldBounds(s, s.nodes["i"])).toBeNull();
+  });
+});
+
+describe("instance selection policy", () => {
+  function withInstance(): SceneState {
+    const s = scene([node("mr", "components", 0, 0), instance("i", "page1", 100, 100, "comp")]);
+    s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
+    return s;
+  }
+
+  it("selects the instance as a unit: a click resolves to the instance, not a master node", () => {
+    expect(selectionTargetOf(withInstance(), "i", [])).toBe("i");
+  });
+
+  it("is NOT expanded by transformTargetsOf: it has a box of its own to resize, unlike a group", () => {
+    expect(transformTargetsOf(withInstance(), ["i"])).toEqual(["i"]);
+  });
+
+  it("frameOriginOf is the content's top-left in parent space, not the instance's own x/y", () => {
+    const s = scene([
+      group("gm", "components"),
+      node("r", "gm", -5, -5, { width: 10, height: 10 }), // il contenuto sporge in alto a sinistra della radice
+      instance("i", "page1", 100, 100, "comp"),
+    ]);
+    s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
+    // La radice del master cade a (100,100); il figlio a (-5,-5) porta il bordo
+    // del contenuto a (95,95) -- diverso dalla x/y propria dell'istanza (100).
+    expect(s.nodes["i"].x).toBe(100);
+    expect(frameOriginOf(s, s.nodes["i"])).toEqual({ x: 95, y: 95 });
+  });
+});

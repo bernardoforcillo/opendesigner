@@ -285,6 +285,12 @@ export function hitTestNode(n: NodeLite, wx: number, wy: number, zoom: number): 
   // (groups.ts::selectionTargetOf) -- e deve poterlo fare da un figlio, non da
   // un rettangolo invisibile che ruberebbe i click a ciò che gli sta sotto.
   if (n.kind === "group") return false;
+  // Un'ISTANZA non si colpisce mai sul proprio box: come un gruppo non ha
+  // geometria propria (il suo contenuto è il master, store/instances.ts). A
+  // colpirla ci pensa la discesa virtuale in canvasRenderer.ts::hitInstance, che
+  // prova il sottoalbero del master e risponde con l'id dell'istanza. Senza
+  // questo ramo, un'istanza col box di default (o ereditato) ruberebbe i click.
+  if (n.kind === "instance") return false;
   // Il guard sulla dimensione vale solo per le forme il cui inchiostro È il box
   // (vedi inkIsBox): testo e vettoriale lo attraversano anche con un lato a
   // zero, esattamente come in drawScene (canvasRenderer.ts).
