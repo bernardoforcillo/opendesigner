@@ -1,0 +1,281 @@
+package mcp_test
+
+import (
+	"context"
+	"net/http"
+	"net/http/httptest"
+	"testing"
+	"time"
+
+	"connectrpc.com/connect"
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1/opendesignerv1connect"
+	odmcp "github.com/bernardoforcillo/opendesigner/internal/mcp"
+	"github.com/bernardoforcillo/opendesigner/internal/server"
+)
+
+// serveInMemory starts the real DocumentService over an httptest server on the
+// exact transport `opendesigner serve` runs: cleartext HTTP/1.1 + h2c. It
+// returns a base URL that odmcp.NewClient (h2c-only) can drive, so these tests
+// exercise the same connect+open+subscribe+submit path as production, minus the
+// stdio loop.
+func serveInMemory(t *testing.T) string {
+	t.Helper()
+	svc := server.NewDocumentService(server.NewManager(t.TempDir()))
+	path, handler := opendesignerv1connect.NewDocumentServiceHandler(svc)
+	mux := http.NewServeMux()
+	mux.Handle(path, handler)
+
+	srv := httptest.NewUnstartedServer(mux)
+	p := new(http.Protocols)
+	p.SetHTTP1(true)
+	p.SetUnencryptedHTTP2(true)
+	srv.Config.Protocols = p
+	srv.Start()
+	t.Cleanup(srv.Close)
+	return srv.URL
+}
+
+// newDoc creates a document on the server and returns its id.
+func newDoc(t *testing.T, client opendesignerv1connect.DocumentServiceClient) string {
+	t.Helper()
+	info, err := client.CreateDocument(context.Background(), connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "MCP Test"}))
+	if err != nil {
+		t.Fatalf("CreateDocument: %v", err)
+	}
+	return info.Msg.GetId()
+}
+
+// startSession opens docID and starts its sync loop, tearing it down on cleanup.
+func startSession(t *testing.T, url, docID, clientID string) *odmcp.Session {
+	t.Helper()
+	sess := odmcp.NewSession(odmcp.NewClient(url), docID, clientID, nil)
+	if err := sess.Open(context.Background()); err != nil {
+		t.Fatalf("Open: %v", err)
+	}
+	ctx, cancel := context.WithCancel(context.Background())
+	done := make(chan struct{})
+	go func() { defer close(done); sess.SyncLoop(ctx) }()
+	t.Cleanup(func() { cancel(); <-done })
+	return sess
+}
+
+// waitFor polls cond until it holds, failing after ~3s. The MCP local doc is
+// updated by the async Subscribe loop, so a read after a foreign write must wait
+// for the broadcast to arrive.
+func waitFor(t *testing.T, what string, cond func() bool) {
+	t.Helper()
+	deadline := time.Now().Add(3 * time.Second)
+	for time.Now().Before(deadline) {
+		if cond() {
+			return
+		}
+		time.Sleep(10 * time.Millisecond)
+	}
+	t.Fatalf("timed out waiting for %s", what)
+}
+
+func nodeByID(doc odmcp.DocumentView, id string) (odmcp.NodeView, bool) {
+	for _, n := range doc.Nodes {
+		if n.Id == id {
+			return n, true
+		}
+	}
+	return odmcp.NodeView{}, false
+}
+
+// TestCreateSetGetThroughTools drives the write and read tools end to end: a
+// create_rectangle lands in the synced local doc, set_properties moves it, and
+// get_document reflects both. Because a write tool waits for its own op to come
+// back through the Subscribe stream, the reads need no extra polling.
+func TestCreateSetGetThroughTools(t *testing.T) {
+	url := serveInMemory(t)
+	directClient := odmcp.NewClient(url)
+	docID := newDoc(t, directClient)
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	created, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{X: 10, Y: 20, Width: 100, Height: 80, Name: "box"})
+	if err != nil {
+		t.Fatalf("CreateRectangle: %v", err)
+	}
+	if created.NodeId == "" || created.Seq != 1 {
+		t.Fatalf("CreateRectangle out = %+v, want a node id and seq 1", created)
+	}
+
+	doc, err := sess.GetDocument(ctx, struct{}{})
+	if err != nil {
+		t.Fatalf("GetDocument: %v", err)
+	}
+	n, ok := nodeByID(doc, created.NodeId)
+	if !ok {
+		t.Fatalf("created node %s not in local doc %+v", created.NodeId, doc.Nodes)
+	}
+	if n.Kind != "rect" || n.X != 10 || n.Width != 100 {
+		t.Fatalf("node = %+v, want rect at x=10 w=100", n)
+	}
+	if n.ParentId != "page1" {
+		t.Fatalf("node parent = %q, want page1 (default)", n.ParentId)
+	}
+
+	moveX, moveW := 55.0, 200.0
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, X: &moveX, Width: &moveW}); err != nil {
+		t.Fatalf("SetProperties: %v", err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	n, _ = nodeByID(doc, created.NodeId)
+	if n.X != 55 || n.Width != 200 {
+		t.Fatalf("after SetProperties node = %+v, want x=55 w=200", n)
+	}
+	if n.Y != 20 || n.Height != 80 {
+		t.Fatalf("SetProperties clobbered untouched fields: %+v", n)
+	}
+}
+
+// TestWebAndMCPShareTheDocument is the concurrency proof: an op submitted by a
+// SEPARATE direct client (standing in for the web client) shows up in the MCP
+// session's local doc, and an op the MCP tools submit is visible to the same
+// direct client via OpenDocument — both halves edit one shared op-log.
+func TestWebAndMCPShareTheDocument(t *testing.T) {
+	url := serveInMemory(t)
+	directClient := odmcp.NewClient(url) // the "web" client
+	docID := newDoc(t, directClient)
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	// The web client creates a node directly against the hub.
+	webNodeID := "web-rect"
+	webOp := &opendesignerv1.Op{
+		OpId: "op-web", DocId: docID,
+		Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{
+			Node: &opendesignerv1.Node{
+				Id: webNodeID, ParentId: "page1", OrderKey: "a0", Visible: true, Opacity: 1,
+				X: 5, Y: 5, Width: 30, Height: 30,
+				Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}},
+			},
+		}},
+	}
+	if _, err := directClient.SubmitOp(ctx, connect.NewRequest(&opendesignerv1.SubmitOpRequest{
+		DocId: docID, ClientId: "web", Op: webOp,
+	})); err != nil {
+		t.Fatalf("web SubmitOp: %v", err)
+	}
+
+	// The MCP session's Subscribe loop must fold the web edit into its local doc.
+	waitFor(t, "web node to reach MCP local doc", func() bool {
+		doc, err := sess.GetDocument(ctx, struct{}{})
+		if err != nil {
+			return false
+		}
+		_, ok := nodeByID(doc, webNodeID)
+		return ok
+	})
+
+	// Now the MCP tools create a node; the web client sees it through OpenDocument.
+	created, err := sess.CreateEllipse(ctx, odmcp.CreateShapeInput{X: 1, Y: 2, Width: 10, Height: 10})
+	if err != nil {
+		t.Fatalf("CreateEllipse: %v", err)
+	}
+	open, err := directClient.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: docID}))
+	if err != nil {
+		t.Fatalf("web OpenDocument: %v", err)
+	}
+	if _, ok := open.Msg.GetSnapshot().GetNodes()[created.NodeId]; !ok {
+		t.Fatalf("MCP-created node %s not visible to the web client", created.NodeId)
+	}
+	// And the MCP local doc now holds BOTH nodes.
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	if _, ok := nodeByID(doc, webNodeID); !ok {
+		t.Fatalf("web node missing from MCP doc after MCP write")
+	}
+	if _, ok := nodeByID(doc, created.NodeId); !ok {
+		t.Fatalf("MCP node missing from MCP doc")
+	}
+}
+
+// TestTextAndPagesAndComponents covers create_text/set_text, the page tools, and
+// the component tools against the synced doc.
+func TestTextAndPagesAndComponents(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	// text
+	txt, err := sess.CreateText(ctx, odmcp.CreateTextInput{X: 0, Y: 0, Width: 120, Height: 40, Content: "hello"})
+	if err != nil {
+		t.Fatalf("CreateText: %v", err)
+	}
+	if _, err := sess.SetText(ctx, odmcp.SetTextInput{Id: txt.NodeId, Content: "world"}); err != nil {
+		t.Fatalf("SetText: %v", err)
+	}
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	n, _ := nodeByID(doc, txt.NodeId)
+	if n.Kind != "text" || n.Text != "world" {
+		t.Fatalf("text node = %+v, want kind text content world", n)
+	}
+
+	// pages
+	pg, err := sess.CreatePage(ctx, odmcp.CreatePageInput{Name: "Second"})
+	if err != nil {
+		t.Fatalf("CreatePage: %v", err)
+	}
+	if _, err := sess.RenamePage(ctx, odmcp.RenamePageInput{Id: pg.PageId, Name: "Renamed"}); err != nil {
+		t.Fatalf("RenamePage: %v", err)
+	}
+	pages, _ := sess.ListPages(ctx, struct{}{})
+	if !hasPage(pages.Pages, pg.PageId, "Renamed") {
+		t.Fatalf("pages = %+v, want a page %s named Renamed", pages.Pages, pg.PageId)
+	}
+
+	// list_nodes filtered to the default page should include the text node.
+	nodes, _ := sess.ListNodes(ctx, odmcp.ListNodesInput{PageId: "page1"})
+	if _, ok := nodeByID(odmcp.DocumentView{Nodes: nodes.Nodes}, txt.NodeId); !ok {
+		t.Fatalf("list_nodes(page1) missing the text node: %+v", nodes.Nodes)
+	}
+
+	// components: register the text node's subtree as a master.
+	comp, err := sess.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: txt.NodeId, Name: "TextComp"})
+	if err != nil {
+		t.Fatalf("CreateComponent: %v", err)
+	}
+	comps, _ := sess.ListComponents(ctx, struct{}{})
+	found := false
+	for _, c := range comps.Components {
+		if c.Id == comp.ComponentId && c.RootNodeId == txt.NodeId && c.Name == "TextComp" {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatalf("components = %+v, want %s -> %s", comps.Components, comp.ComponentId, txt.NodeId)
+	}
+}
+
+func hasPage(pages []odmcp.PageView, id, name string) bool {
+	for _, p := range pages {
+		if p.Id == id && p.Name == name {
+			return true
+		}
+	}
+	return false
+}
+
+// TestDeleteNodeCascades checks delete_node removes the node from the synced doc.
+func TestDeleteNodeCascades(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	r, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 10, Height: 10})
+	if err != nil {
+		t.Fatalf("CreateRectangle: %v", err)
+	}
+	if _, err := sess.DeleteNode(ctx, odmcp.NodeIdInput{Id: r.NodeId}); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	if _, ok := nodeByID(doc, r.NodeId); ok {
+		t.Fatalf("node %s still present after delete", r.NodeId)
+	}
+}
