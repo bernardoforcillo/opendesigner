@@ -81,18 +81,28 @@ export interface NodeLite {
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
   // "unknown" = il oneof `shape` porta una forma PRESENTE che questo modello non
-  // conosce (le tracce parallele stanno aggiungendo group/frame/instance).
-  // NON è la stessa cosa di una forma ASSENTE, che resta "rect": Go accetta un
-  // Node senza shape come rettangolo implicito e va accettato anche qui.
-  //
-  // Esiste perché il ripiego "tutto il resto è rect" faceva divergere i due
+  // conosce. NON è la stessa cosa di una forma ASSENTE, che resta "rect": Go
+  // accetta un Node senza shape come rettangolo implicito e va accettato anche
+  // qui. Esiste perché il ripiego "tutto il resto è rect" faceva divergere i due
   // lati nel modo che la whitelist di core.applySetProps esiste per impedire: un
   // setProps{corner_radius} su un GroupNode sarebbe stato ACCETTATO qui (kind
   // ricadeva su "rect", cornerRadius scritto) e rifiutato da core.Apply con
   // ErrNotRectNode. Un default che REGALA una forma è lo stesso errore di una
   // blacklist, solo dall'altro lato del filo.
+  //
+  // "group" è un CONTENITORE, non una forma: non si disegna e non si colpisce,
+  // e i suoi bounds sono l'unione dei figli (vedi store/groups.ts). Sta nello
+  // stesso campo delle forme perché nel proto è lo stesso oneof `shape`: ciò
+  // che un nodo È, non un flag a parte che potrebbe contraddirlo.
+  // "frame" è il complemento del gruppo: un contenitore CON geometria propria
+  // (il box è suo, non l'unione dei figli), disegnato e colpito come una forma.
+  // È l'artboard, e `clipsContent` dice se ritaglia i figli al proprio box.
   fills: FillLite[]; strokes: StrokeLite[];
-  kind: "rect" | "ellipse" | "text" | "image" | "vector" | "unknown"; cornerRadius: number;
+  kind: "rect" | "ellipse" | "text" | "image" | "vector" | "unknown" | "group" | "frame"; cornerRadius: number;
+  // Significativo se e solo se kind === "frame" (per tutti gli altri è false,
+  // come il default proto3): il ritaglio vale per il disegno, per l'hit-test e
+  // per la banda elastica insieme -- ciò che non si vede non si clicca.
+  clipsContent: boolean;
   // Presente se e solo se kind === "text": il contenuto vive DENTRO il oneof
   // `shape` del proto, quindi è per costruzione esclusivo con rect/ellipse.
   text?: TextLite;
@@ -263,6 +273,8 @@ function kindOf(shape: PbNode["shape"]): NodeLite["kind"] {
     case "text": return "text";
     case "image": return "image";
     case "vector": return "vector";
+    case "group": return "group";
+    case "frame": return "frame";
     default: return "unknown";
   }
 }
@@ -277,6 +289,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     strokes: n.strokes.map(toStrokeLite),
     kind,
     cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
+    clipsContent: n.shape.case === "frame" ? n.shape.value.clipsContent : false,
     ...(n.shape.case === "text" ? { text: toTextLite(n.shape.value) } : {}),
     ...(n.shape.case === "image" ? { image: { assetHash: n.shape.value.assetHash } } : {}),
     ...(n.shape.case === "vector" ? { vector: toVectorLite(n.shape.value) } : {}),
@@ -321,7 +334,20 @@ export function toPbNode(n: NodeLite): PbNode {
         // da un path -- che dentro un undo sarebbe un cambio di forma
         // silenzioso. Un path svuotato resta un path.
         ? { case: "vector" as const, value: { subpaths: toPbSubPaths(n.vector?.subpaths ?? []) } }
-        : n.kind === "text"
+      // Un gruppo non ha campi propri: ciò che lo rende un gruppo è il caso del
+      // oneof (più i figli che gli puntano). Il ramo esiste comunque, e non è
+      // pedanteria: senza, l'inverso di una delete ricostruirebbe un
+      // RETTANGOLO al posto del gruppo -- un cambio di forma silenzioso dentro
+      // un undo, per giunta con un box 0x0 che non si vedrebbe mai.
+      : n.kind === "group"
+      ? { case: "group" as const, value: {} }
+      // Stesso motivo del ramo `group`, più un campo: senza, l'inverso di una
+      // delete ricostruirebbe un RETTANGOLO al posto del frame, e un frame
+      // ricostruito senza `clipsContent` smetterebbe di ritagliare i figli --
+      // un undo che cambia ciò che si vede.
+      : n.kind === "frame"
+      ? { case: "frame" as const, value: { clipsContent: n.clipsContent } }
+      : n.kind === "text"
         // `text` mancante su un nodo di testo è uno stato che toNodeLite non
         // produce mai (i due si muovono insieme). Il fallback a testo vuoto
         // evita comunque di ricostruire un RETTANGOLO da un nodo di testo --

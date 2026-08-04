@@ -7,7 +7,7 @@ function node(over: Partial<NodeLite> & { id: string; orderKey: string }): NodeL
   return {
     parentId: "page1", name: "n", visible: true, opacity: 1,
     x: 0, y: 0, width: 10, height: 10, rotation: 0,
-    fills: [{ r: 1, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0,
+    fills: [{ r: 1, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
     ...over,
   };
 }
@@ -57,7 +57,7 @@ describe("selectionSummary", () => {
   it("reports every field as its actual value for a single selected node", () => {
     const s = sceneWith([
       node({ id: "n1", orderKey: "a000000", name: "Rect", x: 10, y: 20, width: 30, height: 40,
-        rotation: 5, opacity: 0.5, visible: false, cornerRadius: 2, kind: "rect",
+        rotation: 5, opacity: 0.5, visible: false, cornerRadius: 2, clipsContent: false, kind: "rect",
         fills: [{ r: 0.1, g: 0.2, b: 0.3, a: 1 }] }),
     ]);
     const sum = selectionSummary(s, ["n1"]);
@@ -127,6 +127,20 @@ describe("selectionSummary", () => {
       node({ id: "n2", orderKey: "a000001", strokes: [{ color: black, weight: 2, align: "center" }] }),
     ]);
     expect(selectionSummary(byCount, ["n1", "n2"])?.strokes).toBe(MIXED);
+  });
+
+  // x/y sono l'ORIGINE DELLA CORNICE (store/groups.ts::frameOriginOf), non il
+  // campo grezzo: per un gruppo le due cose non coincidono -- x/y di un gruppo
+  // sono la traslazione che contribuisce ai figli, e mostrarle come "X" farebbe
+  // dire al pannello un numero diverso da quello dove la cornice si vede.
+  it("reports a group's x/y as the origin of its FRAME, not its translation", () => {
+    const s = sceneWith([
+      node({ id: "g", orderKey: "a000000", kind: "group", x: 0, y: 0, width: 0, height: 0, fills: [] }),
+      node({ id: "c", orderKey: "a000000", parentId: "g", x: 10, y: 20, width: 30, height: 40 }),
+    ]);
+    const sum = selectionSummary(s, ["g"]);
+    expect(sum?.x).toBe(10);
+    expect(sum?.y).toBe(20);
   });
 
   it("is MIXED across three nodes when only the third differs", () => {

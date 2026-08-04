@@ -8,7 +8,7 @@ import type { NodeLite } from "../store/types";
 
 function node(id: string, orderKey: string): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,
-    x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0 };
+    x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false };
 }
 
 // Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
@@ -290,6 +290,20 @@ describe("textTool", () => {
     const secondKey = createdNode(submitted[2]).orderKey;
     expect(secondKey > firstKey).toBe(true);
   });
+
+  // Come rect/ellipse, il testo nasce SOTTO la pagina corrente.
+  it("crea il nodo testo sotto la pagina corrente", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      pages: [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }],
+    });
+    useScene.getState().setCurrentPage("page2");
+    const tool = createTextTool();
+    const { ctx, submitted } = fakeCtx();
+    tool.onPointerDown!(at(10, 20), ctx);
+    tool.onPointerUp!(at(10, 20), ctx);
+    expect(createdNode(submitted[0]).parentId).toBe("page2");
+  });
 });
 
 describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
@@ -353,7 +367,7 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
         t1: {
           id: "t1", parentId: "page1", orderKey: "a000000", name: "Text", visible: true, opacity: 1,
           x: 0, y: 0, width: 100, height: 20, rotation: 0,
-          fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text", cornerRadius: 0,
+          fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text", cornerRadius: 0, clipsContent: false,
           text: { content: "ciao", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
         },
       },
@@ -384,13 +398,13 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
           t1: {
             id: "t1", parentId: "page1", orderKey: "a000000", name: "Text", visible: true, opacity: 1,
             x: 0, y: 0, width: 100, height: 20, rotation: 0,
-            fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text", cornerRadius: 0,
+            fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text", cornerRadius: 0, clipsContent: false,
             text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
           },
           t2: {
             id: "t2", parentId: "page1", orderKey: "a000001", name: "Text", visible: true, opacity: 1,
             x: 200, y: 0, width: 100, height: 20, rotation: 0,
-            fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text", cornerRadius: 0,
+            fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text", cornerRadius: 0, clipsContent: false,
             text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
           },
         },

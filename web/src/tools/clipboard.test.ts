@@ -34,6 +34,7 @@ function rect(id: string, over: Partial<NodeLite> = {}): NodeLite {
     strokes: [],
     kind: "rect",
     cornerRadius: 4,
+    clipsContent: false,
     ...over,
   };
 }

@@ -18,7 +18,7 @@ function node(over: Partial<NodeLite> & { id: string }): NodeLite {
   return {
     parentId: "page1", orderKey: "a0", name: over.id, visible: true, opacity: 1,
     x: 0, y: 0, width: 10, height: 10, rotation: 0,
-    fills: [], strokes: [], kind: "rect", cornerRadius: 0,
+    fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
     ...over,
   };
 }

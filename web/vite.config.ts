@@ -17,12 +17,11 @@ export default defineConfig({
     setupFiles: ["@testing-library/jest-dom/vitest"],
     // I 5s di default di vitest sono sotto il costo REALE dei test di
     // componente, e producevano falsi rossi INTERMITTENTI: file verdi in
-    // isolamento che, girando insieme agli altri 29 con i worker in parallelo,
+    // isolamento che, girando insieme agli altri con i worker in parallelo,
     // sforavano il limite su un test a caso (TextEditorOverlay e LayersPanel su
     // tutti). Un rosso che cambia test a ogni esecuzione costa un giro di
     // indagine a chiunque, su ogni traccia, e non dice niente su nessuna.
     //
-    // Il tetto è alzato, non tolto, e non copre nessuna ATTESA: i test lenti
     // sono lenti perché FANNO tanto, e tutto in modo sincrono. Il peggiore --
     // "riordinare RIPETUTAMENTE nello stesso punto continua a funzionare"
     // (LayersPanel) -- è 20 riordini drag&drop veri, ognuno con il suo giro

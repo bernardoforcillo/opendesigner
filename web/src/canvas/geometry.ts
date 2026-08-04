@@ -105,6 +105,25 @@ export function boundsIntersect(a: Bounds, b: Bounds): boolean {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
+// La parte in COMUNE fra due rettangoli, o null se non ne hanno.
+//
+// Serve a chi deve sapere quanto di un nodo si VEDE dentro un ritaglio: un
+// frame con clips_content nasconde ciò che esce dal proprio box, e la banda
+// elastica non deve poter selezionare quello che il ritaglio ha portato via
+// (renderer/canvasRenderer.ts::collectIn).
+//
+// Un'intersezione DEGENERE (larghezza o altezza nulla: due rettangoli che si
+// toccano su un bordo) è null e non un rettangolo piatto, per coerenza con
+// boundsIntersect qui sopra, che confronta i bordi opposti con < / >: una
+// striscia di area zero non è area visibile.
+export function intersectBounds(a: Bounds, b: Bounds): Bounds | null {
+  const x = Math.max(a.x, b.x);
+  const y = Math.max(a.y, b.y);
+  const width = Math.min(a.x + a.width, b.x + b.width) - x;
+  const height = Math.min(a.y + a.height, b.y + b.height) - y;
+  return width > 0 && height > 0 ? { x, y, width, height } : null;
+}
+
 export function pointInBounds(b: Bounds, x: number, y: number): boolean {
   return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
 }

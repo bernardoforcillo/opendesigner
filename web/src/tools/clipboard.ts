@@ -73,6 +73,11 @@ const KNOWN_KINDS: Record<NodeLite["kind"], boolean> = {
   image: true,
   vector: false,
   unknown: false,
+  // Container dell'annidamento (traccia 1): questo lato non ricostruisce ancora
+  // un sottoalbero dagli appunti, quindi -- come vector/unknown -- vanno
+  // rifiutati in blocco su incolla invece di degradati a un rettangolo vuoto.
+  group: false,
+  frame: false,
 };
 
 function isKnownKind(kind: unknown): kind is NodeLite["kind"] {
@@ -220,6 +225,9 @@ export function parseClipboard(text: string): ClipboardParse {
       strokes: toStrokes(n.strokes),
       kind,
       cornerRadius: num(n.cornerRadius, 0),
+      // Sempre false: KNOWN_KINDS rifiuta i frame in blocco (questo lato non
+      // ricostruisce container), quindi qui `kind` è solo rect/ellipse/text/image.
+      clipsContent: false,
       ...(kind === "text" ? { text: toText(n.text) } : {}),
       // Un'immagine senza hash leggibile non è un payload da rifiutare: è un
       // nodo il cui asset non si trova, cioè esattamente il caso che il

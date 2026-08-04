@@ -93,6 +93,27 @@ func ellipseNode(id string) *brawtv1.Node {
 	}
 }
 
+// Un GRUPPO: contenitore senza clipping e senza geometria propria (i suoi
+// bounds sono l'unione dei figli, vedi web/src/store/groups.ts). x/y sono la
+// traslazione che contribuisce ai figli e valgono 0 alla creazione.
+func groupNode(id string) *brawtv1.Node {
+	return &brawtv1.Node{
+		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Gruppo", Visible: true, Opacity: 1,
+		Shape: &brawtv1.Node_Group{Group: &brawtv1.GroupNode{}},
+	}
+}
+
+// Un FRAME: contenitore CON geometria propria (il box è suo, non derivato dai
+// figli) e clipping opzionale. È l'artboard -- si disegna e si colpisce come una
+// forma, a differenza di un gruppo.
+func frameNode(id string, clips bool) *brawtv1.Node {
+	return &brawtv1.Node{
+		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Frame", Visible: true, Opacity: 1,
+		X: 0, Y: 0, Width: 200, Height: 150,
+		Shape: &brawtv1.Node_Frame{Frame: &brawtv1.FrameNode{ClipsContent: clips}},
+	}
+}
+
 func setPropsOp(s *brawtv1.SetProperties) *brawtv1.Op {
 	return &brawtv1.Op{Kind: &brawtv1.Op_SetProps{SetProps: s}}
 }
@@ -160,6 +181,14 @@ func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 		// ne cancellava i subpath (in divergenza con applyOp.ts). La whitelist
 		// lo rifiuta come ogni non-rettangolo.
 		{"vector", vectorNode("n1", richSubPath(false))},
+		// Un gruppo non è una forma: non ha niente da riempire, quindi nessun
+		// angolo da arrotondare. Il client lo rifiuta con lo stesso guard
+		// (`cur.kind !== "rect"`, web/src/store/applyOp.ts).
+		{"group", groupNode("n1")},
+		// Un FRAME ha un box proprio ed è disegnato come una forma, ma la sua
+		// forma è il FrameNode, non un RectNode: il raggio non ha dove
+		// atterrare. Rifiutato dallo stesso guard che rifiuta un gruppo.
+		{"frame", frameNode("n1", true)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := NewDocument("doc1", "Untitled")

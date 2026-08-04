@@ -49,7 +49,7 @@ function textNode(id: string, content: string, over: Partial<NodeLite> = {}): No
     id, parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
     x: 10, y: 20, width: 200, height: 24, rotation: 0,
     fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [],
-    kind: "text", cornerRadius: 0,
+    kind: "text", cornerRadius: 0, clipsContent: false,
     text: {
       content,
       style: { fontFamily: "Inter", fontSize: 16, fontWeight: "400", lineHeight: 1.5, align: "left" },
@@ -182,6 +182,22 @@ describe("posizionamento", () => {
       expect(field().style.transform).toBe("");
       expect(field().style.transformOrigin).toBe("");
     });
+  });
+
+  it("un nodo ANNIDATO si posiziona sulla sua origine MONDO, non su quella locale", () => {
+    // page1 > g(100,50) > t1(10,20): il campo deve coprire il testo dove il
+    // canvas lo disegna, cioè a (110,70). Con le coordinate locali finirebbe a
+    // (10,20) -- lontanissimo dal nodo che sta editando.
+    const g: NodeLite = {
+      id: "g", parentId: "page1", orderKey: "a0", name: "g", visible: true, opacity: 1,
+      x: 100, y: 50, width: 400, height: 400, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
+    };
+    installScene(g, textNode("t1", "ciao", { parentId: "g" }));
+    useScene.setState({ camera: { x: 0, y: 0, zoom: 1 }, editingNodeId: "t1" });
+    render(<TextEditorOverlay nodeId="t1" />);
+
+    expect(field().style.left).toBe("110px");
+    expect(field().style.top).toBe("70px");
   });
 
   it("si riposiziona a ogni cambio di camera: pan e zoom non lo scollano dal nodo", () => {

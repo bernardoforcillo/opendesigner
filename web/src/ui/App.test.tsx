@@ -213,7 +213,7 @@ describe("scorciatoie della clipboard", () => {
     scene.nodes["n1"] = {
       id: "n1", parentId: "page1", orderKey: "a000001", name: "Rettangolo",
       visible: true, opacity: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0,
-      fills: [], strokes: [], kind: "rect", cornerRadius: 0,
+      fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
     };
     useScene.setState({ selection: [], gesture: null, undoStack: [], redoStack: [], sync: null });
     useScene.getState().setScene(scene);

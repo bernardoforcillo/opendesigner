@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react";
 import { useScene } from "../store/store";
 import { worldToScreen } from "../canvas/camera";
+import { applyTransform, worldTransformOf } from "../canvas/transform";
 import { makeSetTextOp } from "../tools/ops";
 import { cssColor } from "../renderer/canvasRenderer";
 import {
@@ -61,6 +62,25 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   // dal nodo) e quando cambia il nodo, non a ogni op del documento.
   const node = useScene((s) => s.scene?.nodes[nodeId]);
   const camera = useScene((s) => s.camera);
+  // L'origine MONDO del nodo, NON ruotata. Le sue x/y sono relative al PARENT
+  // (vedi canvas/transform.ts), quindi si portano al mondo con la trasformazione
+  // del PARENT -- non con quella del nodo, che include ORA anche la sua rotazione
+  // (localTransformOf), e darebbe l'angolo RUOTATO invece dell'origine. La
+  // rotazione la applica a parte il `transform: rotate(...)` del campo qui sotto,
+  // attorno al centro del box, come drawScene fa col contesto del canvas.
+  //
+  // Due selettori che ritornano NUMERI e non un punto: un oggetto nuovo a ogni
+  // chiamata farebbe ridisegnare l'overlay a ogni op del documento, mentre
+  // così si ridisegna solo quando l'origine cambia davvero -- il nodo o un suo
+  // antenato si è mosso.
+  const worldX = useScene((s) => {
+    const n = s.scene?.nodes[nodeId];
+    return s.scene && n ? applyTransform(worldTransformOf(s.scene, n.parentId), n.x, n.y).x : 0;
+  });
+  const worldY = useScene((s) => {
+    const n = s.scene?.nodes[nodeId];
+    return s.scene && n ? applyTransform(worldTransformOf(s.scene, n.parentId), n.x, n.y).y : 0;
+  });
 
   const ref = useRef<HTMLTextAreaElement | null>(null);
   // Una sessione è chiusa UNA volta sola: Escape chiude, e il blur che arriva
@@ -169,7 +189,7 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   if (!node || !editable) return null;
 
   const style = node.text?.style;
-  const origin = worldToScreen(camera, node.x, node.y);
+  const origin = worldToScreen(camera, worldX, worldY);
   // Tutto in px SCHERMO: il modello resta in unità mondo, la conversione vive
   // qui come per il resto della UI.
   const fontSize = fontSizeOf(style) * camera.zoom;

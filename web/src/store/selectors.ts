@@ -1,3 +1,4 @@
+import { frameOriginOf } from "./groups";
 import type { FillLite, NodeLite, SceneState, StrokeLite } from "./types";
 
 // Il pannello livelli mostra il PRIMO PIANO in cima alla lista: è l'ordine
@@ -56,10 +57,12 @@ function sameStrokes(a: StrokeLite[], b: StrokeLite[]): boolean {
 // circuit, non serve continuare a leggerli). `eq` di default è `Object.is`
 // (numeri, stringhe, booleani); fills passa `sameFills` perché due array
 // distinti con lo stesso contenuto sono lo STESSO valore per l'utente.
-function summarize<T>(nodes: readonly NodeLite[], get: (n: NodeLite) => T, eq: (a: T, b: T) => boolean = Object.is): OrMixed<T> {
-  const value = get(nodes[0]);
-  for (let i = 1; i < nodes.length; i++) {
-    if (!eq(get(nodes[i]), value)) return MIXED;
+// Generica sull'ELEMENTO e non solo sul campo: x/y non si riassumono dal nodo
+// grezzo ma dall'origine della sua cornice (vedi sotto), che è un altro tipo.
+function summarize<I, T>(items: readonly I[], get: (n: I) => T, eq: (a: T, b: T) => boolean = Object.is): OrMixed<T> {
+  const value = get(items[0]);
+  for (let i = 1; i < items.length; i++) {
+    if (!eq(get(items[i]), value)) return MIXED;
   }
   return value;
 }
@@ -71,14 +74,19 @@ function summarize<T>(nodes: readonly NodeLite[], get: (n: NodeLite) => T, eq: (
 export function selectionSummary(scene: SceneState, ids: readonly string[]): SelectionSummary | null {
   const nodes = ids.map((id) => scene.nodes[id]).filter((n): n is NodeLite => n !== undefined);
   if (nodes.length === 0) return null;
+  // x/y sono l'origine della CORNICE, non il campo grezzo del nodo: per tutto
+  // ciò che non è un gruppo sono la stessa cosa, per un gruppo no (le sue x/y
+  // sono la traslazione che contribuisce ai figli, vedi groups.ts::
+  // frameOriginOf). Calcolate una volta sola qui perché servono a due campi.
+  const origins = nodes.map((n) => frameOriginOf(scene, n));
   return {
     count: nodes.length,
     name: summarize(nodes, (n) => n.name),
     kind: summarize(nodes, (n) => n.kind),
     visible: summarize(nodes, (n) => n.visible),
     opacity: summarize(nodes, (n) => n.opacity),
-    x: summarize(nodes, (n) => n.x),
-    y: summarize(nodes, (n) => n.y),
+    x: summarize(origins, (o) => o.x),
+    y: summarize(origins, (o) => o.y),
     width: summarize(nodes, (n) => n.width),
     height: summarize(nodes, (n) => n.height),
     rotation: summarize(nodes, (n) => n.rotation),

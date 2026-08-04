@@ -3,6 +3,7 @@ import { createSelectTool, pickTarget, nodesInMarquee } from "./selectTool";
 import type { ToolContext } from "./types";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { useScene } from "../store/store";
+import { worldBoundsOfNode } from "../canvas/transform";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
 import { worldAabbOfNode } from "../canvas/geometry";
@@ -11,7 +12,7 @@ import { vectorBounds } from "../store/vectorGeometry";
 
 function node(id: string, x: number, orderKey: string, extra: Partial<NodeLite> = {}): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,
-    x, y: 0, width: 50, height: 50, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, ...extra };
+    x, y: 0, width: 50, height: 50, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false, ...extra };
 }
 
 // Un nodo vettoriale 50x50 la cui geometria RIEMPIE il box, come vuole
@@ -1089,6 +1090,38 @@ describe("selectTool", () => {
       expect(useScene.getState().selection).toEqual([]);
     });
 
+    // deleteNode cancella un SOTTOALBERO (applyOp / core.applyDelete): un
+    // figlio selezionato insieme al suo gruppo non ha bisogno di un op suo --
+    // e non può averlo, perché quando arriverebbe il nodo è già sparito.
+    it("Delete su un gruppo E un suo discendente manda UN solo op, e il gesto resta annullabile", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          g1: node("g1", 0, "a000000"),
+          c1: node("c1", 0, "a000000", { parentId: "g1" }),
+          d1: node("d1", 0, "a000000", { parentId: "c1" }),
+          other: node("other", 200, "a000001"),
+        },
+      });
+      useScene.getState().setSelection(["g1", "d1", "other"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const undoBefore = useScene.getState().undoStack.length;
+
+      createSelectTool().onKeyDown!({ key: "Delete" } as KeyboardEvent, fakeCtx());
+
+      // d1 sparisce nella cascata di g1: un suo op sarebbe stato rifiutato dal
+      // server (ErrNodeNotFound) e avrebbe fatto saltare la voce di undo
+      // dell'INTERO gesto (invertOp -> null su un nodo già cancellato).
+      const deleted = sync.sent.map((op) => (op.kind.case === "deleteNode" ? op.kind.value.id : ""));
+      expect(deleted).toEqual(["g1", "other"]);
+      expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+      // UNA voce di undo, e completa: quattro nodi da ricreare.
+      const stack = useScene.getState().undoStack;
+      expect(stack).toHaveLength(undoBefore + 1);
+      expect(stack[stack.length - 1]).toHaveLength(4);
+    });
+
     it("Backspace does the same as Delete", () => {
       useScene.getState().setSelection(["a"]);
       const sync = new FakeSync();
@@ -1754,5 +1787,543 @@ describe("selectTool — snap", () => {
       expect(useScene.getState().scene!.nodes.a.width).toBeCloseTo(98, 9);
       expect(useScene.getState().snapGuides).toEqual([]);
     });
+  });
+});
+// --- annidamento -------------------------------------------------------------
+// Il puntatore parla MONDO (px schermo convertiti dalla camera), il modello
+// parla LOCALE (coordinate relative al parent). Tutto ciò che sta in mezzo --
+// hit-test, marquee, maniglie -- deve fare la conversione nel verso giusto e
+// riscrivere nel modello coordinate ancora locali.
+describe("selectTool with nesting", () => {
+  // page1 > g(100,50, 400x400) > c(10,10, 50x50): "c" nel MONDO occupa
+  // (110,60)-(160,110).
+  function nestedScene() {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: {
+        g: node("g", 100, "a000000", { y: 50, width: 400, height: 400 }),
+        c: node("c", 10, "a000000", { parentId: "g", y: 10 }),
+      },
+    });
+  }
+
+  beforeEach(nestedScene);
+
+  it("nodesInMarquee compares the marquee with the WORLD box of a nested node", () => {
+    const scene = useScene.getState().scene!;
+    // Attorno all'angolo mondo di "c".
+    expect(nodesInMarquee(scene, { x: 105, y: 55, width: 20, height: 20 })).toContain("c");
+    // Attorno alle sue coordinate LOCALI: lì non c'è niente, nemmeno "g".
+    expect(nodesInMarquee(scene, { x: 5, y: 5, width: 10, height: 10 })).toEqual([]);
+  });
+
+  // Il marquee deve obbedire alle STESSE regole d'albero del renderer: quello
+  // che non si disegna non si seleziona. Altrimenti la selezione finisce con
+  // una cornice e 8 maniglie su canvas vuoto, e il primo drag manda setProps
+  // per una geometria che l'utente non vede.
+  it("a marquee over a hidden container does not select its (visible) children", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: {
+        g: node("g", 100, "a000000", { y: 50, width: 400, height: 400, visible: false }),
+        c: node("c", 10, "a000000", { parentId: "g", y: 10 }), // visible: true
+      },
+    });
+    const scene = useScene.getState().scene!;
+    expect(nodesInMarquee(scene, { x: 105, y: 55, width: 20, height: 20 })).toEqual([]);
+  });
+
+  it("a marquee over a node unreachable from any page selects nothing", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: { orfano: node("orfano", 0, "a000000", { parentId: "sparito" }) },
+    });
+    const scene = useScene.getState().scene!;
+    expect(nodesInMarquee(scene, { x: -10, y: -10, width: 100, height: 100 })).toEqual([]);
+  });
+
+  it("dragging a marquee over a hidden subtree leaves the selection (and the handles) empty", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: {
+        g: node("g", 100, "a000000", { y: 50, width: 400, height: 400, visible: false }),
+        c: node("c", 10, "a000000", { parentId: "g", y: 10 }),
+      },
+    });
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(at(100, 50), ctx);
+    tool.onPointerMove!(at(200, 150), ctx);
+    tool.onPointerUp!(at(200, 150), ctx);
+    expect(useScene.getState().selection).toEqual([]);
+  });
+
+  it("dragging a nested node writes coordinates that stay LOCAL", () => {
+    useScene.getState().setSync(new FakeSync());
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    tool.onPointerDown!(at(135, 85), ctx); // centro mondo di "c"
+    expect(useScene.getState().selection).toEqual(["c"]);
+    tool.onPointerMove!(at(155, 95), ctx); // +20, +10 nel mondo
+    tool.onPointerUp!(at(155, 95), ctx);
+    // Il modello resta relativo al parent: 10+20, 10+10 -- non 130,80.
+    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 30, y: 20 });
+  });
+
+  it("the se handle of a nested node sits at its WORLD corner and resizes it", () => {
+    useScene.getState().setSelection(["c"]);
+    useScene.getState().setSync(new FakeSync());
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    tool.onPointerDown!(at(160, 110), ctx); // maniglia se, in coordinate mondo
+    tool.onPointerMove!(at(210, 110), ctx); // dx=50
+    tool.onPointerUp!(at(210, 110), ctx);
+    // Larghezza raddoppiata, origine ferma: e l'origine è quella LOCALE.
+    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 10, y: 10, width: 100, height: 50 });
+  });
+
+  it("the nw handle of a nested node moves its LOCAL origin", () => {
+    useScene.getState().setSelection(["c"]);
+    useScene.getState().setSync(new FakeSync());
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    tool.onPointerDown!(at(110, 60), ctx); // maniglia nw, in coordinate mondo
+    tool.onPointerMove!(at(120, 70), ctx);
+    tool.onPointerUp!(at(120, 70), ctx);
+    // Nel mondo il nodo va da (120,70) a (160,110): in locale (20,20) 40x40.
+    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 20, y: 20, width: 40, height: 40 });
+  });
+
+  // --- container E discendente selezionati insieme ---------------------------
+  // Le coordinate di un figlio sono relative al suo container: trasformare il
+  // container trasforma GIÀ il figlio. Un op anche per il figlio lo trasforma
+  // due volte -- ed è la stessa potatura (topmostOf) che la cancellazione fa
+  // per un'altra ragione.
+
+  it("moving a container and a descendant selected together transforms the descendant ONCE", () => {
+    useScene.getState().setSelection(["g", "c"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes["c"]);
+    tool.onPointerDown!(at(400, 400), ctx); // dentro "g", fuori da "c": selezione invariata
+    expect(useScene.getState().selection).toEqual(["g", "c"]);
+    tool.onPointerMove!(at(420, 410), ctx); // +20, +10 nel mondo
+    tool.onPointerUp!(at(420, 410), ctx);
+
+    expect(sync.sent).toHaveLength(1); // un op solo: il nodo più in alto
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["g"]).toMatchObject({ x: 120, y: 60 });
+    expect(scene.nodes["c"]).toMatchObject({ x: 10, y: 10 }); // il locale non si tocca
+    // Nel MONDO il figlio si è spostato del delta, non del doppio: 110 -> 130.
+    const after = worldBoundsOfNode(scene, scene.nodes["c"]);
+    expect(after).toMatchObject({ x: before.x + 20, y: before.y + 10 });
+  });
+
+  it("resizing a container and a descendant selected together does not rescale the descendant twice", () => {
+    useScene.getState().setSelection(["g", "c"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    // Il bbox di gruppo è quello dell'INTERA selezione -- (100,50) 400x400,
+    // "c" ci sta dentro -- quindi la maniglia se sta al suo angolo mondo.
+    tool.onPointerDown!(at(500, 450), ctx);
+    tool.onPointerMove!(at(900, 850), ctx); // raddoppia il bbox attorno all'ancora nw
+    tool.onPointerUp!(at(900, 850), ctx);
+
+    expect(sync.sent).toHaveLength(1);
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["g"]).toMatchObject({ x: 100, y: 50, width: 800, height: 800 });
+    // Senza la potatura "c" riceverebbe (20,20) 100x100: il suo box mondo
+    // riscalato dalla stessa t mentre l'origine del container gli si sposta
+    // sotto.
+    expect(scene.nodes["c"]).toMatchObject({ x: 10, y: 10, width: 50, height: 50 });
+  });
+
+  it("the pruning is about the ops, not about the selection: both stay selected", () => {
+    useScene.getState().setSelection(["g", "c"]);
+    useScene.getState().setSync(new FakeSync());
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    tool.onPointerDown!(at(400, 400), ctx);
+    tool.onPointerMove!(at(420, 410), ctx);
+    tool.onPointerUp!(at(420, 410), ctx);
+    expect(useScene.getState().selection).toEqual(["g", "c"]);
+  });
+
+  it("a descendant selected WITHOUT its container still gets its own op", () => {
+    useScene.getState().setSelection(["c"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    tool.onPointerDown!(at(135, 85), ctx); // centro mondo di "c"
+    tool.onPointerMove!(at(155, 95), ctx);
+    tool.onPointerUp!(at(155, 95), ctx);
+
+    expect(sync.sent).toHaveLength(1);
+    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 30, y: 20 });
+  });
+});
+
+// --- gruppi ------------------------------------------------------------------
+// La convenzione: un click seleziona il gruppo PIÙ ESTERNO, un doppio click
+// entra e seleziona il figlio (vedi store/groups.ts). Raggruppare e separare
+// sono UN gesto ciascuno: un invio, una voce di undo.
+describe("selectTool and groups", () => {
+  //   page1
+  //   ├── g  (gruppo, nessuna geometria propria)
+  //   │   ├── c1 (10,10 50x50)  -> mondo (10,10)-(60,60)
+  //   │   └── c2 (100,0 20x20)  -> mondo (100,0)-(120,20)
+  //   └── solo (200,200 50x50)
+  // I bounds del gruppo sono l'unione: (10,0) 110x60.
+  function groupedScene() {
+    // editingNodeId non è nel beforeEach globale: una sessione di editing
+    // lasciata aperta da un altro test renderebbe vera per sbaglio l'asserzione
+    // "non è ancora in editing" qui sotto.
+    useScene.setState({ editingNodeId: null });
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: {
+        g: node("g", 0, "a000001", { kind: "group", width: 0, height: 0 }),
+        c1: node("c1", 10, "a000001", { parentId: "g", y: 10 }),
+        c2: node("c2", 100, "a000002", { parentId: "g", y: 0, width: 20, height: 20 }),
+        solo: node("solo", 200, "a000002", { y: 200 }),
+      },
+    });
+  }
+
+  const ctrl = (key: string, shiftKey = false) =>
+    ({ key, ctrlKey: true, metaKey: false, shiftKey, preventDefault: vi.fn() }) as unknown as KeyboardEvent;
+
+  beforeEach(groupedScene);
+
+  it("a click on a child of a group selects the GROUP", () => {
+    createSelectTool().onPointerDown!(at(30, 30), fakeCtx()); // dentro c1
+    expect(useScene.getState().selection).toEqual(["g"]);
+  });
+
+  it("a double click enters the group and selects the child", () => {
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(atT(30, 30, 1000), ctx);
+    expect(useScene.getState().selection).toEqual(["g"]);
+    tool.onPointerDown!(atT(30, 30, 1100), ctx);
+    expect(useScene.getState().selection).toEqual(["c1"]);
+    // Entrati nel gruppo, un click su un fratello seleziona il fratello.
+    tool.onPointerUp!(atT(30, 30, 1110), ctx);
+    tool.onPointerDown!(atT(110, 10, 2000), ctx);
+    expect(useScene.getState().selection).toEqual(["c2"]);
+  });
+
+  it("a click outside the entered group leaves it", () => {
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    useScene.getState().setSelection(["c1"]);
+    tool.onPointerDown!(at(220, 220), ctx); // "solo", fuori dal gruppo
+    expect(useScene.getState().selection).toEqual(["solo"]);
+    tool.onPointerDown!(at(30, 30), ctx);   // di nuovo dentro c1: il gruppo
+    expect(useScene.getState().selection).toEqual(["g"]);
+  });
+
+  // Il doppio click su un testo ha già un significato (l'editing). Dentro un
+  // gruppo i due si mettono in fila invece che in concorrenza: prima si entra,
+  // poi si scrive.
+  it("on a text node inside a group, the first double click enters and the second opens the editor", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      nodes: {
+        g: node("g", 0, "a000001", { kind: "group", width: 0, height: 0 }),
+        t: node("t", 10, "a000001", { parentId: "g", y: 10, kind: "text",
+          text: { content: "ciao", style: { fontFamily: "", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "left" } } }),
+      },
+    });
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(atT(30, 30, 1000), ctx);
+    tool.onPointerDown!(atT(30, 30, 1100), ctx);
+    tool.onPointerUp!(atT(30, 30, 1110), ctx);
+    expect(useScene.getState().selection).toEqual(["t"]);
+    expect(useScene.getState().editingNodeId).toBeNull();
+
+    tool.onPointerDown!(atT(30, 30, 2000), ctx);
+    tool.onPointerDown!(atT(30, 30, 2100), ctx);
+    tool.onPointerUp!(atT(30, 30, 2110), ctx);
+    expect(useScene.getState().editingNodeId).toBe("t");
+  });
+
+  it("a marquee over a child of a group selects the group, once", () => {
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(at(-5, -5), ctx);
+    tool.onPointerMove!(at(130, 70), ctx); // prende c1 E c2
+    tool.onPointerUp!(at(130, 70), ctx);
+    expect(useScene.getState().selection).toEqual(["g"]);
+  });
+
+  // Il verso opposto, e il motivo per cui il gruppo non entra MAI da solo nel
+  // marquee: "g" nasce 0x0 in (0,0), cioè sull'origine del suo parent. Una
+  // banda attorno all'origine non tocca nessun figlio (c1 parte a 10,10 e c2 a
+  // 100,0), quindi non deve selezionare niente. Prendendo il box proprio del
+  // gruppo la selezione finirebbe con cornice e 8 maniglie attorno a un
+  // contenuto tutto fuori dalla banda -- e il drag successivo manderebbe
+  // setProps per una geometria che l'utente non ha inquadrato.
+  it("a marquee that misses every child does NOT select the group by its own 0x0 box at the origin", () => {
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(at(-5, -5), ctx);
+    tool.onPointerMove!(at(5, 5), ctx);
+    tool.onPointerUp!(at(5, 5), ctx);
+    expect(useScene.getState().selection).toEqual([]);
+  });
+
+  // ...e il gruppo resta raggiungibile col marquee anche quando il suo box
+  // proprio è FUORI dalla banda: a metterlo in selezione è la politica che
+  // risale dai figli, non un rettangolo invisibile all'origine.
+  it("a marquee on one child alone still selects the group, whose own box is outside the band", () => {
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(at(95, -5), ctx);
+    tool.onPointerMove!(at(125, 25), ctx); // solo c2: (100,0)-(120,20)
+    tool.onPointerUp!(at(125, 25), ctx);
+    expect(useScene.getState().selection).toEqual(["g"]);
+  });
+
+  // Il gruppo non ha un box proprio: la cornice (e quindi le maniglie) stanno
+  // sull'unione dei figli, ed è da lì che il resize deve partire.
+  it("moving a group moves its children, with ONE op", () => {
+    useScene.getState().setSelection(["g"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes["c1"]);
+
+    tool.onPointerDown!(at(30, 30), ctx);
+    tool.onPointerMove!(at(50, 40), ctx); // +20, +10
+    tool.onPointerUp!(at(50, 40), ctx);
+
+    expect(sync.sent).toHaveLength(1);
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["g"]).toMatchObject({ x: 20, y: 10 });
+    expect(scene.nodes["c1"]).toMatchObject({ x: 10, y: 10 }); // il locale non si tocca
+    expect(worldBoundsOfNode(scene, scene.nodes["c1"])).toMatchObject({ x: before.x + 20, y: before.y + 10 });
+  });
+
+  it("resizing a group resizes its children: the group has no box of its own to rewrite", () => {
+    useScene.getState().setSelection(["g"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+
+    // Maniglia se dell'UNIONE (10,0)-(120,60), trascinata a raddoppiare. Alt
+    // spegne lo snap: qui si prova la MATEMATICA del resize di gruppo, e senza
+    // Alt il bordo mobile (x=230) scatterebbe al centro di `solo` (x=225, entro
+    // la soglia) -- lo snap ha i suoi test dedicati, questo no.
+    tool.onPointerDown!(at(120, 60), ctx);
+    tool.onPointerMove!(atMod(230, 120, { altKey: true }), ctx);
+    tool.onPointerUp!(atMod(230, 120, { altKey: true }), ctx);
+
+    const scene = useScene.getState().scene!;
+    expect(sync.sent).toHaveLength(2); // un op per figlio, nessuno per il gruppo
+    expect(scene.nodes["g"]).toMatchObject({ x: 0, y: 0, width: 0, height: 0 });
+    expect(scene.nodes["c1"]).toMatchObject({ x: 10, y: 20, width: 100, height: 100 });
+    expect(scene.nodes["c2"]).toMatchObject({ x: 190, y: 0, width: 40, height: 40 });
+  });
+
+  // IL TRAPPOLONE del task 1: con l'annidamento una selezione che contiene un
+  // antenato E un suo discendente produrrebbe un secondo deleteNode che il
+  // server rifiuta (il discendente è già sparito nella cascata) -- e invertChain
+  // tornerebbe null per l'INTERO gesto: un gruppo cancellato e non annullabile.
+  it("Delete on a group AND one of its children sends ONE op, and the gesture stays undoable", () => {
+    useScene.getState().setSelection(["g", "c1"]);
+    const sync = new FakeSync();
+    useScene.getState().setSync(sync);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    createSelectTool().onKeyDown!({ key: "Delete" } as KeyboardEvent, fakeCtx());
+
+    const deleted = sync.sent.map((op) => (op.kind.case === "deleteNode" ? op.kind.value.id : ""));
+    expect(deleted).toEqual(["g"]);
+    expect(useScene.getState().scene!.nodes["c1"]).toBeUndefined();
+    const stack = useScene.getState().undoStack;
+    expect(stack).toHaveLength(undoBefore + 1);
+    expect(stack[stack.length - 1]).toHaveLength(3); // g + c1 + c2 da ricreare
+
+    useScene.getState().undo();
+    const scene = useScene.getState().scene!;
+    expect(scene.nodes["g"]?.kind).toBe("group");
+    expect(scene.nodes["c1"]?.parentId).toBe("g");
+    expect(scene.nodes["c2"]?.parentId).toBe("g");
+  });
+
+  describe("Ctrl+G / Ctrl+Shift+G", () => {
+    beforeEach(() => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          r1: node("r1", 0, "a000001"),
+          r2: node("r2", 100, "a000002"),
+          r3: node("r3", 200, "a000003"),
+        },
+      });
+    });
+
+    it("Ctrl+G groups the selection in ONE gesture, and one Ctrl+Z undoes the whole thing", () => {
+      useScene.getState().setSelection(["r1", "r3"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const undoBefore = useScene.getState().undoStack.length;
+
+      createSelectTool().onKeyDown!(ctrl("g"), fakeCtx());
+
+      expect(sync.sent.map((o) => o.kind.case)).toEqual(["createNode", "reparentNode", "reparentNode"]);
+      const gid = useScene.getState().selection[0];
+      const scene = useScene.getState().scene!;
+      expect(scene.nodes[gid].kind).toBe("group");
+      expect(scene.nodes["r1"].parentId).toBe(gid);
+      expect(scene.nodes["r3"].parentId).toBe(gid);
+      expect(scene.nodes["r2"].parentId).toBe("page1"); // non selezionato, non toccato
+      // UNA sola voce di undo per i tre op.
+      expect(useScene.getState().undoStack).toHaveLength(undoBefore + 1);
+
+      useScene.getState().undo();
+      const after = useScene.getState().scene!;
+      expect(after.nodes[gid]).toBeUndefined();
+      expect(after.nodes["r1"]).toMatchObject({ parentId: "page1", orderKey: "a000001" });
+      expect(after.nodes["r3"]).toMatchObject({ parentId: "page1", orderKey: "a000003" });
+
+      useScene.getState().redo();
+      expect(useScene.getState().scene!.nodes["r1"].parentId).toBe(gid);
+    });
+
+    it("Ctrl+Shift+G ungroups in one gesture, and one Ctrl+Z puts the group back", () => {
+      useScene.getState().setSelection(["r1", "r3"]);
+      useScene.getState().setSync(new FakeSync());
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onKeyDown!(ctrl("g"), ctx);
+      const gid = useScene.getState().selection[0];
+      const undoAfterGroup = useScene.getState().undoStack.length;
+
+      tool.onKeyDown!(ctrl("g", true), ctx);
+
+      const scene = useScene.getState().scene!;
+      expect(scene.nodes[gid]).toBeUndefined();
+      expect(scene.nodes["r1"].parentId).toBe("page1");
+      expect(scene.nodes["r3"].parentId).toBe("page1");
+      // I figli liberati restano selezionati, e nel loro ordine.
+      expect(useScene.getState().selection).toEqual(["r1", "r3"]);
+      expect(useScene.getState().undoStack).toHaveLength(undoAfterGroup + 1);
+
+      useScene.getState().undo();
+      const after = useScene.getState().scene!;
+      expect(after.nodes[gid]?.kind).toBe("group");
+      expect(after.nodes["r1"].parentId).toBe(gid);
+      expect(after.nodes["r3"].parentId).toBe(gid);
+    });
+
+    it("Ctrl+G keeps the world position of a node that comes from another group", () => {
+      useScene.getState().setScene({
+        ...emptyScene("doc-1", "u"),
+        nodes: {
+          g: node("g", 100, "a000001", { kind: "group", width: 0, height: 0, y: 100 }),
+          inner: node("inner", 10, "a000001", { parentId: "g", y: 10 }),
+          solo: node("solo", 300, "a000002", { y: 300 }),
+        },
+      });
+      useScene.getState().setSelection(["inner", "solo"]);
+      useScene.getState().setSync(new FakeSync());
+      const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes["inner"]);
+
+      createSelectTool().onKeyDown!(ctrl("g"), fakeCtx());
+
+      const scene = useScene.getState().scene!;
+      const gid = useScene.getState().selection[0];
+      expect(scene.nodes[gid].kind).toBe("group");
+      // "inner" è uscito dallo spazio di "g" (che traslava di 100,100) per
+      // entrare nel gruppo nuovo, che sta sotto la pagina: senza riscriverne le
+      // coordinate si sposterebbe di 100px.
+      expect(scene.nodes["inner"]).toMatchObject({ parentId: gid, x: 110, y: 110 });
+      expect(worldBoundsOfNode(scene, scene.nodes["inner"])).toEqual(before);
+    });
+
+    it("Ctrl+G with nothing selected, and Ctrl+Shift+G with no group selected, send nothing", () => {
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onKeyDown!(ctrl("g"), ctx);
+      useScene.getState().setSelection(["r1"]);
+      tool.onKeyDown!(ctrl("g", true), ctx);
+      expect(sync.sent).toHaveLength(0);
+      expect(useScene.getState().undoStack).toHaveLength(0);
+    });
+
+    it("Ctrl+G abandons a gesture in progress instead of nesting one inside it", () => {
+      useScene.getState().setSelection(["r1"]);
+      const sync = new FakeSync();
+      useScene.getState().setSync(sync);
+      const tool = createSelectTool();
+      const ctx = fakeCtx();
+      tool.onPointerDown!(at(10, 10), ctx);
+      tool.onPointerMove!(at(30, 10), ctx); // drag aperto
+      tool.onKeyDown!(ctrl("g"), ctx);
+      // Il drag è stato abbandonato (nessun setProps sul filo) e il
+      // raggruppamento è passato.
+      expect(sync.sent.map((o) => o.kind.case)).toEqual(["createNode", "reparentNode"]);
+      // Il pointerup che arriva comunque dopo non manda nient'altro.
+      tool.onPointerUp!(at(30, 10), ctx);
+      expect(sync.sent).toHaveLength(2);
+    });
+  });
+});
+
+// SCOPING ALLA PAGINA CORRENTE. Click e marquee rispondono sulle radici della
+// SOLA pagina corrente, esattamente come il renderer le disegna: vedi-vs-
+// seleziona. pickTarget/nodesInMarquee ricevono currentPageId (assente =
+// prima pagina, il default dello store); il tool lo legge dallo store.
+describe("scoping alla pagina corrente", () => {
+  // Due pagine, un nodo per pagina, sovrapposti nel mondo (entrambi 50x50 a
+  // (0,0)): il punto (25,25) e la banda (0,0)-(50,50) cadono su entrambi.
+  function twoPages() {
+    const s = emptyScene("doc-1", "u");
+    s.pages = [{ id: "page1", name: "P1" }, { id: "page2", name: "P2" }];
+    s.nodes["a"] = node("a", 0, "a000000");
+    s.nodes["b"] = node("b", 0, "a000001", { parentId: "page2" });
+    return s;
+  }
+
+  it("pickTarget colpisce solo il nodo della pagina corrente", () => {
+    const s = twoPages();
+    expect(pickTarget(s, { x: 25, y: 25 }, false, [], 1, "page1")).toEqual({ mode: "single", id: "a" });
+    expect(pickTarget(s, { x: 25, y: 25 }, false, [], 1, "page2")).toEqual({ mode: "single", id: "b" });
+  });
+
+  it("nodesInMarquee prende solo i nodi della pagina corrente", () => {
+    const s = twoPages();
+    const band = { x: 0, y: 0, width: 50, height: 50 };
+    expect(nodesInMarquee(s, band, "page1")).toEqual(["a"]);
+    expect(nodesInMarquee(s, band, "page2")).toEqual(["b"]);
+  });
+
+  it("un click con Seleziona sulla seconda pagina seleziona il SUO nodo, non quello della prima", () => {
+    useScene.getState().setScene(twoPages());
+    useScene.getState().setCurrentPage("page2");
+    const tool = createSelectTool();
+    const ctx = fakeCtx();
+    tool.onPointerDown!(at(25, 25), ctx);
+    tool.onPointerUp!(at(25, 25), ctx);
+    expect(useScene.getState().selection).toEqual(["b"]);
   });
 });

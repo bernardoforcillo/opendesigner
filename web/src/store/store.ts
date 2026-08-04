@@ -4,7 +4,8 @@ import { OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
-import type { SceneState } from "./types";
+import { isReachableFrom, subtreeOf } from "./tree";
+import type { PageLite, SceneState } from "./types";
 import type { PenPreview } from "./vectorGeometry";
 import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
@@ -95,12 +96,21 @@ const STALE =
 // al prefisso di op sopravvissuti corrisponde la CODA di `entry`. È questa
 // corrispondenza che rende la ricostruzione parziale possibile senza dover
 // etichettare gli inversi uno a uno.
+//
+// `entry` è quindi una lista di GRUPPI e non di op: l'inverso di UN op può
+// essere fatto di più op (un deleteNode cancella a cascata, e disfarlo vuol
+// dire ricreare tutto il sottoalbero, vedi history.ts). Appiattirlo qui
+// spezzerebbe proprio la corrispondenza posizionale -- `entry[i]` non
+// corrisponderebbe più a un op -- e la riparazione di un gesto atterrato a
+// metà rimetterebbe sullo stack la porzione sbagliata di voce. Le voci degli
+// stack restano invece PIATTE (un gesto = una voce = gli op che lo disfano):
+// l'appiattimento avviene al confine, quando la voce viene spinta.
 // `entry` vuoto = la transizione non ha prodotto nessuna voce (invertChain
 // fallito): può comunque aver svuotato il redo.
 type HistoryShape =
-  | { kind: "gesture"; entry: Op[] }
-  | { kind: "undo"; ops: Op[]; entry: Op[] }
-  | { kind: "redo"; ops: Op[]; entry: Op[] };
+  | { kind: "gesture"; entry: Op[][] }
+  | { kind: "undo"; ops: Op[]; entry: Op[][] }
+  | { kind: "redo"; ops: Op[]; entry: Op[][] };
 
 // Una TRANSIZIONE degli stack di undo/redo prodotta da op SUBMITTATI e non
 // ancora confermati.
@@ -353,12 +363,47 @@ function targetOf(op: Op): OpTarget | null {
       const { id } = op.kind.value;
       return id === "" ? null : { id, paths: ["subpaths", "x", "y", "width", "height"] };
     }
+    // Un reparent scrive DUE campi: il container e la posizione fra i pari.
+    // Sono nello stesso spazio dei nomi dei path di setProps proprio perché
+    // "order_key" è anche un path della mask (il riordino del pannello
+    // livelli): un reparent remoto deve invalidare l'annullamento di un
+    // riordino locale dello stesso nodo, mentre non deve toccare quello di uno
+    // spostamento (x/y), che resta esatto.
+    case "reparentNode": {
+      const { id } = op.kind.value;
+      return id === "" ? null : { id, paths: ["parent_id", "order_key"] };
+    }
     // Un kind sconosciuto non ha bersaglio noto: non può invalidare niente, ma
     // non è nemmeno invalidabile (applyOp lo ignora, quindi non è mai finito in
     // una voce).
     default:
       return null;
   }
+}
+
+// I bersagli di un op, ESPANSI contro la scena su cui l'op atterra.
+//
+// Serve solo a deleteNode, ed è la conseguenza della cascata: l'op nomina un
+// nodo ma ne porta via un SOTTOALBERO (vedi applyOp). Un op che tocca un
+// discendente è quindi in conflitto con questa delete tanto quanto uno che
+// tocca la radice -- senza l'espansione, un gruppo cancellato da un altro
+// client lascerebbe in piedi le voci di undo che riguardano i suoi figli, e il
+// Ctrl+Z successivo manderebbe al server un setProps su un nodo che non esiste
+// più (rifiuto, banner rosso, voce bruciata).
+//
+// Per tutti gli altri kind è il bersaglio singolo di targetOf.
+function targetsOf(op: Op, scene: SceneState): OpTarget[] {
+  if (op.kind.case !== "deleteNode") {
+    const t = targetOf(op);
+    return t ? [t] : [];
+  }
+  const { id } = op.kind.value;
+  if (id === "") return [];
+  const sub = subtreeOf(scene, id);
+  // Nodo già assente dalla scena data: resta il bersaglio nominato, così un op
+  // di una voce (calcolata su uno stato più vecchio) continua a confliggere.
+  if (sub.length === 0) return [{ id, paths: null }];
+  return sub.map((n) => ({ id: n.id, paths: null }));
 }
 
 // Due op sono in CONFLITTO quando toccano lo STESSO nodo e almeno un campo in
@@ -389,7 +434,7 @@ function conflicts(a: OpTarget, b: OpTarget): boolean {
 // prossimo rifiuto, quindi un op stale lasciato lì dentro RITORNEREBBE.
 function allEntries(undoStack: Op[][], redoStack: Op[][], history: HistoryMark[]): Op[][] {
   const out: Op[][] = [...undoStack, ...redoStack];
-  for (const m of history) out.push(...m.undoStack, ...m.redoStack, m.shape.entry);
+  for (const m of history) out.push(...m.undoStack, ...m.redoStack, m.shape.entry.flat());
   return out;
 }
 
@@ -401,21 +446,146 @@ function allEntries(undoStack: Op[][], redoStack: Op[][], history: HistoryMark[]
 // tenerlo vivo per tutta la sessione solo per poterlo riconoscere. Con il
 // WeakSet l'appartenenza sopravvive esattamente quanto l'op che la usa (i mark
 // ne tengono una copia finché sono in dubbio), e non un istante di più.
-function markStale(remote: Op, stale: WeakSet<Op>, entries: Op[][]): boolean {
-  const t = targetOf(remote);
-  if (!t) return false;
+// Le due scene NON sono la stessa, e non possono esserlo: i due lati del
+// confronto rispondono a due domande diverse (vedi targetsOf, che espande le
+// cascate).
+//  - `before` -- il confermato PRIMA di `remote` -- è il documento su cui
+//    l'op remoto atterra, cioè l'unico che sa che cosa una sua deleteNode si
+//    è portata via: dopo, quel sottoalbero non esiste più e l'espansione
+//    ricadrebbe sul solo id nominato (le voci che toccano i FIGLI di un gruppo
+//    cancellato da un altro resterebbero in piedi).
+//  - `after` -- il confermato DOPO -- è invece il documento su cui atterrerà
+//    il prossimo Ctrl+Z, cioè l'unico che sa che cosa una deleteNode DI UNA
+//    VOCE si porterebbe via ADESSO. Un op remoto che INFILA un nodo in un
+//    sottoalbero (createNode con quel parent, o un reparent verso l'interno)
+//    non tocca nessun nodo che la scena precedente contenesse: guardato sul
+//    documento vecchio non confligge con niente, la voce sopravvive, e il
+//    Ctrl+Z successivo cancella a cascata il nodo di un ALTRO client -- in
+//    silenzio, perché senza conflitto non c'è nemmeno il banner STALE.
+// Il verso opposto (un remoto che PORTA VIA un nodo da un sottoalbero) è
+// simmetrico e vale sul documento nuovo: la voce non lo distruggerebbe più,
+// quindi non c'è niente da invalidare e il passo di annulla resta.
+//
+// Le voci restano comunque calcolate su stati più vecchi, quindi `after` è per
+// loro un'approssimazione -- ma è quella del momento in cui verrebbero
+// mandate, che è il solo momento che conta.
+//
+// Il confronto per BERSAGLIO non basta da solo: guarda il nodo che un op
+// NOMINA, e da quando la scena è un albero un op può dipendere da un nodo che
+// non nomina affatto -- il proprio CONTAINER (requiredParent). Quella
+// dipendenza va confrontata con i nodi che il remoto fa SPARIRE, vedi sotto.
+function markStale(
+  remote: Op,
+  stale: WeakSet<Op>,
+  entries: Op[][],
+  before: SceneState,
+  after: SceneState,
+): boolean {
+  const targets = targetsOf(remote, before);
+  if (targets.length === 0) return false;
+  // I nodi che il remoto PORTA VIA dal documento: la radice nominata e tutta la
+  // sua cascata (targetsOf la espande su `before`, l'unico documento che sa che
+  // cosa la delete si è portata via).
+  //
+  // Solo una deleteNode ne fa sparire. Un reparent li lascia tutti in piedi,
+  // solo altrove: ogni container che una voce pretende esiste ancora, e
+  // invalidare lì sarebbe potare SENZA CAUSA -- una voce tolta per niente è un
+  // passo di annulla che l'utente perde in silenzio, cioè il difetto simmetrico
+  // di quello che questo controllo ripara.
+  const removed = remote.kind.case === "deleteNode" ? new Set(targets.map((t) => t.id)) : null;
   let hit = false;
   for (const entry of entries) {
     for (const op of entry) {
       if (stale.has(op)) continue;
-      const u = targetOf(op);
-      if (u && conflicts(t, u)) {
+      // Il container di cui l'op ha BISOGNO è finito dentro la cascata remota:
+      // l'op non potrà più atterrare (ErrParentNotFound in core.applyCreate /
+      // applyReparent) per quanto il suo bersaglio sia intatto.
+      //
+      // È il caso che sfugge interamente al confronto per bersaglio: la voce
+      // che ricrea c1 dentro g1 (l'inverso della nostra delete di c1) non nomina
+      // g1 da nessuna parte, e c1 -- già fuori dal documento -- non compare
+      // nella cascata che l'op remoto si porta via. Nessun conflitto, la voce
+      // resta, Ctrl+Z la manda, il server la rifiuta; e siccome invertOp su di
+      // lei ritorna null (il parent non esiste) non si registra nessuna voce di
+      // redo, mentre revertHistory la rimette sull'undo stack: banner rosso a
+      // ogni Ctrl+Z successivo, e la voce non drena mai.
+      const parent = requiredParent(op);
+      if (parent !== null && removed !== null && removed.has(parent)) {
+        stale.add(op);
+        hit = true;
+        continue;
+      }
+      const us = targetsOf(op, after);
+      if (us.some((u) => targets.some((t) => conflicts(t, u)))) {
         stale.add(op);
         hit = true;
       }
     }
   }
   return hit;
+}
+
+// L'id che un op fa ESISTERE. È l'unico modo in cui un op di una voce può
+// essere il PRESUPPOSTO di un altro op della stessa voce (vedi pruneEntry).
+function createdId(op: Op): string | null {
+  if (op.kind.case !== "createNode") return null;
+  const node = op.kind.value.node;
+  return node && node.id !== "" ? node.id : null;
+}
+
+// Il container che un op PRETENDE già esistente. Sono i due op che
+// core.Apply valida contro l'albero: una createNode con un parent ignoto e un
+// reparent verso un parent ignoto vengono entrambi rifiutati
+// (ErrParentNotFound). null = l'op non dipende da nessun container.
+//
+// È l'unica dipendenza di un op che il suo BERSAGLIO non dice, quindi la
+// leggono i due posti che devono conoscerla: markStale (il container portato
+// via da una cascata REMOTA) e pruneEntry (il container che la voce stessa non
+// ricrea più).
+function requiredParent(op: Op): string | null {
+  if (op.kind.case === "createNode") {
+    const node = op.kind.value.node;
+    return node ? node.parentId : null;
+  }
+  if (op.kind.case === "reparentNode") return op.kind.value.newParentId;
+  return null;
+}
+
+// Toglie da UNA voce gli op marcati stale -- e con loro gli op della stessa
+// voce che non potrebbero più atterrare.
+//
+// Il filtro op-per-op da solo non basta da quando l'inverso di una delete è una
+// CASCATA di createNode (history.ts): la voce che ripristina g1>c1>d1 è
+// [createNode g1, createNode c1, createNode d1] e vale solo INTERA, perché ogni
+// createNode pretende che il proprio parent esista già. Un op remoto che tocca
+// il solo c1 marca stale la sua createNode e non quella di d1 (bersagli
+// diversi, vedi targetsOf): togliere solo c1 lascerebbe una voce che viola
+// esattamente l'invariante che era stata costruita per soddisfare -- Ctrl+Z
+// manderebbe createNode d1 sotto un parent inesistente, il server risponde
+// ErrParentNotFound e per di più invertChain, che su quella voce ritorna null,
+// non registra nessuna voce di redo: banner rosso e documento a metà.
+//
+// La staleness si PROPAGA quindi verso il basso: tolta una createNode, cade
+// tutto ciò che aveva bisogno del nodo che creava. Una sola passata in avanti
+// basta perché una voce valida è già in ordine di dipendenza (subtreeOf visita
+// in pre-ordine, invertChain rovescia i GRUPPI e non gli op dentro un gruppo);
+// una voce che non lo fosse sarebbe già irricevibile per il server, e l'ordine
+// della potatura non la peggiora.
+function pruneEntry(entry: Op[], stale: WeakSet<Op>): Op[] {
+  const out: Op[] = [];
+  // Gli id che questa voce non farà più esistere: quelli delle createNode
+  // tolte, più -- transitivamente -- quelli delle createNode cadute con loro.
+  const missing = new Set<string>();
+  for (const op of entry) {
+    const parent = requiredParent(op);
+    if (stale.has(op) || (parent !== null && missing.has(parent))) {
+      const id = createdId(op);
+      if (id !== null) missing.add(id);
+      continue;
+    }
+    out.push(op);
+  }
+  return out;
 }
 
 // Toglie da ogni voce gli op marcati stale; una voce che resta vuota sparisce.
@@ -433,7 +603,7 @@ function pruneStale(stack: Op[][], stale: WeakSet<Op>): Op[][] {
   if (!stack.some((entry) => entry.some((op) => stale.has(op)))) return stack;
   const out: Op[][] = [];
   for (const entry of stack) {
-    const kept = entry.filter((op) => !stale.has(op));
+    const kept = pruneEntry(entry, stale);
     if (kept.length === entry.length) out.push(entry);
     else if (kept.length > 0) out.push(kept);
   }
@@ -482,7 +652,11 @@ function applyMark(
   // Gli inversi degli op sopravvissuti sono la CODA della voce (entry[i]
   // inverte l'op n-1-i). Senza voce non c'è nulla da spingere; a kept === 0 la
   // coda è vuota, quindi push è già l'identità.
-  const kept = shape.entry.length === n ? shape.entry.slice(n - m.kept) : [];
+  //
+  // La coda si prende sui GRUPPI e si appiattisce dopo: un gruppo è l'inverso
+  // (anche multiplo) di UN op diretto, quindi tagliare sulla lista piatta
+  // porterebbe via mezza cascata di ricreazione.
+  const kept = shape.entry.length === n ? shape.entry.slice(n - m.kept).flat() : [];
   const push = (stack: Op[][]) => (kept.length > 0 ? [...stack, kept] : stack);
   if (shape.kind === "gesture") {
     // Il redo resta svuotato appena UN op del gesto è passato: il documento è
@@ -624,21 +798,23 @@ function revertHistory(history: HistoryMark[], opId: string, stale: WeakSet<Op>)
 // `inv` null = l'inverso non esiste (il nodo non c'è più): nessuna voce da
 // rimettere, ma il redo si svuota lo stesso -- l'op è avvenuto per davvero,
 // quindi le voci di redo invertono uno stato che non esiste più (stessa regola
-// che applyMark applica ai gesti).
+// che applyMark applica ai gesti). `inv` è una LISTA (l'inverso di un solo op
+// può essere multiplo, vedi history.ts) e forma UNA voce di undo.
 function restoreRevoked(
   history: HistoryMark[],
   undoStack: Op[][],
   redoStack: Op[][],
-  inv: Op | null,
+  inv: Op[] | null,
   stale: WeakSet<Op>,
 ): HistoryPatch {
+  const entry = inv && inv.length > 0 ? inv : null;
   const head = history[0];
   if (!head) {
-    const next = inv ? [...undoStack, [inv]] : undoStack;
+    const next = entry ? [...undoStack, entry] : undoStack;
     return { history, undoStack: next, redoStack: [], canUndo: next.length > 0, canRedo: false };
   }
   const patched: HistoryMark[] = [
-    { ...head, undoStack: inv ? [...head.undoStack, [inv]] : head.undoStack, redoStack: [] },
+    { ...head, undoStack: entry ? [...head.undoStack, entry] : head.undoStack, redoStack: [] },
     ...history.slice(1),
   ];
   // patched non è vuoto, quindi replayHistory non può dare null; il fallback
@@ -666,11 +842,50 @@ function pruneSelection(selection: string[], scene: SceneState): string[] {
     : selection.filter((id) => id in scene.nodes);
 }
 
+// La selezione potata per PAGINA: tiene solo gli id RAGGIUNGIBILI dalla pagina
+// corrente, lo stesso scoping-per-pagina che il renderer applica a disegno,
+// hit-test e marquee (canvasRenderer.ts::rootsOf). È l'invariante vedi-vs-
+// seleziona portata sulla selezione: un nodo che un op remoto sposta su
+// un'altra pagina esiste ANCORA -- quindi la sola potatura per esistenza lo
+// terrebbe -- ma il canvas non lo disegna più, e lasciarlo selezionato
+// disegnerebbe cornice e 8 maniglie sul vuoto (overlayRenderer.ts) e farebbe
+// leggere/editare le sue proprietà al pannello alla cieca. setCurrentPage
+// azzera la selezione al cambio pagina LOCALE; questo la corregge quando il
+// cambio arriva da un op REMOTO (via rebuild).
+//
+// isReachableFrom sussume l'esistenza (un id assente non è raggiungibile da
+// nulla), quindi questa rimpiazza pruneSelection dentro rebuild senza doppio
+// filtro. pageId è quello RISOLTO da validCurrentPage: null solo per un
+// documento senza pagine (che il core non produce), dove nulla è raggiungibile
+// e la selezione si svuota -- coerente con rootsOf, che senza pagina non ha
+// radici da disegnare. Riusa lo stesso array quando non cambia niente, per non
+// svegliare i sottoscrittori zustand.
+function pruneSelectionToPage(selection: string[], scene: SceneState, pageId: string | null): string[] {
+  if (pageId === null) return selection.length === 0 ? selection : [];
+  return selection.every((id) => isReachableFrom(scene, id, pageId))
+    ? selection
+    : selection.filter((id) => isReachableFrom(scene, id, pageId));
+}
+
 // Confronto per contenuto: serve a NON chiamare set() quando la selezione
 // riconciliata coincide con quella già nello store (un set inutile sveglia
 // tutti i sottoscrittori).
 function sameSelection(a: string[], b: string[]): boolean {
   return a === b || (a.length === b.length && a.every((id, i) => id === b[i]));
+}
+
+// currentPageId è STATO DI VISTA (come camera e selezione), NON del documento:
+// non viaggia sul filo. Ma deve restare SEMPRE valido -- il renderer disegna la
+// SOLA pagina corrente (canvasRenderer.ts::rootsOf), quindi un id che non punta
+// più a nessuna pagina lascerebbe il canvas vuoto e i tool a creare sotto un
+// parent inesistente. Va quindi corretto a OGNI cambio di scene.pages, anche
+// quando arriva da un op remoto: se la pagina corrente sparisce (DeletePage) si
+// ripiega sulla PRIMA rimasta; se è ancora lì (CreatePage/RenamePage altrui,
+// risync) non si tocca. null solo per un documento senza pagine -- che il core
+// non produce (l'ultima pagina non si cancella, ErrLastPage).
+function validCurrentPage(pages: readonly PageLite[], currentPageId: string | null): string | null {
+  if (currentPageId !== null && pages.some((p) => p.id === currentPageId)) return currentPageId;
+  return pages[0]?.id ?? null;
 }
 
 // Primitiva condivisa da endGesture/undo/redo: dato lo stato PRIMA che `ops`
@@ -681,9 +896,17 @@ function sameSelection(a: string[], b: string[]): boolean {
 // null se anche un solo op della catena non ha inverso (id sparito nel
 // frattempo, kind sconosciuto...): un undo/redo PARZIALE lascerebbe la scena
 // a metà strada, peggio di un gesto che semplicemente non si può annullare.
-function invertChain(scene: SceneState, ops: Op[]): Op[] | null {
+//
+// Ritorna un GRUPPO per op diretto, non una lista piatta: l'inverso di un
+// singolo op può essere fatto di più op (un deleteNode cancella a cascata, e
+// disfarlo vuol dire ricreare l'intero sottoalbero -- vedi history.ts). I
+// gruppi sono in ordine inverso rispetto a `ops`, mentre DENTRO ogni gruppo
+// l'ordine è quello in cui gli op vanno applicati. È la corrispondenza
+// posizionale su cui si regge la riparazione di un gesto atterrato a metà
+// (vedi HistoryMark e applyMark): il gruppo i-esimo inverte l'op n-1-i.
+function invertChain(scene: SceneState, ops: Op[]): Op[][] | null {
   let state = scene;
-  const inverses: Op[] = [];
+  const inverses: Op[][] = [];
   for (const op of ops) {
     const inv = invertOp(state, op);
     if (!inv) return null;
@@ -738,10 +961,21 @@ interface SceneStore {
   // è tutto il documento che smette di avanzare.
   syncError: string | null;
   camera: Camera;
-  // Invariante: selection contiene SOLO id di nodi che esistono ancora in
-  // scene.nodes. Quando un op (anche remoto, via apply) fa sparire un nodo
-  // selezionato, va tolto anche dalla selezione -- altrimenti le maniglie di
-  // resize restano "appese" a un nodo inesistente.
+  // La pagina VISUALIZZATA sul canvas, stato di vista come camera e selezione
+  // (NON del documento: non è un op, non viaggia sul filo). Il renderer disegna
+  // le sole radici di questa pagina; i tool creano sotto di essa. Invariante:
+  // punta SEMPRE a una pagina esistente (validCurrentPage la corregge a ogni
+  // cambio di scene.pages, anche remoto). null solo prima del bootstrap
+  // (scene === null).
+  currentPageId: string | null;
+  // Invariante: selection contiene SOLO id di nodi RAGGIUNGIBILI dalla pagina
+  // corrente (che è più forte di "esistono ancora in scene.nodes"). Quando un op
+  // (anche remoto, via apply) fa sparire un nodo selezionato O lo sposta su
+  // un'altra pagina, va tolto dalla selezione -- altrimenti cornice e maniglie
+  // di resize restano "appese" a un nodo che il canvas non disegna (rebuild via
+  // pruneSelectionToPage lo garantisce, come setCurrentPage per il cambio pagina
+  // locale). È lo stesso scoping-per-pagina di disegno, hit-test e marquee
+  // (canvasRenderer.ts::rootsOf): vedi-vs-seleziona anche per la cornice.
   selection: string[];
   // Rettangolo del marquee in corso, in coordinate MONDO (come tutto il resto
   // del modello). null quando non si sta trascinando un marquee.
@@ -819,6 +1053,12 @@ interface SceneStore {
   setMarquee: (b: Bounds | null) => void;
   setSnapGuides: (g: SnapGuide[]) => void;
   setPenPreview: (p: PenPreview | null) => void;
+  // Cambia la pagina visualizzata. AZZERA la selezione (i nodi di un'altra
+  // pagina non restano selezionati) e NON è una voce di undo -- è stato di
+  // vista, come spostare la camera. No-op se la pagina è già quella corrente
+  // (un ri-click non deve buttare via la selezione) o se l'id non esiste (che
+  // romperebbe l'invariante "sempre valido").
+  setCurrentPage: (id: string) => void;
   // Accende il flag di editing: textTool lo chiama subito dopo aver creato il
   // nodo, il doppio click di selectTool lo chiama su un nodo testo esistente.
   // Se una sessione era già aperta su un ALTRO nodo, la chiude/pulisce prima
@@ -841,10 +1081,26 @@ interface SceneStore {
 // record che arriva a metà drag non fa sparire il feedback locale.
 function rebuild(st: SceneStore, confirmed: SceneState, pending: PendingOp[]): Partial<SceneStore> {
   const scene = viewOf(confirmed, pending, st.gesture?.preview.values() ?? []);
-  // Riconvalida la selezione contro i nodi rimasti (non solo per deleteNode:
-  // qualunque op che fa sparire un id -- anche futuro -- deve avere lo stesso
-  // effetto), e anche contro un rollback che ha tolto un nodo appena creato.
-  return { confirmed, pending, scene, selection: pruneSelection(st.selection, scene) };
+  // currentPageId si corregge QUI perché ogni ricostruzione della vista (record
+  // dal filo via apply, rifiuto via rejectPending) può aver cambiato scene.pages
+  // -- una DeletePage remota della pagina corrente, per dire. Va risolto PRIMA
+  // della selezione: quest'ultima si pota contro la pagina EFFETTIVA (quella su
+  // cui si ripiega), non contro quella vecchia ormai sparita.
+  const currentPageId = validCurrentPage(scene.pages, st.currentPageId);
+  // Riconvalida la selezione ai soli nodi RAGGIUNGIBILI dalla pagina corrente
+  // (isReachableFrom sussume l'esistenza, quindi copre anche il vecchio caso:
+  // qualunque op che fa sparire un id, o un rollback che toglie un nodo appena
+  // creato). Lo scoping-per-pagina è ciò che tiene la selezione in accordo con
+  // ciò che il canvas disegna: un nodo che un op remoto ha spostato su un'altra
+  // pagina, o che stava sulla pagina appena cancellata, esce di qui e non lascia
+  // cornice/maniglie/pannello appesi al vuoto (vedi pruneSelectionToPage).
+  return {
+    confirmed,
+    pending,
+    scene,
+    selection: pruneSelectionToPage(st.selection, scene, currentPageId),
+    currentPageId,
+  };
 }
 
 export const useScene = createStore<SceneStore>((set, get) => ({
@@ -857,6 +1113,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   connection: "connecting",
   syncError: null,
   camera: { x: 0, y: 0, zoom: 1 },
+  currentPageId: null,
   selection: [],
   marquee: null,
   snapGuides: [],
@@ -888,32 +1145,49 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   //    più il mark che permetteva a un rifiuto di riavvolgerle;
   //  - `disowned`: gli echi che potevano revocare quei rollback appartengono a
   //    una history che il server ha compattato e non rimanderà.
-  // La selezione invece si POTA (non si svuota): gli id che lo snapshot ancora
-  // contiene restano legittimamente selezionati.
+  // La selezione invece si POTA (non si svuota): gli id ancora RAGGIUNGIBILI
+  // dalla pagina corrente restano legittimamente selezionati -- lo stesso
+  // scoping-per-pagina di rebuild (pruneSelectionToPage), non la sola esistenza,
+  // altrimenti un nodo che lo snapshot mostra su un'ALTRA pagina resterebbe
+  // selezionato con cornice e maniglie disegnate sul vuoto.
   //
   // `discardedReason`, se passato, è il messaggio da mostrare quando la
   // sostituzione butta via lavoro non confermato: senza, le modifiche
   // ottimistiche sparirebbero dal canvas con `lastError` nullo -- nessun banner,
   // nessuna spiegazione.
   setScene: (s, discardedReason) =>
-    set((st) => ({
-      scene: s,
-      confirmed: s,
-      pending: [],
-      history: [],
-      undoStack: [],
-      redoStack: [],
-      canUndo: false,
-      canRedo: false,
-      // Gli op che il filtro conosceva appartenevano a voci che questa
-      // sostituzione ha appena buttato via: niente da filtrare, e nessuna
-      // ragione di tenerli in vita.
-      stale: new WeakSet<Op>(),
-      disowned: [],
-      notice: null,
-      selection: s ? pruneSelection(st.selection, s) : [],
-      lastError: discardedReason !== undefined && st.pending.length > 0 ? discardedReason : null,
-    })),
+    set((st) => {
+      // Un nuovo documento può avere altre pagine: si tiene la corrente se
+      // esiste ancora, altrimenti la prima. Al bootstrap (currentPageId null)
+      // diventa la prima pagina del documento. Risolta PRIMA della selezione,
+      // esattamente come in rebuild: quest'ultima si pota contro la pagina
+      // EFFETTIVA (quella su cui il documento ripiega), non contro quella
+      // vecchia ormai sparita.
+      const pageId = s ? validCurrentPage(s.pages, st.currentPageId) : null;
+      return {
+        scene: s,
+        confirmed: s,
+        pending: [],
+        history: [],
+        undoStack: [],
+        redoStack: [],
+        canUndo: false,
+        canRedo: false,
+        // Gli op che il filtro conosceva appartenevano a voci che questa
+        // sostituzione ha appena buttato via: niente da filtrare, e nessuna
+        // ragione di tenerli in vita.
+        stale: new WeakSet<Op>(),
+        disowned: [],
+        notice: null,
+        // Scoping-per-pagina come rebuild (non la sola esistenza): uno snapshot
+        // di resync in cui un nodo selezionato è passato a un'altra pagina lo
+        // lascia esistente ma non più raggiungibile da pageId, e va tolto --
+        // altrimenti cornice/maniglie/pannello restano appesi al vuoto.
+        selection: s ? pruneSelectionToPage(st.selection, s, pageId) : [],
+        currentPageId: pageId,
+        lastError: discardedReason !== undefined && st.pending.length > 0 ? discardedReason : null,
+      };
+    }),
   setCamera: (c) => set({ camera: c }),
   setSync: (s) => set({ sync: s }),
 
@@ -932,8 +1206,12 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   apply: (op, own = false) =>
     set((st) => {
       if (!st.confirmed) return st;
+      // Il confermato DOPO l'op, tenuto a portata: è la scena su cui
+      // atterrerebbe il prossimo Ctrl+Z, e markStale ne ha bisogno insieme a
+      // quella di prima.
+      const confirmed = applyOp(st.confirmed, op);
       const next = {
-        ...rebuild(st, applyOp(st.confirmed, op), dropPending(st.pending, op.opId)),
+        ...rebuild(st, confirmed, dropPending(st.pending, op.opId)),
         // L'op è durabile: la voce di undo che l'aveva prodotto smette di
         // essere annullabile da un rollback (vedi HistoryMark).
         history: confirmHistory(st.history, op.opId),
@@ -947,7 +1225,8 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         // (Il controllo sulla coda prima di costruire l'elenco delle voci: un
         // eco è il caso NORMALE, e non deve pagare la scansione della storia.)
         if (own || st.pending.some((p) => p.opId === op.opId)) return next;
-        if (!markStale(op, st.stale, allEntries(st.undoStack, st.redoStack, next.history))) {
+        const entries = allEntries(st.undoStack, st.redoStack, next.history);
+        if (!markStale(op, st.stale, entries, st.confirmed, confirmed)) {
           return next;
         }
         const undoStack = pruneStale(st.undoStack, st.stale);
@@ -1018,10 +1297,20 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       // endGesture chiude il gesto PRIMA di inviare e undo/redo sono no-op
       // durante un drag -- quindi non c'è anteprima da scavalcare.)
       const scene = applyOp(st.scene, op);
+      // Un op OTTIMISTICO può cambiare le pagine (una CreatePage/DeletePage
+      // locale prima ancora dell'eco): la pagina corrente si corregge subito,
+      // come fa rebuild per i record autorevoli. Risolta PRIMA della selezione,
+      // che si pota contro di essa.
+      const currentPageId = validCurrentPage(scene.pages, st.currentPageId);
       return {
         scene,
         pending: [...st.pending, { opId: op.opId, op }],
-        selection: pruneSelection(st.selection, scene),
+        // Scoping-per-pagina come rebuild/setScene, non la sola esistenza: un op
+        // locale che sposta il nodo selezionato fuori dalla pagina corrente lo
+        // toglie dalla selezione. Rende l'invariante "selection ⊆ raggiungibili
+        // da currentPage" airtight anche sul percorso del submit.
+        selection: pruneSelectionToPage(st.selection, scene, currentPageId),
+        currentPageId,
       };
     }),
 
@@ -1183,10 +1472,15 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     // rifiutato, è qui che si torna (vedi HistoryMark).
     const prevUndo = get().undoStack;
     const prevRedo = get().redoStack;
+    // `groups` tiene la corrispondenza op -> suoi inversi (vedi invertChain e
+    // HistoryShape); `entry` è la stessa cosa appiattita, cioè la voce di undo
+    // come la vedono gli stack.
+    let groups: Op[][] = [];
     let entry: Op[] = [];
     let changedHistory = false;
     if (finalOps.length > 0) {
-      entry = (base ? invertChain(base, finalOps) : null) ?? [];
+      groups = (base ? invertChain(base, finalOps) : null) ?? [];
+      entry = groups.flat();
       // Niente voce da aggiungere e redo già vuoto: nessun cambiamento di
       // stato, quindi niente set() (sveglierebbe i sottoscrittori a vuoto).
       if (entry.length > 0 || prevRedo.length > 0) {
@@ -1219,7 +1513,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
               kept: opIds.length,
               undoStack: prevUndo,
               redoStack: prevRedo,
-              shape: { kind: "gesture", entry },
+              shape: { kind: "gesture", entry: groups },
             },
           ],
         }));
@@ -1279,6 +1573,21 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   setSnapGuides: (g) =>
     set((st) => (g.length === 0 && st.snapGuides.length === 0 ? st : { snapGuides: g })),
   setPenPreview: (p) => set({ penPreview: p }),
+
+  // Cambia la pagina visualizzata. NON è un op e NON è una voce di undo: è
+  // stato di vista, come setCamera. Azzera la selezione (i nodi dell'altra
+  // pagina non restano selezionati -- il pannello proprietà e l'overlay
+  // rimarrebbero altrimenti appesi a nodi che il canvas non disegna più).
+  setCurrentPage: (id) =>
+    set((st) => {
+      // Ri-selezionare la pagina corrente non deve buttare via la selezione.
+      if (id === st.currentPageId) return st;
+      // Solo una pagina che ESISTE: mantiene l'invariante "sempre valido" anche
+      // se un chiamante passa un id sbagliato. A scene nulla (bootstrap non
+      // ancora arrivato) si accetta comunque -- validCurrentPage la correggerà.
+      if (st.scene && !st.scene.pages.some((p) => p.id === id)) return st;
+      return { currentPageId: id, selection: [] };
+    }),
 
   // Chiude/pulisce QUALUNQUE sessione già aperta PRIMA di aprirne una nuova
   // (bug trovato in review): senza questo, una seconda beginTextEditing --
@@ -1355,7 +1664,10 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const entry = prevUndo[prevUndo.length - 1];
     if (!entry) return;
     const scene = get().scene;
-    const redoEntry = scene ? invertChain(scene, entry) : null;
+    // Gruppi (uno per op disfatto) per il mark, appiattiti per lo stack: vedi
+    // invertChain e HistoryShape.
+    const redoGroups = scene ? invertChain(scene, entry) : null;
+    const redoEntry = redoGroups?.flat() ?? null;
     // Pop dell'undo e push del redo in UN SOLO set, prima di qualunque invio:
     // il submit può rientrare nello store (apply ottimistico, e in caso di
     // rifiuto sincrono anche rejectPending, che riavvolge gli stack). Spingere
@@ -1384,7 +1696,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
               kept: opIds.length,
               undoStack: prevUndo,
               redoStack: prevRedo,
-              shape: { kind: "undo", ops: entry, entry: redoEntry ?? [] },
+              shape: { kind: "undo", ops: entry, entry: redoGroups ?? [] },
             },
           ],
         }));
@@ -1407,7 +1719,8 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const entry = prevRedo[prevRedo.length - 1];
     if (!entry) return;
     const scene = get().scene;
-    const undoEntry = scene ? invertChain(scene, entry) : null;
+    const undoGroups = scene ? invertChain(scene, entry) : null;
+    const undoEntry = undoGroups?.flat() ?? null;
     // Un solo set prima degli invii, stesso motivo di undo().
     set((st) => {
       const redoStack = st.redoStack.slice(0, -1);
@@ -1428,7 +1741,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
               kept: opIds.length,
               undoStack: prevUndo,
               redoStack: prevRedo,
-              shape: { kind: "redo", ops: entry, entry: undoEntry ?? [] },
+              shape: { kind: "redo", ops: entry, entry: undoGroups ?? [] },
             },
           ],
         }));

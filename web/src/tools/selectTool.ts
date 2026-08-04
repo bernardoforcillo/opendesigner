@@ -1,6 +1,13 @@
-import { hitTest } from "../renderer/canvasRenderer";
-import { selectionBoundsOfNode, hasInk } from "../renderer/shapes";
-import { normalizeRect, boundsOfNode, boundsIntersect, worldVisualAabbOfNode, type Bounds } from "../canvas/geometry";
+import { hitTest, nodesIntersecting } from "../renderer/canvasRenderer";
+import { normalizeRect, boundsOfNode, type Bounds } from "../canvas/geometry";
+import {
+  type Transform,
+  invertTransform,
+  mapBounds,
+  mapVector,
+  worldBoundsOfNode,
+  worldTransformOf,
+} from "../canvas/transform";
 import { worldToScreen } from "../canvas/camera";
 import { angleOf, centerOf, normalizeDegrees, rotateAround, snapDegrees } from "../canvas/transform";
 import { selectionFrame, selectionWorldBounds } from "../renderer/overlayRenderer";
@@ -21,6 +28,9 @@ import {
 } from "../selection/handles";
 import { snapBounds, snapMoving, snapTargets, worldThreshold, type SnapGuide } from "../selection/snap";
 import { useScene } from "../store/store";
+import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "../store/groups";
+import { subtreeOf, topmostOf } from "../store/tree";
+import { groupOps, ungroupOps } from "./grouping";
 import { makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp } from "./ops";
 import type { SceneState } from "../store/types";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
@@ -85,6 +95,25 @@ function frameOfSelection(ctx: ToolContext): SelectionFrame | null {
   return selectionFrame(scene, useScene.getState().selection);
 }
 
+// Dal MONDO allo spazio in cui sono scritte le coordinate di un nodo, cioè lo
+// spazio locale del suo parent. È la conversione che ogni gesto deve fare
+// prima di scrivere nel modello: il puntatore parla mondo, il documento parla
+// relativo al parent. Per un nodo figlio di una pagina è l'identità -- ed è
+// per questo che un documento già esistente non si muove di un pixel.
+function parentToLocal(scene: SceneState, parentId: string): Transform {
+  return invertTransform(worldTransformOf(scene, parentId));
+}
+
+// Gli id da ESCLUDERE dai bersagli dello snap: non solo i nodi selezionati ma
+// tutto il loro SOTTOALBERO. Un gruppo che si trascina (o si ridimensiona) porta
+// con sé i figli, che quindi si muovono insieme e non sono bersagli a cui
+// scattare -- altrimenti la cornice del gruppo scatterebbe contro il proprio
+// contenuto. Per una selezione piatta subtreeOf(id) è [id], quindi coincide con
+// la selezione stessa e lo snap resta identico a prima.
+function snapExclude(scene: SceneState, selection: readonly string[]): string[] {
+  return selection.flatMap((id) => subtreeOf(scene, id).map((n) => n.id));
+}
+
 export type PickResult =
   | { mode: "marquee" }
   | { mode: "single"; id?: string }
@@ -104,48 +133,41 @@ export function pickTarget(
   shiftKey: boolean,
   selection: string[],
   zoom: number,
+  currentPageId?: string | null,
 ): PickResult {
-  const id = hitTest(scene, world.x, world.y, zoom);
-  if (!id) return { mode: "marquee" };
+  // Scoped alla pagina corrente, come il disegno (T1): un click non colpisce un
+  // nodo di un'ALTRA pagina (che il canvas non mostra). `zoom` va fino a
+  // hitTestNode per la presa di un path vettoriale aperto (T4, px SCHERMO).
+  // currentPageId assente ripiega sulla prima pagina -- vedi canvasRenderer::rootsOf.
+  const hit = hitTest(scene, world.x, world.y, zoom, currentPageId);
+  if (!hit) return { mode: "marquee" };
+  // hitTest risponde "quale nodo c'è sotto il puntatore" -- il più INTERNO,
+  // sempre. Quale nodo si SELEZIONA è un'altra domanda, e la risposta è la
+  // politica dei gruppi (store/groups.ts): il gruppo più esterno, a meno che
+  // la selezione corrente non dica che ci siamo già entrati. Vale anche per lo
+  // shift-click: si aggiunge alla selezione la stessa cosa che un click
+  // selezionerebbe, o shift diventerebbe il modo per prendere un figlio senza
+  // entrare nel gruppo.
+  const id = selectionTargetOf(scene, hit, selection);
   if (shiftKey) return { mode: "toggle", id };
   return selection.includes(id) ? { mode: "single" } : { mode: "single", id };
 }
 
-// Id dei nodi VISIBILI i cui bounds intersecano il marquee, ordinati per
-// orderKey per un risultato deterministico (Object.values non garantisce
-// l'ordine di inserimento per chiavi stringa).
-// Il box è quello di SELEZIONE (renderer/shapes.ts), non quello grezzo del
-// modello. NON è lo stesso bersaglio del click: hitTest colpisce l'inchiostro
-// del path e misura la presa in px SCHERMO, mentre qui si confrontano bounds in
-// coordinate MONDO e la camera non c'è. Le due porte non possono coincidere, ma
-// devono concordare sui due estremi, ed è quello che fanno le due condizioni
-// qui sotto:
-//   - `hasInk`: un vettoriale senza NESSUN ancoraggio non si vede e non si
-//     clicca, quindi non deve nemmeno finire in un marquee -- altrimenti
-//     resterebbe l'unica porta verso un nodo invisibile, e selezionerebbe il
-//     nulla per sorpresa;
-//   - `selectionBoundsOfNode`: un vettoriale il cui box ha legittimamente un
-//     lato a zero (un segmento orizzontale, un path di un solo ancoraggio) si
-//     vede e si clicca eccome, ma con il box grezzo un marquee lo prenderebbe
-//     solo SCAVALCANDOLO in senso stretto -- passargli accanto non basterebbe.
-export function nodesInMarquee(scene: SceneState, bounds: Bounds): string[] {
-  return Object.values(scene.nodes)
-    // Le forme il cui inchiostro È il box (rect/ellisse/testo/immagine) usano
-    // worldVisualAabbOfNode: conta quello che il nodo DIPINGE -- ruotato (il
-    // rettangolo del modello non è più dove si vede) e tratto compreso (un
-    // tratto esterno da 20 è una fascia larga 20 tutta fuori dal box). Il
-    // VETTORIALE usa selectionBoundsOfNode, che allarga il solo asse degenere
-    // (un segmento orizzontale, un path di un ancoraggio) così un marquee che ci
-    // passa accanto lo prende comunque. `hasInk` tiene fuori un vettoriale senza
-    // NESSUN ancoraggio: non si vede e non si clicca, quindi non deve nemmeno
-    // finire in un marquee (per gli altri kind è sempre vero, quindi non cambia
-    // niente).
-    .filter((n) => n.visible && hasInk(n) && boundsIntersect(
-      n.kind === "vector" ? selectionBoundsOfNode(n) : worldVisualAabbOfNode(n),
-      bounds,
-    ))
-    .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0))
-    .map((n) => n.id);
+// Id dei nodi che il marquee seleziona: quelli VISIBILI (nell'intero cammino
+// dalla pagina in giù) il cui box MONDO interseca il rettangolo, in ordine di
+// disegno.
+//
+// Il marquee è in coordinate MONDO (viene dal puntatore) e le coordinate del
+// modello sono relative al parent: la conversione, insieme alle regole
+// dell'albero (container invisibile che porta via il sottoalbero, clip dei
+// frame), sta in renderer/canvasRenderer.ts::nodesIntersecting -- la STESSA
+// discesa di drawScene e hitTest, così ciò che si vede è ciò che si seleziona.
+//
+// L'ordine è quello dell'albero (container prima dei figli, fratelli per order
+// key) e non un confronto piatto di order key: per una scena piatta sono la
+// stessa lista, per una annidata solo il primo ha un significato.
+export function nodesInMarquee(scene: SceneState, bounds: Bounds, currentPageId?: string | null): string[] {
+  return nodesIntersecting(scene, bounds, currentPageId);
 }
 
 function union(base: string[], extra: string[]): string[] {
@@ -198,8 +220,17 @@ export function createSelectTool(): Tool {
   // altrimenti ogni click su un nodo già selezionato spamerebbe un
   // beginGesture "misuso" nei test che testano solo onPointerDown (vedi
   // store.ts: beginGesture con un gesto già aperto avvisa e non annidano).
+  //
+  // `toLocal` è l'inversa della trasformazione del PARENT del nodo, fotografata
+  // a pointerdown (durante un gesto nessuno riparenta): il puntatore si muove
+  // nel MONDO, ma x/y del modello sono relative al parent, e per un nodo
+  // annidato i due spostamenti non sono lo stesso numero. Finché i container
+  // contribuiscono solo traslazioni la parte lineare è l'identità e i due
+  // coincidono; il giorno della rotazione (altra traccia) è questa conversione
+  // a evitare che trascinare un figlio di un container ruotato lo mandi di
+  // traverso.
   let dragAnchor: { x: number; y: number } | null = null;
-  let dragStart: Record<string, { x: number; y: number }> | null = null;
+  let dragStart: Record<string, { x: number; y: number; toLocal: Transform }> | null = null;
   let dragStarted = false;
   // Lo SNAP del trascinamento, fotografato a pointerdown: il riquadro che la
   // selezione occupa (è LUI a scattare, non i singoli nodi -- altrimenti una
@@ -216,17 +247,27 @@ export function createSelectTool(): Tool {
   // deve produrre nessun op). resizeStartBox è il bbox di GRUPPO a inizio
   // gesto: ogni nodo viene poi mappato con la stessa trasformazione, così una
   // selezione multipla scala (e si specchia) in blocco.
+  //
+  // Il bbox di gruppo è in coordinate MONDO (ci vivono le maniglie e il
+  // puntatore), quindi anche i box di partenza dei singoli nodi lo sono:
+  // mappare un box LOCALE con una trasformazione calcolata nel mondo darebbe
+  // un rettangolo senza senso. Il ritorno al locale avviene alla fine, quando
+  // si scrive nel modello -- vedi resizeOps.
   let resizeHandle: HandleId | null = null;
   let resizeAnchor: { x: number; y: number } | null = null;
   let resizeStartFrame: SelectionFrame | null = null;
-  // Bounds E angolo iniziale: un nodo ruotato dentro una selezione multipla non
-  // si mappa come gli altri (vedi handles.ts::applyFrameResizeToNode), e per un
-  // ribaltamento o una scala non uniforme anche il suo angolo cambia.
-  let resizeStartNodes: Record<string, { bounds: Bounds; rotation: number }> | null = null;
-  // La GEOMETRIA di partenza dei soli nodi vettoriali selezionati. Catturata a
-  // pointerdown come i bounds e per lo stesso motivo: gli op di anteprima sono
-  // assoluti e si ricalcolano sempre dallo stato iniziale, mai dall'ultima
-  // anteprima -- che, applicata in locale, è già la geometria scalata.
+  // Il box di partenza di ogni nodo in coordinate MONDO (la stessa in cui vive
+  // il frame e il puntatore), il suo angolo, e `toLocal` per riscrivere il
+  // risultato nello spazio del PARENT -- dove x/y/width/height vivono davvero.
+  // world+toLocal (annidamento, T1) e rotation (T2) insieme: un nodo ruotato
+  // dentro una selezione multipla non si mappa come gli altri (handles.ts::
+  // applyFrameResizeToNode), e un ribaltamento gli cambia anche l'angolo.
+  let resizeStartNodes:
+    | Record<string, { bounds: Bounds; rotation: number; toLocal: Transform }>
+    | null = null;
+  // La GEOMETRIA di partenza dei soli nodi vettoriali selezionati (T4). Catturata
+  // a pointerdown come i bounds e per lo stesso motivo: gli op di anteprima sono
+  // assoluti e si ricalcolano sempre dallo stato iniziale.
   let resizeStartVectors: Record<string, SubPathLite[]> | null = null;
   let resizeStarted = false;
   // I bersagli dello snap per il ridimensionamento, fotografati come quelli del
@@ -392,6 +433,12 @@ export function createSelectTool(): Tool {
     const ops: Op[] = [];
     for (const [id, start] of Object.entries(resizeStartNodes)) {
       const next = applyFrameResizeToNode(start.bounds, start.rotation, r);
+      // Il conto avviene nel MONDO (dove sta il frame), poi il box torna nello
+      // spazio del PARENT prima di finire in un op (T1 annidamento): nel modello
+      // x/y/width/height sono relative al parent, e scriverci un box mondo
+      // sposterebbe un nodo annidato del passo del suo container. Per un nodo
+      // figlio di una pagina toLocal è l'identità e localBounds === next.bounds.
+      const localBounds = mapBounds(start.toLocal, next.bounds);
       // L'angolo entra nella mask SOLO quando cambia davvero (un nodo allineato
       // al frame -- il caso normale -- manda esattamente l'op di prima). Cambia
       // quando una scala non uniforme o un ribaltamento girano gli assi del
@@ -399,10 +446,10 @@ export function createSelectTool(): Tool {
       // vecchio, cioè fuori dal riquadro.
       ops.push(
         next.rotation === start.rotation
-          ? makeSetPropsOp(id, next.bounds, ["x", "y", "width", "height"])
+          ? makeSetPropsOp(id, localBounds, ["x", "y", "width", "height"])
           : makeSetPropsOp(
               id,
-              { ...next.bounds, rotation: next.rotation },
+              { ...localBounds, rotation: next.rotation },
               ["x", "y", "width", "height", "rotation"],
             ),
       );
@@ -417,9 +464,13 @@ export function createSelectTool(): Tool {
       // vicenda, ed è un'unica voce di undo.
       const start0 = resizeStartVectors?.[id];
       if (!start0) continue;
+      // resizeVector misura gli ancoraggi contro il box nello spazio LOCALE del
+      // nodo (gli ancoraggi sono locali). Per un figlio di pagina è identico al
+      // box mondo; per un nodo annidato lo si riporta in locale come sopra.
+      const localStart = mapBounds(start.toLocal, start.bounds);
       ops.push(makeSetVectorPathOp(id, resizeVector(
         start0,
-        start.bounds,
+        localStart,
         { signed: r.transform.signedW, start: r.transform.startW },
         { signed: r.transform.signedH, start: r.transform.startH },
       )));
@@ -432,8 +483,14 @@ export function createSelectTool(): Tool {
   function dragOps(e: PointerEvent, ctx: ToolContext, mods: Mods): { ops: Op[]; guides: SnapGuide[] } {
     if (!dragAnchor || !dragStart) return { ops: [], guides: [] };
     const { dx, dy, guides } = dragDelta(e, ctx, mods);
-    const ops = Object.entries(dragStart).map(([id, start]) =>
-      makeSetPropsOp(id, { x: start.x + dx, y: start.y + dy }, ["x", "y"]));
+    const ops = Object.entries(dragStart).map(([id, start]) => {
+      // Lo spostamento (mondo, scatto compreso) passa per la sola parte LINEARE
+      // della trasformazione del parent (mapVector): è un delta, non un punto,
+      // quindi la traslazione del container non lo tocca. Per un figlio di pagina
+      // toLocal è l'identità e (d.x, d.y) === (dx, dy).
+      const d = mapVector(start.toLocal, dx, dy);
+      return makeSetPropsOp(id, { x: start.x + d.x, y: start.y + d.y }, ["x", "y"]);
+    });
     return { ops, guides };
   }
 
@@ -526,14 +583,27 @@ export function createSelectTool(): Tool {
       // farebbe partire un marquee azzerando la selezione.
       const overlay = frameUnderPointer(ctx, world);
       if (overlay?.kind === "resize") {
-        const start: Record<string, { bounds: Bounds; rotation: number }> = {};
-        // La geometria di partenza dei soli nodi vettoriali: serve a resizeOps
-        // per scalare gli ancoraggi insieme al box (vedi resizeStartVectors).
+        // Un op per nodo PIÙ IN ALTO con i GRUPPI ESPANSI nei figli
+        // (transformTargetsOf ∘ topmostOf, T1): un gruppo non ha un box proprio
+        // da riscrivere -- ridimensionarlo è ridimensionare il contenuto -- e un
+        // discendente selezionato col suo container si trasformerebbe due volte,
+        // perché trasformare il container trasforma già il figlio. Il bbox di
+        // GRUPPO resta invece quello dell'INTERA selezione (frameOfSelection),
+        // su cui l'overlay ha disegnato le maniglie appena afferrate.
+        const start: Record<string, { bounds: Bounds; rotation: number; toLocal: Transform }> = {};
+        // La geometria di partenza dei soli nodi vettoriali (T4): serve a
+        // resizeOps per scalare gli ancoraggi insieme al box.
         const startVectors: Record<string, SubPathLite[]> = {};
-        for (const sid of store.selection) {
+        for (const sid of transformTargetsOf(scene, topmostOf(scene, store.selection))) {
           const n = scene.nodes[sid];
           if (!n) continue;
-          start[sid] = { bounds: boundsOfNode(n), rotation: n.rotation };
+          // bounds in MONDO (come il frame e il puntatore) + toLocal per tornare
+          // in parent-local quando si scrive l'op -- vedi resizeStartNodes.
+          start[sid] = {
+            bounds: worldBoundsOfNode(scene, n),
+            rotation: n.rotation,
+            toLocal: parentToLocal(scene, n.parentId),
+          };
           if (n.kind === "vector" && n.vector) startVectors[sid] = n.vector.subpaths;
         }
         resizeHandle = overlay.handle;
@@ -541,7 +611,7 @@ export function createSelectTool(): Tool {
         resizeStartFrame = frameOfSelection(ctx);
         resizeStartNodes = start;
         resizeStartVectors = startVectors;
-        resizeTargets = snapTargets(scene, store.selection);
+        resizeTargets = snapTargets(scene, snapExclude(scene, store.selection));
         resizeStarted = false;
         setCursor(ctx, cursorForHandle(overlay.handle));
         return;
@@ -581,16 +651,31 @@ export function createSelectTool(): Tool {
       // puntatore si muove il gesto è già armato e lo spostamento parte da
       // questo stesso down. Chi decide è il rilascio (onPointerUp), non il down.
       const zoom = ctx.getCamera().zoom;
-      const hitId = hitTest(scene, world.x, world.y, zoom);
+      const hitId = hitTest(scene, world.x, world.y, zoom, store.currentPageId);
       if (hitId && !e.shiftKey) {
         const isDoubleClick =
           lastClick !== null &&
           lastClick.id === hitId &&
           e.timeStamp - lastClick.time <= DOUBLE_CLICK_MS;
-        if (isDoubleClick && scene.nodes[hitId]?.kind === "text") {
+        if (isDoubleClick) {
           // lastClick azzerato: un terzo click non incatena un altro doppio.
           lastClick = null;
-          pendingTextEdit = hitId;
+          // I due significati del doppio click stanno IN FILA, non in
+          // concorrenza: prima si ENTRA nei gruppi (un livello per doppio
+          // click, vedi store/groups.ts::enterTargetOf), e solo quando non c'è
+          // più niente in cui entrare il doppio click torna a essere quello
+          // del testo. Su un testo dentro un gruppo servono quindi due doppi
+          // click: il primo entra, il secondo scrive -- che è anche l'ordine
+          // in cui l'utente li pensa.
+          const enter = enterTargetOf(scene, hitId, store.selection);
+          if (enter) {
+            // SUBITO, non a pointerup: il drag preparato qui sotto deve agire
+            // sul nodo in cui si è appena entrati (doppio click e trascina
+            // sposta il figlio, non il gruppo).
+            store.setSelection([enter]);
+          } else if (scene.nodes[hitId]?.kind === "text") {
+            pendingTextEdit = hitId;
+          }
         } else {
           lastClick = { id: hitId, time: e.timeStamp };
         }
@@ -598,7 +683,10 @@ export function createSelectTool(): Tool {
         lastClick = null;
       }
 
-      const target = pickTarget(scene, world, e.shiftKey, store.selection, zoom);
+      // Selezione LETTA ADESSO e non da `store`: entrare in un gruppo (qui
+      // sopra) l'ha appena cambiata, e `store` è la fotografia di prima. `zoom`
+      // (T4) e currentPageId (T1) entrambi, come in hitTest qui sopra.
+      const target = pickTarget(scene, world, e.shiftKey, useScene.getState().selection, zoom, store.currentPageId);
 
       if (target.mode === "marquee") {
         // shift+click sul vuoto non azzera: è l'inizio di un'aggiunta (unione
@@ -617,11 +705,14 @@ export function createSelectTool(): Tool {
       // target.mode === "single" senza id: nodo già selezionato, nessun
       // cambio -- il drag qui sotto userà la selezione (multipla) esistente.
 
+      // topmostOf come nel resize qui sopra (e nella cancellazione): un
+      // discendente si sposta GIÀ perché si sposta il suo container, quindi un
+      // op suo lo porterebbe a 2*delta dal punto di partenza.
       const selection = useScene.getState().selection;
-      const start: Record<string, { x: number; y: number }> = {};
-      for (const sid of selection) {
+      const start: Record<string, { x: number; y: number; toLocal: Transform }> = {};
+      for (const sid of topmostOf(scene, selection)) {
         const n = scene.nodes[sid];
-        if (n) start[sid] = { x: n.x, y: n.y };
+        if (n) start[sid] = { x: n.x, y: n.y, toLocal: parentToLocal(scene, n.parentId) };
       }
       dragAnchor = world;
       dragStart = start;
@@ -629,7 +720,7 @@ export function createSelectTool(): Tool {
       // È il RIQUADRO della selezione a scattare, non i singoli nodi: con una
       // selezione multipla ogni nodo tirato dalla propria guida la sfalderebbe.
       dragBox = selectionWorldBounds(scene, selection);
-      dragTargets = snapTargets(scene, selection);
+      dragTargets = snapTargets(scene, snapExclude(scene, selection));
     },
 
     onPointerMove(e, ctx) {
@@ -712,7 +803,15 @@ export function createSelectTool(): Tool {
         // px schermo -> unità mondo, così la soglia non dipende dallo zoom.
         const slop = MARQUEE_SLOP_PX / ctx.getCamera().zoom;
         const isClick = box.width < slop && box.height < slop;
-        const inside = scene && !isClick ? nodesInMarquee(scene, box) : [];
+        // Stessa politica del click (store/groups.ts): la banda elastica
+        // seleziona il gruppo, non i suoi figli -- altrimenti sarebbe l'unico
+        // modo per prendere il contenuto di un gruppo senza entrarci. Il
+        // contesto è la selezione PRE-marquee: quella corrente è stata
+        // azzerata a pointerdown.
+        const inside =
+          scene && !isClick
+            ? selectionTargetsOf(scene, nodesInMarquee(scene, box, useScene.getState().currentPageId), preMarqueeSelection ?? [])
+            : [];
         useScene.getState().setSelection(union(marqueeBase ?? [], inside));
         resetMarquee();
         return;
@@ -742,6 +841,39 @@ export function createSelectTool(): Tool {
         cancelActiveGesture();
         return;
       }
+      // Ctrl/Cmd+G raggruppa la selezione, Ctrl/Cmd+Shift+G la separa. Un
+      // GESTO ciascuno: gli op (createNode + N reparentNode, oppure N
+      // reparentNode + deleteNode) vanno tutti in un solo endGesture, quindi un
+      // solo invio in rete e UNA voce di undo -- un Ctrl+Z disfa il
+      // raggruppamento intero, non l'ultimo figlio riparentato.
+      //
+      // Sul tool e non sulla finestra come undo/redo (ui/App.tsx): raggruppare
+      // è un'operazione sulla SELEZIONE, cioè roba di questo tool, esattamente
+      // come Delete qui sotto -- e toolManager filtra già i tasti quando il
+      // fuoco è in un campo di testo.
+      if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
+        // Sempre preventDefault: in un browser Ctrl+G è "trova successivo".
+        e.preventDefault();
+        // Un drag o un marquee a metà vanno abbandonati PRIMA, per la stessa
+        // ragione di Delete qui sotto: un gesto aperto ne renderebbe un altro
+        // annidato (beginGesture avvisa e tiene il primo) e il pointerup
+        // successivo troverebbe uno stato del tool ormai stale.
+        cancelActiveGesture();
+        const store = useScene.getState();
+        const scene = store.scene;
+        if (!scene) return;
+        const res = e.shiftKey ? ungroupOps(scene, store.selection) : groupOps(scene, store.selection);
+        // Niente da raggruppare (selezione vuota) o niente da separare (nessun
+        // gruppo selezionato): nessun gesto, nessun op, nessuna voce di undo.
+        if (!res) return;
+        store.beginGesture();
+        // La selezione voluta PRIMA di chiudere: endGesture la riconcilia
+        // contro la scena finale, quindi può già nominare il gruppo che gli op
+        // stanno per creare.
+        store.setSelection(res.selection);
+        store.endGesture(res.ops);
+        return;
+      }
       if (e.key === "Delete" || e.key === "Backspace") {
         // Un drag o un marquee possono essere a metà (pulsante ancora premuto)
         // quando arriva il tasto: vanno abbandonati PRIMA di cancellare, così
@@ -750,7 +882,14 @@ export function createSelectTool(): Tool {
         // (vedi commento su cancelActiveGesture più sopra).
         cancelActiveGesture();
         const store = useScene.getState();
-        const ids = store.selection;
+        const scene = store.scene;
+        if (!scene) return;
+        // Un op per nodo TOPMOST, non per id selezionato: deleteNode cascata
+        // sul sottoalbero, quindi un figlio selezionato insieme al suo gruppo
+        // è già sparito quando il suo op arriva. Vedi topmostOf -- senza la
+        // potatura il secondo op viene rifiutato dal server E l'intero gesto
+        // resta senza voce di undo.
+        const ids = topmostOf(scene, store.selection);
         if (ids.length === 0) return;
         store.beginGesture();
         store.endGesture(ids.map((id) => makeDeleteOp(id)));

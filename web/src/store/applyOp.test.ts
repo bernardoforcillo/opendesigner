@@ -45,6 +45,40 @@ describe("applyOp", () => {
     expect(s.nodes["n1"].kind).toBe("ellipse");
   });
 
+  // Un gruppo è un CONTENITORE, non una forma: il oneof `shape` dice cosa un
+  // nodo è, e "group" ci sta dentro come le altre (proto: GroupNode = 33).
+  it("creates a group node", () => {
+    const node = create(NodeSchema, {
+      id: "g1", parentId: "page1", orderKey: "a0", name: "Gruppo", visible: true, opacity: 1,
+      shape: { case: "group", value: {} },
+    });
+    const op = create(OpSchema, { opId: "op-g1", docId: "doc1", kind: { case: "createNode", value: { node } } });
+    const s = applyOp(emptyScene("doc1", "Untitled"), op);
+    expect(s.nodes["g1"].kind).toBe("group");
+  });
+
+  // Parità con core.applySetProps (Go), che risponde ErrNotRectNode su un
+  // gruppo: un gruppo non ha niente da riempire, quindi nessun angolo da
+  // arrotondare. L'op è rifiutato in BLOCCO -- nemmeno la "x" della stessa mask
+  // si muove.
+  it("rejects corner_radius on a group, x included", () => {
+    const node = create(NodeSchema, {
+      id: "g1", parentId: "page1", orderKey: "a0", name: "Gruppo", visible: true, opacity: 1,
+      shape: { case: "group", value: {} },
+    });
+    let s = applyOp(emptyScene("doc1", "Untitled"),
+      create(OpSchema, { opId: "c", docId: "doc1", kind: { case: "createNode", value: { node } } }));
+    const before = s;
+    s = applyOp(s, create(OpSchema, { opId: "r", docId: "doc1", kind: { case: "setProps", value: {
+      id: "g1",
+      patch: create(NodeSchema, { x: 42, shape: { case: "rect", value: { cornerRadius: 12 } } }),
+      mask: { paths: ["x", "corner_radius"] },
+    } } }));
+    expect(s).toBe(before);
+    expect(s.nodes["g1"].x).toBe(0);
+    expect(s.nodes["g1"].kind).toBe("group");
+  });
+
   it("moves via setProperties + mask", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
     const move = create(OpSchema, { opId: "m", docId: "doc1", kind: { case: "setProps", value: {
@@ -110,6 +144,127 @@ describe("applyOp", () => {
     // partially applied here.
     expect(s.nodes["n1"].x).toBe(0);
     expect(s.nodes["n1"].y).toBe(0);
+  });
+});
+
+// --- albero: parent, cascata, riparentazione -------------------------------
+// Speculari a internal/core/tree_test.go. Le fixture in testdata/golden/
+// (cascade_delete, reparent, reparent_cycle_rejected, create_orphan_rejected)
+// fanno girare gli STESSI casi da entrambi i lati; questi test coprono il lato
+// TS con la granularità che una fixture non ha (quale stato resta invariato).
+
+function createChildOp(id: string, parentId: string, orderKey = "a1") {
+  const node = create(NodeSchema, {
+    id, parentId, orderKey, name: id, visible: true, opacity: 1,
+    x: 0, y: 0, width: 10, height: 10,
+    shape: { case: "rect", value: { cornerRadius: 0 } },
+  });
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+function reparentOp(id: string, newParentId: string, orderKey: string) {
+  return create(OpSchema, {
+    opId: `rp-${id}`, docId: "doc1",
+    kind: { case: "reparentNode", value: { id, newParentId, orderKey } },
+  });
+}
+
+//   page1
+//   ├── g1
+//   │   ├── c1
+//   │   │   └── d1
+//   │   └── c2
+//   └── other
+function treeScene() {
+  return [
+    createChildOp("g1", "page1", "a1"),
+    createChildOp("c1", "g1", "a1"),
+    createChildOp("d1", "c1", "a1"),
+    createChildOp("c2", "g1", "a2"),
+    createChildOp("other", "page1", "a2"),
+  ].reduce((s, op) => applyOp(s, op), emptyScene("doc1", "Untitled"));
+}
+
+describe("applyOp: createNode e il parent", () => {
+  it("accetta un parent che è un NODO (annidamento)", () => {
+    const s = applyOp(applyOp(emptyScene("doc1", "Untitled"), createChildOp("g1", "page1")), createChildOp("c1", "g1"));
+    expect(s.nodes["c1"].parentId).toBe("g1");
+  });
+
+  it("rifiuta un parent inesistente (parità con ErrParentNotFound in Go)", () => {
+    const s = emptyScene("doc1", "Untitled");
+    // Il server rifiuta l'op: crearlo qui vorrebbe dire tenere in locale un
+    // nodo che nessuna pagina raggiunge e che il documento autorevole non ha.
+    expect(applyOp(s, createChildOp("n1", "ghost"))).toEqual(s);
+  });
+
+  it("rifiuta un parent vuoto", () => {
+    const s = emptyScene("doc1", "Untitled");
+    expect(applyOp(s, createChildOp("n1", ""))).toEqual(s);
+  });
+});
+
+describe("applyOp: deleteNode a cascata", () => {
+  it("cancella il nodo E tutti i discendenti", () => {
+    const s = applyOp(treeScene(), create(OpSchema, {
+      opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "g1" } },
+    }));
+    expect(Object.keys(s.nodes)).toEqual(["other"]);
+  });
+
+  it("cancellare una foglia non tocca i fratelli", () => {
+    const s = applyOp(treeScene(), create(OpSchema, {
+      opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "c2" } },
+    }));
+    expect(Object.keys(s.nodes).sort()).toEqual(["c1", "d1", "g1", "other"]);
+  });
+
+  it("id inesistente: scena invariata (ErrNodeNotFound in Go)", () => {
+    const s = treeScene();
+    expect(applyOp(s, create(OpSchema, {
+      opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "ghost" } },
+    }))).toEqual(s);
+  });
+});
+
+describe("applyOp: reparentNode", () => {
+  it("sposta il nodo e riscrive la order key; il sottoalbero lo segue", () => {
+    const s = applyOp(treeScene(), reparentOp("c1", "other", "a9"));
+    expect(s.nodes["c1"].parentId).toBe("other");
+    expect(s.nodes["c1"].orderKey).toBe("a9");
+    // I figli puntano al nodo, non al nonno: nessuno li riscrive.
+    expect(s.nodes["d1"].parentId).toBe("c1");
+  });
+
+  it("accetta una PAGINA come nuovo parent", () => {
+    const s = applyOp(treeScene(), reparentOp("d1", "page1", "a3"));
+    expect(s.nodes["d1"].parentId).toBe("page1");
+  });
+
+  it("stesso parent + nuova chiave = riordino fra pari", () => {
+    const s = applyOp(treeScene(), reparentOp("c1", "g1", "a3"));
+    expect(s.nodes["c1"].parentId).toBe("g1");
+    expect(s.nodes["c1"].orderKey).toBe("a3");
+  });
+
+  it.each([
+    ["se stesso", "g1", "g1"],
+    ["un figlio diretto", "g1", "c1"],
+    ["un discendente profondo", "g1", "d1"],
+  ])("rifiuta il ciclo: %s (parità con ErrCycle in Go)", (_name, id, parent) => {
+    const s = treeScene();
+    // Rifiuto in BLOCCO: nemmeno la order key si muove.
+    expect(applyOp(s, reparentOp(id, parent, "a9"))).toEqual(s);
+  });
+
+  it("rifiuta un nuovo parent inesistente", () => {
+    const s = treeScene();
+    expect(applyOp(s, reparentOp("c1", "ghost", "a9"))).toEqual(s);
+  });
+
+  it("rifiuta un nodo inesistente", () => {
+    const s = treeScene();
+    expect(applyOp(s, reparentOp("ghost", "page1", "a9"))).toEqual(s);
   });
 });
 
@@ -206,12 +361,18 @@ describe("applyOp: corner_radius", () => {
 // modo di scriverla oggi (il generato non ha ancora GroupNode) ed è fedele a ciò
 // che il decoder produrrà il giorno in cui ce l'avrà: `shape.case` valorizzato
 // con un nome che store/types.ts non elenca.
+// Un Node con una forma che QUESTO build non sa mappare su un NodeLite["kind"].
+// group/frame sono ORA forme conosciute (traccia 1), quindi non servono più da
+// esempio di "sconosciuto": si fabbrica un ramo del oneof che il modello non
+// nomina (`instance`, riservato nel proto per una traccia futura). kindOf ci
+// ricade su "unknown" e toNodeLite/toPbNode lo devono conservare OPACO, senza
+// appiattirlo su un rettangolo.
 function nodeWithUnknownShape(id: string) {
   const n = create(NodeSchema, {
-    id, parentId: "page1", orderKey: "a0", name: "Group", visible: true, opacity: 1,
+    id, parentId: "page1", orderKey: "a0", name: "Sconosciuto", visible: true, opacity: 1,
     x: 10, y: 20, width: 100, height: 80,
   });
-  (n as unknown as { shape: unknown }).shape = { case: "group", value: { children: ["c1"] } };
+  (n as unknown as { shape: unknown }).shape = { case: "instance", value: { children: ["c1"] } };
   return n;
 }
 
@@ -260,14 +421,15 @@ describe("applyOp: forma sconosciuta", () => {
     expect(applyOp(s, setText)).toEqual(s);
   });
 
-  it("toPbNode la rimette dov'era: un undo non converte un GroupNode in rettangolo", () => {
+  it("toPbNode la rimette dov'era: un undo non converte una forma sconosciuta in rettangolo", () => {
     // history.invertOp ricostruisce il Node da NodeLite per invertire una
     // delete. Con il ripiego su "rect" il nodo tornava in vita come RETTANGOLO
     // -- un cambio di forma silenzioso dentro un Ctrl+Z, e nessun modo di
-    // accorgersene se non guardando il documento del server.
+    // accorgersene se non guardando il documento del server. Il ramo opaco
+    // (NodeLite.unknownShape) lo rimette esattamente dov'era.
     const pb = nodeWithUnknownShape("g1");
     const back = toPbNode(toNodeLite(pb));
-    expect(back.shape.case).toBe("group");
+    expect(back.shape.case).toBe("instance");
     expect(back.shape.value).toEqual({ children: ["c1"] });
     // ...e il resto del nodo sopravvive al giro come per ogni altra forma.
     expect(back).toMatchObject({ id: "g1", x: 10, y: 20, width: 100, height: 80 });
@@ -493,5 +655,113 @@ describe("applyOp: setVectorPath", () => {
     applyOp(s, setVectorPathOp({ id: "v1", subpaths: [{ anchors: [], closed: true }] }));
     expect(s.nodes["v1"].vector?.subpaths).toBe(before);
     expect(before).toEqual([{ anchors: RICH_ANCHORS, closed: false }]);
+  });
+});
+
+// ---------------------------------------------------------------------------
+// FRAME (proto: FrameNode = 34) — un contenitore CON geometria propria.
+// ---------------------------------------------------------------------------
+
+function createFrameOp(id: string, clipsContent: boolean, parentId = "page1") {
+  const node = create(NodeSchema, {
+    id, parentId, orderKey: "a0", name: "Frame", visible: true, opacity: 1,
+    x: 10, y: 10, width: 200, height: 150,
+    shape: { case: "frame", value: { clipsContent } },
+  });
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
+}
+
+describe("applyOp — frame", () => {
+  it("crea un frame con il suo box e il suo clipping", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", true));
+    expect(s.nodes["f1"].kind).toBe("frame");
+    expect(s.nodes["f1"].clipsContent).toBe(true);
+    // Il box è SUO (a differenza di un gruppo, i cui bounds sono l'unione dei
+    // figli): arriva dal createNode e resta lì.
+    expect(s.nodes["f1"].width).toBe(200);
+  });
+
+  it("clipsContent false è un valore legittimo, non 'non impostato'", () => {
+    const s = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", false));
+    expect(s.nodes["f1"].kind).toBe("frame");
+    expect(s.nodes["f1"].clipsContent).toBe(false);
+  });
+
+  // Parità con core.applySetProps (Go), che risponde ErrNotRectNode: un frame è
+  // disegnato come una forma ma la sua forma è il FrameNode, e corner_radius
+  // vive dentro RectNode. L'op è rifiutato in BLOCCO, "x" compresa.
+  it("rifiuta corner_radius su un frame, x inclusa", () => {
+    const before = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", true));
+    const after = applyOp(before, create(OpSchema, { opId: "r", docId: "doc1", kind: { case: "setProps", value: {
+      id: "f1",
+      patch: create(NodeSchema, { x: 999, shape: { case: "rect", value: { cornerRadius: 12 } } }),
+      mask: { paths: ["x", "corner_radius"] },
+    } } }));
+    expect(after).toEqual(before);
+    expect(after.nodes["f1"].kind).toBe("frame");
+  });
+});
+
+// ---------------------------------------------------------------------------
+// PAGINE — i container RADICE del documento (parità con core.applyCreatePage /
+// applyDeletePage / applyRenamePage). Le fixture golden provano la parità
+// end-to-end; questi test fissano il comportamento visto dal client, compresa
+// l'identità dell'oggetto restituito su un op rifiutato (un oggetto nuovo
+// sveglierebbe i selettori per niente).
+// ---------------------------------------------------------------------------
+
+function createPageOp(id: string, name: string) {
+  return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createPage", value: { page: { id, name } } } });
+}
+
+function deletePageOp(id: string) {
+  return create(OpSchema, { opId: "del-" + id, docId: "doc1", kind: { case: "deletePage", value: { id } } });
+}
+
+function renamePageOp(id: string, name: string) {
+  return create(OpSchema, { opId: "ren-" + id, docId: "doc1", kind: { case: "renamePage", value: { id, name } } });
+}
+
+describe("applyOp — pagine", () => {
+  it("aggiunge la pagina IN CODA e la rende un parent valido", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
+    expect(s.pages).toEqual([{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }]);
+    s = applyOp(s, createChildOp("n1", "page2"));
+    expect(s.nodes["n1"]?.parentId).toBe("page2");
+  });
+
+  it("rifiuta un id già preso da una pagina o da un NODO (parità: ErrPageExists)", () => {
+    const base = applyOp(applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2")), createChildOp("n1", "page1"));
+    // Stesso OGGETTO, non solo stesso contenuto: un op rifiutato non deve
+    // svegliare i sottoscrittori dello store.
+    expect(applyOp(base, createPageOp("page2", "Doppione"))).toBe(base);
+    expect(applyOp(base, createPageOp("n1", "Id di un nodo"))).toBe(base);
+    expect(applyOp(base, createPageOp("", "Senza id"))).toBe(base);
+  });
+
+  it("cancella la pagina e TUTTI i suoi nodi a cascata, lasciando in pace le altre", () => {
+    let s = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
+    s = applyOp(s, createChildOp("g1", "page1"));
+    s = applyOp(s, createChildOp("c1", "g1"));
+    s = applyOp(s, createChildOp("d1", "c1"));
+    s = applyOp(s, createChildOp("keep", "page2"));
+    s = applyOp(s, deletePageOp("page1"));
+    expect(s.pages).toEqual([{ id: "page2", name: "Page 2" }]);
+    expect(Object.keys(s.nodes)).toEqual(["keep"]);
+  });
+
+  it("non cancella l'ULTIMA pagina (parità: ErrLastPage) né una inesistente", () => {
+    const base = applyOp(emptyScene("doc1", "Untitled"), createChildOp("n1", "page1"));
+    expect(applyOp(base, deletePageOp("page1"))).toBe(base);
+    expect(applyOp(base, deletePageOp("ghost"))).toBe(base);
+  });
+
+  it("rinomina una pagina, e ignora un id inesistente (parità: ErrPageNotFound)", () => {
+    const base = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
+    const renamed = applyOp(base, renamePageOp("page2", "Copertina"));
+    expect(renamed.pages).toEqual([{ id: "page1", name: "Page 1" }, { id: "page2", name: "Copertina" }]);
+    expect(applyOp(base, renamePageOp("ghost", "x"))).toBe(base);
+    // Il nome vuoto è un valore come un altro: il ripiego è della UI.
+    expect(applyOp(base, renamePageOp("page2", "")).pages[1].name).toBe("");
   });
 });

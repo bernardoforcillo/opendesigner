@@ -3,6 +3,7 @@ import { create } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/brawt/v1/brawt_pb";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
 import { useScene } from "./store";
+import { parentExists } from "./tree";
 import { emptyScene } from "./types";
 import { vectorBounds } from "./vectorGeometry";
 import type { BoxLite } from "./vectorGeometry";
@@ -66,6 +67,35 @@ class ManualSync {
   }
 }
 
+// Doppio di un server che VALIDA il container come core.Apply: un createNode
+// (o un reparent) verso un parent che il documento confermato non contiene
+// viene RIFIUTATO con ErrParentNotFound (internal/core/apply.go); tutto il
+// resto atterra e viene ecoato subito, come FakeSync. Serve dove il rifiuto non
+// deve essere una scelta del test ma una CONSEGUENZA dell'albero: è ciò che
+// succede quando una voce di undo ricrea un nodo dentro un container che un
+// altro client ha appena cancellato.
+class ValidatingSync {
+  sent: Op[] = [];
+  submit(op: Op) {
+    this.sent.push(op);
+    const confirmed = useScene.getState().confirmed!;
+    // Le stesse due dipendenze che core.Apply valida contro l'albero (vedi
+    // requiredParent in store.ts).
+    const parent =
+      op.kind.case === "createNode"
+        ? (op.kind.value.node?.parentId ?? null)
+        : op.kind.case === "reparentNode"
+          ? op.kind.value.newParentId
+          : null;
+    useScene.getState().applyPending(op);
+    if (parent !== null && !parentExists(confirmed, parent)) {
+      useScene.getState().rejectPending(op.opId, "parent not found");
+      return;
+    }
+    useScene.getState().apply(op);
+  }
+}
+
 // Il nodo che un op di cancellazione bersaglia (null se non è un deleteNode):
 // serve a distinguere QUALE voce di undo è stata consumata.
 function deletedId(op: Op): string | null {
@@ -111,6 +141,38 @@ function deleteOp(id: string): Op {
   return create(OpSchema, {
     opId: `del-${id}`, docId: "doc1",
     kind: { case: "deleteNode", value: { id } },
+  });
+}
+
+// Un nodo DENTRO un altro nodo: la scena non è più piatta, e un deleteNode
+// sull'antenato porta via anche questo (cascata).
+function createChildOp(id: string, parentId: string, orderKey: string): Op {
+  return create(OpSchema, {
+    opId: "new-" + id, docId: "doc1",
+    kind: { case: "createNode", value: { node: create(NodeSchema, {
+      id, parentId, orderKey, name: id, visible: true, opacity: 1,
+      x: 0, y: 0, width: 10, height: 10,
+      shape: { case: "rect", value: { cornerRadius: 0 } },
+    }) } },
+  });
+}
+
+// Riordino fra pari: un CAMPO come gli altri (mask "order_key"), a differenza
+// della riparentazione, che ha un op tutto suo.
+function reorderOp(id: string, orderKey: string): Op {
+  return create(OpSchema, {
+    opId: `ord-${id}-${orderKey}`, docId: "doc1",
+    kind: {
+      case: "setProps",
+      value: { id, patch: create(NodeSchema, { orderKey }), mask: { paths: ["order_key"] } },
+    },
+  });
+}
+
+function reparentOp(id: string, newParentId: string, orderKey: string): Op {
+  return create(OpSchema, {
+    opId: `rep-${id}`, docId: "doc1",
+    kind: { case: "reparentNode", value: { id, newParentId, orderKey } },
   });
 }
 
@@ -221,6 +283,53 @@ function boxAndInk(id: string): { box: BoxLite; ink: BoxLite } {
     box: { x: 0, y: 0, width: n.width, height: n.height },
     ink: { x: b.x, y: b.y, width: b.width, height: b.height },
   };
+}
+
+// --- op di pagina: i container RADICE, non un nodo -------------------------
+function createPageOp(id: string, name: string): Op {
+  return create(OpSchema, {
+    opId: "cp-" + id, docId: "doc1",
+    kind: { case: "createPage", value: { page: { id, name } } },
+  });
+}
+
+function deletePageOp(id: string): Op {
+  return create(OpSchema, {
+    opId: "dp-" + id, docId: "doc1",
+    kind: { case: "deletePage", value: { id } },
+  });
+}
+
+function renamePageOp(id: string, name: string): Op {
+  return create(OpSchema, {
+    opId: `rp-${id}-${name}`, docId: "doc1",
+    kind: { case: "renamePage", value: { id, name } },
+  });
+}
+
+// Gli id che una voce RICREA, nell'ordine in cui li ricrea.
+function createdIds(entry: readonly Op[]): string[] {
+  return entry.flatMap((op) =>
+    op.kind.case === "createNode" && op.kind.value.node ? [op.kind.value.node.id] : []);
+}
+
+// L'INVARIANTE che una voce di ripristino deve soddisfare per essere
+// applicabile: ogni createNode trova il proprio parent già esistente -- la
+// pagina, un nodo che l'op remoto non ha toccato, o un nodo ricreato PRIMA
+// nella stessa voce. È esattamente ciò che core.applyCreate pretende
+// (ErrParentNotFound), quindi una voce che lo viola è una voce che il server
+// rifiuterà a metà.
+function expectParentsSatisfied(entry: readonly Op[]) {
+  const scene = useScene.getState().scene!;
+  const exists = new Set<string>(Object.keys(scene.nodes));
+  for (const p of scene.pages) exists.add(p.id);
+  for (const op of entry) {
+    if (op.kind.case !== "createNode") continue;
+    const node = op.kind.value.node!;
+    expect({ id: node.id, parent: node.parentId, esiste: exists.has(node.parentId) })
+      .toEqual({ id: node.id, parent: node.parentId, esiste: true });
+    exists.add(node.id);
+  }
 }
 
 // Wrapper: apre e chiude un gesto in un colpo solo, come farebbe un tool a
@@ -1254,5 +1363,417 @@ describe("undo/redo", () => {
     useScene.getState().setSync(sync);
     useScene.getState().redo();
     expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["n1", "n2"]);
+  });
+  // --- l'albero: cascata e storia -------------------------------------------
+  // deleteNode cancella un SOTTOALBERO (core.applyDelete / applyOp), quindi
+  // l'inverso di UN op sono molte createNode. È l'unico caso in cui la voce di
+  // undo è più lunga del gesto che l'ha prodotta, e il posto dove si rompeva
+  // l'ipotesi "un op diretto, un inverso" su cui poggiava invertChain.
+
+  it("un gesto che cancella un gruppo si annulla in UNA voce, con tutto il sottoalbero", () => {
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("c1", "g1", "a1"),
+      createChildOp("d1", "c1", "a1"),
+      createChildOp("c2", "g1", "a2"),
+    ]);
+    const before = useScene.getState().scene;
+
+    gesture([deleteOp("g1")]); // un op solo: il server cascata da sé
+    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+
+    // Una voce sola (un gesto = un Ctrl+Z), fatta di quattro createNode.
+    const entry = useScene.getState().undoStack[1];
+    expect(entry).toHaveLength(4);
+    expect(entry.every((op) => op.kind.case === "createNode")).toBe(true);
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene).toEqual(before);
+
+    // ...e il redo ricancella tutto con l'op singolo di partenza.
+    useScene.getState().redo();
+    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+  });
+
+  it("una cancellazione REMOTA a cascata invalida anche le voci che toccano i DISCENDENTI", () => {
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("c1", "g1", "a1"),
+    ]);
+    gesture([moveOp("c1", 40, 40)]); // voce: [setProps c1 x,y]
+    expect(useScene.getState().undoStack).toHaveLength(2);
+
+    // Un altro client cancella il GRUPPO: l'op nomina g1, ma porta via c1.
+    useScene.getState().apply(deleteOp("g1"));
+
+    // Senza l'espansione della cascata la voce su c1 resterebbe lì, e il
+    // Ctrl+Z successivo manderebbe un setProps su un nodo che non esiste più
+    // (rifiuto dal server, banner rosso, voce bruciata).
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(0);
+  });
+
+  // Una voce che RIPRISTINA una cascata ([createNode g1, c1, d1]) vale solo
+  // finché ogni createNode trova il proprio parent già ricreato. Filtrarla
+  // op-per-op contro gli op resi stale la spezza: un op remoto tocca UN nodo,
+  // quindi marca la sua createNode e non quelle dei suoi figli. Vedi pruneEntry
+  // in store.ts.
+
+  it("un op remoto su un DISCENDENTE porta via dalla voce di ripristino anche i suoi figli", () => {
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("c1", "g1", "a1"),
+      createChildOp("d1", "c1", "a1"),
+    ]);
+    gesture([deleteOp("g1")]); // voce: [createNode g1, createNode c1, createNode d1]
+    expect(useScene.getState().undoStack[1]).toHaveLength(3);
+
+    // Un altro client aveva mosso c1 PRIMA della nostra delete: l'op arriva
+    // ora e rende stale la createNode di c1 -- ma non quella di d1, che ha un
+    // bersaglio diverso e resterebbe nella voce come ORFANA.
+    useScene.getState().apply(moveOp("c1", 5, 5));
+
+    const stack = useScene.getState().undoStack;
+    const entry = stack[stack.length - 1];
+    expect(createdIds(entry)).toEqual(["g1"]);
+    expectParentsSatisfied(entry);
+
+    // E l'undo passa PER INTERO: un solo op sul filo, atterrato, con la sua
+    // voce di redo. Senza la potatura invertChain ritornava null su createNode
+    // d1 (nessun redo registrato) e il server rifiutava l'op con
+    // ErrParentNotFound -- banner rosso e documento a metà.
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(1);
+    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual(["g1"]);
+    expect(useScene.getState().canRedo).toBe(true);
+  });
+
+  it("un op remoto sulla RADICE della cascata porta via l'intera voce di ripristino", () => {
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("c1", "g1", "a1"),
+      createChildOp("d1", "c1", "a1"),
+    ]);
+    gesture([deleteOp("g1")]);
+    const before = useScene.getState().undoStack.length;
+
+    // Stale sulla sola createNode di g1: c1 e d1 non sono bersagli dell'op
+    // remoto, e senza propagazione la voce resterebbe fatta di due createNode
+    // senza il loro container.
+    useScene.getState().apply(moveOp("g1", 5, 5));
+
+    const stack = useScene.getState().undoStack;
+    expect(stack).toHaveLength(before - 1);
+    for (const entry of stack) expectParentsSatisfied(entry);
+
+    // Niente da annullare per quella cancellazione: il Ctrl+Z successivo tocca
+    // il gesto PRECEDENTE (la creazione), non manda mezzo sottoalbero al server.
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent.every((op) => op.kind.case === "deleteNode")).toBe(true);
+  });
+
+  it("un reparent REMOTO invalida un riordino locale dello stesso nodo, non uno spostamento", () => {
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("c1", "g1", "a1"),
+    ]);
+    gesture([moveOp("c1", 40, 40)]);        // voce: [setProps c1 x,y]
+    gesture([reorderOp("c1", "a5")]);       // voce: [setProps c1 order_key]
+    expect(useScene.getState().undoStack).toHaveLength(3);
+
+    useScene.getState().apply(reparentOp("c1", "page1", "a7"));
+
+    // Cade il riordino (scrive order_key, che il reparent riscrive) e cade il
+    // [deleteNode c1] della voce di creazione (cancellerebbe il nodo appena
+    // spostato da un altro). Restano lo spostamento -- x/y non c'entrano con la
+    // riparentazione -- e il [deleteNode g1] della creazione: DOPO il reparent
+    // il gruppo è vuoto, quindi cancellarlo non porta più via c1.
+    const stack = useScene.getState().undoStack;
+    expect(stack).toHaveLength(2);
+    expect(stack[0].map(deletedId)).toEqual(["g1"]);
+    expect(stack[1][0].kind.case === "setProps" && stack[1][0].kind.value.mask?.paths).toEqual(["x", "y"]);
+  });
+
+  // La cascata guarda in DUE direzioni, e le due vogliono due scene diverse
+  // (vedi markStale). Un op remoto che INFILA un nodo in un sottoalbero non
+  // tocca nessun nodo che il documento precedente contenesse: misurata su
+  // quello, una voce che cancella il container non confligge con niente e
+  // sopravvive -- e il Ctrl+Z successivo porta via il nodo dell'altro client
+  // in silenzio, senza nemmeno il banner STALE.
+
+  it("un createNode REMOTO dentro un gruppo invalida la voce che cancellerebbe il gruppo", () => {
+    gesture([createChildOp("g1", "page1", "a1")]); // voce: [deleteNode g1]
+    expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
+
+    // Un altro client crea un nodo DENTRO g1.
+    useScene.getState().apply(createChildOp("c1", "g1", "a1"));
+    expect(useScene.getState().scene!.nodes["c1"]).toBeDefined();
+
+    // Da adesso [deleteNode g1] cascata su c1: non è più annullabile.
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().canUndo).toBe(false);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    // Ctrl+Z non manda niente, e soprattutto non distrugge il nodo altrui.
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(0);
+    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["c1", "g1"]);
+  });
+
+  it("un reparent REMOTO che INFILA un nodo nel gruppo invalida la voce che lo cancellerebbe", () => {
+    gesture([createChildOp("g1", "page1", "a1")]); // voce: [deleteNode g1]
+
+    // Il nodo dell'altro client nasce FUORI da g1: la nostra voce cancella un
+    // gruppo vuoto e resta legittima (invalidarla qui sarebbe buttare via un
+    // passo di annulla per niente).
+    useScene.getState().apply(createChildOp("c1", "page1", "a9"));
+    expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
+    expect(useScene.getState().notice).toBeNull();
+
+    // ...poi lo INFILA dentro g1, e da lì la voce distruggerebbe il suo lavoro.
+    useScene.getState().apply(reparentOp("c1", "g1", "a1"));
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    sync.sent = [];
+    useScene.getState().undo();
+    expect(sync.sent).toHaveLength(0);
+    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["c1", "g1"]);
+  });
+
+  it("un reparent REMOTO che PORTA VIA un nodo dal gruppo lascia in piedi la voce che lo cancella", () => {
+    gesture([createChildOp("g1", "page1", "a1")]);
+    gesture([createChildOp("c1", "g1", "a1")]);
+    expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"], ["c1"]]);
+
+    // Il verso opposto: un altro client tira c1 FUORI da g1.
+    useScene.getState().apply(reparentOp("c1", "page1", "a7"));
+
+    // La voce su c1 muore (il reparent ne riscrive parent e order_key), quella
+    // su g1 no: sul documento NUOVO cancellare g1 non tocca più c1, quindi non
+    // c'è nessun lavoro altrui da riscrivere e il passo di annulla resta.
+    expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["g1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes["c1"]).toMatchObject({ parentId: "page1" });
+  });
+
+  it("una voce di REDO che ricancella un gruppo cade se un remoto ci ha messo dentro qualcosa", () => {
+    gesture([createChildOp("g1", "page1", "a1")]);
+    gesture([deleteOp("g1")]);   // voce di undo: [createNode g1]
+    useScene.getState().undo();  // g1 torna; il redo ha "ricancellalo"
+    expect(useScene.getState().redoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
+
+    // Un altro client lavora dentro g1 mentre il redo è in coda.
+    useScene.getState().apply(createChildOp("c1", "g1", "a1"));
+
+    expect(useScene.getState().redoStack).toHaveLength(0);
+    expect(useScene.getState().canRedo).toBe(false);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    sync.sent = [];
+    useScene.getState().redo();
+    expect(sync.sent).toHaveLength(0);
+    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["c1", "g1"]);
+  });
+
+  // --- la cascata remota porta via anche le DIPENDENZE, non solo i bersagli --
+  // Il confronto per bersaglio guarda il nodo che un op NOMINA. Da quando la
+  // scena è un albero, un op può dipendere da un nodo che non nomina: una
+  // createNode pretende che il proprio CONTAINER esista (ErrParentNotFound), e
+  // quel container può essere finito dentro la cascata di una delete remota
+  // senza che nessun bersaglio lo dica. Vedi requiredParent/markStale in
+  // store.ts.
+
+  it("una cancellazione remota del PARENT invalida la voce che ricreerebbe il figlio", () => {
+    const strict = new ValidatingSync();
+    useScene.getState().setSync(strict);
+
+    gesture([createChildOp("g1", "page1", "a1")]); // A: voce [deleteNode g1]
+    gesture([createChildOp("c1", "g1", "a1")]);    // B: voce [deleteNode c1]
+    gesture([deleteOp("c1")]);                     // C: voce [createNode c1 SOTTO g1]
+    expect(useScene.getState().undoStack).toHaveLength(3);
+    expect(useScene.getState().undoStack.flatMap(createdIds)).toEqual(["c1"]);
+
+    // Un altro client cancella il GRUPPO. La cascata, misurata sul documento su
+    // cui l'op remoto atterra, è il solo g1: c1 lì dentro non c'è già più
+    // (l'abbiamo cancellato noi), quindi nessun bersaglio dell'op remoto NOMINA
+    // c1 -- e la voce C non nomina g1 da nessuna parte.
+    useScene.getState().apply(deleteOp("g1"));
+
+    // ...ma C ricrea c1 DENTRO g1, e g1 non esiste più: la voce non può più
+    // atterrare, quindi non deve restare sullo stack.
+    expect(useScene.getState().undoStack.flatMap(createdIds)).toEqual([]);
+    for (const entry of useScene.getState().undoStack) expectParentsSatisfied(entry);
+    expect(useScene.getState().notice).not.toBeNull();
+
+    // E lo stack DRENA. Senza l'invalidazione, Ctrl+Z mandava createNode c1
+    // sotto un g1 inesistente: il server rifiutava (ErrParentNotFound), il
+    // banner rosso compariva, invertOp ritornava null (nessun redo registrato)
+    // e revertHistory rimetteva C sullo stack -- il Ctrl+Z successivo la
+    // ripescava, per sempre.
+    strict.sent = [];
+    for (let i = 0; i < 5 && useScene.getState().canUndo; i++) useScene.getState().undo();
+    expect(useScene.getState().undoStack).toEqual([]);
+    expect(useScene.getState().lastError).toBeNull();
+  });
+
+  // Il verso opposto della stessa regola: potare una voce SENZA causa perde in
+  // silenzio un passo di annulla dell'utente, che è un difetto pari all'altro.
+  // Solo una delete fa SPARIRE dei nodi; un reparent li lascia tutti in piedi,
+  // solo altrove, quindi ogni container che una voce pretende c'è ancora.
+
+  it("un reparent REMOTO che sposta il container non invalida la voce che ricrea il figlio", () => {
+    const strict = new ValidatingSync();
+    useScene.getState().setSync(strict);
+
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("f1", "page1", "a2"),
+      createChildOp("c1", "g1", "a1"),
+    ]);
+    gesture([deleteOp("c1")]); // voce: [createNode c1 sotto g1]
+
+    // Un altro client infila g1 dentro f1: il container della voce esiste
+    // ancora, ha solo cambiato casa.
+    useScene.getState().apply(reparentOp("g1", "f1", "a1"));
+
+    const stack = useScene.getState().undoStack;
+    expect(stack.flatMap(createdIds)).toEqual(["c1"]);
+    for (const entry of stack) expectParentsSatisfied(entry);
+
+    // ...e il Ctrl+Z ricrea c1 per davvero, sotto g1, dove g1 si trova ADESSO.
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["c1"]).toMatchObject({ parentId: "g1" });
+    expect(useScene.getState().lastError).toBeNull();
+  });
+
+  it("una cancellazione remota ALTROVE non tocca la voce che ricrea sotto un altro container", () => {
+    const strict = new ValidatingSync();
+    useScene.getState().setSync(strict);
+
+    gesture([
+      createChildOp("g1", "page1", "a1"),
+      createChildOp("g2", "page1", "a2"),
+      createChildOp("c1", "g1", "a1"),
+    ]);
+    gesture([deleteOp("c1")]); // voce: [createNode c1 sotto g1]
+
+    // La cascata remota si porta via g2, che con c1 non c'entra nulla: la voce
+    // resta esattamente com'era.
+    useScene.getState().apply(deleteOp("g2"));
+
+    expect(useScene.getState().undoStack.flatMap(createdIds)).toEqual(["c1"]);
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.nodes["c1"]).toMatchObject({ parentId: "g1" });
+    expect(useScene.getState().lastError).toBeNull();
+  });
+});
+
+// --- undo/redo delle AZIONI DI PAGINA --------------------------------------
+// Le pagine sono i container RADICE (un parentId può essere l'id di un nodo o
+// quello di una Page): crearle, rinominarle e cancellarle passa dallo stesso
+// percorso di gesto dei tool (PageBar -> beginGesture/endGesture), quindi vale
+// la stessa regola di tutti gli altri pannelli -- un gesto = una voce di undo.
+// La cancellazione è la più insidiosa: come deleteNode porta via a CASCATA un
+// intero sottoalbero, e senza voce di undo la pagina e i suoi nodi sparirebbero
+// per sempre.
+describe("undo/redo delle azioni di pagina", () => {
+  let sync: FakeSync;
+
+  beforeEach(() => {
+    sync = new FakeSync();
+    useScene.setState({
+      selection: [],
+      marquee: null,
+      gesture: null,
+      undoStack: [],
+      redoStack: [],
+    });
+    useScene.getState().setScene(emptyScene("doc1", "Untitled"));
+    useScene.getState().setSync(sync);
+  });
+
+  it("eliminare una pagina è annullabile: Ctrl+Z ripristina la pagina E i suoi nodi", () => {
+    const st = useScene.getState();
+    // page2 con 3 rettangoli, esattamente lo scenario del finding.
+    gesture([createPageOp("page2", "Page 2")]);
+    gesture([createChildOp("r1", "page2", "a1")]);
+    gesture([createChildOp("r2", "page2", "a2")]);
+    gesture([createChildOp("r3", "page2", "a3")]);
+
+    const before = useScene.getState().scene;
+    expect(before!.pages.map((p) => p.id)).toEqual(["page1", "page2"]);
+    expect(["r1", "r2", "r3"].every((id) => before!.nodes[id])).toBe(true);
+    expect(useScene.getState().undoStack).toHaveLength(4);
+
+    // Elimina page2: la cascata porta via page2 e i suoi 3 nodi.
+    gesture([deletePageOp("page2")]);
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1"]);
+    for (const id of ["r1", "r2", "r3"]) expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+    // La voce di undo del gesto ESISTE: prima del fix invertChain cadeva su null
+    // e il gesto non lasciava nessuna voce, mentre l'op partiva lo stesso.
+    expect(useScene.getState().undoStack).toHaveLength(5);
+
+    // Ctrl+Z: page2 e i 3 rettangoli tornano, identici a com'erano.
+    st.undo();
+    expect(useScene.getState().scene).toEqual(before);
+    expect(useScene.getState().lastError).toBeNull();
+
+    // ...e il redo li ri-cancella (simmetria del gesto).
+    st.redo();
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1"]);
+    for (const id of ["r1", "r2", "r3"]) expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+  });
+
+  it("l'inverso di una eliminazione ricrea la PAGINA prima dei nodi, ogni parent prima dei figli", () => {
+    gesture([createPageOp("page2", "Page 2")]);
+    gesture([createChildOp("g1", "page2", "a1")]);
+    gesture([createChildOp("c1", "g1", "a1")]);
+    gesture([createChildOp("d1", "c1", "a1")]);
+
+    gesture([deletePageOp("page2")]);
+    // La voce di undo è createPage + 3 createNode, in ordine parent-prima:
+    // applicandola, ogni createNode trova il proprio container già ricreato.
+    // (expectParentsSatisfied non serve qui: presuppone la pagina già presente
+    // nella scena, mentre questa voce la RICREA -- la prova che i parent reggono
+    // è il vero Ctrl+Z del test qui sopra, che ricompone la scena senza errori.)
+    const entry = useScene.getState().undoStack[useScene.getState().undoStack.length - 1];
+    expect(entry[0].kind.case).toBe("createPage");
+    expect(createdIds(entry)).toEqual(["g1", "c1", "d1"]);
+  });
+
+  it("creare una pagina è annullabile: Ctrl+Z la rimuove", () => {
+    gesture([createPageOp("page2", "Page 2")]);
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1", "page2"]);
+    expect(useScene.getState().undoStack).toHaveLength(1);
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1"]);
+    expect(useScene.getState().redoStack).toHaveLength(1);
+
+    useScene.getState().redo();
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1", "page2"]);
+  });
+
+  it("rinominare una pagina è annullabile: Ctrl+Z ripristina il nome precedente", () => {
+    gesture([renamePageOp("page1", "Copertina")]);
+    expect(useScene.getState().scene!.pages[0].name).toBe("Copertina");
+
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.pages[0].name).toBe("Page 1");
+
+    useScene.getState().redo();
+    expect(useScene.getState().scene!.pages[0].name).toBe("Copertina");
   });
 });

@@ -5,11 +5,11 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within, cleanup, act, fireEvent } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import type { Op } from "../gen/brawt/v1/brawt_pb";
-import { LayersPanel, layerDisplayName, reorderKey } from "./LayersPanel";
+import { LayersPanel, layerDisplayName, reorderKey, visibleRows } from "./LayersPanel";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import { layersInDrawOrder } from "../store/selectors";
-import type { NodeLite } from "../store/types";
+import type { NodeLite, PageLite } from "../store/types";
 
 // Doppio di SyncClient: registra gli op che finiscono SUL FILO e modella un
 // server che accetta ed ECOA subito (applyPending + apply), come negli altri
@@ -27,7 +27,7 @@ function rectNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): N
   return {
     id, parentId: "page1", orderKey, name: "", visible: true, opacity: 1,
     x: 0, y: 0, width: 100, height: 100, rotation: 0,
-    fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0,
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
     ...over,
   };
 }
@@ -267,6 +267,32 @@ describe("eliminazione", () => {
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
+
+  // deleteNode cancella un SOTTOALBERO (applyOp / core.applyDelete): un figlio
+  // selezionato insieme al suo gruppo non deve produrre un secondo op --
+  // sarebbe rifiutato (il nodo è già sparito nella cascata) e farebbe saltare
+  // la voce di undo dell'INTERO gesto.
+  it("un gruppo E un suo discendente selezionati insieme emettono UN solo deleteNode", async () => {
+    installScene(
+      rectNode("g1", "a0", { name: "G" }),
+      rectNode("c1", "a0", { name: "C", parentId: "g1" }),
+      rectNode("other", "a1", { name: "Other" }),
+    );
+    useScene.getState().setSelection(["g1", "c1"]);
+    render(<LayersPanel />);
+    const user = userEvent.setup();
+    const undoBefore = useScene.getState().undoStack.length;
+
+    await user.click(screen.getByRole("button", { name: "Elimina i livelli selezionati" }));
+
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case === "deleteNode" && sync.sent[0].kind.value.id).toBe("g1");
+    expect(useScene.getState().scene?.nodes.c1).toBeUndefined();
+    expect(useScene.getState().scene?.nodes.other).toBeDefined();
+    // La voce c'è ed è completa: g1 e c1 da ricreare, in un solo Ctrl+Z.
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().undoStack[useScene.getState().undoStack.length - 1]).toHaveLength(2);
+  });
 });
 
 // --- Step 3: il nome mostrato -----------------------------------------------
@@ -282,6 +308,13 @@ describe("layerDisplayName", () => {
 
   it("ricade su 'Ellipse' per un'ellisse senza nome", () => {
     expect(layerDisplayName(ellipseNode("a", "a0", { name: "" }))).toBe("Ellipse");
+  });
+
+  // Un gruppo nasce già con un nome (tools/grouping.ts::GROUP_NAME); questo è
+  // il ripiego per un gruppo rinominato a stringa vuota. Senza il suo ramo
+  // cadrebbe in quello del TESTO e mostrerebbe "Text".
+  it("ricade su 'Group' per un gruppo senza nome", () => {
+    expect(layerDisplayName(rectNode("a", "a0", { name: "", kind: "group" }))).toBe("Group");
   });
 
   it("ricade sul contenuto (troncato) per un nodo testo senza nome", () => {
@@ -630,5 +663,231 @@ describe("reorderKey", () => {
     // rompere l'app durante un trascinamento.
     const dup = [rectNode("x", "a1"), rectNode("y", "a1"), rectNode("z", "a1")];
     expect(reorderKey(dup, 0, 1)).toBeNull();
+  });
+});
+
+// --- Traccia annidamento: albero + drag-per-riparentare --------------------
+
+function groupNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): NodeLite {
+  return { ...rectNode(id, orderKey), kind: "group", name: "", ...over };
+}
+
+function frameNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): NodeLite {
+  return { ...rectNode(id, orderKey), kind: "frame", clipsContent: true, ...over };
+}
+
+// Come installScene, ma con un elenco di pagine esplicito (per i test che
+// cambiano pagina). currentPageId viene ricalcolato da setScene contro le
+// pagine passate.
+function installScenePages(pages: PageLite[], ...nodes: NodeLite[]) {
+  const scene = emptyScene("doc-1", "Untitled");
+  scene.pages = pages;
+  for (const n of nodes) scene.nodes[n.id] = n;
+  useScene.getState().setScene(scene);
+}
+
+// Avvia un trascinamento di `from` (presa la maniglia) e lo porta sopra la
+// riga `onto`, SENZA rilasciare: serve a ispezionare lo stato del pannello a
+// metà drag (bersagli invalidi).
+function dragHover(from: string, onto: string) {
+  const handle = screen.getByRole("button", { name: `Riordina ${from}` });
+  const base = { pointerId: 1, pointerType: "mouse", isPrimary: true };
+  fireEvent.pointerDown(handle, { ...base, button: 0, pressure: 0.5 });
+  fireEvent.pointerMove(rowOf(onto), base);
+}
+
+describe("albero: gerarchia della pagina corrente", () => {
+  it("mostra i figli sotto il container, indentati per profondità", () => {
+    installScene(
+      groupNode("g", "a1", { name: "Gruppo" }),
+      rectNode("c1", "a0", { name: "Figlio1", parentId: "g" }),
+      rectNode("c2", "a1", { name: "Figlio2", parentId: "g" }),
+      rectNode("r", "a0", { name: "Radice" }),
+    );
+    render(<LayersPanel />);
+
+    const labels = rows().map((row) => row.textContent ?? "");
+    const idxG = labels.findIndex((l) => l.includes("Gruppo"));
+    const idxC1 = labels.findIndex((l) => l.includes("Figlio1"));
+    const idxC2 = labels.findIndex((l) => l.includes("Figlio2"));
+    const idxR = labels.findIndex((l) => l.includes("Radice"));
+
+    // Il container prima dei suoi figli, i figli prima del fratello di sfondo.
+    expect(idxG).toBeLessThan(idxC2);
+    expect(idxC2).toBeLessThan(idxC1); // fra i figli, primo piano (c2, a1) in cima
+    expect(idxC1).toBeLessThan(idxR);
+
+    // Profondità: i figli sono un livello più dentro del container.
+    expect(rowOf("Gruppo")).toHaveAttribute("data-depth", "0");
+    expect(rowOf("Radice")).toHaveAttribute("data-depth", "0");
+    expect(rowOf("Figlio1")).toHaveAttribute("data-depth", "1");
+    expect(rowOf("Figlio2")).toHaveAttribute("data-depth", "1");
+  });
+
+  it("espandi/collassa è stato di vista: nasconde i figli senza op né undo", async () => {
+    installScene(
+      groupNode("g", "a1", { name: "Gruppo" }),
+      rectNode("c", "a0", { name: "Figlio", parentId: "g" }),
+    );
+    render(<LayersPanel />);
+    const user = userEvent.setup();
+    expect(screen.getByText("Figlio")).toBeInTheDocument();
+
+    await user.click(screen.getByRole("button", { name: "Comprimi Gruppo" }));
+    expect(screen.queryByText("Figlio")).toBeNull();
+
+    await user.click(screen.getByRole("button", { name: "Espandi Gruppo" }));
+    expect(screen.getByText("Figlio")).toBeInTheDocument();
+
+    // Nessun op sul filo, nessuna voce di undo: è stato di vista come la camera.
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+  });
+
+  it("cambiare pagina cambia l'albero", () => {
+    installScenePages(
+      [{ id: "page1", name: "P1" }, { id: "page2", name: "P2" }],
+      rectNode("a", "a0", { name: "SuUno", parentId: "page1" }),
+      rectNode("b", "a0", { name: "SuDue", parentId: "page2" }),
+    );
+    useScene.getState().setCurrentPage("page1");
+    render(<LayersPanel />);
+
+    expect(screen.getByText("SuUno")).toBeInTheDocument();
+    expect(screen.queryByText("SuDue")).toBeNull();
+
+    act(() => {
+      useScene.getState().setCurrentPage("page2");
+    });
+
+    expect(screen.queryByText("SuUno")).toBeNull();
+    expect(screen.getByText("SuDue")).toBeInTheDocument();
+  });
+});
+
+describe("albero: drag per riparentare", () => {
+  it("trascinare DENTRO un gruppo emette UN ReparentNode al nuovo parent, una voce di undo", () => {
+    installScene(
+      groupNode("g", "a1", { name: "Gruppo" }),
+      rectNode("r", "a0", { name: "Rett" }),
+    );
+    render(<LayersPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    dragOnto("Rett", "Gruppo");
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("reparentNode");
+    if (op.kind.case === "reparentNode") {
+      expect(op.kind.value.id).toBe("r");
+      expect(op.kind.value.newParentId).toBe("g");
+    }
+    expect(useScene.getState().scene?.nodes.r.parentId).toBe("g");
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+    expect(useScene.getState().gesture).toBeNull();
+  });
+
+  it("trascinare DENTRO un frame riparenta al frame", () => {
+    installScene(
+      frameNode("f", "a1", { name: "Frame" }),
+      rectNode("r", "a0", { name: "Rett" }),
+    );
+    render(<LayersPanel />);
+
+    dragOnto("Rett", "Frame");
+
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case).toBe("reparentNode");
+    if (sync.sent[0].kind.case === "reparentNode") {
+      expect(sync.sent[0].kind.value.newParentId).toBe("f");
+    }
+    expect(useScene.getState().scene?.nodes.r.parentId).toBe("f");
+  });
+
+  it("trascinare fuori, su una radice di pagina, riparenta alla pagina con orderKey fra i vicini", () => {
+    installScene(
+      groupNode("g", "a1", { name: "Gruppo" }),
+      rectNode("c", "a0", { name: "Figlio", parentId: "g" }),
+      rectNode("r", "a0", { name: "Radice" }),
+    );
+    render(<LayersPanel />);
+    const undoBefore = useScene.getState().undoStack.length;
+
+    // Il figlio, trascinato su una radice di pagina, esce dal gruppo e diventa
+    // radice a fianco di essa.
+    dragOnto("Figlio", "Radice");
+
+    expect(sync.sent).toHaveLength(1);
+    const op = sync.sent[0];
+    expect(op.kind.case).toBe("reparentNode");
+    if (op.kind.case === "reparentNode") {
+      expect(op.kind.value.id).toBe("c");
+      expect(op.kind.value.newParentId).toBe("page1");
+      // fra i vicini: sopra "r" (a0) e sotto "g" (a1).
+      const key = op.kind.value.orderKey;
+      expect(key > "a0").toBe(true);
+      expect(key < "a1").toBe(true);
+    }
+    expect(useScene.getState().scene?.nodes.c.parentId).toBe("page1");
+    expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
+  });
+
+  it("un drop che farebbe un ciclo NON è offerto e NON produce nulla", () => {
+    installScene(
+      groupNode("g", "a1", { name: "Gruppo" }),
+      rectNode("c", "a0", { name: "Figlio", parentId: "g" }),
+    );
+    render(<LayersPanel />);
+
+    // A metà drag il discendente è marcato come bersaglio non valido.
+    dragHover("Gruppo", "Figlio");
+    expect(rowOf("Figlio")).toHaveAttribute("data-drop-invalid", "true");
+
+    const base = { pointerId: 1, pointerType: "mouse", isPrimary: true };
+    fireEvent.pointerUp(window, { ...base, pressure: 0 });
+
+    // Calare un gruppo dentro un proprio figlio è rifiutato: niente op, niente
+    // undo, il gruppo resta radice.
+    expect(sync.sent).toHaveLength(0);
+    expect(useScene.getState().undoStack).toHaveLength(0);
+    expect(useScene.getState().scene?.nodes.g.parentId).toBe("page1");
+  });
+
+  it("trascinare su un fratello (stesso parent) resta un riordino: SetProperties order_key", () => {
+    // Due radici di pagina non-container: dropare l'una sull'altra è un puro
+    // riordino, come nella lista piatta -- il percorso di solo-riordino esiste
+    // già e va usato al posto di un ReparentNode.
+    installScene(
+      rectNode("a", "a0", { name: "A" }),
+      rectNode("b", "a1", { name: "B" }),
+    );
+    render(<LayersPanel />);
+
+    dragOnto("B", "A");
+
+    expect(sync.sent).toHaveLength(1);
+    expect(sync.sent[0].kind.case).toBe("setProps");
+    if (sync.sent[0].kind.case === "setProps") {
+      expect(sync.sent[0].kind.value.mask?.paths).toEqual(["order_key"]);
+    }
+  });
+});
+
+describe("visibleRows", () => {
+  it("scende solo nei container espansi, primo piano in cima", () => {
+    const scene = emptyScene("doc-1", "Untitled");
+    scene.nodes["g"] = groupNode("g", "a1", { name: "G" });
+    scene.nodes["c1"] = rectNode("c1", "a0", { name: "C1", parentId: "g" });
+    scene.nodes["c2"] = rectNode("c2", "a1", { name: "C2", parentId: "g" });
+    scene.nodes["r"] = rectNode("r", "a0", { name: "R" });
+
+    const expanded = visibleRows(scene, "page1", new Set());
+    expect(expanded.map((row) => row.id)).toEqual(["g", "c2", "c1", "r"]);
+    expect(expanded.find((row) => row.id === "c1")?.depth).toBe(1);
+
+    // Compresso: i figli non compaiono.
+    const collapsed = visibleRows(scene, "page1", new Set(["g"]));
+    expect(collapsed.map((row) => row.id)).toEqual(["g", "r"]);
   });
 });

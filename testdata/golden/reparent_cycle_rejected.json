@@ -1,0 +1,54 @@
+{
+  "docId": "doc1",
+  "rejected": [3, 4, 5, 6],
+  "ops": [
+    { "opId": "op1", "docId": "doc1", "createNode": { "node": {
+      "id": "g1", "parentId": "page1", "orderKey": "a1", "name": "Gruppo",
+      "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 100, "height": 100,
+      "rect": { "cornerRadius": 0 }
+    } } },
+    { "opId": "op2", "docId": "doc1", "createNode": { "node": {
+      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Figlio",
+      "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 20, "height": 20,
+      "rect": { "cornerRadius": 0 }
+    } } },
+    { "opId": "op3", "docId": "doc1", "createNode": { "node": {
+      "id": "d1", "parentId": "c1", "orderKey": "a1", "name": "Nipote",
+      "visible": true, "opacity": 1, "x": 12, "y": 12, "width": 5, "height": 5,
+      "rect": { "cornerRadius": 0 }
+    } } },
+    { "opId": "op4", "docId": "doc1", "reparentNode": {
+      "id": "g1", "newParentId": "d1", "orderKey": "a9"
+    } },
+    { "opId": "op5", "docId": "doc1", "reparentNode": {
+      "id": "g1", "newParentId": "g1", "orderKey": "a9"
+    } },
+    { "opId": "op6", "docId": "doc1", "reparentNode": {
+      "id": "c1", "newParentId": "ghost", "orderKey": "a9"
+    } },
+    { "opId": "op7", "docId": "doc1", "reparentNode": {
+      "id": "ghost", "newParentId": "page1", "orderKey": "a9"
+    } }
+  ],
+  "expected": {
+    "id": "doc1", "name": "Untitled", "schemaVersion": 1,
+    "pages": [{ "id": "page1", "name": "Page 1" }],
+    "nodes": {
+      "g1": {
+        "id": "g1", "parentId": "page1", "orderKey": "a1", "name": "Gruppo",
+        "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 100, "height": 100,
+        "rect": { "cornerRadius": 0 }
+      },
+      "c1": {
+        "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Figlio",
+        "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 20, "height": 20,
+        "rect": { "cornerRadius": 0 }
+      },
+      "d1": {
+        "id": "d1", "parentId": "c1", "orderKey": "a1", "name": "Nipote",
+        "visible": true, "opacity": 1, "x": 12, "y": 12, "width": 5, "height": 5,
+        "rect": { "cornerRadius": 0 }
+      }
+    }
+  }
+}

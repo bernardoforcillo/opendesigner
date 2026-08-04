@@ -8,7 +8,7 @@ import type { NodeLite } from "../store/types";
 
 function node(id: string, orderKey: string): NodeLite {
   return { id, parentId: "page1", orderKey, name: id, visible: true, opacity: 1,
-    x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0 };
+    x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false };
 }
 
 // Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
@@ -207,5 +207,22 @@ describe("rectTool", () => {
     tool.onPointerUp!(at(5, 5), ctx);
     expect(submitted).toHaveLength(0);
     expect(useScene.getState().selection).toEqual([]);
+  });
+
+  // Il nodo nasce SOTTO la pagina corrente, non sempre "page1": disegnare
+  // mentre si è su una seconda pagina crea il nodo lì.
+  it("creates the node under the CURRENT page", () => {
+    useScene.getState().setScene({
+      ...emptyScene("doc-1", "u"),
+      pages: [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }],
+    });
+    useScene.getState().setCurrentPage("page2");
+    const tool = createRectTool();
+    const { ctx, submitted } = fakeCtx();
+    tool.onPointerDown!(at(10, 20), ctx);
+    tool.onPointerUp!(at(60, 80), ctx);
+    expect(createdNode(submitted[0]).parentId).toBe("page2");
+    // E il nodo è davvero atterrato sotto page2 nella scena.
+    expect(useScene.getState().scene!.nodes[createdNode(submitted[0]).id].parentId).toBe("page2");
   });
 });

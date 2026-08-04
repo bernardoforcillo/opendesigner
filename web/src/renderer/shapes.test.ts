@@ -5,7 +5,7 @@ import type { NodeLite, SubPathLite, AnchorLite } from "../store/types";
 function node(kind: "rect" | "ellipse"): NodeLite {
   return { id: "n", parentId: "page1", orderKey: "a0", name: kind, visible: true, opacity: 1,
     x: 0, y: 0, width: 100, height: 50, rotation: 0,
-    fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind, cornerRadius: 0 };
+    fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind, cornerRadius: 0, clipsContent: false };
 }
 
 // Stile con lineHeight non specificato (0): il default 1.2 lo risolve il
@@ -36,6 +36,36 @@ describe("hitTestNode", () => {
     expect(hitTestNode(node("rect"), 50, 25, Z1)).toBe(true);
     expect(hitTestNode(node("rect"), 4, 2, Z1)).toBe(true);     // gli angoli appartengono al rect
     expect(hitTestNode(node("rect"), 120, 25, Z1)).toBe(false);
+  });
+
+  // Un gruppo non ha geometria propria: non si disegna e non si colpisce. A
+  // selezionarlo ci pensa la politica dei gruppi risalendo dal FIGLIO colpito
+  // (store/groups.ts), non un rettangolo invisibile che ruberebbe i click a
+  // quello che gli sta sotto. Il box è valorizzato apposta: nemmeno un gruppo
+  // con width/height addosso deve diventare colpibile.
+  it("group: never hit, whatever box it carries", () => {
+    const g: NodeLite = { ...node("rect"), kind: "group" };
+    expect(hitTestNode(g, 50, 25, Z1)).toBe(false);
+    expect(hitTestNode({ ...g, width: 0, height: 0 }, 0, 0, Z1)).toBe(false);
+  });
+
+  // Un FRAME ha geometria PROPRIA (a differenza del gruppo): si colpisce sul
+  // suo box, come un rettangolo. È la convenzione artboard -- cliccare la parte
+  // VUOTA del frame lo seleziona. Il corner radius non lo tocca: un frame è
+  // rettangolare.
+  it("frame: hits its own box like a rect, ignoring corner radius", () => {
+    const f: NodeLite = { ...node("rect"), kind: "frame" };
+    expect(hitTestNode(f, 50, 25, Z1)).toBe(true);   // dentro il box
+    expect(hitTestNode(f, 0, 0, Z1)).toBe(true);      // l'angolo appartiene al box
+    expect(hitTestNode(f, 100, 50, Z1)).toBe(true);   // l'angolo opposto
+    expect(hitTestNode(f, 120, 25, Z1)).toBe(false);  // fuori
+    // Un corner radius eventuale non restringe l'area colpibile del frame.
+    expect(hitTestNode({ ...f, cornerRadius: 40 }, 2, 2, Z1)).toBe(true);
+  });
+
+  it("frame: a degenerate box is not hittable, like any other shape", () => {
+    const f: NodeLite = { ...node("rect"), kind: "frame", width: 0, height: 0 };
+    expect(hitTestNode(f, 0, 0, Z1)).toBe(false);
   });
 
   it("ellipse: center hits, corner misses", () => {

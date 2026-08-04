@@ -8,7 +8,7 @@ function sceneWith(keys: string[]): SceneState {
   keys.forEach((k, i) => {
     s.nodes["n" + i] = { id: "n" + i, parentId: "page1", orderKey: k, name: "n", visible: true,
       opacity: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], strokes: [],
-      kind: "rect", cornerRadius: 0 } as NodeLite;
+      kind: "rect", cornerRadius: 0, clipsContent: false } as NodeLite;
   });
   return s;
 }

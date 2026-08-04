@@ -1,6 +1,8 @@
 import type { SceneState } from "../store/types";
 import { type Camera, worldToScreen } from "../canvas/camera";
-import { type Bounds, boundsOfNode, unionBounds, worldAabbOfNode, worldBoundsToScreen } from "../canvas/geometry";
+import { type Bounds, unionBounds, worldBoundsToScreen } from "../canvas/geometry";
+import { contentWorldBounds, isGroup } from "../store/groups";
+import { worldBoundsOfNode } from "../canvas/transform";
 import type { SnapGuide } from "../selection/snap";
 import {
   CORNER_IDS,
@@ -182,20 +184,36 @@ function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPrev
   }
 }
 
-// Unione (in coordinate MONDO) dei box dei nodi selezionati, rotazione inclusa
-// (worldAabbOfNode). GEOMETRIA, non il dipinto: il tratto NON entra qui, di
-// proposito -- il riquadro è il frame su cui vivono le maniglie e il resize
-// scrive proprio in x/y/width/height, quindi includere la sporgenza del tratto
-// staccherebbe le maniglie dal bordo. Chi ha bisogno di quello che il nodo
-// DIPINGE (marquee, hit-test, export) passa da worldVisualAabbOfNode. null se
+// Unione (in coordinate MONDO) dei bounds dei nodi selezionati. GEOMETRIA, non
+// il dipinto: il tratto NON entra qui, di proposito -- il riquadro è il frame su
+// cui vivono le maniglie e il resize scrive proprio in x/y/width/height, quindi
+// includere la sporgenza del tratto staccherebbe le maniglie dal bordo. null se
 // la selezione è vuota o non punta più a nodi esistenti -- lo store toglie già
 // gli id spariti (vedi store.ts), ma questa resta difensiva così l'overlay non
 // esplode su uno stato transitorio incoerente. Testabile senza ctx/DOM.
+//
+// Bounds MONDO e non del modello: il box del modello è scritto nello spazio del
+// PARENT, mentre tutto ciò che sta a valle di qui (la cornice, le maniglie, il
+// loro hit-test) lavora in mondo e poi in schermo. Per un nodo figlio di una
+// pagina le due cose coincidono, ed è ciò che tiene fermi i documenti già
+// esistenti.
+//
+// contentWorldBounds e non worldBoundsOfNode: un GRUPPO non ha un box proprio
+// (store/groups.ts), i suoi bounds sono l'unione dei figli. Leggere il suo box
+// darebbe un rettangolo 0x0 all'origine del gruppo -- cornice e maniglie
+// nell'angolo sbagliato dello schermo, su un gruppo che si vede benissimo.
+// Un gruppo vuoto non contribuisce nulla (null), esattamente come un id sparito.
+// contentWorldBounds ritaglia anche ai frame antenati con clipsContent (fix
+// deliberato di T1), così le maniglie non finiscono su canvas vuoto oltre il
+// bordo di un frame ritagliante. Il caso a UN nodo, dove serve la sua rotazione
+// propria, lo tratta a parte selectionFrame (boundsOfNode + rotation).
 export function selectionWorldBounds(state: SceneState, selection: string[]): Bounds | null {
   const boxes: Bounds[] = [];
   for (const id of selection) {
     const n = state.nodes[id];
-    if (n) boxes.push(worldAabbOfNode(n));
+    if (!n) continue;
+    const b = contentWorldBounds(state, n);
+    if (b) boxes.push(b);
   }
   return unionBounds(boxes);
 }
@@ -214,7 +232,22 @@ export function selectionWorldBounds(state: SceneState, selection: string[]): Bo
 export function selectionFrame(state: SceneState, selection: string[]): SelectionFrame | null {
   const nodes = selection.map((id) => state.nodes[id]).filter((n) => n !== undefined);
   if (nodes.length === 0) return null;
-  if (nodes.length === 1) return { bounds: boundsOfNode(nodes[0]), rotation: nodes[0].rotation };
+  if (nodes.length === 1) {
+    const n = nodes[0];
+    // Un GRUPPO non ha box proprio: la cornice è l'unione dei figli VISIBILI
+    // (contentWorldBounds, clip-aware), null quando non c'è niente da
+    // incorniciare (gruppo vuoto o con tutti i figli nascosti) -- così l'overlay
+    // non disegna cornice né maniglie su canvas vuoto.
+    if (isGroup(n)) {
+      const b = contentWorldBounds(state, n);
+      return b ? { bounds: b, rotation: 0 } : null;
+    }
+    // Un nodo qualunque: il suo box in MONDO NON ruotato (worldBoundsOfNode usa
+    // la trasformazione del PARENT), e la sua rotazione a parte -- l'overlay gira
+    // il frame attorno al centro. Per un figlio di pagina il box mondo coincide
+    // col box del modello; per un nodo annidato no.
+    return { bounds: worldBoundsOfNode(state, n), rotation: n.rotation };
+  }
   const bounds = selectionWorldBounds(state, selection);
   return bounds ? { bounds, rotation: 0 } : null;
 }

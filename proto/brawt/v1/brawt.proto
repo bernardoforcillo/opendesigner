@@ -40,6 +40,49 @@ message Stroke {
 message RectNode { double corner_radius = 1; }
 message EllipseNode {} // cx/cy/rx/ry derivano da x/y/width/height, come per RectNode
 
+// Un GRUPPO è un contenitore SENZA clipping e senza geometria propria: i suoi
+// bounds sono l'UNIONE di quelli dei figli (derivati, non memorizzati) e non ha
+// niente da riempire -- non si disegna e non si colpisce, si colpiscono i figli.
+//
+// Il messaggio è quindi vuoto, e non è un difetto: ciò che rende un nodo un
+// gruppo è la sua POSIZIONE nell'albero (i figli) più il caso del oneof, che
+// dice a renderer, hit-test e politica di selezione come trattarlo. Un
+// FrameNode (34) avrà invece campi propri (clips_content) e bounds propri.
+//
+// x/y restano significativi: sono la TRASLAZIONE che il gruppo contribuisce ai
+// figli (vedi web/src/canvas/transform.ts::localTransformOf) -- valgono 0 alla
+// creazione, così raggruppare non sposta nulla, e cambiano quando il gruppo
+// viene trascinato. width/height non sono usati da nessuno: i bounds sono
+// l'unione dei figli.
+message GroupNode {}
+
+// Un FRAME è l'opposto complementare del gruppo: un contenitore CON geometria
+// propria. Il suo box (x/y/width/height del Node) non è derivato dai figli --
+// è disegnato, riempito e colpito come una forma qualunque -- ed è l'artboard:
+// la superficie su cui si compone, non solo un raggruppamento logico.
+//
+// Da qui discende tutto il resto:
+//   - si disegna (a differenza di un gruppo) e si colpisce sul proprio box,
+//     quindi cliccare la parte vuota di un frame seleziona il frame;
+//   - i suoi bounds sono i suoi, mai l'unione dei figli (store/groups.ts::
+//     contentWorldBounds risale ai figli SOLO per i gruppi);
+//   - il click NON viene catturato come da un gruppo: i figli di un frame si
+//     selezionano direttamente, che è la convenzione degli artboard
+//     (store/groups.ts::selectionTargetOf).
+message FrameNode {
+  // Ritaglia i figli al box del frame. Non è un dettaglio di rendering: ciò
+  // che il ritaglio nasconde non è nemmeno CLICCABILE né selezionabile con la
+  // banda elastica -- le tre discese dell'albero (disegno, hit-test, marquee)
+  // devono rispondere sugli stessi pixel, altrimenti la selezione finisce su
+  // un nodo che l'utente non vede.
+  //
+  // Opzionale, cioè un campo e non un invariante del frame: un frame senza
+  // clipping resta un contenitore con bounds propri (utile per raggruppare
+  // dando una cornice esplicita), e il default proto3 (false) è quindi un
+  // valore legittimo, non "non impostato".
+  bool clips_content = 1;
+}
+
 enum TextAlign {
   TEXT_ALIGN_UNSPECIFIED = 0;
   TEXT_ALIGN_LEFT = 1;
@@ -183,8 +226,8 @@ message Node {
     // Numeri assegnati in anticipo alle quattro tracce parallele. Ogni traccia
     // sostituisce SOLO la propria riga con la dichiarazione vera (e definisce il
     // messaggio corrispondente): righe distinte si fondono senza conflitti.
-    // 33 = GroupNode     (traccia 1 — annidamento)
-    // 34 = FrameNode     (traccia 1 — annidamento)
+    GroupNode group = 33;   // traccia 1 — annidamento (vedi GroupNode sopra)
+    FrameNode frame = 34;   // traccia 1 — annidamento (vedi FrameNode sopra)
     ImageNode image = 35;   // traccia 3 — periferia (vedi ImageNode sopra)
     VectorNode vector = 36; // traccia 4 — vettoriale (vedi VectorNode sopra)
     // 37 = InstanceNode  (M4 — componenti)
@@ -244,6 +287,46 @@ message SetVectorPath {
   string id = 1;
   repeated SubPath subpaths = 2;
 }
+
+// Sposta un nodo sotto un altro container (o direttamente sotto una Page) e ne
+// riscrive l'ordine fra i nuovi pari.
+//
+// Op dedicato e non un path della mask di SetProperties -- a differenza di
+// `order_key`, che è un campo come gli altri -- perché la riparentazione ha una
+// VALIDAZIONE propria che nessun altro campo ha: il nuovo parent deve esistere
+// (nodo o pagina) e non può essere il nodo stesso né un suo discendente,
+// altrimenti il sottoalbero si stacca dal documento e diventa un ciclo
+// irraggiungibile. Una mask che scrivesse `parent_id` costringerebbe
+// applySetProps (e la sua gemella TS) a portarsi dentro l'attraversamento
+// dell'albero solo per un path.
+//
+// `order_key` viaggia INSIEME: cambiare parent senza riordinare lascerebbe il
+// nodo con la chiave calcolata fra i pari VECCHI, cioè in una posizione
+// arbitraria fra i nuovi. Un solo op, una sola posizione finale.
+message ReparentNode {
+  string id = 1;
+  string new_parent_id = 2; // id nodo container OPPURE id Page
+  string order_key = 3;     // fractional index fra i nuovi pari
+}
+// ---------- pagine ----------
+// Le pagine sono i container RADICE del documento: ogni nodo pende da una di
+// loro (Node.parent_id accetta un id di nodo OPPURE di Page) e il canvas ne
+// mostra una alla volta. `Document.pages` esisteva da M0 con una pagina sola e
+// nessun op capace di toccarla; questi tre la rendono un documento a più
+// pagine.
+//
+// Tre op dedicati e non dei path della mask di SetProperties: la mask indirizza
+// campi di un NODE (è il suo id a viaggiare in SetProperties.id) e una pagina
+// non è un nodo -- non ha geometria, non ha forma, non ha parent. Un
+// "SetProperties su una pagina" costringerebbe entrambe le implementazioni di
+// apply a due tabelle di path disgiunte sotto lo stesso op.
+message CreatePage { Page page = 1; }
+// Cancella la pagina E TUTTI i nodi che ci pendono, a cascata (stessa regola di
+// DeleteNode: ciò che non è più raggiungibile da una pagina non fa più parte
+// del documento). Rifiutata sull'ULTIMA pagina rimasta: un documento senza
+// pagine non ha nessun posto in cui creare un nodo.
+message DeletePage { string id = 1; }
+message RenamePage { string id = 1; string name = 2; }
 message Op {
   string op_id = 1;
   string doc_id = 2;
@@ -252,9 +335,14 @@ message Op {
     SetProperties set_props   = 11;
     DeleteNode    delete_node = 12;
     SetText       set_text    = 13;
-    // Come sopra: una riga per traccia, sostituita dalla dichiarazione vera.
-    // 14 = ReparentNode    (traccia 1 — sposta un nodo sotto un altro parent)
-    SetVectorPath set_vector_path = 15;
+    ReparentNode  reparent_node = 14; // traccia 1 — sposta un nodo sotto un altro parent
+    // Pagine multiple (traccia 1). Numeri PRESI DOPO quelli già assegnati alle
+    // altre tracce (15 e 16 qui sotto): le righe restano distinte e i merge
+    // puliti, esattamente come per il oneof `shape`.
+    CreatePage    create_page   = 17;
+    DeletePage    delete_page   = 18;
+    RenamePage    rename_page   = 19;
+    SetVectorPath set_vector_path = 15; // traccia 4 — sostituisce i subpath di un VectorNode
     // 16 = CreateComponent (M4)
   }
 }

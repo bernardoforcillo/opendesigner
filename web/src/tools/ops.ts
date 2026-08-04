@@ -84,6 +84,46 @@ export function makeSetVectorPathOp(id: string, subpaths: readonly SubPathLite[]
   });
 }
 
+// Sposta un nodo sotto un altro container (o direttamente sotto una Page) e ne
+// riscrive l'ordine fra i nuovi pari. Op DEDICATO e non un path della mask,
+// perché la riparentazione ha una validazione che nessun campo ha -- il nuovo
+// parent deve esistere e non può essere il nodo stesso né un suo discendente
+// (vedi core.applyReparent e store/applyOp.ts).
+//
+// `orderKey` viaggia INSIEME e non è opzionale: cambiare parent senza
+// riordinare lascerebbe il nodo con la chiave calcolata fra i pari VECCHI,
+// cioè in una posizione arbitraria fra i nuovi.
+export function makeReparentOp(id: string, newParentId: string, orderKey: string): Op {
+  return create(OpSchema, {
+    opId: uuid(),
+    docId: docId(),
+    kind: { case: "reparentNode", value: { id, newParentId, orderKey } },
+  });
+}
+
 export function makeDeleteOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteNode", value: { id } } });
+}
+
+// --- pagine ----------------------------------------------------------------
+// Le pagine sono i container RADICE. Questi op cambiano DOVE i nodi possono
+// vivere (non un nodo), e la loro semantica -- cascata, rifiuto dell'ultima
+// pagina, rifiuto degli id già presi -- sta già in core + store/applyOp.ts. Qui
+// si costruisce soltanto l'Op, come per i nodi: opId e docId in un posto solo.
+// Il selettore di pagina (ui/PageBar.tsx) li manda dallo stesso percorso di
+// gesto dei tool (beginGesture/endGesture), quindi UN op = un invio in rete.
+
+// L'id della pagina è FORNITO dal chiamante (uuid()) e non generato qui, così è
+// noto PRIMA del submit -- il selettore ci si sposta sopra subito dopo averla
+// creata (setCurrentPage), senza aspettare l'eco.
+export function makeCreatePageOp(id: string, name: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: { id, name } } } });
+}
+
+export function makeDeletePageOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deletePage", value: { id } } });
+}
+
+export function makeRenamePageOp(id: string, name: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "renamePage", value: { id, name } } });
 }
