@@ -1,7 +1,8 @@
 /gen/
 /web/src/gen/
 /web/node_modules/
-/web/dist/
+/web/dist/*
+!/web/dist/.gitkeep
 *.tsbuildinfo
 /opendesigner.exe
 /opendesigner

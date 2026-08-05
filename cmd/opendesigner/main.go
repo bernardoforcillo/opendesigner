@@ -14,6 +14,7 @@ import (
 	"github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1/opendesignerv1connect"
 	odmcp "github.com/bernardoforcillo/opendesigner/internal/mcp"
 	"github.com/bernardoforcillo/opendesigner/internal/server"
+	"github.com/bernardoforcillo/opendesigner/web"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
@@ -35,7 +36,7 @@ func runServe(args []string) {
 	fs := flag.NewFlagSet("serve", flag.ExitOnError)
 	addr := fs.String("addr", ":8080", "listen address")
 	workspace := fs.String("workspace", defaultWorkspace(), "documents workspace dir")
-	web := fs.String("web", "", "path to built frontend (optional)")
+	webDir := fs.String("web", "", "serve the frontend from this directory instead of the embedded one (development)")
 	_ = fs.Parse(args)
 
 	if err := os.MkdirAll(*workspace, 0o755); err != nil {
@@ -53,9 +54,10 @@ func runServe(args []string) {
 	// Il prefisso NON è /assets/ perché lì sotto il file server qui accanto serve
 	// i bundle di Vite.
 	server.MountAssets(mux, *workspace)
-	if *web != "" {
-		mux.Handle("/", http.FileServer(http.Dir(*web)))
-	}
+	// L'editor sta DENTRO il binario (web.Dist): `opendesigner serve` da solo
+	// serve già l'app, senza build del frontend né flag. -web resta la via di
+	// sviluppo e ha la precedenza -- vedi internal/server/webui.go.
+	server.MountWeb(mux, *webDir, web.Dist)
 
 	// h2c (HTTP/2 in chiaro) serve allo streaming Connect in locale, dove non c'è TLS.
 	// Dalla stdlib Go 1.24 lo si abilita con Server.Protocols: niente golang.org/x/net.
