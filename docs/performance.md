@@ -89,6 +89,11 @@ profilo CDP durante un trascinamento:
 - snap con `SnapIndex` (linee ordinate, ricerca binaria) invece di una scansione lineare;
 - `relayout` non copia la mappa dei nodi se nessun frame ha auto layout.
 
+Lato server `Hub.Submit` clonava a fondo l'intero documento a ogni op (85% del
+costo). Ora è copy-on-write (`core.ApplyShared`: la mappa dei nodi si copia per
+puntatori, si clonano solo i nodi scritti): 5.000 nodi 5.5 -> 0.65 ms, 20.000
+nodi >22 -> 2.2 ms per op (`go test ./internal/server -bench SubmitLargeDoc`).
+
 Resta O(N) per op la copia della mappa dei nodi in `applyOp` (~3 ms a 20.000):
 la soluzione vera è una struttura persistente.
 
