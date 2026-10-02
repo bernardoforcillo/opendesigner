@@ -2,6 +2,8 @@ package mcp
 
 import (
 	"context"
+	"sort"
+	"strings"
 	"time"
 
 	"connectrpc.com/connect"
@@ -51,14 +53,63 @@ func (s *Session) watchOnce(ctx context.Context, nickname string) error {
 		return err
 	}
 	defer stream.Close()
+	// A reconnect starts from a clean roster: the stream replays whoever is
+	// there, and anyone who left meanwhile must not linger.
+	s.mu.Lock()
+	s.peers = map[string]*opendesignerv1.PresenceState{}
+	s.mu.Unlock()
 	for stream.Receive() {
-		// The first message is the server's empty "you are in" marker; the
-		// others describe the people, which an agent has no use for.
-		if stream.Msg().GetKind() == nil {
+		switch k := stream.Msg().GetKind().(type) {
+		case nil:
+			// The server's empty "you are in" marker.
 			s.setJoined(true)
+		case *opendesignerv1.PresenceEvent_Update:
+			s.mu.Lock()
+			s.peers[k.Update.GetClientId()] = k.Update
+			s.mu.Unlock()
+		case *opendesignerv1.PresenceEvent_LeftClientId:
+			s.mu.Lock()
+			delete(s.peers, k.LeftClientId)
+			s.mu.Unlock()
 		}
 	}
 	return stream.Err()
+}
+
+// PeerView is one other participant, as list_peers reports it.
+type PeerView struct {
+	ClientId  string   `json:"clientId"`
+	Nickname  string   `json:"nickname"`
+	PageId    string   `json:"pageId,omitempty" jsonschema:"the page they are looking at"`
+	Selection []string `json:"selection" jsonschema:"node ids they have selected or just edited"`
+	IsAgent   bool     `json:"isAgent" jsonschema:"true when this participant is another MCP agent rather than a person in the browser"`
+}
+
+type ListPeersOutput struct {
+	Peers []PeerView `json:"peers"`
+}
+
+// ListPeers says who else is in the document and which nodes they are on, so an
+// agent can steer clear of what a person or another agent is working on. It
+// reports only what the presence stream has delivered; before the agent has
+// joined the room it is empty. Nothing is locked or reserved -- it is
+// information, not a lock.
+func (s *Session) ListPeers(_ context.Context, _ struct{}) (ListPeersOutput, error) {
+	s.mu.Lock()
+	defer s.mu.Unlock()
+	out := ListPeersOutput{Peers: []PeerView{}}
+	for _, p := range s.peers {
+		sel := p.GetSelection()
+		if sel == nil {
+			sel = []string{}
+		}
+		out.Peers = append(out.Peers, PeerView{
+			ClientId: p.GetClientId(), Nickname: p.GetNickname(), PageId: p.GetPageId(), Selection: sel,
+			IsAgent: strings.HasPrefix(p.GetClientId(), "mcp-") || p.GetClientId() == s.clientID,
+		})
+	}
+	sort.Slice(out.Peers, func(i, j int) bool { return out.Peers[i].ClientId < out.Peers[j].ClientId })
+	return out, nil
 }
 
 func (s *Session) setJoined(v bool) {

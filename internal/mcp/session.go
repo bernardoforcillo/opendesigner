@@ -78,6 +78,8 @@ type Session struct {
 
 	// joined is true while the agent's presence stream is open (presence.go).
 	joined bool
+	// peers is the roster the presence stream has delivered, by client id.
+	peers map[string]*opendesignerv1.PresenceState
 }
 
 // NewSession builds a Session over an already-constructed client. logger may be
@@ -97,6 +99,7 @@ func NewSession(client opendesignerv1connect.DocumentServiceClient, docID, clien
 		clientID: clientID,
 		logger:   logger,
 		updated:  make(chan struct{}),
+		peers:    map[string]*opendesignerv1.PresenceState{},
 	}
 }
 

@@ -484,3 +484,92 @@ func TestTwoAgentsShareOneDocument(t *testing.T) {
 		return ok && n.Width == 77
 	})
 }
+
+// TestListPeersShowsPeopleAndOtherAgents: an agent can see who else is in the
+// document and what they have selected, telling people from agents.
+func TestListPeersShowsPeopleAndOtherAgents(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	a := startSession(t, url, docID, "mcp-a")
+	b := startSession(t, url, docID, "mcp-b")
+	ctx := context.Background()
+
+	for _, x := range []struct {
+		s    *odmcp.Session
+		name string
+	}{{a, "A"}, {b, "B"}} {
+		pctx, stop := context.WithCancel(ctx)
+		t.Cleanup(stop)
+		go x.s.PresenceLoop(pctx, x.name)
+	}
+	waitFor(t, "agents in the room", func() bool { return a.PresenceJoined() && b.PresenceJoined() })
+
+	// A person in the browser joins and selects a node.
+	wctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	watch, err := direct.WatchPresence(wctx, connect.NewRequest(&opendesignerv1.WatchPresenceRequest{DocId: docID, ClientId: "web-1", Nickname: "Ada"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for watch.Receive() {
+		}
+	}()
+	waitFor(t, "web client in the room", func() bool {
+		_, err := direct.UpdatePresence(ctx, connect.NewRequest(&opendesignerv1.UpdatePresenceRequest{
+			DocId: docID, State: &opendesignerv1.PresenceState{ClientId: "web-1", PageId: "page1", Selection: []string{"n-web"}},
+		}))
+		if err != nil {
+			return false
+		}
+		out, _ := a.ListPeers(ctx, struct{}{})
+		for _, p := range out.Peers {
+			if p.ClientId == "web-1" && len(p.Selection) == 1 {
+				return true
+			}
+		}
+		return false
+	})
+
+	created, err := b.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 5, Height: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "A to see B's selection", func() bool {
+		out, _ := a.ListPeers(ctx, struct{}{})
+		for _, p := range out.Peers {
+			if p.ClientId == "mcp-b" {
+				return len(p.Selection) == 1 && p.Selection[0] == created.NodeId
+			}
+		}
+		return false
+	})
+
+	out, _ := a.ListPeers(ctx, struct{}{})
+	byID := map[string]odmcp.PeerView{}
+	for _, p := range out.Peers {
+		byID[p.ClientId] = p
+	}
+	if len(byID) != 2 {
+		t.Fatalf("A sees %d peers, want 2 (the person and B, never itself): %+v", len(byID), out.Peers)
+	}
+	if byID["web-1"].IsAgent || byID["web-1"].Nickname != "Ada" || byID["web-1"].Selection[0] != "n-web" {
+		t.Errorf("person = %+v", byID["web-1"])
+	}
+	if !byID["mcp-b"].IsAgent || byID["mcp-b"].Nickname != "B" {
+		t.Errorf("agent = %+v", byID["mcp-b"])
+	}
+
+	// The person leaves: gone from the list.
+	cancel()
+	waitFor(t, "the person to leave the list", func() bool {
+		out, _ := a.ListPeers(ctx, struct{}{})
+		for _, p := range out.Peers {
+			if p.ClientId == "web-1" {
+				return false
+			}
+		}
+		return true
+	})
+}
