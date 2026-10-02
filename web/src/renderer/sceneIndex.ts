@@ -2,6 +2,7 @@ import { type Bounds, boundsOfNode, inflateBounds, intersectBounds, unionBounds,
 import { IDENTITY, type Transform, compose, localTransformOf, mapBounds, worldTransformOf } from "../canvas/transform";
 import { contentWorldBounds } from "../store/groups";
 import { bySiblingOrder, childIndexOf } from "../store/tree";
+import { deltaOf } from "../store/sceneDelta";
 import type { NodeLite, SceneState } from "../store/types";
 
 // L'INDICE DI SCENA: ciò che il renderer sa del documento e che non cambia
@@ -27,6 +28,23 @@ import type { NodeLite, SceneState } from "../store/types";
 export interface SceneIndex {
   children: Map<string, NodeLite[]>;
   extent: Map<string, Bounds>;
+  // Un token d'identità che cambia SOLO quando cambia la STRUTTURA dell'albero
+  // vista da chi lo elenca: chi sta dove, in che ordine, e ciò che una riga
+  // mostra (nome, tipo, visibilità, testo). Una modifica di sola geometria o di
+  // pittura lascia lo stesso token. Il pannello Livelli ci ricalcola le sue
+  // righe -- 20.000 oggetti, per un documento grande -- solo quando serve,
+  // invece che a ogni passo di un trascinamento.
+  structure: object;
+}
+
+// Una modifica a questo nodo cambia ciò che il pannello Livelli mostra o come
+// ordina?
+function structurallyDifferent(a: NodeLite | undefined, b: NodeLite | undefined): boolean {
+  if (!a || !b) return true;
+  return (
+    a.parentId !== b.parentId || a.orderKey !== b.orderKey || a.visible !== b.visible ||
+    a.name !== b.name || a.kind !== b.kind || a.text?.content !== b.text?.content
+  );
 }
 
 const cache = new WeakMap<SceneState, SceneIndex>();
@@ -38,7 +56,12 @@ let last: { scene: SceneState; index: SceneIndex } | null = null;
 export function sceneIndexOf(scene: SceneState): SceneIndex {
   let idx = cache.get(scene);
   if (idx) return idx;
-  if (last) idx = updateIndex(last.scene, last.index, scene) ?? undefined;
+  // La provenienza registrata da applyOp dice quali nodi sono stati toccati: se
+  // la scena di partenza ha un indice, si evita il confronto di tutti i nodi.
+  const delta = deltaOf(scene);
+  const base = delta ? cache.get(delta.prev) : undefined;
+  if (delta && base) idx = updateIndex(delta.prev, base, scene, delta.changed) ?? undefined;
+  if (!idx && last) idx = updateIndex(last.scene, last.index, scene) ?? undefined;
   if (!idx) idx = buildIndex(scene);
   cache.set(scene, idx);
   last = { scene, index: idx };
@@ -162,7 +185,7 @@ export function buildIndex(scene: SceneState): SceneIndex {
   for (const page of scene.pages) {
     for (const r of children.get(page.id) ?? []) visit(r, IDENTITY);
   }
-  return { children, extent };
+  return { children, extent, structure: {} };
 }
 
 // --- AGGIORNAMENTO INCREMENTALE ------------------------------------------------
@@ -185,24 +208,38 @@ export function buildIndex(scene: SceneState): SceneIndex {
 const INCREMENTAL_MAX_FRACTION = 0.05;
 const INCREMENTAL_MIN_LIMIT = 64;
 
-function updateIndex(prevScene: SceneState, prev: SceneIndex, scene: SceneState): SceneIndex | null {
+function updateIndex(
+  prevScene: SceneState,
+  prev: SceneIndex,
+  scene: SceneState,
+  hint?: readonly string[],
+): SceneIndex | null {
   if (prevScene.pages !== scene.pages || prevScene.components !== scene.components) return null;
   const prevNodes = prevScene.nodes;
   const nodes = scene.nodes;
-  const total = Object.keys(nodes).length;
-  const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(total * INCREMENTAL_MAX_FRACTION));
 
   const changed: string[] = [];
   const removed: string[] = [];
-  for (const id in nodes) {
-    if (prevNodes[id] !== nodes[id]) {
-      changed.push(id);
-      if (changed.length > limit) return null;
+  if (hint) {
+    // Con la provenienza non si scandisce la mappa: i candidati sono i nodi
+    // toccati (quelli rimasti identici non contano), e nessun nodo è rimosso.
+    const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(prev.extent.size * INCREMENTAL_MAX_FRACTION));
+    if (hint.length > limit) return null;
+    for (const id of hint) if (nodes[id] && prevNodes[id] !== nodes[id]) changed.push(id);
+  } else {
+    const total = Object.keys(nodes).length;
+    const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(total * INCREMENTAL_MAX_FRACTION));
+    for (const id in nodes) {
+      if (prevNodes[id] !== nodes[id]) {
+        changed.push(id);
+        if (changed.length > limit) return null;
+      }
     }
+    for (const id in prevNodes) if (!(id in nodes)) removed.push(id);
+    if (removed.length > limit) return null;
   }
-  for (const id in prevNodes) if (!(id in nodes)) removed.push(id);
-  if (removed.length > limit) return null;
   if (changed.length === 0 && removed.length === 0) return prev;
+  const structural = removed.length > 0 || changed.some((id) => structurallyDifferent(prevNodes[id], nodes[id]));
 
   // Un cambiamento dentro il sottoalbero di un master di componente sposta gli
   // extent delle istanze: rifare tutto.
@@ -326,5 +363,5 @@ function updateIndex(prevScene: SceneState, prev: SceneIndex, scene: SceneState)
     if (u) extent.set(id, u);
     else extent.delete(id);
   }
-  return { children, extent };
+  return { children, extent, structure: structural ? {} : prev.structure };
 }

@@ -4,6 +4,7 @@ import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb"
 import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout } from "./layout";
+import { recordDelta } from "./sceneDelta";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Un SetProperties SENZA patch NON è un no-op. Go legge il patch con i getter
@@ -23,7 +24,27 @@ export function applyOp(state: SceneState, op: Op): SceneState {
   const before = layoutTargets(state, op);
   const next = applyOpRaw(state, op);
   if (next === state) return state;
-  return relayout(next, [...before, ...layoutTargets(next, op)]);
+  const touchedByLayout: string[] = [];
+  const laidOut = relayout(next, [...before, ...layoutTargets(next, op)], touchedByLayout);
+  // Gli op che toccano un solo nodo noto dichiarano quale: chi mantiene
+  // strutture derivate (renderer/sceneIndex.ts) non deve confrontare tutta la
+  // scena per scoprirlo. Gli altri (cancellare, riparentare, pagine,
+  // componenti) non la registrano e ricadono sul confronto completo.
+  const id = singleTouchedNode(op);
+  if (id !== null) recordDelta(laidOut, state, [id, ...touchedByLayout]);
+  return laidOut;
+}
+
+// L'unico nodo che l'op scrive, se ne scrive esattamente uno.
+function singleTouchedNode(op: Op): string | null {
+  const k = op.kind;
+  switch (k.case) {
+    case "createNode": return k.value.node?.id ?? null;
+    case "setProps": return k.value.id;
+    case "setText": return k.value.id;
+    case "setVectorPath": return k.value.id;
+    default: return null;
+  }
 }
 
 function applyOpRaw(state: SceneState, op: Op): SceneState {

@@ -30,7 +30,7 @@ export function hasLayout(n: NodeLite | undefined): n is NodeLite & { autoLayout
 // Ridispone i figli di UN frame e, se hug, ne ridimensiona gli assi. Muta
 // `nodes` (una mappa PRIVATA di relayout, già copiata) e ritorna se ha cambiato
 // qualcosa.
-function layoutFrame(scene: SceneState, nodes: Record<string, NodeLite>, id: string): boolean {
+function layoutFrame(scene: SceneState, nodes: Record<string, NodeLite>, id: string, touched?: string[]): boolean {
   const frame = nodes[id];
   if (!hasLayout(frame)) return false;
   const al = frame.autoLayout;
@@ -85,6 +85,7 @@ function layoutFrame(scene: SceneState, nodes: Record<string, NodeLite>, id: str
   let changed = false;
   if (frame.width !== width || frame.height !== height) {
     nodes[id] = { ...frame, width, height };
+    touched?.push(id);
     changed = true;
   }
   for (const k of kids) {
@@ -95,6 +96,7 @@ function layoutFrame(scene: SceneState, nodes: Record<string, NodeLite>, id: str
     const y = vertical ? pos : cross;
     if (k.x !== x || k.y !== y) {
       nodes[k.id] = { ...k, x, y };
+      touched?.push(k.id);
       changed = true;
     }
     pos = pos + mainOf(k) + step;
@@ -126,17 +128,22 @@ export function layoutTargets(scene: SceneState, op: Op): string[] {
 // un frame hug annidato deve avere la misura giusta PRIMA che il contenitore la
 // legga. Ritorna la STESSA scena se non cambia nulla, così chi la confronta per
 // identità non ridisegna per niente.
-export function relayout(scene: SceneState, ids: readonly string[]): SceneState {
-  const nodes: Record<string, NodeLite> = { ...scene.nodes };
+export function relayout(scene: SceneState, ids: readonly string[], touchedOut?: string[]): SceneState {
   const seen = new Set<string>();
   const frames: string[] = [];
   for (const id of ids) {
-    if (id !== "" && !seen.has(id) && hasLayout(nodes[id])) {
+    if (id !== "" && !seen.has(id) && hasLayout(scene.nodes[id])) {
       seen.add(id);
       frames.push(id);
     }
   }
+  // Prima di COPIARE la mappa dei nodi (20.000 voci a 12 ms per un documento
+  // grande): la stragrande maggioranza degli op non tocca nessun frame con auto
+  // layout. Un nodo fuori da un auto layout con un antenato che ne ha uno conta
+  // comunque, ma lo si scopre solo risalendo -- e senza frame toccati non c'è
+  // niente da risalire.
   if (frames.length === 0) return scene;
+  const nodes: Record<string, NodeLite> = { ...scene.nodes };
   const limit = Object.keys(nodes).length;
   for (const id of [...frames]) {
     let cur: NodeLite | undefined = nodes[id];
@@ -158,6 +165,6 @@ export function relayout(scene: SceneState, ids: readonly string[]): SceneState 
   frames.sort((a, b) => depth(b) - depth(a) || (a < b ? -1 : a > b ? 1 : 0));
 
   let changed = false;
-  for (const id of frames) if (layoutFrame(scene, nodes, id)) changed = true;
+  for (const id of frames) if (layoutFrame(scene, nodes, id, touchedOut)) changed = true;
   return changed ? { ...scene, nodes } : scene;
 }

@@ -46,3 +46,21 @@ describe("peerColor", () => {
     expect(peerColor("x")).toMatch(/^hsl\(\d+, 70%, 45%\)$/);
   });
 });
+
+describe("usePresence.clear", () => {
+  it("su uno store già vuoto non notifica (altrimenti ridisegna la scena per niente)", async () => {
+    const { usePresence } = await import("./presence");
+    usePresence.setState({ peers: {} });
+    let calls = 0;
+    const unsub = usePresence.subscribe(() => { calls++; });
+    usePresence.getState().clear();
+    usePresence.getState().clear();
+    expect(calls).toBe(0);
+    usePresence.setState({ peers: { a: { clientId: "a", nickname: "A", hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [] } } });
+    calls = 0;
+    usePresence.getState().clear();
+    expect(calls).toBe(1);
+    expect(usePresence.getState().peers).toEqual({});
+    unsub();
+  });
+});

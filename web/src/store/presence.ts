@@ -58,7 +58,9 @@ export const usePresence = create<PresenceStore>((set) => ({
     const next = applyPresenceEvent(s.peers, ev);
     return next === s.peers ? s : { peers: next };
   }),
-  clear: () => set({ peers: {} }),
+  // Già vuoto: nessuna notifica. Il canale di presenza lo chiama a ogni tentativo di
+  // connessione fallito, e uno store che notifica per niente fa ridisegnare la scena.
+  clear: () => set((s) => (Object.keys(s.peers).length === 0 ? s : { peers: {} })),
 }));
 
 // Colore stabile di un client, ricavato dal suo id: ogni schermo lo calcola

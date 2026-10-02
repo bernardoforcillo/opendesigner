@@ -78,6 +78,20 @@ contesto si perde, l'app torna alla CPU e lo dice nel pulsante.
 zoom e fallisce se più dell'1,5% dei pixel differisce di oltre 32/255. Oggi:
 0,87% a zoom 1 (tutto testo), 0,08% a 2, 0,15% a 0,35 e 0,01% a 0,08.
 
+## Modifica di documenti grandi (20.000 nodi)
+
+Misurato con `go run ./scripts/gen-large-doc -workspace DIR -nodes 20000` e un
+profilo CDP durante un trascinamento:
+
+- apertura fino a "connesso": 46 s -> ~1.7 s (figli indicizzati una volta, Livelli virtualizzato e con rami richiusi sopra 2000 nodi);
+- trascinamento: p90 268 ms -> ~44 ms, mediana ~8 ms;
+- `applyOp` registra la *provenienza* della scena (`store/sceneDelta.ts`): l'indice di scena aggiorna solo i nodi toccati senza confrontare tutta la mappa (`updateIndex` 18% -> 4%);
+- snap con `SnapIndex` (linee ordinate, ricerca binaria) invece di una scansione lineare;
+- `relayout` non copia la mappa dei nodi se nessun frame ha auto layout.
+
+Resta O(N) per op la copia della mappa dei nodi in `applyOp` (~3 ms a 20.000):
+la soluzione vera è una struttura persistente.
+
 ## Limiti noti
 
 - A **inquadratura piena di decine di migliaia di nodi** il costo è del

@@ -26,7 +26,7 @@ import {
   type HandleId,
   type SelectionFrame,
 } from "../selection/handles";
-import { snapBounds, snapMoving, snapTargets, worldThreshold, type SnapGuide } from "../selection/snap";
+import { type SnapIndex, prepareSnapTargets, snapBounds, snapMoving, snapTargets, worldThreshold, type SnapGuide } from "../selection/snap";
 import { useScene } from "../store/store";
 import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "../store/groups";
 import { subtreeOf, topmostOf } from "../store/tree";
@@ -241,7 +241,7 @@ export function createSelectTool(): Tool {
   // pointermove: i bersagli non si muovono durante il trascinamento, e
   // ricalcolarli 60 volte al secondo vorrebbe dire rileggere tutta la scena.
   let dragBox: Bounds | null = null;
-  let dragTargets: Bounds[] | null = null;
+  let dragTargets: SnapIndex | null = null;
   // RIORDINO in un auto layout (tools/layoutDrop.ts). Deciso al primo move vero:
   // se i nodi trascinati sono figli di un frame con auto layout il gesto NON
   // scrive x/y (il server li ricalcolerebbe e il nodo tornerebbe al suo posto),
@@ -280,7 +280,7 @@ export function createSelectTool(): Tool {
   let resizeStarted = false;
   // I bersagli dello snap per il ridimensionamento, fotografati come quelli del
   // trascinamento (stessa ragione).
-  let resizeTargets: Bounds[] | null = null;
+  let resizeTargets: SnapIndex | null = null;
 
   // --- rotazione dalle zone d'angolo ------------------------------------------
   // Stessa forma degli altri due gesti (ancora + stato iniziale + apertura
@@ -392,7 +392,7 @@ export function createSelectTool(): Tool {
     const world = ctx.toWorld(e);
     const dx = world.x - dragAnchor!.x;
     const dy = world.y - dragAnchor!.y;
-    if (mods.alt || !dragBox || !dragTargets || dragTargets.length === 0) return { dx, dy, guides: [] };
+    if (mods.alt || !dragBox || !dragTargets || dragTargets.targets.length === 0) return { dx, dy, guides: [] };
     const moved = { ...dragBox, x: dragBox.x + dx, y: dragBox.y + dy };
     const s = snapBounds(moved, dragTargets, worldThreshold(ctx.getCamera()));
     return { dx: dx + s.dx, dy: dy + s.dy, guides: s.guides };
@@ -420,7 +420,7 @@ export function createSelectTool(): Tool {
     const frame = resizeStartFrame;
     if (
       mods.alt || mods.shift || !frame || !resizeHandle
-      || !resizeTargets || resizeTargets.length === 0
+      || !resizeTargets || resizeTargets.targets.length === 0
       || frame.rotation % 360 !== 0
     ) {
       return { dx, dy, guides: [] };
@@ -634,7 +634,7 @@ export function createSelectTool(): Tool {
         resizeStartFrame = frameOfSelection(ctx);
         resizeStartNodes = start;
         resizeStartVectors = startVectors;
-        resizeTargets = snapTargets(scene, snapExclude(scene, store.selection));
+        resizeTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, store.selection)));
         resizeStarted = false;
         setCursor(ctx, cursorForHandle(overlay.handle));
         return;
@@ -743,7 +743,7 @@ export function createSelectTool(): Tool {
       // È il RIQUADRO della selezione a scattare, non i singoli nodi: con una
       // selezione multipla ogni nodo tirato dalla propria guida la sfalderebbe.
       dragBox = selectionWorldBounds(scene, selection);
-      dragTargets = snapTargets(scene, snapExclude(scene, selection));
+      dragTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, selection)));
     },
 
     onPointerMove(e, ctx) {

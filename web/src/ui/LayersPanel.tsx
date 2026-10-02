@@ -1,9 +1,10 @@
-import { useEffect, useMemo, useRef, useState } from "react";
-import { Button, GridList, GridListItem } from "react-aria-components";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import { Button, GridList, GridListItem, ListLayout, Virtualizer } from "react-aria-components";
 import type { Selection } from "react-aria-components";
 import { useScene } from "../store/store";
 import { orderKeyBetween } from "../store/orderKey";
-import { childrenOf, isAncestorOf, subtreeOf, topmostOf } from "../store/tree";
+import { ancestorsOf, childIndexOf, childrenOf, isAncestorOf, subtreeOf, topmostOf } from "../store/tree";
+import { sceneIndexOf } from "../renderer/sceneIndex";
 import { makeDeleteOp, makeReparentOp, makeSetPropsOp } from "../tools/ops";
 import type { NodeLite, SceneState } from "../store/types";
 
@@ -58,18 +59,29 @@ export interface LayerRow {
 //
 // Un `seen` come in tree.ts::subtreeOf: un documento malformato (un nodo figlio
 // di se stesso) non deve mandare la ricorsione all'infinito.
-export function visibleRows(scene: SceneState, pageId: string, collapsed: ReadonlySet<string>): LayerRow[] {
+//
+// `children` è l'indice figli-per-parent (la stessa lista che childrenOf darebbe,
+// già ordinata): costruito UNA volta invece di scansionare l'intera scena per
+// ogni riga -- con 20.000 nodi le righe erano 20.000 scansioni da 20.000, cioè
+// 46 secondi per APRIRE il documento.
+export function visibleRows(
+  scene: SceneState,
+  pageId: string,
+  collapsed: ReadonlySet<string> | ((id: string) => boolean),
+  children: ReadonlyMap<string, NodeLite[]> = childIndexOf(scene),
+): LayerRow[] {
+  const isCollapsed = typeof collapsed === "function" ? collapsed : (id: string) => collapsed.has(id);
   const out: LayerRow[] = [];
   const seen = new Set<string>();
   const walk = (parentId: string, depth: number): void => {
-    const siblings = childrenOf(scene, parentId);
+    const siblings = children.get(parentId) ?? [];
     for (let i = siblings.length - 1; i >= 0; i--) {
       const n = siblings[i];
       if (seen.has(n.id)) continue;
       seen.add(n.id);
       const container = isContainer(n);
-      const hasChildren = container && childrenOf(scene, n.id).length > 0;
-      const expanded = hasChildren && !collapsed.has(n.id);
+      const hasChildren = container && (children.get(n.id)?.length ?? 0) > 0;
+      const expanded = hasChildren && !isCollapsed(n.id);
       out.push({ id: n.id, node: n, depth, container, hasChildren, expanded });
       if (expanded) walk(n.id, depth + 1);
     }
@@ -323,8 +335,24 @@ function RenameField({
   );
 }
 
+// Quante righe servono perché il pannello si virtualizzi, e l'altezza di ognuna
+// quando succede (py-1 + riga di testo ≈ 28 px, la stessa di prima).
+export const VIRTUALIZE_AFTER_ROWS = 300;
+const ROW_HEIGHT = 28;
+
+// Oltre questo numero di nodi in un documento i container partono CHIUSI: elencare
+// ogni nodo di un file con decine di migliaia di elementi non aiuta a orientarsi
+// (e costa una collezione da decine di migliaia di righe). Si aprono a mano o, da
+// soli, quando si seleziona un nodo che sta dentro.
+export const AUTO_COLLAPSE_NODES = 2000;
+
 export function LayersPanel() {
-  const scene = useScene((s) => s.scene);
+  // Il pannello si ridisegna per la STRUTTURA dell'albero (chi sta dove, i nomi,
+  // la visibilità), non per ogni scena nuova: un trascinamento ne produce una a
+  // ogni passo, e senza questo ogni passo rifaceva 20.000 righe di react-aria.
+  // La scena la si LEGGE (senza abbonarsi) dove serve.
+  const structure = useScene((s) => (s.scene ? sceneIndexOf(s.scene).structure : null));
+  const scene = useScene.getState().scene;
   const selection = useScene((s) => s.selection);
   // La pagina VISUALIZZATA: l'albero ne mostra solo le radici e i loro
   // sottoalberi. Stato di vista dello store, lo stesso che legge il renderer.
@@ -336,6 +364,21 @@ export function LayersPanel() {
   // collassati, così un container appena creato nasce aperto senza doverlo
   // elencare. Stato di VISTA locale: non è un op e non è una voce di undo.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
+  // Nei documenti grandi i container partono chiusi (AUTO_COLLAPSE_NODES): lo
+  // stato è l'inverso -- `expanded` elenca quelli che l'utente ha aperto. Si
+  // decide UNA volta per (documento, pagina) e resta, anche se poi i nodi
+  // crescono o calano attorno alla soglia.
+  const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
+  const autoDecided = useRef(new Map<string, boolean>());
+  const autoKey = scene && currentPageId ? `${scene.id}:${currentPageId}` : null;
+  if (autoKey !== null && scene && !autoDecided.current.has(autoKey)) {
+    autoDecided.current.set(autoKey, Object.keys(scene.nodes).length > AUTO_COLLAPSE_NODES);
+  }
+  const autoCollapse = autoKey !== null && autoDecided.current.get(autoKey) === true;
+  const isCollapsed = useCallback(
+    (id: string) => collapsed.has(id) || (autoCollapse && !expanded.has(id)),
+    [collapsed, expanded, autoCollapse],
+  );
   // Il trascinamento in corso: quale riga si sta spostando e su quale si trova
   // adesso il puntatore (`over` parte dalla riga stessa, cioè "non si è ancora
   // mosso"). null = nessun trascinamento in corso.
@@ -348,10 +391,23 @@ export function LayersPanel() {
   // l'identità di `items` cambia. Un nuovo array ad OGNI render la romperebbe
   // anche quando l'albero non è cambiato per niente, e un semplice click
   // successivo si comporterebbe da "aggiungi" invece che da "sostituisci".
+  //
+  // Dipende dal TOKEN di struttura dell'indice di scena, non dalla scena: un
+  // trascinamento produce una scena nuova a ogni passo, ma non cambia chi sta
+  // dove né i nomi, e rifare 20.000 righe a ogni passo bloccherebbe la pagina.
+  const index = scene ? sceneIndexOf(scene) : null;
+  // Una lista lunga si VIRTUALIZZA: si montano solo le righe visibili (e poche
+  // attorno), non una per nodo. Sopra la soglia, perché il virtualizzatore decide
+  // cosa mostrare dalla misura del contenitore e sotto jsdom -- dove ogni misura
+  // è zero -- una lista corta sparirebbe. Le righe virtualizzate hanno altezza
+  // fissa (ROW_HEIGHT): è ciò che gli permette di non misurarle una per una.
   const rows = useMemo(
-    () => (scene && currentPageId ? visibleRows(scene, currentPageId, collapsed) : []),
-    [scene, currentPageId, collapsed],
+    () => (scene && index && currentPageId ? visibleRows(scene, currentPageId, isCollapsed, index.children) : []),
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `structure` sostituisce scene/index
+    [structure, currentPageId, isCollapsed],
   );
+
+  const virtualized = rows.length > VIRTUALIZE_AFTER_ROWS;
 
   // Il sottoalbero della riga trascinata (radice compresa): i suoi id sono i
   // bersagli di drop NON validi -- calarci dentro sarebbe un ciclo. Precalcolato
@@ -427,13 +483,33 @@ export function LayersPanel() {
   // Apre/chiude un container. Stato di VISTA locale: nessun op, nessuna voce di
   // undo (come spostare la camera).
   function toggleCollapse(id: string) {
-    setCollapsed((prev) => {
+    const flip = (prev: ReadonlySet<string>) => {
       const next = new Set(prev);
       if (next.has(id)) next.delete(id);
       else next.add(id);
       return next;
-    });
+    };
+    // Con i container chiusi di default, "aprire" vuol dire aggiungere a
+    // `expanded`; altrimenti vuol dire togliere da `collapsed`.
+    if (autoCollapse) setExpanded(flip);
+    else setCollapsed(flip);
   }
+
+  // Selezionare un nodo (dal canvas, o con la tastiera) deve MOSTRARLO: si
+  // aprono gli antenati chiusi. Parte solo quando cambia la selezione, così
+  // chiudere a mano un container con dentro la selezione non viene riaperto.
+  useEffect(() => {
+    const cur = useScene.getState().scene;
+    if (!cur || selection.length === 0) return;
+    const toOpen = new Set<string>();
+    for (const id of selection.slice(0, 20)) {
+      for (const anc of ancestorsOf(cur, id)) if (isCollapsed(anc.id)) toOpen.add(anc.id);
+    }
+    if (toOpen.size === 0) return;
+    if (autoCollapse) setExpanded((prev) => new Set([...prev, ...toOpen]));
+    else setCollapsed((prev) => new Set([...prev].filter((id) => !toOpen.has(id))));
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al cambio di selezione
+  }, [selection]);
 
   // Riordino da TASTIERA (Alt+frecce sulla maniglia): sposta il nodo di un posto
   // FRA I SUOI FRATELLI. Stesso op e stesso gesto del drag di solo-riordino
@@ -521,6 +597,168 @@ export function LayersPanel() {
     store.endGesture(ids.map((id) => makeDeleteOp(id)));
   }
 
+  const list = (
+    <GridList
+      aria-label="Livelli"
+      items={rows}
+      // La CACHE degli item di react-aria-components. Con una collezione
+      // dinamica (`items` + render function) RAC ricostruisce le righe solo
+      // quando cambia `items` -- non a ogni render del pannello: `renamingId`
+      // e `drag` vivono nello STATO di questo componente, e senza dichiararli
+      // qui il doppio click / l'evidenziazione del drop aggiornerebbero lo
+      // stato senza che la riga cambi mai. (`collapsed` cambia già l'identità
+      // di `rows`, quindi non serve elencarlo.)
+      dependencies={[renamingId, drag]}
+      selectionMode="multiple"
+      selectionBehavior="replace"
+      selectedKeys={selectedKeys}
+      onSelectionChange={onSelectionChange}
+      renderEmptyState={() => <div className="px-2 py-4 text-neutral-400">Nessun livello</div>}
+      className="flex-1 select-none overflow-auto outline-none"
+    >
+      {(row) => {
+        const n = row.node;
+        const label = layerDisplayName(n);
+        const dragging = drag?.from === n.id;
+        // Bersaglio NON valido durante un drag: la riga trascinata cala nel
+        // proprio sottoalbero (ciclo). Non si offre -- il core lo rifiuterebbe
+        // (ErrCycle) e il pannello non deve nemmeno far finta che si possa.
+        const invalidTarget = !!drag && !dragging && !!dragSubtree?.has(n.id);
+        // Come il drop atterrerebbe QUI: "into" = dentro questo container,
+        // "beside" = riordino/riparentazione accanto. Deciso dallo stesso
+        // dropPlanFor che esegue il drop, così l'anteprima non può mentire su
+        // cosa succederà.
+        let dropMode: "into" | "beside" | null = null;
+        if (drag && drag.over === n.id && !dragging && !invalidTarget && scene) {
+          const plan = dropPlanFor(scene, drag.from, n.id);
+          if (plan) dropMode = plan.kind === "reparent" && plan.parentId === n.id ? "into" : "beside";
+        }
+        return (
+          <GridListItem
+            id={n.id}
+            textValue={label}
+            data-depth={row.depth}
+            data-drop-invalid={invalidTarget ? "true" : undefined}
+            // Indentazione per profondità: lo stesso spazio che il renderer
+            // esprime scendendo l'albero, qui reso come rientro a sinistra.
+            style={{ paddingLeft: 8 + row.depth * 14 }}
+            // Il bersaglio del rilascio si decide dalla riga SOTTO IL
+            // PUNTATORE, non da un calcolo su coordinate e altezze: il
+            // pointermove arriva già sulla riga giusta, che è l'unica
+            // informazione che serve. (Nessun setPointerCapture, per questo:
+            // catturando, i move tornerebbero tutti alla maniglia.)
+            onPointerMove={() => {
+              if (drag && drag.over !== n.id) setDrag({ from: drag.from, over: n.id });
+            }}
+            className={[
+              "flex items-center gap-1.5 py-1 pr-2 outline-none",
+              "data-[selected]:bg-sky-100 data-[focus-visible]:ring-1 data-[focus-visible]:ring-inset data-[focus-visible]:ring-sky-500",
+              dragging ? "opacity-50" : "",
+              invalidTarget ? "cursor-no-drop opacity-40" : "",
+              dropMode === "into" ? "bg-sky-50 ring-1 ring-inset ring-sky-400" : "",
+              dropMode === "beside" ? "border-t-2 border-sky-400" : "",
+            ].join(" ")}
+          >
+            {/* DISCLOSURE: espande/collassa un container con figli. Per le
+                righe che non ne hanno uno spaziatore della stessa larghezza,
+                così nomi e maniglie restano allineati fra i livelli. Un
+                <button> vero (aria-expanded), raggiungibile da tastiera. */}
+            {row.container && row.hasChildren ? (
+              <button
+                type="button"
+                aria-label={row.expanded ? `Comprimi ${label}` : `Espandi ${label}`}
+                aria-expanded={row.expanded}
+                onPointerDown={(e) => e.stopPropagation()}
+                onClick={(e) => {
+                  e.stopPropagation();
+                  toggleCollapse(n.id);
+                }}
+                className="w-4 shrink-0 text-neutral-400 outline-none hover:text-neutral-700 focus-visible:text-sky-600"
+              >
+                {row.expanded ? "▾" : "▸"}
+              </button>
+            ) : (
+              <span aria-hidden className="w-4 shrink-0" />
+            )}
+            {/* MANIGLIA di trascinamento. Il drag parte da qui e non da tutta
+                la riga: un pointerdown sulla riga è già "seleziona questa riga"
+                (e con shift/ctrl, "estendi la selezione"), e farlo valere anche
+                come inizio di un drag vorrebbe dire decidere a posteriori --
+                con una soglia in pixel -- quale delle due cose l'utente
+                intendeva. Un <button> vero, non un <div> decorativo: è
+                raggiungibile da tastiera e Alt+frecce lo spostano fra i
+                fratelli, altrimenti il riordino sarebbe l'unica funzione del
+                pannello impossibile senza mouse. */}
+            <button
+              type="button"
+              aria-label={`Riordina ${label}`}
+              title="Trascina per riordinare o riparentare (Alt+↑ / Alt+↓)"
+              // Come per il campo di rinomina: pointerdown per il percorso
+              // normale, click per quello "virtuale" (screen reader), così la
+              // presa della maniglia non diventa anche un click sulla riga.
+              onPointerDown={(e) => {
+                e.stopPropagation();
+                setDrag({ from: n.id, over: n.id });
+              }}
+              onClick={(e) => e.stopPropagation()}
+              onKeyDown={(e) => {
+                // ALT + freccia, non la freccia da sola, e non è una
+                // preferenza: react-aria RISERVA ArrowUp/ArrowDown alla
+                // navigazione fra le righe e le intercetta in fase di
+                // CAPTURE prima che arrivino ai figli della riga
+                // (useGridListItem.mjs: "Prevent this event from reaching row
+                // children"), rilanciandole dal genitore. L'unica combinazione
+                // che lascia passare è con altKey -- ed è la stessa che
+                // react-aria usa per il proprio riordino da tastiera
+                // (useDraggableItem.mjs). Una freccia liscia qui non
+                // arriverebbe mai: sarebbe codice morto.
+                if (!e.altKey) return;
+                if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
+                e.preventDefault();
+                e.stopPropagation();
+                reorderSibling(n.id, e.key === "ArrowUp" ? -1 : 1);
+              }}
+              // touch-none: su schermo tattile il trascinamento della maniglia
+              // non deve diventare uno scroll del pannello.
+              className="shrink-0 cursor-grab touch-none px-0.5 text-neutral-300 outline-none hover:text-neutral-600 focus-visible:text-sky-600"
+            >
+              {"⁙"}
+            </button>
+            {renamingId === n.id ? (
+              <RenameField
+                // Seminato con il nome VERO, non con quello mostrato: per un
+                // nodo senza nome il campo parte vuoto e il fallback resta il
+                // placeholder. Confermare senza scrivere niente non deve
+                // persistere "Rectangle" come nome esplicito -- sarebbe una
+                // modifica che l'utente non ha chiesto, per giunta annullabile.
+                initial={n.name}
+                placeholder={label}
+                onCommit={(value) => commitRename(n, value)}
+                onCancel={() => setRenamingId(null)}
+              />
+            ) : (
+              <span className="min-w-0 flex-1 truncate" onDoubleClick={() => setRenamingId(n.id)}>
+                {label}
+              </span>
+            )}
+            {/* stopPropagation: un click qui è "nascondi/mostra QUESTA
+                riga", non "seleziona questa riga" -- senza, il pointerdown
+                del Button raggiungerebbe comunque la riga sottostante e la
+                selezione cambierebbe insieme alla visibilità. */}
+            <Button
+              aria-label={n.visible ? `Nascondi ${label}` : `Mostra ${label}`}
+              onPress={() => toggleVisible(n)}
+              onPointerDown={(e) => e.stopPropagation()}
+              className="shrink-0 rounded px-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700"
+            >
+              {n.visible ? "\u{1F441}️" : "—"}
+            </Button>
+          </GridListItem>
+        );
+      }}
+    </GridList>
+  );
+
   return (
     <div className="flex h-full flex-col text-sm text-neutral-700">
       <div className="flex items-center justify-between border-b border-neutral-200 px-2 py-1.5">
@@ -534,165 +772,13 @@ export function LayersPanel() {
           Elimina
         </Button>
       </div>
-      <GridList
-        aria-label="Livelli"
-        items={rows}
-        // La CACHE degli item di react-aria-components. Con una collezione
-        // dinamica (`items` + render function) RAC ricostruisce le righe solo
-        // quando cambia `items` -- non a ogni render del pannello: `renamingId`
-        // e `drag` vivono nello STATO di questo componente, e senza dichiararli
-        // qui il doppio click / l'evidenziazione del drop aggiornerebbero lo
-        // stato senza che la riga cambi mai. (`collapsed` cambia già l'identità
-        // di `rows`, quindi non serve elencarlo.)
-        dependencies={[renamingId, drag]}
-        selectionMode="multiple"
-        selectionBehavior="replace"
-        selectedKeys={selectedKeys}
-        onSelectionChange={onSelectionChange}
-        renderEmptyState={() => <div className="px-2 py-4 text-neutral-400">Nessun livello</div>}
-        className="flex-1 select-none overflow-auto outline-none"
-      >
-        {(row) => {
-          const n = row.node;
-          const label = layerDisplayName(n);
-          const dragging = drag?.from === n.id;
-          // Bersaglio NON valido durante un drag: la riga trascinata cala nel
-          // proprio sottoalbero (ciclo). Non si offre -- il core lo rifiuterebbe
-          // (ErrCycle) e il pannello non deve nemmeno far finta che si possa.
-          const invalidTarget = !!drag && !dragging && !!dragSubtree?.has(n.id);
-          // Come il drop atterrerebbe QUI: "into" = dentro questo container,
-          // "beside" = riordino/riparentazione accanto. Deciso dallo stesso
-          // dropPlanFor che esegue il drop, così l'anteprima non può mentire su
-          // cosa succederà.
-          let dropMode: "into" | "beside" | null = null;
-          if (drag && drag.over === n.id && !dragging && !invalidTarget && scene) {
-            const plan = dropPlanFor(scene, drag.from, n.id);
-            if (plan) dropMode = plan.kind === "reparent" && plan.parentId === n.id ? "into" : "beside";
-          }
-          return (
-            <GridListItem
-              id={n.id}
-              textValue={label}
-              data-depth={row.depth}
-              data-drop-invalid={invalidTarget ? "true" : undefined}
-              // Indentazione per profondità: lo stesso spazio che il renderer
-              // esprime scendendo l'albero, qui reso come rientro a sinistra.
-              style={{ paddingLeft: 8 + row.depth * 14 }}
-              // Il bersaglio del rilascio si decide dalla riga SOTTO IL
-              // PUNTATORE, non da un calcolo su coordinate e altezze: il
-              // pointermove arriva già sulla riga giusta, che è l'unica
-              // informazione che serve. (Nessun setPointerCapture, per questo:
-              // catturando, i move tornerebbero tutti alla maniglia.)
-              onPointerMove={() => {
-                if (drag && drag.over !== n.id) setDrag({ from: drag.from, over: n.id });
-              }}
-              className={[
-                "flex items-center gap-1.5 py-1 pr-2 outline-none",
-                "data-[selected]:bg-sky-100 data-[focus-visible]:ring-1 data-[focus-visible]:ring-inset data-[focus-visible]:ring-sky-500",
-                dragging ? "opacity-50" : "",
-                invalidTarget ? "cursor-no-drop opacity-40" : "",
-                dropMode === "into" ? "bg-sky-50 ring-1 ring-inset ring-sky-400" : "",
-                dropMode === "beside" ? "border-t-2 border-sky-400" : "",
-              ].join(" ")}
-            >
-              {/* DISCLOSURE: espande/collassa un container con figli. Per le
-                  righe che non ne hanno uno spaziatore della stessa larghezza,
-                  così nomi e maniglie restano allineati fra i livelli. Un
-                  <button> vero (aria-expanded), raggiungibile da tastiera. */}
-              {row.container && row.hasChildren ? (
-                <button
-                  type="button"
-                  aria-label={row.expanded ? `Comprimi ${label}` : `Espandi ${label}`}
-                  aria-expanded={row.expanded}
-                  onPointerDown={(e) => e.stopPropagation()}
-                  onClick={(e) => {
-                    e.stopPropagation();
-                    toggleCollapse(n.id);
-                  }}
-                  className="w-4 shrink-0 text-neutral-400 outline-none hover:text-neutral-700 focus-visible:text-sky-600"
-                >
-                  {row.expanded ? "▾" : "▸"}
-                </button>
-              ) : (
-                <span aria-hidden className="w-4 shrink-0" />
-              )}
-              {/* MANIGLIA di trascinamento. Il drag parte da qui e non da tutta
-                  la riga: un pointerdown sulla riga è già "seleziona questa riga"
-                  (e con shift/ctrl, "estendi la selezione"), e farlo valere anche
-                  come inizio di un drag vorrebbe dire decidere a posteriori --
-                  con una soglia in pixel -- quale delle due cose l'utente
-                  intendeva. Un <button> vero, non un <div> decorativo: è
-                  raggiungibile da tastiera e Alt+frecce lo spostano fra i
-                  fratelli, altrimenti il riordino sarebbe l'unica funzione del
-                  pannello impossibile senza mouse. */}
-              <button
-                type="button"
-                aria-label={`Riordina ${label}`}
-                title="Trascina per riordinare o riparentare (Alt+↑ / Alt+↓)"
-                // Come per il campo di rinomina: pointerdown per il percorso
-                // normale, click per quello "virtuale" (screen reader), così la
-                // presa della maniglia non diventa anche un click sulla riga.
-                onPointerDown={(e) => {
-                  e.stopPropagation();
-                  setDrag({ from: n.id, over: n.id });
-                }}
-                onClick={(e) => e.stopPropagation()}
-                onKeyDown={(e) => {
-                  // ALT + freccia, non la freccia da sola, e non è una
-                  // preferenza: react-aria RISERVA ArrowUp/ArrowDown alla
-                  // navigazione fra le righe e le intercetta in fase di
-                  // CAPTURE prima che arrivino ai figli della riga
-                  // (useGridListItem.mjs: "Prevent this event from reaching row
-                  // children"), rilanciandole dal genitore. L'unica combinazione
-                  // che lascia passare è con altKey -- ed è la stessa che
-                  // react-aria usa per il proprio riordino da tastiera
-                  // (useDraggableItem.mjs). Una freccia liscia qui non
-                  // arriverebbe mai: sarebbe codice morto.
-                  if (!e.altKey) return;
-                  if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
-                  e.preventDefault();
-                  e.stopPropagation();
-                  reorderSibling(n.id, e.key === "ArrowUp" ? -1 : 1);
-                }}
-                // touch-none: su schermo tattile il trascinamento della maniglia
-                // non deve diventare uno scroll del pannello.
-                className="shrink-0 cursor-grab touch-none px-0.5 text-neutral-300 outline-none hover:text-neutral-600 focus-visible:text-sky-600"
-              >
-                {"⁙"}
-              </button>
-              {renamingId === n.id ? (
-                <RenameField
-                  // Seminato con il nome VERO, non con quello mostrato: per un
-                  // nodo senza nome il campo parte vuoto e il fallback resta il
-                  // placeholder. Confermare senza scrivere niente non deve
-                  // persistere "Rectangle" come nome esplicito -- sarebbe una
-                  // modifica che l'utente non ha chiesto, per giunta annullabile.
-                  initial={n.name}
-                  placeholder={label}
-                  onCommit={(value) => commitRename(n, value)}
-                  onCancel={() => setRenamingId(null)}
-                />
-              ) : (
-                <span className="min-w-0 flex-1 truncate" onDoubleClick={() => setRenamingId(n.id)}>
-                  {label}
-                </span>
-              )}
-              {/* stopPropagation: un click qui è "nascondi/mostra QUESTA
-                  riga", non "seleziona questa riga" -- senza, il pointerdown
-                  del Button raggiungerebbe comunque la riga sottostante e la
-                  selezione cambierebbe insieme alla visibilità. */}
-              <Button
-                aria-label={n.visible ? `Nascondi ${label}` : `Mostra ${label}`}
-                onPress={() => toggleVisible(n)}
-                onPointerDown={(e) => e.stopPropagation()}
-                className="shrink-0 rounded px-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700"
-              >
-                {n.visible ? "\u{1F441}️" : "—"}
-              </Button>
-            </GridListItem>
-          );
-        }}
-      </GridList>
+      {virtualized ? (
+        <Virtualizer layout={ListLayout} layoutOptions={{ rowHeight: ROW_HEIGHT }}>
+          {list}
+        </Virtualizer>
+      ) : (
+        list
+      )}
     </div>
   );
 }
