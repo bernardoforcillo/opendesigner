@@ -36,8 +36,9 @@ Legenda: [x] fatto · [ ] da fare
 - [ ] Sync token e componenti col codice
 
 ## 4. Prestazioni
-- [ ] Rendering WebGL/WASM per file grandi
-- [ ] Virtualizzazione e benchmark su file con decine di migliaia di nodi
+- [x] Rendering a invalidazione, indice di scena incrementale, scarto di ciò che non si vede, livelli di dettaglio, riuso dell'immagine durante pan/zoom; banco di prova su 20.000 nodi (vedi docs/performance.md)
+- [ ] Rendering su GPU (WebGL/WebGPU o Skia/CanvasKit), con font caricabili
+- [ ] Strutture dati persistenti per la scena (applyOp senza copiare tutta la mappa)
 
 ## 5. Differenziatori
 - [ ] Agente AI MCP: revisioni di coerenza, varianti, uso dei token

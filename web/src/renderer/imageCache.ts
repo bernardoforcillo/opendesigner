@@ -89,6 +89,20 @@ function domLoader(url: string): HTMLImageElement {
 
 export class ImageCache {
   private entries = new Map<string, Entry>();
+  // Chi vuole sapere che qualcosa è cambiato (un'immagine pronta, una voce
+  // dimenticata): il loop di disegno a invalidazione di ui/App.tsx. Oltre al
+  // `onChange` del costruttore, che resta per i test.
+  private listeners = new Set<() => void>();
+
+  subscribe(fn: () => void): () => void {
+    this.listeners.add(fn);
+    return () => this.listeners.delete(fn);
+  }
+
+  private changed(): void {
+    this.onChange();
+    for (const l of this.listeners) l();
+  }
 
   constructor(
     private readonly load: LoadImage = domLoader,
@@ -136,7 +150,7 @@ export class ImageCache {
         forgotten++;
       }
     }
-    if (forgotten > 0) this.onChange();
+    if (forgotten > 0) this.changed();
     return forgotten;
   }
 
@@ -188,7 +202,7 @@ export class ImageCache {
   private settle(key: string, started: Entry, next: Entry): void {
     if (this.entries.get(key) !== started) return;
     this.entries.set(key, next);
-    this.onChange();
+    this.changed();
   }
 }
 

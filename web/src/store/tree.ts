@@ -29,7 +29,7 @@ import type { NodeLite, SceneState } from "./types";
 // Confronto per code unit come in Go (byte-wise), non localeCompare: le order
 // key sono indici frazionari ASCII, e una collazione locale le ordinerebbe
 // diversamente dal server.
-function bySiblingOrder(a: NodeLite, b: NodeLite): number {
+export function bySiblingOrder(a: NodeLite, b: NodeLite): number {
   if (a.orderKey !== b.orderKey) return a.orderKey < b.orderKey ? -1 : 1;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }

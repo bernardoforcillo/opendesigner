@@ -10,7 +10,7 @@ import {
   mapBounds,
   type Transform,
 } from "../canvas/transform";
-import { childIndexOf } from "../store/tree";
+import { sceneIndexOf } from "./sceneIndex";
 import { contentWorldBounds } from "../store/groups";
 import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../store/instances";
 import {
@@ -290,10 +290,51 @@ export function drawScene(
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(cam.zoom * dpr, 0, 0, cam.zoom * dpr, cam.x * dpr, cam.y * dpr);
-  const children = childIndexOf(state);
-  drawSiblings(ctx, state, children, rootsOf(state, children, currentPageId), cam, px, images, new Set(), null, new Set());
+  const index = sceneIndexOf(state);
+  const children = index.children;
+  // La VISTA nel mondo, per saltare ciò che non si vede. Senza una misura valida
+  // del canvas (i doppi dei test, un canvas non ancora dimensionato) non si
+  // scarta niente: si disegna tutto, come prima.
+  const cssW = canvas.width / dpr;
+  const cssH = canvas.height / dpr;
+  const cull: Cull | null =
+    cssW > 0 && cssH > 0 && cam.zoom > 0
+      ? {
+          extent: index.extent,
+          // Allargata di 2 px schermo: un tracciato di area nulla (il punto del pen
+          // tool, un segmento orizzontale) ha un extent di misura zero e il
+          // confronto fra rettangoli è rigoroso; lo stesso margine copre
+          // l'antialiasing e i tratti a spessore costante sullo schermo.
+          view: inflateBounds(
+            { x: -cam.x / cam.zoom, y: -cam.y / cam.zoom, width: cssW / cam.zoom, height: cssH / cam.zoom },
+            2 * px,
+          ),
+          px,
+        }
+      : null;
+  drawSiblings(ctx, state, children, rootsOf(state, children, currentPageId), cam, px, images, new Set(), null, new Set(), cull);
   ctx.globalAlpha = 1;
 }
+
+// Cosa serve a drawSiblings per scartare i sottoalberi che non compaiono:
+// l'extent MONDO di ogni nodo (renderer/sceneIndex.ts), la vista nel mondo e la
+// dimensione di un pixel schermo in unità mondo.
+interface Cull {
+  extent: ReadonlyMap<string, Bounds>;
+  view: Bounds;
+  px: number;
+}
+
+// Sotto questa misura (px schermo) un intero sottoalbero non dipinge niente di
+// visibile: lo si salta. Sotto LOD_FLAT_PX un SINGOLO nodo non vale più il suo
+// disegno completo (percorso, tratto, gradiente, testo): diventa un rettangolo
+// piatto del suo colore, che a quella taglia è indistinguibile.
+const SKIP_SUBTREE_PX = 0.3;
+const LOD_FLAT_PX = 4;
+// Un frame ritagliante più piccolo di così (px schermo) non ritaglia: ciò che
+// sporge di qualche pixel non si distingue, e creare un Path2D + clip per ogni
+// frame costa più del resto del frame.
+const CLIP_MIN_PX = 12;
 
 // La mappa degli override che scende insieme al sottoalbero di un'istanza
 // (masterNodeId -> override), oppure `null` fuori da ogni istanza (la pagina, il
@@ -333,9 +374,20 @@ function drawSiblings(
   seen: Set<string>,
   overrides: OverrideMap,
   visited: ReadonlySet<string>,
+  cull: Cull | null,
 ): void {
   for (const n of siblings) {
     if (!n.visible || seen.has(n.id)) continue;
+    // Fuori vista, o troppo piccolo per vedersi: salta l'INTERO sottoalbero.
+    // `cull` è null dentro un'istanza -- i nodi del master hanno l'extent nel
+    // loro posto d'origine, non dove l'istanza li disegna.
+    if (cull) {
+      const e = cull.extent.get(n.id);
+      if (!e || !boundsIntersect(e, cull.view)) continue;
+      // Un vettoriale non si scarta per misura: ha tratto a spessore costante sullo
+      // schermo e può avere box nullo (un punto), ma si vede comunque.
+      if (n.kind !== "vector" && e.width / cull.px < SKIP_SUBTREE_PX && e.height / cull.px < SKIP_SUBTREE_PX) continue;
+    }
     seen.add(n.id);
     drawNode(ctx, state, n, cam, px, images, overrides);
     // Un'ISTANZA non ha figli in `children` (il suo sottoalbero è virtuale):
@@ -363,12 +415,12 @@ function drawSiblings(
     // applica al punto e collectIn alla banda (via intersectBounds): vedi-vs-
     // seleziona, ciò che il clip nasconde al disegno non si clicca e il marquee
     // non lo prende. Un frame senza clipsContent lascia sporgere i figli.
-    if (n.kind === "frame" && n.clipsContent) {
+    if (n.kind === "frame" && n.clipsContent && Math.max(n.width, n.height) / px >= CLIP_MIN_PX) {
       const clip = new Path2D();
       clip.rect(0, 0, n.width, n.height);
       ctx.clip(clip);
     }
-    drawSiblings(ctx, state, children, kids, cam, px, images, seen, overrides, visited);
+    drawSiblings(ctx, state, children, kids, cam, px, images, seen, overrides, visited, cull);
     ctx.restore();
   }
 }
@@ -404,7 +456,7 @@ function drawInstance(
   ctx.save();
   const t = instanceDescentLocal(n, resolved.masterRoot);
   ctx.transform(t.a, t.b, t.c, t.d, t.e, t.f);
-  drawSiblings(ctx, state, children, [resolved.masterRoot], cam, px, images, new Set(), overrides, nextVisited);
+  drawSiblings(ctx, state, children, [resolved.masterRoot], cam, px, images, new Set(), overrides, nextVisited, null);
   ctx.restore();
 }
 
@@ -440,6 +492,20 @@ function drawNode(
   // solo (shapes.ts::inkIsBox), condiviso con l'hit-test: un nodo che si disegna
   // ma non si clicca -- o il contrario -- è il modo in cui i due divergono.
   if (inkIsBox(eff) && (eff.width <= 0 || eff.height <= 0)) return;
+  // LIVELLO DI DETTAGLIO: a pochi pixel un nodo non ha più forma, tratto o
+  // testo da distinguere. Un rettangolo piatto del suo colore costa una frazione
+  // del disegno completo, ed è ciò che permette di inquadrare un documento
+  // intero senza pagare ogni nodo come se fosse a grandezza naturale. Il
+  // vettoriale resta fuori (un path di un ancoraggio ha misura zero e si vede
+  // comunque), e il testo conta in corpo del carattere, non in box.
+  const flatSize = eff.kind === "text" ? (eff.text?.style.fontSize || 16) : Math.max(eff.width, eff.height);
+  if (eff.kind !== "vector" && flatSize / px < LOD_FLAT_PX) {
+    if (eff.kind === "frame" && eff.fills.length === 0) return;
+    ctx.globalAlpha = eff.kind === "text" ? eff.opacity * 0.5 : eff.opacity;
+    ctx.fillStyle = cssColor(eff);
+    ctx.fillRect(eff.x, eff.y, eff.width, eff.height);
+    return;
+  }
   // ROTAZIONE (traccia 2): è il CONTESTO a ruotare attorno al centro del box
   // (nodeCenter, la stessa funzione che l'hit-test usa nel verso opposto), non
   // la geometria -- nodePath e drawText restano asse-allineati. Il nodo si
@@ -607,8 +673,13 @@ export function hitTest(
   zoom: number,
   currentPageId?: string | null,
 ): string | null {
-  const children = childIndexOf(state);
-  return pickIn(state, children, rootsOf(state, children, currentPageId), wx, wy, zoom, new Set(), new Set());
+  const index = sceneIndexOf(state);
+  const children = index.children;
+  // Il punto MONDO e la tolleranza (la presa attorno a un tracciato aperto è in
+  // px schermo, vedi shapes.ts::VECTOR_HIT_PX): servono a saltare i sottoalberi
+  // il cui extent non può contenerlo.
+  const prune: Prune = { extent: index.extent, x: wx, y: wy, pad: HIT_PRUNE_PX / (zoom || 1) };
+  return pickIn(state, children, rootsOf(state, children, currentPageId), wx, wy, zoom, new Set(), new Set(), prune);
 }
 
 // Lo STESSO cammino di drawSiblings, al contrario: fratelli dall'ultimo al
@@ -620,6 +691,19 @@ export function hitTest(
 // scendere in un container si applica al punto l'INVERSA della trasformazione
 // che il renderer applica al ctx -- la stessa localTransformOf (rotazione
 // inclusa), letta nell'altro verso.
+// Come Cull, per l'hit-test: il punto nel MONDO (px/py di pickIn sono nello spazio
+// LOCALE dei fratelli e cambiano a ogni discesa) e la tolleranza in unità mondo.
+// `null` dentro un'istanza, per la stessa ragione di drawSiblings.
+interface Prune {
+  extent: ReadonlyMap<string, Bounds>;
+  x: number;
+  y: number;
+  pad: number;
+}
+// Margine con cui si prova un sottoalbero prima di scartarlo (px schermo): copre
+// la presa attorno ai tracciati aperti e ciò che un extent stimato può mancare.
+const HIT_PRUNE_PX = 12;
+
 function pickIn(
   state: SceneState,
   children: ChildIndex,
@@ -629,10 +713,16 @@ function pickIn(
   zoom: number,
   seen: Set<string>,
   visited: ReadonlySet<string>,
+  prune: Prune | null,
 ): string | null {
   for (let i = siblings.length - 1; i >= 0; i--) {
     const n = siblings[i];
     if (!n.visible || seen.has(n.id)) continue;
+    if (prune && n.kind !== "instance") {
+      const e = prune.extent.get(n.id);
+      if (!e || prune.x < e.x - prune.pad || prune.x > e.x + e.width + prune.pad ||
+          prune.y < e.y - prune.pad || prune.y > e.y + e.height + prune.pad) continue;
+    }
     seen.add(n.id);
     // Un'ISTANZA è OPACA alla selezione dall'esterno: si scende nel master (col
     // punto portato nello spazio del master dall'inversa della discesa) e, se
@@ -657,7 +747,7 @@ function pickIn(
         n.kind === "frame" && n.clipsContent &&
         !(inner.x >= 0 && inner.x <= n.width && inner.y >= 0 && inner.y <= n.height);
       if (!clipsAway) {
-        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited);
+        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited, prune);
         if (hit) return hit;
       }
     }
@@ -686,7 +776,7 @@ function hitInstance(
   if (!resolved) return false;
   const inner = applyTransform(invertTransform(instanceDescentLocal(n, resolved.masterRoot)), px, py);
   const nextVisited = new Set(visited).add(n.instance.componentId);
-  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited) !== null;
+  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null) !== null;
 }
 
 // I nodi il cui box MONDO interseca `bounds`, in ordine di DISEGNO. È la
@@ -705,9 +795,13 @@ function hitInstance(
 // Come hitTest, non risponde MAI con un gruppo (vedi collectIn): risponde con
 // ciò che si vede, e a risalire ai gruppi è la politica di selezione.
 export function nodesIntersecting(state: SceneState, bounds: Bounds, currentPageId?: string | null): string[] {
-  const children = childIndexOf(state);
+  const index = sceneIndexOf(state);
+  const children = index.children;
   const out: string[] = [];
-  collectIn(state, children, rootsOf(state, children, currentPageId), IDENTITY, bounds, out, new Set());
+  // Il marquee afferra anche ciò che sta vicino (la banda si allarga sui tracciati
+  // degeneri, selectionBoundsOfNode): si prova con un margine prima di scartare.
+  const probe = inflateBounds(bounds, MARQUEE_PRUNE_PAD);
+  collectIn(state, children, rootsOf(state, children, currentPageId), IDENTITY, bounds, out, new Set(), { extent: index.extent, probe });
   return out;
 }
 
@@ -719,6 +813,8 @@ export function nodesIntersecting(state: SceneState, bounds: Bounds, currentPage
 // gruppo non contiene per forza i propri figli (il suo box è il suo, non
 // l'unione), quindi un figlio dentro il marquee resterebbe fuori dalla
 // selezione. Si salta solo ciò che non si vede.
+const MARQUEE_PRUNE_PAD = 16;
+
 function collectIn(
   state: SceneState,
   children: ChildIndex,
@@ -727,9 +823,19 @@ function collectIn(
   bounds: Bounds,
   out: string[],
   seen: Set<string>,
+  prune: { extent: ReadonlyMap<string, Bounds>; probe: Bounds } | null,
 ): void {
   for (const n of siblings) {
     if (!n.visible || seen.has(n.id)) continue;
+    // Il sottoalbero il cui extent non tocca nemmeno la banda allargata non ha
+    // niente da offrire. Non dentro un'istanza (extent al posto d'origine) e non
+    // per un'istanza stessa, che ha i suoi bounds derivati qui sotto. `probe` è
+    // la banda ORIGINALE dentro un frame ritagliante? No: l'extent di un frame
+    // ritagliante è già ristretto al suo box, quindi il confronto resta valido.
+    if (prune && n.kind !== "instance") {
+      const e = prune.extent.get(n.id);
+      if (!e || !boundsIntersect(e, prune.probe)) continue;
+    }
     seen.add(n.id);
     // Un'ISTANZA entra nel marquee sui suoi bounds DERIVATI (il sottoalbero del
     // master mappato dalla discesa, store/groups.ts::contentWorldBounds -- la
@@ -771,6 +877,6 @@ function collectIn(
       childBounds = intersectBounds(bounds, frameBox);
       if (!childBounds) continue;
     }
-    collectIn(state, children, kids, compose(toWorld, localTransformOf(n)), childBounds, out, seen);
+    collectIn(state, children, kids, compose(toWorld, localTransformOf(n)), childBounds, out, seen, prune);
   }
 }

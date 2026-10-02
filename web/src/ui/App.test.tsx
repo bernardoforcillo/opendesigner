@@ -271,3 +271,53 @@ describe("docIdFromHash", () => {
     expect(docIdFromHash(`#doc=${id}x`)).toBeNull();
   });
 });
+
+// Il ciclo di disegno è A INVALIDAZIONE: un editor fermo non ridisegna. Prima
+// girava a 60 fps sempre, anche senza nessuna modifica.
+describe("ciclo di disegno a invalidazione", () => {
+  function setupCtx() {
+    const target: Record<string | symbol, unknown> = { canvas: { width: 800, height: 600 } };
+    const fakeCtx = new Proxy(target, {
+      get: (t, p) => (p in t ? t[p] : () => {}),
+    }) as unknown as CanvasRenderingContext2D;
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx);
+    return vi.spyOn(overlayRenderer, "drawOverlay").mockImplementation(() => {});
+  }
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("da fermo non ridisegna; ogni cambiamento che si vede ne produce uno", async () => {
+    const drawOverlay = setupCtx();
+    vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
+    useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
+    render(<App />);
+
+    await waitFor(() => expect(drawOverlay).toHaveBeenCalled());
+    await sleep(80); // lascia sfogare i frame di assestamento
+    const idle = drawOverlay.mock.calls.length;
+    await sleep(250);
+    expect(drawOverlay.mock.calls.length).toBe(idle); // niente rAF in giro
+
+    useScene.getState().setSelection(["x"]);
+    await waitFor(() => expect(drawOverlay.mock.calls.length).toBeGreaterThan(idle));
+    const afterSelection = drawOverlay.mock.calls.length;
+    await sleep(120);
+    expect(drawOverlay.mock.calls.length).toBe(afterSelection);
+
+    useScene.getState().setCamera({ x: 5, y: 5, zoom: 2 });
+    await waitFor(() => expect(drawOverlay.mock.calls.length).toBeGreaterThan(afterSelection));
+  });
+
+  it("molte invalidazioni nello stesso frame producono UN disegno", async () => {
+    const drawOverlay = setupCtx();
+    vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
+    useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
+    render(<App />);
+    await waitFor(() => expect(drawOverlay).toHaveBeenCalled());
+    await sleep(80);
+    const before = drawOverlay.mock.calls.length;
+    for (let i = 0; i < 25; i++) useScene.getState().setCamera({ x: i, y: 0, zoom: 1 });
+    await sleep(120);
+    expect(drawOverlay.mock.calls.length - before).toBeLessThanOrEqual(2);
+    expect(drawOverlay.mock.calls.length - before).toBeGreaterThanOrEqual(1);
+  });
+});

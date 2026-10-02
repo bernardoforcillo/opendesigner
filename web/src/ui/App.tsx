@@ -8,8 +8,9 @@ import { usePresence, loadNickname } from "../store/presence";
 import { drawLayoutDrop, drawPeers } from "../renderer/peersRenderer";
 import { PresenceBar } from "./PresenceBar";
 import { useScene } from "../store/store";
-import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
-import { attachImageRecovery } from "../renderer/imageCache";
+import { resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
+import { attachImageRecovery, imageCache } from "../renderer/imageCache";
+import { SETTLE_MS, SceneLayerCache } from "../renderer/layerCache";
 import { drawOverlay } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
@@ -227,20 +228,48 @@ export function App() {
     };
   }, []);
 
-  // render loop: scena e overlay sono due canvas separati (scena sotto,
-  // overlay sopra, vedi il contenitore "relative" più sotto) così l'overlay
-  // -- bbox di selezione, maniglie, marquee -- può ridisegnarsi in spazio
-  // schermo senza mai toccare i pixel della scena.
+  // IL CICLO DI DISEGNO, A INVALIDAZIONE. Scena e overlay sono due canvas
+  // separati (scena sotto, overlay sopra, vedi il contenitore "relative" più
+  // sotto) così l'overlay -- bbox di selezione, maniglie, marquee -- può
+  // ridisegnarsi in spazio schermo senza mai toccare i pixel della scena.
+  //
+  // Prima girava a 60 fps SEMPRE, anche con l'editor fermo: ridisegnare la scena
+  // intera sessanta volte al secondo per niente (batteria, ventola, e un
+  // documento grande che non lascia spazio a nient'altro). Ora si disegna UN
+  // frame ogni volta che qualcosa che si vede è cambiato: la scena o la
+  // camera/selezione/anteprime (lo store), gli altri utenti (la presenza), un'
+  // immagine arrivata, un font caricato, il canvas ridimensionato. Più
+  // invalidazioni nello stesso frame se ne fanno una sola.
+  //
+  // La scena passa da SceneLayerCache: un documento pesante, mentre solo la
+  // camera si muove, riusa l'ultima immagine invece di ridisegnare, e a
+  // movimento finito (SETTLE_MS) rifà il frame esatto.
   useEffect(() => {
+    const layers = new SceneLayerCache();
     let raf = 0;
-    const tick = () => {
+    let settle: ReturnType<typeof setTimeout> | null = null;
+    let force = false;
+
+    const frame = () => {
+      raf = 0;
       const canvas = canvasRef.current;
       const overlay = overlayRef.current;
       const scene = useScene.getState().scene;
       if (canvas && scene) {
         resizeCanvasToDisplaySize(canvas);
         const ctx = canvas.getContext("2d");
-        if (ctx) drawScene(ctx, scene, useScene.getState().camera, useScene.getState().currentPageId);
+        if (ctx) {
+          const exact = layers.draw(ctx, scene, useScene.getState().camera, useScene.getState().currentPageId, force);
+          force = false;
+          if (settle) clearTimeout(settle);
+          settle = exact
+            ? null
+            : setTimeout(() => {
+                settle = null;
+                force = true;
+                invalidate();
+              }, SETTLE_MS);
+        }
       }
       if (overlay && scene) {
         resizeCanvasToDisplaySize(overlay);
@@ -261,10 +290,35 @@ export function App() {
           if (layoutDrop) drawLayoutDrop(octx, camera, layoutDrop);
         }
       }
-      raf = requestAnimationFrame(tick);
     };
-    raf = requestAnimationFrame(tick);
-    return () => cancelAnimationFrame(raf);
+
+    const invalidate = () => {
+      if (!raf) raf = requestAnimationFrame(frame);
+    };
+
+    const unsubs = [
+      useScene.subscribe(invalidate),
+      usePresence.subscribe(invalidate),
+      imageCache.subscribe(invalidate),
+    ];
+    // Ridimensionare il canvas lo svuota: va ridisegnato. ResizeObserver non c'è
+    // in ogni ambiente (jsdom): lì basta il frame iniziale.
+    const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(invalidate) : null;
+    if (canvasRef.current) observer?.observe(canvasRef.current);
+    // Un font che arriva cambia le misure del testo.
+    const fonts = typeof document !== "undefined" ? document.fonts : undefined;
+    fonts?.addEventListener?.("loadingdone", invalidate);
+    window.addEventListener("resize", invalidate);
+    invalidate();
+
+    return () => {
+      if (raf) cancelAnimationFrame(raf);
+      if (settle) clearTimeout(settle);
+      for (const u of unsubs) u();
+      observer?.disconnect();
+      fonts?.removeEventListener?.("loadingdone", invalidate);
+      window.removeEventListener("resize", invalidate);
+    };
   }, []);
 
   // Scorciatoie undo/redo: sulla window (non sul canvas) perché il canvas non
