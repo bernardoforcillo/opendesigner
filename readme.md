@@ -123,7 +123,7 @@ Start the backend first, then run:
 go run ./cmd/opendesigner mcp
 ```
 
-The MCP mode connects to the running serve instance and exposes editing tools through stdio.
+The MCP mode connects to the running serve instance and exposes editing tools through stdio. The agent appears in the document like another person (name set with `-nickname`, default "Claude") and outlines the node it is editing.
 
 ## Development workflow
 

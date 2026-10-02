@@ -22,7 +22,7 @@ Legenda: [x] fatto · [ ] da fare
 
 ## 2. Collaborazione
 - [x] Multiplayer sulla stessa rete: nickname, avatar, cursori e selezioni degli altri, link `#doc=` per entrare nello stesso documento (niente account, di proposito)
-- [ ] Gli agenti MCP compaiono come persone nella presenza
+- [x] Gli agenti MCP compaiono come persone nella presenza (nome con `-nickname`, default "Claude"; evidenziano il nodo che stanno modificando)
 - [ ] Conflitti sulla stessa proprietà: oggi vince l'ultimo op arrivato al server
 - [ ] Commenti sul canvas
 - [ ] Versioni nominate e branching (sull'oplog)

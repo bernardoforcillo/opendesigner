@@ -91,6 +91,7 @@ func runMCP(args []string) {
 	serverURL := fs.String("server", "http://localhost:8080", "base URL of a running `opendesigner serve`")
 	docID := fs.String("doc", "", "document id to co-design (shared with the web client)")
 	clientID := fs.String("client-id", "", "client id for this MCP session (defaults to a random one)")
+	nickname := fs.String("nickname", odmcp.DefaultNickname, "name people see for this agent in the document")
 	_ = fs.Parse(args)
 
 	// Ctrl-C / SIGTERM cancels the whole session: it stops the Subscribe loop
@@ -113,6 +114,8 @@ func runMCP(args []string) {
 
 	// The sync loop is the only writer of the local doc; it runs until ctx ends.
 	go sess.SyncLoop(ctx)
+	// The agent shows up in the document like another person.
+	go sess.PresenceLoop(ctx, *nickname)
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "opendesigner", Version: "0.1.0"}, nil)
 	odmcp.RegisterTools(srv, sess)

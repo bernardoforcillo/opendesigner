@@ -42,10 +42,13 @@ describe("drawPeers", () => {
     expect(calls).toContain("label:Bea");
   });
 
-  it("senza cursore non disegna né freccia né nome, ma la selezione sì", () => {
-    const { ctx, calls } = ctxMock();
+  it("senza cursore niente freccia, ma la selezione sì e col nome sopra", () => {
+    const { ctx, calls, raw } = ctxMock();
     drawPeers(ctx, scene(), cam, peers(peer({ hasCursor: false, selection: ["n1"] })), null);
-    expect(calls).toEqual(["selection"]);
+    expect(calls).toEqual(["selection", "label:Bea"]);
+    expect(raw.lineTo).not.toHaveBeenCalled(); // nessuna freccia
+    // La targhetta sta sopra l'angolo in alto a sinistra del nodo (10,20).
+    expect(raw.roundRect).toHaveBeenCalledWith(10, 20 - 16 - 2, expect.any(Number), 16, 4);
   });
 
   it("un id di selezione sparito dal documento non disegna nulla", () => {

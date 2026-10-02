@@ -331,3 +331,82 @@ func TestGradientFillThroughTools(t *testing.T) {
 		}
 	}
 }
+
+// TestAgentAppearsInPresence: the agent joins the room under its nickname and,
+// after each write, points at the node it touched -- which is what lets the web
+// show "Claude" outlining the rectangle it just made.
+func TestAgentAppearsInPresence(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	// A "web client" watching the room.
+	wctx, cancelWatch := context.WithCancel(ctx)
+	defer cancelWatch()
+	watch, err := direct.WatchPresence(wctx, connect.NewRequest(&opendesignerv1.WatchPresenceRequest{
+		DocId: docID, ClientId: "web", Nickname: "Ada",
+	}))
+	if err != nil {
+		t.Fatalf("WatchPresence: %v", err)
+	}
+	events := make(chan *opendesignerv1.PresenceState, 16)
+	left := make(chan string, 4)
+	go func() {
+		for watch.Receive() {
+			switch k := watch.Msg().GetKind().(type) {
+			case *opendesignerv1.PresenceEvent_Update:
+				events <- k.Update
+			case *opendesignerv1.PresenceEvent_LeftClientId:
+				left <- k.LeftClientId
+			}
+		}
+	}()
+	next := func() *opendesignerv1.PresenceState {
+		t.Helper()
+		select {
+		case st := <-events:
+			return st
+		case <-time.After(3 * time.Second):
+			t.Fatal("timed out waiting for a presence update")
+			return nil
+		}
+	}
+
+	pctx, stopAgent := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { defer close(done); sess.PresenceLoop(pctx, "") }()
+
+	if got := next(); got.GetNickname() != odmcp.DefaultNickname || got.GetClientId() != sess.ClientID() {
+		t.Fatalf("joined as %v, want %q / %s", got, odmcp.DefaultNickname, sess.ClientID())
+	}
+	waitFor(t, "agent to be in the room", sess.PresenceJoined)
+
+	created, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 10, Height: 10})
+	if err != nil {
+		t.Fatalf("CreateRectangle: %v", err)
+	}
+	got := next()
+	if len(got.GetSelection()) != 1 || got.GetSelection()[0] != created.NodeId || got.GetPageId() != "page1" {
+		t.Fatalf("after create: %v, want selection [%s] on page1", got, created.NodeId)
+	}
+
+	if _, err := sess.DeleteNode(ctx, odmcp.NodeIdInput{Id: created.NodeId}); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	if got := next(); len(got.GetSelection()) != 0 {
+		t.Fatalf("after delete selection = %v, want it cleared", got.GetSelection())
+	}
+
+	stopAgent()
+	<-done
+	select {
+	case id := <-left:
+		if id != sess.ClientID() {
+			t.Fatalf("left = %q, want the agent", id)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the agent never left the room")
+	}
+}

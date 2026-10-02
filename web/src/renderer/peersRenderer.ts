@@ -14,6 +14,19 @@ const LABEL_H = 16;
 // qualunque ingrandimento, come le maniglie.
 const ARROW: readonly [number, number][] = [[0, 0], [0, 15], [4, 11.5], [7.5, 18], [10, 17], [6.7, 10.5], [11.5, 10.5]];
 
+// Una targhetta col nome: pillola colorata con testo bianco, con l'angolo in
+// alto a sinistra in (x, y).
+function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string): void {
+  const w = ctx.measureText(text).width + LABEL_PAD_X * 2;
+  ctx.fillStyle = color;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, LABEL_H, 4);
+  ctx.fill();
+  ctx.fillStyle = "#ffffff";
+  ctx.textBaseline = "middle";
+  ctx.fillText(text, x + LABEL_PAD_X, y + LABEL_H / 2);
+}
+
 /**
  * Disegna gli altri utenti sopra l'overlay: il riquadro dei loro nodi
  * selezionati, il loro cursore e il loro nickname. Va chiamata DOPO
@@ -46,6 +59,10 @@ export function drawPeers(
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = color;
       ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.width, box.height);
+      // Chi non ha un cursore (l'agente MCP, o chi ha il mouse fuori dal
+      // canvas) si riconosce dal nome sopra il suo riquadro: altrimenti
+      // sarebbe un contorno anonimo.
+      if (!p.hasCursor) drawLabel(ctx, p.nickname, box.x, box.y - LABEL_H - 2, color);
     }
 
     if (!p.hasCursor) continue;
@@ -61,14 +78,7 @@ export function drawPeers(
     ctx.strokeStyle = "#ffffff";
     ctx.stroke();
 
-    const w = ctx.measureText(p.nickname).width + LABEL_PAD_X * 2;
-    ctx.fillStyle = color;
-    ctx.beginPath();
-    ctx.roundRect(12, 18, w, LABEL_H, 4);
-    ctx.fill();
-    ctx.fillStyle = "#ffffff";
-    ctx.textBaseline = "middle";
-    ctx.fillText(p.nickname, 12 + LABEL_PAD_X, 18 + LABEL_H / 2);
+    drawLabel(ctx, p.nickname, 12, 18, color);
     ctx.restore();
   }
 }
