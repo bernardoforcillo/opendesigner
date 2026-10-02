@@ -27,7 +27,7 @@ const DEG_TO_RAD = Math.PI / 180;
 // come li sceglie e li ordina chi disegna, o l'immagine esportata non sarebbe
 // quella che si vede.
 export function sortedVisible(state: SceneState): NodeLite[] {
-  return Object.values(state.nodes)
+  return [...state.nodes.values()]
     .filter((n) => n.visible)
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0));
 }
@@ -320,7 +320,7 @@ export function drawScene(
 // l'extent MONDO di ogni nodo (renderer/sceneIndex.ts), la vista nel mondo e la
 // dimensione di un pixel schermo in unità mondo.
 interface Cull {
-  extent: ReadonlyMap<string, Bounds>;
+  extent: { get(id: string): Bounds | undefined };
   view: Bounds;
   px: number;
 }
@@ -695,7 +695,7 @@ export function hitTest(
 // LOCALE dei fratelli e cambiano a ogni discesa) e la tolleranza in unità mondo.
 // `null` dentro un'istanza, per la stessa ragione di drawSiblings.
 interface Prune {
-  extent: ReadonlyMap<string, Bounds>;
+  extent: { get(id: string): Bounds | undefined };
   x: number;
   y: number;
   pad: number;
@@ -823,7 +823,7 @@ function collectIn(
   bounds: Bounds,
   out: string[],
   seen: Set<string>,
-  prune: { extent: ReadonlyMap<string, Bounds>; probe: Bounds } | null,
+  prune: { extent: { get(id: string): Bounds | undefined }; probe: Bounds } | null,
 ): void {
   for (const n of siblings) {
     if (!n.visible || seen.has(n.id)) continue;

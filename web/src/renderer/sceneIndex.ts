@@ -2,6 +2,7 @@ import { type Bounds, boundsOfNode, inflateBounds, intersectBounds, unionBounds,
 import { IDENTITY, type Transform, compose, localTransformOf, mapBounds, worldTransformOf } from "../canvas/transform";
 import { contentWorldBounds } from "../store/groups";
 import { bySiblingOrder, childIndexOf } from "../store/tree";
+import { PEditor, PMap } from "../store/nodeMap";
 import { deltaOf } from "../store/sceneDelta";
 import type { NodeLite, SceneState } from "../store/types";
 
@@ -27,7 +28,7 @@ import type { NodeLite, SceneState } from "../store/types";
 // stima abbondante.
 export interface SceneIndex {
   children: Map<string, NodeLite[]>;
-  extent: Map<string, Bounds>;
+  extent: PMap<Bounds>;
   // Un token d'identità che cambia SOLO quando cambia la STRUTTURA dell'albero
   // vista da chi lo elenca: chi sta dove, in che ordine, e ciò che una riga
   // mostra (nome, tipo, visibilità, testo). Una modifica di sola geometria o di
@@ -135,7 +136,7 @@ function combine(n: NodeLite, parentWorld: Transform, kidExtents: Bounds[]): Bou
 // Percorre un sottoalbero e ne scrive gli extent, azzerando quelli che non
 // valgono più (un nodo reso invisibile, o ora vuoto, non deve lasciare un extent
 // vecchio: il disegno lo disegnerebbe ancora).
-function makeVisitor(scene: SceneState, children: Map<string, NodeLite[]>, extent: Map<string, Bounds>) {
+function makeVisitor(scene: SceneState, children: Map<string, NodeLite[]>, extent: PEditor<Bounds>) {
   const clear = (id: string) => {
     extent.delete(id);
     for (const k of children.get(id) ?? []) clear(k.id);
@@ -180,12 +181,12 @@ function makeVisitor(scene: SceneState, children: Map<string, NodeLite[]>, exten
 
 export function buildIndex(scene: SceneState): SceneIndex {
   const children = childIndexOf(scene);
-  const extent = new Map<string, Bounds>();
+  const extent = PMap.emptyOf<Bounds>().edit();
   const visit = makeVisitor(scene, children, extent);
   for (const page of scene.pages) {
     for (const r of children.get(page.id) ?? []) visit(r, IDENTITY);
   }
-  return { children, extent, structure: {} };
+  return { children, extent: extent.done(), structure: {} };
 }
 
 // --- AGGIORNAMENTO INCREMENTALE ------------------------------------------------
@@ -225,21 +226,15 @@ function updateIndex(
     // toccati (quelli rimasti identici non contano), e nessun nodo è rimosso.
     const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(prev.extent.size * INCREMENTAL_MAX_FRACTION));
     if (hint.length > limit) return null;
-    for (const id of hint) if (nodes[id] && prevNodes[id] !== nodes[id]) changed.push(id);
+    for (const id of hint) if (nodes.at(id) && prevNodes.at(id) !== nodes.at(id)) changed.push(id);
   } else {
-    const total = Object.keys(nodes).length;
-    const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(total * INCREMENTAL_MAX_FRACTION));
-    for (const id in nodes) {
-      if (prevNodes[id] !== nodes[id]) {
-        changed.push(id);
-        if (changed.length > limit) return null;
-      }
-    }
-    for (const id in prevNodes) if (!(id in nodes)) removed.push(id);
-    if (removed.length > limit) return null;
+    // Il confronto salta i secchi della mappa con la stessa identità: costa
+    // quanto i secchi toccati, non quanto il documento.
+    const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(nodes.size * INCREMENTAL_MAX_FRACTION));
+    if (!nodes.diff(prevNodes, changed, removed, limit)) return null;
   }
   if (changed.length === 0 && removed.length === 0) return prev;
-  const structural = removed.length > 0 || changed.some((id) => structurallyDifferent(prevNodes[id], nodes[id]));
+  const structural = removed.length > 0 || changed.some((id) => structurallyDifferent(prevNodes.at(id), nodes.at(id)));
 
   // Un cambiamento dentro il sottoalbero di un master di componente sposta gli
   // extent delle istanze: rifare tutto.
@@ -247,8 +242,8 @@ function updateIndex(
   if (rootIds.length > 0) {
     const roots = new Set(rootIds);
     for (const id of [...changed, ...removed]) {
-      const base = nodes[id] ?? prevNodes[id];
-      for (let cur: NodeLite | undefined = base, g = 0; cur && g < 1000; cur = (nodes[cur.parentId] ?? prevNodes[cur.parentId]), g++) {
+      const base = nodes.at(id) ?? prevNodes.at(id);
+      for (let cur: NodeLite | undefined = base, g = 0; cur && g < 1000; cur = (nodes.at(cur.parentId) ?? prevNodes.at(cur.parentId)), g++) {
         if (roots.has(cur.id)) return null;
       }
     }
@@ -283,10 +278,10 @@ function updateIndex(
     }
     l.splice(lo, 0, n);
   };
-  for (const id of removed) dropFrom(prevNodes[id].parentId, id);
+  for (const id of removed) dropFrom(prevNodes.at(id).parentId, id);
   for (const id of changed) {
-    const before = prevNodes[id];
-    const after = nodes[id];
+    const before = prevNodes.at(id);
+    const after = nodes.at(id);
     if (before) dropFrom(before.parentId, id);
     insertInto(after.parentId, after);
   }
@@ -295,7 +290,7 @@ function updateIndex(
     else children.set(pid, list);
   }
 
-  const extent = new Map(prev.extent);
+  const extent = prev.extent.edit();
   for (const id of removed) extent.delete(id);
 
   const worldOf = (parentId: string): Transform => worldTransformOf(scene, parentId);
@@ -305,7 +300,7 @@ function updateIndex(
   // raggiungibile da nessuna pagina (un master di componente), non ha extent.
   const pageIds = new Set(scene.pages.map((p) => p.id));
   const drawn = (n: NodeLite): boolean => {
-    for (let cur: NodeLite | undefined = n, g = 0; cur && g < 1000; cur = nodes[cur.parentId], g++) {
+    for (let cur: NodeLite | undefined = n, g = 0; cur && g < 1000; cur = nodes.at(cur.parentId), g++) {
       if (!cur.visible) return false;
       if (pageIds.has(cur.parentId)) return true;
     }
@@ -321,34 +316,34 @@ function updateIndex(
     // Già rifatto come discendente di un altro cambiato? Un nodo sotto un
     // cambiato viene comunque rivisitato da lui: si salta.
     let covered = false;
-    for (let cur = nodes[nodes[id].parentId], g = 0; cur && g < 1000; cur = nodes[cur.parentId], g++) {
+    for (let cur = nodes.at(nodes.at(id).parentId), g = 0; cur && g < 1000; cur = nodes.at(cur.parentId), g++) {
       if (redone.has(cur.id)) { covered = true; break; }
     }
     if (covered) continue;
     redone.add(id);
-    if (drawn(nodes[id])) visit(nodes[id], worldOf(nodes[id].parentId));
+    if (drawn(nodes.at(id))) visit(nodes.at(id), worldOf(nodes.at(id).parentId));
     else clearTree(id);
   }
   // Gli antenati toccati: dei cambiati, dei rimossi e dei VECCHI parent di chi
   // si è spostato. Dal più profondo, con l'unione dei figli già in cache.
   const up = new Set<string>();
   const addChain = (startParentId: string) => {
-    for (let cur = nodes[startParentId], g = 0; cur && g < 1000; cur = nodes[cur.parentId], g++) up.add(cur.id);
+    for (let cur = nodes.at(startParentId), g = 0; cur && g < 1000; cur = nodes.at(cur.parentId), g++) up.add(cur.id);
   };
   for (const id of changed) {
-    addChain(nodes[id].parentId);
-    if (prevNodes[id]) addChain(prevNodes[id].parentId);
+    addChain(nodes.at(id).parentId);
+    if (prevNodes.at(id)) addChain(prevNodes.at(id).parentId);
   }
-  for (const id of removed) addChain(prevNodes[id].parentId);
+  for (const id of removed) addChain(prevNodes.at(id).parentId);
   for (const id of redone) up.delete(id);
   const depth = (id: string): number => {
     let d = 0;
-    for (let cur: NodeLite | undefined = nodes[id]; cur && d < 1000; cur = nodes[cur.parentId]) d++;
+    for (let cur: NodeLite | undefined = nodes.at(id); cur && d < 1000; cur = nodes.at(cur.parentId)) d++;
     return d;
   };
   const chain = [...up].sort((a, b) => depth(b) - depth(a));
   for (const id of chain) {
-    const n = nodes[id];
+    const n = nodes.at(id);
     if (!n || n.kind === "instance") continue;
     if (!drawn(n)) {
       extent.delete(id);
@@ -363,5 +358,5 @@ function updateIndex(
     if (u) extent.set(id, u);
     else extent.delete(id);
   }
-  return { children, extent, structure: structural ? {} : prev.structure };
+  return { children, extent: extent.done(), structure: structural ? {} : prev.structure };
 }

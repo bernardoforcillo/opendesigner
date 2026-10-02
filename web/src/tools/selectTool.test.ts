@@ -1,3 +1,4 @@
+import { nodesOf } from "../store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createSelectTool, pickTarget, nodesInMarquee } from "./selectTool";
 import type { ToolContext } from "./types";
@@ -87,7 +88,7 @@ beforeEach(() => {
   // riconciliazione confermato/pending (vedi store/store.ts).
   useScene.getState().setScene({
     ...emptyScene("doc-1", "u"),
-    nodes: { a: node("a", 0, "a000000"), b: node("b", 100, "a000001") },
+    nodes: nodesOf({ a: node("a", 0, "a000000"), b: node("b", 100, "a000001") }),
   });
 });
 
@@ -127,10 +128,10 @@ describe("selectTool", () => {
 
   describe("pickTarget", () => {
     it("picks the topmost node when two overlap", () => {
-      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+      const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         under: node("under", 0, "a000000"),
         over: node("over", 0, "a000001"), // orderKey più alto = disegnato sopra
-      } };
+      }) };
       expect(pickTarget(scene, { x: 10, y: 10 }, false, [], 1)).toEqual({ mode: "single", id: "over" });
     });
 
@@ -160,34 +161,34 @@ describe("selectTool", () => {
 
   describe("nodesInMarquee", () => {
     it("includes only nodes whose bounds intersect the marquee", () => {
-      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+      const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         inside: node("inside", 5, "a000000"),
         outside: node("outside", 500, "a000001"),
-      } };
+      }) };
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 20, height: 20 })).toEqual(["inside"]);
     });
 
     it("excludes nodes that only touch the marquee at an edge", () => {
-      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+      const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         touching: node("touching", 50, "a000000", { width: 50, height: 50 }),
-      } };
+      }) };
       // marquee = [0,0,50,50]; touching = [50,0,50,50] -> tocca solo il bordo x=50
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 50, height: 50 })).toEqual([]);
     });
 
     it("measures a rotated node by what it really occupies, not by its unrotated box", () => {
       // 100x50 a 90°: il box fermo è y in [0,50], ma il nodo occupa y in [-25,75].
-      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+      const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         turned: node("turned", 0, "a000000", { width: 100, height: 50, rotation: 90 }),
-      } };
+      }) };
       expect(nodesInMarquee(scene, { x: 20, y: 60, width: 10, height: 10 })).toEqual(["turned"]);
     });
 
     it("excludes invisible nodes even when their bounds intersect", () => {
-      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+      const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         hidden: node("hidden", 5, "a000000", { visible: false }),
         shown: node("shown", 5, "a000001"),
-      } };
+      }) };
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 20, height: 20 })).toEqual(["shown"]);
     });
 
@@ -196,22 +197,22 @@ describe("selectTool", () => {
       // Un marquee che arriva a x=85 non tocca la geometria, ma tocca quello
       // che si VEDE -- e trascinare una selezione attorno a ciò che si vede è
       // tutto quello che il marquee promette.
-      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+      const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         outlined: node("outlined", 100, "a000000", {
           strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 20, align: "outside" }],
         }),
-      } };
+      }) };
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 85, height: 50 })).toEqual(["outlined"]);
       // E un marquee che si ferma PRIMA della fascia continua a non prenderlo.
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 79, height: 50 })).toEqual([]);
     });
 
     it("un tratto INTERNO non allarga il bersaglio del marquee", () => {
-      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+      const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         outlined: node("outlined", 100, "a000000", {
           strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 20, align: "inside" }],
         }),
-      } };
+      }) };
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 85, height: 50 })).toEqual([]);
     });
 
@@ -226,7 +227,7 @@ describe("selectTool", () => {
       // La geometria è VERA (due ancoraggi), non `subpaths: []`: la tolleranza
       // parla di un path che esiste. Un vettoriale senza ancoraggi non si vede,
       // non si clicca e non lo prende nemmeno il marquee -- test qui sotto.
-      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+      const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         line: node("line", 5, "a000000", {
           kind: "vector", height: 0,
           vector: { subpaths: [{
@@ -238,7 +239,7 @@ describe("selectTool", () => {
           }] },
         }),
         flatRect: node("flatRect", 5, "a000001", { height: 0 }),
-      } };
+      }) };
       expect(nodesInMarquee(scene, { x: 0, y: 1, width: 60, height: 9 })).toEqual(["line"]);
       // ...e uno che le scavalca entrambe le prende entrambe: la tolleranza
       // AGGIUNGE un caso, non ne toglie.
@@ -253,10 +254,10 @@ describe("selectTool", () => {
       // nessun hit (renderer/shapes.ts::hasInk, hitTestNode). Sarebbe l'unico
       // modo di selezionare qualcosa di invisibile: click e marquee non possono
       // essere la stessa funzione, ma su questo devono concordare.
-      const scene = { ...emptyScene("doc-1", "u"), nodes: {
+      const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         ghost: node("ghost", 5, "a000000", { kind: "vector", vector: { subpaths: [] } }),
         real: node("real", 5, "a000001"),
-      } };
+      }) };
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 100, height: 100 })).toEqual(["real"]);
     });
   });
@@ -291,9 +292,9 @@ describe("selectTool", () => {
     // pur essendo fuori dall'ellisse (è esattamente ciò che hitTest evita).
     it("a click on empty space inside an ellipse's bounding box selects nothing", () => {
       useScene.setState({ selection: [] });
-      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: {
+      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({
         e: node("e", 0, "a000000", { width: 100, height: 100, kind: "ellipse" }),
-      } });
+      }) });
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(2, 2), ctx); // angolo dell'AABB, FUORI dall'ellisse
@@ -304,9 +305,9 @@ describe("selectTool", () => {
 
     it("a sub-slop jitter is still a click, but a real drag selects by bounds", () => {
       useScene.setState({ selection: [] });
-      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: {
+      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({
         e: node("e", 0, "a000000", { width: 100, height: 100, kind: "ellipse" }),
-      } });
+      }) });
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(2, 2), ctx);
@@ -325,7 +326,7 @@ describe("selectTool", () => {
         camera: { x: 0, y: 0, zoom: 0.1 }, // 20 unità mondo = 2px schermo
         selection: [],
       });
-      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { a: node("a", 0, "a000000") } });
+      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ a: node("a", 0, "a000000") }) });
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(-10, -10), ctx);
@@ -369,14 +370,14 @@ describe("selectTool", () => {
 
       tool.onPointerDown!(at(10, 10), ctx); // sopra "a", già selezionato: niente cambio selezione
       tool.onPointerMove!(at(30, 25), ctx); // dx=20 dy=15, anteprima locale
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 20, y: 15 });
-      expect(useScene.getState().scene!.nodes["b"]).toMatchObject({ x: 120, y: 15 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 20, y: 15 });
+      expect(useScene.getState().scene!.nodes.at("b")).toMatchObject({ x: 120, y: 15 });
       expect(sync.sent).toHaveLength(0); // niente sul filo durante il drag
 
       tool.onPointerUp!(at(30, 25), ctx);
       expect(sync.sent).toHaveLength(2); // un op per nodo
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 20, y: 15 });
-      expect(useScene.getState().scene!.nodes["b"]).toMatchObject({ x: 120, y: 15 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 20, y: 15 });
+      expect(useScene.getState().scene!.nodes.at("b")).toMatchObject({ x: 120, y: 15 });
       expect(useScene.getState().selection).toEqual(["a", "b"]);
     });
 
@@ -405,8 +406,8 @@ describe("selectTool", () => {
       tool.onPointerUp!(at(140, 20), ctx);
 
       expect(sync.sent).toHaveLength(1);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0 }); // "a" non si è mosso
-      expect(useScene.getState().scene!.nodes["b"]).toMatchObject({ x: 120, y: 10 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0 }); // "a" non si è mosso
+      expect(useScene.getState().scene!.nodes.at("b")).toMatchObject({ x: 120, y: 10 });
     });
 
     it("Esc during a drag reverts the moved node(s) and sends nothing", () => {
@@ -421,10 +422,10 @@ describe("selectTool", () => {
       // test più sotto) -- senza, il riquadro mosso scatterebbe sul bordo di
       // "b" e la posizione intermedia non sarebbe più quella del puntatore.
       tool.onPointerMove!(atMod(90, 90, { altKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 80, y: 80 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 80, y: 80 });
 
       tool.onKeyDown!({ key: "Escape" } as KeyboardEvent, ctx);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0 });
       expect(sync.sent).toHaveLength(0);
 
       // e il prossimo up non manda più nulla (il gesto è stato abbandonato)
@@ -443,7 +444,7 @@ describe("selectTool", () => {
       tool.onPointerMove!(at(90, 90), ctx);
       tool.onDeactivate!(ctx);
 
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0 });
       expect(sync.sent).toHaveLength(0);
     });
   });
@@ -463,13 +464,13 @@ describe("selectTool", () => {
 
       tool.onPointerDown!(at(50, 50), ctx); // maniglia se
       tool.onPointerMove!(at(70, 80), ctx); // dx=20 dy=30
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 70, height: 80 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 70, height: 80 });
       expect(sync.sent).toHaveLength(0); // niente sul filo durante il gesto
 
       tool.onPointerUp!(at(70, 80), ctx);
       expect(sync.sent).toHaveLength(1);
       expect(sync.sent[0].kind.case).toBe("setProps");
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 70, height: 80 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 70, height: 80 });
     });
 
     it("the nw handle moves the origin while resizing", () => {
@@ -484,7 +485,7 @@ describe("selectTool", () => {
       // ma è un'altra cosa (vedi "selectTool — snap" più sotto).
       tool.onPointerMove!(atMod(10, 20, { altKey: true }), ctx);
       tool.onPointerUp!(atMod(10, 20, { altKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 10, y: 20, width: 40, height: 30 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 10, y: 20, width: 40, height: 30 });
     });
 
     it("handles win over the node under the pointer (no move, no selection change)", () => {
@@ -497,7 +498,7 @@ describe("selectTool", () => {
       expect(useScene.getState().selection).toEqual(["a"]);
       tool.onPointerMove!(at(90, 45), ctx);
       // resize sull'asse x soltanto: se avesse vinto il nodo, "a" si sarebbe MOSSO
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 90, height: 50 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 90, height: 50 });
     });
 
     it("flips through the gesture keeping a positive width", () => {
@@ -510,7 +511,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(at(0, 25), ctx); // maniglia w
       tool.onPointerMove!(at(100, 25), ctx); // oltre il bordo destro (x=50)
       tool.onPointerUp!(at(100, 25), ctx);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 50, y: 0, width: 50, height: 50 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 50, y: 0, width: 50, height: 50 });
     });
 
     it("shift keeps the aspect ratio", () => {
@@ -522,7 +523,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(at(50, 50, true), ctx); // maniglia se
       tool.onPointerMove!(at(150, 50, true), ctx); // solo dx: senza shift sarebbe 150x50
       tool.onPointerUp!(at(150, 50, true), ctx);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ width: 150, height: 150 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ width: 150, height: 150 });
     });
 
     it("shift keeps the aspect ratio while SHRINKING from a corner", () => {
@@ -535,9 +536,9 @@ describe("selectTool", () => {
       tool.onPointerDown!(at(50, 50, true), ctx); // maniglia se
       tool.onPointerMove!(at(30, 50, true), ctx); // dx=-20 verso l'interno, dy=0
       // 50x50 * 0.6: il drag deve rimpicciolire, non lasciare il nodo com'è
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 30, height: 30 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 30, height: 30 });
       tool.onPointerUp!(at(30, 50, true), ctx);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ width: 30, height: 30 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ width: 30, height: 30 });
     });
 
     it("resizes a MULTIPLE selection as a group, one op per node", () => {
@@ -552,8 +553,8 @@ describe("selectTool", () => {
       tool.onPointerUp!(at(300, 50), ctx);
 
       expect(sync.sent).toHaveLength(2);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
-      expect(useScene.getState().scene!.nodes["b"]).toMatchObject({ x: 200, y: 0, width: 100, height: 50 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
+      expect(useScene.getState().scene!.nodes.at("b")).toMatchObject({ x: 200, y: 0, width: 100, height: 50 });
     });
 
     // L'invariante del box (proto, su VectorNode) nel verso che costa: dopo un
@@ -564,7 +565,7 @@ describe("selectTool", () => {
     // prima, violando l'invariante con un gesto ordinario e senza nessun
     // SetVectorPath in vista.
     it("resizing a VECTOR node rewrites its geometry in the SAME gesture", () => {
-      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { v: curvyVector() } });
+      useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ v: curvyVector() }) });
       useScene.getState().setSelection(["v"]);
       const sync = new FakeSync();
       useScene.getState().setSync(sync);
@@ -573,7 +574,7 @@ describe("selectTool", () => {
 
       tool.onPointerDown!(at(50, 50), ctx);  // maniglia se
       tool.onPointerMove!(at(100, 50), ctx); // larghezza x2, altezza invariata
-      const mid = useScene.getState().scene!.nodes["v"];
+      const mid = useScene.getState().scene!.nodes.at("v");
       expect(mid).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
       // Già in ANTEPRIMA l'invariante regge: le due chiavi di coalescing
       // (`s|v|...` e `v|v`) sono distinte, quindi la geometria non schiaccia il
@@ -582,7 +583,7 @@ describe("selectTool", () => {
 
       tool.onPointerUp!(at(100, 50), ctx);
       expect(sync.sent.map((o) => o.kind.case)).toEqual(["setProps", "setVectorPath"]);
-      const after = useScene.getState().scene!.nodes["v"];
+      const after = useScene.getState().scene!.nodes.at("v");
       expect(after).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
       expect(vectorBounds(after.vector!.subpaths)).toEqual({ x: 0, y: 0, width: 100, height: 50 });
       // Le maniglie bézier sono OFFSET e si scalano con la parte lineare: se
@@ -594,7 +595,7 @@ describe("selectTool", () => {
       // UN gesto: una sola voce di undo, e annullare rimette a posto ENTRAMBI.
       expect(useScene.getState().undoStack).toHaveLength(1);
       useScene.getState().undo();
-      const undone = useScene.getState().scene!.nodes["v"];
+      const undone = useScene.getState().scene!.nodes.at("v");
       expect(undone).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
       expect(undone.vector!.subpaths).toEqual(curvyVector().vector!.subpaths);
     });
@@ -624,7 +625,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(at(50, 50), ctx);
       tool.onPointerUp!(at(50, 50), ctx);
       expect(sync.sent).toHaveLength(0);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
     });
 
     it("Esc during a resize restores the original size and sends nothing", () => {
@@ -636,10 +637,10 @@ describe("selectTool", () => {
 
       tool.onPointerDown!(at(50, 50), ctx);
       tool.onPointerMove!(at(150, 150), ctx);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ width: 150, height: 150 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ width: 150, height: 150 });
 
       tool.onKeyDown!({ key: "Escape" } as KeyboardEvent, ctx);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
       expect(sync.sent).toHaveLength(0);
 
       tool.onPointerUp!(at(150, 150), ctx);
@@ -656,7 +657,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(at(50, 50), ctx);
       tool.onPointerMove!(at(150, 150), ctx);
       tool.onDeactivate!(ctx);
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
       expect(sync.sent).toHaveLength(0);
     });
 
@@ -669,7 +670,7 @@ describe("selectTool", () => {
       tool.onPointerMove!(at(35, 35), ctx);
       tool.onPointerUp!(at(35, 35), ctx);
       // spostato, NON ridimensionato
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 10, y: 10, width: 50, height: 50 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 10, y: 10, width: 50, height: 50 });
     });
 
     it("the canvas cursor reflects the handle under the pointer", () => {
@@ -708,7 +709,7 @@ describe("selectTool", () => {
   // centro, così il delta atteso è esattamente un quarto di giro.
 
   describe("rotating from the corner zones", () => {
-    const rotationOf = (id: string) => useScene.getState().scene!.nodes[id].rotation;
+    const rotationOf = (id: string) => useScene.getState().scene!.nodes.at(id).rotation;
 
     it("dragging outside a corner rotates the node about its centre: one gesture, one op", () => {
       useScene.getState().setSelection(["a"]);
@@ -728,7 +729,7 @@ describe("selectTool", () => {
       expect(sync.sent[0].kind.case).toBe("setProps");
       expect(rotationOf("a")).toBeCloseTo(90, 9);
       // il nodo NON si sposta: ruota attorno al proprio centro
-      expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
     });
 
     it("undoes in ONE step", () => {
@@ -788,8 +789,8 @@ describe("selectTool", () => {
       tool.onPointerUp!(at(42, 108), ctx);
 
       expect(sync.sent).toHaveLength(2); // un op per nodo, un gesto solo
-      const a = useScene.getState().scene!.nodes["a"];
-      const b = useScene.getState().scene!.nodes["b"];
+      const a = useScene.getState().scene!.nodes.at("a");
+      const b = useScene.getState().scene!.nodes.at("b");
       expect(a.rotation).toBeCloseTo(90, 9);
       expect(b.rotation).toBeCloseTo(90, 9);
       // i centri girano attorno a quello di gruppo: a (25,25) -> (75,-25), b (125,25) -> (75,75)
@@ -870,7 +871,7 @@ describe("selectTool", () => {
     function selectRotated(deg: number) {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: { a: node("a", 0, "a000000", { rotation: deg }) },
+        nodes: nodesOf({ a: node("a", 0, "a000000", { rotation: deg }) }),
       });
       useScene.getState().setSelection(["a"]);
       useScene.getState().setSync(new FakeSync());
@@ -886,7 +887,7 @@ describe("selectTool", () => {
       tool.onPointerMove!(at(25, 70), ctx); // 20px in GIÙ = 20px lungo il suo asse x
       tool.onPointerUp!(at(25, 70), ctx);
 
-      const a = useScene.getState().scene!.nodes["a"];
+      const a = useScene.getState().scene!.nodes.at("a");
       expect(a.width).toBeCloseTo(70, 9);
       expect(a.height).toBeCloseTo(50, 9);
       // il lato ancorato resta inchiodato nel MONDO: il box scivola per compensare
@@ -904,7 +905,7 @@ describe("selectTool", () => {
       tool.onPointerMove!(at(45, 50), ctx); // 20px a DESTRA: trasversale
       tool.onPointerUp!(at(45, 50), ctx);
 
-      const a = useScene.getState().scene!.nodes["a"];
+      const a = useScene.getState().scene!.nodes.at("a");
       expect(a.width).toBeCloseTo(50, 9);
       expect(a.height).toBeCloseTo(50, 9);
     });
@@ -921,10 +922,10 @@ describe("selectTool", () => {
       // B: 50x50 in (200,0)      -> il gruppo sta su x [25,250], y [-25,75]
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: {
+        nodes: nodesOf({
           a: node("a", 0, "a000000", { width: 100, height: 50, rotation: 90 }),
           b: node("b", 200, "a000001"),
-        },
+        }),
       });
       useScene.getState().setSelection(["a", "b"]);
     });
@@ -939,7 +940,7 @@ describe("selectTool", () => {
       tool.onPointerMove!(at(475, 75), ctx); // +225 in orizzontale: scala x2
       tool.onPointerUp!(at(475, 75), ctx);
 
-      const a = useScene.getState().scene!.nodes["a"];
+      const a = useScene.getState().scene!.nodes.at("a");
       // il box del modello: la larghezza (asse locale VERTICALE sullo schermo)
       // resta, l'altezza (asse locale ORIZZONTALE) raddoppia
       expect(a.width).toBeCloseTo(100, 9);
@@ -948,7 +949,7 @@ describe("selectTool", () => {
       expect(a.x).toBeCloseTo(25, 9);
       expect(a.y).toBeCloseTo(-25, 9);
 
-      const b = useScene.getState().scene!.nodes["b"];
+      const b = useScene.getState().scene!.nodes.at("b");
       expect(b).toMatchObject({ y: 0, width: 100, height: 50 });
       expect(b.x).toBeCloseTo(375, 9);
       expect(sync.sent).toHaveLength(2); // un op per nodo, un gesto solo
@@ -966,7 +967,7 @@ describe("selectTool", () => {
       // Il riquadro dopo il resize: x [25,475], y [-25,75] (l'altezza non è
       // stata toccata). Quello che il nodo occupa DAVVERO deve starci dentro --
       // prima diventava alto 200 e sfondava il riquadro sopra e sotto.
-      const aabb = worldAabbOfNode(useScene.getState().scene!.nodes["a"]);
+      const aabb = worldAabbOfNode(useScene.getState().scene!.nodes.at("a"));
       expect(aabb.y).toBeGreaterThanOrEqual(-25 - 1e-6);
       expect(aabb.y + aabb.height).toBeLessThanOrEqual(75 + 1e-6);
       expect(aabb.height).toBeCloseTo(100, 6);
@@ -985,7 +986,7 @@ describe("selectTool", () => {
       tool.onPointerMove!(at(475, 300, true), ctx);
       tool.onPointerUp!(at(475, 300, true), ctx);
 
-      expect(useScene.getState().scene!.nodes["a"].rotation).toBe(90);
+      expect(useScene.getState().scene!.nodes.at("a").rotation).toBe(90);
       for (const op of sync.sent) {
         expect(op.kind.case === "setProps" && op.kind.value.mask?.paths)
           .toEqual(["x", "y", "width", "height"]);
@@ -997,10 +998,10 @@ describe("selectTool", () => {
       // dov'è (l'asse locale x punta in giù), e non si vedrebbe niente.
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: {
+        nodes: nodesOf({
           a: node("a", 0, "a000000", { width: 100, height: 50, rotation: 30 }),
           b: node("b", 200, "a000001"),
-        },
+        }),
       });
       useScene.getState().setSelection(["a", "b"]);
       const sync = new FakeSync();
@@ -1019,7 +1020,7 @@ describe("selectTool", () => {
       tool.onPointerMove!(at(past, east.y), ctx);
       tool.onPointerUp!(at(past, east.y), ctx);
 
-      const a = useScene.getState().scene!.nodes["a"];
+      const a = useScene.getState().scene!.nodes.at("a");
       expect(a.rotation).toBeCloseTo(150, 3); // 30 specchiato
       // uno specchio non deforma: le misure restano quelle
       expect(a.width).toBeCloseTo(100, 3);
@@ -1042,10 +1043,10 @@ describe("selectTool", () => {
     it("keeps a 45-degree member inside the frame when the group is stretched sideways", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: {
+        nodes: nodesOf({
           a: node("a", 0, "a000000", { width: 100, height: 50, rotation: 45 }),
           b: node("b", 200, "a000001"),
-        },
+        }),
       });
       useScene.getState().setSelection(["a", "b"]);
       useScene.getState().setSync(new FakeSync());
@@ -1061,7 +1062,7 @@ describe("selectTool", () => {
       tool.onPointerMove!(at(east.x + f.bounds.width, east.y), ctx); // x2 in larghezza, y intatta
       tool.onPointerUp!(at(east.x + f.bounds.width, east.y), ctx);
 
-      const aabb = worldAabbOfNode(useScene.getState().scene!.nodes["a"]);
+      const aabb = worldAabbOfNode(useScene.getState().scene!.nodes.at("a"));
       expect(aabb.y).toBeGreaterThanOrEqual(top - 1e-6);
       expect(aabb.y + aabb.height).toBeLessThanOrEqual(bottom + 1e-6);
       // l'altezza del riquadro non è stata trascinata: nemmeno quella del
@@ -1085,8 +1086,8 @@ describe("selectTool", () => {
 
       expect(sync.sent).toHaveLength(2);
       expect(sync.sent.every((op) => op.kind.case === "deleteNode")).toBe(true);
-      expect(useScene.getState().scene!.nodes["a"]).toBeUndefined();
-      expect(useScene.getState().scene!.nodes["b"]).toBeUndefined();
+      expect(useScene.getState().scene!.nodes.at("a")).toBeUndefined();
+      expect(useScene.getState().scene!.nodes.at("b")).toBeUndefined();
       expect(useScene.getState().selection).toEqual([]);
     });
 
@@ -1096,12 +1097,12 @@ describe("selectTool", () => {
     it("Delete su un gruppo E un suo discendente manda UN solo op, e il gesto resta annullabile", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: {
+        nodes: nodesOf({
           g1: node("g1", 0, "a000000"),
           c1: node("c1", 0, "a000000", { parentId: "g1" }),
           d1: node("d1", 0, "a000000", { parentId: "c1" }),
           other: node("other", 200, "a000001"),
-        },
+        }),
       });
       useScene.getState().setSelection(["g1", "d1", "other"]);
       const sync = new FakeSync();
@@ -1115,7 +1116,7 @@ describe("selectTool", () => {
       // dell'INTERO gesto (invertOp -> null su un nodo già cancellato).
       const deleted = sync.sent.map((op) => (op.kind.case === "deleteNode" ? op.kind.value.id : ""));
       expect(deleted).toEqual(["g1", "other"]);
-      expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+      expect([...useScene.getState().scene!.nodes.ids()]).toEqual([]);
       // UNA voce di undo, e completa: quattro nodi da ricreare.
       const stack = useScene.getState().undoStack;
       expect(stack).toHaveLength(undoBefore + 1);
@@ -1128,7 +1129,7 @@ describe("selectTool", () => {
       useScene.getState().setSync(sync);
       const tool = createSelectTool();
       tool.onKeyDown!({ key: "Backspace" } as KeyboardEvent, fakeCtx());
-      expect(useScene.getState().scene!.nodes["a"]).toBeUndefined();
+      expect(useScene.getState().scene!.nodes.at("a")).toBeUndefined();
     });
 
     it("Delete with nothing selected sends nothing", () => {
@@ -1151,7 +1152,7 @@ describe("selectTool", () => {
       tool.onKeyDown!({ key: "Delete" } as KeyboardEvent, ctx);
       expect(sync.sent).toHaveLength(1);
       expect(sync.sent[0].kind.case).toBe("deleteNode");
-      expect(useScene.getState().scene!.nodes["a"]).toBeUndefined();
+      expect(useScene.getState().scene!.nodes.at("a")).toBeUndefined();
       expect(useScene.getState().gesture).toBeNull();
 
       // Il pulsante è ancora giù nel mondo reale: arrivano ancora move/up per
@@ -1180,7 +1181,7 @@ describe("selectTool", () => {
       // cancellato con un solo op.
       expect(sync.sent).toHaveLength(1);
       expect(sync.sent[0].kind.case).toBe("deleteNode");
-      expect(useScene.getState().scene!.nodes["b"]).toBeUndefined();
+      expect(useScene.getState().scene!.nodes.at("b")).toBeUndefined();
       expect(useScene.getState().marquee).toBeNull();
       expect(useScene.getState().selection).toEqual([]);
 
@@ -1197,12 +1198,12 @@ describe("selectTool", () => {
     beforeEach(() => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: {
+        nodes: nodesOf({
           t: node("t", 0, "a000000", {
             kind: "text",
             text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
           }),
-        },
+        }),
       });
       useScene.setState({ editingNodeId: null });
     });
@@ -1237,11 +1238,11 @@ describe("selectTool", () => {
       tool.onPointerUp!(atT(10, 10, 0), ctx);
       tool.onPointerDown!(atT(10, 10, 200), ctx); // secondo click, entro soglia
       tool.onPointerMove!(atT(40, 40, 210), ctx); // ma si muove: dx=30 dy=30
-      expect(useScene.getState().scene!.nodes["t"]).toMatchObject({ x: 30, y: 30 }); // anteprima
+      expect(useScene.getState().scene!.nodes.at("t")).toMatchObject({ x: 30, y: 30 }); // anteprima
       tool.onPointerUp!(atT(40, 40, 220), ctx);
 
       expect(useScene.getState().editingNodeId).toBeNull(); // niente editing
-      expect(useScene.getState().scene!.nodes["t"]).toMatchObject({ x: 30, y: 30 });
+      expect(useScene.getState().scene!.nodes.at("t")).toMatchObject({ x: 30, y: 30 });
       expect(sync.sent).toHaveLength(1); // un solo setProps, come un move normale
       expect(sync.sent[0].kind.case).toBe("setProps");
     });
@@ -1261,7 +1262,7 @@ describe("selectTool", () => {
 
       expect(useScene.getState().editingNodeId).toBe("t");
       expect(sync.sent).toHaveLength(0); // nessun setProps: non si è mosso nulla
-      expect(useScene.getState().scene!.nodes["t"]).toMatchObject({ x: 0, y: 0 });
+      expect(useScene.getState().scene!.nodes.at("t")).toMatchObject({ x: 0, y: 0 });
     });
 
     // La soglia è in px SCHERMO come quella del marquee: a zoom 10 UN'unità
@@ -1280,7 +1281,7 @@ describe("selectTool", () => {
       tool.onPointerUp!(atT(11, 11, 220), ctx);
 
       expect(useScene.getState().editingNodeId).toBeNull();
-      expect(useScene.getState().scene!.nodes["t"]).toMatchObject({ x: 1, y: 1 });
+      expect(useScene.getState().scene!.nodes.at("t")).toMatchObject({ x: 1, y: 1 });
       expect(sync.sent).toHaveLength(1);
     });
 
@@ -1310,7 +1311,7 @@ describe("selectTool", () => {
     it("does not enter editing when the second click lands on a different node", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: {
+        nodes: nodesOf({
           t: node("t", 0, "a000000", {
             kind: "text",
             text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
@@ -1319,7 +1320,7 @@ describe("selectTool", () => {
             kind: "text",
             text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
           }),
-        },
+        }),
       });
       const tool = createSelectTool();
       const ctx = fakeCtx();
@@ -1333,7 +1334,7 @@ describe("selectTool", () => {
     it("a double click on a NON-text node does nothing special", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: { r: node("r", 0, "a000000") }, // kind: "rect" di default
+        nodes: nodesOf({ r: node("r", 0, "a000000") }), // kind: "rect" di default
       });
       const tool = createSelectTool();
       const ctx = fakeCtx();
@@ -1363,7 +1364,7 @@ describe("selectTool", () => {
     it("un doppio click su un ALTRO nodo testo chiude/pulisce l'editing del primo (vuoto), senza lasciarlo fantasma", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: {
+        nodes: nodesOf({
           t1: node("t1", 0, "a000000", {
             kind: "text",
             text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
@@ -1372,7 +1373,7 @@ describe("selectTool", () => {
             kind: "text",
             text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
           }),
-        },
+        }),
       });
       const tool = createSelectTool();
       const ctx = fakeCtx();
@@ -1383,7 +1384,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(10, 10, 200), ctx);
       tool.onPointerUp!(atT(10, 10, 200), ctx);
       expect(useScene.getState().editingNodeId).toBe("t1");
-      expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+      expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
 
       // doppio click su t2 (ben oltre la soglia dei 400ms dal precedente, ma è
       // un doppio click NUOVO: due click su t2 entro soglia fra loro).
@@ -1393,8 +1394,8 @@ describe("selectTool", () => {
       tool.onPointerUp!(atT(210, 10, 1200), ctx);
 
       expect(useScene.getState().editingNodeId).toBe("t2");
-      expect(useScene.getState().scene!.nodes["t1"]).toBeUndefined(); // niente nodo fantasma
-      expect(useScene.getState().scene!.nodes["t2"]).toBeDefined();
+      expect(useScene.getState().scene!.nodes.at("t1")).toBeUndefined(); // niente nodo fantasma
+      expect(useScene.getState().scene!.nodes.at("t2")).toBeDefined();
     });
   });
 });
@@ -1426,7 +1427,7 @@ describe("selectTool — snap", () => {
       // dx = 48: il bordo destro finisce a 98, a 2 unità dal bordo sinistro di
       // "b" (100) -- dentro la soglia, quindi scatta a 100.
       tool.onPointerMove!(at(58, 10), ctx);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(50);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(50);
     });
 
     it("shows a guide on the line it snapped to", () => {
@@ -1473,7 +1474,7 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
       tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(48);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48);
       expect(useScene.getState().snapGuides).toEqual([]);
     });
 
@@ -1483,14 +1484,14 @@ describe("selectTool — snap", () => {
       const run = (zoom: number) => {
         useScene.getState().setScene({
           ...emptyScene("doc-1", "u"),
-          nodes: { a: node("a", 0, "a000000"), b: node("b", 100, "a000001") },
+          nodes: nodesOf({ a: node("a", 0, "a000000"), b: node("b", 100, "a000001") }),
         });
         useScene.setState({ camera: { x: 0, y: 0, zoom }, selection: [] });
         const tool = createSelectTool();
         const ctx = fakeCtx();
         tool.onPointerDown!(at(10, 10), ctx);
         tool.onPointerMove!(at(56, 10), ctx);
-        return useScene.getState().scene!.nodes.a.x;
+        return useScene.getState().scene!.nodes.at("a").x;
       };
       expect(run(1)).toBe(50);
       expect(run(2)).toBe(46);
@@ -1502,8 +1503,8 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx); // "a" è già selezionato: resta la coppia
       tool.onPointerMove!(at(58, 10), ctx);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(48);
-      expect(useScene.getState().scene!.nodes.b.x).toBe(148);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48);
+      expect(useScene.getState().scene!.nodes.at("b").x).toBe(148);
       expect(useScene.getState().snapGuides).toEqual([]);
     });
   });
@@ -1525,13 +1526,13 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
       tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(48); // l'anteprima è a 48
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48); // l'anteprima è a 48
       // Le dita lasciano Alt, poi il pulsante: il pointerup arriva con altKey
       // false. Senza il latch il commit scatterebbe a 50 -- un salto di 2 unità
       // mondo che nessuna anteprima ha mai mostrato.
       tool.onPointerUp!(atMod(58, 10, {}), ctx);
       expect(lastPatch().patch?.x).toBe(48);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(48);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48);
       expect(useScene.getState().snapGuides).toEqual([]);
     });
 
@@ -1543,10 +1544,10 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
       tool.onPointerMove!(at(58, 10), ctx);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(50);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(50);
       tool.onPointerUp!(atMod(58, 10, { altKey: true }), ctx);
       expect(lastPatch().patch?.x).toBe(50);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(50);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(50);
     });
 
     it("la VOCE DI UNDO porta quello che si è visto, non un salto in più", () => {
@@ -1560,9 +1561,9 @@ describe("selectTool — snap", () => {
       tool.onPointerUp!(atMod(58, 10, {}), ctx);
       expect(useScene.getState().undoStack).toHaveLength(1);
       useScene.getState().undo();
-      expect(useScene.getState().scene!.nodes.a.x).toBe(0);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(0);
       useScene.getState().redo();
-      expect(useScene.getState().scene!.nodes.a.x).toBe(48);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48);
     });
 
     // LA CONTROPROVA del latch: si fotografa l'ULTIMA anteprima, non lo stato
@@ -1574,9 +1575,9 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
       tool.onPointerMove!(at(58, 10), ctx);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(50); // scattato
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(50); // scattato
       tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(48); // Alt: liberato
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48); // Alt: liberato
       expect(useScene.getState().snapGuides).toEqual([]);
       tool.onPointerUp!(atMod(58, 10, {}), ctx);
       expect(lastPatch().patch?.x).toBe(48);
@@ -1587,9 +1588,9 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
       tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(48);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48);
       tool.onPointerMove!(at(58, 10), ctx);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(50);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(50);
       tool.onPointerUp!(at(58, 10), ctx);
       expect(lastPatch().patch?.x).toBe(50);
     });
@@ -1604,9 +1605,9 @@ describe("selectTool — snap", () => {
       const to = at(25 + 40 * Math.cos(a), 25 + 40 * Math.sin(a), true);
       tool.onPointerDown!(at(58, 58, true), ctx); // zona di rotazione dell'angolo se
       tool.onPointerMove!(to, ctx);
-      expect(useScene.getState().scene!.nodes.a.rotation).toBeCloseTo(60, 9);
+      expect(useScene.getState().scene!.nodes.at("a").rotation).toBeCloseTo(60, 9);
       tool.onPointerUp!(at(to.clientX, to.clientY, false), ctx);
-      expect(useScene.getState().scene!.nodes.a.rotation).toBeCloseTo(60, 9);
+      expect(useScene.getState().scene!.nodes.at("a").rotation).toBeCloseTo(60, 9);
       const v = sync.sent[sync.sent.length - 1].kind.value as { patch?: { rotation: number } };
       expect(v.patch?.rotation).toBeCloseTo(60, 9);
     });
@@ -1626,8 +1627,8 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       grabEast(tool, ctx);
       tool.onPointerMove!(at(98, 25), ctx); // bordo destro a 98, scatta a 100
-      expect(useScene.getState().scene!.nodes.a.width).toBe(100);
-      expect(useScene.getState().scene!.nodes.a.x).toBe(0);
+      expect(useScene.getState().scene!.nodes.at("a").width).toBe(100);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(0);
       expect(useScene.getState().snapGuides).toContainEqual({ axis: "x", pos: 100, from: 0, to: 50 });
     });
 
@@ -1646,7 +1647,7 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       grabEast(tool, ctx);
       tool.onPointerMove!(atMod(98, 25, { altKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes.a.width).toBe(98);
+      expect(useScene.getState().scene!.nodes.at("a").width).toBe(98);
       expect(useScene.getState().snapGuides).toEqual([]);
     });
 
@@ -1657,7 +1658,7 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       grabEast(tool, ctx);
       tool.onPointerMove!(atMod(98, 25, { shiftKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes.a.width).toBe(98);
+      expect(useScene.getState().scene!.nodes.at("a").width).toBe(98);
       expect(useScene.getState().snapGuides).toEqual([]);
     });
 
@@ -1667,15 +1668,15 @@ describe("selectTool — snap", () => {
       // (il bordo fermo), che non è vicino a nessun bersaglio: niente scatto.
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: { a: node("a", 100, "a000001"), c: node("c", 0, "a000000") },
+        nodes: nodesOf({ a: node("a", 100, "a000001"), c: node("c", 0, "a000000") }),
       });
       useScene.getState().setSelection(["a"]);
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(100, 25), ctx); // maniglia "w" di "a" (100..150)
       tool.onPointerMove!(at(52, 25), ctx); // bordo sinistro a 52, scatta a 50
-      expect(useScene.getState().scene!.nodes.a.x).toBe(50);
-      expect(useScene.getState().scene!.nodes.a.width).toBe(100);
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(50);
+      expect(useScene.getState().scene!.nodes.at("a").width).toBe(100);
       expect(useScene.getState().snapGuides).toContainEqual({ axis: "x", pos: 50, from: 0, to: 50 });
     });
 
@@ -1689,10 +1690,10 @@ describe("selectTool — snap", () => {
       function flipScene() {
         useScene.getState().setScene({
           ...emptyScene("doc-1", "u"),
-          nodes: {
+          nodes: nodesOf({
             a: node("a", 0, "a000001"),
             c: node("c", 2, "a000000", { y: 2 }),
-          },
+          }),
         });
         useScene.getState().setSelection(["a"]);
       }
@@ -1706,8 +1707,8 @@ describe("selectTool — snap", () => {
         // Senza la guardia l'ancora (0) scatterebbe sul bordo di "c" (2):
         // larghezza 0 invece di 2, e una guida rossa su una retta che il bordo
         // trascinato non ha mai sfiorato.
-        expect(useScene.getState().scene!.nodes.a.x).toBe(-2);
-        expect(useScene.getState().scene!.nodes.a.width).toBe(2);
+        expect(useScene.getState().scene!.nodes.at("a").x).toBe(-2);
+        expect(useScene.getState().scene!.nodes.at("a").width).toBe(2);
         expect(useScene.getState().snapGuides).toEqual([]);
       });
 
@@ -1717,19 +1718,19 @@ describe("selectTool — snap", () => {
         const ctx = fakeCtx();
         tool.onPointerDown!(at(25, 50), ctx); // maniglia "s"
         tool.onPointerMove!(at(25, -2), ctx); // 2 oltre l'ancora (y = 0)
-        expect(useScene.getState().scene!.nodes.a.y).toBe(-2);
-        expect(useScene.getState().scene!.nodes.a.height).toBe(2);
+        expect(useScene.getState().scene!.nodes.at("a").y).toBe(-2);
+        expect(useScene.getState().scene!.nodes.at("a").height).toBe(2);
         expect(useScene.getState().snapGuides).toEqual([]);
       });
 
       it("silences ONLY the axis that flipped — the other one still snaps", () => {
         useScene.getState().setScene({
           ...emptyScene("doc-1", "u"),
-          nodes: {
+          nodes: nodesOf({
             a: node("a", 0, "a000001"),
             c: node("c", 2, "a000000", { y: 2 }), // linea x a 2, accanto all'ancora
             d: node("d", 200, "a000002", { y: 100 }), // linea y a 100, sotto
-          },
+          }),
         });
         useScene.getState().setSelection(["a"]);
         const tool = createSelectTool();
@@ -1738,8 +1739,8 @@ describe("selectTool — snap", () => {
         // x ribaltato (2 oltre l'ancora), y no: il bordo basso arriva a 98 e
         // deve scattare a 100 come sempre.
         tool.onPointerMove!(at(-2, 98), ctx);
-        expect(useScene.getState().scene!.nodes.a.height).toBe(100); // y scatta
-        expect(useScene.getState().scene!.nodes.a.width).toBe(2); // x no
+        expect(useScene.getState().scene!.nodes.at("a").height).toBe(100); // y scatta
+        expect(useScene.getState().scene!.nodes.at("a").width).toBe(2); // x no
         const guides = useScene.getState().snapGuides;
         expect(guides).toContainEqual({ axis: "y", pos: 100, from: -2, to: 250 });
         expect(guides.every((g) => g.axis === "y")).toBe(true);
@@ -1751,10 +1752,10 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       grabEast(tool, ctx);
       tool.onPointerMove!(atMod(98, 25, { altKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes.a.width).toBe(98);
+      expect(useScene.getState().scene!.nodes.at("a").width).toBe(98);
       tool.onPointerUp!(atMod(98, 25, {}), ctx); // Alt lasciato prima del pulsante
       expect(lastPatch().patch?.width).toBe(98);
-      expect(useScene.getState().scene!.nodes.a.width).toBe(98);
+      expect(useScene.getState().scene!.nodes.at("a").width).toBe(98);
     });
 
     it("keeps the ASPECT RATIO the preview showed when Shift is released before the button", () => {
@@ -1766,16 +1767,16 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       tool.onPointerDown!(at(50, 50, true), ctx); // maniglia se
       tool.onPointerMove!(at(150, 50, true), ctx);
-      expect(useScene.getState().scene!.nodes.a).toMatchObject({ width: 150, height: 150 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ width: 150, height: 150 });
       tool.onPointerUp!(at(150, 50, false), ctx); // Shift lasciato prima del pulsante
-      expect(useScene.getState().scene!.nodes.a).toMatchObject({ width: 150, height: 150 });
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ width: 150, height: 150 });
       expect(lastPatch().patch?.height).toBe(150);
     });
 
     it("stands aside on a ROTATED frame — its edges are not lines of the screen", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: { a: node("a", 0, "a000000", { rotation: 90 }), b: node("b", 100, "a000001") },
+        nodes: nodesOf({ a: node("a", 0, "a000000", { rotation: 90 }), b: node("b", 100, "a000001") }),
       });
       const tool = createSelectTool();
       const ctx = fakeCtx();
@@ -1784,7 +1785,7 @@ describe("selectTool — snap", () => {
       // La maniglia "e" di un quadrato 50x50 ruotato di 90° sta in (25, 50).
       tool.onPointerDown!(at(25, 50), ctx);
       tool.onPointerMove!(at(25, 98), ctx);
-      expect(useScene.getState().scene!.nodes.a.width).toBeCloseTo(98, 9);
+      expect(useScene.getState().scene!.nodes.at("a").width).toBeCloseTo(98, 9);
       expect(useScene.getState().snapGuides).toEqual([]);
     });
   });
@@ -1800,10 +1801,10 @@ describe("selectTool with nesting", () => {
   function nestedScene() {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
-      nodes: {
+      nodes: nodesOf({
         g: node("g", 100, "a000000", { y: 50, width: 400, height: 400 }),
         c: node("c", 10, "a000000", { parentId: "g", y: 10 }),
-      },
+      }),
     });
   }
 
@@ -1824,10 +1825,10 @@ describe("selectTool with nesting", () => {
   it("a marquee over a hidden container does not select its (visible) children", () => {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
-      nodes: {
+      nodes: nodesOf({
         g: node("g", 100, "a000000", { y: 50, width: 400, height: 400, visible: false }),
         c: node("c", 10, "a000000", { parentId: "g", y: 10 }), // visible: true
-      },
+      }),
     });
     const scene = useScene.getState().scene!;
     expect(nodesInMarquee(scene, { x: 105, y: 55, width: 20, height: 20 })).toEqual([]);
@@ -1836,7 +1837,7 @@ describe("selectTool with nesting", () => {
   it("a marquee over a node unreachable from any page selects nothing", () => {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
-      nodes: { orfano: node("orfano", 0, "a000000", { parentId: "sparito" }) },
+      nodes: nodesOf({ orfano: node("orfano", 0, "a000000", { parentId: "sparito" }) }),
     });
     const scene = useScene.getState().scene!;
     expect(nodesInMarquee(scene, { x: -10, y: -10, width: 100, height: 100 })).toEqual([]);
@@ -1845,10 +1846,10 @@ describe("selectTool with nesting", () => {
   it("dragging a marquee over a hidden subtree leaves the selection (and the handles) empty", () => {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
-      nodes: {
+      nodes: nodesOf({
         g: node("g", 100, "a000000", { y: 50, width: 400, height: 400, visible: false }),
         c: node("c", 10, "a000000", { parentId: "g", y: 10 }),
-      },
+      }),
     });
     const tool = createSelectTool();
     const ctx = fakeCtx();
@@ -1868,7 +1869,7 @@ describe("selectTool with nesting", () => {
     tool.onPointerMove!(at(155, 95), ctx); // +20, +10 nel mondo
     tool.onPointerUp!(at(155, 95), ctx);
     // Il modello resta relativo al parent: 10+20, 10+10 -- non 130,80.
-    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 30, y: 20 });
+    expect(useScene.getState().scene!.nodes.at("c")).toMatchObject({ x: 30, y: 20 });
   });
 
   it("the se handle of a nested node sits at its WORLD corner and resizes it", () => {
@@ -1881,7 +1882,7 @@ describe("selectTool with nesting", () => {
     tool.onPointerMove!(at(210, 110), ctx); // dx=50
     tool.onPointerUp!(at(210, 110), ctx);
     // Larghezza raddoppiata, origine ferma: e l'origine è quella LOCALE.
-    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 10, y: 10, width: 100, height: 50 });
+    expect(useScene.getState().scene!.nodes.at("c")).toMatchObject({ x: 10, y: 10, width: 100, height: 50 });
   });
 
   it("the nw handle of a nested node moves its LOCAL origin", () => {
@@ -1894,7 +1895,7 @@ describe("selectTool with nesting", () => {
     tool.onPointerMove!(at(120, 70), ctx);
     tool.onPointerUp!(at(120, 70), ctx);
     // Nel mondo il nodo va da (120,70) a (160,110): in locale (20,20) 40x40.
-    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 20, y: 20, width: 40, height: 40 });
+    expect(useScene.getState().scene!.nodes.at("c")).toMatchObject({ x: 20, y: 20, width: 40, height: 40 });
   });
 
   // --- container E discendente selezionati insieme ---------------------------
@@ -1910,7 +1911,7 @@ describe("selectTool with nesting", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
 
-    const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes["c"]);
+    const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes.at("c"));
     tool.onPointerDown!(at(400, 400), ctx); // dentro "g", fuori da "c": selezione invariata
     expect(useScene.getState().selection).toEqual(["g", "c"]);
     tool.onPointerMove!(at(420, 410), ctx); // +20, +10 nel mondo
@@ -1918,10 +1919,10 @@ describe("selectTool with nesting", () => {
 
     expect(sync.sent).toHaveLength(1); // un op solo: il nodo più in alto
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["g"]).toMatchObject({ x: 120, y: 60 });
-    expect(scene.nodes["c"]).toMatchObject({ x: 10, y: 10 }); // il locale non si tocca
+    expect(scene.nodes.at("g")).toMatchObject({ x: 120, y: 60 });
+    expect(scene.nodes.at("c")).toMatchObject({ x: 10, y: 10 }); // il locale non si tocca
     // Nel MONDO il figlio si è spostato del delta, non del doppio: 110 -> 130.
-    const after = worldBoundsOfNode(scene, scene.nodes["c"]);
+    const after = worldBoundsOfNode(scene, scene.nodes.at("c"));
     expect(after).toMatchObject({ x: before.x + 20, y: before.y + 10 });
   });
 
@@ -1940,11 +1941,11 @@ describe("selectTool with nesting", () => {
 
     expect(sync.sent).toHaveLength(1);
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["g"]).toMatchObject({ x: 100, y: 50, width: 800, height: 800 });
+    expect(scene.nodes.at("g")).toMatchObject({ x: 100, y: 50, width: 800, height: 800 });
     // Senza la potatura "c" riceverebbe (20,20) 100x100: il suo box mondo
     // riscalato dalla stessa t mentre l'origine del container gli si sposta
     // sotto.
-    expect(scene.nodes["c"]).toMatchObject({ x: 10, y: 10, width: 50, height: 50 });
+    expect(scene.nodes.at("c")).toMatchObject({ x: 10, y: 10, width: 50, height: 50 });
   });
 
   it("the pruning is about the ops, not about the selection: both stay selected", () => {
@@ -1971,7 +1972,7 @@ describe("selectTool with nesting", () => {
     tool.onPointerUp!(at(155, 95), ctx);
 
     expect(sync.sent).toHaveLength(1);
-    expect(useScene.getState().scene!.nodes["c"]).toMatchObject({ x: 30, y: 20 });
+    expect(useScene.getState().scene!.nodes.at("c")).toMatchObject({ x: 30, y: 20 });
   });
 });
 
@@ -1993,12 +1994,12 @@ describe("selectTool and groups", () => {
     useScene.setState({ editingNodeId: null });
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
-      nodes: {
+      nodes: nodesOf({
         g: node("g", 0, "a000001", { kind: "group", width: 0, height: 0 }),
         c1: node("c1", 10, "a000001", { parentId: "g", y: 10 }),
         c2: node("c2", 100, "a000002", { parentId: "g", y: 0, width: 20, height: 20 }),
         solo: node("solo", 200, "a000002", { y: 200 }),
-      },
+      }),
     });
   }
 
@@ -2041,11 +2042,11 @@ describe("selectTool and groups", () => {
   it("on a text node inside a group, the first double click enters and the second opens the editor", () => {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
-      nodes: {
+      nodes: nodesOf({
         g: node("g", 0, "a000001", { kind: "group", width: 0, height: 0 }),
         t: node("t", 10, "a000001", { parentId: "g", y: 10, kind: "text",
           text: { content: "ciao", style: { fontFamily: "", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "left" } } }),
-      },
+      }),
     });
     const tool = createSelectTool();
     const ctx = fakeCtx();
@@ -2106,7 +2107,7 @@ describe("selectTool and groups", () => {
     useScene.getState().setSync(sync);
     const tool = createSelectTool();
     const ctx = fakeCtx();
-    const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes["c1"]);
+    const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes.at("c1"));
 
     tool.onPointerDown!(at(30, 30), ctx);
     tool.onPointerMove!(at(50, 40), ctx); // +20, +10
@@ -2114,9 +2115,9 @@ describe("selectTool and groups", () => {
 
     expect(sync.sent).toHaveLength(1);
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["g"]).toMatchObject({ x: 20, y: 10 });
-    expect(scene.nodes["c1"]).toMatchObject({ x: 10, y: 10 }); // il locale non si tocca
-    expect(worldBoundsOfNode(scene, scene.nodes["c1"])).toMatchObject({ x: before.x + 20, y: before.y + 10 });
+    expect(scene.nodes.at("g")).toMatchObject({ x: 20, y: 10 });
+    expect(scene.nodes.at("c1")).toMatchObject({ x: 10, y: 10 }); // il locale non si tocca
+    expect(worldBoundsOfNode(scene, scene.nodes.at("c1"))).toMatchObject({ x: before.x + 20, y: before.y + 10 });
   });
 
   it("resizing a group resizes its children: the group has no box of its own to rewrite", () => {
@@ -2136,9 +2137,9 @@ describe("selectTool and groups", () => {
 
     const scene = useScene.getState().scene!;
     expect(sync.sent).toHaveLength(2); // un op per figlio, nessuno per il gruppo
-    expect(scene.nodes["g"]).toMatchObject({ x: 0, y: 0, width: 0, height: 0 });
-    expect(scene.nodes["c1"]).toMatchObject({ x: 10, y: 20, width: 100, height: 100 });
-    expect(scene.nodes["c2"]).toMatchObject({ x: 190, y: 0, width: 40, height: 40 });
+    expect(scene.nodes.at("g")).toMatchObject({ x: 0, y: 0, width: 0, height: 0 });
+    expect(scene.nodes.at("c1")).toMatchObject({ x: 10, y: 20, width: 100, height: 100 });
+    expect(scene.nodes.at("c2")).toMatchObject({ x: 190, y: 0, width: 40, height: 40 });
   });
 
   // IL TRAPPOLONE del task 1: con l'annidamento una selezione che contiene un
@@ -2155,27 +2156,27 @@ describe("selectTool and groups", () => {
 
     const deleted = sync.sent.map((op) => (op.kind.case === "deleteNode" ? op.kind.value.id : ""));
     expect(deleted).toEqual(["g"]);
-    expect(useScene.getState().scene!.nodes["c1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("c1")).toBeUndefined();
     const stack = useScene.getState().undoStack;
     expect(stack).toHaveLength(undoBefore + 1);
     expect(stack[stack.length - 1]).toHaveLength(3); // g + c1 + c2 da ricreare
 
     useScene.getState().undo();
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["g"]?.kind).toBe("group");
-    expect(scene.nodes["c1"]?.parentId).toBe("g");
-    expect(scene.nodes["c2"]?.parentId).toBe("g");
+    expect(scene.nodes.at("g")?.kind).toBe("group");
+    expect(scene.nodes.at("c1")?.parentId).toBe("g");
+    expect(scene.nodes.at("c2")?.parentId).toBe("g");
   });
 
   describe("Ctrl+G / Ctrl+Shift+G", () => {
     beforeEach(() => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: {
+        nodes: nodesOf({
           r1: node("r1", 0, "a000001"),
           r2: node("r2", 100, "a000002"),
           r3: node("r3", 200, "a000003"),
-        },
+        }),
       });
     });
 
@@ -2190,21 +2191,21 @@ describe("selectTool and groups", () => {
       expect(sync.sent.map((o) => o.kind.case)).toEqual(["createNode", "reparentNode", "reparentNode"]);
       const gid = useScene.getState().selection[0];
       const scene = useScene.getState().scene!;
-      expect(scene.nodes[gid].kind).toBe("group");
-      expect(scene.nodes["r1"].parentId).toBe(gid);
-      expect(scene.nodes["r3"].parentId).toBe(gid);
-      expect(scene.nodes["r2"].parentId).toBe("page1"); // non selezionato, non toccato
+      expect(scene.nodes.at(gid).kind).toBe("group");
+      expect(scene.nodes.at("r1").parentId).toBe(gid);
+      expect(scene.nodes.at("r3").parentId).toBe(gid);
+      expect(scene.nodes.at("r2").parentId).toBe("page1"); // non selezionato, non toccato
       // UNA sola voce di undo per i tre op.
       expect(useScene.getState().undoStack).toHaveLength(undoBefore + 1);
 
       useScene.getState().undo();
       const after = useScene.getState().scene!;
-      expect(after.nodes[gid]).toBeUndefined();
-      expect(after.nodes["r1"]).toMatchObject({ parentId: "page1", orderKey: "a000001" });
-      expect(after.nodes["r3"]).toMatchObject({ parentId: "page1", orderKey: "a000003" });
+      expect(after.nodes.at(gid)).toBeUndefined();
+      expect(after.nodes.at("r1")).toMatchObject({ parentId: "page1", orderKey: "a000001" });
+      expect(after.nodes.at("r3")).toMatchObject({ parentId: "page1", orderKey: "a000003" });
 
       useScene.getState().redo();
-      expect(useScene.getState().scene!.nodes["r1"].parentId).toBe(gid);
+      expect(useScene.getState().scene!.nodes.at("r1").parentId).toBe(gid);
     });
 
     it("Ctrl+Shift+G ungroups in one gesture, and one Ctrl+Z puts the group back", () => {
@@ -2219,43 +2220,43 @@ describe("selectTool and groups", () => {
       tool.onKeyDown!(ctrl("g", true), ctx);
 
       const scene = useScene.getState().scene!;
-      expect(scene.nodes[gid]).toBeUndefined();
-      expect(scene.nodes["r1"].parentId).toBe("page1");
-      expect(scene.nodes["r3"].parentId).toBe("page1");
+      expect(scene.nodes.at(gid)).toBeUndefined();
+      expect(scene.nodes.at("r1").parentId).toBe("page1");
+      expect(scene.nodes.at("r3").parentId).toBe("page1");
       // I figli liberati restano selezionati, e nel loro ordine.
       expect(useScene.getState().selection).toEqual(["r1", "r3"]);
       expect(useScene.getState().undoStack).toHaveLength(undoAfterGroup + 1);
 
       useScene.getState().undo();
       const after = useScene.getState().scene!;
-      expect(after.nodes[gid]?.kind).toBe("group");
-      expect(after.nodes["r1"].parentId).toBe(gid);
-      expect(after.nodes["r3"].parentId).toBe(gid);
+      expect(after.nodes.at(gid)?.kind).toBe("group");
+      expect(after.nodes.at("r1").parentId).toBe(gid);
+      expect(after.nodes.at("r3").parentId).toBe(gid);
     });
 
     it("Ctrl+G keeps the world position of a node that comes from another group", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: {
+        nodes: nodesOf({
           g: node("g", 100, "a000001", { kind: "group", width: 0, height: 0, y: 100 }),
           inner: node("inner", 10, "a000001", { parentId: "g", y: 10 }),
           solo: node("solo", 300, "a000002", { y: 300 }),
-        },
+        }),
       });
       useScene.getState().setSelection(["inner", "solo"]);
       useScene.getState().setSync(new FakeSync());
-      const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes["inner"]);
+      const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes.at("inner"));
 
       createSelectTool().onKeyDown!(ctrl("g"), fakeCtx());
 
       const scene = useScene.getState().scene!;
       const gid = useScene.getState().selection[0];
-      expect(scene.nodes[gid].kind).toBe("group");
+      expect(scene.nodes.at(gid).kind).toBe("group");
       // "inner" è uscito dallo spazio di "g" (che traslava di 100,100) per
       // entrare nel gruppo nuovo, che sta sotto la pagina: senza riscriverne le
       // coordinate si sposterebbe di 100px.
-      expect(scene.nodes["inner"]).toMatchObject({ parentId: gid, x: 110, y: 110 });
-      expect(worldBoundsOfNode(scene, scene.nodes["inner"])).toEqual(before);
+      expect(scene.nodes.at("inner")).toMatchObject({ parentId: gid, x: 110, y: 110 });
+      expect(worldBoundsOfNode(scene, scene.nodes.at("inner"))).toEqual(before);
     });
 
     it("Ctrl+G with nothing selected, and Ctrl+Shift+G with no group selected, send nothing", () => {
@@ -2322,7 +2323,7 @@ describe("creazione di un componente (Ctrl+Alt+K)", () => {
     // registra il componente ma non spinge nessuna voce di undo. Il nodo NON si
     // sposta: diventa il master dov'è.
     expect(useScene.getState().undoStack).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["a"].x).toBe(0);
+    expect(useScene.getState().scene!.nodes.at("a").x).toBe(0);
   });
 
   it("preventDefault sempre (in un browser la combinazione può avere un suo significato)", () => {
@@ -2360,8 +2361,8 @@ describe("scoping alla pagina corrente", () => {
   function twoPages() {
     const s = emptyScene("doc-1", "u");
     s.pages = [{ id: "page1", name: "P1" }, { id: "page2", name: "P2" }];
-    s.nodes["a"] = node("a", 0, "a000000");
-    s.nodes["b"] = node("b", 0, "a000001", { parentId: "page2" });
+    s.nodes = s.nodes.set("a", node("a", 0, "a000000"));
+    s.nodes = s.nodes.set("b", node("b", 0, "a000001", { parentId: "page2" }));
     return s;
   }
 

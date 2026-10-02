@@ -110,7 +110,7 @@ export function groupOps(scene: SceneState, selection: readonly string[]): Gestu
   // Ordine di DISEGNO, non ordine di selezione: è ciò che conserva la pila
   // visiva dentro il gruppo (chi era sopra resta sopra).
   const sorted = [...ids].sort((a, b) => (index.get(a) as number) - (index.get(b) as number));
-  const top = scene.nodes[sorted[sorted.length - 1]];
+  const top = scene.nodes.at(sorted[sorted.length - 1]);
   const parentId = top.parentId;
 
   const groupId = uuid();
@@ -135,7 +135,7 @@ export function groupOps(scene: SceneState, selection: readonly string[]): Gestu
     const key = orderKeyBetween(prev, null);
     prev = key;
     // Lo SPAZIO è quello del parent del gruppo, non del gruppo: vedi moveOps.
-    ops.push(...moveOps(scene, scene.nodes[id], groupId, parentId, key));
+    ops.push(...moveOps(scene, scene.nodes.at(id), groupId, parentId, key));
   }
   return { ops, selection: [groupId] };
 }
@@ -162,7 +162,7 @@ export function groupOps(scene: SceneState, selection: readonly string[]): Gestu
 export function ungroupOps(scene: SceneState, selection: readonly string[]): GestureOps | null {
   const index = orderIndex(scene);
   const groups = topmostOf(scene, selection)
-    .map((id) => scene.nodes[id])
+    .map((id) => scene.nodes.at(id))
     .filter((n): n is NodeLite => n !== undefined && isGroup(n) && index.has(n.id))
     .sort((a, b) => (index.get(a.id) as number) - (index.get(b.id) as number));
   if (groups.length === 0) return null;
@@ -222,12 +222,12 @@ export function wrapInFrameOps(
   const ids = topmostOf(scene, selection).filter((id) => index.has(id));
   if (ids.length === 0) return null;
   const byZ = [...ids].sort((a, b) => (index.get(a) as number) - (index.get(b) as number));
-  const top = scene.nodes[byZ[byZ.length - 1]];
+  const top = scene.nodes.at(byZ[byZ.length - 1]);
   const parentId = top.parentId;
 
   // I riquadri nel MONDO, poi portati nello spazio del parent del frame.
   const worldBox = new Map(ids.flatMap((id) => {
-    const b = contentWorldBounds(scene, scene.nodes[id]);
+    const b = contentWorldBounds(scene, scene.nodes.at(id));
     return b ? [[id, b] as const] : [];
   }));
   const union = unionBounds([...worldBox.values()]);
@@ -283,7 +283,7 @@ export function wrapInFrameOps(
   for (const id of order) {
     const key = orderKeyBetween(prev, null);
     prev = key;
-    const n = scene.nodes[id];
+    const n = scene.nodes.at(id);
     ops.push(makeReparentOp(id, frameId, key));
     // Con auto layout la posizione la decide il server: scriverla qui sarebbe
     // un op in più che il layout sovrascrive subito.

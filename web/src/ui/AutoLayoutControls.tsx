@@ -5,7 +5,7 @@ import { wrapSelectionInFrame } from "../tools/wrapFrame";
 import { NumberField } from "./fields/NumberField";
 import { autoLayoutOps } from "./autoLayoutOps";
 
-const lookup = (id: string) => useScene.getState().scene?.nodes[id];
+const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 
 const MAIN_ALIGNS: { v: LayoutAlignLite; label: string }[] = [
   { v: "start", label: "Inizio" }, { v: "center", label: "Centro" },
@@ -50,7 +50,7 @@ function Segmented<T extends string>({
  * Ciò che ne risulta (le posizioni dei figli) lo calcola il server.
  */
 export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string[]) => Op[]) => void }) {
-  const first = useScene((s) => (s.selection[0] ? s.scene?.nodes[s.selection[0]] : undefined));
+  const first = useScene((s) => (s.selection[0] ? s.scene?.nodes.at(s.selection[0]) : undefined));
   const al = first?.autoLayout;
   const num = (key: "spacing" | "paddingLeft" | "paddingTop" | "paddingRight" | "paddingBottom", label: string, w?: string) => (
     <NumberField

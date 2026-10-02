@@ -214,14 +214,14 @@ describe("SyncClient: modello confermato/pending", () => {
 
     sync.submit(moveOp("op-mine", "n1", 999, 999));
     // Apply ottimistico: la modifica si vede subito, prima di qualunque risposta.
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 999, y: 999 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 999, y: 999 });
 
     rejectSubmit(new Error("node already exists"));
     await flush();
 
     // Il server non l'ha mai accettata: la modifica DEVE sparire (in M0 restava
     // sullo schermo per sempre, persa al reload successivo).
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     expect(useScene.getState().pending).toHaveLength(0);
     // ...e il fallimento deve essere VISIBILE, non solo un console.error.
     expect(useScene.getState().lastError).toContain("node already exists");
@@ -253,15 +253,15 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["n2"]).toMatchObject({ x: 333 }); // la modifica remota non si perde
-    expect(scene.nodes["n1"]).toMatchObject({ x: 200 }); // ...e nemmeno la nostra
+    expect(scene.nodes.at("n2")).toMatchObject({ x: 333 }); // la modifica remota non si perde
+    expect(scene.nodes.at("n1")).toMatchObject({ x: 200 }); // ...e nemmeno la nostra
 
     // Poi arriva il nostro eco: l'op diventa confermato e la coda si svuota.
     resolveSubmit({ ack: { opId: "op-mine", seq: 3n } });
     stream.push(applied(3, CLIENT, moveOp("op-mine", "n1", 200, 0)));
     await flush();
 
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 });
     expect(useScene.getState().pending).toHaveLength(0);
 
     stream.close();
@@ -279,14 +279,14 @@ describe("SyncClient: modello confermato/pending", () => {
     stream.push(applied(1, CLIENT, moveOp("op-mine", "n1", 200, 0)));
     await flush();
     expect(useScene.getState().pending).toHaveLength(0);
-    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 200 });
 
     // Un record remoto successivo deve poter sovrascrivere: se l'op confermato
     // fosse rimasto anche in coda, il rebase lo riapplicherebbe sopra e n1
     // tornerebbe a 200 -- doppia applicazione dello stesso op.
     stream.push(applied(2, OTHER, moveOp("op-them", "n1", 50, 0)));
     await flush();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 50 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 50 });
 
     stream.close();
     await flush();
@@ -373,7 +373,7 @@ describe("SyncClient: modello confermato/pending", () => {
     sync.submit(moveOp("op-3", "n1", 300, 0));
     sync.submit(moveOp("op-4", "n1", 400, 0));
     // Apply ottimistico: tutti e quattro si vedono subito.
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 400 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 400 });
     await flush();
 
     // op-3 e op-4 erano costruiti su uno stato (x=200) che il server non ha mai
@@ -385,7 +385,7 @@ describe("SyncClient: modello confermato/pending", () => {
     // op-1 è passato e resta in volo in attesa del suo eco; op-2 (rifiutato) e
     // la coda dietro di lui escono dalla vista.
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-1"]);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 100 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 100 });
     expect(useScene.getState().lastError).toContain("node already exists");
     expect(logged).toHaveBeenCalled();
 
@@ -432,7 +432,7 @@ describe("SyncClient: modello confermato/pending", () => {
     // via lavoro valido e mostrerebbe un errore per un op riuscito.
     expect(sent).toEqual(["op-1", "op-2"]);
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-2"]);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 });
     expect(useScene.getState().lastError).toBeNull();
     expect(logged).toHaveBeenCalled(); // resta comunque in console
 
@@ -491,7 +491,7 @@ describe("SyncClient: modello confermato/pending", () => {
 
     expect(useScene.getState().lastError).toContain("timed out");
     expect(useScene.getState().pending).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
 
     stream.close();
     await flush();
@@ -518,7 +518,7 @@ describe("SyncClient: modello confermato/pending", () => {
 
     expect(useScene.getState().pending).toHaveLength(MAX_OUTBOX);
     expect(useScene.getState().pending.some((p) => p.opId === "op-over")).toBe(false);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: MAX_OUTBOX });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: MAX_OUTBOX });
     expect(useScene.getState().lastError).toContain("troppe modifiche in attesa");
 
     stream.close();
@@ -549,8 +549,8 @@ describe("SyncClient: modello confermato/pending", () => {
     // deleteNode di nodi che il server non ha mai visto (ErrNodeNotFound), una
     // per volta, bruciando le voci dei gesti VERI più sotto.
     expect(net.arrived).toEqual(["op-a"]);
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
-    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n2")).toBeUndefined();
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().canUndo).toBe(false);
 
@@ -579,8 +579,8 @@ describe("SyncClient: modello confermato/pending", () => {
 
     // op-a è passato (200 OK) e il suo eco non è ancora arrivato; op-b muore.
     expect(net.arrived).toEqual(["op-a", "op-b"]);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
-    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
 
     // La voce sopravvive, ristretta all'op che è davvero sul server.
     expect(useScene.getState().undoStack).toHaveLength(1);
@@ -593,7 +593,7 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().pending).toHaveLength(0);
-    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
 
     stream.close();
     await flush();
@@ -623,7 +623,7 @@ describe("SyncClient: modello confermato/pending", () => {
     stream.push(applied(2, OTHER, moveOp("op-them", "n1", 500, 500)));
     await flush();
 
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 500, y: 500 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 500, y: 500 });
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().canUndo).toBe(false);
     expect(useScene.getState().notice).not.toBeNull();
@@ -640,7 +640,7 @@ describe("SyncClient: modello confermato/pending", () => {
     sync.submit(moveOp("op-1", "n1", 100, 0));
     await flush();
     expect(useScene.getState().pending).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
 
     // Il rollback ha riportato la vista a quello che il server HA davvero: un
     // op successivo è costruito su una premessa vera e va mandato. Latchare il
@@ -650,7 +650,7 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
 
     expect(net.arrived).toEqual(["op-1", "op-2"]);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 700 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 700 });
 
     stream.close();
     await flush();
@@ -742,7 +742,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
 
     last(opened).stream.push(applied(1, OTHER, moveOp("op-them-1", "n1", 100, 0)));
     await settle();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 100 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 100 });
 
     // Il subscriber è rimasto indietro: l'hub chiude il canale. In M0 il client
     // smetteva semplicemente di ricevere per il resto della sessione.
@@ -764,7 +764,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     // E la nuova subscription è viva davvero.
     last(opened).stream.push(applied(2, OTHER, moveOp("op-them-2", "n1", 200, 0)));
     await settle();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 });
   });
 
   it("un BUCO nella sequenza non viene accettato in silenzio: si risincronizza dall'ultimo seq buono", async () => {
@@ -772,7 +772,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
 
     last(opened).stream.push(applied(1, OTHER, moveOp("op-1", "n1", 100, 0)));
     await settle();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 100 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 100 });
 
     // seq 2 non è mai arrivato. Applicare il 3 vorrebbe dire proseguire con un
     // documento a cui manca un op: se il buco conteneva un CreateNode, ogni
@@ -780,7 +780,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     // non compare più (e nessuno se ne accorge).
     last(opened).stream.push(applied(3, OTHER, moveOp("op-3", "n1", 300, 0)));
     await settle();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 100 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 100 });
     expect(logged).toHaveBeenCalled();
 
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
@@ -793,7 +793,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     last(opened).stream.push(applied(2, OTHER, moveOp("op-2", "n1", 200, 0)));
     last(opened).stream.push(applied(3, OTHER, moveOp("op-3", "n1", 300, 0)));
     await settle();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 300 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 300 });
     expect(useScene.getState().connection).toBe("connected");
   });
 
@@ -806,7 +806,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     sync.stop();
     await settle();
 
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
     // ...e il trasporto è stato ABORTITO, non solo ignorato: senza segnale la
     // richiesta HTTP resta aperta e il server continua a tenere il subscriber.
     expect(opened[0].signal!.aborted).toBe(true);
@@ -815,7 +815,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
 
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW * 4);
     expect(opened).toHaveLength(1);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
 
     // Anche l'altra metà: un op submittato su un client fermato non deve
     // entrare nella vista. Nessuno lo manderebbe (la coda è ferma) e in
@@ -824,7 +824,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     sync.submit(moveOp("op-late", "n1", 42, 0));
     await settle();
     expect(useScene.getState().pending).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
     expect(rpc.submitOp).not.toHaveBeenCalled();
   });
 
@@ -859,7 +859,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     last(opened).stream.close();
     await settle();
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-mine"]);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 });
 
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
     expect(opened).toHaveLength(2);
@@ -871,13 +871,13 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     last(opened).stream.push(applied(1, CLIENT, moveOp("op-mine", "n1", 200, 0)));
     await settle();
     expect(useScene.getState().pending).toHaveLength(0);
-    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 200 });
 
     // Se fosse rimasto in coda, il rebase lo rimetterebbe sopra ogni record
     // successivo e questo spostamento remoto non si vedrebbe mai.
     last(opened).stream.push(applied(2, OTHER, moveOp("op-them", "n1", 50, 0)));
     await settle();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 50 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 50 });
   });
 
   it("la riconnessione non è infinita: dopo un tetto di tentativi si arrende e lo dichiara", async () => {
@@ -950,7 +950,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     // prima di questo fix sparivano con `lastError` nullo e la pillola su
     // "connesso", cioè senza nessuna spiegazione da nessuna parte.
     expect(useScene.getState().pending).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 7 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 7 });
     expect(useScene.getState().lastError).not.toBeNull();
 
     // ...e solo ADESSO muore la richiesta di op-1. `pending` è vuoto, quindi
@@ -984,7 +984,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     last(opened).stream.fail(new ConnectError("since_seq too old", Code.OutOfRange));
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
 
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
     // Una voce sopravvissuta manderebbe l'inverso di un op calcolato su uno
     // stato che lo snapshot ha appena buttato via -- e senza il suo mark
     // (`history` è stata svuotata) nemmeno un rifiuto potrebbe più riavvolgerla.
@@ -1028,7 +1028,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
 
     // Politica invariata: rollback visibile (client-fix-3). Quello che cambia è
     // che adesso è REVOCABILE.
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().lastError).toContain("connection closed");
 
@@ -1038,7 +1038,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     last(opened).stream.push(applied(1, CLIENT, moveOp("op-mine", "n1", 200, 0)));
     await settle();
 
-    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 200 });
     // La modifica è durabile e di nuovo sullo schermo: il banner che la dava per
     // annullata va ritirato, e va detto che è invece salvata.
     expect(useScene.getState().lastError).toBeNull();
@@ -1051,7 +1051,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     // ...e la voce ripristinata annulla davvero QUESTA modifica.
     useScene.getState().undo();
     await settle();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
   });
 
   // La revoca RICOSTRUISCE una voce di undo, ma gli stack vivi non sono uno
@@ -1097,7 +1097,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
     last(opened).stream.push(applied(1, CLIENT, moveOp("op-a", "n1", 200, 0)));
     await settle();
-    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 200 });
     expect(useScene.getState().undoStack).toHaveLength(2);
 
     // ...e ADESSO muore anche op-b. Il suo rollback deve riavvolgere la SUA
@@ -1108,14 +1108,14 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     kill.get("op-b")!(new ConnectError("connection closed", Code.Unavailable));
     await settle();
 
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 });
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
 
     // ...ed è la voce GIUSTA: annulla la modifica di op-a, non un'altra.
     useScene.getState().undo();
     await settle();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
   });
 
   it("un op RIFIUTATO dal server non è revocabile: nessun eco potrà mai arrivare", async () => {
@@ -1194,7 +1194,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().pending).toHaveLength(0);
     expect(useScene.getState().history).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
     expect(useScene.getState().lastError).toContain("ricarica");
 
     // Il posto di trasporto resta NOSTRO: liberarlo (stop()) farebbe applicare
@@ -1220,7 +1220,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(rpc.openDocument).toHaveBeenCalledTimes(2);
     expect(opened).toHaveLength(2);
     expect(opened[1].since).toBe(42n);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 777 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 777 });
     expect(useScene.getState().connection).toBe("connected");
   });
 });

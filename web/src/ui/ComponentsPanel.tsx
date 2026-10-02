@@ -34,7 +34,7 @@ export function ComponentsPanel() {
     if (!cur) return;
     const comp = cur.components[componentId];
     if (!comp) return;
-    const master = cur.nodes[comp.rootNodeId];
+    const master = cur.nodes.at(comp.rootNodeId);
     // Il core rifiuterebbe un'istanza verso un componente/master assente: non si
     // manda un op noto invalido.
     if (!master) return;

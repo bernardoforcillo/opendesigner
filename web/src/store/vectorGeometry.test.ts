@@ -87,8 +87,8 @@ describe("vectorGeometry: spostare il nodo sposta la geometria", () => {
       } },
     }));
 
-    const n0 = before.nodes["v1"];
-    const n1 = moved.nodes["v1"];
+    const n0 = before.nodes.at("v1");
+    const n1 = moved.nodes.at("v1");
     // La geometria nel MODELLO è identica: nessun op la riscrive, ed è
     // esattamente il punto -- con ancoraggi in coordinate mondo, uno
     // spostamento che non riscrivesse tutti i subpath lascerebbe il path

@@ -218,11 +218,11 @@ describe("layout a tre colonne", () => {
 describe("scorciatoie della clipboard", () => {
   function installScene() {
     const scene = emptyScene("doc-1", "Untitled");
-    scene.nodes["n1"] = {
+    scene.nodes = scene.nodes.set("n1", {
       id: "n1", parentId: "page1", orderKey: "a000001", name: "Rettangolo",
       visible: true, opacity: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0,
       fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
-    };
+    });
     useScene.setState({ selection: [], gesture: null, undoStack: [], redoStack: [], sync: null });
     useScene.getState().setScene(scene);
     useScene.getState().setSelection(["n1"]);
@@ -232,7 +232,7 @@ describe("scorciatoie della clipboard", () => {
     render(<App />);
     installScene();
     fireEvent.keyDown(window, { key: "d", ctrlKey: true });
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(2);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
   it("smontare l'app le stacca", () => {
@@ -240,7 +240,7 @@ describe("scorciatoie della clipboard", () => {
     installScene();
     unmount();
     fireEvent.keyDown(window, { key: "d", ctrlKey: true });
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(1);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(1);
   });
 });
 

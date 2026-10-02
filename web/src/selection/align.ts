@@ -164,7 +164,7 @@ export function minSelection(cmd: AlignCommand): number {
 function boxesOf(scene: SceneState, ids: readonly string[]): { id: string; box: Bounds }[] {
   const out: { id: string; box: Bounds }[] = [];
   for (const id of ids) {
-    const n = scene.nodes[id];
+    const n = scene.nodes.at(id);
     if (n) out.push({ id, box: worldAabbOfNode(n) });
   }
   return out;
@@ -194,7 +194,7 @@ export function alignOps(scene: SceneState, ids: readonly string[], cmd: AlignCo
   boxes.forEach(({ id }, i) => {
     const { dx, dy } = deltas[i];
     if (dx === 0 && dy === 0) return;
-    const n = scene.nodes[id];
+    const n = scene.nodes.at(id);
     // x e y viaggiano SEMPRE insieme, anche quando uno dei due delta è zero: la
     // mask è la stessa per tutti i comandi, quindi le anteprime di gesti
     // diversi si coalescono sulla stessa chiave (vedi store.ts::previewKey) e

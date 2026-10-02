@@ -219,7 +219,7 @@ export function localTransformOf(n: NodeLite): Transform {
 // parent, quindi chi lavora sul box di n (hit-test, bounds, resize) usa
 // `worldTransformOf(scene, n.parentId)`, non `worldTransformOf(scene, n.id)`.
 export function worldTransformOf(scene: SceneState, id: string): Transform {
-  const node = scene.nodes[id];
+  const node = scene.nodes.at(id);
   if (!node) return IDENTITY;
   let t = localTransformOf(node);
   // ancestorsOf: dal più vicino al più lontano, si ferma alla pagina ed è già a

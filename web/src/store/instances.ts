@@ -32,7 +32,7 @@ export function resolveInstance(scene: SceneState, n: NodeLite): ResolvedInstanc
   if (n.kind !== "instance" || !n.instance) return null;
   const comp = scene.components[n.instance.componentId];
   if (!comp) return null;
-  const masterRoot = scene.nodes[comp.rootNodeId];
+  const masterRoot = scene.nodes.at(comp.rootNodeId);
   if (!masterRoot) return null;
   return { masterRoot, componentId: n.instance.componentId };
 }

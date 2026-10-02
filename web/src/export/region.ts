@@ -1,3 +1,4 @@
+import { NodeMap } from "../store/nodeMap";
 import type { NodeLite, SceneState } from "../store/types";
 import { type Bounds, boundsOfNode, unionBounds } from "../canvas/geometry";
 import { sortedVisible } from "../renderer/canvasRenderer";
@@ -84,6 +85,6 @@ export function exportRegion(
     scope,
     nodes,
     bounds,
-    scene: { ...scene, nodes: Object.fromEntries(nodes.map((n) => [n.id, n])) },
+    scene: { ...scene, nodes: NodeMap.from(nodes.map((n) => [n.id, n] as const)) },
   };
 }

@@ -28,7 +28,7 @@ window.runBench = (sizes: number[]) => {
     const zoomed = { x: -2000, y: -1500, zoom: 1 };
     const op = makeSetPropsOp("n0_1", { x: 5, y: 6 }, ["x", "y"]);
     out.push({
-      nodes: Object.keys(scene.nodes).length,
+      nodes: scene.nodes.size,
       drawFit_ms: time(() => drawScene(ctx, scene, fit, "page1"), 5),
       drawZoomed_ms: time(() => drawScene(ctx, scene, zoomed, "page1"), 5),
       hitTest_ms: time(() => hitTest(scene, 1000, 1000, 1, "page1"), 10),

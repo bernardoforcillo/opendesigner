@@ -1,3 +1,4 @@
+import { nodesOf } from "./nodeMap";
 import { describe, it, expect, beforeEach } from "vitest";
 import { create } from "@bufbuild/protobuf";
 import { OpSchema, NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -81,7 +82,7 @@ describe("selection state", () => {
     useScene.getState().apply(deleteOp("n1"));
     // Altrimenti le maniglie di resize restano appese a un nodo inesistente.
     expect(useScene.getState().selection).toEqual(["n2"]);
-    expect(useScene.getState().scene?.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene?.nodes.at("n1")).toBeUndefined();
   });
 
   it("leaves the selection untouched when the deleted node was not selected", () => {
@@ -203,7 +204,7 @@ describe("selezione scoping-per-pagina (rebuild da op remoto)", () => {
     // n1 esiste ANCORA (non è una delete), ma non è più raggiungibile da page1:
     // il canvas non lo disegna, quindi cornice/maniglie/pannello non devono più
     // puntarci.
-    expect(useScene.getState().scene?.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene?.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().currentPageId).toBe("page1");
     expect(useScene.getState().selection).toEqual([]);
   });
@@ -263,10 +264,10 @@ describe("selezione scoping-per-pagina (setScene: resync/snapshot)", () => {
     const snapshot: SceneState = {
       id: "doc1", name: "Untitled", schemaVersion: 1,
       pages: [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }],
-      nodes: { n1: rectLite("n1", "page2") }, components: {},
+      nodes: nodesOf({ n1: rectLite("n1", "page2") }), components: {},
     };
     useScene.getState().setScene(snapshot);
-    expect(useScene.getState().scene?.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene?.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().currentPageId).toBe("page1");
     expect(useScene.getState().selection).toEqual([]);
   });
@@ -277,7 +278,7 @@ describe("selezione scoping-per-pagina (setScene: resync/snapshot)", () => {
     const snapshot: SceneState = {
       id: "doc1", name: "Untitled", schemaVersion: 1,
       pages: [{ id: "page1", name: "Page 1" }],
-      nodes: { n1: rectLite("n1", "page1") }, components: {},
+      nodes: nodesOf({ n1: rectLite("n1", "page1") }), components: {},
     };
     useScene.getState().setScene(snapshot);
     expect(useScene.getState().selection).toEqual(["n1"]);
@@ -301,7 +302,7 @@ describe("selezione scoping-per-pagina (applyPending: op locale ottimistico)", (
     // Submit OTTIMISTICO di un reparent verso page2: la vista lo mostra subito,
     // n1 esiste ancora ma non è più raggiungibile da page1.
     useScene.getState().applyPending(reparentOp("n1", "page2", "a0"));
-    expect(useScene.getState().scene?.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene?.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().currentPageId).toBe("page1");
     expect(useScene.getState().selection).toEqual([]);
   });

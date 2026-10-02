@@ -22,7 +22,7 @@ function node(over: Partial<NodeLite> & { id: string }): NodeLite {
 
 function sceneWith(nodes: NodeLite[]): SceneState {
   const s = emptyScene("d", "n");
-  for (const n of nodes) s.nodes[n.id] = n;
+  for (const n of nodes) s.nodes = s.nodes.set(n.id, n);
   return s;
 }
 

@@ -54,7 +54,7 @@ function text(id: string, over: Partial<NodeLite> = {}): NodeLite {
 
 function installScene(nodes: NodeLite[]): void {
   const scene = emptyScene("doc-1", "Untitled");
-  for (const n of nodes) scene.nodes[n.id] = n;
+  for (const n of nodes) scene.nodes = scene.nodes.set(n.id, n);
   useScene.getState().setScene(scene);
 }
 
@@ -142,7 +142,7 @@ describe("il payload della clipboard", () => {
 
   it("ignora un effetto sconosciuto o storto invece di rifiutare tutto, e limita i valori negativi", () => {
     const payload = JSON.parse(serializeNodes([rect("n1")]));
-    payload.nodes[0].effects = [{ kind: "glow" }, { kind: "layerBlur", radius: -4 }, null, { kind: "dropShadow", blur: -1 }];
+    payload.nodes.at(0).effects = [{ kind: "glow" }, { kind: "layerBlur", radius: -4 }, null, { kind: "dropShadow", blur: -1 }];
     const parsed = parseClipboard(JSON.stringify(payload));
     if (!parsed.ok) throw new Error("unreachable");
     expect(parsed.nodes[0].effects).toEqual([
@@ -274,13 +274,13 @@ describe("pasteOps", () => {
     const child = rect("c1", { parentId: "p1", orderKey: "a000002", x: 5, y: 5 });
     const { ops, ids } = pasteOps(scene, [parent, child]);
     const nodes = ops.map((op) => (op.kind.case === "createNode" ? op.kind.value.node! : null));
-    expect(nodes[0]?.id).toBe(ids[0]);
-    expect(nodes[1]?.parentId).toBe(ids[0]);
+    expect(nodes.at(0)?.id).toBe(ids[0]);
+    expect(nodes.at(1)?.parentId).toBe(ids[0]);
     // Il figlio NON prende l'offset: lo prende il contenitore, e spostare
     // entrambi lo sposterebbe due volte il giorno in cui le coordinate
     // diventeranno relative al parent.
-    expect(nodes[1]?.x).toBe(5);
-    expect(nodes[0]?.x).toBe(10 + PASTE_OFFSET);
+    expect(nodes.at(1)?.x).toBe(5);
+    expect(nodes.at(0)?.x).toBe(10 + PASTE_OFFSET);
   });
 
   it("conserva il parent quando esiste nel documento di destinazione", () => {
@@ -335,10 +335,10 @@ describe("pasteOps", () => {
       rect("n2", { parentId: "", orderKey: "a000002" }),
     ]);
     const nodes = ops.map((op) => (op.kind.case === "createNode" ? op.kind.value.node! : null));
-    expect(nodes[1]?.parentId).toBe("page1");
-    expect(nodes[1]?.parentId).not.toBe(ids[0]);
+    expect(nodes.at(1)?.parentId).toBe("page1");
+    expect(nodes.at(1)?.parentId).not.toBe(ids[0]);
     // E poiché non è figlio di niente, resta una RADICE: prende l'offset.
-    expect(nodes[1]?.x).toBe(10 + PASTE_OFFSET);
+    expect(nodes.at(1)?.x).toBe(10 + PASTE_OFFSET);
   });
 
   // Un parent ambiguo (due nodi con lo stesso id) non si tira a sorte: il nodo
@@ -401,11 +401,11 @@ describe("pasteClipboard", () => {
     await pasteClipboard();
 
     const scene = useScene.getState().scene!;
-    const ids = Object.keys(scene.nodes);
+    const ids = [...scene.nodes.ids()];
     expect(ids).toHaveLength(2);
     expect(ids).not.toContain("n1");
     expect(useScene.getState().selection).toEqual(ids.sort((a, b) =>
-      scene.nodes[a].orderKey < scene.nodes[b].orderKey ? -1 : 1));
+      scene.nodes.at(a).orderKey < scene.nodes.at(b).orderKey ? -1 : 1));
   });
 
   // Il punto del "un solo gesto": un Ctrl+Z toglie TUTTO l'incollato, non un
@@ -415,11 +415,11 @@ describe("pasteClipboard", () => {
     installScene([rect("gia-qui")]);
 
     await pasteClipboard();
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(4);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(4);
     expect(useScene.getState().undoStack).toHaveLength(1);
 
     useScene.getState().undo();
-    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual(["gia-qui"]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["gia-qui"]);
   });
 
   it("incolla dal buffer in memoria quando la clipboard di sistema non è disponibile", async () => {
@@ -429,7 +429,7 @@ describe("pasteClipboard", () => {
     await copySelection();
 
     await pasteClipboard();
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(2);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
   it("incolla dal buffer in memoria quando la clipboard di sistema RIFIUTA la lettura", async () => {
@@ -441,14 +441,14 @@ describe("pasteClipboard", () => {
     await copySelection();
 
     await pasteClipboard();
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(2);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
   it("non incolla niente quando non c'è mai stata una copia", async () => {
     setClipboard(clipboardStub("del testo qualunque"));
     installScene([rect("n1")]);
     await pasteClipboard();
-    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual(["n1"]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["n1"]);
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
@@ -463,7 +463,7 @@ describe("pasteClipboard", () => {
 
     await pasteClipboard();
 
-    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual(["gia-qui"]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["gia-qui"]);
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().notice).toBeTruthy();
   });
@@ -486,7 +486,7 @@ describe("pasteClipboard", () => {
     await Promise.all([first, second]);
 
     expect(cb.readText).toHaveBeenCalledTimes(1);
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(1);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(1);
   });
 
   // Il caso end-to-end del payload scritto male: due nodi senza `id`. Devono
@@ -503,14 +503,14 @@ describe("pasteClipboard", () => {
 
     const ids = await pasteClipboard();
 
-    const nodes = Object.keys(useScene.getState().scene!.nodes);
+    const nodes = [...useScene.getState().scene!.nodes.ids()];
     expect(ids).toHaveLength(2);
     expect(new Set(ids).size).toBe(2);
     expect(nodes.sort()).toEqual([...ids].sort());
     expect(useScene.getState().selection).toEqual(ids);
 
     useScene.getState().undo();
-    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual([]);
   });
 
   // Il ripiego sul buffer in memoria NON è per "sugli appunti c'è altro": una
@@ -528,7 +528,7 @@ describe("pasteClipboard", () => {
     cb.readText.mockResolvedValue("del testo copiato altrove");
 
     expect(await pasteClipboard()).toEqual([]);
-    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual(["n1"]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["n1"]);
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
@@ -545,7 +545,7 @@ describe("pasteClipboard", () => {
     cb.readText.mockResolvedValue("del testo copiato altrove");
 
     await pasteClipboard();
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(2);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
   it("non incolla a gesto aperto (un drag in corso): rimandato, come undo/redo", async () => {
@@ -553,7 +553,7 @@ describe("pasteClipboard", () => {
     installScene([]);
     useScene.getState().beginGesture();
     await pasteClipboard();
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(0);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(0);
   });
 });
 
@@ -568,9 +568,9 @@ describe("duplicateSelection", () => {
 
     const scene = useScene.getState().scene!;
     expect(ids).toHaveLength(1);
-    expect(Object.keys(scene.nodes)).toHaveLength(2);
-    expect(scene.nodes[ids[0]].x).toBe(100 + PASTE_OFFSET);
-    expect(scene.nodes[ids[0]].y).toBe(200 + PASTE_OFFSET);
+    expect([...scene.nodes.ids()]).toHaveLength(2);
+    expect(scene.nodes.at(ids[0]).x).toBe(100 + PASTE_OFFSET);
+    expect(scene.nodes.at(ids[0]).y).toBe(200 + PASTE_OFFSET);
     expect(useScene.getState().selection).toEqual(ids);
   });
 
@@ -579,11 +579,11 @@ describe("duplicateSelection", () => {
     useScene.getState().setSelection(["n1", "n2"]);
 
     duplicateSelection();
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(4);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(4);
     expect(useScene.getState().undoStack).toHaveLength(1);
 
     useScene.getState().undo();
-    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["n1", "n2"]);
+    expect([...useScene.getState().scene!.nodes.ids()].sort()).toEqual(["n1", "n2"]);
   });
 
   it("NON tocca la clipboard: duplicare non è copiare", () => {
@@ -599,7 +599,7 @@ describe("duplicateSelection", () => {
   it("senza selezione non fa niente", () => {
     installScene([rect("n1")]);
     expect(duplicateSelection()).toEqual([]);
-    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual(["n1"]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["n1"]);
   });
 });
 
@@ -625,7 +625,7 @@ describe("attachClipboardShortcuts", () => {
     useScene.getState().setSelection(["n1"]);
 
     press("d");
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(2);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
   it("Ctrl+C poi Ctrl+V copiano e incollano", async () => {
@@ -637,7 +637,7 @@ describe("attachClipboardShortcuts", () => {
     press("c");
     await vi.waitFor(() => expect(useScene.getState().selection).toEqual(["n1"]));
     press("v");
-    await vi.waitFor(() => expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(2));
+    await vi.waitFor(() => expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2));
   });
 
   it("ignora le scorciatoie dentro un campo di testo (lì la copia è del campo)", () => {
@@ -648,7 +648,7 @@ describe("attachClipboardShortcuts", () => {
     document.body.appendChild(input);
 
     press("d", {}, input);
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(1);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(1);
   });
 
   it("ignora un tasto senza il modificatore, e Ctrl+Shift+D (che è un'altra scorciatoia)", () => {
@@ -658,7 +658,7 @@ describe("attachClipboardShortcuts", () => {
 
     press("d", { ctrlKey: false });
     press("d", { shiftKey: true });
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(1);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(1);
   });
 
   it("la cleanup stacca davvero il listener", () => {
@@ -669,7 +669,7 @@ describe("attachClipboardShortcuts", () => {
     detach = () => {};
 
     press("d");
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(1);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(1);
   });
 
   it("previene il default SOLO quando gestisce il tasto", () => {

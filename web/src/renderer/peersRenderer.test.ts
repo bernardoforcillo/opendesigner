@@ -1,3 +1,4 @@
+import { nodesOf } from "../store/nodeMap";
 import { describe, it, expect, vi } from "vitest";
 import { drawPeers } from "./peersRenderer";
 import { emptyScene } from "../store/types";
@@ -13,7 +14,7 @@ function scene(): SceneState {
     x: 10, y: 20, width: 100, height: 50, rotation: 0,
     fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
   };
-  return { ...s, nodes: { n1: n } };
+  return { ...s, nodes: nodesOf({ n1: n }) };
 }
 
 function peer(over: Partial<PeerLite> = {}): PeerLite {

@@ -358,10 +358,10 @@ describe("penTool", () => {
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
     const id = createdNode(submitted[0]).id;
-    expect(useScene.getState().scene!.nodes[id]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at(id)).toBeDefined();
 
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at(id)).toBeUndefined();
   });
 
   // Lo slot del gesto (store.gesture) è UNO SOLO per tutta l'applicazione.
@@ -564,7 +564,7 @@ describe("penTool", () => {
     tool.onKeyDown!(key("Escape"), ctx);
 
     expect(submitted).toHaveLength(0);
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(0);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(0);
     expect(useScene.getState().gesture).toBeNull();
     expect(useScene.getState().penPreview).toBeNull();
   });
@@ -691,7 +691,7 @@ describe("penTool", () => {
     tool.onDeactivate!(ctx);
 
     expect(submitted).toHaveLength(0);
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(0);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(0);
     expect(useScene.getState().gesture).toBeNull();
     expect(useScene.getState().penPreview).toBeNull();
   });

@@ -7,7 +7,7 @@ import type { FillLite, NodeLite, SceneState, StrokeLite } from "./types";
 // l'ordine di iterazione non è quello di orderKey, quindi c'è comunque un
 // sort da fare -- niente da guadagnare a farlo "in place".
 export function layersInDrawOrder(scene: SceneState): NodeLite[] {
-  return Object.values(scene.nodes).sort((a, b) => (a.orderKey < b.orderKey ? 1 : a.orderKey > b.orderKey ? -1 : 0));
+  return [...scene.nodes.values()].sort((a, b) => (a.orderKey < b.orderKey ? 1 : a.orderKey > b.orderKey ? -1 : 0));
 }
 
 // Marcatore di "valore misto" per un campo che differisce fra i nodi
@@ -74,7 +74,7 @@ function summarize<I, T>(items: readonly I[], get: (n: I) => T, eq: (a: T, b: T)
 // selezione vuota (o ridotta a niente perché gli id non esistono più nella
 // scena): il pannello proprietà, in quel caso, resta vuoto/disabilitato.
 export function selectionSummary(scene: SceneState, ids: readonly string[]): SelectionSummary | null {
-  const nodes = ids.map((id) => scene.nodes[id]).filter((n): n is NodeLite => n !== undefined);
+  const nodes = ids.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined);
   if (nodes.length === 0) return null;
   // x/y sono l'origine della CORNICE, non il campo grezzo del nodo: per tutto
   // ciò che non è un gruppo sono la stessa cosa, per un gruppo no (le sue x/y

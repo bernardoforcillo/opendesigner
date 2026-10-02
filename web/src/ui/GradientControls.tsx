@@ -13,7 +13,7 @@ const KINDS: { kind: FillKind; label: string }[] = [
   { kind: "radial", label: "Radiale" },
 ];
 
-const lookup = (id: string) => useScene.getState().scene?.nodes[id];
+const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 
 /**
  * Il tipo del riempimento (solido / lineare / radiale) e, per un gradiente, i

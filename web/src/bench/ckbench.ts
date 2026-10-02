@@ -39,7 +39,7 @@ window.runCk = async (sizes: number[]) => {
       return +median(t).toFixed(1);
     };
     out.push({
-      nodes: Object.keys(scene.nodes).length,
+      nodes: scene.nodes.size,
       canvas2d_fit: t2(fit), canvaskit_fit: tg(fit),
       canvas2d_zoom: t2(zoomed), canvaskit_zoom: tg(zoomed),
     });

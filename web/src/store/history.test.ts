@@ -272,8 +272,8 @@ describe("invertOp: setProps", () => {
     const after = applyOp(scene, op);
     // L'op diretto morde davvero: senza questo, il round-trip passerebbe per
     // finta anche su un applyOp che ignora il path.
-    expect(after.nodes["n1"].strokes).toHaveLength(1);
-    expect(after.nodes["n1"].strokes[0].weight).toBe(9);
+    expect(after.nodes.at("n1").strokes).toHaveLength(1);
+    expect(after.nodes.at("n1").strokes[0].weight).toBe(9);
     expectRoundTrip(scene, op);
   });
 
@@ -293,9 +293,9 @@ describe("invertOp: setProps", () => {
       kind: { case: "setProps", value: { id: "n1", mask: { paths: ["x", "fills"] } } },
     });
     const after = applyOp(scene, op);
-    expect(after.nodes["n1"].x).toBe(0);
-    expect(after.nodes["n1"].fills).toEqual([]);
-    expect(after.nodes["n1"].y).toBe(-20); // fuori mask: intatto
+    expect(after.nodes.at("n1").x).toBe(0);
+    expect(after.nodes.at("n1").fills).toEqual([]);
+    expect(after.nodes.at("n1").y).toBe(-20); // fuori mask: intatto
 
     expectRoundTrip(scene, op);
   });
@@ -375,9 +375,9 @@ describe("invertOp: deleteNode a cascata", () => {
     // passo: applicati uno a uno, nessuno viene scartato.
     let s = applyOp(scene, deleteOp("g1"));
     for (const o of inv) {
-      const before = Object.keys(s.nodes).length;
+      const before = s.nodes.size;
       s = applyOp(s, o);
-      expect(Object.keys(s.nodes).length).toBe(before + 1);
+      expect(s.nodes.size).toBe(before + 1);
     }
   });
 
@@ -388,7 +388,7 @@ describe("invertOp: deleteNode a cascata", () => {
     for (const o of inv) s = applyOp(s, o);
     // Solo la radice atterra: i figli, mandati per primi, trovano il parent
     // ancora inesistente (ErrParentNotFound in Go).
-    expect(Object.keys(s.nodes).sort()).toEqual(["g1", "other"]);
+    expect([...s.nodes.ids()].sort()).toEqual(["g1", "other"]);
   });
 });
 
@@ -439,7 +439,7 @@ describe("invertOp: setText", () => {
     const scene = sceneWith(richText());
     const op = setTextOp("t1", "ciao\nmondo", { fontFamily: "Inter", fontSize: 12, fontWeight: "400", lineHeight: 1, align: TextAlign.CENTER });
     // L'op diretto morde davvero: senza questo, il round-trip passerebbe per finta.
-    expect(applyOp(scene, op).nodes["t1"].text?.style.fontSize).toBe(12);
+    expect(applyOp(scene, op).nodes.at("t1").text?.style.fontSize).toBe(12);
     expectRoundTrip(scene, op);
   });
 
@@ -460,7 +460,7 @@ describe("invertOp: setVectorPath", () => {
     const scene = sceneWith(richVector());
     const op = setVectorPathOp("v1", [{ anchors: [{ x: 5, y: 5, inX: 1, inY: 1, outX: 9, outY: 9 }], closed: false }]);
     // L'op diretto morde davvero: senza questo, il round-trip passerebbe per finta.
-    expect(applyOp(scene, op).nodes["v1"].vector?.subpaths).toHaveLength(1);
+    expect(applyOp(scene, op).nodes.at("v1").vector?.subpaths).toHaveLength(1);
     // L'inverso di setVectorPath è una lista di UN elemento (invertOp ritorna
     // Op[] da quando l'inverso di una delete è una cascata): expectSingleRoundTrip
     // ne asserisce la lunghezza 1 e restituisce l'op singolo.
@@ -480,7 +480,7 @@ describe("invertOp: setVectorPath", () => {
   it("round-trips lo SVUOTAMENTO di un path", () => {
     const scene = sceneWith(richVector());
     const op = setVectorPathOp("v1", []);
-    expect(applyOp(scene, op).nodes["v1"].vector?.subpaths).toEqual([]);
+    expect(applyOp(scene, op).nodes.at("v1").vector?.subpaths).toEqual([]);
     expectRoundTrip(scene, op);
   });
 
@@ -608,9 +608,9 @@ describe("invertOp: deletePage a cascata", () => {
     // scartato (createPage aggiunge la pagina, ogni createNode un nodo).
     let s = applyOp(scene, deletePageOp("page2"));
     for (const o of inv) {
-      const before = s.pages.length + Object.keys(s.nodes).length;
+      const before = s.pages.length + s.nodes.size;
       s = applyOp(s, o);
-      expect(s.pages.length + Object.keys(s.nodes).length).toBe(before + 1);
+      expect(s.pages.length + s.nodes.size).toBe(before + 1);
     }
   });
 
@@ -622,7 +622,7 @@ describe("invertOp: deletePage a cascata", () => {
     // I nodi, mandati prima della loro pagina/parent, trovano il container
     // ancora inesistente (ErrParentNotFound): solo page1 e la page2 ri-creata
     // atterrano, nessun nodo.
-    expect(Object.keys(s.nodes)).toEqual([]);
+    expect([...s.nodes.ids()]).toEqual([]);
     expect(s.pages.map((p) => p.id).sort()).toEqual(["page1", "page2"]);
   });
 
@@ -686,10 +686,10 @@ describe("invertOp: identità dell'op", () => {
 
   it("non muta la scena né l'op passati", () => {
     const scene = sceneWith(richRect());
-    const before: NodeLite = { ...scene.nodes["n1"] };
+    const before: NodeLite = { ...scene.nodes.at("n1") };
     const op = setPropsOp("n1", { x: 5 }, ["x"]);
     invertOp(scene, op);
-    expect(scene.nodes["n1"]).toEqual(before);
+    expect(scene.nodes.at("n1")).toEqual(before);
     expect(op.kind.case === "setProps" && op.kind.value.patch?.x).toBe(5);
   });
 });

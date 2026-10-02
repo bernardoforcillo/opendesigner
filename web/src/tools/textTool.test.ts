@@ -1,3 +1,4 @@
+import { nodesOf , nodesWith } from "../store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createTextTool, DEFAULT_TEXT_HEIGHT, DEFAULT_TEXT_WIDTH } from "./textTool";
 import type { ToolContext } from "./types";
@@ -164,7 +165,7 @@ describe("textTool", () => {
   });
 
   it("deriva l'order key dalla scena, così non collide mai dopo un reload", () => {
-    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { a: node("a", "a000004") } });
+    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ a: node("a", "a000004") }) });
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(0, 0), ctx);
@@ -211,13 +212,13 @@ describe("textTool", () => {
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerUp!(at(60, 80), ctx);
     const id = createdNode(submitted[0]).id;
-    expect(useScene.getState().scene!.nodes[id].kind).toBe("text");
+    expect(useScene.getState().scene!.nodes.at(id).kind).toBe("text");
 
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at(id)).toBeUndefined();
 
     useScene.getState().redo();
-    expect(useScene.getState().scene!.nodes[id].kind).toBe("text");
+    expect(useScene.getState().scene!.nodes.at(id).kind).toBe("text");
   });
 
   // Repro concreto del bug di review (Task 4, fix round): due creazioni
@@ -234,7 +235,7 @@ describe("textTool", () => {
     tool.onPointerUp!(at(10, 20), ctx);
     const first = createdNode(submitted[0]).id;
     expect(useScene.getState().editingNodeId).toBe(first);
-    expect(useScene.getState().scene!.nodes[first]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at(first)).toBeDefined();
 
     tool.onPointerDown!(at(300, 20), ctx);
     tool.onPointerUp!(at(300, 20), ctx);
@@ -243,8 +244,8 @@ describe("textTool", () => {
     const second = createdNode(submitted[submitted.length - 1]).id;
 
     expect(useScene.getState().editingNodeId).toBe(second);
-    expect(useScene.getState().scene!.nodes[first]).toBeUndefined(); // niente nodo fantasma
-    expect(useScene.getState().scene!.nodes[second]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at(first)).toBeUndefined(); // niente nodo fantasma
+    expect(useScene.getState().scene!.nodes.at(second)).toBeDefined();
   });
 
   // Secondo rilievo della review (fix round): la pulizia del nodo precedente
@@ -269,12 +270,12 @@ describe("textTool", () => {
 
     // il primo Ctrl+Z annulla la creazione appena fatta...
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes[second]).toBeUndefined();
-    expect(useScene.getState().scene!.nodes[first]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at(second)).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at(first)).toBeUndefined();
 
     // ...e solo il secondo riporta indietro il nodo ripulito.
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes[first]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at(first)).toBeDefined();
   });
 
   it("la seconda creazione non riusa l'order key del nodo appena ripulito", () => {
@@ -345,44 +346,44 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerUp!(at(10, 20), ctx);
     const id = createdNode(submitted[0]).id;
-    expect(useScene.getState().scene!.nodes[id]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at(id)).toBeDefined();
     expect(useScene.getState().editingNodeId).toBe(id);
     const undoDepthAfterCreate = useScene.getState().undoStack.length;
 
     useScene.getState().endTextEditing();
 
     expect(useScene.getState().editingNodeId).toBeNull();
-    expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at(id)).toBeUndefined();
     expect(useScene.getState().undoStack.length).toBe(undoDepthAfterCreate + 1);
 
     // annullabile: Ctrl+Z riporta il nodo (vuoto) sulla scena.
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes[id]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at(id)).toBeDefined();
   });
 
   it("un nodo testo con contenuto NON viene eliminato uscendo dall'editing", () => {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
-      nodes: {
+      nodes: nodesOf({
         t1: {
           id: "t1", parentId: "page1", orderKey: "a000000", name: "Text", visible: true, opacity: 1,
           x: 0, y: 0, width: 100, height: 20, rotation: 0,
           fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text", cornerRadius: 0, clipsContent: false,
           text: { content: "ciao", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
         },
-      },
+      }),
     });
     useScene.getState().beginTextEditing("t1");
     useScene.getState().endTextEditing();
     expect(useScene.getState().editingNodeId).toBeNull();
-    expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
   });
 
   it("uscendo dall'editing di un nodo NON di testo (misuso) non elimina nulla", () => {
-    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { a: node("a", "a000000") } });
+    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ a: node("a", "a000000") }) });
     useScene.getState().beginTextEditing("a");
     useScene.getState().endTextEditing();
-    expect(useScene.getState().scene!.nodes["a"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("a")).toBeDefined();
   });
 
   // Bug trovato in review: beginTextEditing sovrascriveva editingNodeId senza
@@ -394,7 +395,7 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
     beforeEach(() => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: {
+        nodes: nodesOf({
           t1: {
             id: "t1", parentId: "page1", orderKey: "a000000", name: "Text", visible: true, opacity: 1,
             x: 0, y: 0, width: 100, height: 20, rotation: 0,
@@ -407,7 +408,7 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
             fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text", cornerRadius: 0, clipsContent: false,
             text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
           },
-        },
+        }),
       });
     });
 
@@ -419,30 +420,29 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
       useScene.getState().beginTextEditing("t2");
 
       expect(useScene.getState().editingNodeId).toBe("t2");
-      expect(useScene.getState().scene!.nodes["t1"]).toBeUndefined(); // t1 ripulito, non fantasma
-      expect(useScene.getState().scene!.nodes["t2"]).toBeDefined();
+      expect(useScene.getState().scene!.nodes.at("t1")).toBeUndefined(); // t1 ripulito, non fantasma
+      expect(useScene.getState().scene!.nodes.at("t2")).toBeDefined();
       expect(useScene.getState().undoStack.length).toBe(undoDepthAfterFirstEdit + 1);
 
       // annullabile come qualunque altra pulizia (vedi endTextEditing).
       useScene.getState().undo();
-      expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+      expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
     });
 
     it("passare da un nodo testo CON contenuto a un altro non lo elimina", () => {
       useScene.getState().setScene({
         ...useScene.getState().scene!,
-        nodes: {
-          ...useScene.getState().scene!.nodes,
-          t1: { ...useScene.getState().scene!.nodes["t1"], text: { content: "ciao", style: useScene.getState().scene!.nodes["t1"].text!.style } },
-        },
+        nodes: nodesWith(useScene.getState().scene!.nodes, {
+          t1: { ...useScene.getState().scene!.nodes.at("t1"), text: { content: "ciao", style: useScene.getState().scene!.nodes.at("t1").text!.style } },
+        }),
       });
 
       useScene.getState().beginTextEditing("t1");
       useScene.getState().beginTextEditing("t2");
 
       expect(useScene.getState().editingNodeId).toBe("t2");
-      expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
-      expect(useScene.getState().scene!.nodes["t1"].text?.content).toBe("ciao");
+      expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
+      expect(useScene.getState().scene!.nodes.at("t1").text?.content).toBe("ciao");
     });
 
     it("richiamare beginTextEditing con lo STESSO nodo già in editing è un no-op (non lo cancella)", () => {
@@ -452,7 +452,7 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
       useScene.getState().beginTextEditing("t1");
 
       expect(useScene.getState().editingNodeId).toBe("t1");
-      expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+      expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
       expect(useScene.getState().undoStack.length).toBe(undoDepth); // nessuna cancellazione spuria
     });
   });

@@ -117,8 +117,8 @@ function safeBetween(a: string | null, b: string | null): string | null {
 
 export function dropPlanFor(scene: SceneState, fromId: string, overId: string): DropPlan | null {
   if (fromId === overId) return null;
-  const from = scene.nodes[fromId];
-  const over = scene.nodes[overId];
+  const from = scene.nodes.at(fromId);
+  const over = scene.nodes.at(overId);
   if (!from || !over) return null;
   // GUARDIA CICLI: `over` non deve stare nel sottoalbero di `from`. isAncestorOf
   // è stretta (from === over è già escluso sopra): calare un nodo dentro un
@@ -372,7 +372,7 @@ export function LayersPanel() {
   const autoDecided = useRef(new Map<string, boolean>());
   const autoKey = scene && currentPageId ? `${scene.id}:${currentPageId}` : null;
   if (autoKey !== null && scene && !autoDecided.current.has(autoKey)) {
-    autoDecided.current.set(autoKey, Object.keys(scene.nodes).length > AUTO_COLLAPSE_NODES);
+    autoDecided.current.set(autoKey, scene.nodes.size > AUTO_COLLAPSE_NODES);
   }
   const autoCollapse = autoKey !== null && autoDecided.current.get(autoKey) === true;
   const isCollapsed = useCallback(
@@ -519,7 +519,7 @@ export function LayersPanel() {
   function reorderSibling(id: string, dir: -1 | 1) {
     const cur = useScene.getState().scene;
     if (!cur) return;
-    const n = cur.nodes[id];
+    const n = cur.nodes.at(id);
     if (!n) return;
     const displayed = [...childrenOf(cur, n.parentId)].reverse();
     const i = displayed.findIndex((s) => s.id === id);

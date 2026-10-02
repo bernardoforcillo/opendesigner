@@ -4,7 +4,7 @@ import { ColorField } from "./fields/ColorField";
 import { NumberField } from "./fields/NumberField";
 import { blurOf, blurOps, shadowOf, shadowOps } from "./effectOps";
 
-const lookup = (id: string) => useScene.getState().scene?.nodes[id];
+const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 
 /**
  * Ombra e sfocatura del nodo selezionato (il primo, se sono più d'uno: gli
@@ -15,7 +15,7 @@ const lookup = (id: string) => useScene.getState().scene?.nodes[id];
 export function EffectsControls({ run }: { run: (build: (ids: readonly string[]) => Op[]) => void }) {
   // Selettori che restituiscono primitivi/riferimenti stabili: il pannello si
   // ridisegna solo quando cambiano gli effetti del primo nodo selezionato.
-  const first = useScene((s) => (s.selection[0] ? s.scene?.nodes[s.selection[0]] : undefined));
+  const first = useScene((s) => (s.selection[0] ? s.scene?.nodes.at(s.selection[0]) : undefined));
   const shadow = shadowOf(first);
   const blur = blurOf(first);
 

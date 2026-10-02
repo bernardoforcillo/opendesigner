@@ -1,3 +1,4 @@
+import { nodesOf, nodesFromEntries , nodesWith } from "../store/nodeMap";
 import { describe, it, expect } from "vitest";
 import { applyOp } from "../store/applyOp";
 import { emptyScene } from "../store/types";
@@ -22,7 +23,7 @@ function row(al: Partial<AutoLayoutLite> = {}): SceneState {
   const s = emptyScene("d", "t");
   const nodes = [frame, node("a", "f", "a"), node("b", "f", "b"), node("c", "f", "c")];
   // Passa dal layout vero: le posizioni le decide lui.
-  let scene: SceneState = { ...s, nodes: Object.fromEntries(nodes.map((n) => [n.id, n])) };
+  let scene: SceneState = { ...s, nodes: nodesFromEntries(nodes.map((n) => [n.id, n])) };
   scene = applyOp(scene, {
     kind: { case: "setProps", value: { id: "a", patch: { x: 0 }, mask: { paths: ["x"] } } },
   } as never);
@@ -41,18 +42,18 @@ describe("reorderableParent", () => {
     expect(reorderableParent(s, ["f"])).toBeNull();
     expect(reorderableParent(s, [])).toBeNull();
     expect(reorderableParent(s, ["ghost"])).toBeNull();
-    const plain: SceneState = { ...s, nodes: { ...s.nodes, f: { ...s.nodes["f"], autoLayout: undefined } } };
-    delete (plain.nodes["f"] as { autoLayout?: unknown }).autoLayout;
+    const plain: SceneState = { ...s, nodes: nodesWith(s.nodes, { f: { ...s.nodes.at("f"), autoLayout: undefined } }) };
+    delete (plain.nodes.at("f") as { autoLayout?: unknown }).autoLayout;
     expect(reorderableParent(plain, ["b"])).toBeNull();
-    const mixed: SceneState = { ...s, nodes: { ...s.nodes, z: node("z", "page1", "a9") } };
+    const mixed: SceneState = { ...s, nodes: nodesWith(s.nodes, { z: node("z", "page1", "a9") }) };
     expect(reorderableParent(mixed, ["a", "z"])).toBeNull();
   });
 
   it("un nodo che il layout non dispone (gruppo, nascosto) non si riordina", () => {
     const s = row();
-    const g: SceneState = { ...s, nodes: { ...s.nodes, a: { ...s.nodes["a"], kind: "group" } } };
+    const g: SceneState = { ...s, nodes: nodesWith(s.nodes, { a: { ...s.nodes.at("a"), kind: "group" } }) };
     expect(reorderableParent(g, ["a"])).toBeNull();
-    const h: SceneState = { ...s, nodes: { ...s.nodes, a: { ...s.nodes["a"], visible: false } } };
+    const h: SceneState = { ...s, nodes: nodesWith(s.nodes, { a: { ...s.nodes.at("a"), visible: false } }) };
     expect(reorderableParent(h, ["a"])).toBeNull();
   });
 });
@@ -102,7 +103,7 @@ describe("computeLayoutDrop", () => {
   it("sceglie il frame con auto layout PIÙ INTERNO sotto il puntatore, mai uno trascinato", () => {
     const s = row();
     const inner = node("g", "f", "z", { kind: "frame", x: 0, y: 40, width: 120, height: 50, autoLayout: { ...AL } });
-    const scene: SceneState = { ...s, nodes: { ...s.nodes, g: inner } };
+    const scene: SceneState = { ...s, nodes: nodesWith(s.nodes, { g: inner }) };
     // g sta a (100,90) nel mondo, 120x50. Puntatore dentro: vince g.
     expect(computeLayoutDrop(scene, ["a"], "f", { x: 150, y: 110 })!.frameId).toBe("g");
     // Se è g a essere trascinato, non può cadere dentro sé stesso.
@@ -111,7 +112,7 @@ describe("computeLayoutDrop", () => {
 
   it("frame vuoto: la linea sta all'inizio, dopo il padding", () => {
     const s = row({ paddingLeft: 8 });
-    const only: SceneState = { ...s, nodes: { f: s.nodes["f"], a: s.nodes["a"] } };
+    const only: SceneState = { ...s, nodes: nodesOf({ f: s.nodes.at("f"), a: s.nodes.at("a") }) };
     const d = computeLayoutDrop(only, ["a"], "f", { x: 200, y: 70 })!;
     expect(d.index).toBe(0);
     expect(d.indicator.x).toBe(100 + 8 - 1);
@@ -119,7 +120,7 @@ describe("computeLayoutDrop", () => {
 });
 
 function order(scene: SceneState, frame = "f"): string[] {
-  return Object.values(scene.nodes)
+  return [...scene.nodes.values()]
     .filter((n) => n.parentId === frame)
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : a.id < b.id ? -1 : 1))
     .map((n) => n.id);
@@ -135,7 +136,7 @@ describe("layoutDropOps", () => {
     const s = row();
     const { next } = apply(s, ["a"], 2); // dopo c
     expect(order(next)).toEqual(["b", "c", "a"]);
-    expect([next.nodes["b"].x, next.nodes["c"].x, next.nodes["a"].x]).toEqual([0, 30, 60]);
+    expect([next.nodes.at("b").x, next.nodes.at("c").x, next.nodes.at("a").x]).toEqual([0, 30, 60]);
     const back = apply(next, ["a"], 0);
     expect(order(back.next)).toEqual(["a", "b", "c"]);
   });
@@ -156,20 +157,20 @@ describe("layoutDropOps", () => {
   it("verso un altro auto layout è un reparent e il frame di partenza si richiude", () => {
     const s = row();
     const other = node("g", "page1", "a1", { kind: "frame", x: 500, y: 50, width: 300, height: 100, autoLayout: { ...AL } });
-    const withOther: SceneState = { ...s, nodes: { ...s.nodes, g: other, d: node("d", "g", "a") } };
+    const withOther: SceneState = { ...s, nodes: nodesWith(s.nodes, { g: other, d: node("d", "g", "a") }) };
     const { ops, next } = apply(withOther, ["a"], 1, "g");
     expect(ops).toHaveLength(1);
     expect(ops[0].kind.case).toBe("reparentNode");
     expect(order(next, "g")).toEqual(["d", "a"]);
-    expect(next.nodes["a"].parentId).toBe("g");
+    expect(next.nodes.at("a").parentId).toBe("g");
     // Il frame di partenza non ha più a: b parte dall'inizio.
-    expect(next.nodes["b"]).toMatchObject({ x: 0, y: 0 });
-    expect(next.nodes["a"]).toMatchObject({ x: 30, y: 0 });
+    expect(next.nodes.at("b")).toMatchObject({ x: 0, y: 0 });
+    expect(next.nodes.at("a")).toMatchObject({ x: 30, y: 0 });
   });
 
   it("chiavi uguali fra i vicini non fanno esplodere il gesto", () => {
     const s = row();
-    const same: SceneState = { ...s, nodes: { ...s.nodes, b: { ...s.nodes["b"], orderKey: "a" }, c: { ...s.nodes["c"], orderKey: "a" } } };
+    const same: SceneState = { ...s, nodes: nodesWith(s.nodes, { b: { ...s.nodes.at("b"), orderKey: "a" }, c: { ...s.nodes.at("c"), orderKey: "a" } }) };
     expect(() => apply(same, ["a"], 1)).not.toThrow();
   });
 });

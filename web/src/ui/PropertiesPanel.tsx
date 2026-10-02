@@ -135,7 +135,7 @@ function positionValueFor(scene: SceneState, n: NodeLite, key: "x" | "y", value:
 function numericOps(ids: readonly string[], field: NumericField, value: number): Op[] {
   const scene = useScene.getState().scene;
   return ids.map((id) => {
-    const n = scene?.nodes[id];
+    const n = scene?.nodes.at(id);
     const v = scene && n && (field.key === "x" || field.key === "y")
       ? positionValueFor(scene, n, field.key, value)
       : value;
@@ -157,7 +157,7 @@ function fillOps(ids: readonly string[], rgb: RgbLite): Op[] {
   const scene = useScene.getState().scene;
   if (!scene) return [];
   return ids.flatMap((id) => {
-    const n = scene.nodes[id];
+    const n = scene.nodes.at(id);
     if (!n) return [];
     const first = { ...rgb, a: n.fills[0]?.a ?? 1 };
     return [makeSetPropsOp(id, { fills: toPbFills([first, ...n.fills.slice(1)]) }, ["fills"])];
@@ -198,7 +198,7 @@ function strokeOps(ids: readonly string[], patch: StrokePatch): Op[] {
   const scene = useScene.getState().scene;
   if (!scene) return [];
   return ids.flatMap((id) => {
-    const n = scene.nodes[id];
+    const n = scene.nodes.at(id);
     if (!n) return [];
     const base = n.strokes[0] ?? DEFAULT_STROKE;
     // L'alfa del tratto DI QUESTO NODO, risolta nodo per nodo dentro il ciclo:
@@ -222,7 +222,7 @@ function textStyleOps(ids: readonly string[], patch: Partial<TextStyleLite>): Op
   const scene = useScene.getState().scene;
   if (!scene) return [];
   return ids.flatMap((id) => {
-    const n = scene.nodes[id];
+    const n = scene.nodes.at(id);
     if (!n || n.kind !== "text" || !n.text) return [];
     return [makeSetTextOp(id, n.text.content, { ...n.text.style, ...patch })];
   });
@@ -504,7 +504,7 @@ export function PropertiesPanel() {
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
   const summary = scene ? selectionSummary(scene, selection) : null;
-  const nodes = scene ? selection.map((id) => scene.nodes[id]).filter((n): n is NodeLite => n !== undefined) : [];
+  const nodes = scene ? selection.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined) : [];
   const style = summary?.kind === "text" ? textStyleSummary(nodes) : null;
   // L'input nascosto del cursore dell'opacità: SliderValueText gli scrive il
   // valore ANNUNCIATO. Sta qui, prima di ogni ritorno anticipato, perché è un
@@ -562,7 +562,7 @@ export function PropertiesPanel() {
     const store = useScene.getState();
     const s = store.scene;
     if (!s || store.selection.length !== 1) return null;
-    const n = s.nodes[store.selection[0]];
+    const n = s.nodes.at(store.selection[0]);
     return n && n.kind === "instance" && n.instance ? n : null;
   }
 
@@ -582,7 +582,7 @@ export function PropertiesPanel() {
     const s = store.scene;
     const inst = currentInstance();
     if (!s || !inst) return;
-    const master = s.nodes[masterNodeId];
+    const master = s.nodes.at(masterNodeId);
     if (!master) return;
     const existing = instanceOverrideMap(inst).get(masterNodeId);
     const effFills = existing?.fills ?? master.fills;

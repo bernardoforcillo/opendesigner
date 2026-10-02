@@ -844,9 +844,9 @@ function restoreRevoked(
 // esistono ancora. Se non cambia nulla riusa lo stesso array per non forzare
 // re-render inutili.
 function pruneSelection(selection: string[], scene: SceneState): string[] {
-  return selection.every((id) => id in scene.nodes)
+  return selection.every((id) => scene.nodes.has(id))
     ? selection
-    : selection.filter((id) => id in scene.nodes);
+    : selection.filter((id) => scene.nodes.has(id));
 }
 
 // La selezione potata per PAGINA: tiene solo gli id RAGGIUNGIBILI dalla pagina
@@ -1636,7 +1636,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     if (id === null) return;
     set({ editingNodeId: null });
     const scene = get().scene;
-    const node = scene?.nodes[id];
+    const node = scene?.nodes.at(id);
     if (!node || node.kind !== "text" || (node.text?.content ?? "") !== "") return;
     const op: Op = create(OpSchema, {
       opId: crypto.randomUUID(),

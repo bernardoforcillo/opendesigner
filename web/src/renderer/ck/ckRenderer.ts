@@ -40,7 +40,7 @@ interface Frame {
   zoom: number;
   px: number;
   view: Bounds | null;
-  extent: ReadonlyMap<string, Bounds> | null;
+  extent: { get(id: string): Bounds | undefined } | null;
   // Tutto ciò che si alloca nell'heap WASM durante il frame (percorsi, shader,
   // filtri) si libera a frame finito: CanvasKit non ha un garbage collector.
   garbage: { delete(): void }[];

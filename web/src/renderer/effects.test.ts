@@ -1,3 +1,4 @@
+import { nodesOf } from "../store/nodeMap";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { drawScene, firstBlur, firstShadow } from "./canvasRenderer";
 import { emptyScene } from "../store/types";
@@ -16,7 +17,7 @@ function rectNode(effects?: EffectLite[], over: Partial<NodeLite> = {}): NodeLit
 
 function sceneOf(n: NodeLite): SceneState {
   const s = emptyScene("d", "t");
-  return { ...s, nodes: { n } };
+  return { ...s, nodes: nodesOf({ n }) };
 }
 
 // Registra lo stato d'ombra/filtro AL MOMENTO di fill e di stroke, e quanti
@@ -90,8 +91,8 @@ describe("effetti nel canvas", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const r = recCtx();
     const s = emptyScene("d", "t");
-    s.nodes["a"] = rectNode([shadow()], { id: "a", orderKey: "a0" });
-    s.nodes["b"] = rectNode(undefined, { id: "b", orderKey: "a1" });
+    s.nodes = s.nodes.set("a", rectNode([shadow()], { id: "a", orderKey: "a0" }));
+    s.nodes = s.nodes.set("b", rectNode(undefined, { id: "b", orderKey: "a1" }));
     drawScene(r.ctx, s, cam(1));
     expect(r.log).toHaveLength(2);
     expect(r.log[0].shadowBlur).toBe(6);

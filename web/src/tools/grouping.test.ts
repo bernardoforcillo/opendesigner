@@ -19,7 +19,7 @@ function group(id: string, parentId: string, orderKey: string, extra: Partial<No
 
 function scene(nodes: NodeLite[]): SceneState {
   const s = emptyScene("doc1", "Untitled");
-  for (const n of nodes) s.nodes[n.id] = n;
+  for (const n of nodes) s.nodes = s.nodes.set(n.id, n);
   // Anche gli op costruiti da tools/ops.ts leggono il docId dallo store: la
   // scena va installata lì, non solo passata alle funzioni.
   useScene.getState().setScene(s);
@@ -58,7 +58,7 @@ function createdNode(ops: Op[]): NodeLite | null {
   const op = ops.find((o) => o.kind.case === "createNode");
   if (!op || op.kind.case !== "createNode" || !op.kind.value.node) return null;
   const s = applyOp(emptyScene("doc1", "u"), op);
-  return s.nodes[op.kind.value.node.id] ?? null;
+  return s.nodes.at(op.kind.value.node.id) ?? null;
 }
 
 const applyAll = (s: SceneState, ops: Op[]) => ops.reduce((acc, op) => applyOp(acc, op), s);
@@ -131,8 +131,8 @@ describe("groupOps", () => {
     expect(setPropsOf(res.ops, "solo")).toBeNull();
 
     const after = applyAll(s, res.ops);
-    expect(worldBoundsOfNode(after, after.nodes["inner"])).toMatchObject({ x: 110, y: 110 });
-    expect(worldBoundsOfNode(after, after.nodes["solo"])).toMatchObject({ x: 200, y: 200 });
+    expect(worldBoundsOfNode(after, after.nodes.at("inner"))).toMatchObject({ x: 110, y: 110 });
+    expect(worldBoundsOfNode(after, after.nodes.at("solo"))).toMatchObject({ x: 200, y: 200 });
   });
 
   it("groups a single node too (it is a container, not a merge)", () => {
@@ -185,10 +185,10 @@ describe("ungroupOps", () => {
     expect(setPropsOf(res.ops, "c1")).toEqual({ x: 15, y: 17, paths: ["x", "y"] });
     expect(setPropsOf(res.ops, "c2")).toEqual({ x: 35, y: 37, paths: ["x", "y"] });
 
-    const before = worldBoundsOfNode(s, s.nodes["c1"]);
+    const before = worldBoundsOfNode(s, s.nodes.at("c1"));
     const after = applyAll(s, res.ops);
-    expect(worldBoundsOfNode(after, after.nodes["c1"])).toEqual(before);
-    expect(after.nodes["g"]).toBeUndefined();
+    expect(worldBoundsOfNode(after, after.nodes.at("c1"))).toEqual(before);
+    expect(after.nodes.at("g")).toBeUndefined();
   });
 
   it("sends no setProps when the group never moved", () => {
@@ -240,7 +240,7 @@ describe("ungroupOps", () => {
       node("inner", "box", 10, 10, "a000001"),
       node("solo", "page1", 200, 200, "a000002"),
     ]);
-    const worldBefore = ["inner", "solo"].map((id) => worldBoundsOfNode(s, s.nodes[id]));
+    const worldBefore = ["inner", "solo"].map((id) => worldBoundsOfNode(s, s.nodes.at(id)));
 
     const g = groupOps(s, ["inner", "solo"])!;
     const grouped = applyAll(s, g.ops);
@@ -249,8 +249,8 @@ describe("ungroupOps", () => {
 
     // Le coordinate mondo sono le stesse; "inner" NON torna dentro "box" (il
     // gruppo l'aveva portato fuori) ma non si è mosso di un pixel.
-    expect(["inner", "solo"].map((id) => worldBoundsOfNode(after, after.nodes[id]))).toEqual(worldBefore);
-    expect(Object.values(after.nodes).some((n) => n.kind === "group")).toBe(false);
-    expect(after.nodes["solo"].parentId).toBe("page1");
+    expect(["inner", "solo"].map((id) => worldBoundsOfNode(after, after.nodes.at(id)))).toEqual(worldBefore);
+    expect([...after.nodes.values()].some((n) => n.kind === "group")).toBe(false);
+    expect(after.nodes.at("solo").parentId).toBe("page1");
   });
 });

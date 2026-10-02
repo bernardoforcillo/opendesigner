@@ -34,7 +34,7 @@ function install(scene: SceneState | null, selection: string[] = []): void {
 
 function sceneWith(name: string, ...nodes: NodeLite[]): SceneState {
   const s = emptyScene("doc", name);
-  for (const n of nodes) s.nodes[n.id] = n;
+  for (const n of nodes) s.nodes = s.nodes.set(n.id, n);
   return s;
 }
 

@@ -1,3 +1,4 @@
+import { nodesFromEntries } from "../store/nodeMap";
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
 import { OpSchema, NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -16,7 +17,7 @@ function node(id: string, parentId: string, key: string, over: Partial<NodeLite>
 }
 
 function sceneOf(nodes: NodeLite[]): SceneState {
-  return { ...emptyScene("d", "t"), nodes: Object.fromEntries(nodes.map((n) => [n.id, n])) };
+  return { ...emptyScene("d", "t"), nodes: nodesFromEntries(nodes.map((n) => [n.id, n])) };
 }
 
 // Le due viste dell'indice, confrontabili con toEqual.
@@ -123,8 +124,8 @@ describe("aggiornamento incrementale", () => {
     const r = rng(seed);
     let scene = randomScene(r);
     expect(snapshot(scene)).toEqual(fresh(scene)); // il primo è una costruzione completa
-    const ids = () => Object.keys(scene.nodes);
-    const containers = () => ids().filter((id) => scene.nodes[id].kind === "frame" || scene.nodes[id].kind === "group");
+    const ids = () => [...scene.nodes.ids()];
+    const containers = () => ids().filter((id) => scene.nodes.at(id).kind === "frame" || scene.nodes.at(id).kind === "group");
     let created = 0;
     let mismatches = 0;
 
@@ -190,7 +191,7 @@ describe("aggiornamento incrementale", () => {
     const idxA = sceneIndexOf(a);
     expect(sceneIndexOf({ ...a })).toBe(idxA); // nuova scena, stessi nodi
     // Cambio il 100% dei nodi: ricostruzione, ma il risultato è comunque giusto.
-    const all: SceneState = { ...a, nodes: Object.fromEntries(Object.entries(a.nodes).map(([k, n]) => [k, { ...n, x: n.x + 1 }])) };
+    const all: SceneState = { ...a, nodes: nodesFromEntries([...a.nodes.entries()].map(([k, n]) => [k, { ...n, x: n.x + 1 }])) };
     expect(snapshot(all)).toEqual(fresh(all));
   });
 

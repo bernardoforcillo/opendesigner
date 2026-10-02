@@ -1,3 +1,4 @@
+import { nodesOf } from "../store/nodeMap";
 import { describe, it, expect } from "vitest";
 import { applyOp } from "../store/applyOp";
 import { emptyScene } from "../store/types";
@@ -11,10 +12,10 @@ function sceneWith(effects?: EffectLite[]): SceneState {
     fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
     ...(effects ? { effects } : {}),
   };
-  return { ...emptyScene("d", "t"), nodes: { a: n } };
+  return { ...emptyScene("d", "t"), nodes: nodesOf({ a: n }) };
 }
-const run = (s: SceneState, ops: ReturnType<typeof shadowOps>): NodeLite => ops.reduce(applyOp, s).nodes["a"];
-const look = (s: SceneState) => (id: string) => s.nodes[id];
+const run = (s: SceneState, ops: ReturnType<typeof shadowOps>): NodeLite => ops.reduce(applyOp, s).nodes.at("a");
+const look = (s: SceneState) => (id: string) => s.nodes.at(id);
 
 describe("shadowOps", () => {
   it("accendere l'ombra scrive il default", () => {
@@ -76,10 +77,10 @@ describe("blurOps", () => {
     let n = run(s, blurOps(["a"], look(s), 6));
     expect(blurOf(n)).toEqual({ kind: "layerBlur", radius: 6 });
     expect(shadowOf(n)).toEqual(DEFAULT_SHADOW);
-    s = { ...s, nodes: { a: n } };
+    s = { ...s, nodes: nodesOf({ a: n }) };
     n = run(s, blurOps(["a"], look(s), 2));
     expect(blurOf(n)?.radius).toBe(2);
-    s = { ...s, nodes: { a: n } };
+    s = { ...s, nodes: nodesOf({ a: n }) };
     n = run(s, blurOps(["a"], look(s), 0));
     expect(blurOf(n)).toBeUndefined();
     expect(n.effects).toEqual([DEFAULT_SHADOW]);

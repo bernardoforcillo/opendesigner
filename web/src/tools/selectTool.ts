@@ -618,7 +618,7 @@ export function createSelectTool(): Tool {
         // resizeOps per scalare gli ancoraggi insieme al box.
         const startVectors: Record<string, SubPathLite[]> = {};
         for (const sid of transformTargetsOf(scene, topmostOf(scene, store.selection))) {
-          const n = scene.nodes[sid];
+          const n = scene.nodes.at(sid);
           if (!n) continue;
           // bounds in MONDO (come il frame e il puntatore) + toLocal per tornare
           // in parent-local quando si scrive l'op -- vedi resizeStartNodes.
@@ -648,12 +648,12 @@ export function createSelectTool(): Tool {
         if (frame) {
           const start: Record<string, { bounds: Bounds; rotation: number }> = {};
           for (const sid of store.selection) {
-            const n = scene.nodes[sid];
+            const n = scene.nodes.at(sid);
             if (n) start[sid] = { bounds: boundsOfNode(n), rotation: n.rotation };
           }
           rotateCenter = centerOf(frame.bounds);
           rotateStartAngle = angleOf(rotateCenter, world);
-          rotateRef = scene.nodes[store.selection[0]]?.rotation ?? 0;
+          rotateRef = scene.nodes.at(store.selection[0])?.rotation ?? 0;
           rotateStartNodes = start;
           rotateStarted = false;
           setCursor(ctx, ROTATING_CURSOR);
@@ -696,7 +696,7 @@ export function createSelectTool(): Tool {
             // sul nodo in cui si è appena entrati (doppio click e trascina
             // sposta il figlio, non il gruppo).
             store.setSelection([enter]);
-          } else if (scene.nodes[hitId]?.kind === "text") {
+          } else if (scene.nodes.at(hitId)?.kind === "text") {
             pendingTextEdit = hitId;
           }
         } else {
@@ -734,7 +734,7 @@ export function createSelectTool(): Tool {
       const selection = useScene.getState().selection;
       const start: Record<string, { x: number; y: number; toLocal: Transform }> = {};
       for (const sid of topmostOf(scene, selection)) {
-        const n = scene.nodes[sid];
+        const n = scene.nodes.at(sid);
         if (n) start[sid] = { x: n.x, y: n.y, toLocal: parentToLocal(scene, n.parentId) };
       }
       dragAnchor = world;
@@ -959,7 +959,7 @@ export function createSelectTool(): Tool {
         if (!scene) return;
         if (store.selection.length !== 1) return;
         const rootNodeId = store.selection[0];
-        const master = scene.nodes[rootNodeId];
+        const master = scene.nodes.at(rootNodeId);
         if (!master) return;
         const name =
           master.name.trim() !== ""

@@ -56,7 +56,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // non c'è niente da annullare. Inventare qui un inverso (una delete, o la
       // ri-creazione del nodo precedente) manderebbe al server l'undo di un op
       // che il server non ha mai accettato -- cioè una vera divergenza.
-      if (scene.nodes[node.id]) return null;
+      if (scene.nodes.at(node.id)) return null;
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "deleteNode", value: { id: node.id } },
@@ -82,7 +82,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     // cambia e non c'è niente da annullare (vedi applyOp: reparentNode).
     case "reparentNode": {
       const { id, newParentId } = op.kind.value;
-      const prev = scene.nodes[id];
+      const prev = scene.nodes.at(id);
       if (!prev) return null;
       if (!parentExists(scene, newParentId)) return null;
       if (newParentId === id || isAncestorOf(scene, id, newParentId)) return null;
@@ -98,7 +98,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // altrettanto, vedi NIL_PATCH), quindi ha un inverso come tutti gli
       // altri: rimettere a posto quei campi.
       const { id, mask } = op.kind.value;
-      const prev = scene.nodes[id];
+      const prev = scene.nodes.at(id);
       if (!prev) return null;
       // Patch = il nodo com'era, mask = la STESSA dell'op diretto. La mask è il
       // contratto -- TS e Go leggono solo i path elencati e ignorano il resto
@@ -120,7 +120,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // id inesistente o nodo non di testo (ErrNotTextNode in Go): la scena non
       // cambierebbe, quindi non c'è niente da annullare.
       const { id } = op.kind.value;
-      const prev = scene.nodes[id];
+      const prev = scene.nodes.at(id);
       if (!prev || prev.kind !== "text" || !prev.text) return null;
       // stylePresent SEMPRE true, anche quando l'op diretto non toccava lo
       // stile: rimettere lo stile precedente è un no-op in quel caso, mentre
@@ -211,7 +211,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // traccia il cui punto è la geometria modificabile sarebbe il difetto
       // peggiore possibile.
       const { id } = op.kind.value;
-      const prev = scene.nodes[id];
+      const prev = scene.nodes.at(id);
       // Null quando l'op diretto sarebbe rifiutato -- id inesistente o nodo non
       // vettoriale (ErrNotVectorNode in Go): la scena non cambierebbe, quindi
       // non c'è niente da annullare.
@@ -237,7 +237,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       return null;
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;
-      const prev = scene.nodes[instanceId];
+      const prev = scene.nodes.at(instanceId);
       // Null quando l'op diretto sarebbe rifiutato (parità con applyOp/core):
       // nodo inesistente, non-istanza, o master_node_id vuoto -- la scena non
       // cambia, quindi non c'è niente da annullare.

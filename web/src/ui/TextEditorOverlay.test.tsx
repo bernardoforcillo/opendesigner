@@ -60,7 +60,7 @@ function textNode(id: string, content: string, over: Partial<NodeLite> = {}): No
 
 function installScene(...nodes: NodeLite[]) {
   const scene = emptyScene("doc-1", "Untitled");
-  for (const n of nodes) scene.nodes[n.id] = n;
+  for (const n of nodes) scene.nodes = scene.nodes.set(n.id, n);
   // setScene e non setState({scene}): installa una scena COERENTE (vista e
   // confermato allineati, coda vuota) -- l'invariante della riconciliazione.
   useScene.getState().setScene(scene);
@@ -84,7 +84,7 @@ function field(): HTMLTextAreaElement {
 }
 
 function content(id = "t1"): string | undefined {
-  return useScene.getState().scene?.nodes[id]?.text?.content;
+  return useScene.getState().scene?.nodes.at(id)?.text?.content;
 }
 
 beforeEach(() => {
@@ -337,11 +337,11 @@ describe("uscita con Escape", () => {
     // Il nodo era rimasto vuoto: la politica dello store (endTextEditing) lo
     // cancella invece di lasciare un fantasma sulla scena -- ma passando da un
     // gesto, quindi con il suo Ctrl+Z.
-    expect(useScene.getState().scene!.nodes["t1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("t1")).toBeUndefined();
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case).toBe("deleteNode");
     act(() => useScene.getState().undo());
-    expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
   });
 });
 
@@ -390,7 +390,7 @@ describe("scorciatoie globali mentre si scrive", () => {
     await userEvent.type(field(), "{Backspace}{Backspace}");
 
     expect(field().value).toBe("ci");
-    expect(useScene.getState().scene!.nodes["t1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
     expect(sync.sent).toHaveLength(0);
   });
 });

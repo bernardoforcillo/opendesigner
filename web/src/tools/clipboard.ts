@@ -297,7 +297,7 @@ function byOrderKey(a: NodeLite, b: NodeLite): number {
 // (le pagine non stanno in `nodes`, ma sono parent legittimi -- oggi anzi gli
 // unici).
 function existsInScene(scene: SceneState, id: string): boolean {
-  return id in scene.nodes || scene.pages.some((p) => p.id === id);
+  return scene.nodes.has(id) || scene.pages.some((p) => p.id === id);
 }
 
 export interface PasteOps {
@@ -447,10 +447,10 @@ async function readSystem(): Promise<string | null> {
 function selectedNodes(): NodeLite[] {
   const { scene, selection } = useScene.getState();
   if (!scene) return [];
-  // Passa dalla SELEZIONE e non da Object.values(scene.nodes): è la stessa
+  // Passa dalla SELEZIONE e non da [...scene.nodes.values()]: è la stessa
   // ragione per cui pasteOps parla dei nodi passati e non del documento --
   // sopravvivere all'annidamento senza riscritture.
-  return selection.map((id) => scene.nodes[id]).filter((n): n is NodeLite => n !== undefined);
+  return selection.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined);
 }
 
 /**

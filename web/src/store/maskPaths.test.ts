@@ -281,8 +281,8 @@ describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", ()
 
       // (c) e dopo quel giro applyOp lo applica DAVVERO, scrivendo quel campo
       // e nessun altro (un `case "y": next.x = ...` fallirebbe qui).
-      const before = sceneFor(path).nodes["n1"];
-      const after = applyOp(sceneFor(path), wired).nodes["n1"];
+      const before = sceneFor(path).nodes.at("n1");
+      const after = applyOp(sceneFor(path), wired).nodes.at("n1");
       expect(after).toEqual({ ...before, [camelOf(path)]: PROBE[path].expected });
     },
   );
@@ -314,7 +314,7 @@ describe("un path fuori da MASK_PATHS fa rifiutare l'INTERO op", () => {
 
     // Parità con core.applySetProps: valida l'intera mask PRIMA di mutare, così
     // "x" non si muove nemmeno se sta nella stessa mask di un path ignoto.
-    expect(applyOp(baseScene(), wired).nodes["n1"]).toEqual(baseScene().nodes["n1"]);
+    expect(applyOp(baseScene(), wired).nodes.at("n1")).toEqual(baseScene().nodes.at("n1"));
   });
 });
 
@@ -345,7 +345,7 @@ describe("makeSetPropsOp non lascia costruire un op con un path non supportato",
     const wired = overWire(op);
     expect(maskOf(wired)).toEqual(["x", "y"]);
 
-    const after = applyOp(baseScene(), wired).nodes["n1"];
+    const after = applyOp(baseScene(), wired).nodes.at("n1");
     expect(after.x).toBe(42);
     expect(after.y).toBe(7);
   });

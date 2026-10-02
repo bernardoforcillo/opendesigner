@@ -1,3 +1,4 @@
+import { NodeMap } from "../store/nodeMap";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 
@@ -114,5 +115,5 @@ export function makeGallery(): SceneState {
     base("inst2", { x: 460, y: 735, width: 0, height: 0, kind: "instance", fills: [], instance: { componentId: "c1", overrides: [{ masterNodeId: "masterLabel", fills: [{ r: 0.9, g: 0.4, b: 0.1, a: 1 }] }] } }),
   ];
   const s = emptyScene("gallery", "gallery");
-  return { ...s, nodes: Object.fromEntries(nodes.map((n) => [n.id, n])), components: { c1: { rootNodeId: "master", name: "C" } } };
+  return { ...s, nodes: NodeMap.from(nodes.map((n) => [n.id, n] as const)), components: { c1: { rootNodeId: "master", name: "C" } } };
 }

@@ -1,3 +1,4 @@
+import { NodeMap } from "../store/nodeMap";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 
@@ -37,13 +38,13 @@ export function makeScene(totalNodes: number, seed = 1): SceneState {
       nodes[id] = n;
     }
   }
-  return { ...base, nodes };
+  return { ...base, nodes: NodeMap.from(nodes) };
 }
 
 // La camera che inquadra tutto il documento in un canvas w x h.
 export function fitCamera(scene: SceneState, w: number, h: number) {
   let maxX = 0, maxY = 0;
-  for (const n of Object.values(scene.nodes)) {
+  for (const n of [...scene.nodes.values()]) {
     if (n.parentId === "page1") { maxX = Math.max(maxX, n.x + n.width); maxY = Math.max(maxY, n.y + n.height); }
   }
   const zoom = Math.min(w / maxX, h / maxY);

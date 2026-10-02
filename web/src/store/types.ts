@@ -1,3 +1,4 @@
+import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
 import { LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
@@ -203,7 +204,7 @@ export interface NodeLite {
 
 export interface SceneState {
   id: string; name: string; schemaVersion: number;
-  pages: PageLite[]; nodes: Record<string, NodeLite>;
+  pages: PageLite[]; nodes: NodeMap;
   // M4 — componenti indicizzati per id (componentId -> master). Fa parte del
   // documento quanto `nodes` e `pages`: un CreateComponent lo popola, e
   // fromDocument lo ricostruisce dallo snapshot.
@@ -211,7 +212,7 @@ export interface SceneState {
 }
 
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: {}, components: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, components: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -577,8 +578,9 @@ export function toPbNode(n: NodeLite): PbNode {
 }
 
 export function fromDocument(doc: Document): SceneState {
-  const nodes: Record<string, NodeLite> = {};
-  for (const [id, n] of Object.entries(doc.nodes)) nodes[id] = toNodeLite(n);
+  const edit = NodeMap.empty.edit();
+  for (const [id, n] of Object.entries(doc.nodes)) edit.set(id, toNodeLite(n));
+  const nodes = edit.done();
   // I componenti fanno parte del documento quanto i nodi: un master non copiato
   // ma referenziato per rootNodeId (vedi ComponentLite).
   const components: Record<string, ComponentLite> = {};

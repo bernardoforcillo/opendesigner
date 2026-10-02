@@ -41,12 +41,12 @@ const INDICATOR_THICKNESS = 2;
  */
 export function reorderableParent(scene: SceneState, ids: readonly string[]): string | null {
   if (ids.length === 0) return null;
-  const first = scene.nodes[ids[0]];
+  const first = scene.nodes.at(ids[0]);
   if (!first) return null;
-  const parent = scene.nodes[first.parentId];
+  const parent = scene.nodes.at(first.parentId);
   if (!hasLayout(parent)) return null;
   for (const id of ids) {
-    const n = scene.nodes[id];
+    const n = scene.nodes.at(id);
     if (!n || n.parentId !== parent.id || !participates(n)) return null;
   }
   return parent.id;
@@ -57,13 +57,13 @@ export function reorderableParent(scene: SceneState, ids: readonly string[]): st
 // dentro sé stesso).
 function frameAt(scene: SceneState, dragged: ReadonlySet<string>, p: { x: number; y: number }): NodeLite | null {
   let best: { node: NodeLite; depth: number } | null = null;
-  for (const n of Object.values(scene.nodes)) {
+  for (const n of [...scene.nodes.values()]) {
     if (!hasLayout(n) || !n.visible) continue;
     if (dragged.has(n.id) || [...dragged].some((d) => isAncestorOf(scene, d, n.id))) continue;
     const b = contentWorldBounds(scene, n);
     if (!b || p.x < b.x || p.x > b.x + b.width || p.y < b.y || p.y > b.y + b.height) continue;
     let depth = 0;
-    for (let cur: NodeLite | undefined = n; cur; cur = scene.nodes[cur.parentId]) depth++;
+    for (let cur: NodeLite | undefined = n; cur; cur = scene.nodes.at(cur.parentId)) depth++;
     if (!best || depth > best.depth) best = { node: n, depth };
   }
   return best?.node ?? null;
@@ -86,7 +86,7 @@ export function computeLayoutDrop(
   p: { x: number; y: number },
 ): LayoutDrop | null {
   const dragged = new Set(draggedIds);
-  const frame = frameAt(scene, dragged, p) ?? scene.nodes[originId];
+  const frame = frameAt(scene, dragged, p) ?? scene.nodes.at(originId);
   if (!hasLayout(frame)) return null;
   const frameBox = contentWorldBounds(scene, frame);
   if (!frameBox) return null;
@@ -136,7 +136,7 @@ export function layoutDropOps(scene: SceneState, draggedIds: readonly string[], 
   const dragged = new Set(draggedIds);
   // Nell'ordine in cui stavano nella fila di partenza.
   const moving = draggedIds
-    .map((id) => scene.nodes[id])
+    .map((id) => scene.nodes.at(id))
     .filter((n): n is NodeLite => n !== undefined)
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : a.id < b.id ? -1 : 1));
   const siblings = childrenOf(scene, drop.frameId).filter((c) => participates(c) && !dragged.has(c.id));

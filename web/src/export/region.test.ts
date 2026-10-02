@@ -32,7 +32,7 @@ function text(over: Partial<NodeLite> & { id: string }, content: string, s = sty
 
 function sceneWith(...nodes: NodeLite[]): SceneState {
   const s = emptyScene("doc", "Untitled");
-  for (const n of nodes) s.nodes[n.id] = n;
+  for (const n of nodes) s.nodes = s.nodes.set(n.id, n);
   return s;
 }
 
@@ -113,7 +113,7 @@ describe("exportRegion", () => {
     // selezionato, l'export della selezione disegnerebbe anche quello.
     const s = sceneWith(node({ id: "a" }), node({ id: "b", orderKey: "a2" }));
     const r = exportRegion(s, ["b"], "selection", measure);
-    expect(Object.keys(r!.scene.nodes)).toEqual(["b"]);
+    expect([...r!.scene.nodes.ids()]).toEqual(["b"]);
     // il resto dell'identità del documento resta quella vera
     expect(r!.scene.id).toBe("doc");
     expect(r!.scene.pages).toEqual(s.pages);

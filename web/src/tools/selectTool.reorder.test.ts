@@ -1,3 +1,4 @@
+import { nodesOf } from "../store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createSelectTool } from "./selectTool";
 import type { ToolContext } from "./types";
@@ -44,17 +45,17 @@ function install(autoLayout: AutoLayoutLite | null) {
   useScene.setState({ camera: { x: 0, y: 0, zoom: 1 }, selection: [], marquee: null, snapGuides: [], gesture: null, sync: null, layoutDrop: null });
   useScene.getState().setScene({
     ...emptyScene("doc-1", "u"),
-    nodes: {
+    nodes: nodesOf({
       f: node("f", "page1", "a0", { kind: "frame", width: 400, height: 100, ...(autoLayout ? { autoLayout } : {}) }),
       a: node("a", "f", "a"),
       b: node("b", "f", "b", { x: 60 }),
       c: node("c", "f", "c", { x: 120 }),
-    },
+    }),
   });
 }
 
 const orderOf = () =>
-  Object.values(useScene.getState().scene!.nodes)
+  [...useScene.getState().scene!.nodes.values()]
     .filter((n) => n.parentId === "f")
     .sort((p, q) => (p.orderKey < q.orderKey ? -1 : 1))
     .map((n) => n.id);
@@ -72,7 +73,7 @@ describe("trascinare un figlio di un auto layout", () => {
     tool.onPointerMove!(at(170, 30), ctx);
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["a"]).toMatchObject({ x: 0, y: 0 }); // il nodo non si è mosso
+    expect(scene.nodes.at("a")).toMatchObject({ x: 0, y: 0 }); // il nodo non si è mosso
     expect(sync.sent).toHaveLength(0);
     const drop = useScene.getState().layoutDrop;
     expect(drop).not.toBeNull();
@@ -96,7 +97,7 @@ describe("trascinare un figlio di un auto layout", () => {
     expect(op.case === "setProps" && op.value.mask?.paths).toEqual(["order_key"]);
     expect(orderOf()).toEqual(["b", "c", "a"]);
     const n = useScene.getState().scene!.nodes;
-    expect([n["b"].x, n["c"].x, n["a"].x]).toEqual([0, 60, 120]);
+    expect([n.at("b").x, n.at("c").x, n.at("a").x]).toEqual([0, 60, 120]);
     expect(useScene.getState().layoutDrop).toBeNull();
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -113,7 +114,7 @@ describe("trascinare un figlio di un auto layout", () => {
     expect(orderOf()).toEqual(["b", "c", "a"]);
     useScene.getState().undo();
     expect(orderOf()).toEqual(["a", "b", "c"]);
-    expect(useScene.getState().scene!.nodes["a"].x).toBe(0);
+    expect(useScene.getState().scene!.nodes.at("a").x).toBe(0);
   });
 
   it("rilasciare dov'era non manda nulla e non lascia un gesto aperto", () => {
@@ -170,10 +171,10 @@ describe("trascinare un figlio di un frame SENZA auto layout", () => {
     tool.onPointerDown!(at(25, 25), ctx);
     tool.onPointerMove!(at(45, 40), ctx);
     expect(useScene.getState().layoutDrop).toBeNull();
-    expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 20, y: 15 });
+    expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 20, y: 15 });
     tool.onPointerUp!(at(45, 40), ctx);
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case).toBe("setProps");
-    expect(useScene.getState().scene!.nodes["a"]).toMatchObject({ x: 20, y: 15 });
+    expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 20, y: 15 });
   });
 });

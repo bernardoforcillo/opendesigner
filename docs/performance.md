@@ -94,8 +94,13 @@ costo). Ora è copy-on-write (`core.ApplyShared`: la mappa dei nodi si copia per
 puntatori, si clonano solo i nodi scritti): 5.000 nodi 5.5 -> 0.65 ms, 20.000
 nodi >22 -> 2.2 ms per op (`go test ./internal/server -bench SubmitLargeDoc`).
 
-Resta O(N) per op la copia della mappa dei nodi in `applyOp` (~3 ms a 20.000):
-la soluzione vera è una struttura persistente.
+Lato client la mappa dei nodi (`SceneState.nodes`) non è più un oggetto copiato
+a ogni op (~9 ms a 20.000 nodi) ma una mappa PERSISTENTE a 256 secchi
+(`store/nodeMap.ts`): una modifica copia 256 puntatori e i soli secchi toccati,
+il confronto fra due scene salta i secchi condivisi, e anche gli extent
+dell'indice di scena la usano. Nel profilo di un trascinamento a 20.000 nodi
+`applyOp` e `updateIndex` non compaiono più fra i primi costi (p90 ~33 ms,
+nessun long task regolare). Il costo che resta è React (pannello proprietà).
 
 ## Limiti noti
 

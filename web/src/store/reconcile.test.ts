@@ -41,7 +41,7 @@ function deleteOp(opId: string, id: string): Op {
 
 function sceneWith(...ids: string[]) {
   const scene = emptyScene("doc1", "Untitled");
-  for (const id of ids) scene.nodes[id] = toNodeLite(rectNode(id, 0, 0));
+  for (const id of ids) scene.nodes = scene.nodes.set(id, toNodeLite(rectNode(id, 0, 0)));
   return scene;
 }
 
@@ -64,8 +64,8 @@ describe("riconciliazione confermato/pending", () => {
   it("un op in volo si vede subito ma NON entra nel confermato", () => {
     useScene.getState().applyPending(moveOp("op-1", "n1", 200, 0));
 
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
-    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 });
+    expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 0 });
     expect(useScene.getState().pending).toHaveLength(1);
   });
 
@@ -78,9 +78,9 @@ describe("riconciliazione confermato/pending", () => {
     st.apply(moveOp("op-them-2", "n2", 333, 0));
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["n1"]).toMatchObject({ x: 200 }); // pending riapplicato
-    expect(scene.nodes["n2"]).toMatchObject({ x: 333 }); // remoto non perso
-    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 100 });
+    expect(scene.nodes.at("n1")).toMatchObject({ x: 200 }); // pending riapplicato
+    expect(scene.nodes.at("n2")).toMatchObject({ x: 333 }); // remoto non perso
+    expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 100 });
   });
 
   it("il proprio eco toglie l'op dalla coda: da lì in poi non viene più riapplicato", () => {
@@ -89,22 +89,22 @@ describe("riconciliazione confermato/pending", () => {
     st.apply(moveOp("op-mine", "n1", 200, 0)); // eco: stesso opId
 
     expect(useScene.getState().pending).toHaveLength(0);
-    expect(useScene.getState().confirmed!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 200 });
 
     st.apply(moveOp("op-them", "n1", 50, 0));
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 50 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 50 });
   });
 
   it("un rifiuto toglie l'op dalla coda, ricalcola la vista e riporta l'errore", () => {
     const st = useScene.getState();
     st.applyPending(createOp("op-1", "n9", 10, 10));
     st.applyPending(moveOp("op-2", "n1", 200, 0));
-    expect(useScene.getState().scene!.nodes["n9"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n9")).toBeDefined();
 
     st.rejectPending("op-1", "node already exists");
 
-    expect(useScene.getState().scene!.nodes["n9"]).toBeUndefined(); // rollback
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 }); // l'altro resta
+    expect(useScene.getState().scene!.nodes.at("n9")).toBeUndefined(); // rollback
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 }); // l'altro resta
     expect(useScene.getState().pending).toHaveLength(1);
     expect(useScene.getState().lastError).toBe("node already exists");
   });
@@ -126,7 +126,7 @@ describe("riconciliazione confermato/pending", () => {
 
     st.rejectPending("op-1", "connection reset");
 
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 });
     expect(useScene.getState().lastError).toBeNull();
   });
 
@@ -150,8 +150,8 @@ describe("riconciliazione confermato/pending", () => {
     st.apply(moveOp("op-them", "n2", 333, 0)); // arriva mentre il dito è ancora giù
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["n1"]).toMatchObject({ x: 40, y: 40 }); // anteprima intatta
-    expect(scene.nodes["n2"]).toMatchObject({ x: 333 });
+    expect(scene.nodes.at("n1")).toMatchObject({ x: 40, y: 40 }); // anteprima intatta
+    expect(scene.nodes.at("n2")).toMatchObject({ x: 333 });
   });
 
   it("un op ancora in volo sopravvive alla chiusura del gesto", () => {
@@ -162,8 +162,8 @@ describe("riconciliazione confermato/pending", () => {
     st.endGesture([]); // gesto abortito: nessun op finale
 
     // L'anteprima sparisce (non è mai stata sul filo), l'op in volo NO.
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
-    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 500 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 500 });
     expect(useScene.getState().pending).toHaveLength(1);
   });
 
@@ -174,8 +174,8 @@ describe("riconciliazione confermato/pending", () => {
     st.applyLocal(moveOp("prev-1", "n1", 40, 40));
     st.apply(deleteOp("op-them", "n2"));
 
-    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n2")).toBeUndefined();
     expect(useScene.getState().selection).toEqual(["n1"]);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
   });
 });

@@ -211,7 +211,7 @@ function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPrev
 export function selectionWorldBounds(state: SceneState, selection: string[]): Bounds | null {
   const boxes: Bounds[] = [];
   for (const id of selection) {
-    const n = state.nodes[id];
+    const n = state.nodes.at(id);
     if (!n) continue;
     const b = contentWorldBounds(state, n);
     if (b) boxes.push(b);
@@ -231,7 +231,7 @@ export function selectionWorldBounds(state: SceneState, selection: string[]): Bo
 //    resize di gruppo imprevedibile. I singoli nodi restano ruotati; è il
 //    riquadro di gruppo a non esserlo.
 export function selectionFrame(state: SceneState, selection: string[]): SelectionFrame | null {
-  const nodes = selection.map((id) => state.nodes[id]).filter((n) => n !== undefined);
+  const nodes = selection.map((id) => state.nodes.at(id)).filter((n) => n !== undefined);
   if (nodes.length === 0) return null;
   if (nodes.length === 1) {
     const n = nodes[0];

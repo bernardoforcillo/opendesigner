@@ -57,7 +57,7 @@ function textNode(id: string, orderKey: string, content = "ciao", over: Partial<
 
 function installScene(...nodes: NodeLite[]) {
   const scene = emptyScene("doc-1", "Untitled");
-  for (const n of nodes) scene.nodes[n.id] = n;
+  for (const n of nodes) scene.nodes = scene.nodes.set(n.id, n);
   // setScene e non setState({scene}): installa una scena COERENTE (vista e
   // confermato allineati, coda vuota, storia azzerata) -- l'invariante della
   // riconciliazione, e il punto di partenza pulito per ogni test.
@@ -153,7 +153,7 @@ describe("il campo Rot", () => {
       expect(op.kind.value.mask?.paths).toEqual(["rotation"]);
       expect(op.kind.value.patch?.rotation).toBe(90);
     }
-    expect(useScene.getState().scene!.nodes["a"].rotation).toBe(90);
+    expect(useScene.getState().scene!.nodes.at("a").rotation).toBe(90);
     expect(useScene.getState().undoStack).toHaveLength(1); // un campo, un gesto
   });
 
@@ -166,7 +166,7 @@ describe("il campo Rot", () => {
     await user.clear(field("Rot"));
     await user.type(field("Rot"), "-30{Enter}");
 
-    expect(useScene.getState().scene!.nodes["a"].rotation).toBe(-30);
+    expect(useScene.getState().scene!.nodes.at("a").rotation).toBe(-30);
   });
 
   it("su una selezione con angoli diversi dice Misto invece di inventarne uno", () => {
@@ -201,7 +201,7 @@ describe("digitare e confermare", () => {
       // valore confermato non deve nemmeno comparire fuori da x.
       expect(op.kind.value.patch?.y).toBe(0);
     }
-    expect(useScene.getState().scene?.nodes.a.x).toBe(99);
+    expect(useScene.getState().scene?.nodes.at("a").x).toBe(99);
     // Un gesto, una voce di undo -- come ogni altra modifica dei pannelli.
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
@@ -238,7 +238,7 @@ describe("trascinare l'etichetta", () => {
       expect(op.kind.value.mask?.paths).toEqual(["x"]);
       expect(op.kind.value.patch?.x).toBe(35); // 10 (partenza) + 25 (dx)
     }
-    expect(useScene.getState().scene?.nodes.a.x).toBe(35);
+    expect(useScene.getState().scene?.nodes.at("a").x).toBe(35);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -255,7 +255,7 @@ describe("trascinare l'etichetta", () => {
 
     // Anteprima locale: il documento cambia (applyLocal), ma NIENTE è ancora
     // partito verso il server -- il gesto è ancora aperto.
-    expect(useScene.getState().scene?.nodes.a.x).toBe(22);
+    expect(useScene.getState().scene?.nodes.at("a").x).toBe(22);
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().gesture).not.toBeNull();
 
@@ -273,7 +273,7 @@ describe("trascinare l'etichetta", () => {
     dragLabel("X", 1); // sotto SCRUB_SLOP_PX
 
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene?.nodes.a.x).toBe(10);
+    expect(useScene.getState().scene?.nodes.at("a").x).toBe(10);
     expect(useScene.getState().undoStack.length).toBe(undoBefore);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -292,8 +292,8 @@ describe("valori non validi", () => {
     await user.keyboard("{Enter}");
 
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene?.nodes.a.x).toBe(10);
-    expect(Number.isNaN(useScene.getState().scene?.nodes.a.x)).toBe(false);
+    expect(useScene.getState().scene?.nodes.at("a").x).toBe(10);
+    expect(Number.isNaN(useScene.getState().scene?.nodes.at("a").x)).toBe(false);
     // Il campo torna a mostrare il valore vero: niente resta bloccato vuoto.
     expect(field("X")).toHaveValue("10");
   });
@@ -308,7 +308,7 @@ describe("valori non validi", () => {
     await user.type(field("X"), "-{Enter}");
 
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene?.nodes.a.x).toBe(10);
+    expect(useScene.getState().scene?.nodes.at("a").x).toBe(10);
     expect(field("X")).toHaveValue("10");
   });
 
@@ -321,7 +321,7 @@ describe("valori non validi", () => {
     useScene.getState().setSelection(["a"]);
     render(<PropertiesPanel />);
 
-    const node = useScene.getState().scene?.nodes.a;
+    const node = useScene.getState().scene?.nodes.at("a");
     expect(node).toBeDefined();
     for (const v of [node!.x, node!.y, node!.width, node!.height]) {
       expect(Number.isNaN(v)).toBe(false);
@@ -397,7 +397,7 @@ describe("riempimento", () => {
         expect(c?.a).toBe(1);
       }
     }
-    expect(useScene.getState().scene?.nodes.a.fills[0].r).toBeCloseTo(1, 5);
+    expect(useScene.getState().scene?.nodes.at("a").fills[0].r).toBeCloseTo(1, 5);
     // Un gesto, una voce di undo.
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
@@ -415,7 +415,7 @@ describe("riempimento", () => {
 
     // Il colore È cambiato (senza questo, l'assert sull'alfa passerebbe anche
     // se il campo non avesse emesso NIENTE) ma l'alfa no.
-    const fill = useScene.getState().scene?.nodes.a.fills[0];
+    const fill = useScene.getState().scene?.nodes.at("a").fills[0];
     expect(fill?.g).toBeCloseTo(1, 5);
     expect(fill?.a).toBe(0.25);
   });
@@ -523,7 +523,7 @@ describe("opacità", () => {
       expect(maskOf(op)).toEqual(["opacity"]);
       expect(op.kind.value.patch?.opacity).toBeCloseTo(0.5, 5);
     }
-    expect(useScene.getState().scene?.nodes.a.opacity).toBeCloseTo(0.5, 5);
+    expect(useScene.getState().scene?.nodes.at("a").opacity).toBeCloseTo(0.5, 5);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -538,7 +538,7 @@ describe("opacità", () => {
     fireEvent.pointerDown(thumb, { ...base, clientX: 0, pageX: 0 });
     fireEvent.pointerMove(window, { ...base, clientX: -20, pageX: -20 });
 
-    expect(useScene.getState().scene?.nodes.a.opacity).toBeCloseTo(0.8, 5);
+    expect(useScene.getState().scene?.nodes.at("a").opacity).toBeCloseTo(0.8, 5);
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().gesture).not.toBeNull();
 
@@ -622,8 +622,8 @@ describe("opacità mista", () => {
     expect(sync.sent).toHaveLength(2);
     for (const op of sync.sent) expect(maskOf(op)).toEqual(["opacity"]);
     const scene = useScene.getState().scene;
-    expect(scene?.nodes.a.opacity).toBeCloseTo(0.5, 5);
-    expect(scene?.nodes.b.opacity).toBeCloseTo(0.5, 5);
+    expect(scene?.nodes.at("a").opacity).toBeCloseTo(0.5, 5);
+    expect(scene?.nodes.at("b").opacity).toBeCloseTo(0.5, 5);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
     // Assegnato un valore, il "misto" sparisce da entrambi i canali.
@@ -707,7 +707,7 @@ describe("raggio degli angoli", () => {
       if (patch?.shape.case === "rect") expect(patch.shape.value.cornerRadius).toBe(12);
     }
 
-    expect(useScene.getState().scene?.nodes.a.cornerRadius).toBe(12);
+    expect(useScene.getState().scene?.nodes.at("a").cornerRadius).toBe(12);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -722,7 +722,7 @@ describe("raggio degli angoli", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(maskOf(sync.sent[0])).toEqual(["corner_radius"]);
-    expect(useScene.getState().scene?.nodes.a.cornerRadius).toBe(8);
+    expect(useScene.getState().scene?.nodes.at("a").cornerRadius).toBe(8);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
   });
 });
@@ -783,8 +783,8 @@ describe("selezione multipla — campi geometrici misti", () => {
         expect(op.kind.value.patch?.x).toBe(99);
       }
     }
-    expect(useScene.getState().scene?.nodes.a.x).toBe(99);
-    expect(useScene.getState().scene?.nodes.b.x).toBe(99);
+    expect(useScene.getState().scene?.nodes.at("a").x).toBe(99);
+    expect(useScene.getState().scene?.nodes.at("b").x).toBe(99);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
     // Un valore ora esiste per tutta la selezione: "misto" sparisce.
@@ -801,8 +801,8 @@ describe("selezione multipla — campi geometrici misti", () => {
     dragLabel("X", 25);
 
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene?.nodes.a.x).toBe(10);
-    expect(useScene.getState().scene?.nodes.b.x).toBe(50);
+    expect(useScene.getState().scene?.nodes.at("a").x).toBe(10);
+    expect(useScene.getState().scene?.nodes.at("b").x).toBe(50);
     expect(useScene.getState().undoStack.length).toBe(undoBefore);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -831,8 +831,8 @@ describe("selezione multipla — raggio degli angoli", () => {
 
     expect(sync.sent).toHaveLength(2);
     for (const op of sync.sent) expect(maskOf(op)).toEqual(["corner_radius"]);
-    expect(useScene.getState().scene?.nodes.a.cornerRadius).toBe(5);
-    expect(useScene.getState().scene?.nodes.b.cornerRadius).toBe(5);
+    expect(useScene.getState().scene?.nodes.at("a").cornerRadius).toBe(5);
+    expect(useScene.getState().scene?.nodes.at("b").cornerRadius).toBe(5);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -877,11 +877,11 @@ describe("selezione multipla — riempimento", () => {
     expect(sync.sent).toHaveLength(2);
     for (const op of sync.sent) expect(maskOf(op)).toEqual(["fills"]);
     const scene = useScene.getState().scene;
-    expect(scene?.nodes.a.fills[0].b).toBeCloseTo(1, 5);
-    expect(scene?.nodes.a.fills[0].a).toBe(1);
-    expect(scene?.nodes.b.fills[0].b).toBeCloseTo(1, 5);
+    expect(scene?.nodes.at("a").fills[0].b).toBeCloseTo(1, 5);
+    expect(scene?.nodes.at("a").fills[0].a).toBe(1);
+    expect(scene?.nodes.at("b").fills[0].b).toBeCloseTo(1, 5);
     // L'alfa di ciascun nodo sopravvive: il campo non la porta.
-    expect(scene?.nodes.b.fills[0].a).toBe(0.5);
+    expect(scene?.nodes.at("b").fills[0].a).toBe(0.5);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -915,10 +915,10 @@ describe("selezione multipla — stile del testo", () => {
     expect(sync.sent).toHaveLength(2);
     for (const op of sync.sent) expect(op.kind.case).toBe("setText");
     const scene = useScene.getState().scene;
-    expect(scene?.nodes.t1.text?.style.fontWeight).toBe("700");
-    expect(scene?.nodes.t2.text?.style.fontWeight).toBe("700");
-    expect(scene?.nodes.t1.text?.content).toBe("uno");
-    expect(scene?.nodes.t2.text?.content).toBe("due");
+    expect(scene?.nodes.at("t1").text?.style.fontWeight).toBe("700");
+    expect(scene?.nodes.at("t2").text?.style.fontWeight).toBe("700");
+    expect(scene?.nodes.at("t1").text?.content).toBe("uno");
+    expect(scene?.nodes.at("t2").text?.content).toBe("due");
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -965,8 +965,8 @@ describe("stile del testo", () => {
       expect(op.kind.value.style?.fontWeight).toBe("400");
       expect(op.kind.value.style?.fontFamily).toBe("Inter, sans-serif");
     }
-    expect(useScene.getState().scene?.nodes.t.text?.style.fontSize).toBe(32);
-    expect(useScene.getState().scene?.nodes.t.text?.content).toBe("ciao");
+    expect(useScene.getState().scene?.nodes.at("t").text?.style.fontSize).toBe(32);
+    expect(useScene.getState().scene?.nodes.at("t").text?.content).toBe("ciao");
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -987,7 +987,7 @@ describe("stile del testo", () => {
       expect(op.kind.value.style?.fontWeight).toBe("700");
       expect(op.kind.value.style?.fontSize).toBe(16);
     }
-    expect(useScene.getState().scene?.nodes.t.text?.style.fontWeight).toBe("700");
+    expect(useScene.getState().scene?.nodes.at("t").text?.style.fontWeight).toBe("700");
   });
 
   it("l'allineamento emette SetText con stylePresent", async () => {
@@ -1009,7 +1009,7 @@ describe("stile del testo", () => {
       // TextAlign.CENTER === 2 nel generato; il modello lo rilegge come "center".
       expect(op.kind.value.style?.align).toBe(2);
     }
-    expect(useScene.getState().scene?.nodes.t.text?.style.align).toBe("center");
+    expect(useScene.getState().scene?.nodes.at("t").text?.style.align).toBe("center");
   });
 
   it("su più testi è UN gesto solo, e ogni nodo tiene il PROPRIO contenuto", async () => {
@@ -1028,9 +1028,9 @@ describe("stile del testo", () => {
     expect(sync.sent).toHaveLength(2);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     const scene = useScene.getState().scene;
-    expect(scene?.nodes.t1.text).toEqual({ content: "uno", style: { ...TEXT_STYLE, fontSize: 20 } });
+    expect(scene?.nodes.at("t1").text).toEqual({ content: "uno", style: { ...TEXT_STYLE, fontSize: 20 } });
     // Il peso diverso di t2 non viene uniformato da un cambio di dimensione.
-    expect(scene?.nodes.t2.text).toEqual({
+    expect(scene?.nodes.at("t2").text).toEqual({
       content: "due", style: { ...TEXT_STYLE, fontSize: 20, fontWeight: "700" },
     });
   });
@@ -1087,7 +1087,7 @@ describe("tratto", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(maskOf(sync.sent[0])).toEqual(["strokes"]);
-    const strokes = useScene.getState().scene?.nodes.a.strokes ?? [];
+    const strokes = useScene.getState().scene?.nodes.at("a").strokes ?? [];
     expect(strokes).toHaveLength(1);
     expect(strokes[0].color.r).toBeCloseTo(1, 5);
     // Un peso di ripiego > 0: un tratto creato con peso 0 non si vedrebbe, e
@@ -1115,7 +1115,7 @@ describe("tratto", () => {
     // Il colore È cambiato (senza questo, l'assert sull'alfa passerebbe anche
     // se il campo non avesse emesso NIENTE) ma l'alfa no -- e nemmeno spessore
     // e posizione.
-    const s = useScene.getState().scene?.nodes.a.strokes[0];
+    const s = useScene.getState().scene?.nodes.at("a").strokes[0];
     expect(s?.color.g).toBeCloseTo(1, 5);
     expect(s?.color.a).toBe(0.25);
     expect(s?.weight).toBe(4);
@@ -1144,13 +1144,13 @@ describe("tratto", () => {
     expect(sync.sent).toHaveLength(2);
     for (const op of sync.sent) expect(maskOf(op)).toEqual(["strokes"]);
     const scene = useScene.getState().scene;
-    expect(scene?.nodes.a.strokes[0].color.g).toBeCloseTo(1, 5);
-    expect(scene?.nodes.b.strokes[0].color.g).toBeCloseTo(1, 5);
-    expect(scene?.nodes.a.strokes[0].color.a).toBe(0.3);
-    expect(scene?.nodes.b.strokes[0].color.a).toBe(1);
+    expect(scene?.nodes.at("a").strokes[0].color.g).toBeCloseTo(1, 5);
+    expect(scene?.nodes.at("b").strokes[0].color.g).toBeCloseTo(1, 5);
+    expect(scene?.nodes.at("a").strokes[0].color.a).toBe(0.3);
+    expect(scene?.nodes.at("b").strokes[0].color.a).toBe(1);
     // ...e il resto del tratto di ciascuno resta suo.
-    expect(scene?.nodes.a.strokes[0].weight).toBe(2);
-    expect(scene?.nodes.b.strokes[0].align).toBe("outside");
+    expect(scene?.nodes.at("a").strokes[0].weight).toBe(2);
+    expect(scene?.nodes.at("b").strokes[0].align).toBe("outside");
     // Due op, UN gesto: una sola voce di undo.
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
@@ -1167,7 +1167,7 @@ describe("tratto", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(maskOf(sync.sent[0])).toEqual(["strokes"]);
-    expect(useScene.getState().scene?.nodes.a.strokes).toEqual([
+    expect(useScene.getState().scene?.nodes.at("a").strokes).toEqual([
       { color: { r: 0, g: 1, b: 0, a: 0.5 }, weight: 12, align: "inside" },
     ]);
   });
@@ -1182,7 +1182,7 @@ describe("tratto", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(maskOf(sync.sent[0])).toEqual(["strokes"]);
-    expect(useScene.getState().scene?.nodes.a.strokes).toEqual([
+    expect(useScene.getState().scene?.nodes.at("a").strokes).toEqual([
       { color: { r: 0, g: 0, b: 1, a: 1 }, weight: 4, align: "inside" },
     ]);
   });
@@ -1197,7 +1197,7 @@ describe("tratto", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(maskOf(sync.sent[0])).toEqual(["strokes"]);
-    expect(useScene.getState().scene?.nodes.a.strokes[0].weight).toBe(12);
+    expect(useScene.getState().scene?.nodes.at("a").strokes[0].weight).toBe(12);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -1213,7 +1213,7 @@ describe("tratto", () => {
     await user.clear(field("Spessore"));
     await user.type(field("Spessore"), "5{Enter}");
 
-    const strokes = useScene.getState().scene?.nodes.a.strokes ?? [];
+    const strokes = useScene.getState().scene?.nodes.at("a").strokes ?? [];
     expect(strokes).toHaveLength(2);
     expect(strokes[0].weight).toBe(5);
     expect(strokes[1]).toEqual(strokeOf(8, "outside", { r: 1, g: 0, b: 0, a: 1 }));
@@ -1238,12 +1238,12 @@ describe("tratto", () => {
     // Due op (uno per nodo) ma UN gesto solo: una voce di undo.
     expect(sync.sent).toHaveLength(2);
     const scene = useScene.getState().scene;
-    expect(scene?.nodes.a.strokes[0].weight).toBe(3);
-    expect(scene?.nodes.b.strokes[0].weight).toBe(3);
+    expect(scene?.nodes.at("a").strokes[0].weight).toBe(3);
+    expect(scene?.nodes.at("b").strokes[0].weight).toBe(3);
     // ...e ogni nodo tiene la PROPRIA posizione: cambiare lo spessore non
     // uniforma il resto.
-    expect(scene?.nodes.a.strokes[0].align).toBe("center");
-    expect(scene?.nodes.b.strokes[0].align).toBe("outside");
+    expect(scene?.nodes.at("a").strokes[0].align).toBe("center");
+    expect(scene?.nodes.at("b").strokes[0].align).toBe("outside");
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
   });
 
@@ -1285,9 +1285,9 @@ describe("allineamento", () => {
     fireEvent.click(screen.getByRole("button", { name: "Allinea a sinistra" }));
 
     const scene = useScene.getState().scene;
-    expect(scene?.nodes.a.x).toBe(0);
-    expect(scene?.nodes.b.x).toBe(0);
-    expect(scene?.nodes.b.y).toBe(30); // l'asse che non riguarda non si muove
+    expect(scene?.nodes.at("a").x).toBe(0);
+    expect(scene?.nodes.at("b").x).toBe(0);
+    expect(scene?.nodes.at("b").y).toBe(30); // l'asse che non riguarda non si muove
     expect(sync.sent).toHaveLength(1); // solo "b" si è mosso
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().gesture).toBeNull();
@@ -1304,7 +1304,7 @@ describe("allineamento", () => {
 
     fireEvent.click(screen.getByRole("button", { name: "Distribuisci orizzontalmente" }));
 
-    expect(useScene.getState().scene?.nodes.b.x).toBe(45);
+    expect(useScene.getState().scene?.nodes.at("b").x).toBe(45);
     expect(useScene.getState().undoStack).toHaveLength(1);
   });
 
@@ -1319,7 +1319,7 @@ describe("allineamento", () => {
     const b = screen.getByRole("button", { name: "Allinea a sinistra" });
     expect(b).toBeDisabled();
     fireEvent.click(b);
-    expect(useScene.getState().scene?.nodes.a.x).toBe(500); // dov'era
+    expect(useScene.getState().scene?.nodes.at("a").x).toBe(500); // dov'era
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
@@ -1415,10 +1415,10 @@ describe("gruppi — campi geometrici", () => {
     render(<PropertiesPanel />);
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes.g.x).toBe(0); // la traslazione del gruppo È zero...
+    expect(scene.nodes.at("g").x).toBe(0); // la traslazione del gruppo È zero...
     // ...ma la cornice che l'overlay disegna sta a (10,20), ed è quella che il
     // pannello deve dire.
-    const frame = contentWorldBounds(scene, scene.nodes.g)!;
+    const frame = contentWorldBounds(scene, scene.nodes.at("g"))!;
     expect(field("X")).toHaveValue(String(frame.x));
     expect(field("Y")).toHaveValue(String(frame.y));
     expect(field("X")).toHaveValue("10");
@@ -1444,17 +1444,17 @@ describe("gruppi — campi geometrici", () => {
     if (op.kind.case === "setProps") expect(op.kind.value.patch?.x).toBe(89); // 0 + (99 - 10)
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes.g.x).toBe(89);
-    expect(scene.nodes.c.x).toBe(10); // il figlio non si muove nel suo spazio
-    expect(contentWorldBounds(scene, scene.nodes.g)!.x).toBe(99);
+    expect(scene.nodes.at("g").x).toBe(89);
+    expect(scene.nodes.at("c").x).toBe(10); // il figlio non si muove nel suo spazio
+    expect(contentWorldBounds(scene, scene.nodes.at("g"))!.x).toBe(99);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
 
     // E si annulla come qualunque altra modifica: la cornice torna a 10.
     useScene.getState().undo();
     const after = useScene.getState().scene!;
-    expect(after.nodes.g.x).toBe(0);
-    expect(contentWorldBounds(after, after.nodes.g)!.x).toBe(10);
+    expect(after.nodes.at("g").x).toBe(0);
+    expect(contentWorldBounds(after, after.nodes.at("g"))!.x).toBe(10);
   });
 
   it("confermare la X che il campo già mostra non manda nessun op", async () => {
@@ -1467,7 +1467,7 @@ describe("gruppi — campi geometrici", () => {
     await user.keyboard("{Enter}");
 
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene?.nodes.g.x).toBe(0);
+    expect(useScene.getState().scene?.nodes.at("g").x).toBe(0);
   });
 
   it("trascinare l'etichetta X di un gruppo resta UN gesto e porta la cornice dove dice il campo", () => {
@@ -1481,10 +1481,10 @@ describe("gruppi — campi geometrici", () => {
     expect(sync.sent).toHaveLength(1);
     expect(maskOf(sync.sent[0])).toEqual(["x"]);
     const scene = useScene.getState().scene!;
-    expect(scene.nodes.g.x).toBe(25);
+    expect(scene.nodes.at("g").x).toBe(25);
     // I passi intermedi dell'anteprima non si sommano: la cornice finisce
     // esattamente dove il campo dice, non a 10+12+25.
-    expect(contentWorldBounds(scene, scene.nodes.g)!.x).toBe(35);
+    expect(contentWorldBounds(scene, scene.nodes.at("g"))!.x).toBe(35);
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -1528,9 +1528,9 @@ describe("gruppi — campi geometrici", () => {
     if (sync.sent[0].kind.case === "setProps") expect(sync.sent[0].kind.value.patch?.x).toBe(-1);
 
     const scene = useScene.getState().scene!;
-    expect(contentWorldBounds(scene, scene.nodes.g)!.x).toBe(99);
+    expect(contentWorldBounds(scene, scene.nodes.at("g"))!.x).toBe(99);
     // Il figlio visibile è davvero lì: 100 + (-1).
-    expect(scene.nodes.g.x + scene.nodes.visibile.x).toBe(99);
+    expect(scene.nodes.at("g").x + scene.nodes.at("visibile").x).toBe(99);
   });
 
   it("un gruppo con TUTTI i figli nascosti si comporta come uno vuoto: X è la sua traslazione", async () => {
@@ -1551,7 +1551,7 @@ describe("gruppi — campi geometrici", () => {
 
     expect(sync.sent).toHaveLength(1);
     if (sync.sent[0].kind.case === "setProps") expect(sync.sent[0].kind.value.patch?.x).toBe(50);
-    expect(useScene.getState().scene?.nodes.g.x).toBe(50);
+    expect(useScene.getState().scene?.nodes.at("g").x).toBe(50);
   });
 
   it("un gruppo VUOTO non ha cornice: X/Y restano la sua traslazione, scritta com'è", async () => {
@@ -1567,7 +1567,7 @@ describe("gruppi — campi geometrici", () => {
 
     expect(sync.sent).toHaveLength(1);
     if (sync.sent[0].kind.case === "setProps") expect(sync.sent[0].kind.value.patch?.x).toBe(50);
-    expect(useScene.getState().scene?.nodes.g.x).toBe(50);
+    expect(useScene.getState().scene?.nodes.at("g").x).toBe(50);
   });
 });
 
@@ -1595,7 +1595,7 @@ function installInstance(overrides: InstanceOverrideLite[] = []) {
   const inst: NodeLite = {
     ...rectNode("inst", "a9"), kind: "instance", instance: { componentId: "cmp1", overrides },
   };
-  for (const n of [m, mr, mt, inst]) scene.nodes[n.id] = n;
+  for (const n of [m, mr, mt, inst]) scene.nodes = scene.nodes.set(n.id, n);
   scene.components["cmp1"] = { rootNodeId: "m", name: "Frame" };
   useScene.getState().setScene(scene);
   useScene.getState().setSelection(["inst"]);
@@ -1638,7 +1638,7 @@ describe("override delle istanze", () => {
       expect(o.override.fills[0].kind.value.color?.g).toBeCloseTo(1, 5);
     }
     // Il modello ora ha l'override, e il campo mostra il nuovo valore.
-    const inst = useScene.getState().scene!.nodes["inst"];
+    const inst = useScene.getState().scene!.nodes.at("inst");
     expect(inst.instance?.overrides).toHaveLength(1);
     expect(screen.getByRole("textbox", { name: "Sfondo" })).toHaveValue("#00FF00");
     // Un gesto, una voce di undo.
@@ -1661,7 +1661,7 @@ describe("override delle istanze", () => {
     expect(o.override?.textPresent).toBe(true);
     expect(o.override?.text).toBe("Nuovo");
     expect(o.override?.fillsPresent).toBe(false);
-    expect(useScene.getState().scene!.nodes["inst"].instance?.overrides[0].text).toBe("Nuovo");
+    expect(useScene.getState().scene!.nodes.at("inst").instance?.overrides[0].text).toBe("Nuovo");
     expect(screen.getByRole("textbox", { name: "Etichetta" })).toHaveValue("Nuovo");
   });
 
@@ -1687,7 +1687,7 @@ describe("override delle istanze", () => {
     expect(o.override?.fillsPresent).toBe(false);
     expect(o.override?.textPresent).toBe(false);
     // L'override è sparito, e il campo torna al valore del master (rosso).
-    expect(useScene.getState().scene!.nodes["inst"].instance?.overrides).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes.at("inst").instance?.overrides).toHaveLength(0);
     expect(screen.getByRole("textbox", { name: "Sfondo" })).toHaveValue("#FF0000");
   });
 
@@ -1699,11 +1699,11 @@ describe("override delle istanze", () => {
     const input = screen.getByRole("textbox", { name: "Sfondo" });
     await user.clear(input);
     await user.type(input, "#00FF00{Enter}");
-    expect(useScene.getState().scene!.nodes["inst"].instance?.overrides).toHaveLength(1);
+    expect(useScene.getState().scene!.nodes.at("inst").instance?.overrides).toHaveLength(1);
 
     useScene.getState().undo();
 
-    expect(useScene.getState().scene!.nodes["inst"].instance?.overrides).toHaveLength(0);
+    expect(useScene.getState().scene!.nodes.at("inst").instance?.overrides).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().redoStack).toHaveLength(1);
   });

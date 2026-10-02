@@ -47,7 +47,7 @@ function textNode(id: string, orderKey: string, content: string, over: Partial<N
 
 function installScene(...nodes: NodeLite[]) {
   const scene = emptyScene("doc-1", "Untitled");
-  for (const n of nodes) scene.nodes[n.id] = n;
+  for (const n of nodes) scene.nodes = scene.nodes.set(n.id, n);
   // setScene e non setState({scene}): installa una scena COERENTE (vista e
   // confermato allineati, coda vuota) -- l'invariante della riconciliazione.
   useScene.getState().setScene(scene);
@@ -216,7 +216,7 @@ describe("visibilità", () => {
       expect(op.kind.value.mask?.paths).toEqual(["visible"]);
       expect(op.kind.value.patch?.visible).toBe(false);
     }
-    expect(useScene.getState().scene?.nodes.a.visible).toBe(false);
+    expect(useScene.getState().scene?.nodes.at("a").visible).toBe(false);
     // Cliccare il pulsante di visibilità non deve selezionare la riga.
     expect(useScene.getState().selection).toEqual([]);
   });
@@ -259,9 +259,9 @@ describe("eliminazione", () => {
       .map((op) => (op.kind.case === "deleteNode" ? op.kind.value.id : ""));
     expect(new Set(deleteIds)).toEqual(new Set(["a", "b"]));
     expect(sync.sent).toHaveLength(2);
-    expect(useScene.getState().scene?.nodes.a).toBeUndefined();
-    expect(useScene.getState().scene?.nodes.b).toBeUndefined();
-    expect(useScene.getState().scene?.nodes.c).toBeDefined();
+    expect(useScene.getState().scene?.nodes.at("a")).toBeUndefined();
+    expect(useScene.getState().scene?.nodes.at("b")).toBeUndefined();
+    expect(useScene.getState().scene?.nodes.at("c")).toBeDefined();
     // UNA sola voce di undo per l'intera cancellazione multipla, non una per
     // nodo: è il punto centrale del brief (Task 7, step 1).
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
@@ -287,8 +287,8 @@ describe("eliminazione", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case === "deleteNode" && sync.sent[0].kind.value.id).toBe("g1");
-    expect(useScene.getState().scene?.nodes.c1).toBeUndefined();
-    expect(useScene.getState().scene?.nodes.other).toBeDefined();
+    expect(useScene.getState().scene?.nodes.at("c1")).toBeUndefined();
+    expect(useScene.getState().scene?.nodes.at("other")).toBeDefined();
     // La voce c'è ed è completa: g1 e c1 da ricreare, in un solo Ctrl+Z.
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().undoStack[useScene.getState().undoStack.length - 1]).toHaveLength(2);
@@ -377,7 +377,7 @@ describe("rinomina inline", () => {
       expect(op.kind.value.mask?.paths).toEqual(["name"]);
       expect(op.kind.value.patch?.name).toBe("Pulsante");
     }
-    expect(useScene.getState().scene?.nodes.a.name).toBe("Pulsante");
+    expect(useScene.getState().scene?.nodes.at("a").name).toBe("Pulsante");
     // Un gesto, una voce di undo -- come ogni altra modifica del pannello.
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
@@ -397,7 +397,7 @@ describe("rinomina inline", () => {
     await user.type(nameField(), "Scartato{Escape}");
 
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene?.nodes.a.name).toBe("A");
+    expect(useScene.getState().scene?.nodes.at("a").name).toBe("A");
     expect(useScene.getState().undoStack.length).toBe(undoBefore);
     expect(screen.queryByRole("textbox", { name: "Nome del livello" })).toBeNull();
     expect(screen.getByText("A")).toBeInTheDocument();
@@ -507,7 +507,7 @@ describe("riordino con drag", () => {
       // La chiave calcolata è quella che il nodo ha davvero adesso, ed è
       // strettamente sotto quella di "a" (che è rimasta dov'era).
       const key = op.kind.value.patch?.orderKey ?? "";
-      expect(useScene.getState().scene?.nodes.c.orderKey).toBe(key);
+      expect(useScene.getState().scene?.nodes.at("c").orderKey).toBe(key);
       expect(key < "a0").toBe(true);
     }
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
@@ -682,7 +682,7 @@ function frameNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): 
 function installScenePages(pages: PageLite[], ...nodes: NodeLite[]) {
   const scene = emptyScene("doc-1", "Untitled");
   scene.pages = pages;
-  for (const n of nodes) scene.nodes[n.id] = n;
+  for (const n of nodes) scene.nodes = scene.nodes.set(n.id, n);
   useScene.getState().setScene(scene);
 }
 
@@ -783,7 +783,7 @@ describe("albero: drag per riparentare", () => {
       expect(op.kind.value.id).toBe("r");
       expect(op.kind.value.newParentId).toBe("g");
     }
-    expect(useScene.getState().scene?.nodes.r.parentId).toBe("g");
+    expect(useScene.getState().scene?.nodes.at("r").parentId).toBe("g");
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
@@ -802,7 +802,7 @@ describe("albero: drag per riparentare", () => {
     if (sync.sent[0].kind.case === "reparentNode") {
       expect(sync.sent[0].kind.value.newParentId).toBe("f");
     }
-    expect(useScene.getState().scene?.nodes.r.parentId).toBe("f");
+    expect(useScene.getState().scene?.nodes.at("r").parentId).toBe("f");
   });
 
   it("trascinare fuori, su una radice di pagina, riparenta alla pagina con orderKey fra i vicini", () => {
@@ -829,7 +829,7 @@ describe("albero: drag per riparentare", () => {
       expect(key > "a0").toBe(true);
       expect(key < "a1").toBe(true);
     }
-    expect(useScene.getState().scene?.nodes.c.parentId).toBe("page1");
+    expect(useScene.getState().scene?.nodes.at("c").parentId).toBe("page1");
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
   });
 
@@ -851,7 +851,7 @@ describe("albero: drag per riparentare", () => {
     // undo, il gruppo resta radice.
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(0);
-    expect(useScene.getState().scene?.nodes.g.parentId).toBe("page1");
+    expect(useScene.getState().scene?.nodes.at("g").parentId).toBe("page1");
   });
 
   it("trascinare su un fratello (stesso parent) resta un riordino: SetProperties order_key", () => {
@@ -877,10 +877,10 @@ describe("albero: drag per riparentare", () => {
 describe("visibleRows", () => {
   it("scende solo nei container espansi, primo piano in cima", () => {
     const scene = emptyScene("doc-1", "Untitled");
-    scene.nodes["g"] = groupNode("g", "a1", { name: "G" });
-    scene.nodes["c1"] = rectNode("c1", "a0", { name: "C1", parentId: "g" });
-    scene.nodes["c2"] = rectNode("c2", "a1", { name: "C2", parentId: "g" });
-    scene.nodes["r"] = rectNode("r", "a0", { name: "R" });
+    scene.nodes = scene.nodes.set("g", groupNode("g", "a1", { name: "G" }));
+    scene.nodes = scene.nodes.set("c1", rectNode("c1", "a0", { name: "C1", parentId: "g" }));
+    scene.nodes = scene.nodes.set("c2", rectNode("c2", "a1", { name: "C2", parentId: "g" }));
+    scene.nodes = scene.nodes.set("r", rectNode("r", "a0", { name: "R" }));
 
     const expanded = visibleRows(scene, "page1", new Set());
     expect(expanded.map((row) => row.id)).toEqual(["g", "c2", "c1", "r"]);

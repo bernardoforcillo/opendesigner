@@ -256,7 +256,7 @@ function pathTo(scene: SceneState, id: string): string[] {
  * decidere se un id è valido.
  */
 export function selectionTargetOf(scene: SceneState, id: string, selection: readonly string[]): string {
-  if (!scene.nodes[id]) return id;
+  if (!scene.nodes.at(id)) return id;
   const path = pathTo(scene, id);
   const entered = enteredContainers(scene, selection);
   // Si salta il PREFISSO di contenitori in cui siamo già entrati: sono
@@ -265,7 +265,7 @@ export function selectionTargetOf(scene: SceneState, id: string, selection: read
   while (i < path.length - 1 && entered.has(path[i])) i++;
   for (; i < path.length; i++) {
     if (path[i] === id) return id;
-    if (isGroup(scene.nodes[path[i]])) return path[i];
+    if (isGroup(scene.nodes.at(path[i]))) return path[i];
   }
   return id;
 }
@@ -298,7 +298,7 @@ export function selectionTargetsOf(scene: SceneState, ids: readonly string[], se
  * ne sono più il doppio click torna a essere quello del testo.
  */
 export function enterTargetOf(scene: SceneState, id: string, selection: readonly string[]): string | null {
-  if (!scene.nodes[id]) return null;
+  if (!scene.nodes.at(id)) return null;
   const current = selectionTargetOf(scene, id, selection);
   if (current === id) return null;
   const path = pathTo(scene, id);
@@ -327,7 +327,7 @@ export function transformTargetsOf(scene: SceneState, ids: readonly string[]): s
   const push = (id: string): void => {
     if (seen.has(id)) return;
     seen.add(id);
-    const n = scene.nodes[id];
+    const n = scene.nodes.at(id);
     if (!isGroup(n)) {
       out.push(id);
       return;

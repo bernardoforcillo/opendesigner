@@ -57,7 +57,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // SOVRASCRIVE: un client che sovrascrive in locale diverge in silenzio
       // dal documento autorevole (e l'undo di quell'op sarebbe l'undo di
       // qualcosa che il server non ha mai accettato).
-      if (!pb || pb.id === "" || state.nodes[pb.id]) return state;
+      if (!pb || pb.id === "" || state.nodes.at(pb.id)) return state;
       // Il parent deve ESISTERE (un altro nodo, o una Page per i root):
       // ErrParentNotFound in core.applyCreate (Go). Un nodo con un parent
       // inesistente non è raggiungibile da nessuna pagina -- invisibile sul
@@ -71,11 +71,11 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // silenziosa dei rami parent/id-già-preso. Ordine come in Go: prima il
       // parent, poi il componente.
       if (pb.shape.case === "instance" && !state.components[pb.shape.value.componentId]) return state;
-      return { ...state, nodes: { ...state.nodes, [pb.id]: toNodeLite(pb) } };
+      return { ...state, nodes: state.nodes.set(pb.id, toNodeLite(pb)) };
     }
     case "setProps": {
       const { id, patch, mask } = op.kind.value;
-      const cur = state.nodes[id];
+      const cur = state.nodes.at(id);
       // Nodo inesistente = ErrNodeNotFound in Go: op rifiutato, scena
       // invariata. Il patch mancante invece NON ferma l'op (vedi NIL_PATCH).
       if (!cur) return state;
@@ -172,14 +172,14 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           }
         }
       }
-      return { ...state, nodes: { ...state.nodes, [id]: next } };
+      return { ...state, nodes: state.nodes.set(id, next) };
     }
     // Op dedicato e non un path della mask di setProps: il contenuto vive
     // DENTRO il oneof `shape` del Node, mentre la mask indirizza campi di primo
     // livello. Parità con core.applySetText (Go).
     case "setText": {
       const { id, content, style, stylePresent } = op.kind.value;
-      const cur = state.nodes[id];
+      const cur = state.nodes.at(id);
       // Nodo inesistente = ErrNodeNotFound in Go.
       if (!cur) return state;
       // Nodo non di testo = ErrNotTextNode in Go: l'op è rifiutato in blocco.
@@ -197,13 +197,13 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
         content,
         style: stylePresent ? toTextStyleLite(style) : cur.text.style,
       };
-      return { ...state, nodes: { ...state.nodes, [id]: { ...cur, text } } };
+      return { ...state, nodes: state.nodes.set(id, { ...cur, text }) };
     }
     // Op dedicato e non un path della mask, per la stessa ragione di setText: la
     // geometria vive DENTRO il oneof `shape`. Parità con core.applySetVectorPath (Go).
     case "setVectorPath": {
       const { id, subpaths } = op.kind.value;
-      const cur = state.nodes[id];
+      const cur = state.nodes.at(id);
       // Nodo inesistente = ErrNodeNotFound in Go.
       if (!cur) return state;
       // Nodo non vettoriale = ErrNotVectorNode in Go: l'op è rifiutato in
@@ -217,7 +217,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // doveva poter restare intatta; qui l'op È i subpath.
       return {
         ...state,
-        nodes: { ...state.nodes, [id]: { ...cur, vector: { subpaths: toSubPathsLite(subpaths) } } },
+        nodes: state.nodes.set(id, { ...cur, vector: { subpaths: toSubPathsLite(subpaths) } }),
       };
     }
     // Cancella il nodo E TUTTO il suo sottoalbero. Parità con core.applyDelete
@@ -228,10 +228,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const { id } = op.kind.value;
       // Id inesistente = ErrNodeNotFound in Go: op rifiutato, scena invariata
       // (e nessun oggetto nuovo, così i selettori non si svegliano a vuoto).
-      if (!state.nodes[id]) return state;
-      const nodes = { ...state.nodes };
-      for (const n of subtreeOf(state, id)) delete nodes[n.id];
-      return { ...state, nodes };
+      if (!state.nodes.at(id)) return state;
+      const nodes = state.nodes.edit();
+      for (const n of subtreeOf(state, id)) nodes.delete(n.id);
+      return { ...state, nodes: nodes.done() };
     }
     // Op dedicato e non un path della mask di setProps (a differenza di
     // `order_key`) perché ha una validazione che nessun campo ha: il nuovo
@@ -239,7 +239,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     // discendente. Parità con core.applyReparent (Go).
     case "reparentNode": {
       const { id, newParentId, orderKey } = op.kind.value;
-      const cur = state.nodes[id];
+      const cur = state.nodes.at(id);
       if (!cur) return state;                                   // ErrNodeNotFound
       if (!parentExists(state, newParentId)) return state;      // ErrParentNotFound
       // Un ciclo staccherebbe il sottoalbero dal documento (nessuna pagina ci
@@ -251,7 +251,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
         ...state,
         // Il sottoalbero segue il nodo senza essere riscritto: i figli puntano
         // al nodo, non al nonno.
-        nodes: { ...state.nodes, [id]: { ...cur, parentId: newParentId, orderKey } },
+        nodes: state.nodes.set(id, { ...cur, parentId: newParentId, orderKey }),
       };
     }
     // --- pagine -------------------------------------------------------------
@@ -282,11 +282,11 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // L'ULTIMA pagina non si cancella: senza pagine non esiste nessun parent
       // valido, quindi nessun nodo potrebbe più essere creato. ErrLastPage.
       if (state.pages.length === 1) return state;
-      const nodes = { ...state.nodes };
+      const nodes = state.nodes.edit();
       for (const root of childrenOf(state, id)) {
-        for (const n of subtreeOf(state, root.id)) delete nodes[n.id];
+        for (const n of subtreeOf(state, root.id)) nodes.delete(n.id);
       }
-      return { ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes };
+      return { ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes: nodes.done() };
     }
     case "renamePage": {
       const { id, name } = op.kind.value;
@@ -307,14 +307,14 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // e tre i casi il server rifiuta l'op e non registra nulla, quindi qui la
       // scena resta invariata (stesso oggetto, così i selettori non si svegliano
       // a vuoto).
-      if (componentId === "" || state.components[componentId] || !state.nodes[rootNodeId]) return state;
+      if (componentId === "" || state.components[componentId] || !state.nodes.at(rootNodeId)) return state;
       // Non copia il sottoalbero: lo referenzia. Il master resta vivo in `nodes`,
       // e la propagazione master->istanze è quindi gratis.
       return { ...state, components: { ...state.components, [componentId]: { rootNodeId, name } } };
     }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;
-      const cur = state.nodes[instanceId];
+      const cur = state.nodes.at(instanceId);
       // Nodo inesistente = ErrNodeNotFound; nodo NON-istanza = ErrNotInstanceNode
       // (un override su un rettangolo è un op sul nodo sbagliato, non un campo da
       // riempire); master_node_id vuoto = rifiutato in Go. In tutti i casi scena
@@ -330,7 +330,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (override.fillsPresent || override.textPresent) kept.push(toInstanceOverrideLite(override));
       return {
         ...state,
-        nodes: { ...state.nodes, [instanceId]: { ...cur, instance: { ...cur.instance, overrides: kept } } },
+        nodes: state.nodes.set(instanceId, { ...cur, instance: { ...cur.instance, overrides: kept } }),
       };
     }
     default:

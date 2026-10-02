@@ -88,7 +88,7 @@ describe("makeSetTextOp", () => {
       })),
     );
     scene = applyOp(scene, makeSetTextOp("t1", "dopo"));
-    expect(scene.nodes["t1"].text?.content).toBe("dopo");
+    expect(scene.nodes.at("t1").text?.content).toBe("dopo");
   });
 });
 
@@ -185,12 +185,12 @@ describe("ops feed applyOp", () => {
         }),
       ),
     );
-    expect(scene.nodes["n1"].x).toBe(1);
+    expect(scene.nodes.at("n1").x).toBe(1);
 
     scene = applyOp(scene, makeSetPropsOp("n1", { x: 100, width: 50 }, ["x", "width"]));
-    expect(scene.nodes["n1"]).toMatchObject({ x: 100, y: 2, width: 50, height: 4 });
+    expect(scene.nodes.at("n1")).toMatchObject({ x: 100, y: 2, width: 50, height: 4 });
 
     scene = applyOp(scene, makeDeleteOp("n1"));
-    expect(scene.nodes["n1"]).toBeUndefined();
+    expect(scene.nodes.at("n1")).toBeUndefined();
   });
 });

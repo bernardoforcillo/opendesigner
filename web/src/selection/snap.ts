@@ -310,7 +310,7 @@ export function prepareSnapTargets(targets: readonly Bounds[]): SnapIndex {
 export function snapTargets(scene: SceneState, exclude: readonly string[]): Bounds[] {
   const skip = new Set(exclude);
   const out: Bounds[] = [];
-  for (const n of Object.values(scene.nodes)) {
+  for (const n of [...scene.nodes.values()]) {
     if (!n.visible || skip.has(n.id)) continue;
     out.push(worldAabbOfNode(n));
   }

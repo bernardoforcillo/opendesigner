@@ -1,3 +1,4 @@
+import type { NodeEditor } from "./nodeMap";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { childrenOf } from "./tree";
 import type { NodeLite, SceneState } from "./types";
@@ -30,8 +31,8 @@ export function hasLayout(n: NodeLite | undefined): n is NodeLite & { autoLayout
 // Ridispone i figli di UN frame e, se hug, ne ridimensiona gli assi. Muta
 // `nodes` (una mappa PRIVATA di relayout, già copiata) e ritorna se ha cambiato
 // qualcosa.
-function layoutFrame(scene: SceneState, nodes: Record<string, NodeLite>, id: string, touched?: string[]): boolean {
-  const frame = nodes[id];
+function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?: string[]): boolean {
+  const frame = nodes.get(id);
   if (!hasLayout(frame)) return false;
   const al = frame.autoLayout;
   const vertical = al.direction === "vertical";
@@ -39,7 +40,7 @@ function layoutFrame(scene: SceneState, nodes: Record<string, NodeLite>, id: str
   // Lo stato su cui si calcola è `scene` + le correzioni già scritte in `nodes`:
   // childrenOf legge dalla scena, quindi gli si passa una vista con i nodi
   // aggiornati finora.
-  const view: SceneState = { ...scene, nodes };
+  const view: SceneState = { ...scene, nodes: nodes.view() };
   const kids = childrenOf(view, id).filter(participates);
 
   const padL = al.paddingLeft, padT = al.paddingTop, padR = al.paddingRight, padB = al.paddingBottom;
@@ -84,7 +85,7 @@ function layoutFrame(scene: SceneState, nodes: Record<string, NodeLite>, id: str
 
   let changed = false;
   if (frame.width !== width || frame.height !== height) {
-    nodes[id] = { ...frame, width, height };
+    nodes.set(id, { ...frame, width, height });
     touched?.push(id);
     changed = true;
   }
@@ -95,7 +96,7 @@ function layoutFrame(scene: SceneState, nodes: Record<string, NodeLite>, id: str
     const x = vertical ? cross : pos;
     const y = vertical ? pos : cross;
     if (k.x !== x || k.y !== y) {
-      nodes[k.id] = { ...k, x, y };
+      nodes.set(k.id, { ...k, x, y });
       touched?.push(k.id);
       changed = true;
     }
@@ -109,7 +110,7 @@ function layoutFrame(scene: SceneState, nodes: Record<string, NodeLite>, id: str
 // vecchio parent solo nello stato di prima). Come layoutTargets in Go.
 export function layoutTargets(scene: SceneState, op: Op): string[] {
   const parentOf = (id: string): string[] => {
-    const n = scene.nodes[id];
+    const n = scene.nodes.get(id);
     return n ? [n.parentId] : [];
   };
   const k = op.kind;
@@ -132,7 +133,7 @@ export function relayout(scene: SceneState, ids: readonly string[], touchedOut?:
   const seen = new Set<string>();
   const frames: string[] = [];
   for (const id of ids) {
-    if (id !== "" && !seen.has(id) && hasLayout(scene.nodes[id])) {
+    if (id !== "" && !seen.has(id) && hasLayout(scene.nodes.get(id))) {
       seen.add(id);
       frames.push(id);
     }
@@ -143,12 +144,12 @@ export function relayout(scene: SceneState, ids: readonly string[], touchedOut?:
   // comunque, ma lo si scopre solo risalendo -- e senza frame toccati non c'è
   // niente da risalire.
   if (frames.length === 0) return scene;
-  const nodes: Record<string, NodeLite> = { ...scene.nodes };
-  const limit = Object.keys(nodes).length;
+  const nodes = scene.nodes.edit();
+  const limit = scene.nodes.size;
   for (const id of [...frames]) {
-    let cur: NodeLite | undefined = nodes[id];
+    let cur: NodeLite | undefined = nodes.get(id);
     for (let guard = 0; cur !== undefined && guard <= limit; guard++) {
-      const p: NodeLite | undefined = nodes[cur.parentId];
+      const p: NodeLite | undefined = nodes.get(cur.parentId);
       if (p === undefined) break;
       if (hasLayout(p) && !seen.has(p.id)) {
         seen.add(p.id);
@@ -159,12 +160,12 @@ export function relayout(scene: SceneState, ids: readonly string[], touchedOut?:
   }
   const depth = (id: string): number => {
     let d = 0;
-    for (let cur: NodeLite | undefined = nodes[id]; cur !== undefined && d <= limit; cur = nodes[cur.parentId]) d++;
+    for (let cur: NodeLite | undefined = nodes.get(id); cur !== undefined && d <= limit; cur = nodes.get(cur.parentId)) d++;
     return d;
   };
   frames.sort((a, b) => depth(b) - depth(a) || (a < b ? -1 : a > b ? 1 : 0));
 
   let changed = false;
   for (const id of frames) if (layoutFrame(scene, nodes, id, touchedOut)) changed = true;
-  return changed ? { ...scene, nodes } : scene;
+  return changed ? { ...scene, nodes: nodes.done() } : scene;
 }
