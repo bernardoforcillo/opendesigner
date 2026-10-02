@@ -19,11 +19,11 @@ import type { NodeLite, SceneState } from "./types";
 
 const LAYOUT_KINDS: ReadonlySet<NodeLite["kind"]> = new Set(["rect", "ellipse", "text", "image", "vector", "frame"]);
 
-function participates(n: NodeLite): boolean {
+export function participates(n: NodeLite): boolean {
   return n.visible && LAYOUT_KINDS.has(n.kind);
 }
 
-function hasLayout(n: NodeLite | undefined): n is NodeLite & { autoLayout: NonNullable<NodeLite["autoLayout"]> } {
+export function hasLayout(n: NodeLite | undefined): n is NodeLite & { autoLayout: NonNullable<NodeLite["autoLayout"]> } {
   return n !== undefined && n.kind === "frame" && n.autoLayout !== undefined;
 }
 

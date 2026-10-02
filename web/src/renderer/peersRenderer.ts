@@ -1,6 +1,6 @@
 import type { Camera } from "../canvas/camera";
 import { worldToScreen } from "../canvas/camera";
-import { worldBoundsToScreen } from "../canvas/geometry";
+import { type Bounds, worldBoundsToScreen } from "../canvas/geometry";
 import type { SceneState } from "../store/types";
 import { peerColor, type Peers } from "../store/presence";
 import { selectionWorldBounds } from "./overlayRenderer";
@@ -81,4 +81,38 @@ export function drawPeers(
     drawLabel(ctx, p.nickname, 12, 18, color);
     ctx.restore();
   }
+}
+
+const DROP_COLOR = "#2f6fed";
+
+/**
+ * L'anteprima di un riordino in un auto layout: la linea d'inserimento e il
+ * contorno tratteggiato del nodo che segue il puntatore. Va chiamata DOPO
+ * drawOverlay (che azzera il canvas); lo spessore della linea è in pixel
+ * schermo, come le maniglie, e non cresce con lo zoom.
+ */
+export function drawLayoutDrop(
+  ctx: CanvasRenderingContext2D,
+  cam: Camera,
+  drop: { indicator: Bounds; ghost: Bounds | null },
+): void {
+  const dpr = typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  if (drop.ghost) {
+    const g = worldBoundsToScreen(drop.ghost, cam);
+    ctx.save();
+    ctx.setLineDash([4, 3]);
+    ctx.lineWidth = 1;
+    ctx.strokeStyle = DROP_COLOR;
+    ctx.fillStyle = "rgba(47, 111, 237, 0.08)";
+    ctx.fillRect(g.x, g.y, g.width, g.height);
+    ctx.strokeRect(g.x + 0.5, g.y + 0.5, g.width, g.height);
+    ctx.restore();
+  }
+  const b = worldBoundsToScreen(drop.indicator, cam);
+  // La linea è sottile lungo UN asse: la si ingrossa a 2px schermo, centrata.
+  const thin = b.width < b.height;
+  ctx.fillStyle = DROP_COLOR;
+  if (thin) ctx.fillRect(b.x + b.width / 2 - 1, b.y, 2, b.height);
+  else ctx.fillRect(b.x, b.y + b.height / 2 - 1, b.width, 2);
 }

@@ -32,6 +32,7 @@ import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsO
 import { subtreeOf, topmostOf } from "../store/tree";
 import { groupOps, ungroupOps } from "./grouping";
 import { wrapSelectionInFrame } from "./wrapFrame";
+import { computeLayoutDrop, layoutDropOps, reorderableParent, type LayoutDrop } from "./layoutDrop";
 import { makeCreateComponentOp, makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp, uuid } from "./ops";
 import type { SceneState } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -241,6 +242,12 @@ export function createSelectTool(): Tool {
   // ricalcolarli 60 volte al secondo vorrebbe dire rileggere tutta la scena.
   let dragBox: Bounds | null = null;
   let dragTargets: Bounds[] | null = null;
+  // RIORDINO in un auto layout (tools/layoutDrop.ts). Deciso al primo move vero:
+  // se i nodi trascinati sono figli di un frame con auto layout il gesto NON
+  // scrive x/y (il server li ricalcolerebbe e il nodo tornerebbe al suo posto),
+  // sceglie invece dove metterli nella fila. `box` è il riquadro di partenza
+  // della selezione, da cui si disegna il contorno che segue il puntatore.
+  let reorder: { originId: string; ids: string[]; box: Bounds | null } | null = null;
 
   // --- resize con le maniglie -------------------------------------------------
   // Stessa struttura del drag di spostamento: ancora MONDO + stato iniziale, e
@@ -330,7 +337,22 @@ export function createSelectTool(): Tool {
     dragStarted = false;
     dragBox = null;
     dragTargets = null;
+    reorder = null;
+    useScene.getState().setLayoutDrop(null);
     clearGuides();
+  }
+
+  // Dove cadrebbe il riordino col puntatore in `e`, e il suo aspetto sull'overlay.
+  function reorderStep(e: PointerEvent, ctx: ToolContext): LayoutDrop | null {
+    const scene = ctx.getScene();
+    if (!reorder || !scene || !dragAnchor) return null;
+    const p = ctx.toWorld(e);
+    const drop = computeLayoutDrop(scene, reorder.ids, reorder.originId, p);
+    const ghost = reorder.box
+      ? { ...reorder.box, x: reorder.box.x + (p.x - dragAnchor.x), y: reorder.box.y + (p.y - dragAnchor.y) }
+      : null;
+    useScene.getState().setLayoutDrop(drop ? { indicator: drop.indicator, ghost } : null);
+    return drop;
   }
 
   function resetResize() {
@@ -776,6 +798,19 @@ export function createSelectTool(): Tool {
       if (!dragStarted) {
         dragStarted = true;
         useScene.getState().beginGesture();
+        const scene = ctx.getScene();
+        const ids = Object.keys(dragStart);
+        if (scene && reorderableParent(scene, ids) !== null) {
+          reorder = {
+            originId: reorderableParent(scene, ids) as string,
+            ids,
+            box: selectionWorldBounds(scene, ids),
+          };
+        }
+      }
+      if (reorder) {
+        reorderStep(e, ctx);
+        return;
       }
       const step = dragOps(e, ctx, lastMods);
       useScene.getState().setSnapGuides(step.guides);
@@ -833,6 +868,17 @@ export function createSelectTool(): Tool {
       if (!dragAnchor || !dragStart) return;
       // Gli op finali portano la posizione SCATTATA, la stessa dell'ultima
       // anteprima: lo snap corregge il delta, non aggiunge un secondo op.
+      if (dragStarted && reorder) {
+        const scene = ctx.getScene();
+        const drop = reorderStep(e, ctx);
+        const ops = scene && drop ? layoutDropOps(scene, reorder.ids, drop) : [];
+        // Nessun cambiamento (stessa posizione nella fila, o niente su cui
+        // cadere): il gesto si annulla, senza una voce di undo che non fa nulla.
+        if (ops.length > 0) useScene.getState().endGesture(ops);
+        else useScene.getState().cancelGesture();
+        resetDrag();
+        return;
+      }
       if (dragStarted) useScene.getState().endGesture(dragOps(e, ctx, lastMods).ops);
       resetDrag();
     },

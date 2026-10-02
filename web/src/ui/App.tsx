@@ -5,7 +5,7 @@ import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
 import { usePresence, loadNickname } from "../store/presence";
-import { drawPeers } from "../renderer/peersRenderer";
+import { drawLayoutDrop, drawPeers } from "../renderer/peersRenderer";
 import { PresenceBar } from "./PresenceBar";
 import { useScene } from "../store/store";
 import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
@@ -257,6 +257,8 @@ export function App() {
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
           }
+          const layoutDrop = useScene.getState().layoutDrop;
+          if (layoutDrop) drawLayoutDrop(octx, camera, layoutDrop);
         }
       }
       raf = requestAnimationFrame(tick);

@@ -28,6 +28,13 @@ export interface OpSink {
 //                   in poi non si riprende da soli, serve un reload.
 // La differenza fra "reconnecting" e "error" è l'unica che l'utente deve
 // davvero capire: nel primo caso può aspettare, nel secondo no.
+// L'anteprima di un riordino in un auto layout (vedi tools/layoutDrop.ts), in
+// coordinate MONDO: la linea d'inserimento e il contorno del nodo trascinato.
+export interface LayoutDropPreview {
+  indicator: Bounds;
+  ghost: Bounds | null;
+}
+
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error";
 
 // Un op SUBMITTATO ma non ancora tornato indietro dal server. La chiave è
@@ -986,6 +993,10 @@ interface SceneStore {
   // è già dentro gli op che il tool applica -- ma vive nello store come il
   // marquee, e per la stessa ragione: il ciclo di disegno legge da lì.
   snapGuides: SnapGuide[];
+  // L'anteprima di un RIORDINO in un auto layout (tools/layoutDrop.ts): la linea
+  // dove il nodo cadrebbe e il suo contorno che segue il puntatore. Stato di
+  // VISTA come snapGuides: vive quanto il gesto e non entra nel documento.
+  layoutDrop: LayoutDropPreview | null;
   // Il path che il pen tool sta disegnando, in coordinate MONDO (vedi
   // store/vectorGeometry.ts::PenPreview). null quando non si sta disegnando.
   //
@@ -1052,6 +1063,7 @@ interface SceneStore {
   clearSelection: () => void;
   setMarquee: (b: Bounds | null) => void;
   setSnapGuides: (g: SnapGuide[]) => void;
+  setLayoutDrop: (d: LayoutDropPreview | null) => void;
   setPenPreview: (p: PenPreview | null) => void;
   // Cambia la pagina visualizzata. AZZERA la selezione (i nodi di un'altra
   // pagina non restano selezionati) e NON è una voce di undo -- è stato di
@@ -1117,6 +1129,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   selection: [],
   marquee: null,
   snapGuides: [],
+  layoutDrop: null,
   penPreview: null,
   sync: null,
   gesture: null,
@@ -1572,6 +1585,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // ogni pixel anche quando nessuno scatto è attivo.
   setSnapGuides: (g) =>
     set((st) => (g.length === 0 && st.snapGuides.length === 0 ? st : { snapGuides: g })),
+  setLayoutDrop: (d) => set((st) => (d === null && st.layoutDrop === null ? st : { layoutDrop: d })),
   setPenPreview: (p) => set({ penPreview: p }),
 
   // Cambia la pagina visualizzata. NON è un op e NON è una voce di undo: è

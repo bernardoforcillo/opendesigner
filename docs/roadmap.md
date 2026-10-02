@@ -13,7 +13,8 @@ Legenda: [x] fatto · [ ] da fare
 - [x] Effetti: ombra esterna e sfocatura del livello (canvas, SVG, pannello, MCP, copia/incolla; ne disegna una per tipo per nodo)
 - [ ] Effetti: più ombre per nodo, ombra interna, sfocatura di sfondo, blend mode
 - [x] Auto layout: direzione, spazio, padding, allineamenti, hug; calcolato dal server (Shift+A avvolge la selezione, strumento Frame, pannello, MCP `create_frame`/`set_auto_layout`)
-- [ ] Auto layout: figli che riempiono lo spazio (fill), wrap su più righe, riordino trascinando, gruppi e istanze come figli
+- [x] Auto layout: riordino trascinando i figli (anche verso un altro auto layout), con linea d'inserimento e contorno; un solo passo di undo
+- [ ] Auto layout: figli che riempiono lo spazio (fill), wrap su più righe, trascinare un figlio FUORI dal frame, gruppi e istanze come figli
 - [ ] Constraints e resize responsivo
 - [ ] Varianti e proprietà dei componenti, librerie condivise
 - [ ] Variabili / design token con modalità
