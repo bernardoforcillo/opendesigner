@@ -73,6 +73,11 @@ export const MASK_PATHS = [
   // order_key: sul filo JSON viaggia come "cornerRadius" e torna indietro
   // così com'è -- scriverlo camelCase qui farebbe THROW in serializzazione.
   "corner_radius",
+  // Auto layout di un FRAME. Come corner_radius sta DENTRO il oneof `shape`
+  // (FrameNode.auto_layout) e vale solo su un frame: su un altro nodo Go
+  // risponde ErrNotFrameNode e rifiuta l'op intero. Scrivere un patch senza
+  // auto layout lo SPEGNE. Multiparola: sul filo JSON viaggia come "autoLayout".
+  "auto_layout",
 ] as const;
 
 // L'UNICO tipo che un path di mask può avere ai punti di costruzione di un op

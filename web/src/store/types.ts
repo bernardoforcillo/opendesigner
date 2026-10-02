@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
-import { NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect,
+  Document, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -37,6 +37,20 @@ export type StrokeAlignLite = "center" | "inside" | "outside";
 // un peso non positivo non produce né pixel né sporgenza dei bounds (vedi
 // canvas/geometry.ts::strokeOutsetOf).
 export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlignLite; }
+
+// Auto layout di un frame (vedi AutoLayout nel proto e store/layout.ts). Come
+// per StrokeAlignLite, gli enum sono stringhe: UNSPECIFIED collassa su
+// "horizontal" / "start", che è ciò che il calcolo farebbe comunque.
+export type LayoutDirectionLite = "horizontal" | "vertical";
+export type LayoutAlignLite = "start" | "center" | "end" | "space-between";
+export interface AutoLayoutLite {
+  direction: LayoutDirectionLite;
+  spacing: number;
+  paddingLeft: number; paddingTop: number; paddingRight: number; paddingBottom: number;
+  mainAlign: LayoutAlignLite;
+  crossAlign: LayoutAlignLite;
+  hugWidth: boolean; hugHeight: boolean;
+}
 
 // Un effetto del nodo. Ombra e sfocatura sono in coordinate MONDO, come il peso
 // di un tratto: si ingrandiscono con lo zoom. Il renderer disegna la PRIMA
@@ -163,6 +177,9 @@ export interface NodeLite {
   // come il default proto3): il ritaglio vale per il disegno, per l'hit-test e
   // per la banda elastica insieme -- ciò che non si vede non si clicca.
   clipsContent: boolean;
+  // Presente se e solo se kind === "frame" E il frame dispone i figli. Assente
+  // (non un valore "spento") quando non c'è auto layout.
+  autoLayout?: AutoLayoutLite;
   // Presente se e solo se kind === "text": il contenuto vive DENTRO il oneof
   // `shape` del proto, quindi è per costruzione esclusivo con rect/ellipse.
   text?: TextLite;
@@ -327,6 +344,36 @@ export function toPbEffects(effects: readonly EffectLite[]) {
   );
 }
 
+const LAYOUT_ALIGN_TO_LITE: Partial<Record<LayoutAlign, LayoutAlignLite>> = {
+  [LayoutAlign.START]: "start", [LayoutAlign.CENTER]: "center", [LayoutAlign.END]: "end",
+  [LayoutAlign.SPACE_BETWEEN]: "space-between",
+};
+const LAYOUT_ALIGN_TO_PB: Record<LayoutAlignLite, LayoutAlign> = {
+  start: LayoutAlign.START, center: LayoutAlign.CENTER, end: LayoutAlign.END,
+  "space-between": LayoutAlign.SPACE_BETWEEN,
+};
+
+export function toAutoLayoutLite(a: PbAutoLayout): AutoLayoutLite {
+  return {
+    direction: a.direction === LayoutDirection.VERTICAL ? "vertical" : "horizontal",
+    spacing: a.spacing,
+    paddingLeft: a.paddingLeft, paddingTop: a.paddingTop, paddingRight: a.paddingRight, paddingBottom: a.paddingBottom,
+    mainAlign: LAYOUT_ALIGN_TO_LITE[a.mainAlign] ?? "start",
+    crossAlign: LAYOUT_ALIGN_TO_LITE[a.crossAlign] ?? "start",
+    hugWidth: a.hugWidth, hugHeight: a.hugHeight,
+  };
+}
+
+export function toPbAutoLayout(a: AutoLayoutLite) {
+  return {
+    direction: a.direction === "vertical" ? LayoutDirection.VERTICAL : LayoutDirection.HORIZONTAL,
+    spacing: a.spacing,
+    paddingLeft: a.paddingLeft, paddingTop: a.paddingTop, paddingRight: a.paddingRight, paddingBottom: a.paddingBottom,
+    mainAlign: LAYOUT_ALIGN_TO_PB[a.mainAlign], crossAlign: LAYOUT_ALIGN_TO_PB[a.crossAlign],
+    hugWidth: a.hugWidth, hugHeight: a.hugHeight,
+  };
+}
+
 export function toEffectLite(e: PbEffect): EffectLite {
   const k = e.kind;
   if (k.case === "dropShadow") {
@@ -443,6 +490,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     kind,
     cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
     clipsContent: n.shape.case === "frame" ? n.shape.value.clipsContent : false,
+    ...(n.shape.case === "frame" && n.shape.value.autoLayout ? { autoLayout: toAutoLayoutLite(n.shape.value.autoLayout) } : {}),
     ...(n.shape.case === "text" ? { text: toTextLite(n.shape.value) } : {}),
     ...(n.shape.case === "image" ? { image: { assetHash: n.shape.value.assetHash } } : {}),
     ...(n.shape.case === "vector" ? { vector: toVectorLite(n.shape.value) } : {}),
@@ -512,7 +560,7 @@ export function toPbNode(n: NodeLite): PbNode {
       // ricostruito senza `clipsContent` smetterebbe di ritagliare i figli --
       // un undo che cambia ciò che si vede.
       : n.kind === "frame"
-      ? { case: "frame" as const, value: { clipsContent: n.clipsContent } }
+      ? { case: "frame" as const, value: { clipsContent: n.clipsContent, ...(n.autoLayout ? { autoLayout: toPbAutoLayout(n.autoLayout) } : {}) } }
       : n.kind === "text"
         // `text` mancante su un nodo di testo è uno stato che toNodeLite non
         // produce mai (i due si muovono insieme). Il fallback a testo vuoto

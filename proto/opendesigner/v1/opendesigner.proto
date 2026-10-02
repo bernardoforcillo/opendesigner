@@ -99,6 +99,43 @@ message GroupNode {}
 //   - il click NON viene catturato come da un gruppo: i figli di un frame si
 //     selezionano direttamente, che è la convenzione degli artboard
 //     (store/groups.ts::selectionTargetOf).
+// Auto layout: il frame DISPONE da sé i propri figli in fila, e il risultato
+// (x/y dei figli, e width/height del frame se "hug") è scritto nel documento
+// come campi normali dal core, dopo ogni op che lo tocca. I client non
+// calcolano niente di autoritativo: leggono posizioni già a posto, che è ciò
+// che rende il documento identico per il browser e per gli agenti MCP.
+//
+// UNSPECIFIED collassa su HORIZONTAL (direzione) e START (allineamenti), come
+// StrokeAlign e TextAlign: lo zero di proto3 non si distingue da "assente".
+enum LayoutDirection {
+  LAYOUT_DIRECTION_UNSPECIFIED = 0;
+  LAYOUT_DIRECTION_HORIZONTAL = 1;
+  LAYOUT_DIRECTION_VERTICAL = 2;
+}
+enum LayoutAlign {
+  LAYOUT_ALIGN_UNSPECIFIED = 0;
+  LAYOUT_ALIGN_START = 1;
+  LAYOUT_ALIGN_CENTER = 2;
+  LAYOUT_ALIGN_END = 3;
+  // Solo per main_align: distribuisce lo spazio libero fra i figli. Sull'asse
+  // trasversale vale START.
+  LAYOUT_ALIGN_SPACE_BETWEEN = 4;
+}
+message AutoLayout {
+  LayoutDirection direction = 1;
+  double spacing = 2;      // spazio fra due figli consecutivi, >= 0
+  double padding_left = 3;
+  double padding_top = 4;
+  double padding_right = 5;
+  double padding_bottom = 6;
+  LayoutAlign main_align = 7;   // lungo la direzione
+  LayoutAlign cross_align = 8;  // attraverso la direzione
+  // "Hug": quell'asse del frame si adatta al contenuto invece di tenere la
+  // misura scritta in width/height. Indipendenti dalla direzione.
+  bool hug_width = 9;
+  bool hug_height = 10;
+}
+
 message FrameNode {
   // Ritaglia i figli al box del frame. Non è un dettaglio di rendering: ciò
   // che il ritaglio nasconde non è nemmeno CLICCABILE né selezionabile con la
@@ -111,6 +148,9 @@ message FrameNode {
   // dando una cornice esplicita), e il default proto3 (false) è quindi un
   // valore legittimo, non "non impostato".
   bool clips_content = 1;
+  // Presente = il frame dispone i figli (vedi AutoLayout). Assente = i figli
+  // stanno dove li mettono i loro x/y. Si scrive con la mask "auto_layout".
+  AutoLayout auto_layout = 2;
 }
 
 enum TextAlign {

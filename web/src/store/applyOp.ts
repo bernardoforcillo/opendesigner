@@ -3,6 +3,7 @@ import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
+import { layoutTargets, relayout } from "./layout";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Un SetProperties SENZA patch NON è un no-op. Go legge il patch con i getter
@@ -13,7 +14,19 @@ import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 const NIL_PATCH: PbNode = create(NodeSchema, {});
 
 // applyOp è puro: NON muta state, ritorna un nuovo oggetto. Parità con core.Apply (Go).
+//
+// Dopo l'op ridispone i frame con auto layout che può aver toccato, come fa
+// core.Apply: i frame interessati si leggono sia PRIMA dell'op (il vecchio
+// parent di un nodo cancellato o spostato) sia DOPO (il nuovo). Vedi
+// store/layout.ts.
 export function applyOp(state: SceneState, op: Op): SceneState {
+  const before = layoutTargets(state, op);
+  const next = applyOpRaw(state, op);
+  if (next === state) return state;
+  return relayout(next, [...before, ...layoutTargets(next, op)]);
+}
+
+function applyOpRaw(state: SceneState, op: Op): SceneState {
   switch (op.kind.case) {
     case "createNode": {
       const pb = op.kind.value.node;
@@ -78,6 +91,9 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // rispondeva ErrNotRectNode: la divergenza client/documento autorevole che
       // la whitelist esiste per impedire, solo dall'altro lato del filo.
       if (cur.kind !== "rect" && paths.includes("corner_radius")) return state;
+      // Stessa validazione preventiva per auto_layout, che vale solo su un
+      // frame (ErrNotFrameNode in Go): op rifiutato in blocco.
+      if (cur.kind !== "frame" && paths.includes("auto_layout")) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -115,6 +131,15 @@ export function applyOp(state: SceneState, op: Op): SceneState {
           // .GetCornerRadius()` in Go, senza una seconda regola da tenere
           // allineata.
           case "corner_radius": next.cornerRadius = toNodeLite(p).cornerRadius; break;
+          // Il valore viene dal patch NIDIFICATO nella forma frame, passando da
+          // toNodeLite come per corner_radius. Un patch senza frame (o senza
+          // auto_layout) lo spegne -- come il getter nil-safe di Go -- e il campo
+          // sparisce dal nodo invece di restare "spento".
+          case "auto_layout": {
+            const al = toNodeLite(p).autoLayout;
+            if (al) next.autoLayout = al; else delete next.autoLayout;
+            break;
+          }
           default: {
             // Guardia a compile-time: se MASK_PATHS guadagna un membro senza
             // un case qui sopra, questa riga smette di compilare invece di

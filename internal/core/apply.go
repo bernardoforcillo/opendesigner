@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -14,6 +15,10 @@ var (
 	ErrNodeNotFound = errors.New("core: node not found")
 	ErrNotTextNode  = errors.New("core: not a text node")
 	ErrNotRectNode  = errors.New("core: not a rect node")
+	// ErrNotFrameNode: auto_layout è un campo del FrameNode, quindi scriverlo su
+	// un nodo che non è un frame è un op sul nodo sbagliato (stesso precedente di
+	// ErrNotRectNode per corner_radius).
+	ErrNotFrameNode = errors.New("core: not a frame node")
 	// ErrNotVectorNode: stesso precedente di ErrNotTextNode -- il oneof `shape`
 	// è la NATURA del nodo, quindi un SetVectorPath su un rettangolo è un op sul
 	// nodo sbagliato, non un campo mancante da riempire.
@@ -40,7 +45,22 @@ func NewDocument(id, name string) *opendesignerv1.Document {
 }
 
 // Apply muta doc applicando op. Ritorna errore se l'op viola un'invariante.
+//
+// Dopo un op riuscito ridispone i frame con auto layout che l'op può aver
+// toccato (vedi layout.go): il risultato fa parte del documento, non è uno
+// stato derivato da ricalcolare in lettura. I frame interessati si leggono sia
+// PRIMA dell'op (il vecchio parent di un nodo cancellato o spostato) sia DOPO
+// (il nuovo).
 func Apply(doc *opendesignerv1.Document, op *opendesignerv1.Op) error {
+	before := layoutTargets(doc, op)
+	if err := applyOp(doc, op); err != nil {
+		return err
+	}
+	relayout(doc, append(before, layoutTargets(doc, op)...))
+	return nil
+}
+
+func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op) error {
 	switch k := op.GetKind().(type) {
 	case *opendesignerv1.Op_CreateNode:
 		return applyCreate(doc, k.CreateNode)
@@ -307,6 +327,13 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			default:
 				return fmt.Errorf("%w: %s", ErrNotRectNode, s.GetId())
 			}
+		case "auto_layout":
+			// Come corner_radius, un campo DENTRO il oneof `shape`: vale solo su
+			// un frame. L'op intero viene rifiutato, quindi una mask mista
+			// (es. "x,auto_layout") su un rettangolo non sposta nemmeno la x.
+			if _, ok := n.GetShape().(*opendesignerv1.Node_Frame); !ok {
+				return fmt.Errorf("%w: %s", ErrNotFrameNode, s.GetId())
+			}
 		default:
 			return fmt.Errorf("core: unsupported mask path %q", path)
 		}
@@ -359,6 +386,12 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			// della mask -- sul filo JSON viaggia come "orderKey" (vedi
 			// web/src/store/maskPaths.ts).
 			n.OrderKey = p.GetOrderKey()
+		case "auto_layout":
+			// Il giro di validazione ha già escluso ogni nodo che non è un
+			// frame. Il valore viene dal patch NIDIFICATO nella forma frame; un
+			// patch senza frame (o senza auto_layout) lo SPEGNE -- il getter
+			// nil-safe, come per le liste con mask "fills".
+			n.GetFrame().AutoLayout = proto.Clone(p.GetFrame().GetAutoLayout()).(*opendesignerv1.AutoLayout)
 		case "corner_radius":
 			// Il giro di validazione ha già escluso ellisse e testo: qui resta
 			// un rettangolo, esplicito o implicito. Nel secondo caso (shape

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, StrokeAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { OpSchema, NodeSchema, StrokeAlign, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, type NodeLite } from "./types";
@@ -28,6 +28,20 @@ function createRectOp(id: string): Op {
 function baseScene() {
   return applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1"));
 }
+
+// auto_layout vale solo su un FRAME: la sonda di quel path ha bisogno di n1
+// frame invece che rettangolo, tutte le altre restano sul rettangolo.
+function frameScene() {
+  const node = create(NodeSchema, {
+    id: "n1", parentId: "page1", orderKey: "a0", name: "Frame", visible: true, opacity: 1,
+    x: 0, y: 0, width: 100, height: 80,
+    shape: { case: "frame", value: { clipsContent: true } },
+  });
+  return applyOp(emptyScene("doc1", "Untitled"), create(OpSchema, {
+    opId: "op-frame", docId: "doc1", kind: { case: "createNode", value: { node } },
+  }));
+}
+const sceneFor = (path: string) => (path === "auto_layout" ? frameScene() : baseScene());
 
 function setPropsOp(paths: readonly string[], patch: MessageInitShape<typeof NodeSchema> = {}): Op {
   return create(OpSchema, {
@@ -215,6 +229,28 @@ const PROBE: Probe = {
     ],
   },
   order_key: { patch: { orderKey: "a5" }, expected: "a5" },
+  // Auto layout: annidato nella forma frame, e vale solo su un frame (sceneFor).
+  // Senza hug: con hug il frame cambierebbe misura e l'uguaglianza esatta con
+  // `before` più il solo campo scritto non reggerebbe.
+  auto_layout: {
+    patch: {
+      shape: {
+        case: "frame",
+        value: {
+          clipsContent: false,
+          autoLayout: {
+            direction: LayoutDirection.VERTICAL, spacing: 8,
+            paddingLeft: 1, paddingTop: 2, paddingRight: 3, paddingBottom: 4,
+            mainAlign: LayoutAlign.CENTER, crossAlign: LayoutAlign.END,
+          },
+        },
+      },
+    },
+    expected: {
+      direction: "vertical", spacing: 8, paddingLeft: 1, paddingTop: 2, paddingRight: 3, paddingBottom: 4,
+      mainAlign: "center", crossAlign: "end", hugWidth: false, hugHeight: false,
+    },
+  },
   // L'unica sonda il cui patch è ANNIDATO: corner_radius sta dentro RectNode,
   // cioè dentro il oneof `shape`, non fra i campi di primo livello del Node.
   // baseScene() crea n1 come rettangolo, quindi la forma combacia (su
@@ -245,8 +281,8 @@ describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", ()
 
       // (c) e dopo quel giro applyOp lo applica DAVVERO, scrivendo quel campo
       // e nessun altro (un `case "y": next.x = ...` fallirebbe qui).
-      const before = baseScene().nodes["n1"];
-      const after = applyOp(baseScene(), wired).nodes["n1"];
+      const before = sceneFor(path).nodes["n1"];
+      const after = applyOp(sceneFor(path), wired).nodes["n1"];
       expect(after).toEqual({ ...before, [camelOf(path)]: PROBE[path].expected });
     },
   );
