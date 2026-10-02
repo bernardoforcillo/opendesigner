@@ -52,18 +52,20 @@ func autoLayoutOf(n *opendesignerv1.Node) *opendesignerv1.AutoLayout {
 
 // layoutFrame ridispone i figli di UN frame e, se hug, ne ridimensiona gli assi.
 // Non fa nulla per un nodo che non è un frame con auto layout.
-func layoutFrame(doc *opendesignerv1.Document, id string) {
+func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 	frame := doc.GetNodes()[id]
 	al := autoLayoutOf(frame)
 	if al == nil {
 		return
 	}
+	frame = cow.mut(doc, id)
+	al = autoLayoutOf(frame)
 	vertical := al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL
 
 	var kids []*opendesignerv1.Node
 	for _, c := range ChildrenOf(doc, id) {
 		if participates(c) {
-			kids = append(kids, c)
+			kids = append(kids, cow.mut(doc, c.GetId()))
 		}
 	}
 
@@ -188,7 +190,7 @@ func layoutTargets(doc *opendesignerv1.Document, op *opendesignerv1.Op) []string
 //
 // Ordine: dal PIÙ PROFONDO. Un frame hug dentro un altro deve avere la misura
 // giusta PRIMA che il contenitore la legga.
-func relayout(doc *opendesignerv1.Document, ids []string) {
+func relayout(doc *opendesignerv1.Document, ids []string, cow *Shared) {
 	seen := map[string]bool{}
 	depth := func(id string) int {
 		d := 0
@@ -227,6 +229,6 @@ func relayout(doc *opendesignerv1.Document, ids []string) {
 		return frames[i] < frames[j]
 	})
 	for _, id := range frames {
-		layoutFrame(doc, id)
+		layoutFrame(doc, id, cow)
 	}
 }

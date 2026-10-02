@@ -222,8 +222,13 @@ func (h *Hub) Submit(clientID string, op *opendesignerv1.Op) (*opendesignerv1.Op
 	// the caller's own op would leave h.doc aliasing caller-owned objects
 	// post-commit, contradicting the promise that the caller is free to
 	// reuse or mutate op once Submit returns.
-	next := proto.Clone(base).(*opendesignerv1.Document)
-	if err := core.Apply(next, proto.Clone(op).(*opendesignerv1.Op)); err != nil {
+	//
+	// Il clone è COPY-ON-WRITE: la mappa dei nodi si copia per puntatori
+	// (O(N) ma economico) e solo i nodi che l'op scrive vengono clonati davvero
+	// (core.ApplyShared). Il clone profondo dell'intero documento era l'85% di
+	// un Submit a 5.000 nodi.
+	next := cowClone(base)
+	if err := core.ApplyShared(next, proto.Clone(op).(*opendesignerv1.Op), core.NewShared()); err != nil {
 		return nil, err
 	}
 
@@ -521,4 +526,28 @@ func (h *Hub) Snapshot() (*opendesignerv1.Document, uint64) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return proto.Clone(h.doc).(*opendesignerv1.Document), h.seq
+}
+
+// cowClone copia un documento condividendo i NODI con l'originale: pagine e
+// componenti (pochi) si clonano a fondo, la mappa dei nodi si copia per
+// puntatori. Chi lo scrive deve passare per core.ApplyShared, che clona un nodo
+// prima di modificarlo; nessun nodo dell'originale viene mai mutato.
+func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
+	next := &opendesignerv1.Document{
+		Id: d.GetId(), Name: d.GetName(), SchemaVersion: d.GetSchemaVersion(),
+		Nodes: make(map[string]*opendesignerv1.Node, len(d.GetNodes())),
+	}
+	for _, p := range d.GetPages() {
+		next.Pages = append(next.Pages, proto.Clone(p).(*opendesignerv1.Page))
+	}
+	for k, n := range d.GetNodes() {
+		next.Nodes[k] = n
+	}
+	if len(d.GetComponents()) > 0 {
+		next.Components = make(map[string]*opendesignerv1.Component, len(d.GetComponents()))
+		for k, c := range d.GetComponents() {
+			next.Components[k] = proto.Clone(c).(*opendesignerv1.Component)
+		}
+	}
+	return next
 }

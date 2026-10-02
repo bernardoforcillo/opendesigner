@@ -52,28 +52,59 @@ func NewDocument(id, name string) *opendesignerv1.Document {
 // PRIMA dell'op (il vecchio parent di un nodo cancellato o spostato) sia DOPO
 // (il nuovo).
 func Apply(doc *opendesignerv1.Document, op *opendesignerv1.Op) error {
+	return ApplyShared(doc, op, nil)
+}
+
+// Shared permette ad Apply di lavorare su un documento che CONDIVIDE i nodi con
+// un altro (una copia superficiale della mappa): un nodo non ancora "posseduto"
+// viene clonato prima della prima scrittura, così l'altro documento non vede mai
+// la mutazione. Costa quanto i nodi toccati dall'op, non quanto il documento:
+// il server non clona più tutto a ogni op.
+type Shared struct{ owned map[string]struct{} }
+
+func NewShared() *Shared { return &Shared{owned: map[string]struct{}{}} }
+
+// mut ritorna il nodo `id` pronto per essere scritto. Con un *Shared nil (Apply
+// semplice) ogni nodo è già del documento e si scrive in place.
+func (c *Shared) mut(doc *opendesignerv1.Document, id string) *opendesignerv1.Node {
+	n := doc.Nodes[id]
+	if c == nil || n == nil {
+		return n
+	}
+	if _, ok := c.owned[id]; ok {
+		return n
+	}
+	n = proto.Clone(n).(*opendesignerv1.Node)
+	doc.Nodes[id] = n
+	c.owned[id] = struct{}{}
+	return n
+}
+
+// ApplyShared è Apply su un documento le cui voci di `Nodes` possono essere
+// condivise (vedi Shared). Con cow nil è identico ad Apply.
+func ApplyShared(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) error {
 	before := layoutTargets(doc, op)
-	if err := applyOp(doc, op); err != nil {
+	if err := applyOp(doc, op, cow); err != nil {
 		return err
 	}
-	relayout(doc, append(before, layoutTargets(doc, op)...))
+	relayout(doc, append(before, layoutTargets(doc, op)...), cow)
 	return nil
 }
 
-func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op) error {
+func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) error {
 	switch k := op.GetKind().(type) {
 	case *opendesignerv1.Op_CreateNode:
-		return applyCreate(doc, k.CreateNode)
+		return applyCreate(doc, k.CreateNode, cow)
 	case *opendesignerv1.Op_SetProps:
-		return applySetProps(doc, k.SetProps)
+		return applySetProps(doc, k.SetProps, cow)
 	case *opendesignerv1.Op_DeleteNode:
 		return applyDelete(doc, k.DeleteNode)
 	case *opendesignerv1.Op_SetText:
-		return applySetText(doc, k.SetText)
+		return applySetText(doc, k.SetText, cow)
 	case *opendesignerv1.Op_SetVectorPath:
-		return applySetVectorPath(doc, k.SetVectorPath)
+		return applySetVectorPath(doc, k.SetVectorPath, cow)
 	case *opendesignerv1.Op_ReparentNode:
-		return applyReparent(doc, k.ReparentNode)
+		return applyReparent(doc, k.ReparentNode, cow)
 	case *opendesignerv1.Op_CreatePage:
 		return applyCreatePage(doc, k.CreatePage)
 	case *opendesignerv1.Op_DeletePage:
@@ -83,13 +114,13 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op) error {
 	case *opendesignerv1.Op_CreateComponent:
 		return applyCreateComponent(doc, k.CreateComponent)
 	case *opendesignerv1.Op_SetInstanceOverride:
-		return applySetInstanceOverride(doc, k.SetInstanceOverride)
+		return applySetInstanceOverride(doc, k.SetInstanceOverride, cow)
 	default:
 		return fmt.Errorf("core: unknown op kind %T", op.GetKind())
 	}
 }
 
-func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode) error {
+func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode, cow *Shared) error {
 	n := c.GetNode()
 	if n == nil || n.GetId() == "" {
 		return ErrNilNode
@@ -126,6 +157,9 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode) err
 		doc.Nodes = map[string]*opendesignerv1.Node{}
 	}
 	doc.Nodes[n.GetId()] = n
+	if cow != nil {
+		cow.owned[n.GetId()] = struct{}{}
+	}
 	return nil
 }
 
@@ -166,8 +200,11 @@ func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) err
 // Come per una mask mista in applySetProps, il rifiuto è in BLOCCO: si valida
 // tutto prima di scrivere qualsiasi campo, così un reparent respinto non lascia
 // il nodo con la order key nuova e il parent vecchio.
-func applyReparent(doc *opendesignerv1.Document, r *opendesignerv1.ReparentNode) error {
+func applyReparent(doc *opendesignerv1.Document, r *opendesignerv1.ReparentNode, cow *Shared) error {
 	n, ok := doc.Nodes[r.GetId()]
+	if ok {
+		n = cow.mut(doc, r.GetId())
+	}
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, r.GetId())
 	}
@@ -273,8 +310,11 @@ func applyRenamePage(doc *opendesignerv1.Document, r *opendesignerv1.RenamePage)
 // applySetProps copia i campi indicati dalla mask da patch al nodo target.
 // Valida l'intera mask prima di mutare qualsiasi campo: una mask mista
 // (es. ["x","bogus"]) non deve lasciare il documento parzialmente mutato.
-func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties) error {
+func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetId()]
+	if ok {
+		n = cow.mut(doc, s.GetId())
+	}
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
 	}
@@ -424,8 +464,11 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 // a 0 e renderebbe il nodo invisibile. Con il flag: false => lo stile esistente
 // resta intatto, true => viene sostituito da `style` (nil incluso, che è
 // l'azzeramento esplicito).
-func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText) error {
+func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetId()]
+	if ok {
+		n = cow.mut(doc, s.GetId())
+	}
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
 	}
@@ -457,8 +500,11 @@ func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText) error
 // (contenuto e stile) e una delle due doveva poter restare intatta; qui l'op È
 // i subpath, quindi "assente" e "vuoto" descrivono lo stesso stato e la
 // distinzione proto3 non è osservabile.
-func applySetVectorPath(doc *opendesignerv1.Document, s *opendesignerv1.SetVectorPath) error {
+func applySetVectorPath(doc *opendesignerv1.Document, s *opendesignerv1.SetVectorPath, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetId()]
+	if ok {
+		n = cow.mut(doc, s.GetId())
+	}
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
 	}
@@ -509,8 +555,11 @@ func applyCreateComponent(doc *opendesignerv1.Document, c *opendesignerv1.Create
 // (fills_present=false && text_present=false) l'override viene tolto -- il nodo
 // torna a ereditare dal master. Rifiutato se il nodo non è un'istanza: un
 // override su un rettangolo è un op sul nodo sbagliato, non un campo da riempire.
-func applySetInstanceOverride(doc *opendesignerv1.Document, s *opendesignerv1.SetInstanceOverride) error {
+func applySetInstanceOverride(doc *opendesignerv1.Document, s *opendesignerv1.SetInstanceOverride, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetInstanceId()]
+	if ok {
+		n = cow.mut(doc, s.GetInstanceId())
+	}
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetInstanceId())
 	}

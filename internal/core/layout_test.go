@@ -308,8 +308,8 @@ func TestAutoLayoutMaskIsFrameOnlyAndWholeOpRejected(t *testing.T) {
 func TestLayoutIsIdempotent(t *testing.T) {
 	doc := row(t, &al{Direction: horiz, MainAlign: alCenter, CrossAlign: alEnd, HugHeight: true})
 	before := map[string][2]float64{"a": posOf(doc, "a"), "b": posOf(doc, "b"), "c": posOf(doc, "c"), "f": sizeOf(doc, "f")}
-	relayout(doc, []string{"f"})
-	relayout(doc, []string{"f"})
+	relayout(doc, []string{"f"}, nil)
+	relayout(doc, []string{"f"}, nil)
 	for id, want := range before {
 		got := posOf(doc, id)
 		if id == "f" {
