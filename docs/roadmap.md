@@ -21,8 +21,9 @@ Legenda: [x] fatto · [ ] da fare
 - [ ] Import SVG (poi .fig)
 
 ## 2. Collaborazione
-- [ ] Multiplayer: cursori e presenza
-- [ ] Account, permessi, link di condivisione
+- [x] Multiplayer sulla stessa rete: nickname, avatar, cursori e selezioni degli altri, link `#doc=` per entrare nello stesso documento (niente account, di proposito)
+- [ ] Gli agenti MCP compaiono come persone nella presenza
+- [ ] Conflitti sulla stessa proprietà: oggi vince l'ultimo op arrivato al server
 - [ ] Commenti sul canvas
 - [ ] Versioni nominate e branching (sull'oplog)
 

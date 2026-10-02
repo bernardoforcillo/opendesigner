@@ -126,6 +126,10 @@ type Hub struct {
 	history []*opendesignerv1.OpRecord // record dallo snapshot in poi (per catch-up)
 	subs    map[*subscriber]struct{}
 
+	// presence is who is looking at this document right now; ephemeral and
+	// independent of the op-log (see presence.go).
+	presence *presenceRoom
+
 	// historyBase is the seq of the newest record NOT in history: everything
 	// at or below it has been snapshotted and dropped. Subscribe uses it to
 	// tell "you are up to date" from "what you are asking for is gone".
@@ -180,6 +184,7 @@ func newHub(b documentBundle) (*Hub, error) {
 		history:       history,
 		historyBase:   base,
 		subs:          map[*subscriber]struct{}{},
+		presence:      newPresenceRoom(),
 		snapshotEvery: snapshotEveryOps,
 	}, nil
 }

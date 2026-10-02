@@ -98,7 +98,24 @@ For development, you can also run the Vite dev server directly:
 pnpm --dir web dev
 ```
 
-### 4. Run the MCP server
+### 4. Work together on the same network
+
+No accounts: start the server and share the address it prints.
+
+```bash
+opendesigner serve
+# sulla stessa rete apri: http://192.168.1.20:8080
+```
+
+Everyone picks a nickname in the toolbar. The **Condividi** button copies the
+link of the open document (`...#doc=<id>`); whoever opens it edits the same
+document and sees the others' cursors and selections. Presence is ephemeral and
+never written to the document.
+
+There is no authentication: anyone who can reach the port can edit. Use it on a
+network you trust, or bind to loopback with `-addr 127.0.0.1:8080`.
+
+### 5. Run the MCP server
 
 Start the backend first, then run:
 

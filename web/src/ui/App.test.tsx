@@ -248,3 +248,20 @@ describe("export", () => {
     expect(within(toolbar).getByRole("button", { name: "Esporta" })).toBeInTheDocument();
   });
 });
+
+import { docIdFromHash } from "./App";
+
+describe("docIdFromHash", () => {
+  const id = "123e4567-e89b-42d3-a456-426614174000";
+  it("legge l'id dal link di invito", () => {
+    expect(docIdFromHash(`#doc=${id}`)).toBe(id);
+    expect(docIdFromHash(`#doc=${id.toUpperCase()}`)).toBe(id);
+  });
+  it("ignora tutto ciò che non è un id ben formato", () => {
+    expect(docIdFromHash("")).toBeNull();
+    expect(docIdFromHash("#doc=")).toBeNull();
+    expect(docIdFromHash("#doc=../../etc/passwd")).toBeNull();
+    expect(docIdFromHash(`#altro=${id}`)).toBeNull();
+    expect(docIdFromHash(`#doc=${id}x`)).toBeNull();
+  });
+});

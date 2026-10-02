@@ -441,6 +441,34 @@ message Ack      { string op_id = 1; uint64 seq = 2; }
 message ErrorMsg { string op_id = 1; string message = 2; }
 message ServerMsg { oneof kind { OpRecord applied = 1; Ack ack = 2; ErrorMsg error = 3; } }
 
+// ---------- presenza (effimera, NON passa dall'op-log) ----------
+//
+// Chi sta guardando il documento, dove ha il cursore e cosa ha selezionato.
+// Vive solo in memoria nell'hub del documento e sparisce quando lo stream
+// WatchPresence del client si chiude: niente account, niente persistenza -- il
+// nickname lo sceglie il client e vale per la sessione.
+//
+// Il cursore è in coordinate MONDO, così ognuno lo vede al punto giusto
+// qualunque sia la propria camera.
+message PresenceState {
+  string client_id = 1;
+  string nickname = 2;
+  bool has_cursor = 3;
+  double cursor_x = 4;
+  double cursor_y = 5;
+  string page_id = 6;
+  repeated string selection = 7;
+}
+message PresenceEvent {
+  oneof kind {
+    PresenceState update = 1;   // un peer è entrato o è cambiato
+    string left_client_id = 2;  // un peer se n'è andato
+  }
+}
+message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string nickname = 3; }
+message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
+message UpdatePresenceResponse {}
+
 service DocumentService {
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
   rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
@@ -449,4 +477,9 @@ service DocumentService {
   rpc SubmitOp(SubmitOpRequest) returns (SubmitOpResponse);
   // Stream degli OpRecord applicati: catch-up da since_seq, poi live.
   rpc Subscribe(SubscribeRequest) returns (stream ServerMsg);
+  // Presenza: lo stream manda prima l'elenco di chi c'è già, poi gli
+  // aggiornamenti. Chiuderlo = uscire dal documento.
+  rpc WatchPresence(WatchPresenceRequest) returns (stream PresenceEvent);
+  // Aggiorna cursore/selezione del client (che deve avere uno stream aperto).
+  rpc UpdatePresence(UpdatePresenceRequest) returns (UpdatePresenceResponse);
 }

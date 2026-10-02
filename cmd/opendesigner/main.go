@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -71,6 +72,9 @@ func runServe(args []string) {
 	}
 
 	log.Printf("opendesigner serve on %s (workspace=%s)", *addr, *workspace)
+	for _, u := range lanURLs(*addr) {
+		log.Printf("sulla stessa rete apri: %s", u)
+	}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
@@ -158,4 +162,35 @@ func defaultWorkspace() string {
 		return ".opendesigner"
 	}
 	return filepath.Join(home, ".opendesigner")
+}
+
+// lanURLs returns the http:// addresses other machines on the same network can
+// use to reach this server, or nothing when it only listens on loopback. There
+// is no authentication: anyone who can reach the port can edit, which is the
+// point on a trusted LAN and the reason to bind to 127.0.0.1 elsewhere.
+func lanURLs(addr string) []string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil
+	}
+	if host != "" && host != "0.0.0.0" && host != "::" {
+		ip := net.ParseIP(host)
+		if ip == nil || ip.IsLoopback() {
+			return nil
+		}
+		return []string{"http://" + net.JoinHostPort(host, port)}
+	}
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, a := range addrs {
+		ipn, ok := a.(*net.IPNet)
+		if !ok || ipn.IP.IsLoopback() || ipn.IP.To4() == nil || !ipn.IP.IsPrivate() {
+			continue
+		}
+		out = append(out, "http://"+net.JoinHostPort(ipn.IP.String(), port))
+	}
+	return out
 }

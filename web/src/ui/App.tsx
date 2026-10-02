@@ -3,6 +3,10 @@ import { ConnectError } from "@connectrpc/connect";
 import { Button, ToggleButton, ToggleButtonGroup } from "react-aria-components";
 import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
+import { PresenceClient } from "../rpc/presence";
+import { usePresence, loadNickname } from "../store/presence";
+import { drawPeers } from "../renderer/peersRenderer";
+import { PresenceBar } from "./PresenceBar";
 import { useScene } from "../store/store";
 import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
 import { attachImageRecovery } from "../renderer/imageCache";
@@ -54,6 +58,16 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
 const CLIENT_ID = crypto.randomUUID();
 const DOC_KEY = "opendesigner.docId";
 
+// Il documento si sceglie dal link: `#doc=<id>`. È ciò che permette a un altro
+// computer sulla stessa rete di entrare nello STESSO documento invece di
+// crearne uno proprio (il localStorage è per-browser, quindi da solo non basta).
+// Un id non ben formato si ignora: HubFor lo rifiuterebbe comunque.
+const DOC_HASH_RE = /^#doc=([0-9a-fA-F-]{36})$/;
+export function docIdFromHash(hash: string): string | null {
+  const m = DOC_HASH_RE.exec(hash);
+  return m ? m[1].toLowerCase() : null;
+}
+
 // Un campo di testo (input/textarea/contentEditable): Ctrl/Cmd+Z lì dentro è
 // affare del campo stesso (annullare la digitazione), non della scena --
 // servirà in M1b quando arriverà il primo campo editabile (testo, proprietà).
@@ -73,6 +87,11 @@ export function App() {
   // Il manager legge il tool attivo da un ref: attachTools viene collegato una
   // volta sola al mount, quindi non deve dipendere dall'identità della closure.
   const toolRef = useRef<ToolId>("select");
+  // Il nickname vive in un ref oltre che nello stato: il bootstrap parte una
+  // volta sola e deve leggere quello CORRENTE quando apre la presenza.
+  const [nickname, setNickname] = useState(loadNickname);
+  const nicknameRef = useRef(nickname);
+  const presenceRef = useRef<PresenceClient | null>(null);
   const [toolId, setToolId] = useState<ToolId>("select");
   // Un op rifiutato dal server viene annullato in locale (la modifica
   // ottimistica sparisce dal canvas, vedi store/store.ts::rejectPending). Un
@@ -114,12 +133,16 @@ export function App() {
 
     (async () => {
       try {
-        let docId = localStorage.getItem(DOC_KEY);
+        // Il link vince sul localStorage: chi riceve un invito vuole QUEL
+        // documento, non l'ultimo che aveva aperto.
+        let docId = docIdFromHash(location.hash) ?? localStorage.getItem(DOC_KEY);
         if (!docId) {
           const info = await docClient.createDocument({ name: "Untitled" });
           docId = info.id;
-          localStorage.setItem(DOC_KEY, docId);
         }
+        localStorage.setItem(DOC_KEY, docId);
+        // Il link nella barra degli indirizzi è sempre quello da condividere.
+        history.replaceState(null, "", `#doc=${docId}`);
         sync = new SyncClient(docId, CLIENT_ID);
         // Smontati mentre creavamo il client: fermarlo prima ancora di
         // aprire il documento (start() su un client fermato è un no-op).
@@ -146,6 +169,27 @@ export function App() {
             return screenToWorld(useScene.getState().camera, p.x, p.y);
           },
         };
+        // La presenza: chi altro c'è, e dove ho io il cursore e la selezione.
+        // Parte dopo sync.start() perché non deve mai ritardare il documento.
+        const presence = new PresenceClient(docId, CLIENT_ID, nicknameRef.current);
+        presenceRef.current = presence;
+        presence.start();
+        const onMove = (e: PointerEvent) => {
+          const w = ctx.toWorld(e);
+          presence.setLocal({ hasCursor: true, cursorX: w.x, cursorY: w.y });
+        };
+        const onLeave = () => presence.setLocal({ hasCursor: false });
+        canvas.addEventListener("pointermove", onMove);
+        canvas.addEventListener("pointerleave", onLeave);
+        const sendView = () => {
+          const st = useScene.getState();
+          // La pagina EFFETTIVA: con currentPageId null la vista mostra la prima.
+          presence.setLocal({ selection: st.selection, pageId: st.currentPageId ?? st.scene?.pages[0]?.id ?? "" });
+        };
+        sendView();
+        const unsubView = useScene.subscribe((st, prev) => {
+          if (st.selection !== prev.selection || st.currentPageId !== prev.currentPageId) sendView();
+        });
         const detachTools = attachTools(ctx, () => TOOLS[toolRef.current] ?? selectTool);
         // Trascinare un'immagine sul canvas (traccia 3, task 3). Sta accanto ai
         // tool e non dentro il registro perché non è un tool: non ha un pulsante
@@ -157,6 +201,11 @@ export function App() {
         cleanup = () => {
           detachTools();
           detachDrop();
+          canvas.removeEventListener("pointermove", onMove);
+          canvas.removeEventListener("pointerleave", onLeave);
+          unsubView();
+          presence.stop();
+          presenceRef.current = null;
         };
       } catch (err) {
         console.error("bootstrap failed", err);
@@ -199,7 +248,13 @@ export function App() {
         // quindi passano dallo store all'overlay come il marquee -- ed è l'UNICO
         // modo in cui chi disegna vede quello che sta facendo.
         const { camera, selection, marquee, snapGuides, penPreview } = useScene.getState();
-        if (octx) drawOverlay(octx, scene, camera, selection, marquee, snapGuides, penPreview);
+        if (octx) {
+          drawOverlay(octx, scene, camera, selection, marquee, snapGuides, penPreview);
+          const peers = usePresence.getState().peers;
+          if (Object.keys(peers).length > 0) {
+            drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
+          }
+        }
       }
       raf = requestAnimationFrame(tick);
     };
@@ -296,6 +351,8 @@ export function App() {
           className="rounded px-3 py-1 text-sm hover:bg-neutral-100"
           onPress={() => {
             localStorage.removeItem(DOC_KEY);
+            // Senza svuotare l'hash il reload riaprirebbe lo stesso documento.
+            history.replaceState(null, "", location.pathname);
             location.reload();
           }}
         >
@@ -305,7 +362,17 @@ export function App() {
             export/ e in ui/ExportButton.tsx: qui c'è solo il montaggio, che
             però è l'unico punto in cui la funzione diventa raggiungibile. */}
         <ExportButton />
-        <span aria-live="polite" className="ml-auto text-sm text-neutral-500">
+        <div className="ml-auto">
+          <PresenceBar
+            nickname={nickname}
+            onNickname={(n) => {
+              nicknameRef.current = n;
+              setNickname(n);
+              presenceRef.current?.setNickname(n);
+            }}
+          />
+        </div>
+        <span aria-live="polite" className="text-sm text-neutral-500">
           {statusLabel}
         </span>
       </div>

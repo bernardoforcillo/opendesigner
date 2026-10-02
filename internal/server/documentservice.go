@@ -154,3 +154,51 @@ func (s *DocumentService) Subscribe(ctx context.Context, req *connect.Request[op
 		}
 	}
 }
+
+// WatchPresence: l'elenco di chi c'è già, poi gli aggiornamenti dei peer.
+// Chiudere lo stream (chiudere la scheda, perdere la rete) toglie il client
+// dalla stanza -- la presenza non ha altro ciclo di vita.
+func (s *DocumentService) WatchPresence(ctx context.Context, req *connect.Request[opendesignerv1.WatchPresenceRequest], stream *connect.ServerStream[opendesignerv1.PresenceEvent]) error {
+	if req.Msg.GetClientId() == "" {
+		return connect.NewError(connect.CodeInvalidArgument, errors.New("watch_presence: client_id is required"))
+	}
+	h, err := s.m.HubFor(req.Msg.GetDocId())
+	if err != nil {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
+	ch, leave := h.presence.join(req.Msg.GetClientId(), req.Msg.GetNickname())
+	defer leave()
+	// Un evento VUOTO (nessun `kind`) come primo messaggio: Connect manda le
+	// intestazioni di risposta solo col primo messaggio, quindi in una stanza
+	// vuota il client resterebbe in attesa per sempre. Dice anche "sei dentro":
+	// da qui in poi UpdatePresence di questo client viene accettato.
+	if err := stream.Send(&opendesignerv1.PresenceEvent{}); err != nil {
+		return err
+	}
+	for {
+		select {
+		case <-ctx.Done():
+			return ctx.Err()
+		case ev := <-ch:
+			if err := stream.Send(ev); err != nil {
+				return err
+			}
+		}
+	}
+}
+
+// UpdatePresence: cursore, selezione e pagina del client. Un client senza
+// stream WatchPresence aperto viene ignorato (non è nella stanza): è la
+// ragione per cui la presenza non lascia mai residui.
+func (s *DocumentService) UpdatePresence(_ context.Context, req *connect.Request[opendesignerv1.UpdatePresenceRequest]) (*connect.Response[opendesignerv1.UpdatePresenceResponse], error) {
+	st := req.Msg.GetState()
+	if st == nil || st.GetClientId() == "" {
+		return nil, connect.NewError(connect.CodeInvalidArgument, errors.New("update_presence: state.client_id is required"))
+	}
+	h, err := s.m.HubFor(req.Msg.GetDocId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	h.presence.update(st)
+	return connect.NewResponse(&opendesignerv1.UpdatePresenceResponse{}), nil
+}
