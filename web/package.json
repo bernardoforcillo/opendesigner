@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "tsc -b && vite build",
     "test": "vitest run",
-    "parity": "node scripts/render-parity.mjs"
+    "parity": "node scripts/render-parity.mjs",
+    "export-parity": "node scripts/export-parity.mjs",
+    "export-app": "node scripts/export-app.mjs"
   },
   "dependencies": {
     "@bufbuild/protobuf": "^2.2.0",

@@ -6,6 +6,7 @@ import (
 
 	"connectrpc.com/connect"
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/codegen"
 	"github.com/bernardoforcillo/opendesigner/internal/flow"
 )
 
@@ -214,4 +215,25 @@ func (s *DocumentService) AnalyzeFlows(_ context.Context, req *connect.Request[o
 	doc, _ := h.Snapshot()
 	// flow_id vuoto = tutti i flussi; un id sconosciuto dà zero report, non un errore.
 	return connect.NewResponse(&opendesignerv1.AnalyzeFlowsResponse{Reports: flow.Analyze(doc, req.Msg.GetFlowId())}), nil
+}
+
+// ExportCode: la generazione vera vive in internal/codegen; qui si risolve
+// l'hub, si prende lo snapshot corrente e si passano gli asset del workspace.
+// Gli errori di input (target o flusso sconosciuti, documento senza schermate)
+// sono InvalidArgument: il chiamante può correggerli.
+func (s *DocumentService) ExportCode(_ context.Context, req *connect.Request[opendesignerv1.ExportCodeRequest]) (*connect.Response[opendesignerv1.ExportCodeResponse], error) {
+	h, err := s.m.HubFor(req.Msg.GetDocId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	doc, _ := h.Snapshot()
+	out, err := codegen.Generate(doc, codegen.Options{Target: codegen.Target(req.Msg.GetTarget()), FlowID: req.Msg.GetFlowId()}, s.m.Assets(req.Msg.GetDocId()))
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	resp := &opendesignerv1.ExportCodeResponse{Warnings: out.Warnings}
+	for _, f := range out.Files {
+		resp.Files = append(resp.Files, &opendesignerv1.ExportFile{Path: f.Path, Content: f.Content})
+	}
+	return connect.NewResponse(resp), nil
 }

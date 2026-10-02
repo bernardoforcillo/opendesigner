@@ -21,7 +21,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: opendesigner <serve|mcp|flow> ...")
+		log.Fatal("usage: opendesigner <serve|mcp|flow|export> ...")
 	}
 	switch os.Args[1] {
 	case "serve":
@@ -30,8 +30,10 @@ func main() {
 		runMCP(os.Args[2:])
 	case "flow":
 		os.Exit(runFlow(os.Args[2:], os.Stdout, os.Stderr))
+	case "export":
+		os.Exit(runExport(os.Args[2:], os.Stdout, os.Stderr))
 	default:
-		log.Fatal("usage: opendesigner <serve|mcp|flow> ...")
+		log.Fatal("usage: opendesigner <serve|mcp|flow|export> ...")
 	}
 }
 
