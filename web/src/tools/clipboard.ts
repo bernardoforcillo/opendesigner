@@ -5,6 +5,7 @@ import {
   toPbNode,
   toTextStyleLite,
   type FillLite,
+  type GradientLite,
   type NodeLite,
   type SceneState,
   type StrokeAlignLite,
@@ -128,8 +129,26 @@ function toFills(v: unknown): FillLite[] {
   if (!Array.isArray(v)) return [];
   return v.map((f) => {
     const o = (f ?? {}) as Record<string, unknown>;
-    return { r: num(o.r, 0), g: num(o.g, 0), b: num(o.b, 0), a: num(o.a, 1) };
+    const base: FillLite = { r: num(o.r, 0), g: num(o.g, 0), b: num(o.b, 0), a: num(o.a, 1) };
+    const g = toGradient(o.gradient);
+    return g ? { ...base, gradient: g } : base;
   });
+}
+
+function toGradient(v: unknown): GradientLite | undefined {
+  if (typeof v !== "object" || v === null) return undefined;
+  const o = v as Record<string, unknown>;
+  if ((o.kind !== "linear" && o.kind !== "radial") || !Array.isArray(o.stops)) return undefined;
+  const stops = o.stops.map((st) => {
+    const so = (st ?? {}) as Record<string, unknown>;
+    const c = (so.color ?? {}) as Record<string, unknown>;
+    return {
+      color: { r: num(c.r, 0), g: num(c.g, 0), b: num(c.b, 0), a: num(c.a, 1) },
+      position: num(so.position, 0),
+    };
+  });
+  if (stops.length < 2) return undefined;
+  return { kind: o.kind, stops, x1: num(o.x1, 0), y1: num(o.y1, 0), x2: num(o.x2, 1), y2: num(o.y2, 0) };
 }
 
 const STROKE_ALIGNS: Record<StrokeAlignLite, true> = { center: true, inside: true, outside: true };

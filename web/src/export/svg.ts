@@ -1,4 +1,4 @@
-import type { NodeLite } from "../store/types";
+import type { FillLite, NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
 import { resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
@@ -77,16 +77,45 @@ function attr(name: string, value: string | number): Attr {
 // per l'alfa di fillStyle. Le due opacità si omettono quando valgono 1, che è
 // il loro valore di default in SVG: attributi neutri in ogni elemento sono solo
 // rumore in un file che qualcuno leggerà.
-function paintAttrs(n: NodeLite): (Attr | null)[] {
+function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   const f = resolvedFill(n);
+  const ref = gradientRef(n, f, defs);
   return [
-    attr("fill", `rgb(${channel(f.r)},${channel(f.g)},${channel(f.b)})`),
-    f.a === 1 ? null : attr("fill-opacity", f.a),
+    attr("fill", ref ?? `rgb(${channel(f.r)},${channel(f.g)},${channel(f.b)})`),
+    f.a === 1 || ref !== null ? null : attr("fill-opacity", f.a),
     n.opacity === 1 ? null : attr("opacity", n.opacity),
   ];
 }
 
-function rectElement(n: NodeLite): string {
+// Un gradiente diventa un <linearGradient>/<radialGradient> in <defs>, con le
+// stesse coordinate MONDO che il canvas calcola in renderer/canvasRenderer.ts::
+// paintStyle (userSpaceOnUse): niente bbox, quindi nessuna deformazione. Ritorna
+// il riferimento `url(#id)` da mettere in `fill`, oppure null per le tinte
+// piatte e per i gradienti degeneri (stessi casi del canvas).
+function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  const g = f.gradient;
+  if (!g || g.stops.length < 2) return null;
+  const x1 = n.x + g.x1 * n.width, y1 = n.y + g.y1 * n.height;
+  const x2 = n.x + g.x2 * n.width, y2 = n.y + g.y2 * n.height;
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  if (!(len > 0)) return null;
+  const id = `g${defs.length}`;
+  const stops = g.stops
+    .map((st) => `<stop${attrs([
+      attr("offset", Math.min(1, Math.max(0, st.position))),
+      attr("stop-color", `rgb(${channel(st.color.r)},${channel(st.color.g)},${channel(st.color.b)})`),
+      st.color.a === 1 ? null : attr("stop-opacity", st.color.a),
+    ])}/>`)
+    .join("");
+  const geom = g.kind === "linear"
+    ? attrs([attr("x1", x1), attr("y1", y1), attr("x2", x2), attr("y2", y2)])
+    : attrs([attr("cx", x1), attr("cy", y1), attr("r", len)]);
+  const tag = g.kind === "linear" ? "linearGradient" : "radialGradient";
+  defs.push(`<${tag}${attrs([attr("id", id)])}${geom} gradientUnits="userSpaceOnUse">${stops}</${tag}>`);
+  return `url(#${id})`;
+}
+
+function rectElement(n: NodeLite, defs: string[]): string {
   // Il raggio si clampa a metà del lato più corto, come fa CanvasRenderingContext2D
   // .roundRect: senza, la stessa forma verrebbe disegnata in modo diverso dal
   // canvas e dal visualizzatore SVG. (Anche la specifica SVG clampa rx, ma
@@ -95,15 +124,15 @@ function rectElement(n: NodeLite): string {
   return `<rect${attrs([
     attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height),
     r > 0 ? attr("rx", r) : null,
-    ...paintAttrs(n),
+    ...paintAttrs(n, defs),
   ])}/>`;
 }
 
-function ellipseElement(n: NodeLite): string {
+function ellipseElement(n: NodeLite, defs: string[]): string {
   return `<ellipse${attrs([
     attr("cx", n.x + n.width / 2), attr("cy", n.y + n.height / 2),
     attr("rx", n.width / 2), attr("ry", n.height / 2),
-    ...paintAttrs(n),
+    ...paintAttrs(n, defs),
   ])}/>`;
 }
 
@@ -116,7 +145,7 @@ function ellipseElement(n: NodeLite): string {
 // Ritorna "" per un testo vuoto -- il canvas in quel caso non disegna niente
 // (drawText esce subito), e un <text> vuoto nel file sarebbe un elemento in
 // più che non rappresenta nulla.
-function textElement(n: NodeLite, measure: MeasureText): string {
+function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string {
   const style = n.text?.style;
   if (!style) return "";
   const lines = placeTextLines((s) => measure(s, style), n);
@@ -132,7 +161,7 @@ function textElement(n: NodeLite, measure: MeasureText): string {
     attr("font-family", fontFamilyOf(style)),
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
-    ...paintAttrs(n),
+    ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }
 
@@ -196,14 +225,14 @@ function imagePlaceholderElement(n: NodeLite): string {
   return `<g${attrs([n.opacity === 1 ? null : attr("opacity", n.opacity)])}>${body}</g>`;
 }
 
-function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref): string {
-  if (n.kind === "text") return textElement(n, measure);
-  if (n.kind === "ellipse") return ellipseElement(n);
+function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs: string[]): string {
+  if (n.kind === "text") return textElement(n, measure, defs);
+  if (n.kind === "ellipse") return ellipseElement(n, defs);
   if (n.kind === "image") {
     const uri = href(n.image?.assetHash ?? "");
     return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri);
   }
-  return rectElement(n);
+  return rectElement(n, defs);
 }
 
 /**
@@ -227,8 +256,9 @@ export function nodesToSvg(
   // uno che riferisce URL locali destinati a rompersi altrove.
   href: ResolveImageHref = () => null,
 ): string {
+  const defs: string[] = [];
   const body = nodes
-    .map((n) => element(n, measure, href))
+    .map((n) => element(n, measure, href, defs))
     .filter((s) => s !== "")
     .map((s) => `  ${s}`)
     .join("\n");
@@ -236,5 +266,6 @@ export function nodesToSvg(
     `<svg xmlns="http://www.w3.org/2000/svg"` +
     attrs([attr("width", bounds.width), attr("height", bounds.height)]) +
     ` viewBox="${fmt(bounds.x)} ${fmt(bounds.y)} ${fmt(bounds.width)} ${fmt(bounds.height)}">`;
-  return `${head}\n${body}${body === "" ? "" : "\n"}</svg>\n`;
+  const defsBlock = defs.length === 0 ? "" : `\n  <defs>${defs.join("")}</defs>`;
+  return `${head}${defsBlock}\n${body}${body === "" ? "" : "\n"}</svg>\n`;
 }

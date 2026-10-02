@@ -302,3 +302,38 @@ describe("nodesToSvg — immagini", () => {
     expect(svg).toContain('href="/a?x=1&amp;y=2"');
   });
 });
+
+describe("nodesToSvg — gradienti", () => {
+  const grad = {
+    r: 1, g: 0, b: 0, a: 1,
+    gradient: {
+      kind: "linear" as const,
+      stops: [
+        { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+        { color: { r: 0, g: 0, b: 1, a: 0.5 }, position: 1 },
+      ],
+      x1: 0, y1: 0, x2: 1, y2: 0,
+    },
+  };
+
+  it("un fill lineare scrive un <linearGradient> in <defs> in coordinate mondo", () => {
+    const svg = nodesToSvg([node({ id: "a", x: 10, y: 20, width: 100, height: 40, fills: [grad] })], FULL, measure);
+    expect(svg).toContain('<defs><linearGradient id="g0" x1="10" y1="20" x2="110" y2="20" gradientUnits="userSpaceOnUse">');
+    expect(svg).toContain('<stop offset="0" stop-color="rgb(255,0,0)"/>');
+    expect(svg).toContain('<stop offset="1" stop-color="rgb(0,0,255)" stop-opacity="0.5"/>');
+    expect(svg).toContain('fill="url(#g0)"');
+  });
+
+  it("un radiale scrive <radialGradient> con cx/cy/r", () => {
+    const radial = { ...grad, gradient: { ...grad.gradient, kind: "radial" as const, x1: 0.5, y1: 0.5, x2: 1, y2: 0.5 } };
+    const svg = nodesToSvg([node({ id: "a", width: 100, height: 100, fills: [radial] })], FULL, measure);
+    expect(svg).toContain('<radialGradient id="g0" cx="50" cy="50" r="50" gradientUnits="userSpaceOnUse">');
+  });
+
+  it("due nodi con gradiente hanno id distinti; senza gradienti niente <defs>", () => {
+    const two = nodesToSvg([node({ id: "a", fills: [grad] }), node({ id: "b", fills: [grad] })], FULL, measure);
+    expect(two).toContain('id="g0"');
+    expect(two).toContain('id="g1"');
+    expect(nodesToSvg([node({ id: "a" })], FULL, measure)).not.toContain("<defs>");
+  });
+});

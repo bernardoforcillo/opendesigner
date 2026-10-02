@@ -95,6 +95,25 @@ export function cssRgba(c: FillLite): string {
   return `rgba(${to255(c.r)}, ${to255(c.g)}, ${to255(c.b)}, ${c.a})`;
 }
 
+// Lo stile canvas (colore CSS o CanvasGradient) di un riempimento sul box di
+// `n`. Le coordinate normalizzate del gradiente si denormalizzano sul box NON
+// ruotato: la rotazione del nodo è già nel contesto, quindi il gradiente ruota
+// con la forma. Un gradiente degenere (asse o raggio nulli, meno di due stop)
+// ripiega sul colore piatto, che è sempre valido.
+export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasGradient {
+  const g = f.gradient;
+  if (!g || g.stops.length < 2) return cssRgba(f);
+  const x1 = n.x + g.x1 * n.width, y1 = n.y + g.y1 * n.height;
+  const x2 = n.x + g.x2 * n.width, y2 = n.y + g.y2 * n.height;
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  if (!(len > 0)) return cssRgba(f);
+  const grad = g.kind === "linear"
+    ? ctx.createLinearGradient(x1, y1, x2, y2)
+    : ctx.createRadialGradient(x1, y1, 0, x1, y1, len);
+  for (const st of g.stops) grad.addColorStop(Math.min(1, Math.max(0, st.position)), cssRgba(st.color));
+  return grad;
+}
+
 // La camera resta sempre in pixel CSS: il devicePixelRatio non deve mai
 // entrare nel modello né nei tool, solo qui nel disegno effettivo sul canvas.
 function devicePixelRatio(): number {
@@ -390,7 +409,7 @@ function drawNode(
   }
   ctx.globalAlpha = eff.opacity;
   const color = cssColor(eff);
-  ctx.fillStyle = color;
+  ctx.fillStyle = paintStyle(ctx, resolvedFill(eff), eff);
   if (eff.kind === "text") {
     drawText(ctx, eff);
     drawStrokes(ctx, eff, null);
@@ -441,7 +460,7 @@ function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | 
     // sporgenza (canvas/geometry.ts::strokeOutset) -- le due cose devono
     // saltare lo stesso tratto.
     if (!(s.weight > 0)) continue;
-    ctx.strokeStyle = cssRgba(s.color);
+    ctx.strokeStyle = paintStyle(ctx, s.color, n);
     if (path === null) {
       ctx.lineWidth = s.weight;
       strokeText(ctx, n);

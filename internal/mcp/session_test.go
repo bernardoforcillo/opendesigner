@@ -279,3 +279,55 @@ func TestDeleteNodeCascades(t *testing.T) {
 		t.Fatalf("node %s still present after delete", r.NodeId)
 	}
 }
+
+// TestGradientFillThroughTools: an agent can write a gradient fill, it reaches
+// the shared document as a real GradientPaint (what the web renderer draws), and
+// a gradient the renderer could not draw is refused with a reason.
+func TestGradientFillThroughTools(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	created, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 100, Height: 50})
+	if err != nil {
+		t.Fatalf("CreateRectangle: %v", err)
+	}
+	grad := odmcp.RGBA{Gradient: &odmcp.GradientSpec{
+		Kind: "linear", X1: 0, Y1: 0, X2: 1, Y2: 0,
+		Stops: []odmcp.GradientStopSpec{
+			{Color: odmcp.StopColor{R: 1, A: 1}, Position: 0},
+			{Color: odmcp.StopColor{B: 1, A: 1}, Position: 1},
+		},
+	}}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Fills: []odmcp.RGBA{grad}}); err != nil {
+		t.Fatalf("SetProperties gradient: %v", err)
+	}
+
+	open, err := direct.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: docID}))
+	if err != nil {
+		t.Fatalf("OpenDocument: %v", err)
+	}
+	var got *opendesignerv1.Paint
+	for _, n := range open.Msg.GetSnapshot().GetNodes() {
+		if n.GetId() == created.NodeId && len(n.GetFills()) == 1 {
+			got = n.GetFills()[0]
+		}
+	}
+	lin := got.GetLinear()
+	if lin == nil || len(lin.GetStops()) != 2 || lin.GetX2() != 1 || lin.GetStops()[1].GetColor().GetB() != 1 {
+		t.Fatalf("fill = %v, want a linear gradient with 2 stops ending blue", got)
+	}
+
+	bad := []odmcp.RGBA{
+		{Gradient: &odmcp.GradientSpec{Kind: "conic", X2: 1, Stops: grad.Gradient.Stops}},
+		{Gradient: &odmcp.GradientSpec{Kind: "linear", X2: 1, Stops: grad.Gradient.Stops[:1]}},
+		{Gradient: &odmcp.GradientSpec{Kind: "radial", Stops: grad.Gradient.Stops}},
+	}
+	for i, b := range bad {
+		if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Fills: []odmcp.RGBA{b}}); err == nil {
+			t.Errorf("bad gradient %d accepted, want an error", i)
+		}
+	}
+}

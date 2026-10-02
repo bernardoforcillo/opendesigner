@@ -9,7 +9,23 @@ option go_package = "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v
 // ---------- documento / scene graph ----------
 message Color { float r = 1; float g = 2; float b = 3; float a = 4; } // 0..1
 message SolidPaint { Color color = 1; }
-message Paint { oneof kind { SolidPaint solid = 1; } }
+// Un punto di colore di un gradiente. `position` è in 0..1 lungo l'asse del
+// gradiente; gli stop sono tenuti in ordine crescente di posizione da chi li
+// scrive (il canvas e l'SVG li leggono nell'ordine dato).
+message GradientStop { Color color = 1; double position = 2; }
+
+// Un gradiente è definito in coordinate NORMALIZZATE del box del nodo: (0,0) è
+// l'angolo in alto a sinistra, (1,1) quello in basso a destra. Così resta
+// valido quando il nodo viene ridimensionato, senza riscrivere nessun op.
+//
+// LINEARE: l'asse va da (x1,y1) a (x2,y2).
+// RADIALE: il centro è (x1,y1) e il raggio è la distanza fra (x1,y1) e (x2,y2),
+// misurata in coordinate MONDO dopo la denormalizzazione (cerchio, non ellisse).
+message GradientPaint {
+  repeated GradientStop stops = 1;
+  double x1 = 2; double y1 = 3; double x2 = 4; double y2 = 5;
+}
+message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; } }
 
 // Allineamento del tratto rispetto al PERIMETRO della forma. CENTER è il
 // default del disegno (metà dentro, metà fuori): è l'unico che il canvas 2D sa

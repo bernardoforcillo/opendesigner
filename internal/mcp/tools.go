@@ -24,6 +24,71 @@ type RGBA struct {
 	G float64 `json:"g" jsonschema:"green channel, 0..1"`
 	B float64 `json:"b" jsonschema:"blue channel, 0..1"`
 	A float64 `json:"a" jsonschema:"alpha channel, 0..1"`
+	// Gradient, when set, turns this entry into a gradient fill and r/g/b/a are
+	// ignored. A separate stop type keeps the JSON schema non-recursive.
+	Gradient *GradientSpec `json:"gradient,omitempty" jsonschema:"makes this fill a linear or radial gradient instead of a solid colour"`
+}
+
+// StopColor is a gradient stop's colour; same channels as RGBA, without the
+// gradient field.
+type StopColor struct {
+	R float64 `json:"r" jsonschema:"red channel, 0..1"`
+	G float64 `json:"g" jsonschema:"green channel, 0..1"`
+	B float64 `json:"b" jsonschema:"blue channel, 0..1"`
+	A float64 `json:"a" jsonschema:"alpha channel, 0..1"`
+}
+
+// GradientStopSpec is one colour stop of a gradient.
+type GradientStopSpec struct {
+	Color    StopColor `json:"color"`
+	Position float64   `json:"position" jsonschema:"0..1 along the gradient axis"`
+}
+
+// GradientSpec is a gradient in coordinates NORMALISED to the node's box: (0,0)
+// is its top-left corner and (1,1) its bottom-right.
+type GradientSpec struct {
+	Kind  string             `json:"kind" jsonschema:"linear or radial"`
+	Stops []GradientStopSpec `json:"stops" jsonschema:"at least two stops, ordered by position"`
+	X1    float64            `json:"x1" jsonschema:"linear: axis start x; radial: centre x"`
+	Y1    float64            `json:"y1" jsonschema:"linear: axis start y; radial: centre y"`
+	X2    float64            `json:"x2" jsonschema:"linear: axis end x; radial: a point on the edge (radius = distance from x1,y1)"`
+	Y2    float64            `json:"y2" jsonschema:"linear: axis end y; radial: a point on the edge"`
+}
+
+func toGradientPaint(g *GradientSpec) *opendesignerv1.Paint {
+	stops := make([]*opendesignerv1.GradientStop, 0, len(g.Stops))
+	for _, st := range g.Stops {
+		stops = append(stops, &opendesignerv1.GradientStop{
+			Color:    &opendesignerv1.Color{R: float32(st.Color.R), G: float32(st.Color.G), B: float32(st.Color.B), A: float32(st.Color.A)},
+			Position: st.Position,
+		})
+	}
+	gp := &opendesignerv1.GradientPaint{Stops: stops, X1: g.X1, Y1: g.Y1, X2: g.X2, Y2: g.Y2}
+	if g.Kind == "radial" {
+		return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Radial{Radial: gp}}
+	}
+	return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Linear{Linear: gp}}
+}
+
+// validateFills rejects a gradient the renderer could not draw, so the agent
+// gets the reason as a tool error instead of a silently flat fill.
+func validateFills(colors []RGBA) error {
+	for i, c := range colors {
+		g := c.Gradient
+		if g == nil {
+			continue
+		}
+		if g.Kind != "linear" && g.Kind != "radial" {
+			return fmt.Errorf("fills[%d].gradient.kind must be \"linear\" or \"radial\", got %q", i, g.Kind)
+		}
+		if len(g.Stops) < 2 {
+			return fmt.Errorf("fills[%d].gradient needs at least two stops", i)
+		}
+		if g.X1 == g.X2 && g.Y1 == g.Y2 {
+			return fmt.Errorf("fills[%d].gradient start and end points must differ", i)
+		}
+	}
+	return nil
 }
 
 func toPaints(colors []RGBA) []*opendesignerv1.Paint {
@@ -32,6 +97,10 @@ func toPaints(colors []RGBA) []*opendesignerv1.Paint {
 	}
 	out := make([]*opendesignerv1.Paint, 0, len(colors))
 	for _, c := range colors {
+		if c.Gradient != nil {
+			out = append(out, toGradientPaint(c.Gradient))
+			continue
+		}
 		out = append(out, &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Solid{Solid: &opendesignerv1.SolidPaint{
 			Color: &opendesignerv1.Color{R: float32(c.R), G: float32(c.G), B: float32(c.B), A: float32(c.A)},
 		}}})
@@ -211,6 +280,9 @@ func (s *Session) SetProperties(ctx context.Context, in SetPropertiesInput) (Seq
 		paths = append(paths, "visible")
 	}
 	if in.Fills != nil {
+		if err := validateFills(in.Fills); err != nil {
+			return SeqOutput{}, err
+		}
 		patch.Fills = toPaints(in.Fills)
 		paths = append(paths, "fills")
 	}
@@ -402,6 +474,9 @@ type SetInstanceOverrideInput struct {
 func (s *Session) SetInstanceOverride(ctx context.Context, in SetInstanceOverrideInput) (SeqOutput, error) {
 	ov := &opendesignerv1.InstanceOverride{MasterNodeId: in.MasterNodeId}
 	if in.Fills != nil {
+		if err := validateFills(in.Fills); err != nil {
+			return SeqOutput{}, err
+		}
 		ov.Fills = toPaints(in.Fills)
 		ov.FillsPresent = true
 	}
@@ -599,7 +674,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_rectangle", "Create a rectangle node. parentId defaults to the first page. Returns the new node id.", s.CreateRectangle)
 	addTool(srv, "create_ellipse", "Create an ellipse node. parentId defaults to the first page. Returns the new node id.", s.CreateEllipse)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
-	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills). Only provided fields change.", s.SetProperties)
+	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills). A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
 	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style.", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)

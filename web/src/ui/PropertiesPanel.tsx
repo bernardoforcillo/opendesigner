@@ -15,6 +15,7 @@ import { makeSetInstanceOverrideOp, makeSetPropsOp, makeSetTextOp } from "../too
 import { layerDisplayName } from "./LayersPanel";
 import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
+import { GradientControls } from "./GradientControls";
 import type { RgbLite } from "./fields/ColorField";
 import { toPbFills, toPbStrokes } from "../store/types";
 import type {
@@ -757,15 +758,21 @@ export function PropertiesPanel() {
 
       <SectionTitle>Aspetto</SectionTitle>
       <div className="flex flex-col gap-1.5 p-2">
-        <ColorField
-          label="Riempimento"
-          // MIXED o nodo senza tinte: null, cioè "nessun valore singolo da
-          // mostrare". Scrivere un colore da lì resta possibile e lo assegna
-          // a tutta la selezione, come per i campi geometrici.
-          value={fill}
-          placeholder={summary.fills === MIXED ? MIXED_LABEL : undefined}
-          onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
-        />
+        {/* Con un gradiente il colore singolo non esiste: lo scrivere appiattirebbe
+            il gradiente senza che l'utente l'abbia chiesto. Gli stop si editano in
+            GradientControls. */}
+        {!fill?.gradient && (
+          <ColorField
+            label="Riempimento"
+            // MIXED o nodo senza tinte: null, cioè "nessun valore singolo da
+            // mostrare". Scrivere un colore da lì resta possibile e lo assegna
+            // a tutta la selezione, come per i campi geometrici.
+            value={fill}
+            placeholder={summary.fills === MIXED ? MIXED_LABEL : undefined}
+            onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
+          />
+        )}
+        {summary.fills !== MIXED && <GradientControls fill={fill} run={runGesture} />}
 
         <Slider
           // Su MIXED il numero qui sotto è solo il PUNTO DI PARTENZA di

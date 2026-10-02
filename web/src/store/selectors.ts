@@ -36,7 +36,9 @@ export interface SelectionSummary {
 }
 
 function sameColor(a: FillLite, b: FillLite): boolean {
-  return a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
+  if (!(a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a)) return false;
+  // Due gradienti sono lo stesso valore se hanno stessa forma e stessi stop.
+  return JSON.stringify(a.gradient ?? null) === JSON.stringify(b.gradient ?? null);
 }
 
 function sameFills(a: FillLite[], b: FillLite[]): boolean {

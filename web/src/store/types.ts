@@ -8,7 +8,20 @@ import type {
 } from "../gen/opendesigner/v1/opendesigner_pb";
 
 export interface PageLite { id: string; name: string; }
-export interface FillLite { r: number; g: number; b: number; a: number; }
+export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
+// Un gradiente in coordinate NORMALIZZATE del box (vedi GradientPaint nel proto).
+// Lineare: asse (x1,y1)->(x2,y2). Radiale: centro (x1,y1), raggio = |p2-p1| in
+// coordinate mondo.
+export interface GradientLite {
+  kind: "linear" | "radial";
+  stops: GradientStopLite[];
+  x1: number; y1: number; x2: number; y2: number;
+}
+// r,g,b,a restano il colore "di ripiego": per un riempimento solido SONO il
+// colore, per un gradiente sono il primo stop. Tutto il codice che conosce solo
+// tinte piatte (testo, tratti, pannelli) continua a funzionare senza sapere dei
+// gradienti; chi li sa disegnare guarda `gradient`.
+export interface FillLite { r: number; g: number; b: number; a: number; gradient?: GradientLite; }
 
 // L'allineamento del tratto come stringa, per la stessa ragione di
 // TextAlignLite: il modello in memoria è ciò che leggono renderer e pannelli, e
@@ -294,6 +307,16 @@ export function toPbStrokes(strokes: readonly StrokeLite[]) {
 }
 
 function toPbPaint(c: FillLite) {
+  const g = c.gradient;
+  if (g) {
+    const value = {
+      stops: g.stops.map((st) => ({ color: { ...st.color }, position: st.position })),
+      x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2,
+    };
+    return g.kind === "linear"
+      ? { kind: { case: "linear" as const, value } }
+      : { kind: { case: "radial" as const, value } };
+  }
   return { kind: { case: "solid" as const, value: { color: { r: c.r, g: c.g, b: c.b, a: c.a } } } };
 }
 
@@ -320,7 +343,20 @@ export function toPbInstanceOverride(o: InstanceOverrideLite) {
 // appiattimenti indipendenti divergerebbero al primo paint non-solid (oggi
 // l'unico caso è un paint ASSENTE, ma il oneof `kind` esiste per crescere).
 function toFillLite(p: PbPaint | undefined): FillLite {
-  const c = p?.kind.case === "solid" ? p.kind.value.color : undefined;
+  const k = p?.kind;
+  if (k?.case === "linear" || k?.case === "radial") {
+    const g = k.value;
+    const stops = g.stops.map((st) => ({
+      color: { r: st.color?.r ?? 0, g: st.color?.g ?? 0, b: st.color?.b ?? 0, a: st.color?.a ?? 1 },
+      position: st.position,
+    }));
+    const first = stops[0]?.color ?? { r: 0, g: 0, b: 0, a: 1 };
+    return {
+      ...first,
+      gradient: { kind: k.case, stops, x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2 },
+    };
+  }
+  const c = k?.case === "solid" ? k.value.color : undefined;
   return c ? { r: c.r, g: c.g, b: c.b, a: c.a } : { r: 0, g: 0, b: 0, a: 1 };
 }
 
