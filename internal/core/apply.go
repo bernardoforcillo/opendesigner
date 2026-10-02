@@ -261,7 +261,7 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 	paths := s.GetMask().GetPaths()
 	for _, path := range paths {
 		switch path {
-		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "order_key":
+		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key":
 			// supported
 		case "corner_radius":
 			// UNICO path della mask che indirizza un campo DENTRO il oneof
@@ -345,6 +345,12 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			// controllare: il tratto è un campo di primo livello del Node, e
 			// vale per un rettangolo come per un'ellisse o un testo.
 			n.Strokes = p.GetStrokes()
+		case "effects":
+			// SOSTITUZIONE dell'intera lista, come fills e strokes. Campo di
+			// primo livello: vale per qualunque forma. Il patch che arriva senza
+			// effects azzera la lista -- la mask dice cosa scrivere, non il
+			// patch.
+			n.Effects = p.GetEffects()
 		case "order_key":
 			// L'ordine di disegno (e quello del pannello livelli) è un CAMPO
 			// come gli altri, non un op dedicato: riordinare è scrivere una

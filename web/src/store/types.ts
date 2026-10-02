@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, Node as PbNode, Paint as PbPaint, Stroke as PbStroke,
+  Document, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -37,6 +37,14 @@ export type StrokeAlignLite = "center" | "inside" | "outside";
 // un peso non positivo non produce né pixel né sporgenza dei bounds (vedi
 // canvas/geometry.ts::strokeOutsetOf).
 export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlignLite; }
+
+// Un effetto del nodo. Ombra e sfocatura sono in coordinate MONDO, come il peso
+// di un tratto: si ingrandiscono con lo zoom. Il renderer disegna la PRIMA
+// ombra e la PRIMA sfocatura di un nodo (il canvas 2D ha un solo stato di ombra);
+// il modello e il filo tengono comunque l'intera lista.
+export type EffectLite =
+  | { kind: "dropShadow"; color: { r: number; g: number; b: number; a: number }; offsetX: number; offsetY: number; blur: number }
+  | { kind: "layerBlur"; radius: number };
 
 // L'allineamento come stringa e non come enum numerico, per la stessa ragione
 // per cui `kind` è "rect" | "ellipse" | "text" invece del discriminante del
@@ -144,6 +152,9 @@ export interface NodeLite {
   // (il box è suo, non l'unione dei figli), disegnato e colpito come una forma.
   // È l'artboard, e `clipsContent` dice se ritaglia i figli al proprio box.
   fills: FillLite[]; strokes: StrokeLite[];
+  // Assente quando il nodo non ha effetti (non `[]`): così un nodo senza
+  // effetti è identico, campo per campo, a com'era prima che esistessero.
+  effects?: EffectLite[];
   // "instance" è un'ISTANZA di un componente (proto: InstanceNode = 37): sta nel
   // oneof `shape` come le forme, ma il suo sottoalbero è VIRTUALE -- derivato dal
   // master a ogni lettura, mai in `nodes`. Il payload è in `instance`.
@@ -306,6 +317,31 @@ export function toPbStrokes(strokes: readonly StrokeLite[]) {
   }));
 }
 
+// Gli EFFETTI del modello nella forma di init di opendesigner.v1.Node.effects.
+// Gemella di toPbFills/toPbStrokes: il pannello costruisce lo STESSO patch.
+export function toPbEffects(effects: readonly EffectLite[]) {
+  return effects.map((e) =>
+    e.kind === "dropShadow"
+      ? { kind: { case: "dropShadow" as const, value: { color: { ...e.color }, offsetX: e.offsetX, offsetY: e.offsetY, blur: e.blur } } }
+      : { kind: { case: "layerBlur" as const, value: { radius: e.radius } } },
+  );
+}
+
+export function toEffectLite(e: PbEffect): EffectLite {
+  const k = e.kind;
+  if (k.case === "dropShadow") {
+    const c = k.value.color;
+    return {
+      kind: "dropShadow",
+      color: { r: c?.r ?? 0, g: c?.g ?? 0, b: c?.b ?? 0, a: c?.a ?? 1 },
+      offsetX: k.value.offsetX, offsetY: k.value.offsetY, blur: k.value.blur,
+    };
+  }
+  // Un effetto senza `kind` (filo da una versione futura) si legge come una
+  // sfocatura nulla: innocua da disegnare e conserva la posizione nella lista.
+  return { kind: "layerBlur", radius: k.case === "layerBlur" ? k.value.radius : 0 };
+}
+
 function toPbPaint(c: FillLite) {
   const g = c.gradient;
   if (g) {
@@ -403,6 +439,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation,
     fills: n.fills.map(toFillLite),
     strokes: n.strokes.map(toStrokeLite),
+    ...(n.effects.length > 0 ? { effects: n.effects.map(toEffectLite) } : {}),
     kind,
     cornerRadius: n.shape.case === "rect" ? n.shape.value.cornerRadius : 0,
     clipsContent: n.shape.case === "frame" ? n.shape.value.clipsContent : false,
@@ -427,6 +464,7 @@ export function toPbNode(n: NodeLite): PbNode {
     x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation,
     fills: toPbFills(n.fills),
     strokes: toPbStrokes(n.strokes),
+    effects: toPbEffects(n.effects ?? []),
     shape: n.kind === "unknown"
       // La forma sconosciuta non si può COSTRUIRE (non c'è un ramo del oneof da
       // nominare), quindi si rimette dov'era subito dopo la create. Lasciarla

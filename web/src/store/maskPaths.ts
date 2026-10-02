@@ -56,6 +56,9 @@ export const MASK_PATHS = [
   // sostituzione (una lista più corta che lascia in coda i tratti vecchi si
   // nota solo guardando il canvas).
   "strokes",
+  // Effetti (ombra, sfocatura). Ripetuto come "fills" e "strokes", con la stessa
+  // semantica di sostituzione dell'intera lista. Monoparola.
+  "effects",
   // Primo path MULTIPAROLA della mask (M1b, Task 8: il riordino del pannello
   // livelli). Scritto snake_case come lo scrive Go; sul filo JSON diventa
   // "orderKey" e torna indietro così com'è -- è tutto il motivo per cui questo

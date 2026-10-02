@@ -16,6 +16,7 @@ import { layerDisplayName } from "./LayersPanel";
 import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
 import { GradientControls } from "./GradientControls";
+import { EffectsControls } from "./EffectsControls";
 import type { RgbLite } from "./fields/ColorField";
 import { toPbFills, toPbStrokes } from "../store/types";
 import type {
@@ -836,6 +837,13 @@ export function PropertiesPanel() {
             onScrubEnd={(v) => scrubEnd(CORNER_RADIUS_FIELD, v)}
           />
         )}
+      </div>
+
+      {/* GLI EFFETTI: ombra e sfocatura. Sezione propria come il tratto: sono
+          controlli di un'altra natura rispetto all'aspetto di base. */}
+      <SectionTitle>Effetti</SectionTitle>
+      <div className="p-2">
+        <EffectsControls run={runGesture} />
       </div>
 
       {/* IL TRATTO. Sezione propria e non dentro "Aspetto": sono tre controlli

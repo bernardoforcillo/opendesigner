@@ -1,6 +1,6 @@
 import type { FillLite, NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
-import { resolvedFill } from "../renderer/canvasRenderer";
+import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
 
@@ -80,11 +80,50 @@ function attr(name: string, value: string | number): Attr {
 function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   const f = resolvedFill(n);
   const ref = gradientRef(n, f, defs);
+  const fx = effectsRef(n, defs);
   return [
+    fx === null ? null : attr("filter", fx),
     attr("fill", ref ?? `rgb(${channel(f.r)},${channel(f.g)},${channel(f.b)})`),
     f.a === 1 || ref !== null ? null : attr("fill-opacity", f.a),
     n.opacity === 1 ? null : attr("opacity", n.opacity),
   ];
+}
+
+// Gli effetti diventano UN <filter> in <defs>: la prima ombra (feDropShadow) e
+// poi la prima sfocatura (feGaussianBlur), nello stesso ordine in cui il canvas
+// li applica -- la sfocatura vale anche per l'ombra. Come nel canvas, il
+// renderer sceglie la prima ombra e la prima sfocatura del nodo
+// (renderer/canvasRenderer.ts::firstShadow).
+//
+// `blur` dell'ombra è il raggio del canvas 2D, di cui la deviazione standard è
+// la metà (feDropShadow vuole la deviazione); `radius` della sfocatura è già una
+// deviazione standard. La regione del filtro è in coordinate del documento,
+// larga abbastanza da contenere offset e sfocatura: il default (-10%/120%)
+// ritaglierebbe un'ombra distante.
+function effectsRef(n: NodeLite, defs: string[]): string | null {
+  const shadow = firstShadow(n);
+  const blur = firstBlur(n);
+  if (!shadow && !blur) return null;
+  const id = `f${defs.length}`;
+  const pad =
+    (shadow ? Math.max(Math.abs(shadow.offsetX), Math.abs(shadow.offsetY)) + shadow.blur * 1.5 : 0) +
+    (blur ? blur.radius * 3 : 0) + 1;
+  const prims =
+    (shadow
+      ? `<feDropShadow${attrs([
+          attr("dx", shadow.offsetX), attr("dy", shadow.offsetY), attr("stdDeviation", shadow.blur / 2),
+          attr("flood-color", `rgb(${channel(shadow.color.r)},${channel(shadow.color.g)},${channel(shadow.color.b)})`),
+          shadow.color.a === 1 ? null : attr("flood-opacity", shadow.color.a),
+        ])}/>`
+      : "") +
+    (blur ? `<feGaussianBlur${attrs([attr("stdDeviation", blur.radius)])}/>` : "");
+  defs.push(
+    `<filter${attrs([
+      attr("id", id), attr("x", n.x - pad), attr("y", n.y - pad),
+      attr("width", n.width + 2 * pad), attr("height", n.height + 2 * pad),
+    ])} filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">${prims}</filter>`,
+  );
+  return `url(#${id})`;
 }
 
 // Un gradiente diventa un <linearGradient>/<radialGradient> in <defs>, con le
@@ -191,8 +230,10 @@ const PLACEHOLDER_LINE_OPACITY = 0.35;
 // mentre il default SVG ("xMidYMid meet") la adatterebbe dentro lasciando dei
 // margini. Senza questo attributo lo stesso documento avrebbe due aspetti
 // diversi a seconda di dove lo si guarda.
-function imageElement(n: NodeLite, href: string): string {
+function imageElement(n: NodeLite, href: string, defs: string[]): string {
+  const fx = effectsRef(n, defs);
   return `<image${attrs([
+    fx === null ? null : attr("filter", fx),
     attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height),
     attr("href", href),
     { name: "preserveAspectRatio", value: "none" },
@@ -230,7 +271,7 @@ function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs
   if (n.kind === "ellipse") return ellipseElement(n, defs);
   if (n.kind === "image") {
     const uri = href(n.image?.assetHash ?? "");
-    return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri);
+    return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri, defs);
   }
   return rectElement(n, defs);
 }

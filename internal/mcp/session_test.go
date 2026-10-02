@@ -573,3 +573,59 @@ func TestListPeersShowsPeopleAndOtherAgents(t *testing.T) {
 		return true
 	})
 }
+
+// TestEffectsThroughTools: an agent can give a node a shadow and a blur, they
+// reach the shared document as real Effects, [] clears them, and an invalid
+// effect is refused with a reason.
+func TestEffectsThroughTools(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	created, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 100, Height: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fx := []odmcp.EffectSpec{
+		{Kind: "dropShadow", Color: odmcp.StopColor{A: 0.4}, OffsetX: 1, OffsetY: 6, Blur: 12},
+		{Kind: "layerBlur", Radius: 3},
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Effects: fx}); err != nil {
+		t.Fatalf("SetProperties effects: %v", err)
+	}
+	effectsOf := func() []*opendesignerv1.Effect {
+		open, err := direct.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: docID}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, n := range open.Msg.GetSnapshot().GetNodes() {
+			if n.GetId() == created.NodeId {
+				return n.GetEffects()
+			}
+		}
+		return nil
+	}
+	got := effectsOf()
+	if len(got) != 2 || got[0].GetDropShadow().GetOffsetY() != 6 || got[0].GetDropShadow().GetBlur() != 12 ||
+		got[0].GetDropShadow().GetColor().GetA() != float32(0.4) || got[1].GetLayerBlur().GetRadius() != 3 {
+		t.Fatalf("effects = %v", got)
+	}
+
+	// An empty list clears them.
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Effects: []odmcp.EffectSpec{}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := effectsOf(); len(got) != 0 {
+		t.Fatalf("after [] effects = %v, want none", got)
+	}
+
+	for i, bad := range []odmcp.EffectSpec{
+		{Kind: "glow"}, {Kind: "dropShadow", Blur: -1}, {Kind: "layerBlur", Radius: -2}, {},
+	} {
+		if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Effects: []odmcp.EffectSpec{bad}}); err == nil {
+			t.Errorf("bad effect %d accepted", i)
+		}
+	}
+}

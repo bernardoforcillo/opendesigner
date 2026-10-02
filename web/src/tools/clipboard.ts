@@ -4,6 +4,7 @@ import { nextOrderKey, orderKeyBetween } from "../store/orderKey";
 import {
   toPbNode,
   toTextStyleLite,
+  type EffectLite,
   type FillLite,
   type GradientLite,
   type NodeLite,
@@ -135,6 +136,25 @@ function toFills(v: unknown): FillLite[] {
   });
 }
 
+function toEffects(v: unknown): EffectLite[] {
+  if (!Array.isArray(v)) return [];
+  const out: EffectLite[] = [];
+  for (const raw of v) {
+    const e = (raw ?? {}) as Record<string, unknown>;
+    if (e.kind === "dropShadow") {
+      const c = (e.color ?? {}) as Record<string, unknown>;
+      out.push({
+        kind: "dropShadow",
+        color: { r: num(c.r, 0), g: num(c.g, 0), b: num(c.b, 0), a: num(c.a, 1) },
+        offsetX: num(e.offsetX, 0), offsetY: num(e.offsetY, 0), blur: Math.max(0, num(e.blur, 0)),
+      });
+    } else if (e.kind === "layerBlur") {
+      out.push({ kind: "layerBlur", radius: Math.max(0, num(e.radius, 0)) });
+    }
+  }
+  return out;
+}
+
 function toGradient(v: unknown): GradientLite | undefined {
   if (typeof v !== "object" || v === null) return undefined;
   const o = v as Record<string, unknown>;
@@ -248,6 +268,7 @@ export function parseClipboard(text: string): ClipboardParse {
       rotation: num(n.rotation, 0),
       fills: toFills(n.fills),
       strokes: toStrokes(n.strokes),
+      ...(toEffects(n.effects).length > 0 ? { effects: toEffects(n.effects) } : {}),
       kind,
       cornerRadius: num(n.cornerRadius, 0),
       // Sempre false: KNOWN_KINDS rifiuta i frame in blocco (questo lato non

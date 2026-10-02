@@ -337,3 +337,36 @@ describe("nodesToSvg — gradienti", () => {
     expect(nodesToSvg([node({ id: "a" })], FULL, measure)).not.toContain("<defs>");
   });
 });
+
+describe("nodesToSvg — effetti", () => {
+  const sh = { kind: "dropShadow" as const, color: { r: 0, g: 0, b: 0, a: 0.25 }, offsetX: 2, offsetY: 4, blur: 10 };
+
+  it("un'ombra diventa un <filter> con feDropShadow (deviazione = blur/2)", () => {
+    const svg = nodesToSvg([node({ id: "a", x: 10, y: 20, width: 100, height: 40, effects: [sh] })], FULL, measure);
+    expect(svg).toContain('<feDropShadow dx="2" dy="4" stdDeviation="5" flood-color="rgb(0,0,0)" flood-opacity="0.25"/>');
+    expect(svg).toContain('filter="url(#f0)"');
+    expect(svg).toContain('filterUnits="userSpaceOnUse"');
+    // La regione contiene l'offset e la sfocatura: 4 + 15 + 1 = 20 di margine.
+    expect(svg).toContain('<filter id="f0" x="-10" y="0" width="140" height="80"');
+  });
+
+  it("ombra + sfocatura: prima l'ombra e poi la sfocatura, nello stesso filtro", () => {
+    const svg = nodesToSvg([node({ id: "a", effects: [sh, { kind: "layerBlur", radius: 3 }] })], FULL, measure);
+    expect(svg.indexOf("<feDropShadow")).toBeLessThan(svg.indexOf("<feGaussianBlur"));
+    expect(svg).toContain('<feGaussianBlur stdDeviation="3"/>');
+    expect(svg.match(/<filter /g)).toHaveLength(1);
+  });
+
+  it("un nodo senza effetti non scrive filtri; gradiente ed effetto convivono con id distinti", () => {
+    expect(nodesToSvg([node({ id: "a" })], FULL, measure)).not.toContain("<filter");
+    const grad = {
+      r: 1, g: 0, b: 0, a: 1,
+      gradient: { kind: "linear" as const, x1: 0, y1: 0, x2: 1, y2: 0, stops: [
+        { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 }, { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 },
+      ] },
+    };
+    const both = nodesToSvg([node({ id: "a", fills: [grad], effects: [sh] })], FULL, measure);
+    expect(both).toContain('fill="url(#g0)"');
+    expect(both).toContain('filter="url(#f1)"');
+  });
+});

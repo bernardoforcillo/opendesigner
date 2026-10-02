@@ -120,6 +120,37 @@ describe("il payload della clipboard", () => {
     expect(parsed.nodes).toEqual(nodes);
   });
 
+  it("conserva effetti e gradienti nel giro serializza -> analizza", () => {
+    const n = rect("n1", {
+      fills: [{
+        r: 1, g: 0, b: 0, a: 1,
+        gradient: {
+          kind: "radial", x1: 0.5, y1: 0.5, x2: 1, y2: 0.5,
+          stops: [{ color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 }, { color: { r: 0, g: 0, b: 1, a: 0.5 }, position: 1 }],
+        },
+      }],
+      effects: [
+        { kind: "dropShadow", color: { r: 0, g: 0, b: 0, a: 0.3 }, offsetX: 1, offsetY: 5, blur: 9 },
+        { kind: "layerBlur", radius: 2 },
+      ],
+    });
+    const parsed = parseClipboard(serializeNodes([n]));
+    expect(parsed.ok).toBe(true);
+    if (!parsed.ok) throw new Error("unreachable");
+    expect(parsed.nodes).toEqual([n]);
+  });
+
+  it("ignora un effetto sconosciuto o storto invece di rifiutare tutto, e limita i valori negativi", () => {
+    const payload = JSON.parse(serializeNodes([rect("n1")]));
+    payload.nodes[0].effects = [{ kind: "glow" }, { kind: "layerBlur", radius: -4 }, null, { kind: "dropShadow", blur: -1 }];
+    const parsed = parseClipboard(JSON.stringify(payload));
+    if (!parsed.ok) throw new Error("unreachable");
+    expect(parsed.nodes[0].effects).toEqual([
+      { kind: "layerBlur", radius: 0 },
+      { kind: "dropShadow", color: { r: 0, g: 0, b: 0, a: 1 }, offsetX: 0, offsetY: 0, blur: 0 },
+    ]);
+  });
+
   it("è un JSON etichettato e versionato (così un'altra finestra lo riconosce)", () => {
     const payload = JSON.parse(serializeNodes([rect("n1")]));
     expect(payload.format).toBe(CLIPBOARD_FORMAT);

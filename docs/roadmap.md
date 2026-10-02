@@ -10,7 +10,8 @@ Legenda: [x] fatto · [ ] da fare
 - [x] Componenti con istanze e override
 - [x] Gradienti lineari e radiali (canvas, SVG, pannello, MCP)
 - [ ] Più stop per gradiente, gradiente su tratti dal pannello, immagine come fill
-- [ ] Effetti: ombre, blur, blend mode
+- [x] Effetti: ombra esterna e sfocatura del livello (canvas, SVG, pannello, MCP, copia/incolla; ne disegna una per tipo per nodo)
+- [ ] Effetti: più ombre per nodo, ombra interna, sfocatura di sfondo, blend mode
 - [ ] Auto layout (padding, gap, hug/fill/fixed, wrap)
 - [ ] Constraints e resize responsivo
 - [ ] Varianti e proprietà dei componenti, librerie condivise

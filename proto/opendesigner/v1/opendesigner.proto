@@ -53,6 +53,20 @@ message Stroke {
   StrokeAlign align = 3;
 }
 
+// Ombra esterna. Offset e sfocatura sono in coordinate MONDO (come font_size):
+// crescono col nodo e con lo zoom. `blur` è il raggio come lo intende il canvas
+// 2D (shadowBlur): la deviazione standard della gaussiana è la sua metà.
+message DropShadow {
+  Color color = 1;
+  double offset_x = 2;
+  double offset_y = 3;
+  double blur = 4;       // >= 0
+}
+// Sfocatura del livello: sfoca il nodo stesso. `radius` è la deviazione
+// standard della gaussiana, in coordinate mondo.
+message LayerBlur { double radius = 1; } // >= 0
+message Effect { oneof kind { DropShadow drop_shadow = 1; LayerBlur layer_blur = 2; } }
+
 message RectNode { double corner_radius = 1; }
 message EllipseNode {} // cx/cy/rx/ry derivano da x/y/width/height, come per RectNode
 
@@ -266,6 +280,10 @@ message Node {
   // (traccia 2). Ripetuto come `fills`, e con la stessa semantica di scrittura:
   // la mask "strokes" SOSTITUISCE l'intera lista, non ne fonde gli elementi.
   repeated Stroke strokes = 21;
+  // Effetti (ombre, sfocatura). Ripetuto come `fills`: la mask "effects"
+  // SOSTITUISCE l'intera lista. Il renderer oggi disegna la PRIMA ombra e la
+  // PRIMA sfocatura di un nodo: il canvas 2D ha un solo stato di ombra.
+  repeated Effect effects = 22;
   oneof shape {
     RectNode rect = 30;
     EllipseNode ellipse = 31;

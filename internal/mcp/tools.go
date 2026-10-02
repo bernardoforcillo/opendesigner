@@ -91,6 +91,50 @@ func validateFills(colors []RGBA) error {
 	return nil
 }
 
+// EffectSpec is one node effect. The canvas draws the FIRST dropShadow and the
+// FIRST layerBlur of a node; extra ones are kept in the document but not drawn.
+type EffectSpec struct {
+	Kind    string    `json:"kind" jsonschema:"dropShadow or layerBlur"`
+	Color   StopColor `json:"color,omitempty" jsonschema:"dropShadow only; alpha 0..1"`
+	OffsetX float64   `json:"offsetX,omitempty" jsonschema:"dropShadow only, in world units"`
+	OffsetY float64   `json:"offsetY,omitempty" jsonschema:"dropShadow only, in world units"`
+	Blur    float64   `json:"blur,omitempty" jsonschema:"dropShadow only, >= 0, in world units"`
+	Radius  float64   `json:"radius,omitempty" jsonschema:"layerBlur only, >= 0, in world units"`
+}
+
+func validateEffects(effects []EffectSpec) error {
+	for i, e := range effects {
+		switch e.Kind {
+		case "dropShadow":
+			if e.Blur < 0 {
+				return fmt.Errorf("effects[%d].blur must be >= 0", i)
+			}
+		case "layerBlur":
+			if e.Radius < 0 {
+				return fmt.Errorf("effects[%d].radius must be >= 0", i)
+			}
+		default:
+			return fmt.Errorf("effects[%d].kind must be \"dropShadow\" or \"layerBlur\", got %q", i, e.Kind)
+		}
+	}
+	return nil
+}
+
+func toEffects(effects []EffectSpec) []*opendesignerv1.Effect {
+	out := make([]*opendesignerv1.Effect, 0, len(effects))
+	for _, e := range effects {
+		if e.Kind == "layerBlur" {
+			out = append(out, &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_LayerBlur{LayerBlur: &opendesignerv1.LayerBlur{Radius: e.Radius}}})
+			continue
+		}
+		out = append(out, &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_DropShadow{DropShadow: &opendesignerv1.DropShadow{
+			Color:   &opendesignerv1.Color{R: float32(e.Color.R), G: float32(e.Color.G), B: float32(e.Color.B), A: float32(e.Color.A)},
+			OffsetX: e.OffsetX, OffsetY: e.OffsetY, Blur: e.Blur,
+		}}})
+	}
+	return out
+}
+
 func toPaints(colors []RGBA) []*opendesignerv1.Paint {
 	if colors == nil {
 		return nil
@@ -230,17 +274,18 @@ func (s *Session) resolveParent(parentID string) string {
 // added to the SetProperties FieldMask (absent fields are left untouched). fills
 // is a whole-list replacement -- pass [] to clear, omit to keep.
 type SetPropertiesInput struct {
-	Id           string   `json:"id"`
-	X            *float64 `json:"x,omitempty"`
-	Y            *float64 `json:"y,omitempty"`
-	Width        *float64 `json:"width,omitempty"`
-	Height       *float64 `json:"height,omitempty"`
-	Opacity      *float64 `json:"opacity,omitempty" jsonschema:"0..1"`
-	Rotation     *float64 `json:"rotation,omitempty"`
-	Name         *string  `json:"name,omitempty"`
-	Visible      *bool    `json:"visible,omitempty"`
-	CornerRadius *float64 `json:"cornerRadius,omitempty" jsonschema:"rectangles only"`
-	Fills        []RGBA   `json:"fills,omitempty" jsonschema:"replaces the whole fill list; [] clears it"`
+	Id           string       `json:"id"`
+	X            *float64     `json:"x,omitempty"`
+	Y            *float64     `json:"y,omitempty"`
+	Width        *float64     `json:"width,omitempty"`
+	Height       *float64     `json:"height,omitempty"`
+	Opacity      *float64     `json:"opacity,omitempty" jsonschema:"0..1"`
+	Rotation     *float64     `json:"rotation,omitempty"`
+	Name         *string      `json:"name,omitempty"`
+	Visible      *bool        `json:"visible,omitempty"`
+	CornerRadius *float64     `json:"cornerRadius,omitempty" jsonschema:"rectangles only"`
+	Fills        []RGBA       `json:"fills,omitempty" jsonschema:"replaces the whole fill list; [] clears it"`
+	Effects      []EffectSpec `json:"effects,omitempty" jsonschema:"replaces the whole effect list; [] clears it"`
 }
 
 // SetProperties applies an absolute field patch to a node via SetProperties.
@@ -278,6 +323,13 @@ func (s *Session) SetProperties(ctx context.Context, in SetPropertiesInput) (Seq
 	if in.Visible != nil {
 		patch.Visible = *in.Visible
 		paths = append(paths, "visible")
+	}
+	if in.Effects != nil {
+		if err := validateEffects(in.Effects); err != nil {
+			return SeqOutput{}, err
+		}
+		patch.Effects = toEffects(in.Effects)
+		paths = append(paths, "effects")
 	}
 	if in.Fills != nil {
 		if err := validateFills(in.Fills); err != nil {
@@ -674,7 +726,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_rectangle", "Create a rectangle node. parentId defaults to the first page. Returns the new node id.", s.CreateRectangle)
 	addTool(srv, "create_ellipse", "Create an ellipse node. parentId defaults to the first page. Returns the new node id.", s.CreateEllipse)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
-	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills). A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
+	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects: [{kind:dropShadow,color,offsetX,offsetY,blur}|{kind:layerBlur,radius}]. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
 	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style.", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)

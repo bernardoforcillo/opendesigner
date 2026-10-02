@@ -1,4 +1,4 @@
-import type { SceneState, NodeLite, FillLite, StrokeLite, InstanceOverrideLite } from "../store/types";
+import type { SceneState, NodeLite, FillLite, StrokeLite, InstanceOverrideLite, EffectLite } from "../store/types";
 import type { Camera } from "../canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, intersectBounds, worldVisualAabbOfNode } from "../canvas/geometry";
 import {
@@ -112,6 +112,53 @@ export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLi
     : ctx.createRadialGradient(x1, y1, 0, x1, y1, len);
   for (const st of g.stops) grad.addColorStop(Math.min(1, Math.max(0, st.position)), cssRgba(st.color));
   return grad;
+}
+
+// --- GLI EFFETTI ---------------------------------------------------------------
+//
+// Il canvas 2D ha UN solo stato di ombra e UN solo filtro, quindi il renderer
+// disegna la PRIMA ombra e la PRIMA sfocatura di un nodo (il modello tiene
+// l'intera lista). Offset e sfocatura sono in coordinate MONDO, ma shadow* e
+// filter NON passano per la trasformazione del contesto: vanno scalati a mano
+// per zoom * dpr, altrimenti l'ombra resterebbe di una taglia fissa mentre il
+// nodo si ingrandisce.
+type DropShadowLite = Extract<EffectLite, { kind: "dropShadow" }>;
+type LayerBlurLite = Extract<EffectLite, { kind: "layerBlur" }>;
+
+export function firstShadow(n: NodeLite): DropShadowLite | undefined {
+  return n.effects?.find((e): e is DropShadowLite => e.kind === "dropShadow");
+}
+export function firstBlur(n: NodeLite): LayerBlurLite | undefined {
+  return n.effects?.find((e): e is LayerBlurLite => e.kind === "layerBlur" && e.radius > 0);
+}
+
+// Pixel del backing store per unità mondo: zoom * dpr, letto dalla
+// trasformazione che drawScene ha già messo sul contesto (la rotazione non la
+// cambia). Leggerla da lì e non da window.devicePixelRatio è ciò che rende
+// giusto anche l'export PNG, che disegna con dpr 1 su un canvas fuori schermo.
+// Un contesto senza getTransform (i doppi dei test) ricade sullo zoom.
+function deviceScale(ctx: CanvasRenderingContext2D, cam: Camera): number {
+  const m = typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
+  return m ? Math.hypot(m.a, m.b) : cam.zoom;
+}
+
+// Imposta ombra e sfocatura sul contesto per il disegno del nodo. Ritorna true
+// se ha fatto save(): chi chiama deve fare il restore corrispondente. Nessun
+// effetto = nessun save, nessun costo.
+function applyEffects(ctx: CanvasRenderingContext2D, n: NodeLite, scale: number): boolean {
+  const shadow = firstShadow(n);
+  const blur = firstBlur(n);
+  if (!shadow && !blur) return false;
+  ctx.save();
+  if (shadow) {
+    ctx.shadowColor = cssRgba(shadow.color);
+    ctx.shadowOffsetX = shadow.offsetX * scale;
+    ctx.shadowOffsetY = shadow.offsetY * scale;
+    ctx.shadowBlur = Math.max(0, shadow.blur) * scale;
+  }
+  // `radius` è la deviazione standard della gaussiana, come in CSS blur().
+  if (blur) ctx.filter = `blur(${blur.radius * scale}px)`;
+  return true;
 }
 
 // La camera resta sempre in pixel CSS: il devicePixelRatio non deve mai
@@ -410,6 +457,9 @@ function drawNode(
   ctx.globalAlpha = eff.opacity;
   const color = cssColor(eff);
   ctx.fillStyle = paintStyle(ctx, resolvedFill(eff), eff);
+  // Gli effetti valgono per tutto ciò che il nodo disegna sotto: forma, testo,
+  // immagine, vettoriale.
+  const fx = applyEffects(ctx, eff, deviceScale(ctx, cam));
   if (eff.kind === "text") {
     drawText(ctx, eff);
     drawStrokes(ctx, eff, null);
@@ -430,8 +480,12 @@ function drawNode(
     // SOLO Path2D per nodo: quello del riempimento è anche quello del tratto.
     const path = nodePath(eff);
     ctx.fill(path);
+    // Con un riempimento visibile l'ombra l'ha già data lui: ridarla dal tratto
+    // sovrapporrebbe due ombre sul bordo e lo scurirebbe.
+    if (fx && eff.fills.length > 0) ctx.shadowColor = "transparent";
     drawStrokes(ctx, eff, path);
   }
+  if (fx) ctx.restore();
   if (rotated) ctx.restore();
 }
 

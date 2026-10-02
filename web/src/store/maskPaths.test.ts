@@ -200,6 +200,20 @@ const PROBE: Probe = {
     },
     expected: [{ color: { r: 0, g: 0, b: 1, a: 1 }, weight: 4, align: "outside" }],
   },
+  // Effetti: ripetuto come fills e strokes. L'oneof `kind` dell'Effect viaggia
+  // annidato come quello del Paint.
+  effects: {
+    patch: {
+      effects: [
+        { kind: { case: "dropShadow", value: { color: { r: 0, g: 0, b: 0, a: 0.5 }, offsetX: 2, offsetY: 4, blur: 8 } } },
+        { kind: { case: "layerBlur", value: { radius: 3 } } },
+      ],
+    },
+    expected: [
+      { kind: "dropShadow", color: { r: 0, g: 0, b: 0, a: 0.5 }, offsetX: 2, offsetY: 4, blur: 8 },
+      { kind: "layerBlur", radius: 3 },
+    ],
+  },
   order_key: { patch: { orderKey: "a5" }, expected: "a5" },
   // L'unica sonda il cui patch è ANNIDATO: corner_radius sta dentro RectNode,
   // cioè dentro il oneof `shape`, non fra i campi di primo livello del Node.

@@ -96,6 +96,14 @@ export function applyOp(state: SceneState, op: Op): SceneState {
           // è il getter nil-safe di Go, ed è anche il modo in cui il pannello
           // proprietà toglie il tratto da un nodo (vedi NIL_PATCH qui sopra).
           case "strokes": next.strokes = toNodeLite(p).strokes; break;
+          // Sostituzione dell'intera lista come `n.Effects = p.GetEffects()` in
+          // Go. Una lista vuota TOGLIE il campo (NodeLite.effects è assente, non
+          // vuoto, quando non ci sono effetti).
+          case "effects": {
+            const fx = toNodeLite(p).effects;
+            if (fx) next.effects = fx; else delete next.effects;
+            break;
+          }
           // Il path è snake_case (la convenzione del .proto e di Go), il campo
           // del modello è camelCase: le due forme coincidevano per tutti i path
           // monoparola di M0/M1a, questo è il primo in cui divergono.
