@@ -370,3 +370,21 @@ describe("nodesToSvg — effetti", () => {
     expect(both).toContain('filter="url(#f1)"');
   });
 });
+
+describe("nodesToSvg — frame", () => {
+  it("un frame senza riempimento è trasparente, non grigio", () => {
+    const svg = nodesToSvg([node({ id: "f", kind: "frame", fills: [] })], FULL, measure);
+    expect(svg).toContain('fill="none"');
+    expect(svg).not.toContain("rgb(204,204,204)");
+  });
+
+  it("un frame con riempimento lo scrive come ogni altra forma", () => {
+    const svg = nodesToSvg([node({ id: "f", kind: "frame", fills: [{ r: 1, g: 1, b: 1, a: 1 }] })], FULL, measure);
+    expect(svg).toContain('fill="rgb(255,255,255)"');
+  });
+
+  it("un rettangolo senza riempimento resta grigio (l'eccezione è dei frame)", () => {
+    const svg = nodesToSvg([node({ id: "r", fills: [] })], FULL, measure);
+    expect(svg).toContain('fill="rgb(204,204,204)"');
+  });
+});

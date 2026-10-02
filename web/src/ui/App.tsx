@@ -24,6 +24,7 @@ import { PageBar } from "./PageBar";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
 import { selectTool } from "../tools/selectTool";
 import { rectTool } from "../tools/rectTool";
+import { frameTool } from "../tools/frameTool";
 import { ellipseTool } from "../tools/ellipseTool";
 import { textTool } from "../tools/textTool";
 import { penTool } from "../tools/penTool";
@@ -39,6 +40,7 @@ import { handTool } from "../tools/handTool";
 // come tale ha un test (App.test.tsx) invece di una convenzione a memoria.
 export const TOOLS: Partial<Record<ToolId, Tool>> = {
   select: selectTool,
+  frame: frameTool,
   rect: rectTool,
   ellipse: ellipseTool,
   text: textTool,
@@ -48,6 +50,7 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
 
 export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "select", label: "Seleziona" },
+  { id: "frame", label: "Frame" },
   { id: "rect", label: "Rettangolo" },
   { id: "ellipse", label: "Ellisse" },
   { id: "text", label: "Testo" },

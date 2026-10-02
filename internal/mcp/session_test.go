@@ -629,3 +629,86 @@ func TestEffectsThroughTools(t *testing.T) {
 		}
 	}
 }
+
+// TestAutoLayoutThroughTools: an agent makes a frame with auto layout, drops
+// children into it at nonsense positions, and the SERVER arranges them; changing
+// the layout rearranges them, and turning it off leaves them where they were.
+func TestAutoLayoutThroughTools(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	frame, err := sess.CreateFrame(ctx, odmcp.CreateFrameInput{
+		Width: 200, Height: 100, Name: "row", ClipsContent: true,
+		AutoLayout: &odmcp.AutoLayoutSpec{Direction: "horizontal", Spacing: 10, PaddingLeft: 5, PaddingTop: 7, PaddingRight: 5, PaddingBottom: 7},
+	})
+	if err != nil {
+		t.Fatalf("CreateFrame: %v", err)
+	}
+	var kids []string
+	for i := 0; i < 3; i++ {
+		out, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{ParentId: frame.NodeId, X: 999, Y: 999, Width: 20, Height: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		kids = append(kids, out.NodeId)
+	}
+	at := func(id string) (float64, float64) {
+		doc, _ := sess.GetDocument(ctx, struct{}{})
+		n, ok := nodeByID(doc, id)
+		if !ok {
+			t.Fatalf("node %s missing", id)
+		}
+		return n.X, n.Y
+	}
+	for i, want := range []float64{5, 35, 65} {
+		if x, y := at(kids[i]); x != want || y != 7 {
+			t.Errorf("child %d at (%v,%v), want (%v,7)", i, x, y, want)
+		}
+	}
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	if n, _ := nodeByID(doc, frame.NodeId); n.AutoLayout == nil || n.AutoLayout.Direction != "horizontal" || n.AutoLayout.Spacing != 10 {
+		t.Errorf("get_document hides the layout: %+v", n.AutoLayout)
+	}
+
+	// Change direction: the server rearranges.
+	if _, err := sess.SetAutoLayout(ctx, odmcp.SetAutoLayoutInput{Id: frame.NodeId, AutoLayout: &odmcp.AutoLayoutSpec{
+		Direction: "vertical", Spacing: 4, MainAlign: "start", CrossAlign: "end",
+	}}); err != nil {
+		t.Fatalf("SetAutoLayout: %v", err)
+	}
+	// vertical, no padding, cross end: x = 200 - 20 = 180, y = 0, 14, 28.
+	for i, wantY := range []float64{0, 14, 28} {
+		if x, y := at(kids[i]); x != 180 || y != wantY {
+			t.Errorf("after vertical, child %d at (%v,%v), want (180,%v)", i, x, y, wantY)
+		}
+	}
+
+	// Off: positions stay, and the layout is gone from the view.
+	if _, err := sess.SetAutoLayout(ctx, odmcp.SetAutoLayoutInput{Id: frame.NodeId}); err != nil {
+		t.Fatal(err)
+	}
+	if x, y := at(kids[2]); x != 180 || y != 28 {
+		t.Errorf("turning layout off moved a child to (%v,%v)", x, y)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if n, _ := nodeByID(doc, frame.NodeId); n.AutoLayout != nil {
+		t.Errorf("layout still reported after turning it off: %+v", n.AutoLayout)
+	}
+
+	// Bad input is refused with a reason; a non-frame is refused by the server.
+	for i, bad := range []odmcp.AutoLayoutSpec{
+		{Direction: "diagonal"}, {Direction: "vertical", MainAlign: "middle"},
+		{Direction: "vertical", CrossAlign: "space-between"}, {Direction: "vertical", Spacing: -1},
+	} {
+		bad := bad
+		if _, err := sess.SetAutoLayout(ctx, odmcp.SetAutoLayoutInput{Id: frame.NodeId, AutoLayout: &bad}); err == nil {
+			t.Errorf("bad layout %d accepted", i)
+		}
+	}
+	if _, err := sess.SetAutoLayout(ctx, odmcp.SetAutoLayoutInput{Id: kids[0], AutoLayout: &odmcp.AutoLayoutSpec{Direction: "vertical"}}); err == nil {
+		t.Error("auto layout on a rectangle was accepted")
+	}
+}

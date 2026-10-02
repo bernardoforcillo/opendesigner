@@ -17,6 +17,7 @@ import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
 import { GradientControls } from "./GradientControls";
 import { EffectsControls } from "./EffectsControls";
+import { AutoLayoutControls, WrapInAutoLayoutButton } from "./AutoLayoutControls";
 import type { RgbLite } from "./fields/ColorField";
 import { toPbFills, toPbStrokes } from "../store/types";
 import type {
@@ -841,6 +842,13 @@ export function PropertiesPanel() {
 
       {/* GLI EFFETTI: ombra e sfocatura. Sezione propria come il tratto: sono
           controlli di un'altra natura rispetto all'aspetto di base. */}
+      {/* L'AUTO LAYOUT: per un frame, i suoi controlli; per qualunque altra
+          selezione, il pulsante che la avvolge in un frame con auto layout. */}
+      <SectionTitle>Auto layout</SectionTitle>
+      <div className="p-2">
+        {summary.kind === "frame" ? <AutoLayoutControls run={runGesture} /> : <WrapInAutoLayoutButton />}
+      </div>
+
       <SectionTitle>Effetti</SectionTitle>
       <div className="p-2">
         <EffectsControls run={runGesture} />

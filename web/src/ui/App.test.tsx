@@ -7,6 +7,7 @@ import { render, screen, fireEvent, cleanup, within, waitFor } from "@testing-li
 import { App, TOOLS, TOOL_LABELS } from "./App";
 import { textTool } from "../tools/textTool";
 import { penTool } from "../tools/penTool";
+import { frameTool } from "../tools/frameTool";
 import { selectTool } from "../tools/selectTool";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
@@ -74,12 +75,17 @@ describe("registro dei tool", () => {
     expect(TOOLS.text).toBe(textTool);
     expect(TOOL_LABELS.map((t) => t.label)).toEqual([
       "Seleziona",
+      "Frame",
       "Rettangolo",
       "Ellisse",
       "Testo",
       "Penna",
       "Mano",
     ]);
+  });
+
+  it("il tool frame è registrato ed è il frameTool vero", () => {
+    expect(TOOLS.frame).toBe(frameTool);
   });
 
   it("il pen tool è registrato ed è il penTool vero", () => {

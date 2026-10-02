@@ -572,6 +572,9 @@ type NodeView struct {
 	Height   float64 `json:"height"`
 	Visible  bool    `json:"visible"`
 	Text     string  `json:"text,omitempty" jsonschema:"content, for text nodes"`
+	// AutoLayout is set for a frame that lays out its children. Their x/y and, for
+	// a hugging frame, its width/height are already the computed result.
+	AutoLayout *AutoLayoutSpec `json:"autoLayout,omitempty"`
 }
 
 // nodeKind derives the compact kind label from the shape oneof. A node with no
@@ -609,6 +612,7 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 	if t := n.GetText(); t != nil {
 		v.Text = t.GetContent()
 	}
+	v.AutoLayout = autoLayoutView(n.GetFrame().GetAutoLayout())
 	return v
 }
 
@@ -725,6 +729,8 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	// writes
 	addTool(srv, "create_rectangle", "Create a rectangle node. parentId defaults to the first page. Returns the new node id.", s.CreateRectangle)
 	addTool(srv, "create_ellipse", "Create an ellipse node. parentId defaults to the first page. Returns the new node id.", s.CreateEllipse)
+	addTool(srv, "create_frame", "Create a frame: a container with its own box. Optionally clipsContent, and autoLayout to have the server arrange its children in a row or column (the children's x/y are then computed for you). parentId defaults to the first page.", s.CreateFrame)
+	addTool(srv, "set_auto_layout", "Turn auto layout on, change it, or (autoLayout omitted) off for a frame. After every change the server repositions the frame's children; reposition by editing the layout, not the children's x/y, which it overrides.", s.SetAutoLayout)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
 	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects: [{kind:dropShadow,color,offsetX,offsetY,blur}|{kind:layerBlur,radius}]. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
 	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style.", s.SetText)

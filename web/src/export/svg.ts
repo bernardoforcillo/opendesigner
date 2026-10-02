@@ -78,14 +78,23 @@ function attr(name: string, value: string | number): Attr {
 // il loro valore di default in SVG: attributi neutri in ogni elemento sono solo
 // rumore in un file che qualcuno leggerà.
 function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
+  const opacity = n.opacity === 1 ? null : attr("opacity", n.opacity);
+  // Un frame senza riempimento è trasparente (come nel canvas), non grigio: il
+  // grigio di default di resolvedFill è per le forme.
+  if (n.kind === "frame" && n.fills.length === 0) {
+    const fx = effectsRef(n, defs);
+    return [fx === null ? null : attr("filter", fx), attr("fill", "none"), opacity];
+  }
   const f = resolvedFill(n);
+  // Il gradiente prima dell'effetto: gli id in <defs> seguono l'ordine di
+  // creazione, e un file stabile è più facile da leggere e da confrontare.
   const ref = gradientRef(n, f, defs);
   const fx = effectsRef(n, defs);
   return [
     fx === null ? null : attr("filter", fx),
     attr("fill", ref ?? `rgb(${channel(f.r)},${channel(f.g)},${channel(f.b)})`),
     f.a === 1 || ref !== null ? null : attr("fill-opacity", f.a),
-    n.opacity === 1 ? null : attr("opacity", n.opacity),
+    opacity,
   ];
 }
 

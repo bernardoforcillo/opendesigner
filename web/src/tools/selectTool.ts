@@ -31,6 +31,7 @@ import { useScene } from "../store/store";
 import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "../store/groups";
 import { subtreeOf, topmostOf } from "../store/tree";
 import { groupOps, ungroupOps } from "./grouping";
+import { wrapSelectionInFrame } from "./wrapFrame";
 import { makeCreateComponentOp, makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp, uuid } from "./ops";
 import type { SceneState } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -851,6 +852,17 @@ export function createSelectTool(): Tool {
       // è un'operazione sulla SELEZIONE, cioè roba di questo tool, esattamente
       // come Delete qui sotto -- e toolManager filtra già i tasti quando il
       // fuoco è in un campo di testo.
+      // Avvolgere in un frame: Shift+A con auto layout, Ctrl/Cmd+Alt+G senza (come
+      // negli altri editor di design). PRIMA di Ctrl+G, che altrimenti si
+      // prenderebbe anche Ctrl+Alt+G.
+      const wrapAuto = e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === "a";
+      const wrapPlain = (e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "g";
+      if (wrapAuto || wrapPlain) {
+        e.preventDefault();
+        cancelActiveGesture();
+        wrapSelectionInFrame(wrapAuto);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
         // Sempre preventDefault: in un browser Ctrl+G è "trova successivo".
         e.preventDefault();

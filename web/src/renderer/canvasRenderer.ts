@@ -479,7 +479,11 @@ function drawNode(
     // al proprio contenuto -- drawNode gira PRIMA della discesa nei figli. UN
     // SOLO Path2D per nodo: quello del riempimento è anche quello del tratto.
     const path = nodePath(eff);
-    ctx.fill(path);
+    // Un FRAME senza riempimento è trasparente: è un contenitore, e il grigio di
+    // default (resolvedFill) è per le forme. Senza questa eccezione un frame
+    // appena avvolto attorno a una selezione la nasconderebbe sotto un
+    // rettangolo grigio.
+    if (!(eff.kind === "frame" && eff.fills.length === 0)) ctx.fill(path);
     // Con un riempimento visibile l'ombra l'ha già data lui: ridarla dal tratto
     // sovrapporrebbe due ombre sul bordo e lo scurirebbe.
     if (fx && eff.fills.length > 0) ctx.shadowColor = "transparent";

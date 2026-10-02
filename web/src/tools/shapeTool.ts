@@ -19,6 +19,9 @@ export interface ShapeToolConfig {
   // Funzione, non un oggetto condiviso: ogni gesto deve ricevere un init
   // fresco, così create() non riceve mai lo stesso riferimento due volte.
   shape: () => MessageInitShape<typeof NodeSchema>["shape"];
+  // Il colore del riempimento di partenza. Assente = il grigio delle forme.
+  // Un frame parte invece trasparente-bianco: è un contenitore, non una forma.
+  fill?: { r: number; g: number; b: number; a: number } | null;
 }
 
 // rectTool ed ellipseTool sono lo stesso gesto di creazione (down/move/up,
@@ -83,7 +86,9 @@ export function makeShapeTool(config: ShapeToolConfig): Tool {
         y: box.y,
         width,
         height,
-        fills: [{ kind: { case: "solid", value: { color: { r: 0.6, g: 0.6, b: 0.65, a: 1 } } } }],
+        fills: config.fill === null
+          ? []
+          : [{ kind: { case: "solid", value: { color: config.fill ?? { r: 0.6, g: 0.6, b: 0.65, a: 1 } } } }],
         shape: config.shape(),
       });
       // La creazione passa dal ciclo di gesto come QUALUNQUE altra modifica

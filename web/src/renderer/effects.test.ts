@@ -133,3 +133,24 @@ describe("firstShadow / firstBlur", () => {
     expect(firstBlur(rectNode())).toBeUndefined();
   });
 });
+
+describe("frame senza riempimento", () => {
+  afterEach(() => vi.unstubAllGlobals());
+
+  it("non si riempie (è trasparente); un rettangolo senza riempimento sì", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const frame = recCtx();
+    drawScene(frame.ctx, sceneOf(rectNode(undefined, { kind: "frame", fills: [] })), cam(1));
+    expect(frame.log.filter((l) => l.at === "fill")).toHaveLength(0);
+    const rect = recCtx();
+    drawScene(rect.ctx, sceneOf(rectNode(undefined, { fills: [] })), cam(1));
+    expect(rect.log.filter((l) => l.at === "fill")).toHaveLength(1);
+  });
+
+  it("un frame CON riempimento si riempie", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    drawScene(r.ctx, sceneOf(rectNode(undefined, { kind: "frame" })), cam(1));
+    expect(r.log.filter((l) => l.at === "fill")).toHaveLength(1);
+  });
+});

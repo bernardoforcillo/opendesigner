@@ -115,6 +115,15 @@ never written to the document.
 There is no authentication: anyone who can reach the port can edit. Use it on a
 network you trust, or bind to loopback with `-addr 127.0.0.1:8080`.
 
+### Auto layout
+
+A frame can arrange its children in a row or column. Draw a frame with the
+**Frame** tool, or select some shapes and press **Shift+A** to wrap them in a
+frame with auto layout (**Ctrl/Cmd+Alt+G** wraps without it). The panel sets
+direction, spacing, padding, alignment and hug. The server computes the layout
+after every change and stores the result as ordinary positions, so every client
+-- the browser and MCP agents alike -- sees the same thing.
+
 ### 5. Run the MCP server
 
 Start the backend first, then run:
