@@ -337,9 +337,50 @@ message Node {
     VectorNode vector = 36; // traccia 4 — vettoriale (vedi VectorNode sopra)
     InstanceNode instance = 37; // M4 — istanza di un componente (vedi InstanceNode sopra)
   }
+  // Metadati liberi chiave -> valore: il ponte fra il disegno e il prodotto.
+  // Convenzioni (non imposte dal modello, lette dagli strumenti dei flussi):
+  //   "flow.kind"       screen | decision | action | start | end | note
+  //   "code.route"      la rotta dell'app che realizza questa schermata
+  //   "code.component"  il componente del codice che la realizza
+  //   "test.id"         il data-testid con cui un test trova questo elemento
+  //   "test.text"       il testo accessibile con cui lo trova
+  //   "status"          planned | implemented | tested
+  // La mask "meta" SOSTITUISCE l'intera mappa, come `fills` per le liste.
+  map<string, string> meta = 40;
 }
 
 message Page { string id = 1; string name = 2; }
+
+// ---------- flussi ----------
+// Un FLUSSO è un percorso dell'utente attraverso le schermate: un insieme di
+// TRANSIZIONI (archi) fra nodi del disegno. Le schermate NON sono copie: sono i
+// frame del documento, referenziati per id, quindi il flusso resta agganciato al
+// disegno vero -- spostare o rinominare una schermata non lo rompe, cancellarla
+// cancella i suoi archi (vedi core.applyDelete).
+message Flow {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  // Schermata di ingresso (id di un nodo) oppure vuoto.
+  string start_id = 4;
+}
+
+message Transition {
+  string id = 1;
+  string flow_id = 2;
+  string from_id = 3;
+  string to_id = 4;
+  string label = 5;
+  // Cosa la innesca: "click" | "submit" | "auto" | "key" | "back" | testo libero.
+  string trigger = 6;
+  // Opzionale: il nodo DENTRO from_id che la innesca (l'hotspot cliccabile).
+  string element_id = 7;
+  // Condizione per cui l'arco è percorribile, e ciò che l'arco cambia. Testo
+  // libero: li leggono le persone, gli agenti e il prototipo giocabile
+  // ("cart non vuoto" / "cart=empty").
+  string guard = 8;
+  string effect = 9;
+}
 
 message Document {
   string id = 1;
@@ -349,6 +390,8 @@ message Document {
   map<string, Node> nodes = 5;
   // M4 — componenti: componentId -> master (nodo radice in `nodes` + nome).
   map<string, Component> components = 6;
+  map<string, Flow> flows = 7;
+  map<string, Transition> transitions = 8;
 }
 
 // ---------- op ----------
@@ -451,6 +494,14 @@ message SetInstanceOverride {
   string instance_id = 1;
   InstanceOverride override = 2;
 }
+// Flussi: upsert ASSOLUTI (il valore che arriva è il valore finale), come i
+// campi di SetProperties. Un id nuovo crea, un id esistente sostituisce.
+message SetFlow { Flow flow = 1; }
+// Cancella il flusso E tutte le sue transizioni.
+message DeleteFlow { string id = 1; }
+message SetTransition { Transition transition = 1; }
+message DeleteTransition { string id = 1; }
+
 message Op {
   string op_id = 1;
   string doc_id = 2;
@@ -469,6 +520,10 @@ message Op {
     SetVectorPath set_vector_path = 15; // traccia 4 — sostituisce i subpath di un VectorNode
     CreateComponent     create_component      = 16; // M4 — registra un sottoalbero come master
     SetInstanceOverride set_instance_override = 20; // M4 — override fill/testo su un'istanza
+    SetFlow          set_flow          = 21; // flussi — upsert di un flusso
+    DeleteFlow       delete_flow       = 22;
+    SetTransition    set_transition    = 23; // flussi — upsert di un arco
+    DeleteTransition delete_transition = 24;
   }
 }
 message OpRecord {
@@ -523,6 +578,34 @@ message PresenceEvent {
     string left_client_id = 2;  // un peer se n'è andato
   }
 }
+// ---------- analisi dei flussi ----------
+message FlowIssue {
+  // no_start | unreachable | dead_end | no_exit | ambiguous | empty
+  string kind = 1;
+  string flow_id = 2;
+  string node_id = 3;        // la schermata coinvolta, se una
+  string transition_id = 4;  // l'arco coinvolto, se uno
+  string message = 5;        // testo leggibile (italiano)
+}
+// Un percorso: dalla schermata di ingresso a una schermata finale (senza uscite)
+// o a un ritorno su una già visitata. Sequenza di transizioni.
+message FlowPath {
+  repeated string transition_ids = 1;
+  repeated string node_ids = 2;  // node_ids[i] -> node_ids[i+1] via transition_ids[i]
+  bool loops = 3;                // finisce tornando su una schermata già nel percorso
+}
+message FlowReport {
+  string flow_id = 1;
+  uint32 screens = 2;
+  uint32 transitions = 3;
+  repeated FlowIssue issues = 4;
+  repeated FlowPath paths = 5;
+  bool paths_truncated = 6;  // il tetto sul numero di percorsi è stato raggiunto
+}
+// flow_id vuoto = tutti i flussi del documento.
+message AnalyzeFlowsRequest { string doc_id = 1; string flow_id = 2; }
+message AnalyzeFlowsResponse { repeated FlowReport reports = 1; }
+
 message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string nickname = 3; }
 message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
 message UpdatePresenceResponse {}
@@ -540,4 +623,8 @@ service DocumentService {
   rpc WatchPresence(WatchPresenceRequest) returns (stream PresenceEvent);
   // Aggiorna cursore/selezione del client (che deve avere uno stream aperto).
   rpc UpdatePresence(UpdatePresenceRequest) returns (UpdatePresenceResponse);
+  // Analisi dei flussi (grafo delle schermate): schermate irraggiungibili,
+  // vicoli ciechi, percorsi. Calcolata dal server (internal/flow), così UI,
+  // CLI e agenti MCP vedono lo stesso risultato.
+  rpc AnalyzeFlows(AnalyzeFlowsRequest) returns (AnalyzeFlowsResponse);
 }

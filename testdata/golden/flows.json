@@ -1,0 +1,312 @@
+{
+ "docId": "doc1",
+ "ops": [
+  {
+   "opId": "op0",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "s1",
+     "parentId": "page1",
+     "orderKey": "a000001",
+     "name": "s1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "op1",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "s2",
+     "parentId": "page1",
+     "orderKey": "a000002",
+     "name": "s2",
+     "visible": true,
+     "opacity": 1,
+     "x": 100,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "op2",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "s3",
+     "parentId": "page1",
+     "orderKey": "a000003",
+     "name": "s3",
+     "visible": true,
+     "opacity": 1,
+     "x": 200,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "op3",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "btn",
+     "parentId": "s1",
+     "orderKey": "a000001",
+     "name": "btn",
+     "visible": true,
+     "opacity": 1,
+     "x": 5,
+     "y": 5,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "f1",
+   "docId": "doc1",
+   "setFlow": {
+    "flow": {
+     "id": "f1",
+     "name": "Checkout",
+     "startId": "s1"
+    }
+   }
+  },
+  {
+   "opId": "f2",
+   "docId": "doc1",
+   "setFlow": {
+    "flow": {
+     "id": "f2",
+     "name": "Start fantasma",
+     "startId": "ghost"
+    }
+   }
+  },
+  {
+   "opId": "t1",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t1",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "label": "Continua",
+     "trigger": "click",
+     "elementId": "btn"
+    }
+   }
+  },
+  {
+   "opId": "t2",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t2",
+     "flowId": "f1",
+     "fromId": "s2",
+     "toId": "s3",
+     "label": "Paga",
+     "trigger": "submit",
+     "guard": "carrello non vuoto",
+     "effect": "ordine=creato"
+    }
+   }
+  },
+  {
+   "opId": "t3",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t3",
+     "flowId": "nope",
+     "fromId": "s1",
+     "toId": "s2"
+    }
+   }
+  },
+  {
+   "opId": "t4",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t4",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "ghost"
+    }
+   }
+  },
+  {
+   "opId": "t5",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t5",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "elementId": "ghost"
+    }
+   }
+  },
+  {
+   "opId": "t6",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2"
+    }
+   }
+  },
+  {
+   "opId": "t1b",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t1",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "label": "Avanti",
+     "trigger": "click",
+     "elementId": "btn"
+    }
+   }
+  },
+  {
+   "opId": "d1",
+   "docId": "doc1",
+   "deleteTransition": {
+    "id": "ghost"
+   }
+  },
+  {
+   "opId": "m1",
+   "docId": "doc1",
+   "setProps": {
+    "id": "s1",
+    "patch": {
+     "meta": {
+      "code.route": "/cart",
+      "flow.kind": "screen"
+     }
+    },
+    "mask": "meta"
+   }
+  },
+  {
+   "opId": "x1",
+   "docId": "doc1",
+   "deleteNode": {
+    "id": "btn"
+   }
+  },
+  {
+   "opId": "x2",
+   "docId": "doc1",
+   "deleteNode": {
+    "id": "s3"
+   }
+  }
+ ],
+ "rejected": [
+  5,
+  8,
+  9,
+  10,
+  11,
+  13
+ ],
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "nodes": {
+   "s1": {
+    "id": "s1",
+    "parentId": "page1",
+    "orderKey": "a000001",
+    "name": "s1",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {
+     "cornerRadius": 0
+    },
+    "meta": {
+     "code.route": "/cart",
+     "flow.kind": "screen"
+    }
+   },
+   "s2": {
+    "id": "s2",
+    "parentId": "page1",
+    "orderKey": "a000002",
+    "name": "s2",
+    "visible": true,
+    "opacity": 1,
+    "x": 100,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {
+     "cornerRadius": 0
+    }
+   }
+  },
+  "flows": {
+   "f1": {
+    "id": "f1",
+    "name": "Checkout",
+    "startId": "s1"
+   }
+  },
+  "transitions": {
+   "t1": {
+    "id": "t1",
+    "flowId": "f1",
+    "fromId": "s1",
+    "toId": "s2",
+    "label": "Avanti",
+    "trigger": "click"
+   }
+  }
+ }
+}

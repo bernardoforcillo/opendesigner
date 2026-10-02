@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Primitive di undo: dato lo stato PRIMA di un op, l'op che lo annulla.
@@ -74,7 +74,10 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     case "deleteNode": {
       const sub = subtreeOf(scene, op.kind.value.id);
       if (sub.length === 0) return null;
-      return sub.map((n) => createNodeOp(op.docId, toPbNode(n)));
+      return [
+        ...sub.map((n) => createNodeOp(op.docId, toPbNode(n))),
+        ...restoreFlowsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
+      ];
     }
     // Simmetrico a se stesso: rimette il nodo dov'era, con la order key che
     // aveva fra i vecchi pari. Null quando l'op diretto sarebbe rifiutato --
@@ -180,9 +183,11 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         opId: newOpId(), docId: op.docId,
         kind: { case: "createPage", value: { page: { id: page.id, name: page.name } } },
       })];
+      const gone = new Set<string>();
       for (const root of childrenOf(scene, id)) {
-        for (const n of subtreeOf(scene, root.id)) ops.push(createNodeOp(op.docId, toPbNode(n)));
+        for (const n of subtreeOf(scene, root.id)) { ops.push(createNodeOp(op.docId, toPbNode(n))); gone.add(n.id); }
       }
+      ops.push(...restoreFlowsOps(scene, op.docId, gone));
       return ops;
     }
     case "renamePage": {
@@ -260,7 +265,77 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         kind: { case: "setInstanceOverride", value: { instanceId, override: invOverride } },
       })];
     }
+    // --- flussi -------------------------------------------------------------
+    // Upsert assoluti: l'inverso è lo stato PRECEDENTE (un setFlow/setTransition
+    // con il valore vecchio se esisteva, una delete se l'op diretto creava).
+    // Null quando l'op diretto sarebbe rifiutato (parità con applyOp/core).
+    case "setFlow": {
+      const f = op.kind.value.flow;
+      if (!f || f.id === "") return null;
+      if (f.startId !== "" && !scene.nodes.has(f.startId)) return null;
+      const prev = scene.flows[f.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setFlow", value: { flow: toPbFlow(prev) } }
+          : { case: "deleteFlow", value: { id: f.id } },
+      })];
+    }
+    case "deleteFlow": {
+      const { id } = op.kind.value;
+      const prev = scene.flows[id];
+      if (!prev) return null;
+      // Prima il flusso, poi le sue transizioni (richiedono che il flusso esista).
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setFlow", value: { flow: toPbFlow(prev) } } }),
+        ...Object.values(scene.transitions).filter((t) => t.flowId === id).sort(byId).map((t) =>
+          create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setTransition", value: { transition: toPbTransition(t) } } })),
+      ];
+    }
+    case "setTransition": {
+      const t = op.kind.value.transition;
+      if (!t || t.id === "") return null;
+      if (!scene.flows[t.flowId]) return null;
+      if (!scene.nodes.has(t.fromId) || !scene.nodes.has(t.toId)) return null;
+      if (t.elementId !== "" && !scene.nodes.has(t.elementId)) return null;
+      const prev = scene.transitions[t.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setTransition", value: { transition: toPbTransition(prev) } }
+          : { case: "deleteTransition", value: { id: t.id } },
+      })];
+    }
+    case "deleteTransition": {
+      const prev = scene.transitions[op.kind.value.id];
+      if (!prev) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setTransition", value: { transition: toPbTransition(prev) } },
+      })];
+    }
     default:
       return null;
   }
+}
+
+const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+// Dopo aver RICREATO i nodi cancellati, rimette ciò che la cascata aveva tolto ai
+// flussi: lo `startId` dei flussi che ne partivano e le transizioni che li
+// attraversavano (o che li usavano come hotspot). Vanno DOPO le createNode: i
+// riferimenti devono esistere (parità con core.applySetFlow/applySetTransition).
+function restoreFlowsOps(scene: SceneState, docId: string, gone: ReadonlySet<string>): Op[] {
+  const ops: Op[] = [];
+  for (const f of Object.values(scene.flows).sort(byId)) {
+    if (f.startId !== "" && gone.has(f.startId)) {
+      ops.push(create(OpSchema, { opId: newOpId(), docId, kind: { case: "setFlow", value: { flow: toPbFlow(f) } } }));
+    }
+  }
+  for (const t of Object.values(scene.transitions).sort(byId)) {
+    if (gone.has(t.fromId) || gone.has(t.toId) || (t.elementId !== "" && gone.has(t.elementId))) {
+      ops.push(create(OpSchema, { opId: newOpId(), docId, kind: { case: "setTransition", value: { transition: toPbTransition(t) } } }));
+    }
+  }
+  return ops;
 }

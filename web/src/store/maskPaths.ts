@@ -78,6 +78,9 @@ export const MASK_PATHS = [
   // risponde ErrNotFrameNode e rifiuta l'op intero. Scrivere un patch senza
   // auto layout lo SPEGNE. Multiparola: sul filo JSON viaggia come "autoLayout".
   "auto_layout",
+  // Metadati liberi del nodo (flow.kind, code.route, test.id, ...). Come le liste,
+  // la mask SOSTITUISCE l'intera mappa. Monoparola.
+  "meta",
 ] as const;
 
 // L'UNICO tipo che un path di mask può avere ai punti di costruzione di un op

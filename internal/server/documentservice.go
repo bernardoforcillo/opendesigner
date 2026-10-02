@@ -202,3 +202,15 @@ func (s *DocumentService) UpdatePresence(_ context.Context, req *connect.Request
 	h.presence.update(st)
 	return connect.NewResponse(&opendesignerv1.UpdatePresenceResponse{}), nil
 }
+
+// AnalyzeFlows: l'analisi vera vive in internal/flow; qui si risolve l'hub e si
+// prende lo snapshot corrente.
+func (s *DocumentService) AnalyzeFlows(_ context.Context, req *connect.Request[opendesignerv1.AnalyzeFlowsRequest]) (*connect.Response[opendesignerv1.AnalyzeFlowsResponse], error) {
+	h, err := s.m.HubFor(req.Msg.GetDocId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	doc, _ := h.Snapshot()
+	_ = doc // TODO(flow): popolato da internal/flow.Analyze
+	return connect.NewResponse(&opendesignerv1.AnalyzeFlowsResponse{}), nil
+}

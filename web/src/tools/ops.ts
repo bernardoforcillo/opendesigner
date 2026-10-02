@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbInstanceOverride, toPbSubPaths, toPbTextStyle } from "../store/types";
-import type { InstanceOverrideLite, SubPathLite, TextStyleLite } from "../store/types";
+import { toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Costruzione centralizzata degli Op: ogni tool passa da qui, così opId e docId
@@ -126,6 +126,21 @@ export function makeDeletePageOp(id: string): Op {
 
 export function makeRenamePageOp(id: string, name: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "renamePage", value: { id, name } } });
+}
+
+// --- flussi ----------------------------------------------------------------
+// Upsert assoluti: l'id è FORNITO dal chiamante (uuid()), noto prima del submit.
+export function makeSetFlowOp(flow: FlowLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setFlow", value: { flow: toPbFlow(flow) } } });
+}
+export function makeDeleteFlowOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteFlow", value: { id } } });
+}
+export function makeSetTransitionOp(t: TransitionLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setTransition", value: { transition: toPbTransition(t) } } });
+}
+export function makeDeleteTransitionOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteTransition", value: { id } } });
 }
 
 // --- componenti / istanze (M4) ---------------------------------------------

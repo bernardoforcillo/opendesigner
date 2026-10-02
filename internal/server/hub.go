@@ -543,6 +543,19 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 	for k, n := range d.GetNodes() {
 		next.Nodes[k] = n
 	}
+	// Flussi e transizioni: pochi, si clonano a fondo (core non li muta in place).
+	if len(d.GetFlows()) > 0 {
+		next.Flows = make(map[string]*opendesignerv1.Flow, len(d.GetFlows()))
+		for k, f := range d.GetFlows() {
+			next.Flows[k] = proto.Clone(f).(*opendesignerv1.Flow)
+		}
+	}
+	if len(d.GetTransitions()) > 0 {
+		next.Transitions = make(map[string]*opendesignerv1.Transition, len(d.GetTransitions()))
+		for k, t := range d.GetTransitions() {
+			next.Transitions[k] = proto.Clone(t).(*opendesignerv1.Transition)
+		}
+	}
 	if len(d.GetComponents()) > 0 {
 		next.Components = make(map[string]*opendesignerv1.Component, len(d.GetComponents()))
 		for k, c := range d.GetComponents() {

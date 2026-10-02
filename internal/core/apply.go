@@ -33,6 +33,11 @@ var (
 	ErrComponentExists   = errors.New("core: component id already taken")
 	ErrComponentNotFound = errors.New("core: component not found")
 	ErrNotInstanceNode   = errors.New("core: not an instance node")
+	// Flussi.
+	ErrNilFlow            = errors.New("core: nil flow")
+	ErrFlowNotFound       = errors.New("core: flow not found")
+	ErrNilTransition      = errors.New("core: nil transition")
+	ErrTransitionNotFound = errors.New("core: transition not found")
 )
 
 // NewDocument crea un documento vuoto con una pagina di default ("page1").
@@ -99,6 +104,14 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetProps(doc, k.SetProps, cow)
 	case *opendesignerv1.Op_DeleteNode:
 		return applyDelete(doc, k.DeleteNode)
+	case *opendesignerv1.Op_SetFlow:
+		return applySetFlow(doc, k.SetFlow)
+	case *opendesignerv1.Op_DeleteFlow:
+		return applyDeleteFlow(doc, k.DeleteFlow)
+	case *opendesignerv1.Op_SetTransition:
+		return applySetTransition(doc, k.SetTransition)
+	case *opendesignerv1.Op_DeleteTransition:
+		return applyDeleteTransition(doc, k.DeleteTransition)
 	case *opendesignerv1.Op_SetText:
 		return applySetText(doc, k.SetText, cow)
 	case *opendesignerv1.Op_SetVectorPath:
@@ -180,9 +193,12 @@ func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) err
 	if _, ok := doc.Nodes[d.GetId()]; !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, d.GetId())
 	}
+	gone := map[string]bool{}
 	for _, n := range SubtreeOf(doc, d.GetId()) {
+		gone[n.GetId()] = true
 		delete(doc.Nodes, n.GetId())
 	}
+	cascadeFlows(doc, gone)
 	return nil
 }
 
@@ -287,11 +303,14 @@ func applyDeletePage(doc *opendesignerv1.Document, d *opendesignerv1.DeletePage)
 	// Validato tutto PRIMA di scrivere qualsiasi cosa, come per una mask mista:
 	// un rifiuto non deve lasciare la pagina rimossa e i nodi al loro posto (o
 	// viceversa).
+	gone := map[string]bool{}
 	for _, root := range ChildrenOf(doc, d.GetId()) {
 		for _, n := range SubtreeOf(doc, root.GetId()) {
+			gone[n.GetId()] = true
 			delete(doc.Nodes, n.GetId())
 		}
 	}
+	cascadeFlows(doc, gone)
 	doc.Pages = append(doc.Pages[:i], doc.Pages[i+1:]...)
 	return nil
 }
@@ -321,7 +340,7 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 	paths := s.GetMask().GetPaths()
 	for _, path := range paths {
 		switch path {
-		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key":
+		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta":
 			// supported
 		case "corner_radius":
 			// UNICO path della mask che indirizza un campo DENTRO il oneof
@@ -397,6 +416,10 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.Name = p.GetName()
 		case "visible":
 			n.Visible = p.GetVisible()
+		case "meta":
+			// Sostituisce l'intera mappa (come le liste). Una mappa vuota la
+			// svuota: nil e {} sono lo stesso stato dopo il round-trip proto3.
+			n.Meta = p.GetMeta()
 		case "fills":
 			n.Fills = p.GetFills()
 		case "strokes":

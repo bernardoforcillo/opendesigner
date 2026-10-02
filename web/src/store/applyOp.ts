@@ -1,7 +1,7 @@
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type NodeLite, type TransitionLite, toFlowLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout } from "./layout";
 import { recordDelta } from "./sceneDelta";
@@ -145,6 +145,13 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           // del modello è camelCase: le due forme coincidevano per tutti i path
           // monoparola di M0/M1a, questo è il primo in cui divergono.
           case "order_key": next.orderKey = p.orderKey; break;
+          // Sostituisce l'intera mappa (come `n.Meta = p.GetMeta()` in Go); una
+          // mappa vuota TOGLIE il campo (NodeLite.meta è assente, non vuoto).
+          case "meta": {
+            const m = toNodeLite(p).meta;
+            if (m) next.meta = m; else delete next.meta;
+            break;
+          }
           // Come per "fills", il valore si estrae dal patch passando da
           // toNodeLite invece di leggerlo a mano: è la STESSA funzione che
           // traduce un Node del filo, quindi il patch senza rect ricade sullo
@@ -230,8 +237,9 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // (e nessun oggetto nuovo, così i selettori non si svegliano a vuoto).
       if (!state.nodes.at(id)) return state;
       const nodes = state.nodes.edit();
-      for (const n of subtreeOf(state, id)) nodes.delete(n.id);
-      return { ...state, nodes: nodes.done() };
+      const gone = new Set<string>();
+      for (const n of subtreeOf(state, id)) { nodes.delete(n.id); gone.add(n.id); }
+      return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone) };
     }
     // Op dedicato e non un path della mask di setProps (a differenza di
     // `order_key`) perché ha una validazione che nessun campo ha: il nuovo
@@ -283,10 +291,14 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // valido, quindi nessun nodo potrebbe più essere creato. ErrLastPage.
       if (state.pages.length === 1) return state;
       const nodes = state.nodes.edit();
+      const gone = new Set<string>();
       for (const root of childrenOf(state, id)) {
-        for (const n of subtreeOf(state, root.id)) nodes.delete(n.id);
+        for (const n of subtreeOf(state, root.id)) { nodes.delete(n.id); gone.add(n.id); }
       }
-      return { ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes: nodes.done() };
+      return {
+        ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes: nodes.done(),
+        ...cascadeFlows(state, gone),
+      };
     }
     case "renamePage": {
       const { id, name } = op.kind.value;
@@ -312,6 +324,39 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // e la propagazione master->istanze è quindi gratis.
       return { ...state, components: { ...state.components, [componentId]: { rootNodeId, name } } };
     }
+    // --- flussi -------------------------------------------------------------
+    // Parità con core.applySetFlow / applyDeleteFlow / applySetTransition /
+    // applyDeleteTransition (Go, internal/core/flows.go). Upsert ASSOLUTI.
+    case "setFlow": {
+      const f = op.kind.value.flow;
+      if (!f || f.id === "") return state;                                  // ErrNilFlow
+      if (f.startId !== "" && !state.nodes.has(f.startId)) return state;    // ErrNodeNotFound
+      return { ...state, flows: { ...state.flows, [f.id]: toFlowLite(f) } };
+    }
+    case "deleteFlow": {
+      const { id } = op.kind.value;
+      if (!state.flows[id]) return state;                                   // ErrFlowNotFound
+      const flows = { ...state.flows };
+      delete flows[id];
+      const transitions: Record<string, TransitionLite> = {};
+      for (const [tid, t] of Object.entries(state.transitions)) if (t.flowId !== id) transitions[tid] = t;
+      return { ...state, flows, transitions };
+    }
+    case "setTransition": {
+      const t = op.kind.value.transition;
+      if (!t || t.id === "") return state;                                  // ErrNilTransition
+      if (!state.flows[t.flowId]) return state;                             // ErrFlowNotFound
+      if (!state.nodes.has(t.fromId) || !state.nodes.has(t.toId)) return state; // ErrNodeNotFound
+      if (t.elementId !== "" && !state.nodes.has(t.elementId)) return state;
+      return { ...state, transitions: { ...state.transitions, [t.id]: toTransitionLite(t) } };
+    }
+    case "deleteTransition": {
+      const { id } = op.kind.value;
+      if (!state.transitions[id]) return state;                             // ErrTransitionNotFound
+      const transitions = { ...state.transitions };
+      delete transitions[id];
+      return { ...state, transitions };
+    }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;
       const cur = state.nodes.at(instanceId);
@@ -336,4 +381,30 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     default:
       return state;
   }
+}
+
+// Toglie dai flussi ciò che riferiva i nodi appena cancellati (parità con
+// core.cascadeFlows in Go): le transizioni che li attraversano spariscono, il
+// `startId` dei flussi che partivano da loro si svuota e l'`elementId` delle
+// transizioni che li usavano come hotspot si azzera. Ritorna solo i campi
+// cambiati, così una scena senza flussi resta con gli stessi oggetti.
+export function cascadeFlows(
+  state: SceneState, gone: ReadonlySet<string>,
+): Partial<Pick<SceneState, "flows" | "transitions">> {
+  const out: Partial<Pick<SceneState, "flows" | "transitions">> = {};
+  let tChanged = false;
+  const transitions: Record<string, TransitionLite> = {};
+  for (const [id, t] of Object.entries(state.transitions)) {
+    if (gone.has(t.fromId) || gone.has(t.toId)) { tChanged = true; continue; }
+    if (t.elementId !== "" && gone.has(t.elementId)) { tChanged = true; transitions[id] = { ...t, elementId: "" }; continue; }
+    transitions[id] = t;
+  }
+  if (tChanged) out.transitions = transitions;
+  let fChanged = false;
+  const flows = { ...state.flows };
+  for (const [id, f] of Object.entries(state.flows)) {
+    if (f.startId !== "" && gone.has(f.startId)) { fChanged = true; flows[id] = { ...f, startId: "" }; }
+  }
+  if (fChanged) out.flows = flows;
+  return out;
 }

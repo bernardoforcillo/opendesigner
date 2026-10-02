@@ -1,8 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { FlowSchema, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
+  Document, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -200,11 +200,23 @@ export interface NodeLite {
   // Node da NodeLite) riporterebbe in vita un GroupNode trasformato in
   // rettangolo: un cambio di forma silenzioso dentro un Ctrl+Z.
   unknownShape?: PbNode["shape"];
+  // Metadati liberi (vedi Node.meta nel proto). Assente quando vuoto.
+  meta?: Record<string, string>;
+}
+
+// FLUSSI: i percorsi dell'utente fra le schermate (nodi del documento,
+// referenziati per id). Vedi proto Flow/Transition e internal/core/flows.go.
+export interface FlowLite { id: string; name: string; description: string; startId: string }
+export interface TransitionLite {
+  id: string; flowId: string; fromId: string; toId: string;
+  label: string; trigger: string; elementId: string; guard: string; effect: string;
 }
 
 export interface SceneState {
   id: string; name: string; schemaVersion: number;
   pages: PageLite[]; nodes: NodeMap;
+  flows: Record<string, FlowLite>;
+  transitions: Record<string, TransitionLite>;
   // M4 — componenti indicizzati per id (componentId -> master). Fa parte del
   // documento quanto `nodes` e `pages`: un CreateComponent lo popola, e
   // fromDocument lo ricostruisce dallo snapshot.
@@ -212,7 +224,7 @@ export interface SceneState {
 }
 
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, components: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, components: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -498,6 +510,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(n.shape.case === "instance" ? { instance: toInstanceLite(n.shape.value) } : {}),
     // Il ramo sconosciuto viaggia intero e intatto: vedi NodeLite.unknownShape.
     ...(kind === "unknown" ? { unknownShape: n.shape } : {}),
+    ...(Object.keys(n.meta).length > 0 ? { meta: { ...n.meta } } : {}),
   };
 }
 
@@ -514,6 +527,7 @@ export function toPbNode(n: NodeLite): PbNode {
     fills: toPbFills(n.fills),
     strokes: toPbStrokes(n.strokes),
     effects: toPbEffects(n.effects ?? []),
+    meta: n.meta ? { ...n.meta } : {},
     shape: n.kind === "unknown"
       // La forma sconosciuta non si può COSTRUIRE (non c'è un ramo del oneof da
       // nominare), quindi si rimette dov'era subito dopo la create. Lasciarla
@@ -577,6 +591,25 @@ export function toPbNode(n: NodeLite): PbNode {
   return node;
 }
 
+export function toFlowLite(f: PbFlow): FlowLite {
+  return { id: f.id, name: f.name, description: f.description, startId: f.startId };
+}
+export function toTransitionLite(t: PbTransition): TransitionLite {
+  return {
+    id: t.id, flowId: t.flowId, fromId: t.fromId, toId: t.toId, label: t.label,
+    trigger: t.trigger, elementId: t.elementId, guard: t.guard, effect: t.effect,
+  };
+}
+export function toPbFlow(f: FlowLite): PbFlow {
+  return create(FlowSchema, { id: f.id, name: f.name, description: f.description, startId: f.startId });
+}
+export function toPbTransition(t: TransitionLite): PbTransition {
+  return create(TransitionSchema, {
+    id: t.id, flowId: t.flowId, fromId: t.fromId, toId: t.toId, label: t.label,
+    trigger: t.trigger, elementId: t.elementId, guard: t.guard, effect: t.effect,
+  });
+}
+
 export function fromDocument(doc: Document): SceneState {
   const edit = NodeMap.empty.edit();
   for (const [id, n] of Object.entries(doc.nodes)) edit.set(id, toNodeLite(n));
@@ -588,5 +621,7 @@ export function fromDocument(doc: Document): SceneState {
   return {
     id: doc.id, name: doc.name, schemaVersion: doc.schemaVersion,
     pages: doc.pages.map((p) => ({ id: p.id, name: p.name })), nodes, components,
+    flows: Object.fromEntries(Object.entries(doc.flows).map(([id, f]) => [id, toFlowLite(f)])),
+    transitions: Object.fromEntries(Object.entries(doc.transitions).map(([id, t]) => [id, toTransitionLite(t)])),
   };
 }

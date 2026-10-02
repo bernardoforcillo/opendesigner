@@ -259,6 +259,8 @@ const PROBE: Probe = {
     patch: { shape: { case: "rect", value: { cornerRadius: 12 } } },
     expected: 12,
   },
+  // Mappa libera: la mask sostituisce l'intera mappa.
+  meta: { patch: { meta: { "code.route": "/cart" } }, expected: { "code.route": "/cart" } },
 };
 
 describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", () => {

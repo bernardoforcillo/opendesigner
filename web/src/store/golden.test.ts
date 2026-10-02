@@ -47,6 +47,12 @@ describe("golden parity", () => {
       // solo a metà se qui si guardassero i soli nodi -- e l'ORDINE conta,
       // perché è quello del selettore di pagina.
       expect(scene.pages).toEqual(expected.pages);
+      // I FLUSSI (e le loro transizioni) fanno parte del documento: dal lato Go
+      // il proto.Equal sull'intero Document li copre, qui vanno confrontati a
+      // parte -- compresa la cascata di una delete (transizioni tolte, start
+      // svuotato, hotspot azzerato).
+      expect(scene.flows).toEqual(expected.flows);
+      expect(scene.transitions).toEqual(expected.transitions);
     });
   }
 });
