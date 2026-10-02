@@ -6,6 +6,7 @@ import (
 
 	"connectrpc.com/connect"
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/flow"
 )
 
 type DocumentService struct{ m *Manager }
@@ -211,6 +212,6 @@ func (s *DocumentService) AnalyzeFlows(_ context.Context, req *connect.Request[o
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	doc, _ := h.Snapshot()
-	_ = doc // TODO(flow): popolato da internal/flow.Analyze
-	return connect.NewResponse(&opendesignerv1.AnalyzeFlowsResponse{}), nil
+	// flow_id vuoto = tutti i flussi; un id sconosciuto dà zero report, non un errore.
+	return connect.NewResponse(&opendesignerv1.AnalyzeFlowsResponse{Reports: flow.Analyze(doc, req.Msg.GetFlowId())}), nil
 }

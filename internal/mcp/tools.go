@@ -575,6 +575,8 @@ type NodeView struct {
 	// AutoLayout is set for a frame that lays out its children. Their x/y and, for
 	// a hugging frame, its width/height are already the computed result.
 	AutoLayout *AutoLayoutSpec `json:"autoLayout,omitempty"`
+	// Meta: i metadati liberi del nodo (flow.kind, code.route, test.id, status...).
+	Meta map[string]string `json:"meta,omitempty" jsonschema:"metadati liberi del nodo; vedi set_node_meta"`
 }
 
 // nodeKind derives the compact kind label from the shape oneof. A node with no
@@ -613,6 +615,9 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 		v.Text = t.GetContent()
 	}
 	v.AutoLayout = autoLayoutView(n.GetFrame().GetAutoLayout())
+	if len(n.GetMeta()) > 0 {
+		v.Meta = n.GetMeta()
+	}
 	return v
 }
 
@@ -747,4 +752,5 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "list_nodes", "List nodes, optionally filtered to one page's subtree.", s.ListNodes)
 	addTool(srv, "list_peers", "List the other people and agents in the document and the nodes each has selected or just edited. Use it to avoid editing what someone else is working on.", s.ListPeers)
 	addTool(srv, "list_components", "List the document's components.", s.ListComponents)
+	registerFlowTools(srv, s)
 }

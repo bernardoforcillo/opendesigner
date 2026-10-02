@@ -21,15 +21,17 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: opendesigner <serve|mcp> ...")
+		log.Fatal("usage: opendesigner <serve|mcp|flow> ...")
 	}
 	switch os.Args[1] {
 	case "serve":
 		runServe(os.Args[2:])
 	case "mcp":
 		runMCP(os.Args[2:])
+	case "flow":
+		os.Exit(runFlow(os.Args[2:], os.Stdout, os.Stderr))
 	default:
-		log.Fatal("usage: opendesigner <serve|mcp> ...")
+		log.Fatal("usage: opendesigner <serve|mcp|flow> ...")
 	}
 }
 
