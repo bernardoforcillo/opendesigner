@@ -4,7 +4,7 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within, waitFor } from "@testing-library/react";
-import { App, TOOLS, TOOL_LABELS } from "./App";
+import { App, TOOLS, TOOL_LABELS, toolsForMode } from "./App";
 import { textTool } from "../tools/textTool";
 import { penTool } from "../tools/penTool";
 import { frameTool } from "../tools/frameTool";
@@ -75,6 +75,7 @@ describe("registro dei tool", () => {
     expect(TOOLS.text).toBe(textTool);
     expect(TOOL_LABELS.map((t) => t.label)).toEqual([
       "Seleziona",
+      "Collega",
       "Frame",
       "Rettangolo",
       "Ellisse",
@@ -100,9 +101,11 @@ describe("registro dei tool", () => {
 describe("toolbar", () => {
   it("mostra un pulsante per ogni tool, Testo compreso", () => {
     render(<App />);
-    for (const { label } of TOOL_LABELS) {
+    for (const { label } of toolsForMode("design")) {
       expect(screen.getByRole("radio", { name: label })).toBeInTheDocument();
     }
+    // "Collega" esiste solo nei flussi.
+    expect(screen.queryByRole("radio", { name: "Collega" })).not.toBeInTheDocument();
   });
 
   it("premere Testo attiva davvero il tool testo (il cursore del canvas lo dimostra)", () => {
