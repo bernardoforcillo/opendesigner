@@ -1,0 +1,27 @@
+version: 2
+project_name: opendesigner
+
+before:
+  hooks:
+    - buf generate
+    - pnpm --dir web install --frozen-lockfile
+    - pnpm --dir web build
+
+builds:
+  - main: ./cmd/opendesigner
+    binary: opendesigner
+    env: [CGO_ENABLED=0]
+    goos: [linux, darwin, windows]
+    goarch: [amd64, arm64]
+    flags: [-trimpath]
+    ldflags: [-s -w]
+
+archives:
+  - formats: [tar.gz]
+    format_overrides:
+      - goos: windows
+        formats: [zip]
+    files: [license.md, readme.md]
+
+checksum:
+  name_template: checksums.txt
