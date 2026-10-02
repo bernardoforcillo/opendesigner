@@ -606,6 +606,27 @@ message FlowReport {
 message AnalyzeFlowsRequest { string doc_id = 1; string flow_id = 2; }
 message AnalyzeFlowsResponse { repeated FlowReport reports = 1; }
 
+// ---------- export di codice ----------
+// Un file del progetto generato: percorso relativo (con "/") e byte.
+message ExportFile {
+  string path = 1;
+  bytes content = 2;
+}
+// target: "react" (default: Vite + React + TypeScript + Tailwind v4 + test
+// Playwright dei flussi) oppure "html" (un file per schermata). flow_id vuoto =
+// cabla e testa tutti i flussi.
+message ExportCodeRequest {
+  string doc_id = 1;
+  string target = 2;
+  string flow_id = 3;
+}
+message ExportCodeResponse {
+  repeated ExportFile files = 1;
+  // Approssimazioni e omissioni (asset mancanti, transizioni verso nodi non
+  // esportati): testo leggibile (italiano).
+  repeated string warnings = 2;
+}
+
 message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string nickname = 3; }
 message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
 message UpdatePresenceResponse {}
@@ -627,4 +648,8 @@ service DocumentService {
   // vicoli ciechi, percorsi. Calcolata dal server (internal/flow), così UI,
   // CLI e agenti MCP vedono lo stesso risultato.
   rpc AnalyzeFlows(AnalyzeFlowsRequest) returns (AnalyzeFlowsResponse);
+  // Esporta il design come codice (internal/codegen): l'elenco dei file del
+  // progetto generato, calcolato dallo snapshot corrente. Come per
+  // AnalyzeFlows, CLI, MCP ed editor vedono lo stesso risultato.
+  rpc ExportCode(ExportCodeRequest) returns (ExportCodeResponse);
 }

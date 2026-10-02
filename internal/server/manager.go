@@ -113,3 +113,7 @@ func (m *Manager) List() ([]*opendesignerv1.DocInfo, error) {
 	}
 	return out, nil
 }
+
+// Assets ritorna lo store degli asset (le immagini) del documento: serve
+// all'export di codice, che li copia nel progetto generato.
+func (m *Manager) Assets(docID string) *store.Assets { return store.NewAssets(m.workspace, docID) }
