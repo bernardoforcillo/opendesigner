@@ -25,6 +25,11 @@ import { LayersPanel } from "./LayersPanel";
 import { ComponentsPanel } from "./ComponentsPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { PageBar } from "./PageBar";
+import { FlowPanel } from "./FlowPanel";
+import { ScreenMetaEditor } from "./ScreenMetaEditor";
+import { PrototypePlayer } from "./PrototypePlayer";
+import { resolveFlow, useFlowUi, type EditorMode } from "../store/flowUi";
+import { drawFlows } from "../renderer/flowRenderer";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
 import { selectTool } from "../tools/selectTool";
 import { rectTool } from "../tools/rectTool";
@@ -33,6 +38,8 @@ import { ellipseTool } from "../tools/ellipseTool";
 import { textTool } from "../tools/textTool";
 import { penTool } from "../tools/penTool";
 import { handTool } from "../tools/handTool";
+import { connectTool } from "../tools/connectTool";
+import { withFlowArrows } from "../tools/flowSelect";
 
 // Registro dei tool disponibili: la toolbar sceglie una chiave, attachTools
 // instrada gli eventi al tool corrispondente.
@@ -43,7 +50,10 @@ import { handTool } from "../tools/handTool";
 // sotto), cioè un pulsante che non fa quello che dice. È un invariante, e
 // come tale ha un test (App.test.tsx) invece di una convenzione a memoria.
 export const TOOLS: Partial<Record<ToolId, Tool>> = {
-  select: selectTool,
+  // In modalità Flussi il click cerca prima una freccia (tools/flowSelect.ts); in
+  // Design il wrapper delega senza cambiare niente.
+  select: withFlowArrows(selectTool),
+  connect: connectTool,
   frame: frameTool,
   rect: rectTool,
   ellipse: ellipseTool,
@@ -54,6 +64,7 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
 
 export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "select", label: "Seleziona" },
+  { id: "connect", label: "Collega" },
   { id: "frame", label: "Frame" },
   { id: "rect", label: "Rettangolo" },
   { id: "ellipse", label: "Ellisse" },
@@ -61,6 +72,15 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "pen", label: "Penna" },
   { id: "hand", label: "Mano" },
 ];
+
+// Gli strumenti che hanno senso in modalità Flussi: i flussi non disegnano, si
+// collegano le schermate che ci sono già. "Collega" esiste SOLO lì.
+const FLOW_TOOL_IDS: readonly ToolId[] = ["select", "connect", "hand"];
+// Quali strumenti mostra la toolbar in una modalità: in Design tutti tranne
+// "Collega", in Flussi solo quelli sopra.
+export function toolsForMode(mode: EditorMode): { id: ToolId; label: string }[] {
+  return TOOL_LABELS.filter((t) => (mode === "flows" ? FLOW_TOOL_IDS.includes(t.id) : t.id !== "connect"));
+}
 
 const CLIENT_ID = crypto.randomUUID();
 const DOC_KEY = "opendesigner.docId";
@@ -103,6 +123,14 @@ export function App() {
   const nicknameRef = useRef(nickname);
   const presenceRef = useRef<PresenceClient | null>(null);
   const [toolId, setToolId] = useState<ToolId>("select");
+  // La modalità (Design | Flussi) e il prototipo: stato di vista in useFlowUi.
+  const mode = useFlowUi((st) => st.mode);
+  const presenting = useFlowUi((st) => st.presenting);
+  // Cambia lo strumento attivo: il ref lo legge il tool manager, lo stato la toolbar.
+  const chooseTool = (id: ToolId) => {
+    toolRef.current = id;
+    setToolId(id);
+  };
   // Un op rifiutato dal server viene annullato in locale (la modifica
   // ottimistica sparisce dal canvas, vedi store/store.ts::rejectPending). Un
   // rollback SILENZIOSO è quasi peggio di nessun rollback: qui è l'unico posto
@@ -299,6 +327,21 @@ export function App() {
           }
           const layoutDrop = useScene.getState().layoutDrop;
           if (layoutDrop) drawLayoutDrop(octx, camera, layoutDrop);
+          // Le frecce dei flussi, sopra a tutto il resto dell'overlay.
+          const fu = useFlowUi.getState();
+          if (fu.mode === "flows") {
+            const flow = resolveFlow(scene, fu.currentFlowId);
+            drawFlows(octx, scene, camera, {
+              flowId: flow?.id ?? null,
+              startId: flow?.startId ?? "",
+              showAllFlows: fu.showAllFlows,
+              selectedTransitionId: fu.selectedTransitionId,
+              hoverTransitionId: fu.hoverTransitionId,
+              connectPreview: fu.connectPreview,
+              issueNodeIds: fu.issueNodeIds,
+              issueTransitionIds: fu.issueTransitionIds,
+            }, useScene.getState().currentPageId ?? null);
+          }
         }
       }
     };
@@ -310,6 +353,7 @@ export function App() {
     const unsubs = [
       useScene.subscribe(invalidate),
       usePresence.subscribe(invalidate),
+      useFlowUi.subscribe(invalidate),
       imageCache.subscribe(invalidate),
       // Cambiare renderer (o la sua scelta, che il guasto della GPU riporta in
       // CPU) va ridisegnato subito.
@@ -370,6 +414,37 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
+  // Scorciatoie della modalità Flussi: F alterna Design / Flussi, K attiva
+  // "Collega" (entrando in Flussi se serve). Sulla finestra, come le altre, e
+  // mai dentro un campo di testo (isTextField) né con un modificatore premuto
+  // (Ctrl+Alt+K è del tool di selezione).
+  useEffect(() => {
+    const onKeyDown = (e: KeyboardEvent) => {
+      if (isTextField(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (useFlowUi.getState().presenting) return;
+      const key = e.key.toLowerCase();
+      if (key === "f") {
+        e.preventDefault();
+        useFlowUi.getState().toggleMode();
+      } else if (key === "k") {
+        e.preventDefault();
+        useFlowUi.getState().setMode("flows");
+        chooseTool("connect");
+      }
+    };
+    window.addEventListener("keydown", onKeyDown);
+    return () => window.removeEventListener("keydown", onKeyDown);
+    // chooseTool scrive un ref e un setState: stabile quanto basta.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  // Uscire da Flussi riporta lo strumento a "Seleziona" se era "Collega"; entrare
+  // in Flussi lo fa se era uno strumento da disegno: non si disegna nei flussi.
+  useEffect(() => {
+    if (mode === "flows" ? !FLOW_TOOL_IDS.includes(toolRef.current) : toolRef.current === "connect") chooseTool("select");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
   // Copia / incolla / duplica (Ctrl/Cmd+C, +V, +D). Sulla finestra come le
   // scorciatoie qui sopra e per lo stesso motivo (il canvas non è focusabile);
   // la logica sta tutta in tools/clipboard.ts, qui c'è solo il montaggio --
@@ -408,12 +483,10 @@ export function App() {
           selectedKeys={[toolId]}
           className="flex gap-1"
           onSelectionChange={(keys) => {
-            const next = (keys.values().next().value as ToolId | undefined) ?? "select";
-            toolRef.current = next;
-            setToolId(next);
+            chooseTool((keys.values().next().value as ToolId | undefined) ?? "select");
           }}
         >
-          {TOOL_LABELS.map((t) => (
+          {toolsForMode(mode).map((t) => (
             <ToggleButton
               key={t.id}
               id={t.id}
@@ -423,6 +496,35 @@ export function App() {
             </ToggleButton>
           ))}
         </ToggleButtonGroup>
+        {/* Design | Flussi: la stessa tela, due letture. In Flussi le schermate
+            sono i frame veri del documento e le frecce sono i passaggi fra
+            l'una e l'altra (tasto F per alternare). */}
+        <ToggleButtonGroup
+          aria-label="Modalità"
+          selectionMode="single"
+          disallowEmptySelection
+          selectedKeys={[mode]}
+          className="flex gap-0.5 rounded bg-neutral-100 p-0.5"
+          onSelectionChange={(keys) => {
+            useFlowUi.getState().setMode((keys.values().next().value as EditorMode | undefined) ?? "design");
+          }}
+        >
+          <ToggleButton id="design" className="rounded px-3 py-0.5 text-sm data-[selected]:bg-white data-[selected]:shadow-sm">
+            Design
+          </ToggleButton>
+          <ToggleButton id="flows" className="rounded px-3 py-0.5 text-sm data-[selected]:bg-violet-600 data-[selected]:text-white">
+            Flussi
+          </ToggleButton>
+        </ToggleButtonGroup>
+        {mode === "flows" && (
+          <Button
+            aria-label="Presenta"
+            className="rounded bg-violet-600 px-3 py-1 text-sm text-white hover:bg-violet-500"
+            onPress={() => useFlowUi.getState().setPresenting(true)}
+          >
+            ▶ Presenta
+          </Button>
+        )}
         <Button
           className="rounded px-3 py-1 text-sm hover:bg-neutral-100"
           onPress={() => {
@@ -526,15 +628,24 @@ export function App() {
             un elenco lungo scrolla invece di sfondare) e i componenti sotto,
             AGGIUNTIVI -- il pannello componenti (M4) è montato qui senza toccare
             il resto del layout a tre colonne. */}
-        <aside
-          aria-label="Livelli e componenti"
-          className="flex w-56 shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-white"
-        >
-          <div className="min-h-0 flex-1 overflow-hidden">
-            <LayersPanel />
-          </div>
-          <ComponentsPanel />
-        </aside>
+        {mode === "flows" ? (
+          <aside
+            aria-label="Flussi"
+            className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-white"
+          >
+            <FlowPanel />
+          </aside>
+        ) : (
+          <aside
+            aria-label="Livelli e componenti"
+            className="flex w-56 shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-white"
+          >
+            <div className="min-h-0 flex-1 overflow-hidden">
+              <LayersPanel />
+            </div>
+            <ComponentsPanel />
+          </aside>
+        )}
         <div className="relative min-w-0 flex-1">
           {/* Il cursore viene dal tool attivo; durante un pan temporaneo (spazio
               o tasto centrale) è il tool manager a sovrascriverlo sul DOM. */}
@@ -567,9 +678,20 @@ export function App() {
           aria-label="Proprietà"
           className="w-64 shrink-0 overflow-hidden border-l border-neutral-200 bg-white"
         >
-          <PropertiesPanel />
+          {mode === "flows" ? (
+            // I metadati della schermata in cima, le proprietà di sempre sotto.
+            <div className="flex h-full flex-col">
+              <ScreenMetaEditor />
+              <div className="min-h-0 flex-1 overflow-y-auto">
+                <PropertiesPanel />
+              </div>
+            </div>
+          ) : (
+            <PropertiesPanel />
+          )}
         </aside>
       </div>
+      {presenting && <PrototypePlayer onClose={() => useFlowUi.getState().setPresenting(false)} />}
     </div>
   );
 }
