@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -409,4 +410,77 @@ func TestAgentAppearsInPresence(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("the agent never left the room")
 	}
+}
+
+// TestTwoAgentsShareOneDocument: two MCP sessions on the same document each see
+// the other's edits, both appear in the room under their own names, and writes
+// racing on different nodes all land.
+func TestTwoAgentsShareOneDocument(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	a := startSession(t, url, docID, "agent-a")
+	b := startSession(t, url, docID, "agent-b")
+	ctx := context.Background()
+
+	for _, x := range []struct {
+		s    *odmcp.Session
+		name string
+	}{{a, "Agente A"}, {b, "Agente B"}} {
+		pctx, stop := context.WithCancel(ctx)
+		t.Cleanup(stop)
+		go x.s.PresenceLoop(pctx, x.name)
+	}
+	waitFor(t, "both agents in the room", func() bool { return a.PresenceJoined() && b.PresenceJoined() })
+
+	// Each writes 10 nodes at the same time.
+	ids := make(chan string, 20)
+	var wg sync.WaitGroup
+	for _, s := range []*odmcp.Session{a, b} {
+		wg.Add(1)
+		go func(s *odmcp.Session) {
+			defer wg.Done()
+			for i := 0; i < 10; i++ {
+				out, err := s.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 5, Height: 5})
+				if err != nil {
+					t.Errorf("CreateRectangle: %v", err)
+					return
+				}
+				ids <- out.NodeId
+			}
+		}(s)
+	}
+	wg.Wait()
+	close(ids)
+
+	var all []string
+	for id := range ids {
+		all = append(all, id)
+	}
+	if len(all) != 20 {
+		t.Fatalf("created %d nodes, want 20", len(all))
+	}
+	for name, s := range map[string]*odmcp.Session{"a": a, "b": b} {
+		waitFor(t, "session "+name+" to see all 20 nodes", func() bool {
+			doc, _ := s.GetDocument(ctx, struct{}{})
+			n := 0
+			for _, id := range all {
+				if _, ok := nodeByID(doc, id); ok {
+					n++
+				}
+			}
+			return n == 20
+		})
+	}
+
+	// B edits a node A created: it lands, and A sees it.
+	w := 77.0
+	if _, err := b.SetProperties(ctx, odmcp.SetPropertiesInput{Id: all[0], Width: &w}); err != nil {
+		t.Fatalf("B editing A's node: %v", err)
+	}
+	waitFor(t, "A to see B's edit", func() bool {
+		doc, _ := a.GetDocument(ctx, struct{}{})
+		n, ok := nodeByID(doc, all[0])
+		return ok && n.Width == 77
+	})
 }
