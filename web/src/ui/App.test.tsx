@@ -150,7 +150,9 @@ describe("ciclo di disegno", () => {
     const fakeCtx = new Proxy(target, {
       get: (t, p) => (p in t ? t[p] : () => {}),
     }) as unknown as CanvasRenderingContext2D;
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx);
+    // `as never`: i tipi di canvaskit-wasm aggiungono l'overload WebGPU a getContext, e
+    // mockReturnValue prende il tipo dell'ULTIMO overload.
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx as never);
     const drawOverlay = vi.spyOn(overlayRenderer, "drawOverlay").mockImplementation(() => {});
     vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
 
@@ -280,7 +282,9 @@ describe("ciclo di disegno a invalidazione", () => {
     const fakeCtx = new Proxy(target, {
       get: (t, p) => (p in t ? t[p] : () => {}),
     }) as unknown as CanvasRenderingContext2D;
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx);
+    // `as never`: i tipi di canvaskit-wasm aggiungono l'overload WebGPU a getContext, e
+    // mockReturnValue prende il tipo dell'ULTIMO overload.
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx as never);
     return vi.spyOn(overlayRenderer, "drawOverlay").mockImplementation(() => {});
   }
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));

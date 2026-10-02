@@ -1,1 +1,9 @@
 @import "tailwindcss";
+
+/* Inter, il carattere predefinito del modello (renderer/text.ts). Lo stesso file
+   lo usa il renderer su GPU (renderer/ck): così il testo con la famiglia di
+   default ha lo stesso aspetto con entrambi i renderer. */
+@font-face { font-family: "Inter"; font-weight: 400; font-style: normal; font-display: swap; src: url("/fonts/Inter-400.ttf") format("truetype"); }
+@font-face { font-family: "Inter"; font-weight: 500; font-style: normal; font-display: swap; src: url("/fonts/Inter-500.ttf") format("truetype"); }
+@font-face { font-family: "Inter"; font-weight: 600; font-style: normal; font-display: swap; src: url("/fonts/Inter-600.ttf") format("truetype"); }
+@font-face { font-family: "Inter"; font-weight: 700; font-style: normal; font-display: swap; src: url("/fonts/Inter-700.ttf") format("truetype"); }

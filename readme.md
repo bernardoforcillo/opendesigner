@@ -124,6 +124,13 @@ direction, spacing, padding, alignment and hug. The server computes the layout
 after every change and stores the result as ordinary positions, so every client
 -- the browser and MCP agents alike -- sees the same thing.
 
+### Renderer
+
+The scene is drawn with Canvas 2D by default. The **CPU/GPU** button in the
+toolbar switches to a CanvasKit (Skia/WebGL) renderer, downloaded on demand; it
+shows the frame time so you can compare the two on your machine. See
+`docs/performance.md`.
+
 ### 5. Run the MCP server
 
 Start the backend first, then run:

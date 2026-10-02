@@ -49,13 +49,41 @@ pnpm --dir web vite --port 5199 &
 
 `web/src/bench/` ha il generatore del documento sintetico.
 
+## Renderer GPU (CanvasKit)
+
+Oltre a Canvas 2D c'è un secondo renderer della scena: **CanvasKit** (Skia in
+WebAssembly) su WebGL, in `renderer/ck/`. Si sceglie dal pulsante CPU/GPU nella
+barra (o con `?renderer=gpu`); la scelta si ricorda. **Il predefinito resta la
+CPU**, per due ragioni:
+
+- **Non ho misurato un vantaggio.** L'ambiente di sviluppo non ha una GPU: WebGL
+  gira in software (SwiftShader), e lì CanvasKit è PIÙ LENTO di Canvas 2D (20.000
+  nodi inquadrati: ~104 ms contro ~76 ms; zoomato: pari). Su una GPU vera è
+  plausibile che vada meglio, ma Canvas 2D in Chrome è accelerato dalla GPU
+  anch'esso, quindi non è scontato. Il pulsante mostra il tempo dell'ultimo
+  frame, così il confronto si fa sulla propria macchina.
+- **Il testo è diverso.** Il WASM non ha font di sistema: il testo si disegna con
+  Inter (inclusa in `public/fonts`, licenza OFL, quattro pesi), che è già il
+  carattere predefinito del modello. Un testo con un'altra famiglia ricade su
+  Inter, e CanvasKit non fa la crenatura (differenze di sub-pixel).
+
+Cosa c'è: stesse regole di Canvas 2D per istanze e override, frame ritaglianti e
+trasparenti, gradienti, tratti centro/dentro/fuori, ombra e sfocatura (qui per
+l'intero nodo), vettoriale, immagini e segnaposto, indice di scena, scarto e
+livelli di dettaglio. CanvasKit si scarica solo alla prima scelta della GPU (~7
+MB, in file separati dal bundle principale). Se non si carica, WebGL manca o il
+contesto si perde, l'app torna alla CPU e lo dice nel pulsante.
+
+**Parità.** `pnpm parity` disegna una galleria con entrambi i renderer a quattro
+zoom e fallisce se più dell'1,5% dei pixel differisce di oltre 32/255. Oggi:
+0,87% a zoom 1 (tutto testo), 0,08% a 2, 0,15% a 0,35 e 0,01% a 0,08.
+
 ## Limiti noti
 
 - A **inquadratura piena di decine di migliaia di nodi** il costo è del
   rasterizzatore (`fill`, `roundRect`): in CPU resta ~100 ms, ed è la ragione per
-  cui il riuso dell'immagine copre il movimento. Un renderer su GPU (WebGL/WebGPU,
-  o Skia/CanvasKit in WASM) è il passo successivo; richiede di portare il testo
-  (caricamento dei font) e tutti gli effetti.
+  cui il riuso dell'immagine copre il movimento. Il renderer GPU (sopra) esiste
+  ma il suo vantaggio va misurato su hardware vero.
 - `applyOp` copia la mappa dei nodi a ogni op (12 ms a 20.000 nodi), e il
   confronto per l'indice è lineare nel numero di nodi. Servono strutture dati
   persistenti per andare oltre.

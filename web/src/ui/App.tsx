@@ -10,7 +10,10 @@ import { PresenceBar } from "./PresenceBar";
 import { useScene } from "../store/store";
 import { resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
 import { attachImageRecovery, imageCache } from "../renderer/imageCache";
-import { SETTLE_MS, SceneLayerCache } from "../renderer/layerCache";
+import { SETTLE_MS } from "../renderer/layerCache";
+import { SceneSurface } from "../renderer/sceneSurface";
+import { useRenderer } from "../store/rendererChoice";
+import { RendererToggle } from "./RendererToggle";
 import { drawOverlay } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
@@ -88,6 +91,9 @@ function isTextField(target: EventTarget | null): boolean {
 export function App() {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
+  // Il canvas WebGL del renderer su GPU, SOTTO quello 2D (che resta in cima perché
+  // riceve gli eventi): vedi renderer/sceneSurface.ts.
+  const glRef = useRef<HTMLCanvasElement>(null);
   // Il manager legge il tool attivo da un ref: attachTools viene collegato una
   // volta sola al mount, quindi non deve dipendere dall'identità della closure.
   const toolRef = useRef<ToolId>("select");
@@ -245,7 +251,12 @@ export function App() {
   // camera si muove, riusa l'ultima immagine invece di ridisegnare, e a
   // movimento finito (SETTLE_MS) rifà il frame esatto.
   useEffect(() => {
-    const layers = new SceneLayerCache();
+    // Il disegno vero lo fa SceneSurface: sceglie fra Canvas 2D (CPU) e CanvasKit
+    // (GPU) e ripiega sulla CPU se la GPU non va. Senza il canvas WebGL (i test
+    // sotto jsdom) disegna sempre in CPU.
+    const surface = canvasRef.current && glRef.current
+      ? new SceneSurface(canvasRef.current, glRef.current, imageCache, () => invalidate())
+      : null;
     let raf = 0;
     let settle: ReturnType<typeof setTimeout> | null = null;
     let force = false;
@@ -258,8 +269,8 @@ export function App() {
       if (canvas && scene) {
         resizeCanvasToDisplaySize(canvas);
         const ctx = canvas.getContext("2d");
-        if (ctx) {
-          const exact = layers.draw(ctx, scene, useScene.getState().camera, useScene.getState().currentPageId, force);
+        if (ctx && surface) {
+          const exact = surface.draw(scene, useScene.getState().camera, useScene.getState().currentPageId, force);
           force = false;
           if (settle) clearTimeout(settle);
           settle = exact
@@ -300,6 +311,11 @@ export function App() {
       useScene.subscribe(invalidate),
       usePresence.subscribe(invalidate),
       imageCache.subscribe(invalidate),
+      // Cambiare renderer (o la sua scelta, che il guasto della GPU riporta in
+      // CPU) va ridisegnato subito.
+      useRenderer.subscribe((st, prev) => {
+        if (st.choice !== prev.choice) invalidate();
+      }),
     ];
     // Ridimensionare il canvas lo svuota: va ridisegnato. ResizeObserver non c'è
     // in ogni ambiente (jsdom): lì basta il frame iniziale.
@@ -316,6 +332,7 @@ export function App() {
       if (settle) clearTimeout(settle);
       for (const u of unsubs) u();
       observer?.disconnect();
+      surface?.dispose();
       fonts?.removeEventListener?.("loadingdone", invalidate);
       window.removeEventListener("resize", invalidate);
     };
@@ -431,6 +448,7 @@ export function App() {
             }}
           />
         </div>
+        <RendererToggle />
         <span aria-live="polite" className="text-sm text-neutral-500">
           {statusLabel}
         </span>
@@ -520,6 +538,14 @@ export function App() {
         <div className="relative min-w-0 flex-1">
           {/* Il cursore viene dal tool attivo; durante un pan temporaneo (spazio
               o tasto centrale) è il tool manager a sovrascriverlo sul DOM. */}
+          {/* Il canvas WebGL della GPU: sotto, senza eventi, nascosto finché la
+              GPU non è scelta e pronta. */}
+          <canvas
+            id="scene-gl"
+            ref={glRef}
+            style={{ display: "none" }}
+            className="pointer-events-none absolute inset-0 block h-full w-full"
+          />
           <canvas
             id="scene"
             ref={canvasRef}

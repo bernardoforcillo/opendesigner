@@ -37,7 +37,9 @@ Legenda: [x] fatto · [ ] da fare
 
 ## 4. Prestazioni
 - [x] Rendering a invalidazione, indice di scena incrementale, scarto di ciò che non si vede, livelli di dettaglio, riuso dell'immagine durante pan/zoom; banco di prova su 20.000 nodi (vedi docs/performance.md)
-- [ ] Rendering su GPU (WebGL/WebGPU o Skia/CanvasKit), con font caricabili
+- [x] Renderer GPU opzionale con CanvasKit (WebGL), parità verificata con `pnpm parity`; da misurare su una GPU vera prima di renderlo il predefinito
+- [ ] Font caricabili dall'utente (oggi solo Inter nel renderer GPU; i font di sistema solo in CPU)
+- [ ] Crenatura e shaping del testo nel renderer GPU (Paragraph di CanvasKit)
 - [ ] Strutture dati persistenti per la scena (applyOp senza copiare tutta la mappa)
 
 ## 5. Differenziatori

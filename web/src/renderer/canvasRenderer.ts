@@ -62,7 +62,7 @@ type ChildIndex = Map<string, NodeLite[]>;
 // stato di vista dello store (store.ts), e il renderer resta una funzione pura.
 // Assente (o null) ripiega sulla PRIMA pagina -- il default dello store -- così
 // le scene a pagina singola non hanno bisogno di dirlo.
-function rootsOf(state: SceneState, children: ChildIndex, currentPageId?: string | null): NodeLite[] {
+export function rootsOf(state: SceneState, children: ChildIndex, currentPageId?: string | null): NodeLite[] {
   const pageId = currentPageId ?? state.pages[0]?.id;
   return pageId !== undefined ? children.get(pageId) ?? [] : [];
 }
@@ -329,12 +329,12 @@ interface Cull {
 // visibile: lo si salta. Sotto LOD_FLAT_PX un SINGOLO nodo non vale più il suo
 // disegno completo (percorso, tratto, gradiente, testo): diventa un rettangolo
 // piatto del suo colore, che a quella taglia è indistinguibile.
-const SKIP_SUBTREE_PX = 0.3;
-const LOD_FLAT_PX = 4;
+export const SKIP_SUBTREE_PX = 0.3;
+export const LOD_FLAT_PX = 4;
 // Un frame ritagliante più piccolo di così (px schermo) non ritaglia: ciò che
 // sporge di qualche pixel non si distingue, e creare un Path2D + clip per ogni
 // frame costa più del resto del frame.
-const CLIP_MIN_PX = 12;
+export const CLIP_MIN_PX = 12;
 
 // La mappa degli override che scende insieme al sottoalbero di un'istanza
 // (masterNodeId -> override), oppure `null` fuori da ogni istanza (la pagina, il
@@ -347,7 +347,7 @@ type OverrideMap = ReadonlyMap<string, InstanceOverrideLite> | null;
 // quando non c'è override (nessuna copia inutile). Non tocca mai la geometria
 // (x/y/width/height/rotation): un override cambia solo ciò che il nodo dipinge,
 // non dove sta -- la stessa scelta dei bounds in store/groups.ts.
-function withOverride(n: NodeLite, ov: InstanceOverrideLite | undefined): NodeLite {
+export function withOverride(n: NodeLite, ov: InstanceOverrideLite | undefined): NodeLite {
   if (!ov) return n;
   let eff = n;
   if (ov.fills !== undefined) eff = { ...eff, fills: ov.fills };

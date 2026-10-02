@@ -48,7 +48,7 @@ export function sceneIndexOf(scene: SceneState): SceneIndex {
 // Lo scarto massimo, oltre al box, con cui un nodo dipinge: tratto (già in
 // worldVisualAabbOfNode), ombra (offset + metà sfocatura come deviazione, ~3
 // deviazioni di coda) e sfocatura del livello (~3 deviazioni).
-function effectsOutset(n: NodeLite): number {
+export function effectsOutset(n: NodeLite): number {
   if (!n.effects) return 0;
   let out = 0;
   let shadowSeen = false;
