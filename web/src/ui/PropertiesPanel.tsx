@@ -738,6 +738,10 @@ export function PropertiesPanel() {
           comune della selezione: non esiste nessuna pagina contro cui allineare
           (vedi il commento su alignTarget). Una barra sola, con un filo fra le
           quattro orizzontali e le quattro verticali. */}
+      {/* Con UN solo nodo ogni comando è disabilitato (il riferimento è il
+          riquadro comune della selezione): la barra compare da due nodi in su e
+          a riposo non ruba 40px all'ispettore. */}
+      {selection.length >= 2 && (
       <div role="group" aria-label="Allinea" className="flex shrink-0 items-center gap-0.5 border-b border-line px-2 py-1.5">
         {ALIGN_COMMANDS.map((c, i) => (
           <Fragment key={c.id}>
@@ -766,6 +770,7 @@ export function PropertiesPanel() {
           </Fragment>
         ))}
       </div>
+      )}
 
       {/* LAYOUT: posizione, dimensione, rotazione e (rettangoli) raggio, in una
           griglia a due colonne di campi con il prefisso DENTRO (X, Y, W, H, °, R). */}

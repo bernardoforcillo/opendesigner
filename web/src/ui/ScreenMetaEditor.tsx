@@ -35,6 +35,8 @@ const STATUS_STYLE: Record<Status, { dot: string; on: string }> = {
 };
 
 // Un campo "da codice": monospazio, con la sua icona.
+// Etichette brevi: i tre chip stanno in una riga (il nome intero è l'aria-label).
+const STATUS_SHORT: Record<Status, string> = { planned: "Piano", implemented: "Fatta", tested: "Testata" };
 const CODE = "font-mono text-[12px]";
 
 export function ScreenMetaEditor() {
@@ -94,11 +96,12 @@ export function ScreenMetaEditor() {
           className="flex flex-col gap-1"
         >
           <Label className="text-[11px] font-medium text-fg-subtle">Stato</Label>
-          <div className="flex flex-wrap gap-1">
+          <div className="grid grid-cols-3 gap-1">
             {STATUSES.map((s) => (
               <Radio
                 key={s}
                 value={s}
+                aria-label={STATUS_LABELS[s]}
                 className={
                   "inline-flex h-6 cursor-pointer select-none items-center justify-center gap-1.5 rounded-full border border-line px-2 " +
                   "text-[11px] font-medium text-fg-muted outline-none transition-colors hover:bg-surface-3 " +
@@ -106,7 +109,7 @@ export function ScreenMetaEditor() {
                 }
               >
                 <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_STYLE[s].dot}`} />
-                <span className="truncate">{STATUS_LABELS[s]}</span>
+                <span className="truncate">{STATUS_SHORT[s]}</span>
               </Radio>
             ))}
           </div>

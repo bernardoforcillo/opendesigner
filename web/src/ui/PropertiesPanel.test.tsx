@@ -1311,14 +1311,13 @@ describe("allineamento", () => {
   // UN NODO SOLO: i pulsanti sono DISABILITATI e il nodo non si muove. Non
   // esiste nessuna pagina contro cui allinearlo (selection/align.ts), e un
   // pulsante vivo che non fa niente non si distingue da uno rotto.
-  it("con un nodo solo disabilita i pulsanti e non muove niente", () => {
+  it("con un nodo solo la barra non c'è (niente da allineare) e non si muove niente", () => {
     installScene(rectNode("a", "a0", { x: 500, y: 500, width: 50, height: 50 }));
     useScene.getState().setSelection(["a"]);
     render(<PropertiesPanel />);
 
-    const b = screen.getByRole("button", { name: "Allinea a sinistra" });
-    expect(b).toBeDisabled();
-    fireEvent.click(b);
+    expect(screen.queryByRole("group", { name: "Allinea" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Allinea a sinistra" })).not.toBeInTheDocument();
     expect(useScene.getState().scene?.nodes.at("a").x).toBe(500); // dov'era
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(0);
