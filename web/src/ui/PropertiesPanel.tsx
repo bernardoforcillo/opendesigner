@@ -1,3 +1,4 @@
+import { usePosedScene } from "../animation/posedScene";
 import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import {
@@ -503,7 +504,10 @@ function OverrideTextField({
 }
 
 export function PropertiesPanel() {
-  const scene = useScene((s) => s.scene);
+  // I valori che il pannello mostra sono quelli che si vedono: con la timeline in
+  // posa (si scorre, si registra) sono i valori campionati. A timeline ferma è la
+  // scena dello store, la stessa istanza di prima (animation/posedScene.ts).
+  const scene = usePosedScene();
   const selection = useScene((s) => s.selection);
   const summary = scene ? selectionSummary(scene, selection) : null;
   const nodes = scene ? selection.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined) : [];

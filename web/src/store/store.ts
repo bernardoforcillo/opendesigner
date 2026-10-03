@@ -4,6 +4,7 @@ import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
+import { recordFinal, recordPreview } from "../animation/recordHook";
 import { isReachableFrom, subtreeOf } from "./tree";
 import type { PageLite, SceneState } from "./types";
 import type { PenPreview } from "./vectorGeometry";
@@ -1382,7 +1383,11 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // Dentro un gesto viene anche REGISTRATO fra le anteprime, così un ricalcolo
   // della vista (record dal filo, rifiuto) può rimetterlo in cima invece di
   // spegnere l'anteprima a metà drag.
-  applyLocal: (op) =>
+  applyLocal: (op) => {
+    // Registrazione animazione (animation/recordHook.ts): con "Registra" acceso
+    // l'anteprima di x/y/rotazione/opacità va nella bozza dei keyframe e la scena
+    // non si tocca. Spenta: il gancio è null e questa riga non fa niente.
+    if (recordPreview(op)) return;
     set((st) => {
       if (!st.scene) return st;
       const scene = applyOp(st.scene, op);
@@ -1398,7 +1403,8 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       preview.delete(key);
       preview.set(key, op);
       return { ...next, gesture: { ...st.gesture, preview } };
-    }),
+    });
+  },
 
   // Apre un gesto fotografando la SELEZIONE (il punto di ripristino di Esc) e
   // azzerando l'elenco delle anteprime. La scena non va fotografata: la base
@@ -1426,7 +1432,10 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   // È stato di interfaccia, e un tool può volerla cambiare durante il gesto
   // (es. selezionare il nodo appena creato) senza vedersela annullare; viene
   // solo potata, UNA volta sola e contro la scena FINALE (vedi sotto).
-  endGesture: (finalOps) => {
+  endGesture: (finalOpsIn) => {
+    // Registrazione animazione: gli op di proprietà animabili diventano UN SetClip.
+    // A registrazione spenta `recordFinal` restituisce lo stesso array.
+    const finalOps = recordFinal(finalOpsIn);
     const snap = get().gesture;
     // La selezione VOLUTA dal chiamante alla chiusura del gesto. Può già
     // riferirsi a nodi che esisteranno solo DOPO finalOps -- è esattamente il

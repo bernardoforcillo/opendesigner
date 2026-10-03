@@ -7,6 +7,7 @@ import type { Bounds } from "../canvas/geometry";
 import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
 import { imageCache } from "../renderer/imageCache";
 import { sceneForScreen, PROTO_PAGE_ID } from "../flow/protoScene";
+import { useProtoAnimation } from "./protoAnim";
 import { screenName } from "../flow/screens";
 import { Badge, Icon, IconButton } from "./ds";
 import { AnyIcon, FlowIconButton } from "./ds/flow-parts";
@@ -101,13 +102,17 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
   }, [scene, state?.screenId]);
   const cam = useMemo(() => (screenBox && size.w > 0 ? fitCamera(screenBox, size.w, size.h) : null), [screenBox, size]);
 
+  // Le clip del documento (enter/loop all'apparire della schermata, hover e tap sul
+  // bersaglio): ciclo di frame solo finché una gira, vedi ui/protoAnim.ts.
+  const anim = useProtoAnimation(scene, state?.screenId ?? null, cam, stage);
+
   useEffect(() => {
     const c = canvas.current;
     if (!c || !derived || !cam) return;
     resizeCanvasToDisplaySize(c);
     const ctx = c.getContext("2d");
-    if (ctx) drawScene(ctx, derived, cam, PROTO_PAGE_ID);
-  }, [derived, cam, size, imgTick]);
+    if (ctx) drawScene(ctx, anim.pose(derived), cam, PROTO_PAGE_ID);
+  }, [derived, cam, size, imgTick, anim.pose]);
 
   if (!scene) return null;
   const options = flow && state ? optionsFrom(scene, flow.id, state) : [];
@@ -147,7 +152,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
       className="od-island-dark fixed inset-0 z-50 overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,var(--surface-2),var(--canvas)_72%)] text-[13px] text-fg"
     >
       {/* Il palcoscenico: la schermata al centro dell'area sopra al dock. */}
-      <div ref={stage} className="absolute inset-x-0 top-0" style={{ bottom: DOCK_RESERVE }}>
+      <div ref={stage} className="absolute inset-x-0 top-0" style={{ bottom: DOCK_RESERVE }} {...anim.handlers}>
         {state && derived ? (
           <>
             {frame && (
