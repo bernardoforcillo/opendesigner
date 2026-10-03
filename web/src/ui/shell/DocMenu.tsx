@@ -6,6 +6,7 @@ import { useRenderer } from "../../store/rendererChoice";
 import { docClient } from "../../rpc/client";
 import { useTheme } from "./theme";
 import { usePanels } from "./panels";
+import { pickSvgFile } from "../../tools/svgImport";
 
 // IL MENU DEL DOCUMENTO: il logo è il pulsante. Dentro: il nome del documento
 // (rinominabile sul posto), la Home, il nuovo documento, il tema, il renderer.
@@ -129,6 +130,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           if (k === "home") location.hash = "";
           else if (k === "new") onNewDocument();
           else if (k === "rename") setEditing(true);
+          else if (k === "import-svg") void pickSvgFile();
           else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
           else if (k === "panel-left") usePanels.getState().toggle("left");
           else if (k === "panel-right") usePanels.getState().toggle("right");
@@ -142,6 +144,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuItem>
               <MenuItem id="rename" shouldCloseOnSelect={false} className={ITEM}>
                 <Icon name="pen" size={14} /> Rinomina documento
+              </MenuItem>
+              <MenuItem id="import-svg" className={ITEM}>
+                <Icon name="image" size={14} /> Importa SVG…
               </MenuItem>
               <Separator className="my-1 h-px bg-line" />
               <MenuItem id="panel-left" className={ITEM}>

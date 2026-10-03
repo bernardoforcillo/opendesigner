@@ -1,0 +1,12 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 24 24" fill="none" stroke="#1f6feb" stroke-width="1.5" stroke-linecap="round" stroke-linejoin="round">
+  <title>Icona posizione</title>
+  <!-- archi relativi e assoluti, flag attaccati ai numeri -->
+  <path id="pin" d="M12 21.5s-6.5-5.6-6.5-11a6.5 6.5 0 1 1 13 0c0 5.4-6.5 11-6.5 11z"/>
+  <circle id="dot" cx="12" cy="10.5" r="2.4"/>
+  <path id="orbit" d="M3.5 17.5a9 4 0 0 0 17 0" stroke-width="1.2" stroke-dasharray="1.2 1.6"/>
+  <path id="swoosh" d="M2 6.5 Q5 2 8.5 4.5 T14 3.5"/>
+  <line id="axis" x1="3" y1="22.5" x2="21" y2="22.5" stroke="#ef4444"/>
+  <polyline id="zig" points="17,3 19,6 21,3 23,6" stroke="#10b981"/>
+  <polygon id="tri" points="2.5,10 5.5,10 4,13" stroke="#f59e0b" fill="#fde68a"/>
+  <rect id="frame" x="0.75" y="0.75" width="22.5" height="22.5" stroke-width="0.6" stroke="#94a3b8" stroke-linejoin="miter"/>
+</svg>
