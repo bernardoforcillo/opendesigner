@@ -4,8 +4,9 @@ import { type Bounds, worldBoundsToScreen } from "../canvas/geometry";
 import type { SceneState } from "../store/types";
 import { peerColor, type Peers } from "../store/presence";
 import { selectionWorldBounds } from "./overlayRenderer";
+import { themeColors, withAlpha } from "./themeColors";
 
-const LABEL_FONT = "600 11px system-ui, sans-serif";
+const LABEL_FONT = "600 11px Inter, system-ui, sans-serif";
 const LABEL_PAD_X = 6;
 const LABEL_H = 16;
 
@@ -83,8 +84,6 @@ export function drawPeers(
   }
 }
 
-const DROP_COLOR = "#2f6fed";
-
 /**
  * L'anteprima di un riordino in un auto layout: la linea d'inserimento e il
  * contorno tratteggiato del nodo che segue il puntatore. Va chiamata DOPO
@@ -98,13 +97,15 @@ export function drawLayoutDrop(
 ): void {
   const dpr = typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  // Il blu d'accento del tema (come il resto dell'overlay di selezione).
+  const DROP_COLOR = themeColors().accent;
   if (drop.ghost) {
     const g = worldBoundsToScreen(drop.ghost, cam);
     ctx.save();
     ctx.setLineDash([4, 3]);
     ctx.lineWidth = 1;
     ctx.strokeStyle = DROP_COLOR;
-    ctx.fillStyle = "rgba(47, 111, 237, 0.08)";
+    ctx.fillStyle = withAlpha(DROP_COLOR, 0.08);
     ctx.fillRect(g.x, g.y, g.width, g.height);
     ctx.strokeRect(g.x + 0.5, g.y + 0.5, g.width, g.height);
     ctx.restore();

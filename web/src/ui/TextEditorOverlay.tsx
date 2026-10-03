@@ -270,8 +270,9 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
         overflowWrap: "anywhere",
         // Il campo è un'affordance, non un rettangolo bianco comparso dal
         // nulla: il contorno dice dove si sta scrivendo e dove finisce la
-        // larghezza di wrap. sky-500, come gli altri accenti dell'app.
-        outline: "1px solid #0ea5e9",
+        // larghezza di wrap. Nel blu d'accento del tema (token --accent), lo
+        // stesso della selezione sul canvas.
+        outline: "1px solid var(--accent)",
         outlineOffset: "0px",
       }}
     />

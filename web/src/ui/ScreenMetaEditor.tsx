@@ -1,8 +1,11 @@
+import { Label, Radio, RadioGroup } from "react-aria-components";
 import { useScene } from "../store/store";
-import { FLOW_KINDS, FLOW_KIND_LABELS, META_KEYS, STATUSES, STATUS_LABELS, STATUS_COLORS, kindOf, metaValue, statusOf } from "../flow/meta";
+import { FLOW_KINDS, FLOW_KIND_LABELS, META_KEYS, STATUSES, STATUS_LABELS, kindOf, metaValue, statusOf, type FlowKind, type Status } from "../flow/meta";
 import { setMetaOp, submit } from "../flow/commands";
 import { layerDisplayName } from "./LayersPanel";
 import { CommitField } from "./fields/CommitField";
+import { cls } from "./ds";
+import { Field, FlowIcon, type FlowIconName } from "./ds/flow-parts";
 
 // L'EDITOR DEI METADATI DI SCHERMATA (modalità Flussi, colonna destra). Scrive
 // Node.meta: tipo nel flusso, route e componente del codice, id e testo del test,
@@ -12,8 +15,27 @@ import { CommitField } from "./fields/CommitField";
 // corrente e riscrive TUTTE le chiavi (comprese quelle che questo editor non
 // conosce), cambiando solo quella toccata.
 
-const SELECT_CLASS =
-  "w-full min-w-0 rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-sm outline-none focus:border-sky-500";
+// L'icona di ogni tipo: la stessa famiglia di tratti che il canvas disegna nel
+// badge della schermata (renderer/flowRenderer.ts::drawKindIcon).
+const KIND_ICONS: Record<FlowKind, FlowIconName> = {
+  screen: "kScreen",
+  decision: "kDecision",
+  action: "kAction",
+  start: "kStart",
+  end: "kEnd",
+  note: "kNote",
+};
+
+// Lo stato come tre chip colorati, dal "non fatto" al "verificato": tenue,
+// accento, verde -- gli stessi colori del pallino sul badge sul canvas.
+const STATUS_STYLE: Record<Status, { dot: string; on: string }> = {
+  planned: { dot: "bg-fg-subtle", on: "data-[selected]:bg-surface-3 data-[selected]:text-fg data-[selected]:border-line-strong" },
+  implemented: { dot: "bg-accent", on: "data-[selected]:bg-accent-soft data-[selected]:text-accent data-[selected]:border-accent" },
+  tested: { dot: "bg-ok", on: "data-[selected]:bg-ok-soft data-[selected]:text-ok data-[selected]:border-ok" },
+};
+
+// Un campo "da codice": monospazio, con la sua icona.
+const CODE = "font-mono text-[12px]";
 
 export function ScreenMetaEditor() {
   const scene = useScene((s) => s.scene);
@@ -22,8 +44,9 @@ export function ScreenMetaEditor() {
 
   if (!scene || !node) {
     return (
-      <div className="border-b border-neutral-200 px-2 py-3 text-sm text-neutral-400">
-        Seleziona una schermata per modificarne i metadati.
+      <div className="flex items-center gap-2 border-b border-line px-3 py-3 text-[12px] text-fg-subtle">
+        <FlowIcon name="device" size={14} className="shrink-0" />
+        <span>Seleziona una schermata per modificarne i metadati.</span>
       </div>
     );
   }
@@ -32,58 +55,77 @@ export function ScreenMetaEditor() {
     const op = setMetaOp(node, key, value);
     if (op) submit([op]);
   };
+  const kind = kindOf(node);
   const status = statusOf(node);
 
   return (
-    <section aria-label="Metadati della schermata" className="border-b border-neutral-200 text-sm text-neutral-700">
-      <div className="flex items-center gap-1.5 border-b border-neutral-200 px-2 py-1.5">
-        <span aria-hidden="true" className="size-2.5 shrink-0 rounded-full" style={{ background: STATUS_COLORS[status] }} />
-        <span className="min-w-0 flex-1 truncate font-medium text-neutral-600">{layerDisplayName(node)}</span>
-      </div>
-      <div className="flex flex-col gap-1.5 p-2">
-        <label className="flex items-center gap-1.5">
-          <span className="w-16 shrink-0 text-xs text-neutral-400">Tipo</span>
-          <select
-            aria-label="Tipo"
-            value={kindOf(node)}
-            onChange={(e) => write(META_KEYS.kind, e.target.value)}
-            className={SELECT_CLASS}
-          >
-            {FLOW_KINDS.map((k) => (
-              <option key={k} value={k}>{FLOW_KIND_LABELS[k]}</option>
-            ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-1.5">
-          <span className="w-16 shrink-0 text-xs text-neutral-400">Stato</span>
-          <select
-            aria-label="Stato"
-            value={status}
-            onChange={(e) => write(META_KEYS.status, e.target.value)}
-            className={SELECT_CLASS}
-          >
+    <section aria-label="Metadati della schermata" className="border-b border-line bg-surface text-[13px] text-fg">
+      <header className="flex h-9 items-center gap-2 px-3">
+        <h3 className={cls.sectionTitle}>Schermata</h3>
+        <span className="ml-auto flex min-w-0 items-center gap-1.5 text-[12px] text-fg-muted">
+          <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${STATUS_STYLE[status].dot}`} />
+          <span className="min-w-0 truncate font-medium">{layerDisplayName(node)}</span>
+        </span>
+      </header>
+      <div className="flex flex-col gap-2 px-3 pb-3">
+        <Field label="Tipo" wide>
+          <span className="relative block min-w-0 flex-1">
+            <FlowIcon name={KIND_ICONS[kind]} size={14} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted" />
+            <select
+              aria-label="Tipo"
+              value={kind}
+              onChange={(e) => write(META_KEYS.kind, e.target.value)}
+              className={cls.select + " pl-7"}
+            >
+              {FLOW_KINDS.map((k) => (
+                <option key={k} value={k}>{FLOW_KIND_LABELS[k]}</option>
+              ))}
+            </select>
+          </span>
+        </Field>
+
+        <RadioGroup
+          aria-label="Stato"
+          value={status}
+          onChange={(v) => write(META_KEYS.status, v)}
+          orientation="horizontal"
+          className="flex flex-col gap-1"
+        >
+          <Label className="text-[11px] font-medium text-fg-subtle">Stato</Label>
+          <div className="flex flex-wrap gap-1">
             {STATUSES.map((s) => (
-              <option key={s} value={s}>{STATUS_LABELS[s]}</option>
+              <Radio
+                key={s}
+                value={s}
+                className={
+                  "inline-flex h-6 cursor-pointer select-none items-center justify-center gap-1.5 rounded-full border border-line px-2 " +
+                  "text-[11px] font-medium text-fg-muted outline-none transition-colors hover:bg-surface-3 " +
+                  `data-[focus-visible]:shadow-[var(--ring)] ${STATUS_STYLE[s].on}`
+                }
+              >
+                <span aria-hidden="true" className={`h-1.5 w-1.5 shrink-0 rounded-full ${STATUS_STYLE[s].dot}`} />
+                <span className="truncate">{STATUS_LABELS[s]}</span>
+              </Radio>
             ))}
-          </select>
-        </label>
-        <label className="flex items-center gap-1.5">
-          <span className="w-16 shrink-0 text-xs text-neutral-400">Route</span>
-          <CommitField label="Route" value={metaValue(node, META_KEYS.route)} onCommit={(v) => write(META_KEYS.route, v)} placeholder="es. /login" />
-        </label>
-        <label className="flex items-center gap-1.5">
-          <span className="w-16 shrink-0 text-xs text-neutral-400">Componente</span>
-          <CommitField label="Componente" value={metaValue(node, META_KEYS.component)} onCommit={(v) => write(META_KEYS.component, v)} placeholder="es. LoginPage" />
-        </label>
-        <label className="flex items-center gap-1.5">
-          <span className="w-16 shrink-0 text-xs text-neutral-400">Test id</span>
-          <CommitField label="Test id" value={metaValue(node, META_KEYS.testId)} onCommit={(v) => write(META_KEYS.testId, v)} placeholder="es. login-submit" />
-        </label>
-        <label className="flex items-center gap-1.5">
-          <span className="w-16 shrink-0 text-xs text-neutral-400">Test testo</span>
-          <CommitField label="Test testo" value={metaValue(node, META_KEYS.testText)} onCommit={(v) => write(META_KEYS.testText, v)} placeholder="es. Accedi" />
-        </label>
+          </div>
+        </RadioGroup>
+
+        <div className="mt-1 flex flex-col gap-2 border-t border-line pt-3">
+          <Field label="Route" icon="route" wide>
+            <CommitField label="Route" value={metaValue(node, META_KEYS.route)} onCommit={(v) => write(META_KEYS.route, v)} placeholder="es. /login" className={CODE} />
+          </Field>
+          <Field label="Componente" icon="code" wide>
+            <CommitField label="Componente" value={metaValue(node, META_KEYS.component)} onCommit={(v) => write(META_KEYS.component, v)} placeholder="es. LoginPage" className={CODE} />
+          </Field>
+          <Field label="Test id" icon="link" wide>
+            <CommitField label="Test id" value={metaValue(node, META_KEYS.testId)} onCommit={(v) => write(META_KEYS.testId, v)} placeholder="es. login-submit" className={CODE} />
+          </Field>
+          <Field label="Test testo" icon="text" wide>
+            <CommitField label="Test testo" value={metaValue(node, META_KEYS.testText)} onCommit={(v) => write(META_KEYS.testText, v)} placeholder="es. Accedi" className={CODE} />
+          </Field>
+        </div>
       </div>
     </section>
   );
 }
+

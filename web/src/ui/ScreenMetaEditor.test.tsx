@@ -39,7 +39,7 @@ describe("ScreenMetaEditor", () => {
     select("A");
     render(<ScreenMetaEditor />);
     expect(screen.getByRole("combobox", { name: "Tipo" })).toHaveValue("screen");
-    expect(screen.getByRole("combobox", { name: "Stato" })).toHaveValue("planned");
+    expect(screen.getByRole("radio", { name: "Pianificata" })).toBeChecked();
     for (const l of ["Route", "Componente", "Test id", "Test testo"]) expect(screen.getByRole("textbox", { name: l })).toHaveValue("");
   });
 
@@ -52,7 +52,7 @@ describe("ScreenMetaEditor", () => {
     select("A");
     render(<ScreenMetaEditor />);
     expect(screen.getByRole("combobox", { name: "Tipo" })).toHaveValue("decision");
-    expect(screen.getByRole("combobox", { name: "Stato" })).toHaveValue("tested");
+    expect(screen.getByRole("radio", { name: "Testata" })).toBeChecked();
     expect(screen.getByRole("textbox", { name: "Route" })).toHaveValue("/home");
     expect(screen.getByRole("textbox", { name: "Test id" })).toHaveValue("home-root");
   });
@@ -73,7 +73,7 @@ describe("ScreenMetaEditor", () => {
     useScene.getState().setScene({ ...s, nodes: s.nodes.set("A", { ...s.nodes.at("A"), meta: { "altro.strumento": "x" } }) });
     select("A");
     render(<ScreenMetaEditor />);
-    fireEvent.change(screen.getByRole("combobox", { name: "Stato" }), { target: { value: "implemented" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Implementata" }));
     const route = screen.getByRole("textbox", { name: "Route" });
     fireEvent.change(route, { target: { value: "/login" } });
     fireEvent.keyDown(route, { key: "Enter" });
@@ -105,7 +105,7 @@ describe("ScreenMetaEditor", () => {
     fireEvent.keyDown(route, { key: "Enter" });
     expect(metaOf("A")).toEqual({ status: "tested" });
     // l'ultima chiave tolta: meta sparisce del tutto (nel modello è assente, non vuota)
-    fireEvent.change(screen.getByRole("combobox", { name: "Stato" }), { target: { value: "planned" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Pianificata" }));
     expect(metaOf("A")).toEqual({ status: "planned" });
   });
 
@@ -122,7 +122,7 @@ describe("ScreenMetaEditor", () => {
   it("l'undo di una modifica ripristina i metadati precedenti", () => {
     select("A");
     render(<ScreenMetaEditor />);
-    fireEvent.change(screen.getByRole("combobox", { name: "Stato" }), { target: { value: "tested" } });
+    fireEvent.click(screen.getByRole("radio", { name: "Testata" }));
     expect(metaOf("A")).toEqual({ status: "tested" });
     act(() => useScene.getState().undo());
     expect(metaOf("A")).toBeUndefined();

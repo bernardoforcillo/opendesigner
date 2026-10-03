@@ -5,8 +5,9 @@ import type { NodeLite, SceneState } from "../store/types";
 import type { ConnectPreview } from "../store/flowUi";
 import { arrowFromRectToPoint, arrowhead, type Bezier, type Pt } from "../flow/geometry";
 import { arrowsInView, flowLayout, type Arrow } from "../flow/layout";
-import { kindOf, metaValue, META_KEYS, STATUS_COLORS, statusOf, type FlowKind } from "../flow/meta";
+import { kindOf, metaValue, META_KEYS, statusOf, type FlowKind } from "../flow/meta";
 import { topLevelScreens } from "../flow/screens";
+import { themeColors, withAlpha, type ThemeColors } from "./themeColors";
 
 // L'OVERLAY DELLA MODALITÀ FLUSSI: frecce fra le schermate, pillole delle
 // etichette, marcatore d'ingresso, badge di tipo/stato su ogni schermata e il
@@ -33,17 +34,16 @@ export interface FlowOverlayState {
   issueTransitionIds: ReadonlySet<string>;
 }
 
-// Il viola dei flussi: distinto dal blu della selezione (ACCENT), così la
-// freccia scelta (blu) si legge a colpo d'occhio fra le altre.
-export const FLOW_COLOR = "#7c3aed";
-const SELECT_COLOR = "#2f6fed";
-const ISSUE_COLOR = "#dc2626";
-const START_COLOR = "#16a34a";
+// I COLORI vengono dai token (renderer/themeColors.ts), non da qui: il viola dei
+// flussi (--flow) è distinto dal blu della selezione (--accent), così la freccia
+// scelta (blu) si legge a colpo d'occhio fra le altre; i problemi sono in
+// --danger, l'ingresso in --ok. Si leggono UNA volta per frame in drawFlows e si
+// passano giù (`c`), così un frame è coerente anche se il tema cambia a metà.
 const DIM_ALPHA = 0.3;
 
-const LABEL_FONT = "600 11px system-ui, sans-serif";
-const BADGE_FONT = "600 11px system-ui, sans-serif";
-const ROUTE_FONT = "500 10px ui-monospace, monospace";
+const LABEL_FONT = "600 11px Inter, system-ui, sans-serif";
+const BADGE_FONT = "600 11px Inter, system-ui, sans-serif";
+const ROUTE_FONT = "500 10px ui-monospace, SFMono-Regular, Menlo, monospace";
 const PILL_H = 18;
 const PILL_PAD = 7;
 const HEAD_SIZE = 10;
@@ -81,14 +81,31 @@ function fillHead(ctx: CanvasRenderingContext2D, c: Bezier, size: number): void 
   ctx.fill();
 }
 
-function pill(ctx: CanvasRenderingContext2D, text: string, cx: number, cy: number, fg: string, border: string, bg = "#ffffff"): void {
+// Un'ombra morbida e corta: stacca la pillola dalla tela senza un bordo duro. Si
+// accende SOLO attorno al riempimento (poi si spegne): lo shadow di canvas costa
+// e il testo non deve proiettarne una.
+function softShadow(ctx: CanvasRenderingContext2D, dark: boolean): void {
+  ctx.shadowColor = dark ? "rgba(0, 0, 0, 0.55)" : "rgba(16, 24, 40, 0.18)";
+  ctx.shadowBlur = 6;
+  ctx.shadowOffsetX = 0;
+  ctx.shadowOffsetY = 1;
+}
+function noShadow(ctx: CanvasRenderingContext2D): void {
+  ctx.shadowColor = "transparent";
+  ctx.shadowBlur = 0;
+  ctx.shadowOffsetY = 0;
+}
+
+function pill(ctx: CanvasRenderingContext2D, c: ThemeColors, text: string, cx: number, cy: number, fg: string, border: string): void {
   const w = ctx.measureText(text).width + PILL_PAD * 2;
   const x = cx - w / 2;
   const y = cy - PILL_H / 2;
   ctx.beginPath();
   ctx.roundRect(x, y, w, PILL_H, PILL_H / 2);
-  ctx.fillStyle = bg;
+  ctx.fillStyle = c.surface;
+  softShadow(ctx, c.dark);
   ctx.fill();
+  noShadow(ctx);
   ctx.lineWidth = 1;
   ctx.strokeStyle = border;
   ctx.stroke();
@@ -159,7 +176,7 @@ export function drawKindIcon(ctx: CanvasRenderingContext2D, kind: FlowKind, cx: 
   ctx.restore();
 }
 
-function drawArrow(ctx: CanvasRenderingContext2D, a: Arrow, cam: Camera, color: string, width: number, alpha: number, labels: boolean): void {
+function drawArrow(ctx: CanvasRenderingContext2D, c0: ThemeColors, a: Arrow, cam: Camera, color: string, width: number, alpha: number, labels: boolean): void {
   const c = toScreen(cam, a.curve);
   ctx.save();
   ctx.globalAlpha = alpha;
@@ -182,7 +199,7 @@ function drawArrow(ctx: CanvasRenderingContext2D, a: Arrow, cam: Camera, color: 
     ctx.globalAlpha = alpha < 1 ? 0.7 : 1;
     ctx.font = LABEL_FONT;
     const m = worldToScreen(cam, a.mid.x, a.mid.y);
-    pill(ctx, truncate(ctx, a.label, 140), m.x, m.y, color, color);
+    pill(ctx, c0, truncate(ctx, a.label, 140), m.x, m.y, color, withAlpha(color, 0.4));
     ctx.restore();
   }
 }
@@ -203,7 +220,7 @@ function drawHotspot(ctx: CanvasRenderingContext2D, b: Bounds, cam: Camera, colo
 
 /** Il badge sopra una schermata: tipo, stato, nome (e route se c'è spazio). */
 function drawScreenBadge(
-  ctx: CanvasRenderingContext2D, scene: SceneState, n: NodeLite, cam: Camera, issue: boolean, isStart: boolean,
+  ctx: CanvasRenderingContext2D, c: ThemeColors, scene: SceneState, n: NodeLite, cam: Camera, issue: boolean, isStart: boolean,
 ): void {
   const box = worldBoundsToScreen(worldBoundsOfNode(scene, n), cam);
   const kind = kindOf(n);
@@ -219,26 +236,29 @@ function drawScreenBadge(
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(x, y - PILL_H / 2, w, PILL_H, PILL_H / 2);
-  ctx.fillStyle = "#ffffff";
+  // Una pillola RIALZATA: superficie del tema, filo e ombra morbida.
+  ctx.fillStyle = c.surface;
+  softShadow(ctx, c.dark);
   ctx.fill();
+  noShadow(ctx);
   ctx.lineWidth = issue ? 1.5 : 1;
-  ctx.strokeStyle = issue ? ISSUE_COLOR : isStart ? START_COLOR : "#d4d4d8";
+  ctx.strokeStyle = issue ? c.danger : isStart ? c.ok : c.lineStrong;
   ctx.stroke();
-  drawKindIcon(ctx, kind, x + 8 + 6, y, 5, issue ? ISSUE_COLOR : "#52525b");
-  // Il pallino di stato: grigio pianificata / blu implementata / verde testata.
+  drawKindIcon(ctx, kind, x + 8 + 6, y, 5, issue ? c.danger : c.fgMuted);
+  // Il pallino di stato: tenue pianificata / accento implementata / verde testata.
   ctx.beginPath();
   ctx.arc(x + 8 + 12 + 6 + 4, y, 4, 0, Math.PI * 2);
-  ctx.fillStyle = STATUS_COLORS[status];
+  ctx.fillStyle = status === "tested" ? c.ok : status === "implemented" ? c.accent : c.fgSubtle;
   ctx.fill();
   if (name) {
-    ctx.fillStyle = "#27272a";
+    ctx.fillStyle = c.fg;
     ctx.textBaseline = "middle";
     ctx.textAlign = "left";
     ctx.fillText(name, x + 8 + 12 + 6 + 8 + 6, y + 0.5);
   }
   if (route && cam.zoom >= 0.35 && box.width > 160) {
     ctx.font = ROUTE_FONT;
-    ctx.fillStyle = "#71717a";
+    ctx.fillStyle = c.fgSubtle;
     ctx.textAlign = "left";
     ctx.fillText(truncate(ctx, route, Math.max(0, maxW - w - 8)), x + w + 6, y + 0.5);
   }
@@ -248,18 +268,18 @@ function drawScreenBadge(
     ctx.save();
     ctx.setLineDash([5, 3]);
     ctx.lineWidth = 1.5;
-    ctx.strokeStyle = ISSUE_COLOR;
+    ctx.strokeStyle = c.danger;
     ctx.strokeRect(box.x - 3 + 0.5, box.y - 3 + 0.5, box.width + 6, box.height + 6);
     ctx.restore();
   }
 }
 
 /** Il marcatore d'ingresso: una bandierina verde sul bordo sinistro della schermata. */
-function drawStartMarker(ctx: CanvasRenderingContext2D, box: Bounds): void {
+function drawStartMarker(ctx: CanvasRenderingContext2D, c: ThemeColors, box: Bounds): void {
   const cx = box.x - 22;
   const cy = box.y + Math.min(box.height / 2, 60);
   ctx.save();
-  ctx.strokeStyle = START_COLOR;
+  ctx.strokeStyle = c.ok;
   ctx.lineWidth = 2;
   ctx.beginPath();
   ctx.moveTo(cx + 9, cy);
@@ -267,7 +287,7 @@ function drawStartMarker(ctx: CanvasRenderingContext2D, box: Bounds): void {
   ctx.stroke();
   ctx.beginPath();
   ctx.arc(cx, cy, 10, 0, Math.PI * 2);
-  ctx.fillStyle = START_COLOR;
+  ctx.fillStyle = c.ok;
   ctx.fill();
   ctx.fillStyle = "#ffffff";
   ctx.beginPath();
@@ -279,36 +299,36 @@ function drawStartMarker(ctx: CanvasRenderingContext2D, box: Bounds): void {
   ctx.restore();
 }
 
-function drawPreview(ctx: CanvasRenderingContext2D, scene: SceneState, cam: Camera, p: ConnectPreview): void {
+function drawPreview(ctx: CanvasRenderingContext2D, c: ThemeColors, scene: SceneState, cam: Camera, p: ConnectPreview): void {
   const from = scene.nodes.at(p.fromScreenId);
   if (from) {
     const fb = worldBoundsToScreen(worldBoundsOfNode(scene, from), cam);
     ctx.save();
     ctx.lineWidth = 2;
-    ctx.strokeStyle = SELECT_COLOR;
+    ctx.strokeStyle = c.accent;
     ctx.strokeRect(fb.x + 1, fb.y + 1, fb.width - 2, fb.height - 2);
     ctx.restore();
   }
-  if (p.elementId !== "") drawHotspot(ctx, p.fromBounds, cam, SELECT_COLOR);
+  if (p.elementId !== "") drawHotspot(ctx, p.fromBounds, cam, c.accent);
   if (p.targetId !== null) {
     const t = scene.nodes.at(p.targetId);
     if (t) {
       const tb = worldBoundsToScreen(worldBoundsOfNode(scene, t), cam);
       ctx.save();
-      ctx.fillStyle = SELECT_COLOR;
+      ctx.fillStyle = c.accent;
       ctx.globalAlpha = 0.1;
       ctx.fillRect(tb.x, tb.y, tb.width, tb.height);
       ctx.globalAlpha = 1;
       ctx.lineWidth = 2.5;
-      ctx.strokeStyle = SELECT_COLOR;
+      ctx.strokeStyle = c.accent;
       ctx.strokeRect(tb.x + 1, tb.y + 1, tb.width - 2, tb.height - 2);
       ctx.restore();
     }
   }
   const curve = toScreen(cam, arrowFromRectToPoint(p.fromBounds, { x: p.x, y: p.y } as Pt));
   ctx.save();
-  ctx.strokeStyle = SELECT_COLOR;
-  ctx.fillStyle = SELECT_COLOR;
+  ctx.strokeStyle = c.accent;
+  ctx.fillStyle = c.accent;
   ctx.lineWidth = 2;
   ctx.setLineDash([7, 5]);
   strokeCurve(ctx, curve);
@@ -335,6 +355,7 @@ export function drawFlows(
 ): void {
   const dpr = dprOf();
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const c = themeColors();
   const cssW = ctx.canvas.width / dpr;
   const cssH = ctx.canvas.height / dpr;
   const px = 1 / (cam.zoom || 1);
@@ -356,10 +377,10 @@ export function drawFlows(
       // e in Flussi le schermate sono i protagonisti.
       const sb = worldBoundsToScreen(wb, cam);
       ctx.lineWidth = 1;
-      ctx.strokeStyle = "rgba(124, 58, 237, 0.35)";
+      ctx.strokeStyle = withAlpha(c.flow, c.dark ? 0.5 : 0.4);
       ctx.strokeRect(sb.x + 0.5, sb.y + 0.5, sb.width, sb.height);
-      drawScreenBadge(ctx, scene, s, cam, ui.issueNodeIds.has(s.id), isStart);
-      if (isStart) drawStartMarker(ctx, worldBoundsToScreen(wb, cam));
+      drawScreenBadge(ctx, c, scene, s, cam, ui.issueNodeIds.has(s.id), isStart);
+      if (isStart) drawStartMarker(ctx, c, worldBoundsToScreen(wb, cam));
     }
   }
 
@@ -370,7 +391,7 @@ export function drawFlows(
     // Prima gli altri flussi (attenuati, se richiesti), poi il corrente, in
     // cima la freccia selezionata/sotto il mouse.
     if (ui.showAllFlows) {
-      for (const a of visible) if (a.flowId !== ui.flowId) drawArrow(ctx, a, cam, FLOW_COLOR, 1.5, DIM_ALPHA, false);
+      for (const a of visible) if (a.flowId !== ui.flowId) drawArrow(ctx, c, a, cam, c.flow, 1.5, DIM_ALPHA, false);
     }
     let top: Arrow | null = null;
     let hover: Arrow | null = null;
@@ -379,18 +400,18 @@ export function drawFlows(
       if (a.id === ui.selectedTransitionId) { top = a; continue; }
       if (a.id === ui.hoverTransitionId) { hover = a; continue; }
       const issue = ui.issueTransitionIds.has(a.id);
-      if (a.hotspot) drawHotspot(ctx, a.hotspot, cam, issue ? ISSUE_COLOR : FLOW_COLOR);
-      drawArrow(ctx, a, cam, issue ? ISSUE_COLOR : FLOW_COLOR, 2, 1, labels);
+      if (a.hotspot) drawHotspot(ctx, a.hotspot, cam, issue ? c.danger : c.flow);
+      drawArrow(ctx, c, a, cam, issue ? c.danger : c.flow, 2, 1, labels);
     }
     if (hover) {
-      if (hover.hotspot) drawHotspot(ctx, hover.hotspot, cam, FLOW_COLOR);
-      drawArrow(ctx, hover, cam, FLOW_COLOR, 3, 1, labels);
+      if (hover.hotspot) drawHotspot(ctx, hover.hotspot, cam, c.flow);
+      drawArrow(ctx, c, hover, cam, c.flow, 3, 1, labels);
     }
     if (top) {
-      if (top.hotspot) drawHotspot(ctx, top.hotspot, cam, SELECT_COLOR);
-      drawArrow(ctx, top, cam, SELECT_COLOR, 3, 1, labels || top.label !== "");
+      if (top.hotspot) drawHotspot(ctx, top.hotspot, cam, c.accent);
+      drawArrow(ctx, c, top, cam, c.accent, 3, 1, labels || top.label !== "");
     }
   }
 
-  if (ui.connectPreview) drawPreview(ctx, scene, cam, ui.connectPreview);
+  if (ui.connectPreview) drawPreview(ctx, c, scene, cam, ui.connectPreview);
 }

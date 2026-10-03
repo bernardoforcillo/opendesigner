@@ -1,9 +1,11 @@
 import { useState } from "react";
-import { Button, Dialog, DialogTrigger, Label, Popover, Radio, RadioGroup } from "react-aria-components";
+import { Dialog, DialogTrigger, Label, Popover, Radio, RadioGroup } from "react-aria-components";
 import { useScene } from "../store/store";
 import { runExport, type ExportFormat, type ExportRequest } from "../export/exportScene";
 import { EXPORT_SCALES, type ExportScale } from "../export/png";
 import type { ExportScope } from "../export/region";
+import { Button } from "./ds";
+import { SEGMENT, SEGMENTED_TRACK } from "./ds/flow-parts";
 
 // IL PULSANTE DI EXPORT.
 //
@@ -26,14 +28,11 @@ const SCOPES: readonly { value: ExportScope; label: string }[] = [
   { value: "page", label: "Pagina" },
 ];
 
-const RADIO_CLASS =
-  "cursor-pointer rounded px-1.5 py-0.5 text-neutral-600 outline-none " +
-  "data-[selected]:bg-sky-100 data-[selected]:text-sky-700 " +
-  "data-[disabled]:cursor-not-allowed data-[disabled]:text-neutral-300 " +
-  "data-[focus-visible]:ring-1 data-[focus-visible]:ring-sky-500";
-
-const ROW_CLASS = "flex items-center gap-1.5";
-const ROW_LABEL_CLASS = "w-16 shrink-0 select-none text-neutral-400";
+// Ogni scelta è un controllo SEGMENTATO (una traccia incassata, il segmento scelto
+// "sollevato"): sono comunque dei Radio veri di react-aria, con la tastiera e i
+// ruoli di sempre.
+const ROW_CLASS = "flex items-center gap-2";
+const ROW_LABEL_CLASS = "w-12 shrink-0 select-none text-[11px] font-medium text-fg-subtle";
 
 export function ExportButton({
   onExport = runExport,
@@ -70,9 +69,9 @@ export function ExportButton({
 
   return (
     <DialogTrigger isOpen={open} onOpenChange={onOpenChange}>
-      <Button className="rounded px-3 py-1 text-sm hover:bg-neutral-100">Esporta</Button>
-      <Popover className="rounded border border-neutral-200 bg-white p-2 shadow-lg">
-        <Dialog aria-label="Esporta" className="flex flex-col gap-1.5 text-sm outline-none">
+      <Button variant="secondary" icon="download">Esporta</Button>
+      <Popover offset={8} placement="bottom end" className="w-[268px] rounded-xl bg-raised p-3 text-fg shadow-pop">
+        <Dialog aria-label="Esporta" className="flex flex-col gap-2.5 text-[13px] outline-none">
           <RadioGroup
             value={format}
             onChange={(v) => setFormat(v as ExportFormat)}
@@ -80,9 +79,9 @@ export function ExportButton({
             className={ROW_CLASS}
           >
             <Label className={ROW_LABEL_CLASS}>Formato</Label>
-            <div className="flex gap-1">
+            <div className={SEGMENTED_TRACK}>
               {FORMATS.map((f) => (
-                <Radio key={f.value} value={f.value} className={RADIO_CLASS}>{f.label}</Radio>
+                <Radio key={f.value} value={f.value} className={SEGMENT}>{f.label}</Radio>
               ))}
             </div>
           </RadioGroup>
@@ -94,13 +93,13 @@ export function ExportButton({
             className={ROW_CLASS}
           >
             <Label className={ROW_LABEL_CLASS}>Ambito</Label>
-            <div className="flex gap-1">
+            <div className={SEGMENTED_TRACK}>
               {SCOPES.map((s) => (
                 <Radio
                   key={s.value}
                   value={s.value}
                   isDisabled={s.value === "selection" && !hasSelection}
-                  className={RADIO_CLASS}
+                  className={SEGMENT}
                 >
                   {s.label}
                 </Radio>
@@ -120,18 +119,15 @@ export function ExportButton({
               className={ROW_CLASS}
             >
               <Label className={ROW_LABEL_CLASS}>Scala</Label>
-              <div className="flex gap-1">
+              <div className={SEGMENTED_TRACK}>
                 {EXPORT_SCALES.map((s) => (
-                  <Radio key={s} value={String(s)} className={RADIO_CLASS}>{`${s}x`}</Radio>
+                  <Radio key={s} value={String(s)} className={SEGMENT}>{`${s}x`}</Radio>
                 ))}
               </div>
             </RadioGroup>
           )}
 
-          <Button
-            onPress={submit}
-            className="mt-1 rounded bg-neutral-800 px-3 py-1 text-sm text-white hover:bg-neutral-700"
-          >
+          <Button variant="primary" icon="download" onPress={submit} className="mt-0.5 h-8 w-full">
             Scarica
           </Button>
         </Dialog>

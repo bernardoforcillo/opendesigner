@@ -1,9 +1,18 @@
 import { useState } from "react";
 import { usePresence, peerColor, saveNickname } from "../store/presence";
+import { Button, Icon } from "./ds";
+
+// Quanti avatar si mostrano prima del "+N": nella barra in alto lo spazio è poco.
+const MAX_AVATARS = 4;
 
 /**
  * Nickname, chi c'è e il pulsante per invitare. Nessun account: il nome lo
  * sceglie ognuno ed è solo un'etichetta per la sessione.
+ *
+ * Gli avatar si sovrappongono con un anello del colore della barra (così si
+ * leggono anche uno sopra l'altro); il nickname è una pillola modificabile in
+ * linea -- resta un <input> con lo stesso nome accessibile, ma a riposo non ha
+ * cornice e si accende al passaggio e al fuoco.
  */
 export function PresenceBar({
   nickname, onNickname,
@@ -34,38 +43,55 @@ export function PresenceBar({
     }
   };
 
+  const shown = others.slice(0, MAX_AVATARS);
+  const extra = others.length - shown.length;
+
   return (
     <div className="flex items-center gap-2">
-      <div role="list" aria-label="Persone nel documento" className="flex -space-x-1">
-        {others.map((p) => (
+      <div role="list" aria-label="Persone nel documento" className="flex items-center -space-x-1.5">
+        {shown.map((p) => (
           <div
             key={p.clientId}
             role="listitem"
             title={p.nickname}
             aria-label={p.nickname}
             style={{ backgroundColor: peerColor(p.clientId) }}
-            className="flex h-6 w-6 items-center justify-center rounded-full border-2 border-white text-xs font-semibold text-white"
+            className="flex h-6 w-6 select-none items-center justify-center rounded-full text-[11px] font-semibold text-white ring-2 ring-surface"
           >
             {p.nickname.slice(0, 1).toUpperCase()}
           </div>
         ))}
+        {extra > 0 && (
+          <div
+            role="listitem"
+            aria-label={`Altre ${extra} persone`}
+            className="flex h-6 min-w-6 select-none items-center justify-center rounded-full bg-surface-3 px-1 text-[10px] font-semibold text-fg-muted ring-2 ring-surface"
+          >
+            {`+${extra}`}
+          </div>
+        )}
       </div>
-      <input
-        aria-label="Il tuo nickname"
-        value={draft}
-        maxLength={32}
-        onChange={(e) => setDraft(e.target.value)}
-        onBlur={commit}
-        onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
-        className="w-28 rounded border border-neutral-200 bg-white px-2 py-0.5 text-sm outline-none focus:border-sky-500"
-      />
-      <button
-        type="button"
-        onClick={share}
-        className="rounded border border-neutral-200 px-2 py-0.5 text-sm hover:bg-neutral-50"
+      <span className="relative block">
+        <Icon name="user" size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-fg-subtle" />
+        <input
+          aria-label="Il tuo nickname"
+          value={draft}
+          maxLength={32}
+          spellCheck={false}
+          onChange={(e) => setDraft(e.target.value)}
+          onBlur={commit}
+          onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }}
+          className="h-7 w-28 rounded-full border border-transparent bg-transparent pl-6 pr-2 text-[12px] font-medium text-fg hover:border-line-strong hover:bg-surface-2 focus:border-accent focus:bg-surface focus:outline-none"
+        />
+      </span>
+      <Button
+        variant="secondary"
+        icon={copied ? "check" : "link"}
+        onPress={share}
+        className={copied ? "text-ok" : ""}
       >
         {copied ? "Link copiato" : "Condividi"}
-      </button>
+      </Button>
     </div>
   );
 }

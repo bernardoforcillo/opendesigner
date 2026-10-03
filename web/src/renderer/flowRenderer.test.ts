@@ -1,5 +1,6 @@
 import { describe, it, expect, vi, afterEach } from "vitest";
-import { drawFlows, drawKindIcon, FLOW_COLOR, type FlowOverlayState } from "./flowRenderer";
+import { drawFlows, drawKindIcon, type FlowOverlayState } from "./flowRenderer";
+import { themeColors } from "./themeColors";
 import { FLOW_KINDS } from "../flow/meta";
 import { baseScene, flowOf, frame, transition, withFlows } from "../flow/testSupport";
 import { nodesOf } from "../store/nodeMap";
@@ -104,11 +105,11 @@ describe("drawFlows", () => {
   it("il marcatore d'ingresso è verde e c'è solo con una schermata di partenza", () => {
     const withStart = ctxMock();
     drawFlows(withStart.ctx, scene(), cam, ui({ startId: "A" }), "page1");
-    expect(withStart.fills).toContain("#16a34a");
+    expect(withStart.fills).toContain(themeColors().ok);
     const without = ctxMock();
     drawFlows(without.ctx, scene(), cam, ui({ startId: "" }), "page1");
     // il pallino di stato "pianificata" è grigio, mai verde: nessun riempimento verde
-    expect(without.fills).not.toContain("#16a34a");
+    expect(without.fills).not.toContain(themeColors().ok);
   });
 
   it("il colore di stato segue meta.status (grigio / blu / verde)", () => {
@@ -116,8 +117,8 @@ describe("drawFlows", () => {
     const tested = { ...s, nodes: s.nodes.set("B", { ...s.nodes.at("B"), meta: { status: "tested" } }) };
     const a = ctxMock();
     drawFlows(a.ctx, tested, cam, ui({ startId: "" }), "page1");
-    expect(a.fills).toContain("#16a34a");
-    expect(a.fills).toContain("#9ca3af");
+    expect(a.fills).toContain(themeColors().ok);
+    expect(a.fills).toContain(themeColors().fgSubtle);
   });
 
   it("i problemi: freccia e schermata in rosso", () => {
@@ -125,13 +126,13 @@ describe("drawFlows", () => {
     const strokes: string[] = [];
     raw.stroke.mockImplementation(function (this: { strokeStyle: string }) { strokes.push(this.strokeStyle); });
     drawFlows(ctx, scene(), cam, ui({ issueNodeIds: new Set(["B"]), issueTransitionIds: new Set(["t1"]) }), "page1");
-    expect(strokes).toContain("#dc2626");
+    expect(strokes).toContain(themeColors().danger);
     // senza problemi niente rosso
     const clean = ctxMock();
     const s2: string[] = [];
     clean.raw.stroke.mockImplementation(function (this: { strokeStyle: string }) { s2.push(this.strokeStyle); });
     drawFlows(clean.ctx, scene(), cam, ui(), "page1");
-    expect(s2).not.toContain("#dc2626");
+    expect(s2).not.toContain(themeColors().danger);
   });
 
   it("la freccia selezionata si disegna per ultima, in blu", () => {
@@ -200,7 +201,7 @@ describe("drawKindIcon", () => {
   it("disegna ogni tipo senza lanciare", () => {
     for (const k of FLOW_KINDS) {
       const { ctx, raw } = ctxMock();
-      expect(() => drawKindIcon(ctx, k, 10, 10, 5, FLOW_COLOR)).not.toThrow();
+      expect(() => drawKindIcon(ctx, k, 10, 10, 5, themeColors().flow)).not.toThrow();
       expect(raw.save).toHaveBeenCalledTimes(1);
       expect(raw.restore).toHaveBeenCalledTimes(1);
     }
