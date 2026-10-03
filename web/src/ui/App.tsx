@@ -30,6 +30,9 @@ import { PageBar } from "./PageBar";
 import { FlowPanel } from "./FlowPanel";
 import { ScreenMetaEditor } from "./ScreenMetaEditor";
 import { PrototypePlayer } from "./PrototypePlayer";
+import { ReadinessPanel } from "./dev/ReadinessPanel";
+import { CodeWorkbench } from "./dev/CodeWorkbench";
+import { ShipPanel } from "./dev/ShipPanel";
 import { resolveFlow, useFlowUi, type EditorMode } from "../store/flowUi";
 import { drawFlows } from "../renderer/flowRenderer";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
@@ -78,10 +81,16 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
 // Gli strumenti che hanno senso in modalità Flussi: i flussi non disegnano, si
 // collegano le schermate che ci sono già. "Collega" esiste SOLO lì.
 const FLOW_TOOL_IDS: readonly ToolId[] = ["select", "connect", "hand"];
+// In Sviluppo la tela è di sola lettura: si guarda, non si disegna.
+const DEV_TOOL_IDS: readonly ToolId[] = ["select", "hand"];
+function toolIdsOf(mode: EditorMode): readonly ToolId[] | null {
+  return mode === "flows" ? FLOW_TOOL_IDS : mode === "dev" ? DEV_TOOL_IDS : null;
+}
 // Quali strumenti mostra la toolbar in una modalità: in Design tutti tranne
-// "Collega", in Flussi solo quelli sopra.
+// "Collega", in Flussi e in Sviluppo solo quelli elencati sopra.
 export function toolsForMode(mode: EditorMode): { id: ToolId; label: string }[] {
-  return TOOL_LABELS.filter((t) => (mode === "flows" ? FLOW_TOOL_IDS.includes(t.id) : t.id !== "connect"));
+  const ids = toolIdsOf(mode);
+  return TOOL_LABELS.filter((t) => (ids ? ids.includes(t.id) : t.id !== "connect"));
 }
 
 const CLIENT_ID = crypto.randomUUID();
@@ -293,6 +302,9 @@ export function App() {
 
     const frame = () => {
       raf = 0;
+      // In Sviluppo la tela è coperta dalla vista codice: niente da disegnare (e
+      // niente lavoro). Tornando in Design/Flussi lo store di vista invalida.
+      if (useFlowUi.getState().mode === "dev") return;
       const canvas = canvasRef.current;
       const overlay = overlayRef.current;
       const scene = useScene.getState().scene;
@@ -416,8 +428,8 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Scorciatoie della modalità Flussi: F alterna Design / Flussi, K attiva
-  // "Collega" (entrando in Flussi se serve). Sulla finestra, come le altre, e
+  // Scorciatoie delle modalità: F alterna Design / Flussi, S apre Sviluppo (e
+  // di nuovo S torna a Design), K attiva "Collega" (entrando in Flussi se serve). Sulla finestra, come le altre, e
   // mai dentro un campo di testo (isTextField) né con un modificatore premuto
   // (Ctrl+Alt+K è del tool di selezione).
   useEffect(() => {
@@ -428,6 +440,10 @@ export function App() {
       if (key === "f") {
         e.preventDefault();
         useFlowUi.getState().toggleMode();
+      } else if (key === "s") {
+        e.preventDefault();
+        const fu = useFlowUi.getState();
+        fu.setMode(fu.mode === "dev" ? "design" : "dev");
       } else if (key === "k") {
         e.preventDefault();
         useFlowUi.getState().setMode("flows");
@@ -443,7 +459,8 @@ export function App() {
   // Uscire da Flussi riporta lo strumento a "Seleziona" se era "Collega"; entrare
   // in Flussi lo fa se era uno strumento da disegno: non si disegna nei flussi.
   useEffect(() => {
-    if (mode === "flows" ? !FLOW_TOOL_IDS.includes(toolRef.current) : toolRef.current === "connect") chooseTool("select");
+    const ids = toolIdsOf(mode);
+    if (ids ? !ids.includes(toolRef.current) : toolRef.current === "connect") chooseTool("select");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
@@ -506,7 +523,11 @@ export function App() {
           ridimensiona da sola: resizeCanvasToDisplaySize legge clientWidth ad
           ogni frame e eventToCanvasPoint parte da getBoundingClientRect). */}
       <div className="flex min-h-0 flex-1">
-        {mode === "flows" ? (
+        {mode === "dev" ? (
+          <aside aria-label="Prontezza" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
+            <ReadinessPanel />
+          </aside>
+        ) : mode === "flows" ? (
           <aside aria-label="Flussi" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
             <FlowPanel />
           </aside>
@@ -576,10 +597,15 @@ export function App() {
               così passare da un testo a un altro rimonta il campo invece di
               riusarlo. */}
           {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
+          {/* Sviluppo: la vista codice copre la tela (che resta montata: i tool e il
+              ciclo di disegno la usano) e sta SOTTO il dock (z-20). */}
+          {mode === "dev" && <CodeWorkbench />}
           <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { localStorage.removeItem(DOC_KEY); history.replaceState(null, "", location.pathname); location.reload(); }} connection={connection} statusLabel={statusLabel} />
         </div>
-        <aside aria-label="Proprietà" className={`${rightOpen ? "block" : "hidden"} w-64 shrink-0 overflow-hidden border-l border-line bg-surface`}>
-          {mode === "flows" ? (
+        <aside aria-label={mode === "dev" ? "Spedisci" : "Proprietà"} className={`${rightOpen ? "block" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 overflow-hidden border-l border-line bg-surface`}>
+          {mode === "dev" ? (
+            <ShipPanel />
+          ) : mode === "flows" ? (
             // I metadati della schermata in cima, le proprietà di sempre sotto.
             <div className="flex h-full flex-col">
               <ScreenMetaEditor />

@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { resolveFlow, sortedFlows, useFlowUi } from "./flowUi";
 import { baseScene, flowOf, withFlows } from "../flow/testSupport";
+import { useScene } from "./store";
 
 beforeEach(() => {
   useFlowUi.setState({
@@ -16,6 +17,27 @@ describe("modalità", () => {
     expect(useFlowUi.getState().mode).toBe("flows");
     useFlowUi.getState().toggleMode();
     expect(useFlowUi.getState().mode).toBe("design");
+  });
+
+  it("Sviluppo è la terza modalità: toggleMode da lì riporta a Design, e setMode azzera lo stato di Flussi", () => {
+    const st = useFlowUi.getState();
+    st.setMode("flows");
+    st.selectTransition("t1");
+    st.setMode("dev");
+    expect(useFlowUi.getState()).toMatchObject({ mode: "dev", selectedTransitionId: null, presenting: false });
+    useFlowUi.getState().toggleMode();
+    expect(useFlowUi.getState().mode).toBe("design");
+  });
+
+  it("aprire il prototipo ricorda (per documento) che è stato provato; chiuderlo no", () => {
+    const store: Record<string, string> = {};
+    vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, removeItem: () => {} });
+    useScene.getState().setScene(baseScene());
+    useFlowUi.getState().setPresenting(false);
+    expect(store).toEqual({});
+    useFlowUi.getState().setPresenting(true);
+    expect(store).toEqual({ "od.presented.doc": "1" });
+    vi.unstubAllGlobals();
   });
 
   it("uscire da Flussi azzera freccia scelta, hover, rubber band e prototipo", () => {

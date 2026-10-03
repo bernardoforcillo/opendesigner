@@ -47,6 +47,14 @@ const TOOL_BTN = (selected: boolean, flow: boolean) =>
 
 const TOOLTIP_CLS = "z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop";
 
+// Le tre modalità, nell'ordine del percorso: si disegna, si collega, si consegna.
+// F alterna Design e Flussi (da Sviluppo riporta a Design); S apre Sviluppo.
+const MODES = [
+  ["design", "Design", "frame", "F", "Disegna le schermate"],
+  ["flows", "Flussi", "flow", "F", "Collega le schermate e prova il prototipo"],
+  ["dev", "Sviluppo", "code", "S", "Prontezza, codice generato, export"],
+] as const;
+
 const SEP = <span className="mx-1 h-5 w-px shrink-0 bg-line" />;
 
 // Il dock raccoglie TUTTO ciò che si usa con la mano sulla tela, in poco spazio:
@@ -168,19 +176,26 @@ export function ToolDock({
           useFlowUi.getState().setMode((keys.values().next().value as EditorMode | undefined) ?? "design");
         }}
       >
-        {([["design", "Design", "frame"], ["flows", "Flussi", "flow"]] as const).map(([id, label, icon]) => (
-          <ToggleButton
-            key={id}
-            id={id}
-            className={({ isSelected }) =>
-              `flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium outline-none transition-colors ` +
-              `focus-visible:shadow-[var(--ring)] ` +
-              (isSelected ? (id === "flows" ? "bg-flow text-white shadow-sm" : "bg-raised text-fg shadow-sm") : "text-fg-muted hover:text-fg")
-            }
-          >
-            <Icon name={icon} size={14} />
-            {label}
-          </ToggleButton>
+        {MODES.map(([id, label, icon, key, hint]) => (
+          <TooltipTrigger key={id} delay={300} closeDelay={0}>
+            <ToggleButton
+              id={id}
+              className={({ isSelected }) =>
+                `flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium outline-none transition-colors ` +
+                `focus-visible:shadow-[var(--ring)] ` +
+                (isSelected
+                  ? id === "flows" ? "bg-flow text-white shadow-sm" : id === "dev" ? "bg-accent text-accent-fg shadow-sm" : "bg-raised text-fg shadow-sm"
+                  : "text-fg-muted hover:text-fg")
+              }
+            >
+              <Icon name={icon} size={14} />
+              {label}
+            </ToggleButton>
+            <Tooltip offset={10} className={TOOLTIP_CLS}>
+              {hint}
+              <Kbd inverted>{key}</Kbd>
+            </Tooltip>
+          </TooltipTrigger>
         ))}
       </ToggleButtonGroup>
       {SEP}

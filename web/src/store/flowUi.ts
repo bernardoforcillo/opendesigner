@@ -1,13 +1,17 @@
 import { create } from "zustand";
 import type { Bounds } from "../canvas/geometry";
 import type { FlowLite, SceneState } from "./types";
+import { markPresented } from "../dev/presented";
 
 // STATO DI VISTA DELLA MODALITÀ "FLUSSI". Come currentPageId e selection nello
 // store della scena, è stato dell'INTERFACCIA: non è documento, non passa dalla
 // rete e non entra nell'undo. Tutto ciò che invece è documento (i flussi, le
 // transizioni, i metadati) si scrive solo con gli op.
 
-export type EditorMode = "design" | "flows";
+// Tre modalità, il percorso del prodotto: Design (si disegna), Flussi (si
+// collegano le schermate e si prova il prototipo), Sviluppo (si consegna:
+// prontezza, codice generato, export). Su Sviluppo la tela non si modifica.
+export type EditorMode = "design" | "flows" | "dev";
 
 /** Il drag di "Collega" in corso: da dove parte, dov'è il puntatore, cosa c'è sotto. */
 export interface ConnectPreview {
@@ -70,6 +74,8 @@ export const useFlowUi = create<FlowUiState>((set) => ({
         ? st
         : { mode: m, selectedTransitionId: null, hoverTransitionId: null, connectPreview: null, presenting: false },
     ),
+  // F alterna Design <-> Flussi; da Sviluppo riporta a Design (la via più corta
+  // verso il disegno). Sviluppo si raggiunge con S o dal selettore del dock.
   toggleMode: () =>
     set((st) => ({
       mode: st.mode === "design" ? "flows" : "design",
@@ -86,7 +92,11 @@ export const useFlowUi = create<FlowUiState>((set) => ({
   // del mouse invaliderebbe il canvas anche quando non cambia nulla.
   setHoverTransition: (id) => set((st) => (st.hoverTransitionId === id ? st : { hoverTransitionId: id })),
   setConnectPreview: (p) => set({ connectPreview: p }),
-  setPresenting: (v) => set((st) => (st.presenting === v ? st : { presenting: v })),
+  setPresenting: (v) => {
+    // "Hai già provato il prototipo?" alimenta il passo Prova della pipeline.
+    if (v) markPresented();
+    set((st) => (st.presenting === v ? st : { presenting: v }));
+  },
   setIssueIds: (nodes, transitions) => set({ issueNodeIds: nodes, issueTransitionIds: transitions }),
 }));
 
