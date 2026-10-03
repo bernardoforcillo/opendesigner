@@ -1,4 +1,4 @@
-import { useRef, type PointerEvent as ReactPointerEvent } from "react";
+import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { NumberField as AriaNumberField, Label, Input } from "react-aria-components";
 
 // CAMPO NUMERICO GENERICO (Task 9): un valore che si conferma digitando (Invio
@@ -63,9 +63,17 @@ export interface NumberFieldProps {
    * serve etichette di una lettera (X/Y/W/H/R, la griglia compatta del
    * pannello) ed etichette a parola intera (Dimensione, per lo stile del
    * testo): una larghezza fissa dentro il componente sarebbe sbagliata per
-   * metà dei casi d'uso.
+   * metà dei casi d'uso. Senza, il prefisso prende la larghezza del suo testo.
    */
   labelWidth?: string;
+  /**
+   * Il glifo mostrato al posto del testo dell'etichetta (es. "°" per la
+   * rotazione). L'etichetta resta nel DOM, solo non si vede (sr-only): è il nome
+   * accessibile del campo, quindi "Rot" si legge ancora "Rot".
+   */
+  glyph?: ReactNode;
+  /** Unità dopo il valore (es. "%", "px"): decorativa, il valore resta un numero. */
+  suffix?: string;
   isDisabled?: boolean;
   /**
    * Testo temporaneo mostrato quando il campo è VUOTO (`value` NaN). Il
@@ -84,7 +92,9 @@ export function NumberField({
   onScrubEnd,
   dragSensitivity = 1,
   minValue,
-  labelWidth = "w-4",
+  labelWidth,
+  glyph,
+  suffix,
   isDisabled,
   placeholder,
 }: NumberFieldProps) {
@@ -164,7 +174,15 @@ export function NumberField({
         if (!Number.isFinite(v)) return;
         onCommit(v);
       }}
-      className="flex items-center gap-1"
+      // L'etichetta è un PREFISSO dentro il campo (X, Y, W, H, °): un solo
+      // rettangolo incassato che si illumina al focus, come negli editor di
+      // design. focus-within e non il focus dell'input, perché il bordo è del
+      // contenitore.
+      className={
+        "group flex h-7 min-w-0 items-center rounded-md border border-transparent bg-surface-2 " +
+        "hover:border-line-strong focus-within:border-accent focus-within:bg-surface " +
+        (isDisabled ? "opacity-50" : "")
+      }
     >
       <Label
         onPointerDown={onLabelPointerDown}
@@ -175,14 +193,28 @@ export function NumberField({
         // scorrere il pannello (stesso motivo della maniglia di riordino in
         // ui/LayersPanel.tsx). select-none: uno scrub non deve selezionare il
         // testo dell'etichetta mentre il puntatore si muove.
-        className={`${labelWidth} shrink-0 cursor-ew-resize touch-none select-none text-neutral-400`}
+        className={
+          `${labelWidth ?? "min-w-6"} flex h-full shrink-0 cursor-ew-resize touch-none select-none items-center ` +
+          "justify-center pl-2 pr-1 text-[11px] font-medium text-fg-subtle group-focus-within:text-accent hover:text-fg"
+        }
       >
-        {label}
+        {glyph !== undefined ? (
+          <>
+            <span aria-hidden="true">{glyph}</span>
+            <span className="sr-only">{label}</span>
+          </>
+        ) : (
+          label
+        )}
       </Label>
       <Input
         placeholder={placeholder}
-        className="w-full min-w-0 rounded border border-neutral-200 bg-white px-1 py-0.5 text-right text-sm outline-none focus:border-sky-500 disabled:opacity-40"
+        className={
+          "h-full w-full min-w-0 bg-transparent pr-2 text-left text-[13px] tabular-nums text-fg outline-none " +
+          "placeholder:text-fg-subtle focus-visible:shadow-none disabled:cursor-not-allowed"
+        }
       />
+      {suffix && <span aria-hidden="true" className="select-none pr-2 text-[12px] text-fg-subtle">{suffix}</span>}
     </AriaNumberField>
   );
 }

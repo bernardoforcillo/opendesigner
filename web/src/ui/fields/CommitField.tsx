@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { cls } from "../ds";
 
 // Un campo di testo che conferma su Invio o al blur, UNA volta sola. Gemello di
 // OverrideTextField (PropertiesPanel) e dei campi di rinomina: la bozza digitata
@@ -44,9 +45,9 @@ export function CommitField({
     placeholder,
     spellCheck: false,
     onBlur: settle,
-    className:
-      "w-full min-w-0 rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-sm outline-none focus:border-sky-500 " +
-      className,
+    // Lo stesso campo incassato di ogni altro input del sistema (cls.input);
+    // il testo a più righe perde l'altezza fissa e prende un po' d'aria.
+    className: `${cls.input} ${multiline ? "h-auto resize-none py-1 leading-snug" : ""} ${className}`,
   };
   const onKeyDown = (e: React.KeyboardEvent) => {
     e.stopPropagation();
