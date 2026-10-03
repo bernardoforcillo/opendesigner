@@ -253,9 +253,9 @@ describe("scorciatoie della clipboard", () => {
 // chi usa l'app. Qui si verifica solo il montaggio (il comportamento è in
 // ui/ExportButton.test.tsx).
 describe("export", () => {
-  it("la barra del documento ha il pulsante Esporta", () => {
+  it("la toolbar ha il pulsante Esporta", () => {
     render(<App />);
-    const toolbar = screen.getByRole("toolbar", { name: "Documento" });
+    const toolbar = screen.getByRole("toolbar", { name: "Strumenti" });
     expect(within(toolbar).getByRole("button", { name: "Esporta" })).toBeInTheDocument();
   });
 });

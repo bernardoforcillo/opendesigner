@@ -1,6 +1,9 @@
 import { useEffect } from "react";
 import { ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from "react-aria-components";
-import { Icon, Kbd, type IconName } from "../ds";
+import type { ReactNode } from "react";
+import { Button, Icon, IconButton, Kbd, type IconName } from "../ds";
+import { useScene } from "../../store/store";
+import { useFlowUi, type EditorMode } from "../../store/flowUi";
 import type { ToolId } from "../../tools/types";
 import { isTextField } from "../../tools/toolManager";
 
@@ -20,9 +23,22 @@ export const TOOL_KEYS: Partial<Record<ToolId, string>> = {
   select: "V", frame: "A", rect: "R", ellipse: "O", text: "T", pen: "P", hand: "H", connect: "K",
 };
 
+// Il dock raccoglie TUTTO ciò che si usa con la mano sulla tela: annulla/ripeti a
+// sinistra, gli strumenti al centro, a destra le azioni sul documento (Presenta
+// nei flussi, Esporta). La barra in alto resta per identità, modalità e persone.
 export function ToolDock({
-  tools, toolId, onChoose,
-}: { tools: readonly { id: ToolId; label: string }[]; toolId: ToolId; onChoose: (id: ToolId) => void }) {
+  tools, toolId, onChoose, mode, exportButton, connection, statusLabel,
+}: {
+  tools: readonly { id: ToolId; label: string }[]; toolId: ToolId; onChoose: (id: ToolId) => void;
+  mode: EditorMode; exportButton: ReactNode;
+  // Stato della connessione e dicitura accanto al pallino: l'ultima cosa del dock.
+  connection: string; statusLabel: string;
+}) {
+  const zoom = useScene((s) => s.camera.zoom);
+  const dot =
+    connection === "connected" ? "bg-ok" : connection === "reconnecting" || connection === "connecting" ? "bg-warn" : "bg-danger";
+  const canUndo = useScene((s) => s.undoStack.length > 0);
+  const canRedo = useScene((s) => s.redoStack.length > 0);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTextField(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
@@ -38,8 +54,11 @@ export function ToolDock({
     <div
       role="toolbar"
       aria-label="Strumenti"
-      className="absolute bottom-4 left-1/2 z-20 -translate-x-1/2 rounded-xl bg-raised p-1 shadow-bar"
+      className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-xl bg-raised p-1 shadow-bar"
     >
+      <IconButton icon="undo" label="Annulla" shortcut="⌘Z" size={36} isDisabled={!canUndo} onPress={() => useScene.getState().undo()} />
+      <IconButton icon="redo" label="Ripeti" shortcut="⇧⌘Z" size={36} isDisabled={!canRedo} onPress={() => useScene.getState().redo()} />
+      <span className="mx-1 h-5 w-px bg-line" />
       <ToggleButtonGroup
         selectionMode="single"
         disallowEmptySelection
@@ -75,6 +94,21 @@ export function ToolDock({
           );
         })}
       </ToggleButtonGroup>
+      <span className="mx-1 h-5 w-px bg-line" />
+      {mode === "flows" && (
+        <Button variant="flow" icon="play" aria-label="Presenta" className="mr-0.5 h-9" onPress={() => useFlowUi.getState().setPresenting(true)}>
+          Presenta
+        </Button>
+      )}
+      {exportButton}
+      <span className="mx-1 h-5 w-px bg-line" />
+      <span className="flex items-center gap-3 px-2 text-[12px] text-fg-muted tabular-nums" aria-live="polite">
+        <span title={statusLabel} className="flex items-center gap-1.5">
+          <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
+          {statusLabel}
+        </span>
+        <span title="Zoom">{Math.round(zoom * 100)}%</span>
+      </span>
     </div>
   );
 }

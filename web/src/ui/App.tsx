@@ -4,7 +4,6 @@ import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Banner, Icon } from "./ds";
 import { TopBar } from "./shell/TopBar";
 import { ToolDock } from "./shell/ToolDock";
-import { StatusHud } from "./shell/StatusHud";
 import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
@@ -483,7 +482,6 @@ export function App() {
           history.replaceState(null, "", location.pathname);
           location.reload();
         }}
-        exportButton={<ExportButton />}
         presence={
           <PresenceBar
             nickname={nickname}
@@ -584,8 +582,7 @@ export function App() {
               così passare da un testo a un altro rimonta il campo invece di
               riusarlo. */}
           {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
-          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} />
-          <StatusHud statusLabel={statusLabel} connection={connection} />
+          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} connection={connection} statusLabel={statusLabel} />
         </div>
         <aside aria-label="Proprietà" className="w-64 shrink-0 overflow-hidden border-l border-line bg-surface">
           {mode === "flows" ? (

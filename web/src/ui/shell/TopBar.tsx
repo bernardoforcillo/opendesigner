@@ -1,9 +1,10 @@
 import type { ReactNode } from "react";
 import { Menu, MenuItem, MenuTrigger, Popover, Separator, ToggleButton, ToggleButtonGroup } from "react-aria-components";
-import { Button, Icon, IconButton } from "../ds";
+import { Icon, IconButton } from "../ds";
 import { useScene } from "../../store/store";
 import { useFlowUi, type EditorMode } from "../../store/flowUi";
 import { useTheme } from "./theme";
+import { useRenderer } from "../../store/rendererChoice";
 
 // LA BARRA SUPERIORE: chi sei e dove sei (documento, modalità), cosa puoi fare
 // sul documento (annulla, esporta, condividi) e chi c'è con te. Gli strumenti di
@@ -30,18 +31,17 @@ const MODES: { id: EditorMode; label: string; icon: "frame" | "flow" }[] = [
 ];
 
 export function TopBar({
-  mode, onNewDocument, presence, exportButton,
+  mode, onNewDocument, presence,
 }: {
   mode: EditorMode;
   onNewDocument: () => void;
   presence: ReactNode;
-  exportButton: ReactNode;
 }) {
   const docName = useScene((s) => s.scene?.name ?? "");
-  const canUndo = useScene((s) => s.undoStack.length > 0);
-  const canRedo = useScene((s) => s.redoStack.length > 0);
   const theme = useTheme((s) => s.choice);
   const setTheme = useTheme((s) => s.set);
+  const renderer = useRenderer((s) => s.choice);
+  const setRenderer = useRenderer((s) => s.setChoice);
 
   return (
     <div
@@ -55,9 +55,6 @@ export function TopBar({
         <span className="max-w-[220px] truncate text-[13px] font-semibold text-fg">
           {docName === "" ? "Senza titolo" : docName}
         </span>
-        <span className="mx-1 h-4 w-px bg-line" />
-        <IconButton icon="undo" label="Annulla" shortcut="⌘Z" isDisabled={!canUndo} onPress={() => useScene.getState().undo()} />
-        <IconButton icon="redo" label="Ripeti" shortcut="⇧⌘Z" isDisabled={!canRedo} onPress={() => useScene.getState().redo()} />
       </div>
 
       {/* centro: la modalità */}
@@ -93,13 +90,7 @@ export function TopBar({
 
       {/* destra */}
       <div className="ml-auto flex items-center gap-2">
-        {mode === "flows" && (
-          <Button variant="flow" icon="play" aria-label="Presenta" onPress={() => useFlowUi.getState().setPresenting(true)}>
-            Presenta
-          </Button>
-        )}
         {presence}
-        {exportButton}
         <MenuTrigger>
           <IconButton icon="more" label="Altro" />
           <Popover
@@ -108,10 +99,15 @@ export function TopBar({
           >
             <Menu className="outline-none" onAction={(k) => {
               if (k === "new") onNewDocument();
+              else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
               else if (k === "system" || k === "light" || k === "dark") setTheme(k);
             }}>
               <MenuItem id="new" className={ITEM}>
                 <Icon name="plus" size={14} /> Nuovo documento
+              </MenuItem>
+              <MenuItem id="renderer" className={ITEM}>
+                <Icon name="bolt" size={14} /> Renderer {renderer === "gpu" ? "GPU" : "CPU"}
+                <span className="ml-auto text-[11px] text-fg-subtle">passa a {renderer === "gpu" ? "CPU" : "GPU"}</span>
               </MenuItem>
               <Separator className="my-1 h-px bg-line" />
               <div className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Tema</div>
