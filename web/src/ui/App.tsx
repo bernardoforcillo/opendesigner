@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { ConnectError } from "@connectrpc/connect";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Banner, Icon } from "./ds";
-import { TopBar } from "./shell/TopBar";
 import { ToolDock } from "./shell/ToolDock";
 import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
@@ -474,25 +473,6 @@ export function App() {
 
   return (
     <div className="flex h-screen flex-col bg-surface text-fg">
-      <TopBar
-        mode={mode}
-        onNewDocument={() => {
-          localStorage.removeItem(DOC_KEY);
-          // Senza svuotare l'hash il reload riaprirebbe lo stesso documento.
-          history.replaceState(null, "", location.pathname);
-          location.reload();
-        }}
-        presence={
-          <PresenceBar
-            nickname={nickname}
-            onNickname={(n) => {
-              nicknameRef.current = n;
-              setNickname(n);
-              presenceRef.current?.setNickname(n);
-            }}
-          />
-        }
-      />
       {/* Due avvisi diversi perché le due situazioni chiedono cose diverse: in
           riconnessione l'utente può aspettare (le modifiche restano in coda e
           il backlog le confermerà), a tentativi esauriti no. */}
@@ -582,7 +562,7 @@ export function App() {
               così passare da un testo a un altro rimonta il campo invece di
               riusarlo. */}
           {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
-          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} connection={connection} statusLabel={statusLabel} />
+          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} presence={<PresenceBar nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { localStorage.removeItem(DOC_KEY); history.replaceState(null, "", location.pathname); location.reload(); }} connection={connection} statusLabel={statusLabel} />
         </div>
         <aside aria-label="Proprietà" className="w-64 shrink-0 overflow-hidden border-l border-line bg-surface">
           {mode === "flows" ? (

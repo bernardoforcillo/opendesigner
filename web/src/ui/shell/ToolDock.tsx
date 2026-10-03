@@ -3,6 +3,7 @@ import { ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from "react-
 import type { ReactNode } from "react";
 import { Button, Icon, IconButton, Kbd, type IconName } from "../ds";
 import { useScene } from "../../store/store";
+import { DocMenu } from "./DocMenu";
 import { useFlowUi, type EditorMode } from "../../store/flowUi";
 import type { ToolId } from "../../tools/types";
 import { isTextField } from "../../tools/toolManager";
@@ -27,10 +28,10 @@ export const TOOL_KEYS: Partial<Record<ToolId, string>> = {
 // sinistra, gli strumenti al centro, a destra le azioni sul documento (Presenta
 // nei flussi, Esporta). La barra in alto resta per identità, modalità e persone.
 export function ToolDock({
-  tools, toolId, onChoose, mode, exportButton, connection, statusLabel,
+  tools, toolId, onChoose, mode, exportButton, presence, onNewDocument, connection, statusLabel,
 }: {
   tools: readonly { id: ToolId; label: string }[]; toolId: ToolId; onChoose: (id: ToolId) => void;
-  mode: EditorMode; exportButton: ReactNode;
+  mode: EditorMode; exportButton: ReactNode; presence: ReactNode; onNewDocument: () => void;
   // Stato della connessione e dicitura accanto al pallino: l'ultima cosa del dock.
   connection: string; statusLabel: string;
 }) {
@@ -54,8 +55,35 @@ export function ToolDock({
     <div
       role="toolbar"
       aria-label="Strumenti"
-      className="absolute bottom-4 left-1/2 z-20 flex -translate-x-1/2 items-center gap-0.5 rounded-xl bg-raised p-1 shadow-bar"
+      className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-xl bg-raised p-1 shadow-bar"
     >
+      <DocMenu onNewDocument={onNewDocument} />
+      <ToggleButtonGroup
+        aria-label="Modalità"
+        selectionMode="single"
+        disallowEmptySelection
+        selectedKeys={[mode]}
+        className="mx-1 flex gap-0.5 rounded-lg bg-surface-3 p-0.5"
+        onSelectionChange={(keys) => {
+          useFlowUi.getState().setMode((keys.values().next().value as EditorMode | undefined) ?? "design");
+        }}
+      >
+        {([["design", "Design", "frame"], ["flows", "Flussi", "flow"]] as const).map(([id, label, icon]) => (
+          <ToggleButton
+            key={id}
+            id={id}
+            className={({ isSelected }) =>
+              `flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium outline-none transition-colors ` +
+              `focus-visible:shadow-[var(--ring)] ` +
+              (isSelected ? (id === "flows" ? "bg-flow text-white shadow-sm" : "bg-raised text-fg shadow-sm") : "text-fg-muted hover:text-fg")
+            }
+          >
+            <Icon name={icon} size={14} />
+            {label}
+          </ToggleButton>
+        ))}
+      </ToggleButtonGroup>
+      <span className="mx-1 h-5 w-px bg-line" />
       <IconButton icon="undo" label="Annulla" shortcut="⌘Z" size={36} isDisabled={!canUndo} onPress={() => useScene.getState().undo()} />
       <IconButton icon="redo" label="Ripeti" shortcut="⇧⌘Z" size={36} isDisabled={!canRedo} onPress={() => useScene.getState().redo()} />
       <span className="mx-1 h-5 w-px bg-line" />
@@ -101,6 +129,8 @@ export function ToolDock({
         </Button>
       )}
       {exportButton}
+      <span className="mx-1 h-5 w-px bg-line" />
+      {presence}
       <span className="mx-1 h-5 w-px bg-line" />
       <span className="flex items-center gap-3 px-2 text-[12px] text-fg-muted tabular-nums" aria-live="polite">
         <span title={statusLabel} className="flex items-center gap-1.5">
