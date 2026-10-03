@@ -202,6 +202,26 @@ export interface NodeLite {
   unknownShape?: PbNode["shape"];
   // Metadati liberi (vedi Node.meta nel proto). Assente quando vuoto.
   meta?: Record<string, string>;
+  // CAMPI TRANSITORI dell'animazione: li scrive SOLO animation/pose.ts quando
+  // deriva la scena da mostrare mentre una clip gira o si scorre. Non sono
+  // documento: toPbNode non li legge, nessun op li porta, e uno snapshot non li
+  // contiene mai. `animScale` è un moltiplicatore (base 1) attorno a `animPivot`
+  // (spazio del parent; assente = centro del box); `animDraw` è la frazione 0..1
+  // di tratto disegnata (semantica `pathLength`).
+  animScale?: number;
+  animPivot?: { x: number; y: number };
+  animDraw?: number;
+}
+
+// Ciò che il renderer deve sapere di una scena DERIVATA dalla riproduzione: quali
+// nodi hanno una scala animata (il loro extent nell'indice di scena non la
+// conosce, quindi niente scarto fuori vista per loro e il loro sottoalbero), i
+// loro antenati (l'extent dell'antenato è l'unione dei figli) e se c'è un `draw`
+// (il renderer GPU non lo disegna: ripiega sulla CPU). Assente nelle scene vere.
+export interface AnimInfo {
+  scaled: ReadonlySet<string>;
+  ancestors: ReadonlySet<string>;
+  hasDraw: boolean;
 }
 
 // FLUSSI: i percorsi dell'utente fra le schermate (nodi del documento,
@@ -227,6 +247,8 @@ export interface SceneState {
   flows: Record<string, FlowLite>;
   transitions: Record<string, TransitionLite>;
   clips: Record<string, ClipLite>;
+  // Solo nelle scene derivate dalla riproduzione (animation/pose.ts): vedi AnimInfo.
+  anim?: AnimInfo;
   // M4 — componenti indicizzati per id (componentId -> master). Fa parte del
   // documento quanto `nodes` e `pages`: un CreateComponent lo popola, e
   // fromDocument lo ricostruisce dallo snapshot.

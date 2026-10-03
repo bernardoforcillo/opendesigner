@@ -1,4 +1,4 @@
-import type { SceneState, NodeLite, FillLite, StrokeLite, InstanceOverrideLite, EffectLite } from "../store/types";
+import type { SceneState, NodeLite, FillLite, StrokeLite, InstanceOverrideLite, EffectLite, AnimInfo } from "../store/types";
 import type { Camera } from "../canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, intersectBounds, worldVisualAabbOfNode } from "../canvas/geometry";
 import {
@@ -19,6 +19,7 @@ import {
 } from "./shapes";
 import { drawText, strokeText } from "./text";
 import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
+import { drawDash, perimeterOf, vectorDrawSubpaths } from "./animDraw";
 import { imageCache, type CachedImage } from "./imageCache";
 
 const DEG_TO_RAD = Math.PI / 180;
@@ -311,6 +312,7 @@ export function drawScene(
             2 * px,
           ),
           px,
+          anim: state.anim,
         }
       : null;
   drawSiblings(ctx, state, children, rootsOf(state, children, currentPageId), cam, px, images, new Set(), null, new Set(), cull);
@@ -324,6 +326,8 @@ interface Cull {
   extent: { get(id: string): Bounds | undefined };
   view: Bounds;
   px: number;
+  // Solo nelle scene derivate dalla riproduzione: vedi AnimInfo.
+  anim?: AnimInfo;
 }
 
 // Sotto questa misura (px schermo) un intero sottoalbero non dipinge niente di
@@ -382,7 +386,13 @@ function drawSiblings(
     // Fuori vista, o troppo piccolo per vedersi: salta l'INTERO sottoalbero.
     // `cull` è null dentro un'istanza -- i nodi del master hanno l'extent nel
     // loro posto d'origine, non dove l'istanza li disegna.
-    if (cull) {
+    // Un nodo con la scala animata (e i suoi antenati, la cui extent è l'unione
+    // dei figli) ha nell'indice un extent che NON conosce la scala: potrebbe
+    // dichiararlo fuori vista mentre sta entrando. Per loro niente scarto -- si
+    // disegnano sempre; costa un nodo in più, mentre saltarlo sarebbe un
+    // "sparisce a metà animazione".
+    const anim = cull?.anim;
+    if (cull && !(anim && (anim.scaled.has(n.id) || anim.ancestors.has(n.id)))) {
       const e = cull.extent.get(n.id);
       if (!e || !boundsIntersect(e, cull.view)) continue;
       // Un vettoriale non si scarta per misura: ha tratto a spessore costante sullo
@@ -421,7 +431,9 @@ function drawSiblings(
       clip.rect(0, 0, n.width, n.height);
       ctx.clip(clip);
     }
-    drawSiblings(ctx, state, children, kids, cam, px, images, seen, overrides, visited, cull);
+    // ...e il sottoalbero di un nodo scalato si muove con lui: gli extent dei
+    // discendenti sono nel loro posto di base, quindi dentro non si scarta.
+    drawSiblings(ctx, state, children, kids, cam, px, images, seen, overrides, visited, anim?.scaled.has(n.id) ? null : cull);
     ctx.restore();
   }
 }
@@ -513,12 +525,17 @@ function drawNode(
   // disegna nello spazio del proprio parent (quello corrente del ctx); questa
   // rotazione è la SUA, distinta da quella che drawSiblings applica scendendo
   // nei suoi figli. save/restore SOLO quando serve.
-  const rotated = eff.rotation % 360 !== 0;
+  // SCALA ANIMATA (solo scene derivate dalla riproduzione): uniforme attorno allo
+  // stesso centro della rotazione, quindi i due si compongono nello stesso
+  // save/restore. `animPivot` è per i gruppi, che non hanno un box proprio.
+  const scaled = eff.animScale !== undefined && eff.animScale !== 1;
+  const rotated = eff.rotation % 360 !== 0 || scaled;
   if (rotated) {
-    const c = nodeCenter(eff);
+    const c = eff.animPivot ?? nodeCenter(eff);
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate(eff.rotation * DEG_TO_RAD);
+    if (scaled) ctx.scale(eff.animScale as number, eff.animScale as number);
     ctx.translate(-c.x, -c.y);
   }
   ctx.globalAlpha = eff.opacity;
@@ -579,6 +596,11 @@ function drawNode(
 // canvas/geometry.ts::strokeOutsetOfNode conta la sporgenza con la stessa
 // regola, così misura e disegno restano la stessa cosa.
 function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | null): void {
+  // `draw` animato (< 1) su un box: il tratto si disegna per la frazione data del
+  // perimetro. A 1 è il tratto intero, senza tratteggio (nessuna differenza
+  // osservabile e nessun costo). Il testo non ha perimetro: ignora `draw`.
+  const dashed = n.animDraw !== undefined && n.animDraw < 1 && path !== null;
+  if (dashed) ctx.setLineDash(drawDash(perimeterOf(n), n.animDraw as number));
   for (const s of n.strokes) {
     // Un peso non positivo NON è un tratto sottilissimo: non è un tratto. Il
     // canvas con lineWidth 0 non disegna nulla, e i bounds non contano nessuna
@@ -593,6 +615,7 @@ function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | 
     }
     strokeShape(ctx, n, path, s);
   }
+  if (dashed) ctx.setLineDash([]);
 }
 
 function strokeShape(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s: StrokeLite): void {
@@ -634,6 +657,21 @@ function outsideClip(n: NodeLite, path: Path2D, weight: number): Path2D {
 // riempimento verrebbe chiuso implicitamente dal canvas e riempito -- ed è per
 // questo che vectorPaths ne restituisce due.
 function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, zoom: number): void {
+  // DRAW-ON animato (< 1): si vede solo il tratto, ogni contorno per la frazione
+  // data della propria lunghezza; il riempimento compare quando il tracciato è
+  // completo (a 1 si ricade nel disegno normale qui sotto).
+  if (n.animDraw !== undefined && n.animDraw < 1) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = VECTOR_STROKE_PX / zoom;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    for (const sp of vectorDrawSubpaths(n)) {
+      ctx.setLineDash(drawDash(sp.length, n.animDraw));
+      ctx.stroke(sp.path);
+    }
+    ctx.setLineDash([]);
+    return;
+  }
   const { fill, stroke } = vectorPaths(n);
   // La regola even-odd è una SCELTA (motivata su shapes.ts::VECTOR_FILL_RULE)
   // e non il default del canvas, quindi va passata a ogni fill. È la stessa

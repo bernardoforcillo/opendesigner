@@ -6,8 +6,8 @@ il cui `enter` / `hover` / `tap` le fa partire. Come i flussi, le clip sono nel
 documento e passano per l'op-log: si leggono e si scrivono da editor, MCP e
 codice, e sopravvivono al ricaricamento. Questo documento descrive il **modello
 dati**, il **motore** che lo campiona, i **tool MCP** e la **generazione di
-codice**; l'editor (timeline, riproduzione sul canvas) e l'importatore SVG lo
-usano ma stanno altrove.
+codice** e l'**editor** (timeline, registrazione, riproduzione sulla tela e nel
+prototipo, in fondo); l'importatore SVG usa il modello ma sta altrove.
 
 ## Modello
 
@@ -97,7 +97,7 @@ precedente) e TS fa lo stesso con oggetti nuovi.
 
 ## Motore (`web/src/animation/engine.ts`)
 
-Funzioni **pure**, senza DOM né renderer (le userà il playback dell'editor):
+Funzioni **pure**, senza DOM né renderer (le usano il playback dell'editor e il prototipo):
 
 | Funzione | Cosa fa |
 |---|---|
@@ -146,6 +146,77 @@ Verifica reale: `pnpm export-anim-app` (in `web/`) esporta una schermata con una
 clip per trigger nei due target, compila l'app react con `tsc` + `vite build` e
 fa girare in Chromium un test che campiona opacità, transform e tratto nel tempo.
 
+## Editor: timeline, registrazione, riproduzione
+
+Un pannello **Timeline** sotto la tela, in modalità Design (non è una quarta
+modalità): si apre con **M** o dalla voce "Animazione" del dock, e da solo quando
+si apre una clip (dalla lista, creandola o con un preset). Si ridimensiona dal
+bordo superiore e si riduce alla sola testata. Chiuso non costa niente: non si
+monta, non campiona, non ascolta.
+
+- **Clip**: la colonna sinistra le elenca (filtro "della selezione": quelle il cui
+  bersaglio è un antenato dei nodi selezionati o che hanno una traccia su di
+  essi); nuova, duplica, elimina. Le impostazioni (nome, innesco, durata,
+  ritardo, ripetizioni o infinito, yoyo, bersaglio = frame/gruppo più vicino alla
+  selezione) sono nel popover della barra del trasporto. Ogni modifica è **un
+  `SetClip` con la clip intera in un gesto: un passo di undo**.
+- **Tracce**: "+ Proprietà" (opacità, X, Y, scala, rotazione, tracciato per i nodi
+  con un tracciato) sul livello selezionato; senza clip aperta ne crea una. Due
+  keyframe, inizio e fine, col valore di base. "Anima con un preset" crea una clip
+  pronta (Fade in, Slide up, Pop, Spin, Pulse, Draw: `animation/presets.ts`, valori
+  relativi al nodo).
+- **Keyframe**: rombi che si selezionano (Ctrl/Cmd per più d'uno), si trascinano
+  (aggancio alla griglia da 10 ms, agli altri keyframe e al playhead; **Maiusc**
+  per il trascinamento libero), si cancellano (Canc), si duplicano al playhead
+  (Ctrl/Cmd+D), si spostano con le frecce. Il trascinamento lavora su una bozza
+  nello store di vista e scrive **un solo op al rilascio**. Doppio click su una
+  riga: un keyframe col valore campionato lì; l'ispettore a destra ha tempo,
+  valore, easing (menu + mini-curva con i due punti di controllo da trascinare).
+- **Trasporto**: play/pausa (**Spazio solo col fuoco dentro la timeline**: fuori,
+  Spazio resta il pan), stop, loop, velocità 0,25-2×, tempo corrente, righello
+  trascinabile, zoom (Ctrl + rotella). L'anteprima rispetta `delay`, `repeat` e
+  `yoyo` esattamente come il prototipo (`clipTimeline`); il trigger `loop` gira per
+  sempre.
+- **Registra**: con la clip aperta e "Registra" acceso, spostare, ruotare o
+  cambiare l'opacità di un livello (sulla tela o dal pannello Proprietà) scrive
+  keyframe al playhead invece di cambiare il livello; una traccia nuova a t > 0
+  riceve anche il keyframe a 0 col valore di prima, e la rotazione non salta lo
+  0/360. Un gesto con altro dentro (ridimensionare) o un livello fuori dal
+  bersaglio passa com'è. Tecnicamente è un gancio (`animation/recordHook.ts`) sulle
+  due porte dello store, `applyLocal` e `endGesture`: a registrazione spenta il
+  gancio è null e le due funzioni sono l'identità.
+
+### La posa
+
+Mentre una clip gira, si scorre o si registra, la tela mostra una **scena
+derivata** (`animation/pose.ts`, `posedScene.ts`) e **mai** il documento: gli
+stessi nodi coi valori campionati (x, y, rotazione, opacità sono campi veri;
+`scale` e `draw` sono i campi transitori `animScale`/`animPivot`/`animDraw` di
+`NodeLite`, che nessun op porta e nessuno snapshot contiene). Il costo è
+proporzionale ai nodi animati: la provenienza (`sceneDelta`) fa aggiornare l'indice
+di scena in modo incrementale. Il renderer (CPU e GPU) legge la scala da
+`localTransformOf`; il tratto che si disegna è un tratteggio del canvas 2D con la
+lunghezza vera del tracciato (`renderer/animDraw.ts`); lo scarto fuori vista si
+salta per i nodi scalati, i loro antenati e il loro sottoalbero. Il ciclo
+`requestAnimationFrame` gira **solo mentre si riproduce**: a timeline ferma o
+chiusa l'editor fa zero frame. Mentre gira, le maniglie di selezione non si
+disegnano e il pannello Proprietà mostra la scena vera; in pausa o scorrendo
+seguono la posa.
+
+Il renderer GPU supporta la scala e tutto il resto; solo il tratto che si
+disegna (`draw` < 1) non lo sa fare e, finché c'è, la scena si disegna in CPU senza
+toccare la scelta dell'utente.
+
+### Prototipo
+
+In Presenta (`ui/PrototypePlayer.tsx`, `animation/runtime.ts`) le clip `enter` e
+`loop` il cui bersaglio sta nella schermata mostrata partono quando compare (anche
+tornandoci); `hover` e `tap` partono quando il puntatore entra / preme nel box del
+bersaglio e valgono finché dura (come `:hover` / `:active` nel codice esportato).
+Una clip finita resta sul suo ultimo valore. Anche qui il ciclo di frame gira solo
+finché una clip sta girando.
+
+
 ## Limiti (per ora)
 
 - **Nessun morph** fra forme: si animano proprietà numeriche, non i punti di un
@@ -158,3 +229,6 @@ fa girare in Chromium un test che campiona opacità, transform e tratto nel temp
   traccia fuori è ignorata con un avviso); nessuna animazione dentro le istanze
   dei componenti.
 - L'export non anima `draw` su rect/ellisse/frame (box CSS senza tracciato).
+- Nella timeline la scala animata di un nodo non entra nel box di selezione del
+  nodo stesso (le maniglie restano sul box di base); `draw` su un vettoriale
+  nasconde il riempimento finché il tracciato non è completo.

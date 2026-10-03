@@ -122,7 +122,10 @@ export class CanvasKitRenderer {
     const px = 1 / (cam.zoom || 1);
     const cssW = w / dpr;
     const cssH = h / dpr;
-    const culling = cssW > 0 && cssH > 0 && cam.zoom > 0;
+    // Una scena derivata dalla riproduzione con scale animate non ha extent
+    // affidabili per i nodi scalati (vedi AnimInfo): niente scarto per tutta la
+    // scena finché dura -- costa nodi in più, mai nodi che spariscono.
+    const culling = cssW > 0 && cssH > 0 && cam.zoom > 0 && !(scene.anim && scene.anim.scaled.size > 0);
     const view = culling
       ? inflateBounds({ x: -cam.x / cam.zoom, y: -cam.y / cam.zoom, width: cssW / cam.zoom, height: cssH / cam.zoom }, 2 * px)
       : null;
@@ -212,11 +215,19 @@ export class CanvasKitRenderer {
       return;
     }
 
-    const rotated = eff.rotation % 360 !== 0;
+    // Scala animata (solo scene derivate dalla riproduzione): come nel 2D, attorno
+    // allo stesso centro della rotazione.
+    const scaled = eff.animScale !== undefined && eff.animScale !== 1;
+    const rotated = eff.rotation % 360 !== 0 || scaled;
     if (rotated) {
-      const c = nodeCenter(eff);
+      const c = eff.animPivot ?? nodeCenter(eff);
       sk.save();
       sk.rotate(eff.rotation * DEG, c.x, c.y);
+      if (scaled) {
+        sk.translate(c.x, c.y);
+        sk.scale(eff.animScale as number, eff.animScale as number);
+        sk.translate(-c.x, -c.y);
+      }
     }
     const layered = this.beginEffects(sk, eff);
 

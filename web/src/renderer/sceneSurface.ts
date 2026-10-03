@@ -72,7 +72,11 @@ export class SceneSurface {
    */
   draw(scene: SceneState, cam: Camera, pageId: string | null, force: boolean): boolean {
     const choice: RendererChoice = useRenderer.getState().choice;
-    if (choice === "gpu") {
+    // Il tratto che si disegna (`draw`) è tratteggio del canvas 2D: il renderer GPU
+    // non lo sa fare. Finché una scena derivata dalla riproduzione lo contiene si
+    // disegna in CPU (senza toccare la scelta dell'utente né lo stato "gpu"); gli
+    // altri effetti animati (x, y, rotazione, opacità, scala) vanno anche su GPU.
+    if (choice === "gpu" && !scene.anim?.hasDraw) {
       if (!this.gpu && !this.loading) this.startLoad();
       if (this.gpu) {
         if (this.gpu.lost) {
@@ -86,7 +90,7 @@ export class SceneSurface {
           }
         }
       }
-    } else {
+    } else if (choice !== "gpu") {
       // Un "error" se queda finché l'utente non cambia scelta: è il motivo per
       // cui si sta disegnando in CPU.
       const st = useRenderer.getState().status;

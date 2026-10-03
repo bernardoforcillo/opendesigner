@@ -164,7 +164,7 @@ export interface VectorPaths { fill: Path2D | null; stroke: Path2D | null }
 // vectorGeometry (la regola dei due spazi ha una sola implementazione) e non
 // hanno bisogno di rami: una maniglia assente vale (0,0), il controllo cade
 // sull'ancoraggio e la bezier è la retta.
-function traceSubpath(p: Path2D, n: NodeLite, sp: SubPathLite): void {
+export function traceSubpath(p: Path2D, n: NodeLite, sp: SubPathLite): void {
   const count = sp.anchors.length;
   const first = anchorPoint(n, sp.anchors[0]);
   p.moveTo(first.x, first.y);

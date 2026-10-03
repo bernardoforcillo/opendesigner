@@ -6,6 +6,8 @@ import { useScene } from "../../store/store";
 import { DocMenu } from "./DocMenu";
 import { usePanels } from "./panels";
 import { useFlowUi, type EditorMode } from "../../store/flowUi";
+import { useTimeline } from "../../animation/timelineStore";
+import { AnimIconButton } from "../ds/anim-parts";
 import type { ToolId } from "../../tools/types";
 import { isTextField } from "../../tools/toolManager";
 
@@ -73,6 +75,7 @@ export function ToolDock({
     connection === "connected" ? "bg-ok" : connection === "reconnecting" || connection === "connecting" ? "bg-warn" : "bg-danger";
   const canUndo = useScene((s) => s.undoStack.length > 0);
   const canRedo = useScene((s) => s.redoStack.length > 0);
+  const timelineOpen = useTimeline((s) => s.open);
   const [lastShape, setLastShape] = useState<ToolId>(readLastShape);
   const activeShape = SHAPE_IDS.includes(toolId) ? toolId : lastShape;
 
@@ -198,6 +201,9 @@ export function ToolDock({
           </TooltipTrigger>
         ))}
       </ToggleButtonGroup>
+      {mode === "design" && (
+        <AnimIconButton icon="timeline" label="Animazione" shortcut="M" size={32} selected={timelineOpen} onPress={() => useTimeline.getState().toggleOpen()} />
+      )}
       {SEP}
       <IconButton icon="undo" label="Annulla" shortcut="⌘Z" size={32} isDisabled={!canUndo} onPress={() => useScene.getState().undo()} />
       <IconButton icon="redo" label="Ripeti" shortcut="⇧⌘Z" size={32} isDisabled={!canRedo} onPress={() => useScene.getState().redo()} />

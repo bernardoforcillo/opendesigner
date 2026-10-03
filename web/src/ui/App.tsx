@@ -35,6 +35,10 @@ import { PrototypePlayer } from "./PrototypePlayer";
 import { ReadinessPanel } from "./dev/ReadinessPanel";
 import { CodeWorkbench } from "./dev/CodeWorkbench";
 import { ShipPanel } from "./dev/ShipPanel";
+import { TimelinePanel } from "./timeline/TimelinePanel";
+import { useTimeline } from "../animation/timelineStore";
+import { posedScene } from "../animation/posedScene";
+import { attachTimelineShortcuts } from "./timeline/shortcuts";
 import { resolveFlow, useFlowUi, type EditorMode } from "../store/flowUi";
 import { drawFlows } from "../renderer/flowRenderer";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
@@ -212,7 +216,10 @@ export function App() {
         const ctx: ToolContext = {
           sync,
           canvas,
-          getScene: () => useScene.getState().scene,
+          // La scena che si VEDE: con la timeline in posa è quella derivata (così si
+          // trascina ciò che è sullo schermo, non il valore di base); altrimenti è
+          // la stessa istanza dello store (animation/posedScene.ts).
+          getScene: () => posedScene(),
           getCamera: () => useScene.getState().camera,
           setCamera: (c) => useScene.getState().setCamera(c),
           toWorld: (e) => {
@@ -313,7 +320,9 @@ export function App() {
       if (useFlowUi.getState().mode === "dev") return;
       const canvas = canvasRef.current;
       const overlay = overlayRef.current;
-      const scene = useScene.getState().scene;
+      // La scena in posa quando la timeline scorre/riproduce/registra, altrimenti
+      // la scena dello store (stessa istanza: nessun costo a timeline ferma).
+      const scene = posedScene();
       if (canvas && scene) {
         resizeCanvasToDisplaySize(canvas);
         const ctx = canvas.getContext("2d");
@@ -340,7 +349,10 @@ export function App() {
         // modo in cui chi disegna vede quello che sta facendo.
         const { camera, selection, marquee, snapGuides, penPreview } = useScene.getState();
         if (octx) {
-          drawOverlay(octx, scene, camera, selection, marquee, snapGuides, penPreview);
+          // Mentre la clip GIRA le maniglie non si disegnano: starebbero su una
+          // geometria che cambia a ogni frame (e la scala animata non è nel box di
+          // selezione). In pausa o scorrendo seguono la geometria in posa.
+          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview);
           const peers = usePresence.getState().peers;
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
@@ -374,6 +386,10 @@ export function App() {
       useScene.subscribe(invalidate),
       usePresence.subscribe(invalidate),
       useFlowUi.subscribe(invalidate),
+      // Il playhead, la posa e la bozza di registrazione: il tick di riproduzione
+      // è l'unico produttore di frame mentre si anima, a timeline ferma non arriva
+      // niente e l'editor resta a zero frame.
+      useTimeline.subscribe(invalidate),
       imageCache.subscribe(invalidate),
       // Cambiare renderer (o la sua scelta, che il guasto della GPU riporta in
       // CPU) va ridisegnato subito.
@@ -475,6 +491,9 @@ export function App() {
   // la logica sta tutta in tools/clipboard.ts, qui c'è solo il montaggio --
   // che però è l'unico punto in cui la funzione diventa raggiungibile.
   useEffect(() => attachClipboardShortcuts(), []);
+
+  // M apre/chiude la timeline (ui/timeline/shortcuts.ts).
+  useEffect(() => attachTimelineShortcuts(), []);
 
   // Le immagini che non si erano caricate si riprovano quando la rete torna o
   // quando la scheda torna in primo piano (traccia 3, task 3). Senza, un
@@ -578,7 +597,11 @@ export function App() {
             </Tabs>
           </aside>
         )}
-        <div className="relative min-w-0 flex-1 bg-canvas">
+        {/* La colonna centrale: la tela e, sotto, la timeline (solo in Design, aperta
+            con M o dal dock). La timeline è un FRATELLO della tela come i pannelli
+            laterali: la tela si ridimensiona da sola (resize -> invalidazione). */}
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+        <div className="relative min-h-0 min-w-0 flex-1 bg-canvas">
           {/* Il cursore viene dal tool attivo; durante un pan temporaneo (spazio
               o tasto centrale) è il tool manager a sovrascriverlo sul DOM. */}
           {/* Il canvas WebGL della GPU: sotto, senza eventi, nascosto finché la
@@ -612,6 +635,8 @@ export function App() {
               ciclo di disegno la usano) e sta SOTTO il dock (z-20). */}
           {mode === "dev" && <CodeWorkbench />}
           <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { location.hash = "#new"; }} connection={connection} statusLabel={statusLabel} />
+        </div>
+        {mode === "design" && <TimelinePanel />}
         </div>
         <aside aria-label={mode === "dev" ? "Spedisci" : "Proprietà"} className={`${rightOpen ? "block" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 overflow-hidden border-l border-line bg-surface`}>
           {mode === "dev" ? (
