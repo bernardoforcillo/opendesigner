@@ -5,6 +5,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"strings"
 	"sync"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
@@ -563,4 +564,58 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 		}
 	}
 	return next
+}
+
+// SetName rinomina il documento: prima in modo durevole (meta.json, se il
+// bundle lo sa fare), poi nella copia in memoria che OpenDocument serve. Tiene
+// writeMu per non correre contro un Submit, che costruisce il documento
+// successivo copiando il nome da h.doc. h.doc non si muta sul posto (potrebbe
+// essere in mano a uno snapshot che lo sta serializzando): si sostituisce con
+// una copia che condivide i nodi.
+func (h *Hub) SetName(name string) error {
+	h.writeMu.Lock()
+	defer h.writeMu.Unlock()
+	if r, ok := h.bundle.(interface{ SetName(string) error }); ok {
+		if err := r.SetName(name); err != nil {
+			return err
+		}
+	}
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	next := cowClone(h.doc)
+	next.Name = strings.TrimSpace(name)
+	h.doc = next
+	return nil
+}
+
+// Subscribers è il numero di stream Subscribe aperti sul documento: chi lo sta
+// guardando adesso. Serve a Manager.Delete per non eliminare sotto i piedi di
+// qualcuno.
+func (h *Hub) Subscribers() int {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return len(h.subs)
+}
+
+// Counts: quante schermate (frame di primo livello) e quanti flussi ha il
+// documento. Legge senza clonare: serve alla Home.
+func (h *Hub) Counts() (screens, flows int) {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return countDoc(h.doc)
+}
+
+// countDoc: schermata = frame figlio diretto di una pagina (come
+// web/src/flow/screens.ts).
+func countDoc(d *opendesignerv1.Document) (screens, flows int) {
+	pages := make(map[string]bool, len(d.GetPages()))
+	for _, p := range d.GetPages() {
+		pages[p.GetId()] = true
+	}
+	for _, n := range d.GetNodes() {
+		if pages[n.GetParentId()] && n.GetFrame() != nil {
+			screens++
+		}
+	}
+	return screens, len(d.GetFlows())
 }

@@ -144,7 +144,13 @@ body {
   -webkit-font-smoothing: antialiased;
   font-feature-settings: "cv11", "ss01";
 }
-button, input, select, textarea { font: inherit; color: inherit; }
+/* Nel layer `base`: una regola FUORI da ogni layer batte TUTTE le utility di
+   Tailwind (che stanno nel layer `utilities`), e `color: inherit` qui sopra
+   annullava ogni `text-*` su un <button>/<input> -- il testo dei pulsanti
+   primari restava scuro su blu, e l'icona dello strumento attivo nel dock pure. */
+@layer base {
+  button, input, select, textarea { font: inherit; color: inherit; }
+}
 ::selection { background: var(--accent-soft); }
 
 /* Focus visibile ovunque, solo da tastiera. */

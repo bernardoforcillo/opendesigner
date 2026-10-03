@@ -226,7 +226,17 @@ function updateIndex(
     // toccati (quelli rimasti identici non contano), e nessun nodo è rimosso.
     const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(prev.extent.size * INCREMENTAL_MAX_FRACTION));
     if (hint.length > limit) return null;
-    for (const id of hint) if (nodes.at(id) && prevNodes.at(id) !== nodes.at(id)) changed.push(id);
+    // Un id può comparire PIÙ VOLTE nella provenienza: creare un nodo dentro un
+    // frame con auto layout lo registra come "toccato dall'op" e di nuovo come
+    // "ridisposto dal layout". Elaborarlo due volte inseriva il figlio due volte
+    // nella lista del parent e ne perdeva l'extent -- un testo dentro un bottone
+    // sparito dal disegno finché non si ricaricava il documento.
+    const seenHint = new Set<string>();
+    for (const id of hint) {
+      if (seenHint.has(id)) continue;
+      seenHint.add(id);
+      if (nodes.at(id) && prevNodes.at(id) !== nodes.at(id)) changed.push(id);
+    }
   } else {
     // Il confronto salta i secchi della mappa con la stessa identità: costa
     // quanto i secchi toccati, non quanto il documento.

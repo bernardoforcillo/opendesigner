@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"os"
 
 	"connectrpc.com/connect"
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
@@ -36,7 +37,41 @@ func (s *DocumentService) CreateDocument(_ context.Context, req *connect.Request
 	return connect.NewResponse(info), nil
 }
 
+func (s *DocumentService) RenameDocument(_ context.Context, req *connect.Request[opendesignerv1.RenameDocumentRequest]) (*connect.Response[opendesignerv1.DocInfo], error) {
+	info, err := s.m.Rename(req.Msg.GetDocId(), req.Msg.GetName())
+	switch {
+	case err == nil:
+		return connect.NewResponse(info), nil
+	case errors.Is(err, errEmptyName), errors.Is(err, errNameTooLong):
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	case errors.Is(err, errInvalidDocID), errors.Is(err, ErrDocNotFound):
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	default:
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+}
+
+func (s *DocumentService) DeleteDocument(_ context.Context, req *connect.Request[opendesignerv1.DeleteDocumentRequest]) (*connect.Response[opendesignerv1.DeleteDocumentResponse], error) {
+	err := s.m.Delete(req.Msg.GetDocId())
+	switch {
+	case err == nil:
+		return connect.NewResponse(&opendesignerv1.DeleteDocumentResponse{}), nil
+	case errors.Is(err, ErrDocInUse):
+		return nil, connect.NewError(connect.CodeFailedPrecondition, err)
+	case errors.Is(err, errInvalidDocID), errors.Is(err, os.ErrNotExist):
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	default:
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+}
+
 func (s *DocumentService) OpenDocument(_ context.Context, req *connect.Request[opendesignerv1.OpenRequest]) (*connect.Response[opendesignerv1.OpenResponse], error) {
+	// Un id ben formato ma sconosciuto NON deve far nascere un documento vuoto
+	// (HubFor apre-o-crea): un link morto mostra "non trovato", la creazione
+	// passa solo da CreateDocument.
+	if !s.m.Exists(req.Msg.GetDocId()) {
+		return nil, connect.NewError(connect.CodeNotFound, ErrDocNotFound)
+	}
 	h, err := s.m.HubFor(req.Msg.GetDocId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)

@@ -3,6 +3,7 @@ import { useScene } from "../../store/store";
 import { refreshCode, useCodegen } from "../../dev/codegen";
 import { AGENT_PROMPT, AGENT_TOOLS, projectZip, shipCommands, shipScript, zipName } from "../../dev/ship";
 import { downloadBytes } from "../../dev/zip";
+import { SHIPPED_EVENT } from "../../home/docPrefs";
 import { Badge, Button, EmptyState, cls } from "../ds";
 import { DevIcon } from "../ds/dev-parts";
 import { CopyButton } from "./CopyButton";
@@ -45,6 +46,8 @@ export function ShipPanel() {
       const st = useCodegen.getState().byTarget[target];
       if (st.status === "error" || st.files.length === 0) throw new Error(st.error ?? "nessun file generato");
       downloadBytes(zipName(docName, target), projectZip(st.files));
+      // La checklist di onboarding (home/CanvasOnboarding) spunta "Spedisci" da qui.
+      window.dispatchEvent(new Event(SHIPPED_EVENT));
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e));
     } finally {
