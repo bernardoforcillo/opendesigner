@@ -1,7 +1,7 @@
-import { useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
+import { Fragment, useContext, useEffect, useLayoutEffect, useRef, useState } from "react";
 import type { RefObject } from "react";
 import {
-  Label, Radio, RadioGroup, Slider, SliderOutput, SliderStateContext, SliderThumb, SliderTrack,
+  Label, Slider, SliderOutput, SliderStateContext, SliderThumb, SliderTrack,
 } from "react-aria-components";
 import { useScene } from "../store/store";
 import { ALIGN_COMMANDS, alignSelection, minSelection } from "../selection/align";
@@ -13,6 +13,9 @@ import { instanceOverrideMap } from "../store/instances";
 import { subtreeOf } from "../store/tree";
 import { makeSetInstanceOverrideOp, makeSetPropsOp, makeSetTextOp } from "../tools/ops";
 import { layerDisplayName } from "./LayersPanel";
+import { cls, EmptyState, Icon, IconButton, Section } from "./ds";
+import type { IconName } from "./ds";
+import { SegRadio, type SegOption } from "./ds/props-controls";
 import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
 import { GradientControls } from "./GradientControls";
@@ -47,9 +50,9 @@ interface NumericField {
   label: string;
   mask: MaskPath;
   minValue?: number;
-  // Solo per le etichette più larghe di una lettera (la griglia è tarata su
-  // X/Y/W/H): vedi NumberField::labelWidth.
-  labelWidth?: string;
+  // Il simbolo mostrato al posto dell'etichetta, che resta il nome accessibile:
+  // vedi NumberField::glyph.
+  glyph?: string;
 }
 
 // POSIZIONE e DIMENSIONE separate perché un GRUPPO ha la prima e non la
@@ -68,7 +71,7 @@ const POSITION_FIELDS: readonly NumericField[] = [
 const SIZE_FIELDS: readonly NumericField[] = [
   { key: "width", label: "W", mask: "width", minValue: 0 },
   { key: "height", label: "H", mask: "height", minValue: 0 },
-  { key: "rotation", label: "Rot", mask: "rotation", labelWidth: "w-7" },
+  { key: "rotation", label: "Rot", mask: "rotation", glyph: "°" },
 ];
 
 const GEOMETRY_FIELDS: readonly NumericField[] = [...POSITION_FIELDS, ...SIZE_FIELDS];
@@ -260,26 +263,36 @@ function textStyleSummary(nodes: readonly NodeLite[]): TextStyleSummary | null {
 // stringa (TextStyle.font_weight è un string, "400" | "700" | ...): un nodo con
 // un peso fuori da questo elenco lascia semplicemente il gruppo senza nessuna
 // scelta selezionata, che è più onesto che arrotondarlo al più vicino.
-const FONT_WEIGHTS: readonly { value: string; label: string }[] = [
+const FONT_WEIGHTS: readonly SegOption<string>[] = [
   { value: "400", label: "Normale" },
   { value: "700", label: "Grassetto" },
 ];
 
-const ALIGNMENTS: readonly { value: TextAlignLite; label: string }[] = [
-  { value: "left", label: "Sinistra" },
-  { value: "center", label: "Centro" },
-  { value: "right", label: "Destra" },
+const ALIGNMENTS: readonly SegOption<TextAlignLite>[] = [
+  { value: "left", label: "Sinistra", icon: "textLeft" },
+  { value: "center", label: "Centro", icon: "textCenter" },
+  { value: "right", label: "Destra", icon: "textRight" },
 ];
 
 // La POSIZIONE del tratto rispetto al perimetro. Il gruppo si chiama
 // "Posizione" e non "Allineamento" apposta: su un nodo TESTO con un tratto i
 // due gruppi convivono nel pannello, e l'etichetta è anche il nome accessibile
 // -- due gruppi omonimi sarebbero indistinguibili per chi naviga a voce.
-const STROKE_ALIGNMENTS: readonly { value: StrokeAlignLite; label: string }[] = [
+const STROKE_ALIGNMENTS: readonly SegOption<StrokeAlignLite>[] = [
   { value: "inside", label: "Interno" },
   { value: "center", label: "Centro" },
   { value: "outside", label: "Esterno" },
 ];
+
+// L'intestazione dell'ispettore: icona e nome italiano del TIPO di nodo.
+const KIND_ICON: Record<NodeLite["kind"], IconName> = {
+  rect: "rect", ellipse: "ellipse", text: "text", image: "image", vector: "pen",
+  unknown: "rect", group: "layers", frame: "frame", instance: "components",
+};
+const KIND_LABEL: Record<NodeLite["kind"], string> = {
+  rect: "Rettangolo", ellipse: "Ellisse", text: "Testo", image: "Immagine", vector: "Vettore",
+  unknown: "Elemento", group: "Gruppo", frame: "Frame", instance: "Istanza",
+};
 
 // Un valore riassunto pronto per un RadioGroup CONTROLLATO: null (e non
 // undefined) per MIXED, così il gruppo resta controllato e mostra semplicemente
@@ -331,27 +344,24 @@ function SliderValueText({
   return <SliderOutput className={className}>{text}</SliderOutput>;
 }
 
-const RADIO_CLASS =
-  "cursor-pointer rounded px-1.5 py-0.5 text-neutral-600 outline-none " +
-  "data-[selected]:bg-sky-100 data-[selected]:text-sky-700 " +
-  "data-[focus-visible]:ring-1 data-[focus-visible]:ring-sky-500";
-
-const ROW_LABEL_CLASS = "w-20 shrink-0 select-none text-neutral-400";
-
 // Il binario e la pastiglia del cursore dell'opacità, con il loro stato VUOTO:
 // su `data-mixed` (messo sul track, che è il `group`) perdono riempimento e
 // bordo pieno e restano un tratteggio, perché non c'è nessun valore da
 // indicare. La pastiglia però resta lì -- focalizzabile, trascinabile e con il
 // suo anello di focus.
 const SLIDER_RAIL_CLASS =
-  "absolute top-1/2 h-1 w-full -translate-y-1/2 rounded bg-neutral-200 " +
+  "absolute top-1/2 h-1 w-full -translate-y-1/2 rounded-full bg-surface-3 " +
   "group-data-[mixed]:border group-data-[mixed]:border-dashed " +
-  "group-data-[mixed]:border-neutral-300 group-data-[mixed]:bg-transparent";
+  "group-data-[mixed]:border-line-strong group-data-[mixed]:bg-transparent";
+
+// La parte PIENA del binario, da sinistra fino alla pastiglia.
+const SLIDER_FILL_CLASS =
+  "absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-accent group-data-[mixed]:hidden";
 
 const SLIDER_THUMB_CLASS =
-  "top-1/2 size-3 rounded-full border border-neutral-400 bg-white shadow-sm outline-none " +
+  "top-1/2 size-3.5 rounded-full border-2 border-accent bg-surface shadow-sm outline-none " +
   "group-data-[mixed]:border-transparent group-data-[mixed]:bg-transparent group-data-[mixed]:shadow-none " +
-  "data-[focus-visible]:ring-2 data-[focus-visible]:ring-sky-500";
+  "data-[focus-visible]:shadow-[var(--ring)]";
 
 // --- ALLINEAMENTO -----------------------------------------------------------
 //
@@ -365,8 +375,8 @@ const SLIDER_THUMB_CLASS =
 // griglia di 24, e una dipendenza per questo sarebbe più codice, non meno.
 // `RULE`/`BAR` descrivono le due parti di ogni segno -- la riga su cui si
 // allinea e i due blocchi che ci si appoggiano.
-const RULE = "fill-neutral-400";
-const BAR = "fill-neutral-500";
+const RULE = "fill-fg-subtle";
+const BAR = "fill-current";
 
 // I rettangoli di ogni icona, in coordinate SVG 0..24. Per gli allineamenti:
 // la riga (spessa 1.5) più due blocchi di lunghezza diversa appoggiati a lei --
@@ -419,19 +429,11 @@ function AlignIcon({ id }: { id: AlignCommand }) {
 }
 
 const ALIGN_BUTTON_CLASS =
-  "flex items-center justify-center rounded p-1 outline-none hover:bg-neutral-100 " +
-  "focus-visible:ring-1 focus-visible:ring-sky-500 " +
+  "flex h-7 flex-1 items-center justify-center rounded-md text-fg-muted outline-none hover:bg-surface-3 hover:text-fg " +
+  "focus-visible:shadow-[var(--ring)] " +
   // Disabilitato: si SPEGNE (niente sfondo all'hover, pittogramma sbiadito),
   // che è il segno che dice "non c'è abbastanza selezione per questo comando".
   "disabled:opacity-40 disabled:hover:bg-transparent";
-
-function SectionTitle({ children }: { children: string }) {
-  return (
-    <div className="border-b border-t border-neutral-200 px-2 py-1 text-xs font-medium uppercase tracking-wide text-neutral-400">
-      {children}
-    </div>
-  );
-}
 
 // --- OVERRIDE DELLE ISTANZE (M4) --------------------------------------------
 //
@@ -476,8 +478,8 @@ function OverrideTextField({
     if (draft !== value) onCommit(draft);
   }
   return (
-    <div className="flex items-center gap-1.5">
-      <Label className="w-20 shrink-0 select-none truncate text-neutral-400">{label}</Label>
+    <div className="flex min-w-0 flex-col gap-1">
+      <span className="truncate text-[11px] font-medium text-fg-subtle">{label}</span>
       <input
         aria-label={label}
         value={draft}
@@ -494,7 +496,7 @@ function OverrideTextField({
             settle();
           }
         }}
-        className="w-full min-w-0 rounded border border-neutral-200 bg-white px-1 py-0.5 text-sm outline-none focus:border-sky-500"
+        className={cls.input}
       />
     </div>
   );
@@ -661,9 +663,17 @@ export function PropertiesPanel() {
 
   if (!summary) {
     return (
-      <div className="flex h-full flex-col text-sm text-neutral-700">
-        <div className="border-b border-neutral-200 px-2 py-1.5 font-medium text-neutral-500">Proprietà</div>
-        <div className="px-2 py-4 text-neutral-400">Nessuna selezione</div>
+      <div className="flex h-full flex-col bg-surface text-[13px] text-fg">
+        {/* Il titolo resta anche a vuoto: dice DOVE si è, come l'intestazione
+            degli altri pannelli, quando non c'è nessun nome da mostrare. */}
+        <header className="flex h-12 shrink-0 items-center border-b border-line px-3">
+          <h2 className={cls.sectionTitle}>Proprietà</h2>
+        </header>
+        <EmptyState
+          icon="select"
+          title="Nessuna selezione"
+          hint="Seleziona un elemento sul canvas o nei livelli per leggerne e modificarne le proprietà."
+        />
       </div>
     );
   }
@@ -700,82 +710,110 @@ export function PropertiesPanel() {
   const overrideRows: NodeLite[] =
     master && scene ? subtreeOf(scene, master.rootNodeId).filter((n) => n.kind === "text" || n.fills.length > 0) : [];
 
-  return (
-    <div className="flex h-full flex-col overflow-auto text-sm text-neutral-700">
-      <div className="border-b border-neutral-200 px-2 py-1.5 font-medium text-neutral-500">Proprietà</div>
+  // L'intestazione: CHI è selezionato. Un nodo solo = il suo nome e il suo tipo;
+  // più nodi = il conteggio e il tipo comune (se c'è).
+  const headerIcon: IconName = summary.kind === MIXED || nodes.length > 1 ? "layers" : KIND_ICON[summary.kind];
+  const headerTitle = nodes.length === 1 ? layerDisplayName(nodes[0]) : `${nodes.length} elementi`;
+  const headerHint =
+    nodes.length > 1
+      ? (summary.kind === MIXED ? "Selezione multipla" : `Selezione multipla · ${KIND_LABEL[summary.kind]}`)
+      : (summary.kind === MIXED ? "" : KIND_LABEL[summary.kind]);
 
-      <div className="grid grid-cols-2 gap-x-2 gap-y-1.5 p-2">
-        {geometryFields.map((field) => (
-          <NumberField
-            key={field.key}
-            label={field.label}
-            labelWidth={field.labelWidth}
-            minValue={field.minValue}
-            // MIXED (selezione multipla con valori diversi) diventa NaN:
-            // NumberField lo mostra vuoto e non ne fa un cambio di
-            // controllato/non controllato (vedi il commento sulla sua
-            // prop `value`). Il placeholder "Misto" ci va SOLO in quel caso:
-            // un campo vuoto senza altro contesto sembrerebbe svuotato per
-            // sbaglio, non "questi nodi differiscono".
-            value={summary[field.key] === MIXED ? NaN : (summary[field.key] as number)}
-            placeholder={summary[field.key] === MIXED ? MIXED_LABEL : undefined}
-            onCommit={(v) => commit(field, v)}
-            onScrub={(v) => scrub(field, v)}
-            onScrubEnd={(v) => scrubEnd(field, v)}
-          />
-        ))}
-      </div>
+  return (
+    <div className="flex h-full flex-col overflow-auto bg-surface text-[13px] text-fg">
+      <header className="flex h-12 shrink-0 items-center gap-2.5 border-b border-line px-3">
+        <span className="flex size-7 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+          <Icon name={headerIcon} size={16} />
+        </span>
+        <div className="min-w-0">
+          <p className="truncate text-[13px] font-semibold leading-tight">{headerTitle}</p>
+          {headerHint && <p className="truncate text-[11px] leading-tight text-fg-subtle">{headerHint}</p>}
+        </div>
+      </header>
 
       {/* ALLINEAMENTO. Sta con la geometria (è geometria: sposta x/y e
           nient'altro) e prima dell'aspetto. Ogni pulsante è UN gesto, quindi UNA
           voce di undo, anche quando muove dieci nodi -- vedi
           selection/align.ts::alignSelection. Il riferimento è SEMPRE il riquadro
           comune della selezione: non esiste nessuna pagina contro cui allineare
-          (vedi il commento su alignTarget). */}
-      <div role="group" aria-label="Allinea" className="grid grid-cols-4 gap-0.5 border-t border-neutral-200 p-2">
-        {ALIGN_COMMANDS.map((c) => (
-          // <button> nativo e non il Button di react-aria (che qui non porta
-          // niente in più e non accetta `title`): per un pittogramma il tooltip
-          // è l'unico modo che un utente VEDENTE ha di leggere il nome del
-          // comando, e deve essere lo STESSO testo del nome accessibile --
-          // altrimenti sono due interfacce.
-          //
-          // DISABILITATO sotto il minimo di nodi che il comando richiede (due
-          // per allineare, tre per distribuire): sotto quella soglia il riquadro
-          // comune coincide con la selezione e non c'è niente da fare. Un
-          // pulsante vivo che non fa niente non si distingue da uno rotto.
-          <button
-            key={c.id}
-            type="button"
-            aria-label={c.label}
-            title={c.label}
-            disabled={selection.length < minSelection(c.id)}
-            className={ALIGN_BUTTON_CLASS}
-            onClick={() => alignSelection(c.id)}
-          >
-            <AlignIcon id={c.id} />
-          </button>
+          (vedi il commento su alignTarget). Una barra sola, con un filo fra le
+          quattro orizzontali e le quattro verticali. */}
+      <div role="group" aria-label="Allinea" className="flex shrink-0 items-center gap-0.5 border-b border-line px-2 py-1.5">
+        {ALIGN_COMMANDS.map((c, i) => (
+          <Fragment key={c.id}>
+            {i === 4 && <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-line" />}
+            {/* <button> nativo e non il Button di react-aria (che qui non porta
+                niente in più e non accetta `title`): per un pittogramma il
+                tooltip è l'unico modo che un utente VEDENTE ha di leggere il
+                nome del comando, e deve essere lo STESSO testo del nome
+                accessibile -- altrimenti sono due interfacce.
+
+                DISABILITATO sotto il minimo di nodi che il comando richiede
+                (due per allineare, tre per distribuire): sotto quella soglia il
+                riquadro comune coincide con la selezione e non c'è niente da
+                fare. Un pulsante vivo che non fa niente non si distingue da uno
+                rotto. */}
+            <button
+              type="button"
+              aria-label={c.label}
+              title={c.label}
+              disabled={selection.length < minSelection(c.id)}
+              className={ALIGN_BUTTON_CLASS}
+              onClick={() => alignSelection(c.id)}
+            >
+              <AlignIcon id={c.id} />
+            </button>
+          </Fragment>
         ))}
       </div>
 
-      <SectionTitle>Aspetto</SectionTitle>
-      <div className="flex flex-col gap-1.5 p-2">
-        {/* Con un gradiente il colore singolo non esiste: lo scrivere appiattirebbe
-            il gradiente senza che l'utente l'abbia chiesto. Gli stop si editano in
-            GradientControls. */}
-        {!fill?.gradient && (
-          <ColorField
-            label="Riempimento"
-            // MIXED o nodo senza tinte: null, cioè "nessun valore singolo da
-            // mostrare". Scrivere un colore da lì resta possibile e lo assegna
-            // a tutta la selezione, come per i campi geometrici.
-            value={fill}
-            placeholder={summary.fills === MIXED ? MIXED_LABEL : undefined}
-            onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
-          />
-        )}
-        {summary.fills !== MIXED && <GradientControls fill={fill} run={runGesture} />}
+      {/* LAYOUT: posizione, dimensione, rotazione e (rettangoli) raggio, in una
+          griglia a due colonne di campi con il prefisso DENTRO (X, Y, W, H, °, R). */}
+      <Section title="Layout">
+        <div className="grid grid-cols-2 gap-1.5">
+          {geometryFields.map((field) => (
+            <NumberField
+              key={field.key}
+              label={field.label}
+              glyph={field.glyph}
+              minValue={field.minValue}
+              // MIXED (selezione multipla con valori diversi) diventa NaN:
+              // NumberField lo mostra vuoto e non ne fa un cambio di
+              // controllato/non controllato (vedi il commento sulla sua
+              // prop `value`). Il placeholder "Misto" ci va SOLO in quel caso:
+              // un campo vuoto senza altro contesto sembrerebbe svuotato per
+              // sbaglio, non "questi nodi differiscono".
+              value={summary[field.key] === MIXED ? NaN : (summary[field.key] as number)}
+              placeholder={summary[field.key] === MIXED ? MIXED_LABEL : undefined}
+              onCommit={(v) => commit(field, v)}
+              onScrub={(v) => scrub(field, v)}
+              onScrubEnd={(v) => scrubEnd(field, v)}
+            />
+          ))}
+          {/* SOLO per i rettangoli: corner_radius vive dentro RectNode, e su
+              un'ellisse o un testo l'op verrebbe rifiutato da entrambe le
+              implementazioni di apply (ErrNotRectNode). Una selezione MISTA ha
+              kind === MIXED, quindi non mostra il campo -- non c'è un raggio da
+              scrivere che valga per tutti. */}
+          {summary.kind === "rect" && (
+            <NumberField
+              label={CORNER_RADIUS_FIELD.label}
+              minValue={CORNER_RADIUS_FIELD.minValue}
+              value={summary.cornerRadius === MIXED ? NaN : (summary.cornerRadius as number)}
+              placeholder={summary.cornerRadius === MIXED ? MIXED_LABEL : undefined}
+              onCommit={(v) => commit(CORNER_RADIUS_FIELD, v)}
+              onScrub={(v) => scrub(CORNER_RADIUS_FIELD, v)}
+              onScrubEnd={(v) => scrubEnd(CORNER_RADIUS_FIELD, v)}
+            />
+          )}
+        </div>
+      </Section>
 
+      {/* L'AUTO LAYOUT: per un frame, i suoi controlli; per qualunque altra
+          selezione, il "+" che la avvolge in un frame con auto layout. */}
+      {summary.kind === "frame" ? <AutoLayoutControls run={runGesture} /> : <WrapInAutoLayoutButton />}
+
+      <Section title="Aspetto">
         <Slider
           // Su MIXED il numero qui sotto è solo il PUNTO DI PARTENZA di
           // tastiera e trascinamento: non viene disegnato (il cursore si mostra
@@ -796,9 +834,10 @@ export function PropertiesPanel() {
           formatOptions={PERCENT_FORMAT}
           onChange={scrubOpacity}
           onChangeEnd={scrubOpacityEnd}
-          className="flex items-center gap-1.5"
+          // Una riga incassata come i campi numerici: etichetta, cursore, valore.
+          className="flex h-7 items-center gap-2 rounded-md bg-surface-2 pl-2 pr-1.5"
         >
-          <Label className={ROW_LABEL_CLASS}>Opacità</Label>
+          <Label className="w-12 shrink-0 select-none text-[11px] font-medium text-fg-subtle">Opacità</Label>
           <SliderTrack
             // "Misto" è uno STATO del controllo, non solo un testo: sta nel DOM
             // sul track (che contiene sia il binario sia la pastiglia) e di lì
@@ -806,122 +845,38 @@ export function PropertiesPanel() {
             // calcolate: la stessa forma dei `data-*` che RAC stessa espone
             // (data-selected, data-focus-visible).
             data-mixed={opacity === MIXED || undefined}
-            className="group relative h-4 flex-1 min-w-0"
+            className="group relative h-4 min-w-0 flex-1"
           >
-            {/* Il binario disegnato è un figlio del track e non il track
-                stesso: il track deve restare alto abbastanza da essere
-                afferrabile col dito, la riga colorata sottile abbastanza da
-                leggersi come un cursore. */}
-            <div className={SLIDER_RAIL_CLASS} />
-            <SliderThumb inputRef={opacityInputRef} className={SLIDER_THUMB_CLASS} />
+            {({ state }) => (
+              <>
+                {/* Il binario disegnato è un figlio del track e non il track
+                    stesso: il track deve restare alto abbastanza da essere
+                    afferrabile col dito, la riga colorata sottile abbastanza da
+                    leggersi come un cursore. La parte piena arriva alla
+                    pastiglia. */}
+                <div className={SLIDER_RAIL_CLASS} />
+                <div className={SLIDER_FILL_CLASS} style={{ width: `${state.getThumbPercent(0) * 100}%` }} />
+                <SliderThumb inputRef={opacityInputRef} className={SLIDER_THUMB_CLASS} />
+              </>
+            )}
           </SliderTrack>
           <SliderValueText
             inputRef={opacityInputRef}
             mixed={opacity === MIXED}
-            className="w-10 shrink-0 text-right tabular-nums text-neutral-500"
+            className="w-10 shrink-0 text-right text-[12px] tabular-nums text-fg-muted"
           />
         </Slider>
+      </Section>
 
-        {/* SOLO per i rettangoli: corner_radius vive dentro RectNode, e su
-            un'ellisse o un testo l'op verrebbe rifiutato da entrambe le
-            implementazioni di apply (ErrNotRectNode). Una selezione MISTA ha
-            kind === MIXED, quindi non mostra il campo -- non c'è un raggio da
-            scrivere che valga per tutti. */}
-        {summary.kind === "rect" && (
-          <NumberField
-            label={CORNER_RADIUS_FIELD.label}
-            minValue={CORNER_RADIUS_FIELD.minValue}
-            value={summary.cornerRadius === MIXED ? NaN : (summary.cornerRadius as number)}
-            placeholder={summary.cornerRadius === MIXED ? MIXED_LABEL : undefined}
-            onCommit={(v) => commit(CORNER_RADIUS_FIELD, v)}
-            onScrub={(v) => scrub(CORNER_RADIUS_FIELD, v)}
-            onScrubEnd={(v) => scrubEnd(CORNER_RADIUS_FIELD, v)}
-          />
-        )}
-      </div>
-
-      {/* GLI EFFETTI: ombra e sfocatura. Sezione propria come il tratto: sono
-          controlli di un'altra natura rispetto all'aspetto di base. */}
-      {/* L'AUTO LAYOUT: per un frame, i suoi controlli; per qualunque altra
-          selezione, il pulsante che la avvolge in un frame con auto layout. */}
-      <SectionTitle>Auto layout</SectionTitle>
-      <div className="p-2">
-        {summary.kind === "frame" ? <AutoLayoutControls run={runGesture} /> : <WrapInAutoLayoutButton />}
-      </div>
-
-      <SectionTitle>Effetti</SectionTitle>
-      <div className="p-2">
-        <EffectsControls run={runGesture} />
-      </div>
-
-      {/* IL TRATTO. Sezione propria e non dentro "Aspetto": sono tre controlli
-          che descrivono UNA cosa sola (il tratto del nodo), e mescolarli al
-          riempimento renderebbe ambiguo a quale delle due il colore appartiene.
-          Vale per OGNI forma -- `strokes` è un campo di primo livello del Node,
-          non un campo dentro il oneof `shape` come corner_radius -- quindi la
-          sezione c'è sempre, testo compreso. */}
-      <SectionTitle>Tratto</SectionTitle>
-      <div className="flex flex-col gap-1.5 p-2">
-        <ColorField
-          label="Tratto"
-          // Come il riempimento: null su MIXED o su "nessun tratto". Scrivere
-          // un colore resta possibile in entrambi i casi -- ed è il modo in cui
-          // un tratto si CREA (vedi DEFAULT_STROKE).
-          value={stroke?.color ?? null}
-          placeholder={strokesMixed ? MIXED_LABEL : undefined}
-          // Il colore va giù NUDO, senza alfa: la rimette strokeOps prendendola
-          // dal tratto di ciascun nodo, esattamente come fillOps. Comporla qui
-          // da `stroke` la leggerebbe dal RIASSUNTO della selezione -- che su
-          // tratti diversi è null -- e riscriverebbe 1 su tutti.
-          onCommit={(rgb) => runGesture((ids) => strokeOps(ids, { color: rgb }))}
-        />
-
-        <NumberField
-          label="Spessore"
-          labelWidth="w-20"
-          // Nessun tratto = spessore 0, e 0 resta scrivibile: è il modo di
-          // spegnere un tratto senza toglierlo dalla lista (peso non positivo
-          // = niente disegnato e nessuna sporgenza nei bounds, vedi
-          // canvas/geometry.ts::strokeOutset).
-          minValue={0}
-          value={strokesMixed ? NaN : (stroke?.weight ?? 0)}
-          placeholder={strokesMixed ? MIXED_LABEL : undefined}
-          onCommit={(v) => runGesture((ids) => strokeOps(ids, { weight: v }))}
-          onScrub={(v) => scrubStroke({ weight: v })}
-          onScrubEnd={(v) => scrubStrokeEnd({ weight: v })}
-        />
-
-        <RadioGroup
-          // Su MIXED nessuna scelta selezionata (null, come per i pesi del
-          // testo); su un nodo senza tratti si mostra il default, che è anche
-          // quello che verrebbe scritto.
-          value={strokesMixed ? null : (stroke?.align ?? DEFAULT_STROKE.align)}
-          onChange={(v) => runGesture((ids) => strokeOps(ids, { align: v as StrokeAlignLite }))}
-          orientation="horizontal"
-          className="flex items-center gap-1.5"
-        >
-          <Label className={ROW_LABEL_CLASS}>Posizione</Label>
-          <div className="flex gap-1">
-            {STROKE_ALIGNMENTS.map((a) => (
-              <Radio key={a.value} value={a.value} className={RADIO_CLASS}>
-                {a.label}
-              </Radio>
-            ))}
-          </div>
-        </RadioGroup>
-      </div>
-
-      {/* Per i nodi testo il pannello mostra INVECE i controlli di stile: sono
+      {/* Per i nodi testo il pannello mostra i controlli di stile: sono
           l'equivalente del raggio per un rettangolo -- le proprietà che quel
           tipo di nodo ha e gli altri no. Emettono SetText (con style_present),
           non SetProperties: lo stile vive dentro il oneof `shape`. */}
       {style && (
-        <>
-          <SectionTitle>Testo</SectionTitle>
-          <div className="flex flex-col gap-1.5 p-2">
+        <Section title="Testo">
+          <div className="flex flex-col gap-2">
             <NumberField
               label="Dimensione"
-              labelWidth="w-20"
               minValue={1}
               value={style.fontSize === MIXED ? NaN : (style.fontSize as number)}
               placeholder={style.fontSize === MIXED ? MIXED_LABEL : undefined}
@@ -929,59 +884,125 @@ export function PropertiesPanel() {
               onScrub={(v) => scrubTextStyle({ fontSize: v })}
               onScrubEnd={(v) => scrubTextStyleEnd({ fontSize: v })}
             />
-
-            <RadioGroup
+            <SegRadio
+              label="Peso" showLabel={false}
               value={radioValue(style.fontWeight)}
+              options={FONT_WEIGHTS}
               onChange={(v) => runGesture((ids) => textStyleOps(ids, { fontWeight: v }))}
-              orientation="horizontal"
-              className="flex items-center gap-1.5"
-            >
-              <Label className={ROW_LABEL_CLASS}>Peso</Label>
-              <div className="flex gap-1">
-                {FONT_WEIGHTS.map((w) => (
-                  <Radio key={w.value} value={w.value} className={RADIO_CLASS}>
-                    {w.label}
-                  </Radio>
-                ))}
-              </div>
-            </RadioGroup>
-
-            <RadioGroup
+            />
+            <SegRadio
+              label="Allineamento" showLabel={false}
               value={radioValue(style.align)}
+              options={ALIGNMENTS}
               // Il cast è sicuro per costruzione: gli unici valori nel gruppo
               // sono quelli di ALIGNMENTS, che è tipizzato TextAlignLite.
               onChange={(v) => runGesture((ids) => textStyleOps(ids, { align: v as TextAlignLite }))}
-              orientation="horizontal"
-              className="flex items-center gap-1.5"
-            >
-              <Label className={ROW_LABEL_CLASS}>Allineamento</Label>
-              <div className="flex gap-1">
-                {ALIGNMENTS.map((a) => (
-                  <Radio key={a.value} value={a.value} className={RADIO_CLASS}>
-                    {a.label}
-                  </Radio>
-                ))}
-              </div>
-            </RadioGroup>
+            />
           </div>
-        </>
+        </Section>
       )}
+
+      {/* IL RIEMPIMENTO: il tipo (solido / lineare / radiale) e sotto il colore,
+          o l'anteprima del gradiente con i suoi estremi. */}
+      <Section title="Riempimento">
+        {summary.fills !== MIXED ? (
+          <GradientControls
+            fill={fill}
+            run={runGesture}
+            // Con un gradiente il colore singolo non esiste: lo scrivere
+            // appiattirebbe il gradiente senza che l'utente l'abbia chiesto. Gli
+            // stop si editano in GradientControls.
+            solid={
+              <ColorField
+                label="Riempimento"
+                // Nodo senza tinte: null, cioè "nessun valore singolo da
+                // mostrare". Scrivere un colore da lì resta possibile e lo
+                // assegna a tutta la selezione, come per i campi geometrici.
+                value={fill}
+                placeholder="Nessuno"
+                onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
+              />
+            }
+          />
+        ) : (
+          <ColorField
+            label="Riempimento"
+            // MIXED: nessun valore singolo da mostrare, ma scrivere un colore
+            // resta possibile.
+            value={null}
+            placeholder={MIXED_LABEL}
+            onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
+          />
+        )}
+      </Section>
+
+      {/* IL TRATTO. Sezione propria e non dentro "Aspetto": sono tre controlli
+          che descrivono UNA cosa sola (il tratto del nodo), e mescolarli al
+          riempimento renderebbe ambiguo a quale delle due il colore appartiene.
+          Vale per OGNI forma -- `strokes` è un campo di primo livello del Node,
+          non un campo dentro il oneof `shape` come corner_radius -- quindi la
+          sezione c'è sempre, testo compreso. */}
+      <Section title="Tratto">
+        <div className="flex flex-col gap-2">
+          <div className="grid grid-cols-[1fr_7.5rem] gap-1.5">
+            <ColorField
+              label="Tratto"
+              // Come il riempimento: null su MIXED o su "nessun tratto". Scrivere
+              // un colore resta possibile in entrambi i casi -- ed è il modo in
+              // cui un tratto si CREA (vedi DEFAULT_STROKE).
+              value={stroke?.color ?? null}
+              placeholder={strokesMixed ? MIXED_LABEL : "Nessuno"}
+              // Il colore va giù NUDO, senza alfa: la rimette strokeOps
+              // prendendola dal tratto di ciascun nodo, esattamente come
+              // fillOps. Comporla qui da `stroke` la leggerebbe dal RIASSUNTO
+              // della selezione -- che su tratti diversi è null -- e
+              // riscriverebbe 1 su tutti.
+              onCommit={(rgb) => runGesture((ids) => strokeOps(ids, { color: rgb }))}
+            />
+            <NumberField
+              label="Spessore"
+              // Nessun tratto = spessore 0, e 0 resta scrivibile: è il modo di
+              // spegnere un tratto senza toglierlo dalla lista (peso non
+              // positivo = niente disegnato e nessuna sporgenza nei bounds,
+              // vedi canvas/geometry.ts::strokeOutset).
+              minValue={0}
+              value={strokesMixed ? NaN : (stroke?.weight ?? 0)}
+              placeholder={strokesMixed ? MIXED_LABEL : undefined}
+              onCommit={(v) => runGesture((ids) => strokeOps(ids, { weight: v }))}
+              onScrub={(v) => scrubStroke({ weight: v })}
+              onScrubEnd={(v) => scrubStrokeEnd({ weight: v })}
+            />
+          </div>
+          <SegRadio
+            label="Posizione" showLabel={false}
+            // Su MIXED nessuna scelta selezionata (null, come per i pesi del
+            // testo); su un nodo senza tratti si mostra il default, che è anche
+            // quello che verrebbe scritto.
+            value={strokesMixed ? null : (stroke?.align ?? DEFAULT_STROKE.align)}
+            options={STROKE_ALIGNMENTS}
+            onChange={(v) => runGesture((ids) => strokeOps(ids, { align: v as StrokeAlignLite }))}
+          />
+        </div>
+      </Section>
+
+      {/* GLI EFFETTI: ombra e sfocatura. Sezione propria come il tratto: sono
+          controlli di un'altra natura rispetto all'aspetto di base. */}
+      <EffectsControls run={runGesture} />
 
       {/* OVERRIDE: solo per UNA sola istanza selezionata. Ogni riga è un nodo
           del master (testo o con riempimento) con il suo valore EFFETTIVO e un
           "Ripristina" -- vedi il commento su OverrideTextField. */}
       {instanceNode && (
-        <>
-          <SectionTitle>Override</SectionTitle>
-          <div className="flex flex-col gap-1.5 p-2">
+        <Section title="Override">
+          <div className="flex flex-col gap-2">
             {overrideRows.length === 0 ? (
-              <div className="text-neutral-400">Nessun elemento sovrascrivibile</div>
+              <p className="text-[12px] text-fg-subtle">Nessun elemento sovrascrivibile</p>
             ) : (
               overrideRows.map((mn) => {
                 const name = layerDisplayName(mn);
                 const ov = overrideMap.get(mn.id);
                 return (
-                  <div key={mn.id} className="flex items-center gap-1">
+                  <div key={mn.id} className="flex items-end gap-1">
                     <div className="min-w-0 flex-1">
                       {mn.kind === "text" ? (
                         <OverrideTextField
@@ -994,6 +1015,7 @@ export function PropertiesPanel() {
                       ) : (
                         <ColorField
                           label={name}
+                          showLabel
                           // Valore effettivo: il primo fill dell'override se c'è,
                           // altrimenti quello del master.
                           value={(ov?.fills ?? mn.fills)[0] ?? null}
@@ -1004,26 +1026,18 @@ export function PropertiesPanel() {
                     {/* Ripristina: solo quando c'è davvero un override da
                         togliere. Emettere una rimozione dove non c'è niente
                         costerebbe un op e una voce di undo a vuoto. */}
-                    <button
-                      type="button"
-                      aria-label={`Ripristina ${name}`}
-                      title="Ripristina dal master"
-                      disabled={ov === undefined}
-                      onClick={() => resetOverride(mn.id)}
-                      className={
-                        "shrink-0 rounded px-1.5 py-0.5 text-neutral-500 outline-none hover:bg-neutral-100 " +
-                        "focus-visible:ring-1 focus-visible:ring-sky-500 " +
-                        "disabled:opacity-40 disabled:hover:bg-transparent"
-                      }
-                    >
-                      {"↺"}
-                    </button>
+                    <IconButton
+                      icon="rotate"
+                      label={`Ripristina ${name}`}
+                      isDisabled={ov === undefined}
+                      onPress={() => resetOverride(mn.id)}
+                    />
                   </div>
                 );
               })
             )}
           </div>
-        </>
+        </Section>
       )}
     </div>
   );

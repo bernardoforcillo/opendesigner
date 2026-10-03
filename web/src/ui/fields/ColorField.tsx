@@ -1,7 +1,8 @@
-import { useContext } from "react";
+import { useContext, type ReactNode } from "react";
 import { ColorField as AriaColorField, ColorFieldStateContext, Input, Label } from "react-aria-components";
 import type { Color } from "react-aria-components";
 import type { FillLite } from "../../store/types";
+import { Swatch } from "../ds/props-controls";
 
 // CAMPO COLORE (Task 10). Il modello tiene le tinte in RGBA FLOAT 0..1 -- è la
 // forma che il .proto trasporta (opendesigner.v1.Color) e quella che il renderer
@@ -74,8 +75,16 @@ export interface ColorFieldProps {
    * inutile.
    */
   onCommit: (rgb: RgbLite) => void;
-  /** Classi CSS della larghezza dell'etichetta (vedi NumberField::labelWidth). */
-  labelWidth?: string;
+  /**
+   * Mostra l'etichetta sopra il campo. Di norma NO: nell'ispettore la riga è
+   * "pastiglia + esadecimale" e il suo ruolo lo dice la sezione che la
+   * contiene. L'etichetta resta comunque nel DOM (sr-only) come nome
+   * accessibile -- serve visibile solo dove le righe sono più d'una e vanno
+   * distinte (gli override delle istanze).
+   */
+  showLabel?: boolean;
+  /** Controlli a destra dell'esadecimale nello stesso rettangolo (es. un'opacità). */
+  trailing?: ReactNode;
   isDisabled?: boolean;
   /**
    * Testo temporaneo mostrato quando il campo è VUOTO (`value` null). Stessa
@@ -107,12 +116,12 @@ function HexInput({ placeholder }: { placeholder?: string }) {
         e.preventDefault();
         state?.commit();
       }}
-      className="w-full min-w-0 rounded border border-neutral-200 bg-white px-1 py-0.5 text-sm uppercase outline-none focus:border-sky-500 disabled:opacity-40"
+      className="h-full w-full min-w-0 bg-transparent px-2 text-[13px] uppercase tabular-nums text-fg outline-none placeholder:normal-case placeholder:text-fg-subtle focus-visible:shadow-none"
     />
   );
 }
 
-export function ColorField({ label, value, onCommit, labelWidth = "w-20", isDisabled, placeholder }: ColorFieldProps) {
+export function ColorField({ label, value, onCommit, showLabel = false, trailing, isDisabled, placeholder }: ColorFieldProps) {
   const hex = value ? rgbToHex(value) : null;
   return (
     <AriaColorField
@@ -129,21 +138,27 @@ export function ColorField({ label, value, onCommit, labelWidth = "w-20", isDisa
         if (!color) return;
         onCommit(colorToRgb(color));
       }}
-      className="flex items-center gap-1.5"
+      className="flex min-w-0 flex-col gap-1"
     >
-      <Label className={`${labelWidth} shrink-0 select-none text-neutral-400`}>{label}</Label>
-      {/* Pastiglia di anteprima. aria-hidden e non un ColorSwatch: il valore lo
-          dice già il campo di testo accanto (stesso nome accessibile), e
-          annunciarlo due volte sarebbe rumore per chi usa uno screen reader.
-          Un vero selettore visuale (ruota/area) è lavoro successivo: qui serve
-          il canale ESATTO -- l'esadecimale -- che è anche il modo in cui i
-          colori si copiano fra strumenti di design. */}
-      <span
-        aria-hidden="true"
-        className="size-4 shrink-0 rounded border border-neutral-300"
-        style={{ backgroundColor: hex ?? "transparent" }}
-      />
-      <HexInput placeholder={placeholder} />
+      <Label className={showLabel ? "truncate text-[11px] font-medium text-fg-subtle" : "sr-only"}>{label}</Label>
+      {/* UN rettangolo incassato: pastiglia, esadecimale e (opzionale) altro.
+          La pastiglia è aria-hidden e non un ColorSwatch: il valore lo dice già
+          il campo di testo accanto (stesso nome accessibile), e annunciarlo due
+          volte sarebbe rumore per chi usa uno screen reader. Un vero selettore
+          visuale (ruota/area) è lavoro successivo: qui serve il canale ESATTO --
+          l'esadecimale -- che è anche il modo in cui i colori si copiano fra
+          strumenti di design. */}
+      <div
+        className={
+          "flex h-7 min-w-0 items-center rounded-md border border-transparent bg-surface-2 pl-1.5 " +
+          "hover:border-line-strong focus-within:border-accent focus-within:bg-surface " +
+          (isDisabled ? "opacity-50" : "")
+        }
+      >
+        <Swatch color={hex} />
+        <HexInput placeholder={placeholder} />
+        {trailing}
+      </div>
     </AriaColorField>
   );
 }
