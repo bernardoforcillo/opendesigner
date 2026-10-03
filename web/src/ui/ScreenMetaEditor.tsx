@@ -112,19 +112,13 @@ export function ScreenMetaEditor() {
           </div>
         </RadioGroup>
 
-        <div className="mt-1 flex flex-col gap-2 border-t border-line pt-3">
-          <Field label="Route" icon="route" wide>
-            <CommitField label="Route" value={metaValue(node, META_KEYS.route)} onCommit={(v) => write(META_KEYS.route, v)} placeholder="es. /login" className={CODE} />
-          </Field>
-          <Field label="Componente" icon="code" wide>
-            <CommitField label="Componente" value={metaValue(node, META_KEYS.component)} onCommit={(v) => write(META_KEYS.component, v)} placeholder="es. LoginPage" className={CODE} />
-          </Field>
-          <Field label="Test id" icon="link" wide>
-            <CommitField label="Test id" value={metaValue(node, META_KEYS.testId)} onCommit={(v) => write(META_KEYS.testId, v)} placeholder="es. login-submit" className={CODE} />
-          </Field>
-          <Field label="Test testo" icon="text" wide>
-            <CommitField label="Test testo" value={metaValue(node, META_KEYS.testText)} onCommit={(v) => write(META_KEYS.testText, v)} placeholder="es. Accedi" className={CODE} />
-          </Field>
+        {/* Il legame col codice: quattro campi in una griglia 2x2 -- il nome sta nel
+            segnaposto e nel tooltip, non in una colonna di etichette. */}
+        <div className="mt-1 grid grid-cols-2 gap-1.5 border-t border-line pt-2.5">
+          <CommitField label="Route" title="Route dell'app che realizza la schermata (es. /login)" value={metaValue(node, META_KEYS.route)} onCommit={(v) => write(META_KEYS.route, v)} placeholder="Route" className={CODE} />
+          <CommitField label="Componente" title="Componente del codice (es. LoginPage)" value={metaValue(node, META_KEYS.component)} onCommit={(v) => write(META_KEYS.component, v)} placeholder="Componente" className={CODE} />
+          <CommitField label="Test id" title="data-testid con cui un test trova l'elemento (es. login-submit)" value={metaValue(node, META_KEYS.testId)} onCommit={(v) => write(META_KEYS.testId, v)} placeholder="Test id" className={CODE} />
+          <CommitField label="Test testo" title="Testo accessibile con cui un test trova l'elemento (es. Accedi)" value={metaValue(node, META_KEYS.testText)} onCommit={(v) => write(META_KEYS.testText, v)} placeholder="Test testo" className={CODE} />
         </div>
         </div>
       </Section>

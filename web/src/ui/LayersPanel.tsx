@@ -839,9 +839,11 @@ export function LayersPanel() {
 
   return (
     <div className="flex h-full flex-col text-[13px] text-fg">
-      <div className="flex h-9 shrink-0 items-center gap-2 px-3">
-        <h3 className={cls.sectionTitle}>Livelli</h3>
-        {rows.length > 0 && <span className="text-[11px] tabular-nums text-fg-subtle">{rows.length}</span>}
+      {/* L'intestazione compare SOLO con una selezione: il titolo è già nella
+          scheda, e a riposo quei 36px sono spazio per i livelli. */}
+      {selection.length > 0 && (
+      <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line px-3">
+        <h3 className={cls.sectionTitle}>{selection.length === 1 ? "1 selezionato" : `${selection.length} selezionati`}</h3>
         <div className="ml-auto flex items-center">
           <IconButton
             icon="trash"
@@ -852,6 +854,7 @@ export function LayersPanel() {
           />
         </div>
       </div>
+      )}
       {virtualized ? (
         <Virtualizer layout={ListLayout} layoutOptions={{ rowHeight: ROW_HEIGHT }}>
           {list}

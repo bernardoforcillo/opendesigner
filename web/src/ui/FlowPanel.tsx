@@ -401,54 +401,45 @@ export function FlowPanel() {
           <>
             <Section title="Flusso corrente">
               <div className="flex flex-col gap-2">
-                <Field label="Nome">
-                  <CommitField
-                    label="Nome del flusso"
-                    value={flow.name}
-                    onCommit={(v) => {
-                      const op = renameFlowOp(flow, v);
-                      if (op) submit([op]);
-                    }}
-                  />
-                </Field>
-                <div className="flex min-h-7 items-center gap-2">
-                  <span className="w-14 shrink-0 text-[11px] font-medium text-fg-subtle">Inizio</span>
+                <CommitField
+                  label="Nome del flusso"
+                  value={flow.name}
+                  onCommit={(v) => {
+                    const op = renameFlowOp(flow, v);
+                    if (op) submit([op]);
+                  }}
+                />
+                {/* Inizio, imposta ed elimina in UNA riga: il chip dice dove parte il
+                    flusso, le due icone lo cambiano o lo tolgono. */}
+                <div className="flex min-h-7 items-center gap-1.5">
                   <span
                     data-testid="flow-start"
+                    title="Schermata di ingresso del flusso"
                     className={
-                      "inline-flex h-6 min-w-0 max-w-full items-center gap-1 rounded-full px-2 text-[12px] font-medium " +
+                      "flex h-6 min-w-0 flex-1 items-center gap-1.5 rounded-full px-2 text-[12px] font-medium " +
                       (flow.startId !== "" ? "bg-ok-soft text-ok" : "bg-surface-3 text-fg-subtle")
                     }
                   >
                     <Icon name="flag" size={12} className="shrink-0" />
-                    <span className="truncate">{flow.startId !== "" ? screenName(scene, flow.startId) : "non impostato"}</span>
+                    <span className="truncate">{flow.startId !== "" ? screenName(scene, flow.startId) : "inizio non impostato"}</span>
                   </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-1.5">
-                  <Button
-                    variant="secondary"
+                  <IconButton
                     icon="flag"
-                    aria-label="Imposta come inizio"
+                    label="Imposta come inizio"
                     isDisabled={!selectedScreen || selectedScreen.id === flow.startId}
                     onPress={() => {
                       const op = selectedScreen ? setStartOp(flow, selectedScreen.id) : null;
                       if (op) submit([op]);
                     }}
-                  >
-                    Imposta come inizio
-                  </Button>
-                  <Button
-                    variant="danger"
+                  />
+                  <IconButton
                     icon="trash"
-                    aria-label="Elimina flusso"
-                    className="ml-auto"
+                    label="Elimina flusso"
                     onPress={() => {
                       submit([deleteFlowOp(flow.id)]);
                       useFlowUi.getState().setCurrentFlow(null);
                     }}
-                  >
-                    Elimina
-                  </Button>
+                  />
                 </div>
                 <SwitchRow
                   tone="flow"

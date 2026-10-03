@@ -16,6 +16,7 @@ export function CommitField({
   placeholder,
   multiline = false,
   className = "",
+  title,
 }: {
   label: string;
   value: string;
@@ -23,6 +24,7 @@ export function CommitField({
   placeholder?: string;
   multiline?: boolean;
   className?: string;
+  title?: string;
 }) {
   const [draft, setDraft] = useState(value);
   // L'ultimo testo già confermato (o scartato con Escape): Invio conferma e poi il
@@ -41,6 +43,7 @@ export function CommitField({
 
   const common = {
     "aria-label": label,
+    title,
     value: draft,
     placeholder,
     spellCheck: false,

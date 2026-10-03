@@ -235,10 +235,10 @@ describe("visibilità", () => {
 });
 
 describe("eliminazione", () => {
-  it("il pulsante è disabilitato senza selezione", () => {
+  it("senza selezione la barra di eliminazione non c'è (spazio ai livelli)", () => {
     installScene(rectNode("a", "a0", { name: "A" }));
     render(<LayersPanel />);
-    expect(screen.getByRole("button", { name: "Elimina i livelli selezionati" })).toBeDisabled();
+    expect(screen.queryByRole("button", { name: "Elimina i livelli selezionati" })).not.toBeInTheDocument();
   });
 
   it("emette deleteNode per OGNI nodo selezionato in un solo gesto (una sola voce di undo)", async () => {

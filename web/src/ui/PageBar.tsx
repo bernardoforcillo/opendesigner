@@ -138,7 +138,7 @@ export function PageBar() {
   }
 
   return (
-    <div role="group" aria-label="Pagine" className="flex h-11 shrink-0 items-center gap-1 border-b border-line px-2">
+    <div role="group" aria-label="Pagine" className="flex h-10 shrink-0 items-center gap-1 border-b border-line px-2">
       {current && renamingId === current.id ? (
         <PageRenameField
           initial={current.name}

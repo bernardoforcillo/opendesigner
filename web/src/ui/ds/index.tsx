@@ -146,7 +146,7 @@ export function Section({
   const [open, setOpen] = useSectionOpen(title);
   return (
     <section className={`border-t border-line first:border-t-0 ${className}`}>
-      <header className="flex h-9 items-center gap-1 pl-1.5 pr-3">
+      <header className="flex h-8 items-center gap-1 pl-1.5 pr-3">
         <RacButton
           aria-expanded={open}
           onPress={() => setOpen(!open)}
@@ -158,7 +158,7 @@ export function Section({
         </RacButton>
         <div className="ml-auto flex items-center gap-0.5">{actions}</div>
       </header>
-      {open && !bare && <div className="px-3 pb-3">{children}</div>}
+      {open && !bare && <div className="px-3 pb-2.5">{children}</div>}
       {open && bare && children}
     </section>
   );
