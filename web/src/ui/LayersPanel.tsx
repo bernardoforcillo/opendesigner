@@ -1,5 +1,6 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Button, GridList, GridListItem, ListLayout, Virtualizer } from "react-aria-components";
+import { EmptyState, Icon, IconButton, cls, type IconName } from "./ds";
 import type { Selection } from "react-aria-components";
 import { useScene } from "../store/store";
 import { orderKeyBetween } from "../store/orderKey";
@@ -330,10 +331,34 @@ function RenameField({
       // select-text: la lista intorno è select-none (perché trascinare una
       // maniglia non deve evidenziare i nomi delle righe che si attraversano),
       // ma DENTRO un campo di testo la selezione serve.
-      className="min-w-0 flex-1 select-text rounded border border-sky-500 bg-white px-1 py-0 text-sm outline-none"
+      // Stesso campo del resto dell'app (cls.input), ma 24px: dentro una riga da
+      // 28 lascia il respiro sopra e sotto. Il bordo è già acceso: si sta scrivendo.
+      className={`${cls.input} h-6! flex-1 select-text border-accent bg-surface focus-visible:shadow-none!`}
     />
   );
 }
+
+// L'icona della riga dice di che COSA si tratta a colpo d'occhio. Sono le stesse
+// icone degli strumenti: frame -> frame, gruppo -> layers, vettore -> penna,
+// istanza di componente -> components. `unknown` (un tipo che questo client non
+// conosce) ripiega sul rettangolo, come fallbackName ripiega su "Shape".
+function kindIcon(kind: NodeLite["kind"]): IconName {
+  switch (kind) {
+    case "frame": return "frame";
+    case "group": return "layers";
+    case "ellipse": return "ellipse";
+    case "text": return "text";
+    case "image": return "image";
+    case "vector": return "pen";
+    case "instance": return "components";
+    default: return "rect";
+  }
+}
+
+// Passo di rientro per livello di profondità, e padding sinistro della riga di
+// radice. Le guide di rientro stanno al centro del chevron del livello padre.
+const INDENT = 14;
+const BASE_PAD = 8;
 
 // Quante righe servono perché il pannello si virtualizzi, e l'altezza di ognuna
 // quando succede (py-1 + riga di testo ≈ 28 px, la stessa di prima).
@@ -613,8 +638,14 @@ export function LayersPanel() {
       selectionBehavior="replace"
       selectedKeys={selectedKeys}
       onSelectionChange={onSelectionChange}
-      renderEmptyState={() => <div className="px-2 py-4 text-neutral-400">Nessun livello</div>}
-      className="flex-1 select-none overflow-auto outline-none"
+      renderEmptyState={() => (
+        <EmptyState
+          icon="layers"
+          title="Nessun livello"
+          hint="Disegna una forma con gli strumenti in basso: comparirà qui."
+        />
+      )}
+      className="min-h-0 flex-1 select-none overflow-auto px-1 pb-2 outline-none"
     >
       {(row) => {
         const n = row.node;
@@ -641,7 +672,7 @@ export function LayersPanel() {
             data-drop-invalid={invalidTarget ? "true" : undefined}
             // Indentazione per profondità: lo stesso spazio che il renderer
             // esprime scendendo l'albero, qui reso come rientro a sinistra.
-            style={{ paddingLeft: 8 + row.depth * 14 }}
+            style={{ paddingLeft: BASE_PAD + row.depth * INDENT }}
             // Il bersaglio del rilascio si decide dalla riga SOTTO IL
             // PUNTATORE, non da un calcolo su coordinate e altezze: il
             // pointermove arriva già sulla riga giusta, che è l'unica
@@ -651,14 +682,37 @@ export function LayersPanel() {
               if (drag && drag.over !== n.id) setDrag({ from: drag.from, over: n.id });
             }}
             className={[
-              "flex items-center gap-1.5 py-1 pr-2 outline-none",
-              "data-[selected]:bg-sky-100 data-[focus-visible]:ring-1 data-[focus-visible]:ring-inset data-[focus-visible]:ring-sky-500",
+              // h-7 = ROW_HEIGHT (28): la stessa altezza fissa che permette al
+              // virtualizzatore di non misurare le righe. `relative` ancora le
+              // guide di rientro, la maniglia e l'indicatore di drop.
+              "group relative flex h-7 items-center gap-1.5 rounded-md pr-1.5 text-[13px] text-fg outline-none",
+              "hover:bg-surface-3 data-[selected]:bg-accent-soft data-[selected]:hover:bg-accent-soft",
+              "data-[focus-visible]:shadow-[inset_0_0_0_1.5px_var(--accent)]",
               dragging ? "opacity-50" : "",
               invalidTarget ? "cursor-no-drop opacity-40" : "",
-              dropMode === "into" ? "bg-sky-50 ring-1 ring-inset ring-sky-400" : "",
-              dropMode === "beside" ? "border-t-2 border-sky-400" : "",
+              // Drop DENTRO un container: la riga si illumina tutta, in accento.
+              dropMode === "into" ? "bg-accent-soft! shadow-[inset_0_0_0_1.5px_var(--accent)]" : "",
             ].join(" ")}
           >
+            {/* INDICATORE DI DROP "accanto": una linea d'accento da 2px sul bordo
+                superiore (assoluta, così non cambia l'altezza della riga -- che
+                per la virtualizzazione è fissa) con un pallino a sinistra. */}
+            {dropMode === "beside" && (
+              <span aria-hidden className="pointer-events-none absolute inset-x-0 -top-px z-10 h-0.5 rounded-full bg-accent">
+                <span className="absolute -left-0.5 -top-[3px] h-2 w-2 rounded-full border-2 border-accent bg-surface" />
+              </span>
+            )}
+            {/* GUIDE DI RIENTRO: una linea verticale per ogni antenato, al centro
+                del suo chevron. Decorative (aria-hidden) e non intercettano
+                eventi. */}
+            {Array.from({ length: row.depth }, (_, i) => (
+              <span
+                key={i}
+                aria-hidden
+                className="pointer-events-none absolute inset-y-0 w-px bg-line"
+                style={{ left: BASE_PAD + i * INDENT + 8 }}
+              />
+            ))}
             {/* DISCLOSURE: espande/collassa un container con figli. Per le
                 righe che non ne hanno uno spaziatore della stessa larghezza,
                 così nomi e maniglie restano allineati fra i livelli. Un
@@ -673,9 +727,9 @@ export function LayersPanel() {
                   e.stopPropagation();
                   toggleCollapse(n.id);
                 }}
-                className="w-4 shrink-0 text-neutral-400 outline-none hover:text-neutral-700 focus-visible:text-sky-600"
+                className="relative z-[1] flex h-5 w-4 shrink-0 items-center justify-center rounded text-fg-subtle outline-none hover:bg-surface-3 hover:text-fg focus-visible:text-accent"
               >
-                {row.expanded ? "▾" : "▸"}
+                <Icon name={row.expanded ? "chevronDown" : "chevronRight"} size={12} />
               </button>
             ) : (
               <span aria-hidden className="w-4 shrink-0" />
@@ -720,10 +774,24 @@ export function LayersPanel() {
               }}
               // touch-none: su schermo tattile il trascinamento della maniglia
               // non deve diventare uno scroll del pannello.
-              className="shrink-0 cursor-grab touch-none px-0.5 text-neutral-300 outline-none hover:text-neutral-600 focus-visible:text-sky-600"
+              // Assoluta sul bordo sinistro e visibile solo al passaggio (o al
+              // focus da tastiera): una maniglia in ogni riga, sempre accesa, è
+              // rumore. Resta un <button> vero, quindi raggiungibile con Tab.
+              className="absolute left-0 top-1/2 z-[2] flex h-5 w-2.5 -translate-y-1/2 cursor-grab touch-none items-center justify-center text-fg-subtle opacity-0 outline-none hover:text-fg focus-visible:text-accent focus-visible:opacity-100 group-hover:opacity-100"
             >
-              {"⁙"}
+              <svg aria-hidden viewBox="0 0 6 10" width="6" height="10" fill="currentColor">
+                <circle cx="1.5" cy="2" r="0.9" /><circle cx="4.5" cy="2" r="0.9" />
+                <circle cx="1.5" cy="5" r="0.9" /><circle cx="4.5" cy="5" r="0.9" />
+                <circle cx="1.5" cy="8" r="0.9" /><circle cx="4.5" cy="8" r="0.9" />
+              </svg>
             </button>
+            {/* ICONA DEL TIPO: tenue; le istanze di componente in accento (come
+                nel pannello Componenti). Un nodo nascosto si attenua tutto. */}
+            <Icon
+              name={kindIcon(n.kind)}
+              size={14}
+              className={`shrink-0 ${n.kind === "instance" ? "text-accent" : "text-fg-subtle"} ${n.visible ? "" : "opacity-50"}`}
+            />
             {renamingId === n.id ? (
               <RenameField
                 // Seminato con il nome VERO, non con quello mostrato: per un
@@ -737,7 +805,10 @@ export function LayersPanel() {
                 onCancel={() => setRenamingId(null)}
               />
             ) : (
-              <span className="min-w-0 flex-1 truncate" onDoubleClick={() => setRenamingId(n.id)}>
+              <span
+                className={`min-w-0 flex-1 truncate ${n.visible ? "" : "text-fg-subtle"}`}
+                onDoubleClick={() => setRenamingId(n.id)}
+              >
                 {label}
               </span>
             )}
@@ -749,9 +820,16 @@ export function LayersPanel() {
               aria-label={n.visible ? `Nascondi ${label}` : `Mostra ${label}`}
               onPress={() => toggleVisible(n)}
               onPointerDown={(e) => e.stopPropagation()}
-              className="shrink-0 rounded px-1 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700"
+              // Visibile: l'occhio compare solo al passaggio (o al focus). Nascosto:
+              // resta SEMPRE, attenuato -- è l'unico indizio che il livello c'è
+              // ma non si vede, e il modo per riaccenderlo.
+              className={
+                "flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted outline-none hover:bg-surface-3 hover:text-fg " +
+                "data-[focus-visible]:shadow-[var(--ring)] " +
+                (n.visible ? "opacity-0 group-hover:opacity-100 focus-visible:opacity-100" : "text-fg-subtle opacity-70")
+              }
             >
-              {n.visible ? "\u{1F441}️" : "—"}
+              <Icon name={n.visible ? "eye" : "eyeOff"} size={14} />
             </Button>
           </GridListItem>
         );
@@ -760,17 +838,19 @@ export function LayersPanel() {
   );
 
   return (
-    <div className="flex h-full flex-col text-sm text-neutral-700">
-      <div className="flex items-center justify-between border-b border-neutral-200 px-2 py-1.5">
-        <span className="font-medium text-neutral-500">Livelli</span>
-        <Button
-          aria-label="Elimina i livelli selezionati"
-          isDisabled={selection.length === 0}
-          onPress={deleteSelected}
-          className="rounded px-2 py-0.5 text-neutral-500 hover:bg-neutral-100 data-[disabled]:opacity-40"
-        >
-          Elimina
-        </Button>
+    <div className="flex h-full flex-col text-[13px] text-fg">
+      <div className="flex h-9 shrink-0 items-center gap-2 px-3">
+        <h3 className={cls.sectionTitle}>Livelli</h3>
+        {rows.length > 0 && <span className="text-[11px] tabular-nums text-fg-subtle">{rows.length}</span>}
+        <div className="ml-auto flex items-center">
+          <IconButton
+            icon="trash"
+            label="Elimina i livelli selezionati"
+            size={24}
+            isDisabled={selection.length === 0}
+            onPress={deleteSelected}
+          />
+        </div>
       </div>
       {virtualized ? (
         <Virtualizer layout={ListLayout} layoutOptions={{ rowHeight: ROW_HEIGHT }}>

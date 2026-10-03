@@ -1,8 +1,9 @@
-import { Button } from "react-aria-components";
+import { Button as RacButton } from "react-aria-components";
+import { Button, EmptyState, Icon, IconButton, cls } from "./ds";
 import { useScene } from "../store/store";
 import { contentWorldBounds } from "../store/groups";
 import { nextOrderKey } from "../store/orderKey";
-import { makeCreateNodeOp, makeInstanceNode, uuid } from "../tools/ops";
+import { makeCreateComponentOp, makeCreateNodeOp, makeInstanceNode, uuid } from "../tools/ops";
 
 // PANNELLO COMPONENTI (M4) — elenca i componenti del documento (SceneState.
 // components) e, con un click, PIAZZA un'istanza di quello scelto sulla pagina
@@ -24,6 +25,25 @@ const PLACE_OFFSET = 20;
 export function ComponentsPanel() {
   const scene = useScene((s) => s.scene);
   const entries = scene ? Object.entries(scene.components) : [];
+  // "Crea componente" è CONTESTUALE: esiste solo con esattamente un nodo
+  // selezionato (come Ctrl/Cmd+Alt+K di selectTool, che qui si replica: stesso
+  // op, stesso gesto, stesso nome di ripiego). Con zero o più nodi non c'è
+  // niente da fare e il pulsante non si disegna affatto.
+  const selection = useScene((s) => s.selection);
+  const canCreate = selection.length === 1;
+
+  function createFromSelection() {
+    const store = useScene.getState();
+    const cur = store.scene;
+    if (!cur || store.selection.length !== 1) return;
+    const rootNodeId = store.selection[0];
+    const master = cur.nodes.at(rootNodeId);
+    if (!master) return;
+    const name =
+      master.name.trim() !== "" ? master.name : `Component ${Object.keys(cur.components).length + 1}`;
+    store.beginGesture();
+    store.endGesture([makeCreateComponentOp(uuid(), rootNodeId, name)]);
+  }
 
   // Piazza un'istanza del componente `componentId`. La scena si rilegge FRESCA
   // dallo store (non dalla closure di render, che un op nel frattempo potrebbe
@@ -70,27 +90,65 @@ export function ComponentsPanel() {
   }
 
   return (
-    <div className="flex flex-col border-t border-neutral-200 text-sm text-neutral-700">
-      <div className="border-b border-neutral-200 px-2 py-1.5 font-medium text-neutral-500">Componenti</div>
+    <div className="flex flex-col text-[13px] text-fg">
+      <div className="flex h-9 items-center gap-2 px-3">
+        <h3 className={cls.sectionTitle}>Componenti</h3>
+        {entries.length > 0 && <span className="text-[11px] tabular-nums text-fg-subtle">{entries.length}</span>}
+        <div className="ml-auto flex items-center">
+          {canCreate && entries.length > 0 && (
+            <IconButton icon="plus" label="Crea componente dalla selezione" size={24} onPress={createFromSelection} />
+          )}
+        </div>
+      </div>
       {entries.length === 0 ? (
-        <div className="px-2 py-4 text-neutral-400">Nessun componente</div>
-      ) : (
-        <ul aria-label="Componenti" className="max-h-40 overflow-auto py-1">
-          {entries.map(([id, comp]) => (
-            <li key={id}>
-              <Button
-                onPress={() => placeInstance(id)}
-                className="flex w-full items-center gap-1.5 px-2 py-1 text-left outline-none hover:bg-sky-50 data-[focus-visible]:ring-1 data-[focus-visible]:ring-inset data-[focus-visible]:ring-sky-500"
-              >
-                <span aria-hidden className="text-neutral-400">◇</span>
-                <span className="min-w-0 flex-1 truncate">
-                  {comp.name.trim() !== "" ? comp.name : "Componente senza nome"}
-                </span>
+        <EmptyState
+          icon="components"
+          title="Nessun componente"
+          hint="Seleziona un livello e premi Ctrl+Alt+K per trasformarlo in un componente riutilizzabile."
+          action={
+            canCreate ? (
+              <Button variant="secondary" icon="plus" onPress={createFromSelection}>
+                Crea componente
               </Button>
-            </li>
-          ))}
+            ) : undefined
+          }
+        />
+      ) : (
+        <ul aria-label="Componenti" className="flex flex-col gap-1 px-2 pb-2">
+          {entries.map(([id, comp]) => {
+            const label = comp.name.trim() !== "" ? comp.name : "Componente senza nome";
+            return (
+              <li key={id}>
+                {/* Tutta la scheda è il pulsante "Istanzia": il nome accessibile
+                    è quello del componente (aria-label), il "+ Istanzia" a destra
+                    è solo l'indizio visivo dell'azione e compare al passaggio. */}
+                <RacButton
+                  aria-label={label}
+                  onPress={() => placeInstance(id)}
+                  className={
+                    "group flex h-11 w-full items-center gap-2.5 rounded-lg border border-line bg-surface px-2 text-left outline-none " +
+                    "transition-colors hover:border-line-strong hover:bg-surface-2 data-[pressed]:bg-surface-3 " +
+                    "data-[focus-visible]:shadow-[var(--ring)]"
+                  }
+                >
+                  <span aria-hidden className="flex h-7 w-7 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent">
+                    <Icon name="components" size={15} />
+                  </span>
+                  <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+                  <span
+                    aria-hidden
+                    className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100 group-data-[focus-visible]:opacity-100"
+                  >
+                    <Icon name="plus" size={12} />
+                    Istanzia
+                  </span>
+                </RacButton>
+              </li>
+            );
+          })}
         </ul>
       )}
     </div>
   );
 }
+
