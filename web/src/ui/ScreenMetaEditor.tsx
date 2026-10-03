@@ -4,7 +4,7 @@ import { FLOW_KINDS, FLOW_KIND_LABELS, META_KEYS, STATUSES, STATUS_LABELS, kindO
 import { setMetaOp, submit } from "../flow/commands";
 import { layerDisplayName } from "./LayersPanel";
 import { CommitField } from "./fields/CommitField";
-import { cls } from "./ds";
+import { Section, cls } from "./ds";
 import { Field, FlowIcon, type FlowIconName } from "./ds/flow-parts";
 
 // L'EDITOR DEI METADATI DI SCHERMATA (modalità Flussi, colonna destra). Scrive
@@ -59,15 +59,17 @@ export function ScreenMetaEditor() {
   const status = statusOf(node);
 
   return (
-    <section aria-label="Metadati della schermata" className="border-b border-line bg-surface text-[13px] text-fg">
-      <header className="flex h-9 items-center gap-2 px-3">
-        <h3 className={cls.sectionTitle}>Schermata</h3>
-        <span className="ml-auto flex min-w-0 items-center gap-1.5 text-[12px] text-fg-muted">
-          <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${STATUS_STYLE[status].dot}`} />
-          <span className="min-w-0 truncate font-medium">{layerDisplayName(node)}</span>
-        </span>
-      </header>
-      <div className="flex flex-col gap-2 px-3 pb-3">
+    <div aria-label="Metadati della schermata" role="region" className="border-b border-line bg-surface text-[13px] text-fg">
+      <Section
+        title="Schermata"
+        actions={
+          <span className="flex min-w-0 items-center gap-1.5 text-[12px] text-fg-muted">
+            <span aria-hidden="true" className={`h-2 w-2 shrink-0 rounded-full ${STATUS_STYLE[status].dot}`} />
+            <span className="min-w-0 max-w-[110px] truncate font-medium">{layerDisplayName(node)}</span>
+          </span>
+        }
+      >
+        <div className="flex flex-col gap-2">
         <Field label="Tipo" wide>
           <span className="relative block min-w-0 flex-1">
             <FlowIcon name={KIND_ICONS[kind]} size={14} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-fg-muted" />
@@ -124,8 +126,9 @@ export function ScreenMetaEditor() {
             <CommitField label="Test testo" value={metaValue(node, META_KEYS.testText)} onCommit={(v) => write(META_KEYS.testText, v)} placeholder="es. Accedi" className={CODE} />
           </Field>
         </div>
-      </div>
-    </section>
+        </div>
+      </Section>
+    </div>
   );
 }
 

@@ -1,4 +1,4 @@
-import type { ReactNode } from "react";
+import { useState, type ReactNode } from "react";
 import { Button as RacButton, Tooltip, TooltipTrigger, type ButtonProps } from "react-aria-components";
 import { Icon, type IconName } from "./Icon";
 
@@ -117,20 +117,49 @@ export function Badge({
   return <span className={`inline-flex h-[18px] items-center rounded-full px-2 text-[11px] font-medium ${t} ${className}`}>{children}</span>;
 }
 
+// Quali sezioni sono chiuse sopravvive al ricarico (per titolo). Senza
+// localStorage tutte le sezioni restano aperte.
+const SEC_KEY = "od.sections";
+function readClosed(): Record<string, true> {
+  try { return JSON.parse(localStorage.getItem(SEC_KEY) ?? "{}") as Record<string, true>; } catch { return {}; }
+}
+function useSectionOpen(title: string): [boolean, (v: boolean) => void] {
+  const [open, setOpen] = useState(() => !readClosed()[title]);
+  return [open, (v) => {
+    setOpen(v);
+    try {
+      const c = readClosed();
+      if (v) delete c[title]; else c[title] = true;
+      localStorage.setItem(SEC_KEY, JSON.stringify(c));
+    } catch { /* niente storage */ }
+  }];
+}
+
 // Contenitore di sezione di un pannello: titolo a sinistra, azioni a destra,
-// separatore sopra. `count` mostra un numerino tenue accanto al titolo.
+// separatore sopra. `count` mostra un numerino tenue accanto al titolo. Il
+// titolo è un pulsante che RICHIUDE la sezione (chevron, aria-expanded): in un
+// pannello stretto lo spazio è la risorsa più scarsa, e chi non usa "Effetti"
+// non deve pagarne l'altezza.
 export function Section({
   title, count, actions, children, className = "", bare,
 }: { title: string; count?: number; actions?: ReactNode; children?: ReactNode; className?: string; bare?: boolean }) {
+  const [open, setOpen] = useSectionOpen(title);
   return (
     <section className={`border-t border-line first:border-t-0 ${className}`}>
-      <header className="flex h-9 items-center gap-2 px-3">
-        <h3 className={cls.sectionTitle}>{title}</h3>
-        {count !== undefined && <span className="text-[11px] tabular-nums text-fg-subtle">{count}</span>}
+      <header className="flex h-9 items-center gap-1 pl-1.5 pr-3">
+        <RacButton
+          aria-expanded={open}
+          onPress={() => setOpen(!open)}
+          className={`flex h-7 min-w-0 items-center gap-1 rounded-md px-1.5 ${FOCUS} hover:bg-surface-3`}
+        >
+          <Icon name={open ? "chevronDown" : "chevronRight"} size={12} className="text-fg-subtle" />
+          <h3 className={cls.sectionTitle}>{title}</h3>
+          {count !== undefined && <span className="text-[11px] tabular-nums text-fg-subtle">{count}</span>}
+        </RacButton>
         <div className="ml-auto flex items-center gap-0.5">{actions}</div>
       </header>
-      {!bare && <div className="px-3 pb-3">{children}</div>}
-      {bare && children}
+      {open && !bare && <div className="px-3 pb-3">{children}</div>}
+      {open && bare && children}
     </section>
   );
 }
