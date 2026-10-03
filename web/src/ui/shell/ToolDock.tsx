@@ -4,6 +4,7 @@ import type { ReactNode } from "react";
 import { Button, Icon, IconButton, Kbd, type IconName } from "../ds";
 import { useScene } from "../../store/store";
 import { DocMenu } from "./DocMenu";
+import { usePanels } from "./panels";
 import { useFlowUi, type EditorMode } from "../../store/flowUi";
 import type { ToolId } from "../../tools/types";
 import { isTextField } from "../../tools/toolManager";
@@ -38,11 +39,18 @@ export function ToolDock({
   const zoom = useScene((s) => s.camera.zoom);
   const dot =
     connection === "connected" ? "bg-ok" : connection === "reconnecting" || connection === "connecting" ? "bg-warn" : "bg-danger";
+  const left = usePanels((s) => s.left);
+  const right = usePanels((s) => s.right);
   const canUndo = useScene((s) => s.undoStack.length > 0);
   const canRedo = useScene((s) => s.redoStack.length > 0);
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTextField(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
+      if (e.key === "[" || e.key === "]") {
+        e.preventDefault();
+        usePanels.getState().toggle(e.key === "[" ? "left" : "right");
+        return;
+      }
       const k = e.key.toUpperCase();
       const hit = tools.find((t) => TOOL_KEYS[t.id] === k && t.id !== "connect");
       if (hit) { e.preventDefault(); onChoose(hit.id); }
@@ -58,6 +66,7 @@ export function ToolDock({
       className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-xl bg-raised p-1 shadow-bar"
     >
       <DocMenu onNewDocument={onNewDocument} />
+      <IconButton icon="panelLeft" label="Pannello sinistro" shortcut="[" size={36} selected={left} onPress={() => usePanels.getState().toggle("left")} />
       <ToggleButtonGroup
         aria-label="Modalità"
         selectionMode="single"
@@ -132,6 +141,7 @@ export function ToolDock({
       <span className="mx-1 h-5 w-px bg-line" />
       {presence}
       <span className="mx-1 h-5 w-px bg-line" />
+      <IconButton icon="panelRight" label="Pannello destro" shortcut="]" size={36} selected={right} onPress={() => usePanels.getState().toggle("right")} />
       <span className="flex items-center gap-3 px-2 text-[12px] text-fg-muted tabular-nums" aria-live="polite">
         <span title={statusLabel} className="flex items-center gap-1.5">
           <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />

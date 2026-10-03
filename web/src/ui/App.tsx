@@ -3,6 +3,7 @@ import { ConnectError } from "@connectrpc/connect";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Banner, Icon } from "./ds";
 import { ToolDock } from "./shell/ToolDock";
+import { usePanels } from "./shell/panels";
 import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
@@ -471,6 +472,9 @@ export function App() {
           ? "sconnesso"
           : "connessione…";
 
+  const leftOpen = usePanels((s) => s.left);
+  const rightOpen = usePanels((s) => s.right);
+
   return (
     <div className="flex h-screen flex-col bg-surface text-fg">
       {/* Due avvisi diversi perché le due situazioni chiedono cose diverse: in
@@ -503,11 +507,11 @@ export function App() {
           ogni frame e eventToCanvasPoint parte da getBoundingClientRect). */}
       <div className="flex min-h-0 flex-1">
         {mode === "flows" ? (
-          <aside aria-label="Flussi" className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface">
+          <aside aria-label="Flussi" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
             <FlowPanel />
           </aside>
         ) : (
-          <aside aria-label="Livelli e componenti" className="flex w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-surface">
+          <aside aria-label="Livelli e componenti" className={`${leftOpen ? "flex" : "hidden"} w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
             <PageBar />
             <Tabs className="flex min-h-0 flex-1 flex-col">
               <TabList aria-label="Pannello" className="flex shrink-0 gap-1 border-b border-line px-2 pt-1">
@@ -564,7 +568,7 @@ export function App() {
           {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
           <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} presence={<PresenceBar nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { localStorage.removeItem(DOC_KEY); history.replaceState(null, "", location.pathname); location.reload(); }} connection={connection} statusLabel={statusLabel} />
         </div>
-        <aside aria-label="Proprietà" className="w-64 shrink-0 overflow-hidden border-l border-line bg-surface">
+        <aside aria-label="Proprietà" className={`${rightOpen ? "block" : "hidden"} w-64 shrink-0 overflow-hidden border-l border-line bg-surface`}>
           {mode === "flows" ? (
             // I metadati della schermata in cima, le proprietà di sempre sotto.
             <div className="flex h-full flex-col">
