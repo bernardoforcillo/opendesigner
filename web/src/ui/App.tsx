@@ -512,24 +512,34 @@ export function App() {
           </aside>
         ) : (
           <aside aria-label="Livelli e componenti" className={`${leftOpen ? "flex" : "hidden"} w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
-            <PageBar />
             <Tabs className="flex min-h-0 flex-1 flex-col">
-              <TabList aria-label="Pannello" className="flex shrink-0 gap-1 border-b border-line px-2 pt-1">
+              {/* Schede e selettore di pagina nella STESSA riga: 40px in meno. */}
+              <div className="flex shrink-0 items-center border-b border-line pr-1.5">
+              <TabList aria-label="Pannello" className="flex min-w-0 flex-1 gap-0.5 px-1.5 pt-1">
                 {([["layers", "Livelli", "layers"], ["components", "Componenti", "components"]] as const).map(([id, label, icon]) => (
                   <Tab
                     key={id}
                     id={id}
+                    aria-label={label}
                     className={({ isSelected }) =>
-                      `flex h-8 cursor-default items-center gap-1.5 border-b-2 px-2 text-[13px] font-medium outline-none ` +
+                      `flex h-9 cursor-default items-center gap-1.5 border-b-2 px-1.5 text-[13px] font-medium outline-none ` +
                       `focus-visible:shadow-[var(--ring)] ` +
                       (isSelected ? "border-accent text-fg" : "border-transparent text-fg-subtle hover:text-fg")
                     }
                   >
-                    <Icon name={icon} size={14} />
-                    {label}
+                    {({ isSelected }) => (
+                      <>
+                        <Icon name={icon} size={14} />
+                        {/* Solo la scheda attiva porta il testo: la riga ospita anche il
+                            selettore di pagina. Il nome resta nell'aria-label. */}
+                        {isSelected && label}
+                      </>
+                    )}
                   </Tab>
                 ))}
               </TabList>
+              <PageBar compact />
+              </div>
               <TabPanel id="layers" className="min-h-0 flex-1 overflow-hidden outline-none">
                 <LayersPanel />
               </TabPanel>

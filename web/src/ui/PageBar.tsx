@@ -93,7 +93,10 @@ function PageRenameField({
   );
 }
 
-export function PageBar() {
+// `compact`: il selettore dentro la riga delle schede del pannello sinistro --
+// niente riga propria, niente pulsanti + e cestino (nuova pagina ed eliminazione
+// stanno già nell'elenco che il pulsante apre).
+export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   const scene = useScene((s) => s.scene);
   const currentPageId = useScene((s) => s.currentPageId);
   // La pagina il cui nome è in rinomina, o null. Una sola alla volta.
@@ -138,7 +141,11 @@ export function PageBar() {
   }
 
   return (
-    <div role="group" aria-label="Pagine" className="flex h-10 shrink-0 items-center gap-1 border-b border-line px-2">
+    <div
+      role="group"
+      aria-label="Pagine"
+      className={compact ? "flex w-[112px] shrink-0 items-center" : "flex h-10 shrink-0 items-center gap-1 border-b border-line px-2"}
+    >
       {current && renamingId === current.id ? (
         <PageRenameField
           initial={current.name}
@@ -235,15 +242,17 @@ export function PageBar() {
           </Popover>
         </DialogTrigger>
       )}
-      <IconButton icon="plus" label="Nuova pagina" onPress={createPage} />
-      <IconButton
-        icon="trash"
-        label="Elimina pagina"
-        // L'ULTIMA pagina non si cancella (ErrLastPage nel core): il pulsante è
-        // disabilitato invece di mandare un op che si sa rifiutato.
-        isDisabled={pages.length <= 1}
-        onPress={() => deletePage(currentPageId)}
-      />
+      {!compact && <IconButton icon="plus" label="Nuova pagina" onPress={createPage} />}
+      {!compact && (
+        <IconButton
+          icon="trash"
+          label="Elimina pagina"
+          // L'ULTIMA pagina non si cancella (ErrLastPage nel core): il pulsante è
+          // disabilitato invece di mandare un op che si sa rifiutato.
+          isDisabled={pages.length <= 1}
+          onPress={() => deletePage(currentPageId)}
+        />
+      )}
     </div>
   );
 }
