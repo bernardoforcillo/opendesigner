@@ -566,7 +566,7 @@ export function App() {
               così passare da un testo a un altro rimonta il campo invece di
               riusarlo. */}
           {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
-          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} presence={<PresenceBar nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { localStorage.removeItem(DOC_KEY); history.replaceState(null, "", location.pathname); location.reload(); }} connection={connection} statusLabel={statusLabel} />
+          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { localStorage.removeItem(DOC_KEY); history.replaceState(null, "", location.pathname); location.reload(); }} connection={connection} statusLabel={statusLabel} />
         </div>
         <aside aria-label="Proprietà" className={`${rightOpen ? "block" : "hidden"} w-64 shrink-0 overflow-hidden border-l border-line bg-surface`}>
           {mode === "flows" ? (

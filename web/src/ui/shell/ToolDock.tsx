@@ -1,5 +1,5 @@
-import { useEffect } from "react";
-import { ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from "react-aria-components";
+import { useEffect, useState } from "react";
+import { Button as RacButton, Menu, MenuItem, MenuTrigger, Popover, ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from "react-aria-components";
 import type { ReactNode } from "react";
 import { Button, Icon, IconButton, Kbd, type IconName } from "../ds";
 import { useScene } from "../../store/store";
@@ -28,21 +28,54 @@ export const TOOL_KEYS: Partial<Record<ToolId, string>> = {
 // Il dock raccoglie TUTTO ciò che si usa con la mano sulla tela: annulla/ripeti a
 // sinistra, gli strumenti al centro, a destra le azioni sul documento (Presenta
 // nei flussi, Esporta). La barra in alto resta per identità, modalità e persone.
+// Gli strumenti di FORMA stanno in un solo posto del dock: il pulsante mostra
+// l'ultima forma usata e il chevron apre le altre (Rettangolo, Ellisse). Meno
+// icone fisse, stessa velocità: R e O restano le scorciatoie.
+const SHAPE_IDS: readonly ToolId[] = ["rect", "ellipse"];
+const LAST_SHAPE_KEY = "od.lastShape";
+
+function readLastShape(): ToolId {
+  try {
+    const v = localStorage.getItem(LAST_SHAPE_KEY);
+    return v === "ellipse" ? "ellipse" : "rect";
+  } catch { return "rect"; }
+}
+
+const TOOL_BTN = (selected: boolean, flow: boolean) =>
+  `flex h-9 w-9 items-center justify-center rounded-lg outline-none transition-colors focus-visible:shadow-[var(--ring)] ` +
+  (selected ? (flow ? "bg-flow text-white" : "bg-accent text-accent-fg") : "text-fg-muted hover:bg-surface-3 hover:text-fg");
+
+const TOOLTIP_CLS = "z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop";
+
+const SEP = <span className="mx-1 h-5 w-px shrink-0 bg-line" />;
+
+// Il dock raccoglie TUTTO ciò che si usa con la mano sulla tela, in poco spazio:
+// il logo apre il menu del documento (tema, renderer, pannelli), poi modalità,
+// cronologia, strumenti (le forme raggruppate) e infine le azioni: Presenta nei
+// flussi, Esporta, le persone (un solo pulsante con popover) e lo stato.
 export function ToolDock({
   tools, toolId, onChoose, mode, exportButton, presence, onNewDocument, connection, statusLabel,
 }: {
   tools: readonly { id: ToolId; label: string }[]; toolId: ToolId; onChoose: (id: ToolId) => void;
   mode: EditorMode; exportButton: ReactNode; presence: ReactNode; onNewDocument: () => void;
-  // Stato della connessione e dicitura accanto al pallino: l'ultima cosa del dock.
   connection: string; statusLabel: string;
 }) {
   const zoom = useScene((s) => s.camera.zoom);
   const dot =
     connection === "connected" ? "bg-ok" : connection === "reconnecting" || connection === "connecting" ? "bg-warn" : "bg-danger";
-  const left = usePanels((s) => s.left);
-  const right = usePanels((s) => s.right);
   const canUndo = useScene((s) => s.undoStack.length > 0);
   const canRedo = useScene((s) => s.redoStack.length > 0);
+  const [lastShape, setLastShape] = useState<ToolId>(readLastShape);
+  const activeShape = SHAPE_IDS.includes(toolId) ? toolId : lastShape;
+
+  const choose = (id: ToolId) => {
+    if (SHAPE_IDS.includes(id)) {
+      setLastShape(id);
+      try { localStorage.setItem(LAST_SHAPE_KEY, id); } catch { /* niente storage */ }
+    }
+    onChoose(id);
+  };
+
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (isTextField(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
@@ -53,11 +86,70 @@ export function ToolDock({
       }
       const k = e.key.toUpperCase();
       const hit = tools.find((t) => TOOL_KEYS[t.id] === k && t.id !== "connect");
-      if (hit) { e.preventDefault(); onChoose(hit.id); }
+      if (hit) { e.preventDefault(); choose(hit.id); }
     };
     window.addEventListener("keydown", onKey);
     return () => window.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [tools, onChoose]);
+
+  const shapes = tools.filter((t) => SHAPE_IDS.includes(t.id));
+  const shapeTool = shapes.find((t) => t.id === activeShape) ?? shapes[0];
+  // Il gruppo mostra un solo pulsante per forma: gli altri strumenti restano
+  // uno ciascuno.
+  const slots = tools.filter((t) => !SHAPE_IDS.includes(t.id));
+  const shapeIndex = tools.findIndex((t) => SHAPE_IDS.includes(t.id));
+
+  const renderTool = (t: { id: ToolId; label: string }, i: number) => (
+    <span key={t.id} className="flex items-center">
+      {(t.id === "hand" || (t.id === "connect" && i > 0)) && i > 0 && SEP}
+      <TooltipTrigger delay={300} closeDelay={0}>
+        <ToggleButton id={t.id} aria-label={t.label} className={({ isSelected }) => TOOL_BTN(isSelected, t.id === "connect")}>
+          <Icon name={ICON[t.id] ?? "select"} size={18} />
+        </ToggleButton>
+        <Tooltip offset={10} className={TOOLTIP_CLS}>
+          {t.label}
+          {TOOL_KEYS[t.id] && <Kbd inverted>{TOOL_KEYS[t.id]}</Kbd>}
+        </Tooltip>
+      </TooltipTrigger>
+    </span>
+  );
+
+  const ordered: ReactNode[] = [];
+  let n = 0;
+  for (let i = 0; i < tools.length; i++) {
+    const t = tools[i];
+    if (SHAPE_IDS.includes(t.id)) {
+      if (i === shapeIndex && shapeTool) {
+        ordered.push(
+          <span key="shapes" className="flex items-center">
+            {renderTool(shapeTool, n++)}
+            <MenuTrigger>
+              <RacButton
+                aria-label="Altre forme"
+                className="-ml-1 flex h-9 w-4 items-center justify-center rounded-md text-fg-subtle outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]"
+              >
+                <Icon name="chevronUp" size={10} />
+              </RacButton>
+              <Popover placement="top" offset={10} className="z-50 min-w-[170px] rounded-xl bg-raised p-1 text-[13px] text-fg shadow-pop">
+                <Menu className="outline-none" onAction={(k) => choose(k as ToolId)}>
+                  {shapes.map((s) => (
+                    <MenuItem key={s.id} id={s.id} className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[focused]:bg-surface-3 data-[hovered]:bg-surface-3">
+                      <Icon name={ICON[s.id] ?? "rect"} size={14} /> {s.label}
+                      <span className="ml-auto text-[11px] text-fg-subtle">{TOOL_KEYS[s.id]}</span>
+                    </MenuItem>
+                  ))}
+                </Menu>
+              </Popover>
+            </MenuTrigger>
+          </span>,
+        );
+      }
+      continue;
+    }
+    ordered.push(renderTool(t, n++));
+  }
+  void slots;
 
   return (
     <div
@@ -66,7 +158,6 @@ export function ToolDock({
       className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-xl bg-raised p-1 shadow-bar"
     >
       <DocMenu onNewDocument={onNewDocument} />
-      <IconButton icon="panelLeft" label="Pannello sinistro" shortcut="[" size={36} selected={left} onPress={() => usePanels.getState().toggle("left")} />
       <ToggleButtonGroup
         aria-label="Modalità"
         selectionMode="single"
@@ -92,57 +183,28 @@ export function ToolDock({
           </ToggleButton>
         ))}
       </ToggleButtonGroup>
-      <span className="mx-1 h-5 w-px bg-line" />
-      <IconButton icon="undo" label="Annulla" shortcut="⌘Z" size={36} isDisabled={!canUndo} onPress={() => useScene.getState().undo()} />
-      <IconButton icon="redo" label="Ripeti" shortcut="⇧⌘Z" size={36} isDisabled={!canRedo} onPress={() => useScene.getState().redo()} />
-      <span className="mx-1 h-5 w-px bg-line" />
+      {SEP}
+      <IconButton icon="undo" label="Annulla" shortcut="⌘Z" size={32} isDisabled={!canUndo} onPress={() => useScene.getState().undo()} />
+      <IconButton icon="redo" label="Ripeti" shortcut="⇧⌘Z" size={32} isDisabled={!canRedo} onPress={() => useScene.getState().redo()} />
+      {SEP}
       <ToggleButtonGroup
         selectionMode="single"
         disallowEmptySelection
-        selectedKeys={[toolId]}
+        selectedKeys={[SHAPE_IDS.includes(toolId) ? activeShape : toolId]}
         className="flex items-center gap-0.5"
-        onSelectionChange={(keys) => onChoose((keys.values().next().value as ToolId | undefined) ?? "select")}
+        onSelectionChange={(keys) => choose((keys.values().next().value as ToolId | undefined) ?? "select")}
       >
-        {tools.map((t, i) => {
-          const sep = t.id === "hand" || (t.id === "connect" && i > 0);
-          return (
-            <span key={t.id} className="flex items-center">
-              {sep && i > 0 && <span className="mx-1 h-5 w-px bg-line" />}
-              <TooltipTrigger delay={300} closeDelay={0}>
-                <ToggleButton
-                  id={t.id}
-                  aria-label={t.label}
-                  className={({ isSelected }) =>
-                    `flex h-9 w-9 items-center justify-center rounded-lg outline-none transition-colors ` +
-                    `focus-visible:shadow-[var(--ring)] ` +
-                    (isSelected
-                      ? t.id === "connect" ? "bg-flow text-white" : "bg-accent text-accent-fg"
-                      : "text-fg-muted hover:bg-surface-3 hover:text-fg")
-                  }
-                >
-                  <Icon name={ICON[t.id] ?? "select"} size={18} />
-                </ToggleButton>
-                <Tooltip offset={10} className="z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop">
-                  {t.label}
-                  {TOOL_KEYS[t.id] && <Kbd inverted>{TOOL_KEYS[t.id]}</Kbd>}
-                </Tooltip>
-              </TooltipTrigger>
-            </span>
-          );
-        })}
+        {ordered}
       </ToggleButtonGroup>
-      <span className="mx-1 h-5 w-px bg-line" />
+      {SEP}
       {mode === "flows" && (
         <Button variant="flow" icon="play" aria-label="Presenta" className="mr-0.5 h-9" onPress={() => useFlowUi.getState().setPresenting(true)}>
           Presenta
         </Button>
       )}
       {exportButton}
-      <span className="mx-1 h-5 w-px bg-line" />
       {presence}
-      <span className="mx-1 h-5 w-px bg-line" />
-      <IconButton icon="panelRight" label="Pannello destro" shortcut="]" size={36} selected={right} onPress={() => usePanels.getState().toggle("right")} />
-      <span className="flex items-center gap-3 px-2 text-[12px] text-fg-muted tabular-nums" aria-live="polite">
+      <span className="flex items-center gap-2 px-2 text-[12px] text-fg-muted tabular-nums" aria-live="polite">
         <span title={statusLabel} className="flex items-center gap-1.5">
           <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
           <span className="max-[1600px]:hidden">{statusLabel}</span>

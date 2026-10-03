@@ -101,11 +101,24 @@ describe("registro dei tool", () => {
 describe("toolbar", () => {
   it("mostra un pulsante per ogni tool, Testo compreso", () => {
     render(<App />);
-    for (const { label } of toolsForMode("design")) {
+    // Le forme stanno in un solo pulsante (l'ultima usata, di default
+    // Rettangolo) con le altre dietro "Altre forme".
+    for (const { id, label } of toolsForMode("design")) {
+      if (id === "ellipse") continue;
       expect(screen.getByRole("radio", { name: label })).toBeInTheDocument();
     }
+    expect(screen.getByRole("button", { name: "Altre forme" })).toBeInTheDocument();
     // "Collega" esiste solo nei flussi.
     expect(screen.queryByRole("radio", { name: "Collega" })).not.toBeInTheDocument();
+  });
+
+  it("Ellisse si sceglie dal menu delle forme e prende il posto del pulsante", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Altre forme" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Ellisse/ }));
+    const ellisse = screen.getByRole("radio", { name: "Ellisse" });
+    expect(ellisse).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("radio", { name: "Rettangolo" })).not.toBeInTheDocument();
   });
 
   it("premere Testo attiva davvero il tool testo (il cursore del canvas lo dimostra)", () => {

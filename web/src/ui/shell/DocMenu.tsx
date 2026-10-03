@@ -3,6 +3,7 @@ import { Icon } from "../ds";
 import { useScene } from "../../store/store";
 import { useRenderer } from "../../store/rendererChoice";
 import { useTheme } from "./theme";
+import { usePanels } from "./panels";
 
 // IL MENU DEL DOCUMENTO: il logo è il pulsante. Dentro: il nome del documento, il
 // nuovo documento, il tema, il renderer. Sta nel dock, non in una barra a parte.
@@ -24,6 +25,8 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const setTheme = useTheme((s) => s.set);
   const renderer = useRenderer((s) => s.choice);
   const setRenderer = useRenderer((s) => s.setChoice);
+  const left = usePanels((s) => s.left);
+  const right = usePanels((s) => s.right);
   return (
     <MenuTrigger>
       <RacButton aria-label="Menu del documento" className="flex h-9 w-9 items-center justify-center rounded-lg outline-none hover:bg-surface-3 focus-visible:shadow-[var(--ring)]">
@@ -35,10 +38,20 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
         <Menu className="outline-none" onAction={(k) => {
           if (k === "new") onNewDocument();
           else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
+          else if (k === "panel-left") usePanels.getState().toggle("left");
+          else if (k === "panel-right") usePanels.getState().toggle("right");
           else if (k === "system" || k === "light" || k === "dark") setTheme(k);
         }}>
               <MenuItem id="new" className={ITEM}>
                 <Icon name="plus" size={14} /> Nuovo documento
+              </MenuItem>
+              <MenuItem id="panel-left" className={ITEM}>
+                <Icon name="panelLeft" size={14} /> Pannello sinistro
+                <span className="ml-auto text-[11px] text-fg-subtle">{left ? "[" : "[ · chiuso"}</span>
+              </MenuItem>
+              <MenuItem id="panel-right" className={ITEM}>
+                <Icon name="panelRight" size={14} /> Pannello destro
+                <span className="ml-auto text-[11px] text-fg-subtle">{right ? "]" : "] · chiuso"}</span>
               </MenuItem>
               <MenuItem id="renderer" className={ITEM}>
                 <Icon name="bolt" size={14} /> Renderer {renderer === "gpu" ? "GPU" : "CPU"}

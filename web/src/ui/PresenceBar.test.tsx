@@ -53,4 +53,25 @@ describe("PresenceBar", () => {
     expect(writeText).toHaveBeenCalledWith(location.href);
     expect(await screen.findByRole("button", { name: "Link copiato" })).toBeTruthy();
   });
+
+  it("compatta: un solo pulsante Persone col conteggio; nickname e link stanno nel popover", async () => {
+    usePresence.setState({
+      peers: { a: { clientId: "a", nickname: "Ada", hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [] } },
+    });
+    const onNickname = vi.fn();
+    render(<PresenceBar compact nickname="Io" onNickname={onNickname} />);
+    const trigger = screen.getByRole("button", { name: "Persone" });
+    expect(trigger.textContent).toContain("2"); // io + Ada
+    // A riposo non ci sono né il campo né il pulsante Condividi.
+    expect(screen.queryByLabelText("Il tuo nickname")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Condividi" })).not.toBeInTheDocument();
+
+    await userEvent.click(trigger);
+    const input = await screen.findByLabelText("Il tuo nickname");
+    await userEvent.clear(input);
+    await userEvent.type(input, "Zoe{Enter}");
+    expect(onNickname).toHaveBeenCalledWith("Zoe");
+    expect(screen.getByRole("button", { name: "Condividi" })).toBeInTheDocument();
+    expect(screen.getByText("Ada", { selector: "li span" })).toBeInTheDocument();
+  });
 });
