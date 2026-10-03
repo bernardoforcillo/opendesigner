@@ -1,7 +1,8 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { isValidClip } from "../animation/validate";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Primitive di undo: dato lo stato PRIMA di un op, l'op che lo annulla.
@@ -56,7 +57,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // non c'è niente da annullare. Inventare qui un inverso (una delete, o la
       // ri-creazione del nodo precedente) manderebbe al server l'undo di un op
       // che il server non ha mai accettato -- cioè una vera divergenza.
-      if (scene.nodes[node.id]) return null;
+      if (scene.nodes.at(node.id)) return null;
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "deleteNode", value: { id: node.id } },
@@ -74,7 +75,11 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     case "deleteNode": {
       const sub = subtreeOf(scene, op.kind.value.id);
       if (sub.length === 0) return null;
-      return sub.map((n) => createNodeOp(op.docId, toPbNode(n)));
+      return [
+        ...sub.map((n) => createNodeOp(op.docId, toPbNode(n))),
+        ...restoreFlowsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
+        ...restoreClipsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
+      ];
     }
     // Simmetrico a se stesso: rimette il nodo dov'era, con la order key che
     // aveva fra i vecchi pari. Null quando l'op diretto sarebbe rifiutato --
@@ -82,7 +87,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     // cambia e non c'è niente da annullare (vedi applyOp: reparentNode).
     case "reparentNode": {
       const { id, newParentId } = op.kind.value;
-      const prev = scene.nodes[id];
+      const prev = scene.nodes.at(id);
       if (!prev) return null;
       if (!parentExists(scene, newParentId)) return null;
       if (newParentId === id || isAncestorOf(scene, id, newParentId)) return null;
@@ -98,7 +103,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // altrettanto, vedi NIL_PATCH), quindi ha un inverso come tutti gli
       // altri: rimettere a posto quei campi.
       const { id, mask } = op.kind.value;
-      const prev = scene.nodes[id];
+      const prev = scene.nodes.at(id);
       if (!prev) return null;
       // Patch = il nodo com'era, mask = la STESSA dell'op diretto. La mask è il
       // contratto -- TS e Go leggono solo i path elencati e ignorano il resto
@@ -120,7 +125,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // id inesistente o nodo non di testo (ErrNotTextNode in Go): la scena non
       // cambierebbe, quindi non c'è niente da annullare.
       const { id } = op.kind.value;
-      const prev = scene.nodes[id];
+      const prev = scene.nodes.at(id);
       if (!prev || prev.kind !== "text" || !prev.text) return null;
       // stylePresent SEMPRE true, anche quando l'op diretto non toccava lo
       // stile: rimettere lo stile precedente è un no-op in quel caso, mentre
@@ -180,9 +185,12 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         opId: newOpId(), docId: op.docId,
         kind: { case: "createPage", value: { page: { id: page.id, name: page.name } } },
       })];
+      const gone = new Set<string>();
       for (const root of childrenOf(scene, id)) {
-        for (const n of subtreeOf(scene, root.id)) ops.push(createNodeOp(op.docId, toPbNode(n)));
+        for (const n of subtreeOf(scene, root.id)) { ops.push(createNodeOp(op.docId, toPbNode(n))); gone.add(n.id); }
       }
+      ops.push(...restoreFlowsOps(scene, op.docId, gone));
+      ops.push(...restoreClipsOps(scene, op.docId, gone));
       return ops;
     }
     case "renamePage": {
@@ -211,7 +219,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // traccia il cui punto è la geometria modificabile sarebbe il difetto
       // peggiore possibile.
       const { id } = op.kind.value;
-      const prev = scene.nodes[id];
+      const prev = scene.nodes.at(id);
       // Null quando l'op diretto sarebbe rifiutato -- id inesistente o nodo non
       // vettoriale (ErrNotVectorNode in Go): la scena non cambierebbe, quindi
       // non c'è niente da annullare.
@@ -237,7 +245,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       return null;
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;
-      const prev = scene.nodes[instanceId];
+      const prev = scene.nodes.at(instanceId);
       // Null quando l'op diretto sarebbe rifiutato (parità con applyOp/core):
       // nodo inesistente, non-istanza, o master_node_id vuoto -- la scena non
       // cambia, quindi non c'è niente da annullare.
@@ -260,7 +268,112 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         kind: { case: "setInstanceOverride", value: { instanceId, override: invOverride } },
       })];
     }
+    // --- flussi -------------------------------------------------------------
+    // Upsert assoluti: l'inverso è lo stato PRECEDENTE (un setFlow/setTransition
+    // con il valore vecchio se esisteva, una delete se l'op diretto creava).
+    // Null quando l'op diretto sarebbe rifiutato (parità con applyOp/core).
+    case "setFlow": {
+      const f = op.kind.value.flow;
+      if (!f || f.id === "") return null;
+      if (f.startId !== "" && !scene.nodes.has(f.startId)) return null;
+      const prev = scene.flows[f.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setFlow", value: { flow: toPbFlow(prev) } }
+          : { case: "deleteFlow", value: { id: f.id } },
+      })];
+    }
+    case "deleteFlow": {
+      const { id } = op.kind.value;
+      const prev = scene.flows[id];
+      if (!prev) return null;
+      // Prima il flusso, poi le sue transizioni (richiedono che il flusso esista).
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setFlow", value: { flow: toPbFlow(prev) } } }),
+        ...Object.values(scene.transitions).filter((t) => t.flowId === id).sort(byId).map((t) =>
+          create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setTransition", value: { transition: toPbTransition(t) } } })),
+      ];
+    }
+    case "setTransition": {
+      const t = op.kind.value.transition;
+      if (!t || t.id === "") return null;
+      if (!scene.flows[t.flowId]) return null;
+      if (!scene.nodes.has(t.fromId) || !scene.nodes.has(t.toId)) return null;
+      if (t.elementId !== "" && !scene.nodes.has(t.elementId)) return null;
+      const prev = scene.transitions[t.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setTransition", value: { transition: toPbTransition(prev) } }
+          : { case: "deleteTransition", value: { id: t.id } },
+      })];
+    }
+    case "deleteTransition": {
+      const prev = scene.transitions[op.kind.value.id];
+      if (!prev) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setTransition", value: { transition: toPbTransition(prev) } },
+      })];
+    }
+    // --- animazione ---------------------------------------------------------
+    // Upsert assoluti, come i flussi: l'inverso è la clip PRECEDENTE (o una
+    // delete se l'op la creava). Null quando l'op diretto sarebbe rifiutato.
+    case "setClip": {
+      const c = op.kind.value.clip;
+      if (!c || c.id === "") return null;
+      if (!isValidClip(scene, toClipLite(c))) return null;
+      const prev = scene.clips[c.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setClip", value: { clip: toPbClip(prev) } }
+          : { case: "deleteClip", value: { id: c.id } },
+      })];
+    }
+    case "deleteClip": {
+      const prev = scene.clips[op.kind.value.id];
+      if (!prev) return null;
+      return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setClip", value: { clip: toPbClip(prev) } } })];
+    }
     default:
       return null;
   }
+}
+
+const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
+
+// Dopo aver RICREATO i nodi cancellati, rimette ciò che la cascata aveva tolto ai
+// flussi: lo `startId` dei flussi che ne partivano e le transizioni che li
+// attraversavano (o che li usavano come hotspot). Vanno DOPO le createNode: i
+// riferimenti devono esistere (parità con core.applySetFlow/applySetTransition).
+function restoreFlowsOps(scene: SceneState, docId: string, gone: ReadonlySet<string>): Op[] {
+  const ops: Op[] = [];
+  for (const f of Object.values(scene.flows).sort(byId)) {
+    if (f.startId !== "" && gone.has(f.startId)) {
+      ops.push(create(OpSchema, { opId: newOpId(), docId, kind: { case: "setFlow", value: { flow: toPbFlow(f) } } }));
+    }
+  }
+  for (const t of Object.values(scene.transitions).sort(byId)) {
+    if (gone.has(t.fromId) || gone.has(t.toId) || (t.elementId !== "" && gone.has(t.elementId))) {
+      ops.push(create(OpSchema, { opId: newOpId(), docId, kind: { case: "setTransition", value: { transition: toPbTransition(t) } } }));
+    }
+  }
+  return ops;
+}
+
+// Dopo aver RICREATO i nodi cancellati, rimette le clip che la cascata aveva
+// toccato (core.cascadeClips): quelle col target sparito (cancellate) e quelle
+// che avevano tracce sui nodi spariti (le tracce erano state tolte). Si
+// ripristina la clip INTERA com'era nello scene pre-apply -- un setClip assoluto
+// -- e va DOPO le createNode: target e nodi delle tracce devono esistere.
+function restoreClipsOps(scene: SceneState, docId: string, gone: ReadonlySet<string>): Op[] {
+  const ops: Op[] = [];
+  for (const c of Object.values(scene.clips).sort(byId)) {
+    if (gone.has(c.targetId) || c.tracks.some((t) => gone.has(t.nodeId))) {
+      ops.push(create(OpSchema, { opId: newOpId(), docId, kind: { case: "setClip", value: { clip: toPbClip(c) } } }));
+    }
+  }
+  return ops;
 }

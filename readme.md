@@ -98,7 +98,40 @@ For development, you can also run the Vite dev server directly:
 pnpm --dir web dev
 ```
 
-### 4. Run the MCP server
+### 4. Work together on the same network
+
+No accounts: start the server and share the address it prints.
+
+```bash
+opendesigner serve
+# sulla stessa rete apri: http://192.168.1.20:8080
+```
+
+Everyone picks a nickname in the toolbar. The **Condividi** button copies the
+link of the open document (`...#doc=<id>`); whoever opens it edits the same
+document and sees the others' cursors and selections. Presence is ephemeral and
+never written to the document.
+
+There is no authentication: anyone who can reach the port can edit. Use it on a
+network you trust, or bind to loopback with `-addr 127.0.0.1:8080`.
+
+### Auto layout
+
+A frame can arrange its children in a row or column. Draw a frame with the
+**Frame** tool, or select some shapes and press **Shift+A** to wrap them in a
+frame with auto layout (**Ctrl/Cmd+Alt+G** wraps without it). The panel sets
+direction, spacing, padding, alignment and hug. The server computes the layout
+after every change and stores the result as ordinary positions, so every client
+-- the browser and MCP agents alike -- sees the same thing.
+
+### Renderer
+
+The scene is drawn with Canvas 2D by default. The **CPU/GPU** button in the
+toolbar switches to a CanvasKit (Skia/WebGL) renderer, downloaded on demand; it
+shows the frame time so you can compare the two on your machine. See
+`docs/performance.md`.
+
+### 5. Run the MCP server
 
 Start the backend first, then run:
 
@@ -106,7 +139,7 @@ Start the backend first, then run:
 go run ./cmd/opendesigner mcp
 ```
 
-The MCP mode connects to the running serve instance and exposes editing tools through stdio.
+The MCP mode connects to the running serve instance and exposes editing tools through stdio. The agent appears in the document like another person (name set with `-nickname`, default "Claude") and outlines the node it is editing.
 
 ## Development workflow
 

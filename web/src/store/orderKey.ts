@@ -116,7 +116,7 @@ export function orderKeyBetween(a: string | null, b: string | null): string {
 // l'ordine di disegno). Confronto lessicografico sulla chiave massima esistente,
 // poi la chiave successiva dell'indice frazionario.
 export function nextOrderKey(scene: SceneState | null): string {
-  const keys = scene ? Object.values(scene.nodes).map((n) => n.orderKey) : [];
+  const keys = scene ? [...scene.nodes.values()].map((n) => n.orderKey) : [];
   if (keys.length === 0) return orderKeyBetween(null, null);
 
   const maxKey = keys.reduce((a, b) => (b > a ? b : a));

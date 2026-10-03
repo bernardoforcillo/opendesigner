@@ -31,8 +31,8 @@ function createImageOp(id: string) {
 describe("applyOp", () => {
   it("creates a rect node", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 10, 20));
-    expect(s.nodes["n1"].x).toBe(10);
-    expect(s.nodes["n1"].kind).toBe("rect");
+    expect(s.nodes.at("n1").x).toBe(10);
+    expect(s.nodes.at("n1").kind).toBe("rect");
   });
 
   it("creates an ellipse node", () => {
@@ -43,7 +43,7 @@ describe("applyOp", () => {
     });
     const op = create(OpSchema, { opId: "op-n1", docId: "doc1", kind: { case: "createNode", value: { node } } });
     const s = applyOp(emptyScene("doc1", "Untitled"), op);
-    expect(s.nodes["n1"].kind).toBe("ellipse");
+    expect(s.nodes.at("n1").kind).toBe("ellipse");
   });
 
   // Un gruppo è un CONTENITORE, non una forma: il oneof `shape` dice cosa un
@@ -55,7 +55,7 @@ describe("applyOp", () => {
     });
     const op = create(OpSchema, { opId: "op-g1", docId: "doc1", kind: { case: "createNode", value: { node } } });
     const s = applyOp(emptyScene("doc1", "Untitled"), op);
-    expect(s.nodes["g1"].kind).toBe("group");
+    expect(s.nodes.at("g1").kind).toBe("group");
   });
 
   // Parità con core.applySetProps (Go), che risponde ErrNotRectNode su un
@@ -76,8 +76,8 @@ describe("applyOp", () => {
       mask: { paths: ["x", "corner_radius"] },
     } } }));
     expect(s).toBe(before);
-    expect(s.nodes["g1"].x).toBe(0);
-    expect(s.nodes["g1"].kind).toBe("group");
+    expect(s.nodes.at("g1").x).toBe(0);
+    expect(s.nodes.at("g1").kind).toBe("group");
   });
 
   it("moves via setProperties + mask", () => {
@@ -85,15 +85,15 @@ describe("applyOp", () => {
     const move = create(OpSchema, { opId: "m", docId: "doc1", kind: { case: "setProps", value: {
       id: "n1", patch: create(NodeSchema, { x: 42, y: 7 }), mask: { paths: ["x", "y"] } } } });
     s = applyOp(s, move);
-    expect(s.nodes["n1"].x).toBe(42);
-    expect(s.nodes["n1"].y).toBe(7);
+    expect(s.nodes.at("n1").x).toBe(42);
+    expect(s.nodes.at("n1").y).toBe(7);
   });
 
   it("deletes a node", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
     const del = create(OpSchema, { opId: "d", docId: "doc1", kind: { case: "deleteNode", value: { id: "n1" } } });
     s = applyOp(s, del);
-    expect(s.nodes["n1"]).toBeUndefined();
+    expect(s.nodes.at("n1")).toBeUndefined();
   });
 
   it("rejects createNode on an id that already exists (parity with core.applyCreate: ErrNodeExists)", () => {
@@ -103,14 +103,14 @@ describe("applyOp", () => {
     // the server actually holds.
     const s2 = applyOp(s, createRectOp("n1", 999, 999));
     expect(s2).toEqual(s);
-    expect(s2.nodes["n1"].x).toBe(10);
+    expect(s2.nodes.at("n1").x).toBe(10);
   });
 
   it("rejects a createNode whose node has an empty id (parity with core.applyCreate: ErrNilNode)", () => {
     const node = create(NodeSchema, { id: "", parentId: "page1", shape: { case: "rect", value: { cornerRadius: 0 } } });
     const op = create(OpSchema, { opId: "op-empty", docId: "doc1", kind: { case: "createNode", value: { node } } });
     const s = applyOp(emptyScene("doc1", "Untitled"), op);
-    expect(Object.keys(s.nodes)).toEqual([]);
+    expect([...s.nodes.ids()]).toEqual([]);
   });
 
   it("zeroes the masked fields when setProps carries no patch (parity with Go's nil-safe getters)", () => {
@@ -122,17 +122,17 @@ describe("applyOp", () => {
     });
     let s = applyOp(emptyScene("doc1", "Untitled"),
       create(OpSchema, { opId: "op-n1", docId: "doc1", kind: { case: "createNode", value: { node } } }));
-    expect(s.nodes["n1"].fills.length).toBe(1);
+    expect(s.nodes.at("n1").fills.length).toBe(1);
     // Go reads the patch through p.GetX() & co., which return the field's zero
     // value on a nil *Node: applySetProps ZEROES x and fills here, it does not
     // skip the op.
     const noPatch = create(OpSchema, { opId: "np", docId: "doc1", kind: { case: "setProps", value: {
       id: "n1", mask: { paths: ["x", "fills"] } } } });
     s = applyOp(s, noPatch);
-    expect(s.nodes["n1"].x).toBe(0);
-    expect(s.nodes["n1"].fills).toEqual([]);
-    expect(s.nodes["n1"].y).toBe(20); // outside the mask: untouched
-    expect(s.nodes["n1"].width).toBe(100);
+    expect(s.nodes.at("n1").x).toBe(0);
+    expect(s.nodes.at("n1").fills).toEqual([]);
+    expect(s.nodes.at("n1").y).toBe(20); // outside the mask: untouched
+    expect(s.nodes.at("n1").width).toBe(100);
   });
 
   it("rejects the whole setProps op atomically when the mask has an unsupported path (parity with core.applySetProps in Go)", () => {
@@ -143,8 +143,8 @@ describe("applyOp", () => {
     // Go's applySetProps validates the entire mask before mutating anything,
     // so an unsupported path rejects the op as a whole -- "x" must NOT be
     // partially applied here.
-    expect(s.nodes["n1"].x).toBe(0);
-    expect(s.nodes["n1"].y).toBe(0);
+    expect(s.nodes.at("n1").x).toBe(0);
+    expect(s.nodes.at("n1").y).toBe(0);
   });
 });
 
@@ -189,7 +189,7 @@ function treeScene() {
 describe("applyOp: createNode e il parent", () => {
   it("accetta un parent che è un NODO (annidamento)", () => {
     const s = applyOp(applyOp(emptyScene("doc1", "Untitled"), createChildOp("g1", "page1")), createChildOp("c1", "g1"));
-    expect(s.nodes["c1"].parentId).toBe("g1");
+    expect(s.nodes.at("c1").parentId).toBe("g1");
   });
 
   it("rifiuta un parent inesistente (parità con ErrParentNotFound in Go)", () => {
@@ -210,14 +210,14 @@ describe("applyOp: deleteNode a cascata", () => {
     const s = applyOp(treeScene(), create(OpSchema, {
       opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "g1" } },
     }));
-    expect(Object.keys(s.nodes)).toEqual(["other"]);
+    expect([...s.nodes.ids()]).toEqual(["other"]);
   });
 
   it("cancellare una foglia non tocca i fratelli", () => {
     const s = applyOp(treeScene(), create(OpSchema, {
       opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "c2" } },
     }));
-    expect(Object.keys(s.nodes).sort()).toEqual(["c1", "d1", "g1", "other"]);
+    expect([...s.nodes.ids()].sort()).toEqual(["c1", "d1", "g1", "other"]);
   });
 
   it("id inesistente: scena invariata (ErrNodeNotFound in Go)", () => {
@@ -231,21 +231,21 @@ describe("applyOp: deleteNode a cascata", () => {
 describe("applyOp: reparentNode", () => {
   it("sposta il nodo e riscrive la order key; il sottoalbero lo segue", () => {
     const s = applyOp(treeScene(), reparentOp("c1", "other", "a9"));
-    expect(s.nodes["c1"].parentId).toBe("other");
-    expect(s.nodes["c1"].orderKey).toBe("a9");
+    expect(s.nodes.at("c1").parentId).toBe("other");
+    expect(s.nodes.at("c1").orderKey).toBe("a9");
     // I figli puntano al nodo, non al nonno: nessuno li riscrive.
-    expect(s.nodes["d1"].parentId).toBe("c1");
+    expect(s.nodes.at("d1").parentId).toBe("c1");
   });
 
   it("accetta una PAGINA come nuovo parent", () => {
     const s = applyOp(treeScene(), reparentOp("d1", "page1", "a3"));
-    expect(s.nodes["d1"].parentId).toBe("page1");
+    expect(s.nodes.at("d1").parentId).toBe("page1");
   });
 
   it("stesso parent + nuova chiave = riordino fra pari", () => {
     const s = applyOp(treeScene(), reparentOp("c1", "g1", "a3"));
-    expect(s.nodes["c1"].parentId).toBe("g1");
-    expect(s.nodes["c1"].orderKey).toBe("a3");
+    expect(s.nodes.at("c1").parentId).toBe("g1");
+    expect(s.nodes.at("c1").orderKey).toBe("a3");
   });
 
   it.each([
@@ -289,7 +289,7 @@ describe("applyOp: corner_radius", () => {
   it("scrive il raggio di un rettangolo", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
     s = applyOp(s, setCornerRadiusOp("n1", 12));
-    expect(s.nodes["n1"].cornerRadius).toBe(12);
+    expect(s.nodes.at("n1").cornerRadius).toBe(12);
   });
 
   it("un patch senza rect AZZERA il raggio (parità con i getter nil-safe di Go)", () => {
@@ -298,7 +298,7 @@ describe("applyOp: corner_radius", () => {
     const nilPatch = create(OpSchema, { opId: "op-cr2", docId: "doc1", kind: { case: "setProps", value: {
       id: "n1", mask: { paths: ["corner_radius"] } } } });
     s = applyOp(s, nilPatch);
-    expect(s.nodes["n1"].cornerRadius).toBe(0);
+    expect(s.nodes.at("n1").cornerRadius).toBe(0);
   });
 
   it("su un'ellisse rifiuta l'INTERO op (parità con ErrNotRectNode)", () => {
@@ -312,8 +312,8 @@ describe("applyOp: corner_radius", () => {
     // blocco e nemmeno la x si muove.
     const after = applyOp(s, setCornerRadiusOp("n1", 12, 42));
     expect(after).toEqual(s);
-    expect(after.nodes["n1"].x).toBe(0);
-    expect(after.nodes["n1"].kind).toBe("ellipse");
+    expect(after.nodes.at("n1").x).toBe(0);
+    expect(after.nodes.at("n1").kind).toBe("ellipse");
   });
 
   it("su un nodo di testo rifiuta l'INTERO op", () => {
@@ -340,9 +340,9 @@ describe("applyOp: corner_radius", () => {
       createVectorOp("v1", [{ anchors: RICH_ANCHORS, closed: true }]));
     const after = applyOp(s, setCornerRadiusOp("v1", 12, 42));
     expect(after).toEqual(s);
-    expect(after.nodes["v1"].x).toBe(0);
-    expect(after.nodes["v1"].kind).toBe("vector");
-    expect(after.nodes["v1"].vector?.subpaths).toEqual([{ anchors: RICH_ANCHORS, closed: true }]);
+    expect(after.nodes.at("v1").x).toBe(0);
+    expect(after.nodes.at("v1").kind).toBe("vector");
+    expect(after.nodes.at("v1").vector?.subpaths).toEqual([{ anchors: RICH_ANCHORS, closed: true }]);
   });
 });
 
@@ -385,7 +385,7 @@ function createNodeOp(node: PbNode) {
 describe("applyOp: forma sconosciuta", () => {
   it("non ricade su rect -- ma una forma ASSENTE sì", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createNodeOp(nodeWithUnknownShape("g1")));
-    expect(s.nodes["g1"].kind).toBe("unknown");
+    expect(s.nodes.at("g1").kind).toBe("unknown");
     // Shape ASSENTE resta "rect", e non è un'eccezione alla regola ma la regola
     // stessa: Go la accetta come rettangolo implicito (il ramo `case nil` della
     // whitelist), quindi trattarla diversamente qui sarebbe la divergenza.
@@ -394,7 +394,7 @@ describe("applyOp: forma sconosciuta", () => {
       x: 0, y: 0, width: 10, height: 10,
     });
     const s2 = applyOp(s, createNodeOp(noShape));
-    expect(s2.nodes["r1"].kind).toBe("rect");
+    expect(s2.nodes.at("r1").kind).toBe("rect");
   });
 
   it("corner_radius su una forma sconosciuta rifiuta l'INTERO op (parità con ErrNotRectNode)", () => {
@@ -404,8 +404,8 @@ describe("applyOp: forma sconosciuta", () => {
     // scriveva un cornerRadius su un nodo che Go rifiuta.
     const after = applyOp(s, setCornerRadiusOp("g1", 12, 42));
     expect(after).toEqual(s);
-    expect(after.nodes["g1"].x).toBe(10);
-    expect(after.nodes["g1"].cornerRadius).toBe(0);
+    expect(after.nodes.at("g1").x).toBe(10);
+    expect(after.nodes.at("g1").cornerRadius).toBe(0);
   });
 
   it("setVectorPath e setText la rifiutano come rifiutano un rettangolo", () => {
@@ -477,9 +477,9 @@ describe("applyOp: istanza e componenti", () => {
     s = applyOp(s, createComponentOp("cmp1", "m1", "Button"));
     expect(s.components["cmp1"]).toEqual({ rootNodeId: "m1", name: "Button" });
     s = applyOp(s, createInstanceOp("inst1", "cmp1"));
-    expect(s.nodes["inst1"].kind).toBe("instance");
+    expect(s.nodes.at("inst1").kind).toBe("instance");
     // Nessun figlio in `nodes`: il sottoalbero è VIRTUALE (derivato dal master).
-    expect(s.nodes["inst1"].instance).toEqual({ componentId: "cmp1", overrides: [] });
+    expect(s.nodes.at("inst1").instance).toEqual({ componentId: "cmp1", overrides: [] });
   });
 
   it("rifiuta createComponent con id vuoto, id già preso o radice inesistente (parità con Go)", () => {
@@ -505,16 +505,16 @@ describe("applyOp: istanza e componenti", () => {
     s = applyOp(s, createInstanceOp("inst1", "cmp1"));
     // fill: `fills` presente <=> fillsPresent, quindi l'override porta solo fills.
     s = applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "m1", fills: [{ kind: { case: "solid", value: { color: RED } } }], fillsPresent: true }));
-    expect(s.nodes["inst1"].instance?.overrides).toEqual([{ masterNodeId: "m1", fills: [RED] }]);
+    expect(s.nodes.at("inst1").instance?.overrides).toEqual([{ masterNodeId: "m1", fills: [RED] }]);
     // sostituzione con testo: l'upsert TOGLIE il fill con lo stesso master e
     // rimette solo il nuovo -- nessun residuo, e `text` presente <=> textPresent.
     s = applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "m1", text: "Ciao", textPresent: true }));
-    expect(s.nodes["inst1"].instance?.overrides).toEqual([{ masterNodeId: "m1", text: "Ciao" }]);
+    expect(s.nodes.at("inst1").instance?.overrides).toEqual([{ masterNodeId: "m1", text: "Ciao" }]);
     // rimozione: né fills né text presenti => l'override sparisce, il nodo resta
     // un'istanza (torna a ereditare dal master).
     s = applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "m1" }));
-    expect(s.nodes["inst1"].instance?.overrides).toEqual([]);
-    expect(s.nodes["inst1"].kind).toBe("instance");
+    expect(s.nodes.at("inst1").instance?.overrides).toEqual([]);
+    expect(s.nodes.at("inst1").kind).toBe("instance");
   });
 
   it("rifiuta un override su un non-istanza, su un id inesistente, e con master_node_id vuoto (parità con Go)", () => {
@@ -588,8 +588,8 @@ function setTextOp(value: MessageInitShape<typeof SetTextSchema>) {
 describe("applyOp: setText", () => {
   it("creates a text node", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
-    expect(s.nodes["t1"].kind).toBe("text");
-    expect(s.nodes["t1"].text).toEqual({
+    expect(s.nodes.at("t1").kind).toBe("text");
+    expect(s.nodes.at("t1").text).toEqual({
       content: "ciao",
       style: { fontFamily: "Inter", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "left" },
     });
@@ -598,7 +598,7 @@ describe("applyOp: setText", () => {
   it("changes the content of a text node", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
     s = applyOp(s, setTextOp({ id: "t1", content: "nuovo testo" }));
-    expect(s.nodes["t1"].text?.content).toBe("nuovo testo");
+    expect(s.nodes.at("t1").text?.content).toBe("nuovo testo");
   });
 
   it("is a no-op on a non-text node (parity with core.applySetText: ErrNotTextNode)", () => {
@@ -607,8 +607,8 @@ describe("applyOp: setText", () => {
     // Go rifiuta l'op e non tocca il documento: scrivere qui un `text` dentro
     // un rettangolo lo trasformerebbe in un nodo che il server non ha.
     expect(s2).toEqual(s);
-    expect(s2.nodes["n1"].kind).toBe("rect");
-    expect(s2.nodes["n1"].text).toBeUndefined();
+    expect(s2.nodes.at("n1").kind).toBe("rect");
+    expect(s2.nodes.at("n1").text).toBeUndefined();
   });
 
   it("is a no-op on a missing id (parity with core.applySetText: ErrNodeNotFound)", () => {
@@ -619,13 +619,13 @@ describe("applyOp: setText", () => {
   it("leaves the existing style alone when stylePresent is false", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
     s = applyOp(s, setTextOp({ id: "t1", content: "altro" }));
-    expect(s.nodes["t1"].text?.style.fontSize).toBe(16);
-    expect(s.nodes["t1"].text?.style.fontFamily).toBe("Inter");
+    expect(s.nodes.at("t1").text?.style.fontSize).toBe(16);
+    expect(s.nodes.at("t1").text?.style.fontFamily).toBe("Inter");
     // È il FLAG a decidere, non la presenza del sotto-messaggio: uno `style`
     // esplicito con stylePresent=false va ignorato lo stesso.
     s = applyOp(s, setTextOp({ id: "t1", content: "terzo", style: { fontSize: 99 } }));
-    expect(s.nodes["t1"].text?.style.fontSize).toBe(16);
-    expect(s.nodes["t1"].text?.content).toBe("terzo");
+    expect(s.nodes.at("t1").text?.style.fontSize).toBe(16);
+    expect(s.nodes.at("t1").text?.content).toBe("terzo");
   });
 
   it("replaces the style when stylePresent is true", () => {
@@ -634,7 +634,7 @@ describe("applyOp: setText", () => {
       id: "t1", content: "ciao", stylePresent: true,
       style: { fontFamily: "Inter", fontSize: 32, fontWeight: "700", lineHeight: 1.5, align: TextAlign.CENTER },
     }));
-    expect(s.nodes["t1"].text?.style).toEqual({
+    expect(s.nodes.at("t1").text?.style).toEqual({
       fontFamily: "Inter", fontSize: 32, fontWeight: "700", lineHeight: 1.5, align: "center",
     });
   });
@@ -644,7 +644,7 @@ describe("applyOp: setText", () => {
     s = applyOp(s, setTextOp({ id: "t1", content: "ciao", stylePresent: true }));
     // Go assegna nil e legge poi i campi con i getter nil-safe (tutti a zero);
     // NodeLite appiattisce, quindi la controparte è uno stile tutto a zero.
-    expect(s.nodes["t1"].text?.style).toEqual({
+    expect(s.nodes.at("t1").text?.style).toEqual({
       fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left",
     });
   });
@@ -668,8 +668,8 @@ describe("applyOp: image", () => {
     });
     const op = create(OpSchema, { opId: "op-i1", docId: "doc1", kind: { case: "createNode", value: { node } } });
     const s = applyOp(emptyScene("doc1", "Untitled"), op);
-    expect(s.nodes["i1"].kind).toBe("image");
-    expect(s.nodes["i1"].image?.assetHash).toBe(HASH);
+    expect(s.nodes.at("i1").kind).toBe("image");
+    expect(s.nodes.at("i1").image?.assetHash).toBe(HASH);
   });
 
   it("sposta e ridimensiona un'immagine senza toccare l'hash", () => {
@@ -677,9 +677,9 @@ describe("applyOp: image", () => {
     const move = create(OpSchema, { opId: "m", docId: "doc1", kind: { case: "setProps", value: {
       id: "i1", patch: create(NodeSchema, { x: 300, y: 400 }), mask: { paths: ["x", "y"] } } } });
     s = applyOp(s, move);
-    expect(s.nodes["i1"].x).toBe(300);
-    expect(s.nodes["i1"].image?.assetHash).toBe(HASH);
-    expect(s.nodes["i1"].kind).toBe("image");
+    expect(s.nodes.at("i1").x).toBe(300);
+    expect(s.nodes.at("i1").image?.assetHash).toBe(HASH);
+    expect(s.nodes.at("i1").kind).toBe("image");
   });
 
   // Parità con core.applySetProps: l'immagine è nell'elenco delle forme che
@@ -695,16 +695,16 @@ describe("applyOp: image", () => {
     } } });
     const after = applyOp(s, op);
     expect(after).toEqual(s);
-    expect(after.nodes["i1"].kind).toBe("image");
-    expect(after.nodes["i1"].image?.assetHash).toBe(HASH);
-    expect(after.nodes["i1"].x).toBe(10);
+    expect(after.nodes.at("i1").kind).toBe("image");
+    expect(after.nodes.at("i1").image?.assetHash).toBe(HASH);
+    expect(after.nodes.at("i1").x).toBe(10);
   });
 
   it("rifiuta un setText su un'immagine (parità: ErrNotTextNode)", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createImageOp("i1"));
     const after = applyOp(s, setTextOp({ id: "i1", content: "x" }));
     expect(after).toEqual(s);
-    expect(after.nodes["i1"].kind).toBe("image");
+    expect(after.nodes.at("i1").kind).toBe("image");
   });
 });
 
@@ -741,7 +741,7 @@ describe("applyOp: setVectorPath", () => {
     applyOp(emptyScene("doc1", "Untitled"), createVectorOp("v1", [{ anchors: RICH_ANCHORS, closed: false }]));
 
   it("creates a vector node carrying anchors and bezier handles", () => {
-    const n = base().nodes["v1"];
+    const n = base().nodes.at("v1");
     expect(n.kind).toBe("vector");
     expect(n.vector?.subpaths).toEqual([{ anchors: RICH_ANCHORS, closed: false }]);
   });
@@ -752,15 +752,15 @@ describe("applyOp: setVectorPath", () => {
       { anchors: [{ x: 1, y: 2, inX: 0, inY: 0, outX: 0, outY: 0 }], closed: false },
     ];
     const s = applyOp(base(), setVectorPathOp({ id: "v1", subpaths: next }));
-    expect(s.nodes["v1"].vector?.subpaths).toEqual(next);
+    expect(s.nodes.at("v1").vector?.subpaths).toEqual(next);
   });
 
   // Una lista VUOTA è legittima: è il path che l'utente ha svuotato, non un
   // "non specificato" da ignorare (a differenza di setText senza stylePresent).
   it("an empty subpath list empties the path and keeps the node a vector", () => {
     const s = applyOp(base(), setVectorPathOp({ id: "v1" }));
-    expect(s.nodes["v1"].vector?.subpaths).toEqual([]);
-    expect(s.nodes["v1"].kind).toBe("vector");
+    expect(s.nodes.at("v1").vector?.subpaths).toEqual([]);
+    expect(s.nodes.at("v1").kind).toBe("vector");
   });
 
   it("is a no-op on a non-vector node (parity with core: ErrNotVectorNode)", () => {
@@ -769,7 +769,7 @@ describe("applyOp: setVectorPath", () => {
     expect(after).toEqual(s);
     // In particolare la FORMA non cambia: scriverci dentro trasformerebbe il
     // rettangolo in un path in locale mentre il server ha respinto l'op.
-    expect(after.nodes["n1"].kind).toBe("rect");
+    expect(after.nodes.at("n1").kind).toBe("rect");
   });
 
   it("is a no-op on a missing id (parity with core: ErrNodeNotFound)", () => {
@@ -779,9 +779,9 @@ describe("applyOp: setVectorPath", () => {
 
   it("does not mutate the previous state (applyOp is pure)", () => {
     const s = base();
-    const before = s.nodes["v1"].vector?.subpaths;
+    const before = s.nodes.at("v1").vector?.subpaths;
     applyOp(s, setVectorPathOp({ id: "v1", subpaths: [{ anchors: [], closed: true }] }));
-    expect(s.nodes["v1"].vector?.subpaths).toBe(before);
+    expect(s.nodes.at("v1").vector?.subpaths).toBe(before);
     expect(before).toEqual([{ anchors: RICH_ANCHORS, closed: false }]);
   });
 });
@@ -802,17 +802,17 @@ function createFrameOp(id: string, clipsContent: boolean, parentId = "page1") {
 describe("applyOp — frame", () => {
   it("crea un frame con il suo box e il suo clipping", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", true));
-    expect(s.nodes["f1"].kind).toBe("frame");
-    expect(s.nodes["f1"].clipsContent).toBe(true);
+    expect(s.nodes.at("f1").kind).toBe("frame");
+    expect(s.nodes.at("f1").clipsContent).toBe(true);
     // Il box è SUO (a differenza di un gruppo, i cui bounds sono l'unione dei
     // figli): arriva dal createNode e resta lì.
-    expect(s.nodes["f1"].width).toBe(200);
+    expect(s.nodes.at("f1").width).toBe(200);
   });
 
   it("clipsContent false è un valore legittimo, non 'non impostato'", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", false));
-    expect(s.nodes["f1"].kind).toBe("frame");
-    expect(s.nodes["f1"].clipsContent).toBe(false);
+    expect(s.nodes.at("f1").kind).toBe("frame");
+    expect(s.nodes.at("f1").clipsContent).toBe(false);
   });
 
   // Parità con core.applySetProps (Go), che risponde ErrNotRectNode: un frame è
@@ -826,7 +826,7 @@ describe("applyOp — frame", () => {
       mask: { paths: ["x", "corner_radius"] },
     } } }));
     expect(after).toEqual(before);
-    expect(after.nodes["f1"].kind).toBe("frame");
+    expect(after.nodes.at("f1").kind).toBe("frame");
   });
 });
 
@@ -855,7 +855,7 @@ describe("applyOp — pagine", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
     expect(s.pages).toEqual([{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }]);
     s = applyOp(s, createChildOp("n1", "page2"));
-    expect(s.nodes["n1"]?.parentId).toBe("page2");
+    expect(s.nodes.at("n1")?.parentId).toBe("page2");
   });
 
   it("rifiuta un id già preso da una pagina o da un NODO (parità: ErrPageExists)", () => {
@@ -875,7 +875,7 @@ describe("applyOp — pagine", () => {
     s = applyOp(s, createChildOp("keep", "page2"));
     s = applyOp(s, deletePageOp("page1"));
     expect(s.pages).toEqual([{ id: "page2", name: "Page 2" }]);
-    expect(Object.keys(s.nodes)).toEqual(["keep"]);
+    expect([...s.nodes.ids()]).toEqual(["keep"]);
   });
 
   it("non cancella l'ULTIMA pagina (parità: ErrLastPage) né una inesistente", () => {

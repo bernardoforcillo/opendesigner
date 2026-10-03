@@ -132,12 +132,12 @@ describe("gesture coalescing", () => {
 
     // durante il gesto: anteprima locale aggiornata, ma niente sul filo
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200, y: 100 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200, y: 100 });
 
     st.endGesture([moveOp("n1", 200, 100)]);
 
     expect(sync.sent).toHaveLength(1);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 200, y: 100 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200, y: 100 });
   });
 
   it("un gesto su più nodi manda un op PER NODO, non uno per pointermove", () => {
@@ -150,8 +150,8 @@ describe("gesture coalescing", () => {
     st.endGesture([moveOp("n1", 20, 20), moveOp("n2", 320, 20)]);
 
     expect(sync.sent).toHaveLength(2);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 20, y: 20 });
-    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 320, y: 20 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 20, y: 20 });
+    expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 320, y: 20 });
   });
 
   it("lo stato finale è snapshot + op finali: le anteprime non restano attaccate", () => {
@@ -161,7 +161,7 @@ describe("gesture coalescing", () => {
     st.applyLocal(resizeOp("n1", 999, 999));
     st.endGesture([moveOp("n1", 50, 60)]);
 
-    const n1 = useScene.getState().scene!.nodes["n1"];
+    const n1 = useScene.getState().scene!.nodes.at("n1");
     expect(n1).toMatchObject({ x: 50, y: 60, width: 100, height: 80 });
   });
 
@@ -185,7 +185,7 @@ describe("gesture coalescing", () => {
 
     st.cancelGesture();
     expect(useScene.getState().selection).toEqual(["n1", "n2"]);
-    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
   });
 
   it("un gesto senza op finali non cambia nulla e non manda nulla", () => {
@@ -206,7 +206,7 @@ describe("gesture coalescing", () => {
     st.endGesture([moveOp("n1", 40, 40)]);
     st.cancelGesture();
 
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
     expect(sync.sent).toHaveLength(1);
   });
 
@@ -221,12 +221,12 @@ describe("gesture coalescing", () => {
     st.cancelGesture();
 
     // torna al risultato del PRIMO gesto, non allo stato iniziale
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
   });
 
   it("applyLocal fuori da un gesto aggiorna solo lo stato locale", () => {
     useScene.getState().applyLocal(moveOp("n1", 12, 34));
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 12, y: 34 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 12, y: 34 });
     expect(sync.sent).toHaveLength(0);
   });
 
@@ -251,9 +251,9 @@ describe("gesture coalescing", () => {
     st.endGesture([moveOp("n1", 200, 100)]);
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["n1"]).toMatchObject({ x: 200, y: 100 }); // gesto locale
-    expect(scene.nodes["n3"]).toBeDefined(); // creazione remota NON persa
-    expect(scene.nodes["n2"]).toMatchObject({ x: 333, y: 44 }); // modifica remota NON persa
+    expect(scene.nodes.at("n1")).toMatchObject({ x: 200, y: 100 }); // gesto locale
+    expect(scene.nodes.at("n3")).toBeDefined(); // creazione remota NON persa
+    expect(scene.nodes.at("n2")).toMatchObject({ x: 333, y: 44 }); // modifica remota NON persa
     expect(sync.sent).toHaveLength(1); // e sempre un solo op sul filo
   });
 
@@ -266,8 +266,8 @@ describe("gesture coalescing", () => {
 
     const scene = useScene.getState().scene!;
     // annullare il PROPRIO gesto non annulla le modifiche ALTRUI
-    expect(scene.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
-    expect(scene.nodes["n3"]).toBeDefined();
+    expect(scene.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
+    expect(scene.nodes.at("n3")).toBeDefined();
     expect(sync.sent).toHaveLength(0);
   });
 
@@ -281,7 +281,7 @@ describe("gesture coalescing", () => {
     st.cancelGesture();
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["n2"]).toBeUndefined();
+    expect(scene.nodes.at("n2")).toBeUndefined();
     // la selezione ripristinata resta potata: niente maniglie su un nodo morto
     expect(useScene.getState().selection).toEqual(["n1"]);
   });
@@ -293,7 +293,7 @@ describe("gesture coalescing", () => {
     st.apply(deleteOp("n2"));
     st.endGesture([moveOp("n1", 40, 40)]);
 
-    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n2")).toBeUndefined();
     expect(useScene.getState().selection).toEqual(["n1"]);
   });
 
@@ -312,7 +312,7 @@ describe("gesture coalescing", () => {
 
     st.endGesture([createOp("n9", 10, 10)]);
 
-    expect(useScene.getState().scene!.nodes["n9"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n9")).toBeDefined();
     expect(useScene.getState().selection).toEqual(["n9"]);
   });
 
@@ -338,7 +338,7 @@ describe("gesture coalescing", () => {
 
     st.endGesture([]); // gesto abortito: nessun op finale, n9 non esiste davvero
 
-    expect(useScene.getState().scene!.nodes["n9"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n9")).toBeUndefined();
     expect(useScene.getState().selection).toEqual(["n1"]); // niente maniglie appese
   });
 
@@ -368,7 +368,7 @@ describe("gesture coalescing", () => {
 
     expect(useScene.getState().gesture!.preview.size).toBe(1);
     // ...e l'ultima posizione è comunque quella giusta.
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 2000, y: 1000 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 2000, y: 1000 });
   });
 
   it("un drag su più nodi tiene UNA voce di anteprima per nodo", () => {
@@ -381,8 +381,8 @@ describe("gesture coalescing", () => {
 
     expect(useScene.getState().gesture!.preview.size).toBe(2);
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["n1"]).toMatchObject({ x: 50, y: 50 });
-    expect(scene.nodes["n2"]).toMatchObject({ x: 350, y: 50 });
+    expect(scene.nodes.at("n1")).toMatchObject({ x: 50, y: 50 });
+    expect(scene.nodes.at("n2")).toMatchObject({ x: 350, y: 50 });
   });
 
   it("anteprime con mask DIVERSE sullo stesso nodo non si schiacciano a vicenda", () => {
@@ -392,7 +392,7 @@ describe("gesture coalescing", () => {
     for (let i = 1; i <= 10; i++) st.applyLocal(moveOp("n1", i, i)); // mask {x,y}
 
     expect(useScene.getState().gesture!.preview.size).toBe(2);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({
       x: 10, y: 10, width: 500, height: 400,
     });
   });
@@ -405,8 +405,8 @@ describe("gesture coalescing", () => {
 
     expect(useScene.getState().gesture!.preview.size).toBe(2);
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["n9"]).toBeDefined();
-    expect(scene.nodes["n10"]).toBeDefined();
+    expect(scene.nodes.at("n9")).toBeDefined();
+    expect(scene.nodes.at("n10")).toBeDefined();
   });
 
   // Stesso problema del drag, sorgente diversa: una sessione di editing del
@@ -423,7 +423,7 @@ describe("gesture coalescing", () => {
     for (const s of ["c", "ci", "cia", "ciao"]) st.applyLocal(setTextOp("t1", s));
 
     expect(useScene.getState().gesture!.preview.size).toBe(1);
-    expect(useScene.getState().scene!.nodes["t1"].text!.content).toBe("ciao");
+    expect(useScene.getState().scene!.nodes.at("t1").text!.content).toBe("ciao");
   });
 
   it("un setText di solo CONTENUTO non schiaccia quello che porta anche lo STILE", () => {
@@ -437,7 +437,7 @@ describe("gesture coalescing", () => {
     st.applyLocal(setTextOp("t1", "ciao mondo"));
 
     expect(useScene.getState().gesture!.preview.size).toBe(2);
-    const t = useScene.getState().scene!.nodes["t1"].text!;
+    const t = useScene.getState().scene!.nodes.at("t1").text!;
     expect(t.content).toBe("ciao mondo");
     expect(t.style.fontSize).toBe(42);
   });
@@ -456,7 +456,7 @@ describe("gesture coalescing", () => {
 
     expect(useScene.getState().gesture!.preview.size).toBe(1);
     // ...e l'ultima geometria è comunque quella giusta.
-    expect(useScene.getState().scene!.nodes["v1"].vector!.subpaths).toEqual([
+    expect(useScene.getState().scene!.nodes.at("v1").vector!.subpaths).toEqual([
       { anchors: [
         { x: 0, y: 0, inX: 0, inY: 0, outX: 0, outY: 0 },
         { x: 600, y: 400, inX: 0, inY: 0, outX: 0, outY: 0 },
@@ -477,7 +477,7 @@ describe("gesture coalescing", () => {
     }
 
     expect(useScene.getState().gesture!.preview.size).toBe(2);
-    const n = useScene.getState().scene!.nodes["v1"];
+    const n = useScene.getState().scene!.nodes.at("v1");
     expect(n).toMatchObject({ width: 30, height: 20 });
     expect(n.vector!.subpaths[0].anchors[1]).toMatchObject({ x: 30, y: 20 });
   });
@@ -491,9 +491,9 @@ describe("gesture coalescing", () => {
     st.apply(moveOp("n2", 333, 44)); // l'altra tab muove n2: la vista si ricalcola
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes["n2"]).toMatchObject({ x: 333, y: 44 }); // remoto applicato
+    expect(scene.nodes.at("n2")).toMatchObject({ x: 333, y: 44 }); // remoto applicato
     // ...e l'anteprima locale è ancora tutta lì, entrambe le mask comprese.
-    expect(scene.nodes["n1"]).toMatchObject({ x: 100, y: 100, width: 500, height: 400 });
+    expect(scene.nodes.at("n1")).toMatchObject({ x: 100, y: 100, width: 500, height: 400 });
     expect(useScene.getState().gesture!.preview.size).toBe(2);
   });
 
@@ -519,7 +519,7 @@ describe("gesture coalescing", () => {
       st.cancelGesture();
 
       // deve tornare al vero inizio (0,0), non allo stato di metà drag (40,40)
-      expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+      expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0][0])).toContain("beginGesture");
     });
@@ -531,7 +531,7 @@ describe("gesture coalescing", () => {
       st.beginGesture(); // misuso
       st.cancelGesture();
 
-      expect(useScene.getState().scene!.nodes["n3"]).toBeDefined();
+      expect(useScene.getState().scene!.nodes.at("n3")).toBeDefined();
     });
 
     it("endGesture senza gesto aperto segnala ma manda comunque gli op", () => {
@@ -539,7 +539,7 @@ describe("gesture coalescing", () => {
       st.endGesture([moveOp("n1", 40, 40)]); // misuso: nessun beginGesture
 
       expect(sync.sent).toHaveLength(1);
-      expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+      expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
       expect(warn).toHaveBeenCalledTimes(1);
       expect(String(warn.mock.calls[0][0])).toContain("endGesture");
     });

@@ -302,3 +302,89 @@ describe("nodesToSvg — immagini", () => {
     expect(svg).toContain('href="/a?x=1&amp;y=2"');
   });
 });
+
+describe("nodesToSvg — gradienti", () => {
+  const grad = {
+    r: 1, g: 0, b: 0, a: 1,
+    gradient: {
+      kind: "linear" as const,
+      stops: [
+        { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 },
+        { color: { r: 0, g: 0, b: 1, a: 0.5 }, position: 1 },
+      ],
+      x1: 0, y1: 0, x2: 1, y2: 0,
+    },
+  };
+
+  it("un fill lineare scrive un <linearGradient> in <defs> in coordinate mondo", () => {
+    const svg = nodesToSvg([node({ id: "a", x: 10, y: 20, width: 100, height: 40, fills: [grad] })], FULL, measure);
+    expect(svg).toContain('<defs><linearGradient id="g0" x1="10" y1="20" x2="110" y2="20" gradientUnits="userSpaceOnUse">');
+    expect(svg).toContain('<stop offset="0" stop-color="rgb(255,0,0)"/>');
+    expect(svg).toContain('<stop offset="1" stop-color="rgb(0,0,255)" stop-opacity="0.5"/>');
+    expect(svg).toContain('fill="url(#g0)"');
+  });
+
+  it("un radiale scrive <radialGradient> con cx/cy/r", () => {
+    const radial = { ...grad, gradient: { ...grad.gradient, kind: "radial" as const, x1: 0.5, y1: 0.5, x2: 1, y2: 0.5 } };
+    const svg = nodesToSvg([node({ id: "a", width: 100, height: 100, fills: [radial] })], FULL, measure);
+    expect(svg).toContain('<radialGradient id="g0" cx="50" cy="50" r="50" gradientUnits="userSpaceOnUse">');
+  });
+
+  it("due nodi con gradiente hanno id distinti; senza gradienti niente <defs>", () => {
+    const two = nodesToSvg([node({ id: "a", fills: [grad] }), node({ id: "b", fills: [grad] })], FULL, measure);
+    expect(two).toContain('id="g0"');
+    expect(two).toContain('id="g1"');
+    expect(nodesToSvg([node({ id: "a" })], FULL, measure)).not.toContain("<defs>");
+  });
+});
+
+describe("nodesToSvg — effetti", () => {
+  const sh = { kind: "dropShadow" as const, color: { r: 0, g: 0, b: 0, a: 0.25 }, offsetX: 2, offsetY: 4, blur: 10 };
+
+  it("un'ombra diventa un <filter> con feDropShadow (deviazione = blur/2)", () => {
+    const svg = nodesToSvg([node({ id: "a", x: 10, y: 20, width: 100, height: 40, effects: [sh] })], FULL, measure);
+    expect(svg).toContain('<feDropShadow dx="2" dy="4" stdDeviation="5" flood-color="rgb(0,0,0)" flood-opacity="0.25"/>');
+    expect(svg).toContain('filter="url(#f0)"');
+    expect(svg).toContain('filterUnits="userSpaceOnUse"');
+    // La regione contiene l'offset e la sfocatura: 4 + 15 + 1 = 20 di margine.
+    expect(svg).toContain('<filter id="f0" x="-10" y="0" width="140" height="80"');
+  });
+
+  it("ombra + sfocatura: prima l'ombra e poi la sfocatura, nello stesso filtro", () => {
+    const svg = nodesToSvg([node({ id: "a", effects: [sh, { kind: "layerBlur", radius: 3 }] })], FULL, measure);
+    expect(svg.indexOf("<feDropShadow")).toBeLessThan(svg.indexOf("<feGaussianBlur"));
+    expect(svg).toContain('<feGaussianBlur stdDeviation="3"/>');
+    expect(svg.match(/<filter /g)).toHaveLength(1);
+  });
+
+  it("un nodo senza effetti non scrive filtri; gradiente ed effetto convivono con id distinti", () => {
+    expect(nodesToSvg([node({ id: "a" })], FULL, measure)).not.toContain("<filter");
+    const grad = {
+      r: 1, g: 0, b: 0, a: 1,
+      gradient: { kind: "linear" as const, x1: 0, y1: 0, x2: 1, y2: 0, stops: [
+        { color: { r: 1, g: 0, b: 0, a: 1 }, position: 0 }, { color: { r: 0, g: 0, b: 1, a: 1 }, position: 1 },
+      ] },
+    };
+    const both = nodesToSvg([node({ id: "a", fills: [grad], effects: [sh] })], FULL, measure);
+    expect(both).toContain('fill="url(#g0)"');
+    expect(both).toContain('filter="url(#f1)"');
+  });
+});
+
+describe("nodesToSvg — frame", () => {
+  it("un frame senza riempimento è trasparente, non grigio", () => {
+    const svg = nodesToSvg([node({ id: "f", kind: "frame", fills: [] })], FULL, measure);
+    expect(svg).toContain('fill="none"');
+    expect(svg).not.toContain("rgb(204,204,204)");
+  });
+
+  it("un frame con riempimento lo scrive come ogni altra forma", () => {
+    const svg = nodesToSvg([node({ id: "f", kind: "frame", fills: [{ r: 1, g: 1, b: 1, a: 1 }] })], FULL, measure);
+    expect(svg).toContain('fill="rgb(255,255,255)"');
+  });
+
+  it("un rettangolo senza riempimento resta grigio (l'eccezione è dei frame)", () => {
+    const svg = nodesToSvg([node({ id: "r", fills: [] })], FULL, measure);
+    expect(svg).toContain('fill="rgb(204,204,204)"');
+  });
+});

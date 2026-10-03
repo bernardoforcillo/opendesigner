@@ -1,8 +1,10 @@
-import type { NodeLite } from "../store/types";
+import type { FillLite, NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
-import { resolvedFill } from "../renderer/canvasRenderer";
+import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
+import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
+import { subPathsToD } from "../svg/pathData";
 
 // EXPORT SVG — markup a partire dai NODI.
 //
@@ -77,16 +79,136 @@ function attr(name: string, value: string | number): Attr {
 // per l'alfa di fillStyle. Le due opacità si omettono quando valgono 1, che è
 // il loro valore di default in SVG: attributi neutri in ogni elemento sono solo
 // rumore in un file che qualcuno leggerà.
-function paintAttrs(n: NodeLite): (Attr | null)[] {
+function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
+  const opacity = n.opacity === 1 ? null : attr("opacity", n.opacity);
+  // Un frame senza riempimento è trasparente (come nel canvas), non grigio: il
+  // grigio di default di resolvedFill è per le forme.
+  if (n.kind === "frame" && n.fills.length === 0) {
+    const fx = effectsRef(n, defs);
+    return [fx === null ? null : attr("filter", fx), attr("fill", "none"), opacity];
+  }
   const f = resolvedFill(n);
+  // Il gradiente prima dell'effetto: gli id in <defs> seguono l'ordine di
+  // creazione, e un file stabile è più facile da leggere e da confrontare.
+  const ref = gradientRef(n, f, defs);
+  const fx = effectsRef(n, defs);
   return [
-    attr("fill", `rgb(${channel(f.r)},${channel(f.g)},${channel(f.b)})`),
-    f.a === 1 ? null : attr("fill-opacity", f.a),
-    n.opacity === 1 ? null : attr("opacity", n.opacity),
+    fx === null ? null : attr("filter", fx),
+    attr("fill", ref ?? `rgb(${channel(f.r)},${channel(f.g)},${channel(f.b)})`),
+    f.a === 1 || ref !== null ? null : attr("fill-opacity", f.a),
+    opacity,
   ];
 }
 
-function rectElement(n: NodeLite): string {
+// Gli effetti diventano UN <filter> in <defs>: la prima ombra (feDropShadow) e
+// poi la prima sfocatura (feGaussianBlur), nello stesso ordine in cui il canvas
+// li applica -- la sfocatura vale anche per l'ombra. Come nel canvas, il
+// renderer sceglie la prima ombra e la prima sfocatura del nodo
+// (renderer/canvasRenderer.ts::firstShadow).
+//
+// `blur` dell'ombra è il raggio del canvas 2D, di cui la deviazione standard è
+// la metà (feDropShadow vuole la deviazione); `radius` della sfocatura è già una
+// deviazione standard. La regione del filtro è in coordinate del documento,
+// larga abbastanza da contenere offset e sfocatura: il default (-10%/120%)
+// ritaglierebbe un'ombra distante.
+function effectsRef(n: NodeLite, defs: string[]): string | null {
+  const shadow = firstShadow(n);
+  const blur = firstBlur(n);
+  if (!shadow && !blur) return null;
+  const id = `f${defs.length}`;
+  const pad =
+    (shadow ? Math.max(Math.abs(shadow.offsetX), Math.abs(shadow.offsetY)) + shadow.blur * 1.5 : 0) +
+    (blur ? blur.radius * 3 : 0) + 1;
+  const prims =
+    (shadow
+      ? `<feDropShadow${attrs([
+          attr("dx", shadow.offsetX), attr("dy", shadow.offsetY), attr("stdDeviation", shadow.blur / 2),
+          attr("flood-color", `rgb(${channel(shadow.color.r)},${channel(shadow.color.g)},${channel(shadow.color.b)})`),
+          shadow.color.a === 1 ? null : attr("flood-opacity", shadow.color.a),
+        ])}/>`
+      : "") +
+    (blur ? `<feGaussianBlur${attrs([attr("stdDeviation", blur.radius)])}/>` : "");
+  defs.push(
+    `<filter${attrs([
+      attr("id", id), attr("x", n.x - pad), attr("y", n.y - pad),
+      attr("width", n.width + 2 * pad), attr("height", n.height + 2 * pad),
+    ])} filterUnits="userSpaceOnUse" color-interpolation-filters="sRGB">${prims}</filter>`,
+  );
+  return `url(#${id})`;
+}
+
+// Un gradiente diventa un <linearGradient>/<radialGradient> in <defs>, con le
+// stesse coordinate MONDO che il canvas calcola in renderer/canvasRenderer.ts::
+// paintStyle (userSpaceOnUse): niente bbox, quindi nessuna deformazione. Ritorna
+// il riferimento `url(#id)` da mettere in `fill`, oppure null per le tinte
+// piatte e per i gradienti degeneri (stessi casi del canvas).
+function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  const g = f.gradient;
+  if (!g || g.stops.length < 2) return null;
+  const x1 = n.x + g.x1 * n.width, y1 = n.y + g.y1 * n.height;
+  const x2 = n.x + g.x2 * n.width, y2 = n.y + g.y2 * n.height;
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  if (!(len > 0)) return null;
+  const id = `g${defs.length}`;
+  const stops = g.stops
+    .map((st) => `<stop${attrs([
+      attr("offset", Math.min(1, Math.max(0, st.position))),
+      attr("stop-color", `rgb(${channel(st.color.r)},${channel(st.color.g)},${channel(st.color.b)})`),
+      st.color.a === 1 ? null : attr("stop-opacity", st.color.a),
+    ])}/>`)
+    .join("");
+  const geom = g.kind === "linear"
+    ? attrs([attr("x1", x1), attr("y1", y1), attr("x2", x2), attr("y2", y2)])
+    : attrs([attr("cx", x1), attr("cy", y1), attr("r", len)]);
+  const tag = g.kind === "linear" ? "linearGradient" : "radialGradient";
+  defs.push(`<${tag}${attrs([attr("id", id)])}${geom} gradientUnits="userSpaceOnUse">${stops}</${tag}>`);
+  return `url(#${id})`;
+}
+
+// Il TRATTO di un nodo: il primo con peso positivo (come il canvas ne disegna
+// uno per strokes[i], ma l'SVG ne ha uno solo per elemento). Solo allineamento
+// centrato: è l'unico che SVG sa esprimere senza ritagli.
+function strokeAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
+  const s = n.strokes.find((st) => st.weight > 0);
+  if (!s) return [];
+  const ref = gradientRef(n, s.color, defs);
+  const vs = n.kind === "vector" ? vectorStyleOf(n) : null;
+  return [
+    attr("stroke", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
+    s.color.a === 1 || ref !== null ? null : attr("stroke-opacity", s.color.a),
+    attr("stroke-width", s.weight),
+    vs && vs.cap !== "butt" ? attr("stroke-linecap", vs.cap) : null,
+    vs && vs.join !== "miter" ? attr("stroke-linejoin", vs.join) : null,
+    vs && hasRealStroke(n) && vs.miter !== 4 ? attr("stroke-miterlimit", vs.miter) : null,
+    vs && vs.dash.length > 0 ? attr("stroke-dasharray", vs.dash.map(fmt).join(" ")) : null,
+    vs && vs.dash.length > 0 && vs.dashOffset !== 0 ? attr("stroke-dashoffset", vs.dashOffset) : null,
+  ];
+}
+
+// Un vettoriale come <path>. Il canvas riempie SOLO i contorni chiusi, mentre
+// SVG riempie anche gli aperti (chiudendoli): per restare identici i contorni
+// aperti vanno in un <path> a parte, senza riempimento.
+function vectorElement(n: NodeLite, defs: string[]): string {
+  const subs = n.vector?.subpaths ?? [];
+  const vs = vectorStyleOf(n);
+  const closed = subs.filter((sp) => sp.closed && sp.anchors.length >= 2);
+  const open = subs.filter((sp) => !(sp.closed && sp.anchors.length >= 2) && sp.anchors.length >= 1);
+  const stroke = strokeAttrs(n, defs);
+  const out: string[] = [];
+  const rule = attr("fill-rule", vs.fillRule ?? "evenodd");
+  if (closed.length > 0) {
+    out.push(`<path${attrs([attr("d", subPathsToD(closed, n.x, n.y, DECIMALS)), ...paintAttrs(n, defs), rule, ...stroke])}/>`);
+  }
+  if (open.length > 0 && stroke.length > 0) {
+    out.push(`<path${attrs([
+      attr("d", subPathsToD(open, n.x, n.y, DECIMALS)), attr("fill", "none"),
+      n.opacity === 1 ? null : attr("opacity", n.opacity), ...stroke,
+    ])}/>`);
+  }
+  return out.join("");
+}
+
+function rectElement(n: NodeLite, defs: string[]): string {
   // Il raggio si clampa a metà del lato più corto, come fa CanvasRenderingContext2D
   // .roundRect: senza, la stessa forma verrebbe disegnata in modo diverso dal
   // canvas e dal visualizzatore SVG. (Anche la specifica SVG clampa rx, ma
@@ -95,15 +217,17 @@ function rectElement(n: NodeLite): string {
   return `<rect${attrs([
     attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height),
     r > 0 ? attr("rx", r) : null,
-    ...paintAttrs(n),
+    ...paintAttrs(n, defs),
+    ...strokeAttrs(n, defs),
   ])}/>`;
 }
 
-function ellipseElement(n: NodeLite): string {
+function ellipseElement(n: NodeLite, defs: string[]): string {
   return `<ellipse${attrs([
     attr("cx", n.x + n.width / 2), attr("cy", n.y + n.height / 2),
     attr("rx", n.width / 2), attr("ry", n.height / 2),
-    ...paintAttrs(n),
+    ...paintAttrs(n, defs),
+    ...strokeAttrs(n, defs),
   ])}/>`;
 }
 
@@ -116,7 +240,7 @@ function ellipseElement(n: NodeLite): string {
 // Ritorna "" per un testo vuoto -- il canvas in quel caso non disegna niente
 // (drawText esce subito), e un <text> vuoto nel file sarebbe un elemento in
 // più che non rappresenta nulla.
-function textElement(n: NodeLite, measure: MeasureText): string {
+function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string {
   const style = n.text?.style;
   if (!style) return "";
   const lines = placeTextLines((s) => measure(s, style), n);
@@ -132,7 +256,7 @@ function textElement(n: NodeLite, measure: MeasureText): string {
     attr("font-family", fontFamilyOf(style)),
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
-    ...paintAttrs(n),
+    ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }
 
@@ -162,8 +286,10 @@ const PLACEHOLDER_LINE_OPACITY = 0.35;
 // mentre il default SVG ("xMidYMid meet") la adatterebbe dentro lasciando dei
 // margini. Senza questo attributo lo stesso documento avrebbe due aspetti
 // diversi a seconda di dove lo si guarda.
-function imageElement(n: NodeLite, href: string): string {
+function imageElement(n: NodeLite, href: string, defs: string[]): string {
+  const fx = effectsRef(n, defs);
   return `<image${attrs([
+    fx === null ? null : attr("filter", fx),
     attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height),
     attr("href", href),
     { name: "preserveAspectRatio", value: "none" },
@@ -196,14 +322,15 @@ function imagePlaceholderElement(n: NodeLite): string {
   return `<g${attrs([n.opacity === 1 ? null : attr("opacity", n.opacity)])}>${body}</g>`;
 }
 
-function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref): string {
-  if (n.kind === "text") return textElement(n, measure);
-  if (n.kind === "ellipse") return ellipseElement(n);
+function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs: string[]): string {
+  if (n.kind === "text") return textElement(n, measure, defs);
+  if (n.kind === "ellipse") return ellipseElement(n, defs);
+  if (n.kind === "vector") return vectorElement(n, defs);
   if (n.kind === "image") {
     const uri = href(n.image?.assetHash ?? "");
-    return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri);
+    return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri, defs);
   }
-  return rectElement(n);
+  return rectElement(n, defs);
 }
 
 /**
@@ -227,8 +354,9 @@ export function nodesToSvg(
   // uno che riferisce URL locali destinati a rompersi altrove.
   href: ResolveImageHref = () => null,
 ): string {
+  const defs: string[] = [];
   const body = nodes
-    .map((n) => element(n, measure, href))
+    .map((n) => element(n, measure, href, defs))
     .filter((s) => s !== "")
     .map((s) => `  ${s}`)
     .join("\n");
@@ -236,5 +364,6 @@ export function nodesToSvg(
     `<svg xmlns="http://www.w3.org/2000/svg"` +
     attrs([attr("width", bounds.width), attr("height", bounds.height)]) +
     ` viewBox="${fmt(bounds.x)} ${fmt(bounds.y)} ${fmt(bounds.width)} ${fmt(bounds.height)}">`;
-  return `${head}\n${body}${body === "" ? "" : "\n"}</svg>\n`;
+  const defsBlock = defs.length === 0 ? "" : `\n  <defs>${defs.join("")}</defs>`;
+  return `${head}${defsBlock}\n${body}${body === "" ? "" : "\n"}</svg>\n`;
 }

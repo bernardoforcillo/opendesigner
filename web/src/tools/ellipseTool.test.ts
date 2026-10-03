@@ -1,3 +1,4 @@
+import { nodesOf } from "../store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createEllipseTool, DEFAULT_ELLIPSE_HEIGHT, DEFAULT_ELLIPSE_WIDTH } from "./ellipseTool";
 import type { ToolContext } from "./types";
@@ -122,7 +123,7 @@ describe("ellipseTool", () => {
   });
 
   it("derives the order key from the scene so it never collides after a reload", () => {
-    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { a: node("a", "a000004") } });
+    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ a: node("a", "a000004") }) });
     const tool = createEllipseTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(0, 0), ctx);
@@ -175,20 +176,20 @@ describe("ellipseTool", () => {
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerUp!(at(60, 80), ctx);
     const id = createdNode(submitted[0]).id;
-    expect(useScene.getState().scene!.nodes[id].kind).toBe("ellipse");
+    expect(useScene.getState().scene!.nodes.at(id).kind).toBe("ellipse");
 
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at(id)).toBeUndefined();
 
     useScene.getState().redo();
-    expect(useScene.getState().scene!.nodes[id].kind).toBe("ellipse");
+    expect(useScene.getState().scene!.nodes.at(id).kind).toBe("ellipse");
   });
 
   it("does not move or select anything: pointermove without a pending create is inert", () => {
     const tool = createEllipseTool();
     const { ctx, submitted } = fakeCtx();
     useScene.setState({ selection: [] });
-    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { a: node("a", "a000000") } });
+    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ a: node("a", "a000000") }) });
     tool.onPointerMove!(at(5, 5), ctx);
     tool.onPointerUp!(at(5, 5), ctx);
     expect(submitted).toHaveLength(0);

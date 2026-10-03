@@ -1,0 +1,372 @@
+import { type Bounds, boundsOfNode, inflateBounds, intersectBounds, unionBounds, worldVisualAabbOfNode } from "../canvas/geometry";
+import { IDENTITY, type Transform, compose, localTransformOf, mapBounds, worldTransformOf } from "../canvas/transform";
+import { contentWorldBounds } from "../store/groups";
+import { bySiblingOrder, childIndexOf } from "../store/tree";
+import { PEditor, PMap } from "../store/nodeMap";
+import { deltaOf } from "../store/sceneDelta";
+import type { NodeLite, SceneState } from "../store/types";
+
+// L'INDICE DI SCENA: ciò che il renderer sa del documento e che non cambia
+// finché il documento non cambia.
+//
+// Prima, ogni frame ricostruiva l'indice dei figli (una scansione dell'intera
+// mappa e un sort per container) e disegnava OGNI nodo, visibile o no. Con
+// 20.000 nodi erano ~140 ms per frame anche con una sola schermata inquadrata.
+// L'indice sposta quel lavoro a una volta per scena (le scene sono immutabili e
+// ricostruite a ogni op, quindi l'identità della scena è la chiave di cache) e
+// dà al disegno e all'hit-test ciò che serve per saltare interi sottoalberi:
+//
+//   - `children`: i figli per parent, già ordinati (come childIndexOf);
+//   - `extent`: per ogni nodo visibile, il rettangolo MONDO che copre TUTTO ciò
+//     che il nodo disegna insieme al suo sottoalbero. Se non incontra la vista,
+//     nessun pixel di quel sottoalbero può comparire.
+//
+// `extent` è CONSERVATIVO: errare in eccesso (disegnare un nodo in più) costa un
+// po' di tempo, errare in difetto (saltarne uno che si vede) è un bug visibile.
+// Per questo include le sporgenze di tratto, ombra e sfocatura, e per il testo
+// -- che sporge dal proprio box e non ha bisogno di un ctx per dirlo -- una
+// stima abbondante.
+export interface SceneIndex {
+  children: Map<string, NodeLite[]>;
+  extent: PMap<Bounds>;
+  // Un token d'identità che cambia SOLO quando cambia la STRUTTURA dell'albero
+  // vista da chi lo elenca: chi sta dove, in che ordine, e ciò che una riga
+  // mostra (nome, tipo, visibilità, testo). Una modifica di sola geometria o di
+  // pittura lascia lo stesso token. Il pannello Livelli ci ricalcola le sue
+  // righe -- 20.000 oggetti, per un documento grande -- solo quando serve,
+  // invece che a ogni passo di un trascinamento.
+  structure: object;
+}
+
+// Una modifica a questo nodo cambia ciò che il pannello Livelli mostra o come
+// ordina?
+function structurallyDifferent(a: NodeLite | undefined, b: NodeLite | undefined): boolean {
+  if (!a || !b) return true;
+  return (
+    a.parentId !== b.parentId || a.orderKey !== b.orderKey || a.visible !== b.visible ||
+    a.name !== b.name || a.kind !== b.kind || a.text?.content !== b.text?.content
+  );
+}
+
+const cache = new WeakMap<SceneState, SceneIndex>();
+// L'ultima scena indicizzata: la base su cui si prova l'aggiornamento
+// incrementale. Una sola, perché il caso che conta è la catena di scene di un
+// gesto (ogni op ne produce una nuova da quella precedente).
+let last: { scene: SceneState; index: SceneIndex } | null = null;
+
+export function sceneIndexOf(scene: SceneState): SceneIndex {
+  let idx = cache.get(scene);
+  if (idx) return idx;
+  // La provenienza registrata da applyOp dice quali nodi sono stati toccati: se
+  // la scena di partenza ha un indice, si evita il confronto di tutti i nodi.
+  const delta = deltaOf(scene);
+  const base = delta ? cache.get(delta.prev) : undefined;
+  if (delta && base) idx = updateIndex(delta.prev, base, scene, delta.changed) ?? undefined;
+  if (!idx && last) idx = updateIndex(last.scene, last.index, scene) ?? undefined;
+  if (!idx) idx = buildIndex(scene);
+  cache.set(scene, idx);
+  last = { scene, index: idx };
+  return idx;
+}
+
+// Lo scarto massimo, oltre al box, con cui un nodo dipinge: tratto (già in
+// worldVisualAabbOfNode), ombra (offset + metà sfocatura come deviazione, ~3
+// deviazioni di coda) e sfocatura del livello (~3 deviazioni).
+export function effectsOutset(n: NodeLite): number {
+  if (!n.effects) return 0;
+  let out = 0;
+  let shadowSeen = false;
+  let blurSeen = false;
+  for (const e of n.effects) {
+    if (e.kind === "dropShadow" && !shadowSeen) {
+      shadowSeen = true;
+      out += Math.max(Math.abs(e.offsetX), Math.abs(e.offsetY)) + e.blur * 1.5;
+    } else if (e.kind === "layerBlur" && !blurSeen && e.radius > 0) {
+      blurSeen = true;
+      out += e.radius * 3;
+    }
+  }
+  return out;
+}
+
+// Il testo non è ritagliato dal proprio box (renderer/text.ts::textPaintBounds),
+// ma misurarlo vuole un ctx. Qui basta un maggiorante: righe stimate con un
+// glifo largo 0.8 em, interlinea abbondante, e margine orizzontale per le
+// parole spezzate o allineate a destra.
+function textBox(n: NodeLite): Bounds {
+  const t = n.text;
+  const box = boundsOfNode(n);
+  if (!t || t.content === "") return box;
+  const size = Math.max(1, t.style.fontSize || 16);
+  const chars = t.content.length;
+  const newlines = (t.content.match(/\n/g) ?? []).length;
+  const wrapWidth = Math.max(n.width, size);
+  const lines = newlines + Math.ceil((chars * size * 0.8) / wrapWidth) + 1;
+  const lineHeight = Math.max(size * 1.6, t.style.lineHeight > 0 ? t.style.lineHeight * 1.2 : 0);
+  const xSlack = n.width < size * 2 ? chars * size * 0.8 : size * 2;
+  return { x: box.x - xSlack, y: box.y, width: box.width + 2 * xSlack, height: Math.max(box.height, lines * lineHeight) };
+}
+
+// Il rettangolo, nello spazio del PARENT, che il nodo dipinge con sé stesso.
+function ownLocalBox(n: NodeLite): Bounds {
+  const base = n.kind === "text" ? textBox(n) : null;
+  const visual = worldVisualAabbOfNode(base ? { ...n, x: base.x, y: base.y, width: base.width, height: base.height } : n);
+  return inflateBounds(visual, effectsOutset(n));
+}
+
+// Il rettangolo che `n` copre dato quello dei suoi figli (già portati al mondo):
+// il proprio, più i figli. Un gruppo non ha niente di proprio, e un FRAME
+// ritagliante conta i figli solo per la parte che ci sta dentro. null se non
+// dipinge nulla.
+function combine(n: NodeLite, parentWorld: Transform, kidExtents: Bounds[]): Bounds | null {
+  const parts: Bounds[] = [];
+  if (n.kind !== "group") parts.push(mapBounds(parentWorld, ownLocalBox(n)));
+  if (n.kind === "frame" && n.clipsContent) {
+    const own = parts[0];
+    for (const kb of kidExtents) {
+      const inside = intersectBounds(kb, own);
+      if (inside) parts.push(inside);
+    }
+  } else {
+    parts.push(...kidExtents);
+  }
+  return unionBounds(parts);
+}
+
+// Percorre un sottoalbero e ne scrive gli extent, azzerando quelli che non
+// valgono più (un nodo reso invisibile, o ora vuoto, non deve lasciare un extent
+// vecchio: il disegno lo disegnerebbe ancora).
+function makeVisitor(scene: SceneState, children: Map<string, NodeLite[]>, extent: PEditor<Bounds>) {
+  const clear = (id: string) => {
+    extent.delete(id);
+    for (const k of children.get(id) ?? []) clear(k.id);
+  };
+  const seen = new Set<string>();
+  const visit = (n: NodeLite, parentWorld: Transform): Bounds | null => {
+    if (!n.visible || seen.has(n.id)) {
+      clear(n.id);
+      return null;
+    }
+    seen.add(n.id);
+
+    // Un'ISTANZA non ha figli in `children`: il suo sottoalbero è virtuale, e
+    // il suo extent è quello del contenuto del master già portato al mondo.
+    if (n.kind === "instance") {
+      const b = contentWorldBounds(scene, n);
+      if (!b) {
+        extent.delete(n.id);
+        return null;
+      }
+      const padded = inflateBounds(b, effectsOutset(n));
+      extent.set(n.id, padded);
+      return padded;
+    }
+
+    const kids = children.get(n.id);
+    const kidExtents: Bounds[] = [];
+    if (kids && kids.length > 0) {
+      const childWorld = compose(parentWorld, localTransformOf(n));
+      for (const k of kids) {
+        const kb = visit(k, childWorld);
+        if (kb) kidExtents.push(kb);
+      }
+    }
+    const u = combine(n, parentWorld, kidExtents);
+    if (u) extent.set(n.id, u);
+    else extent.delete(n.id);
+    return u;
+  };
+  return visit;
+}
+
+export function buildIndex(scene: SceneState): SceneIndex {
+  const children = childIndexOf(scene);
+  const extent = PMap.emptyOf<Bounds>().edit();
+  const visit = makeVisitor(scene, children, extent);
+  for (const page of scene.pages) {
+    for (const r of children.get(page.id) ?? []) visit(r, IDENTITY);
+  }
+  return { children, extent: extent.done(), structure: {} };
+}
+
+// --- AGGIORNAMENTO INCREMENTALE ------------------------------------------------
+//
+// Un gesto (un trascinamento, un resize) produce una scena nuova per ogni op, e
+// quasi tutta uguale alla precedente: gli oggetti nodo NON toccati hanno la
+// stessa identità. Confrontarli costa un passaggio sulla mappa (pochi ms anche a
+// 20.000 nodi), contro il rifacimento dell'indice intero (decine di ms).
+//
+// Si ricalcola SOLO ciò che può essere cambiato: i nodi diversi con il loro
+// sottoalbero (se si sposta un frame si spostano i suoi discendenti), e la
+// catena degli antenati (la loro unione dipende dai figli). Le liste dei figli
+// si ricopiano solo per i parent toccati; `children` ed `extent` sono COPIE,
+// perché l'indice della scena precedente può essere ancora in uso (undo, vista
+// ottimistica contro confermata).
+//
+// Ritorna null quando conviene -- o bisogna -- rifare tutto: troppi nodi
+// cambiati, pagine o componenti diversi, o un cambiamento dentro il master di un
+// componente (gli extent delle istanze ne dipendono).
+const INCREMENTAL_MAX_FRACTION = 0.05;
+const INCREMENTAL_MIN_LIMIT = 64;
+
+function updateIndex(
+  prevScene: SceneState,
+  prev: SceneIndex,
+  scene: SceneState,
+  hint?: readonly string[],
+): SceneIndex | null {
+  if (prevScene.pages !== scene.pages || prevScene.components !== scene.components) return null;
+  const prevNodes = prevScene.nodes;
+  const nodes = scene.nodes;
+
+  const changed: string[] = [];
+  const removed: string[] = [];
+  if (hint) {
+    // Con la provenienza non si scandisce la mappa: i candidati sono i nodi
+    // toccati (quelli rimasti identici non contano), e nessun nodo è rimosso.
+    const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(prev.extent.size * INCREMENTAL_MAX_FRACTION));
+    if (hint.length > limit) return null;
+    // Un id può comparire PIÙ VOLTE nella provenienza: creare un nodo dentro un
+    // frame con auto layout lo registra come "toccato dall'op" e di nuovo come
+    // "ridisposto dal layout". Elaborarlo due volte inseriva il figlio due volte
+    // nella lista del parent e ne perdeva l'extent -- un testo dentro un bottone
+    // sparito dal disegno finché non si ricaricava il documento.
+    const seenHint = new Set<string>();
+    for (const id of hint) {
+      if (seenHint.has(id)) continue;
+      seenHint.add(id);
+      if (nodes.at(id) && prevNodes.at(id) !== nodes.at(id)) changed.push(id);
+    }
+  } else {
+    // Il confronto salta i secchi della mappa con la stessa identità: costa
+    // quanto i secchi toccati, non quanto il documento.
+    const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(nodes.size * INCREMENTAL_MAX_FRACTION));
+    if (!nodes.diff(prevNodes, changed, removed, limit)) return null;
+  }
+  if (changed.length === 0 && removed.length === 0) return prev;
+  const structural = removed.length > 0 || changed.some((id) => structurallyDifferent(prevNodes.at(id), nodes.at(id)));
+
+  // Un cambiamento dentro il sottoalbero di un master di componente sposta gli
+  // extent delle istanze: rifare tutto.
+  const rootIds = Object.values(scene.components).map((c) => c.rootNodeId);
+  if (rootIds.length > 0) {
+    const roots = new Set(rootIds);
+    for (const id of [...changed, ...removed]) {
+      const base = nodes.at(id) ?? prevNodes.at(id);
+      for (let cur: NodeLite | undefined = base, g = 0; cur && g < 1000; cur = (nodes.at(cur.parentId) ?? prevNodes.at(cur.parentId)), g++) {
+        if (roots.has(cur.id)) return null;
+      }
+    }
+  }
+
+  // Le liste dei figli: copie solo dei parent toccati. Un nodo cambiato può aver
+  // cambiato parent o chiave (si riposiziona), o solo geometria (si sostituisce
+  // l'oggetto nella stessa posizione).
+  const children = new Map(prev.children);
+  const touched = new Map<string, NodeLite[]>(); // parentId -> lista copiata (mutabile)
+  const listOf = (parentId: string): NodeLite[] => {
+    let l = touched.get(parentId);
+    if (!l) {
+      l = [...(prev.children.get(parentId) ?? [])];
+      touched.set(parentId, l);
+    }
+    return l;
+  };
+  const dropFrom = (parentId: string, id: string) => {
+    const l = listOf(parentId);
+    const i = l.findIndex((x) => x.id === id);
+    if (i >= 0) l.splice(i, 1);
+  };
+  const insertInto = (parentId: string, n: NodeLite) => {
+    const l = listOf(parentId);
+    let lo = 0;
+    let hi = l.length;
+    while (lo < hi) {
+      const mid = (lo + hi) >> 1;
+      if (bySiblingOrder(l[mid], n) < 0) lo = mid + 1;
+      else hi = mid;
+    }
+    l.splice(lo, 0, n);
+  };
+  for (const id of removed) dropFrom(prevNodes.at(id).parentId, id);
+  for (const id of changed) {
+    const before = prevNodes.at(id);
+    const after = nodes.at(id);
+    if (before) dropFrom(before.parentId, id);
+    insertInto(after.parentId, after);
+  }
+  for (const [pid, list] of touched) {
+    if (list.length === 0) children.delete(pid);
+    else children.set(pid, list);
+  }
+
+  const extent = prev.extent.edit();
+  for (const id of removed) extent.delete(id);
+
+  const worldOf = (parentId: string): Transform => worldTransformOf(scene, parentId);
+  const visit = makeVisitor(scene, children, extent);
+  // Come la costruzione completa, che parte dalle pagine e non entra in un
+  // sottoalbero nascosto: un nodo che sta sotto un antenato nascosto, o che non è
+  // raggiungibile da nessuna pagina (un master di componente), non ha extent.
+  const pageIds = new Set(scene.pages.map((p) => p.id));
+  const drawn = (n: NodeLite): boolean => {
+    for (let cur: NodeLite | undefined = n, g = 0; cur && g < 1000; cur = nodes.at(cur.parentId), g++) {
+      if (!cur.visible) return false;
+      if (pageIds.has(cur.parentId)) return true;
+    }
+    return false;
+  };
+  const clearTree = (id: string) => {
+    extent.delete(id);
+    for (const k of children.get(id) ?? []) clearTree(k.id);
+  };
+  // 1) Sottoalberi dei nodi cambiati (la loro trasformazione può essere nuova).
+  const redone = new Set<string>();
+  for (const id of changed) {
+    // Già rifatto come discendente di un altro cambiato? Un nodo sotto un
+    // cambiato viene comunque rivisitato da lui: si salta.
+    let covered = false;
+    for (let cur = nodes.at(nodes.at(id).parentId), g = 0; cur && g < 1000; cur = nodes.at(cur.parentId), g++) {
+      if (redone.has(cur.id)) { covered = true; break; }
+    }
+    if (covered) continue;
+    redone.add(id);
+    if (drawn(nodes.at(id))) visit(nodes.at(id), worldOf(nodes.at(id).parentId));
+    else clearTree(id);
+  }
+  // Gli antenati toccati: dei cambiati, dei rimossi e dei VECCHI parent di chi
+  // si è spostato. Dal più profondo, con l'unione dei figli già in cache.
+  const up = new Set<string>();
+  const addChain = (startParentId: string) => {
+    for (let cur = nodes.at(startParentId), g = 0; cur && g < 1000; cur = nodes.at(cur.parentId), g++) up.add(cur.id);
+  };
+  for (const id of changed) {
+    addChain(nodes.at(id).parentId);
+    if (prevNodes.at(id)) addChain(prevNodes.at(id).parentId);
+  }
+  for (const id of removed) addChain(prevNodes.at(id).parentId);
+  for (const id of redone) up.delete(id);
+  const depth = (id: string): number => {
+    let d = 0;
+    for (let cur: NodeLite | undefined = nodes.at(id); cur && d < 1000; cur = nodes.at(cur.parentId)) d++;
+    return d;
+  };
+  const chain = [...up].sort((a, b) => depth(b) - depth(a));
+  for (const id of chain) {
+    const n = nodes.at(id);
+    if (!n || n.kind === "instance") continue;
+    if (!drawn(n)) {
+      extent.delete(id);
+      continue;
+    }
+    const kidExtents: Bounds[] = [];
+    for (const k of children.get(id) ?? []) {
+      const e = extent.get(k.id);
+      if (e && k.visible) kidExtents.push(e);
+    }
+    const u = combine(n, worldOf(n.parentId), kidExtents);
+    if (u) extent.set(id, u);
+    else extent.delete(id);
+  }
+  return { children, extent: extent.done(), structure: structural ? {} : prev.structure };
+}

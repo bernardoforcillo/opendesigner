@@ -27,7 +27,7 @@ function tree(): SceneState {
     node("d1", "c1", "a1"),
     node("c2", "g1", "a2"),
     node("other", "page1", "a2"),
-  ]) s.nodes[n.id] = n;
+  ]) s.nodes = s.nodes.set(n.id, n);
   return s;
 }
 
@@ -41,7 +41,7 @@ describe("childrenOf", () => {
       node("z", "g1", "a3"),
       node("a", "g1", "a1"),
       node("m", "g1", "a2"),
-    ]) s.nodes[n.id] = n;
+    ]) s.nodes = s.nodes.set(n.id, n);
     expect(ids(childrenOf(s, "g1"))).toEqual(["a", "m", "z"]);
     // Solo i DIRETTI: g1 è figlio della pagina, i suoi figli no.
     expect(ids(childrenOf(s, "page1"))).toEqual(["g1"]);
@@ -49,7 +49,7 @@ describe("childrenOf", () => {
 
   it("a parità di orderKey ordina per id (l'ordine di Object.values non è definito)", () => {
     const s = emptyScene("doc1", "Untitled");
-    for (const n of [node("b", "page1", "a1"), node("a", "page1", "a1")]) s.nodes[n.id] = n;
+    for (const n of [node("b", "page1", "a1"), node("a", "page1", "a1")]) s.nodes = s.nodes.set(n.id, n);
     expect(ids(childrenOf(s, "page1"))).toEqual(["a", "b"]);
   });
 
@@ -66,14 +66,14 @@ describe("documentOrder", () => {
 
   it("salta i nodi non raggiungibili da una pagina", () => {
     const s = tree();
-    s.nodes["orfano"] = node("orfano", "sparito", "a0");
+    s.nodes = s.nodes.set("orfano", node("orfano", "sparito", "a0"));
     expect(ids(documentOrder(s))).not.toContain("orfano");
   });
 
   it("termina su un documento con un ciclo", () => {
     const s = emptyScene("doc1", "Untitled");
-    s.nodes["a"] = node("a", "b", "a1");
-    s.nodes["b"] = node("b", "a", "a1");
+    s.nodes = s.nodes.set("a", node("a", "b", "a1"));
+    s.nodes = s.nodes.set("b", node("b", "a", "a1"));
     // Nessuno dei due pende da una pagina: il ciclo non è nemmeno raggiungibile.
     expect(documentOrder(s)).toEqual([]);
   });
@@ -86,7 +86,7 @@ describe("documentOrder", () => {
       node("sotto", "page1", "a1"),
       node("figlioSotto", "sotto", "z9"), // order key altissima, ma dentro "sotto"
       node("sopra", "page1", "a2"),
-    ]) s.nodes[n.id] = n;
+    ]) s.nodes = s.nodes.set(n.id, n);
     expect(ids(documentOrder(s))).toEqual(["sotto", "figlioSotto", "sopra"]);
   });
 });
@@ -162,8 +162,8 @@ describe("topmostOf", () => {
 
   it("un ciclo in un documento malformato non manda in loop la potatura", () => {
     const s = emptyScene("doc1", "Untitled");
-    s.nodes["a"] = node("a", "b", "a1");
-    s.nodes["b"] = node("b", "a", "a1");
+    s.nodes = s.nodes.set("a", node("a", "b", "a1"));
+    s.nodes = s.nodes.set("b", node("b", "a", "a1"));
     // Ognuno dei due è antenato dell'altro: la risalita si ferma comunque, e
     // il risultato è vuoto invece che un ciclo infinito.
     expect(topmostOf(s, ["a", "b"])).toEqual([]);
@@ -176,8 +176,8 @@ describe("topmostOf", () => {
 describe("documento malformato", () => {
   it("un ciclo non manda in loop la discesa né la risalita", () => {
     const s = emptyScene("doc1", "Untitled");
-    s.nodes["a"] = node("a", "b", "a1");
-    s.nodes["b"] = node("b", "a", "a1");
+    s.nodes = s.nodes.set("a", node("a", "b", "a1"));
+    s.nodes = s.nodes.set("b", node("b", "a", "a1"));
     expect(ids(subtreeOf(s, "a")).sort()).toEqual(["a", "b"]);
     // La risalita si ferma al primo nodo già visto: "a" non torna in fondo alla
     // propria catena di antenati.
@@ -196,7 +196,7 @@ describe("isReachableFrom", () => {
   function twoPages(): SceneState {
     const s = tree();
     s.pages.push({ id: "page2", name: "Page 2" });
-    s.nodes["far"] = node("far", "page2", "a1");
+    s.nodes = s.nodes.set("far", node("far", "page2", "a1"));
     return s;
   }
 
@@ -220,8 +220,8 @@ describe("isReachableFrom", () => {
 
   it("non manda in loop su un ciclo staccato da ogni pagina", () => {
     const s = emptyScene("doc1", "Untitled");
-    s.nodes["a"] = node("a", "b", "a1");
-    s.nodes["b"] = node("b", "a", "a1");
+    s.nodes = s.nodes.set("a", node("a", "b", "a1"));
+    s.nodes = s.nodes.set("b", node("b", "a", "a1"));
     expect(isReachableFrom(s, "a", "page1")).toBe(false);
   });
 });

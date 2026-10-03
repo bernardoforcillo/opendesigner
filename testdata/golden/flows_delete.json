@@ -1,0 +1,161 @@
+{
+ "docId": "doc1",
+ "ops": [
+  {
+   "opId": "p",
+   "docId": "doc1",
+   "createPage": {
+    "page": {
+     "id": "page2",
+     "name": "Page 2"
+    }
+   }
+  },
+  {
+   "opId": "op1",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "a",
+     "parentId": "page1",
+     "orderKey": "a000001",
+     "name": "a",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "op2",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "b",
+     "parentId": "page2",
+     "orderKey": "a000001",
+     "name": "b",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "f1",
+   "docId": "doc1",
+   "setFlow": {
+    "flow": {
+     "id": "f1",
+     "name": "Uno",
+     "startId": "a"
+    }
+   }
+  },
+  {
+   "opId": "f2",
+   "docId": "doc1",
+   "setFlow": {
+    "flow": {
+     "id": "f2",
+     "name": "Due",
+     "startId": "b"
+    }
+   }
+  },
+  {
+   "opId": "t1",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t1",
+     "flowId": "f1",
+     "fromId": "a",
+     "toId": "b"
+    }
+   }
+  },
+  {
+   "opId": "t2",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t2",
+     "flowId": "f2",
+     "fromId": "b",
+     "toId": "a"
+    }
+   }
+  },
+  {
+   "opId": "df1",
+   "docId": "doc1",
+   "deleteFlow": {
+    "id": "f1"
+   }
+  },
+  {
+   "opId": "df1b",
+   "docId": "doc1",
+   "deleteFlow": {
+    "id": "f1"
+   }
+  },
+  {
+   "opId": "dp",
+   "docId": "doc1",
+   "deletePage": {
+    "id": "page2"
+   }
+  }
+ ],
+ "rejected": [
+  8
+ ],
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "nodes": {
+   "a": {
+    "id": "a",
+    "parentId": "page1",
+    "orderKey": "a000001",
+    "name": "a",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {
+     "cornerRadius": 0
+    }
+   }
+  },
+  "flows": {
+   "f2": {
+    "id": "f2",
+    "name": "Due"
+   }
+  }
+ }
+}

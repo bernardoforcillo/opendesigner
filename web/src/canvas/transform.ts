@@ -201,9 +201,18 @@ function rotationAround(c: Point, deg: number): Transform {
 // due direzioni della stessa cosa, e devono restare la stessa cosa.
 export function localTransformOf(n: NodeLite): Transform {
   const t = translation(n.x, n.y);
-  if (isUnrotated(n.rotation)) return t;
-  const c: Point = { x: n.x + n.width / 2, y: n.y + n.height / 2 };
-  return compose(rotationAround(c, n.rotation), t);
+  // `animScale` esiste solo nelle scene derivate dalla riproduzione
+  // (animation/pose.ts): una scena vera non lo ha mai, e il ramo sotto non costa
+  // nulla a un nodo fermo (stessa traslazione di prima, numeri compresi).
+  const scaled = n.animScale !== undefined && n.animScale !== 1;
+  if (!scaled && isUnrotated(n.rotation)) return t;
+  const c: Point = n.animPivot ?? { x: n.x + n.width / 2, y: n.y + n.height / 2 };
+  const rotated = isUnrotated(n.rotation) ? t : compose(rotationAround(c, n.rotation), t);
+  if (!scaled) return rotated;
+  // Scala UNIFORME attorno allo stesso centro della rotazione: i due commutano.
+  const s = n.animScale as number;
+  const scale: Transform = { a: s, b: 0, c: 0, d: s, e: c.x - s * c.x, f: c.y - s * c.y };
+  return compose(scale, rotated);
 }
 
 // Dallo spazio LOCALE di `id` -- quello in cui sono scritte le coordinate dei
@@ -219,7 +228,7 @@ export function localTransformOf(n: NodeLite): Transform {
 // parent, quindi chi lavora sul box di n (hit-test, bounds, resize) usa
 // `worldTransformOf(scene, n.parentId)`, non `worldTransformOf(scene, n.id)`.
 export function worldTransformOf(scene: SceneState, id: string): Transform {
-  const node = scene.nodes[id];
+  const node = scene.nodes.at(id);
   if (!node) return IDENTITY;
   let t = localTransformOf(node);
   // ancestorsOf: dal più vicino al più lontano, si ferma alla pagina ed è già a

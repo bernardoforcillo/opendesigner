@@ -37,7 +37,8 @@ function deps(over: Partial<ImageDropDeps> = {}): ImageDropDeps {
 }
 
 function nodes(): NodeLite[] {
-  return Object.values(useScene.getState().scene?.nodes ?? {});
+  const s = useScene.getState().scene;
+  return s ? [...s.nodes.values()] : [];
 }
 
 describe("dropImages", () => {

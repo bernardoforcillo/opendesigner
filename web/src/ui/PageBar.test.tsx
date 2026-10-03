@@ -49,6 +49,8 @@ describe("PageBar", () => {
   it("mostra un pulsante per pagina e segna quella corrente", () => {
     useScene.getState().setScene(twoPageScene());
     render(<PageBar />);
+    // Le pagine stanno in un popover: il trigger (nome della corrente) lo apre.
+    fireEvent.click(screen.getByRole("button", { name: "Page 1" }));
     const p1 = screen.getByRole("button", { name: "Page 1" });
     const p2 = screen.getByRole("button", { name: "Page 2" });
     expect(p1).toBeInTheDocument();
@@ -62,6 +64,7 @@ describe("PageBar", () => {
     useScene.getState().setScene(twoPageScene());
     useScene.setState({ selection: ["z"] });
     render(<PageBar />);
+    fireEvent.click(screen.getByRole("button", { name: "Page 1" })); // apre l'elenco
     fireEvent.click(screen.getByRole("button", { name: "Page 2" }));
     expect(useScene.getState().currentPageId).toBe("page2");
     expect(useScene.getState().selection).toEqual([]);

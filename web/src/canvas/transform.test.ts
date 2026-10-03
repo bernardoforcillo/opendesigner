@@ -44,9 +44,9 @@ function node(id: string, parentId: string, x: number, y: number, w = 50, h = 50
 // segno o un livello saltato si vede subito nel numero.
 function nested(): SceneState {
   const s = emptyScene("d", "n");
-  s.nodes["a"] = node("a", "page1", 100, 50);
-  s.nodes["b"] = node("b", "a", 10, 20);
-  s.nodes["c"] = node("c", "b", 3, 4);
+  s.nodes = s.nodes.set("a", node("a", "page1", 100, 50));
+  s.nodes = s.nodes.set("b", node("b", "a", 10, 20));
+  s.nodes = s.nodes.set("c", node("c", "b", 3, 4));
   return s;
 }
 
@@ -246,8 +246,8 @@ describe("worldTransformOf", () => {
 
   it("terminates on a malformed document with a parent cycle", () => {
     const s = emptyScene("d", "n");
-    s.nodes["x"] = node("x", "y", 1, 1);
-    s.nodes["y"] = node("y", "x", 2, 2);
+    s.nodes = s.nodes.set("x", node("x", "y", 1, 1));
+    s.nodes = s.nodes.set("y", node("y", "x", 2, 2));
     // Nessun ciclo infinito: ciò che conta è che RITORNI (il valore su un
     // documento impossibile non è specificato oltre a essere finito).
     expect(Number.isFinite(worldTransformOf(s, "x").e)).toBe(true);
@@ -282,13 +282,13 @@ describe("mapBounds / mapVector", () => {
 describe("worldBoundsOfNode", () => {
   it("is the node's own box for a node under a page", () => {
     const s = nested();
-    expect(worldBoundsOfNode(s, s.nodes["a"])).toEqual({ x: 100, y: 50, width: 50, height: 50 });
+    expect(worldBoundsOfNode(s, s.nodes.at("a"))).toEqual({ x: 100, y: 50, width: 50, height: 50 });
   });
 
   it("offsets a nested node's box by the transform of its ANCESTORS, not its own", () => {
     const s = nested();
     // "c" sta a (3,4) dentro "b", che sta a (10,20) dentro "a", che sta a
     // (100,50): il suo box mondo parte da (113,74) e conserva le dimensioni.
-    expect(worldBoundsOfNode(s, s.nodes["c"])).toEqual({ x: 113, y: 74, width: 50, height: 50 });
+    expect(worldBoundsOfNode(s, s.nodes.at("c"))).toEqual({ x: 113, y: 74, width: 50, height: 50 });
   });
 });

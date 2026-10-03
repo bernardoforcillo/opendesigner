@@ -1,6 +1,9 @@
 import { StrictMode } from "react";
+import { initTheme } from "./ui/shell/theme";
 import { createRoot } from "react-dom/client";
-import { App } from "./ui/App";
+import { Root } from "./home/Root";
 import "./index.css";
 
-createRoot(document.getElementById("root")!).render(<StrictMode><App /></StrictMode>);
+initTheme();
+// La radice sceglie fra Home ed editor dall'hash (home/Root.tsx).
+createRoot(document.getElementById("root")!).render(<StrictMode><Root /></StrictMode>);

@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, StrokeAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { OpSchema, NodeSchema, StrokeAlign, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, type NodeLite } from "./types";
@@ -28,6 +28,20 @@ function createRectOp(id: string): Op {
 function baseScene() {
   return applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1"));
 }
+
+// auto_layout vale solo su un FRAME: la sonda di quel path ha bisogno di n1
+// frame invece che rettangolo, tutte le altre restano sul rettangolo.
+function frameScene() {
+  const node = create(NodeSchema, {
+    id: "n1", parentId: "page1", orderKey: "a0", name: "Frame", visible: true, opacity: 1,
+    x: 0, y: 0, width: 100, height: 80,
+    shape: { case: "frame", value: { clipsContent: true } },
+  });
+  return applyOp(emptyScene("doc1", "Untitled"), create(OpSchema, {
+    opId: "op-frame", docId: "doc1", kind: { case: "createNode", value: { node } },
+  }));
+}
+const sceneFor = (path: string) => (path === "auto_layout" ? frameScene() : baseScene());
 
 function setPropsOp(paths: readonly string[], patch: MessageInitShape<typeof NodeSchema> = {}): Op {
   return create(OpSchema, {
@@ -200,7 +214,43 @@ const PROBE: Probe = {
     },
     expected: [{ color: { r: 0, g: 0, b: 1, a: 1 }, weight: 4, align: "outside" }],
   },
+  // Effetti: ripetuto come fills e strokes. L'oneof `kind` dell'Effect viaggia
+  // annidato come quello del Paint.
+  effects: {
+    patch: {
+      effects: [
+        { kind: { case: "dropShadow", value: { color: { r: 0, g: 0, b: 0, a: 0.5 }, offsetX: 2, offsetY: 4, blur: 8 } } },
+        { kind: { case: "layerBlur", value: { radius: 3 } } },
+      ],
+    },
+    expected: [
+      { kind: "dropShadow", color: { r: 0, g: 0, b: 0, a: 0.5 }, offsetX: 2, offsetY: 4, blur: 8 },
+      { kind: "layerBlur", radius: 3 },
+    ],
+  },
   order_key: { patch: { orderKey: "a5" }, expected: "a5" },
+  // Auto layout: annidato nella forma frame, e vale solo su un frame (sceneFor).
+  // Senza hug: con hug il frame cambierebbe misura e l'uguaglianza esatta con
+  // `before` più il solo campo scritto non reggerebbe.
+  auto_layout: {
+    patch: {
+      shape: {
+        case: "frame",
+        value: {
+          clipsContent: false,
+          autoLayout: {
+            direction: LayoutDirection.VERTICAL, spacing: 8,
+            paddingLeft: 1, paddingTop: 2, paddingRight: 3, paddingBottom: 4,
+            mainAlign: LayoutAlign.CENTER, crossAlign: LayoutAlign.END,
+          },
+        },
+      },
+    },
+    expected: {
+      direction: "vertical", spacing: 8, paddingLeft: 1, paddingTop: 2, paddingRight: 3, paddingBottom: 4,
+      mainAlign: "center", crossAlign: "end", hugWidth: false, hugHeight: false,
+    },
+  },
   // L'unica sonda il cui patch è ANNIDATO: corner_radius sta dentro RectNode,
   // cioè dentro il oneof `shape`, non fra i campi di primo livello del Node.
   // baseScene() crea n1 come rettangolo, quindi la forma combacia (su
@@ -209,6 +259,8 @@ const PROBE: Probe = {
     patch: { shape: { case: "rect", value: { cornerRadius: 12 } } },
     expected: 12,
   },
+  // Mappa libera: la mask sostituisce l'intera mappa.
+  meta: { patch: { meta: { "code.route": "/cart" } }, expected: { "code.route": "/cart" } },
 };
 
 describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", () => {
@@ -231,8 +283,8 @@ describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", ()
 
       // (c) e dopo quel giro applyOp lo applica DAVVERO, scrivendo quel campo
       // e nessun altro (un `case "y": next.x = ...` fallirebbe qui).
-      const before = baseScene().nodes["n1"];
-      const after = applyOp(baseScene(), wired).nodes["n1"];
+      const before = sceneFor(path).nodes.at("n1");
+      const after = applyOp(sceneFor(path), wired).nodes.at("n1");
       expect(after).toEqual({ ...before, [camelOf(path)]: PROBE[path].expected });
     },
   );
@@ -264,7 +316,7 @@ describe("un path fuori da MASK_PATHS fa rifiutare l'INTERO op", () => {
 
     // Parità con core.applySetProps: valida l'intera mask PRIMA di mutare, così
     // "x" non si muove nemmeno se sta nella stessa mask di un path ignoto.
-    expect(applyOp(baseScene(), wired).nodes["n1"]).toEqual(baseScene().nodes["n1"]);
+    expect(applyOp(baseScene(), wired).nodes.at("n1")).toEqual(baseScene().nodes.at("n1"));
   });
 });
 
@@ -295,7 +347,7 @@ describe("makeSetPropsOp non lascia costruire un op con un path non supportato",
     const wired = overWire(op);
     expect(maskOf(wired)).toEqual(["x", "y"]);
 
-    const after = applyOp(baseScene(), wired).nodes["n1"];
+    const after = applyOp(baseScene(), wired).nodes.at("n1");
     expect(after.x).toBe(42);
     expect(after.y).toBe(7);
   });

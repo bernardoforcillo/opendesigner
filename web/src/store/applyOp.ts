@@ -1,8 +1,11 @@
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { type SceneState, type NodeLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { isValidClip } from "../animation/validate";
+import { type SceneState, type ClipLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
+import { layoutTargets, relayout } from "./layout";
+import { recordDelta } from "./sceneDelta";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Un SetProperties SENZA patch NON è un no-op. Go legge il patch con i getter
@@ -13,7 +16,39 @@ import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 const NIL_PATCH: PbNode = create(NodeSchema, {});
 
 // applyOp è puro: NON muta state, ritorna un nuovo oggetto. Parità con core.Apply (Go).
+//
+// Dopo l'op ridispone i frame con auto layout che può aver toccato, come fa
+// core.Apply: i frame interessati si leggono sia PRIMA dell'op (il vecchio
+// parent di un nodo cancellato o spostato) sia DOPO (il nuovo). Vedi
+// store/layout.ts.
 export function applyOp(state: SceneState, op: Op): SceneState {
+  const before = layoutTargets(state, op);
+  const next = applyOpRaw(state, op);
+  if (next === state) return state;
+  const touchedByLayout: string[] = [];
+  const laidOut = relayout(next, [...before, ...layoutTargets(next, op)], touchedByLayout);
+  // Gli op che toccano un solo nodo noto dichiarano quale: chi mantiene
+  // strutture derivate (renderer/sceneIndex.ts) non deve confrontare tutta la
+  // scena per scoprirlo. Gli altri (cancellare, riparentare, pagine,
+  // componenti) non la registrano e ricadono sul confronto completo.
+  const id = singleTouchedNode(op);
+  if (id !== null) recordDelta(laidOut, state, [id, ...touchedByLayout]);
+  return laidOut;
+}
+
+// L'unico nodo che l'op scrive, se ne scrive esattamente uno.
+function singleTouchedNode(op: Op): string | null {
+  const k = op.kind;
+  switch (k.case) {
+    case "createNode": return k.value.node?.id ?? null;
+    case "setProps": return k.value.id;
+    case "setText": return k.value.id;
+    case "setVectorPath": return k.value.id;
+    default: return null;
+  }
+}
+
+function applyOpRaw(state: SceneState, op: Op): SceneState {
   switch (op.kind.case) {
     case "createNode": {
       const pb = op.kind.value.node;
@@ -23,7 +58,7 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // SOVRASCRIVE: un client che sovrascrive in locale diverge in silenzio
       // dal documento autorevole (e l'undo di quell'op sarebbe l'undo di
       // qualcosa che il server non ha mai accettato).
-      if (!pb || pb.id === "" || state.nodes[pb.id]) return state;
+      if (!pb || pb.id === "" || state.nodes.at(pb.id)) return state;
       // Il parent deve ESISTERE (un altro nodo, o una Page per i root):
       // ErrParentNotFound in core.applyCreate (Go). Un nodo con un parent
       // inesistente non è raggiungibile da nessuna pagina -- invisibile sul
@@ -37,11 +72,11 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // silenziosa dei rami parent/id-già-preso. Ordine come in Go: prima il
       // parent, poi il componente.
       if (pb.shape.case === "instance" && !state.components[pb.shape.value.componentId]) return state;
-      return { ...state, nodes: { ...state.nodes, [pb.id]: toNodeLite(pb) } };
+      return { ...state, nodes: state.nodes.set(pb.id, toNodeLite(pb)) };
     }
     case "setProps": {
       const { id, patch, mask } = op.kind.value;
-      const cur = state.nodes[id];
+      const cur = state.nodes.at(id);
       // Nodo inesistente = ErrNodeNotFound in Go: op rifiutato, scena
       // invariata. Il patch mancante invece NON ferma l'op (vedi NIL_PATCH).
       if (!cur) return state;
@@ -78,6 +113,9 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // rispondeva ErrNotRectNode: la divergenza client/documento autorevole che
       // la whitelist esiste per impedire, solo dall'altro lato del filo.
       if (cur.kind !== "rect" && paths.includes("corner_radius")) return state;
+      // Stessa validazione preventiva per auto_layout, che vale solo su un
+      // frame (ErrNotFrameNode in Go): op rifiutato in blocco.
+      if (cur.kind !== "frame" && paths.includes("auto_layout")) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -96,10 +134,25 @@ export function applyOp(state: SceneState, op: Op): SceneState {
           // è il getter nil-safe di Go, ed è anche il modo in cui il pannello
           // proprietà toglie il tratto da un nodo (vedi NIL_PATCH qui sopra).
           case "strokes": next.strokes = toNodeLite(p).strokes; break;
+          // Sostituzione dell'intera lista come `n.Effects = p.GetEffects()` in
+          // Go. Una lista vuota TOGLIE il campo (NodeLite.effects è assente, non
+          // vuoto, quando non ci sono effetti).
+          case "effects": {
+            const fx = toNodeLite(p).effects;
+            if (fx) next.effects = fx; else delete next.effects;
+            break;
+          }
           // Il path è snake_case (la convenzione del .proto e di Go), il campo
           // del modello è camelCase: le due forme coincidevano per tutti i path
           // monoparola di M0/M1a, questo è il primo in cui divergono.
           case "order_key": next.orderKey = p.orderKey; break;
+          // Sostituisce l'intera mappa (come `n.Meta = p.GetMeta()` in Go); una
+          // mappa vuota TOGLIE il campo (NodeLite.meta è assente, non vuoto).
+          case "meta": {
+            const m = toNodeLite(p).meta;
+            if (m) next.meta = m; else delete next.meta;
+            break;
+          }
           // Come per "fills", il valore si estrae dal patch passando da
           // toNodeLite invece di leggerlo a mano: è la STESSA funzione che
           // traduce un Node del filo, quindi il patch senza rect ricade sullo
@@ -107,6 +160,15 @@ export function applyOp(state: SceneState, op: Op): SceneState {
           // .GetCornerRadius()` in Go, senza una seconda regola da tenere
           // allineata.
           case "corner_radius": next.cornerRadius = toNodeLite(p).cornerRadius; break;
+          // Il valore viene dal patch NIDIFICATO nella forma frame, passando da
+          // toNodeLite come per corner_radius. Un patch senza frame (o senza
+          // auto_layout) lo spegne -- come il getter nil-safe di Go -- e il campo
+          // sparisce dal nodo invece di restare "spento".
+          case "auto_layout": {
+            const al = toNodeLite(p).autoLayout;
+            if (al) next.autoLayout = al; else delete next.autoLayout;
+            break;
+          }
           default: {
             // Guardia a compile-time: se MASK_PATHS guadagna un membro senza
             // un case qui sopra, questa riga smette di compilare invece di
@@ -118,14 +180,14 @@ export function applyOp(state: SceneState, op: Op): SceneState {
           }
         }
       }
-      return { ...state, nodes: { ...state.nodes, [id]: next } };
+      return { ...state, nodes: state.nodes.set(id, next) };
     }
     // Op dedicato e non un path della mask di setProps: il contenuto vive
     // DENTRO il oneof `shape` del Node, mentre la mask indirizza campi di primo
     // livello. Parità con core.applySetText (Go).
     case "setText": {
       const { id, content, style, stylePresent } = op.kind.value;
-      const cur = state.nodes[id];
+      const cur = state.nodes.at(id);
       // Nodo inesistente = ErrNodeNotFound in Go.
       if (!cur) return state;
       // Nodo non di testo = ErrNotTextNode in Go: l'op è rifiutato in blocco.
@@ -143,13 +205,13 @@ export function applyOp(state: SceneState, op: Op): SceneState {
         content,
         style: stylePresent ? toTextStyleLite(style) : cur.text.style,
       };
-      return { ...state, nodes: { ...state.nodes, [id]: { ...cur, text } } };
+      return { ...state, nodes: state.nodes.set(id, { ...cur, text }) };
     }
     // Op dedicato e non un path della mask, per la stessa ragione di setText: la
     // geometria vive DENTRO il oneof `shape`. Parità con core.applySetVectorPath (Go).
     case "setVectorPath": {
       const { id, subpaths } = op.kind.value;
-      const cur = state.nodes[id];
+      const cur = state.nodes.at(id);
       // Nodo inesistente = ErrNodeNotFound in Go.
       if (!cur) return state;
       // Nodo non vettoriale = ErrNotVectorNode in Go: l'op è rifiutato in
@@ -163,7 +225,7 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // doveva poter restare intatta; qui l'op È i subpath.
       return {
         ...state,
-        nodes: { ...state.nodes, [id]: { ...cur, vector: { subpaths: toSubPathsLite(subpaths) } } },
+        nodes: state.nodes.set(id, { ...cur, vector: { subpaths: toSubPathsLite(subpaths) } }),
       };
     }
     // Cancella il nodo E TUTTO il suo sottoalbero. Parità con core.applyDelete
@@ -174,10 +236,11 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       const { id } = op.kind.value;
       // Id inesistente = ErrNodeNotFound in Go: op rifiutato, scena invariata
       // (e nessun oggetto nuovo, così i selettori non si svegliano a vuoto).
-      if (!state.nodes[id]) return state;
-      const nodes = { ...state.nodes };
-      for (const n of subtreeOf(state, id)) delete nodes[n.id];
-      return { ...state, nodes };
+      if (!state.nodes.at(id)) return state;
+      const nodes = state.nodes.edit();
+      const gone = new Set<string>();
+      for (const n of subtreeOf(state, id)) { nodes.delete(n.id); gone.add(n.id); }
+      return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone), ...cascadeClips(state, gone) };
     }
     // Op dedicato e non un path della mask di setProps (a differenza di
     // `order_key`) perché ha una validazione che nessun campo ha: il nuovo
@@ -185,7 +248,7 @@ export function applyOp(state: SceneState, op: Op): SceneState {
     // discendente. Parità con core.applyReparent (Go).
     case "reparentNode": {
       const { id, newParentId, orderKey } = op.kind.value;
-      const cur = state.nodes[id];
+      const cur = state.nodes.at(id);
       if (!cur) return state;                                   // ErrNodeNotFound
       if (!parentExists(state, newParentId)) return state;      // ErrParentNotFound
       // Un ciclo staccherebbe il sottoalbero dal documento (nessuna pagina ci
@@ -197,7 +260,7 @@ export function applyOp(state: SceneState, op: Op): SceneState {
         ...state,
         // Il sottoalbero segue il nodo senza essere riscritto: i figli puntano
         // al nodo, non al nonno.
-        nodes: { ...state.nodes, [id]: { ...cur, parentId: newParentId, orderKey } },
+        nodes: state.nodes.set(id, { ...cur, parentId: newParentId, orderKey }),
       };
     }
     // --- pagine -------------------------------------------------------------
@@ -228,11 +291,15 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // L'ULTIMA pagina non si cancella: senza pagine non esiste nessun parent
       // valido, quindi nessun nodo potrebbe più essere creato. ErrLastPage.
       if (state.pages.length === 1) return state;
-      const nodes = { ...state.nodes };
+      const nodes = state.nodes.edit();
+      const gone = new Set<string>();
       for (const root of childrenOf(state, id)) {
-        for (const n of subtreeOf(state, root.id)) delete nodes[n.id];
+        for (const n of subtreeOf(state, root.id)) { nodes.delete(n.id); gone.add(n.id); }
       }
-      return { ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes };
+      return {
+        ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes: nodes.done(),
+        ...cascadeFlows(state, gone), ...cascadeClips(state, gone),
+      };
     }
     case "renamePage": {
       const { id, name } = op.kind.value;
@@ -253,14 +320,65 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       // e tre i casi il server rifiuta l'op e non registra nulla, quindi qui la
       // scena resta invariata (stesso oggetto, così i selettori non si svegliano
       // a vuoto).
-      if (componentId === "" || state.components[componentId] || !state.nodes[rootNodeId]) return state;
+      if (componentId === "" || state.components[componentId] || !state.nodes.at(rootNodeId)) return state;
       // Non copia il sottoalbero: lo referenzia. Il master resta vivo in `nodes`,
       // e la propagazione master->istanze è quindi gratis.
       return { ...state, components: { ...state.components, [componentId]: { rootNodeId, name } } };
     }
+    // --- flussi -------------------------------------------------------------
+    // Parità con core.applySetFlow / applyDeleteFlow / applySetTransition /
+    // applyDeleteTransition (Go, internal/core/flows.go). Upsert ASSOLUTI.
+    case "setFlow": {
+      const f = op.kind.value.flow;
+      if (!f || f.id === "") return state;                                  // ErrNilFlow
+      if (f.startId !== "" && !state.nodes.has(f.startId)) return state;    // ErrNodeNotFound
+      return { ...state, flows: { ...state.flows, [f.id]: toFlowLite(f) } };
+    }
+    case "deleteFlow": {
+      const { id } = op.kind.value;
+      if (!state.flows[id]) return state;                                   // ErrFlowNotFound
+      const flows = { ...state.flows };
+      delete flows[id];
+      const transitions: Record<string, TransitionLite> = {};
+      for (const [tid, t] of Object.entries(state.transitions)) if (t.flowId !== id) transitions[tid] = t;
+      return { ...state, flows, transitions };
+    }
+    case "setTransition": {
+      const t = op.kind.value.transition;
+      if (!t || t.id === "") return state;                                  // ErrNilTransition
+      if (!state.flows[t.flowId]) return state;                             // ErrFlowNotFound
+      if (!state.nodes.has(t.fromId) || !state.nodes.has(t.toId)) return state; // ErrNodeNotFound
+      if (t.elementId !== "" && !state.nodes.has(t.elementId)) return state;
+      return { ...state, transitions: { ...state.transitions, [t.id]: toTransitionLite(t) } };
+    }
+    case "deleteTransition": {
+      const { id } = op.kind.value;
+      if (!state.transitions[id]) return state;                             // ErrTransitionNotFound
+      const transitions = { ...state.transitions };
+      delete transitions[id];
+      return { ...state, transitions };
+    }
+    // --- animazione ---------------------------------------------------------
+    // Parità con core.applySetClip / applyDeleteClip (Go, internal/core/animation.go).
+    // Upsert ASSOLUTO dell'intera clip; la validazione è isValidClip (stessa
+    // logica di core.validateClip: un op non valido lascia la scena invariata).
+    case "setClip": {
+      const c = op.kind.value.clip;
+      if (!c || c.id === "") return state;                                  // ErrNilClip
+      const lite = toClipLite(c);
+      if (!isValidClip(state, lite)) return state;
+      return { ...state, clips: { ...state.clips, [c.id]: lite } };
+    }
+    case "deleteClip": {
+      const { id } = op.kind.value;
+      if (!state.clips[id]) return state;                                   // ErrClipNotFound
+      const clips = { ...state.clips };
+      delete clips[id];
+      return { ...state, clips };
+    }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;
-      const cur = state.nodes[instanceId];
+      const cur = state.nodes.at(instanceId);
       // Nodo inesistente = ErrNodeNotFound; nodo NON-istanza = ErrNotInstanceNode
       // (un override su un rettangolo è un op sul nodo sbagliato, non un campo da
       // riempire); master_node_id vuoto = rifiutato in Go. In tutti i casi scena
@@ -276,10 +394,57 @@ export function applyOp(state: SceneState, op: Op): SceneState {
       if (override.fillsPresent || override.textPresent) kept.push(toInstanceOverrideLite(override));
       return {
         ...state,
-        nodes: { ...state.nodes, [instanceId]: { ...cur, instance: { ...cur.instance, overrides: kept } } },
+        nodes: state.nodes.set(instanceId, { ...cur, instance: { ...cur.instance, overrides: kept } }),
       };
     }
     default:
       return state;
   }
+}
+
+// Toglie dalle clip ciò che animava i nodi appena cancellati (parità con
+// core.cascadeClips in Go): le tracce sui nodi spariti si tolgono e le clip il
+// cui TARGET è sparito si cancellano. Una clip rimasta senza tracce ma col
+// target vivo si tiene. Le voci toccate sono sostituite, mai mutate.
+export function cascadeClips(
+  state: SceneState, gone: ReadonlySet<string>,
+): Partial<Pick<SceneState, "clips">> {
+  let changed = false;
+  const clips: Record<string, ClipLite> = {};
+  for (const [id, c] of Object.entries(state.clips)) {
+    if (gone.has(c.targetId)) { changed = true; continue; }
+    if (c.tracks.some((t) => gone.has(t.nodeId))) {
+      changed = true;
+      clips[id] = { ...c, tracks: c.tracks.filter((t) => !gone.has(t.nodeId)) };
+      continue;
+    }
+    clips[id] = c;
+  }
+  return changed ? { clips } : {};
+}
+
+// Toglie dai flussi ciò che riferiva i nodi appena cancellati (parità con
+// core.cascadeFlows in Go): le transizioni che li attraversano spariscono, il
+// `startId` dei flussi che partivano da loro si svuota e l'`elementId` delle
+// transizioni che li usavano come hotspot si azzera. Ritorna solo i campi
+// cambiati, così una scena senza flussi resta con gli stessi oggetti.
+export function cascadeFlows(
+  state: SceneState, gone: ReadonlySet<string>,
+): Partial<Pick<SceneState, "flows" | "transitions">> {
+  const out: Partial<Pick<SceneState, "flows" | "transitions">> = {};
+  let tChanged = false;
+  const transitions: Record<string, TransitionLite> = {};
+  for (const [id, t] of Object.entries(state.transitions)) {
+    if (gone.has(t.fromId) || gone.has(t.toId)) { tChanged = true; continue; }
+    if (t.elementId !== "" && gone.has(t.elementId)) { tChanged = true; transitions[id] = { ...t, elementId: "" }; continue; }
+    transitions[id] = t;
+  }
+  if (tChanged) out.transitions = transitions;
+  let fChanged = false;
+  const flows = { ...state.flows };
+  for (const [id, f] of Object.entries(state.flows)) {
+    if (f.startId !== "" && gone.has(f.startId)) { fChanged = true; flows[id] = { ...f, startId: "" }; }
+  }
+  if (fChanged) out.flows = flows;
+  return out;
 }

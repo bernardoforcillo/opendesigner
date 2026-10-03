@@ -31,7 +31,7 @@ const identityCam: Camera = { x: 0, y: 0, zoom: 1 };
 describe("selectionWorldBounds", () => {
   it("returns null for an empty selection (nothing to draw)", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0);
+    s.nodes = s.nodes.set("a", rect("a", 0, 0));
     expect(selectionWorldBounds(s, [])).toBeNull();
   });
 
@@ -42,14 +42,14 @@ describe("selectionWorldBounds", () => {
 
   it("is the union of the bounds of the selected nodes (via unionBounds)", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0, 50, 50);
-    s.nodes["b"] = rect("b", 100, 100, 50, 50);
+    s.nodes = s.nodes.set("a", rect("a", 0, 0, 50, 50));
+    s.nodes = s.nodes.set("b", rect("b", 100, 100, 50, 50));
     expect(selectionWorldBounds(s, ["a", "b"])).toEqual({ x: 0, y: 0, width: 150, height: 150 });
   });
 
   it("ignores selected ids that no longer exist while keeping the rest", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0, 50, 50);
+    s.nodes = s.nodes.set("a", rect("a", 0, 0, 50, 50));
     expect(selectionWorldBounds(s, ["a", "ghost"])).toEqual({ x: 0, y: 0, width: 50, height: 50 });
   });
 
@@ -58,9 +58,9 @@ describe("selectionWorldBounds", () => {
     // (113,74). Il bbox della selezione è disegnato in spazio schermo a partire
     // da qui: se restasse locale, la cornice comparirebbe lontanissima dal nodo.
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...rect("g", 100, 50, 400, 400), parentId: "page1" };
-    s.nodes["h"] = { ...rect("h", 10, 20, 200, 200), parentId: "g" };
-    s.nodes["k"] = { ...rect("k", 3, 4, 50, 50), parentId: "h" };
+    s.nodes = s.nodes.set("g", { ...rect("g", 100, 50, 400, 400), parentId: "page1" });
+    s.nodes = s.nodes.set("h", { ...rect("h", 10, 20, 200, 200), parentId: "g" });
+    s.nodes = s.nodes.set("k", { ...rect("k", 3, 4, 50, 50), parentId: "h" });
     expect(selectionWorldBounds(s, ["k"])).toEqual({ x: 113, y: 74, width: 50, height: 50 });
     // Unione di due nodi a profondità DIVERSE: entrambi in coordinate mondo.
     expect(selectionWorldBounds(s, ["g", "k"])).toEqual({ x: 100, y: 50, width: 400, height: 400 });
@@ -71,21 +71,21 @@ describe("selectionWorldBounds", () => {
   // per un gruppo che si vede benissimo (vedi store/groups.ts).
   it("for a group it is the union of its CHILDREN, translated by the group", () => {
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...rect("g", 0, 0, 0, 0), kind: "group" };
-    s.nodes["c1"] = { ...rect("c1", 10, 10, 50, 50), parentId: "g" };
-    s.nodes["c2"] = { ...rect("c2", 100, 0, 20, 20), parentId: "g" };
+    s.nodes = s.nodes.set("g", { ...rect("g", 0, 0, 0, 0), kind: "group" });
+    s.nodes = s.nodes.set("c1", { ...rect("c1", 10, 10, 50, 50), parentId: "g" });
+    s.nodes = s.nodes.set("c2", { ...rect("c2", 100, 0, 20, 20), parentId: "g" });
     expect(selectionWorldBounds(s, ["g"])).toEqual({ x: 10, y: 0, width: 110, height: 60 });
 
     // Trascinato il gruppo, la cornice lo segue: la sua x/y è la traslazione
     // dei figli.
-    s.nodes["g"] = { ...s.nodes["g"], x: 5, y: 7 };
+    s.nodes = s.nodes.set("g", { ...s.nodes.at("g"), x: 5, y: 7 });
     expect(selectionWorldBounds(s, ["g"])).toEqual({ x: 15, y: 7, width: 110, height: 60 });
   });
 
   it("skips an empty group instead of framing its origin", () => {
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...rect("g", 300, 300, 0, 0), kind: "group" };
-    s.nodes["a"] = rect("a", 0, 0, 50, 50);
+    s.nodes = s.nodes.set("g", { ...rect("g", 300, 300, 0, 0), kind: "group" });
+    s.nodes = s.nodes.set("a", rect("a", 0, 0, 50, 50));
     expect(selectionWorldBounds(s, ["g"])).toBeNull();
     expect(selectionWorldBounds(s, ["a", "g"])).toEqual({ x: 0, y: 0, width: 50, height: 50 });
   });
@@ -96,9 +96,9 @@ describe("selectionWorldBounds", () => {
   // divergenza vedi-vs-seleziona, presa dal lato dell'overlay.
   function groupWithHiddenChild() {
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...rect("g", 0, 0, 0, 0), kind: "group" };
-    s.nodes["c1"] = { ...rect("c1", 10, 10, 50, 50), parentId: "g", visible: false };
-    s.nodes["c2"] = { ...rect("c2", 100, 0, 20, 20), parentId: "g" };
+    s.nodes = s.nodes.set("g", { ...rect("g", 0, 0, 0, 0), kind: "group" });
+    s.nodes = s.nodes.set("c1", { ...rect("c1", 10, 10, 50, 50), parentId: "g", visible: false });
+    s.nodes = s.nodes.set("c2", { ...rect("c2", 100, 0, 20, 20), parentId: "g" });
     return s;
   }
 
@@ -123,7 +123,7 @@ describe("selectionWorldBounds", () => {
 
   it("a group whose children are ALL hidden behaves like an empty one: no frame at all", () => {
     const s = groupWithHiddenChild();
-    s.nodes["c2"] = { ...s.nodes["c2"], visible: false };
+    s.nodes = s.nodes.set("c2", { ...s.nodes.at("c2"), visible: false });
     expect(selectionWorldBounds(s, ["g"])).toBeNull();
   });
 
@@ -134,8 +134,8 @@ describe("selectionWorldBounds", () => {
   // dal frame.
   function frameWithOverflowingChild() {
     const s = emptyScene("d", "n");
-    s.nodes["f"] = { ...rect("f", 10, 20, 100, 80), kind: "frame", clipsContent: true };
-    s.nodes["c"] = { ...rect("c", 5, 5, 500, 500), parentId: "f" }; // mondo (15,25)-(515,525)
+    s.nodes = s.nodes.set("f", { ...rect("f", 10, 20, 100, 80), kind: "frame", clipsContent: true });
+    s.nodes = s.nodes.set("c", { ...rect("c", 5, 5, 500, 500), parentId: "f" }); // mondo (15,25)-(515,525)
     return s;
   }
 
@@ -159,14 +159,14 @@ describe("selectionWorldBounds", () => {
 
   it("is null for a child ENTIRELY outside a clipping frame: no frame, no grabbable handles", () => {
     const s = emptyScene("d", "n");
-    s.nodes["f"] = { ...rect("f", 0, 0, 100, 100), kind: "frame", clipsContent: true };
-    s.nodes["c"] = { ...rect("c", 200, 200, 50, 50), parentId: "f" };
+    s.nodes = s.nodes.set("f", { ...rect("f", 0, 0, 100, 100), kind: "frame", clipsContent: true });
+    s.nodes = s.nodes.set("c", { ...rect("c", 200, 200, 50, 50), parentId: "f" });
     expect(selectionWorldBounds(s, ["c"])).toBeNull();
   });
 
   it("does NOT clip when the frame's clipsContent is false: the child is framed whole", () => {
     const s = frameWithOverflowingChild();
-    s.nodes["f"] = { ...s.nodes["f"], clipsContent: false };
+    s.nodes = s.nodes.set("f", { ...s.nodes.at("f"), clipsContent: false });
     expect(selectionWorldBounds(s, ["c"])).toEqual({ x: 15, y: 25, width: 500, height: 500 });
   });
 });
@@ -186,7 +186,7 @@ describe("selectionFrame", () => {
 
   it("a single node hands over its own bounds and its own rotation", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = { ...rect("a", 10, 20, 100, 50), rotation: 30 };
+    s.nodes = s.nodes.set("a", { ...rect("a", 10, 20, 100, 50), rotation: 30 });
     expect(selectionFrame(s, ["a"])).toEqual({
       bounds: { x: 10, y: 20, width: 100, height: 50 },
       rotation: 30,
@@ -195,8 +195,8 @@ describe("selectionFrame", () => {
 
   it("a multiple selection is axis-aligned, around the nodes' world boxes", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0, 100, 50);
-    s.nodes["b"] = rect("b", 100, 100, 50, 50);
+    s.nodes = s.nodes.set("a", rect("a", 0, 0, 100, 50));
+    s.nodes = s.nodes.set("b", rect("b", 100, 100, 50, 50));
     const f = selectionFrame(s, ["a", "b"])!;
     expect(f.rotation).toBe(0);
     expect(f.bounds).toEqual({ x: 0, y: 0, width: 150, height: 150 });
@@ -207,9 +207,9 @@ describe("selectionFrame", () => {
   // il rettangolo 0x0 all'origine che il suo box grezzo darebbe.
   it("frames a single instance by its derived content bounds, axis-aligned like a group", () => {
     const s = emptyScene("d", "n");
-    s.nodes["mr"] = { ...rect("mr", 10, 10, 50, 50), parentId: "components" };
+    s.nodes = s.nodes.set("mr", { ...rect("mr", 10, 10, 50, 50), parentId: "components" });
     s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
-    s.nodes["i"] = { ...rect("i", 100, 100, 50, 50), kind: "instance", instance: { componentId: "comp", overrides: [] } };
+    s.nodes = s.nodes.set("i", { ...rect("i", 100, 100, 50, 50), kind: "instance", instance: { componentId: "comp", overrides: [] } });
     expect(selectionFrame(s, ["i"])).toEqual({ bounds: { x: 100, y: 100, width: 50, height: 50 }, rotation: 0 });
   });
 });
@@ -297,7 +297,7 @@ describe("drawOverlay smoke test", () => {
 
   it("draws the bbox border and 8 handle squares when there is a selection", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0);
+    s.nodes = s.nodes.set("a", rect("a", 0, 0));
     const { ctx, calls } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null);
     expect(calls.filter((c) => c === "fillRect")).toHaveLength(8); // una per maniglia
@@ -322,7 +322,7 @@ describe("drawOverlay smoke test", () => {
 
   it("draws both the selection bbox/handles and the marquee together", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0);
+    s.nodes = s.nodes.set("a", rect("a", 0, 0));
     const { ctx, calls } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], { x: 200, y: 200, width: 20, height: 20 });
     expect(calls.filter((c) => c === "strokeRect")).toHaveLength(10); // 9 selezione + 1 marquee
@@ -331,8 +331,8 @@ describe("drawOverlay smoke test", () => {
 
   it("draws nothing for a group whose children are all hidden: it is an empty group", () => {
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...rect("g", 0, 0, 0, 0), kind: "group" };
-    s.nodes["c"] = { ...rect("c", 10, 10, 50, 50), parentId: "g", visible: false };
+    s.nodes = s.nodes.set("g", { ...rect("g", 0, 0, 0, 0), kind: "group" });
+    s.nodes = s.nodes.set("c", { ...rect("c", 10, 10, 50, 50), parentId: "g", visible: false });
     const { ctx, calls } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["g"], null);
     expect(calls).not.toContain("strokeRect"); // né cornice né bordi delle maniglie
@@ -346,7 +346,7 @@ describe("drawOverlay smoke test", () => {
   it("turns the whole selection frame -- border AND handles -- with the node's rotation", () => {
     const s = emptyScene("d", "n");
     // box (0,0) 100x50 -> centro schermo (50, 25) a camera identità
-    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    s.nodes = s.nodes.set("a", { ...rect("a", 0, 0, 100, 50), rotation: 90 });
     const { ctx, calls, xform } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null);
 
@@ -364,7 +364,7 @@ describe("drawOverlay smoke test", () => {
 
   it("leaves the marquee out of the rotation", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    s.nodes = s.nodes.set("a", { ...rect("a", 0, 0, 100, 50), rotation: 90 });
     const { ctx, calls } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], { x: 200, y: 200, width: 20, height: 20 });
     // le ultime due chiamate di disegno (fill + stroke del marquee) stanno DOPO
@@ -378,7 +378,7 @@ describe("drawOverlay smoke test", () => {
   // col mouse e notare il cursore.
   it("draws a rotate marker just outside each of the 4 corners", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0, 100, 50);
+    s.nodes = s.nodes.set("a", rect("a", 0, 0, 100, 50));
     const { ctx, calls, arcs } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null);
 
@@ -396,7 +396,7 @@ describe("drawOverlay smoke test", () => {
 
   it("puts the markers exactly where rotateMarkerPositions says (one geometry, not two)", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 10, 20, 100, 50);
+    s.nodes = s.nodes.set("a", rect("a", 10, 20, 100, 50));
     const cam: Camera = { x: 7, y: 3, zoom: 2 };
     const { ctx, arcs } = fakeCtx(800, 600);
     drawOverlay(ctx, s, cam, ["a"], null);
@@ -409,7 +409,7 @@ describe("drawOverlay smoke test", () => {
 
   it("turns the markers with the frame, and closes the transform after them", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    s.nodes = s.nodes.set("a", { ...rect("a", 0, 0, 100, 50), rotation: 90 });
     const { ctx, calls, arcs } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null);
 
@@ -423,7 +423,7 @@ describe("drawOverlay smoke test", () => {
 
   it("emits no transform for an unrotated selection", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0);
+    s.nodes = s.nodes.set("a", rect("a", 0, 0));
     const { ctx, xform } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null);
     expect(xform).toEqual([]);
@@ -467,7 +467,7 @@ describe("drawOverlay — guide di snap", () => {
 
   it("draws the guides OUTSIDE the frame's rotation — they are always axis-aligned", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = { ...rect("a", 0, 0, 100, 50), rotation: 90 };
+    s.nodes = s.nodes.set("a", { ...rect("a", 0, 0, 100, 50), rotation: 90 });
     const { ctx, calls } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null, [{ axis: "x", pos: 10, from: 0, to: 50 }]);
     // Il segmento cade DOPO il restore del riquadro ruotato: una guida girata
@@ -659,7 +659,7 @@ describe("drawOverlay: l'anteprima del pen tool", () => {
 
   it("convive con la selezione e col marquee senza cancellarli", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0);
+    s.nodes = s.nodes.set("a", rect("a", 0, 0));
     const { ctx, count } = penCtx();
     drawOverlay(ctx, s, identityCam, ["a"], { x: 0, y: 0, width: 10, height: 10 }, [],
       preview({ anchors: [corner(200, 200)] }));

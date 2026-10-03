@@ -75,6 +75,11 @@ type Session struct {
 	// under mu on every advance; a waiter captures the current one before it
 	// sleeps, so it never misses a wakeup.
 	updated chan struct{}
+
+	// joined is true while the agent's presence stream is open (presence.go).
+	joined bool
+	// peers is the roster the presence stream has delivered, by client id.
+	peers map[string]*opendesignerv1.PresenceState
 }
 
 // NewSession builds a Session over an already-constructed client. logger may be
@@ -94,6 +99,7 @@ func NewSession(client opendesignerv1connect.DocumentServiceClient, docID, clien
 		clientID: clientID,
 		logger:   logger,
 		updated:  make(chan struct{}),
+		peers:    map[string]*opendesignerv1.PresenceState{},
 	}
 }
 
@@ -270,6 +276,7 @@ func (s *Session) submit(ctx context.Context, op *opendesignerv1.Op) (uint64, er
 	if werr := s.waitForSeq(wctx, seq); werr != nil {
 		s.logf("op seq %d acked but not yet locally applied: %v", seq, werr)
 	}
+	s.announce(ctx, op)
 	return seq, nil
 }
 

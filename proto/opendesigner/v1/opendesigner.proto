@@ -9,7 +9,23 @@ option go_package = "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v
 // ---------- documento / scene graph ----------
 message Color { float r = 1; float g = 2; float b = 3; float a = 4; } // 0..1
 message SolidPaint { Color color = 1; }
-message Paint { oneof kind { SolidPaint solid = 1; } }
+// Un punto di colore di un gradiente. `position` è in 0..1 lungo l'asse del
+// gradiente; gli stop sono tenuti in ordine crescente di posizione da chi li
+// scrive (il canvas e l'SVG li leggono nell'ordine dato).
+message GradientStop { Color color = 1; double position = 2; }
+
+// Un gradiente è definito in coordinate NORMALIZZATE del box del nodo: (0,0) è
+// l'angolo in alto a sinistra, (1,1) quello in basso a destra. Così resta
+// valido quando il nodo viene ridimensionato, senza riscrivere nessun op.
+//
+// LINEARE: l'asse va da (x1,y1) a (x2,y2).
+// RADIALE: il centro è (x1,y1) e il raggio è la distanza fra (x1,y1) e (x2,y2),
+// misurata in coordinate MONDO dopo la denormalizzazione (cerchio, non ellisse).
+message GradientPaint {
+  repeated GradientStop stops = 1;
+  double x1 = 2; double y1 = 3; double x2 = 4; double y2 = 5;
+}
+message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; } }
 
 // Allineamento del tratto rispetto al PERIMETRO della forma. CENTER è il
 // default del disegno (metà dentro, metà fuori): è l'unico che il canvas 2D sa
@@ -36,6 +52,20 @@ message Stroke {
   double weight = 2;      // >= 0, in coordinate mondo
   StrokeAlign align = 3;
 }
+
+// Ombra esterna. Offset e sfocatura sono in coordinate MONDO (come font_size):
+// crescono col nodo e con lo zoom. `blur` è il raggio come lo intende il canvas
+// 2D (shadowBlur): la deviazione standard della gaussiana è la sua metà.
+message DropShadow {
+  Color color = 1;
+  double offset_x = 2;
+  double offset_y = 3;
+  double blur = 4;       // >= 0
+}
+// Sfocatura del livello: sfoca il nodo stesso. `radius` è la deviazione
+// standard della gaussiana, in coordinate mondo.
+message LayerBlur { double radius = 1; } // >= 0
+message Effect { oneof kind { DropShadow drop_shadow = 1; LayerBlur layer_blur = 2; } }
 
 message RectNode { double corner_radius = 1; }
 message EllipseNode {} // cx/cy/rx/ry derivano da x/y/width/height, come per RectNode
@@ -69,6 +99,43 @@ message GroupNode {}
 //   - il click NON viene catturato come da un gruppo: i figli di un frame si
 //     selezionano direttamente, che è la convenzione degli artboard
 //     (store/groups.ts::selectionTargetOf).
+// Auto layout: il frame DISPONE da sé i propri figli in fila, e il risultato
+// (x/y dei figli, e width/height del frame se "hug") è scritto nel documento
+// come campi normali dal core, dopo ogni op che lo tocca. I client non
+// calcolano niente di autoritativo: leggono posizioni già a posto, che è ciò
+// che rende il documento identico per il browser e per gli agenti MCP.
+//
+// UNSPECIFIED collassa su HORIZONTAL (direzione) e START (allineamenti), come
+// StrokeAlign e TextAlign: lo zero di proto3 non si distingue da "assente".
+enum LayoutDirection {
+  LAYOUT_DIRECTION_UNSPECIFIED = 0;
+  LAYOUT_DIRECTION_HORIZONTAL = 1;
+  LAYOUT_DIRECTION_VERTICAL = 2;
+}
+enum LayoutAlign {
+  LAYOUT_ALIGN_UNSPECIFIED = 0;
+  LAYOUT_ALIGN_START = 1;
+  LAYOUT_ALIGN_CENTER = 2;
+  LAYOUT_ALIGN_END = 3;
+  // Solo per main_align: distribuisce lo spazio libero fra i figli. Sull'asse
+  // trasversale vale START.
+  LAYOUT_ALIGN_SPACE_BETWEEN = 4;
+}
+message AutoLayout {
+  LayoutDirection direction = 1;
+  double spacing = 2;      // spazio fra due figli consecutivi, >= 0
+  double padding_left = 3;
+  double padding_top = 4;
+  double padding_right = 5;
+  double padding_bottom = 6;
+  LayoutAlign main_align = 7;   // lungo la direzione
+  LayoutAlign cross_align = 8;  // attraverso la direzione
+  // "Hug": quell'asse del frame si adatta al contenuto invece di tenere la
+  // misura scritta in width/height. Indipendenti dalla direzione.
+  bool hug_width = 9;
+  bool hug_height = 10;
+}
+
 message FrameNode {
   // Ritaglia i figli al box del frame. Non è un dettaglio di rendering: ciò
   // che il ritaglio nasconde non è nemmeno CLICCABILE né selezionabile con la
@@ -81,6 +148,9 @@ message FrameNode {
   // dando una cornice esplicita), e il default proto3 (false) è quindi un
   // valore legittimo, non "non impostato".
   bool clips_content = 1;
+  // Presente = il frame dispone i figli (vedi AutoLayout). Assente = i figli
+  // stanno dove li mettono i loro x/y. Si scrive con la mask "auto_layout".
+  AutoLayout auto_layout = 2;
 }
 
 enum TextAlign {
@@ -250,6 +320,10 @@ message Node {
   // (traccia 2). Ripetuto come `fills`, e con la stessa semantica di scrittura:
   // la mask "strokes" SOSTITUISCE l'intera lista, non ne fonde gli elementi.
   repeated Stroke strokes = 21;
+  // Effetti (ombre, sfocatura). Ripetuto come `fills`: la mask "effects"
+  // SOSTITUISCE l'intera lista. Il renderer oggi disegna la PRIMA ombra e la
+  // PRIMA sfocatura di un nodo: il canvas 2D ha un solo stato di ombra.
+  repeated Effect effects = 22;
   oneof shape {
     RectNode rect = 30;
     EllipseNode ellipse = 31;
@@ -263,9 +337,83 @@ message Node {
     VectorNode vector = 36; // traccia 4 — vettoriale (vedi VectorNode sopra)
     InstanceNode instance = 37; // M4 — istanza di un componente (vedi InstanceNode sopra)
   }
+  // Metadati liberi chiave -> valore: il ponte fra il disegno e il prodotto.
+  // Convenzioni (non imposte dal modello, lette dagli strumenti dei flussi):
+  //   "flow.kind"       screen | decision | action | start | end | note
+  //   "code.route"      la rotta dell'app che realizza questa schermata
+  //   "code.component"  il componente del codice che la realizza
+  //   "test.id"         il data-testid con cui un test trova questo elemento
+  //   "test.text"       il testo accessibile con cui lo trova
+  //   "status"          planned | implemented | tested
+  // La mask "meta" SOSTITUISCE l'intera mappa, come `fills` per le liste.
+  map<string, string> meta = 40;
 }
 
 message Page { string id = 1; string name = 2; }
+
+// ---------- flussi ----------
+// Un FLUSSO è un percorso dell'utente attraverso le schermate: un insieme di
+// TRANSIZIONI (archi) fra nodi del disegno. Le schermate NON sono copie: sono i
+// frame del documento, referenziati per id, quindi il flusso resta agganciato al
+// disegno vero -- spostare o rinominare una schermata non lo rompe, cancellarla
+// cancella i suoi archi (vedi core.applyDelete).
+message Flow {
+  string id = 1;
+  string name = 2;
+  string description = 3;
+  // Schermata di ingresso (id di un nodo) oppure vuoto.
+  string start_id = 4;
+}
+
+message Transition {
+  string id = 1;
+  string flow_id = 2;
+  string from_id = 3;
+  string to_id = 4;
+  string label = 5;
+  // Cosa la innesca: "click" | "submit" | "auto" | "key" | "back" | testo libero.
+  string trigger = 6;
+  // Opzionale: il nodo DENTRO from_id che la innesca (l'hotspot cliccabile).
+  string element_id = 7;
+  // Condizione per cui l'arco è percorribile, e ciò che l'arco cambia. Testo
+  // libero: li leggono le persone, gli agenti e il prototipo giocabile
+  // ("cart non vuoto" / "cart=empty").
+  string guard = 8;
+  string effect = 9;
+}
+
+// ---------- animazione ----------
+// Una CLIP è un'animazione dichiarativa: un insieme di TRACCE (nodo, proprietà)
+// ciascuna con keyframe. Le clip appartengono a un nodo "target" (schermata,
+// gruppo, SVG importato) il cui hover/tap/enter le fa partire; i nodi animati
+// sono referenziati per id, mai copiati. Vedi internal/core/animation.go.
+message Keyframe {
+  double time = 1;    // millisecondi dall'inizio della clip, 0..duration
+  double value = 2;   // valore numerico della proprietà
+  // "linear" | "easeIn" | "easeOut" | "easeInOut" | "spring" |
+  // "cubic-bezier(a,b,c,d)" | "" (= linear). Easing del segmento che PARTE da
+  // questo keyframe.
+  string easing = 3;
+}
+message Track {
+  string node_id = 1;
+  // opacity (0..1) | x | y (coordinate locali del nodo, assolute) | scale
+  // (moltiplicatore, base 1) | rotation (gradi assoluti) | draw (0..1: quanto
+  // del tracciato è disegnato; solo vector/forme con tratto)
+  string prop = 2;
+  repeated Keyframe keyframes = 3;   // ordinati per time, almeno 1
+}
+message Clip {
+  string id = 1;
+  string name = 2;                    // "entrata", "hover", "caricamento"...
+  double duration = 3;                // ms, > 0
+  string trigger = 4;                 // "enter" | "hover" | "tap" | "loop" | "manual"
+  double delay = 5;                   // ms
+  int32 repeat = 6;                   // ripetizioni extra; -1 = infinito
+  bool yoyo = 7;
+  repeated Track tracks = 8;
+  string target_id = 9;               // il nodo (schermata/gruppo/SVG) a cui la clip appartiene
+}
 
 message Document {
   string id = 1;
@@ -275,6 +423,10 @@ message Document {
   map<string, Node> nodes = 5;
   // M4 — componenti: componentId -> master (nodo radice in `nodes` + nome).
   map<string, Component> components = 6;
+  map<string, Flow> flows = 7;
+  map<string, Transition> transitions = 8;
+  // Animazioni: clipId -> clip.
+  map<string, Clip> clips = 9;
 }
 
 // ---------- op ----------
@@ -377,6 +529,18 @@ message SetInstanceOverride {
   string instance_id = 1;
   InstanceOverride override = 2;
 }
+// Flussi: upsert ASSOLUTI (il valore che arriva è il valore finale), come i
+// campi di SetProperties. Un id nuovo crea, un id esistente sostituisce.
+message SetFlow { Flow flow = 1; }
+// Cancella il flusso E tutte le sue transizioni.
+message DeleteFlow { string id = 1; }
+message SetTransition { Transition transition = 1; }
+message DeleteTransition { string id = 1; }
+
+// Clip: upsert ASSOLUTO dell'intera clip (l'inverso è lo stato precedente).
+message SetClip { Clip clip = 1; }
+message DeleteClip { string id = 1; }
+
 message Op {
   string op_id = 1;
   string doc_id = 2;
@@ -395,6 +559,12 @@ message Op {
     SetVectorPath set_vector_path = 15; // traccia 4 — sostituisce i subpath di un VectorNode
     CreateComponent     create_component      = 16; // M4 — registra un sottoalbero come master
     SetInstanceOverride set_instance_override = 20; // M4 — override fill/testo su un'istanza
+    SetFlow          set_flow          = 21; // flussi — upsert di un flusso
+    DeleteFlow       delete_flow       = 22;
+    SetTransition    set_transition    = 23; // flussi — upsert di un arco
+    DeleteTransition delete_transition = 24;
+    SetClip          set_clip          = 25; // animazione — upsert di una clip
+    DeleteClip       delete_clip       = 26;
   }
 }
 message OpRecord {
@@ -408,7 +578,12 @@ message OpRecord {
 message OpenRequest  { string doc_id = 1; }
 message OpenResponse { Document snapshot = 1; uint64 seq = 2; }
 message CreateDocumentRequest { string name = 1; }
-message DocInfo { string id = 1; string name = 2; }
+// updated_at (secondi unix, 0 = ignoto), screens (frame di primo livello) e
+// flows sono per la Home: la card di un documento li mostra senza aprirlo.
+message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; }
+message RenameDocumentRequest { string doc_id = 1; string name = 2; }
+message DeleteDocumentRequest { string doc_id = 1; }
+message DeleteDocumentResponse {}
 message ListDocumentsRequest {}
 message ListDocumentsResponse { repeated DocInfo docs = 1; }
 
@@ -425,12 +600,106 @@ message Ack      { string op_id = 1; uint64 seq = 2; }
 message ErrorMsg { string op_id = 1; string message = 2; }
 message ServerMsg { oneof kind { OpRecord applied = 1; Ack ack = 2; ErrorMsg error = 3; } }
 
+// ---------- presenza (effimera, NON passa dall'op-log) ----------
+//
+// Chi sta guardando il documento, dove ha il cursore e cosa ha selezionato.
+// Vive solo in memoria nell'hub del documento e sparisce quando lo stream
+// WatchPresence del client si chiude: niente account, niente persistenza -- il
+// nickname lo sceglie il client e vale per la sessione.
+//
+// Il cursore è in coordinate MONDO, così ognuno lo vede al punto giusto
+// qualunque sia la propria camera.
+message PresenceState {
+  string client_id = 1;
+  string nickname = 2;
+  bool has_cursor = 3;
+  double cursor_x = 4;
+  double cursor_y = 5;
+  string page_id = 6;
+  repeated string selection = 7;
+}
+message PresenceEvent {
+  oneof kind {
+    PresenceState update = 1;   // un peer è entrato o è cambiato
+    string left_client_id = 2;  // un peer se n'è andato
+  }
+}
+// ---------- analisi dei flussi ----------
+message FlowIssue {
+  // no_start | unreachable | dead_end | no_exit | ambiguous | empty
+  string kind = 1;
+  string flow_id = 2;
+  string node_id = 3;        // la schermata coinvolta, se una
+  string transition_id = 4;  // l'arco coinvolto, se uno
+  string message = 5;        // testo leggibile (italiano)
+}
+// Un percorso: dalla schermata di ingresso a una schermata finale (senza uscite)
+// o a un ritorno su una già visitata. Sequenza di transizioni.
+message FlowPath {
+  repeated string transition_ids = 1;
+  repeated string node_ids = 2;  // node_ids[i] -> node_ids[i+1] via transition_ids[i]
+  bool loops = 3;                // finisce tornando su una schermata già nel percorso
+}
+message FlowReport {
+  string flow_id = 1;
+  uint32 screens = 2;
+  uint32 transitions = 3;
+  repeated FlowIssue issues = 4;
+  repeated FlowPath paths = 5;
+  bool paths_truncated = 6;  // il tetto sul numero di percorsi è stato raggiunto
+}
+// flow_id vuoto = tutti i flussi del documento.
+message AnalyzeFlowsRequest { string doc_id = 1; string flow_id = 2; }
+message AnalyzeFlowsResponse { repeated FlowReport reports = 1; }
+
+// ---------- export di codice ----------
+// Un file del progetto generato: percorso relativo (con "/") e byte.
+message ExportFile {
+  string path = 1;
+  bytes content = 2;
+}
+// target: "react" (default: Vite + React + TypeScript + Tailwind v4 + test
+// Playwright dei flussi) oppure "html" (un file per schermata). flow_id vuoto =
+// cabla e testa tutti i flussi.
+message ExportCodeRequest {
+  string doc_id = 1;
+  string target = 2;
+  string flow_id = 3;
+}
+message ExportCodeResponse {
+  repeated ExportFile files = 1;
+  // Approssimazioni e omissioni (asset mancanti, transizioni verso nodi non
+  // esportati): testo leggibile (italiano).
+  repeated string warnings = 2;
+}
+
+message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string nickname = 3; }
+message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
+message UpdatePresenceResponse {}
+
 service DocumentService {
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
   rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
+  // Rinomina un documento (meta.json + nome in memoria dell'hub).
+  rpc RenameDocument(RenameDocumentRequest) returns (DocInfo);
+  // Elimina un documento SPOSTANDO il bundle in <workspace>/.trash (mai rm -rf).
+  rpc DeleteDocument(DeleteDocumentRequest) returns (DeleteDocumentResponse);
   rpc OpenDocument(OpenRequest) returns (OpenResponse);
   // Invia un'operazione. Il broadcast a tutti i client passa da Subscribe.
   rpc SubmitOp(SubmitOpRequest) returns (SubmitOpResponse);
   // Stream degli OpRecord applicati: catch-up da since_seq, poi live.
   rpc Subscribe(SubscribeRequest) returns (stream ServerMsg);
+  // Presenza: lo stream manda prima l'elenco di chi c'è già, poi gli
+  // aggiornamenti. Chiuderlo = uscire dal documento.
+  rpc WatchPresence(WatchPresenceRequest) returns (stream PresenceEvent);
+  // Aggiorna cursore/selezione del client (che deve avere uno stream aperto).
+  rpc UpdatePresence(UpdatePresenceRequest) returns (UpdatePresenceResponse);
+  // Analisi dei flussi (grafo delle schermate): schermate irraggiungibili,
+  // vicoli ciechi, percorsi. Calcolata dal server (internal/flow), così UI,
+  // CLI e agenti MCP vedono lo stesso risultato.
+  rpc AnalyzeFlows(AnalyzeFlowsRequest) returns (AnalyzeFlowsResponse);
+  // Esporta il design come codice (internal/codegen): l'elenco dei file del
+  // progetto generato, calcolato dallo snapshot corrente. Come per
+  // AnalyzeFlows, CLI, MCP ed editor vedono lo stesso risultato.
+  rpc ExportCode(ExportCodeRequest) returns (ExportCodeResponse);
 }

@@ -22,6 +22,7 @@ import {
   outHandlePoint,
 } from "../store/vectorGeometry";
 import type { PenPreview, PointLite } from "../store/vectorGeometry";
+import { themeColors, withAlpha } from "./themeColors";
 
 // La geometria delle maniglie (posizioni, hit-test, resize) è UNA sola e vive
 // in selection/handles.ts: qui si disegna soltanto. Ri-esportata perché il
@@ -41,21 +42,39 @@ const TAU = Math.PI * 2;
 const ROTATE_ARC_GAP = Math.PI / 2;
 const ROTATE_MARKER_WIDTH = 1.5;
 
-// Le guide di snap sono ROSSE e non blu come il resto dell'overlay, di
-// proposito: il blu dice "questo è selezionato", il rosso dice "questa è la
-// retta su cui stai scattando". Sono due informazioni diverse e compaiono
-// insieme -- con lo stesso colore la guida si leggerebbe come un altro bordo
-// del riquadro. È anche la convenzione degli editor di design.
-const SNAP_GUIDE_COLOR = "#f24822";
+// Le guide di snap sono MAGENTA e non nel blu d'accento come il resto
+// dell'overlay, di proposito: il blu dice "questo è selezionato", il magenta dice
+// "questa è la retta su cui stai scattando". Sono due informazioni diverse e
+// compaiono insieme -- con lo stesso colore la guida si leggerebbe come un altro
+// bordo del riquadro. Un magenta caldo e non il rosso di prima: il rosso è del
+// sistema per "errore" (danger), e una guida non è un errore. Il colore sta in
+// themeColors (uno per tema, leggibile su tela chiara e scura).
 const SNAP_GUIDE_WIDTH = 1;
 
 function devicePixelRatio(): number {
   return typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
 }
 
-// Il blu dell'interfaccia: bbox di selezione, maniglie, marquee e path in corso
-// parlano tutti la stessa lingua. Uno solo, così non può diventarne due.
-const ACCENT = "#2f6fed";
+// Il blu dell'interfaccia (token --accent, risolto da themeColors): bbox di
+// selezione, maniglie, marquee e path in corso parlano tutti la stessa lingua.
+// Una sola fonte, così non può diventarne due, e segue il tema.
+
+// Un quadratino con gli angoli smussati (2px). Dove il contesto non ha
+// roundRect (i finti ctx dei test, browser vecchi) è il quadrato di sempre: stessa
+// geometria, solo spigoli vivi.
+function roundedSquare(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, fill: string, stroke: string): void {
+  ctx.fillStyle = fill;
+  ctx.strokeStyle = stroke;
+  if (typeof ctx.roundRect === "function") {
+    ctx.beginPath();
+    ctx.roundRect(x + 0.5, y + 0.5, size - 1, size - 1, 2);
+    ctx.fill();
+    ctx.stroke();
+    return;
+  }
+  ctx.fillRect(x, y, size, size);
+  ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
+}
 
 // Lato (px SCHERMO) del quadratino di un ancoraggio del PEN TOOL. Più piccolo
 // delle maniglie di resize (HANDLE_SIZE = 8) di proposito: sono due bersagli
@@ -100,6 +119,7 @@ function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPrev
   const n = anchors.length;
   if (n === 0) return;
   const to = (p: PointLite) => worldToScreen(cam, p.x, p.y);
+  const { accent: ACCENT } = themeColors();
 
   ctx.lineWidth = 1;
   ctx.strokeStyle = ACCENT;
@@ -177,11 +197,9 @@ function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPrev
   const half = PEN_ANCHOR_SIZE / 2;
   for (let i = 0; i < n; i++) {
     const p = to(anchorPoint(PEN_ORIGIN, anchors[i]));
-    ctx.fillStyle = i === 0 ? ACCENT : "#ffffff";
-    ctx.fillRect(p.x - half, p.y - half, PEN_ANCHOR_SIZE, PEN_ANCHOR_SIZE);
-    // +0.5 come per le maniglie di selezione: lo stroke da 1px cade su un
-    // confine di pixel netto invece di sbavare su due righe.
-    ctx.strokeRect(p.x - half + 0.5, p.y - half + 0.5, PEN_ANCHOR_SIZE - 1, PEN_ANCHOR_SIZE - 1);
+    // (+0.5 dentro roundedSquare, come per le maniglie di selezione: lo stroke
+    // da 1px cade su un confine di pixel netto invece di sbavare su due righe.)
+    roundedSquare(ctx, p.x - half, p.y - half, PEN_ANCHOR_SIZE, i === 0 ? ACCENT : "#ffffff", ACCENT);
   }
 }
 
@@ -211,7 +229,7 @@ function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPrev
 export function selectionWorldBounds(state: SceneState, selection: string[]): Bounds | null {
   const boxes: Bounds[] = [];
   for (const id of selection) {
-    const n = state.nodes[id];
+    const n = state.nodes.at(id);
     if (!n) continue;
     const b = contentWorldBounds(state, n);
     if (b) boxes.push(b);
@@ -231,7 +249,7 @@ export function selectionWorldBounds(state: SceneState, selection: string[]): Bo
 //    resize di gruppo imprevedibile. I singoli nodi restano ruotati; è il
 //    riquadro di gruppo a non esserlo.
 export function selectionFrame(state: SceneState, selection: string[]): SelectionFrame | null {
-  const nodes = selection.map((id) => state.nodes[id]).filter((n) => n !== undefined);
+  const nodes = selection.map((id) => state.nodes.at(id)).filter((n) => n !== undefined);
   if (nodes.length === 0) return null;
   if (nodes.length === 1) {
     const n = nodes[0];
@@ -293,6 +311,7 @@ export function drawOverlay(
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const { accent: ACCENT, guide: SNAP_GUIDE_COLOR } = themeColors();
 
   const frame = selectionFrame(state, selection);
   if (frame) {
@@ -314,10 +333,10 @@ export function drawOverlay(
 
     const half = HANDLE_SIZE / 2;
     for (const p of Object.values(handlePositions(box))) {
-      ctx.fillStyle = "#ffffff";
-      ctx.fillRect(p.x - half, p.y - half, HANDLE_SIZE, HANDLE_SIZE);
-      ctx.strokeStyle = ACCENT;
-      ctx.strokeRect(p.x - half + 0.5, p.y - half + 0.5, HANDLE_SIZE - 1, HANDLE_SIZE - 1);
+      // Quadrato BIANCO con bordo d'accento e spigoli a 2px, su entrambi i temi:
+      // le maniglie stanno sopra il design (che è chiaro anche in scuro), non
+      // sopra l'interfaccia.
+      roundedSquare(ctx, p.x - half, p.y - half, HANDLE_SIZE, "#ffffff", ACCENT);
     }
     // La MANIGLIA DI ROTAZIONE: un arco aperto appena FUORI da ogni angolo,
     // dentro la zona di presa che selection/handles.ts::hitTestFrame già
@@ -327,7 +346,7 @@ export function drawOverlay(
     // verso il riquadro, così il segno "abbraccia" l'angolo che gira.
     const markers = rotateMarkerPositions(box);
     ctx.lineWidth = ROTATE_MARKER_WIDTH;
-    ctx.strokeStyle = "#2f6fed";
+    ctx.strokeStyle = ACCENT;
     for (const id of CORNER_IDS) {
       const p = markers[id];
       const d = ROTATE_CORNER_DIRS[id];
@@ -342,7 +361,7 @@ export function drawOverlay(
 
   if (marquee) {
     const m = worldBoundsToScreen(marquee, cam);
-    ctx.fillStyle = "rgba(47, 111, 237, 0.08)";
+    ctx.fillStyle = withAlpha(ACCENT, 0.08);
     ctx.fillRect(m.x, m.y, m.width, m.height);
     ctx.lineWidth = 1;
     ctx.strokeStyle = ACCENT;

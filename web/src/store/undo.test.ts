@@ -277,7 +277,7 @@ function renameOp(id: string, name: string): Op {
 // due dice l'invariante per intero e, quando fallisce, stampa DI QUANTO si sono
 // scollati -- che è l'informazione utile.
 function boxAndInk(id: string): { box: BoxLite; ink: BoxLite } {
-  const n = useScene.getState().scene!.nodes[id];
+  const n = useScene.getState().scene!.nodes.at(id);
   const b = vectorBounds(n.vector!.subpaths);
   return {
     box: { x: 0, y: 0, width: n.width, height: n.height },
@@ -321,7 +321,7 @@ function createdIds(entry: readonly Op[]): string[] {
 // rifiuterà a metà.
 function expectParentsSatisfied(entry: readonly Op[]) {
   const scene = useScene.getState().scene!;
-  const exists = new Set<string>(Object.keys(scene.nodes));
+  const exists = new Set<string>([...scene.nodes.ids()]);
   for (const p of scene.pages) exists.add(p.id);
   for (const op of entry) {
     if (op.kind.case !== "createNode") continue;
@@ -367,7 +367,7 @@ describe("undo/redo", () => {
     gesture([resizeOp("n1", 200, 160)]);
 
     const finalScene = useScene.getState().scene;
-    expect(finalScene!.nodes["n1"]).toMatchObject({ x: 40, y: 40, width: 200, height: 160 });
+    expect(finalScene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40, width: 200, height: 160 });
     expect(useScene.getState().undoStack).toHaveLength(3);
     expect(useScene.getState().canUndo).toBe(true);
     expect(useScene.getState().redoStack).toHaveLength(0);
@@ -377,7 +377,7 @@ describe("undo/redo", () => {
     st.undo();
     st.undo();
 
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().canUndo).toBe(false);
     expect(useScene.getState().redoStack).toHaveLength(3);
@@ -400,7 +400,7 @@ describe("undo/redo", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case).toBe("deleteNode");
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().redoStack).toHaveLength(1);
   });
@@ -415,7 +415,7 @@ describe("undo/redo", () => {
 
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().redoStack).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["n2"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n2")).toBeDefined();
   });
 
   it("un nuovo gesto dopo un undo svuota il redo stack", () => {
@@ -463,7 +463,7 @@ describe("undo/redo", () => {
     gesture([moveOp("n1", 40, 40)]);
 
     st.undo(); // n1 torna a (0,0); il redo stack contiene "rimetti n1 a (40,40)"
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     expect(useScene.getState().redoStack).toHaveLength(1);
     expect(useScene.getState().undoStack).toHaveLength(1);
     sync.sent = [];
@@ -476,7 +476,7 @@ describe("undo/redo", () => {
     st.endGesture([moveOp("n1", 999, 999), moveOp("n2", 999, 0)]);
 
     // Lo spostamento di n1 è avvenuto per davvero (è stato submittato).
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 999, y: 999 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 999, y: 999 });
     expect(sync.sent).toHaveLength(2);
     // La catena di inversi non si può costruire (n2 non c'è più): nessuna voce
     // di undo nuova -- annullare a metà sarebbe peggio.
@@ -487,7 +487,7 @@ describe("undo/redo", () => {
 
     // E un redo() non deve poter riportare n1 a (40,40).
     st.redo();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 999, y: 999 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 999, y: 999 });
     expect(useScene.getState().redoStack).toHaveLength(0);
   });
 
@@ -512,22 +512,22 @@ describe("undo/redo", () => {
     expect(useScene.getState().undoStack).toHaveLength(1); // E1 ancora lì
     expect(useScene.getState().redoStack).toHaveLength(0);
     expect(useScene.getState().gesture).not.toBeNull(); // il gesto resta aperto
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 999, y: 999 }); // anteprima intatta
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 999, y: 999 }); // anteprima intatta
 
     // il drag prosegue e chiude normalmente: deve produrre una voce di undo
     // corretta per lo SPOSTAMENTO, non per la creazione (E1 va ancora bene).
     st.endGesture([moveOp("n1", 40, 40)]);
 
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
     expect(useScene.getState().undoStack).toHaveLength(2);
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case).toBe("setProps");
 
     // e i due undo funzionano nell'ordine giusto: prima disfa il move, poi la creazione.
     st.undo();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     st.undo();
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
   });
 
   it("redo() durante un gesto aperto è un no-op: non tocca lo stack né manda nulla", () => {
@@ -546,7 +546,7 @@ describe("undo/redo", () => {
 
     st.cancelGesture();
     st.redo(); // fuori dal gesto torna a funzionare
-    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().redoStack).toHaveLength(0);
   });
 
@@ -558,8 +558,8 @@ describe("undo/redo", () => {
 
     useScene.getState().undo(); // annulla il drag di ENTRAMBI i nodi in un colpo
 
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
-    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
   });
 
   // --- rollback e storia (bug trovato in review) -----------------------------
@@ -579,7 +579,7 @@ describe("undo/redo", () => {
 
     // La modifica sparisce dalla vista (già così) E dalla storia (il fix): la
     // sua voce sarebbe [deleteNode n5], e n5 sul server non è mai esistito.
-    expect(useScene.getState().scene!.nodes["n5"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n5")).toBeUndefined();
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
     expect(useScene.getState().lastError).toContain("node already exists");
@@ -594,7 +594,7 @@ describe("undo/redo", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(deletedId(sync.sent[0])).toBe("n1");
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
   });
 
   it("il redo svuotato da un gesto RIFIUTATO torna disponibile", () => {
@@ -606,13 +606,13 @@ describe("undo/redo", () => {
     gesture([createOp("n5", 10, 10)]); // svuota il redo... e viene rifiutato
 
     // Il redo era stato invalidato da una modifica MAI avvenuta: deve tornare.
-    expect(useScene.getState().scene!.nodes["n5"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n5")).toBeUndefined();
     expect(useScene.getState().redoStack).toHaveLength(1);
     expect(useScene.getState().canRedo).toBe(true);
 
     useScene.getState().setSync(sync);
     useScene.getState().redo();
-    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
   });
 
   it("un undo RIFIUTATO non consuma la sua voce", () => {
@@ -623,7 +623,7 @@ describe("undo/redo", () => {
 
     // La vista è tornata indietro (n1 c'è ancora), quindi anche la storia deve:
     // la voce va rimessa dov'era e il redo non ha guadagnato niente.
-    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
     expect(useScene.getState().redoStack).toHaveLength(0);
@@ -632,7 +632,7 @@ describe("undo/redo", () => {
     // ...e riprovare deve funzionare: il rifiuto non brucia l'annullamento.
     useScene.getState().setSync(sync);
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
   });
 
   it("un gesto CONFERMATO non è più annullabile da un rifiuto successivo", () => {
@@ -642,7 +642,7 @@ describe("undo/redo", () => {
     gesture([moveOp("n1", 40, 40)]); // rifiutato
 
     // Solo la transizione rifiutata viene riavvolta: quella confermata resta.
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
   });
@@ -672,8 +672,8 @@ describe("undo/redo", () => {
     manual.reject(mv2);
 
     // La vista: n1 è rimasto spostato (ottimistico, in volo), n2 è tornato.
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
-    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
     // La voce di undo NON sparisce: coprirebbe uno spostamento che sul server
     // è avvenuto per davvero, e senza di lei n1 resta mosso e non annullabile.
     // Resta però ristretta alla sola metà atterrata.
@@ -694,8 +694,8 @@ describe("undo/redo", () => {
     useScene.getState().undo();
 
     expect(sync.sent).toHaveLength(1);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
-    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
   });
 
   it("una CANCELLAZIONE multi-nodo atterrata a metà resta annullabile per il nodo cancellato", () => {
@@ -711,8 +711,8 @@ describe("undo/redo", () => {
     manual.land(del1); // il primo è nell'op-log: n1 è cancellato per davvero
     manual.reject(del2); // il secondo no
 
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
-    expect(useScene.getState().scene!.nodes["n2"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n2")).toBeDefined();
     // Senza la riparazione la voce [createNode n1, createNode n2] veniva
     // buttata via intera: n1 cancellato per sempre, nessun Ctrl+Z possibile.
     expect(useScene.getState().undoStack).toHaveLength(2);
@@ -724,7 +724,7 @@ describe("undo/redo", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case).toBe("createNode");
-    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
   });
 
   it("un gesto atterrato a metà NON riarma il redo stack che aveva svuotato", () => {
@@ -750,7 +750,7 @@ describe("undo/redo", () => {
 
     useScene.getState().setSync(sync);
     useScene.getState().redo();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 999, y: 999 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 999, y: 999 });
   });
 
   it("un gesto multi-op rifiutato dal PRIMO op riavvolge tutta la voce", () => {
@@ -769,8 +769,8 @@ describe("undo/redo", () => {
 
     // Qui il riavvolgimento totale è quello giusto: la transizione non è mai
     // avvenuta, quindi la voce sparisce e il redo torna com'era.
-    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
-    expect(useScene.getState().scene!.nodes["n3"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n2")).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n3")).toBeUndefined();
     expect(useScene.getState().undoStack).toHaveLength(1);
 
     useScene.getState().setSync(sync);
@@ -792,8 +792,8 @@ describe("undo/redo", () => {
     manual.land(first); // n2 è cancellato sul server
     manual.reject(second); // n1 no
 
-    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
-    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n2")).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
     // Rimettere la voce INTERA (com'era prima del fix) significherebbe che il
     // Ctrl+Z successivo rimanda deleteNode n2 su un nodo che il server ha già
     // cancellato -> ErrNodeNotFound -> altro rollback, voce bruciata.
@@ -808,7 +808,7 @@ describe("undo/redo", () => {
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(1);
     expect(deletedId(sync.sent[0])).toBe("n1");
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
   });
 
   // --- PIÙ transizioni in dubbio INSIEME (bug trovato in review round 3) ------
@@ -842,7 +842,7 @@ describe("undo/redo", () => {
 
     // n1 non è mai esistito sul server: né la sua voce di undo né il suo redo
     // devono sopravvivere, e la voce del gesto VERO deve essere ancora lì.
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(deletedId(useScene.getState().undoStack[0][0])).toBe("n0");
     expect(useScene.getState().redoStack).toHaveLength(0);
@@ -857,7 +857,7 @@ describe("undo/redo", () => {
 
     expect(sync.sent).toHaveLength(1);
     expect(deletedId(sync.sent[0])).toBe("n0");
-    expect(useScene.getState().scene!.nodes["n0"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n0")).toBeUndefined();
   });
 
   it("due undo in dubbio, entrambi rifiutati: nessuna voce persa né duplicata", () => {
@@ -878,8 +878,8 @@ describe("undo/redo", () => {
     manual.reject(second);
     manual.reject(first);
 
-    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
-    expect(useScene.getState().scene!.nodes["n2"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n2")).toBeDefined();
     // Gli stack tornano ESATTAMENTE com'erano: due voci DIVERSE, nell'ordine
     // giusto. Con la riparazione rotta si otteneva [E1, E1] -- la voce del gesto
     // più recente persa, quella più vecchia duplicata.
@@ -898,8 +898,8 @@ describe("undo/redo", () => {
     useScene.getState().undo();
 
     expect(sync.sent.map(deletedId)).toEqual(["n2", "n1"]);
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
-    expect(useScene.getState().scene!.nodes["n2"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n2")).toBeUndefined();
   });
 
   it("un gesto riavvolto solo a METÀ mentre il suo undo è in dubbio tiene la metà atterrata", () => {
@@ -922,8 +922,8 @@ describe("undo/redo", () => {
     manual.reject(mv2);
 
     // Sul server è successo solo mv1: n1 è mosso e va ancora annullato, n2 no.
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 40, y: 40 });
-    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
     expect(useScene.getState().undoStack).toHaveLength(2);
     // La voce del gesto resta RISTRETTA alla metà atterrata: il replay dell'undo
     // non deve poterla riportare intera (rimanderebbe l'inverso di un mv2 mai
@@ -936,8 +936,8 @@ describe("undo/redo", () => {
     useScene.getState().undo();
 
     expect(sync.sent).toHaveLength(1);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
-    expect(useScene.getState().scene!.nodes["n2"]).toMatchObject({ x: 300, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
   });
 
   it("un undo atterrato a metà trova la sua voce anche sotto il replay del gesto che la aveva prodotta", () => {
@@ -967,7 +967,7 @@ describe("undo/redo", () => {
     useScene.getState().undo();
 
     expect(sync.sent).toHaveLength(1);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
   });
 
   // --- voci rese STALE da un op REMOTO (finding parcheggiata a fine M1a) -----
@@ -992,7 +992,7 @@ describe("undo/redo", () => {
     // Un altro client sposta n1 a (500,500): arriva via apply(), come ogni
     // record di Subscribe che non è un nostro eco.
     useScene.getState().apply(moveOp("n1", 500, 500));
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 500, y: 500 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 500, y: 500 });
 
     // La voce di redo scriveva x,y dello STESSO nodo: non è più valida.
     expect(useScene.getState().redoStack).toHaveLength(0);
@@ -1009,7 +1009,7 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().redo();
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 500, y: 500 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 500, y: 500 });
   });
 
   it("una CANCELLAZIONE remota invalida la voce: il ripeti non evapora in silenzio", () => {
@@ -1032,7 +1032,7 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().redo();
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
   });
 
   // setText è un op DEDICATO (il contenuto vive dentro il oneof `shape`, non in
@@ -1057,7 +1057,7 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["t1"].text!.content).toBe("scritto da un altro");
+    expect(useScene.getState().scene!.nodes.at("t1").text!.content).toBe("scritto da un altro");
   });
 
   // Stessa ragione di setText, sul campo che questa traccia introduce: senza un
@@ -1078,7 +1078,7 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes["v1"].vector!.subpaths[0].anchors[0].x).toBe(2);
+    expect(useScene.getState().scene!.nodes.at("v1").vector!.subpaths[0].anchors[0].x).toBe(2);
   });
 
   // --- il box e la geometria sono DUE METÀ DELLO STESSO VALORE --------------
@@ -1173,8 +1173,8 @@ describe("undo/redo", () => {
     // Il nodo resta dove l'ha lasciato l'ULTIMA scrittura di ciascuna metà:
     // spostato da noi, ridisegnato dall'altro. Nessuna delle due sovrascrive
     // l'altra in silenzio.
-    expect(useScene.getState().scene!.nodes["v1"]).toMatchObject({ x: 40, y: 40 });
-    expect(useScene.getState().scene!.nodes["v1"].vector!.subpaths[0].anchors).toHaveLength(3);
+    expect(useScene.getState().scene!.nodes.at("v1")).toMatchObject({ x: 40, y: 40 });
+    expect(useScene.getState().scene!.nodes.at("v1").vector!.subpaths[0].anchors).toHaveLength(3);
   });
 
   // Il complemento del test qui sopra, e la metà LEGITTIMA di quello che ha
@@ -1191,9 +1191,9 @@ describe("undo/redo", () => {
     // il path dell'altro).
     expect(useScene.getState().undoStack).toHaveLength(1);
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes["v1"].name).toBe("Path");
+    expect(useScene.getState().scene!.nodes.at("v1").name).toBe("Path");
     // ...senza toccare la geometria remota.
-    expect(useScene.getState().scene!.nodes["v1"].vector!.subpaths[0].anchors).toHaveLength(3);
+    expect(useScene.getState().scene!.nodes.at("v1").vector!.subpaths[0].anchors).toHaveLength(3);
   });
 
   it("un setText remoto non tocca una voce che scrive campi DISGIUNTI", () => {
@@ -1207,8 +1207,8 @@ describe("undo/redo", () => {
     // della creazione, che cancellerebbe il nodo per intero.
     expect(useScene.getState().undoStack).toHaveLength(1);
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes["t1"]).toMatchObject({ x: 0, y: 0 });
-    expect(useScene.getState().scene!.nodes["t1"].text!.content).toBe("altro");
+    expect(useScene.getState().scene!.nodes.at("t1")).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("t1").text!.content).toBe("altro");
   });
 
   it("un op remoto su campi DISGIUNTI (o su un altro nodo) non tocca la voce", () => {
@@ -1232,7 +1232,7 @@ describe("undo/redo", () => {
 
     // ...e il redo rimette a posto x,y SENZA disfare il resize remoto.
     useScene.getState().redo();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({
       x: 40, y: 40, width: 300, height: 300,
     });
   });
@@ -1249,11 +1249,11 @@ describe("undo/redo", () => {
     expect(useScene.getState().notice).toBeNull();
 
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
     expect(useScene.getState().redoStack).toHaveLength(1);
 
     useScene.getState().redo();
-    expect(useScene.getState().scene!.nodes["n1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().notice).toBeNull();
   });
@@ -1335,9 +1335,9 @@ describe("undo/redo", () => {
     useScene.getState().setSync(sync);
     sync.sent = [];
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes["n1"]).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes["n1"]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
     expect(sync.sent).toHaveLength(2);
   });
 
@@ -1362,7 +1362,7 @@ describe("undo/redo", () => {
 
     useScene.getState().setSync(sync);
     useScene.getState().redo();
-    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["n1", "n2"]);
+    expect([...useScene.getState().scene!.nodes.ids()].sort()).toEqual(["n1", "n2"]);
   });
   // --- l'albero: cascata e storia -------------------------------------------
   // deleteNode cancella un SOTTOALBERO (core.applyDelete / applyOp), quindi
@@ -1380,7 +1380,7 @@ describe("undo/redo", () => {
     const before = useScene.getState().scene;
 
     gesture([deleteOp("g1")]); // un op solo: il server cascata da sé
-    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual([]);
 
     // Una voce sola (un gesto = un Ctrl+Z), fatta di quattro createNode.
     const entry = useScene.getState().undoStack[1];
@@ -1392,7 +1392,7 @@ describe("undo/redo", () => {
 
     // ...e il redo ricancella tutto con l'op singolo di partenza.
     useScene.getState().redo();
-    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual([]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual([]);
   });
 
   it("una cancellazione REMOTA a cascata invalida anche le voci che toccano i DISCENDENTI", () => {
@@ -1450,7 +1450,7 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(1);
-    expect(Object.keys(useScene.getState().scene!.nodes)).toEqual(["g1"]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["g1"]);
     expect(useScene.getState().canRedo).toBe(true);
   });
 
@@ -1514,7 +1514,7 @@ describe("undo/redo", () => {
 
     // Un altro client crea un nodo DENTRO g1.
     useScene.getState().apply(createChildOp("c1", "g1", "a1"));
-    expect(useScene.getState().scene!.nodes["c1"]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at("c1")).toBeDefined();
 
     // Da adesso [deleteNode g1] cascata su c1: non è più annullabile.
     expect(useScene.getState().undoStack).toHaveLength(0);
@@ -1525,7 +1525,7 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(0);
-    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["c1", "g1"]);
+    expect([...useScene.getState().scene!.nodes.ids()].sort()).toEqual(["c1", "g1"]);
   });
 
   it("un reparent REMOTO che INFILA un nodo nel gruppo invalida la voce che lo cancellerebbe", () => {
@@ -1546,7 +1546,7 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(0);
-    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["c1", "g1"]);
+    expect([...useScene.getState().scene!.nodes.ids()].sort()).toEqual(["c1", "g1"]);
   });
 
   it("un reparent REMOTO che PORTA VIA un nodo dal gruppo lascia in piedi la voce che lo cancella", () => {
@@ -1563,8 +1563,8 @@ describe("undo/redo", () => {
     expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
 
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes["g1"]).toBeUndefined();
-    expect(useScene.getState().scene!.nodes["c1"]).toMatchObject({ parentId: "page1" });
+    expect(useScene.getState().scene!.nodes.at("g1")).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at("c1")).toMatchObject({ parentId: "page1" });
   });
 
   it("una voce di REDO che ricancella un gruppo cade se un remoto ci ha messo dentro qualcosa", () => {
@@ -1583,7 +1583,7 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().redo();
     expect(sync.sent).toHaveLength(0);
-    expect(Object.keys(useScene.getState().scene!.nodes).sort()).toEqual(["c1", "g1"]);
+    expect([...useScene.getState().scene!.nodes.ids()].sort()).toEqual(["c1", "g1"]);
   });
 
   // --- la cascata remota porta via anche le DIPENDENZE, non solo i bersagli --
@@ -1653,7 +1653,7 @@ describe("undo/redo", () => {
 
     // ...e il Ctrl+Z ricrea c1 per davvero, sotto g1, dove g1 si trova ADESSO.
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes["c1"]).toMatchObject({ parentId: "g1" });
+    expect(useScene.getState().scene!.nodes.at("c1")).toMatchObject({ parentId: "g1" });
     expect(useScene.getState().lastError).toBeNull();
   });
 
@@ -1675,7 +1675,7 @@ describe("undo/redo", () => {
     expect(useScene.getState().undoStack.flatMap(createdIds)).toEqual(["c1"]);
 
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes["c1"]).toMatchObject({ parentId: "g1" });
+    expect(useScene.getState().scene!.nodes.at("c1")).toMatchObject({ parentId: "g1" });
     expect(useScene.getState().lastError).toBeNull();
   });
 });
@@ -1714,13 +1714,13 @@ describe("undo/redo delle azioni di pagina", () => {
 
     const before = useScene.getState().scene;
     expect(before!.pages.map((p) => p.id)).toEqual(["page1", "page2"]);
-    expect(["r1", "r2", "r3"].every((id) => before!.nodes[id])).toBe(true);
+    expect(["r1", "r2", "r3"].every((id) => before!.nodes.at(id))).toBe(true);
     expect(useScene.getState().undoStack).toHaveLength(4);
 
     // Elimina page2: la cascata porta via page2 e i suoi 3 nodi.
     gesture([deletePageOp("page2")]);
     expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1"]);
-    for (const id of ["r1", "r2", "r3"]) expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+    for (const id of ["r1", "r2", "r3"]) expect(useScene.getState().scene!.nodes.at(id)).toBeUndefined();
     // La voce di undo del gesto ESISTE: prima del fix invertChain cadeva su null
     // e il gesto non lasciava nessuna voce, mentre l'op partiva lo stesso.
     expect(useScene.getState().undoStack).toHaveLength(5);
@@ -1733,7 +1733,7 @@ describe("undo/redo delle azioni di pagina", () => {
     // ...e il redo li ri-cancella (simmetria del gesto).
     st.redo();
     expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1"]);
-    for (const id of ["r1", "r2", "r3"]) expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+    for (const id of ["r1", "r2", "r3"]) expect(useScene.getState().scene!.nodes.at(id)).toBeUndefined();
   });
 
   it("l'inverso di una eliminazione ricrea la PAGINA prima dei nodi, ogni parent prima dei figli", () => {

@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbInstanceOverride, toPbSubPaths, toPbTextStyle } from "../store/types";
-import type { InstanceOverrideLite, SubPathLite, TextStyleLite } from "../store/types";
+import { toPbClip, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { ClipLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Costruzione centralizzata degli Op: ogni tool passa da qui, così opId e docId
@@ -128,6 +128,21 @@ export function makeRenamePageOp(id: string, name: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "renamePage", value: { id, name } } });
 }
 
+// --- flussi ----------------------------------------------------------------
+// Upsert assoluti: l'id è FORNITO dal chiamante (uuid()), noto prima del submit.
+export function makeSetFlowOp(flow: FlowLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setFlow", value: { flow: toPbFlow(flow) } } });
+}
+export function makeDeleteFlowOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteFlow", value: { id } } });
+}
+export function makeSetTransitionOp(t: TransitionLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setTransition", value: { transition: toPbTransition(t) } } });
+}
+export function makeDeleteTransitionOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteTransition", value: { id } } });
+}
+
 // --- componenti / istanze (M4) ---------------------------------------------
 // I componenti sono sottoalberi MASTER già vivi in `nodes`; le istanze li
 // referenziano. Questi op esistono già in proto + core + store/applyOp.ts: qui
@@ -194,4 +209,13 @@ export function makeInstanceNode(p: InstanceNodeParams): Node {
     height: p.height,
     shape: { case: "instance", value: { componentId: p.componentId, overrides: [] } },
   });
+}
+
+// --- animazione ------------------------------------------------------------
+// Upsert assoluto dell'intera clip (id fornito dal chiamante) e cancellazione.
+export function makeSetClipOp(clip: ClipLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setClip", value: { clip: toPbClip(clip) } } });
+}
+export function makeDeleteClipOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteClip", value: { id } } });
 }

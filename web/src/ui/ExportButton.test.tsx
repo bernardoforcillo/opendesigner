@@ -16,7 +16,7 @@ function node(id: string): NodeLite {
 
 function install(selection: string[]): void {
   const scene = emptyScene("doc", "Untitled");
-  scene.nodes["n1"] = node("n1");
+  scene.nodes = scene.nodes.set("n1", node("n1"));
   useScene.setState({ scene, selection, gesture: null, notice: null });
 }
 

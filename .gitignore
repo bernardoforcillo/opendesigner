@@ -13,3 +13,6 @@ docs/superpowers/plans/
 docs/superpowers/specs/
 /.playwright-mcp/
 /.opendesigner-e2e/
+/web/parity-out/
+/web/export-parity-out/
+/web/svg-import-out/

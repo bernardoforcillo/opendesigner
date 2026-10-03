@@ -56,6 +56,9 @@ export const MASK_PATHS = [
   // sostituzione (una lista più corta che lascia in coda i tratti vecchi si
   // nota solo guardando il canvas).
   "strokes",
+  // Effetti (ombra, sfocatura). Ripetuto come "fills" e "strokes", con la stessa
+  // semantica di sostituzione dell'intera lista. Monoparola.
+  "effects",
   // Primo path MULTIPAROLA della mask (M1b, Task 8: il riordino del pannello
   // livelli). Scritto snake_case come lo scrive Go; sul filo JSON diventa
   // "orderKey" e torna indietro così com'è -- è tutto il motivo per cui questo
@@ -70,6 +73,14 @@ export const MASK_PATHS = [
   // order_key: sul filo JSON viaggia come "cornerRadius" e torna indietro
   // così com'è -- scriverlo camelCase qui farebbe THROW in serializzazione.
   "corner_radius",
+  // Auto layout di un FRAME. Come corner_radius sta DENTRO il oneof `shape`
+  // (FrameNode.auto_layout) e vale solo su un frame: su un altro nodo Go
+  // risponde ErrNotFrameNode e rifiuta l'op intero. Scrivere un patch senza
+  // auto layout lo SPEGNE. Multiparola: sul filo JSON viaggia come "autoLayout".
+  "auto_layout",
+  // Metadati liberi del nodo (flow.kind, code.route, test.id, ...). Come le liste,
+  // la mask SOSTITUISCE l'intera mappa. Monoparola.
+  "meta",
 ] as const;
 
 // L'UNICO tipo che un path di mask può avere ai punti di costruzione di un op

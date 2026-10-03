@@ -2,7 +2,7 @@ import type { SyncClient } from "../rpc/syncClient";
 import type { SceneState } from "../store/types";
 import type { Camera } from "../canvas/camera";
 
-export type ToolId = "select" | "rect" | "ellipse" | "text" | "pen" | "hand";
+export type ToolId = "select" | "connect" | "frame" | "rect" | "ellipse" | "text" | "pen" | "hand";
 
 // Tutto quello che un tool può toccare del mondo esterno passa da qui: niente
 // import diretti di DOM/camera dentro i tool, così sono testabili senza browser.

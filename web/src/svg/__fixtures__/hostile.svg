@@ -1,0 +1,26 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="200" height="120" viewBox="0 0 200 120" onload="alert('xss')">
+  <title>File ostile</title>
+  <script>alert(document.cookie)</script>
+  <style>
+    @import url("https://evil.example/steal.css");
+    @keyframes spin { to { transform: rotate(360deg) } }
+    .a { fill: #e11d48 }
+    .b { fill: url(http://evil.example/p.svg#x) }
+  </style>
+  <defs>
+    <filter id="blur"><feGaussianBlur stdDeviation="4"/></filter>
+    <clipPath id="clip"><rect x="0" y="0" width="60" height="60"/></clipPath>
+    <mask id="m"><rect width="200" height="120" fill="white"/></mask>
+    <pattern id="dots" width="8" height="8" patternUnits="userSpaceOnUse"><circle cx="4" cy="4" r="2" fill="#000"/></pattern>
+  </defs>
+  <foreignObject x="0" y="0" width="200" height="120"><div xmlns="http://www.w3.org/1999/xhtml"><img src="https://evil.example/pixel.gif"/><script>steal()</script></div></foreignObject>
+  <image x="0" y="0" width="40" height="40" xlink:href="https://evil.example/tracker.png" onerror="alert(1)"/>
+  <use xlink:href="https://evil.example/sprite.svg#icon" x="5" y="5"/>
+  <rect id="victim" class="a" x="10" y="10" width="80" height="50" rx="8" onclick="alert(2)" filter="url(#blur)"/>
+  <circle id="clipped" cx="140" cy="40" r="30" fill="#2563eb" clip-path="url(#clip)" mask="url(#m)"/>
+  <rect id="dotted" x="10" y="70" width="80" height="40" fill="url(#dots)" style="mix-blend-mode:multiply"/>
+  <path id="broken" d="M110 80 L190 80 L190 110 Q oops 3 4 Z" fill="#16a34a"/>
+  <text x="100" y="114" font-size="12"><textPath xlink:href="#broken">on a path</textPath></text>
+  <rect width="0" height="50" fill="red"/>
+  <animate attributeName="opacity" from="0" to="1" dur="1s"/>
+</svg>

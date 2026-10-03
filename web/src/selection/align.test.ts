@@ -25,7 +25,7 @@ function node(over: Partial<NodeLite> & { id: string }): NodeLite {
 
 function sceneWith(nodes: NodeLite[]): SceneState {
   const s = emptyScene("doc-1", "u");
-  for (const n of nodes) s.nodes[n.id] = n;
+  for (const n of nodes) s.nodes = s.nodes.set(n.id, n);
   return s;
 }
 
@@ -273,10 +273,10 @@ describe("alignOps", () => {
     ];
     let scene = sceneWith(nodes);
     const apply = (ops: Op[]) => {
-      const next = sceneWith(ids.map((id) => scene.nodes[id]));
+      const next = sceneWith(ids.map((id) => scene.nodes.at(id)));
       for (const op of ops) {
         const v = op.kind.value as { id: string; patch?: { x: number; y: number } };
-        next.nodes[v.id] = { ...next.nodes[v.id], x: v.patch!.x, y: v.patch!.y };
+        next.nodes = next.nodes.set(v.id, { ...next.nodes.at(v.id), x: v.patch!.x, y: v.patch!.y });
       }
       scene = next;
     };
@@ -359,13 +359,13 @@ describe("alignSelection", () => {
   it("is ONE gesture — one undo entry, however many nodes move", () => {
     useScene.setState({ selection: ["a", "b", "c"] });
     alignSelection("left");
-    expect(useScene.getState().scene!.nodes.b.x).toBe(0);
-    expect(useScene.getState().scene!.nodes.c.x).toBe(0);
+    expect(useScene.getState().scene!.nodes.at("b").x).toBe(0);
+    expect(useScene.getState().scene!.nodes.at("c").x).toBe(0);
     expect(sync.sent).toHaveLength(2);
     expect(useScene.getState().undoStack).toHaveLength(1);
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes.b.x).toBe(90);
-    expect(useScene.getState().scene!.nodes.c.x).toBe(200);
+    expect(useScene.getState().scene!.nodes.at("b").x).toBe(90);
+    expect(useScene.getState().scene!.nodes.at("c").x).toBe(200);
   });
 
   it("leaves no gesture open", () => {
@@ -395,7 +395,7 @@ describe("alignSelection", () => {
   it("con un nodo SOLO non manda niente e non apre nessun gesto", () => {
     useScene.setState({ selection: ["a"] });
     for (const cmd of ALIGN_COMMANDS) alignSelection(cmd.id);
-    expect(useScene.getState().scene!.nodes.a).toMatchObject({ x: 0, y: 0 });
+    expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0 });
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().gesture).toBeNull();

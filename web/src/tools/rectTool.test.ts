@@ -1,3 +1,4 @@
+import { nodesOf } from "../store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { createRectTool, DEFAULT_RECT_HEIGHT, DEFAULT_RECT_WIDTH } from "./rectTool";
 import type { ToolContext } from "./types";
@@ -122,7 +123,7 @@ describe("rectTool", () => {
   });
 
   it("derives the order key from the scene so it never collides after a reload", () => {
-    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { a: node("a", "a000004") } });
+    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ a: node("a", "a000004") }) });
     const tool = createRectTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(0, 0), ctx);
@@ -176,16 +177,16 @@ describe("rectTool", () => {
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerUp!(at(60, 80), ctx);
     const id = createdNode(submitted[0]).id;
-    expect(useScene.getState().scene!.nodes[id]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at(id)).toBeDefined();
 
     useScene.getState().undo();
-    expect(useScene.getState().scene!.nodes[id]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at(id)).toBeUndefined();
     expect(useScene.getState().canUndo).toBe(false);
     expect(useScene.getState().canRedo).toBe(true);
 
     useScene.getState().redo();
-    expect(useScene.getState().scene!.nodes[id]).toBeDefined();
-    expect(useScene.getState().scene!.nodes[id].width).toBe(50);
+    expect(useScene.getState().scene!.nodes.at(id)).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at(id).width).toBe(50);
   });
 
   it("an abandoned gesture leaves no undo entry", () => {
@@ -202,7 +203,7 @@ describe("rectTool", () => {
     const tool = createRectTool();
     const { ctx, submitted } = fakeCtx();
     useScene.setState({ selection: [] });
-    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: { a: node("a", "a000000") } });
+    useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ a: node("a", "a000000") }) });
     tool.onPointerMove!(at(5, 5), ctx);
     tool.onPointerUp!(at(5, 5), ctx);
     expect(submitted).toHaveLength(0);
@@ -223,6 +224,6 @@ describe("rectTool", () => {
     tool.onPointerUp!(at(60, 80), ctx);
     expect(createdNode(submitted[0]).parentId).toBe("page2");
     // E il nodo è davvero atterrato sotto page2 nella scena.
-    expect(useScene.getState().scene!.nodes[createdNode(submitted[0]).id].parentId).toBe("page2");
+    expect(useScene.getState().scene!.nodes.at(createdNode(submitted[0]).id).parentId).toBe("page2");
   });
 });

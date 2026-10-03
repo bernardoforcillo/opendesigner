@@ -2,10 +2,12 @@ import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { localToWorld, worldToLocal } from "../canvas/transform";
-import { isGroup } from "../store/groups";
+import { contentWorldBounds, isGroup } from "../store/groups";
+import { unionBounds } from "../canvas/geometry";
 import { orderKeyBetween } from "../store/orderKey";
 import { childrenOf, documentOrder, topmostOf } from "../store/tree";
-import type { NodeLite, SceneState } from "../store/types";
+import type { AutoLayoutLite, NodeLite, SceneState } from "../store/types";
+import { toPbAutoLayout } from "../store/types";
 import { makeCreateNodeOp, makeDeleteOp, makeReparentOp, makeSetPropsOp, uuid } from "./ops";
 
 // RAGGRUPPA (Ctrl+G) e SEPARA (Ctrl+Shift+G) come LISTE DI OP, senza toccare
@@ -108,7 +110,7 @@ export function groupOps(scene: SceneState, selection: readonly string[]): Gestu
   // Ordine di DISEGNO, non ordine di selezione: è ciò che conserva la pila
   // visiva dentro il gruppo (chi era sopra resta sopra).
   const sorted = [...ids].sort((a, b) => (index.get(a) as number) - (index.get(b) as number));
-  const top = scene.nodes[sorted[sorted.length - 1]];
+  const top = scene.nodes.at(sorted[sorted.length - 1]);
   const parentId = top.parentId;
 
   const groupId = uuid();
@@ -133,7 +135,7 @@ export function groupOps(scene: SceneState, selection: readonly string[]): Gestu
     const key = orderKeyBetween(prev, null);
     prev = key;
     // Lo SPAZIO è quello del parent del gruppo, non del gruppo: vedi moveOps.
-    ops.push(...moveOps(scene, scene.nodes[id], groupId, parentId, key));
+    ops.push(...moveOps(scene, scene.nodes.at(id), groupId, parentId, key));
   }
   return { ops, selection: [groupId] };
 }
@@ -160,7 +162,7 @@ export function groupOps(scene: SceneState, selection: readonly string[]): Gestu
 export function ungroupOps(scene: SceneState, selection: readonly string[]): GestureOps | null {
   const index = orderIndex(scene);
   const groups = topmostOf(scene, selection)
-    .map((id) => scene.nodes[id])
+    .map((id) => scene.nodes.at(id))
     .filter((n): n is NodeLite => n !== undefined && isGroup(n) && index.has(n.id))
     .sort((a, b) => (index.get(a.id) as number) - (index.get(b.id) as number));
   if (groups.length === 0) return null;
@@ -181,4 +183,117 @@ export function ungroupOps(scene: SceneState, selection: readonly string[]): Ges
     ops.push(makeDeleteOp(g.id));
   }
   return { ops, selection: freed };
+}
+
+// --- AVVOLGI IN UN FRAME ----------------------------------------------------
+
+export const FRAME_NAME = "Frame";
+
+// Lo spazio fra figli consecutivi che l'auto layout deve mantenere per non
+// cambiare l'aspetto: la media dei vuoti fra i loro riquadri lungo l'asse,
+// arrotondata al pixel e mai negativa (figli sovrapposti = 0).
+function averageGap(sorted: readonly { start: number; end: number }[]): number {
+  if (sorted.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < sorted.length; i++) total += sorted[i].start - sorted[i - 1].end;
+  return Math.max(0, Math.round(total / (sorted.length - 1)));
+}
+
+/**
+ * Avvolge la selezione in un FRAME (Ctrl+Alt+G) e, con `autoLayout`, lo rende un
+ * frame con auto layout (Shift+A). Stessa forma di groupOps: createNode + N
+ * reparentNode, UN gesto, una voce di undo.
+ *
+ * Il frame prende il riquadro dei selezionati, così avvolgerli non sposta un
+ * pixel. Senza auto layout i figli conservano la posizione (le loro coordinate
+ * diventano relative al frame). Con auto layout il frame sceglie da sé direzione
+ * e spaziatura guardando come i figli sono già disposti, e li mette in fila
+ * nell'ORDINE SPAZIALE -- l'auto layout dispone nell'ordine dei fratelli, quindi
+ * le order key vanno assegnate lungo l'asse e non nell'ordine di disegno.
+ *
+ * null quando non c'è niente da avvolgere.
+ */
+export function wrapInFrameOps(
+  scene: SceneState,
+  selection: readonly string[],
+  withAutoLayout: boolean,
+): GestureOps | null {
+  const index = orderIndex(scene);
+  const ids = topmostOf(scene, selection).filter((id) => index.has(id));
+  if (ids.length === 0) return null;
+  const byZ = [...ids].sort((a, b) => (index.get(a) as number) - (index.get(b) as number));
+  const top = scene.nodes.at(byZ[byZ.length - 1]);
+  const parentId = top.parentId;
+
+  // I riquadri nel MONDO, poi portati nello spazio del parent del frame.
+  const worldBox = new Map(ids.flatMap((id) => {
+    const b = contentWorldBounds(scene, scene.nodes.at(id));
+    return b ? [[id, b] as const] : [];
+  }));
+  const union = unionBounds([...worldBox.values()]);
+  if (!union) return null;
+  const origin = worldToLocal(scene, parentId, union.x, union.y);
+
+  let order = byZ;
+  let layout: AutoLayoutLite | null = null;
+  if (withAutoLayout) {
+    const centers = ids.map((id) => {
+      const b = worldBox.get(id);
+      return b ? { x: b.x + b.width / 2, y: b.y + b.height / 2 } : { x: 0, y: 0 };
+    });
+    const spread = (v: number[]) => Math.max(...v) - Math.min(...v);
+    const horizontal = spread(centers.map((c) => c.x)) >= spread(centers.map((c) => c.y));
+    const start = (id: string) => {
+      const b = worldBox.get(id);
+      return b ? (horizontal ? b.x : b.y) : 0;
+    };
+    order = [...ids].sort((a, b) => start(a) - start(b) || (index.get(a) as number) - (index.get(b) as number));
+    const spans = order.map((id) => {
+      const b = worldBox.get(id);
+      const s = start(id);
+      return { start: s, end: b ? s + (horizontal ? b.width : b.height) : s };
+    });
+    layout = {
+      direction: horizontal ? "horizontal" : "vertical",
+      spacing: averageGap(spans),
+      paddingLeft: 0, paddingTop: 0, paddingRight: 0, paddingBottom: 0,
+      mainAlign: "start", crossAlign: "start",
+      hugWidth: true, hugHeight: true,
+    };
+  }
+
+  const frameId = uuid();
+  const frameNode = create(NodeSchema, {
+    id: frameId,
+    parentId,
+    orderKey: orderKeyBetween(top.orderKey, upperBound(siblingAbove(scene, top), top.orderKey)),
+    name: FRAME_NAME,
+    visible: true,
+    opacity: 1,
+    x: origin.x, y: origin.y, width: union.width, height: union.height, rotation: 0,
+    fills: [],
+    shape: {
+      case: "frame",
+      value: { clipsContent: false, ...(layout ? { autoLayout: toPbAutoLayout(layout) } : {}) },
+    },
+  });
+
+  const ops: Op[] = [makeCreateNodeOp(frameNode)];
+  let prev: string | null = null;
+  for (const id of order) {
+    const key = orderKeyBetween(prev, null);
+    prev = key;
+    const n = scene.nodes.at(id);
+    ops.push(makeReparentOp(id, frameId, key));
+    // Con auto layout la posizione la decide il server: scriverla qui sarebbe
+    // un op in più che il layout sovrascrive subito.
+    if (!layout) {
+      const world = localToWorld(scene, n.parentId, n.x, n.y);
+      const inParent = worldToLocal(scene, parentId, world.x, world.y);
+      const x = inParent.x - origin.x;
+      const y = inParent.y - origin.y;
+      if (x !== n.x || y !== n.y) ops.push(makeSetPropsOp(id, { x, y }, ["x", "y"]));
+    }
+  }
+  return { ops, selection: [frameId] };
 }

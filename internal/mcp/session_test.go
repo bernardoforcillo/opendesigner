@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"sync"
 	"testing"
 	"time"
 
@@ -277,5 +278,437 @@ func TestDeleteNodeCascades(t *testing.T) {
 	doc, _ := sess.GetDocument(ctx, struct{}{})
 	if _, ok := nodeByID(doc, r.NodeId); ok {
 		t.Fatalf("node %s still present after delete", r.NodeId)
+	}
+}
+
+// TestGradientFillThroughTools: an agent can write a gradient fill, it reaches
+// the shared document as a real GradientPaint (what the web renderer draws), and
+// a gradient the renderer could not draw is refused with a reason.
+func TestGradientFillThroughTools(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	created, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 100, Height: 50})
+	if err != nil {
+		t.Fatalf("CreateRectangle: %v", err)
+	}
+	grad := odmcp.RGBA{Gradient: &odmcp.GradientSpec{
+		Kind: "linear", X1: 0, Y1: 0, X2: 1, Y2: 0,
+		Stops: []odmcp.GradientStopSpec{
+			{Color: odmcp.StopColor{R: 1, A: 1}, Position: 0},
+			{Color: odmcp.StopColor{B: 1, A: 1}, Position: 1},
+		},
+	}}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Fills: []odmcp.RGBA{grad}}); err != nil {
+		t.Fatalf("SetProperties gradient: %v", err)
+	}
+
+	open, err := direct.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: docID}))
+	if err != nil {
+		t.Fatalf("OpenDocument: %v", err)
+	}
+	var got *opendesignerv1.Paint
+	for _, n := range open.Msg.GetSnapshot().GetNodes() {
+		if n.GetId() == created.NodeId && len(n.GetFills()) == 1 {
+			got = n.GetFills()[0]
+		}
+	}
+	lin := got.GetLinear()
+	if lin == nil || len(lin.GetStops()) != 2 || lin.GetX2() != 1 || lin.GetStops()[1].GetColor().GetB() != 1 {
+		t.Fatalf("fill = %v, want a linear gradient with 2 stops ending blue", got)
+	}
+
+	bad := []odmcp.RGBA{
+		{Gradient: &odmcp.GradientSpec{Kind: "conic", X2: 1, Stops: grad.Gradient.Stops}},
+		{Gradient: &odmcp.GradientSpec{Kind: "linear", X2: 1, Stops: grad.Gradient.Stops[:1]}},
+		{Gradient: &odmcp.GradientSpec{Kind: "radial", Stops: grad.Gradient.Stops}},
+	}
+	for i, b := range bad {
+		if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Fills: []odmcp.RGBA{b}}); err == nil {
+			t.Errorf("bad gradient %d accepted, want an error", i)
+		}
+	}
+}
+
+// TestAgentAppearsInPresence: the agent joins the room under its nickname and,
+// after each write, points at the node it touched -- which is what lets the web
+// show "Claude" outlining the rectangle it just made.
+func TestAgentAppearsInPresence(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	// A "web client" watching the room.
+	wctx, cancelWatch := context.WithCancel(ctx)
+	defer cancelWatch()
+	watch, err := direct.WatchPresence(wctx, connect.NewRequest(&opendesignerv1.WatchPresenceRequest{
+		DocId: docID, ClientId: "web", Nickname: "Ada",
+	}))
+	if err != nil {
+		t.Fatalf("WatchPresence: %v", err)
+	}
+	events := make(chan *opendesignerv1.PresenceState, 16)
+	left := make(chan string, 4)
+	go func() {
+		for watch.Receive() {
+			switch k := watch.Msg().GetKind().(type) {
+			case *opendesignerv1.PresenceEvent_Update:
+				events <- k.Update
+			case *opendesignerv1.PresenceEvent_LeftClientId:
+				left <- k.LeftClientId
+			}
+		}
+	}()
+	next := func() *opendesignerv1.PresenceState {
+		t.Helper()
+		select {
+		case st := <-events:
+			return st
+		case <-time.After(3 * time.Second):
+			t.Fatal("timed out waiting for a presence update")
+			return nil
+		}
+	}
+
+	pctx, stopAgent := context.WithCancel(ctx)
+	done := make(chan struct{})
+	go func() { defer close(done); sess.PresenceLoop(pctx, "") }()
+
+	if got := next(); got.GetNickname() != odmcp.DefaultNickname || got.GetClientId() != sess.ClientID() {
+		t.Fatalf("joined as %v, want %q / %s", got, odmcp.DefaultNickname, sess.ClientID())
+	}
+	waitFor(t, "agent to be in the room", sess.PresenceJoined)
+
+	created, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 10, Height: 10})
+	if err != nil {
+		t.Fatalf("CreateRectangle: %v", err)
+	}
+	got := next()
+	if len(got.GetSelection()) != 1 || got.GetSelection()[0] != created.NodeId || got.GetPageId() != "page1" {
+		t.Fatalf("after create: %v, want selection [%s] on page1", got, created.NodeId)
+	}
+
+	if _, err := sess.DeleteNode(ctx, odmcp.NodeIdInput{Id: created.NodeId}); err != nil {
+		t.Fatalf("DeleteNode: %v", err)
+	}
+	if got := next(); len(got.GetSelection()) != 0 {
+		t.Fatalf("after delete selection = %v, want it cleared", got.GetSelection())
+	}
+
+	stopAgent()
+	<-done
+	select {
+	case id := <-left:
+		if id != sess.ClientID() {
+			t.Fatalf("left = %q, want the agent", id)
+		}
+	case <-time.After(3 * time.Second):
+		t.Fatal("the agent never left the room")
+	}
+}
+
+// TestTwoAgentsShareOneDocument: two MCP sessions on the same document each see
+// the other's edits, both appear in the room under their own names, and writes
+// racing on different nodes all land.
+func TestTwoAgentsShareOneDocument(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	a := startSession(t, url, docID, "agent-a")
+	b := startSession(t, url, docID, "agent-b")
+	ctx := context.Background()
+
+	for _, x := range []struct {
+		s    *odmcp.Session
+		name string
+	}{{a, "Agente A"}, {b, "Agente B"}} {
+		pctx, stop := context.WithCancel(ctx)
+		t.Cleanup(stop)
+		go x.s.PresenceLoop(pctx, x.name)
+	}
+	waitFor(t, "both agents in the room", func() bool { return a.PresenceJoined() && b.PresenceJoined() })
+
+	// Each writes 10 nodes at the same time.
+	ids := make(chan string, 20)
+	var wg sync.WaitGroup
+	for _, s := range []*odmcp.Session{a, b} {
+		wg.Add(1)
+		go func(s *odmcp.Session) {
+			defer wg.Done()
+			for i := 0; i < 10; i++ {
+				out, err := s.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 5, Height: 5})
+				if err != nil {
+					t.Errorf("CreateRectangle: %v", err)
+					return
+				}
+				ids <- out.NodeId
+			}
+		}(s)
+	}
+	wg.Wait()
+	close(ids)
+
+	var all []string
+	for id := range ids {
+		all = append(all, id)
+	}
+	if len(all) != 20 {
+		t.Fatalf("created %d nodes, want 20", len(all))
+	}
+	for name, s := range map[string]*odmcp.Session{"a": a, "b": b} {
+		waitFor(t, "session "+name+" to see all 20 nodes", func() bool {
+			doc, _ := s.GetDocument(ctx, struct{}{})
+			n := 0
+			for _, id := range all {
+				if _, ok := nodeByID(doc, id); ok {
+					n++
+				}
+			}
+			return n == 20
+		})
+	}
+
+	// B edits a node A created: it lands, and A sees it.
+	w := 77.0
+	if _, err := b.SetProperties(ctx, odmcp.SetPropertiesInput{Id: all[0], Width: &w}); err != nil {
+		t.Fatalf("B editing A's node: %v", err)
+	}
+	waitFor(t, "A to see B's edit", func() bool {
+		doc, _ := a.GetDocument(ctx, struct{}{})
+		n, ok := nodeByID(doc, all[0])
+		return ok && n.Width == 77
+	})
+}
+
+// TestListPeersShowsPeopleAndOtherAgents: an agent can see who else is in the
+// document and what they have selected, telling people from agents.
+func TestListPeersShowsPeopleAndOtherAgents(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	a := startSession(t, url, docID, "mcp-a")
+	b := startSession(t, url, docID, "mcp-b")
+	ctx := context.Background()
+
+	for _, x := range []struct {
+		s    *odmcp.Session
+		name string
+	}{{a, "A"}, {b, "B"}} {
+		pctx, stop := context.WithCancel(ctx)
+		t.Cleanup(stop)
+		go x.s.PresenceLoop(pctx, x.name)
+	}
+	waitFor(t, "agents in the room", func() bool { return a.PresenceJoined() && b.PresenceJoined() })
+
+	// A person in the browser joins and selects a node.
+	wctx, cancel := context.WithCancel(ctx)
+	defer cancel()
+	watch, err := direct.WatchPresence(wctx, connect.NewRequest(&opendesignerv1.WatchPresenceRequest{DocId: docID, ClientId: "web-1", Nickname: "Ada"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() {
+		for watch.Receive() {
+		}
+	}()
+	waitFor(t, "web client in the room", func() bool {
+		_, err := direct.UpdatePresence(ctx, connect.NewRequest(&opendesignerv1.UpdatePresenceRequest{
+			DocId: docID, State: &opendesignerv1.PresenceState{ClientId: "web-1", PageId: "page1", Selection: []string{"n-web"}},
+		}))
+		if err != nil {
+			return false
+		}
+		out, _ := a.ListPeers(ctx, struct{}{})
+		for _, p := range out.Peers {
+			if p.ClientId == "web-1" && len(p.Selection) == 1 {
+				return true
+			}
+		}
+		return false
+	})
+
+	created, err := b.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 5, Height: 5})
+	if err != nil {
+		t.Fatal(err)
+	}
+	waitFor(t, "A to see B's selection", func() bool {
+		out, _ := a.ListPeers(ctx, struct{}{})
+		for _, p := range out.Peers {
+			if p.ClientId == "mcp-b" {
+				return len(p.Selection) == 1 && p.Selection[0] == created.NodeId
+			}
+		}
+		return false
+	})
+
+	out, _ := a.ListPeers(ctx, struct{}{})
+	byID := map[string]odmcp.PeerView{}
+	for _, p := range out.Peers {
+		byID[p.ClientId] = p
+	}
+	if len(byID) != 2 {
+		t.Fatalf("A sees %d peers, want 2 (the person and B, never itself): %+v", len(byID), out.Peers)
+	}
+	if byID["web-1"].IsAgent || byID["web-1"].Nickname != "Ada" || byID["web-1"].Selection[0] != "n-web" {
+		t.Errorf("person = %+v", byID["web-1"])
+	}
+	if !byID["mcp-b"].IsAgent || byID["mcp-b"].Nickname != "B" {
+		t.Errorf("agent = %+v", byID["mcp-b"])
+	}
+
+	// The person leaves: gone from the list.
+	cancel()
+	waitFor(t, "the person to leave the list", func() bool {
+		out, _ := a.ListPeers(ctx, struct{}{})
+		for _, p := range out.Peers {
+			if p.ClientId == "web-1" {
+				return false
+			}
+		}
+		return true
+	})
+}
+
+// TestEffectsThroughTools: an agent can give a node a shadow and a blur, they
+// reach the shared document as real Effects, [] clears them, and an invalid
+// effect is refused with a reason.
+func TestEffectsThroughTools(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	created, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 100, Height: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	fx := []odmcp.EffectSpec{
+		{Kind: "dropShadow", Color: odmcp.StopColor{A: 0.4}, OffsetX: 1, OffsetY: 6, Blur: 12},
+		{Kind: "layerBlur", Radius: 3},
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Effects: fx}); err != nil {
+		t.Fatalf("SetProperties effects: %v", err)
+	}
+	effectsOf := func() []*opendesignerv1.Effect {
+		open, err := direct.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: docID}))
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, n := range open.Msg.GetSnapshot().GetNodes() {
+			if n.GetId() == created.NodeId {
+				return n.GetEffects()
+			}
+		}
+		return nil
+	}
+	got := effectsOf()
+	if len(got) != 2 || got[0].GetDropShadow().GetOffsetY() != 6 || got[0].GetDropShadow().GetBlur() != 12 ||
+		got[0].GetDropShadow().GetColor().GetA() != float32(0.4) || got[1].GetLayerBlur().GetRadius() != 3 {
+		t.Fatalf("effects = %v", got)
+	}
+
+	// An empty list clears them.
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Effects: []odmcp.EffectSpec{}}); err != nil {
+		t.Fatal(err)
+	}
+	if got := effectsOf(); len(got) != 0 {
+		t.Fatalf("after [] effects = %v, want none", got)
+	}
+
+	for i, bad := range []odmcp.EffectSpec{
+		{Kind: "glow"}, {Kind: "dropShadow", Blur: -1}, {Kind: "layerBlur", Radius: -2}, {},
+	} {
+		if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Effects: []odmcp.EffectSpec{bad}}); err == nil {
+			t.Errorf("bad effect %d accepted", i)
+		}
+	}
+}
+
+// TestAutoLayoutThroughTools: an agent makes a frame with auto layout, drops
+// children into it at nonsense positions, and the SERVER arranges them; changing
+// the layout rearranges them, and turning it off leaves them where they were.
+func TestAutoLayoutThroughTools(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	frame, err := sess.CreateFrame(ctx, odmcp.CreateFrameInput{
+		Width: 200, Height: 100, Name: "row", ClipsContent: true,
+		AutoLayout: &odmcp.AutoLayoutSpec{Direction: "horizontal", Spacing: 10, PaddingLeft: 5, PaddingTop: 7, PaddingRight: 5, PaddingBottom: 7},
+	})
+	if err != nil {
+		t.Fatalf("CreateFrame: %v", err)
+	}
+	var kids []string
+	for i := 0; i < 3; i++ {
+		out, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{ParentId: frame.NodeId, X: 999, Y: 999, Width: 20, Height: 10})
+		if err != nil {
+			t.Fatal(err)
+		}
+		kids = append(kids, out.NodeId)
+	}
+	at := func(id string) (float64, float64) {
+		doc, _ := sess.GetDocument(ctx, struct{}{})
+		n, ok := nodeByID(doc, id)
+		if !ok {
+			t.Fatalf("node %s missing", id)
+		}
+		return n.X, n.Y
+	}
+	for i, want := range []float64{5, 35, 65} {
+		if x, y := at(kids[i]); x != want || y != 7 {
+			t.Errorf("child %d at (%v,%v), want (%v,7)", i, x, y, want)
+		}
+	}
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	if n, _ := nodeByID(doc, frame.NodeId); n.AutoLayout == nil || n.AutoLayout.Direction != "horizontal" || n.AutoLayout.Spacing != 10 {
+		t.Errorf("get_document hides the layout: %+v", n.AutoLayout)
+	}
+
+	// Change direction: the server rearranges.
+	if _, err := sess.SetAutoLayout(ctx, odmcp.SetAutoLayoutInput{Id: frame.NodeId, AutoLayout: &odmcp.AutoLayoutSpec{
+		Direction: "vertical", Spacing: 4, MainAlign: "start", CrossAlign: "end",
+	}}); err != nil {
+		t.Fatalf("SetAutoLayout: %v", err)
+	}
+	// vertical, no padding, cross end: x = 200 - 20 = 180, y = 0, 14, 28.
+	for i, wantY := range []float64{0, 14, 28} {
+		if x, y := at(kids[i]); x != 180 || y != wantY {
+			t.Errorf("after vertical, child %d at (%v,%v), want (180,%v)", i, x, y, wantY)
+		}
+	}
+
+	// Off: positions stay, and the layout is gone from the view.
+	if _, err := sess.SetAutoLayout(ctx, odmcp.SetAutoLayoutInput{Id: frame.NodeId}); err != nil {
+		t.Fatal(err)
+	}
+	if x, y := at(kids[2]); x != 180 || y != 28 {
+		t.Errorf("turning layout off moved a child to (%v,%v)", x, y)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if n, _ := nodeByID(doc, frame.NodeId); n.AutoLayout != nil {
+		t.Errorf("layout still reported after turning it off: %+v", n.AutoLayout)
+	}
+
+	// Bad input is refused with a reason; a non-frame is refused by the server.
+	for i, bad := range []odmcp.AutoLayoutSpec{
+		{Direction: "diagonal"}, {Direction: "vertical", MainAlign: "middle"},
+		{Direction: "vertical", CrossAlign: "space-between"}, {Direction: "vertical", Spacing: -1},
+	} {
+		bad := bad
+		if _, err := sess.SetAutoLayout(ctx, odmcp.SetAutoLayoutInput{Id: frame.NodeId, AutoLayout: &bad}); err == nil {
+			t.Errorf("bad layout %d accepted", i)
+		}
+	}
+	if _, err := sess.SetAutoLayout(ctx, odmcp.SetAutoLayoutInput{Id: kids[0], AutoLayout: &odmcp.AutoLayoutSpec{Direction: "vertical"}}); err == nil {
+		t.Error("auto layout on a rectangle was accepted")
 	}
 }

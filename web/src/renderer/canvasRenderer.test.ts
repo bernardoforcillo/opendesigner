@@ -63,8 +63,8 @@ const Z1 = 1;
 describe("hitTest", () => {
   it("returns the topmost node under the point", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0, "a0");
-    s.nodes["b"] = rect("b", 10, 10, "a1"); // sopra (orderKey maggiore)
+    s.nodes = s.nodes.set("a", rect("a", 0, 0, "a0"));
+    s.nodes = s.nodes.set("b", rect("b", 10, 10, "a1")); // sopra (orderKey maggiore)
     expect(hitTest(s, 25, 25, Z1)).toBe("b");
     expect(hitTest(s, 5, 5, Z1)).toBe("a");
     expect(hitTest(s, 200, 200, Z1)).toBeNull();
@@ -73,20 +73,20 @@ describe("hitTest", () => {
   it("returns the topmost node by orderKey when two nodes overlap", () => {
     const s = emptyScene("d", "n");
     // Stesso rettangolo esattamente sovrapposto: "b" ha orderKey maggiore quindi vince.
-    s.nodes["a"] = rect("a", 0, 0, "a0");
-    s.nodes["b"] = rect("b", 0, 0, "a1");
+    s.nodes = s.nodes.set("a", rect("a", 0, 0, "a0"));
+    s.nodes = s.nodes.set("b", rect("b", 0, 0, "a1"));
     expect(hitTest(s, 25, 25, Z1)).toBe("b");
   });
 
   it("skips invisible nodes", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 0, 0, "a0", false); // visible: false, in cima per orderKey
-    s.nodes["b"] = rect("b", 0, 0, "a-1", true); // sotto, ma visibile
+    s.nodes = s.nodes.set("a", rect("a", 0, 0, "a0", false)); // visible: false, in cima per orderKey
+    s.nodes = s.nodes.set("b", rect("b", 0, 0, "a-1", true)); // sotto, ma visibile
     // "a" ha orderKey maggiore ma non è visibile: non deve mai essere ritornato.
     expect(hitTest(s, 25, 25, Z1)).toBe("b");
 
     const onlyInvisible = emptyScene("d", "n");
-    onlyInvisible.nodes["a"] = rect("a", 0, 0, "a0", false);
+    onlyInvisible.nodes = onlyInvisible.nodes.set("a", rect("a", 0, 0, "a0", false));
     expect(hitTest(onlyInvisible, 25, 25, Z1)).toBeNull();
   });
 
@@ -94,9 +94,9 @@ describe("hitTest", () => {
     // Il tramite: senza, un path si afferrerebbe a distanze diverse a seconda
     // dello zoom, e a zoom alto diventerebbe quasi impossibile da cliccare.
     const s = emptyScene("d", "n");
-    s.nodes["v"] = vectorNode("v", [{
+    s.nodes = s.nodes.set("v", vectorNode("v", [{
       anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 100, y: 0 })], closed: false,
-    }], { width: 100, height: 0 });
+    }], { width: 100, height: 0 }));
     expect(hitTest(s, 50, 3, 1)).toBe("v");     // 3 unità mondo = 3 px
     expect(hitTest(s, 50, 3, 4)).toBeNull();    // 3 unità mondo = 12 px
     expect(hitTest(s, 50, 12, 0.25)).toBe("v"); // 12 unità mondo = 3 px
@@ -107,12 +107,12 @@ describe("hitTest", () => {
     // senza chiudersi. Cliccare al centro deve prendere il rettangolo: il
     // contorno aperto lì non ha inchiostro.
     const s = emptyScene("d", "n");
-    s.nodes["r"] = rect("r", 0, 0, "a0");
-    s.nodes["v"] = vectorNode("v", [{
+    s.nodes = s.nodes.set("r", rect("r", 0, 0, "a0"));
+    s.nodes = s.nodes.set("v", vectorNode("v", [{
       anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 0, y: 50 }),
         anchor({ x: 50, y: 50 }), anchor({ x: 50, y: 0 })],
       closed: false,
-    }], { orderKey: "a1" });
+    }], { orderKey: "a1" }));
     expect(hitTest(s, 25, 25, Z1)).toBe("r");
     expect(hitTest(s, 25, 49, Z1)).toBe("v");  // sul lato, dove l'inchiostro c'è
   });
@@ -123,9 +123,9 @@ describe("hitTest", () => {
 // l'angolo di "k" cade a (113,74) e il suo box 50x50 arriva a (163,124).
 function nestedScene() {
   const s = emptyScene("d", "n");
-  s.nodes["g"] = childRect("g", "page1", 100, 50, "a0", { width: 400, height: 400 });
-  s.nodes["h"] = childRect("h", "g", 10, 20, "a0", { width: 200, height: 200 });
-  s.nodes["k"] = childRect("k", "h", 3, 4, "a0");
+  s.nodes = s.nodes.set("g", childRect("g", "page1", 100, 50, "a0", { width: 400, height: 400 }));
+  s.nodes = s.nodes.set("h", childRect("h", "g", 10, 20, "a0", { width: 200, height: 200 }));
+  s.nodes = s.nodes.set("k", childRect("k", "h", 3, 4, "a0"));
   return s;
 }
 
@@ -155,16 +155,16 @@ describe("hitTest with nesting", () => {
     // Due contenitori sovrapposti: "sotto" ha l'orderKey minore, quindi il suo
     // sottoalbero sta TUTTO sotto quello di "sopra" -- anche se il figlio di
     // "sotto" ha l'orderKey più grande di tutti.
-    s.nodes["sotto"] = childRect("sotto", "page1", 0, 0, "a0", { width: 200, height: 200 });
-    s.nodes["sopra"] = childRect("sopra", "page1", 0, 0, "a1", { width: 200, height: 200 });
-    s.nodes["figlioSotto"] = childRect("figlioSotto", "sotto", 0, 0, "z9");
-    s.nodes["figlioSopra"] = childRect("figlioSopra", "sopra", 0, 0, "a0");
+    s.nodes = s.nodes.set("sotto", childRect("sotto", "page1", 0, 0, "a0", { width: 200, height: 200 }));
+    s.nodes = s.nodes.set("sopra", childRect("sopra", "page1", 0, 0, "a1", { width: 200, height: 200 }));
+    s.nodes = s.nodes.set("figlioSotto", childRect("figlioSotto", "sotto", 0, 0, "z9"));
+    s.nodes = s.nodes.set("figlioSopra", childRect("figlioSopra", "sopra", 0, 0, "a0"));
     expect(hitTest(s, 25, 25, Z1)).toBe("figlioSopra");
   });
 
   it("skips the whole subtree of an invisible container", () => {
     const s = nestedScene();
-    s.nodes["h"] = { ...s.nodes["h"], visible: false };
+    s.nodes = s.nodes.set("h", { ...s.nodes.at("h"), visible: false });
     // "k" è visibile ma sta dentro un contenitore nascosto: non si disegna,
     // quindi non si clicca. Sotto resta "g", che è visibile.
     expect(hitTest(s, 138, 99, Z1)).toBe("g");
@@ -172,7 +172,7 @@ describe("hitTest with nesting", () => {
 
   it("ignores a node whose parent does not exist (unreachable from any page)", () => {
     const s = emptyScene("d", "n");
-    s.nodes["orfano"] = childRect("orfano", "sparito", 0, 0, "a0");
+    s.nodes = s.nodes.set("orfano", childRect("orfano", "sparito", 0, 0, "a0"));
     expect(hitTest(s, 25, 25, Z1)).toBeNull();
   });
 
@@ -182,8 +182,8 @@ describe("hitTest with nesting", () => {
   // (store/groups.ts), e sta là apposta.
   it("never returns a group: it returns the child, and nothing in the empty space between children", () => {
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 400, height: 400 };
-    s.nodes["c"] = childRect("c", "g", 10, 10, "a0");
+    s.nodes = s.nodes.set("g", { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 400, height: 400 });
+    s.nodes = s.nodes.set("c", childRect("c", "g", 10, 10, "a0"));
     expect(hitTest(s, 25, 25, Z1)).toBe("c");
     // Dentro l'unione dei figli ma su nessun figlio: niente da selezionare.
     expect(hitTest(s, 300, 300, Z1)).toBeNull();
@@ -200,8 +200,8 @@ describe("hitTest with a frame", () => {
   // frame finisce a 100,100).
   function framed(clips: boolean): SceneState {
     const s = emptyScene("d", "n");
-    s.nodes["F"] = frameNode("F", "page1", 0, 0, 100, 100, clips);
-    s.nodes["C"] = childRect("C", "F", 80, 80, "a0");
+    s.nodes = s.nodes.set("F", frameNode("F", "page1", 0, 0, 100, 100, clips));
+    s.nodes = s.nodes.set("C", childRect("C", "F", 80, 80, "a0"));
     return s;
   }
 
@@ -241,7 +241,7 @@ describe("nodesIntersecting", () => {
 
   it("skips the whole subtree of an invisible container", () => {
     const s = nestedScene();
-    s.nodes["h"] = { ...s.nodes["h"], visible: false };
+    s.nodes = s.nodes.set("h", { ...s.nodes.at("h"), visible: false });
     // "k" ha visible: true, ma sta dentro un contenitore nascosto: non si
     // disegna, quindi non si può nemmeno selezionare col marquee -- resta "g".
     // Un filtro piatto su n.visible risponderebbe ["g", "k"].
@@ -250,7 +250,7 @@ describe("nodesIntersecting", () => {
 
   it("ignores a node unreachable from any page", () => {
     const s = emptyScene("d", "n");
-    s.nodes["orfano"] = childRect("orfano", "sparito", 0, 0, "a0");
+    s.nodes = s.nodes.set("orfano", childRect("orfano", "sparito", 0, 0, "a0"));
     expect(nodesIntersecting(s, { x: 0, y: 0, width: 100, height: 100 })).toEqual([]);
   });
 
@@ -259,14 +259,14 @@ describe("nodesIntersecting", () => {
     // sull'intersezione del container perderebbe un figlio che sta dentro il
     // marquee mentre il suo container ne sta fuori.
     const s = emptyScene("d", "n");
-    s.nodes["g"] = childRect("g", "page1", 0, 0, "a0", { width: 10, height: 10 });
-    s.nodes["c"] = childRect("c", "g", 500, 500, "a0");
+    s.nodes = s.nodes.set("g", childRect("g", "page1", 0, 0, "a0", { width: 10, height: 10 }));
+    s.nodes = s.nodes.set("c", childRect("c", "g", 500, 500, "a0"));
     expect(nodesIntersecting(s, { x: 490, y: 490, width: 30, height: 30 })).toEqual(["c"]);
   });
 
   it("excludes a node that only touches the rectangle at an edge", () => {
     const s = emptyScene("d", "n");
-    s.nodes["a"] = rect("a", 50, 0, "a0"); // 50x50 -> (50,0)-(100,50)
+    s.nodes = s.nodes.set("a", rect("a", 50, 0, "a0")); // 50x50 -> (50,0)-(100,50)
     expect(nodesIntersecting(s, { x: 0, y: 0, width: 50, height: 50 })).toEqual([]);
   });
 
@@ -279,8 +279,8 @@ describe("nodesIntersecting", () => {
   // (store/groups.ts::selectionTargetsOf) partendo dai figli.
   it("never returns a group: its degenerate box at the parent origin is not a frame", () => {
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 0, height: 0 };
-    s.nodes["c"] = childRect("c", "g", 100, 100, "a0"); // 50x50 -> (100,100)-(150,150)
+    s.nodes = s.nodes.set("g", { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 0, height: 0 });
+    s.nodes = s.nodes.set("c", childRect("c", "g", 100, 100, "a0")); // 50x50 -> (100,100)-(150,150)
     // Una banda attorno all'origine: il contenuto del gruppo è 100px fuori.
     expect(nodesIntersecting(s, { x: -5, y: -5, width: 10, height: 10 })).toEqual([]);
     // E quando la banda prende il figlio, la risposta è il FIGLIO: il gruppo lo
@@ -293,8 +293,8 @@ describe("nodesIntersecting", () => {
     // da un documento di un'altra versione: il ramo è sul KIND, non sul box
     // degenere, esattamente come in drawNode e in hitTestNode.
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 400, height: 400 };
-    s.nodes["c"] = childRect("c", "g", 300, 300, "a0");
+    s.nodes = s.nodes.set("g", { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 400, height: 400 });
+    s.nodes = s.nodes.set("c", childRect("c", "g", 300, 300, "a0"));
     expect(nodesIntersecting(s, { x: 10, y: 10, width: 20, height: 20 })).toEqual([]);
     expect(nodesIntersecting(s, { x: 310, y: 310, width: 20, height: 20 })).toEqual(["c"]);
   });
@@ -307,8 +307,8 @@ describe("nodesIntersecting", () => {
 describe("nodesIntersecting with a frame", () => {
   function framed(clips: boolean): SceneState {
     const s = emptyScene("d", "n");
-    s.nodes["F"] = frameNode("F", "page1", 0, 0, 100, 100, clips);
-    s.nodes["C"] = childRect("C", "F", 80, 80, "a0"); // box mondo (80,80)-(130,130)
+    s.nodes = s.nodes.set("F", frameNode("F", "page1", 0, 0, 100, 100, clips));
+    s.nodes = s.nodes.set("C", childRect("C", "F", 80, 80, "a0")); // box mondo (80,80)-(130,130)
     return s;
   }
 
@@ -403,7 +403,7 @@ function fakeCtx() {
 describe("drawScene", () => {
   it("routes a text node to drawText instead of filling its box", () => {
     const s = emptyScene("d", "n");
-    s.nodes["t"] = textNode();
+    s.nodes = s.nodes.set("t", textNode());
     const f = fakeCtx();
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
     expect(f.fillText.map((c) => c.text)).toEqual(["hi"]);
@@ -415,7 +415,7 @@ describe("drawScene", () => {
     // height 0 deve comunque comparire, altrimenti il testo appena scritto
     // resterebbe invisibile finché qualcuno non aggiorna height.
     const s = emptyScene("d", "n");
-    s.nodes["t"] = textNode({ height: 0 });
+    s.nodes = s.nodes.set("t", textNode({ height: 0 }));
     const f = fakeCtx();
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
     expect(f.fillText.map((c) => c.text)).toEqual(["hi"]);
@@ -423,7 +423,7 @@ describe("drawScene", () => {
 
   it("skips an invisible text node", () => {
     const s = emptyScene("d", "n");
-    s.nodes["t"] = textNode({ visible: false });
+    s.nodes = s.nodes.set("t", textNode({ visible: false }));
     const f = fakeCtx();
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
     expect(f.fillText).toEqual([]);
@@ -436,7 +436,7 @@ describe("drawScene", () => {
   it("rotates a node about the CENTRE of its box, and undoes the transform after", () => {
     const s = emptyScene("d", "n");
     // box (10,20) 200x40 -> centro (110, 40)
-    s.nodes["t"] = textNode({ rotation: 90 });
+    s.nodes = s.nodes.set("t", textNode({ rotation: 90 }));
     const f = fakeCtx();
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
 
@@ -452,8 +452,8 @@ describe("drawScene", () => {
     // Solo testo: nodePath (e quindi Path2D, che qui non esiste) non entra in
     // gioco -- stessa ragione per cui lo evitano i test qui sopra.
     const s = emptyScene("d", "n");
-    s.nodes["t"] = textNode();
-    s.nodes["u"] = textNode({ id: "u", orderKey: "a2", rotation: 0 });
+    s.nodes = s.nodes.set("t", textNode());
+    s.nodes = s.nodes.set("u", textNode({ id: "u", orderKey: "a2", rotation: 0 }));
     const f = fakeCtx();
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
     expect(f.xform).toEqual([]);
@@ -516,7 +516,7 @@ describe("drawScene: tratto", () => {
 
   function sceneWith(n: NodeLite) {
     const s = emptyScene("d", "n");
-    s.nodes[n.id] = n;
+    s.nodes = s.nodes.set(n.id, n);
     return s;
   }
 
@@ -650,15 +650,15 @@ describe("drawScene: tratto", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
-      s.nodes["v"] = vectorNode("v", [{
+      s.nodes = s.nodes.set("v", vectorNode("v", [{
         anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 50, y: 0 })], closed: false,
-      }], { height: 0 });
+      }], { height: 0 }));
       const f = fakeCtx();
       drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
       expect(f.strokes).toHaveLength(1);
 
       const s2 = emptyScene("d", "n");
-      s2.nodes["r"] = { ...rect("r", 0, 0, "a0"), height: 0 };
+      s2.nodes = s2.nodes.set("r", { ...rect("r", 0, 0, "a0"), height: 0 });
       const f2 = fakeCtx();
       drawScene(f2.ctx, s2, { x: 0, y: 0, zoom: 1 } as Camera);
       expect(f2.fills).toEqual([]);
@@ -675,10 +675,10 @@ describe("drawScene: tratto", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
-      s.nodes["v"] = vectorNode("v", [{
+      s.nodes = s.nodes.set("v", vectorNode("v", [{
         anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 0 }), anchor({ x: 10, y: 10 })],
         closed: true,
-      }]);
+      }]));
       const f = fakeCtx();
       drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
       expect(f.fills).toHaveLength(1);
@@ -700,9 +700,9 @@ describe("drawScene: tratto", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
-      s.nodes["v"] = vectorNode("v", [{
+      s.nodes = s.nodes.set("v", vectorNode("v", [{
         anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 50, y: 0 })], closed: true,
-      }], { height: 0 });
+      }], { height: 0 }));
       const f = fakeCtx();
       drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
       expect(f.strokes).toHaveLength(1);
@@ -719,9 +719,9 @@ describe("drawScene: tratto", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
-      s.nodes["v"] = vectorNode("v", [{
+      s.nodes = s.nodes.set("v", vectorNode("v", [{
         anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 50, y: 50 })], closed: false,
-      }]);
+      }]));
       for (const zoom of [1, 4, 0.5]) {
         const f = fakeCtx();
         drawScene(f.ctx, s, { x: 0, y: 0, zoom } as Camera);
@@ -741,10 +741,10 @@ describe("drawScene: tratto", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
-      s.nodes["v"] = vectorNode("v", [
+      s.nodes = s.nodes.set("v", vectorNode("v", [
         { anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 0 }), anchor({ x: 0, y: 10 })], closed: true },
         { anchors: [anchor({ x: 50, y: 0 }), anchor({ x: 50, y: 30 })], closed: false },
-      ]);
+      ]));
       const f = fakeCtx();
       drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
       expect(f.fills).toHaveLength(1);
@@ -763,7 +763,7 @@ describe("drawScene: tratto", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
-      s.nodes["v"] = vectorNode("v", []);
+      s.nodes = s.nodes.set("v", vectorNode("v", []));
       const f = fakeCtx();
       drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
       expect(f.fills).toEqual([]);
@@ -788,8 +788,8 @@ function textAt(id: string, parentId: string, x: number, y: number, order = "a0"
 describe("drawScene with nesting", () => {
   it("draws a container BEFORE its children, and the child at its world position", () => {
     const s = emptyScene("d", "n");
-    s.nodes["P"] = textAt("P", "page1", 100, 50);
-    s.nodes["C"] = textAt("C", "P", 3, 4);
+    s.nodes = s.nodes.set("P", textAt("P", "page1", 100, 50));
+    s.nodes = s.nodes.set("C", textAt("C", "P", 3, 4));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.fillText).toEqual([
@@ -801,9 +801,9 @@ describe("drawScene with nesting", () => {
 
   it("accumulates the transform three levels deep", () => {
     const s = emptyScene("d", "n");
-    s.nodes["P"] = textAt("P", "page1", 100, 50);
-    s.nodes["Q"] = textAt("Q", "P", 10, 20);
-    s.nodes["R"] = textAt("R", "Q", 3, 4);
+    s.nodes = s.nodes.set("P", textAt("P", "page1", 100, 50));
+    s.nodes = s.nodes.set("Q", textAt("Q", "P", 10, 20));
+    s.nodes = s.nodes.set("R", textAt("R", "Q", 3, 4));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.fillText.map((c) => [c.text, c.x, c.y])).toEqual([
@@ -815,9 +815,9 @@ describe("drawScene with nesting", () => {
 
   it("draws the children of a container in orderKey order", () => {
     const s = emptyScene("d", "n");
-    s.nodes["P"] = textAt("P", "page1", 0, 0);
-    s.nodes["b"] = textAt("b", "P", 0, 0, "a2");
-    s.nodes["a"] = textAt("a", "P", 0, 0, "a1");
+    s.nodes = s.nodes.set("P", textAt("P", "page1", 0, 0));
+    s.nodes = s.nodes.set("b", textAt("b", "P", 0, 0, "a2"));
+    s.nodes = s.nodes.set("a", textAt("a", "P", 0, 0, "a1"));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.fillText.map((c) => c.text)).toEqual(["P", "a", "b"]);
@@ -828,8 +828,8 @@ describe("drawScene with nesting", () => {
     // discesa: un gruppo (traccia 1, task 3) non ha nulla da riempire ma i suoi
     // figli devono comparire, e alla loro posizione mondo.
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...rect("g", 100, 50, "a0"), width: 0, height: 0 };
-    s.nodes["C"] = textAt("C", "g", 3, 4);
+    s.nodes = s.nodes.set("g", { ...rect("g", 100, 50, "a0"), width: 0, height: 0 });
+    s.nodes = s.nodes.set("C", textAt("C", "g", 3, 4));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.fills).toEqual([]); // niente Path2D per il contenitore degenere
@@ -842,8 +842,8 @@ describe("drawScene with nesting", () => {
   // comparirebbe un rettangolo pieno che l'utente non ha mai disegnato.
   it("never fills a group, whatever box it carries, but draws its children", () => {
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...rect("g", 100, 50, "a0"), kind: "group", width: 400, height: 400 };
-    s.nodes["C"] = textAt("C", "g", 3, 4);
+    s.nodes = s.nodes.set("g", { ...rect("g", 100, 50, "a0"), kind: "group", width: 400, height: 400 });
+    s.nodes = s.nodes.set("C", textAt("C", "g", 3, 4));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.fills).toEqual([]);
@@ -852,8 +852,8 @@ describe("drawScene with nesting", () => {
 
   it("hides the whole subtree of an invisible group, like any other container", () => {
     const s = emptyScene("d", "n");
-    s.nodes["g"] = { ...rect("g", 0, 0, "a0"), kind: "group", visible: false };
-    s.nodes["C"] = textAt("C", "g", 3, 4);
+    s.nodes = s.nodes.set("g", { ...rect("g", 0, 0, "a0"), kind: "group", visible: false });
+    s.nodes = s.nodes.set("C", textAt("C", "g", 3, 4));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.fillText).toEqual([]);
@@ -861,8 +861,8 @@ describe("drawScene with nesting", () => {
 
   it("hides the whole subtree of an invisible container", () => {
     const s = emptyScene("d", "n");
-    s.nodes["P"] = textAt("P", "page1", 0, 0, "a0", { visible: false });
-    s.nodes["C"] = textAt("C", "P", 3, 4);
+    s.nodes = s.nodes.set("P", textAt("P", "page1", 0, 0, "a0", { visible: false }));
+    s.nodes = s.nodes.set("C", textAt("C", "P", 3, 4));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.fillText).toEqual([]);
@@ -870,7 +870,7 @@ describe("drawScene with nesting", () => {
 
   it("does not draw a node unreachable from any page", () => {
     const s = emptyScene("d", "n");
-    s.nodes["orfano"] = textAt("orfano", "sparito", 0, 0);
+    s.nodes = s.nodes.set("orfano", textAt("orfano", "sparito", 0, 0));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.fillText).toEqual([]);
@@ -878,9 +878,9 @@ describe("drawScene with nesting", () => {
 
   it("leaves the ctx transform stack balanced", () => {
     const s = emptyScene("d", "n");
-    s.nodes["P"] = textAt("P", "page1", 100, 50);
-    s.nodes["Q"] = textAt("Q", "P", 10, 20);
-    s.nodes["R"] = textAt("R", "Q", 3, 4);
+    s.nodes = s.nodes.set("P", textAt("P", "page1", 100, 50));
+    s.nodes = s.nodes.set("Q", textAt("Q", "P", 10, 20));
+    s.nodes = s.nodes.set("R", textAt("R", "Q", 3, 4));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.open()).toBe(0);
@@ -898,8 +898,8 @@ describe("drawScene with a frame", () => {
 
   it("fills the frame's box (at its parent-space position) and still draws its children", () => {
     const s = emptyScene("d", "n");
-    s.nodes["F"] = frameNode("F", "page1", 20, 30, 100, 80, true);
-    s.nodes["C"] = textAt("C", "F", 5, 5);
+    s.nodes = s.nodes.set("F", frameNode("F", "page1", 20, 30, 100, 80, true));
+    s.nodes = s.nodes.set("C", textAt("C", "F", 5, 5));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     // Il box del frame è riempito (una sola fill: il testo non passa da fill).
@@ -911,7 +911,7 @@ describe("drawScene with a frame", () => {
 
   it("draws a plain rect even if the frame carries a corner radius: a frame is rectangular", () => {
     const s = emptyScene("d", "n");
-    s.nodes["F"] = { ...frameNode("F", "page1", 0, 0, 100, 80, false), cornerRadius: 40 };
+    s.nodes = s.nodes.set("F", { ...frameNode("F", "page1", 0, 0, 100, 80, false), cornerRadius: 40 });
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect((f.fills[0].path as FakePath2D).ops).toEqual([{ op: "rect", args: [0, 0, 100, 80] }]);
@@ -919,8 +919,8 @@ describe("drawScene with a frame", () => {
 
   it("clips its children to its OWN local box when clipsContent", () => {
     const s = emptyScene("d", "n");
-    s.nodes["F"] = frameNode("F", "page1", 20, 30, 100, 80, true);
-    s.nodes["C"] = textAt("C", "F", 5, 5);
+    s.nodes = s.nodes.set("F", frameNode("F", "page1", 20, 30, 100, 80, true));
+    s.nodes = s.nodes.set("C", textAt("C", "F", 5, 5));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     // Il clip è al box LOCALE (0,0,w,h) -- lo spazio dei figli -- non alla x/y
@@ -931,8 +931,8 @@ describe("drawScene with a frame", () => {
 
   it("does NOT clip when clipsContent is false: the children may overflow", () => {
     const s = emptyScene("d", "n");
-    s.nodes["F"] = frameNode("F", "page1", 20, 30, 100, 80, false);
-    s.nodes["C"] = textAt("C", "F", 5, 5);
+    s.nodes = s.nodes.set("F", frameNode("F", "page1", 20, 30, 100, 80, false));
+    s.nodes = s.nodes.set("C", textAt("C", "F", 5, 5));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.clips.length).toBe(0);
@@ -941,7 +941,7 @@ describe("drawScene with a frame", () => {
 
   it("does not clip for a childless clipping frame (nothing to clip)", () => {
     const s = emptyScene("d", "n");
-    s.nodes["F"] = frameNode("F", "page1", 0, 0, 100, 80, true);
+    s.nodes = s.nodes.set("F", frameNode("F", "page1", 0, 0, 100, 80, true));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.clips.length).toBe(0);
@@ -961,8 +961,8 @@ describe("scoping alla pagina corrente", () => {
   function twoPages(): SceneState {
     const s = emptyScene("d", "n");
     s.pages = [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }];
-    s.nodes["a"] = rect("a", 0, 0, "a0"); // parentId "page1"
-    s.nodes["b"] = childRect("b", "page2", 0, 0, "a0");
+    s.nodes = s.nodes.set("a", rect("a", 0, 0, "a0")); // parentId "page1"
+    s.nodes = s.nodes.set("b", childRect("b", "page2", 0, 0, "a0"));
     return s;
   }
 
@@ -985,8 +985,8 @@ describe("scoping alla pagina corrente", () => {
   it("drawScene disegna solo le radici della pagina corrente", () => {
     const s = emptyScene("d", "n");
     s.pages = [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }];
-    s.nodes["A"] = textAt("A", "page1", 0, 0);
-    s.nodes["B"] = textAt("B", "page2", 0, 0);
+    s.nodes = s.nodes.set("A", textAt("A", "page1", 0, 0));
+    s.nodes = s.nodes.set("B", textAt("B", "page2", 0, 0));
 
     const f1 = fakeCtx();
     drawScene(f1.ctx, s, identityCam, "page1");
@@ -1101,7 +1101,7 @@ const READY = { status: "ready", image: { naturalWidth: 40, naturalHeight: 20 } 
 describe("drawScene: immagini", () => {
   it("disegna l'immagine decodificata nel box del nodo", () => {
     const s = emptyScene("doc-1", "n");
-    s.nodes["i"] = imageNode();
+    s.nodes = s.nodes.set("i", imageNode());
     const f = imageCtx();
     const src = images(READY);
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera, { images: src.source });
@@ -1117,7 +1117,7 @@ describe("drawScene: immagini", () => {
 
   it("un asset MANCANTE diventa un segnaposto visibile, non un'eccezione", () => {
     const s = emptyScene("doc-1", "n");
-    s.nodes["i"] = imageNode();
+    s.nodes = s.nodes.set("i", imageNode());
     const f = imageCtx();
     const src = images({ status: "missing", image: null });
 
@@ -1135,7 +1135,7 @@ describe("drawScene: immagini", () => {
 
   it("un asset ANCORA IN CARICAMENTO è un segnaposto SENZA croce", () => {
     const s = emptyScene("doc-1", "n");
-    s.nodes["i"] = imageNode();
+    s.nodes = s.nodes.set("i", imageNode());
     const f = imageCtx();
     const src = images({ status: "loading", image: null });
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera, { images: src.source });
@@ -1149,7 +1149,7 @@ describe("drawScene: immagini", () => {
     // Il ctx è trasformato in coordinate mondo: una lineWidth in unità mondo
     // sparirebbe a zoom 0.1 e diventerebbe un bordo grasso a zoom 8.
     const s = emptyScene("doc-1", "n");
-    s.nodes["i"] = imageNode();
+    s.nodes = s.nodes.set("i", imageNode());
     for (const zoom of [0.25, 1, 4]) {
       const f = imageCtx();
       drawScene(f.ctx, s, { x: 0, y: 0, zoom } as Camera, {
@@ -1161,7 +1161,7 @@ describe("drawScene: immagini", () => {
 
   it("un nodo immagine degenere non disegna niente (come ogni forma senza area)", () => {
     const s = emptyScene("doc-1", "n");
-    s.nodes["i"] = imageNode({ width: 0 });
+    s.nodes = s.nodes.set("i", imageNode({ width: 0 }));
     const f = imageCtx();
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera, { images: images(READY).source });
     expect(f.drawn).toEqual([]);
@@ -1172,7 +1172,7 @@ describe("drawScene: immagini", () => {
     // È il percorso VERO (App.tsx non inietta niente): in jsdom l'immagine non
     // si carica mai, quindi resta "loading" -- ma il loop non deve morire.
     const s = emptyScene("doc-1", "n");
-    s.nodes["i"] = imageNode();
+    s.nodes = s.nodes.set("i", imageNode());
     const f = imageCtx();
     expect(() => drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera)).not.toThrow();
     expect(f.drawn).toEqual([]);
@@ -1217,10 +1217,10 @@ describe("drawScene with an instance", () => {
   it("draws the master subtree at the instance origin, shifted by -masterRoot.x/y", () => {
     const s = emptyScene("d", "n");
     // Master: un gruppo a (20,10) con un testo figlio a (5,5), fuori da page1.
-    s.nodes["gm"] = { ...rect("gm", 20, 10, "a0"), kind: "group", parentId: "components", width: 0, height: 0 };
-    s.nodes["tc"] = textAt("tc", "gm", 5, 5);
+    s.nodes = s.nodes.set("gm", { ...rect("gm", 20, 10, "a0"), kind: "group", parentId: "components", width: 0, height: 0 });
+    s.nodes = s.nodes.set("tc", textAt("tc", "gm", 5, 5));
     s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
-    s.nodes["i"] = instanceNode("i", "comp", 100, 50);
+    s.nodes = s.nodes.set("i", instanceNode("i", "comp", 100, 50));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     // L'origine del master (20,10) cade sull'origine dell'istanza (100,50); il
@@ -1234,9 +1234,9 @@ describe("drawScene with an instance", () => {
     // virtuale. (Se il master fosse su page1 comparirebbe DUE volte, ed è
     // corretto -- ma qui verifichiamo che l'irraggiungibile non si disegna.)
     const s = emptyScene("d", "n");
-    s.nodes["mt"] = textAt("mt", "components", 0, 0);
+    s.nodes = s.nodes.set("mt", textAt("mt", "components", 0, 0));
     s.components["comp"] = { rootNodeId: "mt", name: "Comp" };
-    s.nodes["i"] = instanceNode("i", "comp", 100, 50);
+    s.nodes = s.nodes.set("i", instanceNode("i", "comp", 100, 50));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.fillText).toEqual([{ text: "mt", x: 100, y: 50 + ASCENT }]);
@@ -1244,11 +1244,11 @@ describe("drawScene with an instance", () => {
 
   it("applies a TEXT override to the overridden node only, leaving siblings from the master", () => {
     const s = emptyScene("d", "n");
-    s.nodes["gm"] = { ...rect("gm", 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 };
-    s.nodes["mt"] = textAt("mt", "gm", 0, 0, "a0");
-    s.nodes["mt2"] = textAt("mt2", "gm", 0, 20, "a1");
+    s.nodes = s.nodes.set("gm", { ...rect("gm", 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 });
+    s.nodes = s.nodes.set("mt", textAt("mt", "gm", 0, 0, "a0"));
+    s.nodes = s.nodes.set("mt2", textAt("mt2", "gm", 0, 20, "a1"));
     s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
-    s.nodes["i"] = instanceNode("i", "comp", 0, 0, [{ masterNodeId: "mt", text: "OVR" }]);
+    s.nodes = s.nodes.set("i", instanceNode("i", "comp", 0, 0, [{ masterNodeId: "mt", text: "OVR" }]));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     // mt sovrascritto, mt2 dal master intatto.
@@ -1259,12 +1259,12 @@ describe("drawScene with an instance", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
-      s.nodes["gm"] = { ...rect("gm", 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 };
+      s.nodes = s.nodes.set("gm", { ...rect("gm", 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 });
       // Due rettangoli neri nel master; l'override rende ROSSO solo il primo.
-      s.nodes["mr1"] = { ...rect("mr1", 0, 0, "a0"), parentId: "gm" };
-      s.nodes["mr2"] = { ...rect("mr2", 0, 60, "a1"), parentId: "gm" };
+      s.nodes = s.nodes.set("mr1", { ...rect("mr1", 0, 0, "a0"), parentId: "gm" });
+      s.nodes = s.nodes.set("mr2", { ...rect("mr2", 0, 60, "a1"), parentId: "gm" });
       s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
-      s.nodes["i"] = instanceNode("i", "comp", 0, 0, [{ masterNodeId: "mr1", fills: [{ r: 1, g: 0, b: 0, a: 1 }] }]);
+      s.nodes = s.nodes.set("i", instanceNode("i", "comp", 0, 0, [{ masterNodeId: "mr1", fills: [{ r: 1, g: 0, b: 0, a: 1 }] }]));
       const f = fillStyleCtx();
       drawScene(f.ctx, s, identityCam);
       // mr1 col colore dell'override, mr2 col nero del master.
@@ -1276,9 +1276,9 @@ describe("drawScene with an instance", () => {
 
   it("a missing component (or missing master) renders nothing", () => {
     const s = emptyScene("d", "n");
-    s.nodes["i"] = instanceNode("i", "nope", 100, 50);
+    s.nodes = s.nodes.set("i", instanceNode("i", "nope", 100, 50));
     // componente presente ma radice assente
-    s.nodes["j"] = instanceNode("j", "comp", 100, 50, [], { orderKey: "a1" });
+    s.nodes = s.nodes.set("j", instanceNode("j", "comp", 100, 50, [], { orderKey: "a1" }));
     s.components["comp"] = { rootNodeId: "gone", name: "Comp" };
     const f = fakeCtx();
     expect(() => drawScene(f.ctx, s, identityCam)).not.toThrow();
@@ -1291,9 +1291,9 @@ describe("hitTest with an instance", () => {
   // ne rende il contenuto a (100,100)-(150,150).
   function withInstance(): SceneState {
     const s = emptyScene("d", "n");
-    s.nodes["mr"] = { ...rect("mr", 0, 0, "a0"), parentId: "components" };
+    s.nodes = s.nodes.set("mr", { ...rect("mr", 0, 0, "a0"), parentId: "components" });
     s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
-    s.nodes["i"] = instanceNode("i", "comp", 100, 100);
+    s.nodes = s.nodes.set("i", instanceNode("i", "comp", 100, 100));
     return s;
   }
 
@@ -1309,7 +1309,7 @@ describe("hitTest with an instance", () => {
 
   it("a missing component is not hit where its content would be", () => {
     const s = emptyScene("d", "n");
-    s.nodes["i"] = instanceNode("i", "nope", 100, 100);
+    s.nodes = s.nodes.set("i", instanceNode("i", "nope", 100, 100));
     expect(hitTest(s, 110, 110, Z1)).toBeNull();
   });
 });
@@ -1317,9 +1317,9 @@ describe("hitTest with an instance", () => {
 describe("nodesIntersecting with an instance", () => {
   function withInstance(): SceneState {
     const s = emptyScene("d", "n");
-    s.nodes["mr"] = { ...rect("mr", 0, 0, "a0"), parentId: "components" };
+    s.nodes = s.nodes.set("mr", { ...rect("mr", 0, 0, "a0"), parentId: "components" });
     s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
-    s.nodes["i"] = instanceNode("i", "comp", 100, 100);
+    s.nodes = s.nodes.set("i", instanceNode("i", "comp", 100, 100));
     return s;
   }
 
@@ -1340,10 +1340,10 @@ describe("nodesIntersecting with an instance", () => {
 describe("instance cycle guard", () => {
   function selfRef(): SceneState {
     const s = emptyScene("d", "n");
-    s.nodes["gs"] = { ...rect("gs", 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 };
-    s.nodes["ci"] = instanceNode("ci", "self", 0, 0, [], { parentId: "gs" });
+    s.nodes = s.nodes.set("gs", { ...rect("gs", 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 });
+    s.nodes = s.nodes.set("ci", instanceNode("ci", "self", 0, 0, [], { parentId: "gs" }));
     s.components["self"] = { rootNodeId: "gs", name: "Self" };
-    s.nodes["i"] = instanceNode("i", "self", 0, 0);
+    s.nodes = s.nodes.set("i", instanceNode("i", "self", 0, 0));
     return s;
   }
 

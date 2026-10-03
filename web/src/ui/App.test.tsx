@@ -4,9 +4,10 @@
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within, waitFor } from "@testing-library/react";
-import { App, TOOLS, TOOL_LABELS } from "./App";
+import { App, TOOLS, TOOL_LABELS, toolsForMode } from "./App";
 import { textTool } from "../tools/textTool";
 import { penTool } from "../tools/penTool";
+import { frameTool } from "../tools/frameTool";
 import { selectTool } from "../tools/selectTool";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
@@ -74,12 +75,18 @@ describe("registro dei tool", () => {
     expect(TOOLS.text).toBe(textTool);
     expect(TOOL_LABELS.map((t) => t.label)).toEqual([
       "Seleziona",
+      "Collega",
+      "Frame",
       "Rettangolo",
       "Ellisse",
       "Testo",
       "Penna",
       "Mano",
     ]);
+  });
+
+  it("il tool frame è registrato ed è il frameTool vero", () => {
+    expect(TOOLS.frame).toBe(frameTool);
   });
 
   it("il pen tool è registrato ed è il penTool vero", () => {
@@ -94,9 +101,24 @@ describe("registro dei tool", () => {
 describe("toolbar", () => {
   it("mostra un pulsante per ogni tool, Testo compreso", () => {
     render(<App />);
-    for (const { label } of TOOL_LABELS) {
+    // Le forme stanno in un solo pulsante (l'ultima usata, di default
+    // Rettangolo) con le altre dietro "Altre forme".
+    for (const { id, label } of toolsForMode("design")) {
+      if (id === "ellipse") continue;
       expect(screen.getByRole("radio", { name: label })).toBeInTheDocument();
     }
+    expect(screen.getByRole("button", { name: "Altre forme" })).toBeInTheDocument();
+    // "Collega" esiste solo nei flussi.
+    expect(screen.queryByRole("radio", { name: "Collega" })).not.toBeInTheDocument();
+  });
+
+  it("Ellisse si sceglie dal menu delle forme e prende il posto del pulsante", async () => {
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "Altre forme" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Ellisse/ }));
+    const ellisse = screen.getByRole("radio", { name: "Ellisse" });
+    expect(ellisse).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("radio", { name: "Rettangolo" })).not.toBeInTheDocument();
   });
 
   it("premere Testo attiva davvero il tool testo (il cursore del canvas lo dimostra)", () => {
@@ -144,7 +166,9 @@ describe("ciclo di disegno", () => {
     const fakeCtx = new Proxy(target, {
       get: (t, p) => (p in t ? t[p] : () => {}),
     }) as unknown as CanvasRenderingContext2D;
-    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx);
+    // `as never`: i tipi di canvaskit-wasm aggiungono l'overload WebGPU a getContext, e
+    // mockReturnValue prende il tipo dell'ULTIMO overload.
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx as never);
     const drawOverlay = vi.spyOn(overlayRenderer, "drawOverlay").mockImplementation(() => {});
     vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
 
@@ -210,11 +234,11 @@ describe("layout a tre colonne", () => {
 describe("scorciatoie della clipboard", () => {
   function installScene() {
     const scene = emptyScene("doc-1", "Untitled");
-    scene.nodes["n1"] = {
+    scene.nodes = scene.nodes.set("n1", {
       id: "n1", parentId: "page1", orderKey: "a000001", name: "Rettangolo",
       visible: true, opacity: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0,
       fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
-    };
+    });
     useScene.setState({ selection: [], gesture: null, undoStack: [], redoStack: [], sync: null });
     useScene.getState().setScene(scene);
     useScene.getState().setSelection(["n1"]);
@@ -224,7 +248,7 @@ describe("scorciatoie della clipboard", () => {
     render(<App />);
     installScene();
     fireEvent.keyDown(window, { key: "d", ctrlKey: true });
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(2);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
   it("smontare l'app le stacca", () => {
@@ -232,7 +256,7 @@ describe("scorciatoie della clipboard", () => {
     installScene();
     unmount();
     fireEvent.keyDown(window, { key: "d", ctrlKey: true });
-    expect(Object.keys(useScene.getState().scene!.nodes)).toHaveLength(1);
+    expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(1);
   });
 });
 
@@ -246,5 +270,74 @@ describe("export", () => {
     render(<App />);
     const toolbar = screen.getByRole("toolbar", { name: "Strumenti" });
     expect(within(toolbar).getByRole("button", { name: "Esporta" })).toBeInTheDocument();
+  });
+});
+
+import { docIdFromHash } from "./App";
+
+describe("docIdFromHash", () => {
+  const id = "123e4567-e89b-42d3-a456-426614174000";
+  it("legge l'id dal link di invito", () => {
+    expect(docIdFromHash(`#doc=${id}`)).toBe(id);
+    expect(docIdFromHash(`#doc=${id.toUpperCase()}`)).toBe(id);
+  });
+  it("ignora tutto ciò che non è un id ben formato", () => {
+    expect(docIdFromHash("")).toBeNull();
+    expect(docIdFromHash("#doc=")).toBeNull();
+    expect(docIdFromHash("#doc=../../etc/passwd")).toBeNull();
+    expect(docIdFromHash(`#altro=${id}`)).toBeNull();
+    expect(docIdFromHash(`#doc=${id}x`)).toBeNull();
+  });
+});
+
+// Il ciclo di disegno è A INVALIDAZIONE: un editor fermo non ridisegna. Prima
+// girava a 60 fps sempre, anche senza nessuna modifica.
+describe("ciclo di disegno a invalidazione", () => {
+  function setupCtx() {
+    const target: Record<string | symbol, unknown> = { canvas: { width: 800, height: 600 } };
+    const fakeCtx = new Proxy(target, {
+      get: (t, p) => (p in t ? t[p] : () => {}),
+    }) as unknown as CanvasRenderingContext2D;
+    // `as never`: i tipi di canvaskit-wasm aggiungono l'overload WebGPU a getContext, e
+    // mockReturnValue prende il tipo dell'ULTIMO overload.
+    vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx as never);
+    return vi.spyOn(overlayRenderer, "drawOverlay").mockImplementation(() => {});
+  }
+  const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
+
+  it("da fermo non ridisegna; ogni cambiamento che si vede ne produce uno", async () => {
+    const drawOverlay = setupCtx();
+    vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
+    useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
+    render(<App />);
+
+    await waitFor(() => expect(drawOverlay).toHaveBeenCalled());
+    await sleep(80); // lascia sfogare i frame di assestamento
+    const idle = drawOverlay.mock.calls.length;
+    await sleep(250);
+    expect(drawOverlay.mock.calls.length).toBe(idle); // niente rAF in giro
+
+    useScene.getState().setSelection(["x"]);
+    await waitFor(() => expect(drawOverlay.mock.calls.length).toBeGreaterThan(idle));
+    const afterSelection = drawOverlay.mock.calls.length;
+    await sleep(120);
+    expect(drawOverlay.mock.calls.length).toBe(afterSelection);
+
+    useScene.getState().setCamera({ x: 5, y: 5, zoom: 2 });
+    await waitFor(() => expect(drawOverlay.mock.calls.length).toBeGreaterThan(afterSelection));
+  });
+
+  it("molte invalidazioni nello stesso frame producono UN disegno", async () => {
+    const drawOverlay = setupCtx();
+    vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
+    useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
+    render(<App />);
+    await waitFor(() => expect(drawOverlay).toHaveBeenCalled());
+    await sleep(80);
+    const before = drawOverlay.mock.calls.length;
+    for (let i = 0; i < 25; i++) useScene.getState().setCamera({ x: i, y: 0, zoom: 1 });
+    await sleep(120);
+    expect(drawOverlay.mock.calls.length - before).toBeLessThanOrEqual(2);
+    expect(drawOverlay.mock.calls.length - before).toBeGreaterThanOrEqual(1);
   });
 });

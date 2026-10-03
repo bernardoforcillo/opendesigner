@@ -6,6 +6,7 @@ import (
 	"fmt"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"google.golang.org/protobuf/proto"
 )
 
 var (
@@ -14,6 +15,10 @@ var (
 	ErrNodeNotFound = errors.New("core: node not found")
 	ErrNotTextNode  = errors.New("core: not a text node")
 	ErrNotRectNode  = errors.New("core: not a rect node")
+	// ErrNotFrameNode: auto_layout è un campo del FrameNode, quindi scriverlo su
+	// un nodo che non è un frame è un op sul nodo sbagliato (stesso precedente di
+	// ErrNotRectNode per corner_radius).
+	ErrNotFrameNode = errors.New("core: not a frame node")
 	// ErrNotVectorNode: stesso precedente di ErrNotTextNode -- il oneof `shape`
 	// è la NATURA del nodo, quindi un SetVectorPath su un rettangolo è un op sul
 	// nodo sbagliato, non un campo mancante da riempire.
@@ -28,6 +33,11 @@ var (
 	ErrComponentExists   = errors.New("core: component id already taken")
 	ErrComponentNotFound = errors.New("core: component not found")
 	ErrNotInstanceNode   = errors.New("core: not an instance node")
+	// Flussi.
+	ErrNilFlow            = errors.New("core: nil flow")
+	ErrFlowNotFound       = errors.New("core: flow not found")
+	ErrNilTransition      = errors.New("core: nil transition")
+	ErrTransitionNotFound = errors.New("core: transition not found")
 )
 
 // NewDocument crea un documento vuoto con una pagina di default ("page1").
@@ -40,20 +50,78 @@ func NewDocument(id, name string) *opendesignerv1.Document {
 }
 
 // Apply muta doc applicando op. Ritorna errore se l'op viola un'invariante.
+//
+// Dopo un op riuscito ridispone i frame con auto layout che l'op può aver
+// toccato (vedi layout.go): il risultato fa parte del documento, non è uno
+// stato derivato da ricalcolare in lettura. I frame interessati si leggono sia
+// PRIMA dell'op (il vecchio parent di un nodo cancellato o spostato) sia DOPO
+// (il nuovo).
 func Apply(doc *opendesignerv1.Document, op *opendesignerv1.Op) error {
+	return ApplyShared(doc, op, nil)
+}
+
+// Shared permette ad Apply di lavorare su un documento che CONDIVIDE i nodi con
+// un altro (una copia superficiale della mappa): un nodo non ancora "posseduto"
+// viene clonato prima della prima scrittura, così l'altro documento non vede mai
+// la mutazione. Costa quanto i nodi toccati dall'op, non quanto il documento:
+// il server non clona più tutto a ogni op.
+type Shared struct{ owned map[string]struct{} }
+
+func NewShared() *Shared { return &Shared{owned: map[string]struct{}{}} }
+
+// mut ritorna il nodo `id` pronto per essere scritto. Con un *Shared nil (Apply
+// semplice) ogni nodo è già del documento e si scrive in place.
+func (c *Shared) mut(doc *opendesignerv1.Document, id string) *opendesignerv1.Node {
+	n := doc.Nodes[id]
+	if c == nil || n == nil {
+		return n
+	}
+	if _, ok := c.owned[id]; ok {
+		return n
+	}
+	n = proto.Clone(n).(*opendesignerv1.Node)
+	doc.Nodes[id] = n
+	c.owned[id] = struct{}{}
+	return n
+}
+
+// ApplyShared è Apply su un documento le cui voci di `Nodes` possono essere
+// condivise (vedi Shared). Con cow nil è identico ad Apply.
+func ApplyShared(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) error {
+	before := layoutTargets(doc, op)
+	if err := applyOp(doc, op, cow); err != nil {
+		return err
+	}
+	relayout(doc, append(before, layoutTargets(doc, op)...), cow)
+	return nil
+}
+
+func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) error {
 	switch k := op.GetKind().(type) {
 	case *opendesignerv1.Op_CreateNode:
-		return applyCreate(doc, k.CreateNode)
+		return applyCreate(doc, k.CreateNode, cow)
 	case *opendesignerv1.Op_SetProps:
-		return applySetProps(doc, k.SetProps)
+		return applySetProps(doc, k.SetProps, cow)
 	case *opendesignerv1.Op_DeleteNode:
 		return applyDelete(doc, k.DeleteNode)
+	case *opendesignerv1.Op_SetClip:
+		return applySetClip(doc, k.SetClip)
+	case *opendesignerv1.Op_DeleteClip:
+		return applyDeleteClip(doc, k.DeleteClip)
+	case *opendesignerv1.Op_SetFlow:
+		return applySetFlow(doc, k.SetFlow)
+	case *opendesignerv1.Op_DeleteFlow:
+		return applyDeleteFlow(doc, k.DeleteFlow)
+	case *opendesignerv1.Op_SetTransition:
+		return applySetTransition(doc, k.SetTransition)
+	case *opendesignerv1.Op_DeleteTransition:
+		return applyDeleteTransition(doc, k.DeleteTransition)
 	case *opendesignerv1.Op_SetText:
-		return applySetText(doc, k.SetText)
+		return applySetText(doc, k.SetText, cow)
 	case *opendesignerv1.Op_SetVectorPath:
-		return applySetVectorPath(doc, k.SetVectorPath)
+		return applySetVectorPath(doc, k.SetVectorPath, cow)
 	case *opendesignerv1.Op_ReparentNode:
-		return applyReparent(doc, k.ReparentNode)
+		return applyReparent(doc, k.ReparentNode, cow)
 	case *opendesignerv1.Op_CreatePage:
 		return applyCreatePage(doc, k.CreatePage)
 	case *opendesignerv1.Op_DeletePage:
@@ -63,13 +131,13 @@ func Apply(doc *opendesignerv1.Document, op *opendesignerv1.Op) error {
 	case *opendesignerv1.Op_CreateComponent:
 		return applyCreateComponent(doc, k.CreateComponent)
 	case *opendesignerv1.Op_SetInstanceOverride:
-		return applySetInstanceOverride(doc, k.SetInstanceOverride)
+		return applySetInstanceOverride(doc, k.SetInstanceOverride, cow)
 	default:
 		return fmt.Errorf("core: unknown op kind %T", op.GetKind())
 	}
 }
 
-func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode) error {
+func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode, cow *Shared) error {
 	n := c.GetNode()
 	if n == nil || n.GetId() == "" {
 		return ErrNilNode
@@ -106,6 +174,9 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode) err
 		doc.Nodes = map[string]*opendesignerv1.Node{}
 	}
 	doc.Nodes[n.GetId()] = n
+	if cow != nil {
+		cow.owned[n.GetId()] = struct{}{}
+	}
 	return nil
 }
 
@@ -126,9 +197,13 @@ func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) err
 	if _, ok := doc.Nodes[d.GetId()]; !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, d.GetId())
 	}
+	gone := map[string]bool{}
 	for _, n := range SubtreeOf(doc, d.GetId()) {
+		gone[n.GetId()] = true
 		delete(doc.Nodes, n.GetId())
 	}
+	cascadeFlows(doc, gone)
+	cascadeClips(doc, gone)
 	return nil
 }
 
@@ -146,8 +221,11 @@ func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) err
 // Come per una mask mista in applySetProps, il rifiuto è in BLOCCO: si valida
 // tutto prima di scrivere qualsiasi campo, così un reparent respinto non lascia
 // il nodo con la order key nuova e il parent vecchio.
-func applyReparent(doc *opendesignerv1.Document, r *opendesignerv1.ReparentNode) error {
+func applyReparent(doc *opendesignerv1.Document, r *opendesignerv1.ReparentNode, cow *Shared) error {
 	n, ok := doc.Nodes[r.GetId()]
+	if ok {
+		n = cow.mut(doc, r.GetId())
+	}
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, r.GetId())
 	}
@@ -230,11 +308,15 @@ func applyDeletePage(doc *opendesignerv1.Document, d *opendesignerv1.DeletePage)
 	// Validato tutto PRIMA di scrivere qualsiasi cosa, come per una mask mista:
 	// un rifiuto non deve lasciare la pagina rimossa e i nodi al loro posto (o
 	// viceversa).
+	gone := map[string]bool{}
 	for _, root := range ChildrenOf(doc, d.GetId()) {
 		for _, n := range SubtreeOf(doc, root.GetId()) {
+			gone[n.GetId()] = true
 			delete(doc.Nodes, n.GetId())
 		}
 	}
+	cascadeFlows(doc, gone)
+	cascadeClips(doc, gone)
 	doc.Pages = append(doc.Pages[:i], doc.Pages[i+1:]...)
 	return nil
 }
@@ -253,15 +335,18 @@ func applyRenamePage(doc *opendesignerv1.Document, r *opendesignerv1.RenamePage)
 // applySetProps copia i campi indicati dalla mask da patch al nodo target.
 // Valida l'intera mask prima di mutare qualsiasi campo: una mask mista
 // (es. ["x","bogus"]) non deve lasciare il documento parzialmente mutato.
-func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties) error {
+func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetId()]
+	if ok {
+		n = cow.mut(doc, s.GetId())
+	}
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
 	}
 	paths := s.GetMask().GetPaths()
 	for _, path := range paths {
 		switch path {
-		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "order_key":
+		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta":
 			// supported
 		case "corner_radius":
 			// UNICO path della mask che indirizza un campo DENTRO il oneof
@@ -307,6 +392,13 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			default:
 				return fmt.Errorf("%w: %s", ErrNotRectNode, s.GetId())
 			}
+		case "auto_layout":
+			// Come corner_radius, un campo DENTRO il oneof `shape`: vale solo su
+			// un frame. L'op intero viene rifiutato, quindi una mask mista
+			// (es. "x,auto_layout") su un rettangolo non sposta nemmeno la x.
+			if _, ok := n.GetShape().(*opendesignerv1.Node_Frame); !ok {
+				return fmt.Errorf("%w: %s", ErrNotFrameNode, s.GetId())
+			}
 		default:
 			return fmt.Errorf("core: unsupported mask path %q", path)
 		}
@@ -330,6 +422,10 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.Name = p.GetName()
 		case "visible":
 			n.Visible = p.GetVisible()
+		case "meta":
+			// Sostituisce l'intera mappa (come le liste). Una mappa vuota la
+			// svuota: nil e {} sono lo stesso stato dopo il round-trip proto3.
+			n.Meta = p.GetMeta()
 		case "fills":
 			n.Fills = p.GetFills()
 		case "strokes":
@@ -345,6 +441,12 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			// controllare: il tratto è un campo di primo livello del Node, e
 			// vale per un rettangolo come per un'ellisse o un testo.
 			n.Strokes = p.GetStrokes()
+		case "effects":
+			// SOSTITUZIONE dell'intera lista, come fills e strokes. Campo di
+			// primo livello: vale per qualunque forma. Il patch che arriva senza
+			// effects azzera la lista -- la mask dice cosa scrivere, non il
+			// patch.
+			n.Effects = p.GetEffects()
 		case "order_key":
 			// L'ordine di disegno (e quello del pannello livelli) è un CAMPO
 			// come gli altri, non un op dedicato: riordinare è scrivere una
@@ -353,6 +455,12 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			// della mask -- sul filo JSON viaggia come "orderKey" (vedi
 			// web/src/store/maskPaths.ts).
 			n.OrderKey = p.GetOrderKey()
+		case "auto_layout":
+			// Il giro di validazione ha già escluso ogni nodo che non è un
+			// frame. Il valore viene dal patch NIDIFICATO nella forma frame; un
+			// patch senza frame (o senza auto_layout) lo SPEGNE -- il getter
+			// nil-safe, come per le liste con mask "fills".
+			n.GetFrame().AutoLayout = proto.Clone(p.GetFrame().GetAutoLayout()).(*opendesignerv1.AutoLayout)
 		case "corner_radius":
 			// Il giro di validazione ha già escluso ellisse e testo: qui resta
 			// un rettangolo, esplicito o implicito. Nel secondo caso (shape
@@ -385,8 +493,11 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 // a 0 e renderebbe il nodo invisibile. Con il flag: false => lo stile esistente
 // resta intatto, true => viene sostituito da `style` (nil incluso, che è
 // l'azzeramento esplicito).
-func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText) error {
+func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetId()]
+	if ok {
+		n = cow.mut(doc, s.GetId())
+	}
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
 	}
@@ -418,8 +529,11 @@ func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText) error
 // (contenuto e stile) e una delle due doveva poter restare intatta; qui l'op È
 // i subpath, quindi "assente" e "vuoto" descrivono lo stesso stato e la
 // distinzione proto3 non è osservabile.
-func applySetVectorPath(doc *opendesignerv1.Document, s *opendesignerv1.SetVectorPath) error {
+func applySetVectorPath(doc *opendesignerv1.Document, s *opendesignerv1.SetVectorPath, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetId()]
+	if ok {
+		n = cow.mut(doc, s.GetId())
+	}
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
 	}
@@ -470,8 +584,11 @@ func applyCreateComponent(doc *opendesignerv1.Document, c *opendesignerv1.Create
 // (fills_present=false && text_present=false) l'override viene tolto -- il nodo
 // torna a ereditare dal master. Rifiutato se il nodo non è un'istanza: un
 // override su un rettangolo è un op sul nodo sbagliato, non un campo da riempire.
-func applySetInstanceOverride(doc *opendesignerv1.Document, s *opendesignerv1.SetInstanceOverride) error {
+func applySetInstanceOverride(doc *opendesignerv1.Document, s *opendesignerv1.SetInstanceOverride, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetInstanceId()]
+	if ok {
+		n = cow.mut(doc, s.GetInstanceId())
+	}
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetInstanceId())
 	}

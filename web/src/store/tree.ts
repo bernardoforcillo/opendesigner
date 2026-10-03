@@ -29,7 +29,7 @@ import type { NodeLite, SceneState } from "./types";
 // Confronto per code unit come in Go (byte-wise), non localeCompare: le order
 // key sono indici frazionari ASCII, e una collazione locale le ordinerebbe
 // diversamente dal server.
-function bySiblingOrder(a: NodeLite, b: NodeLite): number {
+export function bySiblingOrder(a: NodeLite, b: NodeLite): number {
   if (a.orderKey !== b.orderKey) return a.orderKey < b.orderKey ? -1 : 1;
   return a.id < b.id ? -1 : a.id > b.id ? 1 : 0;
 }
@@ -37,7 +37,7 @@ function bySiblingOrder(a: NodeLite, b: NodeLite): number {
 // I figli DIRETTI di un container, ordinati. `parentId` può essere l'id di un
 // nodo o quello di una Page (i root di quella pagina).
 export function childrenOf(scene: SceneState, parentId: string): NodeLite[] {
-  return Object.values(scene.nodes).filter((n) => n.parentId === parentId).sort(bySiblingOrder);
+  return [...scene.nodes.values()].filter((n) => n.parentId === parentId).sort(bySiblingOrder);
 }
 
 // TUTTI i figli di TUTTI i container in una passata sola: la stessa lista che
@@ -58,7 +58,7 @@ export function childrenOf(scene: SceneState, parentId: string): NodeLite[] {
 // che ordine) restano quelle di childrenOf, che la controparte ce l'ha.
 export function childIndexOf(scene: SceneState): Map<string, NodeLite[]> {
   const index = new Map<string, NodeLite[]>();
-  for (const n of Object.values(scene.nodes)) {
+  for (const n of [...scene.nodes.values()]) {
     const siblings = index.get(n.parentId);
     if (siblings) siblings.push(n);
     else index.set(n.parentId, [n]);
@@ -113,7 +113,7 @@ export function documentOrder(scene: SceneState): NodeLite[] {
 //
 // Lista vuota se il nodo non esiste.
 export function subtreeOf(scene: SceneState, id: string): NodeLite[] {
-  const root = scene.nodes[id];
+  const root = scene.nodes.at(id);
   if (!root) return [];
   const out: NodeLite[] = [];
   const seen = new Set<string>();
@@ -145,9 +145,9 @@ export function descendantsOf(scene: SceneState, id: string): NodeLite[] {
 export function ancestorsOf(scene: SceneState, id: string): NodeLite[] {
   const out: NodeLite[] = [];
   const seen = new Set<string>([id]);
-  let cur = scene.nodes[id];
+  let cur = scene.nodes.at(id);
   while (cur) {
-    const parent = scene.nodes[cur.parentId];
+    const parent = scene.nodes.at(cur.parentId);
     // seen: un ciclo in un documento malformato non deve far salire per sempre.
     if (!parent || seen.has(parent.id)) break;
     seen.add(parent.id);
@@ -163,11 +163,11 @@ export function ancestorsOf(scene: SceneState, id: string): NodeLite[] {
 // un reparent.
 export function isAncestorOf(scene: SceneState, ancestorId: string, id: string): boolean {
   const seen = new Set<string>();
-  let cur = scene.nodes[id];
+  let cur = scene.nodes.at(id);
   while (cur && !seen.has(cur.id)) {
     seen.add(cur.id);
     if (cur.parentId === ancestorId) return true;
-    cur = scene.nodes[cur.parentId];
+    cur = scene.nodes.at(cur.parentId);
   }
   return false;
 }
@@ -211,17 +211,17 @@ export function topmostOf(scene: SceneState, ids: readonly string[]): string[] {
 // allineata a rootsOf è ciò che impedisce la divergenza vedi-vs-seleziona
 // quando la selezione va potata per pagina (store.ts).
 //
-// false per un id assente (scene.nodes[id] undefined): un nodo che non esiste
+// false per un id assente (scene.nodes.at(id) undefined): un nodo che non esiste
 // non è raggiungibile da nessuna pagina, quindi questa funzione sussume anche il
 // controllo di esistenza. `seen` come in ancestorsOf: un ciclo in un documento
 // malformato non deve far risalire per sempre.
 export function isReachableFrom(scene: SceneState, id: string, pageId: string): boolean {
   const seen = new Set<string>();
-  let cur = scene.nodes[id];
+  let cur = scene.nodes.at(id);
   while (cur && !seen.has(cur.id)) {
     if (cur.parentId === pageId) return true;
     seen.add(cur.id);
-    cur = scene.nodes[cur.parentId];
+    cur = scene.nodes.at(cur.parentId);
   }
   return false;
 }
@@ -231,5 +231,5 @@ export function isReachableFrom(scene: SceneState, id: string, pageId: string): 
 // nessuna pagina, quindi non è disegnabile né selezionabile: esisterebbe solo
 // dentro la mappa. Parità con core.parentExists (Go).
 export function parentExists(scene: SceneState, parentId: string): boolean {
-  return parentId in scene.nodes || scene.pages.some((p) => p.id === parentId);
+  return scene.nodes.has(parentId) || scene.pages.some((p) => p.id === parentId);
 }

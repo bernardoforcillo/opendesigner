@@ -26,11 +26,13 @@ import {
   type HandleId,
   type SelectionFrame,
 } from "../selection/handles";
-import { snapBounds, snapMoving, snapTargets, worldThreshold, type SnapGuide } from "../selection/snap";
+import { type SnapIndex, prepareSnapTargets, snapBounds, snapMoving, snapTargets, worldThreshold, type SnapGuide } from "../selection/snap";
 import { useScene } from "../store/store";
 import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "../store/groups";
 import { subtreeOf, topmostOf } from "../store/tree";
 import { groupOps, ungroupOps } from "./grouping";
+import { wrapSelectionInFrame } from "./wrapFrame";
+import { computeLayoutDrop, layoutDropOps, reorderableParent, type LayoutDrop } from "./layoutDrop";
 import { makeCreateComponentOp, makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp, uuid } from "./ops";
 import type { SceneState } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -239,7 +241,13 @@ export function createSelectTool(): Tool {
   // pointermove: i bersagli non si muovono durante il trascinamento, e
   // ricalcolarli 60 volte al secondo vorrebbe dire rileggere tutta la scena.
   let dragBox: Bounds | null = null;
-  let dragTargets: Bounds[] | null = null;
+  let dragTargets: SnapIndex | null = null;
+  // RIORDINO in un auto layout (tools/layoutDrop.ts). Deciso al primo move vero:
+  // se i nodi trascinati sono figli di un frame con auto layout il gesto NON
+  // scrive x/y (il server li ricalcolerebbe e il nodo tornerebbe al suo posto),
+  // sceglie invece dove metterli nella fila. `box` è il riquadro di partenza
+  // della selezione, da cui si disegna il contorno che segue il puntatore.
+  let reorder: { originId: string; ids: string[]; box: Bounds | null } | null = null;
 
   // --- resize con le maniglie -------------------------------------------------
   // Stessa struttura del drag di spostamento: ancora MONDO + stato iniziale, e
@@ -272,7 +280,7 @@ export function createSelectTool(): Tool {
   let resizeStarted = false;
   // I bersagli dello snap per il ridimensionamento, fotografati come quelli del
   // trascinamento (stessa ragione).
-  let resizeTargets: Bounds[] | null = null;
+  let resizeTargets: SnapIndex | null = null;
 
   // --- rotazione dalle zone d'angolo ------------------------------------------
   // Stessa forma degli altri due gesti (ancora + stato iniziale + apertura
@@ -329,7 +337,22 @@ export function createSelectTool(): Tool {
     dragStarted = false;
     dragBox = null;
     dragTargets = null;
+    reorder = null;
+    useScene.getState().setLayoutDrop(null);
     clearGuides();
+  }
+
+  // Dove cadrebbe il riordino col puntatore in `e`, e il suo aspetto sull'overlay.
+  function reorderStep(e: PointerEvent, ctx: ToolContext): LayoutDrop | null {
+    const scene = ctx.getScene();
+    if (!reorder || !scene || !dragAnchor) return null;
+    const p = ctx.toWorld(e);
+    const drop = computeLayoutDrop(scene, reorder.ids, reorder.originId, p);
+    const ghost = reorder.box
+      ? { ...reorder.box, x: reorder.box.x + (p.x - dragAnchor.x), y: reorder.box.y + (p.y - dragAnchor.y) }
+      : null;
+    useScene.getState().setLayoutDrop(drop ? { indicator: drop.indicator, ghost } : null);
+    return drop;
   }
 
   function resetResize() {
@@ -369,7 +392,7 @@ export function createSelectTool(): Tool {
     const world = ctx.toWorld(e);
     const dx = world.x - dragAnchor!.x;
     const dy = world.y - dragAnchor!.y;
-    if (mods.alt || !dragBox || !dragTargets || dragTargets.length === 0) return { dx, dy, guides: [] };
+    if (mods.alt || !dragBox || !dragTargets || dragTargets.targets.length === 0) return { dx, dy, guides: [] };
     const moved = { ...dragBox, x: dragBox.x + dx, y: dragBox.y + dy };
     const s = snapBounds(moved, dragTargets, worldThreshold(ctx.getCamera()));
     return { dx: dx + s.dx, dy: dy + s.dy, guides: s.guides };
@@ -397,7 +420,7 @@ export function createSelectTool(): Tool {
     const frame = resizeStartFrame;
     if (
       mods.alt || mods.shift || !frame || !resizeHandle
-      || !resizeTargets || resizeTargets.length === 0
+      || !resizeTargets || resizeTargets.targets.length === 0
       || frame.rotation % 360 !== 0
     ) {
       return { dx, dy, guides: [] };
@@ -595,7 +618,7 @@ export function createSelectTool(): Tool {
         // resizeOps per scalare gli ancoraggi insieme al box.
         const startVectors: Record<string, SubPathLite[]> = {};
         for (const sid of transformTargetsOf(scene, topmostOf(scene, store.selection))) {
-          const n = scene.nodes[sid];
+          const n = scene.nodes.at(sid);
           if (!n) continue;
           // bounds in MONDO (come il frame e il puntatore) + toLocal per tornare
           // in parent-local quando si scrive l'op -- vedi resizeStartNodes.
@@ -611,7 +634,7 @@ export function createSelectTool(): Tool {
         resizeStartFrame = frameOfSelection(ctx);
         resizeStartNodes = start;
         resizeStartVectors = startVectors;
-        resizeTargets = snapTargets(scene, snapExclude(scene, store.selection));
+        resizeTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, store.selection)));
         resizeStarted = false;
         setCursor(ctx, cursorForHandle(overlay.handle));
         return;
@@ -625,12 +648,12 @@ export function createSelectTool(): Tool {
         if (frame) {
           const start: Record<string, { bounds: Bounds; rotation: number }> = {};
           for (const sid of store.selection) {
-            const n = scene.nodes[sid];
+            const n = scene.nodes.at(sid);
             if (n) start[sid] = { bounds: boundsOfNode(n), rotation: n.rotation };
           }
           rotateCenter = centerOf(frame.bounds);
           rotateStartAngle = angleOf(rotateCenter, world);
-          rotateRef = scene.nodes[store.selection[0]]?.rotation ?? 0;
+          rotateRef = scene.nodes.at(store.selection[0])?.rotation ?? 0;
           rotateStartNodes = start;
           rotateStarted = false;
           setCursor(ctx, ROTATING_CURSOR);
@@ -673,7 +696,7 @@ export function createSelectTool(): Tool {
             // sul nodo in cui si è appena entrati (doppio click e trascina
             // sposta il figlio, non il gruppo).
             store.setSelection([enter]);
-          } else if (scene.nodes[hitId]?.kind === "text") {
+          } else if (scene.nodes.at(hitId)?.kind === "text") {
             pendingTextEdit = hitId;
           }
         } else {
@@ -711,7 +734,7 @@ export function createSelectTool(): Tool {
       const selection = useScene.getState().selection;
       const start: Record<string, { x: number; y: number; toLocal: Transform }> = {};
       for (const sid of topmostOf(scene, selection)) {
-        const n = scene.nodes[sid];
+        const n = scene.nodes.at(sid);
         if (n) start[sid] = { x: n.x, y: n.y, toLocal: parentToLocal(scene, n.parentId) };
       }
       dragAnchor = world;
@@ -720,7 +743,7 @@ export function createSelectTool(): Tool {
       // È il RIQUADRO della selezione a scattare, non i singoli nodi: con una
       // selezione multipla ogni nodo tirato dalla propria guida la sfalderebbe.
       dragBox = selectionWorldBounds(scene, selection);
-      dragTargets = snapTargets(scene, snapExclude(scene, selection));
+      dragTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, selection)));
     },
 
     onPointerMove(e, ctx) {
@@ -775,6 +798,19 @@ export function createSelectTool(): Tool {
       if (!dragStarted) {
         dragStarted = true;
         useScene.getState().beginGesture();
+        const scene = ctx.getScene();
+        const ids = Object.keys(dragStart);
+        if (scene && reorderableParent(scene, ids) !== null) {
+          reorder = {
+            originId: reorderableParent(scene, ids) as string,
+            ids,
+            box: selectionWorldBounds(scene, ids),
+          };
+        }
+      }
+      if (reorder) {
+        reorderStep(e, ctx);
+        return;
       }
       const step = dragOps(e, ctx, lastMods);
       useScene.getState().setSnapGuides(step.guides);
@@ -832,6 +868,17 @@ export function createSelectTool(): Tool {
       if (!dragAnchor || !dragStart) return;
       // Gli op finali portano la posizione SCATTATA, la stessa dell'ultima
       // anteprima: lo snap corregge il delta, non aggiunge un secondo op.
+      if (dragStarted && reorder) {
+        const scene = ctx.getScene();
+        const drop = reorderStep(e, ctx);
+        const ops = scene && drop ? layoutDropOps(scene, reorder.ids, drop) : [];
+        // Nessun cambiamento (stessa posizione nella fila, o niente su cui
+        // cadere): il gesto si annulla, senza una voce di undo che non fa nulla.
+        if (ops.length > 0) useScene.getState().endGesture(ops);
+        else useScene.getState().cancelGesture();
+        resetDrag();
+        return;
+      }
       if (dragStarted) useScene.getState().endGesture(dragOps(e, ctx, lastMods).ops);
       resetDrag();
     },
@@ -851,6 +898,17 @@ export function createSelectTool(): Tool {
       // è un'operazione sulla SELEZIONE, cioè roba di questo tool, esattamente
       // come Delete qui sotto -- e toolManager filtra già i tasti quando il
       // fuoco è in un campo di testo.
+      // Avvolgere in un frame: Shift+A con auto layout, Ctrl/Cmd+Alt+G senza (come
+      // negli altri editor di design). PRIMA di Ctrl+G, che altrimenti si
+      // prenderebbe anche Ctrl+Alt+G.
+      const wrapAuto = e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === "a";
+      const wrapPlain = (e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "g";
+      if (wrapAuto || wrapPlain) {
+        e.preventDefault();
+        cancelActiveGesture();
+        wrapSelectionInFrame(wrapAuto);
+        return;
+      }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
         // Sempre preventDefault: in un browser Ctrl+G è "trova successivo".
         e.preventDefault();
@@ -901,7 +959,7 @@ export function createSelectTool(): Tool {
         if (!scene) return;
         if (store.selection.length !== 1) return;
         const rootNodeId = store.selection[0];
-        const master = scene.nodes[rootNodeId];
+        const master = scene.nodes.at(rootNodeId);
         if (!master) return;
         const name =
           master.name.trim() !== ""

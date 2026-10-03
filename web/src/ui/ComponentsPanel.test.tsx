@@ -32,7 +32,7 @@ function frameNode(id: string, over: Partial<NodeLite> = {}): NodeLite {
 
 function installWithComponent() {
   const scene = emptyScene("doc-1", "Untitled");
-  scene.nodes["master"] = frameNode("master");
+  scene.nodes = scene.nodes.set("master", frameNode("master"));
   scene.components["cmp1"] = { rootNodeId: "master", name: "Bottone" };
   // setScene: installa una scena COERENTE (vista e confermato allineati, coda
   // vuota, storia azzerata), come nelle altre prove dei pannelli.
@@ -98,7 +98,7 @@ describe("piazzare un'istanza", () => {
     // Selezionata dopo la creazione, ed è davvero un'istanza nella scena.
     const scene = useScene.getState().scene!;
     expect(useScene.getState().selection).toEqual([node.id]);
-    expect(scene.nodes[node.id]?.kind).toBe("instance");
+    expect(scene.nodes.at(node.id)?.kind).toBe("instance");
     // Un gesto, una voce di undo.
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
@@ -111,11 +111,11 @@ describe("piazzare un'istanza", () => {
 
     await user.click(screen.getByRole("button", { name: "Bottone" }));
     const instId = useScene.getState().selection[0];
-    expect(useScene.getState().scene!.nodes[instId]).toBeDefined();
+    expect(useScene.getState().scene!.nodes.at(instId)).toBeDefined();
 
     useScene.getState().undo();
 
-    expect(useScene.getState().scene!.nodes[instId]).toBeUndefined();
+    expect(useScene.getState().scene!.nodes.at(instId)).toBeUndefined();
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().redoStack).toHaveLength(1);
   });

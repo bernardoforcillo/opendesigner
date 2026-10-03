@@ -4,7 +4,9 @@ import { nextOrderKey, orderKeyBetween } from "../store/orderKey";
 import {
   toPbNode,
   toTextStyleLite,
+  type EffectLite,
   type FillLite,
+  type GradientLite,
   type NodeLite,
   type SceneState,
   type StrokeAlignLite,
@@ -14,6 +16,7 @@ import {
 } from "../store/types";
 import { makeCreateNodeOp, uuid } from "./ops";
 import { isTextField } from "./toolManager";
+import { importSvgAt, looksLikeSvg, viewportCenter } from "./svgImport";
 
 // COPIA / INCOLLA / DUPLICA (traccia 3, task 1).
 //
@@ -128,8 +131,45 @@ function toFills(v: unknown): FillLite[] {
   if (!Array.isArray(v)) return [];
   return v.map((f) => {
     const o = (f ?? {}) as Record<string, unknown>;
-    return { r: num(o.r, 0), g: num(o.g, 0), b: num(o.b, 0), a: num(o.a, 1) };
+    const base: FillLite = { r: num(o.r, 0), g: num(o.g, 0), b: num(o.b, 0), a: num(o.a, 1) };
+    const g = toGradient(o.gradient);
+    return g ? { ...base, gradient: g } : base;
   });
+}
+
+function toEffects(v: unknown): EffectLite[] {
+  if (!Array.isArray(v)) return [];
+  const out: EffectLite[] = [];
+  for (const raw of v) {
+    const e = (raw ?? {}) as Record<string, unknown>;
+    if (e.kind === "dropShadow") {
+      const c = (e.color ?? {}) as Record<string, unknown>;
+      out.push({
+        kind: "dropShadow",
+        color: { r: num(c.r, 0), g: num(c.g, 0), b: num(c.b, 0), a: num(c.a, 1) },
+        offsetX: num(e.offsetX, 0), offsetY: num(e.offsetY, 0), blur: Math.max(0, num(e.blur, 0)),
+      });
+    } else if (e.kind === "layerBlur") {
+      out.push({ kind: "layerBlur", radius: Math.max(0, num(e.radius, 0)) });
+    }
+  }
+  return out;
+}
+
+function toGradient(v: unknown): GradientLite | undefined {
+  if (typeof v !== "object" || v === null) return undefined;
+  const o = v as Record<string, unknown>;
+  if ((o.kind !== "linear" && o.kind !== "radial") || !Array.isArray(o.stops)) return undefined;
+  const stops = o.stops.map((st) => {
+    const so = (st ?? {}) as Record<string, unknown>;
+    const c = (so.color ?? {}) as Record<string, unknown>;
+    return {
+      color: { r: num(c.r, 0), g: num(c.g, 0), b: num(c.b, 0), a: num(c.a, 1) },
+      position: num(so.position, 0),
+    };
+  });
+  if (stops.length < 2) return undefined;
+  return { kind: o.kind, stops, x1: num(o.x1, 0), y1: num(o.y1, 0), x2: num(o.x2, 1), y2: num(o.y2, 0) };
 }
 
 const STROKE_ALIGNS: Record<StrokeAlignLite, true> = { center: true, inside: true, outside: true };
@@ -229,6 +269,7 @@ export function parseClipboard(text: string): ClipboardParse {
       rotation: num(n.rotation, 0),
       fills: toFills(n.fills),
       strokes: toStrokes(n.strokes),
+      ...(toEffects(n.effects).length > 0 ? { effects: toEffects(n.effects) } : {}),
       kind,
       cornerRadius: num(n.cornerRadius, 0),
       // Sempre false: KNOWN_KINDS rifiuta i frame in blocco (questo lato non
@@ -257,7 +298,7 @@ function byOrderKey(a: NodeLite, b: NodeLite): number {
 // (le pagine non stanno in `nodes`, ma sono parent legittimi -- oggi anzi gli
 // unici).
 function existsInScene(scene: SceneState, id: string): boolean {
-  return id in scene.nodes || scene.pages.some((p) => p.id === id);
+  return scene.nodes.has(id) || scene.pages.some((p) => p.id === id);
 }
 
 export interface PasteOps {
@@ -407,10 +448,10 @@ async function readSystem(): Promise<string | null> {
 function selectedNodes(): NodeLite[] {
   const { scene, selection } = useScene.getState();
   if (!scene) return [];
-  // Passa dalla SELEZIONE e non da Object.values(scene.nodes): è la stessa
+  // Passa dalla SELEZIONE e non da [...scene.nodes.values()]: è la stessa
   // ragione per cui pasteOps parla dei nodi passati e non del documento --
   // sopravvivere all'annidamento senza riscritture.
-  return selection.map((id) => scene.nodes[id]).filter((n): n is NodeLite => n !== undefined);
+  return selection.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined);
 }
 
 /**
@@ -465,6 +506,15 @@ export async function pasteClipboard(): Promise<string[]> {
   try {
     const fromSystem = await readSystem();
     let parsed: ClipboardParse | null = fromSystem === null ? null : parseClipboard(fromSystem);
+    // Testo che è un documento SVG (copiato da un sito, da un altro editor, da
+    // un file aperto come testo): non è un payload nostro ("foreign") ma ha un
+    // significato preciso -- si importa come nodi, al centro della vista. Il
+    // payload opendesigner ha SEMPRE la precedenza: un nodo che si chiama
+    // "<svg>" non deve dirottare l'incolla.
+    if (fromSystem !== null && parsed && !parsed.ok && parsed.reason === "foreign" && looksLikeSvg(fromSystem)) {
+      const id = await importSvgAt(fromSystem, viewportCenter());
+      return id ? [id] : [];
+    }
     // Quando si può ripiegare sul buffer in memoria. NON basta che gli appunti
     // contengano roba di qualcun altro: una lettura RIUSCITA è l'ultima copia
     // che l'utente ha fatto davvero (testo selezionato nel pannello livelli e

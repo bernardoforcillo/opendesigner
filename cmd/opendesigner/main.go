@@ -4,6 +4,7 @@ import (
 	"context"
 	"flag"
 	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,15 +21,19 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: opendesigner <serve|mcp> ...")
+		log.Fatal("usage: opendesigner <serve|mcp|flow|export> ...")
 	}
 	switch os.Args[1] {
 	case "serve":
 		runServe(os.Args[2:])
 	case "mcp":
 		runMCP(os.Args[2:])
+	case "flow":
+		os.Exit(runFlow(os.Args[2:], os.Stdout, os.Stderr))
+	case "export":
+		os.Exit(runExport(os.Args[2:], os.Stdout, os.Stderr))
 	default:
-		log.Fatal("usage: opendesigner <serve|mcp> ...")
+		log.Fatal("usage: opendesigner <serve|mcp|flow|export> ...")
 	}
 }
 
@@ -71,6 +76,9 @@ func runServe(args []string) {
 	}
 
 	log.Printf("opendesigner serve on %s (workspace=%s)", *addr, *workspace)
+	for _, u := range lanURLs(*addr) {
+		log.Printf("sulla stessa rete apri: %s", u)
+	}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
@@ -87,6 +95,7 @@ func runMCP(args []string) {
 	serverURL := fs.String("server", "http://localhost:8080", "base URL of a running `opendesigner serve`")
 	docID := fs.String("doc", "", "document id to co-design (shared with the web client)")
 	clientID := fs.String("client-id", "", "client id for this MCP session (defaults to a random one)")
+	nickname := fs.String("nickname", odmcp.DefaultNickname, "name people see for this agent in the document")
 	_ = fs.Parse(args)
 
 	// Ctrl-C / SIGTERM cancels the whole session: it stops the Subscribe loop
@@ -109,6 +118,8 @@ func runMCP(args []string) {
 
 	// The sync loop is the only writer of the local doc; it runs until ctx ends.
 	go sess.SyncLoop(ctx)
+	// The agent shows up in the document like another person.
+	go sess.PresenceLoop(ctx, *nickname)
 
 	srv := mcp.NewServer(&mcp.Implementation{Name: "opendesigner", Version: "0.1.0"}, nil)
 	odmcp.RegisterTools(srv, sess)
@@ -158,4 +169,35 @@ func defaultWorkspace() string {
 		return ".opendesigner"
 	}
 	return filepath.Join(home, ".opendesigner")
+}
+
+// lanURLs returns the http:// addresses other machines on the same network can
+// use to reach this server, or nothing when it only listens on loopback. There
+// is no authentication: anyone who can reach the port can edit, which is the
+// point on a trusted LAN and the reason to bind to 127.0.0.1 elsewhere.
+func lanURLs(addr string) []string {
+	host, port, err := net.SplitHostPort(addr)
+	if err != nil {
+		return nil
+	}
+	if host != "" && host != "0.0.0.0" && host != "::" {
+		ip := net.ParseIP(host)
+		if ip == nil || ip.IsLoopback() {
+			return nil
+		}
+		return []string{"http://" + net.JoinHostPort(host, port)}
+	}
+	addrs, err := net.InterfaceAddrs()
+	if err != nil {
+		return nil
+	}
+	var out []string
+	for _, a := range addrs {
+		ipn, ok := a.(*net.IPNet)
+		if !ok || ipn.IP.IsLoopback() || ipn.IP.To4() == nil || !ipn.IP.IsPrivate() {
+			continue
+		}
+		out = append(out, "http://"+net.JoinHostPort(ipn.IP.String(), port))
+	}
+	return out
 }

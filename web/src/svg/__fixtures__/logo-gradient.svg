@@ -1,0 +1,31 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 200 200">
+  <title>Logo Aurora</title>
+  <defs>
+    <!-- objectBoundingBox in diagonale su un box NON quadrato: gli isolivelli di
+         SVG sono ortogonali nello spazio del bbox, non nel mondo. -->
+    <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#ff7a59"/>
+      <stop offset="1" stop-color="#7b2ff7"/>
+    </linearGradient>
+    <linearGradient id="sun" gradientUnits="userSpaceOnUse" x1="60" y1="50" x2="140" y2="110" gradientTransform="rotate(20 100 80)">
+      <stop offset="0" stop-color="#fff6a8"/>
+      <stop offset="0.6" stop-color="#ffd166"/>
+      <stop offset="1" stop-color="#ff9f1c" stop-opacity="0.85"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#ffffff" stop-opacity="0.9"/>
+      <stop offset="1" stop-color="#ffffff" stop-opacity="0"/>
+    </radialGradient>
+    <linearGradient id="wave" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0" stop-color="#22d3ee"/>
+      <stop offset="1" stop-color="#3b82f6"/>
+    </linearGradient>
+  </defs>
+  <rect id="badge" x="8" y="8" width="184" height="184" rx="44" fill="#1b1340"/>
+  <rect id="sky" x="8" y="8" width="184" height="120" rx="44" fill="url(#sky)"/>
+  <circle id="glow" cx="100" cy="82" r="64" fill="url(#glow)"/>
+  <circle id="sun" cx="100" cy="82" r="34" fill="url(#sun)"/>
+  <path id="wave" d="M8 140 C 40 120, 70 160, 100 140 S 160 120, 192 142 L192 148 A44 44 0 0 1 148 192 H52 A44 44 0 0 1 8 148 Z" fill="url(#wave)" opacity="0.95"/>
+  <text id="wordmark" x="100" y="176" text-anchor="middle" font-family="Helvetica, Arial, sans-serif" font-size="22" font-weight="700" fill="#ffffff">aurora</text>
+</svg>

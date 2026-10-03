@@ -32,7 +32,7 @@ function frame(id: string, parentId: string, x: number, y: number, extra: Partia
 
 function scene(nodes: NodeLite[]): SceneState {
   const s = emptyScene("doc1", "Untitled");
-  for (const n of nodes) s.nodes[n.id] = n;
+  for (const n of nodes) s.nodes = s.nodes.set(n.id, n);
   return s;
 }
 
@@ -53,8 +53,8 @@ function grouped(): SceneState {
 describe("isGroup", () => {
   it("is true only for a node whose shape is a group", () => {
     const s = grouped();
-    expect(isGroup(s.nodes["g"])).toBe(true);
-    expect(isGroup(s.nodes["r1"])).toBe(false);
+    expect(isGroup(s.nodes.at("g"))).toBe(true);
+    expect(isGroup(s.nodes.at("r1"))).toBe(false);
     expect(isGroup(undefined)).toBe(false);
   });
 });
@@ -62,18 +62,18 @@ describe("isGroup", () => {
 describe("contentWorldBounds", () => {
   it("is the node's own world box for anything that is not a group", () => {
     const s = grouped();
-    expect(contentWorldBounds(s, s.nodes["solo"])).toEqual({ x: 200, y: 200, width: 10, height: 10 });
+    expect(contentWorldBounds(s, s.nodes.at("solo"))).toEqual({ x: 200, y: 200, width: 10, height: 10 });
   });
 
   it("is the UNION of the children for a group, not its own (empty) box", () => {
     const s = grouped();
-    expect(contentWorldBounds(s, s.nodes["g"])).toEqual({ x: 10, y: 0, width: 110, height: 60 });
+    expect(contentWorldBounds(s, s.nodes.at("g"))).toEqual({ x: 10, y: 0, width: 110, height: 60 });
   });
 
   it("follows the group when the group is moved: the children move with it", () => {
     const s = grouped();
-    s.nodes["g"] = { ...s.nodes["g"], x: 5, y: 7 };
-    expect(contentWorldBounds(s, s.nodes["g"])).toEqual({ x: 15, y: 7, width: 110, height: 60 });
+    s.nodes = s.nodes.set("g", { ...s.nodes.at("g"), x: 5, y: 7 });
+    expect(contentWorldBounds(s, s.nodes.at("g"))).toEqual({ x: 15, y: 7, width: 110, height: 60 });
   });
 
   it("descends through nested groups", () => {
@@ -82,12 +82,12 @@ describe("contentWorldBounds", () => {
       group("g2", "g1", { x: 100, y: 100 }),
       node("r", "g2", 5, 5, { width: 10, height: 10 }),
     ]);
-    expect(contentWorldBounds(s, s.nodes["g1"])).toEqual({ x: 105, y: 105, width: 10, height: 10 });
+    expect(contentWorldBounds(s, s.nodes.at("g1"))).toEqual({ x: 105, y: 105, width: 10, height: 10 });
   });
 
   it("is null for an empty group: there is nothing to frame", () => {
     const s = scene([group("g", "page1")]);
-    expect(contentWorldBounds(s, s.nodes["g"])).toBeNull();
+    expect(contentWorldBounds(s, s.nodes.at("g"))).toBeNull();
   });
 
   // VEDI-vs-SELEZIONA, dal lato della cornice. Il renderer salta un nodo
@@ -98,14 +98,14 @@ describe("contentWorldBounds", () => {
   // geometria che non si disegna: rettangolo su canvas vuoto.
   it("skips an INVISIBLE child: the frame measures only what is drawn", () => {
     const s = grouped();
-    s.nodes["r1"] = { ...s.nodes["r1"], visible: false };
+    s.nodes = s.nodes.set("r1", { ...s.nodes.at("r1"), visible: false });
     // Solo r2: (100,0)-(120,20). Con r1 dentro sarebbe {10,0,110,60}.
-    expect(contentWorldBounds(s, s.nodes["g"])).toEqual({ x: 100, y: 0, width: 20, height: 20 });
+    expect(contentWorldBounds(s, s.nodes.at("g"))).toEqual({ x: 100, y: 0, width: 20, height: 20 });
 
     // E simmetricamente dall'altro lato.
     const s2 = grouped();
-    s2.nodes["r2"] = { ...s2.nodes["r2"], visible: false };
-    expect(contentWorldBounds(s2, s2.nodes["g"])).toEqual({ x: 10, y: 10, width: 50, height: 50 });
+    s2.nodes = s2.nodes.set("r2", { ...s2.nodes.at("r2"), visible: false });
+    expect(contentWorldBounds(s2, s2.nodes.at("g"))).toEqual({ x: 10, y: 10, width: 50, height: 50 });
   });
 
   it("an invisible GROUP child takes its whole subtree with it, as the renderer's descent does", () => {
@@ -115,14 +115,14 @@ describe("contentWorldBounds", () => {
       node("hidden", "inner", 500, 500, { orderKey: "a000001" }),
       node("seen", "g", 10, 10, { orderKey: "a000002" }),
     ]);
-    expect(contentWorldBounds(s, s.nodes["g"])).toEqual({ x: 10, y: 10, width: 50, height: 50 });
+    expect(contentWorldBounds(s, s.nodes.at("g"))).toEqual({ x: 10, y: 10, width: 50, height: 50 });
   });
 
   it("is null for a group whose children are ALL invisible: it behaves like an empty one", () => {
     const s = grouped();
-    s.nodes["r1"] = { ...s.nodes["r1"], visible: false };
-    s.nodes["r2"] = { ...s.nodes["r2"], visible: false };
-    expect(contentWorldBounds(s, s.nodes["g"])).toBeNull();
+    s.nodes = s.nodes.set("r1", { ...s.nodes.at("r1"), visible: false });
+    s.nodes = s.nodes.set("r2", { ...s.nodes.at("r2"), visible: false });
+    expect(contentWorldBounds(s, s.nodes.at("g"))).toBeNull();
   });
 });
 
@@ -137,7 +137,7 @@ describe("contentWorldBounds for a frame", () => {
       // gruppo, la cornice si allargherebbe fino a contenerlo.
       node("child", "f", 5, 5, { width: 500, height: 500 }),
     ]);
-    expect(contentWorldBounds(s, s.nodes["f"])).toEqual({ x: 10, y: 20, width: 100, height: 80 });
+    expect(contentWorldBounds(s, s.nodes.at("f"))).toEqual({ x: 10, y: 20, width: 100, height: 80 });
   });
 
   it("maps the frame box through an ancestor's translation", () => {
@@ -147,7 +147,7 @@ describe("contentWorldBounds for a frame", () => {
     ]);
     // f.x/y sono scritte nello spazio di g (traslato di 1000,100): il box mondo
     // del frame cade a (1010,120).
-    expect(contentWorldBounds(s, s.nodes["f"])).toEqual({ x: 1010, y: 120, width: 100, height: 80 });
+    expect(contentWorldBounds(s, s.nodes.at("f"))).toEqual({ x: 1010, y: 120, width: 100, height: 80 });
   });
 });
 
@@ -166,7 +166,7 @@ describe("contentWorldBounds clipped by an ancestor frame", () => {
       node("child", "f", 5, 5, { width: 500, height: 500 }), // mondo (15,25)-(515,525)
     ]);
     // Solo la parte dentro il frame: (15,25)-(110,100).
-    expect(contentWorldBounds(s, s.nodes["child"])).toEqual({ x: 15, y: 25, width: 95, height: 75 });
+    expect(contentWorldBounds(s, s.nodes.at("child"))).toEqual({ x: 15, y: 25, width: 95, height: 75 });
   });
 
   it("is null for a child ENTIRELY outside a clipping frame: no frame, no grabbable handles", () => {
@@ -174,7 +174,7 @@ describe("contentWorldBounds clipped by an ancestor frame", () => {
       frame("f", "page1", 0, 0, { width: 100, height: 100 }),
       node("child", "f", 200, 200, { width: 50, height: 50 }), // mondo (200,200)-(250,250), fuori
     ]);
-    expect(contentWorldBounds(s, s.nodes["child"])).toBeNull();
+    expect(contentWorldBounds(s, s.nodes.at("child"))).toBeNull();
   });
 
   it("does NOT clip when the ancestor frame has clipsContent=false: the child may overflow", () => {
@@ -182,7 +182,7 @@ describe("contentWorldBounds clipped by an ancestor frame", () => {
       frame("f", "page1", 10, 20, { width: 100, height: 80, clipsContent: false }),
       node("child", "f", 5, 5, { width: 500, height: 500 }),
     ]);
-    expect(contentWorldBounds(s, s.nodes["child"])).toEqual({ x: 15, y: 25, width: 500, height: 500 });
+    expect(contentWorldBounds(s, s.nodes.at("child"))).toEqual({ x: 15, y: 25, width: 500, height: 500 });
   });
 
   it("composes NESTED clipping frames: each ancestor frame narrows further", () => {
@@ -192,7 +192,7 @@ describe("contentWorldBounds clipped by an ancestor frame", () => {
       node("child", "inner", 10, 10, { width: 200, height: 200 }), // mondo (60,60)-(260,260)
     ]);
     // child ∩ inner = (60,60)-(150,150); poi ∩ outer = (60,60)-(100,100).
-    expect(contentWorldBounds(s, s.nodes["child"])).toEqual({ x: 60, y: 60, width: 40, height: 40 });
+    expect(contentWorldBounds(s, s.nodes.at("child"))).toEqual({ x: 60, y: 60, width: 40, height: 40 });
   });
 
   it("a group inside a clipping frame frames only the VISIBLE part of an overflowing child", () => {
@@ -202,7 +202,7 @@ describe("contentWorldBounds clipped by an ancestor frame", () => {
       node("r", "g", 80, 80, { orderKey: "a000001", width: 500, height: 500 }), // mondo (80,80)-(580,580)
     ]);
     // r ritagliato a f (0,0)-(100,100) -> (80,80)-(100,100); il gruppo unisce solo quello.
-    expect(contentWorldBounds(s, s.nodes["g"])).toEqual({ x: 80, y: 80, width: 20, height: 20 });
+    expect(contentWorldBounds(s, s.nodes.at("g"))).toEqual({ x: 80, y: 80, width: 20, height: 20 });
   });
 });
 
@@ -213,23 +213,23 @@ describe("contentWorldBounds clipped by an ancestor frame", () => {
 describe("frameOriginOf", () => {
   it("is the node's own x/y for anything that is not a group", () => {
     const s = grouped();
-    expect(frameOriginOf(s, s.nodes["solo"])).toEqual({ x: 200, y: 200 });
+    expect(frameOriginOf(s, s.nodes.at("solo"))).toEqual({ x: 200, y: 200 });
     // Anche per un figlio DENTRO un gruppo: le sue x/y sono già scritte nello
     // spazio del parent, che è lo spazio in cui questa funzione risponde.
-    expect(frameOriginOf(s, s.nodes["r1"])).toEqual({ x: 10, y: 10 });
+    expect(frameOriginOf(s, s.nodes.at("r1"))).toEqual({ x: 10, y: 10 });
   });
 
   it("is the top-left of the CONTENT for a group, not its (0,0) translation", () => {
     const s = grouped();
-    expect(s.nodes["g"].x).toBe(0);
-    expect(s.nodes["g"].y).toBe(0);
-    expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 10, y: 0 });
+    expect(s.nodes.at("g").x).toBe(0);
+    expect(s.nodes.at("g").y).toBe(0);
+    expect(frameOriginOf(s, s.nodes.at("g"))).toEqual({ x: 10, y: 0 });
   });
 
   it("moves with the group", () => {
     const s = grouped();
-    s.nodes["g"] = { ...s.nodes["g"], x: 5, y: 7 };
-    expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 15, y: 7 });
+    s.nodes = s.nodes.set("g", { ...s.nodes.at("g"), x: 5, y: 7 });
+    expect(frameOriginOf(s, s.nodes.at("g"))).toEqual({ x: 15, y: 7 });
   });
 
   it("is expressed in the PARENT's space for a nested group, not in world", () => {
@@ -238,14 +238,14 @@ describe("frameOriginOf", () => {
       group("g2", "g1", { x: 100, y: 100 }),
       node("r", "g2", 5, 5, { width: 10, height: 10 }),
     ]);
-    expect(contentWorldBounds(s, s.nodes["g2"])).toEqual({ x: 1105, y: 105, width: 10, height: 10 });
+    expect(contentWorldBounds(s, s.nodes.at("g2"))).toEqual({ x: 1105, y: 105, width: 10, height: 10 });
     // Lo spazio di g1 è quello in cui x/y di g2 sono scritte: 1105 - 1000.
-    expect(frameOriginOf(s, s.nodes["g2"])).toEqual({ x: 105, y: 105 });
+    expect(frameOriginOf(s, s.nodes.at("g2"))).toEqual({ x: 105, y: 105 });
   });
 
   it("falls back to the group's own x/y when the group is empty: there is no frame", () => {
     const s = scene([group("g", "page1", { x: 3, y: 4 })]);
-    expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 3, y: 4 });
+    expect(frameOriginOf(s, s.nodes.at("g"))).toEqual({ x: 3, y: 4 });
   });
 
   // Il numero che il pannello proprietà mostra come X (selectors.ts::
@@ -254,16 +254,16 @@ describe("frameOriginOf", () => {
   // figlio NASCOSTO a quel numero -- e il contenuto visibile finirebbe altrove.
   it("is the left edge of the VISIBLE content, not of a hidden child", () => {
     const s = grouped();
-    s.nodes["r1"] = { ...s.nodes["r1"], visible: false };
-    expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 100, y: 0 });
+    s.nodes = s.nodes.set("r1", { ...s.nodes.at("r1"), visible: false });
+    expect(frameOriginOf(s, s.nodes.at("g"))).toEqual({ x: 100, y: 0 });
   });
 
   it("falls back to the group's own x/y when EVERY child is hidden: same as empty", () => {
     const s = grouped();
-    s.nodes["g"] = { ...s.nodes["g"], x: 3, y: 4 };
-    s.nodes["r1"] = { ...s.nodes["r1"], visible: false };
-    s.nodes["r2"] = { ...s.nodes["r2"], visible: false };
-    expect(frameOriginOf(s, s.nodes["g"])).toEqual({ x: 3, y: 4 });
+    s.nodes = s.nodes.set("g", { ...s.nodes.at("g"), x: 3, y: 4 });
+    s.nodes = s.nodes.set("r1", { ...s.nodes.at("r1"), visible: false });
+    s.nodes = s.nodes.set("r2", { ...s.nodes.at("r2"), visible: false });
+    expect(frameOriginOf(s, s.nodes.at("g"))).toEqual({ x: 3, y: 4 });
   });
 });
 
@@ -438,7 +438,7 @@ describe("contentWorldBounds for an instance", () => {
       instance("i", "page1", 100, 100, "comp"),
     ]);
     s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
-    expect(contentWorldBounds(s, s.nodes["i"])).toEqual({ x: 100, y: 100, width: 50, height: 50 });
+    expect(contentWorldBounds(s, s.nodes.at("i"))).toEqual({ x: 100, y: 100, width: 50, height: 50 });
   });
 
   it("unions a group master's children, shifted to the instance origin", () => {
@@ -450,7 +450,7 @@ describe("contentWorldBounds for an instance", () => {
     ]);
     s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
     // Unione locale del master: (0,0,50,50) ∪ (100,0,20,20) = (0,0,120,50).
-    expect(contentWorldBounds(s, s.nodes["i"])).toEqual({ x: 200, y: 200, width: 120, height: 50 });
+    expect(contentWorldBounds(s, s.nodes.at("i"))).toEqual({ x: 200, y: 200, width: 120, height: 50 });
   });
 
   it("maps the content through an ancestor's translation, like any other node", () => {
@@ -461,18 +461,18 @@ describe("contentWorldBounds for an instance", () => {
     ]);
     s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
     // i.x/y sono nello spazio di wrap (traslato di 1000,0): mondo (1100,100).
-    expect(contentWorldBounds(s, s.nodes["i"])).toEqual({ x: 1100, y: 100, width: 50, height: 50 });
+    expect(contentWorldBounds(s, s.nodes.at("i"))).toEqual({ x: 1100, y: 100, width: 50, height: 50 });
   });
 
   it("is null when the component is missing (nothing to frame)", () => {
     const s = scene([instance("i", "page1", 0, 0, "nope")]);
-    expect(contentWorldBounds(s, s.nodes["i"])).toBeNull();
+    expect(contentWorldBounds(s, s.nodes.at("i"))).toBeNull();
   });
 
   it("is null when the master root node is missing", () => {
     const s = scene([instance("i", "page1", 0, 0, "comp")]);
     s.components["comp"] = { rootNodeId: "gone", name: "Comp" };
-    expect(contentWorldBounds(s, s.nodes["i"])).toBeNull();
+    expect(contentWorldBounds(s, s.nodes.at("i"))).toBeNull();
   });
 
   it("ignores fill/text overrides: an override changes paint, not geometry", () => {
@@ -481,7 +481,7 @@ describe("contentWorldBounds for an instance", () => {
       instance("i", "page1", 100, 100, "comp", [{ masterNodeId: "mr", fills: [{ r: 1, g: 0, b: 0, a: 1 }] }]),
     ]);
     s.components["comp"] = { rootNodeId: "mr", name: "Comp" };
-    expect(contentWorldBounds(s, s.nodes["i"])).toEqual({ x: 100, y: 100, width: 50, height: 50 });
+    expect(contentWorldBounds(s, s.nodes.at("i"))).toEqual({ x: 100, y: 100, width: 50, height: 50 });
   });
 
   it("does not infinite-loop on a self-referential component: null, and it returns", () => {
@@ -491,7 +491,7 @@ describe("contentWorldBounds for an instance", () => {
       instance("i", "page1", 0, 0, "self"),
     ]);
     s.components["self"] = { rootNodeId: "gs", name: "Self" };
-    expect(contentWorldBounds(s, s.nodes["i"])).toBeNull();
+    expect(contentWorldBounds(s, s.nodes.at("i"))).toBeNull();
   });
 });
 
@@ -519,7 +519,7 @@ describe("instance selection policy", () => {
     s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
     // La radice del master cade a (100,100); il figlio a (-5,-5) porta il bordo
     // del contenuto a (95,95) -- diverso dalla x/y propria dell'istanza (100).
-    expect(s.nodes["i"].x).toBe(100);
-    expect(frameOriginOf(s, s.nodes["i"])).toEqual({ x: 95, y: 95 });
+    expect(s.nodes.at("i").x).toBe(100);
+    expect(frameOriginOf(s, s.nodes.at("i"))).toEqual({ x: 95, y: 95 });
   });
 });

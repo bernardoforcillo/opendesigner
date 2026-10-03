@@ -1,4 +1,4 @@
-import type { SceneState, NodeLite, FillLite, StrokeLite, InstanceOverrideLite } from "../store/types";
+import type { SceneState, NodeLite, FillLite, StrokeLite, InstanceOverrideLite, EffectLite, AnimInfo } from "../store/types";
 import type { Camera } from "../canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, intersectBounds, worldVisualAabbOfNode } from "../canvas/geometry";
 import {
@@ -10,7 +10,7 @@ import {
   mapBounds,
   type Transform,
 } from "../canvas/transform";
-import { childIndexOf } from "../store/tree";
+import { sceneIndexOf } from "./sceneIndex";
 import { contentWorldBounds } from "../store/groups";
 import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../store/instances";
 import {
@@ -18,6 +18,8 @@ import {
   VECTOR_FILL_RULE, VECTOR_STROKE_PX,
 } from "./shapes";
 import { drawText, strokeText } from "./text";
+import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
+import { drawDash, perimeterOf, vectorDrawSubpaths } from "./animDraw";
 import { imageCache, type CachedImage } from "./imageCache";
 
 const DEG_TO_RAD = Math.PI / 180;
@@ -27,7 +29,7 @@ const DEG_TO_RAD = Math.PI / 180;
 // come li sceglie e li ordina chi disegna, o l'immagine esportata non sarebbe
 // quella che si vede.
 export function sortedVisible(state: SceneState): NodeLite[] {
-  return Object.values(state.nodes)
+  return [...state.nodes.values()]
     .filter((n) => n.visible)
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0));
 }
@@ -62,7 +64,7 @@ type ChildIndex = Map<string, NodeLite[]>;
 // stato di vista dello store (store.ts), e il renderer resta una funzione pura.
 // Assente (o null) ripiega sulla PRIMA pagina -- il default dello store -- così
 // le scene a pagina singola non hanno bisogno di dirlo.
-function rootsOf(state: SceneState, children: ChildIndex, currentPageId?: string | null): NodeLite[] {
+export function rootsOf(state: SceneState, children: ChildIndex, currentPageId?: string | null): NodeLite[] {
   const pageId = currentPageId ?? state.pages[0]?.id;
   return pageId !== undefined ? children.get(pageId) ?? [] : [];
 }
@@ -93,6 +95,72 @@ export function cssColor(n: NodeLite): string {
 export function cssRgba(c: FillLite): string {
   const to255 = (v: number) => Math.round(v * 255);
   return `rgba(${to255(c.r)}, ${to255(c.g)}, ${to255(c.b)}, ${c.a})`;
+}
+
+// Lo stile canvas (colore CSS o CanvasGradient) di un riempimento sul box di
+// `n`. Le coordinate normalizzate del gradiente si denormalizzano sul box NON
+// ruotato: la rotazione del nodo è già nel contesto, quindi il gradiente ruota
+// con la forma. Un gradiente degenere (asse o raggio nulli, meno di due stop)
+// ripiega sul colore piatto, che è sempre valido.
+export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasGradient {
+  const g = f.gradient;
+  if (!g || g.stops.length < 2) return cssRgba(f);
+  const x1 = n.x + g.x1 * n.width, y1 = n.y + g.y1 * n.height;
+  const x2 = n.x + g.x2 * n.width, y2 = n.y + g.y2 * n.height;
+  const len = Math.hypot(x2 - x1, y2 - y1);
+  if (!(len > 0)) return cssRgba(f);
+  const grad = g.kind === "linear"
+    ? ctx.createLinearGradient(x1, y1, x2, y2)
+    : ctx.createRadialGradient(x1, y1, 0, x1, y1, len);
+  for (const st of g.stops) grad.addColorStop(Math.min(1, Math.max(0, st.position)), cssRgba(st.color));
+  return grad;
+}
+
+// --- GLI EFFETTI ---------------------------------------------------------------
+//
+// Il canvas 2D ha UN solo stato di ombra e UN solo filtro, quindi il renderer
+// disegna la PRIMA ombra e la PRIMA sfocatura di un nodo (il modello tiene
+// l'intera lista). Offset e sfocatura sono in coordinate MONDO, ma shadow* e
+// filter NON passano per la trasformazione del contesto: vanno scalati a mano
+// per zoom * dpr, altrimenti l'ombra resterebbe di una taglia fissa mentre il
+// nodo si ingrandisce.
+type DropShadowLite = Extract<EffectLite, { kind: "dropShadow" }>;
+type LayerBlurLite = Extract<EffectLite, { kind: "layerBlur" }>;
+
+export function firstShadow(n: NodeLite): DropShadowLite | undefined {
+  return n.effects?.find((e): e is DropShadowLite => e.kind === "dropShadow");
+}
+export function firstBlur(n: NodeLite): LayerBlurLite | undefined {
+  return n.effects?.find((e): e is LayerBlurLite => e.kind === "layerBlur" && e.radius > 0);
+}
+
+// Pixel del backing store per unità mondo: zoom * dpr, letto dalla
+// trasformazione che drawScene ha già messo sul contesto (la rotazione non la
+// cambia). Leggerla da lì e non da window.devicePixelRatio è ciò che rende
+// giusto anche l'export PNG, che disegna con dpr 1 su un canvas fuori schermo.
+// Un contesto senza getTransform (i doppi dei test) ricade sullo zoom.
+function deviceScale(ctx: CanvasRenderingContext2D, cam: Camera): number {
+  const m = typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
+  return m ? Math.hypot(m.a, m.b) : cam.zoom;
+}
+
+// Imposta ombra e sfocatura sul contesto per il disegno del nodo. Ritorna true
+// se ha fatto save(): chi chiama deve fare il restore corrispondente. Nessun
+// effetto = nessun save, nessun costo.
+function applyEffects(ctx: CanvasRenderingContext2D, n: NodeLite, scale: number): boolean {
+  const shadow = firstShadow(n);
+  const blur = firstBlur(n);
+  if (!shadow && !blur) return false;
+  ctx.save();
+  if (shadow) {
+    ctx.shadowColor = cssRgba(shadow.color);
+    ctx.shadowOffsetX = shadow.offsetX * scale;
+    ctx.shadowOffsetY = shadow.offsetY * scale;
+    ctx.shadowBlur = Math.max(0, shadow.blur) * scale;
+  }
+  // `radius` è la deviazione standard della gaussiana, come in CSS blur().
+  if (blur) ctx.filter = `blur(${blur.radius * scale}px)`;
+  return true;
 }
 
 // La camera resta sempre in pixel CSS: il devicePixelRatio non deve mai
@@ -224,10 +292,54 @@ export function drawScene(
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(cam.zoom * dpr, 0, 0, cam.zoom * dpr, cam.x * dpr, cam.y * dpr);
-  const children = childIndexOf(state);
-  drawSiblings(ctx, state, children, rootsOf(state, children, currentPageId), cam, px, images, new Set(), null, new Set());
+  const index = sceneIndexOf(state);
+  const children = index.children;
+  // La VISTA nel mondo, per saltare ciò che non si vede. Senza una misura valida
+  // del canvas (i doppi dei test, un canvas non ancora dimensionato) non si
+  // scarta niente: si disegna tutto, come prima.
+  const cssW = canvas.width / dpr;
+  const cssH = canvas.height / dpr;
+  const cull: Cull | null =
+    cssW > 0 && cssH > 0 && cam.zoom > 0
+      ? {
+          extent: index.extent,
+          // Allargata di 2 px schermo: un tracciato di area nulla (il punto del pen
+          // tool, un segmento orizzontale) ha un extent di misura zero e il
+          // confronto fra rettangoli è rigoroso; lo stesso margine copre
+          // l'antialiasing e i tratti a spessore costante sullo schermo.
+          view: inflateBounds(
+            { x: -cam.x / cam.zoom, y: -cam.y / cam.zoom, width: cssW / cam.zoom, height: cssH / cam.zoom },
+            2 * px,
+          ),
+          px,
+          anim: state.anim,
+        }
+      : null;
+  drawSiblings(ctx, state, children, rootsOf(state, children, currentPageId), cam, px, images, new Set(), null, new Set(), cull);
   ctx.globalAlpha = 1;
 }
+
+// Cosa serve a drawSiblings per scartare i sottoalberi che non compaiono:
+// l'extent MONDO di ogni nodo (renderer/sceneIndex.ts), la vista nel mondo e la
+// dimensione di un pixel schermo in unità mondo.
+interface Cull {
+  extent: { get(id: string): Bounds | undefined };
+  view: Bounds;
+  px: number;
+  // Solo nelle scene derivate dalla riproduzione: vedi AnimInfo.
+  anim?: AnimInfo;
+}
+
+// Sotto questa misura (px schermo) un intero sottoalbero non dipinge niente di
+// visibile: lo si salta. Sotto LOD_FLAT_PX un SINGOLO nodo non vale più il suo
+// disegno completo (percorso, tratto, gradiente, testo): diventa un rettangolo
+// piatto del suo colore, che a quella taglia è indistinguibile.
+export const SKIP_SUBTREE_PX = 0.3;
+export const LOD_FLAT_PX = 4;
+// Un frame ritagliante più piccolo di così (px schermo) non ritaglia: ciò che
+// sporge di qualche pixel non si distingue, e creare un Path2D + clip per ogni
+// frame costa più del resto del frame.
+export const CLIP_MIN_PX = 12;
 
 // La mappa degli override che scende insieme al sottoalbero di un'istanza
 // (masterNodeId -> override), oppure `null` fuori da ogni istanza (la pagina, il
@@ -240,7 +352,7 @@ type OverrideMap = ReadonlyMap<string, InstanceOverrideLite> | null;
 // quando non c'è override (nessuna copia inutile). Non tocca mai la geometria
 // (x/y/width/height/rotation): un override cambia solo ciò che il nodo dipinge,
 // non dove sta -- la stessa scelta dei bounds in store/groups.ts.
-function withOverride(n: NodeLite, ov: InstanceOverrideLite | undefined): NodeLite {
+export function withOverride(n: NodeLite, ov: InstanceOverrideLite | undefined): NodeLite {
   if (!ov) return n;
   let eff = n;
   if (ov.fills !== undefined) eff = { ...eff, fills: ov.fills };
@@ -267,9 +379,26 @@ function drawSiblings(
   seen: Set<string>,
   overrides: OverrideMap,
   visited: ReadonlySet<string>,
+  cull: Cull | null,
 ): void {
   for (const n of siblings) {
     if (!n.visible || seen.has(n.id)) continue;
+    // Fuori vista, o troppo piccolo per vedersi: salta l'INTERO sottoalbero.
+    // `cull` è null dentro un'istanza -- i nodi del master hanno l'extent nel
+    // loro posto d'origine, non dove l'istanza li disegna.
+    // Un nodo con la scala animata (e i suoi antenati, la cui extent è l'unione
+    // dei figli) ha nell'indice un extent che NON conosce la scala: potrebbe
+    // dichiararlo fuori vista mentre sta entrando. Per loro niente scarto -- si
+    // disegnano sempre; costa un nodo in più, mentre saltarlo sarebbe un
+    // "sparisce a metà animazione".
+    const anim = cull?.anim;
+    if (cull && !(anim && (anim.scaled.has(n.id) || anim.ancestors.has(n.id)))) {
+      const e = cull.extent.get(n.id);
+      if (!e || !boundsIntersect(e, cull.view)) continue;
+      // Un vettoriale non si scarta per misura: ha tratto a spessore costante sullo
+      // schermo e può avere box nullo (un punto), ma si vede comunque.
+      if (n.kind !== "vector" && e.width / cull.px < SKIP_SUBTREE_PX && e.height / cull.px < SKIP_SUBTREE_PX) continue;
+    }
     seen.add(n.id);
     drawNode(ctx, state, n, cam, px, images, overrides);
     // Un'ISTANZA non ha figli in `children` (il suo sottoalbero è virtuale):
@@ -297,12 +426,14 @@ function drawSiblings(
     // applica al punto e collectIn alla banda (via intersectBounds): vedi-vs-
     // seleziona, ciò che il clip nasconde al disegno non si clicca e il marquee
     // non lo prende. Un frame senza clipsContent lascia sporgere i figli.
-    if (n.kind === "frame" && n.clipsContent) {
+    if (n.kind === "frame" && n.clipsContent && Math.max(n.width, n.height) / px >= CLIP_MIN_PX) {
       const clip = new Path2D();
       clip.rect(0, 0, n.width, n.height);
       ctx.clip(clip);
     }
-    drawSiblings(ctx, state, children, kids, cam, px, images, seen, overrides, visited);
+    // ...e il sottoalbero di un nodo scalato si muove con lui: gli extent dei
+    // discendenti sono nel loro posto di base, quindi dentro non si scarta.
+    drawSiblings(ctx, state, children, kids, cam, px, images, seen, overrides, visited, anim?.scaled.has(n.id) ? null : cull);
     ctx.restore();
   }
 }
@@ -338,7 +469,7 @@ function drawInstance(
   ctx.save();
   const t = instanceDescentLocal(n, resolved.masterRoot);
   ctx.transform(t.a, t.b, t.c, t.d, t.e, t.f);
-  drawSiblings(ctx, state, children, [resolved.masterRoot], cam, px, images, new Set(), overrides, nextVisited);
+  drawSiblings(ctx, state, children, [resolved.masterRoot], cam, px, images, new Set(), overrides, nextVisited, null);
   ctx.restore();
 }
 
@@ -374,23 +505,45 @@ function drawNode(
   // solo (shapes.ts::inkIsBox), condiviso con l'hit-test: un nodo che si disegna
   // ma non si clicca -- o il contrario -- è il modo in cui i due divergono.
   if (inkIsBox(eff) && (eff.width <= 0 || eff.height <= 0)) return;
+  // LIVELLO DI DETTAGLIO: a pochi pixel un nodo non ha più forma, tratto o
+  // testo da distinguere. Un rettangolo piatto del suo colore costa una frazione
+  // del disegno completo, ed è ciò che permette di inquadrare un documento
+  // intero senza pagare ogni nodo come se fosse a grandezza naturale. Il
+  // vettoriale resta fuori (un path di un ancoraggio ha misura zero e si vede
+  // comunque), e il testo conta in corpo del carattere, non in box.
+  const flatSize = eff.kind === "text" ? (eff.text?.style.fontSize || 16) : Math.max(eff.width, eff.height);
+  if (eff.kind !== "vector" && flatSize / px < LOD_FLAT_PX) {
+    if (eff.kind === "frame" && eff.fills.length === 0) return;
+    ctx.globalAlpha = eff.kind === "text" ? eff.opacity * 0.5 : eff.opacity;
+    ctx.fillStyle = cssColor(eff);
+    ctx.fillRect(eff.x, eff.y, eff.width, eff.height);
+    return;
+  }
   // ROTAZIONE (traccia 2): è il CONTESTO a ruotare attorno al centro del box
   // (nodeCenter, la stessa funzione che l'hit-test usa nel verso opposto), non
   // la geometria -- nodePath e drawText restano asse-allineati. Il nodo si
   // disegna nello spazio del proprio parent (quello corrente del ctx); questa
   // rotazione è la SUA, distinta da quella che drawSiblings applica scendendo
   // nei suoi figli. save/restore SOLO quando serve.
-  const rotated = eff.rotation % 360 !== 0;
+  // SCALA ANIMATA (solo scene derivate dalla riproduzione): uniforme attorno allo
+  // stesso centro della rotazione, quindi i due si compongono nello stesso
+  // save/restore. `animPivot` è per i gruppi, che non hanno un box proprio.
+  const scaled = eff.animScale !== undefined && eff.animScale !== 1;
+  const rotated = eff.rotation % 360 !== 0 || scaled;
   if (rotated) {
-    const c = nodeCenter(eff);
+    const c = eff.animPivot ?? nodeCenter(eff);
     ctx.save();
     ctx.translate(c.x, c.y);
     ctx.rotate(eff.rotation * DEG_TO_RAD);
+    if (scaled) ctx.scale(eff.animScale as number, eff.animScale as number);
     ctx.translate(-c.x, -c.y);
   }
   ctx.globalAlpha = eff.opacity;
   const color = cssColor(eff);
-  ctx.fillStyle = color;
+  ctx.fillStyle = paintStyle(ctx, resolvedFill(eff), eff);
+  // Gli effetti valgono per tutto ciò che il nodo disegna sotto: forma, testo,
+  // immagine, vettoriale.
+  const fx = applyEffects(ctx, eff, deviceScale(ctx, cam));
   if (eff.kind === "text") {
     drawText(ctx, eff);
     drawStrokes(ctx, eff, null);
@@ -410,9 +563,17 @@ function drawNode(
     // al proprio contenuto -- drawNode gira PRIMA della discesa nei figli. UN
     // SOLO Path2D per nodo: quello del riempimento è anche quello del tratto.
     const path = nodePath(eff);
-    ctx.fill(path);
+    // Un FRAME senza riempimento è trasparente: è un contenitore, e il grigio di
+    // default (resolvedFill) è per le forme. Senza questa eccezione un frame
+    // appena avvolto attorno a una selezione la nasconderebbe sotto un
+    // rettangolo grigio.
+    if (!(eff.kind === "frame" && eff.fills.length === 0)) ctx.fill(path);
+    // Con un riempimento visibile l'ombra l'ha già data lui: ridarla dal tratto
+    // sovrapporrebbe due ombre sul bordo e lo scurirebbe.
+    if (fx && eff.fills.length > 0) ctx.shadowColor = "transparent";
     drawStrokes(ctx, eff, path);
   }
+  if (fx) ctx.restore();
   if (rotated) ctx.restore();
 }
 
@@ -435,13 +596,18 @@ function drawNode(
 // canvas/geometry.ts::strokeOutsetOfNode conta la sporgenza con la stessa
 // regola, così misura e disegno restano la stessa cosa.
 function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | null): void {
+  // `draw` animato (< 1) su un box: il tratto si disegna per la frazione data del
+  // perimetro. A 1 è il tratto intero, senza tratteggio (nessuna differenza
+  // osservabile e nessun costo). Il testo non ha perimetro: ignora `draw`.
+  const dashed = n.animDraw !== undefined && n.animDraw < 1 && path !== null;
+  if (dashed) ctx.setLineDash(drawDash(perimeterOf(n), n.animDraw as number));
   for (const s of n.strokes) {
     // Un peso non positivo NON è un tratto sottilissimo: non è un tratto. Il
     // canvas con lineWidth 0 non disegna nulla, e i bounds non contano nessuna
     // sporgenza (canvas/geometry.ts::strokeOutset) -- le due cose devono
     // saltare lo stesso tratto.
     if (!(s.weight > 0)) continue;
-    ctx.strokeStyle = cssRgba(s.color);
+    ctx.strokeStyle = paintStyle(ctx, s.color, n);
     if (path === null) {
       ctx.lineWidth = s.weight;
       strokeText(ctx, n);
@@ -449,6 +615,7 @@ function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | 
     }
     strokeShape(ctx, n, path, s);
   }
+  if (dashed) ctx.setLineDash([]);
 }
 
 function strokeShape(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s: StrokeLite): void {
@@ -490,13 +657,46 @@ function outsideClip(n: NodeLite, path: Path2D, weight: number): Path2D {
 // riempimento verrebbe chiuso implicitamente dal canvas e riempito -- ed è per
 // questo che vectorPaths ne restituisce due.
 function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, zoom: number): void {
+  // DRAW-ON animato (< 1): si vede solo il tratto, ogni contorno per la frazione
+  // data della propria lunghezza; il riempimento compare quando il tracciato è
+  // completo (a 1 si ricade nel disegno normale qui sotto).
+  if (n.animDraw !== undefined && n.animDraw < 1) {
+    ctx.strokeStyle = color;
+    ctx.lineWidth = VECTOR_STROKE_PX / zoom;
+    ctx.lineJoin = "round";
+    ctx.lineCap = "round";
+    for (const sp of vectorDrawSubpaths(n)) {
+      ctx.setLineDash(drawDash(sp.length, n.animDraw));
+      ctx.stroke(sp.path);
+    }
+    ctx.setLineDash([]);
+    return;
+  }
   const { fill, stroke } = vectorPaths(n);
   // La regola even-odd è una SCELTA (motivata su shapes.ts::VECTOR_FILL_RULE)
   // e non il default del canvas, quindi va passata a ogni fill. È la stessa
   // che usa l'hit-test: un buco che si vede ma si clicca sarebbe la firma di
   // due regole diverse.
-  if (fill) ctx.fill(fill, VECTOR_FILL_RULE);
-  if (stroke) {
+  const vs = vectorStyleOf(n);
+  if (fill) ctx.fill(fill, vs.fillRule ?? VECTOR_FILL_RULE);
+  if (stroke && hasRealStroke(n)) {
+    // TRATTO VERO (nodi importati da SVG, o con un tratto dal pannello): peso
+    // in unità mondo, colore/gradiente propri, e capi/giunti/tratteggio dai
+    // meta (renderer/vectorStyle.ts). Sostituisce il filo di 1.5px, che
+    // esiste solo per rendere visibile un path senza altro inchiostro.
+    ctx.lineCap = vs.cap;
+    ctx.lineJoin = vs.join;
+    ctx.miterLimit = vs.miter;
+    ctx.setLineDash(vs.dash);
+    ctx.lineDashOffset = vs.dashOffset;
+    for (const s of n.strokes) {
+      if (!(s.weight > 0)) continue;
+      ctx.strokeStyle = paintStyle(ctx, s.color, n);
+      ctx.lineWidth = s.weight;
+      ctx.stroke(stroke);
+    }
+    ctx.setLineDash([]);
+  } else if (stroke && vs.hairline) {
     ctx.strokeStyle = color;
     // Il ctx è in trasformazione MONDO (drawScene applica zoom * dpr), quindi
     // uno spessore costante sullo schermo si ottiene dividendo per lo zoom --
@@ -530,8 +730,13 @@ export function hitTest(
   zoom: number,
   currentPageId?: string | null,
 ): string | null {
-  const children = childIndexOf(state);
-  return pickIn(state, children, rootsOf(state, children, currentPageId), wx, wy, zoom, new Set(), new Set());
+  const index = sceneIndexOf(state);
+  const children = index.children;
+  // Il punto MONDO e la tolleranza (la presa attorno a un tracciato aperto è in
+  // px schermo, vedi shapes.ts::VECTOR_HIT_PX): servono a saltare i sottoalberi
+  // il cui extent non può contenerlo.
+  const prune: Prune = { extent: index.extent, x: wx, y: wy, pad: HIT_PRUNE_PX / (zoom || 1) };
+  return pickIn(state, children, rootsOf(state, children, currentPageId), wx, wy, zoom, new Set(), new Set(), prune);
 }
 
 // Lo STESSO cammino di drawSiblings, al contrario: fratelli dall'ultimo al
@@ -543,6 +748,19 @@ export function hitTest(
 // scendere in un container si applica al punto l'INVERSA della trasformazione
 // che il renderer applica al ctx -- la stessa localTransformOf (rotazione
 // inclusa), letta nell'altro verso.
+// Come Cull, per l'hit-test: il punto nel MONDO (px/py di pickIn sono nello spazio
+// LOCALE dei fratelli e cambiano a ogni discesa) e la tolleranza in unità mondo.
+// `null` dentro un'istanza, per la stessa ragione di drawSiblings.
+interface Prune {
+  extent: { get(id: string): Bounds | undefined };
+  x: number;
+  y: number;
+  pad: number;
+}
+// Margine con cui si prova un sottoalbero prima di scartarlo (px schermo): copre
+// la presa attorno ai tracciati aperti e ciò che un extent stimato può mancare.
+const HIT_PRUNE_PX = 12;
+
 function pickIn(
   state: SceneState,
   children: ChildIndex,
@@ -552,10 +770,16 @@ function pickIn(
   zoom: number,
   seen: Set<string>,
   visited: ReadonlySet<string>,
+  prune: Prune | null,
 ): string | null {
   for (let i = siblings.length - 1; i >= 0; i--) {
     const n = siblings[i];
     if (!n.visible || seen.has(n.id)) continue;
+    if (prune && n.kind !== "instance") {
+      const e = prune.extent.get(n.id);
+      if (!e || prune.x < e.x - prune.pad || prune.x > e.x + e.width + prune.pad ||
+          prune.y < e.y - prune.pad || prune.y > e.y + e.height + prune.pad) continue;
+    }
     seen.add(n.id);
     // Un'ISTANZA è OPACA alla selezione dall'esterno: si scende nel master (col
     // punto portato nello spazio del master dall'inversa della discesa) e, se
@@ -580,7 +804,7 @@ function pickIn(
         n.kind === "frame" && n.clipsContent &&
         !(inner.x >= 0 && inner.x <= n.width && inner.y >= 0 && inner.y <= n.height);
       if (!clipsAway) {
-        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited);
+        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited, prune);
         if (hit) return hit;
       }
     }
@@ -609,7 +833,7 @@ function hitInstance(
   if (!resolved) return false;
   const inner = applyTransform(invertTransform(instanceDescentLocal(n, resolved.masterRoot)), px, py);
   const nextVisited = new Set(visited).add(n.instance.componentId);
-  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited) !== null;
+  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null) !== null;
 }
 
 // I nodi il cui box MONDO interseca `bounds`, in ordine di DISEGNO. È la
@@ -628,9 +852,13 @@ function hitInstance(
 // Come hitTest, non risponde MAI con un gruppo (vedi collectIn): risponde con
 // ciò che si vede, e a risalire ai gruppi è la politica di selezione.
 export function nodesIntersecting(state: SceneState, bounds: Bounds, currentPageId?: string | null): string[] {
-  const children = childIndexOf(state);
+  const index = sceneIndexOf(state);
+  const children = index.children;
   const out: string[] = [];
-  collectIn(state, children, rootsOf(state, children, currentPageId), IDENTITY, bounds, out, new Set());
+  // Il marquee afferra anche ciò che sta vicino (la banda si allarga sui tracciati
+  // degeneri, selectionBoundsOfNode): si prova con un margine prima di scartare.
+  const probe = inflateBounds(bounds, MARQUEE_PRUNE_PAD);
+  collectIn(state, children, rootsOf(state, children, currentPageId), IDENTITY, bounds, out, new Set(), { extent: index.extent, probe });
   return out;
 }
 
@@ -642,6 +870,8 @@ export function nodesIntersecting(state: SceneState, bounds: Bounds, currentPage
 // gruppo non contiene per forza i propri figli (il suo box è il suo, non
 // l'unione), quindi un figlio dentro il marquee resterebbe fuori dalla
 // selezione. Si salta solo ciò che non si vede.
+const MARQUEE_PRUNE_PAD = 16;
+
 function collectIn(
   state: SceneState,
   children: ChildIndex,
@@ -650,9 +880,19 @@ function collectIn(
   bounds: Bounds,
   out: string[],
   seen: Set<string>,
+  prune: { extent: { get(id: string): Bounds | undefined }; probe: Bounds } | null,
 ): void {
   for (const n of siblings) {
     if (!n.visible || seen.has(n.id)) continue;
+    // Il sottoalbero il cui extent non tocca nemmeno la banda allargata non ha
+    // niente da offrire. Non dentro un'istanza (extent al posto d'origine) e non
+    // per un'istanza stessa, che ha i suoi bounds derivati qui sotto. `probe` è
+    // la banda ORIGINALE dentro un frame ritagliante? No: l'extent di un frame
+    // ritagliante è già ristretto al suo box, quindi il confronto resta valido.
+    if (prune && n.kind !== "instance") {
+      const e = prune.extent.get(n.id);
+      if (!e || !boundsIntersect(e, prune.probe)) continue;
+    }
     seen.add(n.id);
     // Un'ISTANZA entra nel marquee sui suoi bounds DERIVATI (il sottoalbero del
     // master mappato dalla discesa, store/groups.ts::contentWorldBounds -- la
@@ -694,6 +934,6 @@ function collectIn(
       childBounds = intersectBounds(bounds, frameBox);
       if (!childBounds) continue;
     }
-    collectIn(state, children, kids, compose(toWorld, localTransformOf(n)), childBounds, out, seen);
+    collectIn(state, children, kids, compose(toWorld, localTransformOf(n)), childBounds, out, seen, prune);
   }
 }

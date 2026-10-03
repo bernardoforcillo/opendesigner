@@ -60,7 +60,7 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   // Nodo e camera dallo store, con selettori: l'overlay si ridisegna quando si
   // sposta la camera (pan/zoom durante l'editing non devono scollare il campo
   // dal nodo) e quando cambia il nodo, non a ogni op del documento.
-  const node = useScene((s) => s.scene?.nodes[nodeId]);
+  const node = useScene((s) => s.scene?.nodes.at(nodeId));
   const camera = useScene((s) => s.camera);
   // L'origine MONDO del nodo, NON ruotata. Le sue x/y sono relative al PARENT
   // (vedi canvas/transform.ts), quindi si portano al mondo con la trasformazione
@@ -74,11 +74,11 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   // così si ridisegna solo quando l'origine cambia davvero -- il nodo o un suo
   // antenato si è mosso.
   const worldX = useScene((s) => {
-    const n = s.scene?.nodes[nodeId];
+    const n = s.scene?.nodes.at(nodeId);
     return s.scene && n ? applyTransform(worldTransformOf(s.scene, n.parentId), n.x, n.y).x : 0;
   });
   const worldY = useScene((s) => {
-    const n = s.scene?.nodes[nodeId];
+    const n = s.scene?.nodes.at(nodeId);
     return s.scene && n ? applyTransform(worldTransformOf(s.scene, n.parentId), n.x, n.y).y : 0;
   });
 
@@ -270,8 +270,9 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
         overflowWrap: "anywhere",
         // Il campo è un'affordance, non un rettangolo bianco comparso dal
         // nulla: il contorno dice dove si sta scrivendo e dove finisce la
-        // larghezza di wrap. sky-500, come gli altri accenti dell'app.
-        outline: "1px solid #0ea5e9",
+        // larghezza di wrap. Nel blu d'accento del tema (token --accent), lo
+        // stesso della selezione sul canvas.
+        outline: "1px solid var(--accent)",
         outlineOffset: "0px",
       }}
     />
