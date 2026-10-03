@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" width="300" height="200" viewBox="0 0 300 200">
+  <title>Illustrazione villaggio</title>
+  <style>
+    .wall { fill: #f4d9a6; stroke: #7a5a2a; stroke-width: 2 }
+    .roof { fill: #c0392b }
+    g.hills path { fill: #7fb069 }
+    #ring { fill-rule: evenodd; fill: #2c3e50 }
+    .star { fill: #f1c40f; stroke: #b7950b; stroke-width: 1 }
+  </style>
+  <defs>
+    <path id="star" class="star" d="M0 -10 L2.9 -3.1 10 -3.1 4.3 1.6 6.2 8.5 0 4.4 -6.2 8.5 -4.3 1.6 -10 -3.1 -2.9 -3.1 Z"/>
+    <g id="cloud">
+      <ellipse cx="0" cy="0" rx="18" ry="9" fill="#ffffff"/>
+      <circle cx="-8" cy="-6" r="8" fill="#ffffff"/>
+      <circle cx="6" cy="-8" r="10" fill="#ffffff"/>
+    </g>
+  </defs>
+  <rect id="sky" width="300" height="200" fill="#bfe6ff"/>
+  <g id="hills" class="hills" opacity="0.9">
+    <path d="M0 150 Q 60 90 130 140 T 300 120 V200 H0 Z"/>
+    <path d="M0 175 C 80 135, 160 195, 300 160 V200 H0 Z" style="fill:#5a9a4a"/>
+  </g>
+  <use xlink:href="#cloud" x="70" y="40" inkscape:label="Nuvola sinistra"/>
+  <use href="#cloud" transform="translate(220 30) scale(0.7)" id="cloud-right"/>
+  <g id="house" transform="translate(40 80)">
+    <rect class="wall" x="0" y="30" width="70" height="55"/>
+    <polygon class="roof" points="-8,30 35,0 78,30"/>
+    <g id="door" transform="translate(28 55) rotate(-6 7 15)">
+      <rect x="0" y="0" width="14" height="30" fill="#6d4c41"/>
+      <circle cx="11" cy="16" r="1.4" fill="#ffd54f"/>
+    </g>
+    <g id="window" transform="matrix(1 0 0.3 1 8 38)">
+      <rect x="0" y="0" width="16" height="16" fill="#9ad1f5" stroke="#4a6fa5" stroke-width="2"/>
+    </g>
+  </g>
+  <g id="sun-group" transform="translate(250 50) rotate(15) scale(1.2)">
+    <circle r="16" fill="#ffe066"/>
+    <ellipse rx="26" ry="8" fill="none" stroke="#ffb703" stroke-width="2" transform="rotate(30) scale(1 0.7)"/>
+    <ellipse rx="26" ry="8" fill="none" stroke="#fb8500" stroke-width="2" transform="skewX(20)"/>
+  </g>
+  <path id="ring" d="M200 120 a24 24 0 1 0 0.01 0 Z M200 130 a14 14 0 1 1 -0.01 0 Z"/>
+  <use href="#star" transform="translate(200 125) scale(0.9)"/>
+  <use href="#star" x="260" y="150" transform="rotate(-15)"/>
+  <g id="hidden-stuff" display="none"><rect x="0" y="0" width="300" height="200" fill="#ff0000"/></g>
+  <rect id="ghost" x="10" y="10" width="40" height="40" fill="#ff00ff" visibility="hidden"/>
+  <path id="river" d="M0 185 H80 V192 H0 Z M100 185h60v7h-60z" fill="#4aa3df" fill-opacity="0.7" stroke="#1d6fa5" stroke-dasharray="6 3" stroke-dashoffset="2"/>
+</svg>

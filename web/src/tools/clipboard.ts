@@ -16,6 +16,7 @@ import {
 } from "../store/types";
 import { makeCreateNodeOp, uuid } from "./ops";
 import { isTextField } from "./toolManager";
+import { importSvgAt, looksLikeSvg, viewportCenter } from "./svgImport";
 
 // COPIA / INCOLLA / DUPLICA (traccia 3, task 1).
 //
@@ -505,6 +506,15 @@ export async function pasteClipboard(): Promise<string[]> {
   try {
     const fromSystem = await readSystem();
     let parsed: ClipboardParse | null = fromSystem === null ? null : parseClipboard(fromSystem);
+    // Testo che è un documento SVG (copiato da un sito, da un altro editor, da
+    // un file aperto come testo): non è un payload nostro ("foreign") ma ha un
+    // significato preciso -- si importa come nodi, al centro della vista. Il
+    // payload opendesigner ha SEMPRE la precedenza: un nodo che si chiama
+    // "<svg>" non deve dirottare l'incolla.
+    if (fromSystem !== null && parsed && !parsed.ok && parsed.reason === "foreign" && looksLikeSvg(fromSystem)) {
+      const id = await importSvgAt(fromSystem, viewportCenter());
+      return id ? [id] : [];
+    }
     // Quando si può ripiegare sul buffer in memoria. NON basta che gli appunti
     // contengano roba di qualcun altro: una lettura RIUSCITA è l'ultima copia
     // che l'utente ha fatto davvero (testo selezionato nel pannello livelli e

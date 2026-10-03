@@ -18,6 +18,7 @@ import {
   VECTOR_FILL_RULE, VECTOR_STROKE_PX,
 } from "./shapes";
 import { drawText, strokeText } from "./text";
+import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
 import { imageCache, type CachedImage } from "./imageCache";
 
 const DEG_TO_RAD = Math.PI / 180;
@@ -638,8 +639,26 @@ function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, z
   // e non il default del canvas, quindi va passata a ogni fill. È la stessa
   // che usa l'hit-test: un buco che si vede ma si clicca sarebbe la firma di
   // due regole diverse.
-  if (fill) ctx.fill(fill, VECTOR_FILL_RULE);
-  if (stroke) {
+  const vs = vectorStyleOf(n);
+  if (fill) ctx.fill(fill, vs.fillRule ?? VECTOR_FILL_RULE);
+  if (stroke && hasRealStroke(n)) {
+    // TRATTO VERO (nodi importati da SVG, o con un tratto dal pannello): peso
+    // in unità mondo, colore/gradiente propri, e capi/giunti/tratteggio dai
+    // meta (renderer/vectorStyle.ts). Sostituisce il filo di 1.5px, che
+    // esiste solo per rendere visibile un path senza altro inchiostro.
+    ctx.lineCap = vs.cap;
+    ctx.lineJoin = vs.join;
+    ctx.miterLimit = vs.miter;
+    ctx.setLineDash(vs.dash);
+    ctx.lineDashOffset = vs.dashOffset;
+    for (const s of n.strokes) {
+      if (!(s.weight > 0)) continue;
+      ctx.strokeStyle = paintStyle(ctx, s.color, n);
+      ctx.lineWidth = s.weight;
+      ctx.stroke(stroke);
+    }
+    ctx.setLineDash([]);
+  } else if (stroke && vs.hairline) {
     ctx.strokeStyle = color;
     // Il ctx è in trasformazione MONDO (drawScene applica zoom * dpr), quindi
     // uno spessore costante sullo schermo si ottiene dividendo per lo zoom --

@@ -3,6 +3,8 @@ import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
+import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
+import { subPathsToD } from "../svg/pathData";
 
 // EXPORT SVG — markup a partire dai NODI.
 //
@@ -163,6 +165,49 @@ function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
   return `url(#${id})`;
 }
 
+// Il TRATTO di un nodo: il primo con peso positivo (come il canvas ne disegna
+// uno per strokes[i], ma l'SVG ne ha uno solo per elemento). Solo allineamento
+// centrato: è l'unico che SVG sa esprimere senza ritagli.
+function strokeAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
+  const s = n.strokes.find((st) => st.weight > 0);
+  if (!s) return [];
+  const ref = gradientRef(n, s.color, defs);
+  const vs = n.kind === "vector" ? vectorStyleOf(n) : null;
+  return [
+    attr("stroke", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
+    s.color.a === 1 || ref !== null ? null : attr("stroke-opacity", s.color.a),
+    attr("stroke-width", s.weight),
+    vs && vs.cap !== "butt" ? attr("stroke-linecap", vs.cap) : null,
+    vs && vs.join !== "miter" ? attr("stroke-linejoin", vs.join) : null,
+    vs && hasRealStroke(n) && vs.miter !== 4 ? attr("stroke-miterlimit", vs.miter) : null,
+    vs && vs.dash.length > 0 ? attr("stroke-dasharray", vs.dash.map(fmt).join(" ")) : null,
+    vs && vs.dash.length > 0 && vs.dashOffset !== 0 ? attr("stroke-dashoffset", vs.dashOffset) : null,
+  ];
+}
+
+// Un vettoriale come <path>. Il canvas riempie SOLO i contorni chiusi, mentre
+// SVG riempie anche gli aperti (chiudendoli): per restare identici i contorni
+// aperti vanno in un <path> a parte, senza riempimento.
+function vectorElement(n: NodeLite, defs: string[]): string {
+  const subs = n.vector?.subpaths ?? [];
+  const vs = vectorStyleOf(n);
+  const closed = subs.filter((sp) => sp.closed && sp.anchors.length >= 2);
+  const open = subs.filter((sp) => !(sp.closed && sp.anchors.length >= 2) && sp.anchors.length >= 1);
+  const stroke = strokeAttrs(n, defs);
+  const out: string[] = [];
+  const rule = attr("fill-rule", vs.fillRule ?? "evenodd");
+  if (closed.length > 0) {
+    out.push(`<path${attrs([attr("d", subPathsToD(closed, n.x, n.y, DECIMALS)), ...paintAttrs(n, defs), rule, ...stroke])}/>`);
+  }
+  if (open.length > 0 && stroke.length > 0) {
+    out.push(`<path${attrs([
+      attr("d", subPathsToD(open, n.x, n.y, DECIMALS)), attr("fill", "none"),
+      n.opacity === 1 ? null : attr("opacity", n.opacity), ...stroke,
+    ])}/>`);
+  }
+  return out.join("");
+}
+
 function rectElement(n: NodeLite, defs: string[]): string {
   // Il raggio si clampa a metà del lato più corto, come fa CanvasRenderingContext2D
   // .roundRect: senza, la stessa forma verrebbe disegnata in modo diverso dal
@@ -173,6 +218,7 @@ function rectElement(n: NodeLite, defs: string[]): string {
     attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height),
     r > 0 ? attr("rx", r) : null,
     ...paintAttrs(n, defs),
+    ...strokeAttrs(n, defs),
   ])}/>`;
 }
 
@@ -181,6 +227,7 @@ function ellipseElement(n: NodeLite, defs: string[]): string {
     attr("cx", n.x + n.width / 2), attr("cy", n.y + n.height / 2),
     attr("rx", n.width / 2), attr("ry", n.height / 2),
     ...paintAttrs(n, defs),
+    ...strokeAttrs(n, defs),
   ])}/>`;
 }
 
@@ -278,6 +325,7 @@ function imagePlaceholderElement(n: NodeLite): string {
 function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs: string[]): string {
   if (n.kind === "text") return textElement(n, measure, defs);
   if (n.kind === "ellipse") return ellipseElement(n, defs);
+  if (n.kind === "vector") return vectorElement(n, defs);
   if (n.kind === "image") {
     const uri = href(n.image?.assetHash ?? "");
     return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri, defs);

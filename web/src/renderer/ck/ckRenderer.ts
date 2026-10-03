@@ -13,6 +13,7 @@ import {
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
 import { fontSizeOf, placeTextLines } from "../text";
+import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
 
 // IL RENDERER SU GPU: lo stesso disegno di renderer/canvasRenderer.ts, ma con
@@ -496,13 +497,35 @@ export class CanvasKitRenderer {
         trace(fillB, n, sp);
       }
     }
-    fillB.setFillType(CK.FillType.EvenOdd);
+    const vs = vectorStyleOf(n);
+    fillB.setFillType(vs.fillRule === "nonzero" ? CK.FillType.Winding : CK.FillType.EvenOdd);
     const fillPath = fillB.detachAndDelete();
     const strokePath = strokeB.detachAndDelete();
     f.garbage.push(fillPath, strokePath);
 
     if (hasFill) sk.drawPath(fillPath, this.fillPaint(resolvedFill(n), n, n.opacity));
-    if (hasStroke) {
+    if (hasStroke && hasRealStroke(n)) {
+      // Tratto vero (vedi renderer/vectorStyle.ts): stesso disegno del 2D.
+      const cap = vs.cap === "round" ? CK.StrokeCap.Round : vs.cap === "square" ? CK.StrokeCap.Square : CK.StrokeCap.Butt;
+      const join = vs.join === "round" ? CK.StrokeJoin.Round : vs.join === "bevel" ? CK.StrokeJoin.Bevel : CK.StrokeJoin.Miter;
+      for (const s of n.strokes) {
+        if (!(s.weight > 0)) continue;
+        const p = this.paintFor(this.strokeP, s.color, n, n.opacity);
+        p.setStyle(CK.PaintStyle.Stroke);
+        p.setStrokeWidth(s.weight);
+        p.setStrokeCap(cap);
+        p.setStrokeJoin(join);
+        p.setStrokeMiter(vs.miter);
+        if (vs.dash.length > 0) {
+          const intervals = vs.dash.length % 2 === 0 ? vs.dash : [...vs.dash, ...vs.dash];
+          const fx = CK.PathEffect.MakeDash(intervals, vs.dashOffset);
+          f.garbage.push(fx);
+          p.setPathEffect(fx);
+        }
+        sk.drawPath(strokePath, p);
+        p.setPathEffect(null);
+      }
+    } else if (hasStroke && vs.hairline) {
       const p = this.strokeP;
       p.setShader(null);
       p.setImageFilter(null);

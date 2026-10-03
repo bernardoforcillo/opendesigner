@@ -5,6 +5,7 @@ import { useScene } from "../store/store";
 import { nextOrderKey, orderKeyBetween } from "../store/orderKey";
 import { uploadAsset, type AssetRef } from "../rpc/assets";
 import { makeCreateNodeOp, uuid } from "./ops";
+import { importSvgFile, isSvgFile } from "./svgImport";
 
 // TRASCINA UN'IMMAGINE SUL CANVAS (traccia 3, task 3).
 //
@@ -128,6 +129,21 @@ export async function dropImages(
 ): Promise<string[]> {
   const docId = useScene.getState().scene?.id;
   if (!docId || files.length === 0) return [];
+
+  // Gli SVG NON sono immagini raster: si importano come NODI modificabili
+  // (tools/svgImport.ts), uno per file, centrati sul punto del rilascio e
+  // ciascuno in un gesto proprio. Il resto del rilascio prosegue come sempre.
+  const svgs = files.filter(isSvgFile);
+  if (svgs.length > 0) {
+    const rest = files.filter((f) => !isSvgFile(f));
+    const restIds = rest.length > 0 ? await dropImages(rest, point, deps) : [];
+    const svgIds: string[] = [];
+    for (const [i, f] of svgs.entries()) {
+      const id = await importSvgFile(f, { x: point.x + i * STACK_OFFSET, y: point.y + i * STACK_OFFSET });
+      if (id) svgIds.push(id);
+    }
+    return [...restIds, ...svgIds];
+  }
   // Stessa guardia di incolla e undo/redo (store.ts): a gesto aperto gli op
   // entrerebbero nella BASE del gesto in corso, e il pointerup successivo
   // ricostruirebbe la scena su uno stato che non è quello di partenza.
