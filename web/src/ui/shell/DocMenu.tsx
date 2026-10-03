@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { Button as RacButton, Menu, MenuItem, MenuTrigger, Popover, Separator } from "react-aria-components";
+import { Button as RacButton, Header, Menu, MenuSection, MenuItem, MenuTrigger, Popover, Separator } from "react-aria-components";
 import { Icon } from "../ds";
 import { useScene } from "../../store/store";
 import { useRenderer } from "../../store/rendererChoice";
@@ -162,13 +162,15 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                 <span className="ml-auto text-[11px] text-fg-subtle">passa a {renderer === "gpu" ? "CPU" : "GPU"}</span>
               </MenuItem>
               <Separator className="my-1 h-px bg-line" />
-              <div className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Tema</div>
+              <MenuSection>
+              <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Tema</Header>
               {([["system", "Come il sistema", "cpu"], ["light", "Chiaro", "sun"], ["dark", "Scuro", "moon"]] as const).map(([id, label, icon]) => (
                 <MenuItem key={id} id={id} className={ITEM}>
                   <Icon name={icon} size={14} /> {label}
                   {theme === id && <Icon name="check" size={14} className="ml-auto text-accent" />}
                 </MenuItem>
               ))}
+              </MenuSection>
         </Menu>
       </Popover>
     </MenuTrigger>
