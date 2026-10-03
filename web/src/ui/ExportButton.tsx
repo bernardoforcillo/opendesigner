@@ -69,8 +69,8 @@ export function ExportButton({
 
   return (
     <DialogTrigger isOpen={open} onOpenChange={onOpenChange}>
-      <Button variant="secondary" icon="download">Esporta</Button>
-      <Popover offset={8} placement="bottom end" className="w-[268px] rounded-xl bg-raised p-3 text-fg shadow-pop">
+      <Button variant="secondary" icon="download" aria-label="Esporta"><span className="max-[1600px]:hidden">Esporta</span></Button>
+      <Popover offset={8} placement="top" className="w-[268px] rounded-xl bg-raised p-3 text-fg shadow-pop">
         <Dialog aria-label="Esporta" className="flex flex-col gap-2.5 text-[13px] outline-none">
           <RadioGroup
             value={format}

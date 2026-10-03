@@ -135,7 +135,7 @@ export function ToolDock({
       <span className="flex items-center gap-3 px-2 text-[12px] text-fg-muted tabular-nums" aria-live="polite">
         <span title={statusLabel} className="flex items-center gap-1.5">
           <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-          {statusLabel}
+          <span className="max-[1600px]:hidden">{statusLabel}</span>
         </span>
         <span title="Zoom">{Math.round(zoom * 100)}%</span>
       </span>

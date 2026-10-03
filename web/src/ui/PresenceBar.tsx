@@ -88,9 +88,11 @@ export function PresenceBar({
         variant="secondary"
         icon={copied ? "check" : "link"}
         onPress={share}
+        aria-label={copied ? "Link copiato" : "Condividi"}
         className={copied ? "text-ok" : ""}
       >
-        {copied ? "Link copiato" : "Condividi"}
+        {/* Sotto i 1600px di finestra resta la sola icona: il dock deve starci. */}
+        <span className="max-[1600px]:hidden">{copied ? "Link copiato" : "Condividi"}</span>
       </Button>
     </div>
   );
