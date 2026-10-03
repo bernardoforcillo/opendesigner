@@ -1,6 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { ConnectError } from "@connectrpc/connect";
-import { Button, ToggleButton, ToggleButtonGroup } from "react-aria-components";
+import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
+import { Banner, Icon } from "./ds";
+import { TopBar } from "./shell/TopBar";
+import { ToolDock } from "./shell/ToolDock";
+import { StatusHud } from "./shell/StatusHud";
 import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
@@ -13,7 +17,6 @@ import { attachImageRecovery, imageCache } from "../renderer/imageCache";
 import { SETTLE_MS } from "../renderer/layerCache";
 import { SceneSurface } from "../renderer/sceneSurface";
 import { useRenderer } from "../store/rendererChoice";
-import { RendererToggle } from "./RendererToggle";
 import { drawOverlay } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
@@ -471,76 +474,17 @@ export function App() {
           : "connessione…";
 
   return (
-    <div className="flex h-screen flex-col">
-      <div
-        role="toolbar"
-        aria-label="Strumenti"
-        className="flex items-center gap-2 border-b border-neutral-200 p-2"
-      >
-        <ToggleButtonGroup
-          selectionMode="single"
-          disallowEmptySelection
-          selectedKeys={[toolId]}
-          className="flex gap-1"
-          onSelectionChange={(keys) => {
-            chooseTool((keys.values().next().value as ToolId | undefined) ?? "select");
-          }}
-        >
-          {toolsForMode(mode).map((t) => (
-            <ToggleButton
-              key={t.id}
-              id={t.id}
-              className="rounded px-3 py-1 text-sm data-[selected]:bg-neutral-800 data-[selected]:text-white"
-            >
-              {t.label}
-            </ToggleButton>
-          ))}
-        </ToggleButtonGroup>
-        {/* Design | Flussi: la stessa tela, due letture. In Flussi le schermate
-            sono i frame veri del documento e le frecce sono i passaggi fra
-            l'una e l'altra (tasto F per alternare). */}
-        <ToggleButtonGroup
-          aria-label="Modalità"
-          selectionMode="single"
-          disallowEmptySelection
-          selectedKeys={[mode]}
-          className="flex gap-0.5 rounded bg-neutral-100 p-0.5"
-          onSelectionChange={(keys) => {
-            useFlowUi.getState().setMode((keys.values().next().value as EditorMode | undefined) ?? "design");
-          }}
-        >
-          <ToggleButton id="design" className="rounded px-3 py-0.5 text-sm data-[selected]:bg-white data-[selected]:shadow-sm">
-            Design
-          </ToggleButton>
-          <ToggleButton id="flows" className="rounded px-3 py-0.5 text-sm data-[selected]:bg-violet-600 data-[selected]:text-white">
-            Flussi
-          </ToggleButton>
-        </ToggleButtonGroup>
-        {mode === "flows" && (
-          <Button
-            aria-label="Presenta"
-            className="rounded bg-violet-600 px-3 py-1 text-sm text-white hover:bg-violet-500"
-            onPress={() => useFlowUi.getState().setPresenting(true)}
-          >
-            ▶ Presenta
-          </Button>
-        )}
-        <Button
-          className="rounded px-3 py-1 text-sm hover:bg-neutral-100"
-          onPress={() => {
-            localStorage.removeItem(DOC_KEY);
-            // Senza svuotare l'hash il reload riaprirebbe lo stesso documento.
-            history.replaceState(null, "", location.pathname);
-            location.reload();
-          }}
-        >
-          Nuovo documento
-        </Button>
-        {/* Export PNG/SVG (traccia 3, task 2). Tutta la logica sta in
-            export/ e in ui/ExportButton.tsx: qui c'è solo il montaggio, che
-            però è l'unico punto in cui la funzione diventa raggiungibile. */}
-        <ExportButton />
-        <div className="ml-auto">
+    <div className="flex h-screen flex-col bg-surface text-fg">
+      <TopBar
+        mode={mode}
+        onNewDocument={() => {
+          localStorage.removeItem(DOC_KEY);
+          // Senza svuotare l'hash il reload riaprirebbe lo stesso documento.
+          history.replaceState(null, "", location.pathname);
+          location.reload();
+        }}
+        exportButton={<ExportButton />}
+        presence={
           <PresenceBar
             nickname={nickname}
             onNickname={(n) => {
@@ -549,104 +493,71 @@ export function App() {
               presenceRef.current?.setNickname(n);
             }}
           />
-        </div>
-        <RendererToggle />
-        <span aria-live="polite" className="text-sm text-neutral-500">
-          {statusLabel}
-        </span>
-      </div>
+        }
+      />
       {/* Due avvisi diversi perché le due situazioni chiedono cose diverse: in
           riconnessione l'utente può aspettare (le modifiche restano in coda e
           il backlog le confermerà), a tentativi esauriti no. */}
       {connection === "reconnecting" && (
-        <div
-          role="alert"
-          className="border-b border-amber-200 bg-amber-50 px-3 py-2 text-sm text-amber-900"
-        >
+        <Banner tone="warn">
           Connessione al server persa ({syncError}). Riconnessione in corso: le modifiche fatte
           nel frattempo restano in attesa e verranno confermate al rientro.
-        </div>
+        </Banner>
       )}
       {connection === "error" && (
-        <div
-          role="alert"
-          className="border-b border-amber-300 bg-amber-100 px-3 py-2 text-sm text-amber-900"
-        >
+        <Banner tone="warn">
           Connessione al server persa ({syncError}). I tentativi di riconnessione sono finiti: le
           modifiche non vengono più confermate, ricarica la pagina per riprendere.
-        </div>
+        </Banner>
       )}
       {lastError && (
-        <div
-          role="alert"
-          className="flex items-center gap-2 border-b border-red-200 bg-red-50 px-3 py-2 text-sm text-red-800"
-        >
-          <span className="flex-1">Modifica non salvata e annullata: {lastError}</span>
-          <Button
-            aria-label="Chiudi l'avviso"
-            className="rounded px-2 py-0.5 text-sm hover:bg-red-100"
-            onPress={clearError}
-          >
-            Chiudi
-          </Button>
-        </div>
+        <Banner tone="danger" onClose={clearError}>Modifica non salvata e annullata: {lastError}</Banner>
       )}
-      {notice && (
-        <div
-          role="status"
-          className="flex items-center gap-2 border-b border-sky-200 bg-sky-50 px-3 py-2 text-sm text-sky-900"
-        >
-          <span className="flex-1">{notice}</span>
-          <Button
-            aria-label="Chiudi l'avviso"
-            className="rounded px-2 py-0.5 text-sm hover:bg-sky-100"
-            onPress={clearNotice}
-          >
-            Chiudi
-          </Button>
-        </div>
-      )}
-      {/* Selettore di pagina: una riga AGGIUNTIVA sopra le tre colonne, così il
-          layout a tre colonne resta intatto. Il canvas mostra la sola pagina
-          corrente (currentPageId, stato di vista nello store). */}
-      <PageBar />
-      {/* LE TRE COLONNE: livelli a sinistra, canvas al centro, proprietà a
-          destra. `min-h-0` sulla riga e `min-w-0` sulla colonna centrale non
-          sono decorazioni: senza, un figlio flex non scende MAI sotto la
-          propria dimensione naturale (min-height/min-width valgono `auto`), e
-          basta un elenco di livelli lungo perché la riga sfondi l'altezza
-          della finestra spingendo il canvas fuori schermo. */}
+      {notice && <Banner tone="info" onClose={clearNotice}>{notice}</Banner>}
+      {/* LE TRE COLONNE: pannello sinistro, tela al centro, proprietà a destra.
+          `min-h-0` sulla riga e `min-w-0` sulla colonna centrale non sono
+          decorazioni: senza, un figlio flex non scende MAI sotto la propria
+          dimensione naturale, e basta un elenco lungo perché la riga sfondi
+          l'altezza della finestra spingendo la tela fuori schermo.
+          I pannelli sono FRATELLI della tela, non le stanno sopra: non rubano
+          eventi e la larghezza che occupano la toglie al layout (la tela si
+          ridimensiona da sola: resizeCanvasToDisplaySize legge clientWidth ad
+          ogni frame e eventToCanvasPoint parte da getBoundingClientRect). */}
       <div className="flex min-h-0 flex-1">
-        {/* I pannelli sono FRATELLI del canvas, non gli stanno sopra: non c'è
-            nessun evento da rubargli, e la larghezza che occupano la toglie
-            il layout al canvas invece di coprirla. Il canvas si ridimensiona
-            di conseguenza da solo -- resizeCanvasToDisplaySize legge
-            clientWidth/clientHeight ad ogni frame -- e eventToCanvasPoint
-            parte da getBoundingClientRect, quindi le coordinate del puntatore
-            restano giuste anche con una colonna a sinistra. */}
-        {/* Colonna sinistra: i livelli in alto (occupano lo spazio, min-h-0 così
-            un elenco lungo scrolla invece di sfondare) e i componenti sotto,
-            AGGIUNTIVI -- il pannello componenti (M4) è montato qui senza toccare
-            il resto del layout a tre colonne. */}
         {mode === "flows" ? (
-          <aside
-            aria-label="Flussi"
-            className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-white"
-          >
+          <aside aria-label="Flussi" className="flex w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface">
             <FlowPanel />
           </aside>
         ) : (
-          <aside
-            aria-label="Livelli e componenti"
-            className="flex w-56 shrink-0 flex-col overflow-hidden border-r border-neutral-200 bg-white"
-          >
-            <div className="min-h-0 flex-1 overflow-hidden">
-              <LayersPanel />
-            </div>
-            <ComponentsPanel />
+          <aside aria-label="Livelli e componenti" className="flex w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-surface">
+            <PageBar />
+            <Tabs className="flex min-h-0 flex-1 flex-col">
+              <TabList aria-label="Pannello" className="flex shrink-0 gap-1 border-b border-line px-2 pt-1">
+                {([["layers", "Livelli", "layers"], ["components", "Componenti", "components"]] as const).map(([id, label, icon]) => (
+                  <Tab
+                    key={id}
+                    id={id}
+                    className={({ isSelected }) =>
+                      `flex h-8 cursor-default items-center gap-1.5 border-b-2 px-2 text-[13px] font-medium outline-none ` +
+                      `focus-visible:shadow-[var(--ring)] ` +
+                      (isSelected ? "border-accent text-fg" : "border-transparent text-fg-subtle hover:text-fg")
+                    }
+                  >
+                    <Icon name={icon} size={14} />
+                    {label}
+                  </Tab>
+                ))}
+              </TabList>
+              <TabPanel id="layers" className="min-h-0 flex-1 overflow-hidden outline-none">
+                <LayersPanel />
+              </TabPanel>
+              <TabPanel id="components" className="min-h-0 flex-1 overflow-y-auto outline-none">
+                <ComponentsPanel />
+              </TabPanel>
+            </Tabs>
           </aside>
         )}
-        <div className="relative min-w-0 flex-1">
+        <div className="relative min-w-0 flex-1 bg-canvas">
           {/* Il cursore viene dal tool attivo; durante un pan temporaneo (spazio
               o tasto centrale) è il tool manager a sovrascriverlo sul DOM. */}
           {/* Il canvas WebGL della GPU: sotto, senza eventi, nascosto finché la
@@ -673,11 +584,10 @@ export function App() {
               così passare da un testo a un altro rimonta il campo invece di
               riusarlo. */}
           {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
+          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} />
+          <StatusHud statusLabel={statusLabel} connection={connection} />
         </div>
-        <aside
-          aria-label="Proprietà"
-          className="w-64 shrink-0 overflow-hidden border-l border-neutral-200 bg-white"
-        >
+        <aside aria-label="Proprietà" className="w-64 shrink-0 overflow-hidden border-l border-line bg-surface">
           {mode === "flows" ? (
             // I metadati della schermata in cima, le proprietà di sempre sotto.
             <div className="flex h-full flex-col">

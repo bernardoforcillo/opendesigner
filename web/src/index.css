@@ -1,4 +1,5 @@
 @import "tailwindcss";
+@import "./ui/ds/tokens.css";
 
 /* Inter, il carattere predefinito del modello (renderer/text.ts). Lo stesso file
    lo usa il renderer su GPU (renderer/ck): così il testo con la famiglia di
