@@ -247,3 +247,19 @@ const (
 	AEnd     = opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END
 	ABetween = opendesignerv1.LayoutAlign_LAYOUT_ALIGN_SPACE_BETWEEN
 )
+
+// Clip registra una clip di animazione (SetClip passa dal core: valida anche
+// qui che i riferimenti esistano).
+func (b *B) Clip(c *opendesignerv1.Clip) {
+	b.must(&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetClip{SetClip: &opendesignerv1.SetClip{Clip: c}}})
+}
+
+// KF: un keyframe (tempo in ms, valore, easing).
+func KF(t, v float64, easing string) *opendesignerv1.Keyframe {
+	return &opendesignerv1.Keyframe{Time: t, Value: v, Easing: easing}
+}
+
+// Tr: una traccia (nodo, proprietà) con i suoi keyframe.
+func Tr(node, prop string, kfs ...*opendesignerv1.Keyframe) *opendesignerv1.Track {
+	return &opendesignerv1.Track{NodeId: node, Prop: prop, Keyframes: kfs}
+}

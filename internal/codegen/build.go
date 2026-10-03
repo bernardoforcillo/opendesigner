@@ -38,6 +38,8 @@ type builder struct {
 	warnings           *[]string
 	// triggers: le transizioni della schermata corrente, per id dell'elemento.
 	triggers map[string][]Trigger
+	// anim: le animazioni della schermata corrente per id del nodo (planAnimations).
+	anim map[string]*ElemAnim
 }
 
 // bctx è lo stato che scende con la ricorsione.
@@ -81,6 +83,7 @@ func (b *builder) warn(format string, a ...any) {
 
 // buildScreen costruisce l'albero IR della schermata `n`.
 func (b *builder) buildScreen(n *opendesignerv1.Node) *Element {
+	b.planAnimations(n)
 	return b.element(n, bctx{root: true, visited: map[string]bool{}})
 }
 
@@ -111,6 +114,7 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	}
 	if !c.inInstance() {
 		el.Triggers = b.triggers[n.GetId()]
+		b.attachAnim(el, n)
 	}
 	return el
 }
@@ -784,7 +788,7 @@ func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 		}
 		el.Children = append(el.Children, p)
 	}
-	p := &Element{Tag: "path"}
+	p := &Element{Tag: "path", StrokePath: true}
 	if eff.GetOpacity() != 1 {
 		p.addAttr("opacity", num(eff.GetOpacity()))
 	}

@@ -32,7 +32,8 @@ func main() {
 		}
 	}
 	write(filepath.Join(*out, "shop.json"), samples.Shop())
-	fmt.Println("scritti gallery.json, shop.json e assets/ in", *out)
+	write(filepath.Join(*out, "anim.json"), samples.AnimDemo())
+	fmt.Println("scritti gallery.json, shop.json, anim.json e assets/ in", *out)
 }
 
 func write(path string, m proto.Message) {

@@ -1,8 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { FlowSchema, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ClipSchema, FlowSchema, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
+  Document, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -212,11 +212,21 @@ export interface TransitionLite {
   label: string; trigger: string; elementId: string; guard: string; effect: string;
 }
 
+// ANIMAZIONE: le clip del documento (proprietà animate di nodi referenziati per
+// id). Vedi proto Clip/Track/Keyframe e internal/core/animation.go.
+export interface KeyframeLite { time: number; value: number; easing: string }
+export interface TrackLite { nodeId: string; prop: string; keyframes: KeyframeLite[] }
+export interface ClipLite {
+  id: string; name: string; duration: number; trigger: string; delay: number;
+  repeat: number; yoyo: boolean; tracks: TrackLite[]; targetId: string;
+}
+
 export interface SceneState {
   id: string; name: string; schemaVersion: number;
   pages: PageLite[]; nodes: NodeMap;
   flows: Record<string, FlowLite>;
   transitions: Record<string, TransitionLite>;
+  clips: Record<string, ClipLite>;
   // M4 — componenti indicizzati per id (componentId -> master). Fa parte del
   // documento quanto `nodes` e `pages`: un CreateComponent lo popola, e
   // fromDocument lo ricostruisce dallo snapshot.
@@ -224,7 +234,7 @@ export interface SceneState {
 }
 
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, components: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, components: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -610,6 +620,27 @@ export function toPbTransition(t: TransitionLite): PbTransition {
   });
 }
 
+export function toClipLite(c: PbClip): ClipLite {
+  return {
+    id: c.id, name: c.name, duration: c.duration, trigger: c.trigger, delay: c.delay, repeat: c.repeat, yoyo: c.yoyo,
+    targetId: c.targetId,
+    tracks: c.tracks.map((t) => ({
+      nodeId: t.nodeId, prop: t.prop,
+      keyframes: t.keyframes.map((k) => ({ time: k.time, value: k.value, easing: k.easing })),
+    })),
+  };
+}
+export function toPbClip(c: ClipLite): PbClip {
+  return create(ClipSchema, {
+    id: c.id, name: c.name, duration: c.duration, trigger: c.trigger, delay: c.delay, repeat: c.repeat, yoyo: c.yoyo,
+    targetId: c.targetId,
+    tracks: c.tracks.map((t) => ({
+      nodeId: t.nodeId, prop: t.prop,
+      keyframes: t.keyframes.map((k) => ({ time: k.time, value: k.value, easing: k.easing })),
+    })),
+  });
+}
+
 export function fromDocument(doc: Document): SceneState {
   const edit = NodeMap.empty.edit();
   for (const [id, n] of Object.entries(doc.nodes)) edit.set(id, toNodeLite(n));
@@ -623,5 +654,6 @@ export function fromDocument(doc: Document): SceneState {
     pages: doc.pages.map((p) => ({ id: p.id, name: p.name })), nodes, components,
     flows: Object.fromEntries(Object.entries(doc.flows).map(([id, f]) => [id, toFlowLite(f)])),
     transitions: Object.fromEntries(Object.entries(doc.transitions).map(([id, t]) => [id, toTransitionLite(t)])),
+    clips: Object.fromEntries(Object.entries(doc.clips).map(([id, c]) => [id, toClipLite(c)])),
   };
 }

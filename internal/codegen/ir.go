@@ -60,6 +60,13 @@ type Element struct {
 	NavTriggers []Trigger
 	// KeyTriggers: transizioni con trigger "key" (Label = il tasto).
 	KeyTriggers []Trigger
+
+	// Anim: le animazioni delle clip che toccano questo elemento (animation.go).
+	// nil per la maggioranza.
+	Anim *ElemAnim
+	// StrokePath: il <path> del tratto di un vettoriale (quello che `draw`
+	// anima), distinto dal path del riempimento.
+	StrokePath bool
 }
 
 // Screen è una schermata esportata: un frame di primo livello (o un nodo

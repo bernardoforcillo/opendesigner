@@ -1,7 +1,8 @@
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { type SceneState, type NodeLite, type TransitionLite, toFlowLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { isValidClip } from "../animation/validate";
+import { type SceneState, type ClipLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout } from "./layout";
 import { recordDelta } from "./sceneDelta";
@@ -239,7 +240,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const nodes = state.nodes.edit();
       const gone = new Set<string>();
       for (const n of subtreeOf(state, id)) { nodes.delete(n.id); gone.add(n.id); }
-      return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone) };
+      return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone), ...cascadeClips(state, gone) };
     }
     // Op dedicato e non un path della mask di setProps (a differenza di
     // `order_key`) perché ha una validazione che nessun campo ha: il nuovo
@@ -297,7 +298,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       }
       return {
         ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes: nodes.done(),
-        ...cascadeFlows(state, gone),
+        ...cascadeFlows(state, gone), ...cascadeClips(state, gone),
       };
     }
     case "renamePage": {
@@ -357,6 +358,24 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       delete transitions[id];
       return { ...state, transitions };
     }
+    // --- animazione ---------------------------------------------------------
+    // Parità con core.applySetClip / applyDeleteClip (Go, internal/core/animation.go).
+    // Upsert ASSOLUTO dell'intera clip; la validazione è isValidClip (stessa
+    // logica di core.validateClip: un op non valido lascia la scena invariata).
+    case "setClip": {
+      const c = op.kind.value.clip;
+      if (!c || c.id === "") return state;                                  // ErrNilClip
+      const lite = toClipLite(c);
+      if (!isValidClip(state, lite)) return state;
+      return { ...state, clips: { ...state.clips, [c.id]: lite } };
+    }
+    case "deleteClip": {
+      const { id } = op.kind.value;
+      if (!state.clips[id]) return state;                                   // ErrClipNotFound
+      const clips = { ...state.clips };
+      delete clips[id];
+      return { ...state, clips };
+    }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;
       const cur = state.nodes.at(instanceId);
@@ -381,6 +400,27 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     default:
       return state;
   }
+}
+
+// Toglie dalle clip ciò che animava i nodi appena cancellati (parità con
+// core.cascadeClips in Go): le tracce sui nodi spariti si tolgono e le clip il
+// cui TARGET è sparito si cancellano. Una clip rimasta senza tracce ma col
+// target vivo si tiene. Le voci toccate sono sostituite, mai mutate.
+export function cascadeClips(
+  state: SceneState, gone: ReadonlySet<string>,
+): Partial<Pick<SceneState, "clips">> {
+  let changed = false;
+  const clips: Record<string, ClipLite> = {};
+  for (const [id, c] of Object.entries(state.clips)) {
+    if (gone.has(c.targetId)) { changed = true; continue; }
+    if (c.tracks.some((t) => gone.has(t.nodeId))) {
+      changed = true;
+      clips[id] = { ...c, tracks: c.tracks.filter((t) => !gone.has(t.nodeId)) };
+      continue;
+    }
+    clips[id] = c;
+  }
+  return changed ? { clips } : {};
 }
 
 // Toglie dai flussi ciò che riferiva i nodi appena cancellati (parità con

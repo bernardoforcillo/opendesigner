@@ -557,6 +557,14 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 			next.Transitions[k] = proto.Clone(t).(*opendesignerv1.Transition)
 		}
 	}
+	// Clip di animazione: poche, si clonano a fondo (cascadeClips sostituisce le
+	// voci toccate con copie, ma setClip scrive il puntatore dell'op).
+	if len(d.GetClips()) > 0 {
+		next.Clips = make(map[string]*opendesignerv1.Clip, len(d.GetClips()))
+		for k, c := range d.GetClips() {
+			next.Clips[k] = proto.Clone(c).(*opendesignerv1.Clip)
+		}
+	}
 	if len(d.GetComponents()) > 0 {
 		next.Components = make(map[string]*opendesignerv1.Component, len(d.GetComponents()))
 		for k, c := range d.GetComponents() {

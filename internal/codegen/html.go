@@ -60,11 +60,13 @@ type htmlWriter struct {
 	used    map[string]bool
 	self    *Screen
 	d       *opendesignerv1.Document
+	anim    htmlAnim
 }
 
 func htmlPage(d *opendesignerv1.Document, s *Screen, all []*Screen) string {
 	w := &htmlWriter{used: map[string]bool{}, self: s, d: d}
 	w.element(s.Root, 1, true)
+	w.finishAnim()
 	var b strings.Builder
 	b.WriteString("<!doctype html>\n<html lang=\"it\">\n<head>\n<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
@@ -148,8 +150,11 @@ func (w *htmlWriter) element(e *Element, depth int, root bool) {
 
 	var open strings.Builder
 	open.WriteString("<" + tag)
-	if len(style) > 0 {
+	if len(style) > 0 || e.Anim != nil {
 		class := w.newClass(e)
+		if e.Anim != nil {
+			style, attrs = w.animate(e, class, style, attrs)
+		}
 		w.writeCSS(class, style)
 		fmt.Fprintf(&open, " class=\"%s\"", class)
 	}

@@ -1,0 +1,468 @@
+{
+ "_comment": [
+  "Cascata delle clip. Eseguita da ENTRAMBI i lati: internal/core/golden_test.go e",
+  "web/src/store/golden.test.ts.",
+  "",
+  " - deleteNode(g1) cancella g1 e r1: k1 (target s1) perde SOLO la traccia su r1,",
+  "   k2 (target g1) sparisce con il suo target;",
+  " - setClip con target o traccia su un nodo cancellato e' rifiutato;",
+  " - deletePage(page2) porta via q1: k3 perde la traccia su q1, k4 (target r2,",
+  "   vivo) resta VUOTA -- una clip senza tracce ma col target vivo si tiene;",
+  " - deleteNode(r3) lascia k3 vuota; deleteNode(s2) ne cancella il target e k3 sparisce."
+ ],
+ "docId": "doc1",
+ "ops": [
+  {
+   "opId": "p",
+   "docId": "doc1",
+   "createPage": {
+    "page": {
+     "id": "page2",
+     "name": "Page 2"
+    }
+   }
+  },
+  {
+   "opId": "n0",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "s1",
+     "parentId": "page1",
+     "orderKey": "a000001",
+     "name": "s1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 200,
+     "height": 200,
+     "frame": {}
+    }
+   }
+  },
+  {
+   "opId": "n1",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "g1",
+     "parentId": "s1",
+     "orderKey": "a000001",
+     "name": "g1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "group": {}
+    }
+   }
+  },
+  {
+   "opId": "n2",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "r1",
+     "parentId": "g1",
+     "orderKey": "a000001",
+     "name": "r1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "n3",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "r2",
+     "parentId": "s1",
+     "orderKey": "a000002",
+     "name": "r2",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "n4",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "s2",
+     "parentId": "page1",
+     "orderKey": "a000002",
+     "name": "s2",
+     "visible": true,
+     "opacity": 1,
+     "x": 300,
+     "y": 0,
+     "width": 200,
+     "height": 200,
+     "frame": {}
+    }
+   }
+  },
+  {
+   "opId": "n5",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "r3",
+     "parentId": "s2",
+     "orderKey": "a000001",
+     "name": "r3",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "n6",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "q1",
+     "parentId": "page2",
+     "orderKey": "a000001",
+     "name": "q1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "k1",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "k1",
+     "name": "schermata",
+     "duration": 600,
+     "trigger": "enter",
+     "targetId": "s1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 600,
+         "value": 1
+        }
+       ]
+      },
+      {
+       "nodeId": "r2",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 600,
+         "value": 50,
+         "easing": "easeOut"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "k2",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "k2",
+     "name": "gruppo",
+     "duration": 300,
+     "trigger": "hover",
+     "targetId": "g1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "scale",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 1
+        },
+        {
+         "time": 300,
+         "value": 1.1
+        }
+       ]
+      },
+      {
+       "nodeId": "r3",
+       "prop": "rotation",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 300,
+         "value": 10
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "k3",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "k3",
+     "name": "seconda",
+     "duration": 400,
+     "trigger": "tap",
+     "targetId": "s2",
+     "tracks": [
+      {
+       "nodeId": "r3",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 1
+        },
+        {
+         "time": 400,
+         "value": 0.5
+        }
+       ]
+      },
+      {
+       "nodeId": "q1",
+       "prop": "y",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 400,
+         "value": 8
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "k4",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "k4",
+     "name": "su q1",
+     "duration": 100,
+     "trigger": "manual",
+     "targetId": "r2",
+     "tracks": [
+      {
+       "nodeId": "q1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 100,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "x1",
+   "docId": "doc1",
+   "deleteNode": {
+    "id": "g1"
+   }
+  },
+  {
+   "opId": "k5",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "k5",
+     "duration": 10,
+     "trigger": "enter",
+     "targetId": "g1"
+    }
+   }
+  },
+  {
+   "opId": "k6",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "k6",
+     "duration": 10,
+     "trigger": "enter",
+     "targetId": "s1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "dp",
+   "docId": "doc1",
+   "deletePage": {
+    "id": "page2"
+   }
+  },
+  {
+   "opId": "x2",
+   "docId": "doc1",
+   "deleteNode": {
+    "id": "r3"
+   }
+  },
+  {
+   "opId": "x3",
+   "docId": "doc1",
+   "deleteNode": {
+    "id": "s2"
+   }
+  }
+ ],
+ "rejected": [
+  13,
+  14
+ ],
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "nodes": {
+   "s1": {
+    "id": "s1",
+    "parentId": "page1",
+    "orderKey": "a000001",
+    "name": "s1",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 200,
+    "height": 200,
+    "frame": {}
+   },
+   "r2": {
+    "id": "r2",
+    "parentId": "s1",
+    "orderKey": "a000002",
+    "name": "r2",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {
+     "cornerRadius": 0
+    }
+   }
+  },
+  "clips": {
+   "k1": {
+    "id": "k1",
+    "name": "schermata",
+    "duration": 600,
+    "trigger": "enter",
+    "targetId": "s1",
+    "tracks": [
+     {
+      "nodeId": "r2",
+      "prop": "x",
+      "keyframes": [
+       {
+        "time": 0,
+        "value": 0
+       },
+       {
+        "time": 600,
+        "value": 50,
+        "easing": "easeOut"
+       }
+      ]
+     }
+    ]
+   },
+   "k4": {
+    "id": "k4",
+    "name": "su q1",
+    "duration": 100,
+    "trigger": "manual",
+    "targetId": "r2"
+   }
+  }
+ }
+}

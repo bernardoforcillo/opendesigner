@@ -627,6 +627,7 @@ type DocumentView struct {
 	Seq        uint64          `json:"seq"`
 	Pages      []PageView      `json:"pages"`
 	Components []ComponentView `json:"components"`
+	Clips      []ClipView      `json:"clips"`
 	Nodes      []NodeView      `json:"nodes"`
 }
 
@@ -648,6 +649,7 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 	for _, n := range doc.GetNodes() {
 		out.Nodes = append(out.Nodes, toNodeView(n))
 	}
+	out.Clips = clipViews(doc)
 	return out, nil
 }
 
@@ -753,5 +755,6 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "list_peers", "List the other people and agents in the document and the nodes each has selected or just edited. Use it to avoid editing what someone else is working on.", s.ListPeers)
 	addTool(srv, "list_components", "List the document's components.", s.ListComponents)
 	registerFlowTools(srv, s)
+	registerAnimationTools(srv, s)
 	registerCodegenTools(srv, s)
 }

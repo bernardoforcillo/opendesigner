@@ -1,7 +1,8 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbFlow, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { isValidClip } from "../animation/validate";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Primitive di undo: dato lo stato PRIMA di un op, l'op che lo annulla.
@@ -77,6 +78,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       return [
         ...sub.map((n) => createNodeOp(op.docId, toPbNode(n))),
         ...restoreFlowsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
+        ...restoreClipsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
       ];
     }
     // Simmetrico a se stesso: rimette il nodo dov'era, con la order key che
@@ -188,6 +190,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         for (const n of subtreeOf(scene, root.id)) { ops.push(createNodeOp(op.docId, toPbNode(n))); gone.add(n.id); }
       }
       ops.push(...restoreFlowsOps(scene, op.docId, gone));
+      ops.push(...restoreClipsOps(scene, op.docId, gone));
       return ops;
     }
     case "renamePage": {
@@ -314,6 +317,26 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         kind: { case: "setTransition", value: { transition: toPbTransition(prev) } },
       })];
     }
+    // --- animazione ---------------------------------------------------------
+    // Upsert assoluti, come i flussi: l'inverso è la clip PRECEDENTE (o una
+    // delete se l'op la creava). Null quando l'op diretto sarebbe rifiutato.
+    case "setClip": {
+      const c = op.kind.value.clip;
+      if (!c || c.id === "") return null;
+      if (!isValidClip(scene, toClipLite(c))) return null;
+      const prev = scene.clips[c.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setClip", value: { clip: toPbClip(prev) } }
+          : { case: "deleteClip", value: { id: c.id } },
+      })];
+    }
+    case "deleteClip": {
+      const prev = scene.clips[op.kind.value.id];
+      if (!prev) return null;
+      return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setClip", value: { clip: toPbClip(prev) } } })];
+    }
     default:
       return null;
   }
@@ -335,6 +358,21 @@ function restoreFlowsOps(scene: SceneState, docId: string, gone: ReadonlySet<str
   for (const t of Object.values(scene.transitions).sort(byId)) {
     if (gone.has(t.fromId) || gone.has(t.toId) || (t.elementId !== "" && gone.has(t.elementId))) {
       ops.push(create(OpSchema, { opId: newOpId(), docId, kind: { case: "setTransition", value: { transition: toPbTransition(t) } } }));
+    }
+  }
+  return ops;
+}
+
+// Dopo aver RICREATO i nodi cancellati, rimette le clip che la cascata aveva
+// toccato (core.cascadeClips): quelle col target sparito (cancellate) e quelle
+// che avevano tracce sui nodi spariti (le tracce erano state tolte). Si
+// ripristina la clip INTERA com'era nello scene pre-apply -- un setClip assoluto
+// -- e va DOPO le createNode: target e nodi delle tracce devono esistere.
+function restoreClipsOps(scene: SceneState, docId: string, gone: ReadonlySet<string>): Op[] {
+  const ops: Op[] = [];
+  for (const c of Object.values(scene.clips).sort(byId)) {
+    if (gone.has(c.targetId) || c.tracks.some((t) => gone.has(t.nodeId))) {
+      ops.push(create(OpSchema, { opId: newOpId(), docId, kind: { case: "setClip", value: { clip: toPbClip(c) } } }));
     }
   }
   return ops;

@@ -382,6 +382,39 @@ message Transition {
   string effect = 9;
 }
 
+// ---------- animazione ----------
+// Una CLIP è un'animazione dichiarativa: un insieme di TRACCE (nodo, proprietà)
+// ciascuna con keyframe. Le clip appartengono a un nodo "target" (schermata,
+// gruppo, SVG importato) il cui hover/tap/enter le fa partire; i nodi animati
+// sono referenziati per id, mai copiati. Vedi internal/core/animation.go.
+message Keyframe {
+  double time = 1;    // millisecondi dall'inizio della clip, 0..duration
+  double value = 2;   // valore numerico della proprietà
+  // "linear" | "easeIn" | "easeOut" | "easeInOut" | "spring" |
+  // "cubic-bezier(a,b,c,d)" | "" (= linear). Easing del segmento che PARTE da
+  // questo keyframe.
+  string easing = 3;
+}
+message Track {
+  string node_id = 1;
+  // opacity (0..1) | x | y (coordinate locali del nodo, assolute) | scale
+  // (moltiplicatore, base 1) | rotation (gradi assoluti) | draw (0..1: quanto
+  // del tracciato è disegnato; solo vector/forme con tratto)
+  string prop = 2;
+  repeated Keyframe keyframes = 3;   // ordinati per time, almeno 1
+}
+message Clip {
+  string id = 1;
+  string name = 2;                    // "entrata", "hover", "caricamento"...
+  double duration = 3;                // ms, > 0
+  string trigger = 4;                 // "enter" | "hover" | "tap" | "loop" | "manual"
+  double delay = 5;                   // ms
+  int32 repeat = 6;                   // ripetizioni extra; -1 = infinito
+  bool yoyo = 7;
+  repeated Track tracks = 8;
+  string target_id = 9;               // il nodo (schermata/gruppo/SVG) a cui la clip appartiene
+}
+
 message Document {
   string id = 1;
   string name = 2;
@@ -392,6 +425,8 @@ message Document {
   map<string, Component> components = 6;
   map<string, Flow> flows = 7;
   map<string, Transition> transitions = 8;
+  // Animazioni: clipId -> clip.
+  map<string, Clip> clips = 9;
 }
 
 // ---------- op ----------
@@ -502,6 +537,10 @@ message DeleteFlow { string id = 1; }
 message SetTransition { Transition transition = 1; }
 message DeleteTransition { string id = 1; }
 
+// Clip: upsert ASSOLUTO dell'intera clip (l'inverso è lo stato precedente).
+message SetClip { Clip clip = 1; }
+message DeleteClip { string id = 1; }
+
 message Op {
   string op_id = 1;
   string doc_id = 2;
@@ -524,6 +563,8 @@ message Op {
     DeleteFlow       delete_flow       = 22;
     SetTransition    set_transition    = 23; // flussi — upsert di un arco
     DeleteTransition delete_transition = 24;
+    SetClip          set_clip          = 25; // animazione — upsert di una clip
+    DeleteClip       delete_clip       = 26;
   }
 }
 message OpRecord {

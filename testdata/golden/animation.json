@@ -1,0 +1,1244 @@
+{
+ "_comment": [
+  "Clip di animazione (op 25 SetClip, op 26 DeleteClip). Eseguita da ENTRAMBI i lati:",
+  "internal/core/golden_test.go e web/src/store/golden.test.ts.",
+  "",
+  "c1/c2/c3 sono validi (spring e cubic-bezier con spazi, trigger vuoto = manual,",
+  "keyframe con lo stesso tempo = scatto, draw su un vector e su un'ellisse).",
+  "Poi ogni op in `rejected` viola UNA invarianza (durata, ritardo, repeat, trigger,",
+  "target, nodo, proprieta', keyframe mancanti, tempi, valori NaN/fuori range,",
+  "easing, bezier con ascisse fuori [0,1], traccia duplicata, draw su un testo,",
+  "clip nil, id vuoto, delete di una clip inesistente): la scena DEVE restare",
+  "invariata, sia in Go sia in TS. Infine upsert assoluto (c2 sostituita per",
+  "intero), delete di c3 e una clip vuota con target vivo (c4)."
+ ],
+ "docId": "doc1",
+ "ops": [
+  {
+   "opId": "n0",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "f1",
+     "parentId": "page1",
+     "orderKey": "a000001",
+     "name": "f1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 200,
+     "height": 200,
+     "frame": {}
+    }
+   }
+  },
+  {
+   "opId": "n1",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "r1",
+     "parentId": "f1",
+     "orderKey": "a000001",
+     "name": "r1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "n2",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "v1",
+     "parentId": "f1",
+     "orderKey": "a000002",
+     "name": "v1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "vector": {
+      "subpaths": [
+       {
+        "anchors": [
+         {
+          "x": 0,
+          "y": 0
+         },
+         {
+          "x": 40,
+          "y": 40
+         }
+        ],
+        "closed": false
+       }
+      ]
+     }
+    }
+   }
+  },
+  {
+   "opId": "n3",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "t1",
+     "parentId": "f1",
+     "orderKey": "a000003",
+     "name": "t1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "text": {
+      "content": "Ciao"
+     }
+    }
+   }
+  },
+  {
+   "opId": "n4",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "e1",
+     "parentId": "page1",
+     "orderKey": "a000002",
+     "name": "e1",
+     "visible": true,
+     "opacity": 1,
+     "x": 300,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "ellipse": {}
+    }
+   }
+  },
+  {
+   "opId": "c1",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "c1",
+     "name": "entrata",
+     "duration": 800,
+     "trigger": "enter",
+     "delay": 100,
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0,
+         "easing": "easeOut"
+        },
+        {
+         "time": 800,
+         "value": 1
+        }
+       ]
+      },
+      {
+       "nodeId": "r1",
+       "prop": "y",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": -20,
+         "easing": "spring"
+        },
+        {
+         "time": 800,
+         "value": 0
+        }
+       ]
+      },
+      {
+       "nodeId": "v1",
+       "prop": "draw",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0,
+         "easing": "cubic-bezier(0.4, 0, 0.2, 1)"
+        },
+        {
+         "time": 800,
+         "value": 1
+        }
+       ]
+      },
+      {
+       "nodeId": "t1",
+       "prop": "scale",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0.5
+        },
+        {
+         "time": 400,
+         "value": 1.2,
+         "easing": "easeInOut"
+        },
+        {
+         "time": 800,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "c2",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "c2",
+     "name": "gira",
+     "duration": 1000,
+     "trigger": "loop",
+     "repeat": -1,
+     "yoyo": true,
+     "targetId": "e1",
+     "tracks": [
+      {
+       "nodeId": "e1",
+       "prop": "rotation",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 1000,
+         "value": 360
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "c3",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "c3",
+     "name": "scatto",
+     "duration": 500,
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 250,
+         "value": 10
+        },
+        {
+         "time": 250,
+         "value": 30
+        },
+        {
+         "time": 500,
+         "value": 0,
+         "easing": "linear"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad0",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 0,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 500,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad1",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": -10,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 500,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad2",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": "Infinity",
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 500,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad3",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 500,
+         "value": 1
+        }
+       ]
+      }
+     ],
+     "delay": -1
+    }
+   }
+  },
+  {
+   "opId": "bad4",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 500,
+         "value": 1
+        }
+       ]
+      }
+     ],
+     "repeat": -2
+    }
+   }
+  },
+  {
+   "opId": "bad5",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "scroll",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 500,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad6",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "ghost",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 500,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad7",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 500,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad8",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "ghost",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad9",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "width",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad10",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": []
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad11",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": -1,
+         "value": 0
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad12",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 501,
+         "value": 0
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad13",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 300,
+         "value": 0
+        },
+        {
+         "time": 200,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad14",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": "NaN"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad15",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 1.5
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad16",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "opacity",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": -0.1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad17",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "v1",
+       "prop": "draw",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 2
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad18",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0,
+         "easing": "bounce"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad19",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0,
+         "easing": "cubic-bezier(0,0,1)"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad20",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0,
+         "easing": "cubic-bezier(0,nan,1,1)"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad21",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0,
+         "easing": "cubic-bezier(1.5,0,1,1)"
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad22",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        }
+       ]
+      },
+      {
+       "nodeId": "r1",
+       "prop": "x",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "bad23",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "bad",
+     "duration": 500,
+     "trigger": "hover",
+     "targetId": "f1",
+     "tracks": [
+      {
+       "nodeId": "t1",
+       "prop": "draw",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 500,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "nil",
+   "docId": "doc1",
+   "setClip": {}
+  },
+  {
+   "opId": "noid",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "duration": 100,
+     "targetId": "f1"
+    }
+   }
+  },
+  {
+   "opId": "dghost",
+   "docId": "doc1",
+   "deleteClip": {
+    "id": "ghost"
+   }
+  },
+  {
+   "opId": "c2b",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "c2",
+     "name": "gira",
+     "duration": 1000,
+     "trigger": "tap",
+     "repeat": 2,
+     "targetId": "e1",
+     "tracks": [
+      {
+       "nodeId": "e1",
+       "prop": "scale",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 1
+        },
+        {
+         "time": 1000,
+         "value": 2,
+         "easing": "spring"
+        }
+       ]
+      },
+      {
+       "nodeId": "e1",
+       "prop": "draw",
+       "keyframes": [
+        {
+         "time": 0,
+         "value": 0
+        },
+        {
+         "time": 1000,
+         "value": 1
+        }
+       ]
+      }
+     ]
+    }
+   }
+  },
+  {
+   "opId": "d3",
+   "docId": "doc1",
+   "deleteClip": {
+    "id": "c3"
+   }
+  },
+  {
+   "opId": "c4",
+   "docId": "doc1",
+   "setClip": {
+    "clip": {
+     "id": "c4",
+     "name": "vuota",
+     "duration": 1,
+     "trigger": "manual",
+     "targetId": "e1"
+    }
+   }
+  }
+ ],
+ "rejected": [
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18,
+  19,
+  20,
+  21,
+  22,
+  23,
+  24,
+  25,
+  26,
+  27,
+  28,
+  29,
+  30,
+  31,
+  32,
+  33,
+  34
+ ],
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "nodes": {
+   "f1": {
+    "id": "f1",
+    "parentId": "page1",
+    "orderKey": "a000001",
+    "name": "f1",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 200,
+    "height": 200,
+    "frame": {}
+   },
+   "r1": {
+    "id": "r1",
+    "parentId": "f1",
+    "orderKey": "a000001",
+    "name": "r1",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {
+     "cornerRadius": 0
+    }
+   },
+   "v1": {
+    "id": "v1",
+    "parentId": "f1",
+    "orderKey": "a000002",
+    "name": "v1",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "vector": {
+     "subpaths": [
+      {
+       "anchors": [
+        {
+         "x": 0,
+         "y": 0
+        },
+        {
+         "x": 40,
+         "y": 40
+        }
+       ],
+       "closed": false
+      }
+     ]
+    }
+   },
+   "t1": {
+    "id": "t1",
+    "parentId": "f1",
+    "orderKey": "a000003",
+    "name": "t1",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "text": {
+     "content": "Ciao"
+    }
+   },
+   "e1": {
+    "id": "e1",
+    "parentId": "page1",
+    "orderKey": "a000002",
+    "name": "e1",
+    "visible": true,
+    "opacity": 1,
+    "x": 300,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "ellipse": {}
+   }
+  },
+  "clips": {
+   "c1": {
+    "id": "c1",
+    "name": "entrata",
+    "duration": 800,
+    "trigger": "enter",
+    "delay": 100,
+    "targetId": "f1",
+    "tracks": [
+     {
+      "nodeId": "r1",
+      "prop": "opacity",
+      "keyframes": [
+       {
+        "time": 0,
+        "value": 0,
+        "easing": "easeOut"
+       },
+       {
+        "time": 800,
+        "value": 1
+       }
+      ]
+     },
+     {
+      "nodeId": "r1",
+      "prop": "y",
+      "keyframes": [
+       {
+        "time": 0,
+        "value": -20,
+        "easing": "spring"
+       },
+       {
+        "time": 800,
+        "value": 0
+       }
+      ]
+     },
+     {
+      "nodeId": "v1",
+      "prop": "draw",
+      "keyframes": [
+       {
+        "time": 0,
+        "value": 0,
+        "easing": "cubic-bezier(0.4, 0, 0.2, 1)"
+       },
+       {
+        "time": 800,
+        "value": 1
+       }
+      ]
+     },
+     {
+      "nodeId": "t1",
+      "prop": "scale",
+      "keyframes": [
+       {
+        "time": 0,
+        "value": 0.5
+       },
+       {
+        "time": 400,
+        "value": 1.2,
+        "easing": "easeInOut"
+       },
+       {
+        "time": 800,
+        "value": 1
+       }
+      ]
+     }
+    ]
+   },
+   "c2": {
+    "id": "c2",
+    "name": "gira",
+    "duration": 1000,
+    "trigger": "tap",
+    "repeat": 2,
+    "targetId": "e1",
+    "tracks": [
+     {
+      "nodeId": "e1",
+      "prop": "scale",
+      "keyframes": [
+       {
+        "time": 0,
+        "value": 1
+       },
+       {
+        "time": 1000,
+        "value": 2,
+        "easing": "spring"
+       }
+      ]
+     },
+     {
+      "nodeId": "e1",
+      "prop": "draw",
+      "keyframes": [
+       {
+        "time": 0,
+        "value": 0
+       },
+       {
+        "time": 1000,
+        "value": 1
+       }
+      ]
+     }
+    ]
+   },
+   "c4": {
+    "id": "c4",
+    "name": "vuota",
+    "duration": 1,
+    "trigger": "manual",
+    "targetId": "e1"
+   }
+  }
+ }
+}

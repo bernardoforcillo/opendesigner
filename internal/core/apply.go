@@ -104,6 +104,10 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetProps(doc, k.SetProps, cow)
 	case *opendesignerv1.Op_DeleteNode:
 		return applyDelete(doc, k.DeleteNode)
+	case *opendesignerv1.Op_SetClip:
+		return applySetClip(doc, k.SetClip)
+	case *opendesignerv1.Op_DeleteClip:
+		return applyDeleteClip(doc, k.DeleteClip)
 	case *opendesignerv1.Op_SetFlow:
 		return applySetFlow(doc, k.SetFlow)
 	case *opendesignerv1.Op_DeleteFlow:
@@ -199,6 +203,7 @@ func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) err
 		delete(doc.Nodes, n.GetId())
 	}
 	cascadeFlows(doc, gone)
+	cascadeClips(doc, gone)
 	return nil
 }
 
@@ -311,6 +316,7 @@ func applyDeletePage(doc *opendesignerv1.Document, d *opendesignerv1.DeletePage)
 		}
 	}
 	cascadeFlows(doc, gone)
+	cascadeClips(doc, gone)
 	doc.Pages = append(doc.Pages[:i], doc.Pages[i+1:]...)
 	return nil
 }

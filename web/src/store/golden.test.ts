@@ -53,6 +53,9 @@ describe("golden parity", () => {
       // svuotato, hotspot azzerato).
       expect(scene.flows).toEqual(expected.flows);
       expect(scene.transitions).toEqual(expected.transitions);
+      // Le CLIP di animazione (e la cascata di una delete: tracce tolte, clip
+      // col target sparito cancellate, rifiuti per easing/tempi/duplicati).
+      expect(scene.clips).toEqual(expected.clips);
     });
   }
 });

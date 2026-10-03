@@ -112,6 +112,81 @@ test (su una copia del documento: il tuo non cambia), quindi nessun test è
 > l'elemento (`clip`) e Playwright, che prima di cliccare verifica chi riceve il
 > puntatore, lo dà alla radice della schermata ("intercepts pointer events").
 
+## Animazioni
+
+Le **clip** del documento (`Document.clips`, vedi [animation.md](animation.md))
+diventano animazioni nel codice esportato. Il **target** di una clip è l'elemento
+che porta il trigger; gli elementi animati sono il target stesso e i suoi
+discendenti (una traccia fuori dal target è ignorata con un avviso). Le tracce
+sui nodi dentro un'istanza di componente non si animano.
+
+Valori nello spazio del codice (il design è assoluto, il codice è **relativo**
+alla posizione che CSS/Tailwind hanno già scritto):
+
+| Proprietà | react (Motion) | html (CSS) |
+|---|---|---|
+| `opacity` | `opacity` (assoluta) | `opacity` |
+| `x`, `y` | `x`, `y` = **delta** da `node.x`/`node.y` | `--od-x`/`--od-y` (registrate con `@property`) letti da `translate` |
+| `scale` | `scale` | proprietà `scale` |
+| `rotation` | `rotate` = **delta** in gradi da `node.rotation` | proprietà `rotate` (compone con `transform: rotate()` di base) |
+| `draw` | `pathLength` del `motion.path` del tratto | `pathLength="1"` + `stroke-dasharray: <v> 1` |
+
+### `react`: Motion
+
+`package.json` aggiunge `"motion": "^14.0.0"` **solo** se il documento ha clip
+(un export senza clip è identico a prima). Ogni elemento con tracce diventa
+`motion.div` (o `motion.img`; un vettoriale con `draw` ha un `motion.path`
+dentro l'`<svg>`) e riceve una costante `<nome>Variants: Variants` con una
+variante per trigger, che **unisce** le clip che lo toccano (una costante per
+elemento e non per clip: un elemento toccato da più clip ha comunque un solo
+`variants`; il commento sopra ogni costante nomina le clip). Il **target** porta
+le etichette:
+
+| Trigger | Sul target | Variante |
+|---|---|---|
+| `enter` | `initial="initial" animate="animate"` | `initial` (primo keyframe) + `animate` |
+| `loop` | come `enter` | `animate` con `repeat: Infinity`, `repeatType: "reverse"` se yoyo, altrimenti `"loop"` |
+| `hover` | `whileHover="hover"` | `hover` |
+| `tap` | `whileTap="tap"` | `tap` |
+| `manual` | nessuna (un commento) | variante col nome della clip (`animate="<nome>"` o `useAnimate`) |
+
+Le etichette si propagano ai discendenti con `variants` (è il meccanismo di
+Motion), quindi hover sul target anima i figli. Per ogni proprietà: keyframe
+come array, `times` (0..1 della durata della clip), `ease` per segmento (stringa
+se uguale ovunque, array altrimenti), `duration`/`delay` in secondi, `repeat`.
+Se il primo keyframe non è a 0 (o l'ultimo non è alla fine) si aggiunge
+l'estremo di "hold". `spring` esce come `cubic-bezier(0.32,0.66,0.1,1)`, la
+Bézier che meglio approssima la molla smorzata criticamente del motore
+(`web/src/animation/engine.ts`, scarto massimo 0.04): Motion non ha molle per
+segmento.
+
+### `html`: CSS, senza dipendenze
+
+Per ogni traccia un `@keyframes` (percentuali della durata della clip, easing
+del segmento in `animation-timing-function` nel keyframe che lo apre; keyframe
+allo stesso tempo si distanziano di 0.0001% per non fondersi) e una voce di
+`animation:` con fill-mode `both`, `alternate` se yoyo, `infinite` o `repeat+1`.
+
+- `enter`/`loop`: `animation:` sull'elemento.
+- `hover`/`tap`: `.target:hover .elemento { animation }` e `:active`; la regola
+  **ripete** le animazioni di base (e, per `:active`, quelle di hover): cambiare
+  la lista `animation` rilancia da capo quelle che non ci sono più.
+- `manual`: `.target.<variante> .elemento`: si avvia aggiungendo la classe
+  `<variante>` al target (`el.classList.add("evidenzia")`).
+
+### Limiti dell'export animato
+
+- Browser: `translate`/`rotate`/`scale` come proprietà e `@property` (Chrome 104+,
+  Safari 16.4+, Firefox 128+). Nel target react non servono.
+- `opacity` su un frame **sfuma anche i figli** (semantica CSS); l'opacità
+  statica del canvas non si eredita.
+- Uscire dall'hover/tap **riporta di colpo** allo stato di base nel target html
+  (nel react Motion anima il ritorno).
+- `draw` solo su vettoriali (su rect/ellisse/frame, disegnati come box, è
+  ignorata con un avviso). Con tratto a capi tondi, a `draw = 0` resta un
+  puntino (lo stesso in Motion).
+- Nessun morph, nessuno stagger, nessun trigger di scroll (vedi animation.md).
+
 ## Uso
 
 ### CLI
@@ -221,6 +296,12 @@ dentro i rettangoli dei testi, che sono esclusi dal confronto stretto; misurata:
 anti-aliasing né la stessa baseline: il canvas la mette a 0.8em dal bordo
 superiore della riga, CSS usa l'ascent vero del font (circa 1px più in basso a
 16px con Inter). È una differenza per costruzione, non un difetto da correggere.
+
+**4. Animazioni** (`pnpm export-anim-app`, in `web/`): esporta `samples.AnimDemo`
+(una clip per ogni trigger) nei due target, compila l'app react (`npm install`,
+`tsc` + `vite build`) e fa girare in Chromium un test Playwright che campiona
+opacità, transform e tratto **nel tempo** e sotto hover/tap, per react+Motion e
+per html+CSS.
 
 **3. App vera** (`pnpm export-app`, in `web/`): esporta il flusso di esempio
 Login -> Home -> Dettaglio, `npm install`, `tsc` + `vite build`, e fa girare i

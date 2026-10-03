@@ -28,6 +28,7 @@ const (
 	verPlaywright  = "^1.60.0"
 	verTypesReact  = "^19.0.0"
 	verTypesNode   = "^22.0.0"
+	verMotion      = "^14.0.0"
 )
 
 // tsString cita una stringa come literal TypeScript (escape JSON, senza
@@ -44,10 +45,22 @@ func tsHeader(d *opendesignerv1.Document, what string) string {
 	return "// " + strings.ReplaceAll(generatedHeader(d, what), "\n", "\n// ") + "\n"
 }
 
-func renderReact(d *opendesignerv1.Document, screens []*Screen, opts Options, files map[string][]byte) error {
+func renderReact(d *opendesignerv1.Document, screens []*Screen, opts Options, files map[string][]byte, warnings *[]string) error {
 	put := func(path, content string) { files[path] = []byte(content) }
 
 	pkgName := slug(d.GetName())
+	// Motion solo se il documento ha animazioni da esportare: un export senza
+	// clip resta identico a prima (e senza una dipendenza in più).
+	hasAnim := false
+	for _, s := range screens {
+		if len(collectAnimated(s.Root)) > 0 {
+			hasAnim = true
+		}
+	}
+	motionDep := ""
+	if hasAnim {
+		motionDep = fmt.Sprintf("\n    \"motion\": %q,", verMotion)
+	}
 	put("package.json", fmt.Sprintf(`{
   "name": %s,
   "private": true,
@@ -59,7 +72,7 @@ func renderReact(d *opendesignerv1.Document, screens []*Screen, opts Options, fi
     "preview": "vite preview",
     "test": "playwright test"
   },
-  "dependencies": {
+  "dependencies": {%s
     "react": %q,
     "react-dom": %q,
     "react-router-dom": %q
@@ -76,7 +89,7 @@ func renderReact(d *opendesignerv1.Document, screens []*Screen, opts Options, fi
     "vite": %q
   }
 }
-`, tsString(pkgName), verReact, verReact, verRouter, verPlaywright, verTailwind, verTypesNode, verTypesReact, verTypesReact, verPluginReact, verTailwind, verTypeScript, verVite))
+`, tsString(pkgName), motionDep, verReact, verReact, verRouter, verPlaywright, verTailwind, verTypesNode, verTypesReact, verTypesReact, verPluginReact, verTailwind, verTypeScript, verVite))
 
 	put("index.html", fmt.Sprintf(`<!doctype html>
 <html lang="it">
@@ -193,7 +206,9 @@ createRoot(document.getElementById("root")!).render(
 	put("src/App.tsx", app.String())
 
 	for _, s := range screens {
-		put("src/screens/"+s.Name+".tsx", reactScreen(d, s))
+		code, w := reactScreen(d, s)
+		*warnings = append(*warnings, w...)
+		put("src/screens/"+s.Name+".tsx", code)
 	}
 
 	// Test Playwright dei flussi (internal/flow): `code.route` è già stato
@@ -207,7 +222,7 @@ createRoot(document.getElementById("root")!).render(
 		put("tests/flows.spec.ts", spec)
 	}
 
-	put("README.md", reactReadme(d, screens, opts, hasFlows, home))
+	put("README.md", reactReadme(d, screens, opts, hasFlows, home, hasAnim))
 	return nil
 }
 
@@ -223,7 +238,8 @@ type jsxWriter struct {
 	sb strings.Builder
 }
 
-func reactScreen(d *opendesignerv1.Document, s *Screen) string {
+func reactScreen(d *opendesignerv1.Document, s *Screen) (string, []string) {
+	animCode, warns := reactAnimations(s.Root)
 	// Cosa serve al componente: navigate (almeno un cablaggio con destinazione)
 	// ed effect (tasti).
 	needNavigate, needEffect := false, false
@@ -250,12 +266,20 @@ func reactScreen(d *opendesignerv1.Document, s *Screen) string {
 	if needEffect {
 		b.WriteString("import { useEffect } from \"react\";\n")
 	}
+	if len(collectAnimated(s.Root)) > 0 {
+		if animCode != "" {
+			b.WriteString("import { motion, type Variants } from \"motion/react\";\n")
+		} else {
+			b.WriteString("import { motion } from \"motion/react\";\n")
+		}
+	}
 	if needNavigate {
 		b.WriteString("import { useNavigate } from \"react-router-dom\";\n")
 	}
-	if needNavigate || needEffect {
+	if needNavigate || needEffect || len(collectAnimated(s.Root)) > 0 {
 		b.WriteString("\n")
 	}
+	b.WriteString(animCode)
 	fmt.Fprintf(&b, "export function %s() {\n", s.Name)
 	if needNavigate {
 		b.WriteString("  const navigate = useNavigate();\n")
@@ -288,7 +312,19 @@ func reactScreen(d *opendesignerv1.Document, s *Screen) string {
 	w.element(s.Root, 2, true, d)
 	b.WriteString(w.sb.String())
 	b.WriteString("  );\n}\n")
-	return b.String()
+	return b.String(), dedupeStrings(warns)
+}
+
+func dedupeStrings(in []string) []string {
+	seen := map[string]bool{}
+	var out []string
+	for _, s := range in {
+		if !seen[s] {
+			seen[s] = true
+			out = append(out, s)
+		}
+	}
+	return out
 }
 
 // attrName: da nome HTML/SVG (kebab) a prop JSX (camelCase); data-* e aria-*
@@ -368,6 +404,24 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 	if cn := className(style); cn != "" {
 		attrs = append(attrs, kv{"className", attrValue(cn)})
 	}
+	// Animazioni (Motion): l'elemento diventa `motion.<tag>`, riceve le varianti
+	// delle sue tracce e, se è il target di una clip, le etichette che le
+	// innescano sui discendenti (initial/animate = mount, whileHover, whileTap).
+	motion := e.Anim != nil
+	if motion {
+		if e.Anim.VarName != "" {
+			attrs = append(attrs, kv{"variants", "{" + e.Anim.VarName + "}"})
+		}
+		labels, cm := hostLabels(e.Anim)
+		if len(e.Anim.RestStyle) > 0 {
+			attrs = append(attrs, kv{"style", "{{ " + strings.Join(e.Anim.RestStyle, ", ") + " }}"})
+		}
+		for _, l := range labels {
+			i := strings.Index(l, "=")
+			attrs = append(attrs, kv{l[:i], l[i+1:]})
+		}
+		comments = append(comments, cm...)
+	}
 	if trig != nil {
 		attrs = append(attrs, kv{"role", "\"button\""}, kv{"tabIndex", "{0}"})
 		if trig.Label != "" {
@@ -381,6 +435,9 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 
 	ind := strings.Repeat("  ", depth)
 	tag := e.Tag
+	if motion {
+		tag = "motion." + tag
+	}
 	var open strings.Builder
 	open.WriteString("<" + tag)
 	multi := len(comments) > 0
@@ -483,7 +540,7 @@ func jsxText(s string) string {
 // README
 // ---------------------------------------------------------------------------
 
-func reactReadme(d *opendesignerv1.Document, screens []*Screen, opts Options, hasFlows bool, home *Screen) string {
+func reactReadme(d *opendesignerv1.Document, screens []*Screen, opts Options, hasFlows bool, home *Screen, hasAnim bool) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", d.GetName())
 	fmt.Fprintf(&b, "<!-- %s -->\n\n", generatedHeader(d, "README"))
@@ -506,6 +563,9 @@ func reactReadme(d *opendesignerv1.Document, screens []*Screen, opts Options, ha
 		b.WriteString("Per ogni transizione l'elemento che la innesca (`elementId`) è cliccabile (`onClick` -> `navigate(...)`, `role=\"button\"`, `aria-label` = etichetta, `data-testid` dal meta `test.id`). Le transizioni senza elemento sono pulsanti visivamente nascosti in un `<nav>` trasparente (1px, in alto a sinistra). ")
 		b.WriteString("Le righe `// flow: <id>`, `// guard:` e `// effect:` indicano la transizione del design.\n\n")
 		b.WriteString("`tests/flows.spec.ts` è prodotto da `opendesigner flow tests` e percorre tutti i percorsi dei flussi con Playwright.\n\n")
+	}
+	if hasAnim {
+		b.WriteString(animationReadme(d, screens))
 	}
 	b.WriteString("## Schermate\n\n| Componente | Rotta | Nodo del design |\n|---|---|---|\n")
 	for _, s := range screens {
