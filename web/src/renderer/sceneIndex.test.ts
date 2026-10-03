@@ -120,6 +120,28 @@ function randomScene(r: () => number): SceneState {
 }
 
 describe("aggiornamento incrementale", () => {
+  // Regressione: creare un nodo DENTRO un frame con auto layout lo registra due
+  // volte nella provenienza (toccato dall'op + ridisposto dal layout). L'indice lo
+  // inseriva due volte fra i figli e ne perdeva l'extent: il testo di un bottone
+  // creato da un altro client (o da un template) non si vedeva fino al reload.
+  it("creare un figlio in un frame con auto layout: figlio una volta sola, con il suo extent", () => {
+    let scene = sceneOf([
+      node("btn", "page1", "a", {
+        kind: "frame", width: 200, height: 48, clipsContent: false,
+        autoLayout: { direction: "horizontal", spacing: 0, paddingLeft: 16, paddingTop: 0, paddingRight: 16, paddingBottom: 0, mainAlign: "center", crossAlign: "center", hugWidth: false, hugHeight: false },
+      }),
+    ]);
+    sceneIndexOf(scene); // l'indice di base, da cui parte l'aggiornamento incrementale
+    scene = applyOp(scene, makeCreateNodeOp(create(NodeSchema, {
+      id: "label", parentId: "btn", orderKey: "a0", name: "label", visible: true, opacity: 1,
+      x: 0, y: 0, width: 168, height: 20, shape: { case: "rect", value: { cornerRadius: 0 } },
+    })));
+    const idx = sceneIndexOf(scene);
+    expect(idx.children.get("btn")?.map((n) => n.id)).toEqual(["label"]);
+    expect(idx.extent.get("label")).toBeDefined();
+    expect(snapshot(scene)).toEqual(fresh(scene));
+  });
+
   it.each([42, 1, 2, 3, 4, 5, 6, 7])("seme %i: dopo ogni modifica casuale l'indice è IDENTICO a quello ricostruito da zero", (seed) => {
     const r = rng(seed);
     let scene = randomScene(r);

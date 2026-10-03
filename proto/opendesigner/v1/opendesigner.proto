@@ -537,7 +537,12 @@ message OpRecord {
 message OpenRequest  { string doc_id = 1; }
 message OpenResponse { Document snapshot = 1; uint64 seq = 2; }
 message CreateDocumentRequest { string name = 1; }
-message DocInfo { string id = 1; string name = 2; }
+// updated_at (secondi unix, 0 = ignoto), screens (frame di primo livello) e
+// flows sono per la Home: la card di un documento li mostra senza aprirlo.
+message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; }
+message RenameDocumentRequest { string doc_id = 1; string name = 2; }
+message DeleteDocumentRequest { string doc_id = 1; }
+message DeleteDocumentResponse {}
 message ListDocumentsRequest {}
 message ListDocumentsResponse { repeated DocInfo docs = 1; }
 
@@ -634,6 +639,10 @@ message UpdatePresenceResponse {}
 service DocumentService {
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
   rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
+  // Rinomina un documento (meta.json + nome in memoria dell'hub).
+  rpc RenameDocument(RenameDocumentRequest) returns (DocInfo);
+  // Elimina un documento SPOSTANDO il bundle in <workspace>/.trash (mai rm -rf).
+  rpc DeleteDocument(DeleteDocumentRequest) returns (DeleteDocumentResponse);
   rpc OpenDocument(OpenRequest) returns (OpenResponse);
   // Invia un'operazione. Il broadcast a tutti i client passa da Subscribe.
   rpc SubmitOp(SubmitOpRequest) returns (SubmitOpResponse);

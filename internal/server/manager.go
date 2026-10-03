@@ -3,7 +3,9 @@ package server
 import (
 	"errors"
 	"net/http"
+	"strings"
 	"sync"
+	"unicode/utf8"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"github.com/bernardoforcillo/opendesigner/internal/store"
@@ -17,6 +19,18 @@ import (
 // create or open bundle directories outside the workspace root. Validating the
 // id as a UUID before any filesystem access closes that path-traversal hole.
 var errInvalidDocID = errors.New("invalid doc_id")
+
+var (
+	errEmptyName   = errors.New("il nome del documento non può essere vuoto")
+	errNameTooLong = errors.New("il nome del documento è troppo lungo")
+	// ErrDocInUse: il documento è aperto da qualcuno, non si può eliminare.
+	ErrDocInUse = errors.New("il documento è aperto in un editor: chiudilo prima di eliminarlo")
+)
+
+// ErrDocNotFound: nessun documento con quell'id.
+var ErrDocNotFound = errors.New("documento non trovato")
+
+const maxNameRunes = 120
 
 // httpMux costruisce un mux con l'handler Connect montato su path.
 func httpMux(path string, handler http.Handler) *http.ServeMux {
@@ -52,7 +66,23 @@ func (m *Manager) Create(name string) (*opendesignerv1.DocInfo, error) {
 	}
 	m.hubs[id] = h
 	meta := b.Meta()
-	return &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name}, nil
+	return &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name, UpdatedAt: meta.UpdatedAt.Unix()}, nil
+}
+
+// Exists dice se il documento c'è davvero (in memoria o come bundle sul
+// disco), senza crearlo: HubFor invece apre-o-crea, quindi un link a un
+// documento inesistente (o eliminato) ne farebbe nascere uno vuoto.
+func (m *Manager) Exists(docID string) bool {
+	if uuid.Validate(docID) != nil {
+		return false
+	}
+	m.mu.Lock()
+	_, ok := m.hubs[docID]
+	m.mu.Unlock()
+	if ok {
+		return true
+	}
+	return store.Exists(m.workspace, docID)
 }
 
 func (m *Manager) HubFor(docID string) (*Hub, error) {
@@ -109,9 +139,84 @@ func (m *Manager) List() ([]*opendesignerv1.DocInfo, error) {
 		if uuid.Validate(meta.ID) != nil {
 			continue
 		}
-		out = append(out, &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name})
+		out = append(out, m.info(meta))
 	}
 	return out, nil
+}
+
+// info arricchisce l'identità di un documento con ciò che la Home mostra:
+// ultima modifica e conteggi. Se l'hub è già aperto in questo processo i
+// conteggi sono quelli vivi (e a costo zero); altrimenti si legge il bundle in
+// sola lettura (store.LoadReadOnly: nessuna riparazione, nessuna scrittura).
+// Un bundle illeggibile resta in elenco con i conteggi a zero: non deve
+// nascondere gli altri.
+func (m *Manager) info(meta store.Meta) *opendesignerv1.DocInfo {
+	di := &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name}
+	t := store.ModTime(m.workspace, meta.ID)
+	if meta.UpdatedAt.After(t) {
+		t = meta.UpdatedAt
+	}
+	if !t.IsZero() {
+		di.UpdatedAt = t.Unix()
+	}
+	m.mu.Lock()
+	h := m.hubs[meta.ID]
+	m.mu.Unlock()
+	if h != nil {
+		s, f := h.Counts()
+		di.Screens, di.Flows = uint32(s), uint32(f)
+		return di
+	}
+	if doc, _, err := store.LoadReadOnly(m.workspace, meta.ID); err == nil {
+		s, f := countDoc(doc)
+		di.Screens, di.Flows = uint32(s), uint32(f)
+	}
+	return di
+}
+
+// Rename cambia il nome del documento (durevole + in memoria).
+func (m *Manager) Rename(docID, name string) (*opendesignerv1.DocInfo, error) {
+	name = strings.TrimSpace(name)
+	if name == "" {
+		return nil, errEmptyName
+	}
+	if utf8.RuneCountInString(name) > maxNameRunes {
+		return nil, errNameTooLong
+	}
+	if !m.Exists(docID) {
+		return nil, ErrDocNotFound
+	}
+	h, err := m.HubFor(docID)
+	if err != nil {
+		return nil, err
+	}
+	if err := h.SetName(name); err != nil {
+		return nil, err
+	}
+	return m.info(store.Meta{ID: docID, Name: name}), nil
+}
+
+// Delete elimina un documento spostandone il bundle nel cestino del workspace.
+// Rifiuta (ErrDocInUse) se qualcuno ha uno stream aperto sul documento: un
+// editor aperto continuerebbe a scrivere su una cartella sparita. Se l'hub è in
+// memoria ma nessuno lo guarda, si attendono gli snapshot in volo e lo si
+// toglie dal registro PRIMA di spostare la cartella.
+func (m *Manager) Delete(docID string) error {
+	if uuid.Validate(docID) != nil {
+		return errInvalidDocID
+	}
+	m.mu.Lock()
+	defer m.mu.Unlock()
+	if h, ok := m.hubs[docID]; ok {
+		if h.Subscribers() > 0 {
+			return ErrDocInUse
+		}
+		h.writeMu.Lock()
+		h.waitSnapshots()
+		delete(m.hubs, docID)
+		h.writeMu.Unlock()
+	}
+	return store.Trash(m.workspace, docID)
 }
 
 // Assets ritorna lo store degli asset (le immagini) del documento: serve

@@ -1,10 +1,9 @@
 import { useEffect, useRef, useState } from "react";
-import { ConnectError } from "@connectrpc/connect";
+import { Code, ConnectError } from "@connectrpc/connect";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Banner, Icon } from "./ds";
 import { ToolDock } from "./shell/ToolDock";
 import { usePanels } from "./shell/panels";
-import { docClient } from "../rpc/client";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
 import { usePresence, loadNickname } from "../store/presence";
@@ -22,6 +21,9 @@ import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { attachClipboardShortcuts } from "../tools/clipboard";
 import { attachImageDrop } from "../tools/imageDrop";
 import { ExportButton } from "./ExportButton";
+import { docIdFromHash } from "../home/route";
+import { DocUnavailable } from "../home/DocUnavailable";
+import { CanvasOnboarding } from "../home/CanvasOnboarding";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { LayersPanel } from "./LayersPanel";
 import { ComponentsPanel } from "./ComponentsPanel";
@@ -91,11 +93,9 @@ const DOC_KEY = "opendesigner.docId";
 // computer sulla stessa rete di entrare nello STESSO documento invece di
 // crearne uno proprio (il localStorage è per-browser, quindi da solo non basta).
 // Un id non ben formato si ignora: HubFor lo rifiuterebbe comunque.
-const DOC_HASH_RE = /^#doc=([0-9a-fA-F-]{36})$/;
-export function docIdFromHash(hash: string): string | null {
-  const m = DOC_HASH_RE.exec(hash);
-  return m ? m[1].toLowerCase() : null;
-}
+// Il parsing vive in home/route.ts (la Root lo usa per scegliere fra Home ed
+// editor); qui si ri-esporta perché è sempre stato un export di questo modulo.
+export { docIdFromHash };
 
 // Un campo di testo (input/textarea/contentEditable): Ctrl/Cmd+Z lì dentro è
 // affare del campo stesso (annullare la digitazione), non della scena --
@@ -125,6 +125,8 @@ export function App() {
   const nicknameRef = useRef(nickname);
   const presenceRef = useRef<PresenceClient | null>(null);
   const [toolId, setToolId] = useState<ToolId>("select");
+  // Il documento non si apre (non esiste): al posto dell'editor, una scheda con "Torna alla Home".
+  const [docError, setDocError] = useState<{ notFound: boolean; message: string } | null>(null);
   // La modalità (Design | Flussi) e il prototipo: stato di vista in useFlowUi.
   const mode = useFlowUi((st) => st.mode);
   const presenting = useFlowUi((st) => st.presenting);
@@ -174,12 +176,12 @@ export function App() {
     (async () => {
       try {
         // Il link vince sul localStorage: chi riceve un invito vuole QUEL
-        // documento, non l'ultimo che aveva aperto.
-        let docId = docIdFromHash(location.hash) ?? localStorage.getItem(DOC_KEY);
-        if (!docId) {
-          const info = await docClient.createDocument({ name: "Untitled" });
-          docId = info.id;
-        }
+        // documento, non l'ultimo che aveva aperto. L'editor NON crea più
+        // documenti da solo: la Root (home/Root.tsx) lo monta solo con un
+        // `#doc=`, e i documenti nascono dalla Home. Senza id (mai in
+        // produzione) è un errore, non un documento vuoto a sorpresa.
+        const docId = docIdFromHash(location.hash) ?? localStorage.getItem(DOC_KEY);
+        if (!docId) throw new Error("nessun documento da aprire");
         localStorage.setItem(DOC_KEY, docId);
         // Il link nella barra degli indirizzi è sempre quello da condividere.
         history.replaceState(null, "", `#doc=${docId}`);
@@ -251,8 +253,12 @@ export function App() {
         console.error("bootstrap failed", err);
         // Il bootstrap fallito è uno stato di collegamento come gli altri: non
         // si riprende da solo (nessuno stream da riabbonare), quindi "error".
+        // Un documento che non esiste (link sbagliato, eliminato) ha invece la
+        // sua scheda con l'uscita verso la Home.
         if (!cancelled) {
-          useScene.getState().setConnection("error", ConnectError.from(err).message);
+          const ce = ConnectError.from(err);
+          if (ce.code === Code.NotFound) setDocError({ notFound: true, message: ce.message });
+          else useScene.getState().setConnection("error", ce.message);
         }
       }
     })();
@@ -475,6 +481,8 @@ export function App() {
   const leftOpen = usePanels((s) => s.left);
   const rightOpen = usePanels((s) => s.right);
 
+  if (docError) return <DocUnavailable notFound={docError.notFound} message={docError.message} />;
+
   return (
     <div className="flex h-screen flex-col bg-surface text-fg">
       {/* Due avvisi diversi perché le due situazioni chiedono cose diverse: in
@@ -570,13 +578,16 @@ export function App() {
               pointer-events-none: tutti i listener restano sul canvas "scene",
               l'overlay è puramente visivo e non deve rubare eventi. */}
           <canvas id="overlay" ref={overlayRef} className="pointer-events-none absolute inset-0 block h-full w-full" />
+          {/* Onboarding: "Da dove parti?" a documento vuoto, poi i primi passi. Non
+              cattura gli eventi della tela fuori dalla scheda (home/CanvasOnboarding.tsx). */}
+          <CanvasOnboarding onDrawScreen={() => chooseTool("frame")} />
           {/* Il campo di editing del testo: DENTRO questo contenitore perché si
               posiziona in `absolute` sulle coordinate schermo del nodo, e sopra
               i due canvas perché li deve coprire. `key`: una sessione per nodo,
               così passare da un testo a un altro rimonta il campo invece di
               riusarlo. */}
           {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
-          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { localStorage.removeItem(DOC_KEY); history.replaceState(null, "", location.pathname); location.reload(); }} connection={connection} statusLabel={statusLabel} />
+          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { location.hash = "#new"; }} connection={connection} statusLabel={statusLabel} />
         </div>
         <aside aria-label="Proprietà" className={`${rightOpen ? "block" : "hidden"} w-64 shrink-0 overflow-hidden border-l border-line bg-surface`}>
           {mode === "flows" ? (
