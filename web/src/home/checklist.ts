@@ -53,6 +53,8 @@ export function isChecklistComplete(steps: readonly ChecklistStep[]): boolean {
 /** Quale scheda mostrare: la grande ("Da dove parti?"), la compatta, o nessuna. */
 export function onboardingMode(scene: SceneState | null, dismissed: boolean, steps: readonly ChecklistStep[]): "empty" | "progress" | "none" {
   if (!scene || dismissed) return "none";
-  if (screenNodes(scene).length === 0) return "empty";
+  // La scheda grande solo su una tavola DAVVERO vuota: chi ha importato un SVG o
+  // disegnato una forma sta già lavorando, anche senza una schermata.
+  if (scene.nodes.size === 0) return "empty";
   return isChecklistComplete(steps) ? "none" : "progress";
 }

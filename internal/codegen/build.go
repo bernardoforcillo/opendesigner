@@ -724,10 +724,13 @@ var unsafeID = regexp.MustCompile(`[^A-Za-z0-9_-]`)
 // controllo uscente di A è A+out, quello entrante di B è B+in, e una maniglia
 // (0,0) coincide con l'ancoraggio = segmento retto, senza rami speciali.
 //
-// Come il canvas: riempimento even-odd dei soli contorni chiusi con >= 2
-// ancoraggi, e un tratto di 1.5px (capi e giunti tondi) di OGNI contorno nel
-// colore del riempimento. I `strokes` del modello non si disegnano sui
-// vettoriali nel canvas, e nemmeno qui.
+// Come il canvas: riempimento dei soli contorni chiusi con >= 2 ancoraggi
+// (even-odd, salvo `vector.fillRule` nei meta), e per OGNI contorno o il TRATTO
+// VERO -- un `stroke` del nodo con peso > 0, di colore/peso propri e con
+// capi/giunti/tratteggio dai meta (`stroke.cap|join|miter|dash|dashOffset`, i
+// nodi importati da SVG) -- oppure il filo di 1.5px (capi e giunti tondi) nel
+// colore del riempimento, che esiste solo per rendere visibile un path senza
+// altro inchiostro (`vector.hairline = "0"` lo spegne).
 func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	subs := eff.GetVector().GetSubpaths()
 	has := false
@@ -782,11 +785,53 @@ func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 		p := &Element{Tag: "path"}
 		p.addAttr("d", strings.Join(fillD, " "))
 		p.addAttr("fill", paint)
-		p.addAttr("fill-rule", "evenodd")
+		rule := "evenodd"
+		if r := eff.GetMeta()["vector.fillRule"]; r == "nonzero" || r == "evenodd" {
+			rule = r
+		}
+		p.addAttr("fill-rule", rule)
 		if eff.GetOpacity() != 1 {
 			p.addAttr("opacity", num(eff.GetOpacity()))
 		}
 		el.Children = append(el.Children, p)
+	}
+	real := false
+	for _, st := range eff.GetStrokes() {
+		if st.GetWeight() > 0 {
+			real = true
+		}
+	}
+	meta := eff.GetMeta()
+	if real {
+		for _, st := range eff.GetStrokes() {
+			if !(st.GetWeight() > 0) {
+				continue
+			}
+			p := &Element{Tag: "path", StrokePath: true}
+			if eff.GetOpacity() != 1 {
+				p.addAttr("opacity", num(eff.GetOpacity()))
+			}
+			p.addAttr("d", strings.Join(strokeD, " "))
+			p.addAttr("fill", "none")
+			p.addAttr("stroke", colorCSS(toFill(st.GetPaint()).color, 1))
+			p.addAttr("stroke-width", num(st.GetWeight()))
+			p.addAttr("stroke-linecap", pick(meta["stroke.cap"], "butt", "round", "square"))
+			p.addAttr("stroke-linejoin", pick(meta["stroke.join"], "miter", "round", "bevel"))
+			if m := meta["stroke.miter"]; m != "" && m != "10" {
+				p.addAttr("stroke-miterlimit", m)
+			}
+			if d := meta["stroke.dash"]; d != "" {
+				p.addAttr("stroke-dasharray", strings.ReplaceAll(d, ",", " "))
+				if o := meta["stroke.dashOffset"]; o != "" && o != "0" {
+					p.addAttr("stroke-dashoffset", o)
+				}
+			}
+			el.Children = append(el.Children, p)
+		}
+		return el
+	}
+	if meta["vector.hairline"] == "0" {
+		return el
 	}
 	p := &Element{Tag: "path", StrokePath: true}
 	if eff.GetOpacity() != 1 {
@@ -800,6 +845,16 @@ func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	p.addAttr("stroke-linejoin", "round")
 	el.Children = append(el.Children, p)
 	return el
+}
+
+// pick: `v` se è uno dei valori ammessi, altrimenti il default (il primo).
+func pick(v string, allowed ...string) string {
+	for _, a := range allowed {
+		if v == a {
+			return v
+		}
+	}
+	return allowed[0]
 }
 
 // subpathData: il `d` di un contorno. Un solo ancoraggio = segmento di

@@ -197,6 +197,31 @@ func collectScreens(d *opendesignerv1.Document, flowID string, warnings *[]strin
 			screens = append(screens, &Screen{NodeID: n.GetId(), Width: n.GetWidth(), Height: n.GetHeight()})
 		}
 	}
+	// Nessuna schermata (frame di primo livello)? Caso tipico: un'icona o
+	// un'illustrazione SVG importata e animata. Allora ogni elemento visibile di
+	// primo livello diventa un "componente" esportato come una pagina a sé, della
+	// misura del suo contenuto.
+	if len(screens) == 0 {
+		for _, p := range d.GetPages() {
+			for _, n := range core.ChildrenOf(d, p.GetId()) {
+				if !n.GetVisible() || seen[n.GetId()] || masters[n.GetId()] {
+					continue
+				}
+				w, h := n.GetWidth(), n.GetHeight()
+				if w <= 0 || h <= 0 {
+					w, h = contentSize(d, n.GetId())
+				}
+				if w <= 0 || h <= 0 {
+					continue
+				}
+				seen[n.GetId()] = true
+				screens = append(screens, &Screen{NodeID: n.GetId(), Width: w, Height: h})
+			}
+		}
+		if len(screens) > 0 {
+			*warnings = append(*warnings, "il documento non ha frame di primo livello: gli elementi di primo livello sono esportati come schermate (una per elemento)")
+		}
+	}
 	for id := range referenced {
 		if !seen[id] {
 			*warnings = append(*warnings, fmt.Sprintf("il flusso referenzia %q, che non è un nodo di primo livello visibile: non è una schermata esportata", nameOrID(d, id)))
@@ -346,4 +371,31 @@ func wireFlows(d *opendesignerv1.Document, screens []*Screen, opts Options, b *b
 		s.Root.NavTriggers = nav
 		s.Root.KeyTriggers = keys
 	}
+}
+
+// contentSize: la misura che copre i discendenti di `id` nello spazio locale del
+// nodo (i figli stanno nelle coordinate del loro parent). Serve a un gruppo, che
+// non ha una misura propria. Ignora le rotazioni: è una stima per il contenitore.
+func contentSize(d *opendesignerv1.Document, id string) (float64, float64) {
+	var w, h float64
+	var walk func(parent string, ox, oy float64, depth int)
+	walk = func(parent string, ox, oy float64, depth int) {
+		if depth > 64 {
+			return
+		}
+		for _, c := range core.ChildrenOf(d, parent) {
+			if !c.GetVisible() {
+				continue
+			}
+			if r := ox + c.GetX() + c.GetWidth(); r > w {
+				w = r
+			}
+			if b := oy + c.GetY() + c.GetHeight(); b > h {
+				h = b
+			}
+			walk(c.GetId(), ox+c.GetX(), oy+c.GetY(), depth+1)
+		}
+	}
+	walk(id, 0, 0, 0)
+	return w, h
 }

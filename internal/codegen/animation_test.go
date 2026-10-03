@@ -265,3 +265,29 @@ func TestManualClipHTML(t *testing.T) {
 		t.Errorf("manca la regola manuale in:\n%s", src)
 	}
 }
+
+// Un vettore importato da SVG porta un tratto VERO e i meta di stile: il codice
+// esportato li deve onorare come il canvas (colore e peso del tratto, capi,
+// giunti, tratteggio, regola di riempimento), non ripiegare sul filo da 1.5px.
+func TestVectorRealStrokeAndMeta(t *testing.T) {
+	doc := animScreen(func(b *B) {
+		b.Add("v", "scr", "Icona", 0, 0, 100, 50,
+			Vector(Sub(true, Pt(0, 0, 0, 0, 0, 0), Pt(100, 0, 0, 0, 0, 0), Pt(50, 50, 0, 0, 0, 0))),
+			Fill(Solid(C(1, 0, 0))),
+			StrokeOpt(6, Center, Solid(C(0, 0, 1))),
+			Meta("stroke.cap", "round", "stroke.join", "bevel", "stroke.dash", "4,2", "vector.fillRule", "nonzero"),
+		)
+	})
+	html := string(file(t, gen(t, doc, codegen.TargetHTML, nil), "schermata.html"))
+	for _, want := range []string{
+		`stroke-width="6"`, `stroke-linecap="round"`, `stroke-linejoin="bevel"`,
+		`stroke-dasharray="4 2"`, `fill-rule="nonzero"`,
+	} {
+		if !strings.Contains(html, want) {
+			t.Errorf("manca %q in:\n%s", want, html)
+		}
+	}
+	if strings.Contains(html, `stroke-width="1.5"`) {
+		t.Error("con un tratto vero non deve comparire il filo da 1.5px")
+	}
+}
