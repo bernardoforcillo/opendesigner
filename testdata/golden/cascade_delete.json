@@ -2,7 +2,7 @@
   "docId": "doc1",
   "ops": [
     { "opId": "op1", "docId": "doc1", "createNode": { "node": {
-      "id": "g1", "parentId": "page1", "orderKey": "a1", "name": "Gruppo",
+      "id": "g1", "parentId": "page1", "orderKey": "a1", "name": "Group",
       "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 100, "height": 100,
       "rect": { "cornerRadius": 0 }
     } } },

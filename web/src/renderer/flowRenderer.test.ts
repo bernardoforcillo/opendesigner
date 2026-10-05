@@ -6,9 +6,9 @@ import { baseScene, flowOf, frame, transition, withFlows } from "../flow/testSup
 import { nodesOf } from "../store/nodeMap";
 import type { SceneState } from "../store/types";
 
-// Il ctx è un doppio che conta i tratti: jsdom non ha un canvas 2D vero. Si
-// prova COSA si disegna (quante frecce, tratteggio, culling, dpr), non i pixel:
-// quelli si guardano nel browser.
+// The ctx is a double that counts strokes: jsdom has no real canvas 2D. What is
+// drawn is tested (how many arrows, dashing, culling, dpr), not the pixels:
+// those are looked at in the browser.
 
 function ctxMock(width = 1000, height = 800) {
   const fills: string[] = [];
@@ -48,30 +48,30 @@ function scene(): SceneState {
 afterEach(() => vi.unstubAllGlobals());
 
 describe("drawFlows", () => {
-  it("disegna una curva per ogni freccia del flusso corrente", () => {
+  it("draws one curve for every arrow of the current flow", () => {
     const { ctx, raw } = ctxMock();
     drawFlows(ctx, scene(), cam, ui(), "page1");
-    // t1, t2 (f1); t3 è di f2 e non si mostra
+    // t1, t2 (f1); t3 belongs to f2 and is not shown
     expect(raw.bezierCurveTo).toHaveBeenCalledTimes(2);
   });
 
-  it("showAllFlows aggiunge le frecce degli altri flussi (attenuate)", () => {
+  it("showAllFlows adds the arrows of the other flows (dimmed)", () => {
     const { ctx, raw } = ctxMock();
     drawFlows(ctx, scene(), cam, ui({ showAllFlows: true }), "page1");
     expect(raw.bezierCurveTo).toHaveBeenCalledTimes(3);
-    // le attenuate si disegnano con alpha ridotta, e poi si torna a 1 (save/restore)
+    // the dimmed ones are drawn with reduced alpha, and then it goes back to 1 (save/restore)
     expect(raw.save.mock.calls.length).toBe(raw.restore.mock.calls.length);
   });
 
-  it("la guardia tratteggia la freccia; le altre restano continue", () => {
+  it("the guard dashes the arrow; the others stay solid", () => {
     const { ctx, dashes } = ctxMock();
     drawFlows(ctx, scene(), cam, ui(), "page1");
     expect(dashes.some((d) => d.length > 0)).toBe(true);
-    // e il tratteggio viene sempre ripristinato
+    // and the dashing is always restored
     expect(dashes.at(-1)).toEqual([]);
   });
 
-  it("scrive l'etichetta delle frecce (o l'innesco), ma non sotto lo zoom minimo", () => {
+  it("writes the arrows' label (or the trigger), but not below the minimum zoom", () => {
     const a = ctxMock();
     drawFlows(a.ctx, scene(), cam, ui(), "page1");
     expect(a.texts).toContain("Accedi");
@@ -81,20 +81,20 @@ describe("drawFlows", () => {
     expect(b.texts).not.toContain("Accedi");
   });
 
-  it("culling: una freccia fuori dalla vista non si disegna", () => {
-    const { ctx, raw } = ctxMock(500, 800); // vede x 0..500: solo A->B (x 200..400)
+  it("culling: an arrow out of view is not drawn", () => {
+    const { ctx, raw } = ctxMock(500, 800); // sees x 0..500: only A->B (x 200..400)
     drawFlows(ctx, scene(), { x: 0, y: 0, zoom: 1 }, ui(), "page1");
     expect(raw.bezierCurveTo).toHaveBeenCalledTimes(1);
   });
 
-  it("il badge di ogni schermata porta il nome (le tre schermate, non il rettangolo sciolto)", () => {
+  it("each screen's badge carries the name (the three screens, not the loose rectangle)", () => {
     const { ctx, texts } = ctxMock(1200, 800);
     drawFlows(ctx, scene(), cam, ui(), "page1");
     for (const n of ["A", "B", "C"]) expect(texts).toContain(n);
     expect(texts).not.toContain("loose");
   });
 
-  it("la route compare accanto al badge quando c'è spazio", () => {
+  it("the route appears next to the badge when there is room", () => {
     const s = scene();
     const withRoute = { ...s, nodes: s.nodes.set("A", { ...s.nodes.at("A"), meta: { "code.route": "/home" }, width: 400 }) };
     const { ctx, texts } = ctxMock(1200, 800);
@@ -102,17 +102,17 @@ describe("drawFlows", () => {
     expect(texts).toContain("/home");
   });
 
-  it("il marcatore d'ingresso è verde e c'è solo con una schermata di partenza", () => {
+  it("the entry marker is green and only exists with a starting screen", () => {
     const withStart = ctxMock();
     drawFlows(withStart.ctx, scene(), cam, ui({ startId: "A" }), "page1");
     expect(withStart.fills).toContain(themeColors().ok);
     const without = ctxMock();
     drawFlows(without.ctx, scene(), cam, ui({ startId: "" }), "page1");
-    // il pallino di stato "pianificata" è grigio, mai verde: nessun riempimento verde
+    // the "planned" status dot is gray, never green: no green fill
     expect(without.fills).not.toContain(themeColors().ok);
   });
 
-  it("il colore di stato segue meta.status (grigio / blu / verde)", () => {
+  it("the status color follows meta.status (gray / blue / green)", () => {
     const s = scene();
     const tested = { ...s, nodes: s.nodes.set("B", { ...s.nodes.at("B"), meta: { status: "tested" } }) };
     const a = ctxMock();
@@ -121,13 +121,13 @@ describe("drawFlows", () => {
     expect(a.fills).toContain(themeColors().fgSubtle);
   });
 
-  it("i problemi: freccia e schermata in rosso", () => {
+  it("problems: arrow and screen in red", () => {
     const { ctx, raw } = ctxMock();
     const strokes: string[] = [];
     raw.stroke.mockImplementation(function (this: { strokeStyle: string }) { strokes.push(this.strokeStyle); });
     drawFlows(ctx, scene(), cam, ui({ issueNodeIds: new Set(["B"]), issueTransitionIds: new Set(["t1"]) }), "page1");
     expect(strokes).toContain(themeColors().danger);
-    // senza problemi niente rosso
+    // without problems no red
     const clean = ctxMock();
     const s2: string[] = [];
     clean.raw.stroke.mockImplementation(function (this: { strokeStyle: string }) { s2.push(this.strokeStyle); });
@@ -135,7 +135,7 @@ describe("drawFlows", () => {
     expect(s2).not.toContain(themeColors().danger);
   });
 
-  it("la freccia selezionata si disegna per ultima, in blu", () => {
+  it("the selected arrow is drawn last, in blue", () => {
     const { ctx, raw } = ctxMock();
     const widths: number[] = [];
     raw.stroke.mockImplementation(function (this: { lineWidth: number }) { widths.push(this.lineWidth); });
@@ -144,7 +144,7 @@ describe("drawFlows", () => {
     expect(widths).toContain(3);
   });
 
-  it("l'hotspot si evidenzia con un riquadro tratteggiato", () => {
+  it("the hotspot is highlighted with a dashed box", () => {
     const s = scene();
     const hot = { ...s, transitions: { ...s.transitions, t1: { ...s.transitions.t1, elementId: "btn" } } };
     const base = ctxMock();
@@ -154,7 +154,7 @@ describe("drawFlows", () => {
     expect(withHot.raw.strokeRect.mock.calls.length).toBeGreaterThan(base.raw.strokeRect.mock.calls.length);
   });
 
-  it("il rubber band di «Collega»: curva tratteggiata dal punto di partenza al puntatore", () => {
+  it("the «Connect» rubber band: dashed curve from the starting point to the pointer", () => {
     const { ctx, raw, dashes } = ctxMock();
     drawFlows(ctx, withFlows(baseScene(), [], []), cam, ui({
       flowId: null, startId: "",
@@ -164,41 +164,41 @@ describe("drawFlows", () => {
     expect(dashes.some((d) => d.length > 0)).toBe(true);
   });
 
-  it("rispetta il devicePixelRatio (setTransform scala del dpr) e la vista in CSS px", () => {
+  it("respects the devicePixelRatio (setTransform scales by the dpr) and the view in CSS px", () => {
     vi.stubGlobal("devicePixelRatio", 2);
-    const { ctx, raw } = ctxMock(2000, 1600); // backing store 2x di una vista 1000x800
+    const { ctx, raw } = ctxMock(2000, 1600); // backing store 2x of a 1000x800 view
     drawFlows(ctx, scene(), cam, ui(), "page1");
     expect(raw.setTransform).toHaveBeenCalledWith(2, 0, 0, 2, 0, 0);
-    // la vista è 1000x800 CSS px: A->B e B->C (x fino a 800) stanno dentro
+    // the view is 1000x800 CSS px: A->B and B->C (x up to 800) are inside
     expect(raw.bezierCurveTo).toHaveBeenCalledTimes(2);
   });
 
-  it("scena senza flussi né frecce: solo i badge, nessuna curva", () => {
+  it("scene without flows or arrows: only the badges, no curve", () => {
     const { ctx, raw } = ctxMock();
     drawFlows(ctx, baseScene(), cam, ui({ flowId: null, startId: "" }), "page1");
     expect(raw.bezierCurveTo).not.toHaveBeenCalled();
   });
 
-  it("zoom bassissimo: niente badge (illeggibili) e nessuna eccezione", () => {
+  it("very low zoom: no badges (illegible) and no exception", () => {
     const { ctx, texts } = ctxMock();
     expect(() => drawFlows(ctx, scene(), { x: 0, y: 0, zoom: 0.03 }, ui(), "page1")).not.toThrow();
     expect(texts).toEqual([]);
   });
 
-  it("documento grande: con migliaia di schermate fuori vista disegna solo quelle visibili", () => {
+  it("large document: with thousands of screens out of view it draws only the visible ones", () => {
     const big: Record<string, ReturnType<typeof frame>> = {};
     for (let i = 0; i < 3000; i++) big[`s${i}`] = frame(`s${i}`, i * 300);
     const s = withFlows({ ...baseScene(), nodes: nodesOf(big) }, [flowOf("f1", "s0")], []);
     const { ctx, texts } = ctxMock(1000, 800);
     drawFlows(ctx, s, cam, ui({ startId: "s0" }), "page1");
-    // vista 0..1000 (+ margine): al massimo una manciata di badge, non 3000
+    // view 0..1000 (+ margin): at most a handful of badges, not 3000
     expect(texts.length).toBeLessThan(10);
     expect(texts).toContain("s0");
   });
 });
 
 describe("drawKindIcon", () => {
-  it("disegna ogni tipo senza lanciare", () => {
+  it("draws every type without throwing", () => {
     for (const k of FLOW_KINDS) {
       const { ctx, raw } = ctxMock();
       expect(() => drawKindIcon(ctx, k, 10, 10, 5, themeColors().flow)).not.toThrow();

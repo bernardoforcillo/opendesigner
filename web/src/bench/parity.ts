@@ -8,7 +8,7 @@ const images = {
     hash === "missing" ? { status: "missing" as const, image: null } : { status: "loading" as const, image: null },
 };
 
-// @ts-expect-error esposto a Playwright
+// @ts-expect-error exposed to Playwright
 window.runParity = async (zoom = 1) => {
   await document.fonts.load("400 16px Inter");
   await document.fonts.load("700 16px Inter");
@@ -23,8 +23,8 @@ window.runParity = async (zoom = 1) => {
   const CK = await loadCanvasKit();
   const fonts = new FontBook(CK);
   await fonts.ready();
-  // Pesi diversi dal 400: si caricano alla prima richiesta, quindi un primo disegno
-  // li chiede e si aspetta che arrivino.
+  // Weights other than 400: they load on first request, so a first draw
+  // asks for them and waits for them to arrive.
   const r = new CanvasKitRenderer(CK, cgl, fonts, images);
   r.draw(scene, cam, "page1");
   await new Promise((res) => setTimeout(res, 500));
@@ -33,13 +33,13 @@ window.runParity = async (zoom = 1) => {
   r.draw(scene, cam, "page1");
   const glMs = performance.now() - t0;
 
-  // Il buffer WebGL è leggibile solo nello stesso task del disegno: lo si copia ora.
+  // The WebGL buffer is readable only in the same task as the draw: copy it now.
   const copy = document.createElement("canvas");
   copy.width = cgl.width; copy.height = cgl.height;
   const cctx = copy.getContext("2d")!;
   cctx.fillStyle = "#fff"; cctx.fillRect(0, 0, copy.width, copy.height);
   cctx.drawImage(cgl, 0, 0);
-  // E il 2D su fondo bianco.
+  // And the 2D on a white background.
   const flat = document.createElement("canvas");
   flat.width = c2d.width; flat.height = c2d.height;
   const fctx = flat.getContext("2d")!;
@@ -52,7 +52,7 @@ window.runParity = async (zoom = 1) => {
   let differing = 0;
   let sum = 0;
   const W = flat.width;
-  // Per regione (celle 100x100) per vedere DOVE differiscono.
+  // By region (100x100 cells) to see WHERE they differ.
   const cells = new Map<string, number>();
   for (let i = 0; i < a.length; i += 4) {
     const d = Math.max(Math.abs(a[i] - b[i]), Math.abs(a[i + 1] - b[i + 1]), Math.abs(a[i + 2] - b[i + 2]));

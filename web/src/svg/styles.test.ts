@@ -7,12 +7,12 @@ function el(xml: string): Element {
 }
 
 describe("splitTopLevel / parseDeclarations", () => {
-  it("non spezza dentro parentesi e virgolette", () => {
+  it("does not split inside parentheses and quotes", () => {
     expect(splitTopLevel("a:b;c:url(data:image/png;base64,AAA);d:'x;y'", ";")).toEqual([
       "a:b", "c:url(data:image/png;base64,AAA)", "d:'x;y'",
     ]);
   });
-  it("dichiarazioni, commenti, !important, maiuscole e valori con due punti", () => {
+  it("declarations, comments, !important, uppercase and values with colons", () => {
     expect(parseDeclarations("Fill: #F00 ; /* c */ stroke : none !important; broken; :x; a: b:c")).toEqual([
       { name: "fill", value: "#F00", important: false },
       { name: "stroke", value: "none", important: true },
@@ -22,13 +22,13 @@ describe("splitTopLevel / parseDeclarations", () => {
 });
 
 describe("parseCss", () => {
-  it("regole con liste di selettori e dichiarazioni multiple", () => {
+  it("rules with selector lists and multiple declarations", () => {
     const { rules, atRules } = parseCss(".a, .b { fill: red; stroke: blue } rect { opacity: .5 }");
     expect(rules.map((r) => r.selector)).toEqual([".a", ".b", "rect"]);
     expect(rules[0].decls.map((d) => d.name)).toEqual(["fill", "stroke"]);
     expect(atRules).toEqual([]);
   });
-  it("salta gli at-rule (anche annidati) e li riporta", () => {
+  it("skips at-rules (even nested) and reports them", () => {
     const { rules, atRules } = parseCss(
       "@import url(x.css); @keyframes k { from { fill: red } to { fill: blue } } .a { fill: green } @media print { .a { fill: black } }",
     );
@@ -41,7 +41,7 @@ describe("parseCss", () => {
     const { rules } = parseCss("<![CDATA[ /* x */ .a { fill: red } ]]>");
     expect(rules.length).toBe(1);
   });
-  it("specificità: id > classe > tag", () => {
+  it("specificity: id > class > tag", () => {
     expect(specificityOf("#a")).toBeGreaterThan(specificityOf(".a.b"));
     expect(specificityOf(".a")).toBeGreaterThan(specificityOf("rect"));
     expect(specificityOf("g rect")).toBe(2);
@@ -49,8 +49,8 @@ describe("parseCss", () => {
   });
 });
 
-describe("declaredProps / computeStyle: la cascata", () => {
-  it("attributo di presentazione < regola CSS < style inline < !important", () => {
+describe("declaredProps / computeStyle: the cascade", () => {
+  it("presentation attribute < CSS rule < inline style < !important", () => {
     const e = el(`<rect fill="red" style="fill:blue"/>`);
     expect(declaredProps(e, [{ name: "fill", value: "green", important: false }]).get("fill")).toBe("blue");
     const e2 = el(`<rect fill="red"/>`);
@@ -60,12 +60,12 @@ describe("declaredProps / computeStyle: la cascata", () => {
     expect(declaredProps(e3, [{ name: "fill", value: "green", important: true }]).get("fill")).toBe("green");
   });
 
-  it("legge solo proprietà di presentazione note", () => {
+  it("reads only known presentation properties", () => {
     const p = declaredProps(el(`<rect x="3" data-x="1" fill="red" class="a"/>`), undefined);
     expect([...p.keys()]).toEqual(["fill"]);
   });
 
-  it("eredita fill/stroke/font ma NON opacity/display/transform", () => {
+  it("inherits fill/stroke/font but NOT opacity/display/transform", () => {
     const parent = declaredProps(el(`<g fill="red" stroke="blue" opacity="0.5" display="none" transform="scale(2)" font-size="20"/>`), undefined);
     const ps = computeStyle(parent, null);
     const child = computeStyle(declaredProps(el(`<rect/>`), undefined), ps);
@@ -77,7 +77,7 @@ describe("declaredProps / computeStyle: la cascata", () => {
     expect(child.get("transform")).toBeUndefined();
   });
 
-  it("inherit riprende il valore del genitore, anche per le proprietà non ereditate", () => {
+  it("inherit takes the parent's value, even for non-inherited properties", () => {
     const ps = computeStyle(declaredProps(el(`<g opacity="0.3" fill="red"/>`), undefined), null);
     const c = computeStyle(declaredProps(el(`<rect opacity="inherit" fill="inherit"/>`), undefined), ps);
     expect(c.get("opacity")).toBe("0.3");

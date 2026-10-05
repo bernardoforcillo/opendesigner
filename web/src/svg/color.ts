@@ -1,16 +1,16 @@
-// COLORI CSS/SVG -> RGBA float 0..1 (il Color del proto).
+// CSS/SVG COLORS -> RGBA float 0..1 (the proto's Color).
 //
-// Funzione pura, senza DOM: l'importer deve girare identico in jsdom, nel
-// browser e (un domani) in un worker. Copre ciò che un SVG vero contiene:
-// `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()/rgba()` (valori e
-// percentuali, sintassi con virgole e con spazi/slash), `hsl()/hsla()`, i
-// nomi CSS e `transparent`. `none`, `currentColor` e `url(...)` NON sono
-// colori: li distingue il parser dei paint in importSvg.ts.
+// Pure function, no DOM: the importer must run identically in jsdom, in the
+// browser and (one day) in a worker. It covers what a real SVG contains:
+// `#rgb`, `#rgba`, `#rrggbb`, `#rrggbbaa`, `rgb()/rgba()` (values and
+// percentages, syntax with commas and with spaces/slash), `hsl()/hsla()`, the CSS
+// names and `transparent`. `none`, `currentColor` and `url(...)` are NOT
+// colors: the paint parser in importSvg.ts tells them apart.
 
 export interface Rgba { r: number; g: number; b: number; a: number }
 
-// I 148 nomi CSS in forma compatta "nome:rrggbb": scritti per esteso sarebbero
-// 148 righe di rumore in un file la cui logica sta altrove.
+// The 148 CSS names in compact "name:rrggbb" form: written out in full they would be
+// 148 lines of noise in a file whose logic lives elsewhere.
 const NAMED =
   "aliceblue:f0f8ff,antiquewhite:faebd7,aqua:00ffff,aquamarine:7fffd4,azure:f0ffff,beige:f5f5dc,bisque:ffe4c4,black:000000," +
   "blanchedalmond:ffebcd,blue:0000ff,blueviolet:8a2be2,brown:a52a2a,burlywood:deb887,cadetblue:5f9ea0,chartreuse:7fff00," +
@@ -92,7 +92,7 @@ function hslToRgb(h: number, s: number, l: number): [number, number, number] {
   return [f(hh + 1 / 3), f(hh), f(hh - 1 / 3)];
 }
 
-/** Un colore CSS, o null se la stringa non è un colore che sappiamo leggere. */
+/** A CSS color, or null if the string is not a color we can read. */
 export function parseColor(input: string): Rgba | null {
   const s = input.trim().toLowerCase();
   if (s === "") return null;
@@ -100,7 +100,7 @@ export function parseColor(input: string): Rgba | null {
   if (s.startsWith("#")) return hex(s.slice(1));
   const fn = /^(rgba?|hsla?)\(\s*([^)]*)\)$/.exec(s);
   if (fn) {
-    // Sintassi con virgole ("1, 2, 3, .5") e moderna ("1 2 3 / .5").
+    // Syntax with commas ("1, 2, 3, .5") and modern ("1 2 3 / .5").
     const parts = fn[2].split(/[\s,/]+/).filter((p) => p !== "");
     if (parts.length < 3 || parts.length > 4) return null;
     if (fn[1].startsWith("rgb")) {

@@ -1,29 +1,29 @@
 import type { SceneState } from "./types";
 
-// Indice frazionario per l'ordine di disegno / l'ordine del pannello livelli.
+// Fractional index for the draw order / layers panel order.
 //
-// Le order key sono confrontate SEMPRE lessicograficamente (è così che i nodi
-// vengono ordinati ovunque, dal renderer al pannello). Il formato M0/M1a
-// ("a" + 6 cifre) ordinava correttamente ma non permetteva di inserire nulla
-// fra due vicini: fra "a000001" e "a000002" non esiste alcuna stringa. Qui una
-// chiave è invece una FRAZIONE in base 36 sull'alfabeto ordinato 0-9a-z:
-// "a000001" vale 0.a000001₃₆. L'ordine lessicografico coincide con l'ordine dei
-// valori (le cifre mancanti valgono 0, e a parità di valore vince la stringa più
-// corta), quindi le chiavi già persistite restano valide e continuano a
-// ordinarsi correttamente accanto a quelle nuove.
+// Order keys are ALWAYS compared lexicographically (that is how nodes
+// are sorted everywhere, from the renderer to the panel). The M0/M1a format
+// ("a" + 6 digits) sorted correctly but did not allow inserting anything
+// between two neighbors: between "a000001" and "a000002" no string exists. Here a
+// key is instead a FRACTION in base 36 over the ordered alphabet 0-9a-z:
+// "a000001" is worth 0.a000001₃₆. Lexicographic order coincides with the order of
+// values (missing digits are worth 0, and for equal values the shorter string
+// wins), so already-persisted keys remain valid and keep
+// sorting correctly next to the new ones.
 //
-// Invariante: nessuna chiave generata termina con il digit più basso ("0").
-// Se una chiave terminasse con "0" nessuna chiave potrebbe più essere inserita
-// subito prima di essa — fra "x" e "x0" non esiste alcuna stringa. Le chiavi
-// legacy che finiscono con "0" (es. "a000000") restano accettate in INPUT: le
-// leggiamo, semplicemente non ne emettiamo di nuove fatte così.
+// Invariant: no generated key ends with the lowest digit ("0").
+// If a key ended with "0" no key could ever be inserted
+// right before it — between "x" and "x0" no string exists. Legacy
+// keys ending in "0" (e.g. "a000000") remain accepted as INPUT: we
+// read them, we just do not emit new ones shaped like that.
 
 const DIGITS = "0123456789abcdefghijklmnopqrstuvwxyz";
 const BASE = DIGITS.length;
 const MAX_DIGIT = BASE - 1;
 
-// Prima chiave di un documento vuoto: formato M0/M1a, così i documenti già
-// salvati e quelli nuovi condividono lo stesso punto di partenza.
+// First key of an empty document: M0/M1a format, so already
+// saved documents and new ones share the same starting point.
 const FIRST_KEY = "a000000";
 
 function toDigits(key: string, label: string): number[] {
@@ -40,22 +40,22 @@ function toKey(digits: number[]): string {
   return digits.map((d) => DIGITS[d]).join("");
 }
 
-// Chiave immediatamente successiva a `digits` (estremo superiore aperto).
-// Incrementa la cifra non massima più a destra e scarta la coda: la coda era
-// fatta di sole cifre massime, quindi il valore cresce ed il risultato non può
-// terminare con "0" (una cifra incrementata vale almeno 1). Se sono tutte cifre
-// massime allunghiamo la stringa: "zzz" < "zzzi" sia come valore sia come
-// stringa, perché il valore 1.0 è un estremo che non si raggiunge mai.
+// Key immediately following `digits` (open upper bound).
+// Increments the rightmost non-max digit and drops the tail: the tail was
+// made only of max digits, so the value grows and the result cannot
+// end with "0" (an incremented digit is worth at least 1). If all digits are
+// max we lengthen the string: "zzz" < "zzzi" both as value and as
+// string, because the value 1.0 is a bound that is never reached.
 function keyAfterDigits(digits: number[]): number[] {
   for (let i = digits.length - 1; i >= 0; i--) {
     if (digits[i] < MAX_DIGIT) {
       const out = [...digits.slice(0, i), digits[i] + 1];
-      // Il riporto ha accorciato la chiave: la riportiamo alla larghezza di
-      // partenza con zeri chiusi da "1" (resta > della chiave incrementata e
-      // < della cifra successiva, e non finisce con "0"). Senza questo ogni
-      // riporto perderebbe un digit e dopo poche centinaia di append la chiave
-      // si ridurrebbe a "z" costringendo ad allungarla di continuo; così invece
-      // "a00000z" → "a000011" e la larghezza resta stabile.
+      // The carry shortened the key: we bring it back to the starting
+      // width with zeros closed by "1" (it stays > the incremented key and
+      // < the next digit, and does not end with "0"). Without this every
+      // carry would lose a digit and after a few hundred appends the key
+      // would shrink to "z" forcing us to lengthen it continuously; this way instead
+      // "a00000z" → "a000011" and the width stays stable.
       if (out.length < digits.length) {
         while (out.length < digits.length - 1) out.push(0);
         out.push(1);
@@ -66,8 +66,8 @@ function keyAfterDigits(digits: number[]): number[] {
   return [...digits, Math.floor(BASE / 2)];
 }
 
-// Valore strettamente compreso fra `a` e `b` (cifre mancanti = 0), senza "0"
-// finale. Richiede valore(a) < valore(b).
+// Value strictly between `a` and `b` (missing digits = 0), without a trailing
+// "0". Requires value(a) < value(b).
 function midpointDigits(a: number[], b: number[]): number[] {
   const prefix: number[] = [];
   const len = Math.max(a.length, b.length);
@@ -78,26 +78,26 @@ function midpointDigits(a: number[], b: number[]): number[] {
       prefix.push(da);
       continue;
     }
-    // Primo digit diverso: essendo i prefissi uguali e valore(a) < valore(b),
-    // qui vale da < db.
+    // First differing digit: since the prefixes are equal and value(a) < value(b),
+    // here da < db holds.
     if (db - da >= 2) {
-      // C'è spazio per una cifra in mezzo: chiave della stessa lunghezza.
+      // There is room for a digit in between: key of the same length.
       return [...prefix, Math.floor((da + db) / 2)];
     }
-    // Cifre consecutive: scendiamo nel ramo di `a` (qualunque cosa segua
-    // resta sotto a `b`) e cerchiamo il successore della sua coda.
+    // Consecutive digits: we descend into the branch of `a` (whatever follows
+    // stays below `b`) and look for the successor of its tail.
     return [...prefix, da, ...keyAfterDigits(a.slice(i + 1))];
   }
-  // Stesse cifre fino in fondo ⇒ stesso valore: fra le due non esiste
-  // letteralmente alcuna stringa (è il caso "x" / "x0").
+  // Same digits all the way ⇒ same value: between the two there is
+  // literally no string (it is the "x" / "x0" case).
   throw new Error(`orderKeyBetween: no key exists between "${toKey(a)}" and "${toKey(b)}"`);
 }
 
 /**
- * Restituisce una order key strettamente compresa fra `a` e `b` in ordine
- * lessicografico. `null` indica un estremo aperto: `orderKeyBetween(null, k)`
- * ordina prima di tutto, `orderKeyBetween(k, null)` dopo tutto.
- * Lancia se `a >= b`, invece di emettere una chiave che romperebbe l'ordine.
+ * Returns an order key strictly between `a` and `b` in lexicographic
+ * order. `null` indicates an open bound: `orderKeyBetween(null, k)`
+ * sorts before everything, `orderKeyBetween(k, null)` after everything.
+ * Throws if `a >= b`, instead of emitting a key that would break the order.
  */
 export function orderKeyBetween(a: string | null, b: string | null): string {
   if (a !== null && b !== null && a >= b) {
@@ -110,11 +110,11 @@ export function orderKeyBetween(a: string | null, b: string | null): string {
   return toKey(midpointDigits(toDigits(a, "lower"), hi));
 }
 
-// Deriva la prossima order key dai nodi già presenti nella scena, invece che da
-// un contatore di modulo (bug M0: il contatore ripartiva da 0 dopo il reload e
-// riemetteva "a000000" su un documento che ne aveva già uno, rendendo instabile
-// l'ordine di disegno). Confronto lessicografico sulla chiave massima esistente,
-// poi la chiave successiva dell'indice frazionario.
+// Derives the next order key from the nodes already present in the scene, instead of from
+// a module counter (M0 bug: the counter restarted from 0 after reload and
+// re-emitted "a000000" on a document that already had one, making the
+// draw order unstable). Lexicographic comparison on the existing maximum key,
+// then the next key of the fractional index.
 export function nextOrderKey(scene: SceneState | null): string {
   const keys = scene ? [...scene.nodes.values()].map((n) => n.orderKey) : [];
   if (keys.length === 0) return orderKeyBetween(null, null);

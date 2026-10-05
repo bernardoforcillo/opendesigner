@@ -7,9 +7,9 @@ import { nodesWith } from "../store/nodeMap";
 import { poseScene } from "../animation/pose";
 import type { NodeLite, SceneState } from "../store/types";
 
-// Il renderer con una scena DERIVATA dalla riproduzione (animation/pose.ts): scala
-// e tratto che si disegna (campi transitori animScale/animDraw), e lo scarto fuori
-// vista che non deve far sparire un nodo mentre la sua scala lo porta in vista.
+// The renderer with a scene DERIVED from playback (animation/pose.ts): scale
+// and the stroke being drawn (transient fields animScale/animDraw), and the off-view
+// discarding that must not make a node vanish while its scale brings it into view.
 
 class FakePath2D {
   ops: { op: string; args: unknown[] }[] = [];
@@ -56,7 +56,7 @@ function sceneWith(nodes: Record<string, NodeLite>): SceneState {
 beforeEach(() => { vi.stubGlobal("Path2D", FakePath2D); });
 
 describe("scala animata (animScale)", () => {
-  it("un nodo scalato si disegna attorno al proprio centro, nello stesso save/restore", () => {
+  it("a scaled node is drawn around its own center, in the same save/restore", () => {
     const s = sceneWith({ r: node("r", "page1", 10, 20, 100, 50) });
     const p = poseScene(s, new Map([["r", { scale: 2 }]]));
     const f = recordingCtx();
@@ -71,14 +71,14 @@ describe("scala animata (animScale)", () => {
     expect(ops.filter((o) => o === "save").length).toBe(ops.filter((o) => o === "restore").length);
   });
 
-  it("una scena ferma NON emette scale (nessun costo in più)", () => {
+  it("a still scene does NOT emit scale (no extra cost)", () => {
     const s = sceneWith({ r: node("r", "page1", 10, 20, 100, 50) });
     const f = recordingCtx();
     drawScene(f.ctx, s, CAM);
     expect(f.calls.some((c) => c.op === "scale")).toBe(false);
   });
 
-  it("i figli di un frame scalato scendono con la scala nella matrice", () => {
+  it("the children of a scaled frame descend with the scale in the matrix", () => {
     const s = sceneWith({
       fr: node("fr", "page1", 0, 0, 200, 100, { kind: "frame", fills: [] }),
       c: node("c", "fr", 10, 10, 20, 20),
@@ -87,48 +87,48 @@ describe("scala animata (animScale)", () => {
     const f = recordingCtx();
     drawScene(f.ctx, p, CAM);
     const t = f.calls.find((c) => c.op === "transform")!.args as number[];
-    // scala 3 attorno al centro (100,50): a=d=3, e = 100-300 = -200, f = 50-150 = -100
+    // scale 3 around the center (100,50): a=d=3, e = 100-300 = -200, f = 50-150 = -100
     expect(t).toEqual([3, 0, 0, 3, -200, -100]);
   });
 });
 
-describe("scarto fuori vista con scale animate", () => {
-  // La vista è 800x600; il rettangolo sta a x 900..1000: fuori. Scala 12 attorno a (950,25) -> copre la vista.
+describe("off-view discarding with animated scales", () => {
+  // The view is 800x600; the rectangle sits at x 900..1000: outside. Scale 12 around (950,25) -> covers the view.
   const outside = () => sceneWith({ r: node("r", "page1", 900, 0, 100, 50) });
 
-  it("fuori vista e fermo: scartato", () => {
+  it("out of view and still: discarded", () => {
     const f = recordingCtx();
     drawScene(f.ctx, outside(), CAM);
     expect(f.fills).toHaveLength(0);
   });
 
-  it("con la scala che lo porta in vista: disegnato (niente scarto per i nodi scalati)", () => {
+  it("with the scale that brings it into view: drawn (no discarding for scaled nodes)", () => {
     const p = poseScene(outside(), new Map([["r", { scale: 12 }]]));
     const f = recordingCtx();
     drawScene(f.ctx, p, CAM);
     expect(f.fills).toHaveLength(1);
   });
 
-  it("senza il marcatore la stessa scena verrebbe scartata (il bypass è il marcatore, non altro)", () => {
+  it("without the marker the same scene would be discarded (the bypass is the marker, nothing else)", () => {
     const p = poseScene(outside(), new Map([["r", { scale: 12 }]]));
     const f = recordingCtx();
     drawScene(f.ctx, { ...p, anim: undefined }, CAM);
     expect(f.fills).toHaveLength(0);
   });
 
-  it("i discendenti e gli antenati di un nodo scalato non si scartano", () => {
+  it("the descendants and ancestors of a scaled node are not discarded", () => {
     const s = sceneWith({
       fr: node("fr", "page1", 900, 0, 100, 100, { kind: "frame", fills: [], clipsContent: false }),
       c: node("c", "fr", 0, 0, 50, 50),
-      far: node("far", "page1", 5000, 5000, 10, 10), // un fratello lontano e fermo resta scartato
+      far: node("far", "page1", 5000, 5000, 10, 10), // a distant, still sibling stays discarded
     });
     const p = poseScene(s, new Map([["fr", { scale: 12 }]]));
     const f = recordingCtx();
     drawScene(f.ctx, p, CAM);
-    expect(f.fills).toHaveLength(1); // il figlio c: nessun riempimento per il frame (senza fills) né per `far`
+    expect(f.fills).toHaveLength(1); // the child c: no fill for the frame (without fills) nor for `far`
   });
 
-  it("la scala animata di un nodo dentro un frame tiene vivo anche l'antenato", () => {
+  it("the animated scale of a node inside a frame keeps the ancestor alive too", () => {
     const s = sceneWith({
       fr: node("fr", "page1", 900, 0, 100, 100, { kind: "frame", fills: [{ r: 0, g: 0, b: 1, a: 1 }], clipsContent: false }),
       c: node("c", "fr", 0, 0, 50, 50),
@@ -136,13 +136,13 @@ describe("scarto fuori vista con scale animate", () => {
     const p = poseScene(s, new Map([["c", { scale: 40 }]]));
     const f = recordingCtx();
     drawScene(f.ctx, p, CAM);
-    // frame (antenato, non scalato ma con un figlio scalato) e figlio: entrambi disegnati
+    // frame (ancestor, not scaled but with a scaled child) and child: both drawn
     expect(f.fills).toHaveLength(2);
   });
 });
 
-describe("tratto che si disegna (animDraw)", () => {
-  it("rect con tratto: tratteggio = frazione del perimetro, poi ripristinato", () => {
+describe("the stroke being drawn (animDraw)", () => {
+  it("rect with stroke: dashing = fraction of the perimeter, then restored", () => {
     const s = sceneWith({ r: node("r", "page1", 0, 0, 100, 50, { strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 2, align: "center" }] }) });
     const p = poseScene(s, new Map([["r", { draw: 0.25 }]]));
     const f = recordingCtx();
@@ -152,7 +152,7 @@ describe("tratto che si disegna (animDraw)", () => {
     expect(f.calls.filter((c) => c.op === "setLineDash").map((c) => c.args[0])).toEqual([[75, 301], []]);
   });
 
-  it("draw = 1 non tratteggia", () => {
+  it("draw = 1 does not dash", () => {
     const s = sceneWith({ r: node("r", "page1", 0, 0, 100, 50, { strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 2, align: "center" }] }) });
     const p = poseScene(s, new Map([["r", { draw: 1 }]]));
     const f = recordingCtx();
@@ -173,7 +173,7 @@ describe("tratto che si disegna (animDraw)", () => {
     return poseScene(s, new Map([["v", { draw }]]));
   };
 
-  it("vettoriale: ogni contorno per la frazione della PROPRIA lunghezza, senza riempimento", () => {
+  it("vector: each outline for the fraction of ITS OWN length, without fill", () => {
     const f = recordingCtx();
     drawScene(f.ctx, vec(0.5), CAM);
     expect(f.fills).toHaveLength(0);
@@ -181,20 +181,20 @@ describe("tratto che si disegna (animDraw)", () => {
     expect(f.calls.at(-1)).toBeDefined();
   });
 
-  it("vettoriale a draw = 1: il disegno normale (riempimento e tratto)", () => {
+  it("vector at draw = 1: the normal drawing (fill and stroke)", () => {
     const f = recordingCtx();
     drawScene(f.ctx, vec(1), CAM);
     expect(f.calls.some((c) => c.op === "setLineDash")).toBe(false);
   });
 
-  it("le misure: perimetri e lunghezze", () => {
+  it("measures: perimeters and lengths", () => {
     expect(perimeterOf({ kind: "rect", width: 100, height: 50, cornerRadius: 0 })).toBe(300);
-    expect(perimeterOf({ kind: "frame", width: 100, height: 50, cornerRadius: 20 })).toBe(300); // il frame è a spigoli vivi
-    // un rettangolo stondato è più corto dello spigolo vivo: 300 - 8r + 2πr
+    expect(perimeterOf({ kind: "frame", width: 100, height: 50, cornerRadius: 20 })).toBe(300); // the frame has sharp corners
+    // a rounded rectangle is shorter than a sharp one: 300 - 8r + 2πr
     expect(perimeterOf({ kind: "rect", width: 100, height: 50, cornerRadius: 10 })).toBeCloseTo(300 - 80 + 20 * Math.PI, 6);
-    // il raggio non supera metà del lato corto: un "pill"
+    // the radius does not exceed half the short side: a "pill"
     expect(perimeterOf({ kind: "rect", width: 100, height: 50, cornerRadius: 999 })).toBeCloseTo(300 - 8 * 25 + 50 * Math.PI, 6);
-    // cerchio: 2πr
+    // circle: 2πr
     expect(perimeterOf({ kind: "ellipse", width: 100, height: 100, cornerRadius: 0 })).toBeCloseTo(100 * Math.PI, 6);
     expect(drawDash(200, 0.5)).toEqual([100, 201]);
     expect(drawDash(200, 5)).toEqual([200, 201]); // limitato a 1

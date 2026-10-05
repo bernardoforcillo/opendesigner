@@ -1,11 +1,11 @@
-// UN EVIDENZIATORE A MANO per il codice generato. Non è un parser: è uno
-// scanner a un passo che sa riconoscere ciò che serve per LEGGERE il codice che
-// opendesigner produce (TSX, HTML con <style>, CSS, JSON, Markdown) -- parole
-// chiave, stringhe, commenti, tag e attributi, numeri. Pochi KB al posto di
-// Prism/Shiki (decine di KB più le grammatiche) e nessuna dipendenza.
+// A HAND-WRITTEN HIGHLIGHTER for the generated code. It is not a parser: it is a
+// one-pass scanner that knows how to recognize what is needed to READ the code that
+// opendesigner produces (TSX, HTML with <style>, CSS, JSON, Markdown) -- keywords,
+// strings, comments, tags and attributes, numbers. A few KB in place of
+// Prism/Shiki (tens of KB plus the grammars) and no dependency.
 //
-// L'invariante, provato dai test: concatenando i token si riottiene ESATTAMENTE il
-// sorgente. Un riconoscimento sbagliato colora male, mai perde o altera testo.
+// The invariant, proven by the tests: concatenating the tokens gives back EXACTLY the
+// source. A wrong recognition colors badly, never loses or alters text.
 
 export type TokenKind = "plain" | "kw" | "str" | "com" | "tag" | "attr" | "num" | "fn" | "type";
 export interface Token {
@@ -33,7 +33,7 @@ const JS_KEYWORDS = new Set((
 const isIdStart = (c: string) => /[A-Za-z_$]/.test(c);
 const isIdPart = (c: string) => /[A-Za-z0-9_$-]/.test(c);
 
-// Accumula i token fondendo quelli contigui dello stesso tipo.
+// Accumulates the tokens merging contiguous ones of the same type.
 class Out {
   toks: Token[] = [];
   push(k: TokenKind, s: string) {
@@ -44,13 +44,13 @@ class Out {
   }
 }
 
-/** Il primo indice >= i che non è spazio/newline (o s.length). */
+/** The first index >= i that is not space/newline (or s.length). */
 function skipWs(s: string, i: number): number {
   while (i < s.length && /\s/.test(s[i])) i++;
   return i;
 }
 
-/** Fine di una stringa che inizia in `i` (la virgoletta), con escape; non oltre il newline per ' e ". */
+/** End of a string starting at `i` (the quote), with escapes; not beyond the newline for ' and ". */
 function stringEnd(s: string, i: number): number {
   const q = s[i];
   let j = i + 1;
@@ -58,7 +58,7 @@ function stringEnd(s: string, i: number): number {
     const c = s[j];
     if (c === "\\") j += 2;
     else if (c === q) return j + 1;
-    else if (c === "\n" && q !== "`") return j; // stringa non chiusa: ci si ferma a fine riga
+    else if (c === "\n" && q !== "`") return j; // unclosed string: stop at end of line
     else j++;
   }
   return s.length;
@@ -68,8 +68,8 @@ function stringEnd(s: string, i: number): number {
 
 function scanTsx(s: string, out: Out): void {
   let i = 0;
-  let prev = ""; // ultimo carattere significativo (non spazio), per distinguere `<Tag` da `a < b`
-  let tagDepth = -1; // >= 0 dentro un tag JSX: il livello di graffe a cui si è aperto
+  let prev = ""; // last significant character (non-space), to tell `<Tag` from `a < b`
+  let tagDepth = -1; // >= 0 inside a JSX tag: the brace level at which it was opened
   let braces = 0;
   while (i < s.length) {
     const c = s[i];
@@ -89,7 +89,7 @@ function scanTsx(s: string, out: Out): void {
       i = j;
       prev = c;
     } else if (c === "<" && /[A-Za-z/>]/.test(s[i + 1] ?? "") && !/[A-Za-z0-9_$)\]]/.test(prev)) {
-      // Apertura o chiusura di un tag JSX (o frammento `<>`).
+      // Opening or closing of a JSX tag (or fragment `<>`).
       let j = i + 1;
       if (s[j] === "/") j++;
       out.push("plain", s.slice(i, j));
@@ -173,7 +173,7 @@ function scanCss(s: string, out: Out): void {
       out.push("num", s.slice(i, j));
       i = j;
     } else if (isIdStart(c) || c === "-" || c === "." || c === "#" || c === ":" || c === "*") {
-      // Fuori dalle graffe è un selettore; dentro, `nome:` è una proprietà e il resto un valore.
+      // Outside braces it is a selector; inside, `name:` is a property and the rest a value.
       let j = i + 1;
       while (j < s.length && /[A-Za-z0-9_-]/.test(s[j])) j++;
       const word = s.slice(i, j);
@@ -231,7 +231,7 @@ function scanHtml(s: string, out: Out): void {
       }
       if (k < s.length) out.push("plain", ">");
       i = Math.min(s.length, k + 1);
-      // Il contenuto di <style> è CSS (e di <script> è JS): fino alla chiusura.
+      // The content of <style> is CSS (and of <script> is JS): until the closing.
       const lower = name.toLowerCase();
       if (s[j - 1] !== "/" && (lower === "style" || lower === "script")) {
         const close = s.toLowerCase().indexOf(`</${lower}`, i);
@@ -297,7 +297,7 @@ function scanMd(s: string, out: Out): void {
   }
 }
 
-/** Tokenizza `code`: una lista di righe, ognuna una lista di token. */
+/** Tokenizes `code`: a list of lines, each a list of tokens. */
 export function highlight(code: string, lang: Lang): Token[][] {
   const out = new Out();
   switch (lang) {
@@ -308,7 +308,7 @@ export function highlight(code: string, lang: Lang): Token[][] {
     case "md": scanMd(code, out); break;
     default: out.push("plain", code);
   }
-  // Spezza sui newline (i commenti/stringhe multi-riga attraversano più righe).
+  // Split on newlines (multi-line comments/strings span several lines).
   const lines: Token[][] = [[]];
   for (const t of out.toks) {
     const parts = t.s.split("\n");

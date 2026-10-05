@@ -2,8 +2,8 @@
 <svg xmlns="http://www.w3.org/2000/svg" width="240" height="240" viewBox="0 0 200 200">
   <title>Logo Aurora</title>
   <defs>
-    <!-- objectBoundingBox in diagonale su un box NON quadrato: gli isolivelli di
-         SVG sono ortogonali nello spazio del bbox, non nel mondo. -->
+    <!-- objectBoundingBox on the diagonal over a NON-square box: SVG's isolines
+         are orthogonal in the bbox space, not in the world. -->
     <linearGradient id="sky" x1="0" y1="0" x2="1" y2="1">
       <stop offset="0" stop-color="#ff7a59"/>
       <stop offset="1" stop-color="#7b2ff7"/>

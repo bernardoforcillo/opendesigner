@@ -19,83 +19,83 @@ describe("boundsOfNode", () => {
     expect(boundsOfNode(rect(10, 20, 30, 40))).toEqual({ x: 10, y: 20, width: 30, height: 40 });
   });
 
-  it("ignores the stroke: è il box del MODELLO, quello che il resize scrive", () => {
+  it("ignores the stroke: it is the MODEL's box, the one resize writes", () => {
     const n = { ...rect(10, 20, 30, 40), strokes: [stroke(8, "outside")] };
     expect(boundsOfNode(n)).toEqual({ x: 10, y: 20, width: 30, height: 40 });
   });
 });
 
-// --- il TRATTO nei bounds ----------------------------------------------------
+// --- the STROKE in the bounds ------------------------------------------------
 //
-// Quanto sporge un tratto FUORI dal perimetro dipende dall'allineamento, e
-// sbagliarlo si vede solo ai bordi: un mezzo peso non contato taglia la
-// selezione, il marquee e (più avanti) l'export.
+// How much a stroke overhangs OUTSIDE the perimeter depends on alignment, and
+// getting it wrong shows only at the edges: an uncounted half weight crops the
+// selection, the marquee and (later) the export.
 
 describe("strokeOutset", () => {
-  it("center sporge di METÀ peso, outside di TUTTO, inside di NIENTE", () => {
+  it("center overhangs by HALF the weight, outside by ALL of it, inside by NOTHING", () => {
     expect(strokeOutset(stroke(8, "center"))).toBe(4);
     expect(strokeOutset(stroke(8, "outside"))).toBe(8);
     expect(strokeOutset(stroke(8, "inside"))).toBe(0);
   });
 
-  it("un peso nullo o negativo non sporge (non è un tratto sottilissimo: non c'è)", () => {
+  it("a zero or negative weight does not overhang (it is not a very thin stroke: it does not exist)", () => {
     expect(strokeOutset(stroke(0, "outside"))).toBe(0);
     expect(strokeOutset(stroke(-5, "center"))).toBe(0);
   });
 });
 
 describe("strokeOutsetOfNode", () => {
-  it("è 0 su un nodo senza tratti -- il caso normale, e deve restare esatto", () => {
+  it("is 0 on a node without strokes -- the normal case, and it must stay exact", () => {
     expect(strokeOutsetOfNode(rect(0, 0, 10, 10))).toBe(0);
   });
 
-  it("prende il MASSIMO fra i tratti: i tratti si sovrappongono, non si sommano", () => {
+  it("takes the MAXIMUM among the strokes: strokes overlap, they do not add up", () => {
     const n = { ...rect(0, 0, 10, 10), strokes: [stroke(4, "center"), stroke(6, "outside"), stroke(20, "inside")] };
     expect(strokeOutsetOfNode(n)).toBe(6);
   });
 
-  it("sul TESTO conta sempre METÀ peso, qualunque sia l'allineamento", () => {
-    // strokeText è sempre centrato (un glifo non ha un Path2D da ritagliare):
-    // la misura deve dire quello che il disegno fa davvero, o taglia da un lato
-    // e avanza dall'altro.
+  it("on TEXT it always counts HALF the weight, whatever the alignment", () => {
+    // strokeText is always centered (a glyph has no Path2D to clip):
+    // the measure must say what the drawing really does, or it crops on one side
+    // and has spare on the other.
     const t: NodeLite = { ...rect(0, 0, 10, 10), kind: "text" };
     expect(strokeOutsetOfNode({ ...t, strokes: [stroke(8, "outside")] })).toBe(4);
     expect(strokeOutsetOfNode({ ...t, strokes: [stroke(8, "inside")] })).toBe(4);
     expect(strokeOutsetOfNode({ ...t, strokes: [stroke(8, "center")] })).toBe(4);
-    // ...ma su una FORMA l'allineamento conta eccome.
+    // ...but on a SHAPE alignment matters indeed.
     expect(strokeOutsetOfNode({ ...rect(0, 0, 10, 10), strokes: [stroke(8, "outside")] })).toBe(8);
   });
 });
 
 describe("visualBoundsOfNode", () => {
-  it("allarga il box del modello della sporgenza, su OGNI lato", () => {
+  it("widens the model's box by the overhang, on EVERY side", () => {
     const n = { ...rect(10, 20, 30, 40), strokes: [stroke(8, "center")] };
     expect(visualBoundsOfNode(n)).toEqual({ x: 6, y: 16, width: 38, height: 48 });
   });
 
-  it("un tratto INTERNO non allarga niente", () => {
+  it("an INSIDE stroke widens nothing", () => {
     const n = { ...rect(10, 20, 30, 40), strokes: [stroke(8, "inside")] };
     expect(visualBoundsOfNode(n)).toEqual({ x: 10, y: 20, width: 30, height: 40 });
   });
 
-  it("senza tratti è IDENTICO a boundsOfNode, numero per numero", () => {
+  it("without strokes it is IDENTICAL to boundsOfNode, number by number", () => {
     const n = rect(10, 20, 30, 40);
     expect(visualBoundsOfNode(n)).toEqual(boundsOfNode(n));
   });
 });
 
 describe("worldVisualAabbOfNode", () => {
-  it("allarga PRIMA e ruota DOPO: il tratto vive nello spazio locale del nodo", () => {
-    // 100x50 a 90°: l'AABB del box è 50x100 attorno al centro (50,25).
-    // Con un tratto center da 20 il box locale è 120x70, quindi l'AABB
-    // ruotato è 70x120 -- non 50+20 x 100+20, che sarebbe "ruota e poi
-    // allarga" e darebbe la sporgenza sull'asse sbagliato per un tratto
-    // ellittico o per una futura sporgenza non uniforme.
+  it("widens BEFORE and rotates AFTER: the stroke lives in the node's local space", () => {
+    // 100x50 at 90°: the box's AABB is 50x100 around the center (50,25).
+    // With a 20 center stroke the local box is 120x70, so the rotated
+    // AABB is 70x120 -- not 50+20 x 100+20, which would be "rotate and then
+    // widen" and would give the overhang on the wrong axis for an
+    // elliptical stroke or a future non-uniform overhang.
     //
-    // toBeCloseTo e non toEqual: a 90° cos vale 6.1e-17 in doppia precisione,
-    // quindi rotatedAabb (che è già così per la sola rotazione) porta polvere
-    // sull'ultima cifra. L'esattezza è garantita solo per gli angoli NULLI --
-    // vedi il caso qui sotto e canvas/transform.ts::isUnrotated.
+    // toBeCloseTo and not toEqual: at 90° cos is 6.1e-17 in double precision,
+    // so rotatedAabb (which is already so for rotation alone) carries dust
+    // on the last digit. Exactness is guaranteed only for NULL angles --
+    // see the case below and canvas/transform.ts::isUnrotated.
     const n = { ...rect(0, 0, 100, 50), rotation: 90, strokes: [stroke(20, "center")] };
     const b = worldVisualAabbOfNode(n);
     expect(b.x).toBeCloseTo(15, 10);
@@ -104,16 +104,16 @@ describe("worldVisualAabbOfNode", () => {
     expect(b.height).toBeCloseTo(120, 10);
   });
 
-  it("senza tratti coincide con worldAabbOfNode", () => {
+  it("without strokes it coincides with worldAabbOfNode", () => {
     const n = { ...rect(10, 20, 30, 40), rotation: 33 };
     expect(worldVisualAabbOfNode(n)).toEqual(worldAabbOfNode(n));
   });
 
-  it("worldAabbOfNode resta il box del MODELLO ruotato: è lo spazio del resize", () => {
-    // Il frame di selezione e il resize di gruppo lavorano sulla GEOMETRIA (è
-    // quella che gli op scrivono in x/y/w/h). Se worldAabbOfNode cominciasse a
-    // includere il tratto, trascinare una maniglia scriverebbe un box gonfiato
-    // e il nodo crescerebbe di una sporgenza a ogni resize.
+  it("worldAabbOfNode stays the rotated MODEL's box: it is the resize's space", () => {
+    // The selection frame and the group resize work on the GEOMETRY (it is
+    // what ops write in x/y/w/h). If worldAabbOfNode started to
+    // include the stroke, dragging a handle would write an inflated box
+    // and the node would grow by an overhang on every resize.
     const n = { ...rect(0, 0, 100, 50), strokes: [stroke(20, "outside")] };
     expect(worldAabbOfNode(n)).toEqual({ x: 0, y: 0, width: 100, height: 50 });
   });
@@ -203,10 +203,10 @@ describe("pointInBounds", () => {
   });
 });
 
-// intersectBounds è la parte VISIBILE di un box dentro un ritaglio: serve alla
-// banda elastica quando scende dentro un frame che ritaglia i figli (vedi
-// renderer/canvasRenderer.ts::collectIn). null = niente in comune, cioè niente
-// da vedere e quindi niente da selezionare.
+// intersectBounds is the VISIBLE part of a box inside a clip: it serves the
+// rubber band when it descends into a frame that clips its children (see
+// renderer/canvasRenderer.ts::collectIn). null = nothing in common, that is nothing
+// to see and therefore nothing to select.
 describe("intersectBounds", () => {
   it("returns the overlapping rectangle", () => {
     const a = { x: 0, y: 0, width: 100, height: 100 };
@@ -225,9 +225,9 @@ describe("intersectBounds", () => {
     expect(intersectBounds({ x: 0, y: 0, width: 10, height: 10 }, { x: 20, y: 0, width: 10, height: 10 })).toBeNull();
   });
 
-  // Coerente con boundsIntersect, che confronta i bordi opposti con < / >: due
-  // rettangoli che si toccano su un bordo non si intersecano, e la loro
-  // "intersezione" degenere (larghezza 0) non è area visibile.
+  // Consistent with boundsIntersect, which compares opposite edges with < / >: two
+  // rectangles touching on an edge do not intersect, and their degenerate
+  // "intersection" (width 0) is not visible area.
   it("returns null when the rectangles only touch at an edge", () => {
     expect(intersectBounds({ x: 0, y: 0, width: 10, height: 10 }, { x: 10, y: 0, width: 10, height: 10 })).toBeNull();
     expect(boundsIntersect({ x: 0, y: 0, width: 10, height: 10 }, { x: 10, y: 0, width: 10, height: 10 })).toBe(false);

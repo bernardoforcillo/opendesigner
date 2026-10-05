@@ -1,35 +1,35 @@
 import { assetUrl } from "../rpc/assets";
 
-// LA CACHE DELLE IMMAGINI DECODIFICATE.
+// THE CACHE OF DECODED IMAGES.
 //
-// Esiste per una ragione sola, ed è il render loop: `drawScene` gira a 60 fps e
-// chiede l'immagine di ogni nodo a OGNI frame. Decodificare lì dentro (un
-// `new Image()`, o peggio un fetch) vorrebbe dire sessanta decodifiche al
-// secondo per immagine -- il modo più diretto di far scendere il canvas a
-// scatti. Qui una richiesta parte una volta sola per (documento, hash) e ogni
-// frame successivo legge una voce già pronta, sincrona.
+// It exists for one reason only, and it is the render loop: `drawScene` runs at 60 fps and
+// asks for each node's image on EVERY frame. Decoding in there (a
+// `new Image()`, or worse a fetch) would mean sixty decodes per
+// second per image -- the most direct way to make the canvas stutter.
+// Here a request starts only once per (document, hash) and every
+// subsequent frame reads an already-ready entry, synchronously.
 //
-// Il ridisegno non ha bisogno di essere notificato: App.tsx ridisegna comunque a
-// ogni frame, quindi l'immagine compare da sé appena la voce passa a "ready".
-// `onChange` esiste per chi non gira in un loop (i test, e un eventuale renderer
-// a invalidazione).
+// Redraw does not need to be notified: App.tsx redraws on
+// every frame anyway, so the image appears by itself as soon as the entry goes to "ready".
+// `onChange` exists for whoever does not run in a loop (tests, and a possible
+// invalidation-based renderer).
 //
-// UN FALLIMENTO NON È DEFINITIVO. "Non si riprova a ogni frame" è la regola
-// giusta per un loop a 60 fps, ma "non si riprova MAI" è un'altra cosa: un
-// server riavviato, un 5xx, una richiesta in volo quando la scheda è finita in
-// secondo piano inchioderebbero quel (documento, hash) al segnaposto per tutta
-// la vita della pagina, con il file ancora lì sul disco. Quindi un "missing"
-// TRANSITORIO porta con sé il momento in cui si potrà riprovare, con un'attesa
-// che raddoppia a ogni fallimento fino a un tetto: il costo massimo è una
-// richiesta ogni RETRY_MAX_MS per immagine rotta, non una per frame.
+// A FAILURE IS NOT FINAL. "Do not retry on every frame" is the right
+// rule for a 60 fps loop, but "NEVER retry" is another thing: a
+// restarted server, a 5xx, a request in flight when the tab went to the
+// background would pin that (document, hash) to the placeholder for the whole
+// life of the page, with the file still there on disk. So a TRANSIENT
+// "missing" carries with it the moment when it can be retried, with a wait
+// that doubles on every failure up to a cap: the maximum cost is one
+// request every RETRY_MAX_MS per broken image, not one per frame.
 
 /**
- * Lo stato di un asset per chi disegna.
- *  - "loading": la richiesta è partita, non c'è ancora niente da disegnare;
- *  - "ready":   `image` è decodificata e ha dimensioni > 0;
- *  - "missing": non c'è (404, byte illeggibili, hash vuoto).
+ * The state of an asset for whoever draws.
+ *  - "loading": the request has started, there is nothing to draw yet;
+ *  - "ready":   `image` is decoded and has dimensions > 0;
+ *  - "missing": it is not there (404, unreadable bytes, empty hash).
  *
- * "missing" non è per forza definitivo: vedi `retryAt` sulla voce interna e
+ * "missing" is not necessarily final: see `retryAt` on the internal entry and
  * `retryMissing()`.
  */
 export type ImageStatus = "loading" | "ready" | "missing";
@@ -39,59 +39,59 @@ export interface CachedImage {
   image: HTMLImageElement | null;
 }
 
-// La voce come la tiene la cache. `retryAt` e `failures` non servono a chi
-// disegna (che legge `status` e basta) ma sono ciò che distingue un fallimento
-// da cui si può tornare da uno da cui non si torna.
+// The entry as the cache holds it. `retryAt` and `failures` are not needed by whoever
+// draws (who reads `status` only) but are what distinguishes a failure
+// one can come back from from one that is permanent.
 interface Entry extends CachedImage {
   /**
-   * Quando questa voce "missing" torna a essere richiedibile.
-   * `undefined` = MAI: riprovare non potrebbe cambiare la risposta (hash vuoto,
-   * nessun caricatore in questo ambiente).
+   * When this "missing" entry becomes requestable again.
+   * `undefined` = NEVER: retrying could not change the answer (empty hash,
+   * no loader in this environment).
    */
   retryAt?: number;
-  /** Fallimenti consecutivi, cioè quanto si aspetta prima del prossimo. */
+  /** Consecutive failures, that is how long to wait before the next one. */
   failures: number;
 }
 
-// Un hash vuoto e un ambiente senza `Image` sono gli unici due "missing" da cui
-// non si torna: nel primo caso non c'è niente da chiedere, nel secondo non c'è
-// nessuno a cui chiederlo.
+// An empty hash and an environment without `Image` are the only two "missing" ones that
+// cannot be recovered from: in the first case there is nothing to ask for, in the second there is
+// no one to ask.
 const MISSING_FOREVER: Entry = { status: "missing", image: null, failures: 0 };
 
-/** La prima attesa dopo un fallimento, e il tetto a cui il raddoppio si ferma. */
+/** The first wait after a failure, and the cap at which the doubling stops. */
 export const RETRY_BASE_MS = 2_000;
 export const RETRY_MAX_MS = 30_000;
 
 /**
- * Quanto si aspetta dopo `failures` fallimenti consecutivi: 2s, 4s, 8s, 16s,
- * poi 30s per sempre.
+ * How long to wait after `failures` consecutive failures: 2s, 4s, 8s, 16s,
+ * then 30s forever.
  *
- * Il raddoppio serve a distinguere i due casi senza doverli riconoscere: un
- * disservizio di un istante si recupera nel giro di due secondi, un asset che
- * davvero non c'è finisce a costare una richiesta ogni mezzo minuto -- e resta
- * comunque recuperabile, perché il tetto non diventa mai "smetti".
+ * The doubling serves to distinguish the two cases without having to recognize them: an
+ * instantaneous outage recovers within two seconds, an asset that
+ * truly is not there ends up costing one request every half minute -- and remains
+ * recoverable anyway, because the cap never becomes "stop".
  */
 export function retryDelay(failures: number): number {
   return Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** Math.max(0, failures - 1));
 }
 
-/** Come si comincia a caricare un URL. Iniettabile: `Image` non c'è ovunque. */
+/** How to start loading a URL. Injectable: `Image` is not available everywhere. */
 export type LoadImage = (url: string) => HTMLImageElement;
 
 function domLoader(url: string): HTMLImageElement {
   const img = new Image();
-  // Gli asset arrivano dallo STESSO origin dell'editor, quindi non serve
-  // crossOrigin; dichiararlo forzerebbe una preflight su una route che non ne
-  // ha bisogno.
+  // Assets come from the SAME origin as the editor, so crossOrigin is not
+  // needed; declaring it would force a preflight on a route that does not
+  // need one.
   img.src = url;
   return img;
 }
 
 export class ImageCache {
   private entries = new Map<string, Entry>();
-  // Chi vuole sapere che qualcosa è cambiato (un'immagine pronta, una voce
-  // dimenticata): il loop di disegno a invalidazione di ui/App.tsx. Oltre al
-  // `onChange` del costruttore, che resta per i test.
+  // Whoever wants to know that something changed (an image ready, an entry
+  // forgotten): the invalidation-based draw loop of ui/App.tsx. In addition to the
+  // constructor's `onChange`, which stays for tests.
   private listeners = new Set<() => void>();
 
   subscribe(fn: () => void): () => void {
@@ -107,21 +107,21 @@ export class ImageCache {
   constructor(
     private readonly load: LoadImage = domLoader,
     private readonly onChange: () => void = () => {},
-    // L'orologio è iniettabile perché la scadenza di un tentativo è un
-    // comportamento, e un comportamento che dipende dal tempo si verifica solo
-    // se il tempo lo decide il test.
+    // The clock is injectable because an attempt's expiry is a
+    // behavior, and a behavior that depends on time can only be verified
+    // if time is decided by the test.
     private readonly now: () => number = Date.now,
   ) {}
 
   /**
-   * L'immagine di un asset, SUBITO e senza mai lanciare: è pensata per essere
-   * chiamata dentro il render loop. La prima chiamata avvia il caricamento e
-   * ritorna "loading"; le successive leggono e basta -- tranne quando la voce è
-   * un "missing" transitorio la cui attesa è scaduta, che riparte da sola.
+   * An asset's image, IMMEDIATELY and never throwing: it is meant to be
+   * called inside the render loop. The first call starts the loading and
+   * returns "loading"; the following ones just read -- except when the entry is
+   * a transient "missing" whose wait has expired, which restarts by itself.
    */
   get(docId: string, hash: string): CachedImage {
-    // Un hash vuoto non identifica niente: chiedere /assets-api/doc/ a ogni
-    // frame sarebbe una richiesta al secondo per nodo, tutte 404.
+    // An empty hash identifies nothing: asking for /assets-api/doc/ on every
+    // frame would be a request per second per node, all 404s.
     if (hash === "") return MISSING_FOREVER;
     const key = `${docId}/${hash}`;
     const found = this.entries.get(key);
@@ -130,17 +130,17 @@ export class ImageCache {
   }
 
   /**
-   * Dimentica i fallimenti TRANSITORI, senza aspettarne la scadenza: la
-   * prossima `get` riparte subito e da capo (l'attesa torna alla base).
+   * Forgets TRANSIENT failures, without waiting for their expiry: the
+   * next `get` restarts immediately and from scratch (the wait goes back to the base).
    *
-   * La chiama chi ha una ragione per credere che il mondo sia cambiato -- la
-   * rete tornata, la scheda tornata in primo piano (vedi
-   * `attachImageRecovery`). Le voci pronte restano: il nome È il contenuto,
-   * quindi i byte a quell'URL non possono essere cambiati e ricaricarli
-   * sarebbe solo un lampeggio di segnaposto.
+   * It is called by whoever has a reason to believe the world has changed -- the
+   * network back, the tab back in the foreground (see
+   * `attachImageRecovery`). Ready entries stay: the name IS the content,
+   * so the bytes at that URL cannot have changed and reloading them
+   * would just be a flash of placeholder.
    *
-   * Ritorna quante voci ha dimenticato, che è ciò che rende osservabile "non
-   * c'era niente da riprovare".
+   * Returns how many entries it forgot, which is what makes "there was nothing to
+   * retry" observable.
    */
   retryMissing(): number {
     let forgotten = 0;
@@ -165,19 +165,19 @@ export class ImageCache {
     try {
       img = this.load(url);
     } catch {
-      // Nessun modo di caricare immagini in questo ambiente: riprovare non
-      // cambierebbe la risposta, quindi la voce è definitiva. E soprattutto
-      // nessuna eccezione dentro il loop di disegno.
+      // No way to load images in this environment: retrying would not
+      // change the answer, so the entry is final. And above all
+      // no exception inside the draw loop.
       const dead: Entry = { status: "missing", image: null, failures: failures + 1 };
       this.entries.set(key, dead);
       return dead;
     }
     img.onload = () => {
-      // Un `load` su byte non decodificabili esiste (alcuni browser lo
-      // emettono lo stesso): un elemento di dimensione zero non produce pixel,
-      // quindi vale come mancante -- meglio il segnaposto del nulla. È
-      // transitorio come un errore di rete: una risposta troncata a metà arriva
-      // esattamente così.
+      // A `load` on undecodable bytes exists (some browsers
+      // emit it anyway): a zero-size element produces no pixels,
+      // so it counts as missing -- better the placeholder than nothing. It is
+      // transient like a network error: a response truncated halfway arrives
+      // exactly like this.
       const ok = img.naturalWidth > 0 && img.naturalHeight > 0;
       this.settle(key, loading, ok ? { status: "ready", image: img, failures: 0 } : this.retryable(failures));
     };
@@ -195,10 +195,10 @@ export class ImageCache {
     };
   }
 
-  // La voce si aggiorna solo se è ANCORA quella che aveva avviato questo
-  // caricamento: fra la partenza e la risposta possono essere passati un
-  // `retryMissing()` e un secondo tentativo, e la risposta vecchia (un errore
-  // su una richiesta ormai abbandonata) non deve cancellare il nuovo.
+  // The entry is updated only if it is STILL the one that started this
+  // load: between the start and the response a `retryMissing()` and a
+  // second attempt may have passed, and the old response (an error
+  // on a request now abandoned) must not erase the new one.
   private settle(key: string, started: Entry, next: Entry): void {
     if (this.entries.get(key) !== started) return;
     this.entries.set(key, next);
@@ -206,9 +206,9 @@ export class ImageCache {
   }
 }
 
-// Il minimo che serve per agganciare e sganciare un ascoltatore. Dichiarato
-// così invece che `Window`/`Document` perché è tutto ciò che questa funzione
-// usa, ed è ciò che le permette di essere verificata senza né l'uno né l'altro.
+// The minimum needed to attach and detach a listener. Declared
+// like this instead of `Window`/`Document` because it is all this function
+// uses, and it is what allows it to be verified without either.
 interface Listenable {
   addEventListener(type: string, listener: () => void): void;
   removeEventListener(type: string, listener: () => void): void;
@@ -218,16 +218,16 @@ interface VisibilitySource extends Listenable {
 }
 
 /**
- * Aggancia i due segnali che rendono sensato riprovare SUBITO, invece di
- * aspettare la scadenza del tentativo:
+ * Attaches the two signals that make it sensible to retry IMMEDIATELY, instead of
+ * waiting for the attempt's expiry:
  *
- *  - `online`: la rete è tornata, quindi ogni fallimento accumulato mentre non
- *    c'era è per definizione da rifare;
- *  - la scheda che torna in primo piano: un browser sospende (e a volte
- *    interrompe) le richieste di una scheda in secondo piano, e quelle
- *    interruzioni arrivano qui come `error`.
+ *  - `online`: the network is back, so every failure accumulated while it was not
+ *    there is by definition to be redone;
+ *  - the tab coming back to the foreground: a browser suspends (and sometimes
+ *    interrupts) a background tab's requests, and those
+ *    interruptions arrive here as `error`.
  *
- * Ritorna la funzione che sgancia, perché è montata da un `useEffect`.
+ * Returns the function that detaches, because it is mounted by a `useEffect`.
  */
 export function attachImageRecovery(
   cache: ImageCache = imageCache,
@@ -248,10 +248,10 @@ export function attachImageRecovery(
   };
 }
 
-// La cache che usa il renderer. Una sola per pagina: costruirne una per frame
-// (o per componente) annullerebbe esattamente ciò per cui esiste.
+// The cache the renderer uses. One per page: building one per frame
+// (or per component) would cancel exactly what it exists for.
 //
-// Non la usa l'EXPORT: un file esportato non deve dipendere da quali immagini
-// questa sessione ha già visto passare (vedi export/exportScene.ts, che i byte
-// se li risolve da sé e li ASPETTA).
+// The EXPORT does not use it: an exported file must not depend on which images
+// this session has already seen go by (see export/exportScene.ts, which resolves
+// the bytes by itself and WAITS for them).
 export const imageCache = new ImageCache();

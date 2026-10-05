@@ -1,14 +1,14 @@
-// LA CASCATA DEGLI STILI di un SVG: attributi di presentazione < regole di un
-// <style> < attributo `style=""` (< `!important` di un <style>).
+// THE STYLE CASCADE of an SVG: presentation attributes < rules of a
+// <style> < `style=""` attribute (< `!important` of a <style>).
 //
-// Niente getComputedStyle: l'importer deve dare gli stessi risultati in jsdom,
-// nel browser e senza layout, e un documento SVG parsato da DOMParser non è
-// nemmeno agganciato a una finestra. Si calcola a mano, ed è poco: le
-// proprietà che il modello sa esprimere sono una ventina.
+// No getComputedStyle: the importer must give the same results in jsdom,
+// in the browser and without layout, and an SVG document parsed by DOMParser is
+// not even attached to a window. It is computed by hand, and it is little: the
+// properties the model can express are about twenty.
 
 export type Props = Map<string, string>;
 
-/** Le proprietà che si ereditano dagli antenati (le altre valgono solo sull'elemento). */
+/** The properties inherited from ancestors (the others apply only to the element). */
 export const INHERITED = new Set([
   "fill", "fill-opacity", "fill-rule",
   "stroke", "stroke-width", "stroke-opacity", "stroke-linecap", "stroke-linejoin",
@@ -18,7 +18,7 @@ export const INHERITED = new Set([
   "letter-spacing", "white-space",
 ]);
 
-/** Gli attributi di presentazione che leggiamo (anche da `style`). */
+/** The presentation attributes we read (also from `style`). */
 export const PRESENTATION = new Set([
   ...INHERITED,
   "opacity", "display", "stop-color", "stop-opacity", "transform",
@@ -26,8 +26,8 @@ export const PRESENTATION = new Set([
   "vector-effect",
 ]);
 
-// Divide "a:b;c:d" rispettando parentesi e virgolette: un `url(data:image/png;
-// base64,...)` o un `font-family:"a;b"` contengono `;` che NON separano.
+// Splits "a:b;c:d" respecting parentheses and quotes: a `url(data:image/png;
+// base64,...)` or a `font-family:"a;b"` contain `;` that do NOT separate.
 export function splitTopLevel(s: string, sep: string): string[] {
   const out: string[] = [];
   let depth = 0;
@@ -68,7 +68,7 @@ export function parseDeclarations(text: string): Decl[] {
 
 export interface CssRule { selector: string; decls: Decl[]; specificity: number; order: number }
 
-/** Specificità approssimata (id*10000 + classi/attributi/pseudo*100 + tag). */
+/** Approximate specificity (id*10000 + classes/attributes/pseudo*100 + tag). */
 export function specificityOf(selector: string): number {
   const s = selector.replace(/\[[^\]]*\]/g, " [] ").replace(/::?[a-z-]+(\([^)]*\))?/gi, " : ");
   const ids = (s.match(/#[\w-]+/g) ?? []).length;
@@ -79,14 +79,14 @@ export function specificityOf(selector: string): number {
 
 export interface ParsedCss {
   rules: CssRule[];
-  /** at-rule incontrate e ignorate (@keyframes, @media, @import, ...). */
+  /** at-rules encountered and ignored (@keyframes, @media, @import, ...). */
   atRules: string[];
 }
 
 /**
- * Il testo di un <style> in regole. Gli at-rule (@media, @keyframes,
- * @font-face, @import) si saltano e si riportano: l'importer li segnala invece
- * di far finta di averli applicati.
+ * The text of a <style> into rules. At-rules (@media, @keyframes,
+ * @font-face, @import) are skipped and reported: the importer flags them instead
+ * of pretending to have applied them.
  */
 export function parseCss(text: string, orderStart = 0): ParsedCss {
   const css = text.replace(/\/\*[\s\S]*?\*\//g, "").replace(/<!\[CDATA\[|\]\]>/g, "");
@@ -97,20 +97,20 @@ export function parseCss(text: string, orderStart = 0): ParsedCss {
   while (i < css.length) {
     const open = css.indexOf("{", i);
     if (open < 0) {
-      // un at-rule senza blocco (@import url(...);)
+      // an at-rule without a block (@import url(...);)
       const tail = css.slice(i).trim();
       if (tail.startsWith("@")) atRules.push(tail.split(/[\s(]/)[0]);
       break;
     }
     let prelude = css.slice(i, open).trim();
-    // Istruzioni senza blocco davanti alla regola (`@import url(x); .a {...}`):
-    // si riportano e NON si portano via la regola che segue.
+    // Statements without a block before the rule (`@import url(x); .a {...}`):
+    // they are reported and do NOT take away the rule that follows.
     const semi = prelude.lastIndexOf(";");
     if (semi >= 0) {
       for (const at of prelude.slice(0, semi).match(/@[\w-]+/g) ?? []) atRules.push(at.toLowerCase());
       prelude = prelude.slice(semi + 1).trim();
     }
-    // trova la graffa che chiude, con annidamento
+    // find the closing brace, with nesting
     let depth = 1;
     let j = open + 1;
     while (j < css.length && depth > 0) {
@@ -121,7 +121,7 @@ export function parseCss(text: string, orderStart = 0): ParsedCss {
     const body = css.slice(open + 1, depth === 0 ? j - 1 : j);
     i = j;
     if (prelude.startsWith("@")) {
-      // `@import ...;` può precedere un'altra regola nello stesso prelude
+      // `@import ...;` may precede another rule in the same prelude
       const at = /@[\w-]+/.exec(prelude);
       if (at) atRules.push(at[0].toLowerCase());
       continue;
@@ -137,18 +137,18 @@ export function parseCss(text: string, orderStart = 0): ParsedCss {
 }
 
 /**
- * Le proprietà DICHIARATE su un elemento, con la precedenza giusta.
- * `ruleDecls` sono le dichiarazioni delle regole che lo colpiscono, già
- * ordinate per specificità e ordine di apparizione.
+ * The properties DECLARED on an element, with the right precedence.
+ * `ruleDecls` are the declarations of the rules that hit it, already
+ * sorted by specificity and order of appearance.
  */
 export function declaredProps(
   el: Element,
   ruleDecls: readonly Decl[] | undefined,
 ): Props {
   const props: Props = new Map();
-  // Si scorrono gli attributi PRESENTI (pochi) invece di chiedere i ~35 nomi
-  // possibili: su un documento da migliaia di elementi la differenza è di
-  // un ordine di grandezza (soprattutto fuori da un browser vero).
+  // The PRESENT attributes (few) are scanned instead of asking for the ~35 possible
+  // names: on a document of thousands of elements the difference is
+  // an order of magnitude (especially outside a real browser).
   for (const a of Array.from(el.attributes)) {
     if (!PRESENTATION.has(a.name)) continue;
     const v = a.value.trim();
@@ -167,7 +167,7 @@ export function declaredProps(
   return props;
 }
 
-/** Il valore finale di un elemento: dichiarato oppure ereditato dal genitore. */
+/** The final value of an element: declared or inherited from the parent. */
 export function computeStyle(own: Props, parent: Props | null): Props {
   const out: Props = new Map();
   if (parent) for (const [k, v] of parent) if (INHERITED.has(k)) out.set(k, v);

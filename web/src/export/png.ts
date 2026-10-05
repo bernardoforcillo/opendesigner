@@ -1,43 +1,43 @@
 import { drawScene, type ImageSource } from "../renderer/canvasRenderer";
 import type { ExportRegion } from "./region";
 
-// EXPORT PNG — un canvas FUORI SCHERMO, alla scala scelta.
+// PNG EXPORT — an OFFSCREEN canvas, at the chosen scale.
 //
-// Il disegno lo fa `drawScene`, cioè il renderer del canvas, non una seconda
-// copia scritta per l'export. È l'unico modo perché l'immagine esportata resti
-// fedele mentre l'editor cresce: ogni forma, ogni stile e ogni correzione che
-// arriveranno nel renderer arriveranno anche qui, senza che nessuno debba
-// ricordarsi di aggiornare due posti. Il prezzo è una `SceneState` ridotta ai
-// nodi da esportare (la costruisce export/region.ts) e una camera COSTRUITA
-// invece che letta -- che è anche il modo in cui l'export smette di dipendere
-// da dove l'utente aveva scrollato.
+// The drawing is done by `drawScene`, that is the canvas's renderer, not a second
+// copy written for the export. It is the only way for the exported image to stay
+// faithful as the editor grows: every shape, every style and every fix that
+// will arrive in the renderer will arrive here too, without anyone having to
+// remember to update two places. The price is a `SceneState` reduced to the
+// nodes to export (built by export/region.ts) and a camera BUILT
+// instead of read -- which is also how the export stops depending
+// on where the user had scrolled.
 
-// Le scale offerte. 1x/2x/3x sono le densità che contano davvero (schermo
-// normale, retina, telefono ad alta densità); un moltiplicatore libero
-// aggiungerebbe solo modi di sbagliare.
+// The scales offered. 1x/2x/3x are the densities that really matter (normal
+// screen, retina, high-density phone); a free multiplier
+// would only add ways to get it wrong.
 export const EXPORT_SCALES = [1, 2, 3] as const;
 export type ExportScale = (typeof EXPORT_SCALES)[number];
 
-// IL TETTO DEL CANVAS, e perché serve un controllo NOSTRO.
+// THE CANVAS CAP, and why we need a check of OUR OWN.
 //
-// Un canvas troppo grande non fallisce nello stesso modo dappertutto. Firefox
-// non alloca e `getContext("2d")` ritorna `null` -- rumoroso, e lo intercetta
-// il controllo più sotto. Chrome invece ritorna un contesto REGOLARE su un
-// bitmap che non esiste: `drawScene` disegna senza errori, non si vede niente,
-// e `toBlob` produce un PNG valido e VUOTO. Senza questo tetto l'utente
-// scaricherebbe un'immagine bianca senza un solo messaggio -- il modo peggiore
-// di fallire, perché sembra riuscito.
+// A canvas that is too large does not fail the same way everywhere. Firefox
+// does not allocate and `getContext("2d")` returns `null` -- loud, and it is caught by
+// the check further below. Chrome instead returns a REGULAR context on a
+// bitmap that does not exist: `drawScene` draws without errors, nothing is seen,
+// and `toBlob` produces a valid and EMPTY PNG. Without this cap the user
+// would download a white image without a single message -- the worst way
+// to fail, because it looks successful.
 //
-// I due numeri sono limiti veri dei motori, non stime, e sono DUE perché i
-// motori ne impongono due indipendenti:
-//   - 32 767 px per LATO: il più stretto dei limiti per lato in circolazione
-//     (Firefox; Chrome e Safari arrivano a 65 535). Un nastro 40 000 × 100 ha
-//     un'area minuscola e resta comunque impossibile.
-//   - 268 435 456 px di AREA (2^28, il limite di Chrome, il più stretto fra
-//     quelli di area): è questo che una regione di 6000 × 6000 unità a 3x
-//     supera, con 324 Mpx e nessun lato fuori norma.
-// Sotto entrambi il canvas si alloca; sopra ci sarebbero comunque più di un
-// miliardo di byte di pixel da codificare.
+// The two numbers are real engine limits, not estimates, and there are TWO because
+// engines impose two independent ones:
+//   - 32,767 px per SIDE: the tightest of the per-side limits in circulation
+//     (Firefox; Chrome and Safari reach 65,535). A 40,000 × 100 ribbon has
+//     a tiny area and is impossible all the same.
+//   - 268,435,456 px of AREA (2^28, Chrome's limit, the tightest among
+//     the area ones): it is what a region of 6000 × 6000 units at 3x
+//     exceeds, with 324 Mpx and no side out of range.
+// Below both the canvas is allocated; above there would be more than a
+// billion bytes of pixels to encode anyway.
 export const MAX_CANVAS_SIDE = 32_767;
 export const MAX_CANVAS_AREA = 268_435_456;
 
@@ -46,22 +46,22 @@ function megapixels(px: number): string {
 }
 
 /**
- * `null` se un canvas di `width × height` è allocabile, altrimenti il MOTIVO
- * per cui non lo è -- già scritto per essere letto dall'utente, perché è
- * esattamente quello che ne farà `runExport` (un `notice`, come ogni altro
- * modo in cui questo export può non riuscire).
+ * `null` if a canvas of `width × height` is allocatable, otherwise the REASON
+ * why it is not -- already written to be read by the user, because it is
+ * exactly what `runExport` will do with it (a `notice`, like every other
+ * way this export can fail).
  *
- * Il messaggio dice la dimensione chiesta, il limite e le vie d'uscita: un
- * avviso che dicesse solo "troppo grande" lascerebbe l'utente a indovinare.
+ * The message states the requested size, the limit and the ways out: a
+ * warning that only said "too large" would leave the user guessing.
  */
 export function canvasLimitMessage(width: number, height: number): string | null {
   const area = width * height;
   if (width <= MAX_CANVAS_SIDE && height <= MAX_CANVAS_SIDE && area <= MAX_CANVAS_AREA) return null;
   return (
-    `l'immagine chiesta è troppo grande: ${width}×${height} px (${megapixels(area)}), ` +
-    `oltre il limite del canvas del browser (${MAX_CANVAS_SIDE} px per lato, ` +
-    `${megapixels(MAX_CANVAS_AREA)} in tutto); ` +
-    `scegli una scala più bassa, esporta una selezione più piccola, o usa l'SVG`
+    `the requested image is too large: ${width}×${height} px (${megapixels(area)}), ` +
+    `beyond the browser's canvas limit (${MAX_CANVAS_SIDE} px per side, ` +
+    `${megapixels(MAX_CANVAS_AREA)} in total); ` +
+    `choose a lower scale, export a smaller selection, or use SVG`
   );
 }
 
@@ -70,18 +70,18 @@ function defaultCanvas(): HTMLCanvasElement {
 }
 
 /**
- * Disegna la regione su un canvas fuori schermo di `bounds * scale` pixel.
+ * Draws the region on an offscreen canvas of `bounds * scale` pixels.
  *
- * Il canvas si crea per iniezione così il calcolo resta verificabile senza un
- * contesto 2D vero (jsdom non ne ha uno): la prova che i PIXEL siano giusti
- * arriva dalla verifica in browser, quella che si può fare qui è che il canvas
- * sia della dimensione giusta e trasformato nel modo giusto.
+ * The canvas is created by injection so the computation stays verifiable without a
+ * real 2D context (jsdom has none): the proof that the PIXELS are right
+ * comes from browser verification, what can be done here is that the canvas
+ * is the right size and transformed the right way.
  *
- * `images` sono gli asset GIÀ risolti e GIÀ attesi (li prepara
- * export/exportScene.ts). Vanno passati: `drawScene` è sincrona e senza una
- * sorgente pronta disegnerebbe il segnaposto, quindi lasciarla al suo default
- * -- la cache condivisa del renderer, che si riempie quando può -- vorrebbe
- * dire un file che dipende da che cosa questa sessione ha già visto passare.
+ * `images` are the assets ALREADY resolved and ALREADY awaited (prepared by
+ * export/exportScene.ts). They must be passed: `drawScene` is synchronous and without a
+ * ready source it would draw the placeholder, so leaving it at its default
+ * -- the renderer's shared cache, which fills when it can -- would mean
+ * a file that depends on what this session has already seen go by.
  */
 export function renderRegionToCanvas(
   region: ExportRegion,
@@ -90,15 +90,15 @@ export function renderRegionToCanvas(
   images?: ImageSource,
 ): HTMLCanvasElement {
   const { bounds } = region;
-  // Per ECCESSO, e mai sotto 1: arrotondare per difetto taglierebbe l'ultima
-  // frazione di pixel del disegno, e un canvas con un lato a zero fa fallire
-  // toBlob invece di produrre un'immagine vuota.
+  // ROUNDING UP, and never below 1: rounding down would crop the last
+  // fraction of a pixel of the drawing, and a canvas with a zero side makes
+  // toBlob fail instead of producing an empty image.
   const width = Math.max(1, Math.ceil(bounds.width * scale));
   const height = Math.max(1, Math.ceil(bounds.height * scale));
 
-  // Il tetto si controlla PRIMA di allocare: oltre il limite Chrome non
-  // fallisce, disegna nel vuoto (vedi MAX_CANVAS_AREA). L'errore diventa un
-  // avviso in runExport, come ogni altro modo in cui l'export non riesce.
+  // The cap is checked BEFORE allocating: beyond the limit Chrome does not
+  // fail, it draws into the void (see MAX_CANVAS_AREA). The error becomes a
+  // warning in runExport, like every other way the export fails.
   const tooBig = canvasLimitMessage(width, height);
   if (tooBig) throw new Error(tooBig);
 
@@ -106,17 +106,17 @@ export function renderRegionToCanvas(
   canvas.width = width;
   canvas.height = height;
   const ctx = canvas.getContext("2d");
-  if (!ctx) throw new Error("il contesto 2D del canvas di export non è disponibile");
+  if (!ctx) throw new Error("the export canvas's 2D context is not available");
 
-  // La camera dell'export: zoom = scala scelta, origine spostata sull'angolo
-  // della regione. Non è la camera dell'utente e non la legge -- è costruita
-  // qui apposta. Insieme alle immagini risolte dal chiamante è ciò che
-  // garantisce che due export dello stesso documento diano lo stesso file: né
-  // da dove è la vista, né da che cosa è già passato dallo schermo.
+  // The export camera: zoom = chosen scale, origin moved to the region's
+  // corner. It is not the user's camera and does not read it -- it is built
+  // here on purpose. Together with the images resolved by the caller it is what
+  // guarantees that two exports of the same document give the same file: neither
+  // where the view is, nor what has already gone through the screen.
   //
-  // dpr: 1 perché un canvas fuori schermo non ha un dispositivo. La scala la
-  // decide l'utente (1x/2x/3x) e il devicePixelRatio della macchina non deve
-  // moltiplicarla.
+  // dpr: 1 because an offscreen canvas has no device. The scale is
+  // decided by the user (1x/2x/3x) and the machine's devicePixelRatio must not
+  // multiply it.
   drawScene(
     ctx,
     region.scene,
@@ -127,15 +127,15 @@ export function renderRegionToCanvas(
 }
 
 /**
- * I byte PNG del canvas. `toBlob` è asincrona e può rispondere `null` (memoria
- * esaurita, canvas contaminato): diventa un errore, perché un download di un
- * file vuoto sarebbe peggio di un messaggio.
+ * The canvas's PNG bytes. `toBlob` is asynchronous and may answer `null` (memory
+ * exhausted, tainted canvas): it becomes an error, because downloading an
+ * empty file would be worse than a message.
  */
 export function canvasToPngBlob(canvas: HTMLCanvasElement): Promise<Blob> {
   return new Promise((resolve, reject) => {
     canvas.toBlob((blob) => {
       if (blob) resolve(blob);
-      else reject(new Error("la codifica PNG non ha prodotto nessun dato"));
+      else reject(new Error("PNG encoding produced no data"));
     }, "image/png");
   });
 }

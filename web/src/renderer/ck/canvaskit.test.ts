@@ -12,7 +12,7 @@ describe("nearestWeight", () => {
     expect(nearestWeight(css)).toBe(want);
   });
 
-  it("senza valore ricade sul normale, e il risultato è sempre un peso con un file", () => {
+  it("without a value it falls back to normal, and the result is always a weight with a file", () => {
     expect(nearestWeight(undefined)).toBe(400);
     for (const css of ["", "1", "450", "550", "650", "750", "1000", "-5"]) {
       expect(FONT_WEIGHTS).toContain(nearestWeight(css));
@@ -20,7 +20,7 @@ describe("nearestWeight", () => {
   });
 });
 
-// Un CanvasKit finto, quanto basta a FontBook: tiene traccia di cosa si crea e si libera.
+// A fake CanvasKit, just enough for FontBook: it tracks what is created and freed.
 function fakeCK() {
   const faces: { weight: string; deleted: boolean }[] = [];
   const fonts: { size: number; face: unknown; deleted: boolean }[] = [];
@@ -50,14 +50,14 @@ function fakeCK() {
 const enc = (s: string) => new TextEncoder().encode(s).buffer as ArrayBuffer;
 
 describe("FontBook", () => {
-  it("senza il peso di base non c'è nessun font: ready() lancia se non arriva", async () => {
+  it("without the base weight there is no font: ready() throws if it does not arrive", async () => {
     const { CK } = fakeCK();
     const book = new FontBook(CK, () => {}, async () => new ArrayBuffer(0));
     expect(book.fontFor("400", 16)).toBeNull();
     await expect(book.ready()).rejects.toThrow();
   });
 
-  it("dopo ready() il 400 c'è; un peso mancante si usa dal più vicino e poi arriva", async () => {
+  it("after ready() 400 is there; a missing weight uses the nearest and then arrives", async () => {
     const { CK, faces } = fakeCK();
     const onLoad = vi.fn();
     const urls: string[] = [];
@@ -65,20 +65,20 @@ describe("FontBook", () => {
     await book.ready();
     expect(urls).toEqual(["/fonts/Inter-400.ttf"]);
 
-    // Il 700 non c'è: si disegna col 400 e parte il download.
+    // 700 is not there: it draws with 400 and the download starts.
     const f1 = book.fontFor("bold", 20);
     expect(f1).not.toBeNull();
     expect((f1 as unknown as { face: { weight: string } }).face.weight).toBe("/fonts/Inter-400.ttf");
     await vi.waitFor(() => expect(urls).toContain("/fonts/Inter-700.ttf"));
     await vi.waitFor(() => expect(onLoad).toHaveBeenCalledTimes(2)); // 400 e 700
 
-    // Ora il 700 è pronto e si usa.
+    // Now 700 is ready and is used.
     const f2 = book.fontFor("bold", 20);
     expect((f2 as unknown as { face: { weight: string } }).face.weight).toBe("/fonts/Inter-700.ttf");
     expect(faces).toHaveLength(2);
   });
 
-  it("non scarica due volte lo stesso peso e riusa i Font per (peso, corpo)", async () => {
+  it("does not download the same weight twice and reuses the Fonts per (weight, size)", async () => {
     const { CK, fonts } = fakeCK();
     let calls = 0;
     const book = new FontBook(CK, () => {}, async (u) => { calls++; return enc(u); });
@@ -86,13 +86,13 @@ describe("FontBook", () => {
     book.fontFor("600", 16);
     book.fontFor("600", 16);
     book.fontFor("600", 16);
-    await vi.waitFor(() => expect(calls).toBe(2)); // 400 + 600, una volta
+    await vi.waitFor(() => expect(calls).toBe(2)); // 400 + 600, once
     expect(book.fontFor("400", 16)).toBe(book.fontFor("400", 16));
     expect(book.fontFor("400", 16)).not.toBe(book.fontFor("400", 17));
     expect(fonts.length).toBeGreaterThan(0);
   });
 
-  it("un peso che non si scarica non rompe il disegno: si resta sul più vicino", async () => {
+  it("a weight that does not download does not break the drawing: it stays on the nearest", async () => {
     const { CK } = fakeCK();
     const book = new FontBook(CK, () => {}, async (u) => {
       if (u.includes("700")) throw new Error("rete");
@@ -118,13 +118,13 @@ describe("FontBook", () => {
 });
 
 describe("skMatrix", () => {
-  it("riordina (a b c d e f) del canvas 2D in una 3x3 di Skia per righe", () => {
+  it("reorders (a b c d e f) from canvas 2D into a Skia 3x3 by rows", () => {
     // x' = a x + c y + e ; y' = b x + d y + f
     expect(skMatrix({ a: 1, b: 2, c: 3, d: 4, e: 5, f: 6 })).toEqual([1, 3, 5, 2, 4, 6, 0, 0, 1]);
   });
 
-  it("applicata a un punto dà lo stesso risultato della formula del canvas", () => {
-    const t = { a: 0.8, b: 0.6, c: -0.6, d: 0.8, e: 10, f: -4 }; // rotazione + traslazione
+  it("applied to a point it gives the same result as the canvas formula", () => {
+    const t = { a: 0.8, b: 0.6, c: -0.6, d: 0.8, e: 10, f: -4 }; // rotation + translation
     const m = skMatrix(t);
     const x = 7, y = 3;
     const sx = m[0] * x + m[1] * y + m[2];

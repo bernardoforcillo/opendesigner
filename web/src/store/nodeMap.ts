@@ -1,27 +1,27 @@
 import type { NodeLite } from "./types";
 
-// MAPPA PERSISTENTE id -> valore (usata per i nodi della scena e per gli extent
-// dell'indice di scena).
+// PERSISTENT MAP id -> value (used for the scene nodes and for the extents
+// of the scene index).
 //
-// `SceneState` è immutabile e ogni op ne produce una nuova. Con `nodes` come
-// oggetto semplice ogni op copiava TUTTE le voci ({...nodes}): ~9 ms a 20.000
-// nodi, per ogni passo di un trascinamento, anche quando l'op ne toccava uno.
+// `SceneState` is immutable and every op produces a new one. With `nodes` as a
+// plain object every op copied ALL entries ({...nodes}): ~9 ms at 20,000
+// nodes, for every step of a drag, even when the op touched only one.
 //
-// Qui le voci stanno in BUCKET_COUNT secchi (oggetti semplici, scelti dall'hash
-// dell'id). Una modifica copia l'array dei secchi (256 puntatori) e i soli secchi
-// toccati (~N/256 voci l'uno): O(√N) invece di O(N), e tutto ciò che non cambia
-// condivide l'identità -- un secchio uguale a quello della versione precedente
-// non ha bisogno di essere confrontato voce per voce (vedi diff).
+// Here entries live in BUCKET_COUNT buckets (plain objects, chosen by the hash
+// of the id). A change copies the buckets array (256 pointers) and only the touched
+// buckets (~N/256 entries each): O(√N) instead of O(N), and everything that does not change
+// shares identity -- a bucket equal to the previous version's
+// does not need to be compared entry by entry (see diff).
 //
-// Le letture costano un hash dell'id e due accessi. La forma è CANONICA: un
-// secchio vuoto è "assente", quindi due mappe con le stesse voci sono
-// strutturalmente uguali qualunque sia la storia (toEqual nei test).
+// Reads cost one id hash and two accesses. The shape is CANONICAL: an empty
+// bucket is "absent", so two maps with the same entries are
+// structurally equal whatever the history (toEqual in tests).
 const BUCKET_COUNT = 256;
 type Bucket<V> = Record<string, V>;
 
 function bucketOf(id: string): number {
-  // FNV-1a su tutti i caratteri: gli id sono uuid, ma anche id corti e sequenziali
-  // ("n1", "n2", …) devono distribuirsi.
+  // FNV-1a over all characters: ids are uuids, but even short sequential ids
+  // ("n1", "n2", …) must distribute well.
   let h = 0x811c9dc5;
   for (let i = 0; i < id.length; i++) {
     h ^= id.charCodeAt(i);
@@ -31,7 +31,7 @@ function bucketOf(id: string): number {
 }
 
 export class PMap<V> {
-  // Costruttore interno: si parte da PMap.emptyOf / PMap.from.
+  // Internal constructor: start from PMap.emptyOf / PMap.from.
   constructor(
     readonly buckets: readonly (Bucket<V> | undefined)[],
     readonly size: number,
@@ -53,8 +53,8 @@ export class PMap<V> {
     return b ? b[id] : undefined;
   }
 
-  // Come l'accesso a indice della vecchia mappa: tipato come presente. Per i
-  // call site che già verificano l'esistenza (o per cui l'id è un invariante).
+  // Like index access on the old map: typed as present. For
+  // call sites that already check existence (or for which the id is an invariant).
   at(id: string): V {
     return this.get(id) as V;
   }
@@ -77,7 +77,7 @@ export class PMap<V> {
     return e.done();
   }
 
-  // Più modifiche con una sola copia dei secchi toccati.
+  // Several changes with a single copy of the touched buckets.
   edit(): PEditor<V> {
     return new PEditor<V>(this);
   }
@@ -108,10 +108,10 @@ export class PMap<V> {
     return out;
   }
 
-  // Gli id la cui voce è diversa (o assente) rispetto a `prev`: nuove e cambiate
-  // in `changed`, presenti solo in `prev` in `removed`. Salta ogni secchio con la
-  // stessa identità, quindi costa quanto i secchi toccati. Ritorna false se
-  // supera `limit` voci.
+  // The ids whose entry differs (or is absent) compared to `prev`: new and changed
+  // in `changed`, present only in `prev` in `removed`. Skips every bucket with the
+  // same identity, so it costs as much as the touched buckets. Returns false if
+  // it exceeds `limit` entries.
   diff(prev: PMap<V>, changed: string[], removed: string[], limit = Infinity): boolean {
     for (let i = 0; i < BUCKET_COUNT; i++) {
       const a = this.buckets[i];
@@ -134,8 +134,8 @@ export class PMap<V> {
   }
 }
 
-// Un editor transitorio: copia ciascun secchio una volta sola, alla prima
-// scrittura. Va chiuso con done(); non si riusa dopo.
+// A transient editor: copies each bucket only once, on the first
+// write. Must be closed with done(); not reused afterwards.
 export class PEditor<V> {
   private buckets: (Bucket<V> | undefined)[];
   private owned = new Set<number>();
@@ -182,14 +182,14 @@ export class PEditor<V> {
     delete b[id];
     this.size--;
     this.touched = true;
-    // Canonica: un secchio vuoto è "assente".
+    // Canonical: an empty bucket is "absent".
     for (const _ in b) return;
     this.buckets[i] = undefined;
     this.owned.delete(i);
   }
 
-  // Una vista di SOLA LETTURA e TRANSITORIA dello stato corrente (nessuna copia):
-  // le scritture successive la mutano, quindi va usata subito e scartata.
+  // A READ-ONLY and TRANSIENT view of the current state (no copy):
+  // subsequent writes mutate it, so it must be used immediately and discarded.
   view(): PMap<V> {
     return new PMap<V>(this.buckets, this.size);
   }
@@ -200,7 +200,7 @@ export class PEditor<V> {
   }
 }
 
-// La mappa dei nodi di una scena.
+// The scene's node map.
 export type NodeMap = PMap<NodeLite>;
 export type NodeEditor = PEditor<NodeLite>;
 export const NodeMap = {
@@ -208,7 +208,7 @@ export const NodeMap = {
   from: (entries: Iterable<readonly [string, NodeLite]> | Record<string, NodeLite>): NodeMap => PMap.from<NodeLite>(entries),
 };
 
-// Per i punti che hanno già un oggetto id -> nodo (fixture, import).
+// For the points that already have an id -> node object (fixtures, import).
 export function nodesOf(record: Record<string, NodeLite>): NodeMap {
   return NodeMap.from(record);
 }
@@ -217,7 +217,7 @@ export function nodesFromEntries(entries: Iterable<readonly [string, NodeLite]>)
   return NodeMap.from(entries);
 }
 
-// `base` con le voci di `patch` sostituite o aggiunte (fixture).
+// `base` with the entries of `patch` replaced or added (fixtures).
 export function nodesWith(base: NodeMap, patch: Record<string, NodeLite>): NodeMap {
   const e = base.edit();
   for (const [id, n] of Object.entries(patch)) e.set(id, n);

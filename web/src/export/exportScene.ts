@@ -7,88 +7,88 @@ import { exportRegion, type ExportRegion, type ExportScope } from "./region";
 import { nodesToSvg, type MeasureText, type ResolveImageHref } from "./svg";
 import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "./png";
 
-// EXPORT — il comando.
+// EXPORT — the command.
 //
-// Perché LATO CLIENT. Il design originale prevedeva `ExportImage` come RPC
-// server-stream con avanzamento. Per un editor LOCALE è la forma sbagliata: il
-// browser ha già la scena e già il renderer che la disegna: mandare il
-// documento a Go, ridisegnarlo lì con un secondo renderer e riportare indietro
-// i byte aggiungerebbe un giro di rete e -- soprattutto -- una SECONDA
-// implementazione del disegno, destinata a divergere da quella che l'utente
-// vede sullo schermo. L'export sarebbe l'unica funzione dell'app che non mostra
-// ciò che mostra il canvas. L'avanzamento, poi, ha senso su un rendering di
-// minuti, non su un canvas che si disegna in un frame.
+// Why CLIENT SIDE. The original design had `ExportImage` as a
+// server-stream RPC with progress. For a LOCAL editor it is the wrong shape: the
+// browser already has the scene and already has the renderer that draws it: sending the
+// document to Go, redrawing it there with a second renderer and bringing back
+// the bytes would add a network round trip and -- above all -- a SECOND
+// implementation of the drawing, destined to diverge from the one the user
+// sees on screen. Export would be the only function of the app that does not show
+// what the canvas shows. Progress, then, makes sense on a rendering that takes
+// minutes, not on a canvas that draws in a frame.
 //
-// Quindi: niente `ExportImage` nel proto, niente route sul server, nessun
-// percorso a metà. Il PNG passa da un canvas fuori schermo (export/png.ts) e
-// l'SVG da un generatore puro (export/svg.ts).
+// So: no `ExportImage` in the proto, no route on the server, no
+// half-way path. The PNG goes through an offscreen canvas (export/png.ts) and
+// the SVG through a pure generator (export/svg.ts).
 
 export type ExportFormat = "png" | "svg";
 
 export interface ExportRequest {
   format: ExportFormat;
   scope: ExportScope;
-  // Usata solo dal PNG: l'SVG è vettoriale, una "scala" non vuol dire niente.
+  // Used only by the PNG: the SVG is vector, a "scale" means nothing.
   scale: ExportScale;
 }
 
-// Le dipendenze di CONTORNO (canvas, codifica, salvataggio, misura del testo),
-// iniettabili perché nessuna delle quattro esiste in Node: è ciò che rende
-// verificabile il percorso senza un browser.
+// The OUTER dependencies (canvas, encoding, saving, text measuring),
+// injectable because none of the four exists in Node: it is what makes the path
+// verifiable without a browser.
 export interface ExportDeps {
   createCanvas?: () => HTMLCanvasElement;
   toPngBlob?: (canvas: HTMLCanvasElement) => Promise<Blob>;
   download?: (blob: Blob, filename: string) => void;
   measure?: MeasureText;
-  // I byte di un asset come data URI. Iniettabile come le altre: vuole `fetch`
-  // e `FileReader`, che in un test non ci sono. La usano ENTRAMBI i formati --
-  // l'SVG per incorporarli, il PNG per decodificarli e disegnarli.
+  // The bytes of an asset as a data URI. Injectable like the others: it needs `fetch`
+  // and `FileReader`, which are not there in a test. BOTH formats use it --
+  // the SVG to embed them, the PNG to decode and draw them.
   loadAssetDataUrl?: (docId: string, hash: string) => Promise<string | null>;
-  // Come si passa da quei byte a qualcosa che `drawImage` sa disegnare, per il
-  // PNG. Iniettabile perché vuole `new Image()` e una decodifica vera.
+  // How to go from those bytes to something `drawImage` can draw, for the
+  // PNG. Injectable because it needs `new Image()` and a real decode.
   decodeImage?: (dataUrl: string) => Promise<HTMLImageElement | null>;
 }
 
 const NOTHING_SELECTED =
-  "non c'è niente da esportare: seleziona qualcosa, oppure esporta l'intera pagina";
-const EMPTY_PAGE = "non c'è niente da esportare: la pagina è vuota";
+  "nothing to export: select something, or export the whole page";
+const EMPTY_PAGE = "nothing to export: the page is empty";
 
-// I caratteri che Windows non accetta in un nome di file (gli altri sistemi ne
-// vietano meno, quindi questo insieme va bene ovunque), più i caratteri di
-// controllo. Il nome del documento lo scrive l'utente e può contenerli.
+// The characters Windows does not accept in a file name (other systems
+// forbid fewer, so this set is fine everywhere), plus control
+// characters. The document name is written by the user and may contain them.
 const ILLEGAL_IN_FILENAME = /[\\/:*?"<>|\x00-\x1f]/g;
 
-// Spazi, trattini e punti in TESTA o in CODA: un nome che finisce con un punto
-// è invalido su Windows, uno che comincia con un punto è un file nascosto su
-// Unix, e i trattini agli estremi sono quasi sempre il residuo dei caratteri
-// appena tolti (un documento chiamato "///" darebbe "---").
+// Spaces, hyphens and dots at the START or END: a name ending with a dot
+// is invalid on Windows, one starting with a dot is a hidden file on
+// Unix, and hyphens at the ends are almost always the leftover of the characters
+// just removed (a document named "///" would give "---").
 const TRIM_FROM_FILENAME = /^[-\s.]+|[-\s.]+$/g;
 
 const FALLBACK_NAME = "opendesigner";
 
 /**
- * Il nome del file proposto per il download: nome del documento, l'ambito se è
- * una selezione, la scala se non è 1x, e l'estensione.
+ * The file name proposed for the download: document name, the scope if it is
+ * a selection, the scale if it is not 1x, and the extension.
  *
- * Il suffisso di scala è quello che usano gli editor di design (`@2x`), e serve
- * a una cosa concreta: esportare lo stesso documento a due scale non deve
- * produrre due file con lo stesso nome.
+ * The scale suffix is the one design editors use (`@2x`), and it serves
+ * one concrete thing: exporting the same document at two scales must not
+ * produce two files with the same name.
  */
 export function exportFileName(docName: string, req: ExportRequest): string {
   const base =
     docName.replace(ILLEGAL_IN_FILENAME, "-").replace(TRIM_FROM_FILENAME, "") || FALLBACK_NAME;
-  const scope = req.scope === "selection" ? "-selezione" : "";
+  const scope = req.scope === "selection" ? "-selection" : "";
   const scale = req.format === "png" && req.scale !== 1 ? `@${req.scale}x` : "";
   return `${base}${scope}${scale}.${req.format}`;
 }
 
 /**
- * Consegna il blob all'utente come download.
+ * Hands the blob to the user as a download.
  *
- * L'ancora entra davvero nel documento prima del click: in alcuni browser un
- * elemento staccato non attiva il download. L'URL si revoca in un timer e non
- * subito dopo il click, perché il download parte in modo asincrono e revocare
- * l'URL nello stesso giro di eventi lo annullerebbe.
+ * The anchor really enters the document before the click: in some browsers a detached
+ * element does not trigger the download. The URL is revoked in a timer and not
+ * right after the click, because the download starts asynchronously and revoking
+ * the URL in the same event turn would cancel it.
  */
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
@@ -102,16 +102,16 @@ export function downloadBlob(blob: Blob, filename: string): void {
 }
 
 /**
- * La misura del testo per l'SVG, presa da un canvas vero.
+ * The text measure for the SVG, taken from a real canvas.
  *
- * È la STESSA misura che usa il canvas per andare a capo (`ctx.measureText` con
- * `ctx.font` impostato da `fontString`), quindi l'SVG esportato spezza le righe
- * esattamente dove le spezza lo schermo. Approssimarla qui -- tot pixel per
- * carattere -- darebbe un file che assomiglia al documento senza esserlo.
+ * It is the SAME measure the canvas uses to wrap (`ctx.measureText` with
+ * `ctx.font` set by `fontString`), so the exported SVG breaks lines
+ * exactly where the screen breaks them. Approximating it here -- so many pixels per
+ * character -- would give a file that resembles the document without being it.
  */
 export function canvasMeasure(createCanvas: () => HTMLCanvasElement): MeasureText {
   const ctx = createCanvas().getContext("2d");
-  if (!ctx) throw new Error("il contesto 2D del canvas di export non è disponibile");
+  if (!ctx) throw new Error("the export canvas's 2D context is not available");
   return (text, style) => {
     ctx.font = fontString(style);
     return ctx.measureText(text).width;
@@ -122,19 +122,19 @@ function defaultCanvas(): HTMLCanvasElement {
   return document.createElement("canvas");
 }
 
-// `charset=utf-8` non è decorativo: senza, un file SVG con del testo accentato
-// aperto da un browser viene interpretato in latin-1.
+// `charset=utf-8` is not decorative: without it, an SVG file with accented
+// text opened by a browser is interpreted as latin-1.
 const SVG_MIME = "image/svg+xml;charset=utf-8";
 
 /**
- * I byte di un asset come `data:` URI, presi dalla route che li serve.
+ * The bytes of an asset as a `data:` URI, taken from the route that serves them.
  *
- * Passa dai BYTE ORIGINALI e non da un ri-encoding del canvas: un JPEG
- * riscritto in PNG cambierebbe peso e (per un'immagine con perdita) qualità,
- * dentro un file che l'utente esporta proprio per consegnarlo a qualcun altro.
- * L'immagine decodificata nella cache del renderer non serve qui: quello che
- * serve sono i byte, e la risposta arriva quasi sempre dalla cache HTTP del
- * browser (la route è `immutable`).
+ * It goes through the ORIGINAL BYTES and not through a canvas re-encoding: a JPEG
+ * rewritten as PNG would change size and (for a lossy image) quality,
+ * inside a file the user exports precisely to hand it to someone else.
+ * The decoded image in the renderer's cache is of no use here: what
+ * is needed is the bytes, and the response almost always comes from the browser's
+ * HTTP cache (the route is `immutable`).
  */
 export async function fetchAssetDataUrl(docId: string, hash: string): Promise<string | null> {
   const res = await fetch(assetUrl(docId, hash));
@@ -143,20 +143,20 @@ export async function fetchAssetDataUrl(docId: string, hash: string): Promise<st
   return await new Promise<string | null>((resolve) => {
     const reader = new FileReader();
     reader.onload = () => resolve(typeof reader.result === "string" ? reader.result : null);
-    // Un asset illeggibile non fa fallire l'export: diventa un segnaposto, come
-    // sul canvas.
+    // An unreadable asset does not make the export fail: it becomes a placeholder, as
+    // on the canvas.
     reader.onerror = () => resolve(null);
     reader.readAsDataURL(blob);
   });
 }
 
 /**
- * Un data URI in un elemento disegnabile. Non lancia MAI: un asset che non si
- * decodifica è un'immagine mancante, non un export fallito.
+ * A data URI into a drawable element. It NEVER throws: an asset that does not
+ * decode is a missing image, not a failed export.
  *
- * Dimensioni nulle valgono come fallimento per la stessa ragione della cache
- * del renderer: alcuni browser emettono `load` su byte illeggibili, e disegnare
- * quell'elemento non produce pixel -- meglio il segnaposto del nulla.
+ * Null dimensions count as failure for the same reason as the renderer's
+ * cache: some browsers emit `load` on unreadable bytes, and drawing
+ * that element produces no pixels -- better the placeholder than nothing.
  */
 export function decodeDataUrl(dataUrl: string): Promise<HTMLImageElement | null> {
   return new Promise((resolve) => {
@@ -167,37 +167,37 @@ export function decodeDataUrl(dataUrl: string): Promise<HTMLImageElement | null>
   });
 }
 
-// Gli asset della regione, RISOLTI e ATTESI: gli href per l'SVG, le immagini
-// decodificate per il PNG, e quanti nodi immagine resteranno un segnaposto.
+// The region's assets, RESOLVED and AWAITED: the hrefs for the SVG, the decoded
+// images for the PNG, and how many image nodes will remain a placeholder.
 interface ResolvedAssets {
   href: ResolveImageHref;
   images: ImageSource;
   missing: number;
 }
 
-// Nessuna immagine per quell'hash. Non ritorna MAI "loading": l'export ha già
-// aspettato, quindi ogni nodo è o disegnato o segnaposto -- non "in arrivo".
+// No image for that hash. It NEVER returns "loading": the export has already
+// waited, so every node is either drawn or placeholder -- not "arriving".
 const NO_IMAGE = { status: "missing", image: null } as const;
 
 /**
- * Risolve in anticipo gli asset dei nodi immagine, per entrambi i formati.
+ * Resolves the image nodes' assets in advance, for both formats.
  *
- * PRIMA e non durante, per due ragioni diverse e ugualmente vincolanti.
- * `nodesToSvg` è una funzione PURA e sincrona e deve restarlo -- è ciò che
- * rende verificabile a tavolino la correttezza del markup. E `drawScene` è
- * SINCRONA per costruzione (gira in un render loop): se le immagini non sono
- * già pronte quando comincia a disegnare, disegna il segnaposto e non c'è un
- * secondo giro. Prendere i pixel dalla cache del renderer -- che si riempie da
- * sé, quando può -- vorrebbe dire che lo stesso documento esportato due volte
- * dà due file diversi a seconda di che cosa questa sessione ha già visto
- * passare: esportare appena aperto darebbe le croci del segnaposto, esportare
- * un secondo dopo le fotografie. Qui i byte si chiedono e si ASPETTANO, sempre,
- * e la sorgente delle immagini è LOCALE a questo export.
+ * BEFORE and not during, for two different and equally binding reasons.
+ * `nodesToSvg` is a PURE, synchronous function and must stay so -- it is what
+ * makes the markup's correctness verifiable on paper. And `drawScene` is
+ * SYNCHRONOUS by construction (it runs in a render loop): if the images are not
+ * already ready when it starts drawing, it draws the placeholder and there is no
+ * second round. Taking the pixels from the renderer's cache -- which fills itself
+ * when it can -- would mean the same document exported twice
+ * gives two different files depending on what this session has already seen
+ * go by: exporting right after opening would give the placeholder's crosses, exporting
+ * a second later the photographs. Here the bytes are asked for and AWAITED, always,
+ * and the images' source is LOCAL to this export.
  *
- * Gli hash sono deduplicati: la stessa immagine usata da dieci nodi si scarica
- * (e si decodifica) una volta sola. La decodifica la fa solo il PNG: all'SVG i
- * byte bastano così come sono, ed è anche il motivo per cui l'SVG incorpora il
- * file ORIGINALE invece di un ri-encoding.
+ * Hashes are deduplicated: the same image used by ten nodes is downloaded
+ * (and decoded) only once. Decoding is done only by the PNG: for the SVG the
+ * bytes are enough as they are, and it is also the reason the SVG embeds the
+ * ORIGINAL file instead of a re-encoding.
  */
 async function resolveAssets(
   nodes: readonly NodeLite[],
@@ -222,16 +222,16 @@ async function resolveAssets(
         const img = await decode(uri);
         if (img) decoded.set(hash, img);
       } catch {
-        // Un asset che non si scarica è un'immagine MANCANTE, non un export
-        // fallito: il documento contiene davvero un riferimento rotto, e il
-        // file lo mostra invece di non esistere.
+        // An asset that does not download is a MISSING image, not a failed
+        // export: the document really contains a broken reference, and the
+        // file shows it instead of not existing.
       }
     }),
   );
 
-  // Si contano i NODI e non gli hash: è quello che l'utente vede mancare nel
-  // file, ed è anche l'unico modo di contare i nodi il cui hash è vuoto -- che
-  // non hanno niente da chiedere e restano comunque un segnaposto.
+  // NODES are counted and not hashes: it is what the user sees missing from the
+  // file, and it is also the only way to count nodes whose hash is empty -- which
+  // have nothing to ask for and still remain a placeholder.
   const ok = format === "png" ? decoded : uris;
   const missing = imageNodes.filter((n) => !ok.has(n.image?.assetHash ?? "")).length;
 
@@ -247,17 +247,17 @@ async function resolveAssets(
   };
 }
 
-/** Quel che si dice quando il file esce con dei buchi. */
+/** What is said when the file comes out with holes. */
 function missingImagesNotice(count: number): string {
   return count === 1
-    ? "un'immagine non è stata inclusa: il suo file non è raggiungibile, e al suo posto c'è un segnaposto"
-    : `${count} immagini non sono state incluse: i loro file non sono raggiungibili, e al loro posto ci sono dei segnaposti`;
+    ? "one image was not included: its file is not reachable, and a placeholder takes its place"
+    : `${count} images were not included: their files are not reachable, and placeholders take their place`;
 }
 
-// I byte del file. Le due strade sono davvero diverse -- il PNG passa da un
-// canvas e da una codifica asincrona, l'SVG da una funzione pura -- e tenerle
-// in due rami leggibili invece che in un ternario annidato è tutto il vantaggio
-// di questa funzione.
+// The file's bytes. The two roads are truly different -- the PNG goes through a
+// canvas and an asynchronous encoding, the SVG through a pure function -- and keeping them
+// in two readable branches instead of a nested ternary is all the advantage
+// of this function.
 async function exportBlob(
   region: ExportRegion,
   req: ExportRequest,
@@ -267,8 +267,8 @@ async function exportBlob(
   assets: ResolvedAssets,
 ): Promise<Blob> {
   if (req.format === "png") {
-    // Le immagini arrivano da qui e NON dalla cache del renderer: sono già
-    // decodificate e già attese, quindi il disegno è deterministico.
+    // Images come from here and NOT from the renderer's cache: they are already
+    // decoded and already awaited, so the drawing is deterministic.
     const canvas = renderRegionToCanvas(region, req.scale, createCanvas, assets.images);
     return (deps.toPngBlob ?? canvasToPngBlob)(canvas);
   }
@@ -276,13 +276,13 @@ async function exportBlob(
 }
 
 /**
- * Esegue un export. Ritorna `false` (senza scaricare niente) quando non c'è
- * nulla da esportare o quando qualcosa va storto: in entrambi i casi il motivo
- * finisce in `notice`, il canale informativo dello store.
+ * Runs an export. Returns `false` (without downloading anything) when there is
+ * nothing to export or when something goes wrong: in both cases the reason
+ * ends up in `notice`, the store's informational channel.
  *
- * Passa da `notice` e non da `lastError`: nessuna modifica è stata annullata --
- * l'export non tocca il documento, e infatti non apre nessun gesto e non
- * produce nessun op. È l'unica funzione dell'app che legge la scena e basta.
+ * It goes through `notice` and not `lastError`: no change was undone --
+ * export does not touch the document, and in fact it opens no gesture and
+ * produces no op. It is the only function of the app that only reads the scene.
  */
 export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Promise<boolean> {
   const { scene, selection } = useScene.getState();
@@ -290,12 +290,12 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
 
   const createCanvas = deps.createCanvas ?? defaultCanvas;
   try {
-    // La misura del testo si costruisce PRIMA della regione, e per ENTRAMBI i
-    // formati: non serve solo a mandare a capo l'SVG, serve a sapere quanto è
-    // alto il testo -- cioè a dimensionare la regione, quindi anche il canvas
-    // del PNG (vedi export/region.ts). Sta dentro il try perché costruirla
-    // vuole un contesto 2D, che può non esserci: un motivo in più per cui un
-    // export può non riuscire, e passa dal canale di tutti gli altri.
+    // The text measure is built BEFORE the region, and for BOTH
+    // formats: it serves not only to wrap the SVG, it serves to know how tall
+    // the text is -- that is to size the region, therefore the PNG's
+    // canvas too (see export/region.ts). It sits inside the try because building it
+    // needs a 2D context, which may not exist: one more reason an
+    // export can fail, and it goes through the channel of all the others.
     const measure = deps.measure ?? canvasMeasure(createCanvas);
 
     const region = exportRegion(scene, selection, req.scope, measure);
@@ -307,14 +307,14 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
     const assets = await resolveAssets(region.nodes, scene.id, req.format, deps);
     const blob = await exportBlob(region, req, deps, createCanvas, measure, assets);
     (deps.download ?? downloadBlob)(blob, exportFileName(scene.name, req));
-    // Il file c'è ed è quello chiesto, ma contiene dei segnaposti al posto di
-    // delle fotografie: un export che riesce a METÀ e non lo dice è il modo
-    // peggiore di fallire, perché l'utente se ne accorge da qualcun altro.
+    // The file is there and is the requested one, but it contains placeholders in place of
+    // photographs: an export that succeeds HALFWAY and does not say so is the
+    // worst way to fail, because the user finds out from someone else.
     if (assets.missing > 0) useScene.setState({ notice: missingImagesNotice(assets.missing) });
     return true;
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
-    useScene.setState({ notice: `export non riuscito: ${reason}` });
+    useScene.setState({ notice: `export failed: ${reason}` });
     return false;
   }
 }

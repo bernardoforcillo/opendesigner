@@ -22,8 +22,8 @@ import {
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 
-// Box di riferimento: 100x50 nell'origine, quindi CENTRO (50, 25) -- il solo
-// punto attorno a cui questo modulo ruota (vedi il commento in transform.ts).
+// Reference box: 100x50 at the origin, so CENTER (50, 25) -- the only
+// point around which this module rotates (see the comment in transform.ts).
 const box = { x: 0, y: 0, width: 100, height: 50 };
 const c = { x: 50, y: 25 };
 
@@ -39,9 +39,9 @@ function node(id: string, parentId: string, x: number, y: number, w = 50, h = 50
   };
 }
 
-// page1 > a(100,50) > b(10,20) > c(3,4): tre livelli di annidamento, ognuno
-// con uno scostamento diverso da zero su entrambi gli assi, così un errore di
-// segno o un livello saltato si vede subito nel numero.
+// page1 > a(100,50) > b(10,20) > c(3,4): three levels of nesting, each
+// with a non-zero offset on both axes, so a sign error or a skipped level shows up
+// right away in the number.
 function nested(): SceneState {
   const s = emptyScene("d", "n");
   s.nodes = s.nodes.set("a", node("a", "page1", 100, 50));
@@ -58,9 +58,9 @@ describe("centerOf", () => {
 });
 
 describe("localToWorld (rotation)", () => {
-  // Il caso che fissa il SEGNO della convenzione: assi mondo con y verso il
-  // basso, quindi +90° porta l'asse +x sull'asse +y, che sullo schermo si legge
-  // come una rotazione ORARIA.
+  // The case that fixes the SIGN of the convention: world axes with y pointing
+  // down, so +90° takes the +x axis onto the +y axis, which on screen reads
+  // as a CLOCKWISE rotation.
   it("+90 degrees turns the east edge midpoint into the south edge midpoint (clockwise on screen)", () => {
     expectPoint(localToWorld({ x: 100, y: 25 }, c, 90), 50, 75);
   });
@@ -79,9 +79,9 @@ describe("localToWorld (rotation)", () => {
 });
 
 describe("worldToLocal (rotation)", () => {
-  // Il punto NOTO dell'andata, letto al contrario: (50,75) sul mondo è il punto
-  // (100,25) dello spazio LOCALE del nodo ruotato di 90°. È esattamente la
-  // trasformazione che l'hit-test applica al punto prima di testare la forma.
+  // The KNOWN point of the forward trip, read backwards: (50,75) in the world is the point
+  // (100,25) of the LOCAL space of the node rotated by 90°. It is exactly the
+  // transformation hit-test applies to the point before testing the shape.
   it("maps a known world point back to its known local coordinate", () => {
     expectPoint(worldToLocal({ x: 50, y: 75 }, c, 90), 100, 25);
   });
@@ -90,16 +90,16 @@ describe("worldToLocal (rotation)", () => {
     const p = { x: 17, y: -3 };
     const w = localToWorld(p, c, 37);
     expectPoint(worldToLocal(w, c, 37), p.x, p.y);
-    // e nell'altro verso
+    // and in the other direction
     const l = worldToLocal(p, c, -113.5);
     expectPoint(localToWorld(l, c, -113.5), p.x, p.y);
   });
 });
 
 describe("rotation of 0 (and full turns)", () => {
-  // Non "quasi" identità: ESATTA. cos(0)=1 e sin(0)=0 sarebbero già esatti, ma
-  // il resto della pipeline (resize, maniglie) confronta numeri interi -- una
-  // moltiplicazione in più basterebbe a trasformare 110 in 110.00000000000001.
+  // Not "almost" identity: EXACT. cos(0)=1 and sin(0)=0 would already be exact, but
+  // the rest of the pipeline (resize, handles) compares integer numbers -- one
+  // extra multiplication would be enough to turn 110 into 110.00000000000001.
   it("returns the very same numbers, not merely close ones", () => {
     expect(localToWorld({ x: 3, y: 7 }, c, 0)).toEqual({ x: 3, y: 7 });
     expect(worldToLocal({ x: 3, y: 7 }, c, 0)).toEqual({ x: 3, y: 7 });
@@ -165,8 +165,8 @@ describe("snapDegrees", () => {
 });
 
 describe("angleOf", () => {
-  // Stessa convenzione oraria di localToWorld: da un centro, il punto a destra
-  // è 0°, quello SOTTO è +90°.
+  // Same clockwise convention as localToWorld: from a center, the point on the right
+  // is 0°, the one BELOW is +90°.
   it("measures the clockwise angle from the +x axis", () => {
     expect(angleOf(c, { x: 60, y: 25 })).toBeCloseTo(0, 9);
     expect(angleOf(c, { x: 50, y: 35 })).toBeCloseTo(90, 9);
@@ -175,7 +175,7 @@ describe("angleOf", () => {
   });
 
   it("is the inverse of localToWorld on a known radius", () => {
-    // Il punto a est del centro, ruotato di 30°, si rilegge a 30°.
+    // The point east of the center, rotated by 30°, reads back as 30°.
     const p = localToWorld({ x: 100, y: 25 }, c, 30);
     expect(angleOf(c, p)).toBeCloseTo(30, 9);
   });
@@ -187,8 +187,8 @@ describe("affine transforms", () => {
   });
 
   it("compose applies the INNER transform first", () => {
-    // Con due sole traslazioni l'ordine non si vedrebbe (sono commutative):
-    // serve una scala per distinguere le due direzioni.
+    // With only two translations the order would not show (they are commutative):
+    // a scale is needed to distinguish the two directions.
     const scale2 = { a: 2, b: 0, c: 0, d: 2, e: 0, f: 0 };
     const move10 = translation(10, 0);
     expect(applyTransform(compose(scale2, move10), 1, 0)).toEqual({ x: 22, y: 0 });
@@ -202,17 +202,17 @@ describe("affine transforms", () => {
   });
 
   it("invertTransform of a singular transform is the identity (never NaN)", () => {
-    // Una scala 0 non ha inversa: meglio l'identità che degli Infinity/NaN che
-    // si propagherebbero nel renderer o nell'hit-test.
+    // A scale of 0 has no inverse: better the identity than Infinity/NaN that
+    // would propagate into the renderer or hit-test.
     expect(invertTransform({ a: 0, b: 0, c: 0, d: 0, e: 5, f: 5 })).toEqual(IDENTITY);
   });
 });
 
 describe("worldTransformOf", () => {
   it("is the identity for a page, so an existing flat document does not move", () => {
-    // MIGRAZIONE: ogni documento esistente ha tutti i nodi sotto una pagina.
-    // Se una pagina contribuisse qualcosa di diverso dall'identità, l'intera
-    // opera d'arte di tutti si sposterebbe in silenzio.
+    // MIGRATION: every existing document has all nodes under a page.
+    // If a page contributed anything other than the identity, everyone's
+    // entire artwork would silently shift.
     const s = nested();
     expect(worldTransformOf(s, "page1")).toEqual(IDENTITY);
     expect(worldTransformOf(s, "")).toEqual(IDENTITY);
@@ -234,10 +234,10 @@ describe("worldTransformOf", () => {
 
   it("maps a known world point to a known local point AND back (three levels)", () => {
     const s = nested();
-    // (5, 5) nello spazio di "c" -> (118, 79) nel mondo.
+    // (5, 5) in the space of "c" -> (118, 79) in the world.
     expect(localToWorld(s, "c", 5, 5)).toEqual({ x: 118, y: 79 });
     expect(worldToLocal(s, "c", 118, 79)).toEqual({ x: 5, y: 5 });
-    // Andata e ritorno su un punto qualunque, per ognuno dei tre livelli.
+    // Round trip on any point, for each of the three levels.
     for (const id of ["a", "b", "c"]) {
       const w = localToWorld(s, id, -12.5, 33.25);
       expect(worldToLocal(s, id, w.x, w.y)).toEqual({ x: -12.5, y: 33.25 });
@@ -248,32 +248,32 @@ describe("worldTransformOf", () => {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("x", node("x", "y", 1, 1));
     s.nodes = s.nodes.set("y", node("y", "x", 2, 2));
-    // Nessun ciclo infinito: ciò che conta è che RITORNI (il valore su un
-    // documento impossibile non è specificato oltre a essere finito).
+    // No infinite loop: what matters is that it RETURNS (the value on an
+    // impossible document is unspecified besides being finite).
     expect(Number.isFinite(worldTransformOf(s, "x").e)).toBe(true);
   });
 });
 
 describe("mapBounds / mapVector", () => {
   it("mapBounds keeps the rectangle that CONTAINS the transformed corners", () => {
-    // Un quarto di giro: il rettangolo 10x4 in (1,1) finisce con i lati
-    // scambiati, e i bounds sono quelli del rettangolo ruotato.
+    // A quarter turn: the 10x4 rectangle at (1,1) ends up with the sides
+    // swapped, and the bounds are those of the rotated rectangle.
     const quarterTurn = { a: 0, b: 1, c: -1, d: 0, e: 0, f: 0 };
     expect(mapBounds(quarterTurn, { x: 1, y: 1, width: 10, height: 4 }))
       .toEqual({ x: -5, y: 1, width: 4, height: 10 });
   });
 
-  it("mapVector ignores the translation: uno spostamento non si trasla", () => {
+  it("mapVector ignores the translation: a displacement is not translated", () => {
     const t = compose(translation(1000, -1000), { a: 2, b: 0, c: 0, d: 3, e: 0, f: 0 });
     expect(mapVector(t, 5, 5)).toEqual({ x: 10, y: 15 });
-    // Un punto, invece, la traslazione se la prende tutta.
+    // A point, instead, takes the whole translation.
     expect(applyTransform(t, 5, 5)).toEqual({ x: 1010, y: -985 });
   });
 
   it("mapVector through the inverse turns a WORLD delta into a local one", () => {
-    // Il caso vero: il puntatore si muove nel mondo, il modello scrive
-    // coordinate locali. Con un parent scalato x2, 20px di mondo sono 10
-    // unità locali.
+    // The real case: the pointer moves in the world, the model writes
+    // local coordinates. With a parent scaled x2, 20px of world are 10
+    // local units.
     const parent = { a: 2, b: 0, c: 0, d: 2, e: 300, f: 300 };
     expect(mapVector(invertTransform(parent), 20, 0)).toEqual({ x: 10, y: 0 });
   });
@@ -287,8 +287,8 @@ describe("worldBoundsOfNode", () => {
 
   it("offsets a nested node's box by the transform of its ANCESTORS, not its own", () => {
     const s = nested();
-    // "c" sta a (3,4) dentro "b", che sta a (10,20) dentro "a", che sta a
-    // (100,50): il suo box mondo parte da (113,74) e conserva le dimensioni.
+    // "c" sits at (3,4) inside "b", which sits at (10,20) inside "a", which sits at
+    // (100,50): its world box starts at (113,74) and keeps its dimensions.
     expect(worldBoundsOfNode(s, s.nodes.at("c"))).toEqual({ x: 113, y: 74, width: 50, height: 50 });
   });
 });

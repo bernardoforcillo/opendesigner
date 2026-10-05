@@ -46,11 +46,11 @@ describe("applyOp", () => {
     expect(s.nodes.at("n1").kind).toBe("ellipse");
   });
 
-  // Un gruppo è un CONTENITORE, non una forma: il oneof `shape` dice cosa un
-  // nodo è, e "group" ci sta dentro come le altre (proto: GroupNode = 33).
+  // A group is a CONTAINER, not a shape: the `shape` oneof says what a
+  // node is, and "group" sits inside it like the others (proto: GroupNode = 33).
   it("creates a group node", () => {
     const node = create(NodeSchema, {
-      id: "g1", parentId: "page1", orderKey: "a0", name: "Gruppo", visible: true, opacity: 1,
+      id: "g1", parentId: "page1", orderKey: "a0", name: "Group", visible: true, opacity: 1,
       shape: { case: "group", value: {} },
     });
     const op = create(OpSchema, { opId: "op-g1", docId: "doc1", kind: { case: "createNode", value: { node } } });
@@ -58,13 +58,13 @@ describe("applyOp", () => {
     expect(s.nodes.at("g1").kind).toBe("group");
   });
 
-  // Parità con core.applySetProps (Go), che risponde ErrNotRectNode su un
-  // gruppo: un gruppo non ha niente da riempire, quindi nessun angolo da
-  // arrotondare. L'op è rifiutato in BLOCCO -- nemmeno la "x" della stessa mask
-  // si muove.
+  // Parity with core.applySetProps (Go), which replies ErrNotRectNode on a
+  // group: a group has nothing to fill, so no corner to
+  // round. The op is rejected as a WHOLE -- not even the "x" of the same mask
+  // moves.
   it("rejects corner_radius on a group, x included", () => {
     const node = create(NodeSchema, {
-      id: "g1", parentId: "page1", orderKey: "a0", name: "Gruppo", visible: true, opacity: 1,
+      id: "g1", parentId: "page1", orderKey: "a0", name: "Group", visible: true, opacity: 1,
       shape: { case: "group", value: {} },
     });
     let s = applyOp(emptyScene("doc1", "Untitled"),
@@ -148,11 +148,11 @@ describe("applyOp", () => {
   });
 });
 
-// --- albero: parent, cascata, riparentazione -------------------------------
-// Speculari a internal/core/tree_test.go. Le fixture in testdata/golden/
+// --- tree: parent, cascade, reparenting ------------------------------------
+// Mirrors of internal/core/tree_test.go. The fixtures in testdata/golden/
 // (cascade_delete, reparent, reparent_cycle_rejected, create_orphan_rejected)
-// fanno girare gli STESSI casi da entrambi i lati; questi test coprono il lato
-// TS con la granularità che una fixture non ha (quale stato resta invariato).
+// run the SAME cases from both sides; these tests cover the TS side
+// with the granularity a fixture lacks (which state stays unchanged).
 
 function createChildOp(id: string, parentId: string, orderKey = "a1") {
   const node = create(NodeSchema, {
@@ -186,41 +186,41 @@ function treeScene() {
   ].reduce((s, op) => applyOp(s, op), emptyScene("doc1", "Untitled"));
 }
 
-describe("applyOp: createNode e il parent", () => {
-  it("accetta un parent che è un NODO (annidamento)", () => {
+describe("applyOp: createNode and the parent", () => {
+  it("accepts a parent that is a NODE (nesting)", () => {
     const s = applyOp(applyOp(emptyScene("doc1", "Untitled"), createChildOp("g1", "page1")), createChildOp("c1", "g1"));
     expect(s.nodes.at("c1").parentId).toBe("g1");
   });
 
-  it("rifiuta un parent inesistente (parità con ErrParentNotFound in Go)", () => {
+  it("rejects a nonexistent parent (parity with ErrParentNotFound in Go)", () => {
     const s = emptyScene("doc1", "Untitled");
-    // Il server rifiuta l'op: crearlo qui vorrebbe dire tenere in locale un
-    // nodo che nessuna pagina raggiunge e che il documento autorevole non ha.
+    // The server rejects the op: creating it here would mean keeping locally a
+    // node that no page reaches and that the authoritative document does not have.
     expect(applyOp(s, createChildOp("n1", "ghost"))).toEqual(s);
   });
 
-  it("rifiuta un parent vuoto", () => {
+  it("rejects an empty parent", () => {
     const s = emptyScene("doc1", "Untitled");
     expect(applyOp(s, createChildOp("n1", ""))).toEqual(s);
   });
 });
 
-describe("applyOp: deleteNode a cascata", () => {
-  it("cancella il nodo E tutti i discendenti", () => {
+describe("applyOp: deleteNode cascading", () => {
+  it("deletes the node AND all descendants", () => {
     const s = applyOp(treeScene(), create(OpSchema, {
       opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "g1" } },
     }));
     expect([...s.nodes.ids()]).toEqual(["other"]);
   });
 
-  it("cancellare una foglia non tocca i fratelli", () => {
+  it("deleting a leaf does not touch the siblings", () => {
     const s = applyOp(treeScene(), create(OpSchema, {
       opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "c2" } },
     }));
     expect([...s.nodes.ids()].sort()).toEqual(["c1", "d1", "g1", "other"]);
   });
 
-  it("id inesistente: scena invariata (ErrNodeNotFound in Go)", () => {
+  it("nonexistent id: scene unchanged (ErrNodeNotFound in Go)", () => {
     const s = treeScene();
     expect(applyOp(s, create(OpSchema, {
       opId: "del", docId: "doc1", kind: { case: "deleteNode", value: { id: "ghost" } },
@@ -229,54 +229,54 @@ describe("applyOp: deleteNode a cascata", () => {
 });
 
 describe("applyOp: reparentNode", () => {
-  it("sposta il nodo e riscrive la order key; il sottoalbero lo segue", () => {
+  it("moves the node and rewrites the order key; the subtree follows it", () => {
     const s = applyOp(treeScene(), reparentOp("c1", "other", "a9"));
     expect(s.nodes.at("c1").parentId).toBe("other");
     expect(s.nodes.at("c1").orderKey).toBe("a9");
-    // I figli puntano al nodo, non al nonno: nessuno li riscrive.
+    // Children point to the node, not to the grandparent: nobody rewrites them.
     expect(s.nodes.at("d1").parentId).toBe("c1");
   });
 
-  it("accetta una PAGINA come nuovo parent", () => {
+  it("accepts a PAGE as the new parent", () => {
     const s = applyOp(treeScene(), reparentOp("d1", "page1", "a3"));
     expect(s.nodes.at("d1").parentId).toBe("page1");
   });
 
-  it("stesso parent + nuova chiave = riordino fra pari", () => {
+  it("same parent + new key = reorder among peers", () => {
     const s = applyOp(treeScene(), reparentOp("c1", "g1", "a3"));
     expect(s.nodes.at("c1").parentId).toBe("g1");
     expect(s.nodes.at("c1").orderKey).toBe("a3");
   });
 
   it.each([
-    ["se stesso", "g1", "g1"],
-    ["un figlio diretto", "g1", "c1"],
-    ["un discendente profondo", "g1", "d1"],
-  ])("rifiuta il ciclo: %s (parità con ErrCycle in Go)", (_name, id, parent) => {
+    ["itself", "g1", "g1"],
+    ["a direct child", "g1", "c1"],
+    ["a deep descendant", "g1", "d1"],
+  ])("rejects the cycle: %s (parity with ErrCycle in Go)", (_name, id, parent) => {
     const s = treeScene();
-    // Rifiuto in BLOCCO: nemmeno la order key si muove.
+    // Rejection as a WHOLE: not even the order key moves.
     expect(applyOp(s, reparentOp(id, parent, "a9"))).toEqual(s);
   });
 
-  it("rifiuta un nuovo parent inesistente", () => {
+  it("rejects a nonexistent new parent", () => {
     const s = treeScene();
     expect(applyOp(s, reparentOp("c1", "ghost", "a9"))).toEqual(s);
   });
 
-  it("rifiuta un nodo inesistente", () => {
+  it("rejects a nonexistent node", () => {
     const s = treeScene();
     expect(applyOp(s, reparentOp("ghost", "page1", "a9"))).toEqual(s);
   });
 });
 
 // --- corner_radius ---------------------------------------------------------
-// Speculari a internal/core/apply_test.go (TestApplySetPropertiesCornerRadius*).
-// È l'unico path della mask che indirizza un campo DENTRO il oneof `shape`,
-// quindi è anche l'unico che può trovare il nodo della forma SBAGLIATA -- e in
-// quel caso Go risponde ErrNotRectNode e rifiuta l'op in blocco.
+// Mirrors of internal/core/apply_test.go (TestApplySetPropertiesCornerRadius*).
+// It is the only mask path that addresses a field INSIDE the `shape` oneof,
+// so it is also the only one that can find a node of the WRONG shape -- and in
+// that case Go replies ErrNotRectNode and rejects the op as a whole.
 
-// `x` opzionale = "fai viaggiare anche una x nella STESSA mask", per provare
-// che il rifiuto è in blocco e non parziale.
+// optional `x` = "also carry an x in the SAME mask", to prove
+// that the rejection is whole and not partial.
 function setCornerRadiusOp(id: string, cornerRadius: number, x?: number) {
   return create(OpSchema, { opId: "op-cr", docId: "doc1", kind: { case: "setProps", value: {
     id,
@@ -286,13 +286,13 @@ function setCornerRadiusOp(id: string, cornerRadius: number, x?: number) {
 }
 
 describe("applyOp: corner_radius", () => {
-  it("scrive il raggio di un rettangolo", () => {
+  it("writes the radius of a rectangle", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
     s = applyOp(s, setCornerRadiusOp("n1", 12));
     expect(s.nodes.at("n1").cornerRadius).toBe(12);
   });
 
-  it("un patch senza rect AZZERA il raggio (parità con i getter nil-safe di Go)", () => {
+  it("a patch without rect ZEROES the radius (parity with Go's nil-safe getters)", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
     s = applyOp(s, setCornerRadiusOp("n1", 8));
     const nilPatch = create(OpSchema, { opId: "op-cr2", docId: "doc1", kind: { case: "setProps", value: {
@@ -301,22 +301,22 @@ describe("applyOp: corner_radius", () => {
     expect(s.nodes.at("n1").cornerRadius).toBe(0);
   });
 
-  it("su un'ellisse rifiuta l'INTERO op (parità con ErrNotRectNode)", () => {
+  it("on an ellipse it rejects the WHOLE op (parity with ErrNotRectNode)", () => {
     const node = create(NodeSchema, {
       id: "n1", parentId: "page1", orderKey: "a0", name: "Ellipse", visible: true, opacity: 1,
       x: 0, y: 0, width: 100, height: 80, shape: { case: "ellipse", value: {} },
     });
     const s = applyOp(emptyScene("doc1", "Untitled"),
       create(OpSchema, { opId: "op-n1", docId: "doc1", kind: { case: "createNode", value: { node } } }));
-    // "x" viaggia nella STESSA mask: come per un path ignoto, il rifiuto è in
-    // blocco e nemmeno la x si muove.
+    // "x" travels in the SAME mask: as for an unknown path, the rejection is
+    // whole and not even x moves.
     const after = applyOp(s, setCornerRadiusOp("n1", 12, 42));
     expect(after).toEqual(s);
     expect(after.nodes.at("n1").x).toBe(0);
     expect(after.nodes.at("n1").kind).toBe("ellipse");
   });
 
-  it("su un nodo di testo rifiuta l'INTERO op", () => {
+  it("on a text node it rejects the WHOLE op", () => {
     const node = create(NodeSchema, {
       id: "t1", parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
       x: 0, y: 0, width: 200, height: 24,
@@ -327,15 +327,15 @@ describe("applyOp: corner_radius", () => {
     expect(applyOp(s, setCornerRadiusOp("t1", 12, 42))).toEqual(s);
   });
 
-  // La metà TS della riga "vector" di TestApplySetPropertiesCornerRadiusOnNonRectFails.
-  // Questo lato rifiutava già (`cur.kind !== "rect"`); era GO ad accettare,
-  // perché la sua guardia elencava le forme da rifiutare ({Ellipse, Text}) e
-  // una forma nuova ci passava attraverso -- finendo nel ramo che materializza
-  // il rettangolo implicito e SOSTITUENDO lo shape del nodo. Risultato: il
-  // client teneva il path, il documento autorevole diventava un rettangolo. È
-  // la divergenza esatta che questa coppia di test esiste per impedire, quindi
-  // il caso sta su ENTRAMBI i lati anche se solo uno dei due era rotto.
-  it("su un nodo VETTORIALE rifiuta l'INTERO op e non tocca la geometria", () => {
+  // The TS half of the "vector" row of TestApplySetPropertiesCornerRadiusOnNonRectFails.
+  // This side already rejected (`cur.kind !== "rect"`); it was GO that accepted,
+  // because its guard listed the shapes to reject ({Ellipse, Text}) and
+  // a new shape slipped through it -- ending up in the branch that materializes
+  // the implicit rectangle and REPLACING the node's shape. Result: the
+  // client kept the path, the authoritative document became a rectangle. It is
+  // the exact divergence this pair of tests exists to prevent, so
+  // the case sits on BOTH sides even though only one of the two was broken.
+  it("on a VECTOR node it rejects the WHOLE op and does not touch the geometry", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"),
       createVectorOp("v1", [{ anchors: RICH_ANCHORS, closed: true }]));
     const after = applyOp(s, setCornerRadiusOp("v1", 12, 42));
@@ -346,27 +346,27 @@ describe("applyOp: corner_radius", () => {
   });
 });
 
-// --- una forma SCONOSCIUTA non è un rettangolo -----------------------------
+// --- an UNKNOWN shape is not a rectangle -----------------------------------
 //
-// core.applySetProps (Go) accetta `nil` o `*opendesignerv1.Node_Rect` e rifiuta tutto
-// il resto: una WHITELIST, così una forma aggiunta domani è rifiutata di default
-// invece di finire nel ramo che materializza il rettangolo implicito e ne
-// distrugge la geometria. Questo lato aveva la guardia speculare (`cur.kind !==
-// "rect"`) ma la derivava da un `kind` che RIPIEGAVA su "rect" per ogni forma
-// sconosciuta: la stessa divergenza, semplicemente specchiata -- op accettato
-// qui, ErrNotRectNode di là.
+// core.applySetProps (Go) accepts `nil` or `*opendesignerv1.Node_Rect` and rejects everything
+// else: a WHITELIST, so a shape added tomorrow is rejected by default
+// instead of ending up in the branch that materializes the implicit rectangle and
+// destroys its geometry. This side had the mirror guard (`cur.kind !==
+// "rect"`) but derived it from a `kind` that FELL BACK to "rect" for every
+// unknown shape: the same divergence, simply mirrored -- op accepted
+// here, ErrNotRectNode over there.
 //
-// Dopo M4 OGNI ramo del oneof `shape` generato mappa su un kind noto (rect,
-// ellipse, text, group, frame, image, vector, instance): "unknown" non è più
-// raggiungibile da una forma che QUESTO build dichiara. Resta però raggiungibile
-// -- ed è ciò che questi test difendono -- da una forma che un server PIÙ NUOVO
-// manda e che questo build non conosce ancora: `shape.case` valorizzato con un
-// nome che store/types.ts non elenca. È la compatibilità in avanti, e va provata
-// col solo modo di fabbricarla oggi (un cast a un case che il generato non ha).
-// kindOf ci ricade su "unknown" e toNodeLite/toPbNode lo devono conservare
-// OPACO, senza appiattirlo su un rettangolo. (Il ramo `instance`, che PRIMA di
-// M4 questi test usavano come finto sconosciuto, è ora una forma vera: vedi il
-// blocco "istanza e componenti" più sotto.)
+// After M4 EVERY branch of the generated `shape` oneof maps to a known kind (rect,
+// ellipse, text, group, frame, image, vector, instance): "unknown" is no longer
+// reachable from a shape that THIS build declares. It remains reachable however
+// -- and it is what these tests defend -- from a shape that a NEWER server
+// sends and that this build does not know yet: `shape.case` set to a
+// name that store/types.ts does not list. It is forward compatibility, and it must be tested
+// the only way to fabricate it today (a cast to a case the generated code lacks).
+// kindOf falls back to "unknown" there and toNodeLite/toPbNode must preserve it
+// OPAQUE, without flattening it onto a rectangle. (The `instance` branch, which BEFORE
+// M4 these tests used as a fake unknown, is now a real shape: see the
+// "instance and components" block further down.)
 function nodeWithUnknownShape(id: string) {
   const n = create(NodeSchema, {
     id, parentId: "page1", orderKey: "a0", name: "Sconosciuto", visible: true, opacity: 1,
@@ -382,13 +382,13 @@ function createNodeOp(node: PbNode) {
   });
 }
 
-describe("applyOp: forma sconosciuta", () => {
-  it("non ricade su rect -- ma una forma ASSENTE sì", () => {
+describe("applyOp: unknown shape", () => {
+  it("does not fall back to rect -- but an ABSENT shape does", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createNodeOp(nodeWithUnknownShape("g1")));
     expect(s.nodes.at("g1").kind).toBe("unknown");
-    // Shape ASSENTE resta "rect", e non è un'eccezione alla regola ma la regola
-    // stessa: Go la accetta come rettangolo implicito (il ramo `case nil` della
-    // whitelist), quindi trattarla diversamente qui sarebbe la divergenza.
+    // ABSENT shape stays "rect", and it is not an exception to the rule but the rule
+    // itself: Go accepts it as an implicit rectangle (the `case nil` branch of the
+    // whitelist), so treating it differently here would be the divergence.
     const noShape = create(NodeSchema, {
       id: "r1", parentId: "page1", orderKey: "a0", name: "Node", visible: true, opacity: 1,
       x: 0, y: 0, width: 10, height: 10,
@@ -397,18 +397,18 @@ describe("applyOp: forma sconosciuta", () => {
     expect(s2.nodes.at("r1").kind).toBe("rect");
   });
 
-  it("corner_radius su una forma sconosciuta rifiuta l'INTERO op (parità con ErrNotRectNode)", () => {
+  it("corner_radius on an unknown shape rejects the WHOLE op (parity with ErrNotRectNode)", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createNodeOp(nodeWithUnknownShape("g1")));
-    // "x" viaggia nella STESSA mask: il rifiuto è in blocco, nemmeno la x si
-    // muove. Prima del fix questo op passava (kind ricadeva su "rect") e
-    // scriveva un cornerRadius su un nodo che Go rifiuta.
+    // "x" travels in the SAME mask: the rejection is whole, not even x
+    // moves. Before the fix this op went through (kind fell back to "rect") and
+    // wrote a cornerRadius on a node that Go rejects.
     const after = applyOp(s, setCornerRadiusOp("g1", 12, 42));
     expect(after).toEqual(s);
     expect(after.nodes.at("g1").x).toBe(10);
     expect(after.nodes.at("g1").cornerRadius).toBe(0);
   });
 
-  it("setVectorPath e setText la rifiutano come rifiutano un rettangolo", () => {
+  it("setVectorPath and setText reject it as they reject a rectangle", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createNodeOp(nodeWithUnknownShape("g1")));
     const setVector = create(OpSchema, {
       opId: "op-sv", docId: "doc1",
@@ -421,29 +421,29 @@ describe("applyOp: forma sconosciuta", () => {
     expect(applyOp(s, setText)).toEqual(s);
   });
 
-  it("toPbNode la rimette dov'era: un undo non converte una forma sconosciuta in rettangolo", () => {
-    // history.invertOp ricostruisce il Node da NodeLite per invertire una
-    // delete. Con il ripiego su "rect" il nodo tornava in vita come RETTANGOLO
-    // -- un cambio di forma silenzioso dentro un Ctrl+Z, e nessun modo di
-    // accorgersene se non guardando il documento del server. Il ramo opaco
-    // (NodeLite.unknownShape) lo rimette esattamente dov'era.
+  it("toPbNode puts it back where it was: an undo does not convert an unknown shape into a rectangle", () => {
+    // history.invertOp rebuilds the Node from NodeLite to invert a
+    // delete. With the fallback to "rect" the node came back to life as a RECTANGLE
+    // -- a silent shape change inside a Ctrl+Z, and no way to
+    // notice it other than looking at the server's document. The opaque branch
+    // (NodeLite.unknownShape) puts it back exactly where it was.
     const pb = nodeWithUnknownShape("g1");
     const back = toPbNode(toNodeLite(pb));
     expect(back.shape.case).toBe("reservedShape");
     expect(back.shape.value).toEqual({ marker: "opaque" });
-    // ...e il resto del nodo sopravvive al giro come per ogni altra forma.
+    // ...and the rest of the node survives the round trip like for any other shape.
     expect(back).toMatchObject({ id: "g1", x: 10, y: 20, width: 100, height: 80 });
   });
 });
 
-// --- istanza e componenti (M4) ---------------------------------------------
-// Speculari a core.applyCreateComponent / applyCreate (ramo istanza) /
-// applySetInstanceOverride (Go). Le fixture testdata/golden/components.json e
-// component_rejections.json provano la parità end-to-end da entrambi i lati;
-// questi test fissano il lato TS con la granularità che una fixture non ha:
-// quale stato resta INVARIATO su un op rifiutato (stesso oggetto, così i
-// selettori non si svegliano), il tipo del nodo, e il round-trip LOSSLESS degli
-// override (che le golden non vedono, confrontando entrambi i lati dopo la STESSA
+// --- instance and components (M4) ------------------------------------------
+// Mirrors of core.applyCreateComponent / applyCreate (instance branch) /
+// applySetInstanceOverride (Go). The fixtures testdata/golden/components.json and
+// component_rejections.json prove parity end-to-end from both sides;
+// these tests pin down the TS side with the granularity a fixture lacks:
+// which state stays UNCHANGED on a rejected op (same object, so
+// selectors do not wake up), the node's kind, and the LOSSLESS round trip of
+// overrides (which the goldens do not see, comparing both sides after the SAME
 // toNodeLite).
 
 const RED = { r: 1, g: 0, b: 0, a: 1 };
@@ -471,68 +471,68 @@ function setInstanceOverrideOp(instanceId: string, override: MessageInitShape<ty
   });
 }
 
-describe("applyOp: istanza e componenti", () => {
-  it("registra un componente e crea un'istanza che lo referenzia", () => {
+describe("applyOp: instance and components", () => {
+  it("registers a component and creates an instance that references it", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("m1", 0, 0));
     s = applyOp(s, createComponentOp("cmp1", "m1", "Button"));
     expect(s.components["cmp1"]).toEqual({ rootNodeId: "m1", name: "Button" });
     s = applyOp(s, createInstanceOp("inst1", "cmp1"));
     expect(s.nodes.at("inst1").kind).toBe("instance");
-    // Nessun figlio in `nodes`: il sottoalbero è VIRTUALE (derivato dal master).
+    // No children in `nodes`: the subtree is VIRTUAL (derived from the master).
     expect(s.nodes.at("inst1").instance).toEqual({ componentId: "cmp1", overrides: [] });
   });
 
-  it("rifiuta createComponent con id vuoto, id già preso o radice inesistente (parità con Go)", () => {
+  it("rejects createComponent with empty id, already-taken id or nonexistent root (parity with Go)", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("m1", 0, 0));
     s = applyOp(s, createComponentOp("cmp1", "m1", "Button"));
-    // id già preso = ErrComponentExists; radice non in nodes = ErrNodeNotFound;
-    // id vuoto = rifiutato in Go. Stesso OGGETTO su ogni rifiuto.
+    // id already taken = ErrComponentExists; root not in nodes = ErrNodeNotFound;
+    // empty id = rejected in Go. Same OBJECT on every rejection.
     expect(applyOp(s, createComponentOp("cmp1", "m1", "Doppione"))).toBe(s);
     expect(applyOp(s, createComponentOp("cmp2", "ghost", "X"))).toBe(s);
-    expect(applyOp(s, createComponentOp("", "m1", "Vuoto"))).toBe(s);
+    expect(applyOp(s, createComponentOp("", "m1", "Empty"))).toBe(s);
   });
 
-  it("rifiuta un'istanza di un componente inesistente (parità: ErrComponentNotFound)", () => {
+  it("rejects an instance of a nonexistent component (parity: ErrComponentNotFound)", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("m1", 0, 0));
-    // Il server la rifiuta: renderebbe il vuoto e nessuna pagina se ne
-    // accorgerebbe. Stesso oggetto, scena invariata.
+    // The server rejects it: it would render nothing and no page would
+    // notice. Same object, scene unchanged.
     expect(applyOp(s, createInstanceOp("inst1", "ghost"))).toBe(s);
   });
 
-  it("imposta, sostituisce e rimuove un override (upsert per master_node_id)", () => {
+  it("sets, replaces and removes an override (upsert by master_node_id)", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("m1", 0, 0));
     s = applyOp(s, createComponentOp("cmp1", "m1", "Button"));
     s = applyOp(s, createInstanceOp("inst1", "cmp1"));
-    // fill: `fills` presente <=> fillsPresent, quindi l'override porta solo fills.
+    // fill: `fills` present <=> fillsPresent, so the override carries only fills.
     s = applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "m1", fills: [{ kind: { case: "solid", value: { color: RED } } }], fillsPresent: true }));
     expect(s.nodes.at("inst1").instance?.overrides).toEqual([{ masterNodeId: "m1", fills: [RED] }]);
-    // sostituzione con testo: l'upsert TOGLIE il fill con lo stesso master e
-    // rimette solo il nuovo -- nessun residuo, e `text` presente <=> textPresent.
+    // replacement with text: the upsert REMOVES the fill with the same master and
+    // puts back only the new one -- no residue, and `text` present <=> textPresent.
     s = applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "m1", text: "Ciao", textPresent: true }));
     expect(s.nodes.at("inst1").instance?.overrides).toEqual([{ masterNodeId: "m1", text: "Ciao" }]);
-    // rimozione: né fills né text presenti => l'override sparisce, il nodo resta
-    // un'istanza (torna a ereditare dal master).
+    // removal: neither fills nor text present => the override disappears, the node stays
+    // an instance (goes back to inheriting from the master).
     s = applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "m1" }));
     expect(s.nodes.at("inst1").instance?.overrides).toEqual([]);
     expect(s.nodes.at("inst1").kind).toBe("instance");
   });
 
-  it("rifiuta un override su un non-istanza, su un id inesistente, e con master_node_id vuoto (parità con Go)", () => {
+  it("rejects an override on a non-instance, on a nonexistent id, and with empty master_node_id (parity with Go)", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("m1", 0, 0));
-    // m1 è un rettangolo: ErrNotInstanceNode. Un id inesistente: ErrNodeNotFound.
+    // m1 is a rectangle: ErrNotInstanceNode. A nonexistent id: ErrNodeNotFound.
     expect(applyOp(s, setInstanceOverrideOp("m1", { masterNodeId: "x", text: "y", textPresent: true }))).toBe(s);
     expect(applyOp(s, setInstanceOverrideOp("ghost", { masterNodeId: "x", text: "y", textPresent: true }))).toBe(s);
     s = applyOp(s, createComponentOp("cmp1", "m1", "Button"));
     s = applyOp(s, createInstanceOp("inst1", "cmp1"));
-    // master_node_id vuoto: Go lo rifiuta esplicitamente.
+    // empty master_node_id: Go rejects it explicitly.
     expect(applyOp(s, setInstanceOverrideOp("inst1", { masterNodeId: "", text: "y", textPresent: true }))).toBe(s);
   });
 
-  // La parte che le golden NON vedono: il round-trip degli override. `fills`
-  // presente <=> fills_present e `text` presente <=> text_present in ENTRAMBE le
-  // direzioni, così un undo di una delete (history.invertOp passa da toPbNode)
-  // non degrada un'istanza né perde/inventa override.
-  it("un'istanza con override sopravvive al round-trip toNodeLite/toPbNode (LOSSLESS)", () => {
+  // The part the goldens do NOT see: the round trip of overrides. `fills`
+  // present <=> fills_present and `text` present <=> text_present in BOTH
+  // directions, so an undo of a delete (history.invertOp goes through toPbNode)
+  // neither degrades an instance nor loses/invents overrides.
+  it("an instance with overrides survives the toNodeLite/toPbNode round trip (LOSSLESS)", () => {
     const node = create(NodeSchema, {
       id: "inst1", parentId: "page1", orderKey: "a0", name: "Instance", visible: true, opacity: 1,
       x: 5, y: 6, width: 0, height: 0,
@@ -543,8 +543,8 @@ describe("applyOp: istanza e componenti", () => {
     });
     const lite = toNodeLite(node);
     expect(lite.kind).toBe("instance");
-    // Un override di solo fill NON porta un testo vuoto; uno di solo testo NON
-    // porta un fill vuoto: è la distinzione dei flag *_present resa dall'assenza.
+    // A fill-only override does NOT carry an empty text; a text-only one does NOT
+    // carry an empty fill: it is the *_present flags distinction rendered as absence.
     expect(lite.instance).toEqual({
       componentId: "cmp1",
       overrides: [
@@ -555,7 +555,7 @@ describe("applyOp: istanza e componenti", () => {
     const back = toPbNode(lite);
     if (back.shape.case !== "instance") throw new Error("atteso instance");
     expect(back.shape.value.componentId).toBe("cmp1");
-    // I flag *_present si ricostruiscono dalla presenza del campo Lite.
+    // The *_present flags are rebuilt from the presence of the Lite field.
     expect(back.shape.value.overrides).toMatchObject([
       { masterNodeId: "m1", fillsPresent: true, textPresent: false, text: "" },
       { masterNodeId: "lbl", fillsPresent: false, textPresent: true, text: "Etichetta" },
@@ -565,9 +565,9 @@ describe("applyOp: istanza e componenti", () => {
 });
 
 // --- setText ---------------------------------------------------------------
-// Speculari a internal/core/apply_test.go (TestApplySetText*): stessa scena,
-// stesse asserzioni. applyOp e core.applySetText devono restare semanticamente
-// identici, e questa è la metà TS della guardia (l'altra è testdata/golden/text.json).
+// Mirrors of internal/core/apply_test.go (TestApplySetText*): same scene,
+// same assertions. applyOp and core.applySetText must remain semantically
+// identical, and this is the TS half of the guard (the other is testdata/golden/text.json).
 
 function createTextOp(id: string, content: string) {
   const node = create(NodeSchema, {
@@ -597,15 +597,15 @@ describe("applyOp: setText", () => {
 
   it("changes the content of a text node", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
-    s = applyOp(s, setTextOp({ id: "t1", content: "nuovo testo" }));
-    expect(s.nodes.at("t1").text?.content).toBe("nuovo testo");
+    s = applyOp(s, setTextOp({ id: "t1", content: "new text" }));
+    expect(s.nodes.at("t1").text?.content).toBe("new text");
   });
 
   it("is a no-op on a non-text node (parity with core.applySetText: ErrNotTextNode)", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 10, 20));
     const s2 = applyOp(s, setTextOp({ id: "n1", content: "x" }));
-    // Go rifiuta l'op e non tocca il documento: scrivere qui un `text` dentro
-    // un rettangolo lo trasformerebbe in un nodo che il server non ha.
+    // Go rejects the op and does not touch the document: writing a `text` here inside
+    // a rectangle would turn it into a node the server does not have.
     expect(s2).toEqual(s);
     expect(s2.nodes.at("n1").kind).toBe("rect");
     expect(s2.nodes.at("n1").text).toBeUndefined();
@@ -618,14 +618,14 @@ describe("applyOp: setText", () => {
 
   it("leaves the existing style alone when stylePresent is false", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
-    s = applyOp(s, setTextOp({ id: "t1", content: "altro" }));
+    s = applyOp(s, setTextOp({ id: "t1", content: "other" }));
     expect(s.nodes.at("t1").text?.style.fontSize).toBe(16);
     expect(s.nodes.at("t1").text?.style.fontFamily).toBe("Inter");
-    // È il FLAG a decidere, non la presenza del sotto-messaggio: uno `style`
-    // esplicito con stylePresent=false va ignorato lo stesso.
-    s = applyOp(s, setTextOp({ id: "t1", content: "terzo", style: { fontSize: 99 } }));
+    // It is the FLAG that decides, not the presence of the sub-message: an explicit `style`
+    // with stylePresent=false must be ignored all the same.
+    s = applyOp(s, setTextOp({ id: "t1", content: "third", style: { fontSize: 99 } }));
     expect(s.nodes.at("t1").text?.style.fontSize).toBe(16);
-    expect(s.nodes.at("t1").text?.content).toBe("terzo");
+    expect(s.nodes.at("t1").text?.content).toBe("third");
   });
 
   it("replaces the style when stylePresent is true", () => {
@@ -642,8 +642,8 @@ describe("applyOp: setText", () => {
   it("clears the style when stylePresent is true and no style is carried (parity with Go's nil style)", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createTextOp("t1", "ciao"));
     s = applyOp(s, setTextOp({ id: "t1", content: "ciao", stylePresent: true }));
-    // Go assegna nil e legge poi i campi con i getter nil-safe (tutti a zero);
-    // NodeLite appiattisce, quindi la controparte è uno stile tutto a zero.
+    // Go assigns nil and then reads the fields with nil-safe getters (all zero);
+    // NodeLite flattens, so the counterpart is an all-zero style.
     expect(s.nodes.at("t1").text?.style).toEqual({
       fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left",
     });
@@ -651,16 +651,16 @@ describe("applyOp: setText", () => {
 
 });
 
-// --- ImageNode (traccia 3) ---------------------------------------------------
+// --- ImageNode (track 3) -----------------------------------------------------
 describe("applyOp: image", () => {
   //
-  // Le fixture golden NON coprono questo: confrontano `scene.nodes` con
-  // `fromDocument(expected).nodes`, cioè fanno passare entrambi i lati dalla
-  // STESSA toNodeLite -- un'immagine degradata a rettangolo da tutte e due le
-  // parti si confronta uguale a sé stessa. Il tipo del nodo e il suo hash vanno
-  // quindi asseriti qui, esplicitamente.
+  // The golden fixtures do NOT cover this: they compare `scene.nodes` with
+  // `fromDocument(expected).nodes`, that is they pass both sides through the
+  // SAME toNodeLite -- an image degraded to a rectangle by both
+  // sides compares equal to itself. The node's type and its hash must
+  // therefore be asserted here, explicitly.
 
-  it("crea un nodo immagine tenendo l'hash dell'asset (e NON i byte)", () => {
+  it("creates an image node keeping the asset hash (and NOT the bytes)", () => {
     const node = create(NodeSchema, {
       id: "i1", parentId: "page1", orderKey: "a0", name: "logo.png", visible: true, opacity: 1,
       x: 10, y: 20, width: 320, height: 180,
@@ -672,7 +672,7 @@ describe("applyOp: image", () => {
     expect(s.nodes.at("i1").image?.assetHash).toBe(HASH);
   });
 
-  it("sposta e ridimensiona un'immagine senza toccare l'hash", () => {
+  it("moves and resizes an image without touching the hash", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createImageOp("i1"));
     const move = create(OpSchema, { opId: "m", docId: "doc1", kind: { case: "setProps", value: {
       id: "i1", patch: create(NodeSchema, { x: 300, y: 400 }), mask: { paths: ["x", "y"] } } } });
@@ -682,11 +682,11 @@ describe("applyOp: image", () => {
     expect(s.nodes.at("i1").kind).toBe("image");
   });
 
-  // Parità con core.applySetProps: l'immagine è nell'elenco delle forme che
-  // rifiutano corner_radius, e per la ragione più forte -- il ramo che applica
-  // il raggio SOSTITUISCE la forma con un rettangolo, cioè butterebbe via il
-  // riferimento all'asset.
-  it("rifiuta corner_radius su un'immagine, mask mista compresa (parità: ErrNotRectNode)", () => {
+  // Parity with core.applySetProps: the image is in the list of shapes that
+  // reject corner_radius, and for the strongest reason -- the branch that applies
+  // the radius REPLACES the shape with a rectangle, that is it would throw away the
+  // reference to the asset.
+  it("rejects corner_radius on an image, mixed mask included (parity: ErrNotRectNode)", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createImageOp("i1"));
     const op = create(OpSchema, { opId: "r", docId: "doc1", kind: { case: "setProps", value: {
       id: "i1",
@@ -700,7 +700,7 @@ describe("applyOp: image", () => {
     expect(after.nodes.at("i1").x).toBe(10);
   });
 
-  it("rifiuta un setText su un'immagine (parità: ErrNotTextNode)", () => {
+  it("rejects a setText on an image (parity: ErrNotTextNode)", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createImageOp("i1"));
     const after = applyOp(s, setTextOp({ id: "i1", content: "x" }));
     expect(after).toEqual(s);
@@ -709,15 +709,15 @@ describe("applyOp: image", () => {
 });
 
 // --- setVectorPath ---------------------------------------------------------
-// Speculari a internal/core/apply_test.go (TestApplySetVectorPath*): stessa
-// scena, stesse asserzioni. applyOp e core.applySetVectorPath devono restare
-// semanticamente identici, e questa è la metà TS della guardia (l'altra è
+// Mirrors of internal/core/apply_test.go (TestApplySetVectorPath*): same
+// scene, same assertions. applyOp and core.applySetVectorPath must remain
+// semantically identical, and this is the TS half of the guard (the other is
 // testdata/golden/vector_path.json).
 
-// Maniglie bézier ASIMMETRICHE e mai nulle: un lato che le scartasse (o le
-// ricavasse per specchiatura) non può passare per caso. Sono OFFSET relativi
-// all'ancoraggio (vedi il proto), quindi piccoli e centrati sullo zero: nulle
-// significherebbe "nessuna maniglia".
+// ASYMMETRIC and never-zero bézier handles: a side that discarded them (or
+// derived them by mirroring) cannot pass by chance. They are OFFSETS relative
+// to the anchor (see the proto), so small and centered on zero: zero
+// would mean "no handle".
 const RICH_ANCHORS = [
   { x: 10, y: 20, inX: -2, inY: -1, outX: 4, outY: 6 },
   { x: 60, y: 70, inX: -5, inY: -8, outX: 6, outY: 1 },
@@ -755,8 +755,8 @@ describe("applyOp: setVectorPath", () => {
     expect(s.nodes.at("v1").vector?.subpaths).toEqual(next);
   });
 
-  // Una lista VUOTA è legittima: è il path che l'utente ha svuotato, non un
-  // "non specificato" da ignorare (a differenza di setText senza stylePresent).
+  // An EMPTY list is legitimate: it is the path the user emptied, not an
+  // "unspecified" to ignore (unlike setText without stylePresent).
   it("an empty subpath list empties the path and keeps the node a vector", () => {
     const s = applyOp(base(), setVectorPathOp({ id: "v1" }));
     expect(s.nodes.at("v1").vector?.subpaths).toEqual([]);
@@ -767,8 +767,8 @@ describe("applyOp: setVectorPath", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1", 0, 0));
     const after = applyOp(s, setVectorPathOp({ id: "n1", subpaths: [{ anchors: RICH_ANCHORS, closed: true }] }));
     expect(after).toEqual(s);
-    // In particolare la FORMA non cambia: scriverci dentro trasformerebbe il
-    // rettangolo in un path in locale mentre il server ha respinto l'op.
+    // In particular the SHAPE does not change: writing into it would turn the
+    // rectangle into a path locally while the server rejected the op.
     expect(after.nodes.at("n1").kind).toBe("rect");
   });
 
@@ -787,7 +787,7 @@ describe("applyOp: setVectorPath", () => {
 });
 
 // ---------------------------------------------------------------------------
-// FRAME (proto: FrameNode = 34) — un contenitore CON geometria propria.
+// FRAME (proto: FrameNode = 34) — a container WITH its own geometry.
 // ---------------------------------------------------------------------------
 
 function createFrameOp(id: string, clipsContent: boolean, parentId = "page1") {
@@ -800,25 +800,25 @@ function createFrameOp(id: string, clipsContent: boolean, parentId = "page1") {
 }
 
 describe("applyOp — frame", () => {
-  it("crea un frame con il suo box e il suo clipping", () => {
+  it("creates a frame with its box and its clipping", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", true));
     expect(s.nodes.at("f1").kind).toBe("frame");
     expect(s.nodes.at("f1").clipsContent).toBe(true);
-    // Il box è SUO (a differenza di un gruppo, i cui bounds sono l'unione dei
-    // figli): arriva dal createNode e resta lì.
+    // The box is ITS OWN (unlike a group, whose bounds are the union of the
+    // children): it comes from the createNode and stays there.
     expect(s.nodes.at("f1").width).toBe(200);
   });
 
-  it("clipsContent false è un valore legittimo, non 'non impostato'", () => {
+  it("clipsContent false is a legitimate value, not 'unset'", () => {
     const s = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", false));
     expect(s.nodes.at("f1").kind).toBe("frame");
     expect(s.nodes.at("f1").clipsContent).toBe(false);
   });
 
-  // Parità con core.applySetProps (Go), che risponde ErrNotRectNode: un frame è
-  // disegnato come una forma ma la sua forma è il FrameNode, e corner_radius
-  // vive dentro RectNode. L'op è rifiutato in BLOCCO, "x" compresa.
-  it("rifiuta corner_radius su un frame, x inclusa", () => {
+  // Parity with core.applySetProps (Go), which replies ErrNotRectNode: a frame is
+  // drawn like a shape but its shape is the FrameNode, and corner_radius
+  // lives inside RectNode. The op is rejected as a WHOLE, "x" included.
+  it("rejects corner_radius on a frame, x included", () => {
     const before = applyOp(emptyScene("doc1", "Untitled"), createFrameOp("f1", true));
     const after = applyOp(before, create(OpSchema, { opId: "r", docId: "doc1", kind: { case: "setProps", value: {
       id: "f1",
@@ -831,11 +831,11 @@ describe("applyOp — frame", () => {
 });
 
 // ---------------------------------------------------------------------------
-// PAGINE — i container RADICE del documento (parità con core.applyCreatePage /
-// applyDeletePage / applyRenamePage). Le fixture golden provano la parità
-// end-to-end; questi test fissano il comportamento visto dal client, compresa
-// l'identità dell'oggetto restituito su un op rifiutato (un oggetto nuovo
-// sveglierebbe i selettori per niente).
+// PAGES — the document's ROOT containers (parity with core.applyCreatePage /
+// applyDeletePage / applyRenamePage). The golden fixtures prove parity
+// end-to-end; these tests pin down the behavior seen by the client, including
+// the identity of the object returned on a rejected op (a new object
+// would wake the selectors for nothing).
 // ---------------------------------------------------------------------------
 
 function createPageOp(id: string, name: string) {
@@ -850,24 +850,24 @@ function renamePageOp(id: string, name: string) {
   return create(OpSchema, { opId: "ren-" + id, docId: "doc1", kind: { case: "renamePage", value: { id, name } } });
 }
 
-describe("applyOp — pagine", () => {
-  it("aggiunge la pagina IN CODA e la rende un parent valido", () => {
+describe("applyOp — pages", () => {
+  it("adds the page AT THE END and makes it a valid parent", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
     expect(s.pages).toEqual([{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }]);
     s = applyOp(s, createChildOp("n1", "page2"));
     expect(s.nodes.at("n1")?.parentId).toBe("page2");
   });
 
-  it("rifiuta un id già preso da una pagina o da un NODO (parità: ErrPageExists)", () => {
+  it("rejects an id already taken by a page or by a NODE (parity: ErrPageExists)", () => {
     const base = applyOp(applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2")), createChildOp("n1", "page1"));
-    // Stesso OGGETTO, non solo stesso contenuto: un op rifiutato non deve
-    // svegliare i sottoscrittori dello store.
+    // Same OBJECT, not just same content: a rejected op must not
+    // wake the store's subscribers.
     expect(applyOp(base, createPageOp("page2", "Doppione"))).toBe(base);
-    expect(applyOp(base, createPageOp("n1", "Id di un nodo"))).toBe(base);
-    expect(applyOp(base, createPageOp("", "Senza id"))).toBe(base);
+    expect(applyOp(base, createPageOp("n1", "Id of a node"))).toBe(base);
+    expect(applyOp(base, createPageOp("", "No id"))).toBe(base);
   });
 
-  it("cancella la pagina e TUTTI i suoi nodi a cascata, lasciando in pace le altre", () => {
+  it("deletes the page and ALL its nodes in cascade, leaving the others alone", () => {
     let s = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
     s = applyOp(s, createChildOp("g1", "page1"));
     s = applyOp(s, createChildOp("c1", "g1"));
@@ -878,18 +878,18 @@ describe("applyOp — pagine", () => {
     expect([...s.nodes.ids()]).toEqual(["keep"]);
   });
 
-  it("non cancella l'ULTIMA pagina (parità: ErrLastPage) né una inesistente", () => {
+  it("does not delete the LAST page (parity: ErrLastPage) nor a nonexistent one", () => {
     const base = applyOp(emptyScene("doc1", "Untitled"), createChildOp("n1", "page1"));
     expect(applyOp(base, deletePageOp("page1"))).toBe(base);
     expect(applyOp(base, deletePageOp("ghost"))).toBe(base);
   });
 
-  it("rinomina una pagina, e ignora un id inesistente (parità: ErrPageNotFound)", () => {
+  it("renames a page, and ignores a nonexistent id (parity: ErrPageNotFound)", () => {
     const base = applyOp(emptyScene("doc1", "Untitled"), createPageOp("page2", "Page 2"));
-    const renamed = applyOp(base, renamePageOp("page2", "Copertina"));
-    expect(renamed.pages).toEqual([{ id: "page1", name: "Page 1" }, { id: "page2", name: "Copertina" }]);
+    const renamed = applyOp(base, renamePageOp("page2", "Cover"));
+    expect(renamed.pages).toEqual([{ id: "page1", name: "Page 1" }, { id: "page2", name: "Cover" }]);
     expect(applyOp(base, renamePageOp("ghost", "x"))).toBe(base);
-    // Il nome vuoto è un valore come un altro: il ripiego è della UI.
+    // An empty name is a value like any other: the fallback belongs to the UI.
     expect(applyOp(base, renamePageOp("page2", "")).pages[1].name).toBe("");
   });
 });

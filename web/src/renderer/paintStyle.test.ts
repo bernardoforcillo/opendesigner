@@ -26,25 +26,25 @@ function ctxMock() {
 }
 
 describe("paintStyle", () => {
-  it("un solido resta una stringa CSS", () => {
+  it("a solid stays a CSS string", () => {
     const { ctx } = ctxMock();
     expect(paintStyle(ctx, { r: 1, g: 0, b: 0, a: 1 }, node)).toBe("rgba(255, 0, 0, 1)");
   });
 
-  it("lineare: denormalizza l'asse sul box del nodo", () => {
+  it("linear: denormalizes the axis on the node's box", () => {
     const { ctx, raw, stops, g } = ctxMock();
     expect(paintStyle(ctx, grad("linear"), node)).toBe(g);
     expect(raw.createLinearGradient).toHaveBeenCalledWith(100, 50, 300, 50);
     expect(stops).toEqual([[0, "rgba(255, 0, 0, 1)"], [1, "rgba(0, 0, 255, 1)"]]);
   });
 
-  it("radiale: centro in (x1,y1), raggio = distanza fra i due punti", () => {
+  it("radial: center at (x1,y1), radius = distance between the two points", () => {
     const { ctx, raw } = ctxMock();
     paintStyle(ctx, grad("radial", { x1: 0.5, y1: 0.5, x2: 1, y2: 0.5 }), node);
     expect(raw.createRadialGradient).toHaveBeenCalledWith(200, 100, 0, 200, 100, 100);
   });
 
-  it("un gradiente degenere ripiega sul colore piatto", () => {
+  it("a degenerate gradient falls back to the flat color", () => {
     const { ctx } = ctxMock();
     expect(paintStyle(ctx, grad("linear", { x2: 0, y2: 0 }), node)).toBe("rgba(255, 0, 0, 1)");
     const one = grad("linear");

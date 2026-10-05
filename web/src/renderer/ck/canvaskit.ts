@@ -1,17 +1,17 @@
 import type { CanvasKit, Font, Typeface } from "canvaskit-wasm";
 
-// CARICAMENTO DI CANVASKIT E DEI FONT.
+// LOADING OF CANVASKIT AND THE FONTS.
 //
-// CanvasKit è Skia compilato in WebAssembly: lo stesso motore di rasterizzazione
-// di Chrome, ma pilotabile da qui e su WebGL. Pesa ~7 MB, quindi NON sta nel
-// bundle principale: l'import è dinamico (un file a parte, scaricato solo quando
-// serve) e il modulo si carica una volta sola per pagina.
+// CanvasKit is Skia compiled to WebAssembly: the same rasterization engine
+// as Chrome, but drivable from here and on WebGL. It weighs ~7 MB, so it is NOT in the
+// main bundle: the import is dynamic (a separate file, downloaded only when
+// needed) and the module is loaded once per page.
 //
-// In WASM non ci sono font di sistema. Il carattere predefinito del modello è
-// già Inter (renderer/text.ts::DEFAULT_FONT_FAMILY), quindi si porta Inter come
-// file statico (public/fonts, licenza OFL) in quattro pesi. Un testo con un'altra
-// famiglia ricade su Inter: è un limite dichiarato del renderer GPU, non una
-// scelta di stile.
+// In WASM there are no system fonts. The model's default typeface is
+// already Inter (renderer/text.ts::DEFAULT_FONT_FAMILY), so Inter is brought as a
+// static file (public/fonts, OFL license) in four weights. Text with another
+// family falls back to Inter: it is a declared limit of the GPU renderer, not a
+// style choice.
 
 let loading: Promise<CanvasKit> | null = null;
 
@@ -24,8 +24,8 @@ export function loadCanvasKit(): Promise<CanvasKit> {
       ]);
       return init({ locateFile: () => wasmUrl });
     })();
-    // Un caricamento fallito (rete caduta) non deve restare memorizzato: il
-    // tentativo dopo riparte da zero.
+    // A failed load (network dropped) must not stay memoized: the
+    // next attempt restarts from zero.
     loading.catch(() => {
       loading = null;
     });
@@ -33,11 +33,11 @@ export function loadCanvasKit(): Promise<CanvasKit> {
   return loading;
 }
 
-// I pesi per cui esiste un file. Gli altri si portano al più vicino.
+// The weights for which a file exists. The others are brought to the nearest.
 export const FONT_WEIGHTS = [400, 500, 600, 700] as const;
 export type FontWeight = (typeof FONT_WEIGHTS)[number];
 
-/** "bold", "normal", "600", "" ... -> il peso disponibile più vicino. */
+/** "bold", "normal", "600", "" ... -> the nearest available weight. */
 export function nearestWeight(css: string | undefined): FontWeight {
   const s = (css ?? "").trim().toLowerCase();
   let w = 400;
@@ -64,9 +64,9 @@ const defaultFetch: FetchFont = async (url) => {
 };
 
 /**
- * I font di Inter caricati in CanvasKit. Il 400 è obbligatorio (senza non si
- * disegna testo); gli altri pesi si scaricano alla prima richiesta e nel
- * frattempo si usa il più vicino già pronto, poi `onLoad` chiede un ridisegno.
+ * The Inter fonts loaded into CanvasKit. 400 is mandatory (without it no
+ * text is drawn); the other weights are downloaded on first request and in the
+ * meantime the nearest one already ready is used, then `onLoad` asks for a redraw.
  */
 export class FontBook {
   private faces = new Map<FontWeight, Typeface>();
@@ -80,10 +80,10 @@ export class FontBook {
     private readonly baseUrl = "/fonts/",
   ) {}
 
-  /** Carica il peso di base. Va atteso prima del primo disegno. */
+  /** Loads the base weight. Must be awaited before the first draw. */
   async ready(): Promise<void> {
     await this.load(400);
-    if (!this.faces.has(400)) throw new Error("font di base non caricato");
+    if (!this.faces.has(400)) throw new Error("base font not loaded");
   }
 
   private async load(w: FontWeight): Promise<void> {
@@ -94,8 +94,8 @@ export class FontBook {
       const face = this.CK.Typeface.MakeFreeTypeFaceFromData(data);
       if (face) {
         this.faces.set(w, face);
-        // I Font già creati per pesi diversi restano validi: sono per (peso,
-        // corpo) e vengono richiesti di nuovo da fontFor.
+        // Fonts already created for different weights remain valid: they are per (weight,
+        // size) and are requested again by fontFor.
         this.onLoad();
       }
     } finally {
@@ -103,11 +103,11 @@ export class FontBook {
     }
   }
 
-  /** Il Font per peso e corpo, o null se non c'è ancora nessuna faccia. */
+  /** The Font for weight and size, or null if no face exists yet. */
   fontFor(css: string | undefined, size: number): Font | null {
     const want = nearestWeight(css);
     if (!this.faces.has(want)) void this.load(want).catch(() => {});
-    // Il peso pronto più vicino a quello voluto.
+    // The nearest ready weight to the wanted one.
     let have: FontWeight | null = null;
     for (const w of FONT_WEIGHTS) {
       if (!this.faces.has(w)) continue;

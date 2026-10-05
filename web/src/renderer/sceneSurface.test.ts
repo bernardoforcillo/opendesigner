@@ -2,9 +2,9 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { emptyScene } from "../store/types";
 import { useRenderer } from "../store/rendererChoice";
 
-// CanvasKit e il suo renderer sono finti: qui si prova la DECISIONE (quale
-// renderer disegna, e il ripiego sulla CPU), non il disegno, che gira solo in un
-// browser vero (vedi docs/performance.md).
+// CanvasKit and its renderer are fake: here the DECISION is tested (which
+// renderer draws, and the CPU fallback), not the drawing, which only runs in a
+// real browser (see docs/performance.md).
 const gpuDraw = vi.fn();
 const gpuDispose = vi.fn();
 let gpuLost = false;
@@ -55,7 +55,7 @@ beforeEach(() => {
 });
 
 describe("SceneSurface", () => {
-  it("con la CPU scelta disegna in CPU e nasconde il canvas WebGL", () => {
+  it("with the CPU chosen it draws on the CPU and hides the WebGL canvas", () => {
     const { cpu, gl } = canvases();
     const surface = new SceneSurface(cpu, gl, images, () => {});
     expect(surface.draw(emptyScene("d", "t"), cam, null, false)).toBe(true);
@@ -64,7 +64,7 @@ describe("SceneSurface", () => {
     expect(gl.style.display).toBe("none");
   });
 
-  it("scegliendo la GPU parte il caricamento, nel frattempo disegna la CPU; poi passa alla GPU", async () => {
+  it("choosing the GPU starts loading, meanwhile the CPU draws; then it switches to the GPU", async () => {
     const { cpu, gl, clear } = canvases();
     const invalidate = vi.fn();
     const surface = new SceneSurface(cpu, gl, images, invalidate);
@@ -73,23 +73,23 @@ describe("SceneSurface", () => {
 
     surface.draw(scene, cam, null, false);
     expect(useRenderer.getState().status).toBe("loading");
-    expect(cpuDraw).toHaveBeenCalledTimes(1); // niente buco mentre carica
+    expect(cpuDraw).toHaveBeenCalledTimes(1); // no hole while loading
     await tick();
-    expect(invalidate).toHaveBeenCalled(); // la GPU è pronta: chiede un frame
+    expect(invalidate).toHaveBeenCalled(); // the GPU is ready: it asks for a frame
 
     surface.draw(scene, cam, null, false);
     expect(gpuDraw).toHaveBeenCalledTimes(1);
-    expect(cpuDraw).toHaveBeenCalledTimes(1); // la CPU non ha disegnato di nuovo
+    expect(cpuDraw).toHaveBeenCalledTimes(1); // the CPU did not draw again
     expect(gl.style.display).toBe("block");
-    expect(clear).toHaveBeenCalledTimes(1); // il canvas 2D sopra resta trasparente
+    expect(clear).toHaveBeenCalledTimes(1); // the 2D canvas above stays transparent
     expect(useRenderer.getState().status).toBe("gpu");
 
-    // Più frame: il canvas 2D si svuota UNA volta sola.
+    // More frames: the 2D canvas is emptied only ONCE.
     surface.draw(scene, cam, null, false);
     expect(clear).toHaveBeenCalledTimes(1);
   });
 
-  it("se CanvasKit non si carica ripiega sulla CPU, dice perché, e NON cancella la preferenza", async () => {
+  it("if CanvasKit does not load it falls back to the CPU, says why, and does NOT erase the preference", async () => {
     loadFails = new Error("rete caduta");
     const { cpu, gl } = canvases();
     const surface = new SceneSurface(cpu, gl, images, () => {});
@@ -97,17 +97,17 @@ describe("SceneSurface", () => {
     surface.draw(emptyScene("d", "t"), cam, null, false);
     await tick();
     expect(useRenderer.getState()).toMatchObject({ choice: "cpu", status: "error", error: "rete caduta" });
-    // Un guasto passeggero non deve riscrivere la scelta salvata.
+    // A transient fault must not rewrite the saved choice.
     expect(localStorage.getItem("opendesigner.renderer")).toBe("gpu");
 
-    // E si continua a disegnare, in CPU, senza rimettere in coda il caricamento.
+    // And drawing continues, on the CPU, without re-queuing the load.
     cpuDraw.mockClear();
     surface.draw(emptyScene("d", "t"), cam, null, false);
     expect(cpuDraw).toHaveBeenCalledTimes(1);
-    expect(useRenderer.getState().status).toBe("error"); // il motivo resta visibile
+    expect(useRenderer.getState().status).toBe("error"); // the reason stays visible
   });
 
-  it("se il contesto WebGL si perde, torna alla CPU nello stesso frame", async () => {
+  it("if the WebGL context is lost, it goes back to the CPU in the same frame", async () => {
     const { cpu, gl } = canvases();
     const surface = new SceneSurface(cpu, gl, images, () => {});
     useRenderer.getState().setChoice("gpu");
@@ -126,7 +126,7 @@ describe("SceneSurface", () => {
     expect(useRenderer.getState().error).toMatch(/WebGL/);
   });
 
-  it("un errore dentro il disegno GPU non spegne il ciclo: ripiega sulla CPU", async () => {
+  it("an error inside the GPU drawing does not kill the loop: it falls back to the CPU", async () => {
     const { cpu, gl } = canvases();
     const surface = new SceneSurface(cpu, gl, images, () => {});
     useRenderer.getState().setChoice("gpu");
@@ -140,7 +140,7 @@ describe("SceneSurface", () => {
     expect(useRenderer.getState().error).toBe("shader rotto");
   });
 
-  it("tornare alla CPU libera la GPU? no: resta pronta; ma dispose() la libera", async () => {
+  it("going back to the CPU frees the GPU? no: it stays ready; but dispose() frees it", async () => {
     const { cpu, gl } = canvases();
     const surface = new SceneSurface(cpu, gl, images, () => {});
     useRenderer.getState().setChoice("gpu");
@@ -150,7 +150,7 @@ describe("SceneSurface", () => {
     expect(gpuDispose).toHaveBeenCalled();
   });
 
-  it("il tempo dell'ultimo frame si pubblica al più ogni mezzo secondo", () => {
+  it("the last frame's time is published at most every half second", () => {
     const { cpu, gl } = canvases();
     const surface = new SceneSurface(cpu, gl, images, () => {});
     const set = vi.spyOn(useRenderer.getState(), "setFrameMs");

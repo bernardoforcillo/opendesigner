@@ -3,42 +3,42 @@ import type { Bounds } from "../canvas/geometry";
 import type { FlowLite, SceneState } from "./types";
 import { markPresented } from "../dev/presented";
 
-// STATO DI VISTA DELLA MODALITÀ "FLUSSI". Come currentPageId e selection nello
-// store della scena, è stato dell'INTERFACCIA: non è documento, non passa dalla
-// rete e non entra nell'undo. Tutto ciò che invece è documento (i flussi, le
-// transizioni, i metadati) si scrive solo con gli op.
+// VIEW STATE OF THE "FLOWS" MODE. Like currentPageId and selection in the
+// scene store, it is INTERFACE state: it is not document, does not go over the
+// network and does not enter undo. Everything that is instead document (flows,
+// transitions, metadata) is written only with ops.
 
-// Tre modalità, il percorso del prodotto: Design (si disegna), Flussi (si
-// collegano le schermate e si prova il prototipo), Sviluppo (si consegna:
-// prontezza, codice generato, export). Su Sviluppo la tela non si modifica.
+// Three modes, the product's path: Design (you draw), Flows (you
+// connect screens and try the prototype), Development (you hand off:
+// readiness, generated code, export). In Development the canvas is not edited.
 export type EditorMode = "design" | "flows" | "dev";
 
-/** Il drag di "Collega" in corso: da dove parte, dov'è il puntatore, cosa c'è sotto. */
+/** The "Connect" drag in progress: where it starts from, where the pointer is, what is underneath. */
 export interface ConnectPreview {
   fromScreenId: string;
-  /** L'hotspot di partenza (un elemento dentro la schermata) o "". */
+  /** The starting hotspot (an element inside the screen) or "". */
   elementId: string;
-  /** I bounds MONDO di ciò da cui nasce la freccia (l'elemento, o la schermata). */
+  /** The WORLD bounds of what the arrow originates from (the element, or the screen). */
   fromBounds: Bounds;
-  /** Il puntatore, in coordinate mondo. */
+  /** The pointer, in world coordinates. */
   x: number;
   y: number;
-  /** La schermata di arrivo sotto il puntatore, se c'è. */
+  /** The destination screen under the pointer, if any. */
   targetId: string | null;
 }
 
 export interface FlowUiState {
   mode: EditorMode;
-  /** Il flusso corrente (id), o null = nessuno scelto (si ripiega sul primo). */
+  /** The current flow (id), or null = none chosen (falls back to the first). */
   currentFlowId: string | null;
-  /** Mostra anche le frecce degli altri flussi, attenuate. */
+  /** Also show the arrows of the other flows, dimmed. */
   showAllFlows: boolean;
   selectedTransitionId: string | null;
   hoverTransitionId: string | null;
   connectPreview: ConnectPreview | null;
-  /** Il prototipo giocabile è aperto. */
+  /** The playable prototype is open. */
   presenting: boolean;
-  /** Gli id con un problema (da AnalyzeFlows): il canvas li evidenzia. */
+  /** The ids with a problem (from AnalyzeFlows): the canvas highlights them. */
   issueNodeIds: ReadonlySet<string>;
   issueTransitionIds: ReadonlySet<string>;
 
@@ -66,16 +66,16 @@ export const useFlowUi = create<FlowUiState>((set) => ({
   issueNodeIds: NONE,
   issueTransitionIds: NONE,
 
-  // Uscire dalle modalità azzera ciò che ha senso solo dentro: la freccia
-  // selezionata, l'hover e il rubber band non devono restare appesi in "design".
+  // Leaving the modes resets what only makes sense inside them: the selected
+  // arrow, the hover and the rubber band must not stay hanging in "design".
   setMode: (m) =>
     set((st) =>
       st.mode === m
         ? st
         : { mode: m, selectedTransitionId: null, hoverTransitionId: null, connectPreview: null, presenting: false },
     ),
-  // F alterna Design <-> Flussi; da Sviluppo riporta a Design (la via più corta
-  // verso il disegno). Sviluppo si raggiunge con S o dal selettore del dock.
+  // F toggles Design <-> Flows; from Development it goes back to Design (the shortest path
+  // to drawing). Development is reached with S or from the dock selector.
   toggleMode: () =>
     set((st) => ({
       mode: st.mode === "design" ? "flows" : "design",
@@ -88,12 +88,12 @@ export const useFlowUi = create<FlowUiState>((set) => ({
     set((st) => (st.currentFlowId === id ? st : { currentFlowId: id, selectedTransitionId: null, hoverTransitionId: null })),
   setShowAllFlows: (v) => set((st) => (st.showAllFlows === v ? st : { showAllFlows: v })),
   selectTransition: (id) => set((st) => (st.selectedTransitionId === id ? st : { selectedTransitionId: id })),
-  // L'hover si ridisegna a ogni pointermove: senza il confronto ogni movimento
-  // del mouse invaliderebbe il canvas anche quando non cambia nulla.
+  // Hover redraws on every pointermove: without the comparison every mouse
+  // movement would invalidate the canvas even when nothing changes.
   setHoverTransition: (id) => set((st) => (st.hoverTransitionId === id ? st : { hoverTransitionId: id })),
   setConnectPreview: (p) => set({ connectPreview: p }),
   setPresenting: (v) => {
-    // "Hai già provato il prototipo?" alimenta il passo Prova della pipeline.
+    // "Have you already tried the prototype?" feeds the Try step of the pipeline.
     if (v) markPresented();
     set((st) => (st.presenting === v ? st : { presenting: v }));
   },
@@ -101,9 +101,9 @@ export const useFlowUi = create<FlowUiState>((set) => ({
 }));
 
 /**
- * Il flusso EFFETTIVO: quello scelto se esiste ancora, altrimenti il primo (per
- * nome, poi id). null se il documento non ha flussi. Un flusso cancellato da un
- * peer non lascia la vista agganciata a un id fantasma.
+ * The EFFECTIVE flow: the chosen one if it still exists, otherwise the first (by
+ * name, then id). null if the document has no flows. A flow deleted by a
+ * peer does not leave the view attached to a ghost id.
  */
 export function resolveFlow(scene: SceneState | null, currentFlowId: string | null): FlowLite | null {
   if (!scene) return null;

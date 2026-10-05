@@ -12,25 +12,25 @@ import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
 import type { SnapGuide } from "../selection/snap";
 
-// Il minimo che lo store chiede al trasporto: "manda questo op" (e applicalo in
-// ottimistico). SyncClient lo soddisfa strutturalmente; i test possono passare
-// un doppio senza toccare la rete, e lo store non dipende da rpc/.
+// The minimum the store asks of the transport: "send this op" (and apply it
+// optimistically). SyncClient satisfies it structurally; tests can pass
+// a double without touching the network, and the store does not depend on rpc/.
 export interface OpSink {
   submit(op: Op): void;
 }
 
-// Lo stato del collegamento col server, nel modo in cui la UI deve poterlo
-// dire all'utente:
-//  - "connecting"   apertura iniziale (snapshot + subscribe) non ancora finita;
-//  - "connected"    lo stream è aperto: gli op vengono confermati;
-//  - "reconnecting" lo stream è caduto e il client sta ritentando da solo --
-//                   le modifiche restano ottimistiche ma non sono perse;
-//  - "error"        i tentativi sono finiti (o il bootstrap è fallito): da qui
-//                   in poi non si riprende da soli, serve un reload.
-// La differenza fra "reconnecting" e "error" è l'unica che l'utente deve
-// davvero capire: nel primo caso può aspettare, nel secondo no.
-// L'anteprima di un riordino in un auto layout (vedi tools/layoutDrop.ts), in
-// coordinate MONDO: la linea d'inserimento e il contorno del nodo trascinato.
+// The state of the connection to the server, in the way the UI must be able to
+// tell the user:
+//  - "connecting"   initial open (snapshot + subscribe) not finished yet;
+//  - "connected"    the stream is open: ops get confirmed;
+//  - "reconnecting" the stream dropped and the client is retrying on its own --
+//                   changes stay optimistic but are not lost;
+//  - "error"        attempts are over (or the bootstrap failed): from here
+//                   on it does not recover on its own, a reload is needed.
+// The difference between "reconnecting" and "error" is the only one the user must
+// really understand: in the first case they can wait, in the second they cannot.
+// The preview of a reorder in an auto layout (see tools/layoutDrop.ts), in
+// WORLD coordinates: the insertion line and the outline of the dragged node.
 export interface LayoutDropPreview {
   indicator: Bounds;
   ghost: Bounds | null;
@@ -38,215 +38,215 @@ export interface LayoutDropPreview {
 
 export type ConnectionStatus = "connecting" | "connected" | "reconnecting" | "error";
 
-// Un op SUBMITTATO ma non ancora tornato indietro dal server. La chiave è
-// l'opId, l'unico identificatore che sopravvive al giro (Hub clona l'Op
-// verbatim dentro l'OpRecord che ribroadcasta), quindi l'unico modo che il
-// client ha di riconoscere il PROPRIO eco.
+// An op SUBMITTED but not yet returned by the server. The key is
+// the opId, the only identifier that survives the round trip (Hub clones the Op
+// verbatim into the OpRecord it rebroadcasts), so the only way the
+// client has to recognize its OWN echo.
 export interface PendingOp {
   opId: string;
   op: Op;
 }
 
-// Un op che il CLIENT ha annullato di sua iniziativa (rollback dopo un submit
-// fallito) ma il cui esito sul server era in realtà IGNOTO: Hub.Submit fa il
-// broadcast PRIMA di rispondere alla unary (internal/server/hub.go), quindi una
-// richiesta morta può benissimo aver lasciato l'op nell'op-log.
+// An op that the CLIENT rolled back on its own initiative (rollback after a failed
+// submit) but whose outcome on the server was actually UNKNOWN: Hub.Submit does the
+// broadcast BEFORE replying to the unary (internal/server/hub.go), so a
+// dead request may very well have left the op in the op-log.
 //
-// Finché lo stream non tornava più (M0/M1a prima del ciclo di vita) la
-// differenza non era osservabile: l'eco non sarebbe mai arrivato. Con la
-// riconnessione ci arriva, e dice che il rollback era una BUGIA -- la modifica è
-// durabile, ma l'utente ha letto "annullata" e la sua voce di undo è stata
-// riavvolta. Tenere l'opId (e il messaggio che gli abbiamo mostrato) è ciò che
-// permette di REVOCARE il rollback quando la prova arriva.
+// As long as the stream never came back (M0/M1a before the lifecycle) the
+// difference was not observable: the echo would never arrive. With
+// reconnection it does, and it says that the rollback was a LIE -- the change is
+// durable, but the user read "undone" and their undo entry was
+// rewound. Keeping the opId (and the message we showed them) is what
+// allows REVOKING the rollback when the proof arrives.
 interface DisownedOp {
   opId: string;
   message: string;
 }
 
-// Tetto alla memoria dei rollback revocabili. Un op davvero rifiutato dal server
-// non produce nessun eco, quindi la sua voce non verrebbe mai consumata: il
-// tetto è ciò che le fa invecchiare invece di accumularsi per tutta la sessione.
-// Stesso ordine di grandezza dell'outbox (rpc/syncClient.ts): la finestra di
-// dubbio è al più lunga quanto la coda che l'ha prodotta.
+// Cap on the memory of revocable rollbacks. An op truly rejected by the server
+// produces no echo, so its entry would never be consumed: the
+// cap is what makes them age out instead of accumulating for the whole session.
+// Same order of magnitude as the outbox (rpc/syncClient.ts): the window of
+// doubt is at most as long as the queue that produced it.
 const MAX_DISOWNED = 64;
 
-// Il testo che accompagna una revoca. Non è un errore -- è il contrario: una
-// modifica data per persa era in realtà salvata. Passa da `notice` e non da
-// `lastError` proprio per questo (il banner rosso dice "non salvata e
-// annullata": ripeterlo qui sarebbe la seconda bugia dopo la prima).
+// The text accompanying a revocation. It is not an error -- it is the opposite: a
+// change given up for lost was actually saved. It goes through `notice` and not through
+// `lastError` precisely for this reason (the red banner says "not saved and
+// undone": repeating it here would be the second lie after the first).
 const REVOKED =
-  "una modifica data per persa era in realtà stata salvata: è tornata sul canvas, con il suo annulla";
+  "a change reported as lost was actually saved: it is back on the canvas, with its undo";
 
-// Il testo che accompagna l'invalidazione di voci di undo/redo rese STALE da un
-// op remoto (vedi markStale). Va detto per la stessa ragione per cui va detto un
-// rollback: se gli stack si accorciano in silenzio, il Ctrl+Z successivo disfa
-// un gesto PIÙ VECCHIO di quello che l'utente si aspetta -- che è di nuovo una
-// modifica non richiesta e non spiegata. Passa da `notice` e non da `lastError`:
-// nessuna modifica dell'utente è stata annullata, è la sua storia ad aver perso
-// dei passi.
+// The text accompanying the invalidation of undo/redo entries made STALE by a
+// remote op (see markStale). It must be said for the same reason a
+// rollback must be said: if the stacks shorten silently, the next Ctrl+Z undoes
+// an OLDER gesture than the one the user expects -- which is again
+// an unrequested and unexplained change. It goes through `notice` and not `lastError`:
+// none of the user's changes was undone, it is their history that lost
+// some steps.
 const STALE =
-  "un'altra persona ha modificato questi elementi: i passi di annulla/ripeti che li riguardavano non sono più validi e sono stati tolti";
+  "someone else changed these elements: the undo/redo steps that involved them are no longer valid and were removed";
 
-// La FORMA di una transizione degli stack: cosa ha spinto, cosa ha tolto, cosa
-// ha svuotato. Tenere la forma e non solo il risultato è ciò che permette di
-// RICOSTRUIRE la transizione su un PREFISSO dei suoi op -- il caso, tutt'altro
-// che raro, in cui una parte del gruppo è atterrata sul server e il resto no.
+// The SHAPE of a stack transition: what it pushed, what it removed, what
+// it emptied. Keeping the shape and not only the result is what allows
+// RECONSTRUCTING the transition on a PREFIX of its ops -- the case, far from
+// rare, in which part of the group landed on the server and the rest did not.
 //
-// Tre forme, una per sorgente:
-//  - "gesture": endGesture spinge `entry` (gli inversi degli op finali, in
-//    ordine di stack) sull'undo e SVUOTA il redo;
-//  - "undo": undo() toglie `ops` dall'undo -- sono esattamente gli op che
-//    submette -- e spinge `entry` sul redo;
-//  - "redo": simmetrico.
+// Three shapes, one per source:
+//  - "gesture": endGesture pushes `entry` (the inverses of the final ops, in
+//    stack order) onto undo and EMPTIES redo;
+//  - "undo": undo() removes `ops` from undo -- they are exactly the ops it
+//    submits -- and pushes `entry` onto redo;
+//  - "redo": symmetric.
 //
-// In tutte e tre vale la stessa corrispondenza POSIZIONALE: `entry[i]` inverte
-// l'op in posizione `n-1-i` (invertChain ritorna la catena rovesciata), quindi
-// al prefisso di op sopravvissuti corrisponde la CODA di `entry`. È questa
-// corrispondenza che rende la ricostruzione parziale possibile senza dover
-// etichettare gli inversi uno a uno.
+// In all three the same POSITIONAL correspondence holds: `entry[i]` inverts
+// the op at position `n-1-i` (invertChain returns the reversed chain), so
+// the prefix of surviving ops corresponds to the TAIL of `entry`. It is this
+// correspondence that makes partial reconstruction possible without having to
+// label the inverses one by one.
 //
-// `entry` è quindi una lista di GRUPPI e non di op: l'inverso di UN op può
-// essere fatto di più op (un deleteNode cancella a cascata, e disfarlo vuol
-// dire ricreare tutto il sottoalbero, vedi history.ts). Appiattirlo qui
-// spezzerebbe proprio la corrispondenza posizionale -- `entry[i]` non
-// corrisponderebbe più a un op -- e la riparazione di un gesto atterrato a
-// metà rimetterebbe sullo stack la porzione sbagliata di voce. Le voci degli
-// stack restano invece PIATTE (un gesto = una voce = gli op che lo disfano):
-// l'appiattimento avviene al confine, quando la voce viene spinta.
-// `entry` vuoto = la transizione non ha prodotto nessuna voce (invertChain
-// fallito): può comunque aver svuotato il redo.
+// `entry` is therefore a list of GROUPS and not of ops: the inverse of ONE op can
+// be made of several ops (a deleteNode deletes in cascade, and undoing it means
+// re-creating the whole subtree, see history.ts). Flattening it here
+// would break precisely the positional correspondence -- `entry[i]` would no
+// longer correspond to one op -- and the repair of a half-landed gesture
+// would put the wrong portion of the entry back on the stack. The stack
+// entries remain FLAT instead (one gesture = one entry = the ops that undo it):
+// flattening happens at the boundary, when the entry is pushed.
+// Empty `entry` = the transition produced no entry (invertChain
+// failed): it may still have emptied redo.
 type HistoryShape =
   | { kind: "gesture"; entry: Op[][] }
   | { kind: "undo"; ops: Op[]; entry: Op[][] }
   | { kind: "redo"; ops: Op[]; entry: Op[][] };
 
-// Una TRANSIZIONE degli stack di undo/redo prodotta da op SUBMITTATI e non
-// ancora confermati.
+// A TRANSITION of the undo/redo stacks produced by SUBMITTED ops not
+// yet confirmed.
 //
-// endGesture spinge la voce di undo e svuota il redo PRIMA che gli op siano
-// stati accettati (deve: Ctrl+Z subito dopo un drag non può aspettare il giro
-// di rete). Se poi il server li rifiuta, quella voce resta lì con inversi
-// calcolati su uno stato che il server non ha MAI raggiunto: un rettangolo il
-// cui createNode è stato rifiutato lascia un [deleteNode n5] in cima allo
-// stack, Ctrl+Z lo consuma, il server risponde ErrNodeNotFound
-// (internal/core/apply.go) -> altro rollback, altro banner, la voce è bruciata
-// e il gesto PRECEDENTE -- quello vero -- non viene annullato. E il redo stack
-// era già stato svuotato per una modifica mai avvenuta.
+// endGesture pushes the undo entry and empties redo BEFORE the ops are
+// accepted (it must: Ctrl+Z right after a drag cannot wait for the network
+// round trip). If the server then rejects them, that entry stays there with inverses
+// computed on a state the server NEVER reached: a rectangle whose
+// createNode was rejected leaves a [deleteNode n5] on top of the
+// stack, Ctrl+Z consumes it, the server replies ErrNodeNotFound
+// (internal/core/apply.go) -> another rollback, another banner, the entry is burned
+// and the PREVIOUS gesture -- the real one -- is not undone. And the redo stack
+// had already been emptied for a change that never happened.
 //
-// Il mark tiene gli stack com'erano PRIMA della transizione più la sua forma.
-// Un rifiuto abbassa `kept` e la storia viene RIGIOCATA (revertHistory), l'eco
-// dell'ultimo op del gruppo la rende durabile e il mark sparisce
-// (confirmHistory). È lo stesso principio di `pending` applicato alla storia:
-// finché gli op sono in dubbio, lo è anche la voce di undo che hanno prodotto.
+// The mark keeps the stacks as they were BEFORE the transition plus its shape.
+// A rejection lowers `kept` and the history is REPLAYED (revertHistory), the echo
+// of the group's last op makes it durable and the mark disappears
+// (confirmHistory). It is the same principle as `pending` applied to history:
+// as long as the ops are in doubt, so is the undo entry they produced.
 //
-// Il mark NON è atomico, ed è il punto che la prima versione sbagliava: la
-// politica di scarto del trasporto lavora per OP (l'outbox ne manda uno alla
-// volta e un fallimento butta via solo la coda dietro), mentre i gesti
-// multi-op sono la norma -- selectTool emette un setProps per nodo selezionato
-// sul drag e sul resize, e un deleteNode per nodo su Canc. Riavvolgere l'intera
-// voce perché l'ULTIMO op del gruppo è caduto cancella l'annullabilità della
-// metà che si è invece persistita: nel caso di Canc, un nodo cancellato per
-// sempre senza Ctrl+Z possibile.
+// The mark is NOT atomic, and it is the point the first version got wrong: the
+// transport's discard policy works per OP (the outbox sends one at a
+// time and a failure throws away only the tail behind it), while
+// multi-op gestures are the norm -- selectTool emits one setProps per selected node
+// on drag and on resize, and one deleteNode per node on Delete. Rewinding the whole
+// entry because the group's LAST op fell wipes out the undoability of the
+// half that was instead persisted: in the Delete case, a node deleted
+// forever with no Ctrl+Z possible.
 interface HistoryMark {
-  // TUTTI gli op submittati dalla transizione, in ORDINE DI INVIO. Immutabile:
-  // è la POSIZIONE dentro questa lista a dire quanta parte della transizione
-  // un rifiuto porta via.
+  // ALL the ops submitted by the transition, in SEND ORDER. Immutable:
+  // it is the POSITION within this list that says how much of the transition
+  // a rejection takes away.
   opIds: string[];
-  // Quelli ancora in volo. L'eco li toglie uno a uno, un rifiuto toglie tutti
-  // quelli dalla posizione rifiutata in poi (non arriveranno mai). A lista
-  // vuota la transizione è DECISA e il mark può sparire.
+  // Those still in flight. The echo removes them one by one, a rejection removes all
+  // those from the rejected position onward (they will never arrive). With an empty
+  // list the transition is DECIDED and the mark can disappear.
   awaiting: string[];
-  // Quanti op INIZIALI della transizione sono ancora validi. Parte dal totale;
-  // un rifiuto lo abbassa all'indice dell'op rifiutato. I sopravvissuti sono
-  // sempre un PREFISSO: l'outbox manda un op alla volta e in ordine, gli echi
-  // tornano nell'ordine di seq deciso dal server, e un fallimento scarta tutta
-  // la coda dietro (rpc/syncClient.ts).
+  // How many INITIAL ops of the transition are still valid. Starts from the total;
+  // a rejection lowers it to the index of the rejected op. The survivors are
+  // always a PREFIX: the outbox sends one op at a time and in order, echoes
+  // come back in the seq order decided by the server, and a failure discards the whole
+  // tail behind it (rpc/syncClient.ts).
   kept: number;
-  // Gli stack com'erano PRIMA di questa transizione. Fanno da base al replay
-  // solo per la PRIMA voce di `history`; le successive se li portano dietro
-  // per poter diventare la prima quando quelle davanti si confermano.
+  // The stacks as they were BEFORE this transition. They serve as the base for the replay
+  // only for the FIRST `history` entry; the following ones carry them along
+  // so they can become the first when those ahead of them are confirmed.
   undoStack: Op[][];
   redoStack: Op[][];
   shape: HistoryShape;
 }
 
-// Stato di un gesto aperto. Non contiene più uno snapshot della scena: la base
-// di un gesto è "confermato + op in volo", che si ricalcola quando serve (vedi
-// viewOf) ed è sempre aggiornata, anche se nel frattempo sono arrivati record
-// dal server o un op in volo è stato rifiutato.
+// State of an open gesture. It no longer contains a snapshot of the scene: the base
+// of a gesture is "confirmed + in-flight ops", which is recomputed when needed (see
+// viewOf) and is always up to date, even if in the meantime records
+// arrived from the server or an in-flight op was rejected.
 interface GestureSnapshot {
   selection: string[];
-  // Op di sola ANTEPRIMA del gesto. Non sono mai stati sul filo e non ci
-  // andranno: a fine gesto il tool manda gli op FINALI e questi vengono
-  // buttati. Servono a poter RICALCOLARE la vista quando un record autorevole
-  // arriva a metà drag, senza far sparire l'anteprima sotto le dita
-  // dell'utente.
+  // PREVIEW-only ops of the gesture. They have never been on the wire and will not
+  // go there: at the end of the gesture the tool sends the FINAL ops and these are
+  // thrown away. They serve to be able to RECOMPUTE the view when an authoritative record
+  // arrives mid-drag, without making the preview vanish under the user's
+  // fingers.
   //
-  // COALESCED per bersaglio (vedi previewKey), non accumulati uno per
-  // pointermove: un drag di 5s a 60Hz su 50 nodi produce 15.000 applyLocal, e
-  // una lista li terrebbe tutti e 15.000 -- copiata a ogni chiamata (quadratico
-  // sull'hot path del drag) e RIGIOCATA per intero da viewOf a ogni record che
-  // atterra a metà drag, con un clone completo della mappa dei nodi per op.
-  // Coalescendo, l'anteprima resta grande quanto la selezione (una voce per
-  // nodo e forma di mask), indipendentemente da quanto dura il drag.
+  // COALESCED by target (see previewKey), not accumulated one per
+  // pointermove: a 5s drag at 60Hz on 50 nodes produces 15,000 applyLocal, and
+  // a list would keep all 15,000 -- copied on every call (quadratic
+  // on the drag hot path) and REPLAYED in full by viewOf on every record
+  // that lands mid-drag, with a full clone of the nodes map per op.
+  // By coalescing, the preview stays as large as the selection (one entry per
+  // node and mask shape), regardless of how long the drag lasts.
   preview: ReadonlyMap<string, Op>;
 }
 
-// Chiave di COALESCING di un op di anteprima: due op con la stessa chiave
-// scrivono ESATTAMENTE gli stessi campi dello stesso nodo, quindi il più
-// recente rende il precedente irrilevante e può sostituirlo.
+// COALESCING key of a preview op: two ops with the same key
+// write EXACTLY the same fields of the same node, so the most
+// recent makes the previous irrelevant and can replace it.
 //
-// Vale per setProps e setText, e solo perché gli op di anteprima sono ASSOLUTI
-// (selectTool ricalcola x/y/width/height dai bounds di inizio gesto, mai dal
-// delta dell'ultimo move; il textarea di editing manda il contenuto INTERO a
-// ogni tasto, mai il carattere aggiunto): un op assoluto sugli stessi campi
-// riscrive per intero l'effetto del precedente. Op di mask DIVERSA restano voci
-// separate -- un'anteprima di resize {width,height} non deve sparire perché ne
-// arriva una di spostamento {x,y} -- e per lo stesso motivo un setText che
-// porta anche lo STILE non si schiaccia con uno di solo contenuto.
-// createNode/deleteNode non si coalescono affatto (chiave unica): non sono
-// idempotenti fra loro e nessun tool li emette per pointermove, quindi non sono
-// sull'hot path.
+// It holds for setProps and setText, and only because preview ops are ABSOLUTE
+// (selectTool recomputes x/y/width/height from the gesture's start bounds, never from the
+// delta of the last move; the editing textarea sends the WHOLE content on
+// every key, never the added character): an absolute op on the same fields
+// fully rewrites the effect of the previous one. Ops with a DIFFERENT mask remain separate
+// entries -- a {width,height} resize preview must not vanish because a
+// {x,y} move one arrives -- and for the same reason a setText that
+// also carries the STYLE does not collapse with a content-only one.
+// createNode/deleteNode do not coalesce at all (unique key): they are not
+// idempotent among themselves and no tool emits them per pointermove, so they are not
+// on the hot path.
 let previewCounter = 0;
 function previewKey(op: Op): string {
   if (op.kind.case === "setProps") {
     const { id, mask } = op.kind.value;
-    // Ordinata: ["x","y"] e ["y","x"] scrivono gli stessi campi.
+    // Sorted: ["x","y"] and ["y","x"] write the same fields.
     return `s|${id}|${[...(mask?.paths ?? [])].sort().join(",")}`;
   }
   if (op.kind.case === "setText") {
-    // Una sessione di editing (ui/TextEditorOverlay.tsx) fa un applyLocal per
-    // TASTO e dura quanto dura la scrittura: senza coalescing, mille caratteri
-    // sono mille op di anteprima, tutti rigiocati da viewOf a ogni record
-    // autorevole che atterra mentre si scrive.
+    // An editing session (ui/TextEditorOverlay.tsx) does one applyLocal per
+    // KEY and lasts as long as the writing does: without coalescing, a thousand characters
+    // are a thousand preview ops, all replayed by viewOf on every authoritative
+    // record that lands while typing.
     const { id, stylePresent } = op.kind.value;
     return `t|${id}|${stylePresent ? "style" : ""}`;
   }
   if (op.kind.case === "setVectorPath") {
-    // Stessa sorgente del drag, e la PEGGIORE: il pen tool (e il trascinamento
-    // di un ancoraggio) fa un applyLocal per POINTERMOVE, e ogni op porta i
-    // subpath INTERI -- non un delta. Senza coalescing un solo trascinamento di
-    // 5s a 60Hz lascia 300 op di anteprima, ognuno con tutta la geometria
-    // dentro, copiati a ogni applyLocal e RIGIOCATI da viewOf a ogni record
-    // autorevole che atterra a metà gesto: esattamente il quadratico che
-    // previewKey esiste per evitare.
+    // Same source as the drag, and the WORST: the pen tool (and dragging
+    // an anchor) does one applyLocal per POINTERMOVE, and every op carries the WHOLE
+    // subpaths -- not a delta. Without coalescing a single 5s drag
+    // at 60Hz leaves 300 preview ops, each with all the geometry
+    // inside, copied on every applyLocal and REPLAYED by viewOf on every authoritative
+    // record that lands mid-gesture: exactly the quadratic that
+    // previewKey exists to avoid.
     //
-    // La chiave è il solo id: setVectorPath è wholesale e ASSOLUTO (sostituisce
-    // i subpath in blocco), quindi due op sullo stesso nodo scrivono per
-    // definizione gli stessi campi e l'ultimo rende il precedente irrilevante.
-    // Nessuna variante come lo `style` di setText: l'op È i subpath, non ne
-    // porta un secondo pezzo che possa restare intatto.
+    // The key is the id alone: setVectorPath is wholesale and ABSOLUTE (it replaces
+    // the subpaths in bulk), so two ops on the same node write by
+    // definition the same fields and the last makes the previous irrelevant.
+    // No variant like setText's `style`: the op IS the subpaths, it does not
+    // carry a second piece that could remain intact.
     const { id } = op.kind.value;
     return `v|${id}`;
   }
   return `#${previewCounter++}`;
 }
 
-// LA VISTA. Unica definizione della scena renderizzata:
-//   confermato dal server  ->  op ancora in volo (in ordine di invio)  ->  anteprima del gesto
-// Ogni riconciliazione (record dal filo, rifiuto, fine gesto) ricalcola da qui
-// invece di rattoppare lo stato precedente: è ciò che rende ordine, rollback e
-// rebase definiti invece che ad hoc.
+// THE VIEW. Single definition of the rendered scene:
+//   confirmed by the server  ->  ops still in flight (in send order)  ->  gesture preview
+// Every reconciliation (wire record, rejection, end of gesture) recomputes from here
+// instead of patching the previous state: it is what makes ordering, rollback and
+// rebase defined instead of ad hoc.
 function viewOf(confirmed: SceneState, pending: readonly PendingOp[], preview: Iterable<Op>): SceneState {
   let scene = confirmed;
   for (const p of pending) scene = applyOp(scene, p.op);
@@ -254,38 +254,38 @@ function viewOf(confirmed: SceneState, pending: readonly PendingOp[], preview: I
   return scene;
 }
 
-// Toglie dalla coda la PRIMA voce con questo opId (la coda è in ordine di
-// invio). Un opId vuoto non identifica niente e non deve poter far uscire dalla
-// coda l'op sbagliato: in quel caso non tocca nulla.
+// Removes from the queue the FIRST entry with this opId (the queue is in send
+// order). An empty opId identifies nothing and must not be able to remove the wrong op
+// from the queue: in that case it touches nothing.
 function dropPending(pending: PendingOp[], opId: string): PendingOp[] {
   if (opId === "") return pending;
   const i = pending.findIndex((p) => p.opId === opId);
   return i < 0 ? pending : [...pending.slice(0, i), ...pending.slice(i + 1)];
 }
 
-// --- voci rese STALE da un op remoto ---------------------------------------
-// Una voce di undo/redo è fatta di inversi ASSOLUTI (un setProps porta i valori
-// per intero, non un delta) calcolati su uno stato preciso: quello in cui la
-// voce è stata creata. Resta valida finché i nodi che tocca non li cambia
-// QUALCUN ALTRO -- gli op locali, invece, la mantengono valida per costruzione
-// (un gesto spinge la propria voce sopra, un undo la consuma).
+// --- entries made STALE by a remote op -------------------------------------
+// An undo/redo entry is made of ABSOLUTE inverses (a setProps carries the values
+// in full, not a delta) computed on a precise state: the one in which the
+// entry was created. It stays valid as long as the nodes it touches are not changed by
+// SOMEONE ELSE -- local ops, instead, keep it valid by construction
+// (a gesture pushes its own entry on top, an undo consumes it).
 //
-// Dopo una modifica remota non esiste nessun rebase sensato: due scritture
-// ASSOLUTE sullo stesso campo non si fondono, una delle due vince, e far vincere
-// la nostra è esattamente la sovrascrittura silenziosa da evitare (l'utente non
-// ha chiesto di annullare il lavoro di un altro, ha chiesto di annullare il
-// PROPRIO). L'op stale viene quindi tolto dalla voce, e l'utente lo legge dal
+// After a remote change there is no sensible rebase: two
+// ABSOLUTE writes on the same field do not merge, one of them wins, and letting
+// ours win is exactly the silent overwrite to avoid (the user did not
+// ask to undo someone else's work, they asked to undo their
+// OWN). The stale op is therefore removed from the entry, and the user reads it from the
 // banner (STALE).
 //
-// Granularità: per OP, non per voce intera. Un gesto multi-nodo è una voce sola
-// (selectTool manda un setProps per nodo selezionato) e buttarla via tutta
-// perché un altro client ha toccato UNO dei nodi renderebbe non annullabile
-// anche la parte che è ancora interamente nostra. È la stessa scelta che la
-// riparazione dei rollback fa già sui gesti atterrati a metà.
+// Granularity: per OP, not per whole entry. A multi-node gesture is a single entry
+// (selectTool sends one setProps per selected node) and throwing it all away
+// because another client touched ONE of the nodes would make even the part that is still entirely ours
+// non-undoable. It is the same choice the
+// rollback repair already makes on half-landed gestures.
 
-// Il BERSAGLIO di un op: il nodo che tocca e, per un setProps, i CAMPI che gli
-// scrive. `paths: null` = tutto il nodo -- createNode e deleteNode non toccano
-// un campo, toccano l'ESISTENZA del nodo, che è sotto ogni campo.
+// The TARGET of an op: the node it touches and, for a setProps, the FIELDS it
+// writes to it. `paths: null` = the whole node -- createNode and deleteNode do not touch
+// a field, they touch the node's EXISTENCE, which is beneath every field.
 interface OpTarget {
   id: string;
   paths: readonly string[] | null;
@@ -305,101 +305,101 @@ function targetOf(op: Op): OpTarget | null {
       const { id, mask } = op.kind.value;
       return id === "" ? null : { id, paths: mask?.paths ?? [] };
     }
-    // "text" NON è un path di FieldMask (non è in MASK_PATHS, e Go lo
-    // rifiuterebbe dentro un setProps): è l'ETICHETTA del campo che un setText
-    // scrive, e serve solo qui, a decidere i conflitti. Sta nello stesso spazio
-    // dei nomi dei path di setProps proprio perché deve essere disgiunto da
-    // TUTTI: riscrivere il contenuto e spostare il nodo sono modifiche
-    // indipendenti, e un rename altrui non deve bruciare l'annullamento di una
-    // sessione di editing (né viceversa).
-    // Senza questo ramo un setText remoto non renderebbe stale niente e una
-    // voce di undo contenente un setText non sarebbe MAI invalidata: il Ctrl+Z
-    // successivo riscriverebbe in silenzio il testo di qualcun altro.
+    // "text" is NOT a FieldMask path (it is not in MASK_PATHS, and Go
+    // would reject it inside a setProps): it is the LABEL of the field a setText
+    // writes, and it only serves here, to decide conflicts. It sits in the same
+    // namespace as the setProps paths precisely because it must be disjoint from
+    // ALL of them: rewriting the content and moving the node are
+    // independent changes, and someone else's rename must not burn the undo of an
+    // editing session (nor vice versa).
+    // Without this branch a remote setText would make nothing stale and an undo
+    // entry containing a setText would NEVER be invalidated: the next Ctrl+Z
+    // would silently rewrite someone else's text.
     case "setText": {
       const { id } = op.kind.value;
       return id === "" ? null : { id, paths: ["text"] };
     }
-    // "subpaths" è l'ETICHETTA del campo che un setVectorPath scrive (non un
-    // path di FieldMask -- Go lo rifiuterebbe dentro un setProps), esattamente
-    // come "text" per setText. Senza, un setVectorPath remoto non renderebbe
-    // stale niente e una voce di undo che ne contiene uno non sarebbe MAI
-    // invalidata: il Ctrl+Z successivo cancellerebbe in silenzio la geometria
-    // appena disegnata da un altro.
+    // "subpaths" is the LABEL of the field a setVectorPath writes (not a
+    // FieldMask path -- Go would reject it inside a setProps), exactly
+    // like "text" for setText. Without it, a remote setVectorPath would make
+    // nothing stale and an undo entry containing one would NEVER be
+    // invalidated: the next Ctrl+Z would silently delete the geometry
+    // just drawn by someone else.
     //
-    // A differenza di "text", però, l'etichetta da sola NON basta -- ed è
-    // l'unico op con più di un campo nel bersaglio. Per un nodo vettoriale il
-    // box È la bbox del path (invariante del proto su VectorNode), quindi
-    // x/y/width/height e subpaths non sono campi indipendenti: sono due METÀ
-    // dello stesso valore. Si scrivono con DUE op -- un resize è un gesto solo
-    // che emette setProps{x,y,width,height} + setVectorPath (vedi
-    // tools/selectTool.ts::resizeOps) -- mentre la potatura degli op stale
-    // lavora per OP. Con un bersaglio ristretto a "subpaths" un record remoto
-    // ne potava UNO SOLO e teneva l'altro:
-    //  - un DRAG remoto (setProps{x,y}) potava l'inverso del box e teneva
-    //    quello della geometria -> Ctrl+Z rimetteva l'inchiostro VECCHIO nel
-    //    box nuovo;
-    //  - un setVectorPath remoto potava l'inverso della geometria e teneva
-    //    quello del box -> Ctrl+Z rimetteva il box VECCHIO intorno
-    //    all'inchiostro dell'altro.
-    // In entrambi i casi resta un nodo il cui box non è più la bbox del suo
-    // path: le 8 maniglie di resize non toccano l'inchiostro (overlayRenderer
-    // le disegna dal box) e il marquee afferra il vuoto.
+    // Unlike "text", however, the label alone is NOT enough -- and it is
+    // the only op with more than one field in its target. For a vector node the
+    // box IS the path's bbox (proto invariant on VectorNode), so
+    // x/y/width/height and subpaths are not independent fields: they are two HALVES
+    // of the same value. They are written with TWO ops -- a resize is a single gesture
+    // that emits setProps{x,y,width,height} + setVectorPath (see
+    // tools/selectTool.ts::resizeOps) -- while the pruning of stale ops
+    // works per OP. With a target restricted to "subpaths" a remote record
+    // would prune ONLY ONE of them and keep the other:
+    //  - a remote DRAG (setProps{x,y}) would prune the box's inverse and keep
+    //    the geometry's -> Ctrl+Z would put the OLD ink back into the
+    //    new box;
+    //  - a remote setVectorPath would prune the geometry's inverse and keep
+    //    the box's -> Ctrl+Z would put the OLD box back around
+    //    the other's ink.
+    // In both cases a node remains whose box is no longer the bbox of its
+    // path: the 8 resize handles do not touch the ink (overlayRenderer
+    // draws them from the box) and the marquee grabs empty space.
     //
-    // Il bersaglio comprende quindi il box INTERO. Su width/height è ovvio: li
-    // determina. Su x/y meno, perché uno spostamento da solo non scollerebbe
-    // niente -- gli ancoraggi sono LOCALI, quindi l'inchiostro viaggia col
-    // nodo. Ci sono lo stesso, per due ragioni:
-    //  1. sono l'unico modo di chiudere la prima traccia: là il record remoto è
-    //     un setProps{x,y}, e senza x/y qui il bersaglio resta disgiunto
-    //     dall'inverso della geometria, che sopravvive da solo -- cioè
-    //     esattamente il mezzo undo da evitare;
-    //  2. non costano un passo di annulla che non stesse già per cadere: chi
-    //     riscrive i subpath manda NELLO STESSO GESTO il setProps{x,y,width,
-    //     height} che rinormalizza il box (l'invariante è dello scrittore, vedi
-    //     vectorGeometry.ts::normalizeVector), quindi quel secondo record
-    //     avrebbe potato le stesse voci un istante dopo. Anticipare la potatura
-    //     non toglie di più: toglie la FINESTRA in cui metà voce sopravvive.
-    // Non è "un op remoto su questo nodo brucia tutta la sua storia": il taglio
-    // per campo resta, e con un rename, l'opacità o il riempimento non c'è
-    // nessun conflitto.
+    // The target therefore includes the WHOLE box. On width/height it is obvious: they
+    // determine it. On x/y less so, because a move alone would not detach
+    // anything -- the anchors are LOCAL, so the ink travels with the
+    // node. They are there anyway, for two reasons:
+    //  1. they are the only way to close the first track: there the remote record is
+    //     a setProps{x,y}, and without x/y here the target remains disjoint
+    //     from the geometry's inverse, which survives alone -- that is
+    //     exactly the half-undo to avoid;
+    //  2. they do not cost an undo step that was not already about to fall: whoever
+    //     rewrites the subpaths sends IN THE SAME GESTURE the setProps{x,y,width,
+    //     height} that renormalizes the box (the invariant belongs to the writer, see
+    //     vectorGeometry.ts::normalizeVector), so that second record
+    //     would have pruned the same entries an instant later. Anticipating the pruning
+    //     does not remove more: it removes the WINDOW in which half an entry survives.
+    // It is not "a remote op on this node burns its whole history": the per-field
+    // cut remains, and with a rename, the opacity or the fill there is
+    // no conflict.
     //
-    // Una modifica sola basta per entrambi i versi perché `conflicts` interseca
-    // i due elenchi: allargato qui, il bersaglio morde sia quando il
-    // setVectorPath è il record REMOTO sia quando è l'op dentro la voce (dove a
-    // fargli da controparte è il setProps sul box di un altro client).
+    // A single change is enough for both directions because `conflicts` intersects
+    // the two lists: widened here, the target bites both when the
+    // setVectorPath is the REMOTE record and when it is the op inside the entry (where
+    // its counterpart is the setProps on another client's box).
     case "setVectorPath": {
       const { id } = op.kind.value;
       return id === "" ? null : { id, paths: ["subpaths", "x", "y", "width", "height"] };
     }
-    // Un reparent scrive DUE campi: il container e la posizione fra i pari.
-    // Sono nello stesso spazio dei nomi dei path di setProps proprio perché
-    // "order_key" è anche un path della mask (il riordino del pannello
-    // livelli): un reparent remoto deve invalidare l'annullamento di un
-    // riordino locale dello stesso nodo, mentre non deve toccare quello di uno
-    // spostamento (x/y), che resta esatto.
+    // A reparent writes TWO fields: the container and the position among peers.
+    // They are in the same namespace as the setProps paths precisely because
+    // "order_key" is also a mask path (the layers panel
+    // reordering): a remote reparent must invalidate the undo of a
+    // local reorder of the same node, while it must not touch that of
+    // a move (x/y), which stays exact.
     case "reparentNode": {
       const { id } = op.kind.value;
       return id === "" ? null : { id, paths: ["parent_id", "order_key"] };
     }
-    // Un kind sconosciuto non ha bersaglio noto: non può invalidare niente, ma
-    // non è nemmeno invalidabile (applyOp lo ignora, quindi non è mai finito in
-    // una voce).
+    // An unknown kind has no known target: it cannot invalidate anything, but
+    // it is not invalidatable either (applyOp ignores it, so it never ended up in
+    // an entry).
     default:
       return null;
   }
 }
 
-// I bersagli di un op, ESPANSI contro la scena su cui l'op atterra.
+// The targets of an op, EXPANDED against the scene the op lands on.
 //
-// Serve solo a deleteNode, ed è la conseguenza della cascata: l'op nomina un
-// nodo ma ne porta via un SOTTOALBERO (vedi applyOp). Un op che tocca un
-// discendente è quindi in conflitto con questa delete tanto quanto uno che
-// tocca la radice -- senza l'espansione, un gruppo cancellato da un altro
-// client lascerebbe in piedi le voci di undo che riguardano i suoi figli, e il
-// Ctrl+Z successivo manderebbe al server un setProps su un nodo che non esiste
-// più (rifiuto, banner rosso, voce bruciata).
+// It only serves deleteNode, and it is the consequence of the cascade: the op names a
+// node but takes away a SUBTREE (see applyOp). An op that touches a
+// descendant is therefore in conflict with this delete as much as one that
+// touches the root -- without the expansion, a group deleted by another
+// client would leave standing the undo entries concerning its children, and the
+// next Ctrl+Z would send the server a setProps on a node that no longer
+// exists (rejection, red banner, burned entry).
 //
-// Per tutti gli altri kind è il bersaglio singolo di targetOf.
+// For all other kinds it is the single target from targetsOf.
 function targetsOf(op: Op, scene: SceneState): OpTarget[] {
   if (op.kind.case !== "deleteNode") {
     const t = targetOf(op);
@@ -408,26 +408,26 @@ function targetsOf(op: Op, scene: SceneState): OpTarget[] {
   const { id } = op.kind.value;
   if (id === "") return [];
   const sub = subtreeOf(scene, id);
-  // Nodo già assente dalla scena data: resta il bersaglio nominato, così un op
-  // di una voce (calcolata su uno stato più vecchio) continua a confliggere.
+  // Node already absent from the given scene: the named target remains, so an op
+  // of an entry (computed on an older state) keeps conflicting.
   if (sub.length === 0) return [{ id, paths: null }];
   return sub.map((n) => ({ id: n.id, paths: null }));
 }
 
-// Due op sono in CONFLITTO quando toccano lo STESSO nodo e almeno un campo in
-// comune.
+// Two ops are in CONFLICT when they touch the SAME node and at least one field in
+// common.
 //
-// Il taglio sui campi non è un dettaglio: senza, qualunque modifica remota a
-// qualunque proprietà di un nodo cancellerebbe la storia che lo riguarda -- un
-// rename altrui brucerebbe l'annullamento del tuo spostamento. Due setProps su
-// mask DISGIUNTE invece non si toccano davvero: applyOp legge e scrive solo i
-// path della mask, quindi l'inverso resta esatto e non c'è niente da
-// sovrascrivere.
+// The per-field cut is not a detail: without it, any remote change to
+// any property of a node would wipe out the history concerning it -- someone else's
+// rename would burn the undo of your move. Two setProps on
+// DISJOINT masks instead do not really touch each other: applyOp reads and writes only the
+// mask's paths, so the inverse remains exact and there is nothing to
+// overwrite.
 //
-// L'esistenza (`paths: null`) invece confligge con tutto, in entrambi i versi:
-// cancellare un nodo che un altro ha appena modificato ne butta via la modifica
-// per INTERO (peggio che sovrascriverne un campo), e un nodo cancellato o
-// ricreato da un altro non è più lo stato su cui l'inverso è stato calcolato.
+// Existence (`paths: null`) instead conflicts with everything, in both directions:
+// deleting a node that another has just modified throws away its change
+// ENTIRELY (worse than overwriting a field), and a node deleted or
+// re-created by another is no longer the state on which the inverse was computed.
 function conflicts(a: OpTarget, b: OpTarget): boolean {
   if (a.id !== b.id) return false;
   const pa = a.paths;
@@ -436,52 +436,52 @@ function conflicts(a: OpTarget, b: OpTarget): boolean {
   return pa.some((p) => pb.includes(p));
 }
 
-// Tutte le voci che un record remoto può rendere stale: gli stack VIVI e quelle
-// custodite dai mark ancora in dubbio. I mark vanno guardati anche se non si
-// vedono: le loro basi sono ciò da cui replayHistory ricostruisce gli stack al
-// prossimo rifiuto, quindi un op stale lasciato lì dentro RITORNEREBBE.
+// All the entries a remote record can make stale: the LIVE stacks and those
+// held by the marks still in doubt. The marks must be looked at even if they are not
+// visible: their bases are what replayHistory rebuilds the stacks from at the
+// next rejection, so a stale op left in there would COME BACK.
 function allEntries(undoStack: Op[][], redoStack: Op[][], history: HistoryMark[]): Op[][] {
   const out: Op[][] = [...undoStack, ...redoStack];
   for (const m of history) out.push(...m.undoStack, ...m.redoStack, m.shape.entry.flat());
   return out;
 }
 
-// Marca gli op resi stale da `remote`. Ritorna true se ne ha marcato almeno uno
-// di nuovo.
+// Marks the ops made stale by `remote`. Returns true if it marked at least one
+// new one.
 //
-// L'insieme è un WeakSet e non un Set per una ragione precisa: un op stale esce
-// subito da ogni stack, quindi tenerlo in una struttura FORTE vorrebbe dire
-// tenerlo vivo per tutta la sessione solo per poterlo riconoscere. Con il
-// WeakSet l'appartenenza sopravvive esattamente quanto l'op che la usa (i mark
-// ne tengono una copia finché sono in dubbio), e non un istante di più.
-// Le due scene NON sono la stessa, e non possono esserlo: i due lati del
-// confronto rispondono a due domande diverse (vedi targetsOf, che espande le
-// cascate).
-//  - `before` -- il confermato PRIMA di `remote` -- è il documento su cui
-//    l'op remoto atterra, cioè l'unico che sa che cosa una sua deleteNode si
-//    è portata via: dopo, quel sottoalbero non esiste più e l'espansione
-//    ricadrebbe sul solo id nominato (le voci che toccano i FIGLI di un gruppo
-//    cancellato da un altro resterebbero in piedi).
-//  - `after` -- il confermato DOPO -- è invece il documento su cui atterrerà
-//    il prossimo Ctrl+Z, cioè l'unico che sa che cosa una deleteNode DI UNA
-//    VOCE si porterebbe via ADESSO. Un op remoto che INFILA un nodo in un
-//    sottoalbero (createNode con quel parent, o un reparent verso l'interno)
-//    non tocca nessun nodo che la scena precedente contenesse: guardato sul
-//    documento vecchio non confligge con niente, la voce sopravvive, e il
-//    Ctrl+Z successivo cancella a cascata il nodo di un ALTRO client -- in
-//    silenzio, perché senza conflitto non c'è nemmeno il banner STALE.
-// Il verso opposto (un remoto che PORTA VIA un nodo da un sottoalbero) è
-// simmetrico e vale sul documento nuovo: la voce non lo distruggerebbe più,
-// quindi non c'è niente da invalidare e il passo di annulla resta.
+// The set is a WeakSet and not a Set for a precise reason: a stale op leaves
+// every stack immediately, so keeping it in a STRONG structure would mean
+// keeping it alive for the whole session just to be able to recognize it. With the
+// WeakSet membership survives exactly as long as the op that uses it (the marks
+// keep a copy while they are in doubt), and not an instant longer.
+// The two scenes are NOT the same, and cannot be: the two sides of the
+// comparison answer two different questions (see targetsOf, which expands
+// cascades).
+//  - `before` -- the confirmed state BEFORE `remote` -- is the document the
+//    remote op lands on, that is the only one that knows what its deleteNode
+//    took away: afterwards, that subtree no longer exists and the expansion
+//    would fall back on the named id only (the entries that touch the CHILDREN of a group
+//    deleted by another would remain standing).
+//  - `after` -- the confirmed state AFTER -- is instead the document the
+//    next Ctrl+Z will land on, that is the only one that knows what a deleteNode OF AN
+//    ENTRY would take away NOW. A remote op that INSERTS a node into a
+//    subtree (createNode with that parent, or a reparent inward)
+//    touches no node the previous scene contained: looked at on the
+//    old document it conflicts with nothing, the entry survives, and the next
+//    Ctrl+Z deletes in cascade the node of ANOTHER client -- silently,
+//    because without a conflict there is not even the STALE banner.
+// The opposite direction (a remote that TAKES a node AWAY from a subtree) is
+// symmetric and applies on the new document: the entry would no longer destroy it,
+// so there is nothing to invalidate and the undo step remains.
 //
-// Le voci restano comunque calcolate su stati più vecchi, quindi `after` è per
-// loro un'approssimazione -- ma è quella del momento in cui verrebbero
-// mandate, che è il solo momento che conta.
+// The entries remain computed on older states anyway, so `after` is for
+// them an approximation -- but it is the one of the moment they would be
+// sent, which is the only moment that matters.
 //
-// Il confronto per BERSAGLIO non basta da solo: guarda il nodo che un op
-// NOMINA, e da quando la scena è un albero un op può dipendere da un nodo che
-// non nomina affatto -- il proprio CONTAINER (requiredParent). Quella
-// dipendenza va confrontata con i nodi che il remoto fa SPARIRE, vedi sotto.
+// The comparison by TARGET is not enough on its own: it looks at the node an op
+// NAMES, and since the scene became a tree an op can depend on a node it
+// does not name at all -- its own CONTAINER (requiredParent). That
+// dependency must be compared with the nodes the remote makes DISAPPEAR, see below.
 function markStale(
   remote: Op,
   stale: WeakSet<Op>,
@@ -491,32 +491,32 @@ function markStale(
 ): boolean {
   const targets = targetsOf(remote, before);
   if (targets.length === 0) return false;
-  // I nodi che il remoto PORTA VIA dal documento: la radice nominata e tutta la
-  // sua cascata (targetsOf la espande su `before`, l'unico documento che sa che
-  // cosa la delete si è portata via).
+  // The nodes the remote TAKES AWAY from the document: the named root and its whole
+  // cascade (targetsOf expands it on `before`, the only document that knows what
+  // the delete took away).
   //
-  // Solo una deleteNode ne fa sparire. Un reparent li lascia tutti in piedi,
-  // solo altrove: ogni container che una voce pretende esiste ancora, e
-  // invalidare lì sarebbe potare SENZA CAUSA -- una voce tolta per niente è un
-  // passo di annulla che l'utente perde in silenzio, cioè il difetto simmetrico
-  // di quello che questo controllo ripara.
+  // Only a deleteNode makes any disappear. A reparent leaves them all standing,
+  // only elsewhere: every container an entry requires still exists, and
+  // invalidating there would be pruning WITHOUT CAUSE -- an entry removed for nothing is an
+  // undo step the user silently loses, that is the symmetric defect of
+  // the one this check repairs.
   const removed = remote.kind.case === "deleteNode" ? new Set(targets.map((t) => t.id)) : null;
   let hit = false;
   for (const entry of entries) {
     for (const op of entry) {
       if (stale.has(op)) continue;
-      // Il container di cui l'op ha BISOGNO è finito dentro la cascata remota:
-      // l'op non potrà più atterrare (ErrParentNotFound in core.applyCreate /
-      // applyReparent) per quanto il suo bersaglio sia intatto.
+      // The container the op NEEDS ended up inside the remote cascade:
+      // the op can no longer land (ErrParentNotFound in core.applyCreate /
+      // applyReparent) however intact its target is.
       //
-      // È il caso che sfugge interamente al confronto per bersaglio: la voce
-      // che ricrea c1 dentro g1 (l'inverso della nostra delete di c1) non nomina
-      // g1 da nessuna parte, e c1 -- già fuori dal documento -- non compare
-      // nella cascata che l'op remoto si porta via. Nessun conflitto, la voce
-      // resta, Ctrl+Z la manda, il server la rifiuta; e siccome invertOp su di
-      // lei ritorna null (il parent non esiste) non si registra nessuna voce di
-      // redo, mentre revertHistory la rimette sull'undo stack: banner rosso a
-      // ogni Ctrl+Z successivo, e la voce non drena mai.
+      // It is the case that escapes the comparison by target entirely: the entry
+      // that re-creates c1 inside g1 (the inverse of our delete of c1) does not name
+      // g1 anywhere, and c1 -- already out of the document -- does not appear
+      // in the cascade the remote op takes away. No conflict, the entry
+      // stays, Ctrl+Z sends it, the server rejects it; and since invertOp on
+      // it returns null (the parent does not exist) no redo entry is recorded,
+      // while revertHistory puts it back on the undo stack: red banner on
+      // every subsequent Ctrl+Z, and the entry never drains.
       const parent = requiredParent(op);
       if (parent !== null && removed !== null && removed.has(parent)) {
         stale.add(op);
@@ -533,23 +533,23 @@ function markStale(
   return hit;
 }
 
-// L'id che un op fa ESISTERE. È l'unico modo in cui un op di una voce può
-// essere il PRESUPPOSTO di un altro op della stessa voce (vedi pruneEntry).
+// The id an op makes EXIST. It is the only way an op of an entry can
+// be the PRECONDITION of another op in the same entry (see pruneEntry).
 function createdId(op: Op): string | null {
   if (op.kind.case !== "createNode") return null;
   const node = op.kind.value.node;
   return node && node.id !== "" ? node.id : null;
 }
 
-// Il container che un op PRETENDE già esistente. Sono i due op che
-// core.Apply valida contro l'albero: una createNode con un parent ignoto e un
-// reparent verso un parent ignoto vengono entrambi rifiutati
-// (ErrParentNotFound). null = l'op non dipende da nessun container.
+// The container an op REQUIRES to already exist. These are the two ops
+// core.Apply validates against the tree: a createNode with an unknown parent and a
+// reparent toward an unknown parent are both rejected
+// (ErrParentNotFound). null = the op depends on no container.
 //
-// È l'unica dipendenza di un op che il suo BERSAGLIO non dice, quindi la
-// leggono i due posti che devono conoscerla: markStale (il container portato
-// via da una cascata REMOTA) e pruneEntry (il container che la voce stessa non
-// ricrea più).
+// It is the only dependency of an op that its TARGET does not tell, so it is
+// read by the two places that must know it: markStale (the container taken
+// away by a REMOTE cascade) and pruneEntry (the container the entry itself
+// no longer re-creates).
 function requiredParent(op: Op): string | null {
   if (op.kind.case === "createNode") {
     const node = op.kind.value.node;
@@ -559,30 +559,30 @@ function requiredParent(op: Op): string | null {
   return null;
 }
 
-// Toglie da UNA voce gli op marcati stale -- e con loro gli op della stessa
-// voce che non potrebbero più atterrare.
+// Removes from ONE entry the ops marked stale -- and with them the ops of the same
+// entry that could no longer land.
 //
-// Il filtro op-per-op da solo non basta da quando l'inverso di una delete è una
-// CASCATA di createNode (history.ts): la voce che ripristina g1>c1>d1 è
-// [createNode g1, createNode c1, createNode d1] e vale solo INTERA, perché ogni
-// createNode pretende che il proprio parent esista già. Un op remoto che tocca
-// il solo c1 marca stale la sua createNode e non quella di d1 (bersagli
-// diversi, vedi targetsOf): togliere solo c1 lascerebbe una voce che viola
-// esattamente l'invariante che era stata costruita per soddisfare -- Ctrl+Z
-// manderebbe createNode d1 sotto un parent inesistente, il server risponde
-// ErrParentNotFound e per di più invertChain, che su quella voce ritorna null,
-// non registra nessuna voce di redo: banner rosso e documento a metà.
+// The op-by-op filter alone is not enough since the inverse of a delete is a
+// CASCADE of createNode (history.ts): the entry that restores g1>c1>d1 is
+// [createNode g1, createNode c1, createNode d1] and is only valid WHOLE, because every
+// createNode requires its own parent to already exist. A remote op that touches only
+// c1 marks its createNode stale and not that of d1 (different targets,
+// see targetsOf): removing only c1 would leave an entry that violates
+// exactly the invariant it was built to satisfy -- Ctrl+Z
+// would send createNode d1 under a nonexistent parent, the server replies
+// ErrParentNotFound and moreover invertChain, which on that entry returns null,
+// records no redo entry: red banner and half-done document.
 //
-// La staleness si PROPAGA quindi verso il basso: tolta una createNode, cade
-// tutto ciò che aveva bisogno del nodo che creava. Una sola passata in avanti
-// basta perché una voce valida è già in ordine di dipendenza (subtreeOf visita
-// in pre-ordine, invertChain rovescia i GRUPPI e non gli op dentro un gruppo);
-// una voce che non lo fosse sarebbe già irricevibile per il server, e l'ordine
-// della potatura non la peggiora.
+// Staleness therefore PROPAGATES downward: once a createNode is removed, everything that
+// needed the node it created falls. A single forward pass
+// is enough because a valid entry is already in dependency order (subtreeOf visits
+// in pre-order, invertChain reverses the GROUPS and not the ops inside a group);
+// an entry that was not would already be unacceptable to the server, and the pruning
+// order does not make it worse.
 function pruneEntry(entry: Op[], stale: WeakSet<Op>): Op[] {
   const out: Op[] = [];
-  // Gli id che questa voce non farà più esistere: quelli delle createNode
-  // tolte, più -- transitivamente -- quelli delle createNode cadute con loro.
+  // The ids this entry will no longer make exist: those of the removed
+  // createNodes, plus -- transitively -- those of the createNodes that fell with them.
   const missing = new Set<string>();
   for (const op of entry) {
     const parent = requiredParent(op);
@@ -596,17 +596,17 @@ function pruneEntry(entry: Op[], stale: WeakSet<Op>): Op[] {
   return out;
 }
 
-// Toglie da ogni voce gli op marcati stale; una voce che resta vuota sparisce.
+// Removes from every entry the ops marked stale; an entry left empty disappears.
 //
-// Si applica al CONFINE -- dove uno stack diventa quello vivo -- e mai dentro i
-// mark: `applyMark` allinea la voce agli op per POSIZIONE (entry[i] inverte
-// l'op n-1-i) e `findConsumed` riconosce una voce per identità di riferimento,
-// quindi filtrare le strutture della storia romperebbe entrambe. Filtrare in
-// uscita dà lo stesso risultato senza toccare nessuna delle due.
+// It is applied at the BOUNDARY -- where a stack becomes the live one -- and never inside
+// the marks: `applyMark` aligns the entry to the ops by POSITION (entry[i] inverts
+// op n-1-i) and `findConsumed` recognizes an entry by reference identity,
+// so filtering the history structures would break both. Filtering on the
+// way out gives the same result without touching either.
 //
-// Ritorna lo STESSO array quando non c'è niente da togliere: gli stack sono
-// letti da selettori zustand, e un array nuovo a ogni record remoto sveglierebbe
-// la UI per niente.
+// Returns the SAME array when there is nothing to remove: stacks are
+// read by zustand selectors, and a new array on every remote record would wake
+// the UI for nothing.
 function pruneStale(stack: Op[][], stale: WeakSet<Op>): Op[][] {
   if (!stack.some((entry) => entry.some((op) => stale.has(op)))) return stack;
   const out: Op[][] = [];
@@ -618,21 +618,21 @@ function pruneStale(stack: Op[][], stale: WeakSet<Op>): Op[][] {
   return out;
 }
 
-// Dove sta, nello stack, la voce CONSUMATA da un mark di undo/redo.
+// Where, in the stack, the entry CONSUMED by an undo/redo mark is.
 //
-// NON è "la cima": la cima è dov'era la voce quando l'undo è partito, e il
-// replay rigioca i mark su stack che i mark PRECEDENTI hanno già rimaneggiato.
-// Se il gesto davanti è stato riavvolto, la voce di questo undo è scesa di
-// posizione (o non c'è mai stata); prendere la cima toglierebbe la voce
-// SBAGLIATA -- o, su stack vuoto, ne inventerebbe una.
+// It is NOT "the top": the top is where the entry was when the undo started, and the
+// replay replays the marks on stacks that the PREVIOUS marks have already reshuffled.
+// If the gesture ahead was rewound, this undo's entry has dropped down in
+// position (or was never there); taking the top would remove the
+// WRONG entry -- or, on an empty stack, invent one.
 //
-// La voce si riconosce dagli OP che contiene, per identità di riferimento: gli
-// Op non vengono mai clonati dopo la costruzione, quindi `===` su un op è un
-// nome stabile. Il confronto è "coda di `ops`" e non uguaglianza perché il
-// replay di un mark precedente può aver RISTRETTO la voce a una sua coda (un
-// gesto atterrato a metà lascia gli inversi degli op sopravvissuti, che sono la
-// coda della voce) o averla semplicemente ricostruita (array nuovo, stessi op).
-// Cerca dalla cima: fra due voci compatibili la più recente è quella giusta.
+// The entry is recognized by the OPs it contains, by reference identity: Ops
+// are never cloned after construction, so `===` on an op is a
+// stable name. The comparison is "tail of `ops`" and not equality because the
+// replay of a previous mark may have NARROWED the entry to a tail of itself (a
+// half-landed gesture leaves the inverses of the surviving ops, which are the
+// tail of the entry) or may simply have rebuilt it (new array, same ops).
+// Search from the top: between two compatible entries the most recent is the right one.
 function findConsumed(stack: Op[][], ops: Op[]): number {
   for (let i = stack.length - 1; i >= 0; i--) {
     const slot = stack[i];
@@ -642,14 +642,14 @@ function findConsumed(stack: Op[][], ops: Op[]): number {
   return -1;
 }
 
-// Rigioca UNA transizione sugli stack, RISTRETTA ai suoi primi `kept` op.
-// kept === opIds.length è la transizione intera (quella che endGesture/undo/
-// redo hanno già applicato); kept === 0 è l'identità, cioè "non è mai
-// avvenuta"; i valori in mezzo sono il gesto atterrato a metà.
+// Replays ONE transition on the stacks, RESTRICTED to its first `kept` ops.
+// kept === opIds.length is the whole transition (the one endGesture/undo/
+// redo already applied); kept === 0 is the identity, that is "it never
+// happened"; the values in between are the half-landed gesture.
 //
-// Ogni forma deve essere l'IDENTITÀ a kept === 0 e componibile con le altre:
-// il replay le incatena, e a un mark non è dato sapere se quelli davanti a lui
-// sono stati riavvolti per intero, a metà o per niente.
+// Every shape must be the IDENTITY at kept === 0 and composable with the others:
+// the replay chains them, and a mark cannot know whether those ahead of it
+// were rewound entirely, halfway or not at all.
 function applyMark(
   m: HistoryMark,
   undoStack: Op[][],
@@ -657,37 +657,37 @@ function applyMark(
 ): { undoStack: Op[][]; redoStack: Op[][] } {
   const shape = m.shape;
   const n = m.opIds.length;
-  // Gli inversi degli op sopravvissuti sono la CODA della voce (entry[i]
-  // inverte l'op n-1-i). Senza voce non c'è nulla da spingere; a kept === 0 la
-  // coda è vuota, quindi push è già l'identità.
+  // The inverses of the surviving ops are the TAIL of the entry (entry[i]
+  // inverts op n-1-i). Without an entry there is nothing to push; at kept === 0 the
+  // tail is empty, so push is already the identity.
   //
-  // La coda si prende sui GRUPPI e si appiattisce dopo: un gruppo è l'inverso
-  // (anche multiplo) di UN op diretto, quindi tagliare sulla lista piatta
-  // porterebbe via mezza cascata di ricreazione.
+  // The tail is taken on the GROUPS and flattened afterwards: a group is the inverse
+  // (even multiple) of ONE direct op, so cutting on the flat list
+  // would take away half a re-creation cascade.
   const kept = shape.entry.length === n ? shape.entry.slice(n - m.kept).flat() : [];
   const push = (stack: Op[][]) => (kept.length > 0 ? [...stack, kept] : stack);
   if (shape.kind === "gesture") {
-    // Il redo resta svuotato appena UN op del gesto è passato: il documento è
-    // cambiato per davvero e le voci di redo invertono uno stato che non
-    // esiste più (vedi il commento in endGesture). Solo un gesto interamente
-    // rifiutato se lo riprende.
+    // Redo stays emptied as soon as ONE op of the gesture has passed: the document
+    // really changed and the redo entries invert a state that no longer
+    // exists (see the comment in endGesture). Only a fully
+    // rejected gesture gets it back.
     return { undoStack: push(undoStack), redoStack: m.kept > 0 ? [] : redoStack };
   }
-  // Toglie dallo stack la parte di voce che questo undo/redo ha DAVVERO
-  // disfatto -- i suoi primi `kept` op. Quello che resta della voce ci resta:
-  // un undo atterrato a metà lascia da annullare solo quello che manca.
+  // Removes from the stack the part of the entry that this undo/redo ACTUALLY
+  // undid -- its first `kept` ops. What remains of the entry stays there:
+  // a half-landed undo leaves to be undone only what is missing.
   //
-  // A kept === 0 non è stato disfatto niente: la transizione non è avvenuta e
-  // lo stack non si tocca. È il caso più frequente (il drain scarta la coda dal
-  // fondo, quindi un undo che non parte viene rifiutato per intero) ed è quello
-  // che, trattato come "togli la cima", cancellava la voce di un ALTRO gesto --
-  // o ne spingeva una fantasma su uno stack vuoto.
+  // At kept === 0 nothing was undone: the transition did not happen and
+  // the stack is not touched. It is the most frequent case (the drain discards the tail from
+  // the bottom, so an undo that does not start is rejected entirely) and it is the one
+  // that, treated as "remove the top", deleted the entry of ANOTHER gesture --
+  // or pushed a phantom one onto an empty stack.
   const done = new Set(shape.ops.slice(0, m.kept));
   const consume = (stack: Op[][]) => {
     if (done.size === 0) return stack;
     const i = findConsumed(stack, shape.ops);
-    // La voce non c'è più (un mark davanti l'ha riavvolta insieme al gesto che
-    // l'aveva prodotta): non c'è niente da consumare, e di sicuro non la cima.
+    // The entry is gone (a mark ahead rewound it together with the gesture that
+    // had produced it): there is nothing to consume, and certainly not the top.
     if (i < 0) return stack;
     const rest = stack[i].filter((op) => !done.has(op));
     return rest.length > 0
@@ -699,12 +699,12 @@ function applyMark(
     : { undoStack: push(undoStack), redoStack: consume(redoStack) };
 }
 
-// Ricalcola gli stack rigiocando OGNI transizione ancora in dubbio a partire da
-// com'erano prima della più vecchia. Stessa scelta che viewOf fa per il
-// documento: si RICOSTRUISCE invece di rattoppare, così una riparazione
-// parziale non deve sapere niente delle transizioni che le stanno intorno e
-// l'ordine in cui arrivano i rifiuti smette di contare.
-// null = niente in dubbio, non c'è nessuna base da cui ripartire.
+// Recomputes the stacks by replaying EVERY transition still in doubt starting from
+// how they were before the oldest. Same choice viewOf makes for the
+// document: it REBUILDS instead of patching, so a partial
+// repair need not know anything about the transitions around it and
+// the order in which rejections arrive stops mattering.
+// null = nothing in doubt, there is no base to restart from.
 function replayHistory(history: HistoryMark[]): { undoStack: Op[][]; redoStack: Op[][] } | null {
   const head = history[0];
   if (!head) return null;
@@ -713,10 +713,10 @@ function replayHistory(history: HistoryMark[]): { undoStack: Op[][]; redoStack: 
   return stacks;
 }
 
-// Toglie dalla TESTA le transizioni ormai decise (nessun op più in volo): il
-// loro effetto viene fuso nella base della successiva, che diventa la nuova
-// testa del replay. Da lì in poi nessun rifiuto può più toccarle -- è ciò che
-// rende una voce di undo definitivamente durabile.
+// Removes from the HEAD the transitions that are now decided (no op in flight anymore): their
+// effect is merged into the base of the next, which becomes the new
+// head of the replay. From then on no rejection can touch them anymore -- it is what
+// makes an undo entry definitively durable.
 function settleHistory(history: HistoryMark[]): HistoryMark[] {
   let out = history;
   while (out.length > 0 && out[0].awaiting.length === 0) {
@@ -727,8 +727,8 @@ function settleHistory(history: HistoryMark[]): HistoryMark[] {
   return out;
 }
 
-// Un eco autorevole toglie l'op dall'attesa delle transizioni ancora in dubbio.
-// Quando una transizione non ha più op in volo è DURABILE (vedi settleHistory).
+// An authoritative echo removes the op from the waiting set of transitions still in doubt.
+// When a transition has no ops in flight it is DURABLE (see settleHistory).
 function confirmHistory(history: HistoryMark[], opId: string): HistoryMark[] {
   if (opId === "" || !history.some((m) => m.awaiting.includes(opId))) return history;
   return settleHistory(
@@ -738,40 +738,40 @@ function confirmHistory(history: HistoryMark[], opId: string): HistoryMark[] {
   );
 }
 
-// Rifiuto di un op: la parte di transizione che parte da quell'op non è mai
-// avvenuta sul server. `kept` scende alla posizione dell'op rifiutato e gli
-// stack si ricalcolano rigiocando la storia -- non si torna a uno snapshot.
-// Tornare allo stato PRE-transizione (com'era prima) è corretto solo quando
-// l'op rifiutato è il PRIMO del gruppo; per un op successivo cancellerebbe
-// l'annullabilità degli op del gruppo che invece sono passati, e riarmerebbe
-// un redo stack che il gesto aveva svuotato a ragione.
-// null = quest'op non ha prodotto nessuna transizione (submit fuori da
-// gesto/undo/redo, o transizione già confermata), oppure era già stato
-// scartato: niente da annullare.
+// Rejection of an op: the part of the transition starting from that op never
+// happened on the server. `kept` drops to the position of the rejected op and the
+// stacks are recomputed by replaying the history -- we do not go back to a snapshot.
+// Going back to the PRE-transition state (as it was before) is correct only if
+// the rejected op is the FIRST of the group; for a later op it would wipe out
+// the undoability of the group's ops that instead went through, and would rearm a
+// redo stack that the gesture had rightly emptied.
+// null = this op produced no transition (submit outside a
+// gesture/undo/redo, or transition already confirmed), or it had already been
+// discarded: nothing to undo.
 type HistoryPatch = Pick<SceneStore, "history" | "undoStack" | "redoStack" | "canUndo" | "canRedo">;
 function revertHistory(history: HistoryMark[], opId: string, stale: WeakSet<Op>): HistoryPatch | null {
   const i = history.findIndex((m) => m.opIds.includes(opId));
   if (i < 0) return null;
   const m = history[i];
   const kept = Math.min(m.kept, m.opIds.indexOf(opId));
-  // Già fuori dal prefisso sopravvissuto: un rifiuto precedente dello stesso
-  // gruppo l'ha già contato. Succede a ogni raffica -- il drain annulla la coda
-  // DAL FONDO -- e ricalcolare darebbe lo stesso risultato: meglio nessun set().
+  // Already outside the surviving prefix: a previous rejection of the same
+  // group already counted it. It happens on every burst -- the drain cancels the queue
+  // FROM THE BOTTOM -- and recomputing would give the same result: better no set().
   if (kept === m.kept) return null;
   const patched: HistoryMark = {
     ...m,
     kept,
-    // Gli op oltre il prefisso non arriveranno mai: toglierli dall'attesa è ciò
-    // che permette al mark di diventare DECISO quando la parte atterrata si
-    // conferma, invece di restare appeso per sempre.
+    // Ops beyond the prefix will never arrive: removing them from the waiting set is what
+    // allows the mark to become DECIDED when the landed part
+    // is confirmed, instead of staying hanging forever.
     awaiting: m.awaiting.filter((id) => m.opIds.indexOf(id) < kept),
   };
   const next = [...history.slice(0, i), patched, ...history.slice(i + 1)];
   const stacks = replayHistory(next);
   if (!stacks) return null;
-  // Il replay riparte da basi fotografate PRIMA di qualunque op remoto arrivato
-  // nel frattempo: senza la potatura, un rifiuto rimetterebbe sugli stack gli op
-  // che quell'op remoto ha reso stale (vedi pruneStale).
+  // The replay restarts from bases snapshotted BEFORE any remote op that arrived
+  // in the meantime: without pruning, a rejection would put back on the stacks the ops
+  // that remote op made stale (see pruneStale).
   const undoStack = pruneStale(stacks.undoStack, stale);
   const redoStack = pruneStale(stacks.redoStack, stale);
   return {
@@ -783,31 +783,31 @@ function revertHistory(history: HistoryMark[], opId: string, stale: WeakSet<Op>)
   };
 }
 
-// Rimette dentro la macchina della storia la voce di undo di un rollback
-// REVOCATO -- l'eco tardivo ha dimostrato che l'op era durabile (vedi apply).
+// Puts back into the history machine the undo entry of a REVOKED
+// rollback -- the late echo proved the op was durable (see apply).
 //
-// Scriverla direttamente su `undoStack` è corretto solo quando non c'è più
-// niente in dubbio. Se una transizione è ancora in volo, gli stack VIVI non
-// sono uno stato autonomo: sono il replay di `history` sulla base della sua
-// TESTA (replayHistory), e il prossimo rifiuto li ricalcola da lì -- da una base
-// fotografata PRIMA della revoca, che quindi la cancella di nuovo. La finestra
-// è quella normale, non un'acrobazia: l'utente continua a disegnare mentre la
-// pillola dice "riconnessione…", quindi quando il backlog rigioca l'op
-// rinnegato c'è quasi sempre un suo gesto ancora in volo. Il risultato sarebbe
-// una modifica durabile, sullo schermo e di nuovo non annullabile: lo stato
-// esatto che la revoca esiste per togliere.
+// Writing it directly to `undoStack` is correct only when nothing is left
+// in doubt. If a transition is still in flight, the LIVE stacks are not
+// an autonomous state: they are the replay of `history` on the base of its
+// HEAD (replayHistory), and the next rejection recomputes them from there -- from a base
+// snapshotted BEFORE the revocation, which therefore erases it again. The window
+// is the normal one, not an acrobatic one: the user keeps drawing while the
+// pill says "reconnecting…", so when the backlog replays the disowned
+// op there is almost always a gesture of theirs still in flight. The result would be
+// a durable change, on screen and again not undoable: the exact state
+// the revocation exists to remove.
 //
-// La voce va quindi nella BASE del replay -- la testa è l'unica che
-// replayHistory legge, e settleHistory la propaga in avanti quando decanta --
-// e gli stack vivi si RICALCOLANO da lì. L'op revocato è atterrato sul server
-// prima delle transizioni ancora in volo, quindi la sua voce finisce SOTTO le
-// loro: Ctrl+Z disfa prima le più recenti, che è l'ordine giusto.
+// The entry therefore goes into the replay's BASE -- the head is the only one
+// replayHistory reads, and settleHistory propagates it forward when it settles --
+// and the live stacks are RECOMPUTED from there. The revoked op landed on the server
+// before the transitions still in flight, so its entry ends up UNDER
+// theirs: Ctrl+Z undoes the most recent first, which is the right order.
 //
-// `inv` null = l'inverso non esiste (il nodo non c'è più): nessuna voce da
-// rimettere, ma il redo si svuota lo stesso -- l'op è avvenuto per davvero,
-// quindi le voci di redo invertono uno stato che non esiste più (stessa regola
-// che applyMark applica ai gesti). `inv` è una LISTA (l'inverso di un solo op
-// può essere multiplo, vedi history.ts) e forma UNA voce di undo.
+// `inv` null = the inverse does not exist (the node is gone): no entry to
+// put back, but redo is emptied anyway -- the op really happened,
+// so the redo entries invert a state that no longer exists (same rule
+// applyMark applies to gestures). `inv` is a LIST (the inverse of a single op
+// may be multiple, see history.ts) and forms ONE undo entry.
 function restoreRevoked(
   history: HistoryMark[],
   undoStack: Op[][],
@@ -825,9 +825,9 @@ function restoreRevoked(
     { ...head, undoStack: entry ? [...head.undoStack, entry] : head.undoStack, redoStack: [] },
     ...history.slice(1),
   ];
-  // patched non è vuoto, quindi replayHistory non può dare null; il fallback
-  // tiene comunque gli stack correnti invece di inventarne di vuoti. Potato per
-  // lo stesso motivo di revertHistory: le basi sono più vecchie degli op remoti.
+  // patched is not empty, so replayHistory cannot give null; the fallback
+  // still keeps the current stacks instead of inventing empty ones. Pruned for
+  // the same reason as revertHistory: the bases are older than the remote ops.
   const replayed = replayHistory(patched) ?? { undoStack, redoStack };
   const stacks = {
     undoStack: pruneStale(replayed.undoStack, stale),
@@ -841,33 +841,33 @@ function restoreRevoked(
   };
 }
 
-// La selezione può SOLO restringersi: contiene esclusivamente id di nodi che
-// esistono ancora. Se non cambia nulla riusa lo stesso array per non forzare
-// re-render inutili.
+// The selection can ONLY narrow: it contains only ids of nodes that
+// still exist. If nothing changes it reuses the same array to avoid forcing
+// useless re-renders.
 function pruneSelection(selection: string[], scene: SceneState): string[] {
   return selection.every((id) => scene.nodes.has(id))
     ? selection
     : selection.filter((id) => scene.nodes.has(id));
 }
 
-// La selezione potata per PAGINA: tiene solo gli id RAGGIUNGIBILI dalla pagina
-// corrente, lo stesso scoping-per-pagina che il renderer applica a disegno,
-// hit-test e marquee (canvasRenderer.ts::rootsOf). È l'invariante vedi-vs-
-// seleziona portata sulla selezione: un nodo che un op remoto sposta su
-// un'altra pagina esiste ANCORA -- quindi la sola potatura per esistenza lo
-// terrebbe -- ma il canvas non lo disegna più, e lasciarlo selezionato
-// disegnerebbe cornice e 8 maniglie sul vuoto (overlayRenderer.ts) e farebbe
-// leggere/editare le sue proprietà al pannello alla cieca. setCurrentPage
-// azzera la selezione al cambio pagina LOCALE; questo la corregge quando il
-// cambio arriva da un op REMOTO (via rebuild).
+// The selection pruned by PAGE: keeps only the ids REACHABLE from the
+// current page, the same per-page scoping the renderer applies to drawing,
+// hit-test and marquee (canvasRenderer.ts::rootsOf). It is the see-vs-
+// select invariant carried over to the selection: a node that a remote op moves to
+// another page STILL exists -- so pruning by existence alone would
+// keep it -- but the canvas no longer draws it, and leaving it selected
+// would draw a frame and 8 handles on empty space (overlayRenderer.ts) and would make
+// the panel read/edit its properties blindly. setCurrentPage
+// resets the selection on a LOCAL page change; this corrects it when the
+// change comes from a REMOTE op (via rebuild).
 //
-// isReachableFrom sussume l'esistenza (un id assente non è raggiungibile da
-// nulla), quindi questa rimpiazza pruneSelection dentro rebuild senza doppio
-// filtro. pageId è quello RISOLTO da validCurrentPage: null solo per un
-// documento senza pagine (che il core non produce), dove nulla è raggiungibile
-// e la selezione si svuota -- coerente con rootsOf, che senza pagina non ha
-// radici da disegnare. Riusa lo stesso array quando non cambia niente, per non
-// svegliare i sottoscrittori zustand.
+// isReachableFrom subsumes existence (an absent id is not reachable from
+// any page), so this replaces pruneSelection inside rebuild without a double
+// filter. pageId is the one RESOLVED by validCurrentPage: null only for a
+// document without pages (which the core does not produce), where nothing is reachable
+// and the selection empties -- consistent with rootsOf, which without a page has no
+// roots to draw. It reuses the same array when nothing changes, so as not to
+// wake the zustand subscribers.
 function pruneSelectionToPage(selection: string[], scene: SceneState, pageId: string | null): string[] {
   if (pageId === null) return selection.length === 0 ? selection : [];
   return selection.every((id) => isReachableFrom(scene, id, pageId))
@@ -875,43 +875,43 @@ function pruneSelectionToPage(selection: string[], scene: SceneState, pageId: st
     : selection.filter((id) => isReachableFrom(scene, id, pageId));
 }
 
-// Confronto per contenuto: serve a NON chiamare set() quando la selezione
-// riconciliata coincide con quella già nello store (un set inutile sveglia
-// tutti i sottoscrittori).
+// Comparison by content: it serves to NOT call set() when the reconciled selection
+// coincides with the one already in the store (a useless set wakes
+// all the subscribers).
 function sameSelection(a: string[], b: string[]): boolean {
   return a === b || (a.length === b.length && a.every((id, i) => id === b[i]));
 }
 
-// currentPageId è STATO DI VISTA (come camera e selezione), NON del documento:
-// non viaggia sul filo. Ma deve restare SEMPRE valido -- il renderer disegna la
-// SOLA pagina corrente (canvasRenderer.ts::rootsOf), quindi un id che non punta
-// più a nessuna pagina lascerebbe il canvas vuoto e i tool a creare sotto un
-// parent inesistente. Va quindi corretto a OGNI cambio di scene.pages, anche
-// quando arriva da un op remoto: se la pagina corrente sparisce (DeletePage) si
-// ripiega sulla PRIMA rimasta; se è ancora lì (CreatePage/RenamePage altrui,
-// risync) non si tocca. null solo per un documento senza pagine -- che il core
-// non produce (l'ultima pagina non si cancella, ErrLastPage).
+// currentPageId is VIEW STATE (like camera and selection), NOT of the document:
+// it does not travel on the wire. But it must ALWAYS stay valid -- the renderer draws the
+// ONLY current page (canvasRenderer.ts::rootsOf), so an id that no longer points
+// to any page would leave the canvas empty and the tools creating under a
+// nonexistent parent. It must therefore be corrected on EVERY change of scene.pages, even
+// when it comes from a remote op: if the current page disappears (DeletePage) we
+// fall back to the FIRST remaining; if it is still there (someone else's CreatePage/RenamePage,
+// resync) it is not touched. null only for a document without pages -- which the core
+// does not produce (the last page is not deleted, ErrLastPage).
 function validCurrentPage(pages: readonly PageLite[], currentPageId: string | null): string | null {
   if (currentPageId !== null && pages.some((p) => p.id === currentPageId)) return currentPageId;
   return pages[0]?.id ?? null;
 }
 
-// Primitiva condivisa da endGesture/undo/redo: dato lo stato PRIMA che `ops`
-// venga applicato, calcola l'inverso di OGNI op in sequenza (l'inverso del
-// secondo op va calcolato sullo stato dopo il primo, ecc.) e ritorna la
-// catena in ordine INVERSO -- così disfare gli op nell'ordine dello stack
-// ripristina esattamente lo stato di partenza, un op alla volta.
-// null se anche un solo op della catena non ha inverso (id sparito nel
-// frattempo, kind sconosciuto...): un undo/redo PARZIALE lascerebbe la scena
-// a metà strada, peggio di un gesto che semplicemente non si può annullare.
+// Primitive shared by endGesture/undo/redo: given the state BEFORE `ops`
+// is applied, computes the inverse of EVERY op in sequence (the inverse of the
+// second op must be computed on the state after the first, etc.) and returns the
+// chain in REVERSE order -- so undoing the ops in stack order
+// restores exactly the starting state, one op at a time.
+// null if even a single op of the chain has no inverse (id vanished in the
+// meantime, unknown kind...): a PARTIAL undo/redo would leave the scene
+// halfway, worse than a gesture that simply cannot be undone.
 //
-// Ritorna un GRUPPO per op diretto, non una lista piatta: l'inverso di un
-// singolo op può essere fatto di più op (un deleteNode cancella a cascata, e
-// disfarlo vuol dire ricreare l'intero sottoalbero -- vedi history.ts). I
-// gruppi sono in ordine inverso rispetto a `ops`, mentre DENTRO ogni gruppo
-// l'ordine è quello in cui gli op vanno applicati. È la corrispondenza
-// posizionale su cui si regge la riparazione di un gesto atterrato a metà
-// (vedi HistoryMark e applyMark): il gruppo i-esimo inverte l'op n-1-i.
+// Returns one GROUP per direct op, not a flat list: the inverse of a
+// single op can be made of several ops (a deleteNode deletes in cascade, and
+// undoing it means re-creating the whole subtree -- see history.ts). The
+// groups are in reverse order with respect to `ops`, while INSIDE each group
+// the order is the one in which ops must be applied. It is the positional
+// correspondence on which the repair of a half-landed gesture rests
+// (see HistoryMark and applyMark): the i-th group inverts op n-1-i.
 function invertChain(scene: SceneState, ops: Op[]): Op[][] | null {
   let state = scene;
   const inverses: Op[][] = [];
@@ -925,130 +925,130 @@ function invertChain(scene: SceneState, ops: Op[]): Op[][] | null {
 }
 
 interface SceneStore {
-  // La VISTA renderizzata: confermato + op in volo + anteprima del gesto (vedi
-  // viewOf). Nessuno la modifica "a mano" se non passando da una delle azioni
-  // qui sotto -- è sempre una funzione degli altri tre.
+  // The rendered VIEW: confirmed + in-flight ops + gesture preview (see
+  // viewOf). Nobody modifies it "by hand" except through one of the actions
+  // below -- it is always a function of the other three.
   scene: SceneState | null;
-  // Il documento CONFERMATO: quello che il server ha applicato e riemesso su
-  // Subscribe. Avanza SOLO da apply(), mai da un op ottimistico.
+  // The CONFIRMED document: what the server applied and re-emitted on
+  // Subscribe. It advances ONLY from apply(), never from an optimistic op.
   confirmed: SceneState | null;
-  // Op submittati e non ancora tornati indietro, in ordine di invio. Escono da
-  // qui quando il loro eco arriva (confermati) o quando il server li rifiuta
-  // (annullati). Finché sono qui vengono riapplicati sopra ogni nuovo
-  // confermato: è il rebase.
+  // Ops submitted and not yet returned, in send order. They leave
+  // here when their echo arrives (confirmed) or when the server rejects them
+  // (rolled back). As long as they are here they are re-applied on top of every new
+  // confirmed state: that is the rebase.
   pending: PendingOp[];
-  // Ultimo rifiuto da mostrare all'utente. Un rollback SILENZIOSO è quasi
-  // peggio di nessun rollback: la modifica sparirebbe dallo schermo senza che
-  // nessuno sappia perché.
+  // Last rejection to show the user. A SILENT rollback is almost
+  // worse than no rollback: the change would vanish from the screen without
+  // anyone knowing why.
   lastError: string | null;
-  // Notizia NON di errore da mostrare all'utente: la revoca di un rollback
-  // (vedi DisownedOp) e un incolla rifiutato perché gli appunti parlano di un
-  // tipo di nodo che questa build non conosce (tools/clipboard.ts, che lo
-  // scrive con setState -- non serve un'azione dedicata per un canale che la
-  // UI legge e basta). Serve un canale separato da
-  // `lastError` perché il messaggio dice l'OPPOSTO di quello -- "era salvata" --
-  // e riusare il banner rosso vorrebbe dire annunciare una buona notizia con la
-  // parola "annullata" davanti.
+  // NON-error notice to show the user: the revocation of a rollback
+  // (see DisownedOp) and a paste rejected because the clipboard talks about a
+  // node type this build does not know (tools/clipboard.ts, which
+  // writes it with setState -- no dedicated action is needed for a channel the
+  // UI only reads). It needs a channel separate from
+  // `lastError` because the message says the OPPOSITE of that -- "it was saved" --
+  // and reusing the red banner would mean announcing good news with the
+  // word "undone" in front.
   notice: string | null;
-  // Op annullati in locale il cui esito sul server era ignoto, in ordine di
-  // rollback e con il messaggio che abbiamo mostrato. Un eco tardivo li revoca
-  // (vedi apply). Bounded a MAX_DISOWNED.
+  // Ops rolled back locally whose outcome on the server was unknown, in order of
+  // rollback and with the message we showed. A late echo revokes them
+  // (see apply). Bounded to MAX_DISOWNED.
   disowned: DisownedOp[];
-  // Stato del collegamento col server, scritto da SyncClient. È lo stream
-  // Subscribe a definirlo: è l'UNICA cosa che conferma gli op e svuota
-  // `pending` (vedi apply), quindi quando non c'è ogni modifica resta
-  // ottimistica e la coda non si drena più. Il server chiude lo stream di sua
-  // iniziativa in due casi raggiungibili -- subscriber troppo lento
-  // (internal/server/hub.go) e since_seq più vecchio della history compattata
-  // (CodeOutOfRange) -- quindi non è un caso ipotetico, ed è anzi il modo in
-  // cui il backend CHIEDE al client di riallinearsi.
+  // State of the connection to the server, written by SyncClient. It is the Subscribe
+  // stream that defines it: it is the ONLY thing that confirms ops and empties
+  // `pending` (see apply), so when it is down every change stays
+  // optimistic and the queue no longer drains. The server closes the stream on its own
+  // initiative in two reachable cases -- subscriber too slow
+  // (internal/server/hub.go) and since_seq older than the compacted history
+  // (CodeOutOfRange) -- so it is not a hypothetical case, and is in fact the way
+  // the backend ASKS the client to realign.
   connection: ConnectionStatus;
-  // Il perché dell'ultimo stato non-"connected": messaggio da mostrare,
-  // null quando il collegamento è sano. Separato da `lastError` perché la
-  // conseguenza è diversa: `lastError` è una singola modifica annullata, questo
-  // è tutto il documento che smette di avanzare.
+  // The reason for the last non-"connected" state: message to show,
+  // null when the connection is healthy. Separate from `lastError` because the
+  // consequence is different: `lastError` is a single undone change, this
+  // is the whole document that stops advancing.
   syncError: string | null;
   camera: Camera;
-  // La pagina VISUALIZZATA sul canvas, stato di vista come camera e selezione
-  // (NON del documento: non è un op, non viaggia sul filo). Il renderer disegna
-  // le sole radici di questa pagina; i tool creano sotto di essa. Invariante:
-  // punta SEMPRE a una pagina esistente (validCurrentPage la corregge a ogni
-  // cambio di scene.pages, anche remoto). null solo prima del bootstrap
+  // The page DISPLAYED on the canvas, view state like camera and selection
+  // (NOT document: it is not an op, it does not travel on the wire). The renderer draws
+  // only the roots of this page; tools create under it. Invariant:
+  // it ALWAYS points to an existing page (validCurrentPage corrects it on every
+  // change of scene.pages, even remote). null only before the bootstrap
   // (scene === null).
   currentPageId: string | null;
-  // Invariante: selection contiene SOLO id di nodi RAGGIUNGIBILI dalla pagina
-  // corrente (che è più forte di "esistono ancora in scene.nodes"). Quando un op
-  // (anche remoto, via apply) fa sparire un nodo selezionato O lo sposta su
-  // un'altra pagina, va tolto dalla selezione -- altrimenti cornice e maniglie
-  // di resize restano "appese" a un nodo che il canvas non disegna (rebuild via
-  // pruneSelectionToPage lo garantisce, come setCurrentPage per il cambio pagina
-  // locale). È lo stesso scoping-per-pagina di disegno, hit-test e marquee
-  // (canvasRenderer.ts::rootsOf): vedi-vs-seleziona anche per la cornice.
+  // Invariant: selection contains ONLY ids of nodes REACHABLE from the current
+  // page (which is stronger than "still exist in scene.nodes"). When an op
+  // (even remote, via apply) makes a selected node disappear OR moves it to
+  // another page, it must be removed from the selection -- otherwise the frame and resize handles
+  // stay "hanging" on a node the canvas does not draw (rebuild via
+  // pruneSelectionToPage guarantees it, as setCurrentPage does for the local
+  // page change). It is the same per-page scoping as drawing, hit-test and marquee
+  // (canvasRenderer.ts::rootsOf): see-vs-select for the frame too.
   selection: string[];
-  // Rettangolo del marquee in corso, in coordinate MONDO (come tutto il resto
-  // del modello). null quando non si sta trascinando un marquee.
+  // Rectangle of the marquee in progress, in WORLD coordinates (like everything else
+  // in the model). null when no marquee is being dragged.
   marquee: Bounds | null;
-  // Le guide di allineamento ATTIVE in questo istante, in coordinate MONDO
-  // (vedi selection/snap.ts). Vuoto fuori da un gesto, e vuoto durante un gesto
-  // che non sta scattando su niente. È stato puramente VISIVO -- lo scatto vero
-  // è già dentro gli op che il tool applica -- ma vive nello store come il
-  // marquee, e per la stessa ragione: il ciclo di disegno legge da lì.
+  // The alignment guides ACTIVE at this instant, in WORLD coordinates
+  // (see selection/snap.ts). Empty outside a gesture, and empty during a gesture
+  // that is not snapping to anything. It is purely VISUAL state -- the real snap
+  // is already inside the ops the tool applies -- but it lives in the store like the
+  // marquee, and for the same reason: the draw loop reads from there.
   snapGuides: SnapGuide[];
-  // L'anteprima di un RIORDINO in un auto layout (tools/layoutDrop.ts): la linea
-  // dove il nodo cadrebbe e il suo contorno che segue il puntatore. Stato di
-  // VISTA come snapGuides: vive quanto il gesto e non entra nel documento.
+  // The preview of a REORDER in an auto layout (tools/layoutDrop.ts): the line
+  // where the node would drop and its outline following the pointer. VIEW state
+  // like snapGuides: it lives as long as the gesture and does not enter the document.
   layoutDrop: LayoutDropPreview | null;
-  // Il path che il pen tool sta disegnando, in coordinate MONDO (vedi
-  // store/vectorGeometry.ts::PenPreview). null quando non si sta disegnando.
+  // The path the pen tool is drawing, in WORLD coordinates (see
+  // store/vectorGeometry.ts::PenPreview). null when not drawing.
   //
-  // Sta qui per la stessa ragione del marquee: è ANTEPRIMA, non documento. Il
-  // nodo vettoriale non esiste finché il path non è finito -- l'intera
-  // creazione è un gesto e produce un solo op -- quindi il path in corso non
-  // può passare da `scene`, e l'overlay è l'unico posto in cui può vedersi.
+  // It lives here for the same reason as the marquee: it is PREVIEW, not document. The
+  // vector node does not exist until the path is finished -- the whole
+  // creation is one gesture and produces a single op -- so the path in progress
+  // cannot go through `scene`, and the overlay is the only place where it can be seen.
   penPreview: PenPreview | null;
-  // Trasporto verso il server: null finché SyncClient non si registra (test
-  // isolati, bootstrap non ancora completato).
+  // Transport to the server: null until SyncClient registers (isolated
+  // tests, bootstrap not yet completed).
   sync: OpSink | null;
-  // Gesto in corso (null = nessun gesto aperto).
+  // Gesture in progress (null = no open gesture).
   gesture: GestureSnapshot | null;
-  // Id del nodo testo attualmente in editing (overlay <textarea>, Task 5), o
-  // null fuori editing. Non è di per sé un gesto: la sessione di editing apre
-  // il PROPRIO gesto (beginGesture) quando l'overlay monta, non quando
-  // editingNodeId cambia -- textTool lo imposta subito dopo aver creato il
-  // nodo (il SUO gesto di creazione è già chiuso a quel punto).
+  // Id of the text node currently being edited (<textarea> overlay, Task 5), or
+  // null outside editing. It is not in itself a gesture: the editing session opens
+  // its OWN gesture (beginGesture) when the overlay mounts, not when
+  // editingNodeId changes -- textTool sets it right after having created the
+  // node (ITS creation gesture is already closed at that point).
   editingNodeId: string | null;
-  // Uno stack di UNDO/REDO, non di scene: ogni voce è un gesto intero (gli op
-  // che lo disfano, uno o molti), così un drag che ha spostato dieci nodi si
-  // annulla in un colpo solo. Riempiti SOLO da endGesture -- gli op remoti
-  // (Subscribe di un altro client) arrivano via apply() e non toccano mai
-  // questi stack, per costruzione: è così che "solo i propri op" è garantito
-  // senza bisogno di etichettare gli op per provenienza.
+  // An UNDO/REDO stack, not of scenes: every entry is a whole gesture (the ops
+  // that undo it, one or many), so a drag that moved ten nodes is
+  // undone in one stroke. Filled ONLY by endGesture -- remote ops
+  // (another client's Subscribe) arrive via apply() and never touch
+  // these stacks, by construction: it is how "only your own ops" is guaranteed
+  // without needing to label ops by origin.
   undoStack: Op[][];
   redoStack: Op[][];
   canUndo: boolean;
   canRedo: boolean;
-  // Transizioni degli stack ancora "in dubbio", in ordine di invio: una per
-  // gesto/undo/redo i cui op sono stati submittati e non ancora confermati.
-  // Vedi HistoryMark: è ciò che rende un rollback capace di riparare anche la
-  // storia, non solo la vista.
+  // Stack transitions still "in doubt", in send order: one per
+  // gesture/undo/redo whose ops were submitted and not yet confirmed.
+  // See HistoryMark: it is what makes a rollback able to repair the
+  // history too, not just the view.
   history: HistoryMark[];
-  // Gli op di undo/redo che un record REMOTO ha reso non più validi (vedi
-  // markStale). Non è uno stato che la UI legge: è il filtro che tiene quegli op
-  // fuori dagli stack anche quando un rifiuto li rigioca da una base più vecchia
-  // del record remoto. WeakSet: l'appartenenza vive quanto l'op, non quanto la
-  // sessione.
+  // The undo/redo ops that a REMOTE record has made no longer valid (see
+  // markStale). It is not state the UI reads: it is the filter that keeps those ops
+  // out of the stacks even when a rejection replays them from a base older
+  // than the remote record. WeakSet: membership lives as long as the op, not as long as the
+  // session.
   stale: WeakSet<Op>;
   setScene: (s: SceneState | null, discardedReason?: string) => void;
   setCamera: (c: Camera) => void;
   setSync: (s: OpSink | null) => void;
-  // `own` = "questo record è NOSTRO", e serve solo a decidere se può invalidare
-  // la storia: un op locale non la invalida mai (per costruzione la mantiene
-  // valida), un op di un altro client sì. Lo passano SyncClient (che riconosce
-  // i propri record dal clientId) e il ramo senza trasporto di
-  // endGesture/undo/redo, dove l'op è locale e diventa confermato all'istante.
-  // Il default è false: un record che arriva senza nessuna prova di essere
-  // nostro va trattato come altrui -- l'errore in quella direzione toglie un
-  // passo di annulla, nell'altra riscrive il lavoro di qualcun altro.
+  // `own` = "this record is OURS", and it only serves to decide whether it may invalidate
+  // the history: a local op never invalidates it (by construction it keeps it
+  // valid), an op from another client does. It is passed by SyncClient (which recognizes
+  // its own records by clientId) and by the no-transport branch of
+  // endGesture/undo/redo, where the op is local and becomes confirmed instantly.
+  // The default is false: a record that arrives with no proof of being
+  // ours must be treated as someone else's -- erring in that direction removes one
+  // undo step, in the other it rewrites somebody else's work.
   apply: (op: Op, own?: boolean) => void;
   applyPending: (op: Op) => void;
   rejectPending: (opId: string, message: string, revocable?: boolean) => void;
@@ -1066,47 +1066,47 @@ interface SceneStore {
   setSnapGuides: (g: SnapGuide[]) => void;
   setLayoutDrop: (d: LayoutDropPreview | null) => void;
   setPenPreview: (p: PenPreview | null) => void;
-  // Cambia la pagina visualizzata. AZZERA la selezione (i nodi di un'altra
-  // pagina non restano selezionati) e NON è una voce di undo -- è stato di
-  // vista, come spostare la camera. No-op se la pagina è già quella corrente
-  // (un ri-click non deve buttare via la selezione) o se l'id non esiste (che
-  // romperebbe l'invariante "sempre valido").
+  // Changes the displayed page. RESETS the selection (nodes of another
+  // page do not stay selected) and is NOT an undo entry -- it is view
+  // state, like moving the camera. No-op if the page is already the current one
+  // (a re-click must not throw away the selection) or if the id does not exist (which
+  // would break the "always valid" invariant).
   setCurrentPage: (id: string) => void;
-  // Accende il flag di editing: textTool lo chiama subito dopo aver creato il
-  // nodo, il doppio click di selectTool lo chiama su un nodo testo esistente.
-  // Se una sessione era già aperta su un ALTRO nodo, la chiude/pulisce prima
-  // (stessa logica di endTextEditing, nodo vuoto compreso) -- mai due
-  // sessioni aperte in silenzio, mai un nodo fantasma abbandonato a metà.
+  // Turns on the editing flag: textTool calls it right after creating the
+  // node, selectTool's double click calls it on an existing text node.
+  // If a session was already open on ANOTHER node, it closes/cleans it first
+  // (same logic as endTextEditing, empty node included) -- never two
+  // sessions silently open, never a phantom node abandoned halfway.
   beginTextEditing: (id: string) => void;
-  // Spegne il flag e, se il nodo che si stava editando è un testo rimasto
-  // VUOTO, lo elimina -- comportamento standard (non lasciare nodi fantasma
-  // cliccando a vuoto, vedi Task 4 brief). La cancellazione passa da un gesto
-  // come ogni altra modifica, quindi resta annullabile.
+  // Turns off the flag and, if the node being edited is a text left
+  // EMPTY, deletes it -- standard behavior (do not leave phantom nodes
+  // by clicking on empty space, see Task 4 brief). The deletion goes through a gesture
+  // like any other change, so it stays undoable.
   endTextEditing: () => void;
   undo: () => void;
   redo: () => void;
 }
 
-// Ricalcolo completo della vista a partire da una nuova base confermata e da
-// una nuova coda. È l'unico modo in cui `scene` cambia quando la riconciliazione
-// entra in gioco (record dal filo, rifiuto): niente aggiustamenti differenziali.
-// L'anteprima del gesto eventualmente aperto viene rimessa in cima, così un
-// record che arriva a metà drag non fa sparire il feedback locale.
+// Full recomputation of the view starting from a new confirmed base and a
+// new queue. It is the only way `scene` changes when reconciliation
+// comes into play (wire record, rejection): no differential adjustments.
+// The preview of the gesture possibly open is put back on top, so a
+// record that arrives mid-drag does not make the local feedback vanish.
 function rebuild(st: SceneStore, confirmed: SceneState, pending: PendingOp[]): Partial<SceneStore> {
   const scene = viewOf(confirmed, pending, st.gesture?.preview.values() ?? []);
-  // currentPageId si corregge QUI perché ogni ricostruzione della vista (record
-  // dal filo via apply, rifiuto via rejectPending) può aver cambiato scene.pages
-  // -- una DeletePage remota della pagina corrente, per dire. Va risolto PRIMA
-  // della selezione: quest'ultima si pota contro la pagina EFFETTIVA (quella su
-  // cui si ripiega), non contro quella vecchia ormai sparita.
+  // currentPageId is corrected HERE because every rebuild of the view (wire record
+  // via apply, rejection via rejectPending) may have changed scene.pages
+  // -- a remote DeletePage of the current page, say. It must be resolved BEFORE
+  // the selection: the latter is pruned against the EFFECTIVE page (the one
+  // it falls back to), not against the old one that has now vanished.
   const currentPageId = validCurrentPage(scene.pages, st.currentPageId);
-  // Riconvalida la selezione ai soli nodi RAGGIUNGIBILI dalla pagina corrente
-  // (isReachableFrom sussume l'esistenza, quindi copre anche il vecchio caso:
-  // qualunque op che fa sparire un id, o un rollback che toglie un nodo appena
-  // creato). Lo scoping-per-pagina è ciò che tiene la selezione in accordo con
-  // ciò che il canvas disegna: un nodo che un op remoto ha spostato su un'altra
-  // pagina, o che stava sulla pagina appena cancellata, esce di qui e non lascia
-  // cornice/maniglie/pannello appesi al vuoto (vedi pruneSelectionToPage).
+  // Revalidates the selection to only the nodes REACHABLE from the current page
+  // (isReachableFrom subsumes existence, so it also covers the old case:
+  // any op that makes an id disappear, or a rollback that removes a just-
+  // created node). Per-page scoping is what keeps the selection in agreement with
+  // what the canvas draws: a node that a remote op moved to another
+  // page, or that was on the just-deleted page, leaves here and does not leave
+  // frame/handles/panel hanging in the void (see pruneSelectionToPage).
   return {
     confirmed,
     pending,
@@ -1141,42 +1141,42 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   canRedo: false,
   history: [],
   stale: new WeakSet<Op>(),
-  // Installa un documento: è lo snapshot autorevole di OpenDocument, quindi
-  // vista e confermato COINCIDONO e non c'è nulla in volo. Unico modo sano di
-  // mettere una scena nello store (e l'unico che mantiene l'invariante
+  // Installs a document: it is the authoritative OpenDocument snapshot, so
+  // view and confirmed COINCIDE and nothing is in flight. The only sane way to
+  // put a scene in the store (and the only one that maintains the invariant
   // confirmed != null <=> scene != null).
   //
-  // È una SOSTITUZIONE IN BLOCCO, e da quando esiste la risincronizzazione di
-  // metà sessione (CodeOutOfRange -> rpc/syncClient.ts::open) non è più solo il
-  // bootstrap: tutto ciò che descriveva il documento PRECEDENTE va via insieme
-  // a lui, non solo la coda.
-  //  - `pending` e `history`: i mark riferiscono opId di quella coda, e senza la
-  //    coda nessun eco potrebbe più confermarli;
-  //  - `undoStack`/`redoStack`: le loro voci sono INVERSI calcolati su uno stato
-  //    che lo snapshot ha appena buttato via. Lasciarle in piedi vuol dire un
-  //    Ctrl+Z che manda il deleteNode di un nodo che qui non esiste (o che
-  //    rimette a (40,40) un nodo che lo snapshot dà altrove), per di più senza
-  //    più il mark che permetteva a un rifiuto di riavvolgerle;
-  //  - `disowned`: gli echi che potevano revocare quei rollback appartengono a
-  //    una history che il server ha compattato e non rimanderà.
-  // La selezione invece si POTA (non si svuota): gli id ancora RAGGIUNGIBILI
-  // dalla pagina corrente restano legittimamente selezionati -- lo stesso
-  // scoping-per-pagina di rebuild (pruneSelectionToPage), non la sola esistenza,
-  // altrimenti un nodo che lo snapshot mostra su un'ALTRA pagina resterebbe
-  // selezionato con cornice e maniglie disegnate sul vuoto.
+  // It is a WHOLESALE REPLACEMENT, and since mid-session resynchronization exists
+  // (CodeOutOfRange -> rpc/syncClient.ts::open) it is no longer just the
+  // bootstrap: everything that described the PREVIOUS document goes away along
+  // with it, not just the queue.
+  //  - `pending` and `history`: the marks reference opIds of that queue, and without the
+  //    queue no echo could ever confirm them;
+  //  - `undoStack`/`redoStack`: their entries are INVERSES computed on a state
+  //    that the snapshot has just thrown away. Leaving them standing means a
+  //    Ctrl+Z that sends the deleteNode of a node that does not exist here (or that
+  //    puts back at (40,40) a node that the snapshot places elsewhere), moreover without
+  //    the mark that allowed a rejection to rewind them;
+  //  - `disowned`: the echoes that could revoke those rollbacks belong to
+  //    a history that the server has compacted and will not resend.
+  // The selection instead is PRUNED (not emptied): ids still REACHABLE
+  // from the current page legitimately stay selected -- the same
+  // per-page scoping as rebuild (pruneSelectionToPage), not mere existence,
+  // otherwise a node that the snapshot shows on ANOTHER page would stay
+  // selected with frame and handles drawn on the void.
   //
-  // `discardedReason`, se passato, è il messaggio da mostrare quando la
-  // sostituzione butta via lavoro non confermato: senza, le modifiche
-  // ottimistiche sparirebbero dal canvas con `lastError` nullo -- nessun banner,
-  // nessuna spiegazione.
+  // `discardedReason`, if passed, is the message to show when the
+  // replacement throws away unconfirmed work: without it, optimistic
+  // changes would vanish from the canvas with `lastError` null -- no banner,
+  // no explanation.
   setScene: (s, discardedReason) =>
     set((st) => {
-      // Un nuovo documento può avere altre pagine: si tiene la corrente se
-      // esiste ancora, altrimenti la prima. Al bootstrap (currentPageId null)
-      // diventa la prima pagina del documento. Risolta PRIMA della selezione,
-      // esattamente come in rebuild: quest'ultima si pota contro la pagina
-      // EFFETTIVA (quella su cui il documento ripiega), non contro quella
-      // vecchia ormai sparita.
+      // A new document may have other pages: the current one is kept if
+      // it still exists, otherwise the first. At bootstrap (currentPageId null)
+      // it becomes the first page of the document. Resolved BEFORE the selection,
+      // exactly as in rebuild: the latter is pruned against the
+      // EFFECTIVE page (the one the document falls back to), not against the
+      // old one that has now vanished.
       const pageId = s ? validCurrentPage(s.pages, st.currentPageId) : null;
       return {
         scene: s,
@@ -1187,16 +1187,16 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         redoStack: [],
         canUndo: false,
         canRedo: false,
-        // Gli op che il filtro conosceva appartenevano a voci che questa
-        // sostituzione ha appena buttato via: niente da filtrare, e nessuna
-        // ragione di tenerli in vita.
+        // The ops the filter knew belonged to entries that this
+        // replacement has just thrown away: nothing to filter, and no
+        // reason to keep them alive.
         stale: new WeakSet<Op>(),
         disowned: [],
         notice: null,
-        // Scoping-per-pagina come rebuild (non la sola esistenza): uno snapshot
-        // di resync in cui un nodo selezionato è passato a un'altra pagina lo
-        // lascia esistente ma non più raggiungibile da pageId, e va tolto --
-        // altrimenti cornice/maniglie/pannello restano appesi al vuoto.
+        // Per-page scoping as in rebuild (not mere existence): a resync snapshot
+        // in which a selected node moved to another page leaves it
+        // existing but no longer reachable from pageId, and it must be removed --
+        // otherwise frame/handles/panel stay hanging in the void.
         selection: s ? pruneSelectionToPage(st.selection, s, pageId) : [],
         currentPageId: pageId,
         lastError: discardedReason !== undefined && st.pending.length > 0 ? discardedReason : null,
@@ -1205,39 +1205,39 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   setCamera: (c) => set({ camera: c }),
   setSync: (s) => set({ sync: s }),
 
-  // RECORD AUTOREVOLE, arrivato da Subscribe. Vale per gli op remoti E per il
-  // proprio eco: in entrambi i casi il documento confermato avanza. Filtrare
-  // gli echi per clientId (com'era in M0) significa non adottare mai la
-  // versione autorevole dei propri op, quindi non conoscere mai l'ORDINE
-  // deciso dal server.
+  // AUTHORITATIVE RECORD, arrived from Subscribe. It applies to remote ops AND to the
+  // own echo: in both cases the confirmed document advances. Filtering
+  // echoes by clientId (as in M0) means never adopting the
+  // authoritative version of one's own ops, hence never knowing the ORDER
+  // decided by the server.
   //
-  // Se l'op è nostro esce dalla coda: adesso è dentro `confirmed`, lasciarlo
-  // anche in `pending` vorrebbe dire riapplicarlo sopra ogni record successivo
-  // (doppia applicazione, e i record altrui su quel nodo non avrebbero più
-  // effetto). Il resto della coda viene riapplicato sopra la nuova base: è il
-  // rebase, ed è ciò che impedisce a un record remoto di cancellare in
-  // silenzio una modifica ottimistica ancora in volo.
+  // If the op is ours it leaves the queue: it is now inside `confirmed`, leaving it
+  // also in `pending` would mean re-applying it on top of every subsequent record
+  // (double application, and others' records on that node would no longer have
+  // effect). The rest of the queue is re-applied on top of the new base: it is the
+  // rebase, and it is what prevents a remote record from silently
+  // erasing an optimistic change still in flight.
   apply: (op, own = false) =>
     set((st) => {
       if (!st.confirmed) return st;
-      // Il confermato DOPO l'op, tenuto a portata: è la scena su cui
-      // atterrerebbe il prossimo Ctrl+Z, e markStale ne ha bisogno insieme a
-      // quella di prima.
+      // The confirmed state AFTER the op, kept at hand: it is the scene on which
+      // the next Ctrl+Z would land, and markStale needs it together with
+      // the previous one.
       const confirmed = applyOp(st.confirmed, op);
       const next = {
         ...rebuild(st, confirmed, dropPending(st.pending, op.opId)),
-        // L'op è durabile: la voce di undo che l'aveva prodotto smette di
-        // essere annullabile da un rollback (vedi HistoryMark).
+        // The op is durable: the undo entry that produced it stops
+        // being undoable by a rollback (see HistoryMark).
         history: confirmHistory(st.history, op.opId),
       };
       const i = st.disowned.findIndex((d) => d.opId === op.opId);
       if (i < 0) {
-        // NOSTRO in tre modi: ce lo dice il chiamante (`own`), è ancora nella
-        // nostra coda (il suo eco), oppure -- più sotto -- è un op che avevamo
-        // rinnegato e che torna. Tutto il resto viene da un ALTRO client e può
-        // aver reso stale delle voci di undo/redo (vedi markStale).
-        // (Il controllo sulla coda prima di costruire l'elenco delle voci: un
-        // eco è il caso NORMALE, e non deve pagare la scansione della storia.)
+        // OURS in three ways: the caller tells us (`own`), it is still in
+        // our queue (its echo), or -- further below -- it is an op we had
+        // disowned and that comes back. Everything else comes from ANOTHER client and may
+        // have made undo/redo entries stale (see markStale).
+        // (The queue check comes before building the list of entries: an
+        // echo is the NORMAL case, and must not pay for the history scan.)
         if (own || st.pending.some((p) => p.opId === op.opId)) return next;
         const entries = allEntries(st.undoStack, st.redoStack, next.history);
         if (!markStale(op, st.stale, entries, st.confirmed, confirmed)) {
@@ -1245,10 +1245,10 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         }
         const undoStack = pruneStale(st.undoStack, st.stale);
         const redoStack = pruneStale(st.redoStack, st.stale);
-        // Marcato solo roba che vive dentro un mark: la voce è già stata
-        // consumata da una transizione in volo, quindi gli stack VIVI non
-        // cambiano ora e non c'è niente da annunciare -- se un rifiuto la
-        // rimetterà in gioco, la rimetterà già potata.
+        // Marked only things that live inside a mark: the entry has already been
+        // consumed by an in-flight transition, so the LIVE stacks do not
+        // change now and there is nothing to announce -- if a rejection
+        // puts it back in play, it will put it back already pruned.
         if (undoStack === st.undoStack && redoStack === st.redoStack) return next;
         return {
           ...next,
@@ -1259,27 +1259,27 @@ export const useScene = createStore<SceneStore>((set, get) => ({
           notice: STALE,
         };
       }
-      // REVOCA DEL ROLLBACK. Questo op l'avevamo dato per perso e annullato in
-      // locale, ma eccolo tornare dall'op-log: era durabile fin dall'inizio (la
-      // richiesta HTTP è morta DOPO il broadcast). La vista si ripara da sola --
-      // l'op entra in `confirmed` qui sopra -- ma le altre due conseguenze del
-      // rollback no:
-      //  - il banner ha detto "modifica non salvata e annullata": va ritirato,
-      //    e solo se è ancora QUELLO (nel frattempo può essere arrivato un
-      //    rifiuto vero, che non va nascosto);
-      //  - la voce di undo è stata riavvolta, quindi una modifica che è sullo
-      //    schermo e sul server non è più annullabile, e il prossimo Ctrl+Z
-      //    disferebbe in silenzio il gesto PRECEDENTE. La ricostruiamo
-      //    dall'inverso calcolato sul confermato PRIMA di applicare l'op:
-      //    è esattamente quello che endGesture avrebbe messo sullo stack. La
-      //    voce NON va scritta sugli stack a mano: finché una transizione è in
-      //    dubbio gli stack sono il replay di `history`, e il prossimo rifiuto
-      //    la ricancellerebbe (vedi restoreRevoked).
-      // Il redo torna vuoto: l'op è passato per davvero, quindi le voci di redo
-      // invertono uno stato che non esiste più (stessa regola di applyMark per i
-      // gesti). Sulla forma: la voce ricostruita è per-op, non per-gesto -- un
-      // gruppo revocato op per op lascia una voce per op invece di una sola.
-      // Annullabile in più passi, ma annullabile.
+      // ROLLBACK REVOCATION. We had given this op up for lost and undone it
+      // locally, but here it comes back from the op-log: it was durable all along (the
+      // HTTP request died AFTER the broadcast). The view repairs itself --
+      // the op enters `confirmed` above -- but the other two consequences of the
+      // rollback do not:
+      //  - the banner said "change not saved and undone": it must be withdrawn,
+      //    and only if it is still THAT one (in the meantime a real
+      //    rejection may have arrived, which must not be hidden);
+      //  - the undo entry was rewound, so a change that is on screen
+      //    and on the server is no longer undoable, and the next Ctrl+Z
+      //    would silently undo the PREVIOUS gesture. We rebuild it
+      //    from the inverse computed on the confirmed state BEFORE applying the op:
+      //    it is exactly what endGesture would have put on the stack. The
+      //    entry must NOT be written to the stacks by hand: as long as a transition is in
+      //    doubt the stacks are the replay of `history`, and the next rejection
+      //    would erase it again (see restoreRevoked).
+      // Redo comes back empty: the op really went through, so the redo entries
+      // invert a state that no longer exists (same rule as applyMark for
+      // gestures). On the shape: the rebuilt entry is per-op, not per-gesture -- a
+      // group revoked op by op leaves one entry per op instead of a single one.
+      // Undoable in multiple steps, but undoable.
       const inv = invertOp(st.confirmed, op);
       return {
         ...next,
@@ -1290,74 +1290,74 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       };
     }),
 
-  // SUBMIT OTTIMISTICO: l'op parte verso il server ed entra nella coda, la
-  // vista lo mostra subito. Non tocca `confirmed` -- ci arriverà solo quando il
-  // suo eco tornerà indietro (apply), oppure ne uscirà per sempre se il server
-  // lo rifiuta (rejectPending).
+  // OPTIMISTIC SUBMIT: the op goes to the server and enters the queue, the
+  // view shows it immediately. It does not touch `confirmed` -- it will get there only when its
+  // echo comes back (apply), or it will leave forever if the server
+  // rejects it (rejectPending).
   applyPending: (op) =>
     set((st) => {
       if (!st.scene || !st.confirmed) return st;
       if (op.opId === "") {
-        // Senza opId l'eco è irriconoscibile: l'op resterebbe in coda per
-        // sempre e ogni rebase lo riapplicherebbe sopra il documento
-        // autorevole. Lo trattiamo come già confermato -- si perde il rollback
-        // su rifiuto, non la modifica. Irraggiungibile dai costruttori in
-        // repo: tools/ops.ts e store/history.ts stampano sempre un UUID.
-        console.warn("opendesigner: submit di un op senza opId — non riconciliabile, applicato come confermato");
+        // Without an opId the echo is unrecognizable: the op would stay in the queue
+        // forever and every rebase would re-apply it on top of the authoritative
+        // document. We treat it as already confirmed -- we lose the rollback
+        // on rejection, not the change. Unreachable from the constructors in
+        // the repo: tools/ops.ts and store/history.ts always stamp a UUID.
+        console.warn("opendesigner: submit of an op without opId — cannot be reconciled, applied as confirmed");
         return rebuild(st, applyOp(st.confirmed, op), st.pending);
       }
-      // Incrementale, non ricalcolo: la vista è già confermato + coda e l'op si
-      // accoda in fondo. (Un submit non può arrivare a gesto aperto --
-      // endGesture chiude il gesto PRIMA di inviare e undo/redo sono no-op
-      // durante un drag -- quindi non c'è anteprima da scavalcare.)
+      // Incremental, not a recomputation: the view is already confirmed + queue and the op
+      // is appended at the end. (A submit cannot arrive with a gesture open --
+      // endGesture closes the gesture BEFORE sending and undo/redo are no-ops
+      // during a drag -- so there is no preview to override.)
       const scene = applyOp(st.scene, op);
-      // Un op OTTIMISTICO può cambiare le pagine (una CreatePage/DeletePage
-      // locale prima ancora dell'eco): la pagina corrente si corregge subito,
-      // come fa rebuild per i record autorevoli. Risolta PRIMA della selezione,
-      // che si pota contro di essa.
+      // An OPTIMISTIC op may change pages (a local CreatePage/DeletePage
+      // even before the echo): the current page is corrected immediately,
+      // as rebuild does for authoritative records. Resolved BEFORE the selection,
+      // which is pruned against it.
       const currentPageId = validCurrentPage(scene.pages, st.currentPageId);
       return {
         scene,
         pending: [...st.pending, { opId: op.opId, op }],
-        // Scoping-per-pagina come rebuild/setScene, non la sola esistenza: un op
-        // locale che sposta il nodo selezionato fuori dalla pagina corrente lo
-        // toglie dalla selezione. Rende l'invariante "selection ⊆ raggiungibili
-        // da currentPage" airtight anche sul percorso del submit.
+        // Per-page scoping as rebuild/setScene, not mere existence: a local
+        // op that moves the selected node out of the current page
+        // removes it from the selection. Makes the "selection ⊆ reachable
+        // from currentPage" invariant airtight on the submit path too.
         selection: pruneSelectionToPage(st.selection, scene, currentPageId),
         currentPageId,
       };
     }),
 
-  // RIFIUTO dal server: l'op esce dalla coda e la vista si ricalcola senza di
-  // lui, cioè la modifica ottimistica sparisce dallo schermo. In M0 restava lì
-  // per sempre, con una sola riga di console.error, e spariva davvero solo al
-  // reload successivo.
+  // REJECTION from the server: the op leaves the queue and the view is recomputed without
+  // it, that is the optimistic change vanishes from the screen. In M0 it stayed there
+  // forever, with a single console.error line, and only really vanished at the
+  // next reload.
   //
-  // `revocable` = "il server potrebbe averlo applicato lo stesso": è vero solo
-  // per l'op che era DAVVERO in volo quando la richiesta è morta (vedi
-  // DisownedOp). Per tutto il resto -- la coda dietro, che non è mai partita, e
-  // il rifiuto per outbox piena -- non esiste nessun eco possibile, quindi
-  // niente da revocare.
+  // `revocable` = "the server may have applied it anyway": it is true only
+  // for the op that was TRULY in flight when the request died (see
+  // DisownedOp). For everything else -- the queue behind it, which never left, and
+  // the rejection due to a full outbox -- no echo is possible, so
+  // nothing to revoke.
   rejectPending: (opId, message, revocable = false) =>
     set((st) => {
       const i = st.pending.findIndex((p) => p.opId === opId);
-      // Non è (più) in coda = è GIÀ CONFERMATO: l'eco è arrivato prima che la
-      // risposta HTTP fallisse (connessione caduta dopo l'append, per dire).
-      // L'op è durabile: non c'è niente da annullare, e mostrare un errore
-      // sarebbe una bugia.
+      // Not (anymore) in the queue = ALREADY CONFIRMED: the echo arrived before the
+      // HTTP response failed (connection dropped after the append, say).
+      // The op is durable: there is nothing to undo, and showing an error
+      // would be a lie.
       if (i < 0 || !st.confirmed) return st;
       const pending = [...st.pending.slice(0, i), ...st.pending.slice(i + 1)];
-      // Non basta togliere l'op dalla vista: la voce di undo che questo gesto
-      // aveva già spinto sullo stack (e il redo che aveva svuotato) descrivono
-      // una modifica che il server non ha mai visto. Vanno riavvolti insieme
-      // alla vista, altrimenti il prossimo Ctrl+Z manda l'inverso di qualcosa
-      // che non esiste e brucia la voce sbagliata. Vedi HistoryMark.
+      // It is not enough to remove the op from the view: the undo entry this gesture
+      // had already pushed on the stack (and the redo it had emptied) describe
+      // a change the server never saw. They must be rewound together
+      // with the view, otherwise the next Ctrl+Z sends the inverse of something
+      // that does not exist and burns the wrong entry. See HistoryMark.
       return {
         ...rebuild(st, st.confirmed, pending),
         ...(revertHistory(st.history, opId, st.stale) ?? {}),
-        // In coda (la più vecchia esce per prima): un op rifiutato davvero dal
-        // server non riceverà mai un eco, quindi la sua voce resterebbe qui per
-        // sempre se non ci fosse il tetto.
+        // At the tail (the oldest leaves first): an op truly rejected by the
+        // server will never receive an echo, so its entry would stay here
+        // forever without the cap.
         disowned: revocable
           ? [...st.disowned, { opId, message }].slice(-MAX_DISOWNED)
           : st.disowned,
@@ -1368,36 +1368,36 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   clearError: () => set({ lastError: null }),
   clearNotice: () => set({ notice: null }),
 
-  // Stato dello stream, scritto da SyncClient. Stato e motivo si muovono
-  // INSIEME (una sola set): "connected" con un messaggio di errore appeso, o
-  // "reconnecting" senza motivo, sarebbero due modi di mentire alla UI.
+  // State of the stream, written by SyncClient. State and reason move
+  // TOGETHER (a single set): "connected" with an error message attached, or
+  // "reconnecting" without a reason, would be two ways of lying to the UI.
   //
-  // Non azzera `pending`: quegli op possono essere arrivati al server (Hub.Submit
-  // fa broadcast PRIMA di rispondere) -- buttarli via inventerebbe un rollback
-  // che nessuno ha chiesto. Restano in coda, in attesa che la riconnessione
-  // rigiochi il backlog e li confermi (o che l'utente ricarichi).
+  // It does not reset `pending`: those ops may have reached the server (Hub.Submit
+  // broadcasts BEFORE replying) -- throwing them away would invent a rollback
+  // nobody asked for. They stay in the queue, waiting for the reconnection
+  // to replay the backlog and confirm them (or for the user to reload).
   setConnection: (status, message = null) => set({ connection: status, syncError: message }),
 
-  // Applica SOLO in locale: è il feedback immediato del drag, non passa dal
-  // filo. Un pointermove = un applyLocal, e nessuno di questi diventa un op.
-  // Dentro un gesto viene anche REGISTRATO fra le anteprime, così un ricalcolo
-  // della vista (record dal filo, rifiuto) può rimetterlo in cima invece di
-  // spegnere l'anteprima a metà drag.
+  // Applies LOCALLY only: it is the immediate drag feedback, it does not go over the
+  // wire. One pointermove = one applyLocal, and none of these becomes an op.
+  // Inside a gesture it is also RECORDED among the previews, so a recomputation
+  // of the view (wire record, rejection) can put it back on top instead of
+  // switching off the preview mid-drag.
   applyLocal: (op) => {
-    // Registrazione animazione (animation/recordHook.ts): con "Registra" acceso
-    // l'anteprima di x/y/rotazione/opacità va nella bozza dei keyframe e la scena
-    // non si tocca. Spenta: il gancio è null e questa riga non fa niente.
+    // Animation recording (animation/recordHook.ts): with "Record" on
+    // the preview of x/y/rotation/opacity goes into the keyframe draft and the scene
+    // is not touched. Off: the hook is null and this line does nothing.
     if (recordPreview(op)) return;
     set((st) => {
       if (!st.scene) return st;
       const scene = applyOp(st.scene, op);
       const next = { scene, selection: pruneSelection(st.selection, scene) };
       if (!st.gesture) return next;
-      // Anteprima COALESCED: la voce con la stessa chiave viene sostituita e
-      // rimessa IN FONDO (delete + set), così l'ordine di rigioco resta quello
-      // dell'ultima scrittura di ogni bersaglio -- l'unica cosa che conta
-      // quando due mask si sovrappongono parzialmente. Vedi previewKey per
-      // perché sostituire non cambia il risultato.
+      // COALESCED preview: the entry with the same key is replaced and
+      // put back AT THE END (delete + set), so the replay order stays that
+      // of the last write of each target -- the only thing that matters
+      // when two masks partially overlap. See previewKey for
+      // why replacing does not change the result.
       const preview = new Map(st.gesture.preview);
       const key = previewKey(op);
       preview.delete(key);
@@ -1406,105 +1406,105 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     });
   },
 
-  // Apre un gesto fotografando la SELEZIONE (il punto di ripristino di Esc) e
-  // azzerando l'elenco delle anteprime. La scena non va fotografata: la base
-  // del gesto è "confermato + op in volo", che si ricalcola quando serve.
+  // Opens a gesture by snapshotting the SELECTION (the Esc restore point) and
+  // resetting the preview list. The scene must not be snapshotted: the base
+  // of the gesture is "confirmed + in-flight ops", which is recomputed when needed.
   beginGesture: () =>
     set((st) => {
       if (!st.scene) return st;
       if (st.gesture) {
-        // Misuso (gesto già aperto): azzerare le anteprime accumulate e la
-        // selezione di partenza perderebbe il vero stato di inizio gesto -- un
-        // cancelGesture successivo tornerebbe a metà drag invece che al punto
-        // di partenza. Teniamo il PRIMO gesto e segnaliamo il bug al chiamante.
-        console.warn("opendesigner: beginGesture() con un gesto già aperto — snapshot iniziale mantenuto");
+        // Misuse (gesture already open): resetting the accumulated previews and the
+        // starting selection would lose the true state at gesture start -- a
+        // subsequent cancelGesture would return to mid-drag instead of to the
+        // starting point. We keep the FIRST gesture and flag the bug to the caller.
+        console.warn("opendesigner: beginGesture() called with a gesture already open — initial snapshot kept");
         return st;
       }
       return { gesture: { selection: st.selection, preview: new Map() } };
     }),
 
-  // Chiude il gesto e manda sul filo UNA sola volta gli op finali: il documento
-  // torna alla base (confermato + op ancora in volo, senza anteprime) e viene
-  // ricostruito da finalOps, così le anteprime intermedie non lasciano
-  // residui (es. un resize di anteprima che l'op finale non ripete).
-  // finalOps vuoto = gesto senza effetto.
-  // Nota: la SELEZIONE non viene ripristinata (a differenza di cancelGesture).
-  // È stato di interfaccia, e un tool può volerla cambiare durante il gesto
-  // (es. selezionare il nodo appena creato) senza vedersela annullare; viene
-  // solo potata, UNA volta sola e contro la scena FINALE (vedi sotto).
+  // Closes the gesture and sends the final ops over the wire ONCE: the document
+  // returns to the base (confirmed + ops still in flight, without previews) and is
+  // rebuilt from finalOps, so intermediate previews leave no
+  // residue (e.g. a preview resize that the final op does not repeat).
+  // empty finalOps = gesture with no effect.
+  // Note: the SELECTION is not restored (unlike cancelGesture).
+  // It is interface state, and a tool may want to change it during the gesture
+  // (e.g. select the just-created node) without seeing it undone; it is
+  // only pruned, ONCE and against the FINAL scene (see below).
   endGesture: (finalOpsIn) => {
-    // Registrazione animazione: gli op di proprietà animabili diventano UN SetClip.
-    // A registrazione spenta `recordFinal` restituisce lo stesso array.
+    // Animation recording: ops on animatable properties become ONE SetClip.
+    // With recording off `recordFinal` returns the same array.
     const finalOps = recordFinal(finalOpsIn);
     const snap = get().gesture;
-    // La selezione VOLUTA dal chiamante alla chiusura del gesto. Può già
-    // riferirsi a nodi che esisteranno solo DOPO finalOps -- è esattamente il
-    // caso del tool di disegno che seleziona il nodo mentre lo sta creando.
-    // Va quindi riconciliata alla FINE, contro la scena definitiva: potarla
-    // contro la base ricostruita (che quei nodi non li ha ancora) la
-    // svuoterebbe, e le potature intermedie di apply() possono solo
-    // restringere, mai rimettere dentro un id.
+    // The selection WANTED by the caller at gesture close. It may already
+    // refer to nodes that will only exist AFTER finalOps -- it is exactly the
+    // case of the draw tool that selects the node while creating it.
+    // It must therefore be reconciled at the END, against the definitive scene: pruning it
+    // against the rebuilt base (which does not have those nodes yet) would
+    // empty it, and the intermediate prunings of apply() can only
+    // narrow, never put an id back in.
     const intended = get().selection;
-    // Il ripristino e gli invii sono set() distinti e sequenziali: submit
-    // rientra nello store (apply ottimistico), quindi non può stare dentro
-    // l'updater di un altro set.
+    // The restore and the sends are distinct, sequential set()s: submit
+    // re-enters the store (optimistic apply), so it cannot sit inside
+    // another set's updater.
     if (snap) {
-      // La base del gesto NON è una fotografia di inizio drag: è il documento
-      // confermato più gli op ancora in volo, ricalcolato ADESSO. I record
-      // autorevoli arrivati durante il drag ci sono già dentro (sono entrati in
-      // `confirmed` via apply), le anteprime no -- è così che spariscono senza
-      // lasciare residui. Un op in volo rifiutato a metà gesto è già uscito
-      // dalla coda, quindi non riappare qui.
+      // The gesture's base is NOT a start-of-drag snapshot: it is the confirmed
+      // document plus the ops still in flight, recomputed NOW. Authoritative
+      // records that arrived during the drag are already in it (they entered
+      // `confirmed` via apply), previews are not -- it is how they vanish without
+      // leaving residue. An in-flight op rejected mid-gesture has already left
+      // the queue, so it does not reappear here.
       const confirmed = get().confirmed;
       const scene = confirmed ? viewOf(confirmed, get().pending, []) : get().scene;
-      // Potatura transitoria: mantiene l'invariante selection ⊆ scene.nodes
-      // anche a metà flush; la riconciliazione finale la riallarga a quello
-      // che il chiamante voleva davvero.
+      // Transient pruning: maintains the selection ⊆ scene.nodes invariant
+      // even mid-flush; the final reconciliation widens it back to
+      // what the caller really wanted.
       if (scene) set((st) => ({ scene, selection: pruneSelection(st.selection, scene), gesture: null }));
       else set({ gesture: null });
     } else if (finalOps.length > 0) {
-      // Misuso (endGesture senza beginGesture): non c'è nessuna base pulita da
-      // cui ricostruire, quindi gli op finali si sommano a qualunque anteprima
-      // sia rimasta appesa. Li mandiamo comunque (perdere il lavoro dell'utente
-      // sarebbe peggio) ma il chiamante deve saperlo.
-      console.warn("opendesigner: endGesture() senza un gesto aperto — op inviati senza ricostruzione");
+      // Misuse (endGesture without beginGesture): there is no clean base to
+      // rebuild from, so the final ops add up to whatever preview
+      // is left hanging. We send them anyway (losing the user's work
+      // would be worse) but the caller must know.
+      console.warn("opendesigner: endGesture() without an open gesture — ops sent without rebuild");
     }
-    // Voce di undo: gli INVERSI di finalOps, calcolati sulla base -- lo stesso
-    // stato su cui finalOps stanno per atterrare (get().scene qui è già la
-    // scena ribasata dal set() qui sopra, o quella corrente nel caso di
-    // misuso) -- PRIMA di sottomettere qualunque op. Dopo, quello stato non
-    // esiste più. Un gesto i cui inversi non esistono tutti (es. un id sparito
-    // nel frattempo perché un client remoto l'ha cancellato a metà drag) non
-    // produce voce: annullare a metà lascerebbe la scena in uno stato che
-    // nessun redo può recuperare.
+    // Undo entry: the INVERSES of finalOps, computed on the base -- the same
+    // state on which finalOps are about to land (get().scene here is already the
+    // scene rebased by the set() above, or the current one in the case of
+    // misuse) -- BEFORE submitting any op. Afterwards, that state does not
+    // exist anymore. A gesture whose inverses do not all exist (e.g. an id vanished
+    // in the meantime because a remote client deleted it mid-drag) does not
+    // produce an entry: undoing halfway would leave the scene in a state that
+    // no redo can recover.
     //
-    // Lo svuotamento del REDO stack invece NON è condizionato all'esistenza
-    // della voce di undo (bug trovato in review): gli op finali vengono
-    // submittati qui sotto in ogni caso, quindi qualunque gesto con op finali
-    // ha già cambiato il documento per davvero e ha invalidato il "futuro"
-    // registrato nel redo stack -- quelle voci sono inversi calcolati su uno
-    // stato che non esiste più. Lasciarle lì significa che un redo successivo
-    // riscrive in silenzio proprietà appena modificate dall'utente (es.
-    // rimette a (40,40) un nodo appena trascinato a (999,999)) senza alcun
-    // segnale. Il redo stack si svuota quindi appena il gesto ha effetto
-    // reale, indipendentemente da invertChain.
+    // Emptying the REDO stack instead is NOT conditioned on the existence
+    // of the undo entry (bug found in review): the final ops are
+    // submitted below in any case, so any gesture with final ops
+    // has already really changed the document and invalidated the "future"
+    // recorded in the redo stack -- those entries are inverses computed on a
+    // state that no longer exists. Leaving them there means a subsequent redo
+    // silently rewrites properties the user has just modified (e.g.
+    // puts back at (40,40) a node just dragged to (999,999)) without any
+    // signal. The redo stack is therefore emptied as soon as the gesture has a
+    // real effect, regardless of invertChain.
     const base = get().scene;
     const sync = get().sync;
-    // Gli stack PRIMA di questa transizione: se uno degli op finali viene poi
-    // rifiutato, è qui che si torna (vedi HistoryMark).
+    // The stacks BEFORE this transition: if one of the final ops is later
+    // rejected, this is where we go back to (see HistoryMark).
     const prevUndo = get().undoStack;
     const prevRedo = get().redoStack;
-    // `groups` tiene la corrispondenza op -> suoi inversi (vedi invertChain e
-    // HistoryShape); `entry` è la stessa cosa appiattita, cioè la voce di undo
-    // come la vedono gli stack.
+    // `groups` keeps the op -> its inverses correspondence (see invertChain and
+    // HistoryShape); `entry` is the same thing flattened, that is the undo entry
+    // as the stacks see it.
     let groups: Op[][] = [];
     let entry: Op[] = [];
     let changedHistory = false;
     if (finalOps.length > 0) {
       groups = (base ? invertChain(base, finalOps) : null) ?? [];
       entry = groups.flat();
-      // Niente voce da aggiungere e redo già vuoto: nessun cambiamento di
-      // stato, quindi niente set() (sveglierebbe i sottoscrittori a vuoto).
+      // No entry to add and redo already empty: no state change,
+      // so no set() (it would wake the subscribers for nothing).
       if (entry.length > 0 || prevRedo.length > 0) {
         changedHistory = true;
         set((st) => {
@@ -1513,15 +1513,15 @@ export const useScene = createStore<SceneStore>((set, get) => ({
         });
       }
     }
-    // Il mark va registrato PRIMA di sottomettere: un submit può fallire in
-    // modo SINCRONO (outbox pieno, vedi rpc/syncClient.ts) e il rollback deve
-    // già trovare la transizione da riavvolgere. Senza trasporto non serve --
-    // gli op diventano confermati all'istante e non c'è nulla da rifiutare.
+    // The mark must be registered BEFORE submitting: a submit can fail
+    // SYNCHRONOUSLY (full outbox, see rpc/syncClient.ts) and the rollback must
+    // already find the transition to rewind. Without a transport it is not needed --
+    // ops become confirmed instantly and there is nothing to reject.
     //
-    // `opIds` tiene TUTTI gli op finali, anche quelli senza opId: è una lista
-    // POSIZIONALE, e il suo indice è ciò che allinea un rifiuto alla voce di
-    // undo. In attesa vanno invece solo quelli riconoscibili (un opId vuoto non
-    // entra mai in `pending`, quindi nessun eco potrebbe mai toglierlo).
+    // `opIds` keeps ALL the final ops, even those without an opId: it is a
+    // POSITIONAL list, and its index is what aligns a rejection with the undo
+    // entry. Only the recognizable ones go into the waiting set (an empty opId never
+    // enters `pending`, so no echo could ever remove it).
     if (changedHistory && sync) {
       const opIds = finalOps.map((o) => o.opId);
       const awaiting = opIds.filter((id) => id !== "");
@@ -1542,21 +1542,21 @@ export const useScene = createStore<SceneStore>((set, get) => ({
       }
     }
     for (const op of finalOps) {
-      // Senza trasporto registrato restiamo comunque coerenti in locale
-      // invece di perdere il risultato del gesto. apply() e non applyLocal():
-      // senza filo non esiste un "confermato dal server", quindi l'op È il
-      // documento confermato -- un'anteprima verrebbe cancellata dal primo
-      // ricalcolo della vista.
-      // `true` = l'op è NOSTRO: senza questo verrebbe scambiato per un record
-      // remoto e invaliderebbe la voce di undo che questo stesso gesto ha
-      // appena spinto (vedi apply).
+      // Without a registered transport we stay consistent locally anyway
+      // instead of losing the gesture's result. apply() and not applyLocal():
+      // without a wire there is no "confirmed by the server", so the op IS the
+      // confirmed document -- a preview would be erased by the first
+      // recomputation of the view.
+      // `true` = the op is OURS: without this it would be mistaken for a
+      // remote record and would invalidate the undo entry this very gesture
+      // has just pushed (see apply).
       if (sync) sync.submit(op);
       else get().apply(op, true);
     }
-    // Riconciliazione finale: la selezione voluta, potata contro la scena
-    // realmente prodotta dal gesto. Gli id creati da finalOps ci sono ancora;
-    // quelli spariti (delete remoto, o anteprima che nessun op finale ha
-    // confermato) restano fuori -- niente maniglie su nodi inesistenti.
+    // Final reconciliation: the wanted selection, pruned against the scene
+    // actually produced by the gesture. Ids created by finalOps are still there;
+    // those that vanished (remote delete, or a preview that no final op
+    // confirmed) stay out -- no handles on nonexistent nodes.
     const scene = get().scene;
     if (scene) {
       const next = pruneSelection(intended, scene);
@@ -1564,16 +1564,16 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     }
   },
 
-  // Esc / gesto abbandonato: torna allo stato di inizio gesto, selezione
-  // compresa (un gesto di cancellazione l'aveva potata), e non manda nulla sul
-  // filo. Annullare il PROPRIO gesto non annulla però le modifiche ALTRUI:
-  // gli op autorevoli arrivati nel frattempo restano applicati.
-  // cancelGesture senza gesto aperto è un no-op legittimo (Esc premuto fuori da
-  // un drag), non un misuso: nessun warning.
+  // Esc / abandoned gesture: returns to the gesture-start state, selection
+  // included (a delete gesture had pruned it), and sends nothing over the
+  // wire. Undoing one's OWN gesture does not undo OTHERS' changes, however:
+  // authoritative ops that arrived in the meantime stay applied.
+  // cancelGesture without an open gesture is a legitimate no-op (Esc pressed outside
+  // a drag), not a misuse: no warning.
   cancelGesture: () =>
     set((st) => {
       if (!st.gesture) return st;
-      // Stessa base di endGesture: confermato + op in volo, senza anteprime.
+      // Same base as endGesture: confirmed + in-flight ops, without previews.
       const scene = st.confirmed ? viewOf(st.confirmed, st.pending, []) : st.scene;
       if (!scene) return { gesture: null };
       return { scene, selection: pruneSelection(st.gesture.selection, scene), gesture: null };
@@ -1588,43 +1588,43 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     })),
   clearSelection: () => set({ selection: [] }),
   setMarquee: (b) => set({ marquee: b }),
-  // Le guide di snap del gesto in corso. Riusa lo STESSO array quando non c'è
-  // niente da mostrare e niente c'era: un gesto lungo chiama questa ad ogni
-  // pointermove, e un array nuovo ogni volta sveglierebbe i sottoscrittori a
-  // ogni pixel anche quando nessuno scatto è attivo.
+  // The snap guides of the gesture in progress. Reuses the SAME array when there is
+  // nothing to show and nothing was there: a long gesture calls this on every
+  // pointermove, and a new array each time would wake the subscribers on
+  // every pixel even when no snap is active.
   setSnapGuides: (g) =>
     set((st) => (g.length === 0 && st.snapGuides.length === 0 ? st : { snapGuides: g })),
   setLayoutDrop: (d) => set((st) => (d === null && st.layoutDrop === null ? st : { layoutDrop: d })),
   setPenPreview: (p) => set({ penPreview: p }),
 
-  // Cambia la pagina visualizzata. NON è un op e NON è una voce di undo: è
-  // stato di vista, come setCamera. Azzera la selezione (i nodi dell'altra
-  // pagina non restano selezionati -- il pannello proprietà e l'overlay
-  // rimarrebbero altrimenti appesi a nodi che il canvas non disegna più).
+  // Changes the displayed page. It is NOT an op and NOT an undo entry: it is
+  // view state, like setCamera. Resets the selection (nodes of the other
+  // page do not stay selected -- the properties panel and the overlay
+  // would otherwise stay hanging on nodes the canvas no longer draws).
   setCurrentPage: (id) =>
     set((st) => {
-      // Ri-selezionare la pagina corrente non deve buttare via la selezione.
+      // Re-selecting the current page must not throw away the selection.
       if (id === st.currentPageId) return st;
-      // Solo una pagina che ESISTE: mantiene l'invariante "sempre valido" anche
-      // se un chiamante passa un id sbagliato. A scene nulla (bootstrap non
-      // ancora arrivato) si accetta comunque -- validCurrentPage la correggerà.
+      // Only a page that EXISTS: maintains the "always valid" invariant even
+      // if a caller passes a wrong id. With a null scene (bootstrap not
+      // yet arrived) it is accepted anyway -- validCurrentPage will correct it.
       if (st.scene && !st.scene.pages.some((p) => p.id === id)) return st;
       return { currentPageId: id, selection: [] };
     }),
 
-  // Chiude/pulisce QUALUNQUE sessione già aperta PRIMA di aprirne una nuova
-  // (bug trovato in review): senza questo, una seconda beginTextEditing --
-  // doppio click su un ALTRO nodo testo mentre uno resta in editing, o due
-  // creazioni consecutive di textTool.ts -- sovrascriveva editingNodeId in
-  // silenzio, e il nodo precedente non passava MAI da endTextEditing: se era
-  // rimasto vuoto restava sulla scena per sempre, un nodo fantasma permanente
-  // (esattamente ciò che endTextEditing esiste per evitare quando l'utente
-  // esce con Escape/click-sul-vuoto). Riusa endTextEditing così ogni FUTURO
-  // chiamante (l'overlay del Task 5 incluso) lo eredita gratis, invece di
-  // doversene ricordare da solo.
-  // Stesso id già in editing = no-op: NON richiamare endTextEditing (che
-  // cancellerebbe un nodo ancora vuoto per poi riaprirlo su un id ormai
-  // sparito dalla scena).
+  // Closes/cleans ANY session already open BEFORE opening a new one
+  // (bug found in review): without this, a second beginTextEditing --
+  // double click on ANOTHER text node while one stays in editing, or two consecutive
+  // creations from textTool.ts -- overwrote editingNodeId silently,
+  // and the previous node NEVER went through endTextEditing: if it had
+  // been left empty it stayed on the scene forever, a permanent phantom node
+  // (exactly what endTextEditing exists to avoid when the user
+  // exits with Escape/click-on-empty). It reuses endTextEditing so every FUTURE
+  // caller (the Task 5 overlay included) inherits it for free, instead of
+  // having to remember it on their own.
+  // Same id already in editing = no-op: do NOT call endTextEditing again (which
+  // would delete a still-empty node only to reopen it on an id that has
+  // vanished from the scene).
   beginTextEditing: (id) => {
     const current = get().editingNodeId;
     if (current === id) return;
@@ -1632,14 +1632,14 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     set({ editingNodeId: id });
   },
 
-  // Esce dall'editing e, se il nodo era un testo rimasto vuoto, lo cancella.
-  // La cancellazione passa da beginGesture/endGesture come QUALUNQUE altra
-  // modifica (stesso principio del disegno in shapeTool.ts): submittarla
-  // direttamente qui la renderebbe l'unica azione dell'editor non annullabile.
+  // Exits editing and, if the node was a text left empty, deletes it.
+  // The deletion goes through beginGesture/endGesture like ANY other
+  // change (same principle as drawing in shapeTool.ts): submitting it
+  // directly here would make it the only non-undoable action of the editor.
   //
-  // L'op non passa da tools/ops.ts::makeDeleteOp per non invertire la
-  // dipendenza fra i due moduli (tools/ importa da store/, mai il contrario);
-  // è comunque la stessa identica costruzione, tre campi.
+  // The op does not go through tools/ops.ts::makeDeleteOp so as not to invert the
+  // dependency between the two modules (tools/ imports from store/, never the reverse);
+  // it is nonetheless the exact same construction, three fields.
   endTextEditing: () => {
     const id = get().editingNodeId;
     if (id === null) return;
@@ -1656,30 +1656,30 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     get().endGesture([op]);
   },
 
-  // L'undo NON è un rewind dell'op-log: è altro lavoro in avanti, come da
-  // design (vedi history.ts). Manda gli op invertiti tramite sync.submit
-  // esattamente come farebbe un gesto normale (apply ottimistico + invio), e
-  // sposta la voce nello stack opposto -- ricalcolando i SUOI inversi PRIMA di
-  // sottomettere nulla, sullo stesso principio di endGesture: dopo, lo stato
-  // pre-undo non esiste più.
+  // Undo is NOT a rewind of the op-log: it is more forward work, as per
+  // design (see history.ts). It sends the inverted ops through sync.submit
+  // exactly as a normal gesture would (optimistic apply + send), and
+  // moves the entry to the opposite stack -- recomputing ITS inverses BEFORE
+  // submitting anything, on the same principle as endGesture: afterwards, the
+  // pre-undo state no longer exists.
   //
-  // Guardia (bug trovato in review): se un gesto è aperto (drag in corso),
-  // sync.submit farebbe entrare l'inverso nella coda degli op in volo, cioè
-  // NELLA BASE del gesto. Al pointerup endGesture ricalcola quella base (ora
-  // con l'inverso in mezzo) e manda op finali che possono riferirsi a un nodo
-  // appena cancellato dall'undo: il drag evapora senza lasciare voce di undo e
-  // il nodo sbagliato scompare. E gli inversi sono comunque calcolati sulla
-  // VISTA, che a metà drag contiene le anteprime -- uno stato che non
-  // esisterà più appena il gesto chiude. Rimandato: l'utente rifà Ctrl/Cmd+Z
-  // dopo che il gesto chiude (pointerup/Esc).
-  // Seconda guardia, stesso principio: un PATH in corso col pen tool
-  // (penPreview != null) è un gesto lungo che non tiene occupato lo slot
-  // `gesture` -- non tocca il documento finché non finisce, quindi tenerlo
-  // aperto per minuti impedirebbe a chiunque altro di aprire il proprio (vedi
-  // tools/penTool.ts::finish). Undo/redo restano comunque rimandati: a metà
-  // path Ctrl+Z toglierebbe un gesto PRECEDENTE mentre l'utente sta guardando
-  // il disegno in corso, cioè disferebbe qualcosa di diverso da quello che si
-  // ha davanti. Basta finire o abbandonare il path (Invio/Esc) e riprovare.
+  // Guard (bug found in review): if a gesture is open (drag in progress),
+  // sync.submit would make the inverse enter the in-flight ops queue, that is
+  // IN THE BASE of the gesture. At pointerup endGesture recomputes that base (now
+  // with the inverse in the middle) and sends final ops that may refer to a node
+  // just deleted by the undo: the drag evaporates leaving no undo entry and
+  // the wrong node disappears. And the inverses are computed on the
+  // VIEW anyway, which mid-drag contains the previews -- a state that will not
+  // exist anymore as soon as the gesture closes. Deferred: the user redoes Ctrl/Cmd+Z
+  // after the gesture closes (pointerup/Esc).
+  // Second guard, same principle: a PATH in progress with the pen tool
+  // (penPreview != null) is a long gesture that does not occupy the `gesture`
+  // slot -- it does not touch the document until it finishes, so keeping it
+  // open for minutes would prevent anyone else from opening their own (see
+  // tools/penTool.ts::finish). Undo/redo stay deferred anyway: mid-
+  // path Ctrl+Z would remove a PREVIOUS gesture while the user is looking at
+  // the drawing in progress, that is it would undo something different from what is
+  // in front of them. Just finish or abandon the path (Enter/Esc) and retry.
   undo: () => {
     if (get().gesture || get().penPreview) return;
     const prevUndo = get().undoStack;
@@ -1687,25 +1687,25 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const entry = prevUndo[prevUndo.length - 1];
     if (!entry) return;
     const scene = get().scene;
-    // Gruppi (uno per op disfatto) per il mark, appiattiti per lo stack: vedi
-    // invertChain e HistoryShape.
+    // Groups (one per undone op) for the mark, flattened for the stack: see
+    // invertChain and HistoryShape.
     const redoGroups = scene ? invertChain(scene, entry) : null;
     const redoEntry = redoGroups?.flat() ?? null;
-    // Pop dell'undo e push del redo in UN SOLO set, prima di qualunque invio:
-    // il submit può rientrare nello store (apply ottimistico, e in caso di
-    // rifiuto sincrono anche rejectPending, che riavvolge gli stack). Spingere
-    // il redo dopo l'invio, com'era prima, significherebbe rimetterlo sopra
-    // stack già riavvolti.
+    // Pop of the undo and push of the redo in A SINGLE set, before any send:
+    // the submit can re-enter the store (optimistic apply, and in case of
+    // synchronous rejection also rejectPending, which rewinds the stacks). Pushing
+    // the redo after the send, as it was before, would mean putting it on top of
+    // already rewound stacks.
     set((st) => {
       const undoStack = st.undoStack.slice(0, -1);
       const redoStack = redoEntry && redoEntry.length > 0 ? [...st.redoStack, redoEntry] : st.redoStack;
       return { undoStack, redoStack, canUndo: undoStack.length > 0, canRedo: redoStack.length > 0 };
     });
     const sync = get().sync;
-    // Anche l'undo è una transizione in dubbio finché i suoi inversi non sono
-    // confermati: se il server li rifiuta, la voce tornata nel redo va tolta e
-    // quella consumata dall'undo va rimessa dov'era -- e se ne è passata solo
-    // una parte, va rimessa la sola parte NON disfatta (vedi HistoryMark).
+    // Undo too is a transition in doubt until its inverses are
+    // confirmed: if the server rejects them, the entry that went back to redo must be removed and
+    // the one consumed by the undo put back where it was -- and if only a part
+    // went through, only the NOT undone part must be put back (see HistoryMark).
     if (sync) {
       const opIds = entry.map((o) => o.opId);
       const awaiting = opIds.filter((id) => id !== "");
@@ -1727,14 +1727,14 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     }
     for (const op of entry) {
       if (sync) sync.submit(op);
-      else get().apply(op, true); // nessun filo: l'op è direttamente il confermato (vedi endGesture)
+      else get().apply(op, true); // no wire: the op is directly the confirmed state (see endGesture)
     }
   },
 
-  // Simmetrico a undo: rimanda avanti gli op che l'undo aveva disfatto, e
-  // ricostruisce una nuova voce di undo per poterli ridisfare.
-  // Stessa guardia di undo() sopra, stesso motivo: redo() durante un drag
-  // infilerebbe i suoi op nella coda in volo, cioè nella base del gesto.
+  // Symmetric to undo: sends forward the ops the undo had undone, and
+  // rebuilds a new undo entry to be able to undo them again.
+  // Same guard as undo() above, same reason: redo() during a drag
+  // would put its ops in the in-flight queue, that is in the gesture's base.
   redo: () => {
     if (get().gesture || get().penPreview) return;
     const prevUndo = get().undoStack;
@@ -1744,7 +1744,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     const scene = get().scene;
     const undoGroups = scene ? invertChain(scene, entry) : null;
     const undoEntry = undoGroups?.flat() ?? null;
-    // Un solo set prima degli invii, stesso motivo di undo().
+    // One set before the sends, same reason as undo().
     set((st) => {
       const redoStack = st.redoStack.slice(0, -1);
       const undoStack = undoEntry && undoEntry.length > 0 ? [...st.undoStack, undoEntry] : st.undoStack;
@@ -1772,7 +1772,7 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     }
     for (const op of entry) {
       if (sync) sync.submit(op);
-      else get().apply(op, true); // nessun filo: l'op è direttamente il confermato (vedi endGesture)
+      else get().apply(op, true); // no wire: the op is directly the confirmed state (see endGesture)
     }
   },
 }));

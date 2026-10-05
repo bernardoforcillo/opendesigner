@@ -14,10 +14,10 @@ function node(over: Partial<NodeLite> & { id: string }): NodeLite {
   };
 }
 
-// Un nodo testo con il box di un nodo appena creato con un click: larghezza di
-// wrap 100 e altezza di UNA riga (16 * 1.2 = 19.2). Con la misura finta (10
-// unità per carattere) "abcdefghij klm" ne occupa DUE: è il caso in cui il box
-// del modello e ciò che il canvas dipinge non coincidono.
+// A text node with the box of a node just created with a click: wrap width
+// 100 and height of ONE line (16 * 1.2 = 19.2). With the fake measure (10
+// units per character) "abcdefghij klm" takes TWO: it is the case in which the model's
+// box and what the canvas paints do not coincide.
 function overflowingText(id: string): NodeLite {
   return node({
     id, kind: "text", x: 0, y: 0, width: 100, height: 19.2,
@@ -38,9 +38,9 @@ function sceneWith(name: string, ...nodes: NodeLite[]): SceneState {
   return s;
 }
 
-// Il canvas fuori schermo e la codifica PNG sono doppi: jsdom non ha né
-// contesto 2D né toBlob. Qui si verifica il PERCORSO (chi viene chiamato, con
-// che nome di file, con che tipo di blob), non i pixel.
+// The offscreen canvas and the PNG encoding are doubles: jsdom has neither a 2D
+// context nor toBlob. Here the PATH is verified (who is called, with
+// what file name, with what blob type), not the pixels.
 class FakePath2D {
   rect() {}
   roundRect() {}
@@ -59,9 +59,9 @@ function fakeCanvas(): HTMLCanvasElement {
     setTransform: () => {}, clearRect: () => {},
     measureText: (s: string) => ({ width: s.length * 10 }),
     fillText: () => {}, fill: () => {},
-    // Il ramo immagine di drawScene: o `drawImage`, o il segnaposto. Registrati
-    // perché è l'unico modo, senza pixel veri, di sapere QUALE dei due è
-    // finito nel file.
+    // The image branch of drawScene: either `drawImage`, or the placeholder. Recorded
+    // because it is the only way, without real pixels, to know WHICH of the two
+    // ended up in the file.
     drawImage: (img: unknown) => { drawn.push(img); },
     fillRect: () => {}, strokeRect: () => {},
     beginPath: () => {}, moveTo: () => {}, lineTo: () => {}, stroke: () => { crosses++; },
@@ -69,8 +69,8 @@ function fakeCanvas(): HTMLCanvasElement {
   return canvas;
 }
 
-// Che cosa il PNG ha davvero disegnato nell'ultimo export: le immagini passate
-// a drawImage e quanti segnaposto (l'unico `stroke()` di drawScene è il loro).
+// What the PNG actually drew in the last export: the images passed
+// to drawImage and how many placeholders (the only `stroke()` in drawScene is theirs).
 let drawn: unknown[] = [];
 let crosses = 0;
 
@@ -93,7 +93,7 @@ beforeEach(() => {
 });
 
 describe("runExport — SVG", () => {
-  it("esporta la pagina e consegna il markup", async () => {
+  it("exports the page and delivers the markup", async () => {
     install(sceneWith("Untitled", node({ id: "a", x: 10, y: 20, width: 30, height: 40 })));
     const d = deps();
     await expect(runExport({ format: "svg", scope: "page", scale: 1 }, d)).resolves.toBe(true);
@@ -105,7 +105,7 @@ describe("runExport — SVG", () => {
     expect(text).toContain('viewBox="10 20 30 40"');
   });
 
-  it("esporta la SELEZIONE: solo i nodi scelti, e si vede dal nome del file", async () => {
+  it("exports the SELECTION: only the chosen nodes, and it shows in the file name", async () => {
     install(
       sceneWith("Untitled", node({ id: "a" }), node({ id: "b", orderKey: "a2", kind: "ellipse", x: 100 })),
       ["b"],
@@ -115,41 +115,41 @@ describe("runExport — SVG", () => {
     const text = await d.saved[0].blob.text();
     expect(text).toContain("<ellipse");
     expect(text).not.toContain("<rect");
-    expect(d.saved[0].filename).toBe("Untitled-selezione.svg");
+    expect(d.saved[0].filename).toBe("Untitled-selection.svg");
   });
 
-  it("NON dipende dalla camera: la vista non entra nel file", async () => {
+  it("does NOT depend on the camera: the view does not enter the file", async () => {
     install(sceneWith("Untitled", node({ id: "a", x: 10, y: 20, width: 30, height: 40 })));
     const d1 = deps();
     await runExport({ format: "svg", scope: "page", scale: 1 }, d1);
     const first = await d1.saved[0].blob.text();
 
-    // Stessa scena, vista completamente diversa (scrollata e zoomata).
+    // Same scene, completely different view (scrolled and zoomed).
     useScene.setState({ camera: { x: -3000, y: 812.5, zoom: 7.5 } });
     const d2 = deps();
     await runExport({ format: "svg", scope: "page", scale: 1 }, d2);
     expect(await d2.saved[0].blob.text()).toBe(first);
   });
 
-  it("il testo che trabocca il suo box resta DENTRO il viewBox", async () => {
-    // Il viewBox è il ritaglio del file: la radice SVG nasconde tutto ciò che
-    // ne resta fuori. Con l'altezza del box del modello (19.2) i tspan della
-    // seconda riga sarebbero comunque scritti nel file, e comunque invisibili
-    // -- un export che sembra riuscito e ha perso metà del testo.
+  it("text that overflows its box stays INSIDE the viewBox", async () => {
+    // The viewBox is the file's crop: the SVG root hides everything that
+    // stays outside it. With the height of the model's box (19.2) the second row's
+    // tspans would still be written in the file, and still invisible
+    // -- an export that looks successful and has lost half the text.
     install(sceneWith("Untitled", overflowingText("t")));
     const d = deps();
     await runExport({ format: "svg", scope: "page", scale: 1 }, d);
     const text = await d.saved[0].blob.text();
     expect(text).toContain('viewBox="0 0 100 38.4"');
     expect(text).toContain('height="38.4"');
-    // le due righe, entrambe sopra il bordo inferiore del viewBox
+    // the two lines, both above the viewBox's bottom edge
     expect(text).toContain('<tspan x="0" y="14.4">abcdefghij</tspan>');
     expect(text).toContain('<tspan x="0" y="33.6">klm</tspan>');
   });
 });
 
 describe("runExport — PNG", () => {
-  it("passa dal canvas fuori schermo e consegna i byte PNG", async () => {
+  it("goes through the offscreen canvas and delivers the PNG bytes", async () => {
     install(sceneWith("Untitled", node({ id: "a", width: 30, height: 40 })));
     const d = deps();
     const canvases: HTMLCanvasElement[] = [];
@@ -157,33 +157,33 @@ describe("runExport — PNG", () => {
     await expect(runExport({ format: "png", scope: "page", scale: 2 }, d)).resolves.toBe(true);
     expect(d.saved[0].filename).toBe("Untitled@2x.png");
     expect(d.saved[0].blob.type).toBe("image/png");
-    // il canvas è quello della regione per la scala scelta
+    // the canvas is the region's for the chosen scale
     expect(canvases.at(-1)!.width).toBe(60);
     expect(canvases.at(-1)!.height).toBe(80);
   });
 
-  it("un'immagine oltre il tetto del canvas diventa un AVVISO, non un PNG bianco", async () => {
-    // 6000×6000 unità a 3x = 324 Mpx: oltre il massimo del canvas. Il browser
-    // non lo direbbe -- Chrome ritorna un contesto che non disegna e toBlob
-    // produce un PNG valido e vuoto -- quindi lo deve dire l'app, e lo dice
-    // dallo stesso canale di ogni altro export non riuscito.
+  it("an image beyond the canvas cap becomes a WARNING, not a blank PNG", async () => {
+    // 6000×6000 units at 3x = 324 Mpx: beyond the canvas maximum. The browser
+    // would not say so -- Chrome returns a context that does not draw and toBlob
+    // produces a valid, empty PNG -- so the app must say it, and says it
+    // through the same channel as every other failed export.
     install(sceneWith("Untitled", node({ id: "a", x: 0, y: 0, width: 6000, height: 6000 })));
     const d = deps();
     await expect(runExport({ format: "png", scope: "page", scale: 3 }, d)).resolves.toBe(false);
     expect(d.saved).toHaveLength(0);
-    expect(useScene.getState().notice).toMatch(/troppo grande/i);
+    expect(useScene.getState().notice).toMatch(/too large/i);
 
-    // ...e la stessa regione a 1x, o in SVG, esce senza problemi: il tetto è
-    // del canvas, non del documento.
+    // ...and the same region at 1x, or as SVG, comes out fine: the cap
+    // belongs to the canvas, not to the document.
     await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(true);
     await expect(runExport({ format: "svg", scope: "page", scale: 3 }, d)).resolves.toBe(true);
   });
 
-  it("il canvas è alto quanto il testo dipinto, anche senza una misura iniettata", async () => {
-    // Nessun `measure` nelle deps: la misura la costruisce runExport dal
-    // canvas, e serve al PNG tanto quanto all'SVG -- è quella che dice quanto
-    // deve essere alto il canvas fuori schermo. Senza, il PNG verrebbe alto
-    // 20 px (il box) invece di 39 (le due righe) e taglierebbe la seconda.
+  it("the canvas is as tall as the painted text, even without an injected measure", async () => {
+    // No `measure` in the deps: runExport builds the measure from the
+    // canvas, and it serves the PNG as much as the SVG -- it is what says how tall
+    // the offscreen canvas must be. Without it, the PNG would come out 20 px
+    // tall (the box) instead of 39 (the two lines) and would crop the second.
     install(sceneWith("Untitled", overflowingText("t")));
     const d = deps();
     d.measure = undefined;
@@ -194,20 +194,20 @@ describe("runExport — PNG", () => {
     expect(canvases.at(-1)!.height).toBe(39); // ceil(38.4)
   });
 
-  it("senza contesto 2D l'export lo DICE, invece di esplodere", async () => {
-    // La misura del testo si costruisce da un canvas, e ora serve prima ancora
-    // di sapere quanto è grande la regione: se quel canvas non dà un contesto,
-    // il motivo deve uscire dallo stesso canale di ogni altro export fallito.
+  it("without a 2D context the export SAYS so, instead of blowing up", async () => {
+    // The text measure is built from a canvas, and now it is needed even before
+    // knowing how big the region is: if that canvas gives no context,
+    // the reason must come out through the same channel as every other failed export.
     install(sceneWith("Untitled", node({ id: "a" })));
     const d = deps();
     d.measure = undefined;
     d.createCanvas = () => ({ getContext: () => null }) as unknown as HTMLCanvasElement;
     await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(false);
     expect(d.saved).toHaveLength(0);
-    expect(useScene.getState().notice).toMatch(/contesto 2D/i);
+    expect(useScene.getState().notice).toMatch(/2D context/i);
   });
 
-  it("a 1x il nome del file non porta nessun suffisso di scala", async () => {
+  it("at 1x the file name carries no scale suffix", async () => {
     install(sceneWith("Untitled", node({ id: "a" })));
     const d = deps();
     await runExport({ format: "png", scope: "page", scale: 1 }, d);
@@ -215,67 +215,67 @@ describe("runExport — PNG", () => {
   });
 });
 
-describe("runExport — quando non c'è niente da esportare", () => {
-  it("nessun documento: non scarica niente", async () => {
+describe("runExport — when there is nothing to export", () => {
+  it("no document: downloads nothing", async () => {
     install(null);
     const d = deps();
     await expect(runExport({ format: "svg", scope: "page", scale: 1 }, d)).resolves.toBe(false);
     expect(d.saved).toHaveLength(0);
   });
 
-  it("selezione vuota: lo DICE invece di scaricare un file vuoto", async () => {
+  it("empty selection: SAYS so instead of downloading an empty file", async () => {
     install(sceneWith("Untitled", node({ id: "a" })), []);
     const d = deps();
     await expect(runExport({ format: "svg", scope: "selection", scale: 1 }, d)).resolves.toBe(false);
     expect(d.saved).toHaveLength(0);
-    expect(useScene.getState().notice).toMatch(/selezion/i);
+    expect(useScene.getState().notice).toMatch(/select/i);
   });
 
-  it("pagina vuota: stesso trattamento", async () => {
+  it("empty page: same treatment", async () => {
     install(sceneWith("Untitled"), []);
     const d = deps();
     await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(false);
     expect(useScene.getState().notice).toBeTruthy();
   });
 
-  it("un errore durante l'export diventa un avviso, non un'eccezione in aria", async () => {
+  it("an error during the export becomes a warning, not an exception in the air", async () => {
     install(sceneWith("Untitled", node({ id: "a" })));
     const d = deps();
-    d.toPngBlob = async () => { throw new Error("codifica fallita"); };
+    d.toPngBlob = async () => { throw new Error("encoding failed"); };
     await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(false);
     expect(d.saved).toHaveLength(0);
-    expect(useScene.getState().notice).toContain("codifica fallita");
+    expect(useScene.getState().notice).toContain("encoding failed");
   });
 });
 
 describe("exportFileName", () => {
-  it("parte dal nome del documento", () => {
-    expect(exportFileName("Il mio poster", { format: "svg", scope: "page", scale: 1 })).toBe("Il mio poster.svg");
+  it("starts from the document name", () => {
+    expect(exportFileName("My poster", { format: "svg", scope: "page", scale: 1 })).toBe("My poster.svg");
   });
 
-  it("toglie i caratteri che un file system non accetta", () => {
-    // \ / : * ? " < > | non possono stare in un nome di file su Windows, e un
-    // documento può chiamarsi come gli pare.
+  it("removes the characters a file system does not accept", () => {
+    // \ / : * ? " < > | cannot be in a file name on Windows, and a
+    // document can be named however it likes.
     expect(exportFileName('a/b\\c:d*e?f"g<h>i|j', { format: "png", scope: "page", scale: 1 }))
       .toBe("a-b-c-d-e-f-g-h-i-j.png");
   });
 
-  it("un nome vuoto (o fatto di soli caratteri tolti) ricade su un nome buono", () => {
+  it("an empty name (or one made of only removed characters) falls back to a good name", () => {
     expect(exportFileName("", { format: "png", scope: "page", scale: 1 })).toBe("opendesigner.png");
     expect(exportFileName("///", { format: "svg", scope: "page", scale: 1 })).toBe("opendesigner.svg");
   });
 
-  it("scala e ambito compaiono nel nome", () => {
-    expect(exportFileName("Doc", { format: "png", scope: "selection", scale: 3 })).toBe("Doc-selezione@3x.png");
+  it("scale and scope appear in the name", () => {
+    expect(exportFileName("Doc", { format: "png", scope: "selection", scale: 3 })).toBe("Doc-selection@3x.png");
   });
 });
 
 describe("downloadBlob", () => {
-  it("crea un URL, clicca un <a download> e poi lo revoca", () => {
+  it("creates a URL, clicks an <a download> and then revokes it", () => {
     const created: Blob[] = [];
     const revoked: string[] = [];
     vi.stubGlobal("URL", {
-      createObjectURL: (b: Blob) => { created.push(b); return "blob:finto"; },
+      createObjectURL: (b: Blob) => { created.push(b); return "blob:fake"; },
       revokeObjectURL: (u: string) => { revoked.push(u); },
     });
     vi.useFakeTimers();
@@ -290,30 +290,30 @@ describe("downloadBlob", () => {
     expect(created).toEqual([blob]);
     expect(click).toHaveBeenCalledOnce();
     expect(clicked!.download).toBe("prova.svg");
-    expect(clicked!.href).toContain("blob:finto");
-    // l'ancora non resta appesa nel documento
+    expect(clicked!.href).toContain("blob:fake");
+    // the anchor does not stay hanging in the document
     expect(document.querySelector("a[download]")).toBeNull();
-    // l'URL si revoca DOPO il click, non prima: revocarlo subito annulla il
-    // download in alcuni browser.
+    // the URL is revoked AFTER the click, not before: revoking it right away cancels the
+    // download in some browsers.
     expect(revoked).toEqual([]);
     vi.runAllTimers();
-    expect(revoked).toEqual(["blob:finto"]);
+    expect(revoked).toEqual(["blob:fake"]);
 
     click.mockRestore();
     vi.useRealTimers();
   });
 });
 
-// --- immagini nell'export (traccia 3) ----------------------------------------
+// --- images in the export (track 3) ------------------------------------------
 
 function imageNode(id: string, hash: string): NodeLite {
   return node({ id, kind: "image", x: 0, y: 0, width: 200, height: 100, image: { assetHash: hash } });
 }
 
-describe("runExport — immagini", () => {
-  it("l'SVG INCORPORA i byte come data URI, non un link al server locale", async () => {
-    // Un href a /assets-api/... sarebbe rotto appena il file esce da questa
-    // macchina, cioè appena serve a qualcosa.
+describe("runExport — images", () => {
+  it("the SVG EMBEDS the bytes as a data URI, not a link to the local server", async () => {
+    // An href to /assets-api/... would be broken as soon as the file leaves this
+    // machine, that is as soon as it is useful for anything.
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const d = { ...deps(), loadAssetDataUrl: async () => "data:image/png;base64,QUJD" };
     await expect(runExport({ format: "svg", scope: "page", scale: 1 }, d)).resolves.toBe(true);
@@ -323,7 +323,7 @@ describe("runExport — immagini", () => {
     expect(text).not.toContain("/assets-api/");
   });
 
-  it("chiede i byte UNA volta per hash, anche con lo stesso asset ripetuto", async () => {
+  it("asks for the bytes ONCE per hash, even with the same asset repeated", async () => {
     install(sceneWith("Untitled",
       imageNode("i1", "abc"),
       node({ ...imageNode("i2", "abc"), id: "i2", orderKey: "a2", x: 300 }),
@@ -341,39 +341,39 @@ describe("runExport — immagini", () => {
     expect(asked.sort()).toEqual(["abc", "def"]);
   });
 
-  it("un asset irraggiungibile non fa fallire l'export: esce il segnaposto, e l'utente lo SA", async () => {
+  it("an unreachable asset does not fail the export: the placeholder comes out, and the user KNOWS", async () => {
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const d = { ...deps(), loadAssetDataUrl: async () => { throw new Error("404"); } };
     await expect(runExport({ format: "svg", scope: "page", scale: 1 }, d)).resolves.toBe(true);
     const text = await d.saved[0].blob.text();
     expect(text).not.toContain("<image");
     expect(text).toContain("<path");
-    // L'export è riuscito -- il documento contiene davvero un riferimento
-    // rotto, e il file lo mostra invece di non esistere -- ma un file consegnato
-    // con dei buchi al posto delle fotografie non può uscire in silenzio.
-    expect(useScene.getState().notice).toMatch(/un'immagine non è stata inclusa/);
+    // The export succeeded -- the document really contains a broken
+    // reference, and the file shows it instead of not existing -- but a file delivered
+    // with holes in place of photographs cannot come out silently.
+    expect(useScene.getState().notice).toMatch(/one image was not included/);
   });
 
-  it("un export senza buchi non lascia nessun avviso", async () => {
+  it("an export without holes leaves no warning", async () => {
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const d = { ...deps(), loadAssetDataUrl: async () => "data:image/png;base64,QUJD" };
     await runExport({ format: "svg", scope: "page", scale: 1 }, d);
     expect(useScene.getState().notice).toBeNull();
   });
 
-  it("l'avviso conta i NODI che restano segnaposto, hash vuoto compreso", async () => {
+  it("the warning counts the NODES that remain placeholders, empty hash included", async () => {
     install(sceneWith("Untitled",
       imageNode("i1", "abc"),
       node({ ...imageNode("i2", ""), id: "i2", orderKey: "a2", x: 300 }),
     ));
     const d = { ...deps(), loadAssetDataUrl: async () => null };
     await runExport({ format: "svg", scope: "page", scale: 1 }, d);
-    // Il nodo con l'hash vuoto non ha niente da chiedere e non lo chiede, ma
-    // nel file è un buco esattamente come l'altro.
-    expect(useScene.getState().notice).toMatch(/^2 immagini non sono state incluse/);
+    // The node with the empty hash has nothing to ask for and does not ask, but
+    // in the file it is a hole exactly like the other.
+    expect(useScene.getState().notice).toMatch(/^2 images were not included/);
   });
 
-  it("la regione tiene conto del box dell'immagine", async () => {
+  it("the region accounts for the image box", async () => {
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const d = { ...deps(), loadAssetDataUrl: async () => null };
     await runExport({ format: "svg", scope: "page", scale: 1 }, d);
@@ -382,19 +382,19 @@ describe("runExport — immagini", () => {
   });
 });
 
-// --- il PNG ASPETTA le immagini ----------------------------------------------
+// --- the PNG WAITS for the images --------------------------------------------
 //
-// Il difetto che questi test chiudono: il PNG passava da `drawScene` con la
-// sorgente di default, cioè la cache MUTABILE del renderer, e non aspettava
-// niente. Aprire un documento ed esportare subito dava un file con i segnaposto;
-// esportare un secondo dopo dava le fotografie. Stesso documento, due file, e
-// nessun avviso -- per di più in disaccordo con l'SVG dello stesso documento,
-// che i byte se li è sempre riscaricati.
+// The defect these tests close: the PNG went through `drawScene` with the
+// default source, that is the renderer's MUTABLE cache, and waited for
+// nothing. Opening a document and exporting right away gave a file with placeholders;
+// exporting a second later gave the photographs. Same document, two files, and
+// no warning -- moreover in disagreement with the SVG of the same document,
+// which has always re-downloaded the bytes.
 
 const PIXEL = { naturalWidth: 4, naturalHeight: 4 } as unknown as HTMLImageElement;
 
-describe("runExport — PNG e immagini", () => {
-  it("chiede i byte, li decodifica e li ASPETTA prima di disegnare", async () => {
+describe("runExport — PNG and images", () => {
+  it("asks for the bytes, decodes them and AWAITS them before drawing", async () => {
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const asked: string[] = [];
     const decoded: string[] = [];
@@ -406,17 +406,17 @@ describe("runExport — PNG e immagini", () => {
     await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(true);
     expect(asked).toEqual(["abc"]);
     expect(decoded).toEqual(["data:image/png;base64,abc"]);
-    // I pixel veri sono finiti sul canvas, e nessun segnaposto con loro.
+    // The real pixels ended up on the canvas, and no placeholder with them.
     expect(drawn).toEqual([PIXEL]);
     expect(crosses).toBe(0);
     expect(useScene.getState().notice).toBeNull();
   });
 
-  it("NON legge la cache del renderer: due export dello stesso documento danno lo stesso file", async () => {
-    // La cache condivisa si riempie da sé mentre l'utente guarda lo schermo: se
-    // l'export la leggesse, il file dipenderebbe da quanto tempo il documento è
-    // aperto. Qui la sorgente è locale all'export, quindi il primo export e il
-    // secondo disegnano esattamente le stesse cose.
+  it("does NOT read the renderer's cache: two exports of the same document give the same file", async () => {
+    // The shared cache fills itself while the user looks at the screen: if
+    // the export read it, the file would depend on how long the document has been
+    // open. Here the source is local to the export, so the first export and the
+    // second draw exactly the same things.
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const d = {
       ...deps(),
@@ -431,7 +431,7 @@ describe("runExport — PNG e immagini", () => {
     expect(drawn).toEqual([PIXEL]);
   });
 
-  it("chiede e decodifica UNA volta per hash, anche con lo stesso asset ripetuto", async () => {
+  it("asks for and decodes ONCE per hash, even with the same asset repeated", async () => {
     install(sceneWith("Untitled",
       imageNode("i1", "abc"),
       node({ ...imageNode("i2", "abc"), id: "i2", orderKey: "a2", x: 300 }),
@@ -446,28 +446,28 @@ describe("runExport — PNG e immagini", () => {
     await runExport({ format: "png", scope: "page", scale: 1 }, d);
     expect(asked).toEqual(["abc"]);
     expect(decode).toHaveBeenCalledTimes(1);
-    // Un asset solo, ma disegnato su tutti e due i nodi.
+    // A single asset, but drawn on both nodes.
     expect(drawn).toEqual([PIXEL, PIXEL]);
   });
 
-  it("un asset irraggiungibile diventa il segnaposto, e l'export lo DICE", async () => {
+  it("an unreachable asset becomes the placeholder, and the export SAYS so", async () => {
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const d = { ...deps(), loadAssetDataUrl: async () => null, decodeImage: async () => PIXEL };
     await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(true);
     expect(drawn).toEqual([]);
-    expect(crosses).toBe(1); // la croce del segnaposto, non un'immagine
-    expect(useScene.getState().notice).toMatch(/un'immagine non è stata inclusa/);
+    expect(crosses).toBe(1); // the placeholder's cross, not an image
+    expect(useScene.getState().notice).toMatch(/one image was not included/);
   });
 
-  it("byte scaricati ma non decodificabili: segnaposto e avviso, non un'eccezione", async () => {
+  it("downloaded bytes but not decodable: placeholder and warning, not an exception", async () => {
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const d = { ...deps(), loadAssetDataUrl: async () => "data:x", decodeImage: async () => null };
     await expect(runExport({ format: "png", scope: "page", scale: 1 }, d)).resolves.toBe(true);
     expect(drawn).toEqual([]);
-    expect(useScene.getState().notice).toMatch(/un'immagine non è stata inclusa/);
+    expect(useScene.getState().notice).toMatch(/one image was not included/);
   });
 
-  it("l'SVG non paga la decodifica: gli bastano i byte", async () => {
+  it("the SVG does not pay for decoding: the bytes are enough for it", async () => {
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const decode = vi.fn(async () => PIXEL);
     const d = { ...deps(), loadAssetDataUrl: async () => "data:x", decodeImage: decode };
@@ -475,10 +475,10 @@ describe("runExport — PNG e immagini", () => {
     expect(decode).not.toHaveBeenCalled();
   });
 
-  it("PNG e SVG dello stesso documento sono d'accordo su che cosa manca", async () => {
-    // Prima erano due percorsi diversi: l'SVG riscaricava i byte, il PNG
-    // leggeva la cache. Lo stesso documento poteva uscire con l'immagine in un
-    // formato e con il segnaposto nell'altro.
+  it("PNG and SVG of the same document agree on what is missing", async () => {
+    // They used to be two different paths: the SVG re-downloaded the bytes, the PNG
+    // read the cache. The same document could come out with the image in one
+    // format and with the placeholder in the other.
     install(sceneWith("Untitled", imageNode("i", "abc")));
     const d = { ...deps(), loadAssetDataUrl: async () => null, decodeImage: async () => PIXEL };
     await runExport({ format: "png", scope: "page", scale: 1 }, d);
@@ -487,6 +487,6 @@ describe("runExport — PNG e immagini", () => {
     await runExport({ format: "svg", scope: "page", scale: 1 }, d);
     expect(useScene.getState().notice).toBe(pngNotice);
     expect(await d.saved[1].blob.text()).not.toContain("<image");
-    expect(crosses).toBe(1); // il PNG ha disegnato la stessa croce
+    expect(crosses).toBe(1); // the PNG drew the same cross
   });
 });

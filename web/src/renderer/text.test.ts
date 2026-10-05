@@ -2,9 +2,9 @@ import { describe, it, expect } from "vitest";
 import { fontString, layoutText, alignOffsetX, drawText, placeTextLines, textPaintBounds } from "./text";
 import type { NodeLite, TextStyleLite } from "../store/types";
 
-// Misura finta DETERMINISTICA: 10px per carattere. È il motivo per cui
-// layoutText prende una funzione di misura invece del ctx -- il layout è
-// verificabile in Node senza font reali né canvas, e in produzione riceve
+// DETERMINISTIC fake measure: 10px per character. It is the reason
+// layoutText takes a measure function instead of the ctx -- layout is
+// verifiable in Node without real fonts or canvas, and in production it receives
 // (s) => ctx.measureText(s).width.
 const measure = (s: string) => s.length * 10;
 
@@ -12,8 +12,8 @@ function style(over: Partial<TextStyleLite> = {}): TextStyleLite {
   return { fontFamily: "Inter, sans-serif", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "left", ...over };
 }
 
-// Stile tutto a zero: è ciò che toTextStyleLite produce da uno style assente
-// (vedi store/types.ts), quindi il renderer lo incontra davvero.
+// All-zero style: it is what toTextStyleLite produces from an absent style
+// (see store/types.ts), so the renderer really encounters it.
 const zeroStyle: TextStyleLite = { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" };
 
 function textNode(over: Partial<NodeLite> = {}, content = "aaa bbb ccc", st: TextStyleLite = style()): NodeLite {
@@ -28,9 +28,9 @@ function textNode(over: Partial<NodeLite> = {}, content = "aaa bbb ccc", st: Tex
 
 interface FillTextCall { text: string; x: number; y: number }
 
-// jsdom non implementa il canvas 2D: il ctx è un duck-type che registra le
-// chiamate. È anche il modo giusto di testare drawText, che va asserito sulle
-// chiamate emesse, non sui pixel.
+// jsdom does not implement canvas 2D: the ctx is a duck-type that records
+// the calls. It is also the right way to test drawText, which must be asserted on the
+// emitted calls, not on pixels.
 function fakeCtx() {
   const calls: FillTextCall[] = [];
   const state = {
@@ -47,8 +47,8 @@ describe("fontString", () => {
   });
 
   it("fills in the renderer defaults for an all-zero style", () => {
-    // Il modello conserva lo zero (vedi store/types.ts): i default sono del
-    // RENDERER, ed è qui che vengono risolti.
+    // The model keeps the zero (see store/types.ts): the defaults belong to the
+    // RENDERER, and this is where they get resolved.
     expect(fontString(zeroStyle)).toBe("400 16px Inter, sans-serif");
   });
 });
@@ -68,9 +68,9 @@ describe("layoutText", () => {
   });
 
   it("terminates even when a single character does not fit", () => {
-    // Il caso limite del loop infinito: maxWidth più stretto di un carattere.
-    // Almeno un carattere per riga, sempre -- traboccare è accettabile,
-    // non terminare no.
+    // The infinite loop edge case: maxWidth narrower than a character.
+    // At least one character per line, always -- overflowing is acceptable,
+    // not terminating is not.
     const l = layoutText(measure, "abcde", style(), 5);
     expect(l.lines).toEqual(["a", "b", "c", "d", "e"]);
   });
@@ -86,7 +86,7 @@ describe("layoutText", () => {
     expect(l.lines).toEqual([]);
     expect(l.height).toBe(0);
     expect(l.width).toBe(0);
-    // L'altezza di riga resta risolta: serve al caret di un testo vuoto.
+    // The line height stays resolved: it serves the caret of an empty text.
     expect(l.lineHeight).toBeCloseTo(19.2);
   });
 
@@ -97,30 +97,30 @@ describe("layoutText", () => {
     const wide = layoutText(measure, "a", style({ lineHeight: 2 }), 100);
     expect(wide.lineHeight).toBeCloseTo(32);
     expect(wide.ascent).toBeCloseTo(20.8);             // half-leading 8 + 0.8em
-    expect(wide.ascent).toBeLessThan(wide.lineHeight); // la baseline sta dentro la riga
+    expect(wide.ascent).toBeLessThan(wide.lineHeight); // the baseline sits inside the line
   });
 
   it("does not wrap when maxWidth is zero or negative", () => {
-    // Un nodo testo appena creato può avere width 0: meglio una riga lunga
-    // che una riga per carattere.
+    // A just-created text node can have width 0: better one long line
+    // than one line per character.
     expect(layoutText(measure, "aaa bbb ccc", style(), 0).lines).toEqual(["aaa bbb ccc"]);
     expect(layoutText(measure, "aaa bbb ccc", style(), -5).lines).toEqual(["aaa bbb ccc"]);
   });
 
   it("lets a trailing space hang past the wrap width", () => {
-    // Digitando "aaa bbb " lo spazio finale porterebbe la riga a 80 > 70 e
-    // farebbe comparire una riga vuota sotto al testo a ogni parola. Come nei
-    // browser, lo spazio finale non conta per il wrap (e non gonfia la
-    // larghezza misurata).
+    // Typing "aaa bbb " the trailing space would take the line to 80 > 70 and
+    // make an empty line appear below the text on every word. As in
+    // browsers, the trailing space does not count for the wrap (and does not inflate the
+    // measured width).
     const l = layoutText(measure, "aaa bbb ", style(), 70);
     expect(l.lines).toEqual(["aaa bbb "]);
     expect(l.width).toBe(70);
   });
 
   it("keeps the whitespace that opens a line", () => {
-    // Una riga "vuota" e una riga "su cui non è ancora stato piazzato niente"
-    // non sono la stessa cosa: confonderle faceva sparire gli spazi iniziali,
-    // cioè l'indentazione appena digitata dall'utente.
+    // An "empty" line and a line "on which nothing has been placed yet"
+    // are not the same thing: confusing them made the leading spaces vanish,
+    // that is the indentation the user had just typed.
     expect(layoutText(measure, "  aaa", style(), 1000).lines).toEqual(["  aaa"]);
     expect(layoutText(measure, "aaa\n  bbb", style(), 1000).lines).toEqual(["aaa", "  bbb"]);
     expect(layoutText(measure, "aaa  bbb", style(), 1000).lines).toEqual(["aaa  bbb"]);
@@ -129,14 +129,14 @@ describe("layoutText", () => {
   it("keeps a line made only of spaces", () => {
     const l = layoutText(measure, "  ", style(), 1000);
     expect(l.lines).toEqual(["  "]);
-    expect(l.width).toBe(0); // gli spazi non si disegnano: larghezza 0
+    expect(l.width).toBe(0); // spaces are not drawn: width 0
     expect(l.height).toBeCloseTo(19.2);
   });
 
   it("still terminates when a line opens with spaces", () => {
-    // Gli spazi iniziali conservati non devono mandare in loop il breaker.
-    // Delle due spaziature iniziali ne resta una: quella su cui avviene il
-    // wrap viene consumata dal wrap stesso, come nei browser.
+    // The preserved leading spaces must not send the breaker into a loop.
+    // Of the two leading spaces one remains: the one at which the
+    // wrap happens is consumed by the wrap itself, as in browsers.
     const l = layoutText(measure, "  aaaaaaaaaa", style(), 35);
     expect(l.lines).toEqual([" ", "aaa", "aaa", "aaa", "a"]);
   });
@@ -165,8 +165,8 @@ describe("drawText", () => {
     const f = fakeCtx();
     drawText(f.ctx, textNode({ width: 70 }));
     expect(f.state.font).toBe("400 16px Inter, sans-serif");
-    // Mai il default: `textBaseline` cambia fra browser, e la y delle righe
-    // è calcolata dal layout assumendo la baseline alfabetica.
+    // Never the default: `textBaseline` changes between browsers, and the lines' y
+    // is computed by the layout assuming the alphabetic baseline.
     expect(f.state.textBaseline).toBe("alphabetic");
     expect(f.calls.map((c) => c.text)).toEqual(["aaa bbb", "ccc"]);
     expect(f.calls[0].x).toBe(100);
@@ -192,7 +192,7 @@ describe("drawText", () => {
   });
 
   it("does not paint a line of only spaces but keeps its slot", () => {
-    // Gli spazi si conservano nel layout (sono contenuto) ma non si disegnano.
+    // Spaces are kept in the layout (they are content) but are not drawn.
     const f = fakeCtx();
     drawText(f.ctx, textNode({ width: 1000 }, "a\n  \nb"));
     expect(f.calls.map((c) => c.text)).toEqual(["a", "b"]);
@@ -209,8 +209,8 @@ describe("drawText", () => {
 
 describe("placeTextLines", () => {
   it("reports the painted width of each line", () => {
-    // La larghezza serve a chi deve sapere quanto spazio occupa il testo
-    // (textPaintBounds): senza, la misurerebbe una seconda volta.
+    // The width serves whoever needs to know how much space the text occupies
+    // (textPaintBounds): without it, they would measure a second time.
     const lines = placeTextLines(measure, textNode({ width: 70 }));
     expect(lines.map((l) => l.text)).toEqual(["aaa bbb", "ccc"]);
     expect(lines.map((l) => l.width)).toEqual([70, 30]);
@@ -222,36 +222,36 @@ describe("placeTextLines", () => {
   });
 });
 
-// Il box del modello non limita il disegno del testo: drawText piazza la riga i
-// a y = n.y + ascent + i * lineHeight senza guardare n.height, drawScene non
-// ritaglia, e nessuno riscrive l'altezza misurata dentro al nodo. Chi disegna
-// se ne accorge appena (il canvas è grande quanto la finestra); chi RITAGLIA --
-// l'export, che dimensiona il file sui bounds -- butterebbe via il testo di
-// sotto in silenzio.
+// The model's box does not limit text drawing: drawText places line i
+// at y = n.y + ascent + i * lineHeight without looking at n.height, drawScene does not
+// clip, and nobody rewrites the measured height into the node. Whoever draws
+// notices it right away (the canvas is as large as the window); whoever CROPS --
+// the export, which sizes the file on the bounds -- would silently throw away the text
+// below.
 describe("textPaintBounds", () => {
   it("unites the model box with the lines the layout actually paints", () => {
-    // Box di UNA riga (19.2) e due righe di contenuto: il caso di ogni giorno,
-    // perché un nodo creato con un click nasce alto una riga.
+    // Box of ONE line (19.2) and two lines of content: the everyday case,
+    // because a node created with a click is born one line tall.
     const b = textPaintBounds(measure, textNode({ x: 0, y: 0, width: 70, height: 19.2 }));
     expect(b).toEqual({ x: 0, y: 0, width: 70, height: 38.4 });
   });
 
   it("keeps a box that is larger than the text", () => {
-    // Unione, non sostituzione: un box trascinato dall'utente resta parte di
-    // ciò che si vede, quindi di ciò che si esporta.
+    // Union, not replacement: a box dragged by the user stays part of
+    // what is seen, therefore of what is exported.
     const b = textPaintBounds(measure, textNode({ x: 0, y: 0, width: 200, height: 100 }, "a"));
     expect(b).toEqual({ x: 0, y: 0, width: 200, height: 100 });
   });
 
   it("follows a line that overflows to the right when there is no wrap width", () => {
-    // Larghezza 0 = nessun wrap (layoutText): la riga è lunga quanto è.
+    // Width 0 = no wrap (layoutText): the line is as long as it is.
     const b = textPaintBounds(measure, textNode({ x: 0, y: 0, width: 0, height: 0 }, "ciao"));
     expect(b).toEqual({ x: 0, y: 0, width: 40, height: 19.2 });
   });
 
   it("follows a right-aligned overflow to the LEFT of the box", () => {
-    // breakWord non rifiuta mai un carattere solo (o non terminerebbe): un
-    // glifo più largo del box trabocca, e con align=right trabocca a sinistra.
+    // breakWord never rejects a single character (or it would not terminate): a
+    // glyph wider than the box overflows, and with align=right it overflows to the left.
     const b = textPaintBounds(
       measure,
       textNode({ x: 0, y: 0, width: 5, height: 0 }, "ab", style({ align: "right" })),

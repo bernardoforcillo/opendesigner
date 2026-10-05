@@ -6,40 +6,40 @@ import { PEditor, PMap } from "../store/nodeMap";
 import { deltaOf } from "../store/sceneDelta";
 import type { NodeLite, SceneState } from "../store/types";
 
-// L'INDICE DI SCENA: ciò che il renderer sa del documento e che non cambia
-// finché il documento non cambia.
+// THE SCENE INDEX: what the renderer knows about the document and that does not change
+// as long as the document does not change.
 //
-// Prima, ogni frame ricostruiva l'indice dei figli (una scansione dell'intera
-// mappa e un sort per container) e disegnava OGNI nodo, visibile o no. Con
-// 20.000 nodi erano ~140 ms per frame anche con una sola schermata inquadrata.
-// L'indice sposta quel lavoro a una volta per scena (le scene sono immutabili e
-// ricostruite a ogni op, quindi l'identità della scena è la chiave di cache) e
-// dà al disegno e all'hit-test ciò che serve per saltare interi sottoalberi:
+// Before, every frame rebuilt the children index (a scan of the whole
+// map and a sort per container) and drew EVERY node, visible or not. With
+// 20,000 nodes that was ~140 ms per frame even with a single screen in view.
+// The index moves that work to once per scene (scenes are immutable and
+// rebuilt on every op, so the scene's identity is the cache key) and
+// gives drawing and hit-test what they need to skip whole subtrees:
 //
-//   - `children`: i figli per parent, già ordinati (come childIndexOf);
-//   - `extent`: per ogni nodo visibile, il rettangolo MONDO che copre TUTTO ciò
-//     che il nodo disegna insieme al suo sottoalbero. Se non incontra la vista,
-//     nessun pixel di quel sottoalbero può comparire.
+//   - `children`: the children by parent, already sorted (like childIndexOf);
+//   - `extent`: for each visible node, the WORLD rectangle that covers EVERYTHING
+//     the node draws together with its subtree. If it does not meet the view,
+//     no pixel of that subtree can appear.
 //
-// `extent` è CONSERVATIVO: errare in eccesso (disegnare un nodo in più) costa un
-// po' di tempo, errare in difetto (saltarne uno che si vede) è un bug visibile.
-// Per questo include le sporgenze di tratto, ombra e sfocatura, e per il testo
-// -- che sporge dal proprio box e non ha bisogno di un ctx per dirlo -- una
-// stima abbondante.
+// `extent` is CONSERVATIVE: erring on the high side (drawing one node more) costs a
+// little time, erring on the low side (skipping one that is seen) is a visible bug.
+// For this reason it includes the overhangs of stroke, shadow and blur, and for text
+// -- which overflows its own box and does not need a ctx to say so -- a
+// generous estimate.
 export interface SceneIndex {
   children: Map<string, NodeLite[]>;
   extent: PMap<Bounds>;
-  // Un token d'identità che cambia SOLO quando cambia la STRUTTURA dell'albero
-  // vista da chi lo elenca: chi sta dove, in che ordine, e ciò che una riga
-  // mostra (nome, tipo, visibilità, testo). Una modifica di sola geometria o di
-  // pittura lascia lo stesso token. Il pannello Livelli ci ricalcola le sue
-  // righe -- 20.000 oggetti, per un documento grande -- solo quando serve,
-  // invece che a ogni passo di un trascinamento.
+  // An identity token that changes ONLY when the STRUCTURE of the tree as
+  // seen by whoever lists it changes: who sits where, in what order, and what a row
+  // shows (name, type, visibility, text). A geometry-only or
+  // paint-only change leaves the same token. The Layers panel recomputes its
+  // rows -- 20,000 objects, for a large document -- only when needed,
+  // instead of at every step of a drag.
   structure: object;
 }
 
-// Una modifica a questo nodo cambia ciò che il pannello Livelli mostra o come
-// ordina?
+// Does a change to this node change what the Layers panel shows or how it
+// sorts?
 function structurallyDifferent(a: NodeLite | undefined, b: NodeLite | undefined): boolean {
   if (!a || !b) return true;
   return (
@@ -49,16 +49,16 @@ function structurallyDifferent(a: NodeLite | undefined, b: NodeLite | undefined)
 }
 
 const cache = new WeakMap<SceneState, SceneIndex>();
-// L'ultima scena indicizzata: la base su cui si prova l'aggiornamento
-// incrementale. Una sola, perché il caso che conta è la catena di scene di un
-// gesto (ogni op ne produce una nuova da quella precedente).
+// The last indexed scene: the base on which the incremental update is tried.
+// A single one, because the case that matters is the chain of scenes of a
+// gesture (every op produces a new one from the previous one).
 let last: { scene: SceneState; index: SceneIndex } | null = null;
 
 export function sceneIndexOf(scene: SceneState): SceneIndex {
   let idx = cache.get(scene);
   if (idx) return idx;
-  // La provenienza registrata da applyOp dice quali nodi sono stati toccati: se
-  // la scena di partenza ha un indice, si evita il confronto di tutti i nodi.
+  // The provenance recorded by applyOp says which nodes were touched: if
+  // the starting scene has an index, comparing all nodes is avoided.
   const delta = deltaOf(scene);
   const base = delta ? cache.get(delta.prev) : undefined;
   if (delta && base) idx = updateIndex(delta.prev, base, scene, delta.changed) ?? undefined;
@@ -69,9 +69,9 @@ export function sceneIndexOf(scene: SceneState): SceneIndex {
   return idx;
 }
 
-// Lo scarto massimo, oltre al box, con cui un nodo dipinge: tratto (già in
-// worldVisualAabbOfNode), ombra (offset + metà sfocatura come deviazione, ~3
-// deviazioni di coda) e sfocatura del livello (~3 deviazioni).
+// The maximum deviation, beyond the box, with which a node paints: stroke (already in
+// worldVisualAabbOfNode), shadow (offset + half the blur as deviation, ~3
+// tail deviations) and layer blur (~3 deviations).
 export function effectsOutset(n: NodeLite): number {
   if (!n.effects) return 0;
   let out = 0;
@@ -89,10 +89,10 @@ export function effectsOutset(n: NodeLite): number {
   return out;
 }
 
-// Il testo non è ritagliato dal proprio box (renderer/text.ts::textPaintBounds),
-// ma misurarlo vuole un ctx. Qui basta un maggiorante: righe stimate con un
-// glifo largo 0.8 em, interlinea abbondante, e margine orizzontale per le
-// parole spezzate o allineate a destra.
+// Text is not clipped by its own box (renderer/text.ts::textPaintBounds),
+// but measuring it needs a ctx. Here an upper bound is enough: lines estimated with a
+// glyph 0.8 em wide, generous line spacing, and horizontal margin for
+// words that are broken or right-aligned.
 function textBox(n: NodeLite): Bounds {
   const t = n.text;
   const box = boundsOfNode(n);
@@ -107,17 +107,17 @@ function textBox(n: NodeLite): Bounds {
   return { x: box.x - xSlack, y: box.y, width: box.width + 2 * xSlack, height: Math.max(box.height, lines * lineHeight) };
 }
 
-// Il rettangolo, nello spazio del PARENT, che il nodo dipinge con sé stesso.
+// The rectangle, in the PARENT's space, that the node paints by itself.
 function ownLocalBox(n: NodeLite): Bounds {
   const base = n.kind === "text" ? textBox(n) : null;
   const visual = worldVisualAabbOfNode(base ? { ...n, x: base.x, y: base.y, width: base.width, height: base.height } : n);
   return inflateBounds(visual, effectsOutset(n));
 }
 
-// Il rettangolo che `n` copre dato quello dei suoi figli (già portati al mondo):
-// il proprio, più i figli. Un gruppo non ha niente di proprio, e un FRAME
-// ritagliante conta i figli solo per la parte che ci sta dentro. null se non
-// dipinge nulla.
+// The rectangle `n` covers given that of its children (already brought to the world):
+// its own, plus the children. A group has nothing of its own, and a clipping
+// FRAME counts the children only for the part inside it. null if it
+// paints nothing.
 function combine(n: NodeLite, parentWorld: Transform, kidExtents: Bounds[]): Bounds | null {
   const parts: Bounds[] = [];
   if (n.kind !== "group") parts.push(mapBounds(parentWorld, ownLocalBox(n)));
@@ -133,9 +133,9 @@ function combine(n: NodeLite, parentWorld: Transform, kidExtents: Bounds[]): Bou
   return unionBounds(parts);
 }
 
-// Percorre un sottoalbero e ne scrive gli extent, azzerando quelli che non
-// valgono più (un nodo reso invisibile, o ora vuoto, non deve lasciare un extent
-// vecchio: il disegno lo disegnerebbe ancora).
+// Walks a subtree and writes its extents, zeroing those that
+// no longer hold (a node made invisible, or now empty, must not leave an old
+// extent: drawing would still draw it).
 function makeVisitor(scene: SceneState, children: Map<string, NodeLite[]>, extent: PEditor<Bounds>) {
   const clear = (id: string) => {
     extent.delete(id);
@@ -149,8 +149,8 @@ function makeVisitor(scene: SceneState, children: Map<string, NodeLite[]>, exten
     }
     seen.add(n.id);
 
-    // Un'ISTANZA non ha figli in `children`: il suo sottoalbero è virtuale, e
-    // il suo extent è quello del contenuto del master già portato al mondo.
+    // An INSTANCE has no children in `children`: its subtree is virtual, and
+    // its extent is that of the master's content already brought to the world.
     if (n.kind === "instance") {
       const b = contentWorldBounds(scene, n);
       if (!b) {
@@ -191,21 +191,21 @@ export function buildIndex(scene: SceneState): SceneIndex {
 
 // --- AGGIORNAMENTO INCREMENTALE ------------------------------------------------
 //
-// Un gesto (un trascinamento, un resize) produce una scena nuova per ogni op, e
-// quasi tutta uguale alla precedente: gli oggetti nodo NON toccati hanno la
-// stessa identità. Confrontarli costa un passaggio sulla mappa (pochi ms anche a
-// 20.000 nodi), contro il rifacimento dell'indice intero (decine di ms).
+// A gesture (a drag, a resize) produces a new scene for every op, and
+// almost entirely equal to the previous one: the UNtouched node objects have
+// the same identity. Comparing them costs one pass over the map (a few ms even at
+// 20,000 nodes), against rebuilding the whole index (tens of ms).
 //
-// Si ricalcola SOLO ciò che può essere cambiato: i nodi diversi con il loro
-// sottoalbero (se si sposta un frame si spostano i suoi discendenti), e la
-// catena degli antenati (la loro unione dipende dai figli). Le liste dei figli
-// si ricopiano solo per i parent toccati; `children` ed `extent` sono COPIE,
-// perché l'indice della scena precedente può essere ancora in uso (undo, vista
-// ottimistica contro confermata).
+// ONLY what may have changed is recomputed: the different nodes with their
+// subtree (if a frame is moved its descendants move), and the
+// chain of ancestors (their union depends on the children). The children lists
+// are copied only for the touched parents; `children` and `extent` are COPIES,
+// because the previous scene's index may still be in use (undo, optimistic view
+// against confirmed).
 //
-// Ritorna null quando conviene -- o bisogna -- rifare tutto: troppi nodi
-// cambiati, pagine o componenti diversi, o un cambiamento dentro il master di un
-// componente (gli extent delle istanze ne dipendono).
+// Returns null when it is convenient -- or necessary -- to redo everything: too many nodes
+// changed, different pages or components, or a change inside a
+// component's master (the instances' extents depend on it).
 const INCREMENTAL_MAX_FRACTION = 0.05;
 const INCREMENTAL_MIN_LIMIT = 64;
 
@@ -222,15 +222,15 @@ function updateIndex(
   const changed: string[] = [];
   const removed: string[] = [];
   if (hint) {
-    // Con la provenienza non si scandisce la mappa: i candidati sono i nodi
-    // toccati (quelli rimasti identici non contano), e nessun nodo è rimosso.
+    // With provenance the map is not scanned: the candidates are the touched
+    // nodes (those that stayed identical do not count), and no node is removed.
     const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(prev.extent.size * INCREMENTAL_MAX_FRACTION));
     if (hint.length > limit) return null;
-    // Un id può comparire PIÙ VOLTE nella provenienza: creare un nodo dentro un
-    // frame con auto layout lo registra come "toccato dall'op" e di nuovo come
-    // "ridisposto dal layout". Elaborarlo due volte inseriva il figlio due volte
-    // nella lista del parent e ne perdeva l'extent -- un testo dentro un bottone
-    // sparito dal disegno finché non si ricaricava il documento.
+    // An id may appear MORE THAN ONCE in the provenance: creating a node inside a
+    // frame with auto layout records it as "touched by the op" and again as
+    // "rearranged by layout". Processing it twice inserted the child twice
+    // in the parent's list and lost its extent -- a text inside a button
+    // vanished from the drawing until the document was reloaded.
     const seenHint = new Set<string>();
     for (const id of hint) {
       if (seenHint.has(id)) continue;
@@ -238,16 +238,16 @@ function updateIndex(
       if (nodes.at(id) && prevNodes.at(id) !== nodes.at(id)) changed.push(id);
     }
   } else {
-    // Il confronto salta i secchi della mappa con la stessa identità: costa
-    // quanto i secchi toccati, non quanto il documento.
+    // The comparison skips the map's buckets with the same identity: it costs
+    // as much as the touched buckets, not as the document.
     const limit = Math.max(INCREMENTAL_MIN_LIMIT, Math.floor(nodes.size * INCREMENTAL_MAX_FRACTION));
     if (!nodes.diff(prevNodes, changed, removed, limit)) return null;
   }
   if (changed.length === 0 && removed.length === 0) return prev;
   const structural = removed.length > 0 || changed.some((id) => structurallyDifferent(prevNodes.at(id), nodes.at(id)));
 
-  // Un cambiamento dentro il sottoalbero di un master di componente sposta gli
-  // extent delle istanze: rifare tutto.
+  // A change inside a component master's subtree moves the instances'
+  // extents: redo everything.
   const rootIds = Object.values(scene.components).map((c) => c.rootNodeId);
   if (rootIds.length > 0) {
     const roots = new Set(rootIds);
@@ -259,9 +259,9 @@ function updateIndex(
     }
   }
 
-  // Le liste dei figli: copie solo dei parent toccati. Un nodo cambiato può aver
-  // cambiato parent o chiave (si riposiziona), o solo geometria (si sostituisce
-  // l'oggetto nella stessa posizione).
+  // The children lists: copies only of the touched parents. A changed node may have
+  // changed parent or key (it is repositioned), or only geometry (the
+  // object is replaced at the same position).
   const children = new Map(prev.children);
   const touched = new Map<string, NodeLite[]>(); // parentId -> lista copiata (mutabile)
   const listOf = (parentId: string): NodeLite[] => {
@@ -305,9 +305,9 @@ function updateIndex(
 
   const worldOf = (parentId: string): Transform => worldTransformOf(scene, parentId);
   const visit = makeVisitor(scene, children, extent);
-  // Come la costruzione completa, che parte dalle pagine e non entra in un
-  // sottoalbero nascosto: un nodo che sta sotto un antenato nascosto, o che non è
-  // raggiungibile da nessuna pagina (un master di componente), non ha extent.
+  // Like the full construction, which starts from the pages and does not enter a
+  // hidden subtree: a node sitting under a hidden ancestor, or not
+  // reachable from any page (a component master), has no extent.
   const pageIds = new Set(scene.pages.map((p) => p.id));
   const drawn = (n: NodeLite): boolean => {
     for (let cur: NodeLite | undefined = n, g = 0; cur && g < 1000; cur = nodes.at(cur.parentId), g++) {
@@ -320,11 +320,11 @@ function updateIndex(
     extent.delete(id);
     for (const k of children.get(id) ?? []) clearTree(k.id);
   };
-  // 1) Sottoalberi dei nodi cambiati (la loro trasformazione può essere nuova).
+  // 1) Subtrees of the changed nodes (their transform may be new).
   const redone = new Set<string>();
   for (const id of changed) {
-    // Già rifatto come discendente di un altro cambiato? Un nodo sotto un
-    // cambiato viene comunque rivisitato da lui: si salta.
+    // Already redone as a descendant of another changed one? A node under a
+    // changed one is revisited by it anyway: skip.
     let covered = false;
     for (let cur = nodes.at(nodes.at(id).parentId), g = 0; cur && g < 1000; cur = nodes.at(cur.parentId), g++) {
       if (redone.has(cur.id)) { covered = true; break; }
@@ -334,8 +334,8 @@ function updateIndex(
     if (drawn(nodes.at(id))) visit(nodes.at(id), worldOf(nodes.at(id).parentId));
     else clearTree(id);
   }
-  // Gli antenati toccati: dei cambiati, dei rimossi e dei VECCHI parent di chi
-  // si è spostato. Dal più profondo, con l'unione dei figli già in cache.
+  // The touched ancestors: of the changed ones, of the removed ones and of the OLD parents of whoever
+  // moved. From the deepest, with the children's union already in cache.
   const up = new Set<string>();
   const addChain = (startParentId: string) => {
     for (let cur = nodes.at(startParentId), g = 0; cur && g < 1000; cur = nodes.at(cur.parentId), g++) up.add(cur.id);

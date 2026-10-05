@@ -7,17 +7,17 @@ import { screenName } from "../flow/screens";
 import { setStartOp } from "../flow/commands";
 import { makeSetPropsOp } from "../tools/ops";
 
-// LA "PRONTEZZA" DELLA CONSEGNA: una lista pass/fail che dice se il documento è
-// pronto per diventare codice. È PURA (scena + report -> checklist): niente
-// store, niente rete, quindi si prova con una tabella di casi. L'analisi dei
-// flussi la fa il SERVER (AnalyzeFlows, la stessa di CLI e MCP): qui si legge e
-// basta, per non avere due definizioni di "vicolo cieco".
+// DELIVERY "READINESS": a pass/fail list that says whether the document is
+// ready to become code. It is PURE (scene + report -> checklist): no
+// store, no network, so it is tested with a table of cases. The flow
+// analysis is done by the SERVER (AnalyzeFlows, the same as CLI and MCP): here it is only read,
+// so as not to have two definitions of "dead end".
 //
-// Ogni riga che fallisce porta, quando si può, una CORREZIONE a un click (`fix`):
-// il descrittore dice cosa fare, gli op si costruiscono con `assignRoutesOps` /
-// `setStartsOps` (UN gesto = UN Ctrl+Z, vedi flow/commands.ts::submit).
+// Every failing row carries, when possible, a one-click FIX (`fix`):
+// the descriptor says what to do, the ops are built with `assignRoutesOps` /
+// `setStartsOps` (ONE gesture = ONE Ctrl+Z, see flow/commands.ts::submit).
 
-/** Il minimo di un FlowReport che serve qui (il tipo generato lo soddisfa). */
+/** The minimum of a FlowReport needed here (the generated type satisfies it). */
 export interface ReportLike {
   flowId: string;
   issues: readonly { kind: string; nodeId: string; transitionId: string; message: string }[];
@@ -29,21 +29,21 @@ export type ReadinessFix =
   | { kind: "goto-flows"; label: string }
   | { kind: "select"; label: string; nodeId: string };
 
-/** Una riga di dettaglio di un controllo fallito (una schermata, un flusso, un collegamento). */
+/** A detail row of a failed check (a screen, a flow, a link). */
 export interface ReadinessRow {
   label: string;
-  /** Il nodo da raggiungere con "Seleziona la schermata", se c'è. */
+  /** The node to reach with "Select the screen", if any. */
   nodeId?: string;
 }
 
 export interface ReadinessItem {
   id: string;
   title: string;
-  /** pass = a posto; fail = va sistemato; warn = consigliato; pending = non ancora calcolabile. */
+  /** pass = fine; fail = must be fixed; warn = recommended; pending = not yet computable. */
   state: "pass" | "fail" | "warn" | "pending";
-  /** Un fallimento "bloccante" impedisce di dire "pronto"; un avviso no. */
+  /** A "blocking" failure prevents saying "ready"; a warning does not. */
   blocking: boolean;
-  /** Quante entità sbagliate (0 se a posto). */
+  /** How many wrong entities (0 if fine). */
   count: number;
   detail: string;
   rows: ReadinessRow[];
@@ -56,19 +56,19 @@ export interface Progress extends Record<Status, number> {
 
 export interface Readiness {
   items: ReadinessItem[];
-  /** Somma delle entità sbagliate dei controlli BLOCCANTI falliti. */
+  /** Sum of the wrong entities of the failed BLOCKING checks. */
   blockers: number;
   progress: Progress;
   screens: NodeLite[];
 }
 
-// --- SCHERMATE ---------------------------------------------------------------
+// --- SCREENS -----------------------------------------------------------------
 
 /**
- * Le schermate che il generatore di codice esporterà: i frame di primo livello
- * visibili di ogni pagina (i master dei componenti no) più i nodi di primo livello
- * che un flusso referenzia. La stessa definizione di internal/codegen::collectScreens,
- * meno le note (`flow.kind = note`: annotazioni, non pagine dell'app).
+ * The screens the code generator will export: the visible top-level frames
+ * of every page (component masters excluded) plus the top-level nodes
+ * that a flow references. The same definition as internal/codegen::collectScreens,
+ * minus notes (`flow.kind = note`: annotations, not app pages).
  */
 export function exportedScreens(scene: SceneState): NodeLite[] {
   const masters = new Set(Object.values(scene.components).map((c) => c.rootNodeId));
@@ -92,14 +92,14 @@ export function exportedScreens(scene: SceneState): NodeLite[] {
 
 // --- ROTTE -------------------------------------------------------------------
 
-/** Come internal/codegen/names.go::slug: "Città nuova" -> "citta-nuova"; vuoto -> "screen". */
+/** As internal/codegen/names.go::slug: "Café menu" -> "cafe-menu"; empty -> "screen". */
 export function slugOf(name: string): string {
   const folded = name.replace(/ß/g, "ss").normalize("NFD").replace(/[̀-ͯ]/g, "");
   const words = folded.split(/[^A-Za-z0-9]+/).filter((w) => w !== "");
   return words.length === 0 ? "screen" : words.map((w) => w.toLowerCase()).join("-");
 }
 
-/** La rotta come la legge il generatore: spazi tolti e una "/" iniziale. */
+/** The route as the generator reads it: spaces removed and a leading "/". */
 export function normalizeRoute(route: string): string {
   const r = route.trim();
   if (r === "") return "";
@@ -107,10 +107,10 @@ export function normalizeRoute(route: string): string {
 }
 
 /**
- * Le schermate che hanno bisogno di una rotta nuova, con quella scelta: le prive di
- * `code.route` e i DOPPIONI (la seconda e le successive con la stessa rotta; la
- * prima la tiene). Le rotte già buone e uniche non si toccano. La nuova è
- * `/slug-del-nome`, col suffisso numerico minimo che la rende libera.
+ * The screens that need a new route, with the chosen one: those without
+ * `code.route` and the DUPLICATES (the second and following with the same route; the
+ * first keeps it). Routes that are already good and unique are not touched. The new one is
+ * `/name-slug`, with the minimal numeric suffix that makes it free.
  */
 export function plannedRoutes(screens: readonly NodeLite[]): Map<string, string> {
   const used = new Set<string>();
@@ -131,7 +131,7 @@ export function plannedRoutes(screens: readonly NodeLite[]): Map<string, string>
   return out;
 }
 
-/** Gli op che assegnano le rotte mancanti/duplicate: uno per schermata, da inviare in UN gesto. */
+/** The ops that assign the missing/duplicate routes: one per screen, to be sent in ONE gesture. */
 export function assignRoutesOps(scene: SceneState): Op[] {
   const ops: Op[] = [];
   for (const [id, route] of plannedRoutes(exportedScreens(scene))) {
@@ -141,17 +141,17 @@ export function assignRoutesOps(scene: SceneState): Op[] {
   return ops;
 }
 
-// --- INIZIO DEI FLUSSI -------------------------------------------------------
+// --- START OF FLOWS ----------------------------------------------------------
 
 function hasStart(scene: SceneState, f: FlowLite): boolean {
   return f.startId !== "" && scene.nodes.has(f.startId);
 }
 
 /**
- * La schermata d'ingresso più sensata per un flusso senza: fra quelle da cui
- * parte una transizione, la prima (ordine del documento) che nessuna transizione
- * del flusso raggiunge; se tutte sono raggiunte (un ciclo), la prima che esce.
- * Senza transizioni: la prima schermata del documento. "" se non ce ne sono.
+ * The most sensible entry screen for a flow that has none: among those from which a
+ * transition starts, the first (document order) that no transition
+ * of the flow reaches; if all are reached (a cycle), the first that exits.
+ * Without transitions: the document's first screen. "" if there are none.
  */
 export function suggestStart(scene: SceneState, flow: FlowLite, screens: readonly NodeLite[]): string {
   const trs = Object.values(scene.transitions).filter((t) => t.flowId === flow.id);
@@ -177,23 +177,23 @@ export function setStartsOps(scene: SceneState): Op[] {
 
 // --- LA CHECKLIST ------------------------------------------------------------
 
-// Quali problemi del server bloccano la consegna e quali sono solo un consiglio.
-// no_start lo copre il controllo "inizio" (stessa condizione, con la correzione);
-// `empty` (flusso senza schermate) è un consiglio: il codice si genera lo stesso.
+// Which server issues block delivery and which are only advice.
+// no_start is covered by the "start" check (same condition, with the fix);
+// `empty` (a flow without screens) is advice: the code is generated anyway.
 const BLOCKING_ISSUES = ["unreachable", "dead_end", "ambiguous"] as const;
 const ISSUE_TITLES: Record<string, string> = {
-  unreachable: "Schermate irraggiungibili",
-  dead_end: "Vicoli ciechi",
-  ambiguous: "Transizioni ambigue",
-  no_exit: "Flussi senza uscita",
-  empty: "Flussi vuoti",
+  unreachable: "Unreachable screens",
+  dead_end: "Dead ends",
+  ambiguous: "Ambiguous transitions",
+  no_exit: "Flows with no exit",
+  empty: "Empty flows",
 };
 
 function plural(n: number, one: string, many: string): string {
   return `${n} ${n === 1 ? one : many}`;
 }
 
-/** Il nodo da raggiungere per un problema: il nodo indicato, o la schermata di partenza dell'arco. */
+/** The node to reach for an issue: the indicated node, or the edge's starting screen. */
 function issueNode(scene: SceneState, i: { nodeId: string; transitionId: string }): string | undefined {
   if (i.nodeId && scene.nodes.has(i.nodeId)) return i.nodeId;
   const t = i.transitionId ? scene.transitions[i.transitionId] : undefined;
@@ -207,38 +207,38 @@ export function progressOf(screens: readonly NodeLite[]): Progress {
 }
 
 /**
- * La checklist. `reports` = null/undefined: l'analisi del server non è ancora
- * arrivata (o è fallita) -- i controlli che ne dipendono restano "pending" e NON
- * contano come bloccanti: non si dà del bloccato a chi sta solo aspettando.
+ * The checklist. `reports` = null/undefined: the server's analysis has not yet
+ * arrived (or has failed) -- the checks that depend on it stay "pending" and do NOT
+ * count as blocking: nobody is called blocked while merely waiting.
  */
 export function computeReadiness(scene: SceneState, reports: Readonly<Record<string, ReportLike>> | null | undefined): Readiness {
   const screens = exportedScreens(scene);
   const flows = sortedFlows(scene);
   const items: ReadinessItem[] = [];
 
-  // 1. Ci sono schermate? Senza, il resto non ha senso.
+  // 1. Are there screens? Without them, the rest makes no sense.
   items.push(
     screens.length > 0
-      ? { id: "screens", title: "Schermate da esportare", state: "pass", blocking: true, count: 0, detail: plural(screens.length, "schermata", "schermate"), rows: [] }
+      ? { id: "screens", title: "Screens to export", state: "pass", blocking: true, count: 0, detail: plural(screens.length, "screen", "screens"), rows: [] }
       : {
-          id: "screens", title: "Schermate da esportare", state: "fail", blocking: true, count: 1,
-          detail: "Nessun frame di primo livello: disegna almeno una schermata.", rows: [],
+          id: "screens", title: "Screens to export", state: "fail", blocking: true, count: 1,
+          detail: "No top-level frame: draw at least one screen.", rows: [],
         },
   );
 
-  // 2. Rotte: tutte presenti...
+  // 2. Routes: all present...
   const missing = screens.filter((n) => normalizeRoute(n.meta?.[META_KEYS.route] ?? "") === "");
   items.push(
     missing.length === 0
-      ? { id: "routes", title: "Ogni schermata ha una rotta", state: "pass", blocking: true, count: 0, detail: "code.route impostato ovunque", rows: [] }
+      ? { id: "routes", title: "Every screen has a route", state: "pass", blocking: true, count: 0, detail: "code.route set everywhere", rows: [] }
       : {
-          id: "routes", title: "Ogni schermata ha una rotta", state: "fail", blocking: true, count: missing.length,
-          detail: `${plural(missing.length, "schermata senza", "schermate senza")} code.route`,
+          id: "routes", title: "Every screen has a route", state: "fail", blocking: true, count: missing.length,
+          detail: `${plural(missing.length, "screen without", "screens without")} code.route`,
           rows: missing.map((n) => ({ label: screenName(scene, n.id), nodeId: n.id })),
-          fix: { kind: "assign-routes", label: "Assegna le rotte" },
+          fix: { kind: "assign-routes", label: "Assign routes" },
         },
   );
-  // ... e uniche.
+  // ... and unique.
   const byRoute = new Map<string, NodeLite[]>();
   for (const n of screens) {
     const r = normalizeRoute(n.meta?.[META_KEYS.route] ?? "");
@@ -248,48 +248,48 @@ export function computeReadiness(scene: SceneState, reports: Readonly<Record<str
   const dupeNodes = dupes.reduce((a, [, ns]) => a + ns.length - 1, 0);
   items.push(
     dupes.length === 0
-      ? { id: "routes-unique", title: "Rotte uniche", state: "pass", blocking: true, count: 0, detail: "nessun doppione", rows: [] }
+      ? { id: "routes-unique", title: "Unique routes", state: "pass", blocking: true, count: 0, detail: "no duplicates", rows: [] }
       : {
-          id: "routes-unique", title: "Rotte uniche", state: "fail", blocking: true, count: dupeNodes,
-          detail: `${plural(dupes.length, "rotta usata", "rotte usate")} da più schermate`,
+          id: "routes-unique", title: "Unique routes", state: "fail", blocking: true, count: dupeNodes,
+          detail: `${plural(dupes.length, "route used", "routes used")} by several screens`,
           rows: dupes.flatMap(([r, ns]) => ns.map((n) => ({ label: `${screenName(scene, n.id)} · ${r}`, nodeId: n.id }))),
-          fix: { kind: "assign-routes", label: "Assegna le rotte" },
+          fix: { kind: "assign-routes", label: "Assign routes" },
         },
   );
 
-  // 3. Flussi e schermata d'ingresso.
+  // 3. Flows and entry screen.
   if (flows.length === 0) {
     items.push({
-      id: "flows", title: "Almeno un flusso", state: "fail", blocking: true, count: 1,
-      detail: "Senza flussi il codice non ha navigazione né test: collega le schermate.", rows: [],
-      fix: { kind: "goto-flows", label: "Vai ai Flussi" },
+      id: "flows", title: "At least one flow", state: "fail", blocking: true, count: 1,
+      detail: "Without flows the code has no navigation or tests: connect the screens.", rows: [],
+      fix: { kind: "goto-flows", label: "Go to Flows" },
     });
   } else {
     const noStart = flows.filter((f) => !hasStart(scene, f));
     items.push(
       noStart.length === 0
-        ? { id: "start", title: "Inizio impostato in ogni flusso", state: "pass", blocking: true, count: 0, detail: plural(flows.length, "flusso", "flussi"), rows: [] }
+        ? { id: "start", title: "Start set in every flow", state: "pass", blocking: true, count: 0, detail: plural(flows.length, "flow", "flows"), rows: [] }
         : {
-            id: "start", title: "Inizio impostato in ogni flusso", state: "fail", blocking: true, count: noStart.length,
-            detail: `${plural(noStart.length, "flusso senza", "flussi senza")} schermata iniziale`,
+            id: "start", title: "Start set in every flow", state: "fail", blocking: true, count: noStart.length,
+            detail: `${plural(noStart.length, "flow without", "flows without")} a start screen`,
             rows: noStart.map((f) => ({ label: f.name })),
-            fix: { kind: "set-starts", label: "Imposta l'inizio" },
+            fix: { kind: "set-starts", label: "Set the start" },
           },
     );
   }
 
-  // 4. I problemi che trova il server.
+  // 4. The issues the server finds.
   if (flows.length > 0) {
     if (!reports) {
-      items.push({ id: "analysis", title: "Percorsi dei flussi", state: "pending", blocking: false, count: 0, detail: "analisi in corso…", rows: [] });
+      items.push({ id: "analysis", title: "Flow paths", state: "pending", blocking: false, count: 0, detail: "analysis in progress…", rows: [] });
     } else {
       for (const kind of [...BLOCKING_ISSUES, "no_exit", "empty"]) {
         const found = flows.flatMap((f) => (reports[f.id]?.issues ?? []).filter((i) => i.kind === kind));
         const blocking = (BLOCKING_ISSUES as readonly string[]).includes(kind);
         const title = ISSUE_TITLES[kind] ?? kind;
         if (found.length === 0) {
-          // Solo i bloccanti compaiono anche da passati: sono il cuore della lista.
-          if (blocking) items.push({ id: `issue:${kind}`, title, state: "pass", blocking, count: 0, detail: "nessuno", rows: [] });
+          // Only the blocking ones also appear when passed: they are the heart of the list.
+          if (blocking) items.push({ id: `issue:${kind}`, title, state: "pass", blocking, count: 0, detail: "none", rows: [] });
           continue;
         }
         const rows = found.map((i) => {
@@ -298,15 +298,15 @@ export function computeReadiness(scene: SceneState, reports: Readonly<Record<str
         });
         items.push({
           id: `issue:${kind}`, title, state: blocking ? "fail" : "warn", blocking, count: found.length,
-          detail: plural(found.length, "caso", "casi"), rows,
-          fix: rows[0].nodeId ? { kind: "select", label: "Seleziona la schermata", nodeId: rows[0].nodeId } : undefined,
+          detail: plural(found.length, "case", "cases"), rows,
+          fix: rows[0].nodeId ? { kind: "select", label: "Select the screen", nodeId: rows[0].nodeId } : undefined,
         });
       }
     }
   }
 
-  // 5. Gli hotspot si possono ritrovare nei test: una transizione senza etichetta
-  // il cui elemento non ha test.id / test.text non ha un locator affidabile.
+  // 5. Hotspots can be found again in tests: a transition without a label
+  // whose element has no test.id / test.text has no reliable locator.
   const hot: ReadinessRow[] = [];
   for (const t of Object.values(scene.transitions)) {
     if (t.label.trim() !== "") continue;
@@ -321,12 +321,12 @@ export function computeReadiness(scene: SceneState, reports: Readonly<Record<str
   }
   items.push(
     hot.length === 0
-      ? { id: "hotspots", title: "Collegamenti riconoscibili nei test", state: "pass", blocking: false, count: 0, detail: "etichetta, test.id o test.text ovunque", rows: [] }
+      ? { id: "hotspots", title: "Links recognizable in tests", state: "pass", blocking: false, count: 0, detail: "label, test.id or test.text everywhere", rows: [] }
       : {
-          id: "hotspots", title: "Collegamenti riconoscibili nei test", state: "warn", blocking: false, count: hot.length,
-          detail: `${plural(hot.length, "collegamento senza", "collegamenti senza")} etichetta né test.id / test.text`,
+          id: "hotspots", title: "Links recognizable in tests", state: "warn", blocking: false, count: hot.length,
+          detail: `${plural(hot.length, "link without", "links without")} a label or test.id / test.text`,
           rows: hot,
-          fix: hot[0].nodeId ? { kind: "select", label: "Seleziona la schermata", nodeId: hot[0].nodeId } : undefined,
+          fix: hot[0].nodeId ? { kind: "select", label: "Select the screen", nodeId: hot[0].nodeId } : undefined,
         },
   );
 

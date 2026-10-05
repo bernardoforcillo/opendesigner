@@ -10,38 +10,38 @@ import type {
 
 export interface PageLite { id: string; name: string; }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
-// Un gradiente in coordinate NORMALIZZATE del box (vedi GradientPaint nel proto).
-// Lineare: asse (x1,y1)->(x2,y2). Radiale: centro (x1,y1), raggio = |p2-p1| in
-// coordinate mondo.
+// A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
+// Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
+// world coordinates.
 export interface GradientLite {
   kind: "linear" | "radial";
   stops: GradientStopLite[];
   x1: number; y1: number; x2: number; y2: number;
 }
-// r,g,b,a restano il colore "di ripiego": per un riempimento solido SONO il
-// colore, per un gradiente sono il primo stop. Tutto il codice che conosce solo
-// tinte piatte (testo, tratti, pannelli) continua a funzionare senza sapere dei
-// gradienti; chi li sa disegnare guarda `gradient`.
+// r,g,b,a remain the "fallback" color: for a solid fill they ARE the
+// color, for a gradient they are the first stop. All code that only knows
+// flat tints (text, strokes, panels) keeps working without knowing about
+// gradients; whoever can draw them looks at `gradient`.
 export interface FillLite { r: number; g: number; b: number; a: number; gradient?: GradientLite; }
 
-// L'allineamento del tratto come stringa, per la stessa ragione di
-// TextAlignLite: il modello in memoria è ciò che leggono renderer e pannelli, e
-// una stringa si legge (e si scrive in un test) senza importare il generato.
-// STROKE_ALIGN_UNSPECIFIED collassa su "center" -- è il default del canvas 2D,
-// quindi la distinzione non è osservabile.
+// The stroke alignment as a string, for the same reason as
+// TextAlignLite: the in-memory model is what renderer and panels read, and
+// a string is readable (and writable in a test) without importing the generated code.
+// STROKE_ALIGN_UNSPECIFIED collapses to "center" -- it is the canvas 2D default,
+// so the distinction is not observable.
 export type StrokeAlignLite = "center" | "inside" | "outside";
 
-// Un tratto APPIATTITO, come FillLite lo è per un Paint: il colore risolto e
-// basta. Il peso è in coordinate MONDO (come fontSize), quindi un tratto da 4
-// resta spesso 4 unità a ogni zoom -- si ingrandisce col nodo, non con lo
-// schermo. Il default 0 è "nessun tratto da disegnare", non "sottilissimo":
-// un peso non positivo non produce né pixel né sporgenza dei bounds (vedi
+// A FLATTENED stroke, as FillLite is for a Paint: the resolved color and
+// nothing else. The weight is in WORLD coordinates (like fontSize), so a stroke of 4
+// stays 4 units thick at every zoom -- it scales with the node, not with the
+// screen. The default 0 is "no stroke to draw", not "very thin":
+// a non-positive weight produces neither pixels nor bounds overhang (see
 // canvas/geometry.ts::strokeOutsetOf).
 export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlignLite; }
 
-// Auto layout di un frame (vedi AutoLayout nel proto e store/layout.ts). Come
-// per StrokeAlignLite, gli enum sono stringhe: UNSPECIFIED collassa su
-// "horizontal" / "start", che è ciò che il calcolo farebbe comunque.
+// Auto layout of a frame (see AutoLayout in the proto and store/layout.ts). As
+// for StrokeAlignLite, enums are strings: UNSPECIFIED collapses to
+// "horizontal" / "start", which is what the computation would do anyway.
 export type LayoutDirectionLite = "horizontal" | "vertical";
 export type LayoutAlignLite = "start" | "center" | "end" | "space-between";
 export interface AutoLayoutLite {
@@ -53,58 +53,58 @@ export interface AutoLayoutLite {
   hugWidth: boolean; hugHeight: boolean;
 }
 
-// Un effetto del nodo. Ombra e sfocatura sono in coordinate MONDO, come il peso
-// di un tratto: si ingrandiscono con lo zoom. Il renderer disegna la PRIMA
-// ombra e la PRIMA sfocatura di un nodo (il canvas 2D ha un solo stato di ombra);
-// il modello e il filo tengono comunque l'intera lista.
+// A node effect. Shadow and blur are in WORLD coordinates, like a stroke's
+// weight: they scale with the zoom. The renderer draws the FIRST
+// shadow and the FIRST blur of a node (canvas 2D has a single shadow state);
+// the model and the wire nonetheless keep the whole list.
 export type EffectLite =
   | { kind: "dropShadow"; color: { r: number; g: number; b: number; a: number }; offsetX: number; offsetY: number; blur: number }
   | { kind: "layerBlur"; radius: number };
 
-// L'allineamento come stringa e non come enum numerico, per la stessa ragione
-// per cui `kind` è "rect" | "ellipse" | "text" invece del discriminante del
-// oneof: il modello in memoria è ciò che leggono renderer e pannelli, e una
-// stringa si legge (e si scrive in un test) senza importare il generato.
-// TEXT_ALIGN_UNSPECIFIED collassa su "left" -- è il default che il renderer
-// dovrebbe comunque applicare, quindi la distinzione non è osservabile.
+// The alignment as a string and not as a numeric enum, for the same reason
+// that `kind` is "rect" | "ellipse" | "text" instead of the oneof's
+// discriminant: the in-memory model is what renderer and panels read, and a
+// string is readable (and writable in a test) without importing the generated code.
+// TEXT_ALIGN_UNSPECIFIED collapses to "left" -- it is the default the renderer
+// should apply anyway, so the distinction is not observable.
 export type TextAlignLite = "left" | "center" | "right";
 
-// Nessun default viene risolto qui: `lineHeight: 0` resta 0 e non diventa 1.2.
-// Il default è del RENDERER (vedi il commento nel proto), e applicarlo nel
-// modello farebbe divergere questo lato da core.Apply (Go), che conserva
-// lo zero.
+// No default is resolved here: `lineHeight: 0` stays 0 and does not become 1.2.
+// The default belongs to the RENDERER (see the comment in the proto), and applying it in
+// the model would make this side diverge from core.Apply (Go), which preserves
+// the zero.
 export interface TextStyleLite {
   fontFamily: string; fontSize: number; fontWeight: string;
   lineHeight: number; align: TextAlignLite;
 }
 export interface TextLite { content: string; style: TextStyleLite; }
 
-// Un'immagine è un RIFERIMENTO, mai dei byte: `assetHash` è lo sha256
-// (esadecimale minuscolo) dei byte, che stanno in <doc>.opendesigner/assets/ e si
-// caricano dall'URL che costruisce rpc/assets.ts::assetUrl.
+// An image is a REFERENCE, never bytes: `assetHash` is the sha256
+// (lowercase hex) of the bytes, which live in <doc>.opendesigner/assets/ and are
+// loaded from the URL built by rpc/assets.ts::assetUrl.
 //
-// Il modello non contiene pixel, e questa è la proprietà da non perdere: un
-// NodeLite finisce dentro gli op, dentro lo snapshot e dentro il payload della
-// clipboard, e nessuno di quei tre posti deve mai trasportare un'immagine.
+// The model contains no pixels, and this is the property not to lose: a
+// NodeLite ends up inside ops, inside the snapshot and inside the clipboard
+// payload, and none of those three places must ever carry an image.
 export interface ImageLite { assetHash: string; }
 
-// La geometria vettoriale. Specchia opendesigner.v1.Anchor/SubPath/VectorNode uno a
-// uno: nessun default risolto qui e nessuna forma "comoda" (niente segmenti
-// precalcolati, niente maniglie relative), per la stessa ragione per cui
-// TextStyleLite non risolve lineHeight -- questo modello deve restare
-// indistinguibile da quello che core.Apply (Go) tiene in memoria, e ogni
-// derivazione fatta qui sarebbe una regola in più da tenere identica di là.
+// Vector geometry. Mirrors opendesigner.v1.Anchor/SubPath/VectorNode one to
+// one: no default resolved here and no "convenient" shape (no precomputed
+// segments, no relative handles), for the same reason
+// TextStyleLite does not resolve lineHeight -- this model must remain
+// indistinguishable from what core.Apply (Go) keeps in memory, and every
+// derivation made here would be one more rule to keep identical over there.
 //
-// I DUE SPAZI (regola completa e motivata nel proto, su `Anchor`; l'unica
-// implementazione è ./vectorGeometry.ts, e nient'altro deve rifarla a mano):
-//   - x/y sono LOCALI al nodo: il punto mondo è (node.x + a.x, node.y + a.y).
-//     Così la geometria si sposta col nodo, e un drag resta il setProps{x,y}
-//     che selectTool manda già oggi.
-//   - inX/inY e outX/outY sono OFFSET RELATIVI all'ancoraggio: il controllo
-//     entrante è (x + inX, y + inY). (0,0) significa maniglia coincidente con
-//     l'ancoraggio, cioè NESSUNA maniglia -- il segmento è una retta. È anche
-//     il default di proto3, quindi un ancoraggio d'angolo si scrive omettendo
-//     i campi invece di riempirli.
+// THE TWO SPACES (full, reasoned rule in the proto, on `Anchor`; the only
+// implementation is ./vectorGeometry.ts, and nothing else must redo it by hand):
+//   - x/y are LOCAL to the node: the world point is (node.x + a.x, node.y + a.y).
+//     This way the geometry moves with the node, and a drag stays the setProps{x,y}
+//     that selectTool already sends today.
+//   - inX/inY and outX/outY are OFFSETS RELATIVE to the anchor: the incoming
+//     control is (x + inX, y + inY). (0,0) means handle coincident with
+//     the anchor, that is NO handle -- the segment is a straight line. It is also
+//     the proto3 default, so a corner anchor is written by omitting
+//     the fields instead of filling them.
 export interface AnchorLite {
   x: number; y: number;
   inX: number; inY: number;
@@ -113,33 +113,33 @@ export interface AnchorLite {
 export interface SubPathLite { anchors: AnchorLite[]; closed: boolean; }
 export interface VectorLite { subpaths: SubPathLite[]; }
 
-// M4 — un override per-istanza su UN nodo del master, APPIATTITO come le altre
-// Lite. La PRESENZA è l'optional, non due flag booleani: `fills` è definito se e
-// solo se il proto ha fills_present, `text` se e solo se text_present. Così
-// l'ASSENZA del campo nel modello È il "non sovrascritto" del proto, e distingue
-// "non sovrascrivo il fill" da "sovrascrivo il fill a lista vuota" (o il testo a
-// stringa vuota) senza portarsi dietro un fill che l'utente non ha toccato --
-// come style_present per SetText. Un override senza né fills né text non esiste
-// nel modello: nel proto è la RIMOZIONE (torna a ereditare dal master), e
-// applyOp/core lo tolgono invece di conservarlo.
+// M4 — a per-instance override on ONE node of the master, FLATTENED like the other
+// Lite types. PRESENCE is the optional, not two boolean flags: `fills` is defined if and
+// only if the proto has fills_present, `text` if and only if text_present. This way
+// the ABSENCE of the field in the model IS the proto's "not overridden", and distinguishes
+// "I do not override the fill" from "I override the fill with an empty list" (or the text with an
+// empty string) without carrying along a fill the user has not touched --
+// like style_present for SetText. An override with neither fills nor text does not exist
+// in the model: in the proto it is the REMOVAL (goes back to inheriting from the master), and
+// applyOp/core remove it instead of keeping it.
 export interface InstanceOverrideLite {
   masterNodeId: string;
   fills?: FillLite[];
   text?: string;
 }
 
-// M4 — un'istanza di un componente: il componentId che rende, più gli override
-// per nodo del master. I figli NON stanno qui (né in `nodes`): sono derivati dal
-// master a ogni lettura (renderer, hit-test, bounds).
+// M4 — an instance of a component: the componentId it renders, plus the per-node
+// overrides of the master. Children are NOT here (nor in `nodes`): they are derived from the
+// master on every read (renderer, hit-test, bounds).
 export interface InstanceLite {
   componentId: string;
   overrides: InstanceOverrideLite[];
 }
 
-// M4 — un componente indicizzato in SceneState.components (componentId ->
-// master): la radice del master, che è un nodo VIVO in `nodes`, più un nome. Non
-// copia il sottoalbero -- lo referenzia, quindi la propagazione master->istanze
-// è gratis.
+// M4 — a component indexed in SceneState.components (componentId ->
+// master): the master's root, which is a LIVE node in `nodes`, plus a name. It does not
+// copy the subtree -- it references it, so master->instances propagation
+// is free.
 export interface ComponentLite {
   rootNodeId: string;
   name: string;
@@ -149,91 +149,91 @@ export interface NodeLite {
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
-  // "unknown" = il oneof `shape` porta una forma PRESENTE che questo modello non
-  // conosce. NON è la stessa cosa di una forma ASSENTE, che resta "rect": Go
-  // accetta un Node senza shape come rettangolo implicito e va accettato anche
-  // qui. Esiste perché il ripiego "tutto il resto è rect" faceva divergere i due
-  // lati nel modo che la whitelist di core.applySetProps esiste per impedire: un
-  // setProps{corner_radius} su un GroupNode sarebbe stato ACCETTATO qui (kind
-  // ricadeva su "rect", cornerRadius scritto) e rifiutato da core.Apply con
-  // ErrNotRectNode. Un default che REGALA una forma è lo stesso errore di una
-  // blacklist, solo dall'altro lato del filo.
+  // "unknown" = the `shape` oneof carries a PRESENT shape that this model does not
+  // know. It is NOT the same as an ABSENT shape, which stays "rect": Go
+  // accepts a Node without shape as an implicit rectangle and it must be accepted
+  // here too. It exists because the "everything else is rect" fallback made the two
+  // sides diverge in the way core.applySetProps's whitelist exists to prevent: a
+  // setProps{corner_radius} on a GroupNode would have been ACCEPTED here (kind
+  // fell back to "rect", cornerRadius written) and rejected by core.Apply with
+  // ErrNotRectNode. A default that GIVES AWAY a shape is the same mistake as
+  // a blacklist, only from the other side of the wire.
   //
-  // "group" è un CONTENITORE, non una forma: non si disegna e non si colpisce,
-  // e i suoi bounds sono l'unione dei figli (vedi store/groups.ts). Sta nello
-  // stesso campo delle forme perché nel proto è lo stesso oneof `shape`: ciò
-  // che un nodo È, non un flag a parte che potrebbe contraddirlo.
-  // "frame" è il complemento del gruppo: un contenitore CON geometria propria
-  // (il box è suo, non l'unione dei figli), disegnato e colpito come una forma.
-  // È l'artboard, e `clipsContent` dice se ritaglia i figli al proprio box.
+  // "group" is a CONTAINER, not a shape: it is not drawn and not hit,
+  // and its bounds are the union of the children (see store/groups.ts). It sits in the
+  // same field as the shapes because in the proto it is the same `shape` oneof: what
+  // a node IS, not a separate flag that could contradict it.
+  // "frame" is the complement of the group: a container WITH its own geometry
+  // (the box is its own, not the union of the children), drawn and hit like a shape.
+  // It is the artboard, and `clipsContent` says whether it clips the children to its own box.
   fills: FillLite[]; strokes: StrokeLite[];
-  // Assente quando il nodo non ha effetti (non `[]`): così un nodo senza
-  // effetti è identico, campo per campo, a com'era prima che esistessero.
+  // Absent when the node has no effects (not `[]`): this way a node without
+  // effects is identical, field by field, to how it was before they existed.
   effects?: EffectLite[];
-  // "instance" è un'ISTANZA di un componente (proto: InstanceNode = 37): sta nel
-  // oneof `shape` come le forme, ma il suo sottoalbero è VIRTUALE -- derivato dal
-  // master a ogni lettura, mai in `nodes`. Il payload è in `instance`.
+  // "instance" is an INSTANCE of a component (proto: InstanceNode = 37): it sits in the
+  // `shape` oneof like the shapes, but its subtree is VIRTUAL -- derived from the
+  // master on every read, never in `nodes`. The payload is in `instance`.
   kind: "rect" | "ellipse" | "text" | "image" | "vector" | "unknown" | "group" | "frame" | "instance"; cornerRadius: number;
-  // Significativo se e solo se kind === "frame" (per tutti gli altri è false,
-  // come il default proto3): il ritaglio vale per il disegno, per l'hit-test e
-  // per la banda elastica insieme -- ciò che non si vede non si clicca.
+  // Meaningful if and only if kind === "frame" (for all others it is false,
+  // like the proto3 default): the clipping applies to drawing, hit-test
+  // and rubber band together -- what is not seen is not clicked.
   clipsContent: boolean;
-  // Presente se e solo se kind === "frame" E il frame dispone i figli. Assente
-  // (non un valore "spento") quando non c'è auto layout.
+  // Present if and only if kind === "frame" AND the frame lays out the children. Absent
+  // (not an "off" value) when there is no auto layout.
   autoLayout?: AutoLayoutLite;
-  // Presente se e solo se kind === "text": il contenuto vive DENTRO il oneof
-  // `shape` del proto, quindi è per costruzione esclusivo con rect/ellipse.
+  // Present if and only if kind === "text": the content lives INSIDE the `shape`
+  // oneof of the proto, so it is by construction exclusive with rect/ellipse.
   text?: TextLite;
-  // Presente se e solo se kind === "image", ed esclusivo con `text` per la
-  // stessa ragione (sono due rami dello stesso oneof).
+  // Present if and only if kind === "image", and exclusive with `text` for the
+  // same reason (they are two branches of the same oneof).
   image?: ImageLite;
-  // Presente se e solo se kind === "vector", per la stessa ragione: la
-  // geometria è un ramo del oneof `shape`, quindi esclusiva con le altre forme.
+  // Present if and only if kind === "vector", for the same reason: the
+  // geometry is a branch of the `shape` oneof, so exclusive with the other shapes.
   vector?: VectorLite;
-  // Presente se e solo se kind === "instance", ed esclusivo con le altre forme
-  // per la stessa ragione (è un ramo del oneof `shape`). Porta il componentId
-  // reso e gli override per nodo del master.
+  // Present if and only if kind === "instance", and exclusive with the other shapes
+  // for the same reason (it is a branch of the `shape` oneof). It carries the rendered
+  // componentId and the per-node overrides of the master.
   instance?: InstanceLite;
-  // Presente se e solo se kind === "unknown": il ramo del oneof così com'è
-  // arrivato, OPACO. Non lo si legge mai -- serve solo a toPbNode per rimetterlo
-  // dov'era. Senza, l'inverso di una delete (history.invertOp ricostruisce il
-  // Node da NodeLite) riporterebbe in vita un GroupNode trasformato in
-  // rettangolo: un cambio di forma silenzioso dentro un Ctrl+Z.
+  // Present if and only if kind === "unknown": the oneof branch exactly as it
+  // arrived, OPAQUE. It is never read -- it only serves toPbNode to put it back
+  // where it was. Without it, the inverse of a delete (history.invertOp rebuilds the
+  // Node from NodeLite) would bring back to life a GroupNode turned into a
+  // rectangle: a silent shape change inside a Ctrl+Z.
   unknownShape?: PbNode["shape"];
-  // Metadati liberi (vedi Node.meta nel proto). Assente quando vuoto.
+  // Free-form metadata (see Node.meta in the proto). Absent when empty.
   meta?: Record<string, string>;
-  // CAMPI TRANSITORI dell'animazione: li scrive SOLO animation/pose.ts quando
-  // deriva la scena da mostrare mentre una clip gira o si scorre. Non sono
-  // documento: toPbNode non li legge, nessun op li porta, e uno snapshot non li
-  // contiene mai. `animScale` è un moltiplicatore (base 1) attorno a `animPivot`
-  // (spazio del parent; assente = centro del box); `animDraw` è la frazione 0..1
-  // di tratto disegnata (semantica `pathLength`).
+  // TRANSIENT animation FIELDS: written ONLY by animation/pose.ts when it
+  // derives the scene to show while a clip runs or is scrubbed. They are not
+  // document: toPbNode does not read them, no op carries them, and a snapshot never
+  // contains them. `animScale` is a multiplier (base 1) around `animPivot`
+  // (parent space; absent = center of the box); `animDraw` is the 0..1 fraction
+  // of stroke drawn (`pathLength` semantics).
   animScale?: number;
   animPivot?: { x: number; y: number };
   animDraw?: number;
 }
 
-// Ciò che il renderer deve sapere di una scena DERIVATA dalla riproduzione: quali
-// nodi hanno una scala animata (il loro extent nell'indice di scena non la
-// conosce, quindi niente scarto fuori vista per loro e il loro sottoalbero), i
-// loro antenati (l'extent dell'antenato è l'unione dei figli) e se c'è un `draw`
-// (il renderer GPU non lo disegna: ripiega sulla CPU). Assente nelle scene vere.
+// What the renderer needs to know about a scene DERIVED from playback: which
+// nodes have an animated scale (their extent in the scene index does not know
+// about it, so no off-screen culling for them and their subtree), their
+// ancestors (the ancestor's extent is the union of the children) and whether there is a `draw`
+// (the GPU renderer does not draw it: it falls back to the CPU). Absent in real scenes.
 export interface AnimInfo {
   scaled: ReadonlySet<string>;
   ancestors: ReadonlySet<string>;
   hasDraw: boolean;
 }
 
-// FLUSSI: i percorsi dell'utente fra le schermate (nodi del documento,
-// referenziati per id). Vedi proto Flow/Transition e internal/core/flows.go.
+// FLOWS: the user's paths between screens (document nodes,
+// referenced by id). See proto Flow/Transition and internal/core/flows.go.
 export interface FlowLite { id: string; name: string; description: string; startId: string }
 export interface TransitionLite {
   id: string; flowId: string; fromId: string; toId: string;
   label: string; trigger: string; elementId: string; guard: string; effect: string;
 }
 
-// ANIMAZIONE: le clip del documento (proprietà animate di nodi referenziati per
-// id). Vedi proto Clip/Track/Keyframe e internal/core/animation.go.
+// ANIMATION: the document's clips (animated properties of nodes referenced by
+// id). See proto Clip/Track/Keyframe and internal/core/animation.go.
 export interface KeyframeLite { time: number; value: number; easing: string }
 export interface TrackLite { nodeId: string; prop: string; keyframes: KeyframeLite[] }
 export interface ClipLite {
@@ -247,11 +247,11 @@ export interface SceneState {
   flows: Record<string, FlowLite>;
   transitions: Record<string, TransitionLite>;
   clips: Record<string, ClipLite>;
-  // Solo nelle scene derivate dalla riproduzione (animation/pose.ts): vedi AnimInfo.
+  // Only in scenes derived from playback (animation/pose.ts): see AnimInfo.
   anim?: AnimInfo;
-  // M4 — componenti indicizzati per id (componentId -> master). Fa parte del
-  // documento quanto `nodes` e `pages`: un CreateComponent lo popola, e
-  // fromDocument lo ricostruisce dallo snapshot.
+  // M4 — components indexed by id (componentId -> master). It is part of the
+  // document as much as `nodes` and `pages`: a CreateComponent populates it, and
+  // fromDocument rebuilds it from the snapshot.
   components: Record<string, ComponentLite>;
 }
 
@@ -283,10 +283,10 @@ const STROKE_ALIGN_TO_PB: Record<StrokeAlignLite, StrokeAlign> = {
   outside: StrokeAlign.OUTSIDE,
 };
 
-// Uno stile ASSENTE non è un errore: in Go `t.Text.GetStyle()` è nil-safe e
-// ritorna gli zeri di ogni campo (ed è esattamente ciò che resta dopo un
-// SetText con style_present=true e nessuno stile). Qui la controparte è uno
-// stile tutto a zero, così le due implementazioni restano indistinguibili.
+// An ABSENT style is not an error: in Go `t.Text.GetStyle()` is nil-safe and
+// returns the zeros of every field (and it is exactly what remains after a
+// SetText with style_present=true and no style). Here the counterpart is an
+// all-zero style, so the two implementations remain indistinguishable.
 export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
   return {
     fontFamily: s?.fontFamily ?? "",
@@ -301,11 +301,11 @@ export function toTextLite(t: PbTextNode): TextLite {
   return { content: t.content, style: toTextStyleLite(t.style) };
 }
 
-// I subpath del filo nella forma del modello. Campo per campo e non uno spread:
-// un `{...a}` copierebbe anche `$typeName` (protobuf-es lo mette su ogni
-// messaggio) dentro il modello, e da lì nei confronti dei test e nelle scritture
-// di ritorno. L'elenco esplicito è anche la guardia: un campo aggiunto ad Anchor
-// nel .proto non compare qui da solo, e il round-trip lo scopre.
+// The wire's subpaths in the model's shape. Field by field and not a spread:
+// a `{...a}` would also copy `$typeName` (protobuf-es puts it on every
+// message) into the model, and from there into test comparisons and write-backs.
+// The explicit list is also the guard: a field added to Anchor
+// in the .proto does not show up here on its own, and the round-trip discovers it.
 export function toSubPathsLite(subpaths: readonly PbSubPath[]): SubPathLite[] {
   return subpaths.map((sp) => ({
     anchors: sp.anchors.map((a) => ({
@@ -319,11 +319,11 @@ export function toVectorLite(v: PbVectorNode): VectorLite {
   return { subpaths: toSubPathsLite(v.subpaths) };
 }
 
-// M4 — un override del filo APPIATTITO. La PRESENZA segue i flag *_present del
-// proto, non i valori: `fills` compare solo se fills_present, `text` solo se
-// text_present. Così l'assenza del campo nel modello È il "non sovrascritto" del
-// proto (vedi InstanceOverrideLite), e un override di solo testo non si porta
-// dietro un fill vuoto (né viceversa). Inverso esatto di toPbInstanceOverride.
+// M4 — a FLATTENED wire override. PRESENCE follows the proto's *_present flags,
+// not the values: `fills` appears only if fills_present, `text` only if
+// text_present. This way the absence of the field in the model IS the proto's "not overridden"
+// (see InstanceOverrideLite), and a text-only override does not carry
+// an empty fill along (nor vice versa). Exact inverse of toPbInstanceOverride.
 export function toInstanceOverrideLite(o: PbInstanceOverride): InstanceOverrideLite {
   return {
     masterNodeId: o.masterNodeId,
@@ -336,9 +336,9 @@ export function toInstanceLite(n: PbInstanceNode): InstanceLite {
   return { componentId: n.componentId, overrides: n.overrides.map(toInstanceOverrideLite) };
 }
 
-// Inverso di toSubPathsLite. Come toPbTextStyle ritorna la forma di INIT (non
-// messaggi creati): i chiamanti la annidano dentro il `create(...)` di un Node
-// (toPbNode) o di un Op (history.invertOp, e il pen tool quando arriverà).
+// Inverse of toSubPathsLite. Like toPbTextStyle it returns the INIT shape (not created
+// messages): callers nest it inside the `create(...)` of a Node
+// (toPbNode) or an Op (history.invertOp, and the pen tool when it arrives).
 export function toPbSubPaths(subpaths: readonly SubPathLite[]) {
   return subpaths.map((sp) => ({
     anchors: sp.anchors.map((a) => ({
@@ -348,8 +348,8 @@ export function toPbSubPaths(subpaths: readonly SubPathLite[]) {
   }));
 }
 
-// Inverso di toTextStyleLite. Ritorna la forma di init (non un messaggio
-// creato): i chiamanti la annidano dentro `create(...)` di un Node o di un Op.
+// Inverse of toTextStyleLite. Returns the init shape (not a created
+// message): callers nest it inside `create(...)` of a Node or an Op.
 export function toPbTextStyle(s: TextStyleLite) {
   return {
     fontFamily: s.fontFamily, fontSize: s.fontSize, fontWeight: s.fontWeight,
@@ -357,20 +357,20 @@ export function toPbTextStyle(s: TextStyleLite) {
   };
 }
 
-// Le tinte del modello nella forma di init di opendesigner.v1.Node.fills.
+// The model's tints in the init shape of opendesigner.v1.Node.fills.
 //
-// NodeLite conosce solo tinte PIATTE (toNodeLite appiattisce qualsiasi paint
-// non-solid in un colore), quindi il ritorno è sempre una lista di SolidPaint.
-// Estratta da toPbNode perché il pannello proprietà (ui/PropertiesPanel.tsx)
-// costruisce lo STESSO patch per il suo op di riempimento: due mappature
-// indipendenti dello stesso campo divergerebbero al primo paint non-solid.
+// NodeLite only knows FLAT tints (toNodeLite flattens any non-solid
+// paint into a color), so the return is always a list of SolidPaint.
+// Extracted from toPbNode because the properties panel (ui/PropertiesPanel.tsx)
+// builds the SAME patch for its fill op: two independent mappings
+// of the same field would diverge at the first non-solid paint.
 export function toPbFills(fills: readonly FillLite[]) {
   return fills.map(toPbPaint);
 }
 
-// I TRATTI del modello nella forma di init di opendesigner.v1.Node.strokes. Gemella di
-// toPbFills, ed esportata per la stessa ragione: il pannello proprietà
-// (ui/PropertiesPanel.tsx) costruisce lo STESSO patch per il suo op di tratto.
+// The model's STROKES in the init shape of opendesigner.v1.Node.strokes. Twin of
+// toPbFills, and exported for the same reason: the properties panel
+// (ui/PropertiesPanel.tsx) builds the SAME patch for its stroke op.
 export function toPbStrokes(strokes: readonly StrokeLite[]) {
   return strokes.map((s) => ({
     paint: toPbPaint(s.color),
@@ -379,8 +379,8 @@ export function toPbStrokes(strokes: readonly StrokeLite[]) {
   }));
 }
 
-// Gli EFFETTI del modello nella forma di init di opendesigner.v1.Node.effects.
-// Gemella di toPbFills/toPbStrokes: il pannello costruisce lo STESSO patch.
+// The model's EFFECTS in the init shape of opendesigner.v1.Node.effects.
+// Twin of toPbFills/toPbStrokes: the panel builds the SAME patch.
 export function toPbEffects(effects: readonly EffectLite[]) {
   return effects.map((e) =>
     e.kind === "dropShadow"
@@ -429,8 +429,8 @@ export function toEffectLite(e: PbEffect): EffectLite {
       offsetX: k.value.offsetX, offsetY: k.value.offsetY, blur: k.value.blur,
     };
   }
-  // Un effetto senza `kind` (filo da una versione futura) si legge come una
-  // sfocatura nulla: innocua da disegnare e conserva la posizione nella lista.
+  // An effect without `kind` (wire from a future version) reads as a
+  // null blur: harmless to draw and keeps the position in the list.
   return { kind: "layerBlur", radius: k.case === "layerBlur" ? k.value.radius : 0 };
 }
 
@@ -448,14 +448,14 @@ function toPbPaint(c: FillLite) {
   return { kind: { case: "solid" as const, value: { color: { r: c.r, g: c.g, b: c.b, a: c.a } } } };
 }
 
-// Inverso di toInstanceOverrideLite. Ritorna la forma di INIT (non un messaggio
-// creato): i chiamanti la annidano dentro `create(...)` di un Node (toPbNode) o
-// di un Op (history.invertOp e applyOp non ne hanno bisogno, ma il pen dei
-// componenti sì). I flag *_present si ricavano dalla PRESENZA del campo Lite --
-// `fills` definito => fills_present, `text` definito => text_present -- così il
-// round-trip con toInstanceOverrideLite è LOSSLESS: un override di solo fill
-// non guadagna un testo vuoto passando di qui, né perde la distinzione fra
-// "fill assente" e "fill svuotato".
+// Inverse of toInstanceOverrideLite. Returns the INIT shape (not a created
+// message): callers nest it inside `create(...)` of a Node (toPbNode) or
+// of an Op (history.invertOp and applyOp do not need it, but the component
+// pen does). The *_present flags are derived from the PRESENCE of the Lite field --
+// `fills` defined => fills_present, `text` defined => text_present -- so the
+// round-trip with toInstanceOverrideLite is LOSSLESS: a fill-only override
+// does not gain an empty text passing through here, nor lose the distinction between
+// "absent fill" and "emptied fill".
 export function toPbInstanceOverride(o: InstanceOverrideLite) {
   return {
     masterNodeId: o.masterNodeId,
@@ -466,10 +466,10 @@ export function toPbInstanceOverride(o: InstanceOverrideLite) {
   };
 }
 
-// Un Paint del filo APPIATTITO nel colore che il renderer disegna. Una funzione
-// sola per riempimenti e tratti: sono lo stesso messaggio nel proto, e due
-// appiattimenti indipendenti divergerebbero al primo paint non-solid (oggi
-// l'unico caso è un paint ASSENTE, ma il oneof `kind` esiste per crescere).
+// A FLATTENED wire Paint into the color the renderer draws. A single function
+// for fills and strokes: they are the same message in the proto, and two independent
+// flattenings would diverge at the first non-solid paint (today
+// the only case is an ABSENT paint, but the `kind` oneof exists to grow).
 function toFillLite(p: PbPaint | undefined): FillLite {
   const k = p?.kind;
   if (k?.case === "linear" || k?.case === "radial") {
@@ -496,18 +496,18 @@ export function toStrokeLite(s: PbStroke): StrokeLite {
   };
 }
 
-// La forma del nodo nel vocabolario del modello. Il default è RIFIUTARE, non
-// ricadere su "rect": vale qui la stessa ragione per cui core.applySetProps (Go)
-// elenca le forme che ACCETTA invece di quelle che rifiuta. Le altre tracce
-// stanno aggiungendo forme al oneof adesso (33 Group, 34 Frame, 37 Instance), e
-// con un ripiego su "rect" ognuna di quelle, appena fusa, farebbe accettare a
-// questo lato un setProps{corner_radius} che Go rifiuta -- la divergenza
-// client/documento autorevole, semplicemente specchiata.
+// The node's shape in the model's vocabulary. The default is to REJECT, not to
+// fall back to "rect": the same reason applies here as for why core.applySetProps (Go)
+// lists the shapes it ACCEPTS instead of those it rejects. Other tracks
+// are adding shapes to the oneof right now (33 Group, 34 Frame, 37 Instance), and
+// with a fallback to "rect" each of those, as soon as merged, would make this
+// side accept a setProps{corner_radius} that Go rejects -- the
+// client/authoritative document divergence, simply mirrored.
 //
-// Forma ASSENTE => "rect", e non è un'eccezione alla regola ma la regola stessa:
-// Go tratta un Node senza shape da rettangolo implicito (whitelist `nil` o
-// `*opendesignerv1.Node_Rect`), quindi trattarlo diversamente qui sarebbe la
-// divergenza.
+// ABSENT shape => "rect", and it is not an exception to the rule but the rule itself:
+// Go treats a Node without shape as an implicit rectangle (whitelist `nil` or
+// `*opendesignerv1.Node_Rect`), so treating it differently here would be the
+// divergence.
 function kindOf(shape: PbNode["shape"]): NodeLite["kind"] {
   switch (shape.case) {
     case undefined: return "rect";
@@ -540,17 +540,17 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(n.shape.case === "image" ? { image: { assetHash: n.shape.value.assetHash } } : {}),
     ...(n.shape.case === "vector" ? { vector: toVectorLite(n.shape.value) } : {}),
     ...(n.shape.case === "instance" ? { instance: toInstanceLite(n.shape.value) } : {}),
-    // Il ramo sconosciuto viaggia intero e intatto: vedi NodeLite.unknownShape.
+    // The unknown branch travels whole and intact: see NodeLite.unknownShape.
     ...(kind === "unknown" ? { unknownShape: n.shape } : {}),
     ...(Object.keys(n.meta).length > 0 ? { meta: { ...n.meta } } : {}),
   };
 }
 
-// Inverso esatto di toNodeLite: ricostruisce il Node protobuf da un NodeLite.
-// Sta qui, accanto a toNodeLite, di proposito: un campo aggiunto a NodeLite
-// deve comparire in ENTRAMBE le direzioni, e l'adiacenza è la guardia.
-// Serve all'undo (history.invertOp): l'inverso di una delete è la create del
-// nodo com'era, e il modello in memoria tiene solo NodeLite.
+// Exact inverse of toNodeLite: rebuilds the protobuf Node from a NodeLite.
+// It sits here, next to toNodeLite, on purpose: a field added to NodeLite
+// must appear in BOTH directions, and adjacency is the guard.
+// It serves undo (history.invertOp): the inverse of a delete is the create of the
+// node as it was, and the in-memory model keeps only NodeLite.
 export function toPbNode(n: NodeLite): PbNode {
   const node = create(NodeSchema, {
     id: n.id, parentId: n.parentId, orderKey: n.orderKey, name: n.name,
@@ -561,58 +561,58 @@ export function toPbNode(n: NodeLite): PbNode {
     effects: toPbEffects(n.effects ?? []),
     meta: n.meta ? { ...n.meta } : {},
     shape: n.kind === "unknown"
-      // La forma sconosciuta non si può COSTRUIRE (non c'è un ramo del oneof da
-      // nominare), quindi si rimette dov'era subito dopo la create. Lasciarla
-      // qui a `undefined` per un istante è l'unico modo di NON scriverci sopra
-      // un rettangolo: era esattamente il baco -- un GroupNode che tornava
-      // rettangolo passando da un undo.
+      // The unknown shape cannot be BUILT (there is no oneof branch to
+      // name), so it is put back where it was right after the create. Leaving it
+      // here as `undefined` for an instant is the only way NOT to write a
+      // rectangle over it: it was exactly the bug -- a GroupNode that came back as a
+      // rectangle going through an undo.
       ? undefined
       : n.kind === "ellipse"
       ? { case: "ellipse" as const, value: {} }
       : n.kind === "image"
-        // L'hash e basta: è tutto ciò che un ImageNode contiene, e ricostruirlo
-        // qui è ciò che fa sopravvivere un'immagine all'undo di una delete e a
-        // un incolla (entrambi passano da toPbNode). `image` mancante ricade su
-        // un hash vuoto -- cioè su un'immagine il cui asset non si trova, che il
-        // renderer disegna come segnaposto -- e mai su un rettangolo: un cambio
-        // di forma silenzioso dentro un undo sarebbe molto peggio.
+        // The hash and nothing else: it is all an ImageNode contains, and rebuilding it
+        // here is what makes an image survive the undo of a delete and
+        // a paste (both go through toPbNode). A missing `image` falls back to
+        // an empty hash -- that is, to an image whose asset is not found, which the
+        // renderer draws as a placeholder -- and never to a rectangle: a silent
+        // shape change inside an undo would be much worse.
         ? { case: "image" as const, value: { assetHash: n.image?.assetHash ?? "" } }
       : n.kind === "vector"
-        // Come per il testo: un `vector` mancante su un nodo vettoriale è uno
-        // stato che toNodeLite non produce mai (i due si muovono insieme), e il
-        // ripiego alla lista vuota serve solo a non ricostruire un RETTANGOLO
-        // da un path -- che dentro un undo sarebbe un cambio di forma
-        // silenzioso. Un path svuotato resta un path.
+        // As for text: a missing `vector` on a vector node is a
+        // state toNodeLite never produces (the two move together), and the
+        // fallback to the empty list only serves not to rebuild a RECTANGLE
+        // from a path -- which inside an undo would be a silent
+        // shape change. An emptied path stays a path.
         ? { case: "vector" as const, value: { subpaths: toPbSubPaths(n.vector?.subpaths ?? []) } }
       : n.kind === "instance"
-        // Un'istanza: il componentId reso più gli override per nodo del master,
-        // ricostruiti con i flag *_present dalla presenza del campo Lite (vedi
-        // toPbInstanceOverride). Come per gli altri rami, un `instance` mancante
-        // ricade su componentId vuoto e nessun override -- MAI su un rettangolo:
-        // un cambio di forma silenzioso dentro un undo di una delete sarebbe
-        // molto peggio di un'istanza che punta al vuoto.
+        // An instance: the rendered componentId plus the per-node overrides of the master,
+        // rebuilt with the *_present flags from the presence of the Lite field (see
+        // toPbInstanceOverride). As for the other branches, a missing `instance`
+        // falls back to an empty componentId and no overrides -- NEVER to a rectangle:
+        // a silent shape change inside an undo of a delete would be
+        // much worse than an instance that points to nothing.
         ? { case: "instance" as const, value: {
             componentId: n.instance?.componentId ?? "",
             overrides: (n.instance?.overrides ?? []).map(toPbInstanceOverride),
           } }
-      // Un gruppo non ha campi propri: ciò che lo rende un gruppo è il caso del
-      // oneof (più i figli che gli puntano). Il ramo esiste comunque, e non è
-      // pedanteria: senza, l'inverso di una delete ricostruirebbe un
-      // RETTANGOLO al posto del gruppo -- un cambio di forma silenzioso dentro
-      // un undo, per giunta con un box 0x0 che non si vedrebbe mai.
+      // A group has no fields of its own: what makes it a group is the oneof case
+      // (plus the children pointing to it). The branch exists anyway, and it is not
+      // pedantry: without it, the inverse of a delete would rebuild a
+      // RECTANGLE in place of the group -- a silent shape change inside
+      // an undo, and with a 0x0 box that would never be seen.
       : n.kind === "group"
       ? { case: "group" as const, value: {} }
-      // Stesso motivo del ramo `group`, più un campo: senza, l'inverso di una
-      // delete ricostruirebbe un RETTANGOLO al posto del frame, e un frame
-      // ricostruito senza `clipsContent` smetterebbe di ritagliare i figli --
-      // un undo che cambia ciò che si vede.
+      // Same reason as the `group` branch, plus one field: without it, the inverse of a
+      // delete would rebuild a RECTANGLE in place of the frame, and a frame
+      // rebuilt without `clipsContent` would stop clipping the children --
+      // an undo that changes what is seen.
       : n.kind === "frame"
       ? { case: "frame" as const, value: { clipsContent: n.clipsContent, ...(n.autoLayout ? { autoLayout: toPbAutoLayout(n.autoLayout) } : {}) } }
       : n.kind === "text"
-        // `text` mancante su un nodo di testo è uno stato che toNodeLite non
-        // produce mai (i due si muovono insieme). Il fallback a testo vuoto
-        // evita comunque di ricostruire un RETTANGOLO da un nodo di testo --
-        // sarebbe un cambio di forma silenzioso in un undo.
+        // A missing `text` on a text node is a state toNodeLite never
+        // produces (the two move together). The fallback to empty text
+        // still avoids rebuilding a RECTANGLE from a text node --
+        // it would be a silent shape change in an undo.
         ? { case: "text" as const, value: {
             content: n.text?.content ?? "",
             style: toPbTextStyle(n.text?.style ?? toTextStyleLite(undefined)),
@@ -667,8 +667,8 @@ export function fromDocument(doc: Document): SceneState {
   const edit = NodeMap.empty.edit();
   for (const [id, n] of Object.entries(doc.nodes)) edit.set(id, toNodeLite(n));
   const nodes = edit.done();
-  // I componenti fanno parte del documento quanto i nodi: un master non copiato
-  // ma referenziato per rootNodeId (vedi ComponentLite).
+  // Components are part of the document as much as nodes: a master not copied
+  // but referenced by rootNodeId (see ComponentLite).
   const components: Record<string, ComponentLite> = {};
   for (const [id, c] of Object.entries(doc.components)) components[id] = { rootNodeId: c.rootNodeId, name: c.name };
   return {

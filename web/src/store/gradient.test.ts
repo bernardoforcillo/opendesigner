@@ -16,14 +16,14 @@ const linear: FillLite = {
   },
 };
 
-describe("gradienti nel modello", () => {
-  it("un fill lineare fa il giro Lite -> proto -> Lite senza perdite", () => {
+describe("gradients in the model", () => {
+  it("a linear fill makes the Lite -> proto -> Lite round trip without loss", () => {
     const pb = create(NodeSchema, { id: "n", kind: undefined, fills: toPbFills([linear]) } as never);
     const back = toNodeLite(pb);
     expect(back.fills[0]).toEqual(linear);
   });
 
-  it("un radiale resta radiale e il colore di ripiego è il primo stop", () => {
+  it("a radial stays radial and the fallback color is the first stop", () => {
     const radial: FillLite = { ...linear, gradient: { ...linear.gradient!, kind: "radial" } };
     const paint = create(PaintSchema, toPbFills([radial])[0] as never);
     expect(paint.kind.case).toBe("radial");
@@ -32,7 +32,7 @@ describe("gradienti nel modello", () => {
     expect(back.fills[0]).toMatchObject({ r: 1, g: 0, b: 0, a: 1 });
   });
 
-  it("un fill solido non guadagna un gradiente", () => {
+  it("a solid fill does not gain a gradient", () => {
     const solid: FillLite = { r: 0.1, g: 0.2, b: 0.3, a: 1 };
     const back = toNodeLite(create(NodeSchema, { id: "n", fills: toPbFills([solid]) } as never));
     expect(back.fills[0]).toEqual(solid);

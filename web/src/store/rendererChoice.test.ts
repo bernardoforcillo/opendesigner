@@ -8,18 +8,18 @@ beforeEach(() => {
 });
 
 describe("loadRendererChoice", () => {
-  it("il predefinito è la CPU: la GPU si sceglie, non si subisce", () => {
+  it("the default is the CPU: the GPU is chosen, not imposed", () => {
     expect(loadRendererChoice()).toBe("cpu");
   });
 
-  it("legge la preferenza salvata; un valore sconosciuto vale CPU", () => {
+  it("reads the saved preference; an unknown value means CPU", () => {
     localStorage.setItem("opendesigner.renderer", "gpu");
     expect(loadRendererChoice()).toBe("gpu");
     localStorage.setItem("opendesigner.renderer", "metal");
     expect(loadRendererChoice()).toBe("cpu");
   });
 
-  it("?renderer= vince sulla preferenza salvata (per provare senza toccarla)", () => {
+  it("?renderer= wins over the saved preference (to try without touching it)", () => {
     localStorage.setItem("opendesigner.renderer", "cpu");
     window.history.replaceState(null, "", "/?renderer=gpu");
     expect(loadRendererChoice()).toBe("gpu");
@@ -29,7 +29,7 @@ describe("loadRendererChoice", () => {
 });
 
 describe("useRenderer", () => {
-  it("scegliere la GPU la salva e passa a 'loading'; tornare alla CPU azzera errore e tempo", () => {
+  it("choosing the GPU saves it and goes to 'loading'; going back to the CPU resets error and time", () => {
     useRenderer.setState({ error: "x", frameMs: 3 });
     useRenderer.getState().setChoice("gpu");
     expect(localStorage.getItem("opendesigner.renderer")).toBe("gpu");

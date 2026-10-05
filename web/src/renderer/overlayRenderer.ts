@@ -24,9 +24,9 @@ import {
 import type { PenPreview, PointLite } from "../store/vectorGeometry";
 import { themeColors, withAlpha } from "./themeColors";
 
-// La geometria delle maniglie (posizioni, hit-test, resize) è UNA sola e vive
-// in selection/handles.ts: qui si disegna soltanto. Ri-esportata perché il
-// renderer resta il punto d'ingresso naturale per chi disegna l'overlay.
+// The handles' geometry (positions, hit-test, resize) is ONE only and lives
+// in selection/handles.ts: here we only draw. Re-exported because the
+// renderer remains the natural entry point for whoever draws the overlay.
 export {
   HANDLE_SIZE, handlePositions, ROTATE_MARKER_OFFSET, ROTATE_MARKER_RADIUS, rotateMarkerPositions,
   type HandleId, type SelectionFrame,
@@ -36,32 +36,32 @@ export { worldBoundsToScreen } from "../canvas/geometry";
 const DEG_TO_RAD = Math.PI / 180;
 const TAU = Math.PI * 2;
 
-// Apertura dell'arco del segno di rotazione: un quarto di giro, rivolto verso
-// l'angolo. Un cerchio chiuso si leggerebbe come un'altra maniglia; un arco
-// aperto è il segno con cui gli editor dicono "gira".
+// Opening of the rotation marker's arc: a quarter turn, facing the
+// corner. A closed circle would read as another handle; an open
+// arc is the sign with which editors say "rotate".
 const ROTATE_ARC_GAP = Math.PI / 2;
 const ROTATE_MARKER_WIDTH = 1.5;
 
-// Le guide di snap sono MAGENTA e non nel blu d'accento come il resto
-// dell'overlay, di proposito: il blu dice "questo è selezionato", il magenta dice
-// "questa è la retta su cui stai scattando". Sono due informazioni diverse e
-// compaiono insieme -- con lo stesso colore la guida si leggerebbe come un altro
-// bordo del riquadro. Un magenta caldo e non il rosso di prima: il rosso è del
-// sistema per "errore" (danger), e una guida non è un errore. Il colore sta in
-// themeColors (uno per tema, leggibile su tela chiara e scura).
+// Snap guides are MAGENTA and not in the accent blue like the rest of the
+// overlay, on purpose: blue says "this is selected", magenta says
+// "this is the line you are snapping to". They are two different pieces of information and
+// appear together -- with the same color the guide would read as another
+// edge of the box. A warm magenta and not the previous red: red is the system's
+// for "error" (danger), and a guide is not an error. The color lives in
+// themeColors (one per theme, legible on light and dark canvas).
 const SNAP_GUIDE_WIDTH = 1;
 
 function devicePixelRatio(): number {
   return typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
 }
 
-// Il blu dell'interfaccia (token --accent, risolto da themeColors): bbox di
-// selezione, maniglie, marquee e path in corso parlano tutti la stessa lingua.
-// Una sola fonte, così non può diventarne due, e segue il tema.
+// The interface blue (--accent token, resolved by themeColors): selection
+// bbox, handles, marquee and the path in progress all speak the same language.
+// A single source, so it cannot become two, and it follows the theme.
 
-// Un quadratino con gli angoli smussati (2px). Dove il contesto non ha
-// roundRect (i finti ctx dei test, browser vecchi) è il quadrato di sempre: stessa
-// geometria, solo spigoli vivi.
+// A little square with rounded corners (2px). Where the context has no
+// roundRect (the tests' fake ctxs, old browsers) it is the usual square: same
+// geometry, just sharp corners.
 function roundedSquare(ctx: CanvasRenderingContext2D, x: number, y: number, size: number, fill: string, stroke: string): void {
   ctx.fillStyle = fill;
   ctx.strokeStyle = stroke;
@@ -76,44 +76,44 @@ function roundedSquare(ctx: CanvasRenderingContext2D, x: number, y: number, size
   ctx.strokeRect(x + 0.5, y + 0.5, size - 1, size - 1);
 }
 
-// Lato (px SCHERMO) del quadratino di un ancoraggio del PEN TOOL. Più piccolo
-// delle maniglie di resize (HANDLE_SIZE = 8) di proposito: sono due bersagli
-// diversi e non devono sembrare lo stesso -- l'uno ridimensiona il box, l'altro
-// è un punto della geometria.
+// Side (SCREEN px) of a PEN TOOL anchor's little square. Smaller
+// than the resize handles (HANDLE_SIZE = 8) on purpose: they are two different
+// targets and must not look the same -- one resizes the box, the other
+// is a point of the geometry.
 export const PEN_ANCHOR_SIZE = 6;
 
-// Raggio di PRESA (px SCHERMO) del primo ancoraggio: quanto vicino deve cadere
-// il click che CHIUDE il contorno. Più generoso del quadratino disegnato,
-// esattamente come HANDLE_GRAB_PADDING lo è per le maniglie di resize (6px sono
-// pochi da centrare col mouse), e in px SCHERMO perché la presa deve restare la
-// stessa a ogni livello di zoom. Lo legge tools/penTool.ts: disegno e presa
-// devono venire dallo stesso posto, o il bersaglio non è più quello che si
-// vede.
+// GRAB radius (SCREEN px) of the first anchor: how close the click that CLOSES
+// the outline must land. More generous than the drawn little square,
+// exactly as HANDLE_GRAB_PADDING is for the resize handles (6px are
+// too few to hit with the mouse), and in SCREEN px because the grab must stay the
+// same at every zoom level. tools/penTool.ts reads it: drawing and grab
+// must come from the same place, or the target is no longer what is
+// seen.
 export const PEN_ANCHOR_GRAB_PX = 6;
 
-// Raggio (px SCHERMO) del pallino in punta a una maniglia bézier.
+// Radius (SCREEN px) of the dot at the tip of a bézier handle.
 const PEN_HANDLE_DOT = 3;
 
-// Il tratteggio del segmento PENDENTE (quello che segue il cursore). Tratteggio
-// e non tinta piena perché quel pezzo non è ancora geometria: nessun click lo
-// ha ancora posato, e disegnarlo identico al resto prometterebbe una curva che
-// il documento non contiene.
+// The dash pattern of the PENDING segment (the one following the cursor). Dashed
+// and not a solid tint because that piece is not geometry yet: no click has
+// placed it, and drawing it identical to the rest would promise a curve that
+// the document does not contain.
 const PEN_PENDING_DASH = [4, 3];
 
-// Gli ancoraggi dell'anteprima sono già in coordinate MONDO (il nodo non esiste
-// ancora, quindi non c'è nessuna origine da cui misurarli): la lettura della
-// regola dei due spazi resta quella di vectorGeometry, con origine nello zero.
+// The preview's anchors are already in WORLD coordinates (the node does not exist
+// yet, so there is no origin to measure them from): the reading of the
+// two-space rule remains vectorGeometry's, with origin at zero.
 const PEN_ORIGIN = { x: 0, y: 0 };
 
-// Il path che il pen tool sta disegnando, in spazio SCHERMO come tutto il resto
-// dell'overlay.
+// The path the pen tool is drawing, in SCREEN space like everything else
+// in the overlay.
 //
-// I quattro punti di controllo di ogni segmento si convertono UNO A UNO con
-// worldToScreen e la bézier si disegna in schermo: è esatto, non
-// un'approssimazione, perché la trasformazione della camera è affine (scala
-// uniforme + traslazione) e le curve di Bézier sono covarianti per affinità --
-// trasformare i controlli trasforma la curva. Il vantaggio è che il tratto
-// resta di 1px a ogni zoom, come le maniglie di selezione.
+// The four control points of each segment are converted ONE BY ONE with
+// worldToScreen and the bézier is drawn on screen: it is exact, not
+// an approximation, because the camera transform is affine (uniform
+// scale + translation) and Bézier curves are affine-covariant --
+// transforming the controls transforms the curve. The advantage is that the stroke
+// stays 1px at every zoom, like the selection handles.
 function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPreview): void {
   const anchors = pen.anchors;
   const n = anchors.length;
@@ -124,17 +124,17 @@ function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPrev
   ctx.lineWidth = 1;
   ctx.strokeStyle = ACCENT;
 
-  // 1. Il contorno già posato. Un ancoraggio solo non ha segmenti: si vede il
-  //    suo quadratino e basta.
+  // 1. The outline already placed. A single anchor has no segments: only its
+  //    little square is seen.
   //
-  //    Se l'anteprima è CHIUSA c'è un segmento in più, quello di ritorno
-  //    (ultimo -> primo): stesso ciclo, indice del bersaglio modulo n --
-  //    identico a renderer/shapes.ts::traceSubpath, perché è la stessa
-  //    geometria e deve venire dalla stessa regola. È il segmento che il
-  //    trascinamento di chiusura sta modellando (tira la maniglia ENTRANTE del
-  //    primo ancoraggio, cioè il secondo punto di controllo di QUESTA curva):
-  //    senza disegnarlo, di quel trascinamento si vedrebbero solo il bastoncino
-  //    e il pallino, e la curva comparirebbe solo a nodo creato.
+  //    If the preview is CLOSED there is one more segment, the return one
+  //    (last -> first): same loop, target index modulo n --
+  //    identical to renderer/shapes.ts::traceSubpath, because it is the same
+  //    geometry and must come from the same rule. It is the segment the
+  //    closing drag is shaping (it pulls the INCOMING handle of the
+  //    first anchor, that is the second control point of THIS curve):
+  //    without drawing it, of that drag only the little stick
+  //    and the dot would be seen, and the curve would appear only once the node is created.
   if (n > 1) {
     const segments = pen.closed ? n : n - 1;
     ctx.beginPath();
@@ -151,10 +151,10 @@ function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPrev
     ctx.stroke();
   }
 
-  // 2. Il segmento che seguirebbe il cursore. Il punto d'arrivo non ha
-  //    maniglia, quindi il secondo controllo cade su di lui: è esattamente la
-  //    curva che si otterrebbe posando lì un ancoraggio d'angolo, non
-  //    un'approssimazione dritta.
+  // 2. The segment that would follow the cursor. The endpoint has no
+  //    handle, so the second control falls on it: it is exactly the
+  //    curve one would get by placing a corner anchor there, not a
+  //    straight approximation.
   if (pen.next) {
     const last = anchors[n - 1];
     const a = to(anchorPoint(PEN_ORIGIN, last));
@@ -168,10 +168,10 @@ function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPrev
     ctx.setLineDash([]);
   }
 
-  // 3. Le maniglie dell'ancoraggio che si sta trascinando: il bastoncino fino
-  //    al punto di controllo e il suo pallino. Solo quelle ESISTENTI (offset
-  //    non nullo): una maniglia a zero coincide con l'ancoraggio, e disegnarla
-  //    sarebbe un pallino sopra il quadratino che non vuol dire niente.
+  // 3. The handles of the anchor being dragged: the stick up
+  //    to the control point and its dot. Only the EXISTING ones (non-zero
+  //    offset): a zero handle coincides with the anchor, and drawing it
+  //    would be a dot over the little square that means nothing.
   const active = pen.active === null ? null : anchors[pen.active];
   if (active) {
     const c = to(anchorPoint(PEN_ORIGIN, active));
@@ -191,41 +191,40 @@ function drawPenPreview(ctx: CanvasRenderingContext2D, cam: Camera, pen: PenPrev
     }
   }
 
-  // 4. I quadratini degli ancoraggi, sopra a tutto il resto. Il PRIMO è pieno:
-  //    è il bersaglio che CHIUDE il contorno, e deve distinguersi dagli altri
-  //    prima ancora che il puntatore ci arrivi sopra.
+  // 4. The anchors' little squares, on top of everything else. The FIRST is filled:
+  //    it is the target that CLOSES the outline, and it must stand out from the others
+  //    even before the pointer gets over it.
   const half = PEN_ANCHOR_SIZE / 2;
   for (let i = 0; i < n; i++) {
     const p = to(anchorPoint(PEN_ORIGIN, anchors[i]));
-    // (+0.5 dentro roundedSquare, come per le maniglie di selezione: lo stroke
-    // da 1px cade su un confine di pixel netto invece di sbavare su due righe.)
+    // (+0.5 inside roundedSquare, as for the selection handles: the 1px stroke
+    // lands on a crisp pixel boundary instead of smearing over two rows.)
     roundedSquare(ctx, p.x - half, p.y - half, PEN_ANCHOR_SIZE, i === 0 ? ACCENT : "#ffffff", ACCENT);
   }
 }
 
-// Unione (in coordinate MONDO) dei bounds dei nodi selezionati. GEOMETRIA, non
-// il dipinto: il tratto NON entra qui, di proposito -- il riquadro è il frame su
-// cui vivono le maniglie e il resize scrive proprio in x/y/width/height, quindi
-// includere la sporgenza del tratto staccherebbe le maniglie dal bordo. null se
-// la selezione è vuota o non punta più a nodi esistenti -- lo store toglie già
-// gli id spariti (vedi store.ts), ma questa resta difensiva così l'overlay non
-// esplode su uno stato transitorio incoerente. Testabile senza ctx/DOM.
+// Union (in WORLD coordinates) of the bounds of the selected nodes. GEOMETRY, not
+// the painted result: the stroke does NOT enter here, on purpose -- the box is the frame on
+// which the handles live and the resize writes precisely to x/y/width/height, so
+// including the stroke overhang would detach the handles from the edge. null if
+// the selection is empty or no longer points to existing nodes -- the store already removes
+// vanished ids (see store.ts), but this stays defensive so the overlay does not
+// blow up on an incoherent transient state. Testable without ctx/DOM.
 //
-// Bounds MONDO e non del modello: il box del modello è scritto nello spazio del
-// PARENT, mentre tutto ciò che sta a valle di qui (la cornice, le maniglie, il
-// loro hit-test) lavora in mondo e poi in schermo. Per un nodo figlio di una
-// pagina le due cose coincidono, ed è ciò che tiene fermi i documenti già
-// esistenti.
+// WORLD bounds and not the model's: the model's box is written in the
+// PARENT's space, while everything downstream from here (the frame, the handles, their
+// hit-test) works in world and then in screen. For a child of a
+// page the two coincide, and it is what keeps existing documents unchanged.
 //
-// contentWorldBounds e non worldBoundsOfNode: un GRUPPO non ha un box proprio
-// (store/groups.ts), i suoi bounds sono l'unione dei figli. Leggere il suo box
-// darebbe un rettangolo 0x0 all'origine del gruppo -- cornice e maniglie
-// nell'angolo sbagliato dello schermo, su un gruppo che si vede benissimo.
-// Un gruppo vuoto non contribuisce nulla (null), esattamente come un id sparito.
-// contentWorldBounds ritaglia anche ai frame antenati con clipsContent (fix
-// deliberato di T1), così le maniglie non finiscono su canvas vuoto oltre il
-// bordo di un frame ritagliante. Il caso a UN nodo, dove serve la sua rotazione
-// propria, lo tratta a parte selectionFrame (boundsOfNode + rotation).
+// contentWorldBounds and not worldBoundsOfNode: a GROUP has no box of its own
+// (store/groups.ts), its bounds are the union of the children. Reading its box
+// would give a 0x0 rectangle at the group's origin -- frame and handles
+// in the wrong corner of the screen, on a group that is perfectly visible.
+// An empty group contributes nothing (null), exactly like a vanished id.
+// contentWorldBounds also clips to ancestor frames with clipsContent (a
+// deliberate T1 fix), so the handles do not end up on empty canvas beyond the
+// edge of a clipping frame. The ONE-node case, where its own rotation is needed,
+// is handled separately by selectionFrame (boundsOfNode + rotation).
 export function selectionWorldBounds(state: SceneState, selection: string[]): Bounds | null {
   const boxes: Bounds[] = [];
   for (const id of selection) {
@@ -237,63 +236,63 @@ export function selectionWorldBounds(state: SceneState, selection: string[]): Bo
   return unionBounds(boxes);
 }
 
-// Il FRAME della selezione: il rettangolo su cui vivono le maniglie PIÙ il suo
-// angolo. La convenzione, che vale ovunque (overlay, hit-test, resize):
+// The selection FRAME: the rectangle on which the handles live PLUS its
+// angle. The convention, which holds everywhere (overlay, hit-test, resize):
 //
-//  - UN nodo solo: il frame è il suo box NON ruotato con la SUA rotazione, così
-//    le maniglie stanno sui suoi lati veri e il resize lavora nel suo spazio
-//    locale (trascinare la maniglia e lo allarga lungo il proprio asse).
-//  - PIÙ nodi: il frame è ASSE-ALLINEATO attorno a quello che i nodi occupano
-//    davvero. Non esiste un angolo comune a nodi ruotati in modo diverso, e
-//    inventarne uno (quello del primo? quello della media?) renderebbe il
-//    resize di gruppo imprevedibile. I singoli nodi restano ruotati; è il
-//    riquadro di gruppo a non esserlo.
+//  - A SINGLE node: the frame is its UNROTATED box with ITS rotation, so
+//    the handles sit on its true sides and the resize works in its local
+//    space (dragging the handle widens it along its own axis).
+//  - SEVERAL nodes: the frame is AXIS-ALIGNED around what the nodes
+//    really occupy. There is no common angle for nodes rotated differently, and
+//    inventing one (the first's? the average's?) would make the group
+//    resize unpredictable. The single nodes stay rotated; it is the
+//    group box that is not.
 export function selectionFrame(state: SceneState, selection: string[]): SelectionFrame | null {
   const nodes = selection.map((id) => state.nodes.at(id)).filter((n) => n !== undefined);
   if (nodes.length === 0) return null;
   if (nodes.length === 1) {
     const n = nodes[0];
-    // Un GRUPPO non ha box proprio: la cornice è l'unione dei figli VISIBILI
-    // (contentWorldBounds, clip-aware), null quando non c'è niente da
-    // incorniciare (gruppo vuoto o con tutti i figli nascosti) -- così l'overlay
-    // non disegna cornice né maniglie su canvas vuoto.
-    // Un'ISTANZA, come un gruppo, non ha box proprio: la cornice è quella del
-    // contenuto del master (contentWorldBounds), asse-allineata -- la sua
-    // rotazione propria è già cotta dentro quel box (store/groups.ts::
-    // instanceContentBounds), quindi rotation 0 qui, come per un gruppo.
+    // A GROUP has no box of its own: the frame is the union of the VISIBLE children
+    // (contentWorldBounds, clip-aware), null when there is nothing to
+    // frame (empty group or with all children hidden) -- so the overlay
+    // draws neither frame nor handles on empty canvas.
+    // An INSTANCE, like a group, has no box of its own: the frame is that of the
+    // master's content (contentWorldBounds), axis-aligned -- its own
+    // rotation is already baked into that box (store/groups.ts::
+    // instanceContentBounds), so rotation 0 here, as for a group.
     if (isGroup(n) || isInstance(n)) {
       const b = contentWorldBounds(state, n);
       return b ? { bounds: b, rotation: 0 } : null;
     }
-    // Un nodo qualunque: il suo box in MONDO NON ruotato (worldBoundsOfNode usa
-    // la trasformazione del PARENT), e la sua rotazione a parte -- l'overlay gira
-    // il frame attorno al centro. Per un figlio di pagina il box mondo coincide
-    // col box del modello; per un nodo annidato no.
+    // Any other node: its UNROTATED box in WORLD (worldBoundsOfNode uses
+    // the PARENT's transform), and its rotation separately -- the overlay rotates
+    // the frame around the center. For a page child the world box coincides
+    // with the model's box; for a nested node it does not.
     return { bounds: worldBoundsOfNode(state, n), rotation: n.rotation };
   }
   const bounds = selectionWorldBounds(state, selection);
   return bounds ? { bounds, rotation: 0 } : null;
 }
 
-// Disegna il bbox della selezione, le sue 8 maniglie, il rettangolo del marquee
-// e il path che il pen tool sta disegnando -- TUTTO in spazio SCHERMO (px CSS).
-// A differenza di drawScene,
-// qui NON si applica cam.zoom alla trasformazione del canvas: i bounds
-// mondo vengono convertiti a mano via worldToScreen prima di disegnare, così
-// bordi (1px) e maniglie (8px) restano di dimensione costante a ogni livello
-// di zoom. L'unica trasformazione applicata è lo scale per devicePixelRatio,
-// necessario perché il backing store del canvas è in pixel fisici.
+// Draws the selection bbox, its 8 handles, the marquee rectangle
+// and the path the pen tool is drawing -- ALL in SCREEN space (CSS px).
+// Unlike drawScene,
+// here cam.zoom is NOT applied to the canvas transform: the world
+// bounds are converted by hand via worldToScreen before drawing, so
+// borders (1px) and handles (8px) stay constant size at every zoom
+// level. The only transform applied is the scale for devicePixelRatio,
+// needed because the canvas backing store is in physical pixels.
 //
-// La ROTAZIONE del frame è l'eccezione, ed è applicata come in drawScene: al
-// CONTESTO, attorno al centro del riquadro in px schermo. Il riquadro e i
-// quadratini restano disegnati con la stessa identica geometria di prima --
-// solo, girati con il nodo. La camera è una similitudine, quindi l'angolo
-// mondo e l'angolo schermo coincidono e le maniglie NON si deformano con lo
-// zoom. Il marquee resta fuori dalla trasformazione: è sempre asse-allineato.
-// Le GUIDE di snap (in coordinate mondo, vedi selection/snap.ts) si disegnano
-// per ultime e FUORI da qualunque rotazione del frame: una guida è per
-// definizione una retta dello schermo -- è la retta su cui i bordi combaciano
-// -- e girarla con il nodo la renderebbe una retta qualunque.
+// The frame's ROTATION is the exception, and it is applied as in drawScene: to the
+// CONTEXT, around the box center in screen px. The box and the
+// little squares stay drawn with the exact same geometry as before --
+// just rotated with the node. The camera is a similarity, so the world
+// angle and the screen angle coincide and the handles do NOT deform with
+// zoom. The marquee stays outside the transform: it is always axis-aligned.
+// The snap GUIDES (in world coordinates, see selection/snap.ts) are drawn
+// last and OUTSIDE any frame rotation: a guide is by
+// definition a line of the screen -- it is the line on which the edges coincide
+// -- and rotating it with the node would make it just any line.
 export function drawOverlay(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -301,9 +300,9 @@ export function drawOverlay(
   selection: string[],
   marquee: Bounds | null,
   guides: readonly SnapGuide[] = [],
-  // Il path in corso del pen tool (store::penPreview). Opzionale perché è
-  // ANTEPRIMA e non documento: chi non disegna non ne ha uno, e i chiamanti che
-  // non conoscono il pen tool restano validi.
+  // The pen tool's path in progress (store::penPreview). Optional because it is
+  // PREVIEW and not document: whoever is not drawing has none, and callers that
+  // do not know the pen tool remain valid.
   pen: PenPreview | null = null,
 ): void {
   const { canvas } = ctx;
@@ -327,30 +326,30 @@ export function drawOverlay(
     }
     ctx.lineWidth = 1;
     ctx.strokeStyle = ACCENT;
-    // +0.5 così lo stroke da 1px cade su un confine di pixel netto invece di
-    // sbavare su due righe (il classico trucco del canvas 2D).
+    // +0.5 so the 1px stroke lands on a crisp pixel boundary instead of
+    // smearing over two rows (the classic canvas 2D trick).
     ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.width, box.height);
 
     const half = HANDLE_SIZE / 2;
     for (const p of Object.values(handlePositions(box))) {
-      // Quadrato BIANCO con bordo d'accento e spigoli a 2px, su entrambi i temi:
-      // le maniglie stanno sopra il design (che è chiaro anche in scuro), non
-      // sopra l'interfaccia.
+      // WHITE square with an accent border and 2px corners, on both themes:
+      // the handles sit above the design (which is light even in dark), not
+      // above the interface.
       roundedSquare(ctx, p.x - half, p.y - half, HANDLE_SIZE, "#ffffff", ACCENT);
     }
-    // La MANIGLIA DI ROTAZIONE: un arco aperto appena FUORI da ogni angolo,
-    // dentro la zona di presa che selection/handles.ts::hitTestFrame già
-    // riconosce (stessa geometria, un'unica fonte -- vedi
-    // rotateMarkerPositions). Non un quadratino: quello vuol dire "trascina per
-    // ridimensionare", e qui non si ridimensiona niente. L'apertura guarda
-    // verso il riquadro, così il segno "abbraccia" l'angolo che gira.
+    // The ROTATION HANDLE: an open arc just OUTSIDE each corner,
+    // inside the grab zone that selection/handles.ts::hitTestFrame already
+    // recognizes (same geometry, a single source -- see
+    // rotateMarkerPositions). Not a little square: that means "drag to
+    // resize", and here nothing is resized. The opening faces
+    // the box, so the mark "hugs" the corner that rotates.
     const markers = rotateMarkerPositions(box);
     ctx.lineWidth = ROTATE_MARKER_WIDTH;
     ctx.strokeStyle = ACCENT;
     for (const id of CORNER_IDS) {
       const p = markers[id];
       const d = ROTATE_CORNER_DIRS[id];
-      // Verso l'INTERNO: la direzione opposta alla diagonale uscente.
+      // INWARD: the direction opposite to the outgoing diagonal.
       const inward = Math.atan2(-d.y, -d.x);
       ctx.beginPath();
       ctx.arc(p.x, p.y, ROTATE_MARKER_RADIUS, inward + ROTATE_ARC_GAP / 2, inward - ROTATE_ARC_GAP / 2 + TAU);
@@ -372,10 +371,10 @@ export function drawOverlay(
     ctx.lineWidth = SNAP_GUIDE_WIDTH;
     ctx.strokeStyle = SNAP_GUIDE_COLOR;
     for (const g of guides) {
-      // Gli estremi passano dalla camera come ogni altra coordinata: la retta
-      // vive nel MONDO, il segmento sullo schermo. Il +0.5 sulla sola coordinata
-      // costante è lo stesso trucco del riquadro (un tratto da 1px su un confine
-      // di pixel netto invece che sbavato su due righe).
+      // The endpoints go through the camera like any other coordinate: the line
+      // lives in the WORLD, the segment on screen. The +0.5 on the constant
+      // coordinate only is the same trick as the box's (a 1px stroke
+      // on a crisp pixel boundary instead of smeared over two rows).
       const a = worldToScreen(cam, g.axis === "x" ? g.pos : g.from, g.axis === "x" ? g.from : g.pos);
       const b = worldToScreen(cam, g.axis === "x" ? g.pos : g.to, g.axis === "x" ? g.to : g.pos);
       ctx.beginPath();
@@ -390,8 +389,8 @@ export function drawOverlay(
     }
   }
 
-  // Per ultimo: il path in corso sta SOPRA la selezione (di solito non
-  // coesistono -- il pen tool non seleziona finché non ha finito -- ma quando
-  // succede è il disegno in corso a dover restare leggibile).
+  // Last: the path in progress sits ABOVE the selection (usually they do not
+  // coexist -- the pen tool does not select until it has finished -- but when
+  // it happens it is the drawing in progress that must stay legible).
   if (pen) drawPenPreview(ctx, cam, pen);
 }

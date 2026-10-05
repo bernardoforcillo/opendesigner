@@ -1,9 +1,9 @@
 import { create } from "zustand";
 import type { PresenceEvent } from "../gen/opendesigner/v1/opendesigner_pb";
 
-// Chi altro sta guardando il documento. È stato di VISTA, come camera e
-// selezione: non è documento, non passa dagli op e non entra nell'undo. Per
-// questo sta in uno store a parte invece che dentro store/store.ts.
+// Who else is looking at the document. It is VIEW state, like camera and
+// selection: not document, does not go through ops and does not enter undo. For
+// this reason it lives in a separate store instead of inside store/store.ts.
 export interface PeerLite {
   clientId: string;
   nickname: string;
@@ -16,9 +16,9 @@ export interface PeerLite {
 
 export type Peers = Record<string, PeerLite>;
 
-// Funzione pura, così si prova senza zustand: un evento "update" inserisce o
-// rimpiazza il peer, "left" lo toglie, un evento VUOTO (il "pronto" del server)
-// non cambia niente.
+// Pure function, so it can be tested without zustand: an "update" event inserts or
+// replaces the peer, "left" removes it, an EMPTY event (the server's "ready") does
+// not change anything.
 export function applyPresenceEvent(peers: Peers, ev: PresenceEvent): Peers {
   const k = ev.kind;
   if (k.case === "update") {
@@ -58,14 +58,14 @@ export const usePresence = create<PresenceStore>((set) => ({
     const next = applyPresenceEvent(s.peers, ev);
     return next === s.peers ? s : { peers: next };
   }),
-  // Già vuoto: nessuna notifica. Il canale di presenza lo chiama a ogni tentativo di
-  // connessione fallito, e uno store che notifica per niente fa ridisegnare la scena.
+  // Already empty: no notification. The presence channel calls it on every failed
+  // connection attempt, and a store that notifies for nothing makes the scene redraw.
   clear: () => set((s) => (Object.keys(s.peers).length === 0 ? s : { peers: {} })),
 }));
 
-// Colore stabile di un client, ricavato dal suo id: ogni schermo lo calcola
-// uguale senza che il server ne sappia niente. 137.5° è l'angolo aureo, che
-// tiene lontani fra loro anche i colori di id vicini.
+// Stable color for a client, derived from its id: every screen computes it
+// the same way without the server knowing anything about it. 137.5° is the golden angle, which
+// keeps even the colors of nearby ids far from each other.
 export function peerColor(clientId: string): string {
   let h = 0;
   for (let i = 0; i < clientId.length; i++) h = (h * 31 + clientId.charCodeAt(i)) >>> 0;
@@ -78,8 +78,8 @@ export function loadNickname(): string {
   try {
     const saved = localStorage.getItem(NICK_KEY);
     if (saved && saved.trim() !== "") return saved;
-  } catch { /* storage non disponibile: si usa il default */ }
-  return `Ospite ${Math.floor(100 + Math.random() * 900)}`;
+  } catch { /* storage unavailable: use the default */ }
+  return `Guest ${Math.floor(100 + Math.random() * 900)}`;
 }
 
 export function saveNickname(n: string): void {

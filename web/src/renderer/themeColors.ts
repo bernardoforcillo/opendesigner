@@ -1,24 +1,24 @@
-// I COLORI DEI TOKEN, PER CHI DISEGNA SU CANVAS.
+// THE TOKEN COLORS, FOR WHOEVER DRAWS ON CANVAS.
 //
-// L'interfaccia DOM prende i colori dalle variabili CSS (ui/ds/tokens.css) e
-// cambia tema da sola. Un canvas no: `ctx.strokeStyle = "var(--accent)"` non
-// funziona, quindi gli overlay (selezione, frecce dei flussi, cursori dei peer)
-// leggevano dei colori scritti a mano -- che in scuro stonavano e, peggio, erano
-// una SECONDA fonte di verità da tenere allineata ai token.
+// The DOM interface takes colors from CSS variables (ui/ds/tokens.css) and
+// changes theme by itself. A canvas does not: `ctx.strokeStyle = "var(--accent)"` does not
+// work, so the overlays (selection, flow arrows, peer cursors)
+// used hand-written colors -- which clashed in dark and, worse, were
+// a SECOND source of truth to keep aligned with the tokens.
 //
-// Qui si risolvono i token UNA volta (getComputedStyle sull'elemento radice) e si
-// tengono in cache: i renderer li chiedono a ogni frame, ma un frame di overlay
-// non deve pagare una lettura di stile per ogni linea. La cache si invalida
-// quando il tema cambia -- l'attributo `data-theme` di <html> (scelta manuale) o
-// `prefers-color-scheme` (tema di sistema) -- e a quel punto si avvisa chi ha
-// chiesto di saperlo (`subscribeTheme`) e si fa ridisegnare l'overlay: il
-// disegno è a invalidazione, quindi senza questo avviso i colori vecchi
-// resterebbero sullo schermo fino al primo movimento del mouse.
+// Here the tokens are resolved ONCE (getComputedStyle on the root element) and
+// kept in cache: the renderers ask for them on every frame, but an overlay frame
+// must not pay for a style read for every line. The cache is invalidated
+// when the theme changes -- the `data-theme` attribute of <html> (manual choice) or
+// `prefers-color-scheme` (system theme) -- and at that point whoever
+// asked to know (`subscribeTheme`) is notified and the overlay is redrawn: the
+// drawing is invalidation-based, so without this notice the old colors
+// would stay on screen until the first mouse movement.
 //
-// Senza DOM o senza variabili CSS (vitest/jsdom, un worker, uno script) si ricade
-// sui valori del TEMA CHIARO, gli stessi di tokens.css: i renderer restano
-// funzioni pure e provabili, e un colore mancante non è mai una stringa vuota
-// (che il canvas ignorerebbe lasciando il colore PRECEDENTE).
+// Without a DOM or without CSS variables (vitest/jsdom, a worker, a script) it falls back
+// on the LIGHT THEME values, the same as tokens.css: the renderers remain
+// pure, testable functions, and a missing color is never an empty string
+// (which the canvas would ignore, leaving the PREVIOUS color).
 
 export interface ThemeColors {
   accent: string;
@@ -32,12 +32,12 @@ export interface ThemeColors {
   fgSubtle: string;
   lineStrong: string;
   canvas: string;
-  /** Le guide di snap: un magenta caldo, leggibile su entrambi i temi. NON è un token CSS. */
+  /** The snap guides: a warm magenta, legible on both themes. It is NOT a CSS token. */
   guide: string;
   dark: boolean;
 }
 
-// Le chiavi CSS, accanto al campo che riempiono.
+// The CSS keys, next to the field they fill.
 const VARS: readonly (readonly [Exclude<keyof ThemeColors, "guide" | "dark">, string])[] = [
   ["accent", "--accent"],
   ["flow", "--flow"],
@@ -52,7 +52,7 @@ const VARS: readonly (readonly [Exclude<keyof ThemeColors, "guide" | "dark">, st
   ["canvas", "--canvas"],
 ];
 
-// I valori di tokens.css per il tema chiaro (e il magenta delle guide per i due temi).
+// The tokens.css values for the light theme (and the guides' magenta for both themes).
 export const LIGHT_FALLBACK: ThemeColors = {
   accent: "#2563eb",
   flow: "#6d3df5",
@@ -78,8 +78,8 @@ function hasDom(): boolean {
   return typeof document !== "undefined" && typeof getComputedStyle === "function" && !!document.documentElement;
 }
 
-// Tema effettivo, con la stessa regola di ui/shell/theme.ts::effectiveTheme (qui
-// duplicata: un renderer non importa dalla UI).
+// Effective theme, with the same rule as ui/shell/theme.ts::effectiveTheme (here
+// duplicated: a renderer does not import from the UI).
 function isDark(): boolean {
   if (!hasDom()) return false;
   const forced = document.documentElement.getAttribute("data-theme");
@@ -105,9 +105,9 @@ function read(): ThemeColors {
 function invalidate(): void {
   cache = null;
   for (const fn of listeners) fn();
-  // L'overlay si ridisegna a invalidazione e App.tsx invalida già su `resize`:
-  // lo stesso evento serve a far ridisegnare i colori nuovi senza che il
-  // renderer conosca l'App.
+  // The overlay redraws on invalidation and App.tsx already invalidates on `resize`:
+  // the same event serves to redraw the new colors without the
+  // renderer knowing about the App.
   if (typeof window !== "undefined" && typeof window.dispatchEvent === "function") {
     window.dispatchEvent(new Event("resize"));
   }
@@ -125,7 +125,7 @@ function watch(): void {
   }
 }
 
-/** I colori del tema corrente. Economica da chiamare a ogni frame (cache). */
+/** The current theme's colors. Cheap to call on every frame (cache). */
 export function themeColors(): ThemeColors {
   if (cache) return cache;
   watch();
@@ -133,22 +133,22 @@ export function themeColors(): ThemeColors {
   return cache;
 }
 
-/** Chiede di essere avvisati quando il tema cambia. Restituisce la disiscrizione. */
+/** Asks to be notified when the theme changes. Returns the unsubscription. */
 export function subscribeTheme(fn: () => void): () => void {
   watch();
   listeners.add(fn);
   return () => listeners.delete(fn);
 }
 
-/** Solo per i test: butta la cache (i valori CSS sono cambiati a mano). */
+/** Only for tests: throws away the cache (the CSS values were changed by hand). */
 export function resetThemeColors(): void {
   cache = null;
 }
 
 /**
- * Lo stesso colore con trasparenza `a` (0..1). I token sono esadecimali (#rgb o
- * #rrggbb); qualunque altro formato (rgb(), nome) si restituisce intatto: il
- * canvas lo accetta, solo perde la trasparenza -- meglio di un colore rotto.
+ * The same color with transparency `a` (0..1). Tokens are hex (#rgb or
+ * #rrggbb); any other format (rgb(), name) is returned untouched: the
+ * canvas accepts it, it just loses the transparency -- better than a broken color.
  */
 export function withAlpha(color: string, a: number): string {
   const m = /^#([0-9a-f]{3}|[0-9a-f]{6})$/i.exec(color.trim());

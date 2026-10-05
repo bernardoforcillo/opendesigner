@@ -3,16 +3,16 @@ import { create } from "zustand";
 import { docClient } from "../rpc/client";
 import { useScene } from "../store/store";
 
-// IL CODICE GENERATO, lato client: chiede al server `ExportCode` (la stessa
-// implementazione di CLI e MCP, internal/codegen) e tiene l'ultimo risultato in
-// uno store, per target. Qui non si genera niente: il server è l'unica fonte.
+// THE GENERATED CODE, client side: asks the server for `ExportCode` (the same
+// implementation as CLI and MCP, internal/codegen) and keeps the last result in
+// a store, per target. Nothing is generated here: the server is the only source.
 //
-// Costo: la generazione gira sul server a ogni richiesta, quindi (a) parte solo
-// finché la modalità Sviluppo è montata, (b) è DEBOUNCED sul documento
-// CONFERMATO (non su quello ottimistico: il server genera da ciò che ha, e
-// chiedere prima che abbia ricevuto l'op darebbe codice già vecchio), (c) mai a
-// gesto aperto (un drag cambia i nodi a ogni pixel) e (d) la richiesta in volo
-// viene ANNULLATA (AbortController) quando ne parte una nuova o si esce.
+// Cost: generation runs on the server on every request, so (a) it starts only
+// while Develop mode is mounted, (b) it is DEBOUNCED on the CONFIRMED
+// document (not on the optimistic one: the server generates from what it has, and
+// asking before it has received the op would give already-stale code), (c) never with a
+// gesture open (a drag changes nodes at every pixel) and (d) the in-flight request
+// is CANCELLED (AbortController) when a new one starts or on exit.
 
 export type CodeTarget = "react" | "html";
 
@@ -34,7 +34,7 @@ const defaultFetcher: CodeFetcher = async (docId, target, signal) => {
 };
 
 let fetcher: CodeFetcher = defaultFetcher;
-/** Sostituisce il trasporto (i test iniettano un finto server). Senza argomenti ripristina. */
+/** Replaces the transport (tests inject a fake server). With no arguments it restores. */
 export function setCodeFetcher(f?: CodeFetcher): void {
   fetcher = f ?? defaultFetcher;
 }
@@ -44,7 +44,7 @@ export interface TargetState {
   warnings: string[];
   status: "idle" | "loading" | "error";
   error: string | null;
-  /** Il documento a cui si riferiscono i file (non mostrare il codice di un altro). */
+  /** The document the files refer to (do not show another one's code). */
   docId: string | null;
 }
 
@@ -56,7 +56,7 @@ export interface CodegenState {
 
 export const useCodegen = create<CodegenState>(() => ({ byTarget: { react: EMPTY, html: EMPTY } }));
 
-/** Svuota lo store (cambio documento, test). */
+/** Empties the store (document change, tests). */
 export function resetCodegen(): void {
   useCodegen.setState({ byTarget: { react: EMPTY, html: EMPTY } });
 }
@@ -67,7 +67,7 @@ function patch(target: CodeTarget, p: Partial<TargetState>): void {
 
 const inflight = new Map<CodeTarget, AbortController>();
 
-/** Annulla la richiesta in volo di un target (o di tutti). */
+/** Cancels the in-flight request of a target (or of all). */
 export function cancelCodegen(target?: CodeTarget): void {
   for (const [t, c] of inflight) {
     if (target === undefined || t === target) {
@@ -77,14 +77,14 @@ export function cancelCodegen(target?: CodeTarget): void {
   }
 }
 
-/** Una richiesta: annulla la precedente dello stesso target; una risposta vecchia non sovrascrive mai la nuova. */
+/** A request: cancels the previous one of the same target; an old response never overwrites the new one. */
 export async function refreshCode(target: CodeTarget): Promise<void> {
   const scene = useScene.getState().scene;
   if (!scene) return;
   cancelCodegen(target);
   const ctl = new AbortController();
   inflight.set(target, ctl);
-  // Cambiato documento: i file vecchi non si mostrano nemmeno nel frattempo.
+  // Document changed: the old files are not even shown in the meantime.
   const prevDoc = useCodegen.getState().byTarget[target].docId;
   patch(target, { status: "loading", error: null, ...(prevDoc !== null && prevDoc !== scene.id ? { files: [], warnings: [], docId: null } : {}) });
   try {
@@ -102,9 +102,9 @@ export async function refreshCode(target: CodeTarget): Promise<void> {
 export const CODEGEN_DEBOUNCE_MS = 600;
 
 /**
- * Tiene aggiornato il codice dei `targets` finché è montato (enabled): richiede
- * subito e poi a ogni cambio del documento CONFERMATO che può cambiare il codice
- * -- nodi, flussi, transizioni, componenti, pagine. Smontato: annulla tutto.
+ * Keeps the code of the `targets` up to date while mounted (enabled): requests
+ * right away and then on every change of the CONFIRMED document that can change the code
+ * -- nodes, flows, transitions, components, pages. Unmounted: cancels everything.
  */
 export function useCodeExport(enabled: boolean, targets: readonly CodeTarget[]): void {
   const key = targets.join(",");
@@ -120,8 +120,8 @@ export function useCodeExport(enabled: boolean, targets: readonly CodeTarget[]):
         for (const t of wanted) void refreshCode(t);
       }, delay);
     };
-    // Un target appena richiesto (es. Anteprima accesa) ha subito il suo fetch;
-    // quelli già caldi non si rifanno se il documento non è cambiato.
+    // A just-requested target (e.g. Preview turned on) gets its fetch right away;
+    // those already warm are not redone if the document has not changed.
     const stale = wanted.some((t) => useCodegen.getState().byTarget[t].docId !== useScene.getState().scene?.id);
     schedule(stale ? 0 : CODEGEN_DEBOUNCE_MS);
     const unsub = useScene.subscribe((st, prev) => {
@@ -140,22 +140,22 @@ export function useCodeExport(enabled: boolean, targets: readonly CodeTarget[]):
   }, [enabled, key]);
 }
 
-// --- FILE: gruppi, decodifica, ricerca ---------------------------------------
+// --- FILES: groups, decoding, search -----------------------------------------
 
 export type FileGroupId = "screens" | "app" | "config" | "tests" | "assets";
 
 export const FILE_GROUP_LABELS: Record<FileGroupId, string> = {
-  screens: "Schermate",
+  screens: "Screens",
   app: "App",
-  config: "Configurazione",
+  config: "Configuration",
   tests: "Test",
-  assets: "Risorse",
+  assets: "Assets",
 };
 const GROUP_ORDER: FileGroupId[] = ["screens", "app", "config", "tests", "assets"];
 
 const CONFIG_FILES = new Set(["package.json", "vite.config.ts", "tsconfig.json", "playwright.config.ts", ".gitignore"]);
 
-/** A quale gruppo appartiene un file generato (target react e html). */
+/** Which group a generated file belongs to (react and html targets). */
 export function groupOf(path: string, target: CodeTarget): FileGroupId {
   if (path.startsWith("tests/")) return "tests";
   if (path.startsWith("public/") || path.startsWith("assets/")) return "assets";
@@ -189,7 +189,7 @@ export const isBinaryPath = (p: string) => BINARY_EXT.test(p);
 
 const decoded = new WeakMap<CodeFile, string>();
 const TD = new TextDecoder("utf-8");
-/** Il testo di un file (memoizzato per file); "" per i binari. */
+/** A file's text (memoized per file); "" for binaries. */
 export function textOf(f: CodeFile): string {
   if (isBinaryPath(f.path)) return "";
   let t = decoded.get(f);
@@ -201,17 +201,17 @@ export function textOf(f: CodeFile): string {
 }
 
 /**
- * Il file di una schermata: ogni file di schermata porta `data-node-id="<id>"` sul
- * proprio elemento radice (il legame design <-> codice del generatore), quindi il
- * file giusto è quello che contiene l'id del frame -- senza replicare client-side
- * la regola dei nomi (PascalCase, accenti, duplicati numerati) di internal/codegen.
+ * A screen's file: every screen file carries `data-node-id="<id>"` on its own
+ * root element (the design <-> code link of the generator), so the right
+ * file is the one containing the frame's id -- without replicating client-side
+ * the naming rule (PascalCase, accents, numbered duplicates) of internal/codegen.
  */
 export function fileForNode(files: readonly CodeFile[], target: CodeTarget, nodeId: string): CodeFile | undefined {
   const needle = `data-node-id="${nodeId}"`;
   return files.find((f) => groupOf(f.path, target) === "screens" && textOf(f).includes(needle));
 }
 
-/** L'id del nodo-schermata di un file (il primo data-node-id: la radice). */
+/** The screen node's id of a file (the first data-node-id: the root). */
 export function nodeIdOfFile(f: CodeFile): string | null {
   const m = /data-node-id="([^"]+)"/.exec(textOf(f));
   return m ? m[1] : null;

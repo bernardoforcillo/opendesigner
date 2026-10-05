@@ -11,10 +11,10 @@ import { exportRegion } from "./region";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 
-// jsdom non ha né il contesto 2D né Path2D: il canvas è un doppio che REGISTRA
-// invece di disegnare. È esattamente ciò che serve qui -- la prova a pixel è in
-// browser, quella che si può fare in Node è che il canvas fuori schermo sia
-// grande quanto deve e trasformato come deve.
+// jsdom has neither a 2D context nor Path2D: the canvas is a double that RECORDS
+// instead of drawing. It is exactly what is needed here -- the pixel proof is in
+// the browser, what can be done in Node is that the offscreen canvas is
+// as large as it must be and transformed as it must be.
 class FakePath2D {
   rect() {}
   roundRect() {}
@@ -63,25 +63,25 @@ function sceneWith(...nodes: NodeLite[]): SceneState {
   return s;
 }
 
-// La stessa misura finta del ctx qui sopra (10 unità per carattere): la
-// regione la usa per sapere quanto è alto il testo, quindi quanto deve essere
-// alto il canvas.
+// The same fake measure as the ctx above (10 units per character): the
+// region uses it to know how tall the text is, hence how tall the
+// canvas must be.
 const measure = (s: string) => s.length * 10;
 
 function regionOf(scene: SceneState, selection: string[] = [], scope: "page" | "selection" = "page") {
   const r = exportRegion(scene, selection, scope, measure);
-  if (!r) throw new Error("regione vuota nel test");
+  if (!r) throw new Error("empty region in the test");
   return r;
 }
 
-// L'ULTIMA setTransform è quella con cui si disegna (la prima azzera prima di
-// pulire il canvas).
+// The LAST setTransform is the one used to draw (the first resets before
+// clearing the canvas).
 //
-// `+ 0` normalizza lo zero NEGATIVO: una regione che parte da x = 0 produce una
-// traslazione -0, che per il canvas è la stessa traslazione di 0 ma che
-// toEqual distingue (confronta con Object.is). Il segno dello zero non è
-// un'informazione, e non deve diventare un motivo per contorcere il codice che
-// calcola la trasformazione.
+// `+ 0` normalizes NEGATIVE zero: a region starting at x = 0 produces a
+// -0 translation, which for the canvas is the same translation as 0 but which
+// toEqual distinguishes (it compares with Object.is). The sign of zero is not
+// information, and must not become a reason to contort the code that
+// computes the transform.
 function drawTransform(rec: Recorded): number[] {
   return rec.transforms[rec.transforms.length - 1].map((v) => v + 0);
 }
@@ -91,7 +91,7 @@ describe("renderRegionToCanvas", () => {
     vi.unstubAllGlobals();
   });
 
-  it("il canvas fuori schermo è grande quanto la regione per la scala", () => {
+  it("the offscreen canvas is as large as the region for the scale", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const region = regionOf(sceneWith(node({ id: "a", x: 10, y: 20, width: 100, height: 50 })));
     const { canvas } = fakeCanvas();
@@ -100,17 +100,17 @@ describe("renderRegionToCanvas", () => {
     expect(canvas.height).toBe(100);
   });
 
-  it("la trasformazione porta l'ANGOLO della regione nell'origine, scalato", () => {
+  it("the transform brings the region's CORNER to the origin, scaled", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const region = regionOf(sceneWith(node({ id: "a", x: 10, y: 20, width: 100, height: 50 })));
     const { canvas, rec } = fakeCanvas();
     renderRegionToCanvas(region, 2, () => canvas);
-    // scale 2, e la traslazione è -origine * scala: il pixel (0,0)
-    // dell'immagine è il punto mondo (10, 20).
+    // scale 2, and the translation is -origin * scale: the image's
+    // pixel (0,0) is the world point (10, 20).
     expect(drawTransform(rec)).toEqual([2, 0, 0, 2, -20, -40]);
   });
 
-  it("ognuna delle scale offerte", () => {
+  it("each of the offered scales", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const region = regionOf(sceneWith(node({ id: "a", x: 0, y: 0, width: 30, height: 40 })));
     for (const scale of EXPORT_SCALES) {
@@ -122,12 +122,12 @@ describe("renderRegionToCanvas", () => {
     }
   });
 
-  it("il devicePixelRatio della macchina NON entra nell'export", () => {
-    // Il canvas dello schermo scala per il dpr (canvasRenderer.ts) e deve
-    // farlo; un canvas fuori schermo non ha un dispositivo. Senza questa
-    // regola lo stesso documento esportato a 2x darebbe un file grande il
-    // doppio su un portatile HiDPI -- e ritagliato, perché il canvas sarebbe
-    // comunque della dimensione richiesta.
+  it("the machine's devicePixelRatio does NOT enter the export", () => {
+    // The screen canvas scales by the dpr (canvasRenderer.ts) and must do
+    // so; an offscreen canvas has no device. Without this
+    // rule the same document exported at 2x would give a file twice as large
+    // on a HiDPI laptop -- and cropped, because the canvas would be
+    // of the requested size anyway.
     vi.stubGlobal("Path2D", FakePath2D);
     vi.stubGlobal("window", { devicePixelRatio: 3 });
     const region = regionOf(sceneWith(node({ id: "a", x: 0, y: 0, width: 100, height: 100 })));
@@ -137,7 +137,7 @@ describe("renderRegionToCanvas", () => {
     expect(drawTransform(rec)).toEqual([2, 0, 0, 2, 0, 0]);
   });
 
-  it("una regione frazionaria non viene TAGLIATA: si arrotonda per eccesso", () => {
+  it("a fractional region is not CROPPED: it rounds up", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const region = regionOf(sceneWith(node({ id: "a", x: 0, y: 0, width: 10.2, height: 10.6 })));
     const { canvas } = fakeCanvas();
@@ -146,11 +146,11 @@ describe("renderRegionToCanvas", () => {
     expect(canvas.height).toBe(11);
   });
 
-  it("un canvas non è mai di lato zero", () => {
+  it("a canvas never has a zero side", () => {
     vi.stubGlobal("Path2D", FakePath2D);
-    // Un testo ancora VUOTO dentro un box alto 0: nessuna riga da misurare,
-    // quindi la regione resta alta 0 -- e un canvas di area nulla fa fallire
-    // toBlob invece di produrre un'immagine vuota.
+    // A still-EMPTY text inside a box 0 tall: no line to measure,
+    // so the region stays 0 tall -- and a canvas of null area makes
+    // toBlob fail instead of producing an empty image.
     const region = regionOf(
       sceneWith(node({
         id: "t", kind: "text", width: 100, height: 0,
@@ -163,11 +163,11 @@ describe("renderRegionToCanvas", () => {
     expect(canvas.height).toBe(1);
   });
 
-  it("il canvas è alto quanto il testo DIPINTO, non quanto il suo box", () => {
+  it("the canvas is as tall as the PAINTED text, not as its box", () => {
     vi.stubGlobal("Path2D", FakePath2D);
-    // Due righe (10 unità per carattere, wrap a 100) dentro un box alto una
-    // riga sola: con l'altezza del box il canvas sarebbe alto 20 px e la
-    // seconda riga finirebbe fuori dal PNG senza un solo avviso.
+    // Two lines (10 units per character, wrap at 100) inside a box one
+    // line tall: with the box height the canvas would be 20 px tall and the
+    // second line would end up outside the PNG without a single warning.
     const region = regionOf(
       sceneWith(node({
         id: "t", kind: "text", x: 0, y: 0, width: 100, height: 19.2,
@@ -181,11 +181,11 @@ describe("renderRegionToCanvas", () => {
     renderRegionToCanvas(region, 2, () => canvas);
     expect(canvas.width).toBe(200);
     expect(canvas.height).toBe(Math.ceil(38.4 * 2)); // 77, non 39
-    // e le due righe ci sono davvero entrambe
+    // and both lines are truly there
     expect(rec.texts).toEqual(["abcdefghij", "klm"]);
   });
 
-  it("disegna SOLO i nodi della regione", () => {
+  it("draws ONLY the region's nodes", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const scene = sceneWith(
       node({ id: "a", orderKey: "a1" }),
@@ -194,11 +194,11 @@ describe("renderRegionToCanvas", () => {
     const { canvas, rec } = fakeCanvas();
     renderRegionToCanvas(regionOf(scene, ["b"], "selection"), 1, () => canvas);
     expect(rec.fills).toBe(1);
-    // e il canvas è grande quanto il solo nodo selezionato
+    // and the canvas is as large as the selected node alone
     expect(canvas.width).toBe(10);
   });
 
-  it("riusa il renderer vero: un nodo testo passa da drawText", () => {
+  it("reuses the real renderer: a text node goes through drawText", () => {
     const scene = sceneWith(node({
       id: "t", kind: "text", x: 0, y: 0, width: 100, height: 40,
       text: { content: "ciao", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } },
@@ -208,42 +208,42 @@ describe("renderRegionToCanvas", () => {
     expect(rec.texts).toEqual(["ciao"]);
   });
 
-  it("se il contesto 2D non c'è, lo dice invece di ritornare un canvas vuoto", () => {
+  it("if the 2D context is not there, it says so instead of returning an empty canvas", () => {
     const canvas = { width: 0, height: 0, getContext: () => null } as unknown as HTMLCanvasElement;
     const region = regionOf(sceneWith(node({ id: "a" })));
-    expect(() => renderRegionToCanvas(region, 1, () => canvas)).toThrow(/contesto 2D/i);
+    expect(() => renderRegionToCanvas(region, 1, () => canvas)).toThrow(/2D context/i);
   });
 
-  // Il controllo del contesto nullo qui sopra NON basta, ed è il motivo di
-  // questi tre test: oltre il tetto Chrome ritorna un contesto regolare su un
-  // bitmap che non esiste, disegna nel vuoto e produce un PNG valido e VUOTO.
-  // Senza il tetto l'utente scaricherebbe un'immagine bianca senza nessun
-  // avviso -- il modo peggiore di fallire, perché sembra riuscito.
-  it("una regione oltre il limite di AREA si ferma con un messaggio, non con un PNG vuoto", () => {
+  // The null-context check above is NOT enough, and it is the reason for
+  // these three tests: beyond the cap Chrome returns a regular context on a
+  // bitmap that does not exist, draws into the void and produces a valid, EMPTY PNG.
+  // Without the cap the user would download a white image with no
+  // warning -- the worst way to fail, because it looks successful.
+  it("a region beyond the AREA limit stops with a message, not with an empty PNG", () => {
     vi.stubGlobal("Path2D", FakePath2D);
-    // 6000×6000 unità a 3x = 18000×18000 = 324 Mpx, oltre i 268,4 del canvas.
+    // 6000×6000 units at 3x = 18000×18000 = 324 Mpx, beyond the canvas's 268.4.
     const region = regionOf(sceneWith(node({ id: "a", x: 0, y: 0, width: 6000, height: 6000 })));
     let created = 0;
     const create = () => { created++; return fakeCanvas().canvas; };
-    expect(() => renderRegionToCanvas(region, 3, create)).toThrow(/troppo grande/i);
-    // e si ferma PRIMA di allocare: non c'è nessun canvas da 324 Mpx in giro.
+    expect(() => renderRegionToCanvas(region, 3, create)).toThrow(/too large/i);
+    // and it stops BEFORE allocating: there is no 324 Mpx canvas around.
     expect(created).toBe(0);
   });
 
-  it("anche un solo LATO oltre il limite si ferma, per quanto sottile sia la regione", () => {
+  it("even a single SIDE beyond the limit stops, however thin the region is", () => {
     vi.stubGlobal("Path2D", FakePath2D);
-    // Un nastro lunghissimo: l'area sta larga (327 680 px, un millesimo del
-    // tetto) ma il lato no, e un canvas con un lato oltre il massimo è vuoto
-    // tanto quanto uno di area eccessiva.
+    // A very long ribbon: the area is wide (327,680 px, a thousandth of the
+    // cap) but the side is not, and a canvas with a side beyond the maximum is empty
+    // just like one of excessive area.
     const region = regionOf(
       sceneWith(node({ id: "a", x: 0, y: 0, width: MAX_CANVAS_SIDE + 1, height: 10 })),
     );
-    expect(() => renderRegionToCanvas(region, 1, () => fakeCanvas().canvas)).toThrow(/troppo grande/i);
+    expect(() => renderRegionToCanvas(region, 1, () => fakeCanvas().canvas)).toThrow(/too large/i);
   });
 
-  it("esattamente al limite di area passa: il tetto non è un margine inventato", () => {
+  it("exactly at the area limit it passes: the cap is not an invented margin", () => {
     vi.stubGlobal("Path2D", FakePath2D);
-    const side = Math.sqrt(MAX_CANVAS_AREA); // 16384, e nessun lato fuori norma
+    const side = Math.sqrt(MAX_CANVAS_AREA); // 16384, and no side out of range
     const region = regionOf(sceneWith(node({ id: "a", x: 0, y: 0, width: side, height: side })));
     const { canvas } = fakeCanvas();
     renderRegionToCanvas(region, 1, () => canvas);
@@ -252,32 +252,32 @@ describe("renderRegionToCanvas", () => {
 });
 
 describe("canvasLimitMessage", () => {
-  it("sotto i due limiti non ha niente da dire", () => {
+  it("under the two limits it has nothing to say", () => {
     expect(canvasLimitMessage(1, 1)).toBeNull();
     expect(canvasLimitMessage(16_384, 16_384)).toBeNull();
     expect(canvasLimitMessage(MAX_CANVAS_SIDE, 8_000)).toBeNull();
   });
 
-  it("l'area e il lato sono due limiti INDIPENDENTI, e basta superarne uno", () => {
-    // Area oltre (327 Mpx), lati entrambi dentro.
+  it("area and side are two INDEPENDENT limits, and exceeding one is enough", () => {
+    // Area beyond (327 Mpx), both sides inside.
     expect(canvasLimitMessage(MAX_CANVAS_SIDE, 10_000)).toBeTruthy();
-    // Lato oltre, area ampiamente dentro (65 536 px).
+    // Side beyond, area amply inside (65,536 px).
     expect(canvasLimitMessage(MAX_CANVAS_SIDE + 1, 2)).toBeTruthy();
   });
 
-  it("dice la dimensione chiesta, il limite e come uscirne", () => {
-    // Un avviso che dicesse solo "troppo grande" lascerebbe l'utente a
-    // indovinare che cosa cambiare.
+  it("states the requested size, the limit and how to get out", () => {
+    // A warning that said only "too large" would leave the user guessing
+    // what to change.
     const msg = canvasLimitMessage(18000, 18000)!;
     expect(msg).toContain("18000×18000");
     expect(msg).toContain("324.0 Mpx");
     expect(msg).toContain("268.4 Mpx");
-    expect(msg).toMatch(/scala più bassa/i);
+    expect(msg).toMatch(/lower scale/i);
   });
 });
 
 describe("canvasToPngBlob", () => {
-  it("chiede image/png e risolve con il blob", async () => {
+  it("asks for image/png and resolves with the blob", async () => {
     const blob = new Blob(["x"], { type: "image/png" });
     const types: (string | undefined)[] = [];
     const canvas = {
@@ -287,7 +287,7 @@ describe("canvasToPngBlob", () => {
     expect(types).toEqual(["image/png"]);
   });
 
-  it("un blob nullo diventa un errore, non un download vuoto", async () => {
+  it("a null blob becomes an error, not an empty download", async () => {
     const canvas = {
       toBlob: (cb: (b: Blob | null) => void) => cb(null),
     } as unknown as HTMLCanvasElement;

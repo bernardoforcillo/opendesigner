@@ -18,13 +18,13 @@ function time(fn: () => void, runs: number) {
   return +median(t).toFixed(2);
 }
 
-// @ts-expect-error esposto a Playwright
+// @ts-expect-error exposed to Playwright
 window.runBench = (sizes: number[]) => {
   const out: Record<string, unknown>[] = [];
   for (const n of sizes) {
     const scene = makeScene(n);
     const fit = fitCamera(scene, 1200, 800);
-    // Zoom-in: ~una schermata e mezza visibili (il caso d'uso reale).
+    // Zoom-in: ~a screen and a half visible (the real use case).
     const zoomed = { x: -2000, y: -1500, zoom: 1 };
     const op = makeSetPropsOp("n0_1", { x: 5, y: 6 }, ["x", "y"]);
     out.push({
@@ -33,9 +33,9 @@ window.runBench = (sizes: number[]) => {
       drawZoomed_ms: time(() => drawScene(ctx, scene, zoomed, "page1"), 5),
       hitTest_ms: time(() => hitTest(scene, 1000, 1000, 1, "page1"), 10),
       applyOp_ms: time(() => applyOp(scene, op), 10),
-      // Il costo di UNA modifica come la vede chi trascina: nuova scena (applyOp)
-      // + indice da ricostruire + un frame zoomato. Ogni chiamata parte da una
-      // scena nuova, quindi la cache dell'indice non aiuta.
+      // The cost of ONE edit as seen by whoever drags: new scene (applyOp)
+      // + index to rebuild + one zoomed frame. Every call starts from a
+      // new scene, so the index cache does not help.
       index_ms: time(() => sceneIndexOf(applyOp(scene, op)), 5),
       editFrame_ms: time(() => drawScene(ctx, applyOp(scene, op), zoomed, "page1"), 5),
     });
@@ -43,7 +43,7 @@ window.runBench = (sizes: number[]) => {
   return out;
 };
 
-// @ts-expect-error esposto a Playwright
+// @ts-expect-error exposed to Playwright
 window.runFitOnly = (n: number, times: number) => {
   const scene = makeScene(n);
   const fit = fitCamera(scene, 1200, 800);
@@ -52,7 +52,7 @@ window.runFitOnly = (n: number, times: number) => {
 
 import { SceneLayerCache } from "../renderer/layerCache";
 
-// @ts-expect-error esposto a Playwright
+// @ts-expect-error exposed to Playwright
 window.runPan = (n: number) => {
   const scene = makeScene(n);
   const fit = fitCamera(scene, 1200, 800);
@@ -71,7 +71,7 @@ window.runPan = (n: number) => {
   return { exact_ms: +exact.toFixed(1), move_median_ms: +moves[10].toFixed(2), move_max_ms: +moves[19].toFixed(2) };
 };
 
-// @ts-expect-error esposto a Playwright
+// @ts-expect-error exposed to Playwright
 window.shotPan = (n: number, mode: "blit" | "exact") => {
   const scene = makeScene(n);
   const fit = fitCamera(scene, 1200, 800);

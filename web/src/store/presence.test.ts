@@ -10,7 +10,7 @@ const update = (clientId: string, over: Record<string, unknown> = {}) =>
 const left = (id: string) => create(PresenceEventSchema, { kind: { case: "leftClientId", value: id } } as never);
 
 describe("applyPresenceEvent", () => {
-  it("un update inserisce il peer e un secondo lo rimpiazza", () => {
+  it("an update inserts the peer and a second one replaces it", () => {
     let p: Peers = {};
     p = applyPresenceEvent(p, update("a"));
     expect(p.a).toMatchObject({ nickname: "A", hasCursor: false, selection: [] });
@@ -19,7 +19,7 @@ describe("applyPresenceEvent", () => {
     expect(Object.keys(p)).toEqual(["a"]);
   });
 
-  it("left toglie il peer, e un left sconosciuto non cambia l'oggetto", () => {
+  it("left removes the peer, and an unknown left does not change the object", () => {
     let p = applyPresenceEvent({}, update("a"));
     p = applyPresenceEvent(p, update("b"));
     const after = applyPresenceEvent(p, left("a"));
@@ -27,12 +27,12 @@ describe("applyPresenceEvent", () => {
     expect(applyPresenceEvent(after, left("zzz"))).toBe(after);
   });
 
-  it("l'evento vuoto (il 'pronto' del server) non cambia nulla", () => {
+  it("the empty event (the server's 'ready') changes nothing", () => {
     const p = applyPresenceEvent({}, update("a"));
     expect(applyPresenceEvent(p, create(PresenceEventSchema, {}))).toBe(p);
   });
 
-  it("non muta l'oggetto di partenza", () => {
+  it("does not mutate the starting object", () => {
     const p: Peers = {};
     applyPresenceEvent(p, update("a"));
     expect(p).toEqual({});
@@ -40,7 +40,7 @@ describe("applyPresenceEvent", () => {
 });
 
 describe("peerColor", () => {
-  it("è stabile per lo stesso id e diverso fra id diversi", () => {
+  it("is stable for the same id and different across different ids", () => {
     expect(peerColor("abc")).toBe(peerColor("abc"));
     expect(peerColor("abc")).not.toBe(peerColor("abd"));
     expect(peerColor("x")).toMatch(/^hsl\(\d+, 70%, 45%\)$/);
@@ -48,7 +48,7 @@ describe("peerColor", () => {
 });
 
 describe("usePresence.clear", () => {
-  it("su uno store già vuoto non notifica (altrimenti ridisegna la scena per niente)", async () => {
+  it("on an already empty store it does not notify (otherwise it redraws the scene for nothing)", async () => {
     const { usePresence } = await import("./presence");
     usePresence.setState({ peers: {} });
     let calls = 0;

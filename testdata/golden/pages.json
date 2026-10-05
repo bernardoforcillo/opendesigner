@@ -4,7 +4,7 @@
     { "opId": "op1", "docId": "doc1", "createPage": { "page": { "id": "page2", "name": "Page 2" } } },
 
     { "opId": "op2", "docId": "doc1", "createNode": { "node": {
-      "id": "g1", "parentId": "page1", "orderKey": "a000001", "name": "Gruppo",
+      "id": "g1", "parentId": "page1", "orderKey": "a000001", "name": "Group",
       "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 0, "height": 0,
       "group": {}
     } } },
@@ -24,14 +24,14 @@
     { "opId": "op7", "docId": "doc1", "renamePage": { "id": "ghost", "name": "Fantasma" } },
     { "opId": "op8", "docId": "doc1", "deletePage": { "id": "ghost" } },
 
-    { "opId": "op9", "docId": "doc1", "renamePage": { "id": "page2", "name": "Copertina" } },
+    { "opId": "op9", "docId": "doc1", "renamePage": { "id": "page2", "name": "Cover" } },
     { "opId": "op10", "docId": "doc1", "deletePage": { "id": "page1" } },
     { "opId": "op11", "docId": "doc1", "deletePage": { "id": "page2" } }
   ],
   "rejected": [4, 5, 6, 7, 10],
   "expected": {
     "id": "doc1", "name": "Untitled", "schemaVersion": 1,
-    "pages": [{ "id": "page2", "name": "Copertina" }],
+    "pages": [{ "id": "page2", "name": "Cover" }],
     "nodes": {
       "k1": {
         "id": "k1", "parentId": "page2", "orderKey": "a000001", "name": "Rect 2",

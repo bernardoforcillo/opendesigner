@@ -2,36 +2,36 @@ import type { NodeLite, SceneState } from "../store/types";
 import { ancestorsOf } from "../store/tree";
 import { type Bounds, boundsOfNode } from "./geometry";
 
-// ROTAZIONE — LA CONVENZIONE, IN UN POSTO SOLO.
+// ROTATION — THE CONVENTION, IN ONE PLACE ONLY.
 //
-// `Node.rotation` (proto: `double rotation = 14`) è in GRADI e vale attorno al
-// CENTRO del box del nodo -- mai attorno alla sua origine. Gli assi mondo hanno
-// y verso il BASSO (è il canvas 2D), quindi un angolo POSITIVO porta l'asse +x
-// sull'asse +y: sullo schermo si legge come una rotazione ORARIA, la stessa di
-// `ctx.rotate` e la stessa che gli editor di design mostrano nel pannello.
+// `Node.rotation` (proto: `double rotation = 14`) is in DEGREES and applies around the
+// CENTER of the node's box -- never around its origin. World axes have
+// y pointing DOWN (it is canvas 2D), so a POSITIVE angle takes the +x axis
+// onto the +y axis: on screen it reads as a CLOCKWISE rotation, the same as
+// `ctx.rotate` and the same one design editors show in the panel.
 //
-// I gradi (e non i radianti) perché è la forma che l'utente legge e scrive; la
-// conversione a radianti resta confinata qui dentro, dove sta l'unica matrice
-// di rotazione del progetto. Renderer, hit-test, maniglie e tool passano tutti
-// da queste funzioni: una seconda matrice scritta a mano altrove sarebbe la
-// solita coppia destinata a divergere (vedi canvas/camera.ts per screen<->world).
+// Degrees (and not radians) because it is the form the user reads and writes; the
+// conversion to radians stays confined in here, where the project's only rotation
+// matrix lives. Renderer, hit-test, handles and tools all go through
+// these functions: a second hand-written matrix elsewhere would be the
+// usual pair destined to diverge (see canvas/camera.ts for screen<->world).
 //
 //   world = c + R(θ) · (local − c)      R(θ) = [[cos, −sin], [sin, cos]]
 //   local = c + R(−θ) · (world − c)
 //
-// dove c è il centro del box NON ruotato del nodo: il modello continua a tenere
-// x/y/width/height in coordinate mondo, ASSE-ALLINEATI, e la rotazione è un
-// campo a parte applicato sopra. È il motivo per cui il resize può continuare a
-// lavorare sui bounds (spazio locale) e solo l'ancora va ricollocata.
+// where c is the center of the node's UNROTATED box: the model keeps holding
+// x/y/width/height in world coordinates, AXIS-ALIGNED, and rotation is a
+// separate field applied on top. It is the reason resize can keep
+// working on the bounds (local space) and only the anchor must be repositioned.
 
 export interface Point { x: number; y: number }
 
 const DEG_TO_RAD = Math.PI / 180;
 
-// Un angolo che non ruota nulla (0, 360, -720...) deve lasciare le coordinate
-// IDENTICHE, non "vicinissime": tutto il resto della pipeline (resizeBounds, le
-// maniglie, i test su coordinate intere) confronta numeri esatti, e un giro per
-// cos/sin trasformerebbe 110 in 110.00000000000001.
+// An angle that rotates nothing (0, 360, -720...) must leave the coordinates
+// IDENTICAL, not "very close": the rest of the pipeline (resizeBounds, the
+// handles, tests on integer coordinates) compares exact numbers, and a trip through
+// cos/sin would turn 110 into 110.00000000000001.
 function isUnrotated(deg: number): boolean {
   return deg % 360 === 0;
 }
@@ -40,9 +40,9 @@ export function centerOf(b: Bounds): Point {
   return { x: b.x + b.width / 2, y: b.y + b.height / 2 };
 }
 
-// Ruota un VETTORE (una direzione, uno spostamento): nessun centro, nessuna
-// traslazione. È ciò che serve per portare il delta di un drag dallo spazio
-// mondo a quello locale del nodo.
+// Rotates a VECTOR (a direction, a displacement): no center, no
+// translation. It is what is needed to bring a drag's delta from world space
+// to the node's local space.
 export function rotateVector(v: Point, deg: number): Point {
   if (isUnrotated(deg)) return { x: v.x, y: v.y };
   const r = deg * DEG_TO_RAD;
@@ -57,8 +57,8 @@ export function rotateAround(p: Point, c: Point, deg: number): Point {
   return { x: c.x + v.x, y: c.y + v.y };
 }
 
-// I 4 angoli in coordinate MONDO, in ordine nw, ne, se, sw (lo stesso giro
-// orario delle maniglie d'angolo, vedi selection/handles.ts).
+// The 4 corners in WORLD coordinates, in order nw, ne, se, sw (the same clockwise
+// loop as the corner handles, see selection/handles.ts).
 export function rotatedCorners(b: Bounds, deg: number): [Point, Point, Point, Point] {
   const c = centerOf(b);
   const r = b.x + b.width;
@@ -71,9 +71,9 @@ export function rotatedCorners(b: Bounds, deg: number): [Point, Point, Point, Po
   ];
 }
 
-// Il rettangolo ASSE-ALLINEATO che contiene la forma ruotata: è ciò che serve a
-// chiunque ragioni per rettangoli (unione di una selezione multipla,
-// intersezione col marquee) su un nodo che ruotato non lo è più.
+// The AXIS-ALIGNED rectangle that contains the rotated shape: it is what is needed by
+// anyone reasoning in rectangles (union of a multiple selection,
+// intersection with the marquee) on a node that, once rotated, no longer is one.
 export function rotatedAabb(b: Bounds, deg: number): Bounds {
   if (isUnrotated(deg)) return { x: b.x, y: b.y, width: b.width, height: b.height };
   const corners = rotatedCorners(b, deg);
@@ -84,10 +84,10 @@ export function rotatedAabb(b: Bounds, deg: number): Bounds {
   return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
 }
 
-// Riporta un angolo in [0, 360). Serve a ciò che si SCRIVE nel modello: dopo
-// tre giri di maniglia una rotazione di 1080° e una di 0° sono la stessa cosa,
-// e il pannello proprietà (e chiunque confronti due nodi) non deve vedere la
-// differenza.
+// Brings an angle back into [0, 360). It serves what gets WRITTEN into the model: after
+// three handle turns a rotation of 1080° and one of 0° are the same thing,
+// and the properties panel (and anyone comparing two nodes) must not see the
+// difference.
 export function normalizeDegrees(deg: number): number {
   const m = deg % 360;
   return m < 0 ? m + 360 : m;
@@ -97,35 +97,35 @@ export function snapDegrees(deg: number, step: number): number {
   return Math.round(deg / step) * step;
 }
 
-// L'angolo (in gradi, stessa convenzione oraria) del raggio che va da `c` a
-// `p`. È la misura con cui un trascinamento della maniglia di rotazione si
-// traduce in un delta angolare.
+// The angle (in degrees, same clockwise convention) of the ray going from `c` to
+// `p`. It is the measure by which a rotation-handle drag
+// translates into an angular delta.
 export function angleOf(c: Point, p: Point): number {
   return Math.atan2(p.y - c.y, p.x - c.x) / DEG_TO_RAD;
 }
 
-// TRASFORMAZIONI COMPOSTE — le coordinate di un nodo sono RELATIVE AL PARENT.
+// COMPOSED TRANSFORMS — a node's coordinates are RELATIVE TO THE PARENT.
 //
-// Fino a qui la scena era piatta e x/y erano coordinate MONDO: il renderer
-// poteva disegnare ogni nodo dov'era scritto e l'hit-test confrontare il punto
-// del puntatore con il box così com'era. Con l'albero non è più vero: le
-// coordinate di un nodo vivono nello spazio LOCALE del suo parent, e il mondo
-// si ottiene accumulando le trasformazioni scendendo dalla pagina.
+// Up to here the scene was flat and x/y were WORLD coordinates: the renderer
+// could draw every node where it was written and hit-test compare the pointer
+// point with the box as it was. With the tree this is no longer true: a node's
+// coordinates live in the LOCAL space of its parent, and the world
+// is obtained by accumulating transforms descending from the page.
 //
-// Le due direzioni servono ENTRAMBE, ed è la sola ragione per cui
-// `invertTransform` esiste:
-//   locale -> mondo   disegnare (renderer), i bounds della selezione, l'origine
-//                     del campo di testo: tutto ciò che deve finire su schermo.
-//   mondo  -> locale  il puntatore: l'hit-test confronta il punto con il box
-//                     del nodo, che è scritto in coordinate locali, e il resize
-//                     riscrive x/y/width/height che sono locali anche loro.
+// BOTH directions are needed, and it is the only reason
+// `invertTransform` exists:
+//   local -> world    drawing (renderer), the selection's bounds, the text
+//                     field's origin: everything that must end up on screen.
+//   world -> local    the pointer: hit-test compares the point with the node's box,
+//                     which is written in local coordinates, and the resize
+//                     rewrites x/y/width/height which are local too.
 //
-// MIGRAZIONE: in un documento esistente ogni nodo sta direttamente sotto una
-// pagina, e una pagina contribuisce l'IDENTITÀ (vedi worldTransformOf). Mondo e
-// locale coincidono ancora, quindi nessuna opera si sposta.
+// MIGRATION: in an existing document every node sits directly under a
+// page, and a page contributes the IDENTITY (see worldTransformOf). World and
+// local still coincide, so no work moves.
 
-// Matrice affine 2x3 nella convenzione del canvas 2D (gli stessi sei numeri, e
-// nello stesso ordine, di ctx.setTransform/DOMMatrix):
+// 2x3 affine matrix in the canvas 2D convention (the same six numbers, and
+// in the same order, as ctx.setTransform/DOMMatrix):
 //   x' = a*x + c*y + e
 //   y' = b*x + d*y + f
 export interface Transform { a: number; b: number; c: number; d: number; e: number; f: number }
@@ -136,10 +136,10 @@ export function translation(tx: number, ty: number): Transform {
   return { a: 1, b: 0, c: 0, d: 1, e: tx, f: ty };
 }
 
-// `outer` DOPO `inner`: il punto passa prima per inner, poi per outer -- cioè
-// il prodotto di matrici outer*inner. È la direzione con cui si scende
-// l'albero: la trasformazione di un figlio è quella del parent composta sopra
-// la propria.
+// `outer` AFTER `inner`: the point goes first through inner, then through outer -- that is
+// the matrix product outer*inner. It is the direction in which the
+// tree is descended: a child's transform is its parent's composed on top
+// of its own.
 export function compose(outer: Transform, inner: Transform): Transform {
   return {
     a: outer.a * inner.a + outer.c * inner.b,
@@ -155,11 +155,11 @@ export function applyTransform(t: Transform, x: number, y: number): { x: number;
   return { x: t.a * x + t.c * y + t.e, y: t.b * x + t.d * y + t.f };
 }
 
-// Inversa. Con determinante 0 la trasformazione ha collassato il piano su una
-// retta e un'inversa non esiste: si torna l'IDENTITÀ invece di dividere per
-// zero, perché il valore di ritorno finisce nel loop di rendering e
-// nell'hit-test, dove degli Infinity/NaN si propagherebbero in silenzio in ogni
-// coordinata.
+// Inverse. With determinant 0 the transform has collapsed the plane onto a
+// line and an inverse does not exist: the IDENTITY is returned instead of dividing by
+// zero, because the return value ends up in the rendering loop and in
+// hit-test, where Infinity/NaN would propagate silently into every
+// coordinate.
 export function invertTransform(t: Transform): Transform {
   const det = t.a * t.d - t.b * t.c;
   if (det === 0) return IDENTITY;
@@ -173,10 +173,10 @@ export function invertTransform(t: Transform): Transform {
   };
 }
 
-// La rotazione (in gradi, stessa convenzione oraria di rotateVector) attorno a
-// un centro `c`, come Transform: T(c) · R(θ) · T(-c). È il pezzo che
-// `localTransformOf` compone sopra la traslazione perché i figli di un container
-// ruotato ruotino con lui.
+// The rotation (in degrees, same clockwise convention as rotateVector) around
+// a center `c`, as a Transform: T(c) · R(θ) · T(-c). It is the piece that
+// `localTransformOf` composes on top of the translation so that the children of a rotated
+// container rotate with it.
 function rotationAround(c: Point, deg: number): Transform {
   if (isUnrotated(deg)) return IDENTITY;
   const r = deg * DEG_TO_RAD;
@@ -186,63 +186,63 @@ function rotationAround(c: Point, deg: number): Transform {
   return compose(translation(c.x, c.y), compose(rot, translation(-c.x, -c.y)));
 }
 
-// Ciò che un nodo contribuisce ai PROPRI figli: l'origine del loro spazio è
-// l'angolo alto-sinistro del nodo, ruotato con lui. Un solo posto, così il
-// renderer, l'hit-test e i bounds non possono divergere.
+// What a node contributes to ITS OWN children: the origin of their space is
+// the node's top-left corner, rotated with it. One place only, so the
+// renderer, hit-test and bounds cannot diverge.
 //
-// Compone DUE cose (traccia annidamento + traccia rotazione): la traslazione
-// parent-relativa (da x/y) e la rotazione del nodo attorno al centro del suo box
-// NON ruotato. Prima si trasla nel box del parent, poi si ruota attorno al
-// centro: compose(rotationAround(centro), translation(x, y)). Un nodo fermo
-// (rotation ≡ 0) ricade sulla sola traslazione, IDENTICA a prima.
+// It composes TWO things (nesting track + rotation track): the parent-relative
+// translation (from x/y) and the node's rotation around the center of its box
+// UNROTATED. First it translates into the parent's box, then it rotates around the
+// center: compose(rotationAround(center), translation(x, y)). A still node
+// (rotation ≡ 0) falls back to the translation only, IDENTICAL to before.
 //
-// Esportata perché il renderer la applica al ctx scendendo (ctx.transform con
-// gli stessi sei numeri) e l'hit-test applica la sua INVERSA al punto: sono le
-// due direzioni della stessa cosa, e devono restare la stessa cosa.
+// Exported because the renderer applies it to the ctx while descending (ctx.transform with
+// the same six numbers) and hit-test applies its INVERSE to the point: they are the
+// two directions of the same thing, and must remain the same thing.
 export function localTransformOf(n: NodeLite): Transform {
   const t = translation(n.x, n.y);
-  // `animScale` esiste solo nelle scene derivate dalla riproduzione
-  // (animation/pose.ts): una scena vera non lo ha mai, e il ramo sotto non costa
-  // nulla a un nodo fermo (stessa traslazione di prima, numeri compresi).
+  // `animScale` exists only in playback-derived scenes
+  // (animation/pose.ts): a real scene never has it, and the branch below costs
+  // nothing to a still node (same translation as before, numbers included).
   const scaled = n.animScale !== undefined && n.animScale !== 1;
   if (!scaled && isUnrotated(n.rotation)) return t;
   const c: Point = n.animPivot ?? { x: n.x + n.width / 2, y: n.y + n.height / 2 };
   const rotated = isUnrotated(n.rotation) ? t : compose(rotationAround(c, n.rotation), t);
   if (!scaled) return rotated;
-  // Scala UNIFORME attorno allo stesso centro della rotazione: i due commutano.
+  // UNIFORM scale around the same center as the rotation: the two commute.
   const s = n.animScale as number;
   const scale: Transform = { a: s, b: 0, c: 0, d: s, e: c.x - s * c.x, f: c.y - s * c.y };
   return compose(scale, rotated);
 }
 
-// Dallo spazio LOCALE di `id` -- quello in cui sono scritte le coordinate dei
-// suoi FIGLI -- al MONDO.
+// From the LOCAL space of `id` -- the one in which its CHILDREN's coordinates are
+// written -- to the WORLD.
 //
-// `id` è un CONTENITORE: l'id di un nodo oppure quello di una pagina. Una
-// pagina (come un id sconosciuto o la stringa vuota) contribuisce l'IDENTITÀ:
-// è ciò che tiene fermi i documenti già esistenti, in cui ogni nodo sta
-// direttamente sotto una pagina.
+// `id` is a CONTAINER: a node's id or a page's. A
+// page (like an unknown id or the empty string) contributes the IDENTITY:
+// it is what keeps existing documents unchanged, in which every node sits
+// directly under a page.
 //
-// ATTENZIONE alla direzione, è il punto delicato della traccia: le coordinate
-// PROPRIE di un nodo n non stanno nel suo spazio locale ma in quello del suo
-// parent, quindi chi lavora sul box di n (hit-test, bounds, resize) usa
-// `worldTransformOf(scene, n.parentId)`, non `worldTransformOf(scene, n.id)`.
+// CAUTION on the direction, it is the delicate point of the track: a node n's
+// OWN coordinates do not live in its local space but in that of its
+// parent, so whoever works on n's box (hit-test, bounds, resize) uses
+// `worldTransformOf(scene, n.parentId)`, not `worldTransformOf(scene, n.id)`.
 export function worldTransformOf(scene: SceneState, id: string): Transform {
   const node = scene.nodes.at(id);
   if (!node) return IDENTITY;
   let t = localTransformOf(node);
-  // ancestorsOf: dal più vicino al più lontano, si ferma alla pagina ed è già a
-  // prova di ciclo (store/tree.ts). Ogni antenato si compone SOPRA quanto
-  // accumulato, che è esattamente l'ordine in cui si scende l'albero.
+  // ancestorsOf: from nearest to farthest, it stops at the page and is already
+  // cycle-proof (store/tree.ts). Every ancestor composes ON TOP of what
+  // has accumulated, which is exactly the order in which the tree is descended.
   for (const a of ancestorsOf(scene, id)) t = compose(localTransformOf(a), t);
   return t;
 }
 
-// Un rettangolo trasformato. Si trasformano i quattro ANGOLI e si prende il
-// rettangolo che li contiene, invece di trasformare origine e dimensioni: con
-// una traslazione le due cose coincidono, ma questa resta corretta per
-// qualunque trasformazione affine (con una rotazione il risultato è l'AABB del
-// rettangolo ruotato, che è il significato giusto di "bounds" lì).
+// A transformed rectangle. The four CORNERS are transformed and the
+// rectangle containing them is taken, instead of transforming origin and size: with
+// a translation the two coincide, but this stays correct for
+// any affine transform (with a rotation the result is the AABB of the
+// rotated rectangle, which is the right meaning of "bounds" there).
 export function mapBounds(t: Transform, b: Bounds): Bounds {
   const corners = [
     applyTransform(t, b.x, b.y),
@@ -257,29 +257,29 @@ export function mapBounds(t: Transform, b: Bounds): Bounds {
   return { x: minX, y: minY, width: Math.max(...xs) - minX, height: Math.max(...ys) - minY };
 }
 
-// Un DELTA (uno spostamento), non un punto: passa solo per la parte LINEARE
-// della trasformazione, la traslazione non lo tocca. È la differenza fra
-// "dove sta questo punto" e "di quanto si è mosso il puntatore": trasformare
-// uno spostamento come un punto lo sposterebbe una seconda volta.
+// A DELTA (a displacement), not a point: it only goes through the LINEAR part
+// of the transform, translation does not touch it. It is the difference between
+// "where this point is" and "how much the pointer moved": transforming
+// a displacement like a point would move it a second time.
 export function mapVector(t: Transform, dx: number, dy: number): { x: number; y: number } {
   return { x: t.a * dx + t.c * dy, y: t.b * dx + t.d * dy };
 }
 
-// Il box di un nodo in coordinate MONDO. Il box del modello (x, y, width,
-// height) è scritto nello spazio del PARENT, quindi la trasformazione da
-// applicare è quella del parent -- vedi l'avvertenza su worldTransformOf.
+// A node's box in WORLD coordinates. The model's box (x, y, width,
+// height) is written in the PARENT's space, so the transform to
+// apply is the parent's -- see the warning on worldTransformOf.
 export function worldBoundsOfNode(scene: SceneState, n: NodeLite): Bounds {
   return mapBounds(worldTransformOf(scene, n.parentId), boundsOfNode(n));
 }
 
-// Punto dallo spazio locale del contenitore `spaceId` al mondo, e ritorno --
-// OPPURE la versione ROTAZIONE (rotateAround attorno a un centro), a seconda del
-// secondo argomento. Le due vivono sotto lo stesso nome perché sono la stessa
-// domanda ("porta questo punto da locale a mondo") posta a due strati diversi:
-//   - (scene, spaceId, x, y)  scende/risale l'albero dei container (annidamento);
-//   - (point, center, deg)    ruota un punto attorno al centro di un box (T2).
-// Il discriminante è il secondo argomento: una stringa è uno spaceId, un Point è
-// un centro di rotazione.
+// Point from the local space of the container `spaceId` to the world, and back --
+// OR the ROTATION version (rotateAround around a center), depending on the
+// second argument. The two live under the same name because they are the same
+// question ("bring this point from local to world") asked at two different layers:
+//   - (scene, spaceId, x, y)  descends/climbs the container tree (nesting);
+//   - (point, center, deg)    rotates a point around a box's center (T2).
+// The discriminant is the second argument: a string is a spaceId, a Point is
+// a rotation center.
 export function localToWorld(p: Point, c: Point, deg: number): Point;
 export function localToWorld(scene: SceneState, spaceId: string, x: number, y: number): { x: number; y: number };
 export function localToWorld(

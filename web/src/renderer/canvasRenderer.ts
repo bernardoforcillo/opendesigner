@@ -24,84 +24,84 @@ import { imageCache, type CachedImage } from "./imageCache";
 
 const DEG_TO_RAD = Math.PI / 180;
 
-// Esportata perché l'ORDINE DI DISEGNO non è solo un affare del canvas:
-// l'export (export/region.ts) deve scegliere e ordinare i nodi esattamente
-// come li sceglie e li ordina chi disegna, o l'immagine esportata non sarebbe
-// quella che si vede.
+// Exported because the DRAW ORDER is not only the canvas's business:
+// the export (export/region.ts) must choose and order nodes exactly
+// as whoever draws chooses and orders them, or the exported image would not be
+// the one that is seen.
 export function sortedVisible(state: SceneState): NodeLite[] {
   return [...state.nodes.values()]
     .filter((n) => n.visible)
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0));
 }
 
-// L'ALBERO, non più la mappa piatta.
+// THE TREE, no longer the flat map.
 //
-// Le coordinate di un nodo sono relative al suo parent (vedi
-// canvas/transform.ts), quindi il disegno non può più leggere x/y e piazzarli:
-// deve SCENDERE, accumulando la trasformazione di ogni container. Da qui
-// discendono, senza scelte in più, anche l'ordine e la visibilità:
-//   - un container si disegna PRIMA dei suoi figli (sta dietro al proprio
-//     contenuto), i fratelli in ordine di order key;
-//   - un nodo irraggiungibile da una pagina non si disegna: non ha un posto
-//     nel mondo (stessa regola di tree.ts::parentExists);
-//   - un container invisibile porta via con sé tutto il sottoalbero -- non si
-//     può disegnare il figlio di qualcosa che non c'è.
-// L'hit-test fa lo stesso cammino al contrario, ed è l'unico modo perché ciò
-// che si vede sia esattamente ciò che si clicca.
+// A node's coordinates are relative to its parent (see
+// canvas/transform.ts), so drawing can no longer read x/y and place them:
+// it must DESCEND, accumulating the transform of every container. From here
+// follow, with no extra choices, order and visibility too:
+//   - a container is drawn BEFORE its children (it sits behind its own
+//     content), siblings in order key order;
+//   - a node unreachable from a page is not drawn: it has no place
+//     in the world (same rule as tree.ts::parentExists);
+//   - an invisible container takes its whole subtree away with it -- you cannot
+//     draw the child of something that is not there.
+// Hit-test walks the same path in reverse, and it is the only way for what
+// is seen to be exactly what is clicked.
 //
-// Un indice figli-per-parent (store/tree.ts::childIndexOf) costruito una volta
-// per chiamata invece di una childrenOf per nodo: quest'ultima è una scansione
-// della mappa, e il renderer gira a ogni frame.
+// A children-by-parent index (store/tree.ts::childIndexOf) built once
+// per call instead of a childrenOf per node: the latter is a scan
+// of the map, and the renderer runs on every frame.
 type ChildIndex = Map<string, NodeLite[]>;
 
-// I nodi radice della PAGINA CORRENTE: i suoi figli diretti, in ordine di order
-// key. Il canvas mostra UNA pagina alla volta, quindi disegno, hit-test e
-// marquee scendono tutti da qui -- è l'unico punto in cui la scelta della
-// pagina entra nel renderer, ed è ciò che tiene vedi-vs-seleziona in accordo (i
-// tre condividono rootsOf, quindi non possono divergere sulla pagina).
+// The root nodes of the CURRENT PAGE: its direct children, in order key
+// order. The canvas shows ONE page at a time, so drawing, hit-test and
+// marquee all descend from here -- it is the only point where the page
+// choice enters the renderer, and it is what keeps see-vs-select in agreement (the
+// three share rootsOf, so they cannot diverge on the page).
 //
-// currentPageId è un PARAMETRO, non un campo della scena: la pagina corrente è
-// stato di vista dello store (store.ts), e il renderer resta una funzione pura.
-// Assente (o null) ripiega sulla PRIMA pagina -- il default dello store -- così
-// le scene a pagina singola non hanno bisogno di dirlo.
+// currentPageId is a PARAMETER, not a scene field: the current page is
+// view state of the store (store.ts), and the renderer remains a pure function.
+// Absent (or null) falls back to the FIRST page -- the store's default -- so
+// single-page scenes do not need to say it.
 export function rootsOf(state: SceneState, children: ChildIndex, currentPageId?: string | null): NodeLite[] {
   const pageId = currentPageId ?? state.pages[0]?.id;
   return pageId !== undefined ? children.get(pageId) ?? [] : [];
 }
 
-// La tinta con cui un nodo viene effettivamente riempito, DEFAULT COMPRESO: un
-// nodo senza tinte è grigio chiaro, e quel grigio è una decisione del renderer
-// (come i default del testo in renderer/text.ts) che non sta nel modello.
-// Esportata perché serve a chiunque debba riprodurre lo stesso riempimento
-// altrove -- l'export SVG scrive `fill` in attributi separati e non in una
-// stringa CSS, ma il default deve restare lo STESSO.
+// The tint with which a node is actually filled, DEFAULT INCLUDED: a
+// node without tints is light gray, and that gray is a renderer decision
+// (like the text defaults in renderer/text.ts) that does not live in the model.
+// Exported because it serves anyone who must reproduce the same fill
+// elsewhere -- the SVG export writes `fill` in separate attributes and not in a
+// CSS string, but the default must stay the SAME.
 export function resolvedFill(n: NodeLite): FillLite {
   return n.fills[0] ?? { r: 0.8, g: 0.8, b: 0.8, a: 1 };
 }
 
-// Esportata perché il colore di un nodo serve anche FUORI dal canvas: il
-// textarea di editing (ui/TextEditorOverlay.tsx) deve scrivere con lo stesso
-// colore con cui il canvas disegnerà quel testo. Una seconda conversione
-// RGBA-float -> CSS altrove sarebbe la solita coppia destinata a divergere.
+// Exported because a node's color is also needed OUTSIDE the canvas: the
+// editing textarea (ui/TextEditorOverlay.tsx) must write with the same
+// color with which the canvas will draw that text. A second
+// RGBA-float -> CSS conversion elsewhere would be the usual pair destined to diverge.
 export function cssColor(n: NodeLite): string {
-  // resolvedFill (traccia 3, default grigio) + cssRgba (traccia 2, float->CSS):
-  // il default vive in un posto solo, la conversione in un altro.
+  // resolvedFill (track 3, gray default) + cssRgba (track 2, float->CSS):
+  // the default lives in one place, the conversion in another.
   return cssRgba(resolvedFill(n));
 }
 
-// RGBA float 0..1 -> stringa CSS. Una funzione sola per riempimenti e tratti:
-// sono lo stesso Color nel proto, e due conversioni indipendenti divergerebbero
-// al primo arrotondamento diverso.
+// RGBA float 0..1 -> CSS string. A single function for fills and strokes:
+// they are the same Color in the proto, and two independent conversions would diverge
+// at the first different rounding.
 export function cssRgba(c: FillLite): string {
   const to255 = (v: number) => Math.round(v * 255);
   return `rgba(${to255(c.r)}, ${to255(c.g)}, ${to255(c.b)}, ${c.a})`;
 }
 
-// Lo stile canvas (colore CSS o CanvasGradient) di un riempimento sul box di
-// `n`. Le coordinate normalizzate del gradiente si denormalizzano sul box NON
-// ruotato: la rotazione del nodo è già nel contesto, quindi il gradiente ruota
-// con la forma. Un gradiente degenere (asse o raggio nulli, meno di due stop)
-// ripiega sul colore piatto, che è sempre valido.
+// The canvas style (CSS color or CanvasGradient) of a fill on the box of
+// `n`. The gradient's normalized coordinates are denormalized on the UNROTATED box:
+// the node's rotation is already in the context, so the gradient rotates
+// with the shape. A degenerate gradient (null axis or radius, fewer than two stops)
+// falls back to the flat color, which is always valid.
 export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasGradient {
   const g = f.gradient;
   if (!g || g.stops.length < 2) return cssRgba(f);
@@ -116,14 +116,14 @@ export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLi
   return grad;
 }
 
-// --- GLI EFFETTI ---------------------------------------------------------------
+// --- THE EFFECTS ---------------------------------------------------------------
 //
-// Il canvas 2D ha UN solo stato di ombra e UN solo filtro, quindi il renderer
-// disegna la PRIMA ombra e la PRIMA sfocatura di un nodo (il modello tiene
-// l'intera lista). Offset e sfocatura sono in coordinate MONDO, ma shadow* e
-// filter NON passano per la trasformazione del contesto: vanno scalati a mano
-// per zoom * dpr, altrimenti l'ombra resterebbe di una taglia fissa mentre il
-// nodo si ingrandisce.
+// Canvas 2D has ONE shadow state and ONE filter, so the renderer
+// draws the FIRST shadow and the FIRST blur of a node (the model keeps
+// the whole list). Offset and blur are in WORLD coordinates, but shadow* and
+// filter do NOT go through the context's transform: they must be scaled by hand
+// by zoom * dpr, otherwise the shadow would stay a fixed size while the
+// node scales up.
 type DropShadowLite = Extract<EffectLite, { kind: "dropShadow" }>;
 type LayerBlurLite = Extract<EffectLite, { kind: "layerBlur" }>;
 
@@ -134,19 +134,19 @@ export function firstBlur(n: NodeLite): LayerBlurLite | undefined {
   return n.effects?.find((e): e is LayerBlurLite => e.kind === "layerBlur" && e.radius > 0);
 }
 
-// Pixel del backing store per unità mondo: zoom * dpr, letto dalla
-// trasformazione che drawScene ha già messo sul contesto (la rotazione non la
-// cambia). Leggerla da lì e non da window.devicePixelRatio è ciò che rende
-// giusto anche l'export PNG, che disegna con dpr 1 su un canvas fuori schermo.
-// Un contesto senza getTransform (i doppi dei test) ricade sullo zoom.
+// Backing-store pixels per world unit: zoom * dpr, read from the
+// transform that drawScene has already put on the context (rotation does not
+// change it). Reading it from there and not from window.devicePixelRatio is what makes
+// the PNG export right too, which draws with dpr 1 on an offscreen canvas.
+// A context without getTransform (the test doubles) falls back to the zoom.
 function deviceScale(ctx: CanvasRenderingContext2D, cam: Camera): number {
   const m = typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
   return m ? Math.hypot(m.a, m.b) : cam.zoom;
 }
 
-// Imposta ombra e sfocatura sul contesto per il disegno del nodo. Ritorna true
-// se ha fatto save(): chi chiama deve fare il restore corrispondente. Nessun
-// effetto = nessun save, nessun costo.
+// Sets shadow and blur on the context for drawing the node. Returns true
+// if it did a save(): the caller must do the matching restore. No
+// effect = no save, no cost.
 function applyEffects(ctx: CanvasRenderingContext2D, n: NodeLite, scale: number): boolean {
   const shadow = firstShadow(n);
   const blur = firstBlur(n);
@@ -158,20 +158,20 @@ function applyEffects(ctx: CanvasRenderingContext2D, n: NodeLite, scale: number)
     ctx.shadowOffsetY = shadow.offsetY * scale;
     ctx.shadowBlur = Math.max(0, shadow.blur) * scale;
   }
-  // `radius` è la deviazione standard della gaussiana, come in CSS blur().
+  // `radius` is the standard deviation of the gaussian, as in CSS blur().
   if (blur) ctx.filter = `blur(${blur.radius * scale}px)`;
   return true;
 }
 
-// La camera resta sempre in pixel CSS: il devicePixelRatio non deve mai
-// entrare nel modello né nei tool, solo qui nel disegno effettivo sul canvas.
+// The camera always stays in CSS pixels: devicePixelRatio must never
+// enter the model or the tools, only here in the actual drawing on the canvas.
 function devicePixelRatio(): number {
   return typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
 }
 
-// Allinea la risoluzione del backing store del canvas alla sua dimensione CSS
-// * devicePixelRatio, per evitare il blur su schermi HiDPI. Ritorna true se la
-// dimensione è cambiata (utile per evitare resize/clear superflui ogni frame).
+// Aligns the canvas backing-store resolution to its CSS size
+// * devicePixelRatio, to avoid blur on HiDPI screens. Returns true if the
+// size changed (useful to avoid superfluous resize/clear on every frame).
 export function resizeCanvasToDisplaySize(canvas: HTMLCanvasElement): boolean {
   const dpr = devicePixelRatio();
   const width = Math.round(canvas.clientWidth * dpr);
@@ -182,44 +182,44 @@ export function resizeCanvasToDisplaySize(canvas: HTMLCanvasElement): boolean {
   return true;
 }
 
-// Opzioni di disegno. `dpr` esiste per un solo motivo: un canvas FUORI SCHERMO
-// non ha un dispositivo. Quando si disegna per esportare (export/png.ts) la
-// scala la sceglie l'utente (1x/2x/3x) e il devicePixelRatio della macchina non
-// deve entrarci -- lo stesso documento esportato a 2x deve dare la stessa
-// immagine su un portatile HiDPI e su un monitor esterno.
+// Draw options. `dpr` exists for a single reason: an OFFSCREEN canvas
+// has no device. When drawing for export (export/png.ts) the
+// scale is chosen by the user (1x/2x/3x) and the machine's devicePixelRatio must
+// not enter into it -- the same document exported at 2x must give the same
+// image on a HiDPI laptop and on an external monitor.
 export interface DrawOptions {
   dpr?: number;
-  // Da dove arrivano le immagini già decodificate. Il default è la cache
-  // condivisa (renderer/imageCache.ts); si inietta nei test, dove non esiste
-  // nessun caricamento vero.
+  // Where already-decoded images come from. The default is the shared
+  // cache (renderer/imageCache.ts); it is injected in tests, where no
+  // real loading exists.
   images?: ImageSource;
-  // La pagina da disegnare (stato di vista dello store). Assente/null ripiega
-  // sulla prima pagina -- vedi rootsOf. Sta qui insieme a dpr/images perché
-  // drawScene ha un solo parametro d'opzioni: chi passa solo la pagina può
-  // anche passarla come stringa nuda (vedi la firma di drawScene).
+  // The page to draw (store view state). Absent/null falls back to the
+  // first page -- see rootsOf. It lives here along with dpr/images because
+  // drawScene has a single options parameter: whoever passes only the page can
+  // also pass it as a bare string (see drawScene's signature).
   currentPageId?: string | null;
 }
 
-/** Il minimo che il disegno chiede alla cache delle immagini. */
+/** The minimum that drawing asks of the image cache. */
 export interface ImageSource {
   get(docId: string, hash: string): CachedImage;
 }
 
-// I colori del SEGNAPOSTO -- un'immagine che non c'è (o non è ancora arrivata).
-// Un nodo il cui asset manca deve VEDERSI: sparire vorrebbe dire un buco nel
-// documento senza spiegazione, e lanciare vorrebbe dire spegnere il render loop
-// per l'intera scena.
+// The PLACEHOLDER colors -- an image that is not there (or has not arrived yet).
+// A node whose asset is missing must be SEEN: vanishing would mean a hole in the
+// document without explanation, and throwing would mean shutting down the render loop
+// for the whole scene.
 const PLACEHOLDER_FILL = "rgba(0, 0, 0, 0.06)";
 const PLACEHOLDER_LINE = "rgba(0, 0, 0, 0.35)";
 
-// Il segnaposto. Disegnato con fillRect/strokeRect/moveTo e NON con un Path2D:
-// così resta l'unico ramo di drawScene interamente verificabile in questa suite
-// (jsdom non ha Path2D), che è esattamente il ramo di cui conta di più sapere
-// che non lancia.
+// The placeholder. Drawn with fillRect/strokeRect/moveTo and NOT with a Path2D:
+// so it stays the only branch of drawScene fully verifiable in this suite
+// (jsdom has no Path2D), which is exactly the branch for which it matters most to know
+// that it does not throw.
 //
-// `px` è quanto vale UN pixel schermo in coordinate mondo: il ctx qui è già
-// trasformato dalla camera, quindi una lineWidth costante sparirebbe a zoom
-// basso e ingrasserebbe a zoom alto.
+// `px` is how much ONE screen pixel is worth in world coordinates: the ctx here is already
+// transformed by the camera, so a constant lineWidth would vanish at low
+// zoom and thicken at high zoom.
 function drawImagePlaceholder(
   ctx: CanvasRenderingContext2D,
   n: NodeLite,
@@ -230,13 +230,13 @@ function drawImagePlaceholder(
   ctx.fillRect(n.x, n.y, n.width, n.height);
   ctx.strokeStyle = PLACEHOLDER_LINE;
   ctx.lineWidth = px;
-  // Il bordo rientra di mezzo pixel per stare DENTRO il box: uno strokeRect sul
-  // bordo esatto disegna metà tratto fuori, e l'immagine risulterebbe più grande
-  // delle sue maniglie di selezione.
+  // The border is inset by half a pixel to stay INSIDE the box: a strokeRect on the
+  // exact edge draws half the stroke outside, and the image would come out larger
+  // than its selection handles.
   ctx.strokeRect(n.x + px / 2, n.y + px / 2, n.width - px, n.height - px);
-  // La croce distingue "l'asset non c'è" da "sta arrivando": senza, i due stati
-  // sarebbero lo stesso rettangolo grigio e un'immagine persa sembrerebbe in
-  // caricamento per sempre.
+  // The cross distinguishes "the asset is not there" from "it is arriving": without it, the two states
+  // would be the same gray rectangle and a lost image would look like
+  // loading forever.
   if (!missing) return;
   ctx.beginPath();
   ctx.moveTo(n.x, n.y);
@@ -246,13 +246,13 @@ function drawImagePlaceholder(
   ctx.stroke();
 }
 
-// Un nodo immagine: i pixel se ci sono, il segnaposto altrimenti.
+// An image node: the pixels if they exist, the placeholder otherwise.
 //
-// L'immagine è tirata sul box del nodo (`drawImage` a quattro coordinate), non
-// ritagliata né lettera-boxata: il box nasce dall'aspetto naturale del file
-// (tools/imageDrop.ts) e da lì in poi ridimensionarlo è una scelta dell'utente,
-// che deve vedere l'effetto che chiede. Le modalità "riempi/adatta" sono una
-// funzione a parte, non un default da indovinare.
+// The image is stretched onto the node's box (`drawImage` with four coordinates), not
+// cropped nor letterboxed: the box is born from the file's natural aspect
+// (tools/imageDrop.ts) and from there on resizing it is a user choice,
+// who must see the effect they ask for. The "fill/fit" modes are a
+// separate function, not a default to guess.
 function drawImageNode(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -268,12 +268,12 @@ function drawImageNode(
   drawImagePlaceholder(ctx, n, px, entry.status === "missing");
 }
 
-// Il quarto argomento è POLIMORFO: una DrawOptions (export/png.ts, i test delle
-// immagini) OPPURE direttamente l'id della pagina corrente (ui/App.tsx, i test
-// dell'annidamento). Sono la stessa informazione a due comodità diverse -- chi
-// deve solo scegliere la pagina non vuole costruire un oggetto -- e drawScene le
-// normalizza subito. null/assente = default dello store (prima pagina, cache
-// condivisa, dpr del dispositivo).
+// The fourth argument is POLYMORPHIC: a DrawOptions (export/png.ts, the image
+// tests) OR directly the current page id (ui/App.tsx, the nesting
+// tests). They are the same information as two different conveniences --
+// whoever only needs to choose the page does not want to build an object -- and drawScene
+// normalizes them right away. null/absent = store default (first page, shared
+// cache, device dpr).
 export function drawScene(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -286,27 +286,27 @@ export function drawScene(
   const dpr = opts.dpr ?? devicePixelRatio();
   const images = opts.images ?? imageCache;
   const currentPageId = opts.currentPageId ?? null;
-  // Un pixel schermo in unità mondo, per i tratti che devono restare della
-  // stessa grossezza a ogni zoom (oggi: il bordo del segnaposto).
+  // One screen pixel in world units, for strokes that must stay the
+  // same thickness at every zoom (today: the placeholder's border).
   const px = 1 / (cam.zoom || 1);
   ctx.setTransform(1, 0, 0, 1, 0, 0);
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(cam.zoom * dpr, 0, 0, cam.zoom * dpr, cam.x * dpr, cam.y * dpr);
   const index = sceneIndexOf(state);
   const children = index.children;
-  // La VISTA nel mondo, per saltare ciò che non si vede. Senza una misura valida
-  // del canvas (i doppi dei test, un canvas non ancora dimensionato) non si
-  // scarta niente: si disegna tutto, come prima.
+  // The VIEW in the world, to skip what is not seen. Without a valid
+  // canvas measurement (test doubles, a canvas not yet sized) nothing is
+  // discarded: everything is drawn, as before.
   const cssW = canvas.width / dpr;
   const cssH = canvas.height / dpr;
   const cull: Cull | null =
     cssW > 0 && cssH > 0 && cam.zoom > 0
       ? {
           extent: index.extent,
-          // Allargata di 2 px schermo: un tracciato di area nulla (il punto del pen
-          // tool, un segmento orizzontale) ha un extent di misura zero e il
-          // confronto fra rettangoli è rigoroso; lo stesso margine copre
-          // l'antialiasing e i tratti a spessore costante sullo schermo.
+          // Widened by 2 screen px: a zero-area path (the pen
+          // tool's point, a horizontal segment) has an extent of size zero and the
+          // rectangle comparison is strict; the same margin covers
+          // antialiasing and strokes of constant on-screen thickness.
           view: inflateBounds(
             { x: -cam.x / cam.zoom, y: -cam.y / cam.zoom, width: cssW / cam.zoom, height: cssH / cam.zoom },
             2 * px,
@@ -319,39 +319,39 @@ export function drawScene(
   ctx.globalAlpha = 1;
 }
 
-// Cosa serve a drawSiblings per scartare i sottoalberi che non compaiono:
-// l'extent MONDO di ogni nodo (renderer/sceneIndex.ts), la vista nel mondo e la
-// dimensione di un pixel schermo in unità mondo.
+// What drawSiblings needs to discard subtrees that do not appear:
+// the WORLD extent of every node (renderer/sceneIndex.ts), the view in the world and
+// the size of a screen pixel in world units.
 interface Cull {
   extent: { get(id: string): Bounds | undefined };
   view: Bounds;
   px: number;
-  // Solo nelle scene derivate dalla riproduzione: vedi AnimInfo.
+  // Only in scenes derived from playback: see AnimInfo.
   anim?: AnimInfo;
 }
 
-// Sotto questa misura (px schermo) un intero sottoalbero non dipinge niente di
-// visibile: lo si salta. Sotto LOD_FLAT_PX un SINGOLO nodo non vale più il suo
-// disegno completo (percorso, tratto, gradiente, testo): diventa un rettangolo
-// piatto del suo colore, che a quella taglia è indistinguibile.
+// Below this size (screen px) an entire subtree paints nothing
+// visible: it is skipped. Below LOD_FLAT_PX a SINGLE node is no longer worth its
+// full drawing (path, stroke, gradient, text): it becomes a flat
+// rectangle of its color, which at that size is indistinguishable.
 export const SKIP_SUBTREE_PX = 0.3;
 export const LOD_FLAT_PX = 4;
-// Un frame ritagliante più piccolo di così (px schermo) non ritaglia: ciò che
-// sporge di qualche pixel non si distingue, e creare un Path2D + clip per ogni
-// frame costa più del resto del frame.
+// A clipping frame smaller than this (screen px) does not clip: what
+// overflows by a few pixels is indistinguishable, and creating a Path2D + clip for every
+// frame costs more than the rest of the frame.
 export const CLIP_MIN_PX = 12;
 
-// La mappa degli override che scende insieme al sottoalbero di un'istanza
-// (masterNodeId -> override), oppure `null` fuori da ogni istanza (la pagina, il
-// contenuto di un gruppo o di un frame normale). Vedi store/instances.ts.
+// The map of overrides that descends together with an instance's subtree
+// (masterNodeId -> override), or `null` outside any instance (the page, the
+// content of a normal group or frame). See store/instances.ts.
 type OverrideMap = ReadonlyMap<string, InstanceOverrideLite> | null;
 
-// Il nodo del master COL SUO override applicato, se ce n'è uno: `fills`
-// dell'override al posto dei suoi se presente, e -- per un testo -- il `text`
-// dell'override al posto del suo contenuto se presente. Ritorna il nodo INTATTO
-// quando non c'è override (nessuna copia inutile). Non tocca mai la geometria
-// (x/y/width/height/rotation): un override cambia solo ciò che il nodo dipinge,
-// non dove sta -- la stessa scelta dei bounds in store/groups.ts.
+// The master's node WITH its override applied, if there is one: the override's
+// `fills` in place of its own if present, and -- for a text -- the override's `text`
+// in place of its content if present. Returns the node UNTOUCHED
+// when there is no override (no needless copy). It never touches the geometry
+// (x/y/width/height/rotation): an override changes only what the node paints,
+// not where it sits -- the same choice as the bounds in store/groups.ts.
 export function withOverride(n: NodeLite, ov: InstanceOverrideLite | undefined): NodeLite {
   if (!ov) return n;
   let eff = n;
@@ -360,14 +360,14 @@ export function withOverride(n: NodeLite, ov: InstanceOverrideLite | undefined):
   return eff;
 }
 
-// Disegna una lista di fratelli (già ordinata) nello spazio CORRENTE del ctx,
-// scendendo in ognuno.
+// Draws a list of siblings (already sorted) in the ctx's CURRENT space,
+// descending into each.
 //
-// Ricorsione e non pila esplicita come tree.ts::subtreeOf: qui la discesa è
-// ACCOPPIATA a save/restore del ctx, e una pila esplicita dovrebbe ricostruire a
-// mano proprio quell'accoppiamento. `seen` rende comunque la profondità limitata
-// dal NUMERO di nodi -- un ciclo in un documento malformato non può far scendere
-// all'infinito.
+// Recursion and not an explicit stack like tree.ts::subtreeOf: here the descent is
+// COUPLED to the ctx's save/restore, and an explicit stack would have to rebuild by
+// hand precisely that coupling. `seen` still bounds the depth
+// by the NUMBER of nodes -- a cycle in a malformed document cannot make it descend
+// forever.
 function drawSiblings(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -383,74 +383,74 @@ function drawSiblings(
 ): void {
   for (const n of siblings) {
     if (!n.visible || seen.has(n.id)) continue;
-    // Fuori vista, o troppo piccolo per vedersi: salta l'INTERO sottoalbero.
-    // `cull` è null dentro un'istanza -- i nodi del master hanno l'extent nel
-    // loro posto d'origine, non dove l'istanza li disegna.
-    // Un nodo con la scala animata (e i suoi antenati, la cui extent è l'unione
-    // dei figli) ha nell'indice un extent che NON conosce la scala: potrebbe
-    // dichiararlo fuori vista mentre sta entrando. Per loro niente scarto -- si
-    // disegnano sempre; costa un nodo in più, mentre saltarlo sarebbe un
-    // "sparisce a metà animazione".
+    // Out of view, or too small to be seen: skip the WHOLE subtree.
+    // `cull` is null inside an instance -- the master's nodes have their extent
+    // at their place of origin, not where the instance draws them.
+    // A node with animated scale (and its ancestors, whose extent is the union
+    // of the children) has in the index an extent that does NOT know the scale: it might
+    // declare it out of view while it is coming in. For them no culling -- they
+    // are always drawn; it costs one extra node, while skipping it would be a
+    // "vanishes mid-animation".
     const anim = cull?.anim;
     if (cull && !(anim && (anim.scaled.has(n.id) || anim.ancestors.has(n.id)))) {
       const e = cull.extent.get(n.id);
       if (!e || !boundsIntersect(e, cull.view)) continue;
-      // Un vettoriale non si scarta per misura: ha tratto a spessore costante sullo
-      // schermo e può avere box nullo (un punto), ma si vede comunque.
+      // A vector is not discarded by size: it has a constant on-screen-thickness stroke
+      // and may have a null box (a point), but it is seen anyway.
       if (n.kind !== "vector" && e.width / cull.px < SKIP_SUBTREE_PX && e.height / cull.px < SKIP_SUBTREE_PX) continue;
     }
     seen.add(n.id);
     drawNode(ctx, state, n, cam, px, images, overrides);
-    // Un'ISTANZA non ha figli in `children` (il suo sottoalbero è virtuale):
-    // disegna il master sotto la trasformazione di discesa, con i PROPRI
-    // override, e senza scendere oltre qui. drawNode ha già saltato il suo box.
+    // An INSTANCE has no children in `children` (its subtree is virtual):
+    // it draws the master under the descent transform, with its OWN
+    // overrides, and without descending further here. drawNode has already skipped its box.
     if (n.kind === "instance") {
       drawInstance(ctx, state, children, n, cam, px, images, visited);
       continue;
     }
     const kids = children.get(n.id);
     if (!kids || kids.length === 0) continue;
-    // Il container entra nella trasformazione SOLO per i figli: le sue
-    // coordinate proprie (e la sua rotazione) sono già state usate qui sopra,
-    // nello spazio del suo parent. save/restore invece di applicare l'inversa a
-    // mano: il ctx sa già annullare esattamente ciò che gli è stato composto.
-    // localTransformOf include ORA anche la rotazione del nodo (transform.ts),
-    // quindi i figli di un container ruotato ruotano con lui.
+    // The container enters the transform ONLY for its children: its own
+    // coordinates (and its rotation) have already been used above,
+    // in its parent's space. save/restore instead of applying the inverse by
+    // hand: the ctx already knows how to undo exactly what was composed onto it.
+    // localTransformOf NOW also includes the node's rotation (transform.ts),
+    // so the children of a rotated container rotate with it.
     ctx.save();
     const t = localTransformOf(n);
     ctx.transform(t.a, t.b, t.c, t.d, t.e, t.f);
-    // Un FRAME con clipsContent ritaglia i figli al PROPRIO box. Il clip sta
-    // qui, DENTRO il save/restore e DOPO la trasformazione: è quindi nello
-    // spazio locale dei figli, dove il box del frame è (0,0,width,height) --
-    // l'origine del frame è l'origine dei figli. È lo STESSO ritaglio che pickIn
-    // applica al punto e collectIn alla banda (via intersectBounds): vedi-vs-
-    // seleziona, ciò che il clip nasconde al disegno non si clicca e il marquee
-    // non lo prende. Un frame senza clipsContent lascia sporgere i figli.
+    // A FRAME with clipsContent clips the children to its OWN box. The clip sits
+    // here, INSIDE the save/restore and AFTER the transform: it is therefore in the
+    // children's local space, where the frame's box is (0,0,width,height) --
+    // the frame's origin is the children's origin. It is the SAME clipping that pickIn
+    // applies to the point and collectIn to the band (via intersectBounds): see-vs-
+    // select, what the clip hides from drawing is not clicked and the marquee
+    // does not take it. A frame without clipsContent lets the children overflow.
     if (n.kind === "frame" && n.clipsContent && Math.max(n.width, n.height) / px >= CLIP_MIN_PX) {
       const clip = new Path2D();
       clip.rect(0, 0, n.width, n.height);
       ctx.clip(clip);
     }
-    // ...e il sottoalbero di un nodo scalato si muove con lui: gli extent dei
-    // discendenti sono nel loro posto di base, quindi dentro non si scarta.
+    // ...and the subtree of a scaled node moves with it: the descendants'
+    // extents are in their base place, so inside it nothing is discarded.
     drawSiblings(ctx, state, children, kids, cam, px, images, seen, overrides, visited, anim?.scaled.has(n.id) ? null : cull);
     ctx.restore();
   }
 }
 
-// Il sottoalbero VIRTUALE di un'istanza. Come per un container normale il
-// contenuto entra nella trasformazione dentro un save/restore, ma la matrice è
-// quella di DISCESA (instanceDescentLocal: posizione dell'istanza più lo
-// scostamento che porta l'origine del master all'origine dell'istanza), e i
-// "fratelli" sono la sola radice del master -- da lì la ricorsione di
-// drawSiblings scende il resto come per qualunque albero.
+// The VIRTUAL subtree of an instance. As for a normal container the
+// content enters the transform inside a save/restore, but the matrix is
+// the DESCENT one (instanceDescentLocal: the instance's position plus the
+// offset that brings the master's origin to the instance's origin), and the
+// "siblings" are only the master's root -- from there drawSiblings' recursion
+// descends the rest as for any tree.
 //
-// `visited` sono i componentId già in corso di rendering su questo ramo: se il
-// componente dell'istanza è già dentro, ci si ferma (un componente il cui master
-// contiene un'istanza di sé stesso ricorrerebbe all'infinito). Un `seen` FRESCO
-// per il master, non quello della pagina: lo stesso componente reso da due
-// istanze deve disegnarsi due volte, e col `seen` condiviso la seconda lo
-// salterebbe come "già visto".
+// `visited` are the componentIds already being rendered on this branch: if the
+// instance's component is already inside, we stop (a component whose master
+// contains an instance of itself would recurse forever). A FRESH `seen` for the
+// master, not the page's: the same component rendered by two
+// instances must be drawn twice, and with the shared `seen` the second would
+// skip it as "already seen".
 function drawInstance(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -473,10 +473,10 @@ function drawInstance(
   ctx.restore();
 }
 
-// Il nodo e basta, nello spazio del suo parent (che è quello corrente del ctx).
-// Il corpo PER NODO delle quattro tracce: guard sulla dimensione (shapes.ts::
-// inkIsBox), rotazione del CONTESTO attorno al centro (traccia 2), e l'if-chain
-// testo/immagine/vettoriale/forma con i rispettivi tratti (tracce 2/3/4).
+// The node and nothing else, in its parent's space (which is the ctx's current one).
+// The PER-NODE body of the four tracks: size guard (shapes.ts::
+// inkIsBox), rotation of the CONTEXT around the center (track 2), and the if-chain
+// text/image/vector/shape with their respective strokes (tracks 2/3/4).
 function drawNode(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -486,31 +486,31 @@ function drawNode(
   images: ImageSource,
   overrides: OverrideMap,
 ): void {
-  // Un GRUPPO non si disegna: contenitore senza geometria propria (i suoi
-  // bounds sono l'unione dei figli, store/groups.ts) e ciò che si vede sono i
-  // figli. Esplicito e non affidato al guard sulla dimensione: un gruppo con
-  // width/height != 0 -- scritti da chi non lo sa, o da un documento di un'altra
-  // versione -- comparirebbe come un rettangolo pieno mai disegnato dall'utente.
-  // Un'ISTANZA non si disegna qui per la stessa ragione: non ha un box proprio,
-  // il suo contenuto è il master (drawInstance lo disegna dopo questa chiamata).
+  // A GROUP is not drawn: a container without geometry of its own (its
+  // bounds are the union of the children, store/groups.ts) and what is seen are the
+  // children. Explicit and not left to the size guard: a group with
+  // width/height != 0 -- written by someone who does not know, or by a document from another
+  // version -- would appear as a solid rectangle never drawn by the user.
+  // An INSTANCE is not drawn here for the same reason: it has no box of its own,
+  // its content is the master (drawInstance draws it after this call).
   if (n.kind === "group" || n.kind === "instance") return;
-  // Il nodo COL SUO override, se sta scendendo dentro un'istanza che lo
-  // sovrascrive: da qui in poi si disegna `eff`, non `n`. L'override tocca solo
-  // fills/text -- la geometria (box, rotazione) resta quella del master, quindi
-  // i guard e i centri di rotazione qui sotto sono identici con o senza.
+  // The node WITH its override, if it is descending into an instance that
+  // overrides it: from here on `eff` is drawn, not `n`. The override touches only
+  // fills/text -- the geometry (box, rotation) stays the master's, so
+  // the guards and rotation centers below are identical with or without it.
   const eff = withOverride(n, overrides?.get(n.id));
-  // Il guard sulla dimensione vale solo per le forme il cui inchiostro È il box
-  // (rect, ellisse, immagine, frame): per testo e vettoriale un lato a zero è
-  // uno stato legittimo e disegnabile. L'elenco delle eccezioni sta in UN posto
-  // solo (shapes.ts::inkIsBox), condiviso con l'hit-test: un nodo che si disegna
-  // ma non si clicca -- o il contrario -- è il modo in cui i due divergono.
+  // The size guard only applies to shapes whose ink IS the box
+  // (rect, ellipse, image, frame): for text and vector a zero side is
+  // a legitimate, drawable state. The list of exceptions lives in ONE place
+  // only (shapes.ts::inkIsBox), shared with hit-test: a node that is drawn
+  // but not clicked -- or the reverse -- is how the two diverge.
   if (inkIsBox(eff) && (eff.width <= 0 || eff.height <= 0)) return;
-  // LIVELLO DI DETTAGLIO: a pochi pixel un nodo non ha più forma, tratto o
-  // testo da distinguere. Un rettangolo piatto del suo colore costa una frazione
-  // del disegno completo, ed è ciò che permette di inquadrare un documento
-  // intero senza pagare ogni nodo come se fosse a grandezza naturale. Il
-  // vettoriale resta fuori (un path di un ancoraggio ha misura zero e si vede
-  // comunque), e il testo conta in corpo del carattere, non in box.
+  // LEVEL OF DETAIL: at a few pixels a node has no more shape, stroke or
+  // text to distinguish. A flat rectangle of its color costs a fraction
+  // of the full drawing, and it is what allows framing a whole
+  // document without paying for every node as if at full size. The
+  // vector stays out (a one-anchor path has zero size and is seen
+  // anyway), and text counts in font size, not in box.
   const flatSize = eff.kind === "text" ? (eff.text?.style.fontSize || 16) : Math.max(eff.width, eff.height);
   if (eff.kind !== "vector" && flatSize / px < LOD_FLAT_PX) {
     if (eff.kind === "frame" && eff.fills.length === 0) return;
@@ -519,15 +519,15 @@ function drawNode(
     ctx.fillRect(eff.x, eff.y, eff.width, eff.height);
     return;
   }
-  // ROTAZIONE (traccia 2): è il CONTESTO a ruotare attorno al centro del box
-  // (nodeCenter, la stessa funzione che l'hit-test usa nel verso opposto), non
-  // la geometria -- nodePath e drawText restano asse-allineati. Il nodo si
-  // disegna nello spazio del proprio parent (quello corrente del ctx); questa
-  // rotazione è la SUA, distinta da quella che drawSiblings applica scendendo
-  // nei suoi figli. save/restore SOLO quando serve.
-  // SCALA ANIMATA (solo scene derivate dalla riproduzione): uniforme attorno allo
-  // stesso centro della rotazione, quindi i due si compongono nello stesso
-  // save/restore. `animPivot` è per i gruppi, che non hanno un box proprio.
+  // ROTATION (track 2): it is the CONTEXT that rotates around the box center
+  // (nodeCenter, the same function hit-test uses in the opposite direction), not
+  // the geometry -- nodePath and drawText stay axis-aligned. The node is
+  // drawn in its own parent's space (the ctx's current one); this
+  // rotation is ITS OWN, distinct from the one drawSiblings applies when descending
+  // into its children. save/restore ONLY when needed.
+  // ANIMATED SCALE (only playback-derived scenes): uniform around the
+  // same center as the rotation, so the two compose in the same
+  // save/restore. `animPivot` is for groups, which have no box of their own.
   const scaled = eff.animScale !== undefined && eff.animScale !== 1;
   const rotated = eff.rotation % 360 !== 0 || scaled;
   if (rotated) {
@@ -541,35 +541,35 @@ function drawNode(
   ctx.globalAlpha = eff.opacity;
   const color = cssColor(eff);
   ctx.fillStyle = paintStyle(ctx, resolvedFill(eff), eff);
-  // Gli effetti valgono per tutto ciò che il nodo disegna sotto: forma, testo,
-  // immagine, vettoriale.
+  // Effects apply to everything the node draws below: shape, text,
+  // image, vector.
   const fx = applyEffects(ctx, eff, deviceScale(ctx, cam));
   if (eff.kind === "text") {
     drawText(ctx, eff);
     drawStrokes(ctx, eff, null);
   } else if (eff.kind === "image") {
-    // Un'immagine disegna sé stessa sul proprio box (traccia 3): niente
-    // riempimento sotto, e il tratto non fa parte del suo design.
+    // An image draws itself on its own box (track 3): no
+    // fill underneath, and the stroke is not part of its design.
     drawImageNode(ctx, state, eff, px, images);
   } else if (eff.kind === "vector") {
-    // Il vettoriale ha la sua doppia passata (riempimento even-odd + tratto di
-    // ogni contorno): NON è il box del modello, quindi non passa dal ramo
-    // rettangolo qui sotto. Il tratto vettoriale è quello di drawVector, non
-    // drawStrokes (che è per il perimetro di un box).
+    // The vector has its double pass (even-odd fill + stroke of
+    // every outline): it is NOT the model's box, so it does not go through the
+    // rectangle branch below. The vector stroke is drawVector's, not
+    // drawStrokes' (which is for a box's perimeter).
     drawVector(ctx, eff, color, cam.zoom);
   } else {
-    // rect / ellisse / FRAME. Un frame si disegna come un rettangolo coi suoi
-    // fills (nodePath lo tiene a spigoli vivi anche con un cornerRadius), dietro
-    // al proprio contenuto -- drawNode gira PRIMA della discesa nei figli. UN
-    // SOLO Path2D per nodo: quello del riempimento è anche quello del tratto.
+    // rect / ellipse / FRAME. A frame is drawn like a rectangle with its
+    // fills (nodePath keeps it sharp-cornered even with a cornerRadius), behind
+    // its own content -- drawNode runs BEFORE the descent into the children. A SINGLE
+    // Path2D per node: the fill's is also the stroke's.
     const path = nodePath(eff);
-    // Un FRAME senza riempimento è trasparente: è un contenitore, e il grigio di
-    // default (resolvedFill) è per le forme. Senza questa eccezione un frame
-    // appena avvolto attorno a una selezione la nasconderebbe sotto un
-    // rettangolo grigio.
+    // A FRAME without a fill is transparent: it is a container, and the default gray
+    // (resolvedFill) is for shapes. Without this exception a frame
+    // just wrapped around a selection would hide it under a
+    // gray rectangle.
     if (!(eff.kind === "frame" && eff.fills.length === 0)) ctx.fill(path);
-    // Con un riempimento visibile l'ombra l'ha già data lui: ridarla dal tratto
-    // sovrapporrebbe due ombre sul bordo e lo scurirebbe.
+    // With a visible fill the shadow has already been given by it: giving it again from the stroke
+    // would overlap two shadows on the edge and darken it.
     if (fx && eff.fills.length > 0) ctx.shadowColor = "transparent";
     drawStrokes(ctx, eff, path);
   }
@@ -577,35 +577,35 @@ function drawNode(
   if (rotated) ctx.restore();
 }
 
-// --- IL TRATTO ----------------------------------------------------------------
+// --- THE STROKE ---------------------------------------------------------------
 //
-// Il canvas 2D traccia SOLO centrato sul path: `lineWidth` si spartisce metà
-// dentro e metà fuori, e non esiste nessuna proprietà di allineamento. Le altre
-// due ricette si ottengono raddoppiando la larghezza -- così la metà che
-// sopravvive è ESATTAMENTE il peso chiesto -- e ritagliando il lato di troppo:
+// Canvas 2D strokes ONLY centered on the path: `lineWidth` is split half
+// inside and half outside, and there is no alignment property. The other
+// two recipes are obtained by doubling the width -- so the half that
+// survives is EXACTLY the requested weight -- and clipping the extra side:
 //
-//   INSIDE   clip(path)                  -> resta la metà interna
-//   OUTSIDE  clip(complemento, evenodd)  -> resta la metà esterna
+//   INSIDE   clip(path)                  -> the inner half remains
+//   OUTSIDE  clip(complement, evenodd)  -> the outer half remains
 //
-// È la tecnica standard, ed è esatta (non un'approssimazione) per le forme
-// SEMPLICI che il progetto disegna: rettangolo, rettangolo stondato, ellisse.
+// It is the standard technique, and it is exact (not an approximation) for the
+// SIMPLE shapes the project draws: rectangle, rounded rectangle, ellipse.
 //
-// Il TESTO fa storia a sé: un glifo un Path2D non ce l'ha (il canvas 2D non
-// espone il contorno del testo), quindi il suo tratto è sempre centrato --
-// l'approssimazione è dichiarata in renderer/text.ts::strokeText, e
-// canvas/geometry.ts::strokeOutsetOfNode conta la sporgenza con la stessa
-// regola, così misura e disegno restano la stessa cosa.
+// TEXT is a case of its own: a glyph has no Path2D (canvas 2D does not
+// expose the text outline), so its stroke is always centered --
+// the approximation is declared in renderer/text.ts::strokeText, and
+// canvas/geometry.ts::strokeOutsetOfNode counts the overhang with the same
+// rule, so measure and drawing stay the same thing.
 function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | null): void {
-  // `draw` animato (< 1) su un box: il tratto si disegna per la frazione data del
-  // perimetro. A 1 è il tratto intero, senza tratteggio (nessuna differenza
-  // osservabile e nessun costo). Il testo non ha perimetro: ignora `draw`.
+  // animated `draw` (< 1) on a box: the stroke is drawn for the given fraction of the
+  // perimeter. At 1 it is the whole stroke, without dashing (no observable
+  // difference and no cost). Text has no perimeter: it ignores `draw`.
   const dashed = n.animDraw !== undefined && n.animDraw < 1 && path !== null;
   if (dashed) ctx.setLineDash(drawDash(perimeterOf(n), n.animDraw as number));
   for (const s of n.strokes) {
-    // Un peso non positivo NON è un tratto sottilissimo: non è un tratto. Il
-    // canvas con lineWidth 0 non disegna nulla, e i bounds non contano nessuna
-    // sporgenza (canvas/geometry.ts::strokeOutset) -- le due cose devono
-    // saltare lo stesso tratto.
+    // A non-positive weight is NOT a very thin stroke: it is not a stroke. Canvas
+    // with lineWidth 0 draws nothing, and the bounds count no
+    // overhang (canvas/geometry.ts::strokeOutset) -- the two things must
+    // skip the same stroke.
     if (!(s.weight > 0)) continue;
     ctx.strokeStyle = paintStyle(ctx, s.color, n);
     if (path === null) {
@@ -632,11 +632,11 @@ function strokeShape(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s
   ctx.restore();
 }
 
-// Il COMPLEMENTO della forma, come regione di ritaglio: un rettangolo che
-// copre tutta la fascia esterna PIÙ il path della forma, valutati con evenodd.
-// Un punto dentro la forma attraversa due bordi (pari) e resta quindi FUORI
-// dalla regione; uno nella fascia ne attraversa uno solo (dispari) e ci resta
-// dentro. Nessun path da invertire, e la forma è la stessa del riempimento.
+// The COMPLEMENT of the shape, as a clip region: a rectangle that
+// covers the whole outer band PLUS the shape's path, evaluated with evenodd.
+// A point inside the shape crosses two edges (even) and therefore stays OUTSIDE
+// the region; one in the band crosses only one (odd) and stays
+// inside. No path to invert, and the shape is the same as the fill's.
 const OUTSIDE_CLIP_MARGIN = 1;
 
 function outsideClip(n: NodeLite, path: Path2D, weight: number): Path2D {
@@ -647,19 +647,19 @@ function outsideClip(n: NodeLite, path: Path2D, weight: number): Path2D {
   return clip;
 }
 
-// Un nodo vettoriale in DUE passate: OGNI contorno si traccia, e in più quelli
-// che hanno area si riempiono. Il tratto non è decorazione -- è ciò che tiene
-// visibile un contorno aperto e un contorno chiuso di area nulla (due
-// ancoraggi, o tre allineati: due stati che il pen tool raggiunge in tre click,
-// e che il solo riempimento non dipingerebbe affatto).
+// A vector node in TWO passes: EVERY outline is stroked, and in addition those
+// that have area are filled. The stroke is not decoration -- it is what keeps
+// an open outline and a closed zero-area outline visible (two
+// anchors, or three aligned: two states the pen tool reaches in three clicks,
+// and that the fill alone would not paint at all).
 //
-// I due Path2D sono separati perché un contorno aperto messo in quello del
-// riempimento verrebbe chiuso implicitamente dal canvas e riempito -- ed è per
-// questo che vectorPaths ne restituisce due.
+// The two Path2Ds are separate because an open outline put in the fill's
+// would be implicitly closed by the canvas and filled -- and that is why
+// vectorPaths returns two of them.
 function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, zoom: number): void {
-  // DRAW-ON animato (< 1): si vede solo il tratto, ogni contorno per la frazione
-  // data della propria lunghezza; il riempimento compare quando il tracciato è
-  // completo (a 1 si ricade nel disegno normale qui sotto).
+  // animated DRAW-ON (< 1): only the stroke is seen, each outline for the given fraction
+  // of its own length; the fill appears when the path is
+  // complete (at 1 it falls back to the normal drawing below).
   if (n.animDraw !== undefined && n.animDraw < 1) {
     ctx.strokeStyle = color;
     ctx.lineWidth = VECTOR_STROKE_PX / zoom;
@@ -673,17 +673,17 @@ function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, z
     return;
   }
   const { fill, stroke } = vectorPaths(n);
-  // La regola even-odd è una SCELTA (motivata su shapes.ts::VECTOR_FILL_RULE)
-  // e non il default del canvas, quindi va passata a ogni fill. È la stessa
-  // che usa l'hit-test: un buco che si vede ma si clicca sarebbe la firma di
-  // due regole diverse.
+  // The even-odd rule is a CHOICE (motivated on shapes.ts::VECTOR_FILL_RULE)
+  // and not the canvas default, so it must be passed to every fill. It is the same
+  // one hit-test uses: a hole that is seen but clicked would be the signature of
+  // two different rules.
   const vs = vectorStyleOf(n);
   if (fill) ctx.fill(fill, vs.fillRule ?? VECTOR_FILL_RULE);
   if (stroke && hasRealStroke(n)) {
-    // TRATTO VERO (nodi importati da SVG, o con un tratto dal pannello): peso
-    // in unità mondo, colore/gradiente propri, e capi/giunti/tratteggio dai
-    // meta (renderer/vectorStyle.ts). Sostituisce il filo di 1.5px, che
-    // esiste solo per rendere visibile un path senza altro inchiostro.
+    // REAL STROKE (nodes imported from SVG, or with a stroke from the panel): weight
+    // in world units, own color/gradient, and caps/joins/dashing from the
+    // meta (renderer/vectorStyle.ts). It replaces the 1.5px hairline, which
+    // exists only to make a path visible without any other ink.
     ctx.lineCap = vs.cap;
     ctx.lineJoin = vs.join;
     ctx.miterLimit = vs.miter;
@@ -698,31 +698,31 @@ function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, z
     ctx.setLineDash([]);
   } else if (stroke && vs.hairline) {
     ctx.strokeStyle = color;
-    // Il ctx è in trasformazione MONDO (drawScene applica zoom * dpr), quindi
-    // uno spessore costante sullo schermo si ottiene dividendo per lo zoom --
-    // il dpr si cura da sé, essendo nella stessa matrice. Senza, la linea di un
-    // path si ingrasserebbe insieme al disegno e a zoom 64 sarebbe una banda.
+    // The ctx is in WORLD transform (drawScene applies zoom * dpr), so
+    // a constant on-screen thickness is obtained by dividing by the zoom --
+    // dpr takes care of itself, being in the same matrix. Without it, a path's
+    // line would thicken along with the drawing and at zoom 64 would be a band.
     ctx.lineWidth = VECTOR_STROKE_PX / zoom;
-    // Giunti e capi tondi: sono anche ciò che rende visibile un contorno di UN
-    // solo ancoraggio, che shapes.ts traccia come un segmento di lunghezza
-    // nulla (il pallino del pen tool dopo il primo click).
+    // Round joins and caps: they are also what makes an outline of a SINGLE
+    // anchor visible, which shapes.ts strokes as a zero-length
+    // segment (the pen tool's dot after the first click).
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     ctx.stroke(stroke);
   }
 }
 
-// hitTest in coordinate MONDO. Ritorna il nodo più in alto -- il PIÙ INTERNO
-// dove i sottoalberi si sovrappongono, perché un figlio si disegna sopra il
-// proprio container. Chi selezionerà il GRUPPO invece del figlio (il click
-// seleziona il gruppo, il doppio click entra) risale da qui con l'albero: è
-// una politica di selezione, non di hit-test, e non va nascosta qui dentro.
+// hitTest in WORLD coordinates. Returns the topmost node -- the INNERMOST
+// where subtrees overlap, because a child is drawn on top of its
+// container. Whoever will select the GROUP instead of the child (a click
+// selects the group, a double click enters) climbs from here with the tree: it is
+// a selection policy, not a hit-test one, and it must not be hidden in here.
 //
-// Porta ENTRAMBE le informazioni delle tracce parallele: `zoom` (traccia 4)
-// arriva fino a hitTestNode perché la presa attorno a un contorno vettoriale
-// APERTO è in px SCHERMO (shapes.ts::VECTOR_HIT_PX); `currentPageId` (traccia 1)
-// sceglie la pagina da cui scendere -- lo stesso scoping di drawScene, così ciò
-// che si vede è ciò che si clicca.
+// It carries BOTH pieces of information from the parallel tracks: `zoom` (track 4)
+// goes all the way to hitTestNode because the grab around an OPEN vector
+// outline is in SCREEN px (shapes.ts::VECTOR_HIT_PX); `currentPageId` (track 1)
+// chooses the page to descend from -- the same scoping as drawScene, so what
+// is seen is what is clicked.
 export function hitTest(
   state: SceneState,
   wx: number,
@@ -732,33 +732,33 @@ export function hitTest(
 ): string | null {
   const index = sceneIndexOf(state);
   const children = index.children;
-  // Il punto MONDO e la tolleranza (la presa attorno a un tracciato aperto è in
-  // px schermo, vedi shapes.ts::VECTOR_HIT_PX): servono a saltare i sottoalberi
-  // il cui extent non può contenerlo.
+  // The WORLD point and the tolerance (the grab around an open path is in
+  // screen px, see shapes.ts::VECTOR_HIT_PX): they serve to skip subtrees
+  // whose extent cannot contain it.
   const prune: Prune = { extent: index.extent, x: wx, y: wy, pad: HIT_PRUNE_PX / (zoom || 1) };
   return pickIn(state, children, rootsOf(state, children, currentPageId), wx, wy, zoom, new Set(), new Set(), prune);
 }
 
-// Lo STESSO cammino di drawSiblings, al contrario: fratelli dall'ultimo al
-// primo (l'ultimo è il più in alto) e, dentro ognuno, prima il sottoalbero e
-// poi il nodo stesso.
+// The SAME walk as drawSiblings, in reverse: siblings from last to
+// first (the last is the topmost) and, within each, first the subtree and
+// then the node itself.
 //
-// (px, py) è il punto nello spazio LOCALE di questi fratelli, cioè quello in
-// cui sono scritte le loro coordinate: è lì che hitTestNode li confronta. Per
-// scendere in un container si applica al punto l'INVERSA della trasformazione
-// che il renderer applica al ctx -- la stessa localTransformOf (rotazione
-// inclusa), letta nell'altro verso.
-// Come Cull, per l'hit-test: il punto nel MONDO (px/py di pickIn sono nello spazio
-// LOCALE dei fratelli e cambiano a ogni discesa) e la tolleranza in unità mondo.
-// `null` dentro un'istanza, per la stessa ragione di drawSiblings.
+// (px, py) is the point in the LOCAL space of these siblings, that is the one in
+// which their coordinates are written: that is where hitTestNode compares them. To
+// descend into a container the INVERSE of the transform the renderer applies
+// to the ctx is applied to the point -- the same localTransformOf (rotation
+// included), read in the other direction.
+// Like Cull, for hit-test: the point in the WORLD (pickIn's px/py are in the siblings'
+// LOCAL space and change on every descent) and the tolerance in world units.
+// `null` inside an instance, for the same reason as drawSiblings.
 interface Prune {
   extent: { get(id: string): Bounds | undefined };
   x: number;
   y: number;
   pad: number;
 }
-// Margine con cui si prova un sottoalbero prima di scartarlo (px schermo): copre
-// la presa attorno ai tracciati aperti e ciò che un extent stimato può mancare.
+// Margin with which a subtree is tried before being discarded (screen px): it covers
+// the grab around open paths and what an estimated extent may miss.
 const HIT_PRUNE_PX = 12;
 
 function pickIn(
@@ -781,12 +781,12 @@ function pickIn(
           prune.y < e.y - prune.pad || prune.y > e.y + e.height + prune.pad) continue;
     }
     seen.add(n.id);
-    // Un'ISTANZA è OPACA alla selezione dall'esterno: si scende nel master (col
-    // punto portato nello spazio del master dall'inversa della discesa) e, se
-    // qualcosa lì viene colpito, la risposta è l'ISTANZA -- mai un nodo del
-    // master, che dall'esterno non è selezionabile per conto suo. Se non colpisce
-    // niente, `continue`: un'istanza non ha un box proprio da colpire (come un
-    // gruppo), quindi non ruba il click a ciò che le sta sotto.
+    // An INSTANCE is OPAQUE to selection from outside: we descend into the master (with the
+    // point brought into the master's space by the descent inverse) and, if
+    // something there is hit, the answer is the INSTANCE -- never a node of the
+    // master, which from outside is not selectable on its own. If nothing is
+    // hit, `continue`: an instance has no box of its own to hit (like a
+    // group), so it does not steal the click from what lies under it.
     if (n.kind === "instance") {
       if (hitInstance(state, children, n, px, py, zoom, visited)) return n.id;
       continue;
@@ -794,12 +794,12 @@ function pickIn(
     const kids = children.get(n.id);
     if (kids && kids.length > 0) {
       const inner = applyTransform(invertTransform(localTransformOf(n)), px, py);
-      // Un FRAME con clipsContent nasconde i figli fuori dal proprio box: se il
-      // punto (già nello spazio locale del frame, dove il box è
-      // (0,0,width,height)) cade fuori, quei figli sono ritagliati via -- non si
-      // disegnano lì (drawSiblings) e non si devono cliccare. Stessa geometria,
-      // stesso risultato: vedi-vs-seleziona. Il frame stesso resta colpibile sul
-      // suo box (hitTestNode qui sotto). Senza clip la discesa è come sempre.
+      // A FRAME with clipsContent hides the children outside its own box: if the
+      // point (already in the frame's local space, where the box is
+      // (0,0,width,height)) falls outside, those children are clipped away -- they are not
+      // drawn there (drawSiblings) and must not be clicked. Same geometry,
+      // same result: see-vs-select. The frame itself stays hittable on its
+      // box (hitTestNode below). Without a clip the descent is as always.
       const clipsAway =
         n.kind === "frame" && n.clipsContent &&
         !(inner.x >= 0 && inner.x <= n.width && inner.y >= 0 && inner.y <= n.height);
@@ -813,12 +813,12 @@ function pickIn(
   return null;
 }
 
-// L'hit-test del sottoalbero VIRTUALE di un'istanza: porta il punto nello spazio
-// del master (inversa della trasformazione di discesa) e lo prova sul master;
-// `true` se COLPISCE qualcosa lì dentro -- il chiamante ritorna allora l'id
-// DELL'ISTANZA, non del nodo del master colpito. `visited` e il `seen` fresco
-// come in drawInstance: il ciclo di un componente auto-referenziale si ferma, e
-// lo stesso master colpito da due istanze non si "auto-esclude".
+// The hit-test of an instance's VIRTUAL subtree: brings the point into the master's space
+// (inverse of the descent transform) and tries it on the master;
+// `true` if it HITS something in there -- the caller then returns the
+// INSTANCE's id, not that of the master node hit. `visited` and the fresh `seen`
+// as in drawInstance: the cycle of a self-referential component stops, and
+// the same master hit by two instances does not "self-exclude".
 function hitInstance(
   state: SceneState,
   children: ChildIndex,
@@ -836,40 +836,40 @@ function hitInstance(
   return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null) !== null;
 }
 
-// I nodi il cui box MONDO interseca `bounds`, in ordine di DISEGNO. È la
-// domanda del marquee ("cosa c'è dentro questo rettangolo"), e sta qui insieme
-// a drawScene/hitTest perché deve rispondere con gli STESSI nodi: un marquee
-// che seleziona ciò che il renderer non disegna è la stessa divergenza
-// vedi-vs-clicca che l'hit-test evita, solo presa dall'altro lato.
-// Quindi la stessa discesa: si parte dai figli delle pagine (chi non è
-// raggiungibile non ha un posto nel mondo) e un container invisibile porta via
-// con sé tutto il sottoalbero.
+// The nodes whose WORLD box intersects `bounds`, in DRAW order. It is the
+// marquee's question ("what is inside this rectangle"), and it lives here with
+// drawScene/hitTest because it must answer with the SAME nodes: a marquee
+// that selects what the renderer does not draw is the same see-vs-click
+// divergence hit-test avoids, only taken from the other side.
+// Hence the same descent: we start from the pages' children (whoever is not
+// reachable has no place in the world) and an invisible container takes
+// its whole subtree away with it.
 //
-// A differenza di pickIn qui si accumula la trasformazione ANDANDO (locale ->
-// mondo) invece di invertirla: il rettangolo del marquee è uno solo e sta nel
-// mondo, mentre i box da confrontare sono uno per nodo.
+// Unlike pickIn here the transform is accumulated GOING DOWN (local ->
+// world) instead of inverted: the marquee rectangle is a single one and sits in the
+// world, while the boxes to compare are one per node.
 //
-// Come hitTest, non risponde MAI con un gruppo (vedi collectIn): risponde con
-// ciò che si vede, e a risalire ai gruppi è la politica di selezione.
+// Like hitTest, it NEVER answers with a group (see collectIn): it answers with
+// what is seen, and climbing up to groups is the selection policy's job.
 export function nodesIntersecting(state: SceneState, bounds: Bounds, currentPageId?: string | null): string[] {
   const index = sceneIndexOf(state);
   const children = index.children;
   const out: string[] = [];
-  // Il marquee afferra anche ciò che sta vicino (la banda si allarga sui tracciati
-  // degeneri, selectionBoundsOfNode): si prova con un margine prima di scartare.
+  // The marquee also grabs what is nearby (the band widens on degenerate
+  // paths, selectionBoundsOfNode): it is tried with a margin before discarding.
   const probe = inflateBounds(bounds, MARQUEE_PRUNE_PAD);
   collectIn(state, children, rootsOf(state, children, currentPageId), IDENTITY, bounds, out, new Set(), { extent: index.extent, probe });
   return out;
 }
 
-// `toWorld` porta al mondo lo spazio in cui sono scritte le coordinate di
-// QUESTI fratelli, cioè quello del loro parent (identità per i figli di una
-// pagina): la stessa direzione dell'avvertenza su worldTransformOf.
+// `toWorld` brings to the world the space in which the coordinates of
+// THESE siblings are written, that is that of their parent (identity for a page's
+// children): the same direction as the warning on worldTransformOf.
 //
-// La discesa non si pota quando il box di un container manca il marquee: un
-// gruppo non contiene per forza i propri figli (il suo box è il suo, non
-// l'unione), quindi un figlio dentro il marquee resterebbe fuori dalla
-// selezione. Si salta solo ciò che non si vede.
+// The descent is not pruned when a container's box misses the marquee: a
+// group does not necessarily contain its own children (its box is its own, not
+// the union), so a child inside the marquee would stay out of the
+// selection. Only what is not seen is skipped.
 const MARQUEE_PRUNE_PAD = 16;
 
 function collectIn(
@@ -884,50 +884,50 @@ function collectIn(
 ): void {
   for (const n of siblings) {
     if (!n.visible || seen.has(n.id)) continue;
-    // Il sottoalbero il cui extent non tocca nemmeno la banda allargata non ha
-    // niente da offrire. Non dentro un'istanza (extent al posto d'origine) e non
-    // per un'istanza stessa, che ha i suoi bounds derivati qui sotto. `probe` è
-    // la banda ORIGINALE dentro un frame ritagliante? No: l'extent di un frame
-    // ritagliante è già ristretto al suo box, quindi il confronto resta valido.
+    // The subtree whose extent does not even touch the widened band has
+    // nothing to offer. Not inside an instance (extent in the place of origin) and not
+    // for an instance itself, which has its derived bounds below. `probe` is
+    // the ORIGINAL band inside a clipping frame? No: a clipping frame's extent
+    // is already narrowed to its box, so the comparison stays valid.
     if (prune && n.kind !== "instance") {
       const e = prune.extent.get(n.id);
       if (!e || !boundsIntersect(e, prune.probe)) continue;
     }
     seen.add(n.id);
-    // Un'ISTANZA entra nel marquee sui suoi bounds DERIVATI (il sottoalbero del
-    // master mappato dalla discesa, store/groups.ts::contentWorldBounds -- la
-    // stessa cornice che l'overlay disegna): niente discesa nel master (i suoi
-    // figli non sono selezionabili dall'esterno), si aggiunge l'istanza e basta.
-    // Un master mancante non ha bounds e non entra, come non si disegna e non si
-    // colpisce. La guardia ai cicli è dentro contentWorldBounds.
+    // An INSTANCE enters the marquee on its DERIVED bounds (the master's subtree
+    // mapped by the descent, store/groups.ts::contentWorldBounds -- the
+    // same frame the overlay draws): no descent into the master (its
+    // children are not selectable from outside), the instance is added and that is all.
+    // A missing master has no bounds and does not enter, as it is not drawn and not
+    // hit. The cycle guard is inside contentWorldBounds.
     if (n.kind === "instance") {
       const b = contentWorldBounds(state, n);
       if (b && boundsIntersect(b, bounds)) out.push(n.id);
       continue;
     }
-    // Il box su cui il MARQUEE afferra il nodo è quello VISUALE, non il box
-    // grezzo del modello (traccia 2/4): worldVisualAabbOfNode per le forme il cui
-    // inchiostro È il box -- rotazione inclusa e sporgenza del tratto compresa --
-    // e selectionBoundsOfNode per il vettoriale, che allarga il solo asse
-    // degenere (un segmento orizzontale, un path di un ancoraggio) così un
-    // marquee che ci passa accanto lo prende comunque. `hasInk` tiene fuori un
-    // vettoriale senza NESSUN ancoraggio: non si vede e non si clicca, quindi non
-    // deve nemmeno finire in un marquee. Un GRUPPO non entra MAI per conto suo,
-    // come non si disegna (drawNode) e non si colpisce (hitTestNode): a
-    // selezionarlo ci pensa la POLITICA (store/groups.ts), che risale ai gruppi
-    // dai FIGLI presi qui sotto.
+    // The box on which the MARQUEE grabs the node is the VISUAL one, not the raw
+    // model box (track 2/4): worldVisualAabbOfNode for shapes whose
+    // ink IS the box -- rotation included and stroke overhang included -- and
+    // selectionBoundsOfNode for the vector, which widens only the degenerate
+    // axis (a horizontal segment, a one-anchor path) so a
+    // marquee passing next to it takes it anyway. `hasInk` keeps out a
+    // vector with NO anchor: it is not seen and not clicked, so it must not
+    // even end up in a marquee. A GROUP NEVER enters on its own account,
+    // as it is not drawn (drawNode) and not hit (hitTestNode): selecting
+    // it is the job of the POLICY (store/groups.ts), which climbs to groups
+    // from the CHILDREN taken below.
     if (n.kind !== "group" && hasInk(n)) {
       const visual = n.kind === "vector" ? selectionBoundsOfNode(n) : worldVisualAabbOfNode(n);
       if (boundsIntersect(mapBounds(toWorld, visual), bounds)) out.push(n.id);
     }
     const kids = children.get(n.id);
     if (!kids || kids.length === 0) continue;
-    // Il clip di un FRAME con clipsContent usa il box del MODELLO (non il
-    // visuale): è il box a cui ritaglia, e restringe la banda al proprio box
-    // MONDO prima di scendere -- i figli contano solo per la parte che si VEDE
-    // dentro il frame, come il disegno li ritaglia (drawSiblings) e l'hit-test li
-    // nasconde (pickIn). intersectBounds torna null quando la banda non tocca
-    // affatto il box del frame.
+    // The clip of a FRAME with clipsContent uses the MODEL's box (not the
+    // visual one): it is the box it clips to, and it narrows the band to its own
+    // WORLD box before descending -- the children count only for the part that is SEEN
+    // inside the frame, as drawing clips them (drawSiblings) and hit-test
+    // hides them (pickIn). intersectBounds returns null when the band does not touch
+    // the frame's box at all.
     const frameBox = mapBounds(toWorld, boundsOfNode(n));
     let childBounds: Bounds | null = bounds;
     if (n.kind === "frame" && n.clipsContent) {
