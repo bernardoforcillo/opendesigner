@@ -11,12 +11,12 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// Diagrammi: l'agente descrive un diagramma in Mermaid -- flowchart, classi
-// UML, sequenza UML, stati UML -- e il server lo disegna come un gruppo di
-// forme, vettori e testo normali (internal/diagram, la stessa funzione che usa
-// l'editor). La radice porta il testo sorgente in `meta`, quindi un diagramma si
-// può rileggere (list_diagrams) e ridisegnare (update_diagram) senza ricostruire
-// niente a mano.
+// Diagrams: the agent describes a diagram in Mermaid -- flowchart, UML
+// class, UML sequence, UML state -- and the server draws it as a group of
+// ordinary shapes, vectors and text (internal/diagram, the same function the
+// editor uses). The root carries the source text in `meta`, so a diagram can
+// be read back (list_diagrams) and redrawn (update_diagram) without rebuilding
+// anything by hand.
 
 const diagramSyntax = " Supported Mermaid: " +
 	"flowchart/graph (TD|LR|BT|RL; nodes A[rect] A(round) A([stadium]) A((circle)) A{decision}; edges --> --- -.-> ==> <--> with |label| or -- label -->; A & B --> C), " +
@@ -29,7 +29,7 @@ type CreateDiagramInput struct {
 	ParentId string   `json:"parentId,omitempty" jsonschema:"parent node or page id; defaults to the first page"`
 	X        *float64 `json:"x,omitempty" jsonschema:"top-left corner; by default the diagram is placed to the right of whatever is already in the parent"`
 	Y        *float64 `json:"y,omitempty"`
-	Name     string   `json:"name,omitempty" jsonschema:"layer name; defaults to Diagramma"`
+	Name     string   `json:"name,omitempty" jsonschema:"layer name; defaults to Diagram"`
 }
 
 type DiagramOutput struct {
@@ -41,8 +41,8 @@ type DiagramOutput struct {
 	Seq       uint64  `json:"seq"`
 }
 
-// placeRight è dove mettere un diagramma nuovo senza coprire niente: a destra di
-// ciò che c'è già sotto parentID.
+// placeRight is where to put a new diagram without covering anything: to the
+// right of what is already under parentID.
 func (s *Session) placeRight(parentID string) float64 {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -56,8 +56,8 @@ func (s *Session) placeRight(parentID string) float64 {
 	return right + 80
 }
 
-// insertDiagram crea i nodi di res sotto parentID; se un'op fallisce a metà
-// cancella quanto già creato, così non resta un diagramma tagliato.
+// insertDiagram creates res's nodes under parentID; if an op fails halfway it
+// deletes what was already created, so a truncated diagram is not left behind.
 func (s *Session) insertDiagram(ctx context.Context, res *diagram.Result, parentID, name string, x, y float64) (DiagramOutput, error) {
 	root := res.Nodes[0]
 	root.ParentId, root.OrderKey, root.X, root.Y = parentID, s.nextOrderKey(), x, y
@@ -69,7 +69,7 @@ func (s *Session) insertDiagram(ctx context.Context, res *diagram.Result, parent
 		out, err := s.createNode(ctx, n)
 		if err != nil {
 			if i > 0 {
-				// la cancellazione della radice porta via anche i figli già creati
+				// deleting the root also removes the children already created
 				_, _ = s.DeleteNode(context.WithoutCancel(ctx), NodeIdInput{Id: root.Id})
 			}
 			return DiagramOutput{}, fmt.Errorf("diagram: creating %q: %w", n.GetName(), err)
@@ -87,7 +87,7 @@ func renderErr(tool string, err error) error {
 	return fmt.Errorf("%s: %w", tool, err)
 }
 
-// CreateDiagram disegna un diagramma Mermaid sotto parentId (o la prima pagina).
+// CreateDiagram draws a Mermaid diagram under parentId (or the first page).
 func (s *Session) CreateDiagram(ctx context.Context, in CreateDiagramInput) (DiagramOutput, error) {
 	res, err := diagram.Render(in.Source)
 	if err != nil {
@@ -112,8 +112,8 @@ type UpdateDiagramInput struct {
 	Source string `json:"source" jsonschema:"the new Mermaid text; the diagram is redrawn in place"`
 }
 
-// UpdateDiagram ridisegna un diagramma esistente: stesso genitore, stessa
-// posizione e stesso nome; il nuovo gruppo prende l'id nuovo e il vecchio sparisce.
+// UpdateDiagram redraws an existing diagram: same parent, same position and
+// same name; the new group gets the new id and the old one disappears.
 func (s *Session) UpdateDiagram(ctx context.Context, in UpdateDiagramInput) (DiagramOutput, error) {
 	s.mu.Lock()
 	old := s.doc.GetNodes()[in.Id]
@@ -160,7 +160,7 @@ type ListDiagramsOutput struct {
 	Diagrams []DiagramView `json:"diagrams"`
 }
 
-// ListDiagrams elenca i diagrammi del documento con il loro testo sorgente.
+// ListDiagrams lists the document's diagrams with their source text.
 func (s *Session) ListDiagrams(_ context.Context, _ struct{}) (ListDiagramsOutput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()

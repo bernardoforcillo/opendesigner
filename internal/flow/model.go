@@ -1,21 +1,21 @@
-// Package flow trasforma il grafo dei flussi disegnato nell'editor in strumenti
-// per lo sviluppo: analisi (problemi e percorsi), specifica in Markdown per
-// persone e agenti, test e2e Playwright generati, coverage rispetto al codice e
-// lista di attività.
+// Package flow turns the flow graph drawn in the editor into tools
+// for development: analysis (issues and paths), a Markdown spec for
+// people and agents, generated Playwright e2e tests, coverage against the code and
+// a task list.
 //
-// Sono tutte funzioni PURE sul `*opendesignerv1.Document` (l'unico I/O è la
-// scansione del repository in Coverage) e il loro output è DETERMINISTICO: ogni
-// mappa del documento viene letta in ordine esplicito, mai con `range` diretto,
-// perché lo stesso grafo deve produrre byte identici (golden file, diff nei PR,
-// CI che confronta).
+// They are all PURE functions on the `*opendesignerv1.Document` (the only I/O is the
+// repository scan in Coverage) and their output is DETERMINISTIC: every
+// document map is read in an explicit order, never with a direct `range`,
+// because the same graph must produce identical bytes (golden files, PR diffs,
+// CI comparisons).
 //
-// Convenzioni sui metadati dei nodi (Node.meta), non imposte dal modello:
+// Conventions on node metadata (Node.meta), not enforced by the model:
 //
 //	flow.kind       screen (default) | decision | action | start | end | note
-//	code.route      la rotta dell'app che realizza la schermata
-//	code.component  il componente che la realizza
-//	test.id         il data-testid con cui un test trova un elemento
-//	test.text       il testo accessibile con cui lo trova
+//	code.route      the app route that implements the screen
+//	code.component  the component that implements it
+//	test.id         the data-testid a test uses to find an element
+//	test.text       the accessible text it uses to find it
 //	status          planned (default) | implemented | tested
 package flow
 
@@ -25,7 +25,7 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// Chiavi dei metadati (vedi la doc del package).
+// Metadata keys (see the package doc).
 const (
 	MetaKind      = "flow.kind"
 	MetaRoute     = "code.route"
@@ -35,7 +35,7 @@ const (
 	MetaStatus    = "status"
 )
 
-// Tipi di schermata e stati riconosciuti.
+// Recognized screen kinds and statuses.
 const (
 	KindScreen = "screen"
 	KindEnd    = "end"
@@ -45,7 +45,7 @@ const (
 	StatusTested      = "tested"
 )
 
-// Tipi di problema riportati da Analyze.
+// Issue kinds reported by Analyze.
 const (
 	IssueEmpty       = "empty"
 	IssueNoStart     = "no_start"
@@ -54,7 +54,7 @@ const (
 	IssueAmbiguous   = "ambiguous"
 )
 
-// Limiti dell'enumerazione dei percorsi: oltre, il report è `paths_truncated`.
+// Limits of the path enumeration: beyond them, the report is `paths_truncated`.
 const (
 	MaxPaths = 200
 	MaxDepth = 50
@@ -64,8 +64,8 @@ func nodeMeta(doc *opendesignerv1.Document, id, key string) string {
 	return doc.GetNodes()[id].GetMeta()[key]
 }
 
-// nodeName è il nome leggibile di un nodo; se manca (nodo senza nome o id
-// sconosciuto) ripiega sull'id, così i messaggi non hanno mai buchi.
+// nodeName is a node's readable name; if missing (node without a name or unknown
+// id) it falls back to the id, so messages never have holes.
 func nodeName(doc *opendesignerv1.Document, id string) string {
 	if n := doc.GetNodes()[id].GetName(); n != "" {
 		return n
@@ -73,7 +73,7 @@ func nodeName(doc *opendesignerv1.Document, id string) string {
 	return id
 }
 
-// nodeKind: il `flow.kind` del nodo, "screen" se assente.
+// nodeKind: the node's `flow.kind`, "screen" if absent.
 func nodeKind(doc *opendesignerv1.Document, id string) string {
 	if k := nodeMeta(doc, id, MetaKind); k != "" {
 		return k
@@ -81,7 +81,7 @@ func nodeKind(doc *opendesignerv1.Document, id string) string {
 	return KindScreen
 }
 
-// nodeStatus: lo `status` dichiarato a mano, "planned" se assente.
+// nodeStatus: the manually declared `status`, "planned" if absent.
 func nodeStatus(doc *opendesignerv1.Document, id string) string {
 	if s := nodeMeta(doc, id, MetaStatus); s != "" {
 		return s
@@ -89,8 +89,8 @@ func nodeStatus(doc *opendesignerv1.Document, id string) string {
 	return StatusPlanned
 }
 
-// flowIDs risolve il filtro: "" = tutti i flussi ordinati per id, altrimenti il
-// solo flusso richiesto (vuoto se non esiste).
+// flowIDs resolves the filter: "" = all flows sorted by id, otherwise only the
+// requested flow (empty if it does not exist).
 func flowIDs(doc *opendesignerv1.Document, flowID string) []string {
 	if flowID != "" {
 		if _, ok := doc.GetFlows()[flowID]; ok {
@@ -106,13 +106,13 @@ func flowIDs(doc *opendesignerv1.Document, flowID string) []string {
 	return ids
 }
 
-// graph è la vista di un flusso su cui lavorano tutte le funzioni.
+// graph is the view of a flow on which all the functions work.
 type graph struct {
 	doc   *opendesignerv1.Document
 	flow  *opendesignerv1.Flow
-	trans []*opendesignerv1.Transition            // ordinate per id
-	out   map[string][]*opendesignerv1.Transition // archi uscenti, ordinati per (label, id)
-	// screens: ingresso + ogni from/to, ordinate per (nome, id).
+	trans []*opendesignerv1.Transition            // sorted by id
+	out   map[string][]*opendesignerv1.Transition // outgoing edges, sorted by (label, id)
+	// screens: entry + every from/to, sorted by (name, id).
 	screens []string
 }
 
@@ -154,13 +154,13 @@ func buildGraph(doc *opendesignerv1.Document, flowID string) *graph {
 	return g
 }
 
-// terminal: una schermata dove il percorso finisce -- senza uscite oppure di
-// tipo `end` (un `end` con archi uscenti resta raggiungibile ma non si prosegue).
+// terminal: a screen where the path ends -- with no exits or of
+// kind `end` (an `end` with outgoing edges stays reachable but the path does not continue).
 func (g *graph) terminal(id string) bool {
 	return len(g.out[id]) == 0 || nodeKind(g.doc, id) == KindEnd
 }
 
-// reachable: le schermate raggiungibili dall'ingresso (insieme vuoto senza ingresso).
+// reachable: the screens reachable from the entry (empty set without an entry).
 func (g *graph) reachable() map[string]bool {
 	seen := map[string]bool{}
 	start := g.flow.GetStartId()

@@ -20,7 +20,7 @@
     } } },
 
     { "opId": "op5", "docId": "doc1", "createPage": { "page": { "id": "page2", "name": "Doppione" } } },
-    { "opId": "op6", "docId": "doc1", "createPage": { "page": { "id": "g1", "name": "Id di un nodo" } } },
+    { "opId": "op6", "docId": "doc1", "createPage": { "page": { "id": "g1", "name": "A node id" } } },
     { "opId": "op7", "docId": "doc1", "renamePage": { "id": "ghost", "name": "Fantasma" } },
     { "opId": "op8", "docId": "doc1", "deletePage": { "id": "ghost" } },
 

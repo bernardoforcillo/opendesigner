@@ -8,8 +8,8 @@ import (
 	"testing"
 )
 
-// Aiuto di sviluppo: DIAGRAM_VIZ=dir go test -run TestViz scrive un SVG per ogni
-// esempio, da guardare in un browser. Senza la variabile non fa niente.
+// Development aid: DIAGRAM_VIZ=dir go test -run TestViz writes an SVG for each
+// example, to look at in a browser. Without the variable it does nothing.
 func TestViz(t *testing.T) {
 	dir := os.Getenv("DIAGRAM_VIZ")
 	if dir == "" {

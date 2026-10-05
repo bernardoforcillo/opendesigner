@@ -5,27 +5,28 @@ import (
 	"strings"
 )
 
-// Mappatura Prop CSS -> classi Tailwind v4. Vive in un file a sé, guidata da
-// tabelle, perché è la parte che cambia più spesso (un'utility nuova, un nome
-// rinominato fra versioni) e va testata riga per riga (tailwind_test.go).
+// CSS Prop -> Tailwind v4 class mapping. It lives in a file of its own, driven
+// by tables, because it is the part that changes most often (a new utility, a
+// name renamed between versions) and must be tested line by line
+// (tailwind_test.go).
 //
-// Regola: dove esiste un'utility pulita e stabile si usa quella
+// Rule: where a clean, stable utility exists it is used
 // (`flex flex-col justify-between rounded-[12px] bg-[#fff] w-[320px]`);
-// altrimenti una proprietà arbitraria `[prop:value]` con gli spazi del valore
-// scritti `_` (e i `_` veri come `\_`). Mai classi che dipendono dalla scala di
-// spacing del tema: i valori del design sono px esatti, e `p-4` vorrebbe dire
-// "1rem" solo finché nessuno cambia --spacing.
+// otherwise an arbitrary property `[prop:value]` with the value's spaces
+// written as `_` (and real `_` as `\_`). Never classes that depend on the
+// theme's spacing scale: the design values are exact px, and `p-4` would mean
+// "1rem" only as long as nobody changes --spacing.
 
-// arb ripara un valore per l'uso dentro `[...]`: gli spazi diventano `_`.
+// arb fixes a value for use inside `[...]`: spaces become `_`.
 func arb(v string) string {
 	v = strings.ReplaceAll(v, "_", `\_`)
 	return strings.ReplaceAll(v, " ", "_")
 }
 
-// arbProp: la proprietà arbitraria `[name:value]`.
+// arbProp: the arbitrary property `[name:value]`.
 func arbProp(p Prop) string { return "[" + p.Name + ":" + arb(p.Value) + "]" }
 
-// valued: `prefix-0` per lo zero, altrimenti `prefix-[v]`.
+// valued: `prefix-0` for zero, otherwise `prefix-[v]`.
 func valued(prefix, v string) string {
 	if v == "0" {
 		return prefix + "-0"
@@ -33,7 +34,7 @@ func valued(prefix, v string) string {
 	return prefix + "-[" + arb(v) + "]"
 }
 
-// keyword: tabelle valore -> utility per le proprietà a vocabolario chiuso.
+// keyword: value -> utility tables for closed-vocabulary properties.
 var keyword = map[string]map[string]string{
 	"position":        {"absolute": "absolute", "relative": "relative", "static": "static", "fixed": "fixed", "sticky": "sticky"},
 	"display":         {"flex": "flex", "block": "block", "inline-block": "inline-block", "inline": "inline", "grid": "grid", "none": "hidden"},
@@ -52,20 +53,20 @@ var keyword = map[string]map[string]string{
 	"color":           {"transparent": "text-transparent"},
 }
 
-// weights: i nomi delle utility del peso.
+// weights: the weight utility names.
 var weights = map[string]string{
 	"100": "font-thin", "200": "font-extralight", "300": "font-light", "400": "font-normal",
 	"500": "font-medium", "600": "font-semibold", "700": "font-bold", "800": "font-extrabold", "900": "font-black",
 }
 
-// prefixed: proprietà il cui valore va in `prefix-[valore]` (o `prefix-0`).
+// prefixed: properties whose value goes in `prefix-[value]` (or `prefix-0`).
 var prefixed = map[string]string{
 	"left": "left", "top": "top", "right": "right", "bottom": "bottom",
 	"gap": "gap", "font-size": "text", "line-height": "leading",
 }
 
-// tailwindFor traduce UNA proprietà; ritorna più classi solo per i shorthand
-// che Tailwind scompone (padding).
+// tailwindFor translates ONE property; it returns several classes only for the
+// shorthands that Tailwind decomposes (padding).
 func tailwindFor(p Prop) []string {
 	if m, ok := keyword[p.Name]; ok {
 		if c, ok := m[p.Value]; ok {
@@ -74,7 +75,7 @@ func tailwindFor(p Prop) []string {
 	}
 	switch p.Name {
 	case "-webkit-background-clip":
-		// bg-clip-text emette già il prefisso -webkit- dove serve.
+		// bg-clip-text already emits the -webkit- prefix where needed.
 		return nil
 	case "width", "height":
 		pre := "w"
@@ -131,7 +132,7 @@ func tailwindFor(p Prop) []string {
 	return []string{arbProp(p)}
 }
 
-// unwrap: "rotate(30deg)" con prefisso "rotate(" -> "30deg".
+// unwrap: "rotate(30deg)" with prefix "rotate(" -> "30deg".
 func unwrap(v, prefix string) (string, bool) {
 	if strings.HasPrefix(v, prefix) && strings.HasSuffix(v, ")") {
 		return v[len(prefix) : len(v)-1], true
@@ -139,8 +140,8 @@ func unwrap(v, prefix string) (string, bool) {
 	return "", false
 }
 
-// paddingClasses scompone lo shorthand a 1, 2 o 4 valori nelle utility p/py+px/
-// pt+pr+pb+pl.
+// paddingClasses decomposes the 1-, 2- or 4-value shorthand into the p/py+px/
+// pt+pr+pb+pl utilities.
 func paddingClasses(v string) []string {
 	f := strings.Fields(v)
 	switch len(f) {
@@ -154,7 +155,7 @@ func paddingClasses(v string) []string {
 	return []string{arbProp(Prop{"padding", v})}
 }
 
-// tailwindClasses: le classi di un elemento, nell'ordine delle proprietà IR.
+// tailwindClasses: the classes of an element, in IR property order.
 func tailwindClasses(props []Prop) []string {
 	var out []string
 	for _, p := range props {
@@ -163,5 +164,5 @@ func tailwindClasses(props []Prop) []string {
 	return out
 }
 
-// className è il valore dell'attributo `className` (senza virgolette).
+// className is the value of the `className` attribute (without quotes).
 func className(props []Prop) string { return strings.Join(tailwindClasses(props), " ") }

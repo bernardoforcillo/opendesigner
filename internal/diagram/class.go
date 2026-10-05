@@ -7,15 +7,15 @@ import (
 	"strings"
 )
 
-// classDiagram UML: classi con tre scomparti (nome, attributi, metodi),
-// annotazioni (<<interface>>), relazioni con la loro decorazione UML:
+// UML classDiagram: classes with three compartments (name, attributes, methods),
+// annotations (<<interface>>), relations with their UML decoration:
 //
-//	<|--  ereditarietà     *--  composizione    o--  aggregazione
-//	-->   associazione     ..>  dipendenza      ..|> realizzazione
-//	--    collegamento     ..   collegamento tratteggiato
+//	<|--  inheritance      *--  composition    o--  aggregation
+//	-->   association      ..>  dependency     ..|> realization
+//	--    link             ..   dashed link
 //
-// con molteplicità ("1", "0..*") ed etichetta. Il genitore (chi porta il
-// triangolo o il rombo) sta sopra.
+// with multiplicities ("1", "0..*") and label. The parent (the one carrying the
+// triangle or the diamond) sits on top.
 
 type classDef struct {
 	ID, Label, Annot string
@@ -34,7 +34,7 @@ const (
 
 type classRel struct {
 	A, B         string
-	Left, Right  headMark // decorazione sul lato A / sul lato B
+	Left, Right  headMark // decoration on side A / side B
 	Dashed       bool
 	CardA, CardB string
 	Label        string
@@ -81,7 +81,7 @@ func parseClass(src string) (*classDiagram, error) {
 			return &cd.Classes[i], nil
 		}
 		if len(cd.Classes) >= MaxNodes {
-			return nil, fmt.Errorf("troppe classi (massimo %d)", MaxNodes)
+			return nil, fmt.Errorf("too many classes (maximum %d)", MaxNodes)
 		}
 		idx[id] = len(cd.Classes)
 		cd.Classes = append(cd.Classes, classDef{ID: id, Label: label})
@@ -155,7 +155,7 @@ func parseClass(src string) (*classDiagram, error) {
 				return nil, err
 			}
 			if len(cd.Rels) >= MaxEdges {
-				return nil, fmt.Errorf("troppe relazioni (massimo %d)", MaxEdges)
+				return nil, fmt.Errorf("too many relations (maximum %d)", MaxEdges)
 			}
 			r := classRel{A: a.ID, B: b.ID, CardA: m[2], CardB: m[4], Label: strings.TrimSpace(m[6])}
 			tok := m[3]
@@ -198,10 +198,10 @@ func parseClass(src string) (*classDiagram, error) {
 			addMember(c, m[2])
 			continue
 		}
-		return nil, fmt.Errorf("riga non riconosciuta: %q", clip(line, 40))
+		return nil, fmt.Errorf("unrecognized line: %q", clip(line, 40))
 	}
 	if len(cd.Classes) == 0 {
-		return nil, fmt.Errorf("il diagramma non ha classi")
+		return nil, fmt.Errorf("the diagram has no classes")
 	}
 	return cd, nil
 }
@@ -273,7 +273,7 @@ func renderClass(cd *classDiagram) *Scene {
 	type placed struct {
 		pts        []Pt
 		label      Pt
-		ca, cb     Pt // posizioni delle molteplicità
+		ca, cb     Pt // positions of the multiplicities
 		dirA, dirB Pt
 	}
 	pl := make([]placed, len(cd.Rels))
@@ -290,7 +290,7 @@ func renderClass(cd *classDiagram) *Scene {
 			}
 		} else {
 			path := append([]Pt(nil), lay.Paths[i]...)
-			// il cammino va da "sopra" a "sotto": si orienta da A a B
+			// the path goes from "above" to "below": it is oriented from A to B
 			if !r.topIsA {
 				for p, q := 0, len(path)-1; p < q; p, q = p+1, q-1 {
 					path[p], path[q] = path[q], path[p]
@@ -326,7 +326,7 @@ func renderClass(cd *classDiagram) *Scene {
 			grow(pl[i].label.X-hw, pl[i].label.Y-hh)
 			grow(pl[i].label.X+hw, pl[i].label.Y+hh)
 		}
-		// le molteplicità sporgono dalle estremità
+		// the multiplicities stick out from the ends
 		grow(pl[i].pts[0].X-24, pl[i].pts[0].Y-24)
 		grow(pl[i].pts[0].X+24, pl[i].pts[0].Y+24)
 		e := pl[i].pts[len(pl[i].pts)-1]
@@ -342,7 +342,7 @@ func renderClass(cd *classDiagram) *Scene {
 		for k, p := range pl[i].pts {
 			pts[k] = sh(p)
 		}
-		sc.add(Line{Pts: pts, Color: colLine, Dashed: r.Dashed, Weight: 1.5, Start: heads(r.Left), End: heads(r.Right), Name: fmt.Sprintf("Relazione %s – %s", r.A, r.B)})
+		sc.add(Line{Pts: pts, Color: colLine, Dashed: r.Dashed, Weight: 1.5, Start: heads(r.Left), End: heads(r.Right), Name: fmt.Sprintf("Relation %s – %s", r.A, r.B)})
 		if r.Label != "" {
 			addLabel(sc, r.Label, sh(pl[i].label))
 		}
@@ -350,10 +350,10 @@ func renderClass(cd *classDiagram) *Scene {
 			if s == "" {
 				return
 			}
-			// 18 px lungo la linea, 12 di lato
+			// 18 px along the line, 12 to the side
 			p := Pt{end.X + dir.X*20 - dir.Y*14, end.Y + dir.Y*20 + dir.X*14}
 			w := textW(s, memSize) + 6
-			sc.add(Text{X: p.X - w/2, Y: p.Y - memSize*lineMul/2, W: w, H: memSize * lineMul, Content: s, Size: memSize, Align: "center", Color: colMuted, Name: "Molteplicità " + s})
+			sc.add(Text{X: p.X - w/2, Y: p.Y - memSize*lineMul/2, W: w, H: memSize * lineMul, Content: s, Size: memSize, Align: "center", Color: colMuted, Name: "Multiplicity " + s})
 		}
 		card(r.CardA, pts[0], pl[i].dirA)
 		card(r.CardB, pts[len(pts)-1], pl[i].dirB)
@@ -363,20 +363,20 @@ func renderClass(cd *classDiagram) *Scene {
 		x, y, _, _ := rect(i)
 		x, y = x+dx, y+dy
 		w, h, headH, attrH, _ := classBox(c)
-		sc.add(Box{X: x, Y: y, W: w, H: h, Shape: ShapeRect, Fill: rgb(colWhite), Stroke: rgb(colNodeLine), StrokeW: 1.5, Name: "Classe " + c.Label})
-		sc.add(Box{X: x, Y: y, W: w, H: headH, Shape: ShapeRect, Fill: rgb(colHeader), Stroke: rgb(colNodeLine), StrokeW: 1.5, Name: "Intestazione " + c.Label})
+		sc.add(Box{X: x, Y: y, W: w, H: h, Shape: ShapeRect, Fill: rgb(colWhite), Stroke: rgb(colNodeLine), StrokeW: 1.5, Name: "Class " + c.Label})
+		sc.add(Box{X: x, Y: y, W: w, H: headH, Shape: ShapeRect, Fill: rgb(colHeader), Stroke: rgb(colNodeLine), StrokeW: 1.5, Name: "Header " + c.Label})
 		ty := y + 8
 		if c.Annot != "" {
-			sc.add(Text{X: x + 4, Y: ty - 2, W: w - 8, H: memSize * lineMul, Content: "«" + c.Annot + "»", Size: memSize, Align: "center", Color: colMuted, Name: "Annotazione"})
+			sc.add(Text{X: x + 4, Y: ty - 2, W: w - 8, H: memSize * lineMul, Content: "«" + c.Annot + "»", Size: memSize, Align: "center", Color: colMuted, Name: "Annotation"})
 			ty += 16
 		}
-		sc.add(Text{X: x + 4, Y: ty, W: w - 8, H: fontSize * lineMul, Content: c.Label, Size: fontSize, Bold: true, Align: "center", Color: colInk, Name: "Nome " + c.Label})
-		sc.add(Line{Pts: []Pt{{x, y + headH + attrH}, {x + w, y + headH + attrH}}, Color: colNodeLine, Weight: 1.5, Name: "Separatore"})
+		sc.add(Text{X: x + 4, Y: ty, W: w - 8, H: fontSize * lineMul, Content: c.Label, Size: fontSize, Bold: true, Align: "center", Color: colInk, Name: "Name " + c.Label})
+		sc.add(Line{Pts: []Pt{{x, y + headH + attrH}, {x + w, y + headH + attrH}}, Color: colNodeLine, Weight: 1.5, Name: "Separator"})
 		for k, m := range c.Attrs {
-			sc.add(Text{X: x + 10, Y: y + headH + 5 + float64(k)*memLine, W: w - 20, H: memSize * lineMul, Content: m, Size: memSize, Align: "left", Color: colInk, Name: "Attributo " + m})
+			sc.add(Text{X: x + 10, Y: y + headH + 5 + float64(k)*memLine, W: w - 20, H: memSize * lineMul, Content: m, Size: memSize, Align: "left", Color: colInk, Name: "Attribute " + m})
 		}
 		for k, m := range c.Methods {
-			sc.add(Text{X: x + 10, Y: y + headH + attrH + 5 + float64(k)*memLine, W: w - 20, H: memSize * lineMul, Content: m, Size: memSize, Align: "left", Color: colInk, Name: "Metodo " + m})
+			sc.add(Text{X: x + 10, Y: y + headH + attrH + 5 + float64(k)*memLine, W: w - 20, H: memSize * lineMul, Content: m, Size: memSize, Align: "left", Color: colInk, Name: "Method " + m})
 		}
 	}
 	return sc

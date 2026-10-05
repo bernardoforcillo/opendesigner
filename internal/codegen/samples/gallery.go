@@ -11,8 +11,8 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// testPNG: 40x30 con quattro quadranti colorati e una diagonale, così uno
-// stiramento o una rotazione dell'immagine si vedono.
+// testPNG: 40x30 with four coloured quadrants and a diagonal, so that any
+// stretching or rotation of the image is visible.
 func testPNG() []byte {
 	img := image.NewRGBA(image.Rect(0, 0, 40, 30))
 	for y := 0; y < 30; y++ {
@@ -37,14 +37,14 @@ func testPNG() []byte {
 	return buf.Bytes()
 }
 
-// Gallery è il documento della parità dei pixel: dieci schermate (frame di
-// primo livello) che coprono ogni cosa che l'export sa dire in CSS. Ritorna il
-// documento e gli asset (hash -> byte).
+// Gallery is the pixel-parity document: ten screens (top-level frames) that
+// cover everything the export can express in CSS. It returns the document and
+// the assets (hash -> bytes).
 //
-// Le schermate stanno a x = i*1000 sulla stessa pagina: l'editor le disegna
-// tutte sullo stesso canvas, lo script ne ritaglia una alla volta.
+// The screens sit at x = i*1000 on the same page: the editor draws them all on
+// the same canvas, and the script crops one at a time.
 func Gallery() (*opendesignerv1.Document, map[string][]byte) {
-	b := New("gallery", "Galleria")
+	b := New("gallery", "Gallery")
 	white := Fill(Solid(C(1, 1, 1)))
 	screenN := 0
 	screen := func(id, name string, w, h float64, extra ...Opt) string {
@@ -58,8 +58,8 @@ func Gallery() (*opendesignerv1.Document, map[string][]byte) {
 	}
 	red, black, grey := C(0.9, 0.3, 0.3), C(0, 0, 0), C(0.9, 0.9, 0.9)
 
-	// 1. forme
-	s := screen("s_forme", "Forme", 700, 260)
+	// 1. shapes
+	s := screen("s_shapes", "Shapes", 700, 260)
 	box("rect", s, 30, 30, Fill(Solid(red)))
 	box("rrect", s, 160, 30, Rect(18), Fill(Solid(C(0.3, 0.7, 0.4))))
 	box("ellipse", s, 290, 30, Ellipse(), Fill(Solid(C(0.95, 0.7, 0.2))))
@@ -71,8 +71,8 @@ func Gallery() (*opendesignerv1.Document, map[string][]byte) {
 	b.Add("wide", s, "wide", 290, 150, 160, 50, Ellipse(), Fill(Solid(C(0.1, 0.6, 0.6))))
 	b.Add("hid", s, "hidden", 480, 150, 100, 80, Hidden())
 
-	// 2. tratti
-	s = screen("s_tratti", "Tratti", 700, 380)
+	// 2. strokes
+	s = screen("s_strokes", "Strokes", 700, 380)
 	box("strokeC", s, 30, 30, Fill(Solid(grey)), StrokeOpt(8, Center, Solid(black)))
 	box("strokeI", s, 160, 30, Fill(Solid(grey)), Rect(14), StrokeOpt(10, Inside, Solid(C(0.8, 0.1, 0.1))))
 	box("strokeO", s, 290, 30, Ellipse(), Fill(Solid(grey)), StrokeOpt(10, Outside, Solid(C(0.1, 0.5, 0.2))))
@@ -84,8 +84,8 @@ func Gallery() (*opendesignerv1.Document, map[string][]byte) {
 	box("thin", s, 30, 280, Fill(Solid(C(1, 1, 1))), StrokeOpt(1, Inside, Solid(black)))
 	box("zeroW", s, 160, 280, Fill(Solid(grey)), StrokeOpt(0, Center, Solid(black)))
 
-	// 3. gradienti
-	s = screen("s_gradienti", "Gradienti", 700, 300)
+	// 3. gradients
+	s = screen("s_gradients", "Gradients", 700, 300)
 	box("lin", s, 30, 30, Fill(Linear(0, 0, 1, 1, S(0, C(1, 0.2, 0.2)), S(1, C(0.2, 0.2, 1)))))
 	box("rad", s, 160, 30, Ellipse(), Fill(Radial(0.5, 0.5, 1, 0.5, S(0, C(1, 1, 0.2)), S(1, CA(0.9, 0.1, 0.5, 0)))))
 	box("lin3", s, 290, 30, Fill(Linear(0, 0.5, 1, 0.5, S(0, C(0.1, 0.8, 0.3)), S(0.5, C(1, 0.9, 0.1)), S(1, C(0.9, 0.1, 0.1)))))
@@ -96,8 +96,8 @@ func Gallery() (*opendesignerv1.Document, map[string][]byte) {
 	box("rotGrad", s, 560, 150, Rot(20), Fill(Linear(0, 0, 1, 0, S(0, C(0.2, 0.8, 0.2)), S(1, C(0.8, 0.2, 0.8)))))
 	b.Add("fg", s, "frameGrad", 30, 240, 200, 40, Frame(false, nil), Fill(Linear(0, 0, 1, 0, S(0, C(0.95, 0.9, 0.5)), S(1, C(0.5, 0.9, 0.95)))))
 
-	// 4. effetti
-	s = screen("s_effetti", "Effetti", 700, 300)
+	// 4. effects
+	s = screen("s_effects", "Effects", 700, 300)
 	box("shadow", s, 40, 40, Fill(Solid(C(1, 1, 1))), StrokeOpt(1, Center, Solid(C(0.8, 0.8, 0.8))), Shadow(CA(0, 0, 0, 0.5), 6, 10, 16))
 	box("blur", s, 190, 40, Fill(Solid(C(0.9, 0.2, 0.5))), Blur(6))
 	box("shblur", s, 340, 40, Ellipse(), Fill(Solid(C(0.2, 0.6, 0.9))), Shadow(CA(0, 0, 0, 0.6), 8, 8, 6), Blur(1.5))
@@ -105,8 +105,8 @@ func Gallery() (*opendesignerv1.Document, map[string][]byte) {
 	box("shHalf", s, 40, 170, Fill(Solid(C(0.3, 0.7, 0.4))), Opacity(0.5), Shadow(CA(0, 0, 0, 0.8), 5, 5, 0))
 	box("shTwo", s, 190, 170, Fill(Solid(C(1, 1, 1))), Shadow(CA(1, 0, 0, 0.5), 8, 8, 4), Shadow(CA(0, 0, 1, 0.5), -8, -8, 4))
 
-	// 5. contenitori
-	s = screen("s_contenitori", "Contenitori", 760, 420)
+	// 5. containers
+	s = screen("s_containers", "Containers", 760, 420)
 	b.Add("clip", s, "clip", 30, 30, 140, 100, Frame(true, nil), Fill(Solid(C(0.95, 0.95, 0.8))))
 	b.Add("clipKid", "clip", "clipKid", 90, 50, 120, 90, Fill(Solid(red)))
 	b.Add("clipKid2", "clip", "clipKid2", -20, -20, 60, 60, Ellipse(), Fill(Solid(C(0.2, 0.2, 0.9))))
@@ -117,7 +117,7 @@ func Gallery() (*opendesignerv1.Document, map[string][]byte) {
 	b.Add("gB", "group", "gB", 40, 30, 50, 50, Ellipse(), Fill(Solid(CA(0.1, 0.5, 0.9, 0.8))))
 	b.Add("rotFrame", s, "rotFrame", 520, 40, 130, 90, Frame(true, nil), Rot(15), Fill(Solid(C(0.85, 0.9, 1))))
 	b.Add("rotFrameKid", "rotFrame", "rotFrameKid", 60, 30, 120, 80, Fill(Solid(C(0.9, 0.3, 0.3))))
-	// L'opacità di un frame NON attenua i figli nel canvas.
+	// A frame's opacity does NOT dim its children in the canvas.
 	b.Add("opFrame", s, "opFrame", 30, 200, 160, 110, Frame(false, nil), Fill(Solid(C(0.1, 0.1, 0.5))), Opacity(0.4))
 	b.Add("opKid", "opFrame", "opKid", 30, 25, 100, 60, Fill(Solid(C(0.9, 0.7, 0.1))))
 	b.Add("nest1", s, "nest1", 230, 200, 200, 150, Frame(false, nil), Fill(Solid(C(0.9, 0.9, 0.9))))
@@ -151,15 +151,15 @@ func Gallery() (*opendesignerv1.Document, map[string][]byte) {
 	b.Add("alCh", "alC", "chidden", 0, 0, 80, 80, Hidden())
 	b.Add("alCg", "alC", "cgroup", 300, 10, 0, 0, Group())
 	b.Add("alCga", "alCg", "cga", 0, 0, 30, 30, Ellipse(), Fill(Solid(C(0.2, 0.4, 0.9))))
-	// annidato: riga hug con una colonna hug dentro
+	// nested: hug row with a hug column inside
 	b.Add("alN", s, "alN", 20, 390, 100, 100, Frame(false, Layout(false, 12, 12, 12, 12, 12, AStart, AStart, true, true)), panel)
 	b.Add("alN1", "alN", "n1", 0, 0, 40, 40, Fill(Solid(red)))
 	b.Add("alN2", "alN", "n2", 0, 0, 10, 10, Frame(false, Layout(true, 6, 8, 8, 8, 8, AStart, AStart, true, true)), Fill(Solid(C(1, 1, 1))), StrokeOpt(1, Outside, Solid(C(0.6, 0.6, 0.6))))
 	b.Add("alN21", "alN2", "n21", 0, 0, 50, 14, Fill(Solid(C(0.3, 0.7, 0.4))))
 	b.Add("alN22", "alN2", "n22", 0, 0, 30, 14, Fill(Solid(C(0.2, 0.4, 0.9))))
 
-	// 7. testo
-	s = screen("s_testo", "Testo", 840, 360)
+	// 7. text
+	s = screen("s_text", "Text", 840, 360)
 	b.Add("t1", s, "t1", 30, 30, 240, 80, Fill(Solid(C(0.1, 0.1, 0.1))), Text("Hello, design world. This line wraps inside its box.", 16, "", AlignLeft))
 	b.Add("t2", s, "t2", 300, 30, 220, 40, Fill(Solid(C(0.8, 0.1, 0.3))), Text("Bold centered", 22, "700", AlignCenter))
 	b.Add("t3", s, "t3", 560, 30, 220, 40, Fill(Solid(C(0.1, 0.4, 0.8))), Text("Right aligned 24px", 24, "", AlignRight))
@@ -170,8 +170,8 @@ func Gallery() (*opendesignerv1.Document, map[string][]byte) {
 	b.Add("t8", s, "t8", 330, 240, 200, 40, Fill(Solid(C(0.1, 0.5, 0.3))), Text("Semi opaque", 20, "600", AlignLeft), Opacity(0.5))
 	b.Add("t9", s, "t9", 560, 240, 240, 40, Text("Default grey fill", 18, "", AlignLeft), Fill())
 
-	// 8. vettori
-	s = screen("s_vettori", "Vettori", 700, 260)
+	// 8. vectors
+	s = screen("s_vectors", "Vectors", 700, 260)
 	b.Add("vOpen", s, "vOpen", 30, 30, 100, 60, Vector(Sub(false,
 		Pt(0, 50, 0, 0, 20, -60), Pt(50, 0, -20, 0, 20, 0), Pt(100, 50, -20, -60, 0, 0))), Fill(Solid(C(0.8, 0.1, 0.1))))
 	b.Add("vHole", s, "vHole", 170, 20, 90, 90, Vector(
@@ -187,29 +187,29 @@ func Gallery() (*opendesignerv1.Document, map[string][]byte) {
 	b.Add("vShadow", s, "vShadow", 60, 150, 100, 60, Vector(Sub(true,
 		Pt(0, 0, 0, 0, 0, 0), Pt(100, 0, 0, 0, 0, 0), Pt(50, 60, 0, 0, 0, 0))), Fill(Solid(C(0.9, 0.7, 0.1))), Shadow(CA(0, 0, 0, 0.5), 6, 8, 8))
 
-	// 9. immagini
+	// 9. images
 	pngBytes := testPNG()
 	sum := sha256.Sum256(pngBytes)
 	hash := hex.EncodeToString(sum[:])
 	missing := hex.EncodeToString(make([]byte, 32))
-	s = screen("s_immagini", "Immagini", 700, 260)
+	s = screen("s_images", "Images", 700, 260)
 	b.Add("imgOk", s, "imgOk", 30, 30, 120, 90, Image(hash))
 	b.Add("imgRot", s, "imgRot", 190, 40, 100, 70, Image(hash), Rot(20))
 	b.Add("imgHalf", s, "imgHalf", 330, 30, 120, 60, Image(hash), Opacity(0.5))
 	b.Add("imgMissing", s, "imgMissing", 490, 30, 120, 60, Image(missing), Fill())
 	b.Add("imgShadow", s, "imgShadow", 30, 150, 100, 70, Image(hash), Shadow(CA(0, 0, 0, 0.5), 5, 6, 8))
 
-	// 10. istanze
-	s = screen("s_istanze", "Istanze", 700, 260)
+	// 10. instances
+	s = screen("s_instances", "Instances", 700, 260)
 	b.Add("cardM", "page1", "Card", 20000, 0, 140, 90, Frame(true, nil), Fill(Solid(C(0.9, 0.9, 0.95))), StrokeOpt(1, Inside, Solid(C(0.6, 0.6, 0.7))))
 	b.Add("cardLabel", "cardM", "label", 10, 10, 60, 30, Rect(6), Fill(Solid(C(0.3, 0.3, 0.7))))
-	b.Add("cardText", "cardM", "title", 10, 52, 120, 24, Fill(Solid(C(0.1, 0.1, 0.1))), Text("Titolo", 16, "600", AlignLeft))
+	b.Add("cardText", "cardM", "title", 10, 52, 120, 24, Fill(Solid(C(0.1, 0.1, 0.1))), Text("Title", 16, "600", AlignLeft))
 	b.Component("c_card", "cardM", "Card")
 	b.Add("badgeM", "page1", "Badge", 20200, 0, 40, 20, Rect(10), Fill(Solid(C(0.9, 0.2, 0.2))))
 	b.Component("c_badge", "badgeM", "Badge")
 	b.Add("inst1", s, "inst1", 30, 30, 140, 90, Instance("c_card"))
 	b.Add("inst2", s, "inst2", 200, 30, 140, 90, Instance("c_card", OverrideFill("cardLabel", Solid(C(0.9, 0.4, 0.1)))))
-	b.Add("inst3", s, "inst3", 370, 30, 140, 90, Instance("c_card", OverrideText("cardText", "Altro titolo")))
+	b.Add("inst3", s, "inst3", 370, 30, 140, 90, Instance("c_card", OverrideText("cardText", "Another title")))
 	b.Add("inst4", s, "inst4", 540, 50, 140, 90, Instance("c_card"), Rot(12))
 	b.Add("inst5", s, "inst5", 30, 150, 40, 20, Instance("c_badge"))
 	b.Add("inst6", s, "inst6", 100, 150, 40, 20, Instance("c_badge", OverrideFill("badgeM", Solid(C(0.2, 0.6, 0.3)))))

@@ -1,4 +1,4 @@
-// Package core applica gli Op al documento in modo autoritativo.
+// Package core applies Ops to the document authoritatively.
 package core
 
 import (
@@ -15,13 +15,13 @@ var (
 	ErrNodeNotFound = errors.New("core: node not found")
 	ErrNotTextNode  = errors.New("core: not a text node")
 	ErrNotRectNode  = errors.New("core: not a rect node")
-	// ErrNotFrameNode: auto_layout è un campo del FrameNode, quindi scriverlo su
-	// un nodo che non è un frame è un op sul nodo sbagliato (stesso precedente di
-	// ErrNotRectNode per corner_radius).
+	// ErrNotFrameNode: auto_layout is a field of FrameNode, so writing it to a
+	// node that is not a frame is an op on the wrong node (same precedent as
+	// ErrNotRectNode for corner_radius).
 	ErrNotFrameNode = errors.New("core: not a frame node")
-	// ErrNotVectorNode: stesso precedente di ErrNotTextNode -- il oneof `shape`
-	// è la NATURA del nodo, quindi un SetVectorPath su un rettangolo è un op sul
-	// nodo sbagliato, non un campo mancante da riempire.
+	// ErrNotVectorNode: same precedent as ErrNotTextNode -- the `shape` oneof is
+	// the NATURE of the node, so a SetVectorPath on a rectangle is an op on the
+	// wrong node, not a missing field to fill in.
 	ErrNotVectorNode  = errors.New("core: not a vector node")
 	ErrParentNotFound = errors.New("core: parent not found")
 	ErrCycle          = errors.New("core: reparent would create a cycle")
@@ -29,18 +29,18 @@ var (
 	ErrPageExists     = errors.New("core: page id already taken")
 	ErrPageNotFound   = errors.New("core: page not found")
 	ErrLastPage       = errors.New("core: cannot delete the last page")
-	// M4 — componenti.
+	// M4 — components.
 	ErrComponentExists   = errors.New("core: component id already taken")
 	ErrComponentNotFound = errors.New("core: component not found")
 	ErrNotInstanceNode   = errors.New("core: not an instance node")
-	// Flussi.
+	// Flows.
 	ErrNilFlow            = errors.New("core: nil flow")
 	ErrFlowNotFound       = errors.New("core: flow not found")
 	ErrNilTransition      = errors.New("core: nil transition")
 	ErrTransitionNotFound = errors.New("core: transition not found")
 )
 
-// NewDocument crea un documento vuoto con una pagina di default ("page1").
+// NewDocument creates an empty document with a default page ("page1").
 func NewDocument(id, name string) *opendesignerv1.Document {
 	return &opendesignerv1.Document{
 		Id: id, Name: name, SchemaVersion: 1,
@@ -49,28 +49,27 @@ func NewDocument(id, name string) *opendesignerv1.Document {
 	}
 }
 
-// Apply muta doc applicando op. Ritorna errore se l'op viola un'invariante.
+// Apply mutates doc by applying op. It returns an error if the op violates an invariant.
 //
-// Dopo un op riuscito ridispone i frame con auto layout che l'op può aver
-// toccato (vedi layout.go): il risultato fa parte del documento, non è uno
-// stato derivato da ricalcolare in lettura. I frame interessati si leggono sia
-// PRIMA dell'op (il vecchio parent di un nodo cancellato o spostato) sia DOPO
-// (il nuovo).
+// After a successful op it re-lays-out the auto layout frames the op may have
+// touched (see layout.go): the result is part of the document, not a derived
+// state to recompute on read. The affected frames are read both BEFORE the op
+// (the old parent of a deleted or moved node) and AFTER (the new one).
 func Apply(doc *opendesignerv1.Document, op *opendesignerv1.Op) error {
 	return ApplyShared(doc, op, nil)
 }
 
-// Shared permette ad Apply di lavorare su un documento che CONDIVIDE i nodi con
-// un altro (una copia superficiale della mappa): un nodo non ancora "posseduto"
-// viene clonato prima della prima scrittura, così l'altro documento non vede mai
-// la mutazione. Costa quanto i nodi toccati dall'op, non quanto il documento:
-// il server non clona più tutto a ogni op.
+// Shared lets Apply work on a document that SHARES nodes with another one (a
+// shallow copy of the map): a node not yet "owned" is cloned before the first
+// write, so the other document never sees the mutation. It costs as much as the
+// nodes touched by the op, not as much as the document: the server no longer
+// clones everything on every op.
 type Shared struct{ owned map[string]struct{} }
 
 func NewShared() *Shared { return &Shared{owned: map[string]struct{}{}} }
 
-// mut ritorna il nodo `id` pronto per essere scritto. Con un *Shared nil (Apply
-// semplice) ogni nodo è già del documento e si scrive in place.
+// mut returns node `id` ready to be written. With a nil *Shared (plain Apply)
+// every node already belongs to the document and is written in place.
 func (c *Shared) mut(doc *opendesignerv1.Document, id string) *opendesignerv1.Node {
 	n := doc.Nodes[id]
 	if c == nil || n == nil {
@@ -85,8 +84,8 @@ func (c *Shared) mut(doc *opendesignerv1.Document, id string) *opendesignerv1.No
 	return n
 }
 
-// ApplyShared è Apply su un documento le cui voci di `Nodes` possono essere
-// condivise (vedi Shared). Con cow nil è identico ad Apply.
+// ApplyShared is Apply on a document whose `Nodes` entries may be shared (see
+// Shared). With a nil cow it is identical to Apply.
 func ApplyShared(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) error {
 	before := layoutTargets(doc, op)
 	if err := applyOp(doc, op, cow); err != nil {
@@ -145,20 +144,19 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode, cow
 	if _, exists := doc.Nodes[n.GetId()]; exists {
 		return fmt.Errorf("%w: %s", ErrNodeExists, n.GetId())
 	}
-	// Il parent deve ESISTERE: un altro nodo (annidamento) o una Page (i root).
-	// Senza questo controllo un id sbagliato -- un typo, un op che arriva fuori
-	// ordine, un client che riferisce un gruppo appena cancellato da un altro --
-	// produce un nodo che nessuna pagina raggiunge: invisibile sul canvas e
-	// invisibile nel pannello livelli, ma presente nel documento e nello
-	// snapshot per sempre. È la stessa ragione per cui applyDelete cascata: la
-	// mappa `nodes` è piatta, ma il DOCUMENTO è l'albero, e solo ciò che pende
-	// da una pagina ne fa parte.
+	// The parent must EXIST: another node (nesting) or a Page (the roots).
+	// Without this check a wrong id -- a typo, an op arriving out of order, a
+	// client referencing a group just deleted by another -- produces a node that
+	// no page reaches: invisible on the canvas and invisible in the layers panel,
+	// but present in the document and in the snapshot forever. It is the same
+	// reason applyDelete cascades: the `nodes` map is flat, but the DOCUMENT is the
+	// tree, and only what hangs from a page is part of it.
 	if !parentExists(doc, n.GetParentId()) {
 		return fmt.Errorf("%w: %s (node %s)", ErrParentNotFound, n.GetParentId(), n.GetId())
 	}
-	// Un'ISTANZA deve referenziare un componente ESISTENTE: senza, renderebbe il
-	// vuoto (il suo sottoalbero è derivato dal master), e nessun apply se ne
-	// accorgerebbe -- lo stesso motivo per cui il parent deve esistere.
+	// An INSTANCE must reference an EXISTING component: without it, it would
+	// render nothing (its subtree is derived from the master), and no apply would
+	// notice -- the same reason the parent must exist.
 	if inst := n.GetInstance(); inst != nil {
 		if doc.Components[inst.GetComponentId()] == nil {
 			return fmt.Errorf("%w: %s (node %s)", ErrComponentNotFound, inst.GetComponentId(), n.GetId())
@@ -180,19 +178,20 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode, cow
 	return nil
 }
 
-// applyDelete cancella il nodo E TUTTO il suo sottoalbero.
+// applyDelete deletes the node AND ITS WHOLE subtree.
 //
-// La cascata non è una comodità: senza, cancellare un gruppo lascerebbe i figli
-// nella mappa con un parent_id che non esiste più -- esattamente gli orfani che
-// applyCreate rifiuta di creare. Sarebbero nodi non raggiungibili da nessuna
-// pagina (quindi invisibili) ma ancora nel documento, e un CreateNode
-// successivo che riusasse quell'id verrebbe respinto con ErrNodeExists per un
-// nodo che l'utente ha cancellato.
+// The cascade is not a convenience: without it, deleting a group would leave
+// the children in the map with a parent_id that no longer exists -- exactly the
+// orphans applyCreate refuses to create. They would be nodes unreachable from
+// any page (hence invisible) but still in the document, and a later CreateNode
+// reusing that id would be rejected with ErrNodeExists for a node the user
+// deleted.
 //
-// L'op resta UNO solo: il client manda `deleteNode(g1)` e sia il server sia
-// applyOp (TS) espandono la cascata allo stesso modo. L'INVERSO invece è
-// necessariamente multiplo -- un CreateNode per nodo, parent prima dei figli --
-// e vive lato client (web/src/store/history.ts), l'unico che tiene una storia.
+// The op stays a SINGLE one: the client sends `deleteNode(g1)` and both the
+// server and applyOp (TS) expand the cascade the same way. The INVERSE instead
+// is necessarily multiple -- one CreateNode per node, parent before children --
+// and lives on the client side (web/src/store/history.ts), the only one that
+// keeps a history.
 func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) error {
 	if _, ok := doc.Nodes[d.GetId()]; !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, d.GetId())
@@ -207,20 +206,20 @@ func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) err
 	return nil
 }
 
-// applyReparent sposta un nodo sotto un altro container (o direttamente sotto
-// una Page) e ne riscrive la order key fra i nuovi pari.
+// applyReparent moves a node under another container (or directly under a
+// Page) and rewrites its order key among the new siblings.
 //
-// Op dedicato e non un path della mask di SetProperties (a differenza di
-// `order_key`, che è un campo come gli altri) perché ha una VALIDAZIONE che
-// nessun altro campo ha: il nuovo parent deve esistere e non può essere il nodo
-// stesso né un suo discendente. Un ciclo staccherebbe il sottoalbero dal
-// documento -- non sarebbe più raggiungibile da nessuna pagina -- lasciandolo
-// però nella mappa: invisibile, non cancellabile a cascata (nessuna pagina ci
-// arriva) e capace di mandare in loop qualunque attraversamento ingenuo.
+// A dedicated op and not a SetProperties mask path (unlike `order_key`, which
+// is a field like the others) because it has a VALIDATION no other field has:
+// the new parent must exist and cannot be the node itself nor one of its
+// descendants. A cycle would detach the subtree from the document -- it would
+// no longer be reachable from any page -- while leaving it in the map:
+// invisible, not cascade-deletable (no page reaches it) and able to send any
+// naive traversal into a loop.
 //
-// Come per una mask mista in applySetProps, il rifiuto è in BLOCCO: si valida
-// tutto prima di scrivere qualsiasi campo, così un reparent respinto non lascia
-// il nodo con la order key nuova e il parent vecchio.
+// As with a mixed mask in applySetProps, the rejection is ALL-OR-NOTHING:
+// everything is validated before writing any field, so a rejected reparent does
+// not leave the node with the new order key and the old parent.
 func applyReparent(doc *opendesignerv1.Document, r *opendesignerv1.ReparentNode, cow *Shared) error {
 	n, ok := doc.Nodes[r.GetId()]
 	if ok {
@@ -232,34 +231,34 @@ func applyReparent(doc *opendesignerv1.Document, r *opendesignerv1.ReparentNode,
 	if !parentExists(doc, r.GetNewParentId()) {
 		return fmt.Errorf("%w: %s (node %s)", ErrParentNotFound, r.GetNewParentId(), r.GetId())
 	}
-	// Il nodo stesso è il caso degenere del ciclo: IsAncestorOf è STRETTA
-	// (nessuno è antenato di sé), quindi va escluso a parte.
+	// The node itself is the degenerate case of the cycle: IsAncestorOf is STRICT
+	// (nobody is an ancestor of themselves), so it must be excluded separately.
 	if r.GetNewParentId() == r.GetId() || IsAncestorOf(doc, r.GetId(), r.GetNewParentId()) {
 		return fmt.Errorf("%w: %s under %s", ErrCycle, r.GetId(), r.GetNewParentId())
 	}
 	n.ParentId = r.GetNewParentId()
-	// Scritta SEMPRE, anche vuota: come per ogni altro campo di un op assoluto,
-	// il valore che arriva è il valore finale. Un reparent che tiene lo stesso
-	// parent è il riordino fra pari del pannello livelli.
+	// Written ALWAYS, even if empty: as with every other field of an absolute op,
+	// the incoming value is the final value. A reparent that keeps the same parent
+	// is the reordering among siblings of the layers panel.
 	n.OrderKey = r.GetOrderKey()
 	return nil
 }
 
-// --- pagine -----------------------------------------------------------------
+// --- pages ------------------------------------------------------------------
 //
-// Le pagine sono i container RADICE: ogni nodo pende da una di loro e ciò che
-// non è raggiungibile da nessuna pagina non fa parte del documento (vedi
-// tree.go). Da qui le tre invarianti, speculari a quelle dei nodi:
+// Pages are the ROOT containers: every node hangs from one of them and what is
+// not reachable from any page is not part of the document (see tree.go). Hence
+// the three invariants, mirroring those of nodes:
 //
-//	1. l'id di una pagina è LIBERO -- né di un'altra pagina né di un nodo:
-//	   parentExists risponde "sì" per entrambi, quindi due container omonimi
-//	   renderebbero ambiguo il parent di chiunque li nomini;
-//	2. cancellare una pagina cancella TUTTI i nodi che le pendono sotto (la
-//	   cascata di applyDelete portata alla radice);
-//	3. l'ULTIMA pagina non si cancella: senza pagine non esiste nessun parent
-//	   valido, quindi nessun nodo potrebbe più essere creato.
+//	1. a page's id is FREE -- neither another page's nor a node's:
+//	   parentExists answers "yes" for both, so two containers with the same id
+//	   would make the parent of anyone naming them ambiguous;
+//	2. deleting a page deletes ALL the nodes hanging under it (the cascade of
+//	   applyDelete carried to the root);
+//	3. the LAST page is not deleted: without pages there is no valid parent,
+//	   so no node could ever be created again.
 
-// pageIndex ritorna la posizione di una pagina in doc.Pages, o -1.
+// pageIndex returns the position of a page in doc.Pages, or -1.
 func pageIndex(doc *opendesignerv1.Document, id string) int {
 	for i, p := range doc.GetPages() {
 		if p.GetId() == id {
@@ -269,21 +268,21 @@ func pageIndex(doc *opendesignerv1.Document, id string) int {
 	return -1
 }
 
-// applyCreatePage aggiunge una pagina IN CODA.
+// applyCreatePage appends a page AT THE END.
 //
-// In coda e non a un indice scelto dal chiamante: la posizione nell'elenco è
-// l'ordine del selettore di pagina, non una proprietà del documento che qualcuno
-// possa violare, e un `index` nell'op vorrebbe dire clamp, validazione e un
-// inverso che dipende dalla posizione. L'unica conseguenza è che annullare la
-// cancellazione di una pagina di mezzo la riporta in fondo -- il suo CONTENUTO
-// torna intatto, che è ciò che un undo deve garantire.
+// At the end and not at an index chosen by the caller: the position in the list
+// is the page selector's order, not a document property someone could violate,
+// and an `index` in the op would mean clamping, validation and an inverse that
+// depends on the position. The only consequence is that undoing the deletion of
+// a middle page puts it back at the bottom -- its CONTENT comes back intact,
+// which is what an undo must guarantee.
 func applyCreatePage(doc *opendesignerv1.Document, c *opendesignerv1.CreatePage) error {
 	p := c.GetPage()
 	if p == nil || p.GetId() == "" {
 		return ErrNilPage
 	}
-	// Un id già preso -- da una pagina o da un NODO -- è rifiutato: vedi
-	// l'invariante 1 qui sopra.
+	// An id already taken -- by a page or by a NODE -- is rejected: see
+	// invariant 1 above.
 	if parentExists(doc, p.GetId()) {
 		return fmt.Errorf("%w: %s", ErrPageExists, p.GetId())
 	}
@@ -291,12 +290,12 @@ func applyCreatePage(doc *opendesignerv1.Document, c *opendesignerv1.CreatePage)
 	return nil
 }
 
-// applyDeletePage cancella la pagina E TUTTI i nodi che ci pendono sotto.
+// applyDeletePage deletes the page AND ALL the nodes hanging under it.
 //
-// L'op resta UNO solo, come deleteNode: il client manda `deletePage(p2)` e sia
-// il server sia applyOp (TS) espandono la cascata allo stesso modo. L'inverso è
-// necessariamente multiplo (createPage + una createNode per nodo, parent prima
-// dei figli) e vive lato client, in web/src/store/history.ts.
+// The op stays a SINGLE one, like deleteNode: the client sends `deletePage(p2)`
+// and both the server and applyOp (TS) expand the cascade the same way. The
+// inverse is necessarily multiple (createPage + one createNode per node, parent
+// before children) and lives on the client side, in web/src/store/history.ts.
 func applyDeletePage(doc *opendesignerv1.Document, d *opendesignerv1.DeletePage) error {
 	i := pageIndex(doc, d.GetId())
 	if i < 0 {
@@ -305,9 +304,9 @@ func applyDeletePage(doc *opendesignerv1.Document, d *opendesignerv1.DeletePage)
 	if len(doc.GetPages()) == 1 {
 		return fmt.Errorf("%w: %s", ErrLastPage, d.GetId())
 	}
-	// Validato tutto PRIMA di scrivere qualsiasi cosa, come per una mask mista:
-	// un rifiuto non deve lasciare la pagina rimossa e i nodi al loro posto (o
-	// viceversa).
+	// Everything validated BEFORE writing anything, as with a mixed mask: a
+	// rejection must not leave the page removed and the nodes in place (or vice
+	// versa).
 	gone := map[string]bool{}
 	for _, root := range ChildrenOf(doc, d.GetId()) {
 		for _, n := range SubtreeOf(doc, root.GetId()) {
@@ -326,15 +325,15 @@ func applyRenamePage(doc *opendesignerv1.Document, r *opendesignerv1.RenamePage)
 	if i < 0 {
 		return fmt.Errorf("%w: %s", ErrPageNotFound, r.GetId())
 	}
-	// Scritto SEMPRE, anche vuoto: come per Node.name, il valore che arriva è il
-	// valore finale, e il ripiego per un nome vuoto è della UI.
+	// Written ALWAYS, even if empty: as with Node.name, the incoming value is the
+	// final value, and the fallback for an empty name belongs to the UI.
 	doc.Pages[i].Name = r.GetName()
 	return nil
 }
 
-// applySetProps copia i campi indicati dalla mask da patch al nodo target.
-// Valida l'intera mask prima di mutare qualsiasi campo: una mask mista
-// (es. ["x","bogus"]) non deve lasciare il documento parzialmente mutato.
+// applySetProps copies the fields listed by the mask from patch to the target node.
+// It validates the whole mask before mutating any field: a mixed mask
+// (e.g. ["x","bogus"]) must not leave the document partially mutated.
 func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetId()]
 	if ok {
@@ -349,53 +348,50 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta":
 			// supported
 		case "corner_radius":
-			// UNICO path della mask che indirizza un campo DENTRO il oneof
-			// `shape` (RectNode.corner_radius) invece che un campo di primo
-			// livello del Node: il patch lo porta annidato nella forma, e il
-			// nodo bersaglio deve essere un rettangolo.
+			// The ONLY mask path that addresses a field INSIDE the `shape` oneof
+			// (RectNode.corner_radius) instead of a top-level field of the Node: the
+			// patch carries it nested in the shape, and the target node must be a
+			// rectangle.
 			//
-			// Il oneof `shape` è la NATURA del nodo, non un suo campo: un
-			// corner_radius su un'ellisse o su un testo non è "un campo
-			// mancante da riempire", è un op sul nodo sbagliato -- la stessa
-			// regola per cui applySetText rifiuta un rettangolo
-			// (ErrNotTextNode). Il rifiuto sta QUI, nel giro di validazione,
-			// per la stessa ragione per cui ci sta quello dei path ignoti:
-			// una mask mista (es. ["x","corner_radius"]) non deve lasciare il
-			// documento mutato a metà.
+			// The `shape` oneof is the NATURE of the node, not a field of it: a
+			// corner_radius on an ellipse or a text is not "a missing field to fill
+			// in", it is an op on the wrong node -- the same rule by which applySetText
+			// rejects a rectangle (ErrNotTextNode). The rejection lives HERE, in the
+			// validation pass, for the same reason the unknown-path one does: a mixed
+			// mask (e.g. ["x","corner_radius"]) must not leave the document half
+			// mutated.
 			//
-			// Uno `shape` ASSENTE invece passa: un Node senza forma è comunque
-			// un rettangolo per chiunque legga il documento
-			// (web/src/store/types.ts::toNodeLite lo mappa esplicitamente su
-			// kind "rect"), quindi rifiutarlo qui farebbe divergere client e
-			// server proprio sul nodo che entrambi disegnano come rettangolo.
-			// Il rettangolo implicito viene materializzato più sotto.
+			// An ABSENT `shape` instead passes: a Node without a shape is a rectangle
+			// for anyone reading the document anyway
+			// (web/src/store/types.ts::toNodeLite explicitly maps it to kind "rect"),
+			// so rejecting it here would make client and server diverge exactly on the
+			// node both draw as a rectangle. The implicit rectangle is materialized
+			// further below.
 			//
-			// La guardia è una WHITELIST (che cosa è un rettangolo) e non una
-			// lista delle forme da rifiutare, ed è una differenza con i denti:
-			// elencare i "cattivi" fa passare in silenzio OGNI forma aggiunta
-			// dopo (immagine della traccia 3, vettoriale della traccia 4, gruppo/
-			// frame della traccia 1), che finisce dritta nel ramo qui sotto --
-			// quello che materializza il rettangolo implicito -- e si vede
-			// SOSTITUIRE lo `shape` da un Node_Rect, distruggendo la propria
-			// geometria (o, per un'immagine, l'hash dei byte). È successo
-			// esattamente così con VectorNode: la lista diceva {Ellipse, Text},
-			// un setProps{corner_radius} su un nodo vettoriale passava la
-			// validazione e ne cancellava tutti i subpath, mentre il gemello TS
-			// (web/src/store/applyOp.ts, `cur.kind !== "rect"`) rifiutava lo
-			// stesso op -- documento autorevole e client desincronizzati per
-			// sempre. Con la whitelist gruppo, frame e ogni forma nuova sono
-			// rifiutati di default: il peggio che può fare è costringere chi la
-			// aggiunge a decidere, invece di perdere il lavoro dell'utente.
+			// The guard is a WHITELIST (what a rectangle is) and not a list of the
+			// shapes to reject, and it is a difference with teeth: listing the "bad
+			// ones" silently lets EVERY shape added later through (image from track 3,
+			// vector from track 4, group/frame from track 1), which falls straight into
+			// the branch below -- the one that materializes the implicit rectangle --
+			// and gets its `shape` REPLACED by a Node_Rect, destroying its own
+			// geometry (or, for an image, the byte hash). It happened exactly like this
+			// with VectorNode: the list said {Ellipse, Text}, a setProps{corner_radius}
+			// on a vector node passed validation and wiped all its subpaths, while the
+			// TS twin (web/src/store/applyOp.ts, `cur.kind !== "rect"`) rejected the
+			// same op -- authoritative document and client out of sync forever. With
+			// the whitelist group, frame and every new shape are rejected by default:
+			// the worst it can do is force whoever adds one to decide, instead of
+			// losing the user's work.
 			switch n.GetShape().(type) {
 			case nil, *opendesignerv1.Node_Rect:
-				// Rettangolo esplicito, o implicito (shape assente).
+				// Explicit rectangle, or implicit (absent shape).
 			default:
 				return fmt.Errorf("%w: %s", ErrNotRectNode, s.GetId())
 			}
 		case "auto_layout":
-			// Come corner_radius, un campo DENTRO il oneof `shape`: vale solo su
-			// un frame. L'op intero viene rifiutato, quindi una mask mista
-			// (es. "x,auto_layout") su un rettangolo non sposta nemmeno la x.
+			// Like corner_radius, a field INSIDE the `shape` oneof: it only applies to
+			// a frame. The whole op is rejected, so a mixed mask
+			// (e.g. "x,auto_layout") on a rectangle does not even move x.
 			if _, ok := n.GetShape().(*opendesignerv1.Node_Frame); !ok {
 				return fmt.Errorf("%w: %s", ErrNotFrameNode, s.GetId())
 			}
@@ -423,50 +419,47 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 		case "visible":
 			n.Visible = p.GetVisible()
 		case "meta":
-			// Sostituisce l'intera mappa (come le liste). Una mappa vuota la
-			// svuota: nil e {} sono lo stesso stato dopo il round-trip proto3.
+			// Replaces the whole map (like lists). An empty map clears it:
+			// nil and {} are the same state after the proto3 round-trip.
 			n.Meta = p.GetMeta()
 		case "fills":
 			n.Fills = p.GetFills()
 		case "strokes":
-			// SOSTITUZIONE dell'intera lista, esattamente come `fills` qui
-			// sopra -- non una fusione elemento per elemento. È il campo
-			// RIPETUTO su cui le due implementazioni di apply potrebbero
-			// divergere in silenzio (una lista più corta che lascia in coda i
-			// tratti vecchi si nota solo guardando il canvas), quindi la
-			// semantica è fissata da un test per lato e dalla fixture
-			// testdata/golden/strokes.json, che il runner esegue da entrambi.
+			// REPLACEMENT of the whole list, exactly like `fills` above -- not an
+			// element-by-element merge. It is the REPEATED field on which the two
+			// apply implementations could silently diverge (a shorter list that leaves
+			// the old strokes at the tail is only noticed by looking at the canvas), so
+			// the semantics are fixed by a test per side and by the fixture
+			// testdata/golden/strokes.json, which the runner executes from both.
 			//
-			// A differenza di corner_radius NON c'è nessuna forma da
-			// controllare: il tratto è un campo di primo livello del Node, e
-			// vale per un rettangolo come per un'ellisse o un testo.
+			// Unlike corner_radius there is NO shape to check: the stroke is a
+			// top-level field of the Node, and it holds for a rectangle as well as for
+			// an ellipse or a text.
 			n.Strokes = p.GetStrokes()
 		case "effects":
-			// SOSTITUZIONE dell'intera lista, come fills e strokes. Campo di
-			// primo livello: vale per qualunque forma. Il patch che arriva senza
-			// effects azzera la lista -- la mask dice cosa scrivere, non il
-			// patch.
+			// REPLACEMENT of the whole list, like fills and strokes. Top-level field:
+			// it holds for any shape. A patch that arrives without effects clears the
+			// list -- the mask says what to write, not the patch.
 			n.Effects = p.GetEffects()
 		case "order_key":
-			// L'ordine di disegno (e quello del pannello livelli) è un CAMPO
-			// come gli altri, non un op dedicato: riordinare è scrivere una
-			// order key nuova, calcolata dal client come indice frazionario fra
-			// i due vicini della posizione d'arrivo. Primo path multiparola
-			// della mask -- sul filo JSON viaggia come "orderKey" (vedi
-			// web/src/store/maskPaths.ts).
+			// The drawing order (and that of the layers panel) is a FIELD like the
+			// others, not a dedicated op: reordering is writing a new order key,
+			// computed by the client as a fractional index between the two neighbors
+			// of the destination position. First multi-word path of the mask -- on the
+			// JSON wire it travels as "orderKey" (see web/src/store/maskPaths.ts).
 			n.OrderKey = p.GetOrderKey()
 		case "auto_layout":
-			// Il giro di validazione ha già escluso ogni nodo che non è un
-			// frame. Il valore viene dal patch NIDIFICATO nella forma frame; un
-			// patch senza frame (o senza auto_layout) lo SPEGNE -- il getter
-			// nil-safe, come per le liste con mask "fills".
+			// The validation pass already excluded every node that is not a frame. The
+			// value comes from the patch NESTED in the frame shape; a patch without
+			// frame (or without auto_layout) turns it OFF -- the nil-safe getter, as
+			// for lists with the "fills" mask.
 			n.GetFrame().AutoLayout = proto.Clone(p.GetFrame().GetAutoLayout()).(*opendesignerv1.AutoLayout)
 		case "corner_radius":
-			// Il giro di validazione ha già escluso ellisse e testo: qui resta
-			// un rettangolo, esplicito o implicito. Nel secondo caso (shape
-			// assente, oppure Node_Rect con Rect nil dopo un round-trip) il
-			// rettangolo va materializzato prima di scriverci dentro --
-			// altrimenti l'assegnazione andrebbe su un puntatore nil.
+			// The validation pass already excluded ellipse and text: what remains here
+			// is a rectangle, explicit or implicit. In the latter case (absent shape,
+			// or Node_Rect with nil Rect after a round-trip) the rectangle must be
+			// materialized before writing into it -- otherwise the assignment would
+			// go to a nil pointer.
 			r := n.GetRect()
 			if r == nil {
 				r = &opendesignerv1.RectNode{}
@@ -478,21 +471,21 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 	return nil
 }
 
-// applySetText scrive il contenuto (e, se richiesto, lo stile) di un nodo testo.
+// applySetText writes the content (and, if requested, the style) of a text node.
 //
-// Op dedicato e non un path della mask di SetProperties: il contenuto vive
-// DENTRO il oneof `shape`, mentre la mask indirizza campi di primo livello del
-// Node -- un path annidato costringerebbe questa funzione e la sua gemella TS
-// (web/src/store/applyOp.ts) a un parser di path.
+// A dedicated op and not a SetProperties mask path: the content lives INSIDE
+// the `shape` oneof, while the mask addresses top-level fields of the Node -- a
+// nested path would force this function and its TS twin
+// (web/src/store/applyOp.ts) to carry a path parser.
 //
-// Il contenuto si scrive SEMPRE (anche vuoto: è il testo cancellato
-// dall'utente). Lo stile no: `style_present` distingue "non specificato" da
-// "azzera". In proto3 un sotto-messaggio assente e uno con tutti i campi a zero
-// non si distinguono dopo il round-trip protojson, quindi senza il flag ogni
-// SetText di solo contenuto -- cioè ogni battuta di tasto -- porterebbe il font
-// a 0 e renderebbe il nodo invisibile. Con il flag: false => lo stile esistente
-// resta intatto, true => viene sostituito da `style` (nil incluso, che è
-// l'azzeramento esplicito).
+// The content is ALWAYS written (even if empty: it is the text the user
+// deleted). The style is not: `style_present` distinguishes "unspecified" from
+// "reset". In proto3 an absent sub-message and one with all fields at zero are
+// indistinguishable after the protojson round-trip, so without the flag every
+// content-only SetText -- i.e. every keystroke -- would bring the font to 0 and
+// make the node invisible. With the flag: false => the existing style stays
+// intact, true => it is replaced by `style` (nil included, which is the
+// explicit reset).
 func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetId()]
 	if ok {
@@ -501,11 +494,11 @@ func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText, cow *
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
 	}
-	// Il oneof `shape` è la NATURA del nodo, non un suo campo: un SetText su un
-	// rettangolo non è "un campo mancante da riempire", è un op sul nodo
-	// sbagliato. Scriverci dentro trasformerebbe la forma in silenzio (e, dato
-	// che l'op non ha inverso per il rect che c'era prima, in modo non
-	// annullabile), quindi si rifiuta l'op senza toccare niente.
+	// The `shape` oneof is the NATURE of the node, not a field of it: a SetText on
+	// a rectangle is not "a missing field to fill in", it is an op on the wrong
+	// node. Writing into it would silently transform the shape (and, since the op
+	// has no inverse for the rect that was there before, in a non-undoable way), so
+	// the op is rejected without touching anything.
 	t, isText := n.GetShape().(*opendesignerv1.Node_Text)
 	if !isText || t.Text == nil {
 		return fmt.Errorf("%w: %s", ErrNotTextNode, s.GetId())
@@ -517,18 +510,18 @@ func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText, cow *
 	return nil
 }
 
-// applySetVectorPath sostituisce IN BLOCCO i subpath di un nodo vettoriale.
+// applySetVectorPath replaces the subpaths of a vector node WHOLESALE.
 //
-// Op dedicato e non un path della mask di SetProperties per la stessa ragione
-// di applySetText: la geometria vive DENTRO il oneof `shape`, mentre la mask
-// indirizza campi di primo livello del Node.
+// A dedicated op and not a SetProperties mask path for the same reason as
+// applySetText: the geometry lives INSIDE the `shape` oneof, while the mask
+// addresses top-level fields of the Node.
 //
-// La lista si scrive SEMPRE, anche vuota -- è il path che l'utente ha svuotato,
-// non un "non specificato" da ignorare. Nessun flag `present` come
-// SetText.style_present: là il flag serviva perché un SetText porta DUE cose
-// (contenuto e stile) e una delle due doveva poter restare intatta; qui l'op È
-// i subpath, quindi "assente" e "vuoto" descrivono lo stesso stato e la
-// distinzione proto3 non è osservabile.
+// The list is ALWAYS written, even if empty -- it is the path the user emptied,
+// not an "unspecified" to ignore. No `present` flag like
+// SetText.style_present: there the flag was needed because a SetText carries
+// TWO things (content and style) and one of them had to be able to stay intact;
+// here the op IS the subpaths, so "absent" and "empty" describe the same state
+// and the proto3 distinction is not observable.
 func applySetVectorPath(doc *opendesignerv1.Document, s *opendesignerv1.SetVectorPath, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetId()]
 	if ok {
@@ -537,13 +530,12 @@ func applySetVectorPath(doc *opendesignerv1.Document, s *opendesignerv1.SetVecto
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrNodeNotFound, s.GetId())
 	}
-	// Stesso rifiuto di applySetText su un non-testo: scrivere una geometria
-	// dentro un rettangolo ne cambierebbe la FORMA in silenzio, e l'op non ha
-	// inverso per il rettangolo che c'era prima -- quindi in modo non
-	// annullabile. Nota che qui NON c'è il ripiego "shape assente = rettangolo
-	// implicito" di applySetProps: un nodo senza forma è un rettangolo per
-	// chiunque legga il documento (web/src/store/types.ts::toNodeLite), quindi
-	// è esattamente il caso che va rifiutato.
+	// Same rejection as applySetText on a non-text: writing a geometry into a
+	// rectangle would silently change its SHAPE, and the op has no inverse for the
+	// rectangle that was there before -- hence non-undoably. Note that here there
+	// is NO "absent shape = implicit rectangle" fallback as in applySetProps: a
+	// node without a shape is a rectangle for anyone reading the document
+	// (web/src/store/types.ts::toNodeLite), so it is exactly the case to reject.
 	v, isVector := n.GetShape().(*opendesignerv1.Node_Vector)
 	if !isVector || v.Vector == nil {
 		return fmt.Errorf("%w: %s", ErrNotVectorNode, s.GetId())
@@ -552,12 +544,12 @@ func applySetVectorPath(doc *opendesignerv1.Document, s *opendesignerv1.SetVecto
 	return nil
 }
 
-// applyCreateComponent registra un sottoalbero ESISTENTE come master di un
-// componente. Non copia nulla: il master resta in `nodes`, le istanze lo
-// referenziano per component_id, e la propagazione master->istanze è quindi
-// gratis (le istanze leggono il master vivo). Rifiutato se l'id è già preso o se
-// la radice non esiste -- un componente che punta al vuoto darebbe istanze che
-// non rendono nulla, senza modo di accorgersene all'apply.
+// applyCreateComponent registers an EXISTING subtree as the master of a
+// component. It copies nothing: the master stays in `nodes`, instances
+// reference it by component_id, and master->instance propagation is therefore
+// free (instances read the live master). Rejected if the id is already taken or
+// if the root does not exist -- a component pointing at nothing would give
+// instances that render nothing, with no way of noticing at apply time.
 func applyCreateComponent(doc *opendesignerv1.Document, c *opendesignerv1.CreateComponent) error {
 	if c.GetComponentId() == "" {
 		return fmt.Errorf("%w: (empty id)", ErrComponentNotFound)
@@ -578,12 +570,13 @@ func applyCreateComponent(doc *opendesignerv1.Document, c *opendesignerv1.Create
 	return nil
 }
 
-// applySetInstanceOverride imposta, sostituisce o RIMUOVE l'override di
-// un'istanza su un nodo del master. L'override sostituito è quello con lo stesso
-// master_node_id; se quello che arriva non sovrascrive nulla
-// (fills_present=false && text_present=false) l'override viene tolto -- il nodo
-// torna a ereditare dal master. Rifiutato se il nodo non è un'istanza: un
-// override su un rettangolo è un op sul nodo sbagliato, non un campo da riempire.
+// applySetInstanceOverride sets, replaces or REMOVES an instance's override on
+// a master node. The replaced override is the one with the same
+// master_node_id; if the incoming one overrides nothing
+// (fills_present=false && text_present=false) the override is removed -- the
+// node goes back to inheriting from the master. Rejected if the node is not an
+// instance: an override on a rectangle is an op on the wrong node, not a field
+// to fill in.
 func applySetInstanceOverride(doc *opendesignerv1.Document, s *opendesignerv1.SetInstanceOverride, cow *Shared) error {
 	n, ok := doc.Nodes[s.GetInstanceId()]
 	if ok {
@@ -600,8 +593,8 @@ func applySetInstanceOverride(doc *opendesignerv1.Document, s *opendesignerv1.Se
 	if ov == nil || ov.GetMasterNodeId() == "" {
 		return fmt.Errorf("core: instance override with empty master_node_id: %s", s.GetInstanceId())
 	}
-	// Togli l'override con lo stesso master_node_id, poi rimetti quello nuovo solo
-	// se sovrascrive davvero qualcosa (altrimenti l'op È una rimozione).
+	// Remove the override with the same master_node_id, then put the new one back
+	// only if it actually overrides something (otherwise the op IS a removal).
 	kept := make([]*opendesignerv1.InstanceOverride, 0, len(inst.GetOverrides())+1)
 	for _, o := range inst.GetOverrides() {
 		if o.GetMasterNodeId() != ov.GetMasterNodeId() {

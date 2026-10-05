@@ -575,8 +575,8 @@ type NodeView struct {
 	// AutoLayout is set for a frame that lays out its children. Their x/y and, for
 	// a hugging frame, its width/height are already the computed result.
 	AutoLayout *AutoLayoutSpec `json:"autoLayout,omitempty"`
-	// Meta: i metadati liberi del nodo (flow.kind, code.route, test.id, status...).
-	Meta map[string]string `json:"meta,omitempty" jsonschema:"metadati liberi del nodo; vedi set_node_meta"`
+	// Meta: the node's free-form metadata (flow.kind, code.route, test.id, status...).
+	Meta map[string]string `json:"meta,omitempty" jsonschema:"free-form node metadata; see set_node_meta"`
 }
 
 // nodeKind derives the compact kind label from the shape oneof. A node with no

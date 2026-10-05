@@ -1,6 +1,6 @@
-// Esportato da opendesigner (opendesigner export): schermata "Schermata" (rotta /schermata) del documento "Prova" (doc). NON modificare a mano:
-// rigenerare con `opendesigner export`. L'attributo data-node-id lega ogni elemento al nodo del design.
-export function Schermata() {
+// Exported by opendesigner (opendesigner export): screen "Screen" (route /screen) of document "Test" (doc). DO NOT edit by hand:
+// regenerate with `opendesigner export`. The data-node-id attribute ties every element to its design node.
+export function Screen() {
   return (
     <div data-node-id="scr" className="relative w-[400px] h-[300px] bg-[#fff]">
       <div
@@ -16,7 +16,7 @@ export function Schermata() {
         data-node-id="t"
         className="absolute left-[10px] top-[120px] w-[200px] whitespace-pre-wrap break-words [font-family:Inter,_sans-serif] text-[18px] font-bold leading-[1.2] text-center text-[#1a1a1a]"
       >
-        {"Ciao \"mondo\"\nsu due righe"}
+        {"Hello \"world\"\non two lines"}
       </div>
       <svg
         data-node-id="v"

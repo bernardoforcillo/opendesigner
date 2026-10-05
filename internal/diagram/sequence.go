@@ -7,10 +7,10 @@ import (
 	"strings"
 )
 
-// sequenceDiagram UML: partecipanti con linea di vita, messaggi (sincroni,
-// di risposta tratteggiati, asincroni, persi), auto-messaggi, attivazioni
-// (`+`/`-`, activate/deactivate), note, numerazione automatica e frammenti
-// combinati (loop, alt/else, opt, par/and, critical/option, break).
+// UML sequenceDiagram: participants with lifeline, messages (synchronous,
+// dashed replies, asynchronous, lost), self-messages, activations
+// (`+`/`-`, activate/deactivate), notes, automatic numbering and combined
+// fragments (loop, alt/else, opt, par/and, critical/option, break).
 
 type seqPart struct {
 	ID, Label string
@@ -23,8 +23,8 @@ type seqEv struct {
 	Text     string
 	Dashed   bool
 	Head     HeadKind
-	Act      bool // `+` sul destinatario
-	Deact    bool // `-`: disattiva il mittente
+	Act      bool // `+` on the recipient
+	Deact    bool // `-`: deactivates the sender
 	Mode     string
 	Over     []string
 	Block    string
@@ -54,7 +54,7 @@ func parseSequence(src string) (*seqDiagram, error) {
 			return nil
 		}
 		if len(sd.Parts) >= 60 {
-			return fmt.Errorf("troppi partecipanti (massimo 60)")
+			return fmt.Errorf("too many participants (maximum 60)")
 		}
 		idx[id] = len(sd.Parts)
 		sd.Parts = append(sd.Parts, seqPart{ID: id, Label: id})
@@ -106,7 +106,7 @@ func parseSequence(src string) (*seqDiagram, error) {
 				ev.Over = append(ev.Over, id)
 			}
 			if len(ev.Over) == 0 || (ev.Mode != "over" && len(ev.Over) != 1) {
-				return nil, fmt.Errorf("nota senza partecipante: %q", clip(line, 40))
+				return nil, fmt.Errorf("note without a participant: %q", clip(line, 40))
 			}
 			sd.Evs = append(sd.Evs, ev)
 			continue
@@ -129,7 +129,7 @@ func parseSequence(src string) (*seqDiagram, error) {
 		}
 		if low == "end" {
 			if depth == 0 {
-				return nil, fmt.Errorf(`"end" senza un blocco aperto`)
+				return nil, fmt.Errorf(`"end" without an open block`)
 			}
 			depth--
 			sd.Evs = append(sd.Evs, seqEv{Kind: "end"})
@@ -163,17 +163,17 @@ func parseSequence(src string) (*seqDiagram, error) {
 			}
 			sd.Evs = append(sd.Evs, ev)
 			if len(sd.Evs) > 2000 {
-				return nil, fmt.Errorf("troppi eventi (massimo 2000)")
+				return nil, fmt.Errorf("too many events (maximum 2000)")
 			}
 			continue
 		}
-		return nil, fmt.Errorf("riga non riconosciuta: %q", clip(line, 40))
+		return nil, fmt.Errorf("unrecognized line: %q", clip(line, 40))
 	}
 	if depth > 0 {
-		return nil, fmt.Errorf(`manca "end" per chiudere un blocco`)
+		return nil, fmt.Errorf(`missing "end" to close a block`)
 	}
 	if len(sd.Parts) == 0 {
-		return nil, fmt.Errorf("il diagramma non ha partecipanti")
+		return nil, fmt.Errorf("the diagram has no participants")
 	}
 	return sd, nil
 }
@@ -206,7 +206,7 @@ func renderSequence(sd *seqDiagram) *Scene {
 		bw[i] = math.Max(100, textW(p.Label, fontSize)+28)
 		hh = math.Max(hh, textH(p.Label, fontSize)+20)
 	}
-	// distanze fra i centri
+	// distances between the centers
 	gap := make([]float64, n)
 	for i := 0; i+1 < n; i++ {
 		gap[i] = (bw[i]+bw[i+1])/2 + 24
@@ -280,7 +280,7 @@ func renderSequence(sd *seqDiagram) *Scene {
 	acts := make([][]float64, n)
 	drawAct := func(p int, from, to float64) {
 		d := float64(len(acts[p]))
-		front = append(front, Box{X: cx[p] - actW/2 + d*4, Y: from, W: actW, H: math.Max(to-from, 6), Shape: ShapeRect, Fill: rgb(colHeader), Stroke: rgb(colNodeLine), StrokeW: 1, Name: "Attivazione " + sd.Parts[p].Label})
+		front = append(front, Box{X: cx[p] - actW/2 + d*4, Y: from, W: actW, H: math.Max(to-from, 6), Shape: ShapeRect, Fill: rgb(colHeader), Stroke: rgb(colNodeLine), StrokeW: 1, Name: "Activation " + sd.Parts[p].Label})
 	}
 	num := 0
 	for _, e := range sd.Evs {
@@ -303,10 +303,10 @@ func renderSequence(sd *seqDiagram) *Scene {
 			if f == t {
 				x0 := cx[f] + float64(len(acts[f]))*4 + actW/2
 				pts := []Pt{{x0, lineY}, {x0 + 34, lineY}, {x0 + 34, lineY + 24}, {x0, lineY + 24}}
-				front = append(front, Line{Pts: pts, Color: colLine, Dashed: e.Dashed, Weight: 1.5, End: e.Head, Name: "Messaggio " + clip(label, 30)})
+				front = append(front, Line{Pts: pts, Color: colLine, Dashed: e.Dashed, Weight: 1.5, End: e.Head, Name: "Message " + clip(label, 30)})
 				if label != "" {
 					w := textW(label, seqSize) + 8
-					front = append(front, Text{X: x0 + 40, Y: lineY - 2, W: w, H: th, Content: label, Size: seqSize, Align: "left", Color: colInk, Name: name("Etichetta", label)})
+					front = append(front, Text{X: x0 + 40, Y: lineY - 2, W: w, H: th, Content: label, Size: seqSize, Align: "left", Color: colInk, Name: name("Label", label)})
 					touch(x0, x0+40+w)
 				} else {
 					touch(x0, x0+34)
@@ -322,17 +322,17 @@ func renderSequence(sd *seqDiagram) *Scene {
 				y = lineY + 24 + 18
 			} else {
 				xf, xt := cx[f], cx[t]
-				// la linea tocca il bordo dell'attivazione, non il centro
+				// the line touches the edge of the activation, not the center
 				if t > f {
 					xf += float64(len(acts[f])) * 4 * 0
 					xt -= actW / 2 * boolf(len(acts[t]) > 0 || e.Act)
 				} else {
 					xt += actW / 2 * boolf(len(acts[t]) > 0 || e.Act)
 				}
-				front = append(front, Line{Pts: []Pt{{xf, lineY}, {xt, lineY}}, Color: colLine, Dashed: e.Dashed, Weight: 1.5, End: e.Head, Name: "Messaggio " + clip(label, 30)})
+				front = append(front, Line{Pts: []Pt{{xf, lineY}, {xt, lineY}}, Color: colLine, Dashed: e.Dashed, Weight: 1.5, End: e.Head, Name: "Message " + clip(label, 30)})
 				if label != "" {
 					x0 := math.Min(cx[f], cx[t])
-					front = append(front, Text{X: x0, Y: lineY - th - 5, W: math.Abs(cx[t] - cx[f]), H: th, Content: label, Size: seqSize, Align: "center", Color: colInk, Name: name("Etichetta", label)})
+					front = append(front, Text{X: x0, Y: lineY - th - 5, W: math.Abs(cx[t] - cx[f]), H: th, Content: label, Size: seqSize, Align: "center", Color: colInk, Name: name("Label", label)})
 				}
 				touch(math.Min(cx[f], cx[t]), math.Max(cx[f], cx[t]))
 				if e.Act {
@@ -378,8 +378,8 @@ func renderSequence(sd *seqDiagram) *Scene {
 			}
 			h := th + 14
 			front = append(front,
-				Box{X: x0, Y: y, W: x1 - x0, H: h, Shape: ShapeRect, Fill: rgb(colNote), Stroke: rgb(colNoteLine), StrokeW: 1, Name: "Nota"},
-				Text{X: x0 + 4, Y: y + 7, W: x1 - x0 - 8, H: th, Content: e.Text, Size: seqSize, Align: "center", Color: colInk, Name: name("Nota", e.Text)})
+				Box{X: x0, Y: y, W: x1 - x0, H: h, Shape: ShapeRect, Fill: rgb(colNote), Stroke: rgb(colNoteLine), StrokeW: 1, Name: "Note"},
+				Text{X: x0 + 4, Y: y + 7, W: x1 - x0 - 8, H: th, Content: e.Text, Size: seqSize, Align: "center", Color: colInk, Name: name("Note", e.Text)})
 			touch(x0, x1)
 			y += h + 14
 		case "start":
@@ -404,22 +404,22 @@ func renderSequence(sd *seqDiagram) *Scene {
 			endY := y + 4
 			if b.kind != "rect" && b.kind != "box" {
 				w, h := x1-x0, endY-b.startY
-				back = append(back, Box{X: x0, Y: b.startY, W: w, H: h, Shape: ShapeRect, Stroke: rgb(colMuted), StrokeW: 1, Name: "Frammento " + b.kind})
+				back = append(back, Box{X: x0, Y: b.startY, W: w, H: h, Shape: ShapeRect, Stroke: rgb(colMuted), StrokeW: 1, Name: "Fragment " + b.kind})
 				tabW := textW(b.kind, seqSize) + 20
 				back = append(back,
-					Box{X: x0, Y: b.startY, W: tabW, H: 22, Shape: ShapeRect, Fill: rgb(colFrag), Stroke: rgb(colMuted), StrokeW: 1, Name: "Etichetta frammento"},
-					Text{X: x0, Y: b.startY + 4, W: tabW, H: seqSize * lineMul, Content: b.kind, Size: seqSize, Bold: true, Align: "center", Color: colInk, Name: "Tipo " + b.kind})
+					Box{X: x0, Y: b.startY, W: tabW, H: 22, Shape: ShapeRect, Fill: rgb(colFrag), Stroke: rgb(colMuted), StrokeW: 1, Name: "Fragment label"},
+					Text{X: x0, Y: b.startY + 4, W: tabW, H: seqSize * lineMul, Content: b.kind, Size: seqSize, Bold: true, Align: "center", Color: colInk, Name: "Type " + b.kind})
 				if b.label != "" {
-					back = append(back, Text{X: x0 + tabW + 8, Y: b.startY + 4, W: textW("["+b.label+"]", seqSize) + 8, H: seqSize * lineMul, Content: "[" + b.label + "]", Size: seqSize, Align: "left", Color: colMuted, Name: name("Condizione", b.label)})
+					back = append(back, Text{X: x0 + tabW + 8, Y: b.startY + 4, W: textW("["+b.label+"]", seqSize) + 8, H: seqSize * lineMul, Content: "[" + b.label + "]", Size: seqSize, Align: "left", Color: colMuted, Name: name("Condition", b.label)})
 				}
 				for _, d := range b.dividers {
-					back = append(back, Line{Pts: []Pt{{x0, d.y}, {x1, d.y}}, Color: colMuted, Dashed: true, Weight: 1, Name: "Divisore frammento"})
+					back = append(back, Line{Pts: []Pt{{x0, d.y}, {x1, d.y}}, Color: colMuted, Dashed: true, Weight: 1, Name: "Fragment divider"})
 					if d.label != "" {
-						back = append(back, Text{X: x0 + 8, Y: d.y + 4, W: textW("["+d.label+"]", seqSize) + 8, H: seqSize * lineMul, Content: "[" + d.label + "]", Size: seqSize, Align: "left", Color: colMuted, Name: name("Condizione", d.label)})
+						back = append(back, Text{X: x0 + 8, Y: d.y + 4, W: textW("["+d.label+"]", seqSize) + 8, H: seqSize * lineMul, Content: "[" + d.label + "]", Size: seqSize, Align: "left", Color: colMuted, Name: name("Condition", d.label)})
 					}
 				}
 			}
-			// il frammento contiene i figli: il genitore li include con un po' d'aria
+			// the fragment contains the children: the parent includes them with a bit of air
 			if len(blocks) > 0 {
 				p := blocks[len(blocks)-1]
 				p.minX, p.maxX = math.Min(p.minX, x0), math.Max(p.maxX, x1)
@@ -428,7 +428,7 @@ func renderSequence(sd *seqDiagram) *Scene {
 			y += 18
 		}
 	}
-	for len(blocks) > 0 { // difensivo: il parser garantisce la chiusura
+	for len(blocks) > 0 { // defensive: the parser guarantees the closing
 		blocks = blocks[:len(blocks)-1]
 	}
 	y += 8
@@ -441,17 +441,17 @@ func renderSequence(sd *seqDiagram) *Scene {
 	}
 	footY := y + 10
 	for i, p := range sd.Parts {
-		life = append(life, Line{Pts: []Pt{{cx[i], hh}, {cx[i], footY}}, Color: RGB{0.62, 0.66, 0.72}, Dashed: true, Weight: 1, Name: "Linea di vita " + p.Label})
+		life = append(life, Line{Pts: []Pt{{cx[i], hh}, {cx[i], footY}}, Color: RGB{0.62, 0.66, 0.72}, Dashed: true, Weight: 1, Name: "Lifeline " + p.Label})
 	}
 	var heads []any
 	for i, p := range sd.Parts {
 		for _, top := range []float64{0, footY} {
-			b := Box{X: cx[i] - bw[i]/2, Y: top, W: bw[i], H: hh, Shape: ShapeRect, Radius: 4, Fill: rgb(colNodeFill), Stroke: rgb(colNodeLine), StrokeW: 1.5, Name: "Partecipante " + p.Label}
+			b := Box{X: cx[i] - bw[i]/2, Y: top, W: bw[i], H: hh, Shape: ShapeRect, Radius: 4, Fill: rgb(colNodeFill), Stroke: rgb(colNodeLine), StrokeW: 1.5, Name: "Participant " + p.Label}
 			if p.Actor {
-				b.Shape, b.Name = ShapeStadium, "Attore "+p.Label
+				b.Shape, b.Name = ShapeStadium, "Actor "+p.Label
 			}
 			th := textH(p.Label, fontSize)
-			heads = append(heads, b, Text{X: b.X + 6, Y: top + hh/2 - th/2, W: bw[i] - 12, H: th, Content: p.Label, Size: fontSize, Bold: true, Align: "center", Color: colInk, Name: name("Nome", p.Label)})
+			heads = append(heads, b, Text{X: b.X + 6, Y: top + hh/2 - th/2, W: bw[i] - 12, H: th, Content: p.Label, Size: fontSize, Bold: true, Align: "center", Color: colInk, Name: name("Name", p.Label)})
 		}
 	}
 	sc := &Scene{}

@@ -2,12 +2,12 @@
   "docId": "doc1",
   "ops": [
     { "opId": "op1", "docId": "doc1", "createNode": { "node": {
-      "id": "n1", "parentId": "page1", "orderKey": "a000001", "name": "Sotto",
+      "id": "n1", "parentId": "page1", "orderKey": "a000001", "name": "Below",
       "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 10, "height": 10,
       "rect": { "cornerRadius": 0 }
     } } },
     { "opId": "op2", "docId": "doc1", "createNode": { "node": {
-      "id": "n2", "parentId": "page1", "orderKey": "a000002", "name": "Sopra",
+      "id": "n2", "parentId": "page1", "orderKey": "a000002", "name": "Above",
       "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 10, "height": 10,
       "rect": { "cornerRadius": 0 }
     } } },
@@ -20,12 +20,12 @@
     "pages": [{ "id": "page1", "name": "Page 1" }],
     "nodes": {
       "n1": {
-        "id": "n1", "parentId": "page1", "orderKey": "a000003", "name": "Sotto",
+        "id": "n1", "parentId": "page1", "orderKey": "a000003", "name": "Below",
         "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 10, "height": 10,
         "rect": { "cornerRadius": 0 }
       },
       "n2": {
-        "id": "n2", "parentId": "page1", "orderKey": "a000002", "name": "Sopra",
+        "id": "n2", "parentId": "page1", "orderKey": "a000002", "name": "Above",
         "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 10, "height": 10,
         "rect": { "cornerRadius": 0 }
       }

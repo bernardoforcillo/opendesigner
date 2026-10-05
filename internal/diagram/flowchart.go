@@ -8,9 +8,9 @@ import (
 	"unicode"
 )
 
-// Flowchart Mermaid: nodi con cinque forme, archi con tre stili, etichette,
-// direzione. Di tutto il resto (subgraph, classDef, style, click…) si salta la
-// riga invece di rifiutare l'intero diagramma.
+// Mermaid flowchart: nodes with five shapes, edges with three styles, labels,
+// direction. Everything else (subgraph, classDef, style, click…) is skipped
+// line by line instead of rejecting the whole diagram.
 
 type fShape int
 
@@ -20,8 +20,8 @@ const (
 	fStadium
 	fCircle
 	fDiamond
-	fStart // pallino pieno (stati)
-	fEnd   // pallino con anello (stati)
+	fStart // filled dot (states)
+	fEnd   // dot with ring (states)
 )
 
 type fStyle int
@@ -100,7 +100,7 @@ func (c *cursor) has(p string) bool { return strings.HasPrefix(c.rest(), p) }
 func isIDStart(r rune) bool { return unicode.IsLetter(r) || unicode.IsDigit(r) || r == '_' }
 func isIDPart(r rune) bool  { return isIDStart(r) || r == '-' }
 
-// readNode legge `id` e, se c'è, la forma con la sua etichetta.
+// readNode reads `id` and, if present, the shape with its label.
 func readNode(c *cursor) (*flowNode, error) {
 	c.skipWs()
 	if c.i >= len(c.s) || !isIDStart(c.s[c.i]) {
@@ -111,7 +111,7 @@ func readNode(c *cursor) (*flowNode, error) {
 		j++
 	}
 	id := c.s[c.i:j]
-	// Un trattino che apre un arco (`A--B`, `A-->B`) non fa parte dell'id.
+	// A dash that opens an edge (`A--B`, `A-->B`) is not part of the id.
 	for k := 1; k < len(id); k++ {
 		if id[k] != '-' {
 			continue
@@ -140,7 +140,7 @@ func readNode(c *cursor) (*flowNode, error) {
 			end = indexStr(c.s, sh.close, start)
 		}
 		if end < 0 {
-			return nil, fmt.Errorf("forma non chiusa dopo %q", string(id))
+			return nil, fmt.Errorf("shape not closed after %q", string(id))
 		}
 		label := unquote(string(c.s[start:end]))
 		c.i = end + len([]rune(sh.close))
@@ -225,7 +225,7 @@ func readEdge(c *cursor) (*edgeTok, error) {
 	if c.i < len(c.s) && c.s[c.i] == '|' {
 		end := indexRune(c.s, '|', c.i+1)
 		if end < 0 {
-			return nil, fmt.Errorf("etichetta dell'arco non chiusa")
+			return nil, fmt.Errorf("edge label not closed")
 		}
 		t.label = unquote(string(c.s[c.i+1 : end]))
 		c.i = end + 1
@@ -250,7 +250,7 @@ func parseDir(d string) Dir {
 	return DirTD
 }
 
-// statements spezza una riga sui `;` fuori dalle virgolette.
+// statements splits a line on the `;` outside quotes.
 func statements(line string) []string {
 	var out []string
 	var cur strings.Builder
@@ -280,7 +280,7 @@ func parseFlowchart(src string) (*flowchart, error) {
 			return nil
 		}
 		if len(fc.Nodes) >= MaxNodes {
-			return fmt.Errorf("troppi nodi (massimo %d)", MaxNodes)
+			return fmt.Errorf("too many nodes (maximum %d)", MaxNodes)
 		}
 		idx[n.ID] = len(fc.Nodes)
 		fc.Nodes = append(fc.Nodes, *n)
@@ -307,7 +307,7 @@ func parseFlowchart(src string) (*flowchart, error) {
 				return nil, err
 			}
 			if first == nil {
-				return nil, fmt.Errorf("riga non riconosciuta: %q", clip(stmt, 40))
+				return nil, fmt.Errorf("unrecognized line: %q", clip(stmt, 40))
 			}
 			if err := touch(first); err != nil {
 				return nil, err
@@ -322,7 +322,7 @@ func parseFlowchart(src string) (*flowchart, error) {
 					cur.i++
 					n, err := readNode(cur)
 					if err != nil || n == nil {
-						return nil, fmt.Errorf(`dopo "&" manca un nodo: %q`, clip(stmt, 40))
+						return nil, fmt.Errorf(`a node is missing after "&": %q`, clip(stmt, 40))
 					}
 					if err := touch(n); err != nil {
 						return nil, err
@@ -335,14 +335,14 @@ func parseFlowchart(src string) (*flowchart, error) {
 					return nil, err
 				}
 				if e == nil {
-					return nil, fmt.Errorf("riga non riconosciuta: %q", clip(stmt, 40))
+					return nil, fmt.Errorf("unrecognized line: %q", clip(stmt, 40))
 				}
 				n0, err := readNode(cur)
 				if err != nil {
 					return nil, err
 				}
 				if n0 == nil {
-					return nil, fmt.Errorf("dopo l'arco manca un nodo: %q", clip(stmt, 40))
+					return nil, fmt.Errorf("a node is missing after the edge: %q", clip(stmt, 40))
 				}
 				if err := touch(n0); err != nil {
 					return nil, err
@@ -356,7 +356,7 @@ func parseFlowchart(src string) (*flowchart, error) {
 					cur.i++
 					n, err := readNode(cur)
 					if err != nil || n == nil {
-						return nil, fmt.Errorf(`dopo "&" manca un nodo: %q`, clip(stmt, 40))
+						return nil, fmt.Errorf(`a node is missing after "&": %q`, clip(stmt, 40))
 					}
 					if err := touch(n); err != nil {
 						return nil, err
@@ -366,7 +366,7 @@ func parseFlowchart(src string) (*flowchart, error) {
 				for _, a := range prev {
 					for _, b := range next {
 						if len(fc.Edges) >= MaxEdges {
-							return nil, fmt.Errorf("troppi archi (massimo %d)", MaxEdges)
+							return nil, fmt.Errorf("too many edges (maximum %d)", MaxEdges)
 						}
 						fc.Edges = append(fc.Edges, flowEdge{From: a.ID, To: b.ID, Label: e.label, Style: e.style, ArrowEnd: e.arrowEnd, ArrowStart: e.arrowStart})
 					}
@@ -377,9 +377,9 @@ func parseFlowchart(src string) (*flowchart, error) {
 	}
 	if len(fc.Nodes) == 0 {
 		if sawHeader {
-			return nil, fmt.Errorf("il diagramma non ha nodi")
+			return nil, fmt.Errorf("the diagram has no nodes")
 		}
-		return nil, fmt.Errorf("nessun nodo trovato")
+		return nil, fmt.Errorf("no node found")
 	}
 	return fc, nil
 }
@@ -391,7 +391,7 @@ func clip(s string, n int) string {
 	return s
 }
 
-// --- disegno -------------------------------------------------------------------
+// --- drawing -------------------------------------------------------------------
 
 func flowSize(n flowNode) (w, h float64) {
 	tw, th := textW(n.Label, fontSize), textH(n.Label, fontSize)
@@ -436,7 +436,7 @@ func renderFlowchart(fc *flowchart) *Scene {
 	gapY := rankGap
 	for _, e := range fc.Edges {
 		if e.Label != "" {
-			gapY += 24 // le etichette stanno sull'arco: serve spazio fra i livelli
+			gapY += 24 // the labels sit on the edge: space is needed between the levels
 			break
 		}
 	}
@@ -493,7 +493,7 @@ func renderFlowchart(fc *flowchart) *Scene {
 		return 0
 	})
 
-	// riquadro del contenuto
+	// content box
 	minX, minY, maxX, maxY := math.Inf(1), math.Inf(1), math.Inf(-1), math.Inf(-1)
 	grow := func(x, y float64) {
 		minX, minY = math.Min(minX, x), math.Min(minY, y)
@@ -523,7 +523,7 @@ func renderFlowchart(fc *flowchart) *Scene {
 		for k, p := range pe[i].pts {
 			pts[k] = sh(p)
 		}
-		ln := Line{Pts: pts, Color: colLine, Dashed: e.Style == sDotted, Weight: 1.5, Name: fmt.Sprintf("Arco %s → %s", e.From, e.To)}
+		ln := Line{Pts: pts, Color: colLine, Dashed: e.Style == sDotted, Weight: 1.5, Name: fmt.Sprintf("Edge %s → %s", e.From, e.To)}
 		if e.Style == sThick {
 			ln.Weight = 3
 		}
@@ -541,14 +541,14 @@ func renderFlowchart(fc *flowchart) *Scene {
 	for i, n := range fc.Nodes {
 		x, y, w, h := nodeRect(i)
 		x, y = x+dx, y+dy
-		nm := name("Nodo", n.Label)
+		nm := name("Node", n.Label)
 		switch n.Shape {
 		case fStart:
-			sc.add(Box{X: x, Y: y, W: w, H: h, Shape: ShapeEllipse, Fill: rgb(colInk), Stroke: rgb(colInk), StrokeW: 1, Name: "Inizio"})
+			sc.add(Box{X: x, Y: y, W: w, H: h, Shape: ShapeEllipse, Fill: rgb(colInk), Stroke: rgb(colInk), StrokeW: 1, Name: "Start"})
 			continue
 		case fEnd:
-			sc.add(Box{X: x, Y: y, W: w, H: h, Shape: ShapeEllipse, Fill: rgb(colWhite), Stroke: rgb(colInk), StrokeW: 1.5, Name: "Fine"},
-				Box{X: x + 6, Y: y + 6, W: w - 12, H: h - 12, Shape: ShapeEllipse, Fill: rgb(colInk), Name: "Fine (centro)"})
+			sc.add(Box{X: x, Y: y, W: w, H: h, Shape: ShapeEllipse, Fill: rgb(colWhite), Stroke: rgb(colInk), StrokeW: 1.5, Name: "End"},
+				Box{X: x + 6, Y: y + 6, W: w - 12, H: h - 12, Shape: ShapeEllipse, Fill: rgb(colInk), Name: "End (center)"})
 			continue
 		}
 		b := Box{X: x, Y: y, W: w, H: h, Fill: rgb(colNodeFill), Stroke: rgb(colNodeLine), StrokeW: 1.5, Name: nm}
@@ -567,25 +567,25 @@ func renderFlowchart(fc *flowchart) *Scene {
 		sc.add(b)
 		if n.Label != "" {
 			th := textH(n.Label, fontSize)
-			sc.add(Text{X: x + 6, Y: y + h/2 - th/2, W: w - 12, H: th, Content: n.Label, Size: fontSize, Align: "center", Color: colInk, Name: name("Etichetta", n.Label)})
+			sc.add(Text{X: x + 6, Y: y + h/2 - th/2, W: w - 12, H: th, Content: n.Label, Size: fontSize, Align: "center", Color: colInk, Name: name("Label", n.Label)})
 		}
 	}
 	return sc
 }
 
-// addLabel disegna un'etichetta d'arco: testo su un riquadro bianco.
+// addLabel draws an edge label: text on a white box.
 func addLabel(sc *Scene, label string, at Pt) {
 	w, h := textW(label, fontSize)+2*labelPad, textH(label, fontSize)+6
 	sc.add(
-		Box{X: at.X - w/2, Y: at.Y - h/2, W: w, H: h, Shape: ShapeRound, Radius: 4, Fill: rgb(colWhite), Stroke: rgb(RGB{0.8, 0.82, 0.86}), StrokeW: 1, Name: "Sfondo etichetta"},
-		Text{X: at.X - w/2, Y: at.Y - h/2 + 3, W: w, H: h - 6, Content: label, Size: fontSize, Align: "center", Color: colInk, Name: name("Etichetta", label)},
+		Box{X: at.X - w/2, Y: at.Y - h/2, W: w, H: h, Shape: ShapeRound, Radius: 4, Fill: rgb(colWhite), Stroke: rgb(RGB{0.8, 0.82, 0.86}), StrokeW: 1, Name: "Label background"},
+		Text{X: at.X - w/2, Y: at.Y - h/2 + 3, W: w, H: h - 6, Content: label, Size: fontSize, Align: "center", Color: colInk, Name: name("Label", label)},
 	)
 }
 
-// spreadParallel separa gli archi che collegano la stessa coppia di nodi (anche
-// in versi opposti): senza, `A --> B` e `B --> A` si disegnerebbero uno
-// sull'altro. Ogni arco del gruppo si sposta di lato di un passo fisso, in
-// modo simmetrico, nella direzione perpendicolare al segmento medio.
+// spreadParallel separates the edges connecting the same pair of nodes (even
+// in opposite directions): without it, `A --> B` and `B --> A` would be drawn on top of
+// each other. Every edge of the group shifts sideways by a fixed step, in a
+// symmetric way, in the direction perpendicular to the middle segment.
 func spreadParallel(n int, ends func(i int) (int, int), move func(i int, dx, dy float64), pts func(i int) []Pt, width func(i int) float64) {
 	groups := map[[2]int][]int{}
 	var keys [][2]int
@@ -608,7 +608,7 @@ func spreadParallel(n int, ends func(i int) (int, int), move func(i int, dx, dy 
 		if len(g) < 2 {
 			continue
 		}
-		// normale fissa per il gruppo: dal nodo minore al maggiore
+		// fixed normal for the group: from the lower node to the higher
 		p := pts(g[0])
 		a, _ := ends(g[0])
 		var d Pt
@@ -618,7 +618,7 @@ func spreadParallel(n int, ends func(i int) (int, int), move func(i int, dx, dy 
 			d = unit(p[len(p)-1], p[0])
 		}
 		nx, ny := -d.Y, d.X
-		// il passo è largo quanto la più larga delle etichette: così non si toccano
+		// the step is as wide as the widest of the labels: so they do not touch
 		step := 22.0
 		for _, i := range g {
 			step = math.Max(step, width(i))

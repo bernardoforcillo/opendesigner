@@ -12,11 +12,11 @@ import (
 )
 
 const flowSrc = `flowchart TD
-  A[Inizio] --> B{Utente registrato?}
-  B -->|sì| C[Accedi]
-  B -->|no| D[Registrati]
+  A[Start] --> B{Registered user?}
+  B -->|yes| C[Log in]
+  B -->|no| D[Sign up]
   D --> C
-  C --> E([Fine])`
+  C --> E([End])`
 
 const classSrc = `classDiagram
   direction TB
@@ -32,8 +32,8 @@ const classSrc = `classDiagram
   Animal <|-- Duck
   Animal <|-- Fish
   Animal : +isMammal() bool
-  Owner "1" --> "*" Animal : possiede
-  Duck ..> Pond : usa
+  Owner "1" --> "*" Animal : owns
+  Duck ..> Pond : uses
   Pond *-- Water
   Pond o-- Fish`
 
@@ -41,18 +41,18 @@ const seqSrc = `sequenceDiagram
   autonumber
   participant A as Alice
   actor B as Bob
-  A->>+B: Ciao Bob
-  B-->>-A: Ciao Alice
-  Note over A,B: una nota
-  loop Ogni minuto
+  A->>+B: Hello Bob
+  B-->>-A: Hello Alice
+  Note over A,B: a note
+  loop Every minute
     A-)B: ping
     alt ok
-      B->>B: elabora
-    else errore
-      B--xA: fallito
+      B->>B: process
+    else error
+      B--xA: failed
     end
   end
-  Note right of B: fine`
+  Note right of B: done`
 
 const stateSrc = `stateDiagram-v2
   [*] --> Idle
@@ -62,8 +62,8 @@ const stateSrc = `stateDiagram-v2
   state Choice <<choice>>
   Choice --> Done
   Done --> [*]
-  state "Un nome lungo" as Long
-  Long : descrizione`
+  state "A long name" as Long
+  Long : description`
 
 func TestDetect(t *testing.T) {
 	for src, want := range map[string]string{
@@ -75,15 +75,15 @@ func TestDetect(t *testing.T) {
 			t.Errorf("Detect(%q) = %q, %v; want %q", src, got, err, want)
 		}
 	}
-	for _, src := range []string{"", "  \n%% solo commento", "erDiagram\nA ||--o{ B : x", "gantt\ntitle x"} {
+	for _, src := range []string{"", "  \n%% comment only", "erDiagram\nA ||--o{ B : x", "gantt\ntitle x"} {
 		if _, err := Detect(src); err == nil {
-			t.Errorf("Detect(%q) doveva fallire", src)
+			t.Errorf("Detect(%q) should have failed", src)
 		}
 	}
 }
 
 func TestFlowchartParse(t *testing.T) {
-	fc, err := parseFlowchart("flowchart LR\nA[Inizio] --> B{Ok?}\nB -->|sì| C([Fine])\nB -- no --> D((Err))\nA & B --- E <--> F\nB -.-> C ==> D\nB[Fatto]")
+	fc, err := parseFlowchart("flowchart LR\nA[Start] --> B{Ok?}\nB -->|yes| C([End])\nB -- no --> D((Err))\nA & B --- E <--> F\nB -.-> C ==> D\nB[Done]")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -95,33 +95,33 @@ func TestFlowchartParse(t *testing.T) {
 	for _, n := range fc.Nodes {
 		shapes[n.ID], labels[n.ID] = n.Shape, n.Label
 	}
-	if shapes["B"] != fDiamond && labels["B"] != "Fatto" {
+	if shapes["B"] != fDiamond && labels["B"] != "Done" {
 		t.Errorf("B = %v %q", shapes["B"], labels["B"])
 	}
 	if shapes["C"] != fStadium || shapes["D"] != fCircle {
-		t.Errorf("forme: %v", shapes)
+		t.Errorf("shapes: %v", shapes)
 	}
 	var lab []string
 	for _, e := range fc.Edges {
 		lab = append(lab, e.From+">"+e.To+":"+e.Label)
 	}
 	got := strings.Join(lab, " ")
-	for _, want := range []string{"B>C:sì", "B>D:no", "A>E:", "B>E:", "E>F:", "B>C:", "C>D:"} {
+	for _, want := range []string{"B>C:yes", "B>D:no", "A>E:", "B>E:", "E>F:", "B>C:", "C>D:"} {
 		if !strings.Contains(got, want) {
-			t.Errorf("manca l'arco %s in %s", want, got)
+			t.Errorf("missing edge %s in %s", want, got)
 		}
 	}
 	for _, e := range fc.Edges {
 		if e.From == "E" && e.To == "F" && !(e.ArrowStart && e.ArrowEnd) {
-			t.Error("E<-->F dovrebbe avere due punte")
+			t.Error("E<-->F should have two arrowheads")
 		}
 	}
 	if _, err := parseFlowchart("graph TD\nA --> "); err == nil {
-		t.Error("arco senza destinazione dovrebbe fallire")
+		t.Error("an edge without a destination should fail")
 	}
 	if fc, err := parseFlowchart(`graph TD
-my-x["riga1<br/>riga2"] --> b`); err != nil || fc.Nodes[0].ID != "my-x" || fc.Nodes[0].Label != "riga1\nriga2" {
-		t.Errorf("id con trattino: %+v %v", fc, err)
+my-x["line1<br/>line2"] --> b`); err != nil || fc.Nodes[0].ID != "my-x" || fc.Nodes[0].Label != "line1\nline2" {
+		t.Errorf("id with a hyphen: %+v %v", fc, err)
 	}
 }
 
@@ -136,12 +136,12 @@ func TestRenderAllKinds(t *testing.T) {
 		}
 		root := res.Nodes[0]
 		if root.GetGroup() == nil || root.Meta[MetaKind] != kind || root.Meta[MetaSource] != src {
-			t.Errorf("%s: radice sbagliata: %+v", kind, root.Meta)
+			t.Errorf("%s: wrong root: %+v", kind, root.Meta)
 		}
 		if len(res.Nodes) < 5 {
-			t.Errorf("%s: solo %d nodi", kind, len(res.Nodes))
+			t.Errorf("%s: only %d nodes", kind, len(res.Nodes))
 		}
-		// i nodi devono entrare in un documento vero, in ordine, sotto una pagina
+		// the nodes must fit into a real document, in order, under a page
 		doc := core.NewDocument("d", "d")
 		page := doc.Pages[0].Id
 		for i, n := range res.Nodes {
@@ -149,20 +149,20 @@ func TestRenderAllKinds(t *testing.T) {
 				n.ParentId, n.OrderKey = page, "a"
 			}
 			if err := core.Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: n}}}); err != nil {
-				t.Fatalf("%s: nodo %d (%s): %v", kind, i, n.Name, err)
+				t.Fatalf("%s: node %d (%s): %v", kind, i, n.Name, err)
 			}
 		}
 		for _, n := range res.Nodes[1:] {
 			if n.ParentId != root.Id {
-				t.Errorf("%s: %s non è figlio della radice", kind, n.Name)
+				t.Errorf("%s: %s is not a child of the root", kind, n.Name)
 			}
 			for _, v := range []float64{n.X, n.Y, n.Width, n.Height} {
 				if math.IsNaN(v) || math.IsInf(v, 0) {
-					t.Fatalf("%s: %s ha coordinate non finite", kind, n.Name)
+					t.Fatalf("%s: %s has non-finite coordinates", kind, n.Name)
 				}
 			}
 			if n.X < -0.01 || n.Y < -0.01 || n.X+n.Width > res.Width+0.01 || n.Y+n.Height > res.Height+0.01 {
-				t.Errorf("%s: %q esce dal diagramma (%.1f,%.1f %.1fx%.1f) in %.1fx%.1f", kind, n.Name, n.X, n.Y, n.Width, n.Height, res.Width, res.Height)
+				t.Errorf("%s: %q falls outside the diagram (%.1f,%.1f %.1fx%.1f) in %.1fx%.1f", kind, n.Name, n.X, n.Y, n.Width, n.Height, res.Width, res.Height)
 			}
 		}
 	}
@@ -185,7 +185,7 @@ func TestDeterministic(t *testing.T) {
 	}
 	for _, src := range []string{flowSrc, classSrc, seqSrc, stateSrc} {
 		if strip(src) != strip(src) {
-			t.Errorf("non deterministico: %.30q", src)
+			t.Errorf("non-deterministic: %.30q", src)
 		}
 	}
 }
@@ -210,13 +210,13 @@ func TestFlowLayoutOrder(t *testing.T) {
 	lay := layered(lnodes, le, DirTD, nodeGap, rankGap)
 	y := func(id string) float64 { return lay.Pos[idx[id]].Y }
 	if !(y("A") < y("B") && y("B") < y("D") && y("B") == y("C")) {
-		t.Errorf("livelli: A=%v B=%v C=%v D=%v", y("A"), y("B"), y("C"), y("D"))
+		t.Errorf("levels: A=%v B=%v C=%v D=%v", y("A"), y("B"), y("C"), y("D"))
 	}
 	for i := range lnodes {
 		for j := i + 1; j < len(lnodes); j++ {
 			a, b := lay.Pos[i], lay.Pos[j]
 			if a.X < b.X+lnodes[j].W && b.X < a.X+lnodes[i].W && a.Y < b.Y+lnodes[j].H && b.Y < a.Y+lnodes[i].H {
-				t.Errorf("%s e %s si sovrappongono", fc.Nodes[i].ID, fc.Nodes[j].ID)
+				t.Errorf("%s and %s overlap", fc.Nodes[i].ID, fc.Nodes[j].ID)
 			}
 		}
 	}
@@ -236,21 +236,21 @@ func TestClassParse(t *testing.T) {
 		t.Errorf("Animal = %+v", a)
 	}
 	if by["Duck"].Label != "Duck<T>" {
-		t.Errorf("generico: %q", by["Duck"].Label)
+		t.Errorf("generic: %q", by["Duck"].Label)
 	}
 	var kinds []string
 	for _, r := range cd.Rels {
 		kinds = append(kinds, r.A+">"+r.B)
 	}
 	if len(cd.Rels) != 6 {
-		t.Errorf("relazioni: %v", kinds)
+		t.Errorf("relations: %v", kinds)
 	}
 	r := cd.Rels[2]
-	if r.CardA != "1" || r.CardB != "*" || r.Label != "possiede" || r.Right != mArrow {
+	if r.CardA != "1" || r.CardB != "*" || r.Label != "owns" || r.Right != mArrow {
 		t.Errorf("Owner→Animal = %+v", r)
 	}
 	if !cd.Rels[3].Dashed {
-		t.Error("usa dovrebbe essere tratteggiata")
+		t.Error("uses should be dashed")
 	}
 }
 
@@ -261,12 +261,12 @@ func TestClassInheritanceOnTop(t *testing.T) {
 	}
 	y := map[string]float64{}
 	for _, n := range res.Nodes {
-		if strings.HasPrefix(n.Name, "Classe ") {
-			y[strings.TrimPrefix(n.Name, "Classe ")] = n.Y
+		if strings.HasPrefix(n.Name, "Class ") {
+			y[strings.TrimPrefix(n.Name, "Class ")] = n.Y
 		}
 	}
 	if !(y["Animal"] < y["Duck"] && y["Bird"] < y["Duck"]) {
-		t.Errorf("il genitore deve stare sopra: %v", y)
+		t.Errorf("the parent must be above: %v", y)
 	}
 }
 
@@ -276,7 +276,7 @@ func TestSequenceParse(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(sd.Parts) != 2 || sd.Parts[0].Label != "Alice" || !sd.Parts[1].Actor || !sd.Auto {
-		t.Errorf("partecipanti: %+v", sd.Parts)
+		t.Errorf("participants: %+v", sd.Parts)
 	}
 	var msgs []seqEv
 	for _, e := range sd.Evs {
@@ -285,28 +285,28 @@ func TestSequenceParse(t *testing.T) {
 		}
 	}
 	if len(msgs) != 5 || !msgs[0].Act || !msgs[1].Deact || !msgs[1].Dashed || msgs[2].Head != HeadOpen || msgs[4].Head != HeadCross {
-		t.Errorf("messaggi: %+v", msgs)
+		t.Errorf("messages: %+v", msgs)
 	}
 	for _, bad := range []string{"sequenceDiagram\nA->>B: x\nend", "sequenceDiagram\nloop x\nA->>B: y", "sequenceDiagram\nblah"} {
 		if _, err := parseSequence(bad); err == nil {
-			t.Errorf("%q doveva fallire", bad)
+			t.Errorf("%q should have failed", bad)
 		}
 	}
 }
 
 func TestSequenceOrderAndWidth(t *testing.T) {
-	res, err := Render("sequenceDiagram\nA->>B: uno\nB->>C: un messaggio molto molto lungo qui\nC->>A: tre")
+	res, err := Render("sequenceDiagram\nA->>B: one\nB->>C: a very very long message here\nC->>A: three")
 	if err != nil {
 		t.Fatal(err)
 	}
 	ys := map[string]float64{}
 	for _, n := range res.Nodes {
-		if strings.HasPrefix(n.Name, "Messaggio ") {
+		if strings.HasPrefix(n.Name, "Message ") {
 			ys[n.Name] = n.Y
 		}
 	}
-	if !(ys["Messaggio uno"] < ys["Messaggio un messaggio molto molto lungo"] && ys["Messaggio un messaggio molto molto lungo"] < ys["Messaggio tre"]) {
-		t.Errorf("i messaggi devono scendere: %v", ys)
+	if !(ys["Message one"] < ys["Message a very very long message here"] && ys["Message a very very long message here"] < ys["Message three"]) {
+		t.Errorf("the messages must go down: %v", ys)
 	}
 }
 
@@ -320,7 +320,7 @@ func TestStateParse(t *testing.T) {
 		shapes[n.Shape]++
 	}
 	if shapes[fStart] != 1 || shapes[fEnd] != 1 || shapes[fDiamond] != 1 {
-		t.Errorf("forme: %v", shapes)
+		t.Errorf("shapes: %v", shapes)
 	}
 	var long flowNode
 	for _, n := range fc.Nodes {
@@ -328,7 +328,7 @@ func TestStateParse(t *testing.T) {
 			long = n
 		}
 	}
-	if long.Label != "Un nome lungo\ndescrizione" {
+	if long.Label != "A long name\ndescription" {
 		t.Errorf("Long = %q", long.Label)
 	}
 }
@@ -343,15 +343,15 @@ func TestLimitsAndErrors(t *testing.T) {
 		sb.WriteString("\n")
 	}
 	if _, err := Render(sb.String()); err == nil {
-		t.Error("troppi nodi dovrebbe fallire")
+		t.Error("too many nodes should fail")
 	}
 	if _, err := Render(strings.Repeat("A-->B\n", 20000)); err == nil {
-		t.Error("testo troppo lungo dovrebbe fallire")
+		t.Error("text that is too long should fail")
 	}
 	_, err := Render("erDiagram\nA ||--o{ B : has")
 	var de *Error
 	if err == nil || !asErr(err, &de) {
-		t.Errorf("errore atteso di tipo *Error, trovato %v", err)
+		t.Errorf("expected an error of type *Error, found %v", err)
 	}
 }
 

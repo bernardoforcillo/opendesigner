@@ -11,7 +11,7 @@ import (
 
 func ptr[T any](v T) *T { return &v }
 
-// frame crea una schermata (frame) e ne ritorna l'id.
+// frame creates a screen (frame) and returns its id.
 func frame(t *testing.T, s *odmcp.Session, name string) string {
 	t.Helper()
 	out, err := s.CreateFrame(context.Background(), odmcp.CreateFrameInput{Width: 100, Height: 100, Name: name})
@@ -21,19 +21,19 @@ func frame(t *testing.T, s *odmcp.Session, name string) string {
 	return out.NodeId
 }
 
-// TestFlowToolsEndToEnd pilota tutto il flusso di lavoro dei flussi dai tool:
-// crea schermate e flusso, collega le transizioni, scrive i metadati, analizza,
-// legge la spec, e verifica le validazioni.
+// TestFlowToolsEndToEnd drives the whole flows workflow through the tools:
+// creates screens and a flow, links the transitions, writes the metadata,
+// analyses, reads the spec, and checks the validations.
 func TestFlowToolsEndToEnd(t *testing.T) {
 	url := serveInMemory(t)
 	docID := newDoc(t, odmcp.NewClient(url))
 	s := startSession(t, url, docID, "agent")
 	ctx := context.Background()
 
-	home, login, fine := frame(t, s, "Home"), frame(t, s, "Login"), frame(t, s, "Fine")
-	btn := frame(t, s, "Bottone")
+	home, login, fine := frame(t, s, "Home"), frame(t, s, "Login"), frame(t, s, "End")
+	btn := frame(t, s, "Button")
 
-	// --- meta: fusione, non sostituzione ---
+	// --- meta: merge, not replace ---
 	if _, err := s.SetNodeMeta(ctx, odmcp.SetNodeMetaInput{Id: home, Meta: map[string]string{"code.route": "/", "status": "planned"}}); err != nil {
 		t.Fatal(err)
 	}
@@ -50,7 +50,7 @@ func TestFlowToolsEndToEnd(t *testing.T) {
 	}
 	doc, _ := s.GetDocument(ctx, struct{}{})
 	if n, _ := nodeByID(doc, home); len(n.Meta) != 2 || n.Meta["code.component"] != "" {
-		t.Fatalf("dopo unset: %v", n.Meta)
+		t.Fatalf("after unset: %v", n.Meta)
 	}
 	if _, err := s.SetNodeMeta(ctx, odmcp.SetNodeMetaInput{Id: btn, Meta: map[string]string{"test.id": "go-login"}}); err != nil {
 		t.Fatal(err)
@@ -62,21 +62,21 @@ func TestFlowToolsEndToEnd(t *testing.T) {
 		t.Fatal(err)
 	}
 
-	// --- flusso e transizioni ---
-	created, err := s.CreateFlow(ctx, odmcp.CreateFlowInput{Name: "Accesso", Description: "Entrare nell'app", StartId: home})
+	// --- flow and transitions ---
+	created, err := s.CreateFlow(ctx, odmcp.CreateFlowInput{Name: "Access", Description: "Enter the app", StartId: home})
 	if err != nil || created.FlowId == "" {
 		t.Fatalf("CreateFlow: %+v %v", created, err)
 	}
-	t1, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: created.FlowId, FromId: home, ToId: login, Label: ptr("Accedi"), ElementId: ptr(btn)})
+	t1, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: created.FlowId, FromId: home, ToId: login, Label: ptr("Sign in"), ElementId: ptr(btn)})
 	if err != nil || !t1.Created || t1.TransitionId == "" {
 		t.Fatalf("SetTransition create: %+v %v", t1, err)
 	}
-	// Aggiornamento parziale: il trigger di default resta, la guard si aggiunge.
-	upd, err := s.SetTransition(ctx, odmcp.SetTransitionInput{Id: t1.TransitionId, Guard: ptr("utente anonimo")})
+	// Partial update: the default trigger stays, the guard is added.
+	upd, err := s.SetTransition(ctx, odmcp.SetTransitionInput{Id: t1.TransitionId, Guard: ptr("anonymous user")})
 	if err != nil || upd.Created {
 		t.Fatalf("SetTransition update: %+v %v", upd, err)
 	}
-	if _, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: created.FlowId, FromId: login, ToId: fine, Label: ptr("Entra"), Trigger: ptr("submit")}); err != nil {
+	if _, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: created.FlowId, FromId: login, ToId: fine, Label: ptr("Enter"), Trigger: ptr("submit")}); err != nil {
 		t.Fatal(err)
 	}
 
@@ -93,8 +93,8 @@ func TestFlowToolsEndToEnd(t *testing.T) {
 			tr1 = tv
 		}
 	}
-	if tr1.Label != "Accedi" || tr1.Trigger != "click" || tr1.Guard != "utente anonimo" || tr1.ElementId != btn || tr1.FromName != "Home" || tr1.ToName != "Login" {
-		t.Errorf("transizione = %+v", tr1)
+	if tr1.Label != "Sign in" || tr1.Trigger != "click" || tr1.Guard != "anonymous user" || tr1.ElementId != btn || tr1.FromName != "Home" || tr1.ToName != "Login" {
+		t.Errorf("transition = %+v", tr1)
 	}
 	var homeView odmcp.ScreenView
 	for _, sv := range got.Screens {
@@ -103,7 +103,7 @@ func TestFlowToolsEndToEnd(t *testing.T) {
 		}
 	}
 	if homeView.Route != "/" || homeView.Status != "implemented" || homeView.Kind != "screen" {
-		t.Errorf("schermata = %+v", homeView)
+		t.Errorf("screen = %+v", homeView)
 	}
 
 	list, _ := s.ListFlows(ctx, struct{}{})
@@ -111,40 +111,40 @@ func TestFlowToolsEndToEnd(t *testing.T) {
 		t.Errorf("ListFlows = %+v", list)
 	}
 
-	// --- analisi e spec ---
+	// --- analysis and spec ---
 	an, err := s.AnalyzeFlows(ctx, odmcp.AnalyzeFlowsInput{})
 	if err != nil || an.Issues != 0 || len(an.Reports) != 1 || len(an.Reports[0].Paths) != 1 {
 		t.Fatalf("AnalyzeFlows = %+v %v", an, err)
 	}
-	if p := an.Reports[0].Paths[0]; strings.Join(p.Screens, ">") != "Home>Login>Fine" {
-		t.Errorf("percorso = %v", p.Screens)
+	if p := an.Reports[0].Paths[0]; strings.Join(p.Screens, ">") != "Home>Login>End" {
+		t.Errorf("path = %v", p.Screens)
 	}
 	spec, err := s.GetFlowSpec(ctx, odmcp.AnalyzeFlowsInput{FlowId: created.FlowId})
-	if err != nil || !strings.Contains(spec.Markdown, "**Home** --[click: Accedi]--> **Login**") {
+	if err != nil || !strings.Contains(spec.Markdown, "**Home** --[click: Sign in]--> **Login**") {
 		t.Fatalf("spec = %q %v", spec.Markdown, err)
 	}
 
-	// Una transizione che crea un'ambiguità viene segnalata.
-	if _, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: created.FlowId, FromId: login, ToId: home, Label: ptr("Entra"), Trigger: ptr("submit")}); err != nil {
+	// A transition that creates an ambiguity is reported.
+	if _, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: created.FlowId, FromId: login, ToId: home, Label: ptr("Enter"), Trigger: ptr("submit")}); err != nil {
 		t.Fatal(err)
 	}
 	an, _ = s.AnalyzeFlows(ctx, odmcp.AnalyzeFlowsInput{FlowId: created.FlowId})
 	if an.Issues != 1 || an.Reports[0].Issues[0].Kind != "ambiguous" {
-		t.Errorf("ambiguità: %+v", an)
+		t.Errorf("ambiguity: %+v", an)
 	}
 
-	// --- cancellazioni ---
+	// --- deletions ---
 	if _, err := s.DeleteTransition(ctx, odmcp.NodeIdInput{Id: t1.TransitionId}); err != nil {
 		t.Fatal(err)
 	}
 	if got, _ := s.GetFlow(ctx, odmcp.GetFlowInput{Id: created.FlowId}); len(got.Transitions) != 2 {
-		t.Errorf("dopo delete_transition: %d transizioni", len(got.Transitions))
+		t.Errorf("after delete_transition: %d transitions", len(got.Transitions))
 	}
 	if _, err := s.DeleteFlow(ctx, odmcp.GetFlowInput{Id: created.FlowId}); err != nil {
 		t.Fatal(err)
 	}
 	if list, _ := s.ListFlows(ctx, struct{}{}); len(list.Flows) != 0 {
-		t.Errorf("flussi dopo delete_flow: %+v", list)
+		t.Errorf("flows after delete_flow: %+v", list)
 	}
 }
 
@@ -164,52 +164,52 @@ func TestFlowToolValidation(t *testing.T) {
 		call func() error
 		want string
 	}{
-		{"flow senza nome", func() error { _, err := s.CreateFlow(ctx, odmcp.CreateFlowInput{}); return err }, "name obbligatorio"},
-		{"start inesistente", func() error { _, err := s.CreateFlow(ctx, odmcp.CreateFlowInput{Name: "x", StartId: "zz"}); return err }, "startId"},
-		{"transizione senza flusso", func() error {
+		{"flow without a name", func() error { _, err := s.CreateFlow(ctx, odmcp.CreateFlowInput{}); return err }, "name is required"},
+		{"nonexistent start", func() error { _, err := s.CreateFlow(ctx, odmcp.CreateFlowInput{Name: "x", StartId: "zz"}); return err }, "startId"},
+		{"transition without a flow", func() error {
 			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FromId: a, ToId: b})
 			return err
-		}, "flowId obbligatorio"},
-		{"flusso inesistente", func() error {
+		}, "flowId is required"},
+		{"nonexistent flow", func() error {
 			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: "zz", FromId: a, ToId: b})
 			return err
-		}, "non esiste"},
-		{"from inesistente", func() error {
+		}, "does not exist"},
+		{"nonexistent from", func() error {
 			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: f.FlowId, FromId: "zz", ToId: b})
 			return err
 		}, "fromId"},
-		{"to inesistente", func() error {
+		{"nonexistent to", func() error {
 			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: f.FlowId, FromId: a, ToId: "zz"})
 			return err
 		}, "toId"},
-		{"to mancante", func() error {
+		{"missing to", func() error {
 			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: f.FlowId, FromId: a})
 			return err
-		}, "obbligatori"},
-		{"elemento inesistente", func() error {
+		}, "are required"},
+		{"nonexistent element", func() error {
 			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{FlowId: f.FlowId, FromId: a, ToId: b, ElementId: ptr("zz")})
 			return err
 		}, "elementId"},
-		{"update di id sconosciuto", func() error {
+		{"update of an unknown id", func() error {
 			_, err := s.SetTransition(ctx, odmcp.SetTransitionInput{Id: "zz", Label: ptr("x")})
 			return err
-		}, "non trovata"},
-		{"delete transizione sconosciuta", func() error { _, err := s.DeleteTransition(ctx, odmcp.NodeIdInput{Id: "zz"}); return err }, "non trovata"},
-		{"delete flusso sconosciuto", func() error { _, err := s.DeleteFlow(ctx, odmcp.GetFlowInput{Id: "zz"}); return err }, "non trovato"},
-		{"get flusso sconosciuto", func() error { _, err := s.GetFlow(ctx, odmcp.GetFlowInput{Id: "zz"}); return err }, "non trovato"},
-		{"analisi flusso sconosciuto", func() error { _, err := s.AnalyzeFlows(ctx, odmcp.AnalyzeFlowsInput{FlowId: "zz"}); return err }, "non trovato"},
-		{"spec flusso sconosciuto", func() error { _, err := s.GetFlowSpec(ctx, odmcp.AnalyzeFlowsInput{FlowId: "zz"}); return err }, "non trovato"},
-		{"meta vuoti", func() error { _, err := s.SetNodeMeta(ctx, odmcp.SetNodeMetaInput{Id: a}); return err }, "niente da fare"},
-		{"meta nodo sconosciuto", func() error {
+		}, "not found"},
+		{"delete unknown transition", func() error { _, err := s.DeleteTransition(ctx, odmcp.NodeIdInput{Id: "zz"}); return err }, "not found"},
+		{"delete unknown flow", func() error { _, err := s.DeleteFlow(ctx, odmcp.GetFlowInput{Id: "zz"}); return err }, "not found"},
+		{"get unknown flow", func() error { _, err := s.GetFlow(ctx, odmcp.GetFlowInput{Id: "zz"}); return err }, "not found"},
+		{"analyse unknown flow", func() error { _, err := s.AnalyzeFlows(ctx, odmcp.AnalyzeFlowsInput{FlowId: "zz"}); return err }, "not found"},
+		{"spec of unknown flow", func() error { _, err := s.GetFlowSpec(ctx, odmcp.AnalyzeFlowsInput{FlowId: "zz"}); return err }, "not found"},
+		{"empty meta", func() error { _, err := s.SetNodeMeta(ctx, odmcp.SetNodeMetaInput{Id: a}); return err }, "nothing to do"},
+		{"meta of unknown node", func() error {
 			_, err := s.SetNodeMeta(ctx, odmcp.SetNodeMetaInput{Id: "zz", Meta: map[string]string{"k": "v"}})
 			return err
-		}, "non trovato"},
-		{"flow.kind invalido", func() error {
-			_, err := s.SetNodeMeta(ctx, odmcp.SetNodeMetaInput{Id: a, Meta: map[string]string{"flow.kind": "pagina"}})
+		}, "not found"},
+		{"invalid flow.kind", func() error {
+			_, err := s.SetNodeMeta(ctx, odmcp.SetNodeMetaInput{Id: a, Meta: map[string]string{"flow.kind": "page"}})
 			return err
 		}, "flow.kind"},
-		{"status invalido", func() error {
-			_, err := s.SetNodeMeta(ctx, odmcp.SetNodeMetaInput{Id: a, Meta: map[string]string{"status": "finito"}})
+		{"invalid status", func() error {
+			_, err := s.SetNodeMeta(ctx, odmcp.SetNodeMetaInput{Id: a, Meta: map[string]string{"status": "done"}})
 			return err
 		}, "status"},
 	}
@@ -217,14 +217,14 @@ func TestFlowToolValidation(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			err := tc.call()
 			if err == nil || !strings.Contains(err.Error(), tc.want) {
-				t.Errorf("err = %v, want contenente %q", err, tc.want)
+				t.Errorf("err = %v, want one containing %q", err, tc.want)
 			}
 		})
 	}
 }
 
-// TestFlowToolsRegisteredOverMCP: i nove tool compaiono sul server MCP e
-// rispondono davvero sul canale del protocollo.
+// TestFlowToolsRegisteredOverMCP: the nine tools appear on the MCP server and
+// really respond over the protocol channel.
 func TestFlowToolsRegisteredOverMCP(t *testing.T) {
 	url := serveInMemory(t)
 	docID := newDoc(t, odmcp.NewClient(url))
@@ -254,12 +254,12 @@ func TestFlowToolsRegisteredOverMCP(t *testing.T) {
 	for _, name := range []string{"list_flows", "get_flow", "create_flow", "delete_flow", "set_transition", "delete_transition", "set_node_meta", "analyze_flows", "get_flow_spec"} {
 		d, ok := have[name]
 		if !ok {
-			t.Errorf("tool %s non registrato", name)
+			t.Errorf("tool %s not registered", name)
 		}
 		_ = d
 	}
 	if !strings.Contains(have["set_node_meta"], "code.route") || !strings.Contains(have["set_transition"], "guard") {
-		t.Error("le descrizioni devono spiegare le convenzioni")
+		t.Error("the descriptions must explain the conventions")
 	}
 
 	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "create_flow", Arguments: map[string]any{"name": "Via MCP"}})
@@ -268,7 +268,7 @@ func TestFlowToolsRegisteredOverMCP(t *testing.T) {
 	}
 	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "get_flow", Arguments: map[string]any{"id": "nope"}})
 	if err != nil || !res.IsError {
-		t.Fatalf("get_flow su id sconosciuto deve essere un errore di tool: %v %+v", err, res)
+		t.Fatalf("get_flow on an unknown id must be a tool error: %v %+v", err, res)
 	}
 	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "analyze_flows", Arguments: map[string]any{}})
 	if err != nil || res.IsError {

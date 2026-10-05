@@ -21,18 +21,18 @@ import (
 var errInvalidDocID = errors.New("invalid doc_id")
 
 var (
-	errEmptyName   = errors.New("il nome del documento non può essere vuoto")
-	errNameTooLong = errors.New("il nome del documento è troppo lungo")
-	// ErrDocInUse: il documento è aperto da qualcuno, non si può eliminare.
-	ErrDocInUse = errors.New("il documento è aperto in un editor: chiudilo prima di eliminarlo")
+	errEmptyName   = errors.New("the document name cannot be empty")
+	errNameTooLong = errors.New("the document name is too long")
+	// ErrDocInUse: the document is open by someone, it cannot be deleted.
+	ErrDocInUse = errors.New("the document is open in an editor: close it before deleting it")
 )
 
-// ErrDocNotFound: nessun documento con quell'id.
-var ErrDocNotFound = errors.New("documento non trovato")
+// ErrDocNotFound: no document with that id.
+var ErrDocNotFound = errors.New("document not found")
 
 const maxNameRunes = 120
 
-// httpMux costruisce un mux con l'handler Connect montato su path.
+// httpMux builds a mux with the Connect handler mounted on path.
 func httpMux(path string, handler http.Handler) *http.ServeMux {
 	mux := http.NewServeMux()
 	mux.Handle(path, handler)
@@ -69,9 +69,9 @@ func (m *Manager) Create(name string) (*opendesignerv1.DocInfo, error) {
 	return &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name, UpdatedAt: meta.UpdatedAt.Unix()}, nil
 }
 
-// Exists dice se il documento c'è davvero (in memoria o come bundle sul
-// disco), senza crearlo: HubFor invece apre-o-crea, quindi un link a un
-// documento inesistente (o eliminato) ne farebbe nascere uno vuoto.
+// Exists says whether the document really exists (in memory or as a bundle on
+// disk), without creating it: HubFor on the other hand opens-or-creates, so a link to a
+// nonexistent (or deleted) document would bring an empty one into being.
 func (m *Manager) Exists(docID string) bool {
 	if uuid.Validate(docID) != nil {
 		return false
@@ -117,7 +117,7 @@ func (m *Manager) HubFor(docID string) (*Hub, error) {
 // documents this process happened to create. That registry was empty after
 // every restart, so ListDocuments returned nothing and the only route back
 // into a document was the doc id the browser had kept in localStorage --
-// clearing it (or pressing "Nuovo documento") orphaned an intact bundle with
+// clearing it (or pressing "New document") orphaned an intact bundle with
 // no way to reach it from the UI.
 //
 // Scanning on every call rather than once at startup also means a bundle
@@ -144,12 +144,12 @@ func (m *Manager) List() ([]*opendesignerv1.DocInfo, error) {
 	return out, nil
 }
 
-// info arricchisce l'identità di un documento con ciò che la Home mostra:
-// ultima modifica e conteggi. Se l'hub è già aperto in questo processo i
-// conteggi sono quelli vivi (e a costo zero); altrimenti si legge il bundle in
-// sola lettura (store.LoadReadOnly: nessuna riparazione, nessuna scrittura).
-// Un bundle illeggibile resta in elenco con i conteggi a zero: non deve
-// nascondere gli altri.
+// info enriches a document's identity with what the Home shows:
+// last modified and counts. If the hub is already open in this process the
+// counts are the live ones (and at zero cost); otherwise the bundle is read
+// read-only (store.LoadReadOnly: no repair, no writes).
+// An unreadable bundle stays in the list with zero counts: it must not
+// hide the others.
 func (m *Manager) info(meta store.Meta) *opendesignerv1.DocInfo {
 	di := &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name}
 	t := store.ModTime(m.workspace, meta.ID)
@@ -174,7 +174,7 @@ func (m *Manager) info(meta store.Meta) *opendesignerv1.DocInfo {
 	return di
 }
 
-// Rename cambia il nome del documento (durevole + in memoria).
+// Rename changes the document's name (durable + in memory).
 func (m *Manager) Rename(docID, name string) (*opendesignerv1.DocInfo, error) {
 	name = strings.TrimSpace(name)
 	if name == "" {
@@ -196,11 +196,11 @@ func (m *Manager) Rename(docID, name string) (*opendesignerv1.DocInfo, error) {
 	return m.info(store.Meta{ID: docID, Name: name}), nil
 }
 
-// Delete elimina un documento spostandone il bundle nel cestino del workspace.
-// Rifiuta (ErrDocInUse) se qualcuno ha uno stream aperto sul documento: un
-// editor aperto continuerebbe a scrivere su una cartella sparita. Se l'hub è in
-// memoria ma nessuno lo guarda, si attendono gli snapshot in volo e lo si
-// toglie dal registro PRIMA di spostare la cartella.
+// Delete deletes a document by moving its bundle to the workspace's trash.
+// It refuses (ErrDocInUse) if someone has a stream open on the document: an
+// open editor would keep writing to a vanished directory. If the hub is in
+// memory but nobody is watching it, the in-flight snapshots are awaited and it is
+// removed from the registry BEFORE moving the directory.
 func (m *Manager) Delete(docID string) error {
 	if uuid.Validate(docID) != nil {
 		return errInvalidDocID
@@ -219,6 +219,6 @@ func (m *Manager) Delete(docID string) error {
 	return store.Trash(m.workspace, docID)
 }
 
-// Assets ritorna lo store degli asset (le immagini) del documento: serve
-// all'export di codice, che li copia nel progetto generato.
+// Assets returns the document's asset store (the images): it serves
+// the code export, which copies them into the generated project.
 func (m *Manager) Assets(docID string) *store.Assets { return store.NewAssets(m.workspace, docID) }

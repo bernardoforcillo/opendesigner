@@ -1,11 +1,11 @@
-// Package diagram disegna diagrammi a partire da testo Mermaid -- flowchart e
-// i tre UML che Mermaid sa descrivere (classi, sequenza, stati) -- e li
-// trasforma in nodi normali del documento (un gruppo di forme, vettori e testo).
+// Package diagram draws diagrams from Mermaid text -- flowchart and
+// the three UML ones Mermaid can describe (class, sequence, state) -- and
+// turns them into normal document nodes (a group of shapes, vectors and text).
 //
-// È puro: nessun accesso al documento. Lo usano l'RPC RenderDiagram (l'editor
-// inserisce i nodi in un gesto solo) e i tool MCP create_diagram /
-// update_diagram (un agente li inserisce come sequenza di op). Stesso testo,
-// stessi nodi a meno degli id.
+// It is pure: no access to the document. It is used by the RenderDiagram RPC (the editor
+// inserts the nodes in a single gesture) and by the MCP tools create_diagram /
+// update_diagram (an agent inserts them as a sequence of ops). Same text,
+// same nodes up to the ids.
 package diagram
 
 import (
@@ -15,14 +15,14 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// Chiavi di `meta` sulla radice di un diagramma: bastano a riconoscerlo, a
-// rileggerne il testo e a ridisegnarlo (update_diagram).
+// `meta` keys on a diagram's root: enough to recognize it, to
+// re-read its text and to redraw it (update_diagram).
 const (
 	MetaKind   = "diagram.kind"
 	MetaSource = "diagram.source"
 )
 
-// Tipi di diagramma.
+// Diagram kinds.
 const (
 	KindFlowchart = "flowchart"
 	KindClass     = "class"
@@ -30,28 +30,28 @@ const (
 	KindState     = "state"
 )
 
-// Result è il diagramma disegnato.
+// Result is the drawn diagram.
 type Result struct {
 	Kind          string
-	Nodes         []*opendesignerv1.Node // pre-ordine; Nodes[0] è la radice
+	Nodes         []*opendesignerv1.Node // pre-order; Nodes[0] is the root
 	Width, Height float64
 	Warnings      []string
 }
 
-// Error è un errore del TESTO del diagramma (non del server): il chiamante lo
-// mostra così com'è.
+// Error is an error in the diagram's TEXT (not the server's): the caller
+// shows it as is.
 type Error struct{ Msg string }
 
 func (e *Error) Error() string { return e.Msg }
 
 func fail(format string, a ...any) error { return &Error{fmt.Sprintf(format, a...)} }
 
-// MaxSourceBytes limita il testo: oltre non è un diagramma, è un abuso.
+// MaxSourceBytes limits the text: beyond that it is not a diagram, it is abuse.
 const MaxSourceBytes = 64 * 1024
 
 var unsupported = []string{"erDiagram", "gantt", "pie", "journey", "gitGraph", "mindmap", "timeline", "quadrantChart", "requirementDiagram", "C4Context", "sankey", "xychart", "block", "architecture", "kanban", "packet"}
 
-// Detect riconosce il tipo dalla prima riga significativa.
+// Detect recognizes the kind from the first significant line.
 func Detect(src string) (kind string, err error) {
 	for _, raw := range strings.Split(src, "\n") {
 		l := strings.TrimSpace(strings.TrimPrefix(raw, "\uFEFF"))
@@ -72,19 +72,19 @@ func Detect(src string) (kind string, err error) {
 		}
 		for _, u := range unsupported {
 			if strings.EqualFold(word, u) || strings.HasPrefix(strings.ToLower(word), strings.ToLower(u)+"-") {
-				return "", fail("il diagramma %q non è supportato: si leggono flowchart, classDiagram, sequenceDiagram e stateDiagram", word)
+				return "", fail("diagram %q is not supported: flowchart, classDiagram, sequenceDiagram and stateDiagram are supported", word)
 			}
 		}
-		// Senza intestazione si assume un flowchart, come fa lo strumento.
+		// Without a header a flowchart is assumed, as the tool does.
 		return KindFlowchart, nil
 	}
-	return "", fail("il testo del diagramma è vuoto")
+	return "", fail("the diagram text is empty")
 }
 
-// Render disegna `source`.
+// Render draws `source`.
 func Render(source string) (*Result, error) {
 	if len(source) > MaxSourceBytes {
-		return nil, fail("il testo del diagramma è troppo lungo (massimo %d KiB)", MaxSourceBytes/1024)
+		return nil, fail("the diagram text is too long (maximum %d KiB)", MaxSourceBytes/1024)
 	}
 	kind, err := Detect(source)
 	if err != nil {

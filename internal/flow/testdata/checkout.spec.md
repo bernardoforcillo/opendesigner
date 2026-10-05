@@ -1,72 +1,72 @@
-# Specifica dei flussi — Shop
+# Flow spec — Shop
 
-## Flusso: Acquisto (`checkout`)
+## Flow: Purchase (`checkout`)
 
-Dal catalogo alla conferma d'ordine.
+From the catalog to the order confirmation.
 
-Schermata iniziale: **Home**
+Start screen: **Home**
 
-### Schermate
+### Screens
 
-| Nome | Tipo | Rotta | Componente | Stato |
+| Name | Type | Route | Component | Status |
 |---|---|---|---|---|
-| Carrello | screen | `/cart/:id` | — | planned |
-| Grazie | end | `/thanks` | — | planned |
+| Cart | screen | `/cart/:id` | — | planned |
 | Home | screen | `/` | `HomePage` | implemented |
 | Login | screen | `/login` | `LoginPage` | planned |
-| Pagamento | screen | — | — | planned |
+| Payment | screen | — | — | planned |
+| Thanks | end | `/thanks` | — | planned |
 
-### Transizioni
+### Transitions
 
-1. **Carrello** --[back]--> **Home** (effect: svuota il carrello) `flow:t-back`
-2. **Login** --[submit: Carrello]--> **Carrello** `flow:t-cart`
-3. **Pagamento** --[auto]--> **Grazie** `flow:t-done`
-4. **Home** --[key: Enter]--> **Carrello** `flow:t-key`
-5. **Home** --[click: Accedi]--> **Login** `flow:t-login`
-6. **Carrello** --[click: Paga]--> **Pagamento** (guard: carrello non vuoto; effect: ordine creato) `flow:t-pay`
+1. **Cart** --[back]--> **Home** (effect: empties the cart) `flow:t-back`
+2. **Login** --[submit: Cart]--> **Cart** `flow:t-cart`
+3. **Payment** --[auto]--> **Thanks** `flow:t-done`
+4. **Home** --[key: Enter]--> **Cart** `flow:t-key`
+5. **Home** --[click: Log in]--> **Login** `flow:t-login`
+6. **Cart** --[click: Pay]--> **Payment** (guard: cart not empty; effect: order created) `flow:t-pay`
 
-### Scenari
+### Scenarios
 
-#### Scenario 1: Home → Login → Carrello → Home (si chiude in un ciclo)
+#### Scenario 1: Home → Cart → Home (ends in a cycle)
 
-- **Given** l'utente è sulla schermata **Home** (`/`)
-- **When** l'utente fa click su "Accedi" (elemento **Bottone login**)
-- **Then** vede la schermata **Login** (`/login`)
-- **When** l'utente invia "Carrello" (elemento **Link carrello**)
-- **Then** vede la schermata **Carrello** (`/cart/:id`)
-- **When** l'utente torna indietro
-- **Then** vede la schermata **Home** (`/`) e: svuota il carrello
+- **Given** the user is on screen **Home** (`/`)
+- **When** the user presses "Enter"
+- **Then** sees screen **Cart** (`/cart/:id`)
+- **When** the user goes back
+- **Then** sees screen **Home** (`/`) and: empties the cart
 
-#### Scenario 2: Home → Login → Carrello → Pagamento → Grazie
+#### Scenario 2: Home → Cart → Payment → Thanks
 
-- **Given** l'utente è sulla schermata **Home** (`/`)
-- **When** l'utente fa click su "Accedi" (elemento **Bottone login**)
-- **Then** vede la schermata **Login** (`/login`)
-- **When** l'utente invia "Carrello" (elemento **Link carrello**)
-- **Then** vede la schermata **Carrello** (`/cart/:id`)
-- **When** l'utente fa click su "Paga" (se carrello non vuoto)
-- **Then** vede la schermata **Pagamento** e: ordine creato
-- **When** il sistema passa automaticamente oltre
-- **Then** vede la schermata **Grazie** (`/thanks`)
+- **Given** the user is on screen **Home** (`/`)
+- **When** the user presses "Enter"
+- **Then** sees screen **Cart** (`/cart/:id`)
+- **When** the user clicks "Pay" (if cart not empty)
+- **Then** sees screen **Payment** and: order created
+- **When** the system moves on automatically
+- **Then** sees screen **Thanks** (`/thanks`)
 
-#### Scenario 3: Home → Carrello → Home (si chiude in un ciclo)
+#### Scenario 3: Home → Login → Cart → Home (ends in a cycle)
 
-- **Given** l'utente è sulla schermata **Home** (`/`)
-- **When** l'utente preme "Enter"
-- **Then** vede la schermata **Carrello** (`/cart/:id`)
-- **When** l'utente torna indietro
-- **Then** vede la schermata **Home** (`/`) e: svuota il carrello
+- **Given** the user is on screen **Home** (`/`)
+- **When** the user clicks "Log in" (element **Login button**)
+- **Then** sees screen **Login** (`/login`)
+- **When** the user submits "Cart" (element **Cart link**)
+- **Then** sees screen **Cart** (`/cart/:id`)
+- **When** the user goes back
+- **Then** sees screen **Home** (`/`) and: empties the cart
 
-#### Scenario 4: Home → Carrello → Pagamento → Grazie
+#### Scenario 4: Home → Login → Cart → Payment → Thanks
 
-- **Given** l'utente è sulla schermata **Home** (`/`)
-- **When** l'utente preme "Enter"
-- **Then** vede la schermata **Carrello** (`/cart/:id`)
-- **When** l'utente fa click su "Paga" (se carrello non vuoto)
-- **Then** vede la schermata **Pagamento** e: ordine creato
-- **When** il sistema passa automaticamente oltre
-- **Then** vede la schermata **Grazie** (`/thanks`)
+- **Given** the user is on screen **Home** (`/`)
+- **When** the user clicks "Log in" (element **Login button**)
+- **Then** sees screen **Login** (`/login`)
+- **When** the user submits "Cart" (element **Cart link**)
+- **Then** sees screen **Cart** (`/cart/:id`)
+- **When** the user clicks "Pay" (if cart not empty)
+- **Then** sees screen **Payment** and: order created
+- **When** the system moves on automatically
+- **Then** sees screen **Thanks** (`/thanks`)
 
-### Problemi
+### Issues
 
-Nessun problema rilevato.
+No issues found.

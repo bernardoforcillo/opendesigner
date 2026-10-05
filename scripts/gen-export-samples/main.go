@@ -1,10 +1,10 @@
-// gen-export-samples scrive i documenti di esempio dell'export di codice come
-// protojson, pronti per `opendesigner export -json`:
+// gen-export-samples writes the code export's example documents as
+// protojson, ready for `opendesigner export -json`:
 //
 //	go run ./scripts/gen-export-samples -out /tmp/samples
 //
-// produce gallery.json (+ assets/<hash>.png) per lo script di parità dei pixel
-// (web/scripts/export-parity.mjs) e shop.json per il test dell'app esportata.
+// it produces gallery.json (+ assets/<hash>.png) for the pixel-parity script
+// (web/scripts/export-parity.mjs) and shop.json for the exported app's test.
 package main
 
 import (
@@ -33,7 +33,7 @@ func main() {
 	}
 	write(filepath.Join(*out, "shop.json"), samples.Shop())
 	write(filepath.Join(*out, "anim.json"), samples.AnimDemo())
-	fmt.Println("scritti gallery.json, shop.json, anim.json e assets/ in", *out)
+	fmt.Println("wrote gallery.json, shop.json, anim.json and assets/ in", *out)
 }
 
 func write(path string, m proto.Message) {
@@ -47,6 +47,6 @@ func write(path string, m proto.Message) {
 }
 
 func fatal(err error) {
-	fmt.Fprintln(os.Stderr, "errore:", err)
+	fmt.Fprintln(os.Stderr, "error:", err)
 	os.Exit(1)
 }

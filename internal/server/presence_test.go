@@ -154,8 +154,8 @@ func TestPresenceOverTheWire(t *testing.T) {
 		}
 		return st, cancel
 	}
-	// Il primo messaggio è sempre il "pronto" vuoto; lo consumiamo nel
-	// helper così i test leggono solo eventi veri.
+	// The first message is always the empty "ready"; we consume it in the
+	// helper so the tests only read real events.
 	ready := func(st *connect.ServerStreamForClient[opendesignerv1.PresenceEvent]) {
 		t.Helper()
 		if !st.Receive() || st.Msg().GetKind() != nil {

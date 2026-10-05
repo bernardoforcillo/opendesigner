@@ -43,7 +43,7 @@ jobs:
           registry: ghcr.io
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
-      # Docker Hub: personal access token (Read & Write) nel segreto DOCKERHUB_TOKEN
+      # Docker Hub: personal access token (Read & Write) in the DOCKERHUB_TOKEN secret
       - uses: docker/login-action@v3
         with:
           username: bernardoforcillo

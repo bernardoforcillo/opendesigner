@@ -133,8 +133,8 @@
      "toId": "s3",
      "label": "Paga",
      "trigger": "submit",
-     "guard": "carrello non vuoto",
-     "effect": "ordine=creato"
+     "guard": "cart not empty",
+     "effect": "order=created"
     }
    }
   },

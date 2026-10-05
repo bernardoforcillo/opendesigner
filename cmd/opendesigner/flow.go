@@ -15,27 +15,27 @@ import (
 	"google.golang.org/protobuf/encoding/protojson"
 )
 
-const flowUsage = `uso: opendesigner flow <spec|tests|coverage|check|tasks> [opzioni]
+const flowUsage = `usage: opendesigner flow <spec|tests|coverage|check|tasks> [options]
 
-  spec      specifica Markdown dei flussi (per persone e agenti)
-  tests     test e2e Playwright (TypeScript) generati dai percorsi
-  coverage  schermate implementate e transizioni testate nel repository
-  check     problemi del grafo; esce con 1 se ce ne sono (gate per la CI)
-  tasks     checklist delle lacune, da incollare in un issue tracker
+  spec      Markdown specification of the flows (for people and agents)
+  tests     Playwright e2e tests (TypeScript) generated from the paths
+  coverage  implemented screens and tested transitions in the repository
+  check     graph problems; exits with 1 if there are any (CI gate)
+  tasks     checklist of the gaps, to paste into an issue tracker
 
-opzioni:
-  -workspace DIR   cartella dei documenti (default: come 'serve')
-  -doc ID|NOME     documento, per id o nome esatto (si può omettere se è l'unico)
-  -flow ID         un solo flusso (default: tutti)
-  -repo DIR        repository da scansionare per coverage/tasks (default: .)
-  -out FILE        scrive su file invece che su stdout
-  -format md|json  formato di coverage e check (default md)
-  -min PCT         coverage: esce con 1 se il totale è sotto PCT
+options:
+  -workspace DIR   documents directory (default: same as 'serve')
+  -doc ID|NAME     document, by id or exact name (may be omitted if it is the only one)
+  -flow ID         a single flow (default: all)
+  -repo DIR        repository to scan for coverage/tasks (default: .)
+  -out FILE        write to a file instead of stdout
+  -format md|json  coverage and check format (default md)
+  -min PCT         coverage: exit with 1 if the total is below PCT
 `
 
-// runFlow esegue `opendesigner flow ...` e ritorna il codice d'uscita. Apre il
-// documento OFFLINE dal workspace (sola lettura, nessun server necessario):
-// per questo serve in CI, dove il documento è un file nel repository.
+// runFlow runs `opendesigner flow ...` and returns the exit code. It opens the
+// document OFFLINE from the workspace (read-only, no server needed):
+// that is why it works in CI, where the document is a file in the repository.
 func runFlow(args []string, stdout, stderr io.Writer) int {
 	if len(args) == 0 || args[0] == "-h" || args[0] == "-help" || args[0] == "--help" {
 		fmt.Fprint(stderr, flowUsage)
@@ -45,7 +45,7 @@ func runFlow(args []string, stdout, stderr io.Writer) int {
 	switch sub {
 	case "spec", "tests", "coverage", "check", "tasks":
 	default:
-		fmt.Fprintf(stderr, "sottocomando sconosciuto %q\n\n%s", sub, flowUsage)
+		fmt.Fprintf(stderr, "unknown subcommand %q\n\n%s", sub, flowUsage)
 		return 2
 	}
 
@@ -62,18 +62,18 @@ func runFlow(args []string, stdout, stderr io.Writer) int {
 		return 2
 	}
 	if *format != "md" && *format != "json" {
-		fmt.Fprintf(stderr, "-format deve essere md o json, non %q\n", *format)
+		fmt.Fprintf(stderr, "-format must be md or json, not %q\n", *format)
 		return 2
 	}
 
 	doc, err := openOffline(*workspace, *docRef)
 	if err != nil {
-		fmt.Fprintln(stderr, "errore:", err)
+		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
 	if *flowID != "" {
 		if _, ok := doc.GetFlows()[*flowID]; !ok {
-			fmt.Fprintf(stderr, "errore: il flusso %q non esiste nel documento %q\n", *flowID, doc.GetName())
+			fmt.Fprintf(stderr, "error: flow %q does not exist in document %q\n", *flowID, doc.GetName())
 			return 2
 		}
 	}
@@ -103,7 +103,7 @@ func runFlow(args []string, stdout, stderr io.Writer) int {
 			text = cov.Markdown()
 		}
 		if err == nil && *min > 0 && cov.Totals.Percent < *min {
-			fmt.Fprintf(stderr, "coverage %.1f%% sotto la soglia %.1f%%\n", cov.Totals.Percent, *min)
+			fmt.Fprintf(stderr, "coverage %.1f%% below the threshold %.1f%%\n", cov.Totals.Percent, *min)
 			code = 1
 		}
 	case "check":
@@ -111,23 +111,23 @@ func runFlow(args []string, stdout, stderr io.Writer) int {
 		text, code = renderCheck(doc, reports, *format)
 	}
 	if err != nil {
-		fmt.Fprintln(stderr, "errore:", err)
+		fmt.Fprintln(stderr, "error:", err)
 		return 2
 	}
 
 	if *out != "" {
 		if err := os.WriteFile(*out, []byte(text), 0o644); err != nil {
-			fmt.Fprintln(stderr, "errore:", err)
+			fmt.Fprintln(stderr, "error:", err)
 			return 2
 		}
-		fmt.Fprintf(stderr, "scritto %s\n", *out)
+		fmt.Fprintf(stderr, "wrote %s\n", *out)
 		return code
 	}
 	fmt.Fprint(stdout, text)
 	return code
 }
 
-// renderCheck stampa i problemi dei report e ritorna 1 se ce n'è almeno uno.
+// renderCheck prints the reports' problems and returns 1 if there is at least one.
 func renderCheck(doc *opendesignerv1.Document, reports []*opendesignerv1.FlowReport, format string) (string, int) {
 	total := 0
 	for _, r := range reports {
@@ -153,30 +153,30 @@ func renderCheck(doc *opendesignerv1.Document, reports []*opendesignerv1.FlowRep
 		}
 	}
 	if total == 0 {
-		fmt.Fprintf(&b, "OK: %d flussi senza problemi\n", len(reports))
+		fmt.Fprintf(&b, "OK: %d flows without problems\n", len(reports))
 	} else {
-		fmt.Fprintf(&b, "\n%d problemi in %d flussi\n", total, len(reports))
+		fmt.Fprintf(&b, "\n%d problems in %d flows\n", total, len(reports))
 	}
 	return b.String(), code
 }
 
-// openOffline risolve -doc (id o nome esatto) nel workspace e ne ricostruisce lo
-// stato da snapshot e oplog, senza modificare nulla. Senza -doc va bene solo se
-// il workspace ha un unico documento.
+// openOffline resolves -doc (id or exact name) in the workspace and rebuilds its
+// state from snapshot and oplog, without modifying anything. Without -doc it
+// only works if the workspace has a single document.
 func openOffline(workspace, ref string) (*opendesignerv1.Document, error) {
 	metas, err := store.Scan(workspace)
 	if err != nil {
 		return nil, err
 	}
 	if len(metas) == 0 {
-		return nil, fmt.Errorf("nessun documento nel workspace %s", workspace)
+		return nil, fmt.Errorf("no documents in workspace %s", workspace)
 	}
 	var matches []store.Meta
 	switch {
 	case ref == "" && len(metas) == 1:
 		matches = metas
 	case ref == "":
-		return nil, errors.New("più documenti nel workspace: indica -doc\n" + listMetas(metas))
+		return nil, errors.New("multiple documents in the workspace: specify -doc\n" + listMetas(metas))
 	default:
 		for _, m := range metas {
 			if m.ID == ref {
@@ -194,10 +194,10 @@ func openOffline(workspace, ref string) (*opendesignerv1.Document, error) {
 	}
 	switch len(matches) {
 	case 0:
-		return nil, fmt.Errorf("documento %q non trovato (cerco per id o nome esatto)\n%s", ref, listMetas(metas))
+		return nil, fmt.Errorf("document %q not found (searching by id or exact name)\n%s", ref, listMetas(metas))
 	case 1:
 	default:
-		return nil, fmt.Errorf("il nome %q è ambiguo, usa l'id\n%s", ref, listMetas(matches))
+		return nil, fmt.Errorf("the name %q is ambiguous, use the id\n%s", ref, listMetas(matches))
 	}
 	doc, _, err := store.LoadReadOnly(workspace, matches[0].ID)
 	return doc, err

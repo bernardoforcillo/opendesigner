@@ -1,19 +1,19 @@
-// Esportato da opendesigner (opendesigner export): rotte dell'app del documento "Negozio" (shop). NON modificare a mano:
-// rigenerare con `opendesigner export`. L'attributo data-node-id lega ogni elemento al nodo del design.
+// Exported by opendesigner (opendesigner export): app routes of document "Shop" (shop). DO NOT edit by hand:
+// regenerate with `opendesigner export`. The data-node-id attribute ties every element to its design node.
 import { BrowserRouter, Route, Routes } from "react-router-dom";
 import { Login } from "./screens/Login";
 import { Home } from "./screens/Home";
-import { Dettaglio } from "./screens/Dettaglio";
+import { Detail } from "./screens/Detail";
 
 export default function App() {
   return (
     <BrowserRouter>
       <Routes>
-        {/* schermata iniziale: montata anche su "/" */}
+        {/* start screen: also mounted on "/" */}
         <Route path="/" element={<Login />} />
         <Route path="/login" element={<Login />} />
         <Route path="/home" element={<Home />} />
-        <Route path="/dettaglio" element={<Dettaglio />} />
+        <Route path="/detail" element={<Detail />} />
       </Routes>
     </BrowserRouter>
   );

@@ -9,34 +9,34 @@ import (
 	"github.com/bernardoforcillo/opendesigner/internal/core"
 )
 
-// htmlAnim è lo stato di emissione delle animazioni di UNA pagina html.
+// htmlAnim is the animation emission state of ONE html page.
 type htmlAnim struct {
-	kf        strings.Builder     // i @keyframes
-	kfNames   map[string]bool     // nomi dei @keyframes già usati
-	hostClass map[string]string   // id del nodo target -> la sua classe
-	pending   []htmlPending       // le regole :hover/:active/manuali, scritte a fine pagina
-	needXY    bool                // serve registrare --od-x/--od-y
-	base      map[string][]string // classe dell'elemento -> animation: di enter/loop
+	kf        strings.Builder     // the @keyframes
+	kfNames   map[string]bool     // names of the @keyframes already used
+	hostClass map[string]string   // target node id -> its class
+	pending   []htmlPending       // the :hover/:active/manual rules, written at the end of the page
+	needXY    bool                // --od-x/--od-y must be registered
+	base      map[string][]string // element class -> animation: of enter/loop
 }
 
-// htmlPending: una regola che dipende da un trigger del TARGET (la sua classe
-// si conosce solo quando il target è stato scritto, quindi a fine pagina).
+// htmlPending: a rule that depends on a trigger of the TARGET (its class
+// is only known once the target has been written, hence at the end of the page).
 type htmlPending struct {
-	class   string // l'elemento animato
+	class   string // the animated element
 	hostID  string
 	trigger string // hover | tap | manual
 	key     string
-	own     []string // animation: delle clip di QUESTO trigger
-	hover   []string // per tap: le animazioni di hover (l'utente sta anche sopra)
+	own     []string // animation: of the clips of THIS trigger
+	hover   []string // for tap: the hover animations (the user is also over it)
 }
 
-// animate scrive i @keyframes degli item di `e` e ritorna lo stile e gli
-// attributi completati. Enter/loop sono `animation:` dell'elemento; hover, tap e
-// manuali sono regole sul target (finishAnim).
+// animate writes the @keyframes of `e`'s items and returns the completed style
+// and attributes. Enter/loop are the element's `animation:`; hover, tap and
+// manual ones are rules on the target (finishAnim).
 //
-// Ogni regola ripete le animazioni "di base" (enter/loop) oltre alle proprie:
-// cambiare la lista `animation` di un elemento FA RIPARTIRE quelle che non sono
-// più nella lista, quindi togliere l'hover rilancerebbe l'entrata da capo.
+// Every rule repeats the "base" animations (enter/loop) in addition to its own:
+// changing an element's `animation` list RESTARTS those that are no longer in
+// the list, so removing the hover would replay the entrance from scratch.
 func (w *htmlWriter) animate(e *Element, class string, style []Prop, attrs []Attr) ([]Prop, []Attr) {
 	a := &w.anim
 	if a.kfNames == nil {
@@ -51,7 +51,7 @@ func (w *htmlWriter) animate(e *Element, class string, style []Prop, attrs []Att
 	type group struct{ trigger, host, key string }
 	var order []group
 	own := map[group][]string{}
-	hover := map[string][]string{} // host -> animazioni di hover
+	hover := map[string][]string{} // host -> hover animations
 	hasXY, hasDraw := false, false
 	for _, it := range e.Anim.Items {
 		name := dedupe(a.kfNames, class+"-"+it.Key+"-"+it.Prop, "")
@@ -98,8 +98,8 @@ func (w *htmlWriter) animate(e *Element, class string, style []Prop, attrs []Att
 	return style, attrs
 }
 
-// finishAnim aggiunge al CSS della pagina le regole dei trigger, i @keyframes e
-// la registrazione delle variabili di x/y.
+// finishAnim adds to the page's CSS the trigger rules, the @keyframes and
+// the registration of the x/y variables.
 func (w *htmlWriter) finishAnim() {
 	a := &w.anim
 	for _, p := range a.pending {
@@ -136,14 +136,14 @@ func (w *htmlWriter) finishAnim() {
 // README
 // ---------------------------------------------------------------------------
 
-// animationReadme: la sezione "Animazioni" del README del progetto react.
+// animationReadme: the "Animations" section of the react project's README.
 func animationReadme(d *opendesignerv1.Document, screens []*Screen) string {
 	in := map[string]bool{}
 	for _, s := range screens {
 		in[s.NodeID] = true
 	}
-	// la schermata che contiene il nodo (le chiavi delle varianti manuali si
-	// deduplicano per schermata, come in planAnimations)
+	// the screen that contains the node (manual variant keys are
+	// deduplicated per screen, as in planAnimations)
 	screenOf := func(id string) string {
 		if in[id] {
 			return id
@@ -161,13 +161,13 @@ func animationReadme(d *opendesignerv1.Document, screens []*Screen) string {
 	}
 	sort.Strings(ids)
 	var b strings.Builder
-	b.WriteString("## Animazioni\n\n")
-	b.WriteString("Le **clip** del design diventano animazioni con [Motion](https://motion.dev) (`import { motion } from \"motion/react\"`): ogni elemento con tracce è un `motion.div` (o `motion.svg`/`motion.path`) con una costante `<nome>Variants` e il suo **target** porta le etichette che le innescano sui discendenti.\n\n")
-	b.WriteString("- `enter` -> `initial=\"initial\" animate=\"animate\"` (parte al mount); `loop` -> come enter ma con `repeat: Infinity` (`repeatType: \"reverse\"` se yoyo); `hover` -> `whileHover=\"hover\"`; `tap` -> `whileTap=\"tap\"`.\n")
-	b.WriteString("- `x`/`y` sono **delta** dalla posizione del design, `rotate` un delta in gradi (compone con la rotazione di base), `scale` un moltiplicatore, `opacity` assoluta, `draw` -> `pathLength` (0..1) del tratto di un vettoriale.\n")
-	b.WriteString("- Ogni proprietà ha i suoi keyframe (`[..]`), i `times` (0..1 della clip) e un `ease` per segmento; `spring` è approssimata da una curva di Bézier.\n")
-	b.WriteString("- Una clip **manuale** non parte da sola: ha una variante col nome indicato in tabella; per avviarla imposta `animate=\"<variante>\"` sull'elemento target (di norma da uno stato React) oppure pilotala con `useAnimate`.\n\n")
-	b.WriteString("| Clip | Trigger | Target | Durata | Variante |\n|---|---|---|---|---|\n")
+	b.WriteString("## Animations\n\n")
+	b.WriteString("The design's **clips** become animations with [Motion](https://motion.dev) (`import { motion } from \"motion/react\"`): every element with tracks is a `motion.div` (or `motion.svg`/`motion.path`) with a `<name>Variants` constant, and its **target** carries the labels that fire them on descendants.\n\n")
+	b.WriteString("- `enter` -> `initial=\"initial\" animate=\"animate\"` (starts on mount); `loop` -> like enter but with `repeat: Infinity` (`repeatType: \"reverse\"` if yoyo); `hover` -> `whileHover=\"hover\"`; `tap` -> `whileTap=\"tap\"`.\n")
+	b.WriteString("- `x`/`y` are **deltas** from the design position, `rotate` is a delta in degrees (composes with the base rotation), `scale` is a multiplier, `opacity` is absolute, `draw` -> `pathLength` (0..1) of a vector's stroke.\n")
+	b.WriteString("- Each property has its own keyframes (`[..]`), `times` (0..1 of the clip) and one `ease` per segment; `spring` is approximated by a Bézier curve.\n")
+	b.WriteString("- A **manual** clip does not start on its own: it has a variant with the name given in the table; to start it set `animate=\"<variant>\"` on the target element (usually from React state) or drive it with `useAnimate`.\n\n")
+	b.WriteString("| Clip | Trigger | Target | Duration | Variant |\n|---|---|---|---|---|\n")
 	usedKeys := map[string]map[string]bool{}
 	for _, id := range ids {
 		c := d.GetClips()[id]

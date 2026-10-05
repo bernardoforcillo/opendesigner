@@ -14,22 +14,22 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-// I tool dei flussi: l'agente legge il grafo disegnato nell'editor come
-// specifica, lo corregge, e lo aggancia al codice scrivendo i metadati dei nodi
-// (`code.route`, `code.component`, `test.id`, `status`...). Le convenzioni dei
-// metadati stanno in internal/flow e nelle descrizioni dei tool qui sotto.
+// The flow tools: the agent reads the graph drawn in the editor as a
+// specification, corrects it, and ties it to the code by writing node metadata
+// (`code.route`, `code.component`, `test.id`, `status`...). The metadata
+// conventions live in internal/flow and in the tool descriptions below.
 
 // ---------------------------------------------------------------------------
-// viste
+// views
 // ---------------------------------------------------------------------------
 
-// FlowSummary è una riga di list_flows.
+// FlowSummary is a row of list_flows.
 type FlowSummary struct {
 	Id          string `json:"id"`
 	Name        string `json:"name"`
 	Description string `json:"description,omitempty"`
 	StartId     string `json:"startId,omitempty"`
-	Screens     int    `json:"screens" jsonschema:"schermate distinte: ingresso più ogni from/to"`
+	Screens     int    `json:"screens" jsonschema:"distinct screens: the start plus every from/to"`
 	Transitions int    `json:"transitions"`
 }
 
@@ -37,18 +37,18 @@ type ListFlowsOutput struct {
 	Flows []FlowSummary `json:"flows"`
 }
 
-// ScreenView è una schermata di un flusso con i metadati utili a chi la realizza.
+// ScreenView is a screen of a flow with the metadata useful to whoever builds it.
 type ScreenView struct {
 	NodeId    string            `json:"nodeId"`
 	Name      string            `json:"name"`
-	Kind      string            `json:"kind" jsonschema:"flow.kind: screen (default), decision, action, start, end o note"`
+	Kind      string            `json:"kind" jsonschema:"flow.kind: screen (default), decision, action, start, end or note"`
 	Route     string            `json:"route,omitempty" jsonschema:"code.route"`
 	Component string            `json:"component,omitempty" jsonschema:"code.component"`
-	Status    string            `json:"status" jsonschema:"planned (default), implemented o tested"`
-	Meta      map[string]string `json:"meta,omitempty" jsonschema:"tutti i metadati del nodo"`
+	Status    string            `json:"status" jsonschema:"planned (default), implemented or tested"`
+	Meta      map[string]string `json:"meta,omitempty" jsonschema:"all of the node's metadata"`
 }
 
-// TransitionView è un arco del flusso.
+// TransitionView is an edge of the flow.
 type TransitionView struct {
 	Id        string `json:"id"`
 	FlowId    string `json:"flowId"`
@@ -64,7 +64,7 @@ type TransitionView struct {
 }
 
 type GetFlowInput struct {
-	Id string `json:"id" jsonschema:"id del flusso (vedi list_flows)"`
+	Id string `json:"id" jsonschema:"id of the flow (see list_flows)"`
 }
 
 type GetFlowOutput struct {
@@ -118,7 +118,7 @@ func transitionView(doc *opendesignerv1.Document, t *opendesignerv1.Transition) 
 	}
 }
 
-// flowTransitions: le transizioni di un flusso, ordinate per id.
+// flowTransitions: a flow's transitions, sorted by id.
 func flowTransitions(doc *opendesignerv1.Document, flowID string) []*opendesignerv1.Transition {
 	var ts []*opendesignerv1.Transition
 	for _, t := range doc.GetTransitions() {
@@ -134,7 +134,7 @@ func flowTransitions(doc *opendesignerv1.Document, flowID string) []*opendesigne
 // list_flows / get_flow
 // ---------------------------------------------------------------------------
 
-// ListFlows elenca i flussi del documento (ordinati per id).
+// ListFlows lists the document's flows (sorted by id).
 func (s *Session) ListFlows(_ context.Context, _ struct{}) (ListFlowsOutput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
@@ -163,14 +163,14 @@ func (s *Session) ListFlows(_ context.Context, _ struct{}) (ListFlowsOutput, err
 	return out, nil
 }
 
-// GetFlow ritorna un flusso con le sue schermate (nome, tipo, rotta, componente,
-// stato) e le sue transizioni.
+// GetFlow returns a flow with its screens (name, kind, route, component,
+// status) and its transitions.
 func (s *Session) GetFlow(_ context.Context, in GetFlowInput) (GetFlowOutput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	f, ok := s.doc.GetFlows()[in.Id]
 	if !ok {
-		return GetFlowOutput{}, fmt.Errorf("flusso %q non trovato: usa list_flows per gli id", in.Id)
+		return GetFlowOutput{}, fmt.Errorf("flow %q not found: use list_flows for the ids", in.Id)
 	}
 	ts := flowTransitions(s.doc, in.Id)
 	screenIDs := map[string]bool{}
@@ -203,9 +203,9 @@ func (s *Session) GetFlow(_ context.Context, in GetFlowInput) (GetFlowOutput, er
 // ---------------------------------------------------------------------------
 
 type CreateFlowInput struct {
-	Name        string `json:"name" jsonschema:"nome del flusso, es. \"Acquisto\""`
+	Name        string `json:"name" jsonschema:"name of the flow, e.g. \"Purchase\""`
 	Description string `json:"description,omitempty"`
-	StartId     string `json:"startId,omitempty" jsonschema:"id del nodo (frame) che è la schermata iniziale; si può impostare dopo"`
+	StartId     string `json:"startId,omitempty" jsonschema:"id of the node (frame) that is the start screen; it can be set later"`
 }
 
 type CreateFlowOutput struct {
@@ -213,13 +213,13 @@ type CreateFlowOutput struct {
 	Seq    uint64 `json:"seq"`
 }
 
-// CreateFlow crea un flusso vuoto.
+// CreateFlow creates an empty flow.
 func (s *Session) CreateFlow(ctx context.Context, in CreateFlowInput) (CreateFlowOutput, error) {
 	if strings.TrimSpace(in.Name) == "" {
-		return CreateFlowOutput{}, errors.New("create_flow: name obbligatorio")
+		return CreateFlowOutput{}, errors.New("create_flow: name is required")
 	}
 	if in.StartId != "" && !s.hasNode(in.StartId) {
-		return CreateFlowOutput{}, fmt.Errorf("create_flow: startId %q non è un nodo del documento", in.StartId)
+		return CreateFlowOutput{}, fmt.Errorf("create_flow: startId %q is not a node of the document", in.StartId)
 	}
 	id := uuid.NewString()
 	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetFlow{SetFlow: &opendesignerv1.SetFlow{
@@ -231,10 +231,10 @@ func (s *Session) CreateFlow(ctx context.Context, in CreateFlowInput) (CreateFlo
 	return CreateFlowOutput{FlowId: id, Seq: seq}, nil
 }
 
-// DeleteFlow cancella un flusso e le sue transizioni (le schermate restano).
+// DeleteFlow deletes a flow and its transitions (the screens stay).
 func (s *Session) DeleteFlow(ctx context.Context, in GetFlowInput) (SeqOutput, error) {
 	if !s.hasFlow(in.Id) {
-		return SeqOutput{}, fmt.Errorf("delete_flow: flusso %q non trovato", in.Id)
+		return SeqOutput{}, fmt.Errorf("delete_flow: flow %q not found", in.Id)
 	}
 	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteFlow{DeleteFlow: &opendesignerv1.DeleteFlow{Id: in.Id}}})
 	if err != nil {
@@ -261,19 +261,19 @@ func (s *Session) hasFlow(id string) bool {
 // set_transition / delete_transition
 // ---------------------------------------------------------------------------
 
-// SetTransitionInput crea (senza id) o aggiorna (con id) una transizione. In
-// aggiornamento i campi omessi restano quelli che sono; per svuotare un testo
-// passa la stringa vuota.
+// SetTransitionInput creates (without id) or updates (with id) a transition. On
+// update the omitted fields stay as they are; to clear a text pass the empty
+// string.
 type SetTransitionInput struct {
-	Id        string  `json:"id,omitempty" jsonschema:"vuoto = crea una nuova transizione; un id esistente = aggiorna"`
-	FlowId    string  `json:"flowId,omitempty" jsonschema:"obbligatorio in creazione"`
-	FromId    string  `json:"fromId,omitempty" jsonschema:"nodo di partenza; obbligatorio in creazione"`
-	ToId      string  `json:"toId,omitempty" jsonschema:"nodo di arrivo; obbligatorio in creazione"`
-	Label     *string `json:"label,omitempty" jsonschema:"testo dell'elemento che innesca (es. il bottone); usato dai test generati come ripiego di test.id/test.text"`
-	Trigger   *string `json:"trigger,omitempty" jsonschema:"click (default), submit, auto, key, back oppure testo libero; con key la label è il tasto"`
-	ElementId *string `json:"elementId,omitempty" jsonschema:"opzionale: il nodo DENTRO fromId che innesca (l'hotspot); i suoi meta test.id/test.text danno il locator del test"`
-	Guard     *string `json:"guard,omitempty" jsonschema:"condizione per cui l'arco è percorribile, testo libero"`
-	Effect    *string `json:"effect,omitempty" jsonschema:"ciò che l'arco cambia, testo libero"`
+	Id        string  `json:"id,omitempty" jsonschema:"empty = create a new transition; an existing id = update"`
+	FlowId    string  `json:"flowId,omitempty" jsonschema:"required on creation"`
+	FromId    string  `json:"fromId,omitempty" jsonschema:"source node; required on creation"`
+	ToId      string  `json:"toId,omitempty" jsonschema:"destination node; required on creation"`
+	Label     *string `json:"label,omitempty" jsonschema:"text of the triggering element (e.g. the button); used by the generated tests as a fallback for test.id/test.text"`
+	Trigger   *string `json:"trigger,omitempty" jsonschema:"click (default), submit, auto, key, back or free text; with key the label is the key"`
+	ElementId *string `json:"elementId,omitempty" jsonschema:"optional: the node INSIDE fromId that triggers (the hotspot); its meta test.id/test.text give the test locator"`
+	Guard     *string `json:"guard,omitempty" jsonschema:"condition under which the edge can be taken, free text"`
+	Effect    *string `json:"effect,omitempty" jsonschema:"what the edge changes, free text"`
 }
 
 type SetTransitionOutput struct {
@@ -282,8 +282,8 @@ type SetTransitionOutput struct {
 	Seq          uint64 `json:"seq"`
 }
 
-// SetTransition valida i riferimenti sul documento locale (messaggi chiari per
-// l'agente) e invia l'upsert assoluto della transizione.
+// SetTransition validates the references against the local document (clear
+// messages for the agent) and sends the absolute upsert of the transition.
 func (s *Session) SetTransition(ctx context.Context, in SetTransitionInput) (SetTransitionOutput, error) {
 	s.mu.Lock()
 	var t *opendesignerv1.Transition
@@ -298,7 +298,7 @@ func (s *Session) SetTransition(ctx context.Context, in SetTransitionInput) (Set
 		}
 	} else {
 		s.mu.Unlock()
-		return SetTransitionOutput{}, fmt.Errorf("set_transition: transizione %q non trovata (ometti id per crearne una nuova)", in.Id)
+		return SetTransitionOutput{}, fmt.Errorf("set_transition: transition %q not found (omit id to create a new one)", in.Id)
 	}
 	if in.FlowId != "" {
 		t.FlowId = in.FlowId
@@ -338,35 +338,35 @@ func (s *Session) SetTransition(ctx context.Context, in SetTransitionInput) (Set
 
 func validateTransition(doc *opendesignerv1.Document, t *opendesignerv1.Transition) error {
 	if t.GetFlowId() == "" {
-		return errors.New("set_transition: flowId obbligatorio (vedi list_flows / create_flow)")
+		return errors.New("set_transition: flowId is required (see list_flows / create_flow)")
 	}
 	if _, ok := doc.GetFlows()[t.GetFlowId()]; !ok {
-		return fmt.Errorf("set_transition: il flusso %q non esiste (vedi list_flows / create_flow)", t.GetFlowId())
+		return fmt.Errorf("set_transition: flow %q does not exist (see list_flows / create_flow)", t.GetFlowId())
 	}
 	if t.GetFromId() == "" || t.GetToId() == "" {
-		return errors.New("set_transition: fromId e toId sono obbligatori")
+		return errors.New("set_transition: fromId and toId are required")
 	}
 	if _, ok := doc.GetNodes()[t.GetFromId()]; !ok {
-		return fmt.Errorf("set_transition: fromId %q non è un nodo del documento (vedi list_nodes)", t.GetFromId())
+		return fmt.Errorf("set_transition: fromId %q is not a node of the document (see list_nodes)", t.GetFromId())
 	}
 	if _, ok := doc.GetNodes()[t.GetToId()]; !ok {
-		return fmt.Errorf("set_transition: toId %q non è un nodo del documento (vedi list_nodes)", t.GetToId())
+		return fmt.Errorf("set_transition: toId %q is not a node of the document (see list_nodes)", t.GetToId())
 	}
 	if e := t.GetElementId(); e != "" {
 		if _, ok := doc.GetNodes()[e]; !ok {
-			return fmt.Errorf("set_transition: elementId %q non è un nodo del documento", e)
+			return fmt.Errorf("set_transition: elementId %q is not a node of the document", e)
 		}
 	}
 	return nil
 }
 
-// DeleteTransition cancella una transizione.
+// DeleteTransition deletes a transition.
 func (s *Session) DeleteTransition(ctx context.Context, in NodeIdInput) (SeqOutput, error) {
 	s.mu.Lock()
 	_, ok := s.doc.GetTransitions()[in.Id]
 	s.mu.Unlock()
 	if !ok {
-		return SeqOutput{}, fmt.Errorf("delete_transition: transizione %q non trovata", in.Id)
+		return SeqOutput{}, fmt.Errorf("delete_transition: transition %q not found", in.Id)
 	}
 	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteTransition{DeleteTransition: &opendesignerv1.DeleteTransition{Id: in.Id}}})
 	if err != nil {
@@ -379,15 +379,15 @@ func (s *Session) DeleteTransition(ctx context.Context, in NodeIdInput) (SeqOutp
 // set_node_meta
 // ---------------------------------------------------------------------------
 
-// SetNodeMetaInput fonde chiavi nei metadati di un nodo.
+// SetNodeMetaInput merges keys into a node's metadata.
 type SetNodeMetaInput struct {
-	Id    string            `json:"id" jsonschema:"id del nodo"`
-	Meta  map[string]string `json:"meta,omitempty" jsonschema:"chiavi da impostare, fuse con quelle esistenti. Convenzioni: flow.kind (screen|decision|action|start|end|note), code.route, code.component, test.id, test.text, status (planned|implemented|tested)"`
-	Unset []string          `json:"unset,omitempty" jsonschema:"chiavi da rimuovere"`
+	Id    string            `json:"id" jsonschema:"id of the node"`
+	Meta  map[string]string `json:"meta,omitempty" jsonschema:"keys to set, merged with the existing ones. Conventions: flow.kind (screen|decision|action|start|end|note), code.route, code.component, test.id, test.text, status (planned|implemented|tested)"`
+	Unset []string          `json:"unset,omitempty" jsonschema:"keys to remove"`
 }
 
 type SetNodeMetaOutput struct {
-	Meta map[string]string `json:"meta" jsonschema:"i metadati del nodo dopo la modifica"`
+	Meta map[string]string `json:"meta" jsonschema:"the node's metadata after the change"`
 	Seq  uint64            `json:"seq"`
 }
 
@@ -405,26 +405,26 @@ func oneOf(v string, list []string) bool {
 	return false
 }
 
-// SetNodeMeta fa read-modify-write: la mask "meta" di SetProperties SOSTITUISCE
-// l'intera mappa, quindi si legge quella corrente, si fondono le chiavi e si
-// scrive il risultato intero. Un autore concorrente sullo stesso nodo nello
-// stesso istante può vincere sull'altro (ultimo scrittore): i metadati sono
-// pochi e di norma li scrive un solo agente.
+// SetNodeMeta does a read-modify-write: SetProperties' "meta" mask REPLACES
+// the whole map, so the current one is read, the keys are merged and the whole
+// result is written. A concurrent author on the same node at the same instant
+// can win over the other (last writer): the metadata is small and normally
+// written by a single agent.
 func (s *Session) SetNodeMeta(ctx context.Context, in SetNodeMetaInput) (SetNodeMetaOutput, error) {
 	if len(in.Meta) == 0 && len(in.Unset) == 0 {
-		return SetNodeMetaOutput{}, errors.New("set_node_meta: niente da fare, passa meta e/o unset")
+		return SetNodeMetaOutput{}, errors.New("set_node_meta: nothing to do, pass meta and/or unset")
 	}
 	if k, ok := in.Meta[flow.MetaKind]; ok && !oneOf(k, validKinds) {
-		return SetNodeMetaOutput{}, fmt.Errorf("set_node_meta: flow.kind deve essere uno di %s, non %q", strings.Join(validKinds, ", "), k)
+		return SetNodeMetaOutput{}, fmt.Errorf("set_node_meta: flow.kind must be one of %s, not %q", strings.Join(validKinds, ", "), k)
 	}
 	if st, ok := in.Meta[flow.MetaStatus]; ok && !oneOf(st, validStatuses) {
-		return SetNodeMetaOutput{}, fmt.Errorf("set_node_meta: status deve essere uno di %s, non %q", strings.Join(validStatuses, ", "), st)
+		return SetNodeMetaOutput{}, fmt.Errorf("set_node_meta: status must be one of %s, not %q", strings.Join(validStatuses, ", "), st)
 	}
 	s.mu.Lock()
 	n, ok := s.doc.GetNodes()[in.Id]
 	if !ok {
 		s.mu.Unlock()
-		return SetNodeMetaOutput{}, fmt.Errorf("set_node_meta: nodo %q non trovato", in.Id)
+		return SetNodeMetaOutput{}, fmt.Errorf("set_node_meta: node %q not found", in.Id)
 	}
 	merged := make(map[string]string, len(n.GetMeta())+len(in.Meta))
 	for k, v := range n.GetMeta() {
@@ -451,7 +451,7 @@ func (s *Session) SetNodeMeta(ctx context.Context, in SetNodeMetaInput) (SetNode
 // ---------------------------------------------------------------------------
 
 type AnalyzeFlowsInput struct {
-	FlowId string `json:"flowId,omitempty" jsonschema:"un solo flusso; vuoto = tutti"`
+	FlowId string `json:"flowId,omitempty" jsonschema:"a single flow; empty = all"`
 }
 
 type FlowIssueView struct {
@@ -462,10 +462,10 @@ type FlowIssueView struct {
 }
 
 type FlowPathView struct {
-	Screens       []string `json:"screens" jsonschema:"nomi delle schermate nell'ordine del percorso"`
+	Screens       []string `json:"screens" jsonschema:"names of the screens in path order"`
 	NodeIds       []string `json:"nodeIds"`
 	TransitionIds []string `json:"transitionIds"`
-	Loops         bool     `json:"loops,omitempty" jsonschema:"il percorso termina tornando su una schermata già visitata"`
+	Loops         bool     `json:"loops,omitempty" jsonschema:"the path ends by returning to an already visited screen"`
 }
 
 type FlowReportView struct {
@@ -480,17 +480,17 @@ type FlowReportView struct {
 
 type AnalyzeFlowsOutput struct {
 	Reports []FlowReportView `json:"reports"`
-	Issues  int              `json:"issues" jsonschema:"totale dei problemi in tutti i report"`
+	Issues  int              `json:"issues" jsonschema:"total number of issues across all reports"`
 }
 
-// AnalyzeFlows analizza i flussi sul documento locale (stessa logica dell'RPC
-// AnalyzeFlows e di `opendesigner flow check`).
+// AnalyzeFlows analyses the flows on the local document (same logic as the
+// AnalyzeFlows RPC and `opendesigner flow check`).
 func (s *Session) AnalyzeFlows(_ context.Context, in AnalyzeFlowsInput) (AnalyzeFlowsOutput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if in.FlowId != "" {
 		if _, ok := s.doc.GetFlows()[in.FlowId]; !ok {
-			return AnalyzeFlowsOutput{}, fmt.Errorf("flusso %q non trovato: usa list_flows per gli id", in.FlowId)
+			return AnalyzeFlowsOutput{}, fmt.Errorf("flow %q not found: use list_flows for the ids", in.FlowId)
 		}
 	}
 	out := AnalyzeFlowsOutput{Reports: []FlowReportView{}}
@@ -520,21 +520,21 @@ type FlowSpecOutput struct {
 	Markdown string `json:"markdown"`
 }
 
-// GetFlowSpec ritorna la specifica Markdown (stessa di `opendesigner flow spec`).
+// GetFlowSpec returns the Markdown specification (same as `opendesigner flow spec`).
 func (s *Session) GetFlowSpec(_ context.Context, in AnalyzeFlowsInput) (FlowSpecOutput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	if in.FlowId != "" {
 		if _, ok := s.doc.GetFlows()[in.FlowId]; !ok {
-			return FlowSpecOutput{}, fmt.Errorf("flusso %q non trovato: usa list_flows per gli id", in.FlowId)
+			return FlowSpecOutput{}, fmt.Errorf("flow %q not found: use list_flows for the ids", in.FlowId)
 		}
 	}
 	return FlowSpecOutput{Markdown: flow.Spec(s.doc, in.FlowId)}, nil
 }
 
-// flowConventions è il manuale che ogni tool dei flussi ripete in breve: un
-// agente che vede solo uno di questi tool deve poter pilotare tutto il flusso di
-// lavoro.
+// flowConventions is the manual that every flow tool repeats in brief: an
+// agent that sees only one of these tools must be able to drive the whole
+// workflow.
 const flowConventions = " Flow model: a FLOW is a user journey made of TRANSITIONS (edges) between SCREENS, which are ordinary document nodes (frames) referenced by id. " +
 	"Node meta conventions: flow.kind (screen|decision|action|start|end|note, default screen), code.route (app route that realises the screen), code.component (component name), " +
 	"test.id (data-testid of an element), test.text (accessible text of an element), status (planned|implemented|tested). " +
@@ -550,6 +550,6 @@ func registerFlowTools(srv *mcp.Server, s *Session) {
 		"guard = condition under which the edge is taken, effect = what it changes (free text). Two edges out of one screen with the same trigger+element and no distinguishing guard are reported as ambiguous. On update, omitted fields are kept."+flowConventions, s.SetTransition)
 	addTool(srv, "delete_transition", "Delete a transition by id.", s.DeleteTransition)
 	addTool(srv, "set_node_meta", "Merge keys into a node's meta (and optionally remove some with unset); other keys are preserved. Use it to link a screen to the code (code.route, code.component), to its test locators (test.id, test.text) and to mark progress (status)."+flowConventions, s.SetNodeMeta)
-	addTool(srv, "analyze_flows", "Analyse flows (all, or one with flowId): issues (empty, no_start, unreachable, dead_end, ambiguous) with Italian messages naming the screens, plus every path from the start screen to an end or a loop (capped at 200 paths / depth 50, then pathsTruncated)."+flowConventions, s.AnalyzeFlows)
+	addTool(srv, "analyze_flows", "Analyse flows (all, or one with flowId): issues (empty, no_start, unreachable, dead_end, ambiguous) with messages naming the screens, plus every path from the start screen to an end or a loop (capped at 200 paths / depth 50, then pathsTruncated)."+flowConventions, s.AnalyzeFlows)
 	addTool(srv, "get_flow_spec", "Return the Markdown specification of the flows (screens table, numbered transitions, Given/When/Then scenarios, issues). Use it as the requirements to implement."+flowConventions, s.GetFlowSpec)
 }

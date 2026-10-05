@@ -6,16 +6,16 @@ import (
 	"strings"
 )
 
-// La SCENA è il livello intermedio fra i parser (che sanno di Mermaid e di UML)
-// e i nodi del documento (che sanno di rect, vettori e testo): i primi
-// producono primitive geometriche, `build.go` le traduce in nodi. Così ogni
-// tipo di diagramma disegna con lo stesso vocabolario e nessuno conosce
+// The SCENE is the intermediate level between the parsers (which know about Mermaid and UML)
+// and the document nodes (which know about rect, vectors and text): the former
+// produce geometric primitives, `build.go` translates them into nodes. This way every
+// diagram kind draws with the same vocabulary and nobody knows about
 // protobuf.
 
-// Pt è un punto nello spazio del diagramma (origine in alto a sinistra).
+// Pt is a point in the diagram's space (origin at the top left).
 type Pt struct{ X, Y float64 }
 
-// RGB è un colore opaco 0..1.
+// RGB is an opaque 0..1 color.
 type RGB struct{ R, G, B float64 }
 
 var (
@@ -31,7 +31,7 @@ var (
 	colFrag     = RGB{0.97, 0.97, 0.98}
 )
 
-// Shape è la forma di un Box.
+// Shape is the shape of a Box.
 type Shape int
 
 const (
@@ -42,18 +42,18 @@ const (
 	ShapeDiamond
 )
 
-// Box è una forma chiusa con riempimento e contorno.
+// Box is a closed shape with fill and outline.
 type Box struct {
 	X, Y, W, H float64
 	Shape      Shape
-	Radius     float64 // solo ShapeRect/ShapeRound
-	Fill       *RGB    // nil = nessun riempimento
-	Stroke     *RGB    // nil = nessun contorno
+	Radius     float64 // ShapeRect/ShapeRound only
+	Fill       *RGB    // nil = no fill
+	Stroke     *RGB    // nil = no outline
 	StrokeW    float64
 	Name       string
 }
 
-// Text è un blocco di testo. X/Y/W/H è il box; Align decide dove cade il testo.
+// Text is a block of text. X/Y/W/H is the box; Align decides where the text falls.
 type Text struct {
 	X, Y, W, H float64
 	Content    string
@@ -64,31 +64,31 @@ type Text struct {
 	Name       string
 }
 
-// HeadKind è la decorazione all'estremità di una linea.
+// HeadKind is the decoration at the end of a line.
 type HeadKind int
 
 const (
 	HeadNone          HeadKind = iota
-	HeadArrow                  // triangolo pieno (messaggi, transizioni)
-	HeadOpen                   // freccia aperta a V (associazione, async)
-	HeadTriangle               // triangolo vuoto (ereditarietà, realizzazione)
-	HeadDiamond                // rombo vuoto (aggregazione)
-	HeadDiamondFilled          // rombo pieno (composizione)
-	HeadCross                  // croce (messaggio perso)
+	HeadArrow                  // filled triangle (messages, transitions)
+	HeadOpen                   // open V-shaped arrow (association, async)
+	HeadTriangle               // hollow triangle (inheritance, realization)
+	HeadDiamond                // hollow diamond (aggregation)
+	HeadDiamondFilled          // filled diamond (composition)
+	HeadCross                  // cross (lost message)
 )
 
-// Line è una spezzata con decorazioni agli estremi.
+// Line is a polyline with decorations at the ends.
 type Line struct {
 	Pts    []Pt
 	Weight float64
 	Dashed bool
 	Color  RGB
-	Start  HeadKind // sul primo punto
-	End    HeadKind // sull'ultimo
+	Start  HeadKind // on the first point
+	End    HeadKind // on the last
 	Name   string
 }
 
-// Poly è un poligono chiuso (frecce, rombi, attori, sfondi non rettangolari).
+// Poly is a closed polygon (arrows, diamonds, actors, non-rectangular backgrounds).
 type Poly struct {
 	Pts    []Pt
 	Fill   *RGB
@@ -97,8 +97,8 @@ type Poly struct {
 	Name   string
 }
 
-// Scene è un diagramma disegnato: elementi in ordine di sovrapposizione
-// (il primo sta sotto).
+// Scene is a drawn diagram: elements in stacking order
+// (the first is at the bottom).
 type Scene struct {
 	W, H  float64
 	Items []any
@@ -108,17 +108,17 @@ func (s *Scene) add(it ...any) { s.Items = append(s.Items, it...) }
 
 func rgb(c RGB) *RGB { return &c }
 
-// --- misura del testo ---------------------------------------------------------
+// --- text measurement ---------------------------------------------------------
 
 const (
 	fontSize = 14.0
 	lineMul  = 1.2
-	charW    = 0.54 // larghezza media di un carattere, in multipli del corpo
+	charW    = 0.54 // average width of a character, in multiples of the font size
 )
 
-// textW stima la larghezza della riga più lunga a corpo `size`. Il server non ha
-// font: la stima è larga di proposito (meglio un po' d'aria che un testo che va
-// a capo da solo).
+// textW estimates the width of the longest line at font size `size`. The server has no
+// fonts: the estimate is deliberately generous (better a bit of air than a text that
+// wraps on its own).
 func textW(s string, size float64) float64 {
 	m := 0
 	for _, l := range strings.Split(s, "\n") {
@@ -146,9 +146,9 @@ func name(prefix, label string) string {
 	return fmt.Sprintf("%s %s", prefix, l)
 }
 
-// --- geometria di base --------------------------------------------------------
+// --- basic geometry -----------------------------------------------------------
 
-// clipRect: dove il segmento centro -> toward esce dal rettangolo.
+// clipRect: where the segment center -> toward exits the rectangle.
 func clipRect(x, y, w, h float64, toward Pt) Pt {
 	cx, cy := x+w/2, y+h/2
 	dx, dy := toward.X-cx, toward.Y-cy
@@ -179,7 +179,7 @@ func clipEllipse(x, y, w, h float64, toward Pt) Pt {
 	return Pt{cx + dx*t, cy + dy*t}
 }
 
-// midpointOf: il punto a metà della lunghezza di una spezzata.
+// midpointOf: the point at half the length of a polyline.
 func midpointOf(pts []Pt) Pt {
 	total := 0.0
 	for i := 1; i < len(pts); i++ {
@@ -197,7 +197,7 @@ func midpointOf(pts []Pt) Pt {
 	return pts[0]
 }
 
-// shift trasla tutti gli elementi.
+// shift translates all the elements.
 func (s *Scene) shift(dx, dy float64) {
 	for i, it := range s.Items {
 		switch x := it.(type) {

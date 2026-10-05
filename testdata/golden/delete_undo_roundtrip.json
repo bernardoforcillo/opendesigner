@@ -8,7 +8,7 @@
       "rect": { "cornerRadius": 0 }
     } } },
     { "opId": "op2", "docId": "doc1", "createNode": { "node": {
-      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Figlio 1",
+      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Child 1",
       "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 20, "height": 20,
       "fills": [{ "solid": { "color": { "r": 0.25, "g": 0.5, "b": 0.75, "a": 1 } } }],
       "rect": { "cornerRadius": 4 }
@@ -22,12 +22,12 @@
       } }
     } } },
     { "opId": "op4", "docId": "doc1", "createNode": { "node": {
-      "id": "c2", "parentId": "g1", "orderKey": "a2", "name": "Figlio 2",
+      "id": "c2", "parentId": "g1", "orderKey": "a2", "name": "Child 2",
       "visible": true, "opacity": 1, "x": 40, "y": 10, "width": 20, "height": 20,
       "ellipse": {}
     } } },
     { "opId": "op5", "docId": "doc1", "createNode": { "node": {
-      "id": "other", "parentId": "page1", "orderKey": "a2", "name": "Fuori",
+      "id": "other", "parentId": "page1", "orderKey": "a2", "name": "Outside",
       "visible": true, "opacity": 1, "x": 200, "y": 0, "width": 10, "height": 10,
       "rect": { "cornerRadius": 0 }
     } } },
@@ -35,7 +35,7 @@
     { "opId": "op6", "docId": "doc1", "deleteNode": { "id": "g1" } },
 
     { "opId": "op7", "docId": "doc1", "createNode": { "node": {
-      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Figlio 1",
+      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Child 1",
       "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 20, "height": 20,
       "fills": [{ "solid": { "color": { "r": 0.25, "g": 0.5, "b": 0.75, "a": 1 } } }],
       "rect": { "cornerRadius": 4 }
@@ -47,7 +47,7 @@
       "rect": { "cornerRadius": 0 }
     } } },
     { "opId": "op9", "docId": "doc1", "createNode": { "node": {
-      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Figlio 1",
+      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Child 1",
       "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 20, "height": 20,
       "fills": [{ "solid": { "color": { "r": 0.25, "g": 0.5, "b": 0.75, "a": 1 } } }],
       "rect": { "cornerRadius": 4 }
@@ -61,7 +61,7 @@
       } }
     } } },
     { "opId": "op11", "docId": "doc1", "createNode": { "node": {
-      "id": "c2", "parentId": "g1", "orderKey": "a2", "name": "Figlio 2",
+      "id": "c2", "parentId": "g1", "orderKey": "a2", "name": "Child 2",
       "visible": true, "opacity": 1, "x": 40, "y": 10, "width": 20, "height": 20,
       "ellipse": {}
     } } }
@@ -76,7 +76,7 @@
         "rect": { "cornerRadius": 0 }
       },
       "c1": {
-        "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Figlio 1",
+        "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Child 1",
         "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 20, "height": 20,
         "fills": [{ "solid": { "color": { "r": 0.25, "g": 0.5, "b": 0.75, "a": 1 } } }],
         "rect": { "cornerRadius": 4 }
@@ -90,12 +90,12 @@
         } }
       },
       "c2": {
-        "id": "c2", "parentId": "g1", "orderKey": "a2", "name": "Figlio 2",
+        "id": "c2", "parentId": "g1", "orderKey": "a2", "name": "Child 2",
         "visible": true, "opacity": 1, "x": 40, "y": 10, "width": 20, "height": 20,
         "ellipse": {}
       },
       "other": {
-        "id": "other", "parentId": "page1", "orderKey": "a2", "name": "Fuori",
+        "id": "other", "parentId": "page1", "orderKey": "a2", "name": "Outside",
         "visible": true, "opacity": 1, "x": 200, "y": 0, "width": 10, "height": 10,
         "rect": { "cornerRadius": 0 }
       }

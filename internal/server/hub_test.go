@@ -72,8 +72,8 @@ func TestSubscriberReceivesBroadcast(t *testing.T) {
 
 func TestSubscribeCatchUp(t *testing.T) {
 	h := newTestHub(t)
-	_, _ = h.Submit("c1", createOp("n1")) // seq 1, prima della subscribe
-	ch, cancel := mustSubscribe(t, h, 0)  // sinceSeq 0 → deve ricevere seq 1 in catch-up
+	_, _ = h.Submit("c1", createOp("n1")) // seq 1, before the subscribe
+	ch, cancel := mustSubscribe(t, h, 0)  // sinceSeq 0 → must receive seq 1 in catch-up
 	defer cancel()
 	select {
 	case rec := <-ch:

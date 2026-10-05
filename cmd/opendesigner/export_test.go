@@ -18,8 +18,8 @@ func runExportCLI(t *testing.T, args ...string) (code int, stdout, stderr string
 	return code, o.String(), e.String()
 }
 
-// -json: un Document in protojson, senza workspace (è come lo usano i test e
-// gli strumenti); stampa i file scritti.
+// -json: a Document in protojson, without a workspace (it is how tests and
+// tools use it); prints the files written.
 func TestExportCLIJSON(t *testing.T) {
 	b, err := protojson.Marshal(samples.Shop())
 	if err != nil {
@@ -38,37 +38,37 @@ func TestExportCLIJSON(t *testing.T) {
 	}
 	for _, want := range []string{"src/screens/Login.tsx", "tests/flows.spec.ts", "package.json"} {
 		if !strings.Contains(stdout, want) {
-			t.Errorf("stdout non elenca %s:\n%s", want, stdout)
+			t.Errorf("stdout does not list %s:\n%s", want, stdout)
 		}
 		if _, err := os.Stat(filepath.Join(out, want)); err != nil {
-			t.Errorf("file %s non scritto", want)
+			t.Errorf("file %s not written", want)
 		}
 	}
 
-	// Cartella non vuota: rifiutata, a meno di -force.
+	// Non-empty directory: rejected, unless -force.
 	if code, _, stderr = runExportCLI(t, "-json", docFile, "-out", out); code != 2 || !strings.Contains(stderr, "-force") {
-		t.Errorf("senza -force: code=%d stderr=%q", code, stderr)
+		t.Errorf("without -force: code=%d stderr=%q", code, stderr)
 	}
 	if code, _, stderr = runExportCLI(t, "-json", docFile, "-out", out, "-force"); code != 0 {
-		t.Errorf("con -force: code=%d stderr=%q", code, stderr)
+		t.Errorf("with -force: code=%d stderr=%q", code, stderr)
 	}
 
-	// html e un solo flusso.
+	// html and a single flow.
 	html := filepath.Join(dir, "html")
-	if code, _, stderr = runExportCLI(t, "-json", docFile, "-target", "html", "-flow", "f_acquisto", "-out", html); code != 0 {
+	if code, _, stderr = runExportCLI(t, "-json", docFile, "-target", "html", "-flow", "f_purchase", "-out", html); code != 0 {
 		t.Fatalf("html: code=%d stderr=%q", code, stderr)
 	}
 	if _, err := os.Stat(filepath.Join(html, "index.html")); err != nil {
-		t.Error("html: index.html non scritto")
+		t.Error("html: index.html not written")
 	}
 
-	// Errori di input.
+	// Input errors.
 	for name, args := range map[string][]string{
-		"target":  {"-json", docFile, "-target", "vue", "-out", filepath.Join(dir, "x1")},
-		"flusso":  {"-json", docFile, "-flow", "nope", "-out", filepath.Join(dir, "x2")},
-		"file":    {"-json", filepath.Join(dir, "manca.json"), "-out", filepath.Join(dir, "x3")},
-		"vuoto":   {"-workspace", t.TempDir()},
-		"opzione": {"-boh"},
+		"target": {"-json", docFile, "-target", "vue", "-out", filepath.Join(dir, "x1")},
+		"flow":   {"-json", docFile, "-flow", "nope", "-out", filepath.Join(dir, "x2")},
+		"file":   {"-json", filepath.Join(dir, "missing.json"), "-out", filepath.Join(dir, "x3")},
+		"empty":  {"-workspace", t.TempDir()},
+		"option": {"-dunno"},
 	} {
 		if code, _, _ := runExportCLI(t, args...); code != 2 {
 			t.Errorf("%s: code=%d, want 2", name, code)
@@ -76,12 +76,12 @@ func TestExportCLIJSON(t *testing.T) {
 	}
 }
 
-// Dal workspace, offline, come `opendesigner flow`: per id o nome.
+// From the workspace, offline, like `opendesigner flow`: by id or name.
 func TestExportCLIWorkspace(t *testing.T) {
 	ws := t.TempDir()
-	seedDoc(t, ws, "doc-ok", "Sano", false)
+	seedDoc(t, ws, "doc-ok", "Healthy", false)
 	out := filepath.Join(t.TempDir(), "app")
-	code, stdout, stderr := runExportCLI(t, "-workspace", ws, "-doc", "Sano", "-target", "html", "-out", out)
+	code, stdout, stderr := runExportCLI(t, "-workspace", ws, "-doc", "Healthy", "-target", "html", "-out", out)
 	if code != 0 {
 		t.Fatalf("code=%d stderr=%q", code, stderr)
 	}

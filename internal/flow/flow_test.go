@@ -12,9 +12,9 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-var update = flag.Bool("update", false, "riscrive i golden file in testdata/")
+var update = flag.Bool("update", false, "rewrite the golden files in testdata/")
 
-// tdoc costruisce documenti in memoria: i test descrivono il grafo, non i proto.
+// tdoc builds in-memory documents: the tests describe the graph, not the protos.
 type tdoc struct{ *opendesignerv1.Document }
 
 func newTDoc() *tdoc {
@@ -26,7 +26,7 @@ func newTDoc() *tdoc {
 	}}
 }
 
-// node aggiunge un nodo; meta è una lista piatta chiave, valore, chiave, valore...
+// node adds a node; meta is a flat list key, value, key, value...
 func (d *tdoc) node(id, name string, meta ...string) *tdoc {
 	m := map[string]string{}
 	for i := 0; i+1 < len(meta); i += 2 {
@@ -41,7 +41,7 @@ func (d *tdoc) flow(id, name, start string) *tdoc {
 	return d
 }
 
-// tr: id, flusso, da, a, etichetta, trigger.
+// tr: id, flow, from, to, label, trigger.
 func (d *tdoc) tr(id, flowID, from, to, label, trigger string) *opendesignerv1.Transition {
 	t := &opendesignerv1.Transition{Id: id, FlowId: flowID, FromId: from, ToId: to, Label: label, Trigger: trigger}
 	d.Transitions[id] = t
@@ -77,7 +77,7 @@ func TestAnalyze(t *testing.T) {
 		truncated  bool
 	}{
 		{
-			name: "diamante: due rami che si riuniscono",
+			name: "diamond: two branches that rejoin",
 			build: func() *tdoc {
 				d := newTDoc().node("a", "A").node("b", "B").node("c", "C").node("e", "E", MetaKind, "end").flow("f", "F", "a")
 				d.tr("t1", "f", "a", "b", "via b", "click")
@@ -89,21 +89,21 @@ func TestAnalyze(t *testing.T) {
 			wantPaths: []string{"a>b>e", "a>c>e"},
 		},
 		{
-			name: "ciclo: l'arco di ritorno chiude il percorso",
+			name: "cycle: the return edge closes the path",
 			build: func() *tdoc {
 				d := newTDoc().node("a", "A").node("b", "B").node("e", "E", MetaKind, "end").flow("f", "F", "a")
-				d.tr("t1", "f", "a", "b", "avanti", "click")
-				d.tr("t2", "f", "b", "a", "indietro", "back")
-				d.tr("t3", "f", "b", "e", "fine", "click")
+				d.tr("t1", "f", "a", "b", "next", "click")
+				d.tr("t2", "f", "b", "a", "return", "back")
+				d.tr("t3", "f", "b", "e", "finish", "click")
 				return d
 			},
-			// Le uscite di B sono ordinate per etichetta: "fine" < "indietro".
+			// B's exits are sorted by label: "finish" < "return".
 			wantPaths: []string{"a>b>e", "a>b>a@loop"},
 		},
 		{
-			name: "irraggiungibile",
+			name: "unreachable",
 			build: func() *tdoc {
-				d := newTDoc().node("a", "A").node("b", "B").node("x", "Orfana").node("y", "Y", MetaKind, "end").flow("f", "F", "a")
+				d := newTDoc().node("a", "A").node("b", "B").node("x", "Orphan").node("y", "Y", MetaKind, "end").flow("f", "F", "a")
 				d.tr("t1", "f", "a", "b", "", "click")
 				d.tr("t2", "f", "x", "y", "", "click")
 				return d
@@ -112,7 +112,7 @@ func TestAnalyze(t *testing.T) {
 			wantPaths:  []string{"a>b"},
 		},
 		{
-			name: "vicolo cieco ma tipo end e' lecito",
+			name: "dead end but of type end is allowed",
 			build: func() *tdoc {
 				d := newTDoc().node("a", "A").node("b", "B").node("c", "C", MetaKind, "end").flow("f", "F", "a")
 				d.tr("t1", "f", "a", "b", "", "click")
@@ -123,7 +123,7 @@ func TestAnalyze(t *testing.T) {
 			wantPaths:  []string{"a>b", "a>c"},
 		},
 		{
-			name: "senza ingresso",
+			name: "without an entry",
 			build: func() *tdoc {
 				d := newTDoc().node("a", "A").node("b", "B").flow("f", "F", "")
 				d.tr("t1", "f", "a", "b", "", "click")
@@ -132,50 +132,50 @@ func TestAnalyze(t *testing.T) {
 			wantIssues: []string{"no_start::"},
 		},
 		{
-			name: "flusso vuoto",
+			name: "empty flow",
 			build: func() *tdoc {
 				return newTDoc().node("a", "A").flow("f", "F", "a")
 			},
 			wantIssues: []string{"empty::"},
 		},
 		{
-			name: "ambiguita': stesso innesco senza guard",
+			name: "ambiguity: same trigger without a guard",
 			build: func() *tdoc {
 				d := newTDoc().node("a", "A").node("b", "B", MetaKind, "end").node("c", "C", MetaKind, "end").flow("f", "F", "a")
-				d.tr("t1", "f", "a", "b", "Vai", "click")
-				d.tr("t2", "f", "a", "c", "Vai", "click")
+				d.tr("t1", "f", "a", "b", "Go", "click")
+				d.tr("t2", "f", "a", "c", "Go", "click")
 				return d
 			},
 			wantIssues: []string{"ambiguous:a:t2"},
 			wantPaths:  []string{"a>b", "a>c"},
 		},
 		{
-			name: "guard diverse: nessuna ambiguita'",
+			name: "different guards: no ambiguity",
 			build: func() *tdoc {
 				d := newTDoc().node("a", "A").node("b", "B", MetaKind, "end").node("c", "C", MetaKind, "end").flow("f", "F", "a")
-				d.tr("t1", "f", "a", "b", "Vai", "click").Guard = "carrello pieno"
-				d.tr("t2", "f", "a", "c", "Vai", "click").Guard = "carrello vuoto"
+				d.tr("t1", "f", "a", "b", "Go", "click").Guard = "cart full"
+				d.tr("t2", "f", "a", "c", "Go", "click").Guard = "cart empty"
 				return d
 			},
 			wantPaths: []string{"a>b", "a>c"},
 		},
 		{
-			name: "guard identiche: ambiguo",
+			name: "identical guards: ambiguous",
 			build: func() *tdoc {
 				d := newTDoc().node("a", "A").node("b", "B", MetaKind, "end").node("c", "C", MetaKind, "end").flow("f", "F", "a")
-				d.tr("t1", "f", "a", "b", "Vai", "click").Guard = "ok"
-				d.tr("t2", "f", "a", "c", "Vai", "click").Guard = "ok"
+				d.tr("t1", "f", "a", "b", "Go", "click").Guard = "ok"
+				d.tr("t2", "f", "a", "c", "Go", "click").Guard = "ok"
 				return d
 			},
 			wantIssues: []string{"ambiguous:a:t2"},
 			wantPaths:  []string{"a>b", "a>c"},
 		},
 		{
-			name: "innesci diversi (elemento) non sono ambigui",
+			name: "different triggers (element) are not ambiguous",
 			build: func() *tdoc {
 				d := newTDoc().node("a", "A").node("b", "B", MetaKind, "end").node("c", "C", MetaKind, "end").flow("f", "F", "a")
-				d.tr("t1", "f", "a", "b", "Vai", "click").ElementId = "e1"
-				d.tr("t2", "f", "a", "c", "Vai", "click").ElementId = "e2"
+				d.tr("t1", "f", "a", "b", "Go", "click").ElementId = "e1"
+				d.tr("t2", "f", "a", "c", "Go", "click").ElementId = "e2"
 				return d
 			},
 			wantPaths: []string{"a>b", "a>c"},
@@ -199,7 +199,7 @@ func TestAnalyze(t *testing.T) {
 			}
 			for _, is := range r.GetIssues() {
 				if is.GetMessage() == "" || is.GetFlowId() != "f" {
-					t.Errorf("issue incompleta: %+v", is)
+					t.Errorf("incomplete issue: %+v", is)
 				}
 			}
 		})
@@ -207,20 +207,20 @@ func TestAnalyze(t *testing.T) {
 }
 
 func TestAnalyzeMessagesAreItalianAndNameTheNode(t *testing.T) {
-	d := newTDoc().node("a", "Home").node("x", "Pagina Orfana").flow("f", "F", "a")
+	d := newTDoc().node("a", "Home").node("x", "Orphan Page").flow("f", "F", "a")
 	d.tr("t1", "f", "x", "a", "", "click")
 	r := Analyze(d.Document, "f")[0]
 	var found bool
 	for _, is := range r.GetIssues() {
 		if is.GetKind() == IssueUnreachable {
 			found = true
-			if !strings.Contains(is.GetMessage(), `"Pagina Orfana"`) || !strings.Contains(is.GetMessage(), "non è raggiungibile") {
-				t.Errorf("messaggio = %q", is.GetMessage())
+			if !strings.Contains(is.GetMessage(), `"Orphan Page"`) || !strings.Contains(is.GetMessage(), "is not reachable") {
+				t.Errorf("message = %q", is.GetMessage())
 			}
 		}
 	}
 	if !found {
-		t.Fatal("manca l'issue unreachable")
+		t.Fatal("the unreachable issue is missing")
 	}
 }
 
@@ -232,17 +232,17 @@ func TestAnalyzeAllFlowsSortedAndFilter(t *testing.T) {
 		ids = append(ids, r.GetFlowId())
 	}
 	if !reflect.DeepEqual(ids, []string{"alfa", "mid", "zeta"}) {
-		t.Fatalf("ordine = %v", ids)
+		t.Fatalf("order = %v", ids)
 	}
 	if got := Analyze(d.Document, "mid"); len(got) != 1 || got[0].GetFlowId() != "mid" {
-		t.Fatalf("filtro = %v", got)
+		t.Fatalf("filter = %v", got)
 	}
 	if got := Analyze(d.Document, "nope"); len(got) != 0 {
-		t.Fatalf("flusso inesistente = %v", got)
+		t.Fatalf("nonexistent flow = %v", got)
 	}
 }
 
-// Una griglia di scelte successive: 2^n percorsi, oltre il tetto di 200.
+// A grid of successive choices: 2^n paths, beyond the cap of 200.
 func TestAnalyzePathCapTruncates(t *testing.T) {
 	d := newTDoc().flow("f", "F", "s0")
 	const layers = 9 // 2^9 = 512 > 200
@@ -256,10 +256,10 @@ func TestAnalyzePathCapTruncates(t *testing.T) {
 	}
 	r := Analyze(d.Document, "f")[0]
 	if !r.GetPathsTruncated() {
-		t.Error("paths_truncated deve essere true")
+		t.Error("paths_truncated must be true")
 	}
 	if len(r.GetPaths()) != MaxPaths {
-		t.Errorf("percorsi = %d, want %d", len(r.GetPaths()), MaxPaths)
+		t.Errorf("paths = %d, want %d", len(r.GetPaths()), MaxPaths)
 	}
 }
 
@@ -274,7 +274,7 @@ func TestAnalyzeDepthCapTruncates(t *testing.T) {
 	}
 	r := Analyze(d.Document, "f")[0]
 	if !r.GetPathsTruncated() || len(r.GetPaths()) != 0 {
-		t.Errorf("truncated=%v paths=%d: la catena oltre %d archi va troncata", r.GetPathsTruncated(), len(r.GetPaths()), MaxDepth)
+		t.Errorf("truncated=%v paths=%d: a chain beyond %d edges must be truncated", r.GetPathsTruncated(), len(r.GetPaths()), MaxDepth)
 	}
 }
 
@@ -304,7 +304,7 @@ func TestAnalyzeDeterministic(t *testing.T) {
 	first := Spec(build().Document, "")
 	for i := 0; i < 20; i++ {
 		if got := Spec(build().Document, ""); got != first {
-			t.Fatal("Spec non deterministica")
+			t.Fatal("Spec is non-deterministic")
 		}
 	}
 }
@@ -313,26 +313,26 @@ func TestAnalyzeDeterministic(t *testing.T) {
 // Spec
 // ---------------------------------------------------------------------------
 
-// checkout è il documento dei golden: login, carrello, pagamento con guard,
-// un ciclo e uno scatto automatico.
+// checkout is the golden document: login, cart, payment with a guard,
+// a cycle and an automatic transition.
 func checkout() *tdoc {
 	d := newTDoc().
 		node("home", "Home", MetaRoute, "/", MetaComponent, "HomePage", MetaStatus, StatusImplemented).
 		node("login", "Login", MetaRoute, "/login", MetaComponent, "LoginPage").
-		node("cart", "Carrello", MetaRoute, "/cart/:id").
-		node("pay", "Pagamento").
-		node("done", "Grazie", MetaKind, KindEnd, MetaRoute, "/thanks").
-		node("btn-login", "Bottone login", MetaTestID, "go-login").
-		node("link-cart", "Link carrello", MetaTestText, "Vai al carrello")
-	d.flow("checkout", "Acquisto", "home")
-	d.Flows["checkout"].Description = "Dal catalogo alla conferma d'ordine."
-	d.tr("t-login", "checkout", "home", "login", "Accedi", "click").ElementId = "btn-login"
-	d.tr("t-cart", "checkout", "login", "cart", "Carrello", "submit").ElementId = "link-cart"
+		node("cart", "Cart", MetaRoute, "/cart/:id").
+		node("pay", "Payment").
+		node("done", "Thanks", MetaKind, KindEnd, MetaRoute, "/thanks").
+		node("btn-login", "Login button", MetaTestID, "go-login").
+		node("link-cart", "Cart link", MetaTestText, "Go to cart")
+	d.flow("checkout", "Purchase", "home")
+	d.Flows["checkout"].Description = "From the catalog to the order confirmation."
+	d.tr("t-login", "checkout", "home", "login", "Log in", "click").ElementId = "btn-login"
+	d.tr("t-cart", "checkout", "login", "cart", "Cart", "submit").ElementId = "link-cart"
 	back := d.tr("t-back", "checkout", "cart", "home", "", "back")
-	back.Effect = "svuota il carrello"
-	pay := d.tr("t-pay", "checkout", "cart", "pay", "Paga", "click")
-	pay.Guard = "carrello non vuoto"
-	pay.Effect = "ordine creato"
+	back.Effect = "empties the cart"
+	pay := d.tr("t-pay", "checkout", "cart", "pay", "Pay", "click")
+	pay.Guard = "cart not empty"
+	pay.Effect = "order created"
 	d.tr("t-done", "checkout", "pay", "done", "", "auto")
 	d.tr("t-key", "checkout", "home", "cart", "Enter", "key")
 	return d
@@ -349,10 +349,10 @@ func golden(t *testing.T, name, got string) {
 	}
 	want, err := os.ReadFile(path)
 	if err != nil {
-		t.Fatalf("manca il golden %s (esegui con -update): %v", path, err)
+		t.Fatalf("missing golden %s (run with -update): %v", path, err)
 	}
 	if string(want) != got {
-		t.Errorf("%s differisce dal golden (esegui con -update per rigenerare)\n--- got ---\n%s", name, got)
+		t.Errorf("%s differs from the golden (run with -update to regenerate)\n--- got ---\n%s", name, got)
 	}
 }
 
@@ -368,26 +368,26 @@ func TestPlaywrightGolden(t *testing.T) {
 func TestSpecContent(t *testing.T) {
 	out := Spec(checkout().Document, "checkout")
 	for _, want := range []string{
-		"## Flusso: Acquisto (`checkout`)",
-		"Dal catalogo alla conferma d'ordine.",
+		"## Flow: Purchase (`checkout`)",
+		"From the catalog to the order confirmation.",
 		"| Home | screen | `/` | `HomePage` | implemented |",
-		"**Home** --[click: Accedi]--> **Login**",
-		"**Carrello** --[click: Paga]--> **Pagamento** (guard: carrello non vuoto; effect: ordine creato)",
+		"**Home** --[click: Log in]--> **Login**",
+		"**Cart** --[click: Pay]--> **Payment** (guard: cart not empty; effect: order created)",
 		"#### Scenario 1:",
-		"**Given** l'utente è sulla schermata **Home**",
-		"**When** l'utente fa click su \"Accedi\"",
-		"**Then** vede la schermata **Login**",
-		"### Problemi",
+		"**Given** the user is on screen **Home**",
+		"**When** the user clicks \"Log in\"",
+		"**Then** sees screen **Login**",
+		"### Issues",
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("la spec non contiene %q", want)
+			t.Errorf("the spec does not contain %q", want)
 		}
 	}
-	if got := Spec(newTDoc().Document, ""); !strings.Contains(got, "Nessun flusso") {
-		t.Errorf("documento senza flussi: %q", got)
+	if got := Spec(newTDoc().Document, ""); !strings.Contains(got, "No flow") {
+		t.Errorf("document without flows: %q", got)
 	}
-	if got := Spec(checkout().Document, "boh"); !strings.Contains(got, "non trovato") {
-		t.Errorf("flusso inesistente: %q", got)
+	if got := Spec(checkout().Document, "nope"); !strings.Contains(got, "not found") {
+		t.Errorf("nonexistent flow: %q", got)
 	}
 }
 
@@ -396,7 +396,7 @@ func TestSpecEscapesTableCells(t *testing.T) {
 	d.tr("t", "f", "a", "b", "", "click")
 	out := Spec(d.Document, "")
 	if !strings.Contains(out, `| A\|B |`) || !strings.Contains(out, "`/x\\|y`") {
-		t.Errorf("pipe non escapato:\n%s", out)
+		t.Errorf("unescaped pipe:\n%s", out)
 	}
 }
 
@@ -414,36 +414,36 @@ func TestPlaywrightLocatorsAndAssertions(t *testing.T) {
 		`await page.goto("/");`,
 		"// flow:t-login",
 		`await page.getByTestId("go-login").click();`,
-		`await page.getByText("Vai al carrello").click();`,
+		`await page.getByText("Go to cart").click();`,
 		`await page.keyboard.press("Enter");`,
 		"await page.goBack();",
-		`// guard: carrello non vuoto`,
-		`// effect: ordine creato`,
+		`// guard: cart not empty`,
+		`// effect: order created`,
 		"trigger auto",
-		`await page.getByRole('button', { name: "Paga" }).click();`,
+		`await page.getByRole('button', { name: "Pay" }).click();`,
 		`new RegExp("^[a-z]+://[^/]+/cart/[^/]+/?(?:[?#].*)?$")`,
 	} {
 		if !strings.Contains(out, want) {
-			t.Errorf("manca %q nell'output:\n%s", want, out)
+			t.Errorf("missing %q in the output:\n%s", want, out)
 		}
 	}
 }
 
 func TestPlaywrightMissingRouteIsFixme(t *testing.T) {
-	d := newTDoc().node("a", "Senza rotta").node("b", "B", MetaKind, KindEnd).flow("f", "F", "a")
-	d.tr("t", "f", "a", "b", "Vai", "click")
+	d := newTDoc().node("a", "No route").node("b", "B", MetaKind, KindEnd).flow("f", "F", "a")
+	d.tr("t", "f", "a", "b", "Go", "click")
 	out, err := PlaywrightTests(d.Document, "f", PlaywrightOptions{})
 	if err != nil {
 		t.Fatal(err)
 	}
-	if !strings.Contains(out, `// TODO: manca code.route su "Senza rotta"`) || !strings.Contains(out, "test.fixme(true") {
-		t.Errorf("manca TODO/fixme:\n%s", out)
+	if !strings.Contains(out, `// TODO: code.route is missing on "No route"`) || !strings.Contains(out, "test.fixme(true") {
+		t.Errorf("missing TODO/fixme:\n%s", out)
 	}
 	if strings.Contains(out, "page.goto") {
-		t.Error("senza rotta non si naviga")
+		t.Error("without a route there is no navigation")
 	}
 	if strings.Contains(out, "toHaveURL") || strings.Contains(out, "{ expect,") {
-		t.Error("nessuna asserzione né import di expect senza rotte")
+		t.Error("no assertion nor expect import without routes")
 	}
 }
 
@@ -451,8 +451,8 @@ func TestPlaywrightNoLocatorIsFixme(t *testing.T) {
 	d := newTDoc().node("a", "A", MetaRoute, "/a").node("b", "B", MetaKind, KindEnd).flow("f", "F", "a")
 	d.tr("t", "f", "a", "b", "", "click")
 	out, _ := PlaywrightTests(d.Document, "f", PlaywrightOptions{})
-	if !strings.Contains(out, "// TODO: transizione t") || !strings.Contains(out, "test.fixme(true") {
-		t.Errorf("atteso TODO:\n%s", out)
+	if !strings.Contains(out, "// TODO: transition t") || !strings.Contains(out, "test.fixme(true") {
+		t.Errorf("expected TODO:\n%s", out)
 	}
 }
 
@@ -461,13 +461,13 @@ func TestPlaywrightFreeTextTriggerUsesGetByText(t *testing.T) {
 	d.tr("t", "f", "a", "b", "Menu", "hover")
 	out, _ := PlaywrightTests(d.Document, "f", PlaywrightOptions{})
 	if !strings.Contains(out, `page.getByText("Menu")`) || !strings.Contains(out, "toBeVisible()") {
-		t.Errorf("trigger libero:\n%s", out)
+		t.Errorf("free trigger:\n%s", out)
 	}
 }
 
 func TestPlaywrightQuotingAndBaseURL(t *testing.T) {
 	d := newTDoc().node("a", `Home "<&>"`, MetaRoute, "/a").node("b", "B", MetaKind, KindEnd).flow("f", "F", "a")
-	d.tr("t", "f", "a", "b", "dice \"ciao\"\nricorda\\", "click")
+	d.tr("t", "f", "a", "b", "says \"hello\"\nremember\\", "click")
 	out, err := PlaywrightTests(d.Document, "f", PlaywrightOptions{BaseURL: "http://localhost:3000"})
 	if err != nil {
 		t.Fatal(err)
@@ -475,20 +475,20 @@ func TestPlaywrightQuotingAndBaseURL(t *testing.T) {
 	if !strings.Contains(out, `"http://localhost:3000/a"`) {
 		t.Errorf("baseURL:\n%s", out)
 	}
-	if !strings.Contains(out, `{ name: "dice \"ciao\"\nricorda\\" }`) {
-		t.Errorf("escape del nome:\n%s", out)
+	if !strings.Contains(out, `{ name: "says \"hello\"\nremember\\" }`) {
+		t.Errorf("name escaping:\n%s", out)
 	}
 	if !strings.Contains(out, `<&>`) {
-		t.Errorf("niente escape HTML:\n%s", out)
+		t.Errorf("no HTML escaping:\n%s", out)
 	}
 }
 
 func TestPlaywrightErrors(t *testing.T) {
 	if _, err := PlaywrightTests(newTDoc().Document, "", PlaywrightOptions{}); err == nil {
-		t.Error("documento senza flussi deve dare errore")
+		t.Error("a document without flows must give an error")
 	}
-	if _, err := PlaywrightTests(checkout().Document, "boh", PlaywrightOptions{}); err == nil {
-		t.Error("flusso inesistente deve dare errore")
+	if _, err := PlaywrightTests(checkout().Document, "nope", PlaywrightOptions{}); err == nil {
+		t.Error("a nonexistent flow must give an error")
 	}
 }
 
@@ -509,7 +509,7 @@ func TestRoutePattern(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// Coverage e Tasks
+// Coverage and Tasks
 // ---------------------------------------------------------------------------
 
 func write(t *testing.T, root, rel, content string) {
@@ -525,12 +525,12 @@ func write(t *testing.T, root, rel, content string) {
 
 func coverageRepo(t *testing.T) string {
 	root := t.TempDir()
-	// Implementazione: rotta e componente.
+	// Implementation: route and component.
 	write(t, root, "src/App.tsx", `const routes = [{ path: "/login", element: <LoginPage/> }];`)
-	write(t, root, "src/cart.ts", "// rotta del carrello\nexport const cart = '/cart/:id'\n")
-	// Test annotato: conta per le transizioni ma NON implementa Pagamento.
-	write(t, root, "e2e/checkout.spec.ts", "// flow:t-login\n// flow:t-cart.\nconst x = '/pay'; PagamentoPage\n")
-	// Generati, dipendenze e binari: ignorati per l'implementazione.
+	write(t, root, "src/cart.ts", "// cart route\nexport const cart = '/cart/:id'\n")
+	// Annotated test: counts for the transitions but does NOT implement Payment.
+	write(t, root, "e2e/checkout.spec.ts", "// flow:t-login\n// flow:t-cart.\nconst x = '/pay'; PaymentPage\n")
+	// Generated, dependencies and binaries: ignored for the implementation.
 	write(t, root, "src/gen.ts", "// Code generated by x. DO NOT EDIT.\nconst a = '/pay'\n")
 	write(t, root, "node_modules/lib/index.js", "// flow:t-pay\n'/pay'")
 	write(t, root, "vendor/x.go", "// flow:t-pay\n")
@@ -547,23 +547,23 @@ func TestCoverage(t *testing.T) {
 		t.Fatal(err)
 	}
 	if len(rep.Flows) != 1 {
-		t.Fatalf("flussi = %d", len(rep.Flows))
+		t.Fatalf("flows = %d", len(rep.Flows))
 	}
 	status := map[string]string{}
 	for _, s := range rep.Flows[0].Screens {
 		status[s.NodeID] = s.Status
 	}
 	want := map[string]string{
-		"home":  StatusImplemented, // dal meta, nessun codice
+		"home":  StatusImplemented, // from the meta, no code
 		"login": StatusImplemented, // "/login" in App.tsx
 		"cart":  StatusImplemented, // "/cart/:id" in cart.ts
-		"pay":   StatusPlanned,     // citata solo da test/generato/dipendenze
+		"pay":   StatusPlanned,     // cited only by tests/generated/dependencies
 		"done":  StatusPlanned,
-		// gli elementi trigger non sono schermate del flusso
+		// trigger elements are not screens of the flow
 	}
 	for id, w := range want {
 		if status[id] != w {
-			t.Errorf("schermata %s = %q, want %q", id, status[id], w)
+			t.Errorf("screen %s = %q, want %q", id, status[id], w)
 		}
 	}
 	tested := map[string]bool{}
@@ -572,31 +572,31 @@ func TestCoverage(t *testing.T) {
 	}
 	for id, w := range map[string]bool{"t-login": true, "t-cart": true, "t-pay": false, "t-key": false, "t-back": false} {
 		if tested[id] != w {
-			t.Errorf("transizione %s tested = %v, want %v", id, tested[id], w)
+			t.Errorf("transition %s tested = %v, want %v", id, tested[id], w)
 		}
 	}
 	tot := rep.Totals
 	if tot.ScreensTotal != 5 || tot.ScreensImplemented != 3 || tot.TransitionsTotal != 6 || tot.TransitionsTested != 2 {
-		t.Errorf("totali = %+v", tot)
+		t.Errorf("totals = %+v", tot)
 	}
 	if tot.ScreensPercent != 60 || tot.TransitionsPercent != 33.3 || tot.Percent != 45.5 {
-		t.Errorf("percentuali = %+v", tot)
+		t.Errorf("percentages = %+v", tot)
 	}
 	md := rep.Markdown()
-	for _, s := range []string{"# Coverage dei flussi — Shop", "**Totale: 45.5%**", "`src/App.tsx`", "(dichiarato in `status`)"} {
+	for _, s := range []string{"# Flow coverage — Shop", "**Total: 45.5%**", "`src/App.tsx`", "(declared in `status`)"} {
 		if !strings.Contains(md, s) {
-			t.Errorf("markdown senza %q:\n%s", s, md)
+			t.Errorf("markdown without %q:\n%s", s, md)
 		}
 	}
 }
 
 func TestCoverageComponentAndStatusOverride(t *testing.T) {
 	root := t.TempDir()
-	write(t, root, "src/Pay.tsx", "export function PagamentoPage() {}\nexport const NotPagamentoPageX = 1")
+	write(t, root, "src/Pay.tsx", "export function PaymentPage() {}\nexport const NotPaymentPageX = 1")
 	d := newTDoc().
 		node("a", "A", MetaStatus, StatusTested).
-		node("p", "P", MetaComponent, "PagamentoPage").
-		node("q", "Q", MetaComponent, "Pagamento").
+		node("p", "P", MetaComponent, "PaymentPage").
+		node("q", "Q", MetaComponent, "Payment").
 		node("r", "R", MetaRoute, "/")
 	d.flow("f", "F", "a")
 	d.tr("t1", "f", "a", "p", "", "click")
@@ -614,35 +614,35 @@ func TestCoverageComponentAndStatusOverride(t *testing.T) {
 		t.Errorf("override: %+v", got["a"])
 	}
 	if got["p"].Status != StatusImplemented || got["p"].Source != "code" {
-		t.Errorf("componente: %+v", got["p"])
+		t.Errorf("component: %+v", got["p"])
 	}
-	// "Pagamento" compare solo dentro altri identificatori: \b non deve scattare.
+	// "Payment" only appears inside other identifiers: \b must not match.
 	if got["q"].Status != StatusPlanned {
-		t.Errorf("confine di parola: %+v", got["q"])
+		t.Errorf("word boundary: %+v", got["q"])
 	}
-	// La rotta "/" da sola non basta (sarebbe ovunque).
+	// The route "/" alone is not enough (it would be everywhere).
 	if got["r"].Status != StatusPlanned {
-		t.Errorf("rotta radice: %+v", got["r"])
+		t.Errorf("root route: %+v", got["r"])
 	}
 	write(t, root, "src/router.ts", `export default ['/']`)
 	rep, _ = Coverage(d.Document, "f", root)
 	for _, s := range rep.Flows[0].Screens {
 		if s.NodeID == "r" && s.Status != StatusImplemented {
-			t.Errorf("rotta radice quotata: %+v", s)
+			t.Errorf("quoted root route: %+v", s)
 		}
 	}
 }
 
 func TestCoverageErrorsAndEmpty(t *testing.T) {
 	if _, err := Coverage(checkout().Document, "", ""); err == nil {
-		t.Error("repoDir vuoto deve dare errore")
+		t.Error("an empty repoDir must give an error")
 	}
 	if _, err := Coverage(checkout().Document, "", filepath.Join(t.TempDir(), "nope")); err == nil {
-		t.Error("repoDir inesistente deve dare errore")
+		t.Error("a nonexistent repoDir must give an error")
 	}
 	rep, err := Coverage(newTDoc().Document, "", t.TempDir())
 	if err != nil || rep.Totals.Percent != 100 {
-		t.Errorf("documento senza flussi: %+v %v", rep, err)
+		t.Errorf("document without flows: %+v %v", rep, err)
 	}
 }
 
@@ -652,7 +652,7 @@ func TestCoverageSharedScreenCountedOnce(t *testing.T) {
 	d.tr("t2", "f2", "a", "b", "", "click")
 	rep, _ := Coverage(d.Document, "", t.TempDir())
 	if rep.Totals.ScreensTotal != 2 || rep.Totals.TransitionsTotal != 2 || len(rep.Flows) != 2 {
-		t.Errorf("totali = %+v", rep.Totals)
+		t.Errorf("totals = %+v", rep.Totals)
 	}
 }
 
@@ -669,10 +669,10 @@ func TestCoverageIgnoresGeneratedPlaywright(t *testing.T) {
 		t.Fatal(err)
 	}
 	if rep.Totals.TransitionsTested != 6 {
-		t.Errorf("il test generato deve coprire tutte le transizioni: %+v", rep.Totals)
+		t.Errorf("the generated test must cover all transitions: %+v", rep.Totals)
 	}
-	if rep.Totals.ScreensImplemented != 1 { // solo home, dal meta
-		t.Errorf("il test generato non e' implementazione: %+v", rep.Totals)
+	if rep.Totals.ScreensImplemented != 1 { // only home, from the meta
+		t.Errorf("the generated test is not an implementation: %+v", rep.Totals)
 	}
 }
 
@@ -685,34 +685,34 @@ func TestTasks(t *testing.T) {
 	}
 	out := Tasks(d.Document, "", cov)
 	for _, s := range []string{
-		"# Attività dai flussi — Shop",
-		"- [ ] Implementare la schermata **Pagamento** (manca `code.route`/`code.component` nel disegno)",
-		"- [ ] Implementare la schermata **Grazie** — rotta `/thanks`",
-		"- [ ] Testare la transizione **Carrello** --[click: Paga]--> **Pagamento**",
+		"# Tasks from the flows — Shop",
+		"- [ ] Implement the screen **Payment** (`code.route`/`code.component` missing in the design)",
+		"- [ ] Implement the screen **Thanks** — route `/thanks`",
+		"- [ ] Test the transition **Cart** --[click: Pay]--> **Payment**",
 		"`// flow:t-pay`",
-		"Totale attività aperte:",
+		"Total open tasks:",
 	} {
 		if !strings.Contains(out, s) {
-			t.Errorf("tasks senza %q:\n%s", s, out)
+			t.Errorf("tasks without %q:\n%s", s, out)
 		}
 	}
-	if strings.Contains(out, "Implementare la schermata **Home**") || strings.Contains(out, "`// flow:t-login`") {
-		t.Errorf("tasks elenca cose già coperte:\n%s", out)
+	if strings.Contains(out, "Implement the screen **Home**") || strings.Contains(out, "`// flow:t-login`") {
+		t.Errorf("tasks lists things already covered:\n%s", out)
 	}
 
-	// Senza coverage: solo i problemi del grafo.
+	// Without coverage: only the graph issues.
 	d2 := newTDoc().node("a", "A").flow("f", "F", "a")
 	got := Tasks(d2.Document, "", nil)
-	if !strings.Contains(got, "Correggere il grafo (`empty`)") {
-		t.Errorf("tasks senza coverage:\n%s", got)
+	if !strings.Contains(got, "Fix the graph (`empty`)") {
+		t.Errorf("tasks without coverage:\n%s", got)
 	}
-	// Tutto coperto.
+	// Everything covered.
 	d3 := newTDoc().node("a", "A", MetaStatus, StatusTested).node("b", "B", MetaKind, KindEnd, MetaStatus, StatusTested).flow("f", "F", "a")
 	d3.tr("t", "f", "a", "b", "", "click")
 	r3 := t.TempDir()
 	write(t, r3, "x.spec.ts", "// flow:t")
 	cov3, _ := Coverage(d3.Document, "", r3)
-	if got := Tasks(d3.Document, "", cov3); !strings.Contains(got, "tutto coperto") {
-		t.Errorf("atteso tutto coperto:\n%s", got)
+	if got := Tasks(d3.Document, "", cov3); !strings.Contains(got, "everything covered") {
+		t.Errorf("expected everything covered:\n%s", got)
 	}
 }

@@ -19,7 +19,7 @@
       "componentId": "cmp2", "rootNodeId": "ghost", "name": "Radice fantasma"
     } },
     { "opId": "op5", "docId": "doc1", "createComponent": {
-      "rootNodeId": "m1", "name": "Id vuoto"
+      "rootNodeId": "m1", "name": "Empty id"
     } },
 
     { "opId": "op6", "docId": "doc1", "createNode": { "node": {

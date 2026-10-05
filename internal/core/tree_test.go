@@ -7,8 +7,8 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// childOf costruisce un rettangolo dentro un parent preciso. Il resto dei campi
-// non conta per gli invarianti dell'albero: quello che conta è parent_id.
+// childOf builds a rectangle inside a specific parent. The rest of the fields
+// does not matter for the tree invariants: what matters is parent_id.
 func childOf(id, parentID, orderKey string) *opendesignerv1.Node {
 	return &opendesignerv1.Node{
 		Id: id, ParentId: parentID, OrderKey: orderKey, Name: id, Visible: true, Opacity: 1,
@@ -31,8 +31,8 @@ func reparentOp(id, newParent, orderKey string) *opendesignerv1.Op {
 	}}}
 }
 
-// mustApply applica una sequenza di op che DEVE passare: è il setup dei test
-// sull'albero, non la cosa che stanno provando.
+// mustApply applies a sequence of ops that MUST pass: it is the setup of the
+// tree tests, not the thing they are testing.
 func mustApply(t *testing.T, doc *opendesignerv1.Document, ops ...*opendesignerv1.Op) {
 	t.Helper()
 	for i, op := range ops {
@@ -42,7 +42,7 @@ func mustApply(t *testing.T, doc *opendesignerv1.Document, ops ...*opendesignerv
 	}
 }
 
-// L'albero di prova, tre livelli:
+// The test tree, three levels:
 //
 //	page1
 //	├── g1
@@ -63,7 +63,7 @@ func treeDoc(t *testing.T) *opendesignerv1.Document {
 	return doc
 }
 
-// --- CreateNode: il parent deve esistere ------------------------------------
+// --- CreateNode: the parent must exist --------------------------------------
 
 func TestApplyCreateRejectsUnknownParent(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
@@ -78,9 +78,9 @@ func TestApplyCreateRejectsUnknownParent(t *testing.T) {
 
 func TestApplyCreateRejectsEmptyParent(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	// "" non è né una pagina né un nodo: un nodo senza parent non è
-	// raggiungibile da nessuna pagina, quindi non è disegnabile né
-	// selezionabile -- esiste solo nella mappa.
+	// "" is neither a page nor a node: a node without a parent is not
+	// reachable from any page, so it is neither drawable nor
+	// selectable -- it exists only in the map.
 	if err := Apply(doc, createOp(childOf("n1", "", "a1"))); !errors.Is(err, ErrParentNotFound) {
 		t.Fatalf("expected ErrParentNotFound, got %v", err)
 	}
@@ -89,15 +89,15 @@ func TestApplyCreateRejectsEmptyParent(t *testing.T) {
 func TestApplyCreateAcceptsPageAndNodeParents(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	mustApply(t, doc, createOp(childOf("g1", "page1", "a1")))
-	// Un nodo esistente è un parent valido quanto una pagina: è tutto il punto
-	// dell'annidamento.
+	// An existing node is as valid a parent as a page: that is the whole point
+	// of nesting.
 	mustApply(t, doc, createOp(childOf("c1", "g1", "a1")))
 	if doc.Nodes["c1"].GetParentId() != "g1" {
 		t.Fatalf("wrong parent: %q", doc.Nodes["c1"].GetParentId())
 	}
 }
 
-// --- DeleteNode: cascata ----------------------------------------------------
+// --- DeleteNode: cascade ----------------------------------------------------
 
 func TestApplyDeleteCascadesToDescendants(t *testing.T) {
 	doc := treeDoc(t)
@@ -109,7 +109,7 @@ func TestApplyDeleteCascadesToDescendants(t *testing.T) {
 			t.Fatalf("%s survived a cascading delete", id)
 		}
 	}
-	// Il resto del documento non si tocca.
+	// The rest of the document is left alone.
 	if _, ok := doc.Nodes["other"]; !ok {
 		t.Fatal("cascade ate a node outside the subtree")
 	}
@@ -150,8 +150,8 @@ func TestApplyReparentMovesUnderNewParent(t *testing.T) {
 	if got := doc.Nodes["c1"].GetOrderKey(); got != "a9" {
 		t.Fatalf("order key not written: %q", got)
 	}
-	// Il sottoalbero segue il nodo senza che nessuno lo riscriva: i figli
-	// puntano al nodo, non al nonno.
+	// The subtree follows the node without anyone rewriting it: the children
+	// point to the node, not to the grandparent.
 	if got := doc.Nodes["d1"].GetParentId(); got != "c1" {
 		t.Fatalf("descendant re-pointed: %q", got)
 	}
@@ -179,7 +179,7 @@ func TestApplyReparentRejectsCycle(t *testing.T) {
 			if !errors.Is(err, ErrCycle) {
 				t.Fatalf("expected ErrCycle, got %v", err)
 			}
-			// Rifiuto in BLOCCO: nemmeno la order key si muove.
+			// ALL-OR-NOTHING rejection: not even the order key moves.
 			if got := doc.Nodes[tc.id].GetParentId(); got != "page1" {
 				t.Fatalf("parent mutated by a rejected reparent: %q", got)
 			}
@@ -207,8 +207,8 @@ func TestApplyReparentRejectsUnknownNode(t *testing.T) {
 	}
 }
 
-// Riordinare fra i pari SENZA cambiare parent è un reparent legittimo (stesso
-// parent, nuova chiave): il pannello livelli lo usa per il drag di riordino.
+// Reordering among siblings WITHOUT changing parent is a legitimate reparent (same
+// parent, new key): the layers panel uses it for the reorder drag.
 func TestApplyReparentSameParentReorders(t *testing.T) {
 	doc := treeDoc(t)
 	if err := Apply(doc, reparentOp("c1", "g1", "a3")); err != nil {
@@ -219,7 +219,7 @@ func TestApplyReparentSameParentReorders(t *testing.T) {
 	}
 }
 
-// --- attraversamento --------------------------------------------------------
+// --- traversal --------------------------------------------------------------
 
 func ids(nodes []*opendesignerv1.Node) []string {
 	out := make([]string, len(nodes))
@@ -252,8 +252,8 @@ func TestChildrenOfIsOrderedByOrderKey(t *testing.T) {
 	if got := ids(ChildrenOf(doc, "g1")); !equalIDs(got, []string{"a", "m", "z"}) {
 		t.Fatalf("children out of order: %v", got)
 	}
-	// A parità di chiave l'ordine deve restare DETERMINISTICO (l'iterazione di
-	// una mappa Go non lo è): l'id fa da spareggio.
+	// With equal keys the order must remain DETERMINISTIC (iteration of a
+	// Go map is not): the id is the tiebreaker.
 	mustApply(t, doc, createOp(childOf("b", "g1", "a1")))
 	if got := ids(ChildrenOf(doc, "g1")); !equalIDs(got, []string{"a", "b", "m", "z"}) {
 		t.Fatalf("tie not broken by id: %v", got)
@@ -266,8 +266,8 @@ func TestSubtreeOfIsParentsBeforeChildren(t *testing.T) {
 	if !equalIDs(got, []string{"g1", "c1", "d1", "c2"}) {
 		t.Fatalf("wrong subtree order: %v", got)
 	}
-	// La proprietà che serve all'undo: ogni nodo compare DOPO il suo parent,
-	// quindi ricrearli in quest'ordine soddisfa l'invariante parent-esiste.
+	// The property needed by undo: every node appears AFTER its parent,
+	// so recreating them in this order satisfies the parent-exists invariant.
 	seen := map[string]bool{"page1": true}
 	for _, n := range SubtreeOf(doc, "g1") {
 		if !seen[n.GetParentId()] && n.GetId() != "g1" {
@@ -288,16 +288,16 @@ func TestIsAncestorOf(t *testing.T) {
 	if IsAncestorOf(doc, "other", "c1") {
 		t.Fatal("a sibling subtree is not an ancestor")
 	}
-	// Un nodo non è antenato di se stesso (la relazione è stretta); il rifiuto
-	// del reparent su se stesso lo tratta a parte.
+	// A node is not its own ancestor (the relation is strict); the rejection
+	// of reparenting onto itself handles that separately.
 	if IsAncestorOf(doc, "g1", "g1") {
 		t.Fatal("IsAncestorOf must be strict")
 	}
 }
 
-// Un documento MALFORMATO (ciclo già presente, es. da un op-log scritto da una
-// versione senza queste invarianti) non deve mandare in loop l'attraversamento:
-// vale sia per la cascata sia per il controllo dei cicli.
+// A MALFORMED document (cycle already present, e.g. from an op-log written by a
+// version without these invariants) must not send the traversal into a loop:
+// this holds for both the cascade and the cycle check.
 func TestTraversalSurvivesACorruptedCycle(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	doc.Nodes["a"] = childOf("a", "b", "a1")

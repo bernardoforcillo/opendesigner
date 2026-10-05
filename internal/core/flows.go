@@ -7,26 +7,26 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// FLUSSI -- la metà Go (l'autorità) di web/src/store/applyOp.ts per i quattro op
-// setFlow / deleteFlow / setTransition / deleteTransition.
+// FLOWS -- the Go half (the authority) of web/src/store/applyOp.ts for the four
+// ops setFlow / deleteFlow / setTransition / deleteTransition.
 //
-// Un flusso è un grafo di schermate: le schermate sono NODI del documento
-// (referenziati per id, mai copiati) e le transizioni sono gli archi. Le
-// invarianti, speculari a quelle dei nodi e delle pagine:
+// A flow is a graph of screens: screens are document NODES (referenced by id,
+// never copied) and transitions are the edges. The invariants, mirroring those
+// of nodes and pages:
 //
-//	1. una transizione appartiene a un flusso ESISTENTE e collega due nodi
-//	   ESISTENTI (e, se indicato, l'elemento che la innesca esiste);
-//	2. cancellare un flusso cancella le sue transizioni;
-//	3. cancellare un nodo (o una pagina) cancella le transizioni che lo
-//	   attraversano, svuota il `start_id` dei flussi che partivano da lui e
-//	   azzera l'`element_id` delle transizioni che lo usavano come hotspot.
+//	1. a transition belongs to an EXISTING flow and connects two EXISTING nodes
+//	   (and, if given, the element that triggers it exists);
+//	2. deleting a flow deletes its transitions;
+//	3. deleting a node (or a page) deletes the transitions that go through it,
+//	   clears the `start_id` of the flows that started from it, and resets the
+//	   `element_id` of the transitions that used it as a hotspot.
 //
-// Gli upsert sono ASSOLUTI: il valore che arriva è il valore finale, quindi
-// l'inverso di un op è lo stato precedente (vedi web/src/store/history.ts).
+// Upserts are ABSOLUTE: the incoming value is the final value, so the inverse
+// of an op is the previous state (see web/src/store/history.ts).
 //
-// Il documento resta un valore proto qualsiasi: le mappe `Flows`/`Transitions`
-// possono essere nil (un documento senza flussi, o decodificato da uno snapshot
-// scritto prima di questa funzione) e si inizializzano alla prima scrittura.
+// The document remains any proto value: the `Flows`/`Transitions` maps may be
+// nil (a document without flows, or decoded from a snapshot written before this
+// feature) and are initialized on the first write.
 
 func nodeExists(doc *opendesignerv1.Document, id string) bool {
 	_, ok := doc.GetNodes()[id]
@@ -92,10 +92,10 @@ func applyDeleteTransition(doc *opendesignerv1.Document, d *opendesignerv1.Delet
 	return nil
 }
 
-// cascadeFlows toglie dai flussi ciò che riferiva i nodi appena cancellati. Le
-// voci modificate sono SOSTITUITE da copie, mai mutate in place: con il clone
-// copy-on-write del server (cowClone) l'oggetto potrebbe essere condiviso con la
-// generazione precedente del documento.
+// cascadeFlows removes from the flows whatever referenced the nodes just deleted.
+// Modified entries are REPLACED by copies, never mutated in place: with the
+// server's copy-on-write clone (cowClone) the object might be shared with the
+// document's previous generation.
 func cascadeFlows(doc *opendesignerv1.Document, gone map[string]bool) {
 	if len(gone) == 0 {
 		return

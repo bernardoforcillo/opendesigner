@@ -46,22 +46,22 @@ func runServe(args []string) {
 	mux := http.NewServeMux()
 	path, handler := opendesignerv1connect.NewDocumentServiceHandler(svc)
 	mux.Handle(path, handler)
-	// Le immagini: POST /assets-api/{docId} per caricarle, GET
-	// /assets-api/{docId}/{hash} per servirle a un <img>. HTTP semplice e non
-	// l'RPC UploadAsset del design -- il perché sta in internal/server/assets.go.
-	// Il prefisso NON è /assets/ perché lì sotto il file server qui accanto serve
-	// i bundle di Vite.
+	// Images: POST /assets-api/{docId} to upload them, GET
+	// /assets-api/{docId}/{hash} to serve them to an <img>. Plain HTTP rather than
+	// the design's UploadAsset RPC -- the why is in internal/server/assets.go.
+	// The prefix is NOT /assets/ because underneath it the file server next to this
+	// serves Vite's bundles.
 	server.MountAssets(mux, *workspace)
-	// L'editor sta DENTRO il binario (web.Dist): `opendesigner serve` da solo
-	// serve già l'app, senza build del frontend né flag. -web resta la via di
-	// sviluppo e ha la precedenza -- vedi internal/server/webui.go.
+	// The editor lives INSIDE the binary (web.Dist): `opendesigner serve` alone
+	// already serves the app, with no frontend build or flag. -web remains the
+	// development route and takes precedence -- see internal/server/webui.go.
 	server.MountWeb(mux, *webDir, web.Dist)
-	// MCP su HTTP: http://localhost:8080/mcp, nello stesso processo dell'editor.
-	// La sessione MCP richiama il server su loopback come un client qualunque.
+	// MCP over HTTP: http://localhost:8080/mcp, in the same process as the editor.
+	// The MCP session calls back into the server over loopback like any other client.
 	odmcp.MountHTTP(mux, loopbackURL(*addr), log.New(os.Stderr, "opendesigner-mcp ", log.LstdFlags))
 
-	// h2c (HTTP/2 in chiaro) serve allo streaming Connect in locale, dove non c'è TLS.
-	// Dalla stdlib Go 1.24 lo si abilita con Server.Protocols: niente golang.org/x/net.
+	// h2c (cleartext HTTP/2) is needed for Connect streaming locally, where there is no TLS.
+	// Since Go 1.24's stdlib it is enabled via Server.Protocols: no golang.org/x/net.
 	protocols := new(http.Protocols)
 	protocols.SetHTTP1(true)
 	protocols.SetUnencryptedHTTP2(true)
@@ -73,15 +73,15 @@ func runServe(args []string) {
 
 	log.Printf("opendesigner serve on %s (workspace=%s)", *addr, *workspace)
 	for _, u := range lanURLs(*addr) {
-		log.Printf("sulla stessa rete apri: %s", u)
+		log.Printf("on the same network open: %s", u)
 	}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)
 	}
 }
 
-// loopbackURL è l'URL con cui il processo raggiunge se stesso: l'host di addr
-// se è specifico, altrimenti 127.0.0.1 (":8080", "0.0.0.0:8080", "[::]:8080").
+// loopbackURL is the URL the process uses to reach itself: addr's host
+// if specific, otherwise 127.0.0.1 (":8080", "0.0.0.0:8080", "[::]:8080").
 func loopbackURL(addr string) string {
 	host, port, err := net.SplitHostPort(addr)
 	if err != nil {

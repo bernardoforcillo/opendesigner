@@ -1,7 +1,7 @@
-// Pagina di supporto di web/scripts/export-parity.mjs: disegna UNA schermata del
-// documento col renderer VERO dell'editor (drawScene su Canvas 2D, dpr 1) e
-// confronta due immagini pixel per pixel. Il documento arriva come protojson,
-// lo stesso file che il CLI esporta: l'editor e l'export partono dagli stessi byte.
+// Support page for web/scripts/export-parity.mjs: it draws ONE screen of the
+// document with the editor's REAL renderer (drawScene on Canvas 2D, dpr 1) and
+// compares two images pixel by pixel. The document arrives as protojson,
+// the same file the CLI exports: the editor and the export start from the same bytes.
 import { fromJson } from "@bufbuild/protobuf";
 import { DocumentSchema } from "../../src/gen/opendesigner/v1/opendesigner_pb";
 import { fromDocument } from "../../src/store/types";
@@ -18,13 +18,13 @@ function decode(url: string): Promise<HTMLImageElement> {
   return new Promise((resolve, reject) => {
     const im = new Image();
     im.onload = () => resolve(im);
-    im.onerror = () => reject(new Error("immagine non decodificabile"));
+    im.onerror = () => reject(new Error("image cannot be decoded"));
     im.src = url;
   });
 }
 
-// renderFrame: i pixel (PNG data URL, su fondo bianco) della schermata `frameId`
-// come li disegna l'editor. `assets` mappa hash -> data URL dell'immagine.
+// renderFrame: the pixels (PNG data URL, on a white background) of the screen `frameId`
+// as the editor draws it. `assets` maps hash -> the image's data URL.
 (window as any).renderFrame = async (docJson: unknown, frameId: string, assets: Record<string, string>) => {
   await loadFonts();
   const scene = fromDocument(fromJson(DocumentSchema, docJson as never));
@@ -37,7 +37,7 @@ function decode(url: string): Promise<HTMLImageElement> {
   canvas.width = Math.ceil(frame.width);
   canvas.height = Math.ceil(frame.height);
   const ctx = canvas.getContext("2d")!;
-  // La schermata sta alle sue coordinate nella pagina: la camera la porta a (0,0).
+  // The screen sits at its own coordinates on the page: the camera brings it to (0,0).
   drawScene(ctx, scene, { x: -frame.x, y: -frame.y, zoom: 1 }, { currentPageId: "page1", dpr: 1, images });
   const flat = document.createElement("canvas");
   flat.width = canvas.width;
@@ -51,9 +51,9 @@ function decode(url: string): Promise<HTMLImageElement> {
 
 interface Rect { x: number; y: number; w: number; h: number }
 
-// compare: differenze fra due PNG della stessa misura. `mask` sono i rettangoli
-// del TESTO (anti-aliasing e baseline differiscono per costruzione fra canvas e
-// DOM): si misurano a parte, e fuori da lì il confronto è quello stretto.
+// compare: differences between two PNGs of the same size. `mask` are the rectangles
+// of the TEXT (anti-aliasing and baseline differ by construction between canvas and
+// DOM): they are measured separately, and outside them the comparison is the strict one.
 (window as any).compare = async (aUrl: string, bUrl: string, mask: Rect[]) => {
   const [a, b] = await Promise.all([decode(aUrl), decode(bUrl)]);
   const W = a.width, H = a.height;

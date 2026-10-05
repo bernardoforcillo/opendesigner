@@ -1,5 +1,5 @@
-// Esportato da opendesigner (opendesigner export): schermata "Login" (rotta /login) del documento "Negozio" (shop). NON modificare a mano:
-// rigenerare con `opendesigner export`. L'attributo data-node-id lega ogni elemento al nodo del design.
+// Exported by opendesigner (opendesigner export): screen "Login" (route /login) of document "Shop" (shop). DO NOT edit by hand:
+// regenerate with `opendesigner export`. The data-node-id attribute ties every element to its design node.
 import { useNavigate } from "react-router-dom";
 
 export function Login() {
@@ -10,7 +10,7 @@ export function Login() {
         data-node-id="loginTitle"
         className="absolute left-[24px] top-[48px] w-[312px] whitespace-pre-wrap break-words [font-family:Inter,_sans-serif] text-[28px] font-bold leading-[1.2] text-[#1a1a1f]"
       >
-        {"Accedi al negozio"}
+        {"Sign in to the shop"}
       </div>
       <div
         data-node-id="loginEmail"
@@ -22,14 +22,14 @@ export function Login() {
       />
       <div
         // flow: t1
-        // guard: credenziali valide
-        // effect: sessione attiva
+        // guard: valid credentials
+        // effect: active session
         data-node-id="loginBtn"
         data-testid="login-submit"
         className="absolute left-[24px] top-[264px] w-[312px] h-[52px] flex justify-center items-center bg-[#3366f2] cursor-pointer"
         role="button"
         tabIndex={0}
-        aria-label="Accedi"
+        aria-label="Sign in"
         onClick={() => navigate("/home")}
         onKeyDown={(e) => { if (e.key === "Enter") navigate("/home"); }}
       >
@@ -37,7 +37,7 @@ export function Login() {
           data-node-id="loginBtnLabel"
           className="relative shrink-0 w-[120px] whitespace-pre-wrap break-words h-[20px] [font-family:Inter,_sans-serif] text-[16px] font-semibold leading-[1.2] text-center text-[#fff]"
         >
-          {"Entra"}
+          {"Sign in"}
         </div>
       </div>
     </div>

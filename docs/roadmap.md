@@ -1,49 +1,49 @@
 # Roadmap
 
-Obiettivo: un editor di design local-first, con co-design AI nativo (MCP), che
-possa sostituire Figma per team piccoli e per chi vuole design e codice insieme.
+Goal: a local-first design editor, with native AI co-design (MCP), that
+can replace Figma for small teams and for those who want design and code together.
 
-Legenda: [x] fatto · [ ] da fare
+Legend: [x] done · [ ] to do
 
-## 1. Parità di base
-- [x] Forme, testo, immagini, vettoriale, gruppi, frame, pagine
-- [x] Componenti con istanze e override
-- [x] Gradienti lineari e radiali (canvas, SVG, pannello, MCP)
-- [ ] Più stop per gradiente, gradiente su tratti dal pannello, immagine come fill
-- [x] Effetti: ombra esterna e sfocatura del livello (canvas, SVG, pannello, MCP, copia/incolla; ne disegna una per tipo per nodo)
-- [ ] Effetti: più ombre per nodo, ombra interna, sfocatura di sfondo, blend mode
-- [x] Auto layout: direzione, spazio, padding, allineamenti, hug; calcolato dal server (Shift+A avvolge la selezione, strumento Frame, pannello, MCP `create_frame`/`set_auto_layout`)
-- [x] Auto layout: riordino trascinando i figli (anche verso un altro auto layout), con linea d'inserimento e contorno; un solo passo di undo
-- [ ] Auto layout: figli che riempiono lo spazio (fill), wrap su più righe, trascinare un figlio FUORI dal frame, gruppi e istanze come figli
-- [ ] Constraints e resize responsivo
-- [ ] Varianti e proprietà dei componenti, librerie condivise
-- [ ] Variabili / design token con modalità
-- [ ] Tipografia: font caricabili, stili di testo, testo multiriga
-- [ ] Boolean operations, outline stroke, maschere
-- [ ] Prototipazione e modalità presentazione
-- [x] Diagrammi: flowchart e UML (classi, sequenza, stati) da testo Mermaid, calcolati dal server; editor (menu documento) e MCP (`create_diagram`, `update_diagram`, `list_diagrams`), vedi docs/diagrams.md
-- [ ] Diagrammi: connettori che seguono le forme, `subgraph`, ER, note nei diagrammi di classi e stati
-- [ ] Import SVG (poi .fig)
+## 1. Basic parity
+- [x] Shapes, text, images, vector, groups, frames, pages
+- [x] Components with instances and overrides
+- [x] Linear and radial gradients (canvas, SVG, panel, MCP)
+- [ ] More stops per gradient, gradient on strokes from the panel, image as a fill
+- [x] Effects: drop shadow and layer blur (canvas, SVG, panel, MCP, copy/paste; one per type per node is drawn)
+- [ ] Effects: multiple shadows per node, inner shadow, background blur, blend mode
+- [x] Auto layout: direction, spacing, padding, alignments, hug; computed by the server (Shift+A wraps the selection, Frame tool, panel, MCP `create_frame`/`set_auto_layout`)
+- [x] Auto layout: reordering by dragging children (also into another auto layout), with insertion line and outline; a single undo step
+- [ ] Auto layout: children that fill the space (fill), wrapping onto several rows, dragging a child OUT of the frame, groups and instances as children
+- [ ] Constraints and responsive resize
+- [ ] Variants and component properties, shared libraries
+- [ ] Variables / design tokens with modes
+- [ ] Typography: loadable fonts, text styles, multi-line text
+- [ ] Boolean operations, outline stroke, masks
+- [ ] Prototyping and presentation mode
+- [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
+- [ ] Diagrams: connectors that follow the shapes, `subgraph`, ER, notes in class and state diagrams
+- [ ] SVG import (then .fig)
 
-## 2. Collaborazione
-- [x] Multiplayer sulla stessa rete: nickname, avatar, cursori e selezioni degli altri, link `#doc=` per entrare nello stesso documento (niente account, di proposito)
-- [x] Gli agenti MCP compaiono come persone nella presenza (nome con `-nickname`, default "Claude"; evidenziano il nodo che stanno modificando)
-- [ ] Conflitti sulla stessa proprietà: oggi vince l'ultimo op arrivato al server
-- [ ] Commenti sul canvas
-- [ ] Versioni nominate e branching (sull'oplog)
+## 2. Collaboration
+- [x] Multiplayer on the same network: nickname, avatar, others' cursors and selections, `#doc=` link to join the same document (no accounts, on purpose)
+- [x] MCP agents show up as people in presence (name with `-nickname`, default "Claude"; they highlight the node they are editing)
+- [ ] Conflicts on the same property: today the last op to reach the server wins
+- [ ] Comments on the canvas
+- [ ] Named versions and branching (on the oplog)
 
-## 3. Handoff ed ecosistema
-- [ ] Dev mode: misure, CSS/Tailwind/React
+## 3. Handoff and ecosystem
+- [ ] Dev mode: measurements, CSS/Tailwind/React
 - [ ] Plugin API
-- [ ] Sync token e componenti col codice
+- [ ] Syncing tokens and components with the code
 
-## 4. Prestazioni
-- [x] Rendering a invalidazione, indice di scena incrementale, scarto di ciò che non si vede, livelli di dettaglio, riuso dell'immagine durante pan/zoom; banco di prova su 20.000 nodi (vedi docs/performance.md)
-- [x] Renderer GPU opzionale con CanvasKit (WebGL), parità verificata con `pnpm parity`; da misurare su una GPU vera prima di renderlo il predefinito
-- [ ] Font caricabili dall'utente (oggi solo Inter nel renderer GPU; i font di sistema solo in CPU)
-- [ ] Crenatura e shaping del testo nel renderer GPU (Paragraph di CanvasKit)
-- [ ] Strutture dati persistenti per la scena (applyOp senza copiare tutta la mappa)
+## 4. Performance
+- [x] Invalidation-driven rendering, incremental scene index, discarding what is not visible, levels of detail, image reuse during pan/zoom; test bench on 20,000 nodes (see docs/performance.md)
+- [x] Optional GPU renderer with CanvasKit (WebGL), parity verified with `pnpm parity`; to be measured on a real GPU before making it the default
+- [ ] User-loadable fonts (today only Inter in the GPU renderer; system fonts only on CPU)
+- [ ] Kerning and text shaping in the GPU renderer (CanvasKit's Paragraph)
+- [ ] Persistent data structures for the scene (applyOp without copying the whole map)
 
-## 5. Differenziatori
-- [ ] Agente AI MCP: revisioni di coerenza, varianti, uso dei token
-- [ ] Formato bundle versionabile con git (diff leggibili)
+## 5. Differentiators
+- [ ] MCP AI agent: consistency reviews, variants, token usage
+- [ ] Git-versionable bundle format (readable diffs)

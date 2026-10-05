@@ -10,24 +10,24 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// LoadReadOnly ricostruisce un documento dal workspace SENZA toccarlo: serve
-// agli strumenti offline (`opendesigner flow ...`) che possono girare mentre un
-// `serve` scrive sugli stessi file.
+// LoadReadOnly rebuilds a document from the workspace WITHOUT touching it: it serves
+// offline tools (`opendesigner flow ...`) that may run while a
+// `serve` writes to the same files.
 //
-// Bundle.Load non è innocuo: Open crea cartelle e meta.json mancanti, e la
-// lettura dell'oplog RIPARA una coda strappata troncando il file -- giusto per
-// chi possiede il bundle, sbagliato per un lettore che incrocia un'append in
-// corso di un altro processo. Quindi si lavora su una COPIA temporanea di
-// snapshot.pb, oplog e meta.json (gli asset non servono): la riparazione, se
-// serve, avviene sulla copia e l'originale resta intatto. Una copia presa a
-// metà di un'append può mancare dell'ultima op, mai produrre uno stato
-// incoerente: è lo stesso istante di un `serve` che riparte.
+// Bundle.Load is not harmless: Open creates missing folders and meta.json, and
+// reading the oplog REPAIRS a torn tail by truncating the file -- right for
+// whoever owns the bundle, wrong for a reader that crosses an append in
+// progress by another process. So it works on a temporary COPY of
+// snapshot.pb, oplog and meta.json (assets are not needed): the repair, if
+// needed, happens on the copy and the original stays intact. A copy taken in
+// the middle of an append may miss the last op, but never produces an
+// inconsistent state: it is the same instant as a `serve` restarting.
 func LoadReadOnly(workspace, docID string) (*opendesignerv1.Document, uint64, error) {
 	src := filepath.Join(workspace, docID+bundleSuffix)
 	if st, err := os.Stat(src); err != nil {
 		return nil, 0, fmt.Errorf("documento %s: %w", docID, err)
 	} else if !st.IsDir() {
-		return nil, 0, fmt.Errorf("documento %s: %s non è una cartella", docID, src)
+		return nil, 0, fmt.Errorf("document %s: %s is not a directory", docID, src)
 	}
 	tmp, err := os.MkdirTemp("", "opendesigner-ro-*")
 	if err != nil {

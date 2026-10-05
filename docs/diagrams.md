@@ -1,92 +1,92 @@
-# Diagrammi e UML
+# Diagrams and UML
 
-Si descrive un diagramma in testo [Mermaid](https://mermaid.js.org/) e
-opendesigner lo disegna sul canvas come un **gruppo di livelli normali** (forme,
-frecce, testo): si modifica, si esporta e, nell'editor, si annulla con un solo
-passo di undo. Il disegno lo calcola il **server** (`internal/diagram`), quindi
-l'editor e gli agenti MCP producono esattamente lo stesso diagramma.
+You describe a diagram in [Mermaid](https://mermaid.js.org/) text and
+opendesigner draws it on the canvas as a **group of ordinary layers** (shapes,
+arrows, text): it can be edited, exported and, in the editor, undone in a single
+undo step. The drawing is computed by the **server** (`internal/diagram`), so
+the editor and MCP agents produce exactly the same diagram.
 
-| Tipo | Intestazione | Cosa disegna |
+| Type | Header | What it draws |
 |---|---|---|
-| Flowchart | `flowchart TD` / `graph LR` | nodi in cinque forme, archi pieni, tratteggiati o spessi |
-| Classi UML | `classDiagram` | classi a tre scomparti, ereditarietà, composizione, aggregazione, associazione, dipendenza, realizzazione |
-| Sequenza UML | `sequenceDiagram` | partecipanti, messaggi, attivazioni, note, frammenti `loop`/`alt`/`opt`/`par` |
-| Stati UML | `stateDiagram-v2` | stati, transizioni, pallino di inizio e fine, scelta |
+| Flowchart | `flowchart TD` / `graph LR` | nodes in five shapes, solid, dashed or thick edges |
+| UML class | `classDiagram` | three-compartment classes, inheritance, composition, aggregation, association, dependency, realization |
+| UML sequence | `sequenceDiagram` | participants, messages, activations, notes, `loop`/`alt`/`opt`/`par` fragments |
+| UML state | `stateDiagram-v2` | states, transitions, start and end dot, choice |
 
-Gli altri tipi di Mermaid (ER, Gantt, …) vengono rifiutati con un messaggio.
+Other Mermaid types (ER, Gantt, …) are rejected with a message.
 
-## Dall'editor
+## From the editor
 
-Menu del documento → **Diagramma (Mermaid, UML)…**. La finestra ha un esempio
-per ogni tipo. Con un diagramma selezionato la finestra si apre sul suo testo e
-**Aggiorna** lo ridisegna al suo posto (stesso nome e posizione).
+Document menu → **Diagram (Mermaid, UML)…**. The dialog has an example
+for each type. With a diagram selected the dialog opens on its text and
+**Update** redraws it in place (same name and position).
 
-## Da MCP
+## From MCP
 
-| Tool | Cosa fa |
+| Tool | What it does |
 |---|---|
-| `create_diagram` | disegna un diagramma da `source`; `parentId`, `x`, `y`, `name` opzionali (di default a destra di ciò che c'è già) |
-| `update_diagram` | ridisegna un diagramma esistente da nuovo testo, nello stesso punto; ritorna l'id nuovo |
-| `list_diagrams` | elenca i diagrammi con tipo, posizione e testo sorgente |
+| `create_diagram` | draws a diagram from `source`; `parentId`, `x`, `y`, `name` optional (by default to the right of what is already there) |
+| `update_diagram` | redraws an existing diagram from new text, in the same place; returns the new id |
+| `list_diagrams` | lists the diagrams with kind, position and source text |
 
-Il testo sorgente resta nel `meta` della radice (`diagram.source`, `diagram.kind`),
-quindi un agente può rileggere un diagramma e correggerlo con `update_diagram`
-invece di spostare le forme a mano. Un testo illeggibile è un errore di tool che
-dice la riga; nessuna modifica resta a metà.
+The source text stays in the root's `meta` (`diagram.source`, `diagram.kind`),
+so an agent can read a diagram back and fix it with `update_diagram`
+instead of moving shapes by hand. Unreadable text is a tool error that
+names the line; no change is left half-done.
 
-Dal protocollo Connect: `DocumentService.RenderDiagram(source)` è pura (non
-tocca il documento) e restituisce i nodi, pronti da inserire.
+Via the Connect protocol: `DocumentService.RenderDiagram(source)` is pure (it does
+not touch the document) and returns the nodes, ready to insert.
 
-## Sintassi letta
+## Syntax read
 
-**Flowchart.** `A[rettangolo]`, `A(arrotondato)`, `A([pillola])`, `A((cerchio))`,
-`A{decisione}`; archi `-->`, `---`, `-.->`, `==>`, `<-->`, con testo `-->|sì|` o
-`-- sì -->`; catene `A --> B --> C` e gruppi `A & B --> C`; `<br/>` va a capo.
+**Flowchart.** `A[rectangle]`, `A(rounded)`, `A([pill])`, `A((circle))`,
+`A{decision}`; edges `-->`, `---`, `-.->`, `==>`, `<-->`, with text `-->|yes|` or
+`-- yes -->`; chains `A --> B --> C` and groups `A & B --> C`; `<br/>` wraps.
 
-**Classi.**
+**Classes.**
 
 ```
 classDiagram
-  class Animale {
+  class Animal {
     <<abstract>>
-    +String nome
-    +mangia() void
+    +String name
+    +eats() void
   }
-  Animale <|-- Anatra
-  Proprietario "1" --> "*" Animale : possiede
-  Anatra ..> Stagno : usa
+  Animal <|-- Duck
+  Owner "1" --> "*" Animal : owns
+  Duck ..> Pond : uses
 ```
 
-Relazioni: `<|--` / `--|>` ereditarietà, `*--` composizione, `o--`
-aggregazione, `-->` associazione, `..>` dipendenza, `..|>` realizzazione, `--` e
-`..` collegamenti; molteplicità tra virgolette ed etichetta dopo `:`. Chi porta
-il triangolo o il rombo sta sopra. Un membro con `(` è un metodo, gli altri sono
-attributi; `Nome~T~` diventa `Nome<T>`.
+Relations: `<|--` / `--|>` inheritance, `*--` composition, `o--`
+aggregation, `-->` association, `..>` dependency, `..|>` realization, `--` and
+`..` links; multiplicity in quotes and label after `:`. The one carrying
+the triangle or the diamond sits on top. A member with `(` is a method, the others are
+attributes; `Name~T~` becomes `Name<T>`.
 
-**Sequenza.** `participant A as Alice`, `actor B`; messaggi `->>` (pieno),
-`-->>` (risposta tratteggiata), `->`/`-->` (senza punta), `-x` (perso), `-)`
-(asincrono); `+`/`-` dopo la freccia attivano/disattivano; `activate`/
+**Sequence.** `participant A as Alice`, `actor B`; messages `->>` (solid),
+`-->>` (dashed reply), `->`/`-->` (no arrowhead), `-x` (lost), `-)`
+(async); `+`/`-` after the arrow activate/deactivate; `activate`/
 `deactivate`; `Note over A,B: …`, `Note left of A`, `Note right of A`;
-`autonumber`; blocchi `loop`, `alt`/`else`, `opt`, `par`/`and`, `critical`/
-`option`, `break` chiusi da `end`.
+`autonumber`; blocks `loop`, `alt`/`else`, `opt`, `par`/`and`, `critical`/
+`option`, `break` closed by `end`.
 
-**Stati.** `[*] --> A`, `A --> B : evento`, `state "Nome lungo" as X`,
-`state X <<choice>>`, `X : descrizione`, `direction LR`. Gli stati composti
-(`state X { … }`) si appiattiscono: le transizioni interne restano, il riquadro
-no.
+**States.** `[*] --> A`, `A --> B : event`, `state "Long name" as X`,
+`state X <<choice>>`, `X : description`, `direction LR`. Composite states
+(`state X { … }`) are flattened: the inner transitions stay, the box
+does not.
 
-Tetti: 200 nodi, 400 archi, 60 partecipanti, 2000 eventi, 64 KiB di testo. Le
-righe `subgraph`, `style`, `classDef`, `click` si ignorano.
+Caps: 200 nodes, 400 edges, 60 participants, 2000 events, 64 KiB of text. The
+`subgraph`, `style`, `classDef`, `click` lines are ignored.
 
-## Limiti noti
+## Known limits
 
-- Le frecce **non sono agganciate** alle forme: spostando un nodo la freccia
-  resta dov'è. Per cambiare un diagramma si riscrive il testo (`update_diagram`
-  o Aggiorna). Servirebbe un tipo di nodo "connettore" nel modello.
-- La larghezza del testo è stimata (il server non ha font): i riquadri hanno un
-  po' d'aria in più.
-- Nessun tratteggio nel modello: le linee tratteggiate sono disegnate a trattini.
-- Niente `subgraph`, note nei diagrammi di classi e di stati, ER.
+- The arrows are **not attached** to the shapes: moving a node leaves the arrow
+  where it is. To change a diagram you rewrite the text (`update_diagram`
+  or Update). A "connector" node type in the model would be needed.
+- Text width is estimated (the server has no fonts): the boxes have a
+  bit of extra room.
+- No dashing in the model: dashed lines are drawn as dashes.
+- No `subgraph`, notes in class and state diagrams, ER.
 
-I flussi tra schermate (specifica e test Playwright) sono un'altra cosa: vedi
+The flows between screens (specification and Playwright tests) are another thing: see
 `docs/flows.md`.

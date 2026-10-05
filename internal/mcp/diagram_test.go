@@ -9,11 +9,11 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-const flowText = "flowchart TD\n  A[Start] --> B{Ok?}\n  B -->|si| C[Fatto]\n  B -->|no| A"
+const flowText = "flowchart TD\n  A[Start] --> B{Ok?}\n  B -->|yes| C[Done]\n  B -->|no| A"
 
-// TestDiagramToolsEndToEnd: create_diagram disegna un gruppo normale nel
-// documento condiviso, list_diagrams ne rilegge il sorgente, update_diagram lo
-// ridisegna al suo posto, e un testo illeggibile non lascia niente a metà.
+// TestDiagramToolsEndToEnd: create_diagram draws an ordinary group in the
+// shared document, list_diagrams reads its source back, update_diagram redraws
+// it in place, and unreadable text leaves nothing half-done.
 func TestDiagramToolsEndToEnd(t *testing.T) {
 	url := serveInMemory(t)
 	docID := newDoc(t, odmcp.NewClient(url))
@@ -31,10 +31,10 @@ func TestDiagramToolsEndToEnd(t *testing.T) {
 	doc, _ := s.GetDocument(ctx, struct{}{})
 	root, ok := nodeByID(doc, out.NodeId)
 	if !ok || root.Kind != "group" || root.Name != "Login" || root.X != 0 {
-		t.Fatalf("radice = %+v (%v)", root, ok)
+		t.Fatalf("root = %+v (%v)", root, ok)
 	}
 	if len(doc.Nodes) != out.NodeCount {
-		t.Errorf("nodi nel documento = %d, attesi %d", len(doc.Nodes), out.NodeCount)
+		t.Errorf("nodes in the document = %d, want %d", len(doc.Nodes), out.NodeCount)
 	}
 	children := 0
 	for _, n := range doc.Nodes {
@@ -43,18 +43,18 @@ func TestDiagramToolsEndToEnd(t *testing.T) {
 		}
 	}
 	if children != out.NodeCount-1 {
-		t.Errorf("figli diretti = %d, attesi %d", children, out.NodeCount-1)
+		t.Errorf("direct children = %d, want %d", children, out.NodeCount-1)
 	}
 
-	// un secondo diagramma finisce a destra del primo, senza coprirlo
-	second, err := s.CreateDiagram(ctx, odmcp.CreateDiagramInput{Source: "sequenceDiagram\nA->>B: ciao"})
+	// a second diagram lands to the right of the first, without covering it
+	second, err := s.CreateDiagram(ctx, odmcp.CreateDiagramInput{Source: "sequenceDiagram\nA->>B: hello"})
 	if err != nil {
 		t.Fatal(err)
 	}
 	doc, _ = s.GetDocument(ctx, struct{}{})
 	r2, _ := nodeByID(doc, second.NodeId)
 	if r2.X < out.Width {
-		t.Errorf("il secondo diagramma deve stare a destra: x=%v, larghezza del primo %v", r2.X, out.Width)
+		t.Errorf("the second diagram must be to the right: x=%v, first's width %v", r2.X, out.Width)
 	}
 
 	list, err := s.ListDiagrams(ctx, struct{}{})
@@ -68,46 +68,46 @@ func TestDiagramToolsEndToEnd(t *testing.T) {
 		}
 	}
 	if first.Source != flowText || first.Kind != "flowchart" {
-		t.Errorf("sorgente riletto = %+v", first)
+		t.Errorf("source read back = %+v", first)
 	}
 
-	// update: stessa posizione e nome, id nuovo, il vecchio gruppo sparisce
+	// update: same position and name, new id, the old group disappears
 	up, err := s.UpdateDiagram(ctx, odmcp.UpdateDiagramInput{Id: out.NodeId, Source: "classDiagram\nAnimal <|-- Duck"})
 	if err != nil {
 		t.Fatalf("UpdateDiagram: %v", err)
 	}
 	doc, _ = s.GetDocument(ctx, struct{}{})
 	if _, still := nodeByID(doc, out.NodeId); still {
-		t.Error("il vecchio gruppo doveva essere cancellato")
+		t.Error("the old group should have been deleted")
 	}
 	nr, ok := nodeByID(doc, up.NodeId)
 	if !ok || nr.Name != "Login" || nr.X != root.X || nr.Y != root.Y || up.Kind != "class" {
-		t.Errorf("nuovo gruppo = %+v (%v) %+v", nr, ok, up)
+		t.Errorf("new group = %+v (%v) %+v", nr, ok, up)
 	}
 	for _, n := range doc.Nodes {
 		if n.ParentId == out.NodeId {
-			t.Fatal("restano figli del vecchio gruppo")
+			t.Fatal("children of the old group are left")
 		}
 	}
 
-	// errori: nessuna modifica
+	// errors: no change
 	before := len(doc.Nodes)
-	if _, err := s.CreateDiagram(ctx, odmcp.CreateDiagramInput{Source: "erDiagram\nA ||--o{ B : x"}); err == nil || !strings.Contains(err.Error(), "non è supportato") {
-		t.Errorf("tipo non supportato: %v", err)
+	if _, err := s.CreateDiagram(ctx, odmcp.CreateDiagramInput{Source: "erDiagram\nA ||--o{ B : x"}); err == nil || !strings.Contains(err.Error(), "is not supported") {
+		t.Errorf("unsupported type: %v", err)
 	}
 	if _, err := s.UpdateDiagram(ctx, odmcp.UpdateDiagramInput{Id: up.NodeId, Source: "graph TD\nA -->"}); err == nil {
-		t.Error("testo illeggibile deve fallire")
+		t.Error("unreadable text must fail")
 	}
 	if _, err := s.UpdateDiagram(ctx, odmcp.UpdateDiagramInput{Id: "nope", Source: flowText}); err == nil {
-		t.Error("id sconosciuto deve fallire")
+		t.Error("unknown id must fail")
 	}
 	rect, _ := s.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 1, Height: 1})
 	if _, err := s.UpdateDiagram(ctx, odmcp.UpdateDiagramInput{Id: rect.NodeId, Source: flowText}); err == nil || !strings.Contains(err.Error(), "not a diagram") {
-		t.Errorf("un nodo qualunque non è un diagramma: %v", err)
+		t.Errorf("an arbitrary node is not a diagram: %v", err)
 	}
 	doc, _ = s.GetDocument(ctx, struct{}{})
 	if len(doc.Nodes) != before+1 {
-		t.Errorf("gli errori hanno lasciato nodi: %d -> %d", before, len(doc.Nodes))
+		t.Errorf("the errors left nodes behind: %d -> %d", before, len(doc.Nodes))
 	}
 }
 
@@ -136,20 +136,20 @@ func TestDiagramToolsRegistered(t *testing.T) {
 	}
 	for _, name := range []string{"create_diagram", "update_diagram", "list_diagrams"} {
 		if _, ok := have[name]; !ok {
-			t.Errorf("tool %s non registrato", name)
+			t.Errorf("tool %s not registered", name)
 		}
 	}
 	for _, kw := range []string{"classDiagram", "sequenceDiagram", "stateDiagram", "flowchart"} {
 		if !strings.Contains(have["create_diagram"], kw) {
-			t.Errorf("la descrizione deve spiegare %s", kw)
+			t.Errorf("the description must explain %s", kw)
 		}
 	}
-	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "create_diagram", Arguments: map[string]any{"source": "sequenceDiagram\nAlice->>Bob: Ciao\nBob-->>Alice: Ciao a te"}})
+	res, err := cs.CallTool(ctx, &mcp.CallToolParams{Name: "create_diagram", Arguments: map[string]any{"source": "sequenceDiagram\nAlice->>Bob: Hello\nBob-->>Alice: Hello to you"}})
 	if err != nil || res.IsError {
 		t.Fatalf("create_diagram: %v %+v", err, res)
 	}
 	res, err = cs.CallTool(ctx, &mcp.CallToolParams{Name: "create_diagram", Arguments: map[string]any{"source": "gantt\ntitle x"}})
 	if err != nil || !res.IsError {
-		t.Fatalf("un tipo non supportato deve essere un errore di tool: %v %+v", err, res)
+		t.Fatalf("an unsupported type must be a tool error: %v %+v", err, res)
 	}
 }

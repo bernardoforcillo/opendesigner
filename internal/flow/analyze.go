@@ -7,10 +7,10 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// Analyze analizza i flussi del documento: flowID "" = tutti, in ordine di id.
-// Per ogni flusso riporta i problemi del grafo (vedi le costanti Issue*) e i
-// percorsi dall'ingresso alle schermate finali o ai cicli. L'ordine di problemi
-// e percorsi è deterministico.
+// Analyze analyzes the document's flows: flowID "" = all, in id order.
+// For each flow it reports the graph's issues (see the Issue* constants) and the
+// paths from the entry to the final screens or to cycles. The order of issues
+// and paths is deterministic.
 func Analyze(doc *opendesignerv1.Document, flowID string) []*opendesignerv1.FlowReport {
 	var out []*opendesignerv1.FlowReport
 	for _, id := range flowIDs(doc, flowID) {
@@ -36,29 +36,29 @@ func analyzeFlow(g *graph, id string) *opendesignerv1.FlowReport {
 	}
 
 	if len(g.trans) == 0 {
-		issue(IssueEmpty, "", "", fmt.Sprintf("Il flusso %q non ha transizioni.", fname))
+		issue(IssueEmpty, "", "", fmt.Sprintf("Flow %q has no transitions.", fname))
 		return r
 	}
 	start := g.flow.GetStartId()
 	if start == "" {
-		issue(IssueNoStart, "", "", fmt.Sprintf("Il flusso %q ha transizioni ma nessuna schermata iniziale.", fname))
+		issue(IssueNoStart, "", "", fmt.Sprintf("Flow %q has transitions but no start screen.", fname))
 	} else {
 		reach := g.reachable()
 		for _, s := range g.screens {
 			if !reach[s] {
-				issue(IssueUnreachable, s, "", fmt.Sprintf("La schermata %q non è raggiungibile dalla schermata iniziale %q.", nodeName(g.doc, s), nodeName(g.doc, start)))
+				issue(IssueUnreachable, s, "", fmt.Sprintf("Screen %q is not reachable from the start screen %q.", nodeName(g.doc, s), nodeName(g.doc, start)))
 			}
 		}
 		for _, s := range g.screens {
 			if reach[s] && len(g.out[s]) == 0 && nodeKind(g.doc, s) != KindEnd {
-				issue(IssueDeadEnd, s, "", fmt.Sprintf("La schermata %q è un vicolo cieco: nessuna uscita e non è di tipo \"end\".", nodeName(g.doc, s)))
+				issue(IssueDeadEnd, s, "", fmt.Sprintf("Screen %q is a dead end: no exit and it is not of type \"end\".", nodeName(g.doc, s)))
 			}
 		}
 	}
 
-	// Ambiguità: due uscite della stessa schermata con stesso innesco (trigger +
-	// elemento) e nessuna condizione che le distingua (entrambe senza guard o con
-	// guard identica). Si segnala ogni uscita dopo la prima del gruppo.
+	// Ambiguity: two exits of the same screen with the same trigger (trigger +
+	// element) and no condition that tells them apart (both without a guard or with
+	// an identical guard). Every exit after the first of the group is reported.
 	for _, s := range g.screens {
 		type key struct{ trigger, element, guard string }
 		first := map[key]*opendesignerv1.Transition{}
@@ -69,12 +69,12 @@ func analyzeFlow(g *graph, id string) *opendesignerv1.FlowReport {
 				first[k] = t
 				continue
 			}
-			what := "senza condizione (guard)"
+			what := "without a condition (guard)"
 			if k.guard != "" {
-				what = fmt.Sprintf("con la stessa condizione %q", k.guard)
+				what = fmt.Sprintf("with the same condition %q", k.guard)
 			}
 			issue(IssueAmbiguous, s, t.GetId(), fmt.Sprintf(
-				"Dalla schermata %q le transizioni %q e %q hanno lo stesso innesco (%s) %s: non è chiaro quale scatti.",
+				"From screen %q, transitions %q and %q have the same trigger (%s) %s: it is unclear which one fires.",
 				nodeName(g.doc, s), label(prev), label(t), triggerDesc(k.trigger, k.element, g.doc), what))
 		}
 	}
@@ -103,15 +103,15 @@ func triggerDesc(trigger, element string, doc *opendesignerv1.Document) string {
 		trigger = "click"
 	}
 	if element != "" {
-		return fmt.Sprintf("%s su %q", trigger, nodeName(doc, element))
+		return fmt.Sprintf("%s on %q", trigger, nodeName(doc, element))
 	}
 	return trigger
 }
 
-// enumeratePaths fa una DFS dall'ingresso elencando i percorsi semplici fino a
-// una schermata finale e quelli che si chiudono in un ciclo (un arco verso una
-// schermata già nel percorso: il percorso si ferma lì, loops=true). Tetti:
-// MaxPaths percorsi e profondità MaxDepth; superarli imposta `truncated`.
+// enumeratePaths does a DFS from the entry listing the simple paths up to
+// a final screen and those that close in a cycle (an edge to a
+// screen already in the path: the path stops there, loops=true). Caps:
+// MaxPaths paths and depth MaxDepth; exceeding them sets `truncated`.
 func enumeratePaths(g *graph, start string) (paths []*opendesignerv1.FlowPath, truncated bool) {
 	var nodes []string
 	var trans []string
@@ -130,7 +130,7 @@ func enumeratePaths(g *graph, start string) (paths []*opendesignerv1.FlowPath, t
 			return
 		}
 		if g.terminal(n) {
-			// Un ingresso già terminale non ha percorsi: nessun arco da percorrere.
+			// An entry that is already terminal has no paths: no edge to walk.
 			if len(trans) > 0 {
 				if len(paths) >= MaxPaths {
 					truncated = true

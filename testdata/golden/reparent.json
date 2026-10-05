@@ -12,7 +12,7 @@
       "rect": { "cornerRadius": 0 }
     } } },
     { "opId": "op3", "docId": "doc1", "createNode": { "node": {
-      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Figlio",
+      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Child",
       "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 20, "height": 20,
       "rect": { "cornerRadius": 0 }
     } } },
@@ -40,7 +40,7 @@
         "rect": { "cornerRadius": 0 }
       },
       "c1": {
-        "id": "c1", "parentId": "g2", "orderKey": "a5", "name": "Figlio",
+        "id": "c1", "parentId": "g2", "orderKey": "a5", "name": "Child",
         "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 20, "height": 20,
         "rect": { "cornerRadius": 0 }
       },

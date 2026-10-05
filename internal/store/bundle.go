@@ -1,4 +1,4 @@
-// Package store persiste un documento come bundle-directory: snapshot + op-log append-only.
+// Package store persists a document as a bundle directory: snapshot + append-only op-log.
 package store
 
 import (
@@ -88,7 +88,7 @@ func (b *Bundle) oplogPath() string    { return filepath.Join(b.dir, "oplog") }
 // only to name the leftover from an older build.
 func (b *Bundle) seqPath() string { return filepath.Join(b.dir, "snapshot.seq") }
 
-// Load ricostruisce documento e ultimo seq: snapshot + replay oplog.
+// Load rebuilds the document and the last seq: snapshot + oplog replay.
 func (b *Bundle) Load() (*opendesignerv1.Document, uint64, error) {
 	b.mu.Lock()
 	defer b.mu.Unlock()
@@ -390,8 +390,8 @@ func (b *Bundle) truncateOplogLocked(n int64) (err error) {
 	return f.Sync()
 }
 
-// Append aggiunge un OpRecord in coda all'oplog come singolo frame
-// autodescrittivo (magic + length + CRC-32C + payload; vedi reader.go).
+// Append adds an OpRecord at the end of the oplog as a single
+// self-describing frame (magic + length + CRC-32C + payload; see reader.go).
 //
 // The whole frame is built in memory and handed to the kernel in ONE Write
 // so an interrupted append leaves a frame that is detectably short or fails
@@ -501,7 +501,7 @@ func appendFrame(f oplogFile, frame []byte) (int64, error) {
 // test for "may I act on this snapshot having happened?".
 var ErrSnapshotCommitted = errors.New("snapshot committed but meta.json was not refreshed")
 
-// Snapshot riscrive lo snapshot al seq dato e compatta l'oplog.
+// Snapshot rewrites the snapshot at the given seq and compacts the oplog.
 //
 // doc must be the state produced by applying every op up to and including
 // seq, and nothing after it -- which is precisely what server.Hub.Snapshot

@@ -11,20 +11,20 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// Home: ListDocuments porta ultima modifica e conteggi; Rename e Delete sono
-// durevoli; un id sconosciuto non crea documenti.
+// Home: ListDocuments carries the last-modified time and counts; Rename and Delete are
+// durable; an unknown id does not create documents.
 func TestHomeLifecycleRPCs(t *testing.T) {
 	ws := t.TempDir()
 	ctx := context.Background()
 	c, m := newTestClientWithManager(t, ws)
 
-	created, err := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Alfa"}))
+	created, err := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Alpha"}))
 	if err != nil {
 		t.Fatal(err)
 	}
 	id := created.Msg.GetId()
 
-	// Un frame di primo livello = una schermata; un figlio dentro di esso no.
+	// A top-level frame = a screen; a child inside it is not.
 	h, _ := m.HubFor(id)
 	doc, _ := h.Snapshot()
 	pageID := doc.GetPages()[0].GetId()
@@ -45,54 +45,54 @@ func TestHomeLifecycleRPCs(t *testing.T) {
 	}
 	got := list.Msg.GetDocs()[0]
 	if got.GetScreens() != 1 || got.GetFlows() != 0 || got.GetUpdatedAt() == 0 {
-		t.Fatalf("DocInfo = %v, want 1 schermata, 0 flussi, updated_at != 0", got)
+		t.Fatalf("DocInfo = %v, want 1 screen, 0 flows, updated_at != 0", got)
 	}
 
-	// Un processo nuovo (hub non aperto) deve contare allo stesso modo.
+	// A new process (hub not open) must count the same way.
 	l2, err := NewManager(ws).List()
 	if err != nil || l2[0].GetScreens() != 1 {
-		t.Fatalf("lista a freddo = %v, %v", l2, err)
+		t.Fatalf("cold list = %v, %v", l2, err)
 	}
 
-	// Rename: validazione, effetto su Open e durata al riavvio.
+	// Rename: validation, effect on Open and durability across a restart.
 	if _, err := c.RenameDocument(ctx, connect.NewRequest(&opendesignerv1.RenameDocumentRequest{DocId: id, Name: "  "})); connect.CodeOf(err) != connect.CodeInvalidArgument {
-		t.Fatalf("rename vuoto: %v", err)
+		t.Fatalf("empty rename: %v", err)
 	}
 	if _, err := c.RenameDocument(ctx, connect.NewRequest(&opendesignerv1.RenameDocumentRequest{DocId: "00000000-0000-0000-0000-000000000000", Name: "x"})); connect.CodeOf(err) != connect.CodeNotFound {
-		t.Fatalf("rename di un id sconosciuto: %v", err)
+		t.Fatalf("rename of an unknown id: %v", err)
 	}
 	if _, err := c.RenameDocument(ctx, connect.NewRequest(&opendesignerv1.RenameDocumentRequest{DocId: id, Name: "Beta"})); err != nil {
 		t.Fatal(err)
 	}
 	open, _ := c.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: id}))
 	if open.Msg.GetSnapshot().GetName() != "Beta" {
-		t.Fatalf("nome aperto = %q", open.Msg.GetSnapshot().GetName())
+		t.Fatalf("open name = %q", open.Msg.GetSnapshot().GetName())
 	}
 	l3, _ := NewManager(ws).List()
 	if l3[0].GetName() != "Beta" {
-		t.Fatalf("nome dopo riavvio = %q", l3[0].GetName())
+		t.Fatalf("name after restart = %q", l3[0].GetName())
 	}
 
-	// Un id sconosciuto non fa nascere un documento.
+	// An unknown id does not bring a document into being.
 	unknown := "11111111-2222-3333-4444-555555555555"
 	if _, err := c.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: unknown})); connect.CodeOf(err) != connect.CodeNotFound {
-		t.Fatalf("open sconosciuto: %v", err)
+		t.Fatalf("unknown open: %v", err)
 	}
 	if _, err := os.Stat(filepath.Join(ws, unknown+".opendesigner")); err == nil {
-		t.Fatal("OpenDocument ha creato un bundle per un id sconosciuto")
+		t.Fatal("OpenDocument created a bundle for an unknown id")
 	}
 
-	// Delete rifiutato finché qualcuno ha lo stream aperto.
+	// Delete is refused while someone has the stream open.
 	sctx, cancel := context.WithCancel(ctx)
 	stream, err := c.Subscribe(sctx, connect.NewRequest(&opendesignerv1.SubscribeRequest{DocId: id, ClientId: "x"}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	for h.Subscribers() == 0 { // lo stream si registra in modo asincrono
+	for h.Subscribers() == 0 { // the stream registers asynchronously
 		time.Sleep(time.Millisecond)
 	}
 	if _, err := c.DeleteDocument(ctx, connect.NewRequest(&opendesignerv1.DeleteDocumentRequest{DocId: id})); connect.CodeOf(err) != connect.CodeFailedPrecondition {
-		t.Fatalf("delete con stream aperto: %v", err)
+		t.Fatalf("delete with an open stream: %v", err)
 	}
 	cancel()
 	_ = stream.Close()
@@ -104,12 +104,12 @@ func TestHomeLifecycleRPCs(t *testing.T) {
 	}
 	l4, _ := c.ListDocuments(ctx, connect.NewRequest(&opendesignerv1.ListDocumentsRequest{}))
 	if len(l4.Msg.GetDocs()) != 0 {
-		t.Fatalf("dopo delete: %v", l4.Msg.GetDocs())
+		t.Fatalf("after delete: %v", l4.Msg.GetDocs())
 	}
 	if entries, _ := os.ReadDir(filepath.Join(ws, ".trash")); len(entries) != 1 {
-		t.Fatalf(".trash = %v, il bundle va spostato, non cancellato", entries)
+		t.Fatalf(".trash = %v, the bundle must be moved, not deleted", entries)
 	}
 	if _, err := c.DeleteDocument(ctx, connect.NewRequest(&opendesignerv1.DeleteDocumentRequest{DocId: id})); connect.CodeOf(err) != connect.CodeNotFound {
-		t.Fatalf("delete doppio: %v", err)
+		t.Fatalf("double delete: %v", err)
 	}
 }

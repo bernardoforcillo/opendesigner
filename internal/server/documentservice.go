@@ -67,9 +67,9 @@ func (s *DocumentService) DeleteDocument(_ context.Context, req *connect.Request
 }
 
 func (s *DocumentService) OpenDocument(_ context.Context, req *connect.Request[opendesignerv1.OpenRequest]) (*connect.Response[opendesignerv1.OpenResponse], error) {
-	// Un id ben formato ma sconosciuto NON deve far nascere un documento vuoto
-	// (HubFor apre-o-crea): un link morto mostra "non trovato", la creazione
-	// passa solo da CreateDocument.
+	// A well-formed but unknown id must NOT bring an empty document into being
+	// (HubFor opens-or-creates): a dead link shows "not found", creation
+	// only goes through CreateDocument.
 	if !s.m.Exists(req.Msg.GetDocId()) {
 		return nil, connect.NewError(connect.CodeNotFound, ErrDocNotFound)
 	}
@@ -95,15 +95,15 @@ var errMissingOp = errors.New("submit_op: op is required")
 // document's oplog.
 var errOpDocIDMismatch = errors.New("submit_op: op.doc_id does not match doc_id")
 
-// SubmitOp è la metà client→server del vecchio stream bidi Sync: una unary RPC
-// che applica l'operazione sull'hub del documento e restituisce l'Ack.
-// Il broadcast dell'OpRecord applicato a TUTTI i client (incluso il mittente)
-// passa da Subscribe, non da qui.
+// SubmitOp is the client→server half of the old bidi Sync stream: a unary RPC
+// that applies the operation on the document's hub and returns the Ack.
+// The broadcast of the applied OpRecord to ALL clients (the sender included)
+// goes through Subscribe, not through here.
 //
-// Bidi streaming è irraggiungibile dal browser (@connectrpc/connect-web rifiuta
-// qualunque methodKind diverso da server_streaming perché fetch non supporta i
-// request body in streaming), quindi la coppia unary + server-stream sostituisce
-// Sync mantenendone identica la semantica lato Hub.
+// Bidi streaming is unreachable from the browser (@connectrpc/connect-web
+// rejects any methodKind other than server_streaming because fetch does not
+// support streaming request bodies), so the unary + server-stream pair replaces
+// Sync while keeping its semantics on the Hub side identical.
 func (s *DocumentService) SubmitOp(_ context.Context, req *connect.Request[opendesignerv1.SubmitOpRequest]) (*connect.Response[opendesignerv1.SubmitOpResponse], error) {
 	op := req.Msg.GetOp()
 	if op == nil {
@@ -133,9 +133,9 @@ func (s *DocumentService) SubmitOp(_ context.Context, req *connect.Request[opend
 	}}), nil
 }
 
-// Subscribe è la metà server→client: catch-up dei record con seq > since_seq,
-// poi live, ciascuno inviato come ServerMsg{applied}. Un solo goroutine (questo)
-// scrive sullo stream, quindi non serve più il writer multiplexer di Sync.
+// Subscribe is the server→client half: catch-up of the records with seq > since_seq,
+// then live, each sent as ServerMsg{applied}. A single goroutine (this one)
+// writes to the stream, so Sync's writer multiplexer is no longer needed.
 func (s *DocumentService) Subscribe(ctx context.Context, req *connect.Request[opendesignerv1.SubscribeRequest], stream *connect.ServerStream[opendesignerv1.ServerMsg]) error {
 	h, err := s.m.HubFor(req.Msg.GetDocId())
 	if err != nil {
@@ -193,9 +193,9 @@ func (s *DocumentService) Subscribe(ctx context.Context, req *connect.Request[op
 	}
 }
 
-// WatchPresence: l'elenco di chi c'è già, poi gli aggiornamenti dei peer.
-// Chiudere lo stream (chiudere la scheda, perdere la rete) toglie il client
-// dalla stanza -- la presenza non ha altro ciclo di vita.
+// WatchPresence: the list of who is already there, then the peers' updates.
+// Closing the stream (closing the tab, losing the network) removes the client
+// from the room -- presence has no other lifecycle.
 func (s *DocumentService) WatchPresence(ctx context.Context, req *connect.Request[opendesignerv1.WatchPresenceRequest], stream *connect.ServerStream[opendesignerv1.PresenceEvent]) error {
 	if req.Msg.GetClientId() == "" {
 		return connect.NewError(connect.CodeInvalidArgument, errors.New("watch_presence: client_id is required"))
@@ -206,10 +206,10 @@ func (s *DocumentService) WatchPresence(ctx context.Context, req *connect.Reques
 	}
 	ch, leave := h.presence.join(req.Msg.GetClientId(), req.Msg.GetNickname())
 	defer leave()
-	// Un evento VUOTO (nessun `kind`) come primo messaggio: Connect manda le
-	// intestazioni di risposta solo col primo messaggio, quindi in una stanza
-	// vuota il client resterebbe in attesa per sempre. Dice anche "sei dentro":
-	// da qui in poi UpdatePresence di questo client viene accettato.
+	// An EMPTY event (no `kind`) as the first message: Connect only sends the
+	// response headers with the first message, so in an empty room the client
+	// would wait forever. It also says "you are in": from here on this client's
+	// UpdatePresence is accepted.
 	if err := stream.Send(&opendesignerv1.PresenceEvent{}); err != nil {
 		return err
 	}
@@ -225,9 +225,9 @@ func (s *DocumentService) WatchPresence(ctx context.Context, req *connect.Reques
 	}
 }
 
-// UpdatePresence: cursore, selezione e pagina del client. Un client senza
-// stream WatchPresence aperto viene ignorato (non è nella stanza): è la
-// ragione per cui la presenza non lascia mai residui.
+// UpdatePresence: the client's cursor, selection and page. A client without an
+// open WatchPresence stream is ignored (it is not in the room): this is the
+// reason presence never leaves residue.
 func (s *DocumentService) UpdatePresence(_ context.Context, req *connect.Request[opendesignerv1.UpdatePresenceRequest]) (*connect.Response[opendesignerv1.UpdatePresenceResponse], error) {
 	st := req.Msg.GetState()
 	if st == nil || st.GetClientId() == "" {
@@ -241,22 +241,22 @@ func (s *DocumentService) UpdatePresence(_ context.Context, req *connect.Request
 	return connect.NewResponse(&opendesignerv1.UpdatePresenceResponse{}), nil
 }
 
-// AnalyzeFlows: l'analisi vera vive in internal/flow; qui si risolve l'hub e si
-// prende lo snapshot corrente.
+// AnalyzeFlows: the real analysis lives in internal/flow; here the hub is
+// resolved and the current snapshot is taken.
 func (s *DocumentService) AnalyzeFlows(_ context.Context, req *connect.Request[opendesignerv1.AnalyzeFlowsRequest]) (*connect.Response[opendesignerv1.AnalyzeFlowsResponse], error) {
 	h, err := s.m.HubFor(req.Msg.GetDocId())
 	if err != nil {
 		return nil, connect.NewError(connect.CodeNotFound, err)
 	}
 	doc, _ := h.Snapshot()
-	// flow_id vuoto = tutti i flussi; un id sconosciuto dà zero report, non un errore.
+	// empty flow_id = all flows; an unknown id gives zero reports, not an error.
 	return connect.NewResponse(&opendesignerv1.AnalyzeFlowsResponse{Reports: flow.Analyze(doc, req.Msg.GetFlowId())}), nil
 }
 
-// ExportCode: la generazione vera vive in internal/codegen; qui si risolve
-// l'hub, si prende lo snapshot corrente e si passano gli asset del workspace.
-// Gli errori di input (target o flusso sconosciuti, documento senza schermate)
-// sono InvalidArgument: il chiamante può correggerli.
+// ExportCode: the real generation lives in internal/codegen; here the hub is
+// resolved, the current snapshot is taken and the workspace's assets are passed.
+// Input errors (unknown target or flow, document without screens)
+// are InvalidArgument: the caller can fix them.
 func (s *DocumentService) ExportCode(_ context.Context, req *connect.Request[opendesignerv1.ExportCodeRequest]) (*connect.Response[opendesignerv1.ExportCodeResponse], error) {
 	h, err := s.m.HubFor(req.Msg.GetDocId())
 	if err != nil {
@@ -274,10 +274,10 @@ func (s *DocumentService) ExportCode(_ context.Context, req *connect.Request[ope
 	return connect.NewResponse(resp), nil
 }
 
-// RenderDiagram: disegna un diagramma da testo Mermaid (internal/diagram). È
-// pura -- non apre nessun documento -- quindi l'editor inserisce i nodi
-// restituiti come un unico gesto. Un testo che non si legge è InvalidArgument,
-// con il messaggio da mostrare all'utente.
+// RenderDiagram: draws a diagram from Mermaid text (internal/diagram). It is
+// pure -- it opens no document -- so the editor inserts the returned nodes as
+// a single gesture. Text that cannot be read is InvalidArgument,
+// with the message to show to the user.
 func (s *DocumentService) RenderDiagram(_ context.Context, req *connect.Request[opendesignerv1.RenderDiagramRequest]) (*connect.Response[opendesignerv1.RenderDiagramResponse], error) {
 	res, err := diagram.Render(req.Msg.GetSource())
 	if err != nil {
