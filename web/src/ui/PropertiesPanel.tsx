@@ -15,6 +15,7 @@ import { subtreeOf } from "../store/tree";
 import { makeSetInstanceOverrideOp, makeSetPropsOp, makeSetTextOp } from "../tools/ops";
 import { layerDisplayName } from "./LayersPanel";
 import { cls, EmptyState, Icon, IconButton, Section } from "./ds";
+import { ExportSection } from "./ExportSection";
 import type { IconName } from "./ds";
 import { SegRadio, type SegOption } from "./ds/props-controls";
 import { NumberField } from "./fields/NumberField";
@@ -1048,6 +1049,15 @@ export function PropertiesPanel() {
           </div>
         </Section>
       )}
+
+      {/* ESPORTA: sta qui perché questo ramo del pannello esiste solo con
+          selezione non vuota (vedi il return anticipato su `!summary` più
+          sopra) -- è la stessa condizione che prima viveva nel pulsante del
+          ToolDock come radio "Ambito", ora resa superflua spostando il
+          controllo dentro il ramo che la garantisce già. */}
+      <Section title="Esporta">
+        <ExportSection />
+      </Section>
     </div>
   );
 }

@@ -3,6 +3,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Banner, Icon } from "./ds";
 import { ToolDock } from "./shell/ToolDock";
+import { TopBar } from "./shell/TopBar";
 import { usePanels } from "./shell/panels";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
@@ -20,7 +21,6 @@ import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { attachClipboardShortcuts } from "../tools/clipboard";
 import { attachImageDrop } from "../tools/imageDrop";
-import { ExportButton } from "./ExportButton";
 import { docIdFromHash } from "../home/route";
 import { DocUnavailable } from "../home/DocUnavailable";
 import { CanvasOnboarding } from "../home/CanvasOnboarding";
@@ -634,7 +634,8 @@ export function App() {
           {/* Sviluppo: la vista codice copre la tela (che resta montata: i tool e il
               ciclo di disegno la usano) e sta SOTTO il dock (z-20). */}
           {mode === "dev" && <CodeWorkbench />}
-          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} exportButton={<ExportButton />} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { location.hash = "#new"; }} connection={connection} statusLabel={statusLabel} />
+          <TopBar mode={mode} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { location.hash = "#new"; }} connection={connection} statusLabel={statusLabel} />
+          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} />
         </div>
         {mode === "design" && <TimelinePanel />}
         </div>

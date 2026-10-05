@@ -3,7 +3,6 @@ import { Button as RacButton, Menu, MenuItem, MenuTrigger, Popover, ToggleButton
 import type { ReactNode } from "react";
 import { Button, Icon, IconButton, Kbd, type IconName } from "../ds";
 import { useScene } from "../../store/store";
-import { DocMenu } from "./DocMenu";
 import { usePanels } from "./panels";
 import { useFlowUi, type EditorMode } from "../../store/flowUi";
 import { useTimeline } from "../../animation/timelineStore";
@@ -27,9 +26,6 @@ export const TOOL_KEYS: Partial<Record<ToolId, string>> = {
   select: "V", frame: "A", rect: "R", ellipse: "O", text: "T", pen: "P", hand: "H", connect: "K",
 };
 
-// Il dock raccoglie TUTTO ciò che si usa con la mano sulla tela: annulla/ripeti a
-// sinistra, gli strumenti al centro, a destra le azioni sul documento (Presenta
-// nei flussi, Esporta). La barra in alto resta per identità, modalità e persone.
 // Gli strumenti di FORMA stanno in un solo posto del dock: il pulsante mostra
 // l'ultima forma usata e il chevron apre le altre (Rettangolo, Ellisse). Meno
 // icone fisse, stessa velocità: R e O restano le scorciatoie.
@@ -49,30 +45,20 @@ const TOOL_BTN = (selected: boolean, flow: boolean) =>
 
 const TOOLTIP_CLS = "z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop";
 
-// Le tre modalità, nell'ordine del percorso: si disegna, si collega, si consegna.
-// F alterna Design e Flussi (da Sviluppo riporta a Design); S apre Sviluppo.
-const MODES = [
-  ["design", "Design", "frame", "F", "Disegna le schermate"],
-  ["flows", "Flussi", "flow", "F", "Collega le schermate e prova il prototipo"],
-  ["dev", "Sviluppo", "code", "S", "Prontezza, codice generato, export"],
-] as const;
-
 const SEP = <span className="mx-1 h-5 w-px shrink-0 bg-line" />;
 
-// Il dock raccoglie TUTTO ciò che si usa con la mano sulla tela, in poco spazio:
-// il logo apre il menu del documento (tema, renderer, pannelli), poi modalità,
-// cronologia, strumenti (le forme raggruppate) e infine le azioni: Presenta nei
-// flussi, Esporta, le persone (un solo pulsante con popover) e lo stato.
+// Il dock raccoglie TUTTO ciò che si usa con la MANO sulla tela: cronologia,
+// strumenti (le forme raggruppate), Animazione e Presenta nei flussi -- una
+// barra flottante in basso, speculare alla barra in alto (shell/TopBar.tsx)
+// che invece porta identità del documento, modalità, persone e stato.
+// Esporta non c'è in nessuna delle due: vive nel pannello proprietà, dove
+// compare solo con una selezione (vedi PropertiesPanel.tsx::ExportSection).
 export function ToolDock({
-  tools, toolId, onChoose, mode, exportButton, presence, onNewDocument, connection, statusLabel,
+  tools, toolId, onChoose, mode,
 }: {
   tools: readonly { id: ToolId; label: string }[]; toolId: ToolId; onChoose: (id: ToolId) => void;
-  mode: EditorMode; exportButton: ReactNode; presence: ReactNode; onNewDocument: () => void;
-  connection: string; statusLabel: string;
+  mode: EditorMode;
 }) {
-  const zoom = useScene((s) => s.camera.zoom);
-  const dot =
-    connection === "connected" ? "bg-ok" : connection === "reconnecting" || connection === "connecting" ? "bg-warn" : "bg-danger";
   const canUndo = useScene((s) => s.undoStack.length > 0);
   const canRedo = useScene((s) => s.redoStack.length > 0);
   const timelineOpen = useTimeline((s) => s.open);
@@ -168,39 +154,6 @@ export function ToolDock({
       aria-label="Strumenti"
       className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-xl bg-raised p-1 shadow-bar"
     >
-      <DocMenu onNewDocument={onNewDocument} />
-      <ToggleButtonGroup
-        aria-label="Modalità"
-        selectionMode="single"
-        disallowEmptySelection
-        selectedKeys={[mode]}
-        className="mx-1 flex gap-0.5 rounded-lg bg-surface-3 p-0.5"
-        onSelectionChange={(keys) => {
-          useFlowUi.getState().setMode((keys.values().next().value as EditorMode | undefined) ?? "design");
-        }}
-      >
-        {MODES.map(([id, label, icon, key, hint]) => (
-          <TooltipTrigger key={id} delay={300} closeDelay={0}>
-            <ToggleButton
-              id={id}
-              className={({ isSelected }) =>
-                `flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium outline-none transition-colors ` +
-                `focus-visible:shadow-[var(--ring)] ` +
-                (isSelected
-                  ? id === "flows" ? "bg-flow text-white shadow-sm" : id === "dev" ? "bg-accent text-accent-fg shadow-sm" : "bg-raised text-fg shadow-sm"
-                  : "text-fg-muted hover:text-fg")
-              }
-            >
-              <Icon name={icon} size={14} />
-              {label}
-            </ToggleButton>
-            <Tooltip offset={10} className={TOOLTIP_CLS}>
-              {hint}
-              <Kbd inverted>{key}</Kbd>
-            </Tooltip>
-          </TooltipTrigger>
-        ))}
-      </ToggleButtonGroup>
       {mode === "design" && (
         <AnimIconButton icon="timeline" label="Animazione" shortcut="M" size={32} selected={timelineOpen} onPress={() => useTimeline.getState().toggleOpen()} />
       )}
@@ -223,15 +176,6 @@ export function ToolDock({
           Presenta
         </Button>
       )}
-      {exportButton}
-      {presence}
-      <span className="flex items-center gap-2 px-2 text-[12px] text-fg-muted tabular-nums" aria-live="polite">
-        <span title={statusLabel} className="flex items-center gap-1.5">
-          <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
-          <span className="max-[1600px]:hidden">{statusLabel}</span>
-        </span>
-        <span title="Zoom">{Math.round(zoom * 100)}%</span>
-      </span>
     </div>
   );
 }

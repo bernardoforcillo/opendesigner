@@ -262,14 +262,39 @@ describe("scorciatoie della clipboard", () => {
 
 
 // Stesso principio del registro dei tool e delle scorciatoie: export/ è
-// completo e testato, ma finché la toolbar non lo monta l'export non esiste per
-// chi usa l'app. Qui si verifica solo il montaggio (il comportamento è in
-// ui/ExportButton.test.tsx).
+// completo e testato, ma finché il pannello proprietà non lo monta l'export
+// non esiste per chi usa l'app. Qui si verifica solo il montaggio (il
+// comportamento è in ui/ExportSection.test.tsx). Esporta non è più nella
+// toolbar: vive nel pannello proprietà, e compare solo con una selezione.
 describe("export", () => {
-  it("la toolbar ha il pulsante Esporta", () => {
+  it("senza selezione, Esporta non è da nessuna parte", () => {
+    // Reset esplicito: altri test di questo file lasciano una selezione nello
+    // store globale (es. "scorciatoie della clipboard" sopra), e qui serve
+    // DAVVERO nessuna selezione.
+    useScene.setState({ selection: [] });
     render(<App />);
     const toolbar = screen.getByRole("toolbar", { name: "Strumenti" });
-    expect(within(toolbar).getByRole("button", { name: "Esporta" })).toBeInTheDocument();
+    expect(within(toolbar).queryByRole("button", { name: "Esporta" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Scarica" })).not.toBeInTheDocument();
+  });
+
+  it("con una selezione, il pannello proprietà monta la sezione Esporta", () => {
+    const scene = emptyScene("doc-1", "Untitled");
+    scene.nodes = scene.nodes.set("n1", {
+      id: "n1", parentId: "page1", orderKey: "a000001", name: "Rettangolo",
+      visible: true, opacity: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0,
+      fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
+    });
+    useScene.setState({ selection: [], gesture: null, undoStack: [], redoStack: [], sync: null });
+    useScene.getState().setScene(scene);
+    useScene.getState().setSelection(["n1"]);
+    // Lo stato è impostato PRIMA del render (non dopo, come nei test della
+    // clipboard sopra): lì serve montare App a vuoto e poi cambiare lo stato
+    // per verificare che i listener restino agganciati; qui serve solo che il
+    // pannello nasca già con la selezione, senza il giro di un fireEvent che
+    // forzi react ad assorbire un aggiornamento fuori da un gesto.
+    render(<App />);
+    expect(screen.getByRole("button", { name: "Scarica" })).toBeInTheDocument();
   });
 });
 
