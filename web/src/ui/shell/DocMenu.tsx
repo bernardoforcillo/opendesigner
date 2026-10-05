@@ -7,6 +7,7 @@ import { docClient } from "../../rpc/client";
 import { useTheme } from "./theme";
 import { usePanels } from "./panels";
 import { pickSvgFile } from "../../tools/svgImport";
+import { DiagramDialog } from "../DiagramDialog";
 
 // IL MENU DEL DOCUMENTO: il logo è il pulsante. Dentro: il nome del documento
 // (rinominabile sul posto), la Home, il nuovo documento, il tema, il renderer.
@@ -118,7 +119,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const right = usePanels((s) => s.right);
   const [open, setOpen] = useState(false);
   const [editing, setEditing] = useState(false);
+  const [diagramOpen, setDiagramOpen] = useState(false);
   return (
+    <>
     <MenuTrigger isOpen={open} onOpenChange={(o) => { setOpen(o); if (!o) setEditing(false); }}>
       <RacButton aria-label="Menu del documento" className="flex h-9 w-9 items-center justify-center rounded-lg outline-none hover:bg-surface-3 focus-visible:shadow-[var(--ring)]">
         <Logo />
@@ -131,6 +134,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "new") onNewDocument();
           else if (k === "rename") setEditing(true);
           else if (k === "import-svg") void pickSvgFile();
+          else if (k === "diagram") setDiagramOpen(true);
           else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
           else if (k === "panel-left") usePanels.getState().toggle("left");
           else if (k === "panel-right") usePanels.getState().toggle("right");
@@ -147,6 +151,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuItem>
               <MenuItem id="import-svg" className={ITEM}>
                 <Icon name="image" size={14} /> Importa SVG…
+              </MenuItem>
+              <MenuItem id="diagram" className={ITEM}>
+                <Icon name="plus" size={14} /> Crea diagramma…
               </MenuItem>
               <Separator className="my-1 h-px bg-line" />
               <MenuItem id="panel-left" className={ITEM}>
@@ -174,6 +181,8 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
         </Menu>
       </Popover>
     </MenuTrigger>
+    <DiagramDialog isOpen={diagramOpen} onOpenChange={setDiagramOpen} />
+    </>
   );
 }
 

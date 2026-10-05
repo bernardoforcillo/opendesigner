@@ -98,7 +98,7 @@ function failNotice(message: string): void {
 export async function importSvgAt(
   source: string,
   point: { x: number; y: number },
-  opts: { name?: string } = {},
+  opts: { name?: string; scale?: number } = {},
   deps: SvgImportDeps = defaultDeps,
 ): Promise<string | null> {
   const first = useScene.getState();
@@ -115,6 +115,7 @@ export async function importSvgAt(
       parentId: first.currentPageId ?? first.scene.pages[0]?.id ?? "",
       orderKey: nextOrderKey(first.scene),
       name: opts.name,
+      scale: opts.scale,
       measureText: deps.measureText ?? canvasTextMeasure(),
     });
   } catch (err) {
