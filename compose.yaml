@@ -1,9 +1,18 @@
 services:
   opendesigner:
     build: .
+    # la porta pubblicata ascolta su tutte le interfacce dell'host:
+    # il servizio è raggiungibile anche dalla rete locale
     ports:
-      - "8080:8080"
+      - "${OPENDESIGNER_PORT:-51234}:${OPENDESIGNER_PORT:-51234}"
+    # gira con l'utente dell'host, così può scrivere nella cartella montata
+    user: "${OPENDESIGNER_UID:-1000}:${OPENDESIGNER_GID:-1000}"
+    entrypoint:
+      - /opendesigner
+      - serve
+      - -addr
+      - ":${OPENDESIGNER_PORT:-51234}"
+      - -workspace
+      - /data
     volumes:
-      - opendesigner-data:/data
-volumes:
-  opendesigner-data:
+      - "${OPENDESIGNER_DIR:-${HOME}/.opendesigner}:/data"
