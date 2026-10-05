@@ -12,43 +12,43 @@ import {
 } from "../renderer/text";
 import type { NodeLite } from "../store/types";
 
-// EDITING DEL TESTO — un <textarea> del DOM sovrapposto al nodo.
+// TEXT EDITING — a DOM <textarea> overlaid on the node.
 //
-// Perché il DOM e non un caret disegnato sul canvas: accenti, tastiere morte,
-// IME, selezione col mouse, taglia/incolla e lettori di schermo sono già
-// risolti dal campo nativo, e riscriverli sopra un canvas significa riscriverli
-// male. Il canvas resta il posto in cui il testo VIVE; il campo è solo il modo
-// in cui lo si scrive.
+// Why the DOM and not a caret drawn on the canvas: accents, dead keys,
+// IME, mouse selection, cut/paste and screen readers are already
+// solved by the native field, and rewriting them on top of a canvas means rewriting them
+// badly. The canvas stays the place where the text LIVES; the field is only the way
+// it is written.
 //
-// LA SCELTA (il brief ne offre due, vedi il report): il campo è OPACO e copre
-// il nodo, invece di essere trasparente sopra i glifi disegnati dal canvas.
-// La variante trasparente dà un cursore allineato al pixel solo se font,
-// wrapping E baseline coincidono esattamente fra ctx.measureText e il layout
-// CSS -- e non coincidono: renderer/text.ts colloca la baseline con
-// un'approssimazione dichiarata (ASCENT_RATIO = 0.8em) mentre il browser usa le
-// metriche vere del font. Con un campo trasparente quello scarto si vedrebbe
-// come un cursore fuori asse dai glifi, cioè esattamente il difetto che la
-// scelta doveva evitare. Coprendo, il testo che si legge mentre si scrive è
-// quello del campo: il disallineamento diventa un piccolo salto al momento
-// della conferma, invisibile durante la digitazione.
+// THE CHOICE (the brief offers two, see the report): the field is OPAQUE and covers
+// the node, instead of being transparent over the glyphs drawn by the canvas.
+// The transparent variant gives a pixel-aligned cursor only if font,
+// wrapping AND baseline coincide exactly between ctx.measureText and the CSS
+// layout -- and they do not: renderer/text.ts places the baseline with
+// a declared approximation (ASCENT_RATIO = 0.8em) while the browser uses the
+// font's real metrics. With a transparent field that gap would show
+// as a cursor off-axis from the glyphs, which is exactly the flaw the
+// choice was meant to avoid. By covering, the text one reads while writing is
+// the field's: the misalignment becomes a small jump at the moment of
+// confirmation, invisible during typing.
 //
-// "Coprire" invece di "nascondere il nodo nel renderer" è la stessa cosa vista
-// dal lato giusto: drawScene resta una funzione pura di (scena, camera), senza
-// un parametro "tranne questo nodo" che qualcuno deve ricordarsi di passare --
-// e senza il quale il testo si vedrebbe DOPPIO. Il costo è che, per la durata
-// dell'editing, il rettangolo del campo copre anche ciò che gli sta sotto.
+// "Covering" instead of "hiding the node in the renderer" is the same thing seen
+// from the right side: drawScene stays a pure function of (scene, camera), without
+// an "except this node" parameter that someone has to remember to pass --
+// and without which the text would be seen TWICE. The cost is that, for the duration of
+// editing, the field's rectangle also covers what sits under it.
 //
-// La copertura è quindi un INVARIANTE, non un dettaglio estetico: tutto ciò che
-// muove i glifi sul canvas deve muovere anche il campo. La ROTAZIONE è
-// esattamente questo -- drawScene gira il contesto attorno al centro del box
-// del nodo (renderer/canvasRenderer.ts), e il campo la ripete con la stessa
-// convenzione (gradi, orari, stesso centro) via `transform`. Senza, il campo
-// resterebbe dritto sopra glifi storti: il testo doppio che questa scelta
-// esiste per evitare.
+// The coverage is therefore an INVARIANT, not an aesthetic detail: everything that
+// moves the glyphs on the canvas must also move the field. ROTATION is
+// exactly this -- drawScene rotates the context around the center of the node's box
+// (renderer/canvasRenderer.ts), and the field repeats it with the same
+// convention (degrees, clockwise, same center) via `transform`. Without it, the field
+// would stay straight over crooked glyphs: the double text this choice
+// exists to avoid.
 
 export interface TextEditorOverlayProps {
-  // Il nodo in editing. Lo decide lo store (editingNodeId): ce lo passa chi
-  // monta l'overlay, così il componente resta pilotabile anche da un test.
+  // The node being edited. It is decided by the store (editingNodeId): whoever
+  // mounts the overlay passes it to us, so the component stays drivable by a test too.
   nodeId: string;
 }
 
@@ -57,22 +57,22 @@ function contentOf(n: NodeLite | undefined): string {
 }
 
 export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
-  // Nodo e camera dallo store, con selettori: l'overlay si ridisegna quando si
-  // sposta la camera (pan/zoom durante l'editing non devono scollare il campo
-  // dal nodo) e quando cambia il nodo, non a ogni op del documento.
+  // Node and camera from the store, with selectors: the overlay redraws when the
+  // camera moves (pan/zoom during editing must not detach the field
+  // from the node) and when the node changes, not on every document op.
   const node = useScene((s) => s.scene?.nodes.at(nodeId));
   const camera = useScene((s) => s.camera);
-  // L'origine MONDO del nodo, NON ruotata. Le sue x/y sono relative al PARENT
-  // (vedi canvas/transform.ts), quindi si portano al mondo con la trasformazione
-  // del PARENT -- non con quella del nodo, che include ORA anche la sua rotazione
-  // (localTransformOf), e darebbe l'angolo RUOTATO invece dell'origine. La
-  // rotazione la applica a parte il `transform: rotate(...)` del campo qui sotto,
-  // attorno al centro del box, come drawScene fa col contesto del canvas.
+  // The node's WORLD origin, NOT rotated. Its x/y are relative to the PARENT
+  // (see canvas/transform.ts), so they are brought to the world with the
+  // PARENT's transform -- not with the node's, which NOW also includes its rotation
+  // (localTransformOf), and would give the ROTATED corner instead of the origin. The
+  // rotation is applied separately by the field's `transform: rotate(...)` below,
+  // around the center of the box, as drawScene does with the canvas context.
   //
-  // Due selettori che ritornano NUMERI e non un punto: un oggetto nuovo a ogni
-  // chiamata farebbe ridisegnare l'overlay a ogni op del documento, mentre
-  // così si ridisegna solo quando l'origine cambia davvero -- il nodo o un suo
-  // antenato si è mosso.
+  // Two selectors that return NUMBERS and not a point: a new object on every
+  // call would make the overlay redraw on every document op, whereas
+  // this way it redraws only when the origin really changes -- the node or one of its
+  // ancestors moved.
   const worldX = useScene((s) => {
     const n = s.scene?.nodes.at(nodeId);
     return s.scene && n ? applyTransform(worldTransformOf(s.scene, n.parentId), n.x, n.y).x : 0;
@@ -83,35 +83,35 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   });
 
   const ref = useRef<HTMLTextAreaElement | null>(null);
-  // Una sessione è chiusa UNA volta sola: Escape chiude, e il blur che arriva
-  // subito dopo (il campo sta per essere smontato) non deve richiudere niente.
+  // A session is closed ONLY once: Escape closes, and the blur that arrives
+  // right after (the field is about to be unmounted) must not close anything again.
   const done = useRef(false);
-  // C'è una composizione IME in corso? Serve solo a Escape: mentre l'IME è
-  // aperto quel tasto è SUO (chiude la finestra dei candidati), non nostro.
-  // Un ref e non uno stato: nessun ridisegno dipende da questo valore, e il
-  // keydown lo deve leggere aggiornato nello stesso giro di eventi.
+  // Is an IME composition in progress? It serves only for Escape: while the IME is
+  // open that key is ITS (it closes the candidates window), not ours.
+  // A ref and not a state: no redraw depends on this value, and the
+  // keydown must read it updated in the same event round.
   const composing = useRef(false);
 
-  // Il contenuto della sessione. La sorgente di verità mentre si scrive è il
-  // CAMPO, non lo store: lo store riceve un'anteprima a ogni tasto, ma è il
-  // campo a dire cosa verrà scritto davvero. `start` è il contenuto di
-  // partenza -- fotografato all'ingresso e mai più riletto dallo store, che nel
-  // frattempo contiene le anteprime.
+  // The session's content. The source of truth while writing is the
+  // FIELD, not the store: the store receives a preview at every key, but it is the
+  // field that says what will really be written. `start` is the starting
+  // content -- photographed on entry and never re-read from the store, which in the
+  // meantime contains the previews.
   const [value, setValue] = useState(() => contentOf(node));
   const session = useRef({ id: nodeId, start: value, value });
   if (session.current.id !== nodeId) {
-    // Il padre ha riusato l'overlay per un ALTRO nodo invece di rimontarlo.
-    // Oggi non succede (il blur chiude sempre la sessione prima che una nuova
-    // si apra), ma una sessione che continua con il testo di partenza di
-    // un'altra scriverebbe il contenuto sbagliato sul nodo sbagliato.
+    // The parent reused the overlay for ANOTHER node instead of remounting it.
+    // Today it does not happen (the blur always closes the session before a new
+    // one opens), but a session that continues with another's starting
+    // text would write the wrong content on the wrong node.
     const start = contentOf(node);
     session.current = { id: nodeId, start, value: start };
     setValue(start);
   }
 
-  // Chiude la sessione. `commit` = scrivi (uscita normale), altrimenti annulla
-  // (Escape). In entrambi i casi il gesto si chiude ed è UNA voce di undo: gli
-  // op di anteprima non sono mai stati sul filo, quello finale è uno solo.
+  // Closes the session. `commit` = write (normal exit), otherwise cancel
+  // (Escape). In both cases the gesture closes and is ONE undo entry: the
+  // preview ops were never on the wire, the final one is a single one.
   const finish = useCallback(
     (commit: boolean) => {
       if (done.current) return;
@@ -119,21 +119,21 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
       const store = useScene.getState();
       const { start, value: text } = session.current;
       if (commit) {
-        // Nessuna modifica = nessun op: entrare in un testo e uscirne senza
-        // toccarlo non deve né viaggiare sulla rete né consumare un Ctrl+Z.
+        // No change = no op: entering a text and leaving it without
+        // touching it must neither travel on the network nor consume a Ctrl+Z.
         store.endGesture(text === start ? [] : [makeSetTextOp(nodeId, text)]);
       } else {
         store.cancelGesture();
       }
-      // La politica del nodo rimasto VUOTO (cancellarlo invece di lasciare un
-      // fantasma) vive nello store e resta lì: l'overlay non la duplica, la
-      // invoca. Vedi store.ts::endTextEditing.
+      // The policy for a node left EMPTY (deleting it instead of leaving a
+      // ghost) lives in the store and stays there: the overlay does not duplicate it, it
+      // invokes it. See store.ts::endTextEditing.
       store.endTextEditing();
     },
     [nodeId],
   );
 
-  // Ingresso: apre il gesto, prende il fuoco, cursore a fine testo.
+  // Entry: opens the gesture, takes focus, cursor at the end of the text.
   useEffect(() => {
     done.current = false;
     useScene.getState().beginGesture();
@@ -144,10 +144,10 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
       el.setSelectionRange(n, n);
     }
     return () => {
-      // Smontaggio SENZA un'uscita esplicita: chiude il proprio gesto e basta.
-      // Niente endTextEditing qui -- in StrictMode (main.tsx) React monta,
-      // smonta e rimonta ogni effetto, e spegnere il flag lì dentro farebbe
-      // sparire l'editor in sviluppo al primo frame.
+      // Unmount WITHOUT an explicit exit: closes its own gesture and nothing else.
+      // No endTextEditing here -- in StrictMode (main.tsx) React mounts,
+      // unmounts and remounts every effect, and turning off the flag in there would make
+      // the editor vanish in development at the first frame.
       if (!done.current) {
         done.current = true;
         useScene.getState().cancelGesture();
@@ -155,19 +155,19 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
     };
   }, [nodeId]);
 
-  // Il nodo è sparito sotto le dita (cancellato da un altro client, o dal
-  // rollback della sua stessa creazione): la sessione non ha più un bersaglio.
-  // Chiuderla annullando è l'unica uscita onesta -- un setText su un id che non
-  // esiste sarebbe rifiutato dal server e, prima ancora, lascerebbe il gesto
-  // aperto per sempre.
+  // The node vanished under the fingers (deleted by another client, or by the
+  // rollback of its own creation): the session no longer has a target.
+  // Closing it by canceling is the only honest exit -- a setText on an id that
+  // does not exist would be rejected by the server and, even before that, would leave the gesture
+  // open forever.
   const editable = node !== undefined && node.kind === "text" && node.text !== undefined;
   useEffect(() => {
     if (!editable) finish(false);
   }, [editable, finish]);
 
-  // Il campo deve COPRIRE il testo che il canvas disegna: se il contenuto
-  // cresce oltre il box del nodo, cresce anche lui. `height: 0` prima di
-  // leggere scrollHeight, altrimenti l'altezza può solo salire.
+  // The field must COVER the text the canvas draws: if the content
+  // grows beyond the node's box, it grows too. `height: 0` before
+  // reading scrollHeight, otherwise the height can only go up.
   const minHeight = (node?.height ?? 0) * camera.zoom;
   useLayoutEffect(() => {
     const el = ref.current;
@@ -179,10 +179,10 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   const change = (next: string) => {
     session.current.value = next;
     setValue(next);
-    // Anteprima LIVE sul canvas (e in tutto ciò che legge la scena: pannelli,
-    // maniglie). Non va sul filo: è il gesto a mandare l'op finale, uno solo.
-    // Le anteprime di setText si coalescono per nodo (store.ts::previewKey),
-    // quindi una sessione lunga non accumula un op per tasto.
+    // LIVE preview on the canvas (and in everything that reads the scene: panels,
+    // handles). It does not go on the wire: it is the gesture that sends the final op, a single one.
+    // setText previews coalesce per node (store.ts::previewKey),
+    // so a long session does not accumulate an op per key.
     useScene.getState().applyLocal(makeSetTextOp(nodeId, next));
   };
 
@@ -190,36 +190,36 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
 
   const style = node.text?.style;
   const origin = worldToScreen(camera, worldX, worldY);
-  // Tutto in px SCHERMO: il modello resta in unità mondo, la conversione vive
-  // qui come per il resto della UI.
+  // Everything in SCREEN px: the model stays in world units, the conversion lives
+  // here as for the rest of the UI.
   const fontSize = fontSizeOf(style) * camera.zoom;
   const lineHeight = lineHeightOf(style) * camera.zoom;
   const width = node.width * camera.zoom;
-  // Un angolo nullo NON scrive nessuna trasformazione: un campo dritto deve
-  // restare esattamente il DOM di prima (stessa ragione per cui rotateVector
-  // riconosce l'angolo nullo, vedi canvas/transform.ts).
+  // A null angle writes NO transform: a straight field must stay
+  // exactly the DOM it was before (same reason rotateVector
+  // recognizes the null angle, see canvas/transform.ts).
   const rotated = node.rotation % 360 !== 0;
-  // Il perno è il centro del box del NODO, non quello del campo: il campo può
-  // essersi allungato oltre il box (cresce col contenuto, vedi minHeight qui
-  // sopra) e ruotare attorno al proprio centro lo scollerebbe dai glifi.
-  // In px dall'angolo alto-sinistra del campo, che è l'origine del nodo.
+  // The pivot is the center of the NODE's box, not of the field: the field may
+  // have grown beyond the box (it grows with the content, see minHeight above)
+  // and rotating around its own center would detach it from the glyphs.
+  // In px from the field's top-left corner, which is the node's origin.
   const transformOrigin = `${width / 2}px ${minHeight / 2}px`;
 
   return (
     <textarea
       ref={ref}
-      aria-label="Contenuto del testo"
+      aria-label="Text content"
       value={value}
       spellCheck={false}
       onChange={(e) => change(e.target.value)}
-      // Click fuori (il pointerdown sul canvas toglie il fuoco) e Tab: si
-      // conferma. È anche la rete di sicurezza dei casi che nessuno gestisce --
-      // la finestra che perde il fuoco non deve poter perdere quello che
-      // l'utente ha scritto.
+      // Click outside (the pointerdown on the canvas removes focus) and Tab: it
+      // commits. It is also the safety net for the cases nobody handles --
+      // the window losing focus must not be able to lose what the
+      // user wrote.
       onBlur={() => finish(true)}
-      // Composizione IME (giapponese, cinese, coreano, ma anche le tastiere
-      // predittive del mobile): fra compositionstart e compositionend i tasti
-      // appartengono all'IME, non a noi. Vedi la guardia in onKeyDown.
+      // IME composition (Japanese, Chinese, Korean, but also mobile
+      // predictive keyboards): between compositionstart and compositionend the keys
+      // belong to the IME, not to us. See the guard in onKeyDown.
       onCompositionStart={() => {
         composing.current = true;
       }}
@@ -227,18 +227,18 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
         composing.current = false;
       }}
       onKeyDown={(e) => {
-        // Escape MENTRE l'IME sta componendo chiude la finestra dei candidati:
-        // è il modo standard di rifiutare una conversione, e buttare via
-        // l'intera sessione di editing per quel tasto renderebbe l'editor
-        // inusabile con un IME -- cioè con le lingue per cui l'overlay del DOM
-        // esiste. Tre segnali per lo stesso stato perché i browser non
-        // concordano: isComposing (lo standard), keyCode 229 (il tasto
-        // "in lavorazione dall'IME", che vecchi WebKit mandano senza
-        // isComposing) e il nostro ref, che copre l'ordine in cui il keydown
-        // arriva prima che il browser marchi l'evento.
+        // Escape WHILE the IME is composing closes the candidates window:
+        // it is the standard way to reject a conversion, and throwing away
+        // the whole editing session for that key would make the editor
+        // unusable with an IME -- that is with the languages the DOM overlay
+        // exists for. Three signals for the same state because browsers do not
+        // agree: isComposing (the standard), keyCode 229 (the key
+        // "being processed by the IME", which old WebKit sends without
+        // isComposing) and our ref, which covers the order in which the keydown
+        // arrives before the browser marks the event.
         if (composing.current || e.nativeEvent.isComposing || e.keyCode === 229) return;
-        // Escape annulla. Enter no: va a capo (è un editor multilinea) ed è
-        // quindi affare del campo, non nostro.
+        // Escape cancels. Enter does not: it makes a newline (it is a multiline editor) and is
+        // therefore the field's business, not ours.
         if (e.key === "Escape") {
           e.preventDefault();
           finish(false);
@@ -258,20 +258,23 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
         lineHeight: `${lineHeight}px`,
         textAlign: style?.align ?? "left",
         color: cssColor(node),
-        // L'OPACITÀ del nodo NON viene riportata qui: renderebbe
-        // semitrasparente tutto il campo, sfondo compreso, e il testo disegnato
-        // sotto trasparirebbe -- due testi sovrapposti e sfalsati, cioè il
-        // difetto che la copertura esiste per evitare. Si scrive sempre al
-        // 100%, e l'opacità torna alla conferma (fa parte del piccolo salto
-        // visivo che questa scelta accetta).
-        // Stesso wrapping del layout su canvas (renderer/text.ts): a capo sugli
-        // spazi, e una parola più larga della riga viene spezzata invece di
+        // The node's OPACITY is NOT carried over here: it would make
+        // the whole field semi-transparent, background included, and the text drawn
+        // underneath would show through -- two overlapping, offset texts, that is the
+        // flaw the coverage exists to avoid. It is always written at
+        // 100%, and the opacity comes back on commit (it is part of the small visual
+        // jump this choice accepts).
+        // Same wrapping as the canvas layout (renderer/text.ts): wraps on
+        // spaces, and a word wider than the line is broken instead of
+        // sticking out.
+        // Same wrapping as the canvas layout (renderer/text.ts): wraps on
+        // spaces, and a word wider than the line is broken instead of
         // sporgere.
         overflowWrap: "anywhere",
-        // Il campo è un'affordance, non un rettangolo bianco comparso dal
-        // nulla: il contorno dice dove si sta scrivendo e dove finisce la
-        // larghezza di wrap. Nel blu d'accento del tema (token --accent), lo
-        // stesso della selezione sul canvas.
+        // The field is an affordance, not a white rectangle that appeared out of
+        // nowhere: the outline says where one is writing and where the wrap
+        // width ends. In the theme's accent blue (--accent token), the same
+        // as the selection on the canvas.
         outline: "1px solid var(--accent)",
         outlineOffset: "0px",
       }}

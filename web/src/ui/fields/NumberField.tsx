@@ -1,23 +1,23 @@
 import { useRef, type PointerEvent as ReactPointerEvent, type ReactNode } from "react";
 import { NumberField as AriaNumberField, Label, Input } from "react-aria-components";
 
-// CAMPO NUMERICO GENERICO (Task 9): un valore che si conferma digitando (Invio
-// o blur, comportamento nativo di react-aria-components) O trascinando la sua
-// ETICHETTA -- comportamento atteso in un editor di design (Figma, Sketch...),
-// dove l'etichetta di un campo numerico è essa stessa un cursore di scrub.
+// GENERIC NUMERIC FIELD (Task 9): a value that is committed by typing (Enter
+// or blur, native behavior of react-aria-components) OR by dragging its
+// LABEL -- expected behavior in a design editor (Figma, Sketch...),
+// where a numeric field's label is itself a scrub handle.
 //
-// Non conosce gesti, op o mask: chi lo usa (PropertiesPanel) decide COSA fare
-// di ogni conferma. Qui restano solo tre canali generici, tutti già puliti da
-// NaN prima di raggiungere il chiamante:
-//   - onCommit   digitazione confermata (Invio/blur) -- UN valore finale;
-//   - onScrub    anteprima CONTINUA durante il trascinamento dell'etichetta;
-//   - onScrubEnd rilascio del trascinamento -- il valore finale dello STESSO
-//                gesto che onScrub ha anticipato.
+// It knows nothing of gestures, ops or masks: whoever uses it (PropertiesPanel) decides WHAT to do
+// with each commit. Here only three generic channels remain, all already cleaned of
+// NaN before reaching the caller:
+//   - onCommit   typing confirmed (Enter/blur) -- ONE final value;
+//   - onScrub    CONTINUOUS preview while dragging the label;
+//   - onScrubEnd release of the drag -- the final value of the SAME
+//                gesture that onScrub anticipated.
 
-// Sotto questa soglia (px SCHERMO) un pointerdown sull'etichetta resta un
-// CLICK e non un trascinamento: stessa idea di MARQUEE_SLOP_PX in
-// tools/selectTool.ts, qui applicata allo scrub. Senza soglia, un click che
-// trema di un pixel aprirebbe/chiuderebbe un gesto a vuoto.
+// Below this threshold (SCREEN px) a pointerdown on the label stays a
+// CLICK and not a drag: same idea as MARQUEE_SLOP_PX in
+// tools/selectTool.ts, here applied to scrub. Without a threshold, a click
+// that wobbles by a pixel would open/close an empty gesture.
 const SCRUB_SLOP_PX = 2;
 
 function clampMin(value: number, minValue: number | undefined): number {
@@ -25,61 +25,61 @@ function clampMin(value: number, minValue: number | undefined): number {
 }
 
 export interface NumberFieldProps {
-  /** Etichetta VISIBILE e nome accessibile del campo (es. "X"). */
+  /** VISIBLE label and accessible name of the field (e.g. "X"). */
   label: string;
   /**
-   * Valore corrente. NaN rappresenta "vuoto" (nessun valore singolo da
-   * mostrare -- selezione mista, o nessuna selezione) e NON "controllato vs
-   * non controllato": passare `undefined` farebbe scivolare
-   * react-stately fuori dal controllo ogni volta che il valore torna a
-   * essere definito, con l'avviso di sviluppo che ne conseguirebbe (vedi
-   * react-stately/useControlledState). NaN resta SEMPRE un valore, quindi il
-   * campo resta SEMPRE controllato.
+   * Current value. NaN represents "empty" (no single value to
+   * show -- mixed selection, or no selection) and NOT "controlled vs
+   * uncontrolled": passing `undefined` would make react-stately slip
+   * out of control every time the value becomes defined again,
+   * with the resulting development warning (see
+   * react-stately/useControlledState). NaN is ALWAYS a value, so the
+   * field stays ALWAYS controlled.
    */
   value: number;
   /**
-   * Digitazione confermata (Invio o blur, gestiti da react-aria-components
-   * stesso -- non per-tasto): il valore è GIÀ un numero finito. Un input
-   * vuoto o non parsabile NON invoca questo callback (vedi il commento
-   * sull'onChange qui sotto): nessun NaN può raggiungere il chiamante.
+   * Typing confirmed (Enter or blur, handled by react-aria-components
+   * itself -- not per-key): the value is ALREADY a finite number. An empty
+   * or unparsable input does NOT invoke this callback (see the comment
+   * on onChange below): no NaN can reach the caller.
    */
   onCommit: (value: number) => void;
-  /** Anteprima continua durante il trascinamento dell'etichetta. */
+  /** Continuous preview while dragging the label. */
   onScrub?: (value: number) => void;
-  /** Rilascio del trascinamento: il valore FINALE dello stesso gesto che onScrub ha anticipato. */
+  /** Release of the drag: the FINAL value of the same gesture that onScrub anticipated. */
   onScrubEnd?: (value: number) => void;
   /**
-   * Unità di valore per pixel trascinato. DELIBERATAMENTE indipendente dallo
-   * `step` di react-aria-components (che arrotonderebbe anche i valori
-   * DIGITATI al passo più vicino in fase di commit -- vedi
-   * useNumberFieldState::snapValue -- troncando coordinate frazionarie che
-   * l'utente non ha mai chiesto di arrotondare): qui serve solo a scalare lo
-   * scrub, il campo non riceve mai uno `step` a react-aria-components.
+   * Value units per dragged pixel. DELIBERATELY independent of the
+   * `step` of react-aria-components (which would also round TYPED values
+   * to the nearest step at commit -- see
+   * useNumberFieldState::snapValue -- truncating fractional coordinates
+   * the user never asked to round): here it only serves to scale
+   * the scrub, the field never passes a `step` to react-aria-components.
    */
   dragSensitivity?: number;
   minValue?: number;
   /**
-   * Classi CSS della LARGHEZZA dell'etichetta. Esiste perché lo stesso campo
-   * serve etichette di una lettera (X/Y/W/H/R, la griglia compatta del
-   * pannello) ed etichette a parola intera (Dimensione, per lo stile del
-   * testo): una larghezza fissa dentro il componente sarebbe sbagliata per
-   * metà dei casi d'uso. Senza, il prefisso prende la larghezza del suo testo.
+   * CSS classes for the label's WIDTH. It exists because the same field
+   * serves one-letter labels (X/Y/W/H/R, the panel's compact grid)
+   * and whole-word labels (Size, for text style): a fixed
+   * width inside the component would be wrong for half of the use cases.
+   * Without it, the prefix takes the width of its text.
    */
   labelWidth?: string;
   /**
-   * Il glifo mostrato al posto del testo dell'etichetta (es. "°" per la
-   * rotazione). L'etichetta resta nel DOM, solo non si vede (sr-only): è il nome
-   * accessibile del campo, quindi "Rot" si legge ancora "Rot".
+   * The glyph shown in place of the label text (e.g. "°" for
+   * rotation). The label stays in the DOM, just not visible (sr-only): it is the field's
+   * accessible name, so "Rot" still reads "Rot".
    */
   glyph?: ReactNode;
-  /** Unità dopo il valore (es. "%", "px"): decorativa, il valore resta un numero. */
+  /** Unit after the value (e.g. "%", "px"): decorative, the value stays a number. */
   suffix?: string;
   isDisabled?: boolean;
   /**
-   * Testo temporaneo mostrato quando il campo è VUOTO (`value` NaN). Il
-   * pannello proprietà lo usa per "Misto": una selezione con valori diversi
-   * deve leggersi come "questi nodi differiscono", non come un campo
-   * accidentalmente svuotato -- vedi ui/PropertiesPanel.tsx::MIXED_LABEL.
+   * Temporary text shown when the field is EMPTY (`value` NaN). The
+   * properties panel uses it for "Mixed": a selection with different values
+   * should read as "these nodes differ", not as a field
+   * accidentally emptied -- see ui/PropertiesPanel.tsx::MIXED_LABEL.
    */
   placeholder?: string;
 }
@@ -98,29 +98,29 @@ export function NumberField({
   isDisabled,
   placeholder,
 }: NumberFieldProps) {
-  // Stato del trascinamento in corso. Un ref e non uno state: ogni pixel di
-  // move non deve ri-renderizzare QUESTO componente (lo fa già il chiamante,
-  // per la propria via, quando onScrub aggiorna lo store). `started`
-  // distingue un semplice click sull'etichetta (mai superata la soglia) da un
-  // vero trascinamento -- solo il secondo apre/chiude un gesto lato
-  // chiamante: vedi il commento su dragStarted in tools/selectTool.ts, stessa
-  // idea qui applicata allo scrub di un'etichetta invece che a un nodo.
+  // State of the drag in progress. A ref and not a state: every pixel of
+  // move must not re-render THIS component (the caller already does,
+  // its own way, when onScrub updates the store). `started`
+  // distinguishes a simple click on the label (threshold never exceeded) from a
+  // real drag -- only the latter opens/closes a gesture on the
+  // caller's side: see the comment on dragStarted in tools/selectTool.ts, same
+  // idea here applied to scrubbing a label instead of a node.
   const drag = useRef<{ pointerId: number; startX: number; startValue: number; started: boolean } | null>(null);
 
   function onLabelPointerDown(e: ReactPointerEvent<HTMLLabelElement>) {
-    // Un valore non definito (NaN, selezione mista) non ha un punto di
-    // partenza sensato da cui scrubare: meglio nessun trascinamento che uno
-    // che parte da 0 senza che l'utente l'abbia chiesto.
+    // An undefined value (NaN, mixed selection) has no sensible
+    // starting point to scrub from: better no drag than one
+    // starting at 0 without the user asking for it.
     if (isDisabled || e.button !== 0 || !Number.isFinite(value)) return;
     drag.current = { pointerId: e.pointerId, startX: e.clientX, startValue: value, started: false };
-    // Cattura BEST-EFFORT: nei browser veri fa continuare a ricevere i move
-    // anche quando il puntatore esce dall'etichetta. jsdom (i test) non la
-    // implementa per davvero -- da qui il try/catch, stesso schema di
+    // BEST-EFFORT capture: in real browsers it keeps receiving moves
+    // even when the pointer leaves the label. jsdom (the tests) does not
+    // really implement it -- hence the try/catch, same pattern as
     // tools/toolManager.ts.
     try {
       e.currentTarget.setPointerCapture(e.pointerId);
     } catch {
-      /* nessun capture reale (jsdom, o già perso) */
+      /* no real capture (jsdom, or already lost) */
     }
   }
 
@@ -129,17 +129,17 @@ export function NumberField({
     if (!d || e.pointerId !== d.pointerId) return;
     const dx = e.clientX - d.startX;
     if (!d.started) {
-      if (Math.abs(dx) < SCRUB_SLOP_PX) return; // tremolio: resta un click
+      if (Math.abs(dx) < SCRUB_SLOP_PX) return; // wobble: stays a click
       d.started = true;
     }
     onScrub?.(clampMin(d.startValue + dx * dragSensitivity, minValue));
   }
 
-  // pointerup E pointercancel: il browser può annullare il gesto (gesture di
-  // sistema, capture perso) tanto quanto rilasciarlo normalmente, e in
-  // ENTRAMBI i casi il trascinamento deve chiudersi -- senza, il prossimo
-  // pointerdown troverebbe drag.current ancora valorizzato con un pointerId
-  // che non arriverà mai più.
+  // pointerup AND pointercancel: the browser can cancel the gesture (system
+  // gesture, lost capture) just as much as release it normally, and in
+  // BOTH cases the drag must close -- without it, the next
+  // pointerdown would find drag.current still set with a pointerId
+  // that will never arrive again.
   function endDrag(e: ReactPointerEvent<HTMLLabelElement>) {
     const d = drag.current;
     if (!d || e.pointerId !== d.pointerId) return;
@@ -147,9 +147,9 @@ export function NumberField({
     try {
       e.currentTarget.releasePointerCapture(e.pointerId);
     } catch {
-      /* già rilasciato */
+      /* already released */
     }
-    if (!d.started) return; // click semplice: nessun gesto da chiudere
+    if (!d.started) return; // simple click: no gesture to close
     const dx = e.clientX - d.startX;
     onScrubEnd?.(clampMin(d.startValue + dx * dragSensitivity, minValue));
   }
@@ -159,25 +159,25 @@ export function NumberField({
       value={value}
       minValue={minValue}
       isDisabled={isDisabled}
-      // Niente separatori di migliaia in un campo di coordinate: "1,234" per
-      // x=1234 è rumore, non leggibilità, in un editor di design.
+      // No thousands separators in a coordinate field: "1,234" for
+      // x=1234 is noise, not readability, in a design editor.
       formatOptions={{ useGrouping: false, maximumFractionDigits: 2 }}
       onChange={(v) => {
-        // Un input svuotato e confermato fa commit-are NaN (react-stately::
-        // commit, "Set to empty state if input value is empty"): senza
-        // questo controllo un campo svuotato manderebbe al chiamante un
-        // valore che, spedito così com'è in un SetProperties, renderebbe il
-        // nodo invisibile e irrecuperabile dalla UI (x/y NaN) -- vedi il
-        // brief. Un input che non parsa affatto (es. "-" da solo) non arriva
-        // nemmeno fin qui: react-stately lo intercetta prima e non chiama
+        // An emptied and committed input commits NaN (react-stately::
+        // commit, "Set to empty state if input value is empty"): without
+        // this check an emptied field would send the caller a
+        // value that, shipped as-is in a SetProperties, would make the
+        // node invisible and unrecoverable from the UI (x/y NaN) -- see the
+        // brief. An input that does not parse at all (e.g. "-" alone) does not
+        // even get here: react-stately intercepts it first and does not call
         // onChange.
         if (!Number.isFinite(v)) return;
         onCommit(v);
       }}
-      // L'etichetta è un PREFISSO dentro il campo (X, Y, W, H, °): un solo
-      // rettangolo incassato che si illumina al focus, come negli editor di
-      // design. focus-within e non il focus dell'input, perché il bordo è del
-      // contenitore.
+      // The label is a PREFIX inside the field (X, Y, W, H, °): a single
+      // inset rectangle that lights up on focus, as in design
+      // editors. focus-within and not the input's focus, because the border belongs to
+      // the container.
       className={
         "group flex h-7 min-w-0 items-center rounded-md border border-transparent bg-surface-2 " +
         "hover:border-line-strong focus-within:border-accent focus-within:bg-surface " +
@@ -189,10 +189,10 @@ export function NumberField({
         onPointerMove={onLabelPointerMove}
         onPointerUp={endDrag}
         onPointerCancel={endDrag}
-        // touch-none: trascinare l'etichetta su schermo tattile non deve
-        // scorrere il pannello (stesso motivo della maniglia di riordino in
-        // ui/LayersPanel.tsx). select-none: uno scrub non deve selezionare il
-        // testo dell'etichetta mentre il puntatore si muove.
+        // touch-none: dragging the label on a touch screen must not
+        // scroll the panel (same reason as the reorder handle in
+        // ui/LayersPanel.tsx). select-none: a scrub must not select the
+        // label text while the pointer moves.
         className={
           `${labelWidth ?? "min-w-6"} flex h-full shrink-0 cursor-ew-resize touch-none select-none items-center ` +
           "justify-center pl-2 pr-1 text-[11px] font-medium text-fg-subtle group-focus-within:text-accent hover:text-fg"

@@ -10,19 +10,19 @@ import {
   rulerTicks, sameKey, snapTime, valueAt, type KeyRef,
 } from "../../animation/timelineLogic";
 
-// L'AREA DELLE TRACCE: il righello, una riga per traccia con i suoi keyframe e il
-// playhead. Tutto ciò che si trascina lavora su una BOZZA nello store di vista
-// (`draftClip`: la tela la campiona dal vivo) e scrive UN `SetClip` al rilascio.
+// THE TRACK AREA: the ruler, one row per track with its keyframes and the
+// playhead. Everything that is dragged works on a DRAFT in the view store
+// (`draftClip`: the canvas samples it live) and writes ONE `SetClip` on release.
 
 export const LABEL_W = 208;
 const PAD = 16;
-/** Margine a destra: l'etichetta dell'ultima tacca (centrata sulla tacca) non deve uscire dalla corsia. */
+/** Right margin: the label of the last tick (centered on the tick) must not leave the lane. */
 const END_PAD = 28;
 const ROW_H = 30;
 const RULER_H = 26;
-/** Soglia di trascinamento (px) sotto la quale un press su un keyframe è un click. */
+/** Drag threshold (px) below which a press on a keyframe is a click. */
 const DRAG_SLOP_PX = 3;
-/** Raggio (px) dell'aggancio ai keyframe vicini. */
+/** Radius (px) of snapping to nearby keyframes. */
 const SNAP_PX = 6;
 
 interface KfDrag {
@@ -32,7 +32,7 @@ interface KfDrag {
   sel: KeyRef[];
   primary: KeyRef;
   moved: boolean;
-  /** Il press era dentro una selezione multipla: senza trascinare, la riduce al solo keyframe. */
+  /** The press was inside a multiple selection: without dragging, it reduces it to the keyframe alone. */
   collapse: boolean;
   result: { clip: ClipLite; sel: KeyRef[] } | null;
 }
@@ -65,8 +65,8 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
   const xOf = (t: number) => PAD + t * ppm;
   const tAt = (clientX: number, laneLeft: number) => (clientX - laneLeft - PAD) / ppm;
 
-  // Ctrl + rotella: zoom orizzontale della timeline. Listener nativo non passivo:
-  // quello di React non può annullare lo zoom della pagina.
+  // Ctrl + wheel: horizontal zoom of the timeline. Non-passive native listener:
+  // React's cannot cancel the page zoom.
   useEffect(() => {
     const el = scroller.current;
     if (!el) return;
@@ -82,7 +82,7 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
 
   const tl = () => useTimeline.getState();
 
-  // --- scorrimento (righello e spazio vuoto delle righe) -------------------------
+  // --- scrolling (ruler and empty space of the rows) -----------------------------
   const scrubTo = (e: React.PointerEvent, laneLeft: number) => {
     const t = snapTime(tAt(e.clientX, laneLeft), clip.duration, [], { free: e.shiftKey });
     tl().setPlayhead(t);
@@ -90,7 +90,7 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
   const scrubDown = (e: React.PointerEvent<HTMLElement>) => {
     if (e.button !== 0) return;
     scrubbing.current = e.pointerId;
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* niente capture (jsdom) */ }
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no capture (jsdom) */ }
     scrubTo(e, e.currentTarget.getBoundingClientRect().left);
   };
   const scrubMove = (e: React.PointerEvent<HTMLElement>) => {
@@ -100,7 +100,7 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
   const scrubUp = (e: React.PointerEvent<HTMLElement>) => {
     if (scrubbing.current !== e.pointerId) return;
     scrubbing.current = null;
-    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* già rilasciato */ }
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* already released */ }
   };
 
   // --- keyframe ---------------------------------------------------------------------
@@ -114,9 +114,9 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
       ? inSel ? st.selection.filter((r) => !sameKey(r, ref)) : [...st.selection, ref]
       : inSel ? st.selection : [ref];
     st.select(sel);
-    if (mod && inSel) return; // tolto dalla selezione: niente trascinamento
+    if (mod && inSel) return; // removed from the selection: no drag
     kfDrag.current = { pointerId: e.pointerId, startX: e.clientX, base: clip, sel, primary: ref, moved: false, collapse: !mod && inSel && sel.length > 1, result: null };
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* niente capture (jsdom) */ }
+    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no capture (jsdom) */ }
   };
   const kfMove = (e: React.PointerEvent<HTMLElement>) => {
     const d = kfDrag.current;
@@ -124,7 +124,7 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
     const dx = e.clientX - d.startX;
     if (!d.moved && Math.abs(dx) < DRAG_SLOP_PX) return;
     d.moved = true;
-    // L'aggancio: griglia da 10 ms, altri keyframe e playhead entro SNAP_PX; Maiusc = libero.
+    // Snapping: 10 ms grid, other keyframes and playhead within SNAP_PX; Shift = free.
     const delta = dragDelta(d.base, d.sel, d.primary, dx / ppm, { free: e.shiftKey, thresholdMs: SNAP_PX / ppm, extra: [tl().playhead] });
     d.result = moveKeyframes(d.base, d.sel, delta);
     tl().setDraftClip(d.result.clip);
@@ -133,10 +133,10 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
     const d = kfDrag.current;
     if (!d || d.pointerId !== e.pointerId) return;
     kfDrag.current = null;
-    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* già rilasciato */ }
+    try { e.currentTarget.releasePointerCapture(e.pointerId); } catch { /* already released */ }
     const st = tl();
     if (d.moved && d.result) {
-      // UN op per tutto il trascinamento.
+      // ONE op for the whole drag.
       commitClip(d.result.clip);
       st.select(d.result.sel);
       st.setDraftClip(null);
@@ -166,19 +166,19 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
       ref={scroller}
       className="relative min-h-0 min-w-0 flex-1 overflow-auto outline-none"
       onPointerDown={(e) => {
-        // Cliccare nel vuoto toglie la selezione dei keyframe.
+        // Clicking on empty space clears the keyframe selection.
         if (e.target === e.currentTarget) tl().select([]);
       }}
     >
       <div className="relative" style={{ width: LABEL_W + innerW, minHeight: "100%" }}>
-        {/* IL RIGHELLO: tacche auto-scalate con lo zoom; trascinarlo scorre il playhead. */}
+        {/* THE RULER: ticks auto-scaled with zoom; dragging it scrubs the playhead. */}
         <div className="sticky top-0 z-20 flex border-b border-line bg-surface" style={{ height: RULER_H }}>
           <div className="sticky left-0 z-30 flex shrink-0 items-center border-r border-line bg-surface px-3 text-[11px] text-fg-subtle" style={{ width: LABEL_W }}>
             <span className="tabular-nums">{formatTime(clip.duration)}</span>
             <span className="ml-auto flex items-center gap-0.5">
-              <AnimIconButton icon="zoomOut" label="Riduci lo zoom" size={22} onPress={() => tl().setZoom(zoom / 1.5)} />
-              <AnimIconButton icon="fit" label="Adatta alla clip" size={22} onPress={() => tl().setZoom(1)} />
-              <AnimIconButton icon="zoomIn" label="Aumenta lo zoom" size={22} onPress={() => tl().setZoom(zoom * 1.5)} />
+              <AnimIconButton icon="zoomOut" label="Zoom out" size={22} onPress={() => tl().setZoom(zoom / 1.5)} />
+              <AnimIconButton icon="fit" label="Fit to clip" size={22} onPress={() => tl().setZoom(1)} />
+              <AnimIconButton icon="zoomIn" label="Zoom in" size={22} onPress={() => tl().setZoom(zoom * 1.5)} />
             </span>
           </div>
           <div
@@ -214,13 +214,13 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
           </div>
         </div>
 
-        {/* LE TRACCE */}
+        {/* THE TRACKS */}
         {clip.tracks.length === 0 ? (
           <div className="sticky left-0" style={{ width: viewW || undefined }}>
             <EmptyState
               icon="sparkle"
-              title="Anima qualcosa: seleziona un livello e premi + Proprietà"
-              hint="Oppure parti da un preset: Fade in, Slide up, Pop, Spin, Pulse, Draw."
+              title="Animate something: select a layer and press + Property"
+              hint="Or start from a preset: Fade in, Slide up, Pop, Spin, Pulse, Draw."
             />
           </div>
         ) : (
@@ -235,25 +235,25 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
                   style={{ width: LABEL_W }}
                 >
                   <RacButton
-                    aria-label={`Seleziona ${node?.name ?? tr.nodeId}`}
+                    aria-label={`Select ${node?.name ?? tr.nodeId}`}
                     onPress={() => node && useScene.getState().setSelection([tr.nodeId])}
                     className="flex min-w-0 flex-1 items-center gap-1.5 rounded text-left text-[12px] outline-none data-[focus-visible]:shadow-[var(--ring)]"
                   >
                     <span className="shrink-0 text-fg-subtle"><AnyAnimIcon name={nodeKindIcon(node)} size={13} /></span>
                     <span className={`truncate font-medium ${nodeSelected ? "text-accent" : "text-fg"}`}>
-                      {node ? (node.name.trim() !== "" ? node.name : node.kind) : "(eliminato)"}
+                      {node ? (node.name.trim() !== "" ? node.name : node.kind) : "(deleted)"}
                     </span>
                     <span className="shrink-0 text-fg-subtle">{PROP_LABEL[tr.prop] ?? tr.prop}</span>
                   </RacButton>
                   <AnimIconButton
                     icon="diamondPlus"
-                    label={`Aggiungi un keyframe al playhead su ${PROP_LABEL[tr.prop] ?? tr.prop}`}
+                    label={`Add a keyframe at the playhead on ${PROP_LABEL[tr.prop] ?? tr.prop}`}
                     size={22}
                     onPress={() => addAt(ti, Math.round(playhead))}
                   />
                   <AnimIconButton
                     icon="x"
-                    label={`Rimuovi la traccia ${PROP_LABEL[tr.prop] ?? tr.prop}`}
+                    label={`Remove the ${PROP_LABEL[tr.prop] ?? tr.prop} track`}
                     size={22}
                     onPress={() => {
                       commitClip(removeTrack(clip, ti));
@@ -263,7 +263,7 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
                 </div>
                 <div
                   role="group"
-                  aria-label={`Traccia ${PROP_LABEL[tr.prop] ?? tr.prop} di ${node?.name ?? tr.nodeId}`}
+                  aria-label={`${PROP_LABEL[tr.prop] ?? tr.prop} track of ${node?.name ?? tr.nodeId}`}
                   className="relative shrink-0 cursor-col-resize touch-none"
                   style={{ width: innerW }}
                   onPointerDown={(e) => {
@@ -276,7 +276,7 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
                   onPointerCancel={scrubUp}
                   onDoubleClick={(e) => addAt(ti, snapTime(tAt(e.clientX, e.currentTarget.getBoundingClientRect().left), clip.duration, kf.map((k) => k.time), { free: e.shiftKey }))}
                 >
-                  {/* i segmenti fra un keyframe e il successivo */}
+                  {/* the segments between one keyframe and the next */}
                   {kf.slice(0, -1).map((k, i) => (
                     <span
                       key={`seg${i}`}
@@ -292,7 +292,7 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
                       <button
                         key={ki}
                         type="button"
-                        aria-label={`Keyframe a ${formatTime(k.time)}, valore ${Math.round(k.value * 1000) / 1000}`}
+                        aria-label={`Keyframe at ${formatTime(k.time)}, value ${Math.round(k.value * 1000) / 1000}`}
                         aria-pressed={sel}
                         className="group absolute top-1/2 flex h-4 w-4 -translate-x-1/2 -translate-y-1/2 cursor-grab items-center justify-center outline-none active:cursor-grabbing"
                         style={{ left: xOf(k.time) }}
@@ -319,7 +319,7 @@ export function TrackArea({ clip }: { clip: ClipLite }) {
           })
         )}
 
-        {/* IL PLAYHEAD: una linea su tutte le righe e la testina sul righello. */}
+        {/* THE PLAYHEAD: a line across all the rows and the head on the ruler. */}
         <div className="pointer-events-none absolute bottom-0 top-0 z-10" style={{ left: LABEL_W + xOf(playhead), width: 0 }}>
           <span className="absolute top-0 h-full w-px -translate-x-1/2 bg-accent" />
           <span className="absolute -translate-x-1/2 text-accent" style={{ top: RULER_H - 11 }}>

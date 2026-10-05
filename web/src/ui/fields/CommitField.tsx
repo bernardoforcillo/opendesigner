@@ -1,14 +1,14 @@
 import { useEffect, useRef, useState } from "react";
 import { cls } from "../ds";
 
-// Un campo di testo che conferma su Invio o al blur, UNA volta sola. Gemello di
-// OverrideTextField (PropertiesPanel) e dei campi di rinomina: la bozza digitata
-// è stato locale e riparte da `value` quando cambia dall'esterno (commit andato a
-// buon fine, cambio di selezione). Così ogni modifica è UN op e UNA voce di undo,
-// non una per tasto battuto.
+// A text field that commits on Enter or on blur, exactly ONCE. Twin of
+// OverrideTextField (PropertiesPanel) and of the rename fields: the typed draft
+// is local state and restarts from `value` when it changes from outside (commit
+// succeeded, selection change). This way every edit is ONE op and ONE undo entry,
+// not one per keystroke.
 //
-// Nessun tasto esce dal campo: le scorciatoie globali (undo/redo su window,
-// Canc/Escape/K del canvas) non devono agire mentre si scrive.
+// No key leaves the field: global shortcuts (undo/redo on window,
+// Delete/Escape/K of the canvas) must not act while typing.
 export function CommitField({
   label,
   value,
@@ -27,8 +27,8 @@ export function CommitField({
   title?: string;
 }) {
   const [draft, setDraft] = useState(value);
-  // L'ultimo testo già confermato (o scartato con Escape): Invio conferma e poi il
-  // blur che segue (il campo perde il fuoco) non deve confermare una seconda volta.
+  // The last text already committed (or discarded with Escape): Enter commits and then the
+  // blur that follows (the field loses focus) must not commit a second time.
   const last = useRef<string | null>(null);
   useEffect(() => {
     setDraft(value);
@@ -48,8 +48,8 @@ export function CommitField({
     placeholder,
     spellCheck: false,
     onBlur: settle,
-    // Lo stesso campo incassato di ogni altro input del sistema (cls.input);
-    // il testo a più righe perde l'altezza fissa e prende un po' d'aria.
+    // The same inset field as every other input in the system (cls.input);
+    // multiline text loses the fixed height and gets some room.
     className: `${cls.input} ${multiline ? "h-auto resize-none py-1 leading-snug" : ""} ${className}`,
   };
   const onKeyDown = (e: React.KeyboardEvent) => {

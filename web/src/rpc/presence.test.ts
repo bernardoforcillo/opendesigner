@@ -3,12 +3,12 @@ import { create } from "@bufbuild/protobuf";
 import { PresenceEventSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import { usePresence } from "../store/presence";
 
-// Uno stream controllabile a mano: il test decide quando arrivano gli eventi.
+// A stream controllable by hand: the test decides when events arrive.
 function makeStream(signal?: AbortSignal) {
   const queue: unknown[] = [];
   let wake: (() => void) | null = null;
   let done = false;
-  // Come fetch: un abort fa fallire l'iterazione.
+  // Like fetch: an abort makes the iteration fail.
   signal?.addEventListener("abort", () => { done = true; wake?.(); });
   return {
     push(ev: unknown) { queue.push(ev); wake?.(); },
@@ -49,7 +49,7 @@ describe("PresenceClient", () => {
   });
   afterEach(() => vi.useRealTimers());
 
-  it("non invia nulla finché il server non dice 'pronto', poi manda lo stato locale", async () => {
+  it("sends nothing until the server says 'ready', then sends the local state", async () => {
     const s = makeStream();
     watchPresence.mockReturnValue(s.iterable);
     const c = new PresenceClient("doc", "me", "Ada");
@@ -68,7 +68,7 @@ describe("PresenceClient", () => {
     c.stop();
   });
 
-  it("raggruppa una raffica di movimenti: l'ultimo valore vince, al massimo uno ogni 50 ms", async () => {
+  it("batches a burst of movements: the last value wins, at most one every 50 ms", async () => {
     const s = makeStream();
     watchPresence.mockReturnValue(s.iterable);
     const c = new PresenceClient("doc", "me", "Ada");
@@ -86,7 +86,7 @@ describe("PresenceClient", () => {
     c.stop();
   });
 
-  it("gli eventi dei peer finiscono nello store e stop() lo svuota", async () => {
+  it("peer events end up in the store and stop() empties it", async () => {
     const s = makeStream();
     watchPresence.mockReturnValue(s.iterable);
     const c = new PresenceClient("doc", "me", "Ada");
@@ -99,7 +99,7 @@ describe("PresenceClient", () => {
     expect(usePresence.getState().peers).toEqual({});
   });
 
-  it("se lo stream cade riprova da solo e svuota i peer nel frattempo", async () => {
+  it("if the stream drops it retries on its own and empties the peers in the meantime", async () => {
     const first = makeStream();
     const second = makeStream();
     watchPresence.mockReturnValueOnce(first.iterable).mockReturnValue(second.iterable);
@@ -118,7 +118,7 @@ describe("PresenceClient", () => {
     c.stop();
   });
 
-  it("cambiare nickname riapre lo stream con il nome nuovo", async () => {
+  it("changing the nickname reopens the stream with the new name", async () => {
     watchPresence.mockImplementation((_req: unknown, opts?: { signal?: AbortSignal }) => makeStream(opts?.signal).iterable);
     const c = new PresenceClient("doc", "me", "Ada");
     c.start();
@@ -130,8 +130,8 @@ describe("PresenceClient", () => {
     c.stop();
   });
 
-  it("un errore di rete non esplode: nessuna eccezione non gestita", async () => {
-    watchPresence.mockImplementation(() => { throw new Error("rete"); });
+  it("a network error does not blow up: no unhandled exception", async () => {
+    watchPresence.mockImplementation(() => { throw new Error("network"); });
     const c = new PresenceClient("doc", "me", "Ada");
     c.start();
     await vi.advanceTimersByTimeAsync(2_000);

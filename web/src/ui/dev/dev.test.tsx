@@ -15,9 +15,9 @@ import { CodeWorkbench } from "./CodeWorkbench";
 import { PipelineStepper, goToStep } from "./PipelineStepper";
 import { usePanels } from "../shell/panels";
 
-// I TRE PANNELLI DI SVILUPPO con l'RPC finto: la checklist e le sue correzioni a
-// un click (un gesto = un undo), Spedisci (lo zip e i comandi), la vista codice
-// (stati di caricamento/errore, file <-> schermata, anteprima) e lo stepper.
+// THE THREE DEVELOP PANELS with a fake RPC: the checklist and its one-click
+// fixes (one gesture = one undo), Ship (the zip and the commands), the code view
+// (loading/error states, file <-> screen, preview) and the stepper.
 
 const downloads: { name: string; bytes: Uint8Array }[] = [];
 vi.mock("../../dev/zip", async (orig) => ({
@@ -44,8 +44,8 @@ const reactFiles = (): CodeFile[] => [
   f("tests/flows.spec.ts", "test('x', () => {})"),
 ];
 const htmlFiles = (): CodeFile[] => [
-  f("index.html", '<html><body><div data-node-id="A">Pagina A</div><a href="b.html">vai</a></body></html>'),
-  f("b.html", '<html><body><div data-node-id="B">Pagina B</div></body></html>'),
+  f("index.html", '<html><body><div data-node-id="A">Page A</div><a href="b.html">go</a></body></html>'),
+  f("b.html", '<html><body><div data-node-id="B">Page B</div></body></html>'),
 ];
 const ok: CodeFetcher = async (_d, target) => ({ files: target === "html" ? htmlFiles() : reactFiles(), warnings: [] });
 
@@ -59,7 +59,7 @@ beforeEach(() => {
   setAnalysisFetcher(async () => []);
   setCodeFetcher(ok);
   resetCodegen();
-  useScene.getState().setScene(withFlows(baseScene(), [flowOf("f1", "A", "Acquisto")], [transition("t1", "f1", "A", "B", { label: "Avanti" })]));
+  useScene.getState().setScene(withFlows(baseScene(), [flowOf("f1", "A", "Purchase")], [transition("t1", "f1", "A", "B", { label: "Avanti" })]));
   useScene.getState().setSync(sync);
   try { localStorage.clear(); } catch { /* */ }
 });
@@ -76,65 +76,65 @@ const withReport = (issues: { kind: string; nodeId?: string }[] = []) =>
   });
 
 describe("ReadinessPanel", () => {
-  it("mostra i bloccanti e le correzioni; 'Assegna le rotte' scrive TUTTE le rotte in UN gesto (un solo Ctrl+Z)", () => {
+  it("shows the blockers and the fixes; 'Assign routes' writes ALL the routes in ONE gesture (a single Ctrl+Z)", () => {
     withReport();
     render(<ReadinessPanel />);
-    expect(screen.getByText("3 bloccanti")).toBeInTheDocument();
+    expect(screen.getByText("3 blockers")).toBeInTheDocument();
     expect(screen.getByTestId("ready-routes")).toHaveAttribute("data-state", "fail");
 
-    fireEvent.click(screen.getByRole("button", { name: "Assegna le rotte" }));
+    fireEvent.click(screen.getByRole("button", { name: "Assign routes" }));
     expect(sync.sent.map((o) => o.kind.case)).toEqual(["setProps", "setProps", "setProps"]);
     const nodes = useScene.getState().scene!.nodes;
     expect(["A", "B", "C"].map((id) => nodes.at(id)!.meta?.["code.route"])).toEqual(["/a", "/b", "/c"]);
     expect(useScene.getState().undoStack).toHaveLength(1);
 
-    // risolto: il badge diventa "Pronto" e la riga passa
-    expect(screen.getByText("Pronto")).toBeInTheDocument();
+    // resolved: the badge becomes "Ready" and the row passes
+    expect(screen.getByText("Ready")).toBeInTheDocument();
     expect(screen.getByTestId("ready-routes")).toHaveAttribute("data-state", "pass");
 
     act(() => useScene.getState().undo());
     expect(useScene.getState().scene!.nodes.at("A")!.meta?.["code.route"]).toBeUndefined();
   });
 
-  it("'Imposta l'inizio' imposta la schermata d'ingresso dei flussi che ne sono privi", () => {
+  it("'Set the start' sets the entry screen of flows that lack one", () => {
     useScene.getState().setScene(withFlows(baseScene(), [flowOf("f1", "")], [transition("t1", "f1", "B", "C", { label: "x" })]));
     withReport();
     render(<ReadinessPanel />);
-    fireEvent.click(screen.getByRole("button", { name: "Imposta l'inizio" }));
+    fireEvent.click(screen.getByRole("button", { name: "Set the start" }));
     expect(useScene.getState().scene!.flows.f1.startId).toBe("B");
     expect(screen.getByTestId("ready-start")).toHaveAttribute("data-state", "pass");
   });
 
-  it("'Seleziona la schermata' porta alla schermata del problema", () => {
+  it("'Select the screen' leads to the problem's screen", () => {
     withReport([{ kind: "unreachable", nodeId: "C" }]);
     render(<ReadinessPanel />);
     const row = screen.getByTestId("ready-issue:unreachable");
     expect(row).toHaveAttribute("data-state", "fail");
-    fireEvent.click(within(row).getByRole("button", { name: "Seleziona la schermata" }));
+    fireEvent.click(within(row).getByRole("button", { name: "Select the screen" }));
     expect(useScene.getState().selection).toEqual(["C"]);
   });
 
-  it("senza analisi del server le righe dipendenti sono 'pending' e non contano come bloccanti", () => {
+  it("without server analysis the dependent rows are 'pending' and do not count as blockers", () => {
     useScene.getState().setScene(withFlows(
       baseScene(), [flowOf("f1", "A")], [transition("t1", "f1", "A", "B", { label: "x" })],
     ));
     render(<ReadinessPanel />);
     expect(screen.getByTestId("ready-analysis")).toHaveAttribute("data-state", "pending");
-    expect(screen.getByText("3 bloccanti")).toBeInTheDocument(); // solo le tre rotte
+    expect(screen.getByText("3 blockers")).toBeInTheDocument(); // only the three routes
   });
 
-  it("la barra di avanzamento conta gli stati", () => {
+  it("the progress bar counts the states", () => {
     const s = baseScene();
     const tested = { ...s.nodes.at("A")!, meta: { status: "tested" } };
     useScene.getState().setScene({ ...s, nodes: nodesWith(s.nodes, { A: tested }) });
     withReport();
     render(<ReadinessPanel />);
-    expect(screen.getByRole("img", { name: /1 testate, 0 implementate, 2 pianificate su 3/ })).toBeInTheDocument();
+    expect(screen.getByRole("img", { name: /1 tested, 0 implemented, 2 planned out of 3/ })).toBeInTheDocument();
   });
 });
 
 describe("ShipPanel", () => {
-  it("scarica <doc>-react.zip con i file generati (rigenerando al momento del click)", async () => {
+  it("downloads <doc>-react.zip with the generated files (regenerating at click time)", async () => {
     const spy = vi.fn(ok);
     setCodeFetcher(spy);
     withReport();
@@ -146,29 +146,29 @@ describe("ShipPanel", () => {
     expect(Array.from(downloads[0].bytes.subarray(0, 2))).toEqual([0x50, 0x4b]);
   });
 
-  it("un errore del server si dice, e non scarica niente", async () => {
-    setCodeFetcher(async () => { throw new Error("giù"); });
+  it("a server error is reported, and nothing is downloaded", async () => {
+    setCodeFetcher(async () => { throw new Error("down"); });
     render(<ShipPanel />);
     fireEvent.click(screen.getByRole("button", { name: /^t-react\.zip$/ }));
-    expect(await screen.findByRole("alert")).toHaveTextContent("giù");
+    expect(await screen.findByRole("alert")).toHaveTextContent("down");
     expect(downloads).toHaveLength(0);
   });
 
-  it("mostra i comandi copiabili e i tool per gli agenti; 'Copia tutto' copia lo script", async () => {
+  it("shows the copyable commands and the tools for agents; 'Copy all' copies the script", async () => {
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     render(<ShipPanel />);
     expect(screen.getByText("npx playwright test")).toBeInTheDocument();
     expect(screen.getByText("opendesigner flow check -doc t")).toBeInTheDocument();
     for (const tool of ["export_code", "get_flow_spec", "analyze_flows"]) expect(screen.getByText(tool)).toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Copia tutto" }));
+    fireEvent.click(screen.getByRole("button", { name: "Copy all" }));
     await waitFor(() => expect(writeText).toHaveBeenCalled());
     const script = (writeText.mock.calls[0] as unknown as [string])[0];
     expect(script).toContain("npm i && npm run dev");
     expect(script).toContain("opendesigner flow coverage");
   });
 
-  it("senza schermate il pulsante dello zip è disabilitato", () => {
+  it("without screens the zip button is disabled", () => {
     useScene.getState().setScene(emptyScene("doc", "t"));
     render(<ShipPanel />);
     expect(screen.getByRole("button", { name: /^t-react\.zip$/ })).toBeDisabled();
@@ -176,103 +176,103 @@ describe("ShipPanel", () => {
 });
 
 describe("CodeWorkbench", () => {
-  it("genera il codice, raggruppa i file e mostra il primo file di schermata", async () => {
+  it("generates the code, groups the files and shows the first screen file", async () => {
     render(<CodeWorkbench />);
     expect(await screen.findByTestId("code-text")).toHaveTextContent('data-node-id="A"');
-    const nav = screen.getByRole("navigation", { name: "File generati" });
-    for (const name of ["Schermate", "App", "Configurazione", "Test"]) expect(within(nav).getByRole("region", { name })).toBeInTheDocument();
+    const nav = screen.getByRole("navigation", { name: "Generated files" });
+    for (const name of ["Screens", "App", "Configuration", "Test"]) expect(within(nav).getByRole("region", { name })).toBeInTheDocument();
     expect(within(nav).getByRole("button", { name: "src/screens/A.tsx" })).toHaveAttribute("aria-current", "true");
   });
 
-  it("la schermata selezionata nel documento seleziona il suo file, e viceversa", async () => {
+  it("the screen selected in the document selects its file, and vice versa", async () => {
     render(<CodeWorkbench />);
     await screen.findByTestId("code-text");
     act(() => useScene.getState().setSelection(["B"]));
     await waitFor(() => expect(screen.getByRole("button", { name: "src/screens/B.tsx" })).toHaveAttribute("aria-current", "true"));
-    // un figlio della schermata (btn è dentro A) seleziona il file di A
+    // a child of the screen (btn is inside A) selects A's file
     act(() => useScene.getState().setSelection(["btn"]));
     await waitFor(() => expect(screen.getByRole("button", { name: "src/screens/A.tsx" })).toHaveAttribute("aria-current", "true"));
-    // cliccare un file di schermata seleziona la schermata nel documento
+    // clicking a screen file selects the screen in the document
     fireEvent.click(screen.getByRole("button", { name: "src/screens/B.tsx" }));
     expect(useScene.getState().selection).toEqual(["B"]);
-    // un file che non è una schermata si apre senza toccare la selezione
+    // a file that is not a screen opens without touching the selection
     fireEvent.click(screen.getByRole("button", { name: "package.json" }));
     expect(screen.getByTestId("code-text")).toHaveTextContent('"name"');
     expect(useScene.getState().selection).toEqual(["B"]);
   });
 
-  it("stato di caricamento, poi errore con 'Riprova' che rifà la richiesta", async () => {
+  it("loading state, then error with 'Retry' that redoes the request", async () => {
     let fail = true;
     setCodeFetcher(async (d, t, s) => {
-      if (fail) throw new Error("server giù");
+      if (fail) throw new Error("server down");
       return ok(d, t, s);
     });
     render(<CodeWorkbench />);
-    expect(await screen.findByText("Non riesco a generare il codice")).toBeInTheDocument();
-    expect(screen.getByText("server giù")).toBeInTheDocument();
+    expect(await screen.findByText("Cannot generate the code")).toBeInTheDocument();
+    expect(screen.getByText("server down")).toBeInTheDocument();
     fail = false;
-    fireEvent.click(screen.getByRole("button", { name: "Riprova" }));
+    fireEvent.click(screen.getByRole("button", { name: "Retry" }));
     expect(await screen.findByTestId("code-text")).toBeInTheDocument();
   });
 
-  it("mentre carica dice che sta generando", async () => {
+  it("while loading it says it is generating", async () => {
     setCodeFetcher(() => new Promise(() => {}));
     render(<CodeWorkbench />);
-    expect((await screen.findAllByText("Genero il codice…")).length).toBeGreaterThan(0);
+    expect((await screen.findAllByText("Generating the code…")).length).toBeGreaterThan(0);
   });
 
-  it("il target HTML mostra i file HTML; 'Anteprima' mette la schermata generata in un iframe sandboxed", async () => {
+  it("the HTML target shows the HTML files; 'Preview' puts the generated screen in a sandboxed iframe", async () => {
     render(<CodeWorkbench />);
     await screen.findByTestId("code-text");
     fireEvent.click(screen.getByRole("radio", { name: "HTML" }));
     expect(await screen.findByRole("button", { name: "index.html" })).toBeInTheDocument();
 
-    expect(screen.queryByTitle("Anteprima della schermata generata")).not.toBeInTheDocument();
-    fireEvent.click(screen.getByRole("button", { name: "Anteprima" }));
-    const frame = (await screen.findByTitle("Anteprima della schermata generata")) as HTMLIFrameElement;
-    expect(frame.getAttribute("sandbox")).toBe("allow-scripts"); // niente allow-same-origin
-    expect(frame.getAttribute("srcdoc")).toContain("Pagina A");
+    expect(screen.queryByTitle("Preview of the generated screen")).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Preview" }));
+    const frame = (await screen.findByTitle("Preview of the generated screen")) as HTMLIFrameElement;
+    expect(frame.getAttribute("sandbox")).toBe("allow-scripts"); // no allow-same-origin
+    expect(frame.getAttribute("srcdoc")).toContain("Page A");
 
-    // selezionando B si vede B
+    // selecting B shows B
     act(() => useScene.getState().setSelection(["B"]));
-    await waitFor(() => expect((screen.getByTitle("Anteprima della schermata generata") as HTMLIFrameElement).getAttribute("srcdoc")).toContain("Pagina B"));
+    await waitFor(() => expect((screen.getByTitle("Preview of the generated screen") as HTMLIFrameElement).getAttribute("srcdoc")).toContain("Page B"));
   });
 
-  it("un click su un link dentro l'anteprima (postMessage) cambia la schermata mostrata e selezionata", async () => {
+  it("a click on a link inside the preview (postMessage) changes the shown and selected screen", async () => {
     render(<CodeWorkbench />);
-    fireEvent.click(await screen.findByRole("button", { name: "Anteprima" }));
-    const frame = (await screen.findByTitle("Anteprima della schermata generata")) as HTMLIFrameElement;
-    await waitFor(() => expect(frame.getAttribute("srcdoc")).toContain("Pagina A"));
+    fireEvent.click(await screen.findByRole("button", { name: "Preview" }));
+    const frame = (await screen.findByTitle("Preview of the generated screen")) as HTMLIFrameElement;
+    await waitFor(() => expect(frame.getAttribute("srcdoc")).toContain("Page A"));
     act(() => {
       window.dispatchEvent(new MessageEvent("message", { data: { odPreviewNav: "b.html" }, source: frame.contentWindow }));
     });
-    await waitFor(() => expect(screen.getByTitle("Anteprima della schermata generata").getAttribute("srcdoc")).toContain("Pagina B"));
+    await waitFor(() => expect(screen.getByTitle("Preview of the generated screen").getAttribute("srcdoc")).toContain("Page B"));
     expect(useScene.getState().selection).toEqual(["B"]);
-    // un messaggio da un'altra finestra si ignora
+    // a message from another window is ignored
     act(() => {
       window.dispatchEvent(new MessageEvent("message", { data: { odPreviewNav: "index.html" }, source: window }));
     });
-    expect(screen.getByTitle("Anteprima della schermata generata").getAttribute("srcdoc")).toContain("Pagina B");
+    expect(screen.getByTitle("Preview of the generated screen").getAttribute("srcdoc")).toContain("Page B");
   });
 
-  it("un file molto lungo si monta a pezzi: 'Mostra tutte le righe'", async () => {
+  it("a very long file is mounted in pieces: 'Show all lines'", async () => {
     const long = Array.from({ length: 2000 }, (_, i) => `const a${i} = ${i};`).join("\n");
     setCodeFetcher(async () => ({ files: [f("src/screens/A.tsx", `<div data-node-id="A"/>\n${long}`)], warnings: [] }));
     render(<CodeWorkbench />);
-    const more = await screen.findByRole("button", { name: /Mostra tutte le 2001 righe/ });
+    const more = await screen.findByRole("button", { name: /Show all 2001 lines/ });
     expect(screen.getByTestId("code-text").textContent).not.toContain("a1999");
     fireEvent.click(more);
     expect(screen.getByTestId("code-text").textContent).toContain("a1999");
   });
 
-  it("le approssimazioni del generatore si possono aprire", async () => {
-    setCodeFetcher(async () => ({ files: reactFiles(), warnings: ["asset mancante"] }));
+  it("the generator's approximations can be opened", async () => {
+    setCodeFetcher(async () => ({ files: reactFiles(), warnings: ["missing asset"] }));
     render(<CodeWorkbench />);
     fireEvent.click(await screen.findByRole("button", { name: /1 approssimazione/ }));
-    expect(screen.getByText("asset mancante")).toBeInTheDocument();
+    expect(screen.getByText("missing asset")).toBeInTheDocument();
   });
 
-  it("fuori da Sviluppo non c'è lavoro: smontato, la richiesta in volo è annullata", async () => {
+  it("outside Develop there is no work: unmounted, the in-flight request is cancelled", async () => {
     let signal!: AbortSignal;
     setCodeFetcher((_d, _t, s) => { signal = s; return new Promise(() => {}); });
     const { unmount } = render(<CodeWorkbench />);
@@ -284,7 +284,7 @@ describe("CodeWorkbench", () => {
 });
 
 describe("PipelineStepper", () => {
-  it("mostra i quattro passi con lo stato dedotto dal documento", async () => {
+  it("shows the four steps with the state derived from the document", async () => {
     withReport();
     render(<PipelineStepper />);
     const nav = screen.getByRole("navigation", { name: "Pipeline" });
@@ -292,11 +292,11 @@ describe("PipelineStepper", () => {
     expect(step("draw")).toHaveAttribute("data-done", "true");
     expect(step("connect")).toHaveAttribute("data-done", "true");
     expect(step("try")).toHaveAttribute("data-done", "false");
-    expect(step("ship")).toHaveAttribute("data-done", "false"); // 3 rotte mancanti
-    expect(step("ship")).toHaveAttribute("aria-current", "step"); // siamo in Sviluppo
+    expect(step("ship")).toHaveAttribute("data-done", "false"); // 3 routes missing
+    expect(step("ship")).toHaveAttribute("aria-current", "step"); // we are in Develop
   });
 
-  it("i click portano dove si lavora", () => {
+  it("clicks lead to where the work is", () => {
     withReport();
     render(<PipelineStepper />);
     const nav = screen.getByRole("navigation", { name: "Pipeline" });
@@ -307,11 +307,11 @@ describe("PipelineStepper", () => {
     expect(useFlowUi.getState().presenting).toBe(false);
     fireEvent.click(nav.querySelector('[data-step="try"]')!);
     expect(useFlowUi.getState()).toMatchObject({ mode: "flows", presenting: true });
-    // aver presentato accende il passo (flag per documento)
+    // having presented lights the step (per-document flag)
     expect(localStorage.getItem("od.presented.doc")).toBe("1");
   });
 
-  it("Spedisci riapre il pannello destro se era chiuso; Prova senza flussi si ferma ai Flussi", () => {
+  it("Ship reopens the right panel if it was closed; Try without flows stops at Flows", () => {
     usePanels.setState({ left: true, right: false });
     goToStep("ship", true);
     expect(useFlowUi.getState().mode).toBe("dev");

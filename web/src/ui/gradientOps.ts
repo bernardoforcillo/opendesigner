@@ -4,11 +4,11 @@ import { toPbFills } from "../store/types";
 import type { FillLite, GradientLite, NodeLite } from "../store/types";
 import type { RgbLite } from "./fields/ColorField";
 
-// Gli op del pannello gradienti. Come fillOps nel pannello, toccano SOLO la
-// prima tinta del nodo: un nodo con più riempimenti non perde gli altri.
+// The gradient panel's ops. Like fillOps in the panel, they touch ONLY the
+// node's first tint: a node with several fills does not lose the others.
 //
-// Funzioni pure sul nodo (non leggono lo store): chi le chiama passa il lookup,
-// così si provano senza montare niente.
+// Pure functions on the node (they do not read the store): the caller passes the lookup,
+// so they can be tested without mounting anything.
 export type NodeLookup = (id: string) => NodeLite | undefined;
 
 export type FillKind = "solid" | "linear" | "radial";
@@ -17,16 +17,16 @@ export function fillKindOf(f: FillLite | null): FillKind {
   return f?.gradient?.kind ?? "solid";
 }
 
-// Asse di default: lineare dall'alto al basso, radiale dal centro al bordo.
+// Default axis: linear from top to bottom, radial from center to edge.
 function defaultGeometry(kind: "linear" | "radial") {
   return kind === "linear"
     ? { x1: 0.5, y1: 0, x2: 0.5, y2: 1 }
     : { x1: 0.5, y1: 0.5, x2: 1, y2: 0.5 };
 }
 
-// Dal colore piatto a un gradiente che VA dal colore a lui stesso trasparente:
-// è un punto di partenza che si vede subito diverso, senza inventare un
-// secondo colore che l'utente non ha scelto.
+// From the flat color to a gradient that GOES from the color to itself transparent:
+// it is a starting point that visibly looks different right away, without inventing a
+// second color the user did not choose.
 function toGradient(f: FillLite, kind: "linear" | "radial"): FillLite {
   const from = { r: f.r, g: f.g, b: f.b, a: f.a };
   const gradient: GradientLite = {
@@ -46,7 +46,7 @@ function withFirst(n: NodeLite, first: FillLite): Op {
 
 const BASE: FillLite = { r: 0.8, g: 0.8, b: 0.8, a: 1 };
 
-/** Cambia il TIPO del riempimento. Tornare a "solid" tiene il primo stop. */
+/** Changes the fill TYPE. Going back to "solid" keeps the first stop. */
 export function fillKindOps(ids: readonly string[], lookup: NodeLookup, kind: FillKind): Op[] {
   return ids.flatMap((id) => {
     const n = lookup(id);
@@ -54,8 +54,8 @@ export function fillKindOps(ids: readonly string[], lookup: NodeLookup, kind: Fi
     const cur = n.fills[0] ?? BASE;
     if (fillKindOf(cur) === kind) return [];
     if (kind === "solid") return [withFirst(n, { r: cur.r, g: cur.g, b: cur.b, a: cur.a })];
-    // Da gradiente a gradiente cambia solo la forma: gli stop restano, la
-    // geometria torna al default del nuovo tipo.
+    // From gradient to gradient only the shape changes: the stops stay, the
+    // geometry goes back to the new type's default.
     if (cur.gradient) {
       const gradient: GradientLite = { ...cur.gradient, kind, ...defaultGeometry(kind) };
       return [withFirst(n, { ...cur, gradient })];
@@ -64,7 +64,7 @@ export function fillKindOps(ids: readonly string[], lookup: NodeLookup, kind: Fi
   });
 }
 
-/** Colore (senza alfa) di uno stop, che mantiene la PROPRIA alfa. */
+/** Color (without alpha) of a stop, which keeps its OWN alpha. */
 export function gradientStopOps(ids: readonly string[], lookup: NodeLookup, index: number, rgb: RgbLite): Op[] {
   return ids.flatMap((id) => {
     const n = lookup(id);
@@ -77,7 +77,7 @@ export function gradientStopOps(ids: readonly string[], lookup: NodeLookup, inde
   });
 }
 
-/** Angolo (gradi, 0 = da sinistra a destra, 90 = dall'alto al basso) di un lineare. */
+/** Angle (degrees, 0 = left to right, 90 = top to bottom) of a linear gradient. */
 export function gradientAngleOf(f: FillLite | null): number {
   const g = f?.gradient;
   if (!g || g.kind !== "linear") return 0;

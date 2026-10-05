@@ -2,14 +2,14 @@ import { useFlowUi } from "../../store/flowUi";
 import { useTimeline } from "../../animation/timelineStore";
 import { isTextField } from "../../tools/toolManager";
 
-// M apre/chiude la timeline. Sulla finestra come le altre scorciatoie a tasto
-// singolo (il canvas non è focusabile), mai dentro un campo di testo, mai con un
-// modificatore, mai mentre il prototipo è aperto. Da Flussi o Sviluppo riporta in
-// Design: la timeline vive lì.
+// M opens/closes the timeline. On the window like the other single-key
+// shortcuts (the canvas is not focusable), never inside a text field, never with a
+// modifier, never while the prototype is open. From Flows or Develop it returns to
+// Design: the timeline lives there.
 //
-// Lo SPAZIO (play/pausa) NON è qui, di proposito: è del pannello e vale solo col
-// fuoco al suo interno (TimelinePanel.tsx). Una scorciatoia globale sullo spazio
-// toglierebbe il pan temporaneo con la barra spaziatrice (tools/toolManager.ts).
+// SPACE (play/pause) is NOT here, on purpose: it belongs to the panel and applies only with
+// focus inside it (TimelinePanel.tsx). A global shortcut on space
+// would remove the temporary pan with the space bar (tools/toolManager.ts).
 export function attachTimelineShortcuts(): () => void {
   const onKey = (e: KeyboardEvent) => {
     if (e.key.toLowerCase() !== "m" || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;

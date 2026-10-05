@@ -1,9 +1,9 @@
 import { docClient } from "./client";
 import { usePresence } from "../store/presence";
 
-// Cosa questo client dice di sé agli altri. Tutto effimero: cursore (in
-// coordinate MONDO, così ognuno lo vede al punto giusto con la propria camera),
-// pagina e selezione.
+// What this client says about itself to the others. All ephemeral: cursor (in
+// WORLD coordinates, so everyone sees it at the right spot with their own camera),
+// page and selection.
 export interface LocalPresence {
   hasCursor: boolean;
   cursorX: number;
@@ -12,19 +12,19 @@ export interface LocalPresence {
   selection: string[];
 }
 
-// Non più di un invio ogni 50 ms (20 Hz): un cursore non ha bisogno di più, e
-// il pointermove ne produce centinaia al secondo. L'ultimo valore vince.
+// No more than one send every 50 ms (20 Hz): a cursor does not need more, and
+// pointermove produces hundreds per second. The last value wins.
 const SEND_INTERVAL_MS = 50;
 const RETRY_BASE_MS = 500;
 const RETRY_MAX_MS = 5_000;
 
 /**
- * Il canale di presenza: uno stream WatchPresence (chi c'è) e un unary
- * UpdatePresence (dove sono io). Non tocca mai il documento né gli op.
+ * The presence channel: a WatchPresence stream (who is here) and a unary
+ * UpdatePresence (where I am). It never touches the document or the ops.
  *
- * Ritenta SEMPRE, con backoff: la presenza è un di più, e perderla non deve
- * mai rovinare la modifica. A differenza di SyncClient non ha un tetto ai
- * tentativi né un messaggio d'errore -- chi lavora da solo non se ne accorge.
+ * It ALWAYS retries, with backoff: presence is an extra, and losing it must
+ * never ruin an edit. Unlike SyncClient it has no cap on
+ * attempts and no error message -- someone working alone does not notice.
  */
 export class PresenceClient {
   private abort: AbortController | null = null;
@@ -52,13 +52,13 @@ export class PresenceClient {
     usePresence.getState().clear();
   }
 
-  // Il nickname lo fissa il server all'ingresso, quindi cambiarlo vuol dire
-  // uscire e rientrare: lo stream si riapre da capo con il nome nuovo.
+  // The nickname is fixed by the server on entry, so changing it means
+  // leaving and re-entering: the stream reopens from scratch with the new name.
   setNickname(nickname: string): void {
     if (nickname === this.nickname) return;
     this.nickname = nickname;
     if (this.stopped) return;
-    this.abort?.abort(); // run() lo vede come fine stream e si riapre subito
+    this.abort?.abort(); // run() sees it as end of stream and reopens right away
   }
 
   setLocal(patch: Partial<LocalPresence>): void {
@@ -87,7 +87,7 @@ export class PresenceClient {
           cursorX: l.cursorX, cursorY: l.cursorY, pageId: l.pageId, selection: l.selection,
         },
       }))
-      .catch(() => { /* effimero: il prossimo update rimpiazza questo */ });
+      .catch(() => { /* ephemeral: the next update replaces this one */ });
   }
 
   private async run(): Promise<void> {
@@ -102,8 +102,8 @@ export class PresenceClient {
         );
         for await (const ev of stream) {
           if (ev.kind.case === undefined) {
-            // Il "pronto" del server: da qui UpdatePresence viene accettato, e
-            // chi si è appena (ri)connesso dice subito dove si trova.
+            // The server's "ready": from here UpdatePresence is accepted, and
+            // whoever just (re)connected says right away where they are.
             this.joined = true;
             attempt = 0;
             this.schedule();
@@ -111,11 +111,11 @@ export class PresenceClient {
           }
           usePresence.getState().apply(ev);
         }
-      } catch { /* abort volontario o rete: stesso trattamento, si riprova */ }
+      } catch { /* deliberate abort or network: same treatment, retry */ }
       this.joined = false;
       usePresence.getState().clear();
       if (this.stopped) return;
-      // Un abort voluto (cambio nickname) riparte subito; un errore vero no.
+      // A deliberate abort (nickname change) restarts right away; a real error does not.
       if (this.abort.signal.aborted) continue;
       attempt = Date.now() - startedAt > 10_000 ? 1 : attempt + 1;
       const delay = Math.min(RETRY_MAX_MS, RETRY_BASE_MS * 2 ** (attempt - 1));

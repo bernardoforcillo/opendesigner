@@ -3,25 +3,25 @@ import { Button as RacButton, Dialog, DialogTrigger, Popover } from "react-aria-
 import { usePresence, peerColor, saveNickname } from "../store/presence";
 import { Button, Icon } from "./ds";
 
-// Quanti avatar si mostrano prima del "+N": nella barra in alto lo spazio è poco.
+// How many avatars are shown before the "+N": in the top bar space is tight.
 const MAX_AVATARS = 4;
 
 /**
- * Nickname, chi c'è e il pulsante per invitare. Nessun account: il nome lo
- * sceglie ognuno ed è solo un'etichetta per la sessione.
+ * Nickname, who is here and the button to invite. No accounts: everyone
+ * picks their own name and it is only a label for the session.
  *
- * Gli avatar si sovrappongono con un anello del colore della barra (così si
- * leggono anche uno sopra l'altro); il nickname è una pillola modificabile in
- * linea -- resta un <input> con lo stesso nome accessibile, ma a riposo non ha
- * cornice e si accende al passaggio e al fuoco.
+ * Avatars overlap with a ring in the bar's color (so they
+ * read even one on top of another); the nickname is a pill editable
+ * inline -- it stays an <input> with the same accessible name, but at rest it has no
+ * frame and lights up on hover and focus.
  */
 export function PresenceBar({
   nickname, onNickname, compact = false,
 }: {
   nickname: string;
   onNickname: (n: string) => void;
-  // Nel dock: gli avatar sono un solo pulsante "Persone" che apre un popover con
-  // il nickname e il link da condividere -- tre controlli diventano uno.
+  // In the dock: the avatars are a single "People" button that opens a popover with
+  // the nickname and the link to share -- three controls become one.
   compact?: boolean;
 }) {
   const peers = usePresence((s) => s.peers);
@@ -41,9 +41,9 @@ export function PresenceBar({
       setCopied(true);
       setTimeout(() => setCopied(false), 1500);
     } catch {
-      // Niente clipboard (http fuori da localhost): il link è comunque nella
-      // barra degli indirizzi, che è esattamente ciò che si copierebbe.
-      window.prompt("Copia questo link e mandalo a chi vuoi invitare:", location.href);
+      // No clipboard (http outside localhost): the link is in the
+      // address bar anyway, which is exactly what would be copied.
+      window.prompt("Copy this link and send it to whoever you want to invite:", location.href);
     }
   };
 
@@ -51,7 +51,7 @@ export function PresenceBar({
   const extra = others.length - shown.length;
 
   const avatars = (
-    <div role="list" aria-label="Persone nel documento" className="flex items-center -space-x-1.5">
+    <div role="list" aria-label="People in the document" className="flex items-center -space-x-1.5">
       {shown.map((p) => (
         <div
           key={p.clientId}
@@ -67,7 +67,7 @@ export function PresenceBar({
       {extra > 0 && (
         <div
           role="listitem"
-          aria-label={`Altre ${extra} persone`}
+          aria-label={`${extra} more people`}
           className="flex h-6 min-w-6 select-none items-center justify-center rounded-full bg-surface-3 px-1 text-[10px] font-semibold text-fg-muted ring-2 ring-surface"
         >
           {`+${extra}`}
@@ -79,7 +79,7 @@ export function PresenceBar({
     <span className="relative block">
       <Icon name="user" size={13} className="pointer-events-none absolute left-2 top-1/2 -translate-y-1/2 text-fg-subtle" />
       <input
-        aria-label="Il tuo nickname"
+        aria-label="Your nickname"
         value={draft}
         maxLength={32}
         spellCheck={false}
@@ -95,11 +95,11 @@ export function PresenceBar({
       variant="secondary"
       icon={copied ? "check" : "link"}
       onPress={share}
-      aria-label={copied ? "Link copiato" : "Condividi"}
+      aria-label={copied ? "Link copied" : "Share"}
       className={copied ? "text-ok" : ""}
     >
-      {/* Sotto i 1600px di finestra resta la sola icona: il dock deve starci. */}
-      <span className={compact ? "" : "max-[1600px]:hidden"}>{copied ? "Link copiato" : "Condividi"}</span>
+      {/* Below 1600px of window width only the icon remains: the dock must fit. */}
+      <span className={compact ? "" : "max-[1600px]:hidden"}>{copied ? "Link copied" : "Share"}</span>
     </Button>
   );
 
@@ -107,21 +107,21 @@ export function PresenceBar({
     return (
       <DialogTrigger>
         <RacButton
-          aria-label="Persone"
+          aria-label="People"
           className="flex h-9 items-center gap-1.5 rounded-lg px-2 text-fg-muted outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]"
         >
           {others.length > 0 ? avatars : <Icon name="user" size={16} />}
           <span className="text-[12px] font-medium tabular-nums">{others.length + 1}</span>
         </RacButton>
         <Popover placement="top" offset={10} className="w-[248px] rounded-xl bg-raised p-3 text-fg shadow-pop">
-          <Dialog aria-label="Persone" className="flex flex-col gap-3 outline-none">
+          <Dialog aria-label="People" className="flex flex-col gap-3 outline-none">
             <div className="flex flex-col gap-1.5">
-              <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Tu</span>
+              <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">You</span>
               {nameField}
             </div>
             {others.length > 0 && (
               <div className="flex flex-col gap-1.5">
-                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Nel documento · {others.length}</span>
+                <span className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">In the document · {others.length}</span>
                 <ul className="flex flex-col gap-1">
                   {others.map((p) => (
                     <li key={p.clientId} className="flex items-center gap-2 text-[13px]">

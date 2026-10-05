@@ -2,9 +2,9 @@ import { useRenderer } from "../store/rendererChoice";
 import { Icon } from "./ds";
 
 /**
- * Sceglie il renderer della scena: CPU (Canvas 2D) o GPU (CanvasKit su WebGL).
- * Mostra anche quanto è durato l'ultimo frame, perché la risposta a "quale è più
- * veloce" dipende dalla macchina e l'unico modo onesto di darla è misurarla lì.
+ * Chooses the scene's renderer: CPU (Canvas 2D) or GPU (CanvasKit on WebGL).
+ * It also shows how long the last frame took, because the answer to "which is
+ * faster" depends on the machine and the only honest way to give it is to measure it there.
  */
 export function RendererToggle() {
   const choice = useRenderer((s) => s.choice);
@@ -19,14 +19,14 @@ export function RendererToggle() {
     : status === "error" ? "GPU ✕"
     : choice === "gpu" ? "GPU" : "CPU";
   const title =
-    status === "error" ? `La GPU non è disponibile (${error}). Si disegna in CPU. Clic per riprovare.`
-    : status === "loading" ? "Caricamento di CanvasKit…"
+    status === "error" ? `The GPU is not available (${error}). Drawing on the CPU. Click to retry.`
+    : status === "loading" ? "Loading CanvasKit…"
     : choice === "gpu"
-      ? "Renderer GPU (CanvasKit, WebGL). Clic per passare alla CPU."
-      : "Renderer CPU (Canvas 2D). Clic per provare la GPU (CanvasKit, WebGL): si scarica ~7 MB la prima volta.";
+      ? "GPU renderer (CanvasKit, WebGL). Click to switch to the CPU."
+      : "CPU renderer (Canvas 2D). Click to try the GPU (CanvasKit, WebGL): downloads ~7 MB the first time.";
 
-  // Un chip minuscolo: icona (CPU/bolt), testo CPU/GPU e, tenue, i ms dell'ultimo
-  // frame. GPU attiva = accento; in errore = avviso; caricamento = tenue.
+  // A tiny chip: icon (CPU/bolt), CPU/GPU text and, faint, the ms of the last
+  // frame. GPU active = accent; on error = warning; loading = faint.
   const tone =
     status === "error" ? "bg-warn-soft text-warn"
     : status === "loading" ? "bg-surface-3 text-fg-subtle"
@@ -36,7 +36,7 @@ export function RendererToggle() {
     <button
       type="button"
       title={title}
-      aria-label={`Renderer: ${label}. Passa a ${next === "gpu" ? "GPU" : "CPU"}`}
+      aria-label={`Renderer: ${label}. Switch to ${next === "gpu" ? "GPU" : "CPU"}`}
       onClick={() => setChoice(next)}
       className={`inline-flex h-5 items-center gap-1 rounded-full px-1.5 text-[11px] font-semibold outline-none transition-colors focus-visible:shadow-[var(--ring)] ${tone}`}
     >

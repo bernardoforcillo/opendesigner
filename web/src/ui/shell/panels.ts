@@ -1,20 +1,20 @@
 import { create } from "zustand";
 
-// I pannelli laterali si possono chiudere per dare tutta la tela al disegno. Lo
-// stato sopravvive al ricarico (localStorage; senza, restano aperti). Tasti:
-// `[` sinistro, `]` destro (mai dentro un campo di testo).
+// The side panels can be closed to give the whole canvas to the drawing. The
+// state survives a reload (localStorage; without it, they stay open). Keys:
+// `[` left, `]` right (never inside a text field).
 const KEY = "od.panels";
 
 function read(): { left: boolean; right: boolean } {
   try {
     const v = JSON.parse(localStorage.getItem(KEY) ?? "null");
     if (v && typeof v.left === "boolean" && typeof v.right === "boolean") return v;
-  } catch { /* niente storage */ }
+  } catch { /* no storage */ }
   return { left: true, right: true };
 }
 
 function save(s: { left: boolean; right: boolean }) {
-  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* niente storage */ }
+  try { localStorage.setItem(KEY, JSON.stringify(s)); } catch { /* no storage */ }
 }
 
 export const usePanels = create<{
@@ -25,8 +25,8 @@ export const usePanels = create<{
     const next = { left: get().left, right: get().right, [side]: !get()[side] };
     save(next);
     set(next);
-    // La tela cambia larghezza: il renderer ridisegna su invalidazione e App la
-    // chiede già al resize della finestra -- la stessa strada vale qui.
+    // The canvas changes width: the renderer redraws on invalidation and App
+    // already requests it on window resize -- the same path works here.
     if (typeof window !== "undefined") requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
   },
 }));

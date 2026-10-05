@@ -1,6 +1,6 @@
-// I matcher di jest-dom sono già installati dai setupFiles (vite.config.ts);
-// l'import qui serve a TYPE-SCRIPT (tsc -b non legge i setupFiles), altrimenti
-// toBeInTheDocument/toHaveAttribute non esistono per il compilatore.
+// jest-dom's matchers are already installed by the setupFiles (vite.config.ts);
+// the import here serves TYPE-SCRIPT (tsc -b does not read the setupFiles), otherwise
+// toBeInTheDocument/toHaveAttribute do not exist for the compiler.
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, vi, afterEach } from "vitest";
 import { render, screen, fireEvent, cleanup, within, waitFor } from "@testing-library/react";
@@ -13,9 +13,9 @@ import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import * as overlayRenderer from "../renderer/overlayRenderer";
 
-// Il bootstrap di App parla con la rete (createDocument + SyncClient): qui
-// serve solo la toolbar, quindi il trasporto è un doppio inerte. Senza, ogni
-// test aprirebbe una fetch verso un server che non c'è.
+// App's bootstrap talks to the network (createDocument + SyncClient): here
+// only the toolbar is needed, so the transport is an inert double. Without it, every
+// test would open a fetch towards a server that does not exist.
 vi.mock("../rpc/client", () => ({
   docClient: { createDocument: vi.fn(async () => ({ id: "doc-1" })) },
 }));
@@ -26,10 +26,10 @@ vi.mock("../rpc/syncClient", () => ({
   },
 }));
 
-// jsdom qui non espone localStorage (Node lo disabilita senza
-// --localstorage-file): senza stub il bootstrap fallisce e sporca l'output con
-// un errore che non c'entra nulla con la toolbar. Con un docId già in cache il
-// bootstrap arriva fino ad attachTools, cioè al percorso vero.
+// jsdom here does not expose localStorage (Node disables it without
+// --localstorage-file): without a stub the bootstrap fails and dirties the output with
+// an error that has nothing to do with the toolbar. With a docId already in cache the
+// bootstrap reaches attachTools, that is the real path.
 vi.stubGlobal("localStorage", {
   getItem: () => "doc-1",
   setItem: () => {},
@@ -37,137 +37,137 @@ vi.stubGlobal("localStorage", {
 });
 
 afterEach(cleanup);
-// I doppi installati con spyOn (getContext, drawOverlay) vanno tolti anche
-// quando un'asserzione fallisce a metà test: senza, un rosso ne trascinerebbe
-// altri dietro di sé e la causa vera sparirebbe nel rumore.
+// The doubles installed with spyOn (getContext, drawOverlay) must be removed even
+// when an assertion fails mid-test: without it, one red would drag others
+// behind it and the real cause would vanish in the noise.
 afterEach(() => vi.restoreAllMocks());
 
-// Il registro dei tool è l'unico punto in cui un ToolId diventa RAGGIUNGIBILE:
-// il tool testo era completo e testato ma non compariva né in TOOLS né nella
-// toolbar (bug trovato in review), quindi non esisteva per l'utente. Questi
-// test tengono chiuso proprio quel buco -- fra i due elenchi e fra elenco e
-// tool vero.
-describe("registro dei tool", () => {
-  it("ogni pulsante della toolbar ha il SUO tool (nessun ripiego silenzioso su selectTool)", () => {
+// The tool registry is the only point where a ToolId becomes REACHABLE:
+// the text tool was complete and tested but appeared neither in TOOLS nor in the
+// toolbar (bug found in review), so it did not exist for the user. These
+// tests close exactly that hole -- between the two lists and between list and
+// real tool.
+describe("tool registry", () => {
+  it("every toolbar button has ITS tool (no silent fallback to selectTool)", () => {
     for (const { id, label } of TOOL_LABELS) {
       const tool = TOOLS[id];
-      expect(tool, `${label} (${id}) non è registrato in TOOLS`).toBeDefined();
-      // attachTools fa `TOOLS[toolRef.current] ?? selectTool`: una entry
-      // mancante non esplode, ripiega su Seleziona -- un pulsante che mente.
+      expect(tool, `${label} (${id}) is not registered in TOOLS`).toBeDefined();
+      // attachTools does `TOOLS[toolRef.current] ?? selectTool`: a missing
+      // entry does not blow up, it falls back to Select -- a button that lies.
       if (id !== "select") expect(tool).not.toBe(selectTool);
     }
   });
 
-  it("ogni tool registrato dichiara l'id con cui è registrato", () => {
+  it("every registered tool declares the id it is registered with", () => {
     for (const [id, tool] of Object.entries(TOOLS)) {
       expect(tool!.id).toBe(id);
     }
   });
 
-  it("ogni tool registrato ha un pulsante nella toolbar", () => {
+  it("every registered tool has a button in the toolbar", () => {
     const labelled = new Set(TOOL_LABELS.map((t) => t.id));
     for (const id of Object.keys(TOOLS)) {
-      expect(labelled.has(id as (typeof TOOL_LABELS)[number]["id"]), `${id} non ha un pulsante`).toBe(true);
+      expect(labelled.has(id as (typeof TOOL_LABELS)[number]["id"]), `${id} has no button`).toBe(true);
     }
   });
 
-  it("il tool testo è registrato ed è il textTool vero", () => {
+  it("the text tool is registered and is the real textTool", () => {
     expect(TOOLS.text).toBe(textTool);
     expect(TOOL_LABELS.map((t) => t.label)).toEqual([
-      "Seleziona",
-      "Collega",
+      "Select",
+      "Connect",
       "Frame",
-      "Rettangolo",
-      "Ellisse",
-      "Testo",
-      "Penna",
-      "Mano",
+      "Rectangle",
+      "Ellipse",
+      "Text",
+      "Pen",
+      "Hand",
     ]);
   });
 
-  it("il tool frame è registrato ed è il frameTool vero", () => {
+  it("the frame tool is registered and is the real frameTool", () => {
     expect(TOOLS.frame).toBe(frameTool);
   });
 
-  it("il pen tool è registrato ed è il penTool vero", () => {
+  it("the pen tool is registered and is the real penTool", () => {
     expect(TOOLS.pen).toBe(penTool);
   });
 });
 
-// I ToggleButton di un ToggleButtonGroup a selezione singola espongono
-// role="radio" dentro un role="radiogroup" (react-aria-components): è la
-// semantica giusta per "uno strumento alla volta", e i test la interrogano
-// come la interrogherebbe uno screen reader.
+// The ToggleButtons of a single-selection ToggleButtonGroup expose
+// role="radio" inside a role="radiogroup" (react-aria-components): it is the
+// right semantics for "one tool at a time", and the tests query it
+// as a screen reader would.
 describe("toolbar", () => {
-  it("mostra un pulsante per ogni tool, Testo compreso", () => {
+  it("shows a button for every tool, Text included", () => {
     render(<App />);
-    // Le forme stanno in un solo pulsante (l'ultima usata, di default
-    // Rettangolo) con le altre dietro "Altre forme".
+    // The shapes sit in a single button (the last used, by default
+    // Rectangle) with the others behind "More shapes".
     for (const { id, label } of toolsForMode("design")) {
       if (id === "ellipse") continue;
       expect(screen.getByRole("radio", { name: label })).toBeInTheDocument();
     }
-    expect(screen.getByRole("button", { name: "Altre forme" })).toBeInTheDocument();
-    // "Collega" esiste solo nei flussi.
-    expect(screen.queryByRole("radio", { name: "Collega" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "More shapes" })).toBeInTheDocument();
+    // "Connect" exists only in flows.
+    expect(screen.queryByRole("radio", { name: "Connect" })).not.toBeInTheDocument();
   });
 
-  it("Ellisse si sceglie dal menu delle forme e prende il posto del pulsante", async () => {
+  it("Ellipse is chosen from the shapes menu and takes the button's place", async () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("button", { name: "Altre forme" }));
-    fireEvent.click(await screen.findByRole("menuitem", { name: /Ellisse/ }));
-    const ellisse = screen.getByRole("radio", { name: "Ellisse" });
-    expect(ellisse).toHaveAttribute("aria-checked", "true");
-    expect(screen.queryByRole("radio", { name: "Rettangolo" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "More shapes" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Ellipse/ }));
+    const ellipse = screen.getByRole("radio", { name: "Ellipse" });
+    expect(ellipse).toHaveAttribute("aria-checked", "true");
+    expect(screen.queryByRole("radio", { name: "Rectangle" })).not.toBeInTheDocument();
   });
 
-  it("premere Testo attiva davvero il tool testo (il cursore del canvas lo dimostra)", () => {
+  it("pressing Text really activates the text tool (the canvas cursor proves it)", () => {
     const { container } = render(<App />);
     const canvas = container.querySelector("#scene") as HTMLCanvasElement;
-    expect(canvas.style.cursor).toBe(selectTool.cursor); // stato iniziale: Seleziona
+    expect(canvas.style.cursor).toBe(selectTool.cursor); // initial state: Select
 
-    const testo = screen.getByRole("radio", { name: "Testo" });
-    fireEvent.click(testo);
+    const textBtn = screen.getByRole("radio", { name: "Text" });
+    fireEvent.click(textBtn);
 
-    expect(testo).toHaveAttribute("aria-checked", "true");
-    // Il cursore viene da TOOLS[toolId]: "text" solo se la chiave "text"
-    // risolve al textTool. Con la entry mancante ripiegherebbe su selectTool
-    // ("default") senza dire niente a nessuno.
+    expect(textBtn).toHaveAttribute("aria-checked", "true");
+    // The cursor comes from TOOLS[toolId]: "text" only if the key "text"
+    // resolves to textTool. With the entry missing it would fall back to selectTool
+    // ("default") without telling anyone.
     expect(canvas.style.cursor).toBe(textTool.cursor);
     expect(textTool.cursor).toBe("text");
   });
 
-  it("premere Penna attiva davvero il pen tool", () => {
+  it("pressing Pen really activates the pen tool", () => {
     render(<App />);
-    const penna = screen.getByRole("radio", { name: "Penna" });
-    fireEvent.click(penna);
-    expect(penna).toHaveAttribute("aria-checked", "true");
-    // Il cursore da solo non basterebbe a distinguerlo (rect ed ellisse usano
-    // lo stesso "crosshair"): è TOOLS.pen === penTool, verificato qui sopra, a
-    // dire che il pulsante instrada davvero al pen tool.
+    const penBtn = screen.getByRole("radio", { name: "Pen" });
+    fireEvent.click(penBtn);
+    expect(penBtn).toHaveAttribute("aria-checked", "true");
+    // The cursor alone would not be enough to tell it apart (rect and ellipse use
+    // the same "crosshair"): it is TOOLS.pen === penTool, verified above, that
+    // says the button really routes to the pen tool.
     expect(TOOLS.pen!.cursor).toBe("crosshair");
   });
 });
 
-// L'anteprima del pen tool esiste solo se qualcuno la DISEGNA: App è l'unico
-// posto in cui il canale dello store (penPreview) incontra l'overlay. Senza
-// questa riga il pen tool funzionerebbe -- op giusti, gesto giusto -- e
-// l'utente disegnerebbe alla cieca fino all'ultimo click. È lo stesso buco del
-// tool non registrato in TOOLS, un piano più in basso.
-describe("ciclo di disegno", () => {
-  it("passa l'anteprima del pen tool all'overlay", async () => {
-    // jsdom non implementa getContext: senza doppio, drawOverlay non verrebbe
-    // mai chiamata (App salta il disegno quando il contesto manca). Il doppio è
-    // un Proxy che risponde a QUALUNQUE metodo con un no-op: il ciclo disegna
-    // prima la scena e poi l'overlay, e un metodo mancante nel mezzo
-    // spegnerebbe il ciclo (l'eccezione muore dentro il requestAnimationFrame)
-    // prima di arrivare a quello che stiamo misurando.
+// The pen tool's preview exists only if someone DRAWS it: App is the only
+// place where the store channel (penPreview) meets the overlay. Without
+// this line the pen tool would work -- right ops, right gesture -- and
+// the user would draw blind until the last click. It is the same hole as the
+// tool not registered in TOOLS, one floor down.
+describe("drawing loop", () => {
+  it("passes the pen tool's preview to the overlay", async () => {
+    // jsdom does not implement getContext: without a double, drawOverlay would never
+    // be called (App skips drawing when the context is missing). The double is
+    // a Proxy that answers ANY method with a no-op: the loop draws
+    // the scene first and then the overlay, and a missing method in the middle
+    // would switch off the loop (the exception dies inside the requestAnimationFrame)
+    // before reaching what we are measuring.
     const target: Record<string | symbol, unknown> = { canvas: { width: 800, height: 600 } };
     const fakeCtx = new Proxy(target, {
       get: (t, p) => (p in t ? t[p] : () => {}),
     }) as unknown as CanvasRenderingContext2D;
-    // `as never`: i tipi di canvaskit-wasm aggiungono l'overload WebGPU a getContext, e
-    // mockReturnValue prende il tipo dell'ULTIMO overload.
+    // `as never`: canvaskit-wasm's types add the WebGPU overload to getContext, and
+    // mockReturnValue takes the type of the LAST overload.
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx as never);
     const drawOverlay = vi.spyOn(overlayRenderer, "drawOverlay").mockImplementation(() => {});
     vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
@@ -184,58 +184,58 @@ describe("ciclo di disegno", () => {
     render(<App />);
 
     await waitFor(() => expect(drawOverlay).toHaveBeenCalled());
-    // Settimo argomento: l'anteprima del pen tool, esattamente quella dello
-    // store (il sesto è ora `snapGuides`, aggiunto dalla traccia rotazione).
+    // Seventh argument: the pen tool's preview, exactly the store's one
+    // (the sixth is now `snapGuides`, added by the rotation track).
     expect(drawOverlay.mock.calls.at(-1)![6]).toBe(pen);
 
     useScene.getState().setPenPreview(null);
   });
 });
 
-// Gli stessi test della toolbar, per lo stesso motivo, applicati ai PANNELLI:
-// LayersPanel e PropertiesPanel sono componenti completi e testati, ma finché
-// nessuno li monta non esistono per chi usa l'app. App.tsx è l'unico posto in
-// cui diventano raggiungibili.
-describe("layout a tre colonne", () => {
-  it("monta il pannello livelli a SINISTRA del canvas e quello proprietà a DESTRA", () => {
+// The same toolbar tests, for the same reason, applied to the PANELS:
+// LayersPanel and PropertiesPanel are complete and tested components, but as long as
+// nobody mounts them they do not exist for whoever uses the app. App.tsx is the only place
+// where they become reachable.
+describe("three-column layout", () => {
+  it("mounts the layers panel to the LEFT of the canvas and the properties one to the RIGHT", () => {
     const { container } = render(<App />);
     const canvas = container.querySelector("#scene") as HTMLCanvasElement;
-    const layers = screen.getByRole("grid", { name: "Livelli" });
-    const props = screen.getByText("Proprietà");
+    const layers = screen.getByRole("grid", { name: "Layers" });
+    const props = screen.getByText("Properties");
 
     expect(layers).toBeInTheDocument();
     expect(props).toBeInTheDocument();
 
-    // L'ORDINE nel documento è l'ordine delle colonne: livelli, canvas,
-    // proprietà. compareDocumentPosition è il modo diretto di chiederlo al DOM
-    // senza dipendere dalle classi Tailwind.
+    // The ORDER in the document is the order of the columns: layers, canvas,
+    // properties. compareDocumentPosition is the direct way to ask the DOM
+    // without depending on Tailwind classes.
     const before = Node.DOCUMENT_POSITION_FOLLOWING;
     expect(layers.compareDocumentPosition(canvas) & before).toBeTruthy();
     expect(canvas.compareDocumentPosition(props) & before).toBeTruthy();
   });
 
-  it("i pannelli non stanno SOPRA il canvas: sono suoi fratelli, non lo coprono", () => {
+  it("the panels do not sit ON TOP of the canvas: they are its siblings, they do not cover it", () => {
     const { container } = render(<App />);
     const canvas = container.querySelector("#scene") as HTMLCanvasElement;
-    const layers = screen.getByRole("grid", { name: "Livelli" });
-    // Se un pannello contenesse il canvas (o viceversa) il layout sarebbe a
-    // sovrapposizione: i suoi eventi arriverebbero al canvas sotto e la sua
-    // larghezza non verrebbe tolta dal calcolo di resizeCanvasToDisplaySize.
+    const layers = screen.getByRole("grid", { name: "Layers" });
+    // If a panel contained the canvas (or vice versa) the layout would be an
+    // overlay: its events would reach the canvas below and its
+    // width would not be taken out of resizeCanvasToDisplaySize's calculation.
     expect(layers.contains(canvas)).toBe(false);
     expect(canvas.contains(layers)).toBe(false);
   });
 });
 
 
-// Stesso principio del registro dei tool: tools/clipboard.ts è completo e
-// testato, ma finché App non lo monta Ctrl+C/V/D non esistono per chi usa
-// l'app. Qui si verifica solo il MONTAGGIO (il comportamento è in
-// tools/clipboard.test.ts) e il fatto che lo smontaggio stacchi i listener.
-describe("scorciatoie della clipboard", () => {
+// Same principle as the tool registry: tools/clipboard.ts is complete and
+// tested, but as long as App does not mount it Ctrl+C/V/D do not exist for whoever uses
+// the app. Here only the MOUNTING is verified (the behavior is in
+// tools/clipboard.test.ts) and the fact that unmounting detaches the listeners.
+describe("clipboard shortcuts", () => {
   function installScene() {
     const scene = emptyScene("doc-1", "Untitled");
     scene.nodes = scene.nodes.set("n1", {
-      id: "n1", parentId: "page1", orderKey: "a000001", name: "Rettangolo",
+      id: "n1", parentId: "page1", orderKey: "a000001", name: "Rectangle",
       visible: true, opacity: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0,
       fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
     });
@@ -244,14 +244,14 @@ describe("scorciatoie della clipboard", () => {
     useScene.getState().setSelection(["n1"]);
   }
 
-  it("Ctrl+D duplica: l'app monta davvero le scorciatoie", () => {
+  it("Ctrl+D duplicates: the app really mounts the shortcuts", () => {
     render(<App />);
     installScene();
     fireEvent.keyDown(window, { key: "d", ctrlKey: true });
     expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
-  it("smontare l'app le stacca", () => {
+  it("unmounting the app detaches them", () => {
     const { unmount } = render(<App />);
     installScene();
     unmount();
@@ -261,40 +261,40 @@ describe("scorciatoie della clipboard", () => {
 });
 
 
-// Stesso principio del registro dei tool e delle scorciatoie: export/ è
-// completo e testato, ma finché il pannello proprietà non lo monta l'export
-// non esiste per chi usa l'app. Qui si verifica solo il montaggio (il
-// comportamento è in ui/ExportSection.test.tsx). Esporta non è più nella
-// toolbar: vive nel pannello proprietà, e compare solo con una selezione.
+// Same principle as the tool registry and the shortcuts: export/ is
+// complete and tested, but as long as the properties panel does not mount it export
+// does not exist for whoever uses the app. Here only the mounting is verified (the
+// behavior is in ui/ExportSection.test.tsx). Export is no longer in the
+// toolbar: it lives in the properties panel, and appears only with a selection.
 describe("export", () => {
-  it("senza selezione, Esporta non è da nessuna parte", () => {
-    // Reset esplicito: altri test di questo file lasciano una selezione nello
-    // store globale (es. "scorciatoie della clipboard" sopra), e qui serve
-    // DAVVERO nessuna selezione.
+  it("without a selection, Export is nowhere", () => {
+    // Explicit reset: other tests in this file leave a selection in the
+    // global store (e.g. "clipboard shortcuts" above), and here we need
+    // REALLY no selection.
     useScene.setState({ selection: [] });
     render(<App />);
-    const toolbar = screen.getByRole("toolbar", { name: "Strumenti" });
-    expect(within(toolbar).queryByRole("button", { name: "Esporta" })).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Scarica" })).not.toBeInTheDocument();
+    const toolbar = screen.getByRole("toolbar", { name: "Tools" });
+    expect(within(toolbar).queryByRole("button", { name: "Export" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Download" })).not.toBeInTheDocument();
   });
 
-  it("con una selezione, il pannello proprietà monta la sezione Esporta", () => {
+  it("with a selection, the properties panel mounts the Export section", () => {
     const scene = emptyScene("doc-1", "Untitled");
     scene.nodes = scene.nodes.set("n1", {
-      id: "n1", parentId: "page1", orderKey: "a000001", name: "Rettangolo",
+      id: "n1", parentId: "page1", orderKey: "a000001", name: "Rectangle",
       visible: true, opacity: 1, x: 0, y: 0, width: 10, height: 10, rotation: 0,
       fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
     });
     useScene.setState({ selection: [], gesture: null, undoStack: [], redoStack: [], sync: null });
     useScene.getState().setScene(scene);
     useScene.getState().setSelection(["n1"]);
-    // Lo stato è impostato PRIMA del render (non dopo, come nei test della
-    // clipboard sopra): lì serve montare App a vuoto e poi cambiare lo stato
-    // per verificare che i listener restino agganciati; qui serve solo che il
-    // pannello nasca già con la selezione, senza il giro di un fireEvent che
-    // forzi react ad assorbire un aggiornamento fuori da un gesto.
+    // The state is set BEFORE the render (not after, as in the clipboard
+    // tests above): there App must be mounted empty and then the state changed
+    // to verify the listeners stay attached; here it is only needed that the
+    // panel is born already with the selection, without the round trip of a fireEvent that
+    // forces react to absorb an update outside a gesture.
     render(<App />);
-    expect(screen.getByRole("button", { name: "Scarica" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Download" })).toBeInTheDocument();
   });
 });
 
@@ -302,11 +302,11 @@ import { docIdFromHash } from "./App";
 
 describe("docIdFromHash", () => {
   const id = "123e4567-e89b-42d3-a456-426614174000";
-  it("legge l'id dal link di invito", () => {
+  it("reads the id from the invite link", () => {
     expect(docIdFromHash(`#doc=${id}`)).toBe(id);
     expect(docIdFromHash(`#doc=${id.toUpperCase()}`)).toBe(id);
   });
-  it("ignora tutto ciò che non è un id ben formato", () => {
+  it("ignores everything that is not a well-formed id", () => {
     expect(docIdFromHash("")).toBeNull();
     expect(docIdFromHash("#doc=")).toBeNull();
     expect(docIdFromHash("#doc=../../etc/passwd")).toBeNull();
@@ -315,32 +315,32 @@ describe("docIdFromHash", () => {
   });
 });
 
-// Il ciclo di disegno è A INVALIDAZIONE: un editor fermo non ridisegna. Prima
-// girava a 60 fps sempre, anche senza nessuna modifica.
-describe("ciclo di disegno a invalidazione", () => {
+// The drawing loop is ON INVALIDATION: an idle editor does not redraw. It used to
+// run at 60 fps always, even without any change.
+describe("on-invalidation drawing loop", () => {
   function setupCtx() {
     const target: Record<string | symbol, unknown> = { canvas: { width: 800, height: 600 } };
     const fakeCtx = new Proxy(target, {
       get: (t, p) => (p in t ? t[p] : () => {}),
     }) as unknown as CanvasRenderingContext2D;
-    // `as never`: i tipi di canvaskit-wasm aggiungono l'overload WebGPU a getContext, e
-    // mockReturnValue prende il tipo dell'ULTIMO overload.
+    // `as never`: canvaskit-wasm's types add the WebGPU overload to getContext, and
+    // mockReturnValue takes the type of the LAST overload.
     vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx as never);
     return vi.spyOn(overlayRenderer, "drawOverlay").mockImplementation(() => {});
   }
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-  it("da fermo non ridisegna; ogni cambiamento che si vede ne produce uno", async () => {
+  it("when idle it does not redraw; every visible change produces one", async () => {
     const drawOverlay = setupCtx();
     vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
     useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
     render(<App />);
 
     await waitFor(() => expect(drawOverlay).toHaveBeenCalled());
-    await sleep(80); // lascia sfogare i frame di assestamento
+    await sleep(80); // let the settling frames run out
     const idle = drawOverlay.mock.calls.length;
     await sleep(250);
-    expect(drawOverlay.mock.calls.length).toBe(idle); // niente rAF in giro
+    expect(drawOverlay.mock.calls.length).toBe(idle); // no rAF around
 
     useScene.getState().setSelection(["x"]);
     await waitFor(() => expect(drawOverlay.mock.calls.length).toBeGreaterThan(idle));
@@ -352,7 +352,7 @@ describe("ciclo di disegno a invalidazione", () => {
     await waitFor(() => expect(drawOverlay.mock.calls.length).toBeGreaterThan(afterSelection));
   });
 
-  it("molte invalidazioni nello stesso frame producono UN disegno", async () => {
+  it("many invalidations in the same frame produce ONE drawing", async () => {
     const drawOverlay = setupCtx();
     vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
     useScene.getState().setScene(emptyScene("doc-1", "Untitled"));

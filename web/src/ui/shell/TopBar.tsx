@@ -5,18 +5,18 @@ import { useScene } from "../../store/store";
 import { DocMenu } from "./DocMenu";
 import { useFlowUi, type EditorMode } from "../../store/flowUi";
 
-// LA BARRA IN ALTO: identità del documento, modalità, persone e stato -- le
-// cose che riguardano IL DOCUMENTO, non la mano sulla tela (quella resta nel
-// ToolDock in basso: strumenti, annulla/ripeti, Presenta). Stessa pillola
-// flottante del dock, speculare in alto.
+// THE TOP BAR: document identity, mode, people and status -- the
+// things that concern THE DOCUMENT, not the hand on the canvas (that stays in the
+// ToolDock at the bottom: tools, undo/redo, Present). Same floating pill
+// as the dock, mirrored at the top.
 const TOOLTIP_CLS = "z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop";
 
-// Le tre modalità, nello stesso ordine e con le stesse scorciatoie del dock
-// (vedi shell/ToolDock.tsx::MODES, da cui questa lista è spostata).
+// The three modes, in the same order and with the same shortcuts as the dock
+// (see shell/ToolDock.tsx::MODES, from which this list was moved).
 const MODES = [
-  ["design", "Design", "frame", "F", "Disegna le schermate"],
-  ["flows", "Flussi", "flow", "F", "Collega le schermate e prova il prototipo"],
-  ["dev", "Sviluppo", "code", "S", "Prontezza, codice generato, export"],
+  ["design", "Design", "frame", "F", "Draw the screens"],
+  ["flows", "Flows", "flow", "F", "Connect the screens and try the prototype"],
+  ["dev", "Develop", "code", "S", "Readiness, generated code, export"],
 ] as const;
 
 export function TopBar({
@@ -32,12 +32,12 @@ export function TopBar({
   return (
     <div
       role="toolbar"
-      aria-label="Documento"
+      aria-label="Document"
       className="absolute top-4 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-xl bg-raised p-1 shadow-bar"
     >
       <DocMenu onNewDocument={onNewDocument} />
       <ToggleButtonGroup
-        aria-label="Modalità"
+        aria-label="Mode"
         selectionMode="single"
         disallowEmptySelection
         selectedKeys={[mode]}

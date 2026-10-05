@@ -10,9 +10,9 @@ import type { ClipLite } from "../store/types";
 import * as overlayRenderer from "../renderer/overlayRenderer";
 import * as renderer from "../renderer/canvasRenderer";
 
-// La timeline dentro App: la voce del dock, M, il pannello sotto la tela, la posa
-// che arriva al renderer e -- il punto di costo -- un editor che resta a ZERO
-// frame con il pannello aperto ma fermo.
+// The timeline inside App: the dock entry, M, the panel below the canvas, the pose
+// that reaches the renderer and -- the cost point -- an editor that stays at ZERO
+// frames with the panel open but idle.
 
 vi.mock("../rpc/client", () => ({ docClient: { createDocument: vi.fn(async () => ({ id: "doc-1" })) } }));
 vi.mock("../rpc/syncClient", () => ({
@@ -24,7 +24,7 @@ vi.mock("../rpc/syncClient", () => ({
 vi.stubGlobal("localStorage", { getItem: () => "doc-1", setItem: () => {}, removeItem: () => {} });
 
 const clip: ClipLite = {
-  id: "k", name: "Entrata", duration: 1000, trigger: "enter", delay: 0, repeat: 0, yoyo: false, targetId: "A",
+  id: "k", name: "Entrance", duration: 1000, trigger: "enter", delay: 0, repeat: 0, yoyo: false, targetId: "A",
   tracks: [{ nodeId: "btn", prop: "opacity", keyframes: [{ time: 0, value: 0, easing: "" }, { time: 1000, value: 1, easing: "" }] }],
 };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
@@ -34,7 +34,7 @@ function setupCtx() {
   const fakeCtx = new Proxy(target, { get: (t, p) => (p in t ? t[p] : () => {}) }) as unknown as CanvasRenderingContext2D;
   vi.spyOn(HTMLCanvasElement.prototype, "getContext").mockReturnValue(fakeCtx as never);
   vi.spyOn(overlayRenderer, "selectionWorldBounds").mockReturnValue(null);
-  // jsdom non ha Path2D: il disegno vero della scena (rect) lancerebbe dentro il rAF.
+  // jsdom has no Path2D: the scene's real drawing (rect) would throw inside the rAF.
   vi.spyOn(renderer, "drawScene").mockImplementation(() => {});
   return vi.spyOn(overlayRenderer, "drawOverlay").mockImplementation(() => {});
 }
@@ -52,9 +52,9 @@ afterEach(() => {
 });
 
 describe("timeline in App", () => {
-  it("M apre e chiude il pannello; il pulsante del dock fa lo stesso e riflette lo stato", () => {
+  it("M opens and closes the panel; the dock button does the same and reflects the state", () => {
     render(<App />);
-    const dock = screen.getByRole("button", { name: "Animazione" });
+    const dock = screen.getByRole("button", { name: "Animation" });
     expect(dock).toHaveAttribute("aria-pressed", "false");
     expect(screen.queryByRole("region", { name: "Timeline" })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "m" });
@@ -66,7 +66,7 @@ describe("timeline in App", () => {
     expect(useTimeline.getState().open).toBe(true);
   });
 
-  it("M non scatta in un campo di testo né con un modificatore", () => {
+  it("M does not fire in a text field nor with a modifier", () => {
     render(<App />);
     const input = document.createElement("input");
     document.body.appendChild(input);
@@ -77,22 +77,22 @@ describe("timeline in App", () => {
     input.remove();
   });
 
-  it("da Flussi M riporta in Design con la timeline aperta; in Flussi il pannello non c'è", () => {
+  it("from Flows M goes back to Design with the timeline open; in Flows the panel is not there", () => {
     render(<App />);
-    fireEvent.click(screen.getByRole("radio", { name: "Flussi" }));
-    expect(screen.queryByRole("button", { name: "Animazione" })).not.toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Flows" }));
+    expect(screen.queryByRole("button", { name: "Animation" })).not.toBeInTheDocument();
     fireEvent.keyDown(window, { key: "m" });
     expect(useFlowUi.getState().mode).toBe("design");
     expect(screen.getByRole("region", { name: "Timeline" })).toBeInTheDocument();
   });
 
-  it("aprire una clip (dalla lista) apre anche il pannello", () => {
+  it("opening a clip (from the list) also opens the panel", () => {
     render(<App />);
     act(() => useTimeline.getState().openClip("k"));
     expect(screen.getByRole("region", { name: "Timeline" })).toBeInTheDocument();
   });
 
-  it("il pannello sta SOTTO la tela, non sopra: la tela resta nella stessa colonna", () => {
+  it("the panel sits BELOW the canvas, not over it: the canvas stays in the same column", () => {
     const { container } = render(<App />);
     act(() => useTimeline.getState().setOpen(true));
     const canvas = container.querySelector("#scene") as HTMLElement;
@@ -102,8 +102,8 @@ describe("timeline in App", () => {
   });
 });
 
-describe("la posa arriva al renderer, il documento no", () => {
-  it("scorrere il playhead disegna la scena campionata; chiudere torna a quella vera", async () => {
+describe("the pose reaches the renderer, the document does not", () => {
+  it("scrubbing the playhead draws the sampled scene; closing goes back to the real one", async () => {
     setupCtx();
     const drawScene = vi.spyOn(renderer, "drawScene");
     render(<App />);
@@ -121,8 +121,8 @@ describe("la posa arriva al renderer, il documento no", () => {
   });
 });
 
-describe("zero frame da fermi", () => {
-  it("con il pannello aperto ma fermo il ciclo di disegno non gira; gira solo mentre si riproduce", async () => {
+describe("zero frames when idle", () => {
+  it("with the panel open but idle the draw loop does not run; it runs only while playing", async () => {
     const drawOverlay = setupCtx();
     render(<App />);
     useTimeline.getState().openClip("k");
@@ -141,7 +141,7 @@ describe("zero frame da fermi", () => {
     expect(drawOverlay.mock.calls.length).toBe(paused);
   });
 
-  it("chiusa e riaperta: ancora zero frame", async () => {
+  it("closed and reopened: still zero frames", async () => {
     const drawOverlay = setupCtx();
     render(<App />);
     useTimeline.getState().setOpen(true);

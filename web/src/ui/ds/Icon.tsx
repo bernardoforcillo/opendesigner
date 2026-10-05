@@ -1,12 +1,12 @@
 import type { SVGProps } from "react";
 
-// LE ICONE: un set unico, disegnato su una griglia 16x16 con tratto di 1.5 e
-// estremi arrotondati. Nessuna libreria: sono una trentina di tracciati e si
-// colorano con `currentColor`, quindi seguono il testo (e il tema) da sole.
+// THE ICONS: a single set, drawn on a 16x16 grid with a 1.5 stroke and
+// rounded caps. No library: it is about thirty paths, colored with
+// `currentColor`, so they follow the text (and the theme) on their own.
 //
-// Le icone sono decorative (aria-hidden): il NOME accessibile lo porta il
-// pulsante che le contiene (aria-label), mai l'icona -- così i test e i lettori
-// di schermo vedono le stesse etichette di sempre.
+// Icons are decorative (aria-hidden): the accessible NAME comes from the
+// button that contains them (aria-label), never from the icon -- so tests and
+// screen readers see the same labels as ever.
 const P: Record<string, string> = {
   select: "M3.2 2.4l9.2 4.3-4 1.3-1.4 4z",
   hand: "M5.5 8V3.8a1 1 0 012 0V7m0-3.7a1 1 0 012 0V7m0-2.2a1 1 0 012 0V9m0-2.2a1 1 0 012 0V10a4.5 4.5 0 01-4.5 4.5h-.6A4 4 0 015 12.6L3 9.6a1 1 0 011.6-1.2L5.5 9.7",

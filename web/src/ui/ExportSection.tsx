@@ -5,15 +5,15 @@ import { EXPORT_SCALES, type ExportScale } from "../export/png";
 import { Button } from "./ds";
 import { SEGMENT, SEGMENTED_TRACK } from "./ds/flow-parts";
 
-// LA SEZIONE EXPORT nel pannello proprietà.
+// THE EXPORT SECTION in the properties panel.
 //
-// Vive solo dentro PropertiesPanel, che la monta già SOLO quando c'è una
-// selezione (lo stesso ramo che regge `summary`): non serve quindi un
-// controllo di "ambito" -- qui si esporta sempre la selezione, è la premessa
-// sotto cui questo componente esiste.
+// It lives only inside PropertiesPanel, which already mounts it ONLY when there is a
+// selection (the same branch that carries `summary`): so no
+// "scope" control is needed -- here the selection is always exported, it is the premise
+// under which this component exists.
 //
-// Due scelte sole: formato e scala. `onExport` è iniettabile per i test, come
-// nel vecchio ExportButton.
+// Only two choices: format and scale. `onExport` is injectable for tests, as
+// in the old ExportButton.
 
 const FORMATS: readonly { value: ExportFormat; label: string }[] = [
   { value: "png", label: "PNG" },
@@ -43,7 +43,7 @@ export function ExportSection({
         orientation="horizontal"
         className={ROW_CLASS}
       >
-        <Label className={ROW_LABEL_CLASS}>Formato</Label>
+        <Label className={ROW_LABEL_CLASS}>Format</Label>
         <div className={SEGMENTED_TRACK}>
           {FORMATS.map((f) => (
             <Radio key={f.value} value={f.value} className={SEGMENT}>{f.label}</Radio>
@@ -51,8 +51,8 @@ export function ExportSection({
         </div>
       </RadioGroup>
 
-      {/* La scala è una proprietà dei PIXEL: un SVG è vettoriale, vedi il
-          commento equivalente nel vecchio ExportButton. */}
+      {/* Scale is a property of PIXELS: an SVG is vectorial, see the
+          equivalent comment in the old ExportButton. */}
       {format === "png" && (
         <RadioGroup
           value={String(scale)}
@@ -60,7 +60,7 @@ export function ExportSection({
           orientation="horizontal"
           className={ROW_CLASS}
         >
-          <Label className={ROW_LABEL_CLASS}>Scala</Label>
+          <Label className={ROW_LABEL_CLASS}>Scale</Label>
           <div className={SEGMENTED_TRACK}>
             {EXPORT_SCALES.map((s) => (
               <Radio key={s} value={String(s)} className={SEGMENT}>{`${s}x`}</Radio>
@@ -70,7 +70,7 @@ export function ExportSection({
       )}
 
       <Button variant="primary" icon="download" onPress={submit} className="h-8 w-full">
-        Scarica
+        Download
       </Button>
     </div>
   );

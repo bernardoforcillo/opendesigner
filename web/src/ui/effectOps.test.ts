@@ -18,31 +18,31 @@ const run = (s: SceneState, ops: ReturnType<typeof shadowOps>): NodeLite => ops.
 const look = (s: SceneState) => (id: string) => s.nodes.at(id);
 
 describe("shadowOps", () => {
-  it("accendere l'ombra scrive il default", () => {
+  it("turning on the shadow writes the default", () => {
     const s = sceneWith();
     const n = run(s, shadowOps(["a"], look(s), { enabled: true }));
     expect(n.effects).toEqual([DEFAULT_SHADOW]);
   });
 
-  it("spegnerla toglie il campo del tutto (non lascia una lista vuota)", () => {
+  it("turning it off removes the field entirely (does not leave an empty list)", () => {
     const s = sceneWith([DEFAULT_SHADOW]);
     const n = run(s, shadowOps(["a"], look(s), { enabled: false }));
     expect(n.effects).toBeUndefined();
     expect("effects" in n).toBe(false);
   });
 
-  it("spegnere un'ombra che non c'è non scrive nulla", () => {
+  it("turning off a shadow that is not there writes nothing", () => {
     const s = sceneWith();
     expect(shadowOps(["a"], look(s), { enabled: false })).toEqual([]);
   });
 
-  it("cambia un campo alla volta e tiene gli altri", () => {
+  it("changes one field at a time and keeps the others", () => {
     const s = sceneWith([DEFAULT_SHADOW]);
     const n = run(s, shadowOps(["a"], look(s), { offsetX: 7, blur: 20 }));
     expect(shadowOf(n)).toEqual({ ...DEFAULT_SHADOW, offsetX: 7, blur: 20 });
   });
 
-  it("il colore cambia RGB e conserva l'alfa; l'alfa si scrive a parte e si limita a 0..1", () => {
+  it("the color changes RGB and keeps alpha; alpha is written separately and clamped to 0..1", () => {
     const s = sceneWith([DEFAULT_SHADOW]);
     const c = run(s, shadowOps(["a"], look(s), { rgb: { r: 1, g: 0, b: 0 } }));
     expect(shadowOf(c)?.color).toEqual({ r: 1, g: 0, b: 0, a: 0.25 });
@@ -50,17 +50,17 @@ describe("shadowOps", () => {
     expect(shadowOf(run(s, shadowOps(["a"], look(s), { alpha: -1 })))?.color.a).toBe(0);
   });
 
-  it("una sfocatura negativa si porta a 0", () => {
+  it("a negative blur is brought to 0", () => {
     const s = sceneWith([DEFAULT_SHADOW]);
     expect(shadowOf(run(s, shadowOps(["a"], look(s), { blur: -3 })))?.blur).toBe(0);
   });
 
-  it("un valore identico a quello attuale non produce nessun op", () => {
+  it("a value identical to the current one produces no op", () => {
     const s = sceneWith([DEFAULT_SHADOW]);
     expect(shadowOps(["a"], look(s), { offsetY: DEFAULT_SHADOW.offsetY })).toEqual([]);
   });
 
-  it("gli altri effetti della lista sopravvivono alla modifica dell'ombra", () => {
+  it("the list's other effects survive the shadow edit", () => {
     const blur: EffectLite = { kind: "layerBlur", radius: 4 };
     const second: EffectLite = { ...DEFAULT_SHADOW, offsetX: 99 };
     const s = sceneWith([blur, DEFAULT_SHADOW, second]);
@@ -72,7 +72,7 @@ describe("shadowOps", () => {
 });
 
 describe("blurOps", () => {
-  it("imposta, cambia e toglie con raggio 0, senza toccare l'ombra", () => {
+  it("sets, changes and removes with radius 0, without touching the shadow", () => {
     let s = sceneWith([DEFAULT_SHADOW]);
     let n = run(s, blurOps(["a"], look(s), 6));
     expect(blurOf(n)).toEqual({ kind: "layerBlur", radius: 6 });
@@ -86,7 +86,7 @@ describe("blurOps", () => {
     expect(n.effects).toEqual([DEFAULT_SHADOW]);
   });
 
-  it("stesso valore o niente da togliere: nessun op", () => {
+  it("same value or nothing to remove: no op", () => {
     const s = sceneWith([{ kind: "layerBlur", radius: 3 }]);
     expect(blurOps(["a"], look(s), 3)).toEqual([]);
     expect(blurOps(["a"], look(sceneWith()), 0)).toEqual([]);

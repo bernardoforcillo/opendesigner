@@ -8,8 +8,8 @@ import {
 } from "../../animation/timelineLogic";
 import { EasingEditor } from "./EasingEditor";
 
-// L'ISPETTORE del keyframe selezionato (colonna destra della timeline): tempo,
-// valore, easing con la mini-curva, duplica ed elimina. Ogni modifica è UN SetClip.
+// THE INSPECTOR of the selected keyframe (right column of the timeline): time,
+// value, easing with the mini-curve, duplicate and delete. Every change is ONE SetClip.
 export function KeyframeInspector({ clip, selection }: { clip: ClipLite; selection: KeyRef[] }) {
   const scene = useScene((s) => s.scene);
   const refs = selection.filter((r) => clip.tracks[r.track]?.keyframes[r.key]);
@@ -26,19 +26,19 @@ export function KeyframeInspector({ clip, selection }: { clip: ClipLite; selecti
   };
   const actions = (
     <div className="flex shrink-0 items-center gap-0.5">
-      <AnimIconButton icon="copy" label="Duplica i keyframe al playhead" shortcut="⌘D" size={24} onPress={dup} />
-      <AnimIconButton icon="trash" label="Elimina i keyframe" shortcut="Canc" size={24} onPress={del} />
+      <AnimIconButton icon="copy" label="Duplicate the keyframes at the playhead" shortcut="⌘D" size={24} onPress={dup} />
+      <AnimIconButton icon="trash" label="Delete the keyframes" shortcut="Del" size={24} onPress={del} />
     </div>
   );
 
   if (refs.length > 1) {
     return (
-      <aside aria-label="Keyframe selezionati" className="flex w-60 shrink-0 flex-col gap-2 overflow-y-auto border-l border-line p-3">
+      <aside aria-label="Selected keyframes" className="flex w-60 shrink-0 flex-col gap-2 overflow-y-auto border-l border-line p-3">
         <div className="flex items-center gap-2">
-          <p className="min-w-0 flex-1 text-[13px] font-medium text-fg">{refs.length} keyframe selezionati</p>
+          <p className="min-w-0 flex-1 text-[13px] font-medium text-fg">{refs.length} keyframes selected</p>
           {actions}
         </div>
-        <p className="text-[12px] leading-snug text-fg-subtle">Trascinane uno per spostarli insieme. Maiusc libera l'aggancio.</p>
+        <p className="text-[12px] leading-snug text-fg-subtle">Drag one to move them together. Shift releases snapping.</p>
       </aside>
     );
   }
@@ -65,9 +65,9 @@ export function KeyframeInspector({ clip, selection }: { clip: ClipLite; selecti
         {actions}
       </div>
       <div className="grid grid-cols-2 gap-1.5">
-        <NumberField label="Tempo" glyph="T" suffix="ms" minValue={0} value={kf.time} onCommit={(v) => edit({ time: v })} />
+        <NumberField label="Time" glyph="T" suffix="ms" minValue={0} value={kf.time} onCommit={(v) => edit({ time: v })} />
         <NumberField
-          label="Valore"
+          label="Value"
           glyph="V"
           suffix={unit}
           minValue={tr.prop === "opacity" || tr.prop === "draw" ? 0 : undefined}
@@ -76,11 +76,11 @@ export function KeyframeInspector({ clip, selection }: { clip: ClipLite; selecti
         />
       </div>
       <div className="flex flex-col gap-1">
-        <span className="text-[11px] font-medium text-fg-subtle">Curva verso il prossimo</span>
+        <span className="text-[11px] font-medium text-fg-subtle">Curve to the next one</span>
         {seg ? (
           <EasingEditor value={kf.easing} onCommit={(easing) => edit({ easing })} />
         ) : (
-          <p className="text-[12px] leading-snug text-fg-subtle">Ultimo keyframe: nessun segmento dopo di lui.</p>
+          <p className="text-[12px] leading-snug text-fg-subtle">Last keyframe: no segment after it.</p>
         )}
       </div>
     </aside>

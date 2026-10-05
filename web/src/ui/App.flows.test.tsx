@@ -7,9 +7,9 @@ import { useFlowUi } from "../store/flowUi";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 
-// MODALITÀ FLUSSI dentro App: il toggle in intestazione, gli strumenti, i
-// pannelli e le scorciatoie F / K. App è l'unico punto in cui diventano
-// raggiungibili (stessa ragione dei test della toolbar in App.test.tsx).
+// FLOWS MODE inside App: the toggle in the header, the tools, the
+// panels and the F / K shortcuts. App is the only place where they become
+// reachable (same reason as the toolbar tests in App.test.tsx).
 
 vi.mock("../rpc/client", () => ({
   docClient: {
@@ -31,32 +31,32 @@ afterEach(() => {
   useFlowUi.setState({ mode: "design", presenting: false, selectedTransitionId: null, currentFlowId: null });
 });
 
-describe("modalità Flussi", () => {
-  it("il tool Collega è registrato ed è il connectTool vero", () => {
+describe("Flows mode", () => {
+  it("the Connect tool is registered and is the real connectTool", () => {
     expect(TOOLS.connect).toBe(connectTool);
   });
 
-  it("il toggle Design | Flussi cambia pannelli e strumenti", () => {
+  it("the Design | Flows toggle changes panels and tools", () => {
     useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
     render(<App />);
     expect(screen.getByRole("radio", { name: "Design" })).toHaveAttribute("aria-checked", "true");
-    expect(screen.getByRole("grid", { name: "Livelli" })).toBeInTheDocument();
+    expect(screen.getByRole("grid", { name: "Layers" })).toBeInTheDocument();
 
-    fireEvent.click(screen.getByRole("radio", { name: "Flussi" }));
+    fireEvent.click(screen.getByRole("radio", { name: "Flows" }));
     expect(useFlowUi.getState().mode).toBe("flows");
-    // Il pannello flussi sostituisce i livelli; "Collega" compare, "Rettangolo" no.
-    expect(screen.queryByRole("grid", { name: "Livelli" })).not.toBeInTheDocument();
-    expect(screen.getByRole("complementary", { name: "Flussi" })).toBeInTheDocument();
-    expect(screen.getByRole("radio", { name: "Collega" })).toBeInTheDocument();
-    expect(screen.queryByRole("radio", { name: "Rettangolo" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Presenta" })).toBeInTheDocument();
+    // The flows panel replaces the layers; "Connect" appears, "Rectangle" does not.
+    expect(screen.queryByRole("grid", { name: "Layers" })).not.toBeInTheDocument();
+    expect(screen.getByRole("complementary", { name: "Flows" })).toBeInTheDocument();
+    expect(screen.getByRole("radio", { name: "Connect" })).toBeInTheDocument();
+    expect(screen.queryByRole("radio", { name: "Rectangle" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Present" })).toBeInTheDocument();
 
     fireEvent.click(screen.getByRole("radio", { name: "Design" }));
-    expect(screen.getByRole("grid", { name: "Livelli" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Presenta" })).not.toBeInTheDocument();
+    expect(screen.getByRole("grid", { name: "Layers" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Present" })).not.toBeInTheDocument();
   });
 
-  it("F alterna la modalità, K entra in Flussi con Collega attivo", () => {
+  it("F toggles the mode, K enters Flows with Connect active", () => {
     useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
     const { container } = render(<App />);
     const canvas = container.querySelector("#scene") as HTMLCanvasElement;
@@ -67,15 +67,15 @@ describe("modalità Flussi", () => {
 
     fireEvent.keyDown(window, { key: "k" });
     expect(useFlowUi.getState().mode).toBe("flows");
-    expect(screen.getByRole("radio", { name: "Collega" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Connect" })).toHaveAttribute("aria-checked", "true");
     expect(canvas.style.cursor).toBe(connectTool.cursor);
 
-    // Tornando a Design il tool Collega (che là non esiste) ricade su Seleziona.
+    // Going back to Design the Connect tool (which does not exist there) falls back to Select.
     fireEvent.keyDown(window, { key: "f" });
-    expect(screen.getByRole("radio", { name: "Seleziona" })).toHaveAttribute("aria-checked", "true");
+    expect(screen.getByRole("radio", { name: "Select" })).toHaveAttribute("aria-checked", "true");
   });
 
-  it("F e K non scattano mentre si scrive in un campo di testo", () => {
+  it("F and K do not fire while typing in a text field", () => {
     useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
     render(<App />);
     const input = document.createElement("input");
@@ -86,13 +86,13 @@ describe("modalità Flussi", () => {
     input.remove();
   });
 
-  it("Presenta apre il prototipo e Esc lo chiude", () => {
+  it("Present opens the prototype and Esc closes it", () => {
     useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
     render(<App />);
-    fireEvent.click(screen.getByRole("radio", { name: "Flussi" }));
-    fireEvent.click(screen.getByRole("button", { name: "Presenta" }));
-    expect(screen.getByRole("dialog", { name: "Prototipo" })).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("radio", { name: "Flows" }));
+    fireEvent.click(screen.getByRole("button", { name: "Present" }));
+    expect(screen.getByRole("dialog", { name: "Prototype" })).toBeInTheDocument();
     fireEvent.keyDown(window, { key: "Escape" });
-    expect(screen.queryByRole("dialog", { name: "Prototipo" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("dialog", { name: "Prototype" })).not.toBeInTheDocument();
   });
 });

@@ -9,41 +9,41 @@ import { sceneIndexOf } from "../renderer/sceneIndex";
 import { makeDeleteOp, makeReparentOp, makeSetPropsOp } from "../tools/ops";
 import type { NodeLite, SceneState } from "../store/types";
 
-// PANNELLO LIVELLI — ALBERO della pagina corrente, con selezione, visibilità,
-// eliminazione, rinomina e drag per riordinare/riparentare (Task 7/8 + traccia
-// annidamento).
+// LAYERS PANEL — TREE of the current page, with selection, visibility,
+// deletion, rename and drag to reorder/reparent (Task 7/8 + nesting
+// track).
 //
-// La sincronizzazione bidirezionale con la selezione del canvas non è un
-// meccanismo A PARTE: `selectedKeys` viene qui letto dallo STESSO store che
-// selectTool scrive (store.selection), e `onSelectionChange` scrive lì con lo
-// STESSO store.setSelection che selectTool chiama. Un solo stato, due
-// scritture -- niente da tenere sincronizzato a mano fra canvas e pannello.
+// The two-way sync with the canvas selection is not a SEPARATE
+// mechanism: `selectedKeys` is read here from the SAME store that
+// selectTool writes (store.selection), and `onSelectionChange` writes there with the
+// SAME store.setSelection that selectTool calls. A single state, two
+// writers -- nothing to keep in sync by hand between canvas and panel.
 //
-// L'albero mostra la SOLA pagina corrente (store.currentPageId, stato di vista
-// come camera e selezione): è la stessa scelta del renderer, che disegna le sole
-// radici di quella pagina (canvasRenderer.ts::rootsOf). Cambiare pagina cambia
-// l'albero, senza nessun op sul filo.
+// The tree shows ONLY the current page (store.currentPageId, view state
+// like camera and selection): it is the same choice as the renderer, which draws only the
+// roots of that page (canvasRenderer.ts::rootsOf). Changing page changes
+// the tree, with no op on the wire.
 //
-// L'espansione dei container è stato di VISTA locale (come la camera), non una
-// voce di undo: vive in questo componente e non viaggia sul filo. Il drag invece
-// SÌ -- riordinare fra fratelli e riparentare sono modifiche del documento -- e
-// segue la regola di sempre: un drop = un gesto = un op = una voce di undo.
+// The expansion of containers is local VIEW state (like the camera), not an
+// undo entry: it lives in this component and does not travel on the wire. The drag instead
+// DOES -- reordering among siblings and reparenting are document edits -- and
+// follows the usual rule: one drop = one gesture = one op = one undo entry.
 
-// Un CONTAINER accoglie figli e li mostra come sottoalbero: gruppo e frame. La
-// pagina è il container-radice, ma non è un NodeLite (non è una riga
-// dell'albero). Solo i container sono bersaglio di riparentazione e solo loro si
-// espandono/collassano: dropare "dentro" un rect vuol dire riordinare accanto ad
-// esso, non entrarci.
+// A CONTAINER takes children and shows them as a subtree: group and frame. The
+// page is the root container, but it is not a NodeLite (it is not a row
+// of the tree). Only containers are reparenting targets and only they
+// expand/collapse: dropping "inside" an empty rect means reordering next to
+// it, not entering it.
 function isContainer(n: NodeLite): boolean {
   return n.kind === "group" || n.kind === "frame";
 }
 
-// Una riga dell'albero appiattito: il nodo, la sua profondità (0 = radice di
-// pagina) e lo stato di espansione. L'albero si RENDERIZZA come lista piatta di
-// righe visibili -- react-aria-components GridList vuole una collezione piatta,
-// e appiattire qui (invece di annidare <GridList> dentro <GridList>) tiene
-// selezione, navigazione da tastiera e ancora dello shift-click tutte in una
-// collezione sola.
+// A row of the flattened tree: the node, its depth (0 = page root)
+// and the expansion state. The tree is RENDERED as a flat list of visible
+// rows -- react-aria-components GridList wants a flat collection,
+// and flattening here (instead of nesting <GridList> inside <GridList>) keeps
+// selection, keyboard navigation and the shift-click anchor all in a
+// single collection.
 export interface LayerRow {
   id: string;
   node: NodeLite;
@@ -53,18 +53,18 @@ export interface LayerRow {
   expanded: boolean;
 }
 
-// L'albero della pagina in PRE-ORDINE, sceso solo nei container espansi. Ogni
-// livello di fratelli è in ordine di disegno INVERSO -- primo piano in cima,
-// come la vecchia lista piatta e come Figma -- quindi childrenOf (crescente,
-// sfondo→primo piano) si scorre a ritroso.
+// The page's tree in PRE-ORDER, descending only into expanded containers. Each
+// level of siblings is in REVERSE draw order -- foreground on top,
+// like the old flat list and like Figma -- so childrenOf (ascending,
+// background→foreground) is walked backwards.
 //
-// Un `seen` come in tree.ts::subtreeOf: un documento malformato (un nodo figlio
-// di se stesso) non deve mandare la ricorsione all'infinito.
+// A `seen` as in tree.ts::subtreeOf: a malformed document (a node that is its
+// own child) must not send the recursion to infinity.
 //
-// `children` è l'indice figli-per-parent (la stessa lista che childrenOf darebbe,
-// già ordinata): costruito UNA volta invece di scansionare l'intera scena per
-// ogni riga -- con 20.000 nodi le righe erano 20.000 scansioni da 20.000, cioè
-// 46 secondi per APRIRE il documento.
+// `children` is the children-by-parent index (the same list childrenOf would give,
+// already sorted): built ONCE instead of scanning the whole scene for
+// each row -- with 20,000 nodes the rows were 20,000 scans of 20,000, that is
+// 46 seconds to OPEN the document.
 export function visibleRows(
   scene: SceneState,
   pageId: string,
@@ -91,23 +91,23 @@ export function visibleRows(
   return out;
 }
 
-// L'esito di un drop, calcolato dalla riga sotto il puntatore. È il cuore del
-// vedi-vs-seleziona del pannello: la stessa geometria (la riga colpita) decide
-// cosa il drop FA.
-//  - "reorder": stesso parent, basta cambiare la order key -- il percorso di
-//    solo-riordino esiste già (SetProperties order_key) e si riusa;
-//  - "reparent": il nodo cambia container (dentro un gruppo/frame, o fuori su
-//    un'altra radice) -- serve un ReparentNode, che porta parent e posizione
-//    insieme.
-// null = niente da fare o drop non valido (su sé stessi, o dentro il proprio
-// sottoalbero: sarebbe un ciclo, che il core rifiuta e che qui non si offre).
+// The outcome of a drop, computed from the row under the pointer. It is the heart of the
+// see-vs-select of the panel: the same geometry (the row hit) decides
+// what the drop DOES.
+//  - "reorder": same parent, just change the order key -- the
+//    reorder-only path already exists (SetProperties order_key) and is reused;
+//  - "reparent": the node changes container (inside a group/frame, or out onto
+//    another root) -- a ReparentNode is needed, which carries parent and position
+//    together.
+// null = nothing to do or invalid drop (on itself, or inside its own
+// subtree: it would be a cycle, which the core rejects and which is not offered here).
 type DropPlan =
   | { kind: "reorder"; key: string }
   | { kind: "reparent"; parentId: string; key: string };
 
-// orderKeyBetween lancia se il range è vuoto (due vicini con la stessa chiave):
-// dentro il gestore di un pointerup vorrebbe dire rompere l'app a metà drag,
-// quindi qui si degrada a "nessun drop" (null), come fa reorderKey.
+// orderKeyBetween throws if the range is empty (two neighbors with the same key):
+// inside a pointerup handler that would mean breaking the app mid-drag,
+// so here it degrades to "no drop" (null), as reorderKey does.
 function safeBetween(a: string | null, b: string | null): string | null {
   try {
     return orderKeyBetween(a, b);
@@ -121,29 +121,29 @@ export function dropPlanFor(scene: SceneState, fromId: string, overId: string): 
   const from = scene.nodes.at(fromId);
   const over = scene.nodes.at(overId);
   if (!from || !over) return null;
-  // GUARDIA CICLI: `over` non deve stare nel sottoalbero di `from`. isAncestorOf
-  // è stretta (from === over è già escluso sopra): calare un nodo dentro un
-  // proprio discendente staccherebbe il sottoalbero dal documento, e il core lo
-  // rifiuta (ErrCycle) -- l'UI non lo offre nemmeno.
+  // CYCLE GUARD: `over` must not be in `from`'s subtree. isAncestorOf
+  // is strict (from === over is already excluded above): dropping a node inside
+  // one of its own descendants would detach the subtree from the document, and the core
+  // rejects it (ErrCycle) -- the UI does not even offer it.
   if (isAncestorOf(scene, fromId, overId)) return null;
 
   if (isContainer(over)) {
-    // DENTRO il container: in cima ai suoi figli (lato primo piano, subito sotto
-    // l'intestazione). Un container vuoto parte da FIRST_KEY.
+    // INSIDE the container: at the top of its children (foreground side, right below
+    // the header). An empty container starts from FIRST_KEY.
     const kids = childrenOf(scene, overId);
     const topKey = kids.length > 0 ? kids[kids.length - 1].orderKey : null;
     const key = safeBetween(topKey, null);
     return key === null ? null : { kind: "reparent", parentId: overId, key };
   }
 
-  // ACCANTO a `over` (ne diventa un fratello). La lista MOSTRATA dei fratelli del
-  // bersaglio: primo piano in cima.
+  // NEXT TO `over` (becomes its sibling). The target's DISPLAYED list of siblings:
+  // foreground on top.
   const parentId = over.parentId;
   const displayed = [...childrenOf(scene, parentId)].reverse();
   if (parentId === from.parentId) {
-    // Stesso parent: puro riordino, con la stessa semantica index-based della
-    // vecchia lista piatta (reorderKey) -- così i test del riordino esistenti
-    // valgono identici quando l'albero è una lista sola.
+    // Same parent: pure reorder, with the same index-based semantics as the
+    // old flat list (reorderKey) -- so the existing reorder tests
+    // hold identically when the tree is a single list.
     const key = reorderKey(
       displayed,
       displayed.findIndex((n) => n.id === fromId),
@@ -151,55 +151,55 @@ export function dropPlanFor(scene: SceneState, fromId: string, overId: string): 
     );
     return key === null ? null : { kind: "reorder", key };
   }
-  // Parent diverso: `from` non è fra i fratelli del bersaglio, quindi si infila
-  // appena SOPRA `over` (lato primo piano), fra `over` e il vicino di sopra.
+  // Different parent: `from` is not among the target's siblings, so it is slipped in
+  // just ABOVE `over` (foreground side), between `over` and the neighbor above.
   const overIdx = displayed.findIndex((n) => n.id === overId);
   const aboveKey = displayed[overIdx - 1]?.orderKey ?? null;
   const key = safeBetween(over.orderKey, aboveKey);
   return key === null ? null : { kind: "reparent", parentId, key };
 }
 
-// Lunghezza massima del contenuto di un nodo testo usato come nome di
-// ripiego (step 3): abbastanza per riconoscere la riga senza spingere il
-// pannello in orizzontale. "…" segnala il taglio, non è decorativo.
+// Maximum length of the content of a text node used as a
+// fallback name (step 3): enough to recognize the row without pushing the
+// panel horizontally. "…" signals the cut, it is not decorative.
 const TEXT_FALLBACK_MAX = 30;
 
 function fallbackName(n: NodeLite): string {
   if (n.kind === "rect") return "Rectangle";
   if (n.kind === "ellipse") return "Ellipse";
-  // Un'immagine di solito ha già un nome (tools/imageDrop.ts usa quello del
-  // file), quindi questo ripiego si vede solo per un nodo rinominato a vuoto o
-  // arrivato da un incolla senza nome.
+  // An image usually already has a name (tools/imageDrop.ts uses the file's),
+  // so this fallback shows only for a node renamed to empty or
+  // arrived from a paste without a name.
   if (n.kind === "image") return "Image";
   if (n.kind === "vector") return "Vector";
-  // Un gruppo nasce già con un nome (tools/grouping.ts::GROUP_NAME): questo è
-  // il ripiego per un gruppo rinominato a stringa vuota, o arrivato da un
-  // documento che non lo aveva.
+  // A group is born with a name already (tools/grouping.ts::GROUP_NAME): this is
+  // the fallback for a group renamed to an empty string, or arrived from a
+  // document that did not have it.
   if (n.kind === "group") return "Group";
   if (n.kind === "frame") return "Frame";
-  // Forma PRESENTE ma non riconosciuta da questo modello (una delle tracce
-  // parallele l'ha aggiunta al oneof `shape`): nome neutro. Il ramo esiste
-  // perché senza di esso il nodo cadrebbe nel ripiego del TESTO qui sotto e la
-  // riga direbbe "Text" per qualcosa che testo non è.
+  // Shape PRESENT but not recognized by this model (one of the parallel tracks
+  // added it to the `shape` oneof): neutral name. The branch exists
+  // because without it the node would fall into the TEXT fallback below and the
+  // row would say "Text" for something that is not text.
   if (n.kind === "unknown") return "Shape";
-  // n.kind === "text": a-capo e spazi ripetuti collassati, così l'etichetta
-  // resta su una riga sola anche per un testo multilinea.
+  // n.kind === "text": newlines and repeated spaces collapsed, so the label
+  // stays on a single line even for multiline text.
   const flat = (n.text?.content ?? "").replace(/\s+/g, " ").trim();
   if (flat === "") return "Text";
   return flat.length > TEXT_FALLBACK_MAX ? `${flat.slice(0, TEXT_FALLBACK_MAX)}…` : flat;
 }
 
-// Il nome mostrato per una riga: `name` se valorizzato, altrimenti il
-// fallback per tipo (Task 7, step 3). Esportata perché il pannello proprietà
-// (Task 8) mostra lo stesso identico nome per la stessa selezione -- due
-// implementazioni indipendenti potrebbero divergere silenziosamente.
+// The name shown for a row: `name` if set, otherwise the
+// per-type fallback (Task 7, step 3). Exported because the properties panel
+// (Task 8) shows the very same name for the same selection -- two
+// independent implementations could silently diverge.
 export function layerDisplayName(n: NodeLite): string {
   return n.name.trim() !== "" ? n.name : fallbackName(n);
 }
 
-// Stesso insieme di id, in un ordine qualunque -- confronta un Selection di
-// react-aria-components (le chiavi che GridList ci ha appena dato) contro
-// l'array piatto dello store.
+// Same set of ids, in any order -- compares a react-aria-components Selection
+// (the keys GridList has just given us) against the store's flat
+// array.
 function sameIds(keys: Exclude<Selection, "all">, ids: readonly string[]): boolean {
   if (keys.size !== ids.length) return false;
   for (const id of ids) if (!keys.has(id)) return false;
@@ -207,28 +207,28 @@ function sameIds(keys: Exclude<Selection, "all">, ids: readonly string[]): boole
 }
 
 /**
- * La order key da dare alla riga `from` per portarla in posizione `to`.
+ * The order key to give to row `from` to bring it to position `to`.
  *
- * `layers` è la lista COM'È MOSTRATA -- primo piano in cima, quindi order key
- * DECRESCENTE (vedi selectors.ts::layersInDrawOrder). Il riordino è quello di
- * una lista qualunque: si toglie la riga dalla posizione di partenza e la si
- * infila in quella d'arrivo; la chiave nuova è poi una qualunque strettamente
- * compresa fra i due VICINI che la riga si ritrova lì -- e l'indice frazionario
- * (store/orderKey.ts) ne trova sempre una, anche fra due chiavi consecutive,
- * anche mille volte nello stesso punto.
+ * `layers` is the list AS DISPLAYED -- foreground on top, so DESCENDING
+ * order key (see selectors.ts::layersInDrawOrder). The reorder is that of
+ * any list: the row is removed from its starting position and slipped into the
+ * arrival one; the new key is then any key strictly between the two
+ * NEIGHBORS the row finds itself with there -- and the fractional index
+ * (store/orderKey.ts) always finds one, even between two consecutive keys,
+ * even a thousand times in the same spot.
  *
- * NESSUN'ALTRA riga viene toccata: un solo op per un riordino, invece di
- * rinumerare l'intera lista. È tutto il motivo per cui le order key sono un
- * indice frazionario e non degli interi.
+ * NO other row is touched: a single op for a reorder, instead of
+ * renumbering the whole list. It is the whole reason order keys are a
+ * fractional index and not integers.
  *
- * Gli estremi sono APERTI: in cima non c'è vicino sopra (`null` = "sopra a
- * tutte"), in fondo non c'è vicino sotto.
+ * The ends are OPEN: at the top there is no neighbor above (`null` = "above
+ * everything"), at the bottom there is no neighbor below.
  *
- * null quando non c'è niente da fare (la riga non si muove, indici fuori
- * lista) o quando la chiave non esiste -- due vicini con la STESSA order key
- * non lasciano spazio in mezzo. In quel caso orderKeyBetween lancerebbe, e
- * lanciare dentro il gestore di un pointerup vorrebbe dire rompere l'app a
- * metà trascinamento: meglio un riordino che non avviene.
+ * null when there is nothing to do (the row does not move, indices out of
+ * the list) or when the key does not exist -- two neighbors with the SAME order key
+ * leave no room in between. In that case orderKeyBetween would throw, and
+ * throwing inside a pointerup handler would mean breaking the app
+ * mid-drag: better a reorder that does not happen.
  */
 export function reorderKey(layers: readonly NodeLite[], from: number, to: number): string | null {
   if (from === to) return null;
@@ -236,24 +236,24 @@ export function reorderKey(layers: readonly NodeLite[], from: number, to: number
 
   const moved = [...layers];
   moved.splice(to, 0, ...moved.splice(from, 1));
-  // Sopra = order key PIÙ ALTA (la lista è decrescente), sotto = più bassa.
+  // Above = HIGHER order key (the list is descending), below = lower.
   const above = moved[to - 1]?.orderKey ?? null;
   const below = moved[to + 1]?.orderKey ?? null;
   if (above !== null && below !== null && below >= above) return null;
   return orderKeyBetween(below, above);
 }
 
-// Etichetta del campo di rinomina. Costante e non "Rinomina {nome}": ne esiste
-// UNO alla volta (renamingId è un id solo), e un'etichetta che cambia con il
-// contenuto del campo non è un nome stabile per chi usa uno screen reader.
-const RENAME_LABEL = "Nome del livello";
+// Label of the rename field. A constant and not "Rename {name}": there is
+// ONE at a time (renamingId is a single id), and a label that changes with the
+// field's content is not a stable name for someone using a screen reader.
+const RENAME_LABEL = "Layer name";
 
-// CAMPO DI RINOMINA INLINE (Task 8, step 1). Un componente a parte, e non un
-// <input> inline dentro la riga, per una ragione precisa: la sessione di
-// modifica ha uno STATO SUO (il testo digitato finora, e il fatto di essere già
-// stata chiusa) che deve nascere e morire con il campo. Montandolo/smontandolo
-// quando `renamingId` cambia, quello stato non può sopravvivere alla riga
-// sbagliata.
+// INLINE RENAME FIELD (Task 8, step 1). A separate component, and not an
+// inline <input> inside the row, for a precise reason: the edit
+// session has its OWN STATE (the text typed so far, and whether it has already
+// been closed) which must be born and die with the field. By mounting/unmounting it
+// when `renamingId` changes, that state cannot survive onto the wrong
+// row.
 function RenameField({
   initial,
   placeholder,
@@ -267,18 +267,18 @@ function RenameField({
 }) {
   const [value, setValue] = useState(initial);
   const ref = useRef<HTMLInputElement | null>(null);
-  // Una sessione si chiude UNA volta sola: Enter/Escape chiudono, e il blur che
-  // arriva subito dopo (il campo sta per essere smontato) non deve confermare
-  // una seconda volta -- men che meno dopo un annullamento. Stessa guardia di
-  // ui/TextEditorOverlay.tsx::done, per lo stesso motivo.
+  // A session closes ONLY once: Enter/Escape close, and the blur that
+  // arrives right after (the field is about to be unmounted) must not commit
+  // a second time -- least of all after a cancel. Same guard as
+  // ui/TextEditorOverlay.tsx::done, for the same reason.
   const done = useRef(false);
 
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     el.focus();
-    // Tutto selezionato: scrivere SOSTITUISCE il nome, che è quello che ci si
-    // aspetta da una rinomina (e resta possibile posizionare il cursore).
+    // Everything selected: typing REPLACES the name, which is what one
+    // expects from a rename (and it stays possible to position the cursor).
     el.select();
   }, []);
 
@@ -297,28 +297,28 @@ function RenameField({
       placeholder={placeholder}
       spellCheck={false}
       onChange={(e) => setValue(e.target.value)}
-      // Uscire dal campo (click altrove, Tab) conferma: è la rete di sicurezza
-      // dei casi che nessuno gestisce -- perdere il fuoco non deve poter far
-      // perdere quello che l'utente ha scritto.
+      // Leaving the field (click elsewhere, Tab) commits: it is the safety net
+      // for the cases nobody handles -- losing focus must not be able to make
+      // what the user wrote get lost.
       onBlur={() => settle(true)}
-      // Un click DENTRO il campo (per posizionare il cursore) non deve
-      // diventare un click sulla riga: senza, GridList cambierebbe la selezione
-      // sotto le dita di chi sta rinominando. Servono ENTRAMBI gli eventi:
-      // react-aria apre la pressione sul pointerdown, ma per i click
-      // "virtuali" -- quelli di uno screen reader, e quelli che user-event
-      // sintetizza nei test, riconosciuti da pressure/width/height (vedi il
-      // commento di press() in LayersPanel.test.tsx) -- passa dal solo click.
+      // A click INSIDE the field (to position the cursor) must not
+      // become a click on the row: without it, GridList would change the selection
+      // under the fingers of whoever is renaming. BOTH events are needed:
+      // react-aria opens the press on pointerdown, but for "virtual"
+      // clicks -- those of a screen reader, and those user-event
+      // synthesizes in tests, recognized by pressure/width/height (see the
+      // comment of press() in LayersPanel.test.tsx) -- it goes through click alone.
       onPointerDown={(e) => e.stopPropagation()}
       onClick={(e) => e.stopPropagation()}
       onKeyDown={(e) => {
-        // NIENTE tasto esce da questo campo. Le scorciatoie globali dell'app
-        // ascoltano sulla FINESTRA (undo/redo in ui/App.tsx, Escape/Canc in
-        // tools/toolManager.ts) e GridList ha le sue sulla lista (frecce,
-        // typeahead): senza questo stop, Canc cancellerebbe il nodo che si sta
-        // rinominando e scrivere "Beta" sposterebbe la selezione sulla riga che
-        // comincia per B. Le due guardie isTextField esistenti coprono solo il
-        // canale della finestra, non quello di GridList -- che è React e
-        // arriverebbe comunque.
+        // NO key leaves this field. The app's global shortcuts
+        // listen on the WINDOW (undo/redo in ui/App.tsx, Escape/Delete in
+        // tools/toolManager.ts) and GridList has its own on the list (arrows,
+        // typeahead): without this stop, Delete would delete the node being
+        // renamed and typing "Beta" would move the selection to the row
+        // starting with B. The two existing isTextField guards cover only the
+        // window channel, not GridList's -- which is React and
+        // would arrive anyway.
         e.stopPropagation();
         if (e.key === "Enter") {
           e.preventDefault();
@@ -328,20 +328,20 @@ function RenameField({
           settle(false);
         }
       }}
-      // select-text: la lista intorno è select-none (perché trascinare una
-      // maniglia non deve evidenziare i nomi delle righe che si attraversano),
-      // ma DENTRO un campo di testo la selezione serve.
-      // Stesso campo del resto dell'app (cls.input), ma 24px: dentro una riga da
-      // 28 lascia il respiro sopra e sotto. Il bordo è già acceso: si sta scrivendo.
+      // select-text: the list around is select-none (because dragging a
+      // handle must not highlight the names of the rows it crosses),
+      // but INSIDE a text field selection is needed.
+      // Same field as the rest of the app (cls.input), but 24px: inside a 28
+      // row it leaves breathing room above and below. The border is already lit: one is writing.
       className={`${cls.input} h-6! flex-1 select-text border-accent bg-surface focus-visible:shadow-none!`}
     />
   );
 }
 
-// L'icona della riga dice di che COSA si tratta a colpo d'occhio. Sono le stesse
-// icone degli strumenti: frame -> frame, gruppo -> layers, vettore -> penna,
-// istanza di componente -> components. `unknown` (un tipo che questo client non
-// conosce) ripiega sul rettangolo, come fallbackName ripiega su "Shape".
+// The row's icon says WHAT it is at a glance. They are the same
+// icons as the tools: frame -> frame, group -> layers, vector -> pen,
+// component instance -> components. `unknown` (a type this client does not
+// know) falls back to the rectangle, as fallbackName falls back to "Shape".
 function kindIcon(kind: NodeLite["kind"]): IconName {
   switch (kind) {
     case "frame": return "frame";
@@ -355,44 +355,44 @@ function kindIcon(kind: NodeLite["kind"]): IconName {
   }
 }
 
-// Passo di rientro per livello di profondità, e padding sinistro della riga di
-// radice. Le guide di rientro stanno al centro del chevron del livello padre.
+// Indent step per depth level, and left padding of the root row. The
+// indent guides sit at the center of the parent level's chevron.
 const INDENT = 14;
 const BASE_PAD = 8;
 
-// Quante righe servono perché il pannello si virtualizzi, e l'altezza di ognuna
-// quando succede (py-1 + riga di testo ≈ 28 px, la stessa di prima).
+// How many rows are needed for the panel to virtualize, and the height of each
+// when it happens (py-1 + text row ≈ 28 px, the same as before).
 export const VIRTUALIZE_AFTER_ROWS = 300;
 const ROW_HEIGHT = 28;
 
-// Oltre questo numero di nodi in un documento i container partono CHIUSI: elencare
-// ogni nodo di un file con decine di migliaia di elementi non aiuta a orientarsi
-// (e costa una collezione da decine di migliaia di righe). Si aprono a mano o, da
-// soli, quando si seleziona un nodo che sta dentro.
+// Beyond this number of nodes in a document containers start CLOSED: listing
+// every node of a file with tens of thousands of elements does not help orientation
+// (and costs a collection of tens of thousands of rows). They are opened by hand or, on
+// their own, when a node inside is selected.
 export const AUTO_COLLAPSE_NODES = 2000;
 
 export function LayersPanel() {
-  // Il pannello si ridisegna per la STRUTTURA dell'albero (chi sta dove, i nomi,
-  // la visibilità), non per ogni scena nuova: un trascinamento ne produce una a
-  // ogni passo, e senza questo ogni passo rifaceva 20.000 righe di react-aria.
-  // La scena la si LEGGE (senza abbonarsi) dove serve.
+  // The panel redraws for the tree's STRUCTURE (who is where, the names,
+  // visibility), not for every new scene: a drag produces one at
+  // every step, and without this every step redid 20,000 react-aria rows.
+  // The scene is READ (without subscribing) where needed.
   const structure = useScene((s) => (s.scene ? sceneIndexOf(s.scene).structure : null));
   const scene = useScene.getState().scene;
   const selection = useScene((s) => s.selection);
-  // La pagina VISUALIZZATA: l'albero ne mostra solo le radici e i loro
-  // sottoalberi. Stato di vista dello store, lo stesso che legge il renderer.
+  // The DISPLAYED page: the tree shows only its roots and their
+  // subtrees. View state of the store, the same one the renderer reads.
   const currentPageId = useScene((s) => s.currentPageId);
-  // Il nodo la cui riga sta mostrando il campo di rinomina, o null. Uno solo
-  // alla volta, per costruzione.
+  // The node whose row is showing the rename field, or null. Only one
+  // at a time, by construction.
   const [renamingId, setRenamingId] = useState<string | null>(null);
-  // I container COLLASSATI (default: tutti espansi). Un Set di soli id
-  // collassati, così un container appena creato nasce aperto senza doverlo
-  // elencare. Stato di VISTA locale: non è un op e non è una voce di undo.
+  // The COLLAPSED containers (default: all expanded). A Set of collapsed ids
+  // only, so a freshly created container is born open without having to list
+  // it. Local VIEW state: it is not an op and not an undo entry.
   const [collapsed, setCollapsed] = useState<ReadonlySet<string>>(() => new Set());
-  // Nei documenti grandi i container partono chiusi (AUTO_COLLAPSE_NODES): lo
-  // stato è l'inverso -- `expanded` elenca quelli che l'utente ha aperto. Si
-  // decide UNA volta per (documento, pagina) e resta, anche se poi i nodi
-  // crescono o calano attorno alla soglia.
+  // In large documents containers start closed (AUTO_COLLAPSE_NODES): the
+  // state is the inverse -- `expanded` lists those the user opened. It is
+  // decided ONCE per (document, page) and stays, even if the nodes
+  // later grow or shrink around the threshold.
   const [expanded, setExpanded] = useState<ReadonlySet<string>>(() => new Set());
   const autoDecided = useRef(new Map<string, boolean>());
   const autoKey = scene && currentPageId ? `${scene.id}:${currentPageId}` : null;
@@ -404,60 +404,60 @@ export function LayersPanel() {
     (id: string) => collapsed.has(id) || (autoCollapse && !expanded.has(id)),
     [collapsed, expanded, autoCollapse],
   );
-  // Il trascinamento in corso: quale riga si sta spostando e su quale si trova
-  // adesso il puntatore (`over` parte dalla riga stessa, cioè "non si è ancora
-  // mosso"). null = nessun trascinamento in corso.
+  // The drag in progress: which row is being moved and which one the pointer is on
+  // right now (`over` starts from the row itself, that is "not moved yet").
+  // null = no drag in progress.
   const [drag, setDrag] = useState<{ from: string; over: string } | null>(null);
 
-  // Le righe visibili dell'albero. Identità STABILE finché scena, pagina o
-  // espansione non cambiano (una selezione da sola non le tocca):
-  // react-aria-components ricostruisce la propria collezione interna -- ancora
-  // di selezione compresa, quella su cui si basa un range shift-click -- quando
-  // l'identità di `items` cambia. Un nuovo array ad OGNI render la romperebbe
-  // anche quando l'albero non è cambiato per niente, e un semplice click
-  // successivo si comporterebbe da "aggiungi" invece che da "sostituisci".
+  // The tree's visible rows. STABLE identity until scene, page or
+  // expansion change (a selection alone does not touch them):
+  // react-aria-components rebuilds its internal collection -- selection
+  // anchor included, the one a shift-click range relies on -- when
+  // `items`' identity changes. A new array on EVERY render would break it
+  // even when the tree has not changed at all, and a simple subsequent click
+  // would behave as "add" instead of "replace".
   //
-  // Dipende dal TOKEN di struttura dell'indice di scena, non dalla scena: un
-  // trascinamento produce una scena nuova a ogni passo, ma non cambia chi sta
-  // dove né i nomi, e rifare 20.000 righe a ogni passo bloccherebbe la pagina.
+  // It depends on the scene index's structure TOKEN, not on the scene: a
+  // drag produces a new scene at every step, but does not change who is
+  // where nor the names, and redoing 20,000 rows at every step would freeze the page.
   const index = scene ? sceneIndexOf(scene) : null;
-  // Una lista lunga si VIRTUALIZZA: si montano solo le righe visibili (e poche
-  // attorno), non una per nodo. Sopra la soglia, perché il virtualizzatore decide
-  // cosa mostrare dalla misura del contenitore e sotto jsdom -- dove ogni misura
-  // è zero -- una lista corta sparirebbe. Le righe virtualizzate hanno altezza
-  // fissa (ROW_HEIGHT): è ciò che gli permette di non misurarle una per una.
+  // A long list is VIRTUALIZED: only the visible rows are mounted (and a few
+  // around), not one per node. Above the threshold, because the virtualizer decides
+  // what to show from the container's measure and under jsdom -- where every measure
+  // is zero -- a short list would vanish. Virtualized rows have a fixed
+  // height (ROW_HEIGHT): it is what lets it avoid measuring them one by one.
   const rows = useMemo(
     () => (scene && index && currentPageId ? visibleRows(scene, currentPageId, isCollapsed, index.children) : []),
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- `structure` sostituisce scene/index
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- `structure` replaces scene/index
     [structure, currentPageId, isCollapsed],
   );
 
   const virtualized = rows.length > VIRTUALIZE_AFTER_ROWS;
 
-  // Il sottoalbero della riga trascinata (radice compresa): i suoi id sono i
-  // bersagli di drop NON validi -- calarci dentro sarebbe un ciclo. Precalcolato
-  // una volta per drag invece che a ogni riga.
+  // The dragged row's subtree (root included): its ids are the INVALID drop
+  // targets -- dropping into them would be a cycle. Precomputed
+  // once per drag instead of at every row.
   const dragSubtree = useMemo(
     () => (drag && scene ? new Set(subtreeOf(scene, drag.from).map((n) => n.id)) : null),
     [drag, scene],
   );
 
-  // L'ULTIMA Selection che GridList stesso ci ha consegnato via
-  // onSelectionChange -- con l'ANCORA di uno shift-click (quale riga apre
-  // l'intervallo), che store.selection non può portare: è un array piatto,
-  // scritto anche da selectTool sul canvas, che di ancore non sa nulla.
+  // The LAST Selection that GridList itself handed us via
+  // onSelectionChange -- with the shift-click ANCHOR (which row opens the
+  // range), which store.selection cannot carry: it is a flat array,
+  // also written by selectTool on the canvas, which knows nothing about anchors.
   //
-  // Se il prossimo render arriva con la STESSA selezione che abbiamo appena
-  // emesso noi (l'utente ha cliccato una riga), la riusiamo COSÌ COM'ERA,
-  // ancora compresa: ricostruire un Set nuovo da `selection` ad ogni giro
-  // (identico nel contenuto, ma un oggetto NUOVO) è indistinguibile per
-  // GridList da "la selezione è stata sostituita da fuori", e perderebbe
-  // l'ancora dopo OGNI click -- uno shift-click dopo l'altro selezionerebbe
-  // sempre e solo due righe, mai l'intervallo. Se invece la selezione arriva
-  // da FUORI (il canvas, via store.setSelection), non coincide con quella
-  // emessa e ricostruiamo un Set piatto: un'ancora persa in quel caso È
-  // l'esito giusto, non un bug -- un nuovo punto di partenza per il prossimo
-  // shift-click nel pannello.
+  // If the next render arrives with the SAME selection we just
+  // emitted (the user clicked a row), we reuse it AS IT WAS,
+  // anchor included: rebuilding a new Set from `selection` on every round
+  // (identical in content, but a NEW object) is indistinguishable to
+  // GridList from "the selection was replaced from outside", and would lose
+  // the anchor after EVERY click -- one shift-click after another would always select
+  // only two rows, never the range. If instead the selection comes
+  // from OUTSIDE (the canvas, via store.setSelection), it does not match the one
+  // emitted and we rebuild a flat Set: a lost anchor in that case IS
+  // the right outcome, not a bug -- a new starting point for the next
+  // shift-click in the panel.
   const lastEmitted = useRef<Selection | null>(null);
   const selectedKeys: Selection = useMemo(() => {
     const cached = lastEmitted.current;
@@ -465,10 +465,10 @@ export function LayersPanel() {
     return new Set(selection);
   }, [selection]);
 
-  // GridList è CONTROLLATO da selection (sopra) e scrive qui: un click
-  // rimpiazza la selezione (selectionBehavior="replace"), ctrl/cmd-click la
-  // estende un nodo alla volta, shift-click la estende per intervallo -- la
-  // stessa semantica desktop di selectTool sul canvas, gratis da
+  // GridList is CONTROLLED by selection (above) and writes here: a click
+  // replaces the selection (selectionBehavior="replace"), ctrl/cmd-click
+  // extends it one node at a time, shift-click extends it by range -- the
+  // same desktop semantics as selectTool on the canvas, free from
   // react-aria-components.
   function onSelectionChange(keys: Selection) {
     lastEmitted.current = keys;
@@ -476,26 +476,26 @@ export function LayersPanel() {
     useScene.getState().setSelection(ids);
   }
 
-  // Un op, un gesto: anche il singolo toggle passa da beginGesture/endGesture
-  // (i pannelli obbediscono alla stessa regola di un tool, vedi il brief
-  // M1b), così la visibilità resta annullabile con Ctrl+Z e viaggia sul filo
-  // come qualunque altra modifica.
+  // One op, one gesture: even the single toggle goes through beginGesture/endGesture
+  // (panels obey the same rule as a tool, see the M1b
+  // brief), so visibility stays undoable with Ctrl+Z and travels on the wire
+  // like any other change.
   function toggleVisible(n: NodeLite) {
     const store = useScene.getState();
     store.beginGesture();
     store.endGesture([makeSetPropsOp(n.id, { visible: !n.visible }, ["visible"])]);
   }
 
-  // Un solo gesto per l'INTERA selezione, non un gesto per nodo: undoStack
-  // guadagna UNA voce anche cancellando dieci livelli in un colpo solo --
-  // stesso schema di selectTool.ts::onKeyDown per Delete/Backspace sul
-  // canvas, qui applicato al pulsante del pannello.
-  // Chiude la rinomina scrivendo il nuovo nome. Come il toggle di visibilità è
-  // un gesto intero (una voce di undo, un op sul filo).
+  // A single gesture for the WHOLE selection, not one gesture per node: undoStack
+  // gains ONE entry even when deleting ten layers in one go --
+  // same pattern as selectTool.ts::onKeyDown for Delete/Backspace on the
+  // canvas, here applied to the panel's button.
+  // Closes the rename by writing the new name. Like the visibility toggle it is
+  // a whole gesture (one undo entry, one op on the wire).
   //
-  // Due casi non producono NIENTE: il nome invariato e -- per lo stesso motivo
-  // -- il nome che differisce solo per spazi ai bordi, che vengono tolti. Un op
-  // "che non cambia niente" costerebbe comunque un giro di rete e un Ctrl+Z.
+  // Two cases produce NOTHING: the unchanged name and -- for the same reason
+  // -- the name that differs only by whitespace at the edges, which is trimmed. An op
+  // "that changes nothing" would still cost a network round trip and a Ctrl+Z.
   function commitRename(n: NodeLite, raw: string) {
     setRenamingId(null);
     const name = raw.trim();
@@ -505,8 +505,8 @@ export function LayersPanel() {
     store.endGesture([makeSetPropsOp(n.id, { name }, ["name"])]);
   }
 
-  // Apre/chiude un container. Stato di VISTA locale: nessun op, nessuna voce di
-  // undo (come spostare la camera).
+  // Opens/closes a container. Local VIEW state: no op, no undo entry
+  // (like moving the camera).
   function toggleCollapse(id: string) {
     const flip = (prev: ReadonlySet<string>) => {
       const next = new Set(prev);
@@ -514,15 +514,15 @@ export function LayersPanel() {
       else next.add(id);
       return next;
     };
-    // Con i container chiusi di default, "aprire" vuol dire aggiungere a
-    // `expanded`; altrimenti vuol dire togliere da `collapsed`.
+    // With containers closed by default, "opening" means adding to
+    // `expanded`; otherwise it means removing from `collapsed`.
     if (autoCollapse) setExpanded(flip);
     else setCollapsed(flip);
   }
 
-  // Selezionare un nodo (dal canvas, o con la tastiera) deve MOSTRARLO: si
-  // aprono gli antenati chiusi. Parte solo quando cambia la selezione, così
-  // chiudere a mano un container con dentro la selezione non viene riaperto.
+  // Selecting a node (from the canvas, or with the keyboard) must SHOW it: the
+  // closed ancestors are opened. It runs only when the selection changes, so
+  // manually closing a container with the selection inside does not get it reopened.
   useEffect(() => {
     const cur = useScene.getState().scene;
     if (!cur || selection.length === 0) return;
@@ -533,14 +533,14 @@ export function LayersPanel() {
     if (toOpen.size === 0) return;
     if (autoCollapse) setExpanded((prev) => new Set([...prev, ...toOpen]));
     else setCollapsed((prev) => new Set([...prev].filter((id) => !toOpen.has(id))));
-    // eslint-disable-next-line react-hooks/exhaustive-deps -- solo al cambio di selezione
+    // eslint-disable-next-line react-hooks/exhaustive-deps -- only on selection change
   }, [selection]);
 
-  // Riordino da TASTIERA (Alt+frecce sulla maniglia): sposta il nodo di un posto
-  // FRA I SUOI FRATELLI. Stesso op e stesso gesto del drag di solo-riordino
-  // (SetProperties order_key): un solo op, i vicini non si toccano. `dir` è -1
-  // verso il primo piano (su), +1 verso lo sfondo (giù). Fuori dalla lista dei
-  // fratelli non fa niente (reorderKey ritorna null).
+  // KEYBOARD reorder (Alt+arrows on the handle): moves the node one place
+  // AMONG ITS SIBLINGS. Same op and same gesture as the reorder-only drag
+  // (SetProperties order_key): a single op, neighbors are not touched. `dir` is -1
+  // toward the foreground (up), +1 toward the background (down). Outside the siblings'
+  // list it does nothing (reorderKey returns null).
   function reorderSibling(id: string, dir: -1 | 1) {
     const cur = useScene.getState().scene;
     if (!cur) return;
@@ -555,10 +555,10 @@ export function LayersPanel() {
     store.endGesture([makeSetPropsOp(id, { orderKey: key }, ["order_key"])]);
   }
 
-  // Esegue il drop di `fromId` sulla riga `overId`. Un drop = UN gesto = UN op =
-  // UNA voce di undo: riordino (SetProperties order_key) se resta fra i fratelli,
-  // ReparentNode se cambia container. Il piano è calcolato sulla scena FRESCA
-  // dello store (non su una closure che potrebbe essere invecchiata).
+  // Performs the drop of `fromId` onto row `overId`. One drop = ONE gesture = ONE op =
+  // ONE undo entry: reorder (SetProperties order_key) if it stays among siblings,
+  // ReparentNode if it changes container. The plan is computed on the store's FRESH
+  // scene (not on a closure that might have aged).
   function performDrop(fromId: string, overId: string) {
     const cur = useScene.getState().scene;
     if (!cur) return;
@@ -570,9 +570,9 @@ export function LayersPanel() {
       store.endGesture([makeSetPropsOp(fromId, { orderKey: plan.key }, ["order_key"])]);
       return;
     }
-    // Riparentazione: il container di destinazione va ESPANSO, così il nodo
-    // appena calato dentro è subito visibile invece di sparire in un ramo
-    // collassato. (Se il parent è una pagina, non è mai in `collapsed`: no-op.)
+    // Reparenting: the destination container must be EXPANDED, so the node
+    // just dropped inside is immediately visible instead of vanishing into a
+    // collapsed branch. (If the parent is a page, it is never in `collapsed`: no-op.)
     setCollapsed((prev) => {
       if (!prev.has(plan.parentId)) return prev;
       const next = new Set(prev);
@@ -582,11 +582,11 @@ export function LayersPanel() {
     store.endGesture([makeReparentOp(fromId, plan.parentId, plan.key)]);
   }
 
-  // Il rilascio arriva sulla FINESTRA e non sulla riga: il puntatore può
-  // benissimo essere lasciato andare fuori dalla lista (o fuori dalla finestra),
-  // e un trascinamento che resta "attaccato" perché il pointerup è andato altrove
-  // è il difetto classico di un drag fatto a mano. Registrato solo mentre un
-  // trascinamento è in corso.
+  // The release arrives on the WINDOW and not on the row: the pointer can
+  // very well be released outside the list (or outside the window),
+  // and a drag that stays "stuck" because the pointerup went elsewhere
+  // is the classic flaw of a hand-made drag. Registered only while a
+  // drag is in progress.
   useEffect(() => {
     if (!drag) return;
     const { from, over } = drag;
@@ -594,8 +594,8 @@ export function LayersPanel() {
       setDrag(null);
       performDrop(from, over);
     };
-    // Il browser ha annullato il gesto (gesture di sistema, capture perso):
-    // si abbandona senza riordinare, come fa onPointerCancel dei tool
+    // The browser cancelled the gesture (system gesture, lost capture):
+    // it is abandoned without reordering, as the tools' onPointerCancel does
     // (tools/toolManager.ts).
     const abort = () => setDrag(null);
     window.addEventListener("pointerup", drop);
@@ -604,8 +604,8 @@ export function LayersPanel() {
       window.removeEventListener("pointerup", drop);
       window.removeEventListener("pointercancel", abort);
     };
-    // performDrop legge la scena fresca dallo store: la closure non dipende da
-    // `rows`, quindi basta rieseguire l'effetto quando cambia il drag.
+    // performDrop reads the fresh scene from the store: the closure does not depend on
+    // `rows`, so it is enough to rerun the effect when the drag changes.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [drag]);
 
@@ -613,9 +613,9 @@ export function LayersPanel() {
     const store = useScene.getState();
     const scene = store.scene;
     if (!scene) return;
-    // Solo i nodi PIÙ IN ALTO della selezione: deleteNode cascata, quindi un
-    // figlio selezionato insieme al suo gruppo produrrebbe un op rifiutato dal
-    // server e lascerebbe l'intero gesto senza voce di undo (vedi topmostOf).
+    // Only the TOPMOST nodes of the selection: deleteNode cascades, so a
+    // child selected together with its group would produce an op rejected by the
+    // server and leave the whole gesture without an undo entry (see topmostOf).
     const ids = topmostOf(scene, store.selection);
     if (ids.length === 0) return;
     store.beginGesture();
@@ -624,15 +624,15 @@ export function LayersPanel() {
 
   const list = (
     <GridList
-      aria-label="Livelli"
+      aria-label="Layers"
       items={rows}
-      // La CACHE degli item di react-aria-components. Con una collezione
-      // dinamica (`items` + render function) RAC ricostruisce le righe solo
-      // quando cambia `items` -- non a ogni render del pannello: `renamingId`
-      // e `drag` vivono nello STATO di questo componente, e senza dichiararli
-      // qui il doppio click / l'evidenziazione del drop aggiornerebbero lo
-      // stato senza che la riga cambi mai. (`collapsed` cambia già l'identità
-      // di `rows`, quindi non serve elencarlo.)
+      // The CACHE of react-aria-components' items. With a dynamic
+      // collection (`items` + render function) RAC rebuilds the rows only
+      // when `items` changes -- not on every render of the panel: `renamingId`
+      // and `drag` live in this component's STATE, and without declaring them
+      // here the double click / the drop highlight would update the
+      // state without the row ever changing. (`collapsed` already changes the identity
+      // of `rows`, so it need not be listed.)
       dependencies={[renamingId, drag]}
       selectionMode="multiple"
       selectionBehavior="replace"
@@ -641,8 +641,8 @@ export function LayersPanel() {
       renderEmptyState={() => (
         <EmptyState
           icon="layers"
-          title="Nessun livello"
-          hint="Disegna una forma con gli strumenti in basso: comparirà qui."
+          title="No layers"
+          hint="Draw a shape with the tools below: it will appear here."
         />
       )}
       className="min-h-0 flex-1 select-none overflow-auto px-1 pb-2 outline-none"
@@ -651,14 +651,14 @@ export function LayersPanel() {
         const n = row.node;
         const label = layerDisplayName(n);
         const dragging = drag?.from === n.id;
-        // Bersaglio NON valido durante un drag: la riga trascinata cala nel
-        // proprio sottoalbero (ciclo). Non si offre -- il core lo rifiuterebbe
-        // (ErrCycle) e il pannello non deve nemmeno far finta che si possa.
+        // INVALID target during a drag: the dragged row would drop into its
+        // own subtree (cycle). It is not offered -- the core would reject it
+        // (ErrCycle) and the panel must not even pretend it is possible.
         const invalidTarget = !!drag && !dragging && !!dragSubtree?.has(n.id);
-        // Come il drop atterrerebbe QUI: "into" = dentro questo container,
-        // "beside" = riordino/riparentazione accanto. Deciso dallo stesso
-        // dropPlanFor che esegue il drop, così l'anteprima non può mentire su
-        // cosa succederà.
+        // How the drop would land HERE: "into" = inside this container,
+        // "beside" = reorder/reparent next to it. Decided by the same
+        // dropPlanFor that performs the drop, so the preview cannot lie about
+        // what will happen.
         let dropMode: "into" | "beside" | null = null;
         if (drag && drag.over === n.id && !dragging && !invalidTarget && scene) {
           const plan = dropPlanFor(scene, drag.from, n.id);
@@ -670,41 +670,41 @@ export function LayersPanel() {
             textValue={label}
             data-depth={row.depth}
             data-drop-invalid={invalidTarget ? "true" : undefined}
-            // Indentazione per profondità: lo stesso spazio che il renderer
-            // esprime scendendo l'albero, qui reso come rientro a sinistra.
+            // Indentation by depth: the same space the renderer
+            // expresses going down the tree, here rendered as a left indent.
             style={{ paddingLeft: BASE_PAD + row.depth * INDENT }}
-            // Il bersaglio del rilascio si decide dalla riga SOTTO IL
-            // PUNTATORE, non da un calcolo su coordinate e altezze: il
-            // pointermove arriva già sulla riga giusta, che è l'unica
-            // informazione che serve. (Nessun setPointerCapture, per questo:
-            // catturando, i move tornerebbero tutti alla maniglia.)
+            // The drop target is decided from the row UNDER THE
+            // POINTER, not from a calculation on coordinates and heights: the
+            // pointermove already arrives on the right row, which is the only
+            // information needed. (No setPointerCapture, for this reason:
+            // capturing, all the moves would go back to the handle.)
             onPointerMove={() => {
               if (drag && drag.over !== n.id) setDrag({ from: drag.from, over: n.id });
             }}
             className={[
-              // h-7 = ROW_HEIGHT (28): la stessa altezza fissa che permette al
-              // virtualizzatore di non misurare le righe. `relative` ancora le
-              // guide di rientro, la maniglia e l'indicatore di drop.
+              // h-7 = ROW_HEIGHT (28): the same fixed height that lets the
+              // virtualizer avoid measuring rows. `relative` anchors the indent
+              // guides, the handle and the drop indicator.
               "group relative flex h-7 items-center gap-1.5 rounded-md pr-1.5 text-[13px] text-fg outline-none",
               "hover:bg-surface-3 data-[selected]:bg-accent-soft data-[selected]:hover:bg-accent-soft",
               "data-[focus-visible]:shadow-[inset_0_0_0_1.5px_var(--accent)]",
               dragging ? "opacity-50" : "",
               invalidTarget ? "cursor-no-drop opacity-40" : "",
-              // Drop DENTRO un container: la riga si illumina tutta, in accento.
+              // Drop INSIDE a container: the whole row lights up, in accent.
               dropMode === "into" ? "bg-accent-soft! shadow-[inset_0_0_0_1.5px_var(--accent)]" : "",
             ].join(" ")}
           >
-            {/* INDICATORE DI DROP "accanto": una linea d'accento da 2px sul bordo
-                superiore (assoluta, così non cambia l'altezza della riga -- che
-                per la virtualizzazione è fissa) con un pallino a sinistra. */}
+            {/* "beside" DROP INDICATOR: a 2px accent line on the top
+                edge (absolute, so it does not change the row's height -- which for
+                virtualization is fixed) with a dot on the left. */}
             {dropMode === "beside" && (
               <span aria-hidden className="pointer-events-none absolute inset-x-0 -top-px z-10 h-0.5 rounded-full bg-accent">
                 <span className="absolute -left-0.5 -top-[3px] h-2 w-2 rounded-full border-2 border-accent bg-surface" />
               </span>
             )}
-            {/* GUIDE DI RIENTRO: una linea verticale per ogni antenato, al centro
-                del suo chevron. Decorative (aria-hidden) e non intercettano
-                eventi. */}
+            {/* INDENT GUIDES: a vertical line for each ancestor, at the center
+                of its chevron. Decorative (aria-hidden) and they do not intercept
+                events. */}
             {Array.from({ length: row.depth }, (_, i) => (
               <span
                 key={i}
@@ -713,14 +713,14 @@ export function LayersPanel() {
                 style={{ left: BASE_PAD + i * INDENT + 8 }}
               />
             ))}
-            {/* DISCLOSURE: espande/collassa un container con figli. Per le
-                righe che non ne hanno uno spaziatore della stessa larghezza,
-                così nomi e maniglie restano allineati fra i livelli. Un
-                <button> vero (aria-expanded), raggiungibile da tastiera. */}
+            {/* DISCLOSURE: expands/collapses a container with children. For rows
+                that do not have one, a spacer of the same width,
+                so names and handles stay aligned across levels. A real
+                <button> (aria-expanded), reachable by keyboard. */}
             {row.container && row.hasChildren ? (
               <button
                 type="button"
-                aria-label={row.expanded ? `Comprimi ${label}` : `Espandi ${label}`}
+                aria-label={row.expanded ? `Collapse ${label}` : `Expand ${label}`}
                 aria-expanded={row.expanded}
                 onPointerDown={(e) => e.stopPropagation()}
                 onClick={(e) => {
@@ -734,49 +734,49 @@ export function LayersPanel() {
             ) : (
               <span aria-hidden className="w-4 shrink-0" />
             )}
-            {/* MANIGLIA di trascinamento. Il drag parte da qui e non da tutta
-                la riga: un pointerdown sulla riga è già "seleziona questa riga"
-                (e con shift/ctrl, "estendi la selezione"), e farlo valere anche
-                come inizio di un drag vorrebbe dire decidere a posteriori --
-                con una soglia in pixel -- quale delle due cose l'utente
-                intendeva. Un <button> vero, non un <div> decorativo: è
-                raggiungibile da tastiera e Alt+frecce lo spostano fra i
-                fratelli, altrimenti il riordino sarebbe l'unica funzione del
-                pannello impossibile senza mouse. */}
+            {/* Drag HANDLE. The drag starts from here and not from the whole
+                row: a pointerdown on the row is already "select this row"
+                (and with shift/ctrl, "extend the selection"), and making it count also
+                as the start of a drag would mean deciding after the fact
+                -- with a pixel threshold -- which of the two things the user
+                meant. A real <button>, not a decorative <div>: it is
+                reachable by keyboard and Alt+arrows move it among
+                siblings, otherwise reordering would be the panel's only function
+                impossible without a mouse. */}
             <button
               type="button"
-              aria-label={`Riordina ${label}`}
-              title="Trascina per riordinare o riparentare (Alt+↑ / Alt+↓)"
-              // Come per il campo di rinomina: pointerdown per il percorso
-              // normale, click per quello "virtuale" (screen reader), così la
-              // presa della maniglia non diventa anche un click sulla riga.
+              aria-label={`Reorder ${label}`}
+              title="Drag to reorder or reparent (Alt+↑ / Alt+↓)"
+              // As for the rename field: pointerdown for the normal
+              // path, click for the "virtual" one (screen reader), so the
+              // handle grab does not also become a click on the row.
               onPointerDown={(e) => {
                 e.stopPropagation();
                 setDrag({ from: n.id, over: n.id });
               }}
               onClick={(e) => e.stopPropagation()}
               onKeyDown={(e) => {
-                // ALT + freccia, non la freccia da sola, e non è una
-                // preferenza: react-aria RISERVA ArrowUp/ArrowDown alla
-                // navigazione fra le righe e le intercetta in fase di
-                // CAPTURE prima che arrivino ai figli della riga
+                // ALT + arrow, not the arrow alone, and it is not a
+                // preference: react-aria RESERVES ArrowUp/ArrowDown for
+                // navigation between rows and intercepts them in the CAPTURE
+                // phase before they reach the row's children
                 // (useGridListItem.mjs: "Prevent this event from reaching row
-                // children"), rilanciandole dal genitore. L'unica combinazione
-                // che lascia passare è con altKey -- ed è la stessa che
-                // react-aria usa per il proprio riordino da tastiera
-                // (useDraggableItem.mjs). Una freccia liscia qui non
-                // arriverebbe mai: sarebbe codice morto.
+                // children"), re-dispatching them from the parent. The only combination
+                // that lets through is with altKey -- and it is the same one
+                // react-aria uses for its own keyboard reorder
+                // (useDraggableItem.mjs). A plain arrow here would never
+                // arrive: it would be dead code.
                 if (!e.altKey) return;
                 if (e.key !== "ArrowUp" && e.key !== "ArrowDown") return;
                 e.preventDefault();
                 e.stopPropagation();
                 reorderSibling(n.id, e.key === "ArrowUp" ? -1 : 1);
               }}
-              // touch-none: su schermo tattile il trascinamento della maniglia
-              // non deve diventare uno scroll del pannello.
-              // Assoluta sul bordo sinistro e visibile solo al passaggio (o al
-              // focus da tastiera): una maniglia in ogni riga, sempre accesa, è
-              // rumore. Resta un <button> vero, quindi raggiungibile con Tab.
+              // touch-none: on a touch screen dragging the handle
+              // must not become a panel scroll.
+              // Absolute on the left edge and visible only on hover (or keyboard
+              // focus): a handle on every row, always lit, is
+              // noise. It stays a real <button>, so reachable with Tab.
               className="absolute left-0 top-1/2 z-[2] flex h-5 w-2.5 -translate-y-1/2 cursor-grab touch-none items-center justify-center text-fg-subtle opacity-0 outline-none hover:text-fg focus-visible:text-accent focus-visible:opacity-100 group-hover:opacity-100"
             >
               <svg aria-hidden viewBox="0 0 6 10" width="6" height="10" fill="currentColor">
@@ -785,8 +785,8 @@ export function LayersPanel() {
                 <circle cx="1.5" cy="8" r="0.9" /><circle cx="4.5" cy="8" r="0.9" />
               </svg>
             </button>
-            {/* ICONA DEL TIPO: tenue; le istanze di componente in accento (come
-                nel pannello Componenti). Un nodo nascosto si attenua tutto. */}
+            {/* TYPE ICON: faint; component instances in accent (as
+                in the Components panel). A hidden node is entirely dimmed. */}
             <Icon
               name={kindIcon(n.kind)}
               size={14}
@@ -794,11 +794,11 @@ export function LayersPanel() {
             />
             {renamingId === n.id ? (
               <RenameField
-                // Seminato con il nome VERO, non con quello mostrato: per un
-                // nodo senza nome il campo parte vuoto e il fallback resta il
-                // placeholder. Confermare senza scrivere niente non deve
-                // persistere "Rectangle" come nome esplicito -- sarebbe una
-                // modifica che l'utente non ha chiesto, per giunta annullabile.
+                // Seeded with the REAL name, not the displayed one: for a
+                // node without a name the field starts empty and the fallback stays the
+                // placeholder. Confirming without writing anything must not
+                // persist "Rectangle" as an explicit name -- it would be a
+                // change the user did not ask for, and an undoable one at that.
                 initial={n.name}
                 placeholder={label}
                 onCommit={(value) => commitRename(n, value)}
@@ -812,17 +812,17 @@ export function LayersPanel() {
                 {label}
               </span>
             )}
-            {/* stopPropagation: un click qui è "nascondi/mostra QUESTA
-                riga", non "seleziona questa riga" -- senza, il pointerdown
-                del Button raggiungerebbe comunque la riga sottostante e la
-                selezione cambierebbe insieme alla visibilità. */}
+            {/* stopPropagation: a click here is "hide/show THIS
+                row", not "select this row" -- without it, the Button's
+                pointerdown would still reach the row below and the
+                selection would change together with the visibility. */}
             <Button
-              aria-label={n.visible ? `Nascondi ${label}` : `Mostra ${label}`}
+              aria-label={n.visible ? `Hide ${label}` : `Show ${label}`}
               onPress={() => toggleVisible(n)}
               onPointerDown={(e) => e.stopPropagation()}
-              // Visibile: l'occhio compare solo al passaggio (o al focus). Nascosto:
-              // resta SEMPRE, attenuato -- è l'unico indizio che il livello c'è
-              // ma non si vede, e il modo per riaccenderlo.
+              // Visible: the eye appears only on hover (or focus). Hidden:
+              // it ALWAYS stays, dimmed -- it is the only clue that the layer is there
+              // but not visible, and the way to turn it back on.
               className={
                 "flex h-5 w-5 shrink-0 items-center justify-center rounded text-fg-muted outline-none hover:bg-surface-3 hover:text-fg " +
                 "data-[focus-visible]:shadow-[var(--ring)] " +
@@ -839,15 +839,15 @@ export function LayersPanel() {
 
   return (
     <div className="flex h-full flex-col text-[13px] text-fg">
-      {/* L'intestazione compare SOLO con una selezione: il titolo è già nella
-          scheda, e a riposo quei 36px sono spazio per i livelli. */}
+      {/* The header appears ONLY with a selection: the title is already in
+          the tab, and at rest those 36px are space for layers. */}
       {selection.length > 0 && (
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line px-3">
-        <h3 className={cls.sectionTitle}>{selection.length === 1 ? "1 selezionato" : `${selection.length} selezionati`}</h3>
+        <h3 className={cls.sectionTitle}>{selection.length === 1 ? "1 selected" : `${selection.length} selected`}</h3>
         <div className="ml-auto flex items-center">
           <IconButton
             icon="trash"
-            label="Elimina i livelli selezionati"
+            label="Delete the selected layers"
             size={24}
             isDisabled={selection.length === 0}
             onPress={deleteSelected}

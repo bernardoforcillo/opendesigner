@@ -5,17 +5,17 @@ import {
 } from "../../animation/easingEdit";
 import { EASING_LABELS } from "./labels";
 
-// L'EDITOR DELL'EASING di un keyframe: un menu di curve pronte e una mini-curva
-// con i due punti di controllo della Bézier da trascinare. Trascinare lavora su
-// una BOZZA locale (la curva si aggiorna sotto il dito) e al rilascio chiama
-// `onCommit` UNA volta: un solo op, un solo passo di undo. Le curve con nome si
-// trascinano come le altre: diventano la cubic-bezier equivalente.
+// THE EASING EDITOR of a keyframe: a menu of ready-made curves and a mini-curve
+// with the Bézier's two control points to drag. Dragging works on a local
+// DRAFT (the curve updates under the finger) and on release calls
+// `onCommit` ONCE: a single op, a single undo step. Named curves
+// drag like the others: they become the equivalent cubic-bezier.
 export const CURVE_BOX: CurveBox = { width: 200, height: 96, pad: 14 };
 const BOX = CURVE_BOX;
 const HANDLE_R = 5;
 
 export function EasingEditor({ value, onCommit }: { value: string; onCommit: (spec: string) => void }) {
-  // La bozza esiste solo durante il trascinamento; fuori, la curva è `value`.
+  // The draft exists only during the drag; outside it, the curve is `value`.
   const [draft, setDraft] = useState<string | null>(null);
   const drag = useRef<0 | 1 | null>(null);
   const svg = useRef<SVGSVGElement>(null);
@@ -38,7 +38,7 @@ export function EasingEditor({ value, onCommit }: { value: string; onCommit: (sp
     if (e.button !== 0) return;
     e.stopPropagation();
     drag.current = which;
-    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch { /* niente capture (jsdom) */ }
+    try { (e.currentTarget as Element).setPointerCapture(e.pointerId); } catch { /* no capture (jsdom) */ }
   };
   const move = (e: React.PointerEvent) => {
     if (drag.current === null) return;
@@ -82,12 +82,12 @@ export function EasingEditor({ value, onCommit }: { value: string; onCommit: (sp
         viewBox={`0 0 ${BOX.width} ${BOX.height}`}
         className="w-full touch-none select-none rounded-md bg-surface-2"
         role="group"
-        aria-label="Curva di easing"
+        aria-label="Easing curve"
         onPointerMove={move}
         onPointerUp={up}
         onPointerCancel={() => { drag.current = null; setDraft(null); }}
       >
-        {/* la cornice 0..1 e i due tiranti dalla diagonale */}
+        {/* the 0..1 frame and the two handles from the diagonal */}
         <rect x={p0.x} y={p1.y} width={p1.x - p0.x} height={p0.y - p1.y} fill="none" className="stroke-line-strong" strokeDasharray="3 3" />
         <line x1={p0.x} y1={p0.y} x2={c1.x} y2={c1.y} className="stroke-fg-subtle" strokeWidth={1} />
         <line x1={p1.x} y1={p1.y} x2={c2.x} y2={c2.y} className="stroke-fg-subtle" strokeWidth={1} />
@@ -100,7 +100,7 @@ export function EasingEditor({ value, onCommit }: { value: string; onCommit: (sp
             r={HANDLE_R}
             tabIndex={0}
             role="button"
-            aria-label={`Punto di controllo ${which + 1}`}
+            aria-label={`Control point ${which + 1}`}
             className="cursor-grab fill-raised stroke-accent outline-none focus-visible:stroke-fg active:cursor-grabbing"
             strokeWidth={2}
             onPointerDown={down(which)}

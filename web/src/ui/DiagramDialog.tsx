@@ -3,60 +3,60 @@ import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { DiagramError, insertDiagram, renderDiagram, selectedDiagram } from "../diagram/insert";
 import { viewportCenter } from "../tools/svgImport";
 
-// CREA (O MODIFICA) UN DIAGRAMMA: si scrive o si incolla testo Mermaid -- un
-// flowchart oppure un diagramma UML (classi, sequenza, stati) -- e il canvas lo
-// disegna al centro della vista come un gruppo di forme normali: modificabili,
-// esportabili, un solo passo di undo. Con un diagramma selezionato la finestra
-// si apre sul suo testo e "Aggiorna" lo ridisegna al suo posto.
+// CREATE (OR EDIT) A DIAGRAM: you write or paste Mermaid text -- a
+// flowchart or a UML diagram (classes, sequence, states) -- and the canvas
+// draws it at the center of the view as a group of normal shapes: editable,
+// exportable, a single undo step. With a diagram selected the dialog
+// opens on its text and "Update" redraws it in its place.
 
 const EXAMPLES: { label: string; source: string }[] = [
   {
     label: "Flowchart",
     source: `flowchart TD
-  A[Inizio] --> B{Utente registrato?}
-  B -->|sì| C[Accedi]
-  B -->|no| D[Registrati]
+  A[Start] --> B{Registered user?}
+  B -->|yes| C[Log in]
+  B -->|no| D[Sign up]
   D --> C
-  C --> E([Fine])`,
+  C --> E([End])`,
   },
   {
-    label: "Classi UML",
+    label: "UML classes",
     source: `classDiagram
-  class Animale {
+  class Animal {
     <<abstract>>
-    +String nome
-    +mangia() void
+    +String name
+    +eat() void
   }
-  class Anatra {
-    +nuota()
+  class Duck {
+    +swim()
   }
-  Animale <|-- Anatra
-  Proprietario "1" --> "*" Animale : possiede`,
+  Animal <|-- Duck
+  Owner "1" --> "*" Animal : owns`,
   },
   {
-    label: "Sequenza UML",
+    label: "UML sequence",
     source: `sequenceDiagram
   autonumber
-  actor U as Utente
+  actor U as User
   participant A as App
   participant S as Server
-  U->>A: Accedi
+  U->>A: Log in
   A->>+S: POST /login
   S-->>-A: token
-  alt credenziali valide
-    A-->>U: Benvenuto
-  else errore
-    A-->>U: Riprova
+  alt valid credentials
+    A-->>U: Welcome
+  else error
+    A-->>U: Try again
   end`,
   },
   {
-    label: "Stati UML",
+    label: "UML states",
     source: `stateDiagram-v2
-  [*] --> Bozza
-  Bozza --> InRevisione : invia
-  InRevisione --> Bozza : rifiuta
-  InRevisione --> Pubblicato : approva
-  Pubblicato --> [*]`,
+  [*] --> Draft
+  Draft --> InReview : submit
+  InReview --> Draft : reject
+  InReview --> Published : approve
+  Published --> [*]`,
   },
 ];
 
@@ -66,7 +66,7 @@ export function DiagramDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpe
   const [error, setError] = useState<string | null>(null);
   const [busy, setBusy] = useState(false);
 
-  // All'apertura: se è selezionato un diagramma si parte dal suo testo.
+  // On open: if a diagram is selected we start from its text.
   useEffect(() => {
     if (!isOpen) return;
     const d = selectedDiagram();
@@ -81,12 +81,12 @@ export function DiagramDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpe
       const res = await renderDiagram(source);
       const id = insertDiagram(res, viewportCenter(), editId ?? undefined);
       if (id === null) {
-        setError("impossibile inserire il diagramma (nessun documento aperto, o un'altra modifica è in corso)");
+        setError("cannot insert the diagram (no document is open, or another edit is in progress)");
         return;
       }
       onOpenChange(false);
     } catch (err) {
-      setError(err instanceof DiagramError ? err.message : "il diagramma non è leggibile");
+      setError(err instanceof DiagramError ? err.message : "the diagram is not readable");
     } finally {
       setBusy(false);
     }
@@ -95,12 +95,12 @@ export function DiagramDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpe
   return (
     <ModalOverlay isDismissable isOpen={isOpen} onOpenChange={onOpenChange} className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
       <Modal className="w-full max-w-[560px] rounded-xl bg-raised p-4 text-[13px] text-fg shadow-pop">
-        <Dialog aria-label={editId ? "Modifica diagramma" : "Crea diagramma"} className="flex flex-col gap-3 outline-none">
-          <h2 className="text-[14px] font-semibold">{editId ? "Modifica diagramma" : "Crea diagramma"}</h2>
+        <Dialog aria-label={editId ? "Edit diagram" : "Create diagram"} className="flex flex-col gap-3 outline-none">
+          <h2 className="text-[14px] font-semibold">{editId ? "Edit diagram" : "Create diagram"}</h2>
           <p className="text-fg-subtle">
-            Scrivi o incolla testo Mermaid: flowchart, classi, sequenza e stati UML diventano livelli del documento.
+            Write or paste Mermaid text: flowcharts and UML class, sequence and state diagrams become layers of the document.
           </p>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Esempi">
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Examples">
             {EXAMPLES.map((ex) => (
               <button key={ex.label} type="button" className="h-7 rounded-md border border-line px-2.5 hover:bg-surface-3" onClick={() => { setSource(ex.source); setError(null); }}>
                 {ex.label}
@@ -108,7 +108,7 @@ export function DiagramDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpe
             ))}
           </div>
           <textarea
-            aria-label="Codice Mermaid"
+            aria-label="Mermaid code"
             value={source}
             onChange={(e) => { setSource(e.target.value); setError(null); }}
             onKeyDown={(e) => e.stopPropagation()}
@@ -119,9 +119,9 @@ export function DiagramDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpe
           />
           {error && <p role="alert" className="text-danger">{error}</p>}
           <div className="flex justify-end gap-2">
-            <button type="button" className="h-8 rounded-md px-3 hover:bg-surface-3" onClick={() => onOpenChange(false)}>Annulla</button>
+            <button type="button" className="h-8 rounded-md px-3 hover:bg-surface-3" onClick={() => onOpenChange(false)}>Cancel</button>
             <button type="button" disabled={busy || source.trim() === ""} className="h-8 rounded-md bg-accent px-3 text-accent-fg disabled:opacity-50" onClick={() => void create()}>
-              {editId ? "Aggiorna" : "Crea"}
+              {editId ? "Update" : "Create"}
             </button>
           </div>
         </Dialog>

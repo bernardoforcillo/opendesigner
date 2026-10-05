@@ -7,18 +7,18 @@ import { pipelineSteps, type PipelineStep, type StepId } from "../../dev/pipelin
 import { Icon } from "../ds";
 import { useReadiness } from "./useReadiness";
 
-// LO STEPPER della pipeline: Disegna · Collega · Prova · Spedisci.
+// The pipeline STEPPER: Draw · Connect · Try · Ship.
 //
-// Sta nell'intestazione della vista Sviluppo e non nel dock: il dock è la risorsa
-// più contesa dello schermo (già scorre in orizzontale sotto i 1100 px) e lo
-// stepper risponde a una domanda -- "cosa manca per spedire?" -- che ha senso
-// proprio qui, dove si consegna. Ogni passo è cliccabile e porta dove si lavora:
-// Disegna -> Design, Collega -> Flussi, Prova -> Flussi col prototipo aperto,
-// Spedisci -> il pannello "Spedisci" (lo riapre se era chiuso).
+// It sits in the Develop view's header and not in the dock: the dock is the most
+// contended resource on screen (it already scrolls horizontally below 1100 px) and the
+// stepper answers a question -- "what is missing to ship?" -- that makes sense
+// right here, where you hand off. Each step is clickable and leads to where the work is:
+// Draw -> Design, Connect -> Flows, Try -> Flows with the prototype open,
+// Ship -> the "Ship" panel (reopens it if it was closed).
 
 const TIP = "z-50 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop";
 
-/** Cosa fa il click su un passo (esportata: la prova la vuole senza montare la vista). */
+/** What a click on a step does (exported: the test wants it without mounting the view). */
 export function goToStep(id: StepId, hasFlow: boolean): void {
   const ui = useFlowUi.getState();
   switch (id) {
@@ -26,7 +26,7 @@ export function goToStep(id: StepId, hasFlow: boolean): void {
     case "connect": ui.setMode("flows"); break;
     case "try":
       ui.setMode("flows");
-      // Senza un flusso non c'è niente da presentare: ci si ferma ai Flussi.
+      // Without a flow there is nothing to present: we stop at Flows.
       if (hasFlow) ui.setPresenting(true);
       break;
     case "ship":

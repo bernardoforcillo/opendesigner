@@ -10,31 +10,31 @@ import { autoLayoutOps } from "./autoLayoutOps";
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 
 const DIRECTIONS: SegOption<"horizontal" | "vertical">[] = [
-  { value: "horizontal", label: "Orizzontale", icon: "dirH" },
-  { value: "vertical", label: "Verticale", icon: "dirV" },
+  { value: "horizontal", label: "Horizontal", icon: "dirH" },
+  { value: "vertical", label: "Vertical", icon: "dirV" },
 ];
 
-// Gli allineamenti sono pittogrammi con una riga (il bordo o la mezzeria) e
-// blocchi appoggiati: il disegno base vale per l'asse ORIZZONTALE, e `rotate`
-// lo gira per quello verticale. L'asse principale è quello della direzione,
-// il trasversale l'altro.
+// Alignments are pictograms with a line (the edge or the midline) and
+// resting blocks: the base drawing applies to the HORIZONTAL axis, and `rotate`
+// turns it for the vertical one. The main axis is the direction's,
+// the cross axis the other.
 function aligns(rotate: boolean): SegOption<LayoutAlignLite>[] {
   return [
-    { value: "start", label: "Inizio", icon: "alignStart", rotate },
-    { value: "center", label: "Centro", icon: "alignCenter", rotate },
-    { value: "end", label: "Fine", icon: "alignEnd", rotate },
-    { value: "space-between", label: "Distribuito", icon: "alignBetween", rotate },
+    { value: "start", label: "Start", icon: "alignStart", rotate },
+    { value: "center", label: "Center", icon: "alignCenter", rotate },
+    { value: "end", label: "End", icon: "alignEnd", rotate },
+    { value: "space-between", label: "Distributed", icon: "alignBetween", rotate },
   ];
 }
 
 const checkbox = "size-3.5 shrink-0 cursor-pointer rounded accent-accent";
 
 /**
- * La sezione AUTO LAYOUT del frame selezionato: acceso/spento (il "+" / "−"
- * nell'intestazione), direzione, spaziatura, padding, allineamenti e hug. Non
- * conosce gesti: emette op tramite `run`, lo stesso `runGesture` del pannello,
- * quindi ogni modifica è UN passo di undo. Ciò che ne risulta (le posizioni dei
- * figli) lo calcola il server.
+ * The AUTO LAYOUT section of the selected frame: on/off (the "+" / "−"
+ * in the header), direction, spacing, padding, alignments and hug. It does not
+ * know gestures: it emits ops through `run`, the same `runGesture` as the panel,
+ * so every change is ONE undo step. What results (the children's
+ * positions) is computed by the server.
  */
 export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string[]) => Op[]) => void }) {
   const first = useScene((s) => (s.selection[0] ? s.scene?.nodes.at(s.selection[0]) : undefined));
@@ -45,7 +45,7 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
       onCommit={(v) => run((ids) => autoLayoutOps(ids, lookup, { [key]: v }))}
     />
   );
-  // Direzione orizzontale: l'asse principale è x, quello trasversale y.
+  // Horizontal direction: the main axis is x, the cross axis y.
   const horizontal = al?.direction !== "vertical";
   return (
     <Section
@@ -54,12 +54,12 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
       actions={
         al === undefined ? (
           <IconButton
-            icon="plus" label="Aggiungi auto layout" size={24}
+            icon="plus" label="Add auto layout" size={24}
             onPress={() => run((ids) => autoLayoutOps(ids, lookup, { enabled: true }))}
           />
         ) : (
           <IconButton
-            icon="minus" label="Rimuovi auto layout" size={24}
+            icon="minus" label="Remove auto layout" size={24}
             onPress={() => run((ids) => autoLayoutOps(ids, lookup, { enabled: false }))}
           />
         )
@@ -68,25 +68,25 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
       {al && (
         <div className="flex flex-col gap-2">
           <SegButtons
-            label="Direzione" value={al.direction} options={DIRECTIONS}
+            label="Direction" value={al.direction} options={DIRECTIONS}
             onPick={(direction) => run((ids) => autoLayoutOps(ids, lookup, { direction }))}
           />
-          {num("spacing", "Spazio")}
+          {num("spacing", "Spacing")}
           <div className="flex flex-col gap-1">
             <span className="text-[11px] font-medium text-fg-subtle">Padding</span>
             <div className="grid grid-cols-2 gap-1.5">
-              {num("paddingLeft", "Sx")}
-              {num("paddingRight", "Dx")}
-              {num("paddingTop", "Su")}
-              {num("paddingBottom", "Giù")}
+              {num("paddingLeft", "Left")}
+              {num("paddingRight", "Right")}
+              {num("paddingTop", "Top")}
+              {num("paddingBottom", "Bottom")}
             </div>
           </div>
           <SegButtons
-            label="Allineamento principale" showLabel value={al.mainAlign} options={aligns(!horizontal)}
+            label="Main alignment" showLabel value={al.mainAlign} options={aligns(!horizontal)}
             onPick={(mainAlign) => run((ids) => autoLayoutOps(ids, lookup, { mainAlign }))}
           />
           <SegButtons
-            label="Allineamento trasversale" showLabel value={al.crossAlign}
+            label="Cross alignment" showLabel value={al.crossAlign}
             options={aligns(horizontal).filter((a) => a.value !== "space-between")}
             onPick={(crossAlign) => run((ids) => autoLayoutOps(ids, lookup, { crossAlign }))}
           />
@@ -96,14 +96,14 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
                 type="checkbox" className={checkbox} checked={al.hugWidth}
                 onChange={(e) => run((ids) => autoLayoutOps(ids, lookup, { hugWidth: e.target.checked }))}
               />
-              Adatta largh.
+              Hug width
             </label>
             <label className="flex cursor-pointer items-center gap-1.5">
               <input
                 type="checkbox" className={checkbox} checked={al.hugHeight}
                 onChange={(e) => run((ids) => autoLayoutOps(ids, lookup, { hugHeight: e.target.checked }))}
               />
-              Adatta alt.
+              Hug height
             </label>
           </div>
         </div>
@@ -113,9 +113,9 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
 }
 
 /**
- * Per una selezione che NON è un frame: la stessa sezione, con il "+" che la
- * avvolge in un frame con auto layout (Shift+A). È lo stesso gesto della
- * scorciatoia.
+ * For a selection that is NOT a frame: the same section, with the "+" that
+ * wraps it in a frame with auto layout (Shift+A). It is the same gesture as the
+ * shortcut.
  */
 export function WrapInAutoLayoutButton() {
   return (
@@ -124,7 +124,7 @@ export function WrapInAutoLayoutButton() {
       bare
       actions={
         <IconButton
-          icon="plus" label="Aggiungi auto layout" shortcut="⇧A" size={24}
+          icon="plus" label="Add auto layout" shortcut="⇧A" size={24}
           onPress={() => wrapSelectionInFrame(true)}
         />
       }

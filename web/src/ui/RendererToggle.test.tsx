@@ -13,13 +13,13 @@ afterEach(cleanup);
 const button = () => screen.getByRole("button", { name: /Renderer:/ });
 
 describe("RendererToggle", () => {
-  it("mostra la CPU di default e propone la GPU", () => {
+  it("shows the CPU by default and offers the GPU", () => {
     render(<RendererToggle />);
     expect(button().textContent).toBe("CPU");
-    expect(button().getAttribute("aria-label")).toBe("Renderer: CPU. Passa a GPU");
+    expect(button().getAttribute("aria-label")).toBe("Renderer: CPU. Switch to GPU");
   });
 
-  it("un clic sceglie la GPU, mostra 'GPU…' mentre carica, e salva la scelta", async () => {
+  it("a click picks the GPU, shows 'GPU…' while loading, and saves the choice", async () => {
     render(<RendererToggle />);
     await userEvent.click(button());
     expect(useRenderer.getState().choice).toBe("gpu");
@@ -27,7 +27,7 @@ describe("RendererToggle", () => {
     expect(localStorage.getItem("opendesigner.renderer")).toBe("gpu");
   });
 
-  it("a GPU pronta mostra il tempo dell'ultimo frame; senza non mostra nulla", () => {
+  it("with the GPU ready it shows the last frame's time; without it shows nothing", () => {
     useRenderer.setState({ choice: "gpu", status: "gpu", frameMs: null });
     render(<RendererToggle />);
     expect(button().textContent).toBe("GPU");
@@ -37,16 +37,16 @@ describe("RendererToggle", () => {
     expect(button().textContent).toBe("GPU3.1 ms");
   });
 
-  it("dopo un guasto dice che la GPU non va e perché, e un clic riprova", async () => {
-    useRenderer.setState({ choice: "cpu", status: "error", error: "wasm non scaricato" });
+  it("after a failure it says the GPU does not work and why, and a click retries", async () => {
+    useRenderer.setState({ choice: "cpu", status: "error", error: "wasm not downloaded" });
     render(<RendererToggle />);
     expect(button().textContent).toBe("GPU ✕");
-    expect(button().getAttribute("title")).toContain("wasm non scaricato");
+    expect(button().getAttribute("title")).toContain("wasm not downloaded");
     await userEvent.click(button());
     expect(useRenderer.getState()).toMatchObject({ choice: "gpu", status: "loading", error: null });
   });
 
-  it("da GPU un clic torna alla CPU", async () => {
+  it("from the GPU a click goes back to the CPU", async () => {
     useRenderer.setState({ choice: "gpu", status: "gpu" });
     render(<RendererToggle />);
     await userEvent.click(button());

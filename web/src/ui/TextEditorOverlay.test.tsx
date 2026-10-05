@@ -1,5 +1,5 @@
-// I matcher di jest-dom sono già installati dai setupFiles (vite.config.ts);
-// l'import qui serve a TYPE-SCRIPT (tsc -b non legge i setupFiles).
+// jest-dom's matchers are already installed by the setupFiles (vite.config.ts);
+// the import here serves TYPE-SCRIPT (tsc -b does not read the setupFiles).
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, fireEvent, cleanup, act } from "@testing-library/react";
@@ -13,8 +13,8 @@ import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite } from "../store/types";
 
-// App parla con la rete al bootstrap (createDocument + SyncClient): serve solo
-// nel test della guardia undo/redo, e lì basta un trasporto inerte.
+// App talks to the network at bootstrap (createDocument + SyncClient): it is only needed
+// in the undo/redo guard test, and there an inert transport is enough.
 vi.mock("../rpc/client", () => ({
   docClient: { createDocument: vi.fn(async () => ({ id: "doc-1" })) },
 }));
@@ -24,17 +24,17 @@ vi.mock("../rpc/syncClient", () => ({
     stop() {}
   },
 }));
-// jsdom qui non espone localStorage (Node lo disabilita senza
-// --localstorage-file): con un docId in cache il bootstrap di App non fallisce.
+// jsdom here does not expose localStorage (Node disables it without
+// --localstorage-file): with a docId in cache App's bootstrap does not fail.
 vi.stubGlobal("localStorage", {
   getItem: () => "doc-1",
   setItem: () => {},
   removeItem: () => {},
 });
 
-// Doppio di SyncClient: registra gli op che finiscono SUL FILO e modella un
-// server che accetta ed ECOA subito (applyPending + apply), come negli altri
-// test dello store.
+// SyncClient double: records the ops that end up ON THE WIRE and models a
+// server that accepts and ECHOES at once (applyPending + apply), as in the other
+// store tests.
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
@@ -61,8 +61,8 @@ function textNode(id: string, content: string, over: Partial<NodeLite> = {}): No
 function installScene(...nodes: NodeLite[]) {
   const scene = emptyScene("doc-1", "Untitled");
   for (const n of nodes) scene.nodes = scene.nodes.set(n.id, n);
-  // setScene e non setState({scene}): installa una scena COERENTE (vista e
-  // confermato allineati, coda vuota) -- l'invariante della riconciliazione.
+  // setScene and not setState({scene}): installs a COHERENT scene (view and
+  // confirmed aligned, queue empty) -- the reconciliation's invariant.
   useScene.getState().setScene(scene);
 }
 
@@ -72,12 +72,12 @@ function deleteOp(id: string): Op {
 
 let sync: FakeSync;
 
-// Il campo di editing, cercato per NOME ACCESSIBILE e non per il solo ruolo:
-// da quando App monta anche il pannello proprietà (ui/App.tsx, le tre colonne)
-// un "textbox" qualunque può essere il campo X del pannello. Il nome è quello
-// che l'overlay dichiara (aria-label), quindi la query resta identica sia per
-// l'overlay montato da solo sia per l'app intera.
-const FIELD_NAME = "Contenuto del testo";
+// The editing field, looked up by ACCESSIBLE NAME and not by role alone:
+// since App also mounts the properties panel (ui/App.tsx, the three columns)
+// any "textbox" could be the panel's X field. The name is the one
+// the overlay declares (aria-label), so the query stays identical both for
+// the overlay mounted alone and for the whole app.
+const FIELD_NAME = "Text content";
 
 function field(): HTMLTextAreaElement {
   return screen.getByRole("textbox", { name: FIELD_NAME }) as HTMLTextAreaElement;
@@ -96,20 +96,20 @@ beforeEach(() => {
     gesture: null,
     editingNodeId: null,
   });
-  installScene(textNode("t1", "ciao"));
+  installScene(textNode("t1", "hello"));
   useScene.getState().setSync(sync);
   useScene.getState().setSelection(["t1"]);
-  // Il flag lo accende chi entra in editing (textTool / doppio click di
-  // selectTool): l'overlay lo trova già acceso e lo spegne uscendo.
+  // The flag is turned on by whoever enters editing (textTool / selectTool's double click):
+  // the overlay finds it already on and turns it off on exit.
   useScene.setState({ editingNodeId: "t1" });
 });
 
 afterEach(cleanup);
 
-// --- Step 1: posizionamento -------------------------------------------------
+// --- Step 1: positioning -------------------------------------------------
 
-describe("posizionamento", () => {
-  it("si mette sul nodo: origine da worldToScreen, misure in px SCHERMO", () => {
+describe("positioning", () => {
+  it("sits on the node: origin from worldToScreen, measures in SCREEN px", () => {
     useScene.setState({ camera: { x: 5, y: 7, zoom: 2 } });
     render(<TextEditorOverlay nodeId="t1" />);
     const ta = field();
@@ -119,14 +119,14 @@ describe("posizionamento", () => {
     expect(ta.style.width).toBe("400px"); // 200 * 2
     expect(ta.style.fontSize).toBe("32px"); // 16 * 2
     expect(ta.style.lineHeight).toBe("48px"); // 16 * 1.5 * 2
-    // Il campo copre almeno il box del nodo: è lui a nascondere il testo
-    // disegnato sul canvas (vedi il commento del componente).
+    // The field covers at least the node's box: it is what hides the text
+    // drawn on the canvas (see the component's comment).
     expect(ta.style.minHeight).toBe("48px"); // 24 * 2
   });
 
-  it("risolve i default del renderer quando lo stile non li specifica", () => {
-    installScene(textNode("t1", "ciao", {
-      text: { content: "ciao", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+  it("resolves the renderer's defaults when the style does not specify them", () => {
+    installScene(textNode("t1", "hello", {
+      text: { content: "hello", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
     }));
     useScene.setState({ editingNodeId: "t1" });
     render(<TextEditorOverlay nodeId="t1" />);
@@ -136,40 +136,40 @@ describe("posizionamento", () => {
     expect(field().style.lineHeight).toBe("19.2px");
   });
 
-  it("resta OPACO anche su un nodo semitrasparente: è lui a coprire il testo del canvas", () => {
-    installScene(textNode("t1", "ciao", { opacity: 0.2 }));
+  it("stays OPAQUE even on a semi-transparent node: it is what covers the canvas text", () => {
+    installScene(textNode("t1", "hello", { opacity: 0.2 }));
     useScene.setState({ editingNodeId: "t1" });
     render(<TextEditorOverlay nodeId="t1" />);
 
-    // Con l'opacità del nodo applicata al campo, lo sfondo diventerebbe
-    // semitrasparente e il testo disegnato sotto trasparirebbe: due testi
-    // sovrapposti e sfalsati, cioè il difetto che la copertura evita.
+    // With the node's opacity applied to the field, the background would become
+    // semi-transparent and the text drawn underneath would show through: two overlapping,
+    // offset texts, that is the flaw the coverage avoids.
     expect(field().style.opacity).toBe("");
   });
 
-  // Il campo COPRE i glifi disegnati sul canvas: è l'invariante su cui poggia
-  // tutta la scelta del campo opaco (vedi il commento del componente). Un nodo
-  // RUOTATO lo rompeva: drawScene disegnava il testo girato (ruota il contesto
-  // attorno al centro del box) e il campo restava dritto sopra -- il testo si
-  // vedeva DOPPIO, a due angoli diversi.
-  describe("su un nodo RUOTATO", () => {
-    it("gira con il nodo, attorno al centro del suo box", () => {
-      installScene(textNode("t1", "ciao", { rotation: 30 }));
+  // The field COVERS the glyphs drawn on the canvas: it is the invariant on which
+  // the whole choice of the opaque field rests (see the component's comment). A
+  // ROTATED node broke it: drawScene drew the text turned (it rotates the context
+  // around the center of the box) and the field stayed straight on top -- the text
+  // was seen TWICE, at two different angles.
+  describe("on a ROTATED node", () => {
+    it("rotates with the node, around the center of its box", () => {
+      installScene(textNode("t1", "hello", { rotation: 30 }));
       useScene.setState({ editingNodeId: "t1" });
       render(<TextEditorOverlay nodeId="t1" />);
       const ta = field();
 
-      // stessa convenzione del renderer: gradi, orari, attorno al CENTRO del
-      // box del nodo (200x24 a zoom 1 -> 100px, 12px dall'angolo del campo)
+      // same convention as the renderer: degrees, clockwise, around the CENTER of the
+      // node's box (200x24 at zoom 1 -> 100px, 12px from the field's corner)
       expect(ta.style.transform).toBe("rotate(30deg)");
       expect(ta.style.transformOrigin).toBe("100px 12px");
-      // l'origine resta quella del modello: a ruotare è il campo, non il punto
+      // the origin stays the model's: it is the field that rotates, not the point
       expect(ta.style.left).toBe("10px");
       expect(ta.style.top).toBe("20px");
     });
 
-    it("tiene il perno in px SCHERMO anche sotto zoom", () => {
-      installScene(textNode("t1", "ciao", { rotation: 90 }));
+    it("keeps the pivot in SCREEN px even under zoom", () => {
+      installScene(textNode("t1", "hello", { rotation: 90 }));
       useScene.setState({ editingNodeId: "t1", camera: { x: 0, y: 0, zoom: 2 } });
       render(<TextEditorOverlay nodeId="t1" />);
 
@@ -177,22 +177,22 @@ describe("posizionamento", () => {
       expect(field().style.transformOrigin).toBe("200px 24px"); // (200/2, 24/2) * 2
     });
 
-    it("un angolo NULLO non scrive nessuna trasformazione", () => {
+    it("a NULL angle writes no transform", () => {
       render(<TextEditorOverlay nodeId="t1" />);
       expect(field().style.transform).toBe("");
       expect(field().style.transformOrigin).toBe("");
     });
   });
 
-  it("un nodo ANNIDATO si posiziona sulla sua origine MONDO, non su quella locale", () => {
-    // page1 > g(100,50) > t1(10,20): il campo deve coprire il testo dove il
-    // canvas lo disegna, cioè a (110,70). Con le coordinate locali finirebbe a
-    // (10,20) -- lontanissimo dal nodo che sta editando.
+  it("a NESTED node is positioned on its WORLD origin, not the local one", () => {
+    // page1 > g(100,50) > t1(10,20): the field must cover the text where the
+    // canvas draws it, that is at (110,70). With local coordinates it would end up at
+    // (10,20) -- very far from the node being edited.
     const g: NodeLite = {
       id: "g", parentId: "page1", orderKey: "a0", name: "g", visible: true, opacity: 1,
       x: 100, y: 50, width: 400, height: 400, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false,
     };
-    installScene(g, textNode("t1", "ciao", { parentId: "g" }));
+    installScene(g, textNode("t1", "hello", { parentId: "g" }));
     useScene.setState({ camera: { x: 0, y: 0, zoom: 1 }, editingNodeId: "t1" });
     render(<TextEditorOverlay nodeId="t1" />);
 
@@ -200,7 +200,7 @@ describe("posizionamento", () => {
     expect(field().style.top).toBe("70px");
   });
 
-  it("si riposiziona a ogni cambio di camera: pan e zoom non lo scollano dal nodo", () => {
+  it("repositions at every camera change: pan and zoom do not detach it from the node", () => {
     render(<TextEditorOverlay nodeId="t1" />);
     expect(field().style.left).toBe("10px");
 
@@ -215,89 +215,89 @@ describe("posizionamento", () => {
   });
 });
 
-// --- Step 5: fuoco e cursore ------------------------------------------------
+// --- Step 5: focus and cursor ------------------------------------------------
 
-describe("ingresso in editing", () => {
-  it("prende il fuoco da solo e mette il cursore a FINE testo", () => {
+describe("entering editing", () => {
+  it("takes focus on its own and puts the cursor at the END of the text", () => {
     render(<TextEditorOverlay nodeId="t1" />);
     const ta = field();
 
     expect(document.activeElement).toBe(ta);
-    expect(ta.value).toBe("ciao");
-    expect(ta.selectionStart).toBe(4);
-    expect(ta.selectionEnd).toBe(4);
+    expect(ta.value).toBe("hello");
+    expect(ta.selectionStart).toBe(5);
+    expect(ta.selectionEnd).toBe(5);
   });
 
-  it("apre UN gesto al montaggio (la sessione intera è un solo gesto)", () => {
+  it("opens ONE gesture on mount (the whole session is a single gesture)", () => {
     expect(useScene.getState().gesture).toBeNull();
     render(<TextEditorOverlay nodeId="t1" />);
     expect(useScene.getState().gesture).not.toBeNull();
   });
 });
 
-// --- Step 2: ciclo di vita del gesto ---------------------------------------
+// --- Step 2: gesture lifecycle ---------------------------------------
 
-describe("anteprima durante la scrittura", () => {
-  it("ogni modifica è un applyLocal: si vede sul canvas ma non va sul filo", async () => {
+describe("preview while writing", () => {
+  it("every change is an applyLocal: it shows on the canvas but does not go on the wire", async () => {
     render(<TextEditorOverlay nodeId="t1" />);
-    await userEvent.type(field(), " mondo");
+    await userEvent.type(field(), " world");
 
-    expect(content()).toBe("ciao mondo");
+    expect(content()).toBe("hello world");
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().gesture).not.toBeNull();
   });
 
-  it("una sessione lunga non accumula un'anteprima per tasto", async () => {
+  it("a long session does not accumulate a preview per key", async () => {
     render(<TextEditorOverlay nodeId="t1" />);
     await userEvent.type(field(), "0123456789");
 
     expect(useScene.getState().gesture!.preview.size).toBe(1);
-    expect(content()).toBe("ciao0123456789");
+    expect(content()).toBe("hello0123456789");
   });
 });
 
-describe("uscita con conferma", () => {
-  it("manda UN SOLO setText e lascia UNA voce di undo", async () => {
+describe("exit with commit", () => {
+  it("sends ONE SINGLE setText and leaves ONE undo entry", async () => {
     render(<TextEditorOverlay nodeId="t1" />);
-    await userEvent.type(field(), " mondo");
+    await userEvent.type(field(), " world");
     fireEvent.blur(field());
 
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case).toBe("setText");
-    expect(sync.sent[0].kind.case === "setText" && sync.sent[0].kind.value.content).toBe("ciao mondo");
-    expect(content()).toBe("ciao mondo");
+    expect(sync.sent[0].kind.case === "setText" && sync.sent[0].kind.value.content).toBe("hello world");
+    expect(content()).toBe("hello world");
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().gesture).toBeNull();
     expect(useScene.getState().editingNodeId).toBeNull();
   });
 
-  it("TUTTA la sessione è UNA voce di undo: dieci tasti, un solo Ctrl+Z", async () => {
+  it("the WHOLE session is ONE undo entry: ten keys, a single Ctrl+Z", async () => {
     render(<TextEditorOverlay nodeId="t1" />);
     await userEvent.type(field(), "0123456789");
     fireEvent.blur(field());
-    expect(content()).toBe("ciao0123456789");
+    expect(content()).toBe("hello0123456789");
 
     act(() => useScene.getState().undo());
 
-    // Un solo passo indietro riporta al contenuto di PARTENZA, non al
-    // penultimo carattere.
-    expect(content()).toBe("ciao");
+    // A single step back returns to the STARTING content, not to the
+    // second-to-last character.
+    expect(content()).toBe("hello");
     expect(useScene.getState().canUndo).toBe(false);
     expect(useScene.getState().canRedo).toBe(true);
   });
 
-  it("Tab conferma (il fuoco esce dal campo)", async () => {
+  it("Tab commits (focus leaves the field)", async () => {
     render(<TextEditorOverlay nodeId="t1" />);
     await userEvent.type(field(), "!");
     await userEvent.tab();
 
     expect(sync.sent).toHaveLength(1);
-    expect(content()).toBe("ciao!");
+    expect(content()).toBe("hello!");
     expect(useScene.getState().editingNodeId).toBeNull();
   });
 
-  it("uscire senza aver cambiato nulla non manda niente e non sporca la storia", () => {
+  it("leaving without having changed anything sends nothing and does not dirty the history", () => {
     render(<TextEditorOverlay nodeId="t1" />);
     fireEvent.blur(field());
 
@@ -305,28 +305,28 @@ describe("uscita con conferma", () => {
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().canUndo).toBe(false);
     expect(useScene.getState().editingNodeId).toBeNull();
-    expect(content()).toBe("ciao");
+    expect(content()).toBe("hello");
   });
 });
 
-// --- Step 3: uscita ---------------------------------------------------------
+// --- Step 3: exit ---------------------------------------------------------
 
-describe("uscita con Escape", () => {
-  it("annulla: niente sul filo, niente nella storia, contenuto di partenza", async () => {
+describe("exit with Escape", () => {
+  it("cancels: nothing on the wire, nothing in the history, starting content", async () => {
     render(<TextEditorOverlay nodeId="t1" />);
-    await userEvent.type(field(), " buttato via");
-    expect(content()).toBe("ciao buttato via");
+    await userEvent.type(field(), " discarded");
+    expect(content()).toBe("hello discarded");
 
     fireEvent.keyDown(field(), { key: "Escape" });
 
     expect(sync.sent).toHaveLength(0);
-    expect(content()).toBe("ciao");
+    expect(content()).toBe("hello");
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().gesture).toBeNull();
     expect(useScene.getState().editingNodeId).toBeNull();
   });
 
-  it("su un nodo appena creato (vuoto) l'annullamento lo fa sparire, in modo annullabile", async () => {
+  it("on a just-created (empty) node cancelling makes it disappear, in an undoable way", async () => {
     installScene(textNode("t1", ""));
     useScene.setState({ editingNodeId: "t1" });
     render(<TextEditorOverlay nodeId="t1" />);
@@ -334,9 +334,9 @@ describe("uscita con Escape", () => {
 
     fireEvent.keyDown(field(), { key: "Escape" });
 
-    // Il nodo era rimasto vuoto: la politica dello store (endTextEditing) lo
-    // cancella invece di lasciare un fantasma sulla scena -- ma passando da un
-    // gesto, quindi con il suo Ctrl+Z.
+    // The node had stayed empty: the store's policy (endTextEditing) deletes
+    // it instead of leaving a ghost on the scene -- but going through a
+    // gesture, so with its Ctrl+Z.
     expect(useScene.getState().scene!.nodes.at("t1")).toBeUndefined();
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case).toBe("deleteNode");
@@ -346,30 +346,30 @@ describe("uscita con Escape", () => {
 });
 
 describe("Enter", () => {
-  it("va a capo e NON conferma: è un editor multilinea", async () => {
+  it("makes a newline and does NOT commit: it is a multiline editor", async () => {
     render(<TextEditorOverlay nodeId="t1" />);
-    await userEvent.type(field(), "{Enter}riga2");
+    await userEvent.type(field(), "{Enter}line2");
 
-    expect(field().value).toBe("ciao\nriga2");
-    expect(content()).toBe("ciao\nriga2");
+    expect(field().value).toBe("hello\nline2");
+    expect(content()).toBe("hello\nline2");
     expect(useScene.getState().editingNodeId).toBe("t1");
     expect(useScene.getState().gesture).not.toBeNull();
     expect(sync.sent).toHaveLength(0);
   });
 });
 
-// --- Step 4: le scorciatoie globali restano fuori ---------------------------
+// --- Step 4: global shortcuts stay out ---------------------------
 
-describe("scorciatoie globali mentre si scrive", () => {
-  it("Ctrl+Z dentro il campo non arriva all'undo dell'app (e fuori sì)", () => {
-    // Il campo qui viene dall'App vera (che lo monta da sé quando
-    // editingNodeId è valorizzato): la guardia si verifica sull'app montata,
-    // non su un overlay affiancato a mano.
+describe("global shortcuts while writing", () => {
+  it("Ctrl+Z inside the field does not reach the app's undo (and outside it does)", () => {
+    // The field here comes from the real App (which mounts it by itself when
+    // editingNodeId is set): the guard is verified on the mounted app,
+    // not on an overlay placed alongside by hand.
     render(<App />);
 
-    // La guardia isTextField di App.tsx esce PRIMA di preventDefault: se
-    // l'evento non è stato cancellato, la scorciatoia non l'ha nemmeno
-    // considerato -- l'undo nativo del campo resta quello del browser.
+    // App.tsx's isTextField guard exits BEFORE preventDefault: if
+    // the event was not cancelled, the shortcut did not even
+    // consider it -- the field's native undo stays the browser's.
     const inField = new KeyboardEvent("keydown", { key: "z", ctrlKey: true, bubbles: true, cancelable: true });
     act(() => {
       field().dispatchEvent(inField);
@@ -383,133 +383,133 @@ describe("scorciatoie globali mentre si scrive", () => {
     expect(outside.defaultPrevented).toBe(true);
   });
 
-  it("Backspace nel campo non cancella il nodo selezionato", async () => {
+  it("Backspace in the field does not delete the selected node", async () => {
     render(<App />);
     expect(useScene.getState().selection).toEqual(["t1"]);
 
     await userEvent.type(field(), "{Backspace}{Backspace}");
 
-    expect(field().value).toBe("ci");
+    expect(field().value).toBe("hel");
     expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
     expect(sync.sent).toHaveLength(0);
   });
 });
 
-// --- Step 5: accenti e IME --------------------------------------------------
+// --- Step 5: accents and IME --------------------------------------------------
 
-describe("accenti e IME", () => {
-  it("gli accenti arrivano interi fino all'op finale", async () => {
+describe("accents and IME", () => {
+  it("accents arrive intact up to the final op", async () => {
     installScene(textNode("t1", ""));
     useScene.setState({ editingNodeId: "t1" });
     render(<TextEditorOverlay nodeId="t1" />);
 
-    await userEvent.type(field(), "però{Enter}àèìòù");
+    await userEvent.type(field(), "café{Enter}naïve");
     fireEvent.blur(field());
 
     expect(sync.sent).toHaveLength(1);
-    expect(sync.sent[0].kind.case === "setText" && sync.sent[0].kind.value.content).toBe("però\nàèìòù");
+    expect(sync.sent[0].kind.case === "setText" && sync.sent[0].kind.value.content).toBe("café\nnaïve");
   });
 
-  it("una composizione IME non viene persa: conta il valore del campo, non i tasti", () => {
+  it("an IME composition is not lost: the field's value counts, not the keys", () => {
     render(<TextEditorOverlay nodeId="t1" />);
     const ta = field();
 
-    // Sequenza tipica di un IME: nessun keydown utile, solo composition +
-    // input. L'overlay legge il VALORE del campo, quindi la vede tutta.
+    // Typical IME sequence: no useful keydown, only composition +
+    // input. The overlay reads the field's VALUE, so it sees all of it.
     fireEvent.compositionStart(ta);
-    fireEvent.change(ta, { target: { value: "ciao に" } });
+    fireEvent.change(ta, { target: { value: "hello に" } });
     fireEvent.compositionEnd(ta, { data: "に" });
 
-    expect(content()).toBe("ciao に");
+    expect(content()).toBe("hello に");
     fireEvent.blur(ta);
-    expect(sync.sent[0].kind.case === "setText" && sync.sent[0].kind.value.content).toBe("ciao に");
+    expect(sync.sent[0].kind.case === "setText" && sync.sent[0].kind.value.content).toBe("hello に");
   });
 
-  // Bug trovato in review: Escape era gestito INCONDIZIONATAMENTE. Con un IME
-  // aperto quel tasto è il modo standard di rifiutare una conversione (chiude
-  // la finestra dei candidati), e trattarlo come "annulla tutto" buttava via
-  // l'intera sessione di editing -- proprio con le lingue per cui l'overlay
-  // del DOM esiste.
-  describe("Escape mentre l'IME sta componendo", () => {
-    it("non chiude la sessione: quel tasto è dell'IME", () => {
+  // Bug found in review: Escape was handled UNCONDITIONALLY. With an IME
+  // open that key is the standard way to reject a conversion (it closes
+  // the candidates window), and treating it as "cancel everything" threw away
+  // the whole editing session -- precisely with the languages the DOM
+  // overlay exists for.
+  describe("Escape while the IME is composing", () => {
+    it("does not close the session: that key belongs to the IME", () => {
       render(<TextEditorOverlay nodeId="t1" />);
       const ta = field();
 
       fireEvent.compositionStart(ta);
-      fireEvent.change(ta, { target: { value: "ciao に" } });
-      // L'utente rifiuta il candidato: l'IME si chiude, l'editing NO.
+      fireEvent.change(ta, { target: { value: "hello に" } });
+      // The user rejects the candidate: the IME closes, the editing does NOT.
       fireEvent.keyDown(ta, { key: "Escape" });
 
       expect(screen.queryByRole("textbox", { name: FIELD_NAME })).not.toBeNull();
       expect(useScene.getState().editingNodeId).toBe("t1");
       expect(useScene.getState().gesture).not.toBeNull();
-      expect(content()).toBe("ciao に");
+      expect(content()).toBe("hello に");
       expect(sync.sent).toHaveLength(0);
     });
 
-    it("torna a essere nostro appena la composizione finisce", () => {
+    it("becomes ours again as soon as the composition ends", () => {
       render(<TextEditorOverlay nodeId="t1" />);
       const ta = field();
 
       fireEvent.compositionStart(ta);
-      fireEvent.change(ta, { target: { value: "ciao に" } });
+      fireEvent.change(ta, { target: { value: "hello に" } });
       fireEvent.compositionEnd(ta, { data: "に" });
 
       fireEvent.keyDown(ta, { key: "Escape" });
 
-      // Adesso Escape annulla come sempre: contenuto di partenza, niente sul
-      // filo, niente nella storia.
+      // Now Escape cancels as always: starting content, nothing on the
+      // wire, nothing in the history.
       expect(useScene.getState().editingNodeId).toBeNull();
       expect(useScene.getState().gesture).toBeNull();
-      expect(content()).toBe("ciao");
+      expect(content()).toBe("hello");
       expect(sync.sent).toHaveLength(0);
     });
 
-    it("rispetta anche isComposing e il keyCode 229, che alcuni browser mandano da soli", () => {
+    it("also honors isComposing and keyCode 229, which some browsers send on their own", () => {
       render(<TextEditorOverlay nodeId="t1" />);
       const ta = field();
 
-      // Nessun compositionstart visto da noi (l'ordine degli eventi cambia da
-      // browser a browser): resta il flag standard sull'evento...
+      // No compositionstart seen by us (the order of events varies from
+      // browser to browser): the standard flag on the event remains...
       fireEvent.keyDown(ta, { key: "Escape", isComposing: true });
       expect(useScene.getState().editingNodeId).toBe("t1");
 
-      // ...e il vecchio "tasto in lavorazione dall'IME".
+      // ...and the old "key being processed by the IME".
       fireEvent.keyDown(ta, { key: "Escape", keyCode: 229 });
       expect(useScene.getState().editingNodeId).toBe("t1");
       expect(useScene.getState().gesture).not.toBeNull();
 
-      // Un Escape normale, invece, esce.
+      // A normal Escape, instead, exits.
       fireEvent.keyDown(ta, { key: "Escape" });
       expect(useScene.getState().editingNodeId).toBeNull();
     });
   });
 });
 
-// --- il wiring nell'app -----------------------------------------------------
-
-// Un componente che nessuno monta è codice morto: il testo si potrebbe creare
-// ma non scrivere. Questi test tengono chiuso quel buco -- è la stessa forma
-// del bug "il tool testo non era nella toolbar" (vedi App.test.tsx).
-describe("App monta l'overlay", () => {
-  it("quando c'è un nodo in editing il campo esiste ed è VIVO", async () => {
+// --- the wiring in the app -----------------------------------------------------
+//
+// A component nobody mounts is dead code: the text could be created
+// but not written. These tests close that hole -- it is the same shape
+// as the "the text tool was not in the toolbar" bug (see App.test.tsx).
+describe("App mounts the overlay", () => {
+  it("when there is a node being edited the field exists and is LIVE", async () => {
     render(<App />);
 
     const ta = field();
-    expect(ta.value).toBe("ciao");
+    expect(ta.value).toBe("hello");
     expect(document.activeElement).toBe(ta);
 
-    await userEvent.type(ta, " mondo");
+    await userEvent.type(ta, " world");
     fireEvent.blur(ta);
 
-    // Non basta che il campo compaia: deve essere collegato allo store vero.
+    // It is not enough for the field to appear: it must be connected to the real store.
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case).toBe("setText");
-    expect(content()).toBe("ciao mondo");
+    expect(content()).toBe("hello world");
     expect(useScene.getState().editingNodeId).toBeNull();
   });
 
-  it("senza editing non c'è nessun campo (e nessun gesto aperto)", () => {
+  it("without editing there is no field (and no open gesture)", () => {
     useScene.setState({ editingNodeId: null });
     render(<App />);
 
@@ -517,25 +517,25 @@ describe("App monta l'overlay", () => {
     expect(useScene.getState().gesture).toBeNull();
   });
 
-  it("cambiare nodo in editing sposta il campo sull'altro nodo", () => {
-    installScene(textNode("t1", "primo"), textNode("t2", "secondo", { x: 300 }));
+  it("changing the node being edited moves the field to the other node", () => {
+    installScene(textNode("t1", "first"), textNode("t2", "second", { x: 300 }));
     useScene.setState({ editingNodeId: "t1" });
     render(<App />);
-    expect(field().value).toBe("primo");
+    expect(field().value).toBe("first");
 
     act(() => useScene.getState().beginTextEditing("t2"));
 
-    expect(field().value).toBe("secondo");
+    expect(field().value).toBe("second");
     expect(field().style.left).toBe("300px");
   });
 });
 
-// --- robustezza -------------------------------------------------------------
+// --- robustness -------------------------------------------------------------
 
-describe("il nodo sparisce mentre lo si edita", () => {
-  it("un delete remoto chiude la sessione senza lasciare un gesto aperto", async () => {
+describe("the node disappears while it is being edited", () => {
+  it("a remote delete closes the session without leaving a gesture open", async () => {
     render(<TextEditorOverlay nodeId="t1" />);
-    await userEvent.type(field(), " mondo");
+    await userEvent.type(field(), " world");
 
     act(() => useScene.getState().apply(deleteOp("t1")));
 
@@ -545,8 +545,8 @@ describe("il nodo sparisce mentre lo si edita", () => {
     expect(sync.sent).toHaveLength(0);
   });
 
-  it("un nodo che non è di testo non apre nessun campo", () => {
-    installScene({ ...textNode("t1", "ciao"), kind: "rect", text: undefined });
+  it("a node that is not text opens no field", () => {
+    installScene({ ...textNode("t1", "hello"), kind: "rect", text: undefined });
     useScene.setState({ editingNodeId: "t1" });
     render(<TextEditorOverlay nodeId="t1" />);
 

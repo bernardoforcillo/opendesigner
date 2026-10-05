@@ -6,10 +6,10 @@ import { Badge, Button, EmptyState, Icon, cls } from "../ds";
 import { DevIcon, type DevIconName } from "../ds/dev-parts";
 import { applyFix, selectScreen, useReadiness } from "./useReadiness";
 
-// "PRONTEZZA" (colonna sinistra di Sviluppo): la checklist che dice se il
-// documento è pronto a diventare codice. I fallimenti salgono in cima, ognuno
-// col suo "Sistema" a un click quando si può; i controlli superati stanno in
-// fondo, tenui. Il calcolo è puro (dev/readiness.ts); qui c'è solo la vista.
+// "READINESS" (left column of Develop): the checklist that says whether the
+// document is ready to become code. Failures rise to the top, each
+// with its one-click "Fix" when possible; passed checks sit at the
+// bottom, faint. The computation is pure (dev/readiness.ts); here there is only the view.
 
 const STATE_ICON: Record<ReadinessItem["state"], { icon: DevIconName; cls: string }> = {
   pass: { icon: "circleCheck", cls: "text-ok" },
@@ -52,7 +52,7 @@ function ItemRow({ item }: { item: ReadinessItem }) {
             <li key={`${r.label}-${i}`}>
               {r.nodeId ? (
                 <RacButton
-                  aria-label={`Seleziona la schermata: ${r.label}`}
+                  aria-label={`Select the screen: ${r.label}`}
                   onPress={() => selectScreen(scene, r.nodeId!)}
                   className="group flex w-full items-center gap-1 rounded px-1.5 py-0.5 text-left text-[12px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]"
                 >
@@ -70,7 +70,7 @@ function ItemRow({ item }: { item: ReadinessItem }) {
                 onPress={() => setAll(!all)}
                 className="rounded px-1.5 py-0.5 text-[12px] text-accent outline-none hover:underline focus-visible:shadow-[var(--ring)]"
               >
-                {all ? "Meno" : `e altri ${item.rows.length - ROWS_SHOWN}`}
+                {all ? "Less" : `and ${item.rows.length - ROWS_SHOWN} more`}
               </RacButton>
             </li>
           )}
@@ -80,18 +80,18 @@ function ItemRow({ item }: { item: ReadinessItem }) {
   );
 }
 
-// L'avanzamento: una barra segmentata (testata | implementata | pianificata) e i
-// numeri sotto. È informazione, non un controllo: "pianificata" non è un errore.
+// Progress: a segmented bar (tested | implemented | planned) and the
+// numbers below. It is information, not a control: "planned" is not an error.
 function ProgressBar({ p }: { p: Progress }) {
   const pct = (n: number) => (p.total === 0 ? 0 : (n / p.total) * 100);
   const parts: { key: string; n: number; bar: string; dot: string; label: string }[] = [
-    { key: "tested", n: p.tested, bar: "bg-ok", dot: "bg-ok", label: "testate" },
-    { key: "implemented", n: p.implemented, bar: "bg-accent", dot: "bg-accent", label: "implementate" },
-    { key: "planned", n: p.planned, bar: "bg-line-strong", dot: "bg-fg-subtle", label: "pianificate" },
+    { key: "tested", n: p.tested, bar: "bg-ok", dot: "bg-ok", label: "tested" },
+    { key: "implemented", n: p.implemented, bar: "bg-accent", dot: "bg-accent", label: "implemented" },
+    { key: "planned", n: p.planned, bar: "bg-line-strong", dot: "bg-fg-subtle", label: "planned" },
   ];
   return (
     <div className="px-3 pb-3 pt-1" data-testid="ready-progress">
-      <div role="img" aria-label={`${p.tested} testate, ${p.implemented} implementate, ${p.planned} pianificate su ${p.total}`}
+      <div role="img" aria-label={`${p.tested} tested, ${p.implemented} implemented, ${p.planned} planned out of ${p.total}`}
         className="flex h-1.5 overflow-hidden rounded-full bg-surface-3">
         {parts.map((x) => (
           <span key={x.key} className={x.bar} style={{ width: `${pct(x.n)}%` }} />
@@ -111,35 +111,35 @@ function ProgressBar({ p }: { p: Progress }) {
 
 export function ReadinessPanel() {
   const r = useReadiness();
-  if (!r) return <EmptyState icon="info" title="Nessun documento" />;
+  if (!r) return <EmptyState icon="info" title="No document" />;
   const todo = r.items.filter((i) => i.state === "fail" || i.state === "warn");
   todo.sort((a, b) => Number(b.blocking && b.state === "fail") - Number(a.blocking && a.state === "fail"));
   const rest = r.items.filter((i) => i.state === "pass" || i.state === "pending");
   return (
     <div className="flex h-full min-h-0 flex-col" data-testid="readiness">
       <header className="flex h-10 shrink-0 items-center gap-2 border-b border-line px-3">
-        <h2 className="text-[13px] font-semibold text-fg">Prontezza</h2>
+        <h2 className="text-[13px] font-semibold text-fg">Readiness</h2>
         <span className="ml-auto" />
         {r.blockers > 0 ? (
-          <Badge tone="danger">{r.blockers} {r.blockers === 1 ? "bloccante" : "bloccanti"}</Badge>
+          <Badge tone="danger">{r.blockers} {r.blockers === 1 ? "blocker" : "blockers"}</Badge>
         ) : (
-          <Badge tone="ok">Pronto</Badge>
+          <Badge tone="ok">Ready</Badge>
         )}
       </header>
       <div className="min-h-0 flex-1 overflow-y-auto">
         <section>
-          <h3 className={`${cls.sectionTitle} px-3 pb-1 pt-3`}>Avanzamento</h3>
+          <h3 className={`${cls.sectionTitle} px-3 pb-1 pt-3`}>Progress</h3>
           <ProgressBar p={r.progress} />
         </section>
         {todo.length > 0 && (
           <section className="border-t border-line">
-            <h3 className={`${cls.sectionTitle} px-3 pb-0.5 pt-3`}>Da sistemare</h3>
+            <h3 className={`${cls.sectionTitle} px-3 pb-0.5 pt-3`}>To fix</h3>
             <ul>{todo.map((i) => <ItemRow key={i.id} item={i} />)}</ul>
           </section>
         )}
         {rest.length > 0 && (
           <section className="border-t border-line">
-            <h3 className={`${cls.sectionTitle} px-3 pb-0.5 pt-3`}>A posto</h3>
+            <h3 className={`${cls.sectionTitle} px-3 pb-0.5 pt-3`}>All good</h3>
             <ul className="pb-2">{rest.map((i) => <ItemRow key={i.id} item={i} />)}</ul>
           </section>
         )}

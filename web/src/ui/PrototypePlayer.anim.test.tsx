@@ -8,8 +8,8 @@ import { baseScene, flowOf, transition, withFlows } from "../flow/testSupport";
 import type { ClipLite, SceneState } from "../store/types";
 import * as renderer from "../renderer/canvasRenderer";
 
-// Le animazioni in Presenta: enter e loop partono con la schermata, hover e tap
-// sul bersaglio, e un'animazione finita non tiene acceso nessun ciclo di frame.
+// Animations in Present: enter and loop start with the screen, hover and tap
+// on the target, and a finished animation keeps no frame loop running.
 
 let size = 0;
 beforeEach(() => {
@@ -38,7 +38,7 @@ const op = (id: string, extra: Partial<ClipLite> = {}): ClipLite => ({
 
 function install(...clips: ClipLite[]): SceneState {
   const s = {
-    ...withFlows(baseScene(), [flowOf("f1", "A", "Principale")], [transition("t1", "f1", "A", "B", { label: "Vai" })]),
+    ...withFlows(baseScene(), [flowOf("f1", "A", "Main")], [transition("t1", "f1", "A", "B", { label: "Go" })]),
     clips: Object.fromEntries(clips.map((c) => [c.id, c])),
   };
   useScene.getState().setScene(s);
@@ -46,13 +46,13 @@ function install(...clips: ClipLite[]): SceneState {
 }
 const spy = () => vi.spyOn(renderer, "drawScene").mockImplementation(() => {});
 const lastBtn = (d: ReturnType<typeof spy>) => d.mock.calls.at(-1)?.[1].nodes.at("btn");
-const stage = () => (screen.getByRole("dialog", { name: "Prototipo" }).firstElementChild as HTMLElement);
-// La camera del player a 800x600 per un frame 200x300: zoom 1.68, origine (232, 48). btn sta a (60,200) 80x30.
+const stage = () => (screen.getByRole("dialog", { name: "Prototype" }).firstElementChild as HTMLElement);
+// The player's camera at 800x600 for a 200x300 frame: zoom 1.68, origin (232, 48). btn sits at (60,200) 80x30.
 const BTN = { clientX: 232 + 100 * 1.68, clientY: 48 + 215 * 1.68 };
 const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
 
-describe("Presenta: clip del documento", () => {
-  it("senza clip si disegna la scena derivata di sempre, nessun ciclo di frame", async () => {
+describe("Present: document clips", () => {
+  it("without clips the usual derived scene is drawn, no frame loop", async () => {
     install();
     const d = spy();
     render(<PrototypePlayer onClose={() => {}} />);
@@ -64,21 +64,21 @@ describe("Presenta: clip del documento", () => {
     expect(d.mock.calls.at(-1)?.[1].anim).toBeUndefined();
   });
 
-  it("enter: parte con la schermata, arriva al valore finale e poi i frame si fermano", async () => {
+  it("enter: starts with the screen, reaches the final value and then the frames stop", async () => {
     install(op("e"));
     const d = spy();
     render(<PrototypePlayer onClose={() => {}} />);
-    // all'inizio vale il primo keyframe (0.2), alla fine l'ultimo (0.9) -- e ci resta
+    // at the start the first keyframe (0.2) applies, at the end the last (0.9) -- and it stays there
     await waitFor(() => expect(lastBtn(d)?.opacity).toBeCloseTo(0.9));
     expect(d.mock.calls.some((c) => c[1].nodes.at("btn").opacity < 0.9)).toBe(true);
     await sleep(80);
     const n = d.mock.calls.length;
     await sleep(250);
-    expect(d.mock.calls.length).toBe(n); // finita: nessun rAF in giro
+    expect(d.mock.calls.length).toBe(n); // finished: no rAF around
     expect(lastBtn(d)?.opacity).toBeCloseTo(0.9);
   });
 
-  it("loop: non finisce mai (i frame continuano)", async () => {
+  it("loop: never ends (the frames continue)", async () => {
     install(op("l", { trigger: "loop" }));
     const d = spy();
     render(<PrototypePlayer onClose={() => {}} />);
@@ -88,19 +88,19 @@ describe("Presenta: clip del documento", () => {
     expect(d.mock.calls.length).toBeGreaterThan(n + 3);
   });
 
-  it("hover: parte quando il puntatore entra nel bersaglio e torna alla base quando esce", async () => {
+  it("hover: starts when the pointer enters the target and goes back to the base when it leaves", async () => {
     install(op("h", { trigger: "hover", targetId: "btn" }));
     const d = spy();
     render(<PrototypePlayer onClose={() => {}} />);
     await waitFor(() => expect(d).toHaveBeenCalled());
-    expect(lastBtn(d)?.opacity).toBe(1); // base: nessuna animazione ancora
+    expect(lastBtn(d)?.opacity).toBe(1); // base: no animation yet
     fireEvent.pointerMove(stage(), BTN);
     await waitFor(() => expect(lastBtn(d)?.opacity).toBeCloseTo(0.9));
-    fireEvent.pointerMove(stage(), { clientX: 10, clientY: 10 }); // fuori dal bersaglio
+    fireEvent.pointerMove(stage(), { clientX: 10, clientY: 10 }); // outside the target
     await waitFor(() => expect(lastBtn(d)?.opacity).toBe(1));
   });
 
-  it("tap: vale finché si tiene premuto", async () => {
+  it("tap: holds while it stays pressed", async () => {
     install(op("t", { trigger: "tap", targetId: "btn" }));
     const d = spy();
     render(<PrototypePlayer onClose={() => {}} />);
@@ -111,18 +111,18 @@ describe("Presenta: clip del documento", () => {
     await waitFor(() => expect(lastBtn(d)?.opacity).toBe(1));
   });
 
-  it("cambiare schermata: le clip della nuova ripartono, quelle dell'altra non girano più", async () => {
+  it("changing screen: the new one's clips restart, the other's no longer run", async () => {
     install(op("a"), op("b", { targetId: "B", tracks: [{ nodeId: "B", prop: "opacity", keyframes: [{ time: 0, value: 0.5, easing: "" }] }] }));
     const d = spy();
     render(<PrototypePlayer onClose={() => {}} />);
     await waitFor(() => expect(lastBtn(d)?.opacity).toBeCloseTo(0.9));
-    fireEvent.click(screen.getByRole("button", { name: "Vai" }));
+    fireEvent.click(screen.getByRole("button", { name: "Go" }));
     await waitFor(() => expect(d.mock.calls.at(-1)?.[1].nodes.at("B").opacity).toBe(0.5));
-    // la scena derivata ora mostra solo B: la clip di A non c'entra
+    // the derived scene now shows only B: A's clip is irrelevant
     expect(d.mock.calls.at(-1)?.[1].nodes.at("btn").opacity).toBe(1);
   });
 
-  it("il documento dello store non viene toccato", async () => {
+  it("the store's document is not touched", async () => {
     const s = install(op("e"));
     const d = spy();
     render(<PrototypePlayer onClose={() => {}} />);

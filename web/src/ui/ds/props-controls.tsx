@@ -1,29 +1,29 @@
 import type { ReactNode } from "react";
 import { Label, Radio, RadioGroup } from "react-aria-components";
 
-// PRIMITIVE DELL'ISPETTORE (area "props").
+// INSPECTOR PRIMITIVES ("props" area).
 //
-// Stanno qui e non in ds/index.tsx perché sono nate per il pannello proprietà:
-// se un altro pannello ne avesse bisogno si promuovono. Come il resto del
-// sistema di design non scrivono un colore a mano -- solo token.
+// They live here and not in ds/index.tsx because they were born for the properties panel:
+// if another panel needed them they would be promoted. Like the rest of the
+// design system they do not hand-write a color -- only tokens.
 
-// --- ICONE DI SEGMENTO ------------------------------------------------------
+// --- SEGMENT ICONS ----------------------------------------------------------
 //
-// Piccoli pittogrammi su griglia 16, fatti di rettangoli (come quelli
-// dell'allineamento): si colorano con `currentColor`, quindi seguono stato e
-// tema del segmento che li contiene. Decorative: il nome lo porta il bottone.
+// Small pictograms on a 16 grid, made of rectangles (like the alignment
+// ones): they are colored with `currentColor`, so they follow the state and
+// theme of the segment that contains them. Decorative: the name comes from the button.
 type R = [x: number, y: number, w: number, h: number];
 
 export const SEG_ICONS: Record<string, R[]> = {
-  // testo: tre righe allineate a sinistra / centro / destra
+  // text: three lines aligned left / center / right
   textLeft: [[2, 3, 12, 1.6], [2, 7.2, 8, 1.6], [2, 11.4, 10, 1.6]],
   textCenter: [[2, 3, 12, 1.6], [4, 7.2, 8, 1.6], [3, 11.4, 10, 1.6]],
   textRight: [[2, 3, 12, 1.6], [6, 7.2, 8, 1.6], [4, 11.4, 10, 1.6]],
-  // auto layout: due blocchi in fila / in colonna
+  // auto layout: two blocks in a row / in a column
   dirH: [[2.4, 4, 4.6, 8], [9, 4, 4.6, 8]],
   dirV: [[4, 2.4, 8, 4.6], [4, 9, 8, 4.6]],
-  // allineamento sull'asse: inizio / centro / fine / distribuito (tre barre su
-  // una riga immaginaria; la riga è il bordo o la mezzeria)
+  // axis alignment: start / center / end / distributed (three bars on an
+  // imaginary line; the line is the edge or the midline)
   alignStart: [[2, 2, 1.4, 12], [4.6, 4, 8, 3], [4.6, 9, 5, 3]],
   alignCenter: [[7.3, 2, 1.4, 12], [3, 4, 10, 3], [4.5, 9, 7, 3]],
   alignEnd: [[12.6, 2, 1.4, 12], [3.4, 4, 8, 3], [6.4, 9, 5, 3]],
@@ -40,10 +40,10 @@ export function SegIcon({ name, rotate }: { name: keyof typeof SEG_ICONS; rotate
   );
 }
 
-// --- SEGMENTI ---------------------------------------------------------------
+// --- SEGMENTS ---------------------------------------------------------------
 //
-// Una pastiglia incassata con il segmento attivo "alzato" -- il linguaggio degli
-// editor di design per ogni enum a pochi valori.
+// An inset pill with the active segment "raised" -- the design editors'
+// language for every enum with few values.
 const SEG_WRAP = "flex h-7 w-full gap-0.5 rounded-md bg-surface-2 p-0.5";
 const SEG_ITEM =
   "flex h-6 min-w-0 flex-1 cursor-pointer items-center justify-center rounded px-1.5 text-[12px] font-medium " +
@@ -53,16 +53,16 @@ const SEG_ON = "bg-raised text-fg shadow-[0_0_0_1px_var(--line),0_1px_2px_rgb(0_
 
 export interface SegOption<T extends string> {
   value: T;
-  /** Nome accessibile (anche tooltip) e, senza icona, testo del segmento. */
+  /** Accessible name (also tooltip) and, without an icon, the segment's text. */
   label: string;
   icon?: keyof typeof SEG_ICONS;
-  /** Ruota l'icona di 90 gradi: gli allineamenti valgono per l'asse verticale. */
+  /** Rotates the icon by 90 degrees: alignments apply to the vertical axis. */
   rotate?: boolean;
 }
 
 function SegContent<T extends string>({ o }: { o: SegOption<T> }) {
-  // Con l'icona il testo resta nel DOM, solo non si vede: il nome accessibile
-  // di prima (es. "Sinistra") non cambia.
+  // With the icon the text stays in the DOM, just not visible: the previous accessible name
+  // (e.g. "Left") does not change.
   return o.icon ? (
     <>
       <SegIcon name={o.icon} rotate={o.rotate} />
@@ -74,10 +74,10 @@ function SegContent<T extends string>({ o }: { o: SegOption<T> }) {
 }
 
 /**
- * Segmenti ESCLUSIVI come RadioGroup (ruolo `radiogroup`/`radio`). `value` null
- * = nessuna scelta (selezione mista): il gruppo resta controllato e non
- * evidenzia niente. L'etichetta del gruppo è il nome accessibile e, con
- * `showLabel`, anche una riga visibile sopra.
+ * EXCLUSIVE segments as a RadioGroup (`radiogroup`/`radio` role). `value` null
+ * = no choice (mixed selection): the group stays controlled and highlights
+ * nothing. The group's label is the accessible name and, with
+ * `showLabel`, also a visible line above.
  */
 export function SegRadio<T extends string>({
   label, value, options, onChange, showLabel = true,
@@ -113,9 +113,9 @@ export function SegRadio<T extends string>({
 }
 
 /**
- * Segmenti come PULSANTI a stato (`aria-pressed`): per le scelte che prima erano
- * bottoni e non radio (tipo di riempimento, direzione e allineamenti
- * dell'auto layout). Stesso aspetto di SegRadio.
+ * Segments as stateful BUTTONS (`aria-pressed`): for choices that used to be
+ * buttons and not radios (fill type, direction and alignments
+ * of auto layout). Same look as SegRadio.
  */
 export function SegButtons<T extends string>({
   label, value, options, onPick, showLabel = false,
@@ -148,14 +148,14 @@ export function SegButtons<T extends string>({
   );
 }
 
-// --- CASELLA ----------------------------------------------------------------
+// --- SWATCH -----------------------------------------------------------------
 
-// La scacchiera che sta SOTTO i colori con alfa, fatta coi token (si adatta al
-// tema) e non con due grigi a mano.
+// The checkerboard that sits UNDER colors with alpha, made with tokens (it adapts to the
+// theme) and not with two hand-picked grays.
 export const CHECKER =
   "conic-gradient(var(--line-strong) 25%, var(--surface) 0 50%, var(--line-strong) 0 75%, var(--surface) 0) 0 0 / 8px 8px";
 
-/** Pastiglia di anteprima del colore, con la scacchiera sotto per la trasparenza. */
+/** Color preview pill, with the checkerboard underneath for transparency. */
 export function Swatch({ color, size = 16, className = "" }: { color: string | null; size?: number; className?: string }) {
   return (
     <span
@@ -170,7 +170,7 @@ export function Swatch({ color, size = 16, className = "" }: { color: string | n
   );
 }
 
-/** Etichetta di riga, per i controlli che non portano un prefisso nel campo. */
+/** Row label, for controls that do not carry a prefix in the field. */
 export function PropLabel({ children }: { children: ReactNode }) {
   return <span className="text-[11px] font-medium text-fg-subtle">{children}</span>;
 }

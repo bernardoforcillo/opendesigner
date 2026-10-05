@@ -16,13 +16,13 @@ import { CopyButton } from "./CopyButton";
 import { PipelineStepper } from "./PipelineStepper";
 import { selectScreen, useReadiness } from "./useReadiness";
 
-// LA VISTA CODICE (centro di Sviluppo): albero dei file generati, codice in sola
-// lettura con evidenziazione, e -- a richiesta -- l'anteprima della stessa
-// schermata (target HTML) in un iframe accanto, per confrontare disegno e output.
+// THE CODE VIEW (center of Develop): tree of generated files, read-only
+// code with highlighting, and -- on request -- a preview of the same
+// screen (HTML target) in an iframe alongside, to compare design and output.
 //
-// Il codice viene dal server (ExportCode, dev/codegen.ts): qui si mostra. La
-// schermata selezionata nel documento seleziona il suo file e viceversa (il file
-// di una schermata porta `data-node-id` = l'id del frame).
+// The code comes from the server (ExportCode, dev/codegen.ts): here it is only shown. The
+// screen selected in the document selects its file and vice versa (a screen's
+// file carries `data-node-id` = the frame's id).
 
 const TOKEN_CLS: Record<TokenKind, string> = {
   plain: "",
@@ -36,8 +36,8 @@ const TOKEN_CLS: Record<TokenKind, string> = {
   type: "font-medium text-fg",
 };
 
-// Un file molto lungo non si monta tutto insieme (decine di migliaia di <span>):
-// le prime righe subito, il resto a richiesta.
+// A very long file is not mounted all at once (tens of thousands of <span>):
+// the first lines right away, the rest on request.
 const MAX_LINES = 1500;
 
 const TARGETS: readonly { id: CodeTarget; label: string }[] = [
@@ -45,14 +45,14 @@ const TARGETS: readonly { id: CodeTarget; label: string }[] = [
   { id: "html", label: "HTML" },
 ];
 
-// --- albero dei file ---------------------------------------------------------
+// --- file tree ---------------------------------------------------------------
 
 function FileTree({
   files, target, selected, onPick,
 }: { files: readonly CodeFile[]; target: CodeTarget; selected: string; onPick: (f: CodeFile) => void }) {
   const groups = useMemo(() => groupFiles(files, target), [files, target]);
   return (
-    <nav aria-label="File generati" className="flex min-h-0 w-52 shrink-0 flex-col overflow-y-auto border-r border-line bg-surface-2 pb-16 pt-1">
+    <nav aria-label="Generated files" className="flex min-h-0 w-52 shrink-0 flex-col overflow-y-auto border-r border-line bg-surface-2 pb-16 pt-1">
       {groups.map((g) => (
         <section key={g.id} aria-label={g.label} className="pb-1">
           <h3 className="flex h-6 items-center gap-1.5 px-3 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">
@@ -83,7 +83,7 @@ function FileTree({
   );
 }
 
-// --- codice ------------------------------------------------------------------
+// --- code --------------------------------------------------------------------
 
 const CodeLines = memo(function CodeLines({ file, showAll }: { file: CodeFile; showAll: boolean }) {
   const text = textOf(file);
@@ -117,19 +117,19 @@ function CodeView({ file }: { file: CodeFile }) {
     <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line px-3">
         <span className="min-w-0 truncate font-mono text-[12px] text-fg-muted" title={file.path}>{file.path}</span>
-        {!binary && <span className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-fg-subtle">{total} righe</span>}
+        {!binary && <span className="shrink-0 whitespace-nowrap text-[11px] tabular-nums text-fg-subtle">{total} lines</span>}
         <span className="ml-auto" />
-        {!binary && <CopyButton text={text} label="Copia il codice" doneLabel="Copiato" />}
+        {!binary && <CopyButton text={text} label="Copy the code" doneLabel="Copied" />}
       </div>
-      <div className="min-h-0 flex-1 overflow-auto bg-surface pb-16" tabIndex={0} aria-label={`Codice di ${file.path}`}>
+      <div className="min-h-0 flex-1 overflow-auto bg-surface pb-16" tabIndex={0} aria-label={`Code of ${file.path}`}>
         {binary ? (
-          <EmptyState icon="image" title="File binario" hint={`${(file.bytes.length / 1024).toFixed(1)} KB: finisce nello zip, qui non si mostra.`} />
+          <EmptyState icon="image" title="Binary file" hint={`${(file.bytes.length / 1024).toFixed(1)} KB: it goes into the zip, it is not shown here.`} />
         ) : (
           <>
             <CodeLines file={file} showAll={showAll} />
             {!showAll && total > MAX_LINES && (
               <div className="border-t border-line p-2 text-center">
-                <Button variant="secondary" onPress={() => setShowAll(true)}>Mostra tutte le {total} righe</Button>
+                <Button variant="secondary" onPress={() => setShowAll(true)}>Show all {total} lines</Button>
               </div>
             )}
           </>
@@ -139,12 +139,12 @@ function CodeView({ file }: { file: CodeFile }) {
   );
 }
 
-// --- anteprima ---------------------------------------------------------------
+// --- preview -----------------------------------------------------------------
 
 function Preview({ files, path, onNavigate }: { files: readonly CodeFile[]; path: string | null; onNavigate: (path: string) => void }) {
   const frame = useRef<HTMLIFrameElement>(null);
   const doc = useMemo(() => (path ? previewDoc(files, path) : null), [files, path]);
-  // Un click su un link dentro la schermata chiede alla madre di mostrare l'altra.
+  // A click on a link inside the screen asks the parent to show the other one.
   useEffect(() => {
     const onMsg = (e: MessageEvent) => {
       if (e.source !== frame.current?.contentWindow) return;
@@ -157,32 +157,32 @@ function Preview({ files, path, onNavigate }: { files: readonly CodeFile[]; path
     return () => window.removeEventListener("message", onMsg);
   }, [files, onNavigate]);
   return (
-    <section aria-label="Anteprima" className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-line bg-canvas">
+    <section aria-label="Preview" className="flex min-h-0 min-w-0 flex-1 flex-col border-l border-line bg-canvas">
       <div className="flex h-8 shrink-0 items-center gap-2 border-b border-line bg-surface px-3">
         <Icon name="eye" size={13} className="text-fg-subtle" />
-        <span className="text-[12px] font-medium text-fg-muted">Anteprima</span>
+        <span className="text-[12px] font-medium text-fg-muted">Preview</span>
         {path && <span className="min-w-0 truncate font-mono text-[11px] text-fg-subtle">{path}</span>}
       </div>
       <div className="min-h-0 flex-1 overflow-auto p-3">
         {doc ? (
           <iframe
             ref={frame}
-            title="Anteprima della schermata generata"
+            title="Preview of the generated screen"
             srcDoc={doc}
             sandbox="allow-scripts"
-            // `light`: la schermata generata ha il suo sfondo e non deve ereditare il tema dell'editor.
+            // `light`: the generated screen has its own background and must not inherit the editor theme.
             style={{ colorScheme: "light" }}
             className="h-full min-h-[320px] w-full rounded-md border border-line shadow-sm"
           />
         ) : (
-          <EmptyState icon="eye" title="Nessuna schermata da mostrare" hint="Seleziona una schermata o attendi la generazione." />
+          <EmptyState icon="eye" title="No screen to show" hint="Select a screen or wait for generation." />
         )}
       </div>
     </section>
   );
 }
 
-// --- la vista ----------------------------------------------------------------
+// --- the view ----------------------------------------------------------------
 
 const PREVIEW_KEY = "od.devPreview";
 const TARGET_KEY = "od.devTarget";
@@ -194,7 +194,7 @@ function readStored<T extends string>(key: string, ok: readonly T[], dflt: T): T
   } catch { return dflt; }
 }
 function store(key: string, v: string): void {
-  try { localStorage.setItem(key, v); } catch { /* niente storage */ }
+  try { localStorage.setItem(key, v); } catch { /* no storage */ }
 }
 
 export function CodeWorkbench() {
@@ -206,9 +206,9 @@ export function CodeWorkbench() {
   const setTarget = (t: CodeTarget) => { setTargetState(t); store(TARGET_KEY, t); };
   const setPreview = (v: boolean) => { setPreviewState(v); store(PREVIEW_KEY, v ? "on" : "off"); };
 
-  // Montata SOLO in modalità Sviluppo (App): è qui che si accendono l'analisi dei
-  // flussi (per la checklist) e la generazione del codice. Smontando, si fermano
-  // e annullano la richiesta in volo -- fuori da Sviluppo non si fa lavoro.
+  // Mounted ONLY in Develop mode (App): this is where flow analysis (for the checklist)
+  // and code generation are switched on. On unmount they stop
+  // and cancel the in-flight request -- outside Develop no work is done.
   useFlowAnalysis(true);
   useCodeExport(true, preview ? [target, "html"] : [target]);
 
@@ -217,13 +217,13 @@ export function CodeWorkbench() {
   const files = code.docId === scene?.id ? code.files : EMPTY_FILES;
   const htmlFiles = html.docId === scene?.id ? html.files : EMPTY_FILES;
 
-  // La schermata selezionata nel documento (l'antenato-o-sé di primo livello).
+  // The screen selected in the document (the top-level ancestor-or-self).
   const screenId = useMemo(() => {
     if (!scene || selection.length === 0) return null;
     return screenOf(scene, selection[0])?.id ?? null;
   }, [scene, selection]);
 
-  // Il file scelto a mano vale finché non cambia la selezione nel documento.
+  // The manually chosen file holds until the selection in the document changes.
   const [picked, setPicked] = useState<string | null>(null);
   useEffect(() => setPicked(null), [screenId]);
   const effective = useMemo<CodeFile | null>(() => {
@@ -236,7 +236,7 @@ export function CodeWorkbench() {
 
   const pick = (f: CodeFile) => {
     setPicked(f.path);
-    // Un file di schermata seleziona anche la schermata nel documento: design e codice restano allineati.
+    // A screen file also selects the screen in the document: design and code stay aligned.
     const id = nodeIdOfFile(f);
     if (scene && id && scene.nodes.has(id)) {
       const sc = screenOf(scene, id);
@@ -244,7 +244,7 @@ export function CodeWorkbench() {
     }
   };
 
-  // Anteprima: il file HTML della schermata selezionata (navigabile dai link), altrimenti index.html.
+  // Preview: the selected screen's HTML file (navigable via links), otherwise index.html.
   const [navPath, setNavPath] = useState<string | null>(null);
   useEffect(() => setNavPath(null), [screenId]);
   const previewPath = useMemo(() => {
@@ -268,8 +268,8 @@ export function CodeWorkbench() {
       <div className="flex h-10 shrink-0 items-center gap-3 border-b border-line px-2">
         <PipelineStepper />
         <span className="ml-auto" />
-        {loading && <span className="flex items-center gap-1.5 text-[12px] text-fg-subtle" role="status"><Icon name="rotate" size={12} className="animate-spin" />Genero il codice…</span>}
-        {code.warnings.length > 0 && !loading && <Badge tone="warn">{code.warnings.length} avvisi</Badge>}
+        {loading && <span className="flex items-center gap-1.5 text-[12px] text-fg-subtle" role="status"><Icon name="rotate" size={12} className="animate-spin" />Generating the code…</span>}
+        {code.warnings.length > 0 && !loading && <Badge tone="warn">{code.warnings.length} warnings</Badge>}
         <RadioGroup aria-label="Target" orientation="horizontal" value={target} onChange={(v) => setTarget(v as CodeTarget)} className={SEGMENTED_TRACK}>
           {TARGETS.map((t) => (
             <Radio key={t.id} value={t.id} className={SEGMENT}>{t.label}</Radio>
@@ -278,14 +278,14 @@ export function CodeWorkbench() {
         <ToggleButton
           isSelected={preview}
           onChange={setPreview}
-          aria-label="Anteprima"
+          aria-label="Preview"
           className={({ isSelected }) =>
             `flex h-7 items-center gap-1.5 rounded-md px-2 text-[13px] font-medium outline-none focus-visible:shadow-[var(--ring)] ` +
             (isSelected ? "bg-accent text-accent-fg" : "bg-surface-2 text-fg-muted hover:bg-surface-3 hover:text-fg")
           }
         >
           <DevIcon name="split" size={14} />
-          Anteprima
+          Preview
         </ToggleButton>
       </div>
 
@@ -294,19 +294,19 @@ export function CodeWorkbench() {
       <div className="flex min-h-0 flex-1">
         {noScreens && files.length === 0 ? (
           <div className="flex flex-1 items-center justify-center">
-            <EmptyState icon="code" title="Niente da esportare, per ora" hint="Disegna almeno una schermata (un frame): il codice compare qui, e si aggiorna mentre lavori." />
+            <EmptyState icon="code" title="Nothing to export yet" hint="Draw at least one screen (a frame): the code appears here, and updates as you work." />
           </div>
         ) : code.status === "error" && files.length === 0 ? (
           <div className="flex flex-1 items-center justify-center">
             <EmptyState
               icon="warning"
-              title="Non riesco a generare il codice"
+              title="Cannot generate the code"
               hint={code.error ?? undefined}
-              action={<Button variant="secondary" icon="rotate" onPress={() => void refreshCode(target)}>Riprova</Button>}
+              action={<Button variant="secondary" icon="rotate" onPress={() => void refreshCode(target)}>Retry</Button>}
             />
           </div>
         ) : files.length === 0 ? (
-          <div className="flex flex-1 items-center justify-center text-[13px] text-fg-subtle" role="status">Genero il codice…</div>
+          <div className="flex flex-1 items-center justify-center text-[13px] text-fg-subtle" role="status">Generating the code…</div>
         ) : (
           <>
             <FileTree files={files} target={target} selected={effective?.path ?? ""} onPick={pick} />
@@ -318,8 +318,8 @@ export function CodeWorkbench() {
       {code.status === "error" && files.length > 0 && (
         <div role="alert" className="flex items-center gap-2 border-t border-line bg-danger-soft px-3 py-1 text-[12px] text-danger">
           <Icon name="warning" size={13} />
-          Aggiornamento non riuscito ({code.error}): si vede l'ultima versione generata.
-          <Button variant="ghost" className="ml-auto h-6 text-danger" onPress={() => void refreshCode(target)}>Riprova</Button>
+          Update failed ({code.error}): the last generated version is shown.
+          <Button variant="ghost" className="ml-auto h-6 text-danger" onPress={() => void refreshCode(target)}>Retry</Button>
         </div>
       )}
     </div>

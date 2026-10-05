@@ -28,9 +28,9 @@ afterEach(() => {
   useFlowUi.setState({ mode: "design", presenting: false, hoverTransitionId: null });
 });
 
-// Il canvas dei flussi si disegna dentro il ciclo A INVALIDAZIONE di App: solo in
-// modalità Flussi, solo quando qualcosa che si vede cambia -- mai a editor fermo.
-describe("ciclo di disegno dei flussi", () => {
+// The flows canvas is drawn inside App's ON-INVALIDATION loop: only in
+// Flows mode, only when something visible changes -- never with the editor idle.
+describe("flows drawing loop", () => {
   const sleep = (ms: number) => new Promise((r) => setTimeout(r, ms));
   function setupCtx() {
     const target: Record<string | symbol, unknown> = { canvas: { width: 800, height: 600 } };
@@ -41,7 +41,7 @@ describe("ciclo di disegno dei flussi", () => {
     return vi.spyOn(flowRenderer, "drawFlows").mockImplementation(() => {});
   }
 
-  it("in Design non disegna i flussi; in Flussi sì, e da fermo non ridisegna", async () => {
+  it("in Design it does not draw the flows; in Flows it does, and when idle it does not redraw", async () => {
     const drawFlows = setupCtx();
     useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
     render(<App />);
@@ -55,17 +55,17 @@ describe("ciclo di disegno dei flussi", () => {
     await sleep(250);
     expect(drawFlows.mock.calls.length).toBe(idle);
 
-    // l'hover su una freccia invalida il canvas
+    // hovering an arrow invalidates the canvas
     useFlowUi.getState().setHoverTransition("t");
     await waitFor(() => expect(drawFlows.mock.calls.length).toBeGreaterThan(idle));
     expect(drawFlows.mock.calls.at(-1)![3]).toMatchObject({ hoverTransitionId: "t", flowId: null });
   });
 
-  it("passa all'overlay il flusso corrente effettivo e il suo ingresso", async () => {
+  it("passes the effective current flow and its entry to the overlay", async () => {
     const drawFlows = setupCtx();
     useScene.getState().setScene({
       ...emptyScene("doc-1", "Untitled"),
-      flows: { f1: { id: "f1", name: "Uno", description: "", startId: "" } },
+      flows: { f1: { id: "f1", name: "One", description: "", startId: "" } },
     });
     useFlowUi.getState().setMode("flows");
     render(<App />);

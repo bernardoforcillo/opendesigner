@@ -1,8 +1,8 @@
 import { create } from "zustand";
 
-// Il tema: "system" segue il sistema operativo, "light"/"dark" lo forzano
-// (<html data-theme>). La scelta sopravvive al ricarico; senza localStorage
-// (finestra privata, jsdom) si resta su "system".
+// The theme: "system" follows the operating system, "light"/"dark" force it
+// (<html data-theme>). The choice survives a reload; without localStorage
+// (private window, jsdom) it stays on "system".
 export type ThemeChoice = "system" | "light" | "dark";
 const KEY = "od.theme";
 
@@ -22,18 +22,18 @@ function apply(t: ThemeChoice) {
 export const useTheme = create<{ choice: ThemeChoice; set: (t: ThemeChoice) => void }>((set) => ({
   choice: read(),
   set: (t) => {
-    try { if (t === "system") localStorage.removeItem(KEY); else localStorage.setItem(KEY, t); } catch { /* niente storage */ }
+    try { if (t === "system") localStorage.removeItem(KEY); else localStorage.setItem(KEY, t); } catch { /* no storage */ }
     apply(t);
     set({ choice: t });
   },
 }));
 
-// Da chiamare una volta all'avvio: applica la scelta salvata prima del primo disegno.
+// To be called once at startup: applies the saved choice before the first paint.
 export function initTheme() {
   apply(read());
 }
 
-// Il tema EFFETTIVO (chiaro/scuro), per chi disegna su canvas e non legge CSS.
+// The EFFECTIVE theme (light/dark), for whoever draws on canvas and does not read CSS.
 export function effectiveTheme(): "light" | "dark" {
   const forced = document.documentElement.getAttribute("data-theme");
   if (forced === "light" || forced === "dark") return forced;

@@ -23,7 +23,7 @@ function run(s: SceneState, ops: ReturnType<typeof fillKindOps>): NodeLite {
 }
 
 describe("gradientOps", () => {
-  it("solido -> lineare: parte dal colore e finisce trasparente", () => {
+  it("solid -> linear: starts from the color and ends transparent", () => {
     const s = sceneWith();
     const n = run(s, fillKindOps(["a"], (id) => s.nodes.at(id), "linear"));
     expect(fillKindOf(n.fills[0])).toBe("linear");
@@ -31,7 +31,7 @@ describe("gradientOps", () => {
     expect(n.fills[0].gradient).toMatchObject({ x1: 0.5, y1: 0, x2: 0.5, y2: 1 });
   });
 
-  it("lineare -> radiale tiene gli stop e rifà la geometria", () => {
+  it("linear -> radial keeps the stops and redoes the geometry", () => {
     let s = sceneWith();
     s = { ...s, nodes: nodesOf({ a: run(s, fillKindOps(["a"], (id) => s.nodes.at(id), "linear")) }) };
     const n = run(s, fillKindOps(["a"], (id) => s.nodes.at(id), "radial"));
@@ -40,7 +40,7 @@ describe("gradientOps", () => {
     expect(n.fills[0].gradient).toMatchObject({ x1: 0.5, y1: 0.5, x2: 1, y2: 0.5 });
   });
 
-  it("gradiente -> solido tiene il primo stop; stesso tipo = nessun op", () => {
+  it("gradient -> solid keeps the first stop; same type = no op", () => {
     let s = sceneWith();
     s = { ...s, nodes: nodesOf({ a: run(s, fillKindOps(["a"], (id) => s.nodes.at(id), "linear")) }) };
     expect(fillKindOps(["a"], (id) => s.nodes.at(id), "linear")).toEqual([]);
@@ -48,7 +48,7 @@ describe("gradientOps", () => {
     expect(n.fills[0]).toEqual({ r: 1, g: 0, b: 0, a: 1 });
   });
 
-  it("gli altri riempimenti del nodo sopravvivono", () => {
+  it("the node's other fills survive", () => {
     const extra = { r: 0, g: 1, b: 0, a: 1 };
     const s = sceneWith({ fills: [{ r: 1, g: 0, b: 0, a: 1 }, extra] });
     const n = run(s, fillKindOps(["a"], (id) => s.nodes.at(id), "linear"));
@@ -56,7 +56,7 @@ describe("gradientOps", () => {
     expect(n.fills[1]).toEqual(extra);
   });
 
-  it("colore di uno stop: cambia RGB e conserva l'alfa dello stop", () => {
+  it("a stop's color: changes RGB and keeps the stop's alpha", () => {
     let s = sceneWith();
     s = { ...s, nodes: nodesOf({ a: run(s, fillKindOps(["a"], (id) => s.nodes.at(id), "linear")) }) };
     const n = run(s, gradientStopOps(["a"], (id) => s.nodes.at(id), 1, { r: 0, g: 0, b: 1 }));
@@ -64,7 +64,7 @@ describe("gradientOps", () => {
     expect(gradientStopOps(["a"], (id) => s.nodes.at(id), 5, { r: 0, g: 0, b: 1 })).toEqual([]);
   });
 
-  it("angolo: 0 = sinistra->destra, 90 = alto->basso, e si rilegge uguale", () => {
+  it("angle: 0 = left->right, 90 = top->bottom, and reads back the same", () => {
     let s = sceneWith();
     s = { ...s, nodes: nodesOf({ a: run(s, fillKindOps(["a"], (id) => s.nodes.at(id), "linear")) }) };
     const h = run(s, gradientAngleOps(["a"], (id) => s.nodes.at(id), 0));

@@ -8,12 +8,12 @@ import { baseScene, flowOf, transition, withFlows } from "../flow/testSupport";
 import type { SceneState } from "../store/types";
 import * as renderer from "../renderer/canvasRenderer";
 
-// jsdom non ha un canvas 2D: il disegno vero (drawScene) si spia, e ciò che si
-// prova qui è la VISTA del prototipo -- cosa è cliccabile, dove porta, cosa è
-// disabilitato e perché.
+// jsdom has no 2D canvas: the real drawing (drawScene) is spied on, and what is
+// tested here is the prototype's VIEW -- what is clickable, where it leads, what is
+// disabled and why.
 
-// jsdom non fa layout: clientWidth/clientHeight valgono 0. L'area del prototipo
-// si misura da lì, quindi i test la fingono 800x600 (e uno spegne la finta).
+// jsdom does no layout: clientWidth/clientHeight are 0. The prototype's area
+// is measured from there, so the tests fake it 800x600 (and one turns the fake off).
 let measured = true;
 function stubSize() {
   for (const prop of ["clientWidth", "clientHeight"] as const) {
@@ -44,64 +44,64 @@ function install(s: SceneState) {
   useScene.getState().setScene(s);
 }
 
-// A -> B (hotspot "btn" su A, "Accedi") ; A -> C (barra, guardia utente=admin) ;
-// B -> C (barra, "Fine", effetto done=true) ; C senza uscite.
+// A -> B (hotspot "btn" on A, "Log in") ; A -> C (bar, guard user=admin) ;
+// B -> C (bar, "End", effect done=true) ; C without exits.
 const demo = () =>
-  withFlows(baseScene(), [flowOf("f1", "A", "Principale")], [
-    transition("t1", "f1", "A", "B", { label: "Accedi", elementId: "btn", effect: "user=guest" }),
+  withFlows(baseScene(), [flowOf("f1", "A", "Main")], [
+    transition("t1", "f1", "A", "B", { label: "Log in", elementId: "btn", effect: "user=guest" }),
     transition("t2", "f1", "A", "C", { label: "Admin", guard: "user=admin" }),
-    transition("t3", "f1", "B", "C", { label: "Fine", effect: "done=true" }),
+    transition("t3", "f1", "B", "C", { label: "End", effect: "done=true" }),
   ]);
 
 describe("PrototypePlayer", () => {
   beforeEach(() => install(demo()));
 
-  it("parte dalla schermata d'ingresso del flusso, con indietro disabilitato", () => {
+  it("starts from the flow's entry screen, with back disabled", () => {
     render(<PrototypePlayer onClose={() => {}} />);
-    expect(screen.getByRole("dialog", { name: "Prototipo" })).toBeInTheDocument();
-    expect(screen.getByRole("navigation", { name: "Percorso" })).toHaveTextContent("A");
-    expect(screen.getByRole("button", { name: "Indietro" })).toBeDisabled();
-    // il disegno della schermata parte dal renderer di sempre, sulla scena derivata
+    expect(screen.getByRole("dialog", { name: "Prototype" })).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent("A");
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
+    // the screen drawing comes from the usual renderer, on the derived scene
     expect(renderer.drawScene).toHaveBeenCalled();
     const scene = vi.mocked(renderer.drawScene).mock.calls.at(-1)![1];
     expect(scene.pages).toHaveLength(1);
     expect(vi.mocked(renderer.drawScene).mock.calls.at(-1)![3]).toBe("__prototype__");
   });
 
-  it("senza ingresso nel flusso ripiega sul primo frame di primo livello", () => {
+  it("without an entry in the flow it falls back to the first top-level frame", () => {
     install(withFlows(baseScene(), [flowOf("f1", "")], [transition("t", "f1", "A", "B")]));
     render(<PrototypePlayer onClose={() => {}} />);
-    expect(screen.getByRole("navigation", { name: "Percorso" })).toHaveTextContent("A");
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent("A");
   });
 
-  it("senza nessun flusso mostra comunque la prima schermata (e non ha uscite)", () => {
+  it("without any flow it still shows the first screen (and has no exits)", () => {
     install(baseScene());
     render(<PrototypePlayer onClose={() => {}} />);
-    expect(screen.getByRole("navigation", { name: "Percorso" })).toHaveTextContent("A");
-    expect(screen.getByText(/Fine del percorso/)).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent("A");
+    expect(screen.getByText(/End of the path/)).toBeInTheDocument();
   });
 
-  it("senza nessuna schermata dice cosa fare", () => {
+  it("without any screen it says what to do", () => {
     install(withFlows({ ...baseScene(), nodes: baseScene().nodes.set("A", { ...baseScene().nodes.at("A"), kind: "rect" }).set("B", { ...baseScene().nodes.at("B"), kind: "rect" }).set("C", { ...baseScene().nodes.at("C"), kind: "rect" }) }, [], []));
     render(<PrototypePlayer onClose={() => {}} />);
-    expect(screen.getByText(/Nessuna schermata da presentare/)).toBeInTheDocument();
+    expect(screen.getByText(/No screen to present/)).toBeInTheDocument();
   });
 
-  it("una transizione con elemento è una regione cliccabile sopra l'elemento; le altre stanno nella barra", () => {
+  it("a transition with an element is a clickable region over the element; the others are in the bar", () => {
     render(<PrototypePlayer onClose={() => {}} />);
-    // l'hotspot è un <button> fuori dalla barra delle azioni
-    const bar = screen.getByRole("group", { name: "Azioni della schermata" });
-    const hot = screen.getByRole("button", { name: "Accedi" });
+    // the hotspot is a <button> outside the actions bar
+    const bar = screen.getByRole("group", { name: "Screen actions" });
+    const hot = screen.getByRole("button", { name: "Log in" });
     expect(bar).not.toContainElement(hot);
-    // la barra ha "Admin", non "Accedi"
+    // the bar has "Admin", not "Log in"
     expect(within(bar).getByRole("button", { name: "Admin" })).toBeInTheDocument();
-    expect(within(bar).queryByRole("button", { name: "Accedi" })).not.toBeInTheDocument();
+    expect(within(bar).queryByRole("button", { name: "Log in" })).not.toBeInTheDocument();
   });
 
-  it("l'hotspot sta sopra l'elemento, in coordinate dello schermo scalate per stare nell'area", () => {
+  it("the hotspot sits over the element, in screen coordinates scaled to fit the area", () => {
     render(<PrototypePlayer onClose={() => {}} />);
-    const hot = screen.getByRole("button", { name: "Accedi" });
-    // A è 200x300 in un'area 800x600 con 48px di margine: zoom = min(704/200, 504/300) = 1.68
+    const hot = screen.getByRole("button", { name: "Log in" });
+    // A is 200x300 in an 800x600 area with a 48px margin: zoom = min(704/200, 504/300) = 1.68
     const z = 504 / 300;
     const camX = 400 - 100 * z;
     const camY = 300 - 150 * z;
@@ -111,107 +111,107 @@ describe("PrototypePlayer", () => {
     expect(parseFloat(hot.style.height)).toBeCloseTo(30 * z, 1);
   });
 
-  it("senza misura dell'area non si inventano posizioni: gli hotspot ripiegano sulla barra", () => {
+  it("without a measure of the area positions are not invented: the hotspots fall back to the bar", () => {
     measured = false;
     render(<PrototypePlayer onClose={() => {}} />);
-    const bar = screen.getByRole("group", { name: "Azioni della schermata" });
-    expect(within(bar).getByRole("button", { name: "Accedi" })).toBeInTheDocument();
+    const bar = screen.getByRole("group", { name: "Screen actions" });
+    expect(within(bar).getByRole("button", { name: "Log in" })).toBeInTheDocument();
   });
 
-  it("un hotspot disabilitato (guardia) resta visibile ma non naviga, e dice perché", () => {
-    install(withFlows(baseScene(), [flowOf("f1", "A")], [transition("t", "f1", "A", "B", { label: "Paga", elementId: "btn", guard: "cart=full" })]));
+  it("a disabled hotspot (guard) stays visible but does not navigate, and says why", () => {
+    install(withFlows(baseScene(), [flowOf("f1", "A")], [transition("t", "f1", "A", "B", { label: "Pay", elementId: "btn", guard: "cart=full" })]));
     render(<PrototypePlayer onClose={() => {}} />);
-    const hot = screen.getByRole("button", { name: "Paga" });
+    const hot = screen.getByRole("button", { name: "Pay" });
     expect(hot).toHaveAttribute("aria-disabled", "true");
-    expect(hot).toHaveAttribute("title", "Richiede cart=full");
+    expect(hot).toHaveAttribute("title", "Requires cart=full");
     fireEvent.click(hot);
-    expect(screen.getByRole("navigation", { name: "Percorso" })).toHaveTextContent(/^A$/);
-    expect(screen.getByText(/Paga: Richiede cart=full/)).toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent(/^A$/);
+    expect(screen.getByText(/Pay: Requires cart=full/)).toBeInTheDocument();
   });
 
-  it("cliccare un'uscita cambia schermata, applica l'effetto e abilita «Indietro»", () => {
+  it("clicking an exit changes screen, applies the effect and enables «Back»", () => {
     render(<PrototypePlayer onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Accedi" }));
-    expect(screen.getByRole("navigation", { name: "Percorso" })).toHaveTextContent("A›B");
-    expect(screen.getByRole("button", { name: "Indietro" })).toBeEnabled();
-    // il disegno è passato alla nuova schermata
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent("A›B");
+    expect(screen.getByRole("button", { name: "Back" })).toBeEnabled();
+    // the drawing moved to the new screen
     const scene = vi.mocked(renderer.drawScene).mock.calls.at(-1)![1];
     expect(scene.nodes.at("B").parentId).toBe("__prototype__");
-    // variabile impostata dall'effetto
-    fireEvent.click(screen.getByRole("button", { name: "Variabili" }));
-    const vars = screen.getByRole("complementary", { name: "Variabili del prototipo" });
+    // variable set by the effect
+    fireEvent.click(screen.getByRole("button", { name: "Variables" }));
+    const vars = screen.getByRole("complementary", { name: "Prototype variables" });
     expect(vars).toHaveTextContent("user");
     expect(vars).toHaveTextContent("guest");
   });
 
-  it("guardia non soddisfatta: pulsante disabilitato COL MOTIVO, e il click non fa nulla", () => {
+  it("unsatisfied guard: button disabled WITH THE REASON, and the click does nothing", () => {
     render(<PrototypePlayer onClose={() => {}} />);
     const admin = screen.getByRole("button", { name: "Admin" });
     expect(admin).toBeDisabled();
-    expect(screen.getByText("Richiede user=admin")).toBeInTheDocument();
+    expect(screen.getByText("Requires user=admin")).toBeInTheDocument();
     fireEvent.click(admin);
-    expect(screen.getByRole("navigation", { name: "Percorso" })).not.toHaveTextContent("C");
+    expect(screen.getByRole("navigation", { name: "Path" })).not.toHaveTextContent("C");
   });
 
-  it("guardia in testo libero: disabilitata con «non valutabile», mai vera in silenzio", () => {
-    install(withFlows(baseScene(), [flowOf("f1", "A")], [transition("t", "f1", "A", "B", { label: "Premium", guard: "utente premium" })]));
+  it("free-text guard: disabled with «cannot be evaluated», never silently true", () => {
+    install(withFlows(baseScene(), [flowOf("f1", "A")], [transition("t", "f1", "A", "B", { label: "Premium", guard: "premium user" })]));
     render(<PrototypePlayer onClose={() => {}} />);
     expect(screen.getByRole("button", { name: "Premium" })).toBeDisabled();
-    expect(screen.getByText(/Condizione non valutabile: «utente premium»/)).toBeInTheDocument();
+    expect(screen.getByText(/Condition cannot be evaluated: "premium user"/)).toBeInTheDocument();
   });
 
-  it("la guardia si sblocca quando una variabile la soddisfa", () => {
+  it("the guard unlocks when a variable satisfies it", () => {
     install(withFlows(baseScene(), [flowOf("f1", "A")], [
-      transition("t1", "f1", "A", "B", { label: "Imposta", effect: "user=admin" }),
-      transition("t2", "f1", "B", "A", { label: "Torna" }),
+      transition("t1", "f1", "A", "B", { label: "Set", effect: "user=admin" }),
+      transition("t2", "f1", "B", "A", { label: "Return" }),
       transition("t3", "f1", "A", "C", { label: "Admin", guard: "user=admin" }),
     ]));
     render(<PrototypePlayer onClose={() => {}} />);
     expect(screen.getByRole("button", { name: "Admin" })).toBeDisabled();
-    fireEvent.click(screen.getByRole("button", { name: "Imposta" }));
-    fireEvent.click(screen.getByRole("button", { name: "Torna" }));
-    // di nuovo su A, ma ora user=admin
+    fireEvent.click(screen.getByRole("button", { name: "Set" }));
+    fireEvent.click(screen.getByRole("button", { name: "Return" }));
+    // back on A, but now user=admin
     expect(screen.getByRole("button", { name: "Admin" })).toBeEnabled();
     fireEvent.click(screen.getByRole("button", { name: "Admin" }));
-    expect(screen.getByRole("navigation", { name: "Percorso" })).toHaveTextContent("C");
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent("C");
   });
 
-  it("«Indietro» torna alla schermata e alle variabili di prima", () => {
+  it("«Back» returns to the previous screen and variables", () => {
     render(<PrototypePlayer onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Accedi" }));
-    fireEvent.click(screen.getByRole("button", { name: "Fine" }));
-    expect(screen.getByRole("navigation", { name: "Percorso" })).toHaveTextContent("C");
-    fireEvent.click(screen.getByRole("button", { name: "Indietro" }));
-    expect(screen.getByRole("navigation", { name: "Percorso" })).toHaveTextContent("A›B");
-    fireEvent.click(screen.getByRole("button", { name: "Variabili" }));
-    expect(screen.getByRole("complementary", { name: "Variabili del prototipo" })).not.toHaveTextContent("done");
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "End" }));
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent("C");
+    fireEvent.click(screen.getByRole("button", { name: "Back" }));
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent("A›B");
+    fireEvent.click(screen.getByRole("button", { name: "Variables" }));
+    expect(screen.getByRole("complementary", { name: "Prototype variables" })).not.toHaveTextContent("done");
   });
 
-  it("«Ricomincia» riparte dall'ingresso con le variabili azzerate", () => {
+  it("«Restart» starts again from the entry with the variables cleared", () => {
     render(<PrototypePlayer onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Accedi" }));
-    fireEvent.click(screen.getByRole("button", { name: "Ricomincia" }));
-    expect(screen.getByRole("navigation", { name: "Percorso" })).toHaveTextContent(/^A$/);
-    expect(screen.getByRole("button", { name: "Indietro" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "Restart" }));
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent(/^A$/);
+    expect(screen.getByRole("button", { name: "Back" })).toBeDisabled();
   });
 
-  it("le briciole del percorso sono cliccabili e tornano a quel punto", () => {
+  it("the path breadcrumbs are clickable and go back to that point", () => {
     render(<PrototypePlayer onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Accedi" }));
-    fireEvent.click(screen.getByRole("button", { name: "Fine" }));
-    const nav = screen.getByRole("navigation", { name: "Percorso" });
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "End" }));
+    const nav = screen.getByRole("navigation", { name: "Path" });
     fireEvent.click(within(nav).getByRole("button", { name: "A" }));
     expect(nav).toHaveTextContent(/^A$/);
   });
 
-  it("l'ultima schermata (senza uscite) lo dice", () => {
+  it("the last screen (without exits) says so", () => {
     render(<PrototypePlayer onClose={() => {}} />);
-    fireEvent.click(screen.getByRole("button", { name: "Accedi" }));
-    fireEvent.click(screen.getByRole("button", { name: "Fine" }));
-    expect(screen.getByText(/Fine del percorso/)).toBeInTheDocument();
+    fireEvent.click(screen.getByRole("button", { name: "Log in" }));
+    fireEvent.click(screen.getByRole("button", { name: "End" }));
+    expect(screen.getByText(/End of the path/)).toBeInTheDocument();
   });
 
-  it("Esc chiude e non arriva agli altri ascoltatori globali; i pulsanti «Esci» chiudono", () => {
+  it("Esc closes and does not reach the other global listeners; the «Exit» buttons close", () => {
     const onClose = vi.fn();
     const other = vi.fn();
     window.addEventListener("keydown", other);
@@ -220,26 +220,26 @@ describe("PrototypePlayer", () => {
     expect(onClose).toHaveBeenCalledTimes(1);
     expect(other).not.toHaveBeenCalled();
     window.removeEventListener("keydown", other);
-    fireEvent.click(screen.getByRole("button", { name: "Chiudi il prototipo" }));
+    fireEvent.click(screen.getByRole("button", { name: "Close the prototype" }));
     expect(onClose).toHaveBeenCalledTimes(2);
   });
 
-  it("usa il flusso corrente scelto nell'interfaccia", () => {
-    install(withFlows(baseScene(), [flowOf("f1", "A", "Uno"), flowOf("f2", "B", "Due")], [
-      transition("t1", "f1", "A", "C", { label: "Da uno" }),
-      transition("t2", "f2", "B", "C", { label: "Da due" }),
+  it("uses the current flow chosen in the interface", () => {
+    install(withFlows(baseScene(), [flowOf("f1", "A", "One"), flowOf("f2", "B", "Two")], [
+      transition("t1", "f1", "A", "C", { label: "From one" }),
+      transition("t2", "f2", "B", "C", { label: "From two" }),
     ]));
     useFlowUi.setState({ currentFlowId: "f2" });
     render(<PrototypePlayer onClose={() => {}} />);
-    expect(screen.getByRole("navigation", { name: "Percorso" })).toHaveTextContent("B");
-    expect(screen.getByRole("button", { name: "Da due" })).toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Da uno" })).not.toBeInTheDocument();
+    expect(screen.getByRole("navigation", { name: "Path" })).toHaveTextContent("B");
+    expect(screen.getByRole("button", { name: "From two" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "From one" })).not.toBeInTheDocument();
   });
 
-  it("un arrivo cancellato mentre si presenta: disabilitato col motivo, nessun crash", () => {
-    install(withFlows(baseScene(), [flowOf("f1", "A")], [transition("t", "f1", "A", "ghost", { label: "Rotto" })]));
+  it("a destination deleted while presenting: disabled with the reason, no crash", () => {
+    install(withFlows(baseScene(), [flowOf("f1", "A")], [transition("t", "f1", "A", "ghost", { label: "Broken" })]));
     render(<PrototypePlayer onClose={() => {}} />);
-    expect(screen.getByRole("button", { name: "Rotto" })).toBeDisabled();
-    expect(screen.getByText(/non esiste più/)).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Broken" })).toBeDisabled();
+    expect(screen.getByText(/no longer exists/)).toBeInTheDocument();
   });
 });

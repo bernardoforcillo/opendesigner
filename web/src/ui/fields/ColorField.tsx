@@ -4,47 +4,47 @@ import type { Color } from "react-aria-components";
 import type { FillLite } from "../../store/types";
 import { Swatch } from "../ds/props-controls";
 
-// CAMPO COLORE (Task 10). Il modello tiene le tinte in RGBA FLOAT 0..1 -- è la
-// forma che il .proto trasporta (opendesigner.v1.Color) e quella che il renderer
-// disegna -- mentre l'utente le legge e le scrive in ESADECIMALE. La
-// conversione fra le due forme vive QUI dentro e in nessun altro posto: è il
-// "bordo UI" del brief. Nessun altro modulo (né lo store, né tools/ops.ts, né
-// il renderer) deve mai vedere una stringa "#RRGGBB".
+// COLOR FIELD (Task 10). The model keeps tints as RGBA FLOAT 0..1 -- it is the
+// form the .proto carries (opendesigner.v1.Color) and the one the renderer
+// draws -- while the user reads and writes them in HEXADECIMAL. The
+// conversion between the two forms lives HERE and nowhere else: it is the
+// brief's "UI edge". No other module (neither the store, nor tools/ops.ts, nor
+// the renderer) must ever see a "#RRGGBB" string.
 //
-// Come NumberField, non conosce gesti, op o mask: emette UN valore confermato e
-// chi lo usa (PropertiesPanel) decide cosa farne.
+// Like NumberField, it knows nothing of gestures, ops or masks: it emits ONE confirmed value and
+// whoever uses it (PropertiesPanel) decides what to do with it.
 
 /**
- * Le sole componenti CROMATICHE di una tinta. L'alfa non passa dal campo: un
- * esadecimale a 6 cifre non la porta, e appiccicarcela renderebbe il campo
- * l'unico posto da cui si può cambiare due cose insieme senza dirlo. Chi
- * costruisce l'op ricompone l'alfa dalla tinta del nodo (vedi
- * ui/PropertiesPanel.tsx::fillOps), così una selezione multipla con alfa
- * diverse non se le vede uniformare da un cambio di colore.
+ * Only the CHROMATIC components of a tint. Alpha does not go through the field: a
+ * 6-digit hex does not carry it, and sticking it on would make the field
+ * the only place where two things can be changed together without saying so. Whoever
+ * builds the op recomposes alpha from the node's tint (see
+ * ui/PropertiesPanel.tsx::fillOps), so a multiple selection with different
+ * alphas does not see them flattened by a color change.
  */
 export type RgbLite = Pick<FillLite, "r" | "g" | "b">;
 
 const MAX_CHANNEL = 255;
 
-// 0..1 float -> 0..255 intero. Il clamp non è difensivismo: un fill che arriva
-// dal filo è un float qualunque, e Number.toString(16) di un valore fuori scala
-// produrrebbe una stringa che parseColor rifiuterebbe (throw a ogni render).
+// 0..1 float -> 0..255 integer. The clamp is not defensiveness: a fill that arrives
+// off the wire is any float whatsoever, and Number.toString(16) of an out-of-range value
+// would produce a string that parseColor would reject (throw on every render).
 function toByte(v: number): number {
   return Math.round(Math.min(1, Math.max(0, v)) * MAX_CHANNEL);
 }
 
-/** RGB del modello (float 0..1) -> "#RRGGBB". */
+/** Model RGB (float 0..1) -> "#RRGGBB". */
 export function rgbToHex(c: RgbLite): string {
   return `#${[c.r, c.g, c.b].map((v) => toByte(v).toString(16).padStart(2, "0")).join("").toUpperCase()}`;
 }
 
 /**
- * Inverso di rgbToHex, a partire dal Color di react-aria-components.
+ * Inverse of rgbToHex, starting from react-aria-components' Color.
  *
- * `toFormat("rgb")` e non una lettura diretta dei canali: il campo senza `channel`
- * lavora in esadecimale, quindi il Color è già RGB, ma la conversione esplicita
- * lo rende vero anche se un domani il campo venisse configurato in un altro
- * spazio colore -- e costa nulla quando è già nel formato giusto.
+ * `toFormat("rgb")` and not a direct read of the channels: a field without `channel`
+ * works in hexadecimal, so the Color is already RGB, but the explicit conversion
+ * keeps it true even if the field were one day configured in another
+ * color space -- and costs nothing when it is already in the right format.
  */
 export function colorToRgb(color: Color): RgbLite {
   const rgb = color.toFormat("rgb");
@@ -56,54 +56,54 @@ export function colorToRgb(color: Color): RgbLite {
 }
 
 export interface ColorFieldProps {
-  /** Etichetta VISIBILE e nome accessibile del campo (es. "Riempimento"). */
+  /** VISIBLE label and accessible name of the field (e.g. "Fill"). */
   label: string;
   /**
-   * Colore corrente, o null per "nessun valore singolo da mostrare" (selezione
-   * mista, nodo senza tinte). null e NON undefined, per la stessa ragione per
-   * cui NumberField usa NaN invece di undefined: null resta un VALORE, quindi
-   * react-stately non fa scivolare il campo da controllato a non controllato
-   * quando il colore torna a essere definito.
+   * Current color, or null for "no single value to show" (mixed
+   * selection, node without tints). null and NOT undefined, for the same reason
+   * NumberField uses NaN instead of undefined: null stays a VALUE, so
+   * react-stately does not slip the field from controlled to uncontrolled
+   * when the color becomes defined again.
    */
   value: RgbLite | null;
   /**
-   * Colore confermato (Invio o blur, gestiti da react-aria-components stesso).
-   * Un campo svuotato o non parsabile NON invoca questo callback, e nemmeno la
-   * riconferma dello STESSO colore: react-stately confronta i due valori prima
-   * di propagare (useColorFieldState::safelySetColorValue), quindi qui non
-   * arriva mai un cambio che non è un cambio -- e chi ascolta non manda un op
-   * inutile.
+   * Confirmed color (Enter or blur, handled by react-aria-components itself).
+   * An emptied or unparsable field does NOT invoke this callback, nor does
+   * re-confirming the SAME color: react-stately compares the two values before
+   * propagating (useColorFieldState::safelySetColorValue), so no change that
+   * is not a change ever arrives here -- and the listener does not send a
+   * useless op.
    */
   onCommit: (rgb: RgbLite) => void;
   /**
-   * Mostra l'etichetta sopra il campo. Di norma NO: nell'ispettore la riga è
-   * "pastiglia + esadecimale" e il suo ruolo lo dice la sezione che la
-   * contiene. L'etichetta resta comunque nel DOM (sr-only) come nome
-   * accessibile -- serve visibile solo dove le righe sono più d'una e vanno
-   * distinte (gli override delle istanze).
+   * Shows the label above the field. Normally NO: in the inspector the row is
+   * "swatch + hexadecimal" and its role is stated by the section that
+   * contains it. The label stays in the DOM anyway (sr-only) as the accessible
+   * name -- it is needed visible only where there is more than one row and they must be
+   * told apart (instance overrides).
    */
   showLabel?: boolean;
-  /** Controlli a destra dell'esadecimale nello stesso rettangolo (es. un'opacità). */
+  /** Controls to the right of the hexadecimal in the same rectangle (e.g. an opacity). */
   trailing?: ReactNode;
   isDisabled?: boolean;
   /**
-   * Testo temporaneo mostrato quando il campo è VUOTO (`value` null). Stessa
-   * ragione del gemello in NumberField -- vedi NumberFieldProps::placeholder.
+   * Temporary text shown when the field is EMPTY (`value` null). Same
+   * reason as the twin in NumberField -- see NumberFieldProps::placeholder.
    */
   placeholder?: string;
 }
 
-// L'<Input> del campo, separato SOLO per poter leggere ColorFieldStateContext:
-// il contesto è pubblicato da AriaColorField, quindi va consumato da un suo
-// discendente.
+// The field's <Input>, separated ONLY so that ColorFieldStateContext can be read:
+// the context is published by AriaColorField, so it must be consumed by a
+// descendant of it.
 //
-// Esiste perché react-aria-components conferma il colore unicamente sul BLUR
-// (useColorField: `onBlur: commit`, e nessun gestore di Invio da nessuna
-// parte -- a differenza di NumberField, che l'Invio lo gestisce da sé). In un
-// pannello di proprietà quello è il comportamento sbagliato: si digita un
-// colore, si preme Invio e ci si aspetta di vederlo applicato, non di dover
-// uscire dal campo. Senza questa riga il colore digitato resterebbe nel campo
-// e non diventerebbe mai un op.
+// It exists because react-aria-components commits the color only on BLUR
+// (useColorField: `onBlur: commit`, and no Enter handler anywhere
+// -- unlike NumberField, which handles Enter on its own). In a
+// properties panel that is the wrong behavior: you type a
+// color, press Enter and expect to see it applied, not to have to
+// leave the field. Without this line the typed color would stay in the field
+// and would never become an op.
 function HexInput({ placeholder }: { placeholder?: string }) {
   const state = useContext(ColorFieldStateContext);
   return (
@@ -111,8 +111,8 @@ function HexInput({ placeholder }: { placeholder?: string }) {
       placeholder={placeholder}
       onKeyDown={(e) => {
         if (e.key !== "Enter") return;
-        // Il campo può stare dentro un <form> (oggi non ci sta, ma è la
-        // ragione per cui questo default esiste): Invio non deve inviarlo.
+        // The field may sit inside a <form> (today it does not, but it is the
+        // reason this default exists): Enter must not submit it.
         e.preventDefault();
         state?.commit();
       }}
@@ -125,29 +125,29 @@ export function ColorField({ label, value, onCommit, showLabel = false, trailing
   const hex = value ? rgbToHex(value) : null;
   return (
     <AriaColorField
-      // Stringa esadecimale e non un Color già costruito: react-aria-components
-      // la normalizza da sé (useColorFieldState::useColor) e una stringa nuova
-      // ma UGUALE non conta come un valore nuovo, mentre un parseColor() a ogni
-      // render restituirebbe un oggetto diverso ogni volta.
+      // Hexadecimal string and not an already built Color: react-aria-components
+      // normalizes it on its own (useColorFieldState::useColor) and a new
+      // but EQUAL string does not count as a new value, whereas a parseColor() on every
+      // render would return a different object every time.
       value={hex}
       isDisabled={isDisabled}
       onChange={(color) => {
-        // Campo svuotato: react-stately propaga null. È l'analogo del NaN di
-        // NumberField -- "nessun colore" non è un colore da scrivere nel
-        // documento, quindi non diventa un op.
+        // Emptied field: react-stately propagates null. It is the analog of NumberField's
+        // NaN -- "no color" is not a color to write into the
+        // document, so it does not become an op.
         if (!color) return;
         onCommit(colorToRgb(color));
       }}
       className="flex min-w-0 flex-col gap-1"
     >
       <Label className={showLabel ? "truncate text-[11px] font-medium text-fg-subtle" : "sr-only"}>{label}</Label>
-      {/* UN rettangolo incassato: pastiglia, esadecimale e (opzionale) altro.
-          La pastiglia è aria-hidden e non un ColorSwatch: il valore lo dice già
-          il campo di testo accanto (stesso nome accessibile), e annunciarlo due
-          volte sarebbe rumore per chi usa uno screen reader. Un vero selettore
-          visuale (ruota/area) è lavoro successivo: qui serve il canale ESATTO --
-          l'esadecimale -- che è anche il modo in cui i colori si copiano fra
-          strumenti di design. */}
+      {/* ONE inset rectangle: swatch, hexadecimal and (optional) more.
+          The swatch is aria-hidden and not a ColorSwatch: the value is already stated
+          by the text field next to it (same accessible name), and announcing it twice
+          would be noise for screen reader users. A real visual picker
+          (wheel/area) is later work: here the EXACT channel is needed --
+          the hexadecimal -- which is also how colors are copied between
+          design tools. */}
       <div
         className={
           "flex h-7 min-w-0 items-center rounded-md border border-transparent bg-surface-2 pl-1.5 " +
