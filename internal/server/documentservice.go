@@ -8,6 +8,7 @@ import (
 	"connectrpc.com/connect"
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"github.com/bernardoforcillo/opendesigner/internal/codegen"
+	"github.com/bernardoforcillo/opendesigner/internal/diagram"
 	"github.com/bernardoforcillo/opendesigner/internal/flow"
 )
 
@@ -271,4 +272,22 @@ func (s *DocumentService) ExportCode(_ context.Context, req *connect.Request[ope
 		resp.Files = append(resp.Files, &opendesignerv1.ExportFile{Path: f.Path, Content: f.Content})
 	}
 	return connect.NewResponse(resp), nil
+}
+
+// RenderDiagram: disegna un diagramma da testo Mermaid (internal/diagram). È
+// pura -- non apre nessun documento -- quindi l'editor inserisce i nodi
+// restituiti come un unico gesto. Un testo che non si legge è InvalidArgument,
+// con il messaggio da mostrare all'utente.
+func (s *DocumentService) RenderDiagram(_ context.Context, req *connect.Request[opendesignerv1.RenderDiagramRequest]) (*connect.Response[opendesignerv1.RenderDiagramResponse], error) {
+	res, err := diagram.Render(req.Msg.GetSource())
+	if err != nil {
+		var de *diagram.Error
+		if errors.As(err, &de) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&opendesignerv1.RenderDiagramResponse{
+		Nodes: res.Nodes, Kind: res.Kind, Width: res.Width, Height: res.Height, Warnings: res.Warnings,
+	}), nil
 }

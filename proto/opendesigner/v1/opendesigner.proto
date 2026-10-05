@@ -673,6 +673,22 @@ message ExportCodeResponse {
   repeated string warnings = 2;
 }
 
+// Diagrammi (internal/diagram): testo Mermaid -> un GRUPPO di nodi normali
+// (forme, vettori, testo). La funzione è pura: non tocca il documento, quindi
+// l'editor può inserire i nodi come un unico gesto (un solo undo) e un agente
+// MCP come una sequenza di op. Il primo nodo è la radice (un gruppo con meta
+// `diagram.kind` e `diagram.source`); gli altri sono suoi discendenti, con
+// coordinate relative alla radice. parent_id/order_key/x/y della radice li
+// sceglie chi inserisce.
+message RenderDiagramRequest { string source = 1; }
+message RenderDiagramResponse {
+  repeated Node nodes = 1;   // pre-ordine: ogni nodo dopo il proprio parent
+  string kind = 2;           // flowchart | class | sequence | state
+  double width = 3;
+  double height = 4;
+  repeated string warnings = 5;
+}
+
 message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string nickname = 3; }
 message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
 message UpdatePresenceResponse {}
@@ -702,4 +718,7 @@ service DocumentService {
   // progetto generato, calcolato dallo snapshot corrente. Come per
   // AnalyzeFlows, CLI, MCP ed editor vedono lo stesso risultato.
   rpc ExportCode(ExportCodeRequest) returns (ExportCodeResponse);
+  // Disegna un diagramma (flowchart, classi UML, sequenza UML, stati UML) da
+  // testo Mermaid. Pura e senza stato: vedi RenderDiagramRequest.
+  rpc RenderDiagram(RenderDiagramRequest) returns (RenderDiagramResponse);
 }

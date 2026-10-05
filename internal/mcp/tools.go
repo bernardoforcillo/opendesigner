@@ -757,4 +757,5 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerFlowTools(srv, s)
 	registerAnimationTools(srv, s)
 	registerCodegenTools(srv, s)
+	registerDiagramTools(srv, s)
 }
