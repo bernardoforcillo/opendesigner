@@ -1,6 +1,8 @@
+# immagine pubblicata su Docker Hub: docker compose up -d
+# (per aggiornarla: docker compose pull). Per compilare dai sorgenti: compose.dev.yaml
 services:
   opendesigner:
-    build: .
+    image: bernardoforcillo/opendesigner:latest
     # la porta pubblicata ascolta su tutte le interfacce dell'host:
     # il servizio è raggiungibile anche dalla rete locale
     ports:

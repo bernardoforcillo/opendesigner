@@ -1,0 +1,11 @@
+# sviluppo: come compose.yaml, ma l'immagine è compilata dai sorgenti locali
+# a ogni avvio: docker compose -f compose.dev.yaml up
+services:
+  opendesigner:
+    extends:
+      file: compose.yaml
+      service: opendesigner
+    build: .
+    # un tag locale, per non sovrascrivere l'immagine scaricata da Docker Hub
+    image: opendesigner:dev
+    pull_policy: build
