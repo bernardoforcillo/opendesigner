@@ -40,7 +40,7 @@ function fakeCtx(): ToolContext {
 }
 const at = (x: number, y: number) => ({ clientX: x, clientY: y, shiftKey: false }) as PointerEvent;
 
-// Un frame 400x100 a (0,0) con auto layout: a, b, c da 50 a x = 0, 60, 120.
+// A 400x100 frame at (0,0) with auto layout: a, b, c of 50 at x = 0, 60, 120.
 function install(autoLayout: AutoLayoutLite | null) {
   useScene.setState({ camera: { x: 0, y: 0, zoom: 1 }, selection: [], marquee: null, snapGuides: [], gesture: null, sync: null, layoutDrop: null });
   useScene.getState().setScene({
@@ -60,10 +60,10 @@ const orderOf = () =>
     .sort((p, q) => (p.orderKey < q.orderKey ? -1 : 1))
     .map((n) => n.id);
 
-describe("trascinare un figlio di un auto layout", () => {
+describe("dragging a child of an auto layout", () => {
   beforeEach(() => install(AL));
 
-  it("non scrive x/y: mostra la linea d'inserimento e il contorno che segue il puntatore", () => {
+  it("does not write x/y: shows the insertion line and the outline following the pointer", () => {
     const sync = new FakeSync();
     useScene.getState().setSync(sync);
     const tool = createSelectTool();
@@ -73,16 +73,16 @@ describe("trascinare un figlio di un auto layout", () => {
     tool.onPointerMove!(at(170, 30), ctx);
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes.at("a")).toMatchObject({ x: 0, y: 0 }); // il nodo non si è mosso
+    expect(scene.nodes.at("a")).toMatchObject({ x: 0, y: 0 }); // the node did not move
     expect(sync.sent).toHaveLength(0);
     const drop = useScene.getState().layoutDrop;
     expect(drop).not.toBeNull();
-    // Il contorno è il riquadro di partenza di a traslato dello spostamento del puntatore.
+    // The outline is a's starting box translated by the pointer displacement.
     expect(drop!.ghost).toMatchObject({ x: 145, y: 5, width: 50, height: 50 });
-    expect(drop!.indicator.height).toBe(100); // alta quanto il frame
+    expect(drop!.indicator.height).toBe(100); // as tall as the frame
   });
 
-  it("al rilascio riordina con UN op di order_key e il layout rimette le posizioni", () => {
+  it("on release it reorders with ONE order_key op and the layout restores the positions", () => {
     const sync = new FakeSync();
     useScene.getState().setSync(sync);
     const tool = createSelectTool();
@@ -102,7 +102,7 @@ describe("trascinare un figlio di un auto layout", () => {
     expect(useScene.getState().gesture).toBeNull();
   });
 
-  it("l'intero riordino è UN passo di undo", () => {
+  it("the whole reorder is ONE undo step", () => {
     const sync = new FakeSync();
     useScene.getState().setSync(sync);
     const tool = createSelectTool();
@@ -117,7 +117,7 @@ describe("trascinare un figlio di un auto layout", () => {
     expect(useScene.getState().scene!.nodes.at("a").x).toBe(0);
   });
 
-  it("rilasciare dov'era non manda nulla e non lascia un gesto aperto", () => {
+  it("releasing where it was sends nothing and leaves no open gesture", () => {
     const sync = new FakeSync();
     useScene.getState().setSync(sync);
     const tool = createSelectTool();
@@ -132,7 +132,7 @@ describe("trascinare un figlio di un auto layout", () => {
     expect(orderOf()).toEqual(["a", "b", "c"]);
   });
 
-  it("Esc a metà trascinamento annulla tutto: niente op, anteprima spenta", () => {
+  it("Esc mid-drag cancels everything: no op, preview off", () => {
     const sync = new FakeSync();
     useScene.getState().setSync(sync);
     const tool = createSelectTool();
@@ -143,13 +143,13 @@ describe("trascinare un figlio di un auto layout", () => {
     tool.onKeyDown!({ key: "Escape", preventDefault: vi.fn() } as unknown as KeyboardEvent, ctx);
     expect(useScene.getState().layoutDrop).toBeNull();
     expect(useScene.getState().gesture).toBeNull();
-    // Il pointerup che arriva comunque dopo Esc non deve riordinare.
+    // The pointerup that arrives anyway after Esc must not reorder.
     tool.onPointerUp!(at(170, 30), ctx);
     expect(sync.sent).toHaveLength(0);
     expect(orderOf()).toEqual(["a", "b", "c"]);
   });
 
-  it("un click senza movimento non apre nessun riordino", () => {
+  it("a click without movement opens no reorder", () => {
     const sync = new FakeSync();
     useScene.getState().setSync(sync);
     const tool = createSelectTool();
@@ -161,8 +161,8 @@ describe("trascinare un figlio di un auto layout", () => {
   });
 });
 
-describe("trascinare un figlio di un frame SENZA auto layout", () => {
-  it("si sposta con x/y come sempre (nessun riordino)", () => {
+describe("dragging a child of a frame WITHOUT auto layout", () => {
+  it("moves with x/y as usual (no reorder)", () => {
     install(null);
     const sync = new FakeSync();
     useScene.getState().setSync(sync);

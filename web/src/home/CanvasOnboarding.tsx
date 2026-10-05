@@ -11,21 +11,21 @@ import { checklistSteps, onboardingMode, screenNodes, type ChecklistStep } from 
 import { loadDocPrefs, saveDocPrefs, SHIPPED_EVENT, type DocPrefs } from "./docPrefs";
 import { applyTemplate, type StartClient } from "./startDocument";
 
-// L'ONBOARDING DENTRO L'EDITOR, sopra la tela ma MAI contro di essa:
+// ONBOARDING INSIDE THE EDITOR, over the canvas but NEVER against it:
 //
-//  - documento senza schermate -> una scheda al centro, "Da dove parti?": i
-//    template (applicati a QUESTO documento), "Disegna una schermata (A)" e la
-//    checklist dei quattro passi;
-//  - con le schermate ma la checklist incompleta -> una scheda compatta in alto
-//    a destra che mostra i passi mancanti e si spunta da sola;
-//  - chiusa (la X) o completata -> sparisce, e la scelta si ricorda per documento.
+//  - document without screens -> a card in the center, "Where do you want to start?": the
+//    templates (applied to THIS document), "Draw a screen (A)" and the
+//    four-step checklist;
+//  - with screens but an incomplete checklist -> a compact card at the top
+//    right showing the missing steps and ticking itself off;
+//  - closed (the X) or completed -> it disappears, and the choice is remembered per document.
 //
-// Il contenitore è `pointer-events-none`: i click sulla tela passano. Solo la
-// scheda li prende (`pointer-events-auto`).
+// The container is `pointer-events-none`: clicks on the canvas pass through. Only the
+// card takes them (`pointer-events-auto`).
 
 export const FIT_MARGIN = 72;
 
-/** La camera che inquadra tutte le schermate in un riquadro w x h (mai oltre 1:1). */
+/** The camera that frames all the screens in a w x h box (never beyond 1:1). */
 export function fitCameraToScreens(scene: SceneState, w: number, h: number) {
   const screens = screenNodes(scene);
   if (screens.length === 0 || w <= 0 || h <= 0) return null;
@@ -48,7 +48,7 @@ export function CanvasOnboarding({
   const [prefs, setPrefs] = useState<DocPrefs>(() => (docId ? loadDocPrefs(docId) : { dismissed: false, presented: false, shipped: false }));
   const prefsFor = useRef(docId);
 
-  // Il documento cambia (o arriva): rileggere le sue preferenze.
+  // The document changes (or arrives): re-read its preferences.
   useEffect(() => {
     if (!docId || prefsFor.current === docId) return;
     prefsFor.current = docId;
@@ -59,7 +59,7 @@ export function CanvasOnboarding({
     if (docId) setPrefs(saveDocPrefs(docId, patch));
   };
 
-  // Il prototipo è stato aperto: il passo "Presenta" è fatto, per sempre.
+  // The prototype was opened: the "Present" step is done, forever.
   useEffect(() => {
     if (!docId) return;
     return useFlowUi.subscribe((st, prev) => {
@@ -67,7 +67,7 @@ export function CanvasOnboarding({
     });
   }, [docId]);
 
-  // Il codice è stato esportato (l'evento lo emette la modalità Sviluppo).
+  // The code was exported (the event is emitted by Develop mode).
   useEffect(() => {
     if (!docId) return;
     const on = () => setPrefs(saveDocPrefs(docId, { shipped: true }));
@@ -75,9 +75,9 @@ export function CanvasOnboarding({
     return () => window.removeEventListener(SHIPPED_EVENT, on);
   }, [docId]);
 
-  // Un documento che si apre con le schermate (da template, da un collega, da
-  // un riapri) si inquadra intero: la tela parte sempre da (0,0) a zoom 1 e
-  // mostrerebbe un angolo della prima schermata. Una volta per documento.
+  // A document that opens with screens (from a template, from a colleague, from
+  // a reopen) is framed whole: the canvas always starts at (0,0) at zoom 1 and
+  // would show a corner of the first screen. Once per document.
   const fitted = useRef("");
   const fit = () => {
     const scene = useScene.getState().scene;
@@ -101,8 +101,8 @@ export function CanvasOnboarding({
   );
 }
 
-// La parte che legge la scena a ogni modifica: montata SOLO finché la scheda è
-// viva, così un documento completato (o chiuso) non paga niente.
+// The part that reads the scene on every change: mounted ONLY while the card is
+// alive, so a completed (or closed) document pays nothing.
 function Live({
   docId, prefs, update, onDrawScreen, client, refit,
 }: {
@@ -113,12 +113,12 @@ function Live({
   const steps = useMemo(() => checklistSteps(scene, prefs), [scene, prefs]);
   const [busy, setBusy] = useState<{ id: string; done: number; total: number } | null>(null);
   const [error, setError] = useState<string | null>(null);
-  // Finché il template si sta applicando la scheda grande RESTA: il primo op che
-  // arriva porterebbe già "Disegna" a fatto e la farebbe cambiare in quella
-  // compatta, invitando a chiuderla (o a ricaricare) con il template a metà.
+  // While the template is being applied the big card STAYS: the first op that
+  // arrives would already make "Draw" done and switch it to the
+  // compact one, inviting to close it (or to reload) with the template half applied.
   const mode = busy ? "empty" : onboardingMode(scene, prefs.dismissed, steps);
 
-  // Tutti e quattro i passi fatti: la scheda ha finito il suo lavoro, per sempre.
+  // All four steps done: the card has done its job, forever.
   useEffect(() => {
     if (scene && steps.every((s) => s.done)) update({ dismissed: true });
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -132,9 +132,9 @@ function Live({
     setBusy({ id: t.id, done: 0, total: 1 });
     try {
       await applyTemplate(client, docId, pageId, t, { clientId: "template", onProgress: (done, total) => setBusy({ id: t.id, done, total }) });
-      // Gli op tornano dallo stream: si inquadra (e la scheda grande lascia il
-      // posto) solo quando c'è tutto -- nodi E transizioni --, non alla prima
-      // schermata che arriva.
+      // The ops come back from the stream: we frame (and the big card gives up its
+      // place) only when everything is there -- nodes AND transitions --, not at the first
+      // screen that arrives.
       const built = t.build(pageId, () => "x");
       const wantNodes = built.nodes.length, wantTransitions = built.transitions.length;
       for (let i = 0; i < 50; i++) {
@@ -189,12 +189,12 @@ function EmptyCard({
   return (
     <div className="absolute inset-0 flex items-center justify-center p-4">
       <section
-        aria-label="Da dove parti?"
+        aria-label="Where do you want to start?"
         className="pointer-events-auto relative w-full max-w-[460px] rounded-2xl bg-raised p-5 text-fg shadow-pop"
       >
-        <CloseButton onClose={onClose} label="Chiudi e non mostrare più per questo documento" />
-        <h2 className="pr-6 text-[16px] font-semibold tracking-[-0.01em]">Da dove parti?</h2>
-        <p className="mt-0.5 text-[13px] text-fg-muted">Un template ti dà schermate già collegate da provare; oppure disegna la tua.</p>
+        <CloseButton onClose={onClose} label="Close and don't show again for this document" />
+        <h2 className="pr-6 text-[16px] font-semibold tracking-[-0.01em]">Where do you want to start?</h2>
+        <p className="mt-0.5 text-[13px] text-fg-muted">A template gives you screens that are already connected, ready to try; or draw your own.</p>
 
         <div className="mt-3.5 grid grid-cols-2 gap-2">
           {choices.map((t) => (
@@ -202,14 +202,14 @@ function EmptyCard({
               key={t.id}
               onPress={() => onPick(t)}
               isDisabled={!!busy}
-              aria-label={`Applica il template ${t.name}`}
+              aria-label={`Apply the ${t.name} template`}
               className="flex items-start gap-2 rounded-lg border border-line bg-surface p-2.5 text-left outline-none hover:border-line-strong hover:bg-surface-2 focus-visible:shadow-[var(--ring)] disabled:opacity-50"
             >
               <span className="mt-px flex h-6 w-6 shrink-0 items-center justify-center rounded-md bg-accent-soft text-accent"><Icon name={t.icon} size={13} /></span>
               <span className="min-w-0">
                 <span className="block truncate text-[13px] font-semibold">{t.name}</span>
                 <span className="block text-[11px] leading-snug text-fg-subtle">
-                  {busy?.id === t.id ? `Applico… ${busy.total > 1 ? Math.round((busy.done / busy.total) * 100) : 0}%` : t.tagline}
+                  {busy?.id === t.id ? `Applying… ${busy.total > 1 ? Math.round((busy.done / busy.total) * 100) : 0}%` : t.tagline}
                 </span>
               </span>
             </RacButton>
@@ -222,10 +222,10 @@ function EmptyCard({
           isDisabled={!!busy}
           className="mt-2.5 flex h-9 w-full items-center justify-center gap-2 rounded-lg bg-accent text-[13px] font-medium text-accent-fg outline-none hover:bg-accent-hover focus-visible:shadow-[var(--ring)] disabled:opacity-50"
         >
-          <Icon name="frame" size={14} /> Disegna una schermata <Kbd>A</Kbd>
+          <Icon name="frame" size={14} /> Draw a screen <Kbd>A</Kbd>
         </RacButton>
 
-        <ol aria-label="Passi" className="mt-4 flex items-center justify-between gap-1 border-t border-line pt-3.5">
+        <ol aria-label="Steps" className="mt-4 flex items-center justify-between gap-1 border-t border-line pt-3.5">
           {steps.map((s, i) => (
             <li key={s.id} data-done={s.done} className="flex items-center gap-1.5 text-[12px] text-fg-muted">
               <Check done={s.done} n={i + 1} />
@@ -244,14 +244,14 @@ function ProgressCard({ steps, onClose }: { steps: ChecklistStep[]; onClose: () 
   const next = steps.find((s) => !s.done);
   return (
     <section
-      aria-label="Primi passi"
+      aria-label="Getting started"
       className="pointer-events-auto absolute right-3 top-3 w-[232px] rounded-xl bg-raised p-3 text-fg shadow-pop"
     >
-      <CloseButton onClose={onClose} label="Chiudi i primi passi" />
+      <CloseButton onClose={onClose} label="Close getting started" />
       <h2 className="flex items-baseline gap-1.5 pr-6 text-[13px] font-semibold">
-        Primi passi <span className="text-[11px] font-medium tabular-nums text-fg-subtle">{done}/{steps.length}</span>
+        Getting started <span className="text-[11px] font-medium tabular-nums text-fg-subtle">{done}/{steps.length}</span>
       </h2>
-      <ol aria-label="Passi" className="mt-2 flex flex-col gap-1.5">
+      <ol aria-label="Steps" className="mt-2 flex flex-col gap-1.5">
         {steps.map((s, i) => (
           <li key={s.id} data-done={s.done} className="flex items-center gap-2 text-[12px]">
             <Check done={s.done} n={i + 1} />

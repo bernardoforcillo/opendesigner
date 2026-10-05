@@ -40,7 +40,7 @@ describe("frameTool", () => {
     useScene.getState().setScene(emptyScene("doc1", "t"));
   });
 
-  it("un drag crea un FRAME bianco che ritaglia i figli, sul box trascinato", () => {
+  it("a drag creates a white FRAME that clips its children, on the dragged box", () => {
     const tool = createFrameTool();
     const { ctx, sent } = fakeCtx();
     tool.onPointerDown!(at(10, 20), ctx);
@@ -52,11 +52,11 @@ describe("frameTool", () => {
     expect(n).toMatchObject({ name: "Frame", x: 10, y: 20, width: 200, height: 100, parentId: "page1" });
     const fill = n.fills[0].kind;
     expect(fill.case === "solid" && fill.value.color).toMatchObject({ r: 1, g: 1, b: 1, a: 1 });
-    // Nessun auto layout di partenza: i figli stanno dove li si mette.
+    // No auto layout to start with: the children stay where you put them.
     expect(n.shape.case === "frame" && n.shape.value.autoLayout).toBeUndefined();
   });
 
-  it("un semplice click crea un frame della misura di default", () => {
+  it("a plain click creates a frame of the default size", () => {
     const tool = createFrameTool();
     const { ctx, sent } = fakeCtx();
     tool.onPointerDown!(at(5, 5), ctx);
@@ -64,7 +64,7 @@ describe("frameTool", () => {
     expect(created(sent[0])).toMatchObject({ width: DEFAULT_FRAME_WIDTH, height: DEFAULT_FRAME_HEIGHT });
   });
 
-  it("il rettangolo continua ad avere il suo grigio (la config fill non lo tocca)", async () => {
+  it("the rectangle keeps its own gray (the fill config does not touch it)", async () => {
     const { createRectTool } = await import("./rectTool");
     const tool = createRectTool();
     const { ctx, sent } = fakeCtx();

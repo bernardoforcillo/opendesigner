@@ -7,57 +7,57 @@ import { uploadAsset, type AssetRef } from "../rpc/assets";
 import { makeCreateNodeOp, uuid } from "./ops";
 import { importSvgFile, isSvgFile } from "./svgImport";
 
-// TRASCINA UN'IMMAGINE SUL CANVAS (traccia 3, task 3).
+// DROP AN IMAGE ONTO THE CANVAS (track 3, task 3).
 //
-// Il percorso completo di un rilascio, in quest'ordine:
-//   1. MISURA il file in locale (l'aspetto naturale, e la prova che è
-//      un'immagine decodificabile);
-//   2. lo CARICA su POST /assets-api/{docId}, che risponde con lo sha256;
-//   3. crea il nodo con l'HASH -- mai i byte -- in UN gesto solo.
+// The full path of a drop, in this order:
+//   1. MEASURE the file locally (the natural aspect, and the proof that it is
+//      a decodable image);
+//   2. UPLOAD it to POST /assets-api/{docId}, which answers with the sha256;
+//   3. create the node with the HASH -- never the bytes -- in ONE gesture only.
 //
-// La misura viene prima dell'upload di proposito: un file che il browser non sa
-// decodificare non arriva nemmeno al server, e l'aspetto serve comunque a
-// dimensionare il nodo. L'upload viene prima della creazione perché il nodo ha
-// bisogno dell'hash: creare prima e correggere poi vorrebbe dire due op per
-// un'azione sola, e un nodo che per un istante punta al nulla.
+// The measuring comes before the upload on purpose: a file the browser cannot
+// decode does not even reach the server, and the aspect is needed anyway to
+// size the node. The upload comes before creation because the node needs
+// the hash: creating first and fixing afterwards would mean two ops for
+// a single action, and a node that for an instant points at nothing.
 
 /**
- * Il lato lungo massimo (in unità mondo) di un'immagine appena rilasciata.
+ * The maximum long side (in world units) of a freshly dropped image.
  *
- * Una foto da 4000 px atterrerebbe altrimenti grande venti schermate: si vede
- * un angolo grigio e sembra che sia successo altro. Il rimpicciolimento è
- * PROPORZIONALE, quindi non deforma mai; l'utente può poi ingrandire.
+ * A 4000 px photo would otherwise land twenty screens wide: you see
+ * a gray corner and it seems that something else happened. The shrinking is
+ * PROPORTIONAL, so it never distorts; the user can enlarge it afterwards.
  */
 export const MAX_DROP_SIZE = 512;
 
-/** Lo scostamento fra più immagini rilasciate insieme. */
+/** The offset between several images dropped together. */
 export const STACK_OFFSET = 16;
 
 const NOT_AN_IMAGE =
-  "questo file non è un'immagine che il browser sappia leggere: usa PNG, JPEG, GIF o WebP";
+  "this file is not an image the browser can read: use PNG, JPEG, GIF or WebP";
 
-/** Le dimensioni naturali di un file immagine, in pixel. */
+/** The natural dimensions of an image file, in pixels. */
 export interface NaturalSize {
   width: number;
   height: number;
 }
 
-// Le due dipendenze di contorno (un decoder di immagini e la rete): nessuna
-// delle due esiste fuori da un browser, ed è ciò che rende questo percorso
-// verificabile senza uno.
+// The two surrounding dependencies (an image decoder and the network): neither
+// exists outside a browser, and that is what makes this path
+// verifiable without one.
 export interface ImageDropDeps {
   measure: (file: Blob) => Promise<NaturalSize>;
   upload: (docId: string, file: Blob) => Promise<AssetRef>;
 }
 
 /**
- * Le dimensioni naturali di un file, misurate dal browser.
+ * The natural dimensions of a file, measured by the browser.
  *
- * Passa da un `<img>` e da un object URL invece che da `createImageBitmap`
- * perché la domanda è "quanto è grande", non "dammi i pixel decodificati": un
- * ImageBitmap sarebbe una copia decodificata da chiudere subito dopo. L'URL si
- * revoca in ogni caso, riuscita o no -- altrimenti ogni file rilasciato
- * lascerebbe un blob vivo per tutta la sessione.
+ * It goes through an `<img>` and an object URL rather than `createImageBitmap`
+ * because the question is "how big is it", not "give me the decoded pixels": an
+ * ImageBitmap would be a decoded copy to close right afterwards. The URL is
+ * revoked in every case, success or not -- otherwise every dropped file
+ * would leave a live blob for the whole session.
  */
 export function measureImage(file: Blob): Promise<NaturalSize> {
   return new Promise((resolve, reject) => {
@@ -71,9 +71,9 @@ export function measureImage(file: Blob): Promise<NaturalSize> {
       done(() =>
         img.naturalWidth > 0 && img.naturalHeight > 0
           ? resolve({ width: img.naturalWidth, height: img.naturalHeight })
-          : reject(new Error("immagine di dimensione nulla")),
+          : reject(new Error("image has zero size")),
       );
-    img.onerror = () => done(() => reject(new Error("immagine non decodificabile")));
+    img.onerror = () => done(() => reject(new Error("image cannot be decoded")));
     img.src = url;
   });
 }
@@ -84,15 +84,15 @@ const defaultDeps: ImageDropDeps = {
 };
 
 /**
- * Il box del nodo per un'immagine di dimensioni naturali `size` rilasciata in
- * `point`: aspetto naturale, lato lungo al più MAX_DROP_SIZE, CENTRATO sul
- * punto.
+ * The node box for an image of natural size `size` dropped at
+ * `point`: natural aspect, long side at most MAX_DROP_SIZE, CENTERED on the
+ * point.
  *
- * Centrato e non con l'angolo sul cursore: un rilascio non ha un rettangolo
- * trascinato a cui ancorare un angolo, e l'utente sta indicando DOVE deve
- * stare l'immagine. Con l'angolo in alto a sinistra sul puntatore, una foto
- * grande finirebbe quasi tutta in basso a destra rispetto a dove è stata
- * lasciata.
+ * Centered and not with the corner on the cursor: a drop has no dragged
+ * rectangle to anchor a corner to, and the user is indicating WHERE the image
+ * should be. With the top-left corner on the pointer, a large photo
+ * would end up almost entirely to the bottom right of where it was
+ * dropped.
  */
 export function dropBox(size: NaturalSize, point: { x: number; y: number }) {
   const longest = Math.max(size.width, size.height);
@@ -102,25 +102,25 @@ export function dropBox(size: NaturalSize, point: { x: number; y: number }) {
   return { x: point.x - width / 2, y: point.y - height / 2, width, height };
 }
 
-/** I file di un trascinamento. Vuoto quando non ce ne sono (testo, link, …). */
+/** The files of a drag. Empty when there are none (text, link, …). */
 export function imageFilesOf(dt: DataTransfer | null): File[] {
   return dt?.files ? Array.from(dt.files) : [];
 }
 
-/** Un trascinamento porta dei file? È la domanda del dragover, dove i `files`
- *  non sono ancora leggibili e c'è solo l'elenco dei tipi. */
+/** Does a drag carry files? It is the dragover question, where `files`
+ *  are not yet readable and there is only the list of types. */
 export function carriesFiles(dt: DataTransfer | null): boolean {
   const types = dt?.types;
   return types ? Array.from(types).includes("Files") : false;
 }
 
 /**
- * Rilascia dei file sul canvas: carica le immagini e crea i nodi.
+ * Drops files onto the canvas: uploads the images and creates the nodes.
  *
- * Ritorna gli id creati (vuoto se non è atterrato niente). Ogni fallimento --
- * un file che non è un'immagine, un upload rifiutato -- finisce in `notice` e
- * non in `lastError`: nessuna modifica è stata annullata, non è stata nemmeno
- * tentata. È lo stesso canale dell'export e dell'incolla non supportato.
+ * Returns the created ids (empty if nothing landed). Every failure --
+ * a file that is not an image, a rejected upload -- ends up in `notice` and
+ * not in `lastError`: no change was undone, it was not even
+ * attempted. It is the same channel as export and unsupported paste.
  */
 export async function dropImages(
   files: readonly File[],
@@ -130,9 +130,9 @@ export async function dropImages(
   const docId = useScene.getState().scene?.id;
   if (!docId || files.length === 0) return [];
 
-  // Gli SVG NON sono immagini raster: si importano come NODI modificabili
-  // (tools/svgImport.ts), uno per file, centrati sul punto del rilascio e
-  // ciascuno in un gesto proprio. Il resto del rilascio prosegue come sempre.
+  // SVGs are NOT raster images: they are imported as editable NODES
+  // (tools/svgImport.ts), one per file, centered on the drop point and
+  // each in its own gesture. The rest of the drop proceeds as usual.
   const svgs = files.filter(isSvgFile);
   if (svgs.length > 0) {
     const rest = files.filter((f) => !isSvgFile(f));
@@ -144,46 +144,46 @@ export async function dropImages(
     }
     return [...restIds, ...svgIds];
   }
-  // Stessa guardia di incolla e undo/redo (store.ts): a gesto aperto gli op
-  // entrerebbero nella BASE del gesto in corso, e il pointerup successivo
-  // ricostruirebbe la scena su uno stato che non è quello di partenza.
+  // Same guard as paste and undo/redo (store.ts): with a gesture open the ops
+  // would enter the BASE of the gesture in progress, and the next pointerup
+  // would rebuild the scene on a state that is not the starting one.
   if (useScene.getState().gesture) return [];
 
-  // Misura e upload in PARALLELO fra i file (sono indipendenti e ognuno è un
-  // giro di rete), ma il risultato resta indicizzato: l'ordine dei nodi creati
-  // è quello dei file rilasciati, non quello in cui il server ha risposto.
+  // Measure and upload in PARALLEL across files (they are independent and each is
+  // a network round trip), but the result stays indexed: the order of the created nodes
+  // is that of the dropped files, not the one in which the server answered.
   //
-  // Ogni esito riuscito si porta dietro l'INDICE del file da cui viene. È
-  // l'unico modo di risalire al file dopo che i falliti sono stati scartati:
-  // reindicizzare `files` con la posizione nell'elenco filtrato significa
-  // leggere il nome del file SBAGLIATO appena uno dei precedenti fallisce -- e
-  // quel nome finisce in un op CreateNode, cioè sul disco e nel pannello.
+  // Every successful outcome carries the INDEX of the file it comes from. It is
+  // the only way to get back to the file after the failed ones have been discarded:
+  // reindexing `files` with the position in the filtered list means
+  // reading the WRONG file name as soon as one of the previous ones fails -- and
+  // that name ends up in a CreateNode op, i.e. on disk and in the panel.
   const results = await Promise.all(
     files.map(async (
       file,
       index,
     ): Promise<{ ref: AssetRef; size: NaturalSize; index: number } | string> => {
-      // Il tipo dichiarato dal sistema operativo è un filtro A BUON MERCATO,
-      // non l'autorità: serve a non decodificare (e non caricare) il video da
-      // due gigabyte che qualcuno ha trascinato per sbaglio. Un tipo VUOTO --
-      // estensione ignota -- non dice niente e passa alla misura, che è chi
-      // decide davvero.
+      // The type declared by the operating system is a CHEAP filter,
+      // not the authority: it serves to avoid decoding (and uploading) the two-gigabyte
+      // video someone dragged by mistake. An EMPTY type --
+      // unknown extension -- says nothing and goes on to the measuring, which is what
+      // really decides.
       if (file.type !== "" && !file.type.startsWith("image/")) {
-        return `${file.name || "il file"}: ${NOT_AN_IMAGE}`;
+        return `${file.name || "the file"}: ${NOT_AN_IMAGE}`;
       }
       let size: NaturalSize;
       try {
         size = await deps.measure(file);
       } catch {
-        // Il tipo dichiarato dal sistema operativo non decide niente (può essere
-        // ""): è la misura a dire se il browser sa leggere questo file -- e se
-        // non lo sa leggere lui, non potrà nemmeno disegnarlo.
-        return `${file.name || "il file"}: ${NOT_AN_IMAGE}`;
+        // The type declared by the operating system decides nothing (it may be
+        // ""): it is the measuring that says whether the browser can read this file -- and if
+        // it cannot read it, it will not be able to draw it either.
+        return `${file.name || "the file"}: ${NOT_AN_IMAGE}`;
       }
       try {
         return { ref: await deps.upload(docId, file), size, index };
       } catch (err) {
-        return `${file.name || "il file"}: ${err instanceof Error ? err.message : String(err)}`;
+        return `${file.name || "the file"}: ${err instanceof Error ? err.message : String(err)}`;
       }
     }),
   );
@@ -193,9 +193,9 @@ export async function dropImages(
     (r): r is { ref: AssetRef; size: NaturalSize; index: number } => typeof r !== "string",
   );
 
-  // Lo store si rilegge ADESSO: fra l'inizio e la fine degli upload l'utente ha
-  // continuato a lavorare, e la scena (le order key, un gesto appena aperto,
-  // perfino il documento) può essere cambiata.
+  // The store is re-read NOW: between the start and the end of the uploads the user
+  // kept working, and the scene (the order keys, a gesture just opened,
+  // even the document) may have changed.
   const store = useScene.getState();
   const scene = store.scene;
   if (!scene || scene.id !== docId || store.gesture || ok.length === 0) {
@@ -206,10 +206,10 @@ export async function dropImages(
   let key = nextOrderKey(scene);
   const ops: Op[] = [];
   const ids: string[] = [];
-  // `i` è la posizione fra i RIUSCITI e `index` quella fra i file rilasciati:
-  // sono due cose diverse e servono a due cose diverse. Lo scostamento va con
-  // `i`, così tre immagini di cui la prima fallita atterrano attaccate invece
-  // che con un buco; il nome va con `index`, perché è il file a portarlo.
+  // `i` is the position among the SUCCEEDED and `index` the one among the dropped files:
+  // they are two different things and serve two different purposes. The offset goes with
+  // `i`, so three images of which the first failed land adjacent instead of
+  // with a hole; the name goes with `index`, because it is the file that carries it.
   ok.forEach(({ ref, size, index }, i) => {
     const id = uuid();
     const box = dropBox(size, { x: point.x + i * STACK_OFFSET, y: point.y + i * STACK_OFFSET });
@@ -219,13 +219,13 @@ export async function dropImages(
           id,
           parentId: scene.pages[0]?.id ?? "",
           orderKey: key,
-          // Il nome del file come nome del livello: è così che l'utente
-          // riconosce l'immagine nel pannello, e non costa niente.
+          // The file name as the layer name: it is how the user
+          // recognizes the image in the panel, and it costs nothing.
           name: files[index]?.name ?? "Image",
           visible: true,
           opacity: 1,
           ...box,
-          // L'HASH, non i byte: è l'invariante dell'intero percorso.
+          // The HASH, not the bytes: it is the invariant of the whole path.
           shape: { case: "image", value: { assetHash: ref.hash } },
         }),
       ),
@@ -234,8 +234,8 @@ export async function dropImages(
     key = orderKeyBetween(key, null);
   });
 
-  // UN gesto per rilascio, non uno per file: un Ctrl+Z toglie quello che
-  // l'utente ha lasciato cadere, tutto insieme.
+  // ONE gesture per drop, not one per file: a Ctrl+Z removes what the
+  // user dropped, all together.
   store.beginGesture();
   useScene.getState().setSelection(ids);
   useScene.getState().endGesture(ops);
@@ -243,25 +243,25 @@ export async function dropImages(
   return ids;
 }
 
-// Il minimo che serve per agganciarsi: i test passano un doppio invece di un
-// vero elemento (stesso motivo di ShortcutTarget in tools/clipboard.ts).
+// The minimum needed to hook in: the tests pass a double instead of a
+// real element (same reason as ShortcutTarget in tools/clipboard.ts).
 interface DropTarget {
   addEventListener(type: "dragover" | "drop", handler: (e: Event) => void): void;
   removeEventListener(type: "dragover" | "drop", handler: (e: Event) => void): void;
 }
 
 /**
- * Collega il rilascio di immagini a un elemento (il canvas della scena).
- * Ritorna la funzione di distacco.
+ * Hooks the image drop up to an element (the scene canvas).
+ * Returns the detach function.
  *
- * I due `preventDefault` non sono formalità:
- *  - su `dragover` è ciò che dichiara l'elemento come bersaglio valido; senza,
- *    l'evento `drop` non arriva MAI;
- *  - su `drop` è ciò che impedisce al browser di NAVIGARE verso il file
- *    rilasciato, cioè di buttare via il documento aperto.
- * Entrambi solo quando il trascinamento porta davvero dei file: un trascinamento
- * di altro genere (il riordino dei livelli, del testo selezionato) deve
- * continuare a comportarsi come si comporterebbe senza di noi.
+ * The two `preventDefault` calls are not formalities:
+ *  - on `dragover` it is what declares the element a valid target; without it,
+ *    the `drop` event NEVER arrives;
+ *  - on `drop` it is what stops the browser from NAVIGATING to the dropped
+ *    file, i.e. from throwing away the open document.
+ * Both only when the drag really carries files: a drag
+ * of another kind (layer reordering, selected text) must
+ * keep behaving as it would without us.
  */
 export function attachImageDrop(
   target: DropTarget,
@@ -276,8 +276,8 @@ export function attachImageDrop(
     const files = imageFilesOf((e as DragEvent).dataTransfer);
     if (files.length === 0) return;
     e.preventDefault();
-    // Il punto si legge SUBITO, in modo sincrono: dopo il primo await l'evento
-    // non è più affidabile (il browser lo ricicla) e il puntatore è altrove.
+    // The point is read IMMEDIATELY, synchronously: after the first await the event
+    // is no longer reliable (the browser recycles it) and the pointer is elsewhere.
     const point = toWorld(e);
     void dropImages(files, point, deps);
   };

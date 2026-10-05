@@ -1,8 +1,8 @@
 import { Button, Icon } from "../ui/ds";
 
-// LA SCHEDA D'ERRORE dell'editor quando il documento non c'è (link sbagliato,
-// documento eliminato, workspace diverso). Un vicolo cieco con una sola uscita
-// chiara: la Home.
+// THE EDITOR'S ERROR CARD when the document is missing (wrong link,
+// deleted document, different workspace). A dead end with a single clear
+// exit: the Home.
 
 export function DocUnavailable({ notFound, message }: { notFound: boolean; message?: string }) {
   return (
@@ -11,14 +11,14 @@ export function DocUnavailable({ notFound, message }: { notFound: boolean; messa
         <span className="flex h-10 w-10 items-center justify-center rounded-full bg-warn-soft text-warn">
           <Icon name="warning" size={20} />
         </span>
-        <h1 className="text-[15px] font-semibold">{notFound ? "Documento non trovato" : "Impossibile aprire il documento"}</h1>
+        <h1 className="text-[15px] font-semibold">{notFound ? "Document not found" : "Unable to open the document"}</h1>
         <p className="text-[13px] leading-relaxed text-fg-muted">
           {notFound
-            ? "Il link potrebbe essere sbagliato, oppure il documento è stato eliminato."
-            : (message ?? "Qualcosa è andato storto nel collegarsi al server.")}
+            ? "The link may be wrong, or the document has been deleted."
+            : (message ?? "Something went wrong while connecting to the server.")}
         </p>
         <Button variant="primary" icon="page" className="mt-2 h-8" onPress={() => { location.hash = ""; }}>
-          Torna alla Home
+          Back to Home
         </Button>
       </div>
     </div>

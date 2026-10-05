@@ -26,9 +26,9 @@ function sceneWith(nodes: NodeLite[]): SceneState {
   return s;
 }
 
-// --- LA DECISIONE, NUDA ------------------------------------------------------
-// snapAxis è la funzione dove vivono gli errori di un pixel: candidati dentro,
-// scelta fuori, nessun DOM, nessuna camera.
+// --- THE DECISION, BARE ------------------------------------------------------
+// snapAxis is the function where one-pixel errors live: candidates in,
+// choice out, no DOM, no camera.
 
 describe("snapAxis", () => {
   it("returns null when nothing is within the threshold", () => {
@@ -53,20 +53,20 @@ describe("snapAxis", () => {
   });
 
   it("breaks an exact tie deterministically, whatever the input order", () => {
-    // 95 e 105 sono equidistanti da 100: vince il delta minore (-5), e la
-    // scelta non dipende da come i candidati sono ordinati.
+    // 95 and 105 are equidistant from 100: the smaller delta (-5) wins, and the
+    // choice does not depend on how the candidates are ordered.
     expect(snapAxis([100], [95, 105], 5)).toEqual({ delta: -5, positions: [95] });
     expect(snapAxis([100], [105, 95], 5)).toEqual({ delta: -5, positions: [95] });
   });
 
   it("considers every moving line, not just the first", () => {
-    // Il bordo sinistro (0) non ha nulla vicino; il destro (10) sì.
+    // The left edge (0) has nothing near; the right one (10) does.
     expect(snapAxis([0, 5, 10], [12], 3)).toEqual({ delta: 2, positions: [12] });
   });
 
   it("reports every line the winning delta lands on", () => {
-    // Un solo delta (+2) allinea il bordo sinistro a 2 E il destro a 12: due
-    // guide, non una.
+    // A single delta (+2) aligns the left edge to 2 AND the right to 12: two
+    // guides, not one.
     expect(snapAxis([0, 10], [2, 12], 3)).toEqual({ delta: 2, positions: [2, 12] });
   });
 
@@ -84,7 +84,7 @@ describe("snapLines", () => {
   });
 });
 
-// --- LA SOGLIA È IN PIXEL SCHERMO -------------------------------------------
+// --- THE THRESHOLD IS IN SCREEN PIXELS --------------------------------------
 
 describe("worldThreshold", () => {
   it("shrinks in world units as the camera zooms in", () => {
@@ -94,7 +94,7 @@ describe("worldThreshold", () => {
   });
 });
 
-// --- DAL RETTANGOLO ALLA GUIDA ----------------------------------------------
+// --- FROM THE RECTANGLE TO THE GUIDE ----------------------------------------
 
 describe("snapBounds", () => {
   const target = { x: 0, y: 0, width: 100, height: 100 };
@@ -112,24 +112,24 @@ describe("snapBounds", () => {
   });
 
   it("snaps centre to centre", () => {
-    // centro del bersaglio: 50. Box largo 20 centrato a 52 -> delta -2.
+    // target center: 50. A 20-wide box centered at 52 -> delta -2.
     const r = snapBounds({ x: 42, y: 0, width: 20, height: 100 }, [target], 4);
     expect(r.dx).toBe(-2);
     expect(r.guides.some((g) => g.axis === "x" && g.pos === 50)).toBe(true);
   });
 
   it("snaps both axes independently in one call", () => {
-    // Il bordo destro (112) scatta a 100 e il bordo alto (-3) a 0. Il box è
-    // alto 60 apposta: con un box quadrato sarebbe il suo CENTRO (a 2) a
-    // vincere sull'asse y, che è corretto ma non è il caso che serve qui.
+    // The right edge (112) snaps to 100 and the top edge (-3) to 0. The box is
+    // 60 tall on purpose: with a square box it would be its CENTER (at 2)
+    // winning on the y axis, which is correct but is not the case needed here.
     const r = snapBounds({ x: 102, y: -3, width: 10, height: 60 }, [target], 4);
     expect(r).toMatchObject({ dx: -2, dy: 3 });
     expect(r.guides.map((g) => g.axis)).toEqual(["x", "y"]);
   });
 
   it("lets a CENTRE snap to an edge — the six lines all play in the same pool", () => {
-    // Box alto 10 con il bordo alto a -3 (distanza 3 dal bordo 0) e il centro a
-    // 2 (distanza 2): vince il centro.
+    // Box 10 tall with the top edge at -3 (distance 3 from edge 0) and the center at
+    // 2 (distance 2): the center wins.
     expect(snapBounds({ x: 500, y: -3, width: 10, height: 10 }, [target], 4).dy).toBe(-2);
   });
 
@@ -137,14 +137,14 @@ describe("snapBounds", () => {
     const a = { x: 0, y: 0, width: 10, height: 10 };
     const b = { x: 0, y: 200, width: 10, height: 10 };
     const r = snapBounds({ x: 1, y: 90, width: 30, height: 10 }, [a, b], 4);
-    // La guida verticale a x=0 tocca entrambi i bersagli e il box mosso:
-    // dall'alto di `a` (0) al fondo di `b` (210).
+    // The vertical guide at x=0 touches both targets and the moved box:
+    // from the top of `a` (0) to the bottom of `b` (210).
     expect(r.guides).toEqual([{ axis: "x", pos: 0, from: 0, to: 210 }]);
   });
 
   it("draws all three lines when a box of the same width lands on another", () => {
-    // Larghezze uguali: lo stesso scatto allinea sinistra, centro E destra.
-    // Sono tre allineamenti veri e ognuno merita la sua guida.
+    // Equal widths: the same snap aligns left, center AND right.
+    // They are three real alignments and each deserves its own guide.
     const r = snapBounds({ x: 1, y: 90, width: 10, height: 10 }, [{ x: 0, y: 0, width: 10, height: 10 }], 4);
     expect(r.dx).toBe(-1);
     expect(r.guides.map((g) => g.pos)).toEqual([0, 5, 10]);
@@ -160,8 +160,8 @@ describe("snapMoving", () => {
 
   it("snaps only the lines it is given — a lone right edge", () => {
     const box = { x: 50, y: 200, width: 52, height: 10 };
-    // Solo il bordo destro (102) può scattare: il sinistro (50) e il centro
-    // (76) restano fermi anche se avessero un candidato vicino.
+    // Only the right edge (102) can snap: the left (50) and the center
+    // (76) stay still even if they had a nearby candidate.
     const r = snapMoving(box, { x: [box.x + box.width], y: [] }, [target], 4);
     expect(r).toMatchObject({ dx: -2, dy: 0 });
     expect(r.guides).toEqual([{ axis: "x", pos: 100, from: 0, to: 210 }]);
@@ -186,8 +186,8 @@ describe("snapTargets", () => {
   });
 
   it("uses the AXIS-ALIGNED bounding box of a rotated node", () => {
-    // Un quadrato 10x10 a 45° ha un AABB di lato 10*sqrt(2) attorno allo stesso
-    // centro: è QUELLO che fa da bersaglio, non i suoi lati inclinati.
+    // A 10x10 square at 45° has an AABB of side 10*sqrt(2) around the same
+    // center: THAT is what serves as the target, not its slanted sides.
     const scene = sceneWith([node({ id: "r", x: 0, y: 0, width: 10, height: 10, rotation: 45 })]);
     const [t] = snapTargets(scene, []);
     const side = 10 * Math.SQRT2;

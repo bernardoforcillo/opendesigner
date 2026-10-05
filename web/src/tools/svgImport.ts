@@ -6,23 +6,23 @@ import { uploadAsset, type AssetRef } from "../rpc/assets";
 import { fontString } from "../renderer/text";
 import { SvgImportError, importSvg } from "../svg/importSvg";
 
-// IMPORTA UN SVG NEL DOCUMENTO.
+// IMPORT AN SVG INTO THE DOCUMENT.
 //
-// Un solo punto d'ingresso, `importSvgAt`, per i TRE modi in cui un SVG può
-// arrivare: trascinato sul canvas (tools/imageDrop.ts), incollato come testo
-// (tools/clipboard.ts) e scelto da "Importa SVG…" (ui/shell/DocMenu.tsx). Tutti
-// e tre finiscono qui perché le regole sono le stesse e devono restare tali:
-//   - UN gesto = UNA voce di undo, anche per cento nodi;
-//   - la radice importata si seleziona subito;
-//   - l'esito si dice nel canale `notice` (non `lastError`: nessuna modifica è
-//     stata annullata, è un'informazione): "Importato come N livelli" più gli
-//     avvisi su ciò che il modello non sa rappresentare.
+// A single entry point, `importSvgAt`, for the THREE ways an SVG can
+// arrive: dragged onto the canvas (tools/imageDrop.ts), pasted as text
+// (tools/clipboard.ts) and chosen from "Import SVG…" (ui/shell/DocMenu.tsx). All
+// three end up here because the rules are the same and must stay so:
+//   - ONE gesture = ONE undo entry, even for a hundred nodes;
+//   - the imported root is selected immediately;
+//   - the outcome is reported in the `notice` channel (not `lastError`: no change
+//     was undone, it is information): "Imported as N layers" plus the
+//     warnings about what the model cannot represent.
 //
-// L'import vero (testo -> op) è puro e vive in svg/importSvg.ts; qui c'è solo
-// ciò che tocca lo store e la rete: gli asset incorporati (data URI) si
-// caricano PRIMA di applicare gli op, per lo stesso motivo per cui imageDrop
-// carica prima di creare -- il nodo ha bisogno dell'hash, e creare-poi-correggere
-// vorrebbe dire due gesti per un'azione sola.
+// The actual import (text -> ops) is pure and lives in svg/importSvg.ts; here is only
+// what touches the store and the network: embedded assets (data URIs) are
+// uploaded BEFORE applying the ops, for the same reason imageDrop
+// uploads before creating -- the node needs the hash, and create-then-fix
+// would mean two gestures for a single action.
 
 export interface SvgImportDeps {
   upload: (docId: string, file: Blob) => Promise<AssetRef>;
@@ -33,12 +33,12 @@ const defaultDeps: SvgImportDeps = {
   upload: (docId, file) => uploadAsset(docId, file),
 };
 
-// La larghezza di una riga misurata come la misura il canvas (stessa font
-// string del renderer): serve ad allineare `text-anchor`. Senza contesto 2D
-// (jsdom) ritorna undefined e l'importer ripiega su una stima.
+// The width of a line measured the way the canvas measures it (same font
+// string as the renderer): used to align `text-anchor`. Without a 2D context
+// (jsdom) it returns undefined and the importer falls back to an estimate.
 function canvasTextMeasure(): ((text: string, style: TextStyleLite) => number) | undefined {
-  // Senza un contesto 2D vero (jsdom non ne ha: CanvasRenderingContext2D non
-  // esiste nemmeno come globale) non si tenta neanche di crearlo.
+  // Without a real 2D context (jsdom has none: CanvasRenderingContext2D does not
+  // even exist as a global) we do not even try to create one.
   if (typeof document === "undefined" || typeof CanvasRenderingContext2D === "undefined") return undefined;
   let ctx: CanvasRenderingContext2D | null = null;
   try {
@@ -54,21 +54,21 @@ function canvasTextMeasure(): ((text: string, style: TextStyleLite) => number) |
   };
 }
 
-/** Il testo è (probabilmente) un documento SVG? Radice <svg>, con o senza prologo XML. */
+/** Is the text (probably) an SVG document? <svg> root, with or without an XML prologue. */
 export function looksLikeSvg(text: string): boolean {
   const head = text.slice(0, 4096);
   if (/^\s*(?:<\?xml[^>]*\?>\s*)?(?:<!--[\s\S]*?-->\s*)*(?:<!DOCTYPE[^>]*>\s*)?<svg[\s>]/i.test(head)) return true;
-  // "contiene una radice <svg>": testo con del contorno (un commento, uno
-  // snippet incollato da un sito) -- ma che chiuda davvero l'elemento.
+  // "contains an <svg> root": text with surroundings (a comment, a
+  // snippet pasted from a site) -- but one that really closes the element.
   return /<svg[\s>][\s\S]*<\/svg\s*>/i.test(text) && !text.trimStart().startsWith("{");
 }
 
-/** Un file SVG, dal tipo dichiarato o dall'estensione (il tipo può essere vuoto). */
+/** An SVG file, by declared type or by extension (the type may be empty). */
 export function isSvgFile(file: { name?: string; type?: string }): boolean {
   return file.type === "image/svg+xml" || /\.svg$/i.test(file.name ?? "");
 }
 
-/** Il centro della parte di canvas visibile, in coordinate mondo. */
+/** The center of the visible part of the canvas, in world coordinates. */
 export function viewportCenter(): { x: number; y: number } {
   const cam = useScene.getState().camera;
   const el = typeof document === "undefined"
@@ -81,19 +81,19 @@ export function viewportCenter(): { x: number; y: number } {
 }
 
 export function importedNotice(levels: number, warnings: readonly string[]): string {
-  const head = `Importato come ${levels} ${levels === 1 ? "livello" : "livelli"}`;
+  const head = `Imported as ${levels} ${levels === 1 ? "layer" : "layers"}`;
   if (warnings.length === 0) return head;
-  return `${head} · ${warnings.length === 1 ? "1 avviso" : `${warnings.length} avvisi`}: ${warnings.join("; ")}`;
+  return `${head} · ${warnings.length === 1 ? "1 warning" : `${warnings.length} warnings`}: ${warnings.join("; ")}`;
 }
 
 function failNotice(message: string): void {
-  useScene.setState({ notice: `Importazione SVG non riuscita: ${message}` });
+  useScene.setState({ notice: `SVG import failed: ${message}` });
 }
 
 /**
- * Importa `source` (il testo di un SVG) CENTRATO su `point` (coordinate mondo)
- * in un solo gesto, e seleziona il gruppo radice. Ritorna l'id della radice,
- * oppure null (con un `notice`) se non è stato importato niente.
+ * Imports `source` (the text of an SVG) CENTERED on `point` (world coordinates)
+ * in a single gesture, and selects the root group. Returns the root id,
+ * or null (with a `notice`) if nothing was imported.
  */
 export async function importSvgAt(
   source: string,
@@ -104,8 +104,8 @@ export async function importSvgAt(
   const first = useScene.getState();
   const docId = first.scene?.id;
   if (!first.scene || !docId) return null;
-  // Stessa guardia di incolla e rilascio immagini: a gesto aperto gli op
-  // entrerebbero nella base del gesto in corso.
+  // Same guard as paste and image drop: with a gesture open the ops
+  // would enter the base of the gesture in progress.
   if (first.gesture) return null;
 
   let result;
@@ -118,14 +118,14 @@ export async function importSvgAt(
       measureText: deps.measureText ?? canvasTextMeasure(),
     });
   } catch (err) {
-    failNotice(err instanceof SvgImportError ? err.message : "il file non è leggibile");
+    failNotice(err instanceof SvgImportError ? err.message : "the file is not readable");
     return null;
   }
   const warnings = [...result.warnings];
 
-  // Gli asset incorporati: ognuno si carica e il suo hash entra nel nodo. Un
-  // upload fallito lascia il nodo con hash vuoto, che il renderer disegna come
-  // segnaposto -- è meglio dell'intero import abortito per un'immagine.
+  // The embedded assets: each is uploaded and its hash goes into the node. A
+  // failed upload leaves the node with an empty hash, which the renderer draws as a
+  // placeholder -- better than the whole import aborted over one image.
   if (result.assets.length > 0) {
     const nodeOps = new Map(result.ops.map((op) => [op.kind.case === "createNode" ? op.kind.value.node?.id : "", op] as const));
     let failed = 0;
@@ -140,11 +140,11 @@ export async function importSvgAt(
         failed++;
       }
     }));
-    if (failed > 0) warnings.push(`${failed} ${failed === 1 ? "immagine non caricata" : "immagini non caricate"}: segnaposto al suo posto`);
+    if (failed > 0) warnings.push(`${failed} ${failed === 1 ? "image not uploaded" : "images not uploaded"}: placeholder in its place`);
   }
 
-  // Lo store si RILEGGE adesso: durante gli upload l'utente ha continuato a
-  // lavorare (order key, gesto, pagina, documento possono essere cambiati).
+  // The store is RE-READ now: during the uploads the user kept
+  // working (order key, gesture, page, document may have changed).
   const store = useScene.getState();
   const scene = store.scene;
   if (!scene || scene.id !== docId || store.gesture) return null;
@@ -163,18 +163,18 @@ export async function importSvgAt(
   return result.rootId;
 }
 
-/** Legge il testo di un file/blob (Blob.text() dove c'è, FileReader altrimenti). */
+/** Reads the text of a file/blob (Blob.text() where available, FileReader otherwise). */
 export function readFileText(file: Blob): Promise<string> {
   if (typeof file.text === "function") return file.text();
   return new Promise((resolve, reject) => {
     const r = new FileReader();
     r.onload = () => resolve(String(r.result ?? ""));
-    r.onerror = () => reject(r.error ?? new Error("lettura del file fallita"));
+    r.onerror = () => reject(r.error ?? new Error("file read failed"));
     r.readAsText(file);
   });
 }
 
-/** Importa un file SVG (drop o picker) centrato su `point`. */
+/** Imports an SVG file (drop or picker) centered on `point`. */
 export async function importSvgFile(
   file: File,
   point: { x: number; y: number },
@@ -184,16 +184,16 @@ export async function importSvgFile(
   try {
     text = await readFileText(file);
   } catch {
-    failNotice(`${file.name || "il file"} non è leggibile`);
+    failNotice(`${file.name || "the file"} is not readable`);
     return null;
   }
   return importSvgAt(text, point, { name: (file.name ?? "").replace(/\.svg$/i, "") }, deps);
 }
 
 /**
- * Apre il selettore di file e importa l'SVG scelto al centro della vista
- * ("Importa SVG…" del menu). `picker` è iniettabile per i test: in jsdom
- * non esiste un selettore di file vero.
+ * Opens the file picker and imports the chosen SVG at the center of the view
+ * ("Import SVG…" in the menu). `picker` is injectable for tests: in jsdom
+ * there is no real file picker.
  */
 export function pickSvgFile(
   picker: () => Promise<File | null> = defaultPicker,
@@ -210,9 +210,9 @@ function defaultPicker(): Promise<File | null> {
     input.style.display = "none";
     const done = (f: File | null) => { input.remove(); resolve(f); };
     input.addEventListener("change", () => done(input.files?.[0] ?? null));
-    // Annullare il selettore non emette `change`: `cancel` esiste nei browser
-    // recenti; in quelli che non lo emettono la promessa resta in sospeso senza
-    // costo (nessuna risorsa tenuta).
+    // Cancelling the picker does not emit `change`: `cancel` exists in recent
+    // browsers; in those that do not emit it the promise stays pending at no
+    // cost (no resource held).
     input.addEventListener("cancel", () => done(null));
     document.body.appendChild(input);
     input.click();

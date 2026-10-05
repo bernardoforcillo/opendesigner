@@ -21,31 +21,31 @@ function scene(): SceneState {
 
 describe("buildPreset", () => {
   const ids = PRESETS.map((p) => p.id);
-  it("sono sei", () => expect(ids).toEqual(["fadeIn", "slideUp", "pop", "spin", "pulse", "draw"]));
+  it("there are six", () => expect(ids).toEqual(["fadeIn", "slideUp", "pop", "spin", "pulse", "draw"]));
 
-  it.each(ids)("%s dà una clip valida con id, nome e bersaglio", (id) => {
+  it.each(ids)("%s gives a valid clip with id, name and target", (id) => {
     const s = scene();
-    const c = buildPreset(id, s, s.nodes.at("vec"), "nuova");
+    const c = buildPreset(id, s, s.nodes.at("vec"), "new");
     expect(c).not.toBeNull();
-    expect(c!.id).toBe("nuova");
+    expect(c!.id).toBe("new");
     expect(c!.name).not.toBe("");
-    expect(c!.targetId).toBe("A"); // la schermata che contiene il nodo
+    expect(c!.targetId).toBe("A"); // the screen that contains the node
     expect(isValidClip(s, c!)).toBe(true);
     expect(c!.tracks.every((t) => t.nodeId === "vec")).toBe(true);
   });
 
-  it("i valori sono relativi a quelli di base del nodo", () => {
+  it("the values are relative to the node's base ones", () => {
     const s = scene();
     const slide = buildPreset("slideUp", s, s.nodes.at("vec"), "k")!;
     const y = slide.tracks.find((t) => t.prop === "y")!;
-    expect(y.keyframes.map((k) => k.value)).toEqual([144, 120]); // parte 24 px sotto, finisce dov'è
+    expect(y.keyframes.map((k) => k.value)).toEqual([144, 120]); // starts 24 px below, ends where it is
     const op = slide.tracks.find((t) => t.prop === "opacity")!;
     expect(op.keyframes.at(-1)!.value).toBe(0.8);
     const spin = buildPreset("spin", s, s.nodes.at("vec"), "k")!;
     expect(spin.tracks[0].keyframes.map((k) => k.value)).toEqual([30, 390]);
   });
 
-  it("trigger: ingresso per i preset d'entrata, loop infinito per spin e pulse", () => {
+  it("trigger: enter for the entrance presets, infinite loop for spin and pulse", () => {
     const s = scene();
     const t = (id: PresetId) => { const c = buildPreset(id, s, s.nodes.at("vec"), "k")!; return [c.trigger, c.repeat]; };
     expect(t("fadeIn")).toEqual(["enter", 0]);
@@ -54,7 +54,7 @@ describe("buildPreset", () => {
     expect(t("pulse")).toEqual(["loop", -1]);
   });
 
-  it("Pop supera 1 e poi ritorna a 1; Pulse torna al punto di partenza (il loop non scatta)", () => {
+  it("Pop exceeds 1 and then returns to 1; Pulse returns to the starting point (the loop does not jump)", () => {
     const s = scene();
     const pop = buildPreset("pop", s, s.nodes.at("vec"), "k")!;
     const sc = pop.tracks.find((t) => t.prop === "scale")!;
@@ -66,14 +66,14 @@ describe("buildPreset", () => {
     expect(sampleClip(pulse, 0).get("vec")!.scale).toBe(sampleClip(pulse, pulse.duration).get("vec")!.scale);
   });
 
-  it("Draw esiste solo per i nodi con un tracciato", () => {
+  it("Draw exists only for nodes with a path", () => {
     const s = scene();
     expect(buildPreset("draw", s, s.nodes.at("vec"), "k")).not.toBeNull();
-    expect(buildPreset("draw", s, s.nodes.at("btn"), "k")).not.toBeNull(); // un rettangolo ha un perimetro
+    expect(buildPreset("draw", s, s.nodes.at("btn"), "k")).not.toBeNull(); // a rectangle has a perimeter
     expect(buildPreset("draw", s, s.nodes.at("txt"), "k")).toBeNull();
   });
 
-  it("il nome è libero: non ripete uno già in uso", () => {
+  it("the name is free: it does not repeat one already in use", () => {
     const s = scene();
     const first = buildPreset("fadeIn", s, s.nodes.at("vec"), "k1")!;
     const s2 = { ...s, clips: { k1: first } };
@@ -82,14 +82,14 @@ describe("buildPreset", () => {
   });
 });
 
-describe("applyPreset (un op, un passo di undo)", () => {
+describe("applyPreset (one op, one undo step)", () => {
   beforeEach(() => {
     useScene.setState({ undoStack: [], redoStack: [], gesture: null, sync: null });
     useScene.getState().setScene(scene());
     useTimeline.setState({ open: false, clipId: null });
   });
 
-  it("crea la clip con UN gesto, la apre e un undo la toglie", () => {
+  it("creates the clip with ONE gesture, opens it and an undo removes it", () => {
     const before = useScene.getState().undoStack.length;
     const c = applyPreset(useScene.getState().scene!, "vec", "fadeIn");
     expect(c).not.toBeNull();
@@ -102,7 +102,7 @@ describe("applyPreset (un op, un passo di undo)", () => {
     expect(useScene.getState().scene!.clips[c!.id]).toBeUndefined();
   });
 
-  it("un preset che non si applica non scrive niente", () => {
+  it("a preset that does not apply writes nothing", () => {
     const before = useScene.getState().undoStack.length;
     expect(applyPreset(useScene.getState().scene!, "txt", "draw")).toBeNull();
     expect(useScene.getState().undoStack.length).toBe(before);

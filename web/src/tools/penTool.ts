@@ -10,72 +10,72 @@ import { PEN_ANCHOR_GRAB_PX } from "../renderer/overlayRenderer";
 import { makeCreateNodeOp, uuid } from "./ops";
 import type { Tool, ToolContext } from "./types";
 
-// IL PEN TOOL.
+// THE PEN TOOL.
 //
-// Ha più fasi di qualunque altro strumento di questo editor, e per questo è
-// scritto come una MACCHINA A STATI ESPLICITA -- un nome più i suoi dati -- e
-// non come una manciata di booleani ("sto trascinando", "ho già cliccato",
-// "sto chiudendo"). La differenza non è di stile: con i booleani gli stati
-// impossibili sono rappresentabili (trascinando E chiudendo E senza ancoraggi)
-// e ogni handler deve ricordarsi di controllarli tutti; con il tipo qui sotto
-// un caso mancante è un errore di compilazione e l'insieme delle transizioni si
-// legge in un posto solo.
+// It has more phases than any other tool in this editor, and for that reason it is
+// written as an EXPLICIT STATE MACHINE -- a name plus its data -- and
+// not as a handful of booleans ("dragging", "already clicked",
+// "closing"). The difference is not stylistic: with booleans
+// impossible states are representable (dragging AND closing AND with no anchors)
+// and every handler must remember to check them all; with the type below
+// a missing case is a compile error and the set of transitions can be
+// read in one place.
 //
-// La macchina (penReduce) è PURA: niente store, niente camera, niente DOM.
-// Riceve punti già in coordinate MONDO e tolleranze già in unità mondo, e
-// ritorna lo stato nuovo più l'EFFETTO che il chiamante deve produrre. Tutto
-// l'I/O -- aprire il gesto, creare il nodo, pubblicare l'anteprima -- vive
-// nell'adattatore (createPenTool) qui sotto. Così le regole del disegno si
-// provano come una tabella di transizioni, senza doppi.
+// The machine (penReduce) is PURE: no store, no camera, no DOM.
+// It receives points already in WORLD coordinates and tolerances already in world units, and
+// returns the new state plus the EFFECT the caller must produce. All the
+// I/O -- opening the gesture, creating the node, publishing the preview -- lives in
+// the adapter (createPenTool) below. This way the drawing rules are
+// tested as a table of transitions, without doubles.
 
-// Sotto questa soglia (px SCHERMO, quindi indipendente dallo zoom) un gesto è
-// un CLICK e posa un ancoraggio d'angolo; sopra è un TRASCINAMENTO e tira le
-// maniglie. Stesso valore e stessa ragione di shapeTool.ts/textTool.ts: senza,
-// a zoom alto un tremolio di mezzo pixel regalerebbe a ogni click una maniglia
-// microscopica che nessuno ha chiesto.
+// Under this threshold (SCREEN px, hence independent of zoom) a gesture is
+// a CLICK and places a corner anchor; above it is a DRAG and pulls the
+// handles. Same value and same reason as shapeTool.ts/textTool.ts: without it,
+// at high zoom a half-pixel jitter would give every click a
+// microscopic handle that nobody asked for.
 export const PEN_CLICK_SLOP_PX = 3;
 
-// La tinta con cui nasce un path. Esplicita e non il grigio 0.6 delle forme
-// (shapeTool.ts): un contorno APERTO non ha area, esiste sullo schermo solo
-// come tratto da 1.5px (renderer/shapes.ts::VECTOR_STROKE_PX) e prende il
-// proprio colore dal riempimento del nodo -- il grigio pensato per un'area
-// piena, ridotto a un capello su fondo bianco, sarebbe quasi invisibile. Stessa
-// scelta (e stessa ragione) del nero di textTool.ts.
+// The tint a path is born with. Explicit and not the 0.6 gray of shapes
+// (shapeTool.ts): an OPEN outline has no area, it exists on screen only
+// as a 1.5px stroke (renderer/shapes.ts::VECTOR_STROKE_PX) and takes its
+// own color from the node's fill -- the gray meant for a solid
+// area, reduced to a hairline on a white background, would be almost invisible. Same
+// choice (and same reason) as the black of textTool.ts.
 export const PEN_FILL: FillLite = { r: 0.15, g: 0.15, b: 0.2, a: 1 };
 
-// --- la macchina a stati -----------------------------------------------------
+// --- the state machine -------------------------------------------------------
 
-// Quale maniglia sta tirando il trascinamento in corso:
-//  - "new"   l'ancoraggio è stato appena posato: il trascinamento tira le sue
-//            DUE maniglie in modo simmetrico (l'ancoraggio morbido standard);
-//  - "close" il pointerdown è caduto sul PRIMO ancoraggio: al rilascio il
-//            contorno si chiude, e il trascinamento tira la sola maniglia
-//            ENTRANTE -- quella del segmento di ritorno. L'uscente resta com'è:
-//            disegna il PRIMO segmento, deciso all'inizio, e deformarlo
-//            all'indietro sarebbe una modifica che l'utente non ha chiesto.
+// Which handle the current drag is pulling:
+//  - "new"   the anchor has just been placed: the drag pulls its
+//            TWO handles symmetrically (the standard smooth anchor);
+//  - "close" the pointerdown landed on the FIRST anchor: on release the
+//            outline closes, and the drag pulls only the INCOMING handle --
+//            that of the return segment. The outgoing one stays as it is:
+//            it draws the FIRST segment, decided at the start, and deforming it
+//            backwards would be a change the user did not ask for.
 export type PenGrip = "new" | "close";
 
 export type PenState =
-  // Nessun ancoraggio posato: nessun gesto aperto, niente da annullare.
+  // No anchor placed: no open gesture, nothing to undo.
   | { readonly name: "idle" }
-  // Pulsante PREMUTO su un ancoraggio: finché non si rilascia, il cursore ne
-  // definisce le maniglie.
+  // Button PRESSED on an anchor: until it is released, the cursor
+  // defines its handles.
   //
-  // DUE punti distinti, e la distinzione è tutto il fix del round 2:
-  //  - `base` è l'ancoraggio com'era al pointerdown. È l'ORIGINE DEL VETTORE
-  //    maniglia (le maniglie sono offset dall'ancoraggio) e si ricalcola da lui
-  //    a ogni move -- mai dall'ultimo valore, che sarebbe un accumulo;
-  //  - `origin` è il punto in cui il PUNTATORE è sceso. È da lui che si misura
-  //    "questo gesto è un click o un trascinamento?".
+  // TWO distinct points, and the distinction is the whole fix of round 2:
+  //  - `base` is the anchor as it was at pointerdown. It is the ORIGIN OF THE
+  //    handle VECTOR (handles are offsets from the anchor) and is recomputed from it
+  //    on every move -- never from the last value, which would be an accumulation;
+  //  - `origin` is the point where the POINTER went down. It is from it that we measure
+  //    "is this gesture a click or a drag?".
   //
-  // Confonderli è un bug vero e non un dettaglio: sul primo ancoraggio la presa
-  // di chiusura è 6px (PEN_ANCHOR_GRAB_PX) mentre la soglia del click è 3px
-  // (PEN_CLICK_SLOP_PX), quindi esiste una corona di 3-6px in cui si CHIUDE ma
-  // si è oltre soglia. Misurando dall'ancoraggio, un click fermo lì dentro --
-  // zero movimento del puntatore -- verrebbe letto come un trascinamento e
-  // curverebbe il segmento di ritorno che l'anteprima aveva appena disegnato
-  // dritto. E lo curverebbe in unità MONDO: a zoom 0.25 quei 6px sono 24 unità,
-  // che tornando a zoom 4 diventano un gonfiore da ~96px sullo schermo.
+  // Confusing them is a real bug and not a detail: on the first anchor the closing
+  // grab is 6px (PEN_ANCHOR_GRAB_PX) while the click threshold is 3px
+  // (PEN_CLICK_SLOP_PX), so there is a ring of 3-6px in which it CLOSES but
+  // we are beyond the threshold. Measuring from the anchor, a still click in there --
+  // zero pointer movement -- would be read as a drag and
+  // would curve the return segment that the preview had just drawn
+  // straight. And it would curve it in WORLD units: at zoom 0.25 those 6px are 24 units,
+  // which going back to zoom 4 become a ~96px bulge on screen.
   | {
       readonly name: "placing";
       readonly anchors: readonly AnchorLite[];
@@ -83,51 +83,51 @@ export type PenState =
       readonly base: AnchorLite;
       readonly origin: PointLite;
     }
-  // Pulsante rilasciato, path in corso: il prossimo click posa un ancoraggio (o
-  // chiude, se cade sul primo). `cursor` è dove cadrebbe: l'overlay ci disegna
-  // il segmento che segue il puntatore.
+  // Button released, path in progress: the next click places an anchor (or
+  // closes, if it lands on the first). `cursor` is where it would land: the overlay draws
+  // the segment that follows the pointer there.
   | {
       readonly name: "drawing";
       readonly anchors: readonly AnchorLite[];
       readonly cursor: PointLite;
     };
 
-// Riferimento CONDIVISO e non un oggetto nuovo a ogni transizione: è così che
-// l'adattatore riconosce "niente è cambiato" con un `!==` e non riscrive
-// l'anteprima nello store a ogni pointermove a mano alzata.
+// SHARED reference and not a new object on every transition: it is how
+// the adapter recognizes "nothing changed" with a `!==` and does not rewrite
+// the preview in the store on every hands-free pointermove.
 export const PEN_IDLE: PenState = { name: "idle" };
 
-// Gli eventi della macchina. `grab` e `slop` arrivano già in unità MONDO: la
-// conversione dai px SCHERMO la fa l'adattatore, che è l'unico che conosce la
-// camera (regola del progetto: la trasformazione non si ricalcola a mano, e chi
-// non ha bisogno della camera non la vede).
+// The machine's events. `grab` and `slop` arrive already in WORLD units: the
+// conversion from SCREEN px is done by the adapter, which is the only one that knows the
+// camera (project rule: the transformation is not recomputed by hand, and whoever
+// does not need the camera does not see it).
 export type PenEvent =
   | { readonly kind: "down"; readonly at: PointLite; readonly grab: number }
   | { readonly kind: "move"; readonly at: PointLite; readonly slop: number }
   | { readonly kind: "up"; readonly at: PointLite; readonly slop: number }
-  // Enter/Escape: termina il path aperto con quello che c'è.
+  // Enter/Escape: ends the open path with what is there.
   | { readonly kind: "commit" }
-  // Cambio tool, pointercancel, smontaggio: abbandona senza creare nulla.
+  // Tool change, pointercancel, unmount: abandons without creating anything.
   | { readonly kind: "abort" };
 
-// Il contorno finito, pronto per diventare un nodo.
+// The finished outline, ready to become a node.
 export interface PenPath {
   readonly anchors: readonly AnchorLite[];
   readonly closed: boolean;
 }
 
-// Cosa deve fare il chiamante DOPO la transizione. L'effetto è dichiarato dalla
-// macchina e prodotto dall'adattatore: è ciò che tiene la macchina pura.
-//  - "none"   niente: l'unica conseguenza è lo stato nuovo (e quindi
-//             l'anteprima, che ne è derivata). Vale anche per l'abbandono --
-//             il path in corso non ha mai toccato il documento, quindi
-//             lasciarlo cadere non chiede nessun lavoro all'adattatore;
-//  - "finish" creare il nodo con `path`: UN op sul filo, UNA voce di annulla,
-//             per l'intero disegno.
+// What the caller must do AFTER the transition. The effect is declared by the
+// machine and produced by the adapter: it is what keeps the machine pure.
+//  - "none"   nothing: the only consequence is the new state (and hence
+//             the preview, which is derived from it). It also applies to abandoning --
+//             the path in progress never touched the document, so
+//             dropping it asks no work of the adapter;
+//  - "finish" create the node with `path`: ONE op on the wire, ONE undo entry,
+//             for the entire drawing.
 //
-// Non esiste un effetto "apri il gesto": il gesto dello store è uno SOLO per
-// tutta l'applicazione, e il pen tool non lo occupa per i minuti che passano
-// fra il primo click e l'ultimo -- vedi finish() qui sotto.
+// There is no "open the gesture" effect: the store's gesture is a SINGLE one for
+// the whole application, and the pen tool does not occupy it for the minutes that pass
+// between the first click and the last -- see finish() below.
 export interface PenStep {
   readonly state: PenState;
   readonly effect: "none" | "finish";
@@ -138,21 +138,21 @@ function corner(p: PointLite): AnchorLite {
   return { x: p.x, y: p.y, inX: 0, inY: 0, outX: 0, outY: 0 };
 }
 
-// L'ancoraggio `base` con le maniglie tirate fino a `cursor`. Sotto la soglia
-// torna base IDENTICO: un click resta un angolo, e un trascinamento che rientra
-// nella soglia torna esattamente da dove era partito (nessuna isteresi, perché
-// il calcolo riparte sempre da base e non dall'ultimo valore).
+// The `base` anchor with the handles pulled to `cursor`. Below the threshold
+// it returns base IDENTICAL: a click stays a corner, and a drag that goes back within
+// the threshold returns exactly to where it started (no hysteresis, because
+// the computation always restarts from base and not from the last value).
 //
-// I DUE punti hanno due mestieri diversi, e vanno tenuti separati:
-//  - `origin` (dove è sceso il puntatore) decide SE c'è un trascinamento. Un
-//    click è un puntatore che non si è mosso, e questo è vero anche quando
-//    cade a 5px dal centro dell'ancoraggio che sta chiudendo -- la presa è
-//    generosa APPOSTA per invitarlo, e non può poi far pagare quella distanza
-//    come se fosse un gesto;
-//  - `base` (l'ancoraggio) è l'ORIGINE del vettore maniglia. Le maniglie sono
-//    OFFSET relativi all'ancoraggio (regola dei due spazi, vedi il proto su
-//    `Anchor`), quindi il delta cursore-ancoraggio È già la maniglia: nessuna
-//    sottrazione in più, e la simmetria è un semplice cambio di segno.
+// The TWO points have two different jobs, and must be kept separate:
+//  - `origin` (where the pointer went down) decides WHETHER there is a drag. A
+//    click is a pointer that did not move, and this is true even when it
+//    lands 5px from the center of the anchor being closed -- the grab is
+//    generous ON PURPOSE to invite it, and cannot then charge for that distance
+//    as if it were a gesture;
+//  - `base` (the anchor) is the ORIGIN of the handle vector. Handles are
+//    OFFSETS relative to the anchor (two-spaces rule, see the proto on
+//    `Anchor`), so the cursor-anchor delta IS already the handle: no extra
+//    subtraction, and the symmetry is a simple sign change.
 function pulled(
   base: AnchorLite,
   origin: PointLite,
@@ -170,9 +170,9 @@ function pulled(
 
 type Placing = Extract<PenState, { name: "placing" }>;
 
-// Gli ancoraggi con quello TRASCINATO aggiornato. Quale sia lo dice il grip:
-// "close" tira il primo (è lui che si sta per chiudere), "new" l'ultimo (è
-// quello appena posato).
+// The anchors with the DRAGGED one updated. Which one it is is given by the grip:
+// "close" pulls the first (the one about to be closed), "new" the last (the
+// one just placed).
 function dragged(s: Placing, cursor: PointLite, slop: number): AnchorLite[] {
   const i = s.grip === "close" ? 0 : s.anchors.length - 1;
   const next = [...s.anchors];
@@ -180,27 +180,27 @@ function dragged(s: Placing, cursor: PointLite, slop: number): AnchorLite[] {
   return next;
 }
 
-// LA TABELLA DELLE TRANSIZIONI. Ogni stato risponde a ogni evento; quelli che
-// non hanno senso in quello stato (un `up` spaiato, un secondo pointer premuto
-// mentre il primo trascina) tornano lo stato IDENTICO, che è anche il modo in
-// cui l'adattatore sa di non dover riscrivere niente.
+// THE TRANSITION TABLE. Each state responds to every event; those that
+// make no sense in that state (an unpaired `up`, a second pointer pressed
+// while the first is dragging) return the IDENTICAL state, which is also how
+// the adapter knows it does not need to rewrite anything.
 export function penReduce(state: PenState, ev: PenEvent): PenStep {
   switch (state.name) {
     case "idle": {
       if (ev.kind === "down") {
         const a = corner(ev.at);
-        // Qui `origin` e la posizione di `base` COINCIDONO -- l'ancoraggio nasce
-        // sotto il puntatore -- ma restano due cose diverse, e sul grip "close"
-        // divergono. Portarli entrambi anche quando coincidono è ciò che rende
-        // `dragged` una regola sola invece di due casi.
+        // Here `origin` and the position of `base` COINCIDE -- the anchor is born
+        // under the pointer -- but they remain two different things, and on the "close" grip
+        // they diverge. Carrying both even when they coincide is what makes
+        // `dragged` a single rule instead of two cases.
         return {
           state: { name: "placing", anchors: [a], grip: "new", base: a, origin: ev.at },
           effect: "none",
         };
       }
-      // Escape a mano alzata: non c'è nessun path da terminare e nessun nodo da
-      // creare -- ed è precisamente ciò che deve succedere. Idem per move/up
-      // (il puntatore che passa) e per abort (niente da abbandonare).
+      // Escape with the hand up: there is no path to end and no node to
+      // create -- and that is precisely what must happen. Same for move/up
+      // (the pointer passing by) and for abort (nothing to abandon).
       return { state, effect: "none" };
     }
 
@@ -210,22 +210,22 @@ export function penReduce(state: PenState, ev: PenEvent): PenStep {
           return { state: { ...state, anchors: dragged(state, ev.at, ev.slop) }, effect: "none" };
         case "up": {
           const anchors = dragged(state, ev.at, ev.slop);
-          // Rilascio su una chiusura: il path è finito. `closed` solo con
-          // almeno due ancoraggi -- con uno solo non esiste nessun segmento di
-          // ritorno da disegnare, e dirlo chiuso sarebbe una bugia nel
-          // documento (vedi vectorGeometry::subpathFills).
+          // Release on a closure: the path is finished. `closed` only with
+          // at least two anchors -- with just one there is no return
+          // segment to draw, and calling it closed would be a lie in the
+          // document (see vectorGeometry::subpathFills).
           return state.grip === "close"
             ? { state: PEN_IDLE, effect: "finish", path: { anchors, closed: anchors.length >= 2 } }
             : { state: { name: "drawing", anchors, cursor: ev.at }, effect: "none" };
         }
         case "commit":
-          // Il tasto è arrivato prima del rilascio: termina il path con gli
-          // ancoraggi come stanno adesso (state.anchors porta già la maniglia
-          // che il trascinamento sta tirando). CHIUSO se il puntatore è premuto
-          // sul primo ancoraggio: l'anteprima in quel momento sta disegnando il
-          // segmento di ritorno, e finire aperto darebbe un nodo diverso da
-          // quello che si sta guardando. Stessa soglia del rilascio -- con un
-          // ancoraggio solo non esiste nessun segmento di ritorno.
+          // The key arrived before the release: ends the path with the
+          // anchors as they are now (state.anchors already carries the handle
+          // the drag is pulling). CLOSED if the pointer is pressed
+          // on the first anchor: the preview at that moment is drawing the
+          // return segment, and finishing open would give a node different from
+          // the one being looked at. Same threshold as the release -- with a
+          // single anchor there is no return segment.
           return {
             state: PEN_IDLE,
             effect: "finish",
@@ -237,8 +237,8 @@ export function penReduce(state: PenState, ev: PenEvent): PenStep {
         case "abort":
           return { state: PEN_IDLE, effect: "none" };
         case "down":
-          // Un SECONDO pointer premuto mentre il primo trascina: il path è già
-          // impegnato, quel punto non è un ancoraggio.
+          // A SECOND pointer pressed while the first is dragging: the path is already
+          // committed, that point is not an anchor.
           return { state, effect: "none" };
       }
     }
@@ -249,16 +249,16 @@ export function penReduce(state: PenState, ev: PenEvent): PenStep {
           return { state: { ...state, cursor: ev.at }, effect: "none" };
         case "down": {
           const first = state.anchors[0];
-          // Entro la presa dal PRIMO ancoraggio: è una chiusura. Non aggiunge
-          // nessun ancoraggio -- il contorno torna su quello che c'è già -- e
-          // non finisce qui: il rilascio può ancora tirarne la maniglia
-          // entrante, che è la curva del segmento di ritorno.
+          // Within the grab of the FIRST anchor: it is a closure. It adds
+          // no anchor -- the outline goes back to the one already there -- and
+          // does not end here: the release can still pull its incoming
+          // handle, which is the curve of the return segment.
           if (Math.hypot(ev.at.x - first.x, ev.at.y - first.y) <= ev.grab) {
-            // L'UNICO caso in cui `origin` e `base` non coincidono: il click di
-            // chiusura è sceso VICINO al primo ancoraggio, non esattamente su di
-            // lui. La maniglia si misurerà dall'ancoraggio (`base`), ma se c'è
-            // un trascinamento lo dirà il puntatore (`origin`) -- altrimenti la
-            // sola generosità della presa passerebbe per un gesto.
+            // The ONLY case where `origin` and `base` do not coincide: the closing click
+            // went down NEAR the first anchor, not exactly on
+            // it. The handle will be measured from the anchor (`base`), but if there is
+            // a drag the pointer (`origin`) will say so -- otherwise the
+            // grab generosity alone would pass for a gesture.
             return {
               state: {
                 name: "placing",
@@ -287,17 +287,17 @@ export function penReduce(state: PenState, ev: PenEvent): PenStep {
         case "abort":
           return { state: PEN_IDLE, effect: "none" };
         case "up":
-          // Rilascio spaiato (il commit da tastiera è arrivato col pulsante
-          // ancora premuto): niente da fare.
+          // Unpaired release (the keyboard commit arrived with the button
+          // still pressed): nothing to do.
           return { state, effect: "none" };
       }
     }
   }
 }
 
-// Ciò che l'OVERLAY deve disegnare per questo stato. Derivata, non uno stato
-// parallelo: l'anteprima non può divergere dalla macchina perché non esiste
-// separatamente da lei.
+// What the OVERLAY must draw for this state. Derived, not a parallel
+// state: the preview cannot diverge from the machine because it does not exist
+// separately from it.
 function penPreviewOf(state: PenState): PenPreview | null {
   switch (state.name) {
     case "idle":
@@ -307,39 +307,39 @@ function penPreviewOf(state: PenState): PenPreview | null {
     case "placing":
       return {
         anchors: state.anchors,
-        // Niente segmento pendente: il cursore sta tirando una maniglia.
+        // No pending segment: the cursor is pulling a handle.
         next: null,
         active: state.grip === "close" ? 0 : state.anchors.length - 1,
-        // Il puntatore è premuto sul primo ancoraggio: il rilascio (o Invio)
-        // chiude, quindi l'anteprima mostra GIÀ il segmento di ritorno. È
-        // proprio quello che il trascinamento sta modellando, e la stessa
-        // condizione che decide `closed` nel path finito -- una sola regola per
-        // ciò che si vede e ciò che si ottiene.
+        // The pointer is pressed on the first anchor: the release (or Enter)
+        // closes, so the preview ALREADY shows the return segment. It is
+        // exactly what the drag is shaping, and the same
+        // condition that decides `closed` in the finished path -- a single rule for
+        // what you see and what you get.
         closed: state.grip === "close" && state.anchors.length >= 2,
       };
   }
 }
 
-// --- l'adattatore: la macchina attaccata allo store --------------------------
+// --- the adapter: the machine attached to the store --------------------------
 
 export function createPenTool(): Tool {
   let state: PenState = PEN_IDLE;
 
-  // px SCHERMO -> unità MONDO. È l'unico punto del tool che tocca la camera, e
-  // la legge da ToolContext invece di ricalcolare la trasformazione a mano.
+  // SCREEN px -> WORLD units. It is the only point of the tool that touches the camera, and
+  // it reads it from ToolContext instead of recomputing the transformation by hand.
   const slopOf = (ctx: ToolContext) => PEN_CLICK_SLOP_PX / ctx.getCamera().zoom;
   const grabOf = (ctx: ToolContext) => PEN_ANCHOR_GRAB_PX / ctx.getCamera().zoom;
 
-  // Il path finito diventa UN nodo con UN op. Il box del nodo è la bbox della
-  // sua geometria e gli ancoraggi diventano LOCALI: è l'invariante che il proto
-  // dichiara su VectorNode, e chi scrive i subpath è responsabile di
-  // mantenerlo (vedi vectorGeometry::normalizeVector, che è anche l'unica
-  // implementazione di quella bbox -- una seconda copia della matematica delle
-  // cubiche divergerebbe al primo caso limite).
+  // The finished path becomes ONE node with ONE op. The node's box is the bbox of
+  // its geometry and the anchors become LOCAL: it is the invariant the proto
+  // declares on VectorNode, and whoever writes the subpaths is responsible for
+  // maintaining it (see vectorGeometry::normalizeVector, which is also the only
+  // implementation of that bbox -- a second copy of the cubic
+  // math would diverge at the first edge case).
   //
-  // L'origine passata è (0,0) perché gli ancoraggi dell'anteprima sono già in
-  // coordinate MONDO: il nodo non esisteva, quindi non c'era nessuna origine da
-  // cui misurarli.
+  // The origin passed is (0,0) because the preview anchors are already in
+  // WORLD coordinates: the node did not exist, so there was no origin to
+  // measure them from.
   function finish(path: PenPath, ctx: ToolContext): void {
     const { subpaths, box } = normalizeVector({ x: 0, y: 0 }, [
       { anchors: [...path.anchors], closed: path.closed },
@@ -360,63 +360,63 @@ export function createPenTool(): Tool {
       shape: { case: "vector", value: { subpaths: toPbSubPaths(subpaths) } },
     });
     const store = useScene.getState();
-    // IL GESTO SI APRE QUI, non al primo ancoraggio.
+    // THE GESTURE OPENS HERE, not at the first anchor.
     //
-    // Il gesto dello store è UNO SOLO per tutta l'applicazione (store.gesture è
-    // un singolo slot). Tutti gli altri strumenti lo tengono aperto quanto dura
-    // un drag col pulsante premuto, cioè una finestra in cui nient'altro può
-    // succedere; il pen tool invece disegna in più click, con pause di durata
-    // arbitraria in mezzo, durante le quali l'utente può benissimo usare il
-    // pannello proprietà o quello dei livelli -- che aprono e CHIUDONO il loro
-    // gesto (ui/PropertiesPanel.tsx::scrub/scrubEnd, ui/LayersPanel.tsx). Un
-    // gesto tenuto aperto dal primo click verrebbe chiuso da sotto: al
-    // finish troveremmo lo slot vuoto e store.ts::endGesture cadrebbe nel ramo
-    // di misuso ("op inviati senza ricostruzione"), cioè un createNode
-    // sottomesso senza ribasare sulla base del gesto.
+    // The store's gesture is a SINGLE one for the whole application (store.gesture is
+    // a single slot). All the other tools keep it open for as long as a
+    // drag with the button pressed lasts, i.e. a window in which nothing else can
+    // happen; the pen tool instead draws over several clicks, with pauses of
+    // arbitrary length in between, during which the user may well use the
+    // properties panel or the layers one -- which open and CLOSE their own
+    // gesture (ui/PropertiesPanel.tsx::scrub/scrubEnd, ui/LayersPanel.tsx). A
+    // gesture held open from the first click would be closed from under us: at
+    // finish we would find the slot empty and store.ts::endGesture would fall into the
+    // misuse branch ("ops sent without rebuild"), i.e. a createNode
+    // submitted without rebasing on the gesture base.
     //
-    // Aprire e chiudere qui dà comunque UNA voce di annulla per l'intero
-    // disegno (è endGesture a spingerla, e gli op finali sono uno solo) e una
-    // base ricalcolata nell'istante giusto. È lo stesso schema di
+    // Opening and closing here still gives ONE undo entry for the whole
+    // drawing (it is endGesture that pushes it, and the final ops are just one) and a
+    // base recomputed at the right instant. It is the same scheme as
     // store.ts::endTextEditing.
     //
-    // `if (!store.gesture)`: se un gesto altrui è aperto proprio adesso ci si
-    // accoda invece di aprirne un secondo (stessa convenzione di
-    // PropertiesPanel::scrub) -- aprirlo comunque non farebbe che stampare un
-    // warning e usare lo stesso slot.
+    // `if (!store.gesture)`: if someone else's gesture is open right now we
+    // join it instead of opening a second one (same convention as
+    // PropertiesPanel::scrub) -- opening it anyway would only print a
+    // warning and use the same slot.
     if (!store.gesture) store.beginGesture();
-    // Il nodo si seleziona a gesto APERTO: endGesture riconcilia la selezione
-    // contro la scena FINALE, quindi può riferirsi a un id che esisterà solo
-    // dopo l'op (stesso meccanismo di textTool.ts). Selezionarlo è anche ciò
-    // che rende immediatamente visibili i suoi punti quando l'editing degli
-    // ancoraggi arriverà.
+    // The node is selected with the gesture OPEN: endGesture reconciles the selection
+    // against the FINAL scene, so it can refer to an id that will exist only
+    // after the op (same mechanism as textTool.ts). Selecting it is also what
+    // makes its points immediately visible when anchor
+    // editing arrives.
     store.setSelection([id]);
-    // UN solo op finale per l'INTERO disegno: una voce di annulla, un invio sul
-    // filo.
+    // A single final op for the WHOLE drawing: one undo entry, one send on the
+    // wire.
     store.endGesture([makeCreateNodeOp(node)]);
   }
 
-  // Una transizione: calcola, applica l'effetto, pubblica l'anteprima. È
-  // l'UNICO punto in cui `state` viene riassegnato.
+  // One transition: computes, applies the effect, publishes the preview. It is
+  // the ONLY point where `state` is reassigned.
   function step(ev: PenEvent, ctx: ToolContext): void {
     const before = state;
     const out = penReduce(state, ev);
     state = out.state;
-    // Solo se qualcosa è cambiato: un pointermove a mano alzata torna lo stato
-    // identico, e riscrivere `null` sopra `null` sveglierebbe i sottoscrittori
-    // dello store a ogni pixel di puntatore.
+    // Only if something changed: a hands-free pointermove returns the
+    // identical state, and rewriting `null` over `null` would wake the store
+    // subscribers at every pixel of the pointer.
     if (state !== before) useScene.getState().setPenPreview(penPreviewOf(state));
     switch (out.effect) {
       case "finish":
-        // `path` c'è sempre con "finish" (lo produce solo penReduce, che li
-        // costruisce insieme); la guardia è per il tipo, non per un caso reale.
+        // `path` is always there with "finish" (only penReduce produces it, and it
+        // builds them together); the guard is for the type, not for a real case.
         if (out.path) finish(out.path, ctx);
         break;
       case "none":
-        // Compreso l'abbandono: il path in corso vive SOLO nell'anteprima (già
-        // spenta qui sopra dal cambio di stato), non nel documento. Nessun
-        // cancelGesture: non c'è nessun gesto nostro da annullare, e chiamarlo
-        // annullerebbe quello di qualcun ALTRO -- il pannello proprietà a metà
-        // scrub, per esempio.
+        // Including abandoning: the path in progress lives ONLY in the preview (already
+        // turned off above by the state change), not in the document. No
+        // cancelGesture: there is no gesture of ours to cancel, and calling it
+        // would cancel SOMEONE ELSE's -- the properties panel mid
+        // scrub, for example.
         break;
     }
   }
@@ -438,33 +438,33 @@ export function createPenTool(): Tool {
     },
 
     onKeyDown(e, ctx) {
-      // Enter ed Escape terminano il path APERTO (brief e spec: sono la stessa
-      // uscita). Con nessun ancoraggio posato non creano niente -- la macchina
-      // lo dice da sola, senza un caso speciale qui.
+      // Enter and Escape end the OPEN path (brief and spec: they are the same
+      // exit). With no anchor placed they create nothing -- the machine
+      // says so on its own, without a special case here.
       if (e.key === "Enter" || e.key === "Escape") step({ kind: "commit" }, ctx);
     },
 
-    // Gesto abbandonato: cambio tool, pointercancel, smontaggio. Nessun op.
+    // Abandoned gesture: tool change, pointercancel, unmount. No op.
     onDeactivate(ctx) {
       step({ kind: "abort" }, ctx);
     },
 
-    // Il PAN TEMPORANEO (spazio premuto o tasto centrale) non è un cambio di
-    // strumento: la mano prende il posto del pen tool per il tempo di una
-    // trascinata e poi glielo restituisce. Il path in corso resta dov'è --
-    // stato e anteprima compresi, così durante il pan si continua a vederlo.
+    // The TEMPORARY PAN (space held or middle button) is not a tool
+    // change: the hand takes the pen tool's place for the length of a
+    // drag and then gives it back. The path in progress stays where it is --
+    // state and preview included, so during the pan it is still visible.
     //
-    // Serve una richiamata sua (toolManager la chiama al posto di onDeactivate
-    // solo per la sostituzione temporanea) perché il pen tool è il primo
-    // strumento il cui gesto dura più click: per gli altri il pan a metà drag è
-    // irraggiungibile -- il loro gesto richiede il pulsante premuto -- e senza
-    // questa distinzione spostare la vista mentre si disegna butterebbe via
-    // ogni ancoraggio posato, senza avviso e senza niente da annullare per
-    // recuperarli.
+    // It needs a callback of its own (toolManager calls it in place of onDeactivate
+    // only for the temporary replacement) because the pen tool is the first
+    // tool whose gesture lasts several clicks: for the others a mid-drag pan is
+    // unreachable -- their gesture requires the button pressed -- and without
+    // this distinction moving the view while drawing would throw away
+    // every placed anchor, without warning and with nothing to undo to
+    // recover them.
     onSuspend() {
-      // Di proposito vuoto: sospendere è NON fare niente. La simmetrica
-      // (riprendere) non esiste per lo stesso motivo -- non c'è niente da
-      // ricostruire, il tool riceve il prossimo evento com'era rimasto.
+      // Deliberately empty: suspending means doing NOTHING. The symmetric one
+      // (resuming) does not exist for the same reason -- there is nothing to
+      // rebuild, the tool receives the next event as it was left.
     },
   };
 }

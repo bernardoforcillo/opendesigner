@@ -2,8 +2,8 @@ import { zoomAt } from "../canvas/camera";
 import { handTool } from "./handTool";
 import type { Tool, ToolContext } from "./types";
 
-// client -> px CANVAS (CSS). È l'unico posto che toglie l'origine del canvas;
-// da lì in poi si passa sempre da canvas/camera.ts per andare nel mondo.
+// client -> CANVAS px (CSS). It is the only place that subtracts the canvas origin;
+// from there on you always go through canvas/camera.ts to get to the world.
 export function eventToCanvasPoint(
   canvas: HTMLCanvasElement,
   e: { clientX: number; clientY: number },
@@ -12,11 +12,11 @@ export function eventToCanvasPoint(
   return { x: e.clientX - rect.left, y: e.clientY - rect.top };
 }
 
-// Normalizzazione della rotella: deltaMode dice se il delta è in pixel (0),
-// righe (1) o pagine (2) -- Firefox usa le righe. Il pinch del trackpad arriva
-// come wheel con ctrlKey=true e delta molto piccoli, quindi ha un guadagno più
-// alto. La mappa delta -> fattore è esponenziale così N notch danno lo stesso
-// rapporto di zoom indipendentemente dal punto di partenza.
+// Wheel normalization: deltaMode says whether the delta is in pixels (0),
+// lines (1) or pages (2) -- Firefox uses lines. Trackpad pinch arrives
+// as a wheel with ctrlKey=true and very small deltas, so it has a higher
+// gain. The delta -> factor map is exponential so N notches give the same
+// zoom ratio regardless of the starting point.
 const PIXELS_PER_LINE = 16;
 const PIXELS_PER_PAGE = 400;
 const WHEEL_GAIN = 0.0015;
@@ -27,18 +27,18 @@ export function wheelZoomFactor(e: WheelEvent): number {
   const unit = e.deltaMode === 1 ? PIXELS_PER_LINE : e.deltaMode === 2 ? PIXELS_PER_PAGE : 1;
   const gain = e.ctrlKey ? PINCH_GAIN : WHEEL_GAIN;
   const factor = Math.exp(-e.deltaY * unit * gain);
-  // Un singolo evento non deve poter bruciare tutto il range di zoom (certi
-  // driver/OS emettono delta enormi).
+  // A single event must not be able to burn through the whole zoom range (some
+  // drivers/OSes emit huge deltas).
   return Math.min(MAX_FACTOR, Math.max(1 / MAX_FACTOR, factor));
 }
 
-// Un campo di testo: input, textarea, select, contentEditable. Duck-typing
-// invece di instanceof: i test girano senza HTMLElement, e il target di un
-// evento sintetico non è mai un vero elemento.
-// Esportata perché ogni canale di tasti globali ha bisogno della STESSA
-// guardia (le scorciatoie della clipboard, tools/clipboard.ts): due copie che
-// divergono vorrebbero dire una scorciatoia che ruba i tasti a un campo di
-// testo e l'altra no.
+// A text field: input, textarea, select, contentEditable. Duck-typing
+// instead of instanceof: tests run without HTMLElement, and the target of a
+// synthetic event is never a real element.
+// Exported because every global key channel needs the SAME
+// guard (the clipboard shortcuts, tools/clipboard.ts): two copies that
+// diverge would mean one shortcut stealing keys from a text
+// field and the other not.
 export function isTextField(target: EventTarget | null): boolean {
   const el = target as { tagName?: string; isContentEditable?: boolean } | null;
   if (!el) return false;
@@ -47,11 +47,11 @@ export function isTextField(target: EventTarget | null): boolean {
   return tag === "INPUT" || tag === "TEXTAREA" || tag === "SELECT";
 }
 
-// Elementi per cui lo spazio è affare loro: i campi di testo (deve scrivere uno
-// spazio) e i controlli attivabili come i bottoni della toolbar (lo spazio li
-// preme). Rubarglielo per il pan darebbe doppia attivazione o testo mangiato.
-// I primi sono già coperti dalla guardia generale di onKeyDown; questi due tag
-// no -- un pulsante non è un campo di testo, ma lo spazio resta suo.
+// Elements for which space is their own business: text fields (it must type a
+// space) and activatable controls like the toolbar buttons (space
+// presses them). Stealing it from them for the pan would give double activation or eaten text.
+// The former are already covered by the general guard in onKeyDown; these two tags
+// are not -- a button is not a text field, but space remains its own.
 function swallowsSpace(target: EventTarget | null): boolean {
   if (isTextField(target)) return true;
   const el = target as { tagName?: string } | null;
@@ -62,34 +62,34 @@ function swallowsSpace(target: EventTarget | null): boolean {
 const MOUSE_LEFT = 0;
 const MOUSE_MIDDLE = 1;
 
-// Collega gli eventi del canvas al tool attivo. Il tool attivo è letto da
-// getActive a ogni evento (non catturato una volta sola), così la toolbar può
-// cambiarlo senza ri-agganciare i listener.
+// Connects the canvas events to the active tool. The active tool is read by
+// getActive on every event (not captured once), so the toolbar can
+// change it without re-attaching the listeners.
 export function attachTools(ctx: ToolContext, getActive: () => Tool): () => void {
   const { canvas } = ctx;
-  // Sostituisce temporaneamente il tool attivo: spazio premuto o tasto
-  // centrale del mouse => mano.
+  // Temporarily replaces the active tool: space held or middle
+  // mouse button => hand.
   let temp: Tool | null = null;
   let seen: Tool | null = null;
-  // Il tool messo da parte dal pan TEMPORANEO, non disattivato: riprenderà il
-  // suo posto (col suo gesto intatto) appena il pan finisce. Vedi Tool.onSuspend.
+  // The tool set aside by the TEMPORARY pan, not deactivated: it will resume
+  // its place (with its gesture intact) as soon as the pan ends. See Tool.onSuspend.
   let suspended: Tool | null = null;
   let spaceDown = false;
   let middlePan = false;
   let captured: number | null = null;
 
-  // Risolve il tool effettivo e, se è cambiato dall'ultima volta, chiude il
-  // gesto del precedente e aggiorna il cursore.
+  // Resolves the effective tool and, if it changed since last time, closes the
+  // previous one's gesture and updates the cursor.
   //
-  // "Chiude" ha due forme, e la differenza conta da quando esiste uno strumento
-  // (il pen tool) il cui gesto dura più click invece di un drag solo:
-  //  - SOSTITUZIONE TEMPORANEA (spazio o tasto centrale => mano): il tool
-  //    tornerà tra un istante, quindi se dichiara onSuspend lo si sospende e
-  //    basta. Panare mentre si disegna è routine in qualunque editor
-  //    vettoriale, e trattarlo come un cambio di strumento butterebbe via il
-  //    lavoro in corso senza avviso.
-  //  - CAMBIO VERO (toolbar, pointercancel, smontaggio): onDeactivate come
-  //    sempre, il gesto a metà si abbandona.
+  // "Closes" has two forms, and the difference matters since there is a tool
+  // (the pen tool) whose gesture lasts several clicks instead of a single drag:
+  //  - TEMPORARY REPLACEMENT (space or middle button => hand): the tool
+  //    will be back in a moment, so if it declares onSuspend it is just
+  //    suspended. Panning while drawing is routine in any vector
+  //    editor, and treating it as a tool change would throw away the
+  //    work in progress without warning.
+  //  - REAL CHANGE (toolbar, pointercancel, unmount): onDeactivate as
+  //    always, the half-done gesture is abandoned.
   function active(): Tool {
     const next = temp ?? getActive();
     if (seen === next) return next;
@@ -100,12 +100,12 @@ export function attachTools(ctx: ToolContext, getActive: () => Tool): () => void
       prev.onSuspend(ctx);
     } else {
       prev?.onDeactivate?.(ctx);
-      // Il pan è FINITO (temp è tornato null): il tool sospeso riprende il suo
-      // posto in silenzio se è lui a tornare attivo; se nel frattempo la
-      // toolbar è passata a un altro strumento, quello sospeso va invece
-      // abbandonato -- altrimenti resterebbe per sempre con un gesto a metà e
-      // un'anteprima che nessuno spegne. Finché temp c'è ancora si sta ancora
-      // panando (es. un pointercancel a metà pan) e non si decide niente.
+      // The pan is OVER (temp went back to null): the suspended tool resumes its
+      // place silently if it is the one becoming active again; if in the meantime the
+      // toolbar moved to another tool, the suspended one must instead be
+      // abandoned -- otherwise it would stay forever with a half-done gesture and
+      // a preview that nobody turns off. As long as temp is still set we are still
+      // panning (e.g. a pointercancel mid-pan) and nothing is decided.
       if (suspended && temp === null) {
         const s = suspended;
         suspended = null;
@@ -119,27 +119,27 @@ export function attachTools(ctx: ToolContext, getActive: () => Tool): () => void
 
   function release() {
     if (captured === null) return;
-    // releasePointerCapture lancia se il capture è già stato perso: un drag
-    // interrotto dal browser non deve rompere il resto del gesto.
+    // releasePointerCapture throws if the capture has already been lost: a drag
+    // interrupted by the browser must not break the rest of the gesture.
     try {
       canvas.releasePointerCapture?.(captured);
     } catch {
-      /* capture già rilasciato */
+      /* capture already released */
     }
     captured = null;
   }
 
   const onPointerDown = (e: PointerEvent) => {
     if (e.button === MOUSE_MIDDLE) {
-      e.preventDefault(); // niente autoscroll del browser
+      e.preventDefault(); // no browser autoscroll
       middlePan = true;
       temp = handTool;
     } else if (e.button !== MOUSE_LEFT) {
-      return; // tasto destro & co: nessun gesto
+      return; // right button & co: no gesture
     }
     const tool = active();
-    // Pointer capture: un drag che esce dal canvas (o dalla finestra) continua
-    // a consegnare i move qui, invece di sparire a metà gesto.
+    // Pointer capture: a drag that leaves the canvas (or the window) keeps
+    // delivering moves here, instead of vanishing mid-gesture.
     try {
       canvas.setPointerCapture?.(e.pointerId);
       captured = e.pointerId;
@@ -160,12 +160,12 @@ export function attachTools(ctx: ToolContext, getActive: () => Tool): () => void
     if (middlePan) {
       middlePan = false;
       if (!spaceDown) temp = null;
-      active(); // ripristina subito tool e cursore
+      active(); // immediately restore tool and cursor
     }
   };
 
-  // Il browser ha annullato il gesto (gesture di sistema, perdita del capture):
-  // si abbandona invece di emettere l'op finale.
+  // The browser cancelled the gesture (system gesture, loss of capture):
+  // we abandon instead of emitting the final op.
   const onPointerCancel = () => {
     const tool = active();
     tool.onDeactivate?.(ctx);
@@ -174,31 +174,31 @@ export function attachTools(ctx: ToolContext, getActive: () => Tool): () => void
       middlePan = false;
       if (!spaceDown) temp = null;
     }
-    seen = null; // il prossimo evento riparte pulito (e riapplica il cursore)
+    seen = null; // the next event starts clean (and reapplies the cursor)
     active();
   };
 
   const onWheel = (e: WheelEvent) => {
-    // Sempre preventDefault: senza, ctrl+rotella zooma la PAGINA e la rotella
-    // liscia la scrolla.
+    // Always preventDefault: without it, ctrl+wheel zooms the PAGE and a
+    // smooth wheel scrolls it.
     e.preventDefault();
     const p = eventToCanvasPoint(canvas, e);
     ctx.setCamera(zoomAt(ctx.getCamera(), wheelZoomFactor(e), p.x, p.y));
   };
 
   const onKeyDown = (e: KeyboardEvent) => {
-    // Un campo di testo ha la precedenza su OGNI scorciatoia del canvas. Questi
-    // listener stanno sulla FINESTRA (il canvas non è focusabile), quindi
-    // ricevono anche i tasti battuti nel textarea di editing
-    // (ui/TextEditorOverlay.tsx) e nei campi del pannello proprietà: senza la
-    // guardia, Backspace mentre si scrive cancella il NODO selezionato -- cioè
-    // proprio quello che si sta editando -- ed Escape abbandona il gesto del
-    // tool invece di uscire dall'editing. È lo stesso principio della guardia
-    // isTextField di ui/App.tsx sulle scorciatoie di undo/redo, applicato
-    // all'altro canale di tasti globali.
+    // A text field takes precedence over EVERY canvas shortcut. These
+    // listeners are on the WINDOW (the canvas is not focusable), so they
+    // also receive keys typed in the editing textarea
+    // (ui/TextEditorOverlay.tsx) and in the properties panel fields: without the
+    // guard, Backspace while typing deletes the selected NODE -- i.e.
+    // the very one being edited -- and Escape abandons the tool's gesture
+    // instead of leaving editing. It is the same principle as the
+    // isTextField guard in ui/App.tsx on the undo/redo shortcuts, applied
+    // to the other global key channel.
     if (isTextField(e.target)) return;
     if (e.code === "Space" && !swallowsSpace(e.target)) {
-      e.preventDefault(); // niente scroll della pagina
+      e.preventDefault(); // no page scroll
       if (!spaceDown) {
         spaceDown = true;
         temp = handTool;
@@ -222,15 +222,15 @@ export function attachTools(ctx: ToolContext, getActive: () => Tool): () => void
   canvas.addEventListener("pointercancel", onPointerCancel);
   canvas.addEventListener("wheel", onWheel, { passive: false });
 
-  // I tasti arrivano sulla finestra: il canvas non è focusabile, quindi
-  // ascoltarli su di lui significherebbe non riceverli mai.
+  // Keys arrive on the window: the canvas is not focusable, so
+  // listening on it would mean never receiving them.
   const view = canvas.ownerDocument?.defaultView ?? null;
   view?.addEventListener("keydown", onKeyDown);
   view?.addEventListener("keyup", onKeyUp);
 
-  // Aggancia subito il tool attivo (e il suo cursore): così un cambio tool
-  // successivo trova sempre un precedente da disattivare, anche se quel tool
-  // non aveva ancora ricevuto nessun evento.
+  // Immediately hooks the active tool (and its cursor): so a later tool change
+  // always finds a previous one to deactivate, even if that tool
+  // had not yet received any event.
   active();
 
   return () => {
@@ -243,8 +243,8 @@ export function attachTools(ctx: ToolContext, getActive: () => Tool): () => void
     view?.removeEventListener("keyup", onKeyUp);
     release();
     seen?.onDeactivate?.(ctx);
-    // Anche il sospeso: smontare non è una pausa, e un tool sospeso durante il
-    // pan (spazio ancora premuto) non deve restare col suo gesto appeso.
+    // The suspended one too: unmounting is not a pause, and a tool suspended during the
+    // pan (space still held) must not be left with its gesture hanging.
     if (suspended !== seen) suspended?.onDeactivate?.(ctx);
     seen = null;
     suspended = null;

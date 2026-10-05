@@ -3,11 +3,11 @@ import { useScene } from "../store/store";
 import { emptyScene, type NodeLite } from "../store/types";
 import { attachClipboardShortcuts, clipboardMemory, pasteClipboard, serializeNodes } from "./clipboard";
 
-// L'incolla di testo SVG dagli appunti. (L'incolla dei nodi opendesigner è in
-// clipboard.test.ts e non cambia: qui si verifica solo il ramo nuovo e che non
-// rubi niente al vecchio.)
+// Pasting SVG text from the clipboard. (Pasting opendesigner nodes is in
+// clipboard.test.ts and does not change: here we only verify the new branch and that it
+// does not steal anything from the old one.)
 
-const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 40" width="100" height="40"><rect id="barra" width="100" height="40" rx="8"/><circle id="punto" cx="20" cy="20" r="6" fill="#fff"/></svg>`;
+const SVG = `<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 100 40" width="100" height="40"><rect id="bar" width="100" height="40" rx="8"/><circle id="dot" cx="20" cy="20" r="6" fill="#fff"/></svg>`;
 
 function setClipboard(text: string | null): void {
   Object.defineProperty(globalThis.navigator, "clipboard", {
@@ -19,7 +19,7 @@ function setClipboard(text: string | null): void {
 
 function node(over: Partial<NodeLite> = {}): NodeLite {
   return {
-    id: "n1", parentId: "page1", orderKey: "a000001", name: "Rettangolo", visible: true, opacity: 1,
+    id: "n1", parentId: "page1", orderKey: "a000001", name: "Rectangle", visible: true, opacity: 1,
     x: 10, y: 20, width: 30, height: 40, rotation: 0, fills: [{ r: 0.5, g: 0.25, b: 0.125, a: 1 }], strokes: [],
     kind: "rect", cornerRadius: 4, clipsContent: false, ...over,
   };
@@ -36,60 +36,60 @@ beforeEach(() => {
 
 afterEach(() => setClipboard(null));
 
-describe("incolla di testo SVG dagli appunti", () => {
-  it("lo importa come nodi, UN gesto, selezionando la radice", async () => {
+describe("pasting SVG text from the clipboard", () => {
+  it("imports it as nodes, ONE gesture, selecting the root", async () => {
     setClipboard(SVG);
     const ids = await pasteClipboard();
     expect(ids.length).toBe(1);
     expect(kinds()).toEqual(["ellipse", "group", "rect"]);
     expect(useScene.getState().selection).toEqual(ids);
-    expect(useScene.getState().notice).toBe("Importato come 3 livelli");
+    expect(useScene.getState().notice).toBe("Imported as 3 layers");
     useScene.getState().undo();
     expect(kinds()).toEqual([]);
   });
 
-  it("riconosce un SVG con prologo XML e commenti", async () => {
+  it("recognizes an SVG with an XML prologue and comments", async () => {
     setClipboard(`<?xml version="1.0"?>\n<!-- Created with X -->\n${SVG}\n`);
     expect((await pasteClipboard()).length).toBe(1);
   });
 
-  it("è CENTRATO al centro della vista (camera inclusa)", async () => {
+  it("is CENTERED on the center of the view (camera included)", async () => {
     useScene.setState({ camera: { x: -1000, y: 0, zoom: 1 } });
     setClipboard(SVG);
     const [id] = await pasteClipboard();
     const root = useScene.getState().scene!.nodes.at(id);
-    // senza canvas nel DOM la vista è 800x600: centro schermo (400,300) -> mondo (1400,300)
+    // with no canvas in the DOM the view is 800x600: screen center (400,300) -> world (1400,300)
     expect(root.x).toBe(1400 - 50);
     expect(root.y).toBe(300 - 20);
   });
 
-  it("un SVG rotto: avviso, niente nodi, nessuna eccezione", async () => {
+  it("a broken SVG: notice, no nodes, no exception", async () => {
     setClipboard("<svg><rect></svg>");
     expect(await pasteClipboard()).toEqual([]);
     expect(kinds()).toEqual([]);
-    expect(useScene.getState().notice).toMatch(/Importazione SVG non riuscita/);
+    expect(useScene.getState().notice).toMatch(/SVG import failed/);
   });
 
-  it("il payload opendesigner ha SEMPRE la precedenza (anche se un nome contiene '<svg')", async () => {
+  it("the opendesigner payload ALWAYS takes precedence (even if a name contains '<svg')", async () => {
     setClipboard(serializeNodes([node({ name: "<svg viewBox='0 0 1 1'></svg>" })]));
     const ids = await pasteClipboard();
     expect(ids.length).toBe(1);
     expect(kinds()).toEqual(["rect"]);
   });
 
-  it("altro testo (non SVG) continua a NON incollare niente", async () => {
-    setClipboard("<html><body>ciao</body></html>");
+  it("other text (non-SVG) still pastes NOTHING", async () => {
+    setClipboard("<html><body>hello</body></html>");
     expect(await pasteClipboard()).toEqual([]);
     expect(kinds()).toEqual([]);
     expect(useScene.getState().notice).toBeNull();
   });
 
-  it("senza clipboard di sistema non c'è nulla da incollare", async () => {
+  it("without a system clipboard there is nothing to paste", async () => {
     setClipboard(null);
     expect(await pasteClipboard()).toEqual([]);
   });
 
-  it("Ctrl+V sulla finestra importa l'SVG", async () => {
+  it("Ctrl+V on the window imports the SVG", async () => {
     setClipboard(SVG);
     const handlers: Record<string, (e: KeyboardEvent) => void> = {};
     const detach = attachClipboardShortcuts({

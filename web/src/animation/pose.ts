@@ -4,31 +4,31 @@ import { contentWorldBounds } from "../store/groups";
 import { applyTransform, invertTransform, worldTransformOf } from "../canvas/transform";
 import { sampleClip, type NodeAnim } from "./engine";
 
-// LA SCENA IN POSA.
+// THE POSED SCENE.
 //
-// Mentre una clip gira (o si scorre il playhead, o si registra) la tela non
-// mostra il documento ma una SUA VARIANTE: gli stessi nodi con i valori
-// campionati al posto di quelli di base. È derivata, mai scritta: il documento
-// non cambia, nessun op parte, e smettere di animare riporta alla scena vera
-// senza niente da disfare.
+// While a clip runs (or the playhead is scrubbed, or recording) the canvas does not
+// show the document but a VARIANT of it: the same nodes with the sampled
+// values in place of the base ones. It is derived, never written: the document
+// does not change, no op goes out, and stopping the animation brings back the real scene
+// with nothing to undo.
 //
-// La scena derivata è una scena come le altre, quindi il renderer, l'hit-test,
-// l'overlay e i tool la leggono senza saperlo:
-//   - x, y, rotation, opacity sono i campi veri del nodo;
-//   - `scale` e `draw` non hanno un campo nel modello: vanno nei campi
-//     TRANSITORI animScale/animPivot/animDraw di NodeLite, che solo il renderer
-//     conosce (canvas/transform.ts::localTransformOf, renderer/animDraw.ts).
+// The derived scene is a scene like any other, so the renderer, hit-test,
+// overlay and tools read it without knowing:
+//   - x, y, rotation, opacity are the node's real fields;
+//   - `scale` and `draw` have no field in the model: they go in the
+//     TRANSIENT fields animScale/animPivot/animDraw of NodeLite, which only the renderer
+//     knows (canvas/transform.ts::localTransformOf, renderer/animDraw.ts).
 //
-// Il costo è proporzionale ai nodi ANIMATI, non al documento: la mappa dei nodi è
-// persistente (si sostituiscono poche voci) e la provenienza (sceneDelta) dice
-// all'indice di scena che sono cambiati solo quelli, così non lo ricostruisce.
+// The cost is proportional to the ANIMATED nodes, not to the document: the node map is
+// persistent (a few entries are replaced) and the provenance (sceneDelta) tells
+// the scene index that only those changed, so it does not rebuild it.
 
-/** I tipi di nodo su cui `draw` ha senso (hanno un tracciato): parità con core.validTrack. */
+/** The node types on which `draw` makes sense (they have a path): parity with core.validTrack. */
 export function canDraw(n: Pick<NodeLite, "kind">): boolean {
   return n.kind === "vector" || n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame";
 }
 
-/** Unisce `src` dentro `dst`: le proprietà di `src` vincono (le clip dopo sovrascrivono). */
+/** Merges `src` into `dst`: the properties of `src` win (later clips overwrite). */
 export function mergeAnim(dst: Map<string, NodeAnim>, src: ReadonlyMap<string, NodeAnim>): Map<string, NodeAnim> {
   for (const [id, a] of src) {
     const cur = dst.get(id);
@@ -38,16 +38,16 @@ export function mergeAnim(dst: Map<string, NodeAnim>, src: ReadonlyMap<string, N
   return dst;
 }
 
-/** I valori campionati di una clip a `t` ms, con una bozza (record, trascinamento) sopra. */
+/** The sampled values of a clip at `t` ms, with a draft (record, drag) on top. */
 export function sampleWithDraft(clip: Pick<ClipLite, "tracks">, t: number, draft?: ReadonlyMap<string, NodeAnim> | null): Map<string, NodeAnim> {
   const out = sampleClip(clip, t);
   return draft && draft.size > 0 ? mergeAnim(out, draft) : out;
 }
 
-// Il centro (spazio del parent) attorno a cui scala un GRUPPO: un gruppo non ha un
-// box, il suo "centro" è quello dei contenuti. Calcolato sulla scena di BASE
-// (la geometria dei figli non è animata da questa traccia) e spostato di quanto
-// la traccia sposta il gruppo stesso.
+// The center (parent space) a GROUP scales around: a group has no
+// box, its "center" is that of the contents. Computed on the BASE scene
+// (the children's geometry is not animated by this track) and shifted by as much as
+// the track shifts the group itself.
 function groupPivot(base: SceneState, n: NodeLite, a: NodeAnim): { x: number; y: number } | undefined {
   const b = contentWorldBounds(base, n);
   if (!b) return undefined;
@@ -57,9 +57,9 @@ function groupPivot(base: SceneState, n: NodeLite, a: NodeAnim): { x: number; y:
 }
 
 /**
- * La scena `base` con i valori `anim` applicati ai nodi. Ritorna `base` stessa
- * (stessa identità: nessun ridisegno in più, nessun indice da rifare) se niente
- * cambia -- una clip vuota, valori uguali a quelli di base, nodi spariti.
+ * The `base` scene with the `anim` values applied to the nodes. Returns `base` itself
+ * (same identity: no extra redraw, no index to rebuild) if nothing
+ * changes -- an empty clip, values equal to the base ones, vanished nodes.
  */
 export function poseScene(base: SceneState, anim: ReadonlyMap<string, NodeAnim>): SceneState {
   if (anim.size === 0) return base;
@@ -84,7 +84,7 @@ export function poseScene(base: SceneState, anim: ReadonlyMap<string, NodeAnim>)
     }
     if (a.draw !== undefined && canDraw(n)) {
       patch().animDraw = a.draw;
-      // a 1 il tracciato è intero: il renderer GPU lo disegna normalmente, niente ripiego in CPU
+      // at 1 the path is whole: the GPU renderer draws it normally, no CPU fallback
       if (a.draw < 1) hasDraw = true;
     }
     if (next) {
@@ -94,7 +94,7 @@ export function poseScene(base: SceneState, anim: ReadonlyMap<string, NodeAnim>)
     }
   }
   if (!edit) return base;
-  // Gli antenati dei nodi scalati: il loro extent è l'unione dei figli.
+  // The ancestors of the scaled nodes: their extent is the union of the children.
   const ancestors = new Set<string>();
   for (const id of scaled) {
     for (let cur = base.nodes.get(id), g = 0; cur && g < 1000; cur = base.nodes.get(cur.parentId), g++) {

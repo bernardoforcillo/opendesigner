@@ -2,13 +2,13 @@ import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { templateOps } from "../templates/catalog";
 import type { Template } from "../templates/catalog";
 
-// CREARE UN DOCUMENTO DA UN TEMPLATE, dalla Home: crea il documento sul server,
-// legge l'id della sua prima pagina e gli manda gli Op del template UNO DOPO
-// L'ALTRO (il padre deve esistere prima dei figli, e SubmitOp risponde quando
-// l'op è già durevole). L'editor poi si apre su un documento già pieno, come se
-// quelle schermate le avesse disegnate l'utente.
+// CREATING A DOCUMENT FROM A TEMPLATE, from the Home: creates the document on the server,
+// reads the id of its first page and sends it the template's Ops ONE AFTER
+// THE OTHER (the parent must exist before the children, and SubmitOp replies when
+// the op is already durable). The editor then opens on an already full document, as if
+// the user had drawn those screens.
 
-/** La parte del client RPC che serve qui: i test passano un finto. */
+/** The part of the RPC client needed here: tests pass a fake one. */
 export interface StartClient {
   createDocument(req: { name: string }): Promise<{ id: string }>;
   openDocument(req: { docId: string }): Promise<{ snapshot?: { pages: { id: string }[] } }>;
@@ -16,10 +16,10 @@ export interface StartClient {
 }
 
 export interface StartOptions {
-  /** Id del client che figura come autore degli Op. */
+  /** Id of the client that appears as the author of the Ops. */
   clientId?: string;
   onProgress?: (done: number, total: number) => void;
-  /** Id per i nodi (i test lo rendono deterministico). */
+  /** Id for the nodes (tests make it deterministic). */
   newId?: () => string;
 }
 
@@ -30,10 +30,10 @@ export class StartError extends Error {
 }
 
 /**
- * Manda gli Op del template a un documento GIÀ esistente, in ordine. Serve a
- * `startDocument` e alla scheda "Da dove parti?" dentro l'editor: lì gli Op
- * vanno per RPC e tornano all'editor dallo stream come record "remoti" (un
- * template ha anche 150 op, più della coda ottimistica del SyncClient).
+ * Sends the template's Ops to an ALREADY existing document, in order. It serves
+ * `startDocument` and the "Where do you want to start?" card inside the editor: there the Ops
+ * go via RPC and come back to the editor from the stream as "remote" records (a
+ * template has up to 150 ops, more than the SyncClient's optimistic queue).
  */
 export async function applyTemplate(
   client: Pick<StartClient, "submitOp">, docId: string, pageId: string, t: Template, opts: StartOptions = {},
@@ -46,7 +46,7 @@ export async function applyTemplate(
   }
 }
 
-/** Crea il documento e applica il template; ritorna l'id. */
+/** Creates the document and applies the template; returns the id. */
 export async function startDocument(client: StartClient, t: Template, opts: StartOptions = {}): Promise<string> {
   let docId: string | null = null;
   try {
@@ -57,8 +57,8 @@ export async function startDocument(client: StartClient, t: Template, opts: Star
     await applyTemplate(client, docId, pageId, t, opts);
     return docId;
   } catch (err) {
-    // Un documento creato ma riempito a metà resta nell'elenco della Home (si
-    // apre, si elimina): l'errore porta l'id per poterlo dire.
+    // A document created but half filled stays in the Home list (it can be
+    // opened, deleted): the error carries the id so it can be reported.
     throw new StartError(err instanceof Error ? err.message : String(err), docId);
   }
 }

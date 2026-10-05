@@ -3,37 +3,37 @@ import { ancestorsOf } from "../store/tree";
 import { sampleTrack, type TrackProp } from "./engine";
 import { canDraw } from "./pose";
 
-// LA LOGICA DELLA TIMELINE: funzioni PURE sulla clip, senza DOM né store.
+// THE TIMELINE LOGIC: PURE functions on the clip, with no DOM or store.
 //
-// Ogni funzione prende una clip e ne restituisce una NUOVA (mai muta quella in
-// ingresso): è ciò che permette alla UI di tenere la bozza di un trascinamento
-// come stato locale e di mandare UN SOLO `SetClip` al rilascio -- e all'undo di
-// tornare indietro di un passo anche per un gesto che ha toccato dieci keyframe.
-// I vincoli del validatore (tempi in [0, durata], ordinati; opacity e draw in
-// 0..1; una traccia ha sempre almeno un keyframe) sono mantenuti qui, così una
-// clip uscita da queste funzioni è sempre accettata da `SetClip`.
+// Every function takes a clip and returns a NEW one (never mutating the one
+// passed in): it is what lets the UI keep the draft of a drag
+// as local state and send ONE SINGLE `SetClip` on release -- and lets undo
+// go back one step even for a gesture that touched ten keyframes.
+// The validator's constraints (times in [0, duration], sorted; opacity and draw in
+// 0..1; a track always has at least one keyframe) are maintained here, so a
+// clip coming out of these functions is always accepted by `SetClip`.
 
-/** Il passo della griglia di aggancio, ms (≈ un frame a 100 fps; due a 50). */
+/** The snap grid step, ms (≈ one frame at 100 fps; two at 50). */
 export const SNAP_MS = 10;
-/** L'easing dei keyframe creati dall'editor. */
+/** The easing of keyframes created by the editor. */
 export const DEFAULT_EASING = "easeInOut";
-/** La durata massima ammessa per una clip nell'editor (un'ora: oltre è quasi di sicuro un refuso). */
+/** The maximum duration allowed for a clip in the editor (one hour: beyond that it is almost surely a typo). */
 export const MAX_DURATION_MS = 3_600_000;
 
-/** Un keyframe: l'indice della traccia nella clip e quello del keyframe nella traccia. */
+/** A keyframe: the index of the track in the clip and that of the keyframe in the track. */
 export interface KeyRef { track: number; key: number }
 
 export const sameKey = (a: KeyRef, b: KeyRef) => a.track === b.track && a.key === b.key;
 
-// --- valori ----------------------------------------------------------------------
+// --- values ----------------------------------------------------------------------
 
-/** Porta un valore dentro i limiti della proprietà (opacity e draw in 0..1); NaN -> `fallback`. */
+/** Brings a value within the property's limits (opacity and draw in 0..1); NaN -> `fallback`. */
 export function clampValue(prop: string, v: number, fallback = 0): number {
   if (!Number.isFinite(v)) return fallback;
   return prop === "opacity" || prop === "draw" ? Math.min(1, Math.max(0, v)) : v;
 }
 
-/** Il valore di BASE di una proprietà di un nodo (quello che vale senza animazione). */
+/** The BASE value of a node property (the one that holds without animation). */
 export function baseValueOf(n: Pick<NodeLite, "x" | "y" | "rotation" | "opacity">, prop: string): number {
   switch (prop) {
     case "opacity": return n.opacity;
@@ -46,7 +46,7 @@ export function baseValueOf(n: Pick<NodeLite, "x" | "y" | "rotation" | "opacity"
   return 0;
 }
 
-/** Le proprietà animabili di un nodo (draw solo se ha un tracciato). */
+/** The animatable properties of a node (draw only if it has a path). */
 export function propsFor(n: Pick<NodeLite, "kind">): TrackProp[] {
   const p: TrackProp[] = ["opacity", "x", "y", "scale", "rotation"];
   if (canDraw(n)) p.push("draw");
@@ -54,11 +54,11 @@ export function propsFor(n: Pick<NodeLite, "kind">): TrackProp[] {
 }
 
 export const PROP_LABEL: Record<string, string> = {
-  opacity: "Opacità", x: "X", y: "Y", scale: "Scala", rotation: "Rotazione", draw: "Tracciato",
+  opacity: "Opacity", x: "X", y: "Y", scale: "Scale", rotation: "Rotation", draw: "Draw",
 };
 export const PROP_UNIT: Record<string, string> = { opacity: "", x: "px", y: "px", scale: "×", rotation: "°", draw: "" };
 
-// --- le tracce -------------------------------------------------------------------
+// --- the tracks ------------------------------------------------------------------
 
 const withTracks = (clip: ClipLite, tracks: TrackLite[]): ClipLite => ({ ...clip, tracks });
 
@@ -67,9 +67,9 @@ export function findTrack(clip: ClipLite, nodeId: string, prop: string): number 
 }
 
 /**
- * Aggiunge una traccia (nodo, proprietà) con UN keyframe a `time` col valore
- * dato. Se la traccia c'è già la clip torna invariata (stessa identità): una
- * coppia (nodo, proprietà) compare una volta sola per clip.
+ * Adds a track (node, property) with ONE keyframe at `time` with the given
+ * value. If the track already exists the clip returns unchanged (same identity): a
+ * (node, property) pair appears only once per clip.
  */
 export function addTrack(clip: ClipLite, nodeId: string, prop: string, value: number, time = 0): ClipLite {
   if (findTrack(clip, nodeId, prop) >= 0) return clip;
@@ -84,10 +84,10 @@ export function removeTrack(clip: ClipLite, track: number): ClipLite {
 }
 
 /**
- * Una traccia NUOVA per (nodo, proprietà) già pronta da modificare: due keyframe,
- * all'inizio e alla fine, col valore di base del nodo (la clip parte e finisce dove
- * il nodo sta; il designer ne cambia uno). `draw` fa eccezione: è l'animazione
- * "si disegna", da 0 a 1. Se la traccia c'è già la clip torna invariata.
+ * A NEW track for (node, property) ready to be edited: two keyframes,
+ * at the start and at the end, with the node's base value (the clip starts and ends where
+ * the node is; the designer changes one). `draw` is the exception: it is the
+ * "draws itself" animation, from 0 to 1. If the track already exists the clip returns unchanged.
  */
 export function addPropertyTrack(
   clip: ClipLite, node: Pick<NodeLite, "id" | "x" | "y" | "rotation" | "opacity">, prop: string,
@@ -100,7 +100,7 @@ export function addPropertyTrack(
   return addKeyframe(withStart, ti, clip.duration, v).clip;
 }
 
-/** Toglie dalla clip le tracce dei nodi non più presenti (dopo una cancellazione). */
+/** Removes from the clip the tracks of nodes no longer present (after a deletion). */
 export function pruneTracks(clip: ClipLite, exists: (nodeId: string) => boolean): ClipLite {
   const tracks = clip.tracks.filter((t) => exists(t.nodeId));
   return tracks.length === clip.tracks.length ? clip : withTracks(clip, tracks);
@@ -110,7 +110,7 @@ export function pruneTracks(clip: ClipLite, exists: (nodeId: string) => boolean)
 
 const byTime = (a: KeyframeLite, b: KeyframeLite) => a.time - b.time;
 
-/** Inserisce (o, se c'è già un keyframe esattamente a quel tempo, sostituisce) un keyframe; torna anche il suo riferimento. */
+/** Inserts (or, if there is already a keyframe exactly at that time, replaces) a keyframe; also returns its reference. */
 export function addKeyframe(
   clip: ClipLite, track: number, time: number, value: number, easing = DEFAULT_EASING,
 ): { clip: ClipLite; ref: KeyRef } {
@@ -124,7 +124,7 @@ export function addKeyframe(
     kf[same] = { ...kf[same], value: v };
     return { clip: withKeys(clip, track, kf), ref: { track, key: same } };
   }
-  // dopo i keyframe con tempo <= t, così un keyframe nuovo a un tempo già occupato non scavalca mai
+  // after the keyframes with time <= t, so a new keyframe at an already occupied time never jumps over
   let at = kf.length;
   while (at > 0 && kf[at - 1].time > t) at--;
   kf.splice(at, 0, { time: t, value: v, easing });
@@ -135,7 +135,7 @@ function withKeys(clip: ClipLite, track: number, keyframes: KeyframeLite[]): Cli
   return withTracks(clip, clip.tracks.map((t, i) => (i === track ? { ...t, keyframes } : t)));
 }
 
-/** Modifica valore / easing / tempo di UN keyframe. Il tempo si porta in [0, durata] e la traccia si riordina. */
+/** Edits value / easing / time of ONE keyframe. The time is brought into [0, duration] and the track is re-sorted. */
 export function updateKeyframe(
   clip: ClipLite, ref: KeyRef, patch: Partial<KeyframeLite>,
 ): { clip: ClipLite; ref: KeyRef } {
@@ -146,7 +146,7 @@ export function updateKeyframe(
   next.value = clampValue(tr.prop, next.value, cur.value);
   next.time = Math.min(clip.duration, Math.max(0, Number.isFinite(next.time) ? next.time : cur.time));
   const kf = tr.keyframes.filter((_, i) => i !== ref.key);
-  // collisione con un altro keyframe allo stesso tempo: quello che si muove sostituisce
+  // collision with another keyframe at the same time: the one that moves replaces
   const clash = kf.findIndex((k) => k.time === next.time);
   if (clash >= 0) kf.splice(clash, 1);
   let at = kf.length;
@@ -155,7 +155,7 @@ export function updateKeyframe(
   return { clip: withKeys(clip, ref.track, kf), ref: { track: ref.track, key: at } };
 }
 
-/** Cancella i keyframe indicati; una traccia rimasta senza keyframe sparisce (una traccia vuota non è valida). */
+/** Deletes the given keyframes; a track left without keyframes disappears (an empty track is not valid). */
 export function deleteKeyframes(clip: ClipLite, sel: readonly KeyRef[]): ClipLite {
   if (sel.length === 0) return clip;
   const tracks: TrackLite[] = [];
@@ -169,10 +169,10 @@ export function deleteKeyframes(clip: ClipLite, sel: readonly KeyRef[]): ClipLit
 }
 
 /**
- * Sposta i keyframe selezionati di `delta` ms (tutti dello stesso passo: il
- * gruppo non si deforma). Il delta si limita perché nessuno esca da [0, durata]
- * e il risultato si riordina; un keyframe che atterra su uno NON selezionato
- * della stessa traccia lo sostituisce. Torna la clip e i riferimenti nuovi.
+ * Moves the selected keyframes by `delta` ms (all by the same step: the
+ * group does not deform). The delta is limited so nobody leaves [0, duration]
+ * and the result is re-sorted; a keyframe that lands on a NON-selected one
+ * of the same track replaces it. Returns the clip and the new references.
  */
 export function moveKeyframes(
   clip: ClipLite, sel: readonly KeyRef[], delta: number,
@@ -204,10 +204,10 @@ export function moveKeyframes(
 }
 
 /**
- * Duplica i keyframe selezionati: la copia del PRIMO (il più a sinistra) cade a
- * `atTime`, gli altri mantengono le distanze; il gruppo si porta dentro la durata.
- * Una copia che cade su un keyframe esistente lo sostituisce. Torna i
- * riferimenti delle copie (la nuova selezione).
+ * Duplicates the selected keyframes: the copy of the FIRST (leftmost) lands at
+ * `atTime`, the others keep their distances; the group is brought inside the duration.
+ * A copy that lands on an existing keyframe replaces it. Returns the
+ * references of the copies (the new selection).
  */
 export function duplicateKeyframes(
   clip: ClipLite, sel: readonly KeyRef[], atTime: number,
@@ -234,12 +234,12 @@ export function duplicateKeyframes(
   return { clip: cur, sel: out };
 }
 
-// --- il tempo --------------------------------------------------------------------
+// --- time ------------------------------------------------------------------------
 
 /**
- * Aggancia un tempo: alla griglia di SNAP_MS e ai tempi `others` (altri keyframe,
- * il playhead) entro `thresholdMs`; i tempi degli altri vincono sulla griglia.
- * `free` (Maiusc) salta l'aggancio e arrotonda al ms. Sempre dentro [0, durata].
+ * Snaps a time: to the SNAP_MS grid and to the `others` times (other keyframes,
+ * the playhead) within `thresholdMs`; the others' times win over the grid.
+ * `free` (Shift) skips the snap and rounds to the ms. Always within [0, duration].
  */
 export function snapTime(
   t: number, duration: number, others: readonly number[], opts: { free?: boolean; thresholdMs?: number } = {},
@@ -257,7 +257,7 @@ export function snapTime(
   return clamp(Math.round(t / SNAP_MS) * SNAP_MS);
 }
 
-/** I tempi di tutti i keyframe NON indicati (i bersagli di aggancio di un trascinamento). */
+/** The times of all the keyframes NOT indicated (the snap targets of a drag). */
 export function timesExcluding(clip: ClipLite, sel: readonly KeyRef[]): number[] {
   const skip = new Set(sel.map((r) => `${r.track}:${r.key}`));
   const out: number[] = [];
@@ -266,9 +266,9 @@ export function timesExcluding(clip: ClipLite, sel: readonly KeyRef[]): number[]
 }
 
 /**
- * Il delta di un trascinamento: il keyframe "afferrato" (il primario) va a
- * `grabbedStart + rawDelta`, agganciato come snapTime; il delta risultante vale
- * per tutto il gruppo.
+ * The delta of a drag: the "grabbed" keyframe (the primary) goes to
+ * `grabbedStart + rawDelta`, snapped like snapTime; the resulting delta applies
+ * to the whole group.
  */
 export function dragDelta(
   clip: ClipLite, sel: readonly KeyRef[], primary: KeyRef, rawDelta: number,
@@ -280,14 +280,14 @@ export function dragDelta(
   return snapTime(start + rawDelta, clip.duration, targets, opts) - start;
 }
 
-/** Cambia la durata: i keyframe oltre la nuova fine si portano alla fine (la clip resta valida). */
+/** Changes the duration: keyframes beyond the new end are brought to the end (the clip stays valid). */
 export function withDuration(clip: ClipLite, duration: number): ClipLite {
   const d = Math.min(MAX_DURATION_MS, Math.max(SNAP_MS, Number.isFinite(duration) ? duration : clip.duration));
   if (d === clip.duration) return clip;
   const tracks = clip.tracks.map((t) => {
     if (t.keyframes.every((k) => k.time <= d)) return t;
     const kf = t.keyframes.map((k) => (k.time > d ? { ...k, time: d } : k));
-    // più keyframe finiti sulla stessa fine = uno scatto inutile: resta l'ultimo
+    // several keyframes ending up on the same end = a useless step: the last one stays
     const out: KeyframeLite[] = [];
     for (const k of kf) {
       if (out.length > 0 && out[out.length - 1].time === d && k.time === d) out[out.length - 1] = k;
@@ -300,16 +300,16 @@ export function withDuration(clip: ClipLite, duration: number): ClipLite {
 
 // --- registrazione ---------------------------------------------------------------
 
-/** Una modifica di una proprietà animabile di un nodo, il valore in coordinate di documento. */
+/** A change to an animatable property of a node, the value in document coordinates. */
 export interface PropChange { nodeId: string; prop: string; value: number }
 
 /**
- * La clip con le modifiche scritte come keyframe a `time`: nella traccia
- * (nodo, proprietà) c'è già un keyframe a quel tempo -> ne cambia il valore; sennò
- * ne inserisce uno. Una traccia NUOVA a un tempo > 0 riceve anche un keyframe a 0
- * col valore che il nodo aveva prima (`before`): registrare a 600 ms la prima
- * volta fa partire l'animazione da dov'era, invece di tenere il valore nuovo fino
- * a 600 ms (che per chi ha mosso un nodo sarebbe "non succede niente").
+ * The clip with the changes written as keyframes at `time`: in the track
+ * (node, property) there is already a keyframe at that time -> its value changes; otherwise
+ * one is inserted. A NEW track at a time > 0 also receives a keyframe at 0
+ * with the value the node had before (`before`): recording at 600 ms the first
+ * time makes the animation start from where it was, instead of holding the new value until
+ * 600 ms (which for someone who moved a node would be "nothing happens").
  */
 export function recordChanges(
   clip: ClipLite, changes: readonly PropChange[], time: number,
@@ -330,7 +330,7 @@ export function recordChanges(
   return cur;
 }
 
-/** Il valore di una traccia al tempo `t` (per aggiungere un keyframe "dove si è"). */
+/** The value of a track at time `t` (to add a keyframe "where you are"). */
 export function valueAt(clip: ClipLite, track: number, t: number): number | undefined {
   const tr = clip.tracks[track];
   if (!tr) return undefined;
@@ -338,11 +338,11 @@ export function valueAt(clip: ClipLite, track: number, t: number): number | unde
   return Number.isNaN(v) ? undefined : v;
 }
 
-// --- il righello -----------------------------------------------------------------
+// --- the ruler -------------------------------------------------------------------
 
 const NICE_STEPS = [10, 20, 50, 100, 200, 250, 500, 1000, 2000, 5000, 10_000, 30_000, 60_000, 300_000];
 
-/** Il passo "tondo" (ms) tra due tacche principali perché distino almeno `minPx` a questo zoom. */
+/** The "round" step (ms) between two major ticks so that they are at least `minPx` apart at this zoom. */
 export function rulerStep(pxPerMs: number, minPx = 64): number {
   for (const s of NICE_STEPS) if (s * pxPerMs >= minPx) return s;
   return NICE_STEPS[NICE_STEPS.length - 1];
@@ -350,7 +350,7 @@ export function rulerStep(pxPerMs: number, minPx = 64): number {
 
 export interface Tick { t: number; major: boolean }
 
-/** Le tacche da `from` a `to` ms: principali ogni `rulerStep`, secondarie a un quinto. */
+/** The ticks from `from` to `to` ms: major every `rulerStep`, minor at a fifth. */
 export function rulerTicks(pxPerMs: number, from: number, to: number, minPx = 64): Tick[] {
   const step = rulerStep(pxPerMs, minPx);
   const minor = step / 5 >= SNAP_MS && (step / 5) * pxPerMs >= 8 ? step / 5 : step / 2;
@@ -363,17 +363,17 @@ export function rulerTicks(pxPerMs: number, from: number, to: number, minPx = 64
   return out;
 }
 
-/** "250 ms", "1,2 s", "1:05": l'etichetta di una tacca o del tempo corrente. */
+/** "250 ms", "1.2 s", "1:05": the label of a tick or of the current time. */
 export function formatTime(ms: number): string {
   const a = Math.abs(ms);
   if (a < 1000) return `${Math.round(ms)} ms`;
-  if (a < 60_000) return `${(ms / 1000).toLocaleString("it-IT", { maximumFractionDigits: 2 })} s`;
+  if (a < 60_000) return `${(ms / 1000).toLocaleString("en-US", { maximumFractionDigits: 2 })} s`;
   const m = Math.floor(a / 60_000);
   const s = Math.floor((a % 60_000) / 1000);
   return `${m}:${String(s).padStart(2, "0")}`;
 }
 
-/** Il tempo come in un cronometro: "0:01.250". */
+/** The time as on a stopwatch: "0:01.250". */
 export function formatClock(ms: number): string {
   const t = Math.max(0, Math.round(ms));
   const m = Math.floor(t / 60_000);
@@ -381,12 +381,12 @@ export function formatClock(ms: number): string {
   return `${m}:${String(s).padStart(2, "0")}.${String(t % 1000).padStart(3, "0")}`;
 }
 
-// --- clip e bersaglio ------------------------------------------------------------
+// --- clip and target -------------------------------------------------------------
 
 /**
- * Il bersaglio di default di una clip creata per la selezione: il contenitore
- * (frame o gruppo) più vicino al primo nodo selezionato, il nodo stesso incluso se
- * lo è; senza contenitori, il nodo stesso. "" se la selezione è vuota.
+ * The default target of a clip created for the selection: the closest container
+ * (frame or group) to the first selected node, the node itself included if
+ * it is one; without containers, the node itself. "" if the selection is empty.
  */
 export function defaultTargetId(scene: SceneState, selection: readonly string[]): string {
   const first = selection.length > 0 ? scene.nodes.at(selection[0]) : undefined;
@@ -397,13 +397,13 @@ export function defaultTargetId(scene: SceneState, selection: readonly string[])
   return first.id;
 }
 
-/** `nodeId` sta dentro (o è) `targetId`? Le tracce di una clip devono stare nel suo bersaglio. */
+/** Is `nodeId` inside (or is it) `targetId`? A clip's tracks must be inside its target. */
 export function isInside(scene: SceneState, nodeId: string, targetId: string): boolean {
   if (nodeId === targetId) return true;
   return ancestorsOf(scene, nodeId).some((a) => a.id === targetId);
 }
 
-/** Un nome libero "Clip N" per il documento. */
+/** A free name "Clip N" for the document. */
 export function uniqueClipName(clips: Record<string, ClipLite>, base = "Clip"): string {
   const names = new Set(Object.values(clips).map((c) => c.name));
   for (let i = 1; ; i++) {
@@ -421,11 +421,11 @@ export function duplicateClip(src: ClipLite, id: string, name: string): ClipLite
 }
 
 /**
- * Il valore in gradi congruente a `deg` (mod 360) più vicino a `ref`. La rotazione
- * del modello sta in [0, 360): registrare 10° dopo 350° farebbe interpolare la
- * traccia a ritroso per 340° invece di avanzare di 20°. Qui si sceglie la
- * determinazione che NON salta, così la traccia può uscire da [0, 360) (è
- * ammesso: `rotation` è un numero finito qualunque).
+ * The value in degrees congruent to `deg` (mod 360) closest to `ref`. The model's
+ * rotation lives in [0, 360): recording 10° after 350° would make the
+ * track interpolate backwards through 340° instead of advancing 20°. Here we pick the
+ * determination that does NOT jump, so the track may leave [0, 360) (it is
+ * allowed: `rotation` is any finite number).
  */
 export function unwrapDegrees(deg: number, ref: number): number {
   if (!Number.isFinite(deg) || !Number.isFinite(ref)) return deg;
@@ -433,9 +433,9 @@ export function unwrapDegrees(deg: number, ref: number): number {
 }
 
 /**
- * Le clip "della selezione": quelle il cui bersaglio è un antenato (o sé) dei nodi
- * selezionati o che hanno una traccia su uno di essi. Per il filtro della lista
- * quando si lavora dentro una schermata o un gruppo. Selezione vuota = tutte.
+ * The "selection's" clips: those whose target is an ancestor (or itself) of the selected
+ * nodes or that have a track on one of them. For filtering the list
+ * when working inside a screen or a group. Empty selection = all.
  */
 export function clipsForSelection(scene: SceneState, selection: readonly string[]): ClipLite[] {
   const all = Object.values(scene.clips).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : a.id < b.id ? -1 : 1));
@@ -449,7 +449,7 @@ export function clipsForSelection(scene: SceneState, selection: readonly string[
   return all.filter((c) => related.has(c.targetId) || c.tracks.some((t) => selected.has(t.nodeId)));
 }
 
-/** I bersagli possibili di una clip: frame e gruppi del documento (con un tetto), più `include` se manca. */
+/** The possible targets of a clip: frames and groups of the document (with a cap), plus `include` if missing. */
 export function targetCandidates(scene: SceneState, include: string, limit = 300): NodeLite[] {
   const out: NodeLite[] = [];
   for (const n of scene.nodes.values()) {

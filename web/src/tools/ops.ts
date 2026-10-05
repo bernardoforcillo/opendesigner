@@ -6,9 +6,9 @@ import { toPbClip, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, 
 import type { ClipLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
-// Costruzione centralizzata degli Op: ogni tool passa da qui, così opId e docId
-// sono stampati in un solo posto (in M0 la logica era duplicata dentro
-// rectTool). docId viene dal documento aperto nello store.
+// Centralized construction of Ops: every tool goes through here, so opId and docId
+// are stamped in a single place (in M0 the logic was duplicated inside
+// rectTool). docId comes from the document open in the store.
 
 export function uuid(): string {
   return crypto.randomUUID();
@@ -22,16 +22,16 @@ export function makeCreateNodeOp(node: Node): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createNode", value: { node } } });
 }
 
-// patch contiene SOLO i campi elencati in paths: la mask è ciò che il reducer
-// (TS e Go) usa per decidere cosa applicare, il resto del patch viene ignorato.
+// patch contains ONLY the fields listed in paths: the mask is what the reducer
+// (TS and Go) uses to decide what to apply, the rest of the patch is ignored.
 //
-// paths è tipizzato MaskPath[] (non string[]) apposta: un path che Go non
-// supporta (store/maskPaths.ts è l'unica fonte di verità, rispecchia lo
-// switch di core.applySetProps) diventa così un errore di compilazione QUI,
-// al punto di costruzione, invece di un rifiuto scoperto solo submittando
-// davvero l'op -- o peggio, un throw a runtime in fase di serializzazione se
-// il path è scritto nella convenzione camelCase sbagliata (FieldMask sul filo
-// JSON riscrive il path e non è indulgente sul casing, vedi maskPaths.ts).
+// paths is typed MaskPath[] (not string[]) on purpose: a path that Go does not
+// support (store/maskPaths.ts is the single source of truth, it mirrors the
+// switch of core.applySetProps) thus becomes a compile error HERE,
+// at the construction point, instead of a rejection discovered only by really
+// submitting the op -- or worse, a runtime throw during serialization if
+// the path is written in the wrong camelCase convention (FieldMask on the JSON
+// wire rewrites the path and is not forgiving about casing, see maskPaths.ts).
 export function makeSetPropsOp(
   id: string,
   patch: MessageInitShape<typeof NodeSchema>,
@@ -44,17 +44,17 @@ export function makeSetPropsOp(
   });
 }
 
-// SetText è un op DEDICATO e non un path della mask: il contenuto vive DENTRO
-// il oneof `shape` del Node, mentre la mask indirizza campi di primo livello
-// (vedi store/applyOp.ts e core.applySetText).
+// SetText is a DEDICATED op and not a mask path: the content lives INSIDE
+// the `shape` oneof of the Node, while the mask addresses top-level fields
+// (see store/applyOp.ts and core.applySetText).
 //
-// Lo stile e il suo flag viaggiano INSIEME, e questa è l'unica ragione per cui
-// la funzione prende uno stile opzionale invece di lasciar comporre il valore
-// ai chiamanti: in proto3 uno stile assente e uno tutto a zero sono
-// indistinguibili dopo il round-trip protojson, quindi è `style_present` a
-// dire "tocca anche lo stile". Passarlo senza stile azzererebbe il font;
-// passare uno stile senza il flag lo farebbe ignorare da entrambe le
-// implementazioni. Qui i due casi non sono nemmeno esprimibili.
+// The style and its flag travel TOGETHER, and this is the only reason the
+// function takes an optional style instead of letting callers compose the value:
+// in proto3 an absent style and an all-zero one are
+// indistinguishable after the protojson round-trip, so it is `style_present` that
+// says "touch the style too". Passing it without a style would zero the font;
+// passing a style without the flag would make both
+// implementations ignore it. Here the two cases are not even expressible.
 export function makeSetTextOp(id: string, content: string, style?: TextStyleLite): Op {
   return create(OpSchema, {
     opId: uuid(),
@@ -68,14 +68,14 @@ export function makeSetTextOp(id: string, content: string, style?: TextStyleLite
   });
 }
 
-// SetVectorPath è un op DEDICATO per la stessa ragione di SetText: la geometria
-// vive DENTRO il oneof `shape` del Node, mentre la mask di SetProperties
-// indirizza campi di primo livello (vedi store/applyOp.ts e
+// SetVectorPath is a DEDICATED op for the same reason as SetText: the geometry
+// lives INSIDE the `shape` oneof of the Node, while the SetProperties mask
+// addresses top-level fields (see store/applyOp.ts and
 // core.applySetVectorPath).
 //
-// Sostituisce i subpath IN BLOCCO, quindi non ha bisogno del flag `present` di
-// setText: l'op È i subpath, e una lista vuota è il path svuotato -- uno stato
-// legittimo, non un "non specificato".
+// It replaces the subpaths AS A WHOLE, so it does not need the `present` flag of
+// setText: the op IS the subpaths, and an empty list is the emptied path -- a
+// legitimate state, not an "unspecified".
 export function makeSetVectorPathOp(id: string, subpaths: readonly SubPathLite[]): Op {
   return create(OpSchema, {
     opId: uuid(),
@@ -84,15 +84,15 @@ export function makeSetVectorPathOp(id: string, subpaths: readonly SubPathLite[]
   });
 }
 
-// Sposta un nodo sotto un altro container (o direttamente sotto una Page) e ne
-// riscrive l'ordine fra i nuovi pari. Op DEDICATO e non un path della mask,
-// perché la riparentazione ha una validazione che nessun campo ha -- il nuovo
-// parent deve esistere e non può essere il nodo stesso né un suo discendente
-// (vedi core.applyReparent e store/applyOp.ts).
+// Moves a node under another container (or directly under a Page) and
+// rewrites its order among the new peers. A DEDICATED op and not a mask path,
+// because reparenting has a validation that no field has -- the new
+// parent must exist and cannot be the node itself nor one of its descendants
+// (see core.applyReparent and store/applyOp.ts).
 //
-// `orderKey` viaggia INSIEME e non è opzionale: cambiare parent senza
-// riordinare lascerebbe il nodo con la chiave calcolata fra i pari VECCHI,
-// cioè in una posizione arbitraria fra i nuovi.
+// `orderKey` travels TOGETHER and is not optional: changing parent without
+// reordering would leave the node with the key computed among the OLD peers,
+// i.e. in an arbitrary position among the new ones.
 export function makeReparentOp(id: string, newParentId: string, orderKey: string): Op {
   return create(OpSchema, {
     opId: uuid(),
@@ -105,17 +105,17 @@ export function makeDeleteOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteNode", value: { id } } });
 }
 
-// --- pagine ----------------------------------------------------------------
-// Le pagine sono i container RADICE. Questi op cambiano DOVE i nodi possono
-// vivere (non un nodo), e la loro semantica -- cascata, rifiuto dell'ultima
-// pagina, rifiuto degli id già presi -- sta già in core + store/applyOp.ts. Qui
-// si costruisce soltanto l'Op, come per i nodi: opId e docId in un posto solo.
-// Il selettore di pagina (ui/PageBar.tsx) li manda dallo stesso percorso di
-// gesto dei tool (beginGesture/endGesture), quindi UN op = un invio in rete.
+// --- pages -----------------------------------------------------------------
+// Pages are the ROOT containers. These ops change WHERE nodes can
+// live (not a node), and their semantics -- cascade, rejection of the last
+// page, rejection of already-taken ids -- already lives in core + store/applyOp.ts. Here
+// only the Op is built, as for nodes: opId and docId in one place.
+// The page selector (ui/PageBar.tsx) sends them through the same gesture path
+// as the tools (beginGesture/endGesture), so ONE op = one send over the network.
 
-// L'id della pagina è FORNITO dal chiamante (uuid()) e non generato qui, così è
-// noto PRIMA del submit -- il selettore ci si sposta sopra subito dopo averla
-// creata (setCurrentPage), senza aspettare l'eco.
+// The page id is SUPPLIED by the caller (uuid()) and not generated here, so it is
+// known BEFORE the submit -- the selector switches to it right after creating
+// it (setCurrentPage), without waiting for the echo.
 export function makeCreatePageOp(id: string, name: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: { id, name } } } });
 }
@@ -128,8 +128,8 @@ export function makeRenamePageOp(id: string, name: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "renamePage", value: { id, name } } });
 }
 
-// --- flussi ----------------------------------------------------------------
-// Upsert assoluti: l'id è FORNITO dal chiamante (uuid()), noto prima del submit.
+// --- flows -----------------------------------------------------------------
+// Absolute upserts: the id is SUPPLIED by the caller (uuid()), known before the submit.
 export function makeSetFlowOp(flow: FlowLite): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setFlow", value: { flow: toPbFlow(flow) } } });
 }
@@ -143,18 +143,18 @@ export function makeDeleteTransitionOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteTransition", value: { id } } });
 }
 
-// --- componenti / istanze (M4) ---------------------------------------------
-// I componenti sono sottoalberi MASTER già vivi in `nodes`; le istanze li
-// referenziano. Questi op esistono già in proto + core + store/applyOp.ts: qui
-// si costruisce soltanto l'Op, come per tutto il resto (opId e docId in un posto
-// solo). Il core rifiuta un componentId già preso, una radice assente, un
-// override su un non-nodo/non-istanza: il chiamante non manda un op che si sa
-// già invalido (id fresco, nodo che esiste), il resto è del server.
+// --- components / instances (M4) -------------------------------------------
+// Components are MASTER subtrees already live in `nodes`; instances
+// reference them. These ops already exist in proto + core + store/applyOp.ts: here
+// only the Op is built, as for everything else (opId and docId in one
+// place). The core rejects an already-taken componentId, a missing root, an
+// override on a non-node/non-instance: the caller does not send an op that is known
+// to be invalid (fresh id, existing node), the rest is up to the server.
 
-// Registra il sottoalbero radicato in `rootNodeId` come master del componente
-// `componentId`. Non copia nulla -- il master resta dov'è, e le istanze lo
-// leggono vivo (propagazione gratis). componentId è FORNITO dal chiamante
-// (uuid()) così è noto prima del submit, come l'id di una pagina.
+// Registers the subtree rooted at `rootNodeId` as the master of component
+// `componentId`. It copies nothing -- the master stays where it is, and instances
+// read it live (propagation for free). componentId is SUPPLIED by the caller
+// (uuid()) so it is known before the submit, like a page id.
 export function makeCreateComponentOp(componentId: string, rootNodeId: string, name: string): Op {
   return create(OpSchema, {
     opId: uuid(),
@@ -163,12 +163,12 @@ export function makeCreateComponentOp(componentId: string, rootNodeId: string, n
   });
 }
 
-// Imposta (o AZZERA) l'override di un'istanza su un nodo del master. L'override
-// arriva come Lite e la sua PRESENZA di campi diventa fills_present/text_present
-// via toPbInstanceOverride: un override senza né fills né text è la RIMOZIONE --
-// il nodo del master torna a ereditare (vedi store/applyOp.ts::
-// setInstanceOverride e core.applySetInstanceOverride). L'upsert per
-// masterNodeId è del reducer, non di qui.
+// Sets (or CLEARS) an instance's override on a master node. The override
+// arrives as Lite and its field PRESENCE becomes fills_present/text_present
+// via toPbInstanceOverride: an override with neither fills nor text is the REMOVAL --
+// the master node goes back to inheriting (see store/applyOp.ts::
+// setInstanceOverride and core.applySetInstanceOverride). The upsert by
+// masterNodeId belongs to the reducer, not here.
 export function makeSetInstanceOverrideOp(instanceId: string, override: InstanceOverrideLite): Op {
   return create(OpSchema, {
     opId: uuid(),
@@ -189,12 +189,12 @@ export interface InstanceNodeParams {
   componentId: string;
 }
 
-// Costruisce il Node di un'ISTANZA (kind "instance") pronto per makeCreateNodeOp:
-// la forma `instance` col componentId reso e NESSUN override. x/y sono dove cade
-// l'ORIGINE del master quando l'istanza lo disegna (store/instances.ts::
-// instanceDescentLocal); width/height sono metadati mostrati dal pannello -- i
-// bounds veri sono derivati dal master a ogni lettura. visible/opacity ai
-// default di una forma appena creata, come le fa shapeTool.
+// Builds the Node of an INSTANCE (kind "instance") ready for makeCreateNodeOp:
+// the `instance` shape with the componentId filled in and NO overrides. x/y are where the
+// master's ORIGIN lands when the instance draws it (store/instances.ts::
+// instanceDescentLocal); width/height are metadata shown by the panel -- the real
+// bounds are derived from the master on every read. visible/opacity at the
+// defaults of a newly created shape, as shapeTool makes them.
 export function makeInstanceNode(p: InstanceNodeParams): Node {
   return create(NodeSchema, {
     id: p.id,
@@ -211,8 +211,8 @@ export function makeInstanceNode(p: InstanceNodeParams): Node {
   });
 }
 
-// --- animazione ------------------------------------------------------------
-// Upsert assoluto dell'intera clip (id fornito dal chiamante) e cancellazione.
+// --- animation -------------------------------------------------------------
+// Absolute upsert of the whole clip (id supplied by the caller) and deletion.
 export function makeSetClipOp(clip: ClipLite): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setClip", value: { clip: toPbClip(clip) } } });
 }

@@ -40,7 +40,7 @@ describe("resizeBounds", () => {
     expect(resizeBounds(b, "n", 999, -10)).toEqual({ x: 100, y: 90, width: 200, height: 110 });
   });
   it("flips instead of producing a negative size", () => {
-    // trascino la maniglia sinistra 250px a destra: supera il bordo destro (x=300)
+    // drag the left handle 250px to the right: it passes the right edge (x=300)
     const r = resizeBounds(b, "w", 250, 0);
     expect(r.width).toBeGreaterThan(0);
     expect(r.x).toBeCloseTo(300, 6);
@@ -62,16 +62,16 @@ describe("hitTestHandle", () => {
   });
   it("keeps a constant screen-space grab area when zoomed", () => {
     const zoomed = { x: 0, y: 0, zoom: 4 };
-    // la maniglia nw resta afferrabile entro ~HANDLE_SIZE px SCHERMO dall'angolo
+    // the nw handle remains grabbable within ~HANDLE_SIZE SCREEN px of the corner
     expect(hitTestHandle(b, zoomed, 400 + 3, 400 + 3)).toBe("nw");
   });
 });
 
-// --- copertura aggiuntiva oltre il minimo del brief ---------------------------
+// --- additional coverage beyond the brief's minimum ---------------------------
 
-describe("resizeBounds, altri casi", () => {
+describe("resizeBounds, other cases", () => {
   it("flips vertically too (n dragged past the bottom edge)", () => {
-    const r = resizeBounds(b, "n", 0, 150); // top 100 -> 250, bottom fermo a 200
+    const r = resizeBounds(b, "n", 0, 150); // top 100 -> 250, bottom still at 200
     expect(r).toEqual({ x: 100, y: 200, width: 200, height: 50 });
   });
   it("flips on both axes at once (nw dragged past the se corner)", () => {
@@ -85,24 +85,24 @@ describe("resizeBounds, altri casi", () => {
     const r = resizeBounds(b, "e", 100, 0, { keepAspect: true });
     expect(r.width).toBeCloseTo(300, 6);
     expect(r.height).toBeCloseTo(150, 6);
-    // il lato ancorato (sinistro/alto) non si muove
+    // the anchored side (left/top) does not move
     expect(r.x).toBeCloseTo(100, 6);
     expect(r.y).toBeCloseTo(100, 6);
   });
   it("keepAspect on a corner SHRINKS when the drag goes inward", () => {
-    // se trascinata 50px verso l'interno: senza keepAspect darebbe width 150.
-    // Con keepAspect deve rimpicciolire in proporzione, NON restare ferma:
-    // con la regola del max(|scale|) vinceva l'1.0 dell'asse y immobile.
+    // se dragged 50px inward: without keepAspect it would give width 150.
+    // With keepAspect it must shrink proportionally, NOT stay still:
+    // with the max(|scale|) rule the still y axis's 1.0 won.
     const r = resizeBounds(b, "se", -50, 0, { keepAspect: true });
     expect(r).toEqual({ x: 100, y: 100, width: 150, height: 75 });
   });
   it("keepAspect on a corner: the axis dragged MORE commands, also shrinking", () => {
-    // dx porta x a scala 0.5, dy porta y a scala 0.9: comanda lo 0.5.
+    // dx brings x to scale 0.5, dy brings y to scale 0.9: the 0.5 rules.
     const r = resizeBounds(b, "se", -100, -10, { keepAspect: true });
     expect(r).toEqual({ x: 100, y: 100, width: 100, height: 50 });
   });
   it("keepAspect on a corner: a shrink beats a smaller growth on the other axis", () => {
-    // x cresce del 10% (scala 1.1), y si dimezza (scala 0.5): comanda y.
+    // x grows by 10% (scale 1.1), y halves (scale 0.5): y rules.
     const r = resizeBounds(b, "se", 20, -50, { keepAspect: true });
     expect(r).toEqual({ x: 100, y: 100, width: 100, height: 50 });
   });
@@ -133,15 +133,15 @@ describe("resizeBounds, altri casi", () => {
 describe("resizeTransform / transformBounds", () => {
   it("scales a sub-box relative to the group box (multi-selection resize)", () => {
     const group = { x: 0, y: 0, width: 100, height: 100 };
-    const t = resizeTransform(group, "se", 100, 100); // raddoppia
+    const t = resizeTransform(group, "se", 100, 100); // doubles
     expect(transformBounds(group, t)).toEqual({ x: 0, y: 0, width: 200, height: 200 });
     expect(transformBounds({ x: 50, y: 50, width: 50, height: 50 }, t))
       .toEqual({ x: 100, y: 100, width: 100, height: 100 });
   });
   it("mirrors sub-boxes when the group flips", () => {
     const group = { x: 0, y: 0, width: 100, height: 100 };
-    const t = resizeTransform(group, "w", 200, 0); // il lato sinistro supera il destro
-    // il figlio che stava a sinistra finisce a destra dell'ancora (x=100)
+    const t = resizeTransform(group, "w", 200, 0); // the left side passes the right one
+    // the child that was on the left ends up to the right of the anchor (x=100)
     expect(transformBounds({ x: 0, y: 0, width: 20, height: 100 }, t))
       .toEqual({ x: 180, y: 0, width: 20, height: 100 });
   });
@@ -163,7 +163,7 @@ describe("handleScreenRects", () => {
   });
 });
 
-describe("hitTestHandle, altri casi", () => {
+describe("hitTestHandle, other cases", () => {
   it("prefers a corner over an edge handle when both grab areas overlap (tiny box)", () => {
     const tiny = { x: 0, y: 0, width: 2, height: 2 };
     expect(hitTestHandle(tiny, cam, 0, 0)).toBe("nw");
@@ -184,10 +184,10 @@ describe("hitTestHandle, altri casi", () => {
   });
 });
 
-// --- rotazione ---------------------------------------------------------------
-// Un FRAME è il bbox della selezione PIÙ la sua rotazione (gradi, orari,
-// attorno al centro -- vedi canvas/transform.ts). Le maniglie vivono nello
-// spazio LOCALE del frame: disegnarle e colpirle vuol dire ruotarle con lui.
+// --- rotation ----------------------------------------------------------------
+// A FRAME is the selection bbox PLUS its rotation (degrees, clockwise,
+// around the center -- see canvas/transform.ts). The handles live in the
+// frame's LOCAL space: drawing and hitting them means rotating them with it.
 
 function expectPoint(p: { x: number; y: number }, x: number, y: number) {
   expect(p.x).toBeCloseTo(x, 9);
@@ -201,8 +201,8 @@ function expectBounds(b: { x: number; y: number; width: number; height: number }
   expect(b.height).toBeCloseTo(h, 9);
 }
 
-// 100x50 nell'origine: centro (50, 25). Con camera identità le coordinate
-// schermo coincidono con quelle mondo.
+// 100x50 at the origin: center (50, 25). With an identity camera the screen
+// coordinates coincide with the world ones.
 const small = { x: 0, y: 0, width: 100, height: 50 };
 
 describe("handleScreenPoints", () => {
@@ -231,18 +231,18 @@ describe("hitTestFrame", () => {
     const f = { bounds: b, rotation: 0 };
     expect(hitTestFrame(f, cam, 100, 100)).toEqual({ kind: "resize", handle: "nw" });
     expect(hitTestFrame(f, cam, 300, 150)).toEqual({ kind: "resize", handle: "e" });
-    expect(hitTestFrame(f, cam, 200, 150)).toBeNull(); // ben dentro il box
+    expect(hitTestFrame(f, cam, 200, 150)).toBeNull(); // well inside the box
   });
 
   it("finds the resize handles WHERE THE ROTATION PUT THEM, not where the bbox says", () => {
     const f = { bounds: small, rotation: 90 };
     expect(hitTestFrame(f, cam, 50, 75)).toEqual({ kind: "resize", handle: "e" });
-    // dove la maniglia e stava da fermo ora non c'è più niente
+    // where the e handle used to be at rest there is now nothing
     expect(hitTestFrame(f, cam, 100, 25)).toBeNull();
   });
 
   it("gives the corner a rotate zone JUST OUTSIDE it", () => {
-    const f = { bounds: b, rotation: 0 }; // se a (300, 200)
+    const f = { bounds: b, rotation: 0 }; // se at (300, 200)
     expect(hitTestFrame(f, cam, 308, 208)).toEqual({ kind: "rotate", corner: "se" });
     expect(hitTestFrame(f, cam, 92, 92)).toEqual({ kind: "rotate", corner: "nw" });
     expect(hitTestFrame(f, cam, 308, 92)).toEqual({ kind: "rotate", corner: "ne" });
@@ -255,8 +255,8 @@ describe("hitTestFrame", () => {
   });
 
   it("never steals a click from INSIDE the shape, however near the corner", () => {
-    // 10px dentro il box in diagonale: fuori dall'area di presa del resize, ma
-    // dentro il riquadro -- deve restare un click sul nodo, non una rotazione.
+    // 10px inside the box diagonally: outside the resize grab area, but
+    // inside the box -- it must remain a click on the node, not a rotation.
     expect(hitTestFrame({ bounds: b, rotation: 0 }, cam, 290, 190)).toBeNull();
   });
 
@@ -265,17 +265,17 @@ describe("hitTestFrame", () => {
   });
 
   it("carries the rotate zone around with the frame too", () => {
-    // Frame ruotato di 90°: l'angolo se (locale (100,50)) sta a (25, 75), e la
-    // sua diagonale uscente punta in (-1, +1) invece che in (+1, +1).
+    // Frame rotated by 90°: the se corner (local (100,50)) is at (25, 75), and its
+    // outgoing diagonal points to (-1, +1) instead of (+1, +1).
     const f = { bounds: small, rotation: 90 };
     expect(hitTestFrame(f, cam, 25 - 8, 75 + 8)).toEqual({ kind: "rotate", corner: "se" });
-    // nella direzione in cui la diagonale puntava da fermo non c'è più niente
+    // in the direction the diagonal pointed at rest there is now nothing
     expect(hitTestFrame(f, cam, 25 + 12, 75 + 12)).toBeNull();
   });
 
   it("keeps both zones constant in SCREEN px at any zoom", () => {
     const zoomed = { x: 0, y: 0, zoom: 4 };
-    const f = { bounds: b, rotation: 0 }; // se schermo a (1200, 800)
+    const f = { bounds: b, rotation: 0 }; // se screen at (1200, 800)
     expect(hitTestFrame(f, zoomed, 1200, 800)).toEqual({ kind: "resize", handle: "se" });
     expect(hitTestFrame(f, zoomed, 1208, 808)).toEqual({ kind: "rotate", corner: "se" });
     expect(hitTestFrame(f, zoomed, 1230, 830)).toBeNull();
@@ -299,34 +299,34 @@ describe("resizeRotatedBounds", () => {
   });
 
   it("widens a 90-degree node along its OWN axis: the drag that counts is the one down the screen", () => {
-    // Maniglia e su un nodo ruotato di 90°: il suo asse x locale punta in giù
-    // sullo schermo, quindi è un trascinamento VERTICALE ad allargarlo.
+    // e handle on a node rotated by 90°: its local x axis points down
+    // on screen, so it is a VERTICAL drag that widens it.
     expectBounds(resizeRotatedBounds(small, 90, "e", 0, 30), -15, 15, 130, 50);
   });
 
   it("ignores the component of the drag across that axis", () => {
-    // Stesso nodo, trascinamento ORIZZONTALE: sull'asse locale della maniglia e
-    // non c'è nessuno spostamento, quindi la larghezza non cambia.
+    // Same node, HORIZONTAL drag: on the handle's local e axis
+    // there is no displacement, so the width does not change.
     const r = resizeRotatedBounds(small, 90, "e", 30, 0);
     expect(r.width).toBeCloseTo(100, 9);
     expect(r.height).toBeCloseTo(50, 9);
   });
 
   it("keeps the anchored edge nailed where it is IN THE WORLD", () => {
-    // L'ancora della maniglia e è il lato ovest: in coordinate mondo, per un
-    // nodo a 90°, il punto (50, -25). Il resize non deve muoverlo.
+    // The anchor of the e handle is the west side: in world coordinates, for a
+    // node at 90°, the point (50, -25). The resize must not move it.
     const before = { x: 50, y: -25 };
     const after = resizeRotatedBounds(small, 90, "e", 0, 30);
-    // punto medio del lato ovest del nuovo box, riportato nel mondo
+    // midpoint of the west side of the new box, brought back to the world
     const c = { x: after.x + after.width / 2, y: after.y + after.height / 2 };
     const dx = after.x - c.x;
     const dy = after.y + after.height / 2 - c.y;
-    // rotazione di +90 di (dx, dy) attorno a c: (x,y) -> (-y, x)
+    // rotation by +90 of (dx, dy) around c: (x,y) -> (-y, x)
     expectPoint({ x: c.x - dy, y: c.y + dx }, before.x, before.y);
   });
 
   it("still flips and still keeps the aspect ratio once rotated", () => {
-    const flipped = resizeRotatedBounds(small, 90, "w", 0, 300); // oltre l'ancora
+    const flipped = resizeRotatedBounds(small, 90, "w", 0, 300); // past the anchor
     expect(flipped.width).toBeGreaterThan(0);
     expect(flipped.height).toBeGreaterThan(0);
     const kept = resizeRotatedBounds(small, 90, "se", 0, 100, { keepAspect: true });
@@ -334,8 +334,8 @@ describe("resizeRotatedBounds", () => {
   });
 });
 
-// La maniglia di rotazione DISEGNATA. Prima non si disegnava affatto: l'unica
-// affordance era il cursore su un anello invisibile, cioè nessuna affordance.
+// The DRAWN rotation handle. Before, nothing was drawn at all: the only
+// affordance was the cursor on an invisible ring, i.e. no affordance.
 describe("rotateMarkerPositions", () => {
   const box = { x: 0, y: 0, width: 100, height: 50 };
 
@@ -349,12 +349,12 @@ describe("rotateMarkerPositions", () => {
     expect(Object.keys(m)).toHaveLength(4);
   });
 
-  // L'invariante che tiene insieme il disegno e l'hit-test: se un giorno una
-  // delle costanti cambia, è QUI che si rompe -- non in mano all'utente, che
-  // vedrebbe un segno che, cliccato, ridimensiona o non fa niente.
+  // The invariant that holds the drawing and the hit-test together: if one day one
+  // of the constants changes, it breaks HERE -- not in the user's hands, who
+  // would see a sign that, when clicked, resizes or does nothing.
   it("draws only where it grabs: every pixel of every marker is that corner's rotate zone", () => {
     const f = { bounds: b, rotation: 0 };
-    const m = rotateMarkerPositions(b); // camera identità: schermo === mondo
+    const m = rotateMarkerPositions(b); // identity camera: screen === world
     for (const id of CORNER_IDS) {
       expect(hitTestFrame(f, cam, m[id].x, m[id].y)).toEqual({ kind: "rotate", corner: id });
       for (let k = 0; k < 16; k++) {
@@ -367,10 +367,10 @@ describe("rotateMarkerPositions", () => {
   });
 });
 
-// Il resize di una selezione MULTIPLA che contiene un nodo RUOTATO. Il riquadro
-// di gruppo è asse-allineato (vedi overlayRenderer::selectionFrame): la scala
-// vale lungo gli assi dello SCHERMO, e un membro girato va mappato per assi,
-// non scalando il suo box locale.
+// The resize of a MULTIPLE selection that contains a ROTATED node. The group
+// box is axis-aligned (see overlayRenderer::selectionFrame): the scale
+// applies along the SCREEN axes, and a rotated member must be mapped by axes,
+// not by scaling its local box.
 describe("applyFrameResizeToNode", () => {
   it("is applyFrameResize, number for number, when the node is aligned with the frame", () => {
     const f = { bounds: b, rotation: 0 };
@@ -381,17 +381,17 @@ describe("applyFrameResizeToNode", () => {
     }
   });
 
-  // Il caso della review, numero per numero. Gruppo = A (0,0,100,50) a 90° +
-  // B (200,0,50,50): il riquadro sta su x [25,250], y [-25,75]. Si tira la
-  // maniglia e di +225 (scala x2 in orizzontale, 1 in verticale).
+  // The review case, number by number. Group = A (0,0,100,50) at 90° +
+  // B (200,0,50,50): the box sits on x [25,250], y [-25,75]. The
+  // e handle is pulled by +225 (scale x2 horizontally, 1 vertically).
   it("grows a 90-degree member along the axis the pointer is really dragging", () => {
     const group = { x: 25, y: -25, width: 225, height: 100 };
     const r = resizeFrame({ bounds: group, rotation: 0 }, "e", 225, 0);
     const out = applyFrameResizeToNode({ x: 0, y: 0, width: 100, height: 50 }, 90, r);
 
-    // il box del modello: 100x50 diventa 100x100 (la larghezza segue l'asse
-    // VERTICALE dello schermo, che il drag non ha toccato; l'altezza segue
-    // quello orizzontale, raddoppiato)
+    // the model box: 100x50 becomes 100x100 (the width follows the
+    // VERTICAL screen axis, which the drag did not touch; the height follows
+    // the horizontal one, doubled)
     expectBounds(out.bounds, 25, -25, 100, 100);
     expect(out.rotation).toBeCloseTo(90, 9);
   });
@@ -408,17 +408,17 @@ describe("applyFrameResizeToNode", () => {
     expect(aabb.x + aabb.width).toBeLessThanOrEqual(after.x + after.width + 1e-9);
     expect(aabb.y + aabb.height).toBeLessThanOrEqual(after.y + after.height + 1e-9);
 
-    // e quello che occupa DAVVERO è cresciuto in orizzontale, non in verticale:
-    // 50x100 -> 100x100 (prima diventava 50 largo e 200 alto)
+    // and what it occupies REALLY grew horizontally, not vertically:
+    // 50x100 -> 100x100 (before it became 50 wide and 200 tall)
     expect(aabb.width).toBeCloseTo(100, 9);
     expect(aabb.height).toBeCloseTo(100, 9);
   });
 
-  // 90° è il caso FACILE: gli assi si scambiano e il rettangolo mappato cade
-  // esattamente sull'AABB scalato, quindi il contenimento veniva da sé. A 45°
-  // no, ed è lì che il giro 1 usciva ancora dal riquadro. Il caso della review,
-  // numero per numero: 100x50 a 45° (AABB 106.07x106.07) + un vicino dritto,
-  // maniglia e, kx=2, ky=1 (l'altezza del riquadro NON viene mai trascinata).
+  // 90° is the EASY case: the axes swap and the mapped rectangle falls
+  // exactly on the scaled AABB, so containment came for free. At 45°
+  // it does not, and that is where round 1 still stuck out of the box. The review case,
+  // number by number: 100x50 at 45° (AABB 106.07x106.07) + a straight neighbor,
+  // e handle, kx=2, ky=1 (the box height is NEVER dragged).
   const at45 = () => {
     const node = { x: 0, y: 0, width: 100, height: 50 };
     const group = unionBounds([rotatedAabb(node, 45), { x: 200, y: 0, width: 50, height: 50 }])!;
@@ -436,50 +436,50 @@ describe("applyFrameResizeToNode", () => {
     expect(aabb.x + aabb.width).toBeLessThanOrEqual(after.x + after.width + 1e-9);
     expect(aabb.y + aabb.height).toBeLessThanOrEqual(after.y + after.height + 1e-9);
 
-    // Il vincolo VERO, quello che il giro 1 rompeva: la maniglia e non ha
-    // toccato l'altezza del riquadro, quindi non deve toccare nemmeno quella
-    // del membro. Prima: 141.42 dentro un riquadro alto 106.07 (+33%).
+    // The REAL constraint, the one round 1 broke: the e handle did not
+    // touch the box height, so it must not touch the member's either.
+    // Before: 141.42 inside a box 106.07 tall (+33%).
     expect(aabb.height).toBeCloseTo(rotatedAabb(node, 45).height, 9);
     expect(aabb.height).toBeCloseTo(after.height, 9);
   });
 
-  // Il PREZZO del contenimento, messo nero su bianco: il membro riempie MENO
-  // del suo posto lungo l'asse trascinato. Se un giorno si trova di meglio,
-  // questi numeri devono cambiare a mano -- non in silenzio.
+  // The PRICE of containment, put in black and white: the member fills LESS
+  // than its place along the dragged axis. If one day something better is found,
+  // these numbers must change by hand -- not silently.
   it("pins what a 45-degree member becomes: contained, and under-filling the dragged axis", () => {
     const { node, r } = at45();
     const out = applyFrameResizeToNode(node, 45, r);
 
-    // gli ASSI restano quelli mappati (26.565° = atan(1/2)): cambiano solo le
-    // lunghezze, ridotte del fattore 0.75 che rimette l'AABB nel suo posto
+    // the AXES stay the mapped ones (26.565° = atan(1/2)): only the
+    // lengths change, reduced by the factor 0.75 that puts the AABB back in its place
     expect(out.rotation).toBeCloseTo(26.56505117707799, 9);
     expect(out.bounds.width).toBeCloseTo(158.11388300841898 * 0.75, 9);
     expect(out.bounds.height).toBeCloseTo(79.05694150420948 * 0.75, 9);
 
     const aabb = rotatedAabb(out.bounds, out.rotation);
-    // il posto riservato è largo 212.13: ne occupa 132.58, e li tocca in alto
-    // e in basso (dove il posto è 106.07)
+    // the reserved place is 212.13 wide: it occupies 132.58, and touches it at top
+    // and bottom (where the place is 106.07)
     expect(aabb.width).toBeCloseTo(132.58252147247765, 9);
     expect(aabb.height).toBeCloseTo(106.06601717798212, 9);
-    // il centro resta quello mappato dalla trasformazione di gruppo, intatto
+    // the center stays the one mapped by the group transformation, intact
     expect(aabb.x + aabb.width / 2).toBeCloseTo(103.03300858899107, 9);
     expect(aabb.y + aabb.height / 2).toBeCloseTo(25, 9);
   });
 
-  // L'invariante, non un caso fortunato: QUALUNQUE angolo, QUALUNQUE scala
-  // (ribaltamenti compresi). Un membro che parte dentro il riquadro ci resta.
+  // The invariant, not a lucky case: ANY angle, ANY scale
+  // (flips included). A member that starts inside the box stays there.
   it("never lets a member escape the frame, at any angle and any scale", () => {
-    // Il riquadro è ESATTAMENTE l'AABB del nodo (il membro che tocca tutti e
-    // quattro i bordi del gruppo -- il caso più stretto, e l'unico che
-    // distingue davvero: un nodo piccolo al centro resta dentro anche quando la
-    // mappa sbaglia).
+    // The box is EXACTLY the node's AABB (the member touching all four
+    // group edges -- the tightest case, and the only one that really
+    // distinguishes: a small node in the center stays inside even when the
+    // map is wrong).
     const node = { x: 0, y: 0, width: 100, height: 50 };
     for (let deg = 0; deg < 360; deg += 5) {
       const group = rotatedAabb(node, deg);
-      // Frazioni del lato, non px: il riquadro cambia misura a ogni angolo, e
-      // un delta fisso finirebbe per posare un bordo ESATTAMENTE sull'ancora
-      // (scala 0, cioè un nodo schiacciato per davvero e non per colpa della
-      // mappa). Con la maniglia se: kx = 1 + fx, ky = 1 + fy.
+      // Fractions of the side, not px: the box changes size at every angle, and
+      // a fixed delta would end up laying an edge EXACTLY on the anchor
+      // (scale 0, i.e. a node truly squashed and not because of the
+      // map). With the se handle: kx = 1 + fx, ky = 1 + fy.
       for (const [fx, fy] of [
         [1, 0], [0, 1], [3, -0.5], [-0.5, 3], [-2.5, 0], [0, -2.5], [-2.5, -4], [0.5, 0.5],
       ]) {
@@ -492,7 +492,7 @@ describe("applyFrameResizeToNode", () => {
         expect(aabb.y, where).toBeGreaterThanOrEqual(after.y - 1e-6);
         expect(aabb.x + aabb.width, where).toBeLessThanOrEqual(after.x + after.width + 1e-6);
         expect(aabb.y + aabb.height, where).toBeLessThanOrEqual(after.y + after.height + 1e-6);
-        // e non si annulla: contenere non vuol dire sparire
+        // and it does not vanish: containing does not mean disappearing
         expect(out.bounds.width, where).toBeGreaterThan(0);
         expect(out.bounds.height, where).toBeGreaterThan(0);
       }
@@ -504,21 +504,21 @@ describe("applyFrameResizeToNode", () => {
     const r = resizeFrame({ bounds: group, rotation: 0 }, "se", 100, 100, { keepAspect: true });
     const out = applyFrameResizeToNode({ x: 0, y: 0, width: 40, height: 20 }, 30, r);
 
-    expect(out.rotation).toBe(30); // non 29.999999999999996
+    expect(out.rotation).toBe(30); // not 29.999999999999996
     expectBounds(out.bounds, 0, 0, 80, 40);
   });
 
   it("MIRRORS the angle when the group flips: 30 degrees becomes 150", () => {
     const group = { x: 0, y: 0, width: 100, height: 100 };
-    // maniglia e trascinata 200px a sinistra: supera l'ancora (x=0) e ribalta
+    // e handle dragged 200px to the left: it passes the anchor (x=0) and flips
     const r = resizeFrame({ bounds: group, rotation: 0 }, "e", -200, 0);
     const out = applyFrameResizeToNode({ x: 0, y: 0, width: 40, height: 20 }, 30, r);
 
     expect(out.rotation).toBeCloseTo(150, 9);
-    // uno specchio non deforma: le misure restano quelle
+    // a mirror does not deform: the measurements stay the same
     expect(out.bounds.width).toBeCloseTo(40, 9);
     expect(out.bounds.height).toBeCloseTo(20, 9);
-    // e il centro passa dall'altra parte dell'ancora
+    // and the center goes to the other side of the anchor
     expect(out.bounds.x + out.bounds.width / 2).toBeCloseTo(-20, 9);
   });
 
@@ -526,8 +526,8 @@ describe("applyFrameResizeToNode", () => {
     const group = { x: 0, y: 0, width: 100, height: 100 };
     const r = resizeFrame({ bounds: group, rotation: 0 }, "s", 0, 100); // scala y x2
     const out = applyFrameResizeToNode({ x: 0, y: 0, width: 40, height: 20 }, 90, r);
-    // a 90° l'asse x locale punta lungo lo schermo IN GIÙ: è la larghezza a
-    // raddoppiare, non l'altezza
+    // at 90° the local x axis points along the screen DOWN: it is the width that
+    // doubles, not the height
     expect(out.bounds.width).toBeCloseTo(80, 9);
     expect(out.bounds.height).toBeCloseTo(20, 9);
   });
@@ -535,14 +535,14 @@ describe("applyFrameResizeToNode", () => {
 
 // --- movingEdgeLines ---------------------------------------------------------
 //
-// La tabella da cui lo snap del ridimensionamento decide QUALI linee possono
-// scattare (vedi tools/selectTool.ts::resizeDelta). Sbagliarne una non si vede
-// mai direttamente -- il riquadro cresce comunque -- ma fa scattare il bordo
-// FERMO, cioè l'ancora: il nodo si SPOSTA invece di ridimensionarsi, e l'unico
-// punto che il resize promette di non muovere si muove.
+// The table from which the resize snap decides WHICH lines may
+// snap (see tools/selectTool.ts::resizeDelta). Getting one wrong is never visible
+// directly -- the box grows anyway -- but it makes the FIXED edge snap,
+// i.e. the anchor: the node MOVES instead of resizing, and the only
+// point the resize promises not to move moves.
 describe("movingEdgeLines", () => {
-  // Quattro bordi tutti diversi, così uno scambio left/right o top/bottom non
-  // può passare inosservato: sinistra 10, destra 110, alto 20, basso 60.
+  // Four edges all different, so a left/right or top/bottom swap
+  // cannot go unnoticed: left 10, right 110, top 20, bottom 60.
   const box = { x: 10, y: 20, width: 100, height: 40 };
 
   it("names the exact edges of each of the eight handles", () => {
@@ -556,14 +556,14 @@ describe("movingEdgeLines", () => {
     expect(movingEdgeLines(box, "w")).toEqual({ x: [10], y: [] });
   });
 
-  // LA GUARDIA VERA: la tabella è ancorata alla matematica del resize invece
-  // che a una seconda lista scritta a mano. Se MOVES e movingEdgeLines si
-  // scollassero (uno scambio left/right, un bordo dimenticato), qui il bordo
-  // dichiarato non sarebbe più quello che il drag muove davvero.
+  // THE REAL GUARD: the table is anchored to the resize math instead of
+  // a second hand-written list. If MOVES and movingEdgeLines
+  // drifted apart (a left/right swap, a forgotten edge), here the
+  // declared edge would no longer be what the drag really moves.
   it("names exactly the edges that a drag on that handle MOVES, and no others", () => {
     for (const h of HANDLE_IDS) {
-      // Delta piccolo e su entrambi gli assi: nessun ribaltamento, e ogni asse
-      // che la maniglia tocca si muove davvero.
+      // Small delta on both axes: no flip, and every axis
+      // the handle touches really moves.
       const out = resizeBounds(box, h, 7, 5);
       const moved = { x: [] as number[], y: [] as number[] };
       if (out.x !== box.x) moved.x.push(box.x);

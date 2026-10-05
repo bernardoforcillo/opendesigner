@@ -5,12 +5,12 @@ import { makeDeleteFlowOp, makeDeleteTransitionOp, makeSetFlowOp, makeSetPropsOp
 import { resolveFlow } from "../store/flowUi";
 import { withMeta } from "./meta";
 
-// I COMANDI DEI FLUSSI: dalle intenzioni dell'utente agli op. Le funzioni
-// `...Ops` sono pure (scena -> op, testabili senza store); `submit` è l'unico
-// punto che tocca lo store, con la regola di sempre: UN gesto = UN invio = UNA
-// voce di undo (store.ts::endGesture).
+// THE FLOW COMMANDS: from the user's intentions to ops. The `...Ops` functions
+// are pure (scene -> ops, testable without the store); `submit` is the only
+// point that touches the store, with the usual rule: ONE gesture = ONE send = ONE
+// undo entry (store.ts::endGesture).
 
-/** Manda gli op come un solo gesto annullabile. */
+/** Sends the ops as a single undoable gesture. */
 export function submit(ops: Op[]): void {
   if (ops.length === 0) return;
   const st = useScene.getState();
@@ -18,11 +18,11 @@ export function submit(ops: Op[]): void {
   st.endGesture(ops);
 }
 
-/** "Flusso 1", "Flusso 2"...: il primo numero libero, non il conteggio (un flusso cancellato libera il suo). */
+/** "Flow 1", "Flow 2"...: the first free number, not the count (a deleted flow frees its own). */
 export function nextFlowName(scene: SceneState): string {
   const names = new Set(Object.values(scene.flows).map((f) => f.name));
   for (let i = 1; ; i++) {
-    const n = `Flusso ${i}`;
+    const n = `Flow ${i}`;
     if (!names.has(n)) return n;
   }
 }
@@ -31,16 +31,16 @@ export interface ConnectResult {
   ops: Op[];
   flowId: string;
   transitionId: string;
-  /** Il flusso è stato creato da questo gesto (non c'era nessuno). */
+  /** The flow was created by this gesture (there was none). */
   createdFlow: boolean;
 }
 
 /**
- * Gli op di "Collega": la transizione fromId -> toId nel flusso corrente.
- *  - nessun flusso: ne nasce uno, "Flusso N", con la schermata di partenza come
- *    ingresso, NELLO STESSO gesto (un solo Ctrl+Z annulla tutto);
- *  - flusso senza schermata d'ingresso: la prende la schermata di partenza;
- *  - l'op della transizione viene dopo quello del flusso (riferimento valido).
+ * The ops of "Connect": the fromId -> toId transition in the current flow.
+ *  - no flow: one is born, "Flow N", with the starting screen as the
+ *    entry, IN THE SAME gesture (a single Ctrl+Z undoes everything);
+ *  - flow without an entry screen: the starting screen takes it;
+ *  - the transition's op comes after the flow's (valid reference).
  */
 export function connectOps(
   scene: SceneState,
@@ -92,7 +92,7 @@ export function deleteFlowOp(id: string): Op {
   return makeDeleteFlowOp(id);
 }
 
-/** Modifica un campo di una transizione. null se non cambia nulla (niente op a vuoto). */
+/** Edits a field of a transition. null if nothing changes (no empty ops). */
 export function editTransitionOp(
   t: TransitionLite,
   field: "label" | "trigger" | "guard" | "effect" | "elementId",
@@ -106,7 +106,7 @@ export function deleteTransitionOp(id: string): Op {
   return makeDeleteTransitionOp(id);
 }
 
-/** Scrive una chiave dei metadati di un nodo (read-modify-write: la mask "meta" sostituisce la mappa). */
+/** Writes a key of a node's metadata (read-modify-write: the "meta" mask replaces the map). */
 export function setMetaOp(node: NodeLite, key: string, value: string): Op | null {
   const next = withMeta(node, key, value);
   const prev = node.meta ?? {};

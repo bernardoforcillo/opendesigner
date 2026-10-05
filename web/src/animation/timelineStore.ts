@@ -11,14 +11,14 @@ import {
 } from "./timelineLogic";
 import { buildPreset, type PresetId } from "./presets";
 
-// LO STATO DELLA TIMELINE: stato di VISTA, come la camera e la selezione -- non è
-// documento, non passa dalla rete e non entra nell'undo. Cosa invece è documento
-// (le clip, i loro keyframe) si scrive solo con `SetClip` / `DeleteClip`, UN op per
-// gesto, tramite `commitClip` / `removeClip` qui sotto.
+// THE TIMELINE STATE: VIEW state, like the camera and the selection -- it is not
+// document, it does not go over the network and does not enter undo. What is instead document
+// (the clips, their keyframes) is written only with `SetClip` / `DeleteClip`, ONE op per
+// gesture, via `commitClip` / `removeClip` below.
 //
-// Tiene anche il TRASPORTO (play, pausa, stop, scorrimento) e il suo ciclo
-// requestAnimationFrame, che gira SOLO mentre si riproduce: a timeline ferma o
-// chiusa l'editor non pianifica un solo frame.
+// It also holds the TRANSPORT (play, pause, stop, scrubbing) and its
+// requestAnimationFrame loop, which runs ONLY while playing: with the timeline stopped or
+// closed the editor does not schedule a single frame.
 
 const HEIGHT_KEY = "od.timeline.height";
 export const MIN_HEIGHT = 168;
@@ -32,36 +32,36 @@ function readHeight(): number {
   try {
     const v = Number(localStorage.getItem(HEIGHT_KEY));
     if (Number.isFinite(v) && v >= MIN_HEIGHT && v <= MAX_HEIGHT) return v;
-  } catch { /* niente storage */ }
+  } catch { /* no storage */ }
   return DEFAULT_HEIGHT;
 }
 
 export interface TimelineState {
-  /** Il pannello è aperto. Chiuso, nessun costo: non si monta, non si campiona. */
+  /** The panel is open. Closed, no cost: it is not mounted, not sampled. */
   open: boolean;
   height: number;
-  /** Ridotto alla sola barra del trasporto (la tela riprende lo spazio). */
+  /** Reduced to the transport bar only (the canvas takes the space back). */
   collapsed: boolean;
-  /** La clip aperta nell'editor (id), o null. */
+  /** The clip open in the editor (id), or null. */
   clipId: string | null;
-  /** Il tempo corrente DENTRO la clip, ms. */
+  /** The current time INSIDE the clip, ms. */
   playhead: number;
   playing: boolean;
   loop: boolean;
   speed: number;
-  /** "Registra": le modifiche a x, y, rotazione, opacità diventano keyframe al playhead. */
+  /** "Record": changes to x, y, rotation, opacity become keyframes at the playhead. */
   record: boolean;
-  /** La tela mostra la POSA (valori campionati) invece del documento: da quando si scorre/riproduce/registra fino a Stop. */
+  /** The canvas shows the POSE (sampled values) instead of the document: from when you scrub/play/record until Stop. */
   posed: boolean;
-  /** Ingrandimento orizzontale rispetto a "tutta la clip nello spazio" (1). */
+  /** Horizontal magnification relative to "the whole clip in the space" (1). */
   zoom: number;
-  /** Solo le clip della selezione (schermata/gruppo) o tutte quelle del documento. */
+  /** Only the clips of the selection (screen/group) or all those of the document. */
   filterToSelection: boolean;
-  /** I keyframe selezionati (indici nella clip, bozza compresa). */
+  /** The selected keyframes (indices in the clip, draft included). */
   selection: KeyRef[];
-  /** La clip con la bozza di un trascinamento di keyframe: si campiona al posto di quella del documento. */
+  /** The clip with the draft of a keyframe drag: it is sampled in place of the document's. */
   draftClip: ClipLite | null;
-  /** I valori che la registrazione sta raccogliendo a metà gesto (nodo -> proprietà). */
+  /** The values that recording is collecting mid-gesture (node -> property). */
   recordDraft: ReadonlyMap<string, NodeAnim> | null;
 
   setOpen: (v: boolean) => void;
@@ -84,9 +84,9 @@ export interface TimelineState {
   setRecordDraft: (d: ReadonlyMap<string, NodeAnim> | null) => void;
 }
 
-// Il ciclo di riproduzione. `elapsed` è il tempo reale trascorso dall'inizio
-// (ritardo compreso) e `clipTimeline` lo traduce nel tempo dentro la clip: così
-// l'anteprima rispetta ripetizioni, yoyo e ritardo ESATTAMENTE come il prototipo.
+// The playback loop. `elapsed` is the real time elapsed since the start
+// (delay included) and `clipTimeline` translates it into the time inside the clip: so
+// the preview respects repeats, yoyo and delay EXACTLY like the prototype.
 let raf = 0;
 let lastNow = 0;
 let elapsed = 0;
@@ -107,7 +107,7 @@ function tick(now: number) {
   if (!st.playing) return;
   const clip = sceneClip(st.clipId);
   if (!clip) { st.pause(); return; }
-  // Un salto lungo (scheda in secondo piano) non deve far saltare l'animazione.
+  // A long jump (background tab) must not make the animation jump.
   const dt = Math.min(100, Math.max(0, now - lastNow)) * st.speed;
   lastNow = now;
   elapsed += dt;
@@ -155,7 +155,7 @@ export const useTimeline = create<TimelineState>((set, get) => ({
     const height = Math.round(Math.min(MAX_HEIGHT, Math.max(MIN_HEIGHT, h)));
     if (height === get().height) return;
     set({ height });
-    try { localStorage.setItem(HEIGHT_KEY, String(height)); } catch { /* niente storage */ }
+    try { localStorage.setItem(HEIGHT_KEY, String(height)); } catch { /* no storage */ }
     resizeSoon();
   },
   setCollapsed: (v) => {
@@ -163,7 +163,7 @@ export const useTimeline = create<TimelineState>((set, get) => ({
     set({ collapsed: v });
     resizeSoon();
   },
-  // Aprire una clip (dalla lista, dopo averla creata o con un preset) apre anche il pannello.
+  // Opening a clip (from the list, after creating it or with a preset) also opens the panel.
   openClip: (id) => {
     cancelLoop();
     set({ open: id !== null ? true : get().open, collapsed: id !== null ? false : get().collapsed, clipId: id, playhead: 0, playing: false, posed: false, record: false, selection: [], draftClip: null, recordDraft: null });
@@ -173,14 +173,14 @@ export const useTimeline = create<TimelineState>((set, get) => ({
     const clip = sceneClip(get().clipId);
     const p = Math.min(clip?.duration ?? 0, Math.max(0, Number.isFinite(t) ? t : 0));
     cancelLoop();
-    // scorrere mette in pausa e mostra la posa; il tempo reale riparte da qui
+    // scrubbing pauses and shows the pose; the real time restarts from here
     set({ playhead: p, playing: false, posed: true });
   },
   play: () => {
     const st = get();
     const clip = sceneClip(st.clipId);
     if (!clip || st.playing) return;
-    // Da fermo alla fine (e senza ripetizione) si riparte da capo.
+    // From stopped at the end (and without repeat) it restarts from the beginning.
     const from = st.playhead >= clip.duration && !st.loop ? 0 : st.playhead;
     elapsed = clip.delay + from;
     lastNow = typeof performance !== "undefined" ? performance.now() : 0;
@@ -195,7 +195,7 @@ export const useTimeline = create<TimelineState>((set, get) => ({
   togglePlay: () => (get().playing ? get().pause() : get().play()),
   stop: () => {
     cancelLoop();
-    // Stop riporta al tempo 0; la posa resta solo se si sta registrando (si vede il primo fotogramma).
+    // Stop returns to time 0; the pose stays only if recording (the first frame is visible).
     set((st) => ({ playing: false, playhead: 0, posed: st.record }));
   },
   setLoop: (v) => set({ loop: v }),
@@ -212,28 +212,28 @@ export const useTimeline = create<TimelineState>((set, get) => ({
   setRecordDraft: (d) => set({ recordDraft: d }),
 }));
 
-// La tela cambia altezza quando il pannello si apre/chiude/ridimensiona: il
-// renderer ridisegna su invalidazione e il resize della finestra è già
-// l'invalidazione che App ascolta (stessa strada di shell/panels.ts).
+// The canvas changes height when the panel opens/closes/resizes: the
+// renderer redraws on invalidation and the window resize is already
+// the invalidation that App listens to (same path as shell/panels.ts).
 function resizeSoon() {
   if (typeof window !== "undefined" && typeof requestAnimationFrame !== "undefined") {
     requestAnimationFrame(() => window.dispatchEvent(new Event("resize")));
   }
 }
 
-// --- le scritture sul documento ----------------------------------------------------
+// --- writes to the document --------------------------------------------------------
 
-/** Scrive la clip INTERA con UN op in UN gesto: un passo di undo. */
+/** Writes the WHOLE clip with ONE op in ONE gesture: one undo step. */
 export function commitClip(clip: ClipLite): void {
   const st = useScene.getState();
   st.beginGesture();
   st.endGesture([makeSetClipOp(clip)]);
 }
 
-/** Crea una clip vuota per il bersaglio e la apre. Torna la clip (o null senza bersaglio). */
+/** Creates an empty clip for the target and opens it. Returns the clip (or null without a target). */
 export function createClip(scene: SceneState, selection: readonly string[]): ClipLite | null {
   const target = defaultTargetId(scene, selection) || scene.pages[0]?.id || "";
-  // Il bersaglio deve essere un nodo: senza selezione si ripiega sul primo frame della pagina.
+  // The target must be a node: without a selection it falls back to the first frame of the page.
   const targetNode = scene.nodes.get(target) ? target : firstContainer(scene);
   if (!targetNode) return null;
   const clip = newClip(uuid(), uniqueClipName(scene.clips), targetNode);
@@ -256,10 +256,10 @@ export function duplicateClipOp(scene: SceneState, id: string): void {
 }
 
 /**
- * "+ Proprietà": aggiunge la traccia (nodo, proprietà) per ogni nodo dato alla
- * clip aperta -- o, senza clip aperta, ne crea una per il bersaglio di default e
- * la apre -- con UN SetClip. I nodi fuori dal bersaglio della clip si saltano
- * (una traccia fuori bersaglio non si esporta). Torna quante tracce ha aggiunto.
+ * "+ Property": adds the (node, property) track for each given node to the
+ * open clip -- or, with no open clip, creates one for the default target and
+ * opens it -- with ONE SetClip. Nodes outside the clip's target are skipped
+ * (a track outside the target is not exported). Returns how many tracks it added.
  */
 export function addPropertyTracks(scene: SceneState, nodeIds: readonly string[], prop: string): number {
   const tl = useTimeline.getState();
@@ -281,7 +281,7 @@ export function addPropertyTracks(scene: SceneState, nodeIds: readonly string[],
   return added;
 }
 
-/** "Anima con un preset": crea la clip del preset per il nodo e la apre (UN SetClip). */
+/** "Animate with a preset": creates the preset's clip for the node and opens it (ONE SetClip). */
 export function applyPreset(scene: SceneState, nodeId: string, preset: PresetId): ClipLite | null {
   const n = scene.nodes.get(nodeId);
   if (!n) return null;
@@ -300,7 +300,7 @@ export function removeClip(id: string): void {
   st.endGesture([makeDeleteClipOp(id)]);
 }
 
-// --- il gancio della registrazione -------------------------------------------------
+// --- the recording hook ------------------------------------------------------------
 
 function recordCtx(): { scene: SceneState; clip: ClipLite; tl: TimelineState } | null {
   const tl = useTimeline.getState();
@@ -315,7 +315,7 @@ const hook: RecordHook = {
     const c = recordCtx();
     if (!c) return false;
     const ch = propChangesOfOps([op]);
-    // I nodi fuori dal bersaglio della clip non si registrano: si modificano normalmente.
+    // Nodes outside the clip's target are not recorded: they are edited normally.
     if (!ch || !ch.every((x) => c.scene.nodes.get(x.nodeId) && isInside(c.scene, x.nodeId, c.clip.targetId))) return false;
     const d = new Map(c.tl.recordDraft ?? []);
     for (const x of ch) d.set(x.nodeId, { ...d.get(x.nodeId), [x.prop]: x.value });
@@ -331,7 +331,7 @@ const hook: RecordHook = {
       return ops;
     }
     const t = c.tl.playhead;
-    // il valore mostrato PRIMA del gesto: quello della traccia al playhead, o il valore di base del nodo
+    // the value shown BEFORE the gesture: that of the track at the playhead, or the node's base value
     const shown = (nodeId: string, prop: string): number | undefined => {
       const ti = findTrack(c.clip, nodeId, prop);
       if (ti >= 0) return valueAt(c.clip, ti, t);
@@ -348,15 +348,15 @@ const hook: RecordHook = {
   },
 };
 
-// Il gancio è installato SOLO mentre si registra: a registrazione spenta lo
-// store lo vede null e le sue due porte sono l'identità.
+// The hook is installed ONLY while recording: with recording off the store
+// sees it null and its two ports are the identity.
 useTimeline.subscribe((st, prev) => {
   if (st.record === prev.record && st.open === prev.open) return;
   setRecordHook(st.record && st.open ? hook : null);
 });
 
-// Un gesto abbandonato (Esc a metà trascinamento) non scrive niente: la bozza
-// raccolta fin lì si butta, o la tela resterebbe sulla posa dell'ultima anteprima.
+// An abandoned gesture (Esc mid-drag) writes nothing: the draft
+// collected so far is thrown away, or the canvas would stay on the pose of the last preview.
 useScene.subscribe((st, prev) => {
   if (prev.gesture && !st.gesture && useTimeline.getState().recordDraft) useTimeline.getState().setRecordDraft(null);
 });

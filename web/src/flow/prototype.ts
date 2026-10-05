@@ -1,12 +1,12 @@
 import type { FlowLite, SceneState, TransitionLite } from "../store/types";
 import { topLevelScreens } from "./screens";
 
-// LA LOGICA DEL PROTOTIPO GIOCABILE. Pura: scena + stato in ingresso, nuovo
-// stato in uscita; nessun DOM. L'overlay a tutto schermo (ui/PrototypePlayer.tsx)
-// la usa per decidere cosa è cliccabile e dove porta.
+// THE LOGIC OF THE PLAYABLE PROTOTYPE. Pure: scene + state in, new
+// state out; no DOM. The full-screen overlay (ui/PrototypePlayer.tsx)
+// uses it to decide what is clickable and where it leads.
 //
-// Lo stato è { screenId, vars, history }. Le VARIABILI sono stringhe: le scrive
-// l'`effect` delle transizioni ("cart=full; user=guest") e le legge il `guard`.
+// The state is { screenId, vars, history }. The VARIABLES are strings: they are written by the
+// transitions' `effect` ("cart=full; user=guest") and read by the `guard`.
 
 export type Vars = Readonly<Record<string, string>>;
 
@@ -15,20 +15,20 @@ export interface ProtoStep { screenId: string; vars: Vars; via: string }
 export interface ProtoState {
   screenId: string;
   vars: Vars;
-  /** Gli stati PRECEDENTI (il più vecchio per primo): "indietro" ci torna. */
+  /** The PREVIOUS states (the oldest first): "back" returns to them. */
   history: readonly ProtoStep[];
 }
 
 // --- EFFETTO ---------------------------------------------------------------
 
-/** "cart=full; user=guest" -> [["cart","full"],["user","guest"]]. Separatori `;` o `,`. */
+/** "cart=full; user=guest" -> [["cart","full"],["user","guest"]]. Separators `;` or `,`. */
 export function parseEffect(effect: string): [string, string][] {
   const out: [string, string][] = [];
   for (const part of effect.split(/[;,]/)) {
     const p = part.trim();
     if (p === "") continue;
     const eq = p.indexOf("=");
-    // Senza `=` non è un'assegnazione leggibile: si ignora (è testo libero).
+    // Without `=` it is not a readable assignment: it is ignored (it is free text).
     if (eq <= 0) continue;
     const key = p.slice(0, eq).trim();
     if (!IDENT.test(key)) continue;
@@ -47,8 +47,8 @@ export function applyEffect(vars: Vars, effect: string): Vars {
 
 // --- GUARDIA ---------------------------------------------------------------
 
-// Un nome di variabile: lettere, cifre, `_`, `.`, `-` e non inizia con una cifra.
-// Niente spazi: "cart non vuoto" NON è una variabile, è testo libero.
+// A variable name: letters, digits, `_`, `.`, `-` and not starting with a digit.
+// No spaces: "cart not empty" is NOT a variable, it is free text.
 const IDENT = /^[A-Za-z_][\w.-]*$/;
 
 function unquote(v: string): string {
@@ -58,7 +58,7 @@ function unquote(v: string): string {
   return v;
 }
 
-/** "truthy": impostata e diversa da "", "false", "0". */
+/** "truthy": set and different from "", "false", "0". */
 export function truthy(v: string | undefined): boolean {
   if (v === undefined) return false;
   const t = v.trim().toLowerCase();
@@ -66,20 +66,20 @@ export function truthy(v: string | undefined): boolean {
 }
 
 export interface GuardResult {
-  /** La transizione è percorribile adesso. */
+  /** The transition can be followed right now. */
   ok: boolean;
-  /** Il perché non lo è (assente se ok). */
+  /** Why it cannot (absent if ok). */
   reason?: string;
-  /** La guardia è stata capita. false = testo libero: mai valutata, mai "vera". */
+  /** The guard was understood. false = free text: never evaluated, never "true". */
   parsed: boolean;
 }
 
 /**
- * Valuta una guardia: termini separati da `&&`, ciascuno `k=v`, `k!=v`, `k`
- * (truthy) o `!k`. Una guardia vuota è sempre vera. Un termine che non si
- * capisce rende TUTTA la guardia non valutabile -> disabilitata col motivo:
- * far passare in silenzio una condizione che nessuno ha verificato sarebbe una
- * bugia del prototipo.
+ * Evaluates a guard: terms separated by `&&`, each `k=v`, `k!=v`, `k`
+ * (truthy) or `!k`. An empty guard is always true. A term that is not
+ * understood makes the WHOLE guard unevaluable -> disabled with the reason:
+ * silently letting through a condition that nobody verified would be a
+ * lie of the prototype.
  */
 export function evalGuard(guard: string, vars: Vars): GuardResult {
   const g = guard.trim();
@@ -89,15 +89,15 @@ export function evalGuard(guard: string, vars: Vars): GuardResult {
   for (const term of terms) {
     const r = evalTerm(term, vars);
     if (r === null) {
-      return { ok: false, parsed: false, reason: `Condizione non valutabile: «${g}»` };
+      return { ok: false, parsed: false, reason: `Condition cannot be evaluated: "${g}"` };
     }
     if (!r) failed.push(term);
   }
-  if (failed.length > 0) return { ok: false, parsed: true, reason: `Richiede ${failed.join(" e ")}` };
+  if (failed.length > 0) return { ok: false, parsed: true, reason: `Requires ${failed.join(" and ")}` };
   return { ok: true, parsed: true };
 }
 
-// true/false, oppure null se il termine non è nella grammatica.
+// true/false, or null if the term is not in the grammar.
 function evalTerm(term: string, vars: Vars): boolean | null {
   if (term === "") return null;
   const ne = /^([^=!]+?)\s*!=\s*(.*)$/.exec(term);
@@ -121,10 +121,10 @@ function evalTerm(term: string, vars: Vars): boolean | null {
 
 // --- NAVIGAZIONE -----------------------------------------------------------
 
-/** La schermata d'ingresso: lo start del flusso, altrimenti il primo frame di primo livello. */
+/** The entry screen: the flow's start, otherwise the first top-level frame. */
 export function entryScreen(scene: SceneState, flow: FlowLite | null, pageId: string | null): string | null {
   if (flow && flow.startId !== "" && scene.nodes.has(flow.startId)) return flow.startId;
-  // Fallback: la prima schermata dell'ordine di documento della pagina corrente.
+  // Fallback: the first screen in the current page's document order.
   const first = topLevelScreens(scene, pageId)[0];
   return first ? first.id : null;
 }
@@ -136,24 +136,24 @@ export function startState(scene: SceneState, flow: FlowLite | null, pageId: str
 
 export interface Option {
   transition: TransitionLite;
-  /** Cliccabile ora? */
+  /** Clickable now? */
   enabled: boolean;
-  /** Se non lo è: perché. */
+  /** If it is not: why. */
   reason?: string;
 }
 
 /**
- * Le transizioni del flusso che partono dalla schermata corrente, in ordine
- * stabile (per etichetta poi per id), ciascuna con la sua abilitazione. Quelle
- * con `elementId` sono hotspot sull'elemento; le altre vanno nella barra.
+ * The transitions of the flow that start from the current screen, in stable
+ * order (by label then by id), each with its enablement. Those
+ * with `elementId` are hotspots on the element; the others go in the bar.
  */
 export function optionsFrom(scene: SceneState, flowId: string, state: ProtoState): Option[] {
   const out: Option[] = [];
   for (const t of Object.values(scene.transitions)) {
     if (t.flowId !== flowId || t.fromId !== state.screenId) continue;
-    // Un target sparito non è raggiungibile: non lo si offre come cliccabile.
+    // A vanished target is not reachable: it is not offered as clickable.
     if (!scene.nodes.has(t.toId)) {
-      out.push({ transition: t, enabled: false, reason: "La schermata di arrivo non esiste più" });
+      out.push({ transition: t, enabled: false, reason: "The destination screen no longer exists" });
       continue;
     }
     const g = evalGuard(t.guard, state.vars);
@@ -168,7 +168,7 @@ export function optionsFrom(scene: SceneState, flowId: string, state: ProtoState
   return out;
 }
 
-/** Percorre una transizione (se abilitata): effetto sulle variabili, cronologia aggiornata. */
+/** Follows a transition (if enabled): effect on the variables, history updated. */
 export function follow(scene: SceneState, state: ProtoState, t: TransitionLite): ProtoState {
   if (!scene.nodes.has(t.toId)) return state;
   if (!evalGuard(t.guard, state.vars).ok) return state;
@@ -183,26 +183,26 @@ export function canGoBack(state: ProtoState): boolean {
   return state.history.length > 0;
 }
 
-/** Torna alla schermata (e alle variabili) di prima. */
+/** Goes back to the previous screen (and variables). */
 export function back(state: ProtoState): ProtoState {
   const prev = state.history[state.history.length - 1];
   if (!prev) return state;
   return { screenId: prev.screenId, vars: prev.vars, history: state.history.slice(0, -1) };
 }
 
-/** Torna alla schermata numero `index` del percorso (0 = la prima): il click su una briciola. */
+/** Goes back to screen number `index` of the path (0 = the first): the click on a breadcrumb. */
 export function backTo(state: ProtoState, index: number): ProtoState {
   if (index < 0 || index >= state.history.length) return state;
   const at = state.history[index];
   return { screenId: at.screenId, vars: at.vars, history: state.history.slice(0, index) };
 }
 
-/** Il percorso fatto: le schermate visitate in ordine, fino a quella corrente. */
+/** The path taken: the screens visited in order, up to the current one. */
 export function trail(state: ProtoState): string[] {
   return [...state.history.map((h) => h.screenId), state.screenId];
 }
 
-/** Variabili come righe "k = v" in ordine alfabetico (pannello "variabili"). */
+/** Variables as "k = v" rows in alphabetical order ("variables" panel). */
 export function varEntries(vars: Vars): [string, string][] {
   return Object.entries(vars).sort(([a], [b]) => (a < b ? -1 : 1));
 }

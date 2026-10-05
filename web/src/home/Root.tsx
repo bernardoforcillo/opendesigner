@@ -5,14 +5,14 @@ import { useFlowUi } from "../store/flowUi";
 import { Home } from "./Home";
 import { routeFromHash } from "./route";
 
-// LA RADICE: sceglie fra Home ed editor guardando l'hash (vedi route.ts). Nessun
-// router esterno: l'unico stato di navigazione è `location.hash`, quindi i link
-// `#doc=` condivisi, il tasto Indietro del browser e "Torna alla Home" funzionano
-// tutti per lo stesso motivo.
+// THE ROOT: chooses between Home and editor by looking at the hash (see route.ts). No
+// external router: the only navigation state is `location.hash`, so the shared
+// `#doc=` links, the browser's Back button and "Back to Home" all work
+// for the same reason.
 
 const APP_TITLE = "opendesigner";
 
-/** Il titolo della scheda del browser: `Nome — opendesigner` (o solo l'app, in Home). */
+/** The browser tab title: `Name — opendesigner` (or just the app, in Home). */
 export function documentTitleFor(docName: string | null): string {
   return docName ? `${docName} — ${APP_TITLE}` : APP_TITLE;
 }
@@ -36,16 +36,16 @@ export function Root({ editor = <App />, home }: { editor?: ReactNode; home?: Re
   useBrowserTitle(route.kind === "doc");
 
   if (route.kind === "home") return <>{home ?? <Home focusTemplates={route.focusTemplates} />}</>;
-  // `key` = l'id: passare da un documento a un altro (un link incollato, il tasto
-  // Indietro) rimonta l'editor da zero, con un SyncClient nuovo.
+  // `key` = the id: switching from one document to another (a pasted link, the Back
+  // button) remounts the editor from scratch, with a new SyncClient.
   return <EditorHost key={route.id}>{editor}</EditorHost>;
 }
 
-// Il guscio dell'editor. L'editor condivide gli store (scena, vista dei flussi)
-// con il resto dell'app, che sono globali: uscendo vanno riportati allo stato
-// iniziale, altrimenti il documento successivo si aprirebbe mostrando per un
-// istante il disegno del precedente, nella sua modalità e col suo prototipo
-// aperto.
+// The editor shell. The editor shares the stores (scene, flows view)
+// with the rest of the app, which are global: on exit they must be brought back to the
+// initial state, otherwise the next document would open showing for an
+// instant the previous one's drawing, in its mode and with its prototype
+// open.
 function EditorHost({ children }: { children: ReactNode }) {
   useLayoutEffect(() => {
     const reset = () => {

@@ -21,7 +21,7 @@ describe("Root", () => {
   beforeEach(() => { location.hash = ""; useScene.getState().setScene(null); });
   afterEach(() => { cleanup(); location.hash = ""; });
 
-  it("senza hash mostra la Home; con #doc= l'editor", () => {
+  it("without a hash it shows the Home; with #doc= the editor", () => {
     render(<Root home={<div>HOME</div>} editor={<div>EDITOR</div>} />);
     expect(screen.getByText("HOME")).toBeInTheDocument();
     go(`#doc=${ID}`);
@@ -31,19 +31,19 @@ describe("Root", () => {
     expect(screen.getByText("HOME")).toBeInTheDocument();
   });
 
-  it("un link #doc= all'apertura va dritto all'editor (deep link e invito)", () => {
+  it("a #doc= link on load goes straight to the editor (deep link and invite)", () => {
     location.hash = `#doc=${ID}`;
     render(<Root home={<div>HOME</div>} editor={<div>EDITOR</div>} />);
     expect(screen.getByText("EDITOR")).toBeInTheDocument();
   });
 
-  it("un hash sconosciuto non apre un editor", () => {
+  it("an unknown hash does not open an editor", () => {
     location.hash = "#doc=../../etc";
     render(<Root home={<div>HOME</div>} editor={<div>EDITOR</div>} />);
     expect(screen.getByText("HOME")).toBeInTheDocument();
   });
 
-  it("cambiare documento rimonta l'editor da zero (key = id)", () => {
+  it("changing document remounts the editor from scratch (key = id)", () => {
     let mounts = 0;
     function Probe() {
       mounts++;
@@ -56,11 +56,11 @@ describe("Root", () => {
     expect(mounts).toBeGreaterThan(before);
   });
 
-  it("uscire dall'editor riporta a zero gli store condivisi (scena, modalità, prototipo)", () => {
+  it("leaving the editor resets the shared stores (scene, mode, prototype)", () => {
     location.hash = `#doc=${ID}`;
     render(<Root home={<div>HOME</div>} editor={<div>EDITOR</div>} />);
     act(() => {
-      useScene.getState().setScene(emptyScene(ID, "Mio"));
+      useScene.getState().setScene(emptyScene(ID, "Mine"));
       useFlowUi.getState().setMode("flows");
       useFlowUi.getState().setPresenting(true);
     });
@@ -70,31 +70,31 @@ describe("Root", () => {
     expect(useFlowUi.getState().presenting).toBe(false);
   });
 
-  it("il titolo della scheda segue il nome del documento", () => {
+  it("the tab title follows the document name", () => {
     location.hash = `#doc=${ID}`;
     render(<Root home={<div>HOME</div>} editor={<div>EDITOR</div>} />);
     expect(document.title).toBe("opendesigner");
-    act(() => useScene.getState().setScene(emptyScene(ID, "Il mio progetto")));
-    expect(document.title).toBe("Il mio progetto — opendesigner");
+    act(() => useScene.getState().setScene(emptyScene(ID, "My project")));
+    expect(document.title).toBe("My project — opendesigner");
     go("");
     expect(document.title).toBe("opendesigner");
   });
 
-  it("documentTitleFor: senza nome è solo l'app", () => {
+  it("documentTitleFor: without a name it is just the app", () => {
     expect(documentTitleFor(null)).toBe("opendesigner");
     expect(documentTitleFor("X")).toBe("X — opendesigner");
   });
 });
 
-// L'editor che non trova il documento: la scheda con l'uscita verso la Home.
-describe("documento inesistente", () => {
+// The editor that cannot find the document: the card with the exit to the Home.
+describe("nonexistent document", () => {
   afterEach(() => { cleanup(); vi.resetModules(); vi.doUnmock("../rpc/syncClient"); });
 
-  it("l'errore NotFound del bootstrap mostra 'Documento non trovato' e Torna alla Home porta in Home", async () => {
+  it("the bootstrap NotFound error shows 'Document not found' and Back to Home goes to Home", async () => {
     vi.resetModules();
     vi.doMock("../rpc/syncClient", () => ({
       SyncClient: class {
-        async start() { throw new ConnectError("documento non trovato", Code.NotFound); }
+        async start() { throw new ConnectError("document not found", Code.NotFound); }
         stop() {}
       },
     }));
@@ -103,8 +103,8 @@ describe("documento inesistente", () => {
     location.hash = `#doc=${ID}`;
     render(<App />);
     const alert = await screen.findByRole("alert");
-    expect(alert).toHaveTextContent("Documento non trovato");
-    act(() => screen.getByRole("button", { name: "Torna alla Home" }).click());
+    expect(alert).toHaveTextContent("Document not found");
+    act(() => screen.getByRole("button", { name: "Back to Home" }).click());
     expect(location.hash === "" || location.hash === "#").toBe(true);
   });
 });

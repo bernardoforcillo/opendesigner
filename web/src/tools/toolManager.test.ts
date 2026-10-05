@@ -4,9 +4,9 @@ import type { Tool, ToolContext, ToolId } from "./types";
 import type { Camera } from "../canvas/camera";
 import { screenToWorld } from "../canvas/camera";
 
-// --- doppi DOM ------------------------------------------------------------
-// I test girano in Node senza jsdom (come il resto del progetto): questi
-// doppi implementano solo la superficie che attachTools usa davvero.
+// --- DOM doubles ----------------------------------------------------------
+// Tests run in Node without jsdom (like the rest of the project): these
+// doubles implement only the surface that attachTools really uses.
 class FakeTarget {
   listeners = new Map<string, { fn: (e: unknown) => void; options?: unknown }[]>();
 
@@ -60,7 +60,7 @@ function wheel(deltaY: number, extra: Record<string, unknown> = {}) {
   return { deltaY, deltaX: 0, deltaMode: 0, ctrlKey: false, clientX: 110, clientY: 220, preventDefault: vi.fn(), ...extra };
 }
 
-// --- doppi di dominio -----------------------------------------------------
+// --- domain doubles -------------------------------------------------------
 function spyTool(id: ToolId, cursor = "default") {
   return {
     id, cursor,
@@ -72,8 +72,8 @@ function spyTool(id: ToolId, cursor = "default") {
   } satisfies Tool;
 }
 
-// Un tool che dichiara di sopravvivere al pan temporaneo: il suo gesto dura
-// più di un drag (è il caso del pen tool, che disegna in più click).
+// A tool that declares it survives the temporary pan: its gesture lasts
+// more than a drag (it is the case of the pen tool, which draws over several clicks).
 function suspendableTool(id: ToolId, cursor = "crosshair") {
   return { ...spyTool(id, cursor), onSuspend: vi.fn() } satisfies Tool;
 }
@@ -130,7 +130,7 @@ describe("attachTools routing", () => {
     const { canvas, ctx } = setup();
     const detach = attachTools(ctx, getActive);
 
-    canvas.dispatch("pointerdown", pointer(0, 0, { button: 2 })); // tasto destro
+    canvas.dispatch("pointerdown", pointer(0, 0, { button: 2 })); // right button
     expect(active.onPointerDown).not.toHaveBeenCalled();
     expect(canvas.captured).toEqual([]);
     detach();
@@ -173,14 +173,14 @@ describe("attachTools routing", () => {
     detach();
   });
 
-  // Le scorciatoie del canvas ascoltano sulla FINESTRA (il canvas non è
-  // focusabile), quindi ricevono anche i tasti battuti dentro un campo di
-  // testo: il textarea di editing (ui/TextEditorOverlay.tsx) e i campi del
-  // pannello proprietà. Senza guardia, Backspace mentre si scrive cancella il
-  // NODO selezionato -- cioè proprio quello che si sta editando -- ed Escape
-  // abbandona il gesto del tool invece di uscire dall'editing.
+  // The canvas shortcuts listen on the WINDOW (the canvas is not
+  // focusable), so they also receive keys typed inside a text
+  // field: the editing textarea (ui/TextEditorOverlay.tsx) and the
+  // properties panel fields. Without a guard, Backspace while typing deletes the
+  // selected NODE -- i.e. the very one being edited -- and Escape
+  // abandons the tool's gesture instead of leaving editing.
   it.each([["Backspace"], ["Delete"], ["Escape"]])(
-    "non inoltra %s al tool quando il focus è in un campo di testo",
+    "does not forward %s to the tool when focus is in a text field",
     (k) => {
       const { canvas, ctx } = setup();
       const detach = attachTools(ctx, getActive);
@@ -190,7 +190,7 @@ describe("attachTools routing", () => {
     },
   );
 
-  it.each([["INPUT"], ["SELECT"]])("non inoltra i tasti battuti dentro un %s", (tagName) => {
+  it.each([["INPUT"], ["SELECT"]])("does not forward keys typed inside a %s", (tagName) => {
     const { canvas, ctx } = setup();
     const detach = attachTools(ctx, getActive);
     canvas.view.dispatch("keydown", key("Delete", { target: { tagName } }));
@@ -198,7 +198,7 @@ describe("attachTools routing", () => {
     detach();
   });
 
-  it("non inoltra i tasti battuti dentro un contentEditable", () => {
+  it("does not forward keys typed inside a contentEditable", () => {
     const { canvas, ctx } = setup();
     const detach = attachTools(ctx, getActive);
     canvas.view.dispatch("keydown", key("Delete", { target: { tagName: "DIV", isContentEditable: true } }));
@@ -226,7 +226,7 @@ describe("temporary hand tool", () => {
     const detach = attachTools(ctx, getActive);
 
     canvas.view.dispatch("keydown", key("Space"));
-    expect(active.onDeactivate).toHaveBeenCalledTimes(1); // il gesto in corso viene abbandonato
+    expect(active.onDeactivate).toHaveBeenCalledTimes(1); // the gesture in progress is abandoned
     expect(canvas.style.cursor).toBe("grab");
 
     canvas.dispatch("pointerdown", pointer(100, 100));
@@ -267,11 +267,11 @@ describe("temporary hand tool", () => {
     },
   );
 
-  // Un tool il cui gesto dura più click (il pen tool) non può perdere il
-  // lavoro perché l'utente ha spostato la vista: panare a metà disegno è
-  // routine in qualunque editor vettoriale, e il pan temporaneo NON è un cambio
-  // di strumento -- la mano restituisce il posto tra un istante.
-  it("il pan con lo spazio SOSPENDE un tool che lo dichiara, non lo disattiva", () => {
+  // A tool whose gesture lasts several clicks (the pen tool) must not lose
+  // work because the user moved the view: panning mid-drawing is
+  // routine in any vector editor, and the temporary pan is NOT a tool
+  // change -- the hand gives the slot back in a moment.
+  it("panning with space SUSPENDS a tool that declares it, it does not deactivate it", () => {
     const { canvas, ctx } = setup();
     const pen = suspendableTool("pen");
     active = pen;
@@ -285,13 +285,13 @@ describe("temporary hand tool", () => {
     canvas.view.dispatch("keyup", key("Space"));
     expect(canvas.style.cursor).toBe("crosshair");
     canvas.dispatch("pointerdown", pointer(0, 0));
-    // Ripreso senza essere mai stato disattivato: il path a metà è ancora suo.
+    // Resumed without ever having been deactivated: the half-done path is still its own.
     expect(pen.onPointerDown).toHaveBeenCalledTimes(1);
     expect(pen.onDeactivate).not.toHaveBeenCalled();
     detach();
   });
 
-  it("anche il pan col tasto CENTRALE sospende invece di disattivare", () => {
+  it("panning with the MIDDLE button also suspends instead of deactivating", () => {
     const { canvas, ctx } = setup();
     const pen = suspendableTool("pen");
     active = pen;
@@ -302,13 +302,13 @@ describe("temporary hand tool", () => {
     canvas.dispatch("pointerup", pointer(120, 100, { button: 1 }));
     expect(pen.onSuspend).toHaveBeenCalledTimes(1);
     expect(pen.onDeactivate).not.toHaveBeenCalled();
-    expect(pen.onPointerDown).not.toHaveBeenCalled(); // il down era della mano
+    expect(pen.onPointerDown).not.toHaveBeenCalled(); // the down belonged to the hand
     detach();
   });
 
-  it("un tool SENZA onSuspend continua a essere disattivato dal pan (gesto col pulsante premuto)", () => {
+  it("a tool WITHOUT onSuspend is still deactivated by the pan (gesture with the button held)", () => {
     const { canvas, ctx } = setup();
-    const shape = active; // spyTool, nessun onSuspend
+    const shape = active; // spyTool, no onSuspend
     const detach = attachTools(ctx, getActive);
 
     canvas.view.dispatch("keydown", key("Space"));
@@ -316,11 +316,11 @@ describe("temporary hand tool", () => {
     detach();
   });
 
-  // Sospendere non è tenere in vita per sempre: se durante il pan la toolbar
-  // passa a un altro strumento, il sospeso va abbandonato come qualunque tool
-  // che perde il posto -- altrimenti resterebbe con un gesto a metà e
-  // un'anteprima che nessuno spegne.
-  it("cambiare strumento mentre si pana abbandona il tool sospeso", () => {
+  // Suspending is not keeping alive forever: if during the pan the toolbar
+  // switches to another tool, the suspended one must be abandoned like any tool
+  // that loses its slot -- otherwise it would stay with a half-done gesture and
+  // a preview that nobody turns off.
+  it("switching tool while panning abandons the suspended tool", () => {
     const { canvas, ctx } = setup();
     const pen = suspendableTool("pen");
     active = pen;
@@ -336,7 +336,7 @@ describe("temporary hand tool", () => {
     detach();
   });
 
-  it("smontare mentre si pana disattiva anche il tool sospeso", () => {
+  it("unmounting while panning also deactivates the suspended tool", () => {
     const { canvas, ctx } = setup();
     const pen = suspendableTool("pen");
     active = pen;
@@ -358,7 +358,7 @@ describe("temporary hand tool", () => {
 
     canvas.dispatch("pointerup", pointer(120, 100, { button: 1 }));
     canvas.dispatch("pointerdown", pointer(0, 0));
-    expect(active.onPointerDown).toHaveBeenCalledTimes(1); // tool ripristinato
+    expect(active.onPointerDown).toHaveBeenCalledTimes(1); // tool restored
     detach();
   });
 });
@@ -367,7 +367,7 @@ describe("wheel zoom", () => {
   it("zooms out on a positive deltaY and keeps the world point under the cursor", () => {
     const { canvas, ctx, camera } = setup({ x: 0, y: 0, zoom: 1 });
     const detach = attachTools(ctx, getActive);
-    const before = screenToWorld(camera(), 100, 200); // punto canvas sotto il cursore
+    const before = screenToWorld(camera(), 100, 200); // canvas point under the cursor
 
     const e = wheel(100); // clientX 110 - rect.left 10 = 100 ; clientY 220 - top 20 = 200
     canvas.dispatch("wheel", e);
@@ -411,8 +411,8 @@ describe("wheelZoomFactor", () => {
   });
 
   it("treats a ctrlKey wheel (trackpad pinch) as a finer-grained gesture", () => {
-    // Il pinch del trackpad arriva come wheel+ctrlKey con delta piccoli: a
-    // parità di delta deve zoomare di più, altrimenti il pinch non si sente.
+    // Trackpad pinch arrives as wheel+ctrlKey with small deltas: at
+    // equal delta it must zoom more, otherwise the pinch is not felt.
     const pinch = wheelZoomFactor(wheel(-4, { ctrlKey: true }) as unknown as WheelEvent);
     const plain = wheelZoomFactor(wheel(-4) as unknown as WheelEvent);
     expect(pinch).toBeGreaterThan(plain);

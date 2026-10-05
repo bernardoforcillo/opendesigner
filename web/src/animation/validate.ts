@@ -1,18 +1,18 @@
 import type { ClipLite, SceneState } from "../store/types";
 import { CLIP_TRIGGERS, TRACK_PROPS, isValidEasing } from "./engine";
 
-// Validazione di una clip: parità ESATTA con core.validateClip (Go, l'autorità).
-// Chi la usa -- applyOp (per rifiutare l'op come farebbe il server) e history
-// (un op rifiutato non ha inverso) -- ha bisogno solo del sì/no.
+// Validation of a clip: EXACT parity with core.validateClip (Go, the authority).
+// Whoever uses it -- applyOp (to reject the op as the server would) and history
+// (a rejected op has no inverse) -- only needs the yes/no.
 //
-// Un'invariante ha senso solo se le due implementazioni la applicano allo stesso
-// modo: se TS accettasse una clip che Go rifiuta, il client mostrerebbe per un
-// istante una scena che il server non ha. La fixture testdata/golden/animation*.json
-// gira in entrambe e lo verifica.
+// An invariant only makes sense if the two implementations apply it the same
+// way: if TS accepted a clip that Go rejects, the client would for an
+// instant show a scene that the server does not have. The fixture testdata/golden/animation*.json
+// runs in both and verifies it.
 
 const finite = Number.isFinite;
 
-// I tipi di nodo con un contorno su cui "disegnare" il tratto (core.canDraw).
+// The node types with an outline on which to "draw" the stroke (core.canDraw).
 const DRAWABLE = new Set(["vector", "rect", "ellipse", "frame"]);
 
 export function isValidClip(scene: Pick<SceneState, "nodes">, c: ClipLite): boolean {
@@ -26,7 +26,7 @@ export function isValidClip(scene: Pick<SceneState, "nodes">, c: ClipLite): bool
     const n = scene.nodes.at(t.nodeId);
     if (!n) return false;
     if (!(TRACK_PROPS as readonly string[]).includes(t.prop)) return false;
-    // "\u0000" non può comparire in un id: separatore sicuro per la coppia.
+    // "\u0000" cannot appear in an id: a safe separator for the pair.
     const key = `${t.nodeId}\u0000${t.prop}`;
     if (seen.has(key)) return false;
     seen.add(key);

@@ -1,26 +1,26 @@
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { PropChange } from "./timelineLogic";
 
-// IL GANCIO DELLA REGISTRAZIONE.
+// THE RECORDING HOOK.
 //
-// Con la clip aperta e "Registra" acceso, modificare x, y, rotazione o opacità di
-// un nodo non cambia il nodo: scrive un keyframe nella clip al playhead. Chi
-// modifica un nodo -- il trascinamento e la rotazione sulla tela (tools/
-// selectTool.ts), i campi e il cursore dell'opacità del pannello Proprietà
-// (ui/PropertiesPanel.tsx), la tastiera -- lo fa sempre per le stesse DUE porte
-// dello store: `applyLocal(op)` per l'anteprima a ogni passo, `endGesture(ops)`
-// per il rilascio. Il gancio sta lì, e solo lì: nessun tool sa che esiste la
-// registrazione, e a registrazione spenta le due funzioni sono l'identità (il
-// gancio è null: `recordPreview` torna false, `recordFinal` restituisce lo
-// STESSO array).
+// With the clip open and "Record" on, modifying x, y, rotation or opacity of
+// a node does not change the node: it writes a keyframe in the clip at the playhead. Whoever
+// modifies a node -- dragging and rotating on the canvas (tools/
+// selectTool.ts), the fields and the opacity slider of the Properties panel
+// (ui/PropertiesPanel.tsx), the keyboard -- always does so through the same TWO doors
+// of the store: `applyLocal(op)` for the preview at every step, `endGesture(ops)`
+// for the release. The hook sits there, and only there: no tool knows recording
+// exists, and with recording off the two functions are the identity (the
+// hook is null: `recordPreview` returns false, `recordFinal` returns the
+// SAME array).
 //
-// Il modulo non importa niente dallo store (lo importa lo store): chi registra
-// il gancio è animation/timelineStore.ts.
+// The module imports nothing from the store (the store imports it): whoever registers
+// the hook is animation/timelineStore.ts.
 
 export interface RecordHook {
-  /** Anteprima: vero = l'op è stato assorbito (nella bozza), la scena NON va toccata. */
+  /** Preview: true = the op was absorbed (into the draft), the scene must NOT be touched. */
   preview(op: Op): boolean;
-  /** Rilascio: gli op da mandare davvero al posto di `ops` (la bozza si chiude). */
+  /** Release: the ops to actually send in place of `ops` (the draft is closed). */
   final(ops: Op[]): Op[];
 }
 
@@ -38,15 +38,15 @@ export function recordFinal(ops: Op[]): Op[] {
   return hook ? hook.final(ops) : ops;
 }
 
-// Le proprietà del nodo che la registrazione sa tradurre in tracce, col nome del
-// campo nel mask di `setProps` e nella traccia.
+// The node properties that recording knows how to translate into tracks, with the name of the
+// field in the `setProps` mask and in the track.
 const RECORDABLE = new Set(["x", "y", "rotation", "opacity"]);
 
 /**
- * Le modifiche di proprietà animabili portate da `ops`, o null se anche UN solo
- * op non è registrabile (non è un `setProps`, o la sua mask tocca altro oltre a
- * x, y, rotation, opacity -- un ridimensionamento, un colore). Tutto o niente:
- * un gesto misto (resize + spostamento) NON si registra a pezzi, passa com'è.
+ * The animatable property changes carried by `ops`, or null if even ONE
+ * op is not recordable (it is not a `setProps`, or its mask touches something besides
+ * x, y, rotation, opacity -- a resize, a color). All or nothing:
+ * a mixed gesture (resize + move) is NOT recorded piecemeal, it passes through as is.
  */
 export function propChangesOfOps(ops: readonly Op[]): PropChange[] | null {
   if (ops.length === 0) return null;

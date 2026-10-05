@@ -40,49 +40,49 @@ import type { Tool, ToolContext } from "./types";
 
 const DEFAULT_CURSOR = "default";
 
-// Sotto questa soglia (px SCHERMO, come la CLICK_SLOP_PX di shapeTool) un
-// "marquee" non è un marquee: è un CLICK sul vuoto. La distinzione conta perché
-// il marquee seleziona per intersezione di BOUNDS (AABB), mentre il click passa
-// da hitTest (che per un'ellisse è la vera equazione dell'ellisse). Senza
-// soglia, un click nell'angolo vuoto del bounding box di un'ellisse apre un
-// marquee 0x0 che "interseca" quel bounding box e seleziona l'ellisse: la
-// stessa selezione per AABB che hitTest esiste apposta per evitare. Il click sul
-// vuoto deve solo azzerare la selezione (o lasciarla intatta con shift).
+// Below this threshold (SCREEN px, like shapeTool's CLICK_SLOP_PX) a
+// "marquee" is not a marquee: it is a CLICK on empty space. The distinction matters because
+// the marquee selects by BOUNDS intersection (AABB), while a click goes
+// through hitTest (which for an ellipse is the true ellipse equation). Without a
+// threshold, a click in the empty corner of an ellipse's bounding box opens a
+// 0x0 marquee that "intersects" that bounding box and selects the ellipse: the
+// same AABB selection that hitTest exists precisely to avoid. A click on
+// empty space should only clear the selection (or leave it intact with shift).
 const MARQUEE_SLOP_PX = 3;
 
-// Soglia di doppio click, in ms fra i due timeStamp dei pointerdown (Task 4,
-// step 3: doppio click con Seleziona su un nodo testo entra in editing).
-// toolManager.ts non inoltra un evento nativo "dblclick": rilevarlo qui per
-// ID + tempo (invece che introdurre un secondo canale di eventi) resta
-// testabile senza timer finti, bastano due PointerEvent con timeStamp diversi.
+// Double-click threshold, in ms between the two pointerdown timeStamps (Task 4,
+// step 3: double-click with Select on a text node enters editing).
+// toolManager.ts does not forward a native "dblclick" event: detecting it here by
+// ID + time (instead of introducing a second event channel) remains
+// testable without fake timers, two PointerEvents with different timeStamps suffice.
 const DOUBLE_CLICK_MS = 400;
 
-// Quanto può spostarsi il puntatore (px SCHERMO, come MARQUEE_SLOP_PX qui sopra
-// e CLICK_SLOP_PX di shapeTool) fra il pointerdown del secondo click e il suo
-// rilascio senza smettere di essere un doppio click. Sopra la soglia quel
-// pointer è un DRAG e basta: vedi il commento su pendingTextEdit.
+// How far the pointer may move (SCREEN px, like MARQUEE_SLOP_PX above
+// and shapeTool's CLICK_SLOP_PX) between the second click's pointerdown and its
+// release without ceasing to be a double-click. Above the threshold that
+// pointer is just a DRAG: see the comment on pendingTextEdit.
 const DOUBLE_CLICK_SLOP_PX = 3;
 
-// Con Shift premuto la rotazione scatta a multipli di 15° (la convenzione degli
-// editor di design: 15 divide 45, 90 e 360).
+// With Shift held rotation snaps to multiples of 15° (the design
+// editor convention: 15 divides 45, 90 and 360).
 const ROTATE_SNAP_DEG = 15;
 
-// Il cursore vive sul DOM del canvas (come fa toolManager quando cambia tool).
-// Duck-typing su style: nei test ctx.canvas è un doppio, non un HTMLCanvasElement.
+// The cursor lives on the canvas DOM (as toolManager does when the tool changes).
+// Duck-typing on style: in tests ctx.canvas is a double, not an HTMLCanvasElement.
 function setCursor(ctx: ToolContext, cursor: string): void {
   const style = (ctx.canvas as unknown as { style?: { cursor: string } } | undefined)?.style;
   if (style) style.cursor = cursor;
 }
 
-// Le maniglie si testano in px SCHERMO (area di presa costante a ogni zoom),
-// ma ToolContext espone solo toWorld: si torna in schermo passando ANCORA da
-// canvas/camera.ts, mai ricalcolando la trasformazione a mano. Il round-trip
-// world -> screen è l'inverso esatto di toWorld, quindi non serve conoscere il
-// rettangolo del canvas qui.
+// Handles are tested in SCREEN px (grab area constant at every zoom),
+// but ToolContext exposes only toWorld: we go back to screen by going AGAIN through
+// canvas/camera.ts, never recomputing the transformation by hand. The world -> screen
+// round-trip is the exact inverse of toWorld, so there is no need to know the
+// canvas rectangle here.
 //
-// Ritorna il colpo COMPLETO dell'overlay: una delle 8 maniglie di resize
-// oppure una delle 4 zone di rotazione appena fuori dagli angoli (l'ordine di
-// precedenza sta in selection/handles.ts::hitTestFrame).
+// Returns the COMPLETE overlay hit: one of the 8 resize handles
+// or one of the 4 rotation zones just outside the corners (the precedence order
+// is in selection/handles.ts::hitTestFrame).
 function frameUnderPointer(ctx: ToolContext, world: { x: number; y: number }): FrameHit | null {
   const frame = frameOfSelection(ctx);
   if (!frame) return null;
@@ -97,21 +97,21 @@ function frameOfSelection(ctx: ToolContext): SelectionFrame | null {
   return selectionFrame(scene, useScene.getState().selection);
 }
 
-// Dal MONDO allo spazio in cui sono scritte le coordinate di un nodo, cioè lo
-// spazio locale del suo parent. È la conversione che ogni gesto deve fare
-// prima di scrivere nel modello: il puntatore parla mondo, il documento parla
-// relativo al parent. Per un nodo figlio di una pagina è l'identità -- ed è
-// per questo che un documento già esistente non si muove di un pixel.
+// From the WORLD to the space in which a node's coordinates are written, i.e. the
+// local space of its parent. It is the conversion every gesture must do
+// before writing into the model: the pointer speaks world, the document speaks
+// relative to the parent. For a child of a page it is the identity -- and that is
+// why an already existing document does not move by a pixel.
 function parentToLocal(scene: SceneState, parentId: string): Transform {
   return invertTransform(worldTransformOf(scene, parentId));
 }
 
-// Gli id da ESCLUDERE dai bersagli dello snap: non solo i nodi selezionati ma
-// tutto il loro SOTTOALBERO. Un gruppo che si trascina (o si ridimensiona) porta
-// con sé i figli, che quindi si muovono insieme e non sono bersagli a cui
-// scattare -- altrimenti la cornice del gruppo scatterebbe contro il proprio
-// contenuto. Per una selezione piatta subtreeOf(id) è [id], quindi coincide con
-// la selezione stessa e lo snap resta identico a prima.
+// The ids to EXCLUDE from the snap targets: not only the selected nodes but
+// their whole SUBTREE. A group being dragged (or resized) carries
+// its children with it, which therefore move together and are not targets to
+// snap to -- otherwise the group's frame would snap against its own
+// content. For a flat selection subtreeOf(id) is [id], so it coincides with
+// the selection itself and the snap stays identical to before.
 function snapExclude(scene: SceneState, selection: readonly string[]): string[] {
   return selection.flatMap((id) => subtreeOf(scene, id).map((n) => n.id));
 }
@@ -121,14 +121,14 @@ export type PickResult =
   | { mode: "single"; id?: string }
   | { mode: "toggle"; id: string };
 
-// Decide il TIPO di gesto senza toccare lo store: pura funzione di scena +
-// input (`zoom` incluso: la presa attorno a un path vettoriale aperto è in px
-// SCHERMO, vedi renderer/shapes.ts::VECTOR_HIT_PX), testabile senza DOM
-// (Task 8, step 1). id assente in mode "single"
-// significa "il nodo è già selezionato, non toccare la selezione" -- è la
-// lettura di "selezione singola (SE NON GIÀ selezionato)" del brief: così un
-// drag successivo sposta l'INTERA selezione (anche multipla) invece di
-// collassarla prematuramente su un solo nodo.
+// Decides the TYPE of gesture without touching the store: a pure function of scene +
+// input (`zoom` included: the grab around an open vector path is in SCREEN
+// px, see renderer/shapes.ts::VECTOR_HIT_PX), testable without DOM
+// (Task 8, step 1). An absent id in mode "single"
+// means "the node is already selected, do not touch the selection" -- it is the
+// reading of "single selection (IF NOT already selected)" from the brief: this way a
+// subsequent drag moves the ENTIRE selection (even a multiple one) instead of
+// collapsing it prematurely onto a single node.
 export function pickTarget(
   scene: SceneState,
   world: { x: number; y: number },
@@ -137,37 +137,37 @@ export function pickTarget(
   zoom: number,
   currentPageId?: string | null,
 ): PickResult {
-  // Scoped alla pagina corrente, come il disegno (T1): un click non colpisce un
-  // nodo di un'ALTRA pagina (che il canvas non mostra). `zoom` va fino a
-  // hitTestNode per la presa di un path vettoriale aperto (T4, px SCHERMO).
-  // currentPageId assente ripiega sulla prima pagina -- vedi canvasRenderer::rootsOf.
+  // Scoped to the current page, like drawing (T1): a click does not hit a
+  // node of ANOTHER page (which the canvas does not show). `zoom` goes down to
+  // hitTestNode for the grab of an open vector path (T4, SCREEN px).
+  // An absent currentPageId falls back to the first page -- see canvasRenderer::rootsOf.
   const hit = hitTest(scene, world.x, world.y, zoom, currentPageId);
   if (!hit) return { mode: "marquee" };
-  // hitTest risponde "quale nodo c'è sotto il puntatore" -- il più INTERNO,
-  // sempre. Quale nodo si SELEZIONA è un'altra domanda, e la risposta è la
-  // politica dei gruppi (store/groups.ts): il gruppo più esterno, a meno che
-  // la selezione corrente non dica che ci siamo già entrati. Vale anche per lo
-  // shift-click: si aggiunge alla selezione la stessa cosa che un click
-  // selezionerebbe, o shift diventerebbe il modo per prendere un figlio senza
-  // entrare nel gruppo.
+  // hitTest answers "which node is under the pointer" -- the INNERMOST,
+  // always. Which node gets SELECTED is another question, and the answer is the
+  // group policy (store/groups.ts): the outermost group, unless
+  // the current selection says we have already entered it. It also applies to
+  // shift-click: the same thing a click would select is added to the selection,
+  // or shift would become the way to grab a child without
+  // entering the group.
   const id = selectionTargetOf(scene, hit, selection);
   if (shiftKey) return { mode: "toggle", id };
   return selection.includes(id) ? { mode: "single" } : { mode: "single", id };
 }
 
-// Id dei nodi che il marquee seleziona: quelli VISIBILI (nell'intero cammino
-// dalla pagina in giù) il cui box MONDO interseca il rettangolo, in ordine di
-// disegno.
+// Ids of the nodes the marquee selects: the VISIBLE ones (along the whole path
+// from the page down) whose WORLD box intersects the rectangle, in draw
+// order.
 //
-// Il marquee è in coordinate MONDO (viene dal puntatore) e le coordinate del
-// modello sono relative al parent: la conversione, insieme alle regole
-// dell'albero (container invisibile che porta via il sottoalbero, clip dei
-// frame), sta in renderer/canvasRenderer.ts::nodesIntersecting -- la STESSA
-// discesa di drawScene e hitTest, così ciò che si vede è ciò che si seleziona.
+// The marquee is in WORLD coordinates (it comes from the pointer) and the
+// model coordinates are relative to the parent: the conversion, together with the
+// tree rules (invisible container that takes the subtree away, frame
+// clipping), lives in renderer/canvasRenderer.ts::nodesIntersecting -- the SAME
+// descent as drawScene and hitTest, so what you see is what you select.
 //
-// L'ordine è quello dell'albero (container prima dei figli, fratelli per order
-// key) e non un confronto piatto di order key: per una scena piatta sono la
-// stessa lista, per una annidata solo il primo ha un significato.
+// The order is that of the tree (containers before children, siblings by order
+// key) and not a flat comparison of order keys: for a flat scene they are the
+// same list, for a nested one only the first has a meaning.
 export function nodesInMarquee(scene: SceneState, bounds: Bounds, currentPageId?: string | null): string[] {
   return nodesIntersecting(scene, bounds, currentPageId);
 }
@@ -177,8 +177,8 @@ function union(base: string[], extra: string[]): string[] {
   return [...base, ...extra.filter((id) => !seen.has(id))];
 }
 
-// I MODIFICATORI che decidono la forma di un gesto: Alt spegne lo snap, Shift
-// tiene il rapporto d'aspetto (nel resize) e scatta l'angolo (nella rotazione).
+// The MODIFIERS that decide the shape of a gesture: Alt turns snap off, Shift
+// keeps the aspect ratio (in resize) and snaps the angle (in rotation).
 interface Mods { alt: boolean; shift: boolean }
 
 function modsOf(e: { altKey?: boolean; shiftKey?: boolean }): Mods {
@@ -186,119 +186,119 @@ function modsOf(e: { altKey?: boolean; shiftKey?: boolean }): Mods {
 }
 
 export function createSelectTool(): Tool {
-  // --- I MODIFICATORI DELL'ULTIMA ANTEPRIMA ---------------------------------
+  // --- THE MODIFIERS OF THE LAST PREVIEW ------------------------------------
   //
-  // L'op finale si ricalcola dalla posizione del POINTERUP, ma i modificatori
-  // NO: si usano quelli dell'ultimo pointermove, cioè quelli che hanno prodotto
-  // l'anteprima che l'utente sta guardando quando lascia il pulsante.
+  // The final op is recomputed from the POINTERUP position, but the modifiers
+  // are NOT: those of the last pointermove are used, i.e. those that produced
+  // the preview the user is looking at when they release the button.
   //
-  // Leggerli dall'evento di pointerup è un bug che si vede solo quando conta:
-  // Alt tenuto per tutto un trascinamento (anteprime esattamente sotto il dito,
-  // per posare un nodo a 2 px dal vicino), Alt lasciato un istante PRIMA del
-  // pulsante -- e il pointerup arriva con altKey false, lo snap scatta al
-  // commit e il nodo salta fino a SNAP_THRESHOLD_PX/zoom. endGesture ricostruisce
-  // la scena da quegli op, quindi il salto è ciò che finisce sul filo e nella
-  // voce di undo. Il verso opposto (premere Alt appena prima di lasciare, per
-  // sfuggire a uno scatto già mostrato) è altrettanto raggiungibile. Alt è
-  // proprio la via d'uscita dallo snap: leggerlo al rilascio disfa la funzione
-  // nell'unico momento in cui serve.
+  // Reading them from the pointerup event is a bug that only shows when it matters:
+  // Alt held for a whole drag (previews exactly under the finger,
+  // to place a node 2 px from its neighbor), Alt released an instant BEFORE the
+  // button -- and the pointerup arrives with altKey false, the snap kicks in at
+  // commit and the node jumps by up to SNAP_THRESHOLD_PX/zoom. endGesture rebuilds
+  // the scene from those ops, so the jump is what ends up on the wire and in the
+  // undo entry. The opposite direction (pressing Alt just before releasing, to
+  // escape a snap already shown) is equally reachable. Alt is
+  // precisely the way out of snapping: reading it on release undoes the feature
+  // at the only moment it is needed.
   //
-  // Vale identico per Shift: lasciarlo prima del pulsante commetterebbe un
-  // resize NON vincolato dopo un'anteprima vincolata, e un angolo non scattato
-  // dopo un'anteprima scattata.
+  // The same applies to Shift: releasing it before the button would commit an
+  // UNconstrained resize after a constrained preview, and an unsnapped angle
+  // after a snapped preview.
   //
-  // Si LATCHA all'ultima anteprima (non al pointerdown) perché premere o
-  // lasciare un modificatore a metà gesto deve continuare a cambiare l'anteprima
-  // subito, come in ogni editor: la regola è "si commette ciò che si è visto",
-  // non "si commette ciò che si era premuto all'inizio". Un latch solo per tutti
-  // e tre i gesti: ne è aperto al massimo uno per volta.
+  // It LATCHES to the last preview (not to the pointerdown) because pressing or
+  // releasing a modifier mid-gesture must keep changing the preview
+  // immediately, as in every editor: the rule is "commit what was seen",
+  // not "commit what was pressed at the start". A single latch for all
+  // three gestures: at most one is open at a time.
   let lastMods: Mods = { alt: false, shift: false };
 
-  // --- drag di spostamento --------------------------------------------------
-  // Ancora MONDO e posizione di partenza (MONDO) di ogni nodo trascinato,
-  // catturate a pointerdown. Il gesto sullo store (beginGesture) viene aperto
-  // in modo PIGRO al primo pointermove reale: un semplice click (down+up
-  // senza move in mezzo) non deve mai aprire/chiudere un gesto a vuoto --
-  // altrimenti ogni click su un nodo già selezionato spamerebbe un
-  // beginGesture "misuso" nei test che testano solo onPointerDown (vedi
-  // store.ts: beginGesture con un gesto già aperto avvisa e non annidano).
+  // --- move drag ------------------------------------------------------------
+  // WORLD anchor and starting position (WORLD) of each dragged node,
+  // captured at pointerdown. The store gesture (beginGesture) is opened
+  // LAZILY at the first real pointermove: a plain click (down+up
+  // with no move in between) must never open/close an empty gesture --
+  // otherwise every click on an already selected node would spam a
+  // "misuse" beginGesture in tests that only test onPointerDown (see
+  // store.ts: beginGesture with a gesture already open warns and does not nest).
   //
-  // `toLocal` è l'inversa della trasformazione del PARENT del nodo, fotografata
-  // a pointerdown (durante un gesto nessuno riparenta): il puntatore si muove
-  // nel MONDO, ma x/y del modello sono relative al parent, e per un nodo
-  // annidato i due spostamenti non sono lo stesso numero. Finché i container
-  // contribuiscono solo traslazioni la parte lineare è l'identità e i due
-  // coincidono; il giorno della rotazione (altra traccia) è questa conversione
-  // a evitare che trascinare un figlio di un container ruotato lo mandi di
-  // traverso.
+  // `toLocal` is the inverse of the node's PARENT transformation, captured
+  // at pointerdown (nobody reparents during a gesture): the pointer moves
+  // in the WORLD, but the model's x/y are relative to the parent, and for a nested
+  // node the two displacements are not the same number. As long as containers
+  // contribute only translations the linear part is the identity and the two
+  // coincide; the day rotation arrives (another track) it is this conversion
+  // that keeps dragging a child of a rotated container from sending it
+  // sideways.
   let dragAnchor: { x: number; y: number } | null = null;
   let dragStart: Record<string, { x: number; y: number; toLocal: Transform }> | null = null;
   let dragStarted = false;
-  // Lo SNAP del trascinamento, fotografato a pointerdown: il riquadro che la
-  // selezione occupa (è LUI a scattare, non i singoli nodi -- altrimenti una
-  // selezione multipla si sfalderebbe, ogni nodo tirato dalla propria guida) e i
-  // rettangoli a cui può scattare. Calcolati una volta per gesto e non a ogni
-  // pointermove: i bersagli non si muovono durante il trascinamento, e
-  // ricalcolarli 60 volte al secondo vorrebbe dire rileggere tutta la scena.
+  // The drag SNAP, captured at pointerdown: the box the
+  // selection occupies (IT is what snaps, not the individual nodes -- otherwise a
+  // multiple selection would fall apart, each node pulled by its own guide) and the
+  // rectangles it can snap to. Computed once per gesture and not on every
+  // pointermove: the targets do not move during the drag, and
+  // recomputing them 60 times a second would mean re-reading the whole scene.
   let dragBox: Bounds | null = null;
   let dragTargets: SnapIndex | null = null;
-  // RIORDINO in un auto layout (tools/layoutDrop.ts). Deciso al primo move vero:
-  // se i nodi trascinati sono figli di un frame con auto layout il gesto NON
-  // scrive x/y (il server li ricalcolerebbe e il nodo tornerebbe al suo posto),
-  // sceglie invece dove metterli nella fila. `box` è il riquadro di partenza
-  // della selezione, da cui si disegna il contorno che segue il puntatore.
+  // REORDERING in an auto layout (tools/layoutDrop.ts). Decided at the first real move:
+  // if the dragged nodes are children of an auto layout frame the gesture does NOT
+  // write x/y (the server would recompute them and the node would snap back),
+  // it instead chooses where to put them in the row. `box` is the starting box
+  // of the selection, from which the outline following the pointer is drawn.
   let reorder: { originId: string; ids: string[]; box: Bounds | null } | null = null;
 
-  // --- resize con le maniglie -------------------------------------------------
-  // Stessa struttura del drag di spostamento: ancora MONDO + stato iniziale, e
-  // apertura PIGRA del gesto al primo move vero (un click su una maniglia non
-  // deve produrre nessun op). resizeStartBox è il bbox di GRUPPO a inizio
-  // gesto: ogni nodo viene poi mappato con la stessa trasformazione, così una
-  // selezione multipla scala (e si specchia) in blocco.
+  // --- resize with the handles ------------------------------------------------
+  // Same structure as the move drag: WORLD anchor + initial state, and
+  // LAZY opening of the gesture at the first real move (a click on a handle
+  // must produce no op). resizeStartBox is the GROUP bbox at the start of the
+  // gesture: each node is then mapped with the same transformation, so a
+  // multiple selection scales (and mirrors) as a block.
   //
-  // Il bbox di gruppo è in coordinate MONDO (ci vivono le maniglie e il
-  // puntatore), quindi anche i box di partenza dei singoli nodi lo sono:
-  // mappare un box LOCALE con una trasformazione calcolata nel mondo darebbe
-  // un rettangolo senza senso. Il ritorno al locale avviene alla fine, quando
-  // si scrive nel modello -- vedi resizeOps.
+  // The group bbox is in WORLD coordinates (the handles and the
+  // pointer live there), so the starting boxes of the individual nodes are too:
+  // mapping a LOCAL box with a transformation computed in the world would give
+  // a meaningless rectangle. The return to local happens at the end, when
+  // writing into the model -- see resizeOps.
   let resizeHandle: HandleId | null = null;
   let resizeAnchor: { x: number; y: number } | null = null;
   let resizeStartFrame: SelectionFrame | null = null;
-  // Il box di partenza di ogni nodo in coordinate MONDO (la stessa in cui vive
-  // il frame e il puntatore), il suo angolo, e `toLocal` per riscrivere il
-  // risultato nello spazio del PARENT -- dove x/y/width/height vivono davvero.
-  // world+toLocal (annidamento, T1) e rotation (T2) insieme: un nodo ruotato
-  // dentro una selezione multipla non si mappa come gli altri (handles.ts::
-  // applyFrameResizeToNode), e un ribaltamento gli cambia anche l'angolo.
+  // The starting box of each node in WORLD coordinates (the same one in which the
+  // frame and the pointer live), its angle, and `toLocal` to rewrite the
+  // result in the PARENT space -- where x/y/width/height really live.
+  // world+toLocal (nesting, T1) and rotation (T2) together: a rotated node
+  // inside a multiple selection is not mapped like the others (handles.ts::
+  // applyFrameResizeToNode), and a flip also changes its angle.
   let resizeStartNodes:
     | Record<string, { bounds: Bounds; rotation: number; toLocal: Transform }>
     | null = null;
-  // La GEOMETRIA di partenza dei soli nodi vettoriali selezionati (T4). Catturata
-  // a pointerdown come i bounds e per lo stesso motivo: gli op di anteprima sono
-  // assoluti e si ricalcolano sempre dallo stato iniziale.
+  // The starting GEOMETRY of only the selected vector nodes (T4). Captured
+  // at pointerdown like the bounds and for the same reason: the preview ops are
+  // absolute and are always recomputed from the initial state.
   let resizeStartVectors: Record<string, SubPathLite[]> | null = null;
   let resizeStarted = false;
-  // I bersagli dello snap per il ridimensionamento, fotografati come quelli del
-  // trascinamento (stessa ragione).
+  // The snap targets for resizing, captured like those of the
+  // drag (same reason).
   let resizeTargets: SnapIndex | null = null;
 
-  // --- rotazione dalle zone d'angolo ------------------------------------------
-  // Stessa forma degli altri due gesti (ancora + stato iniziale + apertura
-  // PIGRA del gesto al primo move vero). L'ancora qui è ANGOLARE: l'angolo del
-  // raggio centro->puntatore a pointerdown, da cui si misura il delta.
+  // --- rotation from the corner zones -----------------------------------------
+  // Same shape as the other two gestures (anchor + initial state + LAZY
+  // opening of the gesture at the first real move). The anchor here is ANGULAR: the angle of the
+  // center->pointer ray at pointerdown, from which the delta is measured.
   //
-  // rotateCenter è il centro del FRAME, che per una selezione multipla non è il
-  // centro di nessun nodo: i nodi ruotano attorno a quello (i loro centri si
-  // spostano) e ciascuno gira anche su sé stesso dello stesso delta -- cioè la
-  // selezione ruota come un CORPO RIGIDO.
+  // rotateCenter is the center of the FRAME, which for a multiple selection is not the
+  // center of any node: the nodes rotate around it (their centers
+  // move) and each also turns on itself by the same delta -- i.e. the
+  // selection rotates as a RIGID BODY.
   let rotateCenter: { x: number; y: number } | null = null;
   let rotateStartAngle = 0;
-  // L'angolo di riferimento a cui si applica lo scatto con Shift: quello del
-  // PRIMO nodo selezionato. Scattare l'angolo di ciascun nodo separatamente
-  // spezzerebbe la rigidità del gruppo (nodi con angoli iniziali diversi
-  // convergerebbero); scattare il DELTA di un nodo solo non darebbe mai un
-  // angolo tondo. Si scatta il totale del riferimento e si usa il delta che ne
-  // risulta per tutti.
+  // The reference angle the Shift snap applies to: that of the
+  // FIRST selected node. Snapping each node's angle separately
+  // would break the group's rigidity (nodes with different initial angles
+  // would converge); snapping the DELTA of a single node would never give a
+  // round angle. The reference's total is snapped and the resulting delta
+  // is used for all.
   let rotateRef = 0;
   let rotateStartNodes: Record<string, { bounds: Bounds; rotation: number }> | null = null;
   let rotateStarted = false;
@@ -308,25 +308,25 @@ export function createSelectTool(): Tool {
   let marqueeBase: string[] | null = null;
   let preMarqueeSelection: string[] | null = null;
 
-  // --- doppio click su un nodo testo -----------------------------------------
+  // --- double-click on a text node --------------------------------------------
   let lastClick: { id: string; time: number } | null = null;
 
-  // Id del nodo testo CANDIDATO all'editing: il secondo click entro soglia è
-  // arrivato, ma la decisione è rinviata al rilascio. Il pointerdown da solo
-  // non basta a dire "doppio click" -- un ri-click rapido che poi TRASCINA è un
-  // normale spostamento, e deciderlo al down lo inghiottiva in una sessione di
-  // editing lasciando il nodo inchiodato dov'era (stessa forma del marquee 0x0
-  // curato in M1a: non impegnarsi finché non ci sono abbastanza prove).
-  // Finché è valorizzato il drag è PREPARATO ma non avviato (dragStarted resta
-  // false, nessun gesto aperto sullo store): a pointerup si apre l'editing, e
-  // se invece il puntatore supera DOUBLE_CLICK_SLOP_PX il candidato cade e il
-  // drag prosegue esattamente come un move qualunque -- delta calcolato da
-  // dragAnchor, quindi anche i px "spesi" per superare la soglia contano.
+  // Id of the text node CANDIDATE for editing: the second click within the threshold
+  // arrived, but the decision is deferred to release. The pointerdown alone
+  // is not enough to say "double-click" -- a quick re-click that then DRAGS is a
+  // normal move, and deciding at down swallowed it into an
+  // editing session leaving the node stuck where it was (same shape as the 0x0 marquee
+  // cured in M1a: do not commit until there is enough evidence).
+  // While it is set the drag is PREPARED but not started (dragStarted stays
+  // false, no gesture open on the store): on pointerup editing opens, and
+  // if instead the pointer exceeds DOUBLE_CLICK_SLOP_PX the candidate drops and the
+  // drag proceeds exactly like any other move -- delta computed from
+  // dragAnchor, so the px "spent" to exceed the threshold count too.
   let pendingTextEdit: string | null = null;
 
-  // Le guide vivono quanto il GESTO che le ha prodotte: si spengono dovunque un
-  // gesto finisca -- rilascio, Esc, Canc, cambio tool -- perché tutte quelle
-  // strade passano da un reset.
+  // The guides live as long as the GESTURE that produced them: they turn off wherever a
+  // gesture ends -- release, Esc, Delete, tool change -- because all those
+  // paths go through a reset.
   function clearGuides() {
     useScene.getState().setSnapGuides([]);
   }
@@ -342,7 +342,7 @@ export function createSelectTool(): Tool {
     clearGuides();
   }
 
-  // Dove cadrebbe il riordino col puntatore in `e`, e il suo aspetto sull'overlay.
+  // Where the reorder would land with the pointer at `e`, and its look on the overlay.
   function reorderStep(e: PointerEvent, ctx: ToolContext): LayoutDrop | null {
     const scene = ctx.getScene();
     if (!reorder || !scene || !dragAnchor) return null;
@@ -374,20 +374,20 @@ export function createSelectTool(): Tool {
     rotateStarted = false;
   }
 
-  // --- LO SNAP, DENTRO IL GESTO ---------------------------------------------
+  // --- SNAP, INSIDE THE GESTURE ---------------------------------------------
   //
-  // Lo scatto NON è un'altra modifica: corregge la posizione del puntatore
-  // PRIMA che il gesto la usi, quindi entra nell'anteprima e nell'op finale
-  // esattamente allo stesso modo. Il gesto resta uno, l'op resta uno per nodo,
-  // la voce di undo resta una. È il punto in cui l'implementazione poteva
-  // sbandare: uno snap applicato "dopo" avrebbe voluto un op suo.
+  // The snap is NOT another change: it corrects the pointer position
+  // BEFORE the gesture uses it, so it enters the preview and the final op
+  // in exactly the same way. The gesture stays one, the op stays one per node,
+  // the undo entry stays one. It is the point where the implementation could
+  // have gone astray: a snap applied "after" would have wanted an op of its own.
   //
-  // ALT lo spegne per quel gesto: è la convenzione, e senza una via d'uscita un
-  // nodo diventerebbe impossibile da posare a 2 px da un altro.
+  // ALT turns it off for that gesture: it is the convention, and without a way out a
+  // node would become impossible to place 2 px from another.
 
-  // Il delta del TRASCINAMENTO, scatto compreso. Il riquadro della selezione
-  // viene spostato del delta grezzo e lì gli si chiede lo scatto: sono le sue
-  // sei linee (bordi e centri, su entrambi gli assi) a competere.
+  // The DRAG delta, snap included. The selection box
+  // is moved by the raw delta and the snap is asked of it there: it is its
+  // six lines (edges and centers, on both axes) that compete.
   function dragDelta(e: PointerEvent, ctx: ToolContext, mods: Mods): { dx: number; dy: number; guides: SnapGuide[] } {
     const world = ctx.toWorld(e);
     const dx = world.x - dragAnchor!.x;
@@ -398,21 +398,21 @@ export function createSelectTool(): Tool {
     return { dx: dx + s.dx, dy: dy + s.dy, guides: s.guides };
   }
 
-  // Il delta del RIDIMENSIONAMENTO, scatto compreso. Tre casi in cui lo snap si
-  // fa da parte, e nessuno dei tre è una rinuncia per pigrizia:
+  // The RESIZE delta, snap included. Three cases in which the snap
+  // steps aside, and none of the three is a renunciation out of laziness:
   //
-  //  - ALT: disattivazione esplicita, come nel trascinamento.
-  //  - SHIFT: l'utente ha chiesto il RAPPORTO D'ASPETTO, che è un vincolo più
-  //    forte -- far scattare un asse romperebbe l'altro, cioè disobbedirebbe
-  //    all'unica cosa che ha chiesto a voce alta.
-  //  - FRAME RUOTATO: i suoi bordi non sono rette dello schermo, e una guida
-  //    che non è una retta dello schermo non allinea niente (vedi la scelta
-  //    dichiarata in selection/snap.ts). I bersagli restano AABB anche per i
-  //    nodi ruotati; è il riquadro che si sta TIRANDO a dover essere dritto.
+  //  - ALT: explicit deactivation, as in the drag.
+  //  - SHIFT: the user asked for the ASPECT RATIO, which is a stronger
+  //    constraint -- snapping one axis would break the other, i.e. it would disobey
+  //    the one thing they asked for out loud.
+  //  - ROTATED FRAME: its edges are not screen lines, and a guide
+  //    that is not a screen line aligns nothing (see the choice
+  //    declared in selection/snap.ts). The targets remain AABB even for
+  //    rotated nodes; it is the box being PULLED that must be straight.
   //
-  // Correggere il delta del puntatore (invece del risultato) è ciò che tiene lo
-  // scatto dentro la matematica esistente: resizeFrame resta l'unica a
-  // calcolare il resize, flip e ancora compresi.
+  // Correcting the pointer delta (instead of the result) is what keeps the
+  // snap inside the existing math: resizeFrame remains the only one to
+  // compute the resize, flip and anchor included.
   function resizeDelta(e: PointerEvent, ctx: ToolContext, mods: Mods): { dx: number; dy: number; guides: SnapGuide[] } {
     const world = ctx.toWorld(e);
     const dx = world.x - resizeAnchor!.x;
@@ -428,45 +428,45 @@ export function createSelectTool(): Tool {
     const r = resizeFrame(frame, resizeHandle, dx, dy);
     const box = applyFrameResize(frame.bounds, r);
     const lines = movingEdgeLines(box, resizeHandle);
-    // RIBALTAMENTO in corso: il bordo mobile ha superato l'ancora, quindi in
-    // `box` (normalizzato) il minimo e il massimo si sono scambiati e
-    // movingEdgeLines starebbe indicando il bordo FERMO. Su quell'asse non si
-    // scatta: farlo sposterebbe l'ancora, cioè l'unico punto che il resize
-    // promette di non muovere.
+    // FLIP in progress: the moving edge has passed the anchor, so in
+    // `box` (normalized) the min and max have swapped and
+    // movingEdgeLines would be pointing at the FIXED edge. On that axis we do not
+    // snap: doing so would move the anchor, the only point the resize
+    // promises not to move.
     if (r.transform.signedW < 0) lines.x = [];
     if (r.transform.signedH < 0) lines.y = [];
     const s = snapMoving(box, lines, resizeTargets, worldThreshold(ctx.getCamera()));
     return { dx: dx + s.dx, dy: dy + s.dy, guides: s.guides };
   }
 
-  // Gli op del resize per la posizione corrente del puntatore, ricalcolati
-  // SEMPRE dai bounds iniziali (mai dal delta dell'ultimo move): niente
-  // accumulo di errori, e l'op finale è identico all'ultima anteprima.
+  // The resize ops for the current pointer position, ALWAYS recomputed
+  // from the initial bounds (never from the last move's delta): no
+  // accumulation of errors, and the final op is identical to the last preview.
   function resizeOps(e: PointerEvent, ctx: ToolContext, mods: Mods): { ops: Op[]; guides: SnapGuide[] } {
     if (!resizeHandle || !resizeAnchor || !resizeStartFrame || !resizeStartNodes) {
       return { ops: [], guides: [] };
     }
     const { dx, dy, guides } = resizeDelta(e, ctx, mods);
-    // resizeFrame porta il delta del puntatore nello spazio LOCALE del frame
-    // (così la maniglia e allarga il nodo lungo il SUO asse, comunque sia
-    // girato) e calcola l'offset che tiene l'ancora ferma nel MONDO. La
-    // matematica del resize -- flip e keepAspect compresi -- resta quella di
-    // resizeTransform, invariata: qui la si avvolge, non la si riscrive.
+    // resizeFrame brings the pointer delta into the frame's LOCAL space
+    // (so the `e` handle widens the node along ITS axis, however it is
+    // rotated) and computes the offset that keeps the anchor still in the WORLD. The
+    // resize math -- flip and keepAspect included -- remains that of
+    // resizeTransform, unchanged: here it is wrapped, not rewritten.
     const r = resizeFrame(resizeStartFrame, resizeHandle, dx, dy, { keepAspect: mods.shift });
     const ops: Op[] = [];
     for (const [id, start] of Object.entries(resizeStartNodes)) {
       const next = applyFrameResizeToNode(start.bounds, start.rotation, r);
-      // Il conto avviene nel MONDO (dove sta il frame), poi il box torna nello
-      // spazio del PARENT prima di finire in un op (T1 annidamento): nel modello
-      // x/y/width/height sono relative al parent, e scriverci un box mondo
-      // sposterebbe un nodo annidato del passo del suo container. Per un nodo
-      // figlio di una pagina toLocal è l'identità e localBounds === next.bounds.
+      // The computation happens in the WORLD (where the frame is), then the box goes back into the
+      // PARENT space before ending up in an op (T1 nesting): in the model
+      // x/y/width/height are relative to the parent, and writing a world box there
+      // would shift a nested node by its container's offset. For a node
+      // child of a page toLocal is the identity and localBounds === next.bounds.
       const localBounds = mapBounds(start.toLocal, next.bounds);
-      // L'angolo entra nella mask SOLO quando cambia davvero (un nodo allineato
-      // al frame -- il caso normale -- manda esattamente l'op di prima). Cambia
-      // quando una scala non uniforme o un ribaltamento girano gli assi del
-      // nodo: senza spedirlo, il nodo si vedrebbe con la forma nuova e l'angolo
-      // vecchio, cioè fuori dal riquadro.
+      // The angle enters the mask ONLY when it really changes (a node aligned
+      // with the frame -- the normal case -- sends exactly the op as before). It changes
+      // when a non-uniform scale or a flip turns the node's
+      // axes: without sending it, the node would be seen with the new shape and the old
+      // angle, i.e. outside the box.
       ops.push(
         next.rotation === start.rotation
           ? makeSetPropsOp(id, localBounds, ["x", "y", "width", "height"])
@@ -476,20 +476,20 @@ export function createSelectTool(): Tool {
               ["x", "y", "width", "height", "rotation"],
             ),
       );
-      // Un nodo VETTORIALE porta la sua geometria dentro lo STESSO gesto: gli
-      // ancoraggi sono lunghezze in coordinate locali, non frazioni del box,
-      // quindi senza questo secondo op il box crescerebbe e l'inchiostro
-      // resterebbe della sua misura -- violando l'invariante del proto (dopo un
-      // SetVectorPath la bbox locale della geometria è (0,0)-(width,height)). La
-      // scala viene dalla trasformazione di gruppo (r.transform), la stessa che
-      // ha appena mappato il box; in anteprima le due chiavi di coalescing
-      // (`s|id|...` e `v|id`, vedi store.ts::previewKey) non si schiacciano a
-      // vicenda, ed è un'unica voce di undo.
+      // A VECTOR node carries its geometry inside the SAME gesture: the
+      // anchors are lengths in local coordinates, not fractions of the box,
+      // so without this second op the box would grow and the ink
+      // would stay its size -- violating the proto invariant (after a
+      // SetVectorPath the geometry's local bbox is (0,0)-(width,height)). The
+      // scale comes from the group transformation (r.transform), the same that
+      // just mapped the box; in preview the two coalescing keys
+      // (`s|id|...` and `v|id`, see store.ts::previewKey) do not crush each
+      // other, and it is a single undo entry.
       const start0 = resizeStartVectors?.[id];
       if (!start0) continue;
-      // resizeVector misura gli ancoraggi contro il box nello spazio LOCALE del
-      // nodo (gli ancoraggi sono locali). Per un figlio di pagina è identico al
-      // box mondo; per un nodo annidato lo si riporta in locale come sopra.
+      // resizeVector measures the anchors against the box in the node's LOCAL space
+      // (anchors are local). For a child of a page it is identical to the
+      // world box; for a nested node it is brought back to local as above.
       const localStart = mapBounds(start.toLocal, start.bounds);
       ops.push(makeSetVectorPathOp(id, resizeVector(
         start0,
@@ -501,36 +501,36 @@ export function createSelectTool(): Tool {
     return { ops, guides };
   }
 
-  // Gli op del TRASCINAMENTO per la posizione corrente del puntatore. Come il
-  // resize: ricalcolati dallo stato iniziale, mai dall'ultimo delta.
+  // The DRAG ops for the current pointer position. Like the
+  // resize: recomputed from the initial state, never from the last delta.
   function dragOps(e: PointerEvent, ctx: ToolContext, mods: Mods): { ops: Op[]; guides: SnapGuide[] } {
     if (!dragAnchor || !dragStart) return { ops: [], guides: [] };
     const { dx, dy, guides } = dragDelta(e, ctx, mods);
     const ops = Object.entries(dragStart).map(([id, start]) => {
-      // Lo spostamento (mondo, scatto compreso) passa per la sola parte LINEARE
-      // della trasformazione del parent (mapVector): è un delta, non un punto,
-      // quindi la traslazione del container non lo tocca. Per un figlio di pagina
-      // toLocal è l'identità e (d.x, d.y) === (dx, dy).
+      // The displacement (world, snap included) goes through only the LINEAR part
+      // of the parent's transformation (mapVector): it is a delta, not a point,
+      // so the container's translation does not touch it. For a child of a page
+      // toLocal is the identity and (d.x, d.y) === (dx, dy).
       const d = mapVector(start.toLocal, dx, dy);
       return makeSetPropsOp(id, { x: start.x + d.x, y: start.y + d.y }, ["x", "y"]);
     });
     return { ops, guides };
   }
 
-  // Gli op della rotazione per la posizione corrente del puntatore. Come il
-  // resize: SEMPRE ricalcolati dallo stato iniziale, mai dall'ultimo delta.
+  // The rotation ops for the current pointer position. Like the
+  // resize: ALWAYS recomputed from the initial state, never from the last delta.
   function rotateOps(e: PointerEvent, ctx: ToolContext, mods: Mods): Op[] {
     if (!rotateCenter || !rotateStartNodes) return [];
     const world = ctx.toWorld(e);
     const raw = angleOf(rotateCenter, world) - rotateStartAngle;
-    // Con Shift lo scatto è sul TOTALE del riferimento, non sul delta: si
-    // ottiene un angolo tondo (0, 15, 30...) invece di uno spostamento tondo a
-    // partire da un angolo qualsiasi.
+    // With Shift the snap is on the reference's TOTAL, not on the delta: you
+    // get a round angle (0, 15, 30...) instead of a round displacement
+    // starting from an arbitrary angle.
     const delta = mods.shift ? snapDegrees(rotateRef + raw, ROTATE_SNAP_DEG) - rotateRef : raw;
     return Object.entries(rotateStartNodes).map(([id, start]) => {
-      // Il centro del nodo gira attorno a quello del frame (per una selezione
-      // singola i due coincidono e questo è l'identità esatta), e il nodo gira
-      // su sé stesso dello stesso delta: insieme, una rotazione rigida.
+      // The node's center rotates around that of the frame (for a single
+      // selection the two coincide and this is exactly the identity), and the node turns
+      // on itself by the same delta: together, a rigid rotation.
       const c = rotateAround(centerOf(start.bounds), rotateCenter!, delta);
       return makeSetPropsOp(id, {
         x: c.x - start.bounds.width / 2,
@@ -547,22 +547,22 @@ export function createSelectTool(): Tool {
     useScene.getState().setMarquee(null);
   }
 
-  // Abbandona QUALUNQUE gesto locale in corso (spostamento, marquee o resize),
-  // riportando sia lo store sia lo stato del tool al punto di partenza -- senza
-  // mandare nulla sul filo. Condivisa da Esc, Delete/Backspace e onDeactivate:
-  // tutti e tre i punti in cui il tool deve poter "staccarsi" pulito da un
-  // gesto a metà. Cruciale per Delete/Backspace in particolare -- senza questo
-  // richiamo PRIMA di cancellare, un Delete premuto a metà drag chiuderebbe il
-  // gesto dello STORE (via il proprio beginGesture/endGesture per la
-  // cancellazione) ma lascerebbe dragAnchor/dragStart/dragStarted del tool
-  // stale: il successivo pointerup li troverebbe ancora validi e chiamerebbe
-  // endGesture() una seconda volta SENZA gesto aperto, che (mis)uso previsto
-  // da store.ts) manda comunque sul filo un setProps fasullo per un nodo ormai
-  // cancellato.
+  // Abandons ANY local gesture in progress (move, marquee or resize),
+  // bringing both the store and the tool state back to the starting point -- without
+  // sending anything on the wire. Shared by Esc, Delete/Backspace and onDeactivate:
+  // all three points where the tool must be able to detach "cleanly" from a
+  // half-done gesture. Crucial for Delete/Backspace in particular -- without this
+  // call BEFORE deleting, a Delete pressed mid-drag would close the
+  // STORE's gesture (via its own beginGesture/endGesture for the
+  // deletion) but leave the tool's dragAnchor/dragStart/dragStarted
+  // stale: the next pointerup would find them still valid and call
+  // endGesture() a second time WITHOUT an open gesture, which (misuse expected
+  // by store.ts) still sends a bogus setProps over the wire for a node that has
+  // since been deleted.
   function cancelActiveGesture() {
-    // Anche il candidato all'editing è "gesto in corso": senza azzerarlo, il
-    // pointerup che arriva comunque dopo Esc/Delete aprirebbe una sessione di
-    // editing in ritardo (su un nodo che Delete può pure aver cancellato).
+    // The editing candidate is also a "gesture in progress": without resetting it, the
+    // pointerup that arrives anyway after Esc/Delete would open an editing
+    // session late (on a node that Delete may have deleted).
     pendingTextEdit = null;
     if (marqueeAnchor) {
       useScene.getState().setSelection(preMarqueeSelection ?? []);
@@ -589,39 +589,39 @@ export function createSelectTool(): Tool {
     onPointerDown(e, ctx) {
       const scene = ctx.getScene();
       if (!scene) return;
-      // Il latch riparte dal gesto che sta per iniziare, così non porta dentro
-      // i modificatori di un hover o di un gesto precedente. (Non basta da solo
-      // a decidere niente: senza almeno un pointermove nessun gesto si apre.)
+      // The latch restarts from the gesture about to begin, so it does not carry in
+      // the modifiers of a hover or of a previous gesture. (It is not enough on its own
+      // to decide anything: without at least one pointermove no gesture opens.)
       lastMods = modsOf(e);
       const world = ctx.toWorld(e);
       const store = useScene.getState();
-      // Ogni nuovo pointerdown riparte senza candidati: un down non risolto (un
-      // secondo dito, un up mai arrivato) non deve poter aprire l'editing molto
-      // dopo. Prima delle maniglie, che escono dal metodo per la loro strada.
+      // Every new pointerdown restarts without candidates: an unresolved down (a
+      // second finger, an up that never arrived) must not be able to open editing long
+      // after. Before the handles, which leave the method by their own path.
       pendingTextEdit = null;
 
-      // Le maniglie hanno PRIORITÀ sui nodi: la maniglia se di un rettangolo
-      // cade dentro (o sul bordo di) il rettangolo stesso, e quelle esterne
-      // cadono sul vuoto -- senza priorità un pointerdown lì lo sposterebbe o
-      // farebbe partire un marquee azzerando la selezione.
+      // The handles have PRIORITY over nodes: a rectangle's e handle
+      // falls inside (or on the edge of) the rectangle itself, and the outer ones
+      // fall on empty space -- without priority a pointerdown there would move it or
+      // start a marquee clearing the selection.
       const overlay = frameUnderPointer(ctx, world);
       if (overlay?.kind === "resize") {
-        // Un op per nodo PIÙ IN ALTO con i GRUPPI ESPANSI nei figli
-        // (transformTargetsOf ∘ topmostOf, T1): un gruppo non ha un box proprio
-        // da riscrivere -- ridimensionarlo è ridimensionare il contenuto -- e un
-        // discendente selezionato col suo container si trasformerebbe due volte,
-        // perché trasformare il container trasforma già il figlio. Il bbox di
-        // GRUPPO resta invece quello dell'INTERA selezione (frameOfSelection),
-        // su cui l'overlay ha disegnato le maniglie appena afferrate.
+        // One op per TOPMOST node with GROUPS EXPANDED into their children
+        // (transformTargetsOf ∘ topmostOf, T1): a group has no box of its own
+        // to rewrite -- resizing it is resizing the content -- and a
+        // descendant selected with its container would be transformed twice,
+        // because transforming the container already transforms the child. The GROUP
+        // bbox remains instead that of the ENTIRE selection (frameOfSelection),
+        // on which the overlay drew the handles just grabbed.
         const start: Record<string, { bounds: Bounds; rotation: number; toLocal: Transform }> = {};
-        // La geometria di partenza dei soli nodi vettoriali (T4): serve a
-        // resizeOps per scalare gli ancoraggi insieme al box.
+        // The starting geometry of only the vector nodes (T4): used by
+        // resizeOps to scale the anchors together with the box.
         const startVectors: Record<string, SubPathLite[]> = {};
         for (const sid of transformTargetsOf(scene, topmostOf(scene, store.selection))) {
           const n = scene.nodes.at(sid);
           if (!n) continue;
-          // bounds in MONDO (come il frame e il puntatore) + toLocal per tornare
-          // in parent-local quando si scrive l'op -- vedi resizeStartNodes.
+          // bounds in WORLD (like the frame and the pointer) + toLocal to go back
+          // to parent-local when writing the op -- see resizeStartNodes.
           start[sid] = {
             bounds: worldBoundsOfNode(scene, n),
             rotation: n.rotation,
@@ -639,10 +639,10 @@ export function createSelectTool(): Tool {
         setCursor(ctx, cursorForHandle(overlay.handle));
         return;
       }
-      // La ROTAZIONE, dalla zona appena fuori dall'angolo. Ha la stessa
-      // priorità delle maniglie sul nodo sotto il puntatore (in realtà cade
-      // sempre sul vuoto attorno alla selezione: senza questo ramo un
-      // pointerdown lì aprirebbe un marquee azzerando la selezione).
+      // ROTATION, from the zone just outside the corner. It has the same
+      // priority as the handles over the node under the pointer (in reality it always falls
+      // on empty space around the selection: without this branch a
+      // pointerdown there would open a marquee clearing the selection).
       if (overlay?.kind === "rotate") {
         const frame = frameOfSelection(ctx);
         if (frame) {
@@ -661,18 +661,18 @@ export function createSelectTool(): Tool {
         }
       }
 
-      // Doppio click su un nodo TESTO: entra in editing invece di iniziare un
-      // drag (Task 4, step 3). Rilevato per ID + e.timeStamp: ricalcola
-      // hitTest invece di leggerlo da pickTarget qui sotto, che per un nodo
-      // GIÀ selezionato non lo restituisce (pickTarget ritorna "single" senza
-      // id apposta, vedi il suo commento) -- e qui serve SEMPRE, selezionato o
-      // no. Shift-click resta riservato al toggle multi-selezione, non a
-      // questo: uno shift+doppio click non fa nulla di speciale.
+      // Double-click on a TEXT node: enters editing instead of starting a
+      // drag (Task 4, step 3). Detected by ID + e.timeStamp: it recomputes
+      // hitTest instead of reading it from pickTarget below, which for a node
+      // ALREADY selected does not return it (pickTarget returns "single" without
+      // an id on purpose, see its comment) -- and here it is ALWAYS needed, selected or
+      // not. Shift-click stays reserved for the multi-selection toggle, not for
+      // this: a shift+double-click does nothing special.
       //
-      // Il secondo click segna solo un CANDIDATO (pendingTextEdit) e prosegue:
-      // selezione e drag si preparano come per un click qualunque, così se il
-      // puntatore si muove il gesto è già armato e lo spostamento parte da
-      // questo stesso down. Chi decide è il rilascio (onPointerUp), non il down.
+      // The second click only marks a CANDIDATE (pendingTextEdit) and goes on:
+      // selection and drag are prepared as for any click, so if the
+      // pointer moves the gesture is already armed and the move starts from
+      // this same down. The one who decides is the release (onPointerUp), not the down.
       const zoom = ctx.getCamera().zoom;
       const hitId = hitTest(scene, world.x, world.y, zoom, store.currentPageId);
       if (hitId && !e.shiftKey) {
@@ -681,20 +681,20 @@ export function createSelectTool(): Tool {
           lastClick.id === hitId &&
           e.timeStamp - lastClick.time <= DOUBLE_CLICK_MS;
         if (isDoubleClick) {
-          // lastClick azzerato: un terzo click non incatena un altro doppio.
+          // lastClick cleared: a third click does not chain another double.
           lastClick = null;
-          // I due significati del doppio click stanno IN FILA, non in
-          // concorrenza: prima si ENTRA nei gruppi (un livello per doppio
-          // click, vedi store/groups.ts::enterTargetOf), e solo quando non c'è
-          // più niente in cui entrare il doppio click torna a essere quello
-          // del testo. Su un testo dentro un gruppo servono quindi due doppi
-          // click: il primo entra, il secondo scrive -- che è anche l'ordine
-          // in cui l'utente li pensa.
+          // The two meanings of double-click are IN SEQUENCE, not in
+          // competition: first you ENTER groups (one level per double
+          // click, see store/groups.ts::enterTargetOf), and only when there is no
+          // more to enter does the double-click go back to being the text
+          // one. On a text inside a group two double
+          // clicks are therefore needed: the first enters, the second types -- which is also the order
+          // in which the user thinks of them.
           const enter = enterTargetOf(scene, hitId, store.selection);
           if (enter) {
-            // SUBITO, non a pointerup: il drag preparato qui sotto deve agire
-            // sul nodo in cui si è appena entrati (doppio click e trascina
-            // sposta il figlio, non il gruppo).
+            // IMMEDIATELY, not at pointerup: the drag prepared below must act
+            // on the node just entered (double-click and drag
+            // moves the child, not the group).
             store.setSelection([enter]);
           } else if (scene.nodes.at(hitId)?.kind === "text") {
             pendingTextEdit = hitId;
@@ -706,14 +706,14 @@ export function createSelectTool(): Tool {
         lastClick = null;
       }
 
-      // Selezione LETTA ADESSO e non da `store`: entrare in un gruppo (qui
-      // sopra) l'ha appena cambiata, e `store` è la fotografia di prima. `zoom`
-      // (T4) e currentPageId (T1) entrambi, come in hitTest qui sopra.
+      // Selection READ NOW and not from `store`: entering a group (above)
+      // has just changed it, and `store` is the snapshot from before. `zoom`
+      // (T4) and currentPageId (T1) both, as in hitTest above.
       const target = pickTarget(scene, world, e.shiftKey, useScene.getState().selection, zoom, store.currentPageId);
 
       if (target.mode === "marquee") {
-        // shift+click sul vuoto non azzera: è l'inizio di un'aggiunta (unione
-        // con la selezione corrente a pointerup).
+        // shift+click on empty space does not clear: it is the start of an addition (union
+        // with the current selection at pointerup).
         const base = e.shiftKey ? store.selection : [];
         preMarqueeSelection = store.selection;
         if (!e.shiftKey) store.clearSelection();
@@ -725,12 +725,12 @@ export function createSelectTool(): Tool {
 
       if (target.mode === "toggle") store.toggleSelection(target.id);
       else if (target.id) store.setSelection([target.id]);
-      // target.mode === "single" senza id: nodo già selezionato, nessun
-      // cambio -- il drag qui sotto userà la selezione (multipla) esistente.
+      // target.mode === "single" without an id: node already selected, no
+      // change -- the drag below will use the existing (multiple) selection.
 
-      // topmostOf come nel resize qui sopra (e nella cancellazione): un
-      // discendente si sposta GIÀ perché si sposta il suo container, quindi un
-      // op suo lo porterebbe a 2*delta dal punto di partenza.
+      // topmostOf as in the resize above (and in deletion): a
+      // descendant moves ALREADY because its container moves, so an
+      // op of its own would bring it to 2*delta from the starting point.
       const selection = useScene.getState().selection;
       const start: Record<string, { x: number; y: number; toLocal: Transform }> = {};
       for (const sid of topmostOf(scene, selection)) {
@@ -740,15 +740,15 @@ export function createSelectTool(): Tool {
       dragAnchor = world;
       dragStart = start;
       dragStarted = false;
-      // È il RIQUADRO della selezione a scattare, non i singoli nodi: con una
-      // selezione multipla ogni nodo tirato dalla propria guida la sfalderebbe.
+      // It is the selection BOX that snaps, not the individual nodes: with a
+      // multiple selection each node pulled by its own guide would break it apart.
       dragBox = selectionWorldBounds(scene, selection);
       dragTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, selection)));
     },
 
     onPointerMove(e, ctx) {
-      // Ogni anteprima LATCHA i suoi modificatori: è questa coppia, e non
-      // quella del pointerup, che l'op finale userà (vedi lastMods).
+      // Every preview LATCHES its modifiers: it is this pair, and not
+      // the pointerup's, that the final op will use (see lastMods).
       lastMods = modsOf(e);
       if (rotateCenter) {
         setCursor(ctx, ROTATING_CURSOR);
@@ -760,8 +760,8 @@ export function createSelectTool(): Tool {
         return;
       }
       if (resizeHandle) {
-        // Il cursore resta quello della maniglia afferrata per tutto il drag,
-        // anche quando il puntatore si allontana da dove stava la maniglia.
+        // The cursor stays that of the grabbed handle for the whole drag,
+        // even when the pointer moves away from where the handle was.
         setCursor(ctx, cursorForHandle(resizeHandle));
         if (!resizeStarted) {
           resizeStarted = true;
@@ -778,22 +778,22 @@ export function createSelectTool(): Tool {
         return;
       }
       if (!dragAnchor || !dragStart) {
-        // Nessun gesto in corso: è un semplice hover. Il cursore anticipa quel
-        // che si può afferrare sotto il puntatore -- maniglia di resize o zona
-        // di rotazione (step 4 del brief, esteso alla rotazione).
+        // No gesture in progress: it is a simple hover. The cursor anticipates
+        // what can be grabbed under the pointer -- resize handle or rotation
+        // zone (step 4 of the brief, extended to rotation).
         const hover = frameUnderPointer(ctx, ctx.toWorld(e));
         setCursor(ctx, hover ? cursorForFrameHit(hover) : DEFAULT_CURSOR);
         return;
       }
       if (pendingTextEdit) {
-        // px schermo -> unità mondo, così la soglia non dipende dallo zoom
-        // (stessa conversione della soglia di click del marquee).
+        // screen px -> world units, so the threshold does not depend on zoom
+        // (same conversion as the marquee click threshold).
         const p = ctx.toWorld(e);
         const slop = DOUBLE_CLICK_SLOP_PX / ctx.getCamera().zoom;
         if (Math.abs(p.x - dragAnchor.x) < slop && Math.abs(p.y - dragAnchor.y) < slop) {
-          return; // tremolio: resta un doppio click, nessun gesto aperto
+          return; // jitter: it stays a double-click, no gesture open
         }
-        pendingTextEdit = null; // soglia superata: da qui è un drag come un altro
+        pendingTextEdit = null; // threshold exceeded: from here it is a drag like any other
       }
       if (!dragStarted) {
         dragStarted = true;
@@ -817,10 +817,10 @@ export function createSelectTool(): Tool {
       for (const op of step.ops) useScene.getState().applyLocal(op);
     },
 
-    // POSIZIONE dall'evento di rilascio, MODIFICATORI dall'ultima anteprima
-    // (lastMods): si commette ciò che si è visto. Vedi il commento su lastMods
-    // per il motivo -- leggere e.altKey qui fa scattare al commit un gesto che
-    // l'utente aveva tenuto libero per tutto il tempo.
+    // POSITION from the release event, MODIFIERS from the last preview
+    // (lastMods): what was seen is committed. See the comment on lastMods
+    // for the reason -- reading e.altKey here makes a gesture snap at commit that
+    // the user had kept free the whole time.
     onPointerUp(e, ctx) {
       if (rotateCenter) {
         if (rotateStarted) useScene.getState().endGesture(rotateOps(e, ctx, lastMods));
@@ -836,14 +836,14 @@ export function createSelectTool(): Tool {
         const scene = ctx.getScene();
         const world = ctx.toWorld(e);
         const box = normalizeRect(marqueeAnchor.x, marqueeAnchor.y, world.x, world.y);
-        // px schermo -> unità mondo, così la soglia non dipende dallo zoom.
+        // screen px -> world units, so the threshold does not depend on zoom.
         const slop = MARQUEE_SLOP_PX / ctx.getCamera().zoom;
         const isClick = box.width < slop && box.height < slop;
-        // Stessa politica del click (store/groups.ts): la banda elastica
-        // seleziona il gruppo, non i suoi figli -- altrimenti sarebbe l'unico
-        // modo per prendere il contenuto di un gruppo senza entrarci. Il
-        // contesto è la selezione PRE-marquee: quella corrente è stata
-        // azzerata a pointerdown.
+        // Same policy as the click (store/groups.ts): the rubber band
+        // selects the group, not its children -- otherwise it would be the only
+        // way to grab a group's content without entering it. The
+        // context is the PRE-marquee selection: the current one was
+        // cleared at pointerdown.
         const inside =
           scene && !isClick
             ? selectionTargetsOf(scene, nodesInMarquee(scene, box, useScene.getState().currentPageId), preMarqueeSelection ?? [])
@@ -852,10 +852,10 @@ export function createSelectTool(): Tool {
         resetMarquee();
         return;
       }
-      // Il secondo click è arrivato al rilascio senza superare la soglia: ORA
-      // è un doppio click, e apre l'editing. dragStarted è false per
-      // costruzione (onPointerMove non apre nessun gesto finché il candidato è
-      // vivo), quindi non c'è niente da chiudere né da mandare sul filo.
+      // The second click arrived at release without exceeding the threshold: NOW
+      // it is a double-click, and it opens editing. dragStarted is false by
+      // construction (onPointerMove opens no gesture while the candidate is
+      // alive), so there is nothing to close or to send over the wire.
       if (pendingTextEdit) {
         const id = pendingTextEdit;
         pendingTextEdit = null;
@@ -863,17 +863,17 @@ export function createSelectTool(): Tool {
         const store = useScene.getState();
         store.setSelection([id]);
         store.beginTextEditing(id);
-        return; // la sessione di editing (Task 5) prende da qui
+        return; // the editing session (Task 5) takes over from here
       }
       if (!dragAnchor || !dragStart) return;
-      // Gli op finali portano la posizione SCATTATA, la stessa dell'ultima
-      // anteprima: lo snap corregge il delta, non aggiunge un secondo op.
+      // The final ops carry the SNAPPED position, the same as the last
+      // preview: the snap corrects the delta, it does not add a second op.
       if (dragStarted && reorder) {
         const scene = ctx.getScene();
         const drop = reorderStep(e, ctx);
         const ops = scene && drop ? layoutDropOps(scene, reorder.ids, drop) : [];
-        // Nessun cambiamento (stessa posizione nella fila, o niente su cui
-        // cadere): il gesto si annulla, senza una voce di undo che non fa nulla.
+        // No change (same position in the row, or nothing to
+        // land on): the gesture is cancelled, without an undo entry that does nothing.
         if (ops.length > 0) useScene.getState().endGesture(ops);
         else useScene.getState().cancelGesture();
         resetDrag();
@@ -888,19 +888,19 @@ export function createSelectTool(): Tool {
         cancelActiveGesture();
         return;
       }
-      // Ctrl/Cmd+G raggruppa la selezione, Ctrl/Cmd+Shift+G la separa. Un
-      // GESTO ciascuno: gli op (createNode + N reparentNode, oppure N
-      // reparentNode + deleteNode) vanno tutti in un solo endGesture, quindi un
-      // solo invio in rete e UNA voce di undo -- un Ctrl+Z disfa il
-      // raggruppamento intero, non l'ultimo figlio riparentato.
+      // Ctrl/Cmd+G groups the selection, Ctrl/Cmd+Shift+G ungroups it. One
+      // GESTURE each: the ops (createNode + N reparentNode, or N
+      // reparentNode + deleteNode) all go into a single endGesture, so a
+      // single send over the network and ONE undo entry -- one Ctrl+Z undoes the
+      // whole grouping, not the last reparented child.
       //
-      // Sul tool e non sulla finestra come undo/redo (ui/App.tsx): raggruppare
-      // è un'operazione sulla SELEZIONE, cioè roba di questo tool, esattamente
-      // come Delete qui sotto -- e toolManager filtra già i tasti quando il
-      // fuoco è in un campo di testo.
-      // Avvolgere in un frame: Shift+A con auto layout, Ctrl/Cmd+Alt+G senza (come
-      // negli altri editor di design). PRIMA di Ctrl+G, che altrimenti si
-      // prenderebbe anche Ctrl+Alt+G.
+      // On the tool and not on the window like undo/redo (ui/App.tsx): grouping
+      // is an operation on the SELECTION, i.e. this tool's business, exactly
+      // like Delete below -- and toolManager already filters keys when
+      // focus is in a text field.
+      // Wrap in a frame: Shift+A with auto layout, Ctrl/Cmd+Alt+G without (as
+      // in other design editors). BEFORE Ctrl+G, which would otherwise
+      // also catch Ctrl+Alt+G.
       const wrapAuto = e.shiftKey && !e.ctrlKey && !e.metaKey && !e.altKey && e.key.toLowerCase() === "a";
       const wrapPlain = (e.ctrlKey || e.metaKey) && e.altKey && e.key.toLowerCase() === "g";
       if (wrapAuto || wrapPlain) {
@@ -910,46 +910,46 @@ export function createSelectTool(): Tool {
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {
-        // Sempre preventDefault: in un browser Ctrl+G è "trova successivo".
+        // Always preventDefault: in a browser Ctrl+G is "find next".
         e.preventDefault();
-        // Un drag o un marquee a metà vanno abbandonati PRIMA, per la stessa
-        // ragione di Delete qui sotto: un gesto aperto ne renderebbe un altro
-        // annidato (beginGesture avvisa e tiene il primo) e il pointerup
-        // successivo troverebbe uno stato del tool ormai stale.
+        // A drag or marquee in progress must be abandoned FIRST, for the same
+        // reason as Delete below: an open gesture would make another one
+        // nested (beginGesture warns and keeps the first) and the next
+        // pointerup would find a now-stale tool state.
         cancelActiveGesture();
         const store = useScene.getState();
         const scene = store.scene;
         if (!scene) return;
         const res = e.shiftKey ? ungroupOps(scene, store.selection) : groupOps(scene, store.selection);
-        // Niente da raggruppare (selezione vuota) o niente da separare (nessun
-        // gruppo selezionato): nessun gesto, nessun op, nessuna voce di undo.
+        // Nothing to group (empty selection) or nothing to ungroup (no
+        // group selected): no gesture, no op, no undo entry.
         if (!res) return;
         store.beginGesture();
-        // La selezione voluta PRIMA di chiudere: endGesture la riconcilia
-        // contro la scena finale, quindi può già nominare il gruppo che gli op
-        // stanno per creare.
+        // The intended selection BEFORE closing: endGesture reconciles it
+        // against the final scene, so it can already name the group the ops
+        // are about to create.
         store.setSelection(res.selection);
         store.endGesture(res.ops);
         return;
       }
-      // Ctrl/Cmd+Alt+K crea un COMPONENTE dal nodo selezionato: quel nodo
-      // diventa il MASTER (resta esattamente dov'è, nessun op lo sposta) e una
-      // sola CreateComponent lo registra. UN gesto, un op. Non annullabile in M4:
-      // il proto non ha un DeleteComponent e invertOp ritorna null (store/
-      // history.ts), quindi il gesto non spinge nessuna voce di undo -- il
-      // master era già in `nodes`, e l'undo della SUA creazione resta quello del
-      // nodo, non del componente.
+      // Ctrl/Cmd+Alt+K creates a COMPONENT from the selected node: that node
+      // becomes the MASTER (it stays exactly where it is, no op moves it) and a
+      // single CreateComponent registers it. ONE gesture, one op. Not undoable in M4:
+      // the proto has no DeleteComponent and invertOp returns null (store/
+      // history.ts), so the gesture pushes no undo entry -- the
+      // master was already in `nodes`, and the undo of ITS creation remains that of the
+      // node, not of the component.
       //
-      // Solo con ESATTAMENTE un nodo selezionato: avvolgere una multi-selezione
-      // in un nuovo master è lavoro successivo, quindi zero o più di uno è un
-      // NO-OP -- nessun gesto, nessun op (aprire beginGesture per poi non
-      // chiudere niente lascerebbe un gesto vuoto appeso). Il core rifiuta
-      // comunque un componentId già preso o una radice assente: un uuid fresco e
-      // la garanzia che il nodo esiste bastano a non mandare un op noto invalido.
+      // Only with EXACTLY one node selected: wrapping a multi-selection
+      // in a new master is later work, so zero or more than one is a
+      // NO-OP -- no gesture, no op (opening beginGesture and then not
+      // closing anything would leave an empty gesture hanging). The core rejects
+      // an already-taken componentId or a missing root anyway: a fresh uuid and
+      // the guarantee that the node exists suffice to avoid sending a known-invalid op.
       //
-      // e.code oltre a e.key: con Alt premuto molti layout mappano "k" su un
-      // carattere diverso (e.key), mentre e.code resta "KeyK". preventDefault
-      // sempre, come per Ctrl+G: la combinazione può avere un significato nel
+      // e.code in addition to e.key: with Alt held many layouts map "k" to a
+      // different character (e.key), while e.code stays "KeyK". preventDefault
+      // always, as for Ctrl+G: the combination may have a meaning in the
       // browser.
       if ((e.ctrlKey || e.metaKey) && e.altKey && (e.code === "KeyK" || e.key.toLowerCase() === "k")) {
         e.preventDefault();
@@ -970,20 +970,20 @@ export function createSelectTool(): Tool {
         return;
       }
       if (e.key === "Delete" || e.key === "Backspace") {
-        // Un drag o un marquee possono essere a metà (pulsante ancora premuto)
-        // quando arriva il tasto: vanno abbandonati PRIMA di cancellare, così
-        // dragAnchor/dragStart/dragStarted (o marqueeAnchor) non restano stale
-        // e il pointerup che arriverà comunque dopo non trova nulla da fare
-        // (vedi commento su cancelActiveGesture più sopra).
+        // A drag or marquee may be mid-way (button still pressed)
+        // when the key arrives: they must be abandoned BEFORE deleting, so
+        // dragAnchor/dragStart/dragStarted (or marqueeAnchor) do not stay stale
+        // and the pointerup that will arrive anyway finds nothing to do
+        // (see the comment on cancelActiveGesture above).
         cancelActiveGesture();
         const store = useScene.getState();
         const scene = store.scene;
         if (!scene) return;
-        // Un op per nodo TOPMOST, non per id selezionato: deleteNode cascata
-        // sul sottoalbero, quindi un figlio selezionato insieme al suo gruppo
-        // è già sparito quando il suo op arriva. Vedi topmostOf -- senza la
-        // potatura il secondo op viene rifiutato dal server E l'intero gesto
-        // resta senza voce di undo.
+        // One op per TOPMOST node, not per selected id: deleteNode cascades
+        // over the subtree, so a child selected together with its group
+        // is already gone when its op arrives. See topmostOf -- without the
+        // pruning the second op is rejected by the server AND the whole gesture
+        // is left without an undo entry.
         const ids = topmostOf(scene, store.selection);
         if (ids.length === 0) return;
         store.beginGesture();
@@ -991,7 +991,7 @@ export function createSelectTool(): Tool {
       }
     },
 
-    // Gesto abbandonato (cambio tool, pointercancel, smontaggio): nessun op.
+    // Abandoned gesture (tool change, pointercancel, unmount): no op.
     onDeactivate() {
       cancelActiveGesture();
     },

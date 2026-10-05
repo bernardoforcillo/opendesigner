@@ -1,13 +1,13 @@
 import { makeShapeTool } from "./shapeTool";
 import type { Tool } from "./types";
 
-// Dimensione di default quando il gesto è un semplice click invece di un drag.
+// Default size when the gesture is a plain click rather than a drag.
 export const DEFAULT_RECT_WIDTH = 100;
 export const DEFAULT_RECT_HEIGHT = 80;
 
-// Il tool rettangolo fa SOLO creazione: selezione e spostamento vivono nel
-// select tool. Il gesto vero e proprio è in makeShapeTool, condiviso con
-// ellipseTool: l'unica cosa specifica al rettangolo è la forma emessa.
+// The rectangle tool ONLY creates: selection and moving live in the select
+// tool. The gesture itself is in makeShapeTool, shared with ellipseTool: the
+// only rectangle-specific thing is the emitted shape.
 export function createRectTool(): Tool {
   return makeShapeTool({
     id: "rect",

@@ -4,18 +4,18 @@ import { resolveFlow, useFlowUi } from "../store/flowUi";
 import { useScene } from "../store/store";
 import type { Tool, ToolContext } from "./types";
 
-// SELEZIONE DELLE FRECCE. In modalità Flussi il click sul canvas cerca PRIMA una
-// freccia (o la sua pillola) sotto il puntatore: se c'è, la seleziona; altrimenti
-// il gesto è quello del tool di selezione di sempre (schermate, marquee). In
-// modalità Design non cambia nulla: il wrapper delega senza guardare.
+// ARROW SELECTION. In Flows mode a click on the canvas FIRST looks for an
+// arrow (or its pill) under the pointer: if there is one, it selects it; otherwise
+// the gesture is the usual select tool one (screens, marquee). In
+// Design mode nothing changes: the wrapper delegates without looking.
 //
-// Sta come wrapper e non dentro selectTool per non gonfiarlo: selectTool non sa
-// nulla dei flussi e continua a non saperlo.
+// It is a wrapper and not inside selectTool so as not to bloat it: selectTool knows
+// nothing about flows and continues not to.
 
-// Presa attorno al tratto, in px SCHERMO (costante a ogni zoom).
+// Grab margin around the stroke, in SCREEN px (constant at every zoom).
 const ARROW_HIT_PX = 6;
 
-/** La freccia sotto il punto MONDO (x, y), fra quelle visibili del flusso corrente. */
+/** The arrow under the WORLD point (x, y), among the visible ones of the current flow. */
 export function pickArrow(ctx: ToolContext, x: number, y: number): Arrow | null {
   const scene = ctx.getScene();
   if (!scene || Object.keys(scene.transitions).length === 0) return null;
@@ -29,8 +29,8 @@ export function pickArrow(ctx: ToolContext, x: number, y: number): Arrow | null 
 }
 
 export function withFlowArrows(base: Tool): Tool {
-  // Il pointerdown è andato a una freccia: il resto del gesto (move/up) non
-  // deve arrivare al tool di selezione, che non ha mai visto il down.
+  // The pointerdown went to an arrow: the rest of the gesture (move/up) must
+  // not reach the select tool, which never saw the down.
   let armed = false;
 
   return {
@@ -43,8 +43,8 @@ export function withFlowArrows(base: Tool): Tool {
       if (hit) {
         armed = true;
         useFlowUi.getState().selectTransition(hit.id);
-        // Una freccia scelta e dei nodi selezionati insieme confonderebbero il
-        // pannello e il Canc: la scelta è una sola.
+        // A selected arrow and selected nodes together would confuse the
+        // panel and Delete: the selection is just one.
         useScene.getState().clearSelection();
         return;
       }
@@ -75,7 +75,7 @@ export function withFlowArrows(base: Tool): Tool {
         if (e.key === "Delete" || e.key === "Backspace") {
           const id = ui.selectedTransitionId;
           ui.selectTransition(null);
-          // Un id sparito nel frattempo (cancellato da un peer) non è un errore: niente op.
+          // An id that vanished in the meantime (deleted by a peer) is not an error: no op.
           if (useScene.getState().scene?.transitions[id]) submit([deleteTransitionOp(id)]);
           return;
         }

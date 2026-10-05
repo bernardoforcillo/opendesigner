@@ -27,7 +27,7 @@ describe("handTool", () => {
     tool.onPointerMove!(at(110, 120), ctx);
     expect(camera()).toEqual({ x: 15, y: 25, zoom: 2 });
 
-    // il delta è incrementale rispetto all'ultima posizione, non all'ancora
+    // the delta is incremental with respect to the last position, not to the anchor
     tool.onPointerMove!(at(115, 120), ctx);
     expect(camera()).toEqual({ x: 20, y: 25, zoom: 2 });
   });

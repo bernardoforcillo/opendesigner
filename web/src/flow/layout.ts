@@ -6,10 +6,10 @@ import {
   type Bezier, type Pt,
 } from "./geometry";
 
-// IL LAYOUT DELLE FRECCE: dalle transizioni del documento alle curve in mondo.
-// Dipende solo da scene.nodes e scene.transitions, quindi è memoizzato su quei
-// due riferimenti: finché non cambiano (camera che si muove, hover, selezione)
-// il renderer e il hit-test riusano lo STESSO array, senza allocare.
+// THE ARROW LAYOUT: from the document's transitions to curves in the world.
+// It depends only on scene.nodes and scene.transitions, so it is memoized on those
+// two references: as long as they do not change (camera moving, hover, selection)
+// the renderer and the hit-test reuse the SAME array, without allocating.
 
 export interface Arrow {
   id: string;
@@ -17,11 +17,11 @@ export interface Arrow {
   fromId: string;
   toId: string;
   curve: Bezier;
-  /** Il rettangolo che contiene la curva (per il culling). */
+  /** The rectangle that contains the curve (for culling). */
   bounds: Bounds;
-  /** Il punto medio, dove sta la pillola dell'etichetta. */
+  /** The midpoint, where the label pill sits. */
   mid: Pt;
-  /** L'hotspot (bounds mondo dell'elemento che innesca), se la transizione ne ha uno. */
+  /** The hotspot (world bounds of the element that triggers), if the transition has one. */
   hotspot: Bounds | null;
   label: string;
   trigger: string;
@@ -33,8 +33,8 @@ export interface FlowLayout {
   byId: Map<string, Arrow>;
 }
 
-// Semi-lati (px SCHERMO) della presa sulla pillola dell'etichetta: la pillola si
-// clicca come la freccia. Il hit-test li divide per lo zoom.
+// Half-sides (SCREEN px) of the grab on the label pill: the pill is
+// clicked like the arrow. The hit-test divides them by the zoom.
 export const LABEL_HIT = { w: 40, h: 11 };
 
 const EMPTY: FlowLayout = { arrows: [], byId: new Map() };
@@ -50,12 +50,12 @@ function pairKey(a: string, b: string): string {
   return a < b ? `${a}\u0000${b}` : `${b}\u0000${a}`;
 }
 
-/** Il testo della pillola: l'etichetta, altrimenti l'innesco (il "cosa" del passaggio). */
+/** The pill text: the label, otherwise the trigger (the "what" of the transition). */
 export function arrowLabel(t: Pick<TransitionLite, "label" | "trigger">): string {
   return t.label.trim() !== "" ? t.label.trim() : t.trigger;
 }
 
-/** Calcola il layout di TUTTE le transizioni del documento (memoizzato). */
+/** Computes the layout of ALL the document's transitions (memoized). */
 export function flowLayout(scene: SceneState): FlowLayout {
   if (memo && memo.nodes === scene.nodes && memo.transitions === scene.transitions) return memo.layout;
   const all = Object.values(scene.transitions);
@@ -63,10 +63,10 @@ export function flowLayout(scene: SceneState): FlowLayout {
     memo = { nodes: scene.nodes, transitions: scene.transitions, layout: EMPTY };
     return EMPTY;
   }
-  // Ordine stabile (per id): la corsia di una freccia non deve cambiare quando
-  // ne arriva un'altra da un peer.
+  // Stable order (by id): an arrow's lane must not change when
+  // another one arrives from a peer.
   all.sort((a, b) => (a.id < b.id ? -1 : 1));
-  // Quante frecce condividono ogni coppia di schermate (in qualunque verso).
+  // How many arrows share each pair of screens (in either direction).
   const counts = new Map<string, number>();
   for (const t of all) {
     const k = pairKey(t.fromId, t.toId);
@@ -83,8 +83,8 @@ export function flowLayout(scene: SceneState): FlowLayout {
     const lane = seen.get(k) ?? 0;
     seen.set(k, lane + 1);
     const hotspot = t.elementId !== "" ? boundsOf(scene, t.elementId) : null;
-    // Con un hotspot la freccia nasce dall'elemento (il bottone), non dal bordo
-    // della schermata: è lì che l'utente la leggerebbe.
+    // With a hotspot the arrow is born from the element (the button), not from the edge
+    // of the screen: that is where the user would read it.
     const start = hotspot ?? fromScreen;
     const count = counts.get(k) ?? 1;
     const curve = arrowBetween(start, toScreen, laneShift(lane, count), t.fromId === t.toId);
@@ -95,8 +95,8 @@ export function flowLayout(scene: SceneState): FlowLayout {
       toId: t.toId,
       curve,
       bounds: bezierBounds(curve),
-      // La pillola sta a metà curva; con più frecce sulla stessa coppia si
-      // sfalsa lungo la curva, così le etichette non si coprono a vicenda.
+      // The pill sits at mid-curve; with several arrows on the same pair it
+      // is staggered along the curve, so the labels do not cover each other.
       mid: bezierPoint(curve, count <= 1 ? 0.5 : Math.min(0.72, Math.max(0.28, 0.5 + (lane - (count - 1) / 2) * 0.16))),
       hotspot,
       label: arrowLabel(t),
@@ -111,17 +111,17 @@ export function flowLayout(scene: SceneState): FlowLayout {
   return layout;
 }
 
-/** Le frecce che toccano la vista (mondo): il culling dei documenti grandi. */
+/** The arrows that touch the view (world): culling for large documents. */
 export function arrowsInView(layout: FlowLayout, view: Bounds, pad: number): Arrow[] {
   const v = inflate(view, pad);
   return layout.arrows.filter((a) => overlaps(a.bounds, v));
 }
 
 /**
- * La freccia sotto (x, y) (mondo), la più vicina entro `tol` unità mondo, con
- * priorità alle frecce del flusso `preferFlowId`. null se nessuna. Pillola
- * dell'etichetta inclusa: `labelHalf` è il semi-lato (mondo) del suo riquadro di
- * presa attorno al punto medio.
+ * The arrow under (x, y) (world), the closest within `tol` world units, with
+ * priority to the arrows of flow `preferFlowId`. null if none. Label
+ * pill included: `labelHalf` is the half-side (world) of its grab box
+ * around the midpoint.
  */
 export function hitArrow(
   layout: FlowLayout,
@@ -135,14 +135,14 @@ export function hitArrow(
   let bestD = Infinity;
   for (const a of layout.arrows) {
     if (allowed && !allowed(a)) continue;
-    // Il prefiltro lascia passare anche la pillola, che sporge dal rettangolo dei
-    // punti di controllo (una freccia dritta ha altezza zero).
+    // The prefilter also lets the pill through, which sticks out of the rectangle of the
+    // control points (a straight arrow has zero height).
     const px = Math.max(tol, labelHalf.w);
     const py = Math.max(tol, labelHalf.h);
     if (x < a.bounds.x - px || x > a.bounds.x + a.bounds.width + px) continue;
     if (y < a.bounds.y - py || y > a.bounds.y + a.bounds.height + py) continue;
     let d = distanceToBezier(a.curve, x, y);
-    // Dentro la pillola dell'etichetta conta come un colpo pieno.
+    // Inside the label pill it counts as a full hit.
     if (Math.abs(x - a.mid.x) <= labelHalf.w && Math.abs(y - a.mid.y) <= labelHalf.h) d = 0;
     if (d <= tol && d < bestD) {
       best = a;

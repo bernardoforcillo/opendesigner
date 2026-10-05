@@ -2,9 +2,9 @@ import { nodesOf } from "../store/nodeMap";
 import { emptyScene } from "../store/types";
 import type { FlowLite, NodeLite, SceneState, TransitionLite } from "../store/types";
 
-// Fixture dei test dei flussi: una scena piccola ma realistica. Tre schermate
-// (frame di primo livello) affiancate, un bottone dentro la prima e un
-// rettangolo sciolto a livello di pagina (che NON è una schermata).
+// Fixtures for the flow tests: a small but realistic scene. Three screens
+// (top-level frames) side by side, a button inside the first and a
+// loose rectangle at page level (which is NOT a screen).
 
 export function frame(id: string, x: number, y = 0, extra: Partial<NodeLite> = {}): NodeLite {
   return {
@@ -31,8 +31,8 @@ export function flowOf(id: string, startId = "", name = id): FlowLite {
 }
 
 /**
- * A (x=0) -> B (x=400) -> C (x=800); il bottone `btn` sta dentro A; `loose` è un
- * rettangolo di pagina. Nessun flusso: lo aggiungono i test.
+ * A (x=0) -> B (x=400) -> C (x=800); the button `btn` sits inside A; `loose` is a
+ * page rectangle. No flows: the tests add them.
  */
 export function baseScene(): SceneState {
   const nodes = nodesOf({

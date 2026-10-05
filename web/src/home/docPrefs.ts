@@ -1,7 +1,7 @@
-// LE PREFERENZE PER DOCUMENTO dell'onboarding, nel localStorage del browser:
-// la scheda chiusa e i due passi che il documento non sa dire da solo
-// (prototipo aperto, codice esportato). Sono convenienze per-utente: non
-// viaggiano agli altri collaboratori e vanno bene se si perdono.
+// THE PER-DOCUMENT PREFERENCES of the onboarding, in the browser's localStorage:
+// the closed card and the two steps the document cannot tell on its own
+// (prototype opened, code exported). They are per-user conveniences: they do not
+// travel to other collaborators and it is fine if they get lost.
 
 export interface DocPrefs {
   dismissed: boolean;
@@ -28,14 +28,14 @@ export function saveDocPrefs(docId: string, patch: Partial<DocPrefs>): DocPrefs 
   try {
     localStorage.setItem(key(docId), JSON.stringify(next));
   } catch {
-    /* storage non disponibile: la preferenza vale per questa sessione */
+    /* storage unavailable: the preference holds for this session */
   }
   return next;
 }
 
 /**
- * L'evento con cui il resto dell'app dice "il codice di questo documento è
- * stato esportato" (la modalità Sviluppo lo emette dopo lo zip): ticchetta
- * l'ultimo passo della checklist senza che le due parti si importino.
+ * The event by which the rest of the app says "this document's code
+ * has been exported" (Develop mode emits it after the zip): it ticks off
+ * the last checklist step without the two parts importing each other.
  */
 export const SHIPPED_EVENT = "opendesigner:shipped";

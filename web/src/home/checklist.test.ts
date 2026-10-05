@@ -8,51 +8,51 @@ import { loadDocPrefs, saveDocPrefs } from "./docPrefs";
 const NO_FLAGS = { presented: false, shipped: false };
 const done = (steps: ReturnType<typeof checklistSteps>) => steps.filter((s) => s.done).map((s) => s.id);
 
-describe("checklist di partenza", () => {
-  it("documento vuoto: nessun passo fatto, quattro passi nell'ordine del percorso", () => {
+describe("starter checklist", () => {
+  it("empty document: no step done, four steps in journey order", () => {
     const steps = checklistSteps(emptyScene("d", "n"), NO_FLAGS);
     expect(steps.map((s) => s.id)).toEqual(["draw", "connect", "present", "ship"]);
-    expect(steps.map((s) => s.label)).toEqual(["Disegna", "Collega", "Presenta", "Spedisci"]);
+    expect(steps.map((s) => s.label)).toEqual(["Draw", "Connect", "Present", "Ship"]);
     expect(done(steps)).toEqual([]);
   });
 
-  it("senza scena (non ancora caricata) non ticchetta niente", () => {
+  it("without a scene (not loaded yet) nothing is ticked", () => {
     expect(done(checklistSteps(null, NO_FLAGS))).toEqual([]);
   });
 
-  it("Disegna si spunta con la prima schermata (un frame di primo livello)", () => {
+  it("Draw ticks with the first screen (a top-level frame)", () => {
     expect(done(checklistSteps(baseScene(), NO_FLAGS))).toEqual(["draw"]);
   });
 
-  it("un rettangolo sciolto a livello di pagina NON è una schermata", () => {
-    // baseScene ha tre frame (A, B, C), un bottone dentro A e un rettangolo di pagina.
+  it("a loose rectangle at page level is NOT a screen", () => {
+    // baseScene has three frames (A, B, C), a button inside A and a page rectangle.
     const scene: SceneState = baseScene();
     expect(screenNodes(scene).map((n) => n.id).sort()).toEqual(["A", "B", "C"]);
   });
 
-  it("Collega si spunta con la prima transizione", () => {
+  it("Connect ticks with the first transition", () => {
     const scene = withFlows(baseScene(), [flowOf("f", "A")], [transition("t", "f", "A", "B")]);
     expect(done(checklistSteps(scene, NO_FLAGS))).toEqual(["draw", "connect"]);
   });
 
-  it("Presenta e Spedisci seguono i flag", () => {
+  it("Present and Ship follow the flags", () => {
     const scene = withFlows(baseScene(), [flowOf("f", "A")], [transition("t", "f", "A", "B")]);
     expect(done(checklistSteps(scene, { presented: true, shipped: false }))).toEqual(["draw", "connect", "present"]);
     expect(done(checklistSteps(scene, { presented: true, shipped: true }))).toEqual(["draw", "connect", "present", "ship"]);
   });
 
-  it("Spedisci si spunta anche se ogni schermata ha lasciato lo stato 'planned'", () => {
+  it("Ship also ticks if every screen has left the 'planned' state", () => {
     const base = baseScene();
     const nodes = base.nodes;
     let n2 = nodes;
     for (const id of ["A", "B", "C"]) n2 = n2.set(id, { ...nodes.at(id)!, meta: { status: "implemented" } });
     expect(done(checklistSteps({ ...base, nodes: n2 }, NO_FLAGS))).toContain("ship");
-    // basta una schermata ancora pianificata per non spuntarlo
+    // a single screen still planned is enough to keep it unticked
     const partial = nodes.set("A", { ...nodes.at("A")!, meta: { status: "implemented" } });
     expect(done(checklistSteps({ ...base, nodes: partial }, NO_FLAGS))).not.toContain("ship");
   });
 
-  it("isChecklistComplete vuole tutti e quattro", () => {
+  it("isChecklistComplete requires all four", () => {
     expect(isChecklistComplete(checklistSteps(baseScene(), NO_FLAGS))).toBe(false);
     const scene = withFlows(baseScene(), [flowOf("f", "A")], [transition("t", "f", "A", "B")]);
     expect(isChecklistComplete(checklistSteps(scene, { presented: true, shipped: true }))).toBe(true);
@@ -61,7 +61,7 @@ describe("checklist di partenza", () => {
 
 describe("onboardingMode", () => {
   const empty = emptyScene("d", "n");
-  it("vuoto -> scheda grande; con schermate -> compatta; completo, chiuso o senza scena -> niente", () => {
+  it("empty -> big card; with screens -> compact; complete, closed or without a scene -> nothing", () => {
     expect(onboardingMode(empty, false, checklistSteps(empty, NO_FLAGS))).toBe("empty");
     expect(onboardingMode(baseScene(), false, checklistSteps(baseScene(), NO_FLAGS))).toBe("progress");
     const full = withFlows(baseScene(), [flowOf("f", "A")], [transition("t", "f", "A", "B")]);
@@ -71,17 +71,17 @@ describe("onboardingMode", () => {
   });
 });
 
-describe("preferenze per documento", () => {
+describe("per-document preferences", () => {
   beforeEach(() => localStorage.clear());
-  it("partono tutte spente e si ricordano per documento", () => {
+  it("they all start off and are remembered per document", () => {
     expect(loadDocPrefs("a")).toEqual({ dismissed: false, presented: false, shipped: false });
     saveDocPrefs("a", { dismissed: true });
     saveDocPrefs("a", { presented: true });
     expect(loadDocPrefs("a")).toEqual({ dismissed: true, presented: true, shipped: false });
     expect(loadDocPrefs("b").dismissed).toBe(false);
   });
-  it("un valore illeggibile nello storage vale 'spento', non un errore", () => {
-    localStorage.setItem("opendesigner.onboarding.a", "{non json");
+  it("an unreadable value in storage counts as 'off', not an error", () => {
+    localStorage.setItem("opendesigner.onboarding.a", "{not json");
     expect(loadDocPrefs("a").dismissed).toBe(false);
   });
 });

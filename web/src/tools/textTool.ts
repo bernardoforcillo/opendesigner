@@ -14,23 +14,23 @@ import {
 import { makeCreateNodeOp, uuid } from "./ops";
 import type { Tool, ToolContext } from "./types";
 
-// Stessa soglia di shapeTool.ts (px SCHERMO, indipendente dallo zoom): sotto,
-// un drag è un click.
+// Same threshold as shapeTool.ts (SCREEN px, independent of zoom): below it,
+// a drag is a click.
 const CLICK_SLOP_PX = 3;
 
 export const DEFAULT_TEXT_WIDTH = 200;
-// Un'unica riga alla dimensione di default, derivata dagli stessi default del
-// renderer (renderer/text.ts) invece di un numero magico duplicato qui: se
-// quei default cambiano, il box iniziale del tool resta coerente senza dover
-// toccare questo file.
+// A single line at the default size, derived from the same defaults of the
+// renderer (renderer/text.ts) instead of a magic number duplicated here: if
+// those defaults change, the tool's initial box stays consistent without
+// having to touch this file.
 export const DEFAULT_TEXT_HEIGHT = DEFAULT_FONT_SIZE * DEFAULT_LINE_HEIGHT;
 
-// Lo stile con cui nasce OGNI nodo testo: esplicito, non gli zeri che
-// TextStyleLite tollera altrove (store/types.ts li conserva apposta per
-// restare indistinguibile da core.Apply finché nessun SetText li tocca). Un
-// nodo appena creato non è mai passato da un SetText con style_present, quindi
-// deve già leggersi con il font giusto prima ancora che l'utente scriva una
-// lettera.
+// The style EVERY text node is born with: explicit, not the zeros that
+// TextStyleLite tolerates elsewhere (store/types.ts keeps them on purpose to
+// stay indistinguishable from core.Apply until a SetText touches them). A
+// freshly created node never went through a SetText with style_present, so it
+// must already read with the right font before the user even types a
+// letter.
 const DEFAULT_TEXT_STYLE: TextStyleLite = {
   fontFamily: DEFAULT_FONT_FAMILY,
   fontSize: DEFAULT_FONT_SIZE,
@@ -39,26 +39,26 @@ const DEFAULT_TEXT_STYLE: TextStyleLite = {
   align: "left",
 };
 
-// Nero pieno: senza un fill esplicito il nodo ricadrebbe sul grigio 0.8
-// condiviso con le forme (renderer/canvasRenderer.ts::cssColor) -- illeggibile
-// per del testo. Vedi Task 3, divergenza 7.
+// Solid black: without an explicit fill the node would fall back to the 0.8 gray
+// shared with shapes (renderer/canvasRenderer.ts::cssColor) -- unreadable
+// for text. See Task 3, divergence 7.
 const DEFAULT_TEXT_FILL = {
   kind: { case: "solid" as const, value: { color: { r: 0, g: 0, b: 0, a: 1 } } },
 };
 
-// Il tool testo fa SOLO creazione (come rectTool/ellipseTool), ma non riusa
-// makeShapeTool: un nodo testo non è "una forma con uno shape diverso" -- nasce
-// con contenuto vuoto, uno stile esplicito, e soprattutto entra SUBITO in
-// editing dopo la creazione, cosa che nessun tool-forma fa. Il gesto di
-// down/move/up con soglia-click resta lo stesso pattern, scritto per intero
-// qui invece di forzarlo dentro l'astrazione condivisa (vedi il commento in
-// shapeTool.ts sul >80% di codice letteralmente identico che giustificherebbe
-// altrimenti il riuso).
+// The text tool ONLY creates (like rectTool/ellipseTool), but does not reuse
+// makeShapeTool: a text node is not "a shape with a different shape" -- it is born
+// with empty content, an explicit style, and above all it enters editing RIGHT
+// after creation, which no shape tool does. The down/move/up gesture with
+// click threshold is still the same pattern, written out in full
+// here instead of forcing it into the shared abstraction (see the comment in
+// shapeTool.ts about the >80% literally identical code that would
+// otherwise justify reuse).
 export function createTextTool(): Tool {
   let anchor: { x: number; y: number } | null = null;
 
-  // L'anteprima riusa il rettangolo di marquee dello store, come shapeTool:
-  // è già in coordinate mondo ed è già disegnata dall'overlay.
+  // The preview reuses the store's marquee rectangle, like shapeTool:
+  // it is already in world coordinates and is already drawn by the overlay.
   const preview = (b: { x: number; y: number; width: number; height: number } | null) =>
     useScene.getState().setMarquee(b);
 
@@ -84,23 +84,23 @@ export function createTextTool(): Tool {
       anchor = null;
       preview(null);
 
-      // px schermo -> unità mondo (come shapeTool): sotto soglia è un click,
-      // non un drag, indipendentemente dallo zoom.
+      // screen px -> world units (like shapeTool): below the threshold it is a click,
+      // not a drag, regardless of zoom.
       const slop = CLICK_SLOP_PX / ctx.getCamera().zoom;
-      // Un click usa la dimensione di default; un drag usa le dimensioni
-      // trascinate -- la larghezza diventa la larghezza di wrap (Task 3:
-      // layoutText la usa come maxWidth). Con contenuto vuoto il layout
-      // produce comunque altezza 0 finché non si scrive, ma l'altezza del box
-      // resta un punto di partenza sensato per le maniglie.
+      // A click uses the default size; a drag uses the dragged
+      // dimensions -- the width becomes the wrap width (Task 3:
+      // layoutText uses it as maxWidth). With empty content the layout
+      // still produces height 0 until something is typed, but the box height
+      // remains a sensible starting point for the handles.
       const width = box.width < slop ? DEFAULT_TEXT_WIDTH : box.width;
       const height = box.height < slop ? DEFAULT_TEXT_HEIGHT : box.height;
 
       const id = uuid();
-      // `box` è MONDO e il modello vuole coordinate relative al PARENT: qui
-      // coincidono perché il parent è una pagina (identità). Stessa nota di
-      // shapeTool.ts -- creare dentro un container richiederà un worldToLocal.
-      // Il parent è la PAGINA CORRENTE (stato di vista dello store): il testo
-      // nasce sulla pagina che si sta guardando, non su un "page1" fisso.
+      // `box` is WORLD and the model wants coordinates relative to the PARENT: here
+      // they coincide because the parent is a page (identity). Same note as
+      // shapeTool.ts -- creating inside a container will require a worldToLocal.
+      // The parent is the CURRENT PAGE (store view state): the text
+      // is born on the page being viewed, not on a fixed "page1".
       const node = create(NodeSchema, {
         id,
         parentId: useScene.getState().currentPageId ?? "page1",
@@ -118,38 +118,38 @@ export function createTextTool(): Tool {
 
       const store = useScene.getState();
 
-      // Chiude l'eventuale sessione di editing precedente PRIMA di aprire il
-      // gesto di creazione. store.beginTextEditing la chiuderebbe comunque da
-      // solo (guardia nello store, per ogni chiamante), ma lo farebbe DOPO --
-      // e l'ordine conta, perché ogni chiusura può cancellare un nodo rimasto
-      // vuoto, cioè può lasciare una voce di undo. Chiudendo dopo, lo stack
-      // diventerebbe [crea t1, crea t2, cancella t1]: il primo Ctrl+Z
-      // RESUSCITEREBBE il nodo vuoto t1 invece di annullare la creazione
-      // appena fatta. Chiudendo qui l'ordine è quello cronologico dell'utente
-      // ([crea t1, cancella t1, crea t2]) e Ctrl+Z disfa sempre l'ultima cosa
-      // vista. L'order key resta comunque derivata dalla scena PRIMA della
-      // pulizia (node è già costruito): un id cancellato non libera la sua
-      // chiave per il nodo successivo.
+      // Closes any previous editing session BEFORE opening the
+      // creation gesture. store.beginTextEditing would close it anyway on its
+      // own (guard in the store, for every caller), but it would do so AFTER --
+      // and the order matters, because each close may delete a node left
+      // empty, i.e. may leave an undo entry. Closing afterwards, the stack
+      // would become [create t1, create t2, delete t1]: the first Ctrl+Z
+      // would RESURRECT the empty node t1 instead of undoing the creation
+      // just made. Closing here the order is the user's chronological one
+      // ([create t1, delete t1, create t2]) and Ctrl+Z always undoes the last thing
+      // seen. The order key is still derived from the scene BEFORE the
+      // cleanup (node is already built): a deleted id does not free its
+      // key for the next node.
       store.endTextEditing();
 
-      // Creazione = un gesto (una voce di undo), come ogni altro tool. Il
-      // nodo si seleziona SUBITO, a gesto ancora aperto: lo store riconcilia
-      // la selezione contro la scena FINALE a endGesture (store.ts), quindi
-      // può riferirsi a un id che esiste solo dopo l'op finale (lo stesso
-      // meccanismo descritto nel commento di endGesture).
+      // Creation = one gesture (one undo entry), like every other tool. The
+      // node is selected IMMEDIATELY, with the gesture still open: the store reconciles
+      // the selection against the FINAL scene at endGesture (store.ts), so
+      // it can refer to an id that exists only after the final op (the same
+      // mechanism described in the endGesture comment).
       store.beginGesture();
       store.setSelection([id]);
       store.endGesture([makeCreateNodeOp(node)]);
 
-      // Entra SUBITO in editing (comportamento del brief): diverso da
-      // rect/ellipse, che restano strumenti di sola creazione. La sessione di
-      // editing vera e propria -- il SUO gesto, il textarea sovrapposto -- è
-      // del Task 5: qui si accende solo il flag che gli dice quale nodo.
+      // Enters editing IMMEDIATELY (per the brief): different from
+      // rect/ellipse, which remain creation-only tools. The actual editing
+      // session -- ITS gesture, the overlaid textarea -- belongs to
+      // Task 5: here only the flag that tells it which node is turned on.
       store.beginTextEditing(id);
     },
 
-    // Gesto abbandonato (cambio tool, pointercancel, smontaggio): nessun op,
-    // nessuna editing.
+    // Abandoned gesture (tool change, pointercancel, unmount): no op,
+    // no editing.
     onDeactivate(_ctx: ToolContext) {
       if (!anchor) return;
       anchor = null;

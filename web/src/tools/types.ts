@@ -4,21 +4,21 @@ import type { Camera } from "../canvas/camera";
 
 export type ToolId = "select" | "connect" | "frame" | "rect" | "ellipse" | "text" | "pen" | "hand";
 
-// Tutto quello che un tool può toccare del mondo esterno passa da qui: niente
-// import diretti di DOM/camera dentro i tool, così sono testabili senza browser.
+// Everything a tool can touch of the outside world goes through here: no
+// direct DOM/camera imports inside tools, so they are testable without a browser.
 export interface ToolContext {
   sync: SyncClient;
   getScene: () => SceneState | null;
   getCamera: () => Camera;
   setCamera: (c: Camera) => void;
   canvas: HTMLCanvasElement;
-  // UNICA conversione schermo -> mondo dell'app: passa da canvas/camera.ts.
-  // Nessun tool deve ricalcolare la trasformazione a mano.
+  // The ONLY screen -> world conversion in the app: it goes through canvas/camera.ts.
+  // No tool should recompute the transformation by hand.
   toWorld: (e: PointerEvent) => { x: number; y: number };
 }
 
-// Un tool è un oggetto di handler puri: il routing degli eventi (e il pointer
-// capture) è responsabilità di toolManager.attachTools.
+// A tool is an object of pure handlers: event routing (and pointer
+// capture) is the responsibility of toolManager.attachTools.
 export interface Tool {
   readonly id: ToolId;
   readonly cursor: string;
@@ -26,20 +26,20 @@ export interface Tool {
   onPointerMove?(e: PointerEvent, ctx: ToolContext): void;
   onPointerUp?(e: PointerEvent, ctx: ToolContext): void;
   onKeyDown?(e: KeyboardEvent, ctx: ToolContext): void;
-  // Chiamato quando il tool smette di essere quello attivo (cambio tool,
-  // pointercancel, smontaggio): serve ad abbandonare un gesto a metà senza
-  // emettere op.
+  // Called when the tool stops being the active one (tool change,
+  // pointercancel, unmount): used to abandon a half-done gesture without
+  // emitting ops.
   onDeactivate?(ctx: ToolContext): void;
-  // Chiamato al posto di onDeactivate quando a togliere il posto è il PAN
-  // TEMPORANEO (spazio premuto o tasto centrale, vedi toolManager): non è un
-  // cambio di strumento, la mano restituirà il posto tra un istante. Un tool
-  // che lo implementa dichiara che il suo gesto SOPRAVVIVE al pan; chi non lo
-  // implementa riceve onDeactivate come prima (per un gesto che richiede il
-  // pulsante premuto, il pan è comunque un'interruzione).
+  // Called in place of onDeactivate when what takes the slot is the TEMPORARY
+  // PAN (space held or middle button, see toolManager): it is not a tool
+  // change, the hand will give the slot back in a moment. A tool that
+  // implements it declares that its gesture SURVIVES the pan; one that does not
+  // implement it gets onDeactivate as before (for a gesture that requires the
+  // button held, the pan is an interruption anyway).
   //
-  // Non c'è una richiamata simmetrica di ripresa: il tool sospeso non ha nulla
-  // da ricostruire e riprende dal primo evento che gli torna. Se il tool
-  // ATTIVO cambia mentre il pan è in corso, il sospeso riceve onDeactivate --
-  // sospendere non è tenerlo vivo per sempre.
+  // There is no symmetric resume callback: the suspended tool has nothing
+  // to rebuild and resumes from the first event that comes back to it. If the
+  // ACTIVE tool changes while the pan is in progress, the suspended one gets onDeactivate --
+  // suspending is not keeping it alive forever.
   onSuspend?(ctx: ToolContext): void;
 }

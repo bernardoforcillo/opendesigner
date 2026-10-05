@@ -12,12 +12,12 @@ function node(id: string, orderKey: string): NodeLite {
     x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false };
 }
 
-// Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
-// SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
-// in volo, visibile subito) seguito da apply (l'eco che lo conferma). Senza
-// l'eco ogni op resterebbe in coda per sempre e i test parlerebbero di uno
-// stato che il server non ha mai visto. Lo store dipende solo dalla superficie
-// { submit }, quindi non serve un SyncClient reale (niente rete nei test).
+// Double of SyncClient (see rpc/syncClient.ts): records the ops that end up
+// ON THE WIRE and models a server that accepts and ECHOES immediately -- applyPending (op
+// in flight, visible immediately) followed by apply (the echo that confirms it). Without
+// the echo every op would stay queued forever and the tests would speak of a
+// state the server never saw. The store depends only on the surface
+// { submit }, so a real SyncClient is not needed (no network in tests).
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
@@ -27,11 +27,11 @@ class FakeSync {
   }
 }
 
-// Doppio del ToolContext: toWorld è l'identità su clientX/clientY, così i test
-// ragionano direttamente in coordinate mondo. La conversione vera è testata in
+// Double of ToolContext: toWorld is the identity on clientX/clientY, so the tests
+// reason directly in world coordinates. The real conversion is tested in
 // canvas/camera.test.ts.
-// Il trasporto va registrato SULLO STORE, non solo sul contesto: la creazione
-// passa da endGesture, che submitta tramite lo store (come ogni altro gesto).
+// The transport must be registered ON THE STORE, not just on the context: creation
+// goes through endGesture, which submits via the store (like every other gesture).
 function fakeCtx(zoom = 1) {
   const sync = new FakeSync();
   useScene.getState().setSync(sync);
@@ -67,9 +67,9 @@ beforeEach(() => {
     canUndo: false,
     canRedo: false,
   });
-  // setScene e non setState({scene}): installa una scena COERENTE (vista e
-  // confermato allineati, coda vuota) -- l'invariante su cui poggia la
-  // riconciliazione confermato/pending (vedi store/store.ts).
+  // setScene and not setState({scene}): installs a COHERENT scene (view and
+  // confirmed aligned, empty queue) -- the invariant that the
+  // confirmed/pending reconciliation relies on (see store/store.ts).
   useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
 });
 
@@ -81,7 +81,7 @@ describe("ellipseTool", () => {
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerMove!(at(40, 50), ctx);
     tool.onPointerMove!(at(60, 80), ctx);
-    expect(submitted).toHaveLength(0); // niente op durante il drag
+    expect(submitted).toHaveLength(0); // no ops during the drag
 
     tool.onPointerUp!(at(60, 80), ctx);
     expect(submitted).toHaveLength(1);
@@ -113,7 +113,7 @@ describe("ellipseTool", () => {
 
   it("treats a sub-pixel drag as a click at any zoom (threshold is in screen px)", () => {
     const tool = createEllipseTool();
-    const { ctx, submitted } = fakeCtx(64); // molto zoomato: 0.02 unità mondo = ~1px schermo
+    const { ctx, submitted } = fakeCtx(64); // heavily zoomed: 0.02 world units = ~1px screen
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerMove!(at(10.02, 20.02), ctx);
     tool.onPointerUp!(at(10.02, 20.02), ctx);
@@ -154,8 +154,8 @@ describe("ellipseTool", () => {
     expect(submitted).toHaveLength(0);
   });
 
-  // Come per il rettangolo (rectTool.test.ts): il disegno è un gesto, quindi
-  // UNA voce di undo e UN solo op sul filo.
+  // As for the rectangle (rectTool.test.ts): drawing is a gesture, so
+  // ONE undo entry and ONE single op on the wire.
   it("records exactly one undo entry without adding ops to the wire", () => {
     const tool = createEllipseTool();
     const { ctx, submitted } = fakeCtx();

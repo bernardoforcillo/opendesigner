@@ -7,37 +7,37 @@ import { childrenOf, isAncestorOf } from "../store/tree";
 import type { NodeLite, SceneState } from "../store/types";
 import { makeReparentOp, makeSetPropsOp } from "./ops";
 
-// RIORDINO TRASCINANDO nei frame con auto layout.
+// DRAG REORDERING in frames with auto layout.
 //
-// Un figlio di un auto layout non si sposta scrivendo x/y: il server li
-// ricalcola dopo ogni op e il nodo tornerebbe subito al suo posto. Trascinarlo
-// vuol dire invece SCEGLIERE DOVE METTERLO NELLA FILA: la posizione del
-// puntatore lungo l'asse del layout dice fra quali fratelli, e il gesto finisce
-// in un cambio di order_key (stesso frame) o in un reparent (altro frame con
-// auto layout). Le coordinate poi le calcola il layout.
+// A child of an auto layout is not moved by writing x/y: the server
+// recomputes them after every op and the node would immediately snap back. Dragging it
+// instead means CHOOSING WHERE TO PUT IT IN THE ROW: the pointer position
+// along the layout axis says between which siblings, and the gesture ends
+// in an order_key change (same frame) or in a reparent (another frame with
+// auto layout). The coordinates are then computed by the layout.
 //
-// Tutto in funzioni pure: lo stato del gesto sta nel select tool, qui c'è solo
-// la geometria e gli op.
+// All in pure functions: the gesture state lives in the select tool, here there is only
+// the geometry and the ops.
 
 export interface LayoutDrop {
   frameId: string;
-  // Posizione d'inserimento fra i fratelli NON trascinati, in ordine di
-  // order_key: 0 = prima di tutti, n = dopo tutti.
+  // Insertion position among the NON-dragged siblings, in order_key
+  // order: 0 = before all, n = after all.
   index: number;
   vertical: boolean;
-  // La linea d'inserimento, in coordinate MONDO: un rettangolo sottile
-  // attraversato all'asse del layout, nel punto in cui il nodo verrebbe messo.
+  // The insertion line, in WORLD coordinates: a thin rectangle
+  // crossing the layout axis, at the point where the node would be put.
   indicator: Bounds;
 }
 
-// Lo spessore della linea d'inserimento, in unità mondo.
+// The thickness of the insertion line, in world units.
 const INDICATOR_THICKNESS = 2;
 
 /**
- * Il frame con auto layout che accoglie TUTTI i nodi dati come figli diretti, o
- * null. È la condizione per cui il trascinamento diventa un riordino invece di
- * uno spostamento: un nodo che il layout non dispone (un gruppo, un'istanza, un
- * nodo nascosto) o un figlio di un frame normale si sposta con x/y come sempre.
+ * The auto layout frame that accepts ALL the given nodes as direct children, or
+ * null. It is the condition for the drag to become a reorder instead of
+ * a move: a node the layout does not arrange (a group, an instance, a
+ * hidden node) or a child of a normal frame is moved with x/y as usual.
  */
 export function reorderableParent(scene: SceneState, ids: readonly string[]): string | null {
   if (ids.length === 0) return null;
@@ -52,9 +52,9 @@ export function reorderableParent(scene: SceneState, ids: readonly string[]): st
   return parent.id;
 }
 
-// Il frame con auto layout PIÙ INTERNO che contiene il punto, escludendo i nodi
-// trascinati e tutto ciò che sta dentro di loro (non si può mettere un frame
-// dentro sé stesso).
+// The INNERMOST auto layout frame containing the point, excluding the dragged nodes
+// and everything inside them (a frame cannot be put
+// inside itself).
 function frameAt(scene: SceneState, dragged: ReadonlySet<string>, p: { x: number; y: number }): NodeLite | null {
   let best: { node: NodeLite; depth: number } | null = null;
   for (const n of [...scene.nodes.values()]) {
@@ -70,14 +70,14 @@ function frameAt(scene: SceneState, dragged: ReadonlySet<string>, p: { x: number
 }
 
 /**
- * Dove cadrebbe il nodo trascinato con il puntatore in `p` (coordinate MONDO).
+ * Where the dragged node would land with the pointer at `p` (WORLD coordinates).
  *
- * Il frame è quello con auto layout più interno sotto il puntatore; se non ce
- * n'è, resta quello di partenza (`originId`): rilasciare un po' fuori dalla
- * cornice riordina comunque, invece di buttare il gesto. L'indice è il numero di
- * fratelli il cui CENTRO sta prima del puntatore lungo l'asse del layout.
+ * The frame is the innermost auto layout one under the pointer; if there is
+ * none, the starting one (`originId`) stays: releasing a bit outside the
+ * frame still reorders, instead of throwing the gesture away. The index is the number of
+ * siblings whose CENTER is before the pointer along the layout axis.
  *
- * null se non c'è nessun frame in cui cadere.
+ * null if there is no frame to land in.
  */
 export function computeLayoutDrop(
   scene: SceneState,
@@ -95,14 +95,14 @@ export function computeLayoutDrop(
 
   const siblings = childrenOf(scene, frame.id).filter((c) => participates(c) && !dragged.has(c.id));
   const boxes = siblings.map((c) => contentWorldBounds(scene, c)).filter((b): b is Bounds => b !== null);
-  if (boxes.length !== siblings.length) return null; // un figlio senza riquadro: non si decide
+  if (boxes.length !== siblings.length) return null; // a child without a box: no decision
 
   const centerOf = (b: Bounds) => (vertical ? b.y + b.height / 2 : b.x + b.width / 2);
   const at = vertical ? p.y : p.x;
   let index = 0;
   for (const b of boxes) if (centerOf(b) < at) index++;
 
-  // Il punto lungo l'asse in cui disegnare la linea.
+  // The point along the axis where to draw the line.
   const startOf = (b: Bounds) => (vertical ? b.y : b.x);
   const endOf = (b: Bounds) => (vertical ? b.y + b.height : b.x + b.width);
   const frameStart = startOf(frameBox);
@@ -112,7 +112,7 @@ export function computeLayoutDrop(
   else if (index === 0) pos = startOf(boxes[0]) - al.spacing / 2;
   else if (index === boxes.length) pos = endOf(boxes[index - 1]) + al.spacing / 2;
   else pos = (endOf(boxes[index - 1]) + startOf(boxes[index])) / 2;
-  // Mai fuori dal frame.
+  // Never outside the frame.
   pos = Math.max(frameStart, Math.min(pos, endOf(frameBox)));
 
   const half = INDICATOR_THICKNESS / 2;
@@ -123,26 +123,26 @@ export function computeLayoutDrop(
 }
 
 /**
- * Gli op che mettono i nodi trascinati nel punto indicato. Vuoti quando non
- * cambia nulla (stesso frame, stessa posizione nella fila): il gesto si
- * annulla invece di produrre una voce di undo che non fa niente.
+ * The ops that put the dragged nodes at the indicated point. Empty when
+ * nothing changes (same frame, same position in the row): the gesture is
+ * cancelled instead of producing an undo entry that does nothing.
  *
- * I nodi trascinati restano nel loro ordine relativo di fratelli. Stesso frame:
- * un setProps di `order_key` ciascuno (è un campo come gli altri, non un op
- * dedicato). Altro frame: un reparent con la chiave nuova, che porta l'ordine con
- * sé. Le posizioni NON si scrivono: le calcola il layout.
+ * The dragged nodes keep their relative sibling order. Same frame:
+ * one setProps of `order_key` each (it is a field like the others, not a
+ * dedicated op). Another frame: a reparent with the new key, which carries the order
+ * with it. Positions are NOT written: the layout computes them.
  */
 export function layoutDropOps(scene: SceneState, draggedIds: readonly string[], drop: LayoutDrop): Op[] {
   const dragged = new Set(draggedIds);
-  // Nell'ordine in cui stavano nella fila di partenza.
+  // In the order they had in the starting row.
   const moving = draggedIds
     .map((id) => scene.nodes.at(id))
     .filter((n): n is NodeLite => n !== undefined)
     .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : a.id < b.id ? -1 : 1));
   const siblings = childrenOf(scene, drop.frameId).filter((c) => participates(c) && !dragged.has(c.id));
 
-  // Già lì? Stesso frame e i trascinati occupano esattamente le posizioni
-  // [index, index + k) della fila completa.
+  // Already there? Same frame and the dragged ones occupy exactly the positions
+  // [index, index + k) of the full row.
   const sameFrame = moving.every((n) => n.parentId === drop.frameId);
   if (sameFrame) {
     const full = childrenOf(scene, drop.frameId).filter(participates).map((c) => c.id);
@@ -154,8 +154,8 @@ export function layoutDropOps(scene: SceneState, draggedIds: readonly string[], 
   const next: string | null = drop.index < siblings.length ? siblings[drop.index].orderKey : null;
   const ops: Op[] = [];
   for (const n of moving) {
-    // Due vicini con la STESSA chiave non lasciano spazio: si mette il nodo
-    // dopo `prev` e basta, piuttosto che far fallire il gesto.
+    // Two neighbors with the SAME key leave no room: the node is put
+    // after `prev` and that's it, rather than failing the gesture.
     const upper = next !== null && prev !== null && prev >= next ? null : next;
     const key = orderKeyBetween(prev, upper);
     prev = key;

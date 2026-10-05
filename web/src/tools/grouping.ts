@@ -10,71 +10,71 @@ import type { AutoLayoutLite, NodeLite, SceneState } from "../store/types";
 import { toPbAutoLayout } from "../store/types";
 import { makeCreateNodeOp, makeDeleteOp, makeReparentOp, makeSetPropsOp, uuid } from "./ops";
 
-// RAGGRUPPA (Ctrl+G) e SEPARA (Ctrl+Shift+G) come LISTE DI OP, senza toccare
-// lo store: chi chiama le passa a un solo endGesture, e quindi
-//   - un solo invio in rete,
-//   - una sola voce di undo (un Ctrl+Z disfa il gruppo intero, non l'ultimo
-//     figlio riparentato).
-// È la ragione per cui queste funzioni sono pure e ritornano op invece di
-// applicarli: un gesto è la loro unità, non l'op singolo.
+// GROUP (Ctrl+G) and UNGROUP (Ctrl+Shift+G) as OP LISTS, without touching
+// the store: the caller passes them to a single endGesture, and therefore
+//   - a single send over the network,
+//   - a single undo entry (one Ctrl+Z undoes the whole group, not the last
+//     reparented child).
+// That is why these functions are pure and return ops instead of
+// applying them: a gesture is their unit, not the single op.
 //
-// Nessun op NUOVO nel proto: raggruppare è createNode + N reparentNode,
-// separare è N reparentNode + deleteNode. Un "GroupNodes" op sarebbe un
-// duplicato con invarianti proprie da tenere allineate fra Go e TS, e il suo
-// inverso non sarebbe comunque esprimibile in un op solo.
+// No NEW op in the proto: grouping is createNode + N reparentNode,
+// ungrouping is N reparentNode + deleteNode. A "GroupNodes" op would be a
+// duplicate with its own invariants to keep aligned between Go and TS, and its
+// inverse would not be expressible in a single op anyway.
 
-// Il nome di default di un gruppo appena creato. Il pannello livelli mostra il
-// fallback per tipo quando `name` è vuoto (LayersPanel.tsx::fallbackName), ma un
-// gruppo nasce da un GESTO dell'utente: dargli un nome vero è ciò che rende
-// riconoscibile la riga appena comparsa.
-export const GROUP_NAME = "Gruppo";
+// The default name of a newly created group. The layers panel shows the
+// per-type fallback when `name` is empty (LayersPanel.tsx::fallbackName), but a
+// group is born from a user GESTURE: giving it a real name is what makes
+// the row that just appeared recognizable.
+export const GROUP_NAME = "Group";
 
 export interface GestureOps {
-  // Gli op del gesto, IN ORDINE: vanno applicati così come sono (il gruppo si
-  // crea prima di riparentarci dentro, il gruppo si cancella dopo aver tirato
-  // fuori i figli).
+  // The gesture's ops, IN ORDER: they must be applied as they are (the group is
+  // created before reparenting into it, the group is deleted after pulling
+  // the children out).
   ops: Op[];
-  // La selezione che il gesto lascia: il gruppo appena creato, o i figli
-  // appena liberati.
+  // The selection the gesture leaves: the newly created group, or the children
+  // just freed.
   selection: string[];
 }
 
-// L'indice di ogni nodo nell'ordine di DISEGNO dell'intero documento. Fra due
-// nodi con parent diversi le order key non sono confrontabili -- solo l'albero
-// dice chi sta sopra (vedi tree.ts::documentOrder).
+// The index of each node in the DRAW order of the whole document. Between two
+// nodes with different parents the order keys are not comparable -- only the tree
+// says which is on top (see tree.ts::documentOrder).
 function orderIndex(scene: SceneState): Map<string, number> {
   const index = new Map<string, number>();
   documentOrder(scene).forEach((n, i) => index.set(n.id, i));
   return index;
 }
 
-// Il fratello immediatamente SOPRA `n` fra i figli del suo parent, se c'è.
+// The sibling immediately ABOVE `n` among the children of its parent, if any.
 function siblingAbove(scene: SceneState, n: NodeLite): NodeLite | undefined {
   const siblings = childrenOf(scene, n.parentId);
   const i = siblings.findIndex((s) => s.id === n.id);
   return i < 0 ? undefined : siblings[i + 1];
 }
 
-// L'estremo superiore da passare a orderKeyBetween: la chiave del vicino di
-// sopra, ma solo se lascia davvero spazio. Due vicini con la STESSA order key
-// (un documento vecchio, o due client che hanno scritto la stessa chiave) non
-// ne lasciano, e orderKeyBetween lancerebbe: meglio mettere il nodo SOPRA quel
-// vicino che far esplodere il gesto a metà.
+// The upper bound to pass to orderKeyBetween: the key of the neighbor
+// above, but only if it really leaves room. Two neighbors with the SAME order key
+// (an old document, or two clients that wrote the same key) leave
+// none, and orderKeyBetween would throw: better to put the node ABOVE that
+// neighbor than to blow up the gesture halfway.
 function upperBound(above: NodeLite | undefined, lower: string): string | null {
   return above && above.orderKey > lower ? above.orderKey : null;
 }
 
-// Sposta un nodo sotto `newParentId` CONSERVANDO la sua posizione nel mondo.
+// Moves a node under `newParentId` PRESERVING its position in the world.
 //
-// `spaceId` è il container il cui spazio locale accoglie le nuove coordinate.
-// Non sempre coincide con newParentId, ed è il punto delicato del
-// raggruppamento: il gruppo appena creato non esiste ancora nella scena da cui
-// si calcolano gli op, ma nasce a (0,0) sotto il proprio parent, quindi il suo
-// spazio locale è ESATTAMENTE quello del parent -- che invece nella scena c'è.
+// `spaceId` is the container whose local space accepts the new coordinates.
+// It does not always coincide with newParentId, and it is the delicate point of
+// grouping: the newly created group does not yet exist in the scene the ops are
+// computed from, but it is born at (0,0) under its own parent, so its
+// local space is EXACTLY that of the parent -- which does exist in the scene.
 //
-// Il setProps si aggiunge solo se le coordinate cambiano davvero: un nodo che
-// resta nello stesso spazio (il caso normale, tutti i fratelli di una pagina)
-// non deve pagare un op in più a ogni raggruppamento.
+// The setProps is added only if the coordinates really change: a node that
+// stays in the same space (the normal case, all siblings of a page)
+// must not pay an extra op on every grouping.
 function moveOps(scene: SceneState, n: NodeLite, newParentId: string, spaceId: string, orderKey: string): Op[] {
   const ops: Op[] = [makeReparentOp(n.id, newParentId, orderKey)];
   const world = localToWorld(scene, n.parentId, n.x, n.y);
@@ -86,29 +86,29 @@ function moveOps(scene: SceneState, n: NodeLite, newParentId: string, spaceId: s
 }
 
 /**
- * Ctrl+G — raggruppa la selezione.
+ * Ctrl+G — groups the selection.
  *
- * Il gruppo nasce come FRATELLO del nodo selezionato più in alto nell'ordine di
- * disegno, subito sopra di lui: è la posizione z che l'utente si aspetta (il
- * gruppo prende il posto del suo elemento più in vista) e l'unica che non
- * scavalca i nodi che stavano sopra la selezione.
+ * The group is born as a SIBLING of the topmost selected node in the
+ * draw order, right above it: it is the z position the user expects (the
+ * group takes the place of its most visible element) and the only one that does not
+ * jump over the nodes that were above the selection.
  *
- * I selezionati ci finiscono dentro nel loro ordine relativo, con chiavi nuove:
- * la loro vecchia posizione era relativa a fratelli che non sono più i loro.
+ * The selected nodes end up inside it in their relative order, with new keys:
+ * their old position was relative to siblings that are no longer theirs.
  *
- * Un discendente selezionato insieme al suo container NON viene riparentato a
- * parte (tree.ts::topmostOf): il container se lo porta dietro, e un reparent suo
- * lo tirerebbe fuori dal container per metterlo nel gruppo -- cioè lo
- * spostamento che l'utente non ha chiesto.
+ * A descendant selected together with its container is NOT reparented
+ * separately (tree.ts::topmostOf): the container carries it along, and a reparent of its own
+ * would pull it out of the container to put it in the group -- i.e. the
+ * move the user did not ask for.
  *
- * null quando non c'è niente da raggruppare: nessun gesto, nessun invio.
+ * null when there is nothing to group: no gesture, no send.
  */
 export function groupOps(scene: SceneState, selection: readonly string[]): GestureOps | null {
   const index = orderIndex(scene);
   const ids = topmostOf(scene, selection).filter((id) => index.has(id));
   if (ids.length === 0) return null;
-  // Ordine di DISEGNO, non ordine di selezione: è ciò che conserva la pila
-  // visiva dentro il gruppo (chi era sopra resta sopra).
+  // DRAW order, not selection order: it is what preserves the visual stack
+  // inside the group (what was on top stays on top).
   const sorted = [...ids].sort((a, b) => (index.get(a) as number) - (index.get(b) as number));
   const top = scene.nodes.at(sorted[sorted.length - 1]);
   const parentId = top.parentId;
@@ -121,9 +121,9 @@ export function groupOps(scene: SceneState, selection: readonly string[]): Gestu
     name: GROUP_NAME,
     visible: true,
     opacity: 1,
-    // Nessuna geometria propria: i bounds sono l'unione dei figli (vedi
-    // store/groups.ts) e x/y a 0 vuol dire che il gruppo non trasla ancora
-    // nessuno -- raggruppare non muove un pixel.
+    // No geometry of its own: the bounds are the union of the children (see
+    // store/groups.ts) and x/y at 0 means the group does not yet translate
+    // anyone -- grouping does not move a pixel.
     x: 0, y: 0, width: 0, height: 0, rotation: 0,
     fills: [],
     shape: { case: "group", value: {} },
@@ -134,30 +134,30 @@ export function groupOps(scene: SceneState, selection: readonly string[]): Gestu
   for (const id of sorted) {
     const key = orderKeyBetween(prev, null);
     prev = key;
-    // Lo SPAZIO è quello del parent del gruppo, non del gruppo: vedi moveOps.
+    // The SPACE is that of the group's parent, not of the group: see moveOps.
     ops.push(...moveOps(scene, scene.nodes.at(id), groupId, parentId, key));
   }
   return { ops, selection: [groupId] };
 }
 
 /**
- * Ctrl+Shift+G — separa i gruppi selezionati.
+ * Ctrl+Shift+G — ungroups the selected groups.
  *
- * I figli tornano fuori nello slot z del gruppo (fra la sua chiave e quella del
- * fratello sopra di lui), nel loro ordine relativo: chi era sopra dentro il
- * gruppo resta sopra fuori. Le coordinate vengono riscritte per conservare la
- * posizione MONDO -- un gruppo trascinato ha una traslazione propria, e senza
- * riscriverle i figli tornerebbero indietro del suo spostamento.
+ * The children come back out into the group's z slot (between its key and that
+ * of the sibling above it), in their relative order: what was on top inside the
+ * group stays on top outside. The coordinates are rewritten to preserve the
+ * WORLD position -- a dragged group has a translation of its own, and without
+ * rewriting them the children would jump back by its displacement.
  *
- * Il gruppo si cancella per ULTIMO, quando è già vuoto: deleteNode cancella a
- * cascata (core.applyDelete), quindi cancellarlo prima porterebbe via i figli
- * che stiamo liberando.
+ * The group is deleted LAST, when it is already empty: deleteNode deletes
+ * in cascade (core.applyDelete), so deleting it first would take away the children
+ * we are freeing.
  *
- * Se sono selezionati un gruppo e un gruppo suo discendente si separa solo
- * quello ESTERNO (topmostOf): gli op del secondo sarebbero costruiti su uno
- * stato che il primo ha già cambiato.
+ * If a group and a group that is its descendant are selected, only the
+ * OUTER one is ungrouped (topmostOf): the second's ops would be built on a
+ * state that the first has already changed.
  *
- * null quando nella selezione non c'è nessun gruppo: nessun gesto, nessun invio.
+ * null when there is no group in the selection: no gesture, no send.
  */
 export function ungroupOps(scene: SceneState, selection: readonly string[]): GestureOps | null {
   const index = orderIndex(scene);
@@ -175,8 +175,8 @@ export function ungroupOps(scene: SceneState, selection: readonly string[]): Ges
     for (const c of childrenOf(scene, g.id)) {
       const key = orderKeyBetween(prev, upper);
       prev = key;
-      // Qui parent e spazio coincidono: il gruppo esiste ancora nella scena,
-      // quindi la sua traslazione è già dentro localToWorld (vedi moveOps).
+      // Here parent and space coincide: the group still exists in the scene,
+      // so its translation is already inside localToWorld (see moveOps).
       ops.push(...moveOps(scene, c, g.parentId, g.parentId, key));
       freed.push(c.id);
     }
@@ -185,13 +185,13 @@ export function ungroupOps(scene: SceneState, selection: readonly string[]): Ges
   return { ops, selection: freed };
 }
 
-// --- AVVOLGI IN UN FRAME ----------------------------------------------------
+// --- WRAP IN A FRAME ----------------------------------------------------
 
 export const FRAME_NAME = "Frame";
 
-// Lo spazio fra figli consecutivi che l'auto layout deve mantenere per non
-// cambiare l'aspetto: la media dei vuoti fra i loro riquadri lungo l'asse,
-// arrotondata al pixel e mai negativa (figli sovrapposti = 0).
+// The space between consecutive children that the auto layout must keep so as not to
+// change the appearance: the average of the gaps between their boxes along the axis,
+// rounded to the pixel and never negative (overlapping children = 0).
 function averageGap(sorted: readonly { start: number; end: number }[]): number {
   if (sorted.length < 2) return 0;
   let total = 0;
@@ -200,18 +200,18 @@ function averageGap(sorted: readonly { start: number; end: number }[]): number {
 }
 
 /**
- * Avvolge la selezione in un FRAME (Ctrl+Alt+G) e, con `autoLayout`, lo rende un
- * frame con auto layout (Shift+A). Stessa forma di groupOps: createNode + N
- * reparentNode, UN gesto, una voce di undo.
+ * Wraps the selection in a FRAME (Ctrl+Alt+G) and, with `autoLayout`, makes it an
+ * auto layout frame (Shift+A). Same shape as groupOps: createNode + N
+ * reparentNode, ONE gesture, one undo entry.
  *
- * Il frame prende il riquadro dei selezionati, così avvolgerli non sposta un
- * pixel. Senza auto layout i figli conservano la posizione (le loro coordinate
- * diventano relative al frame). Con auto layout il frame sceglie da sé direzione
- * e spaziatura guardando come i figli sono già disposti, e li mette in fila
- * nell'ORDINE SPAZIALE -- l'auto layout dispone nell'ordine dei fratelli, quindi
- * le order key vanno assegnate lungo l'asse e non nell'ordine di disegno.
+ * The frame takes the box of the selected nodes, so wrapping them does not move a
+ * pixel. Without auto layout the children keep their position (their coordinates
+ * become relative to the frame). With auto layout the frame chooses direction
+ * and spacing on its own by looking at how the children are already arranged, and puts them in a row
+ * in SPATIAL ORDER -- auto layout arranges in sibling order, so
+ * the order keys must be assigned along the axis and not in draw order.
  *
- * null quando non c'è niente da avvolgere.
+ * null when there is nothing to wrap.
  */
 export function wrapInFrameOps(
   scene: SceneState,
@@ -225,7 +225,7 @@ export function wrapInFrameOps(
   const top = scene.nodes.at(byZ[byZ.length - 1]);
   const parentId = top.parentId;
 
-  // I riquadri nel MONDO, poi portati nello spazio del parent del frame.
+  // The boxes in the WORLD, then brought into the frame's parent space.
   const worldBox = new Map(ids.flatMap((id) => {
     const b = contentWorldBounds(scene, scene.nodes.at(id));
     return b ? [[id, b] as const] : [];
@@ -285,8 +285,8 @@ export function wrapInFrameOps(
     prev = key;
     const n = scene.nodes.at(id);
     ops.push(makeReparentOp(id, frameId, key));
-    // Con auto layout la posizione la decide il server: scriverla qui sarebbe
-    // un op in più che il layout sovrascrive subito.
+    // With auto layout the position is decided by the server: writing it here would be
+    // an extra op that the layout immediately overwrites.
     if (!layout) {
       const world = localToWorld(scene, n.parentId, n.x, n.y);
       const inParent = worldToLocal(scene, parentId, world.x, world.y);

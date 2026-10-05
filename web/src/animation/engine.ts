@@ -1,18 +1,18 @@
-// MOTORE DI ANIMAZIONE -- funzioni PURE (niente DOM, niente renderer) che
-// campionano una clip del documento. Lo consumano il playback dell'editor e,
-// in parità di formule, il generatore di codice (internal/codegen) e il
-// validatore (web/src/animation/validate.ts, internal/core/animation.go).
+// ANIMATION ENGINE -- PURE functions (no DOM, no renderer) that
+// sample a document clip. They are consumed by the editor's playback and,
+// with the same formulas, by the code generator (internal/codegen) and the
+// validator (web/src/animation/validate.ts, internal/core/animation.go).
 //
-// Il tempo è sempre in MILLISECONDI. Tre livelli:
-//   clipTimeline(clip, elapsed) -> {t, done}   tempo reale -> tempo DENTRO la clip
-//                                              (ritardo, ripetizioni, yoyo)
-//   sampleClip(clip, t)         -> Map          valore di ogni (nodo, proprietà)
-//   sampleTrack(track, t)       -> number       valore di una traccia
-// con easingFn(spec) che dà la curva del singolo segmento.
+// Time is always in MILLISECONDS. Three levels:
+//   clipTimeline(clip, elapsed) -> {t, done}   real time -> time INSIDE the clip
+//                                              (delay, repeats, yoyo)
+//   sampleClip(clip, t)         -> Map          value of every (node, property)
+//   sampleTrack(track, t)       -> number       value of a track
+// with easingFn(spec) giving the curve of a single segment.
 
 import type { ClipLite, TrackLite } from "../store/types";
 
-// Gli insiemi chiusi del modello: ripetuti in Go (core.TrackProps/ClipTriggers).
+// The closed sets of the model: repeated in Go (core.TrackProps/ClipTriggers).
 export const TRACK_PROPS = ["opacity", "x", "y", "scale", "rotation", "draw"] as const;
 export type TrackProp = (typeof TRACK_PROPS)[number];
 export const CLIP_TRIGGERS = ["enter", "hover", "tap", "loop", "manual"] as const;
@@ -22,13 +22,13 @@ export type EasingFn = (p: number) => number;
 
 // --- easing ----------------------------------------------------------------
 
-// Stessa regex di core.cubicBezierRe (Go): numeri decimali stretti, niente
-// inf/nan/esadecimali.
+// Same regex as core.cubicBezierRe (Go): strict decimal numbers, no
+// inf/nan/hexadecimal.
 const NUM = String.raw`[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?`;
 const CUBIC_RE = new RegExp(String.raw`^cubic-bezier\(\s*(${NUM})\s*,\s*(${NUM})\s*,\s*(${NUM})\s*,\s*(${NUM})\s*\)$`);
 
-/** I quattro punti di controllo di "cubic-bezier(a,b,c,d)", o null se non valido
- *  (non finiti o ascisse fuori da [0,1], come in CSS). Parità con core.ParseCubicBezier. */
+/** The four control points of "cubic-bezier(a,b,c,d)", or null if invalid
+ *  (non-finite or x values outside [0,1], as in CSS). Parity with core.ParseCubicBezier. */
 export function parseCubicBezier(spec: string): [number, number, number, number] | null {
   const m = CUBIC_RE.exec(spec);
   if (!m) return null;
@@ -38,7 +38,7 @@ export function parseCubicBezier(spec: string): [number, number, number, number]
   return p;
 }
 
-/** Parità con core.ValidEasing. */
+/** Parity with core.ValidEasing. */
 export function isValidEasing(spec: string): boolean {
   switch (spec) {
     case "": case "linear": case "easeIn": case "easeOut": case "easeInOut": case "spring": return true;
@@ -46,8 +46,8 @@ export function isValidEasing(spec: string): boolean {
   return parseCubicBezier(spec) !== null;
 }
 
-// Le curve con nome sono quelle di CSS (ease-in, ease-out, ease-in-out) così il
-// codice esportato (CSS/Motion) coincide con il playback dell'editor.
+// The named curves are those of CSS (ease-in, ease-out, ease-in-out) so the
+// exported code (CSS/Motion) matches the editor's playback.
 export const NAMED_BEZIER: Record<string, [number, number, number, number]> = {
   easeIn: [0.42, 0, 1, 1],
   easeOut: [0, 0, 0.58, 1],
@@ -55,10 +55,10 @@ export const NAMED_BEZIER: Record<string, [number, number, number, number]> = {
 };
 
 /**
- * Bézier cubica CSS: x(s) = 3(1-s)^2 s a + 3(1-s) s^2 c + s^3, y(s) analoga;
- * dato p = x si cerca s con Newton-Raphson (veloce) e, se la derivata è troppo
- * piatta o Newton non converge, con la bisezione (sempre sicura perché x(s) è
- * monotona con le ascisse in [0,1]).
+ * CSS cubic Bézier: x(s) = 3(1-s)^2 s a + 3(1-s) s^2 c + s^3, y(s) analogous;
+ * given p = x we look for s with Newton-Raphson (fast) and, if the derivative is too
+ * flat or Newton does not converge, with bisection (always safe because x(s) is
+ * monotonic with x values in [0,1]).
  */
 export function cubicBezier(x1: number, y1: number, x2: number, y2: number): EasingFn {
   const cx = 3 * x1, bx = 3 * (x2 - x1) - cx, ax = 1 - cx - bx;
@@ -89,26 +89,26 @@ export function cubicBezier(x1: number, y1: number, x2: number, y2: number): Eas
   };
 }
 
-// Molla SMORZATA CRITICAMENTE (nessun rimbalzo): x(t) = 1 - (1 + wt) e^(-wt).
-// Non arriva mai esattamente a 1: w è scelto perché a p = 1 il residuo sia
-// 0.1% e la curva si RISCALA su quel valore (SPRING_END) così parte da 0, arriva
-// a 1 e resta monotona -- il "settle".
+// CRITICALLY DAMPED spring (no bounce): x(t) = 1 - (1 + wt) e^(-wt).
+// It never reaches exactly 1: w is chosen so that at p = 1 the residual is
+// 0.1% and the curve is RESCALED on that value (SPRING_END) so it starts at 0, reaches
+// 1 and stays monotonic -- the "settle".
 const SPRING_W = 9.2;
 const springRaw = (p: number) => 1 - (1 + SPRING_W * p) * Math.exp(-SPRING_W * p);
 const SPRING_END = springRaw(1);
 export const springEasing: EasingFn = (p) => (p <= 0 ? 0 : p >= 1 ? 1 : springRaw(p) / SPRING_END);
 
 /**
- * Bézier che approssima `spring` per i target che non hanno molle per segmento
- * (CSS, Motion con ease per segmento). Trovata per minimi quadrati sulla curva
- * vera (vedi engine.test.ts, che ne limita lo scarto).
+ * A Bézier approximating `spring` for targets that have no per-segment springs
+ * (CSS, Motion with per-segment ease). Found by least squares on the true
+ * curve (see engine.test.ts, which bounds its error).
  */
 export const SPRING_BEZIER: [number, number, number, number] = [0.32, 0.66, 0.1, 1];
 
 const LINEAR: EasingFn = (p) => (p <= 0 ? 0 : p >= 1 ? 1 : p);
 
-/** La funzione di easing di una specifica (stringa già validata; una non valida
- *  ripiega su linear, come "" -- il motore non deve mai lanciare). */
+/** The easing function of a spec (an already validated string; an invalid one
+ *  falls back to linear, like "" -- the engine must never throw). */
 export function easingFn(spec: string): EasingFn {
   switch (spec) {
     case "": case "linear": return LINEAR;
@@ -122,8 +122,8 @@ export function easingFn(spec: string): EasingFn {
 
 // --- campionamento ---------------------------------------------------------
 
-// Cache delle funzioni: sampleClip gira a ogni frame e la regex/le closure non
-// vanno rifatte. Chiave = la stringa dell'easing.
+// Function cache: sampleClip runs on every frame and the regex/closures must
+// not be rebuilt. Key = the easing string.
 const easeCache = new Map<string, EasingFn>();
 function cachedEasing(spec: string): EasingFn {
   let f = easeCache.get(spec);
@@ -132,10 +132,10 @@ function cachedEasing(spec: string): EasingFn {
 }
 
 /**
- * Valore di una traccia al tempo `tMs`: PRIMA del primo keyframe vale il primo,
- * DOPO l'ultimo vale l'ultimo (hold); in mezzo si interpola con l'easing del
- * keyframe che APRE il segmento. Keyframe con lo stesso tempo sono uno scatto: a
- * quel tempo vince l'ultimo. Una traccia senza keyframe (non valida) dà NaN.
+ * Value of a track at time `tMs`: BEFORE the first keyframe it is the first,
+ * AFTER the last it is the last (hold); in between it interpolates with the easing of the
+ * keyframe that OPENS the segment. Keyframes with the same time are a step: at
+ * that time the last one wins. A track without keyframes (invalid) gives NaN.
  */
 export function sampleTrack(track: Pick<TrackLite, "keyframes">, tMs: number): number {
   const k = track.keyframes;
@@ -143,7 +143,7 @@ export function sampleTrack(track: Pick<TrackLite, "keyframes">, tMs: number): n
   if (!(tMs > k[0].time)) return k[0].value;
   const last = k[k.length - 1];
   if (tMs >= last.time) return last.value;
-  // ultimo keyframe con time <= tMs (ricerca binaria: le tracce sono ordinate)
+  // last keyframe with time <= tMs (binary search: tracks are sorted)
   let lo = 0, hi = k.length - 1;
   while (lo < hi) {
     const mid = (lo + hi + 1) >> 1;
@@ -157,7 +157,7 @@ export function sampleTrack(track: Pick<TrackLite, "keyframes">, tMs: number): n
 
 export interface NodeAnim { opacity?: number; x?: number; y?: number; scale?: number; rotation?: number; draw?: number }
 
-/** Valori di tutte le tracce della clip al tempo `tMs` (dentro la clip): nodeId -> proprietà animate. */
+/** Values of all the clip's tracks at time `tMs` (inside the clip): nodeId -> animated properties. */
 export function sampleClip(clip: Pick<ClipLite, "tracks">, tMs: number): Map<string, NodeAnim> {
   const out = new Map<string, NodeAnim>();
   for (const tr of clip.tracks) {
@@ -171,12 +171,12 @@ export function sampleClip(clip: Pick<ClipLite, "tracks">, tMs: number): Map<str
 }
 
 /**
- * Tempo reale -> tempo DENTRO la clip.
- *  - prima del `delay` la clip è ferma al tempo 0;
- *  - poi gira per `duration`, `repeat` volte in più (-1 = per sempre);
- *  - con `yoyo` i cicli dispari vanno al contrario;
- *  - `done` è true solo quando le ripetizioni finite sono esaurite: `t` resta
- *    sul punto d'arrivo (duration, o 0 se l'ultimo ciclo è un ritorno yoyo).
+ * Real time -> time INSIDE the clip.
+ *  - before the `delay` the clip is still at time 0;
+ *  - then it runs for `duration`, `repeat` more times (-1 = forever);
+ *  - with `yoyo` odd cycles go backwards;
+ *  - `done` is true only when the finite repeats are exhausted: `t` stays
+ *    at the end point (duration, or 0 if the last cycle is a yoyo return).
  */
 export function clipTimeline(
   clip: Pick<ClipLite, "duration" | "delay" | "repeat" | "yoyo">, elapsedMs: number,
