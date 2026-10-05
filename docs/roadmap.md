@@ -21,8 +21,8 @@ Legenda: [x] fatto · [ ] da fare
 - [ ] Tipografia: font caricabili, stili di testo, testo multiriga
 - [ ] Boolean operations, outline stroke, maschere
 - [ ] Prototipazione e modalità presentazione
-- [x] Diagrammi: flowchart da testo Mermaid (menu documento → Crea diagramma…, vedi docs/diagrams.md)
-- [ ] Diagrammi: connettori che seguono le forme, subgraph, esempio via MCP
+- [x] Diagrammi: flowchart e UML (classi, sequenza, stati) da testo Mermaid, calcolati dal server; editor (menu documento) e MCP (`create_diagram`, `update_diagram`, `list_diagrams`), vedi docs/diagrams.md
+- [ ] Diagrammi: connettori che seguono le forme, `subgraph`, ER, note nei diagrammi di classi e stati
 - [ ] Import SVG (poi .fig)
 
 ## 2. Collaborazione
