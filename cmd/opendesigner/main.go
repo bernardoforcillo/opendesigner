@@ -1,39 +1,32 @@
 package main
 
 import (
-	"context"
 	"flag"
 	"log"
 	"net"
 	"net/http"
 	"os"
-	"os/signal"
 	"path/filepath"
 
-	"connectrpc.com/connect"
-	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1/opendesignerv1connect"
 	odmcp "github.com/bernardoforcillo/opendesigner/internal/mcp"
 	"github.com/bernardoforcillo/opendesigner/internal/server"
 	"github.com/bernardoforcillo/opendesigner/web"
-	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: opendesigner <serve|mcp|flow|export> ...")
+		log.Fatal("usage: opendesigner <serve|flow|export> ...")
 	}
 	switch os.Args[1] {
 	case "serve":
 		runServe(os.Args[2:])
-	case "mcp":
-		runMCP(os.Args[2:])
 	case "flow":
 		os.Exit(runFlow(os.Args[2:], os.Stdout, os.Stderr))
 	case "export":
 		os.Exit(runExport(os.Args[2:], os.Stdout, os.Stderr))
 	default:
-		log.Fatal("usage: opendesigner <serve|mcp|flow|export> ...")
+		log.Fatal("usage: opendesigner <serve|flow|export> ...")
 	}
 }
 
@@ -63,6 +56,9 @@ func runServe(args []string) {
 	// serve già l'app, senza build del frontend né flag. -web resta la via di
 	// sviluppo e ha la precedenza -- vedi internal/server/webui.go.
 	server.MountWeb(mux, *webDir, web.Dist)
+	// MCP su HTTP: http://localhost:8080/mcp, nello stesso processo dell'editor.
+	// La sessione MCP richiama il server su loopback come un client qualunque.
+	odmcp.MountHTTP(mux, loopbackURL(*addr), log.New(os.Stderr, "opendesigner-mcp ", log.LstdFlags))
 
 	// h2c (HTTP/2 in chiaro) serve allo streaming Connect in locale, dove non c'è TLS.
 	// Dalla stdlib Go 1.24 lo si abilita con Server.Protocols: niente golang.org/x/net.
@@ -84,83 +80,17 @@ func runServe(args []string) {
 	}
 }
 
-// runMCP starts the stdio MCP server: it connects to a running `opendesigner
-// serve` as an h2c Connect client, opens the shared document, keeps a local
-// mirror synced via Subscribe, and exposes the design tools over MCP. stdout is
-// the MCP stdio channel, so every log line goes to stderr.
-func runMCP(args []string) {
-	logger := log.New(os.Stderr, "opendesigner-mcp ", log.LstdFlags)
-
-	fs := flag.NewFlagSet("mcp", flag.ExitOnError)
-	serverURL := fs.String("server", "http://localhost:8080", "base URL of a running `opendesigner serve`")
-	docID := fs.String("doc", "", "document id to co-design (shared with the web client)")
-	clientID := fs.String("client-id", "", "client id for this MCP session (defaults to a random one)")
-	nickname := fs.String("nickname", odmcp.DefaultNickname, "name people see for this agent in the document")
-	_ = fs.Parse(args)
-
-	// Ctrl-C / SIGTERM cancels the whole session: it stops the Subscribe loop
-	// and unblocks srv.Run.
-	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt)
-	defer stop()
-
-	client := odmcp.NewClient(*serverURL)
-
-	resolvedDoc, err := resolveDoc(ctx, client, *docID, logger)
+// loopbackURL è l'URL con cui il processo raggiunge se stesso: l'host di addr
+// se è specifico, altrimenti 127.0.0.1 (":8080", "0.0.0.0:8080", "[::]:8080").
+func loopbackURL(addr string) string {
+	host, port, err := net.SplitHostPort(addr)
 	if err != nil {
-		logger.Fatalf("resolve document: %v", err)
+		return "http://" + addr
 	}
-
-	sess := odmcp.NewSession(client, resolvedDoc, *clientID, logger)
-	if err := sess.Open(ctx); err != nil {
-		logger.Fatalf("open document: %v", err)
+	if ip := net.ParseIP(host); host == "" || (ip != nil && ip.IsUnspecified()) {
+		host = "127.0.0.1"
 	}
-	logger.Printf("co-designing document %s as client %s via %s", resolvedDoc, sess.ClientID(), *serverURL)
-
-	// The sync loop is the only writer of the local doc; it runs until ctx ends.
-	go sess.SyncLoop(ctx)
-	// The agent shows up in the document like another person.
-	go sess.PresenceLoop(ctx, *nickname)
-
-	srv := mcp.NewServer(&mcp.Implementation{Name: "opendesigner", Version: "0.1.0"}, nil)
-	odmcp.RegisterTools(srv, sess)
-
-	if err := srv.Run(ctx, &mcp.StdioTransport{}); err != nil && ctx.Err() == nil {
-		logger.Fatalf("mcp server: %v", err)
-	}
-}
-
-// resolveDoc turns the -doc flag into a concrete document id. Empty -doc is a
-// convenience: on an empty workspace it creates a document and uses it; when
-// documents already exist it refuses and lists them, so a session never
-// silently co-designs the wrong one.
-func resolveDoc(ctx context.Context, client opendesignerv1connect.DocumentServiceClient, docID string, logger *log.Logger) (string, error) {
-	if docID != "" {
-		return docID, nil
-	}
-	list, err := client.ListDocuments(ctx, connect.NewRequest(&opendesignerv1.ListDocumentsRequest{}))
-	if err != nil {
-		return "", err
-	}
-	docs := list.Msg.GetDocs()
-	if len(docs) == 0 {
-		created, err := client.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "MCP Session"}))
-		if err != nil {
-			return "", err
-		}
-		logger.Printf("no -doc given and workspace empty; created document %s", created.Msg.GetId())
-		return created.Msg.GetId(), nil
-	}
-	logger.Printf("no -doc given; available documents:")
-	for _, d := range docs {
-		logger.Printf("  %s  %q", d.GetId(), d.GetName())
-	}
-	return "", &missingDocError{}
-}
-
-type missingDocError struct{}
-
-func (*missingDocError) Error() string {
-	return "pass -doc <id> to choose which document to co-design (see the list above)"
+	return "http://" + net.JoinHostPort(host, port)
 }
 
 func defaultWorkspace() string {

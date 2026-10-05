@@ -131,15 +131,15 @@ toolbar switches to a CanvasKit (Skia/WebGL) renderer, downloaded on demand; it
 shows the frame time so you can compare the two on your machine. See
 `docs/performance.md`.
 
-### 5. Run the MCP server
+### 5. Connect an agent (MCP)
 
-Start the backend first, then run:
+There is no separate command: `serve` already exposes the MCP server at `/mcp`, next to the editor, in the same process.
 
 ```bash
-go run ./cmd/opendesigner mcp
+claude mcp add --transport http opendesigner http://localhost:8080/mcp
 ```
 
-The MCP mode connects to the running serve instance and exposes editing tools through stdio. The agent appears in the document like another person (name set with `-nickname`, default "Claude") and outlines the node it is editing.
+Add `?doc=<id>` to the URL to pick a document (not needed when the workspace has only one). The agent appears in the document like another person and its edits are shared live with the editor.
 
 ## Development workflow
 

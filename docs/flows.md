@@ -120,7 +120,7 @@ gate non superato (`check`, `coverage -min`), 2 errore d'uso o di lettura.
 
 ## Tool MCP
 
-Un agente collegato con `opendesigner mcp` può guidare l'intero flusso di lavoro.
+Un agente collegato a `http://localhost:8080/mcp` (esposto da `opendesigner serve`) può guidare l'intero flusso di lavoro.
 Le descrizioni dei tool ripetono le convenzioni, così ne basta uno per capire il
 modello.
 
