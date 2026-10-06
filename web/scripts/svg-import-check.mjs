@@ -152,7 +152,7 @@ try {
     const page = await ctx.newPage();
     page.on("pageerror", (e) => console.error(`[${file}] error in the page:`, e.message));
     const docId = await createDoc(`svg-import ${name}`);
-    await page.goto(`http://localhost:${PORT}/?renderer=${RENDERER}#doc=${docId}`);
+    await page.goto(`http://localhost:${PORT}/doc/${docId}?renderer=${RENDERER}`);
     await page.waitForFunction(() => !!document.querySelector(".bg-ok"), { timeout: 30000 });
     await page.waitForTimeout(500);
     // The "Where do you start?" card covers the centre of the canvas on an empty document.

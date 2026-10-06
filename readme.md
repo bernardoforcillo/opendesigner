@@ -107,8 +107,8 @@ opendesigner serve
 # sulla stessa rete apri: http://192.168.1.20:8080
 ```
 
-Everyone picks a nickname in the toolbar. The **Condividi** button copies the
-link of the open document (`...#doc=<id>`); whoever opens it edits the same
+Everyone picks a nickname in the toolbar. The **Share** button copies the
+link of the open document (`.../doc/<id>`); whoever opens it edits the same
 document and sees the others' cursors and selections. Presence is ephemeral and
 never written to the document.
 

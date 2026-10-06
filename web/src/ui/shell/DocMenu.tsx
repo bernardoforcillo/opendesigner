@@ -8,6 +8,7 @@ import { useTheme } from "./theme";
 import { usePanels } from "./panels";
 import { pickSvgFile } from "../../tools/svgImport";
 import { DiagramDialog } from "../DiagramDialog";
+import { useAppNavigate } from "../../home/nav";
 
 // THE DOCUMENT MENU: the logo is the button. Inside: the document name
 // (renamable in place), Home, new document, theme, renderer.
@@ -111,6 +112,7 @@ function DocTitle({ editing, onEditingChange }: { editing: boolean; onEditingCha
 }
 
 export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
+  const navigate = useAppNavigate();
   const theme = useTheme((s) => s.choice);
   const setTheme = useTheme((s) => s.set);
   const renderer = useRenderer((s) => s.choice);
@@ -130,7 +132,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
         <DocTitle editing={editing} onEditingChange={setEditing} />
         <Separator className="my-1 h-px bg-line" />
         <Menu className="outline-none" onAction={(k) => {
-          if (k === "home") location.hash = "";
+          if (k === "home") navigate("/");
           else if (k === "new") onNewDocument();
           else if (k === "rename") setEditing(true);
           else if (k === "import-svg") void pickSvgFile();

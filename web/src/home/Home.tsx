@@ -7,7 +7,8 @@ import type { Template } from "../templates/catalog";
 import { docClient } from "../rpc/client";
 import { DocCard, type DocSummary } from "./DocCard";
 import { TemplatePreview } from "./TemplatePreview";
-import { hashForDoc, parseJoinLink, sortRecent } from "./route";
+import { pathForDoc, parseJoinLink, sortRecent } from "./route";
+import { useAppNavigate } from "./nav";
 import { startDocument, StartError, type StartClient } from "./startDocument";
 
 // THE HOME: the app's entry point. From here you start -- from a template or
@@ -34,15 +35,18 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function Home({
   client = docClient as unknown as HomeClient,
-  navigate = (hash: string) => { location.hash = hash; },
+  navigate: navigateProp,
   focusTemplates = false,
   now = () => Date.now(),
 }: {
   client?: HomeClient;
-  navigate?: (hash: string) => void;
+  /** Where to go (`/doc/<id>`); defaults to the router. */
+  navigate?: (path: string) => void;
   focusTemplates?: boolean;
   now?: () => number;
 }) {
+  const routerNavigate = useAppNavigate();
+  const navigate = navigateProp ?? routerNavigate;
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [starting, setStarting] = useState<{ id: string; done: number; total: number } | null>(null);
@@ -66,7 +70,7 @@ export function Home({
 
   useEffect(() => { void load(); }, [load]);
 
-  // `#new` ("New document" from the editor menu) goes straight to the templates.
+  // `/?templates=true` ("New document" from the editor menu) goes straight to the templates.
   useEffect(() => {
     if (focusTemplates) templatesRef.current?.scrollIntoView?.({ block: "start" });
   }, [focusTemplates]);
@@ -80,7 +84,7 @@ export function Home({
         clientId: "home",
         onProgress: (done, total) => setStarting({ id: t.id, done, total }),
       });
-      navigate(hashForDoc(id));
+      navigate(pathForDoc(id));
     } catch (e) {
       setStartError(e instanceof StartError && e.docId
         ? `The template was not fully applied (${e.message}). The document is in the list: you can open or delete it.`
@@ -241,14 +245,14 @@ function TemplateCard({
 }
 
 /** "Join": paste a colleague's link (or their id) and you enter their document. */
-function JoinField({ navigate }: { navigate: (hash: string) => void }) {
+function JoinField({ navigate }: { navigate: (path: string) => void }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function join() {
     const id = parseJoinLink(text);
     if (!id) { setError("That is not a valid opendesigner link."); return; }
-    navigate(hashForDoc(id));
+    navigate(pathForDoc(id));
   }
 
   return (

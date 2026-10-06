@@ -119,3 +119,27 @@ func TestMountWebLeavesAssetRouteAlone(t *testing.T) {
 // compile-time guard: MountWeb takes an fs.FS, so web.Dist and fstest.MapFS are
 // interchangeable and the handler stays testable without touching the embed.
 var _ func(*http.ServeMux, string, fs.FS) = MountWeb
+
+// The editor lives at /doc/<id> (client-side routing): a shared link or a reload
+// there must get the app, not a 404. Real files still win, and a missing asset
+// stays a 404 instead of becoming HTML that a script tag would choke on.
+func TestMountWebFallsBackToIndexForClientRoutes(t *testing.T) {
+	mux := http.NewServeMux()
+	MountWeb(mux, "", fstest.MapFS{
+		"index.html":    &fstest.MapFile{Data: []byte("<title>embedded</title>")},
+		"assets/app.js": &fstest.MapFile{Data: []byte("console.log(1)")},
+	})
+
+	for _, p := range []string{"/doc/0f8b1c3e-5a52-4c7d-9a1e-2b3c4d5e6f70", "/doc/anything", "/unknown"} {
+		code, body := getBody(t, mux, p)
+		if code != http.StatusOK || !strings.Contains(body, "embedded") {
+			t.Errorf("GET %s = %d %q, want 200 with index.html", p, code, body)
+		}
+	}
+	if code, body := getBody(t, mux, "/assets/app.js"); code != http.StatusOK || !strings.Contains(body, "console.log") {
+		t.Errorf("GET /assets/app.js = %d %q, want the real file", code, body)
+	}
+	if code, _ := getBody(t, mux, "/assets/missing.js"); code != http.StatusNotFound {
+		t.Errorf("GET /assets/missing.js = %d, want 404", code)
+	}
+}

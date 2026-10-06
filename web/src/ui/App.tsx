@@ -21,7 +21,9 @@ import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { attachClipboardShortcuts } from "../tools/clipboard";
 import { attachImageDrop } from "../tools/imageDrop";
-import { docIdFromHash } from "../home/route";
+import { HOME_TEMPLATES_PATH, docIdFromHash } from "../home/route";
+import { useAppNavigate } from "../home/nav";
+import { useRouteDocId } from "../home/DocIdContext";
 import { DocUnavailable } from "../home/DocUnavailable";
 import { CanvasOnboarding } from "../home/CanvasOnboarding";
 import { TextEditorOverlay } from "./TextEditorOverlay";
@@ -102,7 +104,8 @@ export function toolsForMode(mode: EditorMode): { id: ToolId; label: string }[] 
 const CLIENT_ID = crypto.randomUUID();
 const DOC_KEY = "opendesigner.docId";
 
-// The document is chosen from the link: `#doc=<id>`. It is what lets another
+// The document is chosen from the link: `/doc/<id>` (the router hands the id over
+// through DocIdContext; the old `#doc=<id>` hash is still understood). It is what lets another
 // computer on the same network enter the SAME document instead of
 // creating its own (localStorage is per-browser, so alone it is not enough).
 // A malformed id is ignored: HubFor would reject it anyway.
@@ -124,6 +127,8 @@ function isTextField(target: EventTarget | null): boolean {
 }
 
 export function App() {
+  const routeDocId = useRouteDocId();
+  const navigate = useAppNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
   // The renderer's WebGL canvas on GPU, BELOW the 2D one (which stays on top because
@@ -191,13 +196,11 @@ export function App() {
         // The link wins over localStorage: whoever receives an invite wants THAT
         // document, not the last one they had opened. The editor NO longer creates
         // documents on its own: the Root (home/Root.tsx) mounts it only with a
-        // `#doc=`, and documents are born from Home. Without an id (never in
+        // `/doc/<id>` route, and documents are born from Home. Without an id (never in
         // production) it is an error, not a surprise empty document.
-        const docId = docIdFromHash(location.hash) ?? localStorage.getItem(DOC_KEY);
+        const docId = routeDocId ?? docIdFromHash(location.hash) ?? localStorage.getItem(DOC_KEY);
         if (!docId) throw new Error("no document to open");
         localStorage.setItem(DOC_KEY, docId);
-        // The link in the address bar is always the one to share.
-        history.replaceState(null, "", `#doc=${docId}`);
         sync = new SyncClient(docId, CLIENT_ID);
         // Unmounted while we were creating the client: stop it before even
         // opening the document (start() on a stopped client is a no-op).
@@ -634,7 +637,7 @@ export function App() {
           {/* Develop: the code view covers the canvas (which stays mounted: the tools and the
               drawing loop use it) and sits BELOW the dock (z-20). */}
           {mode === "dev" && <CodeWorkbench />}
-          <TopBar mode={mode} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { location.hash = "#new"; }} connection={connection} statusLabel={statusLabel} />
+          <TopBar mode={mode} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => navigate(HOME_TEMPLATES_PATH)} connection={connection} statusLabel={statusLabel} />
           <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} />
         </div>
         {mode === "design" && <TimelinePanel />}

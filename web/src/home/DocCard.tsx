@@ -1,9 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import { Button as RacButton, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
 import { Icon } from "../ui/ds";
-import { hashForDoc, relativeTime } from "./route";
+import { pathForDoc, relativeTime } from "./route";
+import { useAppNavigate } from "./nav";
 
-// A DOCUMENT'S CARD in the Home. The whole card is a REAL link (`#doc=`):
+// A DOCUMENT'S CARD in the Home. The whole card is a REAL link (`/doc/<id>`):
 // it opens with a click, with Enter, in a new tab with the middle button, and
 // can be copied from the browser's context menu. Rename and Delete live in a
 // separate menu, on top of the link (never inside: an <a> cannot contain buttons).
@@ -56,6 +57,7 @@ export function DocCard({
   onRename: (id: string, name: string) => Promise<void>;
   onDelete: (doc: DocSummary) => void;
 }) {
+  const navigate = useAppNavigate();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(doc.name);
   const [error, setError] = useState<string | null>(null);
@@ -81,11 +83,18 @@ export function DocCard({
   return (
     <article className="group relative overflow-hidden rounded-xl border border-line bg-surface transition-shadow hover:shadow-[var(--shadow-bar)]">
       <a
-        href={hashForDoc(doc.id)}
+        href={pathForDoc(doc.id)}
         aria-label={`Open ${doc.name}`}
         className="block outline-none focus-visible:shadow-[var(--ring)]"
         // While renaming the link must not steal clicks or Enter.
-        onClick={(e) => { if (renaming) e.preventDefault(); }}
+        onClick={(e) => {
+          if (renaming) { e.preventDefault(); return; }
+          // A plain click navigates inside the app (no page reload); modified
+          // clicks (new tab, new window, download) keep the browser's behaviour.
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          e.preventDefault();
+          navigate(pathForDoc(doc.id));
+        }}
       >
         <div className="h-[116px] border-b border-line bg-surface-2"><DocThumb screens={doc.screens} flows={doc.flows} /></div>
         <div className="px-3 pb-3 pt-2.5">

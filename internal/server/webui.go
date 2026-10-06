@@ -3,6 +3,9 @@ package server
 import (
 	"io/fs"
 	"net/http"
+	"os"
+	"path"
+	"strings"
 )
 
 // noWebUIMessage is what a binary built without a frontend answers on "/". It
@@ -21,6 +24,31 @@ or point the running server at a frontend directory:
     opendesigner serve -web web/dist
 `
 
+// spaHandler serves files from fsys and falls back to index.html for the
+// client-side routes (`/doc/<id>`, see web/src/home/router.tsx), so a shared
+// link or a reload on one of them opens the app instead of a 404.
+//
+// The fallback is for page navigations only: a path whose last segment has an
+// extension (a missing /assets/app.js, /favicon.ico) is a real 404, never HTML
+// that a script tag would choke on.
+func spaHandler(fsys fs.FS) http.Handler {
+	files := http.FileServerFS(fsys)
+	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		if r.Method == http.MethodGet || r.Method == http.MethodHead {
+			name := strings.TrimPrefix(path.Clean(r.URL.Path), "/")
+			if name != "" && path.Ext(name) == "" {
+				if _, err := fs.Stat(fsys, name); err != nil {
+					r2 := r.Clone(r.Context())
+					r2.URL.Path = "/"
+					files.ServeHTTP(w, r2)
+					return
+				}
+			}
+		}
+		files.ServeHTTP(w, r)
+	})
+}
+
 // MountWeb serves the editor at "/".
 //
 // dir wins when non-empty: -web is the development escape hatch, and a
@@ -35,7 +63,7 @@ or point the running server at a frontend directory:
 // beside it is longer and keeps precedence.
 func MountWeb(mux *http.ServeMux, dir string, embedded fs.FS) {
 	if dir != "" {
-		mux.Handle("/", http.FileServer(http.Dir(dir)))
+		mux.Handle("/", spaHandler(os.DirFS(dir)))
 		return
 	}
 	// web/dist is gitignored, so a clean checkout embeds only the placeholder
@@ -47,5 +75,5 @@ func MountWeb(mux *http.ServeMux, dir string, embedded fs.FS) {
 		}))
 		return
 	}
-	mux.Handle("/", http.FileServerFS(embedded))
+	mux.Handle("/", spaHandler(embedded))
 }

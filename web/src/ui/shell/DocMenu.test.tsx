@@ -4,6 +4,8 @@ import { cleanup, render, screen, waitFor } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 
 const renameDocument = vi.fn(async (_r: { docId: string; name: string }) => ({}));
+const navigate = vi.fn();
+vi.mock("../../home/nav", () => ({ useAppNavigate: () => navigate }));
 vi.mock("../../rpc/client", () => ({ docClient: { renameDocument: (r: { docId: string; name: string }) => renameDocument(r) } }));
 
 import { DocMenu, renameOpenDocument } from "./DocMenu";
@@ -15,7 +17,7 @@ describe("DocMenu", () => {
     renameDocument.mockClear();
     useScene.getState().setScene(emptyScene("doc-1", "Project"));
   });
-  afterEach(() => { cleanup(); location.hash = ""; });
+  afterEach(() => { cleanup(); navigate.mockClear(); });
 
   it("has Home, New document and Rename document", async () => {
     render(<DocMenu onNewDocument={() => {}} />);
@@ -25,12 +27,11 @@ describe("DocMenu", () => {
     }
   });
 
-  it("'Home' goes back to Home (clears the hash)", async () => {
-    location.hash = "#doc=0f8b1c3e-5a52-4c7d-9a1e-2b3c4d5e6f70";
+  it("'Home' goes back to Home (navigates to /)", async () => {
     render(<DocMenu onNewDocument={() => {}} />);
     await userEvent.click(screen.getByRole("button", { name: "Document menu" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: "Home" }));
-    expect(location.hash === "" || location.hash === "#").toBe(true);
+    expect(navigate).toHaveBeenCalledWith("/");
   });
 
   it("'New document' calls the editor's handler", async () => {

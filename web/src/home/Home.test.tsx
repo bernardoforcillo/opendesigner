@@ -60,10 +60,10 @@ describe("Home", () => {
     expect(within(cards[1]).getByText("2 screens · 1 flow")).toBeInTheDocument();
   });
 
-  it("every card is a real link to #doc=<id> (it opens, even in a new tab)", async () => {
+  it("every card is a real link to /doc/<id> (it opens, even in a new tab)", async () => {
     render(<Home client={makeClient(DOCS)} navigate={() => {}} now={() => NOW} />);
     const link = await screen.findByRole("link", { name: "Open Old" });
-    expect(link).toHaveAttribute("href", `#doc=${ID_A}`);
+    expect(link).toHaveAttribute("href", `/doc/${ID_A}`);
   });
 
   it("'New document' creates an empty document and opens it", async () => {
@@ -72,7 +72,7 @@ describe("Home", () => {
     render(<Home client={client} navigate={navigate} now={() => NOW} />);
     await screen.findByText("No documents yet");
     await userEvent.click(screen.getByRole("button", { name: "New document" }));
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith("#doc=new-doc"));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/doc/new-doc"));
     expect(client.createDocument).toHaveBeenCalledTimes(1);
     expect(client.submitOp).not.toHaveBeenCalled();
   });
@@ -82,7 +82,7 @@ describe("Home", () => {
     const navigate = vi.fn();
     render(<Home client={client} navigate={navigate} now={() => NOW} />);
     await userEvent.click(await screen.findByRole("button", { name: `Create from template: ${tpl("checkout").name}` }));
-    await waitFor(() => expect(navigate).toHaveBeenCalledWith("#doc=new-doc"));
+    await waitFor(() => expect(navigate).toHaveBeenCalledWith("/doc/new-doc"));
     expect(client.createDocument).toHaveBeenCalledWith({ name: tpl("checkout").docName });
     expect((client.submitOp as ReturnType<typeof vi.fn>).mock.calls.length).toBeGreaterThan(50);
   });
@@ -160,8 +160,8 @@ describe("Home", () => {
     const field = await screen.findByLabelText("Link to a shared document");
     const join = screen.getByRole("button", { name: "Join" });
     expect(join).toBeDisabled();
-    await userEvent.type(field, `http://192.168.1.7:8080/#doc=${ID_A.toUpperCase()}{Enter}`);
-    expect(navigate).toHaveBeenCalledWith(`#doc=${ID_A}`);
+    await userEvent.type(field, `http://192.168.1.7:8080/doc/${ID_A.toUpperCase()}{Enter}`);
+    expect(navigate).toHaveBeenCalledWith(`/doc/${ID_A}`);
   });
 
   it("an invalid link shows the error and does not navigate", async () => {

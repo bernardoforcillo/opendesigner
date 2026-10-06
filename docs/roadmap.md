@@ -26,7 +26,7 @@ Legend: [x] done · [ ] to do
 - [ ] SVG import (then .fig)
 
 ## 2. Collaboration
-- [x] Multiplayer on the same network: nickname, avatar, others' cursors and selections, `#doc=` link to join the same document (no accounts, on purpose)
+- [x] Multiplayer on the same network: nickname, avatar, others' cursors and selections, `/doc/<id>` link to join the same document (no accounts, on purpose)
 - [x] MCP agents show up as people in presence (name with `-nickname`, default "Claude"; they highlight the node they are editing)
 - [ ] Conflicts on the same property: today the last op to reach the server wins
 - [ ] Comments on the canvas
