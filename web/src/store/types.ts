@@ -251,6 +251,8 @@ export interface NodeLite {
   layoutSizingY?: "fill";
   // Blend mode against what is behind; absent = normal.
   blendMode?: BlendModeLite;
+  // A mask is not drawn: its outline clips the siblings above it. Absent = not a mask.
+  isMask?: true;
   // TRANSIENT animation FIELDS: written ONLY by animation/pose.ts when it
   // derives the scene to show while a clip runs or is scrubbed. They are not
   // document: toPbNode does not read them, no op carries them, and a snapshot never
@@ -690,6 +692,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(n.layoutSizingX === LayoutSizing.FILL ? { layoutSizingX: "fill" as const } : {}),
     ...(n.layoutSizingY === LayoutSizing.FILL ? { layoutSizingY: "fill" as const } : {}),
     ...(blendToLite(n.blendMode) ? { blendMode: blendToLite(n.blendMode) } : {}),
+    ...(n.isMask ? { isMask: true as const } : {}),
   };
 }
 
@@ -715,6 +718,7 @@ export function toPbNode(n: NodeLite): PbNode {
     layoutSizingX: n.layoutSizingX === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
     layoutSizingY: n.layoutSizingY === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
     blendMode: toPbBlend(n.blendMode),
+    isMask: n.isMask === true,
     shape: n.kind === "unknown"
       // The unknown shape cannot be BUILT (there is no oneof branch to
       // name), so it is put back where it was right after the create. Leaving it

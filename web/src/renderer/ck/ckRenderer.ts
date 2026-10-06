@@ -154,8 +154,17 @@ export class CanvasKitRenderer {
     cull: boolean,
   ): void {
     const f = this.frame as Frame;
+    // Masks clip the siblings after them: one save() each, closed at the end.
+    let masks = 0;
     for (const n of siblings) {
       if (!n.visible || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
+      if (n.isMask && (n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector")) {
+        seen.add(n.id);
+        sk.save();
+        masks++;
+        this.clipByMask(sk, n);
+        continue;
+      }
       if (cull && f.extent && f.view) {
         const e = f.extent.get(n.id);
         if (!e || !boundsIntersect(e, f.view)) continue;
@@ -177,6 +186,31 @@ export class CanvasKitRenderer {
       this.drawSiblings(sk, kids, children, seen, overrides, visited, cull);
       sk.restore();
     }
+    while (masks-- > 0) sk.restore();
+  }
+
+  // Clips by the mask node's outline in the parent's space (see the 2D renderer).
+  private clipByMask(sk: Canvas, n: NodeLite): void {
+    const CK = this.CK;
+    const f = this.frame as Frame;
+    const c = nodeCenter(n);
+    const rotated = n.rotation % 360 !== 0;
+    if (rotated) {
+      // The clip is made under the rotation, then the matrix is put back by hand:
+      // Skia keeps the clip, not the matrix, across a counter-rotation.
+      sk.rotate(n.rotation * DEG, c.x, c.y);
+    }
+    if (n.kind === "vector") {
+      const b = new CK.PathBuilder();
+      for (const sp of n.vector?.subpaths ?? []) if (sp.anchors.length > 0 && subpathFills(sp)) trace(b, n, sp);
+      b.setFillType(vectorStyleOf(n).fillRule === "nonzero" ? CK.FillType.Winding : CK.FillType.EvenOdd);
+      const path = b.detachAndDelete();
+      f.garbage.push(path);
+      sk.clipPath(path, CK.ClipOp.Intersect, true);
+    } else {
+      this.clipShape(sk, this.shapeOf(n), CK.ClipOp.Intersect);
+    }
+    if (rotated) sk.rotate(-n.rotation * DEG, c.x, c.y);
   }
 
   private drawInstance(sk: Canvas, children: Map<string, NodeLite[]>, n: NodeLite, visited: ReadonlySet<string>): void {
@@ -438,9 +472,18 @@ export class CanvasKitRenderer {
       if (!(s.weight > 0)) continue;
       const p = this.paintFor(this.strokeP, s.color, n, n.opacity);
       p.setStyle(CK.PaintStyle.Stroke);
-      p.setStrokeCap(CK.StrokeCap.Butt);
-      p.setStrokeJoin(CK.StrokeJoin.Miter);
+      const vs = n.meta ? vectorStyleOf(n) : null;
+      p.setStrokeCap(vs?.cap === "round" ? CK.StrokeCap.Round : vs?.cap === "square" ? CK.StrokeCap.Square : CK.StrokeCap.Butt);
+      p.setStrokeJoin(vs?.join === "round" ? CK.StrokeJoin.Round : vs?.join === "bevel" ? CK.StrokeJoin.Bevel : CK.StrokeJoin.Miter);
+      if (vs) p.setStrokeMiter(vs.miter);
+      if (vs && vs.dash.length > 0) {
+        const intervals = vs.dash.length % 2 === 0 ? vs.dash : [...vs.dash, ...vs.dash];
+        const fx = CK.PathEffect.MakeDash(intervals, vs.dashOffset);
+        (this.frame as Frame).garbage.push(fx);
+        p.setPathEffect(fx);
+      }
       this.strokeOne(sk, n, shape, s, p);
+      p.setPathEffect(null);
     }
   }
 

@@ -144,6 +144,11 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	if !n.GetVisible() {
 		return nil
 	}
+	// A mask is not drawn. (What it clips is not exported: the code shows the
+	// siblings unclipped -- documented in docs/vector.md.)
+	if n.GetIsMask() && isMaskShape(n) {
+		return nil
+	}
 	var el *Element
 	switch n.GetShape().(type) {
 	case *opendesignerv1.Node_Group:
@@ -1076,4 +1081,13 @@ func (b *builder) fontFaceCSS() string {
 			f.GetFamily(), b.urlPrefix, name, format, f.GetWeight(), f.GetStyle())
 	}
 	return sb.String()
+}
+
+// isMaskShape: the shapes with an outline, the only ones that can mask.
+func isMaskShape(n *opendesignerv1.Node) bool {
+	switch n.GetShape().(type) {
+	case *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Frame, *opendesignerv1.Node_Vector:
+		return true
+	}
+	return false
 }

@@ -192,4 +192,36 @@ describe("frames without a fill", () => {
     expect(r.drawn).toEqual(["blur(10px)"]);
     expect(r.depth()).toBe(0);
   });
+
+  it("a mask is not drawn: it clips what comes after it, and the clip ends with its siblings", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    const clips: number[] = [];
+    (r.raw as Record<string, unknown>).clip = () => clips.push((r.log.length));
+    const s = emptyScene("d", "t");
+    s.nodes = s.nodes.set("m", rectNode(undefined, { id: "m", orderKey: "a0", isMask: true }));
+    s.nodes = s.nodes.set("a", rectNode(undefined, { id: "a", orderKey: "a1" }));
+    drawScene(r.ctx, s, cam(1));
+    // One fill (the node above the mask, not the mask) and the clip came BEFORE it.
+    expect(r.log.filter((l) => l.at === "fill")).toHaveLength(1);
+    expect(clips).toEqual([0]);
+    expect(r.depth()).toBe(0);
+  });
+
+  it("the stroke style in the meta (cap, join, dash) is set while stroking and put back after", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    const seen: { cap: unknown; join: unknown; dash: number[] }[] = [];
+    let dash: number[] = [];
+    (r.raw as Record<string, unknown>).setLineDash = (d: number[]) => { dash = d; };
+    (r.raw as Record<string, unknown>).stroke = () => seen.push({ cap: r.raw.lineCap, join: r.raw.lineJoin, dash });
+    const n = rectNode(undefined, {
+      strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 2, align: "center" }],
+      meta: { "stroke.cap": "round", "stroke.join": "bevel", "stroke.dash": "4,2" },
+    });
+    drawScene(r.ctx, sceneOf(n), cam(1));
+    expect(seen).toEqual([{ cap: "round", join: "bevel", dash: [4, 2] }]);
+    expect(r.raw.lineCap).toBe("butt");
+    expect(dash).toEqual([]);
+  });
 });

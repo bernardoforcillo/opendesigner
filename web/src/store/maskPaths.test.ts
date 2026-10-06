@@ -301,6 +301,7 @@ const PROBE: Probe = {
   constraint_y: { patch: { constraintY: Constraint.SCALE }, expected: "scale" },
   layout_sizing_x: { patch: { layoutSizingX: LayoutSizing.FILL }, expected: "fill" },
   layout_sizing_y: { patch: { layoutSizingY: LayoutSizing.FILL }, expected: "fill" },
+  is_mask: { patch: { isMask: true }, expected: true },
   blend_mode: { patch: { blendMode: BlendMode.MULTIPLY }, expected: "multiply" },
 };
 

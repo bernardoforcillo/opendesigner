@@ -24,7 +24,7 @@ Legend: [x] done · [ ] to do
 - [ ] Variables: text and spacing, aliases, CSS custom properties per mode in the exported code
 - [x] Typography: uploaded fonts (TTF/OTF/WOFF/WOFF2 as content-addressed assets, drawn by the 2D and GPU renderers and exported as @font-face), shared text styles, italic; multi-line text and wrapping were already there; see docs/typography.md
 - [ ] Typography: letter spacing, decoration, case, per-range styling, kerning/shaping on the GPU
-- [ ] Boolean operations, outline stroke, masks
+- [x] Boolean operations (union, subtract, intersect, exclude), outline stroke, masks; see docs/vector.md
 - [ ] Prototyping and presentation mode
 - [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
 - [ ] Diagrams: connectors that follow the shapes, `subgraph`, ER, notes in class and state diagrams
@@ -35,7 +35,8 @@ Legend: [x] done · [ ] to do
 ## 1b. Vector (Illustrator parity)
 - [ ] Pen tool: node editing, handles, join, smooth
 - [ ] Pathfinder, path offset and simplification, live corners
-- [ ] Advanced strokes: variable width profiles, brushes, arrowheads, dashes
+- [x] Strokes: cap, join, miter limit and dashes on every shape (panel, canvas, GPU, SVG)
+- [ ] Advanced strokes: variable width profiles, brushes, arrowheads
 - [ ] Gradient mesh
 - [ ] SVG and PDF export; later AI/EPS
 - [ ] Color: CMYK and ICC profiles (print)

@@ -189,7 +189,7 @@ function strokeAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   const s = n.strokes.find((st) => st.weight > 0);
   if (!s) return [];
   const ref = gradientRef(n, s.color, defs);
-  const vs = n.kind === "vector" ? vectorStyleOf(n) : null;
+  const vs = n.kind === "vector" || n.meta ? vectorStyleOf(n) : null;
   return [
     attr("stroke", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
     s.color.a === 1 || ref !== null ? null : attr("stroke-opacity", s.color.a),
@@ -352,6 +352,23 @@ function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs
   return rectElement(n, defs);
 }
 
+// The shape of a mask, geometry only (it goes inside a <clipPath>); null for a node that cannot mask.
+function maskGeometry(n: NodeLite): string | null {
+  if (n.kind === "ellipse") {
+    return `<ellipse${attrs([attr("cx", n.x + n.width / 2), attr("cy", n.y + n.height / 2), attr("rx", n.width / 2), attr("ry", n.height / 2)])}/>`;
+  }
+  if (n.kind === "rect" || n.kind === "frame") {
+    const r = n.kind === "rect" ? Math.min(n.cornerRadius, n.width / 2, n.height / 2) : 0;
+    return `<rect${attrs([attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height), r > 0 ? attr("rx", r) : null])}/>`;
+  }
+  if (n.kind === "vector") {
+    const closed = (n.vector?.subpaths ?? []).filter((sp) => sp.closed && sp.anchors.length >= 2);
+    if (closed.length === 0) return null;
+    return `<path${attrs([attr("d", subPathsToD(closed, n.x, n.y, DECIMALS)), attr("clip-rule", vectorStyleOf(n).fillRule ?? "evenodd")])}/>`;
+  }
+  return null;
+}
+
 /**
  * The SVG markup of `nodes` inside the region `bounds`.
  *
@@ -374,8 +391,24 @@ export function nodesToSvg(
   href: ResolveImageHref = () => null,
 ): string {
   const defs: string[] = [];
+  // MASKS: a mask node is not drawn; its outline becomes a <clipPath> and the nodes
+  // above it under the same parent are wrapped in a <g clip-path>.
+  const clipOf = new Map<string, string>();
   const body = nodes
-    .map((n) => element(n, measure, href, defs))
+    .map((n) => {
+      if (n.isMask) {
+        const geometry = maskGeometry(n);
+        if (geometry !== null) {
+          const id = `m${defs.length}`;
+          defs.push(`<clipPath${attrs([attr("id", id)])}>${geometry}</clipPath>`);
+          clipOf.set(n.parentId, id);
+          return "";
+        }
+      }
+      const out = element(n, measure, href, defs);
+      const clip = clipOf.get(n.parentId);
+      return out !== "" && clip ? `<g clip-path="url(#${clip})">${out}</g>` : out;
+    })
     .filter((s) => s !== "")
     .map((s) => `  ${s}`)
     .join("\n");

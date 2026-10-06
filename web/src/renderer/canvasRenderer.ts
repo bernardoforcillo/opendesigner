@@ -458,9 +458,19 @@ function drawSiblings(
   visited: ReadonlySet<string>,
   cull: Cull | null,
 ): void {
+  // A MASK clips the siblings drawn after it: each one opens a save() that is closed
+  // when the siblings are done (the clip lives in the context's state).
+  let masks = 0;
   for (const n of siblings) {
     // `hidden`: a boolean component property turned this master node off for this instance.
     if (!n.visible || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
+    if (n.isMask && isMaskShape(n)) {
+      seen.add(n.id);
+      ctx.save();
+      masks++;
+      clipByMask(ctx, n);
+      continue;
+    }
     // Out of view, or too small to be seen: skip the WHOLE subtree.
     // `cull` is null inside an instance -- the master's nodes have their extent
     // at their place of origin, not where the instance draws them.
@@ -514,6 +524,30 @@ function drawSiblings(
     drawSiblings(ctx, state, children, kids, cam, px, images, seen, overrides, visited, anim?.scaled.has(n.id) ? null : cull);
     ctx.restore();
   }
+  while (masks-- > 0) ctx.restore();
+}
+
+// Only shapes with an outline can mask (the same set as the boolean operations).
+export function isMaskShape(n: NodeLite): boolean {
+  return n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector";
+}
+
+// Clips the context by the mask node's outline, in the PARENT's space (where the
+// node's own x/y live), turned by the node's own rotation around its box center.
+// The transform is put back afterwards: the clip stays, the matrix does not.
+function clipByMask(ctx: CanvasRenderingContext2D, n: NodeLite): void {
+  const path = n.kind === "vector" ? vectorPaths(n).fill : nodePath(n);
+  if (!path) return;
+  const rotated = n.rotation % 360 !== 0;
+  const m = rotated && typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
+  if (rotated) {
+    const c = nodeCenter(n);
+    ctx.translate(c.x, c.y);
+    ctx.rotate(n.rotation * DEG_TO_RAD);
+    ctx.translate(-c.x, -c.y);
+  }
+  ctx.clip(path, n.kind === "vector" ? (vectorStyleOf(n).fillRule ?? VECTOR_FILL_RULE) : "nonzero");
+  if (m) ctx.setTransform(m);
 }
 
 // The VIRTUAL subtree of an instance. As for a normal container the
@@ -694,6 +728,18 @@ function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | 
   // perimeter. At 1 it is the whole stroke, without dashing (no observable
   // difference and no cost). Text has no perimeter: it ignores `draw`.
   const dashed = n.animDraw !== undefined && n.animDraw < 1 && path !== null;
+  // The stroke STYLE (cap, join, miter limit, dash) from the node's meta; a draw-on animation
+  // owns the dash while it runs.
+  const vs = n.meta ? vectorStyleOf(n) : null;
+  if (vs) {
+    ctx.lineCap = vs.cap;
+    ctx.lineJoin = vs.join;
+    ctx.miterLimit = vs.miter;
+    if (!dashed) {
+      ctx.setLineDash(vs.dash);
+      ctx.lineDashOffset = vs.dashOffset;
+    }
+  }
   if (dashed) ctx.setLineDash(drawDash(perimeterOf(n), n.animDraw as number));
   for (const s of n.strokes) {
     // A non-positive weight is NOT a very thin stroke: it is not a stroke. Canvas
@@ -709,7 +755,13 @@ function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | 
     }
     strokeShape(ctx, n, path, s);
   }
-  if (dashed) ctx.setLineDash([]);
+  if (dashed || vs) ctx.setLineDash([]);
+  if (vs) {
+    ctx.lineCap = "butt";
+    ctx.lineJoin = "miter";
+    ctx.miterLimit = 10;
+    ctx.lineDashOffset = 0;
+  }
 }
 
 function strokeShape(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s: StrokeLite): void {

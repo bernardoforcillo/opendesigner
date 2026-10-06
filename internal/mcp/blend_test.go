@@ -19,8 +19,8 @@ func TestBlendModeAndEffectsTools(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	mode := "multiply"
-	_, err = s.SetProperties(ctx, odmcp.SetPropertiesInput{Id: r.NodeId, BlendMode: &mode, Effects: []odmcp.EffectSpec{
+	mode, mask := "multiply", true
+	_, err = s.SetProperties(ctx, odmcp.SetPropertiesInput{Id: r.NodeId, BlendMode: &mode, IsMask: &mask, Effects: []odmcp.EffectSpec{
 		{Kind: "dropShadow", OffsetY: 2, Blur: 4}, {Kind: "innerShadow", Blur: 2}, {Kind: "backgroundBlur", Radius: 8},
 	}})
 	if err != nil {
@@ -31,6 +31,9 @@ func TestBlendModeAndEffectsTools(t *testing.T) {
 	for _, n := range doc.Nodes {
 		if n.Id == r.NodeId {
 			found = true
+			if !n.IsMask {
+				t.Error("isMask not reported")
+			}
 			if n.BlendMode != "multiply" {
 				t.Errorf("blendMode = %q", n.BlendMode)
 			}

@@ -374,7 +374,7 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 	paths := s.GetMask().GetPaths()
 	for _, path := range paths {
 		switch path {
-		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta":
+		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta", "is_mask":
 			// supported
 		case "constraint_x", "constraint_y":
 			// The enum is closed: an unknown number would never be read as a constraint.
@@ -486,6 +486,8 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.Name = p.GetName()
 		case "visible":
 			n.Visible = p.GetVisible()
+		case "is_mask":
+			n.IsMask = p.GetIsMask()
 		case "meta":
 			// Replaces the whole map (like lists). An empty map clears it:
 			// nil and {} are the same state after the proto3 round-trip.

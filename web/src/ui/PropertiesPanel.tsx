@@ -28,7 +28,9 @@ import { SegRadio, type SegOption } from "./ds/props-controls";
 import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
 import { GradientControls } from "./GradientControls";
+import { BooleanControls } from "./BooleanControls";
 import { EffectsControls } from "./EffectsControls";
+import { StrokeStyleControls } from "./StrokeStyleControls";
 import { AutoLayoutControls, WrapInAutoLayoutButton } from "./AutoLayoutControls";
 import type { RgbLite } from "./fields/ColorField";
 import { toPbFills, toPbStrokes } from "../store/types";
@@ -789,6 +791,9 @@ export function PropertiesPanel() {
       </div>
       )}
 
+      {/* BOOLEAN operations on two or more shapes: they replace the selection by one vector. */}
+      <BooleanControls />
+
       {/* LAYOUT: position, size, rotation and (rectangles) radius, in a
           two-column grid of fields with the prefix INSIDE (X, Y, W, H, °, R). */}
       <Section title="Layout">
@@ -1010,6 +1015,7 @@ export function PropertiesPanel() {
             options={STROKE_ALIGNMENTS}
             onChange={(v) => runGesture((ids) => strokeOps(ids, { align: v as StrokeAlignLite }))}
           />
+          {stroke && !strokesMixed && stroke.weight > 0 && <StrokeStyleControls run={runGesture} />}
         </div>
       </Section>
 

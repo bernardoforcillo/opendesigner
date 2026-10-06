@@ -327,6 +327,7 @@ type SetPropertiesInput struct {
 	CornerRadius *float64     `json:"cornerRadius,omitempty" jsonschema:"rectangles only"`
 	Fills        []RGBA       `json:"fills,omitempty" jsonschema:"replaces the whole fill list; [] clears it"`
 	Effects      []EffectSpec `json:"effects,omitempty" jsonschema:"replaces the whole effect list; [] clears it"`
+	IsMask       *bool        `json:"isMask,omitempty" jsonschema:"rect, ellipse, frame and vector only: the node is not drawn and its outline clips the siblings above it"`
 	BlendMode    *string      `json:"blendMode,omitempty" jsonschema:"normal | multiply | screen | overlay | darken | lighten | color-dodge | color-burn | hard-light | soft-light | difference | exclusion | hue | saturation | color | luminosity"`
 }
 
@@ -365,6 +366,10 @@ func (s *Session) SetProperties(ctx context.Context, in SetPropertiesInput) (Seq
 	if in.Visible != nil {
 		patch.Visible = *in.Visible
 		paths = append(paths, "visible")
+	}
+	if in.IsMask != nil {
+		patch.IsMask = *in.IsMask
+		paths = append(paths, "is_mask")
 	}
 	if in.BlendMode != nil {
 		b, ok := blendModes[*in.BlendMode]
@@ -653,6 +658,7 @@ type NodeView struct {
 	TextStyleId string `json:"textStyleId,omitempty" jsonschema:"shared text style applied to a text node; see apply_text_style"`
 	// Constraints / layout sizing (see set_constraints, set_layout_sizing); omitted when default.
 	BlendMode     string `json:"blendMode,omitempty" jsonschema:"CSS blend mode name; absent = normal"`
+	IsMask        bool   `json:"isMask,omitempty" jsonschema:"true when the node is a mask for the siblings above it"`
 	ConstraintX   string `json:"constraintX,omitempty" jsonschema:"how it follows its parent frame's width: max | stretch | center | scale (default min); see set_constraints"`
 	ConstraintY   string `json:"constraintY,omitempty"`
 	LayoutSizingX string `json:"layoutSizingX,omitempty" jsonschema:"fill when an auto layout parent fills its width; see set_layout_sizing"`
@@ -706,6 +712,7 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 	}
 	v.TextStyleId = n.GetTextStyleId()
 	v.BlendMode = blendModeName(n.GetBlendMode())
+	v.IsMask = n.GetIsMask()
 	v.ConstraintX, v.ConstraintY = constraintNames[n.GetConstraintX()], constraintNames[n.GetConstraintY()]
 	if n.GetLayoutSizingX() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL {
 		v.LayoutSizingX = "fill"
@@ -845,7 +852,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_frame", "Create a frame: a container with its own box. Optionally clipsContent, and autoLayout to have the server arrange its children in a row or column (the children's x/y are then computed for you). parentId defaults to the first page.", s.CreateFrame)
 	addTool(srv, "set_auto_layout", "Turn auto layout on, change it, or (autoLayout omitted) off for a frame. After every change the server repositions the frame's children; reposition by editing the layout, not the children's x/y, which it overrides.", s.SetAutoLayout)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
-	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}]. blendMode: normal|multiply|screen|overlay|... (CSS names). A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
+	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}]. blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
 	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style.", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)

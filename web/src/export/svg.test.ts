@@ -387,4 +387,16 @@ describe("nodesToSvg — frame", () => {
     const svg = nodesToSvg([node({ id: "r", fills: [] })], FULL, measure);
     expect(svg).toContain('fill="rgb(204,204,204)"');
   });
+
+describe("nodesToSvg — masks", () => {
+  it("a mask becomes a <clipPath> and the nodes above it are wrapped; the mask is not drawn", () => {
+    const svg = nodesToSvg(
+      [node({ id: "m", isMask: true, kind: "ellipse", x: 0, y: 0, width: 20, height: 20 }), node({ id: "a", x: 5, y: 5 })],
+      FULL, measure,
+    );
+    expect(svg).toContain('<clipPath id="m0"><ellipse cx="10" cy="10" rx="10" ry="10"/></clipPath>');
+    expect(svg).toContain('<g clip-path="url(#m0)"><rect');
+    expect(svg.match(/<ellipse/g)).toHaveLength(1);
+  });
+});
 });

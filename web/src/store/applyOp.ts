@@ -146,6 +146,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "opacity": next.opacity = p.opacity; break;
           case "name": next.name = p.name; break;
           case "visible": next.visible = p.visible; break;
+          case "is_mask": if (p.isMask) next.isMask = true; else delete next.isMask; break;
           case "fills": next.fills = toNodeLite(p).fills; break;
           // REPLACEMENT of the whole list, like "fills" and like `n.Strokes =
           // p.GetStrokes()` in core.applySetProps (Go): never a merge

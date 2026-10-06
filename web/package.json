@@ -20,6 +20,7 @@
     "@tanstack/react-router": "^1.170.41",
     "canvaskit-wasm": "^0.42.0",
     "nuqs": "^2.10.1",
+    "polygon-clipping": "^0.15.7",
     "react": "^18.3.1",
     "react-aria-components": "^1.21.1",
     "react-dom": "^18.3.1",
