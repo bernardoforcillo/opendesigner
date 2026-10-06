@@ -1,8 +1,10 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { useScene } from "../store/store";
 import type { CollectionLite, FillLite, VariableLite, VariableTypeLite } from "../store/types";
-import { makeDeleteCollectionOp, makeDeleteVariableOp, makeSetCollectionOp } from "../tools/ops";
+import { makeDeleteCollectionOp, makeDeleteVariableOp, makeSetCollectionOp, makeSetVariableOp } from "../tools/ops";
+import { downloadBlob } from "../export/exportScene";
+import { fromDtcg, toCssVariables, toDtcg } from "../tokens/tokens";
 import { Button, cls, EmptyState } from "./ds";
 import { ColorField } from "./fields/ColorField";
 import { NumberField } from "./fields/NumberField";
@@ -26,6 +28,8 @@ function run(ops: Ops) {
 export function VariablesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpenChange: (open: boolean) => void }) {
   const scene = useScene((s) => s.scene);
   const [picked, setPicked] = useState<string | null>(null);
+  const [notice, setNotice] = useState<string | null>(null);
+  const fileInput = useRef<HTMLInputElement>(null);
   // Nothing is read while the dialog is closed: the document menu mounts it
   // permanently, and it must cost (and risk) nothing until it is opened.
   const collections = isOpen && scene ? Object.values(scene.collections ?? {}).sort((a, b) => a.name.localeCompare(b.name)) : [];
@@ -37,6 +41,27 @@ export function VariablesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onO
     const c = newCollection(scene);
     run([makeSetCollectionOp(c)]);
     setPicked(c.id);
+  };
+
+  // Tokens in and out (tokens/tokens.ts): a DTCG JSON file and CSS custom properties.
+  const exportAs = (kind: "json" | "css") => {
+    if (!scene) return;
+    const text = kind === "json" ? toDtcg(scene) : toCssVariables(scene);
+    const base = scene.name.trim() || "tokens";
+    downloadBlob(new Blob([text], { type: kind === "json" ? "application/json" : "text/css" }), `${base}.tokens.${kind}`);
+  };
+  const importFile = async (file: File | undefined) => {
+    const cur = useScene.getState().scene;
+    if (!file || !cur) return;
+    try {
+      const t = fromDtcg(await file.text(), cur);
+      if (t.collections.length === 0) { setNotice(t.skipped.length ? `nothing to import (${t.skipped.length} unreadable)` : "no tokens found in that file"); return; }
+      run([...t.collections.map(makeSetCollectionOp), ...t.variables.map(makeSetVariableOp)]);
+      setPicked(t.collections[0].id);
+      setNotice(`imported ${t.variables.length} variable${t.variables.length === 1 ? "" : "s"} in ${t.collections.length} collection${t.collections.length === 1 ? "" : "s"}` + (t.skipped.length ? `; skipped ${t.skipped.length}` : ""));
+    } catch (e) {
+      setNotice(e instanceof Error ? `could not import: ${e.message}` : "could not import that file");
+    }
   };
 
   return (
@@ -66,8 +91,14 @@ export function VariablesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onO
             <CollectionEditor col={col} vars={vars} onDeleted={() => setPicked(null)} />
           )}
 
-          <div className="flex justify-end">
-            <Button variant="primary" onPress={() => onOpenChange(false)}>Done</Button>
+          {notice && <p role="status" className="text-fg-subtle">{notice}</p>}
+          <div className="flex items-center gap-2 border-t border-line pt-3">
+            <input ref={fileInput} type="file" accept=".json,application/json" aria-label="Tokens file" className="hidden"
+              onChange={(e) => { void importFile(e.target.files?.[0]); e.target.value = ""; }} />
+            <Button onPress={() => fileInput.current?.click()}>Import tokens…</Button>
+            <Button isDisabled={collections.length === 0} onPress={() => exportAs("json")}>Export JSON</Button>
+            <Button isDisabled={collections.length === 0} onPress={() => exportAs("css")}>Export CSS</Button>
+            <Button variant="primary" className="ml-auto" onPress={() => onOpenChange(false)}>Done</Button>
           </div>
         </Dialog>
       </Modal>

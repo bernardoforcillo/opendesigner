@@ -66,7 +66,8 @@ Legend: [x] done · [ ] to do
 ## 3. Handoff and ecosystem
 - [ ] Dev mode: measurements, CSS/Tailwind/React
 - [ ] Plugin API
-- [ ] Syncing tokens and components with the code
+- [x] Tokens in and out: W3C Design Tokens (DTCG) JSON and CSS custom properties, with modes; import of a DTCG file as collections (variables dialog); see docs/handoff.md
+- [ ] Syncing components with the code
 
 ## 4. Performance
 - [x] Invalidation-driven rendering, incremental scene index, discarding what is not visible, levels of detail, image reuse during pan/zoom; test bench on 20,000 nodes (see docs/performance.md)
@@ -77,7 +78,7 @@ Legend: [x] done · [ ] to do
 
 ## 5. Differentiators
 - [ ] MCP AI agent: consistency reviews, variants, token usage
-- [ ] AI design review: accessibility (contrast, touch targets), token consistency
+- [x] Design review: text contrast (WCAG), tap targets and token consistency, as a Develop panel and the `review_design` MCP tool; see docs/handoff.md
 - [ ] Generate screens from text or screenshot using the document's own components and tokens
 - [ ] Design, code and flow tests in one pipeline (prototype -> codegen -> Playwright)
-- [ ] Git-versionable bundle format (readable diffs)
+- [x] Git-versionable bundle format: `opendesigner pack` / `unpack` (one JSON file per node, stable bytes); see docs/handoff.md

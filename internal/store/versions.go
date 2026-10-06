@@ -209,3 +209,45 @@ func copyFile(from, to string) error {
 	}
 	return out.Close()
 }
+
+// Import creates the bundle of `doc` in the workspace from a document that was built
+// elsewhere (a packed folder, a copy), with the asset files of `assets` (a directory of
+// files named by hash; it may not exist). The document keeps its id and name.
+func Import(workspace string, doc *opendesignerv1.Document, assets string) error {
+	if uuid.Validate(doc.GetId()) != nil {
+		return fmt.Errorf("the document id %q is not a UUID", doc.GetId())
+	}
+	b, err := Open(workspace, doc.GetId(), doc.GetName())
+	if err != nil {
+		return err
+	}
+	// Seq 1: a snapshot of seq 0 would read as "no snapshot".
+	if err := b.Snapshot(doc, 1); err != nil {
+		return err
+	}
+	if assets == "" {
+		return nil
+	}
+	dst, err := NewAssets(workspace, doc.GetId()).dir()
+	if err != nil {
+		return err
+	}
+	entries, err := os.ReadDir(assets)
+	if err != nil {
+		if os.IsNotExist(err) {
+			return nil
+		}
+		return err
+	}
+	if err := os.MkdirAll(dst, 0o755); err != nil {
+		return err
+	}
+	for _, e := range entries {
+		if !e.IsDir() {
+			if err := copyFile(filepath.Join(assets, e.Name()), filepath.Join(dst, e.Name())); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}

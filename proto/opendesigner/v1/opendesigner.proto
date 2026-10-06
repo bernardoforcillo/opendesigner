@@ -988,11 +988,24 @@ message DeleteVersionResponse {}
 // A new document seeded from a version (version_id empty = the document as it is now).
 message BranchRequest { string doc_id = 1; string version_id = 2; string name = 3; }
 
+// DESIGN REVIEW (internal/review): the rules that can be decided mechanically -- text contrast
+// (WCAG), tap targets and use of design tokens. Pure and deterministic.
+message ReviewIssue {
+  string rule = 1;      // contrast | touch-target | token
+  string severity = 2;  // error | warn
+  string node_id = 3;
+  string node_name = 4;
+  string message = 5;   // human-readable text (English)
+}
+message ReviewDesignRequest { string doc_id = 1; }
+message ReviewDesignResponse { repeated ReviewIssue issues = 1; }
+
 message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string nickname = 3; }
 message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
 message UpdatePresenceResponse {}
 
 service DocumentService {
+  rpc ReviewDesign(ReviewDesignRequest) returns (ReviewDesignResponse);
   rpc CreateVersion(CreateVersionRequest) returns (VersionInfo);
   rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
   rpc DeleteVersion(DeleteVersionRequest) returns (DeleteVersionResponse);

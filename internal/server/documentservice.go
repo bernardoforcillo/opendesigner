@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/bernardoforcillo/opendesigner/internal/review"
 	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"os"
 
@@ -334,4 +335,22 @@ func (s *DocumentService) BranchDocument(_ context.Context, req *connect.Request
 		return nil, versionErr(err)
 	}
 	return connect.NewResponse(d), nil
+}
+
+func (s *DocumentService) ReviewDesign(_ context.Context, req *connect.Request[opendesignerv1.ReviewDesignRequest]) (*connect.Response[opendesignerv1.ReviewDesignResponse], error) {
+	if !s.m.Exists(req.Msg.GetDocId()) {
+		return nil, connect.NewError(connect.CodeNotFound, ErrDocNotFound)
+	}
+	h, err := s.m.HubFor(req.Msg.GetDocId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	doc, _ := h.Snapshot()
+	out := &opendesignerv1.ReviewDesignResponse{}
+	for _, i := range review.Review(doc) {
+		out.Issues = append(out.Issues, &opendesignerv1.ReviewIssue{
+			Rule: i.Rule, Severity: i.Severity, NodeId: i.NodeID, NodeName: i.NodeName, Message: i.Message,
+		})
+	}
+	return connect.NewResponse(out), nil
 }

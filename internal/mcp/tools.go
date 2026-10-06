@@ -872,6 +872,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerVariableTools(srv, s)
 	registerTypographyTools(srv, s)
 	registerCommentTools(srv, s)
+	registerReviewTools(srv, s)
 	registerVariantTools(srv, s)
 	registerConstraintTools(srv, s)
 	registerCodegenTools(srv, s)
