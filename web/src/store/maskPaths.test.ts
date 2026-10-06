@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, StrokeAlign, VariableType, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
+import { OpSchema, NodeSchema, Constraint, LayoutSizing, StrokeAlign, VariableType, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, type NodeLite } from "./types";
@@ -296,6 +296,11 @@ const PROBE: Probe = {
   modes: { patch: { modes: { theme: "dark" } }, expected: { theme: "dark" } },
   // Shared text style: validated against textScene().
   text_style_id: { patch: { textStyleId: "h" }, expected: "h" },
+  // Constraints and layout sizing: plain enums on any node.
+  constraint_x: { patch: { constraintX: Constraint.MAX }, expected: "max" },
+  constraint_y: { patch: { constraintY: Constraint.SCALE }, expected: "scale" },
+  layout_sizing_x: { patch: { layoutSizingX: LayoutSizing.FILL }, expected: "fill" },
+  layout_sizing_y: { patch: { layoutSizingY: LayoutSizing.FILL }, expected: "fill" },
 };
 
 describe("every MASK_PATHS path survives the JSON wire and is applied", () => {

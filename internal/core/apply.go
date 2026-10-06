@@ -19,6 +19,8 @@ var (
 	// node that is not a frame is an op on the wrong node (same precedent as
 	// ErrNotRectNode for corner_radius).
 	ErrNotFrameNode = errors.New("core: not a frame node")
+	ErrConstraint   = errors.New("core: unknown constraint")
+	ErrLayoutSizing = errors.New("core: unknown layout sizing")
 	// ErrNotVectorNode: same precedent as ErrNotTextNode -- the `shape` oneof is
 	// the NATURE of the node, so a SetVectorPath on a rectangle is an op on the
 	// wrong node, not a missing field to fill in.
@@ -373,6 +375,23 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 		switch path {
 		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta":
 			// supported
+		case "constraint_x", "constraint_y":
+			// The enum is closed: an unknown number would never be read as a constraint.
+			c := s.GetPatch().GetConstraintX()
+			if path == "constraint_y" {
+				c = s.GetPatch().GetConstraintY()
+			}
+			if c < opendesignerv1.Constraint_CONSTRAINT_UNSPECIFIED || c > opendesignerv1.Constraint_CONSTRAINT_SCALE {
+				return fmt.Errorf("%w: %v", ErrConstraint, c)
+			}
+		case "layout_sizing_x", "layout_sizing_y":
+			sz := s.GetPatch().GetLayoutSizingX()
+			if path == "layout_sizing_y" {
+				sz = s.GetPatch().GetLayoutSizingY()
+			}
+			if sz < opendesignerv1.LayoutSizing_LAYOUT_SIZING_FIXED || sz > opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL {
+				return fmt.Errorf("%w: %v", ErrLayoutSizing, sz)
+			}
 		case "bindings":
 			// Variable bindings: every key in the grammar, every variable existing
 			// and of the property's type. Validated HERE, before any field is
@@ -442,6 +461,7 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 		}
 	}
 	p := s.GetPatch()
+	oldW, oldH := n.GetWidth(), n.GetHeight()
 	for _, path := range paths {
 		switch path {
 		case "x":
@@ -473,6 +493,14 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.Modes = p.GetModes()
 		case "text_style_id":
 			n.TextStyleId = p.GetTextStyleId()
+		case "constraint_x":
+			n.ConstraintX = p.GetConstraintX()
+		case "constraint_y":
+			n.ConstraintY = p.GetConstraintY()
+		case "layout_sizing_x":
+			n.LayoutSizingX = p.GetLayoutSizingX()
+		case "layout_sizing_y":
+			n.LayoutSizingY = p.GetLayoutSizingY()
 		case "strokes":
 			// REPLACEMENT of the whole list, exactly like `fills` above -- not an
 			// element-by-element merge. It is the REPEATED field on which the two
@@ -516,6 +544,11 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			}
 			r.CornerRadius = p.GetRect().GetCornerRadius()
 		}
+	}
+	// A resized frame moves and resizes its children by their constraints (the frames with
+	// auto layout decide for themselves, see resizeChildren).
+	if n.GetWidth() != oldW || n.GetHeight() != oldH {
+		resizeChildren(doc, n.GetId(), oldW, oldH, cow)
 	}
 	return nil
 }

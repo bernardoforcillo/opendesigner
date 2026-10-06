@@ -139,6 +139,32 @@ message AutoLayout {
   // written in width/height. Independent of the direction.
   bool hug_width = 9;
   bool hug_height = 10;
+  // WRAP (horizontal and vertical direction alike): when the children do not fit the
+  // frame's main extent they continue on a new line. Ignored when the main axis hugs
+  // (a hugging frame is as long as its content). `cross_spacing` is the gap between lines.
+  bool wrap = 11;
+  double cross_spacing = 12;   // >= 0
+}
+
+// How a node is sized by its auto layout PARENT, per axis of the node (not of the layout).
+// FILL: the node takes the free space of that axis -- on the layout's main axis the
+// space is shared equally among the children that fill, on the cross axis the node
+// spans the whole inner extent. FIXED (default): it keeps its own width/height.
+enum LayoutSizing {
+  LAYOUT_SIZING_FIXED = 0;
+  LAYOUT_SIZING_FILL = 1;
+}
+
+// CONSTRAINTS: how a node follows its parent FRAME when that frame is resized (without auto
+// layout), per axis. MIN is left/top, MAX is right/bottom, STRETCH keeps both margins,
+// CENTER keeps the distance from the center, SCALE scales position and size with the frame.
+enum Constraint {
+  CONSTRAINT_UNSPECIFIED = 0;   // same as MIN
+  CONSTRAINT_MIN = 1;
+  CONSTRAINT_MAX = 2;
+  CONSTRAINT_STRETCH = 3;
+  CONSTRAINT_CENTER = 4;
+  CONSTRAINT_SCALE = 5;
 }
 
 message FrameNode {
@@ -410,6 +436,14 @@ message Node {
   // (detaching gives it back). The "text_style_id" mask path writes it; empty
   // detaches. Only text nodes take one.
   string text_style_id = 43;
+  // Constraints (see Constraint): how this node follows its parent frame's resize, per axis.
+  // The "constraint_x" / "constraint_y" mask paths write them.
+  Constraint constraint_x = 44;
+  Constraint constraint_y = 45;
+  // Sizing by an auto layout parent (see LayoutSizing), per axis of THIS node.
+  // The "layout_sizing_x" / "layout_sizing_y" mask paths write them.
+  LayoutSizing layout_sizing_x = 46;
+  LayoutSizing layout_sizing_y = 47;
 }
 
 message Page { string id = 1; string name = 2; }

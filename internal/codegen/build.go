@@ -50,6 +50,9 @@ type bctx struct {
 	root bool
 	// flowChild: the node is an in-flow child of an auto layout frame.
 	flowChild bool
+	// fillMain / fillCross: the node FILLS that axis of its auto layout parent (LayoutSizing)
+	// and `vertical` is the parent's direction, to know which of width/height is which.
+	fillMain, fillCross, vertical bool
 	// origin: the node is placed at left:0/top:0 (root of an instance's master:
 	// descending into the instance subtracts the master's origin).
 	origin bool
@@ -73,10 +76,48 @@ func participates(n *opendesignerv1.Node) bool {
 	}
 	switch n.GetShape().(type) {
 	case nil, *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Text,
-		*opendesignerv1.Node_Image, *opendesignerv1.Node_Vector, *opendesignerv1.Node_Frame:
+		*opendesignerv1.Node_Image, *opendesignerv1.Node_Vector, *opendesignerv1.Node_Frame,
+		*opendesignerv1.Node_Instance:
 		return true
 	}
 	return false
+}
+
+// fillAxes: which axes of an auto layout parent the child fills. Like the core, fill is
+// ignored on an axis the parent hugs and everywhere in a wrapping parent.
+func fillAxes(al *opendesignerv1.AutoLayout, k *opendesignerv1.Node) (main, cross, vertical bool) {
+	vertical = al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL
+	hugMain, hugCross := al.GetHugWidth(), al.GetHugHeight()
+	fx := k.GetLayoutSizingX() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL
+	fy := k.GetLayoutSizingY() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL
+	main, cross = fx, fy
+	if vertical {
+		hugMain, hugCross = hugCross, hugMain
+		main, cross = fy, fx
+	}
+	if al.GetWrap() && !hugMain {
+		return false, false, vertical
+	}
+	return main && !hugMain, cross && !hugCross, vertical
+}
+
+// applyFill turns a filling child's fixed size into CSS that fills: `flex: 1 1 0` on the main
+// axis (the core shares the free space equally, which is what equal flex-grow does) and
+// `align-self: stretch` across. The fixed length on that axis is dropped.
+func applyFill(el *Element, c bctx) {
+	mainSize, crossSize := "width", "height"
+	if c.vertical {
+		mainSize, crossSize = "height", "width"
+	}
+	if c.fillMain {
+		el.delStyle(mainSize)
+		el.addStyle("flex", "1 1 0")
+		el.addStyle("min-"+mainSize, "0")
+	}
+	if c.fillCross {
+		el.delStyle(crossSize)
+		el.addStyle("align-self", "stretch")
+	}
 }
 
 func (b *builder) warn(format string, a ...any) {
@@ -114,6 +155,9 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	}
 	if el == nil {
 		return nil
+	}
+	if c.fillMain || c.fillCross {
+		applyFill(el, c)
 	}
 	el.NodeID = n.GetId()
 	el.NodeName = n.GetName()
@@ -171,6 +215,10 @@ func (b *builder) children(el *Element, n *opendesignerv1.Node, c bctx) {
 		cc := c
 		cc.root, cc.origin = false, false
 		cc.flowChild = al != nil && participates(k)
+		cc.fillMain, cc.fillCross, cc.vertical = false, false, false
+		if cc.flowChild {
+			cc.fillMain, cc.fillCross, cc.vertical = fillAxes(al, k)
+		}
 		if ce := b.element(k, cc); ce != nil {
 			el.Children = append(el.Children, ce)
 		}
@@ -353,7 +401,21 @@ func flexProps(el *Element, al *opendesignerv1.AutoLayout) {
 	}
 	el.addStyle("justify-content", alignCSS(al.GetMainAlign(), true))
 	el.addStyle("align-items", alignCSS(al.GetCrossAlign(), false))
-	if al.GetSpacing() > 0 {
+	// WRAP (the core ignores it when the main axis hugs): the lines are `cross_spacing` apart, and
+	// `gap` takes row-gap then column-gap, so the two spacings swap with the direction.
+	wrap := al.GetWrap() && !((al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL && al.GetHugHeight()) ||
+		(al.GetDirection() != opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL && al.GetHugWidth()))
+	if wrap {
+		el.addStyle("flex-wrap", "wrap")
+		el.addStyle("align-content", "flex-start")
+		if al.GetSpacing() > 0 || al.GetCrossSpacing() > 0 {
+			row, col := al.GetCrossSpacing(), al.GetSpacing()
+			if al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL {
+				row, col = al.GetSpacing(), al.GetCrossSpacing()
+			}
+			el.addStyle("gap", px(row)+" "+px(col))
+		}
+	} else if al.GetSpacing() > 0 {
 		el.addStyle("gap", px(al.GetSpacing()))
 	}
 	if p := paddingCSS(al); p != "" {

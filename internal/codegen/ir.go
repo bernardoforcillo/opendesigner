@@ -91,6 +91,17 @@ func (e *Element) addStyle(name, value string) {
 	e.Style = append(e.Style, Prop{name, value})
 }
 
+// delStyle removes every declaration of `name`.
+func (e *Element) delStyle(name string) {
+	kept := e.Style[:0:0]
+	for _, p := range e.Style {
+		if p.Name != name {
+			kept = append(kept, p)
+		}
+	}
+	e.Style = kept
+}
+
 func (e *Element) addAttr(name, value string) {
 	e.Attrs = append(e.Attrs, Attr{name, value})
 }

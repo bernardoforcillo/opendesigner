@@ -5,6 +5,7 @@ import (
 	"fmt"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/modelcontextprotocol/go-sdk/mcp"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -23,6 +24,8 @@ type AutoLayoutSpec struct {
 	CrossAlign    string  `json:"crossAlign,omitempty" jsonschema:"across the direction: start (default), center or end"`
 	HugWidth      bool    `json:"hugWidth,omitempty" jsonschema:"the frame's width fits its content"`
 	HugHeight     bool    `json:"hugHeight,omitempty" jsonschema:"the frame's height fits its content"`
+	Wrap          bool    `json:"wrap,omitempty" jsonschema:"children that do not fit the main axis continue on a new line (ignored when the main axis hugs)"`
+	CrossSpacing  float64 `json:"crossSpacing,omitempty" jsonschema:"gap between lines when wrapping, >= 0"`
 }
 
 var (
@@ -63,7 +66,7 @@ func (a *AutoLayoutSpec) validate() error {
 	}
 	for name, v := range map[string]float64{
 		"spacing": a.Spacing, "paddingLeft": a.PaddingLeft, "paddingTop": a.PaddingTop,
-		"paddingRight": a.PaddingRight, "paddingBottom": a.PaddingBottom,
+		"paddingRight": a.PaddingRight, "paddingBottom": a.PaddingBottom, "crossSpacing": a.CrossSpacing,
 	} {
 		if v < 0 {
 			return fmt.Errorf("autoLayout.%s must be >= 0", name)
@@ -77,7 +80,7 @@ func (a *AutoLayoutSpec) toProto() *opendesignerv1.AutoLayout {
 		Direction: directions[a.Direction], Spacing: a.Spacing,
 		PaddingLeft: a.PaddingLeft, PaddingTop: a.PaddingTop, PaddingRight: a.PaddingRight, PaddingBottom: a.PaddingBottom,
 		MainAlign: aligns[a.MainAlign], CrossAlign: aligns[a.CrossAlign],
-		HugWidth: a.HugWidth, HugHeight: a.HugHeight,
+		HugWidth: a.HugWidth, HugHeight: a.HugHeight, Wrap: a.Wrap, CrossSpacing: a.CrossSpacing,
 	}
 }
 
@@ -89,7 +92,7 @@ func autoLayoutView(a *opendesignerv1.AutoLayout) *AutoLayoutSpec {
 		Direction: directionNames[a.GetDirection()], Spacing: a.GetSpacing(),
 		PaddingLeft: a.GetPaddingLeft(), PaddingTop: a.GetPaddingTop(), PaddingRight: a.GetPaddingRight(), PaddingBottom: a.GetPaddingBottom(),
 		MainAlign: alignNames[a.GetMainAlign()], CrossAlign: alignNames[a.GetCrossAlign()],
-		HugWidth: a.GetHugWidth(), HugHeight: a.GetHugHeight(),
+		HugWidth: a.GetHugWidth(), HugHeight: a.GetHugHeight(), Wrap: a.GetWrap(), CrossSpacing: a.GetCrossSpacing(),
 	}
 }
 
@@ -151,4 +154,123 @@ func (s *Session) SetAutoLayout(ctx context.Context, in SetAutoLayoutInput) (Seq
 		return SeqOutput{}, err
 	}
 	return SeqOutput{Seq: seq}, nil
+}
+
+// ---------------------------------------------------------------------------
+// constraints and layout sizing
+// ---------------------------------------------------------------------------
+
+var constraintValues = map[string]opendesignerv1.Constraint{
+	"min": opendesignerv1.Constraint_CONSTRAINT_MIN, "max": opendesignerv1.Constraint_CONSTRAINT_MAX,
+	"stretch": opendesignerv1.Constraint_CONSTRAINT_STRETCH, "center": opendesignerv1.Constraint_CONSTRAINT_CENTER,
+	"scale": opendesignerv1.Constraint_CONSTRAINT_SCALE,
+}
+
+var constraintNames = map[opendesignerv1.Constraint]string{
+	opendesignerv1.Constraint_CONSTRAINT_MIN: "min", opendesignerv1.Constraint_CONSTRAINT_MAX: "max",
+	opendesignerv1.Constraint_CONSTRAINT_STRETCH: "stretch", opendesignerv1.Constraint_CONSTRAINT_CENTER: "center",
+	opendesignerv1.Constraint_CONSTRAINT_SCALE: "scale",
+}
+
+// SetConstraintsInput sets how nodes follow their parent FRAME when it is resized (a frame
+// without auto layout; the frame with auto layout decides for its children). Omitted axes
+// are left alone.
+type SetConstraintsInput struct {
+	NodeIds    []string `json:"nodeIds"`
+	Horizontal string   `json:"horizontal,omitempty" jsonschema:"min (left, the default) | max (right) | stretch (both margins) | center | scale"`
+	Vertical   string   `json:"vertical,omitempty" jsonschema:"min (top, the default) | max (bottom) | stretch (both margins) | center | scale"`
+}
+
+func (s *Session) SetConstraints(ctx context.Context, in SetConstraintsInput) (NodesOutput, error) {
+	if in.Horizontal == "" && in.Vertical == "" {
+		return NodesOutput{}, fmt.Errorf("set_constraints: give horizontal and/or vertical")
+	}
+	patch := &opendesignerv1.Node{}
+	var paths []string
+	for axis, v := range map[string]string{"horizontal": in.Horizontal, "vertical": in.Vertical} {
+		if v == "" {
+			continue
+		}
+		c, ok := constraintValues[v]
+		if !ok {
+			return NodesOutput{}, fmt.Errorf("set_constraints: %s must be min, max, stretch, center or scale, got %q", axis, v)
+		}
+		if axis == "horizontal" {
+			patch.ConstraintX = c
+			paths = append(paths, "constraint_x")
+		} else {
+			patch.ConstraintY = c
+			paths = append(paths, "constraint_y")
+		}
+	}
+	return s.setOnNodes(ctx, "set_constraints", in.NodeIds, patch, paths)
+}
+
+// SetLayoutSizingInput sets how an auto layout PARENT sizes nodes, per axis of the node.
+type SetLayoutSizingInput struct {
+	NodeIds []string `json:"nodeIds"`
+	Width   string   `json:"width,omitempty" jsonschema:"fixed (keep the width) | fill (take the free space of the axis)"`
+	Height  string   `json:"height,omitempty" jsonschema:"fixed | fill"`
+}
+
+func (s *Session) SetLayoutSizing(ctx context.Context, in SetLayoutSizingInput) (NodesOutput, error) {
+	if in.Width == "" && in.Height == "" {
+		return NodesOutput{}, fmt.Errorf("set_layout_sizing: give width and/or height")
+	}
+	patch := &opendesignerv1.Node{}
+	var paths []string
+	for axis, v := range map[string]string{"width": in.Width, "height": in.Height} {
+		if v == "" {
+			continue
+		}
+		var sz opendesignerv1.LayoutSizing
+		switch v {
+		case "fixed":
+			sz = opendesignerv1.LayoutSizing_LAYOUT_SIZING_FIXED
+		case "fill":
+			sz = opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL
+		default:
+			return NodesOutput{}, fmt.Errorf("set_layout_sizing: %s must be fixed or fill, got %q", axis, v)
+		}
+		if axis == "width" {
+			patch.LayoutSizingX = sz
+			paths = append(paths, "layout_sizing_x")
+		} else {
+			patch.LayoutSizingY = sz
+			paths = append(paths, "layout_sizing_y")
+		}
+	}
+	return s.setOnNodes(ctx, "set_layout_sizing", in.NodeIds, patch, paths)
+}
+
+// setOnNodes submits the same setProps (patch + mask) for every node, after checking they exist.
+func (s *Session) setOnNodes(ctx context.Context, tool string, ids []string, patch *opendesignerv1.Node, paths []string) (NodesOutput, error) {
+	if len(ids) == 0 {
+		return NodesOutput{}, fmt.Errorf("%s: nodeIds is empty", tool)
+	}
+	s.mu.Lock()
+	for _, id := range ids {
+		if _, ok := s.doc.GetNodes()[id]; !ok {
+			s.mu.Unlock()
+			return NodesOutput{}, fmt.Errorf("%s: node %q not found (list_nodes for the ids)", tool, id)
+		}
+	}
+	s.mu.Unlock()
+	out := NodesOutput{}
+	for _, id := range ids {
+		seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+			Id: id, Patch: patch, Mask: &fieldmaskpb.FieldMask{Paths: paths},
+		}}})
+		if err != nil {
+			return out, err
+		}
+		out.Changed++
+		out.Seq = seq
+	}
+	return out, nil
+}
+
+func registerConstraintTools(srv *mcp.Server, s *Session) {
+	addTool(srv, "set_constraints", "Set how nodes follow their parent frame when it is resized: per axis min (left/top, default), max (right/bottom), stretch (keep both margins, the node resizes), center or scale. They apply when the frame has NO auto layout; resizing the frame (set_properties width/height) then moves and resizes its children for you, recursively.", s.SetConstraints)
+	addTool(srv, "set_layout_sizing", "Set how an auto layout PARENT sizes nodes: width/height fixed (default) or fill (take the free space of that axis: on the layout's main axis the free space is shared equally among the children that fill, across it the node spans the frame's inner extent). Ignored on an axis the frame hugs and in a wrapping frame.", s.SetLayoutSizing)
 }

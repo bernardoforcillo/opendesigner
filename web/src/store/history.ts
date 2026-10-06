@@ -1,8 +1,10 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { NodeLite } from "./types";
 import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
+import { applyOp } from "./applyOp";
 import { isValidCollection, isValidVariable } from "./variables";
 import { isValidFont, isValidTextStyleDef } from "./typography";
 import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
@@ -115,13 +117,14 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // sooner or later make diverge) applyOp. Bonus: if the mask contains an
       // unsupported path, the direct op is rejected as a whole and the inverse
       // too, so the round-trip remains the identity in that case as well.
-      return [create(OpSchema, {
+      const inverse = create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: {
           case: "setProps",
           value: { id, patch: toPbNode(prev), mask: { paths: [...(mask?.paths ?? [])] } },
         },
-      })];
+      });
+      return [inverse, ...restoreResizedDescendants(scene, op, prev)];
     }
     case "setText": {
       // Same shape as the inverse of setProps: the PREVIOUS values, not the
@@ -477,6 +480,35 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     default:
       return null;
   }
+}
+
+// Resizing a frame moves and resizes its children by their constraints, and putting the frame
+// back to its old size would apply the constraints backwards: exact for most modes but not
+// for the clamped (stretch below zero) or the scaled (rounding). So the inverse also writes
+// back, EXACTLY, every descendant the op changed -- parents first, so a restored frame's
+// own cascade is overwritten by its children's restores that follow.
+function restoreResizedDescendants(scene: SceneState, op: Op, prev: NodeLite): Op[] {
+  if (op.kind.case !== "setProps" || prev.kind !== "frame") return [];
+  const paths = op.kind.value.mask?.paths ?? [];
+  if (!paths.includes("width") && !paths.includes("height")) return [];
+  const after = applyOp(scene, op);
+  if (after === scene) return [];
+  const changed = subtreeOf(scene, prev.id)
+    .filter((n) => n.id !== prev.id)
+    .filter((n) => {
+      const a = after.nodes.at(n.id);
+      return a && (a.x !== n.x || a.y !== n.y || a.width !== n.width || a.height !== n.height);
+    });
+  const depth = (n: NodeLite) => {
+    let d = 0;
+    for (let cur: NodeLite | undefined = n; cur && cur.id !== prev.id && d < 10000; cur = scene.nodes.at(cur.parentId)) d++;
+    return d;
+  };
+  return changed.sort((a, b) => depth(a) - depth(b) || (a.id < b.id ? -1 : 1)).map((n) =>
+    create(OpSchema, {
+      opId: newOpId(), docId: op.docId,
+      kind: { case: "setProps", value: { id: n.id, patch: toPbNode(n), mask: { paths: ["x", "y", "width", "height"] } } },
+    }));
 }
 
 // A setComponentDef writing the component's CURRENT set membership, variant and properties.

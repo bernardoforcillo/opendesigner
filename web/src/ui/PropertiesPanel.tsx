@@ -21,6 +21,7 @@ import { VariablesSection } from "./VariablesSection";
 import { boundColor } from "./variableOps";
 import { TypographyControls } from "./TypographyControls";
 import { InstanceControls } from "./InstanceControls";
+import { LayoutRelationControls } from "./LayoutRelationControls";
 import { effectiveStyle, styleOps } from "./typographyOps";
 import type { IconName } from "./ds";
 import { SegRadio, type SegOption } from "./ds/props-controls";
@@ -833,6 +834,9 @@ export function PropertiesPanel() {
       {/* AUTO LAYOUT: for a frame, its controls; for any other
           selection, the "+" that wraps it in a frame with auto layout. */}
       {summary.kind === "frame" ? <AutoLayoutControls run={runGesture} /> : <WrapInAutoLayoutButton />}
+
+      {/* CONSTRAINTS (in a plain frame) or SIZING (in an auto layout frame): the relation to the parent. */}
+      <LayoutRelationControls />
 
       <Section title="Appearance">
         <Slider

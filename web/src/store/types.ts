@@ -1,6 +1,6 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { ClipSchema, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
@@ -51,7 +51,16 @@ export interface AutoLayoutLite {
   mainAlign: LayoutAlignLite;
   crossAlign: LayoutAlignLite;
   hugWidth: boolean; hugHeight: boolean;
+  // Present only when set (like the optional fields of NodeLite), so a layout that never
+  // used them stays identical field by field: `wrap` flows the children onto lines,
+  // `crossSpacing` is the gap between the lines.
+  wrap?: true;
+  crossSpacing?: number;
 }
+
+// How a node follows its parent frame's resize (CONSTRAINTS), and how an auto layout parent
+// sizes it (LAYOUT SIZING), per axis. Absent = the proto default: "min" / fixed.
+export type ConstraintLite = "min" | "max" | "stretch" | "center" | "scale";
 
 // A node effect. Shadow and blur are in WORLD coordinates, like a stroke's
 // weight: they scale with the zoom. The renderer draws the FIRST
@@ -230,6 +239,11 @@ export interface NodeLite {
   modes?: Record<string, string>;
   // Shared text style id (text nodes only); absent when none. See TextStyleDefLite.
   textStyleId?: string;
+  // Constraints and layout sizing (see ConstraintLite); absent = the default (unspecified / fixed).
+  constraintX?: ConstraintLite;
+  constraintY?: ConstraintLite;
+  layoutSizingX?: "fill";
+  layoutSizingY?: "fill";
   // TRANSIENT animation FIELDS: written ONLY by animation/pose.ts when it
   // derives the scene to show while a clip runs or is scrubbed. They are not
   // document: toPbNode does not read them, no op carries them, and a snapshot never
@@ -497,6 +511,8 @@ export function toAutoLayoutLite(a: PbAutoLayout): AutoLayoutLite {
     mainAlign: LAYOUT_ALIGN_TO_LITE[a.mainAlign] ?? "start",
     crossAlign: LAYOUT_ALIGN_TO_LITE[a.crossAlign] ?? "start",
     hugWidth: a.hugWidth, hugHeight: a.hugHeight,
+    ...(a.wrap ? { wrap: true as const } : {}),
+    ...(a.crossSpacing ? { crossSpacing: a.crossSpacing } : {}),
   };
 }
 
@@ -507,6 +523,7 @@ export function toPbAutoLayout(a: AutoLayoutLite) {
     paddingLeft: a.paddingLeft, paddingTop: a.paddingTop, paddingRight: a.paddingRight, paddingBottom: a.paddingBottom,
     mainAlign: LAYOUT_ALIGN_TO_PB[a.mainAlign], crossAlign: LAYOUT_ALIGN_TO_PB[a.crossAlign],
     hugWidth: a.hugWidth, hugHeight: a.hugHeight,
+    wrap: a.wrap === true, crossSpacing: a.crossSpacing ?? 0,
   };
 }
 
@@ -614,6 +631,14 @@ function kindOf(shape: PbNode["shape"]): NodeLite["kind"] {
   }
 }
 
+const CONSTRAINT_TO_LITE: Partial<Record<Constraint, ConstraintLite>> = {
+  [Constraint.MIN]: "min", [Constraint.MAX]: "max", [Constraint.STRETCH]: "stretch",
+  [Constraint.CENTER]: "center", [Constraint.SCALE]: "scale",
+};
+const CONSTRAINT_TO_PB: Record<ConstraintLite, Constraint> = {
+  min: Constraint.MIN, max: Constraint.MAX, stretch: Constraint.STRETCH, center: Constraint.CENTER, scale: Constraint.SCALE,
+};
+
 export function toNodeLite(n: PbNode): NodeLite {
   const kind = kindOf(n.shape);
   return {
@@ -637,6 +662,10 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(Object.keys(n.bindings).length > 0 ? { bindings: { ...n.bindings } } : {}),
     ...(Object.keys(n.modes).length > 0 ? { modes: { ...n.modes } } : {}),
     ...(n.textStyleId !== "" ? { textStyleId: n.textStyleId } : {}),
+    ...(n.constraintX !== Constraint.UNSPECIFIED ? { constraintX: CONSTRAINT_TO_LITE[n.constraintX] } : {}),
+    ...(n.constraintY !== Constraint.UNSPECIFIED ? { constraintY: CONSTRAINT_TO_LITE[n.constraintY] } : {}),
+    ...(n.layoutSizingX === LayoutSizing.FILL ? { layoutSizingX: "fill" as const } : {}),
+    ...(n.layoutSizingY === LayoutSizing.FILL ? { layoutSizingY: "fill" as const } : {}),
   };
 }
 
@@ -657,6 +686,10 @@ export function toPbNode(n: NodeLite): PbNode {
     bindings: n.bindings ? { ...n.bindings } : {},
     modes: n.modes ? { ...n.modes } : {},
     textStyleId: n.textStyleId ?? "",
+    constraintX: n.constraintX ? CONSTRAINT_TO_PB[n.constraintX] : Constraint.UNSPECIFIED,
+    constraintY: n.constraintY ? CONSTRAINT_TO_PB[n.constraintY] : Constraint.UNSPECIFIED,
+    layoutSizingX: n.layoutSizingX === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
+    layoutSizingY: n.layoutSizingY === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
     shape: n.kind === "unknown"
       // The unknown shape cannot be BUILT (there is no oneof branch to
       // name), so it is put back where it was right after the create. Leaving it

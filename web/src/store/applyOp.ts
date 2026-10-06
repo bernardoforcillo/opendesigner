@@ -4,7 +4,7 @@ import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb"
 import { isValidClip } from "../animation/validate";
 import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
-import { layoutTargets, relayout } from "./layout";
+import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
 import { cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
@@ -34,17 +34,21 @@ export function applyOp(state: SceneState, op: Op): SceneState {
   // structures (renderer/sceneIndex.ts) need not compare the whole
   // scene to find out. The others (delete, reparent, pages,
   // components) do not record it and fall back to the full comparison.
-  const id = singleTouchedNode(op);
+  const id = singleTouchedNode(op, state);
   if (id !== null) recordDelta(laidOut, state, [id, ...touchedByLayout]);
   return laidOut;
 }
 
 // The only node the op writes, if it writes exactly one.
-function singleTouchedNode(op: Op): string | null {
+function singleTouchedNode(op: Op, state: SceneState): string | null {
   const k = op.kind;
   switch (k.case) {
     case "createNode": return k.value.node?.id ?? null;
-    case "setProps": return k.value.id;
+    // Resizing a frame also moves its children (constraints): no single node to name.
+    case "setProps": {
+      const resizes = (k.value.mask?.paths ?? []).some((p) => p === "width" || p === "height");
+      return resizes && state.nodes.at(k.value.id)?.kind === "frame" ? null : k.value.id;
+    }
     case "setText": return k.value.id;
     case "setVectorPath": return k.value.id;
     default: return null;
@@ -125,6 +129,11 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (paths.includes("bindings") && !areValidBindings(state, p.bindings)) return state;
       if (paths.includes("modes") && !areValidModes(state, p.modes)) return state;
       if (paths.includes("text_style_id") && !isValidTextStyleId(state, cur, p.textStyleId)) return state;
+      // The enums are closed: an out-of-range number is rejected whole (core.applySetProps).
+      if (paths.includes("constraint_x") && !(p.constraintX >= 0 && p.constraintX <= 5)) return state;
+      if (paths.includes("constraint_y") && !(p.constraintY >= 0 && p.constraintY <= 5)) return state;
+      if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
+      if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -177,6 +186,27 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
             if (p.textStyleId !== "") next.textStyleId = p.textStyleId; else delete next.textStyleId;
             break;
           }
+          // Through toNodeLite, like the other enums: UNSPECIFIED / FIXED remove the field.
+          case "constraint_x": {
+            const c = toNodeLite(p).constraintX;
+            if (c) next.constraintX = c; else delete next.constraintX;
+            break;
+          }
+          case "constraint_y": {
+            const c = toNodeLite(p).constraintY;
+            if (c) next.constraintY = c; else delete next.constraintY;
+            break;
+          }
+          case "layout_sizing_x": {
+            const c = toNodeLite(p).layoutSizingX;
+            if (c) next.layoutSizingX = c; else delete next.layoutSizingX;
+            break;
+          }
+          case "layout_sizing_y": {
+            const c = toNodeLite(p).layoutSizingY;
+            if (c) next.layoutSizingY = c; else delete next.layoutSizingY;
+            break;
+          }
           // As for "fills", the value is extracted from the patch by going through
           // toNodeLite instead of reading it by hand: it is the SAME function that
           // translates a wire Node, so a patch without rect falls back to
@@ -204,7 +234,14 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           }
         }
       }
-      return { ...state, nodes: state.nodes.set(id, next) };
+      const written: SceneState = { ...state, nodes: state.nodes.set(id, next) };
+      // A resized frame moves and resizes its children by their constraints (a frame with
+      // auto layout decides for itself): core.applySetProps does the same.
+      if (next.width !== cur.width || next.height !== cur.height) {
+        const edit = written.nodes.edit();
+        if (resizeChildren(written, edit, id, cur.width, cur.height)) return { ...written, nodes: edit.done() };
+      }
+      return written;
     }
     // Dedicated op and not a setProps mask path: the content lives
     // INSIDE the Node's `shape` oneof, while the mask addresses top-level

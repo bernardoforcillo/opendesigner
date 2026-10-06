@@ -185,3 +185,38 @@ func TestVariantsAndPropertiesInTheExport(t *testing.T) {
 		t.Fatalf("the property's text must replace the master's content:\n%s", html)
 	}
 }
+
+// TestAutoLayoutWrapFillAndInstancesInTheExport: a wrapping frame becomes a wrapping flex
+// container with the two spacings as row/column gap, a child that fills becomes a flexible
+// item without its fixed size, and an instance in an auto layout is an in-flow item.
+func TestAutoLayoutWrapFillAndInstancesInTheExport(t *testing.T) {
+	doc := screenDoc(func(b *B, s string) {
+		b.Add("row", s, "Row", 0, 0, 300, 100, Frame(false, &opendesignerv1.AutoLayout{Spacing: 8, PaddingLeft: 4, PaddingRight: 4, PaddingTop: 4, PaddingBottom: 4}))
+		b.Add("fixed", "row", "Fixed", 0, 0, 50, 30)
+		b.Add("grow", "row", "Grow", 0, 0, 10, 30)
+		b.Add("wrapper", s, "Wrapper", 0, 120, 100, 60, Frame(false, &opendesignerv1.AutoLayout{Spacing: 10, CrossSpacing: 6, Wrap: true}))
+		b.Add("w1", "wrapper", "W1", 0, 0, 40, 20)
+		b.Add("col", s, "Col", 0, 200, 100, 80, Frame(false, &opendesignerv1.AutoLayout{Direction: opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL, Spacing: 3, Wrap: true, CrossSpacing: 9}))
+		b.Add("c1", "col", "C1", 0, 0, 20, 20)
+	})
+	apply(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: "grow", Patch: &opendesignerv1.Node{LayoutSizingX: opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL, LayoutSizingY: opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL},
+		Mask: &fieldmaskpb.FieldMask{Paths: []string{"layout_sizing_x", "layout_sizing_y"}}}}})
+	html := screenHTML(t, doc)
+	for _, want := range []string{"flex-wrap: wrap;", "align-content: flex-start;", "gap: 6px 10px;", "gap: 3px 9px;", "flex: 1 1 0;", "min-width: 0;", "align-self: stretch;"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %q in the exported CSS:\n%s", want, html)
+		}
+	}
+	// The wrapper (horizontal): row-gap = cross spacing 6, column-gap = spacing 10. The
+	// vertical one swaps them: row-gap = spacing 3, column-gap = cross spacing 9.
+	// The filling child lost its fixed width and height.
+	i := strings.Index(html, ".grow-")
+	if i < 0 {
+		t.Fatalf("no grow rule:\n%s", html)
+	}
+	rule := html[i : i+strings.Index(html[i:], "}")]
+	if strings.Contains(rule, "width: 10px") || strings.Contains(rule, "height: 30px") {
+		t.Errorf("a filling child keeps its fixed size:\n%s", rule)
+	}
+}

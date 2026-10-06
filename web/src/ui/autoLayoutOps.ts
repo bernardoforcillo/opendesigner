@@ -15,19 +15,20 @@ export const DEFAULT_AUTO_LAYOUT: AutoLayoutLite = {
   hugWidth: false, hugHeight: false,
 };
 
-export type AutoLayoutPatch = Partial<AutoLayoutLite> | { enabled: boolean };
+// `wrap` is a plain boolean in a patch (false turns it off); the model only keeps `true`.
+export type AutoLayoutPatch = (Partial<Omit<AutoLayoutLite, "wrap">> & { wrap?: boolean }) | { enabled: boolean };
 
 function write(n: NodeLite, layout: AutoLayoutLite | null): Op {
   const frame = { clipsContent: n.clipsContent, ...(layout ? { autoLayout: toPbAutoLayout(layout) } : {}) };
   return makeSetPropsOp(n.id, { shape: { case: "frame", value: frame } }, ["auto_layout"]);
 }
 
-function clampNonNegative(p: Partial<AutoLayoutLite>): Partial<AutoLayoutLite> {
-  const out = { ...p };
-  for (const k of ["spacing", "paddingLeft", "paddingTop", "paddingRight", "paddingBottom"] as const) {
+function clampNonNegative<T extends Partial<AutoLayoutLite> | { crossSpacing?: number }>(p: T): T {
+  const out = { ...p } as Record<string, unknown>;
+  for (const k of ["spacing", "paddingLeft", "paddingTop", "paddingRight", "paddingBottom", "crossSpacing"] as const) {
     if (out[k] !== undefined) out[k] = Math.max(0, out[k] as number);
   }
-  return out;
+  return out as T;
 }
 
 /**
@@ -44,7 +45,10 @@ export function autoLayoutOps(ids: readonly string[], lookup: NodeLookup, patch:
       return n.autoLayout ? [] : [write(n, DEFAULT_AUTO_LAYOUT)];
     }
     const base = n.autoLayout ?? DEFAULT_AUTO_LAYOUT;
-    const next: AutoLayoutLite = { ...base, ...clampNonNegative(patch) };
+    const merged = { ...base, ...clampNonNegative(patch) } as AutoLayoutLite & { wrap?: boolean };
+    // The model keeps `wrap` only when true and `crossSpacing` only when non-zero, like the proto's defaults.
+    const { wrap, crossSpacing, ...rest } = merged;
+    const next: AutoLayoutLite = { ...rest, ...(wrap ? { wrap: true as const } : {}), ...(crossSpacing ? { crossSpacing } : {}) };
     if (n.autoLayout && JSON.stringify(next) === JSON.stringify(n.autoLayout)) return [];
     return [write(n, next)];
   });

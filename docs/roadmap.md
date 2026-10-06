@@ -14,8 +14,9 @@ Legend: [x] done · [ ] to do
 - [ ] Effects: multiple shadows per node, inner shadow, background blur, blend mode
 - [x] Auto layout: direction, spacing, padding, alignments, hug; computed by the server (Shift+A wraps the selection, Frame tool, panel, MCP `create_frame`/`set_auto_layout`)
 - [x] Auto layout: reordering by dragging children (also into another auto layout), with insertion line and outline; a single undo step
-- [ ] Auto layout: children that fill the space (fill), wrapping onto several rows, dragging a child OUT of the frame, groups and instances as children
-- [ ] Constraints and responsive resize
+- [x] Auto layout: children that fill the space (fill), wrapping onto several lines, dragging a child OUT of the frame, instances as children; see docs/layout.md
+- [ ] Auto layout: groups as children, min/max sizes, absolute children
+- [x] Constraints and responsive resize (min/max/stretch/center/scale per axis, recursive, exact undo); see docs/layout.md
 - [x] Variants and component properties: component sets with axes, instances that choose a variant, boolean (show/hide) and text properties, editor dialog and instance controls, MCP tools, exported code; see docs/components.md
 - [ ] Shared libraries across documents, instance swap, detach instance
 - [x] Variables / design tokens with modes: color and number variables in collections with modes, bound to fills, strokes, opacity, rotation, radius and stroke width, pinned per subtree; editor dialog and panel, MCP tools, resolved in canvas/export/code, see docs/variables.md

@@ -610,6 +610,11 @@ type NodeView struct {
 	Modes    map[string]string `json:"modes,omitempty" jsonschema:"variable modes pinned on this node; see set_node_mode"`
 	// TextStyleId: the shared text style a text node applies (see apply_text_style).
 	TextStyleId string `json:"textStyleId,omitempty" jsonschema:"shared text style applied to a text node; see apply_text_style"`
+	// Constraints / layout sizing (see set_constraints, set_layout_sizing); omitted when default.
+	ConstraintX   string `json:"constraintX,omitempty" jsonschema:"how it follows its parent frame's width: max | stretch | center | scale (default min); see set_constraints"`
+	ConstraintY   string `json:"constraintY,omitempty"`
+	LayoutSizingX string `json:"layoutSizingX,omitempty" jsonschema:"fill when an auto layout parent fills its width; see set_layout_sizing"`
+	LayoutSizingY string `json:"layoutSizingY,omitempty"`
 }
 
 // nodeKind derives the compact kind label from the shape oneof. A node with no
@@ -658,6 +663,13 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 		v.Modes = n.GetModes()
 	}
 	v.TextStyleId = n.GetTextStyleId()
+	v.ConstraintX, v.ConstraintY = constraintNames[n.GetConstraintX()], constraintNames[n.GetConstraintY()]
+	if n.GetLayoutSizingX() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL {
+		v.LayoutSizingX = "fill"
+	}
+	if n.GetLayoutSizingY() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL {
+		v.LayoutSizingY = "fill"
+	}
 	return v
 }
 
@@ -810,6 +822,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerVariableTools(srv, s)
 	registerTypographyTools(srv, s)
 	registerVariantTools(srv, s)
+	registerConstraintTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerDiagramTools(srv, s)
 }
