@@ -3,7 +3,7 @@ import { Code, ConnectError } from "@connectrpc/connect";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
 import { Banner, Icon } from "./ds";
 import { ToolDock } from "./shell/ToolDock";
-import { TopBar } from "./shell/TopBar";
+import { ISLAND_CLS, TopBar } from "./shell/TopBar";
 import { usePanels } from "./shell/panels";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
@@ -523,7 +523,7 @@ export function App() {
   if (docError) return <DocUnavailable notFound={docError.notFound} message={docError.message} />;
 
   return (
-    <div className="flex h-screen flex-col bg-surface text-fg">
+    <div className="flex h-screen flex-col gap-2 bg-surface-3 p-2 text-fg">
       {/* Two different notices because the two situations ask for different things: while
           reconnecting the user can wait (changes stay queued and
           the backlog will confirm them), with attempts exhausted they cannot. */}
@@ -543,6 +543,8 @@ export function App() {
         <Banner tone="danger" onClose={clearError}>Change not saved and rolled back: {lastError}</Banner>
       )}
       {notice && <Banner tone="info" onClose={clearNotice}>{notice}</Banner>}
+      {/* The document bar: a full-width island above the columns. */}
+      <TopBar mode={mode} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => navigate(HOME_TEMPLATES_PATH)} connection={connection} statusLabel={statusLabel} />
       {/* THE THREE COLUMNS: left panel, canvas in the middle, properties on the right.
           `min-h-0` on the row and `min-w-0` on the central column are not
           decorations: without them, a flex child NEVER shrinks below its own
@@ -551,18 +553,19 @@ export function App() {
           The panels are SIBLINGS of the canvas, they do not sit on top of it: they do not steal
           events and the width they occupy is taken away from the layout (the canvas
           resizes on its own: resizeCanvasToDisplaySize reads clientWidth on
-          every frame and eventToCanvasPoint starts from getBoundingClientRect). */}
-      <div className="flex min-h-0 flex-1">
+          every frame and eventToCanvasPoint starts from getBoundingClientRect).
+          Each column is an island (ISLAND_CLS) set apart from the others by the gap. */}
+      <div className="flex min-h-0 flex-1 gap-2">
         {mode === "dev" ? (
-          <aside aria-label="Readiness" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
+          <aside aria-label="Readiness" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
             <ReadinessPanel />
           </aside>
         ) : mode === "flows" ? (
-          <aside aria-label="Flows" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
+          <aside aria-label="Flows" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
             <FlowPanel />
           </aside>
         ) : (
-          <aside aria-label="Layers and components" className={`${leftOpen ? "flex" : "hidden"} w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
+          <aside aria-label="Layers and components" className={`${leftOpen ? "flex" : "hidden"} w-64 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
             <Tabs className="flex min-h-0 flex-1 flex-col">
               {/* Tabs and page selector in the SAME row: 40px less. */}
               <div className="flex shrink-0 items-center border-b border-line pr-1.5">
@@ -603,8 +606,8 @@ export function App() {
         {/* The central column: the canvas and, below, the timeline (only in Design, opened
             with M or from the dock). The timeline is a SIBLING of the canvas like the side
             panels: the canvas resizes on its own (resize -> invalidation). */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-        <div className="relative min-h-0 min-w-0 flex-1 bg-canvas">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-canvas">
           {/* The cursor comes from the active tool; during a temporary pan (space
               or middle button) the tool manager overrides it on the DOM. */}
           {/* The GPU's WebGL canvas: below, without events, hidden until the
@@ -637,12 +640,11 @@ export function App() {
           {/* Develop: the code view covers the canvas (which stays mounted: the tools and the
               drawing loop use it) and sits BELOW the dock (z-20). */}
           {mode === "dev" && <CodeWorkbench />}
-          <TopBar mode={mode} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => navigate(HOME_TEMPLATES_PATH)} connection={connection} statusLabel={statusLabel} />
           <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} />
         </div>
         {mode === "design" && <TimelinePanel />}
         </div>
-        <aside aria-label={mode === "dev" ? "Ship" : "Properties"} className={`${rightOpen ? "block" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 overflow-hidden border-l border-line bg-surface`}>
+        <aside aria-label={mode === "dev" ? "Ship" : "Properties"} className={`${rightOpen ? "block" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 overflow-hidden ${ISLAND_CLS}`}>
           {mode === "dev" ? (
             <ShipPanel />
           ) : mode === "flows" ? (

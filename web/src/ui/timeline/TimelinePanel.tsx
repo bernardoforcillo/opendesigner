@@ -91,7 +91,7 @@ function TimelineBody() {
         const t = e.target as HTMLElement;
         if (!isTextField(t) && t.closest("button,select,input,[role=slider],[role=menu]") === null) root.current?.focus({ preventScroll: true });
       }}
-      className={`relative flex shrink-0 flex-col border-t ${record ? "border-danger" : "border-line"} bg-surface text-fg outline-none`}
+      className={`relative flex shrink-0 flex-col rounded-xl border ${record ? "border-danger" : "border-line"} bg-surface text-fg outline-none`}
       style={{ height: collapsed ? undefined : height }}
     >
       {!collapsed && (

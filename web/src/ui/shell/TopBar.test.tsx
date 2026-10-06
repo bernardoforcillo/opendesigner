@@ -4,6 +4,7 @@ import { render, screen, cleanup, fireEvent } from "@testing-library/react";
 import { TopBar } from "./TopBar";
 import { useScene } from "../../store/store";
 import { useFlowUi } from "../../store/flowUi";
+import { usePanels } from "./panels";
 
 afterEach(cleanup);
 afterEach(() => useFlowUi.getState().setMode("design"));
@@ -56,5 +57,23 @@ describe("TopBar", () => {
   it("shows the connection status", () => {
     renderTopBar({ statusLabel: "Reconnecting…" });
     expect(screen.getByTitle("Reconnecting…")).toBeInTheDocument();
+  });
+
+  it("shows the document name in the middle", () => {
+    useScene.setState({ scene: { ...(useScene.getState().scene ?? ({} as never)), name: "Project" } as never });
+    renderTopBar();
+    expect(screen.getByRole("button", { name: "Rename document" })).toHaveTextContent("Project");
+  });
+
+  it("the panel buttons close and reopen them", () => {
+    renderTopBar();
+    const before = usePanels.getState().left;
+    fireEvent.click(screen.getByRole("button", { name: before ? "Close left panel" : "Open left panel" }));
+    expect(usePanels.getState().left).toBe(!before);
+    usePanels.getState().toggle("left");
+    const right = usePanels.getState().right;
+    fireEvent.click(screen.getByRole("button", { name: right ? "Close right panel" : "Open right panel" }));
+    expect(usePanels.getState().right).toBe(!right);
+    usePanels.getState().toggle("right");
   });
 });

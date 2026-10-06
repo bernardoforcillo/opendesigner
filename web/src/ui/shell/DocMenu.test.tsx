@@ -9,6 +9,7 @@ vi.mock("../../home/nav", () => ({ useAppNavigate: () => navigate }));
 vi.mock("../../rpc/client", () => ({ docClient: { renameDocument: (r: { docId: string; name: string }) => renameDocument(r) } }));
 
 import { DocMenu, renameOpenDocument } from "./DocMenu";
+import { DocName, useDocNameEditing } from "./DocName";
 import { useScene } from "../../store/store";
 import { emptyScene } from "../../store/types";
 
@@ -17,7 +18,7 @@ describe("DocMenu", () => {
     renameDocument.mockClear();
     useScene.getState().setScene(emptyScene("doc-1", "Project"));
   });
-  afterEach(() => { cleanup(); navigate.mockClear(); });
+  afterEach(() => { cleanup(); navigate.mockClear(); useDocNameEditing.getState().setEditing(false); });
 
   it("has Home, New document and Rename document", async () => {
     render(<DocMenu onNewDocument={() => {}} />);
@@ -42,10 +43,16 @@ describe("DocMenu", () => {
     expect(onNew).toHaveBeenCalledTimes(1);
   });
 
-  it("renames in place from the header: Enter confirms, the server and the store have the new name", async () => {
-    render(<DocMenu onNewDocument={() => {}} />);
+  it("'Rename document' in the menu opens the name field", async () => {
+    render(<><DocMenu onNewDocument={() => {}} /><DocName /></>);
     await userEvent.click(screen.getByRole("button", { name: "Document menu" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Rename document" }));
+    await userEvent.click(await screen.findByRole("menuitem", { name: "Rename document" }));
+    expect(await screen.findByRole("textbox", { name: "Document name" })).toBeInTheDocument();
+  });
+
+  it("renames in place from the name in the TopBar: Enter confirms, the server and the store have the new name", async () => {
+    render(<DocName />);
+    await userEvent.click(screen.getByRole("button", { name: "Rename document" }));
     const input = await screen.findByRole("textbox", { name: "Document name" });
     await userEvent.clear(input);
     await userEvent.type(input, "Other name{Enter}");
@@ -55,9 +62,8 @@ describe("DocMenu", () => {
   });
 
   it("Esc cancels, without calling the server", async () => {
-    render(<DocMenu onNewDocument={() => {}} />);
-    await userEvent.click(screen.getByRole("button", { name: "Document menu" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Rename document" }));
+    render(<DocName />);
+    await userEvent.click(screen.getByRole("button", { name: "Rename document" }));
     const input = await screen.findByRole("textbox", { name: "Document name" });
     await userEvent.type(input, "zzz{Escape}");
     expect(renameDocument).not.toHaveBeenCalled();
@@ -65,9 +71,8 @@ describe("DocMenu", () => {
   });
 
   it("an empty or unchanged name is not a rename", async () => {
-    render(<DocMenu onNewDocument={() => {}} />);
-    await userEvent.click(screen.getByRole("button", { name: "Document menu" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Rename document" }));
+    render(<DocName />);
+    await userEvent.click(screen.getByRole("button", { name: "Rename document" }));
     const input = await screen.findByRole("textbox", { name: "Document name" });
     await userEvent.clear(input);
     await userEvent.type(input, "   {Enter}");
@@ -76,9 +81,8 @@ describe("DocMenu", () => {
 
   it("if the server refuses, the field stays open with the error", async () => {
     renameDocument.mockRejectedValueOnce(new Error("name too long"));
-    render(<DocMenu onNewDocument={() => {}} />);
-    await userEvent.click(screen.getByRole("button", { name: "Document menu" }));
-    await userEvent.click(await screen.findByRole("button", { name: "Rename document" }));
+    render(<DocName />);
+    await userEvent.click(screen.getByRole("button", { name: "Rename document" }));
     const input = await screen.findByRole("textbox", { name: "Document name" });
     await userEvent.clear(input);
     await userEvent.type(input, "New{Enter}");
