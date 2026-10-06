@@ -9,6 +9,7 @@ import (
 
 	"connectrpc.com/connect"
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
 func rectOp(id string) *opendesignerv1.Op {
@@ -155,3 +156,112 @@ func (r *stringReader) Read(p []byte) (int, error) {
 }
 
 func bytesReader(s string) *stringReader { return &stringReader{s: s} }
+
+func setX(id string, x float64) *opendesignerv1.Op {
+	return &opendesignerv1.Op{OpId: "setx-" + id, Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: id, Patch: &opendesignerv1.Node{X: x}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"x"}},
+	}}}
+}
+
+func xOf(t *testing.T, c interface {
+	OpenDocument(context.Context, *connect.Request[opendesignerv1.OpenRequest]) (*connect.Response[opendesignerv1.OpenResponse], error)
+}, doc, id string) float64 {
+	t.Helper()
+	r, err := c.OpenDocument(context.Background(), connect.NewRequest(&opendesignerv1.OpenRequest{DocId: doc}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	return r.Msg.GetSnapshot().GetNodes()[id].GetX()
+}
+
+// TestMergeABranchBack: a branch remembers its original; reviewing lists what it did (conflicts
+// included) and merging applies it to the original as ordinary ops, all or nothing.
+func TestMergeABranchBack(t *testing.T) {
+	c, _ := newTestClientWithManager(t, t.TempDir())
+	ctx := context.Background()
+	info, err := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Main"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	doc := info.Msg.GetId()
+	submit(t, c, doc, rectOp("a"))
+	submit(t, c, doc, rectOp("b"))
+
+	// A document that is not a branch.
+	if o, err := c.GetBranchOrigin(ctx, connect.NewRequest(&opendesignerv1.GetBranchOriginRequest{DocId: doc})); err != nil || o.Msg.GetIsBranch() {
+		t.Fatalf("origin of a plain document: %v %v", o, err)
+	}
+	if _, err := c.ReviewMerge(ctx, connect.NewRequest(&opendesignerv1.ReviewMergeRequest{DocId: doc})); err == nil {
+		t.Fatal("reviewing a merge of a document that is not a branch must fail")
+	}
+
+	br, err := c.BranchDocument(ctx, connect.NewRequest(&opendesignerv1.BranchRequest{DocId: doc, Name: "Try"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	branch := br.Msg.GetId()
+	if o, _ := c.GetBranchOrigin(ctx, connect.NewRequest(&opendesignerv1.GetBranchOriginRequest{DocId: branch})); !o.Msg.GetIsBranch() || o.Msg.GetSourceDocId() != doc || !o.Msg.GetSourceExists() || o.Msg.GetSourceName() != "Main" {
+		t.Fatalf("origin = %v", o.Msg)
+	}
+
+	// Work on both sides: the branch moves a (and b), adds c; the original moves b elsewhere.
+	submit(t, c, branch, setX("a", 40))
+	submit(t, c, branch, setX("b", 70))
+	submit(t, c, branch, rectOp("c"))
+	submit(t, c, doc, setX("b", 99))
+
+	rev, err := c.ReviewMerge(ctx, connect.NewRequest(&opendesignerv1.ReviewMergeRequest{DocId: branch}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if rev.Msg.GetSourceName() != "Main" || len(rev.Msg.GetChanges()) != 3 {
+		t.Fatalf("review = %v", rev.Msg)
+	}
+	conflicts := 0
+	for _, ch := range rev.Msg.GetChanges() {
+		if ch.GetConflict() {
+			conflicts++
+			if ch.GetId() != "b" || ch.GetConflictPaths()[0] != "x" {
+				t.Fatalf("wrong conflict: %v", ch)
+			}
+		}
+	}
+	if conflicts != 1 {
+		t.Fatalf("conflicts = %d", conflicts)
+	}
+
+	res, err := c.MergeBranch(ctx, connect.NewRequest(&opendesignerv1.MergeBranchRequest{DocId: branch}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if res.Msg.GetApplied() != 2 || res.Msg.GetSkippedConflicts() != 1 {
+		t.Fatalf("merge = %v", res.Msg)
+	}
+	if !nodeIDs(t, c, doc)["c"] || xOf(t, c, doc, "a") != 40 || xOf(t, c, doc, "b") != 99 {
+		t.Fatal("the original did not get the branch's work, or lost its own")
+	}
+
+	// Merged work is not offered again, and the resolved conflict is not either.
+	again, err := c.ReviewMerge(ctx, connect.NewRequest(&opendesignerv1.ReviewMergeRequest{DocId: branch}))
+	if err != nil || len(again.Msg.GetChanges()) != 0 {
+		t.Fatalf("second review = %v %v", again, err)
+	}
+}
+
+// TestMergePreferringTheBranch takes the branch's side of a conflict.
+func TestMergePreferringTheBranch(t *testing.T) {
+	c, _ := newTestClientWithManager(t, t.TempDir())
+	ctx := context.Background()
+	info, _ := c.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Main"}))
+	doc := info.Msg.GetId()
+	submit(t, c, doc, rectOp("a"))
+	br, _ := c.BranchDocument(ctx, connect.NewRequest(&opendesignerv1.BranchRequest{DocId: doc, Name: "Try"}))
+	submit(t, c, br.Msg.GetId(), setX("a", 11))
+	submit(t, c, doc, setX("a", 22))
+	if _, err := c.MergeBranch(ctx, connect.NewRequest(&opendesignerv1.MergeBranchRequest{DocId: br.Msg.GetId(), PreferBranch: true})); err != nil {
+		t.Fatal(err)
+	}
+	if got := xOf(t, c, doc, "a"); got != 11 {
+		t.Fatalf("x = %v, want the branch's 11", got)
+	}
+}

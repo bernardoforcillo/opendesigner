@@ -1018,6 +1018,41 @@ message DeleteVersionResponse {}
 // A new document seeded from a version (version_id empty = the document as it is now).
 message BranchRequest { string doc_id = 1; string version_id = 2; string name = 3; }
 
+// MERGING A BRANCH BACK. A branch remembers the document it came from and the state it started
+// from; reviewing it compares three documents (that start, the branch now, the original now) and
+// lists what the branch did. Merging applies those changes to the original as ordinary ops. A
+// change is in CONFLICT when the original changed the same property of the same thing since the
+// start: it is left out (the original's side wins) unless prefer_branch is set.
+message GetBranchOriginRequest { string doc_id = 1; }
+message GetBranchOriginResponse {
+  bool is_branch = 1;
+  string source_doc_id = 2;
+  string source_name = 3;
+  bool source_exists = 4;
+  int64 created_at = 5;  // unix seconds
+}
+message MergeChange {
+  string entity = 1;   // node | page | flow | transition | clip | collection | variable | font | text_style | component_set
+  string id = 2;
+  string name = 3;
+  string kind = 4;     // added | removed | changed
+  repeated string paths = 5;           // what changed on a node
+  bool conflict = 6;
+  repeated string conflict_paths = 7;
+}
+message ReviewMergeRequest { string doc_id = 1; }  // the branch
+message ReviewMergeResponse {
+  string source_doc_id = 1;
+  string source_name = 2;
+  repeated MergeChange changes = 3;
+  repeated string warnings = 4;  // changes that cannot be merged (and why)
+}
+message MergeBranchRequest { string doc_id = 1; bool prefer_branch = 2; }
+message MergeBranchResponse {
+  uint32 applied = 1;            // ops applied to the original
+  uint32 skipped_conflicts = 2;  // conflicting changes left as the original has them
+}
+
 // DESIGN REVIEW (internal/review): the rules that can be decided mechanically -- text contrast
 // (WCAG), tap targets and use of design tokens. Pure and deterministic.
 message ReviewIssue {
@@ -1057,6 +1092,12 @@ service DocumentService {
   rpc DeleteVersion(DeleteVersionRequest) returns (DeleteVersionResponse);
   // Opens a version (or the current state) as a NEW document: a branch to edit without touching the original.
   rpc BranchDocument(BranchRequest) returns (DocInfo);
+  // Whether a document is a branch, and of what.
+  rpc GetBranchOrigin(GetBranchOriginRequest) returns (GetBranchOriginResponse);
+  // What merging a branch back into its original would change, conflicts included.
+  rpc ReviewMerge(ReviewMergeRequest) returns (ReviewMergeResponse);
+  // Merges a branch back into its original (as ordinary ops there, all or nothing).
+  rpc MergeBranch(MergeBranchRequest) returns (MergeBranchResponse);
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
   rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
   // Renames a document (meta.json + the hub's in-memory name).

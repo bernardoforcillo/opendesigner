@@ -338,6 +338,37 @@ func (s *DocumentService) BranchDocument(_ context.Context, req *connect.Request
 	return connect.NewResponse(d), nil
 }
 
+func (s *DocumentService) GetBranchOrigin(_ context.Context, req *connect.Request[opendesignerv1.GetBranchOriginRequest]) (*connect.Response[opendesignerv1.GetBranchOriginResponse], error) {
+	r, err := s.m.BranchOrigin(req.Msg.GetDocId())
+	if err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(r), nil
+}
+
+func (s *DocumentService) ReviewMerge(_ context.Context, req *connect.Request[opendesignerv1.ReviewMergeRequest]) (*connect.Response[opendesignerv1.ReviewMergeResponse], error) {
+	r, err := s.m.ReviewMerge(req.Msg.GetDocId())
+	if err != nil {
+		return nil, mergeErr(err)
+	}
+	return connect.NewResponse(r), nil
+}
+
+func (s *DocumentService) MergeBranch(_ context.Context, req *connect.Request[opendesignerv1.MergeBranchRequest]) (*connect.Response[opendesignerv1.MergeBranchResponse], error) {
+	r, err := s.m.MergeBranch(req.Msg.GetDocId(), req.Msg.GetPreferBranch())
+	if err != nil {
+		return nil, mergeErr(err)
+	}
+	return connect.NewResponse(r), nil
+}
+
+func mergeErr(err error) error {
+	if errors.Is(err, errNotABranch) {
+		return connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return versionErr(err)
+}
+
 func (s *DocumentService) ReviewDesign(_ context.Context, req *connect.Request[opendesignerv1.ReviewDesignRequest]) (*connect.Response[opendesignerv1.ReviewDesignResponse], error) {
 	if !s.m.Exists(req.Msg.GetDocId()) {
 		return nil, connect.NewError(connect.CodeNotFound, ErrDocNotFound)
