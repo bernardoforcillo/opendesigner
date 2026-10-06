@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useScene } from "../../store/store";
+import { measureNode, type Measurement } from "../../dev/measure";
 import { refreshCode, useCodegen } from "../../dev/codegen";
 import { AGENT_PROMPT, AGENT_TOOLS, projectZip, shipCommands, shipScript, zipName } from "../../dev/ship";
 import { downloadBytes } from "../../dev/zip";
@@ -24,8 +25,37 @@ function Cmd({ command }: { command: string }) {
   );
 }
 
+const SIDES = ["top", "right", "bottom", "left"] as const;
+
+// The redlines of the selected node: its size and position and the gaps around it, in px.
+function Measurements({ m }: { m: Measurement }) {
+  const rows = SIDES.filter((k) => m.toParent[k] !== null || m.toSibling[k] !== null);
+  return (
+    <section className="border-t border-line p-3" data-testid="measurements">
+      <h3 className={`${cls.sectionTitle} mb-2`}>Measurements · {m.name}</h3>
+      <p className="mb-1.5 font-mono text-[12px] text-fg">{m.width} × {m.height} at {m.x}, {m.y}</p>
+      {rows.length > 0 && (
+        <table className="w-full text-[12px]">
+          <thead><tr className="text-left text-[11px] text-fg-subtle"><th className="font-medium">Side</th><th className="font-medium">To parent</th><th className="font-medium">To sibling</th></tr></thead>
+          <tbody>
+            {rows.map((k) => (
+              <tr key={k} className="font-mono tabular-nums text-fg">
+                <td className="font-sans capitalize text-fg-muted">{k}</td>
+                <td>{m.toParent[k] ?? "–"}</td>
+                <td>{m.toSibling[k] ?? "–"}</td>
+              </tr>
+            ))}
+          </tbody>
+        </table>
+      )}
+    </section>
+  );
+}
+
 export function ShipPanel() {
   const scene = useScene((s) => s.scene);
+  const selected = useScene((s) => (s.selection.length === 1 ? s.selection[0] : null));
+  const measured = scene && selected ? measureNode(scene, selected) : null;
   const r = useReadiness();
   const reactState = useCodegen((s) => s.byTarget.react);
   const [busy, setBusy] = useState<"react" | "html" | null>(null);
@@ -86,6 +116,8 @@ export function ShipPanel() {
             {busy === "html" ? "Preparing the zip…" : `or ${zipName(docName, "html")} (HTML only)`}
           </button>
         </section>
+
+        {measured && <Measurements m={measured} />}
 
         <section className="border-t border-line p-3">
           <div className="mb-2 flex items-center">

@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Button as RacButton, Header, Menu, MenuSection, MenuItem, MenuTrigger, Popover, Separator } from "react-aria-components";
 import { Icon } from "../ds";
 import { useRenderer } from "../../store/rendererChoice";
+import { useViewPrefs } from "../../store/viewPrefs";
 import { useTheme } from "./theme";
 import { useDocNameEditing } from "./DocName";
 import { pickSvgFile } from "../../tools/svgImport";
@@ -36,6 +37,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const setTheme = useTheme((s) => s.set);
   const renderer = useRenderer((s) => s.choice);
   const setRenderer = useRenderer((s) => s.setChoice);
+  const pixelSnap = useViewPrefs((s) => s.pixelSnap);
   const [open, setOpen] = useState(false);
   const [diagramOpen, setDiagramOpen] = useState(false);
   const [variablesOpen, setVariablesOpen] = useState(false);
@@ -59,6 +61,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "fonts") setFontsOpen(true);
           else if (k === "versions") setVersionsOpen(true);
           else if (k === "board") setBoardOpen(true);
+          else if (k === "pixel-snap") useViewPrefs.getState().cyclePixelSnap();
           else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
           else if (k === "system" || k === "light" || k === "dark") setTheme(k);
         }}>
@@ -90,6 +93,10 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                 <Icon name="page" size={14} /> Versions…
               </MenuItem>
               <Separator className="my-1 h-px bg-line" />
+              <MenuItem id="pixel-snap" className={ITEM}>
+                <Icon name="plus" size={14} /> Pixel snap {pixelSnap > 0 ? `${pixelSnap} px` : "off"}
+                <span className="ml-auto text-[11px] text-fg-subtle">cycles 1 / 4 / 8 / off</span>
+              </MenuItem>
               <MenuItem id="renderer" className={ITEM}>
                 <Icon name="bolt" size={14} /> Renderer {renderer === "gpu" ? "GPU" : "CPU"}
                 <span className="ml-auto text-[11px] text-fg-subtle">switch to {renderer === "gpu" ? "CPU" : "GPU"}</span>

@@ -33,7 +33,7 @@ Legend: [x] done · [ ] to do
 - [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
 - [ ] Prototyping: hover and drag interactions, overlays, scroll, component state changes in the player
 - [x] Multiple artboards (frames), smart guides and snapping to nodes, layout grids on frames (columns, rows, square grid) that guide and snap; see docs/layout.md
-- [ ] Snap to a pixel grid, spacing guides (equal distances)
+- [x] Snap to a pixel grid (document menu: 1 / 4 / 8 px, per person) and spacing guides (equal gaps between neighbours, drawn while dragging)
 
 ## 1b. Vector (Illustrator parity)
 - [ ] Pen tool: node editing, handles, join, smooth
@@ -65,7 +65,7 @@ Legend: [x] done · [ ] to do
 - [ ] Optional relay/cloud for use beyond the LAN, still self-hostable
 
 ## 3. Handoff and ecosystem
-- [ ] Dev mode: measurements, CSS/Tailwind/React
+- [x] Dev mode: CSS/Tailwind/React and measurements (size, position, gaps to parent and siblings of the selection, in the Ship panel)
 - [ ] Plugin API
 - [x] Tokens in and out: W3C Design Tokens (DTCG) JSON and CSS custom properties, with modes; import of a DTCG file as collections (variables dialog); see docs/handoff.md
 - [ ] Syncing components with the code

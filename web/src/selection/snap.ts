@@ -325,3 +325,87 @@ export function snapTargets(scene: SceneState, exclude: readonly string[]): Boun
   }
   return out;
 }
+
+// ---------- EQUAL SPACING ----------
+//
+// Besides lining edges up, a box snaps to a DISTANCE: centered between two neighbors (equal gaps), or
+// at the same gap as the two neighbors beside it already have. Only the neighbors the box actually
+// faces count -- the ones that overlap it on the other axis -- and the nearest on each side.
+
+/** A gap to draw: along `axis` from `from` to `to`, on the line `at` of the other axis. */
+export interface SpacingGuide {
+  axis: SnapAxis;
+  from: number;
+  to: number;
+  at: number;
+}
+
+interface SpacingHit { delta: number; guides: SpacingGuide[] }
+
+function overlapOn(a: Bounds, b: Bounds, cross: SnapAxis): [number, number] | null {
+  const [a0, a1] = cross === "x" ? [a.x, a.x + a.width] : [a.y, a.y + a.height];
+  const [b0, b1] = cross === "x" ? [b.x, b.x + b.width] : [b.y, b.y + b.height];
+  const lo = Math.max(a0, b0), hi = Math.min(a1, b1);
+  return lo < hi ? [lo, hi] : null;
+}
+
+function spacingAxis(box: Bounds, targets: readonly Bounds[], axis: SnapAxis, threshold: number): SpacingHit | null {
+  const cross: SnapAxis = axis === "x" ? "y" : "x";
+  const lo = (b: Bounds) => (axis === "x" ? b.x : b.y);
+  const hi = (b: Bounds) => (axis === "x" ? b.x + b.width : b.y + b.height);
+  const facing = targets.filter((t) => t.width + t.height > 0 && overlapOn(box, t, cross) !== null);
+  const before = facing.filter((t) => hi(t) <= lo(box)).sort((a, b) => hi(b) - hi(a));
+  const after = facing.filter((t) => lo(t) >= hi(box)).sort((a, b) => lo(a) - lo(b));
+  const size = hi(box) - lo(box);
+  const at = (a: Bounds, b: Bounds): number => {
+    const o = overlapOn(a, b, cross) ?? overlapOn(box, a, cross)!;
+    return (o[0] + o[1]) / 2;
+  };
+  const hits: SpacingHit[] = [];
+  const near = before[0], far = before[1], nearA = after[0], farA = after[1];
+  if (near && nearA) {
+    const gl = lo(box) - hi(near), gr = lo(nearA) - hi(box);
+    const delta = (gr - gl) / 2;
+    const moved = { ...box, [axis]: lo(box) + delta } as Bounds;
+    const lineAt = at(box, near);
+    hits.push({ delta, guides: [
+      { axis, from: hi(near), to: lo(moved), at: lineAt },
+      { axis, from: hi(moved), to: lo(nearA), at: lineAt },
+    ] });
+  }
+  if (near && far) {
+    const g0 = lo(near) - hi(far);
+    if (g0 > 0) {
+      const target = hi(near) + g0;
+      const lineAt = at(box, near);
+      hits.push({ delta: target - lo(box), guides: [
+        { axis, from: hi(far), to: lo(near), at: lineAt },
+        { axis, from: hi(near), to: target, at: lineAt },
+      ] });
+    }
+  }
+  if (nearA && farA) {
+    const g0 = lo(farA) - hi(nearA);
+    if (g0 > 0) {
+      const target = lo(nearA) - g0 - size;
+      const lineAt = at(box, nearA);
+      hits.push({ delta: target - lo(box), guides: [
+        { axis, from: hi(nearA), to: lo(farA), at: lineAt },
+        { axis, from: target + size, to: lo(nearA), at: lineAt },
+      ] });
+    }
+  }
+  let best: SpacingHit | null = null;
+  for (const h of hits) {
+    if (Math.abs(h.delta) > threshold) continue;
+    if (best === null || Math.abs(h.delta) < Math.abs(best.delta)) best = h;
+  }
+  return best;
+}
+
+/** The spacing snap of a dragged box: how far to move it on each axis, and the gaps to draw. */
+export function spacingSnap(box: Bounds, targets: readonly Bounds[], threshold: number): { dx: number; dy: number; guides: SpacingGuide[] } {
+  const x = spacingAxis(box, targets, "x", threshold);
+  const y = spacingAxis(box, targets, "y", threshold);
+  return { dx: x?.delta ?? 0, dy: y?.delta ?? 0, guides: [...(x?.guides ?? []), ...(y?.guides ?? [])] };
+}
