@@ -1000,11 +1000,27 @@ message ReviewIssue {
 message ReviewDesignRequest { string doc_id = 1; }
 message ReviewDesignResponse { repeated ReviewIssue issues = 1; }
 
+// WHITEBOARD OBJECTS (internal/board): a sticky note, a table, a kanban board, a mind map or a
+// starting template, drawn as a group of plain nodes -- the same shape of answer as RenderDiagram.
+message RenderBoardRequest {
+  string kind = 1;            // sticky | table | kanban | mindmap | brainstorm | retrospective | user-flow | customer-journey
+  repeated string items = 2;  // sticky: the text; table: header cells; kanban: column titles; mindmap: center then branches
+  int32 rows = 3;             // table
+  int32 columns = 4;          // table
+  string color = 5;           // sticky: yellow | pink | green | blue | orange | purple
+}
+message RenderBoardResponse {
+  repeated Node nodes = 1;    // pre-order: the root group first, every node after its own parent
+  double width = 2;
+  double height = 3;
+}
+
 message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string nickname = 3; }
 message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
 message UpdatePresenceResponse {}
 
 service DocumentService {
+  rpc RenderBoard(RenderBoardRequest) returns (RenderBoardResponse);
   rpc ReviewDesign(ReviewDesignRequest) returns (ReviewDesignResponse);
   rpc CreateVersion(CreateVersionRequest) returns (VersionInfo);
   rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);

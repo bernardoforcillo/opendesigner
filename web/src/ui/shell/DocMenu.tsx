@@ -9,6 +9,7 @@ import { DiagramDialog } from "../DiagramDialog";
 import { VariablesDialog } from "../VariablesDialog";
 import { FontsDialog } from "../FontsDialog";
 import { VersionsDialog } from "../VersionsDialog";
+import { BoardDialog } from "../BoardDialog";
 import { useAppNavigate } from "../../home/nav";
 
 // THE DOCUMENT MENU: the logo is the button. Inside: Home, new document,
@@ -40,6 +41,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [variablesOpen, setVariablesOpen] = useState(false);
   const [fontsOpen, setFontsOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [boardOpen, setBoardOpen] = useState(false);
   return (
     <>
     <MenuTrigger isOpen={open} onOpenChange={setOpen}>
@@ -56,6 +58,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "variables") setVariablesOpen(true);
           else if (k === "fonts") setFontsOpen(true);
           else if (k === "versions") setVersionsOpen(true);
+          else if (k === "board") setBoardOpen(true);
           else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
           else if (k === "system" || k === "light" || k === "dark") setTheme(k);
         }}>
@@ -73,6 +76,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuItem>
               <MenuItem id="diagram" className={ITEM}>
                 <Icon name="plus" size={14} /> Diagram (Mermaid, UML)…
+              </MenuItem>
+              <MenuItem id="board" className={ITEM}>
+                <Icon name="plus" size={14} /> Whiteboard (sticky, table, kanban…)…
               </MenuItem>
               <MenuItem id="variables" className={ITEM}>
                 <Icon name="plus" size={14} /> Variables…
@@ -105,6 +111,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <VariablesDialog isOpen={variablesOpen} onOpenChange={setVariablesOpen} />
     <FontsDialog isOpen={fontsOpen} onOpenChange={setFontsOpen} />
     <VersionsDialog isOpen={versionsOpen} onOpenChange={setVersionsOpen} />
+    <BoardDialog isOpen={boardOpen} onOpenChange={setBoardOpen} />
     </>
   );
 }

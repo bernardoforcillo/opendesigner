@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/bernardoforcillo/opendesigner/internal/board"
 	"github.com/bernardoforcillo/opendesigner/internal/review"
 	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"os"
@@ -353,4 +354,17 @@ func (s *DocumentService) ReviewDesign(_ context.Context, req *connect.Request[o
 		})
 	}
 	return connect.NewResponse(out), nil
+}
+
+func (s *DocumentService) RenderBoard(_ context.Context, req *connect.Request[opendesignerv1.RenderBoardRequest]) (*connect.Response[opendesignerv1.RenderBoardResponse], error) {
+	m := req.Msg
+	res, err := board.Render(m.GetKind(), board.Params{Items: m.GetItems(), Rows: int(m.GetRows()), Columns: int(m.GetColumns()), Color: m.GetColor()})
+	if err != nil {
+		var be *board.Error
+		if errors.As(err, &be) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&opendesignerv1.RenderBoardResponse{Nodes: res.Nodes, Width: res.Width, Height: res.Height}), nil
 }

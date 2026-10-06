@@ -46,9 +46,10 @@ Legend: [x] done · [ ] to do
 - [ ] Color: CMYK and ICC profiles (print)
 
 ## 1c. Whiteboard (Miro parity)
-- [ ] Whiteboard mode: sticky notes, quick text and arrows
-- [ ] Tables, kanban and mind maps as native objects
-- [ ] Templates: brainstorming, retrospective, user flow, customer journey
+- [x] Sticky notes (six colors) and arrows (flow and user-flow templates) as plain nodes; see docs/whiteboard.md
+- [ ] A whiteboard mode (infinite board without frames), quick text, arrows that follow the shapes
+- [x] Tables, kanban boards and mind maps, drawn as groups of plain nodes (editor dialog, `RenderBoard` RPC, `create_board_object` MCP tool)
+- [x] Templates: brainstorm, retrospective, user flow, customer journey
 - [ ] Cursor chat, reactions, timer, voting, follow mode
 - [ ] Mermaid import/export in both directions
 
