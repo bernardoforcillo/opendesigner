@@ -222,6 +222,56 @@ func shadowCSS(s *opendesignerv1.DropShadow, mul float64) string {
 	return fmt.Sprintf("%s %s %s %s", px(s.GetOffsetX()), px(s.GetOffsetY()), px(math.Max(0, s.GetBlur())), colorCSS(s.GetColor(), mul))
 }
 
+// extraShadows: the drop shadows after the first, as box-shadow entries; innerShadows:
+// the inner shadows as `inset` entries. Both are in list order, the topmost first,
+// like CSS.
+func extraShadows(effects []*opendesignerv1.Effect, mul float64) []string {
+	var out []string
+	first := true
+	for _, e := range effects {
+		if s := e.GetDropShadow(); s != nil {
+			if first {
+				first = false
+				continue
+			}
+			out = append(out, shadowCSS(s, mul))
+		}
+	}
+	return out
+}
+
+func innerShadows(effects []*opendesignerv1.Effect, mul float64) []string {
+	var out []string
+	for _, e := range effects {
+		if s := e.GetInnerShadow(); s != nil {
+			out = append(out, "inset "+fmt.Sprintf("%s %s %s %s", px(s.GetOffsetX()), px(s.GetOffsetY()), px(math.Max(0, s.GetBlur())), colorCSS(s.GetColor(), mul)))
+		}
+	}
+	return out
+}
+
+// backgroundBlur: the first background blur with radius > 0, or nil.
+func backgroundBlur(effects []*opendesignerv1.Effect) *opendesignerv1.BackgroundBlur {
+	for _, e := range effects {
+		if b := e.GetBackgroundBlur(); b != nil && b.GetRadius() > 0 {
+			return b
+		}
+	}
+	return nil
+}
+
+// blendCSS: the mix-blend-mode value of a node, "" for normal.
+var blendNames = map[opendesignerv1.BlendMode]string{
+	opendesignerv1.BlendMode_BLEND_MODE_MULTIPLY: "multiply", opendesignerv1.BlendMode_BLEND_MODE_SCREEN: "screen",
+	opendesignerv1.BlendMode_BLEND_MODE_OVERLAY: "overlay", opendesignerv1.BlendMode_BLEND_MODE_DARKEN: "darken",
+	opendesignerv1.BlendMode_BLEND_MODE_LIGHTEN: "lighten", opendesignerv1.BlendMode_BLEND_MODE_COLOR_DODGE: "color-dodge",
+	opendesignerv1.BlendMode_BLEND_MODE_COLOR_BURN: "color-burn", opendesignerv1.BlendMode_BLEND_MODE_HARD_LIGHT: "hard-light",
+	opendesignerv1.BlendMode_BLEND_MODE_SOFT_LIGHT: "soft-light", opendesignerv1.BlendMode_BLEND_MODE_DIFFERENCE: "difference",
+	opendesignerv1.BlendMode_BLEND_MODE_EXCLUSION: "exclusion", opendesignerv1.BlendMode_BLEND_MODE_HUE: "hue",
+	opendesignerv1.BlendMode_BLEND_MODE_SATURATION: "saturation", opendesignerv1.BlendMode_BLEND_MODE_COLOR: "color",
+	opendesignerv1.BlendMode_BLEND_MODE_LUMINOSITY: "luminosity",
+}
+
 // firstShadow / firstBlur: the canvas draws the FIRST shadow and the FIRST
 // blur with radius > 0 (canvasRenderer.ts::firstShadow/firstBlur).
 func firstShadow(effects []*opendesignerv1.Effect) *opendesignerv1.DropShadow {

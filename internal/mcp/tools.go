@@ -92,30 +92,51 @@ func validateFills(colors []RGBA) error {
 	return nil
 }
 
-// EffectSpec is one node effect. The canvas draws the FIRST dropShadow and the
-// FIRST layerBlur of a node; extra ones are kept in the document but not drawn.
+// EffectSpec is one node effect. Any number of dropShadow and innerShadow effects
+// are drawn; the canvas applies the FIRST layerBlur and the FIRST backgroundBlur.
 type EffectSpec struct {
-	Kind    string    `json:"kind" jsonschema:"dropShadow or layerBlur"`
-	Color   StopColor `json:"color,omitempty" jsonschema:"dropShadow only; alpha 0..1"`
-	OffsetX float64   `json:"offsetX,omitempty" jsonschema:"dropShadow only, in world units"`
-	OffsetY float64   `json:"offsetY,omitempty" jsonschema:"dropShadow only, in world units"`
-	Blur    float64   `json:"blur,omitempty" jsonschema:"dropShadow only, >= 0, in world units"`
-	Radius  float64   `json:"radius,omitempty" jsonschema:"layerBlur only, >= 0, in world units"`
+	Kind    string    `json:"kind" jsonschema:"dropShadow, innerShadow, layerBlur or backgroundBlur"`
+	Color   StopColor `json:"color,omitempty" jsonschema:"shadows only; alpha 0..1"`
+	OffsetX float64   `json:"offsetX,omitempty" jsonschema:"shadows only, in world units"`
+	OffsetY float64   `json:"offsetY,omitempty" jsonschema:"shadows only, in world units"`
+	Blur    float64   `json:"blur,omitempty" jsonschema:"shadows only, >= 0, in world units"`
+	Radius  float64   `json:"radius,omitempty" jsonschema:"layerBlur and backgroundBlur only, >= 0, in world units"`
+}
+
+// blendModes maps the tool's names (CSS names) to the document's enum.
+var blendModes = map[string]opendesignerv1.BlendMode{
+	"normal": opendesignerv1.BlendMode_BLEND_MODE_UNSPECIFIED, "multiply": opendesignerv1.BlendMode_BLEND_MODE_MULTIPLY,
+	"screen": opendesignerv1.BlendMode_BLEND_MODE_SCREEN, "overlay": opendesignerv1.BlendMode_BLEND_MODE_OVERLAY,
+	"darken": opendesignerv1.BlendMode_BLEND_MODE_DARKEN, "lighten": opendesignerv1.BlendMode_BLEND_MODE_LIGHTEN,
+	"color-dodge": opendesignerv1.BlendMode_BLEND_MODE_COLOR_DODGE, "color-burn": opendesignerv1.BlendMode_BLEND_MODE_COLOR_BURN,
+	"hard-light": opendesignerv1.BlendMode_BLEND_MODE_HARD_LIGHT, "soft-light": opendesignerv1.BlendMode_BLEND_MODE_SOFT_LIGHT,
+	"difference": opendesignerv1.BlendMode_BLEND_MODE_DIFFERENCE, "exclusion": opendesignerv1.BlendMode_BLEND_MODE_EXCLUSION,
+	"hue": opendesignerv1.BlendMode_BLEND_MODE_HUE, "saturation": opendesignerv1.BlendMode_BLEND_MODE_SATURATION,
+	"color": opendesignerv1.BlendMode_BLEND_MODE_COLOR, "luminosity": opendesignerv1.BlendMode_BLEND_MODE_LUMINOSITY,
+}
+
+func blendModeName(b opendesignerv1.BlendMode) string {
+	for name, v := range blendModes {
+		if v == b && name != "normal" {
+			return name
+		}
+	}
+	return ""
 }
 
 func validateEffects(effects []EffectSpec) error {
 	for i, e := range effects {
 		switch e.Kind {
-		case "dropShadow":
+		case "dropShadow", "innerShadow":
 			if e.Blur < 0 {
 				return fmt.Errorf("effects[%d].blur must be >= 0", i)
 			}
-		case "layerBlur":
+		case "layerBlur", "backgroundBlur":
 			if e.Radius < 0 {
 				return fmt.Errorf("effects[%d].radius must be >= 0", i)
 			}
 		default:
-			return fmt.Errorf("effects[%d].kind must be \"dropShadow\" or \"layerBlur\", got %q", i, e.Kind)
+			return fmt.Errorf("effects[%d].kind must be dropShadow, innerShadow, layerBlur or backgroundBlur, got %q", i, e.Kind)
 		}
 	}
 	return nil
@@ -126,6 +147,17 @@ func toEffects(effects []EffectSpec) []*opendesignerv1.Effect {
 	for _, e := range effects {
 		if e.Kind == "layerBlur" {
 			out = append(out, &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_LayerBlur{LayerBlur: &opendesignerv1.LayerBlur{Radius: e.Radius}}})
+			continue
+		}
+		if e.Kind == "backgroundBlur" {
+			out = append(out, &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_BackgroundBlur{BackgroundBlur: &opendesignerv1.BackgroundBlur{Radius: e.Radius}}})
+			continue
+		}
+		if e.Kind == "innerShadow" {
+			out = append(out, &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_InnerShadow{InnerShadow: &opendesignerv1.InnerShadow{
+				Color:   &opendesignerv1.Color{R: float32(e.Color.R), G: float32(e.Color.G), B: float32(e.Color.B), A: float32(e.Color.A)},
+				OffsetX: e.OffsetX, OffsetY: e.OffsetY, Blur: e.Blur,
+			}}})
 			continue
 		}
 		out = append(out, &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_DropShadow{DropShadow: &opendesignerv1.DropShadow{
@@ -295,6 +327,7 @@ type SetPropertiesInput struct {
 	CornerRadius *float64     `json:"cornerRadius,omitempty" jsonschema:"rectangles only"`
 	Fills        []RGBA       `json:"fills,omitempty" jsonschema:"replaces the whole fill list; [] clears it"`
 	Effects      []EffectSpec `json:"effects,omitempty" jsonschema:"replaces the whole effect list; [] clears it"`
+	BlendMode    *string      `json:"blendMode,omitempty" jsonschema:"normal | multiply | screen | overlay | darken | lighten | color-dodge | color-burn | hard-light | soft-light | difference | exclusion | hue | saturation | color | luminosity"`
 }
 
 // SetProperties applies an absolute field patch to a node via SetProperties.
@@ -332,6 +365,14 @@ func (s *Session) SetProperties(ctx context.Context, in SetPropertiesInput) (Seq
 	if in.Visible != nil {
 		patch.Visible = *in.Visible
 		paths = append(paths, "visible")
+	}
+	if in.BlendMode != nil {
+		b, ok := blendModes[*in.BlendMode]
+		if !ok {
+			return SeqOutput{}, fmt.Errorf("blendMode must be one of the CSS blend mode names or \"normal\", got %q", *in.BlendMode)
+		}
+		patch.BlendMode = b
+		paths = append(paths, "blend_mode")
 	}
 	if in.Effects != nil {
 		if err := validateEffects(in.Effects); err != nil {
@@ -611,6 +652,7 @@ type NodeView struct {
 	// TextStyleId: the shared text style a text node applies (see apply_text_style).
 	TextStyleId string `json:"textStyleId,omitempty" jsonschema:"shared text style applied to a text node; see apply_text_style"`
 	// Constraints / layout sizing (see set_constraints, set_layout_sizing); omitted when default.
+	BlendMode     string `json:"blendMode,omitempty" jsonschema:"CSS blend mode name; absent = normal"`
 	ConstraintX   string `json:"constraintX,omitempty" jsonschema:"how it follows its parent frame's width: max | stretch | center | scale (default min); see set_constraints"`
 	ConstraintY   string `json:"constraintY,omitempty"`
 	LayoutSizingX string `json:"layoutSizingX,omitempty" jsonschema:"fill when an auto layout parent fills its width; see set_layout_sizing"`
@@ -663,6 +705,7 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 		v.Modes = n.GetModes()
 	}
 	v.TextStyleId = n.GetTextStyleId()
+	v.BlendMode = blendModeName(n.GetBlendMode())
 	v.ConstraintX, v.ConstraintY = constraintNames[n.GetConstraintX()], constraintNames[n.GetConstraintY()]
 	if n.GetLayoutSizingX() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL {
 		v.LayoutSizingX = "fill"
@@ -802,7 +845,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_frame", "Create a frame: a container with its own box. Optionally clipsContent, and autoLayout to have the server arrange its children in a row or column (the children's x/y are then computed for you). parentId defaults to the first page.", s.CreateFrame)
 	addTool(srv, "set_auto_layout", "Turn auto layout on, change it, or (autoLayout omitted) off for a frame. After every change the server repositions the frame's children; reposition by editing the layout, not the children's x/y, which it overrides.", s.SetAutoLayout)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
-	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects: [{kind:dropShadow,color,offsetX,offsetY,blur}|{kind:layerBlur,radius}]. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
+	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}]. blendMode: normal|multiply|screen|overlay|... (CSS names). A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
 	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style.", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)

@@ -163,6 +163,83 @@ function applyEffects(ctx: CanvasRenderingContext2D, n: NodeLite, scale: number)
   return true;
 }
 
+// --- BLEND MODE, SEVERAL SHADOWS, INNER SHADOW, BACKGROUND BLUR -------------------
+//
+// The blend mode is the context's globalCompositeOperation: the CSS names are the
+// model's names. It applies to what THE NODE draws against what is already on
+// the canvas (children are not isolated into a group of their own).
+//
+// The shadow state is single, so the shadows after the first are drawn BEFORE the
+// node with the usual trick: the shape is drawn far off the canvas
+// (SHADOW_PARK device px to the left) and the shadow offset brings the shadow
+// back, so only the shadow shows. Inner shadows and background blur need the
+// node's outline, so they apply to rect, ellipse and frame only.
+const SHADOW_PARK = 100000;
+
+type InnerShadowLite = Extract<EffectLite, { kind: "innerShadow" }>;
+type BackgroundBlurLite = Extract<EffectLite, { kind: "backgroundBlur" }>;
+
+function extraShadows(n: NodeLite): DropShadowLite[] {
+  return (n.effects?.filter((e): e is DropShadowLite => e.kind === "dropShadow") ?? []).slice(1);
+}
+function innerShadows(n: NodeLite): InnerShadowLite[] {
+  return n.effects?.filter((e): e is InnerShadowLite => e.kind === "innerShadow") ?? [];
+}
+function backdropBlur(n: NodeLite): BackgroundBlurLite | undefined {
+  return n.effects?.find((e): e is BackgroundBlurLite => e.kind === "backgroundBlur" && e.radius > 0);
+}
+const hasOutline = (n: NodeLite) => n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame";
+
+// Blurs what is already drawn behind the node, inside its outline.
+function drawBackdropBlur(ctx: CanvasRenderingContext2D, path: Path2D, radius: number, scale: number): void {
+  ctx.save();
+  ctx.clip(path);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.filter = `blur(${radius * scale}px)`;
+  ctx.drawImage(ctx.canvas, 0, 0);
+  ctx.restore();
+}
+
+// Draws `body` once per extra drop shadow, parked off canvas (see above).
+function drawExtraShadows(ctx: CanvasRenderingContext2D, n: NodeLite, scale: number, body: () => void): void {
+  const extras = extraShadows(n);
+  // The last shadow is the lowest, as in a design editor's list.
+  for (let i = extras.length - 1; i >= 0; i--) {
+    const sh = extras[i];
+    const m = ctx.getTransform();
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, -SHADOW_PARK, 0);
+    ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.shadowColor = cssRgba(sh.color);
+    ctx.shadowOffsetX = sh.offsetX * scale + SHADOW_PARK;
+    ctx.shadowOffsetY = sh.offsetY * scale;
+    ctx.shadowBlur = Math.max(0, sh.blur) * scale;
+    body();
+    ctx.restore();
+  }
+}
+
+// The shadow of everything outside the outline, cast inward and clipped to it.
+function drawInnerShadows(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, scale: number): void {
+  for (const sh of innerShadows(n)) {
+    const margin = Math.max(Math.abs(sh.offsetX), Math.abs(sh.offsetY)) + Math.max(0, sh.blur) * 2 + 8;
+    const ring = new Path2D();
+    ring.rect(n.x - margin, n.y - margin, n.width + margin * 2, n.height + margin * 2);
+    ring.addPath(path);
+    ctx.save();
+    ctx.clip(path);
+    ctx.shadowColor = cssRgba(sh.color);
+    ctx.shadowOffsetX = sh.offsetX * scale;
+    ctx.shadowOffsetY = sh.offsetY * scale;
+    ctx.shadowBlur = Math.max(0, sh.blur) * scale;
+    ctx.fillStyle = "#000";
+    ctx.fill(ring, "evenodd");
+    ctx.restore();
+  }
+}
+
 // The camera always stays in CSS pixels: devicePixelRatio must never
 // enter the model or the tools, only here in the actual drawing on the canvas.
 function devicePixelRatio(): number {
@@ -540,41 +617,57 @@ function drawNode(
     ctx.translate(-c.x, -c.y);
   }
   ctx.globalAlpha = eff.opacity;
+  const blended = eff.blendMode !== undefined;
+  if (blended) ctx.globalCompositeOperation = eff.blendMode as GlobalCompositeOperation;
   const color = cssColor(eff);
   ctx.fillStyle = paintStyle(ctx, resolvedFill(eff), eff);
+  const scale = deviceScale(ctx, cam);
+  const outline = hasOutline(eff) ? nodePath(eff) : null;
+  const bb = backdropBlur(eff);
+  if (bb && outline) drawBackdropBlur(ctx, outline, bb.radius, scale);
+  let castsShadow = false;
+  const body = () => {
+    if (eff.kind === "text") {
+      drawText(ctx, eff);
+      drawStrokes(ctx, eff, null);
+    } else if (eff.kind === "image") {
+      // An image draws itself on its own box (track 3): no
+      // fill underneath, and the stroke is not part of its design.
+      drawImageNode(ctx, state, eff, px, images);
+    } else if (eff.kind === "vector") {
+      // The vector has its double pass (even-odd fill + stroke of
+      // every outline): it is NOT the model's box, so it does not go through the
+      // rectangle branch below. The vector stroke is drawVector's, not
+      // drawStrokes' (which is for a box's perimeter).
+      drawVector(ctx, eff, color, cam.zoom);
+    } else {
+      // rect / ellipse / FRAME. A frame is drawn like a rectangle with its
+      // fills (nodePath keeps it sharp-cornered even with a cornerRadius), behind
+      // its own content -- drawNode runs BEFORE the descent into the children. A SINGLE
+      // Path2D per node: the fill's is also the stroke's.
+      const path = outline ?? nodePath(eff);
+      // A FRAME without a fill is transparent: it is a container, and the default gray
+      // (resolvedFill) is for shapes. Without this exception a frame
+      // just wrapped around a selection would hide it under a
+      // gray rectangle.
+      if (!(eff.kind === "frame" && eff.fills.length === 0)) ctx.fill(path);
+      // With a visible fill the shadow has already been given by it: giving it again from the stroke
+      // would overlap two shadows on the edge and darken it.
+      if (castsShadow && eff.fills.length > 0) ctx.shadowColor = "transparent";
+      drawStrokes(ctx, eff, path);
+    }
+  };
+  // Shadows after the first go underneath, parked off canvas (see above).
+  castsShadow = true;
+  if (extraShadows(eff).length > 0) drawExtraShadows(ctx, eff, scale, body);
   // Effects apply to everything the node draws below: shape, text,
   // image, vector.
-  const fx = applyEffects(ctx, eff, deviceScale(ctx, cam));
-  if (eff.kind === "text") {
-    drawText(ctx, eff);
-    drawStrokes(ctx, eff, null);
-  } else if (eff.kind === "image") {
-    // An image draws itself on its own box (track 3): no
-    // fill underneath, and the stroke is not part of its design.
-    drawImageNode(ctx, state, eff, px, images);
-  } else if (eff.kind === "vector") {
-    // The vector has its double pass (even-odd fill + stroke of
-    // every outline): it is NOT the model's box, so it does not go through the
-    // rectangle branch below. The vector stroke is drawVector's, not
-    // drawStrokes' (which is for a box's perimeter).
-    drawVector(ctx, eff, color, cam.zoom);
-  } else {
-    // rect / ellipse / FRAME. A frame is drawn like a rectangle with its
-    // fills (nodePath keeps it sharp-cornered even with a cornerRadius), behind
-    // its own content -- drawNode runs BEFORE the descent into the children. A SINGLE
-    // Path2D per node: the fill's is also the stroke's.
-    const path = nodePath(eff);
-    // A FRAME without a fill is transparent: it is a container, and the default gray
-    // (resolvedFill) is for shapes. Without this exception a frame
-    // just wrapped around a selection would hide it under a
-    // gray rectangle.
-    if (!(eff.kind === "frame" && eff.fills.length === 0)) ctx.fill(path);
-    // With a visible fill the shadow has already been given by it: giving it again from the stroke
-    // would overlap two shadows on the edge and darken it.
-    if (fx && eff.fills.length > 0) ctx.shadowColor = "transparent";
-    drawStrokes(ctx, eff, path);
-  }
+  const fx = applyEffects(ctx, eff, scale);
+  castsShadow = fx;
+  body();
   if (fx) ctx.restore();
+  if (outline && innerShadows(eff).length > 0) drawInnerShadows(ctx, eff, outline, scale);
+  if (blended) ctx.globalCompositeOperation = "source-over";
   if (rotated) ctx.restore();
 }
 

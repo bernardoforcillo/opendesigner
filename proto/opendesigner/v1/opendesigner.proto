@@ -68,7 +68,46 @@ message DropShadow {
 // Layer blur: blurs the node itself. `radius` is the standard deviation of the
 // gaussian, in world coordinates.
 message LayerBlur { double radius = 1; } // >= 0
-message Effect { oneof kind { DropShadow drop_shadow = 1; LayerBlur layer_blur = 2; } }
+// Inner shadow: the shadow of everything OUTSIDE the shape, cast inward and
+// clipped to the shape. Same units as DropShadow. Drawn on rectangles,
+// ellipses and frames (the shapes that have an outline path).
+message InnerShadow {
+  Color color = 1;
+  double offset_x = 2;
+  double offset_y = 3;
+  double blur = 4;       // >= 0
+}
+// Background blur: blurs what is BEHIND the node, inside its outline (the
+// frosted-glass look). `radius` is the standard deviation, in world coordinates.
+message BackgroundBlur { double radius = 1; } // >= 0
+message Effect {
+  oneof kind {
+    DropShadow drop_shadow = 1;
+    LayerBlur layer_blur = 2;
+    InnerShadow inner_shadow = 3;
+    BackgroundBlur background_blur = 4;
+  }
+}
+
+// How a node's pixels combine with what is behind it. UNSPECIFIED is NORMAL.
+enum BlendMode {
+  BLEND_MODE_UNSPECIFIED = 0;
+  BLEND_MODE_MULTIPLY = 1;
+  BLEND_MODE_SCREEN = 2;
+  BLEND_MODE_OVERLAY = 3;
+  BLEND_MODE_DARKEN = 4;
+  BLEND_MODE_LIGHTEN = 5;
+  BLEND_MODE_COLOR_DODGE = 6;
+  BLEND_MODE_COLOR_BURN = 7;
+  BLEND_MODE_HARD_LIGHT = 8;
+  BLEND_MODE_SOFT_LIGHT = 9;
+  BLEND_MODE_DIFFERENCE = 10;
+  BLEND_MODE_EXCLUSION = 11;
+  BLEND_MODE_HUE = 12;
+  BLEND_MODE_SATURATION = 13;
+  BLEND_MODE_COLOR = 14;
+  BLEND_MODE_LUMINOSITY = 15;
+}
 
 message RectNode { double corner_radius = 1; }
 message EllipseNode {} // cx/cy/rx/ry derive from x/y/width/height, as for RectNode
@@ -444,6 +483,8 @@ message Node {
   // The "layout_sizing_x" / "layout_sizing_y" mask paths write them.
   LayoutSizing layout_sizing_x = 46;
   LayoutSizing layout_sizing_y = 47;
+  // Blend mode against what is behind the node (see BlendMode). The "blend_mode" mask path writes it.
+  BlendMode blend_mode = 48;
 }
 
 message Page { string id = 1; string name = 2; }

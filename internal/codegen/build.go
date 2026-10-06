@@ -375,6 +375,12 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 	}
 	if paintable {
 		setFilter(el, dropShadow, firstBlur(eff.GetEffects()))
+		if bb := backgroundBlur(eff.GetEffects()); bb != nil && (isFrame || isEllipse || eff.GetRect() != nil) {
+			el.addStyle("backdrop-filter", "blur("+px(bb.GetRadius())+")")
+		}
+	}
+	if mode := blendNames[eff.GetBlendMode()]; mode != "" {
+		el.addStyle("mix-blend-mode", mode)
 	}
 	b.children(el, n, c)
 	return el
@@ -530,6 +536,11 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 			shadows = append(shadows, shadowCSS(sh, mul))
 		}
 	}
+	// The other drop shadows (box-shadow only: they cast from the box) and the inner ones.
+	if hasFill {
+		shadows = append(shadows, extraShadows(n.GetEffects(), mul)...)
+	}
+	shadows = append(shadows, innerShadows(n.GetEffects(), mul)...)
 	if len(shadows) > 0 {
 		el.addStyle("box-shadow", strings.Join(shadows, ","))
 	}

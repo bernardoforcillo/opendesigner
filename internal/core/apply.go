@@ -20,6 +20,7 @@ var (
 	// ErrNotRectNode for corner_radius).
 	ErrNotFrameNode = errors.New("core: not a frame node")
 	ErrConstraint   = errors.New("core: unknown constraint")
+	ErrBlendMode    = errors.New("core: unknown blend mode")
 	ErrLayoutSizing = errors.New("core: unknown layout sizing")
 	// ErrNotVectorNode: same precedent as ErrNotTextNode -- the `shape` oneof is
 	// the NATURE of the node, so a SetVectorPath on a rectangle is an op on the
@@ -384,6 +385,11 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			if c < opendesignerv1.Constraint_CONSTRAINT_UNSPECIFIED || c > opendesignerv1.Constraint_CONSTRAINT_SCALE {
 				return fmt.Errorf("%w: %v", ErrConstraint, c)
 			}
+		case "blend_mode":
+			// Closed enum, like constraints.
+			if b := s.GetPatch().GetBlendMode(); b < opendesignerv1.BlendMode_BLEND_MODE_UNSPECIFIED || b > opendesignerv1.BlendMode_BLEND_MODE_LUMINOSITY {
+				return fmt.Errorf("%w: %v", ErrBlendMode, b)
+			}
 		case "layout_sizing_x", "layout_sizing_y":
 			sz := s.GetPatch().GetLayoutSizingX()
 			if path == "layout_sizing_y" {
@@ -497,6 +503,8 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.ConstraintX = p.GetConstraintX()
 		case "constraint_y":
 			n.ConstraintY = p.GetConstraintY()
+		case "blend_mode":
+			n.BlendMode = p.GetBlendMode()
 		case "layout_sizing_x":
 			n.LayoutSizingX = p.GetLayoutSizingX()
 		case "layout_sizing_y":

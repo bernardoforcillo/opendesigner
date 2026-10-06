@@ -75,18 +75,19 @@ export function sceneIndexOf(scene: SceneState): SceneIndex {
 export function effectsOutset(n: NodeLite): number {
   if (!n.effects) return 0;
   let out = 0;
-  let shadowSeen = false;
+  let shadow = 0;
   let blurSeen = false;
+  // Every drop shadow counts (the widest wins); inner shadows and background
+  // blur stay inside the outline.
   for (const e of n.effects) {
-    if (e.kind === "dropShadow" && !shadowSeen) {
-      shadowSeen = true;
-      out += Math.max(Math.abs(e.offsetX), Math.abs(e.offsetY)) + e.blur * 1.5;
+    if (e.kind === "dropShadow") {
+      shadow = Math.max(shadow, Math.max(Math.abs(e.offsetX), Math.abs(e.offsetY)) + e.blur * 1.5);
     } else if (e.kind === "layerBlur" && !blurSeen && e.radius > 0) {
       blurSeen = true;
       out += e.radius * 3;
     }
   }
-  return out;
+  return out + shadow;
 }
 
 // Text is not clipped by its own box (renderer/text.ts::textPaintBounds),

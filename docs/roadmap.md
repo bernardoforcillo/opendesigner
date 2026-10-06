@@ -9,9 +9,10 @@ Legend: [x] done · [ ] to do
 - [x] Shapes, text, images, vector, groups, frames, pages
 - [x] Components with instances and overrides
 - [x] Linear and radial gradients (canvas, SVG, panel, MCP)
-- [ ] More stops per gradient, gradient on strokes from the panel, image as a fill
+- [x] More stops per gradient (add, move, remove from the panel)
+- [ ] Gradient on strokes from the panel, image as a fill
 - [x] Effects: drop shadow and layer blur (canvas, SVG, panel, MCP, copy/paste; one per type per node is drawn)
-- [ ] Effects: multiple shadows per node, inner shadow, background blur, blend mode
+- [x] Effects: multiple shadows per node, inner shadow, background blur, blend mode (docs/effects.md)
 - [x] Auto layout: direction, spacing, padding, alignments, hug; computed by the server (Shift+A wraps the selection, Frame tool, panel, MCP `create_frame`/`set_auto_layout`)
 - [x] Auto layout: reordering by dragging children (also into another auto layout), with insertion line and outline; a single undo step
 - [x] Auto layout: children that fill the space (fill), wrapping onto several lines, dragging a child OUT of the frame, instances as children; see docs/layout.md

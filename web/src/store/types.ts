@@ -1,6 +1,6 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
@@ -60,6 +60,9 @@ export interface AutoLayoutLite {
 
 // How a node follows its parent frame's resize (CONSTRAINTS), and how an auto layout parent
 // sizes it (LAYOUT SIZING), per axis. Absent = the proto default: "min" / fixed.
+export type BlendModeLite =
+  | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "color-dodge" | "color-burn"
+  | "hard-light" | "soft-light" | "difference" | "exclusion" | "hue" | "saturation" | "color" | "luminosity";
 export type ConstraintLite = "min" | "max" | "stretch" | "center" | "scale";
 
 // A node effect. Shadow and blur are in WORLD coordinates, like a stroke's
@@ -68,7 +71,9 @@ export type ConstraintLite = "min" | "max" | "stretch" | "center" | "scale";
 // the model and the wire nonetheless keep the whole list.
 export type EffectLite =
   | { kind: "dropShadow"; color: { r: number; g: number; b: number; a: number }; offsetX: number; offsetY: number; blur: number }
-  | { kind: "layerBlur"; radius: number };
+  | { kind: "layerBlur"; radius: number }
+  | { kind: "innerShadow"; color: { r: number; g: number; b: number; a: number }; offsetX: number; offsetY: number; blur: number }
+  | { kind: "backgroundBlur"; radius: number };
 
 // The alignment as a string and not as a numeric enum, for the same reason
 // that `kind` is "rect" | "ellipse" | "text" instead of the oneof's
@@ -244,6 +249,8 @@ export interface NodeLite {
   constraintY?: ConstraintLite;
   layoutSizingX?: "fill";
   layoutSizingY?: "fill";
+  // Blend mode against what is behind; absent = normal.
+  blendMode?: BlendModeLite;
   // TRANSIENT animation FIELDS: written ONLY by animation/pose.ts when it
   // derives the scene to show while a clip runs or is scrubbed. They are not
   // document: toPbNode does not read them, no op carries them, and a snapshot never
@@ -487,11 +494,18 @@ export function toPbStrokes(strokes: readonly StrokeLite[]) {
 // The model's EFFECTS in the init shape of opendesigner.v1.Node.effects.
 // Twin of toPbFills/toPbStrokes: the panel builds the SAME patch.
 export function toPbEffects(effects: readonly EffectLite[]) {
-  return effects.map((e) =>
-    e.kind === "dropShadow"
-      ? { kind: { case: "dropShadow" as const, value: { color: { ...e.color }, offsetX: e.offsetX, offsetY: e.offsetY, blur: e.blur } } }
-      : { kind: { case: "layerBlur" as const, value: { radius: e.radius } } },
-  );
+  return effects.map((e) => {
+    switch (e.kind) {
+      case "dropShadow":
+        return { kind: { case: "dropShadow" as const, value: { color: { ...e.color }, offsetX: e.offsetX, offsetY: e.offsetY, blur: e.blur } } };
+      case "innerShadow":
+        return { kind: { case: "innerShadow" as const, value: { color: { ...e.color }, offsetX: e.offsetX, offsetY: e.offsetY, blur: e.blur } } };
+      case "backgroundBlur":
+        return { kind: { case: "backgroundBlur" as const, value: { radius: e.radius } } };
+      default:
+        return { kind: { case: "layerBlur" as const, value: { radius: e.radius } } };
+    }
+  });
 }
 
 const LAYOUT_ALIGN_TO_LITE: Partial<Record<LayoutAlign, LayoutAlignLite>> = {
@@ -529,14 +543,15 @@ export function toPbAutoLayout(a: AutoLayoutLite) {
 
 export function toEffectLite(e: PbEffect): EffectLite {
   const k = e.kind;
-  if (k.case === "dropShadow") {
+  if (k.case === "dropShadow" || k.case === "innerShadow") {
     const c = k.value.color;
     return {
-      kind: "dropShadow",
+      kind: k.case,
       color: { r: c?.r ?? 0, g: c?.g ?? 0, b: c?.b ?? 0, a: c?.a ?? 1 },
       offsetX: k.value.offsetX, offsetY: k.value.offsetY, blur: k.value.blur,
     };
   }
+  if (k.case === "backgroundBlur") return { kind: "backgroundBlur", radius: k.value.radius };
   // An effect without `kind` (wire from a future version) reads as a
   // null blur: harmless to draw and keeps the position in the list.
   return { kind: "layerBlur", radius: k.case === "layerBlur" ? k.value.radius : 0 };
@@ -639,6 +654,14 @@ const CONSTRAINT_TO_PB: Record<ConstraintLite, Constraint> = {
   min: Constraint.MIN, max: Constraint.MAX, stretch: Constraint.STRETCH, center: Constraint.CENTER, scale: Constraint.SCALE,
 };
 
+export const BLEND_MODES: readonly BlendModeLite[] = [
+  "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn",
+  "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity",
+];
+// The wire enum is BLEND_MODE_UNSPECIFIED = 0 followed by BLEND_MODES in order.
+const blendToLite = (b: BlendMode): BlendModeLite | undefined => (b > 0 ? BLEND_MODES[b - 1] : undefined);
+export const toPbBlend = (b: BlendModeLite | undefined): BlendMode => (b ? BLEND_MODES.indexOf(b) + 1 : BlendMode.UNSPECIFIED);
+
 export function toNodeLite(n: PbNode): NodeLite {
   const kind = kindOf(n.shape);
   return {
@@ -666,6 +689,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(n.constraintY !== Constraint.UNSPECIFIED ? { constraintY: CONSTRAINT_TO_LITE[n.constraintY] } : {}),
     ...(n.layoutSizingX === LayoutSizing.FILL ? { layoutSizingX: "fill" as const } : {}),
     ...(n.layoutSizingY === LayoutSizing.FILL ? { layoutSizingY: "fill" as const } : {}),
+    ...(blendToLite(n.blendMode) ? { blendMode: blendToLite(n.blendMode) } : {}),
   };
 }
 
@@ -690,6 +714,7 @@ export function toPbNode(n: NodeLite): PbNode {
     constraintY: n.constraintY ? CONSTRAINT_TO_PB[n.constraintY] : Constraint.UNSPECIFIED,
     layoutSizingX: n.layoutSizingX === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
     layoutSizingY: n.layoutSizingY === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
+    blendMode: toPbBlend(n.blendMode),
     shape: n.kind === "unknown"
       // The unknown shape cannot be BUILT (there is no oneof branch to
       // name), so it is put back where it was right after the create. Leaving it

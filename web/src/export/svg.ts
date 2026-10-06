@@ -1,4 +1,4 @@
-import type { FillLite, NodeLite } from "../store/types";
+import type { EffectLite, FillLite, NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
@@ -80,12 +80,15 @@ function attr(name: string, value: string | number): Attr {
 // their default value in SVG: neutral attributes on every element are just
 // noise in a file someone will read.
 function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
+  // Opacity and blend mode travel together: mix-blend-mode is a CSS property, so
+  // it goes in `style` (SVG viewers that support blend modes read it from there).
   const opacity = n.opacity === 1 ? null : attr("opacity", n.opacity);
+  const blend = n.blendMode ? attr("style", `mix-blend-mode:${n.blendMode}`) : null;
   // A frame without a fill is transparent (as in the canvas), not gray: the
   // default gray of resolvedFill is for shapes.
   if (n.kind === "frame" && n.fills.length === 0) {
     const fx = effectsRef(n, defs);
-    return [fx === null ? null : attr("filter", fx), attr("fill", "none"), opacity];
+    return [fx === null ? null : attr("filter", fx), attr("fill", "none"), opacity, blend];
   }
   const f = resolvedFill(n);
   // The gradient before the effect: ids in <defs> follow the order of
@@ -97,6 +100,7 @@ function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
     attr("fill", ref ?? `rgb(${channel(f.r)},${channel(f.g)},${channel(f.b)})`),
     f.a === 1 || ref !== null ? null : attr("fill-opacity", f.a),
     opacity,
+    blend,
   ];
 }
 
@@ -112,15 +116,28 @@ function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
 // wide enough to contain offset and blur: the default (-10%/120%)
 // would crop a distant shadow.
 function effectsRef(n: NodeLite, defs: string[]): string | null {
+  const shadows = n.effects?.filter((e): e is Extract<EffectLite, { kind: "dropShadow" }> => e.kind === "dropShadow") ?? [];
   const shadow = firstShadow(n);
   const blur = firstBlur(n);
   if (!shadow && !blur) return null;
   const id = `f${defs.length}`;
   const pad =
-    (shadow ? Math.max(Math.abs(shadow.offsetX), Math.abs(shadow.offsetY)) + shadow.blur * 1.5 : 0) +
+    shadows.reduce((m, sh) => Math.max(m, Math.max(Math.abs(sh.offsetX), Math.abs(sh.offsetY)) + sh.blur * 1.5), 0) +
     (blur ? blur.radius * 3 : 0) + 1;
+  const rgb = (c: { r: number; g: number; b: number }) => `rgb(${channel(c.r)},${channel(c.g)},${channel(c.b)})`;
+  // Several shadows: each one is a blurred, offset, flooded copy of the alpha, all
+  // merged UNDER the source (the last one lowest).
+  const stacked = shadows.length > 1
+    ? [...shadows].reverse().map((sh, k) =>
+        `<feGaussianBlur${attrs([attr("in", "SourceAlpha"), attr("stdDeviation", sh.blur / 2), attr("result", `b${k}`)])}/>` +
+        `<feOffset${attrs([attr("in", `b${k}`), attr("dx", sh.offsetX), attr("dy", sh.offsetY), attr("result", `o${k}`)])}/>` +
+        `<feFlood${attrs([attr("flood-color", rgb(sh.color)), attr("flood-opacity", sh.color.a), attr("result", `c${k}`)])}/>` +
+        `<feComposite${attrs([attr("in", `c${k}`), attr("in2", `o${k}`), attr("operator", "in"), attr("result", `s${k}`)])}/>`,
+      ).join("") +
+      `<feMerge>${shadows.map((_, k) => `<feMergeNode in="s${k}"/>`).join("")}<feMergeNode in="SourceGraphic"/></feMerge>`
+    : "";
   const prims =
-    (shadow
+    (stacked !== "" ? stacked : shadow
       ? `<feDropShadow${attrs([
           attr("dx", shadow.offsetX), attr("dy", shadow.offsetY), attr("stdDeviation", shadow.blur / 2),
           attr("flood-color", `rgb(${channel(shadow.color.r)},${channel(shadow.color.g)},${channel(shadow.color.b)})`),
@@ -295,6 +312,7 @@ function imageElement(n: NodeLite, href: string, defs: string[]): string {
     attr("href", href),
     { name: "preserveAspectRatio", value: "none" },
     n.opacity === 1 ? null : attr("opacity", n.opacity),
+    n.blendMode ? attr("style", `mix-blend-mode:${n.blendMode}`) : null,
   ])}/>`;
 }
 

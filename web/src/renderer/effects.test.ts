@@ -4,7 +4,7 @@ import { drawScene, firstBlur, firstShadow } from "./canvasRenderer";
 import { emptyScene } from "../store/types";
 import type { EffectLite, NodeLite, SceneState } from "../store/types";
 
-class FakePath2D { rect() {} roundRect() {} ellipse() {} }
+class FakePath2D { rect() {} roundRect() {} ellipse() {} addPath() {} }
 
 function rectNode(effects?: EffectLite[], over: Partial<NodeLite> = {}): NodeLite {
   return {
@@ -23,7 +23,8 @@ function sceneOf(n: NodeLite): SceneState {
 // Records the shadow/filter state AT THE TIME of fill and stroke, and how many
 // save/restores were left open.
 function recCtx(scale = 1) {
-  const log: { at: string; shadowBlur: number; shadowColor: string; ox: number; oy: number; filter: string }[] = [];
+  const drawn: string[] = [];
+  const log: { at: string; op?: string; shadowBlur: number; shadowColor: string; ox: number; oy: number; filter: string }[] = [];
   let depth = 0;
   const stack: Record<string, unknown>[] = [];
   const ctx: Record<string, unknown> = {
@@ -34,7 +35,7 @@ function recCtx(scale = 1) {
     setTransform: () => {}, clearRect: () => {}, translate: () => {}, rotate: () => {}, transform: () => {},
     getTransform: () => ({ a: scale, b: 0 }),
     measureText: (s: string) => ({ width: s.length * 10 }),
-    clip: () => {}, fillText: () => {}, strokeText: () => {},
+    clip: () => {}, drawImage: () => { drawn.push(String(ctx.filter)); }, globalCompositeOperation: "source-over", fillText: () => {}, strokeText: () => {},
     save: () => {
       depth++;
       stack.push({ shadowBlur: ctx.shadowBlur, shadowColor: ctx.shadowColor, shadowOffsetX: ctx.shadowOffsetX, shadowOffsetY: ctx.shadowOffsetY, filter: ctx.filter });
@@ -42,12 +43,12 @@ function recCtx(scale = 1) {
     restore: () => { depth--; Object.assign(ctx, stack.pop()); },
   };
   const snap = (at: string) => log.push({
-    at, shadowBlur: ctx.shadowBlur as number, shadowColor: ctx.shadowColor as string,
+    at, op: ctx.globalCompositeOperation as string, shadowBlur: ctx.shadowBlur as number, shadowColor: ctx.shadowColor as string,
     ox: ctx.shadowOffsetX as number, oy: ctx.shadowOffsetY as number, filter: ctx.filter as string,
   });
-  ctx.fill = () => snap("fill");
+  ctx.fill = (_p?: unknown, rule?: string) => snap(rule === "evenodd" ? "evenodd" : "fill");
   ctx.stroke = () => snap("stroke");
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, log, depth: () => depth, raw: ctx };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, log, drawn, depth: () => depth, raw: ctx };
 }
 
 const cam = (zoom: number) => ({ x: 0, y: 0, zoom });
@@ -153,5 +154,42 @@ describe("frames without a fill", () => {
     const r = recCtx();
     drawScene(r.ctx, sceneOf(rectNode(undefined, { kind: "frame" })), cam(1));
     expect(r.log.filter((l) => l.at === "fill")).toHaveLength(1);
+  });
+
+  it("the blend mode is the composite operation while the node draws, then back to normal", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    drawScene(r.ctx, sceneOf(rectNode(undefined, { blendMode: "multiply" })), cam(1));
+    expect(r.log[0].op).toBe("multiply");
+    expect(r.raw.globalCompositeOperation).toBe("source-over");
+  });
+
+  it("several drop shadows: the extra ones are drawn first, parked off canvas", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    drawScene(r.ctx, sceneOf(rectNode([shadow(), shadow({ offsetX: 8, blur: 2 })])), cam(1));
+    const fills = r.log.filter((l) => l.at === "fill");
+    expect(fills).toHaveLength(2);
+    expect(fills[0]).toMatchObject({ ox: 100008, shadowBlur: 2 });
+    expect(fills[1]).toMatchObject({ ox: 2, shadowBlur: 6 });
+    expect(r.depth()).toBe(0);
+  });
+
+  it("an inner shadow is an even-odd ring filled inside the clip, after the node", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    const inner: EffectLite = { kind: "innerShadow", color: { r: 1, g: 1, b: 1, a: 1 }, offsetX: 0, offsetY: 3, blur: 4 };
+    drawScene(r.ctx, sceneOf(rectNode([inner])), cam(1));
+    expect(r.log.map((l) => l.at)).toEqual(["fill", "evenodd"]);
+    expect(r.log[1]).toMatchObject({ oy: 3, shadowBlur: 4 });
+    expect(r.depth()).toBe(0);
+  });
+
+  it("a background blur redraws the canvas blurred under the node", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx(2);
+    drawScene(r.ctx, sceneOf(rectNode([{ kind: "backgroundBlur", radius: 5 }])), cam(2));
+    expect(r.drawn).toEqual(["blur(10px)"]);
+    expect(r.depth()).toBe(0);
   });
 });

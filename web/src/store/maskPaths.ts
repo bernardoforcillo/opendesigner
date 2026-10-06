@@ -95,6 +95,8 @@ export const MASK_PATHS = [
   "constraint_y",
   "layout_sizing_x",
   "layout_sizing_y",
+  // Blend mode against what is behind the node. Closed enum: out of range is rejected.
+  "blend_mode",
 ] as const;
 
 // The ONLY type a mask path can have at an op's construction points

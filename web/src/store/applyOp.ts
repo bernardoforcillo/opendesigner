@@ -132,6 +132,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // The enums are closed: an out-of-range number is rejected whole (core.applySetProps).
       if (paths.includes("constraint_x") && !(p.constraintX >= 0 && p.constraintX <= 5)) return state;
       if (paths.includes("constraint_y") && !(p.constraintY >= 0 && p.constraintY <= 5)) return state;
+      if (paths.includes("blend_mode") && !(p.blendMode >= 0 && p.blendMode <= 15)) return state;
       if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
       if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;
       const next: NodeLite = { ...cur };
@@ -195,6 +196,11 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "constraint_y": {
             const c = toNodeLite(p).constraintY;
             if (c) next.constraintY = c; else delete next.constraintY;
+            break;
+          }
+          case "blend_mode": {
+            const b = toNodeLite(p).blendMode;
+            if (b) next.blendMode = b; else delete next.blendMode;
             break;
           }
           case "layout_sizing_x": {

@@ -229,6 +229,9 @@ export class CanvasKitRenderer {
         sk.translate(-c.x, -c.y);
       }
     }
+    const outline = eff.kind === "rect" || eff.kind === "ellipse" || eff.kind === "frame" ? this.shapeOf(eff) : null;
+    const bb = eff.effects?.find((e): e is Extract<EffectLite, { kind: "backgroundBlur" }> => e.kind === "backgroundBlur" && e.radius > 0);
+    if (bb && outline) this.drawBackdropBlur(sk, outline, bb.radius);
     const layered = this.beginEffects(sk, eff);
 
     if (eff.kind === "text") {
@@ -247,16 +250,62 @@ export class CanvasKitRenderer {
     }
 
     if (layered) sk.restore();
+    if (outline) this.drawInnerShadows(sk, eff, outline);
     if (rotated) sk.restore();
+  }
+
+  // The frosted glass: what is already drawn, inside the outline, blurred.
+  private drawBackdropBlur(sk: Canvas, shape: Shape, radius: number): void {
+    const CK = this.CK;
+    const backdrop = CK.ImageFilter.MakeBlur(radius, radius, CK.TileMode.Clamp, null);
+    (this.frame as Frame).garbage.push(backdrop);
+    sk.save();
+    this.clipShape(sk, shape, CK.ClipOp.Intersect);
+    sk.saveLayer(undefined, null, backdrop);
+    sk.restore();
+    sk.restore();
+  }
+
+  // The shadow of everything outside the outline, cast inward: the shadow-only
+  // filter over a ring (a big rectangle with the outline cut out), inside a clip.
+  private drawInnerShadows(sk: Canvas, n: NodeLite, shape: Shape): void {
+    const inner = n.effects?.filter((e): e is Extract<EffectLite, { kind: "innerShadow" }> => e.kind === "innerShadow");
+    if (!inner || inner.length === 0) return;
+    const CK = this.CK;
+    const f = this.frame as Frame;
+    for (const sh of inner) {
+      const m = Math.max(Math.abs(sh.offsetX), Math.abs(sh.offsetY)) + Math.max(0, sh.blur) * 2 + 8;
+      const b = new CK.PathBuilder();
+      b.addRect(CK.XYWHRect(n.x - m, n.y - m, n.width + m * 2, n.height + m * 2));
+      if (shape.kind === "rect") b.addRect(shape.rect);
+      else if (shape.kind === "rrect") b.addRRect(shape.rr);
+      else b.addOval(shape.rect);
+      b.setFillType(CK.FillType.EvenOdd);
+      const ring: Path = b.detachAndDelete();
+      f.garbage.push(ring);
+      const s = Math.max(0, sh.blur) / 2;
+      const filter = CK.ImageFilter.MakeDropShadowOnly(sh.offsetX, sh.offsetY, s, s, CK.Color4f(sh.color.r, sh.color.g, sh.color.b, sh.color.a), null);
+      f.garbage.push(filter);
+      const p = new CK.Paint();
+      p.setColor(CK.BLACK);
+      p.setImageFilter(filter);
+      sk.save();
+      this.clipShape(sk, shape, CK.ClipOp.Intersect);
+      sk.drawPath(ring, p);
+      sk.restore();
+      p.delete();
+    }
   }
 
   // --- effects: a layer saved with a filter, for the whole node ---------------
 
   private beginEffects(sk: Canvas, n: NodeLite): boolean {
     const filter = this.effectsFilter(n.effects);
-    if (!filter) return false;
+    const blend = n.blendMode ? this.blendModeOf(n.blendMode) : null;
+    if (!filter && !blend) return false;
     const lp = new this.CK.Paint();
-    lp.setImageFilter(filter);
+    if (filter) lp.setImageFilter(filter);
+    if (blend) lp.setBlendMode(blend);
     // A bound on the layer, in local coordinates: without it, every node with an
     // effect allocates a layer as large as the whole surface.
     const bounds = n.kind === "text" ? null : inflateBounds(boundsOfNode(n), effectsOutset(n) + strokeOutsetOfNode(n) + 1);
@@ -265,17 +314,40 @@ export class CanvasKitRenderer {
     return true;
   }
 
-  // The FIRST shadow and the FIRST blur, as in the 2D renderer. The shadow then the
+  private blendModeOf(b: NonNullable<NodeLite["blendMode"]>) {
+    const BM = this.CK.BlendMode;
+    const table = {
+      multiply: BM.Multiply, screen: BM.Screen, overlay: BM.Overlay, darken: BM.Darken, lighten: BM.Lighten,
+      "color-dodge": BM.ColorDodge, "color-burn": BM.ColorBurn, "hard-light": BM.HardLight, "soft-light": BM.SoftLight,
+      difference: BM.Difference, exclusion: BM.Exclusion, hue: BM.Hue, saturation: BM.Saturation, color: BM.Color,
+      luminosity: BM.Luminosity,
+    };
+    return table[b];
+  }
+
+  // The drop shadows (the first alone is MakeDropShadow; several are shadow-only
+  // filters stacked under the content, the last lowest) and the FIRST blur. The shadow then the
   // blur: the blur applies to the shadow too, in the same order as the
   // canvas. The shadow's `blur` is the canvas radius (sigma = blur / 2).
   private effectsFilter(effects: readonly EffectLite[] | undefined): ImageFilter | null {
     if (!effects) return null;
     const CK = this.CK;
     const f = this.frame as Frame;
-    const shadow = effects.find((e): e is Extract<EffectLite, { kind: "dropShadow" }> => e.kind === "dropShadow");
+    const shadows = effects.filter((e): e is Extract<EffectLite, { kind: "dropShadow" }> => e.kind === "dropShadow");
+    const shadow = shadows[0];
     const blur = effects.find((e): e is Extract<EffectLite, { kind: "layerBlur" }> => e.kind === "layerBlur" && e.radius > 0);
     let filter: ImageFilter | null = null;
-    if (shadow) {
+    if (shadows.length > 1) {
+      for (let i = shadows.length - 1; i >= 0; i--) {
+        const sh = shadows[i];
+        const s = Math.max(0, sh.blur) / 2;
+        const only = CK.ImageFilter.MakeDropShadowOnly(
+          sh.offsetX, sh.offsetY, s, s, CK.Color4f(sh.color.r, sh.color.g, sh.color.b, sh.color.a), null,
+        );
+        filter = CK.ImageFilter.MakeBlend(CK.BlendMode.SrcOver, only, filter);
+        f.garbage.push(only, filter);
+      }
+    } else if (shadow) {
       const s = Math.max(0, shadow.blur) / 2;
       filter = CK.ImageFilter.MakeDropShadow(
         shadow.offsetX, shadow.offsetY, s, s, CK.Color4f(shadow.color.r, shadow.color.g, shadow.color.b, shadow.color.a), null,
