@@ -24,13 +24,33 @@ Legend: [x] done · [ ] to do
 - [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
 - [ ] Diagrams: connectors that follow the shapes, `subgraph`, ER, notes in class and state diagrams
 - [ ] SVG import (then .fig)
+- [ ] Prototyping: transitions between frames, smart animate, interactions on top of the existing animation engine
+- [ ] Multiple artboards, grids, smart guides and snapping
+
+## 1b. Vector (Illustrator parity)
+- [ ] Pen tool: node editing, handles, join, smooth
+- [ ] Pathfinder, path offset and simplification, live corners
+- [ ] Advanced strokes: variable width profiles, brushes, arrowheads, dashes
+- [ ] Gradient mesh
+- [ ] SVG and PDF export; later AI/EPS
+- [ ] Color: CMYK and ICC profiles (print)
+
+## 1c. Whiteboard (Miro parity)
+- [ ] Whiteboard mode: sticky notes, quick text and arrows
+- [ ] Tables, kanban and mind maps as native objects
+- [ ] Templates: brainstorming, retrospective, user flow, customer journey
+- [ ] Cursor chat, reactions, timer, voting, follow mode
+- [ ] Mermaid import/export in both directions
 
 ## 2. Collaboration
 - [x] Multiplayer on the same network: nickname, avatar, others' cursors and selections, `/doc/<id>` link to join the same document (no accounts, on purpose)
 - [x] MCP agents show up as people in presence (name with `-nickname`, default "Claude"; they highlight the node they are editing)
 - [ ] Conflicts on the same property: today the last op to reach the server wins
 - [ ] Comments on the canvas
-- [ ] Named versions and branching (on the oplog)
+- [ ] Named versions and branching (on the oplog), with review and merge
+- [ ] Property-level merge (CRDT or equivalent) instead of last-write-wins
+- [ ] Accounts, permissions, read-only and comment-only links (optional; local-first stays the default)
+- [ ] Optional relay/cloud for use beyond the LAN, still self-hostable
 
 ## 3. Handoff and ecosystem
 - [ ] Dev mode: measurements, CSS/Tailwind/React
@@ -46,4 +66,7 @@ Legend: [x] done · [ ] to do
 
 ## 5. Differentiators
 - [ ] MCP AI agent: consistency reviews, variants, token usage
+- [ ] AI design review: accessibility (contrast, touch targets), token consistency
+- [ ] Generate screens from text or screenshot using the document's own components and tokens
+- [ ] Design, code and flow tests in one pipeline (prototype -> codegen -> Playwright)
 - [ ] Git-versionable bundle format (readable diffs)
