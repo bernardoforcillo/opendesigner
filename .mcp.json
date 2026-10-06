@@ -1,0 +1,8 @@
+{
+  "mcpServers": {
+    "opendesigner": {
+      "type": "http",
+      "url": "http://localhost:51234/mcp"
+    }
+  }
+}
