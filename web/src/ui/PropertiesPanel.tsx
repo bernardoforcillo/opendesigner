@@ -30,6 +30,7 @@ import { ColorField } from "./fields/ColorField";
 import { GradientControls } from "./GradientControls";
 import { BooleanControls } from "./BooleanControls";
 import { ConnectorControls } from "./ConnectorControls";
+import { PathControls } from "./PathControls";
 import { EffectsControls } from "./EffectsControls";
 import { LayoutGridControls } from "./LayoutGridControls";
 import { StrokeStyleControls } from "./StrokeStyleControls";
@@ -796,6 +797,7 @@ export function PropertiesPanel() {
       {/* BOOLEAN operations on two or more shapes: they replace the selection by one vector. */}
       <BooleanControls />
       <ConnectorControls />
+      <PathControls />
 
       {/* LAYOUT: position, size, rotation and (rectangles) radius, in a
           two-column grid of fields with the prefix INSIDE (X, Y, W, H, °, R). */}

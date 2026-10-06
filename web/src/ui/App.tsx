@@ -23,7 +23,7 @@ import { attachImageRecovery, imageCache } from "../renderer/imageCache";
 import { SETTLE_MS } from "../renderer/layerCache";
 import { SceneSurface } from "../renderer/sceneSurface";
 import { useRenderer } from "../store/rendererChoice";
-import { drawOverlay } from "../renderer/overlayRenderer";
+import { drawOverlay, drawNodeEdit } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { attachClipboardShortcuts } from "../tools/clipboard";
@@ -62,6 +62,7 @@ import { connectTool } from "../tools/connectTool";
 import { linkTool } from "../tools/linkTool";
 import { stickyTool } from "../tools/stickyTool";
 import { voteTool } from "../tools/voteTool";
+import { nodeTool } from "../tools/nodeTool";
 import { withFlowArrows } from "../tools/flowSelect";
 
 // Registry of the available tools: the toolbar picks a key, attachTools
@@ -87,6 +88,7 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
   sticky: stickyTool,
   link: linkTool,
   vote: voteTool,
+  node: nodeTool,
 };
 
 export const TOOL_LABELS: { id: ToolId; label: string }[] = [
@@ -100,6 +102,7 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "ellipse", label: "Ellipse" },
   { id: "text", label: "Text" },
   { id: "pen", label: "Pen" },
+  { id: "node", label: "Node" },
   { id: "hand", label: "Hand" },
   { id: "comment", label: "Comment" },
 ];
@@ -110,7 +113,7 @@ const FLOW_TOOL_IDS: readonly ToolId[] = ["select", "connect", "hand"];
 // In Develop the canvas is read-only: you look, you do not draw.
 const DEV_TOOL_IDS: readonly ToolId[] = ["select", "hand"];
 // The Board: notes, text, arrows and free drawing on an infinite page; no frames, no shapes of a layout.
-const BOARD_TOOL_IDS: readonly ToolId[] = ["select", "sticky", "text", "link", "vote", "pen", "hand", "comment"];
+const BOARD_TOOL_IDS: readonly ToolId[] = ["select", "sticky", "text", "link", "vote", "pen", "node", "hand", "comment"];
 // Only the Board has these two.
 const BOARD_ONLY: readonly ToolId[] = ["sticky", "link", "vote"];
 function toolIdsOf(mode: EditorMode): readonly ToolId[] | null {
@@ -183,6 +186,7 @@ export function App() {
   const chooseTool = (id: ToolId) => {
     toolRef.current = id;
     setToolId(id);
+    useScene.getState().enterNodeEdit(id === "node");
   };
   // An op rejected by the server is undone locally (the optimistic change
   // disappears from the canvas, see store/store.ts::rejectPending). A
@@ -423,6 +427,10 @@ export function App() {
           const peers = usePresence.getState().peers;
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
+          }
+          {
+            const ne = useScene.getState().nodeEdit;
+            if (ne) drawNodeEdit(octx, scene, camera, selection, ne.sel);
           }
           {
             const votes = tally(peers, useFacilitation.getState().votes);

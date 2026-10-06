@@ -468,3 +468,48 @@ export function drawOverlay(
     ctx.restore();
   }
 }
+
+const NODE_SIZE = 7;
+
+/**
+ * The node tool's view of the selected vector: every anchor as a small square (the selected one
+ * filled), the handles of the selected anchor as lines ending in dots. Drawn above everything else
+ * while the tool is active; the geometry is read from the node, never stored.
+ */
+export function drawNodeEdit(
+  ctx: CanvasRenderingContext2D, state: SceneState, cam: Camera, selection: readonly string[], sel: { sub: number; index: number } | null,
+): void {
+  if (selection.length !== 1) return;
+  const n = state.nodes.get(selection[0]);
+  if (!n || n.kind !== "vector" || !n.vector || n.rotation % 360 !== 0) return;
+  const dpr = devicePixelRatio();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const { accent } = themeColors();
+  const at = (x: number, y: number) => worldToScreen(cam, n.x + x, n.y + y);
+  ctx.lineWidth = 1;
+  n.vector.subpaths.forEach((sp, si) => {
+    sp.anchors.forEach((a, ai) => {
+      const p = at(a.x, a.y);
+      const selected = sel !== null && sel.sub === si && sel.index === ai;
+      if (selected) {
+        ctx.strokeStyle = accent;
+        ctx.fillStyle = accent;
+        for (const [hx, hy] of [[a.inX, a.inY], [a.outX, a.outY]] as const) {
+          if (hx === 0 && hy === 0) continue;
+          const h = at(a.x + hx, a.y + hy);
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(h.x, h.y);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(h.x, h.y, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.fillStyle = selected ? accent : "#ffffff";
+      ctx.strokeStyle = accent;
+      ctx.fillRect(p.x - NODE_SIZE / 2, p.y - NODE_SIZE / 2, NODE_SIZE, NODE_SIZE);
+      ctx.strokeRect(p.x - NODE_SIZE / 2 + 0.5, p.y - NODE_SIZE / 2 + 0.5, NODE_SIZE - 1, NODE_SIZE - 1);
+    });
+  });
+}
