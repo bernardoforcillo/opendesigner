@@ -1,9 +1,10 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
 import { isValidCollection, isValidVariable } from "./variables";
+import { isValidFont, isValidTextStyleDef } from "./typography";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
@@ -387,6 +388,44 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       return [
         setVariableOp(op.docId, toPbVariable(prev)),
         ...restoreNodeMapsOps(scene, op.docId, (n) => bindsAny(n, new Set([id])), ["bindings"]),
+      ];
+    }
+    // --- typography ---------------------------------------------------------
+    // Absolute upserts: the inverse is the PREVIOUS font / style (or a delete if
+    // the op created it). Deleting a style also cleared it on the nodes that used
+    // it: they get it back after the style itself.
+    case "setFont": {
+      const f = op.kind.value.font;
+      if (!isValidFont(scene, f)) return null;
+      const prev = scene.fonts[f.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev ? { case: "setFont", value: { font: toPbFont(prev) } } : { case: "deleteFont", value: { id: f.id } },
+      })];
+    }
+    case "deleteFont": {
+      const prev = scene.fonts[op.kind.value.id];
+      if (!prev) return null;
+      return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setFont", value: { font: toPbFont(prev) } } })];
+    }
+    case "setTextStyleDef": {
+      const d = op.kind.value.textStyle;
+      if (!isValidTextStyleDef(d)) return null;
+      const prev = scene.textStyles[d.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(prev) } }
+          : { case: "deleteTextStyleDef", value: { id: d.id } },
+      })];
+    }
+    case "deleteTextStyleDef": {
+      const { id } = op.kind.value;
+      const prev = scene.textStyles[id];
+      if (!prev) return null;
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(prev) } } }),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.textStyleId === id, ["text_style_id"]),
       ];
     }
     default:

@@ -115,6 +115,14 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetVariable(doc, k.SetVariable)
 	case *opendesignerv1.Op_DeleteVariable:
 		return applyDeleteVariable(doc, k.DeleteVariable, cow)
+	case *opendesignerv1.Op_SetFont:
+		return applySetFont(doc, k.SetFont)
+	case *opendesignerv1.Op_DeleteFont:
+		return applyDeleteFont(doc, k.DeleteFont)
+	case *opendesignerv1.Op_SetTextStyleDef:
+		return applySetTextStyleDef(doc, k.SetTextStyleDef)
+	case *opendesignerv1.Op_DeleteTextStyleDef:
+		return applyDeleteTextStyleDef(doc, k.DeleteTextStyleDef, cow)
 	case *opendesignerv1.Op_SetFlow:
 		return applySetFlow(doc, k.SetFlow)
 	case *opendesignerv1.Op_DeleteFlow:
@@ -366,6 +374,11 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			if err := validateModes(doc, s.GetPatch().GetModes()); err != nil {
 				return err
 			}
+		case "text_style_id":
+			// Only a text node takes a shared style, and it must exist (or be empty).
+			if err := validateTextStyleID(doc, n, s.GetPatch().GetTextStyleId()); err != nil {
+				return err
+			}
 		case "corner_radius":
 			// The ONLY mask path that addresses a field INSIDE the `shape` oneof
 			// (RectNode.corner_radius) instead of a top-level field of the Node: the
@@ -448,6 +461,8 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.Bindings = p.GetBindings()
 		case "modes":
 			n.Modes = p.GetModes()
+		case "text_style_id":
+			n.TextStyleId = p.GetTextStyleId()
 		case "strokes":
 			// REPLACEMENT of the whole list, exactly like `fills` above -- not an
 			// element-by-element merge. It is the REPEATED field on which the two

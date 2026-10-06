@@ -579,6 +579,19 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 			next.Variables[k] = proto.Clone(v).(*opendesignerv1.Variable)
 		}
 	}
+	// Typography: few, deep-cloned.
+	if len(d.GetFonts()) > 0 {
+		next.Fonts = make(map[string]*opendesignerv1.FontFace, len(d.GetFonts()))
+		for k, f := range d.GetFonts() {
+			next.Fonts[k] = proto.Clone(f).(*opendesignerv1.FontFace)
+		}
+	}
+	if len(d.GetTextStyles()) > 0 {
+		next.TextStyles = make(map[string]*opendesignerv1.TextStyleDef, len(d.GetTextStyles()))
+		for k, t := range d.GetTextStyles() {
+			next.TextStyles[k] = proto.Clone(t).(*opendesignerv1.TextStyleDef)
+		}
+	}
 	if len(d.GetComponents()) > 0 {
 		next.Components = make(map[string]*opendesignerv1.Component, len(d.GetComponents()))
 		for k, c := range d.GetComponents() {

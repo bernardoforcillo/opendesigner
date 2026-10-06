@@ -170,6 +170,7 @@ message TextStyle {
   string font_weight = 3;    // "400" | "700" | ...
   double line_height = 4;    // multiplier, 0 => 1.2
   TextAlign align = 5;       // LEFT | CENTER | RIGHT
+  bool italic = 6;           // false => upright; draws the family's italic face when it has one
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is
@@ -365,9 +366,29 @@ message Node {
   // and the nearest ancestor wins. Without one, the collection's first mode is
   // used. The "modes" mask REPLACES the whole map.
   map<string, string> modes = 42;
+  // Shared text style (see TextStyleDef). On a text node, the node draws with the
+  // style's values instead of its own `style`, which stays as the fallback
+  // (detaching gives it back). The "text_style_id" mask path writes it; empty
+  // detaches. Only text nodes take one.
+  string text_style_id = 43;
 }
 
 message Page { string id = 1; string name = 2; }
+
+// ---------- typography ----------
+// A FONT FACE is an uploaded font file: one weight/style of one family. The bytes
+// are a content-addressed asset (like images); the document only references them.
+// A TextStyle.font_family that names `family` draws with this file, in the
+// editor, in PNG/SVG export and in generated code (@font-face).
+message FontFace {
+  string id = 1;
+  string family = 2;       // the CSS family name text styles refer to
+  string weight = 3;       // "100".."900"
+  string style = 4;        // "normal" | "italic"
+  string asset_hash = 5;   // sha256 hex of the TTF/OTF/WOFF/WOFF2 bytes
+}
+// A named, reusable text style. Text nodes point to it with Node.text_style_id.
+message TextStyleDef { string id = 1; string name = 2; TextStyle style = 3; }
 
 // ---------- variables (design tokens) ----------
 // A COLLECTION groups variables that share the same MODES (e.g. "Light" and
@@ -473,6 +494,9 @@ message Document {
   // Variables (design tokens): collectionId -> collection, variableId -> variable.
   map<string, VariableCollection> collections = 10;
   map<string, Variable> variables = 11;
+  // Typography: fontId -> uploaded font file, textStyleId -> shared text style.
+  map<string, FontFace> fonts = 12;
+  map<string, TextStyleDef> text_styles = 13;
 }
 
 // ---------- ops ----------
@@ -614,12 +638,20 @@ message Op {
     DeleteCollection delete_collection = 28;
     SetVariable      set_variable      = 29; // variables — upsert of a variable
     DeleteVariable   delete_variable   = 30;
+    SetFont             set_font              = 31; // typography — upsert of a font face
+    DeleteFont          delete_font           = 32;
+    SetTextStyleDef     set_text_style_def    = 33; // typography — upsert of a text style
+    DeleteTextStyleDef  delete_text_style_def = 34;
   }
 }
 message SetCollection    { VariableCollection collection = 1; }
 message DeleteCollection { string id = 1; }
 message SetVariable      { Variable variable = 1; }
 message DeleteVariable   { string id = 1; }
+message SetFont            { FontFace font = 1; }
+message DeleteFont         { string id = 1; }
+message SetTextStyleDef    { TextStyleDef text_style = 1; }
+message DeleteTextStyleDef { string id = 1; }
 message OpRecord {
   uint64 seq = 1;
   google.protobuf.Timestamp ts = 2;

@@ -55,8 +55,23 @@ function themedScene() {
   ];
   return ops.reduce(applyOp, baseScene());
 }
+// text_style_id only applies to a TEXT node and needs a style to point to.
+function textScene() {
+  const node = create(NodeSchema, {
+    id: "n1", parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
+    x: 0, y: 0, width: 100, height: 20,
+    shape: { case: "text", value: { content: "Hi", style: { fontSize: 16 } } },
+  });
+  return [
+    create(OpSchema, { opId: "t", docId: "doc1", kind: { case: "createNode", value: { node } } }),
+    create(OpSchema, { opId: "s", docId: "doc1", kind: { case: "setTextStyleDef", value: { textStyle: { id: "h", name: "Heading", style: { fontSize: 32 } } } } }),
+  ].reduce(applyOp, emptyScene("doc1", "Untitled"));
+}
 const sceneFor = (path: string) =>
-  path === "auto_layout" ? frameScene() : path === "bindings" || path === "modes" ? themedScene() : baseScene();
+  path === "auto_layout" ? frameScene()
+    : path === "bindings" || path === "modes" ? themedScene()
+    : path === "text_style_id" ? textScene()
+    : baseScene();
 
 function setPropsOp(paths: readonly string[], patch: MessageInitShape<typeof NodeSchema> = {}): Op {
   return create(OpSchema, {
@@ -279,6 +294,8 @@ const PROBE: Probe = {
   // Variable bindings and mode pins: maps like meta, validated against themedScene().
   bindings: { patch: { bindings: { opacity: "dim" } }, expected: { opacity: "dim" } },
   modes: { patch: { modes: { theme: "dark" } }, expected: { theme: "dark" } },
+  // Shared text style: validated against textScene().
+  text_style_id: { patch: { textStyleId: "h" }, expected: "h" },
 };
 
 describe("every MASK_PATHS path survives the JSON wire and is applied", () => {

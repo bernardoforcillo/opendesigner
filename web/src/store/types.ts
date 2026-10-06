@@ -1,8 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { ClipSchema, FlowSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ClipSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
+  Document, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -76,6 +76,8 @@ export type TextAlignLite = "left" | "center" | "right";
 export interface TextStyleLite {
   fontFamily: string; fontSize: number; fontWeight: string;
   lineHeight: number; align: TextAlignLite;
+  // Absent when upright (not `false`): a style that never had it stays identical, field by field.
+  italic?: boolean;
 }
 export interface TextLite { content: string; style: TextStyleLite; }
 
@@ -206,6 +208,8 @@ export interface NodeLite {
   // -> modeId); see Node.bindings / Node.modes in the proto. Absent when empty.
   bindings?: Record<string, string>;
   modes?: Record<string, string>;
+  // Shared text style id (text nodes only); absent when none. See TextStyleDefLite.
+  textStyleId?: string;
   // TRANSIENT animation FIELDS: written ONLY by animation/pose.ts when it
   // derives the scene to show while a clip runs or is scrubbed. They are not
   // document: toPbNode does not read them, no op carries them, and a snapshot never
@@ -247,6 +251,11 @@ export interface VariableLite {
   values: Record<string, FillLite | number>;
 }
 
+// TYPOGRAPHY: uploaded font faces and shared text styles. See proto FontFace /
+// TextStyleDef and internal/core/typography.go.
+export interface FontLite { id: string; family: string; weight: string; style: "normal" | "italic"; assetHash: string }
+export interface TextStyleDefLite { id: string; name: string; style: TextStyleLite }
+
 // ANIMATION: the document's clips (animated properties of nodes referenced by
 // id). See proto Clip/Track/Keyframe and internal/core/animation.go.
 export interface KeyframeLite { time: number; value: number; easing: string }
@@ -265,6 +274,9 @@ export interface SceneState {
   // Variables, like clips: absent keys mean none (an empty record, never undefined).
   collections: Record<string, CollectionLite>;
   variables: Record<string, VariableLite>;
+  // Typography, like variables: an empty record when there are none.
+  fonts: Record<string, FontLite>;
+  textStyles: Record<string, TextStyleDefLite>;
   // Only in scenes derived from playback (animation/pose.ts): see AnimInfo.
   anim?: AnimInfo;
   // M4 — components indexed by id (componentId -> master). It is part of the
@@ -274,7 +286,7 @@ export interface SceneState {
 }
 
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, components: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, components: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -312,6 +324,7 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     fontWeight: s?.fontWeight ?? "",
     lineHeight: s?.lineHeight ?? 0,
     align: ALIGN_TO_LITE[s?.align ?? TextAlign.UNSPECIFIED] ?? "left",
+    ...(s?.italic ? { italic: true } : {}),
   };
 }
 
@@ -372,6 +385,7 @@ export function toPbTextStyle(s: TextStyleLite) {
   return {
     fontFamily: s.fontFamily, fontSize: s.fontSize, fontWeight: s.fontWeight,
     lineHeight: s.lineHeight, align: ALIGN_TO_PB[s.align] ?? TextAlign.LEFT,
+    italic: s.italic === true,
   };
 }
 
@@ -563,6 +577,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(Object.keys(n.meta).length > 0 ? { meta: { ...n.meta } } : {}),
     ...(Object.keys(n.bindings).length > 0 ? { bindings: { ...n.bindings } } : {}),
     ...(Object.keys(n.modes).length > 0 ? { modes: { ...n.modes } } : {}),
+    ...(n.textStyleId !== "" ? { textStyleId: n.textStyleId } : {}),
   };
 }
 
@@ -582,6 +597,7 @@ export function toPbNode(n: NodeLite): PbNode {
     meta: n.meta ? { ...n.meta } : {},
     bindings: n.bindings ? { ...n.bindings } : {},
     modes: n.modes ? { ...n.modes } : {},
+    textStyleId: n.textStyleId ?? "",
     shape: n.kind === "unknown"
       // The unknown shape cannot be BUILT (there is no oneof branch to
       // name), so it is put back where it was right after the create. Leaving it
@@ -694,6 +710,19 @@ export function toPbVariable(v: VariableLite): PbVariable {
   });
 }
 
+export function toFontLite(f: PbFont): FontLite {
+  return { id: f.id, family: f.family, weight: f.weight, style: f.style === "italic" ? "italic" : "normal", assetHash: f.assetHash };
+}
+export function toPbFont(f: FontLite): PbFont {
+  return create(FontFaceSchema, { id: f.id, family: f.family, weight: f.weight, style: f.style, assetHash: f.assetHash });
+}
+export function toTextStyleDefLite(d: PbTextStyleDef): TextStyleDefLite {
+  return { id: d.id, name: d.name, style: toTextStyleLite(d.style) };
+}
+export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
+  return create(TextStyleDefSchema, { id: d.id, name: d.name, style: toPbTextStyle(d.style) });
+}
+
 export function toClipLite(c: PbClip): ClipLite {
   return {
     id: c.id, name: c.name, duration: c.duration, trigger: c.trigger, delay: c.delay, repeat: c.repeat, yoyo: c.yoyo,
@@ -731,5 +760,7 @@ export function fromDocument(doc: Document): SceneState {
     clips: Object.fromEntries(Object.entries(doc.clips).map(([id, c]) => [id, toClipLite(c)])),
     collections: Object.fromEntries(Object.entries(doc.collections).map(([id, c]) => [id, toCollectionLite(c)])),
     variables: Object.fromEntries(Object.entries(doc.variables).map(([id, v]) => [id, toVariableLite(v)])),
+    fonts: Object.fromEntries(Object.entries(doc.fonts).map(([id, f]) => [id, toFontLite(f)])),
+    textStyles: Object.fromEntries(Object.entries(doc.textStyles).map(([id, d]) => [id, toTextStyleDefLite(d)])),
   };
 }

@@ -2,10 +2,11 @@ import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toCollectionLite, toVariableLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout } from "./layout";
 import { recordDelta } from "./sceneDelta";
+import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
@@ -122,6 +123,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // pass): a mixed mask with one bad entry must not move the other fields.
       if (paths.includes("bindings") && !areValidBindings(state, p.bindings)) return state;
       if (paths.includes("modes") && !areValidModes(state, p.modes)) return state;
+      if (paths.includes("text_style_id") && !isValidTextStyleId(state, cur, p.textStyleId)) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -168,6 +170,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "modes": {
             const m = toNodeLite(p).modes;
             if (m) next.modes = m; else delete next.modes;
+            break;
+          }
+          case "text_style_id": {
+            if (p.textStyleId !== "") next.textStyleId = p.textStyleId; else delete next.textStyleId;
             break;
           }
           // As for "fills", the value is extracted from the patch by going through
@@ -428,6 +434,33 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const variables = { ...state.variables };
       delete variables[id];
       return { ...state, variables, nodes: unbindNodes(state, new Set([id])) };
+    }
+    // --- typography ---------------------------------------------------------
+    // Parity with core.applySetFont / applyDeleteFont / applySetTextStyleDef /
+    // applyDeleteTextStyleDef (Go, internal/core/typography.go). ABSOLUTE upserts.
+    case "setFont": {
+      const f = op.kind.value.font;
+      if (!isValidFont(state, f)) return state;
+      return { ...state, fonts: { ...state.fonts, [f.id]: toFontLite(f) } };
+    }
+    case "deleteFont": {
+      const { id } = op.kind.value;
+      if (!state.fonts[id]) return state;                                   // ErrFontNotFound
+      const fonts = { ...state.fonts };
+      delete fonts[id];
+      return { ...state, fonts };
+    }
+    case "setTextStyleDef": {
+      const d = op.kind.value.textStyle;
+      if (!isValidTextStyleDef(d)) return state;
+      return { ...state, textStyles: { ...state.textStyles, [d.id]: toTextStyleDefLite(d) } };
+    }
+    case "deleteTextStyleDef": {
+      const { id } = op.kind.value;
+      if (!state.textStyles[id]) return state;                              // ErrTextStyleMissing
+      const textStyles = { ...state.textStyles };
+      delete textStyles[id];
+      return { ...state, textStyles, nodes: unstyleNodes(state, id) };
     }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;

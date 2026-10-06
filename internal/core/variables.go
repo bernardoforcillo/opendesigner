@@ -347,6 +347,7 @@ func VariableValueIn(doc *opendesignerv1.Document, v *opendesignerv1.Variable, m
 // as is; otherwise it is a clone, the document is never touched. A binding whose
 // variable, value or target paint is missing is ignored: the literal stays.
 func ResolveNode(doc *opendesignerv1.Document, n *opendesignerv1.Node) *opendesignerv1.Node {
+	n = resolveTextStyle(doc, n)
 	if len(n.GetBindings()) == 0 {
 		return n
 	}

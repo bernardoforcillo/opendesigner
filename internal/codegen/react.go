@@ -45,7 +45,7 @@ func tsHeader(d *opendesignerv1.Document, what string) string {
 	return "// " + strings.ReplaceAll(generatedHeader(d, what), "\n", "\n// ") + "\n"
 }
 
-func renderReact(d *opendesignerv1.Document, screens []*Screen, opts Options, files map[string][]byte, warnings *[]string) error {
+func renderReact(d *opendesignerv1.Document, screens []*Screen, opts Options, files map[string][]byte, warnings *[]string, fontCSS string) error {
 	put := func(path, content string) { files[path] = []byte(content) }
 
 	pkgName := slug(d.GetName())
@@ -163,7 +163,7 @@ export default defineConfig({
 	put("src/index.css", `/* `+strings.ReplaceAll(generatedHeader(d, "global styles"), "\n", "\n   ")+` */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
-`)
+`+fontCSS)
 	put("src/main.tsx", tsHeader(d, "entry point")+`import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";

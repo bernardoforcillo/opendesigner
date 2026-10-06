@@ -19,7 +19,8 @@ Legend: [x] done · [ ] to do
 - [ ] Variants and component properties, shared libraries
 - [x] Variables / design tokens with modes: color and number variables in collections with modes, bound to fills, strokes, opacity, rotation, radius and stroke width, pinned per subtree; editor dialog and panel, MCP tools, resolved in canvas/export/code, see docs/variables.md
 - [ ] Variables: text and spacing, aliases, CSS custom properties per mode in the exported code
-- [ ] Typography: loadable fonts, text styles, multi-line text
+- [x] Typography: uploaded fonts (TTF/OTF/WOFF/WOFF2 as content-addressed assets, drawn by the 2D and GPU renderers and exported as @font-face), shared text styles, italic; multi-line text and wrapping were already there; see docs/typography.md
+- [ ] Typography: letter spacing, decoration, case, per-range styling, kerning/shaping on the GPU
 - [ ] Boolean operations, outline stroke, masks
 - [ ] Prototyping and presentation mode
 - [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
@@ -61,7 +62,7 @@ Legend: [x] done · [ ] to do
 ## 4. Performance
 - [x] Invalidation-driven rendering, incremental scene index, discarding what is not visible, levels of detail, image reuse during pan/zoom; test bench on 20,000 nodes (see docs/performance.md)
 - [x] Optional GPU renderer with CanvasKit (WebGL), parity verified with `pnpm parity`; to be measured on a real GPU before making it the default
-- [ ] User-loadable fonts (today only Inter in the GPU renderer; system fonts only on CPU)
+- [x] User-loadable fonts (also in the GPU renderer)
 - [ ] Kerning and text shaping in the GPU renderer (CanvasKit's Paragraph)
 - [ ] Persistent data structures for the scene (applyOp without copying the whole map)
 

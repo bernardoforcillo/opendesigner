@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbClip, toPbCollection, toPbVariable, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
-import type { ClipLite, CollectionLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import { toPbClip, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { ClipLite, CollectionLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -224,6 +224,20 @@ export function makeSetVariableOp(v: VariableLite): Op {
 }
 export function makeDeleteVariableOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteVariable", value: { id } } });
+}
+
+// --- typography --------------------------------------------------------------
+export function makeSetFontOp(f: FontLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setFont", value: { font: toPbFont(f) } } });
+}
+export function makeDeleteFontOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteFont", value: { id } } });
+}
+export function makeSetTextStyleDefOp(d: TextStyleDefLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(d) } } });
+}
+export function makeDeleteTextStyleDefOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteTextStyleDef", value: { id } } });
 }
 
 // --- animation -------------------------------------------------------------

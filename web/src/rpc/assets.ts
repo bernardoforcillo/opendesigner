@@ -89,7 +89,7 @@ export async function uploadAsset(
 export function uploadErrorMessage(status: number): string {
   switch (status) {
     case 415:
-      return "this format is not supported: use PNG, JPEG, GIF or WebP";
+      return "this format is not supported: use PNG, JPEG, GIF or WebP (fonts: TTF, OTF, WOFF or WOFF2)";
     case 413:
       return "the image is too large (the limit is 32 MB)";
     case 404:

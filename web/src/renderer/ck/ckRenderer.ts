@@ -423,7 +423,7 @@ export class CanvasKitRenderer {
   private paintText(sk: Canvas, n: NodeLite, paint: Paint): void {
     const t = n.text;
     if (n.kind !== "text" || !t || t.content === "") return;
-    const font = this.fonts.fontFor(t.style.fontWeight, fontSizeOf(t.style));
+    const font = this.fonts.fontFor(t.style.fontWeight, fontSizeOf(t.style), t.style.fontFamily, t.style.italic === true);
     if (!font) return;
     let lines = this.textLines.get(n);
     if (!lines) {

@@ -1,6 +1,8 @@
 package codegen_test
 
 import (
+	"bytes"
+	"os"
 	"strings"
 	"testing"
 
@@ -66,5 +68,68 @@ func TestVariablesAreResolvedInTheExport(t *testing.T) {
 	}
 	if !proto.Equal(before.(*opendesignerv1.Document).GetNodes()["card"], doc.GetNodes()["card"]) {
 		t.Fatal("the export modified the document")
+	}
+}
+
+// TestFontsAndTextStylesInTheExport: uploaded fonts become @font-face rules plus
+// copied files, an italic text carries font-style, and a node that applies a shared
+// text style is exported with that style's values (the same the canvas draws).
+func TestFontsAndTextStylesInTheExport(t *testing.T) {
+	ttf := append([]byte("\x00\x01\x00\x00"), []byte("fake-ttf-bytes")...)
+	hash := strings.Repeat("a", 64)
+	missing := strings.Repeat("b", 64)
+	doc := screenDoc(func(b *B, s string) {
+		b.Add("plain", s, "Plain", 10, 10, 200, 30, TextStyled("Plain", &opendesignerv1.TextStyle{FontFamily: "Inter, sans-serif", FontSize: 14, Italic: true}))
+		b.Add("title", s, "Title", 10, 60, 200, 40, TextStyled("Title", &opendesignerv1.TextStyle{FontSize: 12}))
+	})
+	apply(t, doc,
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetFont{SetFont: &opendesignerv1.SetFont{Font: &opendesignerv1.FontFace{Id: "f1", Family: "Brand Sans", Weight: "700", Style: "normal", AssetHash: hash}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetFont{SetFont: &opendesignerv1.SetFont{Font: &opendesignerv1.FontFace{Id: "f2", Family: "Gone Sans", Weight: "400", Style: "italic", AssetHash: missing}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetTextStyleDef{SetTextStyleDef: &opendesignerv1.SetTextStyleDef{TextStyle: &opendesignerv1.TextStyleDef{
+			Id: "h", Name: "Heading", Style: &opendesignerv1.TextStyle{FontFamily: "Brand Sans", FontSize: 32, FontWeight: "700"}}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+			Id: "title", Patch: &opendesignerv1.Node{TextStyleId: "h"}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"text_style_id"}}}}},
+	)
+	src := codegen.FuncAssets(func(h string) ([]byte, error) {
+		if h == hash {
+			return ttf, nil
+		}
+		return nil, os.ErrNotExist
+	})
+
+	for target, dir := range map[codegen.Target]string{codegen.TargetHTML: "assets/", codegen.TargetReact: "public/assets/"} {
+		out, err := codegen.Generate(doc, codegen.Options{Target: target}, src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := file(t, out, dir+hash+".ttf"); !bytes.Equal(got, ttf) {
+			t.Errorf("%s: font copied with different bytes", target)
+		}
+		css := string(file(t, out, map[codegen.Target]string{codegen.TargetHTML: "screen.html", codegen.TargetReact: "src/index.css"}[target]))
+		if !strings.Contains(css, `font-family: "Brand Sans";`) || !strings.Contains(css, `format("truetype")`) || !strings.Contains(css, "font-weight: 700;") {
+			t.Errorf("%s: missing @font-face for the uploaded font:\n%s", target, css)
+		}
+		if strings.Contains(css, "Gone Sans") {
+			t.Errorf("%s: a font whose file is missing must not get a rule", target)
+		}
+		warned := false
+		for _, w := range out.Warnings {
+			warned = warned || strings.Contains(w, "Gone Sans")
+		}
+		if !warned {
+			t.Errorf("%s: no warning for the missing font file: %v", target, out.Warnings)
+		}
+	}
+
+	html := string(file(t, gen(t, doc, codegen.TargetHTML, src), "screen.html"))
+	if !strings.Contains(html, "font-style: italic;") {
+		t.Errorf("italic text lost its font-style:\n%s", html)
+	}
+	if !strings.Contains(html, "font-size: 32px;") || !strings.Contains(html, `font-family: "Brand Sans"`) {
+		t.Errorf("the shared text style was not applied to the exported text:\n%s", html)
+	}
+	react := string(file(t, gen(t, doc, codegen.TargetReact, src), "src/screens/Screen.tsx"))
+	if !strings.Contains(react, "italic") {
+		t.Errorf("react: italic text has no italic class:\n%s", react)
 	}
 }

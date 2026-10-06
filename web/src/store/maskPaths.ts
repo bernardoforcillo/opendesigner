@@ -86,6 +86,9 @@ export const MASK_PATHS = [
   // Validated against the document's variables/collections on both sides.
   "bindings",
   "modes",
+  // Shared text style: only a text node takes one, and it must exist (or be empty
+  // to detach). Multi-word like order_key: on the JSON wire it is "textStyleId".
+  "text_style_id",
 ] as const;
 
 // The ONLY type a mask path can have at an op's construction points

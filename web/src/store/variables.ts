@@ -1,6 +1,7 @@
 import type { Variable as PbVariable, VariableCollection as PbCollection } from "../gen/opendesigner/v1/opendesigner_pb";
 import { VariableType } from "../gen/opendesigner/v1/opendesigner_pb";
 import { recordDelta } from "./sceneDelta";
+import { resolveTextStyleNode } from "./typography";
 import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "./types";
 
 // VARIABLES (design tokens) -- the TypeScript twin of internal/core/variables.go.
@@ -180,6 +181,7 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
  * Parity with core.ResolveNode.
  */
 export function resolveNode(state: SceneState, n: NodeLite): NodeLite {
+  n = resolveTextStyleNode(state, n);
   if (!n.bindings) return n;
   let out: NodeLite | null = null;
   const edit = () => (out ??= { ...n, fills: [...n.fills], strokes: [...n.strokes] });
@@ -222,13 +224,13 @@ const resolved = new WeakMap<SceneState, SceneState>();
  * variables, which is every document that does not use the feature.
  */
 export function resolveScene(scene: SceneState): SceneState {
-  if (Object.keys(scene.variables).length === 0) return scene;
+  if (Object.keys(scene.variables).length === 0 && Object.keys(scene.textStyles).length === 0) return scene;
   const hit = resolved.get(scene);
   if (hit) return hit;
   let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
   const changed: string[] = [];
   for (const n of scene.nodes.values()) {
-    if (!n.bindings) continue;
+    if (!n.bindings && !n.textStyleId) continue;
     const r = resolveNode(scene, n);
     if (r === n) continue;
     (edit ??= scene.nodes.edit()).set(n.id, r);

@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
@@ -572,6 +573,9 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	el.addStyle("font-family", fontFamilyCSS(st.GetFontFamily()))
 	el.addStyle("font-size", px(size))
 	el.addStyle("font-weight", weight)
+	if st.GetItalic() {
+		el.addStyle("font-style", "italic")
+	}
 	el.addStyle("line-height", num(lh))
 	switch st.GetAlign() {
 	case opendesignerv1.TextAlign_TEXT_ALIGN_CENTER:
@@ -712,6 +716,9 @@ func sniffExt(b []byte) string {
 		return ".gif"
 	case len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP":
 		return ".webp"
+	}
+	if ext, _ := fontExt(b); ext != "" {
+		return ext
 	}
 	return ".bin"
 }
@@ -930,4 +937,64 @@ func vectorGradient(id string, f fill, w, h float64) (*Element, string) {
 	}
 	defs := &Element{Tag: "defs", Children: []*Element{gr}}
 	return defs, "url(#" + id + ")"
+}
+
+// fontExt recognises a font container from its magic bytes (the same list the
+// asset store accepts) and returns its file extension and CSS format() name.
+func fontExt(b []byte) (ext, format string) {
+	switch {
+	case len(b) >= 4 && string(b[:4]) == "wOF2":
+		return ".woff2", "woff2"
+	case len(b) >= 4 && string(b[:4]) == "wOFF":
+		return ".woff", "woff"
+	case len(b) >= 4 && string(b[:4]) == "OTTO":
+		return ".otf", "opentype"
+	case len(b) >= 4 && (string(b[:4]) == "\x00\x01\x00\x00" || string(b[:4]) == "true"):
+		return ".ttf", "truetype"
+	}
+	return "", ""
+}
+
+// fontFaceCSS writes one @font-face per font of the document and copies the files
+// next to the images, so a text whose family is an uploaded font draws with it in
+// the exported code. A font whose file cannot be read is skipped with a warning:
+// the text falls back to the next family of its stack.
+func (b *builder) fontFaceCSS() string {
+	if len(b.doc.GetFonts()) == 0 {
+		return ""
+	}
+	ids := make([]string, 0, len(b.doc.GetFonts()))
+	for id := range b.doc.GetFonts() {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		a, c := b.doc.GetFonts()[ids[i]], b.doc.GetFonts()[ids[j]]
+		if a.GetFamily() != c.GetFamily() {
+			return a.GetFamily() < c.GetFamily()
+		}
+		if a.GetWeight() != c.GetWeight() {
+			return a.GetWeight() < c.GetWeight()
+		}
+		return a.GetStyle() < c.GetStyle()
+	})
+	var sb strings.Builder
+	for _, id := range ids {
+		f := b.doc.GetFonts()[id]
+		if b.assets == nil {
+			b.warn("font %q: no asset source, the text falls back to another font", f.GetFamily())
+			continue
+		}
+		data, err := b.assets.Asset(f.GetAssetHash())
+		ext, format := fontExt(data)
+		if err != nil || ext == "" {
+			b.warn("font %q (%s) not found, the text falls back to another font", f.GetFamily(), shortHash(f.GetAssetHash()))
+			continue
+		}
+		name := f.GetAssetHash() + ext
+		b.files[b.fileDir+name] = data
+		// The family is validated by the document (letters, digits, space, _ . -), so it is safe to quote.
+		fmt.Fprintf(&sb, "@font-face {\n  font-family: \"%s\";\n  src: url(%s%s) format(\"%s\");\n  font-weight: %s;\n  font-style: %s;\n  font-display: swap;\n}\n",
+			f.GetFamily(), b.urlPrefix, name, format, f.GetWeight(), f.GetStyle())
+	}
+	return sb.String()
 }

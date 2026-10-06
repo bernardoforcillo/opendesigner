@@ -110,12 +110,14 @@ func Generate(doc *opendesignerv1.Document, opts Options, assets AssetSource) (*
 		b.fileDir, b.urlPrefix = "public/assets/", "/assets/"
 	}
 	wireFlows(d, screens, opts, b, &out.Warnings)
+	// Uploaded fonts: @font-face rules plus the copied files.
+	fontCSS := b.fontFaceCSS()
 
 	switch opts.Target {
 	case TargetHTML:
-		renderHTML(d, screens, opts, files)
+		renderHTML(d, screens, opts, files, fontCSS)
 	default:
-		if err := renderReact(d, screens, opts, files, &out.Warnings); err != nil {
+		if err := renderReact(d, screens, opts, files, &out.Warnings, fontCSS); err != nil {
 			return nil, err
 		}
 	}

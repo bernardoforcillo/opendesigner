@@ -189,6 +189,8 @@ type CreateTextInput struct {
 	FontSize   *float64 `json:"fontSize,omitempty" jsonschema:"font size in world px; defaults to 16"`
 	FontFamily *string  `json:"fontFamily,omitempty"`
 	FontWeight *string  `json:"fontWeight,omitempty" jsonschema:"e.g. 400 or 700"`
+	Italic     *bool    `json:"italic,omitempty"`
+	LineHeight *float64 `json:"lineHeight,omitempty" jsonschema:"multiplier; defaults to 1.2"`
 }
 
 // newBaseNode builds the common Node scaffold for a created shape.
@@ -252,6 +254,12 @@ func (s *Session) CreateText(ctx context.Context, in CreateTextInput) (CreateNod
 	}
 	if in.FontWeight != nil {
 		style.FontWeight = *in.FontWeight
+	}
+	if in.Italic != nil {
+		style.Italic = *in.Italic
+	}
+	if in.LineHeight != nil {
+		style.LineHeight = *in.LineHeight
 	}
 	n.Shape = &opendesignerv1.Node_Text{Text: &opendesignerv1.TextNode{Content: in.Content, Style: style}}
 	return s.createNode(ctx, n)
@@ -367,12 +375,14 @@ type SetTextInput struct {
 	FontSize   *float64 `json:"fontSize,omitempty"`
 	FontFamily *string  `json:"fontFamily,omitempty"`
 	FontWeight *string  `json:"fontWeight,omitempty"`
+	Italic     *bool    `json:"italic,omitempty"`
+	LineHeight *float64 `json:"lineHeight,omitempty"`
 }
 
 // SetText rewrites a text node's content (and optionally its style).
 func (s *Session) SetText(ctx context.Context, in SetTextInput) (SeqOutput, error) {
 	st := &opendesignerv1.SetText{Id: in.Id, Content: in.Content}
-	if in.FontSize != nil || in.FontFamily != nil || in.FontWeight != nil {
+	if in.FontSize != nil || in.FontFamily != nil || in.FontWeight != nil || in.Italic != nil || in.LineHeight != nil {
 		st.StylePresent = true
 		style := &opendesignerv1.TextStyle{}
 		if in.FontSize != nil {
@@ -383,6 +393,12 @@ func (s *Session) SetText(ctx context.Context, in SetTextInput) (SeqOutput, erro
 		}
 		if in.FontWeight != nil {
 			style.FontWeight = *in.FontWeight
+		}
+		if in.Italic != nil {
+			style.Italic = *in.Italic
+		}
+		if in.LineHeight != nil {
+			style.LineHeight = *in.LineHeight
 		}
 		st.Style = style
 	}
@@ -580,6 +596,8 @@ type NodeView struct {
 	// Bindings: property -> variable id (see bind_variable); Modes: collection id -> pinned mode id (see set_node_mode).
 	Bindings map[string]string `json:"bindings,omitempty" jsonschema:"properties bound to variables; see bind_variable"`
 	Modes    map[string]string `json:"modes,omitempty" jsonschema:"variable modes pinned on this node; see set_node_mode"`
+	// TextStyleId: the shared text style a text node applies (see apply_text_style).
+	TextStyleId string `json:"textStyleId,omitempty" jsonschema:"shared text style applied to a text node; see apply_text_style"`
 }
 
 // nodeKind derives the compact kind label from the shape oneof. A node with no
@@ -627,6 +645,7 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 	if len(n.GetModes()) > 0 {
 		v.Modes = n.GetModes()
 	}
+	v.TextStyleId = n.GetTextStyleId()
 	return v
 }
 
@@ -639,7 +658,10 @@ type DocumentView struct {
 	Clips      []ClipView      `json:"clips"`
 	// Variables: the design tokens (collections, modes, values); see list_variables.
 	Variables []CollectionView `json:"variables"`
-	Nodes     []NodeView       `json:"nodes"`
+	// Typography: uploaded fonts and shared text styles; see list_fonts / list_text_styles.
+	Fonts      []FontView      `json:"fonts"`
+	TextStyles []TextStyleView `json:"textStyles"`
+	Nodes      []NodeView      `json:"nodes"`
 }
 
 // GetDocument returns the whole synced document: pages, components and every
@@ -662,6 +684,8 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 	}
 	out.Clips = clipViews(doc)
 	out.Variables = collectionViews(doc)
+	out.Fonts = fontViews(doc)
+	out.TextStyles = textStyleViews(doc)
 	return out, nil
 }
 
@@ -769,6 +793,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerFlowTools(srv, s)
 	registerAnimationTools(srv, s)
 	registerVariableTools(srv, s)
+	registerTypographyTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerDiagramTools(srv, s)
 }

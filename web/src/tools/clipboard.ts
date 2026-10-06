@@ -222,6 +222,7 @@ function toText(v: unknown): TextLite {
       fontWeight: str(s.fontWeight, zero.fontWeight),
       lineHeight: num(s.lineHeight, zero.lineHeight),
       align: toAlign(s.align),
+      ...(s.italic === true ? { italic: true } : {}),
     },
   };
 }

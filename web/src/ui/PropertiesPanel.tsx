@@ -12,12 +12,14 @@ import type { Mixed, OrMixed } from "../store/selectors";
 import { frameOriginOf } from "../store/groups";
 import { instanceOverrideMap } from "../store/instances";
 import { subtreeOf } from "../store/tree";
-import { makeSetInstanceOverrideOp, makeSetPropsOp, makeSetTextOp } from "../tools/ops";
+import { makeSetInstanceOverrideOp, makeSetPropsOp } from "../tools/ops";
 import { layerDisplayName } from "./LayersPanel";
 import { cls, EmptyState, Icon, IconButton, Section } from "./ds";
 import { ExportSection } from "./ExportSection";
 import { VariablesSection } from "./VariablesSection";
 import { boundColor } from "./variableOps";
+import { TypographyControls } from "./TypographyControls";
+import { effectiveStyle, styleOps } from "./typographyOps";
 import type { IconName } from "./ds";
 import { SegRadio, type SegOption } from "./ds/props-controls";
 import { NumberField } from "./fields/NumberField";
@@ -228,11 +230,8 @@ function strokeOps(ids: readonly string[], patch: StrokePatch): Op[] {
 function textStyleOps(ids: readonly string[], patch: Partial<TextStyleLite>): Op[] {
   const scene = useScene.getState().scene;
   if (!scene) return [];
-  return ids.flatMap((id) => {
-    const n = scene.nodes.at(id);
-    if (!n || n.kind !== "text" || !n.text) return [];
-    return [makeSetTextOp(id, n.text.content, { ...n.text.style, ...patch })];
-  });
+  // A text with a shared style is detached first and keeps what it was drawn with.
+  return styleOps(scene, ids, patch);
 }
 
 // Summary of the selection's STYLE, for the same reasons (and with the same
@@ -513,7 +512,10 @@ export function PropertiesPanel() {
   const selection = useScene((s) => s.selection);
   const summary = scene ? selectionSummary(scene, selection) : null;
   const nodes = scene ? selection.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined) : [];
-  const style = summary?.kind === "text" ? textStyleSummary(nodes) : null;
+  // The text controls show what is DRAWN: a shared text style overrides the node's own.
+  const style = summary?.kind === "text" && scene
+    ? textStyleSummary(nodes.map((n) => (n.text ? { ...n, text: { ...n.text, style: effectiveStyle(scene, n) ?? n.text.style } } : n)))
+    : null;
   // The opacity slider's hidden input: SliderValueText writes the ANNOUNCED
   // value into it. It sits here, before any early return, because it is a
   // hook.
@@ -914,6 +916,7 @@ export function PropertiesPanel() {
               // are those of ALIGNMENTS, which is typed TextAlignLite.
               onChange={(v) => runGesture((ids) => textStyleOps(ids, { align: v as TextAlignLite }))}
             />
+            <TypographyControls />
           </div>
         </Section>
       )}

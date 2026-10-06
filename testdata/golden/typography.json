@@ -1,0 +1,398 @@
+{
+ "_comment": [
+  "Typography (ops 31-34 SetFont, DeleteFont, SetTextStyleDef, DeleteTextStyleDef;",
+  "mask path `text_style_id`). Run from BOTH sides: internal/core/golden_test.go and",
+  "web/src/store/golden.test.ts.",
+  "",
+  "Valid: two faces of one family, a text style applied to a text node, an absolute upsert of",
+  "a face (same id, new style/hash), deleting a face, switching style and deleting the style",
+  "(which clears the node's id). Every op in `rejected` violates ONE invariant: duplicate",
+  "(family, weight, style), unsafe family, bad weight/style/hash, empty id, negative size, missing",
+  "style, unsafe family list, a style id on a non-text node or naming a missing style, deletes of",
+  "missing ids. The scene MUST stay unchanged, in both Go and TS."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "fonts": {
+   "f2": {
+    "assetHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+    "family": "Brand Sans",
+    "id": "f2",
+    "style": "italic",
+    "weight": "400"
+   }
+  },
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "r1": {
+    "height": 40,
+    "id": "r1",
+    "name": "r1",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "page1",
+    "rect": {},
+    "visible": true,
+    "width": 100
+   },
+   "t1": {
+    "height": 40,
+    "id": "t1",
+    "name": "t1",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "page1",
+    "text": {
+     "content": "Hi",
+     "style": {
+      "fontFamily": "Inter, sans-serif",
+      "fontSize": 16
+     }
+    },
+    "visible": true,
+    "width": 100
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1,
+  "textStyles": {
+   "s1": {
+    "id": "s1",
+    "name": "Heading",
+    "style": {
+     "align": "TEXT_ALIGN_CENTER",
+     "fontFamily": "Brand Sans",
+     "fontSize": 32,
+     "fontWeight": "700",
+     "lineHeight": 1.1
+    }
+   }
+  }
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "height": 40,
+     "id": "t1",
+     "name": "t1",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "page1",
+     "text": {
+      "content": "Hi",
+      "style": {
+       "fontFamily": "Inter, sans-serif",
+       "fontSize": 16
+      }
+     },
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o0"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 40,
+     "id": "r1",
+     "name": "r1",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "page1",
+     "rect": {},
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o1"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o2",
+   "setFont": {
+    "font": {
+     "assetHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+     "family": "Brand Sans",
+     "id": "f1",
+     "style": "normal",
+     "weight": "700"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setFont": {
+    "font": {
+     "assetHash": "bbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbbb",
+     "family": "Brand Sans",
+     "id": "f2",
+     "style": "normal",
+     "weight": "400"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setTextStyleDef": {
+    "textStyle": {
+     "id": "s1",
+     "name": "Heading",
+     "style": {
+      "align": "TEXT_ALIGN_CENTER",
+      "fontFamily": "Brand Sans",
+      "fontSize": 32,
+      "fontWeight": "700",
+      "lineHeight": 1.1
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o5",
+   "setProps": {
+    "id": "t1",
+    "mask": "textStyleId",
+    "patch": {
+     "textStyleId": "s1"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o6",
+   "setFont": {
+    "font": {
+     "assetHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "family": "Brand Sans",
+     "id": "f3",
+     "style": "normal",
+     "weight": "700"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o7",
+   "setFont": {
+    "font": {
+     "assetHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "family": "Bad\"; evil",
+     "id": "f4",
+     "style": "normal",
+     "weight": "400"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o8",
+   "setFont": {
+    "font": {
+     "assetHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "family": "Brand Sans",
+     "id": "f4",
+     "style": "normal",
+     "weight": "450"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o9",
+   "setFont": {
+    "font": {
+     "assetHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "family": "Brand Sans",
+     "id": "f4",
+     "style": "oblique",
+     "weight": "400"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o10",
+   "setFont": {
+    "font": {
+     "assetHash": "xyz",
+     "family": "Brand Sans",
+     "id": "f4",
+     "style": "italic",
+     "weight": "400"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o11",
+   "setFont": {
+    "font": {
+     "assetHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "family": "Brand Sans",
+     "id": "",
+     "style": "italic",
+     "weight": "400"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o12",
+   "setTextStyleDef": {
+    "textStyle": {
+     "id": "sx",
+     "name": "Neg",
+     "style": {
+      "fontSize": -4
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o13",
+   "setTextStyleDef": {
+    "textStyle": {
+     "id": "sx",
+     "name": "NoStyle"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o14",
+   "setTextStyleDef": {
+    "textStyle": {
+     "id": "sx",
+     "name": "Evil",
+     "style": {
+      "fontFamily": "x{y}",
+      "fontSize": 12
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o15",
+   "setProps": {
+    "id": "r1",
+    "mask": "textStyleId",
+    "patch": {
+     "textStyleId": "s1"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o16",
+   "setProps": {
+    "id": "t1",
+    "mask": "textStyleId",
+    "patch": {
+     "textStyleId": "missing"
+    }
+   }
+  },
+  {
+   "deleteFont": {
+    "id": "nope"
+   },
+   "docId": "doc1",
+   "opId": "o17"
+  },
+  {
+   "deleteTextStyleDef": {
+    "id": "nope"
+   },
+   "docId": "doc1",
+   "opId": "o18"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o19",
+   "setFont": {
+    "font": {
+     "assetHash": "cccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccccc",
+     "family": "Brand Sans",
+     "id": "f2",
+     "style": "italic",
+     "weight": "400"
+    }
+   }
+  },
+  {
+   "deleteFont": {
+    "id": "f1"
+   },
+   "docId": "doc1",
+   "opId": "o20"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o21",
+   "setTextStyleDef": {
+    "textStyle": {
+     "id": "s2",
+     "name": "Body",
+     "style": {
+      "fontFamily": "Brand Sans",
+      "fontSize": 14,
+      "fontWeight": "400",
+      "lineHeight": 1.5
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o22",
+   "setProps": {
+    "id": "t1",
+    "mask": "textStyleId",
+    "patch": {
+     "textStyleId": "s2"
+    }
+   }
+  },
+  {
+   "deleteTextStyleDef": {
+    "id": "s2"
+   },
+   "docId": "doc1",
+   "opId": "o23"
+  }
+ ],
+ "rejected": [
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18
+ ]
+}

@@ -256,6 +256,7 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
     attr("font-family", fontFamilyOf(style)),
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
+    ...(style.italic ? [attr("font-style", "italic")] : []),
     ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }

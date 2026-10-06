@@ -61,6 +61,10 @@ describe("golden parity", () => {
       // compared through `nodes` above.
       expect(scene.collections).toEqual(expected.collections);
       expect(scene.variables).toEqual(expected.variables);
+      // Typography: font faces, shared text styles and the cascade of deleting a
+      // style (compared through `nodes` above).
+      expect(scene.fonts).toEqual(expected.fonts);
+      expect(scene.textStyles).toEqual(expected.textStyles);
     });
   }
 });
