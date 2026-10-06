@@ -130,22 +130,25 @@ export class FontBook {
    * drops the deleted or replaced ones. Cheap when nothing changed (same object),
    * so the renderer can call it every frame. `onLoad` asks for a redraw when a file arrives.
    */
-  setDocumentFonts(docId: string, fonts: Record<string, FontLite>): void {
-    if (fonts === this.customFonts && docId === this.customDoc) return;
-    this.customFonts = fonts;
-    const sameDoc = docId === this.customDoc;
-    this.customDoc = docId;
-    let dropped = false;
-    for (const [id, c] of [...this.custom]) {
-      const f = sameDoc ? fonts[id] : undefined;
-      if (f && f.assetHash === c.font.assetHash && f.family === c.font.family && f.weight === c.font.weight && f.style === c.font.style) continue;
-      this.dropCustom(id);
-      dropped = true;
+  setDocumentFonts(docId: string, fonts: Record<string, FontLite>, used: ReadonlySet<string> | null = null): void {
+    if (fonts !== this.customFonts || docId !== this.customDoc) {
+      this.customFonts = fonts;
+      const sameDoc = docId === this.customDoc;
+      this.customDoc = docId;
+      let dropped = false;
+      for (const [id, c] of [...this.custom]) {
+        const f = sameDoc ? fonts[id] : undefined;
+        if (f && f.assetHash === c.font.assetHash && f.family === c.font.family && f.weight === c.font.weight && f.style === c.font.style) continue;
+        this.dropCustom(id);
+        dropped = true;
+      }
+      // The text that used a dropped face is measured and drawn again with the fallback.
+      if (dropped) this.onLoad();
     }
-    // The text that used a dropped face is measured and drawn again with the fallback.
-    if (dropped) this.onLoad();
+    // Only the families the page on screen uses are downloaded (null = all).
     for (const f of Object.values(fonts)) {
       if (this.custom.has(f.id)) continue;
+      if (used && !used.has(firstFamily(f.family))) continue;
       const entry: CustomFace = { font: f, face: null };
       this.custom.set(f.id, entry);
       this.fetchFont(assetUrl(docId, f.assetHash))

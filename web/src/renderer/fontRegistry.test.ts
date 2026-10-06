@@ -18,7 +18,7 @@ const font = (id: string, hash = "a".repeat(64), weight = "400"): FontLite => ({
 describe("syncDocumentFonts", () => {
   let set: FakeSet;
   beforeEach(() => { resetFontRegistry(); FakeFace.all = []; set = new FakeSet(); });
-  const sync = (doc: string, fonts: Record<string, FontLite>) => syncDocumentFonts(doc, fonts, set, FakeFace);
+  const sync = (doc: string, fonts: Record<string, FontLite>) => syncDocumentFonts(doc, fonts, null, set, FakeFace);
 
   it("registers each font once, from the asset route, with its weight and style", () => {
     const fonts = { f1: font("f1"), f2: font("f2", "b".repeat(64), "700") };
@@ -44,12 +44,28 @@ describe("syncDocumentFonts", () => {
   });
 
   it("does nothing without a FontFaceSet (non-browser environments)", () => {
-    expect(() => syncDocumentFonts("doc1", { f1: font("f1") }, undefined, undefined)).not.toThrow();
+    expect(() => syncDocumentFonts("doc1", { f1: font("f1") }, null, undefined, undefined)).not.toThrow();
   });
 
   it("a font that fails to load does not throw", async () => {
     class Failing extends FakeFace { async load(): Promise<void> { throw new Error("offline"); } }
-    expect(() => syncDocumentFonts("doc1", { f1: font("f1") }, set, Failing)).not.toThrow();
+    expect(() => syncDocumentFonts("doc1", { f1: font("f1") }, null, set, Failing)).not.toThrow();
     await Promise.resolve();
+  });
+});
+
+describe("syncDocumentFonts — only what the page needs", () => {
+  it("registers every face but loads only the families in use, and the rest when the page changes", () => {
+    const loaded: string[] = [];
+    class Face { constructor(public family: string) {} load() { loaded.push(this.family); return Promise.resolve(); } }
+    const set = { add: () => {}, delete: () => {} };
+    const fonts = { a: { ...font("a"), family: "Alpha" }, b: { ...font("b"), family: "Beta" } };
+    resetFontRegistry();
+    syncDocumentFonts("d", fonts, new Set(["alpha"]), set, Face as never);
+    expect(loaded).toEqual(["Alpha"]);
+    syncDocumentFonts("d", fonts, new Set(["alpha"]), set, Face as never);
+    expect(loaded).toEqual(["Alpha"]);
+    syncDocumentFonts("d", fonts, new Set(["alpha", "beta"]), set, Face as never);
+    expect(loaded).toEqual(["Alpha", "Beta"]);
   });
 });

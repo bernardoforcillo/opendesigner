@@ -8,6 +8,7 @@ import { usePanels } from "./shell/panels";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
 import { usePresence, loadNickname } from "../store/presence";
+import { PageCameras } from "../canvas/pageView";
 import { captureLinkToken, useAccess, canComment, canWrite, type Role } from "../rpc/access";
 import { docClient } from "../rpc/client";
 import { useFacilitation, tally } from "../store/facilitation";
@@ -396,6 +397,21 @@ export function App() {
     let raf = 0;
     let settle: ReturnType<typeof setTimeout> | null = null;
     let force = false;
+    // Changing page is a different picture, not a small change: the frame is redrawn in full (never a
+    // reused snapshot), and the view goes where that page was left (or onto its content).
+    const pageCameras = new PageCameras();
+    let shownPage = useScene.getState().currentPageId;
+    const onPage = () => {
+      const st = useScene.getState();
+      if (st.currentPageId === shownPage) return;
+      if (shownPage !== null) pageCameras.save(shownPage, st.camera);
+      shownPage = st.currentPageId;
+      force = true;
+      if (st.scene && shownPage !== null && canvasRef.current) {
+        const c = canvasRef.current;
+        st.setCamera(pageCameras.restore(st.scene, shownPage, c.clientWidth, c.clientHeight, st.camera));
+      }
+    };
 
     const frame = () => {
       raf = 0;
@@ -484,6 +500,7 @@ export function App() {
     };
 
     const unsubs = [
+      useScene.subscribe(onPage),
       useScene.subscribe(invalidate),
       usePresence.subscribe(invalidate),
       useFacilitation.subscribe(invalidate),
