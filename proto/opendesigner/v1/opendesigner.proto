@@ -35,7 +35,11 @@ enum ImageScaleMode {
   IMAGE_SCALE_MODE_TILE = 2;
 }
 message ImagePaint { string asset_hash = 1; ImageScaleMode mode = 2; }
-message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; ImagePaint image = 4; } }
+// A MESH gradient: a rows x cols grid of colors spread over the node's box (row-major, the first
+// color at the top-left corner, the last at the bottom-right), blended smoothly (bilinear) between
+// the grid points. The points sit on a regular grid; they do not move.
+message MeshPaint { uint32 rows = 1; uint32 cols = 2; repeated Color colors = 3; }
+message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; ImagePaint image = 4; MeshPaint mesh = 5; } }
 
 // Alignment of the stroke relative to the shape's PERIMETER. CENTER is the
 // drawing default (half inside, half outside): it is the only one the 2D canvas

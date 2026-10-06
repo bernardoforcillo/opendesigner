@@ -142,3 +142,17 @@ func TestLiveBooleanGroupsInTheExport(t *testing.T) {
 		t.Errorf("union box:\n%s", uni)
 	}
 }
+
+// TestMeshFillInTheExport: CSS has no mesh gradient, so the code gets the grid's average color.
+func TestMeshFillInTheExport(t *testing.T) {
+	doc := screenDoc(func(b *B, s string) { b.Add("card", s, "Card", 20, 20, 100, 100) })
+	c := func(r, g, b float32) *opendesignerv1.Color { return &opendesignerv1.Color{R: r, G: g, B: b, A: 1} }
+	doc.Nodes["card"].Fills = []*opendesignerv1.Paint{{Kind: &opendesignerv1.Paint_Mesh{Mesh: &opendesignerv1.MeshPaint{
+		Rows: 2, Cols: 2, Colors: []*opendesignerv1.Color{c(1, 0, 0), c(1, 0, 0), c(0, 0, 1), c(0, 0, 1)},
+	}}}}
+	html := screenHTML(t, doc)
+	// The average of two reds and two blues is (0.5, 0, 0.5) = #800080.
+	if !strings.Contains(html, "background-color: #800080;") {
+		t.Errorf("want the average color:\n%s", html)
+	}
+}

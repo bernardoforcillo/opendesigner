@@ -5,12 +5,13 @@ import type { Camera } from "../../canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "../../canvas/geometry";
 import { type Transform, localTransformOf } from "../../canvas/transform";
 import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../../store/instances";
-import type { EffectLite, FillLite, InstanceOverrideLite, NodeLite, SceneState, StrokeLite } from "../../store/types";
+import type { EffectLite, FillLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite } from "../../store/types";
 import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "../../store/vectorGeometry";
 import {
   CLIP_MIN_PX, LOD_FLAT_PX, SKIP_SUBTREE_PX, type ImageSource, resolvedFill, rootsOf, withOverride,
 } from "../canvasRenderer";
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
+import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
 import { fontSizeOf, placeTextLines } from "../text";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
@@ -439,6 +440,19 @@ export class CanvasKitRenderer {
     const g = fill.gradient;
     p.setImageFilter(null);
     p.setShader(null);
+    if (fill.mesh) {
+      const img = this.meshImage(fill.mesh);
+      if (img) {
+        const f = this.frame as Frame;
+        const sx = n.width / MESH_BITMAP_SIZE, sy = n.height / MESH_BITMAP_SIZE;
+        const shader: Shader = img.makeShaderOptions(CK.TileMode.Clamp, CK.TileMode.Clamp, CK.FilterMode.Linear, CK.MipmapMode.None, [sx, 0, n.x - sx, 0, sy, n.y - sy, 0, 0, 1]);
+        f.garbage.push(shader);
+        p.setColor(CK.BLACK);
+        p.setShader(shader);
+        p.setAlphaf(opacity);
+        return p;
+      }
+    }
     if (fill.image) {
       const f = this.frame as Frame;
       const entry = this.images.get(f.scene.id, fill.image.assetHash);
@@ -566,6 +580,22 @@ export class CanvasKitRenderer {
       this.textLines.set(n, lines);
     }
     for (const line of lines) sk.drawText(line.text, line.x, line.y, paint, font);
+  }
+
+  // --- mesh gradients ----------------------------------------------------------
+  private readonly meshImages = new WeakMap<MeshLite, SkImage | null>();
+
+  // The mesh's bitmap (renderer/mesh.ts) as a GPU image, made once per mesh.
+  private meshImage(mesh: MeshLite): SkImage | null {
+    if (this.meshImages.has(mesh)) return this.meshImages.get(mesh) ?? null;
+    const CK = this.CK;
+    const total = MESH_BITMAP_SIZE + 2;
+    const img = CK.MakeImage(
+      { width: total, height: total, alphaType: CK.AlphaType.Unpremul, colorType: CK.ColorType.RGBA_8888, colorSpace: CK.ColorSpace.SRGB },
+      meshBitmap(mesh, MESH_BITMAP_SIZE, 1), total * 4,
+    );
+    this.meshImages.set(mesh, img);
+    return img;
   }
 
   // --- images ----------------------------------------------------------------

@@ -9,7 +9,7 @@ import { ColorField } from "./fields/ColorField";
 import { NumberField } from "./fields/NumberField";
 import {
   addGradientStopOps, imagePaintOps, fillKindOf, type PaintTarget, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
-  gradientStopPositionOps, removeGradientStopOps, type FillKind,
+  gradientStopPositionOps, removeGradientStopOps, type FillKind, meshPointOps, meshSizeOps,
 } from "./gradientOps";
 
 const KINDS: { value: FillKind; label: string }[] = [
@@ -17,6 +17,7 @@ const KINDS: { value: FillKind; label: string }[] = [
   { value: "linear", label: "Linear" },
   { value: "radial", label: "Radial" },
   { value: "image", label: "Image" },
+  { value: "mesh", label: "Mesh" },
 ];
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
@@ -93,8 +94,9 @@ export function GradientControls({
           <button type="button" className="h-7 rounded-md px-2 text-[12px] text-fg-muted hover:bg-surface-3" onClick={() => fileInput.current?.click()}>Replace…</button>
         </div>
       )}
+      {fill?.mesh && <MeshEditor fill={fill} run={run} target={target} />}
       {uploadError && <p role="alert" className="text-[12px] text-danger">{uploadError}</p>}
-      {!g && !fill?.image && solid}
+      {!g && !fill?.image && !fill?.mesh && solid}
       {g && (
         <>
           {/* The side padding leaves room for the handles at the two ends. */}
@@ -173,6 +175,42 @@ function StopRow({
           ×
         </button>
       )}
+    </div>
+  );
+}
+
+const hex = (c: { r: number; g: number; b: number }) =>
+  `#${[c.r, c.g, c.b].map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0")).join("")}`;
+const fromHex = (h: string) => ({ r: parseInt(h.slice(1, 3), 16) / 255, g: parseInt(h.slice(3, 5), 16) / 255, b: parseInt(h.slice(5, 7), 16) / 255 });
+
+/** A mesh's grid: its size and one color picker per point, laid out as the grid is on the shape. */
+function MeshEditor({ fill, run, target }: { fill: FillLite; run: (build: (ids: readonly string[]) => Op[]) => void; target: PaintTarget }) {
+  const m = fill.mesh!;
+  const sizes = [2, 3, 4, 5, 6];
+  const pick = (label: string, value: number, set: (v: number) => void) => (
+    <label className="flex items-center gap-1 text-[12px] text-fg-muted">
+      {label}
+      <select aria-label={label} className="h-7 rounded-md border border-line bg-surface px-1 text-[12px]" value={value} onChange={(e) => set(Number(e.target.value))}>
+        {sizes.map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+    </label>
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3">
+        {pick("Mesh rows", m.rows, (v) => run((ids) => meshSizeOps(ids, lookup, v, m.cols, target)))}
+        {pick("Mesh columns", m.cols, (v) => run((ids) => meshSizeOps(ids, lookup, m.rows, v, target)))}
+      </div>
+      <div role="group" aria-label="Mesh points" className="grid gap-1" style={{ gridTemplateColumns: `repeat(${m.cols}, minmax(0, 1fr))` }}>
+        {m.colors.map((c, i) => (
+          <input
+            key={i} type="color" aria-label={`Mesh point ${Math.floor(i / m.cols) + 1},${(i % m.cols) + 1}`}
+            value={hex(c)}
+            onChange={(e) => run((ids) => meshPointOps(ids, lookup, i, fromHex(e.target.value), target))}
+            className="h-7 w-full cursor-pointer rounded border border-line bg-transparent p-0"
+          />
+        ))}
+      </div>
     </div>
   );
 }

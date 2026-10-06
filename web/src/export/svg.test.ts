@@ -442,3 +442,14 @@ describe("nodesToSvg — inner shadow", () => {
   });
 });
 });
+
+describe("mesh paints", () => {
+  const mesh = { rows: 2, cols: 2, colors: [{ r: 1, g: 0, b: 0, a: 1 }, { r: 0, g: 1, b: 0, a: 1 }, { r: 0, g: 0, b: 1, a: 1 }, { r: 1, g: 1, b: 1, a: 1 }] };
+  it("becomes a pattern holding an embedded PNG over the node's box", () => {
+    const n = node({ id: "m", x: 10, y: 20, width: 100, height: 60, fills: [{ r: 0.5, g: 0.5, b: 0.5, a: 1, mesh }] });
+    const out = nodesToSvg([n], FULL, measure);
+    expect(out).toMatch(/<pattern id="p0" x="10" y="20" width="100" height="60" patternUnits="userSpaceOnUse">/);
+    expect(out).toContain('href="data:image/png;base64,iVBORw0KGgo');
+    expect(out).toContain('fill="url(#p0)"');
+  });
+});

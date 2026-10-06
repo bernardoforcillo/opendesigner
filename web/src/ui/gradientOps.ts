@@ -1,7 +1,9 @@
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { makeSetPropsOp } from "../tools/ops";
 import { toPbFills, toPbStrokes } from "../store/types";
-import type { FillLite, GradientLite, NodeLite } from "../store/types";
+import type { FillLite, GradientLite, MeshLite, NodeLite } from "../store/types";
+import { defaultMesh, meshAverage, resizeMesh } from "../renderer/mesh";
+import { MAX_MESH_SIDE, MIN_MESH_SIDE } from "../store/paints";
 import type { RgbLite } from "./fields/ColorField";
 
 // The gradient panel's ops. Like fillOps in the panel, they touch ONLY the
@@ -11,10 +13,10 @@ import type { RgbLite } from "./fields/ColorField";
 // so they can be tested without mounting anything.
 export type NodeLookup = (id: string) => NodeLite | undefined;
 
-export type FillKind = "solid" | "linear" | "radial" | "image";
+export type FillKind = "solid" | "linear" | "radial" | "image" | "mesh";
 
 export function fillKindOf(f: FillLite | null): FillKind {
-  return f?.image ? "image" : (f?.gradient?.kind ?? "solid");
+  return f?.mesh ? "mesh" : f?.image ? "image" : (f?.gradient?.kind ?? "solid");
 }
 
 // Default axis: linear from top to bottom, radial from center to edge.
@@ -68,6 +70,7 @@ export function fillKindOps(ids: readonly string[], lookup: NodeLookup, kind: Fi
     const cur = paintOf(n, target) ?? BASE;
     if (fillKindOf(cur) === kind || kind === "image") return []; // an image needs a file: see imagePaintOps
     if (kind === "solid") return [withFirst(n, { r: cur.r, g: cur.g, b: cur.b, a: cur.a }, target)];
+    if (kind === "mesh") return [withFirst(n, withMesh(defaultMesh(cur)), target)];
     // From gradient to gradient only the shape changes: the stops stay, the
     // geometry goes back to the new type's default.
     if (cur.gradient) {
@@ -75,6 +78,34 @@ export function fillKindOps(ids: readonly string[], lookup: NodeLookup, kind: Fi
       return [withFirst(n, { ...cur, gradient }, target)];
     }
     return [withFirst(n, toGradient(cur, kind), target)];
+  });
+}
+
+// A fill that is this mesh: its own r,g,b,a hold the average, the fallback for whoever cannot draw it.
+function withMesh(mesh: MeshLite): FillLite {
+  return { ...meshAverage(mesh.colors), mesh };
+}
+
+/** Color (without alpha) of one point of the mesh, which keeps its OWN alpha. */
+export function meshPointOps(ids: readonly string[], lookup: NodeLookup, index: number, rgb: RgbLite, target: PaintTarget = "fill"): Op[] {
+  return ids.flatMap((id) => {
+    const n = lookup(id);
+    const m = n ? paintOf(n, target)?.mesh : undefined;
+    if (!n || !m || index < 0 || index >= m.colors.length) return [];
+    const colors = m.colors.map((c, i) => (i === index ? { ...rgb, a: c.a } : c));
+    return [withFirst(n, withMesh({ ...m, colors }), target)];
+  });
+}
+
+/** A mesh of another size: the new points take the old mesh's blended colors there. */
+export function meshSizeOps(ids: readonly string[], lookup: NodeLookup, rows: number, cols: number, target: PaintTarget = "fill"): Op[] {
+  const r = Math.min(MAX_MESH_SIDE, Math.max(MIN_MESH_SIDE, Math.round(rows)));
+  const c = Math.min(MAX_MESH_SIDE, Math.max(MIN_MESH_SIDE, Math.round(cols)));
+  return ids.flatMap((id) => {
+    const n = lookup(id);
+    const m = n ? paintOf(n, target)?.mesh : undefined;
+    if (!n || !m || (m.rows === r && m.cols === c)) return [];
+    return [withFirst(n, withMesh(resizeMesh(m, r, c)), target)];
   });
 }
 

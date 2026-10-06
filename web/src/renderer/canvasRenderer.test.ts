@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { hitTest, nodesIntersecting, resizeCanvasToDisplaySize, drawScene } from "./canvasRenderer";
+import { hitTest, nodesIntersecting, resizeCanvasToDisplaySize, drawScene, paintStyle } from "./canvasRenderer";
 import type { CachedImage } from "./imageCache";
 import { VECTOR_STROKE_PX } from "./shapes";
 import type { Camera } from "../canvas/camera";
@@ -1445,5 +1445,14 @@ describe("an instance with variants and properties", () => {
     const f = fakeCtx();
     drawScene(f.ctx, withInstance(variants(), { propertyValues: { ShowIcon: "perhaps", Label: "x".repeat(2000) } }), identityCam);
     expect(f.fillText.map((c) => c.text)).toEqual(["Button"]);
+  });
+});
+
+describe("mesh paints", () => {
+  it("fall back to the average color where no canvas can be made", () => {
+    const mesh = { rows: 2, cols: 2, colors: [{ r: 1, g: 0, b: 0, a: 1 }, { r: 1, g: 0, b: 0, a: 1 }, { r: 0, g: 0, b: 1, a: 1 }, { r: 0, g: 0, b: 1, a: 1 }] };
+    const fill = { r: 0.5, g: 0, b: 0.5, a: 1, mesh };
+    const n = { id: "n", x: 0, y: 0, width: 10, height: 10 } as NodeLite;
+    expect(paintStyle({} as CanvasRenderingContext2D, fill, n)).toBe("rgba(128, 0, 128, 1)");
   });
 });

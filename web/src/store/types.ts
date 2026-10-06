@@ -22,7 +22,11 @@ export interface GradientLite {
 // color, for a gradient they are the first stop. All code that only knows
 // flat tints (text, strokes, panels) keeps working without knowing about
 // gradients; whoever can draw them looks at `gradient`.
-export interface FillLite { r: number; g: number; b: number; a: number; gradient?: GradientLite; image?: ImagePaintLite; }
+// A mesh gradient (see MeshPaint in the proto): a rows x cols grid of colors, row-major, blended
+// bilinearly over the node's box. r,g,b,a of the fill hold the AVERAGE color, the fallback for whoever
+// cannot draw a mesh.
+export interface MeshLite { rows: number; cols: number; colors: { r: number; g: number; b: number; a: number }[] }
+export interface FillLite { r: number; g: number; b: number; a: number; gradient?: GradientLite; image?: ImagePaintLite; mesh?: MeshLite; }
 
 // An image as a paint (see ImagePaint in the proto). r/g/b/a stay as the base color the
 // renderers fall back to while the image has not arrived.
@@ -588,6 +592,9 @@ export function toEffectLite(e: PbEffect): EffectLite {
 }
 
 function toPbPaint(c: FillLite) {
+  if (c.mesh) {
+    return { kind: { case: "mesh" as const, value: { rows: c.mesh.rows, cols: c.mesh.cols, colors: c.mesh.colors.map((k) => ({ ...k })) } } };
+  }
   if (c.image) {
     const mode = c.image.mode === "fit" ? ImageScaleMode.FIT : c.image.mode === "tile" ? ImageScaleMode.TILE : ImageScaleMode.UNSPECIFIED;
     return { kind: { case: "image" as const, value: { assetHash: c.image.assetHash, mode } } };
@@ -640,6 +647,12 @@ function toFillLite(p: PbPaint | undefined): FillLite {
       ...first,
       gradient: { kind: k.case, stops, x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2 },
     };
+  }
+  if (k?.case === "mesh") {
+    const colors = k.value.colors.map((c) => ({ r: c.r, g: c.g, b: c.b, a: c.a }));
+    const n = Math.max(1, colors.length);
+    const avg = colors.reduce((s, c) => ({ r: s.r + c.r / n, g: s.g + c.g / n, b: s.b + c.b / n, a: s.a + c.a / n }), { r: 0, g: 0, b: 0, a: 0 });
+    return { ...avg, mesh: { rows: k.value.rows, cols: k.value.cols, colors } };
   }
   if (k?.case === "image") {
     const mode = k.value.mode === ImageScaleMode.FIT ? "fit" : k.value.mode === ImageScaleMode.TILE ? "tile" : "fill";

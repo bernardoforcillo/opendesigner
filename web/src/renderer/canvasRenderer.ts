@@ -21,6 +21,7 @@ import { drawText, strokeText } from "./text";
 import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
 import { drawDash, perimeterOf, vectorDrawSubpaths } from "./animDraw";
 import { imageCache, type CachedImage } from "./imageCache";
+import { MESH_BITMAP_SIZE, meshBitmap } from "./mesh";
 
 const DEG_TO_RAD = Math.PI / 180;
 
@@ -103,6 +104,7 @@ export function cssRgba(c: FillLite): string {
 // with the shape. A degenerate gradient (null axis or radius, fewer than two stops)
 // falls back to the flat color, which is always valid.
 export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasGradient | CanvasPattern {
+  if (f.mesh) return meshPattern(ctx, f, n);
   if (f.image) return imagePattern(ctx, f, n);
   const g = f.gradient;
   if (!g || g.stops.length < 2) return cssRgba(f);
@@ -115,6 +117,41 @@ export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLi
     : ctx.createRadialGradient(x1, y1, 0, x1, y1, len);
   for (const st of g.stops) grad.addColorStop(Math.min(1, Math.max(0, st.position)), cssRgba(st.color));
   return grad;
+}
+
+// A MESH paint: the grid rasterized once (renderer/mesh.ts) into a small canvas that the pattern stretches
+// over the node's box -- the browser's smoothing does the blend. Where no canvas can be made (a test
+// environment) it is the average color, which every mesh carries.
+const meshCanvases = new WeakMap<object, HTMLCanvasElement | null>();
+
+function meshCanvas(f: FillLite): HTMLCanvasElement | null {
+  const mesh = f.mesh!;
+  if (meshCanvases.has(mesh)) return meshCanvases.get(mesh) ?? null;
+  let out: HTMLCanvasElement | null = null;
+  if (typeof document !== "undefined" && typeof ImageData !== "undefined") {
+    const c = document.createElement("canvas");
+    const total = MESH_BITMAP_SIZE + 2;
+    c.width = c.height = total;
+    const g = c.getContext("2d");
+    if (g) {
+      g.putImageData(new ImageData(meshBitmap(mesh, MESH_BITMAP_SIZE, 1) as unknown as Uint8ClampedArray<ArrayBuffer>, total, total), 0, 0);
+      out = c;
+    }
+  }
+  meshCanvases.set(mesh, out);
+  return out;
+}
+
+function meshPattern(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasPattern {
+  const flat = cssRgba(f);
+  const tex = meshCanvas(f);
+  if (!tex || typeof ctx.createPattern !== "function") return flat;
+  const pattern = ctx.createPattern(tex, "no-repeat");
+  if (!pattern || typeof pattern.setTransform !== "function" || typeof DOMMatrix === "undefined") return pattern ?? flat;
+  const sx = n.width / MESH_BITMAP_SIZE, sy = n.height / MESH_BITMAP_SIZE;
+  // The texture has a one-pixel border outside the box on every side.
+  pattern.setTransform(new DOMMatrix([sx, 0, 0, sy, n.x - sx, n.y - sy]));
+  return pattern;
 }
 
 // An IMAGE paint. The images come from the same cache image nodes use; drawScene tells this module

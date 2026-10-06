@@ -85,12 +85,33 @@ func toFill(p *opendesignerv1.Paint) fill {
 		// The flat base color the canvas shows until the image arrives; the image itself is a
 		// background-image where the box can carry one (boxPaint).
 		return fill{color: defaultGrey, image: k.Image}
+	case *opendesignerv1.Paint_Mesh:
+		// CSS has no mesh gradient: the code gets the grid's AVERAGE color (what the canvas's
+		// fallback shows too); the blend itself is in the canvas, the GPU renderer and the SVG.
+		return fill{color: meshAverage(k.Mesh)}
 	case *opendesignerv1.Paint_Solid:
 		if c := k.Solid.GetColor(); c != nil {
 			return fill{color: c}
 		}
 	}
 	return fill{color: black}
+}
+
+// meshAverage is the mean of a mesh's colors (opaque black for an empty one).
+func meshAverage(m *opendesignerv1.MeshPaint) *opendesignerv1.Color {
+	cs := m.GetColors()
+	if len(cs) == 0 {
+		return black
+	}
+	var r, g, b, a float64
+	for _, c := range cs {
+		r += float64(c.GetR())
+		g += float64(c.GetG())
+		b += float64(c.GetB())
+		a += float64(c.GetA())
+	}
+	n := float64(len(cs))
+	return &opendesignerv1.Color{R: float32(r / n), G: float32(g / n), B: float32(b / n), A: float32(a / n)}
 }
 
 func gradFill(g *opendesignerv1.GradientPaint, radial bool) fill {

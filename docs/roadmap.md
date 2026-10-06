@@ -37,11 +37,12 @@ Legend: [x] done · [ ] to do
 - [x] Snap to a pixel grid (document menu: 1 / 4 / 8 px, per person) and spacing guides (equal gaps between neighbours, drawn while dragging)
 
 ## 1b. Vector (Illustrator parity)
-- [ ] Pen tool: node editing, handles, join, smooth
-- [ ] Pathfinder, path offset and simplification, live corners
+- [x] Node tool: anchors, handles, add/delete points, corner/smooth, join, smooth/corner all (docs/vector.md)
+- [x] Path offset (grow/shrink) and simplification; pathfinder = the live boolean groups
+- [ ] Live corners
 - [x] Strokes: cap, join, miter limit and dashes on every shape (panel, canvas, GPU, SVG)
 - [ ] Advanced strokes: variable width profiles, brushes, arrowheads
-- [ ] Gradient mesh
+- [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
 - [x] SVG export and PDF (the SVG through the browser's print dialog, Save as PDF)
 - [ ] AI/EPS export
 - [ ] Color: CMYK and ICC profiles (print)

@@ -4,7 +4,7 @@ import { applyOp } from "../store/applyOp";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 import {
-  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, imagePaintOps, addGradientStopOps, removeGradientStopOps, gradientStopPositionOps,
+  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, imagePaintOps, addGradientStopOps, removeGradientStopOps, gradientStopPositionOps, meshPointOps, meshSizeOps,
 } from "./gradientOps";
 
 function sceneWith(over: Partial<NodeLite> = {}): SceneState {
@@ -122,5 +122,28 @@ describe("gradientOps", () => {
     expect(imagePaintOps(["a"], L(s), { mode: "fill" })).toEqual([]);
     expect(run(s, fillKindOps(["a"], L(s), "solid")).fills[0].image).toBeUndefined();
     expect(run(s, fillKindOps(["a"], L(s), "linear")).fills[0].gradient?.kind).toBe("linear");
+  });
+
+  it("mesh paints: made from the fill, a point's color changes, the grid resizes, back to flat keeps the average", () => {
+    let s = sceneWith();
+    const L = (st: typeof s) => (id: string) => st.nodes.at(id);
+    let n = run(s, fillKindOps(["a"], L(s), "mesh", "fill"));
+    expect(fillKindOf(n.fills[0])).toBe("mesh");
+    expect(n.fills[0].mesh).toMatchObject({ rows: 3, cols: 3 });
+    expect(n.fills[0].mesh!.colors).toHaveLength(9);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, meshPointOps(["a"], L(s), 4, { r: 0, g: 0, b: 1 }));
+    expect(n.fills[0].mesh!.colors[4]).toMatchObject({ r: 0, g: 0, b: 1 });
+    expect(meshPointOps(["a"], L(s), 99, { r: 0, g: 0, b: 1 })).toEqual([]);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, meshSizeOps(["a"], L(s), 2, 4));
+    expect(n.fills[0].mesh).toMatchObject({ rows: 2, cols: 4 });
+    expect(n.fills[0].mesh!.colors).toHaveLength(8);
+    expect(meshSizeOps(["a"], L(s), 3, 3)).toEqual([]);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    expect(meshSizeOps(["a"], L(s), 2, 4)).toEqual([]);
+    const flat = run(s, fillKindOps(["a"], L(s), "solid"));
+    expect(flat.fills[0].mesh).toBeUndefined();
+    expect(flat.fills[0].a).toBe(1);
   });
 });

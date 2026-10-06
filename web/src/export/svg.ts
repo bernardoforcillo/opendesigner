@@ -5,6 +5,8 @@ import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../rende
 import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
+import { meshBitmap } from "../renderer/mesh";
+import { encodePng, pngDataUri } from "./rawPng";
 
 // SVG EXPORT — markup from the NODES.
 //
@@ -191,12 +193,34 @@ function imagePatternRef(n: NodeLite, f: FillLite, defs: string[]): string | nul
   return `url(#${id})`;
 }
 
+// A MESH paint becomes a <pattern> holding its bitmap as an embedded PNG (the grid blended, renderer/
+// mesh.ts), stretched over the node's box by the viewer's own smoothing. 32 pixels a side is plenty
+// for a smooth blend and keeps the file small; a one-pixel border repeats the edge.
+const MESH_SVG_SIZE = 32;
+
+function meshPatternRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  if (!(n.width > 0) || !(n.height > 0)) return null;
+  const total = MESH_SVG_SIZE + 2;
+  const uri = pngDataUri(encodePng(total, total, meshBitmap(f.mesh!, MESH_SVG_SIZE, 1)));
+  const id = `p${defs.length}`;
+  const sx = n.width / MESH_SVG_SIZE, sy = n.height / MESH_SVG_SIZE;
+  defs.push(
+    `<pattern${attrs([attr("id", id), attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height)])} patternUnits="userSpaceOnUse">` +
+    `<image${attrs([
+      attr("href", uri), attr("x", -sx), attr("y", -sy), attr("width", n.width + 2 * sx), attr("height", n.height + 2 * sy),
+      { name: "preserveAspectRatio", value: "none" },
+    ])}/></pattern>`,
+  );
+  return `url(#${id})`;
+}
+
 // A gradient becomes a <linearGradient>/<radialGradient> in <defs>, with the
 // same WORLD coordinates that the canvas computes in renderer/canvasRenderer.ts::
 // paintStyle (userSpaceOnUse): no bbox, hence no deformation. It returns
 // the `url(#id)` reference to put in `fill`, or null for flat tints
 // and for degenerate gradients (same cases as the canvas).
 function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  if (f.mesh) return meshPatternRef(n, f, defs);
   if (f.image) return imagePatternRef(n, f, defs);
   const g = f.gradient;
   if (!g || g.stops.length < 2) return null;
