@@ -1,8 +1,9 @@
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
@@ -424,6 +425,9 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (!state.flows[t.flowId]) return state;                             // ErrFlowNotFound
       if (!state.nodes.has(t.fromId) || !state.nodes.has(t.toId)) return state; // ErrNodeNotFound
       if (t.elementId !== "" && !state.nodes.has(t.elementId)) return state;
+      // ErrTransitionAnim: a closed animation set and sane timing (parity with core.applySetTransition).
+      if (t.animation !== "" && !(TRANSITION_ANIMATIONS as readonly string[]).includes(t.animation)) return state;
+      if (t.durationMs < 0 || t.durationMs > 10000 || t.delayMs < 0 || t.delayMs > 60000 || !isValidEasing(t.easing)) return state;
       return { ...state, transitions: { ...state.transitions, [t.id]: toTransitionLite(t) } };
     }
     case "deleteTransition": {

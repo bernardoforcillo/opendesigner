@@ -41,6 +41,7 @@ var (
 	ErrNilFlow            = errors.New("core: nil flow")
 	ErrFlowNotFound       = errors.New("core: flow not found")
 	ErrNilTransition      = errors.New("core: nil transition")
+	ErrTransitionAnim     = errors.New("core: invalid transition animation")
 	ErrTransitionNotFound = errors.New("core: transition not found")
 )
 

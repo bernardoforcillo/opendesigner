@@ -275,3 +275,46 @@ func TestFlowToolsRegisteredOverMCP(t *testing.T) {
 		t.Fatalf("analyze_flows: %v %+v", err, res)
 	}
 }
+
+// TestTransitionAnimationTool: set_transition writes the animation fields, keeps them on
+// a later update that does not mention them, and rejects an unknown animation or timing.
+func TestTransitionAnimationTool(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	s := startSession(t, url, docID, "agent")
+	ctx := context.Background()
+	a, b := frame(t, s, "A"), frame(t, s, "B")
+	fl, err := s.CreateFlow(ctx, odmcp.CreateFlowInput{Name: "F", StartId: a})
+	if err != nil {
+		t.Fatal(err)
+	}
+	out, err := s.SetTransition(ctx, odmcp.SetTransitionInput{
+		FlowId: fl.FlowId, FromId: a, ToId: b,
+		Animation: ptr("smart"), DurationMs: ptr(int32(450)), Easing: ptr("cubic-bezier(0.2,0,0,1)"),
+	})
+	if err != nil {
+		t.Fatal(err)
+	}
+	// An update that does not mention the animation keeps it.
+	if _, err := s.SetTransition(ctx, odmcp.SetTransitionInput{Id: out.TransitionId, Label: ptr("Go")}); err != nil {
+		t.Fatal(err)
+	}
+	got, err := s.GetFlow(ctx, odmcp.GetFlowInput{Id: fl.FlowId})
+	if err != nil {
+		t.Fatal(err)
+	}
+	tr := got.Transitions[0]
+	if tr.Animation != "smart" || tr.DurationMs != 450 || tr.Easing != "cubic-bezier(0.2,0,0,1)" || tr.Label != "Go" {
+		t.Fatalf("transition = %+v", tr)
+	}
+	for name, in := range map[string]odmcp.SetTransitionInput{
+		"animation": {Id: out.TransitionId, Animation: ptr("wipe")},
+		"duration":  {Id: out.TransitionId, DurationMs: ptr(int32(99999))},
+		"easing":    {Id: out.TransitionId, Easing: ptr("bounce")},
+		"delay":     {Id: out.TransitionId, DelayMs: ptr(int32(-1))},
+	} {
+		if _, err := s.SetTransition(ctx, in); err == nil {
+			t.Errorf("%s: want an error", name)
+		}
+	}
+}

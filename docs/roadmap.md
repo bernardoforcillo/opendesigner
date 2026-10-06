@@ -25,12 +25,13 @@ Legend: [x] done · [ ] to do
 - [x] Typography: uploaded fonts (TTF/OTF/WOFF/WOFF2 as content-addressed assets, drawn by the 2D and GPU renderers and exported as @font-face), shared text styles, italic; multi-line text and wrapping were already there; see docs/typography.md
 - [ ] Typography: letter spacing, decoration, case, per-range styling, kerning/shaping on the GPU
 - [x] Boolean operations (union, subtract, intersect, exclude), outline stroke, masks; see docs/vector.md
-- [ ] Prototyping and presentation mode
+- [x] Presentation mode: the playable prototype (Present)
 - [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
 - [ ] Diagrams: connectors that follow the shapes, `subgraph`, ER, notes in class and state diagrams
 - [x] SVG import (paste, drop, import tool)
 - [ ] .fig import
-- [ ] Prototyping: transitions between frames, smart animate, interactions on top of the existing animation engine
+- [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
+- [ ] Prototyping: hover and drag interactions, overlays, scroll, component state changes in the player
 - [x] Multiple artboards (frames), smart guides and snapping to nodes, layout grids on frames (columns, rows, square grid) that guide and snap; see docs/layout.md
 - [ ] Snap to a pixel grid, spacing guides (equal distances)
 

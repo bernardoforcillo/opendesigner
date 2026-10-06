@@ -582,6 +582,15 @@ message Transition {
   // ("cart not empty" / "cart=empty").
   string guard = 8;
   string effect = 9;
+  // How the prototype player goes from `from_id` to `to_id`: "" (cut) | "dissolve" |
+  // "slide-left|right|up|down" (the new screen slides over the old one) |
+  // "push-left|right|up|down" (both move) | "smart" (nodes with the same name in both
+  // screens move and fade into place). Closed set: see core.TransitionAnimations.
+  string animation = 10;
+  int32 duration_ms = 11;  // 0..10000; 0 = the player's default (300)
+  string easing = 12;      // the animation easing grammar (core.ValidEasing); "" = easeInOut
+  // For trigger "auto": how long the player waits on the screen before following it (0..60000).
+  int32 delay_ms = 13;
 }
 
 // ---------- animation ----------

@@ -9,6 +9,7 @@ import { drawScene, resizeCanvasToDisplaySize } from "../renderer/canvasRenderer
 import { imageCache } from "../renderer/imageCache";
 import { sceneForScreen, PROTO_PAGE_ID } from "../flow/protoScene";
 import { useProtoAnimation } from "./protoAnim";
+import { animOf, layersAt, progressOf, smartScene, type TransitionAnim } from "../flow/transitionAnim";
 import { screenName } from "../flow/screens";
 import { Badge, Icon, IconButton } from "./ds";
 import { AnyIcon, FlowIconButton } from "./ds/flow-parts";
@@ -69,6 +70,28 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     return () => clearTimeout(t);
   }, [state?.screenId]);
 
+  // The screen-to-screen animation in progress (see flow/transitionAnim.ts), or null.
+  const [tx, setTx] = useState<{ fromId: string; anim: TransitionAnim; start: number } | null>(null);
+  // Follows an option, animated if its transition says so.
+  const navigate = (o: Option) => {
+    if (!scene || !state || !o.enabled) return;
+    const next = follow(scene, state, o.transition);
+    if (next === state) return;
+    const anim = animOf(o.transition);
+    setTx(anim ? { fromId: state.screenId, anim, start: performance.now() } : null);
+    setState(next);
+  };
+  // "auto" transitions (trigger "auto"): followed on their own after `delayMs` on the screen.
+  const navigateRef = useRef(navigate);
+  navigateRef.current = navigate;
+  useEffect(() => {
+    if (!scene || !flow || !state) return;
+    const auto = optionsFrom(scene, flow.id, state).find((o) => o.enabled && o.transition.trigger === "auto");
+    if (!auto) return;
+    const id = setTimeout(() => navigateRef.current(auto), auto.transition.delayMs ?? 0);
+    return () => clearTimeout(id);
+  }, [scene, flow?.id, state?.screenId]);
+
   // Esc closes. In capture and stopping propagation: no other global
   // listener (toolManager, selectTool) must react to an Esc that belongs to the prototype.
   useEffect(() => {
@@ -109,11 +132,66 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
 
   useEffect(() => {
     const c = canvas.current;
-    if (!c || !derived || !cam) return;
+    if (!c || !derived || !cam || tx) return;
     resizeCanvasToDisplaySize(c);
     const ctx = c.getContext("2d");
     if (ctx) drawScene(ctx, anim.pose(derived), cam, PROTO_PAGE_ID);
-  }, [derived, cam, size, imgTick, anim.pose]);
+  }, [derived, cam, size, imgTick, anim.pose, tx]);
+
+  // The transition: a frame loop for its duration. "smart" draws ONE interpolated scene; the
+  // others draw the two screens on their own canvases and lay them over each other.
+  useEffect(() => {
+    const c = canvas.current;
+    if (!tx || !c || !scene || !state || !derived || !cam || !screenBox) { if (tx) setTx(null); return; }
+    resizeCanvasToDisplaySize(c);
+    const resolved = resolveScene(scene);
+    const fromScene = sceneForScreen(resolved, tx.fromId);
+    // The source screen sits elsewhere in the world: it gets the camera that frames IT.
+    const fromRoot = scene.nodes.at(tx.fromId);
+    const fromCam = fromRoot ? fitCamera(worldBoundsOfNode(scene, fromRoot), size.w, size.h) : cam;
+    const layer = () => {
+      const o = document.createElement("canvas");
+      o.width = c.width;
+      o.height = c.height;
+      return o;
+    };
+    const offFrom = layer();
+    const offTo = layer();
+    const dpr = c.clientWidth > 0 ? c.width / c.clientWidth : 1;
+    const w = screenBox.width * cam.zoom;
+    const h = screenBox.height * cam.zoom;
+    let raf = 0;
+    const step = (now: number) => {
+      const ctx = c.getContext("2d");
+      if (!ctx) { setTx(null); return; }
+      const elapsed = now - tx.start;
+      const p = progressOf(tx.anim, elapsed);
+      if (tx.anim.kind === "smart") {
+        const sm = smartScene(resolved, tx.fromId, state.screenId, p);
+        if (sm) drawScene(ctx, sm, cam, PROTO_PAGE_ID);
+      } else {
+        const a = offFrom.getContext("2d");
+        const b = offTo.getContext("2d");
+        if (a && b && fromScene) {
+          drawScene(a, fromScene, fromCam, PROTO_PAGE_ID);
+          drawScene(b, derived, cam, PROTO_PAGE_ID);
+          const L = layersAt(tx.anim, p);
+          ctx.setTransform(1, 0, 0, 1, 0, 0);
+          ctx.clearRect(0, 0, c.width, c.height);
+          for (const [img, l] of [[offFrom, L.from], [offTo, L.to]] as const) {
+            ctx.globalAlpha = l.alpha;
+            ctx.drawImage(img, l.dx * w * dpr, l.dy * h * dpr);
+          }
+          ctx.globalAlpha = 1;
+        }
+      }
+      if (elapsed >= tx.anim.durationMs) { setTx(null); return; }
+      raf = requestAnimationFrame(step);
+    };
+    raf = requestAnimationFrame(step);
+    return () => cancelAnimationFrame(raf);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [tx]);
 
   if (!scene) return null;
   const options = flow && state ? optionsFrom(scene, flow.id, state) : [];
@@ -125,10 +203,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     if (el && cam) hotspots.push({ o, box: worldBoundsOfNode(scene, el) });
     else bar.push(o);
   }
-  const go = (o: Option) => {
-    if (!state || !o.enabled) return;
-    setState(follow(scene, state, o.transition));
-  };
+  const go = navigate;
 
 
   const flowName = flow?.name ?? "";
@@ -272,9 +347,9 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
             icon="arrowLeft"
             label="Back"
             isDisabled={!state || !canGoBack(state)}
-            onPress={() => state && setState(back(state))}
+            onPress={() => { setTx(null); if (state) setState(back(state)); }}
           />
-          <FlowIconButton icon="restart" label="Restart" onPress={() => setState(startState(scene, flow, pageId))} />
+          <FlowIconButton icon="restart" label="Restart" onPress={() => { setTx(null); setState(startState(scene, flow, pageId)); }} />
           {state && (
             <nav
               aria-label="Path"
@@ -289,7 +364,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
                       <span aria-current="step" className="rounded-full bg-flow-soft px-2 py-0.5 font-semibold text-flow">{screenName(scene, id)}</span>
                     ) : (
                       <RacButton
-                        onPress={() => setState(backTo(state, i))}
+                        onPress={() => { setTx(null); setState(backTo(state, i)); }}
                         className="rounded-full px-2 py-0.5 text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
                       >
                         {screenName(scene, id)}

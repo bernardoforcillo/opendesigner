@@ -289,7 +289,15 @@ export interface FlowLite { id: string; name: string; description: string; start
 export interface TransitionLite {
   id: string; flowId: string; fromId: string; toId: string;
   label: string; trigger: string; elementId: string; guard: string; effect: string;
+  // Animation to the destination (see Transition.animation); absent = a cut.
+  animation?: string; durationMs?: number; easing?: string; delayMs?: number;
 }
+
+/** The closed set of Transition.animation values (parity with core.TransitionAnimations). */
+export const TRANSITION_ANIMATIONS = [
+  "dissolve", "slide-left", "slide-right", "slide-up", "slide-down",
+  "push-left", "push-right", "push-up", "push-down", "smart",
+] as const;
 
 // VARIABLES (design tokens): see proto VariableCollection / Variable and
 // internal/core/variables.go. A value is a color (FillLite, solid) or a number.
@@ -821,6 +829,10 @@ export function toTransitionLite(t: PbTransition): TransitionLite {
   return {
     id: t.id, flowId: t.flowId, fromId: t.fromId, toId: t.toId, label: t.label,
     trigger: t.trigger, elementId: t.elementId, guard: t.guard, effect: t.effect,
+    ...(t.animation !== "" ? { animation: t.animation } : {}),
+    ...(t.durationMs !== 0 ? { durationMs: t.durationMs } : {}),
+    ...(t.easing !== "" ? { easing: t.easing } : {}),
+    ...(t.delayMs !== 0 ? { delayMs: t.delayMs } : {}),
   };
 }
 export function toPbFlow(f: FlowLite): PbFlow {
@@ -830,6 +842,7 @@ export function toPbTransition(t: TransitionLite): PbTransition {
   return create(TransitionSchema, {
     id: t.id, flowId: t.flowId, fromId: t.fromId, toId: t.toId, label: t.label,
     trigger: t.trigger, elementId: t.elementId, guard: t.guard, effect: t.effect,
+    animation: t.animation ?? "", durationMs: t.durationMs ?? 0, easing: t.easing ?? "", delayMs: t.delayMs ?? 0,
   });
 }
 
