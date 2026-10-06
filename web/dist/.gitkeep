@@ -1,0 +1,10 @@
+This file keeps web/dist present in a clean checkout.
+
+cmd/opendesigner embeds this directory with //go:embed, and that directive is a
+compile-time error when the directory does not exist. Without this file, `go
+build ./...` would fail on a fresh clone until someone ran `pnpm --dir web
+build` -- so the tracked placeholder is what keeps the Go build independent of
+the frontend build.
+
+The binary that results embeds no editor and says so on "/", see
+internal/server/webui.go.
