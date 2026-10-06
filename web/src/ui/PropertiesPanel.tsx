@@ -17,6 +17,7 @@ import { layerDisplayName } from "./LayersPanel";
 import { cls, EmptyState, Icon, IconButton, Section } from "./ds";
 import { ExportSection } from "./ExportSection";
 import { VariablesSection } from "./VariablesSection";
+import { boundColor } from "./variableOps";
 import type { IconName } from "./ds";
 import { SegRadio, type SegOption } from "./ds/props-controls";
 import { NumberField } from "./fields/NumberField";
@@ -691,6 +692,11 @@ export function PropertiesPanel() {
   // center -- the state from which writing any field creates one.
   const stroke = summary.strokes === MIXED ? null : (summary.strokes[0] ?? null);
   const strokesMixed = summary.strokes === MIXED;
+  // A color bound to a variable shows (read-only) what the variable resolves to,
+  // which is what the canvas draws: editing the literal underneath would change
+  // nothing visible. Detaching is done in the Variables section.
+  const boundFill = scene ? boundColor(scene, nodes, "fills.0") : undefined;
+  const boundStroke = scene ? boundColor(scene, nodes, "strokes.0") : undefined;
 
   // W/H disappear as soon as ONE selected node is a group, not only when all
   // are (`summary.kind === "group"`): the field writes the same value
@@ -928,8 +934,9 @@ export function PropertiesPanel() {
                 // Node without tints: null, that is "no single value to
                 // show". Writing a color from there stays possible and
                 // assigns it to the whole selection, as for geometric fields.
-                value={fill}
-                placeholder="None"
+                value={boundFill !== undefined ? boundFill : fill}
+                placeholder={boundFill === null ? "Variables" : "None"}
+                isDisabled={boundFill !== undefined}
                 onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
               />
             }
@@ -960,8 +967,9 @@ export function PropertiesPanel() {
               // Like the fill: null on MIXED or on "no stroke". Writing
               // a color stays possible in both cases -- and it is the way
               // a stroke is CREATED (see DEFAULT_STROKE).
-              value={stroke?.color ?? null}
-              placeholder={strokesMixed ? MIXED_LABEL : "None"}
+              value={boundStroke !== undefined ? boundStroke : (stroke?.color ?? null)}
+              isDisabled={boundStroke !== undefined}
+              placeholder={boundStroke === null ? "Variables" : strokesMixed ? MIXED_LABEL : "None"}
               // The color goes down BARE, without alpha: strokeOps puts it back
               // taking it from each node's stroke, exactly like
               // fillOps. Composing it here from `stroke` would read it from the SUMMARY

@@ -1,6 +1,6 @@
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { bindingType } from "../store/variables";
-import type { CollectionLite, FillLite, SceneState, VariableLite, VariableTypeLite } from "../store/types";
+import { bindingType, resolveNode } from "../store/variables";
+import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "../store/types";
 import { makeSetCollectionOp, makeSetPropsOp, makeSetVariableOp, uuid } from "../tools/ops";
 
 // The pure half of the variables UI: it reads a scene and BUILDS ops, it never
@@ -112,4 +112,25 @@ export function removeModeOps(c: CollectionLite, modeId: string): Op[] {
 /** Upsert ops for a variable whose values changed. */
 export function setVariableOps(v: VariableLite): Op[] {
   return [makeSetVariableOp(v)];
+}
+
+/**
+ * What the properties panel shows for a color bound to a variable. `undefined`:
+ * not every node is bound at `key`, so the panel shows (and edits) the literal
+ * as usual. `null`: all are bound but to different variables or values, so there
+ * is no single color. Otherwise the color the variable resolves to -- the one the
+ * canvas draws, while the node's own literal is only the fallback.
+ */
+export function boundColor(scene: SceneState, nodes: readonly NodeLite[], key: "fills.0" | "strokes.0"): FillLite | null | undefined {
+  if (nodes.length === 0 || !nodes.every((n) => n.bindings?.[key] && scene.variables[n.bindings[key]])) return undefined;
+  const pick = (n: NodeLite): FillLite | undefined => {
+    const r = resolveNode(scene, n);
+    return key === "fills.0" ? r.fills[0] : r.strokes[0]?.color;
+  };
+  const first = pick(nodes[0]);
+  const same = first !== undefined && nodes.every((n) => {
+    const c = pick(n);
+    return c !== undefined && c.r === first.r && c.g === first.g && c.b === first.b && c.a === first.a;
+  });
+  return same ? first : null;
 }

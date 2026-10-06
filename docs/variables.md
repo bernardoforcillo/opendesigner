@@ -87,6 +87,8 @@ Enforced by `core.Apply` (Go, the authority) and mirrored in
 - **Editor**: document menu → *Variables…* creates collections, modes and
   variables; the properties panel's *Variables* section binds the selection's fill,
   stroke, opacity, rotation, radius and stroke width, and pins collections to modes.
+  A color bound to a variable shows, read-only, what the variable resolves to (what the
+  canvas draws); detach it there to edit the node's own literal again.
 - **MCP**: `list_variables`, `create_collection`, `delete_collection`,
   `set_variable`, `delete_variable`, `bind_variable`, `set_node_mode`;
   `get_document` includes `variables` and each node's `bindings` / `modes`.

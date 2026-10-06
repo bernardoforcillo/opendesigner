@@ -4,6 +4,7 @@ import { render, screen, cleanup, fireEvent, within } from "@testing-library/rea
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import { emptyScene, type CollectionLite, type NodeLite, type VariableLite } from "../store/types";
+import { PropertiesPanel } from "./PropertiesPanel";
 import { VariablesDialog } from "./VariablesDialog";
 import { VariablesSection } from "./VariablesSection";
 import {
@@ -118,6 +119,22 @@ describe("VariablesSection", () => {
     useScene.setState({ selection: ["a"] });
     render(<VariablesSection />);
     expect(screen.getByText(/No variables yet/)).toBeInTheDocument();
+  });
+});
+
+describe("PropertiesPanel with a bound color", () => {
+  it("shows what the variable resolves to, read-only, and the literal once detached", () => {
+    install(rect("a", { bindings: { "fills.0": "bg" }, modes: { theme: "dark" } }));
+    useScene.setState({ selection: ["a"] });
+    render(<PropertiesPanel />);
+    // The literal is red; the bound variable is black in dark.
+    const fill = screen.getByRole("textbox", { name: "Fill" });
+    expect(fill).toHaveValue("#000000");
+    expect(fill).toBeDisabled();
+    // Detach: the node's own literal is editable and shown again.
+    fireEvent.change(screen.getByRole("combobox", { name: "Fill" }), { target: { value: "" } });
+    expect(screen.getByRole("textbox", { name: "Fill" })).toHaveValue("#FF0000");
+    expect(screen.getByRole("textbox", { name: "Fill" })).not.toBeDisabled();
   });
 });
 
