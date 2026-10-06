@@ -18,9 +18,37 @@ For agents: `list_comments` (open threads, or `includeResolved`), `add_comment` 
 **Document menu → Versions…** saves a **version**: a frozen copy of the whole document with a name, kept in `<bundle>/versions/` next to the oplog (so copying a bundle copies its history). A version never changes.
 
 - **Open as copy** (RPC `BranchDocument`) creates a **new document** seeded from the version, with its own id and a copy of the assets it uses, and goes to it. **Branch the current state** does the same from the document as it is now.
-- The original is untouched, and the two evolve independently. There is no merge of a branch back yet: take what you need across with copy and paste.
+- The original is untouched, and the two evolve independently until you merge.
 - RPCs: `CreateVersion`, `ListVersions`, `DeleteVersion`, `BranchDocument`.
+
+## Merging a branch back
+
+A branch remembers the document it came from and **the document as it was then** (`origin.json` and `origin-base.pb` in its bundle). **Versions… → Merge back** (RPCs `GetBranchOrigin`, `ReviewMerge`, `MergeBranch`) compares three documents: that starting point, the branch now and the original now (`internal/merge`), and lists what the branch did: layers added, removed and changed (with the properties that changed), pages, flows, variables, fonts, text styles, component sets.
+
+- It is a **three-way, property-level merge**. A property the branch changed is taken unless the original changed *the same property of the same layer* to something else since the start: a **conflict**. Conflicts are flagged in the review and left as the original has them, unless you tick "On a conflict, use the branch's version". A layer the branch removed that the original edited (or put something new inside) is a conflict too; so is a new layer whose parent no longer exists in the original.
+- Applying it is **all or nothing**: the ops are checked against a copy of the original first, then submitted to it as ordinary edits (so every core invariant holds, collaborators see them live, and they undo like any other work). Afterwards the branch's state becomes the new common ancestor: what was merged is not offered again, and a conflict resolved the original's way is not either.
+- **Not merged, and said so in the review**: a frame's clipping, an instance's component data, a shape that changed kind, comments, and anything the original also deleted. The review lists these as warnings rather than dropping them silently.
+- Merging needs edit access to both documents when they are protected.
+
+## Share links and access
+
+By default a document is open to anyone who can reach the server (local-first, trusted network). **Document menu → Share…** can **protect** it: from then on it is reached only through **share links**, each with a role:
+
+| Role | Can |
+|---|---|
+| view | read the document, follow it live, see presence |
+| comment | view, and write comments |
+| edit | comment, and change the document, save versions, branch, merge, import, rename |
+| owner | edit, and manage links, remove protection, delete the document |
+
+There are **no accounts**: a link *is* the permission. It is shown **once**, when it is made (`/doc/<id>?k=<token>`); the server keeps only its SHA-256. Revoking a link cuts it off at once. A protected document is not listed to strangers, and its images are served only with a link (`?k=` on the image URL, `Authorization: Bearer` elsewhere). The server enforces every role on every RPC, streams and the asset route included; the editor also hides the tools a link cannot use ("View only" / "Comment only" in the top bar).
+
+Who may protect a document, since there are no accounts: **the machine running the server** (a request straight from loopback), or the holder of the server's **admin token** (`opendesigner serve -admin-token …` or `$OPENDESIGNER_ADMIN_TOKEN`). Behind a reverse proxy every request looks like it comes from the proxy, so the server treats a request with `X-Forwarded-For`, `Forwarded` or `X-Real-Ip` as **not** local: there, the admin token is what manages access.
+
+## Beyond the local network
+
+The server can be exposed to the Internet **by you**: `opendesigner serve -tls-cert cert.pem -tls-key key.pem` serves HTTPS (HTTP/2 included, which the live streams need), or put it behind a TLS-terminating proxy; protect the documents you share and give people links. That is a **self-hosted** route and everything stays on your machine. What is **not** there is a relay that connects two editors across NATs without a reachable server (a hosted relay or a peer-to-peer rendezvous): that needs infrastructure this project does not run, and was not built.
 
 ## What is not there
 
-Property-level merge of two diverging documents, accounts and permissions (read-only and comment-only links), and a relay beyond the local network.
+Real-time merging of simultaneous edits to the *same* property (the last op to reach the server still wins while people are online together; the merge above is for branches), per-person accounts, and a hosted relay for use across NATs.

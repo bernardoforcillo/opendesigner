@@ -46,12 +46,12 @@ export function FacilitationBar({ myId }: { myId: string }) {
       ) : (
         <span className="flex items-center gap-0.5" role="group" aria-label="Start a timer">
           {[1, 3, 5].map((m) => (
-            <button key={m} type="button" className={BTN} onClick={() => f.startTimer(m * 60)}>{m} min</button>
+            <button key={m} type="button" className={BTN} aria-label={`${m} min`} onClick={() => f.startTimer(m * 60)}>{m}m</button>
           ))}
         </span>
       )}
       <span className="mx-1 h-5 w-px bg-line" />
-      <span className="px-1 tabular-nums" aria-label="Dots left">{f.votesPerPerson - f.votes.length} of {f.votesPerPerson} dots</span>
+      <span className="px-1 tabular-nums" role="status" aria-label="Dots left">{f.votesPerPerson - f.votes.length}/{f.votesPerPerson} dots</span>
       <button type="button" className={BTN} disabled={f.votes.length === 0} onClick={() => f.clearVotes()}>Take back</button>
       <button type="button" className={BTN} aria-pressed={showResults} onClick={() => setShowResults((v) => !v)}>Results</button>
       <span className="mx-1 h-5 w-px bg-line" />
@@ -70,19 +70,19 @@ export function FacilitationBar({ myId }: { myId: string }) {
           maxLength={CHAT_MAX}
           value={draft}
           onChange={(e) => setDraft(e.target.value)}
-          className="h-7 w-36 rounded-md bg-surface-3 px-2 text-[12px] outline-none focus-visible:shadow-[var(--ring)]"
+          className="h-7 w-28 rounded-md bg-surface-3 px-2 text-[12px] outline-none focus-visible:shadow-[var(--ring)]"
         />
       </form>
       <span className="mx-1 h-5 w-px bg-line" />
       <label className="flex items-center gap-1 px-1 text-fg-muted">
-        Follow
+        <span className="sr-only">Follow</span>
         <select
           aria-label="Follow"
           value={f.following ?? ""}
           onChange={(e) => f.follow(e.target.value || null)}
           className="h-7 rounded-md bg-surface-3 px-1 text-[12px] text-fg outline-none focus-visible:shadow-[var(--ring)]"
         >
-          <option value="">Nobody</option>
+          <option value="">Follow nobody</option>
           {others.map((p) => <option key={p.clientId} value={p.clientId}>{p.nickname}</option>)}
         </select>
       </label>

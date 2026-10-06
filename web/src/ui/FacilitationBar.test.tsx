@@ -31,7 +31,7 @@ describe("FacilitationBar", () => {
   it("counts dots left and can take them back", () => {
     useFacilitation.setState({ votes: ["a", "a"] });
     render(<FacilitationBar myId="me" />);
-    expect(screen.getByLabelText("Dots left").textContent).toBe("3 of 5 dots");
+    expect(screen.getByLabelText("Dots left").textContent).toBe("3/5 dots");
     fireEvent.click(screen.getByRole("button", { name: "Take back" }));
     expect(useFacilitation.getState().votes).toEqual([]);
   });

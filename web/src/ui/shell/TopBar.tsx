@@ -1,6 +1,7 @@
 import type { ReactNode } from "react";
 import { ToggleButton, ToggleButtonGroup, Tooltip, TooltipTrigger } from "react-aria-components";
 import { Icon, IconButton, Kbd } from "../ds";
+import { useAccess } from "../../rpc/access";
 import { useScene } from "../../store/store";
 import { DocMenu } from "./DocMenu";
 import { DocName } from "./DocName";
@@ -34,6 +35,7 @@ export function TopBar({
   connection: string; statusLabel: string;
 }) {
   const zoom = useScene((s) => s.camera.zoom);
+  const accessRole = useAccess((s) => s.role);
   const left = usePanels((s) => s.left);
   const right = usePanels((s) => s.right);
   const dot =
@@ -81,7 +83,14 @@ export function TopBar({
         ))}
       </ToggleButtonGroup>
       </span>
-      <DocName />
+      <span className="flex min-w-0 items-center justify-center gap-2">
+        <DocName />
+        {accessRole === "view" || accessRole === "comment" ? (
+          <span title="Your link does not allow editing" className="shrink-0 rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-fg-muted">
+            {accessRole === "view" ? "View only" : "Comment only"}
+          </span>
+        ) : null}
+      </span>
       <span className="flex min-w-0 items-center justify-end gap-2">
         {presence}
         <span className="flex items-center gap-2 px-2 text-[12px] text-fg-muted tabular-nums" aria-live="polite">

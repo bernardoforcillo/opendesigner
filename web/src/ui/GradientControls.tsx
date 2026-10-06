@@ -76,6 +76,7 @@ export function GradientControls({
         label={target === "fill" ? "Fill type" : "Stroke type"}
         value={kind}
         options={KINDS}
+        wrap
         onPick={(k) => (k === "image" ? (fill?.image ? undefined : fileInput.current?.click()) : run((ids) => fillKindOps(ids, lookup, k, target)))}
       />
       <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Image file" className="hidden"

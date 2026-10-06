@@ -30,7 +30,7 @@ Legend: [x] done · [ ] to do
 - [x] Connectors that follow the shapes (Link tool and panel; derived path, see docs/whiteboard.md)
 - [ ] Diagrams: `subgraph`, ER, notes in class and state diagrams
 - [x] SVG import (paste, drop, import tool)
-- [ ] .fig import
+- [x] .fig import (experimental: read from the documented layout, tested on generated files; components and instances are not kept; docs/handoff.md)
 - [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
 - [ ] Prototyping: hover and drag interactions, overlays, scroll, component state changes in the player
 - [x] Multiple artboards (frames), smart guides and snapping to nodes, layout grids on frames (columns, rows, square grid) that guide and snap; see docs/layout.md
@@ -45,7 +45,7 @@ Legend: [x] done · [ ] to do
 - [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
 - [x] SVG export and PDF (the SVG through the browser's print dialog, Save as PDF)
 - [ ] AI/EPS export
-- [ ] Color: CMYK and ICC profiles (print)
+- [ ] Color: ICC profiles and color-managed print (CMYK read-out/entry exists, plain conversion only)
 
 ## 1c. Whiteboard (Miro parity)
 - [x] Sticky notes (six colors) and arrows (flow and user-flow templates) as plain nodes; see docs/whiteboard.md
@@ -61,14 +61,14 @@ Legend: [x] done · [ ] to do
 - [ ] Conflicts on the same property: today the last op to reach the server wins
 - [x] Comments on the canvas: pins on a node or free on a page, threads with replies, resolve, in the Comments tab and as MCP tools (`list_comments`, `add_comment`, `resolve_comment`, `delete_comment`); see docs/collaboration.md
 - [x] Named versions and branching: frozen copies of the document, opened as a branch (a new document)
-- [ ] Review and merge of a branch back into its source
-- [ ] Property-level merge (CRDT or equivalent) instead of last-write-wins
-- [ ] Accounts, permissions, read-only and comment-only links (optional; local-first stays the default)
-- [ ] Optional relay/cloud for use beyond the LAN, still self-hostable
+- [x] Review and merge of a branch back into its source (three-way, conflicts flagged; docs/collaboration.md)
+- [ ] Property-level merge in REAL TIME (CRDT or equivalent) instead of last-write-wins (the branch merge is property-level; live edits are still last-write-wins)
+- [x] Permissions without accounts: share links with view / comment / edit / owner roles, enforced by the server (optional; open stays the default); per-person accounts are not there
+- [ ] Optional relay/cloud for use beyond the LAN, still self-hostable (what exists: HTTPS and an admin token for exposing your own server; a NAT-crossing relay is not built)
 
 ## 3. Handoff and ecosystem
 - [x] Dev mode: CSS/Tailwind/React and measurements (size, position, gaps to parent and siblings of the selection, in the Ship panel)
-- [ ] Plugin API
+- [x] Plugin API (sandboxed scripts with a read/write bridge; docs/handoff.md)
 - [x] Tokens in and out: W3C Design Tokens (DTCG) JSON and CSS custom properties, with modes; import of a DTCG file as collections (variables dialog); see docs/handoff.md
 - [ ] Syncing components with the code
 

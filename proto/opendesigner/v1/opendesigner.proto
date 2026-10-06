@@ -1018,6 +1018,45 @@ message DeleteVersionResponse {}
 // A new document seeded from a version (version_id empty = the document as it is now).
 message BranchRequest { string doc_id = 1; string version_id = 2; string name = 3; }
 
+// ACCESS. By default a document is open to anyone who can reach the server (local-first, trusted
+// network). A document can be PROTECTED: then every request must carry a link token
+// (Authorization: Bearer <token>, or ?k=<token> for images), and what it may do depends on the
+// link's role -- view (read), comment (read + comments), edit (everything but access and deleting),
+// owner (everything). There are no accounts: a link IS the permission, shown once when it is made.
+// The machine that runs the server (a request from loopback) and the holder of the server's
+// -admin-token can always manage access.
+message AccessLink {
+  string id = 1;
+  string role = 2;       // owner | edit | comment | view
+  string label = 3;
+  int64 created_at = 4;  // unix seconds
+}
+message GetAccessRequest { string doc_id = 1; }
+message GetAccessResponse {
+  bool enabled = 1;
+  string role = 2;               // the caller's role here: owner | edit | comment | view | open (not protected)
+  repeated AccessLink links = 3; // only for an owner
+}
+message EnableAccessRequest { string doc_id = 1; }
+message EnableAccessResponse { string owner_token = 1; }   // shown once
+message DisableAccessRequest { string doc_id = 1; }
+message DisableAccessResponse {}
+message CreateShareLinkRequest { string doc_id = 1; string role = 2; string label = 3; }
+message CreateShareLinkResponse { AccessLink link = 1; string token = 2; }  // the token is shown once
+message RevokeShareLinkRequest { string doc_id = 1; string link_id = 2; }
+message RevokeShareLinkResponse {}
+
+// IMPORTING A FIGMA FILE (internal/figimport). EXPERIMENTAL: .fig is not a public format. The file's
+// images are stored in the document's asset store; the nodes come back like a drawn diagram
+// (a wrapper group first, every node after its parent) for the editor to insert in one gesture.
+message ImportFigRequest { string doc_id = 1; bytes data = 2; string name = 3; }
+message ImportFigResponse {
+  repeated Node nodes = 1;
+  double width = 2;
+  double height = 3;
+  repeated string warnings = 4;  // what could not be carried over
+}
+
 // MERGING A BRANCH BACK. A branch remembers the document it came from and the state it started
 // from; reviewing it compares three documents (that start, the branch now, the original now) and
 // lists what the branch did. Merging applies those changes to the original as ordinary ops. A
@@ -1092,6 +1131,14 @@ service DocumentService {
   rpc DeleteVersion(DeleteVersionRequest) returns (DeleteVersionResponse);
   // Opens a version (or the current state) as a NEW document: a branch to edit without touching the original.
   rpc BranchDocument(BranchRequest) returns (DocInfo);
+  // Access control (see AccessLink). Managing it needs an owner link, loopback, or the server's admin token.
+  rpc GetAccess(GetAccessRequest) returns (GetAccessResponse);
+  rpc EnableAccess(EnableAccessRequest) returns (EnableAccessResponse);
+  rpc DisableAccess(DisableAccessRequest) returns (DisableAccessResponse);
+  rpc CreateShareLink(CreateShareLinkRequest) returns (CreateShareLinkResponse);
+  rpc RevokeShareLink(RevokeShareLinkRequest) returns (RevokeShareLinkResponse);
+  // Reads a Figma .fig file into nodes (experimental).
+  rpc ImportFig(ImportFigRequest) returns (ImportFigResponse);
   // Whether a document is a branch, and of what.
   rpc GetBranchOrigin(GetBranchOriginRequest) returns (GetBranchOriginResponse);
   // What merging a branch back into its original would change, conflicts included.

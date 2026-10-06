@@ -10,6 +10,8 @@
 // mount by hand. The asset path therefore sits entirely behind
 // internal/server/assets.go.
 
+import { tokenFor } from "./access";
+
 // The prefix is /assets-api/ and NOT /assets/: `opendesigner serve` serves the compiled
 // frontend from the root, and Vite writes its own bundles in dist/assets/. The
 // development proxy (web/vite.config.ts) already forwards this prefix to :8080.
@@ -25,7 +27,9 @@ export const ASSET_PREFIX = "/assets-api";
  * FORMULATING a request with a slash inside.
  */
 export function assetUrl(docId: string, hash: string): string {
-  return `${ASSET_PREFIX}/${encodeURIComponent(docId)}/${encodeURIComponent(hash)}`;
+  // A protected document's images carry the link token: an <img> cannot set a header.
+  const token = tokenFor(docId);
+  return `${ASSET_PREFIX}/${encodeURIComponent(docId)}/${encodeURIComponent(hash)}${token === "" ? "" : `?k=${encodeURIComponent(token)}`}`;
 }
 
 /** The response to an upload: the hash is the only part that ends up in the model. */
@@ -66,7 +70,10 @@ export async function uploadAsset(
     // The Content-Type declared by the client decides nothing on the server (it
     // recognizes the type from the bytes, see store.DetectImageType): it travels because it is
     // true, not because anyone trusts it.
-    headers: file.type ? { "Content-Type": file.type } : undefined,
+    headers: {
+      ...(file.type ? { "Content-Type": file.type } : {}),
+      ...(tokenFor(docId) !== "" ? { Authorization: `Bearer ${tokenFor(docId)}` } : {}),
+    },
     body: file,
   });
   if (!res.ok) {
@@ -92,6 +99,8 @@ export function uploadErrorMessage(status: number): string {
       return "this format is not supported: use PNG, JPEG, GIF or WebP (fonts: TTF, OTF, WOFF or WOFF2)";
     case 413:
       return "the image is too large (the limit is 32 MB)";
+    case 403:
+      return "your link does not allow uploading to this document";
     case 404:
       return "the document no longer exists on the server";
     default:

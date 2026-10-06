@@ -8,6 +8,8 @@ import { usePanels } from "./shell/panels";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
 import { usePresence, loadNickname } from "../store/presence";
+import { captureLinkToken, useAccess, canComment, canWrite, type Role } from "../rpc/access";
+import { docClient } from "../rpc/client";
 import { useFacilitation, tally } from "../store/facilitation";
 import { FacilitationBar } from "./FacilitationBar";
 import { drawLayoutDrop, drawPeers, drawVotes } from "../renderer/peersRenderer";
@@ -121,9 +123,13 @@ function toolIdsOf(mode: EditorMode): readonly ToolId[] | null {
 }
 // Which tools the toolbar shows in a mode: in Design all except
 // "Connect", in Flows and in Develop only those listed above.
-export function toolsForMode(mode: EditorMode): { id: ToolId; label: string }[] {
+export function toolsForMode(mode: EditorMode, role: Role | null = null): { id: ToolId; label: string }[] {
   const ids = toolIdsOf(mode);
-  return TOOL_LABELS.filter((t) => (ids ? ids.includes(t.id) : t.id !== "connect" && !BOARD_ONLY.includes(t.id)));
+  const inMode = TOOL_LABELS.filter((t) => (ids ? ids.includes(t.id) : t.id !== "connect" && !BOARD_ONLY.includes(t.id)));
+  // A link that cannot edit gets the tools that do not edit (the server refuses the rest anyway).
+  if (canWrite(role)) return inMode;
+  const allowed: readonly ToolId[] = canComment(role) ? ["select", "hand", "comment", "vote"] : ["select", "hand", "vote"];
+  return inMode.filter((t) => allowed.includes(t.id));
 }
 
 const CLIENT_ID = crypto.randomUUID();
@@ -182,6 +188,7 @@ export function App() {
   // The mode (Design | Flows) and the prototype: view state in useFlowUi.
   const mode = useFlowUi((st) => st.mode);
   const presenting = useFlowUi((st) => st.presenting);
+  const role = useAccess((st) => st.role);
   // Changes the active tool: the ref is read by the tool manager, the state by the toolbar.
   const chooseTool = (id: ToolId) => {
     toolRef.current = id;
@@ -236,7 +243,13 @@ export function App() {
         const docId = routeDocId ?? docIdFromHash(location.hash) ?? localStorage.getItem(DOC_KEY);
         if (!docId) throw new Error("no document to open");
         localStorage.setItem(DOC_KEY, docId);
+        // A protected document is opened from a link (?k=...): take its token before the first request.
+        captureLinkToken(docId);
         sync = new SyncClient(docId, CLIENT_ID);
+        // What this link may do here (the interface hides what the server would refuse). Best effort: no answer means no restriction shown.
+        try {
+          void docClient.getAccess({ docId }).then((r) => useAccess.getState().setRole(r.role as Role), () => useAccess.getState().setRole(null));
+        } catch { useAccess.getState().setRole(null); }
         // Unmounted while we were creating the client: stop it before even
         // opening the document (start() on a stopped client is a no-op).
         if (cancelled) {
@@ -576,9 +589,10 @@ export function App() {
   // Flows does so if it was a drawing tool: nothing is drawn in flows.
   useEffect(() => {
     const ids = toolIdsOf(mode);
+    if (!toolsForMode(mode, role).some((t) => t.id === toolRef.current)) { chooseTool("select"); return; }
     if (ids ? !ids.includes(toolRef.current) : toolRef.current === "connect" || BOARD_ONLY.includes(toolRef.current)) chooseTool("select");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, role]);
 
   // Copy / paste / duplicate (Ctrl/Cmd+C, +V, +D). On the window like the
   // shortcuts above and for the same reason (the canvas is not focusable);
@@ -735,7 +749,7 @@ export function App() {
               drawing loop use it) and sits BELOW the dock (z-20). */}
           {mode === "dev" && <CodeWorkbench />}
           {mode === "board" && <FacilitationBar myId={CLIENT_ID} />}
-          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} />
+          <ToolDock tools={toolsForMode(mode, role)} toolId={toolId} onChoose={chooseTool} mode={mode} />
         </div>
         {mode === "design" && <TimelinePanel />}
         </div>

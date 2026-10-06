@@ -16,7 +16,7 @@ import { isTextField } from "../../tools/toolManager";
 // semantics, and the one the tests query).
 const ICON: Record<string, IconName> = {
   select: "select", connect: "connect", frame: "frame", rect: "rect",
-  ellipse: "ellipse", text: "text", pen: "pen", hand: "hand", comment: "comment", sticky: "page", link: "route", vote: "flag", node: "select",
+  ellipse: "ellipse", text: "text", pen: "pen", hand: "hand", comment: "comment", sticky: "page", link: "route", vote: "flag", node: "node",
 };
 
 // Single-key shortcuts. F (toggles Design/Flows) and K (Connect) live in

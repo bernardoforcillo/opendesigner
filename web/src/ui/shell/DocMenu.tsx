@@ -3,13 +3,17 @@ import { Button as RacButton, Header, Menu, MenuSection, MenuItem, MenuTrigger, 
 import { Icon } from "../ds";
 import { useRenderer } from "../../store/rendererChoice";
 import { useViewPrefs } from "../../store/viewPrefs";
+import { useScene } from "../../store/store";
 import { useTheme } from "./theme";
 import { useDocNameEditing } from "./DocName";
 import { pickSvgFile } from "../../tools/svgImport";
+import { importFigFile, pickFigFile } from "../../fig/importFig";
 import { DiagramDialog } from "../DiagramDialog";
 import { VariablesDialog } from "../VariablesDialog";
 import { FontsDialog } from "../FontsDialog";
 import { VersionsDialog } from "../VersionsDialog";
+import { PluginsDialog } from "../PluginsDialog";
+import { ShareDialog } from "../ShareDialog";
 import { BoardDialog } from "../BoardDialog";
 import { useAppNavigate } from "../../home/nav";
 
@@ -43,6 +47,8 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [variablesOpen, setVariablesOpen] = useState(false);
   const [fontsOpen, setFontsOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
+  const [pluginsOpen, setPluginsOpen] = useState(false);
+  const [shareOpen, setShareOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
   return (
     <>
@@ -56,10 +62,21 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "new") onNewDocument();
           else if (k === "rename") useDocNameEditing.getState().setEditing(true);
           else if (k === "import-svg") void pickSvgFile();
+          else if (k === "import-fig") {
+            void pickFigFile().then(async (f) => {
+              if (!f) return;
+              const r = await importFigFile(f);
+              // The banner the SVG import uses: what came across, or why nothing did, and what was left out.
+              const left = r.warnings.length > 0 ? ` Not carried over: ${r.warnings.join("; ")}.` : "";
+              useScene.setState({ notice: r.ok ? `${r.message}${left}` : `Figma import failed: ${r.message}` });
+            });
+          }
           else if (k === "diagram") setDiagramOpen(true);
           else if (k === "variables") setVariablesOpen(true);
           else if (k === "fonts") setFontsOpen(true);
           else if (k === "versions") setVersionsOpen(true);
+          else if (k === "plugins") setPluginsOpen(true);
+          else if (k === "share") setShareOpen(true);
           else if (k === "board") setBoardOpen(true);
           else if (k === "pixel-snap") useViewPrefs.getState().cyclePixelSnap();
           else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
@@ -77,6 +94,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="import-svg" className={ITEM}>
                 <Icon name="image" size={14} /> Import SVG…
               </MenuItem>
+              <MenuItem id="import-fig" className={ITEM}>
+                <Icon name="image" size={14} /> Import Figma file… <span className="ml-auto text-[11px] text-fg-subtle">experimental</span>
+              </MenuItem>
               <MenuItem id="diagram" className={ITEM}>
                 <Icon name="plus" size={14} /> Diagram (Mermaid, UML)…
               </MenuItem>
@@ -91,6 +111,12 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuItem>
               <MenuItem id="versions" className={ITEM}>
                 <Icon name="page" size={14} /> Versions…
+              </MenuItem>
+              <MenuItem id="share" className={ITEM}>
+                <Icon name="share" size={14} /> Share…
+              </MenuItem>
+              <MenuItem id="plugins" className={ITEM}>
+                <Icon name="code" size={14} /> Plugins…
               </MenuItem>
               <Separator className="my-1 h-px bg-line" />
               <MenuItem id="pixel-snap" className={ITEM}>
@@ -118,6 +144,8 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <VariablesDialog isOpen={variablesOpen} onOpenChange={setVariablesOpen} />
     <FontsDialog isOpen={fontsOpen} onOpenChange={setFontsOpen} />
     <VersionsDialog isOpen={versionsOpen} onOpenChange={setVersionsOpen} />
+    <PluginsDialog isOpen={pluginsOpen} onOpenChange={setPluginsOpen} />
+    <ShareDialog isOpen={shareOpen} onOpenChange={setShareOpen} />
     <BoardDialog isOpen={boardOpen} onOpenChange={setBoardOpen} />
     </>
   );

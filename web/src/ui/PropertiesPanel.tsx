@@ -31,6 +31,7 @@ import { GradientControls } from "./GradientControls";
 import { BooleanControls } from "./BooleanControls";
 import { ConnectorControls } from "./ConnectorControls";
 import { PathControls } from "./PathControls";
+import { CmykField } from "./fields/CmykField";
 import { EffectsControls } from "./EffectsControls";
 import { LayoutGridControls } from "./LayoutGridControls";
 import { StrokeStyleControls } from "./StrokeStyleControls";
@@ -949,6 +950,7 @@ export function PropertiesPanel() {
             // would flatten the gradient without the user having asked for it. The
             // stops are edited in GradientControls.
             solid={
+              <>
               <ColorField
                 label="Fill"
                 // Node without tints: null, that is "no single value to
@@ -959,6 +961,8 @@ export function PropertiesPanel() {
                 isDisabled={boundFill !== undefined}
                 onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
               />
+              <CmykField value={boundFill !== undefined ? null : fill} onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))} />
+              </>
             }
           />
         ) : (
