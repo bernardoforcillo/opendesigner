@@ -439,6 +439,26 @@ export class CanvasKitRenderer {
     const g = fill.gradient;
     p.setImageFilter(null);
     p.setShader(null);
+    if (fill.image) {
+      const f = this.frame as Frame;
+      const entry = this.images.get(f.scene.id, fill.image.assetHash);
+      const img = entry.status === "ready" && entry.image ? this.skImage(entry.image) : null;
+      if (img && img.width() > 0 && img.height() > 0) {
+        const mode = fill.image.mode;
+        const iw = img.width(), ih = img.height();
+        const scale = mode === "tile" ? 1 : mode === "fit" ? Math.min(n.width / iw, n.height / ih) : Math.max(n.width / iw, n.height / ih);
+        const ox = mode === "tile" ? n.x : n.x + (n.width - iw * scale) / 2;
+        const oy = mode === "tile" ? n.y : n.y + (n.height - ih * scale) / 2;
+        const tile = mode === "tile" ? CK.TileMode.Repeat : CK.TileMode.Decal;
+        const shader: Shader = img.makeShaderOptions(tile, tile, CK.FilterMode.Linear, CK.MipmapMode.None, [scale, 0, ox, 0, scale, oy, 0, 0, 1]);
+        f.garbage.push(shader);
+        p.setColor(CK.BLACK);
+        p.setShader(shader);
+        p.setAlphaf(opacity);
+        return p;
+      }
+      // The image has not arrived: the flat base color, like the 2D renderer.
+    }
     if (g && g.stops.length >= 2) {
       const x1 = n.x + g.x1 * n.width;
       const y1 = n.y + g.y1 * n.height;

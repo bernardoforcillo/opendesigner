@@ -102,7 +102,8 @@ export function cssRgba(c: FillLite): string {
 // the node's rotation is already in the context, so the gradient rotates
 // with the shape. A degenerate gradient (null axis or radius, fewer than two stops)
 // falls back to the flat color, which is always valid.
-export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasGradient {
+export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasGradient | CanvasPattern {
+  if (f.image) return imagePattern(ctx, f, n);
   const g = f.gradient;
   if (!g || g.stops.length < 2) return cssRgba(f);
   const x1 = n.x + g.x1 * n.width, y1 = n.y + g.y1 * n.height;
@@ -114,6 +115,33 @@ export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLi
     : ctx.createRadialGradient(x1, y1, 0, x1, y1, len);
   for (const st of g.stops) grad.addColorStop(Math.min(1, Math.max(0, st.position)), cssRgba(st.color));
   return grad;
+}
+
+// An IMAGE paint. The images come from the same cache image nodes use; drawScene tells this module
+// which one and for which document (the paint functions are called from many places and
+// drawing is synchronous). Until the file has arrived the paint is the flat base color, so the
+// shape is seen; the cache invalidates the view when the image lands.
+let paintImages: ImageSource | null = null;
+let paintDocId = "";
+
+// FILL covers the node's box (centered, the overflow is cropped by the shape itself), FIT shows the
+// whole image inside it (once, no repeat), TILE repeats it at its natural size from the box's corner.
+function imagePattern(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasPattern {
+  const flat = cssRgba(f);
+  const entry = paintImages?.get(paintDocId, f.image!.assetHash);
+  const img = entry?.status === "ready" ? entry.image : null;
+  if (!img || !(img.width > 0) || !(img.height > 0) || typeof ctx.createPattern !== "function") return flat;
+  const pattern = ctx.createPattern(img, f.image!.mode === "tile" ? "repeat" : "no-repeat");
+  if (!pattern || typeof pattern.setTransform !== "function" || typeof DOMMatrix === "undefined") return pattern ?? flat;
+  const scale =
+    f.image!.mode === "tile" ? 1
+    : f.image!.mode === "fit" ? Math.min(n.width / img.width, n.height / img.height)
+    : Math.max(n.width / img.width, n.height / img.height);
+  const w = img.width * scale, h = img.height * scale;
+  const ox = f.image!.mode === "tile" ? n.x : n.x + (n.width - w) / 2;
+  const oy = f.image!.mode === "tile" ? n.y : n.y + (n.height - h) / 2;
+  pattern.setTransform(new DOMMatrix([scale, 0, 0, scale, ox, oy]));
+  return pattern;
 }
 
 // --- THE EFFECTS ---------------------------------------------------------------
@@ -362,6 +390,8 @@ export function drawScene(
   const { canvas } = ctx;
   const dpr = opts.dpr ?? devicePixelRatio();
   const images = opts.images ?? imageCache;
+  paintImages = images;
+  paintDocId = state.id;
   const currentPageId = opts.currentPageId ?? null;
   // One screen pixel in world units, for strokes that must stay the
   // same thickness at every zoom (today: the placeholder's border).

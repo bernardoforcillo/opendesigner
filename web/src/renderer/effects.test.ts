@@ -224,4 +224,28 @@ describe("frames without a fill", () => {
     expect(r.raw.lineCap).toBe("butt");
     expect(dash).toEqual([]);
   });
+
+  it("an image fill is a pattern scaled by its mode (cover for fill, contain for fit, natural for tile); flat until it arrives", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const transforms: number[][] = [];
+    vi.stubGlobal("DOMMatrix", class { constructor(public v: number[]) { transforms.push(v); } });
+    const img = { width: 100, height: 50 } as unknown as HTMLImageElement;
+    const run = (mode: "fill" | "fit" | "tile", status: "ready" | "loading") => {
+      const r = recCtx();
+      const made: string[] = [];
+      (r.raw as Record<string, unknown>).createPattern = (_i: unknown, rep: string) => { made.push(rep); return { setTransform() {} }; };
+      const n = rectNode(undefined, { width: 200, height: 200, fills: [{ r: 0.8, g: 0.8, b: 0.8, a: 1, image: { assetHash: "a".repeat(64), mode } }] });
+      drawScene(r.ctx, sceneOf(n), cam(1), { images: { get: () => ({ status, image: status === "ready" ? img : null }) } as never });
+      return { made, fill: r.raw.fillStyle };
+    };
+    expect(run("fill", "ready").made).toEqual(["no-repeat"]);
+    expect(transforms.at(-1)).toEqual([4, 0, 0, 4, -100, 0]); // cover 200x200 with 100x50: scale 4, centered in x
+    run("fit", "ready");
+    expect(transforms.at(-1)).toEqual([2, 0, 0, 2, 0, 50]);
+    expect(run("tile", "ready").made).toEqual(["repeat"]);
+    expect(transforms.at(-1)).toEqual([1, 0, 0, 1, 0, 0]);
+    const waiting = run("fill", "loading");
+    expect(waiting.made).toEqual([]);
+    expect(String(waiting.fill)).toContain("rgba");
+  });
 });

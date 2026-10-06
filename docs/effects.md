@@ -18,7 +18,7 @@ The blend mode is one of the CSS names (`multiply`, `screen`, `overlay`, ... `lu
 - **Canvas 2D**: the first shadow uses the context's shadow state; the others are drawn first with the shape parked off canvas and the shadow offset bringing the shadow back. Inner shadows fill an even-odd ring inside a clip. Background blur redraws the canvas blurred inside the outline. Blend mode is `globalCompositeOperation`.
 - **CanvasKit (GPU)**: shadows are image filters on the node's layer (several are stacked with a blend filter), inner shadow is a shadow-only filter over a ring inside a clip, background blur is a backdrop filter, blend mode is the layer paint's blend mode.
 - **Code (HTML/React)**: extra shadows and inner shadows are `box-shadow` entries (`inset` for inner), background blur is `backdrop-filter`, blend mode is `mix-blend-mode`.
-- **SVG**: several shadows are merged in one `<filter>`; blend mode is a `mix-blend-mode` style. Inner shadow and background blur are not exported.
+- **SVG**: several shadows are merged in one `<filter>`; blend mode is a `mix-blend-mode` style. Inner shadows are a filter (inverted alpha, blurred, offset, clipped to the shape); background blur cannot be expressed in a standalone SVG and is not exported.
 - **MCP**: `set_properties` takes `effects` (`dropShadow`, `innerShadow`, `layerBlur`, `backgroundBlur`) and `blendMode`; `get_document` reports `blendMode`.
 
 ## Known limits

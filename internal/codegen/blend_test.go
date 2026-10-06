@@ -1,6 +1,8 @@
 package codegen_test
 
 import (
+	"github.com/bernardoforcillo/opendesigner/internal/codegen"
+	"os"
 	"strings"
 	"testing"
 
@@ -38,5 +40,40 @@ func TestBlendAndEffectsInTheExport(t *testing.T) {
 		if !strings.Contains(html, want) {
 			t.Errorf("missing %q in:\n%s", want, html)
 		}
+	}
+}
+
+// TestImageFillsInTheExport: an image paint is a background-image sized by its mode, with the
+// asset copied; a missing asset keeps the flat grey.
+func TestImageFillsInTheExport(t *testing.T) {
+	png := []byte("\x89PNG\r\n\x1a\nxyz")
+	hash := strings.Repeat("c", 64)
+	src := codegen.FuncAssets(func(h string) ([]byte, error) {
+		if h == hash {
+			return png, nil
+		}
+		return nil, os.ErrNotExist
+	})
+	for mode, want := range map[opendesignerv1.ImageScaleMode]string{
+		opendesignerv1.ImageScaleMode_IMAGE_SCALE_MODE_UNSPECIFIED: "background-size: cover;",
+		opendesignerv1.ImageScaleMode_IMAGE_SCALE_MODE_FIT:         "background-size: contain;",
+		opendesignerv1.ImageScaleMode_IMAGE_SCALE_MODE_TILE:        "background-repeat: repeat;",
+	} {
+		doc := screenDoc(func(b *B, s string) { b.Add("card", s, "Card", 20, 20, 100, 100) })
+		doc.Nodes["card"].Fills = []*opendesignerv1.Paint{{Kind: &opendesignerv1.Paint_Image{Image: &opendesignerv1.ImagePaint{AssetHash: hash, Mode: mode}}}}
+		out := gen(t, doc, codegen.TargetHTML, src)
+		html := string(file(t, out, "screen.html"))
+		if !strings.Contains(html, "background-image: url(assets/"+hash+".png);") || !strings.Contains(html, want) {
+			t.Errorf("mode %v:\n%s", mode, html)
+		}
+		if got := file(t, out, "assets/"+hash+".png"); string(got) != string(png) {
+			t.Errorf("mode %v: asset not copied", mode)
+		}
+	}
+	doc := screenDoc(func(b *B, s string) { b.Add("card", s, "Card", 20, 20, 100, 100) })
+	doc.Nodes["card"].Fills = []*opendesignerv1.Paint{{Kind: &opendesignerv1.Paint_Image{Image: &opendesignerv1.ImagePaint{AssetHash: strings.Repeat("d", 64)}}}}
+	html := string(file(t, gen(t, doc, codegen.TargetHTML, src), "screen.html"))
+	if strings.Contains(html, "background-image") || !strings.Contains(html, "background-color: #ccc;") {
+		t.Errorf("missing asset must keep the flat grey:\n%s", html)
 	}
 }

@@ -1,6 +1,6 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, ImageScaleMode, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
@@ -22,7 +22,12 @@ export interface GradientLite {
 // color, for a gradient they are the first stop. All code that only knows
 // flat tints (text, strokes, panels) keeps working without knowing about
 // gradients; whoever can draw them looks at `gradient`.
-export interface FillLite { r: number; g: number; b: number; a: number; gradient?: GradientLite; }
+export interface FillLite { r: number; g: number; b: number; a: number; gradient?: GradientLite; image?: ImagePaintLite; }
+
+// An image as a paint (see ImagePaint in the proto). r/g/b/a stay as the base color the
+// renderers fall back to while the image has not arrived.
+export type ImageScaleModeLite = "fill" | "fit" | "tile";
+export interface ImagePaintLite { assetHash: string; mode: ImageScaleModeLite }
 
 // The stroke alignment as a string, for the same reason as
 // TextAlignLite: the in-memory model is what renderer and panels read, and
@@ -583,6 +588,10 @@ export function toEffectLite(e: PbEffect): EffectLite {
 }
 
 function toPbPaint(c: FillLite) {
+  if (c.image) {
+    const mode = c.image.mode === "fit" ? ImageScaleMode.FIT : c.image.mode === "tile" ? ImageScaleMode.TILE : ImageScaleMode.UNSPECIFIED;
+    return { kind: { case: "image" as const, value: { assetHash: c.image.assetHash, mode } } };
+  }
   const g = c.gradient;
   if (g) {
     const value = {
@@ -631,6 +640,10 @@ function toFillLite(p: PbPaint | undefined): FillLite {
       ...first,
       gradient: { kind: k.case, stops, x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2 },
     };
+  }
+  if (k?.case === "image") {
+    const mode = k.value.mode === ImageScaleMode.FIT ? "fit" : k.value.mode === ImageScaleMode.TILE ? "tile" : "fill";
+    return { r: 0.8, g: 0.8, b: 0.8, a: 1, image: { assetHash: k.value.assetHash, mode } };
   }
   const c = k?.case === "solid" ? k.value.color : undefined;
   return c ? { r: c.r, g: c.g, b: c.b, a: c.a } : { r: 0, g: 0, b: 0, a: 1 };

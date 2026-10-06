@@ -119,11 +119,13 @@ function effectsRef(n: NodeLite, defs: string[]): string | null {
   const shadows = n.effects?.filter((e): e is Extract<EffectLite, { kind: "dropShadow" }> => e.kind === "dropShadow") ?? [];
   const shadow = firstShadow(n);
   const blur = firstBlur(n);
-  if (!shadow && !blur) return null;
+  const inners = n.effects?.filter((e): e is Extract<EffectLite, { kind: "innerShadow" }> => e.kind === "innerShadow") ?? [];
+  if (!shadow && !blur && inners.length === 0) return null;
   const id = `f${defs.length}`;
+  const named = inners.length > 0 ? "base" : null; // the stage the inner shadows go on top of
   const pad =
     shadows.reduce((m, sh) => Math.max(m, Math.max(Math.abs(sh.offsetX), Math.abs(sh.offsetY)) + sh.blur * 1.5), 0) +
-    (blur ? blur.radius * 3 : 0) + 1;
+    (blur ? blur.radius * 3 : 0) + inners.reduce((m, sh) => Math.max(m, Math.max(Math.abs(sh.offsetX), Math.abs(sh.offsetY)) + sh.blur * 1.5), 0) + 1;
   const rgb = (c: { r: number; g: number; b: number }) => `rgb(${channel(c.r)},${channel(c.g)},${channel(c.b)})`;
   // Several shadows: each one is a blurred, offset, flooded copy of the alpha, all
   // merged UNDER the source (the last one lowest).
@@ -134,7 +136,7 @@ function effectsRef(n: NodeLite, defs: string[]): string | null {
         `<feFlood${attrs([attr("flood-color", rgb(sh.color)), attr("flood-opacity", sh.color.a), attr("result", `c${k}`)])}/>` +
         `<feComposite${attrs([attr("in", `c${k}`), attr("in2", `o${k}`), attr("operator", "in"), attr("result", `s${k}`)])}/>`,
       ).join("") +
-      `<feMerge>${shadows.map((_, k) => `<feMergeNode in="s${k}"/>`).join("")}<feMergeNode in="SourceGraphic"/></feMerge>`
+      `<feMerge${named ? ` result="${named}"` : ""}>${shadows.map((_, k) => `<feMergeNode in="s${k}"/>`).join("")}<feMergeNode in="SourceGraphic"/></feMerge>`
     : "";
   const prims =
     (stacked !== "" ? stacked : shadow
@@ -142,7 +144,22 @@ function effectsRef(n: NodeLite, defs: string[]): string | null {
           attr("dx", shadow.offsetX), attr("dy", shadow.offsetY), attr("stdDeviation", shadow.blur / 2),
           attr("flood-color", `rgb(${channel(shadow.color.r)},${channel(shadow.color.g)},${channel(shadow.color.b)})`),
           shadow.color.a === 1 ? null : attr("flood-opacity", shadow.color.a),
+          named ? attr("result", named) : null,
         ])}/>`
+      : "") +
+    // Inner shadows: the alpha inverted, blurred, offset and flooded, kept only where the shape
+    // is, merged ABOVE the shape (and its drop shadows). Inner shadows and the layer blur
+    // come after, in the order the canvas applies them.
+    (inners.length > 0
+      ? inners.map((sh, k) =>
+          `<feComponentTransfer${attrs([attr("in", "SourceAlpha"), attr("result", `iv${k}`)])}><feFuncA type="table" tableValues="1 0"/></feComponentTransfer>` +
+          `<feGaussianBlur${attrs([attr("in", `iv${k}`), attr("stdDeviation", sh.blur / 2), attr("result", `ib${k}`)])}/>` +
+          `<feOffset${attrs([attr("in", `ib${k}`), attr("dx", sh.offsetX), attr("dy", sh.offsetY), attr("result", `io${k}`)])}/>` +
+          `<feFlood${attrs([attr("flood-color", rgb(sh.color)), attr("flood-opacity", sh.color.a), attr("result", `ic${k}`)])}/>` +
+          `<feComposite${attrs([attr("in", `ic${k}`), attr("in2", `io${k}`), attr("operator", "in"), attr("result", `is${k}`)])}/>` +
+          `<feComposite${attrs([attr("in", `is${k}`), attr("in2", "SourceAlpha"), attr("operator", "in"), attr("result", `ii${k}`)])}/>`,
+        ).join("") +
+        `<feMerge><feMergeNode in="${shadow || stacked !== "" ? "base" : "SourceGraphic"}"/>${inners.map((_, k) => `<feMergeNode in="ii${k}"/>`).join("")}</feMerge>`
       : "") +
     (blur ? `<feGaussianBlur${attrs([attr("stdDeviation", blur.radius)])}/>` : "");
   defs.push(
@@ -154,12 +171,33 @@ function effectsRef(n: NodeLite, defs: string[]): string | null {
   return `url(#${id})`;
 }
 
+// An image paint becomes a <pattern> over the node's box holding the image: `slice` (cover) for FILL,
+// `meet` (contain) for FIT. TILE needs the image's natural size, which a pure generator does not
+// have, so it is drawn as FILL. With no resolvable file the paint is the flat base color, like
+// the canvas before the image arrives.
+let svgHref: ResolveImageHref = () => null;
+
+function imagePatternRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  const uri = svgHref(f.image!.assetHash);
+  if (uri === null) return null;
+  const id = `p${defs.length}`;
+  defs.push(
+    `<pattern${attrs([attr("id", id), attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height)])} patternUnits="userSpaceOnUse">` +
+    `<image${attrs([
+      attr("href", uri), attr("x", 0), attr("y", 0), attr("width", n.width), attr("height", n.height),
+      { name: "preserveAspectRatio", value: f.image!.mode === "fit" ? "xMidYMid meet" : "xMidYMid slice" },
+    ])}/></pattern>`,
+  );
+  return `url(#${id})`;
+}
+
 // A gradient becomes a <linearGradient>/<radialGradient> in <defs>, with the
 // same WORLD coordinates that the canvas computes in renderer/canvasRenderer.ts::
 // paintStyle (userSpaceOnUse): no bbox, hence no deformation. It returns
 // the `url(#id)` reference to put in `fill`, or null for flat tints
 // and for degenerate gradients (same cases as the canvas).
 function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  if (f.image) return imagePatternRef(n, f, defs);
   const g = f.gradient;
   if (!g || g.stops.length < 2) return null;
   const x1 = n.x + g.x1 * n.width, y1 = n.y + g.y1 * n.height;
@@ -390,6 +428,7 @@ export function nodesToSvg(
   // one that references local URLs destined to break elsewhere.
   href: ResolveImageHref = () => null,
 ): string {
+  svgHref = href;
   const defs: string[] = [];
   // MASKS: a mask node is not drawn; its outline becomes a <clipPath> and the nodes
   // above it under the same parent are wrapped in a <g clip-path>.

@@ -10,6 +10,7 @@ import { recordDelta } from "./sceneDelta";
 import { cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
 import { areValidLayoutGrids } from "./layoutGrids";
+import { arePaintsValid } from "./paints";
 import { isValidComment, withoutComment } from "./comments";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
@@ -69,6 +70,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // from the authoritative document (and the undo of that op would be the undo of
       // something the server never accepted).
       if (!pb || pb.id === "" || state.nodes.at(pb.id)) return state;
+      if (!arePaintsValid(pb.fills, pb.strokes)) return state;                // ErrPaint
       // The parent must EXIST (another node, or a Page for roots):
       // ErrParentNotFound in core.applyCreate (Go). A node with a nonexistent
       // parent is not reachable from any page -- invisible on the
@@ -136,6 +138,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (paths.includes("constraint_x") && !(p.constraintX >= 0 && p.constraintX <= 5)) return state;
       if (paths.includes("constraint_y") && !(p.constraintY >= 0 && p.constraintY <= 5)) return state;
       if (paths.includes("layout_grids") && (cur.kind !== "frame" || !areValidLayoutGrids(p.layoutGrids))) return state;
+      if ((paths.includes("fills") || paths.includes("strokes")) && !arePaintsValid(p.fills, p.strokes)) return state;
       if (paths.includes("blend_mode") && !(p.blendMode >= 0 && p.blendMode <= 15)) return state;
       if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
       if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;

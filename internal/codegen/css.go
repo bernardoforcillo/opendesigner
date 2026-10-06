@@ -67,6 +67,7 @@ type fill struct {
 	color  *opendesignerv1.Color
 	grad   *opendesignerv1.GradientPaint
 	radial bool
+	image  *opendesignerv1.ImagePaint
 }
 
 var defaultGrey = &opendesignerv1.Color{R: 0.8, G: 0.8, B: 0.8, A: 1}
@@ -80,6 +81,10 @@ func toFill(p *opendesignerv1.Paint) fill {
 		return gradFill(k.Linear, false)
 	case *opendesignerv1.Paint_Radial:
 		return gradFill(k.Radial, true)
+	case *opendesignerv1.Paint_Image:
+		// The flat base color the canvas shows until the image arrives; the image itself is a
+		// background-image where the box can carry one (boxPaint).
+		return fill{color: defaultGrey, image: k.Image}
 	case *opendesignerv1.Paint_Solid:
 		if c := k.Solid.GetColor(); c != nil {
 			return fill{color: c}

@@ -26,7 +26,16 @@ message GradientPaint {
   repeated GradientStop stops = 1;
   double x1 = 2; double y1 = 3; double x2 = 4; double y2 = 5;
 }
-message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; } }
+// An image as a paint: `asset_hash` is a file already in the document's asset store (the same
+// content-addressed files image nodes use). FILL covers the shape and crops, FIT shows the whole
+// image inside it, TILE repeats it at its natural size.
+enum ImageScaleMode {
+  IMAGE_SCALE_MODE_UNSPECIFIED = 0;  // FILL
+  IMAGE_SCALE_MODE_FIT = 1;
+  IMAGE_SCALE_MODE_TILE = 2;
+}
+message ImagePaint { string asset_hash = 1; ImageScaleMode mode = 2; }
+message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; ImagePaint image = 4; } }
 
 // Alignment of the stroke relative to the shape's PERIMETER. CENTER is the
 // drawing default (half inside, half outside): it is the only one the 2D canvas

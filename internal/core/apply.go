@@ -22,6 +22,7 @@ var (
 	ErrConstraint      = errors.New("core: unknown constraint")
 	ErrBlendMode       = errors.New("core: unknown blend mode")
 	ErrComment         = errors.New("core: invalid comment")
+	ErrPaint           = errors.New("core: invalid paint")
 	ErrCommentNotFound = errors.New("core: comment not found")
 	ErrLayoutGrid      = errors.New("core: invalid layout grid")
 	ErrLayoutSizing    = errors.New("core: unknown layout sizing")
@@ -196,6 +197,9 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode, cow
 		if doc.Components[inst.GetComponentId()] == nil {
 			return fmt.Errorf("%w: %s (node %s)", ErrComponentNotFound, inst.GetComponentId(), n.GetId())
 		}
+	}
+	if err := validateNodePaints(n.GetFills(), n.GetStrokes()); err != nil {
+		return fmt.Errorf("%w (node %s)", err, n.GetId())
 	}
 	if doc.Nodes == nil {
 		// Apply is the authoritative mutator for any *opendesignerv1.Document, not
@@ -381,6 +385,11 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 	}
 	paths := s.GetMask().GetPaths()
 	for _, path := range paths {
+		if path == "fills" || path == "strokes" {
+			if err := validateNodePaints(s.GetPatch().GetFills(), s.GetPatch().GetStrokes()); err != nil {
+				return err
+			}
+		}
 		switch path {
 		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta", "is_mask":
 			// supported

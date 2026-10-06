@@ -373,7 +373,7 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 	rotation(el, eff)
 	dropShadow := ""
 	if paintable {
-		dropShadow = boxPaint(el, eff, isFrame, isEllipse, mul, container)
+		dropShadow = boxPaint(el, eff, isFrame, isEllipse, mul, container, b.assetURL)
 	}
 	if !bake && eff.GetOpacity() != 1 {
 		el.addStyle("opacity", num(eff.GetOpacity()))
@@ -501,7 +501,7 @@ func translucent(f fill, opacity float64) bool {
 // boxPaint: fill, radius, strokes, shadow of rect/ellipse/frame. It returns the
 // drop-shadow() to put in the `filter` when the shadow cannot be a
 // box-shadow (see below), "" otherwise.
-func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul float64, container bool) string {
+func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul float64, container bool, assetURL func(string) (string, bool)) string {
 	w, h := n.GetWidth(), n.GetHeight()
 	switch {
 	case isEllipse:
@@ -516,7 +516,25 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 	hasFill := !(isFrame && len(n.GetFills()) == 0)
 	if hasFill {
 		f := resolvedFill(n.GetFills())
-		if f.grad != nil {
+		if f.image != nil {
+			// FILL covers, FIT contains, TILE repeats at the natural size: the same three the canvas draws.
+			el.addStyle("background-color", colorCSS(f.color, mul))
+			if url, ok := assetURL(f.image.GetAssetHash()); ok {
+				el.addStyle("background-image", "url("+url+")")
+				el.addStyle("background-position", "center")
+				switch f.image.GetMode() {
+				case opendesignerv1.ImageScaleMode_IMAGE_SCALE_MODE_FIT:
+					el.addStyle("background-size", "contain")
+					el.addStyle("background-repeat", "no-repeat")
+				case opendesignerv1.ImageScaleMode_IMAGE_SCALE_MODE_TILE:
+					el.addStyle("background-position", "0 0")
+					el.addStyle("background-repeat", "repeat")
+				default:
+					el.addStyle("background-size", "cover")
+					el.addStyle("background-repeat", "no-repeat")
+				}
+			}
+		} else if f.grad != nil {
 			if g, ok := gradientCSS(f.grad, f.radial, w, h, mul); ok {
 				el.addStyle("background-image", g)
 			} else {

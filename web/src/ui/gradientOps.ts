@@ -11,10 +11,10 @@ import type { RgbLite } from "./fields/ColorField";
 // so they can be tested without mounting anything.
 export type NodeLookup = (id: string) => NodeLite | undefined;
 
-export type FillKind = "solid" | "linear" | "radial";
+export type FillKind = "solid" | "linear" | "radial" | "image";
 
 export function fillKindOf(f: FillLite | null): FillKind {
-  return f?.gradient?.kind ?? "solid";
+  return f?.image ? "image" : (f?.gradient?.kind ?? "solid");
 }
 
 // Default axis: linear from top to bottom, radial from center to edge.
@@ -66,7 +66,7 @@ export function fillKindOps(ids: readonly string[], lookup: NodeLookup, kind: Fi
     const n = lookup(id);
     if (!n) return [];
     const cur = paintOf(n, target) ?? BASE;
-    if (fillKindOf(cur) === kind) return [];
+    if (fillKindOf(cur) === kind || kind === "image") return []; // an image needs a file: see imagePaintOps
     if (kind === "solid") return [withFirst(n, { r: cur.r, g: cur.g, b: cur.b, a: cur.a }, target)];
     // From gradient to gradient only the shape changes: the stops stay, the
     // geometry goes back to the new type's default.
@@ -164,4 +164,22 @@ export function gradientStopPositionOps(ids: readonly string[], lookup: NodeLook
     stops[index].position = clamp01(position);
     return stops;
   }, target);
+}
+
+// ---------- image paints ----------
+
+/** Makes the paint an image of `assetHash` (keeping the mode when it already is one), or changes the mode. */
+export function imagePaintOps(
+  ids: readonly string[], lookup: NodeLookup, patch: { assetHash?: string; mode?: "fill" | "fit" | "tile" }, target: PaintTarget = "fill",
+): Op[] {
+  return ids.flatMap((id) => {
+    const n = lookup(id);
+    if (!n) return [];
+    const cur = paintOf(n, target) ?? BASE;
+    const hash = patch.assetHash ?? cur.image?.assetHash;
+    if (!hash) return [];
+    const image = { assetHash: hash, mode: patch.mode ?? cur.image?.mode ?? "fill" };
+    if (cur.image && cur.image.assetHash === image.assetHash && cur.image.mode === image.mode) return [];
+    return [withFirst(n, { r: cur.r, g: cur.g, b: cur.b, a: cur.a, image }, target)];
+  });
 }

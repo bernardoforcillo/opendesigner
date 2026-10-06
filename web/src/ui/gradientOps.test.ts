@@ -4,7 +4,7 @@ import { applyOp } from "../store/applyOp";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 import {
-  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, addGradientStopOps, removeGradientStopOps, gradientStopPositionOps,
+  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, imagePaintOps, addGradientStopOps, removeGradientStopOps, gradientStopPositionOps,
 } from "./gradientOps";
 
 function sceneWith(over: Partial<NodeLite> = {}): SceneState {
@@ -106,5 +106,21 @@ describe("gradientOps", () => {
     s = { ...s, nodes: nodesOf({ a: n }) };
     n = run(s, gradientAngleOps(["a"], L(s), 90, "stroke"));
     expect(n.strokes[0].color.gradient).toMatchObject({ y2: expect.closeTo(1, 5) });
+  });
+
+  it("image paints: set from a hash, change the mode, back to a flat color; nothing without a hash", () => {
+    let s = sceneWith();
+    const L = (st: typeof s) => (id: string) => st.nodes.at(id);
+    const hash = "e".repeat(64);
+    expect(imagePaintOps(["a"], L(s), { mode: "fit" })).toEqual([]);
+    let n = run(s, imagePaintOps(["a"], L(s), { assetHash: hash }));
+    expect(n.fills[0].image).toEqual({ assetHash: hash, mode: "fill" });
+    expect(fillKindOf(n.fills[0])).toBe("image");
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, imagePaintOps(["a"], L(s), { mode: "tile" }));
+    expect(n.fills[0].image).toEqual({ assetHash: hash, mode: "tile" });
+    expect(imagePaintOps(["a"], L(s), { mode: "fill" })).toEqual([]);
+    expect(run(s, fillKindOps(["a"], L(s), "solid")).fills[0].image).toBeUndefined();
+    expect(run(s, fillKindOps(["a"], L(s), "linear")).fills[0].gradient?.kind).toBe("linear");
   });
 });

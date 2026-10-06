@@ -1,12 +1,14 @@
 import type { ReactNode } from "react";
+import { useRef, useState } from "react";
 import { useScene } from "../store/store";
+import { uploadAsset } from "../rpc/assets";
 import type { FillLite } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { CHECKER, SegButtons } from "./ds/props-controls";
 import { ColorField } from "./fields/ColorField";
 import { NumberField } from "./fields/NumberField";
 import {
-  addGradientStopOps, fillKindOf, type PaintTarget, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
+  addGradientStopOps, imagePaintOps, fillKindOf, type PaintTarget, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
   gradientStopPositionOps, removeGradientStopOps, type FillKind,
 } from "./gradientOps";
 
@@ -14,6 +16,7 @@ const KINDS: { value: FillKind; label: string }[] = [
   { value: "solid", label: "Solid" },
   { value: "linear", label: "Linear" },
   { value: "radial", label: "Radial" },
+  { value: "image", label: "Image" },
 ];
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
@@ -49,6 +52,20 @@ export function GradientControls({
   solid?: ReactNode;
 }) {
   const kind = fillKindOf(fill);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  // The file goes up as a content-addressed asset (like an image node's); the paint stores its hash.
+  const upload = async (file: File | undefined) => {
+    const scene = useScene.getState().scene;
+    if (!file || !scene) return;
+    try {
+      const ref = await uploadAsset(scene.id, file);
+      setUploadError(null);
+      run((ids) => imagePaintOps(ids, lookup, { assetHash: ref.hash }, target));
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "could not upload the image");
+    }
+  };
   const g = fill?.gradient;
   const last = g ? g.stops.length - 1 : 0;
   const ordered = g ? [...g.stops].sort((a, b) => a.position - b.position) : [];
@@ -58,9 +75,26 @@ export function GradientControls({
         label={target === "fill" ? "Fill type" : "Stroke type"}
         value={kind}
         options={KINDS}
-        onPick={(k) => run((ids) => fillKindOps(ids, lookup, k, target))}
+        onPick={(k) => (k === "image" ? (fill?.image ? undefined : fileInput.current?.click()) : run((ids) => fillKindOps(ids, lookup, k, target)))}
       />
-      {!g && solid}
+      <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Image file" className="hidden"
+        onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ""; }} />
+      {fill?.image && (
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Image scale" className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-2 text-[12px]"
+            value={fill.image.mode}
+            onChange={(e) => run((ids) => imagePaintOps(ids, lookup, { mode: e.target.value as "fill" | "fit" | "tile" }, target))}
+          >
+            <option value="fill">Fill</option>
+            <option value="fit">Fit</option>
+            <option value="tile">Tile</option>
+          </select>
+          <button type="button" className="h-7 rounded-md px-2 text-[12px] text-fg-muted hover:bg-surface-3" onClick={() => fileInput.current?.click()}>Replace…</button>
+        </div>
+      )}
+      {uploadError && <p role="alert" className="text-[12px] text-danger">{uploadError}</p>}
+      {!g && !fill?.image && solid}
       {g && (
         <>
           {/* The side padding leaves room for the handles at the two ends. */}
