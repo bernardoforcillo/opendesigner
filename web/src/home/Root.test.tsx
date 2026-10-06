@@ -111,6 +111,22 @@ describe("Root", () => {
     useRenderer.getState().setChoice("cpu");
   });
 
+  it("?page= opens that page; changing page writes it (the first page keeps the URL clean); a bad id is dropped", async () => {
+    const history = mount(`/doc/${ID}?page=p2`);
+    await screen.findByText("EDITOR");
+    act(() => useScene.getState().setScene({ ...emptyScene(ID, "Doc"), pages: [{ id: "p1", name: "One" }, { id: "p2", name: "Two" }, { id: "p3", name: "Three" }] }));
+    await waitFor(() => expect(useScene.getState().currentPageId).toBe("p2"));
+    act(() => useScene.getState().setCurrentPage("p3"));
+    await waitFor(() => expect(history.location.search).toContain("page=p3"));
+    act(() => useScene.getState().setCurrentPage("p1"));
+    await waitFor(() => expect(history.location.search).not.toContain("page="));
+    go(history, `/doc/${ID}?page=p2`);
+    await waitFor(() => expect(useScene.getState().currentPageId).toBe("p2"));
+    go(history, `/doc/${ID}?page=nope`);
+    await waitFor(() => expect(history.location.search).not.toContain("page="));
+    expect(useScene.getState().currentPageId).toBe("p2");
+  });
+
   it("documentTitleFor: without a name it is just the app", () => {
     expect(documentTitleFor(null)).toBe("opendesigner");
     expect(documentTitleFor("X")).toBe("X — opendesigner");
