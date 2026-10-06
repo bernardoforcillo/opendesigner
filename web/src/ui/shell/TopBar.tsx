@@ -18,9 +18,10 @@ export const ISLAND_CLS = "rounded-xl border border-line bg-surface";
 
 const TOOLTIP_CLS = "z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop";
 
-// The three modes, in the same order and with the same shortcuts as the dock
+// The modes, in the same order and with the same shortcuts as the dock
 // (see shell/ToolDock.tsx::MODES, from which this list was moved).
 const MODES = [
+  ["board", "Board", "page", "B", "An infinite board: sticky notes, text and arrows"],
   ["design", "Design", "frame", "F", "Draw the screens"],
   ["flows", "Flows", "flow", "F", "Connect the screens and try the prototype"],
   ["dev", "Develop", "code", "S", "Readiness, generated code, export"],

@@ -361,6 +361,8 @@ export function drawOverlay(
   // PREVIEW and not document: whoever is not drawing has none, and callers that
   // do not know the pen tool remain valid.
   pen: PenPreview | null = null,
+  // The Link tool's rubber band, also PREVIEW: a dashed line from the node it starts from.
+  link: { from: Bounds; x: number; y: number } | null = null,
 ): void {
   const { canvas } = ctx;
   const dpr = devicePixelRatio();
@@ -452,4 +454,17 @@ export function drawOverlay(
   // coexist -- the pen tool does not select until it has finished -- but when
   // it happens it is the drawing in progress that must stay legible).
   if (pen) drawPenPreview(ctx, cam, pen);
+  if (link) {
+    const a = worldToScreen(cam, link.from.x + link.from.width / 2, link.from.y + link.from.height / 2);
+    const b = worldToScreen(cam, link.x, link.y);
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = ACCENT;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.restore();
+  }
 }

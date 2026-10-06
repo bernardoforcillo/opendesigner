@@ -57,6 +57,8 @@ import { textTool } from "../tools/textTool";
 import { penTool } from "../tools/penTool";
 import { handTool } from "../tools/handTool";
 import { connectTool } from "../tools/connectTool";
+import { linkTool } from "../tools/linkTool";
+import { stickyTool } from "../tools/stickyTool";
 import { withFlowArrows } from "../tools/flowSelect";
 
 // Registry of the available tools: the toolbar picks a key, attachTools
@@ -79,11 +81,15 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
   pen: penTool,
   hand: handTool,
   comment: commentTool,
+  sticky: stickyTool,
+  link: linkTool,
 };
 
 export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "select", label: "Select" },
   { id: "connect", label: "Connect" },
+  { id: "sticky", label: "Sticky note" },
+  { id: "link", label: "Link" },
   { id: "frame", label: "Frame" },
   { id: "rect", label: "Rectangle" },
   { id: "ellipse", label: "Ellipse" },
@@ -98,14 +104,18 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
 const FLOW_TOOL_IDS: readonly ToolId[] = ["select", "connect", "hand"];
 // In Develop the canvas is read-only: you look, you do not draw.
 const DEV_TOOL_IDS: readonly ToolId[] = ["select", "hand"];
+// The Board: notes, text, arrows and free drawing on an infinite page; no frames, no shapes of a layout.
+const BOARD_TOOL_IDS: readonly ToolId[] = ["select", "sticky", "text", "link", "pen", "hand", "comment"];
+// Only the Board has these two.
+const BOARD_ONLY: readonly ToolId[] = ["sticky", "link"];
 function toolIdsOf(mode: EditorMode): readonly ToolId[] | null {
-  return mode === "flows" ? FLOW_TOOL_IDS : mode === "dev" ? DEV_TOOL_IDS : null;
+  return mode === "flows" ? FLOW_TOOL_IDS : mode === "dev" ? DEV_TOOL_IDS : mode === "board" ? BOARD_TOOL_IDS : null;
 }
 // Which tools the toolbar shows in a mode: in Design all except
 // "Connect", in Flows and in Develop only those listed above.
 export function toolsForMode(mode: EditorMode): { id: ToolId; label: string }[] {
   const ids = toolIdsOf(mode);
-  return TOOL_LABELS.filter((t) => (ids ? ids.includes(t.id) : t.id !== "connect"));
+  return TOOL_LABELS.filter((t) => (ids ? ids.includes(t.id) : t.id !== "connect" && !BOARD_ONLY.includes(t.id)));
 }
 
 const CLIENT_ID = crypto.randomUUID();
@@ -366,12 +376,12 @@ export function App() {
         // document (the vector node does not exist until the path is finished),
         // so they go from the store to the overlay like the marquee -- and it is the ONLY
         // way the person drawing sees what they are doing.
-        const { camera, selection, marquee, snapGuides, penPreview } = useScene.getState();
+        const { camera, selection, marquee, snapGuides, penPreview, linkPreview } = useScene.getState();
         if (octx) {
           // While the clip PLAYS the handles are not drawn: they would sit on
           // a geometry that changes every frame (and the animated scale is not in the
           // selection box). Paused or scrubbing they follow the posed geometry.
-          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview);
+          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview);
           const peers = usePresence.getState().peers;
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
@@ -479,7 +489,7 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Mode shortcuts: F toggles Design / Flows, S opens Develop (and
+  // Mode shortcuts: F toggles Design / Flows, B opens the Board (and back), S opens Develop (and
   // S again goes back to Design), K activates "Connect" (entering Flows if needed). On the window, like the others, and
   // never inside a text field (isTextField) nor with a modifier pressed
   // (Ctrl+Alt+K belongs to the selection tool).
@@ -495,6 +505,10 @@ export function App() {
         e.preventDefault();
         const fu = useFlowUi.getState();
         fu.setMode(fu.mode === "dev" ? "design" : "dev");
+      } else if (key === "b") {
+        e.preventDefault();
+        const fu = useFlowUi.getState();
+        fu.setMode(fu.mode === "board" ? "design" : "board");
       } else if (key === "k") {
         e.preventDefault();
         useFlowUi.getState().setMode("flows");
@@ -511,7 +525,7 @@ export function App() {
   // Flows does so if it was a drawing tool: nothing is drawn in flows.
   useEffect(() => {
     const ids = toolIdsOf(mode);
-    if (ids ? !ids.includes(toolRef.current) : toolRef.current === "connect") chooseTool("select");
+    if (ids ? !ids.includes(toolRef.current) : toolRef.current === "connect" || BOARD_ONLY.includes(toolRef.current)) chooseTool("select");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
