@@ -6,6 +6,7 @@ import { useTheme } from "./theme";
 import { useDocNameEditing } from "./DocName";
 import { pickSvgFile } from "../../tools/svgImport";
 import { DiagramDialog } from "../DiagramDialog";
+import { VariablesDialog } from "../VariablesDialog";
 import { useAppNavigate } from "../../home/nav";
 
 // THE DOCUMENT MENU: the logo is the button. Inside: Home, new document,
@@ -34,6 +35,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const setRenderer = useRenderer((s) => s.setChoice);
   const [open, setOpen] = useState(false);
   const [diagramOpen, setDiagramOpen] = useState(false);
+  const [variablesOpen, setVariablesOpen] = useState(false);
   return (
     <>
     <MenuTrigger isOpen={open} onOpenChange={setOpen}>
@@ -47,6 +49,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "rename") useDocNameEditing.getState().setEditing(true);
           else if (k === "import-svg") void pickSvgFile();
           else if (k === "diagram") setDiagramOpen(true);
+          else if (k === "variables") setVariablesOpen(true);
           else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
           else if (k === "system" || k === "light" || k === "dark") setTheme(k);
         }}>
@@ -64,6 +67,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuItem>
               <MenuItem id="diagram" className={ITEM}>
                 <Icon name="plus" size={14} /> Diagram (Mermaid, UML)…
+              </MenuItem>
+              <MenuItem id="variables" className={ITEM}>
+                <Icon name="plus" size={14} /> Variables…
               </MenuItem>
               <Separator className="my-1 h-px bg-line" />
               <MenuItem id="renderer" className={ITEM}>
@@ -84,6 +90,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
       </Popover>
     </MenuTrigger>
     <DiagramDialog isOpen={diagramOpen} onOpenChange={setDiagramOpen} />
+    <VariablesDialog isOpen={variablesOpen} onOpenChange={setVariablesOpen} />
     </>
   );
 }

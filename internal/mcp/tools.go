@@ -577,6 +577,9 @@ type NodeView struct {
 	AutoLayout *AutoLayoutSpec `json:"autoLayout,omitempty"`
 	// Meta: the node's free-form metadata (flow.kind, code.route, test.id, status...).
 	Meta map[string]string `json:"meta,omitempty" jsonschema:"free-form node metadata; see set_node_meta"`
+	// Bindings: property -> variable id (see bind_variable); Modes: collection id -> pinned mode id (see set_node_mode).
+	Bindings map[string]string `json:"bindings,omitempty" jsonschema:"properties bound to variables; see bind_variable"`
+	Modes    map[string]string `json:"modes,omitempty" jsonschema:"variable modes pinned on this node; see set_node_mode"`
 }
 
 // nodeKind derives the compact kind label from the shape oneof. A node with no
@@ -618,6 +621,12 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 	if len(n.GetMeta()) > 0 {
 		v.Meta = n.GetMeta()
 	}
+	if len(n.GetBindings()) > 0 {
+		v.Bindings = n.GetBindings()
+	}
+	if len(n.GetModes()) > 0 {
+		v.Modes = n.GetModes()
+	}
 	return v
 }
 
@@ -628,7 +637,9 @@ type DocumentView struct {
 	Pages      []PageView      `json:"pages"`
 	Components []ComponentView `json:"components"`
 	Clips      []ClipView      `json:"clips"`
-	Nodes      []NodeView      `json:"nodes"`
+	// Variables: the design tokens (collections, modes, values); see list_variables.
+	Variables []CollectionView `json:"variables"`
+	Nodes     []NodeView       `json:"nodes"`
 }
 
 // GetDocument returns the whole synced document: pages, components and every
@@ -650,6 +661,7 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 		out.Nodes = append(out.Nodes, toNodeView(n))
 	}
 	out.Clips = clipViews(doc)
+	out.Variables = collectionViews(doc)
 	return out, nil
 }
 
@@ -756,6 +768,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "list_components", "List the document's components.", s.ListComponents)
 	registerFlowTools(srv, s)
 	registerAnimationTools(srv, s)
+	registerVariableTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerDiagramTools(srv, s)
 }

@@ -90,6 +90,10 @@ func (b *builder) buildScreen(n *opendesignerv1.Node) *Element {
 
 // element translates a node (and its subtree). nil = nothing to emit.
 func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
+	// Variables: what is exported is what the canvas draws, so a bound property
+	// takes the value of the node's active mode. (A master descended into through
+	// an instance resolves in the master's own modes, not the instance's.)
+	n = core.ResolveNode(b.doc, n)
 	if !n.GetVisible() {
 		return nil
 	}

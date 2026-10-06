@@ -1,3 +1,4 @@
+import { resolveScene } from "../store/variables";
 import { useScene } from "../store/store";
 import { fontString } from "../renderer/text";
 import { assetUrl } from "../rpc/assets";
@@ -285,8 +286,10 @@ async function exportBlob(
  * produces no op. It is the only function of the app that only reads the scene.
  */
 export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Promise<boolean> {
-  const { scene, selection } = useScene.getState();
-  if (!scene) return false;
+  const { scene: raw, selection } = useScene.getState();
+  if (!raw) return false;
+  // What is exported is what is drawn: variables resolved for each node's active mode.
+  const scene = resolveScene(raw);
 
   const createCanvas = deps.createCanvas ?? defaultCanvas;
   try {

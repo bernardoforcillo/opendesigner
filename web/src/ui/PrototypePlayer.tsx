@@ -1,3 +1,4 @@
+import { resolveScene } from "../store/variables";
 import { useEffect, useMemo, useRef, useState } from "react";
 import { Button as RacButton } from "react-aria-components";
 import { useScene } from "../store/store";
@@ -95,7 +96,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
 
   useEffect(() => imageCache.subscribe(() => setImgTick((n) => n + 1)), []);
 
-  const derived = useMemo(() => (scene && state ? sceneForScreen(scene, state.screenId) : null), [scene, state?.screenId]);
+  const derived = useMemo(() => (scene && state ? sceneForScreen(resolveScene(scene), state.screenId) : null), [scene, state?.screenId]);
   const screenBox = useMemo(() => {
     const n = scene && state ? scene.nodes.at(state.screenId) : undefined;
     return scene && n ? worldBoundsOfNode(scene, n) : null;

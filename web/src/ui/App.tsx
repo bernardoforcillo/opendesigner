@@ -325,7 +325,7 @@ export function App() {
       const overlay = overlayRef.current;
       // The posed scene when the timeline scrubs/plays/records, otherwise
       // the store's scene (same instance: no cost with the timeline idle).
-      const scene = posedScene();
+      const scene = posedScene(true);
       if (canvas && scene) {
         resizeCanvasToDisplaySize(canvas);
         const ctx = canvas.getContext("2d");

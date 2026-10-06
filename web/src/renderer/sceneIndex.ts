@@ -321,6 +321,19 @@ function updateIndex(
     for (const k of children.get(id) ?? []) clearTree(k.id);
   };
   // 1) Subtrees of the changed nodes (their transform may be new).
+  //
+  // Shallowest first. A changed node under another changed one is covered by its
+  // ancestor's visit, but only if the ancestor is processed FIRST: the other way
+  // round the child is visited twice, and the visitor treats the second visit as a
+  // cycle (it has already `seen` the node) and clears its extent -- the node stops
+  // being drawn. The provenance does not promise any order (a derived scene lists
+  // the nodes it replaced as it found them).
+  const depthIn = (id: string): number => {
+    let d = 0;
+    for (let cur: NodeLite | undefined = nodes.at(id); cur && d < 1000; cur = nodes.at(cur.parentId)) d++;
+    return d;
+  };
+  changed.sort((a, b) => depthIn(a) - depthIn(b));
   const redone = new Set<string>();
   for (const id of changed) {
     // Already redone as a descendant of another changed one? A node under a

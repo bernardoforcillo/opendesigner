@@ -16,6 +16,7 @@ import { makeSetInstanceOverrideOp, makeSetPropsOp, makeSetTextOp } from "../too
 import { layerDisplayName } from "./LayersPanel";
 import { cls, EmptyState, Icon, IconButton, Section } from "./ds";
 import { ExportSection } from "./ExportSection";
+import { VariablesSection } from "./VariablesSection";
 import type { IconName } from "./ds";
 import { SegRadio, type SegOption } from "./ds/props-controls";
 import { NumberField } from "./fields/NumberField";
@@ -1054,6 +1055,8 @@ export function PropertiesPanel() {
           up) -- it is the same condition that used to live in the ToolDock's
           button as the "Scope" radio, now made superfluous by moving the
           control inside the branch that already guarantees it. */}
+      <VariablesSection />
+
       <Section title="Export">
         <ExportSection />
       </Section>

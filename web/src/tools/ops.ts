@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbClip, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
-import type { ClipLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import { toPbClip, toPbCollection, toPbVariable, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { ClipLite, CollectionLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -209,6 +209,21 @@ export function makeInstanceNode(p: InstanceNodeParams): Node {
     height: p.height,
     shape: { case: "instance", value: { componentId: p.componentId, overrides: [] } },
   });
+}
+
+// --- variables ---------------------------------------------------------------
+// Absolute upserts of a collection / variable (id supplied by the caller) and deletions.
+export function makeSetCollectionOp(c: CollectionLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setCollection", value: { collection: toPbCollection(c) } } });
+}
+export function makeDeleteCollectionOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteCollection", value: { id } } });
+}
+export function makeSetVariableOp(v: VariableLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setVariable", value: { variable: toPbVariable(v) } } });
+}
+export function makeDeleteVariableOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteVariable", value: { id } } });
 }
 
 // --- animation -------------------------------------------------------------

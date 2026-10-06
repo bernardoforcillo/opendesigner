@@ -17,7 +17,8 @@ Legend: [x] done · [ ] to do
 - [ ] Auto layout: children that fill the space (fill), wrapping onto several rows, dragging a child OUT of the frame, groups and instances as children
 - [ ] Constraints and responsive resize
 - [ ] Variants and component properties, shared libraries
-- [ ] Variables / design tokens with modes
+- [x] Variables / design tokens with modes: color and number variables in collections with modes, bound to fills, strokes, opacity, rotation, radius and stroke width, pinned per subtree; editor dialog and panel, MCP tools, resolved in canvas/export/code, see docs/variables.md
+- [ ] Variables: text and spacing, aliases, CSS custom properties per mode in the exported code
 - [ ] Typography: loadable fonts, text styles, multi-line text
 - [ ] Boolean operations, outline stroke, masks
 - [ ] Prototyping and presentation mode

@@ -414,3 +414,25 @@ func setBound(n *opendesignerv1.Node, key string, val *opendesignerv1.VariableVa
 		s.Color = proto.Clone(col.Color).(*opendesignerv1.Color)
 	}
 }
+
+// The validators the MCP tools run BEFORE submitting, so the agent reads the
+// authority's own error instead of an opaque rejection (same pattern as
+// ValidateClip).
+
+// ValidateCollection checks a collection upsert against the invariants.
+func ValidateCollection(c *opendesignerv1.VariableCollection) error { return validateCollection(c) }
+
+// ValidateVariable checks a variable upsert against the document.
+func ValidateVariable(doc *opendesignerv1.Document, v *opendesignerv1.Variable) error {
+	return validateVariable(doc, v)
+}
+
+// ValidateBindings checks a node's whole bindings map against the document.
+func ValidateBindings(doc *opendesignerv1.Document, b map[string]string) error {
+	return validateBindings(doc, b)
+}
+
+// ValidateModes checks a node's whole mode-pin map against the document.
+func ValidateModes(doc *opendesignerv1.Document, m map[string]string) error {
+	return validateModes(doc, m)
+}

@@ -1,8 +1,9 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
+import { isValidCollection, isValidVariable } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
@@ -337,9 +338,84 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       if (!prev) return null;
       return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setClip", value: { clip: toPbClip(prev) } } })];
     }
+    // --- variables ----------------------------------------------------------
+    // Absolute upserts, like clips: the inverse is the PREVIOUS state. The
+    // cascades (removed modes, deleted variables/collections) are undone by
+    // restoring what they took: values, bindings and mode pins.
+    case "setCollection": {
+      const c = op.kind.value.collection;
+      if (!isValidCollection(c)) return null;
+      const prev = scene.collections[c.id];
+      if (!prev) return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "deleteCollection", value: { id: c.id } } })];
+      const keep = new Set(c.modes.map((m) => m.id));
+      const lost = (m: string) => !keep.has(m);
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setCollection", value: { collection: toPbCollection(prev) } } }),
+        // The variables that had values for the removed modes get them back...
+        ...Object.values(scene.variables).sort(byId)
+          .filter((v) => v.collectionId === c.id && Object.keys(v.values).some(lost))
+          .map((v) => setVariableOp(op.docId, toPbVariable(v))),
+        // ...and so do the nodes pinned to a removed mode.
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.modes?.[c.id] !== undefined && lost(n.modes[c.id]), ["modes"]),
+      ];
+    }
+    case "deleteCollection": {
+      const { id } = op.kind.value;
+      const prev = scene.collections[id];
+      if (!prev) return null;
+      const vars = Object.values(scene.variables).filter((v) => v.collectionId === id).sort(byId);
+      const gone = new Set(vars.map((v) => v.id));
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setCollection", value: { collection: toPbCollection(prev) } } }),
+        ...vars.map((v) => setVariableOp(op.docId, toPbVariable(v))),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => bindsAny(n, gone), ["bindings"]),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.modes?.[id] !== undefined, ["modes"]),
+      ];
+    }
+    case "setVariable": {
+      const v = op.kind.value.variable;
+      if (!isValidVariable(scene, v)) return null;
+      const prev = scene.variables[v.id];
+      return [prev
+        ? setVariableOp(op.docId, toPbVariable(prev))
+        : create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "deleteVariable", value: { id: v.id } } })];
+    }
+    case "deleteVariable": {
+      const { id } = op.kind.value;
+      const prev = scene.variables[id];
+      if (!prev) return null;
+      return [
+        setVariableOp(op.docId, toPbVariable(prev)),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => bindsAny(n, new Set([id])), ["bindings"]),
+      ];
+    }
     default:
       return null;
   }
+}
+
+function setVariableOp(docId: string, variable: ReturnType<typeof toPbVariable>): Op {
+  return create(OpSchema, { opId: newOpId(), docId, kind: { case: "setVariable", value: { variable } } });
+}
+
+const bindsAny = (n: { bindings?: Record<string, string> }, vars: ReadonlySet<string>) =>
+  !!n.bindings && Object.values(n.bindings).some((id) => vars.has(id));
+
+// A setProps per node the cascade rewrote, writing back the PRE-cascade maps
+// (the mask replaces the whole map). They go AFTER the variables/collections
+// they point to are restored: bindings and pins are validated against them.
+function restoreNodeMapsOps(
+  scene: SceneState, docId: string, hit: (n: SceneState["nodes"] extends { values(): IterableIterator<infer N> } ? N : never) => boolean,
+  paths: string[],
+): Op[] {
+  const ops: Op[] = [];
+  for (const n of [...scene.nodes.values()].filter(hit).sort(byId)) {
+    ops.push(create(OpSchema, {
+      opId: newOpId(), docId,
+      kind: { case: "setProps", value: { id: n.id, patch: toPbNode(n), mask: { paths } } },
+    }));
+  }
+  return ops;
 }
 
 const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
