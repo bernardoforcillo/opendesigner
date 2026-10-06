@@ -612,7 +612,7 @@ export function App() {
                         <Icon name={icon} size={14} />
                         {/* Only the active tab carries the text: the row also hosts the
                             page selector. The name stays in the aria-label. */}
-                        {isSelected && label}
+                        {isSelected && id !== "comments" && label}
                       </>
                     )}
                   </Tab>
