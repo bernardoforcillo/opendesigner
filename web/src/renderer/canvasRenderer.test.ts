@@ -4,6 +4,7 @@ import type { CachedImage } from "./imageCache";
 import { VECTOR_STROKE_PX } from "./shapes";
 import type { Camera } from "../canvas/camera";
 import { emptyScene } from "../store/types";
+import { contentWorldBounds } from "../store/groups";
 import type { FillLite, NodeLite, SceneState, AnchorLite, SubPathLite } from "../store/types";
 
 function frameNode(id: string, parentId: string, x: number, y: number, w: number, h: number, clips: boolean, order = "a0"): NodeLite {
@@ -1353,5 +1354,84 @@ describe("instance cycle guard", () => {
     expect(() => drawScene(f.ctx, s, identityCam)).not.toThrow();
     expect(hitTest(s, 10, 10, Z1)).toBeNull();
     expect(nodesIntersecting(s, { x: 0, y: 0, width: 100, height: 100 })).toEqual([]);
+  });
+});
+
+// VARIANTS AND PROPERTIES: an instance renders the variant it has chosen, a text property
+// sets the content of its text target, and a false boolean property hides its target --
+// in drawing, hit-test and bounds alike (see-vs-select).
+describe("an instance with variants and properties", () => {
+  // The masters hold rectangles, which need Path2D (jsdom has none).
+  beforeEach(() => { vi.stubGlobal("Path2D", FakePath2D); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+  // Two masters outside page1: "Button" (default) and "Button hover", in the set "s"
+  // (axis State), both with a text property Label and a boolean ShowIcon.
+  function variants(): SceneState {
+    const s = emptyScene("d", "n");
+    const root = (id: string): NodeLite => ({ ...rect(id, 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 });
+    s.nodes = s.nodes
+      .set("m1", root("m1")).set("l1", textAt("l1", "m1", 0, 0, "a0")).set("i1", { ...rect("i1", 300, 0, "a1"), parentId: "m1" })
+      .set("m2", root("m2")).set("l2", textAt("l2", "m2", 0, 0, "a0")).set("i2", { ...rect("i2", 300, 0, "a1"), parentId: "m2" });
+    s.componentSets = { s: { id: "s", name: "Button", axes: [{ name: "State", options: ["default", "hover"] }] } };
+    const props = (label: string, icon: string) => [
+      { name: "Label", type: "text" as const, defaultValue: "Button", targetNodeIds: [label] },
+      { name: "ShowIcon", type: "boolean" as const, defaultValue: "true", targetNodeIds: [icon] },
+    ];
+    s.components = {
+      c1: { rootNodeId: "m1", name: "Button", setId: "s", variant: { State: "default" }, properties: props("l1", "i1") },
+      c2: { rootNodeId: "m2", name: "Button hover", setId: "s", variant: { State: "hover" }, properties: props("l2", "i2") },
+    };
+    return s;
+  }
+  const withInstance = (s: SceneState, instance: Partial<NonNullable<NodeLite["instance"]>>) => {
+    s.nodes = s.nodes.set("i", { ...instanceNode("i", "c1", 0, 0), instance: { componentId: "c1", overrides: [], ...instance } });
+    return s;
+  };
+
+  it("draws the master of the chosen variant", () => {
+    const f = fakeCtx();
+    drawScene(f.ctx, withInstance(variants(), {}), identityCam);
+    expect(f.fillText.map((c) => c.text)).toEqual(["Button"]);
+    const g = fakeCtx();
+    // The label is the property's text, so both variants draw "Button"; tell them apart by the box.
+    const s = withInstance(variants(), { variantProps: { State: "hover" } });
+    s.nodes = s.nodes.set("l2", { ...s.nodes.at("l2"), x: 7 });
+    drawScene(g.ctx, s, identityCam);
+    expect(g.fillText[0].x).toBe(7);
+  });
+
+  it("a text property sets the content of the master's text node, by property name across variants", () => {
+    const f = fakeCtx();
+    drawScene(f.ctx, withInstance(variants(), { propertyValues: { Label: "Save" }, variantProps: { State: "hover" } }), identityCam);
+    expect(f.fillText.map((c) => c.text)).toEqual(["Save"]);
+  });
+
+  it("an explicit override wins over the property", () => {
+    const f = fakeCtx();
+    drawScene(f.ctx, withInstance(variants(), { propertyValues: { Label: "Save" }, overrides: [{ masterNodeId: "l1", text: "Explicit" }] }), identityCam);
+    expect(f.fillText.map((c) => c.text)).toEqual(["Explicit"]);
+  });
+
+  it("a false boolean property hides its target: not drawn, not hit, not in the bounds", () => {
+    const shown = withInstance(variants(), {});
+    const hidden = withInstance(variants(), { propertyValues: { ShowIcon: "false" } });
+    // The icon is a 50x50 rect at (300,0) in the master, clear of the 200x40 label at (0,0).
+    const a = fillStyleCtx();
+    drawScene(a.ctx, shown, identityCam);
+    const b = fillStyleCtx();
+    drawScene(b.ctx, hidden, identityCam);
+    expect(a.fills.length - b.fills.length).toBe(1);
+    expect(hitTest(shown, 320, 20, Z1)).toBe("i");
+    expect(hitTest(hidden, 320, 20, Z1)).toBeNull();
+    expect(nodesIntersecting(shown, { x: 330, y: 10, width: 10, height: 10 })).toEqual(["i"]);
+    expect(nodesIntersecting(hidden, { x: 330, y: 10, width: 10, height: 10 })).toEqual([]);
+    expect(contentWorldBounds(shown, shown.nodes.at("i"))!.width).toBe(350);
+    expect(contentWorldBounds(hidden, hidden.nodes.at("i"))!.width).toBe(200);
+  });
+
+  it("an invalid stored value falls back to the default instead of hiding", () => {
+    const f = fakeCtx();
+    drawScene(f.ctx, withInstance(variants(), { propertyValues: { ShowIcon: "perhaps", Label: "x".repeat(2000) } }), identityCam);
+    expect(f.fillText.map((c) => c.text)).toEqual(["Button"]);
   });
 });

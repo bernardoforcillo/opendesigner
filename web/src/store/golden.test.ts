@@ -65,6 +65,9 @@ describe("golden parity", () => {
       // style (compared through `nodes` above).
       expect(scene.fonts).toEqual(expected.fonts);
       expect(scene.textStyles).toEqual(expected.textStyles);
+      // Component sets (variants); each component's set/variant/properties are
+      // compared through `components` above, and the instance's values through `nodes`.
+      expect(scene.componentSets).toEqual(expected.componentSets);
     });
   }
 });

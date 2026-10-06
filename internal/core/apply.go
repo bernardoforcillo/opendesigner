@@ -123,6 +123,14 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetTextStyleDef(doc, k.SetTextStyleDef)
 	case *opendesignerv1.Op_DeleteTextStyleDef:
 		return applyDeleteTextStyleDef(doc, k.DeleteTextStyleDef, cow)
+	case *opendesignerv1.Op_SetComponentSet:
+		return applySetComponentSet(doc, k.SetComponentSet)
+	case *opendesignerv1.Op_DeleteComponentSet:
+		return applyDeleteComponentSet(doc, k.DeleteComponentSet)
+	case *opendesignerv1.Op_SetComponentDef:
+		return applySetComponentDef(doc, k.SetComponentDef)
+	case *opendesignerv1.Op_SetInstanceProps:
+		return applySetInstanceProps(doc, k.SetInstanceProps, cow)
 	case *opendesignerv1.Op_SetFlow:
 		return applySetFlow(doc, k.SetFlow)
 	case *opendesignerv1.Op_DeleteFlow:
@@ -219,6 +227,7 @@ func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) err
 	}
 	cascadeFlows(doc, gone)
 	cascadeClips(doc, gone)
+	cascadeComponentTargets(doc, gone)
 	return nil
 }
 
@@ -332,6 +341,7 @@ func applyDeletePage(doc *opendesignerv1.Document, d *opendesignerv1.DeletePage)
 	}
 	cascadeFlows(doc, gone)
 	cascadeClips(doc, gone)
+	cascadeComponentTargets(doc, gone)
 	doc.Pages = append(doc.Pages[:i], doc.Pages[i+1:]...)
 	return nil
 }

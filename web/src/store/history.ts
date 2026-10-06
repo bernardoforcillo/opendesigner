@@ -1,10 +1,11 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
 import { isValidCollection, isValidVariable } from "./variables";
 import { isValidFont, isValidTextStyleDef } from "./typography";
+import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
@@ -81,6 +82,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         ...sub.map((n) => createNodeOp(op.docId, toPbNode(n))),
         ...restoreFlowsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
         ...restoreClipsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
+        ...restoreComponentDefsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
       ];
     }
     // Symmetric to itself: puts the node back where it was, with the order key it
@@ -390,6 +392,50 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         ...restoreNodeMapsOps(scene, op.docId, (n) => bindsAny(n, new Set([id])), ["bindings"]),
       ];
     }
+    // --- component variants and properties ---------------------------------
+    // Absolute upserts: the inverse is the PREVIOUS set / definition / props. The
+    // cascades (members detached by a set change or delete) are restored after the set.
+    case "setComponentSet": {
+      const set = op.kind.value.componentSet;
+      if (!isValidComponentSet(set)) return null;
+      const prev = scene.componentSets[set.id];
+      if (!prev) return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "deleteComponentSet", value: { id: set.id } } })];
+      const next = { ...scene, componentSets: { ...scene.componentSets, [set.id]: { id: set.id, name: set.name, axes: set.axes.map((a) => ({ name: a.name, options: [...a.options] })) } } };
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentSet", value: { componentSet: toPbComponentSet(prev) } } }),
+        ...Object.entries(scene.components)
+          .filter(([, c]) => c.setId === set.id && !assignmentValid(next.componentSets[set.id], c.variant))
+          .sort(([a], [b]) => (a < b ? -1 : 1))
+          .map(([id]) => componentDefOp(scene, op.docId, id)),
+      ];
+    }
+    case "deleteComponentSet": {
+      const { id } = op.kind.value;
+      const prev = scene.componentSets[id];
+      if (!prev) return null;
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentSet", value: { componentSet: toPbComponentSet(prev) } } }),
+        ...Object.entries(scene.components).filter(([, c]) => c.setId === id).sort(([a], [b]) => (a < b ? -1 : 1))
+          .map(([cid]) => componentDefOp(scene, op.docId, cid)),
+      ];
+    }
+    case "setComponentDef": {
+      const d = op.kind.value;
+      if (!isValidComponentDef(scene, d)) return null;
+      return [componentDefOp(scene, op.docId, d.componentId)];
+    }
+    case "setInstanceProps": {
+      const { instanceId, propertyValues, variantProps } = op.kind.value;
+      const cur = scene.nodes.at(instanceId);
+      if (!cur || cur.kind !== "instance" || !cur.instance) return null;
+      if (!isValidInstanceProps(scene, cur.instance, propertyValues, variantProps)) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setInstanceProps", value: {
+          instanceId, propertyValues: { ...(cur.instance.propertyValues ?? {}) }, variantProps: { ...(cur.instance.variantProps ?? {}) },
+        } },
+      })];
+    }
     // --- typography ---------------------------------------------------------
     // Absolute upserts: the inverse is the PREVIOUS font / style (or a delete if
     // the op created it). Deleting a style also cleared it on the nodes that used
@@ -431,6 +477,29 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     default:
       return null;
   }
+}
+
+// A setComponentDef writing the component's CURRENT set membership, variant and properties.
+function componentDefOp(scene: SceneState, docId: string, componentId: string): Op {
+  const c = scene.components[componentId];
+  return create(OpSchema, {
+    opId: newOpId(), docId,
+    kind: { case: "setComponentDef", value: {
+      componentId, setId: c?.setId ?? "", variant: { ...(c?.variant ?? {}) },
+      properties: (c?.properties ?? []).map(toPbComponentProperty),
+    } },
+  });
+}
+
+// After RE-CREATING the deleted nodes, puts back the property targets the cascade had
+// taken (core.cascadeComponentTargets): the whole definition of every component that
+// had a target in the deleted subtree, as it was in the pre-apply scene. It goes AFTER
+// the createNodes: the targets must exist.
+function restoreComponentDefsOps(scene: SceneState, docId: string, gone: ReadonlySet<string>): Op[] {
+  return Object.entries(scene.components)
+    .filter(([, c]) => c.properties?.some((p) => p.targetNodeIds.some((t) => gone.has(t))))
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([id]) => componentDefOp(scene, docId, id));
 }
 
 function setVariableOp(docId: string, variable: ReturnType<typeof toPbVariable>): Op {

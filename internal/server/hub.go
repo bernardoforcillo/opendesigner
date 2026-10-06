@@ -592,6 +592,13 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 			next.TextStyles[k] = proto.Clone(t).(*opendesignerv1.TextStyleDef)
 		}
 	}
+	// Component sets: few, deep-cloned.
+	if len(d.GetComponentSets()) > 0 {
+		next.ComponentSets = make(map[string]*opendesignerv1.ComponentSet, len(d.GetComponentSets()))
+		for k, c := range d.GetComponentSets() {
+			next.ComponentSets[k] = proto.Clone(c).(*opendesignerv1.ComponentSet)
+		}
+	}
 	if len(d.GetComponents()) > 0 {
 		next.Components = make(map[string]*opendesignerv1.Component, len(d.GetComponents()))
 		for k, c := range d.GetComponents() {

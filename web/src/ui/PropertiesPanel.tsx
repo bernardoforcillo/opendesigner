@@ -11,6 +11,7 @@ import { selectionSummary, MIXED } from "../store/selectors";
 import type { Mixed, OrMixed } from "../store/selectors";
 import { frameOriginOf } from "../store/groups";
 import { instanceOverrideMap } from "../store/instances";
+import { effectiveComponentId } from "../store/components";
 import { subtreeOf } from "../store/tree";
 import { makeSetInstanceOverrideOp, makeSetPropsOp } from "../tools/ops";
 import { layerDisplayName } from "./LayersPanel";
@@ -19,6 +20,7 @@ import { ExportSection } from "./ExportSection";
 import { VariablesSection } from "./VariablesSection";
 import { boundColor } from "./variableOps";
 import { TypographyControls } from "./TypographyControls";
+import { InstanceControls } from "./InstanceControls";
 import { effectiveStyle, styleOps } from "./typographyOps";
 import type { IconName } from "./ds";
 import { SegRadio, type SegOption } from "./ds/props-controls";
@@ -594,7 +596,7 @@ export function PropertiesPanel() {
     if (!s || !inst) return;
     const master = s.nodes.at(masterNodeId);
     if (!master) return;
-    const existing = instanceOverrideMap(inst).get(masterNodeId);
+    const existing = instanceOverrideMap(s, inst).get(masterNodeId);
     const effFills = existing?.fills ?? master.fills;
     const first: FillLite = { ...rgb, a: effFills[0]?.a ?? 1 };
     const override: InstanceOverrideLite = { masterNodeId, fills: [first, ...effFills.slice(1)] };
@@ -606,8 +608,9 @@ export function PropertiesPanel() {
   // override's fills if there were any.
   function editOverrideText(masterNodeId: string, text: string) {
     const inst = currentInstance();
-    if (!inst) return;
-    const existing = instanceOverrideMap(inst).get(masterNodeId);
+    const scn = useScene.getState().scene;
+    if (!inst || !scn) return;
+    const existing = instanceOverrideMap(scn, inst).get(masterNodeId);
     const override: InstanceOverrideLite = { masterNodeId, text };
     if (existing?.fills !== undefined) override.fills = existing.fills;
     commitOverride(inst, override);
@@ -718,8 +721,8 @@ export function PropertiesPanel() {
   // overridable ones in M4. `overrideMap` indexes the instance's current overrides
   // by masterNodeId, to read each row's effective value.
   const instanceNode = nodes.length === 1 && nodes[0].kind === "instance" && nodes[0].instance ? nodes[0] : null;
-  const overrideMap = instanceNode ? instanceOverrideMap(instanceNode) : new Map<string, InstanceOverrideLite>();
-  const master = instanceNode && scene ? scene.components[instanceNode.instance!.componentId] : undefined;
+  const overrideMap = instanceNode && scene ? instanceOverrideMap(scene, instanceNode) : new Map<string, InstanceOverrideLite>();
+  const master = instanceNode && scene ? scene.components[effectiveComponentId(scene, instanceNode.instance!)] : undefined;
   const overrideRows: NodeLite[] =
     master && scene ? subtreeOf(scene, master.rootNodeId).filter((n) => n.kind === "text" || n.fills.length > 0) : [];
 
@@ -1009,6 +1012,9 @@ export function PropertiesPanel() {
       {/* THE EFFECTS: shadow and blur. Its own section like the stroke: they are
           controls of a different nature than the basic appearance. */}
       <EffectsControls run={runGesture} />
+
+      {/* VARIANTS and PROPERTIES of a single selected instance (renders nothing otherwise). */}
+      <InstanceControls />
 
       {/* OVERRIDE: only for a SINGLE selected instance. Every row is a node
           of the master (text or with a fill) with its EFFECTIVE value and a

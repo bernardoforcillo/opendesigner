@@ -12,7 +12,7 @@ import {
 } from "../canvas/transform";
 import { sceneIndexOf } from "./sceneIndex";
 import { contentWorldBounds } from "../store/groups";
-import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../store/instances";
+import { hiddenMasterNodes, instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../store/instances";
 import {
   nodePath, hitTestNode, inkIsBox, nodeCenter, vectorPaths, hasInk, selectionBoundsOfNode,
   VECTOR_FILL_RULE, VECTOR_STROKE_PX,
@@ -382,7 +382,8 @@ function drawSiblings(
   cull: Cull | null,
 ): void {
   for (const n of siblings) {
-    if (!n.visible || seen.has(n.id)) continue;
+    // `hidden`: a boolean component property turned this master node off for this instance.
+    if (!n.visible || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
     // Out of view, or too small to be seen: skip the WHOLE subtree.
     // `cull` is null inside an instance -- the master's nodes have their extent
     // at their place of origin, not where the instance draws them.
@@ -465,7 +466,7 @@ function drawInstance(
   const resolved = resolveInstance(state, n);
   if (!resolved) return;
   const nextVisited = new Set(visited).add(n.instance.componentId);
-  const overrides = instanceOverrideMap(n);
+  const overrides = instanceOverrideMap(state, n);
   ctx.save();
   const t = instanceDescentLocal(n, resolved.masterRoot);
   ctx.transform(t.a, t.b, t.c, t.d, t.e, t.f);
@@ -771,10 +772,12 @@ function pickIn(
   seen: Set<string>,
   visited: ReadonlySet<string>,
   prune: Prune | null,
+  // The master nodes the instance being hit-tested hides (see store/instances.ts::hiddenMasterNodes).
+  hidden: ReadonlySet<string> | null = null,
 ): string | null {
   for (let i = siblings.length - 1; i >= 0; i--) {
     const n = siblings[i];
-    if (!n.visible || seen.has(n.id)) continue;
+    if (!n.visible || seen.has(n.id) || hidden?.has(n.id)) continue;
     if (prune && n.kind !== "instance") {
       const e = prune.extent.get(n.id);
       if (!e || prune.x < e.x - prune.pad || prune.x > e.x + e.width + prune.pad ||
@@ -804,7 +807,7 @@ function pickIn(
         n.kind === "frame" && n.clipsContent &&
         !(inner.x >= 0 && inner.x <= n.width && inner.y >= 0 && inner.y <= n.height);
       if (!clipsAway) {
-        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited, prune);
+        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited, prune, hidden);
         if (hit) return hit;
       }
     }
@@ -833,7 +836,7 @@ function hitInstance(
   if (!resolved) return false;
   const inner = applyTransform(invertTransform(instanceDescentLocal(n, resolved.masterRoot)), px, py);
   const nextVisited = new Set(visited).add(n.instance.componentId);
-  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null) !== null;
+  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null, hiddenMasterNodes(state, n)) !== null;
 }
 
 // The nodes whose WORLD box intersects `bounds`, in DRAW order. It is the

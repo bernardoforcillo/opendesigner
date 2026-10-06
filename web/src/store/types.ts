@@ -1,8 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { ClipSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ClipSchema, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
+  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -128,6 +128,9 @@ export interface InstanceOverrideLite {
   masterNodeId: string;
   fills?: FillLite[];
   text?: string;
+  // DERIVED only, never stored or on the wire: set by instances.ts::instanceOverrideMap when a
+  // boolean component property hides this master node for the instance.
+  hidden?: boolean;
 }
 
 // M4 — an instance of a component: the componentId it renders, plus the per-node
@@ -136,6 +139,10 @@ export interface InstanceOverrideLite {
 export interface InstanceLite {
   componentId: string;
   overrides: InstanceOverrideLite[];
+  // Values of the component's properties by property NAME, and the variant choice by axis
+  // name; absent when empty. See internal/core/components.go.
+  propertyValues?: Record<string, string>;
+  variantProps?: Record<string, string>;
 }
 
 // M4 — a component indexed in SceneState.components (componentId ->
@@ -145,7 +152,20 @@ export interface InstanceLite {
 export interface ComponentLite {
   rootNodeId: string;
   name: string;
+  // Variants: the set this component belongs to and its option on every axis; absent when standalone.
+  setId?: string;
+  variant?: Record<string, string>;
+  // Properties an instance can set; absent when none.
+  properties?: ComponentPropertyLite[];
 }
+export interface ComponentPropertyLite {
+  name: string;
+  type: "boolean" | "text";
+  defaultValue: string;
+  targetNodeIds: string[];
+}
+export interface VariantAxisLite { name: string; options: string[] }
+export interface ComponentSetLite { id: string; name: string; axes: VariantAxisLite[] }
 
 export interface NodeLite {
   id: string; parentId: string; orderKey: string; name: string;
@@ -283,10 +303,12 @@ export interface SceneState {
   // document as much as `nodes` and `pages`: a CreateComponent populates it, and
   // fromDocument rebuilds it from the snapshot.
   components: Record<string, ComponentLite>;
+  // Component sets (variants), like components: an empty record when there are none.
+  componentSets: Record<string, ComponentSetLite>;
 }
 
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, components: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, components: {}, componentSets: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -364,7 +386,44 @@ export function toInstanceOverrideLite(o: PbInstanceOverride): InstanceOverrideL
 }
 
 export function toInstanceLite(n: PbInstanceNode): InstanceLite {
-  return { componentId: n.componentId, overrides: n.overrides.map(toInstanceOverrideLite) };
+  return {
+    componentId: n.componentId,
+    overrides: n.overrides.map(toInstanceOverrideLite),
+    ...(Object.keys(n.propertyValues).length > 0 ? { propertyValues: { ...n.propertyValues } } : {}),
+    ...(Object.keys(n.variantProps).length > 0 ? { variantProps: { ...n.variantProps } } : {}),
+  };
+}
+
+export function toComponentPropertyLite(p: PbComponentProperty): ComponentPropertyLite {
+  return {
+    name: p.name,
+    type: p.type === ComponentPropertyType.BOOLEAN ? "boolean" : "text",
+    defaultValue: p.defaultValue,
+    targetNodeIds: [...p.targetNodeIds],
+  };
+}
+export function toPbComponentProperty(p: ComponentPropertyLite): PbComponentProperty {
+  return create(ComponentPropertySchema, {
+    name: p.name,
+    type: p.type === "boolean" ? ComponentPropertyType.BOOLEAN : ComponentPropertyType.TEXT,
+    defaultValue: p.defaultValue,
+    targetNodeIds: [...p.targetNodeIds],
+  });
+}
+export function toComponentLite(c: PbComponent): ComponentLite {
+  return {
+    rootNodeId: c.rootNodeId,
+    name: c.name,
+    ...(c.setId !== "" ? { setId: c.setId } : {}),
+    ...(Object.keys(c.variant).length > 0 ? { variant: { ...c.variant } } : {}),
+    ...(c.properties.length > 0 ? { properties: c.properties.map(toComponentPropertyLite) } : {}),
+  };
+}
+export function toComponentSetLite(s: PbComponentSet): ComponentSetLite {
+  return { id: s.id, name: s.name, axes: s.axes.map((a) => ({ name: a.name, options: [...a.options] })) };
+}
+export function toPbComponentSet(s: ComponentSetLite): PbComponentSet {
+  return create(ComponentSetSchema, { id: s.id, name: s.name, axes: s.axes.map((a) => ({ name: a.name, options: [...a.options] })) });
 }
 
 // Inverse of toSubPathsLite. Like toPbTextStyle it returns the INIT shape (not created
@@ -632,6 +691,8 @@ export function toPbNode(n: NodeLite): PbNode {
         ? { case: "instance" as const, value: {
             componentId: n.instance?.componentId ?? "",
             overrides: (n.instance?.overrides ?? []).map(toPbInstanceOverride),
+            propertyValues: { ...(n.instance?.propertyValues ?? {}) },
+            variantProps: { ...(n.instance?.variantProps ?? {}) },
           } }
       // A group has no fields of its own: what makes it a group is the oneof case
       // (plus the children pointing to it). The branch exists anyway, and it is not
@@ -751,10 +812,11 @@ export function fromDocument(doc: Document): SceneState {
   // Components are part of the document as much as nodes: a master not copied
   // but referenced by rootNodeId (see ComponentLite).
   const components: Record<string, ComponentLite> = {};
-  for (const [id, c] of Object.entries(doc.components)) components[id] = { rootNodeId: c.rootNodeId, name: c.name };
+  for (const [id, c] of Object.entries(doc.components)) components[id] = toComponentLite(c);
   return {
     id: doc.id, name: doc.name, schemaVersion: doc.schemaVersion,
     pages: doc.pages.map((p) => ({ id: p.id, name: p.name })), nodes, components,
+    componentSets: Object.fromEntries(Object.entries(doc.componentSets).map(([id, c]) => [id, toComponentSetLite(c)])),
     flows: Object.fromEntries(Object.entries(doc.flows).map(([id, f]) => [id, toFlowLite(f)])),
     transitions: Object.fromEntries(Object.entries(doc.transitions).map(([id, t]) => [id, toTransitionLite(t)])),
     clips: Object.fromEntries(Object.entries(doc.clips).map(([id, c]) => [id, toClipLite(c)])),

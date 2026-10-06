@@ -2,10 +2,11 @@ import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout } from "./layout";
 import { recordDelta } from "./sceneDelta";
+import { cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
@@ -263,7 +264,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const nodes = state.nodes.edit();
       const gone = new Set<string>();
       for (const n of subtreeOf(state, id)) { nodes.delete(n.id); gone.add(n.id); }
-      return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone), ...cascadeClips(state, gone) };
+      return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone), ...cascadeClips(state, gone), ...cascadeComponentTargets(state, gone) };
     }
     // Dedicated op and not a setProps mask path (unlike
     // `order_key`) because it has a validation no field has: the new
@@ -321,7 +322,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       }
       return {
         ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes: nodes.done(),
-        ...cascadeFlows(state, gone), ...cascadeClips(state, gone),
+        ...cascadeFlows(state, gone), ...cascadeClips(state, gone), ...cascadeComponentTargets(state, gone),
       };
     }
     case "renamePage": {
@@ -434,6 +435,46 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const variables = { ...state.variables };
       delete variables[id];
       return { ...state, variables, nodes: unbindNodes(state, new Set([id])) };
+    }
+    // --- component variants and properties ---------------------------------
+    // Parity with core.applySetComponentSet / applyDeleteComponentSet /
+    // applySetComponentDef / applySetInstanceProps (Go, internal/core/components.go).
+    case "setComponentSet": {
+      const set = op.kind.value.componentSet;
+      if (!isValidComponentSet(set)) return state;
+      const next = { ...state, componentSets: { ...state.componentSets, [set.id]: toComponentSetLite(set) } };
+      return { ...next, components: detachInvalidMembers(next, set.id) };
+    }
+    case "deleteComponentSet": {
+      const { id } = op.kind.value;
+      if (!state.componentSets[id]) return state;                           // ErrComponentSetNotFound
+      const componentSets = { ...state.componentSets };
+      delete componentSets[id];
+      return { ...state, componentSets, components: detachInvalidMembers({ ...state, componentSets }, id) };
+    }
+    case "setComponentDef": {
+      const d = op.kind.value;
+      if (!isValidComponentDef(state, d)) return state;
+      const cur = state.components[d.componentId];
+      const next = { rootNodeId: cur.rootNodeId, name: cur.name } as typeof cur;
+      if (d.setId !== "") next.setId = d.setId;
+      if (Object.keys(d.variant).length > 0) next.variant = { ...d.variant };
+      if (d.properties.length > 0) next.properties = d.properties.map(toComponentPropertyLite);
+      return { ...state, components: { ...state.components, [d.componentId]: next } };
+    }
+    case "setInstanceProps": {
+      const { instanceId, propertyValues, variantProps } = op.kind.value;
+      const cur = state.nodes.at(instanceId);
+      if (!cur) return state;                                               // ErrNodeNotFound
+      if (cur.kind !== "instance" || !cur.instance) return state;           // ErrNotInstanceNode
+      if (!isValidInstanceProps(state, cur.instance, propertyValues, variantProps)) return state;
+      const { propertyValues: _pv, variantProps: _vp, ...rest } = cur.instance;
+      const instance = {
+        ...rest,
+        ...(Object.keys(propertyValues).length > 0 ? { propertyValues: { ...propertyValues } } : {}),
+        ...(Object.keys(variantProps).length > 0 ? { variantProps: { ...variantProps } } : {}),
+      };
+      return { ...state, nodes: state.nodes.set(instanceId, { ...cur, instance }) };
     }
     // --- typography ---------------------------------------------------------
     // Parity with core.applySetFont / applyDeleteFont / applySetTextStyleDef /

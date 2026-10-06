@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"sort"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"github.com/bernardoforcillo/opendesigner/internal/core"
@@ -574,6 +575,17 @@ type ComponentView struct {
 	Id         string `json:"id"`
 	RootNodeId string `json:"rootNodeId"`
 	Name       string `json:"name"`
+	// Variants and properties (see list_component_sets, set_component_def).
+	SetId      string                `json:"setId,omitempty"`
+	Variant    map[string]string     `json:"variant,omitempty"`
+	Properties []ComponentPropertyIO `json:"properties,omitempty"`
+}
+
+func componentView(id string, c *opendesignerv1.Component) ComponentView {
+	return ComponentView{
+		Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName(),
+		SetId: c.GetSetId(), Variant: c.GetVariant(), Properties: propertyViews(c),
+	}
 }
 
 type NodeView struct {
@@ -659,9 +671,10 @@ type DocumentView struct {
 	// Variables: the design tokens (collections, modes, values); see list_variables.
 	Variables []CollectionView `json:"variables"`
 	// Typography: uploaded fonts and shared text styles; see list_fonts / list_text_styles.
-	Fonts      []FontView      `json:"fonts"`
-	TextStyles []TextStyleView `json:"textStyles"`
-	Nodes      []NodeView      `json:"nodes"`
+	ComponentSets []ComponentSetView `json:"componentSets"`
+	Fonts         []FontView         `json:"fonts"`
+	TextStyles    []TextStyleView    `json:"textStyles"`
+	Nodes         []NodeView         `json:"nodes"`
 }
 
 // GetDocument returns the whole synced document: pages, components and every
@@ -677,13 +690,14 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName()})
 	}
 	for id, c := range doc.GetComponents() {
-		out.Components = append(out.Components, ComponentView{Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName()})
+		out.Components = append(out.Components, componentView(id, c))
 	}
 	for _, n := range doc.GetNodes() {
 		out.Nodes = append(out.Nodes, toNodeView(n))
 	}
 	out.Clips = clipViews(doc)
 	out.Variables = collectionViews(doc)
+	out.ComponentSets = componentSetViews(doc)
 	out.Fonts = fontViews(doc)
 	out.TextStyles = textStyleViews(doc)
 	return out, nil
@@ -742,8 +756,9 @@ func (s *Session) ListComponents(ctx context.Context, _ struct{}) (ListComponent
 	defer s.mu.Unlock()
 	var out ListComponentsOutput
 	for id, c := range s.doc.GetComponents() {
-		out.Components = append(out.Components, ComponentView{Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName()})
+		out.Components = append(out.Components, componentView(id, c))
 	}
+	sort.Slice(out.Components, func(i, j int) bool { return out.Components[i].Id < out.Components[j].Id })
 	return out, nil
 }
 
@@ -794,6 +809,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerAnimationTools(srv, s)
 	registerVariableTools(srv, s)
 	registerTypographyTools(srv, s)
+	registerVariantTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerDiagramTools(srv, s)
 }

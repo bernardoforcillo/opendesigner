@@ -1,8 +1,10 @@
+import { useState } from "react";
 import { Button as RacButton } from "react-aria-components";
 import { Button, EmptyState, Icon, IconButton, cls } from "./ds";
 import { useScene } from "../store/store";
 import { contentWorldBounds } from "../store/groups";
 import { nextOrderKey } from "../store/orderKey";
+import { ComponentDialog } from "./ComponentDialog";
 import { makeCreateComponentOp, makeCreateNodeOp, makeInstanceNode, uuid } from "../tools/ops";
 
 // COMPONENTS PANEL (M4) — lists the document's components (SceneState.
@@ -25,6 +27,8 @@ const PLACE_OFFSET = 20;
 export function ComponentsPanel() {
   const scene = useScene((s) => s.scene);
   const entries = scene ? Object.entries(scene.components) : [];
+  // The component whose variants and properties are being edited (ComponentDialog).
+  const [editing, setEditing] = useState<string | null>(null);
   // "Create component" is CONTEXTUAL: it exists only with exactly one node
   // selected (like selectTool's Ctrl/Cmd+Alt+K, which is replicated here: same
   // op, same gesture, same fallback name). With zero or several nodes there is
@@ -118,7 +122,7 @@ export function ComponentsPanel() {
           {entries.map(([id, comp]) => {
             const label = comp.name.trim() !== "" ? comp.name : "Unnamed component";
             return (
-              <li key={id}>
+              <li key={id} className="relative">
                 {/* The whole card is the "Instantiate" button: the accessible name
                     is the component's (aria-label), the "+ Instantiate" on the right
                     is only the visual hint of the action and appears on hover. */}
@@ -143,11 +147,16 @@ export function ComponentsPanel() {
                     Instantiate
                   </span>
                 </RacButton>
+                <IconButton
+                  icon="pen" label={`Edit ${label}`} size={24} onPress={() => setEditing(id)}
+                  className="absolute right-1 top-1/2 -translate-y-1/2 bg-surface"
+                />
               </li>
             );
           })}
         </ul>
       )}
+      <ComponentDialog componentId={editing} onClose={() => setEditing(null)} />
     </div>
   );
 }

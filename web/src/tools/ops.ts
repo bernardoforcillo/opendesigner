@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbClip, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
-import type { ClipLite, CollectionLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import { toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -224,6 +224,28 @@ export function makeSetVariableOp(v: VariableLite): Op {
 }
 export function makeDeleteVariableOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteVariable", value: { id } } });
+}
+
+// --- component variants and properties ---------------------------------------
+export function makeSetComponentSetOp(set: ComponentSetLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentSet", value: { componentSet: toPbComponentSet(set) } } });
+}
+export function makeDeleteComponentSetOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteComponentSet", value: { id } } });
+}
+export function makeSetComponentDefOp(
+  componentId: string, setId: string, variant: Record<string, string>, properties: readonly ComponentPropertyLite[],
+): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentDef", value: {
+    componentId, setId, variant: { ...variant }, properties: properties.map(toPbComponentProperty),
+  } } });
+}
+export function makeSetInstancePropsOp(
+  instanceId: string, propertyValues: Record<string, string>, variantProps: Record<string, string>,
+): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setInstanceProps", value: {
+    instanceId, propertyValues: { ...propertyValues }, variantProps: { ...variantProps },
+  } } });
 }
 
 // --- typography --------------------------------------------------------------

@@ -16,7 +16,8 @@ Legend: [x] done · [ ] to do
 - [x] Auto layout: reordering by dragging children (also into another auto layout), with insertion line and outline; a single undo step
 - [ ] Auto layout: children that fill the space (fill), wrapping onto several rows, dragging a child OUT of the frame, groups and instances as children
 - [ ] Constraints and responsive resize
-- [ ] Variants and component properties, shared libraries
+- [x] Variants and component properties: component sets with axes, instances that choose a variant, boolean (show/hide) and text properties, editor dialog and instance controls, MCP tools, exported code; see docs/components.md
+- [ ] Shared libraries across documents, instance swap, detach instance
 - [x] Variables / design tokens with modes: color and number variables in collections with modes, bound to fills, strokes, opacity, rotation, radius and stroke width, pinned per subtree; editor dialog and panel, MCP tools, resolved in canvas/export/code, see docs/variables.md
 - [ ] Variables: text and spacing, aliases, CSS custom properties per mode in the exported code
 - [x] Typography: uploaded fonts (TTF/OTF/WOFF/WOFF2 as content-addressed assets, drawn by the 2D and GPU renderers and exported as @font-face), shared text styles, italic; multi-line text and wrapping were already there; see docs/typography.md

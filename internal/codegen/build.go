@@ -55,6 +55,8 @@ type bctx struct {
 	origin bool
 	// overrides: the overrides of the instance being descended into.
 	overrides map[string]*opendesignerv1.InstanceOverride
+	// hidden: the master nodes that instance hides (a false boolean component property).
+	hidden map[string]bool
 	// idPrefix: path of the instances traversed, for data-node-id.
 	idPrefix string
 	// visited: components being expanded on this branch (a master that
@@ -91,6 +93,9 @@ func (b *builder) buildScreen(n *opendesignerv1.Node) *Element {
 
 // element translates a node (and its subtree). nil = nothing to emit.
 func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
+	if c.hidden[n.GetId()] {
+		return nil
+	}
 	// Variables: what is exported is what the canvas draws, so a bound property
 	// takes the value of the node's active mode. (A master descended into through
 	// an instance resolves in the master's own modes, not the instance's.)
@@ -203,7 +208,9 @@ func (b *builder) groupElement(n *opendesignerv1.Node, c bctx) *Element {
 // subtree at origin 0,0, with the per-node overrides applied.
 func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 	inst := n.GetInstance()
-	comp := b.doc.GetComponents()[inst.GetComponentId()]
+	// The variant the instance has chosen (core.EffectiveComponentID): the base component
+	// when it is not part of a set.
+	comp := b.doc.GetComponents()[core.EffectiveComponentID(b.doc, inst)]
 	master := b.doc.GetNodes()[comp.GetRootNodeId()]
 	if comp == nil || master == nil || c.visited[inst.GetComponentId()] {
 		// Like the canvas: missing (or recursive) component or master = nothing.
@@ -218,15 +225,14 @@ func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 	el.addStyle("height", px(n.GetHeight()))
 	rotation(el, n)
 
-	ov := map[string]*opendesignerv1.InstanceOverride{}
-	for _, o := range inst.GetOverrides() {
-		ov[o.GetMasterNodeId()] = o
-	}
+	// What the instance changes in its master: the overrides derived from the component's
+	// properties under its explicit overrides, and the nodes a false boolean hides.
+	ov, hidden := core.EffectiveOverrides(b.doc, inst)
 	visited := map[string]bool{inst.GetComponentId(): true}
 	for k := range c.visited {
 		visited[k] = true
 	}
-	cc := bctx{origin: true, overrides: ov, idPrefix: c.idPrefix + n.GetId() + "/", visited: visited}
+	cc := bctx{origin: true, overrides: ov, hidden: hidden, idPrefix: c.idPrefix + n.GetId() + "/", visited: visited}
 	if ce := b.element(master, cc); ce != nil {
 		el.Children = append(el.Children, ce)
 	}

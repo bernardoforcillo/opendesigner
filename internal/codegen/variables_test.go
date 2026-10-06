@@ -133,3 +133,55 @@ func TestFontsAndTextStylesInTheExport(t *testing.T) {
 		t.Errorf("react: italic text has no italic class:\n%s", react)
 	}
 }
+
+// TestVariantsAndPropertiesInTheExport: the exported instance is the variant it chose,
+// a text property sets the label, and a false boolean property leaves its target out --
+// the same thing the canvas shows.
+func TestVariantsAndPropertiesInTheExport(t *testing.T) {
+	doc := screenDoc(func(b *B, s string) {
+		for _, v := range []struct{ root, label, icon, text string }{
+			{"m1", "l1", "i1", "Default button"}, {"m2", "l2", "i2", "Hover button"},
+		} {
+			b.Add(v.root, "page1", v.root, 0, 400, 200, 40, Frame(false, nil))
+			b.Add(v.label, v.root, v.label, 0, 0, 150, 20, TextStyled(v.text, &opendesignerv1.TextStyle{FontSize: 14}))
+			b.Add(v.icon, v.root, v.icon, 160, 0, 20, 20, Fill(Solid(C(1, 0, 0))))
+		}
+	})
+	boolT, textT := opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN, opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT
+	props := func(label, icon string) []*opendesignerv1.ComponentProperty {
+		return []*opendesignerv1.ComponentProperty{
+			{Name: "Label", Type: textT, DefaultValue: "Button", TargetNodeIds: []string{label}},
+			{Name: "ShowIcon", Type: boolT, DefaultValue: "true", TargetNodeIds: []string{icon}},
+		}
+	}
+	apply(t, doc,
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateComponent{CreateComponent: &opendesignerv1.CreateComponent{ComponentId: "c1", RootNodeId: "m1", Name: "Button"}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateComponent{CreateComponent: &opendesignerv1.CreateComponent{ComponentId: "c2", RootNodeId: "m2", Name: "Button hover"}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentSet{SetComponentSet: &opendesignerv1.SetComponentSet{ComponentSet: &opendesignerv1.ComponentSet{
+			Id: "s", Name: "Button", Axes: []*opendesignerv1.VariantAxis{{Name: "State", Options: []string{"default", "hover"}}}}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentDef{SetComponentDef: &opendesignerv1.SetComponentDef{ComponentId: "c1", SetId: "s", Variant: map[string]string{"State": "default"}, Properties: props("l1", "i1")}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentDef{SetComponentDef: &opendesignerv1.SetComponentDef{ComponentId: "c2", SetId: "s", Variant: map[string]string{"State": "hover"}, Properties: props("l2", "i2")}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: &opendesignerv1.Node{
+			Id: "inst", ParentId: "scr", OrderKey: "z1", Name: "Inst", Visible: true, Opacity: 1, X: 10, Y: 10, Width: 200, Height: 40,
+			Shape: &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{ComponentId: "c1"}}}}}},
+	)
+	set := func(values, variants map[string]string) {
+		apply(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetInstanceProps{SetInstanceProps: &opendesignerv1.SetInstanceProps{InstanceId: "inst", PropertyValues: values, VariantProps: variants}}})
+	}
+	// The icon is the only red-filled node: its CSS background tells whether it was exported.
+	hasIcon := func(html string) bool { return strings.Contains(html, "background-color: #f00;") }
+
+	set(nil, nil)
+	html := screenHTML(t, doc)
+	if !strings.Contains(html, "Button") || strings.Contains(html, "Hover button") || !hasIcon(html) {
+		t.Fatalf("defaults: the base variant with its default label and the icon:\n%s", html)
+	}
+	set(map[string]string{"Label": "Save", "ShowIcon": "false"}, map[string]string{"State": "hover"})
+	html = screenHTML(t, doc)
+	if !strings.Contains(html, ">Save<") || hasIcon(html) {
+		t.Fatalf("hover + properties: the label must be \"Save\" and the icon left out:\n%s", html)
+	}
+	if strings.Contains(html, "Default button") || strings.Contains(html, "Hover button") {
+		t.Fatalf("the property's text must replace the master's content:\n%s", html)
+	}
+}

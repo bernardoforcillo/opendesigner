@@ -289,6 +289,41 @@ message VectorNode { repeated SubPath subpaths = 1; }
 message Component {
   string root_node_id = 1; // root of the master, inside Document.nodes
   string name = 2;
+  // VARIANTS: the component set this component is a variant of ("" = standalone) and its
+  // value on every axis of the set (axis name -> option). See ComponentSet.
+  string set_id = 3;
+  map<string, string> variant = 4;
+  // PROPERTIES an instance can set (see ComponentProperty).
+  repeated ComponentProperty properties = 5;
+}
+
+enum ComponentPropertyType {
+  COMPONENT_PROPERTY_TYPE_UNSPECIFIED = 0;
+  COMPONENT_PROPERTY_TYPE_BOOLEAN = 1;  // shows/hides the target nodes
+  COMPONENT_PROPERTY_TYPE_TEXT = 2;     // sets the content of the target text nodes
+}
+
+// A property of a component: a named knob that an instance turns without editing the
+// master's nodes. It controls nodes INSIDE the master's subtree. Instances store
+// their values by property NAME (InstanceNode.property_values), so the same
+// property can exist on every variant of a set and survive a variant switch.
+message ComponentProperty {
+  string name = 1;                      // unique within the component
+  ComponentPropertyType type = 2;
+  string default_value = 3;             // BOOLEAN: "true" | "false"; TEXT: the text
+  repeated string target_node_ids = 4;  // master nodes it controls (text nodes for TEXT)
+}
+
+// A COMPONENT SET groups the variants of a component. Each AXIS is a named choice
+// (e.g. "State": default | hover | disabled); every member component assigns one
+// option per axis, and no two members assign the same combination. An instance picks
+// a variant by setting options (InstanceNode.variant_props); the axes it does not set
+// keep the values of the component it was created from.
+message VariantAxis { string name = 1; repeated string options = 2; }
+message ComponentSet {
+  string id = 1;
+  string name = 2;
+  repeated VariantAxis axes = 3;
 }
 
 // A per-instance override on ONE node of the master. Minimal (design M4): fill
@@ -310,6 +345,10 @@ message InstanceOverride {
 message InstanceNode {
   string component_id = 1;
   repeated InstanceOverride overrides = 2;
+  // Values of the component's properties, by property name; absent = the default.
+  map<string, string> property_values = 3;
+  // Variant choice, axis name -> option; absent axes keep the base component's value.
+  map<string, string> variant_props = 4;
 }
 
 message Node {
@@ -497,6 +536,8 @@ message Document {
   // Typography: fontId -> uploaded font file, textStyleId -> shared text style.
   map<string, FontFace> fonts = 12;
   map<string, TextStyleDef> text_styles = 13;
+  // Variants: setId -> component set.
+  map<string, ComponentSet> component_sets = 14;
 }
 
 // ---------- ops ----------
@@ -642,6 +683,10 @@ message Op {
     DeleteFont          delete_font           = 32;
     SetTextStyleDef     set_text_style_def    = 33; // typography — upsert of a text style
     DeleteTextStyleDef  delete_text_style_def = 34;
+    SetComponentSet     set_component_set     = 35; // variants — upsert of a component set
+    DeleteComponentSet  delete_component_set  = 36;
+    SetComponentDef     set_component_def     = 37; // variants/properties — a component's set membership and properties
+    SetInstanceProps    set_instance_props    = 38; // an instance's property values and variant choice
   }
 }
 message SetCollection    { VariableCollection collection = 1; }
@@ -652,6 +697,22 @@ message SetFont            { FontFace font = 1; }
 message DeleteFont         { string id = 1; }
 message SetTextStyleDef    { TextStyleDef text_style = 1; }
 message DeleteTextStyleDef { string id = 1; }
+message SetComponentSet    { ComponentSet component_set = 1; }
+message DeleteComponentSet { string id = 1; }
+// Replaces a component's set membership, variant assignment and properties WHOLESALE
+// (name and root are not touched).
+message SetComponentDef {
+  string component_id = 1;
+  string set_id = 2;
+  map<string, string> variant = 3;
+  repeated ComponentProperty properties = 4;
+}
+// Replaces an instance's property values and variant choice WHOLESALE.
+message SetInstanceProps {
+  string instance_id = 1;
+  map<string, string> property_values = 2;
+  map<string, string> variant_props = 3;
+}
 message OpRecord {
   uint64 seq = 1;
   google.protobuf.Timestamp ts = 2;
