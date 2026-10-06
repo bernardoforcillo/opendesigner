@@ -6,9 +6,9 @@ import (
 	"unicode"
 )
 
-// foldAccents riporta a ASCII le lettere accentate più comuni (italiano e
-// dintorni): i nomi dei file e dei componenti nascono dai nomi dei frame, che
-// in un documento italiano sono pieni di "Città", "Perché", "Più".
+// foldAccents maps the most common accented letters to ASCII: file and
+// component names come from frame names, which in a document are often full of
+// "Café", "Über" or "Señor".
 var foldAccents = strings.NewReplacer(
 	"à", "a", "á", "a", "â", "a", "ä", "a", "ã", "a", "å", "a",
 	"è", "e", "é", "e", "ê", "e", "ë", "e",
@@ -24,7 +24,7 @@ var foldAccents = strings.NewReplacer(
 	"Ç", "C", "Ñ", "N",
 )
 
-// words spezza un nome in parole ASCII alfanumeriche.
+// words splits a name into alphanumeric ASCII words.
 func words(name string) []string {
 	name = foldAccents.Replace(name)
 	return strings.FieldsFunc(name, func(r rune) bool {
@@ -32,9 +32,9 @@ func words(name string) []string {
 	})
 }
 
-// pascal: "Login screen" -> "LoginScreen". Un nome che non comincia con una
-// lettera (o vuoto) riceve il prefisso "Screen", perché un identificatore non
-// può cominciare con una cifra.
+// pascal: "Login screen" -> "LoginScreen". A name that does not start with a
+// letter (or is empty) gets the "Screen" prefix, because an identifier cannot
+// start with a digit.
 func pascal(name string) string {
 	var b strings.Builder
 	for _, w := range words(name) {
@@ -50,7 +50,7 @@ func pascal(name string) string {
 	return s
 }
 
-// slug: "Login screen" -> "login-screen"; vuoto -> "screen".
+// slug: "Login screen" -> "login-screen"; empty -> "screen".
 func slug(name string) string {
 	ws := words(name)
 	for i, w := range ws {
@@ -63,8 +63,8 @@ func slug(name string) string {
 	return s
 }
 
-// classSlug: come slug ma per le classi CSS, dove un identificatore non può
-// cominciare con una cifra.
+// classSlug: like slug but for CSS classes, where an identifier cannot start
+// with a digit.
 func classSlug(name string) string {
 	s := slug(name)
 	if s[0] >= '0' && s[0] <= '9' {
@@ -73,8 +73,8 @@ func classSlug(name string) string {
 	return s
 }
 
-// dedupe: aggiunge un suffisso numerico finché il nome non è libero.
-// `sep` separa il suffisso ("-" per gli slug, "" per i nomi PascalCase).
+// dedupe: appends a numeric suffix until the name is free.
+// `sep` separates the suffix ("-" for slugs, "" for PascalCase names).
 func dedupe(used map[string]bool, base, sep string) string {
 	name := base
 	for i := 2; used[name]; i++ {

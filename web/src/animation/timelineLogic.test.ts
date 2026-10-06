@@ -24,15 +24,15 @@ const times = (c: ClipLite, ti: number) => c.tracks[ti].keyframes.map((k) => k.t
 const ref = (track: number, key: number): KeyRef => ({ track, key });
 
 describe("snapTime", () => {
-  // [t, others, opts, atteso]
+  // [t, others, opts, expected]
   const table: [number, number[], { free?: boolean; thresholdMs?: number }, number][] = [
     [123, [], {}, 120],
     [126, [], {}, 130],
-    [123, [128], {}, 128], // un altro keyframe entro la soglia vince sulla griglia
-    [123, [140], {}, 120], // fuori soglia: griglia
-    [123, [128, 126], {}, 126], // il più vicino fra più bersagli
+    [123, [128], {}, 128], // another keyframe within the threshold wins over the grid
+    [123, [140], {}, 120], // outside the threshold: grid
+    [123, [128, 126], {}, 126], // the closest among several targets
     [123, [], { free: true }, 123],
-    [123.4, [128], { free: true }, 123], // libero: niente aggancio, arrotondato al ms
+    [123.4, [128], { free: true }, 123], // free: no snap, rounded to the ms
     [-50, [], {}, 0],
     [5000, [], {}, 1000],
     [123, [140], { thresholdMs: 30 }, 140],
@@ -42,54 +42,54 @@ describe("snapTime", () => {
   });
 });
 
-describe("moveKeyframes (trascinamento)", () => {
-  it("sposta un keyframe; il risultato è una clip valida", () => {
+describe("moveKeyframes (drag)", () => {
+  it("moves a keyframe; the result is a valid clip", () => {
     const r = moveKeyframes(clip(), [ref(0, 1)], 300); // 400 -> 700
     expect(times(r.clip, 0)).toEqual([0, 700, 1000]);
     expect(r.clip.tracks[0].keyframes[1].value).toBe(0.5);
     expect(valid(r.clip)).toBe(true);
   });
 
-  it("oltre la fine il delta si limita e il keyframe in fondo viene sostituito", () => {
-    const r = moveKeyframes(clip(), [ref(0, 1)], 700); // 400 -> 1100: limite 600, atterra su 1000
+  it("past the end the delta is limited and the keyframe at the end is replaced", () => {
+    const r = moveKeyframes(clip(), [ref(0, 1)], 700); // 400 -> 1100: limit 600, lands on 1000
     expect(times(r.clip, 0)).toEqual([0, 1000]);
     expect(r.clip.tracks[0].keyframes[1].value).toBe(0.5);
   });
 
-  it("non esce da [0, durata]: il delta si limita", () => {
+  it("does not leave [0, duration]: the delta is limited", () => {
     const r = moveKeyframes(clip(), [ref(1, 0), ref(1, 1)], 900);
-    expect(times(r.clip, 1)).toEqual([600, 1000]); // il gruppo si ferma quando l'ultimo tocca la fine
+    expect(times(r.clip, 1)).toEqual([600, 1000]); // the group stops when the last one touches the end
     const l = moveKeyframes(clip(), [ref(1, 0), ref(1, 1)], -900);
     expect(times(l.clip, 1)).toEqual([0, 400]);
   });
 
-  it("un gruppo si muove dello stesso passo (le distanze restano)", () => {
+  it("a group moves by the same step (the distances remain)", () => {
     const r = moveKeyframes(clip(), [ref(0, 0), ref(1, 0)], 100);
     expect(times(r.clip, 0)).toEqual([100, 400, 1000]);
     expect(times(r.clip, 1)).toEqual([300, 600]);
     expect(r.sel).toEqual([ref(0, 0), ref(1, 0)]);
   });
 
-  it("scavalcare un altro keyframe riordina e aggiorna la selezione", () => {
+  it("jumping over another keyframe reorders and updates the selection", () => {
     const r = moveKeyframes(clip(), [ref(0, 0)], 500); // 0 -> 500, supera 400
     expect(times(r.clip, 0)).toEqual([400, 500, 1000]);
     expect(r.sel).toEqual([ref(0, 1)]);
   });
 
-  it("atterrare su un keyframe NON selezionato lo sostituisce", () => {
+  it("landing on a NON-selected keyframe replaces it", () => {
     const r = moveKeyframes(clip(), [ref(0, 0)], 400);
     expect(times(r.clip, 0)).toEqual([400, 1000]);
-    expect(r.clip.tracks[0].keyframes[0].value).toBe(0); // il valore è quello del keyframe spostato
+    expect(r.clip.tracks[0].keyframes[0].value).toBe(0); // the value is that of the moved keyframe
     expect(r.sel).toEqual([ref(0, 0)]);
   });
 
-  it("delta 0 o selezione vuota: la stessa clip", () => {
+  it("delta 0 or empty selection: the same clip", () => {
     const c = clip();
     expect(moveKeyframes(c, [ref(0, 0)], 0).clip).toBe(c);
     expect(moveKeyframes(c, [], 50).clip).toBe(c);
   });
 
-  it("non muta la clip di partenza", () => {
+  it("does not mutate the starting clip", () => {
     const c = clip();
     const before = JSON.stringify(c);
     moveKeyframes(c, [ref(0, 1)], 100);
@@ -97,62 +97,62 @@ describe("moveKeyframes (trascinamento)", () => {
   });
 });
 
-describe("dragDelta: aggancio durante il trascinamento", () => {
-  it("alla griglia", () => {
+describe("dragDelta: snap during the drag", () => {
+  it("to the grid", () => {
     expect(dragDelta(clip(), [ref(0, 1)], ref(0, 1), 33)).toBe(30); // 400 + 33 = 433 -> 430
   });
-  it("agli altri keyframe (non a quelli del gruppo che si muove)", () => {
-    // il keyframe a 400 della traccia 0 verso 600 (il keyframe 1 della traccia x): aggancia a 600 anche a 596
+  it("to the other keyframes (not to those of the moving group)", () => {
+    // the keyframe at 400 of track 0 towards 600 (keyframe 1 of the x track): snaps to 600 even at 596
     expect(dragDelta(clip(), [ref(0, 1)], ref(0, 1), 196)).toBe(200);
   });
-  it("Maiusc = libero", () => {
+  it("Shift = free", () => {
     expect(dragDelta(clip(), [ref(0, 1)], ref(0, 1), 33, { free: true })).toBe(33);
   });
-  it("ai bersagli extra (il playhead)", () => {
+  it("to the extra targets (the playhead)", () => {
     expect(dragDelta(clip(), [ref(0, 1)], ref(0, 1), 96, { extra: [500] })).toBe(100);
   });
-  it("un riferimento inesistente non muove niente", () => {
+  it("a nonexistent reference moves nothing", () => {
     expect(dragDelta(clip(), [ref(9, 9)], ref(9, 9), 50)).toBe(0);
   });
 });
 
-describe("aggiungere / cancellare / duplicare keyframe", () => {
-  it("addKeyframe inserisce in ordine con il valore dato", () => {
+describe("add / delete / duplicate keyframes", () => {
+  it("addKeyframe inserts in order with the given value", () => {
     const r = addKeyframe(clip(), 1, 400, 30);
     expect(times(r.clip, 1)).toEqual([200, 400, 600]);
     expect(r.ref).toEqual(ref(1, 1));
     expect(r.clip.tracks[1].keyframes[1].value).toBe(30);
     expect(valid(r.clip)).toBe(true);
   });
-  it("a un tempo già occupato cambia il valore invece di raddoppiare", () => {
+  it("at an already occupied time it changes the value instead of doubling", () => {
     const r = addKeyframe(clip(), 1, 200, 99);
     expect(r.clip.tracks[1].keyframes).toHaveLength(2);
     expect(r.clip.tracks[1].keyframes[0].value).toBe(99);
   });
-  it("tiene opacity e draw in 0..1 e il tempo dentro la durata", () => {
+  it("keeps opacity and draw in 0..1 and the time within the duration", () => {
     const r = addKeyframe(clip(), 0, 5000, 7);
     const last = r.clip.tracks[0].keyframes.at(-1)!;
     expect(last.time).toBe(1000);
     expect(last.value).toBe(1);
   });
-  it("deleteKeyframes toglie i selezionati e la traccia che resta vuota", () => {
+  it("deleteKeyframes removes the selected ones and the track that is left empty", () => {
     const c = deleteKeyframes(clip(), [ref(1, 0), ref(1, 1), ref(0, 1)]);
     expect(c.tracks).toHaveLength(1);
     expect(times(c, 0)).toEqual([0, 1000]);
     expect(valid(c)).toBe(true);
   });
-  it("duplicateKeyframes: la copia del primo cade al tempo dato, gli altri tengono le distanze", () => {
+  it("duplicateKeyframes: the copy of the first lands at the given time, the others keep the distances", () => {
     const r = duplicateKeyframes(clip(), [ref(1, 0), ref(1, 1)], 500);
-    // 200 -> 500, 600 -> 900; i vecchi 200 e 600 restano
+    // 200 -> 500, 600 -> 900; the old 200 and 600 remain
     expect(times(r.clip, 1)).toEqual([200, 500, 600, 900]);
     expect(r.sel.map((s) => r.clip.tracks[s.track].keyframes[s.key].time)).toEqual([500, 900]);
     expect(valid(r.clip)).toBe(true);
   });
-  it("la copia si porta dentro la durata", () => {
-    const r = duplicateKeyframes(clip(), [ref(1, 0), ref(1, 1)], 900); // la coppia è larga 400: finirebbe a 1300
+  it("the copy is brought inside the duration", () => {
+    const r = duplicateKeyframes(clip(), [ref(1, 0), ref(1, 1)], 900); // the pair is 400 wide: it would end at 1300
     expect(Math.max(...times(r.clip, 1))).toBe(1000);
   });
-  it("una copia che cade su un keyframe lo sostituisce", () => {
+  it("a copy that lands on a keyframe replaces it", () => {
     const r = duplicateKeyframes(clip(), [ref(1, 0)], 600);
     expect(times(r.clip, 1)).toEqual([200, 600]);
     expect(r.clip.tracks[1].keyframes[1].value).toBe(10);
@@ -160,13 +160,13 @@ describe("aggiungere / cancellare / duplicare keyframe", () => {
 });
 
 describe("updateKeyframe", () => {
-  it("cambia valore ed easing senza spostarlo", () => {
+  it("changes value and easing without moving it", () => {
     const r = updateKeyframe(clip(), ref(0, 1), { value: 0.9, easing: "cubic-bezier(0.1,0.2,0.3,0.4)" });
     expect(r.clip.tracks[0].keyframes[1]).toEqual({ time: 400, value: 0.9, easing: "cubic-bezier(0.1,0.2,0.3,0.4)" });
     expect(r.ref).toEqual(ref(0, 1));
     expect(valid(r.clip)).toBe(true);
   });
-  it("cambiare il tempo riordina e rifiuta valori fuori limite", () => {
+  it("changing the time reorders and rejects out-of-range values", () => {
     const r = updateKeyframe(clip(), ref(0, 0), { time: 700, value: 4 });
     expect(times(r.clip, 0)).toEqual([400, 700, 1000]);
     expect(r.clip.tracks[0].keyframes[1].value).toBe(1);
@@ -174,15 +174,15 @@ describe("updateKeyframe", () => {
   });
 });
 
-describe("tracce e durata", () => {
-  it("addTrack non duplica la coppia (nodo, proprietà)", () => {
+describe("tracks and duration", () => {
+  it("addTrack does not duplicate the (node, property) pair", () => {
     const c = clip();
     expect(addTrack(c, "btn", "x", 0)).toBe(c);
     const n = addTrack(c, "btn", "y", 5, 300);
     expect(n.tracks).toHaveLength(3);
     expect(n.tracks[2].keyframes).toEqual([{ time: 300, value: 5, easing: "easeInOut" }]);
   });
-  it("addPropertyTrack: due keyframe col valore di base (draw va da 0 a 1)", () => {
+  it("addPropertyTrack: two keyframes with the base value (draw goes from 0 to 1)", () => {
     const base = { id: "btn", x: 60, y: 200, rotation: 0, opacity: 0.8 };
     const o = addPropertyTrack(clip({ tracks: [] }), base, "opacity");
     expect(o.tracks[0].keyframes.map((k) => [k.time, k.value])).toEqual([[0, 0.8], [1000, 0.8]]);
@@ -195,7 +195,7 @@ describe("tracce e durata", () => {
   it("removeTrack", () => {
     expect(removeTrack(clip(), 0).tracks.map((t) => t.prop)).toEqual(["x"]);
   });
-  it("withDuration riporta alla fine i keyframe che la superano e resta valida", () => {
+  it("withDuration brings to the end the keyframes that exceed it and stays valid", () => {
     const c = withDuration(clip(), 500);
     expect(c.duration).toBe(500);
     expect(times(c, 0)).toEqual([0, 400, 500]);
@@ -203,46 +203,46 @@ describe("tracce e durata", () => {
     const d = withDuration(clip({ tracks: [{ nodeId: "btn", prop: "x", keyframes: [{ time: 800, value: 1, easing: "" }, { time: 900, value: 2, easing: "" }] }] }), 500);
     expect(d.tracks[0].keyframes).toEqual([{ time: 500, value: 2, easing: "" }]);
   });
-  it("valueAt campiona la traccia (con l'easing)", () => {
+  it("valueAt samples the track (with the easing)", () => {
     expect(valueAt(clip(), 1, 400)).toBeCloseTo(30);
     expect(valueAt(clip(), 5, 0)).toBeUndefined();
   });
-  it("propsFor: draw solo per i nodi con un tracciato", () => {
+  it("propsFor: draw only for nodes with a path", () => {
     expect(propsFor({ kind: "text" })).not.toContain("draw");
     expect(propsFor({ kind: "vector" })).toContain("draw");
     expect(propsFor({ kind: "group" })).toEqual(["opacity", "x", "y", "scale", "rotation"]);
   });
 });
 
-describe("recordChanges (mappa le modifiche in keyframe al playhead)", () => {
+describe("recordChanges (maps the changes into keyframes at the playhead)", () => {
   const before = (_id: string, prop: string) => ({ x: 60, y: 200, opacity: 1, rotation: 0 })[prop as "x"];
 
-  it("traccia nuova a t > 0: keyframe a 0 col valore di prima + keyframe a t col nuovo", () => {
+  it("new track at t > 0: keyframe at 0 with the previous value + keyframe at t with the new one", () => {
     const r = recordChanges(clip({ tracks: [] }), [{ nodeId: "btn", prop: "x", value: 300 }], 600, before);
     expect(r.tracks).toHaveLength(1);
     expect(r.tracks[0].keyframes.map((k) => [k.time, k.value])).toEqual([[0, 60], [600, 300]]);
     expect(valid(r)).toBe(true);
   });
-  it("traccia nuova a t = 0: un solo keyframe", () => {
+  it("new track at t = 0: a single keyframe", () => {
     const r = recordChanges(clip({ tracks: [] }), [{ nodeId: "btn", prop: "x", value: 300 }], 0, before);
     expect(r.tracks[0].keyframes.map((k) => [k.time, k.value])).toEqual([[0, 300]]);
   });
-  it("traccia esistente: inserisce il keyframe, o cambia quello che c'è già a quel tempo", () => {
+  it("existing track: inserts the keyframe, or changes the one already there at that time", () => {
     const a = recordChanges(clip(), [{ nodeId: "btn", prop: "x", value: 99 }], 400, before);
     expect(a.tracks[1].keyframes.map((k) => [k.time, k.value])).toEqual([[200, 10], [400, 99], [600, 50]]);
     const b = recordChanges(clip(), [{ nodeId: "btn", prop: "x", value: 99 }], 600, before);
     expect(b.tracks[1].keyframes.map((k) => [k.time, k.value])).toEqual([[200, 10], [600, 99]]);
   });
-  it("più proprietà in un colpo sono tracce separate; il tempo si arrotonda e si limita", () => {
+  it("several properties at once are separate tracks; the time is rounded and limited", () => {
     const r = recordChanges(clip({ tracks: [] }), [
       { nodeId: "btn", prop: "x", value: 1 }, { nodeId: "btn", prop: "y", value: 2 }, { nodeId: "btn", prop: "opacity", value: 3 },
     ], 333.6, before);
     expect(r.tracks.map((t) => t.prop)).toEqual(["x", "y", "opacity"]);
     expect(r.tracks.every((t) => t.keyframes[1].time === 334)).toBe(true);
-    expect(r.tracks[2].keyframes[1].value).toBe(1); // opacity limitata
+    expect(r.tracks[2].keyframes[1].value).toBe(1); // opacity clamped
     expect(valid(r)).toBe(true);
   });
-  it("valore di prima sconosciuto: un solo keyframe a t", () => {
+  it("unknown previous value: a single keyframe at t", () => {
     const r = recordChanges(clip({ tracks: [] }), [{ nodeId: "btn", prop: "x", value: 5 }], 500, () => undefined);
     expect(r.tracks[0].keyframes.map((k) => [k.time, k.value])).toEqual([[500, 5]]);
   });
@@ -250,7 +250,7 @@ describe("recordChanges (mappa le modifiche in keyframe al playhead)", () => {
 
 describe("unwrapDegrees", () => {
   const table: [number, number, number][] = [
-    [10, 350, 370], // dopo 350° si arriva a 10° avanzando: 370
+    [10, 350, 370], // after 350° you reach 10° moving forward: 370
     [350, 10, -10],
     [90, 80, 90],
     [0, 720, 720],
@@ -260,13 +260,13 @@ describe("unwrapDegrees", () => {
 });
 
 describe("righello", () => {
-  it("il passo cresce quando si rimpicciolisce", () => {
+  it("the step grows when zooming out", () => {
     expect(rulerStep(1)).toBe(100); // 1 px/ms: 100 ms = 100 px >= 64
     expect(rulerStep(0.1)).toBe(1000);
     expect(rulerStep(10)).toBe(10);
     expect(rulerStep(0.0001)).toBe(300_000);
   });
-  it("le tacche coprono l'intervallo e i principali cadono sui multipli del passo", () => {
+  it("the ticks cover the interval and the major ones fall on multiples of the step", () => {
     const ticks = rulerTicks(0.5, 0, 1000); // passo 200
     expect(ticks[0]).toEqual({ t: 0, major: true });
     expect(ticks.filter((t) => t.major).map((t) => t.t)).toEqual([0, 200, 400, 600, 800, 1000]);
@@ -274,14 +274,14 @@ describe("righello", () => {
   });
   it("formati", () => {
     expect(formatTime(250)).toBe("250 ms");
-    expect(formatTime(1200)).toBe("1,2 s");
+    expect(formatTime(1200)).toBe("1.2 s");
     expect(formatTime(65_000)).toBe("1:05");
     expect(formatClock(1250)).toBe("0:01.250");
     expect(formatClock(-5)).toBe("0:00.000");
   });
 });
 
-describe("bersaglio e selezione", () => {
+describe("target and selection", () => {
   const scene = () => {
     const s = baseScene();
     return {
@@ -292,12 +292,12 @@ describe("bersaglio e selezione", () => {
       }),
     };
   };
-  it("defaultTargetId: il contenitore più vicino (il nodo stesso se lo è)", () => {
+  it("defaultTargetId: the closest container (the node itself if it is one)", () => {
     const s = scene();
     expect(defaultTargetId(s, ["btn"])).toBe("A");
     expect(defaultTargetId(s, ["inner"])).toBe("grp");
     expect(defaultTargetId(s, ["A"])).toBe("A");
-    expect(defaultTargetId(s, ["loose"])).toBe("loose"); // senza contenitori: il nodo stesso
+    expect(defaultTargetId(s, ["loose"])).toBe("loose"); // without containers: the node itself
     expect(defaultTargetId(s, [])).toBe("");
   });
   it("isInside", () => {
@@ -306,7 +306,7 @@ describe("bersaglio e selezione", () => {
     expect(isInside(s, "A", "A")).toBe(true);
     expect(isInside(s, "btn", "B")).toBe(false);
   });
-  it("clipsForSelection: per bersaglio o per traccia; selezione vuota = tutte", () => {
+  it("clipsForSelection: by target or by track; empty selection = all", () => {
     const s = scene();
     const ca = clip({ id: "ca", name: "a", targetId: "A", tracks: [] });
     const cb = clip({ id: "cb", name: "b", targetId: "B", tracks: [] });
@@ -319,5 +319,5 @@ describe("bersaglio e selezione", () => {
 });
 
 describe("costanti", () => {
-  it("la griglia è 10 ms", () => expect(SNAP_MS).toBe(10));
+  it("the grid is 10 ms", () => expect(SNAP_MS).toBe(10));
 });

@@ -14,7 +14,7 @@ describe("parseColor", () => {
     expect(parseColor("#12345")).toBeNull();
   });
 
-  it("rgb()/rgba() con virgole, spazi, percentuali e alfa", () => {
+  it("rgb()/rgba() with commas, spaces, percentages and alpha", () => {
     expect(c255(parseColor("rgb(10, 20, 30)"))).toEqual([10, 20, 30, 1]);
     expect(c255(parseColor("rgba(10,20,30,.5)"))).toEqual([10, 20, 30, 0.5]);
     expect(c255(parseColor("rgb(10 20 30 / 50%)"))).toEqual([10, 20, 30, 0.5]);
@@ -32,7 +32,7 @@ describe("parseColor", () => {
     expect(c255(parseColor("hsl(0, 0%, 50%)"))).toEqual([128, 128, 128, 1]);
   });
 
-  it("nomi CSS (qualunque maiuscola) e transparent", () => {
+  it("CSS names (any case) and transparent", () => {
     expect(c255(parseColor("red"))).toEqual([255, 0, 0, 1]);
     expect(c255(parseColor("  CornflowerBlue "))).toEqual([100, 149, 237, 1]);
     expect(c255(parseColor("rebeccapurple"))).toEqual([102, 51, 153, 1]);

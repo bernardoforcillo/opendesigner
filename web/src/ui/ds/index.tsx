@@ -4,29 +4,29 @@ import { Icon, type IconName } from "./Icon";
 
 export { Icon, type IconName } from "./Icon";
 
-// PRIMITIVE DEL SISTEMA DI DESIGN.
+// DESIGN SYSTEM PRIMITIVES.
 //
-// Poche, piccole e componibili. Le classi stanno in `cls` perché i pannelli
-// hanno già i loro componenti react-aria (campi, select nativi, righe): chi li
-// riveste riusa le STESSE classi invece di ridefinire un grigio. Se un valore
-// qui sotto cambia, cambia ovunque.
+// Few, small and composable. The classes live in `cls` because the panels
+// already have their own react-aria components (fields, native selects, rows): whoever
+// restyles them reuses the SAME classes instead of redefining a gray. If a value
+// below changes, it changes everywhere.
 
 const FOCUS = "outline-none focus-visible:shadow-[var(--ring)]";
 
 export const cls = {
-  // Campo di testo / numerico: incassato, altezza 28, bordo che si accende al focus.
+  // Text / numeric field: inset, height 28, border that lights up on focus.
   input:
     "h-7 w-full min-w-0 rounded-md border border-transparent bg-surface-2 px-2 text-[13px] text-fg " +
     "placeholder:text-fg-subtle hover:border-line-strong focus:border-accent focus:bg-surface " +
     "focus:outline-none disabled:opacity-50 tabular-nums",
-  // <select> nativo ma vestito (appearance-none + freccia dal chevron di sfondo).
+  // Native <select> but dressed up (appearance-none + arrow from the background chevron).
   select:
     "h-7 w-full min-w-0 appearance-none rounded-md border border-transparent bg-surface-2 pl-2 pr-6 text-[13px] text-fg " +
     "hover:border-line-strong focus:border-accent focus:outline-none " +
     "bg-[length:12px] bg-[right_6px_center] bg-no-repeat " +
     "bg-[url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%237b8291' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M4.2 6.2L8 10l3.8-3.8'/></svg>\")]",
   label: "text-[11px] font-medium text-fg-subtle",
-  // Intestazione di sezione (maiuscoletto discreto), la stessa in ogni pannello.
+  // Section heading (discreet small caps), the same in every panel.
   sectionTitle: "text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle",
   row: "flex items-center gap-2 px-3",
   panel: "bg-surface text-fg",
@@ -58,8 +58,8 @@ export function Button({
   );
 }
 
-// Pulsante a sola icona. `label` è il nome accessibile E il testo del tooltip;
-// `shortcut` (opzionale) compare accanto nel tooltip.
+// Icon-only button. `label` is the accessible name AND the tooltip text;
+// `shortcut` (optional) appears next to it in the tooltip.
 export function IconButton({
   icon, label, shortcut, selected, tone = "default", size = 28, className = "", ...props
 }: Omit<ButtonProps, "children" | "aria-label"> & {
@@ -117,8 +117,8 @@ export function Badge({
   return <span className={`inline-flex h-[18px] items-center rounded-full px-2 text-[11px] font-medium ${t} ${className}`}>{children}</span>;
 }
 
-// Quali sezioni sono chiuse sopravvive al ricarico (per titolo). Senza
-// localStorage tutte le sezioni restano aperte.
+// Which sections are closed survives a reload (by title). Without
+// localStorage all sections stay open.
 const SEC_KEY = "od.sections";
 function readClosed(): Record<string, true> {
   try { return JSON.parse(localStorage.getItem(SEC_KEY) ?? "{}") as Record<string, true>; } catch { return {}; }
@@ -131,15 +131,15 @@ function useSectionOpen(title: string): [boolean, (v: boolean) => void] {
       const c = readClosed();
       if (v) delete c[title]; else c[title] = true;
       localStorage.setItem(SEC_KEY, JSON.stringify(c));
-    } catch { /* niente storage */ }
+    } catch { /* no storage */ }
   }];
 }
 
-// Contenitore di sezione di un pannello: titolo a sinistra, azioni a destra,
-// separatore sopra. `count` mostra un numerino tenue accanto al titolo. Il
-// titolo è un pulsante che RICHIUDE la sezione (chevron, aria-expanded): in un
-// pannello stretto lo spazio è la risorsa più scarsa, e chi non usa "Effetti"
-// non deve pagarne l'altezza.
+// Section container of a panel: title on the left, actions on the right,
+// separator above. `count` shows a faint little number next to the title. The
+// title is a button that COLLAPSES the section (chevron, aria-expanded): in a
+// narrow panel space is the scarcest resource, and whoever does not use "Effects"
+// should not pay for its height.
 export function Section({
   title, count, actions, children, className = "", bare,
 }: { title: string; count?: number; actions?: ReactNode; children?: ReactNode; className?: string; bare?: boolean }) {
@@ -164,7 +164,7 @@ export function Section({
   );
 }
 
-// Stato vuoto: un'icona tenue, una riga di spiegazione e (opzionale) un'azione.
+// Empty state: a faint icon, a line of explanation and (optional) an action.
 export function EmptyState({
   icon, title, hint, action,
 }: { icon: IconName; title: string; hint?: string; action?: ReactNode }) {
@@ -180,7 +180,7 @@ export function EmptyState({
   );
 }
 
-// Avviso in cima all'app (connessione, errore, notizia).
+// Banner at the top of the app (connection, error, news).
 export function Banner({
   tone, children, onClose,
 }: { tone: "warn" | "danger" | "info"; children: ReactNode; onClose?: () => void }) {
@@ -194,7 +194,7 @@ export function Banner({
       <Icon name={tone === "info" ? "info" : "warning"} size={14} />
       <span className="flex-1">{children}</span>
       {onClose && (
-        <RacButton aria-label="Chiudi l'avviso" onPress={onClose} className={`rounded p-1 hover:bg-black/5 ${FOCUS}`}>
+        <RacButton aria-label="Dismiss the notice" onPress={onClose} className={`rounded p-1 hover:bg-black/5 ${FOCUS}`}>
           <Icon name="x" size={12} />
         </RacButton>
       )}

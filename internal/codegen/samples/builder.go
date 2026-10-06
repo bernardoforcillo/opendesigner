@@ -1,11 +1,11 @@
-// Package samples costruisce documenti di esempio per i test dell'export di
-// codice e per lo script di parità dei pixel (web/scripts/export-parity.mjs):
-// una galleria che copre ogni cosa che il generatore sa dire in CSS e un flusso
-// di tre schermate con test e2e.
+// Package samples builds example documents for the code export tests and for
+// the pixel-parity script (web/scripts/export-parity.mjs): a gallery that
+// covers everything the generator can express in CSS, and a three-screen flow
+// with e2e tests.
 //
-// I documenti si costruiscono con core.Apply (CreateNode, SetFlow...), non
-// scrivendo le strutture a mano: così l'auto layout è già disposto dal core e il
-// documento è valido per costruzione, come quello che arriva dal server.
+// Documents are built with core.Apply (CreateNode, SetFlow...), not by writing
+// the structs by hand: this way auto layout is already laid out by the core and
+// the document is valid by construction, like one coming from the server.
 package samples
 
 import (
@@ -15,13 +15,13 @@ import (
 	"github.com/bernardoforcillo/opendesigner/internal/core"
 )
 
-// B è un costruttore di documenti.
+// B is a document builder.
 type B struct {
 	Doc *opendesignerv1.Document
 	seq int
 }
 
-// New: documento vuoto con la pagina "page1".
+// New: an empty document with the page "page1".
 func New(id, name string) *B { return &B{Doc: core.NewDocument(id, name)} }
 
 func (b *B) must(op *opendesignerv1.Op) {
@@ -30,10 +30,10 @@ func (b *B) must(op *opendesignerv1.Op) {
 	}
 }
 
-// Opt modifica un nodo prima della creazione.
+// Opt modifies a node before creation.
 type Opt func(*opendesignerv1.Node)
 
-// Add crea un nodo (visibile, opacità 1, order_key crescente) e lo ritorna.
+// Add creates a node (visible, opacity 1, increasing order_key) and returns it.
 func (b *B) Add(id, parent, name string, x, y, w, h float64, opts ...Opt) *opendesignerv1.Node {
 	b.seq++
 	n := &opendesignerv1.Node{
@@ -48,7 +48,7 @@ func (b *B) Add(id, parent, name string, x, y, w, h float64, opts ...Opt) *opend
 	return b.Doc.Nodes[id]
 }
 
-// Flow e Transition: upsert tramite gli op.
+// Flow and Transition: upsert through the ops.
 func (b *B) Flow(id, name, start string) {
 	b.must(&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetFlow{SetFlow: &opendesignerv1.SetFlow{Flow: &opendesignerv1.Flow{Id: id, Name: name, StartId: start}}}})
 }
@@ -62,10 +62,10 @@ func (b *B) Component(id, root, name string) {
 }
 
 // ---------------------------------------------------------------------------
-// colori e tinte
+// colours and paints
 // ---------------------------------------------------------------------------
 
-// C: colore opaco; CA: con alfa.
+// C: opaque colour; CA: with alpha.
 func C(r, g, b float32) *opendesignerv1.Color { return &opendesignerv1.Color{R: r, G: g, B: b, A: 1} }
 func CA(r, g, b, a float32) *opendesignerv1.Color {
 	return &opendesignerv1.Color{R: r, G: g, B: b, A: a}
@@ -75,13 +75,13 @@ func Solid(c *opendesignerv1.Color) *opendesignerv1.Paint {
 	return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Solid{Solid: &opendesignerv1.SolidPaint{Color: c}}}
 }
 
-// Stop: un punto di gradiente.
+// Stop: a gradient point.
 type Stop struct {
 	At float64
 	C  *opendesignerv1.Color
 }
 
-// S: uno stop (posizione 0..1, colore).
+// S: a stop (position 0..1, colour).
 func S(at float64, c *opendesignerv1.Color) Stop { return Stop{At: at, C: c} }
 
 func grad(x1, y1, x2, y2 float64, stops []Stop) *opendesignerv1.GradientPaint {
@@ -101,7 +101,7 @@ func Radial(x1, y1, x2, y2 float64, stops ...Stop) *opendesignerv1.Paint {
 }
 
 // ---------------------------------------------------------------------------
-// opzioni
+// options
 // ---------------------------------------------------------------------------
 
 func Fill(ps ...*opendesignerv1.Paint) Opt { return func(n *opendesignerv1.Node) { n.Fills = ps } }
@@ -136,14 +136,14 @@ func Group() Opt {
 	}
 }
 
-// Frame: contenitore; clips = ritaglio, al = auto layout (nil = nessuno).
+// Frame: a container; clips = clipping, al = auto layout (nil = none).
 func Frame(clips bool, al *opendesignerv1.AutoLayout) Opt {
 	return func(n *opendesignerv1.Node) {
 		n.Shape = &opendesignerv1.Node_Frame{Frame: &opendesignerv1.FrameNode{ClipsContent: clips, AutoLayout: al}}
 	}
 }
 
-// Text: stile con i soli campi che servono (famiglia "", peso "", interlinea 0 = default).
+// Text: a style with only the fields that matter (family "", weight "", line height 0 = default).
 func Text(content string, size float64, weight string, align opendesignerv1.TextAlign) Opt {
 	return func(n *opendesignerv1.Node) {
 		n.Shape = &opendesignerv1.Node_Text{Text: &opendesignerv1.TextNode{
@@ -153,7 +153,7 @@ func Text(content string, size float64, weight string, align opendesignerv1.Text
 	}
 }
 
-// TextStyled: stile completo.
+// TextStyled: the full style.
 func TextStyled(content string, st *opendesignerv1.TextStyle) Opt {
 	return func(n *opendesignerv1.Node) {
 		n.Shape = &opendesignerv1.Node_Text{Text: &opendesignerv1.TextNode{Content: content, Style: st}}
@@ -166,7 +166,7 @@ func Image(hash string) Opt {
 	}
 }
 
-// Vector: contorni dati come lista di (closed, anchors...). Un ancoraggio è
+// Vector: outlines given as a list of (closed, anchors...). An anchor is
 // {x, y, inX, inY, outX, outY}.
 type Anchor = opendesignerv1.Anchor
 
@@ -180,7 +180,7 @@ func Sub(closed bool, anchors ...*opendesignerv1.Anchor) *opendesignerv1.SubPath
 	return &opendesignerv1.SubPath{Closed: closed, Anchors: anchors}
 }
 
-// Pt: ancoraggio con maniglie relative.
+// Pt: an anchor with relative handles.
 func Pt(x, y, inX, inY, outX, outY float64) *opendesignerv1.Anchor {
 	return &opendesignerv1.Anchor{X: x, Y: y, InX: inX, InY: inY, OutX: outX, OutY: outY}
 }
@@ -199,7 +199,7 @@ func OverrideText(masterID, text string) *opendesignerv1.InstanceOverride {
 	return &opendesignerv1.InstanceOverride{MasterNodeId: masterID, Text: text, TextPresent: true}
 }
 
-// StrokeOpt aggiunge un tratto (se ne possono aggiungere più d'uno).
+// StrokeOpt adds a stroke (more than one can be added).
 func StrokeOpt(weight float64, align opendesignerv1.StrokeAlign, p *opendesignerv1.Paint) Opt {
 	return func(n *opendesignerv1.Node) {
 		n.Strokes = append(n.Strokes, &opendesignerv1.Stroke{Paint: p, Weight: weight, Align: align})
@@ -216,7 +216,7 @@ const (
 	AlignRight  = opendesignerv1.TextAlign_TEXT_ALIGN_RIGHT
 )
 
-// Shadow e Blur aggiungono effetti (si possono combinare).
+// Shadow and Blur add effects (they can be combined).
 func Shadow(c *opendesignerv1.Color, dx, dy, blur float64) Opt {
 	return func(n *opendesignerv1.Node) {
 		n.Effects = append(n.Effects, &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_DropShadow{DropShadow: &opendesignerv1.DropShadow{Color: c, OffsetX: dx, OffsetY: dy, Blur: blur}}})
@@ -229,7 +229,7 @@ func Blur(radius float64) Opt {
 	}
 }
 
-// Layout: un AutoLayout in una riga.
+// Layout: an AutoLayout on one line.
 func Layout(vertical bool, spacing, pl, pt, pr, pb float64, main, cross opendesignerv1.LayoutAlign, hugW, hugH bool) *opendesignerv1.AutoLayout {
 	d := opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_HORIZONTAL
 	if vertical {
@@ -248,18 +248,18 @@ const (
 	ABetween = opendesignerv1.LayoutAlign_LAYOUT_ALIGN_SPACE_BETWEEN
 )
 
-// Clip registra una clip di animazione (SetClip passa dal core: valida anche
-// qui che i riferimenti esistano).
+// Clip registers an animation clip (SetClip goes through the core: it also
+// validates here that the references exist).
 func (b *B) Clip(c *opendesignerv1.Clip) {
 	b.must(&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetClip{SetClip: &opendesignerv1.SetClip{Clip: c}}})
 }
 
-// KF: un keyframe (tempo in ms, valore, easing).
+// KF: a keyframe (time in ms, value, easing).
 func KF(t, v float64, easing string) *opendesignerv1.Keyframe {
 	return &opendesignerv1.Keyframe{Time: t, Value: v, Easing: easing}
 }
 
-// Tr: una traccia (nodo, proprietà) con i suoi keyframe.
+// Tr: a track (node, property) with its keyframes.
 func Tr(node, prop string, kfs ...*opendesignerv1.Keyframe) *opendesignerv1.Track {
 	return &opendesignerv1.Track{NodeId: node, Prop: prop, Keyframes: kfs}
 }

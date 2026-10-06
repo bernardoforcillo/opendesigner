@@ -43,7 +43,7 @@ function roundTrip(scene: SceneState, o: Op): SceneState {
 }
 
 describe("clip: applyOp", () => {
-  it("setClip e' un upsert assoluto", () => {
+  it("setClip is an absolute upsert", () => {
     const s = base();
     expect(s.clips.k1.tracks).toHaveLength(1);
     const s2 = applyOp(s, setClip(clip({ tracks: [], name: "nuova" })));
@@ -51,7 +51,7 @@ describe("clip: applyOp", () => {
     expect(s2.clips.k1.name).toBe("nuova");
   });
 
-  it("op rifiutati lasciano la scena invariata (stesso oggetto)", () => {
+  it("rejected ops leave the scene unchanged (same object)", () => {
     const s = base();
     const tr = (prop: string, ...kfs: [number, number, string?][]) => ({
       nodeId: "b", prop, keyframes: kfs.map(([time, value, easing]) => ({ time, value, easing: easing ?? "" })),
@@ -88,7 +88,7 @@ describe("clip: applyOp", () => {
     expect(applyOp(s, delClip("ghost"))).toBe(s);
   });
 
-  it("accetta: easing validi, draw su vector/rect/ellipse/frame, trigger vuoto, clip senza tracce", () => {
+  it("accepts: valid easings, draw on vector/rect/ellipse/frame, empty trigger, clip without tracks", () => {
     const s = build([node("a"), node("r", "a"), node("e", "a", "ellipse"), node("f", "a", "frame"), node("v", "a", "vector")]);
     const drawAll = clip({
       trigger: "", tracks: ["r", "e", "f", "v"].map((nodeId) => ({
@@ -109,7 +109,7 @@ describe("clip: applyOp", () => {
   });
 });
 
-describe("clip: cascata", () => {
+describe("clip: cascade", () => {
   const s0 = () => build([
     node("a"), node("b", "a"), node("c", "a"), node("z"),
     setClip(clip({ tracks: [
@@ -119,24 +119,24 @@ describe("clip: cascata", () => {
     setClip(clip({ id: "k2", targetId: "z", tracks: [{ nodeId: "b", prop: "y", keyframes: [{ time: 0, value: 1, easing: "" }] }] })),
   ]);
 
-  it("cancellare un nodo toglie le sue tracce, la clip resta se il target e' vivo", () => {
+  it("deleting a node removes its tracks, the clip stays if the target is alive", () => {
     const s = applyOp(s0(), delNode("b"));
     expect(s.clips.k1.tracks.map((t) => t.nodeId)).toEqual(["c"]);
     expect(s.clips.k2.tracks).toEqual([]);
   });
-  it("cancellare il target cancella la clip", () => {
-    const s = applyOp(s0(), delNode("a"));     // a e il suo sottoalbero (b, c)
+  it("deleting the target deletes the clip", () => {
+    const s = applyOp(s0(), delNode("a"));     // a and its subtree (b, c)
     expect(Object.keys(s.clips)).toEqual(["k2"]);
     expect(s.clips.k2.tracks).toEqual([]);
   });
-  it("cascadeClips non muta le clip e non crea oggetti se nulla cambia", () => {
+  it("cascadeClips does not mutate clips and does not create objects if nothing changes", () => {
     const s = s0();
     const snap = JSON.stringify(s.clips);
     expect(cascadeClips(s, new Set(["ghost"]))).toEqual({});
     cascadeClips(s, new Set(["b", "z"]));
     expect(JSON.stringify(s.clips)).toBe(snap);
   });
-  it("cancellare una pagina cascata sulle clip", () => {
+  it("deleting a page cascades onto clips", () => {
     const s = build([
       op({ case: "createPage", value: { page: { id: "p2", name: "P2" } } }),
       node("a"), node("q", "p2"),
@@ -148,36 +148,36 @@ describe("clip: cascata", () => {
 });
 
 describe("clip: undo", () => {
-  it("setClip nuova: l'inverso e' una delete", () => {
+  it("new setClip: the inverse is a delete", () => {
     const s = build([node("a"), node("b", "a")]);
     expect(roundTrip(s, setClip(clip()))).toEqual(s);
   });
-  it("setClip su esistente: l'inverso ripristina la clip precedente", () => {
+  it("setClip on an existing one: the inverse restores the previous clip", () => {
     const s = base();
-    expect(roundTrip(s, setClip(clip({ name: "altro", duration: 900, tracks: [] })))).toEqual(s);
+    expect(roundTrip(s, setClip(clip({ name: "other", duration: 900, tracks: [] })))).toEqual(s);
   });
   it("deleteClip: l'inverso la rimette", () => {
     const s = base();
     expect(roundTrip(s, delClip("k1"))).toEqual(s);
   });
-  it("op rifiutati non hanno inverso", () => {
+  it("rejected ops have no inverse", () => {
     const s = base();
     expect(invertOp(s, delClip("ghost"))).toBeNull();
     expect(invertOp(s, setClip(clip({ duration: 0 })))).toBeNull();
     expect(invertOp(s, setClip(clip({ targetId: "ghost" })))).toBeNull();
     expect(invertOp(s, op({ case: "setClip", value: {} }))).toBeNull();
   });
-  it("deleteNode: l'undo ricrea i nodi E rimette le tracce tolte", () => {
+  it("deleteNode: the undo re-creates the nodes AND puts back the removed tracks", () => {
     const s = base();
     expect(roundTrip(s, delNode("b"))).toEqual(s);
   });
-  it("deleteNode del target: l'undo ricrea anche la clip cancellata", () => {
+  it("deleteNode of the target: the undo also re-creates the deleted clip", () => {
     const s = base();
     const r = roundTrip(s, delNode("a"));
     expect(r.clips).toEqual(s.clips);
     expect(r.nodes.at("b")).toEqual(s.nodes.at("b"));
   });
-  it("deletePage: l'undo ricrea nodi, tracce e clip", () => {
+  it("deletePage: the undo re-creates nodes, tracks and clips", () => {
     const s = build([
       op({ case: "createPage", value: { page: { id: "p2", name: "P2" } } }),
       node("a"), node("q", "p2"), node("r", "q"),

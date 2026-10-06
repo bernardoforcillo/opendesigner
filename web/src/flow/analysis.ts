@@ -5,34 +5,34 @@ import { docClient } from "../rpc/client";
 import { useScene } from "../store/store";
 import { resolveFlow, useFlowUi } from "../store/flowUi";
 
-// L'ANALISI DEI FLUSSI LATO CLIENT: chiede al server `AnalyzeFlows` (la stessa
-// analisi di CLI e MCP, calcolata in internal/flow) e tiene l'ultimo risultato
-// in uno store. Il server è l'unica fonte: qui non si ricalcola niente, così UI,
-// CLI e agenti vedono gli stessi problemi.
+// CLIENT-SIDE FLOW ANALYSIS: asks the server for `AnalyzeFlows` (the same
+// analysis as the CLI and MCP, computed in internal/flow) and keeps the last result
+// in a store. The server is the only source: nothing is recomputed here, so UI,
+// CLI and agents see the same problems.
 
 export type Fetcher = (docId: string) => Promise<FlowReport[]>;
 
 const defaultFetcher: Fetcher = async (docId) => (await docClient.analyzeFlows({ docId, flowId: "" })).reports;
 
 let fetcher: Fetcher = defaultFetcher;
-/** Sostituisce il trasporto (i test iniettano un finto server). Senza argomenti ripristina. */
+/** Replaces the transport (tests inject a fake server). With no arguments it restores. */
 export function setAnalysisFetcher(f?: Fetcher): void {
   fetcher = f ?? defaultFetcher;
 }
 
 export interface AnalysisState {
-  /** flowId -> report. Vuoto finché non arriva la prima risposta. */
+  /** flowId -> report. Empty until the first response arrives. */
   reports: Record<string, FlowReport>;
   status: "idle" | "loading" | "error";
   error: string | null;
-  /** Il documento (id) a cui si riferisce `reports`. */
+  /** The document (id) that `reports` refers to. */
   docId: string | null;
 }
 
 export const useAnalysis = create<AnalysisState>(() => ({ reports: {}, status: "idle", error: null, docId: null }));
 
-// Il numero d'ordine dell'ultima richiesta partita: una risposta lenta di una
-// richiesta VECCHIA non deve sovrascrivere quella arrivata dopo.
+// The sequence number of the last request sent: a slow response to an OLD
+// request must not overwrite the one that arrived later.
 let ticket = 0;
 
 export async function refreshAnalysis(): Promise<void> {
@@ -53,7 +53,7 @@ export async function refreshAnalysis(): Promise<void> {
   }
 }
 
-// Gli id con un problema, per l'overlay del canvas: solo quelli del flusso corrente.
+// The ids with a problem, for the canvas overlay: only those of the current flow.
 function publishIssueIds(reports: Record<string, FlowReport>): void {
   const scene = useScene.getState().scene;
   const flow = resolveFlow(scene, useFlowUi.getState().currentFlowId);
@@ -66,7 +66,7 @@ function publishIssueIds(reports: Record<string, FlowReport>): void {
   useFlowUi.getState().setIssueIds(nodes, trs);
 }
 
-/** I problemi di un report, raggruppati per tipo (per i contatori). */
+/** The problems of a report, grouped by type (for the counters). */
 export function countByKind(report: FlowReport | undefined): Record<string, number> {
   const out: Record<string, number> = {};
   for (const i of report?.issues ?? []) out[i.kind] = (out[i.kind] ?? 0) + 1;
@@ -76,12 +76,12 @@ export function countByKind(report: FlowReport | undefined): Record<string, numb
 export const DEBOUNCE_MS = 450;
 
 /**
- * Tiene l'analisi aggiornata finché è montato: richiede subito, poi di nuovo
- * (con debounce) a ogni cambio del documento CONFERMATO -- flussi, transizioni
- * o nodi (i metadati `flow.kind` cambiano l'esito). Si guarda `confirmed` e non
- * la vista ottimistica: il server analizza ciò che ha, e chiedere prima che
- * abbia ricevuto l'op darebbe una risposta già vecchia. Mai durante un gesto
- * aperto (un drag cambia i nodi a ogni pixel).
+ * Keeps the analysis up to date while mounted: requests immediately, then again
+ * (debounced) on every change of the CONFIRMED document -- flows, transitions
+ * or nodes (the `flow.kind` metadata changes the outcome). It looks at `confirmed` and not
+ * the optimistic view: the server analyzes what it has, and asking before it
+ * has received the op would give an already stale answer. Never during an open
+ * gesture (a drag changes the nodes at every pixel).
  */
 export function useFlowAnalysis(enabled: boolean): void {
   useEffect(() => {
@@ -91,7 +91,7 @@ export function useFlowAnalysis(enabled: boolean): void {
       if (timer) clearTimeout(timer);
       timer = setTimeout(() => {
         timer = null;
-        // Gesto aperto: si riprova a gesto chiuso.
+        // Gesture open: retry once the gesture is closed.
         if (useScene.getState().gesture) return schedule(DEBOUNCE_MS);
         void refreshAnalysis();
       }, delay);
@@ -103,7 +103,7 @@ export function useFlowAnalysis(enabled: boolean): void {
       if (!a) return;
       if (!b || a.flows !== b.flows || a.transitions !== b.transitions || a.nodes !== b.nodes) schedule(DEBOUNCE_MS);
     });
-    // Cambiare flusso corrente cambia solo quali problemi si evidenziano.
+    // Changing the current flow only changes which problems are highlighted.
     const unsubUi = useFlowUi.subscribe((st, prev) => {
       if (st.currentFlowId !== prev.currentFlowId) publishIssueIds(useAnalysis.getState().reports);
     });
@@ -111,7 +111,7 @@ export function useFlowAnalysis(enabled: boolean): void {
       if (timer) clearTimeout(timer);
       unsub();
       unsubUi();
-      // L'overlay non deve restare evidenziato dopo l'uscita dalla modalità.
+      // The overlay must not stay highlighted after leaving the mode.
       useFlowUi.getState().setIssueIds(new Set(), new Set());
     };
   }, [enabled]);

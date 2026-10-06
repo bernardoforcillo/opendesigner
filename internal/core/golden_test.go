@@ -14,17 +14,17 @@ import (
 type goldenFile struct {
 	DocID string            `json:"docId"`
 	Ops   []json.RawMessage `json:"ops"`
-	// Indici (in `ops`) degli op che DEVONO essere rifiutati. Un invariante --
-	// un parent inesistente, un reparent che chiude un ciclo -- si vede solo
-	// nel rifiuto: una fixture che potesse contenere solo op validi
-	// proverebbe la parità di ciò che le due implementazioni fanno, mai di ciò
-	// che entrambe si rifiutano di fare.
+	// Indices (in `ops`) of the ops that MUST be rejected. An invariant --
+	// a nonexistent parent, a reparent that closes a cycle -- is only visible
+	// in the rejection: a fixture that could only contain valid ops would
+	// prove parity of what the two implementations do, never of what both
+	// refuse to do.
 	//
-	// Go verifica che Apply ritorni errore; TypeScript, che non ha errori
-	// (applyOp è totale), verifica che la scena resti INVARIATA -- che è la
-	// stessa cosa vista da un client il cui op il server respingerebbe. In
-	// entrambi i casi l'op successivo riparte dallo stato precedente, quindi
-	// una fixture può mettere in fila rifiuti e successi.
+	// Go checks that Apply returns an error; TypeScript, which has no errors
+	// (applyOp is total), checks that the scene stays UNCHANGED -- which is the
+	// same thing seen from a client whose op the server would reject. In
+	// both cases the next op restarts from the previous state, so a fixture
+	// can chain rejections and successes.
 	Rejected []int           `json:"rejected"`
 	Expected json.RawMessage `json:"expected"`
 }

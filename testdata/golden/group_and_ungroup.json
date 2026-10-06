@@ -18,7 +18,7 @@
     } } },
 
     { "opId": "op4", "docId": "doc1", "createNode": { "node": {
-      "id": "g1", "parentId": "page1", "orderKey": "a000004", "name": "Gruppo",
+      "id": "g1", "parentId": "page1", "orderKey": "a000004", "name": "Group",
       "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 0, "height": 0,
       "group": {}
     } } },
@@ -29,7 +29,7 @@
     } },
 
     { "opId": "op8", "docId": "doc1", "createNode": { "node": {
-      "id": "g2", "parentId": "page1", "orderKey": "a000005", "name": "Gruppo",
+      "id": "g2", "parentId": "page1", "orderKey": "a000005", "name": "Group",
       "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 0, "height": 0,
       "group": {}
     } } },
@@ -64,7 +64,7 @@
         "rect": { "cornerRadius": 0 }
       },
       "g1": {
-        "id": "g1", "parentId": "page1", "orderKey": "a000004", "name": "Gruppo",
+        "id": "g1", "parentId": "page1", "orderKey": "a000004", "name": "Group",
         "visible": true, "opacity": 1, "x": 5, "y": 7, "width": 0, "height": 0,
         "group": {}
       }

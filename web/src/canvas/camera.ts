@@ -3,7 +3,7 @@ export interface Camera { x: number; y: number; zoom: number }
 export const MIN_ZOOM = 0.02;
 export const MAX_ZOOM = 64;
 
-// La trasformazione canvas è setTransform(zoom, 0, 0, zoom, x, y):
+// The canvas transform is setTransform(zoom, 0, 0, zoom, x, y):
 // screen = world * zoom + (x, y)
 // world = (screen - (x, y)) / zoom
 
@@ -15,9 +15,9 @@ export function worldToScreen(cam: Camera, wx: number, wy: number): { x: number;
   return { x: wx * cam.zoom + cam.x, y: wy * cam.zoom + cam.y };
 }
 
-// Mantiene fermo il punto mondo sotto il cursore (sx, sy): calcola quel punto
-// mondo prima dello zoom, clampa il fattore di zoom risultante, poi ricalcola
-// x,y in modo che il punto mondo torni sotto lo stesso pixel schermo.
+// Keeps the world point under the cursor (sx, sy) fixed: computes that world
+// point before the zoom, clamps the resulting zoom factor, then recomputes
+// x,y so that the world point returns under the same screen pixel.
 export function zoomAt(cam: Camera, factor: number, sx: number, sy: number): Camera {
   const world = screenToWorld(cam, sx, sy);
   const zoom = Math.min(MAX_ZOOM, Math.max(MIN_ZOOM, cam.zoom * factor));

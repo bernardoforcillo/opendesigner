@@ -26,7 +26,7 @@ describe("highlight: tsx", () => {
     "}",
   ].join("\n");
 
-  it("riconosce commenti, parole chiave, stringhe, tag, attributi, funzioni, numeri", () => {
+  it("recognizes comments, keywords, strings, tags, attributes, functions, numbers", () => {
     expect(kinds(code, "tsx", "com")).toEqual(["// File generato"]);
     expect(kinds(code, "tsx", "kw")).toEqual(expect.arrayContaining(["import", "from", "export", "default", "function", "const", "return"]));
     expect(kinds(code, "tsx", "str")).toEqual(expect.arrayContaining(['"react-router-dom"', '"1:2"', '"/home"']));
@@ -35,13 +35,13 @@ describe("highlight: tsx", () => {
     expect(kinds(code, "tsx", "fn")).toEqual(expect.arrayContaining(["Login", "useNavigate", "navigate"]));
   });
 
-  it("'a < b' e i generici non sono tag", () => {
+  it("'a < b' and generics are not tags", () => {
     expect(kinds("if (a < b) {}", "tsx", "tag")).toEqual([]);
     expect(kinds("const x: Array<string> = []", "tsx", "tag")).toEqual([]);
     expect(kinds("const n = 3 + 0.5", "tsx", "num")).toEqual(["3", "0.5"]);
   });
 
-  it("commenti a blocco e template literal si estendono su più righe, restando un token per riga", () => {
+  it("block comments and template literals span several lines, staying one token per line", () => {
     const lines = highlight("/* a\n b */ let x = `q\nr`;", "tsx");
     expect(lines).toHaveLength(3);
     expect(lines[0][0]).toEqual({ k: "com", s: "/* a" });
@@ -51,7 +51,7 @@ describe("highlight: tsx", () => {
 });
 
 describe("highlight: html / css / json / md", () => {
-  it("html: tag, attributi, stringhe, commenti, doctype; il <style> è CSS", () => {
+  it("html: tags, attributes, strings, comments, doctype; <style> is CSS", () => {
     const html = '<!doctype html>\n<!-- nota -->\n<html><head><style>\n.a-1 { color: #ff0000; width: 10px }\n</style></head><body><a href="x.html" class="b">Ciao</a></body></html>';
     expect(kinds(html, "html", "com")).toEqual(["<!-- nota -->"]);
     expect(kinds(html, "html", "kw")).toEqual(["<!doctype html>"]);
@@ -61,14 +61,14 @@ describe("highlight: html / css / json / md", () => {
     expect(kinds(html, "html", "num")).toEqual(expect.arrayContaining(["#ff0000", "10px"]));
   });
 
-  it("css: at-rule come parola chiave, commento, stringa", () => {
+  it("css: at-rule as keyword, comment, string", () => {
     const css = '@import "tailwindcss";\n/* x */\nbody { font-family: "Inter", sans-serif }';
     expect(kinds(css, "css", "kw")).toEqual(["@import"]);
     expect(kinds(css, "css", "com")).toEqual(["/* x */"]);
     expect(kinds(css, "css", "str")).toEqual(['"tailwindcss"', '"Inter"']);
   });
 
-  it("json: chiavi come attributi, valori come stringhe, numeri e booleani", () => {
+  it("json: keys as attributes, values as strings, numbers and booleans", () => {
     const j = '{ "name": "app", "n": 12, "ok": true }';
     expect(kinds(j, "json", "attr")).toEqual(['"name"', '"n"', '"ok"']);
     expect(kinds(j, "json", "str")).toEqual(['"app"']);
@@ -82,26 +82,26 @@ describe("highlight: html / css / json / md", () => {
   });
 });
 
-describe("highlight: invariante", () => {
-  // Qualunque cosa succeda, i token concatenati ridanno il sorgente: un
-  // riconoscimento sbagliato colora male, non perde testo.
+describe("highlight: invariant", () => {
+  // Whatever happens, the concatenated tokens give back the source: a
+  // wrong recognition colors badly, it does not lose text.
   const samples: [Lang, string][] = [
-    ["tsx", "const a = <T,>(x: T) => x; <div a='1' b={{c:1}}>{x < 3 ? <i/> : null}</div> // fine"],
-    ["tsx", "'non chiusa\nsecond \\' line `tpl ${a} \n più righe` /* mai chiuso"],
+    ["tsx", "const a = <T,>(x: T) => x; <div a='1' b={{c:1}}>{x < 3 ? <i/> : null}</div> // end"],
+    ["tsx", "'unclosed\nsecond \\' line `tpl ${a} \n more lines` /* never closed"],
     ["tsx", ""],
-    ["html", "<div class='a' <span>>< ><!-- non chiuso"],
-    ["html", "<style>a{b:c</style><script>let x = '<';</script> testo & più"],
+    ["html", "<div class='a' <span>>< ><!-- unclosed"],
+    ["html", "<style>a{b:c</style><script>let x = '<';</script> text & more"],
     ["css", "a{b:c;;} } } /* x */ 'k\n@media (x){.y{z:#abc}}"],
     ["json", '{"a": [1, 2.5e-3, -4, null, "x\\"y"], "b": {}'],
     ["md", "# t\n```\ncode\n```\n`a` `b\n"],
-    ["text", "qualunque\r\ncosa"],
+    ["text", "whatever\r\nthing"],
     ["tsx", "é ü 日本語 \u{1F600} <b>x</b>"],
   ];
   it.each(samples)("%s #%#", (lang, src) => {
     expect(flat(highlight(src, lang))).toBe(src);
   });
 
-  it("anche su un file generato grande, in tempo ragionevole", () => {
+  it("even on a large generated file, in a reasonable time", () => {
     const line = '      <div data-node-id="n1" className="absolute left-[10px] top-[4px]">Testo</div>\n';
     const src = line.repeat(20000);
     const t0 = performance.now();

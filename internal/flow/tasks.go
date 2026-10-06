@@ -7,21 +7,21 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// Tasks produce una checklist Markdown delle lacune, pronta da incollare in un
-// issue tracker o da consegnare a un agente: schermate da implementare,
-// transizioni da testare e problemi del grafo. cov può essere nil: allora
-// compaiono solo i problemi dell'analisi. flowID "" = tutti i flussi.
+// Tasks produces a Markdown checklist of the gaps, ready to paste into an
+// issue tracker or to hand to an agent: screens to implement,
+// transitions to test and graph issues. cov may be nil: then
+// only the analysis issues appear. flowID "" = all flows.
 func Tasks(doc *opendesignerv1.Document, flowID string, cov *CoverageReport) string {
 	var b strings.Builder
 	title := doc.GetName()
 	if title == "" {
 		title = doc.GetId()
 	}
-	fmt.Fprintf(&b, "# Attività dai flussi — %s\n", oneLine(title))
+	fmt.Fprintf(&b, "# Tasks from the flows — %s\n", oneLine(title))
 
 	ids := flowIDs(doc, flowID)
 	if len(ids) == 0 {
-		b.WriteString("\n_Nessun flusso da lavorare._\n")
+		b.WriteString("\n_No flow to work on._\n")
 		return b.String()
 	}
 	covByFlow := map[string]*FlowCoverage{}
@@ -44,7 +44,7 @@ func Tasks(doc *opendesignerv1.Document, flowID string, cov *CoverageReport) str
 				if s.Implemented() || s.Kind == "note" {
 					continue
 				}
-				lines = append(lines, "- [ ] Implementare la schermata **"+oneLine(s.Name)+"**"+screenHint(s))
+				lines = append(lines, "- [ ] Implement the screen **"+oneLine(s.Name)+"**"+screenHint(s))
 			}
 			byID := map[string]*opendesignerv1.Transition{}
 			for _, t := range g.trans {
@@ -54,23 +54,23 @@ func Tasks(doc *opendesignerv1.Document, flowID string, cov *CoverageReport) str
 				if tc.Tested {
 					continue
 				}
-				lines = append(lines, fmt.Sprintf("- [ ] Testare la transizione %s: scrivere un test e2e che la percorre e annotarlo con `// flow:%s`",
+				lines = append(lines, fmt.Sprintf("- [ ] Test the transition %s: write an e2e test that walks it and annotate it with `// flow:%s`",
 					transitionLine(doc, byID[tc.ID]), tc.ID))
 			}
 		}
 		for _, is := range rep.GetIssues() {
-			lines = append(lines, fmt.Sprintf("- [ ] Correggere il grafo (`%s`): %s", is.GetKind(), is.GetMessage()))
+			lines = append(lines, fmt.Sprintf("- [ ] Fix the graph (`%s`): %s", is.GetKind(), is.GetMessage()))
 		}
-		fmt.Fprintf(&b, "\n## Flusso: %s (`%s`)\n\n", oneLine(name), id)
+		fmt.Fprintf(&b, "\n## Flow: %s (`%s`)\n\n", oneLine(name), id)
 		if len(lines) == 0 {
-			b.WriteString("Nessuna attività: tutto coperto.\n")
+			b.WriteString("No tasks: everything covered.\n")
 			continue
 		}
 		total += len(lines)
 		b.WriteString(strings.Join(lines, "\n") + "\n")
 	}
 	if total > 0 {
-		fmt.Fprintf(&b, "\nTotale attività aperte: %d\n", total)
+		fmt.Fprintf(&b, "\nTotal open tasks: %d\n", total)
 	}
 	return b.String()
 }
@@ -78,13 +78,13 @@ func Tasks(doc *opendesignerv1.Document, flowID string, cov *CoverageReport) str
 func screenHint(s ScreenCoverage) string {
 	var parts []string
 	if s.Route != "" {
-		parts = append(parts, "rotta `"+s.Route+"`")
+		parts = append(parts, "route `"+s.Route+"`")
 	}
 	if s.Component != "" {
-		parts = append(parts, "componente `"+s.Component+"`")
+		parts = append(parts, "component `"+s.Component+"`")
 	}
 	if len(parts) == 0 {
-		return " (manca `code.route`/`code.component` nel disegno)"
+		return " (`code.route`/`code.component` missing in the design)"
 	}
 	return " — " + strings.Join(parts, ", ")
 }

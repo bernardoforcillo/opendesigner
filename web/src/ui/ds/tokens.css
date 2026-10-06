@@ -1,26 +1,26 @@
-/* SISTEMA DI DESIGN -- i token.
+/* DESIGN SYSTEM -- the tokens.
  *
- * Tutto il colore dell'interfaccia passa da qui: nessun componente scrive un
- * grigio o un blu a mano. Due temi (chiaro, scuro) che seguono il sistema e si
- * possono forzare con <html data-theme="light|dark">. I token sono variabili CSS
- * e sono esposti a Tailwind (@theme inline), quindi si usano come utility:
+ * All of the interface's color comes from here: no component hand-writes a
+ * gray or a blue. Two themes (light, dark) that follow the system and can be
+ * forced with <html data-theme="light|dark">. The tokens are CSS variables
+ * and are exposed to Tailwind (@theme inline), so they are used as utilities:
  * bg-surface, text-fg-muted, border-line, text-accent...
  *
- * Le scelte, in poche righe:
- *  - un grigio freddo a 5 gradini per le superfici (canvas < pannello < rialzato);
- *  - UN colore d'accento (blu) per selezione, azioni primarie e focus;
- *  - un secondo colore (viola) riservato alla modalità Flussi: dice DOVE sei;
- *  - testo a tre livelli (primario, secondario, tenue), mai grigio su grigio
- *    sotto il 4.5:1.
+ * The choices, in a few lines:
+ *  - a cool gray in 5 steps for surfaces (canvas < panel < raised);
+ *  - ONE accent color (blue) for selection, primary actions and focus;
+ *  - a second color (violet) reserved for Flows mode: it tells you WHERE you are;
+ *  - three-level text (primary, secondary, muted), never gray on gray
+ *    below 4.5:1.
  */
 :root {
   color-scheme: light;
   --canvas: #eef0f3;
   --canvas-dot: #d5d9e0;
   --surface: #ffffff;
-  --surface-2: #f6f7f9;       /* righe, campi, sezioni incassate */
-  --surface-3: #eceef2;       /* hover, segmenti inattivi */
-  --raised: #ffffff;          /* menu, popover, barra flottante */
+  --surface-2: #f6f7f9;       /* rows, fields, inset sections */
+  --surface-3: #eceef2;       /* hover, inactive segments */
+  --raised: #ffffff;          /* menus, popovers, floating bar */
   --line: #e3e6eb;
   --line-strong: #cfd4dc;
   --fg: #14161b;
@@ -132,7 +132,7 @@
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 }
 
-/* Base: il corpo dell'app è una superficie, non il bianco del browser. */
+/* Base: the app body is a surface, not the browser's white. */
 html, body, #root { height: 100%; }
 body {
   margin: 0;
@@ -144,17 +144,17 @@ body {
   -webkit-font-smoothing: antialiased;
   font-feature-settings: "cv11", "ss01";
 }
-/* Nel layer `base`: una regola FUORI da ogni layer batte TUTTE le utility di
-   Tailwind (che stanno nel layer `utilities`), e `color: inherit` qui sopra
-   annullava ogni `text-*` su un <button>/<input> -- il testo dei pulsanti
-   primari restava scuro su blu, e l'icona dello strumento attivo nel dock pure. */
+/* In the `base` layer: a rule OUTSIDE every layer beats ALL of Tailwind's
+   utilities (which live in the `utilities` layer), and `color: inherit` above
+   used to cancel every `text-*` on a <button>/<input> -- the text of primary
+   buttons stayed dark on blue, and so did the active tool's icon in the dock. */
 @layer base {
   button, input, select, textarea { font: inherit; color: inherit; }
 }
 ::selection { background: var(--accent-soft); }
 
-/* Focus visibile ovunque, solo da tastiera. */
+/* Visible focus everywhere, keyboard only. */
 :focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
 
-/* Barre di scorrimento sottili, in tinta. */
+/* Thin scrollbars, tinted. */
 * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }

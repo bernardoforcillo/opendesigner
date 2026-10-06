@@ -53,14 +53,14 @@ func TestFlowRejections(t *testing.T) {
 		op   *opendesignerv1.Op
 		want error
 	}{
-		{"flow senza id", setFlowOp(&opendesignerv1.Flow{}), ErrNilFlow},
-		{"start inesistente", setFlowOp(&opendesignerv1.Flow{Id: "f2", StartId: "ghost"}), ErrNodeNotFound},
-		{"transizione senza id", setTransitionOp(&opendesignerv1.Transition{FlowId: "f1", FromId: "a", ToId: "b"}), ErrNilTransition},
-		{"flusso inesistente", setTransitionOp(&opendesignerv1.Transition{Id: "x", FlowId: "no", FromId: "a", ToId: "b"}), ErrFlowNotFound},
-		{"arrivo inesistente", setTransitionOp(&opendesignerv1.Transition{Id: "x", FlowId: "f1", FromId: "a", ToId: "ghost"}), ErrNodeNotFound},
-		{"hotspot inesistente", setTransitionOp(&opendesignerv1.Transition{Id: "x", FlowId: "f1", FromId: "a", ToId: "b", ElementId: "ghost"}), ErrNodeNotFound},
-		{"delete flusso inesistente", &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteFlow{DeleteFlow: &opendesignerv1.DeleteFlow{Id: "ghost"}}}, ErrFlowNotFound},
-		{"delete transizione inesistente", &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteTransition{DeleteTransition: &opendesignerv1.DeleteTransition{Id: "ghost"}}}, ErrTransitionNotFound},
+		{"flow without id", setFlowOp(&opendesignerv1.Flow{}), ErrNilFlow},
+		{"nonexistent start", setFlowOp(&opendesignerv1.Flow{Id: "f2", StartId: "ghost"}), ErrNodeNotFound},
+		{"transition without id", setTransitionOp(&opendesignerv1.Transition{FlowId: "f1", FromId: "a", ToId: "b"}), ErrNilTransition},
+		{"nonexistent flow", setTransitionOp(&opendesignerv1.Transition{Id: "x", FlowId: "no", FromId: "a", ToId: "b"}), ErrFlowNotFound},
+		{"nonexistent destination", setTransitionOp(&opendesignerv1.Transition{Id: "x", FlowId: "f1", FromId: "a", ToId: "ghost"}), ErrNodeNotFound},
+		{"nonexistent hotspot", setTransitionOp(&opendesignerv1.Transition{Id: "x", FlowId: "f1", FromId: "a", ToId: "b", ElementId: "ghost"}), ErrNodeNotFound},
+		{"delete nonexistent flow", &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteFlow{DeleteFlow: &opendesignerv1.DeleteFlow{Id: "ghost"}}}, ErrFlowNotFound},
+		{"delete nonexistent transition", &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteTransition{DeleteTransition: &opendesignerv1.DeleteTransition{Id: "ghost"}}}, ErrTransitionNotFound},
 	}
 	for _, c := range cases {
 		if err := Apply(doc, c.op); !errors.Is(err, c.want) {
@@ -68,18 +68,18 @@ func TestFlowRejections(t *testing.T) {
 		}
 	}
 	if !proto.Equal(before, doc) {
-		t.Fatal("un op rifiutato ha modificato il documento")
+		t.Fatal("a rejected op modified the document")
 	}
 }
 
-// Il clone copy-on-write del server condivide i nodi ma NON deve far trapelare
-// la cascata dei flussi nella generazione precedente.
+// The server's copy-on-write clone shares the nodes but must NOT let the flow
+// cascade leak into the previous generation.
 func TestCascadeDoesNotMutateSharedTransitions(t *testing.T) {
 	doc := flowDoc(t)
 	mustApplyFlow(t, doc, setTransitionOp(&opendesignerv1.Transition{Id: "t2", FlowId: "f1", FromId: "a", ToId: "b", ElementId: "a"}))
 	prev := doc.Transitions["t2"]
 	snapshot := proto.Clone(prev)
-	// una "nuova generazione" che condivide i puntatori delle transizioni
+	// a "new generation" that shares the transitions' pointers
 	next := &opendesignerv1.Document{Id: doc.Id, Pages: doc.Pages, Nodes: doc.Nodes,
 		Flows: map[string]*opendesignerv1.Flow{}, Transitions: map[string]*opendesignerv1.Transition{}}
 	for k, v := range doc.Flows {
@@ -88,16 +88,16 @@ func TestCascadeDoesNotMutateSharedTransitions(t *testing.T) {
 	for k, v := range doc.Transitions {
 		next.Transitions[k] = v
 	}
-	// cancellare "a" (l'hotspot e la sorgente) elimina t1 e t2; il flusso perde lo start
+	// deleting "a" (the hotspot and the source) removes t1 and t2; the flow loses its start
 	cascadeFlows(next, map[string]bool{"a": true})
 	if len(next.Transitions) != 0 {
-		t.Fatalf("transizioni rimaste: %d", len(next.Transitions))
+		t.Fatalf("transitions left: %d", len(next.Transitions))
 	}
 	if next.Flows["f1"].StartId != "" {
-		t.Fatal("start non svuotato")
+		t.Fatal("start not cleared")
 	}
 	if doc.Flows["f1"].StartId != "a" || !proto.Equal(prev, snapshot) {
-		t.Fatal("la cascata ha mutato oggetti condivisi con la generazione precedente")
+		t.Fatal("the cascade mutated objects shared with the previous generation")
 	}
 }
 
@@ -109,11 +109,11 @@ func TestMetaMask(t *testing.T) {
 	}}}
 	mustApplyFlow(t, doc, op)
 	if doc.Nodes["a"].Meta["code.route"] != "/x" {
-		t.Fatal("meta non scritta")
+		t.Fatal("meta not written")
 	}
 	clear := &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{Id: "a", Mask: mustMask("meta")}}}
 	mustApplyFlow(t, doc, clear)
 	if len(doc.Nodes["a"].Meta) != 0 {
-		t.Fatal("meta non svuotata da un patch senza meta")
+		t.Fatal("meta not cleared by a patch without meta")
 	}
 }

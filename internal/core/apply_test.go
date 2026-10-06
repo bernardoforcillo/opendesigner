@@ -93,19 +93,19 @@ func ellipseNode(id string) *opendesignerv1.Node {
 	}
 }
 
-// Un GRUPPO: contenitore senza clipping e senza geometria propria (i suoi
-// bounds sono l'unione dei figli, vedi web/src/store/groups.ts). x/y sono la
-// traslazione che contribuisce ai figli e valgono 0 alla creazione.
+// A GROUP: container without clipping and without geometry of its own (its
+// bounds are the union of the children, see web/src/store/groups.ts). x/y are
+// the translation it contributes to the children and are 0 at creation.
 func groupNode(id string) *opendesignerv1.Node {
 	return &opendesignerv1.Node{
-		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Gruppo", Visible: true, Opacity: 1,
+		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Group", Visible: true, Opacity: 1,
 		Shape: &opendesignerv1.Node_Group{Group: &opendesignerv1.GroupNode{}},
 	}
 }
 
-// Un FRAME: contenitore CON geometria propria (il box è suo, non derivato dai
-// figli) e clipping opzionale. È l'artboard -- si disegna e si colpisce come una
-// forma, a differenza di un gruppo.
+// A FRAME: container WITH geometry of its own (the box is its own, not derived
+// from the children) and optional clipping. It is the artboard -- it is drawn
+// and hit like a shape, unlike a group.
 func frameNode(id string, clips bool) *opendesignerv1.Node {
 	return &opendesignerv1.Node{
 		Id: id, ParentId: "page1", OrderKey: "a0", Name: "Frame", Visible: true, Opacity: 1,
@@ -118,10 +118,10 @@ func setPropsOp(s *opendesignerv1.SetProperties) *opendesignerv1.Op {
 	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: s}}
 }
 
-// corner_radius è l'UNICO path della mask che indirizza un campo DENTRO il
-// oneof `shape` (RectNode.corner_radius) invece che un campo di primo livello
-// del Node. Il patch lo porta quindi annidato nella forma, esattamente come
-// farebbe un CreateNode.
+// corner_radius is the ONLY mask path that addresses a field INSIDE the
+// `shape` oneof (RectNode.corner_radius) instead of a top-level field of the
+// Node. The patch therefore carries it nested in the shape, exactly as a
+// CreateNode would.
 func TestApplySetPropertiesCornerRadius(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
@@ -138,10 +138,10 @@ func TestApplySetPropertiesCornerRadius(t *testing.T) {
 	}
 }
 
-// Un patch SENZA rect azzera il raggio, come ogni altro path: applySetProps
-// legge il patch con i getter nil-safe di protobuf (vedi il commento su
-// NIL_PATCH in web/src/store/applyOp.ts, che documenta la stessa scelta dal
-// lato TypeScript).
+// A patch WITHOUT rect resets the radius, like any other path: applySetProps
+// reads the patch with protobuf's nil-safe getters (see the comment on
+// NIL_PATCH in web/src/store/applyOp.ts, which documents the same choice on
+// the TypeScript side).
 func TestApplySetPropertiesCornerRadiusNilPatchZeroes(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	n := rectNode("n1", 0, 0)
@@ -152,49 +152,48 @@ func TestApplySetPropertiesCornerRadiusNilPatchZeroes(t *testing.T) {
 		Mask: &fieldmaskpb.FieldMask{Paths: []string{"corner_radius"}},
 	})
 	if err := Apply(doc, op); err != nil {
-		t.Fatalf("Apply corner_radius senza patch: %v", err)
+		t.Fatalf("Apply corner_radius without patch: %v", err)
 	}
 	if got := doc.Nodes["n1"].GetRect().GetCornerRadius(); got != 0 {
-		t.Fatalf("corner radius non azzerato dal patch nil: %v", got)
+		t.Fatalf("corner radius not reset by the nil patch: %v", got)
 	}
 }
 
-// Il oneof `shape` è la NATURA del nodo: un corner_radius su un'ellisse (o su un
-// testo) è un op sul nodo sbagliato, non un campo da riempire -- stessa regola
-// di applySetText su un rettangolo (ErrNotTextNode). L'op viene rifiutato in
-// BLOCCO, quindi nemmeno la "x" che viaggia nella stessa mask si muove.
+// The `shape` oneof is the NATURE of the node: a corner_radius on an ellipse (or
+// a text) is an op on the wrong node, not a field to fill in -- same rule as
+// applySetText on a rectangle (ErrNotTextNode). The op is rejected
+// ALL-OR-NOTHING, so not even the "x" travelling in the same mask moves.
 func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 	for _, tc := range []struct {
 		name string
 		node *opendesignerv1.Node
 	}{
 		{"ellipse", ellipseNode("n1")},
-		{"text", textNode("n1", "ciao")},
-		// Un'immagine è un nodo la cui forma PORTA UN DATO (l'hash
-		// dell'asset): materializzare un rettangolo sopra di lei non
-		// azzererebbe solo un raggio, cancellerebbe il riferimento ai byte --
-		// e l'inverso dell'op non saprebbe rimetterli.
+		{"text", textNode("n1", "hello")},
+		// An image is a node whose shape CARRIES DATA (the asset's hash):
+		// materializing a rectangle on top of it would not just reset a radius, it
+		// would delete the reference to the bytes -- and the op's inverse would not
+		// know how to put them back.
 		{"image", imageNode("n1", testAssetHash)},
-		// E il vettoriale, il campione di TUTTE le forme che le altre tracce
-		// aggiungono: con la vecchia blacklist {Ellipse, Text} un
-		// setProps{corner_radius} su un nodo vettoriale passava la validazione e
-		// ne cancellava i subpath (in divergenza con applyOp.ts). La whitelist
-		// lo rifiuta come ogni non-rettangolo.
+		// And the vector, the sample of ALL the shapes the other tracks add: with the
+		// old {Ellipse, Text} blacklist a setProps{corner_radius} on a vector node
+		// passed validation and deleted its subpaths (diverging from applyOp.ts). The
+		// whitelist rejects it like every non-rectangle.
 		{"vector", vectorNode("n1", richSubPath(false))},
-		// Un gruppo non è una forma: non ha niente da riempire, quindi nessun
-		// angolo da arrotondare. Il client lo rifiuta con lo stesso guard
+		// A group is not a shape: it has nothing to fill, hence no corner to
+		// round. The client rejects it with the same guard
 		// (`cur.kind !== "rect"`, web/src/store/applyOp.ts).
 		{"group", groupNode("n1")},
-		// Un FRAME ha un box proprio ed è disegnato come una forma, ma la sua
-		// forma è il FrameNode, non un RectNode: il raggio non ha dove
-		// atterrare. Rifiutato dallo stesso guard che rifiuta un gruppo.
+		// A FRAME has a box of its own and is drawn like a shape, but its shape is
+		// the FrameNode, not a RectNode: the radius has nowhere to land. Rejected by
+		// the same guard that rejects a group.
 		{"frame", frameNode("n1", true)},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := NewDocument("doc1", "Untitled")
-			// Fotografate PRIMA di Apply: applyCreate mette nel documento lo
-			// stesso puntatore, quindi confrontare il nodo con tc.node dopo
-			// l'op sarebbe confrontarlo con se stesso.
+			// Captured BEFORE Apply: applyCreate puts the same pointer in the
+			// document, so comparing the node with tc.node after the op would be
+			// comparing it with itself.
 			wantShape := fmt.Sprintf("%T", tc.node.GetShape())
 			wantSubpaths := len(tc.node.GetVector().GetSubpaths())
 			_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: tc.node}}})
@@ -213,9 +212,9 @@ func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 			if got.GetX() != 0 {
 				t.Fatalf("partial mutation leaked despite error: x=%v", got.GetX())
 			}
-			// Non basta "non è diventato un rect": la forma deve essere ANCORA
-			// quella di prima, con dentro la stessa roba. Un nodo vettoriale
-			// svuotato dei subpath sarebbe ancora un Node_Vector.
+			// "It did not become a rect" is not enough: the shape must still be the
+			// one it was, with the same stuff inside. A vector node emptied of its
+			// subpaths would still be a Node_Vector.
 			if gotShape := fmt.Sprintf("%T", got.GetShape()); gotShape != wantShape {
 				t.Fatalf("shape replaced by a rejected setProps: %s -> %s", wantShape, gotShape)
 			}
@@ -226,12 +225,12 @@ func TestApplySetPropertiesCornerRadiusOnNonRectFails(t *testing.T) {
 	}
 }
 
-// Un Node senza `shape` è comunque un RETTANGOLO per chiunque legga il
-// documento: web/src/store/types.ts::toNodeLite lo mappa esplicitamente su
-// kind "rect" ("un nodo senza shape è comunque un rettangolo disegnabile").
-// Rifiutare qui il corner_radius farebbe divergere le due implementazioni --
-// il client lo applicherebbe, il server no -- quindi il rettangolo implicito
-// viene materializzato.
+// A Node without `shape` is still a RECTANGLE for anyone reading the
+// document: web/src/store/types.ts::toNodeLite explicitly maps it to
+// kind "rect" ("a node without shape is still a drawable rectangle").
+// Rejecting corner_radius here would make the two implementations diverge --
+// the client would apply it, the server would not -- so the implicit
+// rectangle is materialized.
 func TestApplySetPropertiesCornerRadiusOnShapelessNodeMaterializesRect(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	n := rectNode("n1", 0, 0)
@@ -243,21 +242,21 @@ func TestApplySetPropertiesCornerRadiusOnShapelessNodeMaterializesRect(t *testin
 		Mask:  &fieldmaskpb.FieldMask{Paths: []string{"corner_radius"}},
 	})
 	if err := Apply(doc, op); err != nil {
-		t.Fatalf("Apply corner_radius su nodo senza shape: %v", err)
+		t.Fatalf("Apply corner_radius on a node without shape: %v", err)
 	}
 	if got := doc.Nodes["n1"].GetRect().GetCornerRadius(); got != 4 {
 		t.Fatalf("corner radius not applied: %v", got)
 	}
 }
 
-// --- strokes (traccia 2) ----------------------------------------------------
+// --- strokes (track 2) ------------------------------------------------------
 //
-// `strokes` è RIPETUTO come `fills`, e la semantica di scrittura è la stessa:
-// la mask SOSTITUISCE l'intera lista, non fonde elemento per elemento. È il
-// punto in cui le due implementazioni (qui e web/src/store/applyOp.ts)
-// potrebbero divergere in silenzio -- una lista più corta che lascia in coda i
-// tratti vecchi si nota solo guardando il canvas -- quindi la sostituzione è
-// fissata da un test da entrambi i lati, oltre che dalla fixture golden
+// `strokes` is REPEATED like `fills`, and the write semantics are the same:
+// the mask REPLACES the whole list, it does not merge element by element. It is
+// the point where the two implementations (here and web/src/store/applyOp.ts)
+// could silently diverge -- a shorter list that leaves the old strokes at the
+// tail is only noticed by looking at the canvas -- so the replacement is
+// pinned by a test on both sides, as well as by the golden fixture
 // testdata/golden/strokes.json.
 
 func stroke(weight float64, align opendesignerv1.StrokeAlign, r, g, b float32) *opendesignerv1.Stroke {
@@ -290,27 +289,27 @@ func TestApplySetPropertiesStrokesReplacesTheWholeList(t *testing.T) {
 		t.Fatalf("Apply strokes: %v", err)
 	}
 	got := doc.Nodes["n1"].GetStrokes()
-	// UNO, non tre: la lista nuova sostituisce la vecchia. Se le due
-	// implementazioni divergessero qui, il documento autorevole e quello del
-	// client mostrerebbero un numero DIVERSO di tratti sullo stesso nodo.
+	// ONE, not three: the new list replaces the old one. If the two
+	// implementations diverged here, the authoritative document and the
+	// client's would show a DIFFERENT number of strokes on the same node.
 	if len(got) != 1 {
-		t.Fatalf("la lista non è stata sostituita: %d tratti", len(got))
+		t.Fatalf("the list was not replaced: %d strokes", len(got))
 	}
 	if got[0].GetWeight() != 9 {
-		t.Fatalf("peso sbagliato: %v", got[0].GetWeight())
+		t.Fatalf("wrong weight: %v", got[0].GetWeight())
 	}
 	if got[0].GetAlign() != opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE {
-		t.Fatalf("allineamento sbagliato: %v", got[0].GetAlign())
+		t.Fatalf("wrong alignment: %v", got[0].GetAlign())
 	}
 	if c := got[0].GetPaint().GetSolid().GetColor(); c.GetB() != 1 {
-		t.Fatalf("colore sbagliato: %+v", c)
+		t.Fatalf("wrong color: %+v", c)
 	}
 }
 
-// Come ogni altro path: un patch SENZA strokes azzera la lista, perché
-// applySetProps legge il patch con i getter nil-safe di protobuf. È la
-// controparte del NIL_PATCH di web/src/store/applyOp.ts, ed è anche il modo in
-// cui il pannello proprietà toglie il tratto da un nodo.
+// Like any other path: a patch WITHOUT strokes resets the list, because
+// applySetProps reads the patch with protobuf's nil-safe getters. It is the
+// counterpart of NIL_PATCH in web/src/store/applyOp.ts, and it is also how the
+// properties panel removes the stroke from a node.
 func TestApplySetPropertiesStrokesNilPatchClearsTheList(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	n := rectNode("n1", 0, 0)
@@ -322,20 +321,20 @@ func TestApplySetPropertiesStrokesNilPatchClearsTheList(t *testing.T) {
 		Mask: &fieldmaskpb.FieldMask{Paths: []string{"strokes"}},
 	})
 	if err := Apply(doc, op); err != nil {
-		t.Fatalf("Apply strokes senza patch: %v", err)
+		t.Fatalf("Apply strokes without patch: %v", err)
 	}
 	if got := doc.Nodes["n1"].GetStrokes(); len(got) != 0 {
-		t.Fatalf("lista non azzerata dal patch nil: %d tratti", len(got))
+		t.Fatalf("list not reset by the nil patch: %d strokes", len(got))
 	}
 }
 
-// Il tratto vive su OGNI nodo, non dentro il oneof `shape`: a differenza di
-// corner_radius non c'è nessuna forma da controllare, e un'ellisse o un testo
-// lo accettano come un rettangolo.
+// The stroke lives on EVERY node, not inside the `shape` oneof: unlike
+// corner_radius there is no shape to check, and an ellipse or a text
+// accepts it like a rectangle.
 func TestApplySetPropertiesStrokesOnAnyShape(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: ellipseNode("e1")}}})
-	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "ciao")}}})
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "hello")}}})
 	for _, id := range []string{"e1", "t1"} {
 		op := setPropsOp(&opendesignerv1.SetProperties{
 			Id:    id,
@@ -343,10 +342,10 @@ func TestApplySetPropertiesStrokesOnAnyShape(t *testing.T) {
 			Mask:  &fieldmaskpb.FieldMask{Paths: []string{"strokes"}},
 		})
 		if err := Apply(doc, op); err != nil {
-			t.Fatalf("Apply strokes su %s: %v", id, err)
+			t.Fatalf("Apply strokes on %s: %v", id, err)
 		}
 		if got := doc.Nodes[id].GetStrokes(); len(got) != 1 || got[0].GetWeight() != 3 {
-			t.Fatalf("tratto non applicato su %s: %+v", id, got)
+			t.Fatalf("stroke not applied on %s: %+v", id, got)
 		}
 	}
 }
@@ -398,11 +397,11 @@ func setTextOp(s *opendesignerv1.SetText) *opendesignerv1.Op {
 
 func TestApplySetTextChangesContent(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "ciao")}}})
-	if err := Apply(doc, setTextOp(&opendesignerv1.SetText{Id: "t1", Content: "nuovo testo"})); err != nil {
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "hello")}}})
+	if err := Apply(doc, setTextOp(&opendesignerv1.SetText{Id: "t1", Content: "new text"})); err != nil {
 		t.Fatalf("Apply setText: %v", err)
 	}
-	if got := doc.Nodes["t1"].GetText().GetContent(); got != "nuovo testo" {
+	if got := doc.Nodes["t1"].GetText().GetContent(); got != "new text" {
 		t.Fatalf("content not applied: %q", got)
 	}
 }
@@ -430,23 +429,23 @@ func TestApplySetTextMissingNode(t *testing.T) {
 	}
 }
 
-// Il caso che distingue "non specificato" da "azzera": in proto3 uno stile
-// assente e uno con tutti i campi a zero sono indistinguibili dopo il
-// round-trip protojson, quindi senza style_present un SetText di solo contenuto
-// azzererebbe lo stile del nodo (font a 0 => testo invisibile).
+// The case that distinguishes "unspecified" from "reset": in proto3 an absent
+// style and one with all fields at zero are indistinguishable after the
+// protojson round-trip, so without style_present a content-only SetText would
+// reset the node's style (font 0 => invisible text).
 func TestApplySetTextWithoutStylePresentKeepsStyle(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "ciao")}}})
-	if err := Apply(doc, setTextOp(&opendesignerv1.SetText{Id: "t1", Content: "altro"})); err != nil {
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "hello")}}})
+	if err := Apply(doc, setTextOp(&opendesignerv1.SetText{Id: "t1", Content: "other"})); err != nil {
 		t.Fatalf("Apply setText: %v", err)
 	}
 	st := doc.Nodes["t1"].GetText().GetStyle()
 	if st.GetFontSize() != 16 || st.GetFontFamily() != "Inter" || st.GetLineHeight() != 1.2 {
 		t.Fatalf("style clobbered by a style-less setText: %+v", st)
 	}
-	// Anche uno `style` esplicito ma con style_present=false va ignorato: è il
-	// flag, non la presenza del sotto-messaggio, a decidere.
-	op := setTextOp(&opendesignerv1.SetText{Id: "t1", Content: "terzo", Style: &opendesignerv1.TextStyle{FontSize: 99}})
+	// An explicit `style` with style_present=false must be ignored too: it is the
+	// flag, not the presence of the sub-message, that decides.
+	op := setTextOp(&opendesignerv1.SetText{Id: "t1", Content: "third", Style: &opendesignerv1.TextStyle{FontSize: 99}})
 	if err := Apply(doc, op); err != nil {
 		t.Fatalf("Apply setText: %v", err)
 	}
@@ -457,9 +456,9 @@ func TestApplySetTextWithoutStylePresentKeepsStyle(t *testing.T) {
 
 func TestApplySetTextWithStylePresentReplacesStyle(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "ciao")}}})
+	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: textNode("t1", "hello")}}})
 	op := setTextOp(&opendesignerv1.SetText{
-		Id: "t1", Content: "ciao", StylePresent: true,
+		Id: "t1", Content: "hello", StylePresent: true,
 		Style: &opendesignerv1.TextStyle{
 			FontFamily: "Inter", FontSize: 32, FontWeight: "700", LineHeight: 1.5,
 			Align: opendesignerv1.TextAlign_TEXT_ALIGN_CENTER,
@@ -475,13 +474,13 @@ func TestApplySetTextWithStylePresentReplacesStyle(t *testing.T) {
 }
 
 // ---------------------------------------------------------------------------
-// SetVectorPath (op 15) -- la geometria vettoriale.
+// SetVectorPath (op 15) -- the vector geometry.
 // ---------------------------------------------------------------------------
 
-// Un subpath "ricco": maniglie bézier ASIMMETRICHE e mai nulle, così un lato
-// che dimenticasse in_/out_ (o li ricavasse per specchiatura) non potrebbe
-// passare per caso. Sono OFFSET relativi all'ancoraggio (vedi il proto), quindi
-// piccoli e centrati sullo zero: nulle significherebbe "nessuna maniglia".
+// A "rich" subpath: ASYMMETRIC and never-zero bézier handles, so a side that
+// forgot in_/out_ (or derived them by mirroring) could not pass by chance. They
+// are OFFSETS relative to the anchor (see the proto), so small and centered on
+// zero: zero would mean "no handle".
 func richSubPath(closed bool) *opendesignerv1.SubPath {
 	return &opendesignerv1.SubPath{
 		Anchors: []*opendesignerv1.Anchor{
@@ -513,7 +512,7 @@ func TestApplySetVectorPathReplacesSubpaths(t *testing.T) {
 		t.Fatalf("Apply setVectorPath: %v", err)
 	}
 	got := doc.Nodes["v1"].GetVector().GetSubpaths()
-	// Sostituzione WHOLESALE: non un merge, non un append.
+	// WHOLESALE replacement: not a merge, not an append.
 	if len(got) != 2 {
 		t.Fatalf("expected 2 subpaths, got %d", len(got))
 	}
@@ -526,8 +525,8 @@ func TestApplySetVectorPathReplacesSubpaths(t *testing.T) {
 	}
 }
 
-// Una lista VUOTA è legittima: è il path che l'utente ha svuotato, non un
-// "campo non specificato" da ignorare (a differenza di SetText.style).
+// An EMPTY list is legitimate: it is the path the user emptied, not an
+// "unspecified field" to ignore (unlike SetText.style).
 func TestApplySetVectorPathEmptyListClearsPath(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: vectorNode("v1", richSubPath(true))}}})
@@ -537,15 +536,15 @@ func TestApplySetVectorPathEmptyListClearsPath(t *testing.T) {
 	if n := len(doc.Nodes["v1"].GetVector().GetSubpaths()); n != 0 {
 		t.Fatalf("expected an emptied path, got %d subpaths", n)
 	}
-	// Il nodo resta un nodo vettoriale (svuotato), non perde la forma: un
-	// successivo setVectorPath deve ancora essere accettato.
+	// The node remains a vector node (emptied), it does not lose its shape: a
+	// subsequent setVectorPath must still be accepted.
 	if _, ok := doc.Nodes["v1"].GetShape().(*opendesignerv1.Node_Vector); !ok {
 		t.Fatalf("shape lost by an emptying setVectorPath: %T", doc.Nodes["v1"].GetShape())
 	}
 }
 
-// Stesso precedente di applySetText su un rettangolo (ErrNotTextNode): il oneof
-// `shape` è la NATURA del nodo, non un campo da riempire.
+// Same precedent as applySetText on a rectangle (ErrNotTextNode): the `shape`
+// oneof is the NATURE of the node, not a field to fill in.
 func TestApplySetVectorPathOnNonVectorNodeFails(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: rectNode("n1", 0, 0)}}})
@@ -577,10 +576,10 @@ func TestApplyDeleteNode(t *testing.T) {
 	}
 }
 
-// --- ImageNode (traccia 3) ---------------------------------------------------
+// --- ImageNode (track 3) -----------------------------------------------------
 
-// L'hash di un asset è 64 esadecimali minuscoli (lo sha256 dei byte, vedi
-// internal/store/assets.go). Qui ne serve uno solo per forma.
+// An asset's hash is 64 lowercase hex digits (the sha256 of the bytes, see
+// internal/store/assets.go). Only one is needed here, per shape.
 const testAssetHash = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
 
 func imageNode(id, hash string) *opendesignerv1.Node {
@@ -591,9 +590,9 @@ func imageNode(id, hash string) *opendesignerv1.Node {
 	}
 }
 
-// Un ImageNode porta un RIFERIMENTO, mai dei byte: l'op che lo crea pesa quanto
-// un hash, e l'op-log resta un registro di intenzioni invece di un archivio di
-// immagini.
+// An ImageNode carries a REFERENCE, never bytes: the op that creates it weighs
+// as much as a hash, and the op-log stays a record of intentions instead of an
+// archive of images.
 func TestApplyCreateImageNodeCarriesOnlyTheHash(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	op := &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: imageNode("i1", testAssetHash)}}}
@@ -604,19 +603,19 @@ func TestApplyCreateImageNodeCarriesOnlyTheHash(t *testing.T) {
 	if got.GetImage().GetAssetHash() != testAssetHash {
 		t.Fatalf("asset hash = %q, want %q", got.GetImage().GetAssetHash(), testAssetHash)
 	}
-	// La prova che nessun byte di immagine viaggia nell'op: l'op serializzato
-	// è dell'ordine dell'hash, non dell'ordine di una foto.
+	// The proof that no image byte travels in the op: the serialized op is of the
+	// order of the hash, not of the order of a photo.
 	wire, err := proto.Marshal(op)
 	if err != nil {
 		t.Fatal(err)
 	}
 	if len(wire) > 256 {
-		t.Fatalf("un CreateNode con immagine pesa %d byte: qualcosa oltre l'hash sta viaggiando", len(wire))
+		t.Fatalf("a CreateNode with an image weighs %d bytes: something beyond the hash is travelling", len(wire))
 	}
 }
 
-// Spostare e ridimensionare un'immagine è un setProps come per qualunque altro
-// nodo: la forma non c'entra, e soprattutto non viene toccata.
+// Moving and resizing an image is a setProps like for any other node: the
+// shape is irrelevant, and above all it is not touched.
 func TestApplySetPropertiesOnImageKeepsTheAssetHash(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: imageNode("i1", testAssetHash)}}})
@@ -637,9 +636,9 @@ func TestApplySetPropertiesOnImageKeepsTheAssetHash(t *testing.T) {
 	}
 }
 
-// Stessa regola di un rettangolo (ErrNotTextNode): scrivere del testo dentro
-// un'immagine non è "riempire un campo mancante", è un op sul nodo sbagliato --
-// e sostituirebbe la forma, cioè butterebbe via il riferimento all'asset.
+// Same rule as a rectangle (ErrNotTextNode): writing text into an image is not
+// "filling a missing field", it is an op on the wrong node -- and it would
+// replace the shape, i.e. throw away the reference to the asset.
 func TestApplySetTextOnImageNodeFails(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	_ = Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: imageNode("i1", testAssetHash)}}})
@@ -651,7 +650,7 @@ func TestApplySetTextOnImageNodeFails(t *testing.T) {
 	}
 }
 
-// --- M4: componenti / istanze -------------------------------------------------
+// --- M4: components / instances -----------------------------------------------
 
 func instanceNode(id, componentID string, overrides ...*opendesignerv1.InstanceOverride) *opendesignerv1.Node {
 	return &opendesignerv1.Node{
@@ -729,18 +728,18 @@ func TestApplySetInstanceOverride(t *testing.T) {
 	if len(ovs) != 1 || !ovs[0].GetFillsPresent() {
 		t.Fatalf("override not set: %+v", ovs)
 	}
-	// Stesso master_node_id: SOSTITUISCE, resta uno solo.
+	// Same master_node_id: REPLACES, only one remains.
 	_ = Apply(doc, mkSetOverride("i1", &opendesignerv1.InstanceOverride{MasterNodeId: "master", Text: "x", TextPresent: true}))
 	ovs = doc.Nodes["i1"].GetInstance().GetOverrides()
 	if len(ovs) != 1 || !ovs[0].GetTextPresent() || ovs[0].GetFillsPresent() {
 		t.Fatalf("override not replaced: %+v", ovs)
 	}
-	// Override che non sovrascrive nulla = RIMOZIONE.
+	// An override that overrides nothing = REMOVAL.
 	_ = Apply(doc, mkSetOverride("i1", &opendesignerv1.InstanceOverride{MasterNodeId: "master"}))
 	if len(doc.Nodes["i1"].GetInstance().GetOverrides()) != 0 {
 		t.Fatal("an empty override should remove it")
 	}
-	// Override su un non-istanza -> rifiutato.
+	// Override on a non-instance -> rejected.
 	_ = Apply(doc, mkCreate(rectNode("r", 0, 0)))
 	if err := Apply(doc, mkSetOverride("r", red)); !errors.Is(err, ErrNotInstanceNode) {
 		t.Fatalf("expected ErrNotInstanceNode, got %v", err)

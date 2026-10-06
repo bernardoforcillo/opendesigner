@@ -15,7 +15,7 @@ import {
   clipboardMemory,
 } from "./clipboard";
 
-// --- fixture ----------------------------------------------------------------
+// --- fixtures ---------------------------------------------------------------
 
 function rect(id: string, over: Partial<NodeLite> = {}): NodeLite {
   return {
@@ -43,9 +43,9 @@ function text(id: string, over: Partial<NodeLite> = {}): NodeLite {
   return rect(id, {
     kind: "text",
     cornerRadius: 0,
-    name: "Testo",
+    name: "Text",
     text: {
-      content: "ciao",
+      content: "hello",
       style: { fontFamily: "Inter", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "center" },
     },
     ...over,
@@ -58,8 +58,8 @@ function installScene(nodes: NodeLite[]): void {
   useScene.getState().setScene(scene);
 }
 
-// La clipboard di sistema non esiste in jsdom: la si installa (o la si toglie,
-// per il caso "API non disponibile") su navigator per ogni test.
+// The system clipboard does not exist in jsdom: it is installed (or removed,
+// for the "API not available" case) on navigator for every test.
 interface ClipboardStub {
   writeText: ReturnType<typeof vi.fn>;
   readText: ReturnType<typeof vi.fn>;
@@ -99,8 +99,8 @@ beforeEach(() => {
   });
   installScene([]);
   setClipboard(clipboardStub());
-  // Il buffer di ripiego è stato di MODULO: senza azzerarlo, una copia fatta da
-  // un test precedente resterebbe incollabile in quello dopo.
+  // The fallback buffer is MODULE state: without resetting it, a copy made by
+  // a previous test would remain pasteable in the next one.
   clipboardMemory.text = null;
   clipboardMemory.onSystem = false;
 });
@@ -109,10 +109,10 @@ afterEach(() => {
   setClipboard(null);
 });
 
-// --- formato ----------------------------------------------------------------
+// --- format -----------------------------------------------------------------
 
-describe("il payload della clipboard", () => {
-  it("fa il giro completo serializza -> analizza senza perdere niente", () => {
+describe("the clipboard payload", () => {
+  it("makes the full serialize -> parse round trip without losing anything", () => {
     const nodes = [rect("n1"), text("n2")];
     const parsed = parseClipboard(serializeNodes(nodes));
     expect(parsed.ok).toBe(true);
@@ -120,7 +120,7 @@ describe("il payload della clipboard", () => {
     expect(parsed.nodes).toEqual(nodes);
   });
 
-  it("conserva effetti e gradienti nel giro serializza -> analizza", () => {
+  it("keeps effects and gradients through the serialize -> parse round trip", () => {
     const n = rect("n1", {
       fills: [{
         r: 1, g: 0, b: 0, a: 1,
@@ -140,7 +140,7 @@ describe("il payload della clipboard", () => {
     expect(parsed.nodes).toEqual([n]);
   });
 
-  it("ignora un effetto sconosciuto o storto invece di rifiutare tutto, e limita i valori negativi", () => {
+  it("ignores an unknown or malformed effect instead of rejecting everything, and clamps negative values", () => {
     const payload = JSON.parse(serializeNodes([rect("n1")]));
     payload.nodes.at(0).effects = [{ kind: "glow" }, { kind: "layerBlur", radius: -4 }, null, { kind: "dropShadow", blur: -1 }];
     const parsed = parseClipboard(JSON.stringify(payload));
@@ -151,15 +151,15 @@ describe("il payload della clipboard", () => {
     ]);
   });
 
-  it("è un JSON etichettato e versionato (così un'altra finestra lo riconosce)", () => {
+  it("is a labeled and versioned JSON (so another window recognizes it)", () => {
     const payload = JSON.parse(serializeNodes([rect("n1")]));
     expect(payload.format).toBe(CLIPBOARD_FORMAT);
     expect(payload.version).toBe(CLIPBOARD_VERSION);
     expect(payload.nodes).toHaveLength(1);
   });
 
-  it("tratta come ESTRANEO tutto ciò che non è un payload opendesigner", () => {
-    for (const t of ["", "   ", "ciao mondo", "{ non json", JSON.stringify({ hello: "world" })]) {
+  it("treats as FOREIGN anything that is not an opendesigner payload", () => {
+    for (const t of ["", "   ", "hello world", "{ not json", JSON.stringify({ hello: "world" })]) {
       const parsed = parseClipboard(t);
       expect(parsed.ok, t).toBe(false);
       if (parsed.ok) throw new Error("unreachable");
@@ -167,11 +167,11 @@ describe("il payload della clipboard", () => {
     }
   });
 
-  // Il requisito centrale: un payload che parla di un tipo di nodo che questa
-  // build non conosce (un'altra finestra, una versione più nuova) va RIFIUTATO
-  // in blocco -- creare un nodo "vector" degradato a rettangolo sarebbe un
-  // documento corrotto in silenzio.
-  it("RIFIUTA un payload con un tipo di nodo sconosciuto, invece di degradarlo", () => {
+  // The central requirement: a payload that talks about a node type that this
+  // build does not know (another window, a newer version) must be REJECTED
+  // wholesale -- creating a "vector" node degraded to a rectangle would be a
+  // silently corrupted document.
+  it("REJECTS a payload with an unknown node type, instead of degrading it", () => {
     const payload = JSON.stringify({
       format: CLIPBOARD_FORMAT,
       version: CLIPBOARD_VERSION,
@@ -183,7 +183,7 @@ describe("il payload della clipboard", () => {
     expect(parsed.reason).toBe("unsupported");
   });
 
-  it("RIFIUTA un payload di una versione futura", () => {
+  it("REJECTS a payload from a future version", () => {
     const payload = JSON.stringify({
       format: CLIPBOARD_FORMAT,
       version: CLIPBOARD_VERSION + 1,
@@ -195,14 +195,14 @@ describe("il payload della clipboard", () => {
     expect(parsed.reason).toBe("unsupported");
   });
 
-  it("riempie i campi mancanti invece di produrre un nodo a metà", () => {
+  it("fills in missing fields instead of producing a half node", () => {
     const payload = JSON.stringify({
       format: CLIPBOARD_FORMAT,
       version: CLIPBOARD_VERSION,
       nodes: [{ id: "n1", kind: "text" }],
     });
     const parsed = parseClipboard(payload);
-    if (!parsed.ok) throw new Error("dovrebbe essere accettato");
+    if (!parsed.ok) throw new Error("should have been accepted");
     const n = parsed.nodes[0];
     expect(n.kind).toBe("text");
     expect(n.text).toBeDefined();
@@ -212,10 +212,10 @@ describe("il payload della clipboard", () => {
   });
 });
 
-// --- op di incolla ----------------------------------------------------------
+// --- paste ops --------------------------------------------------------------
 
 describe("pasteOps", () => {
-  it("dà id NUOVI a ogni nodo incollato", () => {
+  it("gives NEW ids to every pasted node", () => {
     installScene([rect("n1")]);
     const { ops, ids } = pasteOps(useScene.getState().scene!, [rect("n1")]);
     expect(ops).toHaveLength(1);
@@ -226,26 +226,26 @@ describe("pasteOps", () => {
     expect(op.kind.value.node?.id).toBe(ids[0]);
   });
 
-  // Un id o una order key duplicati corromperebbero il documento: il primo
-  // perché core.applyCreate rifiuta l'op (ErrNodeExists) lasciando la scena
-  // locale divergente, la seconda perché l'ordine di disegno diventerebbe
-  // indefinito fra i due nodi.
-  it("dà order key NUOVE, in cima al documento e nell'ordine dei nodi copiati", () => {
+  // A duplicate id or order key would corrupt the document: the first
+  // because core.applyCreate rejects the op (ErrNodeExists) leaving the local
+  // scene diverged, the second because the draw order would become
+  // undefined between the two nodes.
+  it("gives NEW order keys, at the top of the document and in the order of the copied nodes", () => {
     installScene([rect("a", { orderKey: "a000001" }), rect("b", { orderKey: "a000005" })]);
     const scene = useScene.getState().scene!;
     const { ops } = pasteOps(scene, [rect("x", { orderKey: "a000009" }), rect("y", { orderKey: "a000002" })]);
     const keys = ops.map((op) => (op.kind.case === "createNode" ? op.kind.value.node!.orderKey : ""));
     expect(keys).toHaveLength(2);
-    // Sopra ogni chiave già nel documento...
+    // Above every key already in the document...
     for (const k of keys) expect(k > "a000005").toBe(true);
-    // ...crescenti fra loro, e nell'ordine RELATIVO dei nodi copiati (y prima
-    // di x: la sua order key di partenza era più bassa).
+    // ...increasing among themselves, and in the RELATIVE order of the copied nodes (y before
+    // x: its starting order key was lower).
     expect(keys[0] < keys[1]).toBe(true);
     const names = ops.map((op) => (op.kind.case === "createNode" ? op.kind.value.node!.id : ""));
     expect(new Set(names).size).toBe(2);
   });
 
-  it("sposta i nodi incollati dell'offset", () => {
+  it("offsets the pasted nodes", () => {
     const scene = useScene.getState().scene!;
     const { ops } = pasteOps(scene, [rect("n1", { x: 10, y: 20 })]);
     const node = ops[0].kind.case === "createNode" ? ops[0].kind.value.node! : null;
@@ -253,22 +253,22 @@ describe("pasteOps", () => {
     expect(node?.y).toBe(20 + PASTE_OFFSET);
   });
 
-  it("conserva forma, stile e testo del nodo di partenza", () => {
+  it("keeps the shape, style and text of the source node", () => {
     const scene = useScene.getState().scene!;
     const { ops } = pasteOps(scene, [text("t1", { opacity: 0.5, rotation: 30 })]);
     const node = ops[0].kind.case === "createNode" ? ops[0].kind.value.node! : null;
     expect(node?.shape.case).toBe("text");
-    expect(node?.shape.case === "text" && node.shape.value.content).toBe("ciao");
+    expect(node?.shape.case === "text" && node.shape.value.content).toBe("hello");
     expect(node?.opacity).toBe(0.5);
     expect(node?.rotation).toBe(30);
     expect(node?.fills).toHaveLength(1);
   });
 
-  // "I nodi selezionati e il loro parent", non "tutti i nodi del documento":
-  // quando arriverà l'annidamento (traccia 1) un payload potrà contenere un
-  // contenitore insieme ai suoi figli, e il figlio deve seguire la COPIA del
-  // contenitore, non l'originale.
-  it("rimappa il parent quando anche il parent è nel payload", () => {
+  // "The selected nodes and their parent", not "all the nodes of the document":
+  // when nesting arrives (track 1) a payload may contain a
+  // container together with its children, and the child must follow the COPY of the
+  // container, not the original.
+  it("remaps the parent when the parent is also in the payload", () => {
     const scene = useScene.getState().scene!;
     const parent = rect("p1", { orderKey: "a000001" });
     const child = rect("c1", { parentId: "p1", orderKey: "a000002", x: 5, y: 5 });
@@ -276,14 +276,14 @@ describe("pasteOps", () => {
     const nodes = ops.map((op) => (op.kind.case === "createNode" ? op.kind.value.node! : null));
     expect(nodes.at(0)?.id).toBe(ids[0]);
     expect(nodes.at(1)?.parentId).toBe(ids[0]);
-    // Il figlio NON prende l'offset: lo prende il contenitore, e spostare
-    // entrambi lo sposterebbe due volte il giorno in cui le coordinate
-    // diventeranno relative al parent.
+    // The child does NOT take the offset: the container takes it, and moving
+    // both would move it twice the day coordinates
+    // become relative to the parent.
     expect(nodes.at(1)?.x).toBe(5);
     expect(nodes.at(0)?.x).toBe(10 + PASTE_OFFSET);
   });
 
-  it("conserva il parent quando esiste nel documento di destinazione", () => {
+  it("keeps the parent when it exists in the destination document", () => {
     installScene([rect("host")]);
     const scene = useScene.getState().scene!;
     const { ops } = pasteOps(scene, [rect("n1", { parentId: "host" })]);
@@ -291,20 +291,20 @@ describe("pasteOps", () => {
     expect(node?.parentId).toBe("host");
   });
 
-  it("ripiega sulla pagina quando il parent non esiste (incolla in un ALTRO documento)", () => {
+  it("falls back to the page when the parent does not exist (paste into ANOTHER document)", () => {
     const scene = useScene.getState().scene!;
-    const { ops } = pasteOps(scene, [rect("n1", { parentId: "gruppo-di-un-altro-documento" })]);
+    const { ops } = pasteOps(scene, [rect("n1", { parentId: "group-from-another-document" })]);
     const node = ops[0].kind.case === "createNode" ? ops[0].kind.value.node! : null;
     expect(node?.parentId).toBe("page1");
   });
 
-  // Gli id del payload NON sono garantiti: parseClipboard tollera un nodo senza
-  // `id` (lo legge come "") e un payload scritto a mano può ripeterne uno. Se il
-  // nuovo id si scegliesse per id di partenza invece che per posizione, quei
-  // nodi collasserebbero su un solo uuid: due CreateNode con lo stesso id, che
-  // in locale applyOp scarta (la scena guadagna UN nodo mentre `ids` ne
-  // dichiara due) e che il server rifiuta con ErrNodeExists a gesto iniziato.
-  it("dà id DISTINTI anche a nodi del payload senza id", () => {
+  // The payload ids are NOT guaranteed: parseClipboard tolerates a node without
+  // `id` (it reads it as "") and a hand-written payload can repeat one. If the
+  // new id were chosen by source id instead of by position, those
+  // nodes would collapse onto a single uuid: two CreateNodes with the same id, which
+  // locally applyOp discards (the scene gains ONE node while `ids` declares
+  // two) and which the server rejects with ErrNodeExists mid-gesture.
+  it("gives DISTINCT ids even to payload nodes without an id", () => {
     const scene = useScene.getState().scene!;
     const { ops, ids } = pasteOps(scene, [rect("", { x: 1 }), rect("", { x: 2 })]);
     expect(ops).toHaveLength(2);
@@ -315,20 +315,20 @@ describe("pasteOps", () => {
     expect(created).not.toContain("");
   });
 
-  it("dà id DISTINTI anche a nodi del payload che ripetono lo stesso id", () => {
+  it("gives DISTINCT ids even to payload nodes that repeat the same id", () => {
     const scene = useScene.getState().scene!;
     const { ops, ids } = pasteOps(scene, [
-      rect("stesso", { orderKey: "a000001" }),
-      rect("stesso", { orderKey: "a000002" }),
+      rect("same", { orderKey: "a000001" }),
+      rect("same", { orderKey: "a000002" }),
     ]);
     const created = ops.map((op) => (op.kind.case === "createNode" ? op.kind.value.node!.id : ""));
     expect(new Set(created).size).toBe(2);
     expect(ids).toEqual(created);
   });
 
-  // L'id vuoto non è un'identità: senza questa distinzione un nodo con
-  // parentId "" verrebbe "rimappato" sotto la copia del nodo senza id.
-  it("non attacca un nodo senza parent alla copia del nodo senza id", () => {
+  // The empty id is not an identity: without this distinction a node with
+  // parentId "" would be "remapped" under the copy of the node without an id.
+  it("does not attach a node without a parent to the copy of the node without an id", () => {
     const scene = useScene.getState().scene!;
     const { ops, ids } = pasteOps(scene, [
       rect("", { orderKey: "a000001" }),
@@ -337,13 +337,13 @@ describe("pasteOps", () => {
     const nodes = ops.map((op) => (op.kind.case === "createNode" ? op.kind.value.node! : null));
     expect(nodes.at(1)?.parentId).toBe("page1");
     expect(nodes.at(1)?.parentId).not.toBe(ids[0]);
-    // E poiché non è figlio di niente, resta una RADICE: prende l'offset.
+    // And since it is a child of nothing, it stays a ROOT: it takes the offset.
     expect(nodes.at(1)?.x).toBe(10 + PASTE_OFFSET);
   });
 
-  // Un parent ambiguo (due nodi con lo stesso id) non si tira a sorte: il nodo
-  // ricade sui casi "esiste nel documento" / "atterra sulla pagina".
-  it("non rimappa un parent ambiguo", () => {
+  // An ambiguous parent (two nodes with the same id) is not drawn by lot: the node
+  // falls back on the "exists in the document" / "lands on the page" cases.
+  it("does not remap an ambiguous parent", () => {
     const scene = useScene.getState().scene!;
     const { ops, ids } = pasteOps(scene, [
       rect("dup", { orderKey: "a000001" }),
@@ -355,7 +355,7 @@ describe("pasteOps", () => {
     expect(ids).not.toContain(child?.parentId);
   });
 
-  it("non crea un nodo figlio di sé stesso", () => {
+  it("does not create a node that is its own child", () => {
     installScene([]);
     const scene = useScene.getState().scene!;
     const { ops, ids } = pasteOps(scene, [rect("n1", { parentId: "n1" })]);
@@ -365,10 +365,10 @@ describe("pasteOps", () => {
   });
 });
 
-// --- copia ------------------------------------------------------------------
+// --- copy -------------------------------------------------------------------
 
 describe("copySelection", () => {
-  it("scrive la selezione sulla clipboard di SISTEMA come payload opendesigner", async () => {
+  it("writes the selection to the SYSTEM clipboard as an opendesigner payload", async () => {
     const cb = clipboardStub();
     setClipboard(cb);
     installScene([rect("n1"), rect("n2")]);
@@ -377,11 +377,11 @@ describe("copySelection", () => {
     expect(await copySelection()).toBe(true);
     expect(cb.writeText).toHaveBeenCalledTimes(1);
     const parsed = parseClipboard(cb.writeText.mock.calls[0][0] as string);
-    if (!parsed.ok) throw new Error("dovrebbe essere un payload opendesigner");
+    if (!parsed.ok) throw new Error("should have been an opendesigner payload");
     expect(parsed.nodes.map((n) => n.id)).toEqual(["n1"]);
   });
 
-  it("non copia niente (e non tocca la clipboard) senza selezione", async () => {
+  it("copies nothing (and does not touch the clipboard) without a selection", async () => {
     const cb = clipboardStub();
     setClipboard(cb);
     installScene([rect("n1")]);
@@ -390,10 +390,10 @@ describe("copySelection", () => {
   });
 });
 
-// --- incolla ----------------------------------------------------------------
+// --- paste ------------------------------------------------------------------
 
 describe("pasteClipboard", () => {
-  it("incolla il payload della clipboard di sistema con id nuovi", async () => {
+  it("pastes the system clipboard payload with new ids", async () => {
     const cb = clipboardStub(serializeNodes([rect("n1"), rect("n2")]));
     setClipboard(cb);
     installScene([]);
@@ -408,22 +408,22 @@ describe("pasteClipboard", () => {
       scene.nodes.at(a).orderKey < scene.nodes.at(b).orderKey ? -1 : 1));
   });
 
-  // Il punto del "un solo gesto": un Ctrl+Z toglie TUTTO l'incollato, non un
-  // nodo per volta.
-  it("è UN SOLO gesto: un Ctrl+Z toglie tutti i nodi incollati insieme", async () => {
+  // The point of "a single gesture": one Ctrl+Z removes ALL the pasted stuff, not one
+  // node at a time.
+  it("is a SINGLE gesture: one Ctrl+Z removes all the pasted nodes together", async () => {
     setClipboard(clipboardStub(serializeNodes([rect("n1"), rect("n2"), rect("n3")])));
-    installScene([rect("gia-qui")]);
+    installScene([rect("already-here")]);
 
     await pasteClipboard();
     expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(4);
     expect(useScene.getState().undoStack).toHaveLength(1);
 
     useScene.getState().undo();
-    expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["gia-qui"]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["already-here"]);
   });
 
-  it("incolla dal buffer in memoria quando la clipboard di sistema non è disponibile", async () => {
-    setClipboard(null); // niente navigator.clipboard: ambiente non sicuro, permesso negato...
+  it("pastes from the in-memory buffer when the system clipboard is not available", async () => {
+    setClipboard(null); // no navigator.clipboard: insecure environment, permission denied...
     installScene([rect("n1")]);
     useScene.getState().setSelection(["n1"]);
     await copySelection();
@@ -432,9 +432,9 @@ describe("pasteClipboard", () => {
     expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
-  it("incolla dal buffer in memoria quando la clipboard di sistema RIFIUTA la lettura", async () => {
+  it("pastes from the in-memory buffer when the system clipboard REFUSES the read", async () => {
     const cb = clipboardStub();
-    cb.readText.mockRejectedValue(new Error("permesso negato"));
+    cb.readText.mockRejectedValue(new Error("permission denied"));
     setClipboard(cb);
     installScene([rect("n1")]);
     useScene.getState().setSelection(["n1"]);
@@ -444,36 +444,36 @@ describe("pasteClipboard", () => {
     expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
-  it("non incolla niente quando non c'è mai stata una copia", async () => {
-    setClipboard(clipboardStub("del testo qualunque"));
+  it("pastes nothing when there has never been a copy", async () => {
+    setClipboard(clipboardStub("any text at all"));
     installScene([rect("n1")]);
     await pasteClipboard();
     expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["n1"]);
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
-  it("rifiuta pulito un payload con un tipo sconosciuto: nessun nodo, un avviso", async () => {
+  it("cleanly rejects a payload with an unknown type: no node, a notice", async () => {
     const payload = JSON.stringify({
       format: CLIPBOARD_FORMAT,
       version: CLIPBOARD_VERSION,
       nodes: [{ ...rect("n1"), kind: "vector" }],
     });
     setClipboard(clipboardStub(payload));
-    installScene([rect("gia-qui")]);
+    installScene([rect("already-here")]);
 
     await pasteClipboard();
 
-    expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["gia-qui"]);
+    expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["already-here"]);
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().notice).toBeTruthy();
   });
 
-  // La lettura degli appunti è ASINCRONA e può restare appesa a lungo
-  // (Chromium non risolve readText finché il documento non ha il fuoco).
-  // Senza guardia, i Ctrl+V premuti nel frattempo si accodano e atterrano
-  // TUTTI INSIEME quando la lettura si sblocca: una raffica di incolla che
-  // nessuno ha chiesto, per di più da disfare uno per uno.
-  it("un secondo Ctrl+V mentre la lettura è ancora appesa non accoda un altro incolla", async () => {
+  // Reading the clipboard is ASYNCHRONOUS and can stay hanging for a long time
+  // (Chromium does not resolve readText until the document has focus).
+  // Without a guard, the Ctrl+V pressed in the meantime queue up and land
+  // ALL TOGETHER when the read unblocks: a burst of pastes that
+  // nobody asked for, which moreover have to be undone one by one.
+  it("a second Ctrl+V while the read is still hanging does not queue another paste", async () => {
     let release: (t: string) => void = () => {};
     const cb = clipboardStub();
     cb.readText.mockImplementation(() => new Promise<string>((res) => (release = res)));
@@ -489,10 +489,10 @@ describe("pasteClipboard", () => {
     expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(1);
   });
 
-  // Il caso end-to-end del payload scritto male: due nodi senza `id`. Devono
-  // diventare DUE nodi, e la selezione (che è anche ciò che la voce di undo
-  // toglierà) deve corrispondere a quello che è davvero nella scena.
-  it("incolla due nodi anche se il payload non dà loro un id", async () => {
+  // The end-to-end case of the badly written payload: two nodes without `id`. They must
+  // become TWO nodes, and the selection (which is also what the undo entry
+  // will remove) must match what is really in the scene.
+  it("pastes two nodes even if the payload gives them no id", async () => {
     const payload = JSON.stringify({
       format: CLIPBOARD_FORMAT,
       version: CLIPBOARD_VERSION,
@@ -513,42 +513,42 @@ describe("pasteClipboard", () => {
     expect([...useScene.getState().scene!.nodes.ids()]).toEqual([]);
   });
 
-  // Il ripiego sul buffer in memoria NON è per "sugli appunti c'è altro": una
-  // lettura riuscita è l'ultima copia che l'utente ha fatto davvero (testo
-  // selezionato nella pagina e Ctrl+C, o una copia in un'altra applicazione).
-  // Incollare al suo posto un rettangolo copiato prima sarebbe incollare una
-  // cosa per un'altra, senza dirlo.
-  it("NON ripiega sulla copia precedente quando gli appunti si leggono e contengono altro", async () => {
+  // The fallback on the in-memory buffer is NOT for "there is something else on the clipboard": a
+  // successful read is the last copy the user really made (text
+  // selected in the page and Ctrl+C, or a copy in another application).
+  // Pasting a previously copied rectangle in its place would be pasting one
+  // thing for another, without saying so.
+  it("does NOT fall back on the previous copy when the clipboard reads fine and contains something else", async () => {
     const cb = clipboardStub();
     setClipboard(cb);
     installScene([rect("n1")]);
     useScene.getState().setSelection(["n1"]);
     await copySelection();
-    // Qualcun altro (il browser, un'altra applicazione) sovrascrive gli appunti.
-    cb.readText.mockResolvedValue("del testo copiato altrove");
+    // Someone else (the browser, another application) overwrites the clipboard.
+    cb.readText.mockResolvedValue("some text copied elsewhere");
 
     expect(await pasteClipboard()).toEqual([]);
     expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["n1"]);
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
-  // ...ma se la nostra copia sulla clipboard di sistema non c'è mai arrivata
-  // (scrittura negata, documento senza fuoco), il buffer in memoria è l'UNICA
-  // copia che esiste: lì il ripiego resta l'unica cosa sensata.
-  it("ripiega comunque quando la SCRITTURA di sistema era fallita", async () => {
+  // ...but if our copy never reached the system clipboard
+  // (write denied, document unfocused), the in-memory buffer is the ONLY
+  // copy that exists: there the fallback remains the only sensible thing.
+  it("falls back anyway when the system WRITE had failed", async () => {
     const cb = clipboardStub();
-    cb.writeText.mockRejectedValue(new Error("permesso negato"));
+    cb.writeText.mockRejectedValue(new Error("permission denied"));
     setClipboard(cb);
     installScene([rect("n1")]);
     useScene.getState().setSelection(["n1"]);
     await copySelection();
-    cb.readText.mockResolvedValue("del testo copiato altrove");
+    cb.readText.mockResolvedValue("some text copied elsewhere");
 
     await pasteClipboard();
     expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
-  it("non incolla a gesto aperto (un drag in corso): rimandato, come undo/redo", async () => {
+  it("does not paste with an open gesture (a drag in progress): deferred, like undo/redo", async () => {
     setClipboard(clipboardStub(serializeNodes([rect("n1")])));
     installScene([]);
     useScene.getState().beginGesture();
@@ -557,10 +557,10 @@ describe("pasteClipboard", () => {
   });
 });
 
-// --- duplica ----------------------------------------------------------------
+// --- duplicate --------------------------------------------------------------
 
 describe("duplicateSelection", () => {
-  it("duplica la selezione con l'offset, e seleziona le copie", () => {
+  it("duplicates the selection with the offset, and selects the copies", () => {
     installScene([rect("n1", { x: 100, y: 200 })]);
     useScene.getState().setSelection(["n1"]);
 
@@ -574,7 +574,7 @@ describe("duplicateSelection", () => {
     expect(useScene.getState().selection).toEqual(ids);
   });
 
-  it("è UN SOLO gesto anche su più nodi", () => {
+  it("is a SINGLE gesture on several nodes too", () => {
     installScene([rect("n1"), rect("n2", { orderKey: "a000002" })]);
     useScene.getState().setSelection(["n1", "n2"]);
 
@@ -586,7 +586,7 @@ describe("duplicateSelection", () => {
     expect([...useScene.getState().scene!.nodes.ids()].sort()).toEqual(["n1", "n2"]);
   });
 
-  it("NON tocca la clipboard: duplicare non è copiare", () => {
+  it("does NOT touch the clipboard: duplicating is not copying", () => {
     const cb = clipboardStub();
     setClipboard(cb);
     installScene([rect("n1")]);
@@ -596,14 +596,14 @@ describe("duplicateSelection", () => {
     expect(cb.writeText).not.toHaveBeenCalled();
   });
 
-  it("senza selezione non fa niente", () => {
+  it("does nothing without a selection", () => {
     installScene([rect("n1")]);
     expect(duplicateSelection()).toEqual([]);
     expect([...useScene.getState().scene!.nodes.ids()]).toEqual(["n1"]);
   });
 });
 
-// --- scorciatoie ------------------------------------------------------------
+// --- shortcuts --------------------------------------------------------------
 
 describe("attachClipboardShortcuts", () => {
   let detach: () => void = () => {};
@@ -619,7 +619,7 @@ describe("attachClipboardShortcuts", () => {
     target.dispatchEvent(e);
   }
 
-  it("Ctrl+D duplica la selezione", () => {
+  it("Ctrl+D duplicates the selection", () => {
     detach = attachClipboardShortcuts();
     installScene([rect("n1")]);
     useScene.getState().setSelection(["n1"]);
@@ -628,7 +628,7 @@ describe("attachClipboardShortcuts", () => {
     expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2);
   });
 
-  it("Ctrl+C poi Ctrl+V copiano e incollano", async () => {
+  it("Ctrl+C then Ctrl+V copy and paste", async () => {
     setClipboard(clipboardStub());
     detach = attachClipboardShortcuts();
     installScene([rect("n1")]);
@@ -640,7 +640,7 @@ describe("attachClipboardShortcuts", () => {
     await vi.waitFor(() => expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(2));
   });
 
-  it("ignora le scorciatoie dentro un campo di testo (lì la copia è del campo)", () => {
+  it("ignores the shortcuts inside a text field (there copy belongs to the field)", () => {
     detach = attachClipboardShortcuts();
     installScene([rect("n1")]);
     useScene.getState().setSelection(["n1"]);
@@ -651,7 +651,7 @@ describe("attachClipboardShortcuts", () => {
     expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(1);
   });
 
-  it("ignora un tasto senza il modificatore, e Ctrl+Shift+D (che è un'altra scorciatoia)", () => {
+  it("ignores a key without the modifier, and Ctrl+Shift+D (which is another shortcut)", () => {
     detach = attachClipboardShortcuts();
     installScene([rect("n1")]);
     useScene.getState().setSelection(["n1"]);
@@ -661,7 +661,7 @@ describe("attachClipboardShortcuts", () => {
     expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(1);
   });
 
-  it("la cleanup stacca davvero il listener", () => {
+  it("the cleanup really detaches the listener", () => {
     detach = attachClipboardShortcuts();
     installScene([rect("n1")]);
     useScene.getState().setSelection(["n1"]);
@@ -672,7 +672,7 @@ describe("attachClipboardShortcuts", () => {
     expect([...useScene.getState().scene!.nodes.ids()]).toHaveLength(1);
   });
 
-  it("previene il default SOLO quando gestisce il tasto", () => {
+  it("prevents the default ONLY when it handles the key", () => {
     detach = attachClipboardShortcuts();
     installScene([rect("n1")]);
     useScene.getState().setSelection(["n1"]);
@@ -687,17 +687,17 @@ describe("attachClipboardShortcuts", () => {
   });
 });
 
-// --- immagini (traccia 3) ----------------------------------------------------
+// --- images (track 3) -------------------------------------------------------
 
 function imageNode(id: string, hash: string, over: Partial<NodeLite> = {}): NodeLite {
   return rect(id, { kind: "image", cornerRadius: 0, name: "logo.png", image: { assetHash: hash }, ...over });
 }
 
-describe("clipboard: immagini", () => {
-  it("copia e rilegge un nodo immagine tenendo il suo hash", () => {
-    // `image` è in KNOWN_KINDS: senza, questo payload sarebbe stato rifiutato
-    // come "unsupported" -- che è la garanzia che un tipo NUOVO non si incolla
-    // mai degradato a rettangolo.
+describe("clipboard: images", () => {
+  it("copies and re-reads an image node keeping its hash", () => {
+    // `image` is in KNOWN_KINDS: without it, this payload would have been rejected
+    // as "unsupported" -- which is the guarantee that a NEW type is never pasted
+    // degraded to a rectangle.
     const parsed = parseClipboard(serializeNodes([imageNode("n1", "abc123")]));
     expect(parsed.ok).toBe(true);
     if (!parsed.ok) return;
@@ -705,7 +705,7 @@ describe("clipboard: immagini", () => {
     expect(parsed.nodes[0].image?.assetHash).toBe("abc123");
   });
 
-  it("un'immagine senza hash leggibile si incolla come segnaposto, non fa fallire l'incolla", () => {
+  it("an image without a readable hash pastes as a placeholder, it does not fail the paste", () => {
     const parsed = parseClipboard(JSON.stringify({
       format: CLIPBOARD_FORMAT,
       version: CLIPBOARD_VERSION,
@@ -716,9 +716,9 @@ describe("clipboard: immagini", () => {
     expect(parsed.nodes[0].image?.assetHash).toBe("");
   });
 
-  it("l'incolla dà un id NUOVO ma lo STESSO hash: i byte non si duplicano", () => {
-    // È l'indirizzamento per contenuto a rendere questo corretto: due nodi che
-    // puntano allo stesso sha256 sono un file solo su disco.
+  it("the paste gives a NEW id but the SAME hash: the bytes are not duplicated", () => {
+    // It is content addressing that makes this correct: two nodes
+    // pointing at the same sha256 are a single file on disk.
     const scene = emptyScene("doc-1", "Untitled");
     const { ops } = pasteOps(scene, [imageNode("n1", "abc123")]);
     const node = ops[0].kind.case === "createNode" ? ops[0].kind.value.node! : null;

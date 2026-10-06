@@ -10,13 +10,13 @@ const LABEL_FONT = "600 11px Inter, system-ui, sans-serif";
 const LABEL_PAD_X = 6;
 const LABEL_H = 16;
 
-// Il puntatore (la classica freccia) con la punta in (0,0): scalato dal
-// chiamante solo dal dpr, mai dallo zoom -- un cursore ha la stessa taglia a
-// qualunque ingrandimento, come le maniglie.
+// The pointer (the classic arrow) with its tip at (0,0): scaled by the
+// caller only by dpr, never by zoom -- a cursor has the same size at
+// any magnification, like the handles.
 const ARROW: readonly [number, number][] = [[0, 0], [0, 15], [4, 11.5], [7.5, 18], [10, 17], [6.7, 10.5], [11.5, 10.5]];
 
-// Una targhetta col nome: pillola colorata con testo bianco, con l'angolo in
-// alto a sinistra in (x, y).
+// A name tag: colored pill with white text, with the top-left
+// corner at (x, y).
 function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string): void {
   const w = ctx.measureText(text).width + LABEL_PAD_X * 2;
   ctx.fillStyle = color;
@@ -29,14 +29,14 @@ function drawLabel(ctx: CanvasRenderingContext2D, text: string, x: number, y: nu
 }
 
 /**
- * Disegna gli altri utenti sopra l'overlay: il riquadro dei loro nodi
- * selezionati, il loro cursore e il loro nickname. Va chiamata DOPO
- * drawOverlay, che azzera il canvas.
+ * Draws the other users above the overlay: the box of their selected
+ * nodes, their cursor and their nickname. Must be called AFTER
+ * drawOverlay, which clears the canvas.
  *
- * Si vedono solo i peer sulla stessa pagina: il loro cursore sta in
- * coordinate di una pagina che chi guarda non sta mostrando. Un peer senza
- * pageId (non ha ancora detto niente) conta come "stessa pagina", per non
- * sparire nel primo istante.
+ * Only peers on the same page are seen: their cursor is in the
+ * coordinates of a page that the viewer is not showing. A peer without
+ * pageId (has not said anything yet) counts as "same page", so as not to
+ * vanish in the first instant.
  */
 export function drawPeers(
   ctx: CanvasRenderingContext2D,
@@ -48,7 +48,7 @@ export function drawPeers(
   const dpr = typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   ctx.font = LABEL_FONT;
-  // Stessa regola della vista: senza pagina corrente si mostra la prima.
+  // Same rule as the view: without a current page the first is shown.
   const here = currentPageId ?? scene.pages[0]?.id ?? null;
   for (const p of Object.values(peers)) {
     if (p.pageId !== "" && here !== null && p.pageId !== here) continue;
@@ -60,9 +60,9 @@ export function drawPeers(
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = color;
       ctx.strokeRect(box.x + 0.5, box.y + 0.5, box.width, box.height);
-      // Chi non ha un cursore (l'agente MCP, o chi ha il mouse fuori dal
-      // canvas) si riconosce dal nome sopra il suo riquadro: altrimenti
-      // sarebbe un contorno anonimo.
+      // Whoever has no cursor (the MCP agent, or whoever has the mouse outside the
+      // canvas) is recognized by the name above their box: otherwise it
+      // would be an anonymous outline.
       if (!p.hasCursor) drawLabel(ctx, p.nickname, box.x, box.y - LABEL_H - 2, color);
     }
 
@@ -85,10 +85,10 @@ export function drawPeers(
 }
 
 /**
- * L'anteprima di un riordino in un auto layout: la linea d'inserimento e il
- * contorno tratteggiato del nodo che segue il puntatore. Va chiamata DOPO
- * drawOverlay (che azzera il canvas); lo spessore della linea è in pixel
- * schermo, come le maniglie, e non cresce con lo zoom.
+ * The preview of a reorder in an auto layout: the insertion line and the
+ * dashed outline of the node following the pointer. Must be called AFTER
+ * drawOverlay (which clears the canvas); the line's thickness is in screen
+ * pixels, like the handles, and does not grow with the zoom.
  */
 export function drawLayoutDrop(
   ctx: CanvasRenderingContext2D,
@@ -97,7 +97,7 @@ export function drawLayoutDrop(
 ): void {
   const dpr = typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
-  // Il blu d'accento del tema (come il resto dell'overlay di selezione).
+  // The theme's accent blue (like the rest of the selection overlay).
   const DROP_COLOR = themeColors().accent;
   if (drop.ghost) {
     const g = worldBoundsToScreen(drop.ghost, cam);
@@ -111,7 +111,7 @@ export function drawLayoutDrop(
     ctx.restore();
   }
   const b = worldBoundsToScreen(drop.indicator, cam);
-  // La linea è sottile lungo UN asse: la si ingrossa a 2px schermo, centrata.
+  // The line is thin along ONE axis: it is thickened to 2 screen px, centered.
   const thin = b.width < b.height;
   ctx.fillStyle = DROP_COLOR;
   if (thin) ctx.fillRect(b.x + b.width / 2 - 1, b.y, 2, b.height);

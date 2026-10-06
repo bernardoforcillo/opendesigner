@@ -10,8 +10,8 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// TestExportCode: l'RPC esporta lo snapshot corrente dell'hub, con gli asset
-// del workspace copiati nel progetto, e distingue gli errori di input.
+// TestExportCode: the RPC exports the hub's current snapshot, with the
+// workspace's assets copied into the project, and distinguishes input errors.
 func TestExportCode(t *testing.T) {
 	ws := t.TempDir()
 	c, m := newTestClientWithManager(t, ws)
@@ -22,7 +22,7 @@ func TestExportCode(t *testing.T) {
 	}
 	docID := info.Msg.GetId()
 
-	// Un asset vero nel workspace: un PNG minimo valido per la allowlist.
+	// A real asset in the workspace: a minimal PNG valid for the allowlist.
 	png := append([]byte("\x89PNG\r\n\x1a\n"), bytes.Repeat([]byte{0}, 32)...)
 	ref, err := m.Assets(docID).Put(bytes.NewReader(png))
 	if err != nil {
@@ -44,7 +44,7 @@ func TestExportCode(t *testing.T) {
 	}
 	create(&opendesignerv1.Node{Id: "home", ParentId: "page1", OrderKey: "a1", Name: "Home", Visible: true, Opacity: 1, Width: 200, Height: 200,
 		Shape: &opendesignerv1.Node_Frame{Frame: &opendesignerv1.FrameNode{}}})
-	create(&opendesignerv1.Node{Id: "img", ParentId: "home", OrderKey: "a1", Name: "Foto", Visible: true, Opacity: 1, Width: 100, Height: 80,
+	create(&opendesignerv1.Node{Id: "img", ParentId: "home", OrderKey: "a1", Name: "Photo", Visible: true, Opacity: 1, Width: 100, Height: 80,
 		Shape: &opendesignerv1.Node_Image{Image: &opendesignerv1.ImageNode{AssetHash: ref.Hash}}})
 	send(&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetFlow{SetFlow: &opendesignerv1.SetFlow{Flow: &opendesignerv1.Flow{Id: "f", Name: "F", StartId: "home"}}}})
 
@@ -58,17 +58,17 @@ func TestExportCode(t *testing.T) {
 	}
 	for _, p := range []string{"package.json", "src/App.tsx", "src/screens/Home.tsx", "tests/flows.spec.ts", "public/assets/" + ref.Hash + ".png"} {
 		if _, ok := got[p]; !ok {
-			t.Errorf("file %q mancante: %d file", p, len(got))
+			t.Errorf("file %q missing: %d files", p, len(got))
 		}
 	}
 	if !bytes.Equal(got["public/assets/"+ref.Hash+".png"], png) {
-		t.Error("l'asset esportato non ha i byte del workspace")
+		t.Error("the exported asset does not have the workspace's bytes")
 	}
 	if !strings.Contains(string(got["src/screens/Home.tsx"]), "/assets/"+ref.Hash+".png") {
-		t.Error("la schermata non referenzia l'asset")
+		t.Error("the screen does not reference the asset")
 	}
 
-	// html: lo stesso documento come file per schermata; flow_id filtra.
+	// html: the same document as a file per screen; flow_id filters.
 	resp, err = c.ExportCode(ctx, connect.NewRequest(&opendesignerv1.ExportCodeRequest{DocId: docID, Target: "html", FlowId: "f"}))
 	if err != nil {
 		t.Fatal(err)
@@ -78,11 +78,11 @@ func TestExportCode(t *testing.T) {
 		hasIndex = hasIndex || f.GetPath() == "index.html"
 	}
 	if !hasIndex {
-		t.Error("html: manca index.html (la schermata iniziale del flusso)")
+		t.Error("html: index.html missing (the flow's start screen)")
 	}
 
-	// Errori: target sconosciuto e flusso sconosciuto sono dell'input; il
-	// documento che non esiste è NotFound.
+	// Errors: unknown target and unknown flow are input errors; a
+	// document that does not exist is NotFound.
 	for _, req := range []*opendesignerv1.ExportCodeRequest{
 		{DocId: docID, Target: "vue"},
 		{DocId: docID, FlowId: "nope"},
@@ -92,8 +92,8 @@ func TestExportCode(t *testing.T) {
 			t.Errorf("%v: code = %v, want InvalidArgument (%v)", req, connect.CodeOf(err), err)
 		}
 	}
-	_, err = c.ExportCode(ctx, connect.NewRequest(&opendesignerv1.ExportCodeRequest{DocId: "../fuori"}))
+	_, err = c.ExportCode(ctx, connect.NewRequest(&opendesignerv1.ExportCodeRequest{DocId: "../outside"}))
 	if connect.CodeOf(err) != connect.CodeNotFound {
-		t.Errorf("documento sconosciuto: code = %v, want NotFound (%v)", connect.CodeOf(err), err)
+		t.Errorf("unknown document: code = %v, want NotFound (%v)", connect.CodeOf(err), err)
 	}
 }

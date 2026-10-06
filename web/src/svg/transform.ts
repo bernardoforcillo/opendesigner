@@ -1,14 +1,14 @@
 import { IDENTITY, compose, type Transform } from "../canvas/transform";
 
-// L'attributo `transform` di SVG (e la proprietà CSS omonima nei casi semplici)
-// come matrice affine {a,b,c,d,e,f} -- la stessa forma di canvas/transform.ts,
-// così l'importer compone con compose() e non con una seconda algebra.
+// SVG's `transform` attribute (and the CSS property of the same name in simple cases)
+// as an affine matrix {a,b,c,d,e,f} -- the same shape as canvas/transform.ts,
+// so the importer composes with compose() and not with a second algebra.
 //
-// Funzioni accettate: matrix, translate, scale, rotate (con centro opzionale),
-// skewX, skewY, separate da spazi e/o virgole, con unità `deg`/`rad`/`px`
-// tollerate (il CSS le scrive: `rotate(45deg)`, `translate(10px, 5px)`).
-// L'ordine è quello SVG: "A B" = A applicata DOPO B ai punti (A è la più
-// esterna), cioè M = A · B.
+// Accepted functions: matrix, translate, scale, rotate (with optional center),
+// skewX, skewY, separated by spaces and/or commas, with units `deg`/`rad`/`px`
+// tolerated (CSS writes them: `rotate(45deg)`, `translate(10px, 5px)`).
+// The order is SVG's: "A B" = A applied AFTER B to the points (A is the
+// outermost), that is M = A · B.
 
 export interface ParsedTransform { matrix: Transform; ok: boolean }
 
@@ -54,7 +54,7 @@ export function parseTransform(input: string | null | undefined): ParsedTransfor
     consumed += m[0].length;
     const { values: v, units } = numbers(m[2]);
     const name = m[1].toLowerCase();
-    // `rad` si converte in gradi; `turn`/`grad` sono ignoti e si trattano da deg.
+    // `rad` is converted to degrees; `turn`/`grad` are unknown and treated as deg.
     const angle = (i: number) => (units[i] === "rad" ? (v[i] * 180) / Math.PI : v[i]);
     let next: Transform | null = null;
     switch (name) {
@@ -108,7 +108,7 @@ export function isIdentityM(t: Transform): boolean {
   return t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1 && t.e === 0 && t.f === 0;
 }
 
-/** Sola traslazione (parte lineare identità). */
+/** Translation only (linear part identity). */
 export function isTranslationM(t: Transform): boolean {
   return t.a === 1 && t.b === 0 && t.c === 0 && t.d === 1;
 }
@@ -116,16 +116,16 @@ export function isTranslationM(t: Transform): boolean {
 export interface Similarity {
   /** Scala uniforme. */
   s: number;
-  /** Rotazione in gradi, normalizzata in [0, 360). */
+  /** Rotation in degrees, normalized to [0, 360). */
   rotation: number;
 }
 
 /**
- * Se la matrice è una SIMILITUDINE diretta (traslazione + scala uniforme +
- * rotazione, senza riflessione né skew) ne ritorna scala e rotazione: è
- * l'unico caso in cui un rect/ellisse resta un rect/ellisse del modello (che
- * ha solo x/y/width/height/rotation). Altrimenti null, e il chiamante converte
- * la forma in path.
+ * If the matrix is a direct SIMILARITY (translation + uniform scale +
+ * rotation, with no reflection or skew) it returns scale and rotation: it is
+ * the only case in which a rect/ellipse stays a rect/ellipse of the model (which
+ * only has x/y/width/height/rotation). Otherwise null, and the caller converts
+ * the shape to a path.
  */
 export function similarityOf(t: Transform): Similarity | null {
   const sx = Math.hypot(t.a, t.b);
@@ -137,12 +137,12 @@ export function similarityOf(t: Transform): Similarity | null {
   if (Math.abs(t.a * t.c + t.b * t.d) > tol * sx) return null;
   let deg = (Math.atan2(t.b, t.a) * 180) / Math.PI;
   deg = ((deg % 360) + 360) % 360;
-  // Il rumore numerico attorno a 0/360 non deve diventare una rotazione.
+  // Numeric noise around 0/360 must not become a rotation.
   if (deg < 1e-7 || deg > 360 - 1e-7) deg = 0;
   return { s: sx, rotation: deg };
 }
 
-/** Il fattore con cui la matrice scala le LUNGHEZZE (radice del determinante). */
+/** The factor by which the matrix scales LENGTHS (root of the determinant). */
 export function lengthScaleOf(t: Transform): number {
   const det = Math.abs(t.a * t.d - t.b * t.c);
   return Math.sqrt(det);

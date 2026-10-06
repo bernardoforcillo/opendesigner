@@ -1,11 +1,11 @@
-// gen-large-doc scrive in un workspace un documento sintetico di N nodi, per
-// provare l'editor su file grandi: una griglia di frame ritaglianti con una
-// ventina di figli ciascuno (rettangoli, ellissi, testi).
+// gen-large-doc writes into a workspace a synthetic document of N nodes, to
+// try the editor on large files: a grid of clipping frames with about twenty
+// children each (rectangles, ellipses, texts).
 //
 //	go run ./scripts/gen-large-doc -workspace /tmp/ws -nodes 20000
 //
-// Scrive direttamente lo snapshot (nessuna op nel log), quindi è istantaneo; poi
-// `opendesigner serve -workspace /tmp/ws` lo serve e l'id stampato si apre con
+// It writes the snapshot directly (no ops in the log), so it is instant; then
+// `opendesigner serve -workspace /tmp/ws` serves it and the printed id opens at
 // http://localhost:8080/#doc=<id>.
 package main
 
@@ -22,12 +22,12 @@ import (
 )
 
 func main() {
-	workspace := flag.String("workspace", "", "directory dei documenti")
-	nodes := flag.Int("nodes", 20000, "numero approssimato di nodi")
-	name := flag.String("name", "", "nome del documento (default: large-<nodes>)")
+	workspace := flag.String("workspace", "", "documents directory")
+	nodes := flag.Int("nodes", 20000, "approximate number of nodes")
+	name := flag.String("name", "", "document name (default: large-<nodes>)")
 	flag.Parse()
 	if *workspace == "" {
-		log.Fatal("serve -workspace")
+		log.Fatal("-workspace is required")
 	}
 	docName := *name
 	if docName == "" {
@@ -41,7 +41,7 @@ func main() {
 	}
 	doc := core.NewDocument(id, docName)
 
-	// PRNG deterministico: due esecuzioni producono lo stesso documento.
+	// Deterministic PRNG: two runs produce the same document.
 	state := uint32(1)
 	rnd := func() float64 {
 		state = state*1664525 + 1013904223

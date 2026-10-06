@@ -9,15 +9,15 @@ import { useTimeline } from "../../animation/timelineStore";
 import { baseScene } from "../../flow/testSupport";
 import type { ClipLite, SceneState } from "../../store/types";
 
-// I pezzi della timeline sotto jsdom: cosa mostra, cosa scrive (un op per gesto),
-// la tastiera dentro il pannello. Il disegno sulla tela e il trascinamento vero
-// sono nei test di renderer / logica e nella verifica in browser.
+// The timeline pieces under jsdom: what it shows, what it writes (one op per gesture),
+// the keyboard inside the panel. Drawing on the canvas and real dragging
+// are in the renderer / logic tests and in the browser verification.
 
-// jsdom non misura: la timeline ripiega su 720 px di larghezza, quindi la corsia è (720 - etichette - margini 16+28) px per tutta la durata
+// jsdom does not measure: the timeline falls back to 720 px of width, so the lane is (720 - labels - margins 16+28) px for the whole duration
 const PPM = (720 - LABEL_W - 16 - 28) / 1000;
 
 const clip = (over: Partial<ClipLite> = {}): ClipLite => ({
-  id: "k", name: "Entrata", duration: 1000, trigger: "enter", delay: 0, repeat: 0, yoyo: false, targetId: "A",
+  id: "k", name: "Entrance", duration: 1000, trigger: "enter", delay: 0, repeat: 0, yoyo: false, targetId: "A",
   tracks: [
     { nodeId: "btn", prop: "opacity", keyframes: [{ time: 0, value: 0, easing: "" }, { time: 500, value: 1, easing: "easeOut" }] },
     { nodeId: "btn", prop: "x", keyframes: [{ time: 100, value: 10, easing: "" }, { time: 800, value: 50, easing: "" }] },
@@ -45,26 +45,26 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("TimelinePanel: apertura", () => {
-  it("chiusa non rende niente", () => {
+describe("TimelinePanel: opening", () => {
+  it("closed it renders nothing", () => {
     useTimeline.setState({ open: false });
     const { container } = render(<TimelinePanel />);
     expect(container).toBeEmptyDOMElement();
   });
 
-  it("aperta senza clip aperta: lo stato vuoto che dice cosa fare, con la lista delle clip", () => {
+  it("open without an open clip: the empty state that says what to do, with the clip list", () => {
     render(<TimelinePanel />);
     expect(screen.getByRole("region", { name: "Timeline" })).toBeInTheDocument();
-    expect(screen.getByText("Anima qualcosa: seleziona un livello e premi + Proprietà")).toBeInTheDocument();
-    expect(within(screen.getByRole("list", { name: "Elenco delle clip" })).getByText("Entrata")).toBeInTheDocument();
+    expect(screen.getByText("Animate something: select a layer and press + Property")).toBeInTheDocument();
+    expect(within(screen.getByRole("list", { name: "Clip list" })).getByText("Entrance")).toBeInTheDocument();
   });
 
-  it("senza nessuna clip nel documento lo dice e 'Nuova clip' ne crea UNA con un solo gesto", async () => {
+  it("with no clip in the document it says so and 'New clip' creates ONE with a single gesture", async () => {
     install(baseScene());
     useScene.getState().setSelection(["btn"]);
     render(<TimelinePanel />);
-    expect(screen.getByText("Nessuna clip. Creane una con +.")).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Crea una clip" }));
+    expect(screen.getByText("No clips. Create one with +.")).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Create a clip" }));
     expect(Object.keys(sc().clips)).toHaveLength(1);
     const c = Object.values(sc().clips)[0];
     expect(c.targetId).toBe("A");
@@ -72,111 +72,111 @@ describe("TimelinePanel: apertura", () => {
     expect(useScene.getState().undoStack).toHaveLength(1);
   });
 
-  it("scegliere una clip dalla lista la apre (e mostra tracce e impostazioni)", async () => {
+  it("choosing a clip from the list opens it (and shows tracks and settings)", async () => {
     render(<TimelinePanel />);
-    await userEvent.click(screen.getByRole("button", { name: /Entrata/ }));
+    await userEvent.click(screen.getByRole("button", { name: /Entrance/ }));
     expect(tl().clipId).toBe("k");
-    expect(screen.getByRole("button", { name: "Impostazioni della clip" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Traccia Opacità di btn" })).toBeInTheDocument();
-    expect(screen.getByRole("group", { name: "Traccia X di btn" })).toBeInTheDocument();
-    expect(screen.getAllByRole("button", { name: /^Keyframe a/ })).toHaveLength(4);
+    expect(screen.getByRole("button", { name: "Clip settings" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Opacity track of btn" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "X track of btn" })).toBeInTheDocument();
+    expect(screen.getAllByRole("button", { name: /^Keyframe at/ })).toHaveLength(4);
   });
 
-  it("una clip senza tracce mostra l'invito a usare + Proprietà", () => {
+  it("a clip without tracks shows the invitation to use + Property", () => {
     install({ ...baseScene(), clips: { k: clip({ tracks: [] }) } });
     tl().openClip("k");
     render(<TimelinePanel />);
-    expect(screen.getByText("Anima qualcosa: seleziona un livello e premi + Proprietà")).toBeInTheDocument();
+    expect(screen.getByText("Animate something: select a layer and press + Property")).toBeInTheDocument();
   });
 });
 
-describe("impostazioni della clip: un SetClip per modifica", () => {
+describe("clip settings: one SetClip per change", () => {
   beforeEach(() => tl().openClip("k"));
-  // Le impostazioni stanno in un popover dalla barra del trasporto: si aprono prima.
-  const openSettings = () => userEvent.click(screen.getByRole("button", { name: "Impostazioni della clip" }));
+  // The settings live in a popover from the transport bar: they are opened first.
+  const openSettings = () => userEvent.click(screen.getByRole("button", { name: "Clip settings" }));
 
-  it("l'innesco", async () => {
+  it("the trigger", async () => {
     render(<TimelinePanel />);
     await openSettings();
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Innesco" }), "hover");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Trigger" }), "hover");
     expect(sc().clips.k.trigger).toBe("hover");
     expect(useScene.getState().undoStack).toHaveLength(1);
   });
 
-  it("il nome conferma su Invio, una volta sola", async () => {
+  it("the name commits on Enter, only once", async () => {
     render(<TimelinePanel />);
     await openSettings();
-    const input = screen.getByRole("textbox", { name: "Nome della clip" });
+    const input = screen.getByRole("textbox", { name: "Clip name" });
     await userEvent.clear(input);
-    await userEvent.type(input, "Apparizione{Enter}");
-    expect(sc().clips.k.name).toBe("Apparizione");
+    await userEvent.type(input, "Appearance{Enter}");
+    expect(sc().clips.k.name).toBe("Appearance");
     expect(useScene.getState().undoStack).toHaveLength(1);
   });
 
-  it("la durata: i keyframe oltre la nuova fine si portano alla fine", async () => {
+  it("the duration: keyframes beyond the new end move to the end", async () => {
     render(<TimelinePanel />);
     await openSettings();
-    const field = screen.getByRole("textbox", { name: "Durata" });
+    const field = screen.getByRole("textbox", { name: "Duration" });
     await userEvent.clear(field);
     await userEvent.type(field, "300{Enter}");
     expect(sc().clips.k.duration).toBe(300);
     expect(sc().clips.k.tracks[0].keyframes.map((k) => k.time)).toEqual([0, 300]);
   });
 
-  it("infinito e yoyo", async () => {
+  it("infinite and yoyo", async () => {
     render(<TimelinePanel />);
     await openSettings();
-    await userEvent.click(screen.getByRole("button", { name: "Ripeti all'infinito" }));
+    await userEvent.click(screen.getByRole("button", { name: "Repeat forever" }));
     expect(sc().clips.k.repeat).toBe(-1);
     await userEvent.click(screen.getByRole("button", { name: "Yoyo" }));
     expect(sc().clips.k.yoyo).toBe(true);
     expect(useScene.getState().undoStack).toHaveLength(2);
   });
 
-  it("il bersaglio è uno dei frame/gruppi del documento", async () => {
+  it("the target is one of the document's frames/groups", async () => {
     render(<TimelinePanel />);
     await openSettings();
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Bersaglio" }), "B");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Target" }), "B");
     expect(sc().clips.k.targetId).toBe("B");
   });
 
-  it("duplica ed elimina dalla lista", async () => {
+  it("duplicate and delete from the list", async () => {
     render(<TimelinePanel />);
-    await userEvent.click(screen.getByRole("button", { name: "Duplica la clip" }));
+    await userEvent.click(screen.getByRole("button", { name: "Duplicate the clip" }));
     expect(Object.keys(sc().clips)).toHaveLength(2);
-    await userEvent.click(screen.getByRole("button", { name: "Elimina la clip" }));
+    await userEvent.click(screen.getByRole("button", { name: "Delete the clip" }));
     expect(Object.keys(sc().clips)).toHaveLength(1);
     expect(tl().clipId).toBeNull();
   });
 });
 
-describe("keyframe: selezione, ispettore, tastiera", () => {
+describe("keyframe: selection, inspector, keyboard", () => {
   beforeEach(() => tl().openClip("k"));
-  const kf = (name: RegExp | string) => screen.getAllByRole("button", { name: new RegExp(`^Keyframe a ${name}`) })[0];
+  const kf = (name: RegExp | string) => screen.getAllByRole("button", { name: new RegExp(`^Keyframe at ${name}`) })[0];
 
-  it("cliccare un keyframe lo seleziona, porta il playhead lì e mostra l'ispettore", () => {
+  it("clicking a keyframe selects it, moves the playhead there and shows the inspector", () => {
     render(<TimelinePanel />);
     fireEvent.pointerDown(kf("500 ms"), { button: 0, pointerId: 1, clientX: 100 });
     fireEvent.pointerUp(kf("500 ms"), { button: 0, pointerId: 1, clientX: 100 });
     expect(tl().selection).toEqual([{ track: 0, key: 1 }]);
     expect(tl().playhead).toBe(500);
     const insp = screen.getByRole("complementary", { name: "Keyframe" });
-    expect(within(insp).getByRole("textbox", { name: "Tempo" })).toHaveValue("500");
-    // l'ultimo keyframe non ha un segmento dopo di sé: niente curva
+    expect(within(insp).getByRole("textbox", { name: "Time" })).toHaveValue("500");
+    // the last keyframe has no segment after it: no curve
     expect(within(insp).queryByRole("combobox", { name: "Easing" })).not.toBeInTheDocument();
-    // il primo sì, e mostra la sua curva
+    // the first does, and shows its curve
     fireEvent.pointerDown(kf("0 ms"), { button: 0, pointerId: 1, clientX: 20 });
     fireEvent.pointerUp(kf("0 ms"), { button: 0, pointerId: 1, clientX: 20 });
     expect(within(screen.getByRole("complementary", { name: "Keyframe" })).getByRole("combobox", { name: "Easing" })).toHaveValue("linear");
-    expect(screen.getByRole("group", { name: "Curva di easing" })).toBeInTheDocument();
+    expect(screen.getByRole("group", { name: "Easing curve" })).toBeInTheDocument();
   });
 
-  it("l'ispettore cambia valore ed easing con UN op ciascuno", async () => {
+  it("the inspector changes value and easing with ONE op each", async () => {
     render(<TimelinePanel />);
     fireEvent.pointerDown(kf("500 ms"), { button: 0, pointerId: 1, clientX: 100 });
     fireEvent.pointerUp(kf("500 ms"), { button: 0, pointerId: 1, clientX: 100 });
     const insp = screen.getByRole("complementary", { name: "Keyframe" });
-    const v = within(insp).getByRole("textbox", { name: "Valore" });
+    const v = within(insp).getByRole("textbox", { name: "Value" });
     await userEvent.clear(v);
     await userEvent.type(v, "0.4{Enter}");
     expect(sc().clips.k.tracks[0].keyframes[1].value).toBe(0.4);
@@ -187,7 +187,7 @@ describe("keyframe: selezione, ispettore, tastiera", () => {
     expect(useScene.getState().undoStack).toHaveLength(2);
   });
 
-  it("Canc cancella i keyframe selezionati (UN op) e NON i livelli selezionati sulla tela", () => {
+  it("Delete removes the selected keyframes (ONE op) and NOT the layers selected on the canvas", () => {
     useScene.getState().setSelection(["btn"]);
     render(<TimelinePanel />);
     const b = kf("500 ms");
@@ -197,14 +197,14 @@ describe("keyframe: selezione, ispettore, tastiera", () => {
     window.addEventListener("keydown", onWindow);
     fireEvent.keyDown(screen.getByRole("region", { name: "Timeline" }), { key: "Delete" });
     window.removeEventListener("keydown", onWindow);
-    expect(onWindow).not.toHaveBeenCalled(); // il tasto non arriva ai listener globali (che cancellerebbero il nodo)
+    expect(onWindow).not.toHaveBeenCalled(); // the key does not reach the global listeners (which would delete the node)
     expect(sc().clips.k.tracks[0].keyframes.map((k) => k.time)).toEqual([0]);
     expect(sc().nodes.has("btn")).toBe(true);
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(tl().selection).toEqual([]);
   });
 
-  it("Ctrl+D duplica al playhead; le frecce spostano di un passo di griglia", () => {
+  it("Ctrl+D duplicates at the playhead; the arrows move by one grid step", () => {
     render(<TimelinePanel />);
     const b = kf("500 ms");
     fireEvent.pointerDown(b, { button: 0, pointerId: 1, clientX: 100 });
@@ -212,20 +212,20 @@ describe("keyframe: selezione, ispettore, tastiera", () => {
     tl().setPlayhead(700);
     fireEvent.keyDown(screen.getByRole("region", { name: "Timeline" }), { key: "d", ctrlKey: true });
     expect(sc().clips.k.tracks[0].keyframes.map((k) => k.time)).toEqual([0, 500, 700]);
-    // la selezione ora è la copia (a 700): freccia destra = +10 ms
-    const copy = screen.getAllByRole("button", { name: /^Keyframe a 700 ms/ })[0];
+    // the selection is now the copy (at 700): right arrow = +10 ms
+    const copy = screen.getAllByRole("button", { name: /^Keyframe at 700 ms/ })[0];
     fireEvent.keyDown(copy, { key: "ArrowRight" });
     expect(sc().clips.k.tracks[0].keyframes.map((k) => k.time)).toEqual([0, 500, 710]);
   });
 
-  it("trascinare un keyframe: bozza durante il gesto, UN op al rilascio, agganciato alla griglia", () => {
+  it("dragging a keyframe: draft during the gesture, ONE op on release, snapped to the grid", () => {
     render(<TimelinePanel />);
     const b = kf("500 ms");
     fireEvent.pointerDown(b, { button: 0, pointerId: 1, clientX: 200 });
-    // +50 px = +107 ms a PPM px/ms: 500 + 107 = 607 -> griglia 610
+    // +50 px = +107 ms at PPM px/ms: 500 + 107 = 607 -> grid 610
     fireEvent.pointerMove(b, { pointerId: 1, clientX: 250 });
     expect(tl().draftClip?.tracks[0].keyframes[1].time).toBe(610);
-    expect(useScene.getState().undoStack).toHaveLength(0); // niente op durante il trascinamento
+    expect(useScene.getState().undoStack).toHaveLength(0); // no op during the drag
     expect(sc().clips.k.tracks[0].keyframes[1].time).toBe(500);
     fireEvent.pointerUp(b, { pointerId: 1, clientX: 250 });
     expect(sc().clips.k.tracks[0].keyframes[1].time).toBe(610);
@@ -234,7 +234,7 @@ describe("keyframe: selezione, ispettore, tastiera", () => {
     expect(tl().selection).toEqual([{ track: 0, key: 1 }]);
   });
 
-  it("Maiusc libera l'aggancio", () => {
+  it("Shift releases snapping", () => {
     render(<TimelinePanel />);
     const b = kf("500 ms");
     fireEvent.pointerDown(b, { button: 0, pointerId: 1, clientX: 200 });
@@ -245,7 +245,7 @@ describe("keyframe: selezione, ispettore, tastiera", () => {
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
-  it("un tremolio sotto la soglia è un click, non un trascinamento", () => {
+  it("a wobble under the threshold is a click, not a drag", () => {
     render(<TimelinePanel />);
     const b = kf("500 ms");
     fireEvent.pointerDown(b, { button: 0, pointerId: 1, clientX: 200 });
@@ -255,39 +255,39 @@ describe("keyframe: selezione, ispettore, tastiera", () => {
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
-  it("il doppio click su una riga aggiunge un keyframe col valore campionato", () => {
+  it("a double click on a row adds a keyframe with the sampled value", () => {
     render(<TimelinePanel />);
-    const lane = screen.getByRole("group", { name: "Traccia Opacità di btn" });
-    // x = 16 (PAD) + 250 ms * PPM; getBoundingClientRect in jsdom è tutto zero
+    const lane = screen.getByRole("group", { name: "Opacity track of btn" });
+    // x = 16 (PAD) + 250 ms * PPM; getBoundingClientRect in jsdom is all zeros
     fireEvent.doubleClick(lane, { clientX: 16 + 250 * PPM });
     const ks = sc().clips.k.tracks[0].keyframes;
     expect(ks.map((k) => k.time)).toEqual([0, 250, 500]);
-    expect(ks[1].value).toBeGreaterThan(0.3); // easing "" (lineare) fra 0 e 1 con curva easeOut dopo: campionato, non zero
+    expect(ks[1].value).toBeGreaterThan(0.3); // easing "" (linear) between 0 and 1 with an easeOut curve after: sampled, not zero
     expect(useScene.getState().undoStack).toHaveLength(1);
   });
 
-  it("il pulsante della riga aggiunge un keyframe al playhead", async () => {
+  it("the row's button adds a keyframe at the playhead", async () => {
     tl().setPlayhead(300);
     render(<TimelinePanel />);
-    await userEvent.click(screen.getByRole("button", { name: "Aggiungi un keyframe al playhead su X" }));
+    await userEvent.click(screen.getByRole("button", { name: "Add a keyframe at the playhead on X" }));
     expect(sc().clips.k.tracks[1].keyframes.map((k) => k.time)).toEqual([100, 300, 800]);
   });
 
-  it("rimuovere una traccia", async () => {
+  it("removing a track", async () => {
     render(<TimelinePanel />);
-    await userEvent.click(screen.getByRole("button", { name: "Rimuovi la traccia X" }));
+    await userEvent.click(screen.getByRole("button", { name: "Remove the X track" }));
     expect(sc().clips.k.tracks.map((t) => t.prop)).toEqual(["opacity"]);
   });
 });
 
-describe("trasporto", () => {
+describe("transport", () => {
   beforeEach(() => {
     vi.stubGlobal("requestAnimationFrame", () => 1);
     vi.stubGlobal("cancelAnimationFrame", () => {});
     tl().openClip("k");
   });
 
-  it("Spazio col fuoco dentro la timeline fa play/pausa, e non arriva al pan globale", () => {
+  it("Space with focus inside the timeline toggles play/pause, and does not reach the global pan", () => {
     render(<TimelinePanel />);
     const panel = screen.getByRole("region", { name: "Timeline" });
     const onWindow = vi.fn();
@@ -300,74 +300,74 @@ describe("trasporto", () => {
     expect(tl().playing).toBe(false);
   });
 
-  it("fuori dalla timeline lo spazio resta del pan: nessuno ascolta la finestra per questo", () => {
+  it("outside the timeline space stays the pan's: nobody listens on the window for this", () => {
     render(<TimelinePanel />);
     fireEvent.keyDown(window, { code: "Space", key: " " });
     expect(tl().playing).toBe(false);
   });
 
-  it("pulsanti: riproduci, pausa, stop, loop, velocità, registra", async () => {
+  it("buttons: play, pause, stop, loop, speed, record", async () => {
     render(<TimelinePanel />);
-    await userEvent.click(screen.getByRole("button", { name: "Riproduci" }));
+    await userEvent.click(screen.getByRole("button", { name: "Play" }));
     expect(tl().playing).toBe(true);
-    await userEvent.click(screen.getByRole("button", { name: "Pausa" }));
+    await userEvent.click(screen.getByRole("button", { name: "Pause" }));
     expect(tl().playing).toBe(false);
-    await userEvent.click(screen.getByRole("button", { name: "Ripeti in loop" }));
+    await userEvent.click(screen.getByRole("button", { name: "Repeat in loop" }));
     expect(tl().loop).toBe(true);
-    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Velocità" }), "0.5");
+    await userEvent.selectOptions(screen.getByRole("combobox", { name: "Speed" }), "0.5");
     expect(tl().speed).toBe(0.5);
-    await userEvent.click(screen.getByRole("button", { name: "Registra" }));
+    await userEvent.click(screen.getByRole("button", { name: "Record" }));
     expect(tl().record).toBe(true);
-    expect(screen.getByRole("button", { name: "Registra" })).toHaveAttribute("aria-pressed", "true");
-    // armata: il bordo del pannello diventa rosso, è l'indicatore che si vede anche a colpo d'occhio
+    expect(screen.getByRole("button", { name: "Record" })).toHaveAttribute("aria-pressed", "true");
+    // armed: the panel's border turns red, it is the indicator that is visible even at a glance
     expect(screen.getByRole("region", { name: "Timeline" }).className).toContain("border-danger");
     await userEvent.click(screen.getByRole("button", { name: "Stop" }));
     expect(tl().playhead).toBe(0);
   });
 
-  it("il righello scorre il playhead (agganciato a 10 ms) e mostra il tempo corrente", () => {
+  it("the ruler scrubs the playhead (snapped to 10 ms) and shows the current time", () => {
     render(<TimelinePanel />);
     const ruler = screen.getByRole("slider", { name: "Playhead" });
     fireEvent.pointerDown(ruler, { button: 0, pointerId: 1, clientX: 16 + 333 * PPM });
     expect(tl().playhead).toBe(330);
     expect(tl().posed).toBe(true);
-    expect(screen.getByLabelText("Tempo corrente")).toHaveTextContent("0:00.330");
+    expect(screen.getByLabelText("Current time")).toHaveTextContent("0:00.330");
     fireEvent.keyDown(ruler, { key: "ArrowRight" });
     expect(tl().playhead).toBe(340);
   });
 
-  it("Registra è disabilitato senza una clip aperta", () => {
+  it("Record is disabled without an open clip", () => {
     tl().openClip(null);
     render(<TimelinePanel />);
-    expect(screen.getByRole("button", { name: "Registra" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Riproduci" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Record" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Play" })).toBeDisabled();
   });
 });
 
-describe("+ Proprietà e preset", () => {
-  it("+ Proprietà sul livello selezionato aggiunge la traccia alla clip aperta", async () => {
+describe("+ Property and presets", () => {
+  it("+ Property on the selected layer adds the track to the open clip", async () => {
     tl().openClip("k");
     useScene.getState().setSelection(["btn"]);
     render(<TimelinePanel />);
-    await userEvent.click(screen.getByRole("button", { name: "Aggiungi proprietà" }));
-    // opacità e X ci sono già: disabilitate; Scala è libera
-    expect(await screen.findByRole("menuitem", { name: /Opacità/ })).toHaveAttribute("aria-disabled", "true");
-    await userEvent.click(screen.getByRole("menuitem", { name: /Scala/ }));
+    await userEvent.click(screen.getByRole("button", { name: "Add property" }));
+    // opacity and X are already there: disabled; Scale is free
+    expect(await screen.findByRole("menuitem", { name: /Opacity/ })).toHaveAttribute("aria-disabled", "true");
+    await userEvent.click(screen.getByRole("menuitem", { name: /Scale/ }));
     expect(sc().clips.k.tracks.map((t) => t.prop)).toEqual(["opacity", "x", "scale"]);
     expect(useScene.getState().undoStack).toHaveLength(1);
   });
 
-  it("senza selezione il menu è spento", () => {
+  it("without a selection the menu is off", () => {
     tl().openClip("k");
     render(<TimelinePanel />);
-    expect(screen.getByRole("button", { name: "Aggiungi proprietà" })).toBeDisabled();
-    expect(screen.getByRole("button", { name: "Anima con un preset" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Add property" })).toBeDisabled();
+    expect(screen.getByRole("button", { name: "Animate with a preset" })).toBeDisabled();
   });
 
-  it("un preset crea una clip nuova con UN gesto e la apre", async () => {
+  it("a preset creates a new clip with ONE gesture and opens it", async () => {
     useScene.getState().setSelection(["btn"]);
     render(<TimelinePanel />);
-    await userEvent.click(screen.getByRole("button", { name: "Anima con un preset" }));
+    await userEvent.click(screen.getByRole("button", { name: "Animate with a preset" }));
     await userEvent.click(await screen.findByRole("menuitem", { name: /Fade in/ }));
     expect(Object.keys(sc().clips)).toHaveLength(2);
     const made = Object.values(sc().clips).find((c) => c.id !== "k")!;
@@ -377,20 +377,20 @@ describe("+ Proprietà e preset", () => {
   });
 });
 
-describe("resize e riduzione", () => {
-  it("l'altezza si cambia con le frecce sul bordo e si salva", () => {
+describe("resize and collapse", () => {
+  it("the height changes with the arrows on the edge and is saved", () => {
     render(<TimelinePanel />);
     const h0 = tl().height;
-    fireEvent.keyDown(screen.getByRole("separator", { name: "Altezza della timeline" }), { key: "ArrowUp" });
+    fireEvent.keyDown(screen.getByRole("separator", { name: "Timeline height" }), { key: "ArrowUp" });
     expect(tl().height).toBe(h0 + 24);
   });
 
-  it("ridurre nasconde il corpo e lascia la testata", async () => {
+  it("collapsing hides the body and leaves the header", async () => {
     render(<TimelinePanel />);
-    await userEvent.click(screen.getByRole("button", { name: "Riduci la timeline" }));
-    expect(screen.queryByRole("toolbar", { name: "Trasporto" })).not.toBeInTheDocument();
-    expect(screen.getByRole("button", { name: "Espandi la timeline" })).toBeInTheDocument();
-    await userEvent.click(screen.getByRole("button", { name: "Chiudi la timeline" }));
+    await userEvent.click(screen.getByRole("button", { name: "Collapse the timeline" }));
+    expect(screen.queryByRole("toolbar", { name: "Transport" })).not.toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Expand the timeline" })).toBeInTheDocument();
+    await userEvent.click(screen.getByRole("button", { name: "Close the timeline" }));
     expect(tl().open).toBe(false);
   });
 });

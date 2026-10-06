@@ -2,8 +2,8 @@ import { describe, it, expect } from "vitest";
 import { nodesToSvg } from "./svg";
 import type { NodeLite, SubPathLite } from "../store/types";
 
-// L'export SVG dei nodi VETTORIALI (prima uscivano come rettangolo grigio) e dei
-// tratti di rect/ellisse/vettoriale.
+// The SVG export of VECTOR nodes (they used to come out as a gray rectangle) and of the
+// strokes of rect/ellipse/vector.
 
 const A = (x: number, y: number, o: Partial<{ inX: number; inY: number; outX: number; outY: number }> = {}) =>
   ({ x, y, inX: 0, inY: 0, outX: 0, outY: 0, ...o });
@@ -19,17 +19,17 @@ function vec(subpaths: SubPathLite[], over: Partial<NodeLite> = {}): NodeLite {
 
 const svg = (n: NodeLite) => nodesToSvg([n], { x: 0, y: 0, width: 100, height: 100 }, () => 10);
 
-describe("nodesToSvg: vettoriali", () => {
-  it("un contorno chiuso -> <path> con le coordinate nel mondo (nodo + ancoraggio) e Z", () => {
+describe("nodesToSvg: vectors", () => {
+  it("a closed outline -> <path> with world coordinates (node + anchor) and Z", () => {
     const out = svg(vec([{ closed: true, anchors: [A(0, 0), A(20, 0), A(20, 20)] }]));
     expect(out).toContain('d="M10 20C10 20 30 20 30 20C30 20 30 40 30 40C30 40 10 20 10 20Z"');
     expect(out).toContain('fill="rgb(255,0,0)"');
-    expect(out).toContain('fill-rule="evenodd"'); // il default storico del renderer
+    expect(out).toContain('fill-rule="evenodd"'); // the renderer's historical default
   });
 
-  it("le maniglie sono RELATIVE all'ancoraggio", () => {
+  it("handles are RELATIVE to the anchor", () => {
     const out = svg(vec([{ closed: false, anchors: [A(0, 0, { outX: 5, outY: 0 }), A(20, 20, { inX: -5, inY: 0 })] }]), );
-    // senza tratto un contorno aperto non si disegna (il canvas non lo riempie)
+    // without a stroke an open outline is not drawn (the canvas does not fill it)
     expect(out).not.toContain("<path");
     const withStroke = svg(vec(
       [{ closed: false, anchors: [A(0, 0, { outX: 5, outY: 0 }), A(20, 20, { inX: -5, inY: 0 })] }],
@@ -41,7 +41,7 @@ describe("nodesToSvg: vettoriali", () => {
     expect(withStroke).toContain('stroke-width="2"');
   });
 
-  it("contorni chiusi e aperti dello stesso nodo: due <path>, l'aperto senza riempimento", () => {
+  it("closed and open outlines of the same node: two <path>s, the open one without a fill", () => {
     const out = svg(vec(
       [{ closed: true, anchors: [A(0, 0), A(10, 0), A(10, 10)] }, { closed: false, anchors: [A(15, 15), A(20, 20)] }],
       { strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 1, align: "center" }] },
@@ -64,7 +64,7 @@ describe("nodesToSvg: vettoriali", () => {
     ]) expect(out).toContain(frag);
   });
 
-  it("un gradiente nel tratto diventa un riferimento in <defs>", () => {
+  it("a gradient in the stroke becomes a reference in <defs>", () => {
     const out = svg(vec(
       [{ closed: false, anchors: [A(0, 0), A(20, 20)] }],
       {
@@ -81,12 +81,12 @@ describe("nodesToSvg: vettoriali", () => {
     expect(out).toMatch(/stroke="url\(#g\d+\)"/);
   });
 
-  it("rect ed ellisse esportano anche il tratto", () => {
+  it("rect and ellipse also export the stroke", () => {
     const stroke = [{ color: { r: 0, g: 1, b: 0, a: 1 }, weight: 4, align: "center" as const }];
     const base = { ...vec([]), kind: "rect" as const, vector: undefined, strokes: stroke, cornerRadius: 3 };
     expect(svg(base)).toMatch(/<rect[^>]*stroke="rgb\(0,255,0\)"[^>]*stroke-width="4"/);
     expect(svg({ ...base, kind: "ellipse" })).toMatch(/<ellipse[^>]*stroke="rgb\(0,255,0\)"/);
-    // senza tratto: nessun attributo stroke (i file non cambiano)
+    // without a stroke: no stroke attribute (files do not change)
     expect(svg({ ...base, strokes: [] })).not.toContain("stroke");
   });
 });

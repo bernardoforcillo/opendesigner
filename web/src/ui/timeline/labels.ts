@@ -1,26 +1,26 @@
-// Le etichette italiane degli insiemi chiusi del modello di animazione.
+// The English labels of the animation model's closed sets.
 
 export const TRIGGER_LABELS: Record<string, string> = {
-  enter: "Ingresso",
+  enter: "Enter",
   hover: "Hover",
-  tap: "Tocco",
+  tap: "Tap",
   loop: "Loop",
-  manual: "Manuale",
+  manual: "Manual",
 };
 
 export const TRIGGER_HINTS: Record<string, string> = {
-  enter: "Parte quando la schermata compare",
-  hover: "Parte quando il puntatore entra nel bersaglio",
-  tap: "Parte alla pressione sul bersaglio",
-  loop: "Come l'ingresso, ma non finisce mai",
-  manual: "La fa partire il codice",
+  enter: "Starts when the screen appears",
+  hover: "Starts when the pointer enters the target",
+  tap: "Starts on press of the target",
+  loop: "Like enter, but never ends",
+  manual: "Started by code",
 };
 
 export const EASING_LABELS: Record<string, string> = {
-  linear: "Lineare",
+  linear: "Linear",
   easeIn: "Ease in",
   easeOut: "Ease out",
   easeInOut: "Ease in-out",
-  spring: "Molla",
-  custom: "Curva…",
+  spring: "Spring",
+  custom: "Curve…",
 };

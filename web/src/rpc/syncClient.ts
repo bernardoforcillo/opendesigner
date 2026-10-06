@@ -4,181 +4,181 @@ import { docClient } from "./client";
 import { useScene } from "../store/store";
 import { fromDocument } from "../store/types";
 
-// DEADLINE del singolo SubmitOp. createConnectTransport non ne ha una di
-// default (rpc/client.ts) e con l'outbox serializzato una fetch che non si
-// risolve MAI non perde più solo se stessa: blocca il drain, e ogni gesto
-// successivo viene applicato in ottimistico, accodato e mai spedito. Un handler
-// bloccato, una connessione TCP finita nel nulla o un laptop che va in
-// sospensione producono esattamente questo, per minuti o per sempre.
+// DEADLINE of a single SubmitOp. createConnectTransport has none by
+// default (rpc/client.ts) and with the serialized outbox a fetch that NEVER
+// resolves no longer loses only itself: it blocks the drain, and every
+// subsequent gesture is applied optimistically, queued and never sent. A blocked
+// handler, a TCP connection that vanished into nothing or a laptop going to
+// sleep produce exactly this, for minutes or forever.
 //
-// La deadline sta sulla CHIAMATA e non su `defaultTimeoutMs` del trasporto:
-// quest'ultimo varrebbe anche per Subscribe, che è uno stream long-lived e deve
-// poter restare aperto per ore. 10s sono un ordine di grandezza sopra un
-// SubmitOp sano (append su op-log locale + broadcast) e ben sotto la soglia in
-// cui l'utente ha già disegnato mezza pagina sopra un backlog invisibile.
+// The deadline is on the CALL and not on the transport's `defaultTimeoutMs`:
+// the latter would also apply to Subscribe, which is a long-lived stream and must
+// be able to stay open for hours. 10s is an order of magnitude above a healthy
+// SubmitOp (append to the local op-log + broadcast) and well below the threshold at
+// which the user has already drawn half a page on top of an invisible backlog.
 const SUBMIT_TIMEOUT_MS = 10_000;
 
-// Tetto alla coda: quanto lavoro può essere a rischio contemporaneamente.
-// Con la deadline sopra il backlog è già limitato nel TEMPO; questo lo limita
-// anche nella QUANTITÀ, perché è la quantità che l'utente perde tutta insieme
-// se la richiesta in testa fallisce davvero. 64 è largo rispetto a una raffica
-// di gesti reali (il coalescing di M1a riduce un drag intero a un op) e stretto
-// rispetto a "cresce finché c'è memoria".
-// Esportata perché il test del tetto lo verifichi senza ricopiarne il valore.
+// Cap on the queue: how much work can be at risk at the same time.
+// With the deadline above the backlog is already limited in TIME; this limits it
+// in QUANTITY too, because it is the quantity the user loses all at once
+// if the request at the head really fails. 64 is generous compared to a burst
+// of real gestures (M1a's coalescing reduces a whole drag to one op) and tight
+// compared to "grows as long as there is memory".
+// Exported so the cap's test can verify it without copying the value.
 export const MAX_OUTBOX = 64;
 
-// RICONNESSIONE. Lo stream Subscribe non è un extra: è l'unico canale che fa
-// avanzare il documento confermato e che svuota la coda degli op in volo. Il
-// backend lo CHIUDE di sua iniziativa quando un subscriber resta indietro
-// (internal/server/hub.go: canale pieno -> endSubscriberLocked) proprio perché
-// il client si riconnetta con since_seq all'ultimo record applicato e si
-// recuperi il backlog: senza riconnessione quel disegno non funziona, e la
-// prima raffica un po' fitta stacca il client per il resto della sessione.
+// RECONNECTION. The Subscribe stream is not an extra: it is the only channel that
+// advances the confirmed document and that empties the in-flight ops queue. The
+// backend CLOSES it on its own initiative when a subscriber falls behind
+// (internal/server/hub.go: full channel -> endSubscriberLocked) precisely so that
+// the client reconnects with since_seq at the last applied record and
+// catches up on the backlog: without reconnection this design does not work, and the
+// first somewhat dense burst detaches the client for the rest of the session.
 //
-// Backoff esponenziale, senza jitter: qui c'è un solo browser per utente contro
-// un server locale, non una flotta che può sincronizzarsi in un thundering
-// herd, e un ritardo deterministico è quello che rende i test una specifica
-// invece di una scommessa.
+// Exponential backoff, without jitter: here there is a single browser per user against
+// a local server, not a fleet that can synchronize into a thundering
+// herd, and a deterministic delay is what makes the tests a specification
+// instead of a bet.
 const RECONNECT_BASE_MS = 500;
 const RECONNECT_MAX_MS = 10_000;
-// Tetto ai tentativi CONSECUTIVI senza progresso. Ritentare per sempre
-// consumerebbe batteria e, soprattutto, nasconderebbe un problema vero dietro
-// una pillola che dice "riconnessione" da mezz'ora: a un certo punto la
-// risposta onesta è "non ce la faccio da solo, ricarica".
+// Cap on CONSECUTIVE attempts without progress. Retrying forever
+// would drain battery and, above all, would hide a real problem behind
+// a pill that says "reconnecting" for half an hour: at some point the honest
+// answer is "I can't manage on my own, reload".
 const MAX_RECONNECT_ATTEMPTS = 6;
-// Uno stream vissuto almeno così a lungo conta come progresso anche se non ha
-// consegnato nemmeno un record: un documento fermo (nessuno sta disegnando) è
-// silenzioso per definizione, e senza questa clausola sei cadute di rete
-// sparse in una giornata di lavoro basterebbero a dichiarare morto un
-// collegamento che invece si riprende ogni volta.
+// A stream that lived at least this long counts as progress even if it did not
+// deliver a single record: a quiet document (nobody is drawing) is
+// silent by definition, and without this clause six network drops
+// scattered over a working day would be enough to declare dead a
+// connection that recovers every time.
 const RECONNECT_STABLE_MS = 60_000;
 
 function backoffMs(attempt: number): number {
   return Math.min(RECONNECT_MAX_MS, RECONNECT_BASE_MS * 2 ** (attempt - 1));
 }
 
-const CLOSED_BY_SERVER = "il server ha chiuso lo stream degli aggiornamenti";
-const SEQUENCE_GAP = "buco nella sequenza degli aggiornamenti";
+const CLOSED_BY_SERVER = "the server closed the updates stream";
+const SEQUENCE_GAP = "gap in the updates sequence";
 
-// Messaggio del rollback quando lo snapshot autorevole rimpiazza il documento a
-// metà sessione: la coda in volo non è più collocabile e sparisce dal canvas.
-// Senza un messaggio l'utente vedrebbe le proprie modifiche svanire con la
-// pillola su "connesso" e nessuna spiegazione da nessuna parte.
+// Rollback message when the authoritative snapshot replaces the document
+// mid-session: the in-flight queue can no longer be placed and disappears from the canvas.
+// Without a message the user would see their own changes vanish with the
+// pill on "connected" and no explanation anywhere.
 const RESYNCED =
-  "il server ha risincronizzato il documento e le modifiche non ancora confermate sono andate perse";
+  "the server resynchronized the document and the changes not yet confirmed were lost";
 
-// Messaggio del rifiuto quando il client si è arreso: da qui in poi nessun op
-// può più essere confermato, quindi accettarlo vorrebbe dire tenerlo sullo
-// schermo (e in coda) fino al reload che lo cancellerà.
-const GAVE_UP = "connessione al server persa: ricarica la pagina per riprendere a lavorare";
+// Rejection message when the client has given up: from here on no op
+// can be confirmed anymore, so accepting it would mean keeping it on screen
+// (and in the queue) until the reload that will erase it.
+const GAVE_UP = "connection to the server lost: reload the page to resume working";
 
-// Il client tiene lo stato CONFERMATO (quello che il server ha applicato e
-// riemesso) più gli op PENDING (submittati, non ancora tornati indietro). La
-// vista è confermato + pending. Ogni record che arriva da Subscribe fa avanzare
-// il confermato e la vista viene ricalcolata: è questo che rende ordine,
-// rollback e rebase definiti invece che ad hoc.
+// The client keeps the CONFIRMED state (what the server applied and
+// re-emitted) plus the PENDING ops (submitted, not yet returned). The
+// view is confirmed + pending. Every record arriving from Subscribe advances
+// the confirmed state and the view is recomputed: this is what makes order,
+// rollback and rebase defined instead of ad hoc.
 //
-// Lo split vive nello store (store/store.ts) perché è lo store a possedere la
-// vista e i gesti; SyncClient è solo il cablaggio fra il trasporto e i tre
-// ingressi del modello: applyPending (submit), apply (record autorevole),
-// rejectPending (rifiuto).
+// The split lives in the store (store/store.ts) because the store owns the
+// view and the gestures; SyncClient is only the wiring between the transport and the three
+// entry points of the model: applyPending (submit), apply (authoritative record),
+// rejectPending (rejection).
 export class SyncClient {
   private seq = 0;
-  // OUTBOX: gli op ancora da mandare, in ordine di invio. Il primo elemento è
-  // quello in volo (o il prossimo a partire); ne parte UNO ALLA VOLTA.
+  // OUTBOX: the ops still to be sent, in sending order. The first element is
+  // the one in flight (or the next to go); ONE AT A TIME goes out.
   //
-  // Il seq lo assegna il SERVER in ordine di ARRIVO (internal/server/hub.go:
-  // Submit serializza sul mutex e chi entra prima prende il seq più basso).
-  // Finché i submit erano fire-and-forget, l'ordine persistito era quello con
-  // cui le richieste raggiungevano l'hub -- deciso dallo scheduler, non
-  // dall'utente: due unary partite insieme sono due goroutine indipendenti
-  // anche sulla stessa connessione multiplexata. Con op19 = x=100 e op20 =
-  // x=200 emessi insieme, l'oplog poteva finire [x=200, x=100], il documento
-  // ricaricato a x=100 e il canvas a x=200. Non c'è nulla nel protocollo che
-  // possa accorgersene: SubmitOpRequest porta solo doc_id/client_id/op.
+  // The seq is assigned by the SERVER in order of ARRIVAL (internal/server/hub.go:
+  // Submit serializes on the mutex and whoever enters first gets the lowest seq).
+  // While submits were fire-and-forget, the persisted order was the one in
+  // which requests reached the hub -- decided by the scheduler, not
+  // by the user: two unaries started together are two independent goroutines
+  // even on the same multiplexed connection. With op19 = x=100 and op20 =
+  // x=200 emitted together, the oplog could end up [x=200, x=100], the document
+  // reloaded at x=100 and the canvas at x=200. There is nothing in the protocol that
+  // could notice: SubmitOpRequest carries only doc_id/client_id/op.
   //
-  // La coda è normalmente corta -- il coalescing di M1a riduce un intero drag a
-  // un solo op finale (store.endGesture) -- quindi qui la correttezza ovvia
-  // vale più del throughput: nessuna pipeline, nessun batching.
+  // The queue is normally short -- M1a's coalescing reduces a whole drag to
+  // a single final op (store.endGesture) -- so here obvious correctness
+  // is worth more than throughput: no pipeline, no batching.
   private outbox: Op[] = [];
   private draining = false;
 
-  // --- ciclo di vita ---------------------------------------------------------
-  // `started` rende start() idempotente: React in StrictMode invoca l'effetto di
-  // bootstrap due volte, e una seconda subscription vorrebbe dire due goroutine
-  // sul server e OGNI record applicato due volte nello stesso store globale.
-  // `stopped` è definitivo: un client fermato non riparte (se ne costruisce uno
-  // nuovo), così una cleanup di React non può mai lasciare in giro un loop che
-  // continua a scrivere nello store di una app smontata.
+  // --- lifecycle -------------------------------------------------------------
+  // `started` makes start() idempotent: React in StrictMode invokes the bootstrap
+  // effect twice, and a second subscription would mean two goroutines
+  // on the server and EVERY record applied twice in the same global store.
+  // `stopped` is final: a stopped client does not restart (a new one is built),
+  // so a React cleanup can never leave a loop around
+  // that keeps writing into the store of an unmounted app.
   private started = false;
   private stopped = false;
-  // GENERAZIONE del documento. Cambia a ogni risincronizzazione (open() dal ramo
-  // CodeOutOfRange): lo snapshot sostituisce il documento in blocco e svuota
-  // `pending`, quindi tutto ciò che era in volo appartiene a un mondo che non
-  // esiste più. Una richiesta partita nella generazione precedente non deve poter
-  // decidere niente quando torna -- né togliere la testa dalla coda (che nel
-  // frattempo è un ALTRO op) né, peggio, leggere `pending` per dedurre se è
-  // atterrata: dopo un resync `pending` è vuoto e `landed()` direbbe "sì" per
-  // qualunque op, riaprendo la strada agli op costruiti su una premessa che il
-  // server non ha mai raggiunto.
+  // GENERATION of the document. It changes at every resynchronization (open() from the
+  // CodeOutOfRange branch): the snapshot replaces the document wholesale and empties
+  // `pending`, so everything that was in flight belongs to a world that no
+  // longer exists. A request started in the previous generation must not be able to
+  // decide anything when it returns -- neither remove the head from the queue (which in the
+  // meantime is ANOTHER op) nor, worse, read `pending` to deduce whether it
+  // landed: after a resync `pending` is empty and `landed()` would say "yes" for
+  // any op, reopening the way to ops built on a premise the
+  // server never reached.
   private epoch = 0;
-  // Il client si è arreso (tentativi di riconnessione esauriti). Non è `stopped`:
-  // il posto di trasporto nello store resta NOSTRO -- toglierlo farebbe prendere
-  // a endGesture il ramo senza filo (`get().apply(op)`), che applica le modifiche
-  // in locale come se fossero confermate e non le manda a nessuno. Qui invece
-  // ogni submit viene RIFIUTATO visibilmente: stesso rollback e stesso banner di
-  // un rifiuto del server.
+  // The client has given up (reconnection attempts exhausted). It is not `stopped`:
+  // the transport slot in the store stays OURS -- removing it would make
+  // endGesture take the wireless branch (`get().apply(op)`), which applies changes
+  // locally as if they were confirmed and sends them to no one. Here instead
+  // every submit is visibly REJECTED: same rollback and same banner as
+  // a server rejection.
   private givenUp = false;
-  // Il controller della subscription CORRENTE: è il solo modo di chiudere
-  // davvero la richiesta HTTP: senza abort la fetch resta aperta, il server
-  // continua a tenere il subscriber registrato e il for-await non finisce mai.
+  // The CURRENT subscription's controller: it is the only way to really close
+  // the HTTP request: without abort the fetch stays open, the server
+  // keeps the subscriber registered and the for-await never ends.
   private controller: AbortController | null = null;
-  // Sveglia anticipata dell'attesa di backoff, così stop() è immediato e non
-  // deve aspettare fino a 10s prima di avere effetto.
+  // Early wake-up of the backoff wait, so stop() is immediate and does not
+  // have to wait up to 10s to take effect.
   private wake: (() => void) | null = null;
-  // Tentativi consecutivi SENZA progresso (vedi RECONNECT_STABLE_MS).
+  // CONSECUTIVE attempts WITHOUT progress (see RECONNECT_STABLE_MS).
   private attempts = 0;
 
-  // Costruire un client non ha effetti: la registrazione come trasporto avviene
-  // in start() (vedi lì il perché).
+  // Building a client has no effects: registration as the transport happens
+  // in start() (see there why).
   constructor(private docId: string, private clientId: string) {}
 
   submit(op: Op) {
     if (this.stopped) {
-      // Client staccato: la coda non parte più e lo store, in StrictMode, è
-      // già di un ALTRO client. Applicare in ottimistico lascerebbe un op in
-      // `pending` per sempre -- visibile sulla scena, non inviato a nessuno e
-      // impossibile da confermare, perché l'unico stream vivo è quello del
-      // client nuovo, che di questo op non sa niente.
-      console.warn("opendesigner: submit su un SyncClient fermato — op ignorato", op.opId);
+      // Detached client: the queue no longer starts and the store, in StrictMode, is
+      // already another client's. Applying optimistically would leave an op in
+      // `pending` forever -- visible on the scene, sent to no one and
+      // impossible to confirm, because the only live stream is the new
+      // client's, which knows nothing about this op.
+      console.warn("opendesigner: submit on a stopped SyncClient — op ignored", op.opId);
       return;
     }
-    // Apply OTTIMISTICO: entra nella coda degli op in volo e si vede subito.
-    // Non è ancora confermato: lo diventerà quando il suo eco tornerà da
-    // Subscribe. Resta SINCRONO -- è solo l'invio che viene serializzato, il
-    // feedback sullo schermo no.
+    // OPTIMISTIC apply: it enters the in-flight ops queue and shows up immediately.
+    // It is not confirmed yet: it will become so when its echo returns from
+    // Subscribe. It stays SYNCHRONOUS -- only the sending is serialized, the
+    // on-screen feedback is not.
     useScene.getState().applyPending(op);
     if (this.givenUp) {
-      // Arreso: lo stream non tornerà più, quindi NIENTE potrà più confermare
-      // questo op. Mandarlo comunque lo farebbe applicare in modo durabile sul
-      // server mentre qui resta per sempre in `pending` -- rigiocato da viewOf a
-      // ogni aggiornamento dello store (quadratico sulla lunghezza della
-      // sessione) e con un mark di storia che non si deciderà mai. Rifiutarlo
-      // costa una modifica; accettarlo costa la sessione.
+      // Given up: the stream will not come back, so NOTHING can confirm
+      // this op anymore. Sending it anyway would have it applied durably on the
+      // server while here it stays forever in `pending` -- replayed by viewOf on
+      // every store update (quadratic in the session length)
+      // and with a history mark that will never be decided. Rejecting it
+      // costs one edit; accepting it costs the session.
       useScene.getState().rejectPending(op.opId, GAVE_UP);
       return;
     }
     if (this.outbox.length >= MAX_OUTBOX) {
-      // Coda satura: la testa non si muove da un pezzo. Rifiutiamo il NUOVO op
-      // invece di buttare via quelli già accodati -- sono l'intento più
-      // vecchio, e potrebbero partire da un momento all'altro. Il rifiuto passa
-      // dalla stessa porta di un rifiuto del server (applyPending seguito da
-      // rejectPending): stesso rollback della vista, stesso riavvolgimento
-      // della voce di undo, stesso banner. Un op che non parte deve costare
-      // esattamente come un op che parte e viene respinto.
+      // Queue saturated: the head has not moved for a while. We reject the NEW op
+      // instead of throwing away those already queued -- they are the oldest
+      // intent, and might go out at any moment. The rejection goes through the
+      // same door as a server rejection (applyPending followed by
+      // rejectPending): same view rollback, same rewinding
+      // of the undo entry, same banner. An op that does not go out must cost
+      // exactly like an op that goes out and is rejected.
       useScene.getState().rejectPending(
         op.opId,
-        `troppe modifiche in attesa (${MAX_OUTBOX}): il server non sta rispondendo`,
+        `too many pending changes (${MAX_OUTBOX}): the server is not responding`,
       );
       return;
     }
@@ -186,105 +186,105 @@ export class SyncClient {
     void this.drain();
   }
 
-  // L'op è ancora nella coda degli op in volo dello store? Se NON c'è più, il
-  // suo eco è già arrivato da Subscribe: il server l'ha applicato e messo
-  // nell'op-log, quindi è DURABILE anche se la risposta HTTP non è mai tornata.
-  // Hub.Submit fa broadcast ai subscriber PRIMA di scrivere la risposta
-  // (internal/server/hub.go), quindi questa finestra non è teorica.
+  // Is the op still in the store's in-flight ops queue? If it is NO longer there, its
+  // echo has already arrived from Subscribe: the server applied it and put it
+  // in the op-log, so it is DURABLE even if the HTTP response never came back.
+  // Hub.Submit broadcasts to subscribers BEFORE writing the response
+  // (internal/server/hub.go), so this window is not theoretical.
   //
-  // Un opId vuoto non entra mai in `pending` (applyPending lo tratta come già
-  // confermato): non distinguerebbe i due casi, quindi si sceglie la lettura
-  // prudente -- "non atterrato". `confirmed` nullo vuol dire store non ancora
-  // inizializzato: idem.
+  // An empty opId never enters `pending` (applyPending treats it as already
+  // confirmed): it would not distinguish the two cases, so the cautious
+  // reading is chosen -- "not landed". A null `confirmed` means the store is not yet
+  // initialized: same.
   private landed(op: Op): boolean {
     const st = useScene.getState();
     if (op.opId === "" || !st.confirmed) return false;
     return !st.pending.some((p) => p.opId === op.opId);
   }
 
-  // Svuota l'outbox una richiesta alla volta. Rientrante-sicura: `draining` fa
-  // sì che esista un solo drain vivo, quindi un submit fatto mentre una
-  // richiesta è in volo si limita ad accodarsi e verrà preso dal giro corrente.
+  // Empties the outbox one request at a time. Reentrancy-safe: `draining` ensures
+  // there is only one live drain, so a submit made while a
+  // request is in flight just queues up and will be picked up by the current round.
   private async drain() {
     if (this.draining) return;
     this.draining = true;
     try {
-      // `stopped` chiude anche questa metà: dopo stop() nessun altro op parte e
-      // nessun rollback tocca più lo store (vedi il catch).
+      // `stopped` closes this half too: after stop() no other op goes out and
+      // no rollback touches the store anymore (see the catch).
       while (this.outbox.length > 0 && !this.stopped) {
         const op = this.outbox[0];
-        // La generazione in cui questa richiesta parte. Se cambia mentre è in
-        // volo, il documento è stato sostituito da uno snapshot: questa
-        // richiesta non ha più niente da dire su una coda che non è più la sua.
+        // The generation in which this request starts. If it changes while it is in
+        // flight, the document was replaced by a snapshot: this
+        // request has nothing left to say about a queue that is no longer its own.
         const epoch = this.epoch;
         try {
           await docClient.submitOp(
             { docId: this.docId, clientId: this.clientId, op },
             { timeoutMs: SUBMIT_TIMEOUT_MS },
           );
-          // L'Ack della unary NON conferma nulla: porta solo il seq assegnato.
-          // La conferma vera è l'eco su Subscribe, l'unico punto in cui il
-          // client conosce l'ORDINE che il server ha deciso rispetto agli op
-          // altrui. Qui serve solo a sapere che è arrivato, cioè che il
-          // prossimo può partire senza scavalcarlo.
+          // The unary's Ack confirms NOTHING: it only carries the assigned seq.
+          // The real confirmation is the echo on Subscribe, the only point where the
+          // client knows the ORDER the server decided relative to other
+          // people's ops. Here it only serves to know that it arrived, that is that the
+          // next one can go out without overtaking it.
           //
-          // ...a meno che nel frattempo non sia arrivato un resync: la coda è
-          // stata svuotata e in testa c'è, semmai, un op costruito sul NUOVO
-          // documento. Uno shift() qui butterebbe via quello sbagliato.
+          // ...unless a resync arrived in the meantime: the queue
+          // was emptied and at the head there is, if anything, an op built on the NEW
+          // document. A shift() here would throw away the wrong one.
           if (this.epoch !== epoch) continue;
           this.outbox.shift();
         } catch (err) {
-          // POLITICA IN CASO DI FALLIMENTO: la coda si FERMA e si svuota.
-          // L'op fallito esce dalla vista (rollback, come già faceva il .catch
-          // di prima), e con lui TUTTI quelli ancora in coda dietro: sono stati
-          // costruiti su uno stato che includeva il suo effetto, cioè su una
-          // premessa che il server non ha mai raggiunto. Mandarli comunque
-          // persisterebbe una modifica basata su un documento che non esiste
-          // (es. un setProps su un nodo la cui createNode è appena stata
-          // rifiutata). Meglio perdere le modifiche, visibilmente, che
-          // scriverne di incoerenti in silenzio.
+          // FAILURE POLICY: the queue STOPS and is emptied.
+          // The failed op leaves the view (rollback, as the previous .catch
+          // already did), and with it ALL those still queued behind it: they were
+          // built on a state that included its effect, that is on a
+          // premise the server never reached. Sending them anyway would
+          // persist a change based on a document that does not exist
+          // (e.g. a setProps on a node whose createNode was just
+          // rejected). Better to lose the changes, visibly, than
+          // write inconsistent ones silently.
           //
-          // Lo stop è della CODA, non del client: dopo il rollback la vista
-          // torna a "confermato + op davvero accettati", quindi un submit
-          // successivo è di nuovo costruito su una premessa vera e parte
-          // normalmente. Latchare per sempre al primo InvalidArgument (un id
-          // duplicato, per dire) congelerebbe l'editor senza motivo.
+          // The stop is the QUEUE's, not the client's: after the rollback the view
+          // goes back to "confirmed + truly accepted ops", so a subsequent
+          // submit is again built on a true premise and goes out
+          // normally. Latching forever at the first InvalidArgument (a duplicate
+          // id, say) would freeze the editor for no reason.
           //
-          // E vale solo se la premessa è DAVVERO falsa: `landed()` qui sotto è
-          // il caso in cui non lo è.
+          // And it applies only if the premise is REALLY false: `landed()` below
+          // is the case where it is not.
           const message = ConnectError.from(err).message;
           console.error("submitOp failed", err);
-          // Client fermato mentre la richiesta era in volo (abort della fetch a
-          // pagina chiusa, tipicamente): non c'è più nessuno a cui mostrare un
-          // rollback, e scriverlo mentre un client nuovo ha già preso il posto
-          // farebbe sparire dalla scena un op che nemmeno è suo.
+          // Client stopped while the request was in flight (fetch abort on
+          // page close, typically): there is no one left to show a
+          // rollback to, and writing it while a new client has already taken over
+          // would make an op that is not even its own disappear from the scene.
           if (this.stopped) return;
-          // Resync mentre la richiesta era in volo: la coda è già stata buttata
-          // via e l'utente ha già visto il rollback (setScene con il suo
-          // messaggio). Soprattutto: `landed()` qui NON è utilizzabile, perché
-          // legge `pending` -- che il resync ha svuotato -- e risponderebbe
-          // "atterrato" a qualunque op, facendo partire la coda dietro come se
-          // la sua premessa fosse vera.
+          // Resync while the request was in flight: the queue was already thrown
+          // away and the user has already seen the rollback (setScene with its
+          // message). Above all: `landed()` is NOT usable here, because it
+          // reads `pending` -- which the resync emptied -- and would answer
+          // "landed" for any op, making the queue behind it start as if
+          // its premise were true.
           if (this.epoch !== epoch) continue;
           if (this.landed(op)) {
-            // La richiesta è morta DOPO che il server aveva applicato e
-            // ribroadcastato l'op: l'eco è già arrivato, l'op è durabile. La
-            // premessa della coda dietro ("il predecessore è sul server") è
-            // quindi VERA e fermarla butterebbe via lavoro valido mostrando un
-            // errore per un op riuscito. Si prosegue: niente rollback, nessun
-            // banner, solo la riga di log.
+            // The request died AFTER the server had applied and
+            // rebroadcast the op: the echo has already arrived, the op is durable. The
+            // premise of the queue behind ("the predecessor is on the server")
+            // is therefore TRUE and stopping it would throw away valid work while showing an
+            // error for a successful op. We proceed: no rollback, no
+            // banner, only the log line.
             this.outbox.shift();
             continue;
           }
           const dropped = this.outbox.splice(0, this.outbox.length);
-          // Dal fondo: così nessuno stato intermedio mostra un op applicato
-          // sopra una base a cui manca il suo predecessore.
+          // From the bottom: so no intermediate state shows an op applied
+          // on top of a base missing its predecessor.
           //
-          // Solo la TESTA è revocabile (store.ts::DisownedOp): è l'unica che era
-          // davvero in volo, quindi l'unica che il server può aver applicato
-          // nonostante la richiesta sia morta. La coda dietro non è mai partita:
-          // nessun eco potrà mai arrivare, e segnarla revocabile occuperebbe
-          // solo posti nella memoria dei rollback.
+          // Only the HEAD is revocable (store.ts::DisownedOp): it is the only one that was
+          // really in flight, so the only one the server may have applied
+          // even though the request died. The queue behind never went out:
+          // no echo can ever arrive, and marking it revocable would only
+          // take up slots in the rollback memory.
           for (let i = dropped.length - 1; i >= 0; i--) {
             useScene.getState().rejectPending(dropped[i].opId, message, i === 0);
           }
@@ -295,81 +295,81 @@ export class SyncClient {
     }
   }
 
-  // Apre il documento e avvia il loop dello stream. Idempotente: due chiamate
-  // di fila (StrictMode) lasciano UNA sola subscription viva.
+  // Opens the document and starts the stream loop. Idempotent: two consecutive
+  // calls (StrictMode) leave ONE single subscription alive.
   async start() {
     if (this.started || this.stopped) return;
     this.started = true;
-    // REGISTRAZIONE come trasporto dello store. Qui e non nel costruttore: il
-    // posto è uno solo e chi si registra per ULTIMO lo prende, quindi
-    // registrarsi alla costruzione vuol dire che un client mai avviato può
-    // rubare il posto a uno vivo -- e il suo stop(), che azzera il posto solo se
-    // è ancora suo, lo trova suo e lascia l'editor senza trasporto.
+    // REGISTRATION as the store's transport. Here and not in the constructor: the
+    // slot is single and whoever registers LAST takes it, so
+    // registering at construction means a never-started client can
+    // steal the slot from a live one -- and its stop(), which clears the slot only if
+    // it is still its own, finds it its own and leaves the editor without a transport.
     //
-    // Non è teorico: è la forma del bootstrap di ui/App.tsx al primo caricamento
-    // (nessun `opendesigner.docId` in localStorage) sotto StrictMode. I due giri
-    // dell'effetto aspettano ciascuno la propria createDocument; se la seconda
-    // risposta arriva per prima, il client del PRIMO giro viene costruito dopo
-    // che quello del secondo si è già registrato, e subito fermato dalla
-    // guardia `if (cancelled)`. Da lì in poi `sync` è null, ogni endGesture
-    // prende il ramo senza filo (store.ts: `get().apply(op)`) e ogni modifica
-    // viene applicata in locale come confermata, mai inviata e persa al reload,
-    // con la pillola che continua a dire "connesso".
+    // It is not theoretical: it is the shape of ui/App.tsx's bootstrap on first load
+    // (no `opendesigner.docId` in localStorage) under StrictMode. The two rounds
+    // of the effect each wait for their own createDocument; if the second
+    // response arrives first, the FIRST round's client is built after
+    // the second's has already registered, and immediately stopped by the
+    // `if (cancelled)` guard. From then on `sync` is null, every endGesture
+    // takes the wireless branch (store.ts: `get().apply(op)`) and every edit
+    // is applied locally as confirmed, never sent and lost on reload,
+    // with the pill still saying "connected".
     useScene.getState().setSync(this);
     await this.open();
-    // stop() può essere arrivato durante l'await (unmount rapido): non avviare
-    // un loop che nessuno fermerà più.
+    // stop() may have arrived during the await (quick unmount): do not start
+    // a loop that no one will ever stop.
     if (this.stopped) return;
-    // Il loop gira in background: start() deve risolversi appena lo snapshot è
-    // caricato, non quando la subscription finisce (cioè: mai).
+    // The loop runs in the background: start() must resolve as soon as the snapshot is
+    // loaded, not when the subscription ends (that is: never).
     void this.loop();
   }
 
-  // Stacca tutto: la subscription in corso (abort del segnale, che è ciò che
-  // chiude davvero la richiesta HTTP e libera il subscriber sul server),
-  // l'attesa di backoff, e il posto di trasporto nello store. Da chiamare dalla
-  // cleanup dell'effetto di bootstrap: senza, uno smontaggio lascia un loop che
-  // continua a riconnettersi e a scrivere in uno store che nessuno guarda più.
+  // Detaches everything: the subscription in progress (abort of the signal, which is what
+  // really closes the HTTP request and frees the subscriber on the server),
+  // the backoff wait, and the transport slot in the store. To be called from the
+  // bootstrap effect's cleanup: without it, an unmount leaves a loop that
+  // keeps reconnecting and writing into a store nobody is looking at anymore.
   stop() {
     if (this.stopped) return;
     this.stopped = true;
     this.controller?.abort();
     this.controller = null;
     this.wake?.();
-    // Solo se il posto è ancora NOSTRO: in StrictMode il client successivo si è
-    // già registrato prima che questa cleanup giri, e azzerarlo lascerebbe
-    // l'editor senza trasporto (ogni gesto applicato in locale e mai inviato).
+    // Only if the slot is still OURS: in StrictMode the next client has
+    // already registered before this cleanup runs, and clearing it would leave
+    // the editor without a transport (every gesture applied locally and never sent).
     if (useScene.getState().sync === this) useScene.getState().setSync(null);
   }
 
-  // Snapshot autorevole: allinea vista, confermato e seq di partenza. È anche
-  // la sola risposta possibile a CodeOutOfRange (la history da cui volevamo
-  // ripartire è stata compattata), e in quel caso setScene svuota `pending`:
-  // gli op ancora in volo restano legittimi sul server -- se sono atterrati il
-  // loro eco arriverà e li rimetterà nella scena -- ma il client non ha più
-  // modo di collocarli rispetto a uno snapshot che non sa in quale punto della
-  // storia si trovi.
+  // Authoritative snapshot: aligns view, confirmed state and starting seq. It is also
+  // the only possible answer to CodeOutOfRange (the history we wanted to
+  // restart from was compacted), and in that case setScene empties `pending`:
+  // the ops still in flight remain legitimate on the server -- if they landed
+  // their echo will arrive and put them back in the scene -- but the client no longer has
+  // a way to place them relative to a snapshot that does not know at which point
+  // of history it stands.
   //
-  // `resync` distingue il bootstrap dalla sostituzione a metà sessione, che è
-  // un'altra cosa: c'è un documento vivo sotto, con una coda, una storia e --
-  // fuori dallo store -- un OUTBOX. Svuotare la coda senza svuotare anche
-  // l'outbox li disallinea, e da lì in poi `landed()` ("non è in pending, quindi
-  // il server ce l'ha") risponde "atterrato" a op che non hanno mai lasciato il
-  // browser. La generazione (`epoch`) è ciò che rende quel disallineamento
-  // impossibile anche per la richiesta già in volo.
+  // `resync` distinguishes bootstrap from mid-session replacement, which is
+  // another thing: there is a live document underneath, with a queue, a history and --
+  // outside the store -- an OUTBOX. Emptying the queue without also emptying
+  // the outbox misaligns them, and from then on `landed()` ("it is not in pending, so
+  // the server has it") answers "landed" for ops that never left the browser.
+  // The generation (`epoch`) is what makes that misalignment
+  // impossible even for the request already in flight.
   //
-  // CodeOutOfRange non è ipotetico: l'hub compatta ogni 256 op
-  // (internal/server/hub.go: snapshotEveryOps) e un hub riavviato riparte con
-  // historyBase al seq caricato (internal/server/bundle.go), quindi basta
-  // riprendere una sessione da un punto più vecchio.
+  // CodeOutOfRange is not hypothetical: the hub compacts every 256 ops
+  // (internal/server/hub.go: snapshotEveryOps) and a restarted hub starts with
+  // historyBase at the loaded seq (internal/server/bundle.go), so it is enough
+  // to resume a session from an older point.
   private async open(resync = false) {
     const open = await docClient.openDocument({ docId: this.docId });
     if (this.stopped) return;
     if (resync) {
       this.epoch += 1;
-      // Questi op non sono mai partiti e non partiranno: sono stati costruiti
-      // su un documento che lo snapshot ha appena sostituito. setScene li toglie
-      // dalla vista (e mostra il perché); qui si toglie il loro invio.
+      // These ops never left and will not leave: they were built
+      // on a document that the snapshot has just replaced. setScene removes them
+      // from the view (and shows why); here their sending is removed.
       this.outbox.length = 0;
     }
     if (open.snapshot) {
@@ -379,15 +379,15 @@ export class SyncClient {
     useScene.getState().setConnection("connected");
   }
 
-  // Il loop di vita dello stream: consuma, e quando lo stream finisce (in
-  // qualunque modo) aspetta e si riabbona da `this.seq`, cioè da DOPO l'ultimo
-  // record applicato -- since_seq è esclusivo (hub.go: `rec.Seq > sinceSeq`),
-  // quindi il backlog riparte esattamente dal primo record che ci manca.
+  // The stream's life loop: it consumes, and when the stream ends (in
+  // any way) it waits and resubscribes from `this.seq`, that is from AFTER the last
+  // applied record -- since_seq is exclusive (hub.go: `rec.Seq > sinceSeq`),
+  // so the backlog restarts exactly from the first record we are missing.
   //
-  // Prima di questo fix `void this.consume()` non aveva né catch né retry: la
-  // fine dello stream era una unhandled rejection e nient'altro, il documento
-  // confermato restava fermo per sempre e ogni gesto successivo si accodava a
-  // `pending` senza che niente potesse più toglierlo da lì.
+  // Before this fix `void this.consume()` had neither catch nor retry: the
+  // end of the stream was an unhandled rejection and nothing else, the confirmed
+  // document stayed frozen forever and every subsequent gesture queued up in
+  // `pending` with nothing able to remove it from there anymore.
   private async loop() {
     while (!this.stopped) {
       const controller = new AbortController();
@@ -398,44 +398,44 @@ export class SyncClient {
       try {
         const end = await this.consume(controller.signal);
         if (this.stopped) return;
-        // for-await finito senza errore: il server ha chiuso lo stream. Non è
-        // meno grave di un errore -- da qui in poi non arriva più nessun record.
+        // for-await ended without an error: the server closed the stream. It is not
+        // less serious than an error -- from here on no record arrives anymore.
         reason = end === "gap" ? SEQUENCE_GAP : CLOSED_BY_SERVER;
         console.error("subscribe stream ended:", reason);
       } catch (err) {
         if (this.stopped) return;
         const ce = ConnectError.from(err);
         reason = ce.message;
-        // OutOfRange = "i record da cui vuoi ripartire sono stati compattati in
-        // uno snapshot" (documentservice.go). Riabbonarsi allo stesso since_seq
-        // darebbe lo stesso errore all'infinito: l'unica via d'uscita è
-        // riaprire il documento e ripartire dal seq che OpenDocument riporta.
+        // OutOfRange = "the records you want to restart from were compacted into
+        // a snapshot" (documentservice.go). Resubscribing at the same since_seq
+        // would give the same error forever: the only way out is to
+        // reopen the document and restart from the seq OpenDocument reports.
         reopen = ce.code === Code.OutOfRange;
         console.error("subscribe stream failed", err);
       } finally {
-        // Anche quando siamo NOI a uscire dal for-await (gap): lo stream non è
-        // finito, e senza abort la richiesta resterebbe aperta con il server
-        // che continua a spingerci record dentro un canale che nessuno legge.
+        // Also when WE exit the for-await (gap): the stream has not
+        // ended, and without abort the request would stay open with the server
+        // still pushing records into a channel nobody reads.
         controller.abort();
         this.controller = null;
       }
 
-      // Uno stream vissuto a lungo ha fatto il suo lavoro anche se il documento
-      // era fermo: il budget dei tentativi vale per le cadute CONSECUTIVE.
+      // A long-lived stream did its job even if the document
+      // was idle: the attempts budget applies to CONSECUTIVE drops.
       if (Date.now() - openedAt >= RECONNECT_STABLE_MS) this.attempts = 0;
       this.attempts += 1;
       if (this.attempts > MAX_RECONNECT_ATTEMPTS) {
-        // ARRESA. Il loop finisce qui, e con lui l'unica cosa che può confermare
-        // un op: da adesso `submit()` rifiuta invece di accodare (vedi
-        // `givenUp`). Senza questo il client resta "vivo a metà" -- accetta op,
-        // li manda, il server li applica in modo durabile -- e la coda in
-        // attesa, la storia in dubbio e il replay di viewOf crescono per tutto
-        // il resto della sessione, senza che MAX_OUTBOX possa intervenire
-        // (l'outbox si svuota a ogni successo, `pending` no).
+        // GAVE UP. The loop ends here, and with it the only thing that can confirm
+        // an op: from now on `submit()` rejects instead of queueing (see
+        // `givenUp`). Without this the client stays "half alive" -- it accepts ops,
+        // sends them, the server applies them durably -- and the pending
+        // queue, the doubtful history and viewOf's replay grow for the whole
+        // rest of the session, with MAX_OUTBOX unable to step in
+        // (the outbox empties on every success, `pending` does not).
         //
-        // Quello che è GIÀ in coda parte lo stesso: è al più MAX_OUTBOX op, ha
-        // già superato il punto di non ritorno del rollback, e il server è
-        // l'unico posto in cui possa ancora sopravvivere al reload.
+        // What is ALREADY queued goes out anyway: it is at most MAX_OUTBOX ops, it
+        // has already passed the rollback's point of no return, and the server is
+        // the only place where it can still survive the reload.
         this.givenUp = true;
         useScene.getState().setConnection("error", reason);
         return;
@@ -446,13 +446,13 @@ export class SyncClient {
       if (this.stopped) return;
       if (reopen) {
         try {
-          // RISINCRONIZZAZIONE, non bootstrap: c'è un documento vivo che lo
-          // snapshot sta per sostituire (vedi open()).
+          // RESYNCHRONIZATION, not bootstrap: there is a live document that the
+          // snapshot is about to replace (see open()).
           await this.open(true);
         } catch (err) {
-          // Se nemmeno OpenDocument risponde, il server è giù: il giro
-          // successivo di subscribe fallirà a sua volta e consumerà un
-          // tentativo come tutti gli altri, quindi il tetto vale anche qui.
+          // If not even OpenDocument answers, the server is down: the next
+          // subscribe round will fail in turn and consume an
+          // attempt like all the others, so the cap applies here too.
           console.error("resync (openDocument) failed", err);
         }
         if (this.stopped) return;
@@ -460,8 +460,8 @@ export class SyncClient {
     }
   }
 
-  // Attesa interrompibile: stop() la sveglia subito invece di lasciare in piedi
-  // un timer che si risolverebbe dentro una app già smontata.
+  // Interruptible wait: stop() wakes it immediately instead of leaving a
+  // timer standing that would resolve inside an already unmounted app.
   private wait(ms: number): Promise<void> {
     return new Promise((resolve) => {
       const timer = setTimeout(() => {
@@ -476,66 +476,66 @@ export class SyncClient {
     });
   }
 
-  // Un giro di subscription. Ritorna "closed" se lo stream è finito (il server
-  // l'ha chiuso), "gap" se è stato il client a staccare per un buco nella
-  // sequenza; un errore del trasporto esce come eccezione.
+  // One subscription round. Returns "closed" if the stream ended (the server
+  // closed it), "gap" if the client detached because of a hole in the
+  // sequence; a transport error comes out as an exception.
   private async consume(signal: AbortSignal): Promise<"closed" | "gap"> {
     const stream = docClient.subscribe(
       { docId: this.docId, clientId: this.clientId, sinceSeq: BigInt(this.seq) },
       { signal },
     );
-    // "Connesso" appena la subscription è aperta, non al primo record: un
-    // documento su cui nessuno sta disegnando è silenzioso per definizione, e
-    // aspettare un record vorrebbe dire lasciare la pillola su "riconnessione"
-    // a tempo indeterminato con il collegamento perfettamente sano. Il prezzo è
-    // un lampeggio di "connesso" a ogni tentativo mentre il server è giù --
-    // ma il tentativo dura millisecondi e l'attesa di backoff, che è quella che
-    // l'utente vede, resta "riconnessione".
+    // "Connected" as soon as the subscription is open, not at the first record: a
+    // document on which nobody is drawing is silent by definition, and
+    // waiting for a record would mean leaving the pill on "reconnecting"
+    // indefinitely with a perfectly healthy connection. The price is
+    // a flash of "connected" on every attempt while the server is down --
+    // but the attempt lasts milliseconds and the backoff wait, which is what the
+    // user sees, stays "reconnecting".
     useScene.getState().setConnection("connected");
     for await (const msg of stream) {
-      // Un record può essere già nel buffer quando arriva lo stop: la guardia
-      // qui è ciò che garantisce che dopo stop() NIENTE entri più nello store.
+      // A record may already be in the buffer when stop arrives: the guard
+      // here is what guarantees that after stop() NOTHING enters the store anymore.
       if (this.stopped || signal.aborted) return "closed";
       if (msg.kind.case !== "applied") continue;
       const rec = msg.kind.value;
       const seq = Number(rec.seq);
 
       if (seq <= this.seq) {
-        // Già visto. Non dovrebbe succedere (since_seq è esclusivo e l'hub
-        // consegna esattamente una volta), ma riapplicare un op perché il
-        // backlog si è sovrapposto sarebbe una mutazione silenziosa del
-        // documento: si scarta e si va avanti.
-        console.warn(`opendesigner: record duplicato seq=${seq} (già a ${this.seq}), ignorato`);
+        // Already seen. It should not happen (since_seq is exclusive and the hub
+        // delivers exactly once), but reapplying an op because the
+        // backlog overlapped would be a silent mutation of the
+        // document: it is discarded and we move on.
+        console.warn(`opendesigner: duplicate record seq=${seq} (already at ${this.seq}), ignored`);
         continue;
       }
       if (seq !== this.seq + 1) {
-        // BUCO. Proseguire vorrebbe dire tenersi un documento a cui manca un
-        // op, in modo permanente e invisibile: se il buco conteneva un
-        // CreateNode, ogni SetProps successivo su quel nodo viene inghiottito
-        // da applyOp (`if (!cur) return state`) e la forma non compare mai.
-        // Si stacca e ci si riabbona dall'ultimo seq BUONO, che è quello che
-        // fa rimandare al server i record mancanti.
-        console.error(`opendesigner: gap nello stream (atteso ${this.seq + 1}, ricevuto ${seq})`);
+        // GAP. Proceeding would mean keeping a document that is missing an
+        // op, permanently and invisibly: if the gap contained a
+        // CreateNode, every subsequent SetProps on that node is swallowed
+        // by applyOp (`if (!cur) return state`) and the shape never appears.
+        // We detach and resubscribe from the last GOOD seq, which is what
+        // makes the server resend the missing records.
+        console.error(`opendesigner: gap in the stream (expected ${this.seq + 1}, received ${seq})`);
         return "gap";
       }
 
-      // ANCHE i propri echi. Scartarli per clientId (com'era in M0) vuol dire
-      // non adottare mai la versione autorevole dei propri op: il client non
-      // sa mai come il server li ha ordinati rispetto a quelli altrui, e i
-      // suoi op restano ottimistici per sempre. È l'eco che li conferma --
-      // store.apply li toglie dalla coda proprio in base all'opId, quindi
-      // l'op non viene applicato due volte, nemmeno quando è il backlog di una
-      // riconnessione a riportarlo indietro.
+      // ALSO our own echoes. Discarding them by clientId (as in M0) means
+      // never adopting the authoritative version of our own ops: the client never
+      // knows how the server ordered them relative to other people's, and
+      // its ops stay optimistic forever. It is the echo that confirms them --
+      // store.apply removes them from the queue precisely based on the opId,
+      // so the op is not applied twice, not even when it is the backlog of a
+      // reconnection that brings it back.
       //
-      // Il clientId però serve, per un'altra decisione: un record ALTRUI può
-      // aver reso non più valide delle voci di undo/redo (store.ts::markStale),
-      // uno nostro no. È l'unico posto in cui la provenienza conta, e il
-      // confronto è volutamente stretto -- un clientId vuoto non è una prova di
-      // niente, quindi il record va trattato come altrui.
+      // The clientId is still needed, though, for another decision: someone ELSE's record may
+      // have invalidated undo/redo entries (store.ts::markStale),
+      // ours cannot. It is the only place where provenance matters, and the
+      // comparison is deliberately strict -- an empty clientId is not proof of
+      // anything, so the record must be treated as someone else's.
       const own = rec.clientId !== "" && rec.clientId === this.clientId;
       if (rec.op) useScene.getState().apply(rec.op, own);
       this.seq = seq;
-      // Progresso: il budget dei tentativi riparte da zero.
+      // Progress: the attempts budget restarts from zero.
       this.attempts = 0;
     }
     return "closed";

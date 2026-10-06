@@ -2,17 +2,17 @@
   "docId": "doc1",
   "ops": [
     { "opId": "op1", "docId": "doc1", "createNode": { "node": {
-      "id": "g1", "parentId": "page1", "orderKey": "a1", "name": "Gruppo 1",
+      "id": "g1", "parentId": "page1", "orderKey": "a1", "name": "Group 1",
       "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 100, "height": 100,
       "rect": { "cornerRadius": 0 }
     } } },
     { "opId": "op2", "docId": "doc1", "createNode": { "node": {
-      "id": "g2", "parentId": "page1", "orderKey": "a2", "name": "Gruppo 2",
+      "id": "g2", "parentId": "page1", "orderKey": "a2", "name": "Group 2",
       "visible": true, "opacity": 1, "x": 200, "y": 0, "width": 100, "height": 100,
       "rect": { "cornerRadius": 0 }
     } } },
     { "opId": "op3", "docId": "doc1", "createNode": { "node": {
-      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Figlio",
+      "id": "c1", "parentId": "g1", "orderKey": "a1", "name": "Child",
       "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 20, "height": 20,
       "rect": { "cornerRadius": 0 }
     } } },
@@ -30,17 +30,17 @@
     "pages": [{ "id": "page1", "name": "Page 1" }],
     "nodes": {
       "g1": {
-        "id": "g1", "parentId": "page1", "orderKey": "a1", "name": "Gruppo 1",
+        "id": "g1", "parentId": "page1", "orderKey": "a1", "name": "Group 1",
         "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 100, "height": 100,
         "rect": { "cornerRadius": 0 }
       },
       "g2": {
-        "id": "g2", "parentId": "page1", "orderKey": "a2", "name": "Gruppo 2",
+        "id": "g2", "parentId": "page1", "orderKey": "a2", "name": "Group 2",
         "visible": true, "opacity": 1, "x": 200, "y": 0, "width": 100, "height": 100,
         "rect": { "cornerRadius": 0 }
       },
       "c1": {
-        "id": "c1", "parentId": "g2", "orderKey": "a5", "name": "Figlio",
+        "id": "c1", "parentId": "g2", "orderKey": "a5", "name": "Child",
         "visible": true, "opacity": 1, "x": 10, "y": 10, "width": 20, "height": 20,
         "rect": { "cornerRadius": 0 }
       },

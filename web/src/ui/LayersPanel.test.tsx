@@ -1,5 +1,5 @@
-// I matcher di jest-dom sono già installati dai setupFiles (vite.config.ts);
-// l'import qui serve a TYPE-SCRIPT (tsc -b non legge i setupFiles).
+// jest-dom's matchers are already installed by the setupFiles (vite.config.ts);
+// the import here serves TYPE-SCRIPT (tsc -b does not read the setupFiles).
 import "@testing-library/jest-dom/vitest";
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { render, screen, within, cleanup, act, fireEvent } from "@testing-library/react";
@@ -11,9 +11,9 @@ import { emptyScene } from "../store/types";
 import { layersInDrawOrder } from "../store/selectors";
 import type { NodeLite, PageLite } from "../store/types";
 
-// Doppio di SyncClient: registra gli op che finiscono SUL FILO e modella un
-// server che accetta ed ECOA subito (applyPending + apply), come negli altri
-// test dello store (vedi TextEditorOverlay.test.tsx).
+// SyncClient double: records the ops that end up ON THE WIRE and models a
+// server that accepts and ECHOES at once (applyPending + apply), as in the other
+// store tests (see TextEditorOverlay.test.tsx).
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
@@ -48,8 +48,8 @@ function textNode(id: string, orderKey: string, content: string, over: Partial<N
 function installScene(...nodes: NodeLite[]) {
   const scene = emptyScene("doc-1", "Untitled");
   for (const n of nodes) scene.nodes = scene.nodes.set(n.id, n);
-  // setScene e non setState({scene}): installa una scena COERENTE (vista e
-  // confermato allineati, coda vuota) -- l'invariante della riconciliazione.
+  // setScene and not setState({scene}): installs a COHERENT scene (view and
+  // confirmed aligned, queue empty) -- the reconciliation's invariant.
   useScene.getState().setScene(scene);
 }
 
@@ -70,34 +70,34 @@ beforeEach(() => {
 afterEach(cleanup);
 
 function grid(): HTMLElement {
-  return screen.getByRole("grid", { name: "Livelli" });
+  return screen.getByRole("grid", { name: "Layers" });
 }
 
 function rows(): HTMLElement[] {
   return within(grid()).getAllByRole("row");
 }
 
-// Simula la sequenza pointerdown -> mouseDown -> pointerup -> mouseUp ->
-// click di un click reale del mouse, CON `pressure: 0.5` esplicito sul
+// Simulates the pointerdown -> mouseDown -> pointerup -> mouseUp ->
+// click sequence of a real mouse click, WITH an explicit `pressure: 0.5` on the
 // pointerdown.
 //
-// PERCHÉ non basta userEvent.click(): react-aria-components (usePress)
-// distingue un click REALE da uno screen-reader/"virtuale" guardando
-// width/height/pressure/detail del PointerEvent (react-aria/dist/private/
-// utils/isVirtualEvent.mjs::isVirtualPointerEvent) -- un pattern pensato per
-// TalkBack, non per jsdom. jsdom costruisce un PointerEvent con
-// { width: 1, height: 1, pressure: 0 } quando questi campi non sono
-// specificati, e QUELLA combinazione è esattamente l'euristica per un tap
-// TalkBack. Ogni click sintetizzato da user-event (che non passa `pressure`)
-// finisce quindi marcato "virtual" sotto jsdom -- mai sotto un browser vero,
-// dove pressure di un mouse premuto è 0.5. Da "virtual" discende un effetto
-// concreto e non solo cosmetico: selectionBehavior="replace" si comporta
-// come "toggle" (ogni click AGGIUNGE invece di sostituire, vedi
-// react-aria/dist/private/selection/useSelectableItem.mjs::onSelect), quindi
-// senza questo aggiustamento "un secondo click semplice rimpiazza" e
-// "ctrl/shift-click estende" sarebbero indistinguibili in questa suite.
-// fireEvent (a differenza di user-event) costruisce il PointerEvent con
-// `new PointerEvent(type, init)`, quindi accetta l'override.
+// WHY userEvent.click() is not enough: react-aria-components (usePress)
+// tells a REAL click from a screen-reader/"virtual" one by looking at
+// width/height/pressure/detail of the PointerEvent (react-aria/dist/private/
+// utils/isVirtualEvent.mjs::isVirtualPointerEvent) -- a pattern meant for
+// TalkBack, not for jsdom. jsdom builds a PointerEvent with
+// { width: 1, height: 1, pressure: 0 } when these fields are not
+// specified, and THAT combination is exactly the heuristic for a TalkBack
+// tap. Every click synthesized by user-event (which does not pass `pressure`)
+// therefore ends up marked "virtual" under jsdom -- never under a real browser,
+// where a pressed mouse's pressure is 0.5. From "virtual" follows a
+// concrete effect, not just a cosmetic one: selectionBehavior="replace" behaves
+// like "toggle" (every click ADDS instead of replacing, see
+// react-aria/dist/private/selection/useSelectableItem.mjs::onSelect), so
+// without this adjustment "a second simple click replaces" and
+// "ctrl/shift-click extends" would be indistinguishable in this suite.
+// fireEvent (unlike user-event) builds the PointerEvent with
+// `new PointerEvent(type, init)`, so it accepts the override.
 function press(el: Element, opts: Partial<PointerEventInit & MouseEventInit> = {}) {
   const base = { button: 0, pointerId: 1, pointerType: "mouse", isPrimary: true, detail: 1, ...opts };
   fireEvent.pointerDown(el, { ...base, pressure: 0.5 });
@@ -107,33 +107,33 @@ function press(el: Element, opts: Partial<PointerEventInit & MouseEventInit> = {
   fireEvent.click(el, base);
 }
 
-// --- Step 1: elenco, selezione, visibilità, eliminazione -------------------
+// --- Step 1: list, selection, visibility, deletion -------------------------
 
 describe("elenco", () => {
-  it("mostra i nodi dal primo piano allo sfondo", () => {
+  it("shows the nodes from foreground to background", () => {
     installScene(
-      rectNode("bg", "a0", { name: "Sfondo" }),
-      ellipseNode("mid", "a1", { name: "Centro" }),
-      textNode("fg", "a2", "ciao", { name: "Primo piano" }),
+      rectNode("bg", "a0", { name: "Background" }),
+      ellipseNode("mid", "a1", { name: "Center" }),
+      textNode("fg", "a2", "hello", { name: "Foreground" }),
     );
     render(<LayersPanel />);
     const labels = rows().map((r) => r.textContent);
-    // "fg" (orderKey più alta, disegnata per ultima = primo piano) in cima,
-    // "bg" (orderKey più bassa) in fondo -- l'inverso dell'ordine di disegno.
-    expect(labels[0]).toContain("Primo piano");
-    expect(labels[1]).toContain("Centro");
-    expect(labels[2]).toContain("Sfondo");
+    // "fg" (highest orderKey, drawn last = foreground) on top,
+    // "bg" (lowest orderKey) at the bottom -- the inverse of the draw order.
+    expect(labels[0]).toContain("Foreground");
+    expect(labels[1]).toContain("Center");
+    expect(labels[2]).toContain("Background");
   });
 
-  it("una scena vuota mostra lo stato vuoto, non righe fantasma", () => {
+  it("an empty scene shows the empty state, not ghost rows", () => {
     installScene();
     render(<LayersPanel />);
-    expect(screen.getByText("Nessun livello")).toBeInTheDocument();
+    expect(screen.getByText("No layers")).toBeInTheDocument();
   });
 });
 
-describe("selezione: click su una riga", () => {
-  it("seleziona il nodo (lo store lo riflette)", () => {
+describe("selection: click on a row", () => {
+  it("selects the node (the store reflects it)", () => {
     installScene(rectNode("a", "a0", { name: "A" }), rectNode("b", "a1", { name: "B" }));
     render(<LayersPanel />);
 
@@ -142,7 +142,7 @@ describe("selezione: click su una riga", () => {
     expect(useScene.getState().selection).toEqual(["b"]);
   });
 
-  it("un secondo click SEMPLICE rimpiazza la selezione precedente", () => {
+  it("a second SIMPLE click replaces the previous selection", () => {
     installScene(rectNode("a", "a0", { name: "A" }), rectNode("b", "a1", { name: "B" }));
     render(<LayersPanel />);
 
@@ -152,7 +152,7 @@ describe("selezione: click su una riga", () => {
     expect(useScene.getState().selection).toEqual(["a"]);
   });
 
-  it("ctrl-click estende la selezione", () => {
+  it("ctrl-click extends the selection", () => {
     installScene(rectNode("a", "a0", { name: "A" }), rectNode("b", "a1", { name: "B" }));
     render(<LayersPanel />);
 
@@ -162,7 +162,7 @@ describe("selezione: click su una riga", () => {
     expect(new Set(useScene.getState().selection)).toEqual(new Set(["a", "b"]));
   });
 
-  it("shift-click estende la selezione per intervallo", () => {
+  it("shift-click extends the selection by range", () => {
     installScene(
       rectNode("a", "a0", { name: "A" }),
       rectNode("b", "a1", { name: "B" }),
@@ -170,8 +170,8 @@ describe("selezione: click su una riga", () => {
     );
     render(<LayersPanel />);
 
-    // In cima alla lista (primo piano): C, B, A. Click su C poi shift-click
-    // su A copre l'intero intervallo mostrato: tutti e tre.
+    // At the top of the list (foreground): C, B, A. Click on C then shift-click
+    // on A covers the whole displayed range: all three.
     press(screen.getByText("C"));
     press(screen.getByText("A"), { shiftKey: true });
 
@@ -179,15 +179,15 @@ describe("selezione: click su una riga", () => {
   });
 });
 
-describe("sincronizzazione bidirezionale", () => {
-  it("selezionare sul canvas (store.setSelection) evidenzia la riga corrispondente", () => {
+describe("two-way sync", () => {
+  it("selecting on the canvas (store.setSelection) highlights the matching row", () => {
     installScene(rectNode("a", "a0", { name: "A" }), rectNode("b", "a1", { name: "B" }));
     render(<LayersPanel />);
 
-    // Nessuna interazione col pannello: è il canvas (selectTool) che scrive
-    // qui, esattamente con lo stesso store.setSelection. act(): una scrittura
-    // diretta sullo store, fuori da un evento simulato da testing-library, va
-    // avvolta esplicitamente perché React flushi il render prima dell'assert.
+    // No interaction with the panel: it is the canvas (selectTool) that writes
+    // here, with exactly the same store.setSelection. act(): a direct write
+    // to the store, outside an event simulated by testing-library, must be
+    // explicitly wrapped so React flushes the render before the assert.
     act(() => {
       useScene.getState().setSelection(["b"]);
     });
@@ -199,14 +199,14 @@ describe("sincronizzazione bidirezionale", () => {
   });
 });
 
-describe("visibilità", () => {
-  it("il toggle emette un SetProperties con mask visible, senza toccare la selezione", async () => {
+describe("visibility", () => {
+  it("the toggle emits a SetProperties with the visible mask, without touching the selection", async () => {
     installScene(rectNode("a", "a0", { name: "A", visible: true }));
     useScene.getState().setSelection([]);
     render(<LayersPanel />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "Nascondi A" }));
+    await user.click(screen.getByRole("button", { name: "Hide A" }));
 
     expect(sync.sent).toHaveLength(1);
     const op = sync.sent[0];
@@ -217,31 +217,31 @@ describe("visibilità", () => {
       expect(op.kind.value.patch?.visible).toBe(false);
     }
     expect(useScene.getState().scene?.nodes.at("a").visible).toBe(false);
-    // Cliccare il pulsante di visibilità non deve selezionare la riga.
+    // Clicking the visibility button must not select the row.
     expect(useScene.getState().selection).toEqual([]);
   });
 
-  it("il toggle è un gesto (una voce di undo)", async () => {
+  it("the toggle is a gesture (one undo entry)", async () => {
     installScene(rectNode("a", "a0", { name: "A", visible: true }));
     render(<LayersPanel />);
     const user = userEvent.setup();
     const before = useScene.getState().undoStack.length;
 
-    await user.click(screen.getByRole("button", { name: "Nascondi A" }));
+    await user.click(screen.getByRole("button", { name: "Hide A" }));
 
     expect(useScene.getState().undoStack.length).toBe(before + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
 });
 
-describe("eliminazione", () => {
-  it("senza selezione la barra di eliminazione non c'è (spazio ai livelli)", () => {
+describe("deletion", () => {
+  it("without a selection the deletion bar is not there (space for layers)", () => {
     installScene(rectNode("a", "a0", { name: "A" }));
     render(<LayersPanel />);
-    expect(screen.queryByRole("button", { name: "Elimina i livelli selezionati" })).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Delete the selected layers" })).not.toBeInTheDocument();
   });
 
-  it("emette deleteNode per OGNI nodo selezionato in un solo gesto (una sola voce di undo)", async () => {
+  it("emits deleteNode for EVERY selected node in a single gesture (a single undo entry)", async () => {
     installScene(
       rectNode("a", "a0", { name: "A" }),
       rectNode("b", "a1", { name: "B" }),
@@ -252,7 +252,7 @@ describe("eliminazione", () => {
     const user = userEvent.setup();
     const undoBefore = useScene.getState().undoStack.length;
 
-    await user.click(screen.getByRole("button", { name: "Elimina i livelli selezionati" }));
+    await user.click(screen.getByRole("button", { name: "Delete the selected layers" }));
 
     const deleteIds = sync.sent
       .filter((op) => op.kind.case === "deleteNode")
@@ -262,17 +262,17 @@ describe("eliminazione", () => {
     expect(useScene.getState().scene?.nodes.at("a")).toBeUndefined();
     expect(useScene.getState().scene?.nodes.at("b")).toBeUndefined();
     expect(useScene.getState().scene?.nodes.at("c")).toBeDefined();
-    // UNA sola voce di undo per l'intera cancellazione multipla, non una per
-    // nodo: è il punto centrale del brief (Task 7, step 1).
+    // ONE undo entry for the whole multiple deletion, not one per
+    // node: it is the brief's central point (Task 7, step 1).
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
   });
 
-  // deleteNode cancella un SOTTOALBERO (applyOp / core.applyDelete): un figlio
-  // selezionato insieme al suo gruppo non deve produrre un secondo op --
-  // sarebbe rifiutato (il nodo è già sparito nella cascata) e farebbe saltare
-  // la voce di undo dell'INTERO gesto.
-  it("un gruppo E un suo discendente selezionati insieme emettono UN solo deleteNode", async () => {
+  // deleteNode deletes a SUBTREE (applyOp / core.applyDelete): a child
+  // selected together with its group must not produce a second op --
+  // it would be rejected (the node is already gone in the cascade) and would make the
+  // undo entry of the WHOLE gesture fail.
+  it("a group AND one of its descendants selected together emit ONE single deleteNode", async () => {
     installScene(
       rectNode("g1", "a0", { name: "G" }),
       rectNode("c1", "a0", { name: "C", parentId: "g1" }),
@@ -283,53 +283,53 @@ describe("eliminazione", () => {
     const user = userEvent.setup();
     const undoBefore = useScene.getState().undoStack.length;
 
-    await user.click(screen.getByRole("button", { name: "Elimina i livelli selezionati" }));
+    await user.click(screen.getByRole("button", { name: "Delete the selected layers" }));
 
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case === "deleteNode" && sync.sent[0].kind.value.id).toBe("g1");
     expect(useScene.getState().scene?.nodes.at("c1")).toBeUndefined();
     expect(useScene.getState().scene?.nodes.at("other")).toBeDefined();
-    // La voce c'è ed è completa: g1 e c1 da ricreare, in un solo Ctrl+Z.
+    // The entry is there and complete: g1 and c1 to recreate, in a single Ctrl+Z.
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().undoStack[useScene.getState().undoStack.length - 1]).toHaveLength(2);
   });
 });
 
-// --- Step 3: il nome mostrato -----------------------------------------------
+// --- Step 3: the displayed name -----------------------------------------------
 
 describe("layerDisplayName", () => {
-  it("usa name quando è valorizzato", () => {
-    expect(layerDisplayName(rectNode("a", "a0", { name: "Il mio rettangolo" }))).toBe("Il mio rettangolo");
+  it("uses name when it is set", () => {
+    expect(layerDisplayName(rectNode("a", "a0", { name: "My rectangle" }))).toBe("My rectangle");
   });
 
-  it("ricade su 'Rectangle' per un rettangolo senza nome", () => {
+  it("falls back to 'Rectangle' for an unnamed rectangle", () => {
     expect(layerDisplayName(rectNode("a", "a0", { name: "" }))).toBe("Rectangle");
   });
 
-  it("ricade su 'Ellipse' per un'ellisse senza nome", () => {
+  it("falls back to 'Ellipse' for an unnamed ellipse", () => {
     expect(layerDisplayName(ellipseNode("a", "a0", { name: "" }))).toBe("Ellipse");
   });
 
-  // Un gruppo nasce già con un nome (tools/grouping.ts::GROUP_NAME); questo è
-  // il ripiego per un gruppo rinominato a stringa vuota. Senza il suo ramo
-  // cadrebbe in quello del TESTO e mostrerebbe "Text".
-  it("ricade su 'Group' per un gruppo senza nome", () => {
+  // A group is born with a name already (tools/grouping.ts::GROUP_NAME); this is
+  // the fallback for a group renamed to an empty string. Without its branch it
+  // would fall into the TEXT one and show "Text".
+  it("falls back to 'Group' for an unnamed group", () => {
     expect(layerDisplayName(rectNode("a", "a0", { name: "", kind: "group" }))).toBe("Group");
   });
 
-  it("ricade sul contenuto (troncato) per un nodo testo senza nome", () => {
-    expect(layerDisplayName(textNode("a", "a0", "ciao mondo", { name: "" }))).toBe("ciao mondo");
+  it("falls back to the (truncated) content for an unnamed text node", () => {
+    expect(layerDisplayName(textNode("a", "a0", "hello world", { name: "" }))).toBe("hello world");
     const long = "a".repeat(50);
     const shown = layerDisplayName(textNode("a", "a0", long, { name: "" }));
     expect(shown.length).toBeLessThan(50);
     expect(shown.endsWith("…")).toBe(true);
   });
 
-  it("ricade su 'Text' per un nodo testo vuoto senza nome", () => {
+  it("falls back to 'Text' for an empty unnamed text node", () => {
     expect(layerDisplayName(textNode("a", "a0", "   ", { name: "" }))).toBe("Text");
   });
 
-  it("mostra il nome nella riga (kind fallback nella lista vera)", () => {
+  it("shows the name in the row (kind fallback in the real list)", () => {
     installScene(rectNode("a", "a0", { name: "" }), ellipseNode("b", "a1", { name: "" }));
     render(<LayersPanel />);
     expect(screen.getByText("Rectangle")).toBeInTheDocument();
@@ -337,14 +337,14 @@ describe("layerDisplayName", () => {
   });
 });
 
-// --- Task 8, step 1: rinomina inline ---------------------------------------
+// --- Task 8, step 1: inline rename ----------------------------------------
 
 function nameField(): HTMLInputElement {
-  return screen.getByRole("textbox", { name: "Nome del livello" }) as HTMLInputElement;
+  return screen.getByRole("textbox", { name: "Layer name" }) as HTMLInputElement;
 }
 
-describe("rinomina inline", () => {
-  it("il doppio click sul nome apre un campo, seminato col nome VERO e col nome mostrato come placeholder", async () => {
+describe("inline rename", () => {
+  it("the double click on the name opens a field, seeded with the REAL name and with the displayed name as placeholder", async () => {
     installScene(rectNode("a", "a0", { name: "" }));
     render(<LayersPanel />);
     const user = userEvent.setup();
@@ -352,14 +352,14 @@ describe("rinomina inline", () => {
     await user.dblClick(screen.getByText("Rectangle"));
 
     const field = nameField();
-    // Seminato col nome vero (vuoto), non con il fallback: premere Enter senza
-    // scrivere niente non deve PERSISTERE "Rectangle" come nome esplicito.
+    // Seeded with the real name (empty), not with the fallback: pressing Enter without
+    // writing anything must not PERSIST "Rectangle" as an explicit name.
     expect(field).toHaveValue("");
     expect(field).toHaveAttribute("placeholder", "Rectangle");
     expect(field).toHaveFocus();
   });
 
-  it("Enter conferma con un SetProperties mask name, in un solo gesto", async () => {
+  it("Enter commits with a SetProperties mask name, in a single gesture", async () => {
     installScene(rectNode("a", "a0", { name: "A" }));
     render(<LayersPanel />);
     const user = userEvent.setup();
@@ -367,7 +367,7 @@ describe("rinomina inline", () => {
 
     await user.dblClick(screen.getByText("A"));
     await user.clear(nameField());
-    await user.type(nameField(), "Pulsante{Enter}");
+    await user.type(nameField(), "Button{Enter}");
 
     expect(sync.sent).toHaveLength(1);
     const op = sync.sent[0];
@@ -375,18 +375,18 @@ describe("rinomina inline", () => {
     if (op.kind.case === "setProps") {
       expect(op.kind.value.id).toBe("a");
       expect(op.kind.value.mask?.paths).toEqual(["name"]);
-      expect(op.kind.value.patch?.name).toBe("Pulsante");
+      expect(op.kind.value.patch?.name).toBe("Button");
     }
-    expect(useScene.getState().scene?.nodes.at("a").name).toBe("Pulsante");
-    // Un gesto, una voce di undo -- come ogni altra modifica del pannello.
+    expect(useScene.getState().scene?.nodes.at("a").name).toBe("Button");
+    // One gesture, one undo entry -- like every other panel change.
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
     expect(useScene.getState().gesture).toBeNull();
-    // Il campo si chiude e la riga torna a mostrare il nome.
-    expect(screen.queryByRole("textbox", { name: "Nome del livello" })).toBeNull();
-    expect(screen.getByText("Pulsante")).toBeInTheDocument();
+    // The field closes and the row goes back to showing the name.
+    expect(screen.queryByRole("textbox", { name: "Layer name" })).toBeNull();
+    expect(screen.getByText("Button")).toBeInTheDocument();
   });
 
-  it("Escape annulla: niente op, niente voce di undo, nome invariato", async () => {
+  it("Escape cancels: no op, no undo entry, name unchanged", async () => {
     installScene(rectNode("a", "a0", { name: "A" }));
     render(<LayersPanel />);
     const user = userEvent.setup();
@@ -394,16 +394,16 @@ describe("rinomina inline", () => {
 
     await user.dblClick(screen.getByText("A"));
     await user.clear(nameField());
-    await user.type(nameField(), "Scartato{Escape}");
+    await user.type(nameField(), "Discarded{Escape}");
 
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().scene?.nodes.at("a").name).toBe("A");
     expect(useScene.getState().undoStack.length).toBe(undoBefore);
-    expect(screen.queryByRole("textbox", { name: "Nome del livello" })).toBeNull();
+    expect(screen.queryByRole("textbox", { name: "Layer name" })).toBeNull();
     expect(screen.getByText("A")).toBeInTheDocument();
   });
 
-  it("confermare senza aver cambiato niente non manda nessun op", async () => {
+  it("confirming without having changed anything sends no op", async () => {
     installScene(rectNode("a", "a0", { name: "A" }));
     render(<LayersPanel />);
     const user = userEvent.setup();
@@ -415,19 +415,19 @@ describe("rinomina inline", () => {
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
-  it("mentre il campo ha il fuoco le scorciatoie globali restano inattive", async () => {
-    installScene(rectNode("a", "a0", { name: "Alfa" }), rectNode("b", "a1", { name: "Beta" }));
+  it("while the field has focus the global shortcuts stay inactive", async () => {
+    installScene(rectNode("a", "a0", { name: "Alpha" }), rectNode("b", "a1", { name: "Beta" }));
     useScene.getState().setSelection(["a"]);
     render(<LayersPanel />);
     const user = userEvent.setup();
 
-    await user.dblClick(screen.getByText("Alfa"));
+    await user.dblClick(screen.getByText("Alpha"));
     const selectionBefore = useScene.getState().selection;
 
-    // Le scorciatoie globali dell'app (undo/redo in ui/App.tsx, Escape/Canc in
-    // tools/toolManager.ts) ascoltano sulla FINESTRA: se un tasto battuto nel
-    // campo arriva fin lì, Canc cancella il nodo che si sta rinominando e
-    // Ctrl+Z annulla il gesto precedente invece del testo digitato.
+    // The app's global shortcuts (undo/redo in ui/App.tsx, Escape/Delete in
+    // tools/toolManager.ts) listen on the WINDOW: if a key typed in the
+    // field gets that far, Delete deletes the node being renamed and
+    // Ctrl+Z undoes the previous gesture instead of the typed text.
     const onWindowKey = vi.fn();
     window.addEventListener("keydown", onWindowKey);
     try {
@@ -438,18 +438,18 @@ describe("rinomina inline", () => {
       window.removeEventListener("keydown", onWindowKey);
     }
 
-    // E nemmeno le scorciatoie della GridList stessa: scrivere "Beta" non deve
-    // far scattare il typeahead sulla riga omonima.
+    // Nor the GridList's own shortcuts: typing "Beta" must not
+    // trigger the typeahead on the row of the same name.
     expect(useScene.getState().selection).toEqual(selectionBefore);
     expect(useScene.getState().selection).not.toContain("b");
   });
 });
 
-// --- Task 8, step 2/3: riordino con drag ------------------------------------
+// --- Task 8, step 2/3: reorder with drag ------------------------------------
 
-// L'ordine come lo vede il RESTO dell'app: layersInDrawOrder sulla scena dello
-// store, non le righe del DOM. È il punto del brief -- il riordino deve cambiare
-// l'ordine di disegno sul canvas, non solo l'aspetto del pannello.
+// The order as the REST of the app sees it: layersInDrawOrder on the store's
+// scene, not the DOM rows. It is the brief's point -- the reorder must change
+// the draw order on the canvas, not just the panel's look.
 function order(): string[] {
   const scene = useScene.getState().scene;
   return scene ? layersInDrawOrder(scene).map((n) => n.id) : [];
@@ -459,35 +459,35 @@ function rowOf(label: string): HTMLElement {
   return screen.getByText(label).closest('[role="row"]') as HTMLElement;
 }
 
-// Trascina la riga `from` sopra la riga `onto` e rilascia. Il rilascio arriva
-// sulla FINESTRA (non sulla riga): è dove il pannello lo ascolta, perché il
-// pointer può benissimo essere rilasciato fuori dalla lista.
+// Drags row `from` above row `onto` and releases. The release arrives
+// on the WINDOW (not on the row): it is where the panel listens for it, because the
+// pointer can very well be released outside the list.
 function dragOnto(from: string, onto: string) {
-  const handle = screen.getByRole("button", { name: `Riordina ${from}` });
+  const handle = screen.getByRole("button", { name: `Reorder ${from}` });
   const base = { pointerId: 1, pointerType: "mouse", isPrimary: true };
   fireEvent.pointerDown(handle, { ...base, button: 0, pressure: 0.5 });
   fireEvent.pointerMove(rowOf(onto), base);
   fireEvent.pointerUp(window, { ...base, pressure: 0 });
 }
 
-describe("riordino con drag", () => {
-  it("trascinare una riga su un'altra cambia l'ordine di disegno", () => {
+describe("reorder with drag", () => {
+  it("dragging a row onto another changes the draw order", () => {
     installScene(
       rectNode("a", "a0", { name: "A" }),
       rectNode("b", "a1", { name: "B" }),
       rectNode("c", "a2", { name: "C" }),
     );
     render(<LayersPanel />);
-    // Lista (primo piano in cima): C, B, A.
+    // List (foreground on top): C, B, A.
     expect(order()).toEqual(["c", "b", "a"]);
 
-    // C dal primo piano fino al posto di A (il fondo).
+    // C from the foreground down to A's place (the bottom).
     dragOnto("C", "A");
 
     expect(order()).toEqual(["b", "a", "c"]);
   });
 
-  it("emette UN SOLO SetProperties con mask order_key, in un solo gesto", () => {
+  it("emits ONE SINGLE SetProperties with the order_key mask, in a single gesture", () => {
     installScene(
       rectNode("a", "a0", { name: "A" }),
       rectNode("b", "a1", { name: "B" }),
@@ -504,8 +504,8 @@ describe("riordino con drag", () => {
     if (op.kind.case === "setProps") {
       expect(op.kind.value.id).toBe("c");
       expect(op.kind.value.mask?.paths).toEqual(["order_key"]);
-      // La chiave calcolata è quella che il nodo ha davvero adesso, ed è
-      // strettamente sotto quella di "a" (che è rimasta dov'era).
+      // The computed key is the one the node really has now, and it is
+      // strictly below that of "a" (which stayed where it was).
       const key = op.kind.value.patch?.orderKey ?? "";
       expect(useScene.getState().scene?.nodes.at("c").orderKey).toBe(key);
       expect(key < "a0").toBe(true);
@@ -514,7 +514,7 @@ describe("riordino con drag", () => {
     expect(useScene.getState().gesture).toBeNull();
   });
 
-  it("trascinare una riga su sé stessa non emette niente", () => {
+  it("dragging a row onto itself emits nothing", () => {
     installScene(rectNode("a", "a0", { name: "A" }), rectNode("b", "a1", { name: "B" }));
     render(<LayersPanel />);
 
@@ -524,7 +524,7 @@ describe("riordino con drag", () => {
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
-  it("gli estremi sono aperti: si può portare una riga in cima e in fondo", () => {
+  it("the ends are open: a row can be brought to the top and to the bottom", () => {
     installScene(
       rectNode("a", "a0", { name: "A" }),
       rectNode("b", "a1", { name: "B" }),
@@ -532,16 +532,16 @@ describe("riordino con drag", () => {
     );
     render(<LayersPanel />);
 
-    // Dal fondo alla cima: nessun vicino sopra, l'estremo superiore è aperto.
+    // From bottom to top: no neighbor above, the upper end is open.
     dragOnto("A", "C");
     expect(order()).toEqual(["a", "c", "b"]);
 
-    // E ritorno: dalla cima al fondo, estremo inferiore aperto.
+    // And back: from top to bottom, lower end open.
     dragOnto("A", "B");
     expect(order()).toEqual(["c", "b", "a"]);
   });
 
-  it("riordinare RIPETUTAMENTE nello stesso punto continua a funzionare", () => {
+  it("reordering REPEATEDLY at the same spot keeps working", () => {
     installScene(
       rectNode("a", "a0", { name: "A" }),
       rectNode("b", "a1", { name: "B" }),
@@ -549,10 +549,10 @@ describe("riordino con drag", () => {
     );
     render(<LayersPanel />);
 
-    // Ogni giro infila la riga di fondo FRA le altre due: è esattamente il caso
-    // che l'indice frazionario del Task 2 esiste per sostenere (il formato
-    // "a" + 6 cifre di M0/M1a non ammetteva nessuna chiave fra due vicine, e
-    // dal secondo inserimento nello stesso punto sarebbe stato impossibile).
+    // Every round slips the bottom row BETWEEN the other two: it is exactly the case
+    // the fractional index of Task 2 exists to support (the "a" + 6 digits
+    // format of M0/M1a admitted no key between two close ones, and
+    // from the second insertion at the same spot it would have been impossible).
     let expected = ["c", "b", "a"];
     const labels: Record<string, string> = { a: "A", b: "B", c: "C" };
     for (let i = 0; i < 20; i++) {
@@ -560,11 +560,11 @@ describe("riordino con drag", () => {
       expected = [expected[0], expected[2], expected[1]];
       expect(order()).toEqual(expected);
     }
-    // Venti op, venti gesti: nessuno è stato scartato per una chiave impossibile.
+    // Twenty ops, twenty gestures: none was discarded because of an impossible key.
     expect(sync.sent).toHaveLength(20);
   });
 
-  it("Alt+freccia sulla maniglia riordina da tastiera, con lo stesso op e lo stesso gesto", () => {
+  it("Alt+arrow on the handle reorders from the keyboard, with the same op and the same gesture", () => {
     installScene(
       rectNode("a", "a0", { name: "A" }),
       rectNode("b", "a1", { name: "B" }),
@@ -573,12 +573,12 @@ describe("riordino con drag", () => {
     render(<LayersPanel />);
     const undoBefore = useScene.getState().undoStack.length;
 
-    // Senza mouse il riordino sarebbe l'unica funzione del pannello
-    // irraggiungibile: la maniglia è un <button> vero apposta. ALT+freccia e
-    // non la freccia liscia: react-aria riserva ArrowUp/ArrowDown alla
-    // navigazione fra righe e le ferma in capture prima dei figli della riga
-    // (vedi il commento sulla maniglia in LayersPanel.tsx).
-    fireEvent.keyDown(screen.getByRole("button", { name: "Riordina A" }), {
+    // Without a mouse the reorder would be the panel's only unreachable
+    // function: the handle is a real <button> on purpose. ALT+arrow and
+    // not the plain arrow: react-aria reserves ArrowUp/ArrowDown for
+    // navigation between rows and stops them in capture before the row's children
+    // (see the comment on the handle in LayersPanel.tsx).
+    fireEvent.keyDown(screen.getByRole("button", { name: "Reorder A" }), {
       key: "ArrowUp",
       altKey: true,
     });
@@ -592,12 +592,12 @@ describe("riordino con drag", () => {
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
   });
 
-  it("la freccia che uscirebbe dalla lista non fa niente", () => {
+  it("the arrow that would leave the list does nothing", () => {
     installScene(rectNode("a", "a0", { name: "A" }), rectNode("b", "a1", { name: "B" }));
     render(<LayersPanel />);
 
-    // B è già in cima (primo piano): sopra non c'è nessun posto.
-    fireEvent.keyDown(screen.getByRole("button", { name: "Riordina B" }), {
+    // B is already at the top (foreground): there is no place above.
+    fireEvent.keyDown(screen.getByRole("button", { name: "Reorder B" }), {
       key: "ArrowUp",
       altKey: true,
     });
@@ -606,67 +606,67 @@ describe("riordino con drag", () => {
     expect(sync.sent).toHaveLength(0);
   });
 
-  it("la freccia SENZA Alt resta a react-aria (navigazione fra righe), non riordina", () => {
+  it("the arrow WITHOUT Alt is left to react-aria (navigation between rows), it does not reorder", () => {
     installScene(rectNode("a", "a0", { name: "A" }), rectNode("b", "a1", { name: "B" }));
     render(<LayersPanel />);
 
-    fireEvent.keyDown(screen.getByRole("button", { name: "Riordina A" }), { key: "ArrowUp" });
+    fireEvent.keyDown(screen.getByRole("button", { name: "Reorder A" }), { key: "ArrowUp" });
 
     expect(order()).toEqual(["b", "a"]);
     expect(sync.sent).toHaveLength(0);
   });
 });
 
-// --- Task 8, step 2: la chiave calcolata (funzione pura) ---------------------
+// --- Task 8, step 2: the computed key (pure function) ---------------------
 
 describe("reorderKey", () => {
-  // Le righe come le mostra il pannello: primo piano in cima, orderKey
-  // DECRESCENTE.
+  // The rows as the panel shows them: foreground on top, orderKey
+  // DESCENDING.
   const layers = [
     rectNode("c", "a2"),
     rectNode("b", "a1"),
     rectNode("a", "a0"),
   ];
 
-  it("null quando la riga non si muove", () => {
+  it("null when the row does not move", () => {
     expect(reorderKey(layers, 1, 1)).toBeNull();
   });
 
-  it("null per indici fuori dalla lista", () => {
+  it("null for indices outside the list", () => {
     expect(reorderKey(layers, -1, 1)).toBeNull();
     expect(reorderKey(layers, 0, 3)).toBeNull();
   });
 
-  it("in cima: chiave sopra a tutte (estremo superiore aperto)", () => {
+  it("at the top: key above all (upper end open)", () => {
     const key = reorderKey(layers, 2, 0);
     expect(key).not.toBeNull();
     expect(key! > "a2").toBe(true);
   });
 
-  it("in fondo: chiave sotto a tutte (estremo inferiore aperto)", () => {
+  it("at the bottom: key below all (lower end open)", () => {
     const key = reorderKey(layers, 0, 2);
     expect(key).not.toBeNull();
     expect(key! < "a0").toBe(true);
   });
 
-  it("in mezzo: chiave strettamente fra i due vicini della posizione d'arrivo", () => {
+  it("in the middle: key strictly between the two neighbors of the arrival position", () => {
     const key = reorderKey(layers, 0, 1);
     expect(key).not.toBeNull();
     expect(key! > "a0").toBe(true);
     expect(key! < "a1").toBe(true);
   });
 
-  it("null (invece di lanciare) quando i due vicini hanno la STESSA chiave", () => {
-    // Non è raggiungibile dalla UI, ma nemmeno impossibile nel modello (niente
-    // impedisce a due nodi di condividere una order key): orderKeyBetween
-    // lancerebbe, e lanciare dentro il gestore di un pointerup vorrebbe dire
-    // rompere l'app durante un trascinamento.
+  it("null (instead of throwing) when the two neighbors have the SAME key", () => {
+    // Not reachable from the UI, but not impossible in the model (nothing
+    // prevents two nodes from sharing an order key): orderKeyBetween
+    // would throw, and throwing inside a pointerup handler would mean
+    // breaking the app during a drag.
     const dup = [rectNode("x", "a1"), rectNode("y", "a1"), rectNode("z", "a1")];
     expect(reorderKey(dup, 0, 1)).toBeNull();
   });
 });
 
-// --- Traccia annidamento: albero + drag-per-riparentare --------------------
+// --- Nesting track: tree + drag-to-reparent --------------------------------
 
 function groupNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): NodeLite {
   return { ...rectNode(id, orderKey), kind: "group", name: "", ...over };
@@ -676,9 +676,9 @@ function frameNode(id: string, orderKey: string, over: Partial<NodeLite> = {}): 
   return { ...rectNode(id, orderKey), kind: "frame", clipsContent: true, ...over };
 }
 
-// Come installScene, ma con un elenco di pagine esplicito (per i test che
-// cambiano pagina). currentPageId viene ricalcolato da setScene contro le
-// pagine passate.
+// Like installScene, but with an explicit list of pages (for tests that
+// change page). currentPageId is recomputed by setScene against the
+// passed pages.
 function installScenePages(pages: PageLite[], ...nodes: NodeLite[]) {
   const scene = emptyScene("doc-1", "Untitled");
   scene.pages = pages;
@@ -686,95 +686,95 @@ function installScenePages(pages: PageLite[], ...nodes: NodeLite[]) {
   useScene.getState().setScene(scene);
 }
 
-// Avvia un trascinamento di `from` (presa la maniglia) e lo porta sopra la
-// riga `onto`, SENZA rilasciare: serve a ispezionare lo stato del pannello a
-// metà drag (bersagli invalidi).
+// Starts a drag of `from` (grabbing the handle) and brings it over row
+// `onto`, WITHOUT releasing: it serves to inspect the panel's state
+// mid-drag (invalid targets).
 function dragHover(from: string, onto: string) {
-  const handle = screen.getByRole("button", { name: `Riordina ${from}` });
+  const handle = screen.getByRole("button", { name: `Reorder ${from}` });
   const base = { pointerId: 1, pointerType: "mouse", isPrimary: true };
   fireEvent.pointerDown(handle, { ...base, button: 0, pressure: 0.5 });
   fireEvent.pointerMove(rowOf(onto), base);
 }
 
-describe("albero: gerarchia della pagina corrente", () => {
-  it("mostra i figli sotto il container, indentati per profondità", () => {
+describe("tree: hierarchy of the current page", () => {
+  it("shows the children under the container, indented by depth", () => {
     installScene(
-      groupNode("g", "a1", { name: "Gruppo" }),
-      rectNode("c1", "a0", { name: "Figlio1", parentId: "g" }),
-      rectNode("c2", "a1", { name: "Figlio2", parentId: "g" }),
-      rectNode("r", "a0", { name: "Radice" }),
+      groupNode("g", "a1", { name: "Group" }),
+      rectNode("c1", "a0", { name: "Child1", parentId: "g" }),
+      rectNode("c2", "a1", { name: "Child2", parentId: "g" }),
+      rectNode("r", "a0", { name: "Root" }),
     );
     render(<LayersPanel />);
 
     const labels = rows().map((row) => row.textContent ?? "");
-    const idxG = labels.findIndex((l) => l.includes("Gruppo"));
-    const idxC1 = labels.findIndex((l) => l.includes("Figlio1"));
-    const idxC2 = labels.findIndex((l) => l.includes("Figlio2"));
-    const idxR = labels.findIndex((l) => l.includes("Radice"));
+    const idxG = labels.findIndex((l) => l.includes("Group"));
+    const idxC1 = labels.findIndex((l) => l.includes("Child1"));
+    const idxC2 = labels.findIndex((l) => l.includes("Child2"));
+    const idxR = labels.findIndex((l) => l.includes("Root"));
 
-    // Il container prima dei suoi figli, i figli prima del fratello di sfondo.
+    // The container before its children, the children before the background sibling.
     expect(idxG).toBeLessThan(idxC2);
-    expect(idxC2).toBeLessThan(idxC1); // fra i figli, primo piano (c2, a1) in cima
+    expect(idxC2).toBeLessThan(idxC1); // among the children, foreground (c2, a1) on top
     expect(idxC1).toBeLessThan(idxR);
 
-    // Profondità: i figli sono un livello più dentro del container.
-    expect(rowOf("Gruppo")).toHaveAttribute("data-depth", "0");
-    expect(rowOf("Radice")).toHaveAttribute("data-depth", "0");
-    expect(rowOf("Figlio1")).toHaveAttribute("data-depth", "1");
-    expect(rowOf("Figlio2")).toHaveAttribute("data-depth", "1");
+    // Depth: the children are one level deeper than the container.
+    expect(rowOf("Group")).toHaveAttribute("data-depth", "0");
+    expect(rowOf("Root")).toHaveAttribute("data-depth", "0");
+    expect(rowOf("Child1")).toHaveAttribute("data-depth", "1");
+    expect(rowOf("Child2")).toHaveAttribute("data-depth", "1");
   });
 
-  it("espandi/collassa è stato di vista: nasconde i figli senza op né undo", async () => {
+  it("expand/collapse is view state: it hides the children with no op or undo", async () => {
     installScene(
-      groupNode("g", "a1", { name: "Gruppo" }),
-      rectNode("c", "a0", { name: "Figlio", parentId: "g" }),
+      groupNode("g", "a1", { name: "Group" }),
+      rectNode("c", "a0", { name: "Child", parentId: "g" }),
     );
     render(<LayersPanel />);
     const user = userEvent.setup();
-    expect(screen.getByText("Figlio")).toBeInTheDocument();
+    expect(screen.getByText("Child")).toBeInTheDocument();
 
-    await user.click(screen.getByRole("button", { name: "Comprimi Gruppo" }));
-    expect(screen.queryByText("Figlio")).toBeNull();
+    await user.click(screen.getByRole("button", { name: "Collapse Group" }));
+    expect(screen.queryByText("Child")).toBeNull();
 
-    await user.click(screen.getByRole("button", { name: "Espandi Gruppo" }));
-    expect(screen.getByText("Figlio")).toBeInTheDocument();
+    await user.click(screen.getByRole("button", { name: "Expand Group" }));
+    expect(screen.getByText("Child")).toBeInTheDocument();
 
-    // Nessun op sul filo, nessuna voce di undo: è stato di vista come la camera.
+    // No op on the wire, no undo entry: it is view state like the camera.
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
-  it("cambiare pagina cambia l'albero", () => {
+  it("changing page changes the tree", () => {
     installScenePages(
       [{ id: "page1", name: "P1" }, { id: "page2", name: "P2" }],
-      rectNode("a", "a0", { name: "SuUno", parentId: "page1" }),
-      rectNode("b", "a0", { name: "SuDue", parentId: "page2" }),
+      rectNode("a", "a0", { name: "OnOne", parentId: "page1" }),
+      rectNode("b", "a0", { name: "OnTwo", parentId: "page2" }),
     );
     useScene.getState().setCurrentPage("page1");
     render(<LayersPanel />);
 
-    expect(screen.getByText("SuUno")).toBeInTheDocument();
-    expect(screen.queryByText("SuDue")).toBeNull();
+    expect(screen.getByText("OnOne")).toBeInTheDocument();
+    expect(screen.queryByText("OnTwo")).toBeNull();
 
     act(() => {
       useScene.getState().setCurrentPage("page2");
     });
 
-    expect(screen.queryByText("SuUno")).toBeNull();
-    expect(screen.getByText("SuDue")).toBeInTheDocument();
+    expect(screen.queryByText("OnOne")).toBeNull();
+    expect(screen.getByText("OnTwo")).toBeInTheDocument();
   });
 });
 
 describe("albero: drag per riparentare", () => {
-  it("trascinare DENTRO un gruppo emette UN ReparentNode al nuovo parent, una voce di undo", () => {
+  it("dragging INTO a group emits ONE ReparentNode to the new parent, one undo entry", () => {
     installScene(
-      groupNode("g", "a1", { name: "Gruppo" }),
-      rectNode("r", "a0", { name: "Rett" }),
+      groupNode("g", "a1", { name: "Group" }),
+      rectNode("r", "a0", { name: "Rect" }),
     );
     render(<LayersPanel />);
     const undoBefore = useScene.getState().undoStack.length;
 
-    dragOnto("Rett", "Gruppo");
+    dragOnto("Rect", "Group");
 
     expect(sync.sent).toHaveLength(1);
     const op = sync.sent[0];
@@ -788,14 +788,14 @@ describe("albero: drag per riparentare", () => {
     expect(useScene.getState().gesture).toBeNull();
   });
 
-  it("trascinare DENTRO un frame riparenta al frame", () => {
+  it("dragging INTO a frame reparents to the frame", () => {
     installScene(
       frameNode("f", "a1", { name: "Frame" }),
-      rectNode("r", "a0", { name: "Rett" }),
+      rectNode("r", "a0", { name: "Rect" }),
     );
     render(<LayersPanel />);
 
-    dragOnto("Rett", "Frame");
+    dragOnto("Rect", "Frame");
 
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case).toBe("reparentNode");
@@ -805,18 +805,18 @@ describe("albero: drag per riparentare", () => {
     expect(useScene.getState().scene?.nodes.at("r").parentId).toBe("f");
   });
 
-  it("trascinare fuori, su una radice di pagina, riparenta alla pagina con orderKey fra i vicini", () => {
+  it("dragging out, onto a page root, reparents to the page with an orderKey between the neighbors", () => {
     installScene(
-      groupNode("g", "a1", { name: "Gruppo" }),
-      rectNode("c", "a0", { name: "Figlio", parentId: "g" }),
-      rectNode("r", "a0", { name: "Radice" }),
+      groupNode("g", "a1", { name: "Group" }),
+      rectNode("c", "a0", { name: "Child", parentId: "g" }),
+      rectNode("r", "a0", { name: "Root" }),
     );
     render(<LayersPanel />);
     const undoBefore = useScene.getState().undoStack.length;
 
-    // Il figlio, trascinato su una radice di pagina, esce dal gruppo e diventa
-    // radice a fianco di essa.
-    dragOnto("Figlio", "Radice");
+    // The child, dragged onto a page root, leaves the group and becomes
+    // a root beside it.
+    dragOnto("Child", "Root");
 
     expect(sync.sent).toHaveLength(1);
     const op = sync.sent[0];
@@ -824,7 +824,7 @@ describe("albero: drag per riparentare", () => {
     if (op.kind.case === "reparentNode") {
       expect(op.kind.value.id).toBe("c");
       expect(op.kind.value.newParentId).toBe("page1");
-      // fra i vicini: sopra "r" (a0) e sotto "g" (a1).
+      // between the neighbors: above "r" (a0) and below "g" (a1).
       const key = op.kind.value.orderKey;
       expect(key > "a0").toBe(true);
       expect(key < "a1").toBe(true);
@@ -833,31 +833,31 @@ describe("albero: drag per riparentare", () => {
     expect(useScene.getState().undoStack.length).toBe(undoBefore + 1);
   });
 
-  it("un drop che farebbe un ciclo NON è offerto e NON produce nulla", () => {
+  it("a drop that would make a cycle is NOT offered and produces NOTHING", () => {
     installScene(
-      groupNode("g", "a1", { name: "Gruppo" }),
-      rectNode("c", "a0", { name: "Figlio", parentId: "g" }),
+      groupNode("g", "a1", { name: "Group" }),
+      rectNode("c", "a0", { name: "Child", parentId: "g" }),
     );
     render(<LayersPanel />);
 
-    // A metà drag il discendente è marcato come bersaglio non valido.
-    dragHover("Gruppo", "Figlio");
-    expect(rowOf("Figlio")).toHaveAttribute("data-drop-invalid", "true");
+    // Mid-drag the descendant is marked as an invalid target.
+    dragHover("Group", "Child");
+    expect(rowOf("Child")).toHaveAttribute("data-drop-invalid", "true");
 
     const base = { pointerId: 1, pointerType: "mouse", isPrimary: true };
     fireEvent.pointerUp(window, { ...base, pressure: 0 });
 
-    // Calare un gruppo dentro un proprio figlio è rifiutato: niente op, niente
-    // undo, il gruppo resta radice.
+    // Dropping a group inside its own child is rejected: no op, no
+    // undo, the group stays a root.
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().scene?.nodes.at("g").parentId).toBe("page1");
   });
 
-  it("trascinare su un fratello (stesso parent) resta un riordino: SetProperties order_key", () => {
-    // Due radici di pagina non-container: dropare l'una sull'altra è un puro
-    // riordino, come nella lista piatta -- il percorso di solo-riordino esiste
-    // già e va usato al posto di un ReparentNode.
+  it("dragging onto a sibling (same parent) stays a reorder: SetProperties order_key", () => {
+    // Two non-container page roots: dropping one on the other is a pure
+    // reorder, as in the flat list -- the reorder-only path already exists
+    // and must be used instead of a ReparentNode.
     installScene(
       rectNode("a", "a0", { name: "A" }),
       rectNode("b", "a1", { name: "B" }),
@@ -875,7 +875,7 @@ describe("albero: drag per riparentare", () => {
 });
 
 describe("visibleRows", () => {
-  it("scende solo nei container espansi, primo piano in cima", () => {
+  it("descends only into expanded containers, foreground on top", () => {
     const scene = emptyScene("doc-1", "Untitled");
     scene.nodes = scene.nodes.set("g", groupNode("g", "a1", { name: "G" }));
     scene.nodes = scene.nodes.set("c1", rectNode("c1", "a0", { name: "C1", parentId: "g" }));
@@ -886,7 +886,7 @@ describe("visibleRows", () => {
     expect(expanded.map((row) => row.id)).toEqual(["g", "c2", "c1", "r"]);
     expect(expanded.find((row) => row.id === "c1")?.depth).toBe(1);
 
-    // Compresso: i figli non compaiono.
+    // Collapsed: the children do not appear.
     const collapsed = visibleRows(scene, "page1", new Set(["g"]));
     expect(collapsed.map((row) => row.id)).toEqual(["g", "r"]);
   });

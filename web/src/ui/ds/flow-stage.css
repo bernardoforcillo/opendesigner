@@ -1,14 +1,14 @@
-/* L'ISOLA SCURA del prototipo ("Presenta").
+/* THE DARK ISLAND of the prototype ("Present").
  *
- * Il prototipo è un palcoscenico: lo sfondo è scuro e neutro in ENTRAMBI i temi,
- * perché la schermata che si presenta deve essere l'unica cosa luminosa. Invece
- * di colorare a mano ogni pezzo, qui si RIDEFINISCONO i token (gli stessi di
- * tokens.css, tema scuro) dentro l'elemento: tutto ciò che sta sotto usa
- * bg-surface / text-fg / border-line come sempre e li trova scuri.
+ * The prototype is a stage: the background is dark and neutral in BOTH themes,
+ * because the screen being presented must be the only bright thing. Instead
+ * of coloring every piece by hand, here the tokens are REDEFINED (the same as
+ * tokens.css, dark theme) inside the element: everything beneath it uses
+ * bg-surface / text-fg / border-line as usual and finds them dark.
  *
- * I valori sono una copia di :root[data-theme="dark"] in tokens.css -- se quel
- * blocco cambia, cambia anche questo (o, meglio, il lead lo promuove a una
- * classe `.theme-dark` in tokens.css e questo file sparisce).
+ * The values are a copy of :root[data-theme="dark"] in tokens.css -- if that
+ * block changes, this one changes too (or, better, the lead promotes it to a
+ * `.theme-dark` class in tokens.css and this file goes away).
  */
 .od-island-dark {
   color-scheme: dark;
@@ -39,8 +39,8 @@
   --ring: 0 0 0 2px var(--surface), 0 0 0 4px var(--accent);
 }
 
-/* L'impulso degli hotspot: un anello che si allarga e svanisce, qualche volta,
- * per dire "qui si può toccare". Con "riduci movimento" non si anima. */
+/* The hotspot pulse: a ring that expands and fades, now and then,
+ * to say "you can tap here". With "reduce motion" it does not animate. */
 @keyframes od-pulse {
   0% { opacity: 0.75; transform: scale(1); }
   100% { opacity: 0; transform: scale(1.14); }

@@ -1,21 +1,22 @@
 import { useEffect, useRef, useState } from "react";
 import { Button as RacButton, Menu, MenuItem, MenuTrigger, Popover } from "react-aria-components";
 import { Icon } from "../ui/ds";
-import { hashForDoc, relativeTime } from "./route";
+import { pathForDoc, relativeTime } from "./route";
+import { useAppNavigate } from "./nav";
 
-// LA CARD DI UN DOCUMENTO nella Home. Tutta la card è un VERO link (`#doc=`):
-// si apre con un click, con Invio, in una scheda nuova con il tasto centrale, e
-// si copia dal menu contestuale del browser. Rinomina ed Elimina stanno in un
-// menu a parte, sopra il link (mai dentro: un <a> non può contenere pulsanti).
+// A DOCUMENT'S CARD in the Home. The whole card is a REAL link (`/doc/<id>`):
+// it opens with a click, with Enter, in a new tab with the middle button, and
+// can be copied from the browser's context menu. Rename and Delete live in a
+// separate menu, on top of the link (never inside: an <a> cannot contain buttons).
 
 export interface DocSummary {
   id: string; name: string; updatedAt: number; screens: number; flows: number;
 }
 
 /**
- * La miniatura: non si legge il contenuto del documento (costerebbe un'apertura
- * per card), si DISEGNA uno schema da ciò che l'elenco già sa -- tante schermate
- * quante ne ha (fino a quattro), collegate da una freccia se ha dei flussi.
+ * The thumbnail: the document's content is not read (it would cost an open
+ * per card), a diagram is DRAWN from what the list already knows -- as many screens
+ * as it has (up to four), connected by an arrow if it has flows.
  */
 export function DocThumb({ screens, flows }: { screens: number; flows: number }) {
   if (screens === 0) {
@@ -52,10 +53,11 @@ export function DocCard({
   doc, now, onRename, onDelete,
 }: {
   doc: DocSummary; now: number;
-  /** Ritorna una promessa: la card resta in modifica finché il server non risponde. */
+  /** Returns a promise: the card stays in edit mode until the server responds. */
   onRename: (id: string, name: string) => Promise<void>;
   onDelete: (doc: DocSummary) => void;
 }) {
+  const navigate = useAppNavigate();
   const [renaming, setRenaming] = useState(false);
   const [draft, setDraft] = useState(doc.name);
   const [error, setError] = useState<string | null>(null);
@@ -76,22 +78,29 @@ export function DocCard({
     }
   }
 
-  const meta = [plural(doc.screens, "schermata", "schermate"), plural(doc.flows, "flusso", "flussi")].join(" · ");
+  const meta = [plural(doc.screens, "screen", "screens"), plural(doc.flows, "flow", "flows")].join(" · ");
 
   return (
     <article className="group relative overflow-hidden rounded-xl border border-line bg-surface transition-shadow hover:shadow-[var(--shadow-bar)]">
       <a
-        href={hashForDoc(doc.id)}
-        aria-label={`Apri ${doc.name}`}
+        href={pathForDoc(doc.id)}
+        aria-label={`Open ${doc.name}`}
         className="block outline-none focus-visible:shadow-[var(--ring)]"
-        // Mentre si rinomina il link non deve rubare i click né l'Invio.
-        onClick={(e) => { if (renaming) e.preventDefault(); }}
+        // While renaming the link must not steal clicks or Enter.
+        onClick={(e) => {
+          if (renaming) { e.preventDefault(); return; }
+          // A plain click navigates inside the app (no page reload); modified
+          // clicks (new tab, new window, download) keep the browser's behaviour.
+          if (e.button !== 0 || e.metaKey || e.ctrlKey || e.shiftKey || e.altKey) return;
+          e.preventDefault();
+          navigate(pathForDoc(doc.id));
+        }}
       >
         <div className="h-[116px] border-b border-line bg-surface-2"><DocThumb screens={doc.screens} flows={doc.flows} /></div>
         <div className="px-3 pb-3 pt-2.5">
           {renaming ? <div className="h-[18px]" /> : <h3 className="truncate text-[13px] font-semibold text-fg">{doc.name}</h3>}
           <p className="mt-0.5 truncate text-[12px] text-fg-subtle">
-            <span title={doc.updatedAt ? new Date(doc.updatedAt * 1000).toLocaleString("it-IT") : undefined}>Modificato {relativeTime(doc.updatedAt, now)}</span>
+            <span title={doc.updatedAt ? new Date(doc.updatedAt * 1000).toLocaleString("en-US") : undefined}>Edited {relativeTime(doc.updatedAt, now)}</span>
           </p>
           <p className="truncate text-[12px] text-fg-muted">{meta}</p>
         </div>
@@ -101,7 +110,7 @@ export function DocCard({
         <div className="absolute inset-x-2 top-[122px]">
           <input
             ref={input}
-            aria-label="Nome del documento"
+            aria-label="Document name"
             value={draft}
             maxLength={120}
             onChange={(e) => setDraft(e.target.value)}
@@ -118,7 +127,7 @@ export function DocCard({
 
       <MenuTrigger>
         <RacButton
-          aria-label={`Azioni per ${doc.name}`}
+          aria-label={`Actions for ${doc.name}`}
           className="absolute right-2 top-2 flex h-7 w-7 items-center justify-center rounded-md bg-surface/90 text-fg-muted opacity-0 shadow-[0_0_0_1px_var(--line)] outline-none transition-opacity hover:text-fg focus-visible:opacity-100 focus-visible:shadow-[var(--ring)] group-hover:opacity-100 data-[pressed]:opacity-100"
         >
           <Icon name="more" size={16} />
@@ -128,8 +137,8 @@ export function DocCard({
             if (k === "rename") { setDraft(doc.name); setRenaming(true); }
             else if (k === "delete") onDelete(doc);
           }}>
-            <MenuItem id="rename" className={ITEM}><Icon name="pen" size={14} /> Rinomina</MenuItem>
-            <MenuItem id="delete" className={`${ITEM} text-danger`}><Icon name="trash" size={14} /> Elimina</MenuItem>
+            <MenuItem id="rename" className={ITEM}><Icon name="pen" size={14} /> Rename</MenuItem>
+            <MenuItem id="delete" className={`${ITEM} text-danger`}><Icon name="trash" size={14} /> Delete</MenuItem>
           </Menu>
         </Popover>
       </MenuTrigger>

@@ -11,7 +11,7 @@ describe("PresenceBar", () => {
     localStorage.clear();
   });
 
-  it("mostra un avatar per ogni altra persona", () => {
+  it("shows an avatar for every other person", () => {
     usePresence.setState({
       peers: {
         a: { clientId: "a", nickname: "Ada", hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [] },
@@ -19,59 +19,59 @@ describe("PresenceBar", () => {
       },
     });
     render(<PresenceBar nickname="Io" onNickname={() => {}} />);
-    const list = screen.getByRole("list", { name: "Persone nel documento" });
+    const list = screen.getByRole("list", { name: "People in the document" });
     expect(list.children).toHaveLength(2);
     expect(screen.getByLabelText("Ada").textContent).toBe("A");
     expect(screen.getByLabelText("bob").textContent).toBe("B");
   });
 
-  it("cambiare nickname lo salva e lo comunica, a Invio", async () => {
+  it("changing the nickname saves and communicates it, on Enter", async () => {
     const onNickname = vi.fn();
     render(<PresenceBar nickname="Io" onNickname={onNickname} />);
-    const input = screen.getByLabelText("Il tuo nickname");
+    const input = screen.getByLabelText("Your nickname");
     await userEvent.clear(input);
     await userEvent.type(input, "Cleo{Enter}");
     expect(onNickname).toHaveBeenCalledWith("Cleo");
     expect(localStorage.getItem("opendesigner.nickname")).toBe("Cleo");
   });
 
-  it("un nickname svuotato torna a quello di prima, senza comunicare nulla", async () => {
+  it("an emptied nickname goes back to the previous one, without communicating anything", async () => {
     const onNickname = vi.fn();
     render(<PresenceBar nickname="Io" onNickname={onNickname} />);
-    const input = screen.getByLabelText("Il tuo nickname") as HTMLInputElement;
+    const input = screen.getByLabelText("Your nickname") as HTMLInputElement;
     await userEvent.clear(input);
     await userEvent.type(input, "   {Enter}");
     expect(onNickname).not.toHaveBeenCalled();
     expect(input.value).toBe("Io");
   });
 
-  it("Condividi copia il link del documento", async () => {
+  it("Share copies the document link", async () => {
     const writeText = vi.fn(async () => {});
     Object.defineProperty(navigator, "clipboard", { value: { writeText }, configurable: true });
     render(<PresenceBar nickname="Io" onNickname={() => {}} />);
-    await userEvent.click(screen.getByRole("button", { name: "Condividi" }));
+    await userEvent.click(screen.getByRole("button", { name: "Share" }));
     expect(writeText).toHaveBeenCalledWith(location.href);
-    expect(await screen.findByRole("button", { name: "Link copiato" })).toBeTruthy();
+    expect(await screen.findByRole("button", { name: "Link copied" })).toBeTruthy();
   });
 
-  it("compatta: un solo pulsante Persone col conteggio; nickname e link stanno nel popover", async () => {
+  it("compact: a single People button with the count; nickname and link are in the popover", async () => {
     usePresence.setState({
       peers: { a: { clientId: "a", nickname: "Ada", hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [] } },
     });
     const onNickname = vi.fn();
     render(<PresenceBar compact nickname="Io" onNickname={onNickname} />);
-    const trigger = screen.getByRole("button", { name: "Persone" });
-    expect(trigger.textContent).toContain("2"); // io + Ada
-    // A riposo non ci sono né il campo né il pulsante Condividi.
-    expect(screen.queryByLabelText("Il tuo nickname")).not.toBeInTheDocument();
-    expect(screen.queryByRole("button", { name: "Condividi" })).not.toBeInTheDocument();
+    const trigger = screen.getByRole("button", { name: "People" });
+    expect(trigger.textContent).toContain("2"); // me + Ada
+    // At rest there is neither the field nor the Share button.
+    expect(screen.queryByLabelText("Your nickname")).not.toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Share" })).not.toBeInTheDocument();
 
     await userEvent.click(trigger);
-    const input = await screen.findByLabelText("Il tuo nickname");
+    const input = await screen.findByLabelText("Your nickname");
     await userEvent.clear(input);
     await userEvent.type(input, "Zoe{Enter}");
     expect(onNickname).toHaveBeenCalledWith("Zoe");
-    expect(screen.getByRole("button", { name: "Condividi" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Share" })).toBeInTheDocument();
     expect(screen.getByText("Ada", { selector: "li span" })).toBeInTheDocument();
   });
 });

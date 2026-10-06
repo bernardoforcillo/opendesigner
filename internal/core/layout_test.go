@@ -36,7 +36,7 @@ func layoutFrameNode(id, parent, key string, w, h float64, layout *al) *opendesi
 func layoutBox(id, parent, key string, w, h float64) *opendesignerv1.Node {
 	return &opendesignerv1.Node{
 		Id: id, ParentId: parent, OrderKey: key, Visible: true, Opacity: 1, Width: w, Height: h,
-		// Posizione di partenza di proposito sbagliata: è il layout a decidere.
+		// Deliberately wrong starting position: the layout decides.
 		X: 999, Y: 999,
 		Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}},
 	}
@@ -59,7 +59,7 @@ func sizeOf(doc *opendesignerv1.Document, id string) [2]float64 {
 	return [2]float64{n.Width, n.Height}
 }
 
-// Tre rettangoli 20x10 in un frame 200x100, padding 5/7, spacing 10.
+// Three 20x10 rectangles in a 200x100 frame, padding 5/7, spacing 10.
 func row(t *testing.T, layout *al) *opendesignerv1.Document {
 	t.Helper()
 	doc := NewDocument("d", "t")
@@ -92,7 +92,7 @@ func TestLayoutMainAlign(t *testing.T) {
 	}{
 		"center":  {alCenter, [3]float64{60, 90, 120}},
 		"end":     {alEnd, [3]float64{115, 145, 175}},
-		"between": {alBetween, [3]float64{5, 90, 175}}, // passo = 20 + 10 + 110/2 = 85 fra le origini
+		"between": {alBetween, [3]float64{5, 90, 175}}, // step = 20 + 10 + 110/2 = 85 between origins
 	} {
 		doc := row(t, &al{Direction: horiz, MainAlign: c.a})
 		got := [3]float64{doc.Nodes["a"].X, doc.Nodes["b"].X, doc.Nodes["c"].X}
@@ -139,7 +139,7 @@ func TestLayoutVertical(t *testing.T) {
 			t.Errorf("%s at %v, want %v", id, got, want)
 		}
 	}
-	// L'allineamento trasversale è orizzontale: inner = 200 - 10 = 190; figlio 20.
+	// The cross alignment is horizontal: inner = 200 - 10 = 190; child 20.
 	doc = row(t, &al{Direction: vert, CrossAlign: alEnd})
 	if got := doc.Nodes["a"].X; got != 5+170 {
 		t.Errorf("cross end x = %v, want 175", got)
@@ -148,16 +148,16 @@ func TestLayoutVertical(t *testing.T) {
 
 func TestLayoutHug(t *testing.T) {
 	doc := row(t, &al{Direction: horiz, HugWidth: true, HugHeight: true})
-	// larghezza: 5 + (60 + 20) + 5 = 90; altezza: 7 + 10 + 7 = 24.
+	// width: 5 + (60 + 20) + 5 = 90; height: 7 + 10 + 7 = 24.
 	if got := sizeOf(doc, "f"); got != [2]float64{90, 24} {
 		t.Errorf("hug size = %v, want 90x24", got)
 	}
-	// Solo larghezza: l'altezza resta quella scritta.
+	// Width only: the height stays the one written.
 	doc = row(t, &al{Direction: horiz, HugWidth: true})
 	if got := sizeOf(doc, "f"); got != [2]float64{90, 100} {
 		t.Errorf("hug-width size = %v, want 90x100", got)
 	}
-	// Hug indipendente dalla direzione: verticale, hug sulla larghezza.
+	// Hug independent of the direction: vertical, hug on the width.
 	doc = row(t, &al{Direction: vert, HugWidth: true})
 	if got := sizeOf(doc, "f"); got != [2]float64{30, 100} {
 		t.Errorf("vertical hug-width size = %v, want 30x100", got)
@@ -166,35 +166,35 @@ func TestLayoutHug(t *testing.T) {
 
 func TestLayoutRerunsOnEveryChange(t *testing.T) {
 	doc := row(t, &al{Direction: horiz})
-	// Un figlio che cresce sposta i successivi.
+	// A child that grows moves the following ones.
 	if err := setProps(t, doc, "a", &opendesignerv1.Node{Width: 50}, "width"); err != nil {
 		t.Fatal(err)
 	}
 	if got := posOf(doc, "b"); got != [2]float64{65, 7} {
 		t.Errorf("after a grew, b at %v, want x=65", got)
 	}
-	// Un figlio spostato a mano torna al suo posto: il layout comanda.
+	// A hand-moved child goes back to its place: the layout rules.
 	if err := setProps(t, doc, "b", &opendesignerv1.Node{X: 500, Y: 500}, "x", "y"); err != nil {
 		t.Fatal(err)
 	}
 	if got := posOf(doc, "b"); got != [2]float64{65, 7} {
 		t.Errorf("a hand-moved child stayed at %v", got)
 	}
-	// Nascosto: esce dalla fila.
+	// Hidden: leaves the row.
 	if err := setProps(t, doc, "b", &opendesignerv1.Node{Visible: false}, "visible"); err != nil {
 		t.Fatal(err)
 	}
 	if got := posOf(doc, "c"); got != [2]float64{5 + 50 + 10, 7} {
 		t.Errorf("after hiding b, c at %v, want it right after a", got)
 	}
-	// Cancellato: idem.
+	// Deleted: same.
 	if err := Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteNode{DeleteNode: &opendesignerv1.DeleteNode{Id: "a"}}}); err != nil {
 		t.Fatal(err)
 	}
 	if got := posOf(doc, "c"); got != [2]float64{5, 7} {
 		t.Errorf("after deleting a, c at %v, want the start", got)
 	}
-	// Nuovo figlio: si accoda.
+	// New child: appended at the end.
 	createNode(t, doc, layoutBox("d", "f", "z", 20, 10))
 	if got := posOf(doc, "d"); got != [2]float64{35, 7} {
 		t.Errorf("new child at %v, want x=35", got)
@@ -232,14 +232,14 @@ func TestLayoutNestedHugPropagates(t *testing.T) {
 	if got := sizeOf(doc, "inner"); got != [2]float64{30, 20} {
 		t.Fatalf("inner = %v, want 30x20", got)
 	}
-	// outer: 30 + 10 + 40 = 80 di larghezza, max(20, 40) = 40 di altezza.
+	// outer: 30 + 10 + 40 = 80 wide, max(20, 40) = 40 tall.
 	if got := sizeOf(doc, "outer"); got != [2]float64{80, 40} {
 		t.Fatalf("outer = %v, want 80x40", got)
 	}
 	if got := posOf(doc, "x"); got != [2]float64{40, 0} {
 		t.Errorf("x at %v, want it after the inner frame", got)
 	}
-	// Un figlio dell'interno cresce: la misura risale fino a outer.
+	// A child of the inner frame grows: the measure climbs up to outer.
 	if err := setProps(t, doc, "q", &opendesignerv1.Node{Width: 100}, "width"); err != nil {
 		t.Fatal(err)
 	}

@@ -2,42 +2,42 @@ import type { Camera } from "../canvas/camera";
 import { type Bounds, worldAabbOfNode } from "../canvas/geometry";
 import type { SceneState } from "../store/types";
 
-// SNAP — L'ALLINEAMENTO AUTOMATICO DURANTE UN GESTO.
+// SNAP — AUTOMATIC ALIGNMENT DURING A GESTURE.
 //
-// Il pezzo che conta è una DECISIONE, non un disegno: dati i candidati (le
-// coordinate che il box mosso offre e quelle che gli altri nodi espongono),
-// quale scatto applicare e dove disegnare la guida. Sta qui, come funzione
-// pura, apposta: è dove vivono gli errori di un pixel, e testarla attraverso
-// pointerdown/pointermove significherebbe non testarla affatto.
+// The part that matters is a DECISION, not a drawing: given the candidates (the
+// coordinates the moved box offers and those the other nodes expose),
+// which snap to apply and where to draw the guide. It lives here, as a pure
+// function, on purpose: it is where one-pixel errors live, and testing it through
+// pointerdown/pointermove would mean not testing it at all.
 //
-// DUE SCELTE DICHIARATE, perché entrambe hanno un'alternativa sensata:
+// TWO DECLARED CHOICES, because both have a sensible alternative:
 //
-//  1. NODI RUOTATI -> si scatta al loro RETTANGOLO ASSE-ALLINEATO (l'AABB, vedi
-//     canvas/geometry.ts::worldAabbOfNode), non ai lati inclinati. È quello che
-//     fanno gli editor, e la ragione è che una guida ha senso solo se è una
-//     RETTA dello schermo: allineare il bordo di un rettangolo dritto al lato
-//     obliquo di uno ruotato di 30° non produce nessun allineamento visibile,
-//     produce un'intersezione. L'AABB è anche esattamente ciò che il riquadro
-//     di selezione mostra per una selezione multipla, quindi quello che l'utente
-//     vede scattare è quello che sta guardando.
+//  1. ROTATED NODES -> we snap to their AXIS-ALIGNED RECTANGLE (the AABB, see
+//     canvas/geometry.ts::worldAabbOfNode), not to the slanted sides. It is what
+//     editors do, and the reason is that a guide only makes sense if it is a
+//     screen LINE: aligning the edge of a straight rectangle with the oblique side of
+//     one rotated by 30° produces no visible alignment,
+//     it produces an intersection. The AABB is also exactly what the selection
+//     box shows for a multiple selection, so what the user
+//     sees snapping is what they are looking at.
 //
-//  2. TRATTO -> NON conta. I bersagli sono la GEOMETRIA (worldAabbOfNode), non
-//     il dipinto (worldVisualAabbOfNode): sono gli stessi numeri che il pannello
-//     proprietà mostra in X/Y/W/H e che il riquadro di selezione disegna, quindi
-//     "i bordi combaciano" resta vero anche dopo aver cambiato lo spessore di un
-//     tratto. Contare la sporgenza vorrebbe dire che due rettangoli allineati a
-//     x=100 smettono di esserlo appena uno prende un bordo.
+//  2. STROKE -> does NOT count. The targets are the GEOMETRY (worldAabbOfNode), not
+//     the painted shape (worldVisualAabbOfNode): they are the same numbers the properties
+//     panel shows in X/Y/W/H and that the selection box draws, so
+//     "the edges match" stays true even after changing the thickness of a
+//     stroke. Counting the protrusion would mean that two rectangles aligned at
+//     x=100 stop being so as soon as one gets a border.
 
-// Soglia in px SCHERMO: a ogni livello di zoom lo scatto "scatta" alla stessa
-// distanza dal dito. In coordinate mondo la soglia si stringe zoomando (vedi
-// worldThreshold), che è il punto: da vicino si posiziona più fine.
+// Threshold in SCREEN px: at every zoom level the snap "clicks" at the same
+// distance from the finger. In world coordinates the threshold tightens when zooming (see
+// worldThreshold), which is the point: up close you position more finely.
 export const SNAP_THRESHOLD_PX = 6;
 
 export type SnapAxis = "x" | "y";
 
-// Una guida da disegnare: la retta `pos` sull'asse `axis`, estesa da `from` a
-// `to` sull'ALTRO asse. Tutto in coordinate MONDO -- la conversione a schermo è
-// del renderer, che passa dalla camera come chiunque altro.
+// A guide to draw: the line `pos` on the `axis` axis, extended from `from` to
+// `to` on the OTHER axis. All in WORLD coordinates -- the conversion to screen belongs
+// to the renderer, which goes through the camera like everyone else.
 export interface SnapGuide {
   axis: SnapAxis;
   pos: number;
@@ -51,16 +51,16 @@ export interface SnapResult {
   guides: SnapGuide[];
 }
 
-// Le coordinate MONDO corrispondenti a SNAP_THRESHOLD_PX px schermo. La camera
-// è una similitudine (scala uniforme), quindi il fattore è lo zoom e vale
-// identico sui due assi.
+// The WORLD coordinates corresponding to SNAP_THRESHOLD_PX screen px. The camera
+// is a similarity (uniform scale), so the factor is the zoom and is
+// identical on both axes.
 export function worldThreshold(cam: Camera): number {
   return SNAP_THRESHOLD_PX / cam.zoom;
 }
 
-// Le tre coordinate che un rettangolo offre su un asse: bordo minimo, CENTRO,
-// bordo massimo. Il centro c'è per entrambi i ruoli -- un box può scattare col
-// proprio centro, e può offrire il proprio centro a chi si muove.
+// The three coordinates a rectangle offers on an axis: min edge, CENTER,
+// max edge. The center is there for both roles -- a box can snap with its
+// own center, and can offer its own center to whoever is moving.
 export function snapLines(b: Bounds, axis: SnapAxis): [number, number, number] {
   return axis === "x"
     ? [b.x, b.x + b.width / 2, b.x + b.width]
@@ -68,28 +68,28 @@ export function snapLines(b: Bounds, axis: SnapAxis): [number, number, number] {
 }
 
 export interface AxisSnap {
-  // Quanto spostare il box su questo asse.
+  // How much to move the box on this axis.
   delta: number;
-  // Le coordinate su cui lo scatto atterra, crescenti. Sono più di una quando
-  // lo STESSO delta allinea due linee diverse (il bordo sinistro a un bordo e
-  // il destro a un altro): sono due allineamenti veri, e meritano due guide.
+  // The coordinates the snap lands on, increasing. There is more than one when
+  // the SAME delta aligns two different lines (the left edge to one edge and
+  // the right to another): they are two real alignments, and deserve two guides.
   positions: number[];
 }
 
-// LA DECISIONE, NUDA. `moving` sono le coordinate che il box mosso offre su un
-// asse, `targets` quelle esposte da tutto il resto; ritorna lo scatto migliore o
-// null se nessuna coppia sta entro la soglia.
+// THE DECISION, BARE. `moving` are the coordinates the moved box offers on an
+// axis, `targets` those exposed by everything else; returns the best snap or
+// null if no pair is within the threshold.
 //
-// "Migliore" = distanza minima. A parità ESATTA vince il delta più piccolo
-// (cioè quello negativo): serve una regola, e una che non dipenda dall'ORDINE
-// degli ingressi -- l'ordine dei nodi in una scena non è stabile
-// (Object.values), quindi "il primo che ho incontrato" darebbe scatti diversi
-// per la stessa geometria.
+// "Best" = minimum distance. On an EXACT tie the smallest delta wins
+// (i.e. the negative one): a rule is needed, and one that does not depend on the ORDER
+// of the inputs -- the order of nodes in a scene is not stable
+// (Object.values), so "the first one I met" would give different snaps
+// for the same geometry.
 //
-// La soglia è INCLUSIVA: a distanza esattamente uguale alla soglia si scatta.
-// Il confronto è sul valore assoluto della distanza, senza epsilon: un epsilon
-// qui allargherebbe la soglia di un valore arbitrario, e la soglia è già
-// espressa in una grandezza che l'utente percepisce (px schermo).
+// The threshold is INCLUSIVE: at a distance exactly equal to the threshold it snaps.
+// The comparison is on the absolute value of the distance, without epsilon: an epsilon
+// here would widen the threshold by an arbitrary amount, and the threshold is already
+// expressed in a quantity the user perceives (screen px).
 export function snapAxis(
   moving: readonly number[],
   targets: readonly number[],
@@ -114,11 +114,11 @@ export function snapAxis(
   const positions: number[] = [];
   for (const m of moving) {
     for (const t of targets) {
-      // Uguaglianza ESATTA e non "entro un epsilon": `best` è uno di questi
-      // stessi t - m, quindi la coppia che l'ha prodotto si ritrova sempre. Una
-      // coppia che dà lo stesso valore solo a meno di errore di virgola mobile
-      // è un allineamento che l'utente non distingue: non mostrarne la guida
-      // toglie una riga, non uno scatto.
+      // EXACT equality and not "within an epsilon": `best` is one of these
+      // same t - m, so the pair that produced it is always found again. A
+      // pair that gives the same value only up to floating-point error
+      // is an alignment the user cannot tell apart: not showing its guide
+      // removes a line, not a snap.
       if (t - m === best && !positions.includes(t)) positions.push(t);
     }
   }
@@ -126,9 +126,9 @@ export function snapAxis(
   return { delta: best, positions };
 }
 
-// L'estensione della guida sull'asse PERPENDICOLARE: dal box mosso fino al più
-// lontano dei nodi con cui si è allineato. È il segno che dice "questi due sono
-// sulla stessa retta", quindi deve toccarli entrambi.
+// The extent of the guide on the PERPENDICULAR axis: from the moved box to the
+// farthest of the nodes it aligned with. It is the sign that says "these two are
+// on the same line", so it must touch both.
 function extentOf(b: Bounds, axis: SnapAxis): [number, number] {
   return axis === "x" ? [b.y, b.y + b.height] : [b.x, b.x + b.width];
 }
@@ -151,15 +151,15 @@ function guidesFor(
   });
 }
 
-// Lo scatto di un rettangolo di cui possono muoversi SOLO certe linee. È la
-// forma generale: il trascinamento offre tutte e sei le linee (vedi
-// snapBounds), il ridimensionamento solo i bordi che la maniglia muove davvero
-// -- scattare il bordo sinistro mentre si trascina il destro sposterebbe il
-// nodo invece di ridimensionarlo.
+// The snap of a rectangle of which ONLY certain lines can move. It is the general
+// form: dragging offers all six lines (see
+// snapBounds), resizing only the edges the handle really moves
+// -- snapping the left edge while dragging the right would move the
+// node instead of resizing it.
 //
-// L'estensione delle guide si misura su `box` COM'È: lo scatto lo sposta al
-// più di una soglia, cioè di qualche pixel schermo, e una guida lunga qualche
-// pixel in meno non è una guida diversa.
+// The guides' extent is measured on `box` AS IT IS: the snap moves it at
+// most by a threshold, i.e. a few screen pixels, and a guide a few
+// pixels shorter is not a different guide.
 export function snapMoving(
   box: Bounds,
   moving: { x: readonly number[]; y: readonly number[] },
@@ -169,8 +169,8 @@ export function snapMoving(
   const guides: SnapGuide[] = [];
   let dx = 0;
   let dy = 0;
-  // Con un indice già preparato (un gesto di trascinamento) si cerca in O(log n);
-  // con una lista semplice (un test, un chiamante occasionale) si scansiona.
+  // With an already prepared index (a drag gesture) the search is O(log n);
+  // with a plain list (a test, an occasional caller) it scans.
   const index = targets instanceof SnapIndex ? targets : null;
   const list = targets instanceof SnapIndex ? targets.targets : targets;
   for (const axis of ["x", "y"] as const) {
@@ -194,24 +194,24 @@ export function snapMoving(
   return { dx, dy, guides };
 }
 
-// Il caso del TRASCINAMENTO: il rettangolo si muove tutto intero, quindi offre
-// bordi e centri su entrambi gli assi.
+// The DRAG case: the rectangle moves as a whole, so it offers
+// edges and centers on both axes.
 export function snapBounds(box: Bounds, targets: readonly Bounds[] | SnapIndex, threshold: number): SnapResult {
   return snapMoving(box, { x: snapLines(box, "x"), y: snapLines(box, "y") }, targets, threshold);
 }
 
-// IL BERSAGLIO PREPARATO. Un gesto di trascinamento chiede lo scatto a OGNI
-// movimento del puntatore, contro gli stessi bersagli: ricostruire ogni volta la
-// lista di tutte le loro linee (con 20.000 nodi, 60.000 numeri per asse) e
-// cercarci in modo lineare costava ~5 ms per movimento. Qui le linee si
-// ordinano UNA volta, e ogni richiesta fa una ricerca binaria nella finestra
-// [m - soglia, m + soglia]. Il risultato è IDENTICO a quello della scansione
-// lineare (stesso scatto, stesse guide): lo fissa un test contro di essa.
+// THE PREPARED TARGET. A drag gesture asks for the snap on EVERY
+// pointer move, against the same targets: rebuilding every time the
+// list of all their lines (with 20,000 nodes, 60,000 numbers per axis) and
+// searching it linearly cost ~5 ms per move. Here the lines are
+// sorted ONCE, and each request does a binary search in the window
+// [m - threshold, m + threshold]. The result is IDENTICAL to that of the linear
+// scan (same snap, same guides): a test against it pins this down.
 export class SnapIndex {
   readonly targets: readonly Bounds[];
   private readonly lines: Record<SnapAxis, Float64Array>;
-  // posizione -> indici dei bersagli che hanno una linea ESATTAMENTE lì, per
-  // l'estensione delle guide (guidesFor li cerca per uguaglianza esatta).
+  // position -> indices of the targets that have a line EXACTLY there, for
+  // the guides' extent (guidesFor looks them up by exact equality).
   private readonly byPos: Record<SnapAxis, Map<number, number[]>>;
 
   constructor(targets: readonly Bounds[]) {
@@ -238,13 +238,13 @@ export class SnapIndex {
     this.byPos = { x: x.byPos, y: y.byPos };
   }
 
-  // Lo stesso risultato di snapAxis(moving, tutteLeLinee, threshold).
+  // The same result as snapAxis(moving, allTheLines, threshold).
   axisSnap(axis: SnapAxis, moving: readonly number[], threshold: number): AxisSnap | null {
     if (!(threshold >= 0)) return null;
     const lines = this.lines[axis];
-    // La finestra si allarga di un epsilon: |t - m| <= soglia si decide poi con la
-    // STESSA espressione della scansione lineare, quindi un bordo che l'aritmetica
-    // in virgola mobile mette dentro o fuori lo mette identico.
+    // The window widens by an epsilon: |t - m| <= threshold is then decided with the
+    // SAME expression as the linear scan, so an edge that floating-point
+    // arithmetic puts inside or outside is put identically.
     const slack = (m: number) => threshold + 1e-9 * (1 + Math.abs(m));
     const lowerBound = (v: number): number => {
       let lo = 0;
@@ -275,8 +275,8 @@ export class SnapIndex {
     const positions: number[] = [];
     for (const m of moving) {
       const t = m + best;
-      // Le linee t con t - m === best (uguaglianza esatta): sono quelle a
-      // distanza `best`, cioè nell'intorno di m + best.
+      // The lines t with t - m === best (exact equality): they are those at
+      // distance `best`, i.e. in the neighborhood of m + best.
       const w = 1e-9 * (1 + Math.abs(t));
       for (let i = lowerBound(t - w); i < lines.length && lines[i] <= t + w; i++) {
         if (lines[i] - m === best && !positions.includes(lines[i])) positions.push(lines[i]);
@@ -299,14 +299,14 @@ export class SnapIndex {
   }
 }
 
-/** Prepara i bersagli per un gesto: le richieste di scatto ripetute costano O(log n). */
+/** Prepares the targets for a gesture: repeated snap requests cost O(log n). */
 export function prepareSnapTargets(targets: readonly Bounds[]): SnapIndex {
   return new SnapIndex(targets);
 }
 
-// I rettangoli a cui si può scattare: ogni nodo VISIBILE che non si sta
-// muovendo. Invisibile vuol dire che non si vede, e scattare a una retta che
-// non c'è è indistinguibile da uno scatto senza motivo.
+// The rectangles that can be snapped to: every VISIBLE node that is not being
+// moved. Invisible means not seen, and snapping to a line that
+// is not there is indistinguishable from a snap for no reason.
 export function snapTargets(scene: SceneState, exclude: readonly string[]): Bounds[] {
   const skip = new Set(exclude);
   const out: Bounds[] = [];

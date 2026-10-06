@@ -20,13 +20,13 @@ function group(id: string, parentId: string, orderKey: string, extra: Partial<No
 function scene(nodes: NodeLite[]): SceneState {
   const s = emptyScene("doc1", "Untitled");
   for (const n of nodes) s.nodes = s.nodes.set(n.id, n);
-  // Anche gli op costruiti da tools/ops.ts leggono il docId dallo store: la
-  // scena va installata lì, non solo passata alle funzioni.
+  // The ops built by tools/ops.ts also read the docId from the store: the
+  // scene must be installed there, not just passed to the functions.
   useScene.getState().setScene(s);
   return useScene.getState().scene!;
 }
 
-// page1 > r1, r2, r3 -- tre fratelli, order key crescenti (r3 il più in alto).
+// page1 > r1, r2, r3 -- three siblings, increasing order keys (r3 the topmost).
 function flat(): SceneState {
   return scene([
     node("r1", "page1", 0, 0, "a000001"),
@@ -75,8 +75,8 @@ describe("groupOps", () => {
     const g = createdNode(res.ops)!;
     expect(g.kind).toBe("group");
     expect(g.parentId).toBe("page1");
-    // Nessuna geometria propria: i bounds sono l'unione dei figli, e (0,0)
-    // significa che raggruppare non sposta un pixel.
+    // No geometry of its own: the bounds are the union of the children, and (0,0)
+    // means that grouping does not move a pixel.
     expect(g).toMatchObject({ x: 0, y: 0, width: 0, height: 0, visible: true, opacity: 1 });
     expect(res.selection).toEqual([g.id]);
     expect(reparents(res.ops).map((r) => r.id)).toEqual(["r1", "r3"]);
@@ -86,8 +86,8 @@ describe("groupOps", () => {
   it("puts the group at the z-position of the TOPMOST selected node, under the sibling above it", () => {
     const s = flat();
     const g = createdNode(groupOps(s, ["r1", "r2"])!.ops)!;
-    // Sopra r2 (il più in alto dei selezionati) ma sotto r3, che non era
-    // selezionato e deve restargli davanti.
+    // Above r2 (the topmost of the selected) but below r3, which was not
+    // selected and must stay in front of it.
     expect(g.orderKey > "a000002").toBe(true);
     expect(g.orderKey < "a000003").toBe(true);
   });
@@ -123,11 +123,11 @@ describe("groupOps", () => {
       node("solo", "page1", 200, 200, "a000002"),
     ]);
     const res = groupOps(s, ["inner", "solo"])!;
-    // "inner" viveva nello spazio di box (100,100): fuori da lì le sue
-    // coordinate valgono (110,110), o il nodo si sposterebbe di 100px.
+    // "inner" lived in box's space (100,100): out of there its
+    // coordinates are worth (110,110), or the node would shift by 100px.
     expect(setPropsOf(res.ops, "inner")).toEqual({ x: 110, y: 110, paths: ["x", "y"] });
-    // "solo" cambia parent ma non spazio (il gruppo nasce a (0,0) sotto la
-    // stessa pagina): nessun op inutile.
+    // "solo" changes parent but not space (the group is born at (0,0) under the
+    // same page): no useless op.
     expect(setPropsOf(res.ops, "solo")).toBeNull();
 
     const after = applyAll(s, res.ops);
@@ -144,12 +144,12 @@ describe("groupOps", () => {
   it("is null when there is nothing to group", () => {
     const s = flat();
     expect(groupOps(s, [])).toBeNull();
-    expect(groupOps(s, ["sparito"])).toBeNull();
+    expect(groupOps(s, ["ghost"])).toBeNull();
   });
 });
 
 describe("ungroupOps", () => {
-  // page1 > g(gruppo spostato a 5,7) > c1, c2 ; e "above" sopra al gruppo.
+  // page1 > g(group moved to 5,7) > c1, c2 ; and "above" above the group.
   function grouped(): SceneState {
     return scene([
       group("g", "page1", "a000002", { x: 5, y: 7 }),
@@ -165,23 +165,23 @@ describe("ungroupOps", () => {
     expect(kinds(res.ops).at(-1)).toBe("deleteNode");
     expect(reparents(res.ops).map((r) => r.id)).toEqual(["c1", "c2"]);
     expect(reparents(res.ops).every((r) => r.parent === "page1")).toBe(true);
-    // I figli liberati sono la nuova selezione: il gruppo non esiste più.
+    // The freed children are the new selection: the group no longer exists.
     expect(res.selection).toEqual(["c1", "c2"]);
   });
 
   it("keeps the children in the group's z-slot and in their relative order", () => {
     const s = grouped();
     const r = reparents(ungroupOps(s, ["g"])!.ops);
-    expect(r[0].key > "a000002").toBe(true); // sopra il posto del gruppo
-    expect(r[0].key < r[1].key).toBe(true);  // c1 resta sotto c2
-    expect(r[1].key < "a000003").toBe(true); // e tutti e due sotto "above"
+    expect(r[0].key > "a000002").toBe(true); // above the group's place
+    expect(r[0].key < r[1].key).toBe(true);  // c1 stays below c2
+    expect(r[1].key < "a000003").toBe(true); // and both below "above"
   });
 
   it("preserves the WORLD position of the children of a group that has been moved", () => {
     const s = grouped();
     const res = ungroupOps(s, ["g"])!;
-    // Il gruppo traslava i figli di (5,7): fuori da lì la traslazione va
-    // scritta nelle loro coordinate.
+    // The group translated the children by (5,7): out of there the translation must be
+    // written into their coordinates.
     expect(setPropsOf(res.ops, "c1")).toEqual({ x: 15, y: 17, paths: ["x", "y"] });
     expect(setPropsOf(res.ops, "c2")).toEqual({ x: 35, y: 37, paths: ["x", "y"] });
 
@@ -219,10 +219,10 @@ describe("ungroupOps", () => {
     expect(ungroupOps(s, [])).toBeNull();
   });
 
-  // Con un gruppo E il gruppo che lo contiene selezionati, disfare tutti e due
-  // in un colpo solo produrrebbe op costruiti su uno stato che il primo ha già
-  // cambiato: si disfa il più esterno, esattamente come la cancellazione
-  // cancella il sottoalbero (tree.ts::topmostOf).
+  // With a group AND its containing group selected, ungrouping both
+  // in one go would produce ops built on a state that the first has already
+  // changed: the outermost is ungrouped, exactly as deletion
+  // deletes the subtree (tree.ts::topmostOf).
   it("ungroups only the outermost group when a group and one of its own groups are selected", () => {
     const s = scene([
       group("outer", "page1", "a000001"),
@@ -247,8 +247,8 @@ describe("ungroupOps", () => {
     const u = ungroupOps(grouped, g.selection)!;
     const after = applyAll(grouped, u.ops);
 
-    // Le coordinate mondo sono le stesse; "inner" NON torna dentro "box" (il
-    // gruppo l'aveva portato fuori) ma non si è mosso di un pixel.
+    // The world coordinates are the same; "inner" does NOT go back into "box" (the
+    // group had taken it out) but has not moved by a pixel.
     expect(["inner", "solo"].map((id) => worldBoundsOfNode(after, after.nodes.at(id)))).toEqual(worldBefore);
     expect([...after.nodes.values()].some((n) => n.kind === "group")).toBe(false);
     expect(after.nodes.at("solo").parentId).toBe("page1");

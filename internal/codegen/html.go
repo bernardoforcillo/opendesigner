@@ -8,12 +8,12 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// Target html: un file .html AUTOCONTENUTO per schermata. Il CSS sta in un
-// <style> nell'<head> con una classe per elemento (`.nome-3`); la navigazione
-// fra le schermate è fatta di <a href> (l'elemento che innesca una transizione
-// diventa il link, le transizioni senza elemento un <nav class="nav-hidden"> trasparente).
-// L'unica dipendenza esterna sono gli asset delle immagini (assets/<hash>.<ext>)
-// e il font Inter da Google Fonts.
+// Target html: ONE SELF-CONTAINED .html file per screen. The CSS lives in a
+// <style> in the <head> with one class per element (`.name-3`); navigation
+// between screens is made of <a href> (the element that fires a transition
+// becomes the link, transitions without an element become a transparent <nav class="nav-hidden">).
+// The only external dependencies are the image assets (assets/<hash>.<ext>)
+// and the Inter font from Google Fonts.
 
 const htmlBaseCSS = `*,*::before,*::after{box-sizing:border-box}
 body{margin:0}
@@ -25,14 +25,14 @@ const interLink = `<link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">`
 
-// generatedHeader: l'intestazione di ogni file esportato. NON contiene il
-// marcatore flow.GeneratedMarker di proposito: quello serve a `flow coverage`
-// per NON contare come implementazione i test generati, mentre le schermate
-// esportate SONO l'implementazione e devono contarsi (la loro rotta compare nel
-// codice).
+// generatedHeader: the header of every exported file. It deliberately does NOT
+// contain the flow.GeneratedMarker marker: that one lets `flow coverage` NOT
+// count the generated tests as implementation, whereas the exported screens
+// ARE the implementation and must be counted (their route appears in the
+// code).
 func generatedHeader(d *opendesignerv1.Document, what string) string {
-	return fmt.Sprintf("Esportato da opendesigner (opendesigner export): %s del documento %q (%s). NON modificare a mano:\n"+
-		"rigenerare con `opendesigner export`. L'attributo data-node-id lega ogni elemento al nodo del design.",
+	return fmt.Sprintf("Exported by opendesigner (opendesigner export): %s of document %q (%s). DO NOT edit by hand:\n"+
+		"regenerate with `opendesigner export`. The data-node-id attribute ties every element to its design node.",
 		what, oneLine(d.GetName()), d.GetId())
 }
 
@@ -68,10 +68,10 @@ func htmlPage(d *opendesignerv1.Document, s *Screen, all []*Screen) string {
 	w.element(s.Root, 1, true)
 	w.finishAnim()
 	var b strings.Builder
-	b.WriteString("<!doctype html>\n<html lang=\"it\">\n<head>\n<meta charset=\"utf-8\">\n")
+	b.WriteString("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	fmt.Fprintf(&b, "<title>%s</title>\n", html.EscapeString(d.GetNodes()[s.NodeID].GetName()))
-	fmt.Fprintf(&b, "<!-- %s -->\n", generatedHeader(d, "schermata \""+oneLine(d.GetNodes()[s.NodeID].GetName())+"\""))
+	fmt.Fprintf(&b, "<!-- %s -->\n", generatedHeader(d, "screen \""+oneLine(d.GetNodes()[s.NodeID].GetName())+"\""))
 	b.WriteString(interLink + "\n<style>\n" + htmlBaseCSS + "\n" + w.css.String() + "</style>\n</head>\n<body>\n")
 	b.WriteString(w.sb.String())
 	b.WriteString("</body>\n</html>\n")
@@ -80,10 +80,10 @@ func htmlPage(d *opendesignerv1.Document, s *Screen, all []*Screen) string {
 
 func htmlIndex(d *opendesignerv1.Document, screens []*Screen) string {
 	var b strings.Builder
-	b.WriteString("<!doctype html>\n<html lang=\"it\">\n<head>\n<meta charset=\"utf-8\">\n")
+	b.WriteString("<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n")
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	fmt.Fprintf(&b, "<title>%s</title>\n", html.EscapeString(d.GetName()))
-	fmt.Fprintf(&b, "<!-- %s -->\n", generatedHeader(d, "indice delle schermate"))
+	fmt.Fprintf(&b, "<!-- %s -->\n", generatedHeader(d, "screen index"))
 	b.WriteString("<style>body{font-family:Inter,sans-serif;margin:2rem}li{margin:.25rem 0}</style>\n</head>\n<body>\n")
 	fmt.Fprintf(&b, "<h1>%s</h1>\n<ul>\n", html.EscapeString(d.GetName()))
 	for _, s := range screens {
@@ -116,8 +116,8 @@ func (w *htmlWriter) element(e *Element, depth int, root bool) {
 	ind := strings.Repeat("  ", depth)
 	tag, style, attrs := e.Tag, append([]Prop(nil), e.Style...), append([]Attr(nil), e.Attrs...)
 
-	// Transizione innescata da questo elemento: diventa il link alla schermata
-	// di arrivo. Un tag che non può essere <a> (img, svg) si avvolge.
+	// Transition fired by this element: it becomes the link to the destination
+	// screen. A tag that cannot be <a> (img, svg) is wrapped.
 	wrapHref := ""
 	var trig *Trigger
 	if len(e.Triggers) > 0 && e.Triggers[0].Dest != nil {
@@ -164,8 +164,8 @@ func (w *htmlWriter) element(e *Element, depth int, root bool) {
 	if voidTags[tag] {
 		w.sb.WriteString(ind + open.String() + ">\n")
 	} else if e.HasText && len(e.Children) == 0 && !root {
-		// Il testo va SU UNA RIGA: con white-space: pre-wrap ogni rientro
-		// diventerebbe testo visibile.
+		// The text goes ON ONE LINE: with white-space: pre-wrap every indent
+		// would become visible text.
 		w.sb.WriteString(ind + open.String() + ">" + html.EscapeString(e.Text) + "</" + tag + ">\n")
 	} else {
 		w.sb.WriteString(ind + open.String() + ">")
@@ -206,9 +206,9 @@ func hasProp(ps []Prop, name string) bool {
 	return false
 }
 
-// flowComments: le righe di commento di una transizione, come nei test
-// generati: `flow: <id>`, poi `guard:` e `effect:` se ci sono. Testo libero del
-// documento: va su UNA riga e non può chiudere un commento (`*/`, `-->`).
+// flowComments: the comment lines of a transition, as in the generated
+// tests: `flow: <id>`, then `guard:` and `effect:` if present. Free text from
+// the document: it goes on ONE line and cannot close a comment (`*/`, `-->`).
 func flowComments(t Trigger) []string {
 	safe := func(s string) string { return strings.ReplaceAll(oneLine(s), "*/", "* /") }
 	lines := []string{"flow: " + t.TransitionID}
@@ -221,11 +221,11 @@ func flowComments(t Trigger) []string {
 	return lines
 }
 
-// flowComment: le stesse righe su una riga sola.
+// flowComment: the same lines on a single line.
 func flowComment(t Trigger) string { return strings.Join(flowComments(t), " | ") }
 
-// nav: i collegamenti delle transizioni senza elemento, visivamente nascosti
-// ma presenti nel DOM (e per le tecnologie assistive).
+// nav: the links of transitions without an element, visually hidden
+// but present in the DOM (and for assistive technologies).
 func (w *htmlWriter) nav(root *Element, depth int) {
 	var links []Trigger
 	for _, t := range root.NavTriggers {
@@ -235,22 +235,22 @@ func (w *htmlWriter) nav(root *Element, depth int) {
 	}
 	for _, t := range root.NavTriggers {
 		if t.Kind == "auto" || t.Dest == nil {
-			w.sb.WriteString(strings.Repeat("  ", depth) + "<!-- " + flowComment(t) + " (nessun link generato) -->\n")
+			w.sb.WriteString(strings.Repeat("  ", depth) + "<!-- " + flowComment(t) + " (no link generated) -->\n")
 		}
 	}
 	for _, t := range root.KeyTriggers {
-		w.sb.WriteString(strings.Repeat("  ", depth) + "<!-- " + flowComment(t) + " (tasto " + oneLine(t.Label) + ": non cablato nel target html) -->\n")
+		w.sb.WriteString(strings.Repeat("  ", depth) + "<!-- " + flowComment(t) + " (key " + oneLine(t.Label) + ": not wired in the html target) -->\n")
 	}
 	if len(links) == 0 {
 		return
 	}
 	ind := strings.Repeat("  ", depth)
-	w.sb.WriteString(ind + "<nav class=\"nav-hidden\" aria-label=\"Navigazione del flusso\">\n")
+	w.sb.WriteString(ind + "<nav class=\"nav-hidden\" aria-label=\"Flow navigation\">\n")
 	for _, t := range links {
 		w.sb.WriteString(ind + "  <!-- " + flowComment(t) + " -->\n")
 		label := t.Label
 		if label == "" {
-			label = "Vai a " + w.d.GetNodes()[t.Dest.NodeID].GetName()
+			label = "Go to " + w.d.GetNodes()[t.Dest.NodeID].GetName()
 		}
 		fmt.Fprintf(&w.sb, "%s  <a href=\"%s\">%s</a>\n", ind, html.EscapeString(t.Dest.File), html.EscapeString(label))
 	}

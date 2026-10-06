@@ -9,22 +9,22 @@ import { kindOf, metaValue, META_KEYS, statusOf, type FlowKind } from "../flow/m
 import { topLevelScreens } from "../flow/screens";
 import { themeColors, withAlpha, type ThemeColors } from "./themeColors";
 
-// L'OVERLAY DELLA MODALITÀ FLUSSI: frecce fra le schermate, pillole delle
-// etichette, marcatore d'ingresso, badge di tipo/stato su ogni schermata e il
-// rubber band di "Collega". Si disegna SOPRA l'overlay di selezione (come
-// drawPeers: va chiamata dopo drawOverlay, che azzera il canvas) e in spazio
-// SCHERMO: lo spessore delle linee, le punte e le pillole restano della stessa
-// taglia a ogni zoom, solo le posizioni seguono la camera.
+// THE FLOWS MODE OVERLAY: arrows between screens, label pills,
+// entry marker, type/state badge on every screen and the
+// "Connect" rubber band. It is drawn ABOVE the selection overlay (like
+// drawPeers: it must be called after drawOverlay, which clears the canvas) and in
+// SCREEN space: line thickness, arrowheads and pills stay the same
+// size at every zoom, only the positions follow the camera.
 //
-// La geometria vive in flow/geometry.ts + flow/layout.ts (pure, memoizzate sulla
-// scena): qui si traduce soltanto in tratti di canvas. A editor fermo il
-// renderer non gira (App.tsx ridisegna a invalidazione), e il layout non si
-// ricalcola finché nodi e transizioni non cambiano.
+// The geometry lives in flow/geometry.ts + flow/layout.ts (pure, memoized on the
+// scene): here it is only translated into canvas strokes. With the editor idle the
+// renderer does not run (App.tsx redraws on invalidation), and the layout is not
+// recomputed until nodes and transitions change.
 
 export interface FlowOverlayState {
-  /** Il flusso corrente (effettivo), o null se il documento non ne ha. */
+  /** The current (effective) flow, or null if the document has none. */
   flowId: string | null;
-  /** L'ingresso del flusso corrente. */
+  /** The entry of the current flow. */
   startId: string;
   showAllFlows: boolean;
   selectedTransitionId: string | null;
@@ -34,11 +34,11 @@ export interface FlowOverlayState {
   issueTransitionIds: ReadonlySet<string>;
 }
 
-// I COLORI vengono dai token (renderer/themeColors.ts), non da qui: il viola dei
-// flussi (--flow) è distinto dal blu della selezione (--accent), così la freccia
-// scelta (blu) si legge a colpo d'occhio fra le altre; i problemi sono in
-// --danger, l'ingresso in --ok. Si leggono UNA volta per frame in drawFlows e si
-// passano giù (`c`), così un frame è coerente anche se il tema cambia a metà.
+// The COLORS come from the tokens (renderer/themeColors.ts), not from here: the flows'
+// violet (--flow) is distinct from the selection blue (--accent), so the chosen
+// arrow (blue) reads at a glance among the others; problems are in
+// --danger, the entry in --ok. They are read ONCE per frame in drawFlows and
+// passed down (`c`), so a frame is coherent even if the theme changes midway.
 const DIM_ALPHA = 0.3;
 
 const LABEL_FONT = "600 11px Inter, system-ui, sans-serif";
@@ -47,7 +47,7 @@ const ROUTE_FONT = "500 10px ui-monospace, SFMono-Regular, Menlo, monospace";
 const PILL_H = 18;
 const PILL_PAD = 7;
 const HEAD_SIZE = 10;
-// Sotto questo zoom le etichette sono illeggibili: restano frecce e badge.
+// Below this zoom the labels are unreadable: arrows and badges remain.
 const LABEL_MIN_ZOOM = 0.2;
 const BADGE_MIN_ZOOM = 0.08;
 
@@ -81,9 +81,9 @@ function fillHead(ctx: CanvasRenderingContext2D, c: Bezier, size: number): void 
   ctx.fill();
 }
 
-// Un'ombra morbida e corta: stacca la pillola dalla tela senza un bordo duro. Si
-// accende SOLO attorno al riempimento (poi si spegne): lo shadow di canvas costa
-// e il testo non deve proiettarne una.
+// A soft, short shadow: it detaches the pill from the canvas without a hard border. It is
+// turned on ONLY around the fill (then turned off): canvas shadow costs
+// and the text must not cast one.
 function softShadow(ctx: CanvasRenderingContext2D, dark: boolean): void {
   ctx.shadowColor = dark ? "rgba(0, 0, 0, 0.55)" : "rgba(16, 24, 40, 0.18)";
   ctx.shadowBlur = 6;
@@ -122,7 +122,7 @@ function truncate(ctx: CanvasRenderingContext2D, text: string, maxW: number): st
   return s + "…";
 }
 
-/** Il pittogramma del tipo di nodo, centrato in (cx, cy), raggio r. Solo tratti, nessuna immagine. */
+/** The node-type pictogram, centered at (cx, cy), radius r. Strokes only, no image. */
 export function drawKindIcon(ctx: CanvasRenderingContext2D, kind: FlowKind, cx: number, cy: number, r: number, color: string): void {
   ctx.save();
   ctx.strokeStyle = color;
@@ -130,7 +130,7 @@ export function drawKindIcon(ctx: CanvasRenderingContext2D, kind: FlowKind, cx: 
   ctx.lineWidth = 1.5;
   ctx.beginPath();
   switch (kind) {
-    case "screen": // un telefono: rettangolo verticale
+    case "screen": // a phone: vertical rectangle
       ctx.roundRect(cx - r * 0.65, cy - r, r * 1.3, r * 2, 2);
       ctx.stroke();
       break;
@@ -152,18 +152,18 @@ export function drawKindIcon(ctx: CanvasRenderingContext2D, kind: FlowKind, cx: 
       ctx.closePath();
       ctx.fill();
       break;
-    case "start": // un cerchio pieno
+    case "start": // a filled circle
       ctx.arc(cx, cy, r * 0.85, 0, Math.PI * 2);
       ctx.fill();
       break;
-    case "end": // un cerchio dentro un cerchio
+    case "end": // a circle inside a circle
       ctx.arc(cx, cy, r * 0.95, 0, Math.PI * 2);
       ctx.stroke();
       ctx.beginPath();
       ctx.arc(cx, cy, r * 0.45, 0, Math.PI * 2);
       ctx.fill();
       break;
-    case "note": // un foglio con l'angolo piegato
+    case "note": // a sheet with a folded corner
       ctx.moveTo(cx - r * 0.8, cy - r);
       ctx.lineTo(cx + r * 0.3, cy - r);
       ctx.lineTo(cx + r * 0.8, cy - r * 0.45);
@@ -184,12 +184,12 @@ function drawArrow(ctx: CanvasRenderingContext2D, c0: ThemeColors, a: Arrow, cam
   ctx.fillStyle = color;
   ctx.lineWidth = width;
   ctx.lineCap = "round";
-  // Tratteggiata se ha una guardia: non percorribile sempre.
+  // Dashed if it has a guard: not always traversable.
   ctx.setLineDash(a.guarded ? [6, 4] : []);
   strokeCurve(ctx, c);
   ctx.setLineDash([]);
   fillHead(ctx, c, HEAD_SIZE + (width > 2 ? 2 : 0));
-  // L'origine: un pallino (sull'elemento hotspot è il "punto cliccabile").
+  // The origin: a dot (on the hotspot element it is the "clickable point").
   ctx.beginPath();
   ctx.arc(c.p0.x, c.p0.y, a.hotspot ? 4 : 3, 0, Math.PI * 2);
   ctx.fill();
@@ -218,7 +218,7 @@ function drawHotspot(ctx: CanvasRenderingContext2D, b: Bounds, cam: Camera, colo
   ctx.restore();
 }
 
-/** Il badge sopra una schermata: tipo, stato, nome (e route se c'è spazio). */
+/** The badge above a screen: type, state, name (and route if there is room). */
 function drawScreenBadge(
   ctx: CanvasRenderingContext2D, c: ThemeColors, scene: SceneState, n: NodeLite, cam: Camera, issue: boolean, isStart: boolean,
 ): void {
@@ -229,14 +229,14 @@ function drawScreenBadge(
   const y = box.y - PILL_H / 2 - 5;
   const maxW = Math.max(60, box.width - 8);
   ctx.font = BADGE_FONT;
-  const name = cam.zoom >= 0.18 ? truncate(ctx, n.name.trim() !== "" ? n.name : "Senza nome", Math.max(30, maxW - 44)) : "";
+  const name = cam.zoom >= 0.18 ? truncate(ctx, n.name.trim() !== "" ? n.name : "Untitled", Math.max(30, maxW - 44)) : "";
   const nameW = name === "" ? 0 : ctx.measureText(name).width + 5;
   const w = 8 + 12 + 6 + 8 + (name ? 6 + nameW : 0) + 8;
   const x = box.x;
   ctx.save();
   ctx.beginPath();
   ctx.roundRect(x, y - PILL_H / 2, w, PILL_H, PILL_H / 2);
-  // Una pillola RIALZATA: superficie del tema, filo e ombra morbida.
+  // A RAISED pill: theme surface, hairline and soft shadow.
   ctx.fillStyle = c.surface;
   softShadow(ctx, c.dark);
   ctx.fill();
@@ -245,7 +245,7 @@ function drawScreenBadge(
   ctx.strokeStyle = issue ? c.danger : isStart ? c.ok : c.lineStrong;
   ctx.stroke();
   drawKindIcon(ctx, kind, x + 8 + 6, y, 5, issue ? c.danger : c.fgMuted);
-  // Il pallino di stato: tenue pianificata / accento implementata / verde testata.
+  // The state dot: faint planned / accent implemented / green tested.
   ctx.beginPath();
   ctx.arc(x + 8 + 12 + 6 + 4, y, 4, 0, Math.PI * 2);
   ctx.fillStyle = status === "tested" ? c.ok : status === "implemented" ? c.accent : c.fgSubtle;
@@ -264,7 +264,7 @@ function drawScreenBadge(
   }
   ctx.restore();
   if (issue) {
-    // Un contorno rosso sottile attorno alla schermata con un problema.
+    // A thin red outline around the screen with a problem.
     ctx.save();
     ctx.setLineDash([5, 3]);
     ctx.lineWidth = 1.5;
@@ -274,7 +274,7 @@ function drawScreenBadge(
   }
 }
 
-/** Il marcatore d'ingresso: una bandierina verde sul bordo sinistro della schermata. */
+/** The entry marker: a green flag on the screen's left edge. */
 function drawStartMarker(ctx: CanvasRenderingContext2D, c: ThemeColors, box: Bounds): void {
   const cx = box.x - 22;
   const cy = box.y + Math.min(box.height / 2, 60);
@@ -341,10 +341,10 @@ function drawPreview(ctx: CanvasRenderingContext2D, c: ThemeColors, scene: Scene
 }
 
 /**
- * Disegna la modalità Flussi. Va chiamata DOPO drawOverlay (che azzera il
- * canvas). Salta tutto ciò che sta fuori vista (documenti grandi): per le frecce
- * si confronta il rettangolo dei punti di controllo con la vista, per le
- * schermate il loro box.
+ * Draws the Flows mode. Must be called AFTER drawOverlay (which clears the
+ * canvas). Skips everything out of view (large documents): for arrows
+ * the control-points rectangle is compared with the view, for
+ * screens their box.
  */
 export function drawFlows(
   ctx: CanvasRenderingContext2D,
@@ -359,7 +359,7 @@ export function drawFlows(
   const cssW = ctx.canvas.width / dpr;
   const cssH = ctx.canvas.height / dpr;
   const px = 1 / (cam.zoom || 1);
-  // La vista in mondo, allargata di quanto sporgono pillole e punte (px schermo).
+  // The view in the world, widened by how much pills and arrowheads overhang (screen px).
   const view: Bounds = { x: -cam.x / cam.zoom, y: -cam.y / cam.zoom, width: cssW / cam.zoom, height: cssH / cam.zoom };
   const pad = 80 * px;
 
@@ -373,8 +373,8 @@ export function drawFlows(
         wb.y > view.y + view.height + pad || wb.y + wb.height < view.y - pad
       ) continue;
       const isStart = ui.startId === s.id;
-      // Un filo attorno alla schermata: un frame bianco su tela bianca sparirebbe,
-      // e in Flussi le schermate sono i protagonisti.
+      // A hairline around the screen: a white frame on a white canvas would vanish,
+      // and in Flows the screens are the protagonists.
       const sb = worldBoundsToScreen(wb, cam);
       ctx.lineWidth = 1;
       ctx.strokeStyle = withAlpha(c.flow, c.dark ? 0.5 : 0.4);
@@ -388,8 +388,8 @@ export function drawFlows(
   if (layout.arrows.length > 0) {
     const visible = arrowsInView(layout, view, pad);
     const labels = cam.zoom >= LABEL_MIN_ZOOM;
-    // Prima gli altri flussi (attenuati, se richiesti), poi il corrente, in
-    // cima la freccia selezionata/sotto il mouse.
+    // First the other flows (dimmed, if requested), then the current one, on
+    // top the selected arrow/under the mouse.
     if (ui.showAllFlows) {
       for (const a of visible) if (a.flowId !== ui.flowId) drawArrow(ctx, c, a, cam, c.flow, 1.5, DIM_ALPHA, false);
     }

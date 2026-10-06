@@ -2,25 +2,25 @@ import type { Camera } from "../canvas/camera";
 import type { SceneState } from "../store/types";
 import { drawScene } from "./canvasRenderer";
 
-// IL FRAME PESANTE E LA CAMERA CHE SI MUOVE.
+// THE HEAVY FRAME AND THE MOVING CAMERA.
 //
-// Un documento molto grande può richiedere decine di millisecondi per disegnare
-// la scena intera (a quella taglia il costo è il rasterizzatore, non la logica).
-// Ridisegnarla a ogni passo di un pan o di uno zoom vuol dire scendere sotto i
-// 15 fps proprio quando l'utente sta MUOVENDO la vista. Ma mentre la camera si
-// muove e il documento no, i pixel che servono sono quelli dell'ultimo frame,
-// solo spostati e scalati: rifarli esatti ha senso quando la camera si ferma.
+// A very large document can take tens of milliseconds to draw
+// the whole scene (at that size the cost is the rasterizer, not the logic).
+// Redrawing it on every step of a pan or zoom means dropping below
+// 15 fps exactly when the user is MOVING the view. But while the camera
+// moves and the document does not, the pixels needed are those of the last frame,
+// just moved and scaled: redoing them exactly makes sense when the camera stops.
 //
-// Funziona così:
-//  - ogni disegno completo ricorda quanto è costato; se è pesante (> HEAVY_MS)
-//    ne fotografa il risultato in un canvas fuori schermo;
-//  - se poi cambia SOLO la camera (stessa scena, stessa pagina, stessa
-//    dimensione), invece di ridisegnare si stampa la fotografia con la
-//    trasformazione che porta la vecchia camera nella nuova: costa una copia;
-//  - la chiamata dice di NON essere esatta, e chi la fa pianifica un disegno
-//    vero a movimento finito (SETTLE_MS dopo l'ultimo cambio).
+// It works like this:
+//  - every full draw remembers how much it cost; if it is heavy (> HEAVY_MS)
+//    it snapshots the result into an offscreen canvas;
+//  - if then ONLY the camera changes (same scene, same page, same
+//    size), instead of redrawing the snapshot is stamped with the
+//    transform that takes the old camera to the new one: it costs one copy;
+//  - the call says it is NOT exact, and whoever makes it schedules a real
+//    draw when the movement is over (SETTLE_MS after the last change).
 //
-// Un documento leggero non entra mai in questa strada: disegna sempre esatto.
+// A light document never enters this path: it always draws exact.
 
 export const HEAVY_MS = 20;
 export const SETTLE_MS = 120;
@@ -36,13 +36,13 @@ interface Snapshot {
 export class SceneLayerCache {
   private layer: HTMLCanvasElement | null = null;
   private snap: Snapshot | null = null;
-  // Quanto è costato l'ultimo disegno completo.
+  // How much the last full draw cost.
   lastCostMs = 0;
 
   /**
-   * Disegna la scena su `ctx`. Ritorna `true` se il risultato è ESATTO, `false`
-   * se è la fotografia dell'ultimo frame riportata alla camera nuova (chi
-   * chiama deve allora pianificare il disegno vero). `force` salta la scorciatoia.
+   * Draws the scene onto `ctx`. Returns `true` if the result is EXACT, `false`
+   * if it is the snapshot of the last frame brought to the new camera (the
+   * caller must then schedule the real draw). `force` skips the shortcut.
    */
   draw(
     ctx: CanvasRenderingContext2D,
@@ -82,10 +82,10 @@ export class SceneLayerCache {
     this.layer.getContext("2d")?.drawImage(source, 0, 0);
   }
 
-  // Un pixel css della fotografia sta a p0 = (p1 - c0) / z0 nel mondo, e il
-  // mondo va a p1' = c1 + z1 * mondo: quindi p1' = s * p1 + (c1 - s * c0), con
-  // s = z1 / z0. La scala e la traslazione sono in pixel del backing store
-  // (moltiplicate per il dpr, che qui è il rapporto fra backing store e css).
+  // One css pixel of the snapshot sits at p0 = (p1 - c0) / z0 in the world, and the
+  // world goes to p1' = c1 + z1 * world: therefore p1' = s * p1 + (c1 - s * c0), with
+  // s = z1 / z0. The scale and the translation are in backing-store pixels
+  // (multiplied by the dpr, which here is the ratio between backing store and css).
   private blit(ctx: CanvasRenderingContext2D, snap: Snapshot, cam: Camera): void {
     const layer = this.layer as HTMLCanvasElement;
     const canvas = ctx.canvas;

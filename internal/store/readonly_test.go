@@ -8,11 +8,11 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// LoadReadOnly legge snapshot+oplog senza modificare il bundle: nemmeno quando
-// l'oplog ha una coda strappata (che Bundle.Load riparerebbe troncando).
+// LoadReadOnly reads snapshot+oplog without modifying the bundle: not even when
+// the oplog has a torn tail (which Bundle.Load would repair by truncating).
 func TestLoadReadOnlyLeavesBundleUntouched(t *testing.T) {
 	ws := t.TempDir()
-	b, err := Open(ws, "doc1", "Prova")
+	b, err := Open(ws, "doc1", "Test")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -27,7 +27,7 @@ func TestLoadReadOnlyLeavesBundleUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	_, _ = f.Write([]byte{0x42, 0x52, 0x57}) // frammio di una append interrotta
+	_, _ = f.Write([]byte{0x42, 0x52, 0x57}) // fragment of an interrupted append
 	f.Close()
 	before, _ := os.ReadFile(oplog)
 
@@ -35,7 +35,7 @@ func TestLoadReadOnlyLeavesBundleUntouched(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if seq != 1 || doc.GetNodes()["n1"].GetName() != "Home" || doc.GetName() != "Prova" {
+	if seq != 1 || doc.GetNodes()["n1"].GetName() != "Home" || doc.GetName() != "Test" {
 		t.Fatalf("doc = %v seq = %d", doc, seq)
 	}
 	after, _ := os.ReadFile(oplog)
@@ -44,9 +44,9 @@ func TestLoadReadOnlyLeavesBundleUntouched(t *testing.T) {
 	}
 
 	if _, _, err := LoadReadOnly(ws, "nope"); err == nil {
-		t.Error("documento inesistente deve dare errore")
+		t.Error("nonexistent document must give an error")
 	}
 	if _, err := os.Stat(filepath.Join(ws, "nope"+bundleSuffix)); err == nil {
-		t.Error("LoadReadOnly non deve creare bundle")
+		t.Error("LoadReadOnly must not create a bundle")
 	}
 }

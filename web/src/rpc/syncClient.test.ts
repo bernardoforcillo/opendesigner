@@ -4,9 +4,9 @@ import { create } from "@bufbuild/protobuf";
 import { DocumentSchema, NodeSchema, OpSchema, ServerMsgSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op, ServerMsg } from "../gen/opendesigner/v1/opendesigner_pb";
 
-// Doppio del trasporto Connect: SyncClient importa `docClient` da ./client, e
-// questo è l'unico punto in cui tocca la rete. vi.hoisted perché la factory di
-// vi.mock viene issata sopra gli import.
+// Double of the Connect transport: SyncClient imports `docClient` from ./client, and
+// that is the only point where it touches the network. vi.hoisted because the factory of
+// vi.mock is hoisted above the imports.
 const rpc = vi.hoisted(() => ({
   openDocument: vi.fn(),
   submitOp: vi.fn(),
@@ -51,16 +51,16 @@ function applied(seq: number, clientId: string, op: Op): ServerMsg {
   });
 }
 
-// Stream server->client pilotabile a mano: `push` consegna un record al loop di
-// consume(), `close` lo fa terminare a fine test (altrimenti resterebbe appeso
-// su una promise che nessuno risolve), `fail` lo fa MORIRE con un errore --
-// esattamente i due modi in cui il server lo termina di sua iniziativa
-// (subscriber troppo lento, since_seq fuori range).
+// Server->client stream drivable by hand: `push` delivers a record to the consume()
+// loop, `close` makes it end at the end of the test (otherwise it would stay hanging
+// on a promise nobody resolves), `fail` makes it DIE with an error --
+// exactly the two ways the server ends it on its own initiative
+// (subscriber too slow, since_seq out of range).
 //
-// I record già in coda restano consegnabili anche dopo `close`: è il caso reale
-// in cui un messaggio è già arrivato nel buffer quando il client decide di
-// staccare, ed è l'unico modo di verificare che sia il CLIENT a rifiutarsi di
-// applicarlo (guardia su stop) e non il trasporto a non consegnarlo più.
+// Records already queued stay deliverable even after `close`: it is the real
+// case in which a message has already arrived in the buffer when the client decides
+// to detach, and it is the only way to verify that it is the CLIENT refusing to
+// apply it (guard on stop) and not the transport no longer delivering it.
 function channel<T>() {
   const queue: T[] = [];
   let wake: (() => void) | null = null;
@@ -96,28 +96,28 @@ function channel<T>() {
   };
 }
 
-// Un giro di macrotask: basta a far girare sia le catene di microtask
-// (submitOp.then/.catch) sia il risveglio del for-await su channel.
+// One macrotask turn: enough to run both the microtask chains
+// (submitOp.then/.catch) and the for-await's wake-up on channel.
 const flush = () => new Promise((r) => setTimeout(r, 0));
 
-// Attesa deterministica lunga `n` turni di microtask. Due catene avviate
-// insieme finiscono in ordine di LUNGHEZZA, non di partenza: è il modo (senza
-// timer, quindi senza flakiness) di simulare una rete che consegna le richieste
-// fuori ordine.
+// Deterministic wait of `n` microtask turns. Two chains started
+// together end in order of LENGTH, not of start: it is the way (without
+// timers, hence without flakiness) to simulate a network that delivers requests
+// out of order.
 function turns(n: number): Promise<void> {
   let p = Promise.resolve();
   for (let i = 0; i < n; i++) p = p.then(() => undefined);
   return p;
 }
 
-// Trasporto AVVERSARIALE. Il server assegna il seq in ordine di ARRIVO
-// (internal/server/hub.go: Submit serializza sul mutex, chi arriva prima
-// vince), quindi l'ordine persistito è quello con cui le richieste raggiungono
-// l'hub -- NON quello con cui il client le ha emesse. Qui ogni richiesta
-// "viaggia" per un numero DECRESCENTE di turni: se il client ne lascia più di
-// una in volo insieme, arrivano in ordine INVERTITO. L'unico modo di far
-// arrivare gli op in ordine di invio è mandarne uno alla volta.
-const TRAVEL = 32; // > del numero di op usati nei test, così i turni restano positivi
+// ADVERSARIAL transport. The server assigns the seq in order of ARRIVAL
+// (internal/server/hub.go: Submit serializes on the mutex, whoever arrives first
+// wins), so the persisted order is the one in which requests reach
+// the hub -- NOT the one in which the client emitted them. Here every request
+// "travels" for a DECREASING number of turns: if the client leaves more than
+// one in flight together, they arrive in INVERTED order. The only way to make
+// ops arrive in send order is to send one at a time.
+const TRAVEL = 32; // > the number of ops used in the tests, so the turns stay positive
 
 function reorderingTransport() {
   const arrived: string[] = [];
@@ -126,9 +126,9 @@ function reorderingTransport() {
   let inFlight = 0;
   let maxInFlight = 0;
   let seq = 0;
-  // mockReset: butta via il mockResolvedValue di boot() e qualunque coda di
-  // *Once lasciata da un test precedente, così l'implementazione qui sotto è
-  // l'unica che risponde.
+  // mockReset: throws away boot()'s mockResolvedValue and any *Once queue
+  // left by a previous test, so the implementation below is
+  // the only one that answers.
   rpc.submitOp.mockReset();
   rpc.submitOp.mockImplementation(async (req: { op: Op }) => {
     inFlight += 1;
@@ -154,10 +154,10 @@ function snapshotOf(nodes: Record<string, PbNode>) {
   });
 }
 
-// Il client vivo del test in corso. Ogni SyncClient tiene aperti uno stream e
-// (dal fix sul ciclo di vita) dei timer di riconnessione: senza uno stop in
-// afterEach un client sopravviverebbe al proprio test e continuerebbe a
-// riconnettersi DENTRO il successivo, scrivendo nello stesso store globale.
+// The live client of the current test. Every SyncClient keeps a stream open and
+// (since the lifecycle fix) reconnection timers: without a stop in
+// afterEach a client would outlive its own test and keep
+// reconnecting INSIDE the next one, writing into the same global store.
 let live: SyncClient | null = null;
 
 function resetStore() {
@@ -183,11 +183,11 @@ async function boot(nodes: Record<string, PbNode>) {
   return { sync, stream };
 }
 
-describe("SyncClient: modello confermato/pending", () => {
-  // Il console.error resta (serve allo sviluppatore) ma non è più l'UNICO
-  // posto in cui i fallimenti finiscono: qui li zittiamo e li verifichiamo.
-  // Spy condiviso perché ogni test chiude il proprio stream in fondo, e la
-  // chiusura è di per sé un fallimento che va loggato.
+describe("SyncClient: confirmed/pending model", () => {
+  // The console.error stays (it serves the developer) but is no longer the ONLY
+  // place where failures end up: here we silence them and verify them.
+  // Shared spy because every test closes its own stream at the end, and the
+  // closure is in itself a failure that must be logged.
   let logged: ReturnType<typeof vi.spyOn>;
 
   beforeEach(() => {
@@ -202,7 +202,7 @@ describe("SyncClient: modello confermato/pending", () => {
     logged.mockRestore();
   });
 
-  it("un op RIFIUTATO dal server sparisce dalla vista e riporta l'errore", async () => {
+  it("an op REJECTED by the server disappears from the view and reports the error", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
 
     let rejectSubmit!: (e: unknown) => void;
@@ -213,17 +213,17 @@ describe("SyncClient: modello confermato/pending", () => {
     );
 
     sync.submit(moveOp("op-mine", "n1", 999, 999));
-    // Apply ottimistico: la modifica si vede subito, prima di qualunque risposta.
+    // Optimistic apply: the change shows right away, before any response.
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 999, y: 999 });
 
     rejectSubmit(new Error("node already exists"));
     await flush();
 
-    // Il server non l'ha mai accettata: la modifica DEVE sparire (in M0 restava
-    // sullo schermo per sempre, persa al reload successivo).
+    // The server never accepted it: the change MUST disappear (in M0 it stayed
+    // on screen forever, lost on the next reload).
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     expect(useScene.getState().pending).toHaveLength(0);
-    // ...e il fallimento deve essere VISIBILE, non solo un console.error.
+    // ...and the failure must be VISIBLE, not just a console.error.
     expect(useScene.getState().lastError).toContain("node already exists");
     expect(logged).toHaveBeenCalled();
 
@@ -231,7 +231,7 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
   });
 
-  it("un op remoto arrivato mentre il proprio è in volo NON schiaccia la modifica ottimistica (rebase)", async () => {
+  it("a remote op arrived while one's own is in flight does NOT crush the optimistic change (rebase)", async () => {
     const { sync, stream } = await boot({
       n1: rectNode("n1", 0, 0),
       n2: rectNode("n2", 0, 0),
@@ -246,17 +246,17 @@ describe("SyncClient: modello confermato/pending", () => {
 
     sync.submit(moveOp("op-mine", "n1", 200, 0));
 
-    // L'altro client ha vinto la corsa: i SUOI record arrivano prima del nostro
-    // eco. Il record su n1 è ordinato PRIMA del nostro op.
+    // The other client won the race: ITS records arrive before our
+    // echo. The record on n1 is ordered BEFORE our op.
     stream.push(applied(1, OTHER, moveOp("op-them-1", "n1", 100, 0)));
     stream.push(applied(2, OTHER, moveOp("op-them-2", "n2", 333, 0)));
     await flush();
 
     const scene = useScene.getState().scene!;
-    expect(scene.nodes.at("n2")).toMatchObject({ x: 333 }); // la modifica remota non si perde
-    expect(scene.nodes.at("n1")).toMatchObject({ x: 200 }); // ...e nemmeno la nostra
+    expect(scene.nodes.at("n2")).toMatchObject({ x: 333 }); // the remote change is not lost
+    expect(scene.nodes.at("n1")).toMatchObject({ x: 200 }); // ...nor is ours
 
-    // Poi arriva il nostro eco: l'op diventa confermato e la coda si svuota.
+    // Then our echo arrives: the op becomes confirmed and the queue empties.
     resolveSubmit({ ack: { opId: "op-mine", seq: 3n } });
     stream.push(applied(3, CLIENT, moveOp("op-mine", "n1", 200, 0)));
     await flush();
@@ -268,22 +268,22 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
   });
 
-  it("il proprio eco conferma l'op UNA volta sola e non lo riapplica sopra i record successivi", async () => {
+  it("the own echo confirms the op only ONCE and does not reapply it on top of subsequent records", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
 
     sync.submit(moveOp("op-mine", "n1", 200, 0));
     await flush();
     expect(useScene.getState().pending).toHaveLength(1);
 
-    // L'eco del PROPRIO op non va scartato: è ciò che lo rende confermato.
+    // The echo of the OWN op must not be discarded: it is what makes it confirmed.
     stream.push(applied(1, CLIENT, moveOp("op-mine", "n1", 200, 0)));
     await flush();
     expect(useScene.getState().pending).toHaveLength(0);
     expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 200 });
 
-    // Un record remoto successivo deve poter sovrascrivere: se l'op confermato
-    // fosse rimasto anche in coda, il rebase lo riapplicherebbe sopra e n1
-    // tornerebbe a 200 -- doppia applicazione dello stesso op.
+    // A subsequent remote record must be able to overwrite: if the confirmed op
+    // had also stayed in the queue, the rebase would reapply it on top and n1
+    // would go back to 200 -- double application of the same op.
     stream.push(applied(2, OTHER, moveOp("op-them", "n1", 50, 0)));
     await flush();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 50 });
@@ -292,42 +292,42 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
   });
 
-  // --- morte dello stream ----------------------------------------------------
-  // Subscribe è l'UNICA cosa che fa avanzare il confermato e che svuota la coda
-  // degli op in volo: la sua morte non può restare invisibile. Prima di questo
-  // fix `void this.consume()` non aveva né catch né try/catch, quindi la fine
-  // dello stream era una unhandled rejection e NIENT'ALTRO -- confermato
-  // congelato, coda che cresceva a ogni gesto, e la pillola di stato che
-  // continuava a dire "connesso".
+  // --- death of the stream ---------------------------------------------------
+  // Subscribe is the ONLY thing that advances the confirmed state and empties the queue
+  // of in-flight ops: its death cannot stay invisible. Before this
+  // fix `void this.consume()` had neither catch nor try/catch, so the end
+  // of the stream was an unhandled rejection and NOTHING ELSE -- confirmed state
+  // frozen, queue growing with every gesture, and the status pill
+  // still saying "connected".
 
-  it("uno stream che MUORE non resta silenzioso", async () => {
+  it("a stream that DIES does not stay silent", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
     expect(useScene.getState().syncError).toBeNull();
 
-    // Caso reale: Subscribe risponde CodeOutOfRange quando since_seq è più
-    // vecchio della history ormai compattata (l'altro è l'hub che chiude un
-    // subscriber troppo lento). Entrambi partono dal SERVER: non serve una rete
-    // che cade perché succeda.
+    // Real case: Subscribe answers CodeOutOfRange when since_seq is older
+    // than the now-compacted history (the other is the hub closing a
+    // too-slow subscriber). Both start from the SERVER: no network
+    // drop is needed for it to happen.
     stream.fail(new ConnectError("since_seq too old", Code.OutOfRange));
     await flush();
 
     expect(useScene.getState().syncError).toContain("since_seq too old");
     expect(logged).toHaveBeenCalled();
 
-    // Da qui in poi nessun eco può più confermare niente: l'op resta in coda
-    // per sempre. È il wedge -- che adesso è però OSSERVABILE (pillola
-    // "sconnesso" + banner in App.tsx) invece che silenzioso.
+    // From here on no echo can confirm anything anymore: the op stays queued
+    // forever. It is the wedge -- which is now OBSERVABLE however ("disconnected"
+    // pill + banner in App.tsx) instead of silent.
     sync.submit(moveOp("op-mine", "n1", 200, 0));
     await flush();
     expect(useScene.getState().pending).toHaveLength(1);
     expect(useScene.getState().syncError).not.toBeNull();
   });
 
-  it("uno stream CHIUSO dal server è un fallimento come gli altri", async () => {
+  it("a stream CLOSED by the server is a failure like the others", async () => {
     const { stream } = await boot({ n1: rectNode("n1", 0, 0) });
 
-    // Fine "pulita" del for-await: nessuna eccezione, ma il risultato per il
-    // client è identico -- non arriverà più nessun record.
+    // "Clean" end of the for-await: no exception, but the result for the
+    // client is identical -- no more records will ever arrive.
     stream.close();
     await flush();
 
@@ -335,35 +335,35 @@ describe("SyncClient: modello confermato/pending", () => {
     expect(logged).toHaveBeenCalled();
   });
 
-  // --- ordine di invio -------------------------------------------------------
-  // Il seq lo assegna il SERVER in ordine di arrivo, quindi l'ordine persistito
-  // è deciso dalla rete e non dall'utente. Con submit fire-and-forget più
-  // richieste sono in volo insieme e il documento ricaricato può legittimamente
-  // differire da quello sullo schermo: op19 (x=100) e op20 (x=200) partiti
-  // insieme, op20 che arriva per primo, oplog [x=200, x=100], reload a x=100
-  // mentre il canvas mostra 200.
+  // --- send order ------------------------------------------------------------
+  // The seq is assigned by the SERVER in order of arrival, so the persisted order
+  // is decided by the network and not by the user. With fire-and-forget submit several
+  // requests are in flight together and the reloaded document can legitimately
+  // differ from the one on screen: op19 (x=100) and op20 (x=200) started
+  // together, op20 arriving first, oplog [x=200, x=100], reload at x=100
+  // while the canvas shows 200.
 
-  it("submit CONCORRENTI raggiungono il server nell'ORDINE DI INVIO", async () => {
+  it("CONCURRENT submits reach the server in SEND ORDER", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
     const net = reorderingTransport();
 
-    // Cinque modifiche in rapida successione (due gesti ravvicinati, o un undo
-    // subito dopo un drag): l'intento dell'utente È questo ordine, e x=500 deve
-    // essere l'ultima cosa che il server persiste.
+    // Five changes in quick succession (two close gestures, or an undo
+    // right after a drag): the user's intent IS this order, and x=500 must
+    // be the last thing the server persists.
     const ids = ["op-1", "op-2", "op-3", "op-4", "op-5"];
     ids.forEach((opId, i) => sync.submit(moveOp(opId, "n1", (i + 1) * 100, 0)));
     await flush();
 
     expect(net.arrived).toEqual(ids);
-    // ...e il modo in cui ci si arriva: una sola richiesta in volo alla volta.
-    // Senza questo, l'ordine sarebbe solo una coincidenza dello scheduler.
+    // ...and the way to get there: a single request in flight at a time.
+    // Without this, the order would only be a coincidence of the scheduler.
     expect(net.maxInFlight()).toBe(1);
 
     stream.close();
     await flush();
   });
 
-  it("se un op FALLISCE la coda si FERMA: i successivi non partono mai", async () => {
+  it("if an op FAILS the queue STOPS: the following ones never go out", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
     const net = reorderingTransport();
     net.failOn("op-2", new ConnectError("node already exists", Code.InvalidArgument));
@@ -372,18 +372,18 @@ describe("SyncClient: modello confermato/pending", () => {
     sync.submit(moveOp("op-2", "n1", 200, 0));
     sync.submit(moveOp("op-3", "n1", 300, 0));
     sync.submit(moveOp("op-4", "n1", 400, 0));
-    // Apply ottimistico: tutti e quattro si vedono subito.
+    // Optimistic apply: all four show right away.
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 400 });
     await flush();
 
-    // op-3 e op-4 erano costruiti su uno stato (x=200) che il server non ha mai
-    // raggiunto: mandarli vorrebbe dire persistere una modifica basata su una
-    // premessa falsa. Non partono.
+    // op-3 and op-4 were built on a state (x=200) the server never
+    // reached: sending them would mean persisting a change based on a
+    // false premise. They do not go out.
     expect(net.arrived).toEqual(["op-1", "op-2"]);
     expect(rpc.submitOp).toHaveBeenCalledTimes(2);
 
-    // op-1 è passato e resta in volo in attesa del suo eco; op-2 (rifiutato) e
-    // la coda dietro di lui escono dalla vista.
+    // op-1 went through and stays in flight waiting for its echo; op-2 (rejected) and
+    // the queue behind it leave the view.
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-1"]);
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 100 });
     expect(useScene.getState().lastError).toContain("node already exists");
@@ -393,12 +393,12 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
   });
 
-  // Hub.Submit prende writeMu, appende, e fa il BROADCAST ai subscriber PRIMA
-  // di scrivere la risposta della unary (internal/server/hub.go). Se la
-  // connessione muore in quella finestra il client vede fallire una richiesta
-  // che sul server è invece andata a buon fine -- e l'eco lo dimostra, perché è
-  // già arrivato.
-  it("un submit fallito DOPO che il server ha già applicato l'op non trascina giù la coda", async () => {
+  // Hub.Submit takes writeMu, appends, and BROADCASTS to subscribers BEFORE
+  // writing the unary's response (internal/server/hub.go). If the
+  // connection dies in that window the client sees a request fail
+  // that on the server actually succeeded -- and the echo proves it, because it
+  // has already arrived.
+  it("a submit that fails AFTER the server has already applied the op does not drag the queue down", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
 
     const sent: string[] = [];
@@ -417,42 +417,42 @@ describe("SyncClient: modello confermato/pending", () => {
     sync.submit(moveOp("op-1", "n1", 100, 0));
     sync.submit(moveOp("op-2", "n1", 200, 0));
     await flush();
-    expect(sent).toEqual(["op-1"]); // op-2 aspetta il suo turno
+    expect(sent).toEqual(["op-1"]); // op-2 waits its turn
 
-    // Il broadcast è già passato: op-1 è nell'op-log, quindi DURABILE.
+    // The broadcast has already passed: op-1 is in the op-log, so DURABLE.
     stream.push(applied(1, CLIENT, moveOp("op-1", "n1", 100, 0)));
     await flush();
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-2"]);
 
-    // ...e solo ADESSO la risposta HTTP muore.
+    // ...and only NOW does the HTTP response die.
     killFirst(new ConnectError("connection closed", Code.Unavailable));
     await flush();
 
-    // La premessa di op-2 ("op-1 è sul server") è VERA: fermarlo butterebbe
-    // via lavoro valido e mostrerebbe un errore per un op riuscito.
+    // The premise of op-2 ("op-1 is on the server") is TRUE: stopping it would throw
+    // away valid work and would show an error for a successful op.
     expect(sent).toEqual(["op-1", "op-2"]);
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-2"]);
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 });
     expect(useScene.getState().lastError).toBeNull();
-    expect(logged).toHaveBeenCalled(); // resta comunque in console
+    expect(logged).toHaveBeenCalled(); // it still ends up in the console
 
     stream.close();
     await flush();
   });
 
-  // --- deadline e tetto della coda -------------------------------------------
-  // Con l'outbox serializzato una richiesta che non si risolve mai non perde
-  // più solo se stessa: blocca la testa, e ogni gesto successivo viene
-  // applicato in ottimistico, accodato e mai spedito -- senza che nulla lo
-  // segnali (lastError vuoto, syncError riguarda solo Subscribe, pillola
-  // "connesso").
+  // --- deadline and queue cap ------------------------------------------------
+  // With the serialized outbox a request that never resolves no longer loses
+  // only itself: it blocks the head, and every subsequent gesture is
+  // applied optimistically, queued and never sent -- with nothing
+  // signaling it (empty lastError, syncError concerns only Subscribe, pill
+  // "connected").
 
-  it("un submit che NON SI RISOLVE MAI non blocca la coda per sempre: c'è una deadline", async () => {
+  it("a submit that NEVER RESOLVES does not block the queue forever: there is a deadline", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
 
-    // Trasporto che ONORA la deadline della chiamata (come quello vero:
-    // CallOptions.timeoutMs) e per il resto non risponde mai -- handler
-    // bloccato, connessione finita nel nulla, laptop sospeso.
+    // Transport that HONORS the call's deadline (like the real one:
+    // CallOptions.timeoutMs) and otherwise never answers -- blocked
+    // handler, connection vanished into nothing, suspended laptop.
     const sent: { opId: string; timeoutMs?: number }[] = [];
     rpc.submitOp.mockReset();
     rpc.submitOp.mockImplementation(
@@ -472,18 +472,18 @@ describe("SyncClient: modello confermato/pending", () => {
     try {
       sync.submit(moveOp("op-1", "n1", 100, 0));
       await vi.advanceTimersByTimeAsync(0);
-      // Senza deadline richiesta la promise resta appesa e il drain non
-      // riparte MAI: è l'unica cosa che rende il blocco finito.
+      // Without a requested deadline the promise stays hanging and the drain
+      // NEVER restarts: it is the only thing that makes the block finite.
       expect(sent[0].timeoutMs).toBeGreaterThan(0);
 
-      // Nel frattempo l'utente continua a lavorare: tutto si accoda, niente parte.
+      // Meanwhile the user keeps working: everything queues, nothing goes out.
       sync.submit(moveOp("op-2", "n1", 200, 0));
       await vi.advanceTimersByTimeAsync(1_000);
       expect(sent).toHaveLength(1);
       expect(useScene.getState().pending).toHaveLength(2);
 
-      // Scaduta la deadline la richiesta muore: il wedge diventa un fallimento
-      // osservabile invece di durare per sempre in silenzio.
+      // Once the deadline expires the request dies: the wedge becomes an
+      // observable failure instead of lasting forever in silence.
       await vi.advanceTimersByTimeAsync(60_000);
     } finally {
       vi.useRealTimers();
@@ -497,11 +497,11 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
   });
 
-  it("la coda ha un TETTO: il lavoro a rischio resta finito e il blocco visibile", async () => {
+  it("the queue has a CAP: the work at risk stays finite and the block visible", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
 
-    // Caso peggiore: testa bloccata e nemmeno la deadline la salva (rete che
-    // non risponde e timer fermi). Solo il tetto limita il danno.
+    // Worst case: head blocked and not even the deadline saves it (network that
+    // does not answer and stopped timers). Only the cap limits the damage.
     rpc.submitOp.mockReset();
     rpc.submitOp.mockImplementation(() => new Promise(() => {}));
 
@@ -510,27 +510,27 @@ describe("SyncClient: modello confermato/pending", () => {
     expect(useScene.getState().pending).toHaveLength(MAX_OUTBOX);
     expect(useScene.getState().lastError).toBeNull();
 
-    // L'op che sfonda il tetto non entra: viene rifiutato subito, con lo stesso
-    // rollback e lo stesso banner di un rifiuto del server. Quelli già accodati
-    // restano -- sono l'intento più vecchio e possono ancora partire.
+    // The op that breaks the cap does not enter: it is rejected right away, with the same
+    // rollback and the same banner as a server rejection. Those already queued
+    // stay -- they are the oldest intent and can still go out.
     sync.submit(moveOp("op-over", "n1", 999, 0));
     await flush();
 
     expect(useScene.getState().pending).toHaveLength(MAX_OUTBOX);
     expect(useScene.getState().pending.some((p) => p.opId === "op-over")).toBe(false);
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: MAX_OUTBOX });
-    expect(useScene.getState().lastError).toContain("troppe modifiche in attesa");
+    expect(useScene.getState().lastError).toContain("too many pending changes");
 
     stream.close();
     await flush();
   });
 
-  // --- storia e rollback -----------------------------------------------------
-  // endGesture spinge la voce di undo PRIMA di mandare l'op: se il tail-drop
-  // scarta N gesti, senza riparazione restano N voci di undo i cui inversi
-  // invertono uno stato che il server non ha mai avuto.
+  // --- history and rollback --------------------------------------------------
+  // endGesture pushes the undo entry BEFORE sending the op: if the tail-drop
+  // discards N gestures, without repair N undo entries remain whose inverses
+  // invert a state the server never had.
 
-  it("un fallimento che scarta la coda riavvolge le voci di undo di TUTTA la raffica", async () => {
+  it("a failure that discards the queue rewinds the undo entries of the WHOLE burst", async () => {
     const { stream } = await boot({});
     const net = reorderingTransport();
     net.failOn("op-a", new ConnectError("node already exists", Code.InvalidArgument));
@@ -540,14 +540,14 @@ describe("SyncClient: modello confermato/pending", () => {
     st.endGesture([createOp("op-a", "n1")]);
     st.beginGesture();
     st.endGesture([createOp("op-b", "n2")]);
-    // Le voci ci sono subito: Ctrl+Z non può aspettare il giro di rete.
+    // The entries are there right away: Ctrl+Z cannot wait for the network round.
     expect(useScene.getState().undoStack).toHaveLength(2);
     await flush();
 
-    // op-a rifiutato, op-b scartato con lui: nessuno dei due nodi esiste, e
-    // nessuna delle due voci di undo ha più un senso -- annullarle manderebbe
-    // deleteNode di nodi che il server non ha mai visto (ErrNodeNotFound), una
-    // per volta, bruciando le voci dei gesti VERI più sotto.
+    // op-a rejected, op-b discarded with it: neither node exists, and
+    // neither undo entry makes sense anymore -- undoing them would send
+    // deleteNode of nodes the server never saw (ErrNodeNotFound), one
+    // at a time, burning the entries of the REAL gestures below.
     expect(net.arrived).toEqual(["op-a"]);
     expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
     expect(useScene.getState().scene!.nodes.at("n2")).toBeUndefined();
@@ -558,12 +558,12 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
   });
 
-  // Il tail-drop lavora per OP, il gesto è l'unità dell'UNDO: i due granuli non
-  // coincidono, e i gesti multi-op sono la norma (selectTool manda un setProps
-  // per nodo selezionato sul drag e sul resize, un deleteNode per nodo su
-  // Canc). Se la coda si ferma a metà gruppo, la parte davanti è già durabile:
-  // buttare via la voce di undo intera renderebbe quella parte NON annullabile.
-  it("un gesto MULTI-OP fermato a metà tiene la voce di undo della parte passata", async () => {
+  // The tail-drop works per OP, the gesture is the unit of UNDO: the two granules do not
+  // coincide, and multi-op gestures are the norm (selectTool sends a setProps
+  // per selected node on drag and resize, a deleteNode per node on
+  // Delete). If the queue stops mid-group, the front part is already durable:
+  // throwing away the whole undo entry would make that part NOT undoable.
+  it("a MULTI-OP gesture stopped halfway keeps the undo entry of the part that went through", async () => {
     const { stream } = await boot({
       n1: rectNode("n1", 0, 0),
       n2: rectNode("n2", 300, 0),
@@ -577,18 +577,18 @@ describe("SyncClient: modello confermato/pending", () => {
     expect(useScene.getState().undoStack).toHaveLength(1);
     await flush();
 
-    // op-a è passato (200 OK) e il suo eco non è ancora arrivato; op-b muore.
+    // op-a went through (200 OK) and its echo has not arrived yet; op-b dies.
     expect(net.arrived).toEqual(["op-a", "op-b"]);
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
     expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
 
-    // La voce sopravvive, ristretta all'op che è davvero sul server.
+    // The entry survives, narrowed to the op that is really on the server.
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().undoStack[0]).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
 
-    // L'eco arrivato DOPO il rifiuto non la cancella: prima del fix il mark era
-    // già sparito e la conferma diventava un no-op.
+    // The echo arriving AFTER the rejection does not erase it: before the fix the mark had
+    // already disappeared and the confirmation became a no-op.
     stream.push(applied(1, CLIENT, moveOp("op-a", "n1", 40, 40)));
     await flush();
     expect(useScene.getState().undoStack).toHaveLength(1);
@@ -599,27 +599,27 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
   });
 
-  // Un record ALTRUI non fa avanzare solo il documento: può rendere non più
-  // valide le voci di undo/redo che riguardano i nodi che tocca
-  // (store.ts::markStale). È l'UNICO posto in cui la provenienza di un record
-  // conta -- applicarlo si applica comunque, echi compresi -- e qui la si legge
-  // dal clientId, che è la prova che il record non è nostro.
-  it("un record di un ALTRO client invalida le voci di undo su quel nodo", async () => {
+  // Someone ELSE's record does not only advance the document: it can invalidate
+  // the undo/redo entries concerning the nodes it touches
+  // (store.ts::markStale). It is the ONLY place where a record's provenance
+  // matters -- applying it is done anyway, echoes included -- and here it is read
+  // from the clientId, which is the proof that the record is not ours.
+  it("a record from ANOTHER client invalidates the undo entries on that node", async () => {
     const { stream } = await boot({ n1: rectNode("n1", 0, 0) });
 
     const st = useScene.getState();
     st.beginGesture();
     st.endGesture([moveOp("op-1", "n1", 40, 40)]);
     await flush();
-    // Il nostro eco: conferma l'op e NON tocca la storia (è nostro, per clientId
-    // e perché è ancora in coda).
+    // Our echo: confirms the op and does NOT touch the history (it is ours, by clientId
+    // and because it is still queued).
     stream.push(applied(1, CLIENT, moveOp("op-1", "n1", 40, 40)));
     await flush();
     expect(useScene.getState().pending).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(1);
 
-    // Un altro client sposta n1 altrove. La voce di undo rimetterebbe (0,0)
-    // sopra la sua modifica, in silenzio: non è più valida.
+    // Another client moves n1 elsewhere. The undo entry would put (0,0) back
+    // on top of their change, silently: it is no longer valid.
     stream.push(applied(2, OTHER, moveOp("op-them", "n1", 500, 500)));
     await flush();
 
@@ -632,7 +632,7 @@ describe("SyncClient: modello confermato/pending", () => {
     await flush();
   });
 
-  it("lo stop è per la coda, non per il client: un submit successivo riparte", async () => {
+  it("the stop is for the queue, not for the client: a subsequent submit restarts", async () => {
     const { sync, stream } = await boot({ n1: rectNode("n1", 0, 0) });
     const net = reorderingTransport();
     net.failOn("op-1", new ConnectError("disk full", Code.InvalidArgument));
@@ -642,10 +642,10 @@ describe("SyncClient: modello confermato/pending", () => {
     expect(useScene.getState().pending).toHaveLength(0);
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
 
-    // Il rollback ha riportato la vista a quello che il server HA davvero: un
-    // op successivo è costruito su una premessa vera e va mandato. Latchare il
-    // client per sempre al primo InvalidArgument (un id duplicato, per dire)
-    // vorrebbe dire congelare l'editor.
+    // The rollback brought the view back to what the server REALLY has: a
+    // subsequent op is built on a true premise and must be sent. Latching the
+    // client forever at the first InvalidArgument (a duplicate id, say)
+    // would mean freezing the editor.
     sync.submit(moveOp("op-2", "n1", 700, 0));
     await flush();
 
@@ -658,26 +658,26 @@ describe("SyncClient: modello confermato/pending", () => {
 });
 
 // ---------------------------------------------------------------------------
-// CICLO DI VITA dello stream: abort, riconnessione, gap.
+// LIFECYCLE of the stream: abort, reconnection, gap.
 //
-// Subscribe è l'unica cosa che fa avanzare il documento confermato, e il
-// backend CHIUDE di sua iniziativa lo stream di un subscriber rimasto indietro
-// (internal/server/hub.go: il canale pieno fa endSubscriberLocked) proprio
-// perché il client si riconnetta con since_seq all'ultimo record applicato e
-// recuperi il backlog. Senza riconnessione quel disegno non funziona: la
-// prima raffica un po' fitta stacca il client per il resto della sessione.
+// Subscribe is the only thing that advances the confirmed document, and the
+// backend CLOSES on its own initiative the stream of a subscriber that fell behind
+// (internal/server/hub.go: the full channel does endSubscriberLocked) precisely
+// so that the client reconnects with since_seq at the last applied record and
+// catches up on the backlog. Without reconnection this design does not work: the
+// first somewhat dense burst detaches the client for the rest of the session.
 //
-// Qui ogni chiamata a Subscribe apre un canale NUOVO, così i test possono
-// guardare quante subscription esistono, da quale since_seq ripartono e se il
-// trasporto precedente è stato davvero abortito.
-describe("SyncClient: ciclo di vita dello stream", () => {
+// Here every call to Subscribe opens a NEW channel, so the tests can
+// look at how many subscriptions exist, from which since_seq they restart and whether the
+// previous transport was really aborted.
+describe("SyncClient: stream lifecycle", () => {
   let logged: ReturnType<typeof vi.spyOn>;
   let warned: ReturnType<typeof vi.spyOn>;
 
-  // Più lungo del backoff massimo di una riconnessione e più corto della
-  // finestra oltre la quale uno stream è considerato "stabile" (e quindi il
-  // budget dei tentativi si azzera): un avanzamento di questa durata fa
-  // scattare esattamente un tentativo.
+  // Longer than a reconnection's maximum backoff and shorter than the
+  // window beyond which a stream is considered "stable" (and so the
+  // attempts budget resets): an advance of this length
+  // triggers exactly one attempt.
   const RETRY_WINDOW = 15_000;
 
   interface Opened {
@@ -692,9 +692,9 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     rpc.subscribe.mockImplementation(
       (req: { sinceSeq: bigint }, opts?: { signal?: AbortSignal }) => {
         const stream = channel<ServerMsg>();
-        // Il trasporto vero muore quando il segnale viene abortito: qui il
-        // doppio fa lo stesso, così "abortito" e "stream finito" restano legati
-        // come nella realtà.
+        // The real transport dies when the signal is aborted: here the
+        // double does the same, so "aborted" and "stream ended" stay linked
+        // as in reality.
         opts?.signal?.addEventListener("abort", () => stream.close());
         opened.push({ since: req.sinceSeq, signal: opts?.signal, stream });
         return stream;
@@ -734,7 +734,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     warned.mockRestore();
   });
 
-  it("uno stream CHIUSO dal server fa ripartire la subscription dall'ultimo seq applicato", async () => {
+  it("a stream CLOSED by the server restarts the subscription from the last applied seq", async () => {
     const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
     expect(opened).toHaveLength(1);
     expect(opened[0].since).toBe(0n);
@@ -744,40 +744,40 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     await settle();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 100 });
 
-    // Il subscriber è rimasto indietro: l'hub chiude il canale. In M0 il client
-    // smetteva semplicemente di ricevere per il resto della sessione.
+    // The subscriber fell behind: the hub closes the channel. In M0 the client
+    // simply stopped receiving for the rest of the session.
     last(opened).stream.close();
     await settle();
     expect(useScene.getState().connection).toBe("reconnecting");
-    // ...ma non in un ciclo stretto: un riavvio del server non deve trasformarsi
-    // in una raffica di POST.
+    // ...but not in a tight loop: a server restart must not turn
+    // into a burst of POSTs.
     expect(opened).toHaveLength(1);
 
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
     expect(opened).toHaveLength(2);
-    // IL punto: si riparte da DOPO l'ultimo record applicato (since_seq è
-    // esclusivo, hub.go: `rec.Seq > sinceSeq`), non da capo e non dal futuro.
+    // THE point: we restart from AFTER the last applied record (since_seq is
+    // exclusive, hub.go: `rec.Seq > sinceSeq`), not from scratch and not from the future.
     expect(opened[1].since).toBe(1n);
     expect(useScene.getState().connection).toBe("connected");
     expect(useScene.getState().syncError).toBeNull();
 
-    // E la nuova subscription è viva davvero.
+    // And the new subscription is really alive.
     last(opened).stream.push(applied(2, OTHER, moveOp("op-them-2", "n1", 200, 0)));
     await settle();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 });
   });
 
-  it("un BUCO nella sequenza non viene accettato in silenzio: si risincronizza dall'ultimo seq buono", async () => {
+  it("a GAP in the sequence is not silently accepted: it resynchronizes from the last good seq", async () => {
     const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
 
     last(opened).stream.push(applied(1, OTHER, moveOp("op-1", "n1", 100, 0)));
     await settle();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 100 });
 
-    // seq 2 non è mai arrivato. Applicare il 3 vorrebbe dire proseguire con un
-    // documento a cui manca un op: se il buco conteneva un CreateNode, ogni
-    // SetProps successivo su quel nodo viene inghiottito da applyOp e la forma
-    // non compare più (e nessuno se ne accorge).
+    // seq 2 never arrived. Applying 3 would mean proceeding with a
+    // document missing an op: if the gap contained a CreateNode, every
+    // subsequent SetProps on that node is swallowed by applyOp and the shape
+    // no longer appears (and nobody notices).
     last(opened).stream.push(applied(3, OTHER, moveOp("op-3", "n1", 300, 0)));
     await settle();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 100 });
@@ -785,8 +785,8 @@ describe("SyncClient: ciclo di vita dello stream", () => {
 
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
     expect(opened).toHaveLength(2);
-    // Si riparte dall'ultimo seq BUONO, così il server rimanda il record
-    // mancante insieme a quelli dopo.
+    // We restart from the last GOOD seq, so the server resends the missing
+    // record together with those after it.
     expect(opened[1].since).toBe(1n);
     expect(opened[0].signal!.aborted).toBe(true);
 
@@ -797,30 +797,30 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().connection).toBe("connected");
   });
 
-  it("stop() stacca il trasporto e impedisce qualunque altra mutazione dello store", async () => {
+  it("stop() detaches the transport and prevents any further store mutation", async () => {
     const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
 
-    // Record già nel buffer del trasporto quando l'utente lascia la pagina (o
-    // React smonta il componente): il client deve rifiutarsi di applicarlo.
+    // Record already in the transport's buffer when the user leaves the page (or
+    // React unmounts the component): the client must refuse to apply it.
     last(opened).stream.push(applied(1, OTHER, moveOp("op-them", "n1", 999, 0)));
     sync.stop();
     await settle();
 
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
-    // ...e il trasporto è stato ABORTITO, non solo ignorato: senza segnale la
-    // richiesta HTTP resta aperta e il server continua a tenere il subscriber.
+    // ...and the transport was ABORTED, not just ignored: without the signal the
+    // HTTP request stays open and the server keeps holding the subscriber.
     expect(opened[0].signal!.aborted).toBe(true);
-    // Nessuno stop trasformato in riconnessione: un client fermato resta fermo.
+    // No stop turned into a reconnection: a stopped client stays stopped.
     expect(useScene.getState().connection).not.toBe("reconnecting");
 
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW * 4);
     expect(opened).toHaveLength(1);
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
 
-    // Anche l'altra metà: un op submittato su un client fermato non deve
-    // entrare nella vista. Nessuno lo manderebbe (la coda è ferma) e in
-    // StrictMode lo store è ormai di un ALTRO client: resterebbe in `pending`
-    // per sempre, visibile e mai confermato da niente.
+    // The other half too: an op submitted on a stopped client must not
+    // enter the view. Nobody would send it (the queue is stopped) and in
+    // StrictMode the store now belongs to ANOTHER client: it would stay in `pending`
+    // forever, visible and never confirmed by anything.
     sync.submit(moveOp("op-late", "n1", 42, 0));
     await settle();
     expect(useScene.getState().pending).toHaveLength(0);
@@ -828,7 +828,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(rpc.submitOp).not.toHaveBeenCalled();
   });
 
-  it("due start() di fila (StrictMode) lasciano UNA sola subscription", async () => {
+  it("two consecutive start() calls (StrictMode) leave ONE single subscription", async () => {
     rpc.openDocument.mockResolvedValue({
       snapshot: snapshotOf({ n1: rectNode("n1", 0, 0) }), seq: 0n,
     });
@@ -836,9 +836,9 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     const sync = new SyncClient("doc1", CLIENT);
     live = sync;
 
-    // StrictMode invoca l'effetto due volte: prima del fix la seconda start()
-    // apriva un secondo stream (due goroutine sul server, due copie di ogni
-    // record applicate nello stesso store globale).
+    // StrictMode invokes the effect twice: before the fix the second start()
+    // opened a second stream (two goroutines on the server, two copies of every
+    // record applied in the same global store).
     await Promise.all([sync.start(), sync.start()]);
     await settle();
 
@@ -846,16 +846,16 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(rpc.subscribe).toHaveBeenCalledTimes(1);
   });
 
-  it("gli op PENDING sopravvivono a una riconnessione e non vengono applicati due volte", async () => {
+  it("PENDING ops survive a reconnection and are not applied twice", async () => {
     const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
 
     sync.submit(moveOp("op-mine", "n1", 200, 0));
     await settle();
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-mine"]);
 
-    // Lo stream muore PRIMA che l'eco torni indietro: l'op non è confermato ma
-    // può benissimo essere già nell'op-log (Hub.Submit fa broadcast prima di
-    // rispondere). Buttarlo via inventerebbe un rollback che nessuno ha chiesto.
+    // The stream dies BEFORE the echo comes back: the op is not confirmed but
+    // may well already be in the op-log (Hub.Submit broadcasts before
+    // answering). Throwing it away would invent a rollback nobody asked for.
     last(opened).stream.close();
     await settle();
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-mine"]);
@@ -863,29 +863,29 @@ describe("SyncClient: ciclo di vita dello stream", () => {
 
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
     expect(opened).toHaveLength(2);
-    // Niente è ancora confermato: si riparte da 0.
+    // Nothing is confirmed yet: we restart from 0.
     expect(opened[1].since).toBe(0n);
 
-    // Il backlog rigioca l'eco dell'op in volo: è la sua CONFERMA, non una
-    // seconda applicazione -- deve uscire dalla coda.
+    // The backlog replays the in-flight op's echo: it is its CONFIRMATION, not a
+    // second application -- it must leave the queue.
     last(opened).stream.push(applied(1, CLIENT, moveOp("op-mine", "n1", 200, 0)));
     await settle();
     expect(useScene.getState().pending).toHaveLength(0);
     expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 200 });
 
-    // Se fosse rimasto in coda, il rebase lo rimetterebbe sopra ogni record
-    // successivo e questo spostamento remoto non si vedrebbe mai.
+    // If it had stayed queued, the rebase would put it back on top of every subsequent
+    // record and this remote move would never show.
     last(opened).stream.push(applied(2, OTHER, moveOp("op-them", "n1", 50, 0)));
     await settle();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 50 });
   });
 
-  it("la riconnessione non è infinita: dopo un tetto di tentativi si arrende e lo dichiara", async () => {
+  it("reconnection is not infinite: after a cap of attempts it gives up and declares it", async () => {
     const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
 
-    // Server spento: ogni tentativo muore subito. Ritentare per sempre
-    // consumerebbe batteria e nasconderebbe il problema dietro una pillola che
-    // dice "riconnessione" da mezz'ora.
+    // Server down: every attempt dies right away. Retrying forever
+    // would drain battery and hide the problem behind a pill that
+    // says "reconnecting" for half an hour.
     let guard = 0;
     while (useScene.getState().connection !== "error" && guard < 40) {
       last(opened).stream.fail(new ConnectError("connection refused", Code.Unavailable));
@@ -895,27 +895,27 @@ describe("SyncClient: ciclo di vita dello stream", () => {
 
     expect(useScene.getState().connection).toBe("error");
     expect(useScene.getState().syncError).toContain("connection refused");
-    expect(opened.length).toBeGreaterThan(1); // ha davvero ritentato...
-    expect(opened.length).toBeLessThanOrEqual(20); // ...ma non all'infinito
+    expect(opened.length).toBeGreaterThan(1); // it really retried...
+    expect(opened.length).toBeLessThanOrEqual(20); // ...but not forever
 
     const attempts = opened.length;
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW * 10);
     expect(opened).toHaveLength(attempts);
   });
 
-  // --- risincronizzazione a metà sessione ------------------------------------
-  // Il ramo CodeOutOfRange è il primo posto in cui setScene viene chiamato con
-  // un documento GIÀ VIVO sotto: c'è una coda in volo, una storia in dubbio e --
-  // fuori dallo store -- un outbox. Svuotare solo una parte di quella roba le
-  // disallinea, e il disallineamento non è visibile finché non arriva la
-  // risposta della richiesta rimasta in volo.
+  // --- mid-session resynchronization -----------------------------------------
+  // The CodeOutOfRange branch is the first place where setScene is called with
+  // a document ALREADY LIVE underneath: there is an in-flight queue, a doubtful history and --
+  // outside the store -- an outbox. Emptying only part of that stuff
+  // misaligns them, and the misalignment is not visible until the
+  // response of the request left in flight arrives.
   //
-  // Non è un caso di laboratorio: l'hub compatta ogni 256 op
-  // (internal/server/hub.go, snapshotEveryOps) e un hub riavviato riparte con
-  // historyBase al seq caricato (internal/server/bundle.go), quindi qualunque
-  // client che riprenda da più indietro ci finisce dentro.
+  // It is not a lab case: the hub compacts every 256 ops
+  // (internal/server/hub.go, snapshotEveryOps) and a restarted hub starts with
+  // historyBase at the loaded seq (internal/server/bundle.go), so any
+  // client that resumes from further back ends up in it.
 
-  it("una risincronizzazione svuota anche l'OUTBOX: la coda dietro non parte per un fantasma", async () => {
+  it("a resynchronization also empties the OUTBOX: the queue behind does not go out for a ghost", async () => {
     const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
 
     const sent: string[] = [];
@@ -934,30 +934,30 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     sync.submit(moveOp("op-1", "n1", 100, 0));
     sync.submit(moveOp("op-2", "n1", 200, 0));
     await settle();
-    expect(sent).toEqual(["op-1"]); // op-2 aspetta il suo turno
+    expect(sent).toEqual(["op-1"]); // op-2 waits its turn
     expect(useScene.getState().pending).toHaveLength(2);
 
-    // La history da cui volevamo ripartire è stata compattata: l'unica via
-    // d'uscita è riaprire il documento e adottarne lo snapshot.
+    // The history we wanted to restart from was compacted: the only way
+    // out is to reopen the document and adopt its snapshot.
     rpc.openDocument.mockResolvedValue({
       snapshot: snapshotOf({ n1: rectNode("n1", 7, 0) }), seq: 42n,
     });
     last(opened).stream.fail(new ConnectError("since_seq too old", Code.OutOfRange));
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
 
-    // Lo snapshot ha sostituito il documento: le due modifiche ottimistiche sono
-    // sparite dal canvas. L'utente deve poterlo LEGGERE da qualche parte --
-    // prima di questo fix sparivano con `lastError` nullo e la pillola su
-    // "connesso", cioè senza nessuna spiegazione da nessuna parte.
+    // The snapshot replaced the document: the two optimistic changes
+    // vanished from the canvas. The user must be able to READ it somewhere --
+    // before this fix they vanished with `lastError` null and the pill on
+    // "connected", that is without any explanation anywhere.
     expect(useScene.getState().pending).toHaveLength(0);
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 7 });
     expect(useScene.getState().lastError).not.toBeNull();
 
-    // ...e solo ADESSO muore la richiesta di op-1. `pending` è vuoto, quindi
-    // `landed()` ("non è più in coda, quindi il server ce l'ha") direbbe di sì
-    // per un op che non ha mai lasciato il browser, e op-2 -- costruito su
-    // x=100, uno stato che il server non ha mai avuto -- partirebbe lo stesso,
-    // in silenzio e in modo durabile.
+    // ...and only NOW does op-1's request die. `pending` is empty, so
+    // `landed()` ("it is no longer queued, so the server has it") would say yes
+    // for an op that never left the browser, and op-2 -- built on
+    // x=100, a state the server never had -- would go out anyway,
+    // silently and durably.
     killFirst(new ConnectError("connection closed", Code.Unavailable));
     await settle();
 
@@ -965,7 +965,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(rpc.submitOp).toHaveBeenCalledTimes(1);
   });
 
-  it("una risincronizzazione butta via anche undo/redo: invertivano un documento sostituito", async () => {
+  it("a resynchronization also throws away undo/redo: they inverted a replaced document", async () => {
     const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
 
     const st = useScene.getState();
@@ -976,8 +976,8 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().canUndo).toBe(true);
     expect(useScene.getState().history).toHaveLength(1);
 
-    // Lo snapshot non contiene nemmeno più il nodo su cui la voce di undo
-    // lavorava (un altro client l'ha cancellato prima della compattazione).
+    // The snapshot no longer even contains the node the undo entry
+    // worked on (another client deleted it before the compaction).
     rpc.openDocument.mockResolvedValue({
       snapshot: snapshotOf({ n2: rectNode("n2", 0, 0) }), seq: 42n,
     });
@@ -985,22 +985,22 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
 
     expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
-    // Una voce sopravvissuta manderebbe l'inverso di un op calcolato su uno
-    // stato che lo snapshot ha appena buttato via -- e senza il suo mark
-    // (`history` è stata svuotata) nemmeno un rifiuto potrebbe più riavvolgerla.
+    // A surviving entry would send the inverse of an op computed on a
+    // state the snapshot just threw away -- and without its mark
+    // (`history` was emptied) not even a rejection could rewind it anymore.
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().redoStack).toHaveLength(0);
     expect(useScene.getState().canUndo).toBe(false);
     expect(useScene.getState().history).toHaveLength(0);
   });
 
-  // --- revoca del rollback ----------------------------------------------------
-  // Hub.Submit fa il broadcast PRIMA di rispondere alla unary: una richiesta
-  // morta non dice che l'op non è stato applicato. Finché lo stream non tornava
-  // più la differenza non era osservabile; con la riconnessione l'eco arriva, e
-  // dice che il rollback era una bugia.
+  // --- rollback revocation ----------------------------------------------------
+  // Hub.Submit broadcasts BEFORE answering the unary: a dead request
+  // does not say the op was not applied. As long as the stream did not come back
+  // the difference was not observable; with reconnection the echo arrives, and
+  // says the rollback was a lie.
 
-  it("l'eco TARDIVO di un op annullato revoca il rollback: modifica e annulla tornano", async () => {
+  it("the LATE echo of a rolled-back op revokes the rollback: change and undo come back", async () => {
     const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
 
     let killSubmit!: (e: unknown) => void;
@@ -1019,49 +1019,49 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-mine"]);
     expect(useScene.getState().undoStack).toHaveLength(1);
 
-    // Riavvio del server: muore lo stream E la richiesta in volo. L'op però può
-    // benissimo essere già nell'op-log.
+    // Server restart: both the stream AND the in-flight request die. The op however may
+    // well already be in the op-log.
     last(opened).stream.close();
     await settle();
     killSubmit(new ConnectError("connection closed", Code.Unavailable));
     await settle();
 
-    // Politica invariata: rollback visibile (client-fix-3). Quello che cambia è
-    // che adesso è REVOCABILE.
+    // Policy unchanged: visible rollback (client-fix-3). What changes is
+    // that now it is REVOCABLE.
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().lastError).toContain("connection closed");
 
-    // La riconnessione rigioca il backlog: l'op era sul server dall'inizio.
+    // The reconnection replays the backlog: the op was on the server from the start.
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
     expect(opened).toHaveLength(2);
     last(opened).stream.push(applied(1, CLIENT, moveOp("op-mine", "n1", 200, 0)));
     await settle();
 
     expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 200 });
-    // La modifica è durabile e di nuovo sullo schermo: il banner che la dava per
-    // annullata va ritirato, e va detto che è invece salvata.
+    // The change is durable and back on screen: the banner that gave it as
+    // undone must be withdrawn, and it must be said that it is instead saved.
     expect(useScene.getState().lastError).toBeNull();
     expect(useScene.getState().notice).not.toBeNull();
-    // E deve tornare ANNULLABILE: senza voce, il prossimo Ctrl+Z disferebbe in
-    // silenzio il gesto precedente invece di questo.
+    // And it must become UNDOABLE again: without an entry, the next Ctrl+Z would silently
+    // undo the previous gesture instead of this one.
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
 
-    // ...e la voce ripristinata annulla davvero QUESTA modifica.
+    // ...and the restored entry really undoes THIS change.
     useScene.getState().undo();
     await settle();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
   });
 
-  // La revoca RICOSTRUISCE una voce di undo, ma gli stack vivi non sono uno
-  // stato autonomo finché c'è una transizione in dubbio: sono il replay di
-  // `history` sulla base della sua testa, fotografata PRIMA della revoca.
-  // Scrivere la voce solo sugli stack la fa cancellare dal primo rifiuto
-  // successivo -- e la finestra è quella normale, non un'acrobazia: l'utente
-  // continua a disegnare mentre la pillola dice "riconnessione…", quindi quando
-  // il backlog rigioca l'op rinnegato c'è quasi sempre un suo gesto in volo.
-  it("la voce RESTITUITA dalla revoca sopravvive al rifiuto di un op ancora in volo", async () => {
+  // The revocation REBUILDS an undo entry, but the live stacks are not an autonomous
+  // state while there is a transition in doubt: they are the replay of
+  // `history` on top of its head, photographed BEFORE the revocation.
+  // Writing the entry only onto the stacks gets it erased by the first subsequent
+  // rejection -- and the window is the normal one, not an acrobatic one: the user
+  // keeps drawing while the pill says "reconnecting…", so when the
+  // backlog replays the disowned op there is almost always one of their gestures in flight.
+  it("the entry RETURNED by the revocation survives the rejection of an op still in flight", async () => {
     const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
 
     const kill = new Map<string, (e: unknown) => void>();
@@ -1075,8 +1075,8 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     st.endGesture([moveOp("op-a", "n1", 200, 0)]);
     await settle();
 
-    // Riavvio del server: muore lo stream e con lui la richiesta in volo. L'op
-    // però può benissimo essere già nell'op-log (broadcast prima della risposta).
+    // Server restart: the stream dies and with it the in-flight request. The op
+    // however may well already be in the op-log (broadcast before the response).
     last(opened).stream.close();
     await settle();
     kill.get("op-a")!(new ConnectError("connection closed", Code.Unavailable));
@@ -1084,27 +1084,27 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().disowned.map((d) => d.opId)).toEqual(["op-a"]);
 
-    // L'utente continua a lavorare durante la riconnessione: il gesto B parte e
-    // resta in volo, quindi la sua transizione è in dubbio (history non vuota).
+    // The user keeps working during the reconnection: gesture B goes out and
+    // stays in flight, so its transition is in doubt (history not empty).
     st.beginGesture();
     st.endGesture([moveOp("op-b", "n1", 300, 0)]);
     await settle();
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-b"]);
     expect(useScene.getState().history).toHaveLength(1);
 
-    // Il backlog della riconnessione rigioca op-a: il rollback era una bugia, e
-    // la sua voce di undo torna.
+    // The reconnection's backlog replays op-a: the rollback was a lie, and
+    // its undo entry comes back.
     await vi.advanceTimersByTimeAsync(RETRY_WINDOW);
     last(opened).stream.push(applied(1, CLIENT, moveOp("op-a", "n1", 200, 0)));
     await settle();
     expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 200 });
     expect(useScene.getState().undoStack).toHaveLength(2);
 
-    // ...e ADESSO muore anche op-b. Il suo rollback deve riavvolgere la SUA
-    // transizione e basta: la voce appena restituita descrive una modifica che
-    // il server ha confermato ed è sullo schermo: cancellarla la renderebbe di
-    // nuovo durabile, visibile e non annullabile -- lo stato esatto che la
-    // revoca esiste per togliere.
+    // ...and NOW op-b dies too. Its rollback must rewind ITS own
+    // transition and nothing else: the entry just returned describes a change
+    // the server confirmed and is on screen: erasing it would make it
+    // again durable, visible and not undoable -- the exact state the
+    // revocation exists to remove.
     kill.get("op-b")!(new ConnectError("connection closed", Code.Unavailable));
     await settle();
 
@@ -1112,13 +1112,13 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
 
-    // ...ed è la voce GIUSTA: annulla la modifica di op-a, non un'altra.
+    // ...and it is the RIGHT entry: it undoes op-a's change, not another one.
     useScene.getState().undo();
     await settle();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
   });
 
-  it("un op RIFIUTATO dal server non è revocabile: nessun eco potrà mai arrivare", async () => {
+  it("an op REJECTED by the server is not revocable: no echo can ever arrive", async () => {
     const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
     const net = reorderingTransport();
     net.failOn("op-1", new ConnectError("node already exists", Code.InvalidArgument));
@@ -1126,8 +1126,8 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     sync.submit(moveOp("op-1", "n1", 100, 0));
     sync.submit(moveOp("op-2", "n1", 200, 0));
     await settle();
-    // op-1 rifiutato dal server, op-2 mai partito: due rollback, ma solo il
-    // primo era in volo, quindi solo il primo ha un esito ignoto.
+    // op-1 rejected by the server, op-2 never went out: two rollbacks, but only the
+    // first was in flight, so only the first has an unknown outcome.
     expect(useScene.getState().pending).toHaveLength(0);
     expect(useScene.getState().disowned.map((d) => d.opId)).toEqual(["op-1"]);
 
@@ -1135,29 +1135,29 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     await settle();
   });
 
-  // --- ciclo di vita e posto di trasporto -------------------------------------
+  // --- lifecycle and transport slot -------------------------------------------
 
-  it("costruire un client non gli dà il posto di trasporto: fermarlo non stacca quello vivo", async () => {
+  it("building a client does not give it the transport slot: stopping it does not detach the live one", async () => {
     const { sync } = await bootLive({ n1: rectNode("n1", 0, 0) });
     expect(useScene.getState().sync).toBe(sync);
 
-    // È la forma del bootstrap di ui/App.tsx al primo caricamento (nessun
-    // `opendesigner.docId` in localStorage) sotto StrictMode: i due giri dell'effetto
-    // aspettano ciascuno la propria createDocument, e se la seconda risposta
-    // arriva per prima il client del PRIMO giro viene costruito DOPO che quello
-    // del secondo si è già registrato.
+    // It is the shape of ui/App.tsx's bootstrap on first load (no
+    // `opendesigner.docId` in localStorage) under StrictMode: the two rounds of the effect
+    // each wait for their own createDocument, and if the second response
+    // arrives first the FIRST round's client is built AFTER the second's
+    // has already registered.
     const stale = new SyncClient("doc1", CLIENT);
     expect(useScene.getState().sync).toBe(sync);
 
-    // ...e subito fermato dalla guardia `if (cancelled)` (App.tsx). La guardia
-    // "azzera il posto solo se è ancora mio" non basta se il costruttore lo ha
-    // appena rubato.
+    // ...and immediately stopped by the `if (cancelled)` guard (App.tsx). The guard
+    // "clear the slot only if it is still mine" is not enough if the constructor has
+    // just stolen it.
     stale.stop();
     expect(useScene.getState().sync).toBe(sync);
 
-    // Senza trasporto ogni gesto prenderebbe il ramo `get().apply(op)` di
-    // endGesture: applicato in locale come se fosse confermato, mai inviato,
-    // perso al reload -- con la pillola che continua a dire "connesso".
+    // Without a transport every gesture would take endGesture's `get().apply(op)` branch:
+    // applied locally as if confirmed, never sent,
+    // lost on reload -- with the pill still saying "connected".
     const st = useScene.getState();
     st.beginGesture();
     st.endGesture([moveOp("op-1", "n1", 40, 40)]);
@@ -1166,7 +1166,7 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().pending.map((p) => p.opId)).toEqual(["op-1"]);
   });
 
-  it("arreso vuol dire fermo: gli op submittati dopo la resa vengono RIFIUTATI, non accodati", async () => {
+  it("given up means stopped: ops submitted after giving up are REJECTED, not queued", async () => {
     const { sync, opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
 
     let guard = 0;
@@ -1178,11 +1178,11 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().connection).toBe("error");
     const before = rpc.submitOp.mock.calls.length;
 
-    // Da qui in poi lo stream non torna: NIENTE potrà più confermare un op.
-    // Accettarli vorrebbe dire mandarli (il server li applica in modo durabile)
-    // e tenerli in `pending` per sempre -- rigiocati da viewOf a ogni
-    // aggiornamento dello store, con un mark di storia che non si decide mai.
-    // MAX_OUTBOX non è un argine: l'outbox si svuota a ogni successo.
+    // From here on the stream does not come back: NOTHING can confirm an op anymore.
+    // Accepting them would mean sending them (the server applies them durably)
+    // and keeping them in `pending` forever -- replayed by viewOf on every
+    // store update, with a history mark that is never decided.
+    // MAX_OUTBOX is not a barrier: the outbox empties on every success.
     const st = useScene.getState();
     for (let i = 0; i < 5; i++) {
       st.beginGesture();
@@ -1195,22 +1195,22 @@ describe("SyncClient: ciclo di vita dello stream", () => {
     expect(useScene.getState().history).toHaveLength(0);
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0 });
-    expect(useScene.getState().lastError).toContain("ricarica");
+    expect(useScene.getState().lastError).toContain("reload");
 
-    // Il posto di trasporto resta NOSTRO: liberarlo (stop()) farebbe applicare
-    // ogni gesto in locale come confermato senza mandarlo a nessuno, che è la
-    // perdita silenziosa che il rifiuto qui sopra serve a evitare.
+    // The transport slot stays OURS: freeing it (stop()) would make every gesture be
+    // applied locally as confirmed without sending it to anyone, which is the
+    // silent loss that the rejection above serves to avoid.
     expect(useScene.getState().sync).toBe(sync);
   });
 
-  it("CodeOutOfRange (history compattata) fa RIAPRIRE il documento e ripartire dal seq dello snapshot", async () => {
+  it("CodeOutOfRange (compacted history) makes the document REOPEN and restart from the snapshot's seq", async () => {
     const { opened } = await bootLive({ n1: rectNode("n1", 0, 0) });
     last(opened).stream.push(applied(1, OTHER, moveOp("op-1", "n1", 100, 0)));
     await settle();
 
-    // Il server dice: i record da cui vuoi ripartire non esistono più, riapri il
-    // documento (internal/server/documentservice.go). Riabbonarsi allo stesso
-    // since_seq darebbe lo stesso errore per sempre.
+    // The server says: the records you want to restart from no longer exist, reopen the
+    // document (internal/server/documentservice.go). Resubscribing at the same
+    // since_seq would give the same error forever.
     rpc.openDocument.mockResolvedValue({
       snapshot: snapshotOf({ n1: rectNode("n1", 777, 0) }), seq: 42n,
     });

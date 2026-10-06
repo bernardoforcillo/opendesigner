@@ -8,8 +8,8 @@ import (
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-// BenchmarkSubmitLargeDoc misura il costo di UN op su un documento grande: è il
-// costo per passo di un trascinamento.
+// BenchmarkSubmitLargeDoc measures the cost of ONE op on a large document: it is the
+// per-step cost of a drag.
 func BenchmarkSubmitLargeDoc(b *testing.B) {
 	for _, n := range []int{1000, 5000, 20000} {
 		b.Run(fmt.Sprintf("nodes=%d", n), func(b *testing.B) {
@@ -32,9 +32,9 @@ func BenchmarkSubmitLargeDoc(b *testing.B) {
 	}
 }
 
-// Un Submit non deve mai mutare la generazione precedente del documento: i
-// nodi sono condivisi, e un lettore che ha preso lo snapshot prima non può
-// vederli cambiare (lo garantisce core.ApplyShared clonando prima di scrivere).
+// A Submit must never mutate the document's previous generation: the
+// nodes are shared, and a reader that took the snapshot earlier cannot
+// see them change (core.ApplyShared guarantees it by cloning before writing).
 func TestSubmitDoesNotMutatePreviousGeneration(t *testing.T) {
 	h := newTestHub(t)
 	for _, id := range []string{"a", "b"} {
@@ -53,12 +53,12 @@ func TestSubmitDoesNotMutatePreviousGeneration(t *testing.T) {
 		t.Fatal(err)
 	}
 	if oldA.GetX() != 0 || old.Nodes["a"].GetX() != 0 {
-		t.Fatalf("la generazione precedente è stata mutata: x=%v", oldA.GetX())
+		t.Fatalf("the previous generation was mutated: x=%v", oldA.GetX())
 	}
 	if h.doc.Nodes["a"].GetX() != 42 {
-		t.Fatalf("la nuova generazione non ha la modifica")
+		t.Fatalf("the new generation does not have the change")
 	}
 	if h.doc.Nodes["b"] != old.Nodes["b"] {
-		t.Fatalf("un nodo non toccato dovrebbe restare condiviso")
+		t.Fatalf("an untouched node should stay shared")
 	}
 }

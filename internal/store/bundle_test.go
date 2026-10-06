@@ -33,7 +33,7 @@ func TestAppendReplay(t *testing.T) {
 	if err := b.Append(rec(2, createOp("n2", 9))); err != nil {
 		t.Fatal(err)
 	}
-	// riapri da zero: deve ricostruire dallo snapshot(vuoto)+oplog
+	// reopen from scratch: it must rebuild from the (empty) snapshot + oplog
 	b2, err := Open(dir, "doc1", "Untitled")
 	if err != nil {
 		t.Fatal(err)
@@ -61,7 +61,7 @@ func TestSnapshotCompactsOplog(t *testing.T) {
 	if err := b.Snapshot(doc, seq); err != nil {
 		t.Fatal(err)
 	}
-	// dopo lo snapshot, un nuovo op continua da seq+1
+	// after the snapshot, a new op continues from seq+1
 	_ = b.Append(rec(2, &opendesignerv1.Op{OpId: "m", DocId: "doc1", Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
 		Id: "n1", Patch: &opendesignerv1.Node{X: 99}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"x"}}}}}))
 	b2, _ := Open(dir, "doc1", "Untitled")

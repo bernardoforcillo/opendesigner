@@ -2,8 +2,8 @@ package store
 
 import "io"
 
-// Asset ritorna i byte dell'asset: è ciò che chiede l'export di codice
-// (internal/codegen.AssetSource). L'hash è validato da Open.
+// Asset returns the asset's bytes: it is what the code export asks for
+// (internal/codegen.AssetSource). The hash is validated by Open.
 func (a *Assets) Asset(hash string) ([]byte, error) {
 	f, _, err := a.Open(hash)
 	if err != nil {

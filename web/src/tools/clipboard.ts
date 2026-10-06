@@ -18,57 +18,57 @@ import { makeCreateNodeOp, uuid } from "./ops";
 import { isTextField } from "./toolManager";
 import { importSvgAt, looksLikeSvg, viewportCenter } from "./svgImport";
 
-// COPIA / INCOLLA / DUPLICA (traccia 3, task 1).
+// COPY / PASTE / DUPLICATE (track 3, task 1).
 //
-// La clipboard di SISTEMA con un payload JSON tutto nostro, e non solo un
-// buffer in memoria: è l'unica forma che permette di copiare in un documento e
-// incollare in un ALTRO (o in un'altra finestra), che è il punto della
-// funzione. Il buffer in memoria resta come RIPIEGO -- `navigator.clipboard`
-// non esiste fuori dai contesti sicuri (http:// non-localhost), e anche dove
-// esiste la lettura può essere negata dal permesso "clipboard-read". In quei
-// casi copia e incolla continuano a funzionare dentro la finestra.
+// The SYSTEM clipboard with a JSON payload all our own, and not just an
+// in-memory buffer: it is the only form that allows copying in one document and
+// pasting in ANOTHER (or in another window), which is the point of the
+// feature. The in-memory buffer remains as a FALLBACK -- `navigator.clipboard`
+// does not exist outside secure contexts (non-localhost http://), and even where
+// it exists reading may be denied by the "clipboard-read" permission. In those
+// cases copy and paste keep working inside the window.
 //
-// Il payload è etichettato e versionato apposta: sulla clipboard ci finisce
-// anche il testo di chiunque altro, e un incolla non deve tentare di
-// interpretare come scena qualunque cosa capiti lì dentro.
+// The payload is labeled and versioned on purpose: anyone else's text also ends up on
+// the clipboard, and a paste must not try to interpret as a scene
+// whatever happens to be in there.
 
 export const CLIPBOARD_FORMAT = "opendesigner/clipboard";
 export const CLIPBOARD_VERSION = 1;
 
-// Scostamento (unità MONDO) dei nodi incollati o duplicati. Serve a rendere la
-// copia visibile: senza, atterrerebbe esattamente sopra l'originale e sembrerebbe
-// che non sia successo niente.
+// Offset (WORLD units) of pasted or duplicated nodes. It makes the
+// copy visible: without it, it would land exactly on top of the original and it would seem
+// that nothing happened.
 export const PASTE_OFFSET = 16;
 
-// L'avviso quando il payload è nostro ma parla di qualcosa che questa build non
-// conosce. Passa da `notice` e non da `lastError`: nessuna modifica è stata
-// annullata (non è stata nemmeno tentata), ed è un'informazione, non un errore
-// del server.
+// The notice when the payload is ours but talks about something this build does not
+// know. It goes through `notice` and not `lastError`: no change was
+// undone (it was not even attempted), and it is information, not a server
+// error.
 const UNSUPPORTED_NOTICE =
-  "gli appunti contengono un elemento che questa versione non sa leggere: non è stato incollato niente";
+  "the clipboard contains an element this version cannot read: nothing was pasted";
 
-// --- il formato -------------------------------------------------------------
+// --- the format -------------------------------------------------------------
 
-// I tipi di nodo che questa build sa ricostruire. È un Record indicizzato su
-// NodeLite["kind"] e non un array di stringhe: aggiungere un kind al modello
-// senza elencarlo qui diventa un errore di COMPILAZIONE, invece di un payload
-// che si incolla come rettangolo perché il campo non è stato riconosciuto.
-// `image` è qui, e con lui si copia solo l'HASH: i byte restano nella cartella
-// assets del documento di partenza. Incollare in un ALTRO documento produce
-// quindi un nodo il cui asset non c'è -- che il renderer disegna come
-// segnaposto invece di sparire o esplodere. È il comportamento onesto: la copia
-// dice a quale immagine si riferisce, e se quell'immagine non è raggiungibile
-// da lì lo si vede. (Copiare anche i byte vorrebbe dire mettere una foto negli
-// appunti di sistema come JSON: proprio ciò che l'indirizzamento per contenuto
-// esiste per evitare.)
-// Il valore è `boolean` (non `true`) di proposito: il Record resta ESAUSTIVO su
-// NodeLite["kind"] -- aggiungere un kind al modello senza elencarlo qui è ancora
-// un errore di compilazione -- ma un kind PRESENTE nel modello che questo file
-// non sa ancora ricostruire dal JSON si segna `false` invece di ometterlo. Oggi
-// è il caso di `vector` (la geometria degli ancoraggi non ha un ramo di
-// ricostruzione in parseClipboard) e di `unknown` (una forma opaca che nemmeno
-// il modello sa nominare): entrambi vanno rifiutati in blocco su incolla, non
-// degradati a rettangolo.
+// The node kinds this build can reconstruct. It is a Record indexed on
+// NodeLite["kind"] and not an array of strings: adding a kind to the model
+// without listing it here becomes a COMPILE error, instead of a payload
+// that pastes as a rectangle because the field was not recognized.
+// `image` is here, and with it only the HASH is copied: the bytes stay in the assets
+// folder of the source document. Pasting into ANOTHER document thus produces
+// a node whose asset is not there -- which the renderer draws as a
+// placeholder instead of vanishing or blowing up. It is the honest behavior: the copy
+// says which image it refers to, and if that image is not reachable
+// from there you can see it. (Copying the bytes too would mean putting a photo on the
+// system clipboard as JSON: exactly what content addressing
+// exists to avoid.)
+// The value is `boolean` (not `true`) on purpose: the Record stays EXHAUSTIVE on
+// NodeLite["kind"] -- adding a kind to the model without listing it here is still
+// a compile error -- but a kind PRESENT in the model that this file
+// cannot yet reconstruct from JSON is marked `false` instead of being omitted. Today
+// that is the case of `vector` (the anchor geometry has no reconstruction
+// branch in parseClipboard) and of `unknown` (an opaque shape that not even
+// the model can name): both must be rejected wholesale on paste, not
+// degraded to a rectangle.
 const KNOWN_KINDS: Record<NodeLite["kind"], boolean> = {
   rect: true,
   ellipse: true,
@@ -76,16 +76,16 @@ const KNOWN_KINDS: Record<NodeLite["kind"], boolean> = {
   image: true,
   vector: false,
   unknown: false,
-  // Container dell'annidamento (traccia 1): questo lato non ricostruisce ancora
-  // un sottoalbero dagli appunti, quindi -- come vector/unknown -- vanno
-  // rifiutati in blocco su incolla invece di degradati a un rettangolo vuoto.
+  // Nesting containers (track 1): this side does not yet reconstruct
+  // a subtree from the clipboard, so -- like vector/unknown -- they must be
+  // rejected wholesale on paste instead of degraded to an empty rectangle.
   group: false,
   frame: false,
-  // Un'istanza (traccia M4) referenzia un componente per id: incollarla in un
-  // documento che quel componente non ha darebbe un nodo che rende il vuoto (e
-  // core.applyCreate lo rifiuterebbe con ErrComponentNotFound). Finché il
-  // clipboard non porta con sé anche il componente, va rifiutata in blocco --
-  // come vector/unknown/group/frame -- invece di degradata a un rettangolo.
+  // An instance (track M4) references a component by id: pasting it into a
+  // document that does not have that component would give a node that renders nothing (and
+  // core.applyCreate would reject it with ErrComponentNotFound). Until the
+  // clipboard also carries the component, it must be rejected wholesale --
+  // like vector/unknown/group/frame -- instead of degraded to a rectangle.
   instance: false,
 };
 
@@ -95,17 +95,17 @@ function isKnownKind(kind: unknown): kind is NodeLite["kind"] {
     && KNOWN_KINDS[kind as NodeLite["kind"]];
 }
 
-// L'esito di una lettura degli appunti. Le due forme di rifiuto sono diverse e
-// vanno tenute distinte:
-//  - "foreign": non è roba nostra (testo di un'altra applicazione, JSON di
-//    qualcun altro, appunti vuoti). Non è un errore: semplicemente non c'è
-//    niente da incollare da lì. Attenzione, non è nemmeno un lasciapassare per
-//    il buffer in memoria: se gli appunti si sono lasciati leggere, quel testo
-//    È la copia più recente dell'utente (vedi pasteClipboard).
-//  - "unsupported": è un payload opendesigner, ma di una versione o con un tipo di
-//    nodo che questa build non sa ricostruire. Qui il ripiego sarebbe SBAGLIATO
-//    (l'utente ha copiato QUELLO), e degradare il nodo lo sarebbe di più: si
-//    rifiuta e lo si dice.
+// The outcome of reading the clipboard. The two forms of rejection are different and
+// must be kept distinct:
+//  - "foreign": it is not our stuff (text from another application, someone
+//    else's JSON, empty clipboard). It is not an error: there is simply
+//    nothing to paste from there. Note, it is not a pass for
+//    the in-memory buffer either: if the clipboard let itself be read, that text
+//    IS the user's most recent copy (see pasteClipboard).
+//  - "unsupported": it is an opendesigner payload, but of a version or with a node type
+//    that this build cannot reconstruct. Here the fallback would be WRONG
+//    (the user copied THAT), and degrading the node would be even more so: it is
+//    rejected and reported.
 export type ClipboardParse =
   | { ok: true; nodes: NodeLite[] }
   | { ok: false; reason: "foreign" }
@@ -180,11 +180,11 @@ function toStrokeAlign(v: unknown): StrokeAlignLite {
     : "center";
 }
 
-// Come toFills, dal lato del tratto: il payload della clipboard è JSON del
-// nostro stesso formato, riletto in modo difensivo -- un campo mancante o
-// storto ricade sul default onesto (nessun tratto, peso 0) invece di far
-// esplodere l'incolla. Preserva lo stroke di un nodo copiato attraverso il
-// round-trip serializza/incolla.
+// Like toFills, on the stroke side: the clipboard payload is JSON of our own
+// format, re-read defensively -- a missing or
+// crooked field falls back to the honest default (no stroke, weight 0) instead of
+// blowing up the paste. It preserves the stroke of a copied node through the
+// serialize/paste round-trip.
 function toStrokes(v: unknown): StrokeLite[] {
   if (!Array.isArray(v)) return [];
   return v.map((s) => {
@@ -206,10 +206,10 @@ function toAlign(v: unknown): TextAlignLite {
     : "left";
 }
 
-// Un nodo di testo senza `text` non è un errore da rifiutare: è un payload
-// scritto male o troncato, e un testo VUOTO è la ricostruzione onesta (lo
-// stesso default che toTextStyleLite dà a uno stile assente). Rifiutare qui
-// vorrebbe dire buttare via anche i nodi sani che gli stanno accanto.
+// A text node without `text` is not an error to reject: it is a badly
+// written or truncated payload, and an EMPTY text is the honest reconstruction (the
+// same default that toTextStyleLite gives an absent style). Rejecting here
+// would mean throwing away the healthy nodes next to it as well.
 function toText(v: unknown): TextLite {
   const o = (v ?? {}) as Record<string, unknown>;
   const s = (o.style ?? {}) as Record<string, unknown>;
@@ -237,9 +237,9 @@ export function parseClipboard(text: string): ClipboardParse {
   if (typeof payload !== "object" || payload === null) return { ok: false, reason: "foreign" };
   const p = payload as Record<string, unknown>;
   if (p.format !== CLIPBOARD_FORMAT) return { ok: false, reason: "foreign" };
-  // Da qui in poi il payload è NOSTRO: ogni rifiuto è "unsupported", mai
-  // "foreign" -- l'utente ha copiato questo, e ripiegare in silenzio su una
-  // copia precedente incollerebbe una cosa per un'altra.
+  // From here on the payload is OURS: every rejection is "unsupported", never
+  // "foreign" -- the user copied this, and silently falling back to an earlier
+  // copy would paste one thing for another.
   if (p.version !== CLIPBOARD_VERSION) return { ok: false, reason: "unsupported" };
   if (!Array.isArray(p.nodes)) return { ok: false, reason: "unsupported" };
 
@@ -247,12 +247,12 @@ export function parseClipboard(text: string): ClipboardParse {
   for (const raw of p.nodes) {
     if (typeof raw !== "object" || raw === null) return { ok: false, reason: "unsupported" };
     const n = raw as Record<string, unknown>;
-    // IL controllo che conta: un tipo che questa build non conosce (un
-    // VectorNode dalla traccia 4, un InstanceNode di M4, una build futura) va
-    // rifiutato in BLOCCO. Ricostruirlo come rettangolo -- che è ciò che
-    // farebbe qualunque default silenzioso, toNodeLite compreso -- creerebbe un
-    // nodo che non è quello che l'utente ha copiato, dentro un documento che
-    // poi lo persiste.
+    // THE check that matters: a type this build does not know (a
+    // VectorNode from track 4, an M4 InstanceNode, a future build) must be
+    // rejected as a WHOLE. Rebuilding it as a rectangle -- which is what
+    // any silent default would do, toNodeLite included -- would create a
+    // node that is not what the user copied, inside a document that
+    // then persists it.
     if (!isKnownKind(n.kind)) return { ok: false, reason: "unsupported" };
     const kind = n.kind;
     nodes.push({
@@ -272,14 +272,14 @@ export function parseClipboard(text: string): ClipboardParse {
       ...(toEffects(n.effects).length > 0 ? { effects: toEffects(n.effects) } : {}),
       kind,
       cornerRadius: num(n.cornerRadius, 0),
-      // Sempre false: KNOWN_KINDS rifiuta i frame in blocco (questo lato non
-      // ricostruisce container), quindi qui `kind` è solo rect/ellipse/text/image.
+      // Always false: KNOWN_KINDS rejects frames wholesale (this side does not
+      // reconstruct containers), so here `kind` is only rect/ellipse/text/image.
       clipsContent: false,
       ...(kind === "text" ? { text: toText(n.text) } : {}),
-      // Un'immagine senza hash leggibile non è un payload da rifiutare: è un
-      // nodo il cui asset non si trova, cioè esattamente il caso che il
-      // renderer già disegna come segnaposto. Stessa scelta di toText su un
-      // testo troncato.
+      // An image without a readable hash is not a payload to reject: it is a
+      // node whose asset cannot be found, i.e. exactly the case the
+      // renderer already draws as a placeholder. Same choice as toText on a
+      // truncated text.
       ...(kind === "image"
         ? { image: { assetHash: str((n.image as Record<string, unknown> | undefined)?.assetHash, "") } }
         : {}),
@@ -288,37 +288,37 @@ export function parseClipboard(text: string): ClipboardParse {
   return { ok: true, nodes };
 }
 
-// --- gli op di incolla ------------------------------------------------------
+// --- the paste ops ----------------------------------------------------------
 
 function byOrderKey(a: NodeLite, b: NodeLite): number {
   return a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : 0;
 }
 
-// Un id che il documento di destinazione conosce: un nodo oppure una pagina
-// (le pagine non stanno in `nodes`, ma sono parent legittimi -- oggi anzi gli
-// unici).
+// An id the destination document knows: a node or a page
+// (pages are not in `nodes`, but they are legitimate parents -- today in fact the
+// only ones).
 function existsInScene(scene: SceneState, id: string): boolean {
   return scene.nodes.has(id) || scene.pages.some((p) => p.id === id);
 }
 
 export interface PasteOps {
   ops: Op[];
-  // Gli id NUOVI, nell'ordine in cui i nodi vengono creati: la selezione da
-  // installare dopo l'incolla.
+  // The NEW ids, in the order the nodes are created: the selection to
+  // install after the paste.
   ids: string[];
 }
 
 /**
- * Gli op di creazione per incollare `nodes` dentro `scene`.
+ * The creation ops to paste `nodes` into `scene`.
  *
- * Scritta in termini dei NODI PASSATI e del loro parent, mai di "tutti i nodi
- * del documento": è ciò che le permette di sopravvivere all'annidamento
- * (traccia 1), dove un payload conterrà un contenitore insieme ai suoi figli.
+ * Written in terms of the PASSED NODES and their parent, never of "all the nodes
+ * of the document": it is what lets it survive nesting
+ * (track 1), where a payload will contain a container together with its children.
  *
- * Ogni nodo riceve un id NUOVO (un id duplicato farebbe rifiutare l'op dal
- * server -- ErrNodeExists in core.applyCreate -- lasciando la scena locale
- * divergente) e una order key NUOVA presa dall'indice frazionario, in cima al
- * documento e nell'ordine relativo dei nodi di partenza.
+ * Each node receives a NEW id (a duplicate id would make the server reject the op
+ * -- ErrNodeExists in core.applyCreate -- leaving the local scene
+ * diverged) and a NEW order key taken from the fractional index, at the top of the
+ * document and in the relative order of the source nodes.
  */
 export function pasteOps(
   scene: SceneState,
@@ -326,25 +326,25 @@ export function pasteOps(
   offset: number = PASTE_OFFSET,
 ): PasteOps {
   const sorted = [...nodes].sort(byOrderKey);
-  // Un id nuovo per POSIZIONE nell'elenco, non per id di partenza. La
-  // differenza conta perché gli id del payload non sono garantiti: parseClipboard
-  // tollera un nodo senza `id` (lo legge come "") e niente vieta a un payload
-  // scritto a mano di ripetere due volte lo stesso id. Indicizzando sull'id,
-  // quei nodi collasserebbero su UN SOLO uuid e uscirebbero da qui due CreateNode
-  // con lo stesso id: in locale applyOp scarta il secondo (parità con
-  // core.applyCreate, ErrNodeExists) e la scena guadagna un nodo mentre `ids` e
-  // la voce di undo ne dichiarano due; contro il server l'op viene RIFIUTATO a
-  // gesto iniziato e parte il rollback. N nodi passati, N nodi creati, sempre.
+  // A new id per POSITION in the list, not per source id. The
+  // difference matters because the payload ids are not guaranteed: parseClipboard
+  // tolerates a node without `id` (it reads it as "") and nothing prevents a
+  // hand-written payload from repeating the same id twice. Indexing on the id,
+  // those nodes would collapse onto ONE SINGLE uuid and two CreateNodes
+  // with the same id would come out of here: locally applyOp discards the second (parity with
+  // core.applyCreate, ErrNodeExists) and the scene gains one node while `ids` and
+  // the undo entry declare two; against the server the op is REJECTED mid-
+  // gesture and the rollback kicks in. N nodes passed, N nodes created, always.
   const freshIds = sorted.map(() => uuid());
 
-  // La corrispondenza vecchio id -> nuovo id, calcolata PRIMA di costruire gli
-  // op: serve SOLO a rimappare i parent (vedi sotto), che possono puntare a un
-  // nodo che viene dopo nell'elenco. Due esclusioni, entrambe necessarie:
-  //  - l'id VUOTO non è un'identità: mapparlo attaccherebbe ogni nodo senza
-  //    parent (parentId "") alla copia del nodo senza id;
-  //  - un id RIPETUTO è ambiguo (a quale delle due copie si riferisce un
-  //    figlio?): si registra `null` e non si rimappa affatto, così il parent
-  //    ricade sui casi 2/3 qui sotto invece di essere tirato a sorte.
+  // The old id -> new id mapping, computed BEFORE building the
+  // ops: it serves ONLY to remap parents (see below), which may point to a
+  // node that comes later in the list. Two exclusions, both necessary:
+  //  - the EMPTY id is not an identity: mapping it would attach every node without
+  //    a parent (parentId "") to the copy of the node without an id;
+  //  - a REPEATED id is ambiguous (which of the two copies does a
+  //    child refer to?): `null` is recorded and it is not remapped at all, so the parent
+  //    falls on cases 2/3 below instead of being drawn by lot.
   const byOldId = new Map<string, string | null>();
   sorted.forEach((n, i) => {
     if (n.id === "") return;
@@ -358,27 +358,27 @@ export function pasteOps(
 
   for (const [i, n] of sorted.entries()) {
     const id = freshIds[i];
-    // Un nodo che dichiara sé stesso come proprio parent è un ciclo: non lo si
-    // rimappa (oggi sarebbe innocuo, con l'annidamento della traccia 1 no).
+    // A node that declares itself as its own parent is a cycle: it is not
+    // remapped (today it would be harmless, with the nesting of track 1 it would not).
     const mapped = n.parentId === n.id ? null : (byOldId.get(n.parentId) ?? null);
-    // Tre casi, in quest'ordine:
-    //  1. il parent è anch'esso nel payload -> il figlio segue la COPIA, non
-    //     l'originale (senza questo, incollare un gruppo lascerebbe i figli
-    //     attaccati al gruppo di partenza);
-    //  2. il parent esiste nel documento di destinazione -> resta dov'è;
-    //  3. non esiste (incolla in un ALTRO documento) -> il nodo atterra sulla
-    //     pagina, invece di restare orfano di un parent inesistente.
+    // Three cases, in this order:
+    //  1. the parent is also in the payload -> the child follows the COPY, not
+    //     the original (without this, pasting a group would leave the children
+    //     attached to the source group);
+    //  2. the parent exists in the destination document -> it stays where it is;
+    //  3. it does not exist (paste into ANOTHER document) -> the node lands on the
+    //     page, instead of remaining orphaned of a nonexistent parent.
     const parentId =
       mapped ?? (existsInScene(scene, n.parentId) ? n.parentId : fallbackParent);
-    // L'offset lo prendono solo le RADICI dell'insieme incollato. Oggi le
-    // coordinate sono tutte mondo e la scena è piatta, quindi sono tutti i
-    // nodi; quando le coordinate diventeranno relative al parent, spostare
-    // anche i figli li sposterebbe due volte. "Radice" = parent NON rimappato:
-    // un parent ambiguo o inesistente lascia il nodo scoperto, quindi radice.
+    // Only the ROOTS of the pasted set take the offset. Today the
+    // coordinates are all world and the scene is flat, so they are all the
+    // nodes; when coordinates become relative to the parent, moving
+    // the children too would move them twice. "Root" = parent NOT remapped:
+    // an ambiguous or nonexistent parent leaves the node uncovered, hence root.
     const moved = mapped !== null ? { x: n.x, y: n.y } : { x: n.x + offset, y: n.y + offset };
-    // toPbNode è l'inverso ESATTO di toNodeLite (store/types.ts): passare da lì
-    // invece di ricostruire il Node a mano è ciò che fa sopravvivere alla copia
-    // ogni campo del modello, compresi quelli aggiunti dopo.
+    // toPbNode is the EXACT inverse of toNodeLite (store/types.ts): going through it
+    // instead of rebuilding the Node by hand is what makes every
+    // model field survive the copy, including those added later.
     ops.push(makeCreateNodeOp(toPbNode({ ...n, id, parentId, orderKey: key, ...moved })));
     ids.push(id);
     key = orderKeyBetween(key, null);
@@ -386,38 +386,38 @@ export function pasteOps(
   return { ops, ids };
 }
 
-// --- la clipboard di sistema ------------------------------------------------
+// --- the system clipboard ---------------------------------------------------
 
-// Il RIPIEGO: l'ultima copia fatta in questa finestra. Serve quando la
-// clipboard di sistema non c'è o non si lascia leggere; dentro la finestra
-// copia e incolla continuano a funzionare comunque.
+// The FALLBACK: the last copy made in this window. It is needed when the
+// system clipboard is absent or cannot be read; inside the window
+// copy and paste keep working anyway.
 //
-// Un oggetto esportato e non una `let` privata: è stato di MODULO, quindi vive
-// quanto la pagina, e "non è mai stata fatta una copia" è uno stato di partenza
-// legittimo che va poter essere ripristinato (i test lo azzerano come azzerano
-// lo store). `null` = nessuna copia in questa finestra.
+// An exported object and not a private `let`: it is MODULE state, so it lives
+// as long as the page, and "no copy was ever made" is a legitimate starting state
+// that must be restorable (tests reset it the way they reset
+// the store). `null` = no copy in this window.
 //
-// `onSystem` dice se l'ultima copia è ARRIVATA sulla clipboard di sistema. È
-// ciò che distingue "il buffer è una comodità, la copia vera è là fuori" da "il
-// buffer è l'UNICA copia che esiste": solo nel secondo caso ripiegarci sopra è
-// legittimo quando gli appunti si leggono ma contengono roba di qualcun altro
-// (vedi pasteClipboard).
+// `onSystem` says whether the last copy ARRIVED on the system clipboard. It is
+// what distinguishes "the buffer is a convenience, the real copy is out there" from "the
+// buffer is the ONLY copy that exists": only in the second case is falling back on it
+// legitimate when the clipboard reads fine but contains someone else's stuff
+// (see pasteClipboard).
 export const clipboardMemory: { text: string | null; onSystem: boolean } = {
   text: null,
   onSystem: false,
 };
 
-// Un incolla per volta. La lettura degli appunti è ASINCRONA e può restare
-// appesa a lungo -- Chromium non risolve `readText()` finché il documento non
-// ha il fuoco -- e nel frattempo l'utente che non vede succedere niente preme
-// Ctrl+V di nuovo. Senza guardia quelle letture si accodano tutte e atterrano
-// INSIEME appena la prima si sblocca: una raffica di incolla che nessuno ha
-// chiesto, per giunta da disfare un Ctrl+Z per volta.
+// One paste at a time. Reading the clipboard is ASYNCHRONOUS and can stay
+// hanging for a long time -- Chromium does not resolve `readText()` until the document
+// has focus -- and meanwhile the user, seeing nothing happen, presses
+// Ctrl+V again. Without a guard those reads all queue up and land
+// TOGETHER as soon as the first unblocks: a burst of pastes that nobody asked
+// for, which moreover have to be undone one Ctrl+Z at a time.
 let pasting = false;
 
 function systemClipboard(): Clipboard | undefined {
-  // `navigator` esiste ovunque giri questo codice, ma `clipboard` no (contesti
-  // non sicuri): il controllo è sulla proprietà, non sull'oggetto.
+  // `navigator` exists wherever this code runs, but `clipboard` does not (insecure
+  // contexts): the check is on the property, not on the object.
   return globalThis.navigator?.clipboard as Clipboard | undefined;
 }
 
@@ -428,7 +428,7 @@ async function writeSystem(text: string): Promise<boolean> {
     await cb.writeText(text);
     return true;
   } catch {
-    // Permesso negato, documento non a fuoco: la copia resta valida in memoria.
+    // Permission denied, document not focused: the copy stays valid in memory.
     return false;
   }
 }
@@ -443,62 +443,62 @@ async function readSystem(): Promise<string | null> {
   }
 }
 
-// --- i comandi --------------------------------------------------------------
+// --- the commands -----------------------------------------------------------
 
 function selectedNodes(): NodeLite[] {
   const { scene, selection } = useScene.getState();
   if (!scene) return [];
-  // Passa dalla SELEZIONE e non da [...scene.nodes.values()]: è la stessa
-  // ragione per cui pasteOps parla dei nodi passati e non del documento --
-  // sopravvivere all'annidamento senza riscritture.
+  // Goes through the SELECTION and not [...scene.nodes.values()]: it is the same
+  // reason pasteOps talks about the passed nodes and not the document --
+  // surviving nesting without rewrites.
   return selection.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined);
 }
 
 /**
- * Ctrl+C. Ritorna false quando non c'è niente da copiare (nessuna selezione,
- * nessun documento): in quel caso la clipboard di sistema NON viene toccata --
- * svuotarla sarebbe una modifica che l'utente non ha chiesto.
+ * Ctrl+C. Returns false when there is nothing to copy (no selection,
+ * no document): in that case the system clipboard is NOT touched --
+ * emptying it would be a change the user did not ask for.
  */
 export async function copySelection(): Promise<boolean> {
   const nodes = selectedNodes();
   if (nodes.length === 0) return false;
   const text = serializeNodes(nodes);
-  // Il buffer in memoria si scrive SEMPRE, anche quando la clipboard di sistema
-  // è disponibile: se la scrittura di sistema fallisce a metà (permesso, focus
-  // perso) l'incolla dentro questa finestra deve comunque funzionare.
+  // The in-memory buffer is ALWAYS written, even when the system clipboard
+  // is available: if the system write fails halfway (permission, lost
+  // focus) paste inside this window must still work.
   clipboardMemory.text = text;
   clipboardMemory.onSystem = await writeSystem(text);
   return true;
 }
 
-// Il tratto comune di incolla e duplica: UN gesto, quindi UNA voce di undo --
-// un Ctrl+Z toglie tutto l'incollato insieme, non un nodo per volta.
+// The common part of paste and duplicate: ONE gesture, hence ONE undo entry --
+// one Ctrl+Z removes everything pasted together, not one node at a time.
 function pasteNodes(nodes: readonly NodeLite[]): string[] {
   const store = useScene.getState();
   const scene = store.scene;
   if (!scene || nodes.length === 0) return [];
-  // Stessa guardia di undo/redo (store.ts): a gesto aperto (un drag in corso)
-  // gli op finirebbero nella BASE del gesto, e il pointerup successivo
-  // ricostruirebbe la scena su uno stato che non è quello da cui il drag è
-  // partito.
+  // Same guard as undo/redo (store.ts): with a gesture open (a drag in progress)
+  // the ops would end up in the gesture BASE, and the next pointerup
+  // would rebuild the scene on a state that is not the one the drag
+  // started from.
   if (store.gesture) return [];
 
   const { ops, ids } = pasteOps(scene, nodes);
   store.beginGesture();
-  // La selezione va sui nodi NUOVI, come in ogni editor: è l'incollato che si
-  // sposta subito dopo. Impostata prima di endGesture, che la riconcilia contro
-  // la scena FINALE (quella che contiene i nodi appena creati) -- vedi il
-  // commento su `intended` in store.ts.
+  // The selection goes on the NEW nodes, as in every editor: it is the pasted stuff that
+  // gets moved right after. Set before endGesture, which reconciles it against
+  // the FINAL scene (the one containing the newly created nodes) -- see the
+  // comment on `intended` in store.ts.
   useScene.getState().setSelection(ids);
   useScene.getState().endGesture(ops);
   return ids;
 }
 
 /**
- * Ctrl+V. Legge la clipboard di SISTEMA (così un payload copiato in un'altra
- * finestra o in un altro documento si incolla qui) e ripiega sul buffer in
- * memoria solo quando quella clipboard non è arrivabile -- non quando è
- * arrivabile e contiene qualcos'altro.
+ * Ctrl+V. Reads the SYSTEM clipboard (so a payload copied in another
+ * window or in another document pastes here) and falls back to the in-memory buffer
+ * only when that clipboard is not reachable -- not when it is
+ * reachable and contains something else.
  */
 export async function pasteClipboard(): Promise<string[]> {
   if (pasting) return [];
@@ -506,27 +506,27 @@ export async function pasteClipboard(): Promise<string[]> {
   try {
     const fromSystem = await readSystem();
     let parsed: ClipboardParse | null = fromSystem === null ? null : parseClipboard(fromSystem);
-    // Testo che è un documento SVG (copiato da un sito, da un altro editor, da
-    // un file aperto come testo): non è un payload nostro ("foreign") ma ha un
-    // significato preciso -- si importa come nodi, al centro della vista. Il
-    // payload opendesigner ha SEMPRE la precedenza: un nodo che si chiama
-    // "<svg>" non deve dirottare l'incolla.
+    // Text that is an SVG document (copied from a site, from another editor, from
+    // a file opened as text): it is not a payload of ours ("foreign") but has a
+    // precise meaning -- it is imported as nodes, at the center of the view. The
+    // opendesigner payload ALWAYS takes precedence: a node named
+    // "<svg>" must not hijack the paste.
     if (fromSystem !== null && parsed && !parsed.ok && parsed.reason === "foreign" && looksLikeSvg(fromSystem)) {
       const id = await importSvgAt(fromSystem, viewportCenter());
       return id ? [id] : [];
     }
-    // Quando si può ripiegare sul buffer in memoria. NON basta che gli appunti
-    // contengano roba di qualcun altro: una lettura RIUSCITA è l'ultima copia
-    // che l'utente ha fatto davvero (testo selezionato nel pannello livelli e
-    // Ctrl+C -- che qui cede al browser apposta -- oppure una copia in un'altra
-    // applicazione), e incollarci sopra un rettangolo copiato dieci minuti
-    // prima sarebbe incollare una cosa per un'altra, in silenzio: lo stesso
-    // motivo per cui un payload `unsupported` non ripiega. Restano i due casi
-    // in cui il buffer è l'unica copia che esiste:
-    //  - gli appunti non hanno risposto (`null`: API assente fuori dai contesti
-    //    sicuri, oppure lettura negata/fallita);
-    //  - la nostra copia non è mai arrivata fin lì (scrittura negata o senza
-    //    fuoco), quindi là fuori non c'è nulla che la rappresenti.
+    // When it is possible to fall back on the in-memory buffer. It is NOT enough that the clipboard
+    // contains someone else's stuff: a SUCCESSFUL read is the last copy
+    // the user really made (text selected in the layers panel and
+    // Ctrl+C -- which here yields to the browser on purpose -- or a copy in another
+    // application), and pasting a rectangle copied ten minutes earlier on top of it
+    // would be pasting one thing for another, silently: the same
+    // reason an `unsupported` payload does not fall back. Two cases remain
+    // in which the buffer is the only copy that exists:
+    //  - the clipboard did not answer (`null`: API absent outside secure
+    //    contexts, or read denied/failed);
+    //  - our copy never got that far (write denied or unfocused),
+    //    so out there nothing represents it.
     const mayFallBack = fromSystem === null || !clipboardMemory.onSystem;
     if (mayFallBack && (parsed === null || (!parsed.ok && parsed.reason === "foreign"))) {
       parsed = clipboardMemory.text === null ? null : parseClipboard(clipboardMemory.text);
@@ -534,10 +534,10 @@ export async function pasteClipboard(): Promise<string[]> {
     if (parsed === null) return [];
     if (!parsed.ok) {
       if (parsed.reason === "unsupported") {
-        // Scritto direttamente nello stato: `notice` è un canale di sola lettura
-        // per la UI (ui/App.tsx lo mostra e offre di chiuderlo), non ha
-        // un'azione dedicata, e questo modulo non ha ragione di aggiungerne una
-        // allo store.
+        // Written directly into the state: `notice` is a read-only channel
+        // for the UI (ui/App.tsx shows it and offers to dismiss it), it has
+        // no dedicated action, and this module has no reason to add one
+        // to the store.
         useScene.setState({ notice: UNSUPPORTED_NOTICE });
       }
       return [];
@@ -549,18 +549,18 @@ export async function pasteClipboard(): Promise<string[]> {
 }
 
 /**
- * Ctrl+D. Duplica la selezione con lo stesso scostamento dell'incolla e NON
- * tocca gli appunti: duplicare non è copiare, e sovrascrivere la clipboard
- * butterebbe via quello che l'utente ci aveva messo.
+ * Ctrl+D. Duplicates the selection with the same offset as paste and does NOT
+ * touch the clipboard: duplicating is not copying, and overwriting the clipboard
+ * would throw away what the user had put there.
  *
- * Un Ctrl+D ripetuto scala: le copie restano selezionate, quindi il duplicato
- * successivo parte da loro.
+ * A repeated Ctrl+D scales: the copies stay selected, so the next
+ * duplicate starts from them.
  */
 export function duplicateSelection(): string[] {
   return pasteNodes(selectedNodes());
 }
 
-// --- le scorciatoie ---------------------------------------------------------
+// --- the shortcuts ----------------------------------------------------------
 
 interface ShortcutTarget {
   addEventListener(type: "keydown", handler: (e: KeyboardEvent) => void): void;
@@ -568,22 +568,22 @@ interface ShortcutTarget {
 }
 
 /**
- * Collega Ctrl/Cmd+C, +V, +D. Sulla FINESTRA come le scorciatoie di undo/redo
- * (ui/App.tsx) e per lo stesso motivo: il canvas non è focusabile, quindi i
- * tasti non gli arriverebbero mai.
+ * Hooks up Ctrl/Cmd+C, +V, +D. On the WINDOW like the undo/redo shortcuts
+ * (ui/App.tsx) and for the same reason: the canvas is not focusable, so the keys
+ * would never reach it.
  *
- * Ritorna la funzione di distacco.
+ * Returns the detach function.
  */
 export function attachClipboardShortcuts(target: ShortcutTarget = window): () => void {
   const onKeyDown = (e: KeyboardEvent) => {
-    // Dentro un campo di testo la copia è del CAMPO: rubargliela vorrebbe dire
-    // copiare il rettangolo selezionato invece della parola evidenziata.
+    // Inside a text field copy belongs to the FIELD: stealing it would mean
+    // copying the selected rectangle instead of the highlighted word.
     if (isTextField(e.target)) return;
     if (!(e.ctrlKey || e.metaKey) || e.altKey || e.shiftKey) return;
     switch (e.key.toLowerCase()) {
       case "c": {
-        // Con del testo evidenziato nella pagina (pannello livelli, avvisi) la
-        // copia resta del browser: è quella che l'utente sta chiedendo.
+        // With text highlighted in the page (layers panel, notices) the
+        // copy stays with the browser: it is the one the user is asking for.
         const sel = globalThis.getSelection?.();
         if (sel && !sel.isCollapsed) return;
         e.preventDefault();
@@ -595,7 +595,7 @@ export function attachClipboardShortcuts(target: ShortcutTarget = window): () =>
         void pasteClipboard();
         return;
       case "d":
-        // preventDefault sempre: Ctrl+D è "aggiungi ai preferiti" nel browser.
+        // always preventDefault: Ctrl+D is "bookmark" in the browser.
         e.preventDefault();
         duplicateSelection();
         return;

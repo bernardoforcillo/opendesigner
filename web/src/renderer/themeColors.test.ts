@@ -8,24 +8,24 @@ afterEach(() => {
 });
 
 describe("themeColors", () => {
-  it("senza variabili CSS (jsdom) ricade sul tema chiaro: mai una stringa vuota", () => {
+  it("without CSS variables (jsdom) it falls back to the light theme: never an empty string", () => {
     const c = themeColors();
     expect(c).toEqual(LIGHT_FALLBACK);
     for (const v of Object.values(c)) expect(v).not.toBe("");
   });
 
-  it("legge i token dall'elemento radice e li tiene in cache", () => {
+  it("reads the tokens from the root element and keeps them in cache", () => {
     document.documentElement.style.setProperty("--accent", "#5b8cff");
     resetThemeColors();
     const a = themeColors();
     expect(a.accent).toBe("#5b8cff");
-    // una modifica a mano NON si vede finché la cache non è invalidata
+    // a manual change is NOT seen until the cache is invalidated
     document.documentElement.style.setProperty("--accent", "#000000");
     expect(themeColors()).toBe(a);
     expect(themeColors().accent).toBe("#5b8cff");
   });
 
-  it("cambiare data-theme invalida la cache, avvisa gli iscritti e fa ridisegnare", async () => {
+  it("changing data-theme invalidates the cache, notifies subscribers and triggers a redraw", async () => {
     themeColors(); // avvia l'osservazione
     const fn = vi.fn();
     const off = subscribeTheme(fn);
@@ -49,7 +49,7 @@ describe("withAlpha", () => {
     expect(withAlpha("#2563eb", 0.5)).toBe("rgba(37, 99, 235, 0.5)");
     expect(withAlpha("#fff", 0.1)).toBe("rgba(255, 255, 255, 0.1)");
   });
-  it("lascia intatto ciò che non sa leggere", () => {
+  it("leaves untouched what it cannot read", () => {
     expect(withAlpha("rgb(1, 2, 3)", 0.5)).toBe("rgb(1, 2, 3)");
   });
 });

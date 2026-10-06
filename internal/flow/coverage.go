@@ -14,47 +14,47 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// Limiti della scansione del repository.
-const maxScanFileSize = 1 << 20 // oltre 1 MiB un file non è codice scritto a mano
+// Limits of the repository scan.
+const maxScanFileSize = 1 << 20 // beyond 1 MiB a file is not hand-written code
 
-// skipDirs: cartelle mai scansionate (dipendenze, build, codice generato).
+// skipDirs: folders never scanned (dependencies, build, generated code).
 var skipDirs = map[string]bool{
 	"node_modules": true, ".git": true, "dist": true, "vendor": true, "gen": true,
 }
 
-// sourceExts: le estensioni considerate codice sorgente.
+// sourceExts: the extensions considered source code.
 var sourceExts = map[string]bool{
 	".go": true, ".ts": true, ".tsx": true, ".js": true, ".jsx": true, ".mjs": true, ".cjs": true,
 	".vue": true, ".svelte": true, ".astro": true, ".html": true, ".py": true, ".rb": true,
 	".java": true, ".kt": true, ".swift": true, ".dart": true, ".php": true, ".rs": true, ".cs": true,
 }
 
-// flowAnnotation riconosce `flow:<id>` nei commenti dei test.
+// flowAnnotation recognizes `flow:<id>` in test comments.
 var flowAnnotation = regexp.MustCompile(`flow:([A-Za-z0-9_.\-]+)`)
 
-// ScreenCoverage è lo stato di una schermata di un flusso.
+// ScreenCoverage is the status of a screen of a flow.
 type ScreenCoverage struct {
 	NodeID    string `json:"nodeId"`
 	Name      string `json:"name"`
 	Kind      string `json:"kind"`
 	Route     string `json:"route,omitempty"`
 	Component string `json:"component,omitempty"`
-	// Status: planned | implemented | tested. "implemented" se lo dichiara il
-	// meta `status` o se rotta/componente compaiono nel codice; "tested" solo
-	// dal meta `status`.
+	// Status: planned | implemented | tested. "implemented" if declared by the
+	// `status` meta or if route/component appear in the code; "tested" only
+	// from the `status` meta.
 	Status string `json:"status"`
-	// Source dice perché è implementata: "meta", "code" o vuoto.
+	// Source says why it is implemented: "meta", "code" or empty.
 	Source string   `json:"source,omitempty"`
 	Files  []string `json:"files,omitempty"`
 }
 
-// Implemented: la schermata esiste nel codice (o è dichiarata tale).
+// Implemented: the screen exists in the code (or is declared to).
 func (s ScreenCoverage) Implemented() bool {
 	return s.Status == StatusImplemented || s.Status == StatusTested
 }
 
-// TransitionCoverage è lo stato di una transizione: testata se un file del
-// repository la annota con `flow:<id>`.
+// TransitionCoverage is the status of a transition: tested if a file in the
+// repository annotates it with `flow:<id>`.
 type TransitionCoverage struct {
 	ID     string   `json:"id"`
 	FlowID string   `json:"flowId"`
@@ -65,7 +65,7 @@ type TransitionCoverage struct {
 	Files  []string `json:"files,omitempty"`
 }
 
-// FlowCoverage raggruppa la coverage di un flusso.
+// FlowCoverage groups a flow's coverage.
 type FlowCoverage struct {
 	FlowID             string               `json:"flowId"`
 	Name               string               `json:"name"`
@@ -78,7 +78,7 @@ type FlowCoverage struct {
 	Percent            float64              `json:"percent"`
 }
 
-// Totals somma i flussi contando una volta sola le schermate condivise.
+// Totals sums the flows, counting shared screens only once.
 type Totals struct {
 	ScreensImplemented int     `json:"screensImplemented"`
 	ScreensTotal       int     `json:"screensTotal"`
@@ -86,12 +86,12 @@ type Totals struct {
 	TransitionsTotal   int     `json:"transitionsTotal"`
 	ScreensPercent     float64 `json:"screensPercent"`
 	TransitionsPercent float64 `json:"transitionsPercent"`
-	// Percent: (schermate implementate + transizioni testate) / (schermate +
-	// transizioni). 100 se non c'è nulla da coprire.
+	// Percent: (implemented screens + tested transitions) / (screens +
+	// transitions). 100 if there is nothing to cover.
 	Percent float64 `json:"percent"`
 }
 
-// CoverageReport è il risultato di Coverage, serializzabile in JSON.
+// CoverageReport is the result of Coverage, serializable to JSON.
 type CoverageReport struct {
 	DocID   string         `json:"docId"`
 	DocName string         `json:"docName"`
@@ -112,23 +112,23 @@ type screenPattern struct {
 	component *regexp.Regexp
 }
 
-// Coverage confronta il grafo con il codice in repoDir.
+// Coverage compares the graph with the code in repoDir.
 //
-//   - transizione testata: un file sorgente (test compresi, anche generati) contiene
+//   - tested transition: a source file (tests included, even generated) contains
 //     `flow:<id>`;
-//   - schermata implementata: la sua `code.route` o `code.component` compare in un
-//     file sorgente NON generato e non di test; oppure `status` la dichiara
-//     implemented/tested (override manuale).
+//   - implemented screen: its `code.route` or `code.component` appears in a
+//     source file that is NOT generated and not a test; or `status` declares it
+//     implemented/tested (manual override).
 //
-// Salta node_modules, .git, dist, vendor, gen, i file binari e quelli oltre 1 MiB.
+// It skips node_modules, .git, dist, vendor, gen, binary files and those over 1 MiB.
 func Coverage(doc *opendesignerv1.Document, flowID, repoDir string) (*CoverageReport, error) {
 	if repoDir == "" {
-		return nil, errors.New("coverage: repoDir mancante")
+		return nil, errors.New("coverage: repoDir missing")
 	}
 	if st, err := os.Stat(repoDir); err != nil {
 		return nil, fmt.Errorf("coverage: %w", err)
 	} else if !st.IsDir() {
-		return nil, fmt.Errorf("coverage: %s non è una cartella", repoDir)
+		return nil, fmt.Errorf("coverage: %s is not a directory", repoDir)
 	}
 
 	ids := flowIDs(doc, flowID)
@@ -145,7 +145,7 @@ func Coverage(doc *opendesignerv1.Document, flowID, repoDir string) (*CoverageRe
 		}
 	}
 
-	// Pattern da cercare, uno per schermata (deduplicati fra flussi).
+	// Patterns to search for, one per screen (deduplicated across flows).
 	var patterns []screenPattern
 	for _, s := range sortedKeys(screenSet) {
 		p := screenPattern{id: s, route: nodeMeta(doc, s, MetaRoute)}
@@ -246,7 +246,7 @@ func Coverage(doc *opendesignerv1.Document, flowID, repoDir string) (*CoverageRe
 		rep.Flows = append(rep.Flows, fc)
 	}
 
-	// Totali: schermate uniche fra i flussi (stesso nodo in più flussi = una volta).
+	// Totals: unique screens across flows (same node in several flows = once).
 	seen := map[string]bool{}
 	for _, fc := range rep.Flows {
 		for _, s := range fc.Screens {
@@ -269,9 +269,9 @@ func Coverage(doc *opendesignerv1.Document, flowID, repoDir string) (*CoverageRe
 	return rep, nil
 }
 
-// containsRoute: la rotta compare nel testo. Una rotta di un solo carattere
-// ("/") sarebbe ovunque, quindi in quel caso si accetta solo come stringa
-// quotata.
+// containsRoute: the route appears in the text. A one-character route
+// ("/") would be everywhere, so in that case it is only accepted as a
+// quoted string.
 func containsRoute(text, route string) bool {
 	if len(route) > 1 {
 		return strings.Contains(text, route)
@@ -332,32 +332,32 @@ func sortedKeys(m map[string]bool) []string {
 	return out
 }
 
-// Markdown rende il report per le persone (o per una PR).
+// Markdown renders the report for people (or for a PR).
 func (r *CoverageReport) Markdown() string {
 	var b strings.Builder
 	title := r.DocName
 	if title == "" {
 		title = r.DocID
 	}
-	fmt.Fprintf(&b, "# Coverage dei flussi — %s\n\n", oneLine(title))
+	fmt.Fprintf(&b, "# Flow coverage — %s\n\n", oneLine(title))
 	t := r.Totals
-	fmt.Fprintf(&b, "**Totale: %.1f%%** — schermate implementate %d/%d (%.1f%%), transizioni testate %d/%d (%.1f%%)\n",
+	fmt.Fprintf(&b, "**Total: %.1f%%** — screens implemented %d/%d (%.1f%%), transitions tested %d/%d (%.1f%%)\n",
 		t.Percent, t.ScreensImplemented, t.ScreensTotal, t.ScreensPercent, t.TransitionsTested, t.TransitionsTotal, t.TransitionsPercent)
 	for _, f := range r.Flows {
 		name := f.Name
 		if name == "" {
 			name = f.FlowID
 		}
-		fmt.Fprintf(&b, "\n## Flusso: %s (`%s`) — %.1f%%\n\n", oneLine(name), f.FlowID, f.Percent)
-		b.WriteString("| Schermata | Stato | Rotta | Componente | File |\n|---|---|---|---|---|\n")
+		fmt.Fprintf(&b, "\n## Flow: %s (`%s`) — %.1f%%\n\n", oneLine(name), f.FlowID, f.Percent)
+		b.WriteString("| Screen | Status | Route | Component | File |\n|---|---|---|---|---|\n")
 		for _, s := range f.Screens {
 			fmt.Fprintf(&b, "| %s | %s | %s | %s | %s |\n", cell(s.Name), s.Status, codeCell(s.Route), codeCell(s.Component), filesCell(s.Files, s.Source))
 		}
-		b.WriteString("\n| Transizione | Testata | File |\n|---|---|---|\n")
+		b.WriteString("\n| Transition | Tested | File |\n|---|---|---|\n")
 		for _, tr := range f.Transitions {
 			mark := "no"
 			if tr.Tested {
-				mark = "sì"
+				mark = "yes"
 			}
 			fmt.Fprintf(&b, "| `%s` %s → %s%s | %s | %s |\n", tr.ID, cell(tr.From), cell(tr.To), labelSuffix(tr.Label), mark, filesCell(tr.Files, ""))
 		}
@@ -375,7 +375,7 @@ func labelSuffix(l string) string {
 func filesCell(files []string, source string) string {
 	if len(files) == 0 {
 		if source == "meta" {
-			return "(dichiarato in `status`)"
+			return "(declared in `status`)"
 		}
 		return "—"
 	}

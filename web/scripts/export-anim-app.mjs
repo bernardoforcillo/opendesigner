@@ -1,13 +1,13 @@
-// Le animazioni esportate FUNZIONANO: esporta il documento di esempio con le
-// clip (samples.AnimDemo) nel target `react` (Motion) e nel target `html` (CSS
-// @keyframes), compila l'app (tsc + vite build) e fa girare in Chromium un test
-// che campiona opacità / transform / tratto nel TEMPO e sotto hover e tap.
+// The exported animations WORK: it exports the example document with the
+// clips (samples.AnimDemo) in the `react` target (Motion) and in the `html` target (CSS
+// @keyframes), builds the app (tsc + vite build) and runs in Chromium a test
+// that samples opacity / transform / stroke over TIME and under hover and tap.
 //
-//   pnpm export-anim-app                  # usa il Chromium di Playwright (PLAYWRIGHT_BROWSERS_PATH)
+//   pnpm export-anim-app                  # uses Playwright's Chromium (PLAYWRIGHT_BROWSERS_PATH)
 //   CHROMIUM_PATH=/usr/bin/chromium pnpm export-anim-app
 //
-// Serve la rete per `npm install` (vedi /root/.ccr/README.md se passa da un proxy).
-// Scrive in web/export-parity-out/anim-app e anim-html (gitignored).
+// It needs the network for `npm install` (see /root/.ccr/README.md if it goes through a proxy).
+// It writes to web/export-parity-out/anim-app and anim-html (gitignored).
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -23,7 +23,7 @@ fs.mkdirSync(WORK, { recursive: true });
 
 function run(cmd, args, cwd, env = {}) {
   const r = spawnSync(cmd, args, { stdio: "inherit", cwd, env: { ...process.env, ...env } });
-  if (r.status !== 0) throw new Error(`${cmd} ${args.join(" ")} è fallito`);
+  if (r.status !== 0) throw new Error(`${cmd} ${args.join(" ")} failed`);
 }
 
 function chromiumPath() {
@@ -46,16 +46,16 @@ const sample = path.join(WORK, "samples", "anim.json");
 run(bin, ["export", "-json", sample, "-target", "react", "-out", appDir], repoDir);
 run(bin, ["export", "-json", sample, "-target", "html", "-out", htmlDir], repoDir);
 
-// Il test: campiona ciò che Chromium CALCOLA, non il sorgente.
+// The test: it samples what Chromium COMPUTES, not the source.
 const spec = `import { test, expect, type Page, type Locator } from "@playwright/test";
 import path from "node:path";
 import { pathToFileURL } from "node:url";
 
-// matrix(a,b,c,d,e,f) | none -> {angle (gradi), scale, tx, ty}
+// matrix(a,b,c,d,e,f) | none -> {angle (degrees), scale, tx, ty}
 const parse = (t: string) => {
   if (!t || t === "none") return { angle: 0, scale: 1, tx: 0, ty: 0 };
   const m = t.match(/matrix\\(([^)]+)\\)/);
-  if (!m) throw new Error("transform inatteso: " + t);
+  if (!m) throw new Error("unexpected transform: " + t);
   const [a, b, , , e, f] = m[1].split(",").map(Number);
   return { angle: (Math.atan2(b, a) * 180) / Math.PI, scale: Math.hypot(a, b), tx: e, ty: f };
 };
@@ -64,8 +64,8 @@ const opacity = async (l: Locator) => Number(await css(l, "opacity"));
 const tf = async (l: Locator) => parse(await css(l, "transform"));
 const byId = (page: Page, id: string) => page.getByTestId(id);
 
-// Come campionare nel tempo senza dormire a vuoto: si legge subito dopo il
-// caricamento, a metà e a fine.
+// How to sample over time without sleeping idly: read right after
+// loading, halfway and at the end.
 async function sampleOpacity(l: Locator, times: number[]) {
   const out: number[] = [];
   const t0 = Date.now();
@@ -78,11 +78,11 @@ async function sampleOpacity(l: Locator, times: number[]) {
 }
 
 test.describe("react + Motion", () => {
-  test("enter: la card entra in opacità e in y con ritardo, il titolo in scala", async ({ page }) => {
+  test("enter: the card enters in opacity and in y with a delay, the title in scale", async ({ page }) => {
     await page.goto("/", { waitUntil: "commit" });
     const card = byId(page, "card");
     await card.waitFor({ state: "attached" });
-    // campiona ogni 60ms: la serie sale, parte sotto 1 e arriva a 1
+    // sample every 60ms: the series rises, starts below 1 and reaches 1
     const series: number[] = [];
     for (let i = 0; i < 30; i++) {
       series.push(await opacity(card));
@@ -90,17 +90,17 @@ test.describe("react + Motion", () => {
     }
     await page.waitForTimeout(600);
     const late = await opacity(card);
-    expect(series[0]).toBeLessThan(0.7);             // initial: opacity 0, poi sale
-    expect(series.some((v) => v > 0.02 && v < 0.98)).toBe(true);   // valori intermedi: sta animando
+    expect(series[0]).toBeLessThan(0.7);             // initial: opacity 0, then it rises
+    expect(series.some((v) => v > 0.02 && v < 0.98)).toBe(true);   // intermediate values: it is animating
     for (let i = 1; i < series.length; i++) expect(series[i]).toBeGreaterThanOrEqual(series[i - 1] - 1e-6);
     expect(late).toBe(1);
-    // y: parte da -20 (rispetto alla posizione del design) e arriva a 0
+    // y: starts from -20 (relative to the design position) and reaches 0
     expect((await tf(card)).ty).toBeCloseTo(0, 1);
     const title = byId(page, "title");
     expect((await tf(title)).scale).toBeCloseTo(1, 2);
   });
 
-  test("draw: pathLength va da 0 a 1 sul path del vettoriale", async ({ page }) => {
+  test("draw: pathLength goes from 0 to 1 on the vector's path", async ({ page }) => {
     await page.goto("/");
     const path = page.locator('[data-node-id="sig"] path');
     await path.waitFor();
@@ -110,13 +110,13 @@ test.describe("react + Motion", () => {
     const mid = await dash();
     await page.waitForTimeout(1500);
     const end = await dash();
-    // Motion scrive "<lunghezza> 1" con lunghezza normalizzata (pathLength=1)
+    // Motion writes "<length> 1" with a normalised length (pathLength=1)
     expect(first[0]).toBeLessThan(0.5);
     expect(mid[0]).toBeGreaterThan(first[0]);
     expect(end[0]).toBeCloseTo(1, 2);
   });
 
-  test("loop: il cerchio ruota avanti e indietro senza fermarsi", async ({ page }) => {
+  test("loop: the circle rotates back and forth without stopping", async ({ page }) => {
     await page.goto("/");
     const spin = byId(page, "spin");
     await spin.waitFor();
@@ -129,11 +129,11 @@ test.describe("react + Motion", () => {
     for (const a of angles) { expect(a).toBeGreaterThanOrEqual(-1); expect(a).toBeLessThanOrEqual(181); }
   });
 
-  test("hover/tap sul pulsante: scala il pulsante e attenua l'etichetta (un discendente)", async ({ page }) => {
+  test("hover/tap on the button: scales the button and dims the label (a descendant)", async ({ page }) => {
     await page.goto("/");
     const btn = byId(page, "btn");
     const label = byId(page, "btn-label");
-    await page.waitForTimeout(2200); // le entrate sono finite
+    await page.waitForTimeout(2200); // the entrances are finished
     expect((await tf(btn)).scale).toBeCloseTo(1, 2);
     expect(await opacity(label)).toBe(1);
     await btn.hover();
@@ -150,15 +150,15 @@ test.describe("react + Motion", () => {
     expect(await opacity(label)).toBeCloseTo(1, 2);
   });
 
-  test("hover: rotate e x sono DELTA e compongono con rotazione e posizione di base", async ({ page }) => {
+  test("hover: rotate and x are DELTAS and compose with the base rotation and position", async ({ page }) => {
     await page.goto("/");
     const tilt = byId(page, "tilt");
     await page.waitForTimeout(2200);
     const left0 = (await tilt.boundingBox())!;
-    expect(await css(tilt, "rotate")).toBe("30deg");     // la rotazione di base resta
+    expect(await css(tilt, "rotate")).toBe("30deg");     // the base rotation stays
     await tilt.hover();
     await page.waitForTimeout(700);
-    const t = await tf(tilt);                            // delta di Motion: +30 gradi e +30px
+    const t = await tf(tilt);                            // Motion's delta: +30 degrees and +30px
     expect(t.angle).toBeCloseTo(30, 0);
     expect(t.tx).toBeCloseTo(30, 0);
     expect(await css(tilt, "rotate")).toBe("30deg");
@@ -167,9 +167,9 @@ test.describe("react + Motion", () => {
 });
 
 test.describe("html + CSS keyframes", () => {
-  const url = pathToFileURL(path.join(process.env.ANIM_HTML_DIR!, "animazioni.html")).href;
+  const url = pathToFileURL(path.join(process.env.ANIM_HTML_DIR!, "animations.html")).href;
 
-  test("enter: opacita' dal ritardo alla fine, y da -20 a 0 (translate)", async ({ page }) => {
+  test("enter: opacity from the delay to the end, y from -20 to 0 (translate)", async ({ page }) => {
     await page.goto(url);
     const card = byId(page, "card");
     const [early, mid, late] = await sampleOpacity(card, [0, 600, 1800]);
@@ -180,7 +180,7 @@ test.describe("html + CSS keyframes", () => {
     expect(await css(card, "translate")).toMatch(/^(0px|none)( 0px)?$/);
   });
 
-  test("draw: stroke-dasharray da 0 a 1", async ({ page }) => {
+  test("draw: stroke-dasharray from 0 to 1", async ({ page }) => {
     await page.goto(url);
     const path = page.locator('[data-node-id="sig"] path');
     const dash = async () => parseFloat((await css(path, "stroke-dasharray")).split(/[ ,]+/)[0]);
@@ -194,7 +194,7 @@ test.describe("html + CSS keyframes", () => {
     expect(end).toBeCloseTo(1, 2);
   });
 
-  test("loop: la proprieta' rotate cambia nel tempo", async ({ page }) => {
+  test("loop: the rotate property changes over time", async ({ page }) => {
     await page.goto(url);
     const spin = byId(page, "spin");
     const vals: number[] = [];
@@ -202,7 +202,7 @@ test.describe("html + CSS keyframes", () => {
     expect(Math.max(...vals) - Math.min(...vals)).toBeGreaterThan(15);
   });
 
-  test("hover e tap: scale del pulsante, opacita' dell'etichetta", async ({ page }) => {
+  test("hover and tap: the button's scale, the label's opacity", async ({ page }) => {
     await page.goto(url);
     const btn = byId(page, "btn");
     const label = byId(page, "btn-label");
@@ -221,15 +221,15 @@ test.describe("html + CSS keyframes", () => {
     expect(await css(btn, "scale")).toMatch(/^(none|1)$/);
   });
 
-  test("hover: rotate (proprieta') e x (translate) compongono con transform:rotate(30deg) di base", async ({ page }) => {
+  test("hover: rotate (property) and x (translate) compose with the base transform:rotate(30deg)", async ({ page }) => {
     await page.goto(url);
     const tilt = byId(page, "tilt");
-    expect(await css(tilt, "transform")).toContain("matrix");   // rotate(30deg) di base
+    expect(await css(tilt, "transform")).toContain("matrix");   // base rotate(30deg)
     await tilt.hover();
     await page.waitForTimeout(700);
     expect(parseFloat(await css(tilt, "rotate"))).toBeCloseTo(30, 0);
     expect(await css(tilt, "translate")).toMatch(/^30px/);
-    expect((await tf(tilt)).angle).toBeCloseTo(30, 0);          // la base e' ancora li'
+    expect((await tf(tilt)).angle).toBeCloseTo(30, 0);          // the base is still there
   });
 });
 `;
@@ -239,4 +239,4 @@ fs.writeFileSync(path.join(appDir, "tests", "anim.spec.ts"), spec);
 run("npm", ["install", "--no-audit", "--no-fund"], appDir);
 run("npm", ["run", "build"], appDir);
 run("npx", ["playwright", "test", "--workers=1"], appDir, { PW_CHROMIUM_PATH: chromiumPath(), ANIM_HTML_DIR: htmlDir });
-console.log("App animata esportata: build riuscita e animazioni verificate in Chromium (react+Motion e html+CSS).");
+console.log("Animated app exported: build succeeded and animations verified in Chromium (react+Motion and html+CSS).");

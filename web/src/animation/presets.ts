@@ -2,32 +2,32 @@ import type { ClipLite, KeyframeLite, NodeLite, SceneState, TrackLite } from "..
 import { defaultTargetId, uniqueClipName } from "./timelineLogic";
 import { canDraw } from "./pose";
 
-// I PRESET: clip pronte per un nodo, in un click ("Anima con un preset").
+// THE PRESETS: ready-made clips for a node, in one click ("Animate with a preset").
 //
-// Funzioni PURE: dato il nodo (i suoi valori di base) e la scena, producono la
-// clip intera -- un solo `SetClip`, quindi un solo passo di undo. I valori sono
-// RELATIVI a quelli di base del nodo (Slide up parte 24 px sotto dove il nodo
-// sta, non a una coordinata assoluta), così il preset funziona ovunque sia
-// il nodo e la clip finisce sullo stato che il designer ha disegnato.
+// PURE functions: given the node (its base values) and the scene, they produce the
+// whole clip -- a single `SetClip`, hence a single undo step. The values are
+// RELATIVE to the node's base ones (Slide up starts 24 px below where the node
+// sits, not at an absolute coordinate), so the preset works wherever the
+// node is and the clip ends on the state the designer drew.
 
 export type PresetId = "fadeIn" | "slideUp" | "pop" | "spin" | "pulse" | "draw";
 
 export interface PresetInfo {
   id: PresetId;
   label: string;
-  /** Una riga che dice cosa fa. */
+  /** A line saying what it does. */
   hint: string;
-  /** Vero se il preset ha senso per questo nodo (Draw vuole un tracciato). */
+  /** True if the preset makes sense for this node (Draw needs a path). */
   applicable: (n: Pick<NodeLite, "kind">) => boolean;
 }
 
 export const PRESETS: readonly PresetInfo[] = [
-  { id: "fadeIn", label: "Fade in", hint: "Appare con una dissolvenza", applicable: () => true },
-  { id: "slideUp", label: "Slide up", hint: "Sale al suo posto sfumando", applicable: () => true },
-  { id: "pop", label: "Pop", hint: "Compare ingrandendosi con un piccolo rimbalzo", applicable: () => true },
-  { id: "spin", label: "Spin", hint: "Gira su sé stesso in continuazione", applicable: () => true },
-  { id: "pulse", label: "Pulse", hint: "Pulsa lentamente", applicable: () => true },
-  { id: "draw", label: "Draw", hint: "Il tracciato si disegna da zero", applicable: canDraw },
+  { id: "fadeIn", label: "Fade in", hint: "Appears with a fade", applicable: () => true },
+  { id: "slideUp", label: "Slide up", hint: "Rises into place while fading in", applicable: () => true },
+  { id: "pop", label: "Pop", hint: "Appears growing with a small bounce", applicable: () => true },
+  { id: "spin", label: "Spin", hint: "Spins on itself continuously", applicable: () => true },
+  { id: "pulse", label: "Pulse", hint: "Pulses slowly", applicable: () => true },
+  { id: "draw", label: "Draw", hint: "The path draws itself from zero", applicable: canDraw },
 ];
 
 const kf = (time: number, value: number, easing = "easeOut"): KeyframeLite => ({ time, value, easing });
@@ -52,7 +52,7 @@ function shapeOf(id: PresetId, n: NodeLite): Shape {
       return {
         ...base, name: "Pop", duration: 500, trigger: "enter",
         tracks: [
-          // sale oltre il valore finale e ci torna: il "rimbalzo"
+          // goes past the final value and comes back: the "bounce"
           track(n.id, "scale", kf(0, 0.6), kf(300, 1.08), kf(500, 1, "easeInOut")),
           track(n.id, "opacity", kf(0, 0), kf(200, n.opacity)),
         ],
@@ -73,8 +73,8 @@ function shapeOf(id: PresetId, n: NodeLite): Shape {
 }
 
 /**
- * La clip del preset `id` per il nodo `node`, già con id, nome libero e bersaglio
- * (il contenitore più vicino al nodo). `null` se il preset non si applica al nodo.
+ * The clip of preset `id` for node `node`, already with id, free name and target
+ * (the container closest to the node). `null` if the preset does not apply to the node.
  */
 export function buildPreset(id: PresetId, scene: SceneState, node: NodeLite, clipId: string): ClipLite | null {
   const info = PRESETS.find((p) => p.id === id);

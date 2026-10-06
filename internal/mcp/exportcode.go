@@ -10,28 +10,28 @@ import (
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// export_code: il design come codice. La generazione la fa il server (RPC
-// ExportCode, la stessa di `opendesigner export`: stesso snapshot, stessi
-// asset); qui si scrivono i file nella cartella dell'agente.
+// export_code: the design as code. Generation is done by the server (the
+// ExportCode RPC, the same as `opendesigner export`: same snapshot, same
+// assets); here the files are written into the agent's directory.
 
 type ExportCodeInput struct {
-	OutDir string `json:"outDir" jsonschema:"cartella di destinazione (creata se manca); deve essere vuota a meno di force"`
-	Target string `json:"target,omitempty" jsonschema:"react (default: Vite + React + TypeScript + Tailwind v4 + test Playwright dei flussi) oppure html (un file per schermata)"`
-	FlowId string `json:"flowId,omitempty" jsonschema:"cabla e testa un solo flusso (vedi list_flows); vuoto = tutti"`
-	Force  bool   `json:"force,omitempty" jsonschema:"ammette una cartella non vuota, sovrascrivendo i file generati"`
+	OutDir string `json:"outDir" jsonschema:"destination directory (created if missing); must be empty unless force"`
+	Target string `json:"target,omitempty" jsonschema:"react (default: Vite + React + TypeScript + Tailwind v4 + Playwright tests of the flows) or html (one file per screen)"`
+	FlowId string `json:"flowId,omitempty" jsonschema:"wire and test a single flow (see list_flows); empty = all"`
+	Force  bool   `json:"force,omitempty" jsonschema:"allow a non-empty directory, overwriting the generated files"`
 }
 
 type ExportCodeOutput struct {
 	OutDir   string   `json:"outDir"`
 	Target   string   `json:"target"`
-	Files    []string `json:"files" jsonschema:"percorsi scritti, relativi a outDir"`
-	Warnings []string `json:"warnings,omitempty" jsonschema:"approssimazioni e omissioni (asset mancanti, transizioni verso nodi non esportati)"`
+	Files    []string `json:"files" jsonschema:"paths written, relative to outDir"`
+	Warnings []string `json:"warnings,omitempty" jsonschema:"approximations and omissions (missing assets, transitions to non-exported nodes)"`
 }
 
-// ExportCode chiede al server il progetto e lo scrive in OutDir.
+// ExportCode asks the server for the project and writes it into OutDir.
 func (s *Session) ExportCode(ctx context.Context, in ExportCodeInput) (ExportCodeOutput, error) {
 	if in.OutDir == "" {
-		return ExportCodeOutput{}, fmt.Errorf("export_code: outDir è obbligatorio")
+		return ExportCodeOutput{}, fmt.Errorf("export_code: outDir is required")
 	}
 	target := in.Target
 	if target == "" {
@@ -52,8 +52,8 @@ func (s *Session) ExportCode(ctx context.Context, in ExportCodeInput) (ExportCod
 	return ExportCodeOutput{OutDir: in.OutDir, Target: target, Files: written, Warnings: out.Warnings}, nil
 }
 
-// codeConventions è il manuale che l'agente deve avere sotto mano per usare
-// export_code e per scrivere un design che si esporti bene.
+// codeConventions is the manual the agent needs at hand to use export_code
+// and to write a design that exports well.
 const codeConventions = " How the design maps to code: every top-level FRAME of a page is a screen (component masters are not); the screen's name becomes the component/file (PascalCase; meta code.component overrides it) and its route is meta code.route (else '/' + slug of the name; the flow's start screen is also mounted at '/'). " +
 	"Auto-layout frames become flexbox (direction, spacing -> gap, padding, main/cross align -> justify-content/align-items, hug -> fit-content); every other container positions children absolutely at their x/y. " +
 	"Rendering follows what the editor canvas draws: only the FIRST fill (default grey for shapes, a frame without fill is transparent), strokes inside/center/outside, the first drop shadow and first layer blur, opacity per node (not inherited by children), rotation about the node centre, clipsContent -> overflow hidden, text with Inter/16/400/line-height 1.2 defaults, images copied to assets, vectors as inline SVG, component instances inlined with their overrides, hidden nodes skipped. " +

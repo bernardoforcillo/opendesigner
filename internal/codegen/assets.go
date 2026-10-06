@@ -6,20 +6,20 @@ import (
 	"path/filepath"
 )
 
-// FuncAssets adatta una funzione ad AssetSource.
+// FuncAssets adapts a function to AssetSource.
 type FuncAssets func(hash string) ([]byte, error)
 
-// Asset implementa AssetSource.
+// Asset implements AssetSource.
 func (f FuncAssets) Asset(hash string) ([]byte, error) { return f(hash) }
 
-// DirAssets legge gli asset da una cartella: il file si chiama come l'hash,
-// con o senza estensione (`<hash>`, `<hash>.png`...). Serve a `export -json`,
-// dove non c'è un workspace da cui prenderli.
+// DirAssets reads assets from a directory: the file is named after the hash,
+// with or without an extension (`<hash>`, `<hash>.png`...). It serves `export
+// -json`, where there is no workspace to take them from.
 func DirAssets(dir string) AssetSource {
 	return FuncAssets(func(hash string) ([]byte, error) {
-		// L'hash arriva dal documento: va bene solo se è un nome di file semplice.
+		// The hash comes from the document: it is only acceptable as a plain file name.
 		if hash == "" || hash != filepath.Base(hash) || hash == "." || hash == ".." {
-			return nil, errors.New("hash non valido")
+			return nil, errors.New("invalid hash")
 		}
 		if b, err := os.ReadFile(filepath.Join(dir, hash)); err == nil {
 			return b, nil

@@ -7,15 +7,16 @@ import type { Template } from "../templates/catalog";
 import { docClient } from "../rpc/client";
 import { DocCard, type DocSummary } from "./DocCard";
 import { TemplatePreview } from "./TemplatePreview";
-import { hashForDoc, parseJoinLink, sortRecent } from "./route";
+import { pathForDoc, parseJoinLink, sortRecent } from "./route";
+import { useAppNavigate } from "./nav";
 import { startDocument, StartError, type StartClient } from "./startDocument";
 
-// LA HOME: il punto d'ingresso dell'app. Da qui si parte -- da un template o da
-// una tavola vuota --, si riprende un documento o ci si unisce a quello di un
-// collega con il suo link. Ogni documento nasce QUI, esplicitamente: l'editor
-// non ne crea più uno da solo aprendosi.
+// THE HOME: the app's entry point. From here you start -- from a template or
+// from a blank board --, resume a document or join a colleague's
+// with their link. Every document is born HERE, explicitly: the editor
+// no longer creates one on its own when opening.
 
-/** La parte del client RPC che serve alla Home (i test ne passano uno finto). */
+/** The part of the RPC client the Home needs (tests pass a fake one). */
 export interface HomeClient extends StartClient {
   listDocuments(req: Record<string, never>): Promise<{ docs: { id: string; name: string; updatedAt: bigint | number; screens: number; flows: number }[] }>;
   renameDocument(req: { docId: string; name: string }): Promise<unknown>;
@@ -24,9 +25,9 @@ export interface HomeClient extends StartClient {
 
 const JOURNEY = [
   { label: "Design", icon: "frame" },
-  { label: "Flussi", icon: "flow" },
-  { label: "Prova", icon: "play" },
-  { label: "Sviluppo", icon: "code" },
+  { label: "Flows", icon: "flow" },
+  { label: "Try", icon: "play" },
+  { label: "Develop", icon: "code" },
   { label: "Export", icon: "download" },
 ] as const;
 
@@ -34,15 +35,18 @@ const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
 export function Home({
   client = docClient as unknown as HomeClient,
-  navigate = (hash: string) => { location.hash = hash; },
+  navigate: navigateProp,
   focusTemplates = false,
   now = () => Date.now(),
 }: {
   client?: HomeClient;
-  navigate?: (hash: string) => void;
+  /** Where to go (`/doc/<id>`); defaults to the router. */
+  navigate?: (path: string) => void;
   focusTemplates?: boolean;
   now?: () => number;
 }) {
+  const routerNavigate = useAppNavigate();
+  const navigate = navigateProp ?? routerNavigate;
   const [docs, setDocs] = useState<DocSummary[] | null>(null);
   const [loadError, setLoadError] = useState<string | null>(null);
   const [starting, setStarting] = useState<{ id: string; done: number; total: number } | null>(null);
@@ -66,7 +70,7 @@ export function Home({
 
   useEffect(() => { void load(); }, [load]);
 
-  // `#new` ("Nuovo documento" dal menu dell'editor) porta dritti ai template.
+  // `/?templates=true` ("New document" from the editor menu) goes straight to the templates.
   useEffect(() => {
     if (focusTemplates) templatesRef.current?.scrollIntoView?.({ block: "start" });
   }, [focusTemplates]);
@@ -80,11 +84,11 @@ export function Home({
         clientId: "home",
         onProgress: (done, total) => setStarting({ id: t.id, done, total }),
       });
-      navigate(hashForDoc(id));
+      navigate(pathForDoc(id));
     } catch (e) {
       setStartError(e instanceof StartError && e.docId
-        ? `Il template non si è applicato per intero (${e.message}). Il documento è nell'elenco: puoi aprirlo o eliminarlo.`
-        : `Impossibile creare il documento: ${errText(e)}`);
+        ? `The template was not fully applied (${e.message}). The document is in the list: you can open or delete it.`
+        : `Could not create the document: ${errText(e)}`);
       setStarting(null);
       void load();
     }
@@ -101,7 +105,7 @@ export function Home({
       await client.deleteDocument({ docId: toDelete.id });
       setDocs((cur) => cur && cur.filter((d) => d.id !== toDelete.id));
       setToDelete(null); setDeleteError(null);
-      try { if (localStorage.getItem("opendesigner.docId") === toDelete.id) localStorage.removeItem("opendesigner.docId"); } catch { /* storage non disponibile */ }
+      try { if (localStorage.getItem("opendesigner.docId") === toDelete.id) localStorage.removeItem("opendesigner.docId"); } catch { /* storage unavailable */ }
     } catch (e) {
       setDeleteError(errText(e));
     }
@@ -117,22 +121,22 @@ export function Home({
         <div className="ml-auto flex items-center gap-2">
           <JoinField navigate={navigate} />
           <Button variant="primary" icon="plus" onPress={() => void start(TEMPLATES[0])} isDisabled={!!starting} className="h-8">
-            Nuovo documento
+            New document
           </Button>
         </div>
       </header>
 
       {startError && <Banner tone="danger" onClose={() => setStartError(null)}>{startError}</Banner>}
-      {loadError && <Banner tone="warn" onClose={() => setLoadError(null)}>Impossibile leggere i documenti ({loadError}).</Banner>}
+      {loadError && <Banner tone="warn" onClose={() => setLoadError(null)}>Could not read the documents ({loadError}).</Banner>}
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1040px] px-4 pb-16 pt-8 sm:px-6">
-          <h1 className="text-[22px] font-semibold tracking-[-0.02em]">Cosa vuoi progettare oggi?</h1>
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em]">What do you want to design today?</h1>
           <p className="mt-1 max-w-[560px] text-[13px] leading-relaxed text-fg-muted">
-            Parti da un template o da una tavola vuota: disegni le schermate, le colleghi in un flusso, le provi
-            come prototipo e porti a casa il codice.
+            Start from a template or a blank board: draw the screens, connect them in a flow, try them out
+            as a prototype and take the code home.
           </p>
-          <ol aria-label="Il percorso" className="mt-4 flex flex-wrap items-center gap-1.5 text-[12px] text-fg-muted">
+          <ol aria-label="The journey" className="mt-4 flex flex-wrap items-center gap-1.5 text-[12px] text-fg-muted">
             {JOURNEY.map((s, i) => (
               <li key={s.label} className="flex items-center gap-1.5">
                 <span className="flex h-6 items-center gap-1.5 rounded-full bg-surface px-2.5 shadow-[0_0_0_1px_var(--line)]">
@@ -144,7 +148,7 @@ export function Home({
           </ol>
 
           <section ref={templatesRef} aria-labelledby="home-templates" className="mt-9">
-            <h2 id="home-templates" className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Inizia da un template</h2>
+            <h2 id="home-templates" className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Start from a template</h2>
             <div className="mt-3 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(188px,1fr))]">
               {TEMPLATES.map((t) => (
                 <TemplateCard key={t.id} template={t} busy={starting?.id === t.id ? starting : null} disabled={!!starting} onPick={() => void start(t)} />
@@ -154,17 +158,17 @@ export function Home({
 
           <section aria-labelledby="home-docs" className="mt-10">
             <h2 id="home-docs" className="flex items-baseline gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">
-              I tuoi documenti
+              Your documents
               {docs && docs.length > 0 && <span className="tabular-nums">{docs.length}</span>}
             </h2>
             {docs === null ? (
-              <p role="status" className="mt-4 text-[13px] text-fg-subtle">Carico i documenti…</p>
+              <p role="status" className="mt-4 text-[13px] text-fg-subtle">Loading documents…</p>
             ) : docs.length === 0 ? (
               <div className="mt-3 rounded-xl border border-dashed border-line-strong bg-surface">
                 <EmptyState
                   icon="page"
-                  title="Nessun documento, per ora"
-                  hint="Scegli un template qui sopra: in un click hai schermate già collegate da provare."
+                  title="No documents yet"
+                  hint="Pick a template above: in one click you get screens that are already connected, ready to try."
                 />
               </div>
             ) : (
@@ -188,19 +192,19 @@ export function Home({
           <Dialog role="alertdialog" className="outline-none">
             {({ close }) => (
               <>
-                <Heading slot="title" className="text-[14px] font-semibold">Eliminare “{toDelete?.name}”?</Heading>
+                <Heading slot="title" className="text-[14px] font-semibold">Delete “{toDelete?.name}”?</Heading>
                 <p className="mt-1.5 text-[13px] leading-relaxed text-fg-muted">
-                  Il documento sparisce dall’elenco. I file restano nella cartella <code className="text-[12px]">.trash</code> del
-                  workspace, quindi si può ancora recuperare a mano.
+                  The document disappears from the list. The files stay in the workspace's <code className="text-[12px]">.trash</code>
+                  folder, so it can still be recovered by hand.
                 </p>
                 {deleteError && <p role="alert" className="mt-2 text-[12px] text-danger">{deleteError}</p>}
                 <div className="mt-4 flex justify-end gap-2">
-                  <Button variant="secondary" onPress={close} autoFocus>Annulla</Button>
+                  <Button variant="secondary" onPress={close} autoFocus>Cancel</Button>
                   <RacButton
                     onPress={() => void confirmDelete()}
                     className="inline-flex h-7 items-center justify-center gap-1.5 rounded-md bg-danger px-2.5 text-[13px] font-medium text-white outline-none hover:brightness-110 focus-visible:shadow-[var(--ring)]"
                   >
-                    <Icon name="trash" size={14} /> Elimina
+                    <Icon name="trash" size={14} /> Delete
                   </RacButton>
                 </div>
               </>
@@ -219,14 +223,14 @@ function TemplateCard({
     <RacButton
       onPress={onPick}
       isDisabled={disabled && !busy}
-      aria-label={`Crea da template: ${template.name}`}
+      aria-label={`Create from template: ${template.name}`}
       className="group flex flex-col overflow-hidden rounded-xl border border-line bg-surface text-left outline-none transition-shadow hover:shadow-[var(--shadow-bar)] focus-visible:shadow-[var(--ring)] disabled:opacity-50"
     >
       <div className="relative flex h-[112px] items-center justify-center border-b border-line bg-surface-2 px-3 py-2">
         <TemplatePreview template={template} className="h-full w-full" />
         {busy && (
           <div role="status" className="absolute inset-0 flex items-center justify-center bg-surface/80 text-[12px] font-medium text-fg-muted">
-            Creo… {busy.total > 1 ? `${Math.round((busy.done / busy.total) * 100)}%` : ""}
+            Creating… {busy.total > 1 ? `${Math.round((busy.done / busy.total) * 100)}%` : ""}
           </div>
         )}
       </div>
@@ -240,28 +244,28 @@ function TemplateCard({
   );
 }
 
-/** "Unisciti": incolla il link di un collega (o il suo id) e si entra nel suo documento. */
-function JoinField({ navigate }: { navigate: (hash: string) => void }) {
+/** "Join": paste a colleague's link (or their id) and you enter their document. */
+function JoinField({ navigate }: { navigate: (path: string) => void }) {
   const [text, setText] = useState("");
   const [error, setError] = useState<string | null>(null);
 
   function join() {
     const id = parseJoinLink(text);
-    if (!id) { setError("Non è un link di opendesigner valido."); return; }
-    navigate(hashForDoc(id));
+    if (!id) { setError("That is not a valid opendesigner link."); return; }
+    navigate(pathForDoc(id));
   }
 
   return (
     <form className="relative hidden items-center gap-1.5 sm:flex" onSubmit={(e) => { e.preventDefault(); join(); }}>
       <input
-        aria-label="Link di un documento condiviso"
+        aria-label="Link to a shared document"
         aria-invalid={error ? true : undefined}
-        placeholder="Incolla un link per unirti"
+        placeholder="Paste a link to join"
         value={text}
         onChange={(e) => { setText(e.target.value); setError(null); }}
         className="h-8 w-[220px] min-w-0 rounded-md border border-transparent bg-surface-2 px-2.5 text-[13px] text-fg placeholder:text-fg-subtle hover:border-line-strong focus:border-accent focus:bg-surface focus:outline-none"
       />
-      <Button type="submit" variant="secondary" icon="link" isDisabled={text.trim() === ""} className="h-8">Unisciti</Button>
+      <Button type="submit" variant="secondary" icon="link" isDisabled={text.trim() === ""} className="h-8">Join</Button>
       {error && <p role="alert" className="absolute right-0 top-9 z-10 whitespace-nowrap rounded-md bg-danger-soft px-2 py-1 text-[12px] text-danger">{error}</p>}
     </form>
   );

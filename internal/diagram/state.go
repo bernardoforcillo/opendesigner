@@ -6,11 +6,11 @@ import (
 	"strings"
 )
 
-// stateDiagram(-v2): si riduce a un flowchart -- stati come rettangoli
-// arrotondati, [*] come pallino di inizio/fine, <<choice>> come rombo -- e si
-// disegna con lo stesso motore. Gli stati composti (`state X { … }`) si
-// appiattiscono: le loro transizioni interne restano, il riquadro no, ma ogni
-// composito ha il proprio [*].
+// stateDiagram(-v2): reduced to a flowchart -- states as rounded
+// rectangles, [*] as a start/end dot, <<choice>> as a diamond -- and
+// drawn with the same engine. Composite states (`state X { … }`) are
+// flattened: their internal transitions remain, the frame does not, but every
+// composite has its own [*].
 
 var (
 	reStateTrans = regexp.MustCompile(`^(\[\*\]|[\w.-]+)\s*-->\s*(\[\*\]|[\w.-]+)(?:\s*:\s*(.*))?$`)
@@ -30,7 +30,7 @@ func parseState(src string) (*flowchart, error) {
 			return &fc.Nodes[i], nil
 		}
 		if len(fc.Nodes) >= MaxNodes {
-			return nil, fmt.Errorf("troppi stati (massimo %d)", MaxNodes)
+			return nil, fmt.Errorf("too many states (maximum %d)", MaxNodes)
 		}
 		idx[id] = len(fc.Nodes)
 		fc.Nodes = append(fc.Nodes, flowNode{ID: id, Label: id, Shape: fRound})
@@ -116,7 +116,7 @@ func parseState(src string) (*flowchart, error) {
 				}
 			}
 			if len(fc.Edges) >= MaxEdges {
-				return nil, fmt.Errorf("troppe transizioni (massimo %d)", MaxEdges)
+				return nil, fmt.Errorf("too many transitions (maximum %d)", MaxEdges)
 			}
 			fc.Edges = append(fc.Edges, flowEdge{From: from, To: to, Label: unquote(m[3]), ArrowEnd: true})
 			continue
@@ -134,19 +134,19 @@ func parseState(src string) (*flowchart, error) {
 			continue
 		}
 		if reFlowHead.MatchString(line) {
-			return nil, fmt.Errorf("riga non valida in uno stateDiagram: %q", clip(line, 40))
+			return nil, fmt.Errorf("invalid line in a stateDiagram: %q", clip(line, 40))
 		}
-		// Un identificatore da solo dichiara lo stato.
+		// An identifier on its own declares the state.
 		if regexp.MustCompile(`^[\w.-]+$`).MatchString(line) {
 			if _, err := ensure(line); err != nil {
 				return nil, err
 			}
 			continue
 		}
-		return nil, fmt.Errorf("riga non riconosciuta: %q", clip(line, 40))
+		return nil, fmt.Errorf("unrecognized line: %q", clip(line, 40))
 	}
 	if len(fc.Nodes) == 0 {
-		return nil, fmt.Errorf("il diagramma non ha stati")
+		return nil, fmt.Errorf("the diagram has no states")
 	}
 	return fc, nil
 }

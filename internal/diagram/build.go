@@ -8,9 +8,9 @@ import (
 	"github.com/google/uuid"
 )
 
-// build traduce una Scene in nodi del documento: un GRUPPO radice e, sotto, una
-// forma per Box, un nodo di testo per Text, un vettore per Line e Poly. Le
-// coordinate dei figli sono relative alla radice, che chi inserisce posiziona.
+// build translates a Scene into document nodes: a root GROUP and, below it, a
+// shape per Box, a text node per Text, a vector per Line and Poly. The
+// children's coordinates are relative to the root, which whoever inserts positions.
 
 type builder struct {
 	rootID string
@@ -60,9 +60,9 @@ func strokeOf(c *RGB, w float64) []*opendesignerv1.Stroke {
 	return stroke(*c, w)
 }
 
-// vector crea un nodo vettoriale dai sottopercorsi dati in coordinate della
-// scena. Regola del modello: gli ancoraggi sono locali al nodo e la bbox locale
-// parte da (0,0), quindi si trasla tutto sul minimo.
+// vector creates a vector node from the given subpaths in scene coordinates.
+// Model rule: anchors are local to the node and the local bbox starts at
+// (0,0), so everything is translated onto the minimum.
 func (b *builder) vector(nm string, subs [][]Pt, closed bool) *opendesignerv1.Node {
 	minX, minY := math.Inf(1), math.Inf(1)
 	maxX, maxY := math.Inf(-1), math.Inf(-1)
@@ -90,18 +90,18 @@ func (b *builder) add(n *opendesignerv1.Node) { b.nodes = append(b.nodes, n) }
 func (b *builder) box(x Box) {
 	switch x.Shape {
 	case ShapeEllipse:
-		n := b.base(orName(x.Name, "Ellisse"), x.X, x.Y, x.W, x.H)
+		n := b.base(orName(x.Name, "Ellipse"), x.X, x.Y, x.W, x.H)
 		n.Shape = &opendesignerv1.Node_Ellipse{Ellipse: &opendesignerv1.EllipseNode{}}
 		n.Fills, n.Strokes = fillOf(x.Fill), strokeOf(x.Stroke, x.StrokeW)
 		b.add(n)
 	case ShapeDiamond:
 		cx, cy := x.X+x.W/2, x.Y+x.H/2
 		pts := []Pt{{cx, x.Y}, {x.X + x.W, cy}, {cx, x.Y + x.H}, {x.X, cy}}
-		n := b.vector(orName(x.Name, "Decisione"), [][]Pt{pts}, true)
+		n := b.vector(orName(x.Name, "Decision"), [][]Pt{pts}, true)
 		n.Fills, n.Strokes = fillOf(x.Fill), strokeOf(x.Stroke, x.StrokeW)
 		b.add(n)
 	default:
-		n := b.base(orName(x.Name, "Forma"), x.X, x.Y, x.W, x.H)
+		n := b.base(orName(x.Name, "Shape"), x.X, x.Y, x.W, x.H)
 		r := x.Radius
 		if x.Shape == ShapeStadium {
 			r = x.H / 2
@@ -120,7 +120,7 @@ func orName(s, d string) string {
 }
 
 func (b *builder) text(t Text) {
-	n := b.base(orName(t.Name, name("Testo", t.Content)), t.X, t.Y, t.W, t.H)
+	n := b.base(orName(t.Name, name("Text", t.Content)), t.X, t.Y, t.W, t.H)
 	align := opendesignerv1.TextAlign_TEXT_ALIGN_CENTER
 	switch t.Align {
 	case "left":
@@ -140,13 +140,13 @@ func (b *builder) text(t Text) {
 }
 
 func (b *builder) poly(p Poly) {
-	n := b.vector(orName(p.Name, "Poligono"), [][]Pt{p.Pts}, true)
+	n := b.vector(orName(p.Name, "Polygon"), [][]Pt{p.Pts}, true)
 	n.Fills, n.Strokes = fillOf(p.Fill), strokeOf(p.Stroke, p.W)
 	b.add(n)
 }
 
-// dashes spezza una spezzata in tratti di `dash` separati da `gap`, tenendo gli
-// angoli: il modello non ha un tratteggio, quindi si disegna a mano.
+// dashes splits a polyline into strokes of `dash` separated by `gap`, keeping the
+// corners: the model has no dashing, so it is drawn by hand.
 func dashes(pts []Pt, dash, gap float64) [][]Pt {
 	var out [][]Pt
 	var cur []Pt
@@ -191,9 +191,9 @@ func dashes(pts []Pt, dash, gap float64) [][]Pt {
 	return out
 }
 
-// head calcola la decorazione in `tip` con direzione di marcia `dir` (unitaria,
-// verso la punta): quanto accorciare la linea, i sottopercorsi aperti da
-// aggiungere alla linea e il poligono chiuso (se c'è) con il suo riempimento.
+// head computes the decoration at `tip` with travel direction `dir` (unit,
+// toward the tip): how much to shorten the line, the open subpaths to
+// add to the line and the closed polygon (if any) with its fill.
 func head(kind HeadKind, tip Pt, dir Pt, weight float64) (shorten float64, open [][]Pt, closed []Pt, filled bool) {
 	n := Pt{-dir.Y, dir.X}
 	at := func(back, side float64) Pt {
@@ -266,7 +266,7 @@ func (b *builder) line(l Line) {
 	} else {
 		subs = append([][]Pt{pts}, subs...)
 	}
-	n := b.vector(orName(l.Name, "Linea"), subs, false)
+	n := b.vector(orName(l.Name, "Line"), subs, false)
 	n.Strokes = stroke(l.Color, w)
 	b.add(n)
 	for _, hp := range polys {
@@ -276,15 +276,15 @@ func (b *builder) line(l Line) {
 		} else {
 			fill = rgb(colWhite)
 		}
-		b.poly(Poly{Pts: hp.pts, Fill: fill, Stroke: rgb(l.Color), W: w, Name: "Punta"})
+		b.poly(Poly{Pts: hp.pts, Fill: fill, Stroke: rgb(l.Color), W: w, Name: "Tip"})
 	}
 }
 
-// buildNodes trasforma la scena nei nodi del documento; il primo è la radice.
+// buildNodes transforms the scene into the document's nodes; the first is the root.
 func buildNodes(sc *Scene, kind, source string) []*opendesignerv1.Node {
 	root := &opendesignerv1.Node{
 		Id:      uuid.NewString(),
-		Name:    "Diagramma",
+		Name:    "Diagram",
 		Visible: true, Opacity: 1,
 		Width: r2(sc.W), Height: r2(sc.H),
 		Shape: &opendesignerv1.Node_Group{Group: &opendesignerv1.GroupNode{}},

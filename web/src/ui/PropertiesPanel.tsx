@@ -32,39 +32,39 @@ import type {
 import type { MaskPath } from "../store/maskPaths";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
-// PANNELLO PROPRIETÀ — geometria (Task 9) + aspetto e stile del testo (Task 10).
+// PROPERTIES PANEL — geometry (Task 9) + text appearance and style (Task 10).
 //
-// Come il pannello livelli (ui/LayersPanel.tsx), obbedisce alla regola dei
-// gesti: un op, un gesto -- anche il singolo campo digitato passa da
-// beginGesture/endGesture, così resta annullabile con Ctrl+Z e viaggia sul
-// filo come qualunque altra modifica. Un TRASCINAMENTO (etichetta di un campo
-// numerico, cursore dell'opacità) è UN gesto solo, non uno per pixel: le
-// posizioni intermedie sono anteprima locale (applyLocal) e solo il rilascio
-// manda l'op finale.
+// Like the layers panel (ui/LayersPanel.tsx), it obeys the gesture
+// rule: one op, one gesture -- even a single typed field goes through
+// beginGesture/endGesture, so it stays undoable with Ctrl+Z and travels on the
+// wire like any other change. A DRAG (a numeric field's label,
+// the opacity slider) is a SINGLE gesture, not one per pixel: the intermediate
+// positions are a local preview (applyLocal) and only the release
+// sends the final op.
 
-// La chiave che legge NodeLite/SelectionSummary E il path di FieldMask che la
-// indirizza sul filo, insieme: aggiungere un campo numerico è aggiungere UNA
-// voce qui, non toccare la logica sotto. `minValue` è opzionale e vive qui e
-// non nel campo stesso: è una proprietà del CAMPO (larghezza/altezza non hanno
-// senso negative), non del widget generico.
+// The key read by NodeLite/SelectionSummary AND the FieldMask path that
+// addresses it on the wire, together: adding a numeric field means adding ONE
+// entry here, not touching the logic below. `minValue` is optional and lives here and
+// not in the field itself: it is a property of the FIELD (width/height make no
+// sense negative), not of the generic widget.
 interface NumericField {
   key: "x" | "y" | "width" | "height" | "rotation" | "cornerRadius";
   label: string;
   mask: MaskPath;
   minValue?: number;
-  // Il simbolo mostrato al posto dell'etichetta, che resta il nome accessibile:
-  // vedi NumberField::glyph.
+  // The symbol shown in place of the label, which stays the accessible name:
+  // see NumberField::glyph.
   glyph?: string;
 }
 
-// POSIZIONE e DIMENSIONE separate perché un GRUPPO ha la prima e non la
-// seconda: un gruppo non ha un box proprio (store/groups.ts) -- la sua cornice
-// è l'unione dei figli, e width/height sul nodo restano gli zeri con cui è
-// nato. Mostrare W/H su un gruppo non è solo un numero sbagliato: digitarci
-// dentro manda un op che ENTRAMBE le implementazioni di apply accettano, che
-// non cambia un pixel su canvas, e che costa lo stesso un invio in rete e una
-// voce di undo. La rotazione vive in SIZE_FIELDS ("Rot" e non "R", già preso
-// dal raggio del rettangolo): la maniglia dà il gesto, il campo dà il numero.
+// POSITION and SIZE are separate because a GROUP has the first and not the
+// second: a group has no box of its own (store/groups.ts) -- its frame
+// is the union of the children, and width/height on the node stay the zeros it
+// was born with. Showing W/H on a group is not just a wrong number: typing
+// into it sends an op that BOTH implementations of apply accept, that
+// does not change a pixel on the canvas, and that still costs a network send and an
+// undo entry. Rotation lives in SIZE_FIELDS ("Rot" and not "R", already taken
+// by the rectangle's radius): the handle gives the gesture, the field gives the number.
 const POSITION_FIELDS: readonly NumericField[] = [
   { key: "x", label: "X", mask: "x" },
   { key: "y", label: "Y", mask: "y" },
@@ -78,19 +78,19 @@ const SIZE_FIELDS: readonly NumericField[] = [
 
 const GEOMETRY_FIELDS: readonly NumericField[] = [...POSITION_FIELDS, ...SIZE_FIELDS];
 
-// "R" come raggio: stessa convenzione a UNA LETTERA di X/Y/W/H, che negli
-// editor di design è la norma e tiene la griglia stretta. L'etichetta è anche
-// il nome accessibile (vedi NumberField), quindi non c'è un aria-label diverso
-// da quello che si legge -- sarebbe una violazione di "label in name".
+// "R" as radius: same ONE-LETTER convention as X/Y/W/H, which in
+// design editors is the norm and keeps the grid tight. The label is also
+// the accessible name (see NumberField), so there is no aria-label different
+// from what is read -- it would be a violation of "label in name".
 const CORNER_RADIUS_FIELD: NumericField = {
   key: "cornerRadius", label: "R", mask: "corner_radius", minValue: 0,
 };
 
-// Il patch da un valore letterale: uno switch e non un oggetto calcolato con
-// una chiave dinamica (`{ [field.key]: value }`) perché il tipo di
-// makeSetPropsOp è il MessageInitShape generato da NodeSchema -- una chiave
-// dinamica su un'unione lo renderebbe non verificabile a compile-time, ed è
-// proprio il controllo che MaskPath (store/maskPaths.ts) esiste per dare.
+// The patch from a literal value: a switch and not an object computed with
+// a dynamic key (`{ [field.key]: value }`) because makeSetPropsOp's type
+// is the MessageInitShape generated from NodeSchema -- a dynamic
+// key on a union would make it unverifiable at compile time, and it is
+// exactly the check that MaskPath (store/maskPaths.ts) exists to give.
 function patchFor(key: NumericField["key"], value: number) {
   switch (key) {
     case "x":
@@ -104,39 +104,39 @@ function patchFor(key: NumericField["key"], value: number) {
     case "rotation":
       return { rotation: value };
     case "cornerRadius":
-      // ANNIDATO dentro il oneof `shape`: "corner_radius" è l'unico path della
-      // mask che non indirizza un campo di primo livello del Node (vedi
-      // store/maskPaths.ts e core.applySetProps). Il patch deve quindi portare
-      // una FORMA, non un campo -- ed è la stessa forma che il nodo ha già,
-      // altrimenti Go risponderebbe ErrNotRectNode.
+      // NESTED inside the `shape` oneof: "corner_radius" is the only mask
+      // path that does not address a top-level field of the Node (see
+      // store/maskPaths.ts and core.applySetProps). The patch must therefore carry
+      // a SHAPE, not a field -- and it is the same shape the node already has,
+      // otherwise Go would answer ErrNotRectNode.
       return { shape: { case: "rect" as const, value: { cornerRadius: value } } };
   }
 }
 
-// Il valore da SCRIVERE su x/y di un nodo perché la sua CORNICE finisca dove
-// il campo dice.
+// The value to WRITE on a node's x/y so that its FRAME ends up where
+// the field says.
 //
-// Per tutto ciò che non è un gruppo il campo È la cornice, e il valore va
-// scritto tale e quale (`value` e non `n[key] + (value - n[key])`: la seconda
-// forma è algebricamente identica ma non in virgola mobile, e la X digitata
-// deve arrivare al modello esatta come è stata scritta).
+// For everything that is not a group the field IS the frame, and the value must be
+// written as is (`value` and not `n[key] + (value - n[key])`: the second
+// form is algebraically identical but not in floating point, and the typed X
+// must reach the model exactly as it was written).
 //
-// Per un GRUPPO no: x/y sono la traslazione che contribuisce ai figli, mentre
-// la cornice sta dove stanno i figli (store/groups.ts::frameOriginOf). Il campo
-// mostra la cornice -- come per ogni altra selezione, e come la disegna
-// l'overlay -- quindi qui si traduce lo spostamento richiesto in una nuova
-// traslazione. Il DELTA si risolve adesso: l'op che parte resta ASSOLUTO come
-// ogni altro setProps, quindi un rebase o un redo non lo applicano due volte.
+// For a GROUP no: x/y are the translation that contributes to the children, while
+// the frame sits where the children are (store/groups.ts::frameOriginOf). The field
+// shows the frame -- as for every other selection, and as the overlay draws it
+// -- so here the requested shift is translated into a new
+// translation. The DELTA is resolved now: the op that goes out stays ABSOLUTE like
+// any other setProps, so a rebase or a redo do not apply it twice.
 function positionValueFor(scene: SceneState, n: NodeLite, key: "x" | "y", value: number): number {
   if (n.kind !== "group") return value;
   return n[key] + (value - frameOriginOf(scene, n)[key]);
 }
 
-// Op di scrittura di UN campo numerico su OGNI nodo selezionato: come il
-// toggle di visibilità e la rinomina del pannello livelli, lo stesso valore
-// ASSOLUTO va a tutti i nodi selezionati -- non una traslazione relativa.
-// L'unica traduzione è quella di positionValueFor, che porta ogni nodo alla
-// stessa POSIZIONE anche quando il suo x/y non è il suo bordo.
+// Op that writes ONE numeric field on EVERY selected node: like the
+// visibility toggle and the layers panel's rename, the same ABSOLUTE value
+// goes to all selected nodes -- not a relative translation.
+// The only translation is positionValueFor's, which brings each node to the
+// same POSITION even when its x/y is not its edge.
 function numericOps(ids: readonly string[], field: NumericField, value: number): Op[] {
   const scene = useScene.getState().scene;
   return ids.map((id) => {
@@ -152,12 +152,12 @@ function opacityOps(ids: readonly string[], value: number): Op[] {
   return ids.map((id) => makeSetPropsOp(id, { opacity: value }, ["opacity"]));
 }
 
-// Op di riempimento. Il colore arriva SENZA alfa (vedi ColorField): l'alfa la
-// mette qui ogni nodo dalla PROPRIA tinta, così una selezione con opacità di
-// riempimento diverse non se le vede uniformare da un cambio di colore.
+// Fill op. The color arrives WITHOUT alpha (see ColorField): alpha is
+// put in here by each node from its OWN tint, so a selection with different
+// fill opacities does not see them flattened by a color change.
 //
-// E si sostituisce solo la PRIMA tinta: un nodo con più riempimenti non deve
-// perdere gli altri perché il pannello ne mostra uno solo.
+// And only the FIRST tint is replaced: a node with several fills must not
+// lose the others because the panel shows only one.
 function fillOps(ids: readonly string[], rgb: RgbLite): Op[] {
   const scene = useScene.getState().scene;
   if (!scene) return [];
@@ -169,36 +169,36 @@ function fillOps(ids: readonly string[], rgb: RgbLite): Op[] {
   });
 }
 
-// Il tratto che il pannello mostra e scrive quando un nodo non ne ha nessuno.
-// Il peso è 1 e non 0 di proposito: scrivere un COLORE su un nodo senza tratti
-// deve produrre qualcosa che si VEDE, altrimenti l'utente sceglie un colore e
-// non succede niente. Il centro è il default del canvas 2D (l'unico
-// allineamento che sa fare da solo, vedi renderer/canvasRenderer.ts) ed è anche
-// quello che StrokeAlign_UNSPECIFIED significa nel modello.
+// The stroke the panel shows and writes when a node has none.
+// The weight is 1 and not 0 on purpose: writing a COLOR on a node without strokes
+// must produce something VISIBLE, otherwise the user picks a color and
+// nothing happens. Center is the canvas 2D's default (the only
+// alignment it can do on its own, see renderer/canvasRenderer.ts) and is also
+// what StrokeAlign_UNSPECIFIED means in the model.
 const DEFAULT_STROKE: StrokeLite = { color: { r: 0, g: 0, b: 0, a: 1 }, weight: 1, align: "center" };
 
-// Il patch che i controlli del tratto emettono. Il COLORE ci sta senza alfa --
-// RgbLite e non FillLite -- per la stessa ragione per cui ColorField non la
-// porta: l'esadecimale a 6 cifre non la contiene, e l'alfa la rimette ogni nodo
-// dal PROPRIO tratto (vedi strokeOps). È un tipo e non un `Partial<StrokeLite>`
-// proprio per rendere IMPOSSIBILE far arrivare qui un'alfa presa da altrove.
+// The patch that the stroke controls emit. The COLOR is there without alpha --
+// RgbLite and not FillLite -- for the same reason ColorField does not
+// carry it: the 6-digit hex does not contain it, and each node puts alpha back
+// from its OWN stroke (see strokeOps). It is a type and not a `Partial<StrokeLite>`
+// precisely to make it IMPOSSIBLE for an alpha taken from elsewhere to arrive here.
 type StrokePatch = Partial<Omit<StrokeLite, "color">> & { color?: RgbLite };
 
-// Op di TRATTO. Stessa forma di fillOps -- e per le stesse ragioni:
+// STROKE ops. Same shape as fillOps -- and for the same reasons:
 //
-//  - si tocca solo il PRIMO tratto e gli altri restano dove sono (il pannello
-//    ne mostra uno solo; perdere gli altri sarebbe una modifica che l'utente
-//    non ha chiesto e non vede);
-//  - il patch parte dal tratto DEL NODO, non da quello riassunto per il
-//    pannello: in una selezione mista, cambiare lo spessore non deve uniformare
-//    anche colore e posizione -- e cambiare il COLORE non deve uniformare
-//    l'alfa, che viene rimessa qui dal tratto di ciascun nodo;
-//  - un nodo senza tratti parte da DEFAULT_STROKE, cioè scrivere un qualunque
-//    campo CREA il tratto.
+//  - only the FIRST stroke is touched and the others stay where they are (the panel
+//    shows only one; losing the others would be a change the user
+//    did not ask for and cannot see);
+//  - the patch starts from the NODE's stroke, not from the one summarized for the
+//    panel: in a mixed selection, changing the weight must not flatten
+//    color and alignment too -- and changing the COLOR must not flatten
+//    the alpha, which is put back here from each node's stroke;
+//  - a node without strokes starts from DEFAULT_STROKE, that is writing any
+//    field CREATES the stroke.
 //
-// La mask è `strokes` e sostituisce l'INTERA lista (vedi store/applyOp.ts e
-// core.applySetProps): per questo la lista va ricostruita per intero, non
-// "modificata".
+// The mask is `strokes` and replaces the WHOLE list (see store/applyOp.ts and
+// core.applySetProps): that is why the list must be rebuilt in full, not
+// "modified".
 function strokeOps(ids: readonly string[], patch: StrokePatch): Op[] {
   const scene = useScene.getState().scene;
   if (!scene) return [];
@@ -206,23 +206,23 @@ function strokeOps(ids: readonly string[], patch: StrokePatch): Op[] {
     const n = scene.nodes.at(id);
     if (!n) return [];
     const base = n.strokes[0] ?? DEFAULT_STROKE;
-    // L'alfa del tratto DI QUESTO NODO, risolta nodo per nodo dentro il ciclo:
-    // leggerla dal riassunto della selezione la azzererebbe a 1 ogni volta che
-    // i nodi differiscono (il riassunto in quel caso è MIXED, cioè nessun
-    // valore), cioè proprio quando conta.
+    // The alpha of THIS NODE's stroke, resolved node by node inside the loop:
+    // reading it from the selection summary would reset it to 1 every time
+    // the nodes differ (the summary in that case is MIXED, that is no
+    // value), which is exactly when it matters.
     const color: FillLite = patch.color ? { ...patch.color, a: base.color.a } : base.color;
     const first: StrokeLite = { ...base, ...patch, color };
     return [makeSetPropsOp(id, { strokes: toPbStrokes([first, ...n.strokes.slice(1)]) }, ["strokes"])];
   });
 }
 
-// Op di STILE del testo. SetText e non un path della mask: il contenuto e lo
-// stile vivono DENTRO il oneof `shape` del Node (vedi core.applySetText).
+// Text STYLE op. SetText and not a mask path: the content and the
+// style live INSIDE the Node's `shape` oneof (see core.applySetText).
 //
-// Il contenuto viaggia INVARIATO ma viaggia: applySetText lo scrive sempre, e
-// ometterlo cancellerebbe il testo. Lo stile parte da quello del NODO e non da
-// quello riassunto per il pannello: in una selezione mista, cambiare la
-// dimensione non deve uniformare anche peso e allineamento.
+// The content travels UNCHANGED but it travels: applySetText always writes it, and
+// omitting it would erase the text. The style starts from the NODE's and not from
+// the one summarized for the panel: in a mixed selection, changing the
+// size must not flatten weight and alignment too.
 function textStyleOps(ids: readonly string[], patch: Partial<TextStyleLite>): Op[] {
   const scene = useScene.getState().scene;
   if (!scene) return [];
@@ -233,10 +233,10 @@ function textStyleOps(ids: readonly string[], patch: Partial<TextStyleLite>): Op
   });
 }
 
-// Riassunto dello STILE della selezione, per gli stessi motivi (e con la stessa
-// semantica MIXED) di selectors.ts::selectionSummary. Sta qui e non lì perché
-// riguarda solo i nodi testo: infilarlo in SelectionSummary vorrebbe dire
-// calcolarlo per ogni selezione, testo o no.
+// Summary of the selection's STYLE, for the same reasons (and with the same
+// MIXED semantics) as selectors.ts::selectionSummary. It sits here and not there because
+// it concerns only text nodes: putting it in SelectionSummary would mean
+// computing it for every selection, text or not.
 interface TextStyleSummary {
   fontSize: OrMixed<number>;
   fontWeight: OrMixed<string>;
@@ -249,8 +249,8 @@ function summarizeStyle<T>(styles: readonly TextStyleLite[], get: (s: TextStyleL
   return value;
 }
 
-// null se anche un solo nodo selezionato non è un testo: i controlli di stile
-// non compaiono affatto in quel caso.
+// null if even a single selected node is not text: the style controls
+// do not appear at all in that case.
 function textStyleSummary(nodes: readonly NodeLite[]): TextStyleSummary | null {
   const styles = nodes.map((n) => n.text?.style).filter((s): s is TextStyleLite => s !== undefined);
   if (styles.length === 0 || styles.length !== nodes.length) return null;
@@ -261,80 +261,79 @@ function textStyleSummary(nodes: readonly NodeLite[]): TextStyleSummary | null {
   };
 }
 
-// I due soli pesi che il pannello offre in M1b. Il modello ne accetta qualunque
-// stringa (TextStyle.font_weight è un string, "400" | "700" | ...): un nodo con
-// un peso fuori da questo elenco lascia semplicemente il gruppo senza nessuna
-// scelta selezionata, che è più onesto che arrotondarlo al più vicino.
+// The only two weights the panel offers in M1b. The model accepts any
+// string (TextStyle.font_weight is a string, "400" | "700" | ...): a node with
+// a weight outside this list simply leaves the group with no
+// choice selected, which is more honest than rounding it to the nearest.
 const FONT_WEIGHTS: readonly SegOption<string>[] = [
-  { value: "400", label: "Normale" },
-  { value: "700", label: "Grassetto" },
+  { value: "400", label: "Normal" },
+  { value: "700", label: "Bold" },
 ];
 
 const ALIGNMENTS: readonly SegOption<TextAlignLite>[] = [
-  { value: "left", label: "Sinistra", icon: "textLeft" },
-  { value: "center", label: "Centro", icon: "textCenter" },
-  { value: "right", label: "Destra", icon: "textRight" },
+  { value: "left", label: "Left", icon: "textLeft" },
+  { value: "center", label: "Center", icon: "textCenter" },
+  { value: "right", label: "Right", icon: "textRight" },
 ];
 
-// La POSIZIONE del tratto rispetto al perimetro. Il gruppo si chiama
-// "Posizione" e non "Allineamento" apposta: su un nodo TESTO con un tratto i
-// due gruppi convivono nel pannello, e l'etichetta è anche il nome accessibile
-// -- due gruppi omonimi sarebbero indistinguibili per chi naviga a voce.
+// The stroke's POSITION relative to the perimeter. The group is called
+// "Position" and not "Alignment" on purpose: on a TEXT node with a stroke the
+// two groups coexist in the panel, and the label is also the accessible name
+// -- two groups with the same name would be indistinguishable to someone navigating by voice.
 const STROKE_ALIGNMENTS: readonly SegOption<StrokeAlignLite>[] = [
-  { value: "inside", label: "Interno" },
-  { value: "center", label: "Centro" },
-  { value: "outside", label: "Esterno" },
+  { value: "inside", label: "Inside" },
+  { value: "center", label: "Center" },
+  { value: "outside", label: "Outside" },
 ];
 
-// L'intestazione dell'ispettore: icona e nome italiano del TIPO di nodo.
+// The inspector's header: icon and name of the node's TYPE.
 const KIND_ICON: Record<NodeLite["kind"], IconName> = {
   rect: "rect", ellipse: "ellipse", text: "text", image: "image", vector: "pen",
   unknown: "rect", group: "layers", frame: "frame", instance: "components",
 };
 const KIND_LABEL: Record<NodeLite["kind"], string> = {
-  rect: "Rettangolo", ellipse: "Ellisse", text: "Testo", image: "Immagine", vector: "Vettore",
-  unknown: "Elemento", group: "Gruppo", frame: "Frame", instance: "Istanza",
+  rect: "Rectangle", ellipse: "Ellipse", text: "Text", image: "Image", vector: "Vector",
+  unknown: "Element", group: "Group", frame: "Frame", instance: "Instance",
 };
 
-// Un valore riassunto pronto per un RadioGroup CONTROLLATO: null (e non
-// undefined) per MIXED, così il gruppo resta controllato e mostra semplicemente
-// nessuna scelta -- stessa ragione per cui NumberField usa NaN invece di
+// A summarized value ready for a CONTROLLED RadioGroup: null (and not
+// undefined) for MIXED, so the group stays controlled and simply shows
+// no choice -- same reason NumberField uses NaN instead of
 // undefined.
 function radioValue<T extends string>(v: OrMixed<T>): T | null {
   return v === MIXED ? null : (v as T);
 }
 
-// L'opacità è un float 0..1 nel modello e una percentuale per chi la legge: la
-// conversione la fa Intl, dentro lo stato del cursore, una volta sola -- e la
-// stessa stringa serve poi sia il testo mostrato sia il valore annunciato.
-// Costante di modulo e non un letterale inline: `useNumberFormatter` memoizza
-// sull'IDENTITÀ dell'oggetto, e un letterale nuovo a ogni render
-// ricostruirebbe l'Intl.NumberFormat a ogni frame di trascinamento.
+// Opacity is a 0..1 float in the model and a percentage for whoever reads it: the
+// conversion is done by Intl, inside the slider's state, only once -- and the
+// same string then serves both the displayed text and the announced value.
+// A module constant and not an inline literal: `useNumberFormatter` memoizes
+// on the object's IDENTITY, and a new literal on every render
+// would rebuild the Intl.NumberFormat on every drag frame.
 const PERCENT_FORMAT: Intl.NumberFormatOptions = { style: "percent" };
 
-// L'UNICA parola con cui il pannello dice "questa selezione non ha un valore
-// solo" su un cursore.
-const MIXED_LABEL = "Misto";
+// The ONLY word with which the panel says "this selection does not have a single
+// value" on a slider.
+const MIXED_LABEL = "Mixed";
 
-// Il valore del cursore: quello che si LEGGE e quello che si SENTE, dalla
-// stessa variabile.
+// The slider's value: what is READ and what is HEARD, from the
+// same variable.
 //
-// I campi di testo e di colore, su MIXED, si mostrano VUOTI: "nessun valore
-// singolo" si disegna come niente. Un cursore non può -- una posizione ce l'ha
-// per forza, e il suo valore accessibile è un NUMERO: react-aria mette
-// `aria-valuetext` sull'`<input type=range>` prendendolo dallo stato, quindi il
-// valore di ripiego che serve a dare una posizione (1, cioè "100%") verrebbe
-// anche ANNUNCIATO come se fosse quello vero. Uno screen reader leggerebbe
-// "100%" su una selezione che un'opacità sola non ce l'ha.
+// Text and color fields, on MIXED, show EMPTY: "no single value"
+// is drawn as nothing. A slider cannot -- it necessarily has a position, and
+// its accessible value is a NUMBER: react-aria puts `aria-valuetext` on the
+// `<input type=range>` taking it from the state, so the fallback value needed to give a position
+// (1, that is "100%") would also be ANNOUNCED as if it were the real one.
+// A screen reader would read "100%" on a selection that does not have a single opacity.
 //
-// Il rimedio è possedere l'attributo: `inputRef` è la prop pubblica con cui
-// RAC dà accesso proprio a quell'input. Si scrive a OGNI render, senza array
-// di dipendenze: fuori da MIXED si riscrive quello che RAC aveva già calcolato
-// (`getThumbValueLabel`, cioè la stessa percentuale del testo mostrato), così
-// non resta mai un "Misto" appeso quando il valore torna a esistere -- React
-// non riscriverebbe un attributo il cui valore di partenza non è cambiato.
-// useLayoutEffect e non useEffect: l'attributo è a posto prima che il browser
-// dipinga, non un frame dopo.
+// The remedy is to own the attribute: `inputRef` is the public prop with which
+// RAC gives access to exactly that input. It is written on EVERY render, without a
+// dependency array: outside MIXED it rewrites what RAC had already computed
+// (`getThumbValueLabel`, that is the same percentage as the displayed text), so
+// a "Mixed" is never left hanging when the value comes back to exist -- React
+// would not rewrite an attribute whose starting value has not changed.
+// useLayoutEffect and not useEffect: the attribute is right before the browser
+// paints, not a frame later.
 function SliderValueText({
   inputRef, mixed, className,
 }: { inputRef: RefObject<HTMLInputElement | null>; mixed: boolean; className: string }) {
@@ -346,17 +345,17 @@ function SliderValueText({
   return <SliderOutput className={className}>{text}</SliderOutput>;
 }
 
-// Il binario e la pastiglia del cursore dell'opacità, con il loro stato VUOTO:
-// su `data-mixed` (messo sul track, che è il `group`) perdono riempimento e
-// bordo pieno e restano un tratteggio, perché non c'è nessun valore da
-// indicare. La pastiglia però resta lì -- focalizzabile, trascinabile e con il
-// suo anello di focus.
+// The opacity slider's track and thumb, with their EMPTY state:
+// on `data-mixed` (put on the track, which is the `group`) they lose fill and
+// solid border and stay a dashed outline, because there is no value to
+// indicate. The thumb however stays there -- focusable, draggable and with its
+// focus ring.
 const SLIDER_RAIL_CLASS =
   "absolute top-1/2 h-1 w-full -translate-y-1/2 rounded-full bg-surface-3 " +
   "group-data-[mixed]:border group-data-[mixed]:border-dashed " +
   "group-data-[mixed]:border-line-strong group-data-[mixed]:bg-transparent";
 
-// La parte PIENA del binario, da sinistra fino alla pastiglia.
+// The track's FILLED part, from the left up to the thumb.
 const SLIDER_FILL_CLASS =
   "absolute left-0 top-1/2 h-1 -translate-y-1/2 rounded-full bg-accent group-data-[mixed]:hidden";
 
@@ -365,25 +364,25 @@ const SLIDER_THUMB_CLASS =
   "group-data-[mixed]:border-transparent group-data-[mixed]:bg-transparent group-data-[mixed]:shadow-none " +
   "data-[focus-visible]:shadow-[var(--ring)]";
 
-// --- ALLINEAMENTO -----------------------------------------------------------
+// --- ALIGNMENT --------------------------------------------------------------
 //
-// I pulsanti sono ICONE, come in ogni editor: otto etichette scritte per esteso
-// occuperebbero mezzo pannello e si leggerebbero peggio di un pittogramma. Il
-// NOME resta però quello per esteso (`aria-label`, dall'elenco ALIGN_COMMANDS)
-// -- è l'unica cosa che uno screen reader legge, ed è anche il testo del
-// tooltip: la stessa stringa nei due canali, mai due formulazioni diverse.
+// The buttons are ICONS, as in every editor: eight labels written out in full
+// would take half the panel and read worse than a pictogram. The
+// NAME however stays the full one (`aria-label`, from the ALIGN_COMMANDS list)
+// -- it is the only thing a screen reader reads, and it is also the
+// tooltip's text: the same string in both channels, never two different wordings.
 //
-// Le icone sono disegnate qui e non importate: sono otto rettangoli su una
-// griglia di 24, e una dipendenza per questo sarebbe più codice, non meno.
-// `RULE`/`BAR` descrivono le due parti di ogni segno -- la riga su cui si
-// allinea e i due blocchi che ci si appoggiano.
+// The icons are drawn here and not imported: they are eight rectangles on a
+// 24 grid, and a dependency for that would be more code, not less.
+// `RULE`/`BAR` describe the two parts of every sign -- the line on which one
+// aligns and the two blocks resting on it.
 const RULE = "fill-fg-subtle";
 const BAR = "fill-current";
 
-// I rettangoli di ogni icona, in coordinate SVG 0..24. Per gli allineamenti:
-// la riga (spessa 1.5) più due blocchi di lunghezza diversa appoggiati a lei --
-// due blocchi uguali non mostrerebbero da quale lato si allineano. Per le
-// distribuzioni: tre blocchi a distanza uguale, che è ciò che il comando fa.
+// The rectangles of each icon, in SVG coordinates 0..24. For alignments:
+// the line (1.5 thick) plus two blocks of different length resting on it --
+// two equal blocks would not show which side they align to. For
+// distributions: three blocks at equal distance, which is what the command does.
 const ICONS: Record<AlignCommand, { x: number; y: number; w: number; h: number; rule?: boolean }[]> = {
   left: [
     { x: 2, y: 3, w: 1.5, h: 18, rule: true },
@@ -417,9 +416,9 @@ const ICONS: Record<AlignCommand, { x: number; y: number; w: number; h: number; 
   ],
 };
 
-// `aria-hidden`: il pittogramma non aggiunge niente al nome del pulsante, che
-// arriva già da aria-label. Senza, uno screen reader annuncerebbe un "image"
-// senza nome accanto all'etichetta buona.
+// `aria-hidden`: the pictogram adds nothing to the button's name, which
+// already comes from aria-label. Without it, a screen reader would announce an
+// unnamed "image" next to the good label.
 function AlignIcon({ id }: { id: AlignCommand }) {
   return (
     <svg viewBox="0 0 24 24" className="size-4" aria-hidden="true">
@@ -433,30 +432,30 @@ function AlignIcon({ id }: { id: AlignCommand }) {
 const ALIGN_BUTTON_CLASS =
   "flex h-7 flex-1 items-center justify-center rounded-md text-fg-muted outline-none hover:bg-surface-3 hover:text-fg " +
   "focus-visible:shadow-[var(--ring)] " +
-  // Disabilitato: si SPEGNE (niente sfondo all'hover, pittogramma sbiadito),
-  // che è il segno che dice "non c'è abbastanza selezione per questo comando".
+  // Disabled: it TURNS OFF (no background on hover, faded pictogram),
+  // which is the sign saying "there is not enough selection for this command".
   "disabled:opacity-40 disabled:hover:bg-transparent";
 
-// --- OVERRIDE DELLE ISTANZE (M4) --------------------------------------------
+// --- INSTANCE OVERRIDES (M4) ------------------------------------------------
 //
-// Quando la selezione è UNA sola istanza, il pannello mostra una sezione
-// "Override": una riga per ogni nodo del MASTER che sia un testo o abbia un
-// riempimento (sottoalbero da components[componentId].rootNodeId, in
-// pre-ordine). Ogni riga mostra il valore EFFETTIVO -- l'override dell'istanza
-// per quel nodo del master se c'è, altrimenti il valore proprio del nodo del
-// master -- e scriverci emette UN SetInstanceOverride.
+// When the selection is a SINGLE instance, the panel shows an "Override"
+// section: one row for every node of the MASTER that is a text or has a
+// fill (subtree from components[componentId].rootNodeId, in
+// pre-order). Every row shows the EFFECTIVE value -- the instance's override
+// for that master node if there is one, otherwise the master node's own
+// value -- and writing into it emits ONE SetInstanceOverride.
 //
-// Le due metà dell'override (fills e text) sono INDIPENDENTI: modificare una
-// conserva l'altra così com'era (vedi InstanceOverrideLite), altrimenti un
-// override di solo testo azzererebbe il fill ereditato. Il "Ripristina" emette
-// un override VUOTO, che per il reducer è la RIMOZIONE (il nodo torna a
-// ereditare dal master).
+// The two halves of the override (fills and text) are INDEPENDENT: editing one
+// keeps the other as it was (see InstanceOverrideLite), otherwise a
+// text-only override would reset the inherited fill. "Reset" emits an
+// EMPTY override, which for the reducer is the REMOVAL (the node goes back to
+// inheriting from the master).
 
-// Campo di testo per il contenuto di un nodo testo del master. Gemello (più
-// semplice) di RenameField/PageRenameField: la sessione ha uno stato suo (il
-// testo digitato) che riparte quando il valore cambia dall'esterno -- commit
-// andato a buon fine, o cambio di selezione. Conferma su Invio o blur, una
-// volta sola.
+// Text field for the content of a master text node. Twin (simpler)
+// of RenameField/PageRenameField: the session has its own state (the typed
+// text) that restarts when the value changes from outside -- commit
+// succeeded, or selection change. Commits on Enter or blur, only
+// once.
 function OverrideTextField({
   label,
   value,
@@ -475,8 +474,8 @@ function OverrideTextField({
   function settle() {
     if (done.current) return;
     done.current = true;
-    // Niente op se il testo non è cambiato: un override "che non cambia niente"
-    // costerebbe un giro di rete e una voce di undo a vuoto.
+    // No op if the text has not changed: an override "that changes nothing"
+    // would cost a network round trip and an empty undo entry.
     if (draft !== value) onCommit(draft);
   }
   return (
@@ -489,9 +488,9 @@ function OverrideTextField({
         onChange={(e) => setDraft(e.target.value)}
         onBlur={settle}
         onKeyDown={(e) => {
-          // Nessun tasto esce da qui: le scorciatoie globali (undo/redo su
-          // window, Escape/Canc su toolManager) non devono agire mentre si
-          // scrive -- stesso stop di LayersPanel/PageBar::RenameField.
+          // No key leaves here: global shortcuts (undo/redo on
+          // window, Escape/Delete on toolManager) must not act while
+          // typing -- same stop as LayersPanel/PageBar::RenameField.
           e.stopPropagation();
           if (e.key === "Enter") {
             e.preventDefault();
@@ -505,22 +504,22 @@ function OverrideTextField({
 }
 
 export function PropertiesPanel() {
-  // I valori che il pannello mostra sono quelli che si vedono: con la timeline in
-  // posa (si scorre, si registra) sono i valori campionati. A timeline ferma è la
-  // scena dello store, la stessa istanza di prima (animation/posedScene.ts).
+  // The values the panel shows are the ones that are seen: with the timeline
+  // posed (scrubbing, recording) they are the sampled values. With the timeline idle it is
+  // the store's scene, the same instance as before (animation/posedScene.ts).
   const scene = usePosedScene();
   const selection = useScene((s) => s.selection);
   const summary = scene ? selectionSummary(scene, selection) : null;
   const nodes = scene ? selection.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined) : [];
   const style = summary?.kind === "text" ? textStyleSummary(nodes) : null;
-  // L'input nascosto del cursore dell'opacità: SliderValueText gli scrive il
-  // valore ANNUNCIATO. Sta qui, prima di ogni ritorno anticipato, perché è un
+  // The opacity slider's hidden input: SliderValueText writes the ANNOUNCED
+  // value into it. It sits here, before any early return, because it is a
   // hook.
   const opacityInputRef = useRef<HTMLInputElement>(null);
 
-  // Digitare + confermare (Invio o blur, dentro NumberField): UN gesto i cui
-  // op finali assegnano lo stesso valore a ogni nodo selezionato -- una sola
-  // voce di undo anche per una selezione multipla.
+  // Typing + confirming (Enter or blur, inside NumberField): ONE gesture whose final
+  // ops assign the same value to every selected node -- a single
+  // undo entry even for a multiple selection.
   function commit(field: NumericField, value: number) {
     const store = useScene.getState();
     const ids = store.selection;
@@ -529,10 +528,10 @@ export function PropertiesPanel() {
     store.endGesture(numericOps(ids, field, value));
   }
 
-  // Trascinamento dell'etichetta: la PRIMA chiamata apre il gesto (pigro,
-  // come dragStarted in tools/selectTool.ts -- un click che NumberField non
-  // ha promosso a trascinamento non arriva mai qui), le successive sono solo
-  // anteprima locale -- niente sul filo finché il puntatore non si rilascia.
+  // Label drag: the FIRST call opens the gesture (lazy,
+  // like dragStarted in tools/selectTool.ts -- a click that NumberField did not
+  // promote to a drag never gets here), the following ones are only a
+  // local preview -- nothing on the wire until the pointer is released.
   function scrub(field: NumericField, value: number) {
     const store = useScene.getState();
     if (store.selection.length === 0) return;
@@ -540,17 +539,17 @@ export function PropertiesPanel() {
     for (const op of numericOps(store.selection, field, value)) store.applyLocal(op);
   }
 
-  // Rilascio del trascinamento: chiude lo STESSO gesto aperto da scrub con
-  // gli op FINALI -- stessa forma di selectTool.ts::onPointerUp per il drag
-  // di spostamento (un solo invio, non uno per pixel di anteprima).
+  // Drag release: closes the SAME gesture opened by scrub with
+  // the FINAL ops -- same shape as selectTool.ts::onPointerUp for the move
+  // drag (a single send, not one per preview pixel).
   function scrubEnd(field: NumericField, value: number) {
     const store = useScene.getState();
-    if (!store.gesture) return; // scrub non partito (selezione svuotata a metà drag)
+    if (!store.gesture) return; // scrub did not start (selection emptied mid-drag)
     store.endGesture(numericOps(store.selection, field, value));
   }
 
-  // Un gesto intero da una singola conferma (colore, peso, allineamento):
-  // stessa forma del toggle di visibilità di ui/LayersPanel.tsx.
+  // A whole gesture from a single confirmation (color, weight, alignment):
+  // same shape as the visibility toggle in ui/LayersPanel.tsx.
   function runGesture(build: (ids: readonly string[]) => Op[]) {
     const store = useScene.getState();
     const ids = store.selection;
@@ -562,9 +561,9 @@ export function PropertiesPanel() {
   }
 
   // --- OVERRIDE (M4) --------------------------------------------------------
-  // Gli handler rileggono l'istanza FRESCA dallo store: un op nel frattempo
-  // (o un record remoto) può averla cambiata, e la closure di render sarebbe
-  // vecchia. null se la selezione non è più esattamente un'istanza.
+  // The handlers re-read the FRESH instance from the store: an op in the meantime
+  // (or a remote record) may have changed it, and the render closure would be
+  // stale. null if the selection is no longer exactly one instance.
   function currentInstance(): NodeLite | null {
     const store = useScene.getState();
     const s = store.scene;
@@ -573,17 +572,17 @@ export function PropertiesPanel() {
     return n && n.kind === "instance" && n.instance ? n : null;
   }
 
-  // Un override = UN gesto, come ogni altra scrittura del pannello.
+  // One override = ONE gesture, like every other panel write.
   function commitOverride(inst: NodeLite, override: InstanceOverrideLite) {
     const store = useScene.getState();
     store.beginGesture();
     store.endGesture([makeSetInstanceOverrideOp(inst.id, override)]);
   }
 
-  // Modifica il RIEMPIMENTO effettivo di un nodo del master. Parte dai fills
-  // effettivi (override se c'è, altrimenti quelli del master) e ne sostituisce
-  // solo il PRIMO, tenendo alfa e resto della lista -- come fillOps per i nodi
-  // veri. Conserva il testo dell'override se c'era.
+  // Edits the effective FILL of a master node. It starts from the effective fills
+  // (override if there is one, otherwise the master's) and replaces only
+  // the FIRST, keeping alpha and the rest of the list -- like fillOps for real
+  // nodes. It keeps the override's text if there was one.
   function editOverrideFill(masterNodeId: string, rgb: RgbLite) {
     const store = useScene.getState();
     const s = store.scene;
@@ -599,8 +598,8 @@ export function PropertiesPanel() {
     commitOverride(inst, override);
   }
 
-  // Modifica il CONTENUTO effettivo di un nodo testo del master. Conserva i
-  // fills dell'override se c'erano.
+  // Edits the effective CONTENT of a master text node. It keeps the
+  // override's fills if there were any.
   function editOverrideText(masterNodeId: string, text: string) {
     const inst = currentInstance();
     if (!inst) return;
@@ -610,18 +609,18 @@ export function PropertiesPanel() {
     commitOverride(inst, override);
   }
 
-  // Ripristina un nodo del master: override VUOTO = rimozione (torna a ereditare).
+  // Resets a master node: EMPTY override = removal (goes back to inheriting).
   function resetOverride(masterNodeId: string) {
     const inst = currentInstance();
     if (!inst) return;
     commitOverride(inst, { masterNodeId });
   }
 
-  // OPACITÀ. Il cursore di react-aria-components distingue da sé le due fasi
-  // che servono: onChange a ogni passo del trascinamento (anteprima) e
-  // onChangeEnd al rilascio (valore finale) -- gli stessi due canali che
-  // NumberField chiama onScrub/onScrubEnd. Il gesto si apre PIGRO sul primo
-  // onChange, così un click sul cursore che non lo muove non ne apre nessuno.
+  // OPACITY. react-aria-components' slider tells apart on its own the two phases
+  // we need: onChange at every drag step (preview) and
+  // onChangeEnd on release (final value) -- the same two channels
+  // NumberField calls onScrub/onScrubEnd. The gesture opens LAZILY on the first
+  // onChange, so a click on the slider that does not move it opens none.
   function scrubOpacity(value: number) {
     const store = useScene.getState();
     if (store.selection.length === 0) return;
@@ -635,9 +634,9 @@ export function PropertiesPanel() {
     store.endGesture(opacityOps(store.selection, value));
   }
 
-  // Le stesse due fasi per lo SPESSORE del tratto: si trascina come ogni altro
-  // campo numerico, ma l'op ricostruisce la lista dei tratti invece di scrivere
-  // un campo (vedi strokeOps).
+  // The same two phases for the stroke's WEIGHT: it is dragged like any other
+  // numeric field, but the op rebuilds the strokes list instead of writing
+  // a field (see strokeOps).
   function scrubStroke(patch: StrokePatch) {
     const store = useScene.getState();
     if (store.selection.length === 0) return;
@@ -651,8 +650,8 @@ export function PropertiesPanel() {
     store.endGesture(strokeOps(store.selection, patch));
   }
 
-  // Le stesse due fasi per la DIMENSIONE del testo, che si trascina come ogni
-  // altro campo numerico ma emette SetText invece di SetProperties.
+  // The same two phases for the text SIZE, which is dragged like any
+  // other numeric field but emits SetText instead of SetProperties.
   function scrubTextStyle(patch: Partial<TextStyleLite>) {
     const store = useScene.getState();
     if (store.selection.length === 0) return;
@@ -669,15 +668,15 @@ export function PropertiesPanel() {
   if (!summary) {
     return (
       <div className="flex h-full flex-col bg-surface text-[13px] text-fg">
-        {/* Il titolo resta anche a vuoto: dice DOVE si è, come l'intestazione
-            degli altri pannelli, quando non c'è nessun nome da mostrare. */}
+        {/* The title stays even when empty: it says WHERE you are, like the header
+            of the other panels, when there is no name to show. */}
         <header className="flex h-12 shrink-0 items-center border-b border-line px-3">
-          <h2 className={cls.sectionTitle}>Proprietà</h2>
+          <h2 className={cls.sectionTitle}>Properties</h2>
         </header>
         <EmptyState
           icon="select"
-          title="Nessuna selezione"
-          hint="Seleziona un elemento sul canvas o nei livelli per leggerne e modificarne le proprietà."
+          title="No selection"
+          hint="Select an element on the canvas or in the layers to read and edit its properties."
         />
       </div>
     );
@@ -685,43 +684,43 @@ export function PropertiesPanel() {
 
   const opacity: number | Mixed = summary.opacity;
   const fill = summary.fills === MIXED ? null : (summary.fills[0] ?? null);
-  // Il PRIMO tratto della selezione, o null se non c'è un valore solo da
-  // mostrare (selezione mista). Un nodo senza tratti non è "misto": è un tratto
-  // che non c'è, e si legge come colore vuoto + spessore 0 + posizione al
-  // centro -- lo stato da cui scrivere un campo qualunque ne crea uno.
+  // The selection's FIRST stroke, or null if there is no single value to
+  // show (mixed selection). A node without strokes is not "mixed": it is a stroke
+  // that is not there, and reads as empty color + weight 0 + position at the
+  // center -- the state from which writing any field creates one.
   const stroke = summary.strokes === MIXED ? null : (summary.strokes[0] ?? null);
   const strokesMixed = summary.strokes === MIXED;
 
-  // W/H spariscono appena UN nodo selezionato è un gruppo, non solo quando lo
-  // sono tutti (`summary.kind === "group"`): il campo scrive lo stesso valore
-  // su OGNI nodo della selezione, quindi in una selezione mista l'op arriverebbe
-  // al gruppo comunque. E il numero mostrato sarebbe già una bugia -- gli zeri
-  // del gruppo entrano nel riassunto e lo rendono "Misto" anche quando ogni
-  // forma vera ha la stessa larghezza.
+  // W/H disappear as soon as ONE selected node is a group, not only when all
+  // are (`summary.kind === "group"`): the field writes the same value
+  // on EVERY node of the selection, so in a mixed selection the op would reach
+  // the group anyway. And the number shown would already be a lie -- the group's
+  // zeros enter the summary and make it "Mixed" even when every real
+  // shape has the same width.
   //
-  // X/Y invece RESTANO, e per un gruppo significano quello che significano per
-  // tutti gli altri: l'angolo alto-sinistra della cornice (vedi
-  // selectionSummary e positionValueFor).
+  // X/Y instead STAY, and for a group they mean what they mean for
+  // all the others: the top-left corner of the frame (see
+  // selectionSummary and positionValueFor).
   const geometryFields = nodes.some((n) => n.kind === "group") ? POSITION_FIELDS : GEOMETRY_FIELDS;
 
-  // La sezione Override compare solo per UNA sola istanza selezionata. Le sue
-  // righe sono i nodi del MASTER (sottoalbero dalla radice del componente, in
-  // pre-ordine) che siano un testo o abbiano un riempimento -- gli unici
-  // sovrascrivibili in M4. `overrideMap` indicizza gli override correnti
-  // dell'istanza per masterNodeId, per leggere il valore effettivo di ogni riga.
+  // The Override section appears only for a SINGLE selected instance. Its
+  // rows are the MASTER's nodes (subtree from the component's root, in
+  // pre-order) that are a text or have a fill -- the only
+  // overridable ones in M4. `overrideMap` indexes the instance's current overrides
+  // by masterNodeId, to read each row's effective value.
   const instanceNode = nodes.length === 1 && nodes[0].kind === "instance" && nodes[0].instance ? nodes[0] : null;
   const overrideMap = instanceNode ? instanceOverrideMap(instanceNode) : new Map<string, InstanceOverrideLite>();
   const master = instanceNode && scene ? scene.components[instanceNode.instance!.componentId] : undefined;
   const overrideRows: NodeLite[] =
     master && scene ? subtreeOf(scene, master.rootNodeId).filter((n) => n.kind === "text" || n.fills.length > 0) : [];
 
-  // L'intestazione: CHI è selezionato. Un nodo solo = il suo nome e il suo tipo;
-  // più nodi = il conteggio e il tipo comune (se c'è).
+  // The header: WHO is selected. A single node = its name and its type;
+  // more nodes = the count and the common type (if any).
   const headerIcon: IconName = summary.kind === MIXED || nodes.length > 1 ? "layers" : KIND_ICON[summary.kind];
-  const headerTitle = nodes.length === 1 ? layerDisplayName(nodes[0]) : `${nodes.length} elementi`;
+  const headerTitle = nodes.length === 1 ? layerDisplayName(nodes[0]) : `${nodes.length} elements`;
   const headerHint =
     nodes.length > 1
-      ? (summary.kind === MIXED ? "Selezione multipla" : `Selezione multipla · ${KIND_LABEL[summary.kind]}`)
+      ? (summary.kind === MIXED ? "Multiple selection" : `Multiple selection · ${KIND_LABEL[summary.kind]}`)
       : (summary.kind === MIXED ? "" : KIND_LABEL[summary.kind]);
 
   return (
@@ -736,32 +735,32 @@ export function PropertiesPanel() {
         </div>
       </header>
 
-      {/* ALLINEAMENTO. Sta con la geometria (è geometria: sposta x/y e
-          nient'altro) e prima dell'aspetto. Ogni pulsante è UN gesto, quindi UNA
-          voce di undo, anche quando muove dieci nodi -- vedi
-          selection/align.ts::alignSelection. Il riferimento è SEMPRE il riquadro
-          comune della selezione: non esiste nessuna pagina contro cui allineare
-          (vedi il commento su alignTarget). Una barra sola, con un filo fra le
-          quattro orizzontali e le quattro verticali. */}
-      {/* Con UN solo nodo ogni comando è disabilitato (il riferimento è il
-          riquadro comune della selezione): la barra compare da due nodi in su e
-          a riposo non ruba 40px all'ispettore. */}
+      {/* ALIGNMENT. It sits with the geometry (it is geometry: it moves x/y and
+          nothing else) and before the appearance. Every button is ONE gesture, so ONE
+          undo entry, even when it moves ten nodes -- see
+          selection/align.ts::alignSelection. The reference is ALWAYS the selection's
+          common bounding box: there is no page to align against
+          (see the comment on alignTarget). A single bar, with a thread between the
+          four horizontal and the four vertical ones. */}
+      {/* With a SINGLE node every command is disabled (the reference is the
+          selection's common bounding box): the bar appears from two nodes up and
+          at rest does not steal 40px from the inspector. */}
       {selection.length >= 2 && (
-      <div role="group" aria-label="Allinea" className="flex shrink-0 items-center gap-0.5 border-b border-line px-2 py-1.5">
+      <div role="group" aria-label="Align" className="flex shrink-0 items-center gap-0.5 border-b border-line px-2 py-1.5">
         {ALIGN_COMMANDS.map((c, i) => (
           <Fragment key={c.id}>
             {i === 4 && <span aria-hidden="true" className="mx-0.5 h-4 w-px shrink-0 bg-line" />}
-            {/* <button> nativo e non il Button di react-aria (che qui non porta
-                niente in più e non accetta `title`): per un pittogramma il
-                tooltip è l'unico modo che un utente VEDENTE ha di leggere il
-                nome del comando, e deve essere lo STESSO testo del nome
-                accessibile -- altrimenti sono due interfacce.
+            {/* native <button> and not react-aria's Button (which here brings
+                nothing extra and does not accept `title`): for a pictogram the
+                tooltip is the only way a SIGHTED user has to read the
+                command's name, and it must be the SAME text as the accessible
+                name -- otherwise they are two interfaces.
 
-                DISABILITATO sotto il minimo di nodi che il comando richiede
-                (due per allineare, tre per distribuire): sotto quella soglia il
-                riquadro comune coincide con la selezione e non c'è niente da
-                fare. Un pulsante vivo che non fa niente non si distingue da uno
-                rotto. */}
+                DISABLED below the minimum number of nodes the command requires
+                (two to align, three to distribute): below that threshold the
+                common bounding box coincides with the selection and there is nothing to
+                do. A live button that does nothing is indistinguishable from a
+                broken one. */}
             <button
               type="button"
               aria-label={c.label}
@@ -777,8 +776,8 @@ export function PropertiesPanel() {
       </div>
       )}
 
-      {/* LAYOUT: posizione, dimensione, rotazione e (rettangoli) raggio, in una
-          griglia a due colonne di campi con il prefisso DENTRO (X, Y, W, H, °, R). */}
+      {/* LAYOUT: position, size, rotation and (rectangles) radius, in a
+          two-column grid of fields with the prefix INSIDE (X, Y, W, H, °, R). */}
       <Section title="Layout">
         <div className="grid grid-cols-2 gap-1.5">
           {geometryFields.map((field) => (
@@ -787,12 +786,12 @@ export function PropertiesPanel() {
               label={field.label}
               glyph={field.glyph}
               minValue={field.minValue}
-              // MIXED (selezione multipla con valori diversi) diventa NaN:
-              // NumberField lo mostra vuoto e non ne fa un cambio di
-              // controllato/non controllato (vedi il commento sulla sua
-              // prop `value`). Il placeholder "Misto" ci va SOLO in quel caso:
-              // un campo vuoto senza altro contesto sembrerebbe svuotato per
-              // sbaglio, non "questi nodi differiscono".
+              // MIXED (multiple selection with different values) becomes NaN:
+              // NumberField shows it empty and does not make a
+              // controlled/uncontrolled switch of it (see the comment on its
+              // `value` prop). The "Mixed" placeholder goes ONLY in that case:
+              // an empty field with no other context would look emptied by
+              // mistake, not "these nodes differ".
               value={summary[field.key] === MIXED ? NaN : (summary[field.key] as number)}
               placeholder={summary[field.key] === MIXED ? MIXED_LABEL : undefined}
               onCommit={(v) => commit(field, v)}
@@ -800,11 +799,11 @@ export function PropertiesPanel() {
               onScrubEnd={(v) => scrubEnd(field, v)}
             />
           ))}
-          {/* SOLO per i rettangoli: corner_radius vive dentro RectNode, e su
-              un'ellisse o un testo l'op verrebbe rifiutato da entrambe le
-              implementazioni di apply (ErrNotRectNode). Una selezione MISTA ha
-              kind === MIXED, quindi non mostra il campo -- non c'è un raggio da
-              scrivere che valga per tutti. */}
+          {/* ONLY for rectangles: corner_radius lives inside RectNode, and on
+              an ellipse or a text the op would be rejected by both
+              implementations of apply (ErrNotRectNode). A MIXED selection has
+              kind === MIXED, so it does not show the field -- there is no radius to
+              write that holds for all. */}
           {summary.kind === "rect" && (
             <NumberField
               label={CORNER_RADIUS_FIELD.label}
@@ -819,51 +818,51 @@ export function PropertiesPanel() {
         </div>
       </Section>
 
-      {/* L'AUTO LAYOUT: per un frame, i suoi controlli; per qualunque altra
-          selezione, il "+" che la avvolge in un frame con auto layout. */}
+      {/* AUTO LAYOUT: for a frame, its controls; for any other
+          selection, the "+" that wraps it in a frame with auto layout. */}
       {summary.kind === "frame" ? <AutoLayoutControls run={runGesture} /> : <WrapInAutoLayoutButton />}
 
-      <Section title="Aspetto">
+      <Section title="Appearance">
         <Slider
-          // Su MIXED il numero qui sotto è solo il PUNTO DI PARTENZA di
-          // tastiera e trascinamento: non viene disegnato (il cursore si mostra
-          // vuoto, vedi data-mixed) e non viene annunciato (vedi
-          // SliderValueText). Il cursore resta usabile -- muoverlo assegna la
-          // stessa opacità a tutta la selezione, esattamente come un campo
-          // geometrico misto accetta un valore digitato -- e appena un valore
-          // c'è, "misto" sparisce da entrambi i canali.
+          // On MIXED the number below is only the keyboard and drag
+          // STARTING POINT: it is not drawn (the slider shows
+          // empty, see data-mixed) and it is not announced (see
+          // SliderValueText). The slider stays usable -- moving it assigns the
+          // same opacity to the whole selection, exactly as a mixed
+          // geometric field accepts a typed value -- and as soon as a value
+          // exists, "mixed" disappears from both channels.
           value={opacity === MIXED ? 1 : opacity}
           minValue={0}
           maxValue={1}
-          // 1% è il passo con cui l'opacità si legge in percentuale intera;
-          // niente arrotondamenti invisibili sotto quella soglia.
+          // 1% is the step at which opacity reads as a whole percentage;
+          // no invisible rounding below that threshold.
           step={0.01}
-          // La percentuale la formatta lo STATO, non il pannello: è la stessa
-          // stringa che finisce nel testo mostrato e in `aria-valuetext`. Con
-          // il calcolo a mano di prima si vedeva "40%" e si annunciava "0.4".
+          // The percentage is formatted by the STATE, not by the panel: it is the same
+          // string that ends up in the displayed text and in `aria-valuetext`. With
+          // the by-hand calculation from before "40%" was seen and "0.4" announced.
           formatOptions={PERCENT_FORMAT}
           onChange={scrubOpacity}
           onChangeEnd={scrubOpacityEnd}
-          // Una riga incassata come i campi numerici: etichetta, cursore, valore.
+          // An inset row like the numeric fields: label, slider, value.
           className="flex h-7 items-center gap-2 rounded-md bg-surface-2 pl-2 pr-1.5"
         >
-          <Label className="w-12 shrink-0 select-none text-[11px] font-medium text-fg-subtle">Opacità</Label>
+          <Label className="w-12 shrink-0 select-none text-[11px] font-medium text-fg-subtle">Opacity</Label>
           <SliderTrack
-            // "Misto" è uno STATO del controllo, non solo un testo: sta nel DOM
-            // sul track (che contiene sia il binario sia la pastiglia) e di lì
-            // il CSS li svuota entrambi. Un attributo e non due className
-            // calcolate: la stessa forma dei `data-*` che RAC stessa espone
+            // "Mixed" is a STATE of the control, not just a text: it sits in the DOM
+            // on the track (which contains both the rail and the thumb) and from there
+            // the CSS empties both. One attribute and not two computed
+            // classNames: the same shape as the `data-*` that RAC itself exposes
             // (data-selected, data-focus-visible).
             data-mixed={opacity === MIXED || undefined}
             className="group relative h-4 min-w-0 flex-1"
           >
             {({ state }) => (
               <>
-                {/* Il binario disegnato è un figlio del track e non il track
-                    stesso: il track deve restare alto abbastanza da essere
-                    afferrabile col dito, la riga colorata sottile abbastanza da
-                    leggersi come un cursore. La parte piena arriva alla
-                    pastiglia. */}
+                {/* The drawn rail is a child of the track and not the track
+                    itself: the track must stay tall enough to be
+                    grabbed with a finger, the colored line thin enough to
+                    read as a slider. The filled part reaches the
+                    thumb. */}
                 <div className={SLIDER_RAIL_CLASS} />
                 <div className={SLIDER_FILL_CLASS} style={{ width: `${state.getThumbPercent(0) * 100}%` }} />
                 <SliderThumb inputRef={opacityInputRef} className={SLIDER_THUMB_CLASS} />
@@ -878,15 +877,15 @@ export function PropertiesPanel() {
         </Slider>
       </Section>
 
-      {/* Per i nodi testo il pannello mostra i controlli di stile: sono
-          l'equivalente del raggio per un rettangolo -- le proprietà che quel
-          tipo di nodo ha e gli altri no. Emettono SetText (con style_present),
-          non SetProperties: lo stile vive dentro il oneof `shape`. */}
+      {/* For text nodes the panel shows the style controls: they are
+          the equivalent of the radius for a rectangle -- the properties that kind of
+          node has and the others do not. They emit SetText (with style_present),
+          not SetProperties: the style lives inside the `shape` oneof. */}
       {style && (
-        <Section title="Testo">
+        <Section title="Text">
           <div className="flex flex-col gap-2">
             <NumberField
-              label="Dimensione"
+              label="Size"
               minValue={1}
               value={style.fontSize === MIXED ? NaN : (style.fontSize as number)}
               placeholder={style.fontSize === MIXED ? MIXED_LABEL : undefined}
@@ -895,50 +894,50 @@ export function PropertiesPanel() {
               onScrubEnd={(v) => scrubTextStyleEnd({ fontSize: v })}
             />
             <SegRadio
-              label="Peso" showLabel={false}
+              label="Weight" showLabel={false}
               value={radioValue(style.fontWeight)}
               options={FONT_WEIGHTS}
               onChange={(v) => runGesture((ids) => textStyleOps(ids, { fontWeight: v }))}
             />
             <SegRadio
-              label="Allineamento" showLabel={false}
+              label="Alignment" showLabel={false}
               value={radioValue(style.align)}
               options={ALIGNMENTS}
-              // Il cast è sicuro per costruzione: gli unici valori nel gruppo
-              // sono quelli di ALIGNMENTS, che è tipizzato TextAlignLite.
+              // The cast is safe by construction: the only values in the group
+              // are those of ALIGNMENTS, which is typed TextAlignLite.
               onChange={(v) => runGesture((ids) => textStyleOps(ids, { align: v as TextAlignLite }))}
             />
           </div>
         </Section>
       )}
 
-      {/* IL RIEMPIMENTO: il tipo (solido / lineare / radiale) e sotto il colore,
-          o l'anteprima del gradiente con i suoi estremi. */}
-      <Section title="Riempimento">
+      {/* THE FILL: the type (solid / linear / radial) and below the color,
+          or the gradient preview with its ends. */}
+      <Section title="Fill">
         {summary.fills !== MIXED ? (
           <GradientControls
             fill={fill}
             run={runGesture}
-            // Con un gradiente il colore singolo non esiste: lo scrivere
-            // appiattirebbe il gradiente senza che l'utente l'abbia chiesto. Gli
-            // stop si editano in GradientControls.
+            // With a gradient the single color does not exist: writing it
+            // would flatten the gradient without the user having asked for it. The
+            // stops are edited in GradientControls.
             solid={
               <ColorField
-                label="Riempimento"
-                // Nodo senza tinte: null, cioè "nessun valore singolo da
-                // mostrare". Scrivere un colore da lì resta possibile e lo
-                // assegna a tutta la selezione, come per i campi geometrici.
+                label="Fill"
+                // Node without tints: null, that is "no single value to
+                // show". Writing a color from there stays possible and
+                // assigns it to the whole selection, as for geometric fields.
                 value={fill}
-                placeholder="Nessuno"
+                placeholder="None"
                 onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
               />
             }
           />
         ) : (
           <ColorField
-            label="Riempimento"
-            // MIXED: nessun valore singolo da mostrare, ma scrivere un colore
-            // resta possibile.
+            label="Fill"
+            // MIXED: no single value to show, but writing a color
+            // stays possible.
             value={null}
             placeholder={MIXED_LABEL}
             onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
@@ -946,35 +945,35 @@ export function PropertiesPanel() {
         )}
       </Section>
 
-      {/* IL TRATTO. Sezione propria e non dentro "Aspetto": sono tre controlli
-          che descrivono UNA cosa sola (il tratto del nodo), e mescolarli al
-          riempimento renderebbe ambiguo a quale delle due il colore appartiene.
-          Vale per OGNI forma -- `strokes` è un campo di primo livello del Node,
-          non un campo dentro il oneof `shape` come corner_radius -- quindi la
-          sezione c'è sempre, testo compreso. */}
-      <Section title="Tratto">
+      {/* THE STROKE. Its own section and not inside "Appearance": they are three controls
+          describing a SINGLE thing (the node's stroke), and mixing them with the
+          fill would make it ambiguous which of the two the color belongs to.
+          It applies to EVERY shape -- `strokes` is a top-level field of the Node,
+          not a field inside the `shape` oneof like corner_radius -- so the
+          section is always there, text included. */}
+      <Section title="Stroke">
         <div className="flex flex-col gap-2">
           <div className="grid grid-cols-[1fr_7.5rem] gap-1.5">
             <ColorField
-              label="Tratto"
-              // Come il riempimento: null su MIXED o su "nessun tratto". Scrivere
-              // un colore resta possibile in entrambi i casi -- ed è il modo in
-              // cui un tratto si CREA (vedi DEFAULT_STROKE).
+              label="Stroke"
+              // Like the fill: null on MIXED or on "no stroke". Writing
+              // a color stays possible in both cases -- and it is the way
+              // a stroke is CREATED (see DEFAULT_STROKE).
               value={stroke?.color ?? null}
-              placeholder={strokesMixed ? MIXED_LABEL : "Nessuno"}
-              // Il colore va giù NUDO, senza alfa: la rimette strokeOps
-              // prendendola dal tratto di ciascun nodo, esattamente come
-              // fillOps. Comporla qui da `stroke` la leggerebbe dal RIASSUNTO
-              // della selezione -- che su tratti diversi è null -- e
-              // riscriverebbe 1 su tutti.
+              placeholder={strokesMixed ? MIXED_LABEL : "None"}
+              // The color goes down BARE, without alpha: strokeOps puts it back
+              // taking it from each node's stroke, exactly like
+              // fillOps. Composing it here from `stroke` would read it from the SUMMARY
+              // of the selection -- which on different strokes is null -- and
+              // would rewrite 1 on all.
               onCommit={(rgb) => runGesture((ids) => strokeOps(ids, { color: rgb }))}
             />
             <NumberField
-              label="Spessore"
-              // Nessun tratto = spessore 0, e 0 resta scrivibile: è il modo di
-              // spegnere un tratto senza toglierlo dalla lista (peso non
-              // positivo = niente disegnato e nessuna sporgenza nei bounds,
-              // vedi canvas/geometry.ts::strokeOutset).
+              label="Thickness"
+              // No stroke = weight 0, and 0 stays writable: it is the way to
+              // turn off a stroke without removing it from the list (non-positive
+              // weight = nothing drawn and no overhang in the bounds,
+              // see canvas/geometry.ts::strokeOutset).
               minValue={0}
               value={strokesMixed ? NaN : (stroke?.weight ?? 0)}
               placeholder={strokesMixed ? MIXED_LABEL : undefined}
@@ -984,10 +983,10 @@ export function PropertiesPanel() {
             />
           </div>
           <SegRadio
-            label="Posizione" showLabel={false}
-            // Su MIXED nessuna scelta selezionata (null, come per i pesi del
-            // testo); su un nodo senza tratti si mostra il default, che è anche
-            // quello che verrebbe scritto.
+            label="Position" showLabel={false}
+            // On MIXED no choice selected (null, like for the text
+            // weights); on a node without strokes the default is shown, which is also
+            // the one that would be written.
             value={strokesMixed ? null : (stroke?.align ?? DEFAULT_STROKE.align)}
             options={STROKE_ALIGNMENTS}
             onChange={(v) => runGesture((ids) => strokeOps(ids, { align: v as StrokeAlignLite }))}
@@ -995,18 +994,18 @@ export function PropertiesPanel() {
         </div>
       </Section>
 
-      {/* GLI EFFETTI: ombra e sfocatura. Sezione propria come il tratto: sono
-          controlli di un'altra natura rispetto all'aspetto di base. */}
+      {/* THE EFFECTS: shadow and blur. Its own section like the stroke: they are
+          controls of a different nature than the basic appearance. */}
       <EffectsControls run={runGesture} />
 
-      {/* OVERRIDE: solo per UNA sola istanza selezionata. Ogni riga è un nodo
-          del master (testo o con riempimento) con il suo valore EFFETTIVO e un
-          "Ripristina" -- vedi il commento su OverrideTextField. */}
+      {/* OVERRIDE: only for a SINGLE selected instance. Every row is a node
+          of the master (text or with a fill) with its EFFECTIVE value and a
+          "Reset" -- see the comment on OverrideTextField. */}
       {instanceNode && (
         <Section title="Override">
           <div className="flex flex-col gap-2">
             {overrideRows.length === 0 ? (
-              <p className="text-[12px] text-fg-subtle">Nessun elemento sovrascrivibile</p>
+              <p className="text-[12px] text-fg-subtle">No overridable elements</p>
             ) : (
               overrideRows.map((mn) => {
                 const name = layerDisplayName(mn);
@@ -1017,8 +1016,8 @@ export function PropertiesPanel() {
                       {mn.kind === "text" ? (
                         <OverrideTextField
                           label={name}
-                          // Valore effettivo: il testo dell'override se c'è,
-                          // altrimenti il contenuto del nodo del master.
+                          // Effective value: the override's text if there is one,
+                          // otherwise the master node's content.
                           value={ov?.text ?? mn.text?.content ?? ""}
                           onCommit={(v) => editOverrideText(mn.id, v)}
                         />
@@ -1026,19 +1025,19 @@ export function PropertiesPanel() {
                         <ColorField
                           label={name}
                           showLabel
-                          // Valore effettivo: il primo fill dell'override se c'è,
-                          // altrimenti quello del master.
+                          // Effective value: the override's first fill if there is one,
+                          // otherwise the master's.
                           value={(ov?.fills ?? mn.fills)[0] ?? null}
                           onCommit={(rgb) => editOverrideFill(mn.id, rgb)}
                         />
                       )}
                     </div>
-                    {/* Ripristina: solo quando c'è davvero un override da
-                        togliere. Emettere una rimozione dove non c'è niente
-                        costerebbe un op e una voce di undo a vuoto. */}
+                    {/* Reset: only when there is really an override to
+                        remove. Emitting a removal where there is nothing
+                        would cost an op and an empty undo entry. */}
                     <IconButton
                       icon="rotate"
-                      label={`Ripristina ${name}`}
+                      label={`Reset ${name}`}
                       isDisabled={ov === undefined}
                       onPress={() => resetOverride(mn.id)}
                     />
@@ -1050,12 +1049,12 @@ export function PropertiesPanel() {
         </Section>
       )}
 
-      {/* ESPORTA: sta qui perché questo ramo del pannello esiste solo con
-          selezione non vuota (vedi il return anticipato su `!summary` più
-          sopra) -- è la stessa condizione che prima viveva nel pulsante del
-          ToolDock come radio "Ambito", ora resa superflua spostando il
-          controllo dentro il ramo che la garantisce già. */}
-      <Section title="Esporta">
+      {/* EXPORT: it sits here because this branch of the panel exists only with a
+          non-empty selection (see the early return on `!summary` further
+          up) -- it is the same condition that used to live in the ToolDock's
+          button as the "Scope" radio, now made superfluous by moving the
+          control inside the branch that already guarantees it. */}
+      <Section title="Export">
         <ExportSection />
       </Section>
     </div>

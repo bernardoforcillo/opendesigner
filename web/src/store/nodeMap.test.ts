@@ -8,7 +8,7 @@ const n = (id: string, x = 0): NodeLite => ({
 });
 
 describe("NodeMap", () => {
-  it("get/has/set/delete sono persistenti: la mappa vecchia non cambia", () => {
+  it("get/has/set/delete are persistent: the old map does not change", () => {
     const a = NodeMap.from([["a", n("a")], ["b", n("b")]]);
     const b = a.set("c", n("c")).set("a", n("a", 5)).delete("b");
     expect([...a.ids()].sort()).toEqual(["a", "b"]);
@@ -20,7 +20,7 @@ describe("NodeMap", () => {
     expect(b.size).toBe(2);
   });
 
-  it("set dello stesso oggetto e delete di un assente ritornano la stessa mappa", () => {
+  it("set of the same object and delete of an absent one return the same map", () => {
     const x = n("a");
     const a = NodeMap.from([["a", x]]);
     expect(a.set("a", x)).toBe(a);
@@ -28,7 +28,7 @@ describe("NodeMap", () => {
     expect(a.edit().done()).toBe(a);
   });
 
-  it("l'editor copia ogni secchio una volta e non tocca la base", () => {
+  it("the editor copies each bucket once and does not touch the base", () => {
     const base = NodeMap.from(Array.from({ length: 1000 }, (_, i) => [`n${i}`, n(`n${i}`)] as const));
     const e = base.edit();
     for (let i = 0; i < 1000; i += 2) e.set(`n${i}`, n(`n${i}`, 9));
@@ -41,7 +41,7 @@ describe("NodeMap", () => {
     expect([...out.ids()].length).toBe(out.size);
   });
 
-  it("diff trova nuove, cambiate e rimosse, ignorando i secchi condivisi", () => {
+  it("diff finds new, changed and removed, ignoring shared buckets", () => {
     const base = NodeMap.from(Array.from({ length: 5000 }, (_, i) => [`n${i}`, n(`n${i}`)] as const));
     const next = base.set("n7", n("n7", 1)).set("new", n("new")).delete("n9");
     const changed: string[] = [];
@@ -49,11 +49,11 @@ describe("NodeMap", () => {
     expect(next.diff(base, changed, removed)).toBe(true);
     expect(changed.sort()).toEqual(["n7", "new"]);
     expect(removed).toEqual(["n9"]);
-    // Oltre il limite: rinuncia.
+    // Over the limit: gives up.
     expect(next.diff(base, [], [], 0)).toBe(false);
   });
 
-  it("aggiornare una voce in 20.000 è molto più economico di copiare tutto", () => {
+  it("updating one entry out of 20,000 is much cheaper than copying everything", () => {
     const base = NodeMap.from(Array.from({ length: 20000 }, (_, i) => [`id-${i}-abcdef`, n(`id-${i}-abcdef`)] as const));
     const t0 = performance.now();
     let m = base;

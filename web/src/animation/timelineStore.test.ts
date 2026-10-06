@@ -37,14 +37,14 @@ afterEach(() => {
   vi.restoreAllMocks();
 });
 
-describe("registrazione OFF: il gancio non c'è e niente cambia", () => {
-  it("le due porte sono l'identità", () => {
+describe("recording OFF: the hook is not there and nothing changes", () => {
+  it("the two doors are the identity", () => {
     const ops = [makeSetPropsOp("btn", { x: 5 }, ["x"])];
     expect(recordPreview(ops[0])).toBe(false);
-    expect(recordFinal(ops)).toBe(ops); // lo STESSO array
+    expect(recordFinal(ops)).toBe(ops); // the SAME array
   });
 
-  it("un trascinamento normale cambia il nodo, non la clip", () => {
+  it("a normal drag changes the node, not the clip", () => {
     const st = useScene.getState();
     st.beginGesture();
     st.applyLocal(makeSetPropsOp("btn", { x: 300, y: 7 }, ["x", "y"]));
@@ -54,7 +54,7 @@ describe("registrazione OFF: il gancio non c'è e niente cambia", () => {
     expect(sc().clips.k).toEqual(clip());
   });
 
-  it("anche con la clip aperta, finché Registra è spento", () => {
+  it("even with the clip open, as long as Record is off", () => {
     tl().openClip("k");
     const st = useScene.getState();
     st.beginGesture();
@@ -67,12 +67,12 @@ describe("registrazione OFF: il gancio non c'è e niente cambia", () => {
 describe("propChangesOfOps", () => {
   const sp = (paths: string[], patch: object = { x: 1, y: 2, rotation: 3, opacity: 0.5 }) =>
     makeSetPropsOp("n", patch, paths as never);
-  it("registrabili: setProps con la sola mask x/y/rotation/opacity", () => {
+  it("recordable: setProps with only the x/y/rotation/opacity mask", () => {
     expect(propChangesOfOps([sp(["x", "y"])])).toEqual([{ nodeId: "n", prop: "x", value: 1 }, { nodeId: "n", prop: "y", value: 2 }]);
     expect(propChangesOfOps([sp(["opacity"])])).toEqual([{ nodeId: "n", prop: "opacity", value: 0.5 }]);
     expect(propChangesOfOps([sp(["x", "y", "rotation"])])).toHaveLength(3);
   });
-  it("tutto o niente: basta un campo non registrabile", () => {
+  it("all or nothing: one non-recordable field is enough", () => {
     expect(propChangesOfOps([sp(["x", "width"], { x: 1, width: 5 })])).toBeNull();
     expect(propChangesOfOps([sp(["x"]), sp(["height"], { height: 3 })])).toBeNull();
     expect(propChangesOfOps([])).toBeNull();
@@ -86,7 +86,7 @@ describe("registrazione ON", () => {
     tl().setRecord(true);
   });
 
-  it("l'anteprima va nella bozza e non tocca il nodo; la tela mostra la bozza", () => {
+  it("the preview goes into the draft and does not touch the node; the canvas shows the draft", () => {
     const st = useScene.getState();
     st.beginGesture();
     st.applyLocal(makeSetPropsOp("btn", { x: 300, y: 70 }, ["x", "y"]));
@@ -96,7 +96,7 @@ describe("registrazione ON", () => {
     expect(isPosing()).toBe(true);
   });
 
-  it("il rilascio scrive UN SetClip: keyframe al playhead (con il punto di partenza a 0) e nodo intatto", () => {
+  it("the release writes ONE SetClip: keyframe at the playhead (with the starting point at 0) and node intact", () => {
     const st = useScene.getState();
     st.beginGesture();
     st.applyLocal(makeSetPropsOp("btn", { x: 300, y: 70 }, ["x", "y"]));
@@ -108,20 +108,20 @@ describe("registrazione ON", () => {
     expect(sc().nodes.at("btn").x).toBe(60);
     expect(isValidClip(sc(), c)).toBe(true);
     expect(tl().recordDraft).toBeNull();
-    // un solo passo di undo per tutto il gesto
+    // a single undo step for the whole gesture
     expect(useScene.getState().undoStack).toHaveLength(1);
     useScene.getState().undo();
     expect(sc().clips.k).toEqual(clip());
   });
 
-  it("opacità: registra sulla traccia esistente senza toccare gli altri keyframe", () => {
+  it("opacity: records on the existing track without touching the other keyframes", () => {
     const st = useScene.getState();
     st.beginGesture();
     st.endGesture([makeSetPropsOp("btn", { opacity: 0.2 }, ["opacity"])]);
     expect(sc().clips.k.tracks[0].keyframes.map((k) => [k.time, k.value])).toEqual([[0, 0], [600, 0.2], [1000, 1]]);
   });
 
-  it("la rotazione non scavalca lo 0/360: registra la determinazione che non salta", () => {
+  it("rotation does not jump over 0/360: records the determination that does not jump", () => {
     useTimeline.getState().setPlayhead(0);
     const st = useScene.getState();
     st.beginGesture();
@@ -130,11 +130,11 @@ describe("registrazione ON", () => {
     st.beginGesture();
     st.endGesture([makeSetPropsOp("btn", { rotation: 10 }, ["rotation"])]);
     const rot = sc().clips.k.tracks.find((t) => t.prop === "rotation")!;
-    // 0 -> 350 è un passo di -10 (il più breve), poi 10 è +20 avanti: mai un giro intero a ritroso
+    // 0 -> 350 is a step of -10 (the shortest), then 10 is +20 forward: never a whole turn backwards
     expect(rot.keyframes.map((k) => k.value)).toEqual([-10, 10]);
   });
 
-  it("un gesto con altro dentro (resize) passa com'è: il nodo cambia e la clip no", () => {
+  it("a gesture with something else in it (resize) passes through as is: the node changes and the clip does not", () => {
     const st = useScene.getState();
     st.beginGesture();
     st.endGesture([makeSetPropsOp("btn", { x: 1, width: 99 }, ["x", "width"])]);
@@ -142,7 +142,7 @@ describe("registrazione ON", () => {
     expect(sc().clips.k.tracks).toHaveLength(1);
   });
 
-  it("un nodo FUORI dal bersaglio si modifica normalmente", () => {
+  it("a node OUTSIDE the target is modified normally", () => {
     const st = useScene.getState();
     st.beginGesture();
     st.applyLocal(makeSetPropsOp("loose", { x: 77 }, ["x"]));
@@ -151,7 +151,7 @@ describe("registrazione ON", () => {
     expect(sc().clips.k.tracks).toHaveLength(1);
   });
 
-  it("Esc a metà gesto: la bozza si butta e non si scrive niente", () => {
+  it("Esc mid-gesture: the draft is thrown away and nothing is written", () => {
     const st = useScene.getState();
     st.beginGesture();
     st.applyLocal(makeSetPropsOp("btn", { x: 300 }, ["x"]));
@@ -161,13 +161,13 @@ describe("registrazione ON", () => {
     expect(sc().clips.k.tracks).toHaveLength(1);
   });
 
-  it("spegnere Registra rimette l'identità", () => {
+  it("turning Record off restores the identity", () => {
     tl().setRecord(false);
     const ops = [makeSetPropsOp("btn", { x: 5 }, ["x"])];
     expect(recordFinal(ops)).toBe(ops);
   });
 
-  it("senza una clip aperta non si può armare", () => {
+  it("without an open clip it cannot be armed", () => {
     tl().setRecord(false);
     tl().openClip(null);
     tl().setRecord(true);
@@ -175,8 +175,8 @@ describe("registrazione ON", () => {
   });
 });
 
-describe("scritture sul documento: un op per gesto", () => {
-  it("createClip / duplica / elimina", () => {
+describe("writes to the document: one op per gesture", () => {
+  it("createClip / duplicate / delete", () => {
     const before = useScene.getState().undoStack.length;
     const c = createClip(sc(), ["btn"])!;
     expect(c.targetId).toBe("A");
@@ -191,20 +191,20 @@ describe("scritture sul documento: un op per gesto", () => {
     expect(tl().clipId).toBeNull();
   });
 
-  it("addPropertyTracks: senza clip aperta ne crea una; con una la riempie; salta i nodi fuori bersaglio", () => {
+  it("addPropertyTracks: without an open clip it creates one; with one it fills it; skips nodes outside the target", () => {
     const n = addPropertyTracks(sc(), ["btn"], "scale");
     expect(n).toBe(1);
     const created = Object.values(sc().clips).find((c) => c.id !== "k")!;
     expect(created.tracks.map((t) => t.prop)).toEqual(["scale"]);
     expect(tl().clipId).toBe(created.id);
-    // di nuovo la stessa proprietà: niente da aggiungere
+    // the same property again: nothing to add
     expect(addPropertyTracks(sc(), ["btn"], "scale")).toBe(0);
-    // un nodo fuori dal bersaglio (loose sta sulla pagina) non si aggiunge
+    // a node outside the target (loose sits on the page) is not added
     expect(addPropertyTracks(sc(), ["loose"], "opacity")).toBe(0);
     expect(isValidClip(sc(), sc().clips[created.id])).toBe(true);
   });
 
-  it("commitClip scrive la clip intera (upsert)", () => {
+  it("commitClip writes the whole clip (upsert)", () => {
     commitClip(clip({ name: "rinominata" }));
     expect(sc().clips.k.name).toBe("rinominata");
   });
@@ -222,7 +222,7 @@ describe("riproduzione", () => {
     tl().openClip("k");
     queue = [];
   });
-  // Il ciclo limita un singolo salto a 100 ms (scheda in secondo piano): si avanza a passi da 50.
+  // The loop limits a single jump to 100 ms (background tab): it advances in steps of 50.
   const frame = (dt: number) => {
     for (let left = dt; left > 0; left -= 50) {
       const cb = queue.shift();
@@ -231,18 +231,18 @@ describe("riproduzione", () => {
     }
   };
 
-  it("a timeline ferma NON pianifica nessun frame", () => {
+  it("with the timeline stopped it schedules NO frame", () => {
     expect(queue).toHaveLength(0);
     tl().setPlayhead(300);
     tl().stop();
     expect(queue).toHaveLength(0);
-    // chiudere il pannello chiede UN solo resize (la tela cambia altezza), poi niente
+    // closing the panel asks for ONE resize (the canvas changes height), then nothing
     tl().setOpen(false);
     queue.splice(0).forEach((cb) => cb(now));
     expect(queue).toHaveLength(0);
   });
 
-  it("play avanza il playhead col tempo reale e alla fine si ferma", () => {
+  it("play advances the playhead with real time and stops at the end", () => {
     tl().play();
     expect(tl().playing).toBe(true);
     expect(queue).toHaveLength(1);
@@ -253,26 +253,26 @@ describe("riproduzione", () => {
     frame(600);
     expect(tl().playing).toBe(false);
     expect(tl().playhead).toBe(1000);
-    expect(queue).toHaveLength(0); // niente frame dopo la fine
+    expect(queue).toHaveLength(0); // no frames after the end
   });
 
-  it("la velocità scala il tempo", () => {
+  it("speed scales the time", () => {
     tl().setSpeed(0.5);
     tl().play();
     frame(400);
     expect(tl().playhead).toBe(200);
     tl().setSpeed(2);
     expect(tl().speed).toBe(2);
-    tl().setSpeed(3); // non ammessa: torna a 1
+    tl().setSpeed(3); // not allowed: goes back to 1
     expect(tl().speed).toBe(1);
   });
 
-  it("loop riparte da capo; pausa ferma il ciclo; stop azzera", () => {
+  it("loop restarts from the beginning; pause stops the loop; stop resets", () => {
     tl().setLoop(true);
     tl().play();
     frame(1100);
     expect(tl().playing).toBe(true);
-    expect(tl().playhead).toBe(100); // è ripartito da capo a 1000 ms
+    expect(tl().playhead).toBe(100); // it restarted from the beginning at 1000 ms
     expect(queue).toHaveLength(1);
     frame(300);
     tl().pause();
@@ -283,7 +283,7 @@ describe("riproduzione", () => {
     expect(tl().posed).toBe(false);
   });
 
-  it("il trigger loop gira per sempre anche con repeat 0; yoyo torna indietro", () => {
+  it("the loop trigger runs forever even with repeat 0; yoyo goes back", () => {
     install({ ...baseScene(), clips: { k: clip({ trigger: "loop" }), y: clip({ id: "y", yoyo: true, repeat: 1 }) } });
     tl().openClip("k");
     queue = [];
@@ -294,13 +294,13 @@ describe("riproduzione", () => {
     tl().openClip("y");
     queue = [];
     tl().play();
-    frame(1500); // secondo ciclo, al contrario: 1500 -> 1000-500
+    frame(1500); // second cycle, backwards: 1500 -> 1000-500
     expect(tl().playhead).toBe(500);
     frame(100);
     expect(tl().playhead).toBe(400);
   });
 
-  it("scorrere mette in pausa e accende la posa; chiudere la spegne", () => {
+  it("scrubbing pauses and turns on the pose; closing turns it off", () => {
     tl().play();
     tl().setPlayhead(250);
     expect(tl().playing).toBe(false);
@@ -312,12 +312,12 @@ describe("riproduzione", () => {
     expect(posedScene()).toBe(sc());
   });
 
-  it("posedScene è memoizzata sullo stesso (scena, clip, playhead)", () => {
+  it("posedScene is memoized on the same (scene, clip, playhead)", () => {
     tl().setPlayhead(100);
     expect(posedScene()).toBe(posedScene());
   });
 
-  it("una bozza di trascinamento si campiona al posto della clip del documento", () => {
+  it("a drag draft is sampled in place of the document clip", () => {
     tl().setPlayhead(500);
     const before = posedScene()!.nodes.at("btn").opacity;
     tl().setDraftClip(clip({ tracks: [{ nodeId: "btn", prop: "opacity", keyframes: [{ time: 0, value: 0, easing: "" }, { time: 500, value: 1, easing: "" }, { time: 1000, value: 1, easing: "" }] }] }));

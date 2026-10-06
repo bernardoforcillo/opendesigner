@@ -2,10 +2,10 @@ import { NodeMap } from "../store/nodeMap";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 
-// Un documento sintetico ma realistico: una griglia di "schermate" (frame che
-// ritagliano), ognuna con una ventina di figli fra rettangoli, ellissi e testi,
-// e una piccola fetta di auto layout. Deterministico (PRNG con seme) così le
-// misure di due esecuzioni sono confrontabili.
+// A synthetic but realistic document: a grid of "screens" (clipping
+// frames), each with about twenty children among rectangles, ellipses and texts,
+// and a small slice of auto layout. Deterministic (seeded PRNG) so the
+// measurements of two runs are comparable.
 export function makeScene(totalNodes: number, seed = 1): SceneState {
   let s = seed >>> 0;
   const rnd = () => ((s = (s * 1664525 + 1013904223) >>> 0) / 4294967296);
@@ -41,7 +41,7 @@ export function makeScene(totalNodes: number, seed = 1): SceneState {
   return { ...base, nodes: NodeMap.from(nodes) };
 }
 
-// La camera che inquadra tutto il documento in un canvas w x h.
+// The camera that frames the whole document in a canvas w x h.
 export function fitCamera(scene: SceneState, w: number, h: number) {
   let maxX = 0, maxY = 0;
   for (const n of [...scene.nodes.values()]) {

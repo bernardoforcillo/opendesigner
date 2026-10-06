@@ -10,7 +10,7 @@ beforeEach(() => {
   });
 });
 
-describe("modalità", () => {
+describe("modes", () => {
   it("parte in Design; toggleMode alterna", () => {
     expect(useFlowUi.getState().mode).toBe("design");
     useFlowUi.getState().toggleMode();
@@ -19,7 +19,7 @@ describe("modalità", () => {
     expect(useFlowUi.getState().mode).toBe("design");
   });
 
-  it("Sviluppo è la terza modalità: toggleMode da lì riporta a Design, e setMode azzera lo stato di Flussi", () => {
+  it("Development is the third mode: toggleMode from there goes back to Design, and setMode resets the Flows state", () => {
     const st = useFlowUi.getState();
     st.setMode("flows");
     st.selectTransition("t1");
@@ -29,7 +29,7 @@ describe("modalità", () => {
     expect(useFlowUi.getState().mode).toBe("design");
   });
 
-  it("aprire il prototipo ricorda (per documento) che è stato provato; chiuderlo no", () => {
+  it("opening the prototype remembers (per document) that it was tried; closing it does not", () => {
     const store: Record<string, string> = {};
     vi.stubGlobal("localStorage", { getItem: (k: string) => store[k] ?? null, setItem: (k: string, v: string) => { store[k] = v; }, removeItem: () => {} });
     useScene.getState().setScene(baseScene());
@@ -40,7 +40,7 @@ describe("modalità", () => {
     vi.unstubAllGlobals();
   });
 
-  it("uscire da Flussi azzera freccia scelta, hover, rubber band e prototipo", () => {
+  it("leaving Flows resets the chosen arrow, hover, rubber band and prototype", () => {
     const st = useFlowUi.getState();
     st.setMode("flows");
     st.selectTransition("t1");
@@ -52,7 +52,7 @@ describe("modalità", () => {
     expect(s).toMatchObject({ mode: "design", selectedTransitionId: null, hoverTransitionId: null, connectPreview: null, presenting: false });
   });
 
-  it("setMode con la stessa modalità non cambia lo stato (nessuna notifica)", () => {
+  it("setMode with the same mode does not change the state (no notification)", () => {
     const fn = vi.fn();
     const unsub = useFlowUi.subscribe(fn);
     useFlowUi.getState().setMode("design");
@@ -60,7 +60,7 @@ describe("modalità", () => {
     unsub();
   });
 
-  it("l'hover uguale non notifica: il pointermove non invalida il canvas a vuoto", () => {
+  it("an equal hover does not notify: pointermove does not invalidate the canvas for nothing", () => {
     useFlowUi.getState().setHoverTransition("t1");
     const fn = vi.fn();
     const unsub = useFlowUi.subscribe(fn);
@@ -71,7 +71,7 @@ describe("modalità", () => {
     unsub();
   });
 
-  it("cambiare flusso deseleziona la freccia (appartiene all'altro)", () => {
+  it("changing flow deselects the arrow (it belongs to the other)", () => {
     useFlowUi.getState().selectTransition("t1");
     useFlowUi.getState().setCurrentFlow("f2");
     expect(useFlowUi.getState().selectedTransitionId).toBeNull();
@@ -81,19 +81,19 @@ describe("modalità", () => {
 describe("resolveFlow / sortedFlows", () => {
   const s = withFlows(baseScene(), [flowOf("b", "", "Beta"), flowOf("a", "", "Alfa")], []);
 
-  it("il flusso scelto se esiste, altrimenti il primo per nome", () => {
+  it("the chosen flow if it still exists, otherwise the first by name", () => {
     expect(resolveFlow(s, "b")?.id).toBe("b");
     expect(resolveFlow(s, null)?.id).toBe("a");
-    expect(resolveFlow(s, "cancellato")?.id).toBe("a");
+    expect(resolveFlow(s, "deleted")?.id).toBe("a");
   });
 
-  it("nessun flusso o nessuna scena: null", () => {
+  it("no flow or no scene: null", () => {
     expect(resolveFlow(baseScene(), null)).toBeNull();
     expect(resolveFlow(null, "a")).toBeNull();
   });
 
-  it("sortedFlows: per nome, poi per id", () => {
-    const eq = withFlows(baseScene(), [flowOf("z", "", "Uguale"), flowOf("y", "", "Uguale"), flowOf("x", "", "Prima")], []);
+  it("sortedFlows: by name, then by id", () => {
+    const eq = withFlows(baseScene(), [flowOf("z", "", "Same"), flowOf("y", "", "Same"), flowOf("x", "", "First")], []);
     expect(sortedFlows(eq).map((f) => f.id)).toEqual(["x", "y", "z"]);
   });
 });

@@ -6,24 +6,24 @@ import { makeCreateNodeOp, makeSetFlowOp, makeSetTransitionOp } from "../tools/o
 import { META_KEYS } from "../flow/meta";
 import type { FlowKind } from "../flow/meta";
 
-// IL MINI-LINGUAGGIO DEI TEMPLATE. Un template è una funzione che disegna
-// schermate con poche primitive (titolo, campo, bottone, scheda...) e produce un
-// BuiltTemplate: nodi + flussi + transizioni, PURI DATI. Da lì in poi:
+// THE TEMPLATE MINI-LANGUAGE. A template is a function that draws
+// screens with a few primitives (title, field, button, card...) and produces a
+// BuiltTemplate: nodes + flows + transitions, PURE DATA. From there on:
 //
-//   - `templateOps` li traduce in Op (gli stessi builder dei tool: createNode,
-//     setFlow, setTransition) da mandare a un documento appena creato;
-//   - `TemplatePreview` li disegna in miniatura nella galleria.
+//   - `templateOps` translates them into Ops (the same builders as the tools: createNode,
+//     setFlow, setTransition) to send to a just-created document;
+//   - `TemplatePreview` draws them in miniature in the gallery.
 //
-// Niente di questo tocca lo store né la rete: si testa applicando gli Op a una
-// scena con `applyOp` e verificando l'analisi dei flussi (templates.test.ts).
+// None of this touches the store or the network: it is tested by applying the Ops to a
+// scene with `applyOp` and verifying the flow analysis (templates.test.ts).
 
 export const SCREEN_W = 390;
 export const SCREEN_H = 844;
-/** Spazio fra due schermate affiancate sulla tavola. */
+/** Space between two screens side by side on the board. */
 export const SCREEN_GAP = 120;
 
-// La tavolozza dei CONTENUTI (non dell'interfaccia dell'editor): sono i colori
-// del disegno che finisce nel documento e nel codice esportato.
+// The CONTENT palette (not the editor interface's): these are the colors
+// of the drawing that ends up in the document and in the exported code.
 export const PALETTE = {
   bg: "#ffffff",
   bgSoft: "#f4f6fa",
@@ -44,7 +44,7 @@ export function hexFill(hex: string): FillLite {
   return { r: ((n >> 16) & 255) / 255, g: ((n >> 8) & 255) / 255, b: (n & 255) / 255, a: 1 };
 }
 
-/** Quello che un template produce: dati, nessun effetto. */
+/** What a template produces: data, no effects. */
 export interface BuiltTemplate {
   nodes: NodeLite[];
   flows: FlowLite[];
@@ -55,7 +55,7 @@ export type IdGen = () => string;
 
 interface TextOpts {
   size?: number; weight?: string; color?: string; align?: "left" | "center" | "right"; name?: string;
-  /** Altezza del box: di default una riga. */
+  /** Box height: one line by default. */
   h?: number;
 }
 
@@ -67,9 +67,9 @@ export interface BoxOpts {
 const LINE_H = 1.3;
 
 /**
- * Il costruttore: tiene i nodi in ordine di inserimento (padre prima dei
- * figli, come richiede il server) e dà a ciascuno una order key crescente
- * dentro il proprio parent.
+ * The builder: keeps nodes in insertion order (parent before
+ * children, as the server requires) and gives each an ascending order key
+ * inside its own parent.
  */
 export class DocBuilder {
   readonly nodes: NodeLite[] = [];
@@ -83,7 +83,7 @@ export class DocBuilder {
     return { nodes: this.nodes, flows: this.flows, transitions: this.transitions };
   }
 
-  /** Aggiunge un nodo come ULTIMO figlio del parent. */
+  /** Adds a node as the LAST child of the parent. */
   add(n: Omit<NodeLite, "orderKey" | "visible" | "opacity" | "rotation" | "strokes" | "cornerRadius" | "clipsContent" | "fills"> & Partial<NodeLite>): NodeLite {
     const key = orderKeyBetween(this.lastKey.get(n.parentId) ?? null, null);
     this.lastKey.set(n.parentId, key);
@@ -95,7 +95,7 @@ export class DocBuilder {
     return node;
   }
 
-  /** Una schermata: un frame 390x844 figlio della pagina, con rotta e tipo. */
+  /** A screen: a 390x844 frame, child of the page, with route and type. */
   screen(name: string, col: number, row: number, opts: { route: string; kind?: FlowKind; h?: number; bg?: string; testId?: string }): Screen {
     const meta: Record<string, string> = { [META_KEYS.route]: opts.route, [META_KEYS.status]: "planned" };
     if (opts.kind && opts.kind !== "screen") meta[META_KEYS.kind] = opts.kind;
@@ -114,7 +114,7 @@ export class DocBuilder {
     return f;
   }
 
-  /** Un arco del flusso: `elementId` è l'hotspot (il bottone) dentro `from`. */
+  /** A flow edge: `elementId` is the hotspot (the button) inside `from`. */
   link(flow: FlowLite, from: string, to: string, o: { label?: string; trigger?: string; elementId?: string; guard?: string; effect?: string } = {}): TransitionLite {
     const t: TransitionLite = {
       id: this.newId(), flowId: flow.id, fromId: from, toId: to, label: o.label ?? "",
@@ -125,7 +125,7 @@ export class DocBuilder {
   }
 }
 
-/** Le primitive di disegno dentro una schermata. Coordinate locali alla schermata. */
+/** The drawing primitives inside a screen. Coordinates local to the screen. */
 export class Screen {
   constructor(private readonly b: DocBuilder, readonly node: NodeLite) {}
   get id(): string { return this.node.id; }
@@ -141,24 +141,24 @@ export class Screen {
     });
   }
 
-  /** Un rettangolo o, con `radius`, una scheda/pillola. */
+  /** A rectangle or, with `radius`, a card/pill. */
   box(x: number, y: number, w: number, h: number, o: BoxOpts = {}, parentId = this.node.id): NodeLite {
     const strokes: StrokeLite[] = o.stroke ? [{ color: hexFill(o.stroke), weight: 1, align: "inside" }] : [];
     return this.b.add({
-      id: this.b.newId(), parentId, name: o.name ?? "Riquadro", kind: "rect", cornerRadius: o.radius ?? 0,
+      id: this.b.newId(), parentId, name: o.name ?? "Box", kind: "rect", cornerRadius: o.radius ?? 0,
       x, y, width: w, height: h, fills: o.fill === null ? [] : [hexFill(o.fill ?? PALETTE.bgSoft)], strokes, meta: o.meta,
     });
   }
 
-  circle(x: number, y: number, d: number, fill: string, name = "Cerchio"): NodeLite {
+  circle(x: number, y: number, d: number, fill: string, name = "Circle"): NodeLite {
     return this.b.add({ id: this.b.newId(), parentId: this.node.id, name, kind: "ellipse", x, y, width: d, height: d, fills: [hexFill(fill)] });
   }
 
   /**
-   * Un frame con auto layout orizzontale e UN figlio testo centrato in
-   * verticale: la forma di bottoni, campi e righe. Essere un frame (e non un
-   * rettangolo con un testo sopra) rende il codice esportato un vero elemento
-   * con dentro il testo, e lo rende l'hotspot giusto per i flussi.
+   * A frame with horizontal auto layout and ONE text child centered
+   * vertically: the shape of buttons, fields and rows. Being a frame (and not a
+   * rectangle with a text on top) makes the exported code a real element
+   * with the text inside, and makes it the right hotspot for flows.
    */
   private pill(name: string, x: number, y: number, w: number, h: number, label: string, o: {
     fill: string | null; stroke?: string; radius: number; color: string; weight?: string; size?: number;
@@ -175,86 +175,86 @@ export class Screen {
       },
       meta: o.meta,
     });
-    this.text(label, 0, 0, w - 2 * o.padX, { size, weight: o.weight, color: o.color, align: o.align, name: `${name} — testo` }, frame.id);
+    this.text(label, 0, 0, w - 2 * o.padX, { size, weight: o.weight, color: o.color, align: o.align, name: `${name} — text` }, frame.id);
     return frame;
   }
 
   /**
-   * Un bottone. Ritorna il suo id: è l'`elementId` dell'arco che parte da lì.
-   * `testId` finisce in `test.id` (+ `test.text` con l'etichetta) così il
-   * Playwright generato lo trova con getByTestId.
+   * A button. Returns its id: it is the `elementId` of the edge starting from there.
+   * `testId` ends up in `test.id` (+ `test.text` with the label) so the generated
+   * Playwright finds it with getByTestId.
    */
   button(label: string, x: number, y: number, w: number, testId: string, variant: "primary" | "secondary" | "link" = "primary", h = 48): string {
     const meta = { [META_KEYS.testId]: testId, [META_KEYS.testText]: label };
     if (variant === "link") {
-      // Un link è solo testo: il box è l'hotspot.
+      // A link is just text: the box is the hotspot.
       const t = this.text(label, x, y, w, { size: 14, weight: "500", color: PALETTE.accent, align: "center", name: `Link ${label}`, h });
       t.meta = meta;
       return t.id;
     }
     const primary = variant === "primary";
-    return this.pill(`Bottone ${label}`, x, y, w, h, label, {
+    return this.pill(`Button ${label}`, x, y, w, h, label, {
       fill: primary ? PALETTE.accent : PALETTE.white, stroke: primary ? undefined : PALETTE.line, radius: 12,
       color: primary ? PALETTE.white : PALETTE.ink, weight: "600", align: "center", padX: 16, meta,
     }).id;
   }
 
-  /** Un campo di testo con etichetta sopra. Ritorna l'id del campo. */
+  /** A text field with a label above. Returns the field's id. */
   input(label: string, placeholder: string, x: number, y: number, w: number, testId: string, h = 48): string {
-    this.text(label, x, y, w, { size: 13, weight: "500", color: PALETTE.muted, name: `Etichetta ${label}` });
-    return this.pill(`Campo ${label}`, x, y + 22, w, h, placeholder, {
+    this.text(label, x, y, w, { size: 13, weight: "500", color: PALETTE.muted, name: `Label ${label}` });
+    return this.pill(`Field ${label}`, x, y + 22, w, h, placeholder, {
       fill: PALETTE.white, stroke: PALETTE.line, radius: 10, color: PALETTE.muted, align: "left", padX: 14,
       meta: { [META_KEYS.testId]: testId },
     }).id;
   }
 
-  /** Una riga cliccabile (scheda con titolo e sottotitolo). Ritorna il suo id. */
+  /** A clickable row (card with title and subtitle). Returns its id. */
   row(title: string, subtitle: string, x: number, y: number, w: number, testId: string, h = 64): string {
     const frame = this.b.add({
-      id: this.b.newId(), parentId: this.node.id, name: `Riga ${title}`, kind: "frame", cornerRadius: 12,
+      id: this.b.newId(), parentId: this.node.id, name: `Row ${title}`, kind: "frame", cornerRadius: 12,
       x, y, width: w, height: h, fills: [hexFill(PALETTE.white)], strokes: [{ color: hexFill(PALETTE.line), weight: 1, align: "inside" }],
       meta: { [META_KEYS.testId]: testId, [META_KEYS.testText]: title },
     });
     this.circle2(frame.id, 14, (h - 36) / 2, 36, PALETTE.accentSoft);
-    this.text(title, 64, h / 2 - 20, w - 84, { size: 15, weight: "600", name: `${title} — titolo` }, frame.id);
-    this.text(subtitle, 64, h / 2 + 2, w - 84, { size: 13, color: PALETTE.muted, name: `${title} — dettaglio` }, frame.id);
+    this.text(title, 64, h / 2 - 20, w - 84, { size: 15, weight: "600", name: `${title} — title` }, frame.id);
+    this.text(subtitle, 64, h / 2 + 2, w - 84, { size: 13, color: PALETTE.muted, name: `${title} — detail` }, frame.id);
     return frame.id;
   }
 
   private circle2(parentId: string, x: number, y: number, d: number, fill: string): NodeLite {
-    return this.b.add({ id: this.b.newId(), parentId, name: "Icona", kind: "ellipse", x, y, width: d, height: d, fills: [hexFill(fill)] });
+    return this.b.add({ id: this.b.newId(), parentId, name: "Icon", kind: "ellipse", x, y, width: d, height: d, fills: [hexFill(fill)] });
   }
 
-  /** Una scheda statistica (etichetta piccola + numero grande). */
+  /** A stat card (small label + big number). */
   stat(label: string, value: string, x: number, y: number, w: number, h = 84): void {
     const frame = this.b.add({
-      id: this.b.newId(), parentId: this.node.id, name: `Statistica ${label}`, kind: "frame", cornerRadius: 12,
+      id: this.b.newId(), parentId: this.node.id, name: `Stat ${label}`, kind: "frame", cornerRadius: 12,
       x, y, width: w, height: h, fills: [hexFill(PALETTE.bgSoft)],
     });
-    this.text(label, 14, 14, w - 28, { size: 12, color: PALETTE.muted, name: `${label} — etichetta` }, frame.id);
-    this.text(value, 14, 36, w - 28, { size: 26, weight: "700", name: `${label} — valore` }, frame.id);
+    this.text(label, 14, 14, w - 28, { size: 12, color: PALETTE.muted, name: `${label} — label` }, frame.id);
+    this.text(value, 14, 36, w - 28, { size: 26, weight: "700", name: `${label} — value` }, frame.id);
   }
 
-  /** Barra superiore: titolo centrato. */
+  /** Top bar: centered title. */
   header(title: string): void {
-    this.box(0, 0, this.w, 96, { fill: PALETTE.white, name: "Barra" });
-    this.text(title, 24, 56, this.w - 48, { size: 17, weight: "600", align: "center", name: "Titolo barra" });
-    this.box(0, 95, this.w, 1, { fill: PALETTE.line, name: "Filo barra" });
+    this.box(0, 0, this.w, 96, { fill: PALETTE.white, name: "Bar" });
+    this.text(title, 24, 56, this.w - 48, { size: 17, weight: "600", align: "center", name: "Bar title" });
+    this.box(0, 95, this.w, 1, { fill: PALETTE.line, name: "Bar line" });
   }
 
-  /** Un segno di spunta in un cerchio: l'illustrazione delle schermate "fatto". */
+  /** A checkmark in a circle: the illustration of "done" screens. */
   badge(cx: number, y: number, d: number, fill: string, glyph: string): void {
-    this.circle(cx - d / 2, y, d, fill, "Illustrazione");
-    this.text(glyph, cx - d / 2, y + d / 2 - (d * 0.5 * LINE_H) / 2, d, { size: Math.round(d * 0.5), weight: "700", color: PALETTE.white, align: "center", name: "Glifo", h: Math.ceil(d * 0.5 * LINE_H) });
+    this.circle(cx - d / 2, y, d, fill, "Illustration");
+    this.text(glyph, cx - d / 2, y + d / 2 - (d * 0.5 * LINE_H) / 2, d, { size: Math.round(d * 0.5), weight: "700", color: PALETTE.white, align: "center", name: "Glyph", h: Math.ceil(d * 0.5 * LINE_H) });
   }
 }
 
 /**
- * Gli Op che trasformano un BuiltTemplate in un documento: prima i nodi (il
- * padre precede sempre il figlio), poi i flussi, poi le transizioni (che
- * referenziano nodi e flussi già esistenti). `docId` va stampato su ogni Op:
- * i builder di tools/ops.ts lo leggono dalla scena APERTA, che qui, dalla Home,
- * non c'è.
+ * The Ops that turn a BuiltTemplate into a document: first the nodes (the
+ * parent always precedes the child), then the flows, then the transitions (which
+ * reference already existing nodes and flows). `docId` must be stamped on every Op:
+ * the builders in tools/ops.ts read it from the OPEN scene, which here, from Home,
+ * is not there.
  */
 export function builtToOps(built: BuiltTemplate, docId: string): Op[] {
   const ops: Op[] = [

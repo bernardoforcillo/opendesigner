@@ -28,7 +28,7 @@ afterEach(() => {
   vi.useRealTimers();
 });
 
-describe("raggruppamento dei file", () => {
+describe("file grouping", () => {
   it.each<[string, CodeTarget, string]>([
     ["src/screens/Login.tsx", "react", "screens"],
     ["src/App.tsx", "react", "app"],
@@ -44,42 +44,42 @@ describe("raggruppamento dei file", () => {
     ["assets/ab.png", "html", "assets"],
   ])("%s (%s) -> %s", (path, target, want) => expect(groupOf(path, target)).toBe(want));
 
-  it("i gruppi escono nell'ordine Schermate, App, Configurazione, Test, Risorse, con i file ordinati; i gruppi vuoti spariscono", () => {
+  it("groups come out in the order Screens, App, Configuration, Test, Assets, with sorted files; empty groups disappear", () => {
     const g = groupFiles(
       [file("tests/b.spec.ts"), file("package.json"), file("src/screens/B.tsx"), file("src/screens/A.tsx"), file("src/main.tsx")],
       "react",
     );
     expect(g.map((x) => x.id)).toEqual(["screens", "app", "config", "tests"]);
     expect(g[0].files.map((f) => f.path)).toEqual(["src/screens/A.tsx", "src/screens/B.tsx"]);
-    expect(g[0].label).toBe("Schermate");
+    expect(g[0].label).toBe("Screens");
   });
 });
 
-describe("legame schermata <-> file (data-node-id)", () => {
+describe("screen <-> file link (data-node-id)", () => {
   const files = [
-    file("src/screens/Carrello.tsx", '<div data-node-id="s1" className="x">'),
-    file("src/screens/Pagamento.tsx", '<div data-node-id="s2"><i data-node-id="b2"/>'),
-    file("src/App.tsx", 'import Carrello; // data-node-id="s1" citato altrove'),
+    file("src/screens/Cart.tsx", '<div data-node-id="s1" className="x">'),
+    file("src/screens/Payment.tsx", '<div data-node-id="s2"><i data-node-id="b2"/>'),
+    file("src/App.tsx", 'import Cart; // data-node-id="s1" mentioned elsewhere'),
   ];
-  it("fileForNode: solo fra i file di schermata", () => {
-    expect(fileForNode(files, "react", "s1")?.path).toBe("src/screens/Carrello.tsx");
-    expect(fileForNode(files, "react", "s2")?.path).toBe("src/screens/Pagamento.tsx");
+  it("fileForNode: only among screen files", () => {
+    expect(fileForNode(files, "react", "s1")?.path).toBe("src/screens/Cart.tsx");
+    expect(fileForNode(files, "react", "s2")?.path).toBe("src/screens/Payment.tsx");
     expect(fileForNode(files, "react", "zz")).toBeUndefined();
   });
-  it("nodeIdOfFile: la radice è il primo data-node-id", () => {
+  it("nodeIdOfFile: the root is the first data-node-id", () => {
     expect(nodeIdOfFile(files[1])).toBe("s2");
-    expect(nodeIdOfFile(file("a.tsx", "niente"))).toBeNull();
+    expect(nodeIdOfFile(file("a.tsx", "nothing"))).toBeNull();
   });
-  it("textOf: UTF-8, memoizzato; i binari non si decodificano", () => {
-    const f = file("a.tsx", "Città");
-    expect(textOf(f)).toBe("Città");
+  it("textOf: UTF-8, memoized; binaries are not decoded", () => {
+    const f = file("a.tsx", "Café");
+    expect(textOf(f)).toBe("Café");
     expect(textOf(f)).toBe(textOf(f));
     expect(textOf({ path: "x.png", bytes: new Uint8Array([137, 80]) })).toBe("");
   });
 });
 
 describe("refreshCode", () => {
-  it("salva i file per target, con il documento a cui appartengono", async () => {
+  it("saves the files per target, with the document they belong to", async () => {
     setCodeFetcher(async () => result("a.tsx"));
     await refreshCode("react");
     const st = useCodegen.getState().byTarget;
@@ -88,7 +88,7 @@ describe("refreshCode", () => {
     expect(st.html.files).toEqual([]);
   });
 
-  it("un errore del server diventa stato (e i file precedenti restano)", async () => {
+  it("a server error becomes state (and the previous files stay)", async () => {
     setCodeFetcher(async () => result("a.tsx"));
     await refreshCode("react");
     setCodeFetcher(async () => { throw new Error("boom"); });
@@ -97,24 +97,24 @@ describe("refreshCode", () => {
     expect(useCodegen.getState().byTarget.react.files).toHaveLength(1);
   });
 
-  it("una richiesta nuova ANNULLA la vecchia, e la risposta vecchia non vince", async () => {
+  it("a new request CANCELS the old one, and the old response does not win", async () => {
     const signals: AbortSignal[] = [];
     let releaseOld!: () => void;
     const f1: CodeFetcher = (_d, _t, signal) => {
       signals.push(signal);
-      return new Promise((res) => { releaseOld = () => res(result("vecchio.tsx")); });
+      return new Promise((res) => { releaseOld = () => res(result("old.tsx")); });
     };
     setCodeFetcher(f1);
     const first = refreshCode("react");
-    setCodeFetcher(async (_d, _t, signal) => { signals.push(signal); return result("nuovo.tsx"); });
+    setCodeFetcher(async (_d, _t, signal) => { signals.push(signal); return result("new.tsx"); });
     await refreshCode("react");
     expect(signals[0].aborted).toBe(true);
     releaseOld();
     await first;
-    expect(useCodegen.getState().byTarget.react.files.map((f) => f.path)).toEqual(["nuovo.tsx"]);
+    expect(useCodegen.getState().byTarget.react.files.map((f) => f.path)).toEqual(["new.tsx"]);
   });
 
-  it("senza scena non chiede nulla", async () => {
+  it("without a scene it asks for nothing", async () => {
     const fetcher = vi.fn(async () => result());
     setCodeFetcher(fetcher);
     useScene.setState({ scene: null });
@@ -123,8 +123,8 @@ describe("refreshCode", () => {
   });
 });
 
-describe("useCodeExport (debounce, gesti, annullamento)", () => {
-  it("chiede subito; una raffica di cambi del confermato ne produce UNA sola, a debounce scaduto", async () => {
+describe("useCodeExport (debounce, gestures, cancellation)", () => {
+  it("asks right away; a burst of confirmed changes produces ONE, once the debounce expires", async () => {
     const fetcher = vi.fn<CodeFetcher>(async () => result("a.tsx"));
     setCodeFetcher(fetcher);
     render(<Probe />);
@@ -144,7 +144,7 @@ describe("useCodeExport (debounce, gesti, annullamento)", () => {
     expect(fetcher).toHaveBeenCalledTimes(2);
   });
 
-  it("non chiede mentre un gesto è aperto", async () => {
+  it("does not ask while a gesture is open", async () => {
     const fetcher = vi.fn<CodeFetcher>(async () => result());
     setCodeFetcher(fetcher);
     useScene.setState({ gesture: { selection: [], preview: new Map() } });
@@ -156,7 +156,7 @@ describe("useCodeExport (debounce, gesti, annullamento)", () => {
     expect(fetcher).toHaveBeenCalledTimes(1);
   });
 
-  it("disabilitato: nessun lavoro. Smontando: la richiesta in volo viene annullata", async () => {
+  it("disabled: no work. Unmounting: the in-flight request is cancelled", async () => {
     const fetcher = vi.fn<CodeFetcher>(async () => result());
     setCodeFetcher(fetcher);
     const off = render(<Probe enabled={false} />);
@@ -173,7 +173,7 @@ describe("useCodeExport (debounce, gesti, annullamento)", () => {
     expect(signal.aborted).toBe(true);
   });
 
-  it("più target: uno per target; un cambio del documento li rifà tutti", async () => {
+  it("more targets: one per target; a document change redoes them all", async () => {
     const fetcher = vi.fn<CodeFetcher>(async () => result());
     setCodeFetcher(fetcher);
     render(<Probe targets={["react", "html"]} />);
@@ -181,7 +181,7 @@ describe("useCodeExport (debounce, gesti, annullamento)", () => {
     expect(fetcher.mock.calls.map((c) => c[1]).sort()).toEqual(["html", "react"]);
   });
 
-  it("un target già caldo (stesso documento) non si rifà subito, solo dopo il debounce", async () => {
+  it("an already warm target (same document) is not redone right away, only after the debounce", async () => {
     const fetcher = vi.fn<CodeFetcher>(async () => result("a.tsx"));
     setCodeFetcher(fetcher);
     await refreshCode("react");

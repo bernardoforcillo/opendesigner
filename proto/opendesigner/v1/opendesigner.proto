@@ -6,36 +6,38 @@ import "google/protobuf/field_mask.proto";
 
 option go_package = "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1;opendesignerv1";
 
-// ---------- documento / scene graph ----------
+// ---------- document / scene graph ----------
 message Color { float r = 1; float g = 2; float b = 3; float a = 4; } // 0..1
 message SolidPaint { Color color = 1; }
-// Un punto di colore di un gradiente. `position` è in 0..1 lungo l'asse del
-// gradiente; gli stop sono tenuti in ordine crescente di posizione da chi li
-// scrive (il canvas e l'SVG li leggono nell'ordine dato).
+// A color stop of a gradient. `position` is in 0..1 along the gradient axis;
+// the writer keeps stops in ascending position order (the canvas and the SVG
+// read them in the given order).
 message GradientStop { Color color = 1; double position = 2; }
 
-// Un gradiente è definito in coordinate NORMALIZZATE del box del nodo: (0,0) è
-// l'angolo in alto a sinistra, (1,1) quello in basso a destra. Così resta
-// valido quando il nodo viene ridimensionato, senza riscrivere nessun op.
+// A gradient is defined in NORMALIZED coordinates of the node's box: (0,0) is
+// the top-left corner, (1,1) the bottom-right. This way it stays valid when the
+// node is resized, without rewriting any op.
 //
-// LINEARE: l'asse va da (x1,y1) a (x2,y2).
-// RADIALE: il centro è (x1,y1) e il raggio è la distanza fra (x1,y1) e (x2,y2),
-// misurata in coordinate MONDO dopo la denormalizzazione (cerchio, non ellisse).
+// LINEAR: the axis goes from (x1,y1) to (x2,y2).
+// RADIAL: the center is (x1,y1) and the radius is the distance between (x1,y1)
+// and (x2,y2), measured in WORLD coordinates after denormalization (a circle,
+// not an ellipse).
 message GradientPaint {
   repeated GradientStop stops = 1;
   double x1 = 2; double y1 = 3; double x2 = 4; double y2 = 5;
 }
 message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; } }
 
-// Allineamento del tratto rispetto al PERIMETRO della forma. CENTER è il
-// default del disegno (metà dentro, metà fuori): è l'unico che il canvas 2D sa
-// fare da solo, gli altri due si ottengono raddoppiando la larghezza e
-// ritagliando il lato che non serve (vedi web/src/renderer/canvasRenderer.ts).
+// Alignment of the stroke relative to the shape's PERIMETER. CENTER is the
+// drawing default (half inside, half outside): it is the only one the 2D canvas
+// can do on its own, the other two are obtained by doubling the width and
+// clipping away the side that is not needed (see
+// web/src/renderer/canvasRenderer.ts).
 //
-// UNSPECIFIED = 0 come in TextAlign, e per la stessa ragione: in proto3 lo zero
-// non si distingue da "campo assente", quindi il valore 0 non può essere una
-// scelta vera dell'utente -- collassa su CENTER al bordo del renderer, dove
-// vivono tutti i default (web/src/store/types.ts::toStrokeLite).
+// UNSPECIFIED = 0 as in TextAlign, and for the same reason: in proto3 zero is
+// indistinguishable from "field absent", so the value 0 cannot be a real user
+// choice -- it collapses to CENTER at the renderer boundary, where all the
+// defaults live (web/src/store/types.ts::toStrokeLite).
 enum StrokeAlign {
   STROKE_ALIGN_UNSPECIFIED = 0;
   STROKE_ALIGN_CENTER = 1;
@@ -43,70 +45,73 @@ enum StrokeAlign {
   STROKE_ALIGN_OUTSIDE = 3;
 }
 
-// Un tratto: la stessa Paint dei riempimenti, più la larghezza (in coordinate
-// MONDO, come font_size) e l'allineamento. Messaggio a sé e non tre campi
-// paralleli sul Node, perché `strokes` è ripetuto esattamente come `fills`: un
-// nodo può avere più tratti sovrapposti, e ciascuno ha il PROPRIO peso.
+// A stroke: the same Paint as fills, plus the width (in WORLD coordinates, like
+// font_size) and the alignment. A message of its own rather than three parallel
+// fields on Node, because `strokes` is repeated exactly like `fills`: a node can
+// have several overlapping strokes, and each has its OWN weight.
 message Stroke {
   Paint paint = 1;
-  double weight = 2;      // >= 0, in coordinate mondo
+  double weight = 2;      // >= 0, in world coordinates
   StrokeAlign align = 3;
 }
 
-// Ombra esterna. Offset e sfocatura sono in coordinate MONDO (come font_size):
-// crescono col nodo e con lo zoom. `blur` è il raggio come lo intende il canvas
-// 2D (shadowBlur): la deviazione standard della gaussiana è la sua metà.
+// Drop shadow. Offset and blur are in WORLD coordinates (like font_size): they
+// grow with the node and with zoom. `blur` is the radius as the 2D canvas
+// understands it (shadowBlur): the standard deviation of the gaussian is half
+// of it.
 message DropShadow {
   Color color = 1;
   double offset_x = 2;
   double offset_y = 3;
   double blur = 4;       // >= 0
 }
-// Sfocatura del livello: sfoca il nodo stesso. `radius` è la deviazione
-// standard della gaussiana, in coordinate mondo.
+// Layer blur: blurs the node itself. `radius` is the standard deviation of the
+// gaussian, in world coordinates.
 message LayerBlur { double radius = 1; } // >= 0
 message Effect { oneof kind { DropShadow drop_shadow = 1; LayerBlur layer_blur = 2; } }
 
 message RectNode { double corner_radius = 1; }
-message EllipseNode {} // cx/cy/rx/ry derivano da x/y/width/height, come per RectNode
+message EllipseNode {} // cx/cy/rx/ry derive from x/y/width/height, as for RectNode
 
-// Un GRUPPO è un contenitore SENZA clipping e senza geometria propria: i suoi
-// bounds sono l'UNIONE di quelli dei figli (derivati, non memorizzati) e non ha
-// niente da riempire -- non si disegna e non si colpisce, si colpiscono i figli.
+// A GROUP is a container WITHOUT clipping and without geometry of its own: its
+// bounds are the UNION of its children's (derived, not stored) and it has
+// nothing to fill -- it is not drawn and not hit, its children are.
 //
-// Il messaggio è quindi vuoto, e non è un difetto: ciò che rende un nodo un
-// gruppo è la sua POSIZIONE nell'albero (i figli) più il caso del oneof, che
-// dice a renderer, hit-test e politica di selezione come trattarlo. Un
-// FrameNode (34) avrà invece campi propri (clips_content) e bounds propri.
+// The message is therefore empty, and that is not a defect: what makes a node a
+// group is its POSITION in the tree (the children) plus the oneof case, which
+// tells the renderer, hit-test and selection policy how to treat it. A
+// FrameNode (34) instead has fields of its own (clips_content) and bounds of
+// its own.
 //
-// x/y restano significativi: sono la TRASLAZIONE che il gruppo contribuisce ai
-// figli (vedi web/src/canvas/transform.ts::localTransformOf) -- valgono 0 alla
-// creazione, così raggruppare non sposta nulla, e cambiano quando il gruppo
-// viene trascinato. width/height non sono usati da nessuno: i bounds sono
-// l'unione dei figli.
+// x/y remain meaningful: they are the TRANSLATION the group contributes to its
+// children (see web/src/canvas/transform.ts::localTransformOf) -- they are 0 at
+// creation, so grouping moves nothing, and they change when the group is
+// dragged. width/height are not used by anyone: the bounds are the union of the
+// children.
 message GroupNode {}
 
-// Un FRAME è l'opposto complementare del gruppo: un contenitore CON geometria
-// propria. Il suo box (x/y/width/height del Node) non è derivato dai figli --
-// è disegnato, riempito e colpito come una forma qualunque -- ed è l'artboard:
-// la superficie su cui si compone, non solo un raggruppamento logico.
+// A FRAME is the complementary opposite of the group: a container WITH
+// geometry of its own. Its box (x/y/width/height of the Node) is not derived
+// from the children -- it is drawn, filled and hit like any shape -- and it is
+// the artboard: the surface you compose on, not just a logical grouping.
 //
-// Da qui discende tutto il resto:
-//   - si disegna (a differenza di un gruppo) e si colpisce sul proprio box,
-//     quindi cliccare la parte vuota di un frame seleziona il frame;
-//   - i suoi bounds sono i suoi, mai l'unione dei figli (store/groups.ts::
-//     contentWorldBounds risale ai figli SOLO per i gruppi);
-//   - il click NON viene catturato come da un gruppo: i figli di un frame si
-//     selezionano direttamente, che è la convenzione degli artboard
+// Everything else follows from this:
+//   - it is drawn (unlike a group) and hit on its own box, so clicking the
+//     empty part of a frame selects the frame;
+//   - its bounds are its own, never the union of the children (store/groups.ts::
+//     contentWorldBounds descends to the children ONLY for groups);
+//   - the click is NOT captured as by a group: the children of a frame are
+//     selected directly, which is the artboard convention
 //     (store/groups.ts::selectionTargetOf).
-// Auto layout: il frame DISPONE da sé i propri figli in fila, e il risultato
-// (x/y dei figli, e width/height del frame se "hug") è scritto nel documento
-// come campi normali dal core, dopo ogni op che lo tocca. I client non
-// calcolano niente di autoritativo: leggono posizioni già a posto, che è ciò
-// che rende il documento identico per il browser e per gli agenti MCP.
+// Auto layout: the frame ARRANGES its children in a row by itself, and the
+// result (x/y of the children, and width/height of the frame if "hug") is
+// written into the document as normal fields by the core, after every op that
+// touches it. Clients compute nothing authoritative: they read positions that
+// are already correct, which is what makes the document identical for the
+// browser and for MCP agents.
 //
-// UNSPECIFIED collassa su HORIZONTAL (direzione) e START (allineamenti), come
-// StrokeAlign e TextAlign: lo zero di proto3 non si distingue da "assente".
+// UNSPECIFIED collapses to HORIZONTAL (direction) and START (alignments), like
+// StrokeAlign and TextAlign: proto3's zero is indistinguishable from "absent".
 enum LayoutDirection {
   LAYOUT_DIRECTION_UNSPECIFIED = 0;
   LAYOUT_DIRECTION_HORIZONTAL = 1;
@@ -117,39 +122,38 @@ enum LayoutAlign {
   LAYOUT_ALIGN_START = 1;
   LAYOUT_ALIGN_CENTER = 2;
   LAYOUT_ALIGN_END = 3;
-  // Solo per main_align: distribuisce lo spazio libero fra i figli. Sull'asse
-  // trasversale vale START.
+  // Only for main_align: distributes the free space between the children. On
+  // the cross axis it behaves as START.
   LAYOUT_ALIGN_SPACE_BETWEEN = 4;
 }
 message AutoLayout {
   LayoutDirection direction = 1;
-  double spacing = 2;      // spazio fra due figli consecutivi, >= 0
+  double spacing = 2;      // space between two consecutive children, >= 0
   double padding_left = 3;
   double padding_top = 4;
   double padding_right = 5;
   double padding_bottom = 6;
-  LayoutAlign main_align = 7;   // lungo la direzione
-  LayoutAlign cross_align = 8;  // attraverso la direzione
-  // "Hug": quell'asse del frame si adatta al contenuto invece di tenere la
-  // misura scritta in width/height. Indipendenti dalla direzione.
+  LayoutAlign main_align = 7;   // along the direction
+  LayoutAlign cross_align = 8;  // across the direction
+  // "Hug": that axis of the frame fits its content instead of keeping the size
+  // written in width/height. Independent of the direction.
   bool hug_width = 9;
   bool hug_height = 10;
 }
 
 message FrameNode {
-  // Ritaglia i figli al box del frame. Non è un dettaglio di rendering: ciò
-  // che il ritaglio nasconde non è nemmeno CLICCABILE né selezionabile con la
-  // banda elastica -- le tre discese dell'albero (disegno, hit-test, marquee)
-  // devono rispondere sugli stessi pixel, altrimenti la selezione finisce su
-  // un nodo che l'utente non vede.
+  // Clips the children to the frame's box. It is not a rendering detail: what
+  // the clip hides is not even CLICKABLE nor selectable with the rubber band --
+  // the three tree descents (drawing, hit-test, marquee) must answer on the
+  // same pixels, otherwise the selection ends up on a node the user cannot see.
   //
-  // Opzionale, cioè un campo e non un invariante del frame: un frame senza
-  // clipping resta un contenitore con bounds propri (utile per raggruppare
-  // dando una cornice esplicita), e il default proto3 (false) è quindi un
-  // valore legittimo, non "non impostato".
+  // Optional, i.e. a field and not an invariant of the frame: a frame without
+  // clipping remains a container with its own bounds (useful for grouping by
+  // giving an explicit frame), and the proto3 default (false) is therefore a
+  // legitimate value, not "unset".
   bool clips_content = 1;
-  // Presente = il frame dispone i figli (vedi AutoLayout). Assente = i figli
-  // stanno dove li mettono i loro x/y. Si scrive con la mask "auto_layout".
+  // Present = the frame arranges its children (see AutoLayout). Absent = the
+  // children stay where their x/y put them. Written with the "auto_layout" mask.
   AutoLayout auto_layout = 2;
 }
 
@@ -161,135 +165,135 @@ enum TextAlign {
 }
 
 message TextStyle {
-  string font_family = 1;    // "" => default del renderer
-  double font_size = 2;      // px in coordinate mondo
+  string font_family = 1;    // "" => renderer default
+  double font_size = 2;      // px in world coordinates
   string font_weight = 3;    // "400" | "700" | ...
-  double line_height = 4;    // moltiplicatore, 0 => 1.2
+  double line_height = 4;    // multiplier, 0 => 1.2
   TextAlign align = 5;       // LEFT | CENTER | RIGHT
 }
 
-// Il box del testo è x/y/width/height del Node (come rect/ellipse): width è la
-// larghezza di wrap, height quella misurata dal layout.
+// The text box is x/y/width/height of the Node (as for rect/ellipse): width is
+// the wrap width, height the one measured by the layout.
 message TextNode { string content = 1; TextStyle style = 2; }
 
-// L'immagine è un RIFERIMENTO, mai dei byte. `asset_hash` è lo sha256 dei byte
-// in esadecimale minuscolo; i byte vivono UNA volta sola in
-// <workspace>/<docId>.opendesigner/assets/ e si servono via GET /assets-api/{docId}/{hash}.
+// The image is a REFERENCE, never bytes. `asset_hash` is the sha256 of the
+// bytes in lowercase hex; the bytes live ONCE in
+// <workspace>/<docId>.opendesigner/assets/ and are served via GET /assets-api/{docId}/{hash}.
 //
-// È il punto dell'indirizzamento per contenuto: un CreateNode con dentro
-// un'immagine porterebbe quei byte nell'op-log, cioè in un file append-only che
-// non si compatta mai per intero -- la stessa foto trascinata dieci volte
-// pesherebbe dieci volte, e ogni catch-up di Subscribe la rimanderebbe sul filo.
-// Con l'hash l'op resta di poche decine di byte e i pixel non entrano mai nel
-// giro degli op.
+// This is the point of content addressing: a CreateNode carrying an image would
+// bring those bytes into the op-log, i.e. an append-only file that never fully
+// compacts -- the same photo dragged ten times would weigh ten times as much,
+// and every Subscribe catch-up would send it over the wire again. With the hash
+// the op stays a few dozen bytes and the pixels never enter the op flow.
 message ImageNode { string asset_hash = 1; }
 
-// Un punto d'ancoraggio di un path vettoriale.
+// An anchor point of a vector path.
 //
-// DUE SPAZI, ed è la regola più importante di tutto il messaggio -- il renderer,
-// l'hit-test e il pen tool devono leggerla nello stesso identico modo, in Go e
-// in TypeScript (web/src/store/vectorGeometry.ts è l'unica implementazione).
+// TWO SPACES, and it is the most important rule of the whole message -- the
+// renderer, the hit-test and the pen tool must read it in exactly the same way,
+// in Go and in TypeScript (web/src/store/vectorGeometry.ts is the only
+// implementation).
 //
-// 1. `x`/`y` sono in coordinate LOCALI AL NODO: l'origine è (Node.x, Node.y),
-//    quindi il punto in coordinate mondo è (Node.x + x, Node.y + y).
-//    NON in coordinate mondo, e non è un capriccio: ogni consumatore esistente
-//    lavora sul box del nodo -- selectTool manda un setProps{x,y} per
-//    trascinare, l'overlay disegna la selezione da x/y/width/height, il
-//    renderer scarta un nodo con width/height <= 0. Con ancoraggi in coordinate
-//    mondo, trascinare un nodo vettoriale sposterebbe il box e lascerebbe il
-//    path dov'era, a meno di riscrivere TUTTA la geometria a ogni spostamento
-//    (una regola in più che nessuno applica). Locali, la geometria viaggia col
-//    nodo gratis -- e sarà così anche quando la traccia 1 renderà le coordinate
-//    relative al parent: un vettoriale dentro un gruppo si sposterà col gruppo
-//    senza una riga in più.
+// 1. `x`/`y` are in NODE-LOCAL coordinates: the origin is (Node.x, Node.y), so
+//    the point in world coordinates is (Node.x + x, Node.y + y).
+//    NOT in world coordinates, and it is not a whim: every existing consumer
+//    works on the node's box -- selectTool sends a setProps{x,y} to drag, the
+//    overlay draws the selection from x/y/width/height, the renderer discards a
+//    node with width/height <= 0. With anchors in world coordinates, dragging a
+//    vector node would move the box and leave the path where it was, unless ALL
+//    the geometry were rewritten on every move (one more rule that nobody
+//    applies). With local anchors, the geometry travels with the node for
+//    free -- and it will stay that way when track 1 makes coordinates relative
+//    to the parent: a vector inside a group will move with the group without
+//    one extra line.
 //
-// 2. `in_`/`out_` sono OFFSET RELATIVI ALL'ANCORAGGIO (non punti): il punto di
-//    controllo della curva che ENTRA nell'ancoraggio è (x + in_x, y + in_y),
-//    quello della curva che ne ESCE è (x + out_x, y + out_y).
-//    Relativi perché così -- e SOLO così -- il default di proto3 dice il vero:
-//    (0,0) è la maniglia COINCIDENTE con l'ancoraggio, cioè "nessuna maniglia,
-//    il segmento è una retta". Con maniglie assolute un ancoraggio decodificato
-//    senza in_/out_ avrebbe le maniglie nell'ORIGINE del nodo, cioè una curva
-//    che ci va a sbattere: il caso più comune di tutti (un punto d'angolo)
-//    sarebbe l'unico non rappresentabile allo zero, e ogni scrittore dovrebbe
-//    ricordarsi di riempire i sei campi anche quando non servono.
-//    È anche la ragione per cui la maggior parte dei formati le tiene relative.
-//    Il prezzo -- una somma nel renderer -- lo paga un solo posto
-//    (vectorGeometry.ts), e per giunta gratis: bezierCurveTo con entrambi i
-//    controlli coincidenti agli estremi disegna esattamente la retta, quindi il
-//    caso "nessuna maniglia" non ha nemmeno bisogno di un ramo.
+// 2. `in_`/`out_` are OFFSETS RELATIVE TO THE ANCHOR (not points): the control
+//    point of the curve that ENTERS the anchor is (x + in_x, y + in_y), the one
+//    of the curve that EXITS it is (x + out_x, y + out_y).
+//    Relative because that way -- and ONLY that way -- the proto3 default tells
+//    the truth: (0,0) is the handle COINCIDENT with the anchor, i.e. "no handle,
+//    the segment is a straight line". With absolute handles an anchor decoded
+//    without in_/out_ would have its handles at the node's ORIGIN, i.e. a curve
+//    that crashes into it: the most common case of all (a corner point) would be
+//    the only one not representable at zero, and every writer would have to
+//    remember to fill all six fields even when they are not needed.
+//    It is also the reason most formats keep them relative.
+//    The price -- an addition in the renderer -- is paid in a single place
+//    (vectorGeometry.ts), and for free at that: bezierCurveTo with both controls
+//    coinciding with the endpoints draws exactly the straight line, so the "no
+//    handle" case does not even need a branch.
 message Anchor {
   double x = 1; double y = 2;
   double in_x = 3; double in_y = 4;
   double out_x = 5; double out_y = 6;
 }
 
-// Un contorno: una sequenza di ancoraggi, chiusa o aperta. `closed` è dato e
-// non derivato (primo ancoraggio == ultimo): un path chiuso si riempie e si
-// hit-testa sul riempimento, uno aperto sulla prossimità alla linea.
+// An outline: a sequence of anchors, closed or open. `closed` is given and not
+// derived (first anchor == last): a closed path is filled and hit-tested on its
+// fill, an open one on proximity to the line.
 message SubPath { repeated Anchor anchors = 1; bool closed = 2; }
 
-// Più subpath per nodo: un contorno esterno e i suoi buchi (o più contorni
-// scollegati) sono UN oggetto per l'utente, quindi un nodo solo.
+// Multiple subpaths per node: an outer outline and its holes (or several
+// disconnected outlines) are ONE object for the user, hence a single node.
 //
-// IL BOX. Node.x/y/width/height restano quello che sono per rect ed ellipse: il
-// box del nodo. Non sono derivati dalla geometria da chi applica l'op -- né
-// core.Apply né applyOp li ricalcolano -- perché la bbox di una cubica non è
-// una copia di due righe e due implementazioni "identiche" di quella
-// matematica divergerebbero al primo caso limite, proprio sull'invariante che
-// questa traccia esiste per difendere.
+// THE BOX. Node.x/y/width/height remain what they are for rect and ellipse: the
+// node's box. They are not derived from the geometry by whoever applies the op
+// -- neither core.Apply nor applyOp recompute them -- because the bbox of a
+// cubic is not a two-line copy and two "identical" implementations of that math
+// would diverge at the first edge case, precisely on the invariant this track
+// exists to defend.
 //
-// L'invariante è quindi del SCRITTORE, e vale la pena scriverla per esteso:
-// dopo un SetVectorPath, la bbox locale della geometria è (0,0)-(width,height).
-// Cioè: chi riscrive i subpath normalizza (trasla gli ancoraggi in modo che il
-// minimo sia (0,0)) e manda nello STESSO GESTO il SetProperties che aggiorna
-// x/y/width/height. Così un nodo vettoriale è indistinguibile da un rettangolo
-// per tutto il resto dell'editor: la selezione lo circonda, il resize ha un box
-// su cui lavorare, e il pen tool è l'unico posto che conosce la regola.
-// web/src/store/vectorGeometry.ts::vectorBounds è l'unica implementazione della
-// bbox, così "scritto due volte" non è nemmeno possibile. Ed è la bbox VERA
-// della curva (derivata risolta per asse, e solo sui segmenti effettivamente
-// disegnati), non l'inviluppo dei punti di controllo: su quest'ultimo il box
-// dichiarato qui sarebbe un sovrainsieme -- fino a un 33% di vuoto su una sola
-// cubica -- e a pagarlo sarebbe la SELEZIONE, con maniglie di resize che non
-// toccano il path e un marquee che afferra senza sfiorare l'inchiostro.
+// The invariant therefore belongs to the WRITER, and it is worth spelling out:
+// after a SetVectorPath, the local bbox of the geometry is (0,0)-(width,height).
+// That is: whoever rewrites the subpaths normalizes (translates the anchors so
+// that the minimum is (0,0)) and sends, in the SAME GESTURE, the SetProperties
+// that updates x/y/width/height. This way a vector node is indistinguishable
+// from a rectangle for the rest of the editor: the selection surrounds it, the
+// resize has a box to work on, and the pen tool is the only place that knows
+// the rule. web/src/store/vectorGeometry.ts::vectorBounds is the only
+// implementation of the bbox, so "written twice" is not even possible. And it
+// is the TRUE bbox of the curve (derivative solved per axis, and only on the
+// segments actually drawn), not the envelope of the control points: with the
+// latter the box declared here would be a superset -- up to 33% empty on a
+// single cubic -- and the SELECTION would pay for it, with resize handles that
+// do not touch the path and a marquee that grabs without grazing the ink.
 //
-// Vale nei DUE VERSI, ed è il secondo a costare qualcosa: nemmeno il BOX può
-// cambiare senza che la geometria lo segua, altrimenti un drag delle 8 maniglie
-// di resize (che è un solo SetProperties{x,y,width,height}) violerebbe
-// l'invariante senza nessun SetVectorPath in vista -- box cresciuto, inchiostro
-// della misura di prima. Chi ridimensiona un nodo vettoriale riscrive quindi gli
-// ancoraggi con la stessa trasformazione, NELLO STESSO GESTO
-// (web/src/store/vectorGeometry.ts::resizeVector, emesso da
-// web/src/tools/selectTool.ts). Gli ancoraggi restano lunghezze in coordinate
-// locali e NON frazioni 0..1 del box: normalizzati sarebbero indefiniti per ogni
-// path con un asse degenere (un segmento orizzontale: divisione per zero) e
-// costringerebbero il pen tool a rinormalizzare tutta la geometria a ogni punto
-// aggiunto.
+// It holds in BOTH DIRECTIONS, and the second is the one that costs something:
+// not even the BOX can change without the geometry following, otherwise a drag
+// of the 8 resize handles (which is a single SetProperties{x,y,width,height})
+// would violate the invariant with no SetVectorPath in sight -- box grown, ink
+// at the previous size. Whoever resizes a vector node therefore rewrites the
+// anchors with the same transformation, IN THE SAME GESTURE
+// (web/src/store/vectorGeometry.ts::resizeVector, emitted by
+// web/src/tools/selectTool.ts). The anchors remain lengths in local
+// coordinates and NOT 0..1 fractions of the box: normalized they would be
+// undefined for every path with a degenerate axis (a horizontal segment:
+// division by zero) and would force the pen tool to renormalize all the
+// geometry on every added point.
 //
-// Un asse DEGENERE è uno stato legittimo e il box non lo falsa: un path di un
-// solo ancoraggio ha width e height 0, un segmento orizzontale ha height 0. Il
-// click non passa dal box (colpisce l'inchiostro,
-// web/src/renderer/shapes.ts::hitTestNode), e chi ci deve far passare sopra un
-// MARQUEE allarga per conto suo
-// (web/src/renderer/shapes.ts::selectionBoundsOfNode) -- quella è una tolleranza
-// di selezione, non un fatto sulla geometria.
+// A DEGENERATE axis is a legitimate state and the box does not falsify it: a
+// single-anchor path has width and height 0, a horizontal segment has height 0.
+// The click does not go through the box (it hits the ink,
+// web/src/renderer/shapes.ts::hitTestNode), and whoever needs to pass a MARQUEE
+// over it widens it on their own
+// (web/src/renderer/shapes.ts::selectionBoundsOfNode) -- that is a selection
+// tolerance, not a fact about the geometry.
 message VectorNode { repeated SubPath subpaths = 1; }
 
-// M4 — un COMPONENTE è un sottoalbero MASTER che vive in `nodes` come qualunque
-// altro (si vede e si modifica sul canvas). Document.components lo indicizza per
-// id; il valore punta al nodo radice del master e porta un nome. Un'ISTANZA
-// (InstanceNode) lo rende VIRTUALMENTE alla propria trasformazione, quindi la
-// propagazione master->istanze è gratis: le istanze leggono il master vivo.
+// M4 — a COMPONENT is a MASTER subtree that lives in `nodes` like any other
+// (it is visible and editable on the canvas). Document.components indexes it by
+// id; the value points to the master's root node and carries a name. An
+// INSTANCE (InstanceNode) renders it VIRTUALLY at its own transform, so
+// master->instance propagation is free: instances read the live master.
 message Component {
-  string root_node_id = 1; // radice del master, dentro Document.nodes
+  string root_node_id = 1; // root of the master, inside Document.nodes
   string name = 2;
 }
 
-// Un override per-istanza su UN nodo del master. Minimo (design M4): fill e
-// testo. I flag *_present distinguono "non sovrascritto" da "sovrascritto a
-// vuoto", come SetText.style_present: senza, un override di solo testo
-// azzererebbe il fill ereditato dal master.
+// A per-instance override on ONE node of the master. Minimal (design M4): fill
+// and text. The *_present flags distinguish "not overridden" from "overridden
+// to empty", like SetText.style_present: without them, a text-only override
+// would wipe the fill inherited from the master.
 message InstanceOverride {
   string master_node_id = 1;
   repeated Paint fills = 2;
@@ -298,10 +302,10 @@ message InstanceOverride {
   bool text_present = 5;
 }
 
-// shape 37: un'istanza di un componente. Rende il sottoalbero master di
-// `component_id` alla trasformazione del Node (x/y), con gli override applicati
-// per nodo del master. I figli dell'istanza NON stanno in `nodes`: sono
-// derivati dal master a ogni lettura (renderer, hit-test, bounds).
+// shape 37: an instance of a component. Renders the master subtree of
+// `component_id` at the Node's transform (x/y), with the overrides applied per
+// master node. The instance's children are NOT in `nodes`: they are derived
+// from the master on every read (renderer, hit-test, bounds).
 message InstanceNode {
   string component_id = 1;
   repeated InstanceOverride overrides = 2;
@@ -309,59 +313,59 @@ message InstanceNode {
 
 message Node {
   string id = 1;
-  string parent_id = 2;   // id nodo container OPPURE id Page (per i root)
+  string parent_id = 2;   // id of the container node OR id of a Page (for roots)
   string order_key = 3;   // fractional index
   string name = 4;
   bool visible = 5;
   double opacity = 6;     // 0..1
   double x = 10; double y = 11; double width = 12; double height = 13; double rotation = 14;
   repeated Paint fills = 20;
-  // Il numero 21 era RISERVATO dal design fin dall'inizio e ora è implementato
-  // (traccia 2). Ripetuto come `fills`, e con la stessa semantica di scrittura:
-  // la mask "strokes" SOSTITUISCE l'intera lista, non ne fonde gli elementi.
+  // Number 21 was RESERVED by the design from the start and is now implemented
+  // (track 2). Repeated like `fills`, and with the same write semantics: the
+  // "strokes" mask REPLACES the whole list, it does not merge its elements.
   repeated Stroke strokes = 21;
-  // Effetti (ombre, sfocatura). Ripetuto come `fills`: la mask "effects"
-  // SOSTITUISCE l'intera lista. Il renderer oggi disegna la PRIMA ombra e la
-  // PRIMA sfocatura di un nodo: il canvas 2D ha un solo stato di ombra.
+  // Effects (shadows, blur). Repeated like `fills`: the "effects" mask REPLACES
+  // the whole list. The renderer currently draws the FIRST shadow and the FIRST
+  // blur of a node: the 2D canvas has a single shadow state.
   repeated Effect effects = 22;
   oneof shape {
     RectNode rect = 30;
     EllipseNode ellipse = 31;
     TextNode text = 32;
-    // Numeri assegnati in anticipo alle quattro tracce parallele. Ogni traccia
-    // sostituisce SOLO la propria riga con la dichiarazione vera (e definisce il
-    // messaggio corrispondente): righe distinte si fondono senza conflitti.
-    GroupNode group = 33;   // traccia 1 — annidamento (vedi GroupNode sopra)
-    FrameNode frame = 34;   // traccia 1 — annidamento (vedi FrameNode sopra)
-    ImageNode image = 35;   // traccia 3 — periferia (vedi ImageNode sopra)
-    VectorNode vector = 36; // traccia 4 — vettoriale (vedi VectorNode sopra)
-    InstanceNode instance = 37; // M4 — istanza di un componente (vedi InstanceNode sopra)
+    // Numbers assigned in advance to the four parallel tracks. Each track
+    // replaces ONLY its own row with the real declaration (and defines the
+    // corresponding message): distinct rows merge without conflicts.
+    GroupNode group = 33;   // track 1 — nesting (see GroupNode above)
+    FrameNode frame = 34;   // track 1 — nesting (see FrameNode above)
+    ImageNode image = 35;   // track 3 — periphery (see ImageNode above)
+    VectorNode vector = 36; // track 4 — vector (see VectorNode above)
+    InstanceNode instance = 37; // M4 — component instance (see InstanceNode above)
   }
-  // Metadati liberi chiave -> valore: il ponte fra il disegno e il prodotto.
-  // Convenzioni (non imposte dal modello, lette dagli strumenti dei flussi):
+  // Free-form key -> value metadata: the bridge between design and product.
+  // Conventions (not enforced by the model, read by the flow tools):
   //   "flow.kind"       screen | decision | action | start | end | note
-  //   "code.route"      la rotta dell'app che realizza questa schermata
-  //   "code.component"  il componente del codice che la realizza
-  //   "test.id"         il data-testid con cui un test trova questo elemento
-  //   "test.text"       il testo accessibile con cui lo trova
+  //   "code.route"      the app route that implements this screen
+  //   "code.component"  the code component that implements it
+  //   "test.id"         the data-testid a test uses to find this element
+  //   "test.text"       the accessible text it uses to find it
   //   "status"          planned | implemented | tested
-  // La mask "meta" SOSTITUISCE l'intera mappa, come `fills` per le liste.
+  // The "meta" mask REPLACES the whole map, like `fills` for lists.
   map<string, string> meta = 40;
 }
 
 message Page { string id = 1; string name = 2; }
 
-// ---------- flussi ----------
-// Un FLUSSO è un percorso dell'utente attraverso le schermate: un insieme di
-// TRANSIZIONI (archi) fra nodi del disegno. Le schermate NON sono copie: sono i
-// frame del documento, referenziati per id, quindi il flusso resta agganciato al
-// disegno vero -- spostare o rinominare una schermata non lo rompe, cancellarla
-// cancella i suoi archi (vedi core.applyDelete).
+// ---------- flows ----------
+// A FLOW is a user path through the screens: a set of TRANSITIONS (edges)
+// between design nodes. Screens are NOT copies: they are the document's frames,
+// referenced by id, so the flow stays attached to the real design -- moving or
+// renaming a screen does not break it, deleting it deletes its edges (see
+// core.applyDelete).
 message Flow {
   string id = 1;
   string name = 2;
   string description = 3;
-  // Schermata di ingresso (id di un nodo) oppure vuoto.
+  // Entry screen (id of a node) or empty.
   string start_id = 4;
 }
 
@@ -371,48 +375,48 @@ message Transition {
   string from_id = 3;
   string to_id = 4;
   string label = 5;
-  // Cosa la innesca: "click" | "submit" | "auto" | "key" | "back" | testo libero.
+  // What triggers it: "click" | "submit" | "auto" | "key" | "back" | free text.
   string trigger = 6;
-  // Opzionale: il nodo DENTRO from_id che la innesca (l'hotspot cliccabile).
+  // Optional: the node INSIDE from_id that triggers it (the clickable hotspot).
   string element_id = 7;
-  // Condizione per cui l'arco è percorribile, e ciò che l'arco cambia. Testo
-  // libero: li leggono le persone, gli agenti e il prototipo giocabile
-  // ("cart non vuoto" / "cart=empty").
+  // Condition under which the edge can be followed, and what the edge changes.
+  // Free text: read by people, agents and the playable prototype
+  // ("cart not empty" / "cart=empty").
   string guard = 8;
   string effect = 9;
 }
 
-// ---------- animazione ----------
-// Una CLIP è un'animazione dichiarativa: un insieme di TRACCE (nodo, proprietà)
-// ciascuna con keyframe. Le clip appartengono a un nodo "target" (schermata,
-// gruppo, SVG importato) il cui hover/tap/enter le fa partire; i nodi animati
-// sono referenziati per id, mai copiati. Vedi internal/core/animation.go.
+// ---------- animation ----------
+// A CLIP is a declarative animation: a set of TRACKS (node, property) each with
+// keyframes. Clips belong to a "target" node (screen, group, imported SVG)
+// whose hover/tap/enter starts them; the animated nodes are referenced by id,
+// never copied. See internal/core/animation.go.
 message Keyframe {
-  double time = 1;    // millisecondi dall'inizio della clip, 0..duration
-  double value = 2;   // valore numerico della proprietà
+  double time = 1;    // milliseconds from the start of the clip, 0..duration
+  double value = 2;   // numeric value of the property
   // "linear" | "easeIn" | "easeOut" | "easeInOut" | "spring" |
-  // "cubic-bezier(a,b,c,d)" | "" (= linear). Easing del segmento che PARTE da
-  // questo keyframe.
+  // "cubic-bezier(a,b,c,d)" | "" (= linear). Easing of the segment that STARTS
+  // from this keyframe.
   string easing = 3;
 }
 message Track {
   string node_id = 1;
-  // opacity (0..1) | x | y (coordinate locali del nodo, assolute) | scale
-  // (moltiplicatore, base 1) | rotation (gradi assoluti) | draw (0..1: quanto
-  // del tracciato è disegnato; solo vector/forme con tratto)
+  // opacity (0..1) | x | y (local coordinates of the node, absolute) | scale
+  // (multiplier, base 1) | rotation (absolute degrees) | draw (0..1: how much
+  // of the outline is drawn; vector/stroked shapes only)
   string prop = 2;
-  repeated Keyframe keyframes = 3;   // ordinati per time, almeno 1
+  repeated Keyframe keyframes = 3;   // sorted by time, at least 1
 }
 message Clip {
   string id = 1;
-  string name = 2;                    // "entrata", "hover", "caricamento"...
+  string name = 2;                    // "enter", "hover", "loading"...
   double duration = 3;                // ms, > 0
   string trigger = 4;                 // "enter" | "hover" | "tap" | "loop" | "manual"
   double delay = 5;                   // ms
-  int32 repeat = 6;                   // ripetizioni extra; -1 = infinito
+  int32 repeat = 6;                   // extra repetitions; -1 = infinite
   bool yoyo = 7;
   repeated Track tracks = 8;
-  string target_id = 9;               // il nodo (schermata/gruppo/SVG) a cui la clip appartiene
+  string target_id = 9;               // the node (screen/group/SVG) the clip belongs to
 }
 
 message Document {
@@ -421,123 +425,122 @@ message Document {
   uint32 schema_version = 3;
   repeated Page pages = 4;
   map<string, Node> nodes = 5;
-  // M4 — componenti: componentId -> master (nodo radice in `nodes` + nome).
+  // M4 — components: componentId -> master (root node in `nodes` + name).
   map<string, Component> components = 6;
   map<string, Flow> flows = 7;
   map<string, Transition> transitions = 8;
-  // Animazioni: clipId -> clip.
+  // Animations: clipId -> clip.
   map<string, Clip> clips = 9;
 }
 
-// ---------- op ----------
+// ---------- ops ----------
 message CreateNode { Node node = 1; }
 message DeleteNode { string id = 1; }
 message SetProperties {
   string id = 1;
   Node patch = 2;
-  google.protobuf.FieldMask mask = 3; // path dot su Node, es. "x","y","fills"
+  google.protobuf.FieldMask mask = 3; // dot path on Node, e.g. "x","y","fills"
 }
-// Op dedicato invece di un path della mask di SetProperties: il contenuto del
-// testo vive DENTRO il oneof `shape`, mentre la mask di SetProperties indirizza
-// campi di primo livello del Node. Un path annidato ("text.content") costringerebbe
-// entrambe le implementazioni di apply a un parser di path.
+// Dedicated op instead of a SetProperties mask path: the text content lives
+// INSIDE the `shape` oneof, while the SetProperties mask addresses top-level
+// fields of the Node. A nested path ("text.content") would force both apply
+// implementations to carry a path parser.
 //
-// `style_present` distingue "non specificato" da "azzera": in proto3 un
-// sotto-messaggio assente e uno con tutti i campi a zero sono indistinguibili
-// dopo il round-trip protojson, quindi senza il flag un SetText di solo
-// contenuto azzererebbe lo stile del nodo. style_present=false => lascia stare
-// lo stile esistente; true => sostituiscilo con `style` (anche se vuoto).
+// `style_present` distinguishes "unspecified" from "reset": in proto3 an absent
+// sub-message and one with all fields at zero are indistinguishable after the
+// protojson round-trip, so without the flag a content-only SetText would wipe
+// the node's style. style_present=false => leave the existing style alone;
+// true => replace it with `style` (even if empty).
 message SetText {
   string id = 1;
   string content = 2;
   TextStyle style = 3;
   bool style_present = 4;
 }
-// Sostituisce IN BLOCCO i subpath di un VectorNode. Op dedicato invece di un
-// path della mask di SetProperties per la stessa ragione di SetText: la
-// geometria vive DENTRO il oneof `shape`, mentre la mask indirizza campi di
-// primo livello del Node.
+// Replaces the subpaths of a VectorNode WHOLESALE. Dedicated op instead of a
+// SetProperties mask path for the same reason as SetText: the geometry lives
+// INSIDE the `shape` oneof, while the mask addresses top-level fields of the
+// Node.
 //
-// La sostituzione è wholesale e non incrementale (nessun "sposta l'ancoraggio
-// i-esimo"): un gesto della penna può aggiungere, spostare e cancellare
-// ancoraggi tutti insieme, e un op per micro-modifica moltiplicherebbe i casi
-// da tenere identici fra Go e TS senza aggiungere nulla -- l'inverso è
-// comunque i subpath PRECEDENTI per intero.
+// The replacement is wholesale and not incremental (no "move the i-th anchor"):
+// a pen gesture can add, move and delete anchors all at once, and one op per
+// micro-edit would multiply the cases to keep identical between Go and TS
+// without adding anything -- the inverse is the PREVIOUS subpaths in full
+// anyway.
 //
-// Una lista VUOTA è legittima e non è "non specificato": è il path che l'utente
-// ha svuotato. Nessun flag `present` serve qui (a differenza di
-// SetText.style_present) perché non esiste nessun altro campo dell'op che
-// possa restare intatto: l'op È i subpath.
+// An EMPTY list is legitimate and is not "unspecified": it is the path the user
+// emptied. No `present` flag is needed here (unlike SetText.style_present)
+// because there is no other field of the op that could stay untouched: the op
+// IS the subpaths.
 message SetVectorPath {
   string id = 1;
   repeated SubPath subpaths = 2;
 }
 
-// Sposta un nodo sotto un altro container (o direttamente sotto una Page) e ne
-// riscrive l'ordine fra i nuovi pari.
+// Moves a node under another container (or directly under a Page) and rewrites
+// its order among the new siblings.
 //
-// Op dedicato e non un path della mask di SetProperties -- a differenza di
-// `order_key`, che è un campo come gli altri -- perché la riparentazione ha una
-// VALIDAZIONE propria che nessun altro campo ha: il nuovo parent deve esistere
-// (nodo o pagina) e non può essere il nodo stesso né un suo discendente,
-// altrimenti il sottoalbero si stacca dal documento e diventa un ciclo
-// irraggiungibile. Una mask che scrivesse `parent_id` costringerebbe
-// applySetProps (e la sua gemella TS) a portarsi dentro l'attraversamento
-// dell'albero solo per un path.
+// Dedicated op and not a SetProperties mask path -- unlike `order_key`, which
+// is a field like the others -- because reparenting has its own VALIDATION that
+// no other field has: the new parent must exist (node or page) and cannot be
+// the node itself nor one of its descendants, otherwise the subtree detaches
+// from the document and becomes an unreachable cycle. A mask that wrote
+// `parent_id` would force applySetProps (and its TS twin) to carry a tree
+// traversal inside just for one path.
 //
-// `order_key` viaggia INSIEME: cambiare parent senza riordinare lascerebbe il
-// nodo con la chiave calcolata fra i pari VECCHI, cioè in una posizione
-// arbitraria fra i nuovi. Un solo op, una sola posizione finale.
+// `order_key` travels TOGETHER: changing parent without reordering would leave
+// the node with the key computed among the OLD siblings, i.e. at an arbitrary
+// position among the new ones. One op, one final position.
 message ReparentNode {
   string id = 1;
-  string new_parent_id = 2; // id nodo container OPPURE id Page
-  string order_key = 3;     // fractional index fra i nuovi pari
+  string new_parent_id = 2; // id of the container node OR id of a Page
+  string order_key = 3;     // fractional index among the new siblings
 }
-// ---------- pagine ----------
-// Le pagine sono i container RADICE del documento: ogni nodo pende da una di
-// loro (Node.parent_id accetta un id di nodo OPPURE di Page) e il canvas ne
-// mostra una alla volta. `Document.pages` esisteva da M0 con una pagina sola e
-// nessun op capace di toccarla; questi tre la rendono un documento a più
-// pagine.
+// ---------- pages ----------
+// Pages are the ROOT containers of the document: every node hangs from one of
+// them (Node.parent_id accepts a node id OR a Page id) and the canvas shows one
+// at a time. `Document.pages` has existed since M0 with a single page and no op
+// able to touch it; these three make it a multi-page document.
 //
-// Tre op dedicati e non dei path della mask di SetProperties: la mask indirizza
-// campi di un NODE (è il suo id a viaggiare in SetProperties.id) e una pagina
-// non è un nodo -- non ha geometria, non ha forma, non ha parent. Un
-// "SetProperties su una pagina" costringerebbe entrambe le implementazioni di
-// apply a due tabelle di path disgiunte sotto lo stesso op.
+// Three dedicated ops and not SetProperties mask paths: the mask addresses
+// fields of a NODE (its id is what travels in SetProperties.id) and a page is
+// not a node -- it has no geometry, no shape, no parent. A "SetProperties on a
+// page" would force both apply implementations to have two disjoint path tables
+// under the same op.
 message CreatePage { Page page = 1; }
-// Cancella la pagina E TUTTI i nodi che ci pendono, a cascata (stessa regola di
-// DeleteNode: ciò che non è più raggiungibile da una pagina non fa più parte
-// del documento). Rifiutata sull'ULTIMA pagina rimasta: un documento senza
-// pagine non ha nessun posto in cui creare un nodo.
+// Deletes the page AND ALL the nodes hanging from it, in cascade (same rule as
+// DeleteNode: whatever is no longer reachable from a page is no longer part of
+// the document). Rejected on the LAST remaining page: a document without pages
+// has nowhere to create a node.
 message DeletePage { string id = 1; }
 message RenamePage { string id = 1; string name = 2; }
 
-// op 16 (M4): registra un sottoalbero ESISTENTE (radice root_node_id) come
-// master di un componente. Non copia nulla: il master resta dov'è in `nodes`, e
-// da qui in poi le istanze lo referenziano per component_id.
+// op 16 (M4): registers an EXISTING subtree (root root_node_id) as the master
+// of a component. It copies nothing: the master stays where it is in `nodes`,
+// and from here on instances reference it by component_id.
 message CreateComponent {
   string component_id = 1;
   string root_node_id = 2;
   string name = 3;
 }
 
-// op 20 (M4): imposta (o azzera) l'override di un'istanza su un nodo del master.
-// L'override sostituito è quello con lo stesso master_node_id; un override con
-// entrambi i *_present a false lo RIMUOVE (torna a ereditare dal master).
+// op 20 (M4): sets (or clears) an instance's override on a master node. The
+// replaced override is the one with the same master_node_id; an override with
+// both *_present set to false REMOVES it (goes back to inheriting from the
+// master).
 message SetInstanceOverride {
   string instance_id = 1;
   InstanceOverride override = 2;
 }
-// Flussi: upsert ASSOLUTI (il valore che arriva è il valore finale), come i
-// campi di SetProperties. Un id nuovo crea, un id esistente sostituisce.
+// Flows: ABSOLUTE upserts (the incoming value is the final value), like the
+// SetProperties fields. A new id creates, an existing id replaces.
 message SetFlow { Flow flow = 1; }
-// Cancella il flusso E tutte le sue transizioni.
+// Deletes the flow AND all its transitions.
 message DeleteFlow { string id = 1; }
 message SetTransition { Transition transition = 1; }
 message DeleteTransition { string id = 1; }
 
-// Clip: upsert ASSOLUTO dell'intera clip (l'inverso è lo stato precedente).
+// Clip: ABSOLUTE upsert of the whole clip (the inverse is the previous state).
 message SetClip { Clip clip = 1; }
 message DeleteClip { string id = 1; }
 
@@ -549,21 +552,21 @@ message Op {
     SetProperties set_props   = 11;
     DeleteNode    delete_node = 12;
     SetText       set_text    = 13;
-    ReparentNode  reparent_node = 14; // traccia 1 — sposta un nodo sotto un altro parent
-    // Pagine multiple (traccia 1). Numeri PRESI DOPO quelli già assegnati alle
-    // altre tracce (15 e 16 qui sotto): le righe restano distinte e i merge
-    // puliti, esattamente come per il oneof `shape`.
+    ReparentNode  reparent_node = 14; // track 1 — moves a node under another parent
+    // Multiple pages (track 1). Numbers TAKEN AFTER those already assigned to
+    // the other tracks (15 and 16 below): the rows stay distinct and merges
+    // clean, exactly as for the `shape` oneof.
     CreatePage    create_page   = 17;
     DeletePage    delete_page   = 18;
     RenamePage    rename_page   = 19;
-    SetVectorPath set_vector_path = 15; // traccia 4 — sostituisce i subpath di un VectorNode
-    CreateComponent     create_component      = 16; // M4 — registra un sottoalbero come master
-    SetInstanceOverride set_instance_override = 20; // M4 — override fill/testo su un'istanza
-    SetFlow          set_flow          = 21; // flussi — upsert di un flusso
+    SetVectorPath set_vector_path = 15; // track 4 — replaces the subpaths of a VectorNode
+    CreateComponent     create_component      = 16; // M4 — registers a subtree as master
+    SetInstanceOverride set_instance_override = 20; // M4 — fill/text override on an instance
+    SetFlow          set_flow          = 21; // flows — upsert of a flow
     DeleteFlow       delete_flow       = 22;
-    SetTransition    set_transition    = 23; // flussi — upsert di un arco
+    SetTransition    set_transition    = 23; // flows — upsert of an edge
     DeleteTransition delete_transition = 24;
-    SetClip          set_clip          = 25; // animazione — upsert di una clip
+    SetClip          set_clip          = 25; // animation — upsert of a clip
     DeleteClip       delete_clip       = 26;
   }
 }
@@ -574,12 +577,12 @@ message OpRecord {
   Op op = 4;
 }
 
-// ---------- servizio ----------
+// ---------- service ----------
 message OpenRequest  { string doc_id = 1; }
 message OpenResponse { Document snapshot = 1; uint64 seq = 2; }
 message CreateDocumentRequest { string name = 1; }
-// updated_at (secondi unix, 0 = ignoto), screens (frame di primo livello) e
-// flows sono per la Home: la card di un documento li mostra senza aprirlo.
+// updated_at (unix seconds, 0 = unknown), screens (top-level frames) and
+// flows are for the Home page: a document's card shows them without opening it.
 message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; }
 message RenameDocumentRequest { string doc_id = 1; string name = 2; }
 message DeleteDocumentRequest { string doc_id = 1; }
@@ -587,10 +590,10 @@ message DeleteDocumentResponse {}
 message ListDocumentsRequest {}
 message ListDocumentsResponse { repeated DocInfo docs = 1; }
 
-// Il canale live è diviso in due RPC invece di uno stream bidirezionale: il
-// `fetch` dei browser non supporta i request body in streaming, quindi un bidi
-// non è raggiungibile dall'editor. Un unary in salita + un server-stream in
-// discesa danno la stessa semantica e funzionano ovunque.
+// The live channel is split into two RPCs instead of a bidirectional stream:
+// browsers' `fetch` does not support streaming request bodies, so a bidi is not
+// reachable from the editor. A unary upstream + a server-stream downstream give
+// the same semantics and work everywhere.
 message SubmitOpRequest  { string doc_id = 1; string client_id = 2; Op op = 3; }
 message SubmitOpResponse { Ack ack = 1; }
 
@@ -600,15 +603,15 @@ message Ack      { string op_id = 1; uint64 seq = 2; }
 message ErrorMsg { string op_id = 1; string message = 2; }
 message ServerMsg { oneof kind { OpRecord applied = 1; Ack ack = 2; ErrorMsg error = 3; } }
 
-// ---------- presenza (effimera, NON passa dall'op-log) ----------
+// ---------- presence (ephemeral, does NOT go through the op-log) ----------
 //
-// Chi sta guardando il documento, dove ha il cursore e cosa ha selezionato.
-// Vive solo in memoria nell'hub del documento e sparisce quando lo stream
-// WatchPresence del client si chiude: niente account, niente persistenza -- il
-// nickname lo sceglie il client e vale per la sessione.
+// Who is looking at the document, where their cursor is and what they have
+// selected. It lives only in memory in the document's hub and disappears when
+// the client's WatchPresence stream closes: no accounts, no persistence -- the
+// nickname is chosen by the client and lasts for the session.
 //
-// Il cursore è in coordinate MONDO, così ognuno lo vede al punto giusto
-// qualunque sia la propria camera.
+// The cursor is in WORLD coordinates, so everyone sees it at the right spot
+// whatever their own camera.
 message PresenceState {
   string client_id = 1;
   string nickname = 2;
@@ -620,25 +623,25 @@ message PresenceState {
 }
 message PresenceEvent {
   oneof kind {
-    PresenceState update = 1;   // un peer è entrato o è cambiato
-    string left_client_id = 2;  // un peer se n'è andato
+    PresenceState update = 1;   // a peer joined or changed
+    string left_client_id = 2;  // a peer left
   }
 }
-// ---------- analisi dei flussi ----------
+// ---------- flow analysis ----------
 message FlowIssue {
   // no_start | unreachable | dead_end | no_exit | ambiguous | empty
   string kind = 1;
   string flow_id = 2;
-  string node_id = 3;        // la schermata coinvolta, se una
-  string transition_id = 4;  // l'arco coinvolto, se uno
-  string message = 5;        // testo leggibile (italiano)
+  string node_id = 3;        // the screen involved, if any
+  string transition_id = 4;  // the edge involved, if any
+  string message = 5;        // human-readable text (English)
 }
-// Un percorso: dalla schermata di ingresso a una schermata finale (senza uscite)
-// o a un ritorno su una già visitata. Sequenza di transizioni.
+// A path: from the entry screen to a final screen (no exits) or to a return to
+// one already visited. Sequence of transitions.
 message FlowPath {
   repeated string transition_ids = 1;
   repeated string node_ids = 2;  // node_ids[i] -> node_ids[i+1] via transition_ids[i]
-  bool loops = 3;                // finisce tornando su una schermata già nel percorso
+  bool loops = 3;                // ends by returning to a screen already in the path
 }
 message FlowReport {
   string flow_id = 1;
@@ -646,21 +649,21 @@ message FlowReport {
   uint32 transitions = 3;
   repeated FlowIssue issues = 4;
   repeated FlowPath paths = 5;
-  bool paths_truncated = 6;  // il tetto sul numero di percorsi è stato raggiunto
+  bool paths_truncated = 6;  // the cap on the number of paths was reached
 }
-// flow_id vuoto = tutti i flussi del documento.
+// empty flow_id = all the document's flows.
 message AnalyzeFlowsRequest { string doc_id = 1; string flow_id = 2; }
 message AnalyzeFlowsResponse { repeated FlowReport reports = 1; }
 
-// ---------- export di codice ----------
-// Un file del progetto generato: percorso relativo (con "/") e byte.
+// ---------- code export ----------
+// A file of the generated project: relative path (with "/") and bytes.
 message ExportFile {
   string path = 1;
   bytes content = 2;
 }
-// target: "react" (default: Vite + React + TypeScript + Tailwind v4 + test
-// Playwright dei flussi) oppure "html" (un file per schermata). flow_id vuoto =
-// cabla e testa tutti i flussi.
+// target: "react" (default: Vite + React + TypeScript + Tailwind v4 + Playwright
+// flow tests) or "html" (one file per screen). empty flow_id = wires up and
+// tests all flows.
 message ExportCodeRequest {
   string doc_id = 1;
   string target = 2;
@@ -668,21 +671,21 @@ message ExportCodeRequest {
 }
 message ExportCodeResponse {
   repeated ExportFile files = 1;
-  // Approssimazioni e omissioni (asset mancanti, transizioni verso nodi non
-  // esportati): testo leggibile (italiano).
+  // Approximations and omissions (missing assets, transitions to nodes that were
+  // not exported): human-readable text (English).
   repeated string warnings = 2;
 }
 
-// Diagrammi (internal/diagram): testo Mermaid -> un GRUPPO di nodi normali
-// (forme, vettori, testo). La funzione è pura: non tocca il documento, quindi
-// l'editor può inserire i nodi come un unico gesto (un solo undo) e un agente
-// MCP come una sequenza di op. Il primo nodo è la radice (un gruppo con meta
-// `diagram.kind` e `diagram.source`); gli altri sono suoi discendenti, con
-// coordinate relative alla radice. parent_id/order_key/x/y della radice li
-// sceglie chi inserisce.
+// Diagrams (internal/diagram): Mermaid text -> a GROUP of normal nodes
+// (shapes, vectors, text). The function is pure: it does not touch the
+// document, so the editor can insert the nodes as a single gesture (one undo)
+// and an MCP agent as a sequence of ops. The first node is the root (a group
+// with `diagram.kind` and `diagram.source` meta); the others are its
+// descendants, with coordinates relative to the root. parent_id/order_key/x/y
+// of the root are chosen by whoever inserts.
 message RenderDiagramRequest { string source = 1; }
 message RenderDiagramResponse {
-  repeated Node nodes = 1;   // pre-ordine: ogni nodo dopo il proprio parent
+  repeated Node nodes = 1;   // pre-order: every node after its own parent
   string kind = 2;           // flowchart | class | sequence | state
   double width = 3;
   double height = 4;
@@ -696,29 +699,29 @@ message UpdatePresenceResponse {}
 service DocumentService {
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
   rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
-  // Rinomina un documento (meta.json + nome in memoria dell'hub).
+  // Renames a document (meta.json + the hub's in-memory name).
   rpc RenameDocument(RenameDocumentRequest) returns (DocInfo);
-  // Elimina un documento SPOSTANDO il bundle in <workspace>/.trash (mai rm -rf).
+  // Deletes a document by MOVING the bundle to <workspace>/.trash (never rm -rf).
   rpc DeleteDocument(DeleteDocumentRequest) returns (DeleteDocumentResponse);
   rpc OpenDocument(OpenRequest) returns (OpenResponse);
-  // Invia un'operazione. Il broadcast a tutti i client passa da Subscribe.
+  // Submits an operation. The broadcast to all clients goes through Subscribe.
   rpc SubmitOp(SubmitOpRequest) returns (SubmitOpResponse);
-  // Stream degli OpRecord applicati: catch-up da since_seq, poi live.
+  // Stream of the applied OpRecords: catch-up from since_seq, then live.
   rpc Subscribe(SubscribeRequest) returns (stream ServerMsg);
-  // Presenza: lo stream manda prima l'elenco di chi c'è già, poi gli
-  // aggiornamenti. Chiuderlo = uscire dal documento.
+  // Presence: the stream first sends the list of who is already there, then the
+  // updates. Closing it = leaving the document.
   rpc WatchPresence(WatchPresenceRequest) returns (stream PresenceEvent);
-  // Aggiorna cursore/selezione del client (che deve avere uno stream aperto).
+  // Updates the client's cursor/selection (which must have an open stream).
   rpc UpdatePresence(UpdatePresenceRequest) returns (UpdatePresenceResponse);
-  // Analisi dei flussi (grafo delle schermate): schermate irraggiungibili,
-  // vicoli ciechi, percorsi. Calcolata dal server (internal/flow), così UI,
-  // CLI e agenti MCP vedono lo stesso risultato.
+  // Flow analysis (screen graph): unreachable screens, dead ends, paths.
+  // Computed by the server (internal/flow), so UI, CLI and MCP agents see the
+  // same result.
   rpc AnalyzeFlows(AnalyzeFlowsRequest) returns (AnalyzeFlowsResponse);
-  // Esporta il design come codice (internal/codegen): l'elenco dei file del
-  // progetto generato, calcolato dallo snapshot corrente. Come per
-  // AnalyzeFlows, CLI, MCP ed editor vedono lo stesso risultato.
+  // Exports the design as code (internal/codegen): the list of files of the
+  // generated project, computed from the current snapshot. As with
+  // AnalyzeFlows, CLI, MCP and editor see the same result.
   rpc ExportCode(ExportCodeRequest) returns (ExportCodeResponse);
-  // Disegna un diagramma (flowchart, classi UML, sequenza UML, stati UML) da
-  // testo Mermaid. Pura e senza stato: vedi RenderDiagramRequest.
+  // Draws a diagram (flowchart, UML classes, UML sequence, UML states) from
+  // Mermaid text. Pure and stateless: see RenderDiagramRequest.
   rpc RenderDiagram(RenderDiagramRequest) returns (RenderDiagramResponse);
 }

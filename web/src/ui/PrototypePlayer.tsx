@@ -17,23 +17,23 @@ import {
   type Option, type ProtoState,
 } from "../flow/prototype";
 
-// IL PROTOTIPO GIOCABILE ("Presenta"). Un overlay a tutto schermo che mostra la
-// schermata corrente del flusso -- il frame vero del documento, disegnato dal
-// renderer di sempre, senza chrome dell'editor -- e la rende navigabile:
-//  - una transizione con `elementId` è una REGIONE CLICCABILE sopra quell'elemento;
-//  - le altre stanno nella barra in basso, come pulsanti;
-//  - una transizione la cui guardia non è soddisfatta (o non è valutabile) resta
-//    visibile ma disabilitata, col PERCHÉ.
-// La logica (stato, guardie, effetti) è in flow/prototype.ts; qui c'è solo la vista.
+// THE PLAYABLE PROTOTYPE ("Present"). A full-screen overlay that shows the
+// flow's current screen -- the document's real frame, drawn by the usual
+// renderer, without editor chrome -- and makes it navigable:
+//  - a transition with `elementId` is a CLICKABLE REGION over that element;
+//  - the others sit in the bottom bar, as buttons;
+//  - a transition whose guard is not satisfied (or cannot be evaluated) stays
+//    visible but disabled, with the WHY.
+// The logic (state, guards, effects) is in flow/prototype.ts; here is only the view.
 
-const PAD = 48; // margine attorno alla schermata, px
-// Lo spazio in basso riservato al gruppo flottante (azioni + barra di controllo):
-// la schermata si centra nell'area SOPRA, così i comandi non la coprono. Costante
-// (non dipende dalle uscite della schermata) per non far "saltare" lo zoom a ogni passo.
+const PAD = 48; // margin around the screen, px
+// The space at the bottom reserved for the floating group (actions + control bar):
+// the screen is centered in the area ABOVE, so the controls do not cover it. Constant
+// (does not depend on the screen's exits) so the zoom does not "jump" at every step.
 const DOCK_RESERVE = 124;
-// Quanto resta visibile l'impulso degli hotspot dopo l'ingresso in una schermata.
+// How long the hotspot pulse stays visible after entering a screen.
 const HINT_MS = 4200;
-// Il bordo (px) della cornice che fa da "telaio" del dispositivo, e il raggio.
+// The border (px) of the frame that acts as the device's "bezel", and the radius.
 const BEZEL = 8;
 const BEZEL_RADIUS = 22;
 const MAX_ZOOM = 2;
@@ -45,7 +45,7 @@ function fitCamera(b: Bounds, w: number, h: number) {
 
 function optionLabel(scene: Parameters<typeof screenName>[0], o: Option): string {
   const t = o.transition;
-  return t.label.trim() !== "" ? t.label : `Vai a ${screenName(scene, t.toId)}`;
+  return t.label.trim() !== "" ? t.label : `Go to ${screenName(scene, t.toId)}`;
 }
 
 export function PrototypePlayer({ onClose }: { onClose: () => void }) {
@@ -58,9 +58,9 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
   const stage = useRef<HTMLDivElement>(null);
   const canvas = useRef<HTMLCanvasElement>(null);
   const [size, setSize] = useState({ w: 0, h: 0 });
-  // Si ridisegna anche quando arriva un'immagine.
+  // It also redraws when an image arrives.
   const [imgTick, setImgTick] = useState(0);
-  // L'impulso degli hotspot: si accende a ogni nuova schermata e svanisce da solo.
+  // The hotspot pulse: it lights up on every new screen and fades on its own.
   const [hint, setHint] = useState(true);
   useEffect(() => {
     setHint(true);
@@ -68,8 +68,8 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     return () => clearTimeout(t);
   }, [state?.screenId]);
 
-  // Esc chiude. In cattura e fermando la propagazione: nessun altro ascoltatore
-  // globale (toolManager, selectTool) deve reagire a un Esc che è del prototipo.
+  // Esc closes. In capture and stopping propagation: no other global
+  // listener (toolManager, selectTool) must react to an Esc that belongs to the prototype.
   useEffect(() => {
     const onKey = (e: KeyboardEvent) => {
       if (e.key !== "Escape") return;
@@ -81,7 +81,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     return () => window.removeEventListener("keydown", onKey, true);
   }, [onClose]);
 
-  // La misura dell'area: ResizeObserver dove c'è (non in jsdom).
+  // The area's measure: ResizeObserver where available (not in jsdom).
   useEffect(() => {
     const el = stage.current;
     if (!el) return;
@@ -102,8 +102,8 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
   }, [scene, state?.screenId]);
   const cam = useMemo(() => (screenBox && size.w > 0 ? fitCamera(screenBox, size.w, size.h) : null), [screenBox, size]);
 
-  // Le clip del documento (enter/loop all'apparire della schermata, hover e tap sul
-  // bersaglio): ciclo di frame solo finché una gira, vedi ui/protoAnim.ts.
+  // The document's clips (enter/loop when the screen appears, hover and tap on the
+  // target): frame loop only while one is running, see ui/protoAnim.ts.
   const anim = useProtoAnimation(scene, state?.screenId ?? null, cam, stage);
 
   useEffect(() => {
@@ -116,7 +116,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
 
   if (!scene) return null;
   const options = flow && state ? optionsFrom(scene, flow.id, state) : [];
-  // Un hotspot esiste solo se l'elemento ha davvero un box nella schermata.
+  // A hotspot exists only if the element really has a box in the screen.
   const hotspots: { o: Option; box: Bounds }[] = [];
   const bar: Option[] = [];
   for (const o of options) {
@@ -132,8 +132,8 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
 
   const flowName = flow?.name ?? "";
   const disabledAll = hotspots.filter((h) => !h.o.enabled);
-  // Il telaio e il ritaglio del canvas, in px dell'area: il canvas copre tutta
-  // l'area ma si MOSTRA solo dentro la schermata, con gli angoli del dispositivo.
+  // The frame and the canvas clipping, in px of the area: the canvas covers the whole
+  // area but is SHOWN only inside the screen, with the device's corners.
   const frame = cam && screenBox
     ? {
         x: screenBox.x * cam.zoom + cam.x,
@@ -148,10 +148,10 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
     <div
       role="dialog"
       aria-modal="true"
-      aria-label="Prototipo"
+      aria-label="Prototype"
       className="od-island-dark fixed inset-0 z-50 overflow-hidden bg-[radial-gradient(ellipse_at_50%_38%,var(--surface-2),var(--canvas)_72%)] text-[13px] text-fg"
     >
-      {/* Il palcoscenico: la schermata al centro dell'area sopra al dock. */}
+      {/* The stage: the screen at the center of the area above the dock. */}
       <div ref={stage} className="absolute inset-x-0 top-0" style={{ bottom: DOCK_RESERVE }} {...anim.handlers}>
         {state && derived ? (
           <>
@@ -167,7 +167,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
             )}
             <canvas
               ref={canvas}
-              aria-label={`Schermata ${screenName(scene, state.screenId)}`}
+              aria-label={`Screen ${screenName(scene, state.screenId)}`}
               className="absolute inset-0 block h-full w-full"
               style={
                 frame
@@ -199,7 +199,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
                         : "cursor-not-allowed border-dashed border-danger/60 bg-danger/10")
                     }
                   >
-                    {/* L'anello d'impulso: solo finché dura il suggerimento. */}
+                    {/* The pulse ring: only while the hint lasts. */}
                     {o.enabled && hint && (
                       <span aria-hidden="true" className="od-pulse pointer-events-none absolute -inset-1 rounded-lg border-2 border-flow" />
                     )}
@@ -209,33 +209,33 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
           </>
         ) : (
           <div className="flex h-full items-center justify-center px-8 text-center text-fg-muted">
-            Nessuna schermata da presentare: aggiungi un frame di primo livello o imposta l'inizio del flusso.
+            No screen to present: add a top-level frame or set the flow's start.
           </div>
         )}
       </div>
 
-      {/* In alto: dove sei (a sinistra) e l'uscita (a destra). */}
+      {/* At the top: where you are (left) and the exit (right). */}
       <div className="pointer-events-none absolute inset-x-4 top-4 flex items-start justify-between">
         <div className="pointer-events-auto flex h-8 items-center gap-2 rounded-full bg-raised pl-2.5 pr-3 shadow-bar">
           <Icon name="play" size={12} className="text-flow" />
-          <span className="text-[12px] font-semibold text-fg">Presenta</span>
+          <span className="text-[12px] font-semibold text-fg">Present</span>
           {flowName !== "" && <span className="max-w-[200px] truncate text-[12px] text-fg-muted">{flowName}</span>}
         </div>
         <div className="pointer-events-auto rounded-full bg-raised p-1 shadow-bar">
-          <IconButton icon="x" label="Chiudi il prototipo" shortcut="Esc" onPress={onClose} className="rounded-full" />
+          <IconButton icon="x" label="Close the prototype" shortcut="Esc" onPress={onClose} className="rounded-full" />
         </div>
       </div>
 
-      {/* In basso: le uscite della schermata e la barra di controllo. */}
+      {/* At the bottom: the screen's exits and the control bar. */}
       <div className="pointer-events-none absolute inset-x-4 bottom-4 flex flex-col items-center gap-3">
         <div
           role="group"
-          aria-label="Azioni della schermata"
+          aria-label="Screen actions"
           className="pointer-events-auto flex max-w-[min(720px,100%)] flex-wrap items-start justify-center gap-2"
         >
           {state && bar.length === 0 && hotspots.length === 0 && (
             <span className="od-rise rounded-full bg-raised px-3 py-1.5 text-[12px] text-fg-muted shadow-bar">
-              Fine del percorso: nessuna uscita da questa schermata.
+              End of the path: no exit from this screen.
             </span>
           )}
           {bar.map((o) => (
@@ -269,14 +269,14 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
         <div className="pointer-events-auto relative flex h-11 max-w-full items-center gap-1 rounded-2xl bg-raised px-1.5 shadow-bar">
           <FlowIconButton
             icon="arrowLeft"
-            label="Indietro"
+            label="Back"
             isDisabled={!state || !canGoBack(state)}
             onPress={() => state && setState(back(state))}
           />
-          <FlowIconButton icon="restart" label="Ricomincia" onPress={() => setState(startState(scene, flow, pageId))} />
+          <FlowIconButton icon="restart" label="Restart" onPress={() => setState(startState(scene, flow, pageId))} />
           {state && (
             <nav
-              aria-label="Percorso"
+              aria-label="Path"
               className="mx-1 flex min-w-0 max-w-[46vw] items-center gap-0.5 overflow-x-auto border-x border-line px-2 text-[12px] text-fg-subtle"
             >
               {trail(state).map((id, i, all) => {
@@ -299,7 +299,7 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
               })}
             </nav>
           )}
-          <FlowIconButton icon="braces" label="Variabili" selected={showVars} onPress={() => setShowVars((v) => !v)}>
+          <FlowIconButton icon="braces" label="Variables" selected={showVars} onPress={() => setShowVars((v) => !v)}>
             {state && Object.keys(state.vars).length > 0 && (
               <Badge tone="flow" className="pointer-events-none absolute -right-1 -top-1 h-4 min-w-4 justify-center px-1 text-[10px]">
                 {Object.keys(state.vars).length}
@@ -309,12 +309,12 @@ export function PrototypePlayer({ onClose }: { onClose: () => void }) {
 
           {showVars && state && (
             <aside
-              aria-label="Variabili del prototipo"
+              aria-label="Prototype variables"
               className="od-rise absolute bottom-0 left-full ml-2 w-60 rounded-xl bg-raised p-3 text-[12px] shadow-pop"
             >
-              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Variabili</h3>
+              <h3 className="mb-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Variables</h3>
               {varEntries(state.vars).length === 0 ? (
-                <div className="text-fg-subtle">Nessuna variabile impostata.</div>
+                <div className="text-fg-subtle">No variables set.</div>
               ) : (
                 <dl className="grid grid-cols-[auto_1fr] gap-x-3 gap-y-1">
                   {varEntries(state.vars).map(([k, v]) => (

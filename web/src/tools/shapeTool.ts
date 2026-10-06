@@ -6,9 +6,9 @@ import { useScene } from "../store/store";
 import { makeCreateNodeOp, uuid } from "./ops";
 import type { Tool, ToolContext, ToolId } from "./types";
 
-// Sotto questa soglia (px SCHERMO, quindi indipendente dallo zoom) un drag è
-// considerato un click: senza soglia, a zoom alto un tremolio di mezzo pixel
-// creerebbe una forma larga 0.008 unità mondo, invisibile e inafferrabile.
+// Under this threshold (SCREEN px, hence independent of zoom) a drag is
+// considered a click: without a threshold, at high zoom a half-pixel jitter
+// would create a shape 0.008 world units wide, invisible and ungraspable.
 const CLICK_SLOP_PX = 3;
 
 export interface ShapeToolConfig {
@@ -16,25 +16,25 @@ export interface ShapeToolConfig {
   name: string;
   defaultWidth: number;
   defaultHeight: number;
-  // Funzione, non un oggetto condiviso: ogni gesto deve ricevere un init
-  // fresco, così create() non riceve mai lo stesso riferimento due volte.
+  // A function, not a shared object: each gesture must receive a fresh
+  // init, so create() never receives the same reference twice.
   shape: () => MessageInitShape<typeof NodeSchema>["shape"];
-  // Il colore del riempimento di partenza. Assente = il grigio delle forme.
-  // Un frame parte invece trasparente-bianco: è un contenitore, non una forma.
+  // The starting fill color. Absent = the shape gray.
+  // A frame instead starts transparent-white: it is a container, not a shape.
   fill?: { r: number; g: number; b: number; a: number } | null;
 }
 
-// rectTool ed ellipseTool sono lo stesso gesto di creazione (down/move/up,
-// soglia click, anteprima via marquee dello store, abbandono su deactivate):
-// l'unica differenza reale fra le due è la forma emessa, isolata qui in
-// ShapeToolConfig. Se un terzo tool-forma smettesse di starci dentro con
-// >80% di codice letteralmente identico, andrebbe scritto a mano.
+// rectTool and ellipseTool are the same creation gesture (down/move/up,
+// click threshold, preview via the store marquee, abandon on deactivate):
+// the only real difference between the two is the emitted shape, isolated here in
+// ShapeToolConfig. If a third shape tool stopped fitting in here with
+// >80% of literally identical code, it should be written by hand.
 export function makeShapeTool(config: ShapeToolConfig): Tool {
   let anchor: { x: number; y: number } | null = null;
 
-  // L'anteprima riusa il rettangolo di marquee dello store: è già in
-  // coordinate mondo ed è già disegnato dall'overlay, quindi non serve un
-  // secondo canale solo per il feedback di creazione.
+  // The preview reuses the store's marquee rectangle: it is already in
+  // world coordinates and is already drawn by the overlay, so there is no need for a
+  // second channel just for creation feedback.
   const preview = (b: { x: number; y: number; width: number; height: number } | null) =>
     useScene.getState().setMarquee(b);
 
@@ -60,21 +60,21 @@ export function makeShapeTool(config: ShapeToolConfig): Tool {
       anchor = null;
       preview(null);
 
-      const slop = CLICK_SLOP_PX / ctx.getCamera().zoom; // px schermo -> unità mondo
+      const slop = CLICK_SLOP_PX / ctx.getCamera().zoom; // screen px -> world units
       const width = box.width < slop ? config.defaultWidth : box.width;
       const height = box.height < slop ? config.defaultHeight : box.height;
 
-      // `box` è in coordinate MONDO e finisce nel nodo così com'è. Le
-      // coordinate del modello sono relative al PARENT (canvas/transform.ts) e
-      // qui il parent è una PAGINA, che contribuisce l'identità: le due cose
-      // coincidono. Il giorno in cui si potrà disegnare DENTRO un container,
-      // il box va prima portato nello spazio locale di quel container
+      // `box` is in WORLD coordinates and goes into the node as is. The model
+      // coordinates are relative to the PARENT (canvas/transform.ts) and
+      // here the parent is a PAGE, which contributes the identity: the two things
+      // coincide. The day it becomes possible to draw INSIDE a container,
+      // the box must first be brought into that container's local space
       // (transform.ts::worldToLocal).
       //
-      // Il parent è la PAGINA CORRENTE (stato di vista dello store), non un
-      // "page1" fisso: disegnare mentre si è su un'altra pagina crea il nodo lì.
-      // Il ripiego a "page1" copre solo il caso -- irraggiungibile con una scena
-      // installata -- in cui currentPageId non è ancora stato risolto.
+      // The parent is the CURRENT PAGE (store view state), not a fixed
+      // "page1": drawing while on another page creates the node there.
+      // The fallback to "page1" only covers the case -- unreachable with an installed
+      // scene -- in which currentPageId has not yet been resolved.
       const node = create(NodeSchema, {
         id: uuid(),
         parentId: useScene.getState().currentPageId ?? "page1",
@@ -91,19 +91,19 @@ export function makeShapeTool(config: ShapeToolConfig): Tool {
           : [{ kind: { case: "solid", value: { color: config.fill ?? { r: 0.6, g: 0.6, b: 0.65, a: 1 } } } }],
         shape: config.shape(),
       });
-      // La creazione passa dal ciclo di gesto come QUALUNQUE altra modifica
-      // (sposta, resize, cancella): beginGesture + endGesture con l'unico op
-      // finale. Non è una formalità -- la voce di undo viene costruita SOLO
-      // dentro endGesture (store.ts), quindi un submit diretto qui renderebbe
-      // il disegno l'unica azione dell'editor non annullabile. Il gesto a un
-      // solo op resta comunque UN solo op sul filo: endGesture submitta
-      // esattamente finalOps.
+      // Creation goes through the gesture cycle like ANY other change
+      // (move, resize, delete): beginGesture + endGesture with the single final op.
+      // It is not a formality -- the undo entry is built ONLY
+      // inside endGesture (store.ts), so a direct submit here would make
+      // drawing the only non-undoable action of the editor. A one-op
+      // gesture is still ONE op on the wire: endGesture submits
+      // exactly finalOps.
       const store = useScene.getState();
       store.beginGesture();
       store.endGesture([makeCreateNodeOp(node)]);
     },
 
-    // Gesto abbandonato (cambio tool, pointercancel, smontaggio): nessun op.
+    // Abandoned gesture (tool change, pointercancel, unmount): no op.
     onDeactivate(_ctx: ToolContext) {
       if (!anchor) return;
       anchor = null;

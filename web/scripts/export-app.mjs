@@ -1,12 +1,12 @@
-// L'app esportata FUNZIONA: esporta il flusso di esempio (Login -> Home ->
-// Dettaglio) nel target `react`, installa le dipendenze, compila con Vite e fa
-// girare i test Playwright GENERATI dai flussi contro l'app vera in Chromium.
+// The exported app WORKS: it exports the example flow (Login -> Home ->
+// Detail) in the `react` target, installs the dependencies, builds with Vite and
+// runs the Playwright tests GENERATED from the flows against the real app in Chromium.
 //
-//   pnpm export-app                       # usa il Chromium di Playwright (PLAYWRIGHT_BROWSERS_PATH)
+//   pnpm export-app                       # uses Playwright's Chromium (PLAYWRIGHT_BROWSERS_PATH)
 //   CHROMIUM_PATH=/usr/bin/chromium pnpm export-app
 //
-// Serve la rete per `npm install` (vedi /root/.ccr/README.md se passa da un proxy).
-// Scrive il progetto in web/export-parity-out/shop-app (gitignored).
+// It needs the network for `npm install` (see /root/.ccr/README.md if it goes through a proxy).
+// It writes the project to web/export-parity-out/shop-app (gitignored).
 import { spawnSync } from "node:child_process";
 import fs from "node:fs";
 import path from "node:path";
@@ -20,10 +20,10 @@ fs.mkdirSync(WORK, { recursive: true });
 
 function run(cmd, args, cwd, env = {}) {
   const r = spawnSync(cmd, args, { stdio: "inherit", cwd, env: { ...process.env, ...env } });
-  if (r.status !== 0) throw new Error(`${cmd} ${args.join(" ")} è fallito`);
+  if (r.status !== 0) throw new Error(`${cmd} ${args.join(" ")} failed`);
 }
 
-// Un Chromium già installato (chromium-NNNN) se quello atteso da Playwright manca.
+// An already installed Chromium (chromium-NNNN) if the one Playwright expects is missing.
 function chromiumPath() {
   if (process.env.CHROMIUM_PATH) return process.env.CHROMIUM_PATH;
   const root = process.env.PLAYWRIGHT_BROWSERS_PATH;
@@ -43,4 +43,4 @@ run(bin, ["export", "-json", path.join(WORK, "samples", "shop.json"), "-target",
 run("npm", ["install", "--no-audit", "--no-fund"], appDir);
 run("npm", ["run", "build"], appDir);
 run("npx", ["playwright", "test"], appDir, { PW_CHROMIUM_PATH: chromiumPath() });
-console.log("App esportata: build riuscita e test dei flussi passati.");
+console.log("App exported: build succeeded and the flow tests passed.");

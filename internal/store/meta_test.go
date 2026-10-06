@@ -16,12 +16,12 @@ import (
 func TestOpenKeepsThePersistedNameOverTheCallersDefault(t *testing.T) {
 	ws := t.TempDir()
 
-	b, err := Open(ws, "doc1", "Il mio disegno")
+	b, err := Open(ws, "doc1", "My drawing")
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := b.Meta().Name; got != "Il mio disegno" {
-		t.Fatalf("Meta().Name = %q, want %q", got, "Il mio disegno")
+	if got := b.Meta().Name; got != "My drawing" {
+		t.Fatalf("Meta().Name = %q, want %q", got, "My drawing")
 	}
 
 	// A restart: the caller (server.Manager.HubFor) resolves a bare doc id
@@ -30,15 +30,15 @@ func TestOpenKeepsThePersistedNameOverTheCallersDefault(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	if got := reopened.Meta().Name; got != "Il mio disegno" {
-		t.Fatalf("after reopen with the default name, Meta().Name = %q, want %q", got, "Il mio disegno")
+	if got := reopened.Meta().Name; got != "My drawing" {
+		t.Fatalf("after reopen with the default name, Meta().Name = %q, want %q", got, "My drawing")
 	}
 	doc, _, err := reopened.Load()
 	if err != nil {
 		t.Fatal(err)
 	}
-	if doc.GetName() != "Il mio disegno" {
-		t.Fatalf("Load() document name = %q, want %q", doc.GetName(), "Il mio disegno")
+	if doc.GetName() != "My drawing" {
+		t.Fatalf("Load() document name = %q, want %q", doc.GetName(), "My drawing")
 	}
 	if doc.GetId() != "doc1" {
 		t.Fatalf("Load() document id = %q, want %q", doc.GetId(), "doc1")

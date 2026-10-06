@@ -47,12 +47,12 @@ func TestColorCSS(t *testing.T) {
 		mul  float64
 		want string
 	}{
-		{"nero", col(0, 0, 0, 1), 1, "#000"},
-		{"bianco", col(1, 1, 1, 1), 1, "#fff"},
-		{"rosso del canvas", col(0.9, 0.3, 0.3, 1), 1, "#e54d4d"},
-		{"alfa", col(0, 0, 0, 0.5), 1, "rgba(0,0,0,0.5)"},
-		{"opacita cotta nell'alfa", col(1, 0, 0, 1), 0.4, "rgba(255,0,0,0.4)"},
-		{"fuori scala", col(2, -1, 0.5, 1), 1, "#ff0080"},
+		{"black", col(0, 0, 0, 1), 1, "#000"},
+		{"white", col(1, 1, 1, 1), 1, "#fff"},
+		{"canvas red", col(0.9, 0.3, 0.3, 1), 1, "#e54d4d"},
+		{"alpha", col(0, 0, 0, 0.5), 1, "rgba(0,0,0,0.5)"},
+		{"opacity baked into the alpha", col(1, 0, 0, 1), 0.4, "rgba(255,0,0,0.4)"},
+		{"out of range", col(2, -1, 0.5, 1), 1, "#ff0080"},
 	} {
 		if got := colorCSS(c.in, c.mul); got != c.want {
 			t.Errorf("%s: colorCSS = %q, want %q", c.name, got, c.want)
@@ -60,8 +60,8 @@ func TestColorCSS(t *testing.T) {
 	}
 }
 
-// La geometria dei gradienti: l'angolo CSS e le percentuali sono ricavati
-// dall'asse in coordinate normalizzate, sul box in px.
+// Gradient geometry: the CSS angle and the percentages are derived from the
+// axis in normalised coordinates, on the box in px.
 func TestGradientCSS(t *testing.T) {
 	a, b := col(1, 0, 0, 1), col(0, 0, 1, 1)
 	for _, c := range []struct {
@@ -71,47 +71,47 @@ func TestGradientCSS(t *testing.T) {
 		w, h   float64
 		want   string
 	}{
-		{"diagonale su quadrato", grad(0, 0, 1, 1, stop(0, a), stop(1, b)), false, 100, 100, "linear-gradient(135deg,#f00 0%,#00f 100%)"},
-		{"diagonale su rettangolo", grad(0, 0, 1, 1, stop(0, a), stop(1, b)), false, 200, 100, "linear-gradient(116.565deg,#f00 0%,#00f 100%)"},
-		{"orizzontale", grad(0, 0.5, 1, 0.5, stop(0, a), stop(1, b)), false, 100, 80, "linear-gradient(90deg,#f00 0%,#00f 100%)"},
-		{"verticale verso il basso", grad(0.5, 0, 0.5, 1, stop(0, a), stop(1, b)), false, 100, 80, "linear-gradient(180deg,#f00 0%,#00f 100%)"},
-		{"verticale verso l'alto", grad(0.5, 1, 0.5, 0, stop(0, a), stop(1, b)), false, 100, 80, "linear-gradient(0deg,#f00 0%,#00f 100%)"},
-		{"asse parziale: fuori dall'asse si estende", grad(0.25, 0.5, 0.75, 0.5, stop(0, a), stop(1, b)), false, 100, 100, "linear-gradient(90deg,#f00 25%,#00f 75%)"},
-		{"stop fuori da 0..1 si clampano", grad(0, 0.5, 1, 0.5, stop(-1, a), stop(2, b)), false, 100, 100, "linear-gradient(90deg,#f00 0%,#00f 100%)"},
-		{"radiale: raggio in px", grad(0.5, 0.5, 1, 0.5, stop(0, a), stop(1, b)), true, 100, 80, "radial-gradient(circle 50px at 50px 40px,#f00 0%,#00f 100%)"},
+		{"diagonal on a square", grad(0, 0, 1, 1, stop(0, a), stop(1, b)), false, 100, 100, "linear-gradient(135deg,#f00 0%,#00f 100%)"},
+		{"diagonal on a rectangle", grad(0, 0, 1, 1, stop(0, a), stop(1, b)), false, 200, 100, "linear-gradient(116.565deg,#f00 0%,#00f 100%)"},
+		{"horizontal", grad(0, 0.5, 1, 0.5, stop(0, a), stop(1, b)), false, 100, 80, "linear-gradient(90deg,#f00 0%,#00f 100%)"},
+		{"vertical downwards", grad(0.5, 0, 0.5, 1, stop(0, a), stop(1, b)), false, 100, 80, "linear-gradient(180deg,#f00 0%,#00f 100%)"},
+		{"vertical upwards", grad(0.5, 1, 0.5, 0, stop(0, a), stop(1, b)), false, 100, 80, "linear-gradient(0deg,#f00 0%,#00f 100%)"},
+		{"partial axis: it extends outside the axis", grad(0.25, 0.5, 0.75, 0.5, stop(0, a), stop(1, b)), false, 100, 100, "linear-gradient(90deg,#f00 25%,#00f 75%)"},
+		{"stops outside 0..1 are clamped", grad(0, 0.5, 1, 0.5, stop(-1, a), stop(2, b)), false, 100, 100, "linear-gradient(90deg,#f00 0%,#00f 100%)"},
+		{"radial: radius in px", grad(0.5, 0.5, 1, 0.5, stop(0, a), stop(1, b)), true, 100, 80, "radial-gradient(circle 50px at 50px 40px,#f00 0%,#00f 100%)"},
 	} {
 		got, ok := gradientCSS(c.g, c.radial, c.w, c.h, 1)
 		if !ok || got != c.want {
 			t.Errorf("%s:\n got  %q (ok=%v)\n want %q", c.name, got, ok, c.want)
 		}
 	}
-	// Degeneri: il canvas ripiega sul colore piatto.
+	// Degenerate: the canvas falls back to the flat colour.
 	for name, g := range map[string]*opendesignerv1.GradientPaint{
-		"un solo stop": grad(0, 0, 1, 1, stop(0, a)),
-		"asse nullo":   grad(0.5, 0.5, 0.5, 0.5, stop(0, a), stop(1, b)),
+		"single stop": grad(0, 0, 1, 1, stop(0, a)),
+		"zero axis":   grad(0.5, 0.5, 0.5, 0.5, stop(0, a), stop(1, b)),
 	} {
 		if got, ok := gradientCSS(g, false, 100, 100, 1); ok {
-			t.Errorf("%s: gradiente degenere, atteso ok=false, got %q", name, got)
+			t.Errorf("%s: degenerate gradient, expected ok=false, got %q", name, got)
 		}
 	}
 }
 
-// Il canvas interpola non premoltiplicato: un segmento con alfa diverse si
-// spezza in punti già interpolati.
+// The canvas interpolates non-premultiplied: a segment with different alphas is
+// split into already-interpolated points.
 func TestGradientAlphaSubdivision(t *testing.T) {
 	g := grad(0, 0, 1, 0, stop(0, col(1, 1, 0, 1)), stop(1, col(0.9, 0.1, 0.5, 0)))
 	got, ok := gradientCSS(g, true, 100, 100, 1)
 	if !ok {
-		t.Fatal("gradiente non valido")
+		t.Fatal("invalid gradient")
 	}
 	if n := strings.Count(got, "%"); n != 2+alphaSubdivisions-1 {
-		t.Errorf("punti = %d, want %d: %s", n, 2+alphaSubdivisions-1, got)
+		t.Errorf("points = %d, want %d: %s", n, 2+alphaSubdivisions-1, got)
 	}
-	// Alfa uguali: nessuna suddivisione.
+	// Equal alphas: no subdivision.
 	g = grad(0, 0, 1, 0, stop(0, col(1, 1, 0, 1)), stop(1, col(0, 0, 0, 1)))
 	got, _ = gradientCSS(g, true, 100, 100, 1)
 	if n := strings.Count(got, "%"); n != 2 {
-		t.Errorf("punti = %d, want 2: %s", n, got)
+		t.Errorf("points = %d, want 2: %s", n, got)
 	}
 }
 
@@ -129,14 +129,14 @@ func TestStrokeRings(t *testing.T) {
 		strokes []*opendesignerv1.Stroke
 		want    string
 	}{
-		{"dentro", []*opendesignerv1.Stroke{st(4, opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE, k)}, "inset 0 0 0 4px #000"},
-		{"fuori", []*opendesignerv1.Stroke{st(4, opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE, k)}, "0 0 0 4px #000"},
-		{"centro: due anelli da metà", []*opendesignerv1.Stroke{st(8, opendesignerv1.StrokeAlign_STROKE_ALIGN_CENTER, k)}, "0 0 0 4px #000|inset 0 0 0 4px #000"},
-		{"non specificato = centro", []*opendesignerv1.Stroke{st(2, opendesignerv1.StrokeAlign_STROKE_ALIGN_UNSPECIFIED, k)}, "0 0 0 1px #000|inset 0 0 0 1px #000"},
-		{"l'ultimo tratto sta sopra, quindi per primo", []*opendesignerv1.Stroke{
+		{"inside", []*opendesignerv1.Stroke{st(4, opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE, k)}, "inset 0 0 0 4px #000"},
+		{"outside", []*opendesignerv1.Stroke{st(4, opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE, k)}, "0 0 0 4px #000"},
+		{"center: two half-width rings", []*opendesignerv1.Stroke{st(8, opendesignerv1.StrokeAlign_STROKE_ALIGN_CENTER, k)}, "0 0 0 4px #000|inset 0 0 0 4px #000"},
+		{"unspecified = center", []*opendesignerv1.Stroke{st(2, opendesignerv1.StrokeAlign_STROKE_ALIGN_UNSPECIFIED, k)}, "0 0 0 1px #000|inset 0 0 0 1px #000"},
+		{"the last stroke is on top, so it goes first", []*opendesignerv1.Stroke{
 			st(6, opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE, k), st(4, opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE, red),
 		}, "0 0 0 4px #f00|inset 0 0 0 6px #000"},
-		{"peso nullo non è un tratto", []*opendesignerv1.Stroke{st(0, opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE, k)}, ""},
+		{"zero weight is not a stroke", []*opendesignerv1.Stroke{st(0, opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE, k)}, ""},
 	} {
 		if got := strings.Join(strokeRings(c.strokes, 1), "|"); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
@@ -165,14 +165,14 @@ func TestFontFamilyCSS(t *testing.T) {
 
 func TestNames(t *testing.T) {
 	for in, want := range map[string]string{
-		"Login screen": "LoginScreen", "Città & Più": "CittaPiu", "12 passi": "Screen12Passi", "": "Screen", "---": "Screen",
-		"carrello-vuoto": "CarrelloVuoto",
+		"Login screen": "LoginScreen", "Café & Crème": "CafeCreme", "12 steps": "Screen12Steps", "": "Screen", "---": "Screen",
+		"empty-cart": "EmptyCart",
 	} {
 		if got := pascal(in); got != want {
 			t.Errorf("pascal(%q) = %q, want %q", in, got, want)
 		}
 	}
-	for in, want := range map[string]string{"Login screen": "login-screen", "Città": "citta", "": "screen"} {
+	for in, want := range map[string]string{"Login screen": "login-screen", "Café": "cafe", "": "screen"} {
 		if got := slug(in); got != want {
 			t.Errorf("slug(%q) = %q, want %q", in, got, want)
 		}

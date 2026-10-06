@@ -6,9 +6,9 @@ import { useTimeline, addPropertyTracks, applyPreset } from "../../animation/tim
 import { PROP_LABEL, findTrack, isInside, propsFor } from "../../animation/timelineLogic";
 import { PRESETS } from "../../animation/presets";
 
-// I DUE MENU che portano un livello dentro un'animazione: "+ Proprietà" (una
-// traccia per volta, su ciò che è selezionato) e "Anima con un preset" (una clip
-// già pronta). Compaiono come bottoni compatti nella testata della timeline.
+// THE TWO MENUS that bring a layer into an animation: "+ Property" (one
+// track at a time, on what is selected) and "Animate with a preset" (a ready-made
+// clip). They appear as compact buttons in the timeline's header.
 
 const TRIGGER =
   "inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md bg-surface-2 px-2 text-[12px] font-medium text-fg outline-none " +
@@ -19,7 +19,7 @@ const ITEM =
   "flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[focused]:bg-surface-3 data-[hovered]:bg-surface-3 " +
   "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40";
 
-/** "+ Proprietà": le proprietà animabili del nodo selezionato. */
+/** "+ Property": the animatable properties of the selected node. */
 export function AddPropertyMenu() {
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
@@ -33,21 +33,21 @@ export function AddPropertyMenu() {
   return (
     <MenuTrigger>
       <RacButton
-        aria-label="Aggiungi proprietà"
+        aria-label="Add property"
         isDisabled={!node}
         className={TRIGGER}
       >
         <Icon name="plus" size={12} />
-        Proprietà
+        Property
       </RacButton>
       <Popover placement="bottom start" offset={6} className={POPOVER}>
         {outside && (
           <p className="max-w-[220px] px-2 py-1.5 text-[12px] leading-snug text-warn">
-            Il livello sta fuori dal bersaglio della clip: scegli un altro bersaglio o un'altra clip.
+            The layer is outside the clip's target: choose another target or another clip.
           </p>
         )}
         <Menu
-          aria-label="Proprietà da animare"
+          aria-label="Property to animate"
           className="outline-none"
           onAction={(k) => scene && addPropertyTracks(scene, selection, String(k))}
         >
@@ -57,7 +57,7 @@ export function AddPropertyMenu() {
               <MenuItem key={p} id={p} isDisabled={outside || have} textValue={PROP_LABEL[p]} className={ITEM}>
                 <AnimIcon name="diamond" size={11} className="text-fg-subtle" />
                 {PROP_LABEL[p]}
-                {have && <span className="ml-auto text-[11px] text-fg-subtle">già animata</span>}
+                {have && <span className="ml-auto text-[11px] text-fg-subtle">already animated</span>}
               </MenuItem>
             );
           })}
@@ -67,7 +67,7 @@ export function AddPropertyMenu() {
   );
 }
 
-/** "Anima con un preset": clip pronte per il nodo selezionato. */
+/** "Animate with a preset": ready-made clips for the selected node. */
 export function PresetMenu() {
   const scene = useScene((s) => s.scene);
   const selection = useScene((s) => s.selection);
@@ -75,13 +75,13 @@ export function PresetMenu() {
 
   return (
     <MenuTrigger>
-      <RacButton aria-label="Anima con un preset" isDisabled={!node} className={TRIGGER}>
+      <RacButton aria-label="Animate with a preset" isDisabled={!node} className={TRIGGER}>
         <AnimIcon name="wand" size={13} />
         Preset
       </RacButton>
       <Popover placement="bottom start" offset={6} className={POPOVER}>
         <Menu
-          aria-label="Preset di animazione"
+          aria-label="Animation presets"
           className="outline-none"
           onAction={(k) => scene && node && applyPreset(scene, node.id, k as (typeof PRESETS)[number]["id"])}
         >
@@ -95,7 +95,7 @@ export function PresetMenu() {
           ))}
         </Menu>
         <Separator className="mx-1 my-1 border-t border-line" />
-        <p className="px-2 py-1 text-[11px] text-fg-subtle">Crea una clip nuova sul livello selezionato.</p>
+        <p className="px-2 py-1 text-[11px] text-fg-subtle">Creates a new clip on the selected layer.</p>
       </Popover>
     </MenuTrigger>
   );

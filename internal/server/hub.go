@@ -101,7 +101,7 @@ type documentBundle interface {
 	Snapshot(doc *opendesignerv1.Document, seq uint64) error
 }
 
-// Hub serializza gli Op di UN documento e li ritrasmette ai subscriber.
+// Hub serializes the Ops of ONE document and rebroadcasts them to the subscribers.
 type Hub struct {
 	// writeMu admits one submitter at a time and is held for the whole of
 	// Submit, bundle.Append included, so the order in which records are
@@ -224,10 +224,10 @@ func (h *Hub) Submit(clientID string, op *opendesignerv1.Op) (*opendesignerv1.Op
 	// post-commit, contradicting the promise that the caller is free to
 	// reuse or mutate op once Submit returns.
 	//
-	// Il clone è COPY-ON-WRITE: la mappa dei nodi si copia per puntatori
-	// (O(N) ma economico) e solo i nodi che l'op scrive vengono clonati davvero
-	// (core.ApplyShared). Il clone profondo dell'intero documento era l'85% di
-	// un Submit a 5.000 nodi.
+	// The clone is COPY-ON-WRITE: the node map is copied by pointer
+	// (O(N) but cheap) and only the nodes the op writes are really cloned
+	// (core.ApplyShared). The deep clone of the whole document was 85% of
+	// a Submit at 5,000 nodes.
 	next := cowClone(base)
 	if err := core.ApplyShared(next, proto.Clone(op).(*opendesignerv1.Op), core.NewShared()); err != nil {
 		return nil, err
@@ -529,10 +529,10 @@ func (h *Hub) Snapshot() (*opendesignerv1.Document, uint64) {
 	return proto.Clone(h.doc).(*opendesignerv1.Document), h.seq
 }
 
-// cowClone copia un documento condividendo i NODI con l'originale: pagine e
-// componenti (pochi) si clonano a fondo, la mappa dei nodi si copia per
-// puntatori. Chi lo scrive deve passare per core.ApplyShared, che clona un nodo
-// prima di modificarlo; nessun nodo dell'originale viene mai mutato.
+// cowClone copies a document while sharing the NODES with the original: pages and
+// components (few) are deep-cloned, the node map is copied by
+// pointer. Whoever writes it must go through core.ApplyShared, which clones a node
+// before modifying it; no node of the original is ever mutated.
 func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 	next := &opendesignerv1.Document{
 		Id: d.GetId(), Name: d.GetName(), SchemaVersion: d.GetSchemaVersion(),
@@ -544,7 +544,7 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 	for k, n := range d.GetNodes() {
 		next.Nodes[k] = n
 	}
-	// Flussi e transizioni: pochi, si clonano a fondo (core non li muta in place).
+	// Flows and transitions: few, deep-cloned (core does not mutate them in place).
 	if len(d.GetFlows()) > 0 {
 		next.Flows = make(map[string]*opendesignerv1.Flow, len(d.GetFlows()))
 		for k, f := range d.GetFlows() {
@@ -557,8 +557,8 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 			next.Transitions[k] = proto.Clone(t).(*opendesignerv1.Transition)
 		}
 	}
-	// Clip di animazione: poche, si clonano a fondo (cascadeClips sostituisce le
-	// voci toccate con copie, ma setClip scrive il puntatore dell'op).
+	// Animation clips: few, deep-cloned (cascadeClips replaces the
+	// touched entries with copies, but setClip writes the op's pointer).
 	if len(d.GetClips()) > 0 {
 		next.Clips = make(map[string]*opendesignerv1.Clip, len(d.GetClips()))
 		for k, c := range d.GetClips() {
@@ -574,12 +574,12 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 	return next
 }
 
-// SetName rinomina il documento: prima in modo durevole (meta.json, se il
-// bundle lo sa fare), poi nella copia in memoria che OpenDocument serve. Tiene
-// writeMu per non correre contro un Submit, che costruisce il documento
-// successivo copiando il nome da h.doc. h.doc non si muta sul posto (potrebbe
-// essere in mano a uno snapshot che lo sta serializzando): si sostituisce con
-// una copia che condivide i nodi.
+// SetName renames the document: first durably (meta.json, if the
+// bundle can do it), then in the in-memory copy that OpenDocument serves. It holds
+// writeMu so as not to race a Submit, which builds the next
+// document by copying the name from h.doc. h.doc is not mutated in place (it may
+// be in the hands of a snapshot that is serializing it): it is replaced with
+// a copy that shares the nodes.
 func (h *Hub) SetName(name string) error {
 	h.writeMu.Lock()
 	defer h.writeMu.Unlock()
@@ -596,24 +596,24 @@ func (h *Hub) SetName(name string) error {
 	return nil
 }
 
-// Subscribers è il numero di stream Subscribe aperti sul documento: chi lo sta
-// guardando adesso. Serve a Manager.Delete per non eliminare sotto i piedi di
-// qualcuno.
+// Subscribers is the number of Subscribe streams open on the document: whoever is
+// watching it right now. Used by Manager.Delete so as not to delete from under
+// someone's feet.
 func (h *Hub) Subscribers() int {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return len(h.subs)
 }
 
-// Counts: quante schermate (frame di primo livello) e quanti flussi ha il
-// documento. Legge senza clonare: serve alla Home.
+// Counts: how many screens (top-level frames) and how many flows the
+// document has. It reads without cloning: it serves the Home.
 func (h *Hub) Counts() (screens, flows int) {
 	h.mu.Lock()
 	defer h.mu.Unlock()
 	return countDoc(h.doc)
 }
 
-// countDoc: schermata = frame figlio diretto di una pagina (come
+// countDoc: screen = frame that is a direct child of a page (like
 // web/src/flow/screens.ts).
 func countDoc(d *opendesignerv1.Document) (screens, flows int) {
 	pages := make(map[string]bool, len(d.GetPages()))

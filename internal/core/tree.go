@@ -6,30 +6,30 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// Attraversamento del documento come ALBERO. `Node.parent_id` esisteva da M0 ma
-// nessuno lo leggeva: la scena era piatta e ogni nodo figlio di "page1". Da qui
-// in poi è la struttura portante -- gruppi, frame e componenti sono tutti
-// sottoalberi -- e core.Apply ne fa rispettare gli invarianti:
+// Traversal of the document as a TREE. `Node.parent_id` has existed since M0
+// but nobody read it: the scene was flat and every node a child of "page1". From
+// here on it is the load-bearing structure -- groups, frames and components are
+// all subtrees -- and core.Apply enforces its invariants:
 //
-//	1. il parent di un nodo ESISTE (un altro nodo, oppure una Page);
-//	2. cancellare un nodo cancella tutto il suo sottoalbero;
-//	3. nessun ciclo: un nodo non può finire sotto un proprio discendente.
+//	1. a node's parent EXISTS (another node, or a Page);
+//	2. deleting a node deletes its whole subtree;
+//	3. no cycles: a node cannot end up under one of its own descendants.
 //
-// Le funzioni qui sono la METÀ Go di web/src/store/tree.ts: stesse regole,
-// stesso ordine, stessa tolleranza a un documento malformato. Un documento con
-// un ciclo non è producibile da Apply, ma può arrivare da un op-log scritto
-// prima di queste invarianti: l'attraversamento non deve andare in loop
-// infinito, quindi ogni discesa tiene l'insieme dei nodi già visti.
+// The functions here are the Go HALF of web/src/store/tree.ts: same rules,
+// same order, same tolerance for a malformed document. A document with a
+// cycle cannot be produced by Apply, but may arrive from an op-log written
+// before these invariants: the traversal must not loop forever, so every
+// descent keeps the set of nodes already seen.
 
-// ChildrenOf ritorna i figli DIRETTI di parentID (un id di nodo o di Page),
-// ordinati per order_key crescente -- cioè dal fondo alla cima nell'ordine di
-// disegno.
+// ChildrenOf returns the DIRECT children of parentID (a node id or a Page id),
+// sorted by ascending order_key -- i.e. from the bottom to the top in drawing
+// order.
 //
-// L'ordinamento è totale anche a parità di chiave: l'id fa da spareggio.
-// L'iterazione di una map Go è deliberatamente randomizzata, quindi senza lo
-// spareggio due chiamate sullo stesso documento potrebbero dare ordini diversi
-// -- e la cascata di delete, che ne dipende, produrrebbe inversi diversi a ogni
-// esecuzione.
+// The ordering is total even for equal keys: the id is the tiebreaker.
+// Iteration of a Go map is deliberately randomized, so without the tiebreaker
+// two calls on the same document could give different orders -- and the delete
+// cascade, which depends on it, would produce different inverses on every
+// run.
 func ChildrenOf(doc *opendesignerv1.Document, parentID string) []*opendesignerv1.Node {
 	var out []*opendesignerv1.Node
 	for _, n := range doc.GetNodes() {
@@ -46,16 +46,16 @@ func ChildrenOf(doc *opendesignerv1.Document, parentID string) []*opendesignerv1
 	return out
 }
 
-// SubtreeOf ritorna il nodo e TUTTI i suoi discendenti in pre-ordine: ogni nodo
-// compare sempre DOPO il proprio parent, e i fratelli in ordine di order_key.
+// SubtreeOf returns the node and ALL its descendants in pre-order: every node
+// always appears AFTER its own parent, and siblings in order_key order.
 //
-// L'ordine non è un dettaglio estetico: è ciò che rende la lista riusabile
-// come sequenza di ricreazione (l'inverso di una delete a cascata, vedi
-// web/src/store/history.ts). Ricreare i nodi in quest'ordine soddisfa
-// l'invariante "il parent esiste" a ogni passo; in ordine inverso ogni figlio
-// verrebbe rifiutato.
+// The order is not an aesthetic detail: it is what makes the list reusable
+// as a recreation sequence (the inverse of a cascading delete, see
+// web/src/store/history.ts). Recreating the nodes in this order satisfies
+// the "the parent exists" invariant at every step; in reverse order every
+// child would be rejected.
 //
-// Lista vuota se il nodo non esiste.
+// Empty list if the node does not exist.
 func SubtreeOf(doc *opendesignerv1.Document, id string) []*opendesignerv1.Node {
 	root := doc.GetNodes()[id]
 	if root == nil {
@@ -63,17 +63,17 @@ func SubtreeOf(doc *opendesignerv1.Document, id string) []*opendesignerv1.Node {
 	}
 	var out []*opendesignerv1.Node
 	seen := map[string]bool{}
-	// PILA esplicita e non ricorsione: la profondità dell'albero la decide
-	// l'utente (gruppi dentro gruppi dentro frame), e un documento malformato
-	// potrebbe renderla illimitata. In pila i figli vanno in ordine INVERSO,
-	// così escono in ordine di order_key.
+	// Explicit STACK and not recursion: the tree's depth is decided by the
+	// user (groups inside groups inside frames), and a malformed document
+	// could make it unbounded. On the stack the children go in REVERSE order,
+	// so they come out in order_key order.
 	stack := []*opendesignerv1.Node{root}
 	for len(stack) > 0 {
 		n := stack[len(stack)-1]
 		stack = stack[:len(stack)-1]
 		if seen[n.GetId()] {
-			// Ciclo in un documento malformato: il nodo è già stato visitato,
-			// visitarlo di nuovo non finirebbe mai.
+			// Cycle in a malformed document: the node was already visited,
+			// visiting it again would never end.
 			continue
 		}
 		seen[n.GetId()] = true
@@ -86,10 +86,10 @@ func SubtreeOf(doc *opendesignerv1.Document, id string) []*opendesignerv1.Node {
 	return out
 }
 
-// IsAncestorOf dice se ancestorID è un antenato STRETTO di id (un nodo non è
-// antenato di se stesso). Sale la catena dei parent invece di scendere
-// l'albero: la profondità è tipicamente molto minore del numero di discendenti,
-// ed è la direzione in cui il controllo dei cicli va fatto (vedi applyReparent).
+// IsAncestorOf reports whether ancestorID is a STRICT ancestor of id (a node is not
+// its own ancestor). It climbs the parent chain instead of descending the
+// tree: the depth is typically much smaller than the number of descendants,
+// and it is the direction in which the cycle check must be done (see applyReparent).
 func IsAncestorOf(doc *opendesignerv1.Document, ancestorID, id string) bool {
 	seen := map[string]bool{}
 	cur := doc.GetNodes()[id]
@@ -103,10 +103,10 @@ func IsAncestorOf(doc *opendesignerv1.Document, ancestorID, id string) bool {
 	return false
 }
 
-// parentExists dice se parentID è un contenitore valido: un nodo esistente
-// oppure una Page del documento. Una stringa vuota non è né l'uno né l'altro --
-// un nodo senza parent non è raggiungibile da nessuna pagina, quindi non è
-// disegnabile né selezionabile: esisterebbe solo dentro la mappa.
+// parentExists reports whether parentID is a valid container: an existing node
+// or a Page of the document. An empty string is neither -- a node without
+// a parent is not reachable from any page, so it is neither drawable nor
+// selectable: it would exist only inside the map.
 func parentExists(doc *opendesignerv1.Document, parentID string) bool {
 	if _, ok := doc.GetNodes()[parentID]; ok {
 		return true

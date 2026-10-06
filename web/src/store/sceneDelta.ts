@@ -1,22 +1,22 @@
 import type { SceneState } from "./types";
 
-// La PROVENIENZA di una scena: da quale scena è stata prodotta e quali nodi sono
-// stati toccati. applyOp la registra per gli op che toccano pochi nodi noti
-// (creare, scrivere proprietà, testo, tracciato) e per i nodi che l'auto layout
-// ha poi ridisposto.
+// The PROVENANCE of a scene: which scene it was produced from and which nodes
+// were touched. applyOp records it for ops that touch a few known nodes
+// (create, write properties, text, path) and for the nodes that auto layout
+// then rearranged.
 //
-// Serve a chi mantiene strutture derivate dalla scena (l'indice di scena): senza,
-// per sapere cosa è cambiato devono confrontare TUTTI i nodi -- una scansione
-// lineare per ogni op, anche quando l'op ne ha toccato uno. Con la provenienza
-// il costo è proporzionale ai nodi toccati.
+// It serves whoever maintains structures derived from the scene (the scene index): without it,
+// to know what changed they must compare ALL nodes -- a linear scan
+// for every op, even when the op touched only one. With provenance
+// the cost is proportional to the touched nodes.
 //
-// È solo un SUGGERIMENTO: chi la usa deve poter ricadere sul confronto completo
-// (la scena precedente può non avere una struttura derivata, un op può non
-// registrarla). WeakMap, così non trattiene scene che nessuno più referenzia.
+// It is only a HINT: whoever uses it must be able to fall back on the full comparison
+// (the previous scene may have no derived structure, an op may not
+// record it). WeakMap, so it does not retain scenes nobody references anymore.
 export interface SceneDelta {
   prev: SceneState;
-  // Id dei nodi la cui voce in `nodes` è nuova o cambiata. Mai nodi rimossi: gli
-  // op che ne rimuovono non registrano la provenienza.
+  // Ids of the nodes whose entry in `nodes` is new or changed. Never removed nodes: ops
+  // that remove nodes do not record provenance.
   changed: readonly string[];
 }
 

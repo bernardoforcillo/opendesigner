@@ -4,10 +4,10 @@ import type { Tool } from "./types";
 export const DEFAULT_FRAME_WIDTH = 300;
 export const DEFAULT_FRAME_HEIGHT = 200;
 
-// Il tool frame: lo stesso gesto del rettangolo (makeShapeTool), con un
-// contenitore al posto della forma. Parte bianco e ritaglia i figli, che è ciò
-// che ci si aspetta da una "tavola"; l'auto layout si attiva dal pannello o
-// avvolgendo una selezione (Shift+A).
+// The frame tool: the same gesture as the rectangle (makeShapeTool), with a
+// container in place of the shape. It starts white and clips its children, which
+// is what you expect from an "artboard"; auto layout is enabled from the panel or
+// by wrapping a selection (Shift+A).
 export function createFrameTool(): Tool {
   return makeShapeTool({
     id: "frame",

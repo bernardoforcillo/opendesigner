@@ -10,59 +10,60 @@ import (
 	"github.com/bernardoforcillo/opendesigner/internal/core"
 )
 
-// Document -> IR. Qui sta tutta la SEMANTICA del disegno (cosa disegna il
-// canvas, e come lo si dice in CSS); i renderer in html.go e react.go non
-// prendono nessuna decisione sul disegno, scrivono solo la sintassi.
+// Document -> IR. All the drawing SEMANTICS live here (what the canvas
+// draws, and how to say it in CSS); the renderers in html.go and react.go make
+// no drawing decisions, they only write the syntax.
 //
-// Convenzioni di layout:
-//   - auto layout: il frame diventa flexbox (direzione, gap, padding, justify/
-//     align) e i figli che il core dispone sono IN FLUSSO (position:relative,
-//     flex-shrink:0); il core ha già scritto x/y nel documento, qui non si
-//     ricalcola niente -- si dice a CSS di rifare la stessa disposizione;
-//   - tutto il resto: contenitore position:relative/absolute con figli
-//     position:absolute a left/top = x/y (coordinate relative al parent, come
-//     nel modello). I figli in flusso sono position:relative perché CSS dipinge
-//     i posizionati sopra i non posizionati a prescindere dall'ordine nel DOM,
-//     e l'ordine di disegno del canvas è l'ordine dei fratelli.
+// Layout conventions:
+//   - auto layout: the frame becomes flexbox (direction, gap, padding, justify/
+//     align) and the children that the core lays out are IN FLOW
+//     (position:relative, flex-shrink:0); the core has already written x/y in
+//     the document, nothing is recomputed here -- CSS is told to redo the same
+//     arrangement;
+//   - everything else: position:relative/absolute container with
+//     position:absolute children at left/top = x/y (coordinates relative to the
+//     parent, as in the model). In-flow children are position:relative because
+//     CSS paints positioned elements above non-positioned ones regardless of
+//     DOM order, and the canvas drawing order is the siblings' order.
 
-// builder costruisce l'IR di UNA schermata.
+// builder builds the IR of ONE screen.
 type builder struct {
 	doc    *opendesignerv1.Document
 	assets AssetSource
-	// files raccoglie gli asset copiati (percorso nell'output -> byte); è
-	// condiviso fra le schermate, così lo stesso asset si scrive una volta sola.
+	// files collects the copied assets (output path -> bytes); it is
+	// shared between screens, so the same asset is written only once.
 	files map[string][]byte
-	// fileDir/urlPrefix: dove si scrivono gli asset e con quale URL si
-	// referenziano ("assets/" per html, "public/assets/" e "/assets/" per react).
+	// fileDir/urlPrefix: where assets are written and with which URL they are
+	// referenced ("assets/" for html, "public/assets/" and "/assets/" for react).
 	fileDir, urlPrefix string
 	warnings           *[]string
-	// triggers: le transizioni della schermata corrente, per id dell'elemento.
+	// triggers: the current screen's transitions, by element id.
 	triggers map[string][]Trigger
-	// anim: le animazioni della schermata corrente per id del nodo (planAnimations).
+	// anim: the current screen's animations by node id (planAnimations).
 	anim map[string]*ElemAnim
 }
 
-// bctx è lo stato che scende con la ricorsione.
+// bctx is the state that descends through the recursion.
 type bctx struct {
-	// root: la radice della schermata (in flusso, senza left/top).
+	// root: the screen's root (in flow, without left/top).
 	root bool
-	// flowChild: il nodo è un figlio in flusso di un frame ad auto layout.
+	// flowChild: the node is an in-flow child of an auto layout frame.
 	flowChild bool
-	// origin: il nodo si piazza a left:0/top:0 (radice del master di un'istanza:
-	// la discesa dell'istanza sottrae l'origine del master).
+	// origin: the node is placed at left:0/top:0 (root of an instance's master:
+	// descending into the instance subtracts the master's origin).
 	origin bool
-	// overrides: gli override dell'istanza in cui si sta scendendo.
+	// overrides: the overrides of the instance being descended into.
 	overrides map[string]*opendesignerv1.InstanceOverride
-	// idPrefix: percorso delle istanze attraversate, per data-node-id.
+	// idPrefix: path of the instances traversed, for data-node-id.
 	idPrefix string
-	// visited: componenti in corso di espansione su questo ramo (un master che
-	// contiene un'istanza di sé stesso non deve ricorrere all'infinito).
+	// visited: components being expanded on this branch (a master that
+	// contains an instance of itself must not recurse forever).
 	visited map[string]bool
 }
 
 func (c bctx) inInstance() bool { return c.idPrefix != "" }
 
-// participates: i figli che il core dispone in fila (core/layout.go).
+// participates: the children that the core lays out in a row (core/layout.go).
 func participates(n *opendesignerv1.Node) bool {
 	if !n.GetVisible() {
 		return false
@@ -81,13 +82,13 @@ func (b *builder) warn(format string, a ...any) {
 	}
 }
 
-// buildScreen costruisce l'albero IR della schermata `n`.
+// buildScreen builds the IR tree of screen `n`.
 func (b *builder) buildScreen(n *opendesignerv1.Node) *Element {
 	b.planAnimations(n)
 	return b.element(n, bctx{root: true, visited: map[string]bool{}})
 }
 
-// element traduce un nodo (e il suo sottoalbero). nil = niente da emettere.
+// element translates a node (and its subtree). nil = nothing to emit.
 func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	if !n.GetVisible() {
 		return nil
@@ -109,7 +110,7 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	el.Meta = n.GetMeta()
 	id := c.idPrefix + n.GetId()
 	el.Attrs = append([]Attr{{"data-node-id", id}}, el.Attrs...)
-	if tid := n.GetMeta()["test.id"]; tid != "" && !c.inInstance() { // un test.id nel master si duplicherebbe in ogni istanza
+	if tid := n.GetMeta()["test.id"]; tid != "" && !c.inInstance() { // a test.id in the master would be duplicated in every instance
 		el.Attrs = insertAfterNodeID(el.Attrs, Attr{"data-testid", tid})
 	}
 	if !c.inInstance() {
@@ -125,7 +126,7 @@ func insertAfterNodeID(attrs []Attr, a Attr) []Attr {
 	return append(out, attrs[1:]...)
 }
 
-// placement scrive position/left/top.
+// placement writes position/left/top.
 func placement(el *Element, n *opendesignerv1.Node, c bctx) {
 	switch {
 	case c.root:
@@ -147,13 +148,13 @@ func placement(el *Element, n *opendesignerv1.Node, c bctx) {
 
 func rotation(el *Element, n *opendesignerv1.Node) {
 	if rotates(n.GetRotation()) {
-		// CSS ruota in senso orario attorno al centro del box, come il canvas:
-		// stessa convenzione, nessuna conversione.
+		// CSS rotates clockwise around the box centre, like the canvas:
+		// same convention, no conversion.
 		el.addStyle("transform", "rotate("+num(n.GetRotation())+"deg)")
 	}
 }
 
-// children traduce i figli di `n` nell'ordine di disegno.
+// children translates `n`'s children in drawing order.
 func (b *builder) children(el *Element, n *opendesignerv1.Node, c bctx) {
 	al := n.GetFrame().GetAutoLayout()
 	for _, k := range core.ChildrenOf(b.doc, n.GetId()) {
@@ -176,12 +177,12 @@ func hasVisibleKids(doc *opendesignerv1.Document, id string) bool {
 }
 
 // ---------------------------------------------------------------------------
-// gruppi e istanze
+// groups and instances
 // ---------------------------------------------------------------------------
 
-// groupElement: un contenitore posizionato SENZA paint (un gruppo non si
-// disegna). Ha width/height del nodo (di norma 0) perché la rotazione del
-// canvas è attorno al centro di quel box.
+// groupElement: a positioned container WITHOUT paint (a group is not
+// drawn). It has the node's width/height (normally 0) because the canvas
+// rotation is around the centre of that box.
 func (b *builder) groupElement(n *opendesignerv1.Node, c bctx) *Element {
 	el := &Element{Tag: "div"}
 	placement(el, n, c)
@@ -192,17 +193,17 @@ func (b *builder) groupElement(n *opendesignerv1.Node, c bctx) *Element {
 	return el
 }
 
-// instanceElement espande il master dell'istanza INLINE (nessuna estrazione di
-// componenti): un wrapper alla posizione dell'istanza con dentro il sottoalbero
-// del master a origine 0,0, con gli override per nodo applicati.
+// instanceElement expands the instance's master INLINE (no component
+// extraction): a wrapper at the instance's position containing the master's
+// subtree at origin 0,0, with the per-node overrides applied.
 func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 	inst := n.GetInstance()
 	comp := b.doc.GetComponents()[inst.GetComponentId()]
 	master := b.doc.GetNodes()[comp.GetRootNodeId()]
 	if comp == nil || master == nil || c.visited[inst.GetComponentId()] {
-		// Come il canvas: componente o master assente (o ricorsivo) = niente.
+		// Like the canvas: missing (or recursive) component or master = nothing.
 		if comp == nil || master == nil {
-			b.warn("istanza %q: componente %q o suo master non trovato, omessa", n.GetName(), inst.GetComponentId())
+			b.warn("instance %q: component %q or its master not found, omitted", n.GetName(), inst.GetComponentId())
 		}
 		return nil
 	}
@@ -227,9 +228,9 @@ func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 	return el
 }
 
-// withOverride: il nodo del master con l'override dell'istanza applicato
-// (canvasRenderer.ts::withOverride): fills se presenti e, per un testo, il
-// contenuto. Mai la geometria.
+// withOverride: the master's node with the instance's override applied
+// (canvasRenderer.ts::withOverride): fills if present and, for a text, the
+// content. Never the geometry.
 func withOverride(n *opendesignerv1.Node, ov *opendesignerv1.InstanceOverride) *opendesignerv1.Node {
 	if ov == nil {
 		return n
@@ -246,9 +247,9 @@ func withOverride(n *opendesignerv1.Node, ov *opendesignerv1.InstanceOverride) *
 	return eff
 }
 
-// cloneShallow copia i campi che withOverride può cambiare. Non si usa
-// proto.Clone: un nodo ha poco e la copia profonda di un Node con meta e
-// vettori per ogni istanza costerebbe senza motivo.
+// cloneShallow copies the fields that withOverride can change. proto.Clone is
+// not used: a node has little and a deep copy of a Node with meta and
+// vectors for every instance would cost for no reason.
 func cloneShallow(n *opendesignerv1.Node) *opendesignerv1.Node {
 	return &opendesignerv1.Node{
 		Id: n.Id, ParentId: n.ParentId, OrderKey: n.OrderKey, Name: n.Name, Visible: n.Visible, Opacity: n.Opacity,
@@ -258,10 +259,10 @@ func cloneShallow(n *opendesignerv1.Node) *opendesignerv1.Node {
 }
 
 // ---------------------------------------------------------------------------
-// forme
+// shapes
 // ---------------------------------------------------------------------------
 
-// shapeElement: rect, ellisse, frame, testo, immagine, vettoriale.
+// shapeElement: rect, ellipse, frame, text, image, vector.
 func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 	eff := withOverride(n, c.overrides[n.GetId()])
 	switch eff.GetShape().(type) {
@@ -272,8 +273,8 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 	case *opendesignerv1.Node_Image:
 		return b.imageElement(n, eff, c)
 	}
-	// rect / ellipse / frame. Un box con un lato <= 0 non lascia pixel (guard
-	// di drawNode); un FRAME così resta comunque contenitore dei figli.
+	// rect / ellipse / frame. A box with a side <= 0 leaves no pixels (guard
+	// of drawNode); a FRAME like that still stays a container of its children.
 	_, isFrame := eff.GetShape().(*opendesignerv1.Node_Frame)
 	_, isEllipse := eff.GetShape().(*opendesignerv1.Node_Ellipse)
 	paintable := eff.GetWidth() > 0 && eff.GetHeight() > 0
@@ -281,13 +282,13 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 		return nil
 	}
 	container := isFrame && hasVisibleKids(b.doc, n.GetId())
-	// L'opacità si "cuoce" nei colori propri del nodo (mul) invece di scriverla
-	// come `opacity` CSS in due casi:
-	//  - contenitore: il canvas imposta globalAlpha PER NODO e non lo eredita,
-	//    quindi l'opacità di un frame NON attenua i figli; con `opacity` CSS sì;
-	//  - nodo con ombra: il canvas disegna la forma con alfa SOPRA l'ombra (che
-	//    ha la stessa alfa), cioè l'ombra traspare dalla forma; con `opacity`
-	//    CSS il filtro si applica prima e la forma opaca copre l'ombra.
+	// Opacity is "baked" into the node's own colours (mul) instead of being written
+	// as CSS `opacity` in two cases:
+	//  - container: the canvas sets globalAlpha PER NODE and does not inherit it,
+	//    so a frame's opacity does NOT dim its children; with CSS `opacity` it does;
+	//  - node with a shadow: the canvas draws the shape with alpha OVER the shadow
+	//    (which has the same alpha), i.e. the shadow shows through the shape; with
+	//    CSS `opacity` the filter applies first and the opaque shape covers the shadow.
 	mul := 1.0
 	bake := container || (firstShadow(eff.GetEffects()) != nil && eff.GetOpacity() != 1)
 	if bake {
@@ -320,8 +321,8 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 	return el
 }
 
-// sizeOf: "fit-content" per un asse hug di un frame ad auto layout, altrimenti
-// la misura in px.
+// sizeOf: "fit-content" for a hug axis of an auto layout frame, otherwise
+// the size in px.
 func sizeOf(n *opendesignerv1.Node, width bool) string {
 	if al := n.GetFrame().GetAutoLayout(); al != nil {
 		if width && al.GetHugWidth() || !width && al.GetHugHeight() {
@@ -356,7 +357,7 @@ func alignCSS(a opendesignerv1.LayoutAlign, main bool) string {
 	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END:
 		return "flex-end"
 	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_SPACE_BETWEEN:
-		// Sull'asse trasversale SPACE_BETWEEN vale START (proto).
+		// On the cross axis SPACE_BETWEEN behaves as START (proto).
 		if main {
 			return "space-between"
 		}
@@ -364,7 +365,7 @@ func alignCSS(a opendesignerv1.LayoutAlign, main bool) string {
 	return "flex-start"
 }
 
-// paddingCSS: shorthand più corto che dice la stessa cosa; "" se tutto a zero.
+// paddingCSS: the shortest shorthand that says the same thing; "" if all zero.
 func paddingCSS(al *opendesignerv1.AutoLayout) string {
 	t, r, bo, l := al.GetPaddingTop(), al.GetPaddingRight(), al.GetPaddingBottom(), al.GetPaddingLeft()
 	if t == 0 && r == 0 && bo == 0 && l == 0 {
@@ -379,8 +380,8 @@ func paddingCSS(al *opendesignerv1.AutoLayout) string {
 	return px(t) + " " + px(r) + " " + px(bo) + " " + px(l)
 }
 
-// setFilter scrive `filter`: prima l'eventuale drop-shadow, poi la sfocatura (la
-// sfocatura del canvas vale anche per l'ombra).
+// setFilter writes `filter`: first any drop-shadow, then the blur (the canvas
+// blur also applies to the shadow).
 func setFilter(el *Element, dropShadow string, bl *opendesignerv1.LayerBlur) {
 	var parts []string
 	if dropShadow != "" {
@@ -394,13 +395,13 @@ func setFilter(el *Element, dropShadow string, bl *opendesignerv1.LayerBlur) {
 	}
 }
 
-// dropShadowFilter: drop-shadow() CSS equivalente allo shadowBlur del canvas.
-// Vuole la DEVIAZIONE STANDARD, cioè la metà dello shadowBlur.
+// dropShadowFilter: CSS drop-shadow() equivalent to the canvas shadowBlur.
+// It wants the STANDARD DEVIATION, i.e. half of shadowBlur.
 func dropShadowFilter(s *opendesignerv1.DropShadow, mul float64) string {
 	return fmt.Sprintf("drop-shadow(%s %s %s %s)", px(s.GetOffsetX()), px(s.GetOffsetY()), px(math.Max(0, s.GetBlur())/2), colorCSS(s.GetColor(), mul))
 }
 
-// translucent: il riempimento (o l'opacità del nodo) lascia passare lo sfondo.
+// translucent: the fill (or the node's opacity) lets the background show through.
 func translucent(f fill, opacity float64) bool {
 	if opacity < 1 || f.color.GetA() < 1 {
 		return true
@@ -413,21 +414,21 @@ func translucent(f fill, opacity float64) bool {
 	return false
 }
 
-// boxPaint: riempimento, raggio, tratti, ombra di rect/ellisse/frame. Ritorna il
-// drop-shadow() da mettere nel `filter` quando l'ombra non può essere un
-// box-shadow (vedi sotto), "" altrimenti.
+// boxPaint: fill, radius, strokes, shadow of rect/ellipse/frame. It returns the
+// drop-shadow() to put in the `filter` when the shadow cannot be a
+// box-shadow (see below), "" otherwise.
 func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul float64, container bool) string {
 	w, h := n.GetWidth(), n.GetHeight()
 	switch {
 	case isEllipse:
 		el.addStyle("border-radius", "50%")
 	case !isFrame:
-		// Il raggio si clampa a metà del lato più corto, come roundRect.
+		// The radius is clamped to half the shorter side, like roundRect.
 		if r := math.Min(n.GetRect().GetCornerRadius(), math.Min(w/2, h/2)); r > 0 {
 			el.addStyle("border-radius", px(r))
 		}
 	}
-	// Un FRAME senza riempimento è trasparente: il grigio di default è per le forme.
+	// A FRAME without a fill is transparent: the default grey is for shapes.
 	hasFill := !(isFrame && len(n.GetFills()) == 0)
 	if hasFill {
 		f := resolvedFill(n.GetFills())
@@ -443,13 +444,13 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 	}
 	shadows := strokeRings(n.GetStrokes(), mul)
 	dropShadow := ""
-	// L'ombra segue il riempimento: senza, il canvas la farebbe dal solo
-	// tratto, e box-shadow non sa farlo (ombreggia l'intero box). Documentato.
+	// The shadow follows the fill: without one, the canvas would cast it from the
+	// stroke alone, and box-shadow cannot do that (it shades the whole box). Documented.
 	if sh := firstShadow(n.GetEffects()); sh != nil && hasFill {
-		// box-shadow non si dipinge MAI dentro il box, il canvas invece mostra
-		// l'ombra attraverso un riempimento (o un nodo) traslucido: lì si usa
-		// drop-shadow(), che ombreggia i pixel disegnati. Non per i
-		// contenitori, dove il filtro colpirebbe anche i figli.
+		// box-shadow is NEVER painted inside the box, while the canvas shows
+		// the shadow through a translucent fill (or node): there drop-shadow() is
+		// used, which shades the drawn pixels. Not for
+		// containers, where the filter would also hit the children.
 		if !container && translucent(resolvedFill(n.GetFills()), n.GetOpacity()) {
 			dropShadow = dropShadowFilter(sh, 1)
 		} else {
@@ -463,7 +464,7 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 }
 
 // ---------------------------------------------------------------------------
-// testo
+// text
 // ---------------------------------------------------------------------------
 
 const (
@@ -480,9 +481,9 @@ var genericFamilies = map[string]bool{
 	"system-ui": true, "ui-sans-serif": true, "ui-serif": true, "ui-monospace": true, "ui-rounded": true,
 }
 
-// fontFamilyCSS: la famiglia del documento più un fallback generico. Vuota =
-// il default del renderer (Inter, sans-serif). Un elenco già scritto
-// dall'utente si rispetta e si completa del generico se manca.
+// fontFamilyCSS: the document's family plus a generic fallback. Empty =
+// the renderer's default (Inter, sans-serif). A list already written by the
+// user is respected and completed with the generic if missing.
 func fontFamilyCSS(f string) string {
 	f = strings.TrimSpace(f)
 	if f == "" {
@@ -517,17 +518,17 @@ func genericFor(family string) string {
 	return "sans-serif"
 }
 
-// textElement: un div con il testo. Stile e default come renderer/text.ts
-// (Inter / 16 / 400 / interlinea 1.2), larghezza fissa = larghezza di wrap.
+// textElement: a div with the text. Style and defaults as in renderer/text.ts
+// (Inter / 16 / 400 / line height 1.2), fixed width = wrap width.
 //
-// DIFFERENZE DICHIARATE col canvas: il canvas misura i glifi e va a capo da sé,
-// qui lo fa il browser (stesse regole di parola, metriche del font vero); la
-// baseline del canvas è a 0.8em dal bordo superiore della riga, quella CSS
-// dipende dalle metriche del font (per Inter ~1px a 16px).
+// DECLARED DIFFERENCES from the canvas: the canvas measures glyphs and wraps
+// by itself, here the browser does it (same word rules, real font metrics); the
+// canvas baseline is at 0.8em from the top edge of the line, the CSS one
+// depends on the font metrics (for Inter ~1px at 16px).
 func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	t := eff.GetText()
 	if t.GetContent() == "" {
-		return nil // il canvas non disegna un testo vuoto
+		return nil // the canvas does not draw empty text
 	}
 	st := t.GetStyle()
 	el := &Element{Tag: "div", Text: t.GetContent(), HasText: true}
@@ -544,11 +545,11 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 		el.addStyle("white-space", "pre-wrap")
 		el.addStyle("overflow-wrap", "break-word")
 	} else {
-		// Larghezza di wrap nulla: il canvas non va a capo (riga unica per paragrafo).
+		// Zero wrap width: the canvas does not wrap (a single line per paragraph).
 		el.addStyle("white-space", "pre")
 	}
-	// Un testo in flusso porta la propria altezza (il core la usa per disporre);
-	// con un gradiente il box del gradiente è quello del nodo, non quello delle righe.
+	// An in-flow text carries its own height (the core uses it for layout);
+	// with a gradient the gradient box is the node's, not the lines'.
 	if c.flowChild || gradient != "" {
 		el.addStyle("height", px(eff.GetHeight()))
 	}
@@ -582,8 +583,8 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	} else {
 		el.addStyle("color", colorCSS(f.color, 1))
 	}
-	// Il tratto di un testo è SEMPRE centrato sul contorno del glifo (come
-	// strokeText nel canvas); CSS ne sa fare uno solo, il primo.
+	// A text's stroke is ALWAYS centred on the glyph outline (like
+	// strokeText in the canvas); CSS can only do one, the first.
 	for _, s := range eff.GetStrokes() {
 		if s.GetWeight() > 0 {
 			el.addStyle("-webkit-text-stroke", px(s.GetWeight())+" "+colorCSS(toFill(s.GetPaint()).color, 1))
@@ -605,11 +606,11 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 }
 
 // ---------------------------------------------------------------------------
-// immagini
+// images
 // ---------------------------------------------------------------------------
 
-// imageElement: <img> sul box del nodo, tirata (object-fit: fill = drawImage a
-// quattro coordinate), oppure il SEGNAPOSTO del canvas se l'asset manca.
+// imageElement: <img> on the node's box, stretched (object-fit: fill = four-
+// coordinate drawImage), or the canvas PLACEHOLDER if the asset is missing.
 func (b *builder) imageElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	if !(eff.GetWidth() > 0 && eff.GetHeight() > 0) {
 		return nil
@@ -630,9 +631,9 @@ func (b *builder) imageElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 		el.addStyle("object-fit", "fill")
 		el.addStyle("max-width", "none")
 	} else {
-		// Segnaposto: stessi colori del canvas (rgba(0,0,0,.06), bordo .35 di 1px
-		// DENTRO il box) più la croce, che nel canvas distingue "manca" da
-		// "in arrivo".
+		// Placeholder: same colours as the canvas (rgba(0,0,0,.06), .35 border of 1px
+		// INSIDE the box) plus the cross, which in the canvas distinguishes "missing"
+		// from "loading".
 		el.addAttr("role", "img")
 		el.addAttr("aria-label", n.GetName())
 		el.addStyle("background-color", "rgba(0,0,0,0.06)")
@@ -642,8 +643,8 @@ func (b *builder) imageElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	if eff.GetOpacity() != 1 {
 		el.addStyle("opacity", num(eff.GetOpacity()))
 	}
-	// L'ombra di un'immagine segue i suoi pixel (anche l'alfa del PNG): per
-	// questo drop-shadow() e non box-shadow.
+	// An image's shadow follows its pixels (including the PNG's alpha): hence
+	// drop-shadow() and not box-shadow.
 	shadow := ""
 	if sh := firstShadow(eff.GetEffects()); sh != nil {
 		shadow = dropShadowFilter(sh, 1)
@@ -669,18 +670,18 @@ func placeholderCross(w, h float64) *Element {
 	return svg
 }
 
-// assetURL copia i byte dell'asset nell'output e ritorna l'URL con cui si
-// referenzia. ok=false se l'asset non c'è (o la sorgente non è disponibile).
+// assetURL copies the asset's bytes into the output and returns the URL used
+// to reference it. ok=false if the asset is not there (or the source is unavailable).
 func (b *builder) assetURL(hash string) (string, bool) {
 	if hash == "" || b.assets == nil {
 		if hash != "" {
-			b.warn("asset %q: nessuna sorgente di asset, segnaposto", shortHash(hash))
+			b.warn("asset %q: no asset source, placeholder", shortHash(hash))
 		}
 		return "", false
 	}
 	data, err := b.assets.Asset(hash)
 	if err != nil || len(data) == 0 {
-		b.warn("asset %q non trovato, segnaposto", shortHash(hash))
+		b.warn("asset %q not found, placeholder", shortHash(hash))
 		return "", false
 	}
 	name := hash + sniffExt(data)
@@ -695,8 +696,8 @@ func shortHash(h string) string {
 	return h
 }
 
-// sniffExt riconosce il contenitore dai magic byte (gli stessi quattro che
-// l'editor accetta: store/assets.go), ".bin" altrimenti.
+// sniffExt recognises the container from the magic bytes (the same four
+// the editor accepts: store/assets.go), ".bin" otherwise.
 func sniffExt(b []byte) string {
 	switch {
 	case len(b) >= 8 && string(b[:8]) == "\x89PNG\r\n\x1a\n":
@@ -712,25 +713,25 @@ func sniffExt(b []byte) string {
 }
 
 // ---------------------------------------------------------------------------
-// vettoriali
+// vectors
 // ---------------------------------------------------------------------------
 
 var unsafeID = regexp.MustCompile(`[^A-Za-z0-9_-]`)
 
-// vectorElement: un <svg> inline sul box del nodo, con le coordinate degli
-// ancoraggi in px locali (nessun viewBox: 1 unità = 1px, come il canvas).
+// vectorElement: an inline <svg> on the node's box, with the anchors'
+// coordinates in local px (no viewBox: 1 unit = 1px, like the canvas).
 //
-// Le maniglie in_/out_ sono OFFSET RELATIVI all'ancoraggio (vedi proto): il
-// controllo uscente di A è A+out, quello entrante di B è B+in, e una maniglia
-// (0,0) coincide con l'ancoraggio = segmento retto, senza rami speciali.
+// The in_/out_ handles are OFFSETS RELATIVE to the anchor (see proto): A's
+// outgoing control is A+out, B's incoming one is B+in, and a (0,0) handle
+// coincides with the anchor = straight segment, with no special branches.
 //
-// Come il canvas: riempimento dei soli contorni chiusi con >= 2 ancoraggi
-// (even-odd, salvo `vector.fillRule` nei meta), e per OGNI contorno o il TRATTO
-// VERO -- un `stroke` del nodo con peso > 0, di colore/peso propri e con
-// capi/giunti/tratteggio dai meta (`stroke.cap|join|miter|dash|dashOffset`, i
-// nodi importati da SVG) -- oppure il filo di 1.5px (capi e giunti tondi) nel
-// colore del riempimento, che esiste solo per rendere visibile un path senza
-// altro inchiostro (`vector.hairline = "0"` lo spegne).
+// Like the canvas: fill of closed outlines with >= 2 anchors only
+// (even-odd, unless `vector.fillRule` in the meta), and for EVERY outline either
+// the REAL STROKE -- a node `stroke` with weight > 0, with its own colour/weight
+// and caps/joins/dashes from the meta (`stroke.cap|join|miter|dash|dashOffset`,
+// nodes imported from SVG) -- or the 1.5px hairline (round caps and joins) in
+// the fill colour, which exists only to make a path with no other ink visible
+// (`vector.hairline = "0"` turns it off).
 func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	subs := eff.GetVector().GetSubpaths()
 	has := false
@@ -750,10 +751,10 @@ func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	el.addStyle("overflow", "visible")
 	el.addStyle("max-width", "none")
 	rotation(el, eff)
-	// L'opacità sta sui singoli path e non sull'<svg>: il canvas disegna
-	// riempimento e tratto UNO DOPO L'ALTRO, ciascuno con la propria alfa, e dove
-	// si sovrappongono si compongono; un `opacity` di gruppo li appiattirebbe.
-	// L'ombra di drop-shadow() ha già l'alfa dei pixel disegnati (come nel canvas).
+	// Opacity goes on the individual paths and not on the <svg>: the canvas draws
+	// fill and stroke ONE AFTER THE OTHER, each with its own alpha, and where
+	// they overlap they compose; a group `opacity` would flatten them.
+	// The drop-shadow() shadow already has the alpha of the drawn pixels (as in the canvas).
 	shadow := ""
 	if sh := firstShadow(eff.GetEffects()); sh != nil {
 		shadow = dropShadowFilter(sh, 1)
@@ -847,7 +848,7 @@ func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	return el
 }
 
-// pick: `v` se è uno dei valori ammessi, altrimenti il default (il primo).
+// pick: `v` if it is one of the allowed values, otherwise the default (the first).
 func pick(v string, allowed ...string) string {
 	for _, a := range allowed {
 		if v == a {
@@ -857,8 +858,8 @@ func pick(v string, allowed ...string) string {
 	return allowed[0]
 }
 
-// subpathData: il `d` di un contorno. Un solo ancoraggio = segmento di
-// lunghezza nulla (con capo tondo è il pallino del pen tool).
+// subpathData: the `d` of an outline. A single anchor = zero-length segment
+// (with a round cap it is the pen tool's dot).
 func subpathData(sp *opendesignerv1.SubPath) string {
 	as := sp.GetAnchors()
 	var sb strings.Builder
@@ -873,8 +874,8 @@ func subpathData(sp *opendesignerv1.SubPath) string {
 	}
 	for i := 0; i < segs; i++ {
 		a, bb := as[i], as[(i+1)%len(as)]
-		// Senza maniglie (0,0) i controlli coincidono con gli estremi: la curva
-		// è esattamente il segmento retto.
+		// Without (0,0) handles the controls coincide with the endpoints: the curve
+		// is exactly the straight segment.
 		if a.GetOutX() == 0 && a.GetOutY() == 0 && bb.GetInX() == 0 && bb.GetInY() == 0 {
 			fmt.Fprintf(&sb, "L%s %s", num(bb.GetX()), num(bb.GetY()))
 			continue
@@ -890,8 +891,8 @@ func subpathData(sp *opendesignerv1.SubPath) string {
 	return sb.String()
 }
 
-// vectorGradient: <defs> con il gradiente in coordinate locali (userSpaceOnUse),
-// come export/svg.ts::gradientRef.
+// vectorGradient: <defs> with the gradient in local coordinates (userSpaceOnUse),
+// like export/svg.ts::gradientRef.
 func vectorGradient(id string, f fill, w, h float64) (*Element, string) {
 	g := f.grad
 	if len(g.GetStops()) < 2 {

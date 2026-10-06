@@ -9,13 +9,13 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// Funzioni PURE che traducono i valori del modello (colori float, gradienti
-// normalizzati, ombre) in valori CSS. Riproducono la semantica del canvas
-// (web/src/renderer/canvasRenderer.ts), non quella "tipica" di un editor di
-// design: dove canvas e CSS divergono lo dice il commento.
+// PURE functions that translate model values (float colours, normalised
+// gradients, shadows) into CSS values. They reproduce the canvas semantics
+// (web/src/renderer/canvasRenderer.ts), not the "typical" one of a design
+// editor: where canvas and CSS diverge, the comment says so.
 
-// num formatta un numero con al più 3 decimali, senza zeri in coda e senza
-// "-0": il file generato non deve contenere le code della virgola mobile.
+// num formats a number with at most 3 decimals, no trailing zeros and no
+// "-0": the generated file must not contain floating-point tails.
 func num(v float64) string {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
 		return "0"
@@ -27,8 +27,8 @@ func num(v float64) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
-// px: "0" per lo zero (valido in CSS senza unità e più idiomatico in Tailwind),
-// altrimenti "<n>px".
+// px: "0" for zero (valid in CSS without a unit and more idiomatic in Tailwind),
+// otherwise "<n>px".
 func px(v float64) string {
 	s := num(v)
 	if s == "0" {
@@ -42,10 +42,10 @@ func channel(v float32) int {
 	return int(f)
 }
 
-// colorCSS: "#rgb"/"#rrggbb" se opaco, "rgba(r,g,b,a)" altrimenti (senza spazi:
-// il valore finisce anche dentro classi Tailwind, dove gli spazi sono `_`).
-// `mul` moltiplica l'alfa: serve a "cuocere" l'opacità di un contenitore nei
-// suoi colori (vedi build.go::bakeOpacity).
+// colorCSS: "#rgb"/"#rrggbb" if opaque, "rgba(r,g,b,a)" otherwise (no spaces:
+// the value also ends up inside Tailwind classes, where spaces are `_`).
+// `mul` multiplies the alpha: it is used to "bake" a container's opacity into
+// its colours (see build.go::bakeOpacity).
 func colorCSS(c *opendesignerv1.Color, mul float64) string {
 	r, g, b := channel(c.GetR()), channel(c.GetG()), channel(c.GetB())
 	a := float64(c.GetA()) * mul
@@ -61,8 +61,8 @@ func colorCSS(c *opendesignerv1.Color, mul float64) string {
 	return fmt.Sprintf("rgba(%d,%d,%d,%s)", r, g, b, num(a))
 }
 
-// fill è una tinta già risolta: il colore piatto (per un gradiente: il primo
-// stop, come FillLite nel client) e, se c'è, il gradiente.
+// fill is an already-resolved paint: the flat colour (for a gradient: the first
+// stop, like FillLite in the client) and, if present, the gradient.
 type fill struct {
 	color  *opendesignerv1.Color
 	grad   *opendesignerv1.GradientPaint
@@ -72,8 +72,8 @@ type fill struct {
 var defaultGrey = &opendesignerv1.Color{R: 0.8, G: 0.8, B: 0.8, A: 1}
 var black = &opendesignerv1.Color{R: 0, G: 0, B: 0, A: 1}
 
-// toFill traduce un Paint come web/src/store/types.ts::toFillLite: un paint
-// assente o senza `kind` è nero opaco.
+// toFill translates a Paint like web/src/store/types.ts::toFillLite: a missing
+// paint or one without `kind` is opaque black.
 func toFill(p *opendesignerv1.Paint) fill {
 	switch k := p.GetKind().(type) {
 	case *opendesignerv1.Paint_Linear:
@@ -96,8 +96,8 @@ func gradFill(g *opendesignerv1.GradientPaint, radial bool) fill {
 	return fill{color: first, grad: g, radial: radial}
 }
 
-// resolvedFill: la tinta con cui un nodo si riempie, DEFAULT COMPRESO (grigio
-// chiaro): è la stessa decisione di canvasRenderer.ts::resolvedFill.
+// resolvedFill: the paint a node is filled with, DEFAULT INCLUDED (light
+// grey): it is the same decision as canvasRenderer.ts::resolvedFill.
 func resolvedFill(fills []*opendesignerv1.Paint) fill {
 	if len(fills) == 0 {
 		return fill{color: defaultGrey}
@@ -105,23 +105,24 @@ func resolvedFill(fills []*opendesignerv1.Paint) fill {
 	return toFill(fills[0])
 }
 
-// gradientCSS traduce un gradiente nel linear-gradient()/radial-gradient() CSS
-// che disegna gli stessi pixel del canvas sul box w x h. ok=false per un
-// gradiente degenere (meno di due stop, asse o raggio nulli): il canvas ripiega
-// sul colore piatto, e così deve fare chi chiama.
+// gradientCSS translates a gradient into the CSS linear-gradient()/radial-gradient()
+// that draws the same pixels as the canvas on the w x h box. ok=false for a
+// degenerate gradient (fewer than two stops, zero axis or radius): the canvas
+// falls back to the flat colour, and so must the caller.
 //
-// GEOMETRIA. Il modello dà l'asse in coordinate normalizzate: P1=(x1*w,y1*h),
-// P2=(x2*w,y2*h). Il canvas colora ogni punto in base alla sua proiezione
-// sull'asse, e fuori da [P1,P2] estende i colori estremi. CSS fa lo stesso ma
-// con una retta fissata dall'ANGOLO che passa per il CENTRO del box e la cui
-// lunghezza è quella che tocca gli angoli: |w*sin| + |h*cos|. Basta quindi
-// ricavare l'angolo dalla direzione dell'asse e riscrivere le posizioni degli
-// stop come percentuali di QUELLA lunghezza, spostate dello scarto fra P1 e il
-// centro proiettato sull'asse. Non è "to bottom right": su un box non quadrato
-// la diagonale CSS non ha la direzione (w,h) che il canvas userebbe.
+// GEOMETRY. The model gives the axis in normalised coordinates: P1=(x1*w,y1*h),
+// P2=(x2*w,y2*h). The canvas colours each point according to its projection
+// onto the axis, and outside [P1,P2] it extends the end colours. CSS does the
+// same but with a line fixed by the ANGLE that passes through the box CENTRE
+// and whose length is the one that touches the corners: |w*sin| + |h*cos|. So
+// it is enough to derive the angle from the axis direction and rewrite the stop
+// positions as percentages of THAT length, shifted by the offset between P1 and
+// the centre projected onto the axis. It is not "to bottom right": on a
+// non-square box the CSS diagonal does not have the (w,h) direction that the
+// canvas would use.
 //
-// RADIALE: centro P1, raggio |P2-P1| in px (cerchio, non ellisse), stop in
-// percentuale del raggio.
+// RADIAL: centre P1, radius |P2-P1| in px (circle, not ellipse), stops as a
+// percentage of the radius.
 func gradientCSS(g *opendesignerv1.GradientPaint, radial bool, w, h, mul float64) (string, bool) {
 	stops := g.GetStops()
 	if len(stops) < 2 {
@@ -143,7 +144,7 @@ func gradientCSS(g *opendesignerv1.GradientPaint, radial bool, w, h, mul float64
 		return fmt.Sprintf("radial-gradient(circle %s at %s %s,%s)", px(length), px(x1), px(y1), strings.Join(parts, ",")), true
 	}
 	dx, dy := (x2-x1)/length, (y2-y1)/length
-	// Angolo CSS: 0deg punta in alto, cresce in senso orario.
+	// CSS angle: 0deg points up and grows clockwise.
 	deg := math.Atan2(dx, -dy) * 180 / math.Pi
 	if deg < 0 {
 		deg += 360
@@ -152,7 +153,7 @@ func gradientCSS(g *opendesignerv1.GradientPaint, radial bool, w, h, mul float64
 	if !(lcss > 0) {
 		return "", false
 	}
-	// Posizione di P1 lungo l'asse, misurata dal centro del box.
+	// Position of P1 along the axis, measured from the box centre.
 	t1 := (x1-w/2)*dx + (y1-h/2)*dy
 	for _, st := range pts {
 		at := (t1+st.pos*length)/lcss + 0.5
@@ -166,16 +167,16 @@ type stopPoint struct {
 	c   *opendesignerv1.Color
 }
 
-// alphaSubdivisions: in quanti tratti si spezza un segmento con alfa diverse.
+// alphaSubdivisions: into how many pieces a segment with different alphas is split.
 const alphaSubdivisions = 8
 
-// expandStops porta gli stop del modello in punti CSS. Il canvas interpola i
-// colori NON premoltiplicati: da giallo opaco a rosa TRASPARENTE passa per
-// gialli-rosati con alfa decrescente. CSS interpola premoltiplicato, e lo
-// stesso gradiente resterebbe giallo che sfuma. Dove due stop vicini hanno alfa
-// diverse il segmento si spezza in tratti con i colori già interpolati alla
-// maniera del canvas: fra due punti vicini la differenza fra i due metodi è
-// sotto la soglia del visibile.
+// expandStops brings the model's stops into CSS points. The canvas interpolates
+// colours NON-premultiplied: from opaque yellow to TRANSPARENT pink it passes
+// through pinkish yellows with decreasing alpha. CSS interpolates premultiplied,
+// and the same gradient would stay yellow fading out. Where two neighbouring
+// stops have different alphas the segment is split into pieces with colours
+// already interpolated the canvas way: between two close points the difference
+// between the two methods is below the visible threshold.
 func expandStops(stops []*opendesignerv1.GradientStop, clamp func(float64) float64) []stopPoint {
 	var out []stopPoint
 	for i, st := range stops {
@@ -210,19 +211,19 @@ func pct(v float64) string {
 	return s + "%"
 }
 
-// rotationDeg: la rotazione che il renderer applica davvero (multipli di 360
-// non ruotano, come canvas/transform.ts::isUnrotated).
+// rotates: whether the renderer really applies the rotation (multiples of 360
+// do not rotate, like canvas/transform.ts::isUnrotated).
 func rotates(deg float64) bool { return math.Mod(deg, 360) != 0 }
 
-// shadowCSS: "dx dy blur color" per box-shadow e text-shadow. Lo shadowBlur del
-// canvas ha la stessa definizione del blur-radius CSS (deviazione standard =
-// metà), quindi il valore passa invariato.
+// shadowCSS: "dx dy blur color" for box-shadow and text-shadow. The canvas
+// shadowBlur has the same definition as the CSS blur-radius (standard deviation
+// = half), so the value passes through unchanged.
 func shadowCSS(s *opendesignerv1.DropShadow, mul float64) string {
 	return fmt.Sprintf("%s %s %s %s", px(s.GetOffsetX()), px(s.GetOffsetY()), px(math.Max(0, s.GetBlur())), colorCSS(s.GetColor(), mul))
 }
 
-// firstShadow / firstBlur: il canvas disegna la PRIMA ombra e la PRIMA
-// sfocatura con raggio > 0 (canvasRenderer.ts::firstShadow/firstBlur).
+// firstShadow / firstBlur: the canvas draws the FIRST shadow and the FIRST
+// blur with radius > 0 (canvasRenderer.ts::firstShadow/firstBlur).
 func firstShadow(effects []*opendesignerv1.Effect) *opendesignerv1.DropShadow {
 	for _, e := range effects {
 		if s := e.GetDropShadow(); s != nil {
@@ -241,7 +242,7 @@ func firstBlur(effects []*opendesignerv1.Effect) *opendesignerv1.LayerBlur {
 	return nil
 }
 
-// strokeAlign: UNSPECIFIED collassa su CENTER (store/types.ts::toStrokeLite).
+// strokeAlign: UNSPECIFIED collapses to CENTER (store/types.ts::toStrokeLite).
 func strokeAlign(a opendesignerv1.StrokeAlign) opendesignerv1.StrokeAlign {
 	if a == opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE || a == opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE {
 		return a
@@ -249,18 +250,18 @@ func strokeAlign(a opendesignerv1.StrokeAlign) opendesignerv1.StrokeAlign {
 	return opendesignerv1.StrokeAlign_STROKE_ALIGN_CENTER
 }
 
-// strokeRings traduce i tratti di un box in anelli di box-shadow, nell'ordine
-// in cui CSS li sovrappone (il PRIMO della lista sta in cima, quindi l'ultimo
-// tratto del modello -- disegnato per ultimo dal canvas -- va per primo).
+// strokeRings translates a box's strokes into box-shadow rings, in the order
+// in which CSS stacks them (the FIRST in the list is on top, so the model's
+// last stroke -- drawn last by the canvas -- goes first).
 //
-//	inside   inset 0 0 0 Wpx   (fascia interna, sopra al riempimento e sotto ai figli)
-//	outside  0 0 0 Wpx         (fascia esterna: box-shadow non si dipinge MAI
-//	                            dentro il box, quindi non copre il riempimento)
-//	center   i due anelli da W/2 affiancati
+//	inside   inset 0 0 0 Wpx   (inner band, above the fill and below the children)
+//	outside  0 0 0 Wpx         (outer band: box-shadow is NEVER painted
+//	                            inside the box, so it does not cover the fill)
+//	center   the two W/2 rings side by side
 //
-// Un tratto con peso <= 0 non è un tratto (stessa regola del canvas). Un
-// tratto con gradiente ripiega sul primo colore: un anello di box-shadow non
-// può essere sfumato.
+// A stroke with weight <= 0 is not a stroke (same rule as the canvas). A
+// stroke with a gradient falls back to the first colour: a box-shadow ring
+// cannot be shaded.
 func strokeRings(strokes []*opendesignerv1.Stroke, mul float64) []string {
 	var rings []string
 	for i := len(strokes) - 1; i >= 0; i-- {

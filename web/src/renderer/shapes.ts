@@ -7,27 +7,27 @@ import {
 } from "../store/vectorGeometry";
 import { lineHeightOf } from "./text";
 
-// Il centro attorno a cui il nodo RUOTA: il centro del suo box NON ruotato.
-// Una funzione sola, usata dal renderer (che ci applica ctx.rotate) e
-// dall'hit-test (che ci applica la rotazione inversa): la convenzione di
-// canvas/transform.ts vale solo se i due la leggono dallo stesso posto.
+// The center around which the node ROTATES: the center of its UNROTATED box.
+// A single function, used by the renderer (which applies ctx.rotate around it) and
+// by hit-test (which applies the inverse rotation around it): the convention of
+// canvas/transform.ts holds only if the two read it from the same place.
 export function nodeCenter(n: NodeLite): Point {
   return centerOf(boundsOfNode(n));
 }
 
-// Costruisce il Path2D del nodo in coordinate mondo (nessuna trasformazione
-// camera qui: la camera è applicata dal chiamante via ctx.setTransform).
+// Builds the node's Path2D in world coordinates (no camera transform
+// here: the camera is applied by the caller via ctx.setTransform).
 //
-// Il path è quello NON ruotato: la rotazione è una trasformazione del contesto
-// (drawScene la applica attorno a nodeCenter), non una geometria diversa --
-// così il path resta lo stesso oggetto per qualunque angolo e l'hit-test può
-// specchiarla portando il punto nello spazio locale.
+// The path is the UNROTATED one: rotation is a context transform
+// (drawScene applies it around nodeCenter), not a different geometry --
+// so the path stays the same object for any angle and hit-test can
+// mirror it by bringing the point into local space.
 //
-// Il vettoriale NON passa di qui: la sua geometria si divide in due path
-// (vedi vectorPaths qui sotto) e drawScene lo dirotta prima, come già fa con il
-// testo. Il ripiego sul rettangolo qui in fondo vale per le forme il cui
-// inchiostro è il box -- incluse quelle "unknown" delle altre tracce, che
-// questo lato può solo trattare da rettangolo.
+// The vector does NOT go through here: its geometry splits into two paths
+// (see vectorPaths below) and drawScene diverts it earlier, as it already does with
+// text. The fallback to the rectangle at the bottom applies to shapes whose
+// ink is the box -- including the "unknown" ones from other tracks, which
+// this side can only treat as a rectangle.
 export function nodePath(n: NodeLite): Path2D {
   const path = new Path2D();
   if (n.kind === "ellipse") {
@@ -36,11 +36,11 @@ export function nodePath(n: NodeLite): Path2D {
     const rx = n.width / 2;
     const ry = n.height / 2;
     path.ellipse(cx, cy, rx, ry, 0, 0, 2 * Math.PI);
-  // Il corner radius è del RETTANGOLO: un FRAME è rettangolare per definizione
-  // (è l'artboard) e si disegna a spigoli vivi anche se porta con sé un
-  // cornerRadius -- scritto da chi non lo sa, o da un documento di un'altra
-  // versione. La condizione sul kind lo tiene esplicito invece di affidarlo al
-  // fatto che un frame di solito ha cornerRadius 0.
+  // The corner radius belongs to the RECTANGLE: a FRAME is rectangular by definition
+  // (it is the artboard) and is drawn with sharp corners even if it carries a
+  // cornerRadius -- written by someone who does not know, or by a document from another
+  // version. The condition on kind keeps it explicit instead of relying on the
+  // fact that a frame usually has cornerRadius 0.
   } else if (n.kind === "rect" && n.cornerRadius > 0) {
     path.roundRect(n.x, n.y, n.width, n.height, n.cornerRadius);
   } else {
@@ -49,136 +49,136 @@ export function nodePath(n: NodeLite): Path2D {
   return path;
 }
 
-// "Questo nodo lascia dei pixel?" -- indipendentemente da `visible`, che è una
-// scelta dell'utente, mentre questa è una proprietà della GEOMETRIA. Una forma
-// degenere (larghezza o altezza <= 0) non ha niente da riempire.
+// "Does this node leave any pixels?" -- independently of `visible`, which is a
+// user choice, while this is a property of the GEOMETRY. A degenerate
+// shape (width or height <= 0) has nothing to fill.
 //
-// Il guard NON vale per il testo: l'altezza di un nodo testo la produce il
-// layout (e la width è solo la larghezza di wrap), quindi un testo appena
-// creato può avere height 0 pur essendo disegnato.
+// The guard does NOT apply to text: the height of a text node is produced by
+// layout (and the width is only the wrap width), so a just-created text
+// can have height 0 while being drawn.
 //
-// Vive qui, in una funzione sola, perché la stessa regola serve in tre punti
-// che devono restare d'accordo: chi disegna (drawScene), chi colpisce
-// (hitTestNode) e chi calcola la regione da esportare (export/region.ts). Una
-// terza copia del predicato sarebbe la solita coppia destinata a divergere --
-// e una divergenza qui si vede come "l'export ha ritagliato l'immagine attorno
-// a un nodo invisibile".
+// It lives here, in a single function, because the same rule is needed in three places
+// that must stay in agreement: whoever draws (drawScene), whoever hits
+// (hitTestNode) and whoever computes the region to export (export/region.ts). A
+// third copy of the predicate would be the usual pair destined to diverge --
+// and a divergence here shows up as "the export cropped the image around
+// an invisible node".
 export function isPaintable(n: NodeLite): boolean {
   return n.kind === "text" || (n.width > 0 && n.height > 0);
 }
 
-// Vero quando l'INCHIOSTRO del nodo è il suo box, cioè quando un box degenere
-// significa davvero "niente da disegnare e niente da colpire". Vale per rect ed
-// ellipse (e per una forma sconosciuta, che questo lato può solo trattare da
-// rettangolo), NON per testo e vettoriale:
-//   - il testo ha l'altezza prodotta dal layout, quindi un nodo appena creato ha
-//     height 0 ed è comunque disegnato;
-//   - il vettoriale ha l'inchiostro negli ancoraggi, e per l'invariante del
-//     proto il box è la bbox ESATTA della geometria -- quindi un path di un solo
-//     punto (il pen tool dopo il primo click) o un segmento orizzontale hanno
-//     legittimamente un lato a zero. Scartarli qui li renderebbe invisibili E
-//     non cliccabili: raggiungibili solo dal pannello livelli, cancellabili solo
-//     da lì.
-// Esportata perché drawScene (canvasRenderer.ts) deve fare la STESSA scelta: due
-// elenchi di eccezioni divergerebbero al primo tipo aggiunto.
+// True when the node's INK is its box, that is when a degenerate box
+// truly means "nothing to draw and nothing to hit". It applies to rect and
+// ellipse (and to an unknown shape, which this side can only treat as a
+// rectangle), NOT to text and vector:
+//   - text has its height produced by layout, so a just-created node has
+//     height 0 and is drawn anyway;
+//   - the vector has its ink in the anchors, and by the proto's
+//     invariant the box is the EXACT bbox of the geometry -- so a single-point
+//     path (the pen tool after the first click) or a horizontal segment
+//     legitimately have a zero side. Discarding them here would make them invisible AND
+//     unclickable: reachable only from the layers panel, deletable only
+//     from there.
+// Exported because drawScene (canvasRenderer.ts) must make the SAME choice: two
+// lists of exceptions would diverge at the first type added.
 export function inkIsBox(n: NodeLite): boolean {
   return n.kind !== "text" && n.kind !== "vector";
 }
 
-// Vero quando il nodo dipinge qualcosa, cioè quando esiste un bersaglio da
-// selezionare. Serve al MARQUEE (tools/selectTool.ts::nodesInMarquee), che
-// lavora su bounds e da solo non se ne accorgerebbe: un vettoriale senza
-// nessun ancoraggio conserva comunque il width/height che aveva, quindi un
-// rettangolo di selezione lo prenderebbe pur essendo l'unico stato in cui il
-// nodo non produce nessun Path2D (vectorPaths) e nessun hit (hitTestNode).
-// Selezionare col marquee qualcosa che non si vede e non si può cliccare è
-// esattamente la sorpresa da evitare.
+// True when the node paints something, that is when a target exists to
+// select. It serves the MARQUEE (tools/selectTool.ts::nodesInMarquee), which
+// works on bounds and would not notice on its own: a vector with
+// no anchors still keeps the width/height it had, so a
+// selection rectangle would take it even though it is the only state in which the
+// node produces no Path2D (vectorPaths) and no hit (hitTestNode).
+// Selecting with the marquee something that is not seen and cannot be clicked is
+// exactly the surprise to avoid.
 //
-// Discrimina il solo VETTORIALE di proposito: per le forme il cui inchiostro È
-// il box il caso analogo è il box degenere, che è comportamento di M1 condiviso
-// con le altre tracce e non si cambia da qui.
+// It discriminates the VECTOR only, on purpose: for shapes whose ink IS
+// the box the analogous case is the degenerate box, which is M1 behavior shared
+// with the other tracks and is not changed from here.
 export function hasInk(n: NodeLite): boolean {
   if (n.kind !== "vector") return true;
   return hasAnyAnchor(n.vector?.subpaths ?? []);
 }
 
-// --- il path vettoriale ------------------------------------------------------
+// --- the vector path ---------------------------------------------------------
 
-// Distanza di presa da un contorno APERTO, in px SCHERMO: una linea sottile
-// deve essere altrettanto facile da afferrare a ogni zoom, quindi la tolleranza
-// vive in px e si divide per lo zoom al momento dell'uso.
+// Grab distance from an OPEN outline, in SCREEN px: a thin line
+// must be equally easy to grab at every zoom, so the tolerance
+// lives in px and is divided by the zoom at the time of use.
 //
-// 5 px sta nella stessa famiglia delle altre soglie di puntamento del progetto
-// -- il quadratino di una maniglia di resize si afferra entro 6 px dal centro
-// (HANDLE_SIZE/2 + HANDLE_GRAB_PADDING, selection/handles.ts) e un marquee
-// diventa un click sotto i 3 px -- ed è la misura che serve: abbastanza
-// generosa da prendere una linea da 1.5 px senza andare a caccia del pixel,
-// abbastanza stretta che due tratti a 10 px l'uno dall'altro restino
-// selezionabili separatamente.
+// 5 px is in the same family as the project's other pointing thresholds
+// -- a resize handle's little square is grabbed within 6 px of the center
+// (HANDLE_SIZE/2 + HANDLE_GRAB_PADDING, selection/handles.ts) and a marquee
+// becomes a click under 3 px -- and it is the measure that is needed: generous
+// enough to catch a 1.5 px line without hunting for the pixel,
+// narrow enough that two strokes 10 px from each other remain
+// separately selectable.
 export const VECTOR_HIT_PX = 5;
 
-// Scarto massimo (px SCHERMO) fra la curva vera e la spezzata su cui si misura
-// la distanza. Un quarto di pixel: sotto la soglia di ciò che si vede e di ciò
-// che si riesce a puntare, e venti volte più fine della presa qui sopra --
-// quindi l'appiattimento non può spostare in modo percepibile il confine fra
-// "preso" e "mancato". Più fine di così si pagherebbero segmenti in più per una
-// differenza che nessuno può osservare.
+// Maximum deviation (SCREEN px) between the true curve and the polyline on which the
+// distance is measured. A quarter of a pixel: below the threshold of what is seen and of what
+// can be pointed at, and twenty times finer than the grab above --
+// so flattening cannot perceptibly move the boundary between
+// "hit" and "missed". Finer than that and we would pay for more segments for a
+// difference nobody can observe.
 export const VECTOR_FLATTEN_PX = 0.25;
 
-// Spessore (px SCHERMO) con cui si traccia OGNI contorno. Il modello non ha un
-// paint di tratto: il colore è quello del riempimento del nodo, l'unica tinta
-// che conosce, quindi su un contorno che riempie il tratto è invisibile (mezzo
-// spessore in più di forma, dello stesso colore) e su uno che non riempie --
-// aperto, o chiuso ma di area nulla -- è tutto ciò che esiste sullo schermo.
+// Thickness (SCREEN px) with which EVERY outline is stroked. The model has no
+// stroke paint: the color is that of the node's fill, the only tint it
+// knows, so on an outline that fills the stroke is invisible (half a
+// thickness more of shape, of the same color) and on one that does not fill --
+// open, or closed but of zero area -- it is all there is on screen.
 export const VECTOR_STROKE_PX = 1.5;
 
-// La regola di riempimento, EVEN-ODD, e la ragione della scelta.
+// The fill rule, EVEN-ODD, and the reason for the choice.
 //
-// Con nonzero un contorno interno è un buco solo se percorso nel VERSO OPPOSTO
-// a quello esterno. Questo modello non ha nessun modo di controllare il verso:
-// non esiste un op "inverti contorno", e il pen tool produce l'ordine in cui
-// l'utente ha cliccato. Un buco che dipende da una proprietà invisibile e non
-// modificabile è un buco che non si riesce a fare apposta -- e, peggio, che
-// compare o sparisce a seconda di come si è girato attorno alla forma.
+// With nonzero an inner outline is a hole only if traversed in the OPPOSITE DIRECTION
+// from the outer one. This model has no way to control the direction:
+// there is no "reverse outline" op, and the pen tool produces the order in which the
+// user clicked. A hole that depends on an invisible, uneditable property is a
+// hole you cannot make on purpose -- and, worse, one that
+// appears or vanishes depending on how you went around the shape.
 //
-// Con even-odd decide la sola CONTENENZA: un contorno dentro un altro è sempre
-// un buco, e per toglierlo basta spostarlo fuori. Prevedibile con gli strumenti
-// che ci sono.
+// With even-odd only CONTAINMENT decides: an outline inside another is always
+// a hole, and to remove it just move it outside. Predictable with the tools
+// that exist.
 //
-// Il valore è UNO e lo condividono ctx.fill (canvasRenderer) e l'hit-test
-// (vectorGeometry::pointInRingsEvenOdd): due regole diverse darebbero un buco
-// che si vede ma si clicca.
+// The value is ONE and it is shared by ctx.fill (canvasRenderer) and hit-test
+// (vectorGeometry::pointInRingsEvenOdd): two different rules would give a hole
+// that is seen but clicked.
 export const VECTOR_FILL_RULE: CanvasFillRule = "evenodd";
 
-// I due path di un nodo vettoriale, in coordinate MONDO. `stroke` li contiene
-// TUTTI (ogni contorno si traccia); `fill` solo quelli che riempiono. Sono due
-// Path2D e non uno perché il canvas chiude implicitamente ogni contorno che
-// riempie: un contorno aperto messo nel path del riempimento verrebbe riempito
-// come se fosse chiuso, cioè esattamente ciò che non deve succedere. `null`
-// (non un Path2D vuoto) quando non c'è niente in quel secchio, così il
-// chiamante non paga una fill o una stroke a vuoto.
+// The two paths of a vector node, in WORLD coordinates. `stroke` contains
+// ALL of them (every outline is stroked); `fill` only those that fill. They are two
+// Path2Ds and not one because the canvas implicitly closes every outline that
+// fills: an open outline put in the fill path would be filled
+// as if it were closed, which is exactly what must not happen. `null`
+// (not an empty Path2D) when there is nothing in that bucket, so the
+// caller does not pay for an empty fill or stroke.
 export interface VectorPaths { fill: Path2D | null; stroke: Path2D | null }
 
-// Traccia UN contorno su `p`: moveTo sul primo ancoraggio, poi una
-// bezierCurveTo per ogni segmento DISEGNATO. Le maniglie escono da
-// vectorGeometry (la regola dei due spazi ha una sola implementazione) e non
-// hanno bisogno di rami: una maniglia assente vale (0,0), il controllo cade
-// sull'ancoraggio e la bezier è la retta.
+// Traces ONE outline on `p`: moveTo on the first anchor, then a
+// bezierCurveTo for every DRAWN segment. The handles come from
+// vectorGeometry (the two-space rule has a single implementation) and
+// need no branches: an absent handle is (0,0), the control falls
+// on the anchor and the bezier is the straight line.
 export function traceSubpath(p: Path2D, n: NodeLite, sp: SubPathLite): void {
   const count = sp.anchors.length;
   const first = anchorPoint(n, sp.anchors[0]);
   p.moveTo(first.x, first.y);
   if (count === 1) {
-    // Un ancoraggio solo (il pen tool dopo il primo click): un segmento di
-    // lunghezza nulla, che con lineCap tondo il canvas disegna come un
-    // pallino. Un moveTo e basta non dipingerebbe niente, e il nodo appena
-    // nato sarebbe invisibile finché non arriva il secondo click.
+    // A single anchor (the pen tool after the first click): a segment of
+    // zero length, which with a round lineCap the canvas draws as a
+    // dot. A bare moveTo would paint nothing, and the just-born node
+    // would be invisible until the second click arrives.
     p.lineTo(first.x, first.y);
     return;
   }
-  // Chiuso: c'è anche il segmento di ritorno ultimo -> primo, ed è una curva
-  // come le altre (le sue maniglie esistono), quindi si disegna. Il closePath
-  // che segue non aggiunge lunghezza: chiude il contorno.
+  // Closed: there is also the last -> first return segment, and it is a curve
+  // like the others (its handles exist), so it is drawn. The closePath
+  // that follows adds no length: it closes the outline.
   const segments = sp.closed ? count : count - 1;
   for (let i = 0; i < segments; i++) {
     const a = sp.anchors[i];
@@ -196,18 +196,18 @@ export function vectorPaths(n: NodeLite): VectorPaths {
   let stroke: Path2D | null = null;
   for (const sp of n.vector?.subpaths ?? []) {
     if (sp.anchors.length === 0) continue;
-    // OGNI contorno si traccia, chiuso o aperto. Per un contorno aperto è
-    // l'unico modo di esistere sullo schermo; per uno chiuso è ciò che gli
-    // impedisce di sparire quando il riempimento non dipinge niente -- e
-    // `closed` NON implica area: due ancoraggi chiusi percorrono A->B->A e tre
-    // ancoraggi allineati una spezzata schiacciata, due stati che il pen tool
-    // raggiunge con tre click. Senza tratto quel path diventerebbe invisibile e
-    // non cliccabile nell'istante in cui l'utente lo chiude.
+    // EVERY outline is stroked, closed or open. For an open outline it is
+    // the only way to exist on screen; for a closed one it is what
+    // keeps it from vanishing when the fill paints nothing -- and
+    // `closed` does NOT imply area: two closed anchors go A->B->A and three
+    // aligned anchors a squashed polyline, two states the pen tool
+    // reaches with three clicks. Without a stroke that path would become invisible and
+    // unclickable the instant the user closes it.
     stroke ??= new Path2D();
     traceSubpath(stroke, n, sp);
-    // In PIÙ, un contorno chiuso con almeno due ancoraggi va nel riempimento. Il
-    // predicato sta in vectorGeometry perché lo condivide con l'hit-test:
-    // riempimento e area colpibile devono essere la stessa cosa.
+    // IN ADDITION, a closed outline with at least two anchors goes into the fill. The
+    // predicate lives in vectorGeometry because it shares it with hit-test:
+    // fill and hittable area must be the same thing.
     if (subpathFills(sp)) {
       fill ??= new Path2D();
       traceSubpath(fill, n, sp);
@@ -216,120 +216,120 @@ export function vectorPaths(n: NodeLite): VectorPaths {
   return { fill, stroke };
 }
 
-// Lato minimo (unità MONDO) del box su cui il MARQUEE afferra un nodo
-// vettoriale. È una TOLLERANZA DI SELEZIONE, non un fatto sulla geometria: il
-// modello continua a dire il vero (vectorBounds è esatta, e un segmento
-// orizzontale ha davvero height 0), ma un box di area zero non interseca nulla
-// e sfuggirebbe a qualunque marquee che non lo scavalchi in senso stretto.
+// Minimum side (WORLD units) of the box on which the MARQUEE grabs a vector
+// node. It is a SELECTION TOLERANCE, not a fact about the geometry: the
+// model keeps telling the truth (vectorBounds is exact, and a horizontal
+// segment really has height 0), but a zero-area box intersects nothing
+// and would escape any marquee that does not strictly cross it.
 //
-// Il CLICK non passa più di qui: da quando il path si disegna davvero,
-// hitTestNode colpisce l'inchiostro (vicinanza al tratto, più il riempimento di
-// un contorno chiuso) e ha la sua tolleranza in px schermo, VECTOR_HIT_PX.
-// Questa resta in unità mondo perché nodesInMarquee (tools/selectTool.ts)
-// lavora su bounds e non conosce la camera -- ed è la ragione per cui le due
-// tolleranze sono, e devono restare, due numeri diversi.
+// The CLICK no longer goes through here: since the path is actually drawn,
+// hitTestNode hits the ink (proximity to the stroke, plus the fill of
+// a closed outline) and has its own tolerance in screen px, VECTOR_HIT_PX.
+// This one stays in world units because nodesInMarquee (tools/selectTool.ts)
+// works on bounds and does not know the camera -- and it is the reason the two
+// tolerances are, and must remain, two different numbers.
 export const VECTOR_MIN_GRAB = 4;
 
-// Il box su cui il MARQUEE afferra un nodo, che non è sempre il box del
-// modello. NON è (più) il bersaglio del click: da quando il path si disegna
-// davvero, hitTestNode colpisce l'inchiostro -- riempimento even-odd e
-// vicinanza al tratto -- e non passa di qui.
+// The box on which the MARQUEE grabs a node, which is not always the
+// model's box. It is NOT (any longer) the click's target: since the path is drawn
+// for real, hitTestNode hits the ink -- even-odd fill and
+// proximity to the stroke -- and does not go through here.
 //
-// Le due porte NON possono essere la stessa funzione: la presa del click è in
-// px SCHERMO (VECTOR_HIT_PX) perché una linea deve afferrarsi allo stesso modo a
-// ogni zoom, mentre il marquee confronta bounds in coordinate MONDO e non
-// conosce la camera. Restano però d'accordo dove conta -- che è "un nodo che non
-// si vede e non si clicca non deve nemmeno essere preso dal marquee": lo
-// garantisce il filtro `hasInk` in tools/selectTool.ts::nodesInMarquee, non
-// questo box. Qui sotto c'è solo la tolleranza per l'asse degenere, che è un
-// caso in cui il nodo l'inchiostro ce l'ha eccome.
+// The two doors CANNOT be the same function: the click's grab is in
+// SCREEN px (VECTOR_HIT_PX) because a line must be grabbed the same way at
+// every zoom, while the marquee compares bounds in WORLD coordinates and does not
+// know the camera. They stay in agreement where it matters, though -- which is "a node that is not
+// seen and not clicked must not even be taken by the marquee": it is
+// guaranteed by the `hasInk` filter in tools/selectTool.ts::nodesInMarquee, not
+// by this box. Below there is only the tolerance for the degenerate axis, which is a
+// case in which the node does have ink.
 export function selectionBoundsOfNode(n: NodeLite): Box {
   if (n.kind !== "vector") return { x: n.x, y: n.y, width: n.width, height: n.height };
-  // Solo l'asse DEGENERE si allarga, e centrato sull'inchiostro: un path normale
-  // resta com'è (e non ruba click alle forme sotto), un segmento orizzontale
-  // diventa afferrabile da sopra come da sotto.
+  // Only the DEGENERATE axis widens, centered on the ink: a normal path
+  // stays as it is (and does not steal clicks from shapes beneath), a horizontal segment
+  // becomes grabbable from above as from below.
   const dw = Math.max(0, VECTOR_MIN_GRAB - n.width);
   const dh = Math.max(0, VECTOR_MIN_GRAB - n.height);
   return { x: n.x - dw / 2, y: n.y - dh / 2, width: n.width + dw, height: n.height + dh };
 }
 
-// Hit-test geometrico puro (nessun ctx / DOM), così resta testabile in Node.
+// Pure geometric hit-test (no ctx / DOM), so it stays testable in Node.
 //
-// (wx, wy) è il punto nello STESSO spazio delle coordinate del nodo, cioè
-// quello del suo PARENT: per un nodo figlio di una pagina è il mondo, per un
-// nodo annidato no. È chi chiama (renderer/canvasRenderer.ts::hitTest) a
-// portarcelo scendendo l'albero -- qui dentro non c'è nessuna trasformazione,
-// esattamente come nodePath disegna nello spazio corrente del ctx.
+// (wx, wy) is the point in the SAME space as the node's coordinates, that is
+// that of its PARENT: for a child of a page it is the world, for a
+// nested node it is not. It is the caller (renderer/canvasRenderer.ts::hitTest) that
+// brings it here by descending the tree -- there is no transform in here,
+// exactly as nodePath draws in the ctx's current space.
 //
-// rect: AABB inclusivo dei bordi. ellisse: equazione normalizzata
-// ((wx-cx)/rx)^2 + ((wy-cy)/ry)^2 <= 1, che è il test corretto (l'AABB
-// dell'ellisse include gli angoli, che sono fuori dall'ellisse stessa).
-// Il punto arriva in coordinate MONDO e viene portato nello spazio LOCALE del
-// nodo (rotazione inversa attorno a nodeCenter) PRIMA di testare la forma: è
-// l'unico modo perché un'ellisse ruotata resti colpita da ellisse invece che
-// dal suo rettangolo contenitore -- lo stesso errore che il test normalizzato
-// qui sotto esiste per evitare, ma introdotto dalla rotazione.
+// rect: inclusive AABB of the edges. ellipse: normalized equation
+// ((wx-cx)/rx)^2 + ((wy-cy)/ry)^2 <= 1, which is the correct test (the ellipse's
+// AABB includes the corners, which are outside the ellipse itself).
+// The point arrives in WORLD coordinates and is brought into the node's LOCAL space
+// (inverse rotation around nodeCenter) BEFORE testing the shape: it is
+// the only way for a rotated ellipse to be hit as an ellipse instead of
+// by its containing rectangle -- the same error that the normalized test
+// below exists to avoid, but introduced by rotation.
 //
-// `zoom` serve al solo vettoriale, e serve davvero: la presa attorno a un
-// contorno aperto è in px SCHERMO (VECTOR_HIT_PX), quindi va convertita in
-// unità mondo, e questa è l'unica funzione che sa quale nodo la richiede.
-// Parametro OBBLIGATORIO e non con un default a 1: un default renderebbe
-// silenzioso il caso in cui un chiamante nuovo si dimentica della camera, e il
-// sintomo (una linea che si afferra male solo fuori da zoom 1) è di quelli che
-// nessuno collega alla causa.
+// `zoom` serves the vector only, and it truly serves: the grab around an
+// open outline is in SCREEN px (VECTOR_HIT_PX), so it must be converted to
+// world units, and this is the only function that knows which node requires it.
+// MANDATORY parameter and not with a default of 1: a default would make silent the
+// case where a new caller forgets about the camera, and the
+// symptom (a line that is badly grabbed only outside zoom 1) is one that
+// nobody connects to the cause.
 export function hitTestNode(n: NodeLite, wx: number, wy: number, zoom: number): boolean {
-  // Un GRUPPO non si colpisce mai direttamente: non ha geometria propria (i
-  // suoi bounds sono l'unione dei figli, vedi store/groups.ts) e non disegna
-  // niente, quindi non c'è nessun pixel suo sotto il puntatore. A selezionarlo
-  // ci pensa la POLITICA di selezione, che risale l'albero dal figlio colpito
-  // (groups.ts::selectionTargetOf) -- e deve poterlo fare da un figlio, non da
-  // un rettangolo invisibile che ruberebbe i click a ciò che gli sta sotto.
+  // A GROUP is never hit directly: it has no geometry of its own (its
+  // bounds are the union of the children, see store/groups.ts) and draws
+  // nothing, so there is no pixel of its own under the pointer. Selecting it
+  // is the job of the selection POLICY, which climbs the tree from the hit child
+  // (groups.ts::selectionTargetOf) -- and it must be able to do so from a child, not from
+  // an invisible rectangle that would steal clicks from what lies beneath.
   if (n.kind === "group") return false;
-  // Un'ISTANZA non si colpisce mai sul proprio box: come un gruppo non ha
-  // geometria propria (il suo contenuto è il master, store/instances.ts). A
-  // colpirla ci pensa la discesa virtuale in canvasRenderer.ts::hitInstance, che
-  // prova il sottoalbero del master e risponde con l'id dell'istanza. Senza
-  // questo ramo, un'istanza col box di default (o ereditato) ruberebbe i click.
+  // An INSTANCE is never hit on its own box: like a group it has no
+  // geometry of its own (its content is the master, store/instances.ts). Hitting
+  // it is the job of the virtual descent in canvasRenderer.ts::hitInstance, which
+  // tries the master's subtree and answers with the instance's id. Without
+  // this branch, an instance with the default (or inherited) box would steal clicks.
   if (n.kind === "instance") return false;
-  // Il guard sulla dimensione vale solo per le forme il cui inchiostro È il box
-  // (vedi inkIsBox): testo e vettoriale lo attraversano anche con un lato a
-  // zero, esattamente come in drawScene (canvasRenderer.ts).
+  // The size guard only applies to shapes whose ink IS the box
+  // (see inkIsBox): text and vector pass through it even with a zero
+  // side, exactly as in drawScene (canvasRenderer.ts).
   if (inkIsBox(n) && (n.width <= 0 || n.height <= 0)) return false;
-  // Rotazione (traccia 2): il punto arriva in coordinate MONDO e va portato
-  // nello spazio LOCALE del nodo (rotazione inversa attorno al centro) prima di
-  // testare la forma, o un'ellisse ruotata verrebbe colpita dal suo rettangolo.
+  // Rotation (track 2): the point arrives in WORLD coordinates and must be brought
+  // into the node's LOCAL space (inverse rotation around the center) before
+  // testing the shape, or a rotated ellipse would be hit by its rectangle.
   const local = worldToLocal({ x: wx, y: wy }, nodeCenter(n), n.rotation);
   return hitTestLocal(n, local.x, local.y, zoom);
 }
 
 function hitTestLocal(n: NodeLite, wx: number, wy: number, zoom: number): boolean {
-  // La sporgenza del tratto ALLARGA il bersaglio: quello che si vede si deve
-  // poter cliccare, e un tratto esterno da 20 è una fascia larga 20 tutt'attorno
-  // alla forma -- esattamente la parte che si mira per afferrare una forma dal
-  // bordo. La misura è quella di canvas/geometry.ts, la stessa che usano
-  // marquee ed export: due nozioni diverse di "quanto sporge" darebbero un
-  // bersaglio che non coincide con ciò che è dipinto. Il vettoriale non la usa
-  // (ha la sua presa in VECTOR_HIT_PX), ma le altre forme sì.
+  // The stroke overhang WIDENS the target: what is seen must be
+  // clickable, and a 20 outer stroke is a band 20 wide all around
+  // the shape -- exactly the part one aims at to grab a shape by its
+  // edge. The measure is canvas/geometry.ts's, the same that marquee
+  // and export use: two different notions of "how far it overhangs" would give a
+  // target that does not coincide with what is painted. The vector does not use it
+  // (it has its own grab in VECTOR_HIT_PX), but the other shapes do.
   const outset = strokeOutsetOfNode(n);
-  // Il testo si colpisce sul suo BOUNDING BOX, mai sui glifi: è il
-  // comportamento atteso in un editor (cliccare fra due lettere, o nello spazio
-  // vuoto a destra di una riga corta, seleziona comunque il nodo) ed è anche
-  // l'unico test possibile senza misurare il font. Ramo esplicito e non
-  // implicito nel fallback: se un giorno il ramo "rect" imparasse i corner
-  // radius, il testo non deve seguirlo.
+  // Text is hit on its BOUNDING BOX, never on the glyphs: it is the
+  // expected behavior in an editor (clicking between two letters, or in the
+  // empty space right of a short line, selects the node anyway) and it is also
+  // the only possible test without measuring the font. An explicit branch and not
+  // implicit in the fallback: if one day the "rect" branch learned corner
+  // radii, text must not follow it.
   if (n.kind === "text") return insideBox(inflateBounds(textHitBox(n), outset), wx, wy);
-  // Il vettoriale si colpisce sull'INCHIOSTRO, mai sul box: ogni contorno per
-  // vicinanza al tratto entro VECTOR_HIT_PX px schermo (perché ogni contorno si
-  // traccia), e in più un contorno chiuso su tutto il suo riempimento -- con la
-  // stessa regola even-odd con cui è dipinto, quindi un buco è un buco anche per
-  // il click. Il box sarebbe il bersaglio sbagliato in entrambi i versi: una "C"
-  // larga mezzo schermo si prenderebbe cliccando nel suo vuoto -- rubando il
-  // click a tutto ciò che ci sta dentro -- e un path degenere non si
-  // prenderebbe affatto.
+  // The vector is hit on the INK, never on the box: every outline by
+  // proximity to the stroke within VECTOR_HIT_PX screen px (because every outline is
+  // stroked), and in addition a closed outline over its whole fill -- with the
+  // same even-odd rule with which it is painted, so a hole is a hole for the
+  // click too. The box would be the wrong target in both directions: a "C"
+  // half a screen wide would be hit by clicking in its void -- stealing the
+  // click from everything inside it -- and a degenerate path would not be
+  // hit at all.
   //
-  // Il punto passa in coordinate LOCALI (una sottrazione sola, qui): gli
-  // ancoraggi lo sono, e portarli in mondo uno a uno costerebbe una somma per
-  // ogni punto della spezzata.
+  // The point goes into LOCAL coordinates (a single subtraction, here): the
+  // anchors are, and bringing them to world one by one would cost a sum for
+  // every point of the polyline.
   if (n.kind === "vector") {
     return hitVectorGeometry(
       n.vector?.subpaths ?? [],
@@ -339,9 +339,9 @@ function hitTestLocal(n: NodeLite, wx: number, wy: number, zoom: number): boolea
     );
   }
   if (n.kind === "ellipse") {
-    // La sporgenza si somma ai RAGGI, non all'AABB: il tratto di un'ellisse è
-    // un anello, non una cornice quadrata, quindi l'angolo del rettangolo
-    // contenitore allargato deve restare un miss come lo era quello del box.
+    // The overhang is added to the RADII, not to the AABB: an ellipse's stroke is
+    // a ring, not a square frame, so the corner of the widened
+    // containing rectangle must remain a miss as the box's was.
     const cx = n.x + n.width / 2;
     const cy = n.y + n.height / 2;
     const rx = n.width / 2 + outset;
@@ -355,18 +355,18 @@ function hitTestLocal(n: NodeLite, wx: number, wy: number, zoom: number): boolea
 
 export interface Box { x: number; y: number; width: number; height: number }
 
-// Il box su cui si colpisce un nodo testo, che NON coincide sempre con il box
-// del modello: l'altezza la produce il layout e la width è solo la larghezza di
-// wrap, quindi un nodo appena creato può averle a 0 pur essendo disegnato. Un
-// box degenere non è colpibile da nessun click (servirebbe wy esattamente
-// uguale a n.y), quindi il testo riceve il minimo che si può calcolare senza un
-// ctx: una riga alta lineHeight e altrettanto larga -- il target del caret di un
-// testo ancora vuoto.
+// The box on which a text node is hit, which does NOT always coincide with the model's
+// box: height is produced by layout and width is only the wrap width,
+// so a just-created node can have them at 0 while being drawn. A
+// degenerate box is hit by no click (it would take wy exactly
+// equal to n.y), so text gets the minimum that can be computed without a
+// ctx: a line lineHeight tall and as wide -- the caret target of a
+// still-empty text.
 //
-// È di proposito una SOTTOstima quando il testo trabocca il suo box: senza
-// misurare il font l'hit-test può sbagliare per difetto (il nodo resta
-// raggiungibile dal pannello livelli) ma non per eccesso, o ruberebbe i click
-// alle forme che gli stanno sotto.
+// It is on purpose an UNDERestimate when the text overflows its box: without
+// measuring the font hit-test can err on the low side (the node stays
+// reachable from the layers panel) but not on the high side, or it would steal clicks
+// from the shapes beneath it.
 function textHitBox(n: NodeLite): Box {
   const min = lineHeightOf(n.text?.style);
   return { x: n.x, y: n.y, width: Math.max(n.width, min), height: Math.max(n.height, min) };

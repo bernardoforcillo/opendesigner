@@ -50,28 +50,28 @@ describe("makeSetPropsOp", () => {
   });
 });
 
-// SetText è un op DEDICATO, non un path della mask: il contenuto vive dentro il
-// oneof `shape` del Node, mentre la mask indirizza campi di primo livello (vedi
-// store/applyOp.ts). Lo stile e il suo flag viaggiano insieme -- passare uno
-// stile senza style_present lo farebbe ignorare da Go (e da applyOp), passare
-// il flag senza stile azzererebbe il font.
+// SetText is a DEDICATED op, not a mask path: the content lives inside the
+// `shape` oneof of the Node, while the mask addresses top-level fields (see
+// store/applyOp.ts). The style and its flag travel together -- passing a
+// style without style_present would make Go (and applyOp) ignore it, passing
+// the flag without a style would zero the font.
 describe("makeSetTextOp", () => {
   it("carries the content and leaves the style untouched when none is given", () => {
-    const op = makeSetTextOp("t1", "ciao\nmondo");
+    const op = makeSetTextOp("t1", "hello\nworld");
     expect(op.docId).toBe("doc-1");
     expect(op.opId).not.toBe("");
     expect(op.kind.case).toBe("setText");
     if (op.kind.case !== "setText") throw new Error("wrong kind");
     expect(op.kind.value.id).toBe("t1");
-    expect(op.kind.value.content).toBe("ciao\nmondo");
-    // Senza stile il flag DEVE restare false: con true (e nessuno stile) ogni
-    // battuta di tasto porterebbe il font a 0.
+    expect(op.kind.value.content).toBe("hello\nworld");
+    // Without a style the flag MUST stay false: with true (and no style) every
+    // keystroke would bring the font to 0.
     expect(op.kind.value.stylePresent).toBe(false);
     expect(op.kind.value.style).toBeUndefined();
   });
 
   it("sets style_present together with the style, never one without the other", () => {
-    const op = makeSetTextOp("t1", "ciao", {
+    const op = makeSetTextOp("t1", "hello", {
       fontFamily: "Inter", fontSize: 24, fontWeight: "700", lineHeight: 1.5, align: "center",
     });
     if (op.kind.case !== "setText") throw new Error("wrong kind");
@@ -84,11 +84,11 @@ describe("makeSetTextOp", () => {
       useScene.getState().scene!,
       makeCreateNodeOp(create(NodeSchema, {
         id: "t1", parentId: "page1", width: 200, height: 20,
-        shape: { case: "text", value: { content: "prima" } },
+        shape: { case: "text", value: { content: "before" } },
       })),
     );
-    scene = applyOp(scene, makeSetTextOp("t1", "dopo"));
-    expect(scene.nodes.at("t1").text?.content).toBe("dopo");
+    scene = applyOp(scene, makeSetTextOp("t1", "after"));
+    expect(scene.nodes.at("t1").text?.content).toBe("after");
   });
 });
 
@@ -101,12 +101,12 @@ describe("makeDeleteOp", () => {
   });
 });
 
-// --- componenti / istanze (M4) ---------------------------------------------
+// --- components / instances (M4) -------------------------------------------
 
 describe("makeCreateComponentOp", () => {
   it("carries componentId, rootNodeId and name, with docId + a fresh opId", () => {
-    const a = makeCreateComponentOp("cmp1", "root1", "Bottone");
-    const b = makeCreateComponentOp("cmp1", "root1", "Bottone");
+    const a = makeCreateComponentOp("cmp1", "root1", "Button");
+    const b = makeCreateComponentOp("cmp1", "root1", "Button");
     expect(a.docId).toBe("doc-1");
     expect(a.opId).not.toBe("");
     expect(a.opId).not.toBe(b.opId);
@@ -114,7 +114,7 @@ describe("makeCreateComponentOp", () => {
     if (a.kind.case !== "createComponent") throw new Error("wrong kind");
     expect(a.kind.value.componentId).toBe("cmp1");
     expect(a.kind.value.rootNodeId).toBe("root1");
-    expect(a.kind.value.name).toBe("Bottone");
+    expect(a.kind.value.name).toBe("Button");
   });
 
   it("round-trips through applyOp: the component is registered pointing at the master", () => {
@@ -122,8 +122,8 @@ describe("makeCreateComponentOp", () => {
       emptyScene("doc-1", "Untitled"),
       makeCreateNodeOp(create(NodeSchema, { id: "root1", parentId: "page1", orderKey: "a000001" })),
     );
-    scene = applyOp(scene, makeCreateComponentOp("cmp1", "root1", "Bottone"));
-    expect(scene.components["cmp1"]).toEqual({ rootNodeId: "root1", name: "Bottone" });
+    scene = applyOp(scene, makeCreateComponentOp("cmp1", "root1", "Button"));
+    expect(scene.components["cmp1"]).toEqual({ rootNodeId: "root1", name: "Button" });
   });
 });
 
@@ -139,8 +139,8 @@ describe("makeSetInstanceOverrideOp", () => {
     const o = op.kind.value.override;
     expect(o?.masterNodeId).toBe("m1");
     expect(o?.fillsPresent).toBe(true);
-    // Il testo NON è stato dato: text_present resta false (non azzera il testo
-    // ereditato).
+    // The text was NOT given: text_present stays false (it does not zero the inherited
+    // text).
     expect(o?.textPresent).toBe(false);
     expect(o?.fills[0]?.kind.case).toBe("solid");
   });
@@ -157,7 +157,7 @@ describe("makeSetInstanceOverrideOp", () => {
 describe("makeInstanceNode", () => {
   it("builds a kind-instance Node carrying the componentId and no overrides", () => {
     const node = makeInstanceNode({
-      id: "inst1", parentId: "page1", orderKey: "a000005", name: "Bottone",
+      id: "inst1", parentId: "page1", orderKey: "a000005", name: "Button",
       x: 30, y: 40, width: 100, height: 50, componentId: "cmp1",
     });
     expect(node.id).toBe("inst1");

@@ -5,30 +5,30 @@ import { contentWorldBounds } from "../store/groups";
 import { nextOrderKey } from "../store/orderKey";
 import { makeCreateComponentOp, makeCreateNodeOp, makeInstanceNode, uuid } from "../tools/ops";
 
-// PANNELLO COMPONENTI (M4) — elenca i componenti del documento (SceneState.
-// components) e, con un click, PIAZZA un'istanza di quello scelto sulla pagina
-// corrente. È il complemento del create-component di selectTool (Ctrl+Alt+K):
-// là si registra un master, qui lo si usa.
+// COMPONENTS PANEL (M4) — lists the document's components (SceneState.
+// components) and, with a click, PLACES an instance of the chosen one on the current
+// page. It is the complement of selectTool's create-component (Ctrl+Alt+K):
+// there a master is registered, here it is used.
 //
-// Come ogni altro pannello obbedisce alla regola dei gesti: piazzare un'istanza
-// è UN gesto = un op (CreateNode di un nodo kind "instance") = una voce di undo,
-// e passa da beginGesture/endGesture come i tool e gli altri pannelli.
+// Like every other panel it obeys the gesture rule: placing an instance
+// is ONE gesture = one op (CreateNode of a node of kind "instance") = one undo entry,
+// and goes through beginGesture/endGesture like the tools and the other panels.
 
-// Di quanto (in unità MONDO) il contenuto dell'istanza appena piazzata è
-// spostato rispetto a quello del master: l'istanza rende il master alla propria
-// origine (store/instances.ts::instanceDescentLocal), quindi x/y = origine del
-// master + offset sposta l'intero sottoalbero reso di quell'offset. Serve solo a
-// non far cadere l'istanza ESATTAMENTE sopra il master -- altrimenti sembrerebbe
-// che il click non abbia fatto niente.
+// By how much (in WORLD units) the content of the just-placed instance is
+// shifted relative to the master's: the instance renders the master at its own
+// origin (store/instances.ts::instanceDescentLocal), so x/y = the master's origin
+// + offset shifts the whole rendered subtree by that offset. It only serves to
+// keep the instance from landing EXACTLY on top of the master -- otherwise it would look
+// as if the click had done nothing.
 const PLACE_OFFSET = 20;
 
 export function ComponentsPanel() {
   const scene = useScene((s) => s.scene);
   const entries = scene ? Object.entries(scene.components) : [];
-  // "Crea componente" è CONTESTUALE: esiste solo con esattamente un nodo
-  // selezionato (come Ctrl/Cmd+Alt+K di selectTool, che qui si replica: stesso
-  // op, stesso gesto, stesso nome di ripiego). Con zero o più nodi non c'è
-  // niente da fare e il pulsante non si disegna affatto.
+  // "Create component" is CONTEXTUAL: it exists only with exactly one node
+  // selected (like selectTool's Ctrl/Cmd+Alt+K, which is replicated here: same
+  // op, same gesture, same fallback name). With zero or several nodes there is
+  // nothing to do and the button is not drawn at all.
   const selection = useScene((s) => s.selection);
   const canCreate = selection.length === 1;
 
@@ -45,9 +45,9 @@ export function ComponentsPanel() {
     store.endGesture([makeCreateComponentOp(uuid(), rootNodeId, name)]);
   }
 
-  // Piazza un'istanza del componente `componentId`. La scena si rilegge FRESCA
-  // dallo store (non dalla closure di render, che un op nel frattempo potrebbe
-  // aver invecchiato), come fa performDrop di LayersPanel.
+  // Places an instance of component `componentId`. The scene is re-read FRESH
+  // from the store (not from the render closure, which an op in the meantime might
+  // have aged), as LayersPanel's performDrop does.
   function placeInstance(componentId: string) {
     const store = useScene.getState();
     const cur = store.scene;
@@ -55,26 +55,26 @@ export function ComponentsPanel() {
     const comp = cur.components[componentId];
     if (!comp) return;
     const master = cur.nodes.at(comp.rootNodeId);
-    // Il core rifiuterebbe un'istanza verso un componente/master assente: non si
-    // manda un op noto invalido.
+    // The core would reject an instance pointing to a missing component/master: we do not
+    // send a known-invalid op.
     if (!master) return;
-    // La DIMENSIONE mondo del sottoalbero del master: per un frame il suo box,
-    // per un gruppo l'unione dei figli (contentWorldBounds). null per un master
-    // che non disegna niente -> si ripiega sul box proprio del nodo radice, così
-    // il pannello proprietà ha comunque un W/H sensato da mostrare (i bounds
-    // veri dell'istanza restano derivati dal master).
+    // The master subtree's WORLD SIZE: for a frame its box,
+    // for a group the union of the children (contentWorldBounds). null for a master
+    // that draws nothing -> falls back to the root node's own box, so
+    // the properties panel still has a sensible W/H to show (the instance's real
+    // bounds stay derived from the master).
     const bounds = contentWorldBounds(cur, master);
     const node = makeInstanceNode({
       id: uuid(),
-      // La pagina CORRENTE, come i tool di disegno; il ripiego "page1" copre solo
-      // il caso -- irraggiungibile con una scena installata -- in cui
-      // currentPageId non è ancora risolto.
+      // The CURRENT page, like the drawing tools; the "page1" fallback covers only
+      // the case -- unreachable with an installed scene -- in which
+      // currentPageId is not yet resolved.
       parentId: store.currentPageId ?? "page1",
-      // Dopo la cima dei fratelli, come le forme (nextOrderKey).
+      // After the top of the siblings, like shapes (nextOrderKey).
       orderKey: nextOrderKey(cur),
       name: comp.name,
-      // Origine del master + offset: sposta il contenuto reso di PLACE_OFFSET
-      // rispetto al master (vedi la costante).
+      // Master's origin + offset: shifts the rendered content by PLACE_OFFSET
+      // relative to the master (see the constant).
       x: master.x + PLACE_OFFSET,
       y: master.y + PLACE_OFFSET,
       width: bounds?.width ?? master.width,
@@ -82,9 +82,9 @@ export function ComponentsPanel() {
       componentId,
     });
     store.beginGesture();
-    // Selezionata SUBITO: endGesture riconcilia la selezione contro la scena
-    // FINALE, quindi può già nominare l'istanza che l'op sta per creare (stesso
-    // schema del raggruppamento in selectTool).
+    // Selected RIGHT AWAY: endGesture reconciles the selection against the
+    // FINAL scene, so it can already name the instance the op is about to create (same
+    // pattern as grouping in selectTool).
     store.setSelection([node.id]);
     store.endGesture([makeCreateNodeOp(node)]);
   }
@@ -92,36 +92,36 @@ export function ComponentsPanel() {
   return (
     <div className="flex flex-col text-[13px] text-fg">
       <div className="flex h-9 items-center gap-2 px-3">
-        <h3 className={cls.sectionTitle}>Componenti</h3>
+        <h3 className={cls.sectionTitle}>Components</h3>
         {entries.length > 0 && <span className="text-[11px] tabular-nums text-fg-subtle">{entries.length}</span>}
         <div className="ml-auto flex items-center">
           {canCreate && entries.length > 0 && (
-            <IconButton icon="plus" label="Crea componente dalla selezione" size={24} onPress={createFromSelection} />
+            <IconButton icon="plus" label="Create component from selection" size={24} onPress={createFromSelection} />
           )}
         </div>
       </div>
       {entries.length === 0 ? (
         <EmptyState
           icon="components"
-          title="Nessun componente"
-          hint="Seleziona un livello e premi Ctrl+Alt+K per trasformarlo in un componente riutilizzabile."
+          title="No components"
+          hint="Select a layer and press Ctrl+Alt+K to turn it into a reusable component."
           action={
             canCreate ? (
               <Button variant="secondary" icon="plus" onPress={createFromSelection}>
-                Crea componente
+                Create component
               </Button>
             ) : undefined
           }
         />
       ) : (
-        <ul aria-label="Componenti" className="flex flex-col gap-1 px-2 pb-2">
+        <ul aria-label="Components" className="flex flex-col gap-1 px-2 pb-2">
           {entries.map(([id, comp]) => {
-            const label = comp.name.trim() !== "" ? comp.name : "Componente senza nome";
+            const label = comp.name.trim() !== "" ? comp.name : "Unnamed component";
             return (
               <li key={id}>
-                {/* Tutta la scheda è il pulsante "Istanzia": il nome accessibile
-                    è quello del componente (aria-label), il "+ Istanzia" a destra
-                    è solo l'indizio visivo dell'azione e compare al passaggio. */}
+                {/* The whole card is the "Instantiate" button: the accessible name
+                    is the component's (aria-label), the "+ Instantiate" on the right
+                    is only the visual hint of the action and appears on hover. */}
                 <RacButton
                   aria-label={label}
                   onPress={() => placeInstance(id)}
@@ -140,7 +140,7 @@ export function ComponentsPanel() {
                     className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100 group-data-[focus-visible]:opacity-100"
                   >
                     <Icon name="plus" size={12} />
-                    Istanzia
+                    Instantiate
                   </span>
                 </RacButton>
               </li>

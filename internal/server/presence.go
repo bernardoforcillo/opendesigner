@@ -8,23 +8,23 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Limiti d'ingresso. Il server sta su una rete di fiducia (LAN) ma non per
-// questo deve accettare un nickname da un megabyte o una selezione infinita:
-// ogni update viene copiato e ritrasmesso a tutti.
+// Input limits. The server sits on a trusted network (LAN) but that is no
+// reason to accept a megabyte-long nickname or an endless selection:
+// every update is copied and rebroadcast to everyone.
 const (
 	maxNicknameRunes = 32
 	maxSelectionIDs  = 1000
 	presenceChanCap  = 256
-	defaultNickname  = "Ospite"
+	defaultNickname  = "Guest"
 )
 
-// presenceRoom tiene chi sta guardando UN documento. È effimera di proposito:
-// non scrive sull'op-log, non sopravvive al processo, e un peer esiste finché
-// ha uno stream WatchPresence aperto -- niente timeout da tarare, niente
-// "fantasmi" dopo una chiusura di scheda.
+// presenceRoom holds who is watching ONE document. It is ephemeral on purpose:
+// it does not write to the op log, it does not survive the process, and a peer exists as long as
+// it has a WatchPresence stream open -- no timeouts to tune, no
+// "ghosts" after a tab is closed.
 type presenceRoom struct {
 	mu       sync.Mutex
-	peers    map[string]*opendesignerv1.PresenceState // per client_id
+	peers    map[string]*opendesignerv1.PresenceState // by client_id
 	watchers map[*presenceWatcher]struct{}
 }
 
@@ -51,18 +51,18 @@ func cleanNickname(n string) string {
 	return n
 }
 
-// join registra un client e ritorna il canale degli eventi (già riempito con
-// chi c'era prima di lui) e la funzione per uscire. Entrare e annunciarsi agli
-// altri avviene nello stesso passo sotto lock, quindi nessun update può cadere
-// fra "elenco iniziale" e "live".
+// join registers a client and returns the event channel (already filled with
+// whoever was there before it) and the function to leave. Joining and announcing
+// itself to the others happen in the same step under the lock, so no update can fall
+// between the "initial list" and "live".
 func (r *presenceRoom) join(clientID, nickname string) (<-chan *opendesignerv1.PresenceEvent, func()) {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 
 	w := &presenceWatcher{clientID: clientID, ch: make(chan *opendesignerv1.PresenceEvent, presenceChanCap)}
-	// L'elenco iniziale: tutti gli altri peer. Il canale ha capienza per
-	// l'elenco solo se i peer sono pochi -- è una stanza di design, non un
-	// concerto -- e ciò che non ci sta si perde in silenzio, come ogni update.
+	// The initial list: all the other peers. The channel has room for the
+	// list only if the peers are few -- it is a design room, not a
+	// concert -- and whatever does not fit is silently lost, like any update.
 	for id, st := range r.peers {
 		if id == clientID {
 			continue
@@ -80,9 +80,9 @@ func (r *presenceRoom) join(clientID, nickname string) (<-chan *opendesignerv1.P
 			r.mu.Lock()
 			defer r.mu.Unlock()
 			delete(r.watchers, w)
-			// Lo stesso client può avere un secondo stream (riconnessione che
-			// precede la chiusura del vecchio): il peer se ne va solo quando
-			// non resta nessuno stream suo.
+			// The same client may have a second stream (a reconnection that
+			// precedes the closing of the old one): the peer leaves only when
+			// none of its streams remain.
 			for other := range r.watchers {
 				if other.clientID == clientID {
 					return
@@ -95,9 +95,9 @@ func (r *presenceRoom) join(clientID, nickname string) (<-chan *opendesignerv1.P
 	return w.ch, leave
 }
 
-// update applica cursore/selezione/pagina di un client già entrato. Il
-// nickname NON si cambia da qui: l'ha fissato join, e un update non può
-// spacciarsi per un altro. Ritorna false per un client sconosciuto.
+// update applies cursor/selection/page of a client that has already joined. The
+// nickname is NOT changed from here: join set it, and an update cannot
+// pass itself off as someone else. It returns false for an unknown client.
 func (r *presenceRoom) update(in *opendesignerv1.PresenceState) bool {
 	r.mu.Lock()
 	defer r.mu.Unlock()
@@ -118,8 +118,8 @@ func (r *presenceRoom) update(in *opendesignerv1.PresenceState) bool {
 	return true
 }
 
-// broadcastLocked manda l'evento a tutti tranne a chi l'ha generato (non ha
-// bisogno di sapere dove ha il proprio cursore).
+// broadcastLocked sends the event to everyone except whoever generated it (it does not
+// need to know where its own cursor is).
 func (r *presenceRoom) broadcastLocked(from string, ev *opendesignerv1.PresenceEvent) {
 	for w := range r.watchers {
 		if w.clientID == from {
@@ -129,9 +129,9 @@ func (r *presenceRoom) broadcastLocked(from string, ev *opendesignerv1.PresenceE
 	}
 }
 
-// sendLocked non blocca mai: la presenza è lossy per costruzione (il prossimo
-// update rimpiazza il precedente), quindi un watcher lento salta un evento
-// invece di fermare chi scrive.
+// sendLocked never blocks: presence is lossy by construction (the next
+// update replaces the previous one), so a slow watcher skips an event
+// instead of stopping the writer.
 func (r *presenceRoom) sendLocked(w *presenceWatcher, ev *opendesignerv1.PresenceEvent) {
 	select {
 	case w.ch <- ev:

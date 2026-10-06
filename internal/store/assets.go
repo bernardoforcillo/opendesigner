@@ -12,63 +12,63 @@ import (
 	"strings"
 )
 
-// ASSET STORE — le immagini di un documento, indirizzate per contenuto.
+// ASSET STORE — a document's images, addressed by content.
 //
-// Vive nella directory `assets/` che il bundle già provvedeva (vedi Open) e che
-// nessuno aveva mai scritto. È deliberatamente SEPARATO da Bundle e non un suo
-// metodo: un asset non è un op, non passa dall'op-log, non entra negli snapshot
-// e non ha bisogno di b.mu -- il nome di un file È il suo contenuto, quindi due
-// scritture concorrenti dello stesso asset scrivono gli stessi byte nello stesso
-// posto e non c'è niente da serializzare. Tenerlo fuori da Bundle è anche ciò
-// che rende impossibile, per sbaglio, mettere dei byte di immagine sul percorso
-// verificato dell'op-log.
+// It lives in the `assets/` directory that the bundle already provided (see Open)
+// and that nobody had ever written. It is deliberately SEPARATE from Bundle and
+// not one of its methods: an asset is not an op, does not go through the op-log,
+// does not enter the snapshots and does not need b.mu -- a file's name IS its
+// content, so two concurrent writes of the same asset write the same bytes to
+// the same place and there is nothing to serialize. Keeping it out of Bundle is
+// also what makes it impossible, by mistake, to put image bytes on the verified
+// op-log path.
 
-// MaxAssetSize è il tetto per un singolo asset (32 MiB).
+// MaxAssetSize is the cap for a single asset (32 MiB).
 //
-// Sta QUI e non solo nell'handler HTTP: è la guardia che impedisce a QUALUNQUE
-// chiamante di riempire il disco, non solo a quello che passa dalla rete. 32 MiB
-// è largo per una foto e stretto abbastanza da non far diventare un errore di
-// battitura un problema di spazio.
+// It lives HERE and not only in the HTTP handler: it is the guard that stops ANY
+// caller from filling the disk, not only the one coming over the network. 32 MiB
+// is generous for a photo and tight enough not to turn a typo into a space
+// problem.
 const MaxAssetSize = 32 << 20
 
-// sniffLen è quanto basta a riconoscere i quattro contenitori raster ammessi
-// (il più lungo dei prefissi è WebP: 12 byte). 512 come http.DetectContentType,
-// così un file più corto di così viene comunque letto per intero.
+// sniffLen is enough to recognize the four allowed raster containers
+// (the longest prefix is WebP: 12 bytes). 512 like http.DetectContentType,
+// so a file shorter than that is still read in full.
 const sniffLen = 512
 
 var (
-	// ErrAssetNotFound: nessun asset con quell'hash in questo documento.
+	// ErrAssetNotFound: no asset with that hash in this document.
 	ErrAssetNotFound = errors.New("store: asset not found")
-	// ErrAssetHash: la stringa passata non è un hash (64 esadecimali minuscoli).
-	// Rifiutata PRIMA di qualunque filepath.Join: è la guardia contro il path
-	// traversal, non un controllo di forma.
+	// ErrAssetHash: the string passed is not a hash (64 lowercase hex digits).
+	// Rejected BEFORE any filepath.Join: it is the guard against path
+	// traversal, not a shape check.
 	ErrAssetHash = errors.New("store: malformed asset hash")
-	// ErrAssetDocID: l'id documento non è un segmento di percorso sicuro.
+	// ErrAssetDocID: the document id is not a safe path segment.
 	ErrAssetDocID = errors.New("store: unsafe document id")
-	// ErrAssetType: i byte non sono un'immagine di un tipo che l'editor disegna.
+	// ErrAssetType: the bytes are not an image of a type the editor draws.
 	ErrAssetType = errors.New("store: unsupported asset type")
-	// ErrAssetTooLarge: l'asset supera MaxAssetSize.
+	// ErrAssetTooLarge: the asset exceeds MaxAssetSize.
 	ErrAssetTooLarge = errors.New("store: asset too large")
 )
 
-// imageTypes è l'ALLOWLIST, e il fatto che sia chiusa è il punto.
+// imageTypes is the ALLOWLIST, and the fact that it is closed is the point.
 //
-// Non si usa http.DetectContentType: quella funzione ha una risposta per
-// qualunque byte (text/html, application/pdf, text/plain...), e un endpoint che
-// accetta byte arbitrari e li riserve con il tipo indovinato è un host
-// same-origin per HTML e script -- cioè una XSS immagazzinata, servita dallo
-// stesso origin dell'editor. Qui i byte devono essere uno dei quattro
-// contenitori raster che il canvas sa disegnare, e il Content-Type che l'handler
-// scrive esce da questa tabella, mai dal client.
+// http.DetectContentType is not used: that function has an answer for
+// any bytes (text/html, application/pdf, text/plain...), and an endpoint that
+// accepts arbitrary bytes and serves them back with the guessed type is a
+// same-origin host for HTML and scripts -- i.e. a stored XSS, served from the
+// same origin as the editor. Here the bytes must be one of the four raster
+// containers the canvas can draw, and the Content-Type the handler
+// writes comes out of this table, never from the client.
 //
-// L'SVG è escluso di proposito, e non per pigrizia: un SVG è un documento XML
-// che può contenere <script>, e servito per intero da questo origin verrebbe
-// eseguito appena qualcuno ne apre l'URL. Un'immagine raster non ha quel potere.
+// SVG is excluded on purpose, and not out of laziness: an SVG is an XML document
+// that can contain <script>, and served whole from this origin it would be
+// executed as soon as someone opens its URL. A raster image has no such power.
 var imageTypes = []struct {
 	prefix []byte
-	// mask, quando non è nil, azzera i byte VARIABILI del prefisso (la
-	// dimensione del chunk RIFF di WebP): senza, il confronto dipenderebbe dalla
-	// lunghezza del file.
+	// mask, when not nil, zeroes the VARIABLE bytes of the prefix (the size
+	// of WebP's RIFF chunk): without it, the comparison would depend on the
+	// length of the file.
 	mask        []byte
 	contentType string
 }{
@@ -83,10 +83,10 @@ var imageTypes = []struct {
 	},
 }
 
-// DetectImageType ritorna il Content-Type dei byte iniziali di un asset, o ""
-// se non sono uno dei tipi ammessi. Esportata perché è la stessa domanda che si
-// pone chi scrive (Put) e chi legge (Open): un solo posto che decide che cos'è
-// un'immagine.
+// DetectImageType returns the Content-Type of an asset's initial bytes, or ""
+// if they are not one of the allowed types. Exported because it is the same
+// question asked by whoever writes (Put) and whoever reads (Open): a single
+// place that decides what an image is.
 func DetectImageType(head []byte) string {
 	for _, t := range imageTypes {
 		if len(head) < len(t.prefix) {
@@ -112,33 +112,33 @@ func DetectImageType(head []byte) string {
 	return ""
 }
 
-// Ref è quello che si sa di un asset senza leggerlo: il suo nome (= il suo
-// contenuto), quanto pesa e come va servito.
+// Ref is what is known about an asset without reading it: its name (= its
+// content), how big it is and how it must be served.
 type Ref struct {
 	Hash        string
 	Size        int64
 	ContentType string
 }
 
-// Assets è lo store degli asset di UN documento.
+// Assets is the asset store of ONE document.
 type Assets struct {
 	workspace string
 	docID     string
 }
 
-// NewAssets ritorna lo store degli asset del documento docID. Non tocca il
-// disco: la directory viene creata alla prima scrittura (e un documento senza
-// immagini non ne ha bisogno).
+// NewAssets returns the asset store of document docID. It does not touch the
+// disk: the directory is created on the first write (and a document without
+// images does not need it).
 func NewAssets(workspace, docID string) *Assets {
 	return &Assets{workspace: workspace, docID: docID}
 }
 
-// safeSegment dice se s può essere usato come UN segmento di percorso.
+// safeSegment reports whether s can be used as ONE path segment.
 //
-// Il chiamante (internal/server) valida già il doc id come UUID; questo è il
-// controllo che NON si può saltare, perché è qui che la stringa incontra
-// filepath.Join. Un ".." o un separatore lascerebbero la directory degli asset,
-// e questo store legge e scrive file per conto di una route pubblica.
+// The caller (internal/server) already validates the doc id as a UUID; this is
+// the check that CANNOT be skipped, because this is where the string meets
+// filepath.Join. A ".." or a separator would leave the assets directory,
+// and this store reads and writes files on behalf of a public route.
 func safeSegment(s string) bool {
 	if s == "" || s == "." || s == ".." {
 		return false
@@ -156,11 +156,11 @@ func (a *Assets) dir() (string, error) {
 	return filepath.Join(a.workspace, a.docID+bundleSuffix, "assets"), nil
 }
 
-// HasBundle dice se il documento esiste già sul disco.
+// HasBundle reports whether the document already exists on disk.
 //
-// Serve alla route di upload: un POST verso un id inventato non deve far
-// NASCERE un documento fatto di soli asset. I bundle li crea CreateDocument, e
-// questo store non è un'altra porta d'ingresso per crearne.
+// It serves the upload route: a POST to an invented id must not make a
+// document consisting only of assets COME INTO BEING. Bundles are created by CreateDocument, and
+// this store is not another entry point for creating them.
 func (a *Assets) HasBundle() bool {
 	dir, err := a.dir()
 	if err != nil {
@@ -170,13 +170,13 @@ func (a *Assets) HasBundle() bool {
 	return err == nil && fi.IsDir()
 }
 
-// validHash accetta esattamente 64 esadecimali MINUSCOLI.
+// validHash accepts exactly 64 LOWERCASE hex digits.
 //
-// Minuscoli e non "case-insensitive" apposta: l'hash è il nome del file, e su
-// un filesystem case-sensitive due grafie dello stesso hash sarebbero due file
-// diversi -- cioè lo stesso asset immagazzinato due volte, che è precisamente
-// ciò che l'indirizzamento per contenuto esiste per evitare. Una sola grafia
-// canonica, quella che stampa hex.EncodeToString.
+// Lowercase and not "case-insensitive" on purpose: the hash is the file name, and on
+// a case-sensitive filesystem two spellings of the same hash would be two different
+// files -- i.e. the same asset stored twice, which is precisely
+// what content addressing exists to avoid. A single canonical spelling,
+// the one hex.EncodeToString prints.
 func validHash(hash string) bool {
 	if len(hash) != sha256.Size*2 {
 		return false
@@ -190,8 +190,8 @@ func validHash(hash string) bool {
 	return true
 }
 
-// Path è il percorso del file di un asset. Errore (e nessun percorso) se l'hash
-// o il doc id non sono sicuri.
+// Path is the path of an asset's file. Error (and no path) if the hash
+// or the doc id are not safe.
 func (a *Assets) Path(hash string) (string, error) {
 	dir, err := a.dir()
 	if err != nil {
@@ -200,29 +200,29 @@ func (a *Assets) Path(hash string) (string, error) {
 	if !validHash(hash) {
 		return "", fmt.Errorf("%w: %q", ErrAssetHash, hash)
 	}
-	// Il nome del file è l'hash NUDO, senza estensione, e la deviazione dal
-	// design (`assets/<sha256>.<ext>`) è voluta: il nodo porta solo l'hash,
-	// quindi con un'estensione ogni lettura dovrebbe indovinarla o scandire la
-	// directory, mentre il tipo si ricava dai byte stessi (DetectImageType) --
-	// che è l'unica fonte che non può divergere dal contenuto. Il percorso resta
-	// una funzione pura dell'hash: nessuna ricerca, nessuna ambiguità.
+	// The file name is the BARE hash, without extension, and the deviation from the
+	// design (`assets/<sha256>.<ext>`) is intentional: the node carries only the hash,
+	// so with an extension every read would have to guess it or scan the
+	// directory, whereas the type is derived from the bytes themselves (DetectImageType) --
+	// which is the only source that cannot diverge from the content. The path stays
+	// a pure function of the hash: no lookup, no ambiguity.
 	return filepath.Join(dir, hash), nil
 }
 
-// Put immagazzina i byte di r e ne ritorna il riferimento.
+// Put stores the bytes of r and returns the reference to them.
 //
-// Indirizzato per contenuto: la stessa immagine messa due volte occupa UN file.
-// La scrittura passa da un file temporaneo rinominato al suo posto, quindi un
-// lettore non può mai osservare un asset a metà -- e un asset esiste se e solo
-// se è completo, che è ciò che permette al nome di essere una promessa sui byte.
+// Addressed by content: the same image put twice occupies ONE file.
+// The write goes through a temporary file renamed into place, so a
+// reader can never observe a half-written asset -- and an asset exists if and only
+// if it is complete, which is what allows the name to be a promise about the bytes.
 func (a *Assets) Put(r io.Reader) (Ref, error) {
 	dir, err := a.dir()
 	if err != nil {
 		return Ref{}, err
 	}
 
-	// Il tipo si decide PRIMA di creare qualunque file: un upload rifiutato non
-	// deve aver toccato il disco.
+	// The type is decided BEFORE creating any file: a rejected upload
+	// must not have touched the disk.
 	head := make([]byte, sniffLen)
 	n, err := io.ReadFull(r, head)
 	if err != nil && !errors.Is(err, io.EOF) && !errors.Is(err, io.ErrUnexpectedEOF) {
@@ -245,24 +245,24 @@ func (a *Assets) Put(r io.Reader) (Ref, error) {
 	committed := false
 	defer func() {
 		if !committed {
-			// Un upload interrotto non lascia niente: né byte a metà, né un file
-			// che occupa spazio senza essere raggiungibile da nessun hash.
+			// An interrupted upload leaves nothing behind: neither half bytes, nor a file
+			// that takes up space without being reachable from any hash.
 			tmp.Close()
 			os.Remove(tmpName)
 		}
 	}()
 
 	sum := sha256.New()
-	// LimitReader a MaxAssetSize+1: il byte in più è come si distingue "grande
-	// esattamente quanto il tetto" (lecito) da "più grande del tetto" (rifiutato)
-	// senza dover leggere il resto di un upload che comunque non entrerà.
+	// LimitReader at MaxAssetSize+1: the extra byte is how "exactly as large
+	// as the cap" (allowed) is told apart from "larger than the cap" (rejected)
+	// without having to read the rest of an upload that will not fit anyway.
 	src := io.LimitReader(io.MultiReader(bytes.NewReader(head), r), MaxAssetSize+1)
 	size, err := io.Copy(io.MultiWriter(tmp, sum), src)
 	if err != nil {
 		return Ref{}, err
 	}
 	if size > MaxAssetSize {
-		return Ref{}, fmt.Errorf("%w: oltre %d byte", ErrAssetTooLarge, MaxAssetSize)
+		return Ref{}, fmt.Errorf("%w: over %d bytes", ErrAssetTooLarge, MaxAssetSize)
 	}
 	if err := tmp.Sync(); err != nil {
 		return Ref{}, err
@@ -273,10 +273,10 @@ func (a *Assets) Put(r io.Reader) (Ref, error) {
 
 	hash := hex.EncodeToString(sum.Sum(nil))
 	path := filepath.Join(dir, hash)
-	// Già presente: la stessa immagine è già immagazzinata, e i byte sono per
-	// costruzione gli stessi (è lo stesso sha256). Non si riscrive -- rinominare
-	// sopra un file che qualcuno sta servendo fallisce su Windows, e non ci
-	// sarebbe comunque niente da cambiare.
+	// Already present: the same image is already stored, and the bytes are by
+	// construction the same (it is the same sha256). It is not rewritten -- renaming
+	// over a file someone is serving fails on Windows, and there would be
+	// nothing to change anyway.
 	if _, err := os.Stat(path); err == nil {
 		return Ref{Hash: hash, Size: size, ContentType: ct}, nil
 	} else if !os.IsNotExist(err) {
@@ -286,19 +286,19 @@ func (a *Assets) Put(r io.Reader) (Ref, error) {
 		return Ref{}, err
 	}
 	committed = true
-	// La directory va fsyncata perché la voce appena creata sia durabile, non
-	// solo i suoi byte (no-op su Windows, vedi syncDir).
+	// The directory must be fsynced so that the newly created entry is durable, not
+	// only its bytes (no-op on Windows, see syncDir).
 	if err := syncDir(dir); err != nil {
 		return Ref{}, err
 	}
 	return Ref{Hash: hash, Size: size, ContentType: ct}, nil
 }
 
-// Open apre l'asset e ne ritorna il riferimento. Il chiamante chiude il file.
+// Open opens the asset and returns its reference. The caller closes the file.
 //
-// Il Content-Type si RICALCOLA dai byte sul disco invece di fidarsi di
-// qualcosa scritto a fianco: è la stessa allowlist della scrittura, quindi un
-// file finito lì per altre vie (una copia a mano) non può farsi servire come
+// The Content-Type is RECOMPUTED from the bytes on disk instead of trusting
+// something written alongside: it is the same allowlist as the write, so a
+// file that ended up there by other means (a manual copy) cannot get itself served as
 // HTML.
 func (a *Assets) Open(hash string) (*os.File, Ref, error) {
 	path, err := a.Path(hash)

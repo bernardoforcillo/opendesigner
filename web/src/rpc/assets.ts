@@ -1,44 +1,44 @@
-// IL CLIENT DEGLI ASSET — due funzioni, una per verso.
+// THE ASSET CLIENT — two functions, one per direction.
 //
-// Non passa da Connect, ed è una scelta, non una scorciatoia. Il design
-// prevedeva `UploadAsset` come client-stream: il `fetch` dei browser non sa
-// mandare un request body in streaming, quindi un client-stream Connect non è
-// raggiungibile da qui (è la stessa ragione per cui il `Sync` bidi del design è
-// diventato unary + server-stream, vedi il .proto). E la discesa deve comunque
-// essere un URL che un `<img src>` sa caricare da solo: un unary che risponde
-// JSON con del base64 dentro costerebbe un terzo di byte in più e un blob da
-// montare a mano. Il percorso asset sta quindi tutto dietro
+// It does not go through Connect, and that is a choice, not a shortcut. The design
+// called for `UploadAsset` as a client-stream: browsers' `fetch` cannot
+// send a streaming request body, so a Connect client-stream is not
+// reachable from here (it is the same reason the design's bidi `Sync` became
+// unary + server-stream, see the .proto). And the download must anyway be
+// a URL that an `<img src>` can load on its own: a unary that answers
+// JSON with base64 inside would cost a third more bytes and a blob to
+// mount by hand. The asset path therefore sits entirely behind
 // internal/server/assets.go.
 
-// Il prefisso è /assets-api/ e NON /assets/: `opendesigner serve` serve il frontend
-// compilato dalla radice, e Vite scrive i propri bundle in dist/assets/. Il
-// proxy di sviluppo (web/vite.config.ts) inoltra già questo prefisso a :8080.
+// The prefix is /assets-api/ and NOT /assets/: `opendesigner serve` serves the compiled
+// frontend from the root, and Vite writes its own bundles in dist/assets/. The
+// development proxy (web/vite.config.ts) already forwards this prefix to :8080.
 export const ASSET_PREFIX = "/assets-api";
 
 /**
- * L'URL da cui il browser carica un asset. È quello che finisce in un
- * `<img src>` (renderer/imageCache.ts) e nell'href di un export SVG.
+ * The URL from which the browser loads an asset. It is what ends up in an
+ * `<img src>` (renderer/imageCache.ts) and in the href of an SVG export.
  *
- * `encodeURIComponent` su entrambi i segmenti: sono dati, non pezzi di
- * percorso. Il server rifiuta comunque tutto ciò che non è un UUID e un hash,
- * ma costruire l'URL codificando è ciò che impedisce a questo lato di
- * FORMULARE una richiesta con dentro una barra.
+ * `encodeURIComponent` on both segments: they are data, not pieces of
+ * path. The server rejects anything that is not a UUID and a hash anyway,
+ * but building the URL with encoding is what prevents this side from
+ * FORMULATING a request with a slash inside.
  */
 export function assetUrl(docId: string, hash: string): string {
   return `${ASSET_PREFIX}/${encodeURIComponent(docId)}/${encodeURIComponent(hash)}`;
 }
 
-/** La risposta a un upload: l'hash è l'unica parte che finisce nel modello. */
+/** The response to an upload: the hash is the only part that ends up in the model. */
 export interface AssetRef {
   hash: string;
   size: number;
   contentType: string;
 }
 
-// Un hash è 64 esadecimali minuscoli (lo sha256 che stampa il server). La
-// risposta si valida invece di fidarsi: quello che arriva di qui finisce dentro
-// un op, cioè nell'op-log, e un hash malformato ci resterebbe per sempre --
-// puntando a un asset che nessuna GET potrà mai servire.
+// A hash is 64 lowercase hex digits (the sha256 the server prints). The
+// response is validated rather than trusted: what comes from here ends up inside
+// an op, that is in the op-log, and a malformed hash would stay there forever --
+// pointing to an asset that no GET could ever serve.
 const HASH_RE = /^[0-9a-f]{64}$/;
 
 export function isAssetHash(hash: string): boolean {
@@ -46,15 +46,15 @@ export function isAssetHash(hash: string): boolean {
 }
 
 /**
- * Carica un file e ritorna il suo riferimento.
+ * Uploads a file and returns its reference.
  *
- * Il body è il file NUDO, senza multipart: c'è un solo file per richiesta e non
- * ci sono campi che lo accompagnano, quindi un involucro multipart aggiungerebbe
- * solo un parser da entrambi i lati. Il browser mette il body in streaming da
- * sé, al livello del trasporto: nessun framing di chunk da inventare.
+ * The body is the BARE file, without multipart: there is a single file per request and
+ * no fields accompanying it, so a multipart envelope would only add
+ * a parser on both sides. The browser streams the body on its
+ * own, at the transport level: no chunk framing to invent.
  *
- * `fetchFn` è iniettabile perché `fetch` non esiste in ogni ambiente di test, ed
- * è l'unico contatto con la rete di tutto il percorso immagini.
+ * `fetchFn` is injectable because `fetch` does not exist in every test environment, and it
+ * is the only contact with the network in the whole image path.
  */
 export async function uploadAsset(
   docId: string,
@@ -63,9 +63,9 @@ export async function uploadAsset(
 ): Promise<AssetRef> {
   const res = await fetchFn(`${ASSET_PREFIX}/${encodeURIComponent(docId)}`, {
     method: "POST",
-    // Il Content-Type dichiarato dal client non decide niente sul server (il
-    // tipo lo riconosce dai byte, vedi store.DetectImageType): viaggia perché è
-    // vero, non perché qualcuno se ne fidi.
+    // The Content-Type declared by the client decides nothing on the server (it
+    // recognizes the type from the bytes, see store.DetectImageType): it travels because it is
+    // true, not because anyone trusts it.
     headers: file.type ? { "Content-Type": file.type } : undefined,
     body: file,
   });
@@ -74,7 +74,7 @@ export async function uploadAsset(
   }
   const body = (await res.json()) as Partial<AssetRef>;
   if (typeof body?.hash !== "string" || !isAssetHash(body.hash)) {
-    throw new Error("il server ha risposto senza un hash valido");
+    throw new Error("the server responded without a valid hash");
   }
   return {
     hash: body.hash,
@@ -83,18 +83,18 @@ export async function uploadAsset(
   };
 }
 
-// Il messaggio che l'utente legge. Gli stati che il server produce davvero
-// hanno una frase propria, perché dicono CHE COSA FARE; per tutto il resto
-// resta il codice, che è più utile di un "errore sconosciuto".
+// The message the user reads. The statuses the server really produces
+// have a sentence of their own, because they say WHAT TO DO; for everything else
+// the code remains, which is more useful than an "unknown error".
 export function uploadErrorMessage(status: number): string {
   switch (status) {
     case 415:
-      return "questo formato non è supportato: usa PNG, JPEG, GIF o WebP";
+      return "this format is not supported: use PNG, JPEG, GIF or WebP";
     case 413:
-      return "l'immagine è troppo grande (il limite è 32 MB)";
+      return "the image is too large (the limit is 32 MB)";
     case 404:
-      return "il documento non esiste più sul server";
+      return "the document no longer exists on the server";
     default:
-      return `il server ha risposto ${status}`;
+      return `the server responded ${status}`;
   }
 }

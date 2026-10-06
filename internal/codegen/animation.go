@@ -11,30 +11,30 @@ import (
 	"github.com/bernardoforcillo/opendesigner/internal/core"
 )
 
-// ANIMAZIONI -- dal modello (Document.clips) all'IR.
+// ANIMATIONS -- from the model (Document.clips) to the IR.
 //
-// Una clip ha un nodo TARGET (schermata, gruppo, SVG) e tracce su nodi che gli
-// stanno dentro. Il target è l'ELEMENTO che porta il trigger (mount, :hover,
-// :active); gli elementi animati sono i suoi discendenti (o lui stesso). Questo
-// file fa il lavoro comune ai due renderer: compila ogni traccia in una forma
-// neutra (valori già nello spazio del target di codice, tempi 0..1 della clip,
-// easing normalizzati) e la aggancia agli Element dell'IR. react.go la scrive
-// come varianti di Motion, html.go come @keyframes CSS.
+// A clip has a TARGET node (screen, group, SVG) and tracks on nodes inside it.
+// The target is the ELEMENT that carries the trigger (mount, :hover,
+// :active); the animated elements are its descendants (or itself). This
+// file does the work common to the two renderers: it compiles each track into
+// a neutral form (values already in the code target's space, clip times
+// 0..1, normalised easings) and attaches it to the IR's Elements. react.go
+// writes it as Motion variants, html.go as CSS @keyframes.
 //
-// Spazio dei valori (le proprietà del modello sono ASSOLUTE, il codice animato
-// è RELATIVO alla posizione di base che CSS/Tailwind hanno già scritto):
+// Value space (the model's properties are ABSOLUTE, the animated code is
+// RELATIVE to the base position that CSS/Tailwind have already written):
 //
-//	opacity   assoluta                                  opacity
-//	x / y     delta da node.x / node.y                  Motion x/y, CSS --od-x/--od-y
-//	scale     moltiplicatore                            scale
-//	rotation  delta da node.rotation, in gradi          Motion rotate, CSS `rotate`
-//	draw      0..1 di tracciato disegnato               Motion pathLength, CSS stroke-dasharray
+//	opacity   absolute                                opacity
+//	x / y     delta from node.x / node.y              Motion x/y, CSS --od-x/--od-y
+//	scale     multiplier                              scale
+//	rotation  delta from node.rotation, in degrees    Motion rotate, CSS `rotate`
+//	draw      0..1 of the path drawn                  Motion pathLength, CSS stroke-dasharray
 //
-// La rotazione di base dei nodi esce come `rotate-[Ndeg]` (proprietà CSS
-// `rotate`) o `transform: rotate()`: il `transform` inline di Motion e la
-// proprietà `rotate` di CSS COMPONGONO con essa, quindi il delta è giusto.
+// The nodes' base rotation comes out as `rotate-[Ndeg]` (CSS `rotate`
+// property) or `transform: rotate()`: Motion's inline `transform` and CSS's
+// `rotate` property COMPOSE with it, so the delta is right.
 
-// Nomi delle varianti per trigger. `manual` ha il nome della clip.
+// Variant names per trigger. `manual` uses the clip's name.
 const (
 	variantInitial = "initial"
 	variantAnimate = "animate"
@@ -42,24 +42,24 @@ const (
 	variantTap     = "tap"
 )
 
-// animProp è UNA traccia compilata.
+// animProp is ONE compiled track.
 type animProp struct {
 	Prop string // opacity | x | y | scale | rotation | draw
-	// Values/Times: i keyframe con i valori nello spazio del codice e i tempi
-	// normalizzati su [0,1] della durata della clip. Se il primo keyframe non è a
-	// 0 (o l'ultimo non è alla fine) si aggiungono gli estremi di "hold".
+	// Values/Times: the keyframes with the values in code space and the times
+	// normalised to [0,1] of the clip's duration. If the first keyframe is not at
+	// 0 (or the last is not at the end) "hold" endpoints are added.
 	Values, Times []float64
-	// Easings[i] è l'easing del segmento i -> i+1 (len = len(Values)-1), già
-	// normalizzato ("linear", "easeIn", "easeOut", "easeInOut", "spring" o
+	// Easings[i] is the easing of segment i -> i+1 (len = len(Values)-1), already
+	// normalised ("linear", "easeIn", "easeOut", "easeInOut", "spring" or
 	// "cubic-bezier(a,b,c,d)").
 	Easings  []string
 	Duration float64 // ms
 	Delay    float64 // ms
-	Repeat   int32   // ripetizioni extra; -1 = infinito
+	Repeat   int32   // extra repetitions; -1 = infinite
 	Yoyo     bool
 }
 
-// constant: una traccia con un solo valore (un solo keyframe) non anima nulla.
+// constant: a track with a single value (a single keyframe) animates nothing.
 func (p animProp) constant() bool {
 	for _, v := range p.Values {
 		if v != p.Values[0] {
@@ -71,29 +71,29 @@ func (p animProp) constant() bool {
 
 type animItem struct {
 	Trigger  string // enter | loop | hover | tap | manual
-	Key      string // nome della variante (Motion) / classe di avvio (manual)
+	Key      string // variant name (Motion) / start class (manual)
 	ClipID   string
 	ClipName string
-	HostID   string // il target della clip (id del nodo)
+	HostID   string // the clip's target (node id)
 	animProp
 }
 
-// animHost: l'elemento è il target di una clip con questo trigger.
+// animHost: the element is the target of a clip with this trigger.
 type animHost struct {
 	Trigger  string
 	Key      string
 	ClipName string
 }
 
-// ElemAnim: ciò che le clip dicono di UN elemento dell'IR.
+// ElemAnim: what the clips say about ONE IR element.
 type ElemAnim struct {
-	Items []animItem // tracce che animano l'elemento
-	Hosts []animHost // clip di cui l'elemento è il target
-	// VarName: il nome della costante delle varianti (assegnato dal renderer React).
+	Items []animItem // tracks that animate the element
+	Hosts []animHost // clips whose target is the element
+	// VarName: the name of the variants constant (assigned by the React renderer).
 	VarName string
-	// HasInitial: la costante ha una variante `initial`.
+	// HasInitial: the constant has an `initial` variant.
 	HasInitial bool
-	// RestStyle: i valori a riposo da scrivere in `style={{...}}` (restStyle).
+	// RestStyle: the resting values to write in `style={{...}}` (restStyle).
 	RestStyle []string
 }
 
@@ -106,8 +106,8 @@ func (a *ElemAnim) hasTrigger(t string) bool {
 	return false
 }
 
-// numN: come num ma con `digits` decimali (i tempi normalizzati e le percentuali
-// vogliono più precisione dei px).
+// numN: like num but with `digits` decimals (normalised times and percentages
+// need more precision than px).
 func numN(v float64, digits int) string {
 	if math.IsNaN(v) || math.IsInf(v, 0) {
 		return "0"
@@ -120,7 +120,7 @@ func numN(v float64, digits int) string {
 	return strconv.FormatFloat(v, 'f', -1, 64)
 }
 
-// camel: "Hover card" -> "hoverCard"; non comincia mai con una cifra.
+// camel: "Hover card" -> "hoverCard"; never starts with a digit.
 func camel(name, fallback string) string {
 	ws := words(name)
 	if len(ws) == 0 {
@@ -141,7 +141,7 @@ func camel(name, fallback string) string {
 	return s
 }
 
-// normEasing: "" -> "linear"; il resto resta com'è (già validato dal core).
+// normEasing: "" -> "linear"; the rest stays as is (already validated by the core).
 func normEasing(e string) string {
 	if e == "" {
 		return "linear"
@@ -152,12 +152,12 @@ func normEasing(e string) string {
 	return e
 }
 
-// springBezier è l'approssimazione cubic-bezier della molla smorzata
-// criticamente del motore (web/src/animation/engine.ts::SPRING_BEZIER): Motion
-// (ease per segmento) e CSS non hanno molle per segmento.
+// springBezier is the cubic-bezier approximation of the engine's critically
+// damped spring (web/src/animation/engine.ts::SPRING_BEZIER): Motion
+// (per-segment ease) and CSS have no per-segment springs.
 const springBezier = "cubic-bezier(0.32,0.66,0.1,1)"
 
-// compileTrack traduce una traccia del modello nello spazio del codice.
+// compileTrack translates a model track into code space.
 func compileTrack(c *opendesignerv1.Clip, t *opendesignerv1.Track, n *opendesignerv1.Node) animProp {
 	p := animProp{
 		Prop: t.GetProp(), Duration: c.GetDuration(), Delay: c.GetDelay(),
@@ -207,10 +207,10 @@ func compileTrack(c *opendesignerv1.Clip, t *opendesignerv1.Track, n *opendesign
 	return p
 }
 
-// planAnimations legge le clip del documento che appartengono alla schermata
-// `screen` (il target è la schermata o un suo discendente) e prepara, per id di
-// nodo, l'animazione di ogni elemento. Ordine deterministico: clip per id, poi
-// tracce nell'ordine della clip.
+// planAnimations reads the document's clips that belong to the screen
+// `screen` (the target is the screen or one of its descendants) and prepares,
+// per node id, each element's animation. Deterministic order: clips by id, then
+// tracks in the clip's order.
 func (b *builder) planAnimations(screen *opendesignerv1.Node) {
 	b.anim = map[string]*ElemAnim{}
 	d := b.doc
@@ -252,12 +252,12 @@ func (b *builder) planAnimations(screen *opendesignerv1.Node) {
 				continue
 			}
 			if !(n.GetId() == target.GetId() || core.IsAncestorOf(d, target.GetId(), n.GetId())) {
-				b.warn("clip %q: la traccia %s di %q non è dentro il target %q: ignorata (la clip anima solo il target e i suoi discendenti)", label, t.GetProp(), nameOrID(d, n.GetId()), nameOrID(d, target.GetId()))
+				b.warn("clip %q: track %s of %q is not inside the target %q: ignored (the clip only animates the target and its descendants)", label, t.GetProp(), nameOrID(d, n.GetId()), nameOrID(d, target.GetId()))
 				continue
 			}
 			if t.GetProp() == "draw" {
 				if _, isVec := n.GetShape().(*opendesignerv1.Node_Vector); !isVec {
-					b.warn("clip %q: draw su %q, che non è un vettoriale (il codice disegna rect/ellisse/frame come box, senza tracciato): ignorata", label, nameOrID(d, n.GetId()))
+					b.warn("clip %q: draw on %q, which is not a vector (the code draws rect/ellipse/frame as boxes, with no path): ignored", label, nameOrID(d, n.GetId()))
 					continue
 				}
 			}
@@ -266,7 +266,7 @@ func (b *builder) planAnimations(screen *opendesignerv1.Node) {
 				continue
 			}
 			if trigger == "loop" {
-				p.Repeat = -1 // "loop" è per definizione senza fine
+				p.Repeat = -1 // "loop" is endless by definition
 			}
 			a := b.anim[n.GetId()]
 			if a == nil {
@@ -287,9 +287,9 @@ func (b *builder) planAnimations(screen *opendesignerv1.Node) {
 	}
 }
 
-// attachAnim aggancia l'animazione pianificata all'elemento `el` del nodo `n`.
-// Le tracce `draw` di un vettoriale vanno sul SUO path del tratto (un
-// <path> dentro l'<svg>), le altre sull'elemento.
+// attachAnim attaches the planned animation to the element `el` of node `n`.
+// The `draw` tracks of a vector go on ITS stroke path (a <path> inside the
+// <svg>), the others on the element.
 func (b *builder) attachAnim(el *Element, n *opendesignerv1.Node) {
 	a := b.anim[n.GetId()]
 	if a == nil {
@@ -310,13 +310,13 @@ func (b *builder) attachAnim(el *Element, n *opendesignerv1.Node) {
 		for _, ch := range el.Children {
 			if ch.StrokePath {
 				ch.Anim = &ElemAnim{Items: draw}
-				ch.NodeName = el.NodeName + " tratto" // nome della costante/classe: "firmaTrattoVariants"
+				ch.NodeName = el.NodeName + " stroke" // name of the constant/class: "signatureStrokeVariants"
 			}
 		}
 	}
 }
 
-// animSetVariants: l'ordine di emissione delle varianti di un elemento.
+// animSetVariants: the emission order of an element's variants.
 func (a *ElemAnim) variantKeys(hasInitial bool) []string {
 	var keys []string
 	seen := map[string]bool{}
@@ -344,7 +344,7 @@ func (a *ElemAnim) variantKeys(hasInitial bool) []string {
 	return keys
 }
 
-// collectAnimated: gli elementi animati dell'albero, in pre-ordine.
+// collectAnimated: the tree's animated elements, in pre-order.
 func collectAnimated(root *Element) []*Element {
 	var out []*Element
 	root.walk(func(e *Element) {
@@ -359,7 +359,7 @@ func collectAnimated(root *Element) []*Element {
 // React / Motion
 // ---------------------------------------------------------------------------
 
-// motionProp: il nome della proprietà in Motion.
+// motionProp: the property name in Motion.
 func motionProp(p string) string {
 	switch p {
 	case "rotation":
@@ -370,7 +370,7 @@ func motionProp(p string) string {
 	return p
 }
 
-// motionEase: l'easing di un segmento nella sintassi di Motion.
+// motionEase: a segment's easing in Motion syntax.
 func motionEase(e string) string {
 	switch e {
 	case "linear", "easeIn", "easeOut", "easeInOut":
@@ -392,8 +392,8 @@ func motionNums(vs []float64, digits int) string {
 	return "[" + strings.Join(parts, ", ") + "]"
 }
 
-// motionValue: il valore da animare: un numero se costante, altrimenti l'array
-// dei keyframe.
+// motionValue: the value to animate: a number if constant, otherwise the
+// keyframe array.
 func motionValue(p animProp) string {
 	if p.constant() {
 		return numN(p.Values[0], 3)
@@ -402,8 +402,8 @@ func motionValue(p animProp) string {
 }
 
 // motionTransition: `{ duration: .., delay: .., repeat: .., times: [..], ease: .. }`
-// di UNA proprietà. La durata di ogni proprietà è quella della clip: i `times`
-// normalizzano i keyframe su di essa.
+// of ONE property. Each property's duration is the clip's: the `times`
+// normalise the keyframes over it.
 func motionTransition(p animProp) string {
 	parts := []string{"duration: " + numN(p.Duration/1000, 4)}
 	if p.Delay > 0 {
@@ -442,9 +442,9 @@ func motionTransition(p animProp) string {
 	return "{ " + strings.Join(parts, ", ") + " }"
 }
 
-// restValue: il valore a riposo di una proprietà (quello del design: i delta
-// valgono 0, la scala 1, il tracciato è tutto disegnato, l'opacità è quella
-// scritta nello stile dell'elemento).
+// restValue: a property's resting value (the design's: deltas are 0, scale
+// is 1, the path is fully drawn, opacity is the one written in the element's
+// style).
 func restValue(prop string, e *Element) string {
 	switch prop {
 	case "opacity":
@@ -458,8 +458,8 @@ func restValue(prop string, e *Element) string {
 	return "0"
 }
 
-// initialValues: la variante `initial` di un elemento: il primo keyframe delle
-// clip enter/loop (lo stato prima che partano).
+// initialValues: an element's `initial` variant: the first keyframe of the
+// enter/loop clips (the state before they start).
 func initialValues(e *Element) (props []string, vals map[string]string) {
 	vals = map[string]string{}
 	for _, it := range e.Anim.Items {
@@ -473,12 +473,12 @@ func initialValues(e *Element) (props []string, vals map[string]string) {
 	return props, vals
 }
 
-// restStyle: il valore a riposo delle proprietà animate SOLO da hover/tap/
-// manuali, come `style={{...}}`. Motion, quando un gesto finisce, riporta ogni
-// valore al suo riposo (animate, initial o style): senza, l'hover non tornerebbe
-// mai indietro. Si usa `style` e NON `initial="initial"` sul figlio: una prop
-// `initial` fa dell'elemento un controllore di varianti a sé, che smette di
-// ereditare le etichette (hover, animate) del target.
+// restStyle: the resting value of properties animated ONLY by hover/tap/
+// manual clips, as `style={{...}}`. When a gesture ends, Motion brings every
+// value back to its rest (animate, initial or style): without it, hover would
+// never go back. `style` is used and NOT `initial="initial"` on the child: an
+// `initial` prop makes the element a variants controller of its own, which
+// stops inheriting the target's labels (hover, animate).
 func restStyle(e *Element) []string {
 	inAnimate := map[string]bool{}
 	for _, it := range e.Anim.Items {
@@ -498,10 +498,10 @@ func restStyle(e *Element) []string {
 	return out
 }
 
-// reactVariants scrive la costante `const <name>: Variants = {...}` di un
-// elemento animato: UNA variante per trigger (initial/animate/hover/tap, più
-// una per clip manuale), che unisce le clip che toccano l'elemento. Se due clip
-// con lo stesso trigger animano la STESSA proprietà vince l'ultima (per id).
+// reactVariants writes the constant `const <name>: Variants = {...}` of an
+// animated element: ONE variant per trigger (initial/animate/hover/tap, plus
+// one per manual clip), merging the clips that touch the element. If two clips
+// with the same trigger animate the SAME property the last one (by id) wins.
 func reactVariants(e *Element) (string, []string) {
 	a := e.Anim
 	initProps, initVals := initialValues(e)
@@ -528,7 +528,7 @@ func reactVariants(e *Element) (string, []string) {
 			fmt.Fprintf(&b, "  initial: { %s },\n", strings.Join(kv, ", "))
 			continue
 		}
-		// le proprietà della variante, l'ultima clip vince per proprietà
+		// the variant's properties, the last clip wins per property
 		var props []animProp
 		idx := map[string]int{}
 		for _, it := range a.Items {
@@ -537,7 +537,7 @@ func reactVariants(e *Element) (string, []string) {
 			}
 			if i, dup := idx[it.Prop]; dup {
 				props[i] = it.animProp
-				warns = append(warns, fmt.Sprintf("più clip %s animano %s dello stesso elemento: vince %q", it.Trigger, it.Prop, it.ClipName))
+				warns = append(warns, fmt.Sprintf("several %s clips animate %s of the same element: %q wins", it.Trigger, it.Prop, it.ClipName))
 				continue
 			}
 			idx[it.Prop] = len(props)
@@ -562,7 +562,7 @@ func reactVariants(e *Element) (string, []string) {
 	return b.String(), warns
 }
 
-// tsKey: la chiave di un oggetto TS (identificatore semplice o stringa).
+// tsKey: the key of a TS object (simple identifier or string).
 func tsKey(k string) string {
 	for i, r := range k {
 		ok := r == '_' || r == '$' || (r >= 'a' && r <= 'z') || (r >= 'A' && r <= 'Z') || (i > 0 && r >= '0' && r <= '9')
@@ -573,7 +573,7 @@ func tsKey(k string) string {
 	return k
 }
 
-// hostLabels: le prop JSX con cui il TARGET innesca le varianti dei figli.
+// hostLabels: the JSX props with which the TARGET fires its children's variants.
 func hostLabels(a *ElemAnim) (labels []string, comments []string) {
 	if a == nil {
 		return nil, nil
@@ -589,14 +589,14 @@ func hostLabels(a *ElemAnim) (labels []string, comments []string) {
 	}
 	for _, h := range a.Hosts {
 		if h.Trigger == "manual" {
-			comments = append(comments, fmt.Sprintf("clip manuale %q: per avviarla imposta animate=%s su questo elemento", oneLine(h.ClipName), tsString(h.Key)))
+			comments = append(comments, fmt.Sprintf("manual clip %q: to start it set animate=%s on this element", oneLine(h.ClipName), tsString(h.Key)))
 		}
 	}
 	return labels, comments
 }
 
-// reactAnimations assegna i nomi delle costanti agli elementi animati di una
-// schermata e ritorna il codice delle costanti (vuoto se non ce ne sono).
+// reactAnimations assigns the constant names to the animated elements of a
+// screen and returns the constants' code (empty if there are none).
 func reactAnimations(root *Element) (code string, warns []string) {
 	used := map[string]bool{}
 	var sb strings.Builder
@@ -620,7 +620,7 @@ func reactAnimations(root *Element) (code string, warns []string) {
 // HTML / CSS
 // ---------------------------------------------------------------------------
 
-// cssEase: l'easing di un segmento come `animation-timing-function`.
+// cssEase: a segment's easing as `animation-timing-function`.
 func cssEase(e string) string {
 	switch e {
 	case "linear":
@@ -637,7 +637,7 @@ func cssEase(e string) string {
 	return e
 }
 
-// cssDecl: la dichiarazione di un valore nei @keyframes.
+// cssDecl: the declaration of a value in the @keyframes.
 func cssDecl(prop string, v float64) string {
 	switch prop {
 	case "opacity":
@@ -656,15 +656,15 @@ func cssDecl(prop string, v float64) string {
 	return ""
 }
 
-// cssKeyframes scrive `@keyframes <name> { ... }`: percentuali della durata
-// della clip, easing del segmento nel keyframe che lo apre. Keyframe allo stesso
-// tempo (scatto) si distanziano di 0.0001%: due blocchi con la stessa percentuale
-// si fonderebbero e lo scatto andrebbe perso.
+// cssKeyframes writes `@keyframes <name> { ... }`: percentages of the clip's
+// duration, the segment's easing in the keyframe that opens it. Keyframes at
+// the same time (a jump) are spaced 0.0001% apart: two blocks with the same
+// percentage would merge and the jump would be lost.
 func cssKeyframes(name string, p animProp) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "@keyframes %s {\n", name)
 	values, times := p.Values, p.Times
-	if len(values) == 1 { // costante: 0% e 100%
+	if len(values) == 1 { // constant: 0% and 100%
 		values, times = []float64{values[0], values[0]}, []float64{0, 1}
 	}
 	prev := -1.0
@@ -684,7 +684,7 @@ func cssKeyframes(name string, p animProp) string {
 	return b.String()
 }
 
-// cssAnimation: un elemento della lista `animation:`.
+// cssAnimation: an item of the `animation:` list.
 func cssAnimation(name string, p animProp) string {
 	count := "1"
 	switch {

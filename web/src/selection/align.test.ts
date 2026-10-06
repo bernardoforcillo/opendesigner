@@ -29,8 +29,8 @@ function sceneWith(nodes: NodeLite[]): SceneState {
   return s;
 }
 
-// Doppio del trasporto (come in tools/selectTool.test.ts): registra gli op che
-// finiscono sul filo e li conferma subito.
+// Double of the transport (as in tools/selectTool.test.ts): records the ops that
+// end up on the wire and confirms them immediately.
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
@@ -55,7 +55,7 @@ describe("alignDelta", () => {
   });
 
   it("centres put centre on centre", () => {
-    // centro di B: (60, 40); centro del bersaglio: (100, 100).
+    // center of B: (60, 40); center of the target: (100, 100).
     expect(alignDelta(B, TARGET, "hcenter")).toEqual({ dx: 40, dy: 0 });
     expect(alignDelta(B, TARGET, "middle")).toEqual({ dx: 0, dy: 60 });
   });
@@ -83,7 +83,7 @@ describe("distributeDeltas", () => {
   });
 
   it("equalises the GAPS and keeps the two extremes where they are", () => {
-    // Larghezze 10/20/10 fra 0 e 100: spazio libero 60, due intervalli -> 30.
+    // Widths 10/20/10 between 0 and 100: free space 60, two gaps -> 30.
     const boxes = [
       { x: 0, y: 0, width: 10, height: 10 },
       { x: 15, y: 0, width: 20, height: 10 },
@@ -92,7 +92,7 @@ describe("distributeDeltas", () => {
     const d = distributeDeltas(boxes, "x");
     expect(d[0]).toEqual({ dx: 0, dy: 0 });
     expect(d[2]).toEqual({ dx: 0, dy: 0 });
-    // Il box di mezzo parte a 40 (0 + 10 + 30).
+    // The middle box starts at 40 (0 + 10 + 30).
     expect(d[1]).toEqual({ dx: 25, dy: 0 });
   });
 
@@ -102,10 +102,10 @@ describe("distributeDeltas", () => {
       { x: 0, y: 5, width: 10, height: 10 },
       { x: 0, y: 50, width: 10, height: 10 },
     ];
-    // Altezze 10/10/10 fra 0 e 60: spazio libero 30, due intervalli -> 15.
+    // Heights 10/10/10 between 0 and 60: free space 30, two gaps -> 15.
     const d = distributeDeltas(boxes, "y");
     expect(d[0]).toEqual({ dx: 0, dy: 0 });
-    expect(d[1]).toEqual({ dx: 0, dy: 20 }); // da 5 a 25 (0 + 10 + 15)
+    expect(d[1]).toEqual({ dx: 0, dy: 20 }); // from 5 to 25 (0 + 10 + 15)
     expect(d[2]).toEqual({ dx: 0, dy: 0 });
   });
 
@@ -113,7 +113,7 @@ describe("distributeDeltas", () => {
     const a = { x: 0, y: 0, width: 10, height: 10 };
     const b = { x: 15, y: 0, width: 20, height: 10 };
     const c = { x: 90, y: 0, width: 10, height: 10 };
-    // Stessa geometria, lista rimescolata: ogni box riceve lo stesso delta.
+    // Same geometry, shuffled list: every box receives the same delta.
     const straight = distributeDeltas([a, b, c], "x");
     const shuffled = distributeDeltas([c, a, b], "x");
     expect(shuffled).toEqual([straight[2], straight[0], straight[1]]);
@@ -130,28 +130,28 @@ describe("distributeDeltas", () => {
     expect(at[1] - at[0]).toBeCloseTo(at[2] - at[1], 10);
   });
 
-  // I due test qui sotto guardano lo ZERO ESATTO degli estremi, che i casi a
-  // numeri tondi qui sopra non possono vedere: 0/15/90 con larghezze 10/20/10 fa
-  // tornare i conti anche con un accumulatore, perché ogni somma è esatta in
-  // binario. Su coordinate qualunque no -- e "quasi zero" non è zero per
-  // alignOps, che ci manda sopra un op.
+  // The two tests below look at the EXACT ZERO of the extremes, which the
+  // round-number cases above cannot see: 0/15/90 with widths 10/20/10 makes
+  // the math work out even with an accumulator, because every sum is exact in
+  // binary. On arbitrary coordinates it does not -- and "almost zero" is not zero for
+  // alignOps, which sends an op for it.
   it("keeps the two extremes EXACTLY put, on coordinates that are not round", () => {
-    // Caso trovato per forza bruta: con `cursor += size + gap` accumulato,
-    // l'ultimo box (a 969.9) riceve -1.1368683772161603e-13 invece di 0.
+    // Case found by brute force: with an accumulated `cursor += size + gap`,
+    // the last box (at 969.9) receives -1.1368683772161603e-13 instead of 0.
     const boxes = [
       { x: 969.9, y: 0, width: 31.8, height: 10 },
       { x: 309.3, y: 0, width: 38.7, height: 10 },
       { x: 456.6, y: 0, width: 28.9, height: 10 },
     ];
     const d = distributeDeltas(boxes, "x");
-    expect(d[0]).toEqual({ dx: 0, dy: 0 }); // l'ultimo in ordine di posizione
-    expect(d[1]).toEqual({ dx: 0, dy: 0 }); // il primo
-    expect(d[2].dx).toBeCloseTo(187.9, 10); // quello di mezzo si muove davvero
+    expect(d[0]).toEqual({ dx: 0, dy: 0 }); // the last one in position order
+    expect(d[1]).toEqual({ dx: 0, dy: 0 }); // the first
+    expect(d[2].dx).toBeCloseTo(187.9, 10); // the middle one really moves
   });
 
   it("keeps them exact over thousands of arbitrary layouts, not just the lucky ones", () => {
-    // PRNG deterministico (mulberry32): il test non è casuale, è sempre la
-    // STESSA batteria di layout -- solo scelti in modo da non essere tondi.
+    // Deterministic PRNG (mulberry32): the test is not random, it is always the
+    // SAME battery of layouts -- just chosen so as not to be round.
     let s = 0x2f6e2b1;
     const rnd = () => {
       s = (s + 0x6d2b79f5) | 0;
@@ -159,9 +159,9 @@ describe("distributeDeltas", () => {
       t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
       return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
     };
-    // Le violazioni si RACCOLGONO e si asseriscono una volta sola: un expect
-    // per giro costerebbe secondi, e il messaggio d'errore utile è comunque il
-    // primo layout che sbaglia, non il numero del giro.
+    // The violations are COLLECTED and asserted once: one expect
+    // per round would cost seconds, and the useful error message is the
+    // first layout that gets it wrong anyway, not the round number.
     const bad: unknown[] = [];
     for (let iter = 0; iter < 5000; iter++) {
       const n = 3 + Math.floor(rnd() * 4);
@@ -182,10 +182,10 @@ describe("distributeDeltas", () => {
 });
 
 describe("alignTarget", () => {
-  // Un nodo solo si allinea CONTRO SÉ STESSO, cioè non si muove. Non esiste
-  // nessuna pagina nel modello contro cui allinearlo, e inventarne una lo
-  // spedirebbe dove il documento non è: vedi il commento su alignTarget e i
-  // test "un nodo solo" più sotto.
+  // A single node aligns AGAINST ITSELF, i.e. does not move. There is
+  // no page in the model to align it against, and inventing one would
+  // send it where the document is not: see the comment on alignTarget and the
+  // "a single node" tests below.
   it("uses the node's OWN box for a single node — there is no page to align it to", () => {
     const scene = sceneWith([node({ id: "a", x: 5, y: 5 })]);
     expect(alignTarget(scene, ["a"])).toEqual({ x: 5, y: 5, width: 10, height: 10 });
@@ -217,7 +217,7 @@ describe("alignOps", () => {
       node({ id: "b", x: 90, y: 40 }),
     ]);
     const ops = alignOps(scene, ["a", "b"], "left");
-    expect(ops).toHaveLength(1); // "a" è già a sinistra: nessun op per lui
+    expect(ops).toHaveLength(1); // "a" is already at the left: no op for it
     const v = ops[0].kind.value as { id: string; patch?: { x: number; y: number }; mask?: { paths: string[] } };
     expect(v.id).toBe("b");
     expect(v.patch?.x).toBe(0);
@@ -239,8 +239,8 @@ describe("alignOps", () => {
     const ops = alignOps(scene, ["a", "r"], "left");
     const v = ops[0].kind.value as { id: string; patch?: { x: number; y: number }; mask?: { paths: string[] } };
     expect(v.id).toBe("r");
-    // L'AABB del nodo ruotato parte a 55 - side/2: portarlo a 0 vuol dire
-    // scrivere una x di 50 - (55 - side/2).
+    // The rotated node's AABB starts at 55 - side/2: bringing it to 0 means
+    // writing an x of 50 - (55 - side/2).
     expect(v.patch?.x).toBeCloseTo(50 - (55 - side / 2), 10);
     expect(v.mask?.paths).toEqual(["x", "y"]);
   });
@@ -251,19 +251,19 @@ describe("alignOps", () => {
       node({ id: "b", x: 15 }),
       node({ id: "c", x: 90 }),
     ]);
-    // Larghezze 10/10/10 fra 0 e 100: spazio libero 70, due intervalli -> 35.
+    // Widths 10/10/10 between 0 and 100: free space 70, two gaps -> 35.
     const ops = alignOps(scene, ["a", "b", "c"], "distribute-h");
-    expect(ops).toHaveLength(1); // gli estremi non si muovono
+    expect(ops).toHaveLength(1); // the extremes do not move
     const v = ops[0].kind.value as { id: string; patch?: { x: number } };
     expect(v.id).toBe("b");
     expect(v.patch?.x).toBe(45);
   });
 
-  // IL CASO CHE SI VEDE: distribuisci, poi ridistribuisci. La seconda volta il
-  // layout è già giusto, quindi non deve viaggiare NIENTE sul filo -- altrimenti
-  // si impila una voce di undo che non disfa niente (il Ctrl+Z successivo non fa
-  // nulla di visibile). Con l'accumulatore in virgola mobile l'estremo riceveva
-  // un delta di -1.1e-13 e l'op partiva a ogni click, all'infinito.
+  // THE CASE YOU SEE: distribute, then redistribute. The second time the
+  // layout is already right, so NOTHING must travel on the wire -- otherwise
+  // an undo entry piles up that undoes nothing (the next Ctrl+Z does
+  // nothing visible). With the floating-point accumulator the extreme received
+  // a delta of -1.1e-13 and the op went out on every click, forever.
   it("emits nothing on a SECOND distribute — and on a third", () => {
     const ids = ["a", "b", "c"];
     const nodes = [
@@ -282,31 +282,31 @@ describe("alignOps", () => {
     };
 
     const first = alignOps(scene, ids, "distribute-h");
-    expect(first).toHaveLength(1); // solo quello di mezzo si muove
+    expect(first).toHaveLength(1); // only the middle one moves
     apply(first);
     expect(alignOps(scene, ids, "distribute-h")).toEqual([]);
     expect(alignOps(scene, ids, "distribute-h")).toEqual([]);
   });
 
-  // UN NODO SOLO NON SI MUOVE, per NESSUNO degli otto comandi.
+  // A SINGLE NODE DOES NOT MOVE, for NONE of the eight commands.
   //
-  // La tela è INFINITA e la camera parte a {0, 0, zoom: 1}: un documento può
-  // vivere legittimamente a x = 10000 e non c'è nessun foglio 1920x1080 lì
-  // sotto. Allineare un rettangolo solo contro un rettangolo inventato
-  // all'origine lo teletrasporterebbe fuori dallo schermo -- e siccome sparisce
-  // dalla vista, non si distingue da "l'ho cancellato per sbaglio": l'unico
-  // rimedio sarebbe indovinare un Ctrl+Z.
-  describe("un nodo solo", () => {
+  // The canvas is INFINITE and the camera starts at {0, 0, zoom: 1}: a document can
+  // legitimately live at x = 10000 and there is no 1920x1080 sheet there
+  // underneath. Aligning a single rectangle against a rectangle invented
+  // at the origin would teleport it off screen -- and since it vanishes
+  // from view, it is indistinguishable from "I deleted it by mistake": the only
+  // remedy would be guessing a Ctrl+Z.
+  describe("a single node", () => {
     const ALIGNS: AlignKind[] = ["left", "hcenter", "right", "top", "middle", "bottom"];
 
-    it("non si muove: nessun comando produce un op", () => {
+    it("does not move: no command produces an op", () => {
       const scene = sceneWith([node({ id: "a", x: 500, y: 500 })]);
       for (const cmd of ALIGN_COMMANDS) {
         expect({ cmd: cmd.id, ops: alignOps(scene, ["a"], cmd.id) }).toEqual({ cmd: cmd.id, ops: [] });
       }
     });
 
-    it("resta dov'è anche lontanissimo dall'origine (x = 10000)", () => {
+    it("stays where it is even very far from the origin (x = 10000)", () => {
       const scene = sceneWith([node({ id: "far", x: 10000, y: 10000, width: 50, height: 50 })]);
       for (const kind of ALIGNS) {
         expect(alignDelta(
@@ -319,7 +319,7 @@ describe("alignOps", () => {
       expect(alignOps(scene, ["far"], "hcenter")).toEqual([]);
     });
 
-    it("nemmeno se è RUOTATO (il suo AABB è comunque il riquadro comune)", () => {
+    it("not even if it is ROTATED (its AABB is still the common box)", () => {
       const scene = sceneWith([node({ id: "r", x: 700, y: 700, width: 10, height: 10, rotation: 30 })]);
       expect(alignOps(scene, ["r"], "left")).toEqual([]);
       expect(alignOps(scene, ["r"], "middle")).toEqual([]);
@@ -334,7 +334,7 @@ describe("alignOps", () => {
   it("covers every command in ALIGN_COMMANDS", () => {
     const scene = sceneWith([node({ id: "a", x: 0 }), node({ id: "b", x: 15 }), node({ id: "c", x: 90, y: 33 })]);
     for (const cmd of ALIGN_COMMANDS) {
-      // Nessun comando esplode e nessuno tocca campi diversi da x/y.
+      // No command blows up and none touches fields other than x/y.
       for (const op of alignOps(scene, ["a", "b", "c"], cmd.id)) {
         expect((op.kind.value as { mask?: { paths: string[] } }).mask?.paths).toEqual(["x", "y"]);
       }
@@ -387,12 +387,12 @@ describe("alignSelection", () => {
     useScene.setState({ selection: ["a", "b"] });
     alignSelection("left");
     sync.sent = [];
-    alignSelection("left"); // già allineati
+    alignSelection("left"); // already aligned
     expect(sync.sent).toHaveLength(0);
     begin.mockRestore();
   });
 
-  it("con un nodo SOLO non manda niente e non apre nessun gesto", () => {
+  it("with a SINGLE node it sends nothing and opens no gesture", () => {
     useScene.setState({ selection: ["a"] });
     for (const cmd of ALIGN_COMMANDS) alignSelection(cmd.id);
     expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0 });
@@ -402,11 +402,11 @@ describe("alignSelection", () => {
   });
 });
 
-// La soglia che il pannello usa per DISABILITARE un pulsante. Sta qui, accanto
-// alla regola che descrive, e non nel pannello: è la stessa cosa che alignOps
-// fa in silenzio (sotto il minimo non produce op), detta prima e a voce alta.
+// The threshold the panel uses to DISABLE a button. It lives here, next to
+// the rule it describes, and not in the panel: it is the same thing alignOps
+// does silently (below the minimum it produces no op), said beforehand and out loud.
 describe("minSelection", () => {
-  it("chiede DUE nodi per allineare e TRE per distribuire", () => {
+  it("asks for TWO nodes to align and THREE to distribute", () => {
     for (const cmd of ["left", "hcenter", "right", "top", "middle", "bottom"] as const) {
       expect({ cmd, n: minSelection(cmd) }).toEqual({ cmd, n: 2 });
     }
@@ -415,15 +415,15 @@ describe("minSelection", () => {
     }
   });
 
-  it("copre ogni comando dell'elenco", () => {
+  it("covers every command of the list", () => {
     for (const cmd of ALIGN_COMMANDS) expect(minSelection(cmd.id)).toBeGreaterThanOrEqual(2);
   });
 
-  // LA GUARDIA: la soglia non è un numero scritto a mano accanto ai pulsanti,
-  // deve essere il punto in cui alignOps smette di produrre op. Con esattamente
-  // minSelection - 1 nodi (tutti fuori posto) non deve partire NIENTE; con
-  // minSelection nodi deve partire qualcosa.
-  it("è esattamente il punto in cui alignOps comincia a produrre op", () => {
+  // THE GUARD: the threshold is not a hand-written number next to the buttons,
+  // it must be the point where alignOps stops producing ops. With exactly
+  // minSelection - 1 nodes (all out of place) nothing must go out; with
+  // minSelection nodes something must go out.
+  it("is exactly the point where alignOps starts producing ops", () => {
     const nodes = [
       node({ id: "a", x: 0, y: 0 }),
       node({ id: "b", x: 40, y: 40 }),

@@ -3,20 +3,20 @@ import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { childrenOf } from "./tree";
 import type { NodeLite, SceneState } from "./types";
 
-// AUTO LAYOUT -- la metà TypeScript di internal/core/layout.go, che è
-// l'AUTORITÀ. Questa copia esiste solo perché il client applica gli op in
-// locale (vista ottimistica e stato confermato) con applyOp: se non rifacesse
-// lo stesso calcolo, il documento che il server ha già disposto e quello che il
-// browser ricostruisce dagli stessi op divergerebbero.
+// AUTO LAYOUT -- the TypeScript half of internal/core/layout.go, which is
+// the AUTHORITY. This copy exists only because the client applies ops
+// locally (optimistic view and confirmed state) with applyOp: if it did not redo
+// the same computation, the document the server has already laid out and the one the
+// browser rebuilds from the same ops would diverge.
 //
-// Deve dare gli STESSI numeri di Go, bit per bit. Per questo le espressioni
-// aritmetiche sono scritte NELLO STESSO ORDINE (a + b + c è (a + b) + c da
-// entrambe le parti) e l'ordine dei figli è quello di childrenOf (order_key, poi
-// id). La fixture testdata/golden/auto_layout.json, eseguita da entrambi i lati,
-// lo fissa.
+// It must give the SAME numbers as Go, bit for bit. For this reason the
+// arithmetic expressions are written IN THE SAME ORDER (a + b + c is (a + b) + c on
+// both sides) and the order of children is that of childrenOf (order_key, then
+// id). The fixture testdata/golden/auto_layout.json, run by both sides,
+// pins it down.
 //
-// Partecipano i figli VISIBILI con una misura propria (rect, ellisse, testo,
-// immagine, vettoriale, frame). Gruppi e istanze restano dove sono.
+// The VISIBLE children with a measure of their own take part (rect, ellipse, text,
+// image, vector, frame). Groups and instances stay where they are.
 
 const LAYOUT_KINDS: ReadonlySet<NodeLite["kind"]> = new Set(["rect", "ellipse", "text", "image", "vector", "frame"]);
 
@@ -28,18 +28,18 @@ export function hasLayout(n: NodeLite | undefined): n is NodeLite & { autoLayout
   return n !== undefined && n.kind === "frame" && n.autoLayout !== undefined;
 }
 
-// Ridispone i figli di UN frame e, se hug, ne ridimensiona gli assi. Muta
-// `nodes` (una mappa PRIVATA di relayout, già copiata) e ritorna se ha cambiato
-// qualcosa.
+// Rearranges the children of ONE frame and, if hug, resizes its axes. Mutates
+// `nodes` (a PRIVATE relayout map, already copied) and returns whether it changed
+// anything.
 function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?: string[]): boolean {
   const frame = nodes.get(id);
   if (!hasLayout(frame)) return false;
   const al = frame.autoLayout;
   const vertical = al.direction === "vertical";
 
-  // Lo stato su cui si calcola è `scene` + le correzioni già scritte in `nodes`:
-  // childrenOf legge dalla scena, quindi gli si passa una vista con i nodi
-  // aggiornati finora.
+  // The state computed on is `scene` + the corrections already written in `nodes`:
+  // childrenOf reads from the scene, so it is given a view with the nodes
+  // updated so far.
   const view: SceneState = { ...scene, nodes: nodes.view() };
   const kids = childrenOf(view, id).filter(participates);
 
@@ -76,8 +76,8 @@ function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?:
     case "center": pos = padMainStart + free / 2; break;
     case "end": pos = padMainStart + free; break;
     case "space-between":
-      // Meno di due figli: niente fra cui distribuire. Spazio che non basta
-      // (free <= 0): non si comprime sotto `spacing`.
+      // Fewer than two children: nothing to distribute among. Not enough space
+      // (free <= 0): do not compress below `spacing`.
       if (kids.length > 1 && free > 0) step = spacing + free / (kids.length - 1);
       break;
     default: break;
@@ -105,9 +105,9 @@ function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?:
   return changed;
 }
 
-// I frame il cui layout può cambiare per effetto di `op`, letti da `scene` --
-// che si interroga PRIMA e DOPO l'op (un nodo cancellato o spostato lascia il
-// vecchio parent solo nello stato di prima). Come layoutTargets in Go.
+// The frames whose layout may change because of `op`, read from `scene` --
+// which is queried BEFORE and AFTER the op (a deleted or moved node leaves the
+// old parent only in the earlier state). Like layoutTargets in Go.
 export function layoutTargets(scene: SceneState, op: Op): string[] {
   const parentOf = (id: string): string[] => {
     const n = scene.nodes.get(id);
@@ -124,11 +124,11 @@ export function layoutTargets(scene: SceneState, op: Op): string[] {
   }
 }
 
-// Ridispone i frame toccati e risale (un hug che cambia misura sposta i
-// fratelli, quindi serve il layout del parent, e così via), dal più profondo:
-// un frame hug annidato deve avere la misura giusta PRIMA che il contenitore la
-// legga. Ritorna la STESSA scena se non cambia nulla, così chi la confronta per
-// identità non ridisegna per niente.
+// Rearranges the touched frames and climbs up (a hug that changes size moves
+// siblings, so the parent's layout is needed, and so on), from the deepest:
+// a nested hug frame must have the right size BEFORE the container
+// reads it. Returns the SAME scene if nothing changes, so whoever compares it by
+// identity does not redraw for nothing.
 export function relayout(scene: SceneState, ids: readonly string[], touchedOut?: string[]): SceneState {
   const seen = new Set<string>();
   const frames: string[] = [];
@@ -138,11 +138,11 @@ export function relayout(scene: SceneState, ids: readonly string[], touchedOut?:
       frames.push(id);
     }
   }
-  // Prima di COPIARE la mappa dei nodi (20.000 voci a 12 ms per un documento
-  // grande): la stragrande maggioranza degli op non tocca nessun frame con auto
-  // layout. Un nodo fuori da un auto layout con un antenato che ne ha uno conta
-  // comunque, ma lo si scopre solo risalendo -- e senza frame toccati non c'è
-  // niente da risalire.
+  // Before COPYING the nodes map (20,000 entries at 12 ms for a large
+  // document): the vast majority of ops touch no frame with auto
+  // layout. A node outside an auto layout with an ancestor that has one counts
+  // anyway, but that is only discovered by climbing -- and without touched frames there is
+  // nothing to climb.
   if (frames.length === 0) return scene;
   const nodes = scene.nodes.edit();
   const limit = scene.nodes.size;

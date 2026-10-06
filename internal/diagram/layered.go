@@ -2,18 +2,18 @@ package diagram
 
 import "sort"
 
-// Disposizione a LIVELLI (stile Sugiyama, versione corta), condivisa da
-// flowchart, classi e stati:
+// LAYERED layout (Sugiyama style, short version), shared by
+// flowchart, class and state diagrams:
 //
-//  1. gli archi di ritorno si invertono con una DFS, così il grafo è un DAG;
-//  2. ogni nodo va al livello del suo percorso più lungo dall'ingresso;
-//  3. gli archi che saltano livelli passano da nodi finti, uno per livello;
-//  4. l'ordine nel livello migliora col baricentro dei vicini;
-//  5. le posizioni trasversali tirano ogni nodo verso i vicini senza sovrapporli.
+//  1. back edges are reversed with a DFS, so the graph is a DAG;
+//  2. every node goes to the level of its longest path from the entry;
+//  3. edges that skip levels pass through dummy nodes, one per level;
+//  4. the order within a level improves with the barycenter of the neighbors;
+//  5. the cross positions pull each node toward its neighbors without overlapping them.
 //
-// Deterministica: stesso input, stessi byte (nessuna iterazione di mappa).
+// Deterministic: same input, same bytes (no map iteration).
 
-// Dir è la direzione del flusso.
+// Dir is the flow direction.
 type Dir int
 
 const (
@@ -27,14 +27,14 @@ func (d Dir) vertical() bool { return d == DirTD || d == DirBT }
 
 type lnode struct{ W, H float64 }
 
-// ledge è un arco da rappresentare; Top/Bottom dicono quale estremo sta
-// "prima" nel flusso (di norma From -> To, ma le classi lo decidono per
-// semantica: il genitore sta sopra anche se la freccia punta verso l'alto).
+// ledge is an edge to be represented; Top/Bottom say which end comes
+// "first" in the flow (normally From -> To, but classes decide it by
+// semantics: the parent sits on top even if the arrow points upward).
 type ledge struct{ From, To int }
 
 type layoutResult struct {
-	Pos   []Pt   // angolo in alto a sinistra di ogni nodo
-	Paths [][]Pt // per arco: dal centro di From al centro di To, passando dai nodi finti; nil per gli auto-anelli
+	Pos   []Pt   // top-left corner of each node
+	Paths [][]Pt // per edge: from the center of From to the center of To, through the dummy nodes; nil for self-loops
 }
 
 func layered(nodes []lnode, edges []ledge, dir Dir, nodeGap, rankGap float64) layoutResult {
@@ -47,7 +47,7 @@ func layered(nodes []lnode, edges []ledge, dir Dir, nodeGap, rankGap float64) la
 			out[e.From] = append(out[e.From], e.To)
 		}
 	}
-	// 1. cicli
+	// 1. cycles
 	state := make([]int, n)
 	back := map[[2]int]bool{}
 	var visit func(u int)
@@ -97,7 +97,7 @@ func layered(nodes []lnode, edges []ledge, dir Dir, nodeGap, rankGap float64) la
 		}
 	}
 
-	// 2. livelli
+	// 2. levels
 	rank := make([]int, n)
 	indeg := make([]int, n)
 	succ := make([][]int, n)
@@ -124,7 +124,7 @@ func layered(nodes []lnode, edges []ledge, dir Dir, nodeGap, rankGap float64) la
 		}
 	}
 
-	// 3. elementi: i nodi veri hanno indice < n, i finti >= n
+	// 3. elements: real nodes have index < n, dummy ones >= n
 	type item struct {
 		rank          int
 		across, along float64
@@ -188,7 +188,7 @@ func layered(nodes []lnode, edges []ledge, dir Dir, nodeGap, rankGap float64) la
 	}
 	renumber()
 
-	// 4. ordine
+	// 4. order
 	sweep := func(down bool) {
 		for ri := 0; ri < nrank; ri++ {
 			r := ri
@@ -227,7 +227,7 @@ func layered(nodes []lnode, edges []ledge, dir Dir, nodeGap, rankGap float64) la
 		sweep(false)
 	}
 
-	// 5. posizioni trasversali
+	// 5. cross positions
 	cross := make([]float64, len(items))
 	for _, L := range layers {
 		x := 0.0
@@ -296,7 +296,7 @@ func layered(nodes []lnode, edges []ledge, dir Dir, nodeGap, rankGap float64) la
 		relax(false)
 	}
 
-	// lungo i livelli
+	// along the levels
 	along := make([]float64, nrank)
 	acc := 0.0
 	for r := 0; r < nrank; r++ {

@@ -4,58 +4,58 @@ import { rotatedAabb } from "./transform";
 
 export interface Bounds { x: number; y: number; width: number; height: number }
 
-// I bounds LOCALI del nodo: il rettangolo asse-allineato che il modello tiene
-// in x/y/width/height, PRIMA della rotazione. È lo spazio in cui lavorano il
-// resize e le maniglie (vedi selection/handles.ts).
+// The node's LOCAL bounds: the axis-aligned rectangle the model keeps
+// in x/y/width/height, BEFORE rotation. It is the space in which resize
+// and handles work (see selection/handles.ts).
 export function boundsOfNode(n: NodeLite): Bounds {
   return { x: n.x, y: n.y, width: n.width, height: n.height };
 }
 
-// Il rettangolo asse-allineato che il BOX DEL MODELLO occupa nel mondo,
-// rotazione inclusa. È la GEOMETRIA -- il tratto non c'entra, di proposito:
-// questo è lo spazio in cui il resize scrive (frame di selezione e resize di
-// gruppo, vedi renderer/overlayRenderer.ts::selectionFrame). Includerci la
-// sporgenza del tratto significherebbe scrivere in x/y/width/height un box
-// gonfiato, e il nodo crescerebbe di mezza sporgenza a ogni trascinamento di
-// maniglia. Per quello che il nodo DIPINGE c'è worldVisualAabbOfNode.
-// Per un nodo fermo è identico (numeri compresi) a boundsOfNode.
+// The axis-aligned rectangle that the MODEL'S BOX occupies in the world,
+// rotation included. It is the GEOMETRY -- the stroke is not involved, on purpose:
+// this is the space in which resize writes (selection frame and group
+// resize, see renderer/overlayRenderer.ts::selectionFrame). Including the
+// stroke overhang would mean writing an inflated box into x/y/width/height,
+// and the node would grow by half an overhang on every handle drag.
+// For what the node PAINTS there is worldVisualAabbOfNode.
+// For a still node it is identical (numbers included) to boundsOfNode.
 export function worldAabbOfNode(n: NodeLite): Bounds {
   return rotatedAabb(boundsOfNode(n), n.rotation);
 }
 
-// --- IL TRATTO NEI BOUNDS ----------------------------------------------------
+// --- THE STROKE IN THE BOUNDS ------------------------------------------------
 //
-// Un tratto è disegnato SUL perimetro, quindi a seconda dell'allineamento
-// sporge fuori dal box del modello: metà peso per CENTER, tutto il peso per
-// OUTSIDE, niente per INSIDE. Quella sporgenza è pixel dipinti come gli altri:
-// chi ragiona su "che spazio occupa questo nodo" -- il marquee, l'hit-test,
-// l'export -- deve contarla, o taglia il bordo esattamente dove si vede di più.
+// A stroke is drawn ON the perimeter, so depending on alignment it
+// overhangs the model's box: half the weight for CENTER, the whole weight for
+// OUTSIDE, nothing for INSIDE. That overhang is painted pixels like the others:
+// whoever reasons about "what space does this node occupy" -- the marquee, hit-test,
+// the export -- must count it, or it cuts the border exactly where it is most visible.
 //
-// Sta QUI e non nel renderer perché è geometria, non disegno: il renderer la
-// usa per decidere lineWidth e clip, ma la MISURA è una sola e la leggono
-// entrambi (renderer/canvasRenderer.ts, renderer/shapes.ts).
+// It lives HERE and not in the renderer because it is geometry, not drawing: the renderer
+// uses it to decide lineWidth and clip, but the MEASURE is only one and is read by
+// both (renderer/canvasRenderer.ts, renderer/shapes.ts).
 
-// Quanto sporge UN tratto oltre il perimetro. Un peso non positivo non è un
-// tratto sottilissimo: non è un tratto, e non sporge (il canvas non disegna
-// nulla con lineWidth 0, e un peso negativo sarebbe un errore da cui non deve
-// uscire un box più PICCOLO del nodo).
+// How much ONE stroke overhangs beyond the perimeter. A non-positive weight is not a
+// very thin stroke: it is not a stroke, and it does not overhang (the canvas draws
+// nothing with lineWidth 0, and a negative weight would be an error from which a
+// box SMALLER than the node must not come out).
 export function strokeOutset(s: StrokeLite): number {
   if (!(s.weight > 0)) return 0;
   if (s.align === "inside") return 0;
   return s.align === "outside" ? s.weight : s.weight / 2;
 }
 
-// La sporgenza del nodo: il MASSIMO fra i suoi tratti, non la somma. I tratti
-// si disegnano uno SOPRA l'altro sullo stesso perimetro (come i fills), quindi
-// quello che sporge di più contiene tutti gli altri.
+// The node's overhang: the MAXIMUM among its strokes, not the sum. Strokes
+// are drawn one ABOVE the other on the same perimeter (like fills), so
+// the one that overhangs the most contains all the others.
 //
-// Il TESTO è l'eccezione, e non per comodità: il suo tratto è disegnato con
-// ctx.strokeText, che è SEMPRE centrato sul contorno del glifo -- un glifo un
-// Path2D non ce l'ha, quindi non c'è niente da ritagliare (vedi
-// renderer/text.ts::strokeText). L'allineamento non è rappresentabile, e la
-// misura deve dire quello che il disegno fa DAVVERO: contare `weight` intero
-// per un OUTSIDE su un testo darebbe bounds più grandi del dipinto, e contare 0
-// per un INSIDE ne darebbe di più piccoli -- cioè taglierebbe.
+// TEXT is the exception, and not for convenience: its stroke is drawn with
+// ctx.strokeText, which is ALWAYS centered on the glyph's outline -- a glyph has no
+// Path2D, so there is nothing to clip (see
+// renderer/text.ts::strokeText). Alignment is not representable, and the
+// measure must say what the drawing REALLY does: counting the whole `weight`
+// for an OUTSIDE on a text would give bounds larger than the painted result, and counting 0
+// for an INSIDE would give smaller ones -- that is, it would crop.
 export function strokeOutsetOfNode(n: NodeLite): number {
   let max = 0;
   for (const s of n.strokes) {
@@ -64,19 +64,19 @@ export function strokeOutsetOfNode(n: NodeLite): number {
   return max;
 }
 
-// I bounds LOCALI di ciò che il nodo dipinge: il box del modello allargato
-// della sporgenza del tratto. Un nodo senza tratti (il caso normale) ritorna
-// numeri IDENTICI a boundsOfNode -- inflateBounds con pad 0 è l'identità
-// aritmetica, non un arrotondamento.
+// The LOCAL bounds of what the node paints: the model's box widened
+// by the stroke overhang. A node without strokes (the normal case) returns
+// IDENTICAL numbers to boundsOfNode -- inflateBounds with pad 0 is the arithmetic
+// identity, not a rounding.
 export function visualBoundsOfNode(n: NodeLite): Bounds {
   return inflateBounds(boundsOfNode(n), strokeOutsetOfNode(n));
 }
 
-// Il rettangolo asse-allineato che il nodo DIPINGE nel mondo: tratto compreso e
-// rotazione inclusa. Si allarga PRIMA e si ruota DOPO, perché il tratto vive
-// nello spazio LOCALE del nodo (è il perimetro del box non ruotato a portarlo);
-// ruotare e poi allargare metterebbe la sporgenza sugli assi dello schermo
-// invece che su quelli del nodo.
+// The axis-aligned rectangle that the node PAINTS in the world: stroke included and
+// rotation included. It widens BEFORE and rotates AFTER, because the stroke lives
+// in the node's LOCAL space (it is the perimeter of the unrotated box that carries it);
+// rotating and then widening would put the overhang on the screen's axes
+// instead of the node's.
 export function worldVisualAabbOfNode(n: NodeLite): Bounds {
   return rotatedAabb(visualBoundsOfNode(n), n.rotation);
 }
@@ -93,8 +93,8 @@ export function unionBounds(list: Bounds[]): Bounds | null {
   return { x: minX, y: minY, width: maxX - minX, height: maxY - minY };
 }
 
-// gestisce drag all'indietro (in qualunque direzione): (x0,y0) e (x1,y1) sono i due
-// angoli del rettangolo di drag, in un ordine qualsiasi.
+// handles backward drags (in any direction): (x0,y0) and (x1,y1) are the two
+// corners of the drag rectangle, in any order.
 export function normalizeRect(x0: number, y0: number, x1: number, y1: number): Bounds {
   const x = Math.min(x0, x1);
   const y = Math.min(y0, y1);
@@ -105,17 +105,17 @@ export function boundsIntersect(a: Bounds, b: Bounds): boolean {
   return a.x < b.x + b.width && a.x + a.width > b.x && a.y < b.y + b.height && a.y + a.height > b.y;
 }
 
-// La parte in COMUNE fra due rettangoli, o null se non ne hanno.
+// The part IN COMMON between two rectangles, or null if they have none.
 //
-// Serve a chi deve sapere quanto di un nodo si VEDE dentro un ritaglio: un
-// frame con clips_content nasconde ciò che esce dal proprio box, e la banda
-// elastica non deve poter selezionare quello che il ritaglio ha portato via
+// It serves whoever needs to know how much of a node is SEEN inside a clip: a
+// frame with clips_content hides what leaves its own box, and the rubber
+// band must not be able to select what the clip has taken away
 // (renderer/canvasRenderer.ts::collectIn).
 //
-// Un'intersezione DEGENERE (larghezza o altezza nulla: due rettangoli che si
-// toccano su un bordo) è null e non un rettangolo piatto, per coerenza con
-// boundsIntersect qui sopra, che confronta i bordi opposti con < / >: una
-// striscia di area zero non è area visibile.
+// A DEGENERATE intersection (null width or height: two rectangles that
+// touch on an edge) is null and not a flat rectangle, for consistency with
+// boundsIntersect above, which compares opposite edges with < / >: a
+// strip of zero area is not visible area.
 export function intersectBounds(a: Bounds, b: Bounds): Bounds | null {
   const x = Math.max(a.x, b.x);
   const y = Math.max(a.y, b.y);
@@ -128,17 +128,17 @@ export function pointInBounds(b: Bounds, x: number, y: number): boolean {
   return x >= b.x && x <= b.x + b.width && y >= b.y && y <= b.y + b.height;
 }
 
-// Converte bounds MONDO in bounds SCHERMO (px CSS) passando SEMPRE da
-// canvas/camera.ts, mai ricalcolando la trasformazione a mano. Vive qui (e non
-// nel renderer) perché serve sia all'overlay che a selection/handles.ts, e
-// tenerla nel renderer costringerebbe le maniglie a importare da lui -- ciclo.
+// Converts WORLD bounds into SCREEN bounds (CSS px) ALWAYS going through
+// canvas/camera.ts, never recomputing the transform by hand. It lives here (and not
+// in the renderer) because it serves both the overlay and selection/handles.ts, and
+// keeping it in the renderer would force the handles to import from it -- a cycle.
 export function worldBoundsToScreen(b: Bounds, cam: Camera): Bounds {
   const p0 = worldToScreen(cam, b.x, b.y);
   const p1 = worldToScreen(cam, b.x + b.width, b.y + b.height);
   return { x: p0.x, y: p0.y, width: p1.x - p0.x, height: p1.y - p0.y };
 }
 
-// Allarga (o restringe, con pad negativo) un rettangolo di pad px su ogni lato.
+// Widens (or narrows, with negative pad) a rectangle by pad px on every side.
 export function inflateBounds(b: Bounds, pad: number): Bounds {
   return { x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2 };
 }

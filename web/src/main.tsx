@@ -5,5 +5,5 @@ import { Root } from "./home/Root";
 import "./index.css";
 
 initTheme();
-// La radice sceglie fra Home ed editor dall'hash (home/Root.tsx).
+// The root chooses between Home and the editor from the URL path (home/Root.tsx).
 createRoot(document.getElementById("root")!).render(<StrictMode><Root /></StrictMode>);

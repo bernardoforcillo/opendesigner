@@ -1,43 +1,43 @@
-// Unica fonte di verità per i path di SetProperties.mask supportati. Rispecchia
-// ESATTAMENTE lo switch di core.applySetProps (Go, internal/core/apply.go:79-86)
-// -- quello switch è l'AUTORITÀ su cosa è supportato, questo elenco lo segue,
-// mai il contrario. Non aggiungere un path qui senza prima verificare che Go
-// lo accetti: applyOp (TS) deve restare semanticamente identico a core.Apply.
+// Single source of truth for the supported SetProperties.mask paths. It mirrors
+// EXACTLY the switch of core.applySetProps (Go, internal/core/apply.go:79-86)
+// -- that switch is the AUTHORITY on what is supported, this list follows it,
+// never the other way around. Do not add a path here without first verifying that Go
+// accepts it: applyOp (TS) must remain semantically identical to core.Apply.
 //
-// PERCHÉ QUESTO FILE ESISTE (e non solo un Set dentro applyOp.ts): il
-// trasporto è JSON -- createConnectTransport di connect-web usa JSON di
-// default (nessun useBinaryFormat) -- e google.protobuf.FieldMask ha una
-// codifica JSON che RISCRIVE il path invece di trasportarlo verbatim:
-//   - fieldMaskToJson (in uscita) converte ogni path in lowerCamelCase e
-//     LANCIA se la conversione non è reversibile, cioè se
-//     protoSnakeCase(protoCamelCase(p)) !== p (verificato in
+// WHY THIS FILE EXISTS (and not just a Set inside applyOp.ts): the
+// transport is JSON -- connect-web's createConnectTransport uses JSON by
+// default (no useBinaryFormat) -- and google.protobuf.FieldMask has a
+// JSON encoding that REWRITES the path instead of carrying it verbatim:
+//   - fieldMaskToJson (outbound) converts every path to lowerCamelCase and
+//     THROWS if the conversion is not reversible, that is if
+//     protoSnakeCase(protoCamelCase(p)) !== p (verified in
 //     node_modules/@bufbuild/protobuf/dist/esm/to-json.js: fieldMaskToJson).
-//   - fieldMaskFromJson (in entrata) fa l'inverso e RIFIUTA categoricamente
-//     qualunque underscore sul filo (from-json.js: fieldMaskFromJson).
-// Quindi ogni path in questo elenco DEVE essere scritto nella forma
-// snake_case "di libreria" (identica a quella usata da Go), MAI nella forma
-// camelCase istintiva per chi scrive TypeScript. Per i 9 path di M0 le due
-// forme coincidono perché sono tutti monoparola -- il che ha nascosto il
-// problema fino a M1b, quando "order_key" (il riordino del pannello livelli,
-// Task 8) è diventato il primo path multiparola. Un path del genere scritto qui
-// come "orderKey" farebbe THROW in fase di serializzazione, non silenzioso
-// ma comunque invisibile all'utente (submit() lo applica in ottimistico PRIMA
-// di serializzare, quindi l'errore finisce in un console.error e la scena
-// mostra un cambiamento che il server non riceverà mai).
+//   - fieldMaskFromJson (inbound) does the reverse and flatly REJECTS
+//     any underscore on the wire (from-json.js: fieldMaskFromJson).
+// So every path in this list MUST be written in the "library" snake_case
+// form (identical to the one used by Go), NEVER in the camelCase form
+// that comes naturally to someone writing TypeScript. For the 9 M0 paths the two
+// forms coincide because they are all single-word -- which hid the
+// problem until M1b, when "order_key" (the layers panel reordering,
+// Task 8) became the first multi-word path. A path like that written here
+// as "orderKey" would THROW at serialization time, not silently
+// but still invisibly to the user (submit() applies it optimistically BEFORE
+// serializing, so the error ends up in a console.error and the scene
+// shows a change the server will never receive).
 //
-// QUESTO COMMENTO NON È LA GUARDIA -- lo sono i test in maskPaths.test.ts, e
-// vale la pena sapere quali prima di toccare l'elenco:
-//   - it.each(MASK_PATHS) fa passare OGNI path da toJson -> fromJson e pretende
-//     che torni identico: un "orderKey" scritto qui non compila un elenco
-//     verde, fa fallire quel caso con l'errore "irreversible" esatto che si
-//     vedrebbe in produzione. Lo stesso caso verifica anche che il path sia un
-//     nome di campo reale di opendesigner.v1.Node e che applyOp lo applichi davvero.
-//   - una guardia cross-language LEGGE internal/core/apply.go e ne estrae i
-//     letterali dei `case`: aggiungere un path qui (o solo là) senza l'altro
-//     lato fa fallire la suite TypeScript. Go resta l'autorità; questo elenco
-//     esiste per non dover ripetere la stessa lista a ogni call site.
-//   - il tipo mappato PROBE in quel test costringe chi aggiunge un path ad
-//     aggiungergli anche un valore sonda, altrimenti `tsc -b` non passa.
+// THIS COMMENT IS NOT THE GUARD -- the tests in maskPaths.test.ts are, and
+// it is worth knowing which ones before touching the list:
+//   - it.each(MASK_PATHS) runs EVERY path through toJson -> fromJson and demands
+//     that it comes back identical: an "orderKey" written here does not compile a
+//     green list, it fails that case with the exact "irreversible" error that
+//     would be seen in production. The same case also verifies that the path is a
+//     real field name of opendesigner.v1.Node and that applyOp really applies it.
+//   - a cross-language guard READS internal/core/apply.go and extracts the
+//     literals of the `case`s: adding a path here (or only there) without the other
+//     side makes the TypeScript suite fail. Go remains the authority; this list
+//     exists so the same list does not have to be repeated at every call site.
+//   - the mapped type PROBE in that test forces whoever adds a path to
+//     also add a probe value, otherwise `tsc -b` does not pass.
 export const MASK_PATHS = [
   "x",
   "y",
@@ -48,53 +48,53 @@ export const MASK_PATHS = [
   "name",
   "visible",
   "fills",
-  // M2, traccia 2 (stroke). Ripetuto come "fills" e con la STESSA semantica di
-  // scrittura: la mask sostituisce l'INTERA lista, non fonde elemento per
-  // elemento. Monoparola, quindi il round-trip sul filo è l'identità -- ma la
-  // fixture testdata/golden/strokes.json esiste comunque, perché il rischio qui
-  // non è la codifica: è che le due implementazioni di apply divergano sulla
-  // sostituzione (una lista più corta che lascia in coda i tratti vecchi si
-  // nota solo guardando il canvas).
+  // M2, track 2 (stroke). Repeated like "fills" and with the SAME write
+  // semantics: the mask replaces the WHOLE list, it does not merge element by
+  // element. Single-word, so the round-trip on the wire is the identity -- but the
+  // fixture testdata/golden/strokes.json exists anyway, because the risk here
+  // is not the encoding: it is that the two apply implementations diverge on
+  // replacement (a shorter list that leaves the old strokes at the tail is
+  // only noticed by looking at the canvas).
   "strokes",
-  // Effetti (ombra, sfocatura). Ripetuto come "fills" e "strokes", con la stessa
-  // semantica di sostituzione dell'intera lista. Monoparola.
+  // Effects (shadow, blur). Repeated like "fills" and "strokes", with the same
+  // replacement semantics for the whole list. Single-word.
   "effects",
-  // Primo path MULTIPAROLA della mask (M1b, Task 8: il riordino del pannello
-  // livelli). Scritto snake_case come lo scrive Go; sul filo JSON diventa
-  // "orderKey" e torna indietro così com'è -- è tutto il motivo per cui questo
-  // file esiste, vedi il commento in cima.
+  // First MULTI-WORD path of the mask (M1b, Task 8: the layers panel
+  // reordering). Written snake_case as Go writes it; on the JSON wire it becomes
+  // "orderKey" and comes back as it is -- it is the whole reason this
+  // file exists, see the comment at the top.
   "order_key",
-  // M1b, Task 10 (pannello proprietà, aspetto). L'UNICO path della mask che
-  // indirizza un campo DENTRO il oneof `shape` -- RectNode.corner_radius --
-  // invece che un campo di primo livello del Node: il patch lo porta annidato
-  // nella forma (`{ shape: { case: "rect", value: { cornerRadius } } }`) e
-  // l'op vale solo su un rettangolo (su un'ellisse o un testo Go risponde
-  // ErrNotRectNode e rifiuta l'op intero, vedi applyOp). Multiparola come
-  // order_key: sul filo JSON viaggia come "cornerRadius" e torna indietro
-  // così com'è -- scriverlo camelCase qui farebbe THROW in serializzazione.
+  // M1b, Task 10 (properties panel, appearance). The ONLY mask path that
+  // addresses a field INSIDE the `shape` oneof -- RectNode.corner_radius --
+  // instead of a top-level field of the Node: the patch carries it nested
+  // in the shape (`{ shape: { case: "rect", value: { cornerRadius } } }`) and
+  // the op only applies to a rectangle (on an ellipse or a text Go replies
+  // ErrNotRectNode and rejects the whole op, see applyOp). Multi-word like
+  // order_key: on the JSON wire it travels as "cornerRadius" and comes back
+  // as it is -- writing it camelCase here would THROW at serialization.
   "corner_radius",
-  // Auto layout di un FRAME. Come corner_radius sta DENTRO il oneof `shape`
-  // (FrameNode.auto_layout) e vale solo su un frame: su un altro nodo Go
-  // risponde ErrNotFrameNode e rifiuta l'op intero. Scrivere un patch senza
-  // auto layout lo SPEGNE. Multiparola: sul filo JSON viaggia come "autoLayout".
+  // Auto layout of a FRAME. Like corner_radius it lives INSIDE the `shape` oneof
+  // (FrameNode.auto_layout) and only applies to a frame: on another node Go
+  // replies ErrNotFrameNode and rejects the whole op. Writing a patch without
+  // auto layout TURNS IT OFF. Multi-word: on the JSON wire it travels as "autoLayout".
   "auto_layout",
-  // Metadati liberi del nodo (flow.kind, code.route, test.id, ...). Come le liste,
-  // la mask SOSTITUISCE l'intera mappa. Monoparola.
+  // Free-form node metadata (flow.kind, code.route, test.id, ...). Like lists,
+  // the mask REPLACES the whole map. Single-word.
   "meta",
 ] as const;
 
-// L'UNICO tipo che un path di mask può avere ai punti di costruzione di un op
-// (tools/ops.ts::makeSetPropsOp e chiunque lo chiami). Un path che Go non
-// supporta diventa un errore di compilazione lì, non un rifiuto silenzioso a
-// runtime scoperto solo submittando davvero l'op.
+// The ONLY type a mask path can have at an op's construction points
+// (tools/ops.ts::makeSetPropsOp and whoever calls it). A path that Go does not
+// support becomes a compile error there, not a silent runtime rejection
+// discovered only by actually submitting the op.
 export type MaskPath = (typeof MASK_PATHS)[number];
 
 const MASK_PATH_SET: ReadonlySet<string> = new Set(MASK_PATHS);
 
-// Type guard usata da applyOp per validare i path che arrivano da un Op già
-// decodificato (locale o dal filo, via Subscribe) -- lì il tipo è
-// `readonly string[]` qualunque cosa dica il codice che li ha originati, quindi
-// serve un controllo a runtime oltre alla protezione a compile-time sopra.
+// Type guard used by applyOp to validate paths that arrive from an already
+// decoded Op (local or from the wire, via Subscribe) -- there the type is
+// `readonly string[]` whatever the code that originated them says, so
+// a runtime check is needed besides the compile-time protection above.
 export function isMaskPath(path: string): path is MaskPath {
   return MASK_PATH_SET.has(path);
 }

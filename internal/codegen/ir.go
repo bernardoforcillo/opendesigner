@@ -1,85 +1,86 @@
 package codegen
 
-// IR -- la rappresentazione intermedia fra il documento e i renderer di codice.
+// IR -- the intermediate representation between the document and the code
+// renderers.
 //
-// Il documento (alberi di Node con coordinate relative al parent) viene tradotto
-// UNA volta in un albero di Element: tag, attributi, proprietà CSS IN ORDINE,
-// testo e figli. I due renderer (html.go: CSS in un <style>, react.go: classi
-// Tailwind) leggono lo STESSO albero, quindi CSS e Tailwind non possono
-// divergere: ciò che cambia è solo la sintassi con cui si scrive una Prop.
+// The document (trees of Nodes with coordinates relative to the parent) is
+// translated ONCE into a tree of Elements: tag, attributes, CSS properties IN
+// ORDER, text and children. The two renderers (html.go: CSS in a <style>,
+// react.go: Tailwind classes) read the SAME tree, so CSS and Tailwind cannot
+// diverge: the only thing that changes is the syntax used to write a Prop.
 //
-// Le proprietà stanno in una LISTA e non in una mappa per due ragioni:
-// l'ordine di emissione è parte dell'output (golden file, diff leggibili) e
-// alcune proprietà si leggono in coppia (position/left/top).
+// Properties live in a LIST rather than a map for two reasons: the emission
+// order is part of the output (golden files, readable diffs) and some
+// properties are read in pairs (position/left/top).
 
-// Prop è una proprietà CSS: nome e valore già nella forma finale ("12px",
+// Prop is a CSS property: name and value already in their final form ("12px",
 // "#fff", "rotate(30deg)").
 type Prop struct{ Name, Value string }
 
-// Attr è un attributo del tag (HTML o SVG). Il nome è quello HTML/SVG
-// (kebab-case): il renderer React lo converte in camelCase dove serve.
+// Attr is a tag attribute (HTML or SVG). The name is the HTML/SVG one
+// (kebab-case): the React renderer converts it to camelCase where needed.
 type Attr struct{ Name, Value string }
 
-// Trigger è il cablaggio di una transizione di un flusso su un elemento (o sulla
-// schermata, se la transizione non ha un elemento).
+// Trigger is the wiring of a flow transition onto an element (or onto the
+// screen, if the transition has no element).
 type Trigger struct {
 	TransitionID string
 	FlowID       string
 	Label        string
-	Kind         string // click | submit | auto | key | back | testo libero
+	Kind         string // click | submit | auto | key | back | free text
 	Guard        string
 	Effect       string
-	// Dest è la schermata di arrivo (nil se la destinazione non è fra le
-	// schermate generate: il collegamento resta un commento).
+	// Dest is the destination screen (nil if the destination is not among the
+	// generated screens: the link stays a comment).
 	Dest *Screen
 }
 
-// Element è un nodo dell'albero IR.
+// Element is a node of the IR tree.
 type Element struct {
 	Tag   string
 	Attrs []Attr
 	Style []Prop
-	// Text è il contenuto testuale dell'elemento (solo per i nodi testo): il
-	// renderer lo cita/escapa secondo il target. HasText distingue "testo
-	// vuoto" da "nessun testo".
+	// Text is the element's text content (only for text nodes): the renderer
+	// quotes/escapes it according to the target. HasText distinguishes "empty
+	// text" from "no text".
 	Text     string
 	HasText  bool
 	Children []*Element
 
-	// Tracciabilità design <-> codice.
+	// Design <-> code traceability.
 	NodeID   string
 	NodeName string
 	Meta     map[string]string
 
-	// Triggers: transizioni innescate da QUESTO elemento (click). Vuoto per la
-	// maggioranza.
+	// Triggers: transitions fired by THIS element (click). Empty for the
+	// majority.
 	Triggers []Trigger
-	// NavTriggers: transizioni della schermata senza elemento (o con più
-	// transizioni sullo stesso elemento): la radice le rende come pulsanti
-	// visivamente nascosti in un <nav> trasparente.
+	// NavTriggers: screen transitions with no element (or with several
+	// transitions on the same element): the root renders them as visually hidden
+	// buttons in a transparent <nav>.
 	NavTriggers []Trigger
-	// KeyTriggers: transizioni con trigger "key" (Label = il tasto).
+	// KeyTriggers: transitions with a "key" trigger (Label = the key).
 	KeyTriggers []Trigger
 
-	// Anim: le animazioni delle clip che toccano questo elemento (animation.go).
-	// nil per la maggioranza.
+	// Anim: the animations of the clips that touch this element (animation.go).
+	// nil for the majority.
 	Anim *ElemAnim
-	// StrokePath: il <path> del tratto di un vettoriale (quello che `draw`
-	// anima), distinto dal path del riempimento.
+	// StrokePath: the <path> of a vector's stroke (the one `draw` animates),
+	// distinct from the fill path.
 	StrokePath bool
 }
 
-// Screen è una schermata esportata: un frame di primo livello (o un nodo
-// referenziato da un flusso) con il suo albero IR.
+// Screen is an exported screen: a top-level frame (or a node referenced by a
+// flow) with its IR tree.
 type Screen struct {
 	NodeID string
-	// Name è il nome del componente (PascalCase, deduplicato).
+	// Name is the component name (PascalCase, deduplicated).
 	Name string
-	// Slug è il nome file per il target html (kebab-case, deduplicato).
+	// Slug is the file name for the html target (kebab-case, deduplicated).
 	Slug string
-	// Route è la rotta dell'app (meta code.route o "/" + slug).
+	// Route is the app route (meta code.route or "/" + slug).
 	Route string
-	// File è il percorso del file generato, relativo alla radice dell'output.
+	// File is the path of the generated file, relative to the output root.
 	File string
 
 	Width, Height float64
@@ -94,7 +95,7 @@ func (e *Element) addAttr(name, value string) {
 	e.Attrs = append(e.Attrs, Attr{name, value})
 }
 
-// attr ritorna il valore di un attributo ("" se manca).
+// attr returns the value of an attribute ("" if missing).
 func (e *Element) attr(name string) string {
 	for _, a := range e.Attrs {
 		if a.Name == name {
@@ -104,7 +105,7 @@ func (e *Element) attr(name string) string {
 	return ""
 }
 
-// style ritorna il valore di una proprietà CSS ("" se manca).
+// style returns the value of a CSS property ("" if missing).
 func (e *Element) style(name string) string {
 	for _, p := range e.Style {
 		if p.Name == name {
@@ -114,7 +115,7 @@ func (e *Element) style(name string) string {
 	return ""
 }
 
-// walk visita l'elemento e i discendenti in pre-ordine.
+// walk visits the element and its descendants in pre-order.
 func (e *Element) walk(fn func(*Element)) {
 	fn(e)
 	for _, c := range e.Children {

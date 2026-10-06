@@ -6,7 +6,7 @@ import { fitCamera, makeScene } from "./scene";
 const images = { get: () => ({ status: "loading" as const, image: null }) };
 const median = (xs: number[]) => [...xs].sort((a, b) => a - b)[Math.floor(xs.length / 2)];
 
-// @ts-expect-error esposto a Playwright
+// @ts-expect-error exposed to Playwright
 window.runCk = async (sizes: number[]) => {
   const CK = await loadCanvasKit();
   const fonts = new FontBook(CK);

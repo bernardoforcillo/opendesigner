@@ -37,42 +37,42 @@ function ctxMock() {
 const peers = (...ps: PeerLite[]): Peers => Object.fromEntries(ps.map((p) => [p.clientId, p]));
 
 describe("drawPeers", () => {
-  it("disegna il nickname del peer col cursore", () => {
+  it("draws the nickname of the peer with a cursor", () => {
     const { ctx, calls } = ctxMock();
     drawPeers(ctx, scene(), cam, peers(peer()), null);
     expect(calls).toContain("label:Bea");
   });
 
-  it("senza cursore niente freccia, ma la selezione sì e col nome sopra", () => {
+  it("without a cursor no arrow, but the selection yes and with the name above", () => {
     const { ctx, calls, raw } = ctxMock();
     drawPeers(ctx, scene(), cam, peers(peer({ hasCursor: false, selection: ["n1"] })), null);
     expect(calls).toEqual(["selection", "label:Bea"]);
-    expect(raw.lineTo).not.toHaveBeenCalled(); // nessuna freccia
-    // La targhetta sta sopra l'angolo in alto a sinistra del nodo (10,20).
+    expect(raw.lineTo).not.toHaveBeenCalled(); // no arrow
+    // The tag sits above the node's top-left corner (10,20).
     expect(raw.roundRect).toHaveBeenCalledWith(10, 20 - 16 - 2, expect.any(Number), 16, 4);
   });
 
-  it("un id di selezione sparito dal documento non disegna nulla", () => {
+  it("a selection id vanished from the document draws nothing", () => {
     const { ctx, calls } = ctxMock();
     drawPeers(ctx, scene(), cam, peers(peer({ hasCursor: false, selection: ["ghost"] })), null);
     expect(calls).toEqual([]);
   });
 
-  it("un peer su un'altra pagina non si vede; senza pagina corrente vale la prima", () => {
+  it("a peer on another page is not seen; without a current page the first one counts", () => {
     const s = scene();
     const first = s.pages[0].id;
     const a = ctxMock();
-    drawPeers(a.ctx, s, cam, peers(peer({ pageId: "altra" })), null);
+    drawPeers(a.ctx, s, cam, peers(peer({ pageId: "other" })), null);
     expect(a.calls).toEqual([]);
     const b = ctxMock();
     drawPeers(b.ctx, s, cam, peers(peer({ pageId: first })), null);
     expect(b.calls).toContain("label:Bea");
     const c = ctxMock();
-    drawPeers(c.ctx, s, cam, peers(peer({ pageId: "altra" })), "altra");
+    drawPeers(c.ctx, s, cam, peers(peer({ pageId: "other" })), "other");
     expect(c.calls).toContain("label:Bea");
   });
 
-  it("il cursore segue la camera: stessa posizione mondo, schermo diverso", () => {
+  it("the cursor follows the camera: same world position, different screen", () => {
     const a = ctxMock();
     drawPeers(a.ctx, scene(), { x: 0, y: 0, zoom: 1 }, peers(peer()), null);
     const b = ctxMock();

@@ -11,16 +11,17 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// I golden dell'animazione: lo stesso documento (samples.AnimDemo) nei due
-// target. Il react è la schermata con le costanti delle varianti; l'html il CSS
-// con @keyframes. Eseguire con -update e rivedere il diff dopo ogni modifica.
+// The animation goldens: the same document (samples.AnimDemo) in the two
+// targets. The react one is the screen with the variant constants; the html
+// one is the CSS with @keyframes. Run with -update and review the diff after
+// every change.
 func TestGoldenAnimation(t *testing.T) {
 	rout := gen(t, AnimDemo(), codegen.TargetReact, nil)
-	for _, p := range []string{"src/screens/Animazioni.tsx", "package.json", "README.md"} {
+	for _, p := range []string{"src/screens/Animations.tsx", "package.json", "README.md"} {
 		checkGolden(t, "anim-react/"+p, file(t, rout, p))
 	}
 	hout := gen(t, AnimDemo(), codegen.TargetHTML, nil)
-	checkGolden(t, "anim-html/animazioni.html", file(t, hout, "animazioni.html"))
+	checkGolden(t, "anim-html/animations.html", file(t, hout, "animations.html"))
 }
 
 func TestAnimationDeterministic(t *testing.T) {
@@ -30,7 +31,7 @@ func TestAnimationDeterministic(t *testing.T) {
 			again := gen(t, AnimDemo(), target, nil)
 			for j := range first.Files {
 				if !bytes.Equal(first.Files[j].Content, again.Files[j].Content) {
-					t.Fatalf("%s: %s non è deterministico", target, first.Files[j].Path)
+					t.Fatalf("%s: %s is not deterministic", target, first.Files[j].Path)
 				}
 			}
 		}
@@ -43,31 +44,31 @@ func TestAnimationDoesNotMutateDocument(t *testing.T) {
 	gen(t, doc, codegen.TargetReact, nil)
 	gen(t, doc, codegen.TargetHTML, nil)
 	if !proto.Equal(before, doc) {
-		t.Fatal("Generate ha modificato il documento")
+		t.Fatal("Generate modified the document")
 	}
 }
 
-// Senza clip l'export è quello di prima: niente Motion, niente motion.*.
+// Without clips the export is the same as before: no Motion, no motion.*.
 func TestNoClipsNoMotion(t *testing.T) {
 	out := gen(t, Shop(), codegen.TargetReact, nil)
 	if bytes.Contains(file(t, out, "package.json"), []byte("motion")) {
-		t.Fatal("package.json cita motion in un documento senza clip")
+		t.Fatal("package.json mentions motion in a document without clips")
 	}
 	for _, f := range out.Files {
 		if strings.Contains(string(f.Content), "motion") && f.Path != "README.md" {
-			t.Fatalf("%s cita motion senza clip", f.Path)
+			t.Fatalf("%s mentions motion without clips", f.Path)
 		}
 	}
-	if strings.Contains(string(file(t, out, "README.md")), "Animazioni") {
-		t.Fatal("README con la sezione Animazioni senza clip")
+	if strings.Contains(string(file(t, out, "README.md")), "Animations") {
+		t.Fatal("README with the Animations section without clips")
 	}
 }
 
 func animScreen(clips func(b *B)) *opendesignerv1.Document {
-	b := New("d", "Prova")
-	b.Add("scr", "page1", "Schermata", 0, 0, 400, 300, Frame(false, nil), Fill(Solid(C(1, 1, 1))))
-	b.Add("a", "scr", "Scatola", 10, 20, 50, 50, Fill(Solid(C(1, 0, 0))), Rot(10))
-	b.Add("b", "scr", "Altra", 100, 20, 50, 50, Fill(Solid(C(0, 1, 0))))
+	b := New("d", "Test")
+	b.Add("scr", "page1", "Screen", 0, 0, 400, 300, Frame(false, nil), Fill(Solid(C(1, 1, 1))))
+	b.Add("a", "scr", "Box", 10, 20, 50, 50, Fill(Solid(C(1, 0, 0))), Rot(10))
+	b.Add("b", "scr", "Other", 100, 20, 50, 50, Fill(Solid(C(0, 1, 0))))
 	clips(b)
 	return b.Doc
 }
@@ -78,45 +79,45 @@ func clip(id, trigger, target string, dur float64, tracks ...*opendesignerv1.Tra
 
 func TestReactMapping(t *testing.T) {
 	doc := animScreen(func(b *B) {
-		// x/y delta da x/y del nodo (10, 20); rotate delta da 10; times e ease per segmento;
-		// repeat finito con yoyo
+		// x/y delta from the node's x/y (10, 20); rotate delta from 10; times and ease per segment;
+		// finite repeat with yoyo
 		c := clip("c1", "enter", "scr", 1000,
 			Tr("a", "x", KF(100, 10, "easeIn"), KF(600, 60, "cubic-bezier(.1,.2,.3,.4)"), KF(1000, 10, "")),
 			Tr("a", "y", KF(0, 20, ""), KF(1000, 70, "")),
 			Tr("a", "rotation", KF(0, 10, ""), KF(1000, 100, "")),
 			Tr("a", "scale", KF(0, 1, ""), KF(1000, 2, "")),
-			Tr("a", "opacity", KF(0, 0.5, "")), // un solo keyframe: costante
+			Tr("a", "opacity", KF(0, 0.5, "")), // a single keyframe: constant
 		)
 		c.Delay, c.Repeat, c.Yoyo = 250, 3, true
 		b.Clip(c)
 	})
-	src := string(file(t, gen(t, doc, codegen.TargetReact, nil), "src/screens/Schermata.tsx"))
+	src := string(file(t, gen(t, doc, codegen.TargetReact, nil), "src/screens/Screen.tsx"))
 	for _, want := range []string{
 		`import { motion, type Variants } from "motion/react";`,
-		"const scatolaVariants: Variants = {",
-		// il primo keyframe non e' a 0: hold iniziale a 0 (valore del primo, delta 0)
+		"const boxVariants: Variants = {",
+		// the first keyframe is not at 0: initial hold at 0 (the first's value, delta 0)
 		"x: [0, 0, 50, 0],",
 		"times: [0, 0.1, 0.6, 1]",
 		`ease: ["linear", "easeIn", [0.1, 0.2, 0.3, 0.4]]`,
 		"y: [0, 50],",
 		"rotate: [0, 90],",
 		"scale: [1, 2],",
-		"opacity: 0.5,", // costante: nessuna transition
+		"opacity: 0.5,", // constant: no transition
 		"delay: 0.25", "repeat: 3", `repeatType: "reverse"`, "duration: 1,",
 		`initial: { x: 0, y: 0, rotate: 0, scale: 1, opacity: 0.5 }`,
-		`initial="initial"`, `animate="animate"`, "variants={scatolaVariants}",
+		`initial="initial"`, `animate="animate"`, "variants={boxVariants}",
 		"<motion.div", "</motion.div>",
 	} {
 		if !strings.Contains(src, want) {
-			t.Errorf("manca %q in:\n%s", want, src)
+			t.Errorf("missing %q in:\n%s", want, src)
 		}
 	}
 	if strings.Contains(src, "opacity: { duration") {
-		t.Error("una traccia costante non deve avere transition")
+		t.Error("a constant track must not have a transition")
 	}
-	// la rotazione di base resta nella classe: Motion compone con essa
+	// the base rotation stays in the class: Motion composes with it
 	if !strings.Contains(src, "rotate-[10deg]") {
-		t.Error("la rotazione di base deve restare in className")
+		t.Error("the base rotation must stay in className")
 	}
 }
 
@@ -127,21 +128,21 @@ func TestReactTriggers(t *testing.T) {
 		b.Clip(clip("l", "loop", "b", 500, Tr("b", "rotation", KF(0, 0, ""), KF(500, 360, "linear"))))
 		b.Clip(clip("m", "", "scr", 300, Tr("b", "opacity", KF(0, 1, ""), KF(300, 0, ""))))
 	})
-	src := string(file(t, gen(t, doc, codegen.TargetReact, nil), "src/screens/Schermata.tsx"))
+	src := string(file(t, gen(t, doc, codegen.TargetReact, nil), "src/screens/Screen.tsx"))
 	for _, want := range []string{
 		`whileHover="hover"`, `whileTap="tap"`,
-		"repeat: Infinity", `repeatType: "loop"`, // loop senza yoyo
+		"repeat: Infinity", `repeatType: "loop"`, // loop without yoyo
 		"hover: {", "tap: {",
-		`animate="m"`, // il commento sul target della clip manuale
-		"m: {",        // la variante manuale ha il nome della clip
+		`animate="m"`, // the comment on the manual clip's target
+		"m: {",        // the manual variant has the clip's name
 	} {
 		if !strings.Contains(src, want) {
-			t.Errorf("manca %q in:\n%s", want, src)
+			t.Errorf("missing %q in:\n%s", want, src)
 		}
 	}
-	// La clip manuale non innesca nulla da sola: nessuna etichetta la usa
-	if strings.Contains(src, `animate="m"`) && !strings.Contains(src, `// clip manuale "m"`) {
-		t.Error("la clip manuale va solo documentata")
+	// The manual clip fires nothing by itself: no label uses it
+	if strings.Contains(src, `animate="m"`) && !strings.Contains(src, `// manual clip "m"`) {
+		t.Error("the manual clip must only be documented")
 	}
 }
 
@@ -156,67 +157,67 @@ func TestHTMLMapping(t *testing.T) {
 		b.Clip(clip("h", "hover", "a", 200, Tr("a", "opacity", KF(0, 1, "easeInOut"), KF(200, 0.5, ""))))
 		b.Clip(clip("p", "tap", "a", 100, Tr("a", "scale", KF(0, 1, ""), KF(100, 0.9, ""))))
 	})
-	src := string(file(t, gen(t, doc, codegen.TargetHTML, nil), "schermata.html"))
+	src := string(file(t, gen(t, doc, codegen.TargetHTML, nil), "screen.html"))
 	for _, want := range []string{
 		"@property --od-x", "@property --od-y",
 		"translate: var(--od-x) var(--od-y)",
-		// 4 iterazioni (repeat 3 + 1), alternate (yoyo), ritardo 250, fill both
+		// 4 iterations (repeat 3 + 1), alternate (yoyo), delay 250, fill both
 		"250ms 4 alternate both",
-		"@keyframes scatola-2-animate-x",
+		"@keyframes box-2-animate-x",
 		"0% { --od-x:0px;animation-timing-function:linear }",
 		"10% { --od-x:0px;animation-timing-function:ease-in }",
 		"60% { --od-x:50px;animation-timing-function:cubic-bezier(0.1,0.2,0.3,0.4) }",
-		"60.0001% { --od-x:30px;animation-timing-function:linear }", // lo scatto non si fonde
+		"60.0001% { --od-x:30px;animation-timing-function:linear }", // the jump does not merge
 		"100% { --od-x:0px }",
 		"0% { rotate:0deg;animation-timing-function:cubic-bezier(0.32,0.66,0.1,1) }", // spring
 		"100% { rotate:90deg }",
-		// hover/tap sul target (che e' l'elemento stesso): lo stesso elemento, nessun discendente
-		".scatola-2:hover {", ".scatola-2:active {",
+		// hover/tap on the target (which is the element itself): the same element, no descendant
+		".box-2:hover {", ".box-2:active {",
 		"opacity:0.5", "animation-timing-function:ease-in-out",
 	} {
 		if !strings.Contains(src, want) {
-			t.Errorf("manca %q in:\n%s", want, src)
+			t.Errorf("missing %q in:\n%s", want, src)
 		}
 	}
-	// l'animazione di tap ripete quella di hover (altrimenti toglierla la rilancia)
-	i := strings.Index(src, ".scatola-2:active {")
+	// the tap animation repeats the hover one (otherwise removing it replays it)
+	i := strings.Index(src, ".box-2:active {")
 	rule := src[i : i+strings.Index(src[i:], "}")]
 	if !strings.Contains(rule, "hover-opacity") || !strings.Contains(rule, "tap-scale") || !strings.Contains(rule, "animate-x") {
-		t.Errorf("la regola :active deve ripetere le animazioni di base e di hover: %s", rule)
+		t.Errorf("the :active rule must repeat the base and hover animations: %s", rule)
 	}
 }
 
 func TestDrawVectorAndPathLength(t *testing.T) {
 	doc := animScreen(func(b *B) {
-		b.Add("v", "scr", "Segno", 0, 0, 100, 50, Vector(Sub(false, Pt(0, 0, 0, 0, 0, 0), Pt(100, 50, 0, 0, 0, 0))), Fill(Solid(C(0, 0, 0))))
+		b.Add("v", "scr", "Mark", 0, 0, 100, 50, Vector(Sub(false, Pt(0, 0, 0, 0, 0, 0), Pt(100, 50, 0, 0, 0, 0))), Fill(Solid(C(0, 0, 0))))
 		b.Clip(clip("d", "enter", "scr", 500, Tr("v", "draw", KF(0, 0, ""), KF(500, 1, ""))))
 	})
-	react := string(file(t, gen(t, doc, codegen.TargetReact, nil), "src/screens/Schermata.tsx"))
+	react := string(file(t, gen(t, doc, codegen.TargetReact, nil), "src/screens/Screen.tsx"))
 	for _, want := range []string{
-		"const segnoTrattoVariants: Variants", "initial: { pathLength: 0 }", "pathLength: [0, 1],",
-		"<motion.path", "variants={segnoTrattoVariants}",
+		"const markStrokeVariants: Variants", "initial: { pathLength: 0 }", "pathLength: [0, 1],",
+		"<motion.path", "variants={markStrokeVariants}",
 	} {
 		if !strings.Contains(react, want) {
-			t.Errorf("react: manca %q in:\n%s", want, react)
+			t.Errorf("react: missing %q in:\n%s", want, react)
 		}
 	}
-	// l'<svg> resta un elemento normale (il path e' l'elemento animato)
+	// the <svg> stays a normal element (the path is the animated element)
 	if strings.Contains(react, "<motion.svg") {
-		t.Error("l'svg non deve diventare motion.svg se solo il path si anima")
+		t.Error("the svg must not become motion.svg if only the path animates")
 	}
-	html := string(file(t, gen(t, doc, codegen.TargetHTML, nil), "schermata.html"))
+	html := string(file(t, gen(t, doc, codegen.TargetHTML, nil), "screen.html"))
 	for _, want := range []string{`pathLength="1"`, "stroke-dasharray:0 1", "stroke-dasharray:1 1"} {
 		if !strings.Contains(html, want) {
-			t.Errorf("html: manca %q", want)
+			t.Errorf("html: missing %q", want)
 		}
 	}
 }
 
 func TestAnimationWarnings(t *testing.T) {
 	doc := animScreen(func(b *B) {
-		b.Add("g", "scr", "Gruppo", 0, 0, 0, 0, Group())
-		b.Add("in", "g", "Dentro", 0, 0, 10, 10)
-		// traccia FUORI dal target; draw su un rettangolo; clip con target in un'altra schermata
+		b.Add("g", "scr", "Group", 0, 0, 0, 0, Group())
+		b.Add("in", "g", "Inside", 0, 0, 10, 10)
+		// track OUTSIDE the target; draw on a rectangle; clip with target in another screen
 		b.Clip(clip("w", "enter", "g",
 			500, Tr("a", "opacity", KF(0, 0, ""), KF(500, 1, "")),
 			Tr("in", "draw", KF(0, 0, ""), KF(500, 1, "")),
@@ -224,34 +225,34 @@ func TestAnimationWarnings(t *testing.T) {
 	})
 	out := gen(t, doc, codegen.TargetReact, nil)
 	joined := strings.Join(out.Warnings, "\n")
-	for _, want := range []string{"non è dentro il target", "non è un vettoriale"} {
+	for _, want := range []string{"is not inside the target", "is not a vector"} {
 		if !strings.Contains(joined, want) {
-			t.Errorf("manca il warning %q in:\n%s", want, joined)
+			t.Errorf("missing warning %q in:\n%s", want, joined)
 		}
 	}
-	src := string(file(t, out, "src/screens/Schermata.tsx"))
-	if strings.Contains(src, "scatolaVariants") {
-		t.Error("la traccia fuori dal target non va emessa")
+	src := string(file(t, out, "src/screens/Screen.tsx"))
+	if strings.Contains(src, "boxVariants") {
+		t.Error("the track outside the target must not be emitted")
 	}
-	if !strings.Contains(src, "dentroVariants") {
-		t.Error("la traccia dentro il target va emessa")
+	if !strings.Contains(src, "insideVariants") {
+		t.Error("the track inside the target must be emitted")
 	}
 }
 
-// Una clip il cui target sta in UNA schermata non tocca le altre.
+// A clip whose target is in ONE screen does not touch the others.
 func TestAnimationScopedToScreen(t *testing.T) {
-	b := New("d", "Due")
-	b.Add("s1", "page1", "Uno", 0, 0, 100, 100, Frame(false, nil))
+	b := New("d", "Two")
+	b.Add("s1", "page1", "One", 0, 0, 100, 100, Frame(false, nil))
 	b.Add("r1", "s1", "Sq", 0, 0, 10, 10)
-	b.Add("s2", "page1", "Due", 200, 0, 100, 100, Frame(false, nil))
+	b.Add("s2", "page1", "Two", 200, 0, 100, 100, Frame(false, nil))
 	b.Add("r2", "s2", "Sq", 0, 0, 10, 10)
 	b.Clip(clip("c", "enter", "s1", 100, Tr("r1", "opacity", KF(0, 0, ""), KF(100, 1, ""))))
 	out := gen(t, b.Doc, codegen.TargetReact, nil)
-	if !strings.Contains(string(file(t, out, "src/screens/Uno.tsx")), "motion.div") {
-		t.Error("la schermata Uno deve animare")
+	if !strings.Contains(string(file(t, out, "src/screens/One.tsx")), "motion.div") {
+		t.Error("screen One must animate")
 	}
-	if strings.Contains(string(file(t, out, "src/screens/Due.tsx")), "motion") {
-		t.Error("la schermata Due non ha clip")
+	if strings.Contains(string(file(t, out, "src/screens/Two.tsx")), "motion") {
+		t.Error("screen Two has no clips")
 	}
 }
 
@@ -259,35 +260,35 @@ func TestManualClipHTML(t *testing.T) {
 	doc := animScreen(func(b *B) {
 		b.Clip(clip("m", "manual", "scr", 300, Tr("b", "opacity", KF(0, 1, ""), KF(300, 0, ""))))
 	})
-	src := string(file(t, gen(t, doc, codegen.TargetHTML, nil), "schermata.html"))
-	// si avvia aggiungendo la classe `m` al target
-	if !strings.Contains(src, ".schermata-1.m .altra-3 {") {
-		t.Errorf("manca la regola manuale in:\n%s", src)
+	src := string(file(t, gen(t, doc, codegen.TargetHTML, nil), "screen.html"))
+	// it starts by adding the class `m` to the target
+	if !strings.Contains(src, ".screen-1.m .other-3 {") {
+		t.Errorf("missing the manual rule in:\n%s", src)
 	}
 }
 
-// Un vettore importato da SVG porta un tratto VERO e i meta di stile: il codice
-// esportato li deve onorare come il canvas (colore e peso del tratto, capi,
-// giunti, tratteggio, regola di riempimento), non ripiegare sul filo da 1.5px.
+// A vector imported from SVG carries a REAL stroke and the style meta: the
+// exported code must honour them like the canvas (stroke colour and weight,
+// caps, joins, dashes, fill rule), not fall back to the 1.5px hairline.
 func TestVectorRealStrokeAndMeta(t *testing.T) {
 	doc := animScreen(func(b *B) {
-		b.Add("v", "scr", "Icona", 0, 0, 100, 50,
+		b.Add("v", "scr", "Icon", 0, 0, 100, 50,
 			Vector(Sub(true, Pt(0, 0, 0, 0, 0, 0), Pt(100, 0, 0, 0, 0, 0), Pt(50, 50, 0, 0, 0, 0))),
 			Fill(Solid(C(1, 0, 0))),
 			StrokeOpt(6, Center, Solid(C(0, 0, 1))),
 			Meta("stroke.cap", "round", "stroke.join", "bevel", "stroke.dash", "4,2", "vector.fillRule", "nonzero"),
 		)
 	})
-	html := string(file(t, gen(t, doc, codegen.TargetHTML, nil), "schermata.html"))
+	html := string(file(t, gen(t, doc, codegen.TargetHTML, nil), "screen.html"))
 	for _, want := range []string{
 		`stroke-width="6"`, `stroke-linecap="round"`, `stroke-linejoin="bevel"`,
 		`stroke-dasharray="4 2"`, `fill-rule="nonzero"`,
 	} {
 		if !strings.Contains(html, want) {
-			t.Errorf("manca %q in:\n%s", want, html)
+			t.Errorf("missing %q in:\n%s", want, html)
 		}
 	}
 	if strings.Contains(html, `stroke-width="1.5"`) {
-		t.Error("con un tratto vero non deve comparire il filo da 1.5px")
+		t.Error("with a real stroke the 1.5px hairline must not appear")
 	}
 }

@@ -1,57 +1,57 @@
-# Animazioni
+# Animations
 
-<!-- Esportato da opendesigner (opendesigner export): README del documento "Animazioni" (anim). NON modificare a mano:
-rigenerare con `opendesigner export`. L'attributo data-node-id lega ogni elemento al nodo del design. -->
+<!-- Exported by opendesigner (opendesigner export): README of document "Animations" (anim). DO NOT edit by hand:
+regenerate with `opendesigner export`. The data-node-id attribute ties every element to its design node. -->
 
-Progetto React + TypeScript + Tailwind v4 generato dal design con `opendesigner export`.
+React + TypeScript + Tailwind v4 project generated from the design with `opendesigner export`.
 
-## Come si avvia
+## Getting started
 
 ```sh
 npm install
 npm run dev      # http://localhost:5173
-npm run build    # controllo dei tipi + build di produzione
+npm run build    # type check + production build
 ```
 
-## Come il design diventa codice
+## How the design becomes code
 
-- Ogni **schermata** (frame di primo livello) è un componente in `src/screens/<Nome>.tsx`; `src/App.tsx` ne monta le rotte (`meta["code.route"]` del frame, altrimenti lo slug del nome). La schermata iniziale del flusso è montata anche su `/`.
-- **Auto layout** -> flexbox (`flex`, `gap`, `padding`, `justify-*`, `items-*`); tutto il resto è posizionato in modo assoluto (`absolute left-[..] top-[..]`) dentro il contenitore, con le coordinate del design. `hug` -> `fit-content`.
-- Riempimenti, tratti (interno/centro/esterno -> anelli di `box-shadow`), ombre, sfocature, rotazione, ritaglio, testo e vettori seguono **ciò che disegna il canvas dell'editor** (primo riempimento, prima ombra, prima sfocatura).
-- Le **immagini** sono copiate in `public/assets/<hash>.<ext>`; se mancano compare il segnaposto del canvas.
-- Ogni elemento porta `data-node-id="<id del nodo>"`: è il legame fra il design e il codice.
-- Le **istanze** dei componenti sono espanse inline (non c'è ancora l'estrazione in componenti React).
-- Le schermate hanno dimensione fissa (niente responsive).
+- Each **screen** (top-level frame) is a component in `src/screens/<Name>.tsx`; `src/App.tsx` mounts its routes (the frame's `meta["code.route"]`, otherwise the name's slug). The flow's start screen is also mounted on `/`.
+- **Auto layout** -> flexbox (`flex`, `gap`, `padding`, `justify-*`, `items-*`); everything else is positioned absolutely (`absolute left-[..] top-[..]`) inside the container, using the design's coordinates. `hug` -> `fit-content`.
+- Fills, strokes (inside/center/outside -> `box-shadow` rings), shadows, blurs, rotation, clipping, text and vectors follow **what the editor's canvas draws** (first fill, first shadow, first blur).
+- **Images** are copied to `public/assets/<hash>.<ext>`; if missing, the canvas placeholder appears.
+- Every element carries `data-node-id="<node id>"`: it is the link between the design and the code.
+- Component **instances** are expanded inline (there is no extraction into React components yet).
+- Screens have a fixed size (no responsiveness).
 
-## Animazioni
+## Animations
 
-Le **clip** del design diventano animazioni con [Motion](https://motion.dev) (`import { motion } from "motion/react"`): ogni elemento con tracce è un `motion.div` (o `motion.svg`/`motion.path`) con una costante `<nome>Variants` e il suo **target** porta le etichette che le innescano sui discendenti.
+The design's **clips** become animations with [Motion](https://motion.dev) (`import { motion } from "motion/react"`): every element with tracks is a `motion.div` (or `motion.svg`/`motion.path`) with a `<name>Variants` constant, and its **target** carries the labels that fire them on descendants.
 
-- `enter` -> `initial="initial" animate="animate"` (parte al mount); `loop` -> come enter ma con `repeat: Infinity` (`repeatType: "reverse"` se yoyo); `hover` -> `whileHover="hover"`; `tap` -> `whileTap="tap"`.
-- `x`/`y` sono **delta** dalla posizione del design, `rotate` un delta in gradi (compone con la rotazione di base), `scale` un moltiplicatore, `opacity` assoluta, `draw` -> `pathLength` (0..1) del tratto di un vettoriale.
-- Ogni proprietà ha i suoi keyframe (`[..]`), i `times` (0..1 della clip) e un `ease` per segmento; `spring` è approssimata da una curva di Bézier.
-- Una clip **manuale** non parte da sola: ha una variante col nome indicato in tabella; per avviarla imposta `animate="<variante>"` sull'elemento target (di norma da uno stato React) oppure pilotala con `useAnimate`.
+- `enter` -> `initial="initial" animate="animate"` (starts on mount); `loop` -> like enter but with `repeat: Infinity` (`repeatType: "reverse"` if yoyo); `hover` -> `whileHover="hover"`; `tap` -> `whileTap="tap"`.
+- `x`/`y` are **deltas** from the design position, `rotate` is a delta in degrees (composes with the base rotation), `scale` is a multiplier, `opacity` is absolute, `draw` -> `pathLength` (0..1) of a vector's stroke.
+- Each property has its own keyframes (`[..]`), `times` (0..1 of the clip) and one `ease` per segment; `spring` is approximated by a Bézier curve.
+- A **manual** clip does not start on its own: it has a variant with the name given in the table; to start it set `animate="<variant>"` on the target element (usually from React state) or drive it with `useAnimate`.
 
-| Clip | Trigger | Target | Durata | Variante |
+| Clip | Trigger | Target | Duration | Variant |
 |---|---|---|---|---|
-| caricamento | loop | `spin` | 1000 ms | `animate` |
-| disegna la firma | enter | `logo` | 1200 ms | `animate` |
-| entrata | enter | `scr` | 800 ms | `animate` |
-| evidenzia | manual | `card` | 300 ms | `evidenzia` |
+| draw the signature | enter | `logo` | 1200 ms | `animate` |
+| enter | enter | `scr` | 800 ms | `animate` |
+| highlight | manual | `card` | 300 ms | `highlight` |
 | hover | hover | `btn` | 200 ms | `hover` |
-| inclina | hover | `tilt` | 300 ms | `hover` |
-| pressione | tap | `btn` | 100 ms | `tap` |
+| loading | loop | `spin` | 1000 ms | `animate` |
+| press | tap | `btn` | 100 ms | `tap` |
+| tilt | hover | `tilt` | 300 ms | `hover` |
 
-## Schermate
+## Screens
 
-| Componente | Rotta | Nodo del design |
+| Component | Route | Design node |
 |---|---|---|
-| `Animazioni` | `/` | `scr` (Animazioni) |
+| `Animations` | `/` | `scr` (Animations) |
 
-## Rigenerare
+## Regenerating
 
 ```sh
 opendesigner export -doc anim -target react -out . -force
 ```
 
-I file generati non vanno modificati a mano: la prossima esportazione li sovrascrive. Per far evolvere il progetto a mano, esporta una volta e da lì in poi lavora sul codice (la rigenerazione non fa merge).
+The generated files must not be edited by hand: the next export overwrites them. To evolve the project by hand, export once and work on the code from then on (regeneration does not merge).

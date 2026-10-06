@@ -12,49 +12,49 @@ function renderTopBar(overrides: Partial<Parameters<typeof TopBar>[0]> = {}) {
   return render(
     <TopBar
       mode="design"
-      presence={<span>presenza-finta</span>}
+      presence={<span>fake-presence</span>}
       onNewDocument={vi.fn()}
       connection="connected"
-      statusLabel="Connesso"
+      statusLabel="Connected"
       {...overrides}
     />,
   );
 }
 
 describe("TopBar", () => {
-  it("monta il menu del documento", () => {
+  it("mounts the document menu", () => {
     renderTopBar();
-    expect(screen.getByRole("button", { name: "Menu del documento" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Document menu" })).toBeInTheDocument();
   });
 
-  it("monta lo switch di modalità con le tre modalità", () => {
+  it("mounts the mode switch with the three modes", () => {
     renderTopBar();
-    const group = screen.getByRole("radiogroup", { name: "Modalità" });
+    const group = screen.getByRole("radiogroup", { name: "Mode" });
     expect(group).toBeInTheDocument();
-    for (const label of ["Design", "Flussi", "Sviluppo"]) {
+    for (const label of ["Design", "Flows", "Develop"]) {
       expect(screen.getByRole("radio", { name: new RegExp(label) })).toBeInTheDocument();
     }
   });
 
-  it("scegliere Flussi cambia davvero la modalità nello store", () => {
+  it("choosing Flows really changes the mode in the store", () => {
     renderTopBar();
-    fireEvent.click(screen.getByRole("radio", { name: /Flussi/ }));
+    fireEvent.click(screen.getByRole("radio", { name: /Flows/ }));
     expect(useFlowUi.getState().mode).toBe("flows");
   });
 
-  it("monta la presenza ricevuta via prop", () => {
+  it("mounts the presence received via prop", () => {
     renderTopBar();
-    expect(screen.getByText("presenza-finta")).toBeInTheDocument();
+    expect(screen.getByText("fake-presence")).toBeInTheDocument();
   });
 
-  it("mostra lo zoom della camera", () => {
+  it("shows the camera zoom", () => {
     useScene.setState({ camera: { x: 0, y: 0, zoom: 1.5 } });
     renderTopBar();
     expect(screen.getByTitle("Zoom")).toHaveTextContent("150%");
   });
 
-  it("mostra lo stato della connessione", () => {
-    renderTopBar({ statusLabel: "Riconnessione…" });
-    expect(screen.getByTitle("Riconnessione…")).toBeInTheDocument();
+  it("shows the connection status", () => {
+    renderTopBar({ statusLabel: "Reconnecting…" });
+    expect(screen.getByTitle("Reconnecting…")).toBeInTheDocument();
   });
 });

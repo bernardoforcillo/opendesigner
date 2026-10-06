@@ -2,10 +2,10 @@ import { useScene } from "../store/store";
 import { wrapInFrameOps } from "./grouping";
 
 /**
- * Avvolge la selezione corrente in un frame, con o senza auto layout, come UN
- * gesto (una voce di undo). Sta qui, e non nel select tool, perché la chiamano
- * sia la scorciatoia (Shift+A, Ctrl+Alt+G) sia il pulsante del pannello. Ritorna
- * se ha fatto qualcosa.
+ * Wraps the current selection in a frame, with or without auto layout, as ONE
+ * gesture (one undo entry). It lives here, not in the select tool, because it is
+ * called by both the shortcut (Shift+A, Ctrl+Alt+G) and the panel button. Returns
+ * whether it did anything.
  */
 export function wrapSelectionInFrame(withAutoLayout: boolean): boolean {
   const store = useScene.getState();
@@ -14,8 +14,8 @@ export function wrapSelectionInFrame(withAutoLayout: boolean): boolean {
   const res = wrapInFrameOps(scene, store.selection, withAutoLayout);
   if (!res) return false;
   store.beginGesture();
-  // La selezione voluta PRIMA di chiudere: endGesture la riconcilia contro la
-  // scena finale, quindi può già nominare il frame che gli op stanno per creare.
+  // The intended selection BEFORE closing: endGesture reconciles it against the
+  // final scene, so it can already name the frame the ops are about to create.
   store.setSelection(res.selection);
   store.endGesture(res.ops);
   return true;

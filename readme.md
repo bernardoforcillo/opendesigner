@@ -1,6 +1,6 @@
-# brawt
+# opendesigner
 
-brawt is a local-first design editor for vector graphics, built around a Go backend, a TypeScript frontend, and an MCP-powered co-design workflow. The project aims to provide a fast, inspectable editing experience for shapes, text, images, and vector paths while keeping the data model explicit and easy to reason about.
+opendesigner is a local-first design editor for vector graphics, built around a Go backend, a TypeScript frontend, and an MCP-powered co-design workflow. The project aims to provide a fast, inspectable editing experience for shapes, text, images, and vector paths while keeping the data model explicit and easy to reason about.
 
 The repository currently includes:
 
@@ -66,7 +66,7 @@ You will need:
 
 ```bash
 git clone <repository-url>
-cd brawt
+cd opendesigner
 pnpm install --dir web
 ```
 
@@ -107,8 +107,8 @@ opendesigner serve
 # sulla stessa rete apri: http://192.168.1.20:8080
 ```
 
-Everyone picks a nickname in the toolbar. The **Condividi** button copies the
-link of the open document (`...#doc=<id>`); whoever opens it edits the same
+Everyone picks a nickname in the toolbar. The **Share** button copies the
+link of the open document (`.../doc/<id>`); whoever opens it edits the same
 document and sees the others' cursors and selections. Presence is ephemeral and
 never written to the document.
 

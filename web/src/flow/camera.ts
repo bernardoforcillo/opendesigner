@@ -3,9 +3,9 @@ import { MAX_ZOOM, MIN_ZOOM } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
 
 /**
- * La camera che inquadra `b` al centro di una vista `viewW x viewH` (px CSS),
- * con `pad` px di margine e senza ingrandire oltre `maxZoom` (una schermata
- * piccola non deve riempire tutto lo schermo e perdere il contesto).
+ * The camera that frames `b` at the center of a `viewW x viewH` view (CSS px),
+ * with `pad` px of margin and without zooming in beyond `maxZoom` (a small
+ * screen must not fill the whole screen and lose the context).
  */
 export function cameraToFit(b: Bounds, viewW: number, viewH: number, pad = 80, maxZoom = 1): Camera {
   const w = Math.max(1, viewW - pad * 2);
@@ -17,10 +17,10 @@ export function cameraToFit(b: Bounds, viewW: number, viewH: number, pad = 80, m
 }
 
 /**
- * `b` (mondo) sta tutto dentro la vista, con `margin` px di respiro? Serve a
- * decidere se un click nel pannello (una transizione, un problema) debba
- * spostare la camera: se l'oggetto si vede già basta evidenziarlo, muovere la
- * vista a ogni click disorienta chi sta modificando.
+ * Is `b` (world) entirely inside the view, with `margin` px of breathing room? It serves to
+ * decide whether a click in the panel (a transition, a problem) should
+ * move the camera: if the object is already visible it is enough to highlight it, moving the
+ * view on every click disorients whoever is editing.
  */
 export function isFullyVisible(b: Bounds, cam: Camera, viewW: number, viewH: number, margin = 24): boolean {
   const x0 = b.x * cam.zoom + cam.x;

@@ -22,9 +22,9 @@ function deleteOp(id: string) {
 describe("selection state", () => {
   beforeEach(() => {
     useScene.setState({ selection: [], marquee: null, gesture: null });
-    // setScene e non setState({scene}): installa una scena COERENTE (vista e
-    // confermato allineati, coda vuota), che è l'invariante su cui poggia la
-    // riconciliazione (vedi store.ts).
+    // setScene and not setState({scene}): installs a COHERENT scene (view and
+    // confirmed aligned, empty queue), which is the invariant reconciliation
+    // rests on (see store.ts).
     useScene.getState().setScene(emptyScene("doc1", "Untitled"));
   });
 
@@ -67,8 +67,8 @@ describe("selection state", () => {
   });
 
   it("setSnapGuides reuses the same array when there is nothing to show and nothing was shown", () => {
-    // Un trascinamento la chiama a ogni pointermove: un array nuovo ogni volta
-    // sveglierebbe i sottoscrittori a ogni pixel anche senza nessuno scatto.
+    // A drag calls it on every pointermove: a new array each time
+    // would wake the subscribers at every pixel even with no snap.
     useScene.getState().setSnapGuides([]);
     const before = useScene.getState().snapGuides;
     useScene.getState().setSnapGuides([]);
@@ -80,7 +80,7 @@ describe("selection state", () => {
     useScene.getState().apply(createRectOp("n2"));
     useScene.getState().setSelection(["n1", "n2"]);
     useScene.getState().apply(deleteOp("n1"));
-    // Altrimenti le maniglie di resize restano appese a un nodo inesistente.
+    // Otherwise the resize handles stay hanging on a nonexistent node.
     expect(useScene.getState().selection).toEqual(["n2"]);
     expect(useScene.getState().scene?.nodes.at("n1")).toBeUndefined();
   });
@@ -113,43 +113,43 @@ function renamePageOp(id: string, name: string) {
   return create(OpSchema, { opId: "op-renpage-" + id, docId: "doc1", kind: { case: "renamePage", value: { id, name } } });
 }
 
-// currentPageId è STATO DI VISTA (come camera e selezione), NON del documento:
-// non è un op, non viaggia sul filo, e resta SEMPRE valido -- va corretto quando
-// una pagina viene creata/cancellata, anche da un op remoto.
-describe("currentPageId (stato di vista)", () => {
+// currentPageId is VIEW STATE (like camera and selection), NOT document:
+// it is not an op, it does not travel on the wire, and stays ALWAYS valid -- it must be corrected when
+// a page is created/deleted, even by a remote op.
+describe("currentPageId (view state)", () => {
   beforeEach(() => {
     useScene.setState({ selection: [], marquee: null, gesture: null });
     useScene.getState().setScene(emptyScene("doc1", "Untitled"));
   });
 
-  it("setScene fa default alla prima pagina", () => {
+  it("setScene defaults to the first page", () => {
     expect(useScene.getState().currentPageId).toBe("page1");
   });
 
-  it("setCurrentPage cambia pagina e AZZERA la selezione, senza voce di undo", () => {
-    useScene.getState().apply(createPageOp("page2", "Page 2")); // remoto: porta una seconda pagina
+  it("setCurrentPage changes page and RESETS the selection, with no undo entry", () => {
+    useScene.getState().apply(createPageOp("page2", "Page 2")); // remote: brings a second page
     useScene.getState().setSelection(["x"]);
     const undoBefore = useScene.getState().undoStack.length;
     useScene.getState().setCurrentPage("page2");
     expect(useScene.getState().currentPageId).toBe("page2");
     expect(useScene.getState().selection).toEqual([]);
-    // Cambiare pagina NON è una voce di undo.
+    // Changing page is NOT an undo entry.
     expect(useScene.getState().undoStack.length).toBe(undoBefore);
     expect(useScene.getState().canUndo).toBe(false);
   });
 
-  it("ri-selezionare la pagina corrente è un no-op che non tocca la selezione", () => {
+  it("re-selecting the current page is a no-op that does not touch the selection", () => {
     useScene.getState().setSelection(["x"]);
     useScene.getState().setCurrentPage("page1");
     expect(useScene.getState().selection).toEqual(["x"]);
   });
 
-  it("non passa a una pagina inesistente (l'invariante resta)", () => {
+  it("does not switch to a nonexistent page (the invariant holds)", () => {
     useScene.getState().setCurrentPage("nope");
     expect(useScene.getState().currentPageId).toBe("page1");
   });
 
-  it("cancellare la pagina corrente (anche da un op remoto) ripiega su un'altra", () => {
+  it("deleting the current page (even from a remote op) falls back to another", () => {
     useScene.getState().apply(createPageOp("page2", "Page 2"));
     useScene.getState().setCurrentPage("page2");
     expect(useScene.getState().currentPageId).toBe("page2");
@@ -157,9 +157,9 @@ describe("currentPageId (stato di vista)", () => {
     expect(useScene.getState().currentPageId).toBe("page1");
   });
 
-  it("un op remoto che crea/rinomina pagine mantiene valida la pagina corrente", () => {
+  it("a remote op that creates/renames pages keeps the current page valid", () => {
     useScene.getState().apply(createPageOp("page2", "Page 2"));
-    expect(useScene.getState().currentPageId).toBe("page1"); // invariato: era ed è valida
+    expect(useScene.getState().currentPageId).toBe("page1"); // unchanged: it was and is valid
     expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1", "page2"]);
     useScene.getState().apply(renamePageOp("page1", "Cover"));
     expect(useScene.getState().currentPageId).toBe("page1");
@@ -182,43 +182,43 @@ function createGroupOp(id: string) {
   return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
 }
 
-// VEDI-vs-SELEZIONA dal lato della cornice: la selezione è stato di vista
-// scoping-per-pagina come disegno/hit-test/marquee (canvasRenderer.ts::rootsOf).
-// Un op REMOTO che sposta il nodo selezionato su un'altra pagina lo lascia
-// esistente ma non più raggiungibile dalla pagina corrente: tenerlo selezionato
-// disegnerebbe cornice e 8 maniglie sul vuoto (overlayRenderer.ts) e il pannello
-// proprietà lo editerebbe alla cieca. setCurrentPage azzera la selezione al
-// cambio pagina LOCALE; questo copre l'arrivo REMOTO, che passa da rebuild.
-describe("selezione scoping-per-pagina (rebuild da op remoto)", () => {
+// SEE-vs-SELECT on the frame side: the selection is view state
+// per-page scoped like drawing/hit-test/marquee (canvasRenderer.ts::rootsOf).
+// A REMOTE op that moves the selected node to another page leaves it
+// existing but no longer reachable from the current page: keeping it selected
+// would draw a frame and 8 handles on empty space (overlayRenderer.ts) and the properties
+// panel would edit it blindly. setCurrentPage resets the selection on a
+// LOCAL page change; this covers the REMOTE arrival, which goes through rebuild.
+describe("per-page selection scoping (rebuild from remote op)", () => {
   beforeEach(() => {
     useScene.setState({ selection: [], marquee: null, gesture: null });
     useScene.getState().setScene(emptyScene("doc1", "Untitled"));
   });
 
-  it("REGRESSION: un reparent remoto del nodo selezionato su un'altra pagina lo toglie dalla selezione", () => {
+  it("REGRESSION: a remote reparent of the selected node to another page removes it from the selection", () => {
     useScene.getState().apply(createPageOp("page2", "Page 2"));
-    useScene.getState().apply(createRectOp("n1")); // figlio di page1
+    useScene.getState().apply(createRectOp("n1")); // child of page1
     useScene.getState().setSelection(["n1"]);
-    // client B sposta n1 su page2 mentre A guarda page1
+    // client B moves n1 to page2 while A is looking at page1
     useScene.getState().apply(reparentOp("n1", "page2", "a0"));
-    // n1 esiste ANCORA (non è una delete), ma non è più raggiungibile da page1:
-    // il canvas non lo disegna, quindi cornice/maniglie/pannello non devono più
-    // puntarci.
+    // n1 STILL exists (it is not a delete), but is no longer reachable from page1:
+    // the canvas does not draw it, so frame/handles/panel must no longer
+    // point at it.
     expect(useScene.getState().scene?.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().currentPageId).toBe("page1");
     expect(useScene.getState().selection).toEqual([]);
   });
 
-  it("un reparent remoto DENTRO la pagina corrente (in un gruppo) mantiene la selezione", () => {
-    useScene.getState().apply(createGroupOp("g1")); // figlio di page1
-    useScene.getState().apply(createRectOp("n1")); // figlio di page1
+  it("a remote reparent INSIDE the current page (into a group) keeps the selection", () => {
+    useScene.getState().apply(createGroupOp("g1")); // child of page1
+    useScene.getState().apply(createRectOp("n1")); // child of page1
     useScene.getState().setSelection(["n1"]);
-    // n1 finisce sotto g1: cambia parent ma resta raggiungibile da page1.
+    // n1 ends up under g1: parent changes but it stays reachable from page1.
     useScene.getState().apply(reparentOp("n1", "g1", "a0"));
     expect(useScene.getState().selection).toEqual(["n1"]);
   });
 
-  it("toglie SOLO i nodi finiti fuori pagina da una selezione multipla, tenendo il resto in ordine", () => {
+  it("removes ONLY the nodes that ended up off-page from a multiple selection, keeping the rest in order", () => {
     useScene.getState().apply(createPageOp("page2", "Page 2"));
     useScene.getState().apply(createRectOp("n1"));
     useScene.getState().apply(createRectOp("n2"));
@@ -229,8 +229,8 @@ describe("selezione scoping-per-pagina (rebuild da op remoto)", () => {
   });
 });
 
-// Un NodeLite pieno, per costruire a mano gli snapshot di setScene senza passare
-// da un op: rispecchia createRectOp (stessi campi) ma con parentId libero.
+// A full NodeLite, to hand-build setScene snapshots without going through
+// an op: mirrors createRectOp (same fields) but with a free parentId.
 function rectLite(id: string, parentId: string): NodeLite {
   return {
     id, parentId, orderKey: "a0", name: "Rect", visible: true, opacity: 1,
@@ -239,28 +239,28 @@ function rectLite(id: string, parentId: string): NodeLite {
   };
 }
 
-// VEDI-vs-SELEZIONA dal ramo GEMELLO di rebuild: setScene è il percorso di
-// RESYNC/snapshot (rpc/syncClient.ts, ramo CodeOutOfRange) e per progetto
-// CONSERVA la selezione anziché svuotarla. Ma "conservare" deve voler dire lo
-// stesso scoping-per-pagina di rebuild: uno snapshot in cui il nodo selezionato
-// è passato a un'ALTRA pagina lo lascia esistente ma non più raggiungibile dalla
-// pagina corrente, e tenerlo selezionato disegnerebbe cornice e 8 maniglie sul
-// vuoto (overlayRenderer.ts) e farebbe editare il pannello alla cieca.
-describe("selezione scoping-per-pagina (setScene: resync/snapshot)", () => {
+// SEE-vs-SELECT from rebuild's TWIN branch: setScene is the
+// RESYNC/snapshot path (rpc/syncClient.ts, CodeOutOfRange branch) and by design
+// KEEPS the selection instead of emptying it. But "keeping" must mean the
+// same per-page scoping as rebuild: a snapshot in which the selected node
+// moved to ANOTHER page leaves it existing but no longer reachable from the
+// current page, and keeping it selected would draw a frame and 8 handles on the
+// void (overlayRenderer.ts) and make the panel edit blindly.
+describe("per-page selection scoping (setScene: resync/snapshot)", () => {
   beforeEach(() => {
     useScene.setState({ selection: [], marquee: null, gesture: null });
     useScene.getState().setScene(emptyScene("doc1", "Untitled"));
   });
 
-  it("REGRESSION: uno snapshot di resync in cui il nodo selezionato è passato a un'altra pagina lo toglie dalla selezione", () => {
+  it("REGRESSION: a resync snapshot in which the selected node moved to another page removes it from the selection", () => {
     useScene.getState().apply(createPageOp("page2", "Page 2"));
-    useScene.getState().apply(createRectOp("n1")); // figlio di page1
+    useScene.getState().apply(createRectOp("n1")); // child of page1
     useScene.getState().setSelection(["n1"]);
     expect(useScene.getState().currentPageId).toBe("page1");
-    // La connessione cade e riapre; nel frattempo un altro client ha spostato n1
-    // su page2. Lo snapshot autorevole lo mostra ORA sotto page2: n1 ESISTE
-    // ancora (la sola potatura per esistenza lo terrebbe) ma non è più
-    // raggiungibile da page1, che resta la pagina corrente.
+    // The connection drops and reopens; in the meantime another client moved n1
+    // to page2. The authoritative snapshot now shows it UNDER page2: n1 STILL
+    // EXISTS (pruning by existence alone would keep it) but is no longer
+    // reachable from page1, which remains the current page.
     const snapshot: SceneState = {
       id: "doc1", name: "Untitled", schemaVersion: 1,
       pages: [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }],
@@ -272,8 +272,8 @@ describe("selezione scoping-per-pagina (setScene: resync/snapshot)", () => {
     expect(useScene.getState().selection).toEqual([]);
   });
 
-  it("uno snapshot che TIENE il nodo selezionato sulla pagina corrente conserva la selezione", () => {
-    useScene.getState().apply(createRectOp("n1")); // figlio di page1
+  it("a snapshot that KEEPS the selected node on the current page preserves the selection", () => {
+    useScene.getState().apply(createRectOp("n1")); // child of page1
     useScene.getState().setSelection(["n1"]);
     const snapshot: SceneState = {
       id: "doc1", name: "Untitled", schemaVersion: 1,
@@ -285,22 +285,22 @@ describe("selezione scoping-per-pagina (setScene: resync/snapshot)", () => {
   });
 });
 
-// L'invariante "selection ⊆ raggiungibili da currentPage" airtight anche sul
-// percorso del submit ottimistico: un op locale che sposta il nodo selezionato
-// fuori dalla pagina corrente lo toglie dalla selezione, come fa rebuild per gli
-// op remoti e setScene per gli snapshot.
-describe("selezione scoping-per-pagina (applyPending: op locale ottimistico)", () => {
+// The "selection ⊆ reachable from currentPage" invariant airtight on the
+// optimistic submit path too: a local op that moves the selected node
+// out of the current page removes it from the selection, as rebuild does for
+// remote ops and setScene for snapshots.
+describe("per-page selection scoping (applyPending: optimistic local op)", () => {
   beforeEach(() => {
     useScene.setState({ selection: [], marquee: null, gesture: null });
     useScene.getState().setScene(emptyScene("doc1", "Untitled"));
   });
 
-  it("un op locale ottimistico che sposta il nodo selezionato fuori pagina lo toglie dalla selezione", () => {
+  it("an optimistic local op that moves the selected node off-page removes it from the selection", () => {
     useScene.getState().apply(createPageOp("page2", "Page 2"));
-    useScene.getState().apply(createRectOp("n1")); // figlio di page1
+    useScene.getState().apply(createRectOp("n1")); // child of page1
     useScene.getState().setSelection(["n1"]);
-    // Submit OTTIMISTICO di un reparent verso page2: la vista lo mostra subito,
-    // n1 esiste ancora ma non è più raggiungibile da page1.
+    // OPTIMISTIC submit of a reparent toward page2: the view shows it immediately,
+    // n1 still exists but is no longer reachable from page1.
     useScene.getState().applyPending(reparentOp("n1", "page2", "a0"));
     expect(useScene.getState().scene?.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().currentPageId).toBe("page1");

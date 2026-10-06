@@ -18,36 +18,36 @@ import {
   isTranslationM, lengthScaleOf, parseTransform, similarityOf, translateM,
 } from "./transform";
 
-// IMPORT SVG -> NODI MODIFICABILI.
+// SVG IMPORT -> EDITABLE NODES.
 //
-// `importSvg(source, opts)` è PURA: testo dentro, op `createNode` fuori (in
-// ordine padre-prima-dei-figli, pronti per un solo gesto). Non tocca lo store,
-// non fa rete, non decodifica immagini; l'unico I/O è DOMParser, che esiste
-// ovunque giri il resto (browser, jsdom). Gli id arrivano da un generatore
-// iniettabile così i test sono deterministici.
+// `importSvg(source, opts)` is PURE: text in, `createNode` ops out (in
+// parent-before-children order, ready for a single gesture). It does not touch the store,
+// does no network, does not decode images; the only I/O is DOMParser, which exists
+// wherever the rest runs (browser, jsdom). Ids come from an injectable
+// generator so tests are deterministic.
 //
-// COSA DIVENTA COSA
-//   <svg>                       -> un GRUPPO radice (la cosa che si seleziona,
-//                                  sposta e anima come un oggetto solo)
-//   <g>, <a>, <switch>, <use>   -> GRUPPO annidato (la struttura si conserva)
-//   <rect>/<circle>/<ellipse>   -> nodo rect/ellipse quando la matrice è una
-//                                  similitudine (traslazione+scala uniforme+
-//                                  rotazione), altrimenti un PATH
+// WHAT BECOMES WHAT
+//   <svg>                       -> a root GROUP (the thing that is selected,
+//                                  moved and animated as a single object)
+//   <g>, <a>, <switch>, <use>   -> nested GROUP (the structure is preserved)
+//   <rect>/<circle>/<ellipse>   -> rect/ellipse node when the matrix is a
+//                                  similarity (translation+uniform scale+
+//                                  rotation), otherwise a PATH
 //   <path>/<line>/<polyline>/
-//   <polygon>                   -> nodo vettoriale
-//   <text>                      -> nodo di testo
-//   <image data:...>            -> nodo immagine (l'asset lo carica chi applica)
+//   <polygon>                   -> vector node
+//   <text>                      -> text node
+//   <image data:...>            -> image node (the asset is loaded by whoever applies)
 //
-// LE TRASFORMAZIONI SI COTTURANO nella geometria: il modello non ha
-// trasformazioni arbitrarie per nodo, quindi ogni `transform` (e il viewBox) si
-// compone in una matrice che si applica ad ancoraggi e maniglie. L'unica
-// eccezione è la pura traslazione di un <g>, che diventa il x/y del gruppo
-// (così il gruppo si può ancora spostare/animare come ci si aspetta).
+// TRANSFORMS ARE BAKED into the geometry: the model has no
+// arbitrary per-node transforms, so every `transform` (and the viewBox) is
+// composed into a matrix applied to anchors and handles. The only
+// exception is the pure translation of a <g>, which becomes the group's x/y
+// (so the group can still be moved/animated as expected).
 //
-// Tutto ciò che il modello non sa esprimere (filtri, maschere, pattern, ...)
-// produce UN avviso con conteggio e un ripiego, mai un'eccezione. Gli unici
-// errori veri sono quelli che rendono impossibile importare: non è un SVG,
-// troppo grande, troppi nodi.
+// Everything the model cannot express (filters, masks, patterns, ...)
+// produces ONE warning with a count and a fallback, never an exception. The only real
+// errors are those that make importing impossible: not an SVG,
+// too large, too many nodes.
 
 export class SvgImportError extends Error {
   constructor(message: string) {
@@ -58,10 +58,10 @@ export class SvgImportError extends Error {
 
 export const MAX_SVG_BYTES = 5 * 1024 * 1024;
 export const MAX_SVG_NODES = 5000;
-/** Lato lungo massimo (unità mondo) dell'import: come MAX_DROP_SIZE delle immagini. */
+/** Maximum long side (world units) of the import: like the images' MAX_DROP_SIZE. */
 export const DEFAULT_MAX_SIZE = 512;
-// Elementi visitati in tutto (conta anche i <use> che si moltiplicano): il tetto
-// ai NODI da solo non ferma un documento che ne scarta milioni.
+// Elements visited in total (it also counts the <use>s that multiply): the cap
+// on NODES alone does not stop a document that discards millions of them.
 const MAX_VISITS = 100_000;
 const MAX_DEPTH = 128;
 
@@ -69,9 +69,9 @@ const SVG_NS = "http://www.w3.org/2000/svg";
 const XLINK_NS = "http://www.w3.org/1999/xlink";
 const INKSCAPE_NS = "http://www.inkscape.org/namespaces/inkscape";
 
-/** Un asset incorporato (data URI) che chi applica gli op deve ancora caricare. */
+/** An embedded asset (data URI) that whoever applies the ops still has to load. */
 export interface PendingAsset {
-  /** Il nodo immagine creato con assetHash "" da riempire. */
+  /** The image node created with assetHash "" to be filled in. */
   nodeId: string;
   mime: string;
   bytes: Uint8Array;
@@ -79,27 +79,27 @@ export interface PendingAsset {
 }
 
 export interface ImportOptions {
-  /** docId stampato negli op (vuoto nei test puri). */
+  /** docId stamped in the ops (empty in pure tests). */
   docId?: string;
-  /** Il parent del gruppo radice (id di pagina o di container). */
+  /** The root group's parent (page id or container id). */
   parentId?: string;
-  /** Order key del gruppo radice (default: la prima chiave). */
+  /** Order key of the root group (default: the first key). */
   orderKey?: string | null;
-  /** Generatore di id (nodi e op). Default: crypto.randomUUID. */
+  /** Id generator (nodes and ops). Default: crypto.randomUUID. */
   newId?: () => string;
-  /** Nome di ripiego del gruppo radice (es. il nome del file senza estensione). */
+  /** Fallback name of the root group (e.g. the file name without extension). */
   name?: string;
-  /** Lato lungo massimo: l'SVG più grande si rimpicciolisce in proporzione. */
+  /** Maximum long side: the largest SVG is shrunk proportionally. */
   maxSize?: number;
-  /** Scala esplicita (vince su maxSize). */
+  /** Explicit scale (wins over maxSize). */
   scale?: number;
-  /** Angolo in alto a sinistra del gruppo radice nello spazio del parent. */
+  /** Top-left corner of the root group in the parent's space. */
   at?: { x: number; y: number };
-  /** Larghezza di una riga di testo (serve ad allineare text-anchor). */
+  /** Width of a text line (serves to align text-anchor). */
   measureText?: (text: string, style: TextStyleLite) => number;
   maxNodes?: number;
   maxBytes?: number;
-  /** Interno: misura il contenuto di un SVG privo di viewBox (vedi measureContent). */
+  /** Internal: measures the content of an SVG without a viewBox (see measureContent). */
   probe?: boolean;
 }
 
@@ -107,17 +107,17 @@ export interface ImportResult {
   ops: Op[];
   rootId: string;
   warnings: string[];
-  /** Le dimensioni (mondo) del gruppo radice: il viewport dell'SVG scalato. */
+  /** The dimensions (world) of the root group: the scaled SVG viewport. */
   size: { width: number; height: number };
-  /** Quanti nodi (gruppi inclusi) sono stati creati. */
+  /** How many nodes (groups included) were created. */
   nodeCount: number;
   assets: PendingAsset[];
 }
 
 // --- numeri e lunghezze -------------------------------------------------------
 
-// Oltre questa distanza dall'origine una coordinata non è un disegno: è un
-// file ostile (o rotto) che farebbe traboccare i box.
+// Beyond this distance from the origin a coordinate is not a drawing: it is a
+// hostile (or broken) file that would make the boxes overflow.
 const MAX_COORD = 1e9;
 
 const r4 = (v: number) => Math.round(v * 1e4) / 1e4 + 0;
@@ -126,14 +126,14 @@ const UNIT: Record<string, number> = {
   "": 1, px: 1, pt: 4 / 3, pc: 16, mm: 96 / 25.4, cm: 96 / 2.54, in: 96,
 };
 
-/** Una lunghezza SVG in px utente; `ref` è la base delle percentuali. */
+/** An SVG length in user px; `ref` is the base for percentages. */
 function lengthOf(v: string | null | undefined, ref = 0, fontSize = 16): number | undefined {
   if (v == null) return undefined;
   const m = /^\s*([+-]?(?:\d+\.?\d*|\.\d+)(?:[eE][+-]?\d+)?)\s*(px|pt|pc|mm|cm|in|em|rem|ex|%)?\s*$/i.exec(v);
   if (!m) return undefined;
   const n = Number(m[1]);
-  // Valori non finiti o assurdi ("1e400") non sono lunghezze: tenerli
-  // metterebbe Infinity/NaN in un op, che il server rifiuterebbe.
+  // Non-finite or absurd values ("1e400") are not lengths: keeping them
+  // would put Infinity/NaN in an op, which the server would reject.
   if (!Number.isFinite(n) || Math.abs(n) > MAX_COORD) return undefined;
   const u = (m[2] ?? "").toLowerCase();
   if (u === "%") return (n / 100) * ref;
@@ -159,7 +159,7 @@ function opacityOf(v: string | undefined): number {
   return Number.isFinite(n) ? Math.min(1, Math.max(0, n)) : 1;
 }
 
-// --- il documento -------------------------------------------------------------
+// --- the document -------------------------------------------------------------
 
 const KNOWN_PREFIXES: Record<string, string> = {
   xlink: XLINK_NS,
@@ -170,10 +170,10 @@ const KNOWN_PREFIXES: Record<string, string> = {
   svg: SVG_NS,
 };
 
-// Un SVG scritto a mano (o ricavato da innerHTML) spesso omette gli xmlns: il
-// browser lo digerisce, un parser XML rigoroso no. Si aggiungono sul tag
-// radice SOLO quelli mancanti e noti, invece di rifiutare un file che chiunque
-// vedrebbe rendersi.
+// A hand-written SVG (or one obtained from innerHTML) often omits the xmlns: the
+// browser digests it, a strict XML parser does not. Only the missing and known ones
+// are added on the root tag, instead of rejecting a file that anyone
+// would see render.
 function withNamespaces(source: string): string {
   const m = /<svg\b[^>]*>/i.exec(source);
   if (!m) return source;
@@ -195,23 +195,23 @@ function byteLength(s: string): number {
 }
 
 function parseDocument(source: string, maxBytes: number): Document {
-  if (typeof source !== "string" || source.trim() === "") throw new SvgImportError("il file SVG è vuoto");
+  if (typeof source !== "string" || source.trim() === "") throw new SvgImportError("the SVG file is empty");
   if (byteLength(source) > maxBytes) {
-    throw new SvgImportError(`il file SVG supera ${Math.round(maxBytes / 1024 / 1024)} MB: troppo grande per essere importato`);
+    throw new SvgImportError(`the SVG file exceeds ${Math.round(maxBytes / 1024 / 1024)} MB: too large to be imported`);
   }
-  // Le entità XML definite dal documento sono l'attacco classico dei parser
-  // (billion laughs, XXE): un SVG da design non ne ha bisogno, si rifiutano.
-  if (/<!ENTITY/i.test(source)) throw new SvgImportError("il file SVG contiene entità XML: non importato per sicurezza");
+  // XML entities defined by the document are the classic attack on parsers
+  // (billion laughs, XXE): a design SVG does not need them, they are rejected.
+  if (/<!ENTITY/i.test(source)) throw new SvgImportError("the SVG file contains XML entities: not imported for safety");
   const doc = new DOMParser().parseFromString(withNamespaces(source), "image/svg+xml");
   const err = doc.getElementsByTagName("parsererror");
   const root = doc.documentElement;
   if (err.length > 0 || !root || root.localName.toLowerCase() !== "svg") {
-    throw new SvgImportError("il file non è un SVG valido");
+    throw new SvgImportError("the file is not a valid SVG");
   }
   return doc;
 }
 
-// --- il contesto dell'import ---------------------------------------------------
+// --- the import context --------------------------------------------------------
 
 interface Env {
   opts: ImportOptions;
@@ -237,14 +237,14 @@ interface Env {
 }
 
 interface State {
-  /** Dalle coordinate utente dell'elemento allo spazio del NODO parent. */
+  /** From the element's user coordinates to the PARENT node's space. */
   M: Transform;
-  /** Stile calcolato del genitore (per l'ereditarietà). */
+  /** Computed style of the parent (for inheritance). */
   style: Props;
-  /** Prodotto delle `opacity` degli antenati (i gruppi non la disegnano). */
+  /** Product of the ancestors' `opacity` (groups do not draw it). */
   opacity: number;
   depth: number;
-  /** Il parent è nascosto da display:none: i figli restano, nascosti. */
+  /** The parent is hidden by display:none: the children stay, hidden. */
   hidden: boolean;
 }
 
@@ -269,7 +269,7 @@ function nextKey(env: Env, parentId: string): string {
 
 function pushNode(env: Env, node: Node): number {
   if (env.nodeCount >= env.maxNodes) {
-    throw new SvgImportError(`l'SVG ha troppi elementi (oltre ${env.maxNodes}): non importato`);
+    throw new SvgImportError(`the SVG has too many elements (over ${env.maxNodes}): not imported`);
   }
   env.nodeCount++;
   env.ops.push(create(OpSchema, {
@@ -285,8 +285,8 @@ function cleanName(s: string): string {
   return s.replace(/[\u0000-\u001f\u007f]/g, " ").replace(/\s+/g, " ").trim().slice(0, 100);
 }
 
-// L'etichetta che l'autore ha dato all'elemento, se c'è: è ciò che l'animazione
-// userà per indirizzarlo, quindi ha la precedenza su ogni nome generato.
+// The label the author gave the element, if any: it is what the animation
+// will use to address it, so it takes precedence over any generated name.
 function labelOf(el: Element, withId = true): string {
   const candidates = [
     el.getAttributeNS(INKSCAPE_NS, "label") ?? el.getAttribute("inkscape:label"),
@@ -336,23 +336,23 @@ function parsePaint(env: Env, raw: string | undefined, style: Props, fallbackNon
       : fb.toLowerCase() === "currentcolor" ? { t: "color", c: currentColor() }
       : (() => { const c = parseColor(fb); return c ? { t: "color" as const, c } : null; })();
     if (!u[2].startsWith("#")) {
-      warn(env, "riferimento esterno a un paint ignorato");
+      warn(env, "external paint reference ignored");
       return fbSpec ?? { t: "none" };
     }
     const target = env.ids.get(u[2].slice(1));
     const tag = target?.localName;
     if (tag === "linearGradient" || tag === "radialGradient") return { t: "grad", el: target as Element };
     if (tag === "pattern") {
-      warn(env, "pattern non supportato: sostituito da un grigio");
+      warn(env, "unsupported pattern: replaced by a gray");
       return fbSpec ?? { t: "color", c: { r: 0.5, g: 0.5, b: 0.5, a: 1 } };
     }
-    warn(env, `paint "${u[2]}" non trovato`);
+    warn(env, `paint "${u[2]}" not found`);
     return fbSpec ?? { t: "none" };
   }
   if (low === "context-fill" || low === "context-stroke") return dflt;
   const c = parseColor(v);
   if (c) return { t: "color", c };
-  warn(env, `colore "${v.slice(0, 30)}" non riconosciuto`);
+  warn(env, `color "${v.slice(0, 30)}" not recognized`);
   return dflt;
 }
 
@@ -405,14 +405,14 @@ function resolveGradient(env: Env, el: Element): GradDef {
   return { radial: el.localName === "radialGradient", attr, stops };
 }
 
-/** La geometria in cui un paint viene valutato: serve a normalizzare i gradienti. */
+/** The geometry in which a paint is evaluated: it serves to normalize gradients. */
 interface PaintGeom {
-  /** Box del nodo nello spazio del parent (non ruotato). */
+  /** The node's box in the parent's space (unrotated). */
   box: { x: number; y: number; width: number; height: number };
   rotation: number;
-  /** Dalle coordinate utente dell'elemento allo spazio del nodo parent. */
+  /** From the element's user coordinates to the parent node's space. */
   M: Transform;
-  /** Bounding box utente dell'elemento (per objectBoundingBox). Pigro. */
+  /** User-space bounding box of the element (for objectBoundingBox). Lazy. */
   userBBox: () => { x: number; y: number; width: number; height: number } | null;
 }
 
@@ -428,7 +428,7 @@ function gradientPaint(env: Env, el: Element, g: PaintGeom, alphaMul: number): F
   if (def.stops.length === 1) return solidOf(first, alphaMul);
 
   const spread = def.attr("spreadMethod");
-  if (spread && spread !== "pad") warn(env, `gradiente con spreadMethod="${spread}": reso come "pad"`);
+  if (spread && spread !== "pad") warn(env, `gradient with spreadMethod="${spread}": rendered as "pad"`);
 
   const obb = (def.attr("gradientUnits") ?? "objectBoundingBox") !== "userSpaceOnUse";
   const gt = parseTransform(def.attr("gradientTransform")).matrix;
@@ -440,8 +440,8 @@ function gradientPaint(env: Env, el: Element, g: PaintGeom, alphaMul: number): F
   } else {
     total = compose(g.M, gt);
   }
-  // Coordinate: in bbox sono frazioni (numero o %), in user space sono
-  // lunghezze con le percentuali riferite al viewport.
+  // Coordinates: in bbox they are fractions (number or %), in user space they are
+  // lengths with percentages referred to the viewport.
   const coord = (name: string, dflt: string, axis: "x" | "y" | "d"): number => {
     const raw = def.attr(name) ?? dflt;
     if (obb) {
@@ -455,8 +455,8 @@ function gradientPaint(env: Env, el: Element, g: PaintGeom, alphaMul: number): F
   const { box, rotation } = g;
   if (!(box.width > 0) || !(box.height > 0)) return solidOf(first, alphaMul);
   const center = { x: box.x + box.width / 2, y: box.y + box.height / 2 };
-  // Dallo spazio del parent al box NORMALIZZATO del nodo (annullando la
-  // rotazione, che il renderer applica al contesto).
+  // From the parent's space to the node's NORMALIZED box (canceling the
+  // rotation, which the renderer applies to the context).
   const norm = (p: { x: number; y: number }) => {
     const q = rotation === 0 ? p : rotateAround(p, center, -rotation);
     return { x: (q.x - box.x) / box.width, y: (q.y - box.y) / box.height };
@@ -472,16 +472,16 @@ function gradientPaint(env: Env, el: Element, g: PaintGeom, alphaMul: number): F
     const dx = qx2 - qx1, dy = qy2 - qy1;
     const len2 = dx * dx + dy * dy;
     const det = total.a * total.d - total.b * total.c;
-    // x1==x2 e y1==y2: per specifica l'area si dipinge col colore dell'ultimo stop.
+    // x1==x2 and y1==y2: by spec the area is painted with the color of the last stop.
     if (!(len2 > 0)) return solidOf(last, alphaMul);
     if (!(Math.abs(det) > 1e-12)) return solidOf(first, alphaMul);
     const p1 = applyTransform(total, qx1, qy1);
-    // Un gradiente lineare è un COVETTORE: t(P) = (P - p1)·g. Con una matrice
-    // non similare (bbox non quadrato in objectBoundingBox, scala non uniforme,
-    // skew) il covettore NON è il vettore p2-p1 trasformato: è la sua
-    // inversa-trasposta. Il modello (come il canvas) ha isolivelli ortogonali
-    // all'asse, quindi si ricostruisce un asse p1->p2 con quel covettore e il
-    // risultato è ESATTO anche sotto skew, non un'approssimazione.
+    // A linear gradient is a COVECTOR: t(P) = (P - p1)·g. With a
+    // non-similarity matrix (non-square bbox in objectBoundingBox, non-uniform scale,
+    // skew) the covector is NOT the transformed vector p2-p1: it is its
+    // inverse-transpose. The model (like the canvas) has isolines orthogonal
+    // to the axis, so a p1->p2 axis is rebuilt with that covector and the
+    // result is EXACT even under skew, not an approximation.
     const cx = dx / len2, cy = dy / len2;
     const gx = (total.d * cx - total.b * cy) / det;
     const gy = (-total.c * cx + total.a * cy) / det;
@@ -499,17 +499,17 @@ function gradientPaint(env: Env, el: Element, g: PaintGeom, alphaMul: number): F
     const fx = def.attr("fx");
     const fy = def.attr("fy");
     if ((fx !== null && coord("fx", "0", "x") !== cx) || (fy !== null && coord("fy", "0", "y") !== cy)) {
-      warn(env, "gradiente radiale con fuoco decentrato: reso centrato");
+      warn(env, "radial gradient with off-center focus: rendered centered");
     }
     const c = applyTransform(total, cx, cy);
     const ex = applyTransform(total, cx + r, cy);
     const ey = applyTransform(total, cx, cy + r);
     const rx = Math.hypot(ex.x - c.x, ex.y - c.y);
     const ry = Math.hypot(ey.x - c.x, ey.y - c.y);
-    // Il modello ha un raggio solo (cerchio): per una ellisse si prende la
-    // media geometrica. Esatto quando il bbox è quadrato.
+    // The model has a single radius (circle): for an ellipse the
+    // geometric mean is taken. Exact when the bbox is square.
     const rad = Math.sqrt(rx * ry);
-    if (Math.abs(rx - ry) > 0.02 * Math.max(rx, ry)) warn(env, "gradiente radiale ellittico approssimato da un cerchio");
+    if (Math.abs(rx - ry) > 0.02 * Math.max(rx, ry)) warn(env, "elliptical radial gradient approximated by a circle");
     const n1 = norm(c);
     gradient = { kind: "radial", stops, x1: n1.x, y1: n1.y, x2: n1.x + rad / box.width, y2: n1.y };
   }
@@ -532,16 +532,16 @@ interface LeafSpec {
   box: Box;
   rotation: number;
   cornerRadius?: number;
-  /** Il raggio in unità UTENTE (cornerRadius è già scalato): serve a rifare il path. */
+  /** The radius in USER units (cornerRadius is already scaled): it serves to redo the path. */
   userRadius?: number;
   subpaths?: SubPathLite[];
   text?: { content: string; style: TextStyleLite };
   image?: { bytes: Uint8Array; mime: string };
   M: Transform;
   userBBox: () => Box | null;
-  /** Il tag, per le eccezioni (line non si riempie). */
+  /** The tag, for exceptions (line is not filled). */
   tag: string;
-  /** Per il nome del nodo di testo. */
+  /** For the text node's name. */
   nameHint?: string;
 }
 
@@ -592,9 +592,9 @@ function emitLeaf(
   const isImage = spec.kind === "image";
   const geom: PaintGeom = { box: spec.box, rotation: spec.rotation, M: spec.M, userBBox: spec.userBBox };
 
-  // RIEMPIMENTO. `fill="none"` è un riempimento TRASPARENTE e non una lista
-  // vuota: per il modello `fills: []` significa "il grigio di default delle
-  // forme" (renderer/canvasRenderer.ts::resolvedFill), l'opposto.
+  // FILL. `fill="none"` is a TRANSPARENT fill and not an empty
+  // list: for the model `fills: []` means "the shapes' default gray"
+  // (renderer/canvasRenderer.ts::resolvedFill), the opposite.
   let fills: FillLite[] = [NO_FILL];
   let fillVisible = false;
   if (!isImage) {
@@ -615,9 +615,9 @@ function emitLeaf(
   let cornerRadius = spec.cornerRadius ?? 0;
   const hasStroke = strokes.length > 0;
 
-  // Forme che il renderer non sa tratteggiare/arrotondare sugli spigoli:
-  // diventano path (che porta cap/join/dash nei meta) invece di perdere
-  // l'aspetto. Un rect con raggio non ha spigoli, quindi il giunto non conta.
+  // Shapes the renderer cannot dash/round on the corners:
+  // they become paths (which carry cap/join/dash in the meta) instead of losing
+  // their look. A rect with a radius has no corners, so the join does not matter.
   if (hasStroke && (kind === "rect" || kind === "ellipse")) {
     const needPath = strokeInfo.dash.length > 0
       || (kind === "rect" && cornerRadius === 0 && strokeInfo.join !== "miter");
@@ -627,14 +627,14 @@ function emitLeaf(
     }
   }
 
-  // Un tracciato APERTO riempito: SVG lo chiude implicitamente per il
-  // riempimento, il modello riempie solo i chiusi. Senza tratto la chiusura
-  // è invisibile e si fa; col tratto cambierebbe il disegno, si segnala.
+  // An OPEN filled path: SVG implicitly closes it for the
+  // fill, the model fills only closed ones. Without a stroke the closure
+  // is invisible and is done; with a stroke it would change the drawing, it is flagged.
   if (kind === "vector" && subpaths && fillVisible && spec.tag !== "line") {
     const hasOpen = subpaths.some((sp) => !sp.closed && sp.anchors.length > 2);
     if (hasOpen) {
       if (!hasStroke) subpaths = subpaths.map((sp) => (sp.anchors.length > 2 ? { ...sp, closed: true } : sp));
-      else warn(env, "tracciato aperto con riempimento e tratto: il riempimento non è disegnato");
+      else warn(env, "open path with fill and stroke: the fill is not drawn");
     }
   }
 
@@ -655,8 +655,8 @@ function emitLeaf(
   }
 
   const id = env.newId();
-  // Un'etichetta dell'autore (id, inkscape:label, ...) vince sempre; per il
-  // testo, in mancanza, il nome è il contenuto (come in ogni editor).
+  // An author label (id, inkscape:label, ...) always wins; for
+  // text, lacking one, the name is the content (as in every editor).
   const name = isText && spec.nameHint && labelOf(el) === ""
     ? (cleanName(spec.nameHint) || nameOf(env, el, spec.base))
     : nameOf(env, el, spec.base);
@@ -694,9 +694,9 @@ function shapeInit(kind: LeafSpec["kind"], spec: LeafSpec, subpaths: SubPathLite
   }
 }
 
-// Le subpath NORMALIZZATE al box e il box, da comandi già nello spazio del
-// parent. Rispetta l'invariante del proto: dopo la scrittura la bbox locale
-// della geometria è (0,0)-(width,height), ed è la bbox VERA delle curve.
+// The subpaths NORMALIZED to the box and the box, from commands already in the
+// parent's space. It respects the proto's invariant: after writing the local bbox
+// of the geometry is (0,0)-(width,height), and it is the TRUE bbox of the curves.
 function normalizeVector(cmds: readonly PathCmd[]): { subpaths: SubPathLite[]; box: Box } | null {
   const raw = cmdsToSubPaths(cmds);
   if (raw.length === 0) return null;
@@ -711,7 +711,7 @@ function normalizeVector(cmds: readonly PathCmd[]): { subpaths: SubPathLite[]; b
   return { subpaths, box: { x: b.x, y: b.y, width: b.width, height: b.height } };
 }
 
-/** Un rect/ellisse come path nello spazio del parent (per le conversioni). */
+/** A rect/ellipse as a path in the parent's space (for conversions). */
 function shapeAsPath(spec: LeafSpec, _M: Transform): { subpaths: SubPathLite[]; box: Box } | null {
   void _M;
   const bb = spec.userBBox();
@@ -752,10 +752,10 @@ function isSvgElement(el: Element): boolean {
   return el.namespaceURI === SVG_NS || el.namespaceURI === null || el.namespaceURI === "";
 }
 
-// I figli ELEMENTO in un array, percorrendo la catena dei fratelli: l'accesso
-// per indice a una HTMLCollection costa O(n) in jsdom (quadratico su migliaia
-// di figli: 5000 forme = 4 secondi), mentre firstElementChild/nextElementSibling
-// sono O(1) ovunque.
+// The ELEMENT children in an array, walking the chain of siblings: index
+// access on an HTMLCollection costs O(n) in jsdom (quadratic on thousands
+// of children: 5000 shapes = 4 seconds), while firstElementChild/nextElementSibling
+// are O(1) everywhere.
 function childElements(el: Element): Element[] {
   const out: Element[] = [];
   for (let c = el.firstElementChild; c; c = c.nextElementSibling) out.push(c);
@@ -795,16 +795,16 @@ function parseViewBox(s: string | null): { x: number; y: number; w: number; h: n
 }
 
 function walkElement(env: Env, el: Element, parentId: string, st: State): void {
-  if (++env.visits > MAX_VISITS) throw new SvgImportError("l'SVG è troppo complesso: non importato");
+  if (++env.visits > MAX_VISITS) throw new SvgImportError("the SVG is too complex: not imported");
   const tag = el.localName;
   if (!isSvgElement(el)) return;
   if (SKIPPED.has(tag)) {
-    if (ANIMATIONS.has(tag)) warn(env, "animazione SMIL ignorata");
-    else if (tag === "foreignObject") warn(env, "<foreignObject> rimosso");
-    else if (tag === "script") warn(env, "<script> rimosso");
+    if (ANIMATIONS.has(tag)) warn(env, "SMIL animation ignored");
+    else if (tag === "foreignObject") warn(env, "<foreignObject> removed");
+    else if (tag === "script") warn(env, "<script> removed");
     return;
   }
-  if (st.depth > MAX_DEPTH) { warn(env, "annidamento troppo profondo: ramo ignorato"); return; }
+  if (st.depth > MAX_DEPTH) { warn(env, "nesting too deep: branch ignored"); return; }
 
   const own = declared(env, el);
   const style = computeStyle(own, st.style);
@@ -813,24 +813,24 @@ function walkElement(env: Env, el: Element, parentId: string, st: State): void {
   const vis = style.get("visibility")?.trim();
   const visible = !st.hidden && !hiddenSelf && vis !== "hidden" && vis !== "collapse";
 
-  for (const [prop, label] of [["filter", "filtro"], ["clip-path", "clip-path"], ["mask", "maschera"], ["mix-blend-mode", "blend mode"]] as const) {
+  for (const [prop, label] of [["filter", "filter"], ["clip-path", "clip-path"], ["mask", "mask"], ["mix-blend-mode", "blend mode"]] as const) {
     const v = own.get(prop)?.trim();
-    if (v && v !== "none" && v !== "normal") warn(env, `${label} non supportato: ignorato`);
+    if (v && v !== "none" && v !== "normal") warn(env, `${label} not supported: ignored`);
   }
   for (const m of ["marker-start", "marker-mid", "marker-end"]) {
     const v = own.get(m)?.trim();
-    if (v && v !== "none") { warn(env, "marker non supportato: ignorato"); break; }
+    if (v && v !== "none") { warn(env, "marker not supported: ignored"); break; }
   }
 
   const tr = parseTransform(own.get("transform") ?? el.getAttribute("transform"));
-  if (!tr.ok) warn(env, "transform non valido: ignorato in parte");
+  if (!tr.ok) warn(env, "invalid transform: partly ignored");
   const opacity = st.opacity * opacityOf(own.get("opacity"));
 
   if (tag === "use") return walkUse(env, el, parentId, st, style, tr.matrix, opacity, visible, hiddenSelf);
   if (CONTAINERS.has(tag)) {
     return walkContainer(env, el, parentId, st, style, tr.matrix, opacity, visible, hiddenSelf);
   }
-  if (!SHAPES.has(tag) && tag !== "text" && tag !== "image") return; // elemento ignoto: si ignora
+  if (!SHAPES.has(tag) && tag !== "text" && tag !== "image") return; // unknown element: ignored
 
   const M = compose(st.M, tr.matrix);
   const fs = lengthOf(style.get("font-size"), 16) ?? 16;
@@ -855,14 +855,14 @@ function walkElement(env: Env, el: Element, parentId: string, st: State): void {
       if (sim && rx === ry) {
         const c = applyTransform(M, x + w / 2, y + h / 2);
         leaf({
-          kind: "rect", base: "Rettangolo", tag,
+          kind: "rect", base: "Rectangle", tag,
           box: { x: c.x - (w * sim.s) / 2, y: c.y - (h * sim.s) / 2, width: w * sim.s, height: h * sim.s },
           rotation: sim.rotation, cornerRadius: rx * sim.s, userRadius: rx, M, userBBox: () => bbox,
         });
         return;
       }
       const n = normalizeVector(transformCmds(roundedRectCmds(x, y, w, h, rx, ry), M));
-      if (n) leaf({ kind: "vector", base: "Rettangolo", tag, box: n.box, rotation: 0, subpaths: n.subpaths, M, userBBox: () => bbox });
+      if (n) leaf({ kind: "vector", base: "Rectangle", tag, box: n.box, rotation: 0, subpaths: n.subpaths, M, userBBox: () => bbox });
       return;
     }
     case "circle":
@@ -877,7 +877,7 @@ function walkElement(env: Env, el: Element, parentId: string, st: State): void {
       if (!(rx !== undefined && ry !== undefined && rx > 0 && ry > 0)) return;
       const bbox = { x: cx - rx, y: cy - ry, width: 2 * rx, height: 2 * ry };
       const sim = similarityOf(M);
-      const base = tag === "circle" ? "Cerchio" : "Ellisse";
+      const base = tag === "circle" ? "Circle" : "Ellipse";
       if (sim) {
         const c = applyTransform(M, cx, cy);
         leaf({
@@ -894,23 +894,23 @@ function walkElement(env: Env, el: Element, parentId: string, st: State): void {
     case "line": {
       const x1 = lenX("x1") ?? 0, y1 = lenY("y1") ?? 0, x2 = lenX("x2") ?? 0, y2 = lenY("y2") ?? 0;
       const cmds: PathCmd[] = [{ t: "M", x: x1, y: y1 }, { t: "L", x: x2, y: y2 }];
-      emitPathLike(env, leaf, "Linea", tag, cmds, M);
+      emitPathLike(env, leaf, "Line", tag, cmds, M);
       return;
     }
     case "polyline":
     case "polygon": {
       const pts = numberList(el.getAttribute("points"));
-      if (pts.length % 2 === 1) { pts.pop(); warn(env, "points con un numero dispari di coordinate: l'ultima è ignorata"); }
+      if (pts.length % 2 === 1) { pts.pop(); warn(env, "points with an odd number of coordinates: the last one is ignored"); }
       if (pts.length < 4) return;
       const cmds: PathCmd[] = [];
       for (let i = 0; i < pts.length; i += 2) cmds.push({ t: i === 0 ? "M" : "L", x: pts[i], y: pts[i + 1] });
       if (tag === "polygon") cmds.push({ t: "Z" });
-      emitPathLike(env, leaf, tag === "polygon" ? "Poligono" : "Polilinea", tag, cmds, M);
+      emitPathLike(env, leaf, tag === "polygon" ? "Polygon" : "Polyline", tag, cmds, M);
       return;
     }
     case "path": {
       const parsed = parsePathData(el.getAttribute("d") ?? "");
-      if (parsed.error) warn(env, "path con dati non validi: disegnato fino all'errore");
+      if (parsed.error) warn(env, "path with invalid data: drawn up to the error");
       if (parsed.cmds.length === 0) return;
       emitPathLike(env, leaf, "Path", tag, parsed.cmds, M);
       return;
@@ -935,7 +935,7 @@ function emitPathLike(
   if (!n) return;
   leaf({
     kind: "vector", base, tag, box: n.box, rotation: 0, subpaths: n.subpaths, M,
-    // La bbox UTENTE (prima di M) serve solo ai gradienti objectBoundingBox.
+    // The USER bbox (before M) serves only objectBoundingBox gradients.
     userBBox: () => {
       const raw = cmdsToSubPaths(cmds);
       if (raw.length === 0) return null;
@@ -953,7 +953,7 @@ function walkContainer(
   let M2: Transform;
   let gx = 0, gy = 0;
   let inner = T;
-  // <svg> annidato: x/y + viewBox -> larghezza/altezza.
+  // nested <svg>: x/y + viewBox -> width/height.
   if (el.localName === "svg" || el.localName === "symbol") {
     const x = lengthOf(el.getAttribute("x"), env.vbW) ?? 0;
     const y = lengthOf(el.getAttribute("y"), env.vbH) ?? 0;
@@ -969,9 +969,9 @@ function walkContainer(
     inner = compose(T, local);
   }
   if (isTranslationM(inner) && (inner.e !== 0 || inner.f !== 0)) {
-    // Una pura traslazione resta il x/y del GRUPPO: si può ancora spostare e
-    // animare come gruppo. Il delta è nello spazio del parent (parte lineare
-    // di M, senza la sua traslazione: quella la applica già il parent).
+    // A pure translation stays the GROUP's x/y: it can still be moved and
+    // animated as a group. The delta is in the parent's space (linear part
+    // of M, without its translation: the parent already applies that).
     gx = st.M.a * inner.e + st.M.c * inner.f;
     gy = st.M.b * inner.e + st.M.d * inner.f;
     M2 = st.M;
@@ -981,7 +981,7 @@ function walkContainer(
   const id = env.newId();
   const node = create(NodeSchema, {
     id, parentId, orderKey: nextKey(env, parentId),
-    name: extra?.name ?? nameOf(env, el, "Gruppo"),
+    name: extra?.name ?? nameOf(env, el, "Group"),
     visible: !hiddenSelf && !st.hidden,
     opacity: 1,
     x: r4(gx), y: r4(gy), width: 0, height: 0, rotation: 0,
@@ -993,8 +993,8 @@ function walkContainer(
   walkChildren(env, el, id, {
     M: M2, style, opacity, depth: st.depth + 1, hidden: st.hidden || hiddenSelf,
   });
-  // Un gruppo che non ha prodotto nessun figlio (solo <defs>, forme a area
-  // nulla) non è un livello: non deve sporcare il pannello.
+  // A group that produced no children (only <defs>, zero-area shapes)
+  // is not a layer: it must not clutter the panel.
   if (env.nodeCount === before + 1) {
     env.ops.splice(idx, 1);
     env.nodeCount--;
@@ -1007,10 +1007,10 @@ function walkUse(
   T: Transform, opacity: number, visible: boolean, hiddenSelf: boolean,
 ): void {
   const href = hrefOf(el);
-  if (!href || !href.startsWith("#")) { warn(env, "<use> con riferimento esterno ignorato"); return; }
+  if (!href || !href.startsWith("#")) { warn(env, "<use> with external reference ignored"); return; }
   const ref = env.ids.get(href.slice(1));
-  if (!ref) { warn(env, `<use> verso "${href.slice(1)}" che non esiste`); return; }
-  if (env.useStack.has(ref) || env.useStack.size > 32) { warn(env, "<use> ricorsivo ignorato"); return; }
+  if (!ref) { warn(env, `<use> to "${href.slice(1)}" which does not exist`); return; }
+  if (env.useStack.has(ref) || env.useStack.size > 32) { warn(env, "<use> recursive, ignored"); return; }
   const ux = lengthOf(el.getAttribute("x"), env.vbW) ?? 0;
   const uy = lengthOf(el.getAttribute("y"), env.vbH) ?? 0;
   const T2 = compose(T, translateM(ux, uy));
@@ -1021,7 +1021,7 @@ function walkUse(
   const M2 = hasTranslateOnly ? st.M : compose(st.M, T2);
   const node = create(NodeSchema, {
     id, parentId, orderKey: nextKey(env, parentId),
-    name: nameOf(env, el, "Istanza"),
+    name: nameOf(env, el, "Instance"),
     visible: !hiddenSelf && !st.hidden, opacity: 1,
     x: r4(gx), y: r4(gy), width: 0, height: 0, rotation: 0,
     shape: { case: "group", value: {} },
@@ -1033,7 +1033,7 @@ function walkUse(
   try {
     const sub: State = { M: M2, style, opacity, depth: st.depth + 1, hidden: st.hidden || hiddenSelf };
     if (ref.localName === "symbol" || ref.localName === "svg") {
-      // Il contenuto di un symbol/svg referenziato, con la sua viewBox.
+      // The content of a referenced symbol/svg, with its viewBox.
       walkContainerAsChildren(env, ref, id, sub, el);
     } else {
       walkElement(env, ref, id, sub);
@@ -1048,8 +1048,8 @@ function walkUse(
   }
 }
 
-// I figli di un <symbol>/<svg> richiamato da <use>: la viewBox si mappa su
-// width/height del <use> (o del symbol).
+// The children of a <symbol>/<svg> invoked by <use>: the viewBox maps onto
+// width/height of the <use> (or of the symbol).
 function walkContainerAsChildren(env: Env, ref: Element, parentId: string, st: State, use: Element): void {
   const vb = parseViewBox(ref.getAttribute("viewBox"));
   const w = lengthOf(use.getAttribute("width"), env.vbW) ?? lengthOf(ref.getAttribute("width"), env.vbW);
@@ -1079,14 +1079,14 @@ function emitText(
   const wRaw = style.get("font-weight")?.trim() ?? "";
   const weight = wRaw === "bold" ? "700" : wRaw === "normal" ? "400" : /^\d+$/.test(wRaw) ? wRaw : wRaw === "bolder" ? "700" : "";
   const anchor = style.get("text-anchor")?.trim() ?? "start";
-  if (el.querySelector("textPath")) warn(env, "testo su tracciato (textPath): reso come testo semplice");
+  if (el.querySelector("textPath")) warn(env, "text on path (textPath): rendered as simple text");
 
-  // Le righe: un <tspan> con y (o dy) proprio comincia una riga nuova.
+  // The rows: a <tspan> with its own y (or dy) starts a new row.
   const lines: string[] = [""];
   const preserve = (el.getAttribute("xml:space") ?? "") === "preserve";
   const first = (a: string | null) => (a ? numberList(a)[0] : undefined);
-  // `curY` è la y della riga in corso: un tspan con una y diversa, o con un dy
-  // non nullo, apre una riga nuova (e la differenza è l'interlinea).
+  // `curY` is the current row's y: a tspan with a different y, or with a non-null
+  // dy, opens a new row (and the difference is the line spacing).
   let curY = first(el.getAttribute("y"));
   let firstTy: number | undefined;
   let firstTx: number | undefined;
@@ -1126,7 +1126,7 @@ function emitText(
 
   const x = first(el.getAttribute("x")) ?? firstTx ?? 0;
   const y = first(el.getAttribute("y")) ?? firstTy ?? 0;
-  // Interlinea come moltiplicatore del corpo, se le righe ne dichiarano una.
+  // Line spacing as a multiplier of the font size, if the rows declare one.
   const lhMult = lineStep !== undefined && lineStep > 0 && lines.length > 1 ? lineStep / fs : 0;
   const tstyle: TextStyleLite = {
     fontFamily: family.replace(/\s+/g, " "),
@@ -1141,19 +1141,19 @@ function emitText(
   const rows = content.split("\n");
   const measure = env.opts.measureText;
   const widest = Math.max(...rows.map((r) => (measure ? measure(r, tstyle) : r.length * fs * 0.56)));
-  // Il box ha un po' di respiro: se la misura di import e quella di
-  // rendering differiscono di un pelo (font non ancora caricato) una riga
-  // non deve andare a capo da sola.
+  // The box has a bit of breathing room: if the import measure and the
+  // rendering one differ by a hair (font not yet loaded) a row
+  // must not wrap on its own.
   const bw = widest * 1.04 + fs * 0.2;
   const bh = rows.length * lh;
   const left = anchor === "middle" ? x - bw / 2 : anchor === "end" ? x - bw : x;
   const top = y - ascent;
   const sim = similarityOf(M);
-  if (!sim) warn(env, "testo con trasformazione non uniforme: approssimato");
+  if (!sim) warn(env, "text with non-uniform transform: approximated");
   const s = sim?.s ?? lengthScaleOf(M);
   const c = applyTransform(M, left + bw / 2, top + bh / 2);
   const spec: LeafSpec = {
-    kind: "text", base: "Testo", tag: "text", nameHint: rows[0].slice(0, 40),
+    kind: "text", base: "Text", tag: "text", nameHint: rows[0].slice(0, 40),
     box: { x: c.x - (bw * s) / 2, y: c.y - (bh * s) / 2, width: bw * s, height: bh * s },
     rotation: sim?.rotation ?? 0,
     text: { content, style: { ...tstyle, fontSize: r4(fs * s) } },
@@ -1163,7 +1163,7 @@ function emitText(
   emitLeaf(env, parentId, el, spec, style, st, opacity, visible);
 }
 
-// --- immagini ------------------------------------------------------------------
+// --- images --------------------------------------------------------------------
 
 export function decodeDataUri(href: string, maxBytes = MAX_SVG_BYTES): { mime: string; bytes: Uint8Array } | null {
   const m = /^data:([^;,]*)((?:;[^;,]*)*),(.*)$/is.exec(href.trim());
@@ -1187,7 +1187,7 @@ export function decodeDataUri(href: string, maxBytes = MAX_SVG_BYTES): { mime: s
   }
 }
 
-/** Dimensioni naturali (px) di PNG, GIF e JPEG dall'intestazione, o null. */
+/** Natural dimensions (px) of PNG, GIF and JPEG from the header, or null. */
 export function imageSizeOf(b: Uint8Array): { width: number; height: number } | null {
   if (b.length > 24 && b[0] === 0x89 && b[1] === 0x50 && b[2] === 0x4e && b[3] === 0x47) {
     const dv = new DataView(b.buffer, b.byteOffset, b.byteLength);
@@ -1216,11 +1216,11 @@ function emitImage(
 ): void {
   const href = hrefOf(el) ?? "";
   if (!/^data:image\//i.test(href.trim())) {
-    warn(env, "immagine esterna (non data URI) ignorata");
+    warn(env, "external image (not a data URI) ignored");
     return;
   }
   const data = decodeDataUri(href);
-  if (!data) { warn(env, "immagine incorporata non leggibile ignorata"); return; }
+  if (!data) { warn(env, "embedded image not readable, ignored"); return; }
   const nat = imageSizeOf(data.bytes);
   let w = lenX("width");
   let h = lenY("height");
@@ -1228,14 +1228,14 @@ function emitImage(
   else if (w === undefined && h !== undefined && nat) w = (h * nat.width) / nat.height;
   else if (h === undefined && w !== undefined && nat) h = (w * nat.height) / nat.width;
   if (w === undefined || h === undefined || !(w > 0) || !(h > 0)) {
-    warn(env, "immagine incorporata senza dimensioni ignorata");
+    warn(env, "embedded image without dimensions ignored");
     return;
   }
   let x = lenX("x") ?? 0;
   let y = lenY("y") ?? 0;
-  // preserveAspectRatio di default è "meet": l'immagine sta DENTRO il rettangolo
-  // senza deformarsi. Il nodo immagine invece si stira sul proprio box, quindi
-  // il box va ridotto al rettangolo che l'immagine occuperebbe davvero.
+  // preserveAspectRatio defaults to "meet": the image sits INSIDE the rectangle
+  // without deforming. The image node instead stretches onto its own box, so
+  // the box must be reduced to the rectangle the image would actually occupy.
   const par = (el.getAttribute("preserveAspectRatio") ?? "xMidYMid meet").trim();
   if (nat && !par.startsWith("none")) {
     const u = Math.min(w / nat.width, h / nat.height);
@@ -1254,18 +1254,18 @@ function emitImage(
     box = { x: c.x - (w * sim.s) / 2, y: c.y - (h * sim.s) / 2, width: w * sim.s, height: h * sim.s };
     rotation = sim.rotation;
   } else {
-    warn(env, "immagine con trasformazione non uniforme: approssimata");
+    warn(env, "image with non-uniform transform: approximated");
     const pts = [applyTransform(M, x, y), applyTransform(M, x + w, y), applyTransform(M, x + w, y + h), applyTransform(M, x, y + h)];
     const xs = pts.map((p) => p.x), ys = pts.map((p) => p.y);
     box = { x: Math.min(...xs), y: Math.min(...ys), width: Math.max(...xs) - Math.min(...xs), height: Math.max(...ys) - Math.min(...ys) };
   }
   leaf({
-    kind: "image", base: "Immagine", tag: "image", box, rotation,
+    kind: "image", base: "Image", tag: "image", box, rotation,
     image: { bytes: data.bytes, mime: data.mime }, M, userBBox: () => bbox,
   });
 }
 
-// --- la radice -----------------------------------------------------------------
+// --- the root ------------------------------------------------------------------
 
 function applyRules(doc: Document, env: Env): void {
   const rules: CssRule[] = [];
@@ -1279,8 +1279,8 @@ function applyRules(doc: Document, env: Env): void {
   }
   for (const a of atRules) {
     warn(env, a === "@keyframes" || a === "@-webkit-keyframes"
-      ? "animazioni CSS (@keyframes) ignorate"
-      : `regola CSS ${a} ignorata`);
+      ? "CSS animations (@keyframes) ignored"
+      : `CSS rule ${a} ignored`);
   }
   const perEl = new Map<Element, CssRule[]>();
   for (const rule of rules) {
@@ -1288,7 +1288,7 @@ function applyRules(doc: Document, env: Env): void {
     try {
       hits = doc.querySelectorAll(rule.selector);
     } catch {
-      warn(env, "selettore CSS non supportato ignorato");
+      warn(env, "CSS selector not supported, ignored");
       continue;
     }
     for (const el of Array.from(hits)) {
@@ -1307,9 +1307,9 @@ function defaultNewId(): string {
 }
 
 /**
- * Importa il testo di un SVG come op `createNode` (genitori prima dei figli).
- * Lancia SvgImportError solo per ciò che rende l'import impossibile; tutto il
- * resto è un avviso in `warnings`.
+ * Imports an SVG's text as `createNode` ops (parents before children).
+ * Throws SvgImportError only for what makes the import impossible; everything
+ * else is a warning in `warnings`.
  */
 export function importSvg(source: string, opts: ImportOptions = {}): ImportResult {
   const maxBytes = opts.maxBytes ?? MAX_SVG_BYTES;
@@ -1317,9 +1317,9 @@ export function importSvg(source: string, opts: ImportOptions = {}): ImportResul
   const root = doc.documentElement;
   const newId = opts.newId ?? defaultNewId;
 
-  // viewBox e dimensioni dichiarate.
-  // In modalità PROBE (la misura del contenuto di un SVG senza viewBox) il
-  // viewport è un quadrato enorme: le forme non vengono mai ridimensionate.
+  // viewBox and declared dimensions.
+  // In PROBE mode (measuring the content of an SVG without a viewBox) the
+  // viewport is a huge square: shapes are never resized.
   const vb = opts.probe
     ? { x: 0, y: 0, w: 100_000, h: 100_000 }
     : parseViewBox(root.getAttribute("viewBox"));
@@ -1349,14 +1349,14 @@ export function importSvg(source: string, opts: ImportOptions = {}): ImportResul
   }
   applyRules(doc, env);
 
-  // Senza viewBox né dimensioni non c'è un viewport: si usa la bbox del
-  // contenuto (un SVG "nudo" è comunque un disegno finito).
+  // Without viewBox or dimensions there is no viewport: the bbox of the
+  // content is used (a "bare" SVG is still a finite drawing).
   let contentBox: { x: number; y: number; w: number; h: number } | null = null;
   if (!vb && (natW === undefined || natH === undefined)) {
     contentBox = measureContent(source, opts);
     if (contentBox) { natW = natW ?? contentBox.w; natH = natH ?? contentBox.h; }
     else { natW = natW ?? 300; natH = natH ?? 150; }
-    warn(env, "SVG senza viewBox né dimensioni: usata la dimensione del contenuto");
+    warn(env, "SVG without viewBox or dimensions: content size used");
   }
   const W0 = natW as number;
   const H0 = natH as number;
@@ -1391,8 +1391,8 @@ export function importSvg(source: string, opts: ImportOptions = {}): ImportResul
     hidden: declared(env, root).get("display")?.trim() === "none",
   });
 
-  // Solo la radice? Niente di importabile.
-  if (env.nodeCount <= 1) throw new SvgImportError("l'SVG non contiene forme importabili");
+  // Only the root? Nothing importable.
+  if (env.nodeCount <= 1) throw new SvgImportError("the SVG contains no importable shapes");
 
   const warnings = [...env.warnings].map(([m, n]) => (n > 1 ? `${m} (${n}×)` : m));
   return {
@@ -1402,16 +1402,16 @@ export function importSvg(source: string, opts: ImportOptions = {}): ImportResul
   };
 }
 
-// Bbox del contenuto (in unità utente) per un SVG privo di viewBox/dimensioni:
-// una prima importazione a scala 1 e viewport provvisorio, di cui si leggono i
-// box dei nodi di primo livello.
+// Bbox of the content (in user units) for an SVG without viewBox/dimensions:
+// a first import at scale 1 and a provisional viewport, from which the
+// top-level nodes' boxes are read.
 function measureContent(source: string, opts: ImportOptions): { x: number; y: number; w: number; h: number } | null {
   try {
     let n = 0;
     const r = importSvg(source, { ...opts, probe: true, scale: 1, newId: () => `m${n++}`, at: { x: 0, y: 0 } });
     const boxes: Box[] = [];
-    // Gli op sono padre-prima: l'offset cumulativo dei gruppi (x/y di una pura
-    // traslazione) si accumula scendendo.
+    // The ops are parent-first: the cumulative offset of the groups (x/y of a pure
+    // translation) accumulates while descending.
     const offset = new Map<string, { x: number; y: number }>([[r.rootId, { x: 0, y: 0 }]]);
     for (const op of r.ops) {
       if (op.kind.case !== "createNode") continue;

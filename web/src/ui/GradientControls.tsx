@@ -10,39 +10,39 @@ import {
 } from "./gradientOps";
 
 const KINDS: { value: FillKind; label: string }[] = [
-  { value: "solid", label: "Solido" },
-  { value: "linear", label: "Lineare" },
-  { value: "radial", label: "Radiale" },
+  { value: "solid", label: "Solid" },
+  { value: "linear", label: "Linear" },
+  { value: "radial", label: "Radial" },
 ];
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
 
-// Un colore del modello (float 0..1, alfa compresa) come valore CSS. Qui e non
-// in ColorField perché serve SOLO a disegnare la striscia: il campo esadecimale
-// resta l'unico "bordo UI" per i valori che l'utente legge e scrive.
+// A model color (float 0..1, alpha included) as a CSS value. Here and not
+// in ColorField because it serves ONLY to draw the strip: the hexadecimal field
+// stays the only "UI edge" for the values the user reads and writes.
 function css(c: { r: number; g: number; b: number; a: number }): string {
   const ch = (v: number) => Math.round(Math.min(1, Math.max(0, v)) * 255);
   return `rgb(${ch(c.r)} ${ch(c.g)} ${ch(c.b)} / ${c.a})`;
 }
 
 /**
- * Il tipo del riempimento (solido / lineare / radiale) e, per un gradiente,
- * l'anteprima, i due colori agli estremi e l'angolo. Non conosce gesti: emette
- * op tramite `run`, lo stesso `runGesture` del pannello, così un cambio di tipo
- * è UN passo di undo come ogni altra modifica.
+ * The fill type (solid / linear / radial) and, for a gradient,
+ * the preview, the two colors at the ends and the angle. It does not know gestures: it emits
+ * ops through `run`, the same `runGesture` as the panel, so a type change
+ * is ONE undo step like any other change.
  *
- * La STRISCIA è un'anteprima vera: gli stessi stop del modello, in ordine di
- * posizione, sopra la scacchiera (si legge anche la trasparenza). Le maniglie
- * sotto la striscia sono i punti degli stop, colorati come lo stop -- sono
- * decorative: i colori si cambiano dai campi sotto, che portano anche il nome
- * accessibile.
+ * The STRIP is a real preview: the model's same stops, in order of
+ * position, above the checkerboard (transparency can be read too). The handles
+ * below the strip are the stops' points, colored like the stop -- they are
+ * decorative: colors are changed from the fields below, which also carry the
+ * accessible name.
  */
 export function GradientControls({
   fill, run, solid,
 }: {
   fill: FillLite | null;
   run: (build: (ids: readonly string[]) => Op[]) => void;
-  /** Il campo colore del riempimento SOLIDO: sta sotto i segmenti, e c'è solo senza gradiente. */
+  /** The SOLID fill's color field: it sits under the segments, and exists only without a gradient. */
   solid?: ReactNode;
 }) {
   const kind = fillKindOf(fill);
@@ -52,7 +52,7 @@ export function GradientControls({
   return (
     <div className="flex flex-col gap-2">
       <SegButtons
-        label="Tipo di riempimento"
+        label="Fill type"
         value={kind}
         options={KINDS}
         onPick={(k) => run((ids) => fillKindOps(ids, lookup, k))}
@@ -60,7 +60,7 @@ export function GradientControls({
       {!g && solid}
       {g && (
         <>
-          {/* Il padding laterale lascia spazio alle maniglie ai due estremi. */}
+          {/* The side padding leaves room for the handles at the two ends. */}
           <div className="px-1.5 pb-2 pt-0.5" aria-hidden="true">
             <div className="relative h-6">
               <div className="absolute inset-0 overflow-hidden rounded-md shadow-[inset_0_0_0_1px_var(--line-strong)]">
@@ -82,23 +82,23 @@ export function GradientControls({
               ))}
             </div>
           </div>
-          <StopRow label="Da" position={g.stops[0].position}>
+          <StopRow label="From" position={g.stops[0].position}>
             <ColorField
-              label="Da"
+              label="From"
               value={g.stops[0].color}
               onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, 0, rgb))}
             />
           </StopRow>
-          <StopRow label="A" position={g.stops[last].position}>
+          <StopRow label="To" position={g.stops[last].position}>
             <ColorField
-              label="A"
+              label="To"
               value={g.stops[last].color}
               onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, last, rgb))}
             />
           </StopRow>
           {g.kind === "linear" && (
             <NumberField
-              label="Angolo"
+              label="Angle"
               suffix="°"
               value={gradientAngleOf(fill)}
               onCommit={(v) => run((ids) => gradientAngleOps(ids, lookup, v))}
@@ -110,9 +110,9 @@ export function GradientControls({
   );
 }
 
-// Una riga di stop: la posizione (in %, di sola lettura) a sinistra e il colore.
-// `label` non si ripete qui come testo accessibile -- lo porta già il campo
-// colore -- ma serve a chi guarda per capire QUALE estremo è.
+// A stop row: the position (in %, read-only) on the left and the color.
+// `label` is not repeated here as accessible text -- the color field
+// already carries it -- but it serves the viewer to understand WHICH end it is.
 function StopRow({ label, position, children }: { label: string; position: number; children: ReactNode }) {
   return (
     <div className="flex items-center gap-2">

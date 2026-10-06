@@ -4,78 +4,78 @@ import { ancestorsOf, childrenOf } from "./tree";
 import { instanceDescentLocal, isInstance, resolveInstance } from "./instances";
 import type { NodeLite, SceneState } from "./types";
 
-// I GRUPPI: cosa sono, dove finiscono i loro bounds e quale nodo seleziona un
-// click.
+// GROUPS: what they are, where their bounds end up and which node a
+// click selects.
 //
-// Un gruppo è un contenitore SENZA clipping e senza geometria propria:
-//   - non si disegna e non si colpisce (renderer/shapes.ts): non ha niente da
-//     riempire, e ciò che l'utente vede sono i figli;
-//   - i suoi BOUNDS sono l'unione di quelli dei figli, DERIVATI a ogni lettura
-//     invece che memorizzati -- memorizzarli vorrebbe dire ricalcolarli a ogni
-//     spostamento di un figlio, in due implementazioni (Go e TS) che devono
-//     restare identiche, per un valore che nessun op scrive;
-//   - x/y restano la TRASLAZIONE che contribuisce ai figli (transform.ts::
-//     localTransformOf): valgono 0 alla creazione -- raggruppare non sposta
-//     nulla -- e cambiano quando il gruppo viene trascinato. width/height non
-//     li legge nessuno.
+// A group is a container WITHOUT clipping and without geometry of its own:
+//   - it is not drawn and not hit (renderer/shapes.ts): it has nothing to
+//     fill, and what the user sees are the children;
+//   - its BOUNDS are the union of those of the children, DERIVED on every read
+//     instead of stored -- storing them would mean recomputing them on every
+//     move of a child, in two implementations (Go and TS) that must
+//     stay identical, for a value no op writes;
+//   - x/y remain the TRANSLATION that contributes to the children (transform.ts::
+//     localTransformOf): they are 0 at creation -- grouping moves
+//     nothing -- and change when the group is dragged. Nobody reads
+//     width/height.
 //
-// La POLITICA DI SELEZIONE sta qui e non nell'hit-test (vedi il commento su
-// canvasRenderer.ts::hitTest): l'hit-test risponde "quale nodo c'è sotto il
-// puntatore" -- il più interno, sempre -- e queste funzioni rispondono "quale
-// nodo va selezionato", che è un'altra domanda e ha un'altra risposta.
+// The SELECTION POLICY lives here and not in hit-test (see the comment on
+// canvasRenderer.ts::hitTest): hit-test answers "which node is under the
+// pointer" -- the innermost, always -- and these functions answer "which
+// node should be selected", which is a different question with a different answer.
 //
-// UN'ISTANZA (kind "instance", store/instances.ts) è, per i bounds, un GRUPPO il
-// cui contenuto è il sottoalbero del master: nessun box proprio (x/y sono la sua
-// traslazione, width/height non li legge nessuno), bounds DERIVATI dal master
-// mappato dalla trasformazione di discesa (contentIn -> instanceContentBounds).
-// La cornice di selezione, le 8 maniglie e la X del pannello leggono da qui,
-// come per un gruppo. SEMPLIFICAZIONE consapevole: il ritaglio di un frame
-// INTERNO al master (un frame con clipsContent DENTRO il componente, con figli
-// che gli sporgono) non è applicato ai bounds derivati -- accumulateMaster
-// unisce i box senza rifare la catena clip-aware di clippedWorldBoundsOf, che
-// segue gli antenati REALI e non il contesto virtuale dell'istanza. È un caso di
-// bordo; l'istanza resta comunque OPACA (marquee e cornice sono un box solo),
-// quindi la divergenza è al più una cornice leggermente più larga del dipinto.
+// AN INSTANCE (kind "instance", store/instances.ts) is, for bounds, a GROUP whose
+// content is the master's subtree: no box of its own (x/y are its
+// translation, nobody reads width/height), bounds DERIVED from the master
+// mapped by the descent transform (contentIn -> instanceContentBounds).
+// The selection frame, the 8 handles and the panel's X read from here,
+// as for a group. Deliberate SIMPLIFICATION: the clipping of a frame
+// INSIDE the master (a frame with clipsContent INSIDE the component, with children
+// that overflow it) is not applied to the derived bounds -- accumulateMaster
+// unions the boxes without redoing the clip-aware chain of clippedWorldBoundsOf, which
+// follows the REAL ancestors and not the instance's virtual context. It is an edge
+// case; the instance remains OPAQUE anyway (marquee and frame are a single box),
+// so the divergence is at most a frame slightly wider than the painted content.
 
 export function isGroup(n: NodeLite | undefined): boolean {
   return n?.kind === "group";
 }
 
-// Il box MONDO che l'utente VEDE di un nodo: per un gruppo l'unione dei box dei
-// figli (ricorsivamente: un gruppo di gruppi è l'unione delle unioni), per
-// chiunque altro il proprio.
+// The WORLD box the user SEES for a node: for a group the union of the boxes of its
+// children (recursively: a group of groups is the union of the unions), for
+// anyone else its own.
 //
-// null quando non c'è niente da incorniciare: un gruppo vuoto (o fatto solo di
-// gruppi vuoti, o i cui figli sono tutti NASCOSTI) non ha bounds, e chi disegna
-// la cornice di selezione deve saltarlo invece di disegnare un rettangolo
-// degenere all'origine.
+// null when there is nothing to frame: an empty group (or made only of
+// empty groups, or whose children are all HIDDEN) has no bounds, and whoever draws
+// the selection frame must skip it instead of drawing a degenerate
+// rectangle at the origin.
 export function contentWorldBounds(scene: SceneState, n: NodeLite): Bounds | null {
   return contentIn(scene, n, new Set());
 }
 
-// Il box MONDO di un nodo, RITAGLIATO ai frame antenati con clipsContent. È la
-// stessa regola, identica, delle tre discese del renderer: un FRAME con
-// clipsContent nasconde i figli fuori dal proprio box, e quel taglio vale
-// insieme per il DISEGNO (drawSiblings), l'HIT-TEST (pickIn) e il MARQUEE
-// (collectIn, che interseca il box mondo del frame -- la stessa intersectBounds
-// usata qui). La cornice di selezione e le sue 8 MANIGLIE leggono da qui (via
-// contentWorldBounds -> selectionWorldBounds): senza il taglio, un figlio che
-// sporge da un frame ritagliante avrebbe maniglie disegnate -- e AFFERRABILI
-// (selectTool.ts::handleUnderPointer usa lo stesso box) -- su canvas vuoto oltre
-// il bordo del frame, dove nessun pixel si disegna. È la divergenza
-// vedi-vs-seleziona che contentIn evita già per i figli INVISIBILI di un gruppo,
-// presa dal lato del clip.
+// The WORLD box of a node, CLIPPED to the ancestor frames with clipsContent. It is the
+// same rule, identical, as the renderer's three descents: a FRAME with
+// clipsContent hides children outside its own box, and that cut applies
+// together to DRAWING (drawSiblings), HIT-TEST (pickIn) and MARQUEE
+// (collectIn, which intersects the frame's world box -- the same intersectBounds
+// used here). The selection frame and its 8 HANDLES read from here (via
+// contentWorldBounds -> selectionWorldBounds): without the cut, a child that
+// overflows a clipping frame would have handles drawn -- and GRABBABLE
+// (selectTool.ts::handleUnderPointer uses the same box) -- on empty canvas beyond
+// the frame's edge, where no pixel is drawn. It is the see-vs-select
+// divergence that contentIn already avoids for the INVISIBLE children of a group,
+// taken from the clip side.
 //
-// Un nodo INTERAMENTE fuori dal clip non ha box (null): niente cornice, come un
-// gruppo con tutti i figli nascosti. I clip annidati si compongono -- ogni frame
-// antenato restringe ancora.
+// A node ENTIRELY outside the clip has no box (null): no frame, like a
+// group with all children hidden. Nested clips compose -- every ancestor frame
+// narrows further.
 //
-// Il box del nodo è ROTAZIONE-INCLUSA (worldAabbOfNode: l'AABB della sua
-// geometria ruotata, nello spazio del parent) poi portato al mondo con la
-// trasformazione del parent -- così la cornice di selezione di una multipla
-// racchiude quello che un nodo ruotato occupa DAVVERO, non il suo box
-// asse-allineato non ruotato (traccia 2). Il ritaglio ai frame resta
-// axis-aligned (intersectBounds), come le tre discese del renderer.
+// The node's box is ROTATION-INCLUDED (worldAabbOfNode: the AABB of its
+// rotated geometry, in the parent's space) then brought to the world with the
+// parent's transform -- so the selection frame of a multiple selection
+// encloses what a rotated node REALLY occupies, not its unrotated
+// axis-aligned box (track 2). The clipping to frames stays
+// axis-aligned (intersectBounds), like the renderer's three descents.
 function clippedWorldBoundsOf(scene: SceneState, n: NodeLite): Bounds | null {
   let box: Bounds = mapBounds(worldTransformOf(scene, n.parentId), worldAabbOfNode(n));
   for (const anc of ancestorsOf(scene, n.id)) {
@@ -89,30 +89,30 @@ function clippedWorldBoundsOf(scene: SceneState, n: NodeLite): Bounds | null {
 }
 
 function contentIn(scene: SceneState, n: NodeLite, seen: Set<string>): Bounds | null {
-  // Un'ISTANZA deriva i suoi bounds dal MASTER, come un gruppo li deriva dai
-  // figli: il sottoalbero del master mappato dalla trasformazione di discesa
-  // (vedi instanceContentBounds). Non ha un box proprio da leggere -- x/y sono la
-  // sua traslazione, width/height non li legge nessuno, come per un gruppo.
+  // An INSTANCE derives its bounds from the MASTER, as a group derives them from its
+  // children: the master's subtree mapped by the descent transform
+  // (see instanceContentBounds). It has no box of its own to read -- x/y are its
+  // translation, nobody reads width/height, as for a group.
   if (isInstance(n)) return instanceContentBounds(scene, n, new Set());
   if (!isGroup(n)) return clippedWorldBoundsOf(scene, n);
-  // Ciclo in un documento malformato: già visitato, rivisitarlo non finirebbe
-  // mai (stessa guardia di tree.ts::subtreeOf).
+  // Cycle in a malformed document: already visited, revisiting it would never end
+  // (same guard as tree.ts::subtreeOf).
   if (seen.has(n.id)) return null;
   seen.add(n.id);
   const boxes: Bounds[] = [];
   for (const c of childrenOf(scene, n.id)) {
-    // Un figlio INVISIBILE non è contenuto: la stessa regola, identica, delle
-    // tre discese del renderer -- drawSiblings, pickIn e collectIn fanno
-    // `continue` su !visible PRIMA di scendere, quindi un nodo nascosto (e con
-    // lui tutto il suo sottoalbero: non si disegna il figlio di qualcosa che
-    // non c'è) non si vede, non si clicca e il marquee non lo prende.
-    // Includerlo qui darebbe a un gruppo una cornice e 8 maniglie su canvas
-    // VUOTO -- la stessa divergenza vedi-vs-seleziona che quelle tre discese
-    // esistono per evitare -- e, peggio, il pannello proprietà (via
-    // frameOriginOf) direbbe come X il bordo del figlio nascosto: digitarci
-    // dentro un numero manderebbe il contenuto visibile da un'altra parte.
-    // Un gruppo con TUTTI i figli nascosti ricade sul ramo del gruppo vuoto
-    // (unionBounds di niente => null), che è esattamente come si comporta.
+    // An INVISIBLE child is not contained: the same rule, identical, as the
+    // renderer's three descents -- drawSiblings, pickIn and collectIn do
+    // `continue` on !visible BEFORE descending, so a hidden node (and with
+    // it its whole subtree: you do not draw the child of something that
+    // is not there) is not seen, not clicked and the marquee does not take it.
+    // Including it here would give a group a frame and 8 handles on EMPTY
+    // canvas -- the same see-vs-select divergence those three descents
+    // exist to avoid -- and, worse, the properties panel (via
+    // frameOriginOf) would report as X the edge of the hidden child: typing a number
+    // into it would send the visible content somewhere else.
+    // A group with ALL children hidden falls back to the empty-group branch
+    // (unionBounds of nothing => null), which is exactly how it behaves.
     if (!c.visible) continue;
     const b = contentIn(scene, c, seen);
     if (b) boxes.push(b);
@@ -120,24 +120,24 @@ function contentIn(scene: SceneState, n: NodeLite, seen: Set<string>): Bounds | 
   return unionBounds(boxes);
 }
 
-// I bounds MONDO del contenuto di un'istanza: il box del sottoalbero del master,
-// mappato dalla trasformazione di discesa. Segue alla lettera la formula della
-// traccia:
+// The WORLD bounds of an instance's content: the box of the master's subtree,
+// mapped by the descent transform. It follows the track's formula
+// to the letter:
 //
-//   contentWorldBounds(istanza)
+//   contentWorldBounds(instance)
 //     = mapBounds( worldTransformOf(parent) ∘ localTransformOf(n) ∘ translate(-master.x,-master.y),
-//                  <bounds locali del sottoalbero del master> )
+//                  <local bounds of the master's subtree> )
 //
-// I bounds locali del master sono l'unione dei box del suo sottoalbero nello
-// spazio in cui è scritta la x/y della sua radice (accumulateMaster con base
-// IDENTITÀ); poi una sola mapBounds attraverso la discesa MONDO li porta dove
-// l'istanza li disegna. Così la rotazione PROPRIA dell'istanza compone da sé
-// (sta in localTransformOf(n) dentro descentWorld, e mapBounds prende l'AABB del
-// box ruotato) -- disegno, hit-test e cornice scendono con la stessa matrice.
+// The master's local bounds are the union of the boxes of its subtree in the
+// space in which its root's x/y is written (accumulateMaster with an IDENTITY
+// base); then a single mapBounds through the WORLD descent brings them where
+// the instance draws them. This way the instance's OWN rotation composes by itself
+// (it sits in localTransformOf(n) inside descentWorld, and mapBounds takes the AABB of the
+// rotated box) -- drawing, hit-test and frame descend with the same matrix.
 //
-// `null` (niente cornice) quando il master manca o non disegna niente, e quando
-// il componente è già in `visited` (auto-referenza): esattamente come un gruppo
-// vuoto.
+// `null` (no frame) when the master is missing or draws nothing, and when
+// the component is already in `visited` (self-reference): exactly like an empty
+// group.
 function instanceContentBounds(scene: SceneState, n: NodeLite, visited: Set<string>): Bounds | null {
   const resolved = resolveInstance(scene, n);
   if (!resolved) return null;
@@ -151,16 +151,16 @@ function instanceContentBounds(scene: SceneState, n: NodeLite, visited: Set<stri
   return mapBounds(descentWorld, local);
 }
 
-// Accumula i box del sottoalbero di un master nello spazio in cui `toBase`
-// mappa. Rispecchia la discesa del renderer, per tenere vedi-vs-seleziona:
-//   - un nodo (o container) INVISIBILE porta via con sé tutto il suo sottoalbero;
-//   - un GRUPPO e un'ISTANZA non hanno box PROPRIO (i loro bounds sono derivati);
-//   - un'istanza ANNIDATA contribuisce il proprio contenuto derivato, con la
-//     stessa guardia ai cicli per componentId;
-//   - ogni altro nodo contribuisce il suo box (AABB ruotato) mappato in base.
-// `seen` è la guardia ai cicli STRUTTURALI (parent malformati); `visited` quella
-// ai cicli di COMPONENTE. NB: il ritaglio dei frame INTERNI al master non è
-// applicato ai bounds -- vedi il commento in cima al file per la scelta.
+// Accumulates the boxes of a master's subtree in the space that `toBase`
+// maps to. Mirrors the renderer's descent, to keep see-vs-select:
+//   - an INVISIBLE node (or container) takes its whole subtree away with it;
+//   - a GROUP and an INSTANCE have no OWN box (their bounds are derived);
+//   - a NESTED instance contributes its own derived content, with the
+//     same cycle guard by componentId;
+//   - every other node contributes its box (rotated AABB) mapped into base.
+// `seen` is the guard against STRUCTURAL cycles (malformed parents); `visited` the one
+// against COMPONENT cycles. NB: the clipping of frames INSIDE the master is not
+// applied to the bounds -- see the comment at the top of the file for the rationale.
 function accumulateMaster(
   scene: SceneState,
   node: NodeLite,
@@ -180,56 +180,56 @@ function accumulateMaster(
       const innerLocal = unionBounds(inner);
       if (innerLocal) boxes.push(mapBounds(compose(toBase, instanceDescentLocal(node, resolved.masterRoot)), innerLocal));
     }
-    // Un'istanza non ha figli in `nodes`: niente discesa oltre qui.
+    // An instance has no children in `nodes`: no descent beyond here.
     return;
   }
-  // Gruppo: nessun box proprio (i suoi bounds sono l'unione dei figli, qui sotto).
+  // Group: no box of its own (its bounds are the union of the children, below).
   if (!isGroup(node)) boxes.push(mapBounds(toBase, worldAabbOfNode(node)));
   const childBase = compose(toBase, localTransformOf(node));
   for (const c of childrenOf(scene, node.id)) accumulateMaster(scene, c, childBase, boxes, seen, visited);
 }
 
-// L'angolo ALTO-SINISTRA della cornice di un nodo, nello spazio del PARENT --
-// cioè lo stesso spazio in cui sono scritte le sue x/y, e quello in cui il
-// pannello proprietà (ui/PropertiesPanel.tsx) legge e scrive X/Y.
+// The TOP-LEFT corner of a node's frame, in the PARENT's space --
+// that is, the same space in which its x/y are written, and the one in which the
+// properties panel (ui/PropertiesPanel.tsx) reads and writes X/Y.
 //
-// Per qualunque nodo che non sia un gruppo è banalmente la sua x/y: il box del
-// modello È la cornice. Per un GRUPPO no, e senza questa funzione il pannello
-// direbbe un numero diverso da quello che l'overlay disegna: x/y di un gruppo
-// sono la TRASLAZIONE che contribuisce ai figli (0 alla creazione -- raggruppare
-// non sposta un pixel), mentre la cornice è l'unione dei figli e può stare
-// ovunque. "X" deve voler dire per un gruppo quello che vuol dire per tutti gli
-// altri: dove si vede il bordo sinistro.
+// For any node that is not a group it is trivially its x/y: the model's box
+// IS the frame. For a GROUP it is not, and without this function the panel
+// would report a different number from the one the overlay draws: a group's x/y
+// are the TRANSLATION that contributes to the children (0 at creation -- grouping
+// does not move a pixel), while the frame is the union of the children and can be
+// anywhere. "X" must mean for a group what it means for all the
+// others: where the left edge is seen.
 //
-// Un gruppo VUOTO non ha cornice (contentWorldBounds null): resta la sua
-// traslazione, che è l'unica coordinata che possiede -- e che il pannello
-// scrive allora in modo assoluto, come per ogni altro nodo.
+// An EMPTY group has no frame (contentWorldBounds null): its
+// translation remains, which is the only coordinate it owns -- and which the panel
+// then writes in absolute terms, as for any other node.
 export function frameOriginOf(scene: SceneState, n: NodeLite): { x: number; y: number } {
-  // Un'ISTANZA è come un gruppo qui: x/y sono la sua traslazione, non l'angolo
-  // della cornice (che è quello del contenuto del master). Vedi contentIn.
+  // An INSTANCE is like a group here: x/y are its translation, not the corner
+  // of the frame (which is that of the master's content). See contentIn.
   if (!isGroup(n) && !isInstance(n)) return { x: n.x, y: n.y };
   const b = contentWorldBounds(scene, n);
   if (!b) return { x: n.x, y: n.y };
-  // Dal MONDO (in cui contentWorldBounds risponde) allo spazio del parent: la
-  // stessa direzione che l'hit-test usa per il puntatore, e l'unico spazio in
-  // cui il numero è confrontabile con la x/y del nodo.
+  // From the WORLD (in which contentWorldBounds answers) to the parent's space: the
+  // same direction hit-test uses for the pointer, and the only space
+  // in which the number is comparable with the node's x/y.
   return worldToLocal(scene, n.parentId, b.x, b.y);
 }
 
-// I contenitori in cui la selezione corrente è ENTRATA. Non è uno stato a
-// parte, e di proposito: "essere dentro un gruppo" lo dice la selezione stessa
-// -- se un figlio del gruppo è selezionato, siamo dentro quel gruppo. Uno stato
-// separato ("contesto di editing") andrebbe invalidato a ogni cambio di
-// selezione, a ogni undo e a ogni op remoto che cancella il contenitore;
-// derivarlo non può mai andare fuori sincrono.
+// The containers the current selection has ENTERED. It is not a separate
+// state, and deliberately: "being inside a group" is told by the selection itself
+// -- if a child of the group is selected, we are inside that group. A separate
+// state ("editing context") would have to be invalidated on every selection
+// change, on every undo and on every remote op that deletes the container;
+// deriving it can never go out of sync.
 function enteredContainers(scene: SceneState, selection: readonly string[]): Set<string> {
   const out = new Set<string>();
   for (const id of selection) for (const a of ancestorsOf(scene, id)) out.add(a.id);
   return out;
 }
 
-// Il cammino dalla radice al nodo: gli antenati dal più LONTANO al più vicino,
-// poi il nodo stesso.
+// The path from the root to the node: the ancestors from the FARTHEST to the nearest,
+// then the node itself.
 function pathTo(scene: SceneState, id: string): string[] {
   const up = ancestorsOf(scene, id).map((n) => n.id);
   up.reverse();
@@ -238,29 +238,29 @@ function pathTo(scene: SceneState, id: string): string[] {
 }
 
 /**
- * Il nodo che un CLICK su `id` deve selezionare.
+ * The node that a CLICK on `id` must select.
  *
- * LA CONVENZIONE (quella che gli utenti notano immediatamente):
- *  - un click seleziona il gruppo PIÙ ESTERNO che contiene ciò che si è
- *    cliccato -- un gruppo si muove come un oggetto solo;
- *  - un doppio click ENTRA nel gruppo (vedi enterTargetOf) e da lì in poi i
- *    click selezionano dentro, un livello per volta;
- *  - cliccare fuori dal gruppo in cui si è entrati ne esce, senza nessun gesto
- *    dedicato: la nuova selezione non ha più quel gruppo fra gli antenati.
+ * THE CONVENTION (the one users notice immediately):
+ *  - a click selects the OUTERMOST group that contains what was
+ *    clicked -- a group moves as a single object;
+ *  - a double click ENTERS the group (see enterTargetOf) and from there on
+ *    clicks select inside, one level at a time;
+ *  - clicking outside the group that was entered exits it, with no dedicated
+ *    gesture: the new selection no longer has that group among its ancestors.
  *
- * Solo i GRUPPI catturano il click. Un contenitore che non è un gruppo (oggi un
- * nodo qualunque con figli, domani un frame) lascia passare: i suoi figli si
- * selezionano direttamente, che è la convenzione dei frame/artboard.
+ * Only GROUPS capture the click. A container that is not a group (today any
+ * node with children, tomorrow a frame) lets it through: its children are
+ * selected directly, which is the frame/artboard convention.
  *
- * `id` non presente nella scena torna invariato: non è questa funzione a
- * decidere se un id è valido.
+ * An `id` not present in the scene is returned unchanged: it is not this function's job to
+ * decide whether an id is valid.
  */
 export function selectionTargetOf(scene: SceneState, id: string, selection: readonly string[]): string {
   if (!scene.nodes.at(id)) return id;
   const path = pathTo(scene, id);
   const entered = enteredContainers(scene, selection);
-  // Si salta il PREFISSO di contenitori in cui siamo già entrati: sono
-  // trasparenti al click, come lo è la pagina.
+  // The PREFIX of containers we have already entered is skipped: they are
+  // transparent to the click, as the page is.
   let i = 0;
   while (i < path.length - 1 && entered.has(path[i])) i++;
   for (; i < path.length; i++) {
@@ -270,11 +270,11 @@ export function selectionTargetOf(scene: SceneState, id: string, selection: read
   return id;
 }
 
-// La stessa politica applicata a una LISTA (i nodi che un marquee ha preso),
-// senza duplicati e nell'ordine di partenza: due figli dello stesso gruppo
-// danno il gruppo una volta sola. Il marquee deve selezionare quello che
-// selezionerebbe un click, o la banda elastica sarebbe l'unico modo per
-// prendere i figli di un gruppo senza entrarci.
+// The same policy applied to a LIST (the nodes a marquee has taken),
+// without duplicates and in the starting order: two children of the same group
+// give the group only once. The marquee must select what a click
+// would select, or the rubber band would be the only way to
+// take the children of a group without entering it.
 export function selectionTargetsOf(scene: SceneState, ids: readonly string[], selection: readonly string[]): string[] {
   const out: string[] = [];
   const seen = new Set<string>();
@@ -288,14 +288,14 @@ export function selectionTargetsOf(scene: SceneState, ids: readonly string[], se
 }
 
 /**
- * Il nodo che un DOPPIO CLICK su `id` deve selezionare: un livello più in
- * dentro di quello che il click semplice selezionerebbe.
+ * The node that a DOUBLE CLICK on `id` must select: one level deeper
+ * than what the simple click would select.
  *
- * null quando non c'è niente in cui entrare (il click già seleziona `id`
- * stesso). È ciò che lascia il doppio click libero per il suo ALTRO
- * significato -- entrare in editing su un nodo testo, vedi selectTool -- invece
- * di doverli mettere in concorrenza: prima si entra nei gruppi, e quando non ce
- * ne sono più il doppio click torna a essere quello del testo.
+ * null when there is nothing to enter (the click already selects `id`
+ * itself). It is what leaves the double click free for its OTHER
+ * meaning -- entering edit mode on a text node, see selectTool -- instead
+ * of having to make them compete: first you enter groups, and when there are none
+ * left the double click goes back to being the text one.
  */
 export function enterTargetOf(scene: SceneState, id: string, selection: readonly string[]): string | null {
   if (!scene.nodes.at(id)) return null;
@@ -308,18 +308,18 @@ export function enterTargetOf(scene: SceneState, id: string, selection: readonly
 }
 
 /**
- * I nodi che un gesto di TRASFORMAZIONE (il resize) deve toccare davvero: un
- * gruppo viene espanso nei suoi figli, ricorsivamente.
+ * The nodes that a TRANSFORM gesture (the resize) must actually touch: a
+ * group is expanded into its children, recursively.
  *
- * Perché il resize sì e lo spostamento no: spostare un gruppo è già espresso
- * dalla sua trasformazione -- x/y del gruppo traslano i figli, e un solo
- * setProps li muove tutti (vedi transform.ts). Una SCALA no: la trasformazione
- * di un container è una traslazione, quindi scrivere width/height su un gruppo
- * non scalerebbe proprio niente. Ridimensionare un gruppo è ridimensionare il
- * suo contenuto, ed è esattamente questa espansione.
+ * Why resize yes and move no: moving a group is already expressed
+ * by its transform -- the group's x/y translate the children, and a single
+ * setProps moves them all (see transform.ts). A SCALE is not: a container's
+ * transform is a translation, so writing width/height on a group
+ * would scale nothing at all. Resizing a group is resizing its
+ * content, and it is exactly this expansion.
  *
- * Un gruppo vuoto sparisce dalla lista (non c'è niente da trasformare); un id
- * che non è nella scena resta (non è questa funzione a validarlo).
+ * An empty group disappears from the list (nothing to transform); an id
+ * that is not in the scene stays (not this function's job to validate it).
  */
 export function transformTargetsOf(scene: SceneState, ids: readonly string[]): string[] {
   const out: string[] = [];

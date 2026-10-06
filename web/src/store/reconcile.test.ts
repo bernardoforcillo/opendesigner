@@ -5,10 +5,10 @@ import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "./store";
 import { emptyScene, toNodeLite } from "./types";
 
-// Il modello confermato/pending visto DALLO STORE, senza rete: `apply` è il
-// record autorevole che arriva da Subscribe, `applyPending` è il submit
-// ottimistico, `rejectPending` è il rifiuto. rpc/syncClient.test.ts copre il
-// cablaggio degli stessi tre ingressi sul trasporto vero.
+// The confirmed/pending model seen FROM THE STORE, without network: `apply` is the
+// authoritative record that arrives from Subscribe, `applyPending` is the optimistic
+// submit, `rejectPending` is the rejection. rpc/syncClient.test.ts covers the
+// wiring of the same three entry points onto the real transport.
 
 function rectNode(id: string, x: number, y: number) {
   return create(NodeSchema, {
@@ -45,7 +45,7 @@ function sceneWith(...ids: string[]) {
   return scene;
 }
 
-describe("riconciliazione confermato/pending", () => {
+describe("confirmed/pending reconciliation", () => {
   beforeEach(() => {
     useScene.setState({
       selection: [], marquee: null, gesture: null, sync: null,
@@ -54,14 +54,14 @@ describe("riconciliazione confermato/pending", () => {
     useScene.getState().setScene(sceneWith("n1", "n2"));
   });
 
-  it("setScene allinea vista e confermato e svuota la coda", () => {
+  it("setScene aligns view and confirmed and empties the queue", () => {
     const st = useScene.getState();
     expect(st.confirmed).toBe(st.scene);
     expect(st.pending).toEqual([]);
     expect(st.lastError).toBeNull();
   });
 
-  it("un op in volo si vede subito ma NON entra nel confermato", () => {
+  it("an in-flight op is seen immediately but does NOT enter the confirmed state", () => {
     useScene.getState().applyPending(moveOp("op-1", "n1", 200, 0));
 
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 });
@@ -69,24 +69,24 @@ describe("riconciliazione confermato/pending", () => {
     expect(useScene.getState().pending).toHaveLength(1);
   });
 
-  it("un record remoto avanza il confermato e la coda viene RIAPPLICATA sopra (rebase)", () => {
+  it("a remote record advances the confirmed state and the queue is RE-APPLIED on top (rebase)", () => {
     const st = useScene.getState();
     st.applyPending(moveOp("op-mine", "n1", 200, 0));
-    // Il server ha ordinato PRIMA il record dell'altro client: senza rebase la
-    // modifica ottimistica verrebbe schiacciata e non tornerebbe mai più.
+    // The server ordered the other client's record FIRST: without rebase the
+    // optimistic change would be squashed and would never come back.
     st.apply(moveOp("op-them-1", "n1", 100, 0));
     st.apply(moveOp("op-them-2", "n2", 333, 0));
 
     const scene = useScene.getState().scene!;
     expect(scene.nodes.at("n1")).toMatchObject({ x: 200 }); // pending riapplicato
-    expect(scene.nodes.at("n2")).toMatchObject({ x: 333 }); // remoto non perso
+    expect(scene.nodes.at("n2")).toMatchObject({ x: 333 }); // remote not lost
     expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 100 });
   });
 
-  it("il proprio eco toglie l'op dalla coda: da lì in poi non viene più riapplicato", () => {
+  it("our own echo removes the op from the queue: from then on it is no longer re-applied", () => {
     const st = useScene.getState();
     st.applyPending(moveOp("op-mine", "n1", 200, 0));
-    st.apply(moveOp("op-mine", "n1", 200, 0)); // eco: stesso opId
+    st.apply(moveOp("op-mine", "n1", 200, 0)); // echo: same opId
 
     expect(useScene.getState().pending).toHaveLength(0);
     expect(useScene.getState().confirmed!.nodes.at("n1")).toMatchObject({ x: 200 });
@@ -95,7 +95,7 @@ describe("riconciliazione confermato/pending", () => {
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 50 });
   });
 
-  it("un rifiuto toglie l'op dalla coda, ricalcola la vista e riporta l'errore", () => {
+  it("a rejection removes the op from the queue, recomputes the view and reports the error", () => {
     const st = useScene.getState();
     st.applyPending(createOp("op-1", "n9", 10, 10));
     st.applyPending(moveOp("op-2", "n1", 200, 0));
@@ -104,12 +104,12 @@ describe("riconciliazione confermato/pending", () => {
     st.rejectPending("op-1", "node already exists");
 
     expect(useScene.getState().scene!.nodes.at("n9")).toBeUndefined(); // rollback
-    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 }); // l'altro resta
+    expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 200 }); // the other one stays
     expect(useScene.getState().pending).toHaveLength(1);
     expect(useScene.getState().lastError).toBe("node already exists");
   });
 
-  it("il rollback di una create toglie il nodo anche dalla selezione", () => {
+  it("the rollback of a create removes the node from the selection too", () => {
     const st = useScene.getState();
     st.applyPending(createOp("op-1", "n9", 10, 10));
     st.setSelection(["n1", "n9"]);
@@ -119,10 +119,10 @@ describe("riconciliazione confermato/pending", () => {
     expect(useScene.getState().selection).toEqual(["n1"]);
   });
 
-  it("il rifiuto di un op GIÀ confermato non annulla nulla e non inventa un errore", () => {
+  it("the rejection of an ALREADY confirmed op undoes nothing and does not invent an error", () => {
     const st = useScene.getState();
     st.applyPending(moveOp("op-1", "n1", 200, 0));
-    st.apply(moveOp("op-1", "n1", 200, 0)); // eco arrivato prima della risposta HTTP
+    st.apply(moveOp("op-1", "n1", 200, 0)); // echo arrived before the HTTP response
 
     st.rejectPending("op-1", "connection reset");
 
@@ -130,7 +130,7 @@ describe("riconciliazione confermato/pending", () => {
     expect(useScene.getState().lastError).toBeNull();
   });
 
-  it("clearError azzera l'errore mostrato", () => {
+  it("clearError resets the displayed error", () => {
     const st = useScene.getState();
     st.applyPending(moveOp("op-1", "n1", 200, 0));
     st.rejectPending("op-1", "boom");
@@ -140,34 +140,34 @@ describe("riconciliazione confermato/pending", () => {
     expect(useScene.getState().lastError).toBeNull();
   });
 
-  // --- interazione con i gesti ---------------------------------------------
+  // --- interaction with gestures -------------------------------------------
 
-  it("un record remoto a metà gesto non fa sparire l'anteprima del drag", () => {
+  it("a remote record mid-gesture does not make the drag preview vanish", () => {
     const st = useScene.getState();
     st.beginGesture();
-    st.applyLocal(moveOp("prev-1", "n1", 40, 40)); // anteprima locale, mai sul filo
+    st.applyLocal(moveOp("prev-1", "n1", 40, 40)); // local preview, never on the wire
 
-    st.apply(moveOp("op-them", "n2", 333, 0)); // arriva mentre il dito è ancora giù
+    st.apply(moveOp("op-them", "n2", 333, 0)); // arrives while the finger is still down
 
     const scene = useScene.getState().scene!;
     expect(scene.nodes.at("n1")).toMatchObject({ x: 40, y: 40 }); // anteprima intatta
     expect(scene.nodes.at("n2")).toMatchObject({ x: 333 });
   });
 
-  it("un op ancora in volo sopravvive alla chiusura del gesto", () => {
+  it("an op still in flight survives the closing of the gesture", () => {
     const st = useScene.getState();
-    st.applyPending(moveOp("op-mine", "n2", 500, 0)); // submittato prima del drag
+    st.applyPending(moveOp("op-mine", "n2", 500, 0)); // submitted before the drag
     st.beginGesture();
     st.applyLocal(moveOp("prev-1", "n1", 40, 40));
-    st.endGesture([]); // gesto abortito: nessun op finale
+    st.endGesture([]); // aborted gesture: no final ops
 
-    // L'anteprima sparisce (non è mai stata sul filo), l'op in volo NO.
+    // The preview vanishes (it was never on the wire), the in-flight op does NOT.
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 500 });
     expect(useScene.getState().pending).toHaveLength(1);
   });
 
-  it("un delete remoto durante il gesto pota la selezione e non viene resuscitato", () => {
+  it("a remote delete during the gesture prunes the selection and is not resurrected", () => {
     const st = useScene.getState();
     st.setSelection(["n1", "n2"]);
     st.beginGesture();

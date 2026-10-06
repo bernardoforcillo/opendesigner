@@ -17,47 +17,47 @@ import { CommitField } from "./fields/CommitField";
 import { Badge, Button, EmptyState, Icon, IconButton, Section, cls } from "./ds";
 import { Field, FlowIcon, SwitchRow } from "./ds/flow-parts";
 
-// IL PANNELLO FLUSSI (sostituisce i livelli a sinistra in modalità Flussi).
-// Dall'alto: i flussi del documento, le transizioni del flusso corrente con la
-// modifica in linea, i problemi e i percorsi che calcola il SERVER (AnalyzeFlows:
-// la stessa analisi di CLI e MCP -- qui non si ricalcola niente).
+// THE FLOWS PANEL (replaces the layers on the left in Flows mode).
+// From the top: the document's flows, the current flow's transitions with
+// inline editing, the problems and the paths computed by the SERVER (AnalyzeFlows:
+// the same analysis as CLI and MCP -- nothing is recomputed here).
 //
-// Ogni modifica è UN op in UN gesto (flow/commands.ts::submit), quindi annullabile
-// con Ctrl+Z e visibile ai peer come qualunque altra.
+// Every change is ONE op in ONE gesture (flow/commands.ts::submit), so it can be undone
+// with Ctrl+Z and is visible to peers like any other.
 //
-// Il viola (`flow`) è il colore di questa modalità: dice DOVE sei. Compare sul
-// flusso scelto e sull'ingresso; la selezione di una transizione resta nel blu
-// d'accento, come la freccia sul canvas.
+// Violet (`flow`) is this mode's color: it tells you WHERE you are. It appears on the
+// chosen flow and on the entry; the selection of a transition stays in the
+// accent blue, like the arrow on the canvas.
 
 const TRIGGERS = ["click", "submit", "auto", "key", "back"] as const;
 const TRIGGER_LABELS: Record<string, string> = {
   click: "Click",
-  submit: "Invio modulo",
-  auto: "Automatico",
-  key: "Tasto",
-  back: "Indietro",
+  submit: "Form submit",
+  auto: "Automatic",
+  key: "Key",
+  back: "Back",
 };
 
 const ISSUE_LABELS: Record<string, string> = {
-  no_start: "senza ingresso",
-  unreachable: "irraggiungibili",
-  dead_end: "vicoli ciechi",
-  no_exit: "senza uscita",
-  ambiguous: "ambigue",
-  empty: "vuoto",
+  no_start: "no entry",
+  unreachable: "unreachable",
+  dead_end: "dead ends",
+  no_exit: "no exit",
+  ambiguous: "ambiguous",
+  empty: "empty",
 };
 
-// Gravità di un problema, per il colore: ambiguità e vuoto sono avvisi (il
-// flusso funziona, ma è da rivedere); il resto spezza il percorso (errore).
+// Severity of a problem, for the color: ambiguity and empty are warnings (the
+// flow works, but needs review); the rest breaks the path (error).
 const WARN_KINDS = new Set(["ambiguous", "empty"]);
 const toneOf = (kind: string): "warn" | "danger" => (WARN_KINDS.has(kind) ? "warn" : "danger");
 
-// Una riga cliccabile: stessa base per flussi, transizioni, problemi, percorsi.
+// A clickable row: same base for flows, transitions, problems, paths.
 const ROW_FOCUS = "outline-none data-[focus-visible]:shadow-[var(--ring)]";
 
-// Porta in vista `b` (mondo): la dimensione della vista si legge dal canvas della
-// scena, l'unico elemento che la conosce davvero. Se `b` si vede già tutto non
-// si tocca la camera: il click evidenzia e basta.
+// Brings `b` (world) into view: the view's size is read from the scene's canvas,
+// the only element that really knows it. If `b` is already fully visible the
+// camera is not touched: the click just highlights.
 function zoomTo(b: { x: number; y: number; width: number; height: number }): void {
   const el = typeof document !== "undefined" ? document.getElementById("scene") : null;
   const w = el?.clientWidth || 800;
@@ -66,7 +66,7 @@ function zoomTo(b: { x: number; y: number; width: number; height: number }): voi
   if (!isFullyVisible(b, st.camera, w, h)) st.setCamera(cameraToFit(b, w, h));
 }
 
-// Seleziona un nodo (cambiando pagina se sta altrove) e lo inquadra.
+// Selects a node (changing page if it is elsewhere) and frames it.
 function focusNode(scene: SceneState, id: string): void {
   const n = scene.nodes.at(id);
   if (!n) return;
@@ -94,19 +94,19 @@ function TransitionEditor({ scene, t }: { scene: SceneState; t: TransitionLite }
     const op = editTransitionOp(t, field, v);
     if (op) submit([op]);
   };
-  // Gli elementi della schermata di partenza che possono fare da hotspot: tutti i
-  // suoi discendenti (con un tetto, un frame enorme non deve produrre una lista
-  // di migliaia di righe).
+  // The start screen's elements that can act as hotspots: all its
+  // descendants (with a cap, a huge frame must not produce a list
+  // of thousands of rows).
   const elements = useMemo(() => descendantsOf(scene, t.fromId).slice(0, 300), [scene.nodes, t.fromId]);
   const triggers: string[] = (TRIGGERS as readonly string[]).includes(t.trigger) ? [...TRIGGERS] : [...TRIGGERS, t.trigger];
   return (
     <div className="flex flex-col gap-1.5 border-t border-line px-2.5 py-2.5">
-      <Field label="Etichetta" wide>
-        <CommitField label="Etichetta" value={t.label} onCommit={(v) => commit("label", v)} placeholder="es. Accedi" />
+      <Field label="Label" wide>
+        <CommitField label="Label" value={t.label} onCommit={(v) => commit("label", v)} placeholder="e.g. Log in" />
       </Field>
-      <Field label="Innesco" wide>
+      <Field label="Trigger" wide>
         <select
-          aria-label="Innesco"
+          aria-label="Trigger"
           value={t.trigger}
           onChange={(e) => commit("trigger", e.target.value)}
           className={cls.select}
@@ -116,20 +116,20 @@ function TransitionEditor({ scene, t }: { scene: SceneState; t: TransitionLite }
           ))}
         </select>
       </Field>
-      <Field label="Guardia" wide>
-        <CommitField label="Guardia" value={t.guard} onCommit={(v) => commit("guard", v)} placeholder="es. user=guest" className="font-mono text-[12px]" />
+      <Field label="Guard" wide>
+        <CommitField label="Guard" value={t.guard} onCommit={(v) => commit("guard", v)} placeholder="e.g. user=guest" className="font-mono text-[12px]" />
       </Field>
-      <Field label="Effetto" wide>
-        <CommitField label="Effetto" value={t.effect} onCommit={(v) => commit("effect", v)} placeholder="es. cart=full" className="font-mono text-[12px]" />
+      <Field label="Effect" wide>
+        <CommitField label="Effect" value={t.effect} onCommit={(v) => commit("effect", v)} placeholder="e.g. cart=full" className="font-mono text-[12px]" />
       </Field>
-      <Field label="Elemento" wide>
+      <Field label="Element" wide>
         <select
-          aria-label="Elemento"
+          aria-label="Element"
           value={t.elementId}
           onChange={(e) => commit("elementId", e.target.value)}
           className={cls.select}
         >
-          <option value="">Nessuno (tutta la schermata)</option>
+          <option value="">None (the whole screen)</option>
           {elements.map((n) => (
             <option key={n.id} value={n.id}>{n.name.trim() !== "" ? n.name : n.kind}</option>
           ))}
@@ -139,13 +139,13 @@ function TransitionEditor({ scene, t }: { scene: SceneState; t: TransitionLite }
         <Button
           variant="danger"
           icon="trash"
-          aria-label="Elimina transizione"
+          aria-label="Delete transition"
           onPress={() => {
             useFlowUi.getState().selectTransition(null);
             submit([deleteTransitionOp(t.id)]);
           }}
         >
-          Elimina
+          Delete
         </Button>
       </div>
     </div>
@@ -159,15 +159,15 @@ function Transitions({ scene, flow }: { scene: SceneState; flow: FlowLite }) {
     [scene.transitions, flow.id],
   );
   return (
-    <Section title="Transizioni" count={list.length} bare>
+    <Section title="Transitions" count={list.length} bare>
       {list.length === 0 ? (
         <EmptyState
           icon="connect"
-          title="Nessuna transizione"
-          hint="Collega due schermate con lo strumento Collega (K)."
+          title="No transitions"
+          hint="Connect two screens with the Connect tool (K)."
         />
       ) : (
-        <ul aria-label="Transizioni" className="flex flex-col gap-1.5 px-3 pb-3">
+        <ul aria-label="Transitions" className="flex flex-col gap-1.5 px-3 pb-3">
           {list.map((t) => {
             const open = t.id === selected;
             const label = t.label.trim();
@@ -180,7 +180,7 @@ function Transitions({ scene, flow }: { scene: SceneState; flow: FlowLite }) {
                 }
               >
                 <RacButton
-                  aria-label={`Transizione ${screenName(scene, t.fromId)} verso ${screenName(scene, t.toId)}`}
+                  aria-label={`Transition ${screenName(scene, t.fromId)} to ${screenName(scene, t.toId)}`}
                   aria-expanded={open}
                   onPress={() => (open ? useFlowUi.getState().selectTransition(null) : focusTransition(scene, t.id))}
                   className={`flex w-full flex-col items-stretch gap-1 px-2.5 py-2 text-left ${ROW_FOCUS} ` + (open ? "bg-accent-soft" : "hover:bg-surface-2")}
@@ -192,14 +192,14 @@ function Transitions({ scene, flow }: { scene: SceneState; flow: FlowLite }) {
                   </span>
                   <span className="flex min-w-0 items-center gap-1.5">
                     <span className={"min-w-0 flex-1 truncate text-[12px] " + (label !== "" ? "text-fg-muted" : "italic text-fg-subtle")}>
-                      {label !== "" ? t.label : "Senza etichetta"}
+                      {label !== "" ? t.label : "No label"}
                     </span>
                     {t.trigger !== "" && <Badge tone={open ? "accent" : "neutral"} className="shrink-0">{TRIGGER_LABELS[t.trigger] ?? t.trigger}</Badge>}
                   </span>
                   {(t.guard !== "" || t.effect !== "") && (
                     <span className="flex min-w-0 flex-wrap gap-1">
                       {t.guard !== "" && (
-                        <span className="max-w-full truncate rounded bg-warn-soft px-1.5 font-mono text-[11px] text-warn">{`se ${t.guard}`}</span>
+                        <span className="max-w-full truncate rounded bg-warn-soft px-1.5 font-mono text-[11px] text-warn">{`if ${t.guard}`}</span>
                       )}
                       {t.effect !== "" && (
                         <span className="max-w-full truncate rounded bg-surface-3 px-1.5 font-mono text-[11px] text-fg-muted">{t.effect}</span>
@@ -231,9 +231,9 @@ function Issues({ scene, report }: { scene: SceneState; report: FlowReport | und
   const loading = status === "loading" && !report;
   return (
     <Section
-      title="Problemi"
+      title="Problems"
       count={loading ? undefined : issues.length}
-      actions={loading ? <span className="pr-1 text-[11px] text-fg-subtle">analisi…</span> : undefined}
+      actions={loading ? <span className="pr-1 text-[11px] text-fg-subtle">analyzing…</span> : undefined}
       bare
     >
       {error && (
@@ -243,21 +243,21 @@ function Issues({ scene, report }: { scene: SceneState; report: FlowReport | und
         </div>
       )}
       {issues.length > 0 && (
-        <div className="flex flex-wrap gap-1 px-3 pb-2" aria-label="Riepilogo dei problemi">
+        <div className="flex flex-wrap gap-1 px-3 pb-2" aria-label="Problem summary">
           {Object.entries(counts).map(([k, n]) => (
             <Badge key={k} tone={toneOf(k)}>{`${ISSUE_LABELS[k] ?? k}: ${n}`}</Badge>
           ))}
         </div>
       )}
       {!report ? (
-        <p className="px-3 pb-3 text-[12px] text-fg-subtle">{status === "loading" ? "Analisi in corso…" : "Nessuna analisi disponibile."}</p>
+        <p className="px-3 pb-3 text-[12px] text-fg-subtle">{status === "loading" ? "Analysis in progress…" : "No analysis available."}</p>
       ) : issues.length === 0 ? (
         <p className="mx-3 mb-3 flex items-center gap-1.5 rounded-md bg-ok-soft px-2 py-1.5 text-[12px] font-medium text-ok">
           <Icon name="check" size={14} className="shrink-0" />
-          <span>Nessun problema rilevato.</span>
+          <span>No problems found.</span>
         </p>
       ) : (
-        <ul aria-label="Problemi del flusso" className="flex flex-col gap-1 px-3 pb-3">
+        <ul aria-label="Flow problems" className="flex flex-col gap-1 px-3 pb-3">
           {issues.map((i, idx) => {
             const tone = toneOf(i.kind);
             return (
@@ -291,19 +291,19 @@ function pathLabel(scene: SceneState, p: FlowPath): string {
 function Paths({ scene, report }: { scene: SceneState; report: FlowReport | undefined }) {
   if (!report) return null;
   return (
-    <Section title="Percorsi" count={report.paths.length} actions={report.pathsTruncated ? <span className="pr-1 text-[11px] text-fg-subtle">+</span> : undefined} bare>
+    <Section title="Paths" count={report.paths.length} actions={report.pathsTruncated ? <span className="pr-1 text-[11px] text-fg-subtle">+</span> : undefined} bare>
       {report.paths.length === 0 ? (
-        <p className="px-3 pb-3 text-[12px] text-fg-subtle">Nessun percorso (serve una schermata d'ingresso con delle uscite).</p>
+        <p className="px-3 pb-3 text-[12px] text-fg-subtle">No paths (an entry screen with exits is needed).</p>
       ) : (
-        <ul aria-label="Percorsi del flusso" className="flex flex-col gap-1 px-3 pb-3">
+        <ul aria-label="Flow paths" className="flex flex-col gap-1 px-3 pb-3">
           {report.paths.map((p, idx) => (
             <li key={idx}>
               <RacButton
-                // Il nome accessibile è la riga di testo di sempre («A → B → C ↻»);
-                // le pillole disegnate sono la sua versione visiva, nascosta ai
-                // lettori di schermo per non leggere le stesse schermate due volte.
+                // The accessible name is the usual text line («A → B → C ↻»);
+                // the drawn pills are its visual version, hidden from
+                // screen readers so as not to read the same screens twice.
                 aria-label={pathLabel(scene, p)}
-                // Un percorso si evidenzia selezionando le sue schermate.
+                // A path is highlighted by selecting its screens.
                 onPress={() => {
                   const ids = p.nodeIds.filter((id) => scene.nodes.has(id));
                   if (ids.length > 0) useScene.getState().setSelection(ids);
@@ -318,21 +318,21 @@ function Paths({ scene, report }: { scene: SceneState; report: FlowReport | unde
                   </span>
                 ))}
                 {p.loops && (
-                  <span aria-hidden="true" title="Il percorso torna su una schermata già visitata" className="inline-flex items-center gap-0.5 rounded bg-flow-soft px-1 text-flow">
+                  <span aria-hidden="true" title="The path returns to an already visited screen" className="inline-flex items-center gap-0.5 rounded bg-flow-soft px-1 text-flow">
                     <FlowIcon name="loop" size={11} />
                   </span>
                 )}
               </RacButton>
             </li>
           ))}
-          {report.pathsTruncated && <li className="px-1 text-[11px] text-fg-subtle">Elenco troncato: ci sono altri percorsi.</li>}
+          {report.pathsTruncated && <li className="px-1 text-[11px] text-fg-subtle">List truncated: there are more paths.</li>}
         </ul>
       )}
     </Section>
   );
 }
 
-// --- IL PANNELLO -------------------------------------------------------------
+// --- THE PANEL ---------------------------------------------------------------
 
 export function FlowPanel() {
   const scene = useScene((s) => s.scene);
@@ -346,7 +346,7 @@ export function FlowPanel() {
   const flows = sortedFlows(scene);
   const flow = resolveFlow(scene, currentFlowId);
   const report = flow ? reports[flow.id] : undefined;
-  // La schermata scelta per "Imposta come inizio": quella del nodo selezionato.
+  // The screen chosen for "Set as start": the selected node's.
   const picked = selection.length === 1 ? screenOf(scene, selection[0]) : null;
   const selectedScreen = isScreenNode(picked) ? picked : null;
 
@@ -360,19 +360,19 @@ export function FlowPanel() {
     <div className="flex h-full flex-col bg-surface text-[13px] text-fg">
       <div className="min-h-0 flex-1 overflow-y-auto">
         <Section
-          title="Flussi"
+          title="Flows"
           count={flows.length}
-          actions={<IconButton icon="plus" label="Nuovo flusso" tone="flow" onPress={newFlow} />}
+          actions={<IconButton icon="plus" label="New flow" tone="flow" onPress={newFlow} />}
           bare
         >
           {flows.length === 0 ? (
             <EmptyState
               icon="flow"
-              title="Nessun flusso"
-              hint="Collega due schermate con lo strumento Collega (K): il primo flusso nasce da solo."
+              title="No flows"
+              hint="Connect two screens with the Connect tool (K): the first flow is created on its own."
             />
           ) : (
-            <ul aria-label="Flussi" className="flex flex-col gap-0.5 px-2 pb-2">
+            <ul aria-label="Flows" className="flex flex-col gap-0.5 px-2 pb-2">
               {flows.map((f) => {
                 const current = flow?.id === f.id;
                 const n = Object.values(scene.transitions).filter((t) => t.flowId === f.id).length;
@@ -399,33 +399,33 @@ export function FlowPanel() {
 
         {flow && (
           <>
-            <Section title="Flusso corrente">
+            <Section title="Current flow">
               <div className="flex flex-col gap-2">
                 <CommitField
-                  label="Nome del flusso"
+                  label="Flow name"
                   value={flow.name}
                   onCommit={(v) => {
                     const op = renameFlowOp(flow, v);
                     if (op) submit([op]);
                   }}
                 />
-                {/* Inizio, imposta ed elimina in UNA riga: il chip dice dove parte il
-                    flusso, le due icone lo cambiano o lo tolgono. */}
+                {/* Start, set and delete in ONE row: the chip says where the
+                    flow starts, the two icons change or remove it. */}
                 <div className="flex min-h-7 items-center gap-1.5">
                   <span
                     data-testid="flow-start"
-                    title="Schermata di ingresso del flusso"
+                    title="The flow's entry screen"
                     className={
                       "flex h-6 min-w-0 flex-1 items-center gap-1.5 rounded-full px-2 text-[12px] font-medium " +
                       (flow.startId !== "" ? "bg-ok-soft text-ok" : "bg-surface-3 text-fg-subtle")
                     }
                   >
                     <Icon name="flag" size={12} className="shrink-0" />
-                    <span className="truncate">{flow.startId !== "" ? screenName(scene, flow.startId) : "inizio non impostato"}</span>
+                    <span className="truncate">{flow.startId !== "" ? screenName(scene, flow.startId) : "start not set"}</span>
                   </span>
                   <IconButton
                     icon="flag"
-                    label="Imposta come inizio"
+                    label="Set as start"
                     isDisabled={!selectedScreen || selectedScreen.id === flow.startId}
                     onPress={() => {
                       const op = selectedScreen ? setStartOp(flow, selectedScreen.id) : null;
@@ -434,7 +434,7 @@ export function FlowPanel() {
                   />
                   <IconButton
                     icon="trash"
-                    label="Elimina flusso"
+                    label="Delete flow"
                     onPress={() => {
                       submit([deleteFlowOp(flow.id)]);
                       useFlowUi.getState().setCurrentFlow(null);
@@ -443,7 +443,7 @@ export function FlowPanel() {
                 </div>
                 <SwitchRow
                   tone="flow"
-                  label="Mostra anche gli altri flussi"
+                  label="Also show the other flows"
                   checked={showAll}
                   onChange={(v) => useFlowUi.getState().setShowAllFlows(v)}
                 />

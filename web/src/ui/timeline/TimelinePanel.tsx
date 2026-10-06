@@ -13,8 +13,8 @@ import { KeyframeInspector } from "./KeyframeInspector";
 import { TrackArea } from "./TrackArea";
 import { Transport } from "./Transport";
 
-// IL PANNELLO TIMELINE, sotto la tela (Design). Il guscio non costa niente da
-// chiuso: non monta il corpo, quindi non campiona, non ascolta e non ridisegna.
+// THE TIMELINE PANEL, below the canvas (Design). The shell costs nothing when
+// closed: it does not mount the body, so it does not sample, listen or redraw.
 export function TimelinePanel() {
   const open = useTimeline((s) => s.open);
   return open ? <TimelineBody /> : null;
@@ -30,14 +30,14 @@ function TimelineBody() {
   const record = useTimeline((s) => s.record);
   const root = useRef<HTMLElement>(null);
 
-  // La clip che si sta guardando: la bozza di un trascinamento, se c'è, altrimenti quella del documento.
+  // The clip being viewed: a drag's draft, if any, otherwise the document's.
   const docClip: ClipLite | null = scene && clipId ? scene.clips[clipId] ?? null : null;
   const clip = draftClip && docClip && draftClip.id === docClip.id ? draftClip : docClip;
 
-  // TASTIERA, solo col fuoco dentro la timeline (il pannello non è la tela: lo
-  // spazio qui è play/pausa, fuori resta il pan). Canc/Backspace non devono MAI
-  // arrivare ai listener globali del canvas, che cancellerebbero i livelli
-  // selezionati: dentro la timeline cancellano i keyframe selezionati e basta.
+  // KEYBOARD, only with focus inside the timeline (the panel is not the canvas:
+  // space here is play/pause, outside it stays the pan). Delete/Backspace must NEVER
+  // reach the canvas's global listeners, which would delete the selected
+  // layers: inside the timeline they delete the selected keyframes and nothing else.
   const onKeyDown = (e: React.KeyboardEvent) => {
     if (isTextField(e.target)) return;
     const st = useTimeline.getState();
@@ -58,7 +58,7 @@ function TimelineBody() {
       commitClip(r.clip);
       st.select(r.sel);
     } else if ((e.key === "ArrowLeft" || e.key === "ArrowRight") && docClip && st.selection.length > 0 && (e.target as HTMLElement).getAttribute?.("aria-label")?.startsWith("Keyframe")) {
-      // Frecce su un keyframe: lo spostano di un passo di griglia (Maiusc: dieci).
+      // Arrows on a keyframe: move it by one grid step (Shift: ten).
       swallow();
       const d = (e.key === "ArrowRight" ? 1 : -1) * SNAP_MS * (e.shiftKey ? 10 : 1);
       const r = moveKeyframes(docClip, st.selection, d);
@@ -76,7 +76,7 @@ function TimelineBody() {
     }
   };
 
-  // Il bordo superiore ridimensiona l'altezza (trascinando o con le frecce).
+  // The top edge resizes the height (by dragging or with the arrows).
   const resize = useRef<{ y: number; h: number } | null>(null);
 
   return (
@@ -85,8 +85,8 @@ function TimelineBody() {
       aria-label="Timeline"
       tabIndex={-1}
       onKeyDown={onKeyDown}
-      // Un click in un punto neutro del pannello gli dà il fuoco: così lo spazio
-      // vale come play/pausa senza dover prima toccare un pulsante.
+      // A click on a neutral spot of the panel gives it focus: this way space
+      // works as play/pause without having to touch a button first.
       onPointerDownCapture={(e) => {
         const t = e.target as HTMLElement;
         if (!isTextField(t) && t.closest("button,select,input,[role=slider],[role=menu]") === null) root.current?.focus({ preventScroll: true });
@@ -98,7 +98,7 @@ function TimelineBody() {
         <div
           role="separator"
           aria-orientation="horizontal"
-          aria-label="Altezza della timeline"
+          aria-label="Timeline height"
           aria-valuemin={MIN_HEIGHT}
           aria-valuemax={MAX_HEIGHT}
           aria-valuenow={height}
@@ -107,7 +107,7 @@ function TimelineBody() {
           onPointerDown={(e) => {
             if (e.button !== 0) return;
             resize.current = { y: e.clientY, h: height };
-            try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* niente capture (jsdom) */ }
+            try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* no capture (jsdom) */ }
           }}
           onPointerMove={(e) => {
             const r = resize.current;
@@ -125,17 +125,17 @@ function TimelineBody() {
         />
       )}
 
-      {/* Ridotta: resta la sola testata, per riaprirla o chiuderla. Aperta, la barra del
-          trasporto (Transport) porta già i due pulsanti: nessuna riga di titolo in più. */}
+      {/* Collapsed: only the header remains, to reopen or close it. When open, the transport
+          bar (Transport) already carries the two buttons: no extra title row. */}
       {collapsed && (
         <header className="flex h-8 shrink-0 items-center gap-2 pl-3 pr-1.5">
           <AnimIcon name="timeline" size={14} className="text-fg-subtle" />
-          <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Animazione</h2>
+          <h2 className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Animation</h2>
           {clip && <span className="truncate text-[12px] text-fg-muted">{clip.name}</span>}
-          {record && <span className="rounded-full bg-danger-soft px-2 text-[11px] font-medium text-danger">Registrazione</span>}
+          {record && <span className="rounded-full bg-danger-soft px-2 text-[11px] font-medium text-danger">Recording</span>}
           <div className="ml-auto flex items-center gap-0.5">
-            <AnimIconButton icon="chevronUp" label="Espandi la timeline" size={24} onPress={() => useTimeline.getState().setCollapsed(false)} />
-            <AnimIconButton icon="x" label="Chiudi la timeline" shortcut="M" size={24} onPress={() => useTimeline.getState().setOpen(false)} />
+            <AnimIconButton icon="chevronUp" label="Expand the timeline" size={24} onPress={() => useTimeline.getState().setCollapsed(false)} />
+            <AnimIconButton icon="x" label="Close the timeline" shortcut="M" size={24} onPress={() => useTimeline.getState().setOpen(false)} />
           </div>
         </header>
       )}
@@ -156,11 +156,11 @@ function TimelineBody() {
               <div className="flex min-h-0 flex-1 items-center justify-center overflow-auto">
                 <EmptyState
                   icon="sparkle"
-                  title="Anima qualcosa: seleziona un livello e premi + Proprietà"
-                  hint="Oppure crea una clip vuota, o parti da un preset (Fade in, Slide up, Pop...)."
+                  title="Animate something: select a layer and press + Property"
+                  hint="Or create an empty clip, or start from a preset (Fade in, Slide up, Pop...)."
                   action={
                     <Button variant="primary" icon="plus" onPress={() => scene && createClip(scene, useScene.getState().selection)}>
-                      Crea una clip
+                      Create a clip
                     </Button>
                   }
                 />

@@ -11,28 +11,29 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// ANIMAZIONE -- la metà Go (l'autorità) di web/src/store/applyOp.ts per i due op
-// setClip / deleteClip.
+// ANIMATION -- the Go half (the authority) of web/src/store/applyOp.ts for the
+// two ops setClip / deleteClip.
 //
-// Una CLIP è un insieme di TRACCE (nodo, proprietà) con keyframe, appesa a un
-// nodo "target" (schermata, gruppo, SVG) il cui hover/tap/enter la fa partire.
-// I nodi animati sono referenziati per id, mai copiati. Le invarianti:
+// A CLIP is a set of TRACKS (node, property) with keyframes, attached to a
+// "target" node (screen, group, SVG) whose hover/tap/enter starts it. Animated
+// nodes are referenced by id, never copied. The invariants:
 //
-//	1. id non vuoto, durata finita > 0, ritardo finito >= 0, repeat >= -1,
-//	   trigger nell'insieme noto (vuoto = "manual"), target ESISTENTE;
-//	2. ogni traccia ha un nodo esistente, una proprietà della whitelist, almeno
-//	   un keyframe con tempi finiti, non decrescenti e dentro [0, duration],
-//	   valori finiti (opacity e draw in [0,1]) ed easing nella grammatica;
-//	3. due tracce con la stessa coppia (nodo, proprietà) nella stessa clip sono
-//	   un conflitto (quale vincerebbe?) e sono rifiutate;
-//	4. `draw` ha senso solo dove c'è un tracciato: vector, rect, ellipse, frame;
-//	5. cancellare un nodo (o una pagina) toglie le tracce che lo animavano e
-//	   cancella le clip il cui target è sparito. Una clip rimasta SENZA tracce
-//	   ma con il target vivo si tiene: è una clip vuota, non un orfano.
+//	1. non-empty id, finite duration > 0, finite delay >= 0, repeat >= -1,
+//	   trigger in the known set (empty = "manual"), EXISTING target;
+//	2. every track has an existing node, a whitelisted property, at least one
+//	   keyframe with finite, non-decreasing times inside [0, duration], finite
+//	   values (opacity and draw in [0,1]) and an easing within the grammar;
+//	3. two tracks with the same (node, property) pair in the same clip are a
+//	   conflict (which one would win?) and are rejected;
+//	4. `draw` only makes sense where there is an outline: vector, rect, ellipse,
+//	   frame;
+//	5. deleting a node (or a page) removes the tracks that animated it and
+//	   deletes the clips whose target is gone. A clip left WITHOUT tracks but
+//	   with a live target is kept: it is an empty clip, not an orphan.
 //
-// Gli upsert sono ASSOLUTI: l'inverso di un op è lo stato precedente (vedi
-// web/src/store/history.ts). La mappa `Clips` può essere nil e si inizializza
-// alla prima scrittura.
+// Upserts are ABSOLUTE: the inverse of an op is the previous state (see
+// web/src/store/history.ts). The `Clips` map may be nil and is initialized on
+// the first write.
 
 var (
 	ErrNilClip        = errors.New("core: nil clip")
@@ -49,8 +50,8 @@ var (
 	ErrDrawTarget     = errors.New("core: draw needs a node with a stroke path (vector, rect, ellipse, frame)")
 )
 
-// ClipTriggers e TrackProps sono gli insiemi chiusi del modello; il TS mirror
-// (web/src/animation/engine.ts) e il generatore di codice li ripetono.
+// ClipTriggers and TrackProps are the closed sets of the model; the TS mirror
+// (web/src/animation/engine.ts) and the code generator repeat them.
 var (
 	ClipTriggers = []string{"enter", "hover", "tap", "loop", "manual"}
 	TrackProps   = []string{"opacity", "x", "y", "scale", "rotation", "draw"}
@@ -65,15 +66,16 @@ func inSet(set []string, v string) bool {
 	return false
 }
 
-// easingNum è un numero decimale ristretto (niente inf/nan/esadecimali che
-// strconv accetterebbe): la stessa regex vive in web/src/animation/engine.ts.
+// easingNum is a restricted decimal number (no inf/nan/hex that strconv would
+// accept): the same regex lives in web/src/animation/engine.ts.
 const easingNum = `[-+]?(?:\d+\.?\d*|\.\d+)(?:[eE][-+]?\d+)?`
 
 var cubicBezierRe = regexp.MustCompile(`^cubic-bezier\(\s*(` + easingNum + `)\s*,\s*(` + easingNum + `)\s*,\s*(` + easingNum + `)\s*,\s*(` + easingNum + `)\s*\)$`)
 
-// ParseCubicBezier estrae i quattro punti di controllo da "cubic-bezier(a,b,c,d)".
-// Come in CSS le ascisse (a, c) devono stare in [0,1]: fuori sarebbe una curva
-// non funzione del tempo (e una dichiarazione CSS invalida nell'export html).
+// ParseCubicBezier extracts the four control points from "cubic-bezier(a,b,c,d)".
+// As in CSS the x values (a, c) must be in [0,1]: outside that it would be a
+// curve that is not a function of time (and an invalid CSS declaration in the
+// html export).
 func ParseCubicBezier(s string) (p [4]float64, ok bool) {
 	m := cubicBezierRe.FindStringSubmatch(s)
 	if m == nil {
@@ -92,7 +94,7 @@ func ParseCubicBezier(s string) (p [4]float64, ok bool) {
 	return p, true
 }
 
-// ValidEasing dice se la stringa sta nella grammatica degli easing.
+// ValidEasing reports whether the string is within the easing grammar.
 func ValidEasing(s string) bool {
 	switch s {
 	case "", "linear", "easeIn", "easeOut", "easeInOut", "spring":
@@ -104,7 +106,7 @@ func ValidEasing(s string) bool {
 
 func finite(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) }
 
-// canDraw: i tipi di nodo che hanno un contorno su cui "disegnare" il tratto.
+// canDraw: the node types that have an outline on which to "draw" the stroke.
 func canDraw(n *opendesignerv1.Node) bool {
 	switch n.GetShape().(type) {
 	case *opendesignerv1.Node_Vector, *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Frame:
@@ -168,9 +170,9 @@ func validateClip(doc *opendesignerv1.Document, c *opendesignerv1.Clip) error {
 	return nil
 }
 
-// ValidateClip dice se un SetClip con questa clip sarebbe accettato dal
-// documento, senza applicarlo: i chiamanti che vogliono un errore chiaro PRIMA
-// di spedire l'op (i tool MCP) usano la stessa logica dell'autorità.
+// ValidateClip reports whether a SetClip with this clip would be accepted by
+// the document, without applying it: callers that want a clear error BEFORE
+// sending the op (the MCP tools) use the same logic as the authority.
 func ValidateClip(doc *opendesignerv1.Document, c *opendesignerv1.Clip) error {
 	if c == nil || c.GetId() == "" {
 		return ErrNilClip
@@ -201,10 +203,10 @@ func applyDeleteClip(doc *opendesignerv1.Document, d *opendesignerv1.DeleteClip)
 	return nil
 }
 
-// cascadeClips toglie dalle clip ciò che animava i nodi appena cancellati. Le
-// voci modificate sono SOSTITUITE da copie, mai mutate in place (come
-// cascadeFlows): con il clone copy-on-write del server l'oggetto potrebbe
-// essere condiviso con la generazione precedente.
+// cascadeClips removes from the clips whatever animated the nodes just deleted.
+// Modified entries are REPLACED by copies, never mutated in place (like
+// cascadeFlows): with the server's copy-on-write clone the object might be
+// shared with the previous generation.
 func cascadeClips(doc *opendesignerv1.Document, gone map[string]bool) {
 	if len(gone) == 0 {
 		return

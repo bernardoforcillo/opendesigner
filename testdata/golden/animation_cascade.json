@@ -1,14 +1,14 @@
 {
  "_comment": [
-  "Cascata delle clip. Eseguita da ENTRAMBI i lati: internal/core/golden_test.go e",
+  "Clip cascade. Run from BOTH sides: internal/core/golden_test.go and",
   "web/src/store/golden.test.ts.",
   "",
-  " - deleteNode(g1) cancella g1 e r1: k1 (target s1) perde SOLO la traccia su r1,",
-  "   k2 (target g1) sparisce con il suo target;",
-  " - setClip con target o traccia su un nodo cancellato e' rifiutato;",
-  " - deletePage(page2) porta via q1: k3 perde la traccia su q1, k4 (target r2,",
-  "   vivo) resta VUOTA -- una clip senza tracce ma col target vivo si tiene;",
-  " - deleteNode(r3) lascia k3 vuota; deleteNode(s2) ne cancella il target e k3 sparisce."
+  " - deleteNode(g1) deletes g1 and r1: k1 (target s1) loses ONLY the track on r1,",
+  "   k2 (target g1) disappears with its target;",
+  " - setClip with a target or track on a deleted node is rejected;",
+  " - deletePage(page2) takes away q1: k3 loses the track on q1, k4 (target r2,",
+  "   alive) stays EMPTY -- a clip without tracks but with a live target is kept;",
+  " - deleteNode(r3) leaves k3 empty; deleteNode(s2) deletes its target and k3 disappears."
  ],
  "docId": "doc1",
  "ops": [
@@ -169,7 +169,7 @@
    "setClip": {
     "clip": {
      "id": "k1",
-     "name": "schermata",
+     "name": "screen",
      "duration": 600,
      "trigger": "enter",
      "targetId": "s1",
@@ -256,7 +256,7 @@
    "setClip": {
     "clip": {
      "id": "k3",
-     "name": "seconda",
+     "name": "second",
      "duration": 400,
      "trigger": "tap",
      "targetId": "s2",
@@ -434,7 +434,7 @@
   "clips": {
    "k1": {
     "id": "k1",
-    "name": "schermata",
+    "name": "screen",
     "duration": 600,
     "trigger": "enter",
     "targetId": "s1",

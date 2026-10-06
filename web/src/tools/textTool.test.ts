@@ -12,12 +12,12 @@ function node(id: string, orderKey: string): NodeLite {
     x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false };
 }
 
-// Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
-// SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
-// in volo, visibile subito) seguito da apply (l'eco che lo conferma). Senza
-// l'eco ogni op resterebbe in coda per sempre e i test parlerebbero di uno
-// stato che il server non ha mai visto. Lo store dipende solo dalla superficie
-// { submit }, quindi non serve un SyncClient reale (niente rete nei test).
+// Double of SyncClient (see rpc/syncClient.ts): records the ops that end up
+// ON THE WIRE and models a server that accepts and ECHOES immediately -- applyPending (op
+// in flight, visible immediately) followed by apply (the echo that confirms it). Without
+// the echo every op would stay queued forever and the tests would speak of a
+// state the server never saw. The store depends only on the surface
+// { submit }, so a real SyncClient is not needed (no network in tests).
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
@@ -27,11 +27,11 @@ class FakeSync {
   }
 }
 
-// Doppio del ToolContext: toWorld è l'identità su clientX/clientY, così i test
-// ragionano direttamente in coordinate mondo. La conversione vera è testata in
+// Double of ToolContext: toWorld is the identity on clientX/clientY, so the tests
+// reason directly in world coordinates. The real conversion is tested in
 // canvas/camera.test.ts.
-// Il trasporto va registrato SULLO STORE, non solo sul contesto: la creazione
-// passa da endGesture, che submitta tramite lo store (come ogni altro gesto).
+// The transport must be registered ON THE STORE, not just on the context: creation
+// goes through endGesture, which submits via the store (like every other gesture).
 function fakeCtx(zoom = 1) {
   const sync = new FakeSync();
   useScene.getState().setSync(sync);
@@ -68,14 +68,14 @@ beforeEach(() => {
     canRedo: false,
     editingNodeId: null,
   });
-  // setScene e non setState({scene}): installa una scena COERENTE (vista e
-  // confermato allineati, coda vuota) -- l'invariante su cui poggia la
-  // riconciliazione confermato/pending (vedi store/store.ts).
+  // setScene and not setState({scene}): installs a COHERENT scene (view and
+  // confirmed aligned, empty queue) -- the invariant that the
+  // confirmed/pending reconciliation relies on (see store/store.ts).
   useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
 });
 
 describe("textTool", () => {
-  it("click crea un nodo testo vuoto con dimensione di default in UN gesto, ed entra subito in editing", () => {
+  it("click creates an empty text node with the default size in ONE gesture, and immediately enters editing", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
 
@@ -92,17 +92,17 @@ describe("textTool", () => {
     expect(n.parentId).toBe("page1");
     expect(n.visible).toBe(true);
 
-    // entra SUBITO in editing: è il comportamento del brief, diverso da
-    // rect/ellipse (che restano strumenti di sola creazione).
+    // it enters editing IMMEDIATELY: it is the behavior in the brief, different from
+    // rect/ellipse (which remain creation-only tools).
     expect(useScene.getState().editingNodeId).toBe(n.id);
 
-    // una voce di undo sola: la creazione passa da un gesto.
+    // a single undo entry: creation goes through one gesture.
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
     expect(useScene.getState().gesture).toBeNull();
   });
 
-  it("il nodo appena creato nasce con uno stile esplicito, non con gli zeri", () => {
+  it("the newly created node is born with an explicit style, not with zeros", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(0, 0), ctx);
@@ -118,7 +118,7 @@ describe("textTool", () => {
     expect(style!.lineHeight).toBeGreaterThan(0);
   });
 
-  it("il nodo appena creato ha un fill esplicito (leggibile, non il grigio di default delle forme)", () => {
+  it("the newly created node has an explicit fill (readable, not the default gray of shapes)", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(0, 0), ctx);
@@ -129,13 +129,13 @@ describe("textTool", () => {
     expect(n.fills[0].kind.case).toBe("solid");
   });
 
-  it("il drag crea un nodo testo della larghezza trascinata (il wrap userà quella larghezza)", () => {
+  it("the drag creates a text node of the dragged width (the wrap will use that width)", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
 
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerMove!(at(210, 60), ctx);
-    expect(submitted).toHaveLength(0); // niente op durante il drag
+    expect(submitted).toHaveLength(0); // no ops during the drag
 
     tool.onPointerUp!(at(210, 60), ctx);
     expect(submitted).toHaveLength(1);
@@ -144,7 +144,7 @@ describe("textTool", () => {
     expect(useScene.getState().editingNodeId).toBe(n.id);
   });
 
-  it("normalizza un drag all'indietro", () => {
+  it("normalizes a backwards drag", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(210, 100), ctx);
@@ -153,9 +153,9 @@ describe("textTool", () => {
     expect({ x: n.x, y: n.y, width: n.width, height: n.height }).toEqual({ x: 10, y: 60, width: 200, height: 40 });
   });
 
-  it("un drag sotto la soglia (in px SCHERMO) resta un click a qualunque zoom", () => {
+  it("a drag under the threshold (in SCREEN px) stays a click at any zoom", () => {
     const tool = createTextTool();
-    const { ctx, submitted } = fakeCtx(64); // molto zoomato: 0.02 unità mondo = ~1px schermo
+    const { ctx, submitted } = fakeCtx(64); // heavily zoomed: 0.02 world units = ~1px screen
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerMove!(at(10.02, 20.02), ctx);
     tool.onPointerUp!(at(10.02, 20.02), ctx);
@@ -164,7 +164,7 @@ describe("textTool", () => {
     expect(n.height).toBe(DEFAULT_TEXT_HEIGHT);
   });
 
-  it("deriva l'order key dalla scena, così non collide mai dopo un reload", () => {
+  it("derives the order key from the scene, so it never collides after a reload", () => {
     useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ a: node("a", "a000004") }) });
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
@@ -173,7 +173,7 @@ describe("textTool", () => {
     expect(createdNode(submitted[0]).orderKey).toBe("a000005");
   });
 
-  it("mostra un'anteprima live durante il drag e la pulisce all'up", () => {
+  it("shows a live preview during the drag and clears it on up", () => {
     const tool = createTextTool();
     const { ctx } = fakeCtx();
     tool.onPointerDown!(at(10, 20), ctx);
@@ -183,7 +183,7 @@ describe("textTool", () => {
     expect(useScene.getState().marquee).toBeNull();
   });
 
-  it("il nodo appena creato è selezionato", () => {
+  it("the newly created node is selected", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(10, 20), ctx);
@@ -192,7 +192,7 @@ describe("textTool", () => {
     expect(useScene.getState().selection).toEqual([n.id]);
   });
 
-  it("abbandona il gesto su deactivate: nessun op, nessuna anteprima, nessuna editing, il prossimo up non fa nulla", () => {
+  it("abandons the gesture on deactivate: no op, no preview, no editing, the next up does nothing", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(10, 20), ctx);
@@ -206,7 +206,7 @@ describe("textTool", () => {
     expect(submitted).toHaveLength(0);
   });
 
-  it("annullare la creazione di un testo appena disegnato rimuove il nodo (e il redo lo rimette)", () => {
+  it("undoing the creation of a just-drawn text removes the node (and redo puts it back)", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(10, 20), ctx);
@@ -221,13 +221,13 @@ describe("textTool", () => {
     expect(useScene.getState().scene!.nodes.at(id).kind).toBe("text");
   });
 
-  // Repro concreto del bug di review (Task 4, fix round): due creazioni
-  // consecutive con textTool, senza mai uscire esplicitamente dall'editing fra
-  // le due. onPointerUp chiama beginTextEditing(id) INCONDIZIONATAMENTE a ogni
-  // click -- senza la guardia in store.ts, il primo nodo (rimasto vuoto)
-  // sarebbe stato abbandonato: mai passato da endTextEditing, mai ripulito, un
-  // nodo fantasma permanente.
-  it("un secondo click del tool testo chiude/pulisce l'editing del primo nodo (ancora vuoto) invece di abbandonarlo come fantasma", () => {
+  // Concrete repro of the review bug (Task 4, fix round): two consecutive
+  // creations with textTool, never explicitly leaving editing between
+  // the two. onPointerUp calls beginTextEditing(id) UNCONDITIONALLY on every
+  // click -- without the guard in store.ts, the first node (left empty)
+  // would have been abandoned: never passed through endTextEditing, never cleaned up, a
+  // permanent ghost node.
+  it("a second text tool click closes/cleans up the editing of the first node (still empty) instead of abandoning it as a ghost", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
 
@@ -239,20 +239,20 @@ describe("textTool", () => {
 
     tool.onPointerDown!(at(300, 20), ctx);
     tool.onPointerUp!(at(300, 20), ctx);
-    // La pulizia del primo nodo viaggia PRIMA della seconda creazione (vedi
-    // il test sull'ordine qui sotto): l'op di creazione è l'ultimo del filo.
+    // The cleanup of the first node travels BEFORE the second creation (see
+    // the order test below): the creation op is the last on the wire.
     const second = createdNode(submitted[submitted.length - 1]).id;
 
     expect(useScene.getState().editingNodeId).toBe(second);
-    expect(useScene.getState().scene!.nodes.at(first)).toBeUndefined(); // niente nodo fantasma
+    expect(useScene.getState().scene!.nodes.at(first)).toBeUndefined(); // no ghost node
     expect(useScene.getState().scene!.nodes.at(second)).toBeDefined();
   });
 
-  // Secondo rilievo della review (fix round): la pulizia del nodo precedente
-  // lasciava la sua voce di undo DOPO quella della nuova creazione -- il primo
-  // Ctrl+Z resuscitava il nodo vuoto appena ripulito invece di annullare il
-  // nodo appena creato. L'ordine deve essere quello cronologico dell'utente.
-  it("la pulizia del nodo precedente entra nella storia PRIMA della nuova creazione (Ctrl+Z disfa l'ultima cosa fatta)", () => {
+  // Second review finding (fix round): the cleanup of the previous node
+  // left its undo entry AFTER that of the new creation -- the first
+  // Ctrl+Z resurrected the just-cleaned empty node instead of undoing the
+  // newly created one. The order must be the user's chronological one.
+  it("the cleanup of the previous node enters history BEFORE the new creation (Ctrl+Z undoes the last thing done)", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
 
@@ -263,22 +263,22 @@ describe("textTool", () => {
     tool.onPointerDown!(at(300, 20), ctx);
     tool.onPointerUp!(at(300, 20), ctx);
 
-    // sul filo: crea t1, cancella t1 (rimasto vuoto), crea t2 -- in quest'ordine.
+    // on the wire: create t1, delete t1 (left empty), create t2 -- in that order.
     expect(submitted.map((op) => op.kind.case)).toEqual(["createNode", "deleteNode", "createNode"]);
     const second = createdNode(submitted[2]).id;
     expect(useScene.getState().undoStack).toHaveLength(3);
 
-    // il primo Ctrl+Z annulla la creazione appena fatta...
+    // the first Ctrl+Z undoes the creation just made...
     useScene.getState().undo();
     expect(useScene.getState().scene!.nodes.at(second)).toBeUndefined();
     expect(useScene.getState().scene!.nodes.at(first)).toBeUndefined();
 
-    // ...e solo il secondo riporta indietro il nodo ripulito.
+    // ...and only the second brings back the cleaned-up node.
     useScene.getState().undo();
     expect(useScene.getState().scene!.nodes.at(first)).toBeDefined();
   });
 
-  it("la seconda creazione non riusa l'order key del nodo appena ripulito", () => {
+  it("the second creation does not reuse the order key of the node just cleaned up", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
 
@@ -292,8 +292,8 @@ describe("textTool", () => {
     expect(secondKey > firstKey).toBe(true);
   });
 
-  // Come rect/ellipse, il testo nasce SOTTO la pagina corrente.
-  it("crea il nodo testo sotto la pagina corrente", () => {
+  // Like rect/ellipse, the text is born UNDER the current page.
+  it("creates the text node under the current page", () => {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
       pages: [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }],
@@ -324,23 +324,23 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
     useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
   });
 
-  it("beginTextEditing imposta editingNodeId", () => {
+  it("beginTextEditing sets editingNodeId", () => {
     useScene.getState().beginTextEditing("n1");
     expect(useScene.getState().editingNodeId).toBe("n1");
   });
 
-  it("endTextEditing lo svuota", () => {
+  it("endTextEditing clears it", () => {
     useScene.getState().beginTextEditing("n1");
     useScene.getState().endTextEditing();
     expect(useScene.getState().editingNodeId).toBeNull();
   });
 
-  it("endTextEditing senza editing aperto è un no-op silenzioso", () => {
+  it("endTextEditing with no open editing is a silent no-op", () => {
     expect(() => useScene.getState().endTextEditing()).not.toThrow();
     expect(useScene.getState().editingNodeId).toBeNull();
   });
 
-  it("un nodo testo VUOTO che esce dall'editing senza contenuto viene eliminato, in un gesto annullabile", () => {
+  it("an EMPTY text node that leaves editing without content is deleted, in an undoable gesture", () => {
     const tool = createTextTool();
     const { ctx, submitted } = fakeCtx();
     tool.onPointerDown!(at(10, 20), ctx);
@@ -356,12 +356,12 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
     expect(useScene.getState().scene!.nodes.at(id)).toBeUndefined();
     expect(useScene.getState().undoStack.length).toBe(undoDepthAfterCreate + 1);
 
-    // annullabile: Ctrl+Z riporta il nodo (vuoto) sulla scena.
+    // undoable: Ctrl+Z brings the (empty) node back onto the scene.
     useScene.getState().undo();
     expect(useScene.getState().scene!.nodes.at(id)).toBeDefined();
   });
 
-  it("un nodo testo con contenuto NON viene eliminato uscendo dall'editing", () => {
+  it("a text node with content is NOT deleted when leaving editing", () => {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
       nodes: nodesOf({
@@ -369,7 +369,7 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
           id: "t1", parentId: "page1", orderKey: "a000000", name: "Text", visible: true, opacity: 1,
           x: 0, y: 0, width: 100, height: 20, rotation: 0,
           fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind: "text", cornerRadius: 0, clipsContent: false,
-          text: { content: "ciao", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
+          text: { content: "hello", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
         },
       }),
     });
@@ -379,19 +379,19 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
     expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
   });
 
-  it("uscendo dall'editing di un nodo NON di testo (misuso) non elimina nulla", () => {
+  it("leaving the editing of a NON-text node (misuse) deletes nothing", () => {
     useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ a: node("a", "a000000") }) });
     useScene.getState().beginTextEditing("a");
     useScene.getState().endTextEditing();
     expect(useScene.getState().scene!.nodes.at("a")).toBeDefined();
   });
 
-  // Bug trovato in review: beginTextEditing sovrascriveva editingNodeId senza
-  // MAI passare la sessione precedente da endTextEditing -- un secondo
-  // beginTextEditing (doppio click su un altro nodo testo, o una seconda
-  // creazione col tool testo) abbandonava in silenzio il nodo precedente, che
-  // se rimasto vuoto restava fantasma sulla scena per sempre.
-  describe("beginTextEditing chiude/pulisce una sessione già aperta", () => {
+  // Bug found in review: beginTextEditing overwrote editingNodeId without
+  // EVER passing the previous session through endTextEditing -- a second
+  // beginTextEditing (double-click on another text node, or a second
+  // creation with the text tool) silently abandoned the previous node, which
+  // if left empty stayed a ghost on the scene forever.
+  describe("beginTextEditing closes/cleans up an already open session", () => {
     beforeEach(() => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
@@ -412,7 +412,7 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
       });
     });
 
-    it("passare da un nodo testo VUOTO a un altro lo elimina (nessun fantasma), in un gesto annullabile", () => {
+    it("switching from an EMPTY text node to another deletes it (no ghost), in an undoable gesture", () => {
       useScene.getState().beginTextEditing("t1");
       expect(useScene.getState().editingNodeId).toBe("t1");
       const undoDepthAfterFirstEdit = useScene.getState().undoStack.length;
@@ -420,20 +420,20 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
       useScene.getState().beginTextEditing("t2");
 
       expect(useScene.getState().editingNodeId).toBe("t2");
-      expect(useScene.getState().scene!.nodes.at("t1")).toBeUndefined(); // t1 ripulito, non fantasma
+      expect(useScene.getState().scene!.nodes.at("t1")).toBeUndefined(); // t1 cleaned up, not a ghost
       expect(useScene.getState().scene!.nodes.at("t2")).toBeDefined();
       expect(useScene.getState().undoStack.length).toBe(undoDepthAfterFirstEdit + 1);
 
-      // annullabile come qualunque altra pulizia (vedi endTextEditing).
+      // undoable like any other cleanup (see endTextEditing).
       useScene.getState().undo();
       expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
     });
 
-    it("passare da un nodo testo CON contenuto a un altro non lo elimina", () => {
+    it("switching from a text node WITH content to another does not delete it", () => {
       useScene.getState().setScene({
         ...useScene.getState().scene!,
         nodes: nodesWith(useScene.getState().scene!.nodes, {
-          t1: { ...useScene.getState().scene!.nodes.at("t1"), text: { content: "ciao", style: useScene.getState().scene!.nodes.at("t1").text!.style } },
+          t1: { ...useScene.getState().scene!.nodes.at("t1"), text: { content: "hello", style: useScene.getState().scene!.nodes.at("t1").text!.style } },
         }),
       });
 
@@ -442,10 +442,10 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
 
       expect(useScene.getState().editingNodeId).toBe("t2");
       expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
-      expect(useScene.getState().scene!.nodes.at("t1").text?.content).toBe("ciao");
+      expect(useScene.getState().scene!.nodes.at("t1").text?.content).toBe("hello");
     });
 
-    it("richiamare beginTextEditing con lo STESSO nodo già in editing è un no-op (non lo cancella)", () => {
+    it("calling beginTextEditing with the SAME node already in editing is a no-op (does not delete it)", () => {
       useScene.getState().beginTextEditing("t1");
       const undoDepth = useScene.getState().undoStack.length;
 
@@ -453,7 +453,7 @@ describe("store: editingNodeId / beginTextEditing / endTextEditing", () => {
 
       expect(useScene.getState().editingNodeId).toBe("t1");
       expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
-      expect(useScene.getState().undoStack.length).toBe(undoDepth); // nessuna cancellazione spuria
+      expect(useScene.getState().undoStack.length).toBe(undoDepth); // no spurious deletion
     });
   });
 });

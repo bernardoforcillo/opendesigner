@@ -20,8 +20,8 @@ function sceneOf(n: NodeLite): SceneState {
   return { ...s, nodes: nodesOf({ n }) };
 }
 
-// Registra lo stato d'ombra/filtro AL MOMENTO di fill e di stroke, e quanti
-// save/restore sono rimasti aperti.
+// Records the shadow/filter state AT THE TIME of fill and stroke, and how many
+// save/restores were left open.
 function recCtx(scale = 1) {
   const log: { at: string; shadowBlur: number; shadowColor: string; ox: number; oy: number; filter: string }[] = [];
   let depth = 0;
@@ -55,31 +55,31 @@ const shadow = (over: Partial<Extract<EffectLite, { kind: "dropShadow" }>> = {})
   kind: "dropShadow", color: { r: 0, g: 0, b: 0, a: 0.5 }, offsetX: 2, offsetY: 4, blur: 6, ...over,
 });
 
-describe("effetti nel canvas", () => {
+describe("effects in the canvas", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("un'ombra imposta shadow* in unità dispositivo (mondo * zoom)", () => {
+  it("a shadow sets shadow* in device units (world * zoom)", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const r = recCtx(2); // zoom 2, dpr 1
     drawScene(r.ctx, sceneOf(rectNode([shadow()])), cam(2));
     expect(r.log[0]).toMatchObject({ at: "fill", shadowBlur: 12, ox: 4, oy: 8, shadowColor: "rgba(0, 0, 0, 0.5)" });
   });
 
-  it("la scala viene dalla trasformazione del contesto, quindi include il dpr", () => {
+  it("the scale comes from the context's transform, so it includes the dpr", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const r = recCtx(3); // es. zoom 1.5 * dpr 2
     drawScene(r.ctx, sceneOf(rectNode([shadow({ blur: 2, offsetX: 1, offsetY: 1 })])), cam(1.5));
     expect(r.log[0]).toMatchObject({ shadowBlur: 6, ox: 3, oy: 3 });
   });
 
-  it("la sfocatura imposta filter blur(px)", () => {
+  it("blur sets filter blur(px)", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const r = recCtx(2);
     drawScene(r.ctx, sceneOf(rectNode([{ kind: "layerBlur", radius: 5 }])), cam(2));
     expect(r.log[0].filter).toBe("blur(10px)");
   });
 
-  it("senza effetti non c'è nessun save/restore in più e nessuno stato sporco", () => {
+  it("without effects there is no extra save/restore and no dirty state", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const r = recCtx();
     drawScene(r.ctx, sceneOf(rectNode()), cam(1));
@@ -87,7 +87,7 @@ describe("effetti nel canvas", () => {
     expect(r.depth()).toBe(0);
   });
 
-  it("gli effetti non traboccano sul nodo successivo", () => {
+  it("effects do not spill onto the next node", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const r = recCtx();
     const s = emptyScene("d", "t");
@@ -100,7 +100,7 @@ describe("effetti nel canvas", () => {
     expect(r.depth()).toBe(0);
   });
 
-  it("con un riempimento il tratto non rifà l'ombra (niente doppio bordo scuro)", () => {
+  it("with a fill the stroke does not redo the shadow (no double dark border)", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const r = recCtx();
     const n = rectNode([shadow()], { strokes: [{ color: { r: 1, g: 0, b: 0, a: 1 }, weight: 2, align: "center" }] });
@@ -111,7 +111,7 @@ describe("effetti nel canvas", () => {
     expect(stroke.shadowColor).toBe("transparent");
   });
 
-  it("senza riempimento l'ombra viene dal tratto", () => {
+  it("without a fill the shadow comes from the stroke", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const r = recCtx();
     const n = rectNode([shadow()], { fills: [], strokes: [{ color: { r: 1, g: 0, b: 0, a: 1 }, weight: 2, align: "center" }] });
@@ -122,7 +122,7 @@ describe("effetti nel canvas", () => {
 });
 
 describe("firstShadow / firstBlur", () => {
-  it("prendono il primo del loro tipo; una sfocatura nulla non conta", () => {
+  it("they take the first of their type; a null blur does not count", () => {
     const n = rectNode([
       { kind: "layerBlur", radius: 0 },
       shadow({ blur: 1 }), shadow({ blur: 9 }),
@@ -135,10 +135,10 @@ describe("firstShadow / firstBlur", () => {
   });
 });
 
-describe("frame senza riempimento", () => {
+describe("frames without a fill", () => {
   afterEach(() => vi.unstubAllGlobals());
 
-  it("non si riempie (è trasparente); un rettangolo senza riempimento sì", () => {
+  it("it is not filled (it is transparent); a rectangle without a fill is", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const frame = recCtx();
     drawScene(frame.ctx, sceneOf(rectNode(undefined, { kind: "frame", fills: [] })), cam(1));
@@ -148,7 +148,7 @@ describe("frame senza riempimento", () => {
     expect(rect.log.filter((l) => l.at === "fill")).toHaveLength(1);
   });
 
-  it("un frame CON riempimento si riempie", () => {
+  it("a frame WITH a fill is filled", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     const r = recCtx();
     drawScene(r.ctx, sceneOf(rectNode(undefined, { kind: "frame" })), cam(1));

@@ -8,9 +8,9 @@ import (
 	"google.golang.org/protobuf/proto"
 )
 
-// Il clone copy-on-write condivide i nodi ma le clip si clonano a fondo: una
-// cascata (cancellare un nodo animato) sul clone non deve toccare la generazione
-// precedente, che un client lento potrebbe ancora star serializzando.
+// The copy-on-write clone shares the nodes but the clips are deep-cloned: a
+// cascade (deleting an animated node) on the clone must not touch the previous
+// generation, which a slow client might still be serializing.
 func TestCowCloneClipsAreIndependent(t *testing.T) {
 	doc := core.NewDocument("d", "t")
 	for _, id := range []string{"a", "b"} {
@@ -31,17 +31,17 @@ func TestCowCloneClipsAreIndependent(t *testing.T) {
 
 	next := cowClone(doc)
 	if next.Clips["k"] == doc.Clips["k"] {
-		t.Fatal("cowClone deve clonare le clip, non condividerne i puntatori")
+		t.Fatal("cowClone must clone the clips, not share their pointers")
 	}
-	// Cancella "b" sul clone (con il Shared del server): la traccia su b sparisce
-	// dal clone e NON dall'originale.
+	// Delete "b" on the clone (with the server's Shared): the track on b disappears
+	// from the clone and NOT from the original.
 	if err := core.ApplyShared(next, &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteNode{DeleteNode: &opendesignerv1.DeleteNode{Id: "b"}}}, core.NewShared()); err != nil {
 		t.Fatal(err)
 	}
 	if len(next.Clips["k"].Tracks) != 1 {
-		t.Fatalf("cascata assente sul clone: %v", next.Clips["k"])
+		t.Fatalf("cascade missing on the clone: %v", next.Clips["k"])
 	}
 	if !proto.Equal(before, doc) {
-		t.Fatal("la generazione precedente e' stata mutata")
+		t.Fatal("the previous generation was mutated")
 	}
 }

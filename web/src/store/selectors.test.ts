@@ -98,7 +98,7 @@ describe("selectionSummary", () => {
     expect(selectionSummary(s2, ["n1", "n2"])?.fills).toBe(MIXED);
   });
 
-  it("confronta i tratti su TUTTI e tre i campi, non solo sul colore", () => {
+  it("compares strokes on ALL three fields, not just on color", () => {
     const black = { r: 0, g: 0, b: 0, a: 1 };
     const same = sceneWith([
       node({ id: "n1", orderKey: "a000000", strokes: [{ color: black, weight: 2, align: "center" }] }),
@@ -107,21 +107,21 @@ describe("selectionSummary", () => {
     expect(selectionSummary(same, ["n1", "n2"])?.strokes)
       .toEqual([{ color: black, weight: 2, align: "center" }]);
 
-    // Stesso colore, spessore diverso: NON è lo stesso tratto.
+    // Same color, different thickness: NOT the same stroke.
     const byWeight = sceneWith([
       node({ id: "n1", orderKey: "a000000", strokes: [{ color: black, weight: 2, align: "center" }] }),
       node({ id: "n2", orderKey: "a000001", strokes: [{ color: black, weight: 8, align: "center" }] }),
     ]);
     expect(selectionSummary(byWeight, ["n1", "n2"])?.strokes).toBe(MIXED);
 
-    // Stesso colore e spessore, posizione diversa: nemmeno.
+    // Same color and thickness, different position: neither.
     const byAlign = sceneWith([
       node({ id: "n1", orderKey: "a000000", strokes: [{ color: black, weight: 2, align: "inside" }] }),
       node({ id: "n2", orderKey: "a000001", strokes: [{ color: black, weight: 2, align: "outside" }] }),
     ]);
     expect(selectionSummary(byAlign, ["n1", "n2"])?.strokes).toBe(MIXED);
 
-    // E "nessun tratto" contro "un tratto" è misto, non un valore comune.
+    // And "no stroke" versus "a stroke" is mixed, not a common value.
     const byCount = sceneWith([
       node({ id: "n1", orderKey: "a000000", strokes: [] }),
       node({ id: "n2", orderKey: "a000001", strokes: [{ color: black, weight: 2, align: "center" }] }),
@@ -129,10 +129,10 @@ describe("selectionSummary", () => {
     expect(selectionSummary(byCount, ["n1", "n2"])?.strokes).toBe(MIXED);
   });
 
-  // x/y sono l'ORIGINE DELLA CORNICE (store/groups.ts::frameOriginOf), non il
-  // campo grezzo: per un gruppo le due cose non coincidono -- x/y di un gruppo
-  // sono la traslazione che contribuisce ai figli, e mostrarle come "X" farebbe
-  // dire al pannello un numero diverso da quello dove la cornice si vede.
+  // x/y are the ORIGIN OF THE FRAME (store/groups.ts::frameOriginOf), not the
+  // raw field: for a group the two things do not coincide -- a group's x/y
+  // are the translation that contributes to the children, and showing them as "X" would
+  // make the panel report a different number from the one where the frame is seen.
   it("reports a group's x/y as the origin of its FRAME, not its translation", () => {
     const s = sceneWith([
       node({ id: "g", orderKey: "a000000", kind: "group", x: 0, y: 0, width: 0, height: 0, fills: [] }),

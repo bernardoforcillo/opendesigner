@@ -1,24 +1,24 @@
 import type { SceneState } from "../store/types";
 
-// LA SCENA DEL PROTOTIPO: il documento visto come se contenesse UNA sola pagina
-// con UNA sola schermata. Così il renderer di sempre (drawScene) disegna la
-// schermata corrente -- stesse regole di clip, effetti, immagini, istanze --
-// senza sapere che esiste un prototipo, e senza le altre schermate.
+// THE PROTOTYPE SCENE: the document seen as if it contained a SINGLE page
+// with a SINGLE screen. This way the usual renderer (drawScene) draws the
+// current screen -- same rules for clip, effects, images, instances --
+// without knowing a prototype exists, and without the other screens.
 //
-// Non si copia niente: la schermata viene RI-GENITORIZZATA sotto una pagina
-// finta, e la mappa dei nodi è persistente (store/nodeMap.ts), quindi il costo è
-// una sola voce nuova. Le altre schermate restano figlie delle pagine vere, che
-// nella scena derivata non esistono: non sono raggiungibili, non si disegnano.
-// I componenti restano al loro posto, e le istanze continuano a risolversi.
+// Nothing is copied: the screen is RE-PARENTED under a fake page,
+// and the node map is persistent (store/nodeMap.ts), so the cost is
+// a single new entry. The other screens remain children of the real pages, which
+// in the derived scene do not exist: they are not reachable, they are not drawn.
+// The components stay in place, and the instances keep resolving.
 
 export const PROTO_PAGE_ID = "__prototype__";
 
 let memo: { scene: SceneState; screenId: string; derived: SceneState } | null = null;
 
 /**
- * La scena che mostra solo `screenId`, o null se il nodo non esiste. Memoizzata
- * sull'ultima coppia (scena, schermata): a ogni frame si restituisce lo STESSO
- * oggetto, e l'indice di scena del renderer non si ricostruisce.
+ * The scene that shows only `screenId`, or null if the node does not exist. Memoized
+ * on the last pair (scene, screen): at every frame the SAME
+ * object is returned, and the renderer's scene index is not rebuilt.
  */
 export function sceneForScreen(scene: SceneState, screenId: string): SceneState | null {
   if (memo && memo.scene === scene && memo.screenId === screenId) return memo.derived;
@@ -26,7 +26,7 @@ export function sceneForScreen(scene: SceneState, screenId: string): SceneState 
   if (!root) return null;
   const derived: SceneState = {
     ...scene,
-    pages: [{ id: PROTO_PAGE_ID, name: "Prototipo" }],
+    pages: [{ id: PROTO_PAGE_ID, name: "Prototype" }],
     nodes: scene.nodes.set(screenId, { ...root, parentId: PROTO_PAGE_ID, visible: true }),
   };
   memo = { scene, screenId, derived };

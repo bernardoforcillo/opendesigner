@@ -4,48 +4,48 @@ import { makeSetPropsOp } from "../tools/ops";
 import type { SceneState } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
-// ALLINEAMENTO E DISTRIBUZIONE.
+// ALIGNMENT AND DISTRIBUTION.
 //
-// Sei allineamenti (i tre bordi orizzontali, i tre verticali) e due
-// distribuzioni. Tutti muovono i nodi e basta: la mask è sempre ["x", "y"], mai
-// width/height/rotation -- allineare non ridimensiona e non ruota.
+// Six alignments (the three horizontal edges, the three vertical ones) and two
+// distributions. They all just move nodes: the mask is always ["x", "y"], never
+// width/height/rotation -- aligning neither resizes nor rotates.
 //
-// NODI RUOTATI: si allinea il loro RETTANGOLO ASSE-ALLINEATO (worldAabbOfNode),
-// la stessa scelta dello snap (vedi selection/snap.ts) e per la stessa ragione:
-// è il rettangolo che il riquadro di selezione disegna e quello che l'occhio
-// legge come "il posto che occupa". Il delta calcolato sull'AABB si scrive però
-// direttamente in x/y del MODELLO, ed è esatto: una traslazione commuta con la
-// rotazione attorno al centro, quindi spostare l'AABB di (dx, dy) è spostare il
-// nodo di (dx, dy).
+// ROTATED NODES: their AXIS-ALIGNED RECTANGLE (worldAabbOfNode) is aligned,
+// the same choice as snap (see selection/snap.ts) and for the same reason:
+// it is the rectangle the selection box draws and the one the eye
+// reads as "the place it occupies". The delta computed on the AABB is however written
+// directly into the MODEL's x/y, and it is exact: a translation commutes with
+// rotation around the center, so moving the AABB by (dx, dy) is moving the
+// node by (dx, dy).
 //
-// IL TRATTO non conta, di nuovo come per lo snap: si allinea la geometria, non
-// la sporgenza del bordo.
+// THE STROKE does not count, again as for snap: the geometry is aligned, not
+// the protrusion of the edge.
 
 export type AlignKind = "left" | "hcenter" | "right" | "top" | "middle" | "bottom";
 export type DistributeKind = "distribute-h" | "distribute-v";
 export type AlignCommand = AlignKind | DistributeKind;
 
-// I comandi come DATI, con l'etichetta che il pannello mostra: aggiungerne uno
-// è aggiungere una riga qui, e il pannello non ha nessun elenco parallelo da
-// tenere allineato. L'ordine è quello in cui i pulsanti compaiono.
+// The commands as DATA, with the label the panel shows: adding one
+// is adding a row here, and the panel has no parallel list
+// to keep aligned. The order is the one in which the buttons appear.
 export const ALIGN_COMMANDS: readonly { id: AlignCommand; label: string }[] = [
-  { id: "left", label: "Allinea a sinistra" },
-  { id: "hcenter", label: "Centra orizzontalmente" },
-  { id: "right", label: "Allinea a destra" },
-  { id: "distribute-h", label: "Distribuisci orizzontalmente" },
-  { id: "top", label: "Allinea in alto" },
-  { id: "middle", label: "Centra verticalmente" },
-  { id: "bottom", label: "Allinea in basso" },
-  { id: "distribute-v", label: "Distribuisci verticalmente" },
+  { id: "left", label: "Align left" },
+  { id: "hcenter", label: "Center horizontally" },
+  { id: "right", label: "Align right" },
+  { id: "distribute-h", label: "Distribute horizontally" },
+  { id: "top", label: "Align top" },
+  { id: "middle", label: "Center vertically" },
+  { id: "bottom", label: "Align bottom" },
+  { id: "distribute-v", label: "Distribute vertically" },
 ];
 
 export interface Delta { dx: number; dy: number }
 
 const ZERO: Delta = { dx: 0, dy: 0 };
 
-// Lo spostamento che porta `b` sull'allineamento chiesto rispetto a `target`.
-// UN asse per comando, sempre: "allinea a sinistra" non deve mai muovere niente
-// in verticale.
+// The displacement that brings `b` to the requested alignment relative to `target`.
+// ONE axis per command, always: "align left" must never move anything
+// vertically.
 export function alignDelta(b: Bounds, target: Bounds, kind: AlignKind): Delta {
   switch (kind) {
     case "left":
@@ -63,22 +63,22 @@ export function alignDelta(b: Bounds, target: Bounds, kind: AlignKind): Delta {
   }
 }
 
-// DISTRIBUZIONE: si equalizzano gli SPAZI FRA i box, non i loro centri.
+// DISTRIBUTION: the SPACES BETWEEN the boxes are equalized, not their centers.
 //
-// La differenza si vede appena i box hanno dimensioni diverse: centri
-// equidistanti lasciano buchi visibilmente disuguali fra un box largo e uno
-// stretto, mentre spazi uguali è ciò che l'occhio legge come "distribuiti". È
-// anche la scelta degli editor di design (Figma la chiama "distribute
+// The difference shows as soon as the boxes have different sizes: equidistant
+// centers leave visibly unequal gaps between a wide box and a narrow one,
+// while equal spaces is what the eye reads as "distributed". It is
+// also the choice of design editors (Figma calls it "distribute
 // spacing").
 //
-// I due ESTREMI non si muovono: sono loro a definire lo spazio da spartire.
-// Meno di tre box non hanno niente da distribuire (i due estremi sono già
-// tutto), e la funzione restituisce l'identità invece di inventare un
-// movimento.
+// The two EXTREMES do not move: they define the space to be shared out.
+// Fewer than three boxes have nothing to distribute (the two extremes are already
+// everything), and the function returns the identity instead of inventing a
+// movement.
 //
-// Lo spazio libero può risultare NEGATIVO se i box si sovrappongono: la formula
-// regge lo stesso e produce sovrapposizioni uguali, che è la risposta giusta
-// alla domanda "rendili equidistanti".
+// The free space may turn out NEGATIVE if the boxes overlap: the formula
+// holds anyway and produces equal overlaps, which is the right answer
+// to the question "make them equidistant".
 export function distributeDeltas(boxes: readonly Bounds[], axis: "x" | "y"): Delta[] {
   const out: Delta[] = boxes.map(() => ZERO);
   const n = boxes.length;
@@ -86,9 +86,9 @@ export function distributeDeltas(boxes: readonly Bounds[], axis: "x" | "y"): Del
   const horiz = axis === "x";
   const min = (b: Bounds) => (horiz ? b.x : b.y);
   const size = (b: Bounds) => (horiz ? b.width : b.height);
-  // Ordinati per posizione, con l'INDICE come spareggio: due box che partono
-  // esattamente dallo stesso punto devono ricevere un ordine stabile, altrimenti
-  // lo stesso comando dato due volte darebbe risultati diversi.
+  // Sorted by position, with the INDEX as tie-break: two boxes that start
+  // exactly at the same point must get a stable order, otherwise
+  // the same command given twice would give different results.
   const order = boxes.map((_, i) => i).sort((a, b) => min(boxes[a]) - min(boxes[b]) || a - b);
   const first = boxes[order[0]];
   const last = boxes[order[n - 1]];
@@ -100,21 +100,21 @@ export function distributeDeltas(boxes: readonly Bounds[], axis: "x" | "y"): Del
   let cursor = start;
   for (let k = 0; k < n; k++) {
     const i = order[k];
-    // I DUE ESTREMI non si muovono: è la DEFINIZIONE della distribuzione (sono
-    // loro a delimitare lo spazio da spartire), non il risultato di un conto --
-    // e quindi il loro zero va IMPOSTO, non sperato.
+    // The TWO EXTREMES do not move: it is the DEFINITION of distribution (they
+    // delimit the space to be shared out), not the result of a computation --
+    // and therefore their zero must be IMPOSED, not hoped for.
     //
-    // Sperarlo non funziona: `cursor` accumula (size + gap) in virgola mobile e
-    // su coordinate qualunque arriva all'ultimo box a min(last) meno un pelo
-    // (con box a 969.9 / 309.3 / 456.6 il delta è -1.1e-13). Un delta di 1e-13
-    // non è zero, quindi alignOps -- che confronta con lo zero ESATTO, e deve:
-    // un epsilon lì sarebbe una soglia arbitraria su una grandezza che nessuno
-    // percepisce -- gli manda un op. Sul filo viaggia uno spostamento
-    // invisibile, nell'undo finisce una voce che non disfa niente, e il caso
-    // non converge: ridistribuire di nuovo produce lo STESSO delta, per sempre.
+    // Hoping does not work: `cursor` accumulates (size + gap) in floating point and
+    // on arbitrary coordinates reaches the last box at min(last) minus a hair
+    // (with boxes at 969.9 / 309.3 / 456.6 the delta is -1.1e-13). A delta of 1e-13
+    // is not zero, so alignOps -- which compares with EXACT zero, and must:
+    // an epsilon there would be an arbitrary threshold on a quantity nobody
+    // perceives -- sends it an op. An invisible displacement travels on the wire, an
+    // entry that undoes nothing ends up in the undo stack, and the case
+    // does not converge: redistributing again produces the SAME delta, forever.
     //
-    // Il primo estremo verrebbe zero da sé (cursor parte esattamente da lì);
-    // resta escluso qui perché la ragione è la stessa e vale per entrambi.
+    // The first extreme would come out zero on its own (cursor starts exactly there);
+    // it is excluded here because the reason is the same and applies to both.
     if (k > 0 && k < n - 1) {
       const d = cursor - min(boxes[i]);
       out[i] = horiz ? { dx: d, dy: 0 } : { dx: 0, dy: d };
@@ -124,39 +124,39 @@ export function distributeDeltas(boxes: readonly Bounds[], axis: "x" | "y"): Del
   return out;
 }
 
-// Il rettangolo contro cui si allinea: SEMPRE il riquadro comune della
-// selezione (l'unione degli AABB), cioè lo stesso riquadro che l'overlay
-// disegna. null solo per una selezione vuota.
+// The rectangle to align against: ALWAYS the common box of the
+// selection (the union of the AABBs), i.e. the same box the overlay
+// draws. null only for an empty selection.
 //
-// UN NODO SOLO non si muove, ed è voluto: il suo riquadro comune è lui stesso,
-// quindi tutti e sei gli allineamenti sono l'identità e alignOps non produce
-// nessun op. È il comportamento di Figma per un oggetto solo sulla tela.
+// A SINGLE NODE does not move, and that is intended: its common box is itself,
+// so all six alignments are the identity and alignOps produces
+// no op. It is Figma's behavior for a single object on the canvas.
 //
-// NON esiste una pagina contro cui allinearlo. `opendesigner.v1.Page` porta oggi solo
-// `id` e `name`: nel modello non c'è nessuna geometria di pagina (ed è lavoro
-// della traccia 1, che possiede pagine e frame). Inventarne una -- un foglio
-// 1920x1080 all'origine -- non sarebbe una convenzione innocua ma una
-// TELETRASPORTAZIONE: la tela è infinita e un documento può vivere
-// legittimamente a x = 10000, dove "allinea a sinistra" su un rettangolo solo
-// lo spedirebbe a x = 0, fuori schermo, senza nessun segno che si sia mosso
-// invece di sparire (e la camera parte a {0, 0, zoom: 1}, quindi nemmeno
-// "l'area che si inquadra all'apertura" sarebbe quel foglio). Quando la
-// traccia 1 darà bounds veri a pagine e frame, il riferimento di un nodo solo
-// diventerà il suo CONTENITORE -- una LETTURA dal documento, non un numero
-// scritto qui.
+// There is NO page to align it against. `opendesigner.v1.Page` today carries only
+// `id` and `name`: the model has no page geometry (and it is the job
+// of track 1, which owns pages and frames). Inventing one -- a
+// 1920x1080 sheet at the origin -- would not be a harmless convention but a
+// TELEPORTATION: the canvas is infinite and a document can legitimately
+// live at x = 10000, where "align left" on a single rectangle would
+// send it to x = 0, off screen, with no sign that it moved
+// instead of vanishing (and the camera starts at {0, 0, zoom: 1}, so not even
+// "the area framed on opening" would be that sheet). When
+// track 1 gives real bounds to pages and frames, the reference of a single node
+// will become its CONTAINER -- a READ from the document, not a number
+// written here.
 export function alignTarget(scene: SceneState, ids: readonly string[]): Bounds | null {
   const boxes = boxesOf(scene, ids);
   if (boxes.length === 0) return null;
   return unionBounds(boxes.map((b) => b.box));
 }
 
-// Quanti nodi servono perché il comando possa fare qualcosa: DUE per allineare
-// (il riferimento è il riquadro comune, e con un nodo solo quel riquadro è il
-// nodo stesso), TRE per distribuire (i due estremi non si muovono, quindi sotto
-// i tre non c'è niente in mezzo da spartire).
+// How many nodes the command needs to be able to do something: TWO to align
+// (the reference is the common box, and with a single node that box is the
+// node itself), THREE to distribute (the two extremes do not move, so below
+// three there is nothing in the middle to share out).
 //
-// Il pannello ci disabilita i pulsanti: un comando che non farà niente deve
-// DIRLO prima, perché un no-op silenzioso è indistinguibile da un comando rotto.
+// The panel disables the buttons with it: a command that will do nothing must
+// SAY SO beforehand, because a silent no-op is indistinguishable from a broken command.
 export function minSelection(cmd: AlignCommand): number {
   return isDistribute(cmd) ? 3 : 2;
 }
@@ -174,13 +174,13 @@ function isDistribute(cmd: AlignCommand): cmd is DistributeKind {
   return cmd === "distribute-h" || cmd === "distribute-v";
 }
 
-// Gli op di un comando di allineamento: uno per nodo che si MUOVE davvero.
+// The ops of an align command: one per node that REALLY moves.
 //
-// I nodi già a posto non producono nessun op, e non è un'ottimizzazione: un
-// setProps che riscrive gli stessi identici valori viaggerebbe sul filo, e il
-// suo inverso finirebbe nella voce di undo -- un Ctrl+Z che "disfa" spostamenti
-// mai avvenuti. Se non si muove nessuno la lista è vuota e alignSelection non
-// apre nemmeno il gesto.
+// Nodes already in place produce no op, and it is not an optimization: a
+// setProps rewriting the very same values would travel on the wire, and its
+// inverse would end up in the undo entry -- a Ctrl+Z that "undoes" moves
+// that never happened. If nobody moves the list is empty and alignSelection does not
+// even open the gesture.
 export function alignOps(scene: SceneState, ids: readonly string[], cmd: AlignCommand): Op[] {
   const boxes = boxesOf(scene, ids);
   if (boxes.length === 0) return [];
@@ -195,18 +195,18 @@ export function alignOps(scene: SceneState, ids: readonly string[], cmd: AlignCo
     const { dx, dy } = deltas[i];
     if (dx === 0 && dy === 0) return;
     const n = scene.nodes.at(id);
-    // x e y viaggiano SEMPRE insieme, anche quando uno dei due delta è zero: la
-    // mask è la stessa per tutti i comandi, quindi le anteprime di gesti
-    // diversi si coalescono sulla stessa chiave (vedi store.ts::previewKey) e
-    // l'op finale è confrontabile con quello di un trascinamento.
+    // x and y travel ALWAYS together, even when one of the two deltas is zero: the
+    // mask is the same for all commands, so the previews of different
+    // gestures coalesce on the same key (see store.ts::previewKey)
+    // and the final op is comparable with that of a drag.
     ops.push(makeSetPropsOp(id, { x: n.x + dx, y: n.y + dy }, ["x", "y"]));
   });
   return ops;
 }
 
-// IL COMANDO: un gesto solo, quanti che siano i nodi mossi -- quindi una sola
-// voce di undo e un solo giro di riconciliazione, esattamente come un
-// trascinamento che sposta dieci nodi.
+// THE COMMAND: a single gesture, however many nodes are moved -- hence a single
+// undo entry and a single reconciliation round, exactly like a
+// drag that moves ten nodes.
 export function alignSelection(cmd: AlignCommand): void {
   const store = useScene.getState();
   const scene = store.scene;

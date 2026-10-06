@@ -6,19 +6,19 @@ import { nextOrderKey } from "../store/orderKey";
 import { useScene } from "../store/store";
 import { docClient } from "../rpc/client";
 
-// DIAGRAMMI NELL'EDITOR.
+// DIAGRAMS IN THE EDITOR.
 //
-// Il disegno vero (parser Mermaid, layout, UML) vive sul server, in
-// internal/diagram: è la stessa funzione che usano i tool MCP, quindi un
-// diagramma creato dall'editor e uno creato da un agente sono identici. Qui c'è
-// solo ciò che tocca lo store: chiedere il disegno, inserirlo come UN gesto
-// (un solo undo) e riconoscere un diagramma già presente per ridisegnarlo.
+// The real drawing (Mermaid parser, layout, UML) lives on the server, in
+// internal/diagram: it is the same function the MCP tools use, so a
+// diagram created by the editor and one created by an agent are identical. Here there is
+// only what touches the store: asking for the drawing, inserting it as ONE gesture
+// (a single undo) and recognizing an already-present diagram in order to redraw it.
 
-/** Chiavi di `meta` sulla radice di un diagramma (vedi internal/diagram). */
+/** `meta` keys on a diagram's root (see internal/diagram). */
 export const META_SOURCE = "diagram.source";
 export const META_KIND = "diagram.kind";
 
-/** Un testo che il server non sa leggere: il messaggio è da mostrare così com'è. */
+/** A text the server cannot read: the message is to be shown as is. */
 export class DiagramError extends Error {
   constructor(message: string) {
     super(message);
@@ -30,18 +30,18 @@ export interface RenderClient {
   renderDiagram(req: { source: string }): Promise<RenderDiagramResponse>;
 }
 
-/** Chiede il disegno di `source`. Lancia DiagramError per un testo illeggibile. */
+/** Asks for the drawing of `source`. Throws DiagramError for an unreadable text. */
 export async function renderDiagram(source: string, client: RenderClient = docClient): Promise<RenderDiagramResponse> {
   try {
     return await client.renderDiagram({ source });
   } catch (err) {
     const ce = ConnectError.from(err);
     if (ce.code === Code.InvalidArgument) throw new DiagramError(ce.rawMessage);
-    throw new DiagramError("il server non risponde: riprova");
+    throw new DiagramError("the server is not responding: try again");
   }
 }
 
-/** Il diagramma selezionato (la sua radice), se la selezione è proprio uno. */
+/** The selected diagram (its root), if the selection is exactly one. */
 export function selectedDiagram(): { id: string; source: string; kind: string } | null {
   const { scene, selection } = useScene.getState();
   if (!scene || selection.length !== 1) return null;
@@ -54,10 +54,10 @@ const createOp = (docId: string, node: Node): Op =>
   create(OpSchema, { opId: crypto.randomUUID(), docId, kind: { case: "createNode", value: { node } } });
 
 /**
- * Inserisce i nodi di un diagramma disegnato. `at` è il CENTRO (coordinate
- * mondo). Con `replaceId` il diagramma indicato si ridisegna al suo posto (stesso
- * parent, stessa posizione, stesso nome) nello stesso gesto. Ritorna l'id della
- * radice, o null se non si può (nessun documento, gesto in corso).
+ * Inserts the nodes of a drawn diagram. `at` is the CENTER (world
+ * coordinates). With `replaceId` the indicated diagram is redrawn in its place (same
+ * parent, same position, same name) in the same gesture. Returns the root's id,
+ * or null if it cannot be done (no document, gesture in progress).
  */
 export function insertDiagram(res: RenderDiagramResponse, at: { x: number; y: number }, replaceId?: string): string | null {
   const st = useScene.getState();

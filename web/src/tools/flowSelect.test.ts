@@ -37,7 +37,7 @@ function fakeBase() {
   return base;
 }
 
-// A->B passa da (300,150): la freccia t1 sta su quella riga fra x 200 e 400.
+// A->B goes through (300,150): the arrow t1 lies on that row between x 200 and 400.
 beforeEach(() => {
   sync = new FakeSync();
   useScene.setState({ camera: { x: 0, y: 0, zoom: 1 }, selection: ["A"], gesture: null, undoStack: [], redoStack: [], canUndo: false, canRedo: false });
@@ -50,13 +50,13 @@ beforeEach(() => {
 });
 
 describe("withFlowArrows", () => {
-  it("conserva id e cursore del tool di base", () => {
+  it("keeps the base tool's id and cursor", () => {
     const t = withFlowArrows(fakeBase());
     expect(t.id).toBe("select");
     expect(t.cursor).toBe("default");
   });
 
-  it("in Design delega sempre, senza guardare le frecce", () => {
+  it("in Design it always delegates, without looking at the arrows", () => {
     useFlowUi.setState({ mode: "design" });
     const base = fakeBase();
     const t = withFlowArrows(base);
@@ -65,25 +65,25 @@ describe("withFlowArrows", () => {
     expect(useFlowUi.getState().selectedTransitionId).toBeNull();
   });
 
-  it("in Flussi un click sulla freccia la seleziona e NON arriva al tool di selezione", () => {
+  it("in Flows a click on the arrow selects it and does NOT reach the select tool", () => {
     const base = fakeBase();
     const t = withFlowArrows(base);
     const c = ctx();
     t.onPointerDown!(at(300, 151), c);
     expect(useFlowUi.getState().selectedTransitionId).toBe("t1");
-    // i nodi si deselezionano: la scelta è una sola
+    // nodes are deselected: there is only one selection
     expect(useScene.getState().selection).toEqual([]);
     t.onPointerMove!(at(310, 150), c);
     t.onPointerUp!(at(310, 150), c);
     expect(base.onPointerDown).not.toHaveBeenCalled();
     expect(base.onPointerMove).not.toHaveBeenCalled();
     expect(base.onPointerUp).not.toHaveBeenCalled();
-    // finito il gesto, il prossimo click torna normale
+    // once the gesture is over, the next click is back to normal
     t.onPointerDown!(at(100, 100), c);
     expect(base.onPointerDown).toHaveBeenCalledTimes(1);
   });
 
-  it("un click altrove deseleziona la freccia e passa al tool di selezione", () => {
+  it("a click elsewhere deselects the arrow and goes to the select tool", () => {
     useFlowUi.setState({ selectedTransitionId: "t1" });
     const base = fakeBase();
     withFlowArrows(base).onPointerDown!(at(100, 100), ctx());
@@ -91,16 +91,16 @@ describe("withFlowArrows", () => {
     expect(base.onPointerDown).toHaveBeenCalledTimes(1);
   });
 
-  it("si colpisce la pillola dell'etichetta anche lontano dal tratto", () => {
+  it("the label pill is hit even far from the stroke", () => {
     const base = fakeBase();
-    // il punto medio è (300,150): 8px sopra è fuori dal tratto (6) ma dentro la pillola
+    // the midpoint is (300,150): 8px above is outside the stroke (6) but inside the pill
     withFlowArrows(base).onPointerDown!(at(300, 142), ctx());
     expect(useFlowUi.getState().selectedTransitionId).toBe("t1");
   });
 
-  it("solo le frecce del flusso corrente, a meno di «mostra tutti»", () => {
+  it("only the arrows of the current flow, unless 'show all'", () => {
     const t = withFlowArrows(fakeBase());
-    // t2 (B->C, flusso f2) è sulla riga (700,150); il flusso corrente è il primo per nome: f1
+    // t2 (B->C, flow f2) is on the row (700,150); the current flow is the first by name: f1
     t.onPointerDown!(at(700, 150), ctx());
     expect(useFlowUi.getState().selectedTransitionId).toBeNull();
     useFlowUi.setState({ showAllFlows: true });
@@ -108,7 +108,7 @@ describe("withFlowArrows", () => {
     expect(useFlowUi.getState().selectedTransitionId).toBe("t2");
   });
 
-  it("l'hover si aggiorna al pointermove e si spegne altrove", () => {
+  it("the hover updates on pointermove and turns off elsewhere", () => {
     const t = withFlowArrows(fakeBase());
     const c = ctx();
     t.onPointerMove!(at(300, 150), c);
@@ -117,14 +117,14 @@ describe("withFlowArrows", () => {
     expect(useFlowUi.getState().hoverTransitionId).toBeNull();
   });
 
-  it("l'hover non si calcola durante un gesto aperto (un drag di nodi)", () => {
+  it("hover is not computed during an open gesture (a node drag)", () => {
     useScene.setState({ gesture: { selection: [], preview: new Map() } });
     const t = withFlowArrows(fakeBase());
     t.onPointerMove!(at(300, 150), ctx());
     expect(useFlowUi.getState().hoverTransitionId).toBeNull();
   });
 
-  it("Canc sulla freccia scelta la cancella (un op, annullabile) e non tocca i nodi", () => {
+  it("Delete on the selected arrow deletes it (one op, undoable) and does not touch the nodes", () => {
     useFlowUi.setState({ selectedTransitionId: "t1" });
     const base = fakeBase();
     withFlowArrows(base).onKeyDown!(key("Delete"), ctx());
@@ -136,13 +136,13 @@ describe("withFlowArrows", () => {
     expect(useScene.getState().scene!.transitions.t1).toBeDefined();
   });
 
-  it("Canc con la freccia già sparita (cancellata da un peer) non manda niente", () => {
+  it("Delete with the arrow already gone (deleted by a peer) sends nothing", () => {
     useFlowUi.setState({ selectedTransitionId: "ghost" });
     withFlowArrows(fakeBase()).onKeyDown!(key("Backspace"), ctx());
     expect(sync.sent).toHaveLength(0);
   });
 
-  it("Escape deseleziona la freccia; senza freccia il tasto va al tool di base", () => {
+  it("Escape deselects the arrow; without an arrow the key goes to the base tool", () => {
     useFlowUi.setState({ selectedTransitionId: "t1" });
     const base = fakeBase();
     const t = withFlowArrows(base);
@@ -153,11 +153,11 @@ describe("withFlowArrows", () => {
     expect(base.onKeyDown).toHaveBeenCalledTimes(1);
   });
 
-  it("onDeactivate azzera il gesto armato e delega", () => {
+  it("onDeactivate clears the armed gesture and delegates", () => {
     const base = fakeBase();
     const t = withFlowArrows(base);
     const c = ctx();
-    t.onPointerDown!(at(300, 150), c); // arma
+    t.onPointerDown!(at(300, 150), c); // arms
     t.onDeactivate!(c);
     expect(base.onDeactivate).toHaveBeenCalledTimes(1);
     t.onPointerUp!(at(0, 0), c);
@@ -166,17 +166,17 @@ describe("withFlowArrows", () => {
 });
 
 describe("pickArrow", () => {
-  it("scena senza transizioni: null senza costruire niente", () => {
+  it("scene without transitions: null without building anything", () => {
     useScene.getState().setScene(baseScene());
     expect(pickArrow(ctx(), 300, 150)).toBeNull();
   });
 
-  it("la tolleranza è in px schermo: a zoom basso la presa in unità mondo cresce", () => {
+  it("the tolerance is in screen px: at low zoom the grab in world units grows", () => {
     useScene.setState({ camera: { x: 0, y: 0, zoom: 0.25 } });
-    // 20 unità mondo = 5px schermo: dentro i 6px di presa
+    // 20 world units = 5px screen: within the 6px grab
     expect(pickArrow(ctx(), 250, 170)?.id).toBe("t1");
     useScene.setState({ camera: { x: 0, y: 0, zoom: 4 } });
-    // a zoom 4 la presa è 1.5 unità mondo: 5 sopra è fuori
+    // at zoom 4 the grab is 1.5 units: 5 above is outside
     expect(pickArrow(ctx(), 250, 155)).toBeNull();
   });
 });

@@ -16,23 +16,23 @@ import { fontSizeOf, placeTextLines } from "../text";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
 
-// IL RENDERER SU GPU: lo stesso disegno di renderer/canvasRenderer.ts, ma con
-// CanvasKit (Skia in WebAssembly) su un contesto WebGL invece che con Canvas 2D.
+// THE GPU RENDERER: the same drawing as renderer/canvasRenderer.ts, but with
+// CanvasKit (Skia in WebAssembly) on a WebGL context instead of Canvas 2D.
 //
-// Non è una riscrittura di ciò che si disegna: la STRUTTURA è la stessa -- stessi
-// indici (sceneIndex), stesso scarto di ciò che non si vede, stessi livelli di
-// dettaglio, stesso ordine (riempimento, tratti; testo; immagine; vettoriale),
-// stesse regole per istanze, override, frame ritaglianti e frame trasparenti --
-// e cambiano solo le primitive. Dove i due si differenziano è dichiarato:
-//   - il testo usa Inter (l'unico font che il WASM ha), senza crenatura;
-//   - ombra e sfocatura valgono per l'INTERO nodo (un livello salvato con un
-//     filtro), non per ogni singola passata di disegno;
-//   - il tratto interno/esterno ritaglia col contorno esatto, non con un
-//     rettangolo allargato.
+// It is not a rewrite of what is drawn: the STRUCTURE is the same -- same
+// indexes (sceneIndex), same discarding of what is not seen, same levels of
+// detail, same order (fill, strokes; text; image; vector),
+// same rules for instances, overrides, clipping frames and transparent frames --
+// and only the primitives change. Where the two differ it is declared:
+//   - text uses Inter (the only font the WASM has), without kerning;
+//   - shadow and blur apply to the WHOLE node (a layer saved with a
+//     filter), not to every single draw pass;
+//   - the inner/outer stroke clips with the exact outline, not with a
+//     widened rectangle.
 
-const DEG = 1; // CanvasKit ruota in GRADI, come il modello.
+const DEG = 1; // CanvasKit rotates in DEGREES, like the model.
 
-// Il segnaposto di un'immagine (colori di canvasRenderer.ts::PLACEHOLDER_*).
+// An image's placeholder (colors of canvasRenderer.ts::PLACEHOLDER_*).
 const PLACEHOLDER_FILL_A = 0.06;
 const PLACEHOLDER_LINE_A = 0.35;
 
@@ -42,8 +42,8 @@ interface Frame {
   px: number;
   view: Bounds | null;
   extent: { get(id: string): Bounds | undefined } | null;
-  // Tutto ciò che si alloca nell'heap WASM durante il frame (percorsi, shader,
-  // filtri) si libera a frame finito: CanvasKit non ha un garbage collector.
+  // Everything allocated in the WASM heap during the frame (paths, shaders,
+  // filters) is freed when the frame ends: CanvasKit has no garbage collector.
   garbage: { delete(): void }[];
 }
 
@@ -75,9 +75,9 @@ export class CanvasKitRenderer {
       alpha: 1, depth: 0, stencil: 8, antialias: 0, premultipliedAlpha: 1, preserveDrawingBuffer: 0,
       enableExtensionsByDefault: 1, majorVersion: 2,
     });
-    if (!handle) throw new Error("WebGL non disponibile");
+    if (!handle) throw new Error("WebGL not available");
     this.grCtx = CK.MakeGrContext(handle);
-    if (!this.grCtx) throw new Error("contesto Skia non creato");
+    if (!this.grCtx) throw new Error("Skia context not created");
     this.fillP = new CK.Paint();
     this.fillP.setAntiAlias(true);
     this.strokeP = new CK.Paint();
@@ -91,7 +91,7 @@ export class CanvasKitRenderer {
     this.lost = true;
   };
 
-  /** Le misure dei font sono cambiate (un peso è arrivato): si rifà il layout. */
+  /** The font measures changed (a weight arrived): the layout is redone. */
   fontsChanged(): void {
     this.widths = new Map();
     this.textLines = new WeakMap();
@@ -101,7 +101,7 @@ export class CanvasKitRenderer {
     if (this.surface && this.surfW === w && this.surfH === h) return this.surface;
     this.surface?.delete();
     this.surface = this.CK.MakeOnScreenGLSurface(this.grCtx as GrDirectContext, w, h, this.CK.ColorSpace.SRGB);
-    if (!this.surface) throw new Error("superficie WebGL non creata");
+    if (!this.surface) throw new Error("WebGL surface not created");
     this.surfW = w;
     this.surfH = h;
     return this.surface;
@@ -122,9 +122,9 @@ export class CanvasKitRenderer {
     const px = 1 / (cam.zoom || 1);
     const cssW = w / dpr;
     const cssH = h / dpr;
-    // Una scena derivata dalla riproduzione con scale animate non ha extent
-    // affidabili per i nodi scalati (vedi AnimInfo): niente scarto per tutta la
-    // scena finché dura -- costa nodi in più, mai nodi che spariscono.
+    // A playback-derived scene with animated scales has no reliable extents
+    // for the scaled nodes (see AnimInfo): no discarding for the whole
+    // scene while it lasts -- it costs extra nodes, never nodes that vanish.
     const culling = cssW > 0 && cssH > 0 && cam.zoom > 0 && !(scene.anim && scene.anim.scaled.size > 0);
     const view = culling
       ? inflateBounds({ x: -cam.x / cam.zoom, y: -cam.y / cam.zoom, width: cssW / cam.zoom, height: cssH / cam.zoom }, 2 * px)
@@ -142,7 +142,7 @@ export class CanvasKitRenderer {
     this.frame = null;
   }
 
-  // --- traversata: stessa forma di canvasRenderer.ts::drawSiblings -----------
+  // --- traversal: same shape as canvasRenderer.ts::drawSiblings --------------
 
   private drawSiblings(
     sk: Canvas,
@@ -187,13 +187,13 @@ export class CanvasKitRenderer {
     const next = new Set(visited).add(n.instance.componentId);
     sk.save();
     concat(sk, instanceDescentLocal(n, resolved.masterRoot));
-    // Dentro l'istanza i nodi del master hanno l'extent al posto d'origine, non
-    // dove l'istanza li disegna: niente scarto (cull = false).
+    // Inside the instance the master's nodes have their extent at the place of origin, not
+    // where the instance draws them: no discarding (cull = false).
     this.drawSiblings(sk, [resolved.masterRoot], children, new Set(), instanceOverrideMap(n), next, false);
     sk.restore();
   }
 
-  // --- il nodo ---------------------------------------------------------------
+  // --- the node --------------------------------------------------------------
 
   private drawNode(sk: Canvas, n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
     if (n.kind === "group" || n.kind === "instance") return;
@@ -201,8 +201,8 @@ export class CanvasKitRenderer {
     const eff = withOverride(n, overrides?.get(n.id));
     if (inkIsBox(eff) && (eff.width <= 0 || eff.height <= 0)) return;
 
-    // Livello di dettaglio: come nel renderer 2D, a pochi pixel un nodo è un
-    // rettangolo piatto del suo colore.
+    // Level of detail: as in the 2D renderer, at a few pixels a node is a
+    // flat rectangle of its color.
     const flatSize = eff.kind === "text" ? fontSizeOf(eff.text?.style) : Math.max(eff.width, eff.height);
     if (eff.kind !== "vector" && flatSize / f.px < LOD_FLAT_PX) {
       if (eff.kind === "frame" && eff.fills.length === 0) return;
@@ -215,8 +215,8 @@ export class CanvasKitRenderer {
       return;
     }
 
-    // Scala animata (solo scene derivate dalla riproduzione): come nel 2D, attorno
-    // allo stesso centro della rotazione.
+    // Animated scale (only playback-derived scenes): as in 2D, around
+    // the same center as the rotation.
     const scaled = eff.animScale !== undefined && eff.animScale !== 1;
     const rotated = eff.rotation % 360 !== 0 || scaled;
     if (rotated) {
@@ -239,7 +239,7 @@ export class CanvasKitRenderer {
       this.drawVector(sk, eff);
     } else {
       const shape = this.shapeOf(eff);
-      // Un frame senza riempimento è trasparente (il grigio di default è delle forme).
+      // A frame without a fill is transparent (the default gray belongs to shapes).
       if (!(eff.kind === "frame" && eff.fills.length === 0)) {
         this.drawShape(sk, shape, this.fillPaint(resolvedFill(eff), eff, eff.opacity));
       }
@@ -250,24 +250,24 @@ export class CanvasKitRenderer {
     if (rotated) sk.restore();
   }
 
-  // --- effetti: un livello salvato con un filtro, per l'intero nodo -----------
+  // --- effects: a layer saved with a filter, for the whole node ---------------
 
   private beginEffects(sk: Canvas, n: NodeLite): boolean {
     const filter = this.effectsFilter(n.effects);
     if (!filter) return false;
     const lp = new this.CK.Paint();
     lp.setImageFilter(filter);
-    // Un limite al livello, in coordinate locali: senza, ogni nodo con un
-    // effetto alloca un livello grande quanto l'intera superficie.
+    // A bound on the layer, in local coordinates: without it, every node with an
+    // effect allocates a layer as large as the whole surface.
     const bounds = n.kind === "text" ? null : inflateBounds(boundsOfNode(n), effectsOutset(n) + strokeOutsetOfNode(n) + 1);
     sk.saveLayer(lp, bounds ? this.CK.XYWHRect(bounds.x, bounds.y, bounds.width, bounds.height) : null);
     lp.delete();
     return true;
   }
 
-  // La PRIMA ombra e la PRIMA sfocatura, come nel renderer 2D. L'ombra poi la
-  // sfocatura: la sfocatura vale anche per l'ombra, nello stesso ordine del
-  // canvas. `blur` dell'ombra è il raggio del canvas (sigma = blur / 2).
+  // The FIRST shadow and the FIRST blur, as in the 2D renderer. The shadow then the
+  // blur: the blur applies to the shadow too, in the same order as the
+  // canvas. The shadow's `blur` is the canvas radius (sigma = blur / 2).
   private effectsFilter(effects: readonly EffectLite[] | undefined): ImageFilter | null {
     if (!effects) return null;
     const CK = this.CK;
@@ -321,9 +321,9 @@ export class CanvasKitRenderer {
     }
   }
 
-  // Imposta la pittura condivisa per un riempimento (colore piatto o gradiente).
-  // `opacity` è quella del nodo: nel renderer 2D è globalAlpha, qui si fonde
-  // nell'alfa della pittura.
+  // Sets the shared paint for a fill (flat color or gradient).
+  // `opacity` is the node's: in the 2D renderer it is globalAlpha, here it is merged
+  // into the paint's alpha.
   private fillPaint(fill: FillLite, n: NodeLite, opacity: number): Paint {
     return this.paintFor(this.fillP, fill, n, opacity);
   }
@@ -358,7 +358,7 @@ export class CanvasKitRenderer {
     return p;
   }
 
-  // --- tratti ----------------------------------------------------------------
+  // --- strokes ---------------------------------------------------------------
 
   private drawStrokes(sk: Canvas, n: NodeLite, shape: Shape | null): void {
     const CK = this.CK;
@@ -375,7 +375,7 @@ export class CanvasKitRenderer {
   private strokeOne(sk: Canvas, n: NodeLite, shape: Shape | null, s: StrokeLite, p: Paint): void {
     const CK = this.CK;
     if (shape === null) {
-      // Il testo traccia sempre centrato (il canvas non dà il contorno dei glifi).
+      // Text always strokes centered (the canvas does not give the glyph outline).
       p.setStrokeWidth(s.weight);
       this.paintText(sk, n, p);
       return;
@@ -385,7 +385,7 @@ export class CanvasKitRenderer {
       this.drawShape(sk, shape, p);
       return;
     }
-    // Interno/esterno: tratto doppio, ritagliato dal contorno esatto.
+    // Inner/outer: double stroke, clipped by the exact outline.
     sk.save();
     this.clipShape(sk, shape, s.align === "inside" ? CK.ClipOp.Intersect : CK.ClipOp.Difference);
     p.setStrokeWidth(s.weight * 2);
@@ -433,7 +433,7 @@ export class CanvasKitRenderer {
     for (const line of lines) sk.drawText(line.text, line.x, line.y, paint, font);
   }
 
-  // --- immagini --------------------------------------------------------------
+  // --- images ----------------------------------------------------------------
 
   private skImage(el: HTMLImageElement): SkImage | null {
     let img = this.skImages.get(el) ?? null;
@@ -470,7 +470,7 @@ export class CanvasKitRenderer {
         return;
       }
     }
-    // Il segnaposto: stesso aspetto del canvas 2D (rettangolo tenue, bordo, croce se manca).
+    // The placeholder: same look as canvas 2D (faint rectangle, border, cross if missing).
     const px = f.px;
     const p = this.fillP;
     p.setShader(null);
@@ -516,7 +516,7 @@ export class CanvasKitRenderer {
 
     if (hasFill) sk.drawPath(fillPath, this.fillPaint(resolvedFill(n), n, n.opacity));
     if (hasStroke && hasRealStroke(n)) {
-      // Tratto vero (vedi renderer/vectorStyle.ts): stesso disegno del 2D.
+      // Real stroke (see renderer/vectorStyle.ts): same drawing as 2D.
       const cap = vs.cap === "round" ? CK.StrokeCap.Round : vs.cap === "square" ? CK.StrokeCap.Square : CK.StrokeCap.Butt;
       const join = vs.join === "round" ? CK.StrokeJoin.Round : vs.join === "bevel" ? CK.StrokeJoin.Bevel : CK.StrokeJoin.Miter;
       for (const s of n.strokes) {
@@ -542,8 +542,8 @@ export class CanvasKitRenderer {
       p.setImageFilter(null);
       const c = resolvedFill(n);
       p.setColor(CK.Color4f(c.r, c.g, c.b, c.a * n.opacity));
-      // Spessore costante sullo schermo: dividendo per lo zoom (la matrice del
-      // canvas già contiene zoom e dpr).
+      // Constant on-screen thickness: dividing by the zoom (the canvas
+      // matrix already contains zoom and dpr).
       p.setStyle(CK.PaintStyle.Stroke);
       p.setStrokeWidth(VECTOR_STROKE_PX / f.zoom);
       p.setStrokeCap(CK.StrokeCap.Round);
@@ -565,8 +565,8 @@ export class CanvasKitRenderer {
   }
 }
 
-// Una Transform del modello (a b c d e f, semantica del canvas 2D) come matrice 3x3
-// di Skia, per righe: [a c e; b d f; 0 0 1].
+// A model Transform (a b c d e f, canvas 2D semantics) as a Skia 3x3
+// matrix, by rows: [a c e; b d f; 0 0 1].
 export function skMatrix(t: Transform): number[] {
   return [t.a, t.c, t.e, t.b, t.d, t.f, 0, 0, 1];
 }
@@ -575,13 +575,13 @@ function concat(sk: Canvas, t: Transform): void {
   sk.concat(skMatrix(t));
 }
 
-// Come shapes.ts::traceSubpath, su un PathBuilder.
+// Like shapes.ts::traceSubpath, on a PathBuilder.
 function trace(b: import("canvaskit-wasm").PathBuilder, n: NodeLite, sp: import("../../store/types").SubPathLite): void {
   const count = sp.anchors.length;
   const first = anchorPoint(n, sp.anchors[0]);
   b.moveTo(first.x, first.y);
   if (count === 1) {
-    // Un solo ancoraggio: segmento di lunghezza nulla, che col capo tondo è un pallino.
+    // A single anchor: zero-length segment, which with a round cap is a dot.
     b.lineTo(first.x, first.y);
     return;
   }

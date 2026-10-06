@@ -6,15 +6,15 @@ import {
   autoClipsForScreen, clipsUnder, pointerClipsForScreen, sampleRuns, startRuns, type ClipRun,
 } from "../animation/runtime";
 
-// LE ANIMAZIONI DEL PROTOTIPO ("Presenta"): collega il runtime puro
-// (animation/runtime.ts) al player.
-//  - `enter` e `loop`: partono quando la schermata compare (anche tornando
-//    indietro: la schermata riparte da capo);
-//  - `hover`: parte quando il puntatore entra nel box del bersaglio, e quando
-//    esce lo stato torna di colpo a quello di base (come l'export HTML);
-//  - `tap`: parte alla pressione sul bersaglio, una volta.
-// Il ciclo requestAnimationFrame gira SOLO finché una clip sta girando: una
-// schermata ferma (o senza clip) non pianifica frame.
+// THE PROTOTYPE'S ANIMATIONS ("Present"): connects the pure runtime
+// (animation/runtime.ts) to the player.
+//  - `enter` and `loop`: start when the screen appears (also when going
+//    back: the screen restarts from the beginning);
+//  - `hover`: starts when the pointer enters the target's box, and when it
+//    leaves the state goes back at once to the base one (like the HTML export);
+//  - `tap`: starts on press of the target, once.
+// The requestAnimationFrame loop runs ONLY while a clip is running: a
+// still screen (or one without clips) schedules no frames.
 export function useProtoAnimation(
   scene: SceneState | null,
   screenId: string | null,
@@ -24,7 +24,7 @@ export function useProtoAnimation(
   const runs = useRef<ClipRun[]>([]);
   const hovering = useRef<Map<string, ClipRun>>(new Map());
   const raf = useRef(0);
-  // Il frame corrente: il disegno si rifà quando cambia (è una dipendenza dell'effetto di disegno).
+  // The current frame: the drawing is redone when it changes (it is a dependency of the draw effect).
   const [tick, setTick] = useState(0);
   const now = () => (typeof performance !== "undefined" ? performance.now() : Date.now());
 
@@ -39,7 +39,7 @@ export function useProtoAnimation(
     if (!raf.current) raf.current = requestAnimationFrame(step);
   }, [step]);
 
-  // La schermata cambia (o il documento): si ripartono le clip d'ingresso e di loop.
+  // The screen changes (or the document): the enter and loop clips restart.
   useEffect(() => {
     hovering.current = new Map();
     runs.current = scene && screenId ? startRuns(autoClipsForScreen(scene, screenId), now()) : [];
@@ -48,11 +48,11 @@ export function useProtoAnimation(
       if (raf.current) cancelAnimationFrame(raf.current);
       raf.current = 0;
     };
-    // Solo la schermata: una modifica del documento a prototipo aperto non fa ripartire l'ingresso.
+    // Only the screen: a document edit with the prototype open does not restart the entrance.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [screenId]);
 
-  // Dal puntatore (px dello stage) al mondo.
+  // From the pointer (stage px) to the world.
   const worldOf = (e: { clientX: number; clientY: number }) => {
     const el = stage.current;
     if (!el || !cam || cam.zoom === 0) return null;
@@ -91,7 +91,7 @@ export function useProtoAnimation(
     if (!p) return;
     const hit = clipsUnder(scene, taps, p.x, p.y);
     if (hit.length === 0) return;
-    // Il tocco vale finché si tiene premuto (come `:active` nel codice esportato).
+    // The touch holds while it stays pressed (like `:active` in the exported code).
     for (const c of hit) hovering.current.set(`tap:${c.id}`, startRuns([c], now())[0]);
     kick();
   };
@@ -103,7 +103,7 @@ export function useProtoAnimation(
     if (changed) kick();
   };
 
-  /** La scena da disegnare ADESSO: quella derivata con lo stato campionato sopra (la stessa istanza se niente anima). */
+  /** The scene to draw NOW: the derived one with the sampled state on top (the same instance if nothing animates). */
   const pose = useCallback(
     (derived: SceneState): SceneState => {
       const all = [...runs.current, ...hovering.current.values()];
@@ -111,7 +111,7 @@ export function useProtoAnimation(
       const { anim } = sampleRuns(all, now());
       return anim.size === 0 ? derived : poseScene(derived, anim);
     },
-    // `tick` non è letto: ma un nuovo `pose` dice al disegno che c'è un frame nuovo.
+    // `tick` is not read: but a new `pose` tells the drawing that there is a new frame.
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [tick],
   );

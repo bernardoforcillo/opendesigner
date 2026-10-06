@@ -33,12 +33,12 @@ function anchor(a: Partial<AnchorLite>): AnchorLite {
   return { x: 0, y: 0, inX: 0, inY: 0, outX: 0, outY: 0, ...a };
 }
 
-// Path2D finto: jsdom non ce l'ha. Registra le primitive chiamate, così un test
-// può dire non solo "ha ritagliato/tracciato" ma "con QUESTA forma". Superset
-// che serve sia al tratto (rect/roundRect/ellipse/addPath) sia al vettoriale
-// (moveTo/lineTo/bezierCurveTo/closePath): la forma esatta di un path
-// vettoriale è comunque provata in shapes.test.ts, qui interessa QUALE path
-// finisce in fill e quale in stroke.
+// Fake Path2D: jsdom does not have it. It records the primitives called, so a test
+// can say not just "it clipped/stroked" but "with THIS shape". A superset
+// that serves both the stroke (rect/roundRect/ellipse/addPath) and the vector
+// (moveTo/lineTo/bezierCurveTo/closePath): the exact shape of a vector
+// path is proven in shapes.test.ts anyway, here what matters is WHICH path
+// ends up in fill and which in stroke.
 class FakePath2D {
   ops: { op: string; args: unknown[] }[] = [];
   rect(...args: number[]) { this.ops.push({ op: "rect", args }); }
@@ -55,16 +55,16 @@ function vectorNode(id: string, subpaths: SubPathLite[], over: Partial<NodeLite>
   return { ...rect(id, 0, 0, "a0"), kind: "vector", vector: { subpaths }, ...over };
 }
 
-// Lo zoom entra solo nella tolleranza di presa del vettoriale: a zoom 1 px
-// schermo e unità mondo coincidono, ed è quello che usano i test sulle forme
-// il cui bersaglio non dipende dalla camera.
+// Zoom only enters the vector's grab tolerance: at zoom 1 a screen
+// px and a world unit coincide, and that is what the tests on shapes
+// whose target does not depend on the camera use.
 const Z1 = 1;
 
 describe("hitTest", () => {
   it("returns the topmost node under the point", () => {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("a", rect("a", 0, 0, "a0"));
-    s.nodes = s.nodes.set("b", rect("b", 10, 10, "a1")); // sopra (orderKey maggiore)
+    s.nodes = s.nodes.set("b", rect("b", 10, 10, "a1")); // on top (greater orderKey)
     expect(hitTest(s, 25, 25, Z1)).toBe("b");
     expect(hitTest(s, 5, 5, Z1)).toBe("a");
     expect(hitTest(s, 200, 200, Z1)).toBeNull();
@@ -72,7 +72,7 @@ describe("hitTest", () => {
 
   it("returns the topmost node by orderKey when two nodes overlap", () => {
     const s = emptyScene("d", "n");
-    // Stesso rettangolo esattamente sovrapposto: "b" ha orderKey maggiore quindi vince.
+    // Exactly the same overlapping rectangle: "b" has the greater orderKey so it wins.
     s.nodes = s.nodes.set("a", rect("a", 0, 0, "a0"));
     s.nodes = s.nodes.set("b", rect("b", 0, 0, "a1"));
     expect(hitTest(s, 25, 25, Z1)).toBe("b");
@@ -80,9 +80,9 @@ describe("hitTest", () => {
 
   it("skips invisible nodes", () => {
     const s = emptyScene("d", "n");
-    s.nodes = s.nodes.set("a", rect("a", 0, 0, "a0", false)); // visible: false, in cima per orderKey
-    s.nodes = s.nodes.set("b", rect("b", 0, 0, "a-1", true)); // sotto, ma visibile
-    // "a" ha orderKey maggiore ma non è visibile: non deve mai essere ritornato.
+    s.nodes = s.nodes.set("a", rect("a", 0, 0, "a0", false)); // visible: false, on top by orderKey
+    s.nodes = s.nodes.set("b", rect("b", 0, 0, "a-1", true)); // below, but visible
+    // "a" has the greater orderKey but is not visible: it must never be returned.
     expect(hitTest(s, 25, 25, Z1)).toBe("b");
 
     const onlyInvisible = emptyScene("d", "n");
@@ -90,22 +90,22 @@ describe("hitTest", () => {
     expect(hitTest(onlyInvisible, 25, 25, Z1)).toBeNull();
   });
 
-  it("porta lo ZOOM fino alla tolleranza di presa del vettoriale", () => {
-    // Il tramite: senza, un path si afferrerebbe a distanze diverse a seconda
-    // dello zoom, e a zoom alto diventerebbe quasi impossibile da cliccare.
+  it("carries the ZOOM down to the vector's grab tolerance", () => {
+    // The conduit: without it, a path would be grabbed at different distances depending on
+    // the zoom, and at high zoom it would become almost impossible to click.
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("v", vectorNode("v", [{
       anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 100, y: 0 })], closed: false,
     }], { width: 100, height: 0 }));
-    expect(hitTest(s, 50, 3, 1)).toBe("v");     // 3 unità mondo = 3 px
-    expect(hitTest(s, 50, 3, 4)).toBeNull();    // 3 unità mondo = 12 px
-    expect(hitTest(s, 50, 12, 0.25)).toBe("v"); // 12 unità mondo = 3 px
+    expect(hitTest(s, 50, 3, 1)).toBe("v");     // 3 world units = 3 px
+    expect(hitTest(s, 50, 3, 4)).toBeNull();    // 3 world units = 12 px
+    expect(hitTest(s, 50, 12, 0.25)).toBe("v"); // 12 world units = 3 px
   });
 
-  it("un vettoriale APERTO non ruba i click alle forme che gli stanno dentro", () => {
-    // Il rettangolo sotto e, sopra, tre lati di un quadrato che lo circondano
-    // senza chiudersi. Cliccare al centro deve prendere il rettangolo: il
-    // contorno aperto lì non ha inchiostro.
+  it("an OPEN vector does not steal clicks from the shapes inside it", () => {
+    // The rectangle below and, on top, three sides of a square surrounding it
+    // without closing. Clicking at the center must take the rectangle: the open
+    // outline has no ink there.
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("r", rect("r", 0, 0, "a0"));
     s.nodes = s.nodes.set("v", vectorNode("v", [{
@@ -114,13 +114,13 @@ describe("hitTest", () => {
       closed: false,
     }], { orderKey: "a1" }));
     expect(hitTest(s, 25, 25, Z1)).toBe("r");
-    expect(hitTest(s, 25, 49, Z1)).toBe("v");  // sul lato, dove l'inchiostro c'è
+    expect(hitTest(s, 25, 49, Z1)).toBe("v");  // on the side, where the ink is
   });
 });
 
-// page1 > g(100,50) > h(10,20) > k(3,4): tre livelli, ogni livello con uno
-// scostamento diverso da zero su entrambi gli assi. In coordinate MONDO
-// l'angolo di "k" cade a (113,74) e il suo box 50x50 arriva a (163,124).
+// page1 > g(100,50) > h(10,20) > k(3,4): three levels, each level with a
+// non-zero offset on both axes. In WORLD coordinates
+// the corner of "k" lands at (113,74) and its 50x50 box reaches (163,124).
 function nestedScene() {
   const s = emptyScene("d", "n");
   s.nodes = s.nodes.set("g", childRect("g", "page1", 100, 50, "a0", { width: 400, height: 400 }));
@@ -132,72 +132,72 @@ function nestedScene() {
 describe("hitTest with nesting", () => {
   it("finds a nested node at its WORLD position, not at its local one", () => {
     const s = nestedScene();
-    // Il centro di "k" in coordinate mondo: 113+25, 74+25.
+    // The center of "k" in world coordinates: 113+25, 74+25.
     expect(hitTest(s, 138, 99, Z1)).toBe("k");
-    // Le sue coordinate LOCALI (3,4) non sono un punto di "k" nel mondo: lì
-    // sotto c'è soltanto il suo bisnonno "g"... anzi nemmeno lui, "g" parte a
-    // (100,50). Un hit-test rimasto piatto risponderebbe "k".
+    // Its LOCAL coordinates (3,4) are not a point of "k" in the world: there
+    // below there is only its great-grandfather "g"... actually not even it, "g" starts at
+    // (100,50). A hit-test that stayed flat would answer "k".
     expect(hitTest(s, 5, 6, Z1)).toBeNull();
   });
 
   it("returns the innermost node: a child is drawn above its container", () => {
     const s = nestedScene();
-    // (120, 80) sta dentro g, dentro h, e dentro k: vince il più interno.
+    // (120, 80) is inside g, inside h, and inside k: the innermost wins.
     expect(hitTest(s, 120, 80, Z1)).toBe("k");
-    // Dentro g e h ma fuori da k (k finisce a x=163).
+    // Inside g and h but outside k (k ends at x=163).
     expect(hitTest(s, 200, 100, Z1)).toBe("h");
-    // Solo dentro g (h finisce a x=310 nel mondo).
+    // Only inside g (h ends at x=310 in the world).
     expect(hitTest(s, 400, 100, Z1)).toBe("g");
   });
 
   it("orders across containers by the tree, not by a flat orderKey comparison", () => {
     const s = emptyScene("d", "n");
-    // Due contenitori sovrapposti: "sotto" ha l'orderKey minore, quindi il suo
-    // sottoalbero sta TUTTO sotto quello di "sopra" -- anche se il figlio di
-    // "sotto" ha l'orderKey più grande di tutti.
-    s.nodes = s.nodes.set("sotto", childRect("sotto", "page1", 0, 0, "a0", { width: 200, height: 200 }));
-    s.nodes = s.nodes.set("sopra", childRect("sopra", "page1", 0, 0, "a1", { width: 200, height: 200 }));
-    s.nodes = s.nodes.set("figlioSotto", childRect("figlioSotto", "sotto", 0, 0, "z9"));
-    s.nodes = s.nodes.set("figlioSopra", childRect("figlioSopra", "sopra", 0, 0, "a0"));
-    expect(hitTest(s, 25, 25, Z1)).toBe("figlioSopra");
+    // Two overlapping containers: "below" has the smaller orderKey, so its
+    // subtree sits ENTIRELY below that of "above" -- even if the child of
+    // "below" has the greatest orderKey of all.
+    s.nodes = s.nodes.set("below", childRect("below", "page1", 0, 0, "a0", { width: 200, height: 200 }));
+    s.nodes = s.nodes.set("above", childRect("above", "page1", 0, 0, "a1", { width: 200, height: 200 }));
+    s.nodes = s.nodes.set("childBelow", childRect("childBelow", "below", 0, 0, "z9"));
+    s.nodes = s.nodes.set("childAbove", childRect("childAbove", "above", 0, 0, "a0"));
+    expect(hitTest(s, 25, 25, Z1)).toBe("childAbove");
   });
 
   it("skips the whole subtree of an invisible container", () => {
     const s = nestedScene();
     s.nodes = s.nodes.set("h", { ...s.nodes.at("h"), visible: false });
-    // "k" è visibile ma sta dentro un contenitore nascosto: non si disegna,
-    // quindi non si clicca. Sotto resta "g", che è visibile.
+    // "k" is visible but sits inside a hidden container: it is not drawn,
+    // so it is not clicked. "g" remains below, which is visible.
     expect(hitTest(s, 138, 99, Z1)).toBe("g");
   });
 
   it("ignores a node whose parent does not exist (unreachable from any page)", () => {
     const s = emptyScene("d", "n");
-    s.nodes = s.nodes.set("orfano", childRect("orfano", "sparito", 0, 0, "a0"));
+    s.nodes = s.nodes.set("orphan", childRect("orphan", "vanished", 0, 0, "a0"));
     expect(hitTest(s, 25, 25, Z1)).toBeNull();
   });
 
-  // Un gruppo non è mai la risposta dell'hit-test: non ha geometria propria e
-  // non disegna niente, quindi non c'è nessun pixel suo sotto il puntatore. Che
-  // il CLICK poi selezioni il gruppo è una politica di selezione
-  // (store/groups.ts), e sta là apposta.
+  // A group is never the hit-test's answer: it has no geometry of its own and
+  // draws nothing, so there is no pixel of its own under the pointer. That
+  // the CLICK then selects the group is a selection policy
+  // (store/groups.ts), and lives there on purpose.
   it("never returns a group: it returns the child, and nothing in the empty space between children", () => {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("g", { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 400, height: 400 });
     s.nodes = s.nodes.set("c", childRect("c", "g", 10, 10, "a0"));
     expect(hitTest(s, 25, 25, Z1)).toBe("c");
-    // Dentro l'unione dei figli ma su nessun figlio: niente da selezionare.
+    // Inside the union of the children but on no child: nothing to select.
     expect(hitTest(s, 300, 300, Z1)).toBeNull();
   });
 });
 
-// VEDI-vs-SELEZIONA per un FRAME, lato hit-test. Un frame si colpisce sul
-// PROPRIO box (cliccare il vuoto = selezionare il frame), e -- se clipsContent
-// -- un punto sulla parte RITAGLIATA VIA di un figlio non colpisce il figlio,
-// esattamente come lì non si disegna. Senza clip il figlio sporge e si clicca.
+// SEE-vs-SELECT for a FRAME, hit-test side. A frame is hit on its
+// OWN box (clicking the void = selecting the frame), and -- if clipsContent
+// -- a point on the CLIPPED-AWAY part of a child does not hit the child,
+// exactly as it is not drawn there. Without clip the child overflows and is clicked.
 describe("hitTest with a frame", () => {
-  // Frame F (0,0 100x100) con un figlio C (local 80,80 50x50): C sporge oltre
-  // il bordo destro/basso del frame (il suo box mondo arriva a 130,130, il
-  // frame finisce a 100,100).
+  // Frame F (0,0 100x100) with a child C (local 80,80 50x50): C overflows past
+  // the frame's right/bottom edge (its world box reaches 130,130, the
+  // frame ends at 100,100).
   function framed(clips: boolean): SceneState {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("F", frameNode("F", "page1", 0, 0, 100, 100, clips));
@@ -214,50 +214,50 @@ describe("hitTest with a frame", () => {
   });
 
   it("does NOT hit a child on the part the frame clips away", () => {
-    // (120,120) sta sul figlio ma FUORI dal box del frame: il clip lo nasconde,
-    // e lì non c'è nemmeno il frame -- quindi niente.
+    // (120,120) is on the child but OUTSIDE the frame's box: the clip hides it,
+    // and there is not even the frame there -- so nothing.
     expect(hitTest(framed(true), 120, 120, Z1)).toBeNull();
   });
 
   it("DOES hit the overflowing child when the frame does not clip", () => {
-    // Stesso punto, ma senza clip il figlio sporge e si vede: si clicca.
+    // Same point, but without clip the child overflows and is seen: it is clicked.
     expect(hitTest(framed(false), 120, 120, Z1)).toBe("C");
   });
 });
 
-// La terza domanda sulla stessa discesa (la prima è "disegna", la seconda
-// "cosa c'è sotto il puntatore"): "cosa c'è dentro questo rettangolo mondo".
-// Deve rispondere con gli stessi nodi delle altre due, altrimenti il marquee
-// seleziona ciò che non si vede.
+// The third question on the same descent (the first is "draw", the second
+// "what is under the pointer"): "what is inside this world rectangle".
+// It must answer with the same nodes as the other two, otherwise the marquee
+// selects what is not seen.
 describe("nodesIntersecting", () => {
   it("returns the visible nodes whose WORLD box intersects, in draw order", () => {
     const s = nestedScene();
-    // Il box mondo di "k" è (113,74)-(163,124): un rettangolo attorno al suo
-    // angolo prende k, e con lui gli antenati che lo contengono.
+    // The world box of "k" is (113,74)-(163,124): a rectangle around its
+    // corner takes k, and with it the ancestors that contain it.
     expect(nodesIntersecting(s, { x: 105, y: 70, width: 20, height: 20 })).toEqual(["g", "h", "k"]);
-    // Le coordinate LOCALI di "k" (3,4) non sono un suo punto nel mondo.
+    // The LOCAL coordinates of "k" (3,4) are not a point of it in the world.
     expect(nodesIntersecting(s, { x: 0, y: 0, width: 10, height: 10 })).toEqual([]);
   });
 
   it("skips the whole subtree of an invisible container", () => {
     const s = nestedScene();
     s.nodes = s.nodes.set("h", { ...s.nodes.at("h"), visible: false });
-    // "k" ha visible: true, ma sta dentro un contenitore nascosto: non si
-    // disegna, quindi non si può nemmeno selezionare col marquee -- resta "g".
-    // Un filtro piatto su n.visible risponderebbe ["g", "k"].
+    // "k" has visible: true, but sits inside a hidden container: it is not
+    // drawn, so it cannot even be selected with the marquee -- "g" remains.
+    // A flat filter on n.visible would answer ["g", "k"].
     expect(nodesIntersecting(s, { x: 105, y: 70, width: 20, height: 20 })).toEqual(["g"]);
   });
 
   it("ignores a node unreachable from any page", () => {
     const s = emptyScene("d", "n");
-    s.nodes = s.nodes.set("orfano", childRect("orfano", "sparito", 0, 0, "a0"));
+    s.nodes = s.nodes.set("orphan", childRect("orphan", "vanished", 0, 0, "a0"));
     expect(nodesIntersecting(s, { x: 0, y: 0, width: 100, height: 100 })).toEqual([]);
   });
 
   it("keeps descending when a container's own box misses the rectangle", () => {
-    // Il box di un gruppo è il SUO, non l'unione dei figli: potare la discesa
-    // sull'intersezione del container perderebbe un figlio che sta dentro il
-    // marquee mentre il suo container ne sta fuori.
+    // A group's box is ITS OWN, not the union of the children: pruning the descent
+    // on the container's intersection would lose a child that is inside the
+    // marquee while its container is outside it.
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("g", childRect("g", "page1", 0, 0, "a0", { width: 10, height: 10 }));
     s.nodes = s.nodes.set("c", childRect("c", "g", 500, 500, "a0"));
@@ -270,28 +270,28 @@ describe("nodesIntersecting", () => {
     expect(nodesIntersecting(s, { x: 0, y: 0, width: 50, height: 50 })).toEqual([]);
   });
 
-  // La stessa regola di hitTest, dall'altro lato: un gruppo non si disegna,
-  // quindi non lo si può nemmeno prendere col marquee. Il suo box NON è la sua
-  // cornice, e alla creazione è 0x0 sull'origine del parent: senza il ramo
-  // esplicito una banda attorno all'origine lo prenderebbe -- boundsIntersect
-  // confronta bordi opposti con < / >, e un box degenere STRETTAMENTE dentro la
-  // banda interseca. A metterlo in selezione ci pensa la politica
-  // (store/groups.ts::selectionTargetsOf) partendo dai figli.
+  // The same rule as hitTest, from the other side: a group is not drawn,
+  // so it cannot even be taken with the marquee. Its box is NOT its
+  // frame, and at creation it is 0x0 at the parent's origin: without the
+  // explicit branch a band around the origin would take it -- boundsIntersect
+  // compares opposite edges with < / >, and a degenerate box STRICTLY inside the
+  // band intersects. Putting it in the selection is the job of the policy
+  // (store/groups.ts::selectionTargetsOf) starting from the children.
   it("never returns a group: its degenerate box at the parent origin is not a frame", () => {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("g", { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 0, height: 0 });
     s.nodes = s.nodes.set("c", childRect("c", "g", 100, 100, "a0")); // 50x50 -> (100,100)-(150,150)
-    // Una banda attorno all'origine: il contenuto del gruppo è 100px fuori.
+    // A band around the origin: the group's content is 100px away.
     expect(nodesIntersecting(s, { x: -5, y: -5, width: 10, height: 10 })).toEqual([]);
-    // E quando la banda prende il figlio, la risposta è il FIGLIO: il gruppo lo
-    // aggiunge selectionTargetsOf, non questa discesa.
+    // And when the band takes the child, the answer is the CHILD: the group is
+    // added by selectionTargetsOf, not by this descent.
     expect(nodesIntersecting(s, { x: 90, y: 90, width: 30, height: 30 })).toEqual(["c"]);
   });
 
   it("never returns a group even when it carries a non-zero box", () => {
-    // width/height su un gruppo non li scrive nessun gesto, ma possono arrivare
-    // da un documento di un'altra versione: il ramo è sul KIND, non sul box
-    // degenere, esattamente come in drawNode e in hitTestNode.
+    // width/height on a group are not written by any gesture, but may arrive
+    // from a document of another version: the branch is on the KIND, not on the
+    // degenerate box, exactly as in drawNode and hitTestNode.
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("g", { ...childRect("g", "page1", 0, 0, "a0"), kind: "group", width: 400, height: 400 });
     s.nodes = s.nodes.set("c", childRect("c", "g", 300, 300, "a0"));
@@ -300,10 +300,10 @@ describe("nodesIntersecting", () => {
   });
 });
 
-// VEDI-vs-SELEZIONA per un FRAME, lato marquee. La banda prende il frame sul
-// suo box (come un rettangolo); e -- se clipsContent -- NON prende un figlio
-// nell'area che il frame ritaglia via, perché lì il figlio non si vede. Senza
-// clip il figlio sporge e la banda lo prende.
+// SEE-vs-SELECT for a FRAME, marquee side. The band takes the frame on its
+// box (like a rectangle); and -- if clipsContent -- does NOT take a child
+// in the area the frame clips away, because there the child is not seen. Without
+// clip the child overflows and the band takes it.
 describe("nodesIntersecting with a frame", () => {
   function framed(clips: boolean): SceneState {
     const s = emptyScene("d", "n");
@@ -313,18 +313,18 @@ describe("nodesIntersecting with a frame", () => {
   }
 
   it("takes the frame on its own box, and a child on its visible (in-frame) part", () => {
-    // Banda (85,85)-(95,95): dentro il frame e sulla parte visibile di C.
+    // Band (85,85)-(95,95): inside the frame and on the visible part of C.
     expect(nodesIntersecting(framed(true), { x: 85, y: 85, width: 10, height: 10 })).toEqual(["F", "C"]);
   });
 
   it("does NOT take a child through the area the frame clips away", () => {
-    // Banda (110,110)-(120,120): tutta oltre il bordo del frame, sul pezzo di C
-    // ritagliato via. Non prende C (clip) né F (la banda è fuori dal suo box).
+    // Band (110,110)-(120,120): entirely beyond the frame's edge, on the piece of C
+    // clipped away. It takes neither C (clip) nor F (the band is outside its box).
     expect(nodesIntersecting(framed(true), { x: 110, y: 110, width: 10, height: 10 })).toEqual([]);
   });
 
   it("takes the overflowing child there when the frame does not clip", () => {
-    // Stessa banda: senza clip il pezzo di C che sporge si vede, e si prende.
+    // Same band: without clip the piece of C that overflows is seen, and is taken.
     expect(nodesIntersecting(framed(false), { x: 110, y: 110, width: 10, height: 10 })).toEqual(["C"]);
   });
 });
@@ -337,27 +337,27 @@ function textNode(over: Partial<NodeLite> = {}): NodeLite {
     ...over };
 }
 
-// ctx duck-typed: jsdom non ha né il canvas 2D né Path2D. Una scena di solo
-// testo non passa mai da nodePath, quindi drawScene è testabile qui.
+// duck-typed ctx: jsdom has neither canvas 2D nor Path2D. A text-only scene
+// never goes through nodePath, so drawScene is testable here.
 //
-// Il finto ctx tiene la TRASLAZIONE corrente con una pila per save/restore, che
-// è esattamente ciò che drawScene applica scendendo l'albero: le coordinate
-// registrate in `fillText` sono quindi quelle MONDO (i test usano la camera
-// identità), non quelle locali del nodo. Senza questo, un annidamento
-// sbagliato passerebbe inosservato -- il testo verrebbe registrato con le sue
-// coordinate locali in ogni caso.
+// The fake ctx keeps the current TRANSLATION with a stack for save/restore, which
+// is exactly what drawScene applies when descending the tree: the coordinates
+// recorded in `fillText` are therefore the WORLD ones (tests use the identity
+// camera), not the node's local ones. Without this, a wrong
+// nesting would go unnoticed -- the text would be recorded with its local
+// coordinates in any case.
 function fakeCtx() {
   const fillText: { text: string; x: number; y: number }[] = [];
   const fills: { path: unknown; rule: unknown }[] = [];
   const strokes: { path: unknown; lineWidth: number; strokeStyle: string; cap: string }[] = [];
   const clips: unknown[] = [];
-  // Le chiamate che compongono la trasformazione di un nodo RUOTATO, in ordine
-  // (traccia 2): drawScene le emette solo attorno ai nodi con rotation != 0,
-  // quindi una scena ferma deve lasciare questa lista vuota.
+  // The calls that compose the transform of a ROTATED node, in order
+  // (track 2): drawScene emits them only around nodes with rotation != 0,
+  // so a still scene must leave this list empty.
   const xform: { op: string; args: number[] }[] = [];
-  // La traslazione corrente e la sua pila (traccia 1, annidamento): save/restore
-  // e transform la muovono, così le coordinate registrate in fillText sono
-  // quelle MONDO (i test usano la camera identità), non quelle locali del nodo.
+  // The current translation and its stack (track 1, nesting): save/restore
+  // and transform move it, so the coordinates recorded in fillText are
+  // the WORLD ones (tests use the identity camera), not the node's local ones.
   let cur = { x: 0, y: 0 };
   const stack: { x: number; y: number }[] = [];
   const ctx = {
@@ -371,9 +371,9 @@ function fakeCtx() {
     translate: (x: number, y: number) => { cur = { x: cur.x + x, y: cur.y + y }; xform.push({ op: "translate", args: [x, y] }); },
     rotate: (r: number) => { xform.push({ op: "rotate", args: [r] }); },
     transform: (a: number, b: number, c: number, d: number, e: number, f: number) => {
-      // La discesa nell'albero: solo traslazioni per ora (se arrivasse una scala
-      // o una rotazione fra i container questo finto ctx andrebbe reso matrice).
-      // NON entra in `xform`, che registra la sola rotazione dei nodi.
+      // The descent into the tree: translations only for now (if a scale
+      // or a rotation arrived between containers this fake ctx would have to become a matrix).
+      // It does NOT enter `xform`, which records only the nodes' rotation.
       cur = { x: cur.x + e, y: cur.y + f };
       void a; void b; void c; void d;
     },
@@ -384,8 +384,8 @@ function fakeCtx() {
     stroke: (p: unknown) => {
       strokes.push({ path: p, lineWidth: ctx.lineWidth, strokeStyle: ctx.strokeStyle, cap: ctx.lineCap });
     },
-    // Il clip di un frame: si registra la sub-path ricevuta (uno stub FakePath2D
-    // con le sue ops) così il test può leggere il box a cui il frame ritaglia.
+    // A frame's clip: the received sub-path is recorded (a FakePath2D stub
+    // with its ops) so the test can read the box the frame clips to.
     clip: (p: unknown) => { clips.push(p); },
   };
   return {
@@ -395,7 +395,7 @@ function fakeCtx() {
     strokes,
     clips,
     xform,
-    // Quanti save() non hanno ancora ricevuto il loro restore().
+    // How many save()s have not yet received their restore().
     open: () => stack.length,
   };
 }
@@ -407,13 +407,13 @@ describe("drawScene", () => {
     const f = fakeCtx();
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
     expect(f.fillText.map((c) => c.text)).toEqual(["hi"]);
-    expect(f.fills).toEqual([]); // niente riempimento del rettangolo sotto il testo
+    expect(f.fills).toEqual([]); // no fill of the rectangle under the text
   });
 
   it("still draws a text node whose height has not been measured yet", () => {
-    // L'altezza di un testo la produce il LAYOUT, non il box: un nodo con
-    // height 0 deve comunque comparire, altrimenti il testo appena scritto
-    // resterebbe invisibile finché qualcuno non aggiorna height.
+    // A text's height is produced by the LAYOUT, not by the box: a node with
+    // height 0 must still appear, otherwise the just-written text
+    // would stay invisible until someone updates height.
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("t", textNode({ height: 0 }));
     const f = fakeCtx();
@@ -429,9 +429,9 @@ describe("drawScene", () => {
     expect(f.fillText).toEqual([]);
   });
 
-  // --- rotazione ------------------------------------------------------------
-  // Il nodo si disegna sempre col suo path NON ruotato: a ruotare è il
-  // CONTESTO, attorno al CENTRO del box (la convenzione di canvas/transform.ts).
+  // --- rotation -------------------------------------------------------------
+  // The node is always drawn with its UNROTATED path: it is the
+  // CONTEXT that rotates, around the box CENTER (the canvas/transform.ts convention).
 
   it("rotates a node about the CENTRE of its box, and undoes the transform after", () => {
     const s = emptyScene("d", "n");
@@ -444,13 +444,13 @@ describe("drawScene", () => {
     expect(f.xform[1].args).toEqual([110, 40]);
     expect(f.xform[2].args[0]).toBeCloseTo(Math.PI / 2, 12); // gradi -> radianti
     expect(f.xform[3].args).toEqual([-110, -40]);
-    // e il nodo viene comunque disegnato, alle sue coordinate di sempre
+    // and the node is drawn anyway, at its usual coordinates
     expect(f.fillText.map((c) => c.text)).toEqual(["hi"]);
   });
 
   it("emits no transform at all for an unrotated scene", () => {
-    // Solo testo: nodePath (e quindi Path2D, che qui non esiste) non entra in
-    // gioco -- stessa ragione per cui lo evitano i test qui sopra.
+    // Text only: nodePath (and therefore Path2D, which does not exist here) does not come into
+    // play -- same reason the tests above avoid it.
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("t", textNode());
     s.nodes = s.nodes.set("u", textNode({ id: "u", orderKey: "a2", rotation: 0 }));
@@ -460,20 +460,20 @@ describe("drawScene", () => {
   });
 });
 
-// --- il TRATTO -----------------------------------------------------------------
+// --- the STROKE ----------------------------------------------------------------
 //
-// Il canvas 2D sa tracciare SOLO centrato: INSIDE e OUTSIDE si ottengono
-// raddoppiando la larghezza (così la metà che sopravvive è esattamente il peso
-// chiesto) e RITAGLIANDO il lato che non serve. Questi test fissano le tre
-// ricette, perché sono l'unico posto in cui "align" diventa qualcosa di
-// osservabile sul canvas.
+// Canvas 2D can ONLY stroke centered: INSIDE and OUTSIDE are obtained by
+// doubling the width (so the half that survives is exactly the requested
+// weight) and CLIPPING the side that is not needed. These tests pin down the three
+// recipes, because they are the only place where "align" becomes something
+// observable on the canvas.
 
 interface StrokeCall { path: unknown; lineWidth: number; strokeStyle: string }
 interface ClipCall { path: unknown; rule?: string }
 
-// Come fakeCtx, ma con quel che serve al tratto: stroke/clip/save/restore e i
-// due attributi di stato letti al momento della chiamata (il ctx è stateful, e
-// leggerli DOPO direbbe solo l'ultimo valore scritto).
+// Like fakeCtx, but with what the stroke needs: stroke/clip/save/restore and the
+// two state attributes read at the time of the call (the ctx is stateful, and
+// reading them AFTER would only tell the last value written).
 function strokeCtx() {
   const fills: unknown[] = [];
   const strokes: StrokeCall[] = [];
@@ -510,7 +510,7 @@ function strokedRect(over: Partial<NodeLite> = {}): NodeLite {
 
 const RED: FillLite = { r: 1, g: 0, b: 0, a: 1 };
 
-describe("drawScene: tratto", () => {
+describe("drawScene: stroke", () => {
   beforeEach(() => { vi.stubGlobal("Path2D", FakePath2D); });
   afterEach(() => { vi.unstubAllGlobals(); });
 
@@ -520,7 +520,7 @@ describe("drawScene: tratto", () => {
     return s;
   }
 
-  it("un nodo SENZA tratti non traccia niente e non ritaglia niente", () => {
+  it("a node WITHOUT strokes strokes nothing and clips nothing", () => {
     const f = strokeCtx();
     drawScene(f.ctx, sceneWith(strokedRect()), { x: 0, y: 0, zoom: 1 } as Camera);
     expect(f.strokes).toEqual([]);
@@ -528,40 +528,40 @@ describe("drawScene: tratto", () => {
     expect(f.order).toEqual(["fill"]);
   });
 
-  it("CENTER: traccia lo STESSO path del riempimento, con lineWidth = peso, dopo il fill", () => {
+  it("CENTER: strokes the SAME path as the fill, with lineWidth = weight, after the fill", () => {
     const f = strokeCtx();
     const n = strokedRect({ strokes: [{ color: RED, weight: 6, align: "center" }] });
     drawScene(f.ctx, sceneWith(n), { x: 0, y: 0, zoom: 1 } as Camera);
 
     expect(f.strokes).toHaveLength(1);
-    // LO STESSO oggetto: il tratto segue la geometria del riempimento per
-    // costruzione, non per una seconda costruzione destinata a divergere.
+    // THE SAME object: the stroke follows the fill's geometry by
+    // construction, not by a second construction destined to diverge.
     expect(f.strokes[0].path).toBe(f.fills[0]);
     expect(f.strokes[0].lineWidth).toBe(6);
     expect(f.strokes[0].strokeStyle).toBe("rgba(255, 0, 0, 1)");
-    // Il tratto sta SOPRA il riempimento, come in ogni editor.
+    // The stroke sits ABOVE the fill, as in every editor.
     expect(f.order).toEqual(["fill", "stroke"]);
-    // Nessun clip: il centrato è l'unico che il canvas sa fare da solo.
+    // No clip: the centered one is the only one the canvas can do by itself.
     expect(f.clips).toEqual([]);
   });
 
-  it("INSIDE: ritaglia DENTRO la forma e raddoppia la larghezza", () => {
+  it("INSIDE: clips INSIDE the shape and doubles the width", () => {
     const f = strokeCtx();
     const n = strokedRect({ strokes: [{ color: RED, weight: 6, align: "inside" }] });
     drawScene(f.ctx, sceneWith(n), { x: 0, y: 0, zoom: 1 } as Camera);
 
     expect(f.clips).toHaveLength(1);
-    // Il clip è il path della forma stessa, senza regola di riempimento.
+    // The clip is the shape's own path, with no fill rule.
     expect(f.clips[0].path).toBe(f.fills[0]);
     expect(f.clips[0].rule).toBeUndefined();
-    // 12 e non 6: metà cade fuori e viene ritagliata, la metà che resta DENTRO
-    // è esattamente il peso chiesto.
+    // 12 and not 6: half falls outside and is clipped, the half that stays INSIDE
+    // is exactly the requested weight.
     expect(f.strokes[0].lineWidth).toBe(12);
-    // E il clip è confinato in un save/restore: non deve sopravvivere al nodo.
+    // And the clip is confined to a save/restore: it must not outlive the node.
     expect(f.order).toEqual(["fill", "save", "clip", "stroke", "restore"]);
   });
 
-  it("OUTSIDE: ritaglia il COMPLEMENTO della forma (evenodd) e raddoppia la larghezza", () => {
+  it("OUTSIDE: clips the COMPLEMENT of the shape (evenodd) and doubles the width", () => {
     const f = strokeCtx();
     const n = strokedRect({ strokes: [{ color: RED, weight: 6, align: "outside" }] });
     drawScene(f.ctx, sceneWith(n), { x: 0, y: 0, zoom: 1 } as Camera);
@@ -569,13 +569,13 @@ describe("drawScene: tratto", () => {
     expect(f.clips).toHaveLength(1);
     expect(f.clips[0].rule).toBe("evenodd");
     const clip = f.clips[0].path as FakePath2D;
-    // Un rettangolo che copre tutta la fascia esterna PIÙ la forma: con
-    // evenodd, i punti dentro la forma attraversano due bordi (pari) e restano
-    // FUORI dal clip. È il complemento, senza dover invertire un path.
+    // A rectangle that covers the whole outer band PLUS the shape: with
+    // evenodd, points inside the shape cross two edges (even) and stay
+    // OUTSIDE the clip. It is the complement, without having to invert a path.
     expect(clip.ops.map((o) => o.op)).toEqual(["rect", "addPath"]);
-    // rect: il box del nodo (50x50 in 0,0) allargato di quanto il tratto può
-    // sporgere, con un margine perché il rettangolo di clip non tagli il bordo
-    // esterno della fascia.
+    // rect: the node's box (50x50 at 0,0) widened by as much as the stroke can
+    // overhang, with a margin so the clip rectangle does not cut the outer
+    // edge of the band.
     const [rx, ry, rw, rh] = clip.ops[0].args as number[];
     expect(rx).toBeLessThanOrEqual(-6);
     expect(ry).toBeLessThanOrEqual(-6);
@@ -586,7 +586,7 @@ describe("drawScene: tratto", () => {
     expect(f.order).toEqual(["fill", "save", "clip", "stroke", "restore"]);
   });
 
-  it("un peso non positivo non traccia niente (non è un tratto sottilissimo: non c'è)", () => {
+  it("a non-positive weight strokes nothing (it is not a very thin stroke: it does not exist)", () => {
     const f = strokeCtx();
     const n = strokedRect({ strokes: [
       { color: RED, weight: 0, align: "center" },
@@ -597,7 +597,7 @@ describe("drawScene: tratto", () => {
     expect(f.clips).toEqual([]);
   });
 
-  it("più tratti si disegnano NELL'ORDINE della lista, l'ultimo sopra", () => {
+  it("several strokes are drawn IN THE LIST'S ORDER, the last on top", () => {
     const f = strokeCtx();
     const n = strokedRect({ strokes: [
       { color: RED, weight: 8, align: "center" },
@@ -610,26 +610,26 @@ describe("drawScene: tratto", () => {
     ]);
   });
 
-  it("un nodo INVISIBILE non traccia niente", () => {
+  it("an INVISIBLE node strokes nothing", () => {
     const f = strokeCtx();
     const n = strokedRect({ visible: false, strokes: [{ color: RED, weight: 6, align: "center" }] });
     drawScene(f.ctx, sceneWith(n), { x: 0, y: 0, zoom: 1 } as Camera);
     expect(f.strokes).toEqual([]);
   });
 
-  it("il TESTO si traccia con strokeText, riga per riga, sopra i glifi riempiti", () => {
+  it("TEXT is stroked with strokeText, line by line, on top of the filled glyphs", () => {
     const f = strokeCtx();
     const n = { ...textNode(), strokes: [{ color: RED, weight: 3, align: "center" as const }] };
     drawScene(f.ctx, sceneWith(n), { x: 0, y: 0, zoom: 1 } as Camera);
 
     expect(f.strokeText.map((c) => c.text)).toEqual(["hi"]);
     expect(f.order).toEqual(["fillText", "strokeText"]);
-    // Nessun clip: un glifo non ha un Path2D da ritagliare, quindi il tratto
-    // del testo è SEMPRE centrato -- vedi il commento in renderer/text.ts.
+    // No clip: a glyph has no Path2D to clip, so the text's stroke
+    // is ALWAYS centered -- see the comment in renderer/text.ts.
     expect(f.clips).toEqual([]);
   });
 
-  it("il testo non ritaglia nemmeno con align inside/outside: resta centrato", () => {
+  it("text does not clip even with align inside/outside: it stays centered", () => {
     const f = strokeCtx();
     const n = { ...textNode(), strokes: [{ color: RED, weight: 3, align: "outside" as const }] };
     drawScene(f.ctx, sceneWith(n), { x: 0, y: 0, zoom: 1 } as Camera);
@@ -638,15 +638,15 @@ describe("drawScene: tratto", () => {
   });
 
   it("still draws a vector node with a degenerate axis, but not a degenerate RECT", () => {
-    // Il box di un nodo vettoriale è la bbox ESATTA della sua geometria
-    // (invariante del proto), quindi un segmento orizzontale ha davvero height
-    // 0. Scartarlo qui lo renderebbe invisibile -- e, con lo stesso guard
-    // nell'hit-test, nemmeno cliccabile: raggiungibile solo dal pannello
-    // livelli.
+    // A vector node's box is the EXACT bbox of its geometry
+    // (proto invariant), so a horizontal segment really has height
+    // 0. Discarding it here would make it invisible -- and, with the same guard
+    // in hit-test, not even clickable: reachable only from the layers
+    // panel.
     //
-    // Il rettangolo degenere invece resta scartato: lì l'inchiostro È il box e
-    // non c'è niente da riempire. È la distinzione che vive in
-    // shapes.ts::inkIsBox, condivisa da disegno e hit-test.
+    // The degenerate rectangle instead stays discarded: there the ink IS the box and
+    // there is nothing to fill. It is the distinction that lives in
+    // shapes.ts::inkIsBox, shared by drawing and hit-test.
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
@@ -667,11 +667,11 @@ describe("drawScene: tratto", () => {
     }
   });
 
-  it("un vettoriale CHIUSO si riempie con la regola even-odd, e si traccia comunque", () => {
-    // La regola non è il default del canvas ("nonzero"), quindi va passata
-    // esplicitamente -- ed è la stessa che usa l'hit-test. Con nonzero un
-    // contorno interno percorso nello stesso verso di quello esterno NON
-    // sarebbe un buco, e il disegno smetterebbe di corrispondere al click.
+  it("a CLOSED vector is filled with the even-odd rule, and stroked anyway", () => {
+    // The rule is not the canvas default ("nonzero"), so it must be passed
+    // explicitly -- and it is the same one hit-test uses. With nonzero an inner
+    // outline traversed in the same direction as the outer one would NOT
+    // be a hole, and the drawing would stop matching the click.
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
@@ -683,20 +683,20 @@ describe("drawScene: tratto", () => {
       drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
       expect(f.fills).toHaveLength(1);
       expect(f.fills[0].rule).toBe("evenodd");
-      // Il tratto c'è anche qui. Sul colore è invisibile (è la stessa tinta del
-      // riempimento, mezzo spessore in più di forma), ma è ciò che tiene visibile
-      // un contorno chiuso di AREA NULLA -- vedi il test qui sotto.
+      // The stroke is here too. On color it is invisible (it is the same tint as the
+      // fill, half a thickness more of shape), but it is what keeps visible
+      // a closed outline of ZERO AREA -- see the test below.
       expect(f.strokes).toHaveLength(1);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("un vettoriale CHIUSO di AREA NULLA si dipinge lo stesso: il tratto c'è", () => {
-    // A -> B -> A, ciò che il pen tool produce chiudendo un path di due punti.
-    // La fill non dipinge niente (even-odd su un contorno senza area), quindi
-    // senza la stroke il nodo sarebbe INVISIBILE. Il caso è raggiungibile con
-    // tre click, non è un limite.
+  it("a CLOSED vector of ZERO AREA is painted all the same: the stroke is there", () => {
+    // A -> B -> A, what the pen tool produces by closing a two-point path.
+    // The fill paints nothing (even-odd on an outline with no area), so
+    // without the stroke the node would be INVISIBLE. The case is reachable with
+    // three clicks, it is not a limit.
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
@@ -711,11 +711,11 @@ describe("drawScene: tratto", () => {
     }
   });
 
-  it("un vettoriale APERTO si TRACCIA, con uno spessore costante in px schermo", () => {
-    // Un contorno aperto non si riempie: senza tratto non esisterebbe sullo
-    // schermo, e il pen tool disegnerebbe alla cieca. Il ctx è già in
-    // trasformazione mondo (zoom applicato), quindi lo spessore va diviso per
-    // lo zoom -- altrimenti la linea si ingrasserebbe insieme al disegno.
+  it("an OPEN vector is STROKED, with a constant on-screen thickness in px", () => {
+    // An open outline is not filled: without a stroke it would not exist on
+    // screen, and the pen tool would draw blind. The ctx is already in
+    // world transform (zoom applied), so the thickness must be divided by
+    // the zoom -- otherwise the line would thicken along with the drawing.
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
@@ -728,8 +728,8 @@ describe("drawScene: tratto", () => {
         expect(f.fills).toEqual([]);
         expect(f.strokes).toHaveLength(1);
         expect(f.strokes[0].lineWidth).toBeCloseTo(VECTOR_STROKE_PX / zoom, 10);
-        // Il modello non ha un colore di tratto: si usa quello del riempimento,
-        // l'unica tinta che conosce.
+        // The model has no stroke color: the fill's is used,
+        // the only tint it knows.
         expect(f.strokes[0].strokeStyle).toBe("rgba(0, 0, 0, 1)");
       }
     } finally {
@@ -737,7 +737,7 @@ describe("drawScene: tratto", () => {
     }
   });
 
-  it("un nodo con contorni aperti E chiusi paga una fill e una stroke", () => {
+  it("a node with open AND closed outlines pays one fill and one stroke", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
@@ -749,17 +749,17 @@ describe("drawScene: tratto", () => {
       drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera);
       expect(f.fills).toHaveLength(1);
       expect(f.strokes).toHaveLength(1);
-      // Due Path2D DIVERSI: nello stesso, il canvas chiuderebbe implicitamente
-      // anche il contorno aperto e lo riempirebbe.
+      // Two DIFFERENT Path2Ds: in the same one, the canvas would implicitly close
+      // the open outline too and fill it.
       expect(f.fills[0].path).not.toBe(f.strokes[0].path);
     } finally {
       vi.unstubAllGlobals();
     }
   });
 
-  it("un vettoriale senza geometria non dipinge niente", () => {
-    // Nessuna fill a vuoto e nessuna stroke a vuoto: è anche la ragione per cui
-    // l'hit-test non lo colpisce (niente inchiostro, niente bersaglio).
+  it("a vector without geometry paints nothing", () => {
+    // No empty fill and no empty stroke: it is also the reason hit-test
+    // does not hit it (no ink, no target).
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
@@ -774,9 +774,9 @@ describe("drawScene: tratto", () => {
   });
 });
 
-// Un nodo testo con fontSize 16 e lineHeight non specificato: interlinea
-// 16*1.2 = 19.2 e ascent (19.2-16)/2 + 16*0.8 = 14.4 (vedi renderer/text.ts).
-// La baseline della prima riga cade quindi a y + 14.4.
+// A text node with fontSize 16 and unspecified lineHeight: line spacing
+// 16*1.2 = 19.2 and ascent (19.2-16)/2 + 16*0.8 = 14.4 (see renderer/text.ts).
+// The baseline of the first line therefore falls at y + 14.4.
 const ASCENT = 14.4;
 const identityCam = { x: 0, y: 0, zoom: 1 } as Camera;
 
@@ -794,7 +794,7 @@ describe("drawScene with nesting", () => {
     drawScene(f.ctx, s, identityCam);
     expect(f.fillText).toEqual([
       { text: "P", x: 100, y: 50 + ASCENT },
-      // (3,4) è RELATIVO a P: nel mondo cade a (103, 54).
+      // (3,4) is RELATIVE to P: in the world it lands at (103, 54).
       { text: "C", x: 103, y: 54 + ASCENT },
     ]);
   });
@@ -824,22 +824,22 @@ describe("drawScene with nesting", () => {
   });
 
   it("descends into a container with a degenerate box (a group has no box of its own)", () => {
-    // Il guard sulla dimensione salta il DISEGNO del contenitore, non la
-    // discesa: un gruppo (traccia 1, task 3) non ha nulla da riempire ma i suoi
-    // figli devono comparire, e alla loro posizione mondo.
+    // The size guard skips DRAWING the container, not the
+    // descent: a group (track 1, task 3) has nothing to fill but its
+    // children must appear, and at their world position.
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("g", { ...rect("g", 100, 50, "a0"), width: 0, height: 0 });
     s.nodes = s.nodes.set("C", textAt("C", "g", 3, 4));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
-    expect(f.fills).toEqual([]); // niente Path2D per il contenitore degenere
+    expect(f.fills).toEqual([]); // no Path2D for the degenerate container
     expect(f.fillText).toEqual([{ text: "C", x: 103, y: 54 + ASCENT }]);
   });
 
-  // Il test qui sopra copre il contenitore DEGENERE; un gruppo non si disegna
-  // MAI, nemmeno con un box addosso -- non ha geometria propria (i suoi bounds
-  // sono l'unione dei figli, vedi store/groups.ts). Senza il ramo esplicito
-  // comparirebbe un rettangolo pieno che l'utente non ha mai disegnato.
+  // The test above covers the DEGENERATE container; a group is NEVER drawn,
+  // not even with a box on it -- it has no geometry of its own (its bounds
+  // are the union of the children, see store/groups.ts). Without the explicit branch
+  // a solid rectangle the user never drew would appear.
   it("never fills a group, whatever box it carries, but draws its children", () => {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("g", { ...rect("g", 100, 50, "a0"), kind: "group", width: 400, height: 400 });
@@ -870,7 +870,7 @@ describe("drawScene with nesting", () => {
 
   it("does not draw a node unreachable from any page", () => {
     const s = emptyScene("d", "n");
-    s.nodes = s.nodes.set("orfano", textAt("orfano", "sparito", 0, 0));
+    s.nodes = s.nodes.set("orphan", textAt("orphan", "vanished", 0, 0));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.fillText).toEqual([]);
@@ -887,11 +887,11 @@ describe("drawScene with nesting", () => {
   });
 });
 
-// UN FRAME SI DISEGNA (a differenza del gruppo): il suo box riempito coi suoi
-// fills, PRIMA dei figli (è lo sfondo dell'artboard). Se clipsContent, i figli
-// sono ritagliati al box del frame -- nello STESSO spazio locale in cui sono
-// disegnati (l'origine del frame è l'origine dei figli), quindi il box del clip
-// è (0,0,width,height).
+// A FRAME IS DRAWN (unlike the group): its box filled with its
+// fills, BEFORE the children (it is the artboard's background). If clipsContent, the children
+// are clipped to the frame's box -- in the SAME local space in which they are
+// drawn (the frame's origin is the children's origin), so the clip box
+// is (0,0,width,height).
 describe("drawScene with a frame", () => {
   beforeEach(() => { vi.stubGlobal("Path2D", FakePath2D); });
   afterEach(() => { vi.unstubAllGlobals(); });
@@ -902,10 +902,10 @@ describe("drawScene with a frame", () => {
     s.nodes = s.nodes.set("C", textAt("C", "F", 5, 5));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
-    // Il box del frame è riempito (una sola fill: il testo non passa da fill).
+    // The frame's box is filled (a single fill: text does not go through fill).
     expect(f.fills.length).toBe(1);
     expect((f.fills[0].path as FakePath2D).ops).toEqual([{ op: "rect", args: [20, 30, 100, 80] }]);
-    // E i figli si disegnano comunque, alla loro posizione mondo (dentro F).
+    // And the children are drawn anyway, at their world position (inside F).
     expect(f.fillText.map((c) => c.text)).toEqual(["C"]);
   });
 
@@ -923,8 +923,8 @@ describe("drawScene with a frame", () => {
     s.nodes = s.nodes.set("C", textAt("C", "F", 5, 5));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
-    // Il clip è al box LOCALE (0,0,w,h) -- lo spazio dei figli -- non alla x/y
-    // del frame nel parent.
+    // The clip is at the LOCAL box (0,0,w,h) -- the children's space -- not at the frame's
+    // x/y in the parent.
     expect(f.clips.length).toBe(1);
     expect((f.clips[0] as FakePath2D).ops).toEqual([{ op: "rect", args: [0, 0, 100, 80] }]);
   });
@@ -936,7 +936,7 @@ describe("drawScene with a frame", () => {
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
     expect(f.clips.length).toBe(0);
-    expect(f.fillText.map((c) => c.text)).toEqual(["C"]); // comunque disegnati
+    expect(f.fillText.map((c) => c.text)).toEqual(["C"]); // drawn anyway
   });
 
   it("does not clip for a childless clipping frame (nothing to clip)", () => {
@@ -948,16 +948,16 @@ describe("drawScene with a frame", () => {
   });
 });
 
-// SCOPING PER PAGINA CORRENTE. Il canvas mostra UNA pagina alla volta: ciò che
-// si DISEGNA, ciò che l'hit-test COLPISCE e ciò che il marquee PRENDE rispondono
-// tutti sulle radici della SOLA pagina corrente (rootsOf). currentPageId è un
-// parametro del renderer, non un campo della scena; assente ripiega sulla prima
-// pagina (il default dello store), che è il comportamento a pagina singola dei
-// test qui sopra.
-describe("scoping alla pagina corrente", () => {
-  // Due pagine, un nodo per pagina, ESATTAMENTE sovrapposti nel mondo
-  // (entrambi a (0,0), 50x50): il punto (25,25) e una banda su (0,0)-(50,50)
-  // cadono su tutti e due, quindi solo lo scoping decide quale risponde.
+// SCOPING TO THE CURRENT PAGE. The canvas shows ONE page at a time: what
+// is DRAWN, what hit-test HITS and what the marquee TAKES all answer
+// on the roots of the CURRENT page ONLY (rootsOf). currentPageId is a
+// renderer parameter, not a scene field; absent it falls back to the first
+// page (the store's default), which is the single-page behavior of the
+// tests above.
+describe("scoping to the current page", () => {
+  // Two pages, one node per page, EXACTLY overlapping in the world
+  // (both at (0,0), 50x50): the point (25,25) and a band over (0,0)-(50,50)
+  // fall on both, so only the scoping decides which one answers.
   function twoPages(): SceneState {
     const s = emptyScene("d", "n");
     s.pages = [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }];
@@ -966,15 +966,15 @@ describe("scoping alla pagina corrente", () => {
     return s;
   }
 
-  it("hitTest colpisce solo il nodo della pagina corrente", () => {
+  it("hitTest hits only the node of the current page", () => {
     const s = twoPages();
     expect(hitTest(s, 25, 25, Z1, "page1")).toBe("a");
     expect(hitTest(s, 25, 25, Z1, "page2")).toBe("b");
-    // Default (nessun currentPageId): la PRIMA pagina.
+    // Default (no currentPageId): the FIRST page.
     expect(hitTest(s, 25, 25, Z1)).toBe("a");
   });
 
-  it("nodesIntersecting prende solo i nodi della pagina corrente", () => {
+  it("nodesIntersecting takes only the nodes of the current page", () => {
     const s = twoPages();
     const band = { x: 0, y: 0, width: 50, height: 50 };
     expect(nodesIntersecting(s, band, "page1")).toEqual(["a"]);
@@ -982,7 +982,7 @@ describe("scoping alla pagina corrente", () => {
     expect(nodesIntersecting(s, band)).toEqual(["a"]);
   });
 
-  it("drawScene disegna solo le radici della pagina corrente", () => {
+  it("drawScene draws only the roots of the current page", () => {
     const s = emptyScene("d", "n");
     s.pages = [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }];
     s.nodes = s.nodes.set("A", textAt("A", "page1", 0, 0));
@@ -996,7 +996,7 @@ describe("scoping alla pagina corrente", () => {
     drawScene(f2.ctx, s, identityCam, "page2");
     expect(f2.fillText.map((c) => c.text)).toEqual(["B"]);
 
-    // Default: la prima pagina.
+    // Default: the first page.
     const f3 = fakeCtx();
     drawScene(f3.ctx, s, identityCam);
     expect(f3.fillText.map((c) => c.text)).toEqual(["A"]);
@@ -1048,7 +1048,7 @@ describe("resizeCanvasToDisplaySize", () => {
   });
 });
 
-// --- immagini (traccia 3) ----------------------------------------------------
+// --- images (track 3) --------------------------------------------------------
 
 function imageNode(over: Partial<NodeLite> = {}): NodeLite {
   return { id: "i", parentId: "page1", orderKey: "a1", name: "Image", visible: true, opacity: 1,
@@ -1056,9 +1056,9 @@ function imageNode(over: Partial<NodeLite> = {}): NodeLite {
     image: { assetHash: "abc" }, ...over };
 }
 
-// Il ctx finto guadagna quello che serve al ramo immagine. Il segnaposto è
-// disegnato con fillRect/strokeRect/moveTo e NON con un Path2D proprio perché
-// deve restare verificabile qui: jsdom non ha Path2D.
+// The fake ctx gains what the image branch needs. The placeholder is
+// drawn with fillRect/strokeRect/moveTo and NOT with a Path2D of its own because
+// it must remain verifiable here: jsdom has no Path2D.
 function imageCtx() {
   const drawn: { src: unknown; x: number; y: number; w: number; h: number }[] = [];
   const fillRects: { x: number; y: number; w: number; h: number }[] = [];
@@ -1098,8 +1098,8 @@ function images(entry: CachedImage) {
 
 const READY = { status: "ready", image: { naturalWidth: 40, naturalHeight: 20 } as HTMLImageElement } as CachedImage;
 
-describe("drawScene: immagini", () => {
-  it("disegna l'immagine decodificata nel box del nodo", () => {
+describe("drawScene: images", () => {
+  it("draws the decoded image in the node's box", () => {
     const s = emptyScene("doc-1", "n");
     s.nodes = s.nodes.set("i", imageNode());
     const f = imageCtx();
@@ -1107,15 +1107,15 @@ describe("drawScene: immagini", () => {
     drawScene(f.ctx, s, { x: 0, y: 0, zoom: 1 } as Camera, { images: src.source });
 
     expect(f.drawn).toEqual([{ src: READY.image, x: 10, y: 20, w: 320, h: 180 }]);
-    // L'hash lo si chiede per il DOCUMENTO della scena: lo stesso hash in un
-    // altro documento è un altro file.
+    // The hash is requested for the scene's DOCUMENT: the same hash in
+    // another document is another file.
     expect(src.asked).toEqual([{ docId: "doc-1", hash: "abc" }]);
-    // Niente riempimento sotto: un rettangolo grigio dietro un'immagine con
-    // trasparenza si vedrebbe attraverso.
+    // No fill underneath: a gray rectangle behind an image with
+    // transparency would show through.
     expect(f.fillRects).toEqual([]);
   });
 
-  it("un asset MANCANTE diventa un segnaposto visibile, non un'eccezione", () => {
+  it("a MISSING asset becomes a visible placeholder, not an exception", () => {
     const s = emptyScene("doc-1", "n");
     s.nodes = s.nodes.set("i", imageNode());
     const f = imageCtx();
@@ -1128,12 +1128,12 @@ describe("drawScene: immagini", () => {
     expect(f.drawn).toEqual([]);
     expect(f.fillRects).toEqual([{ x: 10, y: 20, w: 320, h: 180 }]);
     expect(f.strokeRects.length).toBe(1);
-    // La croce: due diagonali, cioè quattro punti. È ciò che distingue "manca"
-    // da "sto caricando", che altrimenti sarebbero lo stesso rettangolo grigio.
+    // The cross: two diagonals, that is four points. It is what distinguishes "missing"
+    // from "loading", which would otherwise be the same gray rectangle.
     expect(f.lines.length).toBe(4);
   });
 
-  it("un asset ANCORA IN CARICAMENTO è un segnaposto SENZA croce", () => {
+  it("an asset STILL LOADING is a placeholder WITHOUT a cross", () => {
     const s = emptyScene("doc-1", "n");
     s.nodes = s.nodes.set("i", imageNode());
     const f = imageCtx();
@@ -1145,9 +1145,9 @@ describe("drawScene: immagini", () => {
     expect(f.lines).toEqual([]);
   });
 
-  it("il bordo del segnaposto è spesso un PIXEL SCHERMO a ogni zoom", () => {
-    // Il ctx è trasformato in coordinate mondo: una lineWidth in unità mondo
-    // sparirebbe a zoom 0.1 e diventerebbe un bordo grasso a zoom 8.
+  it("the placeholder's border is ONE SCREEN PIXEL thick at every zoom", () => {
+    // The ctx is transformed into world coordinates: a lineWidth in world units
+    // would vanish at zoom 0.1 and become a fat border at zoom 8.
     const s = emptyScene("doc-1", "n");
     s.nodes = s.nodes.set("i", imageNode());
     for (const zoom of [0.25, 1, 4]) {
@@ -1159,7 +1159,7 @@ describe("drawScene: immagini", () => {
     }
   });
 
-  it("un nodo immagine degenere non disegna niente (come ogni forma senza area)", () => {
+  it("a degenerate image node draws nothing (like any shape without area)", () => {
     const s = emptyScene("doc-1", "n");
     s.nodes = s.nodes.set("i", imageNode({ width: 0 }));
     const f = imageCtx();
@@ -1168,9 +1168,9 @@ describe("drawScene: immagini", () => {
     expect(f.fillRects).toEqual([]);
   });
 
-  it("senza una sorgente iniettata usa la cache condivisa, e non lancia", () => {
-    // È il percorso VERO (App.tsx non inietta niente): in jsdom l'immagine non
-    // si carica mai, quindi resta "loading" -- ma il loop non deve morire.
+  it("without an injected source it uses the shared cache, and does not throw", () => {
+    // It is the REAL path (App.tsx injects nothing): in jsdom the image
+    // never loads, so it stays "loading" -- but the loop must not die.
     const s = emptyScene("doc-1", "n");
     s.nodes = s.nodes.set("i", imageNode());
     const f = imageCtx();
@@ -1179,14 +1179,14 @@ describe("drawScene: immagini", () => {
   });
 });
 
-// --- ISTANZE (M4) ------------------------------------------------------------
+// --- INSTANCES (M4) ----------------------------------------------------------
 //
-// Un'istanza rende il sottoalbero del suo MASTER, spostato all'origine
-// dell'istanza, con gli override per nodo. È OPACA dall'esterno: si disegna, si
-// colpisce e si prende col marquee come UN'UNITÀ, mai i nodi del master singoli.
-// I master qui vivono sotto parentId "components", NON raggiungibile da page1:
-// così non si disegnano per conto loro e si vede solo la resa virtuale
-// dell'istanza (esattamente come un componente reale sta su una pagina a parte).
+// An instance renders the subtree of its MASTER, moved to the instance's
+// origin, with per-node overrides. It is OPAQUE from outside: it is drawn, hit
+// and taken with the marquee as ONE UNIT, never the master's single nodes.
+// The masters here live under parentId "components", NOT reachable from page1:
+// so they are not drawn on their own and only the virtual rendering of the
+// instance is seen (exactly as a real component sits on a separate page).
 
 function instanceNode(
   id: string, componentId: string, x: number, y: number,
@@ -1195,9 +1195,9 @@ function instanceNode(
   return { ...rect(id, x, y, "a0"), kind: "instance", fills: [], instance: { componentId, overrides }, ...over };
 }
 
-// Un ctx che REGISTRA la fillStyle al momento della fill: serve a osservare che
-// un override cambia il COLORE del solo nodo sovrascritto. jsdom non ha Path2D,
-// quindi i test che passano di qui stubano FakePath2D.
+// A ctx that RECORDS fillStyle at the time of the fill: it serves to observe that
+// an override changes the COLOR of the overridden node only. jsdom has no Path2D,
+// so the tests going through here stub FakePath2D.
 function fillStyleCtx() {
   const fills: string[] = [];
   const ctx = {
@@ -1216,23 +1216,23 @@ function fillStyleCtx() {
 describe("drawScene with an instance", () => {
   it("draws the master subtree at the instance origin, shifted by -masterRoot.x/y", () => {
     const s = emptyScene("d", "n");
-    // Master: un gruppo a (20,10) con un testo figlio a (5,5), fuori da page1.
+    // Master: a group at (20,10) with a text child at (5,5), outside page1.
     s.nodes = s.nodes.set("gm", { ...rect("gm", 20, 10, "a0"), kind: "group", parentId: "components", width: 0, height: 0 });
     s.nodes = s.nodes.set("tc", textAt("tc", "gm", 5, 5));
     s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
     s.nodes = s.nodes.set("i", instanceNode("i", "comp", 100, 50));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
-    // L'origine del master (20,10) cade sull'origine dell'istanza (100,50); il
-    // figlio a (5,5) DAL master finisce a (105,55). La resa non dipende da DOVE
-    // sta la radice del master, solo dall'origine dell'istanza.
+    // The master's origin (20,10) lands on the instance's origin (100,50); the
+    // child at (5,5) FROM the master ends up at (105,55). The rendering does not depend on WHERE
+    // the master's root sits, only on the instance's origin.
     expect(f.fillText).toEqual([{ text: "tc", x: 105, y: 55 + ASCENT }]);
   });
 
   it("does not draw the master standalone when it is unreachable from the page", () => {
-    // Solo l'istanza è figlia di page1; il master no. Una sola resa: quella
-    // virtuale. (Se il master fosse su page1 comparirebbe DUE volte, ed è
-    // corretto -- ma qui verifichiamo che l'irraggiungibile non si disegna.)
+    // Only the instance is a child of page1; the master is not. A single rendering: the
+    // virtual one. (If the master were on page1 it would appear TWICE, which is
+    // correct -- but here we verify that the unreachable is not drawn.)
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("mt", textAt("mt", "components", 0, 0));
     s.components["comp"] = { rootNodeId: "mt", name: "Comp" };
@@ -1251,7 +1251,7 @@ describe("drawScene with an instance", () => {
     s.nodes = s.nodes.set("i", instanceNode("i", "comp", 0, 0, [{ masterNodeId: "mt", text: "OVR" }]));
     const f = fakeCtx();
     drawScene(f.ctx, s, identityCam);
-    // mt sovrascritto, mt2 dal master intatto.
+    // mt overridden, mt2 from the master untouched.
     expect(f.fillText.map((c) => c.text)).toEqual(["OVR", "mt2"]);
   });
 
@@ -1260,14 +1260,14 @@ describe("drawScene with an instance", () => {
     try {
       const s = emptyScene("d", "n");
       s.nodes = s.nodes.set("gm", { ...rect("gm", 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 });
-      // Due rettangoli neri nel master; l'override rende ROSSO solo il primo.
+      // Two black rectangles in the master; the override makes only the first RED.
       s.nodes = s.nodes.set("mr1", { ...rect("mr1", 0, 0, "a0"), parentId: "gm" });
       s.nodes = s.nodes.set("mr2", { ...rect("mr2", 0, 60, "a1"), parentId: "gm" });
       s.components["comp"] = { rootNodeId: "gm", name: "Comp" };
       s.nodes = s.nodes.set("i", instanceNode("i", "comp", 0, 0, [{ masterNodeId: "mr1", fills: [{ r: 1, g: 0, b: 0, a: 1 }] }]));
       const f = fillStyleCtx();
       drawScene(f.ctx, s, identityCam);
-      // mr1 col colore dell'override, mr2 col nero del master.
+      // mr1 with the override's color, mr2 with the master's black.
       expect(f.fills).toEqual(["rgba(255, 0, 0, 1)", "rgba(0, 0, 0, 1)"]);
     } finally {
       vi.unstubAllGlobals();
@@ -1277,7 +1277,7 @@ describe("drawScene with an instance", () => {
   it("a missing component (or missing master) renders nothing", () => {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("i", instanceNode("i", "nope", 100, 50));
-    // componente presente ma radice assente
+    // component present but root absent
     s.nodes = s.nodes.set("j", instanceNode("j", "comp", 100, 50, [], { orderKey: "a1" }));
     s.components["comp"] = { rootNodeId: "gone", name: "Comp" };
     const f = fakeCtx();
@@ -1287,8 +1287,8 @@ describe("drawScene with an instance", () => {
 });
 
 describe("hitTest with an instance", () => {
-  // Master: un rettangolo 50x50 a (0,0), fuori da page1. L'istanza a (100,100)
-  // ne rende il contenuto a (100,100)-(150,150).
+  // Master: a 50x50 rectangle at (0,0), outside page1. The instance at (100,100)
+  // renders its content at (100,100)-(150,150).
   function withInstance(): SceneState {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("mr", { ...rect("mr", 0, 0, "a0"), parentId: "components" });
@@ -1334,9 +1334,9 @@ describe("nodesIntersecting with an instance", () => {
   });
 });
 
-// CICLO: un componente il cui master (transitivamente) contiene un'istanza di sé
-// stesso ricorrerebbe all'infinito. La guardia per componentId lo ferma; qui
-// verifichiamo solo che le tre discese TERMINANO.
+// CYCLE: a component whose master (transitively) contains an instance of itself
+// would recurse forever. The guard by componentId stops it; here
+// we only verify that the three descents TERMINATE.
 describe("instance cycle guard", () => {
   function selfRef(): SceneState {
     const s = emptyScene("d", "n");

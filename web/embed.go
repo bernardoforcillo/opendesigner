@@ -1,12 +1,12 @@
-// Package web porta l'editor compilato DENTRO il binario.
+// Package web carries the compiled editor INSIDE the binary.
 //
-// Serve a rendere `opendesigner` un file solo e autosufficiente: niente build
-// del frontend, niente flag -web, niente directory da spedire accanto. È ciò
-// che permette alla distribuzione npm di essere un singolo eseguibile.
+// It makes `opendesigner` a single self-sufficient file: no frontend
+// build, no -web flag, no directory to ship alongside. It is what
+// lets the npm distribution be a single executable.
 //
-// Il package sta in web/ e non sotto internal/ perché //go:embed non sa
-// guardare fuori dalla propria directory: la direttiva deve stare accanto al
-// dist/ che incorpora.
+// The package lives in web/ and not under internal/ because //go:embed cannot
+// look outside its own directory: the directive must sit next to the
+// dist/ it embeds.
 package web
 
 import (

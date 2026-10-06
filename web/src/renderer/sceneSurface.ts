@@ -6,15 +6,15 @@ import { CanvasKitRenderer } from "./ck/ckRenderer";
 import { FontBook, loadCanvasKit } from "./ck/canvaskit";
 import { SceneLayerCache } from "./layerCache";
 
-// IL RENDERER SU GPU, IMPACCHETTATO: CanvasKit + i font + il renderer, con la
-// stessa superficie di chiamata del disegno CPU.
+// THE GPU RENDERER, PACKAGED: CanvasKit + the fonts + the renderer, with the
+// same call surface as the CPU drawing.
 export class GpuSceneRenderer {
   private constructor(
     private readonly renderer: CanvasKitRenderer,
     private readonly fonts: FontBook,
   ) {}
 
-  /** Carica CanvasKit e i font e crea il renderer su `canvas`. Lancia se la GPU non c'è. */
+  /** Loads CanvasKit and the fonts and creates the renderer on `canvas`. Throws if there is no GPU. */
   static async create(canvas: HTMLCanvasElement, images: ImageSource, onFontLoad: () => void): Promise<GpuSceneRenderer> {
     const CK = await loadCanvasKit();
     let self: GpuSceneRenderer | null = null;
@@ -42,13 +42,13 @@ export class GpuSceneRenderer {
   }
 }
 
-// La SUPERFICIE della scena: due canvas sovrapposti (uno 2D, uno WebGL) e la
-// decisione di quale disegna. Un canvas non può cambiare tipo di contesto una
-// volta creato, quindi ognuno ha il proprio elemento: quello inattivo è nascosto
-// o -- per il 2D, che resta sopra perché riceve gli eventi -- svuotato.
+// The scene SURFACE: two stacked canvases (one 2D, one WebGL) and the
+// decision of which one draws. A canvas cannot change context type once
+// created, so each has its own element: the inactive one is hidden
+// or -- for the 2D, which stays on top because it receives events -- emptied.
 //
-// Se la GPU manca, fallisce o perde il contesto si torna in CPU senza perdere
-// niente: il documento non sa quale renderer lo disegna.
+// If the GPU is missing, fails or loses the context we go back to the CPU without losing
+// anything: the document does not know which renderer draws it.
 export class SceneSurface {
   private readonly layers = new SceneLayerCache();
   private gpu: GpuSceneRenderer | null = null;
@@ -61,26 +61,26 @@ export class SceneSurface {
     private readonly cpuCanvas: HTMLCanvasElement,
     private readonly glCanvas: HTMLCanvasElement,
     private readonly images: ImageSource,
-    // Chiede un nuovo frame (un font arrivato, la GPU pronta).
+    // Asks for a new frame (a font arrived, the GPU ready).
     private readonly invalidate: () => void,
   ) {}
 
   /**
-   * Disegna la scena col renderer scelto. Ritorna `true` se il frame è esatto, `false` se
-   * è il riuso di un'immagine (solo CPU, vedi layerCache.ts) e va pianificato il frame
-   * vero.
+   * Draws the scene with the chosen renderer. Returns `true` if the frame is exact, `false` if
+   * it is the reuse of an image (CPU only, see layerCache.ts) and the real frame
+   * must be scheduled.
    */
   draw(scene: SceneState, cam: Camera, pageId: string | null, force: boolean): boolean {
     const choice: RendererChoice = useRenderer.getState().choice;
-    // Il tratto che si disegna (`draw`) è tratteggio del canvas 2D: il renderer GPU
-    // non lo sa fare. Finché una scena derivata dalla riproduzione lo contiene si
-    // disegna in CPU (senza toccare la scelta dell'utente né lo stato "gpu"); gli
-    // altri effetti animati (x, y, rotazione, opacità, scala) vanno anche su GPU.
+    // The stroke being drawn (`draw`) is canvas 2D dashing: the GPU renderer
+    // cannot do it. As long as a playback-derived scene contains it, drawing happens
+    // on the CPU (without touching the user's choice or the "gpu" state); the
+    // other animated effects (x, y, rotation, opacity, scale) also go on the GPU.
     if (choice === "gpu" && !scene.anim?.hasDraw) {
       if (!this.gpu && !this.loading) this.startLoad();
       if (this.gpu) {
         if (this.gpu.lost) {
-          this.fail("il contesto WebGL è andato perso");
+          this.fail("the WebGL context was lost");
         } else {
           try {
             this.drawGpu(this.gpu, scene, cam, pageId);
@@ -91,8 +91,8 @@ export class SceneSurface {
         }
       }
     } else if (choice !== "gpu") {
-      // Un "error" se queda finché l'utente non cambia scelta: è il motivo per
-      // cui si sta disegnando in CPU.
+      // An "error" stays until the user changes choice: it is the reason
+      // why drawing is happening on the CPU.
       const st = useRenderer.getState().status;
       if (st === "gpu" || st === "loading") useRenderer.getState().setStatus("cpu");
     }
@@ -111,7 +111,7 @@ export class SceneSurface {
   }
 
   private drawGpu(gpu: GpuSceneRenderer, scene: SceneState, cam: Camera, pageId: string | null): void {
-    // Il canvas 2D sta sopra e riceve gli eventi: va lasciato trasparente.
+    // The 2D canvas sits on top and receives events: it must be left transparent.
     if (!this.cpuCleared) {
       const ctx = this.cpuCanvas.getContext("2d");
       ctx?.clearRect(0, 0, this.cpuCanvas.width, this.cpuCanvas.height);
@@ -144,20 +144,20 @@ export class SceneSurface {
       });
   }
 
-  // La GPU non va: si torna alla CPU e si dice perché. Si smette di riprovare
-  // finché l'utente non cambia scelta.
+  // The GPU does not work: we go back to the CPU and say why. We stop retrying
+  // until the user changes choice.
   private fail(message: string): void {
     this.gpu?.dispose();
     this.gpu = null;
-    // Senza passare da setChoice: quello salverebbe "cpu" come preferenza, e un
-    // guasto passeggero (una rete caduta durante il download) cancellerebbe la
-    // scelta dell'utente.
+    // Without going through setChoice: that would save "cpu" as the preference, and a
+    // transient fault (a network dropped during the download) would erase the
+    // user's choice.
     useRenderer.setState({ choice: "cpu", status: "error", error: message, frameMs: null });
     this.invalidate();
   }
 
-  // Il tempo del frame, per il confronto fra renderer. Si pubblica al più due
-  // volte al secondo: lo store notifica a ogni scrittura.
+  // The frame time, for comparison between renderers. It is published at most twice
+  // per second: the store notifies on every write.
   private report(ms: number): void {
     const now = performance.now();
     if (now - this.lastStats < 500) return;

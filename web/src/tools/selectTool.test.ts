@@ -16,10 +16,10 @@ function node(id: string, x: number, orderKey: string, extra: Partial<NodeLite> 
     x, y: 0, width: 50, height: 50, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false, ...extra };
 }
 
-// Un nodo vettoriale 50x50 la cui geometria RIEMPIE il box, come vuole
-// l'invariante del proto: bbox locale (0,0)-(50,50). Le maniglie bézier sono
-// asimmetriche e non nulle, così una scala dimenticata su di esse non può
-// cadere sul valore giusto per caso.
+// A 50x50 vector node whose geometry FILLS the box, as the proto invariant
+// requires: local bbox (0,0)-(50,50). The bezier handles are
+// asymmetric and nonzero, so a scale forgotten on them cannot
+// land on the right value by chance.
 function curvyVector(): NodeLite {
   return node("v", 0, "a000000", {
     kind: "vector",
@@ -39,8 +39,8 @@ function fakeCtx(): ToolContext {
     getScene: () => useScene.getState().scene,
     getCamera: () => useScene.getState().camera,
     setCamera: vi.fn(),
-    // style.cursor: il tool ci scrive il cursore della maniglia sotto il
-    // puntatore (Task 9, step 4); nei test è un oggetto qualunque.
+    // style.cursor: the tool writes the cursor of the handle under the
+    // pointer there (Task 9, step 4); in tests it is any object.
     canvas: { style: { cursor: "" } } as unknown as HTMLCanvasElement,
     toWorld: (e: PointerEvent) => ({ x: e.clientX, y: e.clientY }),
   } as unknown as ToolContext;
@@ -48,18 +48,18 @@ function fakeCtx(): ToolContext {
 
 const at = (x: number, y: number, shiftKey = false) => ({ clientX: x, clientY: y, shiftKey }) as PointerEvent;
 
-// Come `at`, ma con un timeStamp esplicito: serve solo al doppio click
-// (rilevato per ID + e.timeStamp, vedi selectTool.ts), e tenerlo fuori da `at`
-// evita di dover assegnare un timeStamp a TUTTI gli altri test di questo file.
+// Like `at`, but with an explicit timeStamp: it is only needed for the double click
+// (detected by ID + e.timeStamp, see selectTool.ts), and keeping it out of `at`
+// avoids having to assign a timeStamp to ALL the other tests in this file.
 const atT = (x: number, y: number, timeStamp: number, shiftKey = false) =>
   ({ clientX: x, clientY: y, shiftKey, timeStamp }) as PointerEvent;
 
-// Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
-// SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
-// in volo, visibile subito) seguito da apply (l'eco che lo conferma). Senza
-// l'eco ogni op resterebbe in coda per sempre e i test parlerebbero di uno
-// stato che il server non ha mai visto. Lo store dipende solo dalla superficie
-// { submit }, quindi non serve un SyncClient reale (niente rete nei test).
+// Double of SyncClient (see rpc/syncClient.ts): records the ops that end up
+// ON THE WIRE and models a server that accepts and ECHOES immediately -- applyPending (op
+// in flight, visible immediately) followed by apply (the echo that confirms it). Without
+// the echo every op would stay queued forever and the tests would speak of a
+// state the server never saw. The store depends only on the surface
+// { submit }, so a real SyncClient is not needed (no network in tests).
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
@@ -69,8 +69,8 @@ class FakeSync {
   }
 }
 
-// Come `at`, ma con i modificatori che valgono per lo SNAP: Alt lo disattiva
-// per quel gesto, Shift è già il rapporto d'aspetto del resize.
+// Like `at`, but with the modifiers that matter for SNAP: Alt turns it off
+// for that gesture, Shift is already the resize aspect ratio.
 const atMod = (x: number, y: number, mod: { altKey?: boolean; shiftKey?: boolean }) =>
   ({ clientX: x, clientY: y, shiftKey: false, ...mod }) as PointerEvent;
 
@@ -83,9 +83,9 @@ beforeEach(() => {
     gesture: null,
     sync: null,
   });
-  // setScene e non setState({scene}): installa una scena COERENTE (vista e
-  // confermato allineati, coda vuota) -- l'invariante su cui poggia la
-  // riconciliazione confermato/pending (vedi store/store.ts).
+  // setScene and not setState({scene}): installs a COHERENT scene (view and
+  // confirmed aligned, empty queue) -- the invariant that the
+  // confirmed/pending reconciliation relies on (see store/store.ts).
   useScene.getState().setScene({
     ...emptyScene("doc-1", "u"),
     nodes: nodesOf({ a: node("a", 0, "a000000"), b: node("b", 100, "a000001") }),
@@ -124,13 +124,13 @@ describe("selectTool", () => {
     expect(useScene.getState().selection).toEqual([]);
   });
 
-  // --- pura logica: pickTarget ---------------------------------------------
+  // --- pure logic: pickTarget ----------------------------------------------
 
   describe("pickTarget", () => {
     it("picks the topmost node when two overlap", () => {
       const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         under: node("under", 0, "a000000"),
-        over: node("over", 0, "a000001"), // orderKey più alto = disegnato sopra
+        over: node("over", 0, "a000001"), // higher orderKey = drawn on top
       }) };
       expect(pickTarget(scene, { x: 10, y: 10 }, false, [], 1)).toEqual({ mode: "single", id: "over" });
     });
@@ -157,7 +157,7 @@ describe("selectTool", () => {
     });
   });
 
-  // --- pura logica: nodesInMarquee -----------------------------------------
+  // --- pure logic: nodesInMarquee ------------------------------------------
 
   describe("nodesInMarquee", () => {
     it("includes only nodes whose bounds intersect the marquee", () => {
@@ -172,12 +172,12 @@ describe("selectTool", () => {
       const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         touching: node("touching", 50, "a000000", { width: 50, height: 50 }),
       }) };
-      // marquee = [0,0,50,50]; touching = [50,0,50,50] -> tocca solo il bordo x=50
+      // marquee = [0,0,50,50]; touching = [50,0,50,50] -> touches only the edge x=50
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 50, height: 50 })).toEqual([]);
     });
 
     it("measures a rotated node by what it really occupies, not by its unrotated box", () => {
-      // 100x50 a 90°: il box fermo è y in [0,50], ma il nodo occupa y in [-25,75].
+      // 100x50 at 90°: the resting box is y in [0,50], but the node occupies y in [-25,75].
       const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         turned: node("turned", 0, "a000000", { width: 100, height: 50, rotation: 90 }),
       }) };
@@ -192,22 +192,22 @@ describe("selectTool", () => {
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 20, height: 20 })).toEqual(["shown"]);
     });
 
-    it("un marquee che tocca SOLO il tratto prende comunque il nodo", () => {
-      // 50x50 in (100,0) con un tratto esterno da 20: dipinge da x=80.
-      // Un marquee che arriva a x=85 non tocca la geometria, ma tocca quello
-      // che si VEDE -- e trascinare una selezione attorno a ciò che si vede è
-      // tutto quello che il marquee promette.
+    it("a marquee that touches ONLY the stroke still takes the node", () => {
+      // 50x50 at (100,0) with a 20 outer stroke: paints from x=80.
+      // A marquee reaching x=85 does not touch the geometry, but touches
+      // what is SEEN -- and dragging a selection around what you see is
+      // all the marquee promises.
       const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         outlined: node("outlined", 100, "a000000", {
           strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 20, align: "outside" }],
         }),
       }) };
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 85, height: 50 })).toEqual(["outlined"]);
-      // E un marquee che si ferma PRIMA della fascia continua a non prenderlo.
+      // And a marquee that stops BEFORE the band still does not take it.
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 79, height: 50 })).toEqual([]);
     });
 
-    it("un tratto INTERNO non allarga il bersaglio del marquee", () => {
+    it("an INNER stroke does not widen the marquee target", () => {
       const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         outlined: node("outlined", 100, "a000000", {
           strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 20, align: "inside" }],
@@ -216,17 +216,17 @@ describe("selectTool", () => {
       expect(nodesInMarquee(scene, { x: 0, y: 0, width: 85, height: 50 })).toEqual([]);
     });
 
-    it("prende un VETTORIALE con un asse degenere, che il suo box grezzo non basterebbe a prendere", () => {
-      // Il box di un vettoriale è la bbox ESATTA della geometria (invariante del
-      // proto), quindi un segmento orizzontale ha davvero height 0. Con il box
-      // grezzo un marquee lo prenderebbe solo SCAVALCANDOLO in senso stretto
-      // (boundsIntersect confronta con < e >): passargli accanto non basterebbe,
-      // pur essendo un nodo che si vede e si clicca. Qui il marquee sta tutto
-      // SOTTO la linea, e VECTOR_MIN_GRAB glielo fa prendere.
+    it("takes a VECTOR with a degenerate axis, which its raw box would not be enough to take", () => {
+      // The box of a vector is the EXACT bbox of the geometry (proto
+      // invariant), so a horizontal segment really has height 0. With the raw
+      // box a marquee would take it only by strictly STRADDLING it
+      // (boundsIntersect compares with < and >): passing next to it would not be enough,
+      // even though it is a node you can see and click. Here the marquee sits entirely
+      // BELOW the line, and VECTOR_MIN_GRAB makes it take it.
       //
-      // La geometria è VERA (due ancoraggi), non `subpaths: []`: la tolleranza
-      // parla di un path che esiste. Un vettoriale senza ancoraggi non si vede,
-      // non si clicca e non lo prende nemmeno il marquee -- test qui sotto.
+      // The geometry is REAL (two anchors), not `subpaths: []`: the tolerance
+      // talks about a path that exists. A vector without anchors cannot be seen,
+      // cannot be clicked and the marquee does not take it either -- test below.
       const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         line: node("line", 5, "a000000", {
           kind: "vector", height: 0,
@@ -241,19 +241,19 @@ describe("selectTool", () => {
         flatRect: node("flatRect", 5, "a000001", { height: 0 }),
       }) };
       expect(nodesInMarquee(scene, { x: 0, y: 1, width: 60, height: 9 })).toEqual(["line"]);
-      // ...e uno che le scavalca entrambe le prende entrambe: la tolleranza
-      // AGGIUNGE un caso, non ne toglie.
+      // ...and one that straddles both takes both: the tolerance
+      // ADDS a case, it does not remove one.
       expect(nodesInMarquee(scene, { x: 0, y: -10, width: 60, height: 20 }))
         .toEqual(["line", "flatRect"]);
     });
 
-    it("NON prende un vettoriale senza geometria, che non si vede e non si clicca", () => {
-      // Il marquee lavora su bounds e da solo non se ne accorgerebbe: un nodo
-      // vettoriale svuotato conserva il width/height che aveva, quindi un
-      // rettangolo di selezione lo prenderebbe pur non producendo nessun path e
-      // nessun hit (renderer/shapes.ts::hasInk, hitTestNode). Sarebbe l'unico
-      // modo di selezionare qualcosa di invisibile: click e marquee non possono
-      // essere la stessa funzione, ma su questo devono concordare.
+    it("does NOT take a vector without geometry, which cannot be seen or clicked", () => {
+      // The marquee works on bounds and on its own would not notice: an emptied
+      // vector node keeps the width/height it had, so a
+      // selection rectangle would take it despite producing no path and
+      // no hit (renderer/shapes.ts::hasInk, hitTestNode). It would be the only
+      // way to select something invisible: click and marquee cannot
+      // be the same function, but on this they must agree.
       const scene = { ...emptyScene("doc-1", "u"), nodes: nodesOf({
         ghost: node("ghost", 5, "a000000", { kind: "vector", vector: { subpaths: [] } }),
         real: node("real", 5, "a000001"),
@@ -262,13 +262,13 @@ describe("selectTool", () => {
     });
   });
 
-  // --- marquee collegato allo store ----------------------------------------
+  // --- marquee connected to the store --------------------------------------
 
   describe("marquee gesture", () => {
     it("drags a marquee over empty space and selects the nodes it intersects, visible in store.marquee while dragging", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
-      tool.onPointerDown!(at(-10, -10), ctx); // vuoto
+      tool.onPointerDown!(at(-10, -10), ctx); // empty
       tool.onPointerMove!(at(60, 60), ctx);
       expect(useScene.getState().marquee).toEqual({ x: -10, y: -10, width: 70, height: 70 });
 
@@ -287,9 +287,9 @@ describe("selectTool", () => {
       expect(useScene.getState().selection).toEqual(["b", "a"]);
     });
 
-    // Un CLICK sul vuoto non è un marquee 0x0: il marquee seleziona per AABB,
-    // e l'angolo vuoto del bounding box di un'ellisse cadrebbe dentro quell'AABB
-    // pur essendo fuori dall'ellisse (è esattamente ciò che hitTest evita).
+    // A CLICK on empty space is not a 0x0 marquee: the marquee selects by AABB,
+    // and the empty corner of an ellipse's bounding box would fall inside that AABB
+    // while being outside the ellipse (it is exactly what hitTest avoids).
     it("a click on empty space inside an ellipse's bounding box selects nothing", () => {
       useScene.setState({ selection: [] });
       useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({
@@ -297,7 +297,7 @@ describe("selectTool", () => {
       }) });
       const tool = createSelectTool();
       const ctx = fakeCtx();
-      tool.onPointerDown!(at(2, 2), ctx); // angolo dell'AABB, FUORI dall'ellisse
+      tool.onPointerDown!(at(2, 2), ctx); // corner of the AABB, OUTSIDE the ellipse
       tool.onPointerUp!(at(2, 2), ctx);
       expect(useScene.getState().selection).toEqual([]);
       expect(useScene.getState().marquee).toBeNull();
@@ -311,19 +311,19 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(2, 2), ctx);
-      tool.onPointerMove!(at(4, 4), ctx); // 2px: sotto la soglia
+      tool.onPointerMove!(at(4, 4), ctx); // 2px: below the threshold
       tool.onPointerUp!(at(4, 4), ctx);
       expect(useScene.getState().selection).toEqual([]);
 
       tool.onPointerDown!(at(2, 2), ctx);
-      tool.onPointerMove!(at(10, 10), ctx); // 8px: marquee vero
+      tool.onPointerMove!(at(10, 10), ctx); // 8px: a real marquee
       tool.onPointerUp!(at(10, 10), ctx);
       expect(useScene.getState().selection).toEqual(["e"]);
     });
 
     it("the click threshold is in screen px, so it scales with the zoom", () => {
       useScene.setState({
-        camera: { x: 0, y: 0, zoom: 0.1 }, // 20 unità mondo = 2px schermo
+        camera: { x: 0, y: 0, zoom: 0.1 }, // 20 world units = 2px screen
         selection: [],
       });
       useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ a: node("a", 0, "a000000") }) });
@@ -348,7 +348,7 @@ describe("selectTool", () => {
       useScene.getState().setSelection(["b"]);
       const tool = createSelectTool();
       const ctx = fakeCtx();
-      tool.onPointerDown!(at(-10, -10), ctx); // niente shift: azzera subito
+      tool.onPointerDown!(at(-10, -10), ctx); // no shift: clears immediately
       expect(useScene.getState().selection).toEqual([]);
       tool.onPointerMove!(at(60, 60), ctx);
 
@@ -358,7 +358,7 @@ describe("selectTool", () => {
     });
   });
 
-  // --- spostamento della selezione -----------------------------------------
+  // --- moving the selection ------------------------------------------------
 
   describe("moving the selection", () => {
     it("dragging a selected node moves the WHOLE selection with one setProps op per node", () => {
@@ -368,14 +368,14 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(10, 10), ctx); // sopra "a", già selezionato: niente cambio selezione
-      tool.onPointerMove!(at(30, 25), ctx); // dx=20 dy=15, anteprima locale
+      tool.onPointerDown!(at(10, 10), ctx); // on "a", already selected: no selection change
+      tool.onPointerMove!(at(30, 25), ctx); // dx=20 dy=15, local preview
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 20, y: 15 });
       expect(useScene.getState().scene!.nodes.at("b")).toMatchObject({ x: 120, y: 15 });
-      expect(sync.sent).toHaveLength(0); // niente sul filo durante il drag
+      expect(sync.sent).toHaveLength(0); // nothing on the wire during the drag
 
       tool.onPointerUp!(at(30, 25), ctx);
-      expect(sync.sent).toHaveLength(2); // un op per nodo
+      expect(sync.sent).toHaveLength(2); // one op per node
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 20, y: 15 });
       expect(useScene.getState().scene!.nodes.at("b")).toMatchObject({ x: 120, y: 15 });
       expect(useScene.getState().selection).toEqual(["a", "b"]);
@@ -400,13 +400,13 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(120, 10), ctx); // "b", non selezionato: sostituisce
+      tool.onPointerDown!(at(120, 10), ctx); // "b", not selected: replaces
       expect(useScene.getState().selection).toEqual(["b"]);
       tool.onPointerMove!(at(140, 20), ctx);
       tool.onPointerUp!(at(140, 20), ctx);
 
       expect(sync.sent).toHaveLength(1);
-      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0 }); // "a" non si è mosso
+      expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0 }); // "a" did not move
       expect(useScene.getState().scene!.nodes.at("b")).toMatchObject({ x: 120, y: 10 });
     });
 
@@ -418,9 +418,9 @@ describe("selectTool", () => {
       const ctx = fakeCtx();
 
       tool.onPointerDown!(at(10, 10), ctx);
-      // Alt: qui si misura l'ABBANDONO del gesto, non lo snap (che ha i suoi
-      // test più sotto) -- senza, il riquadro mosso scatterebbe sul bordo di
-      // "b" e la posizione intermedia non sarebbe più quella del puntatore.
+      // Alt: here the ABANDONMENT of the gesture is measured, not the snap (which has its own
+      // tests below) -- without it, the moved box would snap to the edge of
+      // "b" and the intermediate position would no longer be the pointer's.
       tool.onPointerMove!(atMod(90, 90, { altKey: true }), ctx);
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 80, y: 80 });
 
@@ -428,7 +428,7 @@ describe("selectTool", () => {
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0 });
       expect(sync.sent).toHaveLength(0);
 
-      // e il prossimo up non manda più nulla (il gesto è stato abbandonato)
+      // and the next up sends nothing anymore (the gesture was abandoned)
       tool.onPointerUp!(at(90, 90), ctx);
       expect(sync.sent).toHaveLength(0);
     });
@@ -449,10 +449,10 @@ describe("selectTool", () => {
     });
   });
 
-  // --- resize con le maniglie ------------------------------------------------
-  // I nodi del beforeEach sono 50x50: "a" a (0,0), "b" a (100,0). Con camera
-  // identità le coordinate schermo dell'evento coincidono con quelle mondo,
-  // quindi le maniglie di "a" stanno a (0,0) nw ... (50,50) se.
+  // --- resize with the handles -----------------------------------------------
+  // The beforeEach nodes are 50x50: "a" at (0,0), "b" at (100,0). With an identity
+  // camera the event's screen coordinates coincide with the world ones,
+  // so the handles of "a" are at (0,0) nw ... (50,50) se.
 
   describe("resizing with the handles", () => {
     it("dragging the se handle resizes the selected node with ONE setProps op", () => {
@@ -462,10 +462,10 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(50, 50), ctx); // maniglia se
+      tool.onPointerDown!(at(50, 50), ctx); // se handle
       tool.onPointerMove!(at(70, 80), ctx); // dx=20 dy=30
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 70, height: 80 });
-      expect(sync.sent).toHaveLength(0); // niente sul filo durante il gesto
+      expect(sync.sent).toHaveLength(0); // nothing on the wire during the gesture
 
       tool.onPointerUp!(at(70, 80), ctx);
       expect(sync.sent).toHaveLength(1);
@@ -479,10 +479,10 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(0, 0), ctx); // maniglia nw
-      // Alt: qui si misura la matematica del resize, non lo snap -- il bordo
-      // alto a 20 cadrebbe altrimenti sul centro di "b" (25), che è corretto
-      // ma è un'altra cosa (vedi "selectTool — snap" più sotto).
+      tool.onPointerDown!(at(0, 0), ctx); // nw handle
+      // Alt: here the resize math is measured, not the snap -- the top
+      // edge at 20 would otherwise fall on the center of "b" (25), which is correct
+      // but is another matter (see "selectTool — snap" below).
       tool.onPointerMove!(atMod(10, 20, { altKey: true }), ctx);
       tool.onPointerUp!(atMod(10, 20, { altKey: true }), ctx);
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 10, y: 20, width: 40, height: 30 });
@@ -494,10 +494,10 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(50, 25), ctx); // maniglia e, DENTRO i bounds di "a"
+      tool.onPointerDown!(at(50, 25), ctx); // e handle, INSIDE the bounds of "a"
       expect(useScene.getState().selection).toEqual(["a"]);
       tool.onPointerMove!(at(90, 45), ctx);
-      // resize sull'asse x soltanto: se avesse vinto il nodo, "a" si sarebbe MOSSO
+      // resize on the x axis only: if the node had won, "a" would have MOVED
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 90, height: 50 });
     });
 
@@ -508,8 +508,8 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(0, 25), ctx); // maniglia w
-      tool.onPointerMove!(at(100, 25), ctx); // oltre il bordo destro (x=50)
+      tool.onPointerDown!(at(0, 25), ctx); // w handle
+      tool.onPointerMove!(at(100, 25), ctx); // past the right edge (x=50)
       tool.onPointerUp!(at(100, 25), ctx);
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 50, y: 0, width: 50, height: 50 });
     });
@@ -520,8 +520,8 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(50, 50, true), ctx); // maniglia se
-      tool.onPointerMove!(at(150, 50, true), ctx); // solo dx: senza shift sarebbe 150x50
+      tool.onPointerDown!(at(50, 50, true), ctx); // se handle
+      tool.onPointerMove!(at(150, 50, true), ctx); // only dx: without shift it would be 150x50
       tool.onPointerUp!(at(150, 50, true), ctx);
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ width: 150, height: 150 });
     });
@@ -533,23 +533,23 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(50, 50, true), ctx); // maniglia se
-      tool.onPointerMove!(at(30, 50, true), ctx); // dx=-20 verso l'interno, dy=0
-      // 50x50 * 0.6: il drag deve rimpicciolire, non lasciare il nodo com'è
+      tool.onPointerDown!(at(50, 50, true), ctx); // se handle
+      tool.onPointerMove!(at(30, 50, true), ctx); // dx=-20 inwards, dy=0
+      // 50x50 * 0.6: the drag must shrink, not leave the node as it is
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 30, height: 30 });
       tool.onPointerUp!(at(30, 50, true), ctx);
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ width: 30, height: 30 });
     });
 
     it("resizes a MULTIPLE selection as a group, one op per node", () => {
-      useScene.getState().setSelection(["a", "b"]); // bbox di gruppo (0,0,150,50)
+      useScene.getState().setSelection(["a", "b"]); // group bbox (0,0,150,50)
       const sync = new FakeSync();
       useScene.getState().setSync(sync);
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(150, 50), ctx); // maniglia se del gruppo
-      tool.onPointerMove!(at(300, 50), ctx); // larghezza x2, altezza invariata
+      tool.onPointerDown!(at(150, 50), ctx); // se handle of the group
+      tool.onPointerMove!(at(300, 50), ctx); // width x2, height unchanged
       tool.onPointerUp!(at(300, 50), ctx);
 
       expect(sync.sent).toHaveLength(2);
@@ -557,13 +557,13 @@ describe("selectTool", () => {
       expect(useScene.getState().scene!.nodes.at("b")).toMatchObject({ x: 200, y: 0, width: 100, height: 50 });
     });
 
-    // L'invariante del box (proto, su VectorNode) nel verso che costa: dopo un
-    // SetVectorPath la bbox locale della geometria è (0,0)-(width,height), e
-    // quindi nemmeno il BOX può muoversi da solo. Le 8 maniglie di resize sono
-    // spedite da M1 e mandano un setProps{x,y,width,height} kind-agnostico: senza
-    // il secondo op il box crescerebbe e l'inchiostro resterebbe della misura di
-    // prima, violando l'invariante con un gesto ordinario e senza nessun
-    // SetVectorPath in vista.
+    // The box invariant (proto, on VectorNode) in the direction that costs: after a
+    // SetVectorPath the geometry's local bbox is (0,0)-(width,height), and
+    // therefore not even the BOX can move on its own. The 8 resize handles are
+    // shipped since M1 and send a kind-agnostic setProps{x,y,width,height}: without
+    // the second op the box would grow and the ink would stay the size it was
+    // before, violating the invariant with an ordinary gesture and with no
+    // SetVectorPath in sight.
     it("resizing a VECTOR node rewrites its geometry in the SAME gesture", () => {
       useScene.getState().setScene({ ...emptyScene("doc-1", "u"), nodes: nodesOf({ v: curvyVector() }) });
       useScene.getState().setSelection(["v"]);
@@ -572,13 +572,13 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(50, 50), ctx);  // maniglia se
-      tool.onPointerMove!(at(100, 50), ctx); // larghezza x2, altezza invariata
+      tool.onPointerDown!(at(50, 50), ctx);  // se handle
+      tool.onPointerMove!(at(100, 50), ctx); // width x2, height unchanged
       const mid = useScene.getState().scene!.nodes.at("v");
       expect(mid).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
-      // Già in ANTEPRIMA l'invariante regge: le due chiavi di coalescing
-      // (`s|v|...` e `v|v`) sono distinte, quindi la geometria non schiaccia il
-      // box né viceversa.
+      // Already in PREVIEW the invariant holds: the two coalescing keys
+      // (`s|v|...` and `v|v`) are distinct, so the geometry does not crush the
+      // box nor vice versa.
       expect(vectorBounds(mid.vector!.subpaths)).toEqual({ x: 0, y: 0, width: 100, height: 50 });
 
       tool.onPointerUp!(at(100, 50), ctx);
@@ -586,13 +586,13 @@ describe("selectTool", () => {
       const after = useScene.getState().scene!.nodes.at("v");
       expect(after).toMatchObject({ x: 0, y: 0, width: 100, height: 50 });
       expect(vectorBounds(after.vector!.subpaths)).toEqual({ x: 0, y: 0, width: 100, height: 50 });
-      // Le maniglie bézier sono OFFSET e si scalano con la parte lineare: se
-      // restassero ferme la curvatura non seguirebbe il path, e la bbox qui
-      // sopra non tornerebbe.
+      // The bezier handles are OFFSETS and scale with the linear part: if
+      // they stayed still the curvature would not follow the path, and the bbox above
+      // would not add up.
       expect(after.vector!.subpaths[0].anchors[0].outX).toBe(40);
-      expect(after.vector!.subpaths[0].anchors[1].inY).toBe(-20); // asse non scalato
+      expect(after.vector!.subpaths[0].anchors[1].inY).toBe(-20); // axis not scaled
 
-      // UN gesto: una sola voce di undo, e annullare rimette a posto ENTRAMBI.
+      // ONE gesture: a single undo entry, and undoing puts BOTH back.
       expect(useScene.getState().undoStack).toHaveLength(1);
       useScene.getState().undo();
       const undone = useScene.getState().scene!.nodes.at("v");
@@ -601,8 +601,8 @@ describe("selectTool", () => {
     });
 
     it("resizing a NON-vector node still sends exactly one op", () => {
-      // Il secondo op è del solo vettoriale: un rettangolo non deve guadagnare
-      // un setVectorPath (che Go rifiuterebbe con ErrNotVectorNode).
+      // The second op is the vector's alone: a rectangle must not gain
+      // a setVectorPath (which Go would reject with ErrNotVectorNode).
       useScene.getState().setSelection(["a"]);
       const sync = new FakeSync();
       useScene.getState().setSync(sync);
@@ -669,7 +669,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(at(25, 25), ctx);
       tool.onPointerMove!(at(35, 35), ctx);
       tool.onPointerUp!(at(35, 35), ctx);
-      // spostato, NON ridimensionato
+      // moved, NOT resized
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 10, y: 10, width: 50, height: 50 });
     });
 
@@ -679,11 +679,11 @@ describe("selectTool", () => {
       const ctx = fakeCtx();
       const cursor = () => (ctx.canvas as unknown as { style: { cursor: string } }).style.cursor;
 
-      tool.onPointerMove!(at(0, 0), ctx); // sopra nw
+      tool.onPointerMove!(at(0, 0), ctx); // over nw
       expect(cursor()).toBe("nwse-resize");
-      tool.onPointerMove!(at(50, 25), ctx); // sopra e
+      tool.onPointerMove!(at(50, 25), ctx); // over e
       expect(cursor()).toBe("ew-resize");
-      tool.onPointerMove!(at(25, 25), ctx); // dentro il box, nessuna maniglia
+      tool.onPointerMove!(at(25, 25), ctx); // inside the box, no handle
       expect(cursor()).toBe("default");
     });
 
@@ -695,18 +695,18 @@ describe("selectTool", () => {
       const cursor = () => (ctx.canvas as unknown as { style: { cursor: string } }).style.cursor;
 
       tool.onPointerDown!(at(50, 50), ctx);
-      tool.onPointerMove!(at(400, 400), ctx); // lontano da ogni maniglia iniziale
+      tool.onPointerMove!(at(400, 400), ctx); // far from any initial handle
       expect(cursor()).toBe("nwse-resize");
       tool.onPointerUp!(at(400, 400), ctx);
     });
   });
 
-  // --- rotazione -------------------------------------------------------------
-  // La zona di presa della rotazione è l'anello appena FUORI da ogni angolo
-  // (selection/handles.ts). Con "a" (0,0,50,50) selezionato il centro è (25,25)
-  // e l'angolo se sta a (50,50): (58,58) cade nella zona, a 45° dal centro.
-  // Il punto d'arrivo dei test è quello di partenza ruotato di 90° attorno al
-  // centro, così il delta atteso è esattamente un quarto di giro.
+  // --- rotation --------------------------------------------------------------
+  // The rotation grab zone is the ring just OUTSIDE each corner
+  // (selection/handles.ts). With "a" (0,0,50,50) selected the center is (25,25)
+  // and the se corner is at (50,50): (58,58) falls in the zone, at 45° from the center.
+  // The tests' arrival point is the starting one rotated by 90° around the
+  // center, so the expected delta is exactly a quarter turn.
 
   describe("rotating from the corner zones", () => {
     const rotationOf = (id: string) => useScene.getState().scene!.nodes.at(id).rotation;
@@ -718,17 +718,17 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(58, 58), ctx);   // zona di rotazione dell'angolo se
-      expect(useScene.getState().selection).toEqual(["a"]); // niente marquee, niente deselezione
-      tool.onPointerMove!(at(-8, 58), ctx);   // stesso raggio, +90°
+      tool.onPointerDown!(at(58, 58), ctx);   // rotation zone of the se corner
+      expect(useScene.getState().selection).toEqual(["a"]); // no marquee, no deselection
+      tool.onPointerMove!(at(-8, 58), ctx);   // same radius, +90°
       expect(rotationOf("a")).toBeCloseTo(90, 9);
-      expect(sync.sent).toHaveLength(0);      // anteprima locale, niente sul filo
+      expect(sync.sent).toHaveLength(0);      // local preview, nothing on the wire
 
       tool.onPointerUp!(at(-8, 58), ctx);
       expect(sync.sent).toHaveLength(1);
       expect(sync.sent[0].kind.case).toBe("setProps");
       expect(rotationOf("a")).toBeCloseTo(90, 9);
-      // il nodo NON si sposta: ruota attorno al proprio centro
+      // the node does NOT move: it rotates around its own center
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 0, y: 0, width: 50, height: 50 });
     });
 
@@ -754,7 +754,7 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      // partenza a 45°, arrivo a 100°: delta 55° -> scatta a 60°
+      // start at 45°, arrival at 100°: delta 55° -> snaps to 60°
       const a = (100 * Math.PI) / 180;
       const to = at(25 + 40 * Math.cos(a), 25 + 40 * Math.sin(a), true);
       tool.onPointerDown!(at(58, 58, true), ctx);
@@ -777,7 +777,7 @@ describe("selectTool", () => {
     });
 
     it("rotates a MULTIPLE selection rigidly about the group centre", () => {
-      // gruppo (0,0,150,50), centro (75,25); angolo se a (150,50)
+      // group (0,0,150,50), center (75,25); se corner at (150,50)
       useScene.getState().setSelection(["a", "b"]);
       const sync = new FakeSync();
       useScene.getState().setSync(sync);
@@ -785,15 +785,15 @@ describe("selectTool", () => {
       const ctx = fakeCtx();
 
       tool.onPointerDown!(at(158, 58), ctx);
-      tool.onPointerMove!(at(42, 108), ctx); // il punto di prima ruotato di +90°
+      tool.onPointerMove!(at(42, 108), ctx); // the previous point rotated by +90°
       tool.onPointerUp!(at(42, 108), ctx);
 
-      expect(sync.sent).toHaveLength(2); // un op per nodo, un gesto solo
+      expect(sync.sent).toHaveLength(2); // one op per node, a single gesture
       const a = useScene.getState().scene!.nodes.at("a");
       const b = useScene.getState().scene!.nodes.at("b");
       expect(a.rotation).toBeCloseTo(90, 9);
       expect(b.rotation).toBeCloseTo(90, 9);
-      // i centri girano attorno a quello di gruppo: a (25,25) -> (75,-25), b (125,25) -> (75,75)
+      // the centers rotate around the group's: a (25,25) -> (75,-25), b (125,25) -> (75,75)
       expect(a.x).toBeCloseTo(50, 9);
       expect(a.y).toBeCloseTo(-50, 9);
       expect(b.x).toBeCloseTo(50, 9);
@@ -853,9 +853,9 @@ describe("selectTool", () => {
       const ctx = fakeCtx();
       const cursor = () => (ctx.canvas as unknown as { style: { cursor: string } }).style.cursor;
 
-      tool.onPointerMove!(at(58, 58), ctx); // hover appena fuori dall'angolo
+      tool.onPointerMove!(at(58, 58), ctx); // hover just outside the corner
       expect(cursor()).toBe("grab");
-      tool.onPointerMove!(at(50, 50), ctx); // sull'angolo: è il resize a vincere
+      tool.onPointerMove!(at(50, 50), ctx); // on the corner: the resize wins
       expect(cursor()).toBe("nwse-resize");
 
       tool.onPointerDown!(at(58, 58), ctx);
@@ -865,7 +865,7 @@ describe("selectTool", () => {
     });
   });
 
-  // --- resize di un nodo GIÀ ruotato -----------------------------------------
+  // --- resize of an ALREADY rotated node -------------------------------------
 
   describe("resizing a rotated node", () => {
     function selectRotated(deg: number) {
@@ -882,18 +882,18 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      // il nodo è (0,0,50,50) a 90°: la maniglia e sta a (25,50), non a (50,25)
+      // the node is (0,0,50,50) at 90°: the e handle is at (25,50), not (50,25)
       tool.onPointerDown!(at(25, 50), ctx);
-      tool.onPointerMove!(at(25, 70), ctx); // 20px in GIÙ = 20px lungo il suo asse x
+      tool.onPointerMove!(at(25, 70), ctx); // 20px DOWN = 20px along its x axis
       tool.onPointerUp!(at(25, 70), ctx);
 
       const a = useScene.getState().scene!.nodes.at("a");
       expect(a.width).toBeCloseTo(70, 9);
       expect(a.height).toBeCloseTo(50, 9);
-      // il lato ancorato resta inchiodato nel MONDO: il box scivola per compensare
+      // the anchored side stays pinned in the WORLD: the box slides to compensate
       expect(a.x).toBeCloseTo(-10, 9);
       expect(a.y).toBeCloseTo(10, 9);
-      expect(a.rotation).toBe(90); // il resize non tocca l'angolo
+      expect(a.rotation).toBe(90); // the resize does not touch the angle
     });
 
     it("ignores the drag across that axis", () => {
@@ -902,7 +902,7 @@ describe("selectTool", () => {
       const ctx = fakeCtx();
 
       tool.onPointerDown!(at(25, 50), ctx);
-      tool.onPointerMove!(at(45, 50), ctx); // 20px a DESTRA: trasversale
+      tool.onPointerMove!(at(45, 50), ctx); // 20px to the RIGHT: transverse
       tool.onPointerUp!(at(45, 50), ctx);
 
       const a = useScene.getState().scene!.nodes.at("a");
@@ -911,15 +911,15 @@ describe("selectTool", () => {
     });
   });
 
-  // --- resize di un GRUPPO che contiene un nodo ruotato -----------------------
-  // Il riquadro di gruppo è asse-allineato attorno a ciò che i nodi OCCUPANO:
-  // la scala vale lungo gli assi dello SCHERMO, e un membro girato va mappato
-  // per assi -- scalare il suo box locale lo allungava nella direzione
-  // sbagliata e lo faceva uscire dal riquadro.
+  // --- resize of a GROUP containing a rotated node -----------------------------
+  // The group box is axis-aligned around what the nodes OCCUPY:
+  // the scale applies along the SCREEN axes, and a rotated member must be mapped
+  // by axes -- scaling its local box stretched it in the wrong
+  // direction and made it stick out of the box.
   describe("resizing a MULTIPLE selection containing a rotated node", () => {
     beforeEach(() => {
-      // A: 100x50 in (0,0) a 90° -> occupa x [25,75], y [-25,75]
-      // B: 50x50 in (200,0)      -> il gruppo sta su x [25,250], y [-25,75]
+      // A: 100x50 at (0,0) at 90° -> occupies x [25,75], y [-25,75]
+      // B: 50x50 at (200,0)      -> the group spans x [25,250], y [-25,75]
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
         nodes: nodesOf({
@@ -936,13 +936,13 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(250, 75), ctx); // maniglia se del gruppo
-      tool.onPointerMove!(at(475, 75), ctx); // +225 in orizzontale: scala x2
+      tool.onPointerDown!(at(250, 75), ctx); // se handle of the group
+      tool.onPointerMove!(at(475, 75), ctx); // +225 horizontally: scale x2
       tool.onPointerUp!(at(475, 75), ctx);
 
       const a = useScene.getState().scene!.nodes.at("a");
-      // il box del modello: la larghezza (asse locale VERTICALE sullo schermo)
-      // resta, l'altezza (asse locale ORIZZONTALE) raddoppia
+      // the model box: the width (VERTICAL local axis on screen)
+      // stays, the height (HORIZONTAL local axis) doubles
       expect(a.width).toBeCloseTo(100, 9);
       expect(a.height).toBeCloseTo(100, 9);
       expect(a.rotation).toBeCloseTo(90, 9);
@@ -952,7 +952,7 @@ describe("selectTool", () => {
       const b = useScene.getState().scene!.nodes.at("b");
       expect(b).toMatchObject({ y: 0, width: 100, height: 50 });
       expect(b.x).toBeCloseTo(375, 9);
-      expect(sync.sent).toHaveLength(2); // un op per nodo, un gesto solo
+      expect(sync.sent).toHaveLength(2); // one op per node, a single gesture
     });
 
     it("keeps the rotated member inside the group frame it started in", () => {
@@ -964,9 +964,9 @@ describe("selectTool", () => {
       tool.onPointerMove!(at(475, 75), ctx);
       tool.onPointerUp!(at(475, 75), ctx);
 
-      // Il riquadro dopo il resize: x [25,475], y [-25,75] (l'altezza non è
-      // stata toccata). Quello che il nodo occupa DAVVERO deve starci dentro --
-      // prima diventava alto 200 e sfondava il riquadro sopra e sotto.
+      // The box after the resize: x [25,475], y [-25,75] (the height was not
+      // touched). What the node REALLY occupies must fit inside it --
+      // before it became 200 tall and burst the box above and below.
       const aabb = worldAabbOfNode(useScene.getState().scene!.nodes.at("a"));
       expect(aabb.y).toBeGreaterThanOrEqual(-25 - 1e-6);
       expect(aabb.y + aabb.height).toBeLessThanOrEqual(75 + 1e-6);
@@ -980,8 +980,8 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      // Scala UNIFORME (shift): nessun angolo cambia, e la mask resta quella di
-      // sempre -- niente `rotation` di troppo sul filo.
+      // UNIFORM scale (shift): no angle changes, and the mask stays the usual
+      // one -- no extra `rotation` on the wire.
       tool.onPointerDown!(at(250, 75, true), ctx);
       tool.onPointerMove!(at(475, 300, true), ctx);
       tool.onPointerUp!(at(475, 300, true), ctx);
@@ -994,8 +994,8 @@ describe("selectTool", () => {
     });
 
     it("MIRRORS the angle of a rotated member when the group flips, and says so in the mask", () => {
-      // 30° invece di 90: uno specchio orizzontale a 90° lascerebbe l'angolo
-      // dov'è (l'asse locale x punta in giù), e non si vedrebbe niente.
+      // 30° instead of 90: a horizontal mirror at 90° would leave the angle
+      // where it is (the local x axis points down), and nothing would show.
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
         nodes: nodesOf({
@@ -1009,37 +1009,37 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      // Dove sia la maniglia e del gruppo lo dice il frame stesso (a 30° i
-      // bordi non sono numeri tondi): qui si testa il RESIZE, non dove stanno
-      // le maniglie -- quello è coperto da handles.test.ts.
+      // Where the group's e handle is is told by the frame itself (at 30° the
+      // edges are not round numbers): here the RESIZE is tested, not where the
+      // handles are -- that is covered by handles.test.ts.
       const f = selectionFrame(useScene.getState().scene!, ["a", "b"])!;
       const east = { x: f.bounds.x + f.bounds.width, y: f.bounds.y + f.bounds.height / 2 };
-      const past = east.x - 2 * f.bounds.width; // oltre l'ancora: ribaltamento
+      const past = east.x - 2 * f.bounds.width; // past the anchor: flip
 
       tool.onPointerDown!(at(east.x, east.y), ctx);
       tool.onPointerMove!(at(past, east.y), ctx);
       tool.onPointerUp!(at(past, east.y), ctx);
 
       const a = useScene.getState().scene!.nodes.at("a");
-      expect(a.rotation).toBeCloseTo(150, 3); // 30 specchiato
-      // uno specchio non deforma: le misure restano quelle
+      expect(a.rotation).toBeCloseTo(150, 3); // 30 mirrored
+      // a mirror does not deform: the measurements stay the same
       expect(a.width).toBeCloseTo(100, 3);
       expect(a.height).toBeCloseTo(50, 3);
 
       const forA = sync.sent.find((op) => op.kind.case === "setProps" && op.kind.value.id === "a");
       expect(forA!.kind.case === "setProps" && forA!.kind.value.mask?.paths)
         .toEqual(["x", "y", "width", "height", "rotation"]);
-      // il membro NON ruotato viaggia con la mask di sempre
+      // the NON-rotated member travels with the usual mask
       const forB = sync.sent.find((op) => op.kind.case === "setProps" && op.kind.value.id === "b");
       expect(forB!.kind.case === "setProps" && forB!.kind.value.mask?.paths)
         .toEqual(["x", "y", "width", "height"]);
     });
 
-    // 90° è il caso FACILE (gli assi si scambiano e il conto torna da sé). A
-    // 45° con una scala NON uniforme non torna: l'immagine esatta è un
-    // parallelogramma, e il rettangolo con quegli assi era il 33% più alto del
-    // riquadro. Qui si controlla il vincolo che l'utente VEDE -- si trascina
-    // solo in orizzontale, quindi in verticale non si deve muovere niente.
+    // 90° is the EASY case (the axes swap and the math works out on its own). At
+    // 45° with a NON-uniform scale it does not: the exact image is a
+    // parallelogram, and the rectangle with those axes was 33% taller than the
+    // box. Here we check the constraint the user SEES -- only dragging
+    // horizontally, so vertically nothing must move.
     it("keeps a 45-degree member inside the frame when the group is stretched sideways", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
@@ -1059,20 +1059,20 @@ describe("selectTool", () => {
       const east = { x: f.bounds.x + f.bounds.width, y: f.bounds.y + f.bounds.height / 2 };
 
       tool.onPointerDown!(at(east.x, east.y), ctx);
-      tool.onPointerMove!(at(east.x + f.bounds.width, east.y), ctx); // x2 in larghezza, y intatta
+      tool.onPointerMove!(at(east.x + f.bounds.width, east.y), ctx); // x2 in width, y untouched
       tool.onPointerUp!(at(east.x + f.bounds.width, east.y), ctx);
 
       const aabb = worldAabbOfNode(useScene.getState().scene!.nodes.at("a"));
       expect(aabb.y).toBeGreaterThanOrEqual(top - 1e-6);
       expect(aabb.y + aabb.height).toBeLessThanOrEqual(bottom + 1e-6);
-      // l'altezza del riquadro non è stata trascinata: nemmeno quella del
-      // membro deve cambiare (prima passava da 106.07 a 141.42)
+      // the box height was not dragged: neither must the
+      // member's change (before it went from 106.07 to 141.42)
       expect(aabb.height).toBeCloseTo(106.06601717798212, 6);
       expect(bottom - top).toBeCloseTo(106.06601717798212, 6);
     });
   });
 
-  // --- cancellazione ---------------------------------------------------------
+  // --- deletion --------------------------------------------------------------
 
   describe("deleting the selection", () => {
     it("Delete removes every selected node with one deleteNode op per node, in a single gesture", () => {
@@ -1091,10 +1091,10 @@ describe("selectTool", () => {
       expect(useScene.getState().selection).toEqual([]);
     });
 
-    // deleteNode cancella un SOTTOALBERO (applyOp / core.applyDelete): un
-    // figlio selezionato insieme al suo gruppo non ha bisogno di un op suo --
-    // e non può averlo, perché quando arriverebbe il nodo è già sparito.
-    it("Delete su un gruppo E un suo discendente manda UN solo op, e il gesto resta annullabile", () => {
+    // deleteNode deletes a SUBTREE (applyOp / core.applyDelete): a
+    // child selected together with its group needs no op of its own --
+    // and cannot have one, because when it would arrive the node is already gone.
+    it("Delete on a group AND one of its descendants sends ONE op, and the gesture stays undoable", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
         nodes: nodesOf({
@@ -1111,13 +1111,13 @@ describe("selectTool", () => {
 
       createSelectTool().onKeyDown!({ key: "Delete" } as KeyboardEvent, fakeCtx());
 
-      // d1 sparisce nella cascata di g1: un suo op sarebbe stato rifiutato dal
-      // server (ErrNodeNotFound) e avrebbe fatto saltare la voce di undo
-      // dell'INTERO gesto (invertOp -> null su un nodo già cancellato).
+      // d1 vanishes in the cascade of g1: an op of its own would have been rejected by the
+      // server (ErrNodeNotFound) and would have blown up the undo entry
+      // of the WHOLE gesture (invertOp -> null on an already deleted node).
       const deleted = sync.sent.map((op) => (op.kind.case === "deleteNode" ? op.kind.value.id : ""));
       expect(deleted).toEqual(["g1", "other"]);
       expect([...useScene.getState().scene!.nodes.ids()]).toEqual([]);
-      // UNA voce di undo, e completa: quattro nodi da ricreare.
+      // ONE undo entry, and a complete one: four nodes to recreate.
       const stack = useScene.getState().undoStack;
       expect(stack).toHaveLength(undoBefore + 1);
       expect(stack[stack.length - 1]).toHaveLength(4);
@@ -1147,7 +1147,7 @@ describe("selectTool", () => {
       const ctx = fakeCtx();
 
       tool.onPointerDown!(at(10, 10), ctx);
-      tool.onPointerMove!(at(90, 90), ctx); // apre il gesto di drag nello store, anteprima x:80 y:80
+      tool.onPointerMove!(at(90, 90), ctx); // opens the drag gesture in the store, preview x:80 y:80
 
       tool.onKeyDown!({ key: "Delete" } as KeyboardEvent, ctx);
       expect(sync.sent).toHaveLength(1);
@@ -1155,9 +1155,9 @@ describe("selectTool", () => {
       expect(useScene.getState().scene!.nodes.at("a")).toBeUndefined();
       expect(useScene.getState().gesture).toBeNull();
 
-      // Il pulsante è ancora giù nel mondo reale: arrivano ancora move/up per
-      // il drag che Delete ha interrotto. Non devono fare nulla -- in
-      // particolare NON un secondo setProps fasullo per "a" (ormai cancellato).
+      // The button is still down in the real world: move/up still arrive for
+      // the drag that Delete interrupted. They must do nothing -- in
+      // particular NOT a second bogus setProps for "a" (now deleted).
       tool.onPointerMove!(at(95, 95), ctx);
       tool.onPointerUp!(at(95, 95), ctx);
       expect(sync.sent).toHaveLength(1);
@@ -1171,28 +1171,28 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      tool.onPointerDown!(at(-10, -10), ctx); // vuoto: azzera la selezione, apre il marquee
+      tool.onPointerDown!(at(-10, -10), ctx); // empty: clears the selection, opens the marquee
       tool.onPointerMove!(at(60, 60), ctx);
       expect(useScene.getState().marquee).not.toBeNull();
 
       tool.onKeyDown!({ key: "Delete" } as KeyboardEvent, ctx);
-      // Il marquee viene abbandonato (selezione ripristinata a "b" prima della
-      // cancellazione), quindi è "b" (non nulla, non un id fantasma) a essere
-      // cancellato con un solo op.
+      // The marquee is abandoned (selection restored to "b" before
+      // deletion), so it is "b" (not null, not a ghost id) that gets
+      // deleted with a single op.
       expect(sync.sent).toHaveLength(1);
       expect(sync.sent[0].kind.case).toBe("deleteNode");
       expect(useScene.getState().scene!.nodes.at("b")).toBeUndefined();
       expect(useScene.getState().marquee).toBeNull();
       expect(useScene.getState().selection).toEqual([]);
 
-      // Il pointerup del marquee interrotto non deve rimettere "b" in
-      // selezione (sarebbe un id di un nodo ormai cancellato).
+      // The marquee's pointerup must not put "b" back in the
+      // selection (it would be an id of a node that is now deleted).
       tool.onPointerUp!(at(60, 60), ctx);
       expect(useScene.getState().selection).toEqual([]);
     });
   });
 
-  // --- doppio click su un nodo testo: entra in editing (Task 4, step 3) ----
+  // --- double click on a text node: enters editing (Task 4, step 3) -------
 
   describe("double click on a text node enters editing", () => {
     beforeEach(() => {
@@ -1213,10 +1213,10 @@ describe("selectTool", () => {
       const ctx = fakeCtx();
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
-      expect(useScene.getState().editingNodeId).toBeNull(); // il primo click seleziona soltanto
+      expect(useScene.getState().editingNodeId).toBeNull(); // the first click only selects
 
-      // Il secondo pointerdown da solo NON decide: fino al rilascio quel
-      // pointer può ancora diventare un drag (vedi il test qui sotto).
+      // The second pointerdown alone does NOT decide: until release that
+      // pointer can still become a drag (see the test below).
       tool.onPointerDown!(atT(10, 10, 200), ctx);
       expect(useScene.getState().editingNodeId).toBeNull();
 
@@ -1225,9 +1225,9 @@ describe("selectTool", () => {
       expect(useScene.getState().selection).toEqual(["t"]);
     });
 
-    // Il difetto: un secondo click RAPIDO seguito da un trascinamento veniva
-    // inghiottito dall'editing e il nodo non si spostava più. Il puntatore, non
-    // il solo pointerdown, decide: superata la soglia è un drag come un altro.
+    // The defect: a QUICK second click followed by a drag was
+    // swallowed by editing and the node no longer moved. The pointer, not
+    // the pointerdown alone, decides: once past the threshold it is a drag like any other.
     it("a quick second click that then DRAGS moves the node and does not open editing", () => {
       const sync = new FakeSync();
       useScene.getState().setSync(sync);
@@ -1236,19 +1236,19 @@ describe("selectTool", () => {
 
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
-      tool.onPointerDown!(atT(10, 10, 200), ctx); // secondo click, entro soglia
-      tool.onPointerMove!(atT(40, 40, 210), ctx); // ma si muove: dx=30 dy=30
-      expect(useScene.getState().scene!.nodes.at("t")).toMatchObject({ x: 30, y: 30 }); // anteprima
+      tool.onPointerDown!(atT(10, 10, 200), ctx); // second click, within the threshold
+      tool.onPointerMove!(atT(40, 40, 210), ctx); // but it moves: dx=30 dy=30
+      expect(useScene.getState().scene!.nodes.at("t")).toMatchObject({ x: 30, y: 30 }); // preview
       tool.onPointerUp!(atT(40, 40, 220), ctx);
 
-      expect(useScene.getState().editingNodeId).toBeNull(); // niente editing
+      expect(useScene.getState().editingNodeId).toBeNull(); // no editing
       expect(useScene.getState().scene!.nodes.at("t")).toMatchObject({ x: 30, y: 30 });
-      expect(sync.sent).toHaveLength(1); // un solo setProps, come un move normale
+      expect(sync.sent).toHaveLength(1); // a single setProps, like a normal move
       expect(sync.sent[0].kind.case).toBe("setProps");
     });
 
-    // Rilasciare il secondo click FERMO (a meno di un tremolio sotto soglia)
-    // resta un doppio click: apre l'editing e non muove nulla.
+    // Releasing the second click STILL (within a sub-threshold jitter)
+    // remains a double click: it opens editing and moves nothing.
     it("a sub-slop jitter on the second click still opens editing and moves nothing", () => {
       const sync = new FakeSync();
       useScene.getState().setSync(sync);
@@ -1257,17 +1257,17 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
       tool.onPointerDown!(atT(10, 10, 200), ctx);
-      tool.onPointerMove!(atT(12, 12, 210), ctx); // 2px: sotto la soglia
+      tool.onPointerMove!(atT(12, 12, 210), ctx); // 2px: below the threshold
       tool.onPointerUp!(atT(12, 12, 220), ctx);
 
       expect(useScene.getState().editingNodeId).toBe("t");
-      expect(sync.sent).toHaveLength(0); // nessun setProps: non si è mosso nulla
+      expect(sync.sent).toHaveLength(0); // no setProps: nothing moved
       expect(useScene.getState().scene!.nodes.at("t")).toMatchObject({ x: 0, y: 0 });
     });
 
-    // La soglia è in px SCHERMO come quella del marquee: a zoom 10 UN'unità
-    // mondo vale 10px ed è già un drag, mentre a zoom 1 la stessa unità
-    // resterebbe sotto i 3px (il test qui sopra ne muove 2 e resta un click).
+    // The threshold is in SCREEN px like the marquee's: at zoom 10 ONE world
+    // unit is 10px and already a drag, while at zoom 1 the same unit
+    // would stay under 3px (the test above moves 2 and stays a click).
     it("the drag threshold is in screen px, so it scales with the zoom", () => {
       useScene.setState({ camera: { x: 0, y: 0, zoom: 10 } });
       const sync = new FakeSync();
@@ -1277,7 +1277,7 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
       tool.onPointerDown!(atT(10, 10, 200), ctx);
-      tool.onPointerMove!(atT(11, 11, 210), ctx); // 1 unità mondo = 10px schermo
+      tool.onPointerMove!(atT(11, 11, 210), ctx); // 1 world unit = 10px screen
       tool.onPointerUp!(atT(11, 11, 220), ctx);
 
       expect(useScene.getState().editingNodeId).toBeNull();
@@ -1285,8 +1285,8 @@ describe("selectTool", () => {
       expect(sync.sent).toHaveLength(1);
     });
 
-    // Esc fra il pointerdown e il rilascio abbandona il gesto: il pointerup che
-    // arriva comunque dopo non deve aprire un editing "in ritardo".
+    // Esc between the pointerdown and the release abandons the gesture: the pointerup that
+    // arrives anyway afterwards must not open a "late" editing.
     it("Esc between the second pointerdown and its release cancels the pending editing", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
@@ -1334,7 +1334,7 @@ describe("selectTool", () => {
     it("a double click on a NON-text node does nothing special", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
-        nodes: nodesOf({ r: node("r", 0, "a000000") }), // kind: "rect" di default
+        nodes: nodesOf({ r: node("r", 0, "a000000") }), // kind: "rect" by default
       });
       const tool = createSelectTool();
       const ctx = fakeCtx();
@@ -1343,10 +1343,10 @@ describe("selectTool", () => {
       tool.onPointerDown!(atT(10, 10, 50), ctx);
       tool.onPointerUp!(atT(10, 10, 50), ctx);
       expect(useScene.getState().editingNodeId).toBeNull();
-      expect(useScene.getState().selection).toEqual(["r"]); // il click normale continua a selezionare
+      expect(useScene.getState().selection).toEqual(["r"]); // the normal click keeps selecting
     });
 
-    it("shift+double click does not enter editing (resta il toggle multi-selezione)", () => {
+    it("shift+double click does not enter editing (the multi-selection toggle remains)", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(atT(10, 10, 0, true), ctx);
@@ -1356,12 +1356,12 @@ describe("selectTool", () => {
       expect(useScene.getState().editingNodeId).toBeNull();
     });
 
-    // Repro concreto del bug di review (Task 4, fix round): due nodi testo
-    // VUOTI preesistenti, doppio click sul primo poi sul secondo. Senza la
-    // guardia in store.ts::beginTextEditing, il primo nodo non passava MAI da
-    // endTextEditing -- editingNodeId veniva sovrascritto in silenzio e il
-    // nodo restava fantasma (vuoto, mai ripulito) per sempre.
-    it("un doppio click su un ALTRO nodo testo chiude/pulisce l'editing del primo (vuoto), senza lasciarlo fantasma", () => {
+    // Concrete repro of the review bug (Task 4, fix round): two pre-existing EMPTY
+    // text nodes, double click on the first then on the second. Without the
+    // guard in store.ts::beginTextEditing, the first node NEVER went through
+    // endTextEditing -- editingNodeId was silently overwritten and the
+    // node stayed a ghost (empty, never cleaned up) forever.
+    it("a double click on ANOTHER text node closes/cleans up the editing of the first (empty), without leaving it a ghost", () => {
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
         nodes: nodesOf({
@@ -1378,7 +1378,7 @@ describe("selectTool", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
 
-      // doppio click su t1: entra in editing (al rilascio del secondo click).
+      // double click on t1: enters editing (on release of the second click).
       tool.onPointerDown!(atT(10, 10, 0), ctx);
       tool.onPointerUp!(atT(10, 10, 0), ctx);
       tool.onPointerDown!(atT(10, 10, 200), ctx);
@@ -1386,27 +1386,27 @@ describe("selectTool", () => {
       expect(useScene.getState().editingNodeId).toBe("t1");
       expect(useScene.getState().scene!.nodes.at("t1")).toBeDefined();
 
-      // doppio click su t2 (ben oltre la soglia dei 400ms dal precedente, ma è
-      // un doppio click NUOVO: due click su t2 entro soglia fra loro).
+      // double click on t2 (well beyond the 400ms threshold from the previous one, but it is
+      // a NEW double click: two clicks on t2 within the threshold of each other).
       tool.onPointerDown!(atT(210, 10, 1000), ctx);
       tool.onPointerUp!(atT(210, 10, 1000), ctx);
       tool.onPointerDown!(atT(210, 10, 1200), ctx);
       tool.onPointerUp!(atT(210, 10, 1200), ctx);
 
       expect(useScene.getState().editingNodeId).toBe("t2");
-      expect(useScene.getState().scene!.nodes.at("t1")).toBeUndefined(); // niente nodo fantasma
+      expect(useScene.getState().scene!.nodes.at("t1")).toBeUndefined(); // no ghost node
       expect(useScene.getState().scene!.nodes.at("t2")).toBeDefined();
     });
   });
 });
 
-// --- SNAP DURANTE IL GESTO ---------------------------------------------------
+// --- SNAP DURING THE GESTURE -------------------------------------------------
 //
-// La DECISIONE dello snap è testata dov'è, come funzione pura
-// (selection/snap.test.ts). Qui si verifica solo il collegamento al gesto: che
-// lo scatto entri nell'anteprima E nell'op finale (non due valori diversi), che
-// Alt lo spenga, che la soglia sia in px SCHERMO e che le guide compaiano e
-// spariscano insieme al gesto.
+// The snap DECISION is tested where it lives, as a pure function
+// (selection/snap.test.ts). Here we only verify the link to the gesture: that
+// the snap enters the preview AND the final op (not two different values), that
+// Alt turns it off, that the threshold is in SCREEN px and that the guides appear and
+// disappear together with the gesture.
 describe("selectTool — snap", () => {
   let sync: FakeSync;
 
@@ -1419,13 +1419,13 @@ describe("selectTool — snap", () => {
     id: string; patch?: { x: number; y: number; width: number; height: number };
   };
 
-  describe("trascinamento", () => {
+  describe("dragging", () => {
     it("snaps the dragged edge onto another node's edge", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
-      tool.onPointerDown!(at(10, 10), ctx); // seleziona "a" (0..50)
-      // dx = 48: il bordo destro finisce a 98, a 2 unità dal bordo sinistro di
-      // "b" (100) -- dentro la soglia, quindi scatta a 100.
+      tool.onPointerDown!(at(10, 10), ctx); // selects "a" (0..50)
+      // dx = 48: the right edge ends at 98, 2 units from the left edge of
+      // "b" (100) -- within the threshold, so it snaps to 100.
       tool.onPointerMove!(at(58, 10), ctx);
       expect(useScene.getState().scene!.nodes.at("a").x).toBe(50);
     });
@@ -1445,7 +1445,7 @@ describe("selectTool — snap", () => {
       tool.onPointerMove!(at(58, 10), ctx);
       tool.onPointerUp!(at(58, 10), ctx);
       expect(lastPatch().patch?.x).toBe(50);
-      // Un gesto, un op per nodo: lo scatto non ne aggiunge un secondo.
+      // One gesture, one op per node: the snap does not add a second.
       expect(sync.sent).toHaveLength(1);
       expect(useScene.getState().undoStack).toHaveLength(1);
     });
@@ -1479,8 +1479,8 @@ describe("selectTool — snap", () => {
     });
 
     it("measures the threshold in SCREEN pixels: the same drag snaps at 100% and not at 200%", () => {
-      // dx = 46 -> bordo destro a 96, cioè 4 unità mondo dal bordo di "b".
-      // A zoom 1 sono 4 px schermo (dentro la soglia), a zoom 2 sono 8 (fuori).
+      // dx = 46 -> right edge at 96, i.e. 4 world units from the edge of "b".
+      // At zoom 1 that is 4 screen px (within the threshold), at zoom 2 it is 8 (outside).
       const run = (zoom: number) => {
         useScene.getState().setScene({
           ...emptyScene("doc-1", "u"),
@@ -1501,7 +1501,7 @@ describe("selectTool — snap", () => {
       useScene.getState().setSelection(["a", "b"]);
       const tool = createSelectTool();
       const ctx = fakeCtx();
-      tool.onPointerDown!(at(10, 10), ctx); // "a" è già selezionato: resta la coppia
+      tool.onPointerDown!(at(10, 10), ctx); // "a" is already selected: the pair stays
       tool.onPointerMove!(at(58, 10), ctx);
       expect(useScene.getState().scene!.nodes.at("a").x).toBe(48);
       expect(useScene.getState().scene!.nodes.at("b").x).toBe(148);
@@ -1509,37 +1509,37 @@ describe("selectTool — snap", () => {
     });
   });
 
-  // --- I MODIFICATORI SONO QUELLI DELL'ULTIMA ANTEPRIMA -----------------------
+  // --- THE MODIFIERS ARE THOSE OF THE LAST PREVIEW -----------------------------
   //
-  // L'op finale si ricalcola dalla POSIZIONE del pointerup, ma i modificatori
-  // arrivano dall'ultimo pointermove. Leggerli dall'evento di rilascio fa
-  // scattare al commit un gesto che l'utente aveva tenuto libero per tutto il
-  // tempo: le dita lasciano Alt un istante prima del pulsante -- è il gesto
-  // normale di chi sta per finire -- e il nodo salta di SNAP_THRESHOLD_PX/zoom
-  // unità mondo. endGesture ricostruisce la scena da quegli op, quindi il salto
-  // è ciò che finisce sul filo E nella voce di undo, e Alt è proprio la via
-  // d'uscita dallo snap: il bug disfa la funzione nell'unico momento in cui
-  // serve.
-  describe("i modificatori dell'ultima anteprima", () => {
-    it("Alt lasciato PRIMA del pulsante non fa scattare il commit", () => {
+  // The final op is recomputed from the pointerup POSITION, but the modifiers
+  // come from the last pointermove. Reading them from the release event makes
+  // a gesture snap at commit that the user had kept free the whole
+  // time: fingers release Alt an instant before the button -- it is the normal
+  // gesture of someone about to finish -- and the node jumps by SNAP_THRESHOLD_PX/zoom
+  // world units. endGesture rebuilds the scene from those ops, so the jump
+  // is what ends up on the wire AND in the undo entry, and Alt is precisely the way
+  // out of snapping: the bug undoes the feature at the only moment
+  // it is needed.
+  describe("the modifiers of the last preview", () => {
+    it("Alt released BEFORE the button does not make the commit snap", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
       tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48); // l'anteprima è a 48
-      // Le dita lasciano Alt, poi il pulsante: il pointerup arriva con altKey
-      // false. Senza il latch il commit scatterebbe a 50 -- un salto di 2 unità
-      // mondo che nessuna anteprima ha mai mostrato.
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48); // the preview is at 48
+      // The fingers release Alt, then the button: the pointerup arrives with altKey
+      // false. Without the latch the commit would snap to 50 -- a 2 world-unit
+      // jump that no preview ever showed.
       tool.onPointerUp!(atMod(58, 10, {}), ctx);
       expect(lastPatch().patch?.x).toBe(48);
       expect(useScene.getState().scene!.nodes.at("a").x).toBe(48);
       expect(useScene.getState().snapGuides).toEqual([]);
     });
 
-    it("Alt premuto PRIMA del pulsante non annulla uno scatto già mostrato", () => {
-      // Il verso opposto, altrettanto raggiungibile: l'anteprima è scattata a
-      // 50, Alt scende un istante prima del rilascio. Il commit deve restare
-      // quello che si vedeva.
+    it("Alt pressed BEFORE the button does not undo a snap already shown", () => {
+      // The opposite direction, equally reachable: the preview snapped to
+      // 50, Alt goes down an instant before the release. The commit must stay
+      // what was seen.
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
@@ -1550,10 +1550,10 @@ describe("selectTool — snap", () => {
       expect(useScene.getState().scene!.nodes.at("a").x).toBe(50);
     });
 
-    it("la VOCE DI UNDO porta quello che si è visto, non un salto in più", () => {
-      // Il salto non finisce solo sul filo: endGesture ricostruisce la scena
-      // dagli op finali, quindi la voce di undo (e il suo redo) è quella del
-      // valore scattato. Il giro completo undo -> redo lo dimostra.
+    it("the UNDO ENTRY carries what was seen, not an extra jump", () => {
+      // The jump does not only end up on the wire: endGesture rebuilds the scene
+      // from the final ops, so the undo entry (and its redo) is that of the
+      // snapped value. The full undo -> redo round trip proves it.
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
@@ -1566,24 +1566,24 @@ describe("selectTool — snap", () => {
       expect(useScene.getState().scene!.nodes.at("a").x).toBe(48);
     });
 
-    // LA CONTROPROVA del latch: si fotografa l'ULTIMA anteprima, non lo stato
-    // dei tasti a inizio gesto. Premere o lasciare Alt a metà trascinamento deve
-    // continuare a cambiare l'anteprima subito -- se il latch fosse al
-    // pointerdown, questo test resterebbe a 50 per sempre.
-    it("Alt premuto a METÀ gesto cambia l'anteprima subito, e il commit con lei", () => {
+    // THE COUNTER-PROOF of the latch: the LAST preview is captured, not the state
+    // of the keys at the start of the gesture. Pressing or releasing Alt mid-drag must
+    // keep changing the preview immediately -- if the latch were at the
+    // pointerdown, this test would stay at 50 forever.
+    it("Alt pressed MID-gesture changes the preview immediately, and the commit with it", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
       tool.onPointerMove!(at(58, 10), ctx);
-      expect(useScene.getState().scene!.nodes.at("a").x).toBe(50); // scattato
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(50); // snapped
       tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx);
-      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48); // Alt: liberato
+      expect(useScene.getState().scene!.nodes.at("a").x).toBe(48); // Alt: released
       expect(useScene.getState().snapGuides).toEqual([]);
       tool.onPointerUp!(atMod(58, 10, {}), ctx);
       expect(lastPatch().patch?.x).toBe(48);
     });
 
-    it("e lasciato a metà gesto lo fa riscattare, sempre subito", () => {
+    it("and released mid-gesture it re-snaps it, always immediately", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
@@ -1595,15 +1595,15 @@ describe("selectTool — snap", () => {
       expect(lastPatch().patch?.x).toBe(50);
     });
 
-    it("la ROTAZIONE commette l'angolo scattato che l'anteprima mostrava, anche se Shift risale prima", () => {
-      // Stesso difetto sul terzo gesto: Shift lasciato prima del pulsante
-      // commetterebbe 55° dopo un'anteprima a 60°.
+    it("ROTATION commits the snapped angle that the preview showed, even if Shift goes up first", () => {
+      // The same defect on the third gesture: Shift released before the button
+      // would commit 55° after a 60° preview.
       useScene.getState().setSelection(["a"]);
       const tool = createSelectTool();
       const ctx = fakeCtx();
       const a = (100 * Math.PI) / 180;
       const to = at(25 + 40 * Math.cos(a), 25 + 40 * Math.sin(a), true);
-      tool.onPointerDown!(at(58, 58, true), ctx); // zona di rotazione dell'angolo se
+      tool.onPointerDown!(at(58, 58, true), ctx); // rotation zone of the se corner
       tool.onPointerMove!(to, ctx);
       expect(useScene.getState().scene!.nodes.at("a").rotation).toBeCloseTo(60, 9);
       tool.onPointerUp!(at(to.clientX, to.clientY, false), ctx);
@@ -1613,9 +1613,9 @@ describe("selectTool — snap", () => {
     });
   });
 
-  describe("ridimensionamento", () => {
-    // Afferra la maniglia "e" di "a" (bordo destro, a metà altezza) dopo averlo
-    // selezionato con un click.
+  describe("resizing", () => {
+    // Grabs the "e" handle of "a" (right edge, mid height) after having
+    // selected it with a click.
     function grabEast(tool: ReturnType<typeof createSelectTool>, ctx: ToolContext) {
       tool.onPointerDown!(at(10, 10), ctx);
       tool.onPointerUp!(at(10, 10), ctx);
@@ -1626,7 +1626,7 @@ describe("selectTool — snap", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
       grabEast(tool, ctx);
-      tool.onPointerMove!(at(98, 25), ctx); // bordo destro a 98, scatta a 100
+      tool.onPointerMove!(at(98, 25), ctx); // right edge at 98, snaps to 100
       expect(useScene.getState().scene!.nodes.at("a").width).toBe(100);
       expect(useScene.getState().scene!.nodes.at("a").x).toBe(0);
       expect(useScene.getState().snapGuides).toContainEqual({ axis: "x", pos: 100, from: 0, to: 50 });
@@ -1652,8 +1652,8 @@ describe("selectTool — snap", () => {
     });
 
     it("stands aside when Shift is keeping the aspect ratio", () => {
-      // Il rapporto d'aspetto è un vincolo più forte: scattare un asse
-      // romperebbe l'altro, e l'utente ha chiesto ESPLICITAMENTE il rapporto.
+      // The aspect ratio is a stronger constraint: snapping one axis
+      // would break the other, and the user asked EXPLICITLY for the ratio.
       const tool = createSelectTool();
       const ctx = fakeCtx();
       grabEast(tool, ctx);
@@ -1663,9 +1663,9 @@ describe("selectTool — snap", () => {
     });
 
     it("snaps the LEFT edge when it is the w handle being dragged", () => {
-      // La controprova della maniglia "e": qui il bordo che si muove è il
-      // MINIMO. Con left/right scambiati in movingEdgeLines si offrirebbe 150
-      // (il bordo fermo), che non è vicino a nessun bersaglio: niente scatto.
+      // The counter-proof of the "e" handle: here the edge that moves is the
+      // MINIMUM. With left/right swapped in movingEdgeLines 150 would be offered
+      // (the fixed edge), which is near no target: no snap.
       useScene.getState().setScene({
         ...emptyScene("doc-1", "u"),
         nodes: nodesOf({ a: node("a", 100, "a000001"), c: node("c", 0, "a000000") }),
@@ -1673,20 +1673,20 @@ describe("selectTool — snap", () => {
       useScene.getState().setSelection(["a"]);
       const tool = createSelectTool();
       const ctx = fakeCtx();
-      tool.onPointerDown!(at(100, 25), ctx); // maniglia "w" di "a" (100..150)
-      tool.onPointerMove!(at(52, 25), ctx); // bordo sinistro a 52, scatta a 50
+      tool.onPointerDown!(at(100, 25), ctx); // "w" handle of "a" (100..150)
+      tool.onPointerMove!(at(52, 25), ctx); // left edge at 52, snaps to 50
       expect(useScene.getState().scene!.nodes.at("a").x).toBe(50);
       expect(useScene.getState().scene!.nodes.at("a").width).toBe(100);
       expect(useScene.getState().snapGuides).toContainEqual({ axis: "x", pos: 50, from: 0, to: 50 });
     });
 
-    // IL RIBALTAMENTO. Superata l'ancora, in un box normalizzato il minimo e il
-    // massimo si sono scambiati: movingEdgeLines -- che ragiona sul box, non sul
-    // gesto -- indicherebbe il bordo FERMO, cioè l'ANCORA. Scattarla sposterebbe
-    // l'unico punto che il ridimensionamento promette di non muovere.
-    describe("ribaltamento", () => {
-      // "a" in 0..50 su entrambi gli assi; "c" offre linee a 2 (e 27, 52) su
-      // entrambi gli assi, cioè a due unità dall'ancora di "e" e di "s".
+    // THE FLIP. Past the anchor, in a normalized box the min and max
+    // have swapped: movingEdgeLines -- which reasons on the box, not on the
+    // gesture -- would indicate the FIXED edge, i.e. the ANCHOR. Snapping it would move
+    // the only point that resizing promises not to move.
+    describe("flip", () => {
+      // "a" at 0..50 on both axes; "c" offers lines at 2 (and 27, 52) on
+      // both axes, i.e. two units from the anchor of "e" and of "s".
       function flipScene() {
         useScene.getState().setScene({
           ...emptyScene("doc-1", "u"),
@@ -1702,11 +1702,11 @@ describe("selectTool — snap", () => {
         flipScene();
         const tool = createSelectTool();
         const ctx = fakeCtx();
-        tool.onPointerDown!(at(50, 25), ctx); // maniglia "e"
-        tool.onPointerMove!(at(-2, 25), ctx); // 2 oltre l'ancora (x = 0)
-        // Senza la guardia l'ancora (0) scatterebbe sul bordo di "c" (2):
-        // larghezza 0 invece di 2, e una guida rossa su una retta che il bordo
-        // trascinato non ha mai sfiorato.
+        tool.onPointerDown!(at(50, 25), ctx); // "e" handle
+        tool.onPointerMove!(at(-2, 25), ctx); // 2 past the anchor (x = 0)
+        // Without the guard the anchor (0) would snap to the edge of "c" (2):
+        // width 0 instead of 2, and a red guide on a line that the
+        // dragged edge never touched.
         expect(useScene.getState().scene!.nodes.at("a").x).toBe(-2);
         expect(useScene.getState().scene!.nodes.at("a").width).toBe(2);
         expect(useScene.getState().snapGuides).toEqual([]);
@@ -1716,8 +1716,8 @@ describe("selectTool — snap", () => {
         flipScene();
         const tool = createSelectTool();
         const ctx = fakeCtx();
-        tool.onPointerDown!(at(25, 50), ctx); // maniglia "s"
-        tool.onPointerMove!(at(25, -2), ctx); // 2 oltre l'ancora (y = 0)
+        tool.onPointerDown!(at(25, 50), ctx); // "s" handle
+        tool.onPointerMove!(at(25, -2), ctx); // 2 past the anchor (y = 0)
         expect(useScene.getState().scene!.nodes.at("a").y).toBe(-2);
         expect(useScene.getState().scene!.nodes.at("a").height).toBe(2);
         expect(useScene.getState().snapGuides).toEqual([]);
@@ -1728,19 +1728,19 @@ describe("selectTool — snap", () => {
           ...emptyScene("doc-1", "u"),
           nodes: nodesOf({
             a: node("a", 0, "a000001"),
-            c: node("c", 2, "a000000", { y: 2 }), // linea x a 2, accanto all'ancora
-            d: node("d", 200, "a000002", { y: 100 }), // linea y a 100, sotto
+            c: node("c", 2, "a000000", { y: 2 }), // x line at 2, next to the anchor
+            d: node("d", 200, "a000002", { y: 100 }), // y line at 100, below
           }),
         });
         useScene.getState().setSelection(["a"]);
         const tool = createSelectTool();
         const ctx = fakeCtx();
-        tool.onPointerDown!(at(50, 50), ctx); // maniglia "se"
-        // x ribaltato (2 oltre l'ancora), y no: il bordo basso arriva a 98 e
-        // deve scattare a 100 come sempre.
+        tool.onPointerDown!(at(50, 50), ctx); // "se" handle
+        // x flipped (2 past the anchor), y not: the bottom edge reaches 98 and
+        // must snap to 100 as usual.
         tool.onPointerMove!(at(-2, 98), ctx);
-        expect(useScene.getState().scene!.nodes.at("a").height).toBe(100); // y scatta
-        expect(useScene.getState().scene!.nodes.at("a").width).toBe(2); // x no
+        expect(useScene.getState().scene!.nodes.at("a").height).toBe(100); // y snaps
+        expect(useScene.getState().scene!.nodes.at("a").width).toBe(2); // x does not
         const guides = useScene.getState().snapGuides;
         expect(guides).toContainEqual({ axis: "y", pos: 100, from: -2, to: 250 });
         expect(guides.every((g) => g.axis === "y")).toBe(true);
@@ -1753,22 +1753,22 @@ describe("selectTool — snap", () => {
       grabEast(tool, ctx);
       tool.onPointerMove!(atMod(98, 25, { altKey: true }), ctx);
       expect(useScene.getState().scene!.nodes.at("a").width).toBe(98);
-      tool.onPointerUp!(atMod(98, 25, {}), ctx); // Alt lasciato prima del pulsante
+      tool.onPointerUp!(atMod(98, 25, {}), ctx); // Alt released before the button
       expect(lastPatch().patch?.width).toBe(98);
       expect(useScene.getState().scene!.nodes.at("a").width).toBe(98);
     });
 
     it("keeps the ASPECT RATIO the preview showed when Shift is released before the button", () => {
-      // Il gemello del caso Alt su un modificatore diverso: e.shiftKey letto al
-      // rilascio commetterebbe un resize LIBERO (150x50) dopo un'anteprima
-      // vincolata (150x150). Stessa causa, stesso rimedio, altro tasto.
+      // The twin of the Alt case on a different modifier: e.shiftKey read at
+      // release would commit a FREE resize (150x50) after a constrained
+      // preview (150x150). Same cause, same remedy, another key.
       useScene.getState().setSelection(["a"]);
       const tool = createSelectTool();
       const ctx = fakeCtx();
-      tool.onPointerDown!(at(50, 50, true), ctx); // maniglia se
+      tool.onPointerDown!(at(50, 50, true), ctx); // se handle
       tool.onPointerMove!(at(150, 50, true), ctx);
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ width: 150, height: 150 });
-      tool.onPointerUp!(at(150, 50, false), ctx); // Shift lasciato prima del pulsante
+      tool.onPointerUp!(at(150, 50, false), ctx); // Shift released before the button
       expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ width: 150, height: 150 });
       expect(lastPatch().patch?.height).toBe(150);
     });
@@ -1782,7 +1782,7 @@ describe("selectTool — snap", () => {
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
       tool.onPointerUp!(at(10, 10), ctx);
-      // La maniglia "e" di un quadrato 50x50 ruotato di 90° sta in (25, 50).
+      // The "e" handle of a 50x50 square rotated by 90° is at (25, 50).
       tool.onPointerDown!(at(25, 50), ctx);
       tool.onPointerMove!(at(25, 98), ctx);
       expect(useScene.getState().scene!.nodes.at("a").width).toBeCloseTo(98, 9);
@@ -1790,13 +1790,13 @@ describe("selectTool — snap", () => {
     });
   });
 });
-// --- annidamento -------------------------------------------------------------
-// Il puntatore parla MONDO (px schermo convertiti dalla camera), il modello
-// parla LOCALE (coordinate relative al parent). Tutto ciò che sta in mezzo --
-// hit-test, marquee, maniglie -- deve fare la conversione nel verso giusto e
-// riscrivere nel modello coordinate ancora locali.
+// --- nesting -----------------------------------------------------------------
+// The pointer speaks WORLD (screen px converted by the camera), the model
+// speaks LOCAL (coordinates relative to the parent). Everything in between --
+// hit-test, marquee, handles -- must do the conversion in the right direction and
+// write back into the model coordinates that are still local.
 describe("selectTool with nesting", () => {
-  // page1 > g(100,50, 400x400) > c(10,10, 50x50): "c" nel MONDO occupa
+  // page1 > g(100,50, 400x400) > c(10,10, 50x50): "c" in the WORLD occupies
   // (110,60)-(160,110).
   function nestedScene() {
     useScene.getState().setScene({
@@ -1812,16 +1812,16 @@ describe("selectTool with nesting", () => {
 
   it("nodesInMarquee compares the marquee with the WORLD box of a nested node", () => {
     const scene = useScene.getState().scene!;
-    // Attorno all'angolo mondo di "c".
+    // Around the world corner of "c".
     expect(nodesInMarquee(scene, { x: 105, y: 55, width: 20, height: 20 })).toContain("c");
-    // Attorno alle sue coordinate LOCALI: lì non c'è niente, nemmeno "g".
+    // Around its LOCAL coordinates: there is nothing there, not even "g".
     expect(nodesInMarquee(scene, { x: 5, y: 5, width: 10, height: 10 })).toEqual([]);
   });
 
-  // Il marquee deve obbedire alle STESSE regole d'albero del renderer: quello
-  // che non si disegna non si seleziona. Altrimenti la selezione finisce con
-  // una cornice e 8 maniglie su canvas vuoto, e il primo drag manda setProps
-  // per una geometria che l'utente non vede.
+  // The marquee must obey the SAME tree rules as the renderer: what
+  // is not drawn is not selected. Otherwise the selection ends up with
+  // a frame and 8 handles on an empty canvas, and the first drag sends setProps
+  // for a geometry the user does not see.
   it("a marquee over a hidden container does not select its (visible) children", () => {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
@@ -1864,11 +1864,11 @@ describe("selectTool with nesting", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
 
-    tool.onPointerDown!(at(135, 85), ctx); // centro mondo di "c"
+    tool.onPointerDown!(at(135, 85), ctx); // world center of "c"
     expect(useScene.getState().selection).toEqual(["c"]);
-    tool.onPointerMove!(at(155, 95), ctx); // +20, +10 nel mondo
+    tool.onPointerMove!(at(155, 95), ctx); // +20, +10 in the world
     tool.onPointerUp!(at(155, 95), ctx);
-    // Il modello resta relativo al parent: 10+20, 10+10 -- non 130,80.
+    // The model stays relative to the parent: 10+20, 10+10 -- not 130,80.
     expect(useScene.getState().scene!.nodes.at("c")).toMatchObject({ x: 30, y: 20 });
   });
 
@@ -1878,10 +1878,10 @@ describe("selectTool with nesting", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
 
-    tool.onPointerDown!(at(160, 110), ctx); // maniglia se, in coordinate mondo
+    tool.onPointerDown!(at(160, 110), ctx); // se handle, in world coordinates
     tool.onPointerMove!(at(210, 110), ctx); // dx=50
     tool.onPointerUp!(at(210, 110), ctx);
-    // Larghezza raddoppiata, origine ferma: e l'origine è quella LOCALE.
+    // Width doubled, origin still: and the origin is the LOCAL one.
     expect(useScene.getState().scene!.nodes.at("c")).toMatchObject({ x: 10, y: 10, width: 100, height: 50 });
   });
 
@@ -1891,18 +1891,18 @@ describe("selectTool with nesting", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
 
-    tool.onPointerDown!(at(110, 60), ctx); // maniglia nw, in coordinate mondo
+    tool.onPointerDown!(at(110, 60), ctx); // nw handle, in world coordinates
     tool.onPointerMove!(at(120, 70), ctx);
     tool.onPointerUp!(at(120, 70), ctx);
-    // Nel mondo il nodo va da (120,70) a (160,110): in locale (20,20) 40x40.
+    // In the world the node goes from (120,70) to (160,110): locally (20,20) 40x40.
     expect(useScene.getState().scene!.nodes.at("c")).toMatchObject({ x: 20, y: 20, width: 40, height: 40 });
   });
 
-  // --- container E discendente selezionati insieme ---------------------------
-  // Le coordinate di un figlio sono relative al suo container: trasformare il
-  // container trasforma GIÀ il figlio. Un op anche per il figlio lo trasforma
-  // due volte -- ed è la stessa potatura (topmostOf) che la cancellazione fa
-  // per un'altra ragione.
+  // --- container AND descendant selected together ----------------------------
+  // A child's coordinates are relative to its container: transforming the
+  // container ALREADY transforms the child. An op for the child as well transforms it
+  // twice -- and it is the same pruning (topmostOf) that deletion does
+  // for another reason.
 
   it("moving a container and a descendant selected together transforms the descendant ONCE", () => {
     useScene.getState().setSelection(["g", "c"]);
@@ -1912,16 +1912,16 @@ describe("selectTool with nesting", () => {
     const ctx = fakeCtx();
 
     const before = worldBoundsOfNode(useScene.getState().scene!, useScene.getState().scene!.nodes.at("c"));
-    tool.onPointerDown!(at(400, 400), ctx); // dentro "g", fuori da "c": selezione invariata
+    tool.onPointerDown!(at(400, 400), ctx); // inside "g", outside "c": selection unchanged
     expect(useScene.getState().selection).toEqual(["g", "c"]);
-    tool.onPointerMove!(at(420, 410), ctx); // +20, +10 nel mondo
+    tool.onPointerMove!(at(420, 410), ctx); // +20, +10 in the world
     tool.onPointerUp!(at(420, 410), ctx);
 
-    expect(sync.sent).toHaveLength(1); // un op solo: il nodo più in alto
+    expect(sync.sent).toHaveLength(1); // a single op: the topmost node
     const scene = useScene.getState().scene!;
     expect(scene.nodes.at("g")).toMatchObject({ x: 120, y: 60 });
-    expect(scene.nodes.at("c")).toMatchObject({ x: 10, y: 10 }); // il locale non si tocca
-    // Nel MONDO il figlio si è spostato del delta, non del doppio: 110 -> 130.
+    expect(scene.nodes.at("c")).toMatchObject({ x: 10, y: 10 }); // the local is not touched
+    // In the WORLD the child moved by the delta, not double: 110 -> 130.
     const after = worldBoundsOfNode(scene, scene.nodes.at("c"));
     expect(after).toMatchObject({ x: before.x + 20, y: before.y + 10 });
   });
@@ -1933,18 +1933,18 @@ describe("selectTool with nesting", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
 
-    // Il bbox di gruppo è quello dell'INTERA selezione -- (100,50) 400x400,
-    // "c" ci sta dentro -- quindi la maniglia se sta al suo angolo mondo.
+    // The group bbox is that of the ENTIRE selection -- (100,50) 400x400,
+    // "c" fits inside it -- so the se handle sits at its world corner.
     tool.onPointerDown!(at(500, 450), ctx);
-    tool.onPointerMove!(at(900, 850), ctx); // raddoppia il bbox attorno all'ancora nw
+    tool.onPointerMove!(at(900, 850), ctx); // doubles the bbox around the nw anchor
     tool.onPointerUp!(at(900, 850), ctx);
 
     expect(sync.sent).toHaveLength(1);
     const scene = useScene.getState().scene!;
     expect(scene.nodes.at("g")).toMatchObject({ x: 100, y: 50, width: 800, height: 800 });
-    // Senza la potatura "c" riceverebbe (20,20) 100x100: il suo box mondo
-    // riscalato dalla stessa t mentre l'origine del container gli si sposta
-    // sotto.
+    // Without the pruning "c" would receive (20,20) 100x100: its world box
+    // rescaled by the same t while the container's origin shifts
+    // under it.
     expect(scene.nodes.at("c")).toMatchObject({ x: 10, y: 10, width: 50, height: 50 });
   });
 
@@ -1967,7 +1967,7 @@ describe("selectTool with nesting", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
 
-    tool.onPointerDown!(at(135, 85), ctx); // centro mondo di "c"
+    tool.onPointerDown!(at(135, 85), ctx); // world center of "c"
     tool.onPointerMove!(at(155, 95), ctx);
     tool.onPointerUp!(at(155, 95), ctx);
 
@@ -1976,21 +1976,21 @@ describe("selectTool with nesting", () => {
   });
 });
 
-// --- gruppi ------------------------------------------------------------------
-// La convenzione: un click seleziona il gruppo PIÙ ESTERNO, un doppio click
-// entra e seleziona il figlio (vedi store/groups.ts). Raggruppare e separare
-// sono UN gesto ciascuno: un invio, una voce di undo.
+// --- groups ------------------------------------------------------------------
+// The convention: a click selects the OUTERMOST group, a double click
+// enters and selects the child (see store/groups.ts). Grouping and ungrouping
+// are ONE gesture each: one send, one undo entry.
 describe("selectTool and groups", () => {
   //   page1
-  //   ├── g  (gruppo, nessuna geometria propria)
-  //   │   ├── c1 (10,10 50x50)  -> mondo (10,10)-(60,60)
-  //   │   └── c2 (100,0 20x20)  -> mondo (100,0)-(120,20)
+  //   ├── g  (group, no geometry of its own)
+  //   │   ├── c1 (10,10 50x50)  -> world (10,10)-(60,60)
+  //   │   └── c2 (100,0 20x20)  -> world (100,0)-(120,20)
   //   └── solo (200,200 50x50)
-  // I bounds del gruppo sono l'unione: (10,0) 110x60.
+  // The group's bounds are the union: (10,0) 110x60.
   function groupedScene() {
-    // editingNodeId non è nel beforeEach globale: una sessione di editing
-    // lasciata aperta da un altro test renderebbe vera per sbaglio l'asserzione
-    // "non è ancora in editing" qui sotto.
+    // editingNodeId is not in the global beforeEach: an editing session
+    // left open by another test would wrongly make the assertion
+    // "not yet in editing" below true.
     useScene.setState({ editingNodeId: null });
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
@@ -2009,7 +2009,7 @@ describe("selectTool and groups", () => {
   beforeEach(groupedScene);
 
   it("a click on a child of a group selects the GROUP", () => {
-    createSelectTool().onPointerDown!(at(30, 30), fakeCtx()); // dentro c1
+    createSelectTool().onPointerDown!(at(30, 30), fakeCtx()); // inside c1
     expect(useScene.getState().selection).toEqual(["g"]);
   });
 
@@ -2020,7 +2020,7 @@ describe("selectTool and groups", () => {
     expect(useScene.getState().selection).toEqual(["g"]);
     tool.onPointerDown!(atT(30, 30, 1100), ctx);
     expect(useScene.getState().selection).toEqual(["c1"]);
-    // Entrati nel gruppo, un click su un fratello seleziona il fratello.
+    // Having entered the group, a click on a sibling selects the sibling.
     tool.onPointerUp!(atT(30, 30, 1110), ctx);
     tool.onPointerDown!(atT(110, 10, 2000), ctx);
     expect(useScene.getState().selection).toEqual(["c2"]);
@@ -2030,22 +2030,22 @@ describe("selectTool and groups", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
     useScene.getState().setSelection(["c1"]);
-    tool.onPointerDown!(at(220, 220), ctx); // "solo", fuori dal gruppo
+    tool.onPointerDown!(at(220, 220), ctx); // "solo", outside the group
     expect(useScene.getState().selection).toEqual(["solo"]);
-    tool.onPointerDown!(at(30, 30), ctx);   // di nuovo dentro c1: il gruppo
+    tool.onPointerDown!(at(30, 30), ctx);   // inside c1 again: the group
     expect(useScene.getState().selection).toEqual(["g"]);
   });
 
-  // Il doppio click su un testo ha già un significato (l'editing). Dentro un
-  // gruppo i due si mettono in fila invece che in concorrenza: prima si entra,
-  // poi si scrive.
+  // A double click on a text already has a meaning (editing). Inside a
+  // group the two are put in sequence instead of in competition: first you enter,
+  // then you type.
   it("on a text node inside a group, the first double click enters and the second opens the editor", () => {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
       nodes: nodesOf({
         g: node("g", 0, "a000001", { kind: "group", width: 0, height: 0 }),
         t: node("t", 10, "a000001", { parentId: "g", y: 10, kind: "text",
-          text: { content: "ciao", style: { fontFamily: "", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "left" } } }),
+          text: { content: "hello", style: { fontFamily: "", fontSize: 16, fontWeight: "400", lineHeight: 1.2, align: "left" } } }),
       }),
     });
     const tool = createSelectTool();
@@ -2066,18 +2066,18 @@ describe("selectTool and groups", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
     tool.onPointerDown!(at(-5, -5), ctx);
-    tool.onPointerMove!(at(130, 70), ctx); // prende c1 E c2
+    tool.onPointerMove!(at(130, 70), ctx); // takes c1 AND c2
     tool.onPointerUp!(at(130, 70), ctx);
     expect(useScene.getState().selection).toEqual(["g"]);
   });
 
-  // Il verso opposto, e il motivo per cui il gruppo non entra MAI da solo nel
-  // marquee: "g" nasce 0x0 in (0,0), cioè sull'origine del suo parent. Una
-  // banda attorno all'origine non tocca nessun figlio (c1 parte a 10,10 e c2 a
-  // 100,0), quindi non deve selezionare niente. Prendendo il box proprio del
-  // gruppo la selezione finirebbe con cornice e 8 maniglie attorno a un
-  // contenuto tutto fuori dalla banda -- e il drag successivo manderebbe
-  // setProps per una geometria che l'utente non ha inquadrato.
+  // The opposite direction, and the reason the group NEVER enters the marquee on its own:
+  // "g" is born 0x0 at (0,0), i.e. at the origin of its parent. A
+  // band around the origin touches no child (c1 starts at 10,10 and c2 at
+  // 100,0), so it must select nothing. Taking the group's own box
+  // the selection would end up with a frame and 8 handles around
+  // content entirely outside the band -- and the next drag would send
+  // setProps for a geometry the user did not frame.
   it("a marquee that misses every child does NOT select the group by its own 0x0 box at the origin", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
@@ -2087,20 +2087,20 @@ describe("selectTool and groups", () => {
     expect(useScene.getState().selection).toEqual([]);
   });
 
-  // ...e il gruppo resta raggiungibile col marquee anche quando il suo box
-  // proprio è FUORI dalla banda: a metterlo in selezione è la politica che
-  // risale dai figli, non un rettangolo invisibile all'origine.
+  // ...and the group remains reachable with the marquee even when its own
+  // box is OUTSIDE the band: what puts it in the selection is the policy
+  // that climbs up from the children, not an invisible rectangle at the origin.
   it("a marquee on one child alone still selects the group, whose own box is outside the band", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
     tool.onPointerDown!(at(95, -5), ctx);
-    tool.onPointerMove!(at(125, 25), ctx); // solo c2: (100,0)-(120,20)
+    tool.onPointerMove!(at(125, 25), ctx); // only c2: (100,0)-(120,20)
     tool.onPointerUp!(at(125, 25), ctx);
     expect(useScene.getState().selection).toEqual(["g"]);
   });
 
-  // Il gruppo non ha un box proprio: la cornice (e quindi le maniglie) stanno
-  // sull'unione dei figli, ed è da lì che il resize deve partire.
+  // The group has no box of its own: the frame (and thus the handles) sit
+  // on the union of the children, and it is from there that the resize must start.
   it("moving a group moves its children, with ONE op", () => {
     useScene.getState().setSelection(["g"]);
     const sync = new FakeSync();
@@ -2116,7 +2116,7 @@ describe("selectTool and groups", () => {
     expect(sync.sent).toHaveLength(1);
     const scene = useScene.getState().scene!;
     expect(scene.nodes.at("g")).toMatchObject({ x: 20, y: 10 });
-    expect(scene.nodes.at("c1")).toMatchObject({ x: 10, y: 10 }); // il locale non si tocca
+    expect(scene.nodes.at("c1")).toMatchObject({ x: 10, y: 10 }); // the local is not touched
     expect(worldBoundsOfNode(scene, scene.nodes.at("c1"))).toMatchObject({ x: before.x + 20, y: before.y + 10 });
   });
 
@@ -2127,25 +2127,25 @@ describe("selectTool and groups", () => {
     const tool = createSelectTool();
     const ctx = fakeCtx();
 
-    // Maniglia se dell'UNIONE (10,0)-(120,60), trascinata a raddoppiare. Alt
-    // spegne lo snap: qui si prova la MATEMATICA del resize di gruppo, e senza
-    // Alt il bordo mobile (x=230) scatterebbe al centro di `solo` (x=225, entro
-    // la soglia) -- lo snap ha i suoi test dedicati, questo no.
+    // se handle of the UNION (10,0)-(120,60), dragged to double. Alt
+    // turns snap off: here the group resize MATH is tested, and without
+    // Alt the moving edge (x=230) would snap to the center of `solo` (x=225, within
+    // the threshold) -- snap has its own dedicated tests, this one does not.
     tool.onPointerDown!(at(120, 60), ctx);
     tool.onPointerMove!(atMod(230, 120, { altKey: true }), ctx);
     tool.onPointerUp!(atMod(230, 120, { altKey: true }), ctx);
 
     const scene = useScene.getState().scene!;
-    expect(sync.sent).toHaveLength(2); // un op per figlio, nessuno per il gruppo
+    expect(sync.sent).toHaveLength(2); // one op per child, none for the group
     expect(scene.nodes.at("g")).toMatchObject({ x: 0, y: 0, width: 0, height: 0 });
     expect(scene.nodes.at("c1")).toMatchObject({ x: 10, y: 20, width: 100, height: 100 });
     expect(scene.nodes.at("c2")).toMatchObject({ x: 190, y: 0, width: 40, height: 40 });
   });
 
-  // IL TRAPPOLONE del task 1: con l'annidamento una selezione che contiene un
-  // antenato E un suo discendente produrrebbe un secondo deleteNode che il
-  // server rifiuta (il discendente è già sparito nella cascata) -- e invertChain
-  // tornerebbe null per l'INTERO gesto: un gruppo cancellato e non annullabile.
+  // THE TRAP of task 1: with nesting a selection containing an
+  // ancestor AND one of its descendants would produce a second deleteNode that the
+  // server rejects (the descendant is already gone in the cascade) -- and invertChain
+  // would return null for the WHOLE gesture: a deleted, non-undoable group.
   it("Delete on a group AND one of its children sends ONE op, and the gesture stays undoable", () => {
     useScene.getState().setSelection(["g", "c1"]);
     const sync = new FakeSync();
@@ -2159,7 +2159,7 @@ describe("selectTool and groups", () => {
     expect(useScene.getState().scene!.nodes.at("c1")).toBeUndefined();
     const stack = useScene.getState().undoStack;
     expect(stack).toHaveLength(undoBefore + 1);
-    expect(stack[stack.length - 1]).toHaveLength(3); // g + c1 + c2 da ricreare
+    expect(stack[stack.length - 1]).toHaveLength(3); // g + c1 + c2 to recreate
 
     useScene.getState().undo();
     const scene = useScene.getState().scene!;
@@ -2194,8 +2194,8 @@ describe("selectTool and groups", () => {
       expect(scene.nodes.at(gid).kind).toBe("group");
       expect(scene.nodes.at("r1").parentId).toBe(gid);
       expect(scene.nodes.at("r3").parentId).toBe(gid);
-      expect(scene.nodes.at("r2").parentId).toBe("page1"); // non selezionato, non toccato
-      // UNA sola voce di undo per i tre op.
+      expect(scene.nodes.at("r2").parentId).toBe("page1"); // not selected, not touched
+      // A SINGLE undo entry for the three ops.
       expect(useScene.getState().undoStack).toHaveLength(undoBefore + 1);
 
       useScene.getState().undo();
@@ -2223,7 +2223,7 @@ describe("selectTool and groups", () => {
       expect(scene.nodes.at(gid)).toBeUndefined();
       expect(scene.nodes.at("r1").parentId).toBe("page1");
       expect(scene.nodes.at("r3").parentId).toBe("page1");
-      // I figli liberati restano selezionati, e nel loro ordine.
+      // The freed children stay selected, and in their order.
       expect(useScene.getState().selection).toEqual(["r1", "r3"]);
       expect(useScene.getState().undoStack).toHaveLength(undoAfterGroup + 1);
 
@@ -2252,9 +2252,9 @@ describe("selectTool and groups", () => {
       const scene = useScene.getState().scene!;
       const gid = useScene.getState().selection[0];
       expect(scene.nodes.at(gid).kind).toBe("group");
-      // "inner" è uscito dallo spazio di "g" (che traslava di 100,100) per
-      // entrare nel gruppo nuovo, che sta sotto la pagina: senza riscriverne le
-      // coordinate si sposterebbe di 100px.
+      // "inner" left the space of "g" (which translated by 100,100) to
+      // enter the new group, which sits under the page: without rewriting its
+      // coordinates it would shift by 100px.
       expect(scene.nodes.at("inner")).toMatchObject({ parentId: gid, x: 110, y: 110 });
       expect(worldBoundsOfNode(scene, scene.nodes.at("inner"))).toEqual(before);
     });
@@ -2278,30 +2278,30 @@ describe("selectTool and groups", () => {
       const tool = createSelectTool();
       const ctx = fakeCtx();
       tool.onPointerDown!(at(10, 10), ctx);
-      tool.onPointerMove!(at(30, 10), ctx); // drag aperto
+      tool.onPointerMove!(at(30, 10), ctx); // drag open
       tool.onKeyDown!(ctrl("g"), ctx);
-      // Il drag è stato abbandonato (nessun setProps sul filo) e il
-      // raggruppamento è passato.
+      // The drag was abandoned (no setProps on the wire) and the
+      // grouping went through.
       expect(sync.sent.map((o) => o.kind.case)).toEqual(["createNode", "reparentNode"]);
-      // Il pointerup che arriva comunque dopo non manda nient'altro.
+      // The pointerup that arrives anyway afterwards sends nothing else.
       tool.onPointerUp!(at(30, 10), ctx);
       expect(sync.sent).toHaveLength(2);
     });
   });
 });
 
-// CREAZIONE DI UN COMPONENTE (Ctrl/Cmd+Alt+K). Il nodo selezionato diventa il
-// MASTER: resta dov'è (nessun op lo sposta) e una sola CreateComponent lo
-// registra. Solo con ESATTAMENTE un nodo selezionato -- avvolgere una
-// multi-selezione è lavoro successivo, quindi zero o più di uno è un no-op.
-describe("creazione di un componente (Ctrl+Alt+K)", () => {
+// COMPONENT CREATION (Ctrl/Cmd+Alt+K). The selected node becomes the
+// MASTER: it stays where it is (no op moves it) and a single CreateComponent
+// registers it. Only with EXACTLY one node selected -- wrapping a
+// multi-selection is later work, so zero or more than one is a no-op.
+describe("creating a component (Ctrl+Alt+K)", () => {
   const cmk = () =>
     ({
       key: "k", code: "KeyK", ctrlKey: true, metaKey: false, altKey: true, shiftKey: false,
       preventDefault: vi.fn(),
     }) as unknown as KeyboardEvent;
 
-  it("con UN nodo selezionato emette una sola CreateComponent con quel nodo come radice", () => {
+  it("with ONE node selected it emits a single CreateComponent with that node as root", () => {
     const sync = new FakeSync();
     useScene.getState().setSync(sync);
     useScene.getState().setSelection(["a"]);
@@ -2318,15 +2318,15 @@ describe("creazione di un componente (Ctrl+Alt+K)", () => {
     const comps = Object.values(useScene.getState().scene!.components);
     expect(comps).toHaveLength(1);
     expect(comps[0].rootNodeId).toBe("a");
-    // createComponent NON è annullabile in M4: il proto non ha un DeleteComponent
-    // e invertOp ritorna null (vedi store/history.ts), quindi l'op parte e
-    // registra il componente ma non spinge nessuna voce di undo. Il nodo NON si
-    // sposta: diventa il master dov'è.
+    // createComponent is NOT undoable in M4: the proto has no DeleteComponent
+    // and invertOp returns null (see store/history.ts), so the op goes out and
+    // registers the component but pushes no undo entry. The node does NOT
+    // move: it becomes the master where it is.
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().scene!.nodes.at("a").x).toBe(0);
   });
 
-  it("preventDefault sempre (in un browser la combinazione può avere un suo significato)", () => {
+  it("preventDefault always (in a browser the combination may have a meaning of its own)", () => {
     const e = cmk();
     useScene.getState().setSync(new FakeSync());
     useScene.getState().setSelection(["b"]);
@@ -2334,7 +2334,7 @@ describe("creazione di un componente (Ctrl+Alt+K)", () => {
     expect(e.preventDefault).toHaveBeenCalled();
   });
 
-  it("è un NO-OP con zero o più di un nodo selezionato (nessun gesto lasciato aperto)", () => {
+  it("is a NO-OP with zero or more than one node selected (no gesture left open)", () => {
     const sync = new FakeSync();
     useScene.getState().setSync(sync);
     const tool = createSelectTool();
@@ -2351,13 +2351,13 @@ describe("creazione di un componente (Ctrl+Alt+K)", () => {
   });
 });
 
-// SCOPING ALLA PAGINA CORRENTE. Click e marquee rispondono sulle radici della
-// SOLA pagina corrente, esattamente come il renderer le disegna: vedi-vs-
-// seleziona. pickTarget/nodesInMarquee ricevono currentPageId (assente =
-// prima pagina, il default dello store); il tool lo legge dallo store.
-describe("scoping alla pagina corrente", () => {
-  // Due pagine, un nodo per pagina, sovrapposti nel mondo (entrambi 50x50 a
-  // (0,0)): il punto (25,25) e la banda (0,0)-(50,50) cadono su entrambi.
+// SCOPING TO THE CURRENT PAGE. Click and marquee answer on the roots of the
+// CURRENT page ONLY, exactly as the renderer draws them: see-vs-
+// select. pickTarget/nodesInMarquee receive currentPageId (absent =
+// first page, the store default); the tool reads it from the store.
+describe("scoping to the current page", () => {
+  // Two pages, one node per page, overlapping in the world (both 50x50 at
+  // (0,0)): the point (25,25) and the band (0,0)-(50,50) fall on both.
   function twoPages() {
     const s = emptyScene("doc-1", "u");
     s.pages = [{ id: "page1", name: "P1" }, { id: "page2", name: "P2" }];
@@ -2366,20 +2366,20 @@ describe("scoping alla pagina corrente", () => {
     return s;
   }
 
-  it("pickTarget colpisce solo il nodo della pagina corrente", () => {
+  it("pickTarget hits only the node of the current page", () => {
     const s = twoPages();
     expect(pickTarget(s, { x: 25, y: 25 }, false, [], 1, "page1")).toEqual({ mode: "single", id: "a" });
     expect(pickTarget(s, { x: 25, y: 25 }, false, [], 1, "page2")).toEqual({ mode: "single", id: "b" });
   });
 
-  it("nodesInMarquee prende solo i nodi della pagina corrente", () => {
+  it("nodesInMarquee takes only the nodes of the current page", () => {
     const s = twoPages();
     const band = { x: 0, y: 0, width: 50, height: 50 };
     expect(nodesInMarquee(s, band, "page1")).toEqual(["a"]);
     expect(nodesInMarquee(s, band, "page2")).toEqual(["b"]);
   });
 
-  it("un click con Seleziona sulla seconda pagina seleziona il SUO nodo, non quello della prima", () => {
+  it("a click with Select on the second page selects ITS node, not the one of the first page", () => {
     useScene.getState().setScene(twoPages());
     useScene.getState().setCurrentPage("page2");
     const tool = createSelectTool();

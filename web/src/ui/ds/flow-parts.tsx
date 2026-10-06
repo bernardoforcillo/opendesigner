@@ -3,15 +3,15 @@ import { Button as RacButton, TooltipTrigger, type ButtonProps } from "react-ari
 import { Icon, type IconName } from "./Icon";
 import { Tip } from "./index";
 
-// PEZZI CONDIVISI DELL'AREA "FLUSSI, PROTOTIPO E CHROME" (agente C).
+// SHARED PIECES OF THE "FLOWS, PROTOTYPE AND CHROME" AREA (agent C).
 //
-// Stanno qui, in un file a parte, perché il sistema di design (ds/index.tsx,
-// ds/Icon.tsx) è del lead: se uno di questi pezzi serve a più pannelli, il lead lo
-// promuove nel posto giusto. Tutto usa i token, niente colori scritti a mano.
+// They live here, in a separate file, because the design system (ds/index.tsx,
+// ds/Icon.tsx) belongs to the lead: if one of these pieces is needed by several
+// panels, the lead promotes it to the right place. Everything uses tokens, no hand-written colors.
 
-// --- ICONE IN PIÙ ------------------------------------------------------------
-// Stessa griglia 16x16 e tratto 1.5 di ds/Icon.tsx. Servono ai flussi (frecce,
-// ricomincia, ciclo, variabili) e ai tipi di schermata.
+// --- EXTRA ICONS ------------------------------------------------------------
+// Same 16x16 grid and 1.5 stroke as ds/Icon.tsx. They serve flows (arrows,
+// restart, loop, variables) and screen types.
 const P = {
   arrowRight: "M3 8h10M9 4l4 4-4 4",
   arrowLeft: "M13 8H3M7 4L3 8l4 4",
@@ -43,10 +43,10 @@ export function FlowIcon({
   );
 }
 
-// --- CAMPO ETICHETTATO ---------------------------------------------------------
-// Etichetta a sinistra (colonna fissa), controllo a destra. È un <label>: l'etichetta
-// visibile CLICCA il controllo, ma il nome accessibile lo fissa il controllo
-// stesso (aria-label) -- i test e i lettori di schermo vedono gli stessi nomi di sempre.
+// --- LABELED FIELD ---------------------------------------------------------
+// Label on the left (fixed column), control on the right. It is a <label>: the visible
+// label CLICKS the control, but the accessible name is set by the control
+// itself (aria-label) -- tests and screen readers see the same names as ever.
 export function Field({
   label, icon, children, className = "", wide,
 }: { label: string; icon?: IconName; children: ReactNode; className?: string; wide?: boolean }) {
@@ -61,10 +61,10 @@ export function Field({
   );
 }
 
-// --- INTERRUTTORE ---------------------------------------------------------------
-// Una casella VERA (input checkbox: stesso ruolo, stessa tastiera, stesso test)
-// vestita da interruttore. La casella è fuori vista ma focusabile; la traccia
-// segue lo stato con `peer-checked`.
+// --- SWITCH ---------------------------------------------------------------
+// A REAL checkbox (input checkbox: same role, same keyboard, same test)
+// dressed as a switch. The checkbox is out of sight but focusable; the track
+// follows the state with `peer-checked`.
 export function SwitchRow({
   label, checked, onChange, tone = "accent",
 }: { label: string; checked: boolean; onChange: (v: boolean) => void; tone?: "accent" | "flow" }) {
@@ -86,8 +86,8 @@ export function SwitchRow({
   );
 }
 
-// Contenitore di un controllo segmentato (i segmenti sono dei Radio di react-aria
-// o dei bottoni: qui c'è solo il guscio incassato).
+// Container of a segmented control (the segments are react-aria Radios
+// or buttons: here there is only the inset shell).
 export const SEGMENTED_TRACK = "inline-flex items-center gap-0.5 rounded-md bg-surface-3 p-0.5";
 export const SEGMENT =
   "inline-flex h-6 min-w-8 cursor-pointer select-none items-center justify-center gap-1 rounded px-2 text-[12px] font-medium " +
@@ -95,13 +95,13 @@ export const SEGMENT =
   "data-[selected]:bg-raised data-[selected]:text-fg data-[selected]:shadow-sm " +
   "data-[disabled]:cursor-not-allowed data-[disabled]:opacity-40 data-[focus-visible]:shadow-[var(--ring)]";
 
-// --- ICONA DI UNO DEI DUE SET + PULSANTE A SOLA ICONA -----------------------------
+// --- ICON FROM EITHER SET + ICON-ONLY BUTTON -----------------------------
 export function AnyIcon({ name, size = 16 }: { name: IconName | FlowIconName; size?: number }) {
   return name in P ? <FlowIcon name={name as FlowIconName} size={size} /> : <Icon name={name as IconName} size={size} />;
 }
 
-// Gemello di IconButton (ds/index.tsx) che accetta anche le icone di questo file.
-// Stesso contratto: `label` è nome accessibile E testo del tooltip.
+// Twin of IconButton (ds/index.tsx) that also accepts this file's icons.
+// Same contract: `label` is the accessible name AND the tooltip text.
 export function FlowIconButton({
   icon, label, shortcut, selected, size = 28, className = "", children, ...props
 }: Omit<ButtonProps, "children" | "aria-label"> & {

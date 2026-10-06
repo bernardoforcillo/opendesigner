@@ -4,9 +4,9 @@ import { toPbAutoLayout } from "../store/types";
 import type { AutoLayoutLite, NodeLite } from "../store/types";
 import type { NodeLookup } from "./gradientOps";
 
-// Gli op del pannello Auto layout. Scrivono SOLO il campo auto_layout del frame:
-// le posizioni dei figli e la misura di un frame hug le ricalcola il server (e
-// applyOp qui, per la vista ottimistica), non il pannello.
+// The Auto layout panel's ops. They write ONLY the frame's auto_layout field:
+// the children's positions and the size of a hug frame are recomputed by the server (and
+// by applyOp here, for the optimistic view), not by the panel.
 
 export const DEFAULT_AUTO_LAYOUT: AutoLayoutLite = {
   direction: "horizontal", spacing: 8,
@@ -31,9 +31,9 @@ function clampNonNegative(p: Partial<AutoLayoutLite>): Partial<AutoLayoutLite> {
 }
 
 /**
- * Accende, spegne o modifica l'auto layout dei frame selezionati. Accendere
- * scrive il default; un patch su un frame senza auto layout lo accende col
- * default più quel patch. Un patch che non cambia nulla non produce op.
+ * Turns on, turns off or edits the auto layout of the selected frames. Turning on
+ * writes the default; a patch on a frame without auto layout turns it on with the
+ * default plus that patch. A patch that changes nothing produces no op.
  */
 export function autoLayoutOps(ids: readonly string[], lookup: NodeLookup, patch: AutoLayoutPatch): Op[] {
   return ids.flatMap((id) => {

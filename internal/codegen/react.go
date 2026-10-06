@@ -10,14 +10,14 @@ import (
 	"github.com/bernardoforcillo/opendesigner/internal/flow"
 )
 
-// Target react: un progetto Vite + React + TypeScript + Tailwind v4 +
-// react-router-dom. Ogni schermata è un componente `src/screens/<Nome>.tsx` con
-// classi Tailwind; `src/App.tsx` monta le rotte; `tests/flows.spec.ts` sono i
-// test Playwright di internal/flow, che trovano gli elementi per data-testid /
-// testo / ruolo ESATTAMENTE come li scrive questo renderer (vedi writeJSX).
+// Target react: a Vite + React + TypeScript + Tailwind v4 +
+// react-router-dom project. Each screen is a `src/screens/<Name>.tsx` component
+// with Tailwind classes; `src/App.tsx` mounts the routes; `tests/flows.spec.ts`
+// holds the Playwright tests from internal/flow, which find elements by
+// data-testid / text / role EXACTLY as this renderer writes them (see writeJSX).
 
-// Versioni dei pacchetti: le major correnti al momento della scrittura. Sono
-// caret, quindi `npm install` prende l'ultima minor compatibile.
+// Package versions: the current majors at the time of writing. They are
+// carets, so `npm install` picks up the latest compatible minor.
 const (
 	verReact       = "^19.0.0"
 	verRouter      = "^7.0.0"
@@ -31,8 +31,8 @@ const (
 	verMotion      = "^14.0.0"
 )
 
-// tsString cita una stringa come literal TypeScript (escape JSON, senza
-// l'escaping HTML che json.Marshal applica di default).
+// tsString quotes a string as a TypeScript literal (JSON escaping, without the
+// HTML escaping that json.Marshal applies by default).
 func tsString(s string) string {
 	var buf bytes.Buffer
 	enc := json.NewEncoder(&buf)
@@ -49,8 +49,8 @@ func renderReact(d *opendesignerv1.Document, screens []*Screen, opts Options, fi
 	put := func(path, content string) { files[path] = []byte(content) }
 
 	pkgName := slug(d.GetName())
-	// Motion solo se il documento ha animazioni da esportare: un export senza
-	// clip resta identico a prima (e senza una dipendenza in più).
+	// Motion only if the document has animations to export: an export without
+	// clips stays identical to before (and without one more dependency).
 	hasAnim := false
 	for _, s := range screens {
 		if len(collectAnimated(s.Root)) > 0 {
@@ -92,7 +92,7 @@ func renderReact(d *opendesignerv1.Document, screens []*Screen, opts Options, fi
 `, tsString(pkgName), motionDep, verReact, verReact, verRouter, verPlaywright, verTailwind, verTypesNode, verTypesReact, verTypesReact, verPluginReact, verTailwind, verTypeScript, verVite))
 
 	put("index.html", fmt.Sprintf(`<!doctype html>
-<html lang="it">
+<html lang="en">
   <head>
     <meta charset="utf-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1" />
@@ -104,9 +104,9 @@ func renderReact(d *opendesignerv1.Document, screens []*Screen, opts Options, fi
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>
-`, escapeHTML(d.GetName()), generatedHeader(d, "scheletro dell'app")))
+`, escapeHTML(d.GetName()), generatedHeader(d, "app skeleton")))
 
-	put("vite.config.ts", tsHeader(d, "configurazione di Vite")+`import { defineConfig } from "vite";
+	put("vite.config.ts", tsHeader(d, "Vite configuration")+`import { defineConfig } from "vite";
 import react from "@vitejs/plugin-react";
 import tailwindcss from "@tailwindcss/vite";
 
@@ -132,10 +132,10 @@ export default defineConfig({
 }
 `)
 
-	put("playwright.config.ts", tsHeader(d, "configurazione di Playwright")+`import { defineConfig, devices } from "@playwright/test";
+	put("playwright.config.ts", tsHeader(d, "Playwright configuration")+`import { defineConfig, devices } from "@playwright/test";
 
-// Il dev server di Vite parte da solo; PW_CHROMIUM_PATH (opzionale) punta a un
-// Chromium già installato al posto di quello scaricato da Playwright.
+// The Vite dev server starts on its own; PW_CHROMIUM_PATH (optional) points to a
+// Chromium that is already installed instead of the one downloaded by Playwright.
 export default defineConfig({
   testDir: "./tests",
   fullyParallel: true,
@@ -160,11 +160,11 @@ export default defineConfig({
 
 	put(".gitignore", "node_modules\ndist\ntest-results\nplaywright-report\n")
 	put("src/vite-env.d.ts", "/// <reference types=\"vite/client\" />\n")
-	put("src/index.css", `/* `+strings.ReplaceAll(generatedHeader(d, "stili globali"), "\n", "\n   ")+` */
+	put("src/index.css", `/* `+strings.ReplaceAll(generatedHeader(d, "global styles"), "\n", "\n   ")+` */
 @import url("https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap");
 @import "tailwindcss";
 `)
-	put("src/main.tsx", tsHeader(d, "punto d'ingresso")+`import { StrictMode } from "react";
+	put("src/main.tsx", tsHeader(d, "entry point")+`import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 import App from "./App";
 import "./index.css";
@@ -176,8 +176,8 @@ createRoot(document.getElementById("root")!).render(
 );
 `)
 
-	// App.tsx: una rotta per schermata; "/" porta alla schermata iniziale del
-	// primo flusso che ne ha una (altrimenti alla prima schermata).
+	// App.tsx: one route per screen; "/" leads to the start screen of the
+	// first flow that has one (otherwise to the first screen).
 	home := screens[0]
 	for _, f := range selectedFlows(d, opts.FlowID) {
 		if s := d.GetFlows()[f].GetStartId(); s != "" {
@@ -190,14 +190,14 @@ createRoot(document.getElementById("root")!).render(
 		}
 	}
 	var app strings.Builder
-	app.WriteString(tsHeader(d, "rotte dell'app"))
+	app.WriteString(tsHeader(d, "app routes"))
 	app.WriteString("import { BrowserRouter, Route, Routes } from \"react-router-dom\";\n")
 	for _, s := range screens {
 		fmt.Fprintf(&app, "import { %s } from \"./screens/%s\";\n", s.Name, s.Name)
 	}
 	app.WriteString("\nexport default function App() {\n  return (\n    <BrowserRouter>\n      <Routes>\n")
 	if home.Route != "/" {
-		fmt.Fprintf(&app, "        {/* schermata iniziale: montata anche su \"/\" */}\n        <Route path=\"/\" element={<%s />} />\n", home.Name)
+		fmt.Fprintf(&app, "        {/* start screen: also mounted on \"/\" */}\n        <Route path=\"/\" element={<%s />} />\n", home.Name)
 	}
 	for _, s := range screens {
 		fmt.Fprintf(&app, "        <Route path=%s element={<%s />} />\n", tsString(s.Route), s.Name)
@@ -211,8 +211,8 @@ createRoot(document.getElementById("root")!).render(
 		put("src/screens/"+s.Name+".tsx", code)
 	}
 
-	// Test Playwright dei flussi (internal/flow): `code.route` è già stato
-	// completato sulla copia del documento da assignNames.
+	// Playwright tests of the flows (internal/flow): `code.route` has already been
+	// completed on the document copy by assignNames.
 	hasFlows := len(selectedFlows(d, opts.FlowID)) > 0
 	if hasFlows {
 		spec, err := flow.PlaywrightTests(d, opts.FlowID, flow.PlaywrightOptions{})
@@ -231,7 +231,7 @@ func escapeHTML(s string) string {
 }
 
 // ---------------------------------------------------------------------------
-// componenti
+// components
 // ---------------------------------------------------------------------------
 
 type jsxWriter struct {
@@ -240,8 +240,8 @@ type jsxWriter struct {
 
 func reactScreen(d *opendesignerv1.Document, s *Screen) (string, []string) {
 	animCode, warns := reactAnimations(s.Root)
-	// Cosa serve al componente: navigate (almeno un cablaggio con destinazione)
-	// ed effect (tasti).
+	// What the component needs: navigate (at least one wiring with a destination)
+	// and effect (keys).
 	needNavigate, needEffect := false, false
 	s.Root.walk(func(e *Element) {
 		for _, t := range e.Triggers {
@@ -262,7 +262,7 @@ func reactScreen(d *opendesignerv1.Document, s *Screen) (string, []string) {
 	}
 
 	var b strings.Builder
-	b.WriteString(tsHeader(d, "schermata \""+oneLine(d.GetNodes()[s.NodeID].GetName())+"\" (rotta "+s.Route+")"))
+	b.WriteString(tsHeader(d, "screen \""+oneLine(d.GetNodes()[s.NodeID].GetName())+"\" (route "+s.Route+")"))
 	if needEffect {
 		b.WriteString("import { useEffect } from \"react\";\n")
 	}
@@ -286,7 +286,7 @@ func reactScreen(d *opendesignerv1.Document, s *Screen) (string, []string) {
 	}
 	for _, t := range s.Root.KeyTriggers {
 		if t.Dest == nil {
-			fmt.Fprintf(&b, "  // %s (tasto %s: destinazione non esportata)\n", flowComment(t), oneLine(t.Label))
+			fmt.Fprintf(&b, "  // %s (key %s: destination not exported)\n", flowComment(t), oneLine(t.Label))
 		}
 	}
 	if needEffect {
@@ -304,7 +304,7 @@ func reactScreen(d *opendesignerv1.Document, s *Screen) (string, []string) {
 	}
 	for _, t := range s.Root.NavTriggers {
 		if t.Kind == "auto" {
-			fmt.Fprintf(&b, "  // %s (trigger auto: da cablare, p.es. con un timer)\n", flowComment(t))
+			fmt.Fprintf(&b, "  // %s (auto trigger: to be wired, e.g. with a timer)\n", flowComment(t))
 		}
 	}
 	b.WriteString("  return (\n")
@@ -327,8 +327,8 @@ func dedupeStrings(in []string) []string {
 	return out
 }
 
-// attrName: da nome HTML/SVG (kebab) a prop JSX (camelCase); data-* e aria-*
-// restano com'erano.
+// attrName: from HTML/SVG name (kebab) to JSX prop (camelCase); data-* and aria-*
+// stay as they were.
 func attrName(n string) string {
 	if strings.HasPrefix(n, "data-") || strings.HasPrefix(n, "aria-") {
 		return n
@@ -349,9 +349,9 @@ func attrName(n string) string {
 	return strings.Join(parts, "")
 }
 
-// attrValue: `"valore"` se è sicuro come literal di attributo JSX (le
-// entità HTML vi si interpretano, e le virgolette non si escapano),
-// altrimenti `{"valore"}`.
+// attrValue: `"value"` if it is safe as a JSX attribute literal (HTML
+// entities are interpreted in it, and quotes are not escaped),
+// otherwise `{"value"}`.
 func attrValue(v string) string {
 	if strings.ContainsAny(v, "\"&\\\n\r<>{}") {
 		return "{" + tsString(v) + "}"
@@ -370,16 +370,16 @@ func navigateExpr(t Trigger) string {
 	return "navigate(" + tsString(t.Dest.Route) + ")"
 }
 
-// element scrive un elemento JSX. Cablaggio dei flussi:
+// element writes a JSX element. Flow wiring:
 //
-//	elemento trigger -> onClick, role="button", tabIndex, aria-label = etichetta
-//	                    della transizione, classe cursor-pointer (più
-//	                    data-testid dai meta, già fra gli attributi);
-//	senza elemento   -> <nav> visivamente nascosto con un <button> per
-//	                    transizione, in fondo alla radice.
+//	trigger element -> onClick, role="button", tabIndex, aria-label = the
+//	                   transition's label, cursor-pointer class (plus
+//	                   data-testid from the meta, already among the attributes);
+//	no element      -> visually hidden <nav> with one <button> per
+//	                   transition, at the bottom of the root.
 //
-// Sono i tre modi in cui i test generati (getByTestId / getByText /
-// getByRole('button', { name })) trovano l'elemento nel DOM vero.
+// These are the three ways the generated tests (getByTestId / getByText /
+// getByRole('button', { name })) find the element in the real DOM.
 func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.Document) {
 	type kv struct{ k, v string }
 	var attrs []kv
@@ -404,9 +404,9 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 	if cn := className(style); cn != "" {
 		attrs = append(attrs, kv{"className", attrValue(cn)})
 	}
-	// Animazioni (Motion): l'elemento diventa `motion.<tag>`, riceve le varianti
-	// delle sue tracce e, se è il target di una clip, le etichette che le
-	// innescano sui discendenti (initial/animate = mount, whileHover, whileTap).
+	// Animations (Motion): the element becomes `motion.<tag>`, receives the
+	// variants of its tracks and, if it is the target of a clip, the labels that
+	// trigger them on descendants (initial/animate = mount, whileHover, whileTap).
 	motion := e.Anim != nil
 	if motion {
 		if e.Anim.VarName != "" {
@@ -494,20 +494,20 @@ func hasNav(root *Element) bool {
 	return false
 }
 
-// nav: i pulsanti delle transizioni senza elemento, visivamente nascosti ma
-// presenti nel DOM e nell'albero di accessibilità.
+// nav: the buttons of transitions without an element, visually hidden but
+// present in the DOM and in the accessibility tree.
 //
-// NON usano `sr-only` di Tailwind: quella utility ritaglia l'elemento
-// (clip: rect(0,0,0,0)) e Playwright, che prima di cliccare verifica chi
-// riceve il puntatore, lo dà alla radice della schermata ("intercepts pointer
-// events"). Qui ogni pulsante è un pixel trasparente (opacity-0) nell'angolo in
-// alto a sinistra e sopra al resto: invisibile, nell'albero di accessibilità
-// col suo nome, e cliccabile da un test.
+// They do NOT use Tailwind's `sr-only`: that utility clips the element
+// (clip: rect(0,0,0,0)) and Playwright, which checks who receives the pointer
+// before clicking, gives it to the screen's root ("intercepts pointer
+// events"). Here each button is a transparent pixel (opacity-0) in the
+// top-left corner and above everything else: invisible, in the accessibility
+// tree with its name, and clickable by a test.
 func (w *jsxWriter) nav(root *Element, depth int, d *opendesignerv1.Document) {
 	if !hasNav(root) {
 		return
 	}
-	w.line(depth, "<nav className=\"absolute left-0 top-0 z-50 flex flex-col opacity-0\" aria-label=\"Navigazione del flusso\">")
+	w.line(depth, "<nav className=\"absolute left-0 top-0 z-50 flex flex-col opacity-0\" aria-label=\"Flow navigation\">")
 	for _, t := range root.NavTriggers {
 		if t.Kind == "auto" || (t.Dest == nil && t.Kind != "back") {
 			continue
@@ -515,9 +515,9 @@ func (w *jsxWriter) nav(root *Element, depth int, d *opendesignerv1.Document) {
 		label := t.Label
 		if label == "" {
 			if t.Dest != nil {
-				label = "Vai a " + d.GetNodes()[t.Dest.NodeID].GetName()
+				label = "Go to " + d.GetNodes()[t.Dest.NodeID].GetName()
 			} else {
-				label = "Indietro"
+				label = "Back"
 			}
 		}
 		for _, l := range flowComments(t) {
@@ -528,7 +528,7 @@ func (w *jsxWriter) nav(root *Element, depth int, d *opendesignerv1.Document) {
 	w.line(depth, "</nav>")
 }
 
-// jsxText: testo statico sicuro dentro JSX.
+// jsxText: safe static text inside JSX.
 func jsxText(s string) string {
 	if strings.ContainsAny(s, "{}<>&\n\r") || strings.TrimSpace(s) != s {
 		return "{" + tsString(s) + "}"
@@ -544,39 +544,39 @@ func reactReadme(d *opendesignerv1.Document, screens []*Screen, opts Options, ha
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", d.GetName())
 	fmt.Fprintf(&b, "<!-- %s -->\n\n", generatedHeader(d, "README"))
-	b.WriteString("Progetto React + TypeScript + Tailwind v4 generato dal design con `opendesigner export`.\n\n")
-	b.WriteString("## Come si avvia\n\n```sh\nnpm install\nnpm run dev      # http://localhost:5173\nnpm run build    # controllo dei tipi + build di produzione\n")
+	b.WriteString("React + TypeScript + Tailwind v4 project generated from the design with `opendesigner export`.\n\n")
+	b.WriteString("## Getting started\n\n```sh\nnpm install\nnpm run dev      # http://localhost:5173\nnpm run build    # type check + production build\n")
 	if hasFlows {
-		b.WriteString("npx playwright install chromium   # solo la prima volta\nnpm test         # i test e2e generati dai flussi (playwright test)\n")
+		b.WriteString("npx playwright install chromium   # first time only\nnpm test         # the e2e tests generated from the flows (playwright test)\n")
 	}
 	b.WriteString("```\n\n")
-	b.WriteString("## Come il design diventa codice\n\n")
-	b.WriteString("- Ogni **schermata** (frame di primo livello) è un componente in `src/screens/<Nome>.tsx`; `src/App.tsx` ne monta le rotte (`meta[\"code.route\"]` del frame, altrimenti lo slug del nome). La schermata iniziale del flusso è montata anche su `/`.\n")
-	b.WriteString("- **Auto layout** -> flexbox (`flex`, `gap`, `padding`, `justify-*`, `items-*`); tutto il resto è posizionato in modo assoluto (`absolute left-[..] top-[..]`) dentro il contenitore, con le coordinate del design. `hug` -> `fit-content`.\n")
-	b.WriteString("- Riempimenti, tratti (interno/centro/esterno -> anelli di `box-shadow`), ombre, sfocature, rotazione, ritaglio, testo e vettori seguono **ciò che disegna il canvas dell'editor** (primo riempimento, prima ombra, prima sfocatura).\n")
-	b.WriteString("- Le **immagini** sono copiate in `public/assets/<hash>.<ext>`; se mancano compare il segnaposto del canvas.\n")
-	b.WriteString("- Ogni elemento porta `data-node-id=\"<id del nodo>\"`: è il legame fra il design e il codice.\n")
-	b.WriteString("- Le **istanze** dei componenti sono espanse inline (non c'è ancora l'estrazione in componenti React).\n")
-	b.WriteString("- Le schermate hanno dimensione fissa (niente responsive).\n\n")
+	b.WriteString("## How the design becomes code\n\n")
+	b.WriteString("- Each **screen** (top-level frame) is a component in `src/screens/<Name>.tsx`; `src/App.tsx` mounts its routes (the frame's `meta[\"code.route\"]`, otherwise the name's slug). The flow's start screen is also mounted on `/`.\n")
+	b.WriteString("- **Auto layout** -> flexbox (`flex`, `gap`, `padding`, `justify-*`, `items-*`); everything else is positioned absolutely (`absolute left-[..] top-[..]`) inside the container, using the design's coordinates. `hug` -> `fit-content`.\n")
+	b.WriteString("- Fills, strokes (inside/center/outside -> `box-shadow` rings), shadows, blurs, rotation, clipping, text and vectors follow **what the editor's canvas draws** (first fill, first shadow, first blur).\n")
+	b.WriteString("- **Images** are copied to `public/assets/<hash>.<ext>`; if missing, the canvas placeholder appears.\n")
+	b.WriteString("- Every element carries `data-node-id=\"<node id>\"`: it is the link between the design and the code.\n")
+	b.WriteString("- Component **instances** are expanded inline (there is no extraction into React components yet).\n")
+	b.WriteString("- Screens have a fixed size (no responsiveness).\n\n")
 	if hasFlows {
-		b.WriteString("## Flussi e test\n\n")
-		b.WriteString("Per ogni transizione l'elemento che la innesca (`elementId`) è cliccabile (`onClick` -> `navigate(...)`, `role=\"button\"`, `aria-label` = etichetta, `data-testid` dal meta `test.id`). Le transizioni senza elemento sono pulsanti visivamente nascosti in un `<nav>` trasparente (1px, in alto a sinistra). ")
-		b.WriteString("Le righe `// flow: <id>`, `// guard:` e `// effect:` indicano la transizione del design.\n\n")
-		b.WriteString("`tests/flows.spec.ts` è prodotto da `opendesigner flow tests` e percorre tutti i percorsi dei flussi con Playwright.\n\n")
+		b.WriteString("## Flows and tests\n\n")
+		b.WriteString("For each transition, the element that fires it (`elementId`) is clickable (`onClick` -> `navigate(...)`, `role=\"button\"`, `aria-label` = label, `data-testid` from the `test.id` meta). Transitions without an element are visually hidden buttons in a transparent `<nav>` (1px, top-left). ")
+		b.WriteString("The `// flow: <id>`, `// guard:` and `// effect:` lines indicate the design's transition.\n\n")
+		b.WriteString("`tests/flows.spec.ts` is produced by `opendesigner flow tests` and walks all the flows' paths with Playwright.\n\n")
 	}
 	if hasAnim {
 		b.WriteString(animationReadme(d, screens))
 	}
-	b.WriteString("## Schermate\n\n| Componente | Rotta | Nodo del design |\n|---|---|---|\n")
+	b.WriteString("## Screens\n\n| Component | Route | Design node |\n|---|---|---|\n")
 	for _, s := range screens {
 		fmt.Fprintf(&b, "| `%s` | `%s` | `%s` (%s) |\n", s.Name, s.Route, s.NodeID, strings.ReplaceAll(d.GetNodes()[s.NodeID].GetName(), "|", "\\|"))
 	}
-	b.WriteString("\n## Rigenerare\n\n")
+	b.WriteString("\n## Regenerating\n\n")
 	flag := ""
 	if opts.FlowID != "" {
 		flag = " -flow " + opts.FlowID
 	}
 	fmt.Fprintf(&b, "```sh\nopendesigner export -doc %s -target react%s -out . -force\n```\n\n", d.GetId(), flag)
-	b.WriteString("I file generati non vanno modificati a mano: la prossima esportazione li sovrascrive. Per far evolvere il progetto a mano, esporta una volta e da lì in poi lavora sul codice (la rigenerazione non fa merge).\n")
+	b.WriteString("The generated files must not be edited by hand: the next export overwrites them. To evolve the project by hand, export once and work on the code from then on (regeneration does not merge).\n")
 	return b.String()
 }

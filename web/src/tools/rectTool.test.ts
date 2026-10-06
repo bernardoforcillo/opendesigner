@@ -12,12 +12,12 @@ function node(id: string, orderKey: string): NodeLite {
     x: 0, y: 0, width: 10, height: 10, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false };
 }
 
-// Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
-// SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
-// in volo, visibile subito) seguito da apply (l'eco che lo conferma). Senza
-// l'eco ogni op resterebbe in coda per sempre e i test parlerebbero di uno
-// stato che il server non ha mai visto. Lo store dipende solo dalla superficie
-// { submit }, quindi non serve un SyncClient reale (niente rete nei test).
+// Double of SyncClient (see rpc/syncClient.ts): records the ops that end up
+// ON THE WIRE and models a server that accepts and ECHOES immediately -- applyPending (op
+// in flight, visible immediately) followed by apply (the echo that confirms it). Without
+// the echo every op would stay queued forever and the tests would speak of a
+// state the server never saw. The store depends only on the surface
+// { submit }, so a real SyncClient is not needed (no network in tests).
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
@@ -27,11 +27,11 @@ class FakeSync {
   }
 }
 
-// Doppio del ToolContext: toWorld è l'identità su clientX/clientY, così i test
-// ragionano direttamente in coordinate mondo. La conversione vera è testata in
+// Double of ToolContext: toWorld is the identity on clientX/clientY, so the tests
+// reason directly in world coordinates. The real conversion is tested in
 // canvas/camera.test.ts.
-// Il trasporto va registrato SULLO STORE, non solo sul contesto: la creazione
-// passa da endGesture, che submitta tramite lo store (come ogni altro gesto).
+// The transport must be registered ON THE STORE, not just on the context: creation
+// goes through endGesture, which submits via the store (like every other gesture).
 function fakeCtx(zoom = 1) {
   const sync = new FakeSync();
   useScene.getState().setSync(sync);
@@ -67,9 +67,9 @@ beforeEach(() => {
     canUndo: false,
     canRedo: false,
   });
-  // setScene e non setState({scene}): installa una scena COERENTE (vista e
-  // confermato allineati, coda vuota) -- l'invariante su cui poggia la
-  // riconciliazione confermato/pending (vedi store/store.ts).
+  // setScene and not setState({scene}): installs a COHERENT scene (view and
+  // confirmed aligned, empty queue) -- the invariant that the
+  // confirmed/pending reconciliation relies on (see store/store.ts).
   useScene.getState().setScene(emptyScene("doc-1", "Untitled"));
 });
 
@@ -81,7 +81,7 @@ describe("rectTool", () => {
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerMove!(at(40, 50), ctx);
     tool.onPointerMove!(at(60, 80), ctx);
-    expect(submitted).toHaveLength(0); // niente op durante il drag
+    expect(submitted).toHaveLength(0); // no ops during the drag
 
     tool.onPointerUp!(at(60, 80), ctx);
     expect(submitted).toHaveLength(1);
@@ -113,7 +113,7 @@ describe("rectTool", () => {
 
   it("treats a sub-pixel drag as a click at any zoom (threshold is in screen px)", () => {
     const tool = createRectTool();
-    const { ctx, submitted } = fakeCtx(64); // molto zoomato: 0.02 unità mondo = ~1px schermo
+    const { ctx, submitted } = fakeCtx(64); // heavily zoomed: 0.02 world units = ~1px screen
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerMove!(at(10.02, 20.02), ctx);
     tool.onPointerUp!(at(10.02, 20.02), ctx);
@@ -154,9 +154,9 @@ describe("rectTool", () => {
     expect(submitted).toHaveLength(0);
   });
 
-  // Il disegno è un gesto come tutti gli altri: passa da beginGesture/
-  // endGesture, quindi lascia UNA voce di undo -- senza cambiare il conto
-  // degli op sul filo, che resta uno solo (un gesto = un submit).
+  // Drawing is a gesture like all the others: it goes through beginGesture/
+  // endGesture, so it leaves ONE undo entry -- without changing the count
+  // of ops on the wire, which stays just one (one gesture = one submit).
   it("records exactly one undo entry without adding ops to the wire", () => {
     const tool = createRectTool();
     const { ctx, submitted } = fakeCtx();
@@ -168,7 +168,7 @@ describe("rectTool", () => {
     const st = useScene.getState();
     expect(st.undoStack).toHaveLength(1);
     expect(st.canUndo).toBe(true);
-    expect(st.gesture).toBeNull(); // il gesto è chiuso: undo/redo non sono bloccati
+    expect(st.gesture).toBeNull(); // the gesture is closed: undo/redo are not blocked
   });
 
   it("undoing a freshly drawn rect removes the node (and redo puts it back)", () => {
@@ -210,8 +210,8 @@ describe("rectTool", () => {
     expect(useScene.getState().selection).toEqual([]);
   });
 
-  // Il nodo nasce SOTTO la pagina corrente, non sempre "page1": disegnare
-  // mentre si è su una seconda pagina crea il nodo lì.
+  // The node is born UNDER the current page, not always "page1": drawing
+  // while on a second page creates the node there.
   it("creates the node under the CURRENT page", () => {
     useScene.getState().setScene({
       ...emptyScene("doc-1", "u"),
@@ -223,7 +223,7 @@ describe("rectTool", () => {
     tool.onPointerDown!(at(10, 20), ctx);
     tool.onPointerUp!(at(60, 80), ctx);
     expect(createdNode(submitted[0]).parentId).toBe("page2");
-    // E il nodo è davvero atterrato sotto page2 nella scena.
+    // And the node really landed under page2 in the scene.
     expect(useScene.getState().scene!.nodes.at(createdNode(submitted[0]).id).parentId).toBe("page2");
   });
 });

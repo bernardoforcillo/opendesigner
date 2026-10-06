@@ -8,8 +8,8 @@ function node(kind: "rect" | "ellipse"): NodeLite {
     fills: [{ r: 0, g: 0, b: 0, a: 1 }], strokes: [], kind, cornerRadius: 0, clipsContent: false };
 }
 
-// Stile con lineHeight non specificato (0): il default 1.2 lo risolve il
-// renderer, quindi una riga è alta 16 * 1.2 = 19.2.
+// Style with unspecified lineHeight (0): the default 1.2 is resolved by the
+// renderer, so a line is 16 * 1.2 = 19.2 tall.
 function textNode(over: Partial<NodeLite> = {}, content = "hi"): NodeLite {
   return {
     ...node("rect"), kind: "text",
@@ -26,40 +26,40 @@ function vectorNode(subpaths: SubPathLite[], over: Partial<NodeLite> = {}): Node
   return { ...node("rect"), kind: "vector", vector: { subpaths }, ...over };
 }
 
-// Lo zoom entra nell'hit-test solo per convertire la tolleranza di presa da px
-// SCHERMO a unità mondo: a zoom 1 i due valori coincidono, ed è quello che
-// usano i test che non parlano di zoom.
+// Zoom enters hit-test only to convert the grab tolerance from SCREEN px
+// to world units: at zoom 1 the two values coincide, and that is what the
+// tests that do not talk about zoom use.
 const Z1 = 1;
 
 describe("hitTestNode", () => {
   it("rect: inside and outside", () => {
     expect(hitTestNode(node("rect"), 50, 25, Z1)).toBe(true);
-    expect(hitTestNode(node("rect"), 4, 2, Z1)).toBe(true);     // gli angoli appartengono al rect
+    expect(hitTestNode(node("rect"), 4, 2, Z1)).toBe(true);     // the corners belong to the rect
     expect(hitTestNode(node("rect"), 120, 25, Z1)).toBe(false);
   });
 
-  // Un gruppo non ha geometria propria: non si disegna e non si colpisce. A
-  // selezionarlo ci pensa la politica dei gruppi risalendo dal FIGLIO colpito
-  // (store/groups.ts), non un rettangolo invisibile che ruberebbe i click a
-  // quello che gli sta sotto. Il box è valorizzato apposta: nemmeno un gruppo
-  // con width/height addosso deve diventare colpibile.
+  // A group has no geometry of its own: it is not drawn and not hit. Selecting
+  // it is the job of the group policy climbing from the hit CHILD
+  // (store/groups.ts), not an invisible rectangle that would steal clicks from
+  // what lies under it. The box is set on purpose: not even a group
+  // with width/height on it must become hittable.
   it("group: never hit, whatever box it carries", () => {
     const g: NodeLite = { ...node("rect"), kind: "group" };
     expect(hitTestNode(g, 50, 25, Z1)).toBe(false);
     expect(hitTestNode({ ...g, width: 0, height: 0 }, 0, 0, Z1)).toBe(false);
   });
 
-  // Un FRAME ha geometria PROPRIA (a differenza del gruppo): si colpisce sul
-  // suo box, come un rettangolo. È la convenzione artboard -- cliccare la parte
-  // VUOTA del frame lo seleziona. Il corner radius non lo tocca: un frame è
-  // rettangolare.
+  // A FRAME has its OWN geometry (unlike the group): it is hit on its
+  // box, like a rectangle. It is the artboard convention -- clicking the EMPTY part
+  // of the frame selects it. The corner radius does not touch it: a frame is
+  // rectangular.
   it("frame: hits its own box like a rect, ignoring corner radius", () => {
     const f: NodeLite = { ...node("rect"), kind: "frame" };
-    expect(hitTestNode(f, 50, 25, Z1)).toBe(true);   // dentro il box
+    expect(hitTestNode(f, 50, 25, Z1)).toBe(true);   // inside the box
     expect(hitTestNode(f, 0, 0, Z1)).toBe(true);      // l'angolo appartiene al box
     expect(hitTestNode(f, 100, 50, Z1)).toBe(true);   // l'angolo opposto
-    expect(hitTestNode(f, 120, 25, Z1)).toBe(false);  // fuori
-    // Un corner radius eventuale non restringe l'area colpibile del frame.
+    expect(hitTestNode(f, 120, 25, Z1)).toBe(false);  // outside
+    // Any corner radius does not shrink the frame's hit area.
     expect(hitTestNode({ ...f, cornerRadius: 40 }, 2, 2, Z1)).toBe(true);
   });
 
@@ -71,17 +71,17 @@ describe("hitTestNode", () => {
   it("ellipse: center hits, corner misses", () => {
     const e = node("ellipse");
     expect(hitTestNode(e, 50, 25, Z1)).toBe(true);
-    expect(hitTestNode(e, 4, 2, Z1)).toBe(false);               // <- il caso che l'AABB sbagliava
+    expect(hitTestNode(e, 4, 2, Z1)).toBe(false);               // <- the case the AABB got wrong
     expect(hitTestNode(e, 99, 25, Z1)).toBe(true);              // estremo dell'asse maggiore
   });
 
   it("handles zero-size nodes without dividing by zero", () => {
     const z = { ...node("ellipse"), width: 0, height: 0 };
     expect(hitTestNode(z, 0, 0, Z1)).toBe(false);
-    // Una forma il cui INCHIOSTRO È IL BOX (rect, ellisse) resta non colpibile
-    // da degenere: non c'è niente di disegnato da colpire, e drawScene la scarta
-    // con lo stesso guard. Le esenzioni più sotto -- testo e vettoriale -- sono
-    // i due casi in cui l'inchiostro NON è il box.
+    // A shape whose INK IS THE BOX (rect, ellipse) stays unhittable
+    // when degenerate: there is nothing drawn to hit, and drawScene discards it
+    // with the same guard. The exemptions below -- text and vector -- are
+    // the two cases in which the ink is NOT the box.
     expect(hitTestNode({ ...node("rect"), height: 0 }, 50, 0, Z1)).toBe(false);
   });
 
@@ -90,14 +90,14 @@ describe("hitTestNode", () => {
       ...node("rect"), kind: "text",
       text: { content: "a  b", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } },
     };
-    expect(hitTestNode(t, 50, 25, Z1)).toBe(true);   // dentro il box, fra due glifi
-    expect(hitTestNode(t, 99, 49, Z1)).toBe(true);   // angolo del box, ben oltre il testo
-    expect(hitTestNode(t, 101, 25, Z1)).toBe(false); // fuori dal box
+    expect(hitTestNode(t, 50, 25, Z1)).toBe(true);   // inside the box, between two glyphs
+    expect(hitTestNode(t, 99, 49, Z1)).toBe(true);   // corner of the box, well past the text
+    expect(hitTestNode(t, 101, 25, Z1)).toBe(false); // outside the box
   });
 
   it("text: empty content is still hittable on its box", () => {
-    // Un nodo testo appena creato è vuoto: se non fosse selezionabile
-    // l'utente non potrebbe più raggiungerlo dal canvas.
+    // A just-created text node is empty: if it were not selectable
+    // the user could no longer reach it from the canvas.
     const t: NodeLite = {
       ...node("rect"), kind: "text",
       text: { content: "", style: { fontFamily: "", fontSize: 0, fontWeight: "", lineHeight: 0, align: "left" } },
@@ -106,18 +106,18 @@ describe("hitTestNode", () => {
   });
 
   it("text: a node whose height the layout has not produced yet is hittable on one line", () => {
-    // Lo stesso nodo che drawScene disegna comunque (canvasRenderer.ts): se
-    // l'hit-test lo scartasse per height 0, il testo appena creato sarebbe
-    // visibile ma impossibile da cliccare. Il minimo è una riga: 16 * 1.2.
+    // The same node that drawScene draws anyway (canvasRenderer.ts): if
+    // hit-test discarded it for height 0, the just-created text would be
+    // visible but impossible to click. The minimum is one line: 16 * 1.2.
     const t = textNode({ height: 0 });
     expect(hitTestNode(t, 50, 0, Z1)).toBe(true);
     expect(hitTestNode(t, 50, 19, Z1)).toBe(true);
-    expect(hitTestNode(t, 50, 20, Z1)).toBe(false);   // sotto la riga, di nuovo fuori
+    expect(hitTestNode(t, 50, 20, Z1)).toBe(false);   // below the line, outside again
   });
 
   it("text: a caret-sized node keeps a click target on both axes", () => {
-    // width 0 = nessuna larghezza di wrap: il box del modello è un punto, ma
-    // il caret sullo schermo no.
+    // width 0 = no wrap width: the model's box is a point, but
+    // the caret on screen is not.
     const t = textNode({ width: 0, height: 0 }, "");
     expect(hitTestNode(t, 0, 0, Z1)).toBe(true);
     expect(hitTestNode(t, 19, 19, Z1)).toBe(true);
@@ -125,7 +125,7 @@ describe("hitTestNode", () => {
   });
 
   it("text: a missing text payload falls back to the renderer defaults", () => {
-    // Stato che toNodeLite non produce, ma l'hit-test non deve esplodere.
+    // State that toNodeLite does not produce, but hit-test must not blow up.
     const t: NodeLite = { ...node("rect"), kind: "text", width: 0, height: 0 };
     expect(hitTestNode(t, 5, 5, Z1)).toBe(true);
     expect(hitTestNode(t, 25, 5, Z1)).toBe(false);
@@ -136,14 +136,14 @@ describe("hitTestNode", () => {
   });
 });
 
-// Il vettoriale è il secondo caso in cui l'inchiostro non è il box, e per una
-// ragione diversa dal testo: il box è la bbox ESATTA della geometria
-// (invariante del proto), quindi un asse a zero non è uno stato transitorio ma
-// il valore giusto -- un segmento orizzontale, o il path di un solo ancoraggio
-// appena posato dal pen tool. Il box però non è nemmeno il BERSAGLIO: si
-// colpisce l'inchiostro, cioè il riempimento di un contorno chiuso o la
-// vicinanza alla curva di uno aperto.
-describe("hitTestNode: vettoriale", () => {
+// The vector is the second case in which the ink is not the box, and for a
+// different reason than text: the box is the EXACT bbox of the geometry
+// (proto invariant), so a zero axis is not a transient state but
+// the right value -- a horizontal segment, or the path of a single anchor
+// just placed by the pen tool. The box is not the TARGET either: the
+// ink is hit, that is the fill of a closed outline or the
+// proximity to the curve of an open one.
+describe("hitTestNode: vector", () => {
   const SEGMENT: SubPathLite[] = [{
     anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 40, y: 0 })], closed: false,
   }];
@@ -153,67 +153,67 @@ describe("hitTestNode: vettoriale", () => {
     closed: true,
   }];
 
-  it("un contorno APERTO si colpisce per vicinanza, anche con un asse degenere", () => {
+  it("an OPEN outline is hit by proximity, even with a degenerate axis", () => {
     const line = vectorNode(SEGMENT, { width: 40, height: 0 });
     expect(hitTestNode(line, 20, 0, Z1)).toBe(true);
-    expect(hitTestNode(line, 20, 4, Z1)).toBe(true);    // dentro la tolleranza di presa
-    expect(hitTestNode(line, 20, -4, Z1)).toBe(true);   // si afferra da sopra come da sotto
+    expect(hitTestNode(line, 20, 4, Z1)).toBe(true);    // within the grab tolerance
+    expect(hitTestNode(line, 20, -4, Z1)).toBe(true);   // it is grabbed from above as from below
     expect(hitTestNode(line, 20, 10, Z1)).toBe(false);
-    // Oltre l'estremo del segmento: la presa avvolge la curva, non la sua retta.
+    // Beyond the segment's end: the grab wraps the curve, not its line.
     expect(hitTestNode(line, 60, 0, Z1)).toBe(false);
   });
 
-  it("la tolleranza è in px SCHERMO: la stessa distanza mondo cambia esito con lo zoom", () => {
-    // È la ragione per cui hitTestNode conosce lo zoom. A zoom 4 una distanza
-    // di 2 unità mondo sono 8 px sullo schermo, ben oltre i 5 di presa; a zoom
-    // 1 sono 2 px e la linea si afferra. Con una tolleranza in unità mondo la
-    // stessa linea sarebbe impossibile da centrare a zoom 0.1 e larga mezzo
-    // schermo a zoom 64.
+  it("the tolerance is in SCREEN px: the same world distance changes outcome with the zoom", () => {
+    // It is the reason hitTestNode knows the zoom. At zoom 4 a distance
+    // of 2 world units is 8 px on screen, well beyond the 5 of the grab; at zoom
+    // 1 it is 2 px and the line is grabbed. With a tolerance in world units the
+    // same line would be impossible to hit at zoom 0.1 and half a
+    // screen wide at zoom 64.
     const line = vectorNode(SEGMENT, { width: 40, height: 0 });
     expect(hitTestNode(line, 20, 2, 1)).toBe(true);
     expect(hitTestNode(line, 20, 2, 4)).toBe(false);
-    expect(hitTestNode(line, 20, 15, 0.25)).toBe(true);   // 15 unità mondo = 3.75 px
-    expect(hitTestNode(line, 20, 25, 0.25)).toBe(false);  // 25 unità mondo = 6.25 px
-    // La soglia è esattamente VECTOR_HIT_PX px schermo, a qualunque zoom.
+    expect(hitTestNode(line, 20, 15, 0.25)).toBe(true);   // 15 world units = 3.75 px
+    expect(hitTestNode(line, 20, 25, 0.25)).toBe(false);  // 25 world units = 6.25 px
+    // The threshold is exactly VECTOR_HIT_PX screen px, at any zoom.
     for (const zoom of [0.5, 1, 3]) {
       expect(hitTestNode(line, 20, (VECTOR_HIT_PX - 0.01) / zoom, zoom)).toBe(true);
       expect(hitTestNode(line, 20, (VECTOR_HIT_PX + 0.01) / zoom, zoom)).toBe(false);
     }
   });
 
-  it("gli ancoraggi sono LOCALI: il bersaglio si sposta con l'origine del nodo", () => {
+  it("anchors are LOCAL: the target moves with the node's origin", () => {
     const line = vectorNode(SEGMENT, { x: 100, y: 50, width: 40, height: 0 });
     expect(hitTestNode(line, 120, 50, Z1)).toBe(true);
-    expect(hitTestNode(line, 20, 0, Z1)).toBe(false);   // dov'era prima di spostarlo
+    expect(hitTestNode(line, 20, 0, Z1)).toBe(false);   // where it was before moving it
   });
 
-  it("un contorno CHIUSO si colpisce sul riempimento E sul suo tratto", () => {
+  it("a CLOSED outline is hit on the fill AND on its stroke", () => {
     const v = vectorNode(SQUARE);
     expect(hitTestNode(v, 50, 25, Z1)).toBe(true);
-    // Anche un contorno chiuso si traccia, quindi ha la stessa presa di uno
-    // aperto attorno alla curva: il bersaglio è l'INCHIOSTRO, e il tratto esce
-    // dal riempimento.
+    // A closed outline is also stroked, so it has the same grab as an
+    // open one around the curve: the target is the INK, and the stroke extends
+    // beyond the fill.
     expect(hitTestNode(v, 103, 25, Z1)).toBe(true);
     expect(hitTestNode(v, 50, 53, Z1)).toBe(true);
-    // La presa resta una presa: oltre VECTOR_HIT_PX il click torna alle forme
-    // sotto.
+    // The grab remains a grab: beyond VECTOR_HIT_PX the click goes back to the shapes
+    // underneath.
     expect(hitTestNode(v, 110, 25, Z1)).toBe(false);
     expect(hitTestNode(v, 50, 60, Z1)).toBe(false);
   });
 
-  it("un contorno CHIUSO di AREA NULLA resta visibile e colpibile", () => {
-    // Il pen tool ci arriva in tre click: A, B, di nuovo A per chiudere. Il
-    // contorno percorre A->B->A, even-odd non riempie niente, e senza il tratto
-    // il nodo sparirebbe dal canvas e smetterebbe di essere cliccabile nello
-    // stesso istante in cui l'utente lo chiude.
+  it("a CLOSED outline of ZERO AREA stays visible and hittable", () => {
+    // The pen tool gets there in three clicks: A, B, A again to close. The
+    // outline goes A->B->A, even-odd fills nothing, and without the stroke
+    // the node would vanish from the canvas and stop being clickable at the
+    // very instant the user closes it.
     const flat = vectorNode([{
       anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 40, y: 0 })], closed: true,
     }], { width: 40, height: 0 });
     expect(hitTestNode(flat, 20, 0, Z1)).toBe(true);
     expect(hitTestNode(flat, 20, 4, Z1)).toBe(true);
     expect(hitTestNode(flat, 20, 10, Z1)).toBe(false);
-    // E lo stesso per un contorno chiuso di ancoraggi ALLINEATI, che ha tre
-    // punti ma area comunque zero.
+    // And the same for a closed outline of ALIGNED anchors, which has three
+    // points but zero area anyway.
     const collinear = vectorNode([{
       anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 20, y: 0 }), anchor({ x: 40, y: 0 })],
       closed: true,
@@ -222,23 +222,23 @@ describe("hitTestNode: vettoriale", () => {
     expect(hitTestNode(collinear, 30, 10, Z1)).toBe(false);
   });
 
-  it("un contorno APERTO non riempie: l'interno resta delle forme sotto", () => {
+  it("an OPEN outline does not fill: the interior stays with the shapes underneath", () => {
     const u = vectorNode([{ ...SQUARE[0], closed: false }]);
     expect(hitTestNode(u, 50, 25, Z1)).toBe(false);
-    expect(hitTestNode(u, 50, 1, Z1)).toBe(true);   // sul lato alto, che invece c'è
+    expect(hitTestNode(u, 50, 1, Z1)).toBe(true);   // on the top side, which does exist
   });
 
-  it("un contorno di UN ancoraggio (il primo click del pen tool) è colpibile", () => {
+  it("an outline of ONE anchor (the pen tool's first click) is hittable", () => {
     const dot = vectorNode([{ anchors: [anchor({ x: 0, y: 0 })], closed: false }], { width: 0, height: 0 });
     expect(hitTestNode(dot, 0, 0, Z1)).toBe(true);
     expect(hitTestNode(dot, 3, 0, Z1)).toBe(true);
     expect(hitTestNode(dot, 10, 10, Z1)).toBe(false);
   });
 
-  it("geometria assente o vuota: niente inchiostro, niente da colpire", () => {
-    // Nessun ripiego sul box: un nodo che non disegna niente non deve nemmeno
-    // rubare i click alle forme sotto. Resta raggiungibile dal pannello
-    // livelli, che è l'unico posto in cui esiste ancora qualcosa da toccare.
+  it("absent or empty geometry: no ink, nothing to hit", () => {
+    // No fallback to the box: a node that draws nothing must not even
+    // steal clicks from the shapes beneath. It stays reachable from the
+    // layers panel, which is the only place where something is still left to touch.
     expect(hitTestNode(vectorNode([]), 50, 25, Z1)).toBe(false);
     const noPayload: NodeLite = { ...node("rect"), kind: "vector" };
     expect(hitTestNode(noPayload, 50, 25, Z1)).toBe(false);
@@ -246,10 +246,10 @@ describe("hitTestNode: vettoriale", () => {
 });
 
 describe("hasInk", () => {
-  it("è falso SOLO per un vettoriale senza nessun ancoraggio, e concorda con l'hit-test", () => {
-    // Il predicato che il marquee usa per non prendere ciò che non si vede
-    // (tools/selectTool.ts::nodesInMarquee). L'accordo con hitTestNode è la
-    // proprietà che conta: dove hasInk è falso, il click non colpisce.
+  it("is false ONLY for a vector with no anchors, and agrees with hit-test", () => {
+    // The predicate the marquee uses to not take what is not seen
+    // (tools/selectTool.ts::nodesInMarquee). The agreement with hitTestNode is the
+    // property that matters: where hasInk is false, the click does not hit.
     const empty = vectorNode([]);
     expect(hasInk(empty)).toBe(false);
     expect(hitTestNode(empty, 50, 25, Z1)).toBe(false);
@@ -257,23 +257,23 @@ describe("hasInk", () => {
     const noPayload: NodeLite = { ...node("rect"), kind: "vector" };
     expect(hasInk(noPayload)).toBe(false);
 
-    // Un path DEGENERE (un solo ancoraggio) ha inchiostro eccome: si vede e si
-    // clicca, quindi il marquee deve poterlo prendere.
+    // A DEGENERATE path (a single anchor) has ink indeed: it is seen and
+    // clicked, so the marquee must be able to take it.
     const dot = vectorNode([{ anchors: [anchor({ x: 0, y: 0 })], closed: false }],
       { width: 0, height: 0 });
     expect(hasInk(dot)).toBe(true);
     expect(hitTestNode(dot, 0, 0, Z1)).toBe(true);
 
-    // Le forme il cui inchiostro È il box non passano di qui: il loro caso
-    // degenere è comportamento di M1 e non si cambia da questa traccia.
+    // Shapes whose ink IS the box do not go through here: their degenerate
+    // case is M1 behavior and is not changed by this track.
     expect(hasInk(node("rect"))).toBe(true);
     expect(hasInk({ ...node("rect"), height: 0 })).toBe(true);
     expect(hasInk(textNode())).toBe(true);
   });
 });
 
-// Path2D non esiste sotto jsdom: un doppio che REGISTRA i comandi rende
-// verificabile la forma esatta del path, che è l'unica cosa che conta qui.
+// Path2D does not exist under jsdom: a double that RECORDS the commands makes
+// the exact shape of the path verifiable, which is the only thing that matters here.
 class RecordingPath2D {
   calls: string[] = [];
   moveTo(x: number, y: number) { this.calls.push(`M ${x} ${y}`); }
@@ -292,10 +292,10 @@ describe("vectorPaths", () => {
   beforeEach(() => { vi.stubGlobal("Path2D", RecordingPath2D); });
   afterEach(() => { vi.unstubAllGlobals(); });
 
-  it("un contorno APERTO va nel path del CONTORNO, senza closePath", () => {
-    // Origine (100, 50), ancoraggi locali, maniglie relative all'ancoraggio:
-    // tutti diversi e non nulli, così una somma saltata non cade per caso sul
-    // valore giusto.
+  it("an OPEN outline goes into the STROKE path, without closePath", () => {
+    // Origin (100, 50), local anchors, handles relative to the anchor:
+    // all different and non-zero, so a skipped sum does not fall by chance on the
+    // right value.
     const n = vectorNode([{
       anchors: [anchor({ x: 10, y: 0, outX: 5, outY: -3 }), anchor({ x: 30, y: 20, inX: -7, inY: 2 })],
       closed: false,
@@ -304,21 +304,21 @@ describe("vectorPaths", () => {
     expect(fill).toBeNull();
     expect(callsOf(stroke)).toEqual([
       "M 110 50",
-      // controllo uscente = origine + ancoraggio + maniglia = (115, 47);
-      // controllo entrante = (123, 72); arrivo = (130, 70).
+      // outgoing control = origin + anchor + handle = (115, 47);
+      // incoming control = (123, 72); arrival = (130, 70).
       "C 115 47 123 72 130 70",
     ]);
   });
 
-  it("un contorno CHIUSO va in ENTRAMBI i path, con il ritorno e il closePath", () => {
+  it("a CLOSED outline goes into BOTH paths, with the return and the closePath", () => {
     const n = vectorNode([{
       anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 0 }), anchor({ x: 10, y: 10 })],
       closed: true,
     }]);
     const { fill, stroke } = vectorPaths(n);
-    // Il segmento di ritorno ultimo -> primo è una CURVA come le altre (le sue
-    // maniglie esistono), quindi si disegna esplicitamente; closePath dopo non
-    // aggiunge lunghezza -- serve a chiudere il contorno per il riempimento.
+    // The last -> first return segment is a CURVE like the others (its
+    // handles exist), so it is drawn explicitly; closePath after it adds no
+    // length -- it serves to close the outline for the fill.
     const shape = [
       "M 0 0",
       "C 0 0 10 0 10 0",
@@ -327,44 +327,44 @@ describe("vectorPaths", () => {
       "Z",
     ];
     expect(callsOf(fill)).toEqual(shape);
-    // ...e anche nel TRATTO: un contorno chiuso non ha per forza area, e il
-    // tratto è ciò che gli impedisce di sparire quando non ce l'ha.
+    // ...and into the STROKE too: a closed outline does not necessarily have area, and the
+    // stroke is what keeps it from vanishing when it does not.
     expect(callsOf(stroke)).toEqual(shape);
   });
 
-  it("un contorno CHIUSO di AREA NULLA si traccia comunque", () => {
-    // A -> B -> A: il riempimento non dipinge niente (even-odd non contiene
-    // nessun punto), il tratto sì. Senza, il pen tool farebbe sparire il nodo
-    // al click che lo chiude.
+  it("a CLOSED outline of ZERO AREA is stroked anyway", () => {
+    // A -> B -> A: the fill paints nothing (even-odd contains
+    // no point), the stroke does. Without it, the pen tool would make the node vanish
+    // at the click that closes it.
     const n = vectorNode([{
       anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 40, y: 0 })], closed: true,
     }]);
     const { fill, stroke } = vectorPaths(n);
     const shape = ["M 0 0", "C 0 0 40 0 40 0", "C 40 0 0 0 0 0", "Z"];
-    // Il riempimento c'è (il predicato è vero) ma non dipinge: è il tratto a
-    // rendere visibile il path, ed è per questo che deve esserci.
+    // The fill is there (the predicate is true) but paints nothing: it is the stroke that
+    // makes the path visible, and that is why it must be there.
     expect(callsOf(fill)).toEqual(shape);
     expect(callsOf(stroke)).toEqual(shape);
   });
 
-  it("un ancoraggio senza maniglie dà una bezier con i controlli sugli estremi (la retta)", () => {
+  it("an anchor without handles gives a bezier with the controls on the endpoints (the straight line)", () => {
     const n = vectorNode([{
       anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 40, y: 0 })], closed: false,
     }]);
-    // Nessun ramo per "maniglia assente": è il motivo per cui le maniglie sono
-    // relative, e il canvas disegna esattamente il segmento.
+    // No branch for "absent handle": it is the reason handles are
+    // relative, and the canvas draws exactly the segment.
     expect(callsOf(vectorPaths(n).stroke)).toEqual(["M 0 0", "C 0 0 40 0 40 0"]);
   });
 
-  it("contorni aperti e chiusi nello stesso nodo finiscono in path DIVERSI", () => {
+  it("open and closed outlines in the same node end up in DIFFERENT paths", () => {
     const n = vectorNode([
       { anchors: [anchor({ x: 0, y: 0 }), anchor({ x: 10, y: 0 }), anchor({ x: 0, y: 10 })], closed: true },
       { anchors: [anchor({ x: 50, y: 0 }), anchor({ x: 50, y: 30 })], closed: false },
     ]);
     const { fill, stroke } = vectorPaths(n);
-    // Uno solo dei due riempie: se l'aperto finisse nel path del RIEMPIMENTO il
-    // canvas lo chiuderebbe implicitamente e lo riempirebbe. Nel tratto invece
-    // ci stanno entrambi, e l'ordine è quello dei contorni.
+    // Only one of the two fills: if the open one ended up in the FILL path the
+    // canvas would implicitly close it and fill it. In the stroke instead
+    // both are there, and the order is that of the outlines.
     expect(callsOf(fill)?.filter((c) => c === "Z")).toEqual(["Z"]);
     expect(callsOf(stroke)).toEqual([
       "M 0 0", "C 0 0 10 0 10 0", "C 10 0 0 10 0 10", "C 0 10 0 0 0 0", "Z",
@@ -372,19 +372,19 @@ describe("vectorPaths", () => {
     ]);
   });
 
-  it("un contorno di un solo ancoraggio è un PUNTO nel path del contorno", () => {
-    // Il lineTo su se stesso non ha lunghezza ma con lineCap tondo il canvas lo
-    // disegna: è il pallino che il pen tool lascia dopo il primo click. Senza,
-    // il nodo appena nato sarebbe invisibile finché non arriva il secondo.
+  it("a single-anchor outline is a POINT in the outline path", () => {
+    // The lineTo onto itself has no length but with a round lineCap the canvas draws
+    // it: it is the dot the pen tool leaves after the first click. Without it,
+    // the just-born node would be invisible until the second arrives.
     const n = vectorNode([{ anchors: [anchor({ x: 7, y: 9 })], closed: false }]);
     expect(callsOf(vectorPaths(n).stroke)).toEqual(["M 7 9", "L 7 9"]);
-    // `closed` non cambia niente: un punto non ha area da riempire.
+    // `closed` changes nothing: a point has no area to fill.
     const c = vectorNode([{ anchors: [anchor({ x: 7, y: 9 })], closed: true }]);
     expect(vectorPaths(c).fill).toBeNull();
     expect(callsOf(vectorPaths(c).stroke)).toEqual(["M 7 9", "L 7 9"]);
   });
 
-  it("geometria assente o vuota: nessun path (non un path vuoto)", () => {
+  it("absent or empty geometry: no path (not an empty path)", () => {
     expect(vectorPaths(vectorNode([]))).toEqual({ fill: null, stroke: null });
     expect(vectorPaths(vectorNode([{ anchors: [], closed: true }]))).toEqual({ fill: null, stroke: null });
     const noPayload: NodeLite = { ...node("rect"), kind: "vector" };
@@ -392,82 +392,82 @@ describe("vectorPaths", () => {
   });
 });
 
-// --- immagini (traccia 3) ----------------------------------------------------
+// --- images (track 3) --------------------------------------------------------
 //
-// Un'immagine si colpisce e si disegna sul suo BOX, esattamente come un
-// rettangolo: nessun ramo dedicato in shapes.ts, ed è voluto -- ma va ASSERITO,
-// perché è la ragione per cui aggiungere un tipo di nodo non ha richiesto di
-// toccare né l'hit-test né la geometria.
+// An image is hit and drawn on its BOX, exactly like a
+// rectangle: no dedicated branch in shapes.ts, and it is intended -- but it must be ASSERTED,
+// because it is the reason adding a node type did not require
+// touching either hit-test or the geometry.
 
 function imageNode(over: Partial<NodeLite> = {}): NodeLite {
   return { ...node("rect"), kind: "image", image: { assetHash: "abc" }, ...over };
 }
 
-describe("hitTestNode: immagini", () => {
-  it("colpisce sul box, bordi compresi", () => {
+describe("hitTestNode: images", () => {
+  it("hits on the box, edges included", () => {
     expect(hitTestNode(imageNode(), 50, 25, Z1)).toBe(true);
     expect(hitTestNode(imageNode(), 0, 0, Z1)).toBe(true);
     expect(hitTestNode(imageNode(), 100, 50, Z1)).toBe(true);
     expect(hitTestNode(imageNode(), 101, 25, Z1)).toBe(false);
   });
 
-  it("un'immagine senza area non si colpisce e non si dipinge", () => {
-    // Il testo è l'unica eccezione (la sua altezza la produce il layout):
-    // un'immagine senza area non lascia pixel, quindi non deve rubare click.
+  it("an image without area is neither hit nor painted", () => {
+    // Text is the only exception (its height is produced by layout):
+    // an image without area leaves no pixels, so it must not steal clicks.
     expect(isPaintable(imageNode({ height: 0 }))).toBe(false);
     expect(hitTestNode(imageNode({ height: 0 }), 50, 0, Z1)).toBe(false);
     expect(isPaintable(imageNode())).toBe(true);
   });
 
-  it("un asset MANCANTE resta selezionabile: il segnaposto è un nodo come gli altri", () => {
-    // Senza questo, un'immagine il cui file è sparito diventerebbe impossibile
-    // da selezionare e quindi da cancellare.
+  it("a MISSING asset stays selectable: the placeholder is a node like the others", () => {
+    // Without this, an image whose file has vanished would become impossible
+    // to select and therefore to delete.
     expect(hitTestNode(imageNode({ image: { assetHash: "" } }), 50, 25, Z1)).toBe(true);
   });
 });
 
-// --- il TRATTO è colpibile ---------------------------------------------------
+// --- the STROKE is hittable --------------------------------------------------
 //
-// Il tratto è pixel dipinti come il riempimento: quello che si vede si deve
-// poter cliccare. Un tratto OUTSIDE da 20 su un rettangolo disegna una fascia
-// larga 20 tutt'attorno, e senza questo l'unico modo di afferrarla sarebbe
-// centrare la forma -- proprio il bordo, che è la parte che si mira quando si
-// vuole spostare una forma senza riempimento, resterebbe cliccabile a vuoto.
-describe("hitTestNode con il tratto", () => {
+// The stroke is painted pixels like the fill: what is seen must be
+// clickable. An OUTSIDE stroke of 20 on a rectangle draws a band
+// 20 wide all around, and without this the only way to grab it would be
+// to hit the shape -- precisely the edge, which is the part one aims at when
+// wanting to move a shape without a fill, would remain clickable on empty space.
+describe("hitTestNode with the stroke", () => {
   function withStroke(n: NodeLite, weight: number, align: "center" | "inside" | "outside"): NodeLite {
     return { ...n, strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight, align }] };
   }
 
-  it("rect: un tratto ESTERNO si colpisce per tutta la sua larghezza", () => {
+  it("rect: an OUTSIDE stroke is hit across its whole width", () => {
     const r = withStroke(node("rect"), 20, "outside");
-    expect(hitTestNode(r, -19, 25, Z1)).toBe(true);   // dentro la fascia
-    expect(hitTestNode(r, -20, 25, Z1)).toBe(true);   // sul suo bordo esterno
-    expect(hitTestNode(r, -21, 25, Z1)).toBe(false);  // appena oltre
+    expect(hitTestNode(r, -19, 25, Z1)).toBe(true);   // inside the band
+    expect(hitTestNode(r, -20, 25, Z1)).toBe(true);   // on its outer edge
+    expect(hitTestNode(r, -21, 25, Z1)).toBe(false);  // just beyond
   });
 
-  it("rect: un tratto CENTRATO sporge di metà peso", () => {
+  it("rect: a CENTERED stroke overhangs by half the weight", () => {
     const r = withStroke(node("rect"), 20, "center");
     expect(hitTestNode(r, -10, 25, Z1)).toBe(true);
     expect(hitTestNode(r, -11, 25, Z1)).toBe(false);
   });
 
-  it("rect: un tratto INTERNO non allarga il bersaglio di un pixel", () => {
+  it("rect: an INSIDE stroke does not widen the target by a pixel", () => {
     const r = withStroke(node("rect"), 20, "inside");
     expect(hitTestNode(r, -1, 25, Z1)).toBe(false);
     expect(hitTestNode(r, 0, 25, Z1)).toBe(true);
   });
 
-  it("ellipse: la fascia cresce sui RAGGI, non sull'AABB (l'angolo resta un miss)", () => {
+  it("ellipse: the band grows on the RADII, not on the AABB (the corner stays a miss)", () => {
     const e = withStroke(node("ellipse"), 20, "outside");
-    // Estremo dell'asse maggiore + tutto il peso.
+    // End of the major axis + the whole weight.
     expect(hitTestNode(e, 119, 25, Z1)).toBe(true);
     expect(hitTestNode(e, 121, 25, Z1)).toBe(false);
-    // E l'angolo del rettangolo contenitore ALLARGATO resta fuori: il tratto
-    // di un'ellisse è un anello, non una cornice quadrata.
+    // And the corner of the WIDENED containing rectangle stays outside: an ellipse's
+    // stroke is a ring, not a square frame.
     expect(hitTestNode(e, -19, -9, Z1)).toBe(false);
   });
 
-  it("prende il tratto che sporge di più, non l'ultimo né la somma", () => {
+  it("takes the stroke that overhangs the most, not the last one nor the sum", () => {
     const r: NodeLite = { ...node("rect"), strokes: [
       { color: { r: 0, g: 0, b: 0, a: 1 }, weight: 20, align: "outside" },
       { color: { r: 0, g: 0, b: 0, a: 1 }, weight: 2, align: "center" },
@@ -476,53 +476,53 @@ describe("hitTestNode con il tratto", () => {
     expect(hitTestNode(r, -21, 25, Z1)).toBe(false);
   });
 
-  it("la fascia gira col nodo (è nello spazio LOCALE, non su quello dello schermo)", () => {
+  it("the band turns with the node (it is in LOCAL space, not the screen's)", () => {
     const r = { ...withStroke(node("rect"), 20, "outside"), rotation: 90 };
-    // Da fermo il rect occupa x∈[0,100], y∈[0,50] e il tratto arriva a x=-20.
-    // A 90° attorno al centro (50,25) quella fascia finisce SOTTO: y=95.
+    // At rest the rect occupies x∈[0,100], y∈[0,50] and the stroke reaches x=-20.
+    // At 90° around the center (50,25) that band ends up BELOW: y=95.
     expect(hitTestNode(r, 50, 94, Z1)).toBe(true);
     expect(hitTestNode(r, 50, 96, Z1)).toBe(false);
-    expect(hitTestNode(r, -19, 25, Z1)).toBe(false); // dov'era da ferma: ora è vuoto
+    expect(hitTestNode(r, -19, 25, Z1)).toBe(false); // where it was at rest: now it is empty
   });
 
-  it("un peso nullo lascia il bersaglio esattamente com'era", () => {
+  it("a zero weight leaves the target exactly as it was", () => {
     const r = withStroke(node("rect"), 0, "outside");
     expect(hitTestNode(r, -1, 25, Z1)).toBe(false);
     expect(hitTestNode(r, 0, 25, Z1)).toBe(true);
   });
 
-  it("una forma DEGENERE con un tratto resta non colpibile", () => {
-    // Nessun perimetro da tracciare: il renderer la scarta con lo stesso
-    // guard, e l'hit-test non deve inventare un bersaglio da 40x40 attorno a
-    // un nodo che non si vede.
+  it("a DEGENERATE shape with a stroke stays unhittable", () => {
+    // No perimeter to stroke: the renderer discards it with the same
+    // guard, and hit-test must not invent a 40x40 target around
+    // a node that is not seen.
     const z = withStroke({ ...node("rect"), width: 0, height: 0 }, 20, "outside");
     expect(hitTestNode(z, 0, 0, Z1)).toBe(false);
   });
 });
 
-// --- rotazione ---------------------------------------------------------------
-// Il punto di test viene portato nello spazio LOCALE del nodo (rotazione
-// inversa attorno al CENTRO del box, vedi canvas/transform.ts) PRIMA di
-// testare la forma: così un'ellisse ruotata continua a colpirsi da ellisse, e
-// non dal suo rettangolo contenitore. I nodi qui sono 100x50 nell'origine,
-// centro (50, 25).
-describe("hitTestNode con rotazione", () => {
+// --- rotation ----------------------------------------------------------------
+// The test point is brought into the node's LOCAL space (inverse rotation
+// around the box CENTER, see canvas/transform.ts) BEFORE
+// testing the shape: so a rotated ellipse keeps being hit as an ellipse, and
+// not by its containing rectangle. The nodes here are 100x50 at the origin,
+// center (50, 25).
+describe("hitTestNode with rotation", () => {
   it("ellipse: the rotated end of the major axis hits, its own AABB corner still misses", () => {
     const e = { ...node("ellipse"), rotation: 90 };
-    // (99,25) era l'estremo dell'asse maggiore da fermo: a 90° quel punto
-    // locale finisce a (50,74) e l'estremo NON è più dove era.
+    // (99,25) was the major axis's end at rest: at 90° that local point
+    // ends up at (50,74) and the extremity is NO longer where it was.
     expect(hitTestNode(e, 50, 74, Z1)).toBe(true);
     expect(hitTestNode(e, 99, 25, Z1)).toBe(false);
-    // Il caso che l'AABB sbagliava, ruotato: l'angolo del rettangolo
-    // contenitore della forma ruotata (che ora è alto 100 e largo 50) resta
-    // fuori dall'ellisse.
+    // The case the AABB got wrong, rotated: the corner of the containing
+    // rectangle of the rotated shape (which is now 100 tall and 50 wide) stays
+    // outside the ellipse.
     expect(hitTestNode(e, 27, -23, Z1)).toBe(false);
-    expect(hitTestNode(e, 50, 25, Z1)).toBe(true); // il centro è fermo, sempre
+    expect(hitTestNode(e, 50, 25, Z1)).toBe(true); // the center is fixed, always
   });
 
   it("ellipse: a 45 degree rotation still misses the four corners of its AABB", () => {
     const e = { ...node("ellipse"), width: 100, height: 100, rotation: 45 };
-    // Un cerchio ruotato è sé stesso: gli angoli del box restano fuori.
+    // A rotated circle is itself: the box's corners stay outside.
     expect(hitTestNode(e, 4, 2, Z1)).toBe(false);
     expect(hitTestNode(e, 96, 98, Z1)).toBe(false);
     expect(hitTestNode(e, 50, 50, Z1)).toBe(true);
@@ -530,9 +530,9 @@ describe("hitTestNode con rotazione", () => {
 
   it("rect: hits where the shape actually IS, not where its unrotated box was", () => {
     const r = { ...node("rect"), rotation: 90 };
-    // A 90° il rettangolo occupa x in [25,75] e y in [-25,75].
-    expect(hitTestNode(r, 50, 70, Z1)).toBe(true);   // fuori dal box fermo, dentro quello ruotato
-    expect(hitTestNode(r, 90, 25, Z1)).toBe(false);  // dentro il box fermo, fuori da quello ruotato
+    // At 90° the rectangle occupies x in [25,75] and y in [-25,75].
+    expect(hitTestNode(r, 50, 70, Z1)).toBe(true);   // outside the resting box, inside the rotated one
+    expect(hitTestNode(r, 90, 25, Z1)).toBe(false);  // inside the resting box, outside the rotated one
   });
 
   it("text: its box rotates with the node too", () => {

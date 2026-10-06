@@ -22,15 +22,15 @@ function createRectOp(id: string): Op {
   return create(OpSchema, { opId: "op-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
 }
 
-// Scena di partenza: un solo nodo "n1" i cui valori sono TUTTI diversi dai
-// valori sonda usati sotto, così "il campo è stato scritto" e "il campo era
-// già così" non si confondono mai.
+// Starting scene: a single node "n1" whose values are ALL different from the
+// probe values used below, so "the field was written" and "the field was
+// already like that" are never confused.
 function baseScene() {
   return applyOp(emptyScene("doc1", "Untitled"), createRectOp("n1"));
 }
 
-// auto_layout vale solo su un FRAME: la sonda di quel path ha bisogno di n1
-// frame invece che rettangolo, tutte le altre restano sul rettangolo.
+// auto_layout only applies to a FRAME: that path's probe needs n1 to be a
+// frame instead of a rectangle, all the others stay on the rectangle.
 function frameScene() {
   const node = create(NodeSchema, {
     id: "n1", parentId: "page1", orderKey: "a0", name: "Frame", visible: true, opacity: 1,
@@ -50,49 +50,49 @@ function setPropsOp(paths: readonly string[], patch: MessageInitShape<typeof Nod
   });
 }
 
-// La strada che l'op fa DAVVERO: createConnectTransport (connect-web) non passa
-// useBinaryFormat, quindi ogni SubmitOp viene serializzato in JSON e ogni
-// OpRecord che torna da Subscribe viene deserializzato da JSON. Nessun test
-// deve costruire il messaggio e darlo ad applyOp senza passare di qui: è
-// esattamente nel mezzo che google.protobuf.FieldMask riscrive i path.
+// The road the op REALLY takes: createConnectTransport (connect-web) does not pass
+// useBinaryFormat, so every SubmitOp is serialized to JSON and every
+// OpRecord coming back from Subscribe is deserialized from JSON. No test
+// should build the message and hand it to applyOp without going through here: it is
+// exactly in the middle that google.protobuf.FieldMask rewrites the paths.
 function overWire(op: Op): Op {
   return fromJson(OpSchema, toJson(OpSchema, op));
 }
 
 function maskOf(op: Op): readonly string[] {
-  if (op.kind.case !== "setProps") throw new Error("non è un op setProps");
+  if (op.kind.case !== "setProps") throw new Error("not a setProps op");
   return op.kind.value.mask?.paths ?? [];
 }
 
 // ---------------------------------------------------------------------------
-// 1. Guardia CROSS-LANGUAGE: MASK_PATHS vs. il sorgente Go, letto davvero.
+// 1. CROSS-LANGUAGE guard: MASK_PATHS vs. the Go source, actually read.
 //
-// core.applySetProps (Go) è l'AUTORITÀ su quali path esistono; maskPaths.ts lo
-// rispecchia. Una seconda copia scritta a mano DENTRO questo test non è una
-// guardia: chi aggiunge un path la aggiorna nello stesso commit e il test resta
-// verde. L'unico controllo che regge è leggere internal/core/apply.go ed
-// estrarne i letterali dei `case` -- stessa tecnica con cui golden.test.ts
-// legge testdata/golden/. Così `case "corner_radius"` aggiunto SOLO in Go fa
-// fallire la suite TypeScript, che è il punto: senza, il client rifiuterebbe in
-// silenzio un op che il server accetta e divergerebbe dal documento
-// autorevole fino al reload.
+// core.applySetProps (Go) is the AUTHORITY on which paths exist; maskPaths.ts
+// mirrors it. A second hand-written copy INSIDE this test is not
+// a guard: whoever adds a path updates it in the same commit and the test stays
+// green. The only check that holds is reading internal/core/apply.go and
+// extracting the literals of the `case`s -- the same technique golden.test.ts uses to
+// read testdata/golden/. This way a `case "corner_radius"` added ONLY in Go makes
+// the TypeScript suite fail, which is the point: without it, the client would silently
+// reject an op the server accepts and would diverge from the authoritative
+// document until reload.
 // ---------------------------------------------------------------------------
 
 const GO_APPLY_PATH = resolve(__dirname, "../../../internal/core/apply.go");
 const GO_FN = "func applySetProps(";
 
-// Ritorna i letterali stringa dei `case` di OGNI `switch path {` dentro
-// applySetProps, uno slot per switch (oggi: quello di validazione e quello di
-// applicazione). Se apply.go viene rifattorizzato in una forma che questo
-// parser non riconosce, il risultato cambia forma e i test sotto falliscono
-// rumorosamente invece di diventare vacui.
+// Returns the string literals of the `case`s of EVERY `switch path {` inside
+// applySetProps, one slot per switch (today: the validation one and the application
+// one). If apply.go is refactored into a shape this
+// parser does not recognize, the result changes shape and the tests below fail
+// loudly instead of becoming vacuous.
 function goApplySetPropsSwitches(): string[][] {
   const src = readFileSync(GO_APPLY_PATH, "utf8");
   const at = src.indexOf(GO_FN);
   if (at < 0) {
     throw new Error(
-      `${GO_APPLY_PATH} non contiene più "${GO_FN}": la guardia cross-language non sa più ` +
-        `dove guardare. Aggiorna questo parser assieme al refactor di Go.`,
+      `${GO_APPLY_PATH} no longer contains "${GO_FN}": the cross-language guard no longer knows ` +
+        `where to look. Update this parser along with the Go refactor.`,
     );
   }
   const after = src.slice(at + GO_FN.length);
@@ -113,78 +113,78 @@ function goApplySetPropsSwitches(): string[][] {
 
 const uniqSorted = (xs: readonly string[]) => [...new Set(xs)].sort();
 
-describe("MASK_PATHS è ancorato a core.applySetProps (Go), non a una copia locale", () => {
-  it("apply.go espone ancora i due switch su `path` che questa guardia sa leggere", () => {
+describe("MASK_PATHS is anchored to core.applySetProps (Go), not to a local copy", () => {
+  it("apply.go still exposes the two switches on `path` that this guard can read", () => {
     const switches = goApplySetPropsSwitches();
-    // Uno valida l'intera mask, l'altro applica i campi. Se Go ne guadagna o
-    // perde uno, il parser va rivisto PRIMA di fidarsi del confronto sotto.
+    // One validates the whole mask, the other applies the fields. If Go gains or
+    // loses one, the parser must be reviewed BEFORE trusting the comparison below.
     expect(switches).toHaveLength(2);
     expect(switches[0].length).toBeGreaterThan(0);
     expect(switches[1].length).toBeGreaterThan(0);
   });
 
-  it("i due switch di Go elencano lo stesso insieme (validazione e applicazione non divergono)", () => {
+  it("the two Go switches list the same set (validation and application do not diverge)", () => {
     const [validated, applied] = goApplySetPropsSwitches();
     expect(uniqSorted(validated)).toEqual(uniqSorted(applied));
   });
 
-  it("MASK_PATHS è ESATTAMENTE l'insieme dei case letti dal sorgente Go", () => {
+  it("MASK_PATHS is EXACTLY the set of cases read from the Go source", () => {
     expect(uniqSorted(MASK_PATHS)).toEqual(uniqSorted(goApplySetPropsSwitches().flat()));
   });
 });
 
 // ---------------------------------------------------------------------------
-// 2. Ogni path di MASK_PATHS, uno per uno: è un campo vero, sopravvive al filo
-//    JSON, e applyOp lo applica davvero (e solo lui).
+// 2. Every path of MASK_PATHS, one by one: it is a real field, it survives the JSON
+//    wire, and applyOp really applies it (and only it).
 //
-// È la riga che mancava. Il filo è JSON e google.protobuf.FieldMask ha una
-// codifica che RISCRIVE il path invece di trasportarlo verbatim: fieldMaskToJson
-// converte in lowerCamelCase e LANCIA se protoSnakeCase(protoCamelCase(p)) !== p;
-// fieldMaskFromJson rifiuta categoricamente gli underscore sul filo. Con i 9
-// path monoparola di M0 le due forme coincidono, quindi il trabocchetto è
-// invisibile -- finché qualcuno scrive "cornerRadius" in MASK_PATHS: passerebbe
-// ogni gate (compreso il confronto con Go, se lo aggiorna nello stesso edit) e
-// poi lancerebbe dentro toJson durante submitOp, con il reject inghiottito da
-// syncClient.ts. it.each(MASK_PATHS) rende impossibile aggiungere un path senza
-// che il round trip sul filo venga verificato per QUEL path.
+// It is the line that was missing. The wire is JSON and google.protobuf.FieldMask has an
+// encoding that REWRITES the path instead of carrying it verbatim: fieldMaskToJson
+// converts to lowerCamelCase and THROWS if protoSnakeCase(protoCamelCase(p)) !== p;
+// fieldMaskFromJson flatly rejects underscores on the wire. With the 9
+// single-word paths of M0 the two forms coincide, so the pitfall is
+// invisible -- until someone writes "cornerRadius" in MASK_PATHS: it would pass
+// every gate (the comparison with Go included, if updated in the same edit) and
+// then would throw inside toJson during submitOp, with the reject swallowed by
+// syncClient.ts. it.each(MASK_PATHS) makes it impossible to add a path without
+// the wire round trip being verified for THAT path.
 // ---------------------------------------------------------------------------
 
 const NODE_FIELD_NAMES = NodeSchema.fields.map((f) => f.name);
 
-// I nomi dei campi delle FORME (RectNode/EllipseNode/TextNode), letti dal oneof
-// `shape` del Node generato invece che elencati a mano -- una lista scritta qui
-// smetterebbe di seguire il .proto al primo campo aggiunto.
+// The field names of the SHAPES (RectNode/EllipseNode/TextNode), read from the `shape`
+// oneof of the generated Node instead of listed by hand -- a list written here
+// would stop following the .proto at the first field added.
 //
-// Servono perché "corner_radius" (M1b, Task 10) è l'unico path della mask che
-// NON è un campo di primo livello del Node: vive dentro RectNode. Il resto della
-// guardia (b) sotto resta intatto -- un camelCase inventato o un campo
-// rinominato nel .proto continua a non comparire in nessuno dei due elenchi --
-// ma l'elenco accettato smette di essere "solo Node" e diventa "il modello",
-// cioè esattamente ciò che NodeLite appiattisce in un unico oggetto.
+// They are needed because "corner_radius" (M1b, Task 10) is the only mask path that
+// is NOT a top-level field of the Node: it lives inside RectNode. The rest of the
+// guard (b) below stays intact -- an invented camelCase or a field
+// renamed in the .proto still does not appear in either list --
+// but the accepted list stops being "Node only" and becomes "the model",
+// that is exactly what NodeLite flattens into a single object.
 const SHAPE_FIELD_NAMES = NodeSchema.fields
   .filter((f) => f.oneof?.name === "shape")
   .flatMap((f) => (f.fieldKind === "message" ? f.message.fields.map((sf) => sf.name) : []));
 
 const MODEL_FIELD_NAMES = [...NODE_FIELD_NAMES, ...SHAPE_FIELD_NAMES];
 
-// Il path è snake_case (la convenzione del .proto, e la forma in cui Go e
-// MASK_PATHS lo scrivono); il campo di NodeLite è camelCase. Per i path
-// monoparola le due forme coincidono, per "order_key" no -- e senza questa
-// conversione la sonda sotto pretenderebbe un campo "order_key" che NodeLite
-// non ha (a compile time) e l'assert confronterebbe una chiave inesistente
-// (a runtime).
+// The path is snake_case (the .proto convention, and the form in which Go and
+// MASK_PATHS write it); NodeLite's field is camelCase. For single-word
+// paths the two forms coincide, for "order_key" they do not -- and without this
+// conversion the probe below would demand an "order_key" field that NodeLite
+// does not have (at compile time) and the assert would compare a nonexistent key
+// (at runtime).
 type CamelCase<S extends string> = S extends `${infer H}_${infer T}`
   ? `${H}${Capitalize<CamelCase<T>>}`
   : S;
 const camelOf = (path: string): string => path.replace(/_([a-z])/g, (_, c: string) => c.toUpperCase());
 
-// Un valore sonda per ogni path, diverso dal valore che baseScene() dà a n1.
-// Il tipo mappato NON è decorativo: aggiungere un path a MASK_PATHS senza
-// aggiungere la sua sonda qui è un errore di compilazione (`tsc -b` in
-// `pnpm build`), quindi il nuovo path non può sfuggire a it.each. E
-// `NodeLite[CamelCase<P>]` costringe MaskPath a restare un sottoinsieme delle
-// chiavi di NodeLite: un path che non corrisponde a nessun campo del modello
-// ricade su `never`, e non esiste nessun valore da scrivere in `expected`.
+// A probe value for each path, different from the value baseScene() gives n1.
+// The mapped type is NOT decorative: adding a path to MASK_PATHS without
+// adding its probe here is a compile error (`tsc -b` in
+// `pnpm build`), so the new path cannot escape it.each. And
+// `NodeLite[CamelCase<P>]` forces MaskPath to remain a subset of the
+// keys of NodeLite: a path that matches no field of the model
+// falls to `never`, and there is no value to write in `expected`.
 type Field<P extends MaskPath> = CamelCase<P> extends keyof NodeLite ? NodeLite[CamelCase<P>] : never;
 type Probe = { [P in MaskPath]: { patch: MessageInitShape<typeof NodeSchema>; expected: Field<P> } };
 
@@ -201,9 +201,9 @@ const PROBE: Probe = {
     patch: { fills: [{ kind: { case: "solid", value: { color: { r: 1, g: 0, b: 0, a: 1 } } } }] },
     expected: [{ r: 1, g: 0, b: 0, a: 1 }],
   },
-  // Il tratto è ripetuto come fills e viaggia con la stessa forma: un Paint
-  // annidato più peso e allineamento. L'enum sul filo è il suo NOME
-  // ("STROKE_ALIGN_OUTSIDE"), qui è la costante generata.
+  // The stroke is repeated like fills and travels with the same shape: a nested
+  // Paint plus weight and alignment. The enum on the wire is its NAME
+  // ("STROKE_ALIGN_OUTSIDE"), here it is the generated constant.
   strokes: {
     patch: {
       strokes: [{
@@ -214,8 +214,8 @@ const PROBE: Probe = {
     },
     expected: [{ color: { r: 0, g: 0, b: 1, a: 1 }, weight: 4, align: "outside" }],
   },
-  // Effetti: ripetuto come fills e strokes. L'oneof `kind` dell'Effect viaggia
-  // annidato come quello del Paint.
+  // Effects: repeated like fills and strokes. The Effect's `kind` oneof travels
+  // nested like the Paint's.
   effects: {
     patch: {
       effects: [
@@ -229,9 +229,9 @@ const PROBE: Probe = {
     ],
   },
   order_key: { patch: { orderKey: "a5" }, expected: "a5" },
-  // Auto layout: annidato nella forma frame, e vale solo su un frame (sceneFor).
-  // Senza hug: con hug il frame cambierebbe misura e l'uguaglianza esatta con
-  // `before` più il solo campo scritto non reggerebbe.
+  // Auto layout: nested in the frame shape, and only applies to a frame (sceneFor).
+  // Without hug: with hug the frame would change size and exact equality with
+  // `before` plus only the written field would not hold.
   auto_layout: {
     patch: {
       shape: {
@@ -251,38 +251,38 @@ const PROBE: Probe = {
       mainAlign: "center", crossAlign: "end", hugWidth: false, hugHeight: false,
     },
   },
-  // L'unica sonda il cui patch è ANNIDATO: corner_radius sta dentro RectNode,
-  // cioè dentro il oneof `shape`, non fra i campi di primo livello del Node.
-  // baseScene() crea n1 come rettangolo, quindi la forma combacia (su
-  // un'ellisse o un testo l'op sarebbe rifiutato in blocco, vedi il blocco 6).
+  // The only probe whose patch is NESTED: corner_radius sits inside RectNode,
+  // that is inside the `shape` oneof, not among the Node's top-level fields.
+  // baseScene() creates n1 as a rectangle, so the shape matches (on
+  // an ellipse or a text the op would be rejected as a whole, see block 6).
   corner_radius: {
     patch: { shape: { case: "rect", value: { cornerRadius: 12 } } },
     expected: 12,
   },
-  // Mappa libera: la mask sostituisce l'intera mappa.
+  // Free-form map: the mask replaces the whole map.
   meta: { patch: { meta: { "code.route": "/cart" } }, expected: { "code.route": "/cart" } },
 };
 
-describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", () => {
+describe("every MASK_PATHS path survives the JSON wire and is applied", () => {
   it.each(MASK_PATHS)(
-    "%s: identico dopo toJson -> fromJson, campo reale di opendesigner.v1.Node, applicato da applyOp",
+    "%s: identical after toJson -> fromJson, real field of opendesigner.v1.Node, applied by applyOp",
     (path) => {
-      // (a) il path esce e rientra IDENTICO dalla codifica JSON del FieldMask.
-      // Questa è l'asserzione che un "cornerRadius" in MASK_PATHS non può
-      // superare: toJson lancia QUI, in un test, invece che in produzione
-      // dentro submitOp con il reject inghiottito da syncClient.
+      // (a) the path goes out and comes back IDENTICAL from the FieldMask's JSON encoding.
+      // This is the assertion a "cornerRadius" in MASK_PATHS cannot
+      // pass: toJson throws HERE, in a test, instead of in production
+      // inside submitOp with the reject swallowed by syncClient.
       const wired = overWire(setPropsOp([path], PROBE[path].patch));
       expect(maskOf(wired)).toEqual([path]);
 
-      // (b) ed è un nome di campo che esiste davvero nel modello generato --
-      // sul Node, o su una delle forme del oneof `shape` (è il caso di
-      // corner_radius) -- non un camelCase inventato, non un campo rinominato
-      // nel .proto e mai propagato qui. Sopravvivere al filo non basta:
-      // "bogus" sopravvive.
+      // (b) and it is a field name that really exists in the generated model --
+      // on the Node, or on one of the shapes of the `shape` oneof (it is the case of
+      // corner_radius) -- not an invented camelCase, not a field renamed
+      // in the .proto and never propagated here. Surviving the wire is not enough:
+      // "bogus" survives.
       expect(MODEL_FIELD_NAMES).toContain(path);
 
-      // (c) e dopo quel giro applyOp lo applica DAVVERO, scrivendo quel campo
-      // e nessun altro (un `case "y": next.x = ...` fallirebbe qui).
+      // (c) and after that round trip applyOp REALLY applies it, writing that field
+      // and no other (a `case "y": next.x = ...` would fail here).
       const before = sceneFor(path).nodes.at("n1");
       const after = applyOp(sceneFor(path), wired).nodes.at("n1");
       expect(after).toEqual({ ...before, [camelOf(path)]: PROBE[path].expected });
@@ -291,58 +291,58 @@ describe("ogni path di MASK_PATHS sopravvive al filo JSON e viene applicato", ()
 });
 
 // ---------------------------------------------------------------------------
-// 3. Il complemento: ciò che NON è in MASK_PATHS non deve toccare la scena.
-//    Insieme al blocco 2 questo fissa l'insieme accettato da applyOp come
-//    esattamente MASK_PATHS -- comportamento, non forma del sorgente.
+// 3. The complement: what is NOT in MASK_PATHS must not touch the scene.
+//    Together with block 2 this pins the set accepted by applyOp to
+//    exactly MASK_PATHS -- behavior, not source shape.
 // ---------------------------------------------------------------------------
 
-// Tutti round-trippabili sul filo (nessun underscore irreversibile): il motivo
-// per cui vengono rifiutati è che core.applySetProps non li ha, non che la
-// codifica li rompe. Questa lista si è già accorciata due volte -- "order_key"
-// l'ha lasciata con il riordino del pannello livelli (Task 8) e
-// "corner_radius" con il pannello proprietà (Task 10): in entrambi i casi è
-// stata la guardia cross-language del blocco 1 a fallire per prima e a
-// costringere ad aggiornare MASK_PATHS, PROBE e questa lista insieme.
+// All round-trippable on the wire (no irreversible underscore): the reason
+// they are rejected is that core.applySetProps does not have them, not that the
+// encoding breaks them. This list has already shortened twice -- "order_key"
+// left it with the layers panel reordering (Task 8) and
+// "corner_radius" with the properties panel (Task 10): in both cases it was
+// the cross-language guard of block 1 that failed first and
+// forced MASK_PATHS, PROBE and this list to be updated together.
 const NOT_IN_GO_SWITCH = ["parent_id", "id", "shape", "bogus"];
 
-describe("un path fuori da MASK_PATHS fa rifiutare l'INTERO op", () => {
-  it.each(NOT_IN_GO_SWITCH)("%s: isMaskPath false, e la scena resta invariata anche in mask mista", (path) => {
+describe("a path outside MASK_PATHS makes the WHOLE op rejected", () => {
+  it.each(NOT_IN_GO_SWITCH)("%s: isMaskPath false, and the scene stays unchanged even in a mixed mask", (path) => {
     expect(isMaskPath(path)).toBe(false);
 
     const wired = overWire(setPropsOp(["x", path], { x: 999 }));
-    // Il path arriva intatto: il rifiuto è una decisione di applyOp, non un
-    // effetto collaterale della codifica.
+    // The path arrives intact: the rejection is applyOp's decision, not a
+    // side effect of the encoding.
     expect(maskOf(wired)).toEqual(["x", path]);
 
-    // Parità con core.applySetProps: valida l'intera mask PRIMA di mutare, così
-    // "x" non si muove nemmeno se sta nella stessa mask di un path ignoto.
+    // Parity with core.applySetProps: validates the whole mask BEFORE mutating, so
+    // "x" does not even move if it is in the same mask as an unknown path.
     expect(applyOp(baseScene(), wired).nodes.at("n1")).toEqual(baseScene().nodes.at("n1"));
   });
 });
 
 // ---------------------------------------------------------------------------
-// 4. Il punto di costruzione: makeSetPropsOp accetta solo MaskPath.
+// 4. The construction point: makeSetPropsOp accepts only MaskPath.
 //
-// Questo è un vincolo di tipo, quindi il test che lo prova è a compile time.
-// `@ts-expect-error` è una vera asserzione verificata da `tsc -b` (pnpm build,
-// tsconfig include "src", quindi anche i .test.ts): se `paths` tornasse
-// `string[]`, la riga smetterebbe di essere un errore e TypeScript fallirebbe
-// con "Unused '@ts-expect-error' directive". Un grep sul sorgente, invece,
-// passerebbe su qualsiasi riformattazione e fallirebbe su un a capo.
+// This is a type constraint, so the test that proves it is compile-time.
+// `@ts-expect-error` is a real assertion verified by `tsc -b` (pnpm build,
+// tsconfig includes "src", so the .test.ts files too): if `paths` went back to
+// `string[]`, the line would stop being an error and TypeScript would fail
+// with "Unused '@ts-expect-error' directive". A grep on the source, instead,
+// would pass on any reformatting and fail on a line break.
 // ---------------------------------------------------------------------------
 
-describe("makeSetPropsOp non lascia costruire un op con un path non supportato", () => {
-  it("un path camelCase è un errore di compilazione al punto di costruzione, e a runtime non arriva sul filo", () => {
-    // @ts-expect-error "cornerRadius" non è un MaskPath.
+describe("makeSetPropsOp does not let you build an op with an unsupported path", () => {
+  it("a camelCase path is a compile error at the construction point, and at runtime it does not reach the wire", () => {
+    // @ts-expect-error "cornerRadius" is not a MaskPath.
     const bad = makeSetPropsOp("n1", { shape: { case: "rect", value: { cornerRadius: 12 } } }, ["cornerRadius"]);
 
-    // Se qualcuno aggirasse il tipo (un `as MaskPath`, un op costruito a mano),
-    // ecco cosa succederebbe davvero in submitOp: toJson lancia, l'op non parte
-    // mai, e la scena locale mostra un cambiamento che il server non vedrà.
+    // If someone circumvented the type (an `as MaskPath`, a hand-built op),
+    // here is what would really happen in submitOp: toJson throws, the op never
+    // leaves, and the local scene shows a change the server will not see.
     expect(() => toJson(OpSchema, bad)).toThrow(/irreversible/);
   });
 
-  it("un path snake_case valido passa il tipo, il filo e applyOp", () => {
+  it("a valid snake_case path passes the type, the wire and applyOp", () => {
     const op = makeSetPropsOp("n1", { x: 42, y: 7 }, ["x", "y"]);
     const wired = overWire(op);
     expect(maskOf(wired)).toEqual(["x", "y"]);
@@ -354,27 +354,27 @@ describe("makeSetPropsOp non lascia costruire un op con un path non supportato",
 });
 
 // ---------------------------------------------------------------------------
-// 5. La forma del FieldMask sul filo, pin-ata su un path multiparola reale.
-//    Documenta PERCHÉ i blocchi sopra esistono: la conversione non è l'identità
-//    appena un path ha più di una parola.
+// 5. The shape of the FieldMask on the wire, pinned on a real multi-word path.
+//    Documents WHY the blocks above exist: the conversion is not the identity
+//    as soon as a path has more than one word.
 // ---------------------------------------------------------------------------
 
-describe("forma del FieldMask sul filo JSON", () => {
-  it("snake_case in TS/Go, lowerCamelCase sul filo, snake_case di nuovo al ritorno", () => {
+describe("FieldMask shape on the JSON wire", () => {
+  it("snake_case in TS/Go, lowerCamelCase on the wire, snake_case again on return", () => {
     const op = setPropsOp(["corner_radius"], { shape: { case: "rect", value: { cornerRadius: 12 } } });
 
-    // Sul filo il FieldMask è una STRINGA singola (non un array), path uniti da
-    // virgola, in lowerCamelCase -- come "x,y" nelle fixture golden esistenti,
-    // solo che qui la conversione non è l'identità.
+    // On the wire the FieldMask is a single STRING (not an array), paths joined by
+    // comma, in lowerCamelCase -- like "x,y" in the existing golden fixtures,
+    // only here the conversion is not the identity.
     const wire = toJson(OpSchema, op) as { setProps?: { mask?: string } };
     expect(wire.setProps?.mask).toBe("cornerRadius");
 
-    // fieldMaskFromJson riconverte: il round trip torna ESATTAMENTE al path di
-    // partenza, non alla forma sul filo.
+    // fieldMaskFromJson converts back: the round trip returns EXACTLY to the starting
+    // path, not to the wire form.
     expect(maskOf(fromJson(OpSchema, wire))).toEqual(["corner_radius"]);
   });
 
-  it("un underscore sul filo viene rifiutato in ingresso (nessuno può bypassare la convenzione)", () => {
+  it("an underscore on the wire is rejected on input (nobody can bypass the convention)", () => {
     const wire = { opId: "op1", docId: "doc1", setProps: { id: "n1", mask: "corner_radius" } };
     expect(() => fromJson(OpSchema, wire)).toThrow();
   });

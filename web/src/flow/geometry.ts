@@ -1,21 +1,21 @@
 import type { Bounds } from "../canvas/geometry";
 
-// GEOMETRIA DELLE FRECCE DEI FLUSSI. Pura: bounds in ingresso, numeri in uscita,
-// nessun DOM e nessun canvas -- così si testa senza browser e il renderer
-// (renderer/flowRenderer.ts) e il hit-test (tools/flowSelect.ts) leggono la
-// STESSA curva. Tutto è in coordinate MONDO: la camera la applica chi disegna.
+// GEOMETRY OF THE FLOW ARROWS. Pure: bounds in, numbers out,
+// no DOM and no canvas -- so it can be tested without a browser and the renderer
+// (renderer/flowRenderer.ts) and the hit-test (tools/flowSelect.ts) read the
+// SAME curve. Everything is in WORLD coordinates: whoever draws applies the camera.
 //
-// La freccia è una bézier cubica che esce dal punto medio del lato più vicino
-// della schermata di partenza ed entra nel punto medio del lato più vicino di
-// quella di arrivo, con le tangenti PERPENDICOLARI ai lati (la curva "esce"
-// dritta dal bordo, come i connettori di Figma/FigJam).
+// The arrow is a cubic bézier that leaves from the midpoint of the closest side
+// of the starting screen and enters at the midpoint of the closest side of
+// the destination one, with tangents PERPENDICULAR to the sides (the curve "leaves"
+// straight from the edge, like Figma/FigJam connectors).
 
 export interface Pt { x: number; y: number }
 
-/** Una bézier cubica: p0 -> p3 con punti di controllo c1, c2. */
+/** A cubic bézier: p0 -> p3 with control points c1, c2. */
 export interface Bezier { p0: Pt; c1: Pt; c2: Pt; p3: Pt }
 
-/** Il lato di un rettangolo da cui la freccia esce/entra. */
+/** The side of a rectangle the arrow leaves from/enters at. */
 export type Side = "left" | "right" | "top" | "bottom";
 
 export const NORMAL: Record<Side, Pt> = {
@@ -25,15 +25,15 @@ export const NORMAL: Record<Side, Pt> = {
   bottom: { x: 0, y: 1 },
 };
 
-// Quanto escono le tangenti: una frazione della distanza fra gli estremi, con un
-// minimo (due schermate a contatto devono comunque dare una curva leggibile) e un
-// massimo (a distanze enormi la curva non deve gonfiarsi a dismisura).
+// How far the tangents extend: a fraction of the distance between the ends, with a
+// minimum (two touching screens must still give a readable curve) and a
+// maximum (at huge distances the curve must not balloon out).
 const HANDLE_RATIO = 0.4;
 const HANDLE_MIN = 40;
 const HANDLE_MAX = 400;
-// Distanza fra due frecce PARALLELE (stessa coppia di schermate), lungo il lato.
+// Distance between two PARALLEL arrows (same pair of screens), along the side.
 export const LANE_GAP = 26;
-// Quanto sporge un auto-anello dalla schermata.
+// How far a self-loop sticks out of the screen.
 const LOOP_OUT = 70;
 
 export function centerOf(b: Bounds): Pt {
@@ -41,10 +41,10 @@ export function centerOf(b: Bounds): Pt {
 }
 
 /**
- * Il lato di `a` rivolto verso `b`. Si confrontano gli scostamenti dei centri
- * NORMALIZZATI sulle semi-dimensioni: due schermate affiancate (stessa altezza,
- * una a destra dell'altra) devono dare right/left anche quando la distanza
- * verticale in assoluto è grande ma piccola rispetto all'altezza dei frame.
+ * The side of `a` facing `b`. The offsets of the centers are compared
+ * NORMALIZED on the half-dimensions: two side-by-side screens (same height,
+ * one to the right of the other) must give right/left even when the absolute
+ * vertical distance is large but small relative to the height of the frames.
  */
 export function facingSide(a: Bounds, b: Bounds): Side {
   const ca = centerOf(a);
@@ -61,7 +61,7 @@ export function opposite(s: Side): Side {
   return s === "left" ? "right" : s === "right" ? "left" : s === "top" ? "bottom" : "top";
 }
 
-/** Il punto medio di un lato, spostato lungo il lato di `shift` (corsie parallele). */
+/** The midpoint of a side, shifted along the side by `shift` (parallel lanes). */
 export function sidePoint(b: Bounds, side: Side, shift = 0): Pt {
   switch (side) {
     case "left": return { x: b.x, y: b.y + b.height / 2 + shift };
@@ -76,7 +76,7 @@ function handleLength(p: Pt, q: Pt): number {
   return Math.min(HANDLE_MAX, Math.max(HANDLE_MIN, d * HANDLE_RATIO));
 }
 
-/** La bézier fra due punti con le normali d'uscita e d'ingresso (verso l'ESTERNO dei lati). */
+/** The bézier between two points with the exit and entry normals (towards the OUTSIDE of the sides). */
 export function bezierBetween(p0: Pt, n0: Pt, p3: Pt, n3: Pt): Bezier {
   const h = handleLength(p0, p3);
   return {
@@ -88,11 +88,11 @@ export function bezierBetween(p0: Pt, n0: Pt, p3: Pt, n3: Pt): Bezier {
 }
 
 /**
- * La freccia fra due rettangoli. `shift` sposta entrambi gli estremi lungo i
- * lati (per tenere separate le frecce che collegano la stessa coppia).
- * Con `loop` (from === to) il percorso esce dal lato destro e rientra sempre
- * dal destro, sporgendo: è l'unico caso in cui la tangente d'ingresso guarda
- * nella stessa direzione di quella d'uscita.
+ * The arrow between two rectangles. `shift` moves both ends along the
+ * sides (to keep apart the arrows that connect the same pair).
+ * With `loop` (from === to) the path leaves from the right side and always re-enters
+ * from the right, sticking out: it is the only case where the entry tangent looks
+ * in the same direction as the exit one.
  */
 export function arrowBetween(from: Bounds, to: Bounds, shift = 0, loop = false): Bezier {
   if (loop) {
@@ -110,11 +110,11 @@ export function arrowBetween(from: Bounds, to: Bounds, shift = 0, loop = false):
   return bezierBetween(sidePoint(from, side, shift), NORMAL[side], sidePoint(to, other, shift), NORMAL[other]);
 }
 
-/** La freccia da un PUNTO (il puntatore, durante il drag di "Collega") a un rettangolo. */
+/** The arrow from a POINT (the pointer, during the "Connect" drag) to a rectangle. */
 export function arrowFromRectToPoint(from: Bounds, p: Pt): Bezier {
   const side = facingSide(from, { x: p.x, y: p.y, width: 0, height: 0 });
   const p0 = sidePoint(from, side);
-  // Il punto d'arrivo non ha lato: la tangente d'ingresso guarda verso chi arriva.
+  // The arrival point has no side: the entry tangent looks towards whoever arrives.
   const n3 = NORMAL[opposite(side)];
   return bezierBetween(p0, NORMAL[side], p, n3);
 }
@@ -131,7 +131,7 @@ export function bezierPoint(b: Bezier, t: number): Pt {
   };
 }
 
-/** Il rettangolo che contiene i 4 punti di controllo: contiene sempre la curva. */
+/** The rectangle that contains the 4 control points: it always contains the curve. */
 export function bezierBounds(b: Bezier): Bounds {
   const x = Math.min(b.p0.x, b.c1.x, b.c2.x, b.p3.x);
   const y = Math.min(b.p0.y, b.c1.y, b.c2.y, b.p3.y);
@@ -144,11 +144,11 @@ export function bezierBounds(b: Bezier): Bounds {
 }
 
 /**
- * I tre vertici della punta, con la punta vera in `b.p3`. `size` è nella stessa
- * unità delle coordinate di `b`.
+ * The three vertices of the arrowhead, with the real tip at `b.p3`. `size` is in the same
+ * unit as the coordinates of `b`.
  */
 export function arrowhead(b: Bezier, size: number): [Pt, Pt, Pt] {
-  // Tangente in t=1 (da c2 a p3); se i due coincidono si ripiega sulla corda.
+  // Tangent at t=1 (from c2 to p3); if the two coincide it falls back to the chord.
   let tx = b.p3.x - b.c2.x;
   let ty = b.p3.y - b.c2.y;
   if (Math.hypot(tx, ty) < 1e-6) {
@@ -166,7 +166,7 @@ export function arrowhead(b: Bezier, size: number): [Pt, Pt, Pt] {
 
 const SAMPLES = 24;
 
-/** La distanza minima di (x, y) dalla curva, per campionamento. */
+/** The minimum distance of (x, y) from the curve, by sampling. */
 export function distanceToBezier(b: Bezier, x: number, y: number): number {
   let best = Infinity;
   let prev = b.p0;
@@ -187,7 +187,7 @@ export function distanceToSegment(a: Pt, b: Pt, x: number, y: number): number {
   return Math.hypot(x - (a.x + t * dx), y - (a.y + t * dy));
 }
 
-/** Il rettangolo allargato di `pad` per lato. */
+/** The rectangle enlarged by `pad` per side. */
 export function inflate(b: Bounds, pad: number): Bounds {
   return { x: b.x - pad, y: b.y - pad, width: b.width + pad * 2, height: b.height + pad * 2 };
 }
@@ -197,10 +197,10 @@ export function overlaps(a: Bounds, b: Bounds): boolean {
 }
 
 /**
- * La corsia di una freccia fra le N che collegano la STESSA coppia di
- * schermate (in qualunque verso): lo scostamento lungo il lato, simmetrico
- * attorno allo zero. Una sola freccia: 0. Due: ±gap/2. Così A->B e B->A non si
- * sovrappongono e due click diversi A->B restano distinguibili.
+ * The lane of an arrow among the N that connect the SAME pair of
+ * screens (in either direction): the offset along the side, symmetric
+ * around zero. A single arrow: 0. Two: ±gap/2. This way A->B and B->A do not
+ * overlap and two different clicks A->B remain distinguishable.
  */
 export function laneShift(index: number, count: number): number {
   if (count <= 1) return 0;

@@ -2,9 +2,9 @@ import { NodeMap } from "../store/nodeMap";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 
-// Una scena che prova, in 1200x800, ogni cosa che i due renderer devono disegnare
-// uguale: forme, tratti (centro/dentro/fuori), gradienti, effetti, rotazione,
-// ritaglio, gruppi, testo, vettoriale, segnaposto di immagine, istanze.
+// A scene that tests, in 1200x800, everything the two renderers must draw
+// the same: shapes, strokes (center/inside/outside), gradients, effects, rotation,
+// clipping, groups, text, vector, image placeholder, instances.
 let k = 0;
 const key = () => `a${String(k++).padStart(4, "0")}`;
 
@@ -28,11 +28,11 @@ export function makeGallery(): SceneState {
     base("rrect", { x: 160, y: 30, cornerRadius: 18, fills: [{ r: 0.3, g: 0.7, b: 0.4, a: 1 }] }),
     base("ellipse", { x: 290, y: 30, kind: "ellipse", fills: [{ r: 0.95, g: 0.7, b: 0.2, a: 1 }] }),
     base("alpha", { x: 420, y: 30, fills: [{ r: 0.5, g: 0.2, b: 0.8, a: 0.5 }], opacity: 0.8 }),
-    // fila 1b: due rettangoli sovrapposti con opacità
+    // row 1b: two overlapping rectangles with opacity
     base("ov1", { x: 560, y: 30, width: 70, height: 70, fills: [{ r: 1, g: 0, b: 0, a: 1 }], opacity: 0.6 }),
     base("ov2", { x: 600, y: 50, width: 70, height: 70, fills: [{ r: 0, g: 0, b: 1, a: 1 }], opacity: 0.6 }),
 
-    // fila 2: tratti
+    // row 2: strokes
     base("strokeC", { x: 30, y: 150, fills: [{ r: 0.9, g: 0.9, b: 0.9, a: 1 }], strokes: [{ color: black, weight: 8, align: "center" }] }),
     base("strokeI", { x: 160, y: 150, fills: [{ r: 0.9, g: 0.9, b: 0.9, a: 1 }], cornerRadius: 14, strokes: [{ color: { r: 0.8, g: 0.1, b: 0.1, a: 1 }, weight: 10, align: "inside" }] }),
     base("strokeO", { x: 290, y: 150, kind: "ellipse", fills: [{ r: 0.9, g: 0.9, b: 0.9, a: 1 }], strokes: [{ color: { r: 0.1, g: 0.5, b: 0.2, a: 1 }, weight: 10, align: "outside" }] }),
@@ -62,7 +62,7 @@ export function makeGallery(): SceneState {
     base("shblur", { x: 290, y: 400, kind: "ellipse", fills: [{ r: 0.2, g: 0.6, b: 0.9, a: 1 }],
       effects: [{ kind: "dropShadow", color: { r: 0, g: 0, b: 0, a: 0.6 }, offsetX: 8, offsetY: 8, blur: 6 }, { kind: "layerBlur", radius: 1.5 }] }),
 
-    // fila 5: rotazione, frame ritagliante, gruppo
+    // row 5: rotation, clipping frame, group
     base("rot", { x: 430, y: 410, width: 120, height: 50, rotation: 30, fills: [{ r: 0.2, g: 0.2, b: 0.2, a: 1 }], strokes: [{ color: { r: 1, g: 0.8, b: 0, a: 1 }, weight: 4, align: "center" }] }),
     base("clip", { x: 620, y: 150, width: 140, height: 100, kind: "frame", clipsContent: true, fills: [{ r: 0.95, g: 0.95, b: 0.8, a: 1 }] }),
     base("clipKid", { x: 90, y: 50, parentId: "clip", width: 120, height: 90, fills: [{ r: 0.9, g: 0.2, b: 0.2, a: 1 }] }),
@@ -106,7 +106,7 @@ export function makeGallery(): SceneState {
     base("vDot", { x: 1060, y: 430, width: 0, height: 0, kind: "vector", fills: [{ r: 0.1, g: 0.1, b: 0.1, a: 1 }],
       vector: { subpaths: [{ closed: false, anchors: [{ x: 0, y: 0, inX: 0, inY: 0, outX: 0, outY: 0 }] }] } }),
 
-    // fila 8: immagini segnaposto e istanza
+    // row 8: image placeholders and instance
     base("imgLoading", { x: 30, y: 730, width: 120, height: 60, kind: "image", fills: [], image: { assetHash: "loading" } }),
     base("imgMissing", { x: 170, y: 730, width: 120, height: 60, kind: "image", fills: [], image: { assetHash: "missing" } }),
     base("master", { x: 0, y: 0, parentId: "components", width: 100, height: 50, kind: "frame", clipsContent: true, fills: [{ r: 0.9, g: 0.9, b: 0.95, a: 1 }] }),

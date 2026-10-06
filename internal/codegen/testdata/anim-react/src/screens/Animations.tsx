@@ -1,8 +1,8 @@
-// Esportato da opendesigner (opendesigner export): schermata "Animazioni" (rotta /) del documento "Animazioni" (anim). NON modificare a mano:
-// rigenerare con `opendesigner export`. L'attributo data-node-id lega ogni elemento al nodo del design.
+// Exported by opendesigner (opendesigner export): screen "Animations" (route /) of document "Animations" (anim). DO NOT edit by hand:
+// regenerate with `opendesigner export`. The data-node-id attribute ties every element to its design node.
 import { motion, type Variants } from "motion/react";
 
-// clip "entrata" (enter), clip "evidenzia" (manual)
+// clip "enter" (enter), clip "highlight" (manual)
 const cardVariants: Variants = {
   initial: { opacity: 0, y: -20 },
   animate: {
@@ -13,7 +13,7 @@ const cardVariants: Variants = {
       y: { duration: 0.8, delay: 0.1, ease: [0.32, 0.66, 0.1, 1] },
     },
   },
-  evidenzia: {
+  highlight: {
     opacity: [1, 0.5, 1],
     transition: {
       opacity: { duration: 0.3, times: [0, 0.5, 1], ease: "linear" },
@@ -21,8 +21,8 @@ const cardVariants: Variants = {
   },
 };
 
-// clip "entrata" (enter)
-const titoloVariants: Variants = {
+// clip "enter" (enter)
+const titleVariants: Variants = {
   initial: { scale: 0.8 },
   animate: {
     scale: [0.8, 1.1, 1],
@@ -32,8 +32,8 @@ const titoloVariants: Variants = {
   },
 };
 
-// clip "disegna la firma" (enter)
-const firmaTrattoVariants: Variants = {
+// clip "draw the signature" (enter)
+const signatureStrokeVariants: Variants = {
   initial: { pathLength: 0 },
   animate: {
     pathLength: [0, 1],
@@ -43,8 +43,8 @@ const firmaTrattoVariants: Variants = {
   },
 };
 
-// clip "hover" (hover), clip "pressione" (tap)
-const pulsanteVariants: Variants = {
+// clip "hover" (hover), clip "press" (tap)
+const buttonVariants: Variants = {
   hover: {
     scale: [1, 1.08],
     transition: {
@@ -60,7 +60,7 @@ const pulsanteVariants: Variants = {
 };
 
 // clip "hover" (hover)
-const etichettaVariants: Variants = {
+const labelVariants: Variants = {
   hover: {
     opacity: [1, 0.8],
     transition: {
@@ -69,8 +69,8 @@ const etichettaVariants: Variants = {
   },
 };
 
-// clip "caricamento" (loop)
-const caricamentoVariants: Variants = {
+// clip "loading" (loop)
+const loadingVariants: Variants = {
   initial: { rotate: 0 },
   animate: {
     rotate: [0, 180],
@@ -80,8 +80,8 @@ const caricamentoVariants: Variants = {
   },
 };
 
-// clip "inclina" (hover)
-const inclinatoVariants: Variants = {
+// clip "tilt" (hover)
+const tiltedVariants: Variants = {
   hover: {
     rotate: [0, 30],
     x: [0, 30],
@@ -92,7 +92,7 @@ const inclinatoVariants: Variants = {
   },
 };
 
-export function Animazioni() {
+export function Animations() {
   return (
     <motion.div
       data-node-id="scr"
@@ -101,7 +101,7 @@ export function Animazioni() {
       animate="animate"
     >
       <motion.div
-        // clip manuale "evidenzia": per avviarla imposta animate="evidenzia" su questo elemento
+        // manual clip "highlight": to start it set animate="highlight" on this element
         data-node-id="card"
         data-testid="card"
         className="absolute left-[20px] top-[20px] w-[360px] h-[100px] rounded-[12px] bg-[#3366f2]"
@@ -111,9 +111,9 @@ export function Animazioni() {
         data-node-id="title"
         data-testid="title"
         className="absolute left-[36px] top-[40px] w-[300px] whitespace-pre-wrap break-words [font-family:Inter,_sans-serif] text-[24px] font-bold leading-[1.2] text-[#fff]"
-        variants={titoloVariants}
+        variants={titleVariants}
       >
-        {"Benvenuto"}
+        {"Welcome"}
       </motion.div>
       <motion.div
         data-node-id="logo"
@@ -135,7 +135,7 @@ export function Animazioni() {
             strokeWidth="1.5"
             strokeLinecap="round"
             strokeLinejoin="round"
-            variants={firmaTrattoVariants}
+            variants={signatureStrokeVariants}
           />
         </svg>
       </motion.div>
@@ -143,7 +143,7 @@ export function Animazioni() {
         data-node-id="btn"
         data-testid="btn"
         className="absolute left-[20px] top-[230px] w-[160px] h-[48px] flex justify-center items-center bg-[#3366f2]"
-        variants={pulsanteVariants}
+        variants={buttonVariants}
         style={{ scale: 1 }}
         whileHover="hover"
         whileTap="tap"
@@ -152,17 +152,17 @@ export function Animazioni() {
           data-node-id="btnLabel"
           data-testid="btn-label"
           className="relative shrink-0 w-[100px] whitespace-pre-wrap break-words h-[20px] [font-family:Inter,_sans-serif] text-[16px] font-semibold leading-[1.2] text-center text-[#fff]"
-          variants={etichettaVariants}
+          variants={labelVariants}
           style={{ opacity: 1 }}
         >
-          {"Premi"}
+          {"Press"}
         </motion.div>
       </motion.div>
       <motion.div
         data-node-id="spin"
         data-testid="spin"
         className="absolute left-[300px] top-[230px] w-[48px] h-[48px] rounded-[50%] bg-[#e54d4d]"
-        variants={caricamentoVariants}
+        variants={loadingVariants}
         initial="initial"
         animate="animate"
       />
@@ -170,7 +170,7 @@ export function Animazioni() {
         data-node-id="tilt"
         data-testid="tilt"
         className="absolute left-[200px] top-[330px] w-[60px] h-[30px] rotate-[30deg] bg-[#4db266]"
-        variants={inclinatoVariants}
+        variants={tiltedVariants}
         style={{ rotate: 0, x: 0 }}
         whileHover="hover"
       />

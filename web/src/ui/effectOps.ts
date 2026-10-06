@@ -5,15 +5,15 @@ import type { EffectLite, NodeLite } from "../store/types";
 import type { RgbLite } from "./fields/ColorField";
 import type { NodeLookup } from "./gradientOps";
 
-// Gli op del pannello Effetti. Come il renderer, il pannello governa la PRIMA
-// ombra e la PRIMA sfocatura di un nodo, e lascia stare gli altri effetti della
-// lista (un documento può averne di più, scritti da un agente o da un'altra
-// versione): modificare l'ombra non li cancella.
+// The Effects panel's ops. Like the renderer, the panel governs a node's FIRST
+// shadow and FIRST blur, and leaves the other effects of the
+// list alone (a document may have more, written by an agent or by another
+// version): editing the shadow does not erase them.
 export type ShadowLite = Extract<EffectLite, { kind: "dropShadow" }>;
 type BlurLite = Extract<EffectLite, { kind: "layerBlur" }>;
 
-// Un'ombra morbida e discreta: è il valore da cui parte chi accende l'ombra, e
-// si VEDE subito senza essere invadente.
+// A soft, discreet shadow: it is the value from which whoever turns the shadow on starts, and
+// it is SEEN right away without being intrusive.
 export const DEFAULT_SHADOW: ShadowLite = {
   kind: "dropShadow", color: { r: 0, g: 0, b: 0, a: 0.25 }, offsetX: 0, offsetY: 4, blur: 8,
 };
@@ -28,9 +28,9 @@ export function blurOf(n: NodeLite | undefined): BlurLite | undefined {
 export interface ShadowPatch {
   enabled?: boolean;
   offsetX?: number; offsetY?: number;
-  /** Raggio >= 0: un valore negativo non ha senso e si porta a 0. */
+  /** Radius >= 0: a negative value makes no sense and is brought to 0. */
   blur?: number;
-  /** Colore senza alfa (vedi ColorField): l'alfa ha il suo campo. */
+  /** Color without alpha (see ColorField): alpha has its own field. */
   rgb?: RgbLite;
   /** 0..1 */
   alpha?: number;
@@ -64,15 +64,15 @@ export function shadowOps(ids: readonly string[], lookup: NodeLookup, patch: Sha
       offsetY: patch.offsetY ?? base.offsetY,
       blur: Math.max(0, patch.blur ?? base.blur),
     };
-    // Accendere (enabled: true) senza altro scrive il default; a ombra già
-    // presente e senza nulla da cambiare non c'è niente da scrivere.
+    // Turning on (enabled: true) with nothing else writes the default; with the shadow already
+    // present and nothing to change there is nothing to write.
     if (at >= 0 && JSON.stringify(next) === JSON.stringify(base)) return [];
     if (at >= 0) list[at] = next; else list.unshift(next);
     return [write(n, list)];
   });
 }
 
-/** Raggio 0 (o meno) toglie la sfocatura. */
+/** Radius 0 (or less) removes the blur. */
 export function blurOps(ids: readonly string[], lookup: NodeLookup, radius: number): Op[] {
   return ids.flatMap((id) => {
     const n = lookup(id);

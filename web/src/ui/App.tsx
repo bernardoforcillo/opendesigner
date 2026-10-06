@@ -21,7 +21,9 @@ import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { attachClipboardShortcuts } from "../tools/clipboard";
 import { attachImageDrop } from "../tools/imageDrop";
-import { docIdFromHash } from "../home/route";
+import { HOME_TEMPLATES_PATH, docIdFromHash } from "../home/route";
+import { useAppNavigate } from "../home/nav";
+import { useRouteDocId } from "../home/DocIdContext";
 import { DocUnavailable } from "../home/DocUnavailable";
 import { CanvasOnboarding } from "../home/CanvasOnboarding";
 import { TextEditorOverlay } from "./TextEditorOverlay";
@@ -52,17 +54,17 @@ import { handTool } from "../tools/handTool";
 import { connectTool } from "../tools/connectTool";
 import { withFlowArrows } from "../tools/flowSelect";
 
-// Registro dei tool disponibili: la toolbar sceglie una chiave, attachTools
-// instrada gli eventi al tool corrispondente.
+// Registry of the available tools: the toolbar picks a key, attachTools
+// routes events to the matching tool.
 //
-// Esportati (con TOOL_LABELS) perché sono l'UNICO punto in cui un ToolId
-// diventa raggiungibile davvero: una voce in TOOL_LABELS senza la sua entry
-// qui ricadrebbe in silenzio su selectTool (vedi il `?? selectTool` più
-// sotto), cioè un pulsante che non fa quello che dice. È un invariante, e
-// come tale ha un test (App.test.tsx) invece di una convenzione a memoria.
+// Exported (with TOOL_LABELS) because they are the ONLY point where a ToolId
+// becomes truly reachable: an entry in TOOL_LABELS without its entry
+// here would silently fall back to selectTool (see the `?? selectTool` further
+// below), that is a button that does not do what it says. It is an invariant, and
+// as such it has a test (App.test.tsx) instead of a convention kept in memory.
 export const TOOLS: Partial<Record<ToolId, Tool>> = {
-  // In modalità Flussi il click cerca prima una freccia (tools/flowSelect.ts); in
-  // Design il wrapper delega senza cambiare niente.
+  // In Flows mode the click first looks for an arrow (tools/flowSelect.ts); in
+  // Design the wrapper delegates without changing anything.
   select: withFlowArrows(selectTool),
   connect: connectTool,
   frame: frameTool,
@@ -74,26 +76,26 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
 };
 
 export const TOOL_LABELS: { id: ToolId; label: string }[] = [
-  { id: "select", label: "Seleziona" },
-  { id: "connect", label: "Collega" },
+  { id: "select", label: "Select" },
+  { id: "connect", label: "Connect" },
   { id: "frame", label: "Frame" },
-  { id: "rect", label: "Rettangolo" },
-  { id: "ellipse", label: "Ellisse" },
-  { id: "text", label: "Testo" },
-  { id: "pen", label: "Penna" },
-  { id: "hand", label: "Mano" },
+  { id: "rect", label: "Rectangle" },
+  { id: "ellipse", label: "Ellipse" },
+  { id: "text", label: "Text" },
+  { id: "pen", label: "Pen" },
+  { id: "hand", label: "Hand" },
 ];
 
-// Gli strumenti che hanno senso in modalità Flussi: i flussi non disegnano, si
-// collegano le schermate che ci sono già. "Collega" esiste SOLO lì.
+// The tools that make sense in Flows mode: flows do not draw, they
+// connect the screens that already exist. "Connect" exists ONLY there.
 const FLOW_TOOL_IDS: readonly ToolId[] = ["select", "connect", "hand"];
-// In Sviluppo la tela è di sola lettura: si guarda, non si disegna.
+// In Develop the canvas is read-only: you look, you do not draw.
 const DEV_TOOL_IDS: readonly ToolId[] = ["select", "hand"];
 function toolIdsOf(mode: EditorMode): readonly ToolId[] | null {
   return mode === "flows" ? FLOW_TOOL_IDS : mode === "dev" ? DEV_TOOL_IDS : null;
 }
-// Quali strumenti mostra la toolbar in una modalità: in Design tutti tranne
-// "Collega", in Flussi e in Sviluppo solo quelli elencati sopra.
+// Which tools the toolbar shows in a mode: in Design all except
+// "Connect", in Flows and in Develop only those listed above.
 export function toolsForMode(mode: EditorMode): { id: ToolId; label: string }[] {
   const ids = toolIdsOf(mode);
   return TOOL_LABELS.filter((t) => (ids ? ids.includes(t.id) : t.id !== "connect"));
@@ -102,19 +104,20 @@ export function toolsForMode(mode: EditorMode): { id: ToolId; label: string }[] 
 const CLIENT_ID = crypto.randomUUID();
 const DOC_KEY = "opendesigner.docId";
 
-// Il documento si sceglie dal link: `#doc=<id>`. È ciò che permette a un altro
-// computer sulla stessa rete di entrare nello STESSO documento invece di
-// crearne uno proprio (il localStorage è per-browser, quindi da solo non basta).
-// Un id non ben formato si ignora: HubFor lo rifiuterebbe comunque.
-// Il parsing vive in home/route.ts (la Root lo usa per scegliere fra Home ed
-// editor); qui si ri-esporta perché è sempre stato un export di questo modulo.
+// The document is chosen from the link: `/doc/<id>` (the router hands the id over
+// through DocIdContext; the old `#doc=<id>` hash is still understood). It is what lets another
+// computer on the same network enter the SAME document instead of
+// creating its own (localStorage is per-browser, so alone it is not enough).
+// A malformed id is ignored: HubFor would reject it anyway.
+// The parsing lives in home/route.ts (the Root uses it to choose between Home and
+// editor); here it is re-exported because it has always been an export of this module.
 export { docIdFromHash };
 
-// Un campo di testo (input/textarea/contentEditable): Ctrl/Cmd+Z lì dentro è
-// affare del campo stesso (annullare la digitazione), non della scena --
-// servirà in M1b quando arriverà il primo campo editabile (testo, proprietà).
-// Duck-typing sul target come in tools/toolManager.ts::swallowsSpace: stesso
-// motivo, i test possono passare eventi senza un vero HTMLElement.
+// A text field (input/textarea/contentEditable): Ctrl/Cmd+Z inside it is
+// the field's own business (undoing the typing), not the scene's --
+// it will be needed in M1b when the first editable field arrives (text, properties).
+// Duck-typing on the target as in tools/toolManager.ts::swallowsSpace: same
+// reason, tests can pass events without a real HTMLElement.
 function isTextField(target: EventTarget | null): boolean {
   const el = target as { tagName?: string; isContentEditable?: boolean } | null;
   if (!el) return false;
@@ -124,101 +127,101 @@ function isTextField(target: EventTarget | null): boolean {
 }
 
 export function App() {
+  const routeDocId = useRouteDocId();
+  const navigate = useAppNavigate();
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const overlayRef = useRef<HTMLCanvasElement>(null);
-  // Il canvas WebGL del renderer su GPU, SOTTO quello 2D (che resta in cima perché
-  // riceve gli eventi): vedi renderer/sceneSurface.ts.
+  // The renderer's WebGL canvas on GPU, BELOW the 2D one (which stays on top because
+  // it receives events): see renderer/sceneSurface.ts.
   const glRef = useRef<HTMLCanvasElement>(null);
-  // Il manager legge il tool attivo da un ref: attachTools viene collegato una
-  // volta sola al mount, quindi non deve dipendere dall'identità della closure.
+  // The manager reads the active tool from a ref: attachTools is wired
+  // only once at mount, so it must not depend on the closure's identity.
   const toolRef = useRef<ToolId>("select");
-  // Il nickname vive in un ref oltre che nello stato: il bootstrap parte una
-  // volta sola e deve leggere quello CORRENTE quando apre la presenza.
+  // The nickname lives in a ref as well as in state: the bootstrap starts
+  // only once and must read the CURRENT one when it opens presence.
   const [nickname, setNickname] = useState(loadNickname);
   const nicknameRef = useRef(nickname);
   const presenceRef = useRef<PresenceClient | null>(null);
   const [toolId, setToolId] = useState<ToolId>("select");
-  // Il documento non si apre (non esiste): al posto dell'editor, una scheda con "Torna alla Home".
+  // The document does not open (it does not exist): in place of the editor, a card with "Back to Home".
   const [docError, setDocError] = useState<{ notFound: boolean; message: string } | null>(null);
-  // La modalità (Design | Flussi) e il prototipo: stato di vista in useFlowUi.
+  // The mode (Design | Flows) and the prototype: view state in useFlowUi.
   const mode = useFlowUi((st) => st.mode);
   const presenting = useFlowUi((st) => st.presenting);
-  // Cambia lo strumento attivo: il ref lo legge il tool manager, lo stato la toolbar.
+  // Changes the active tool: the ref is read by the tool manager, the state by the toolbar.
   const chooseTool = (id: ToolId) => {
     toolRef.current = id;
     setToolId(id);
   };
-  // Un op rifiutato dal server viene annullato in locale (la modifica
-  // ottimistica sparisce dal canvas, vedi store/store.ts::rejectPending). Un
-  // rollback SILENZIOSO è quasi peggio di nessun rollback: qui è l'unico posto
-  // in cui l'utente può capire perché il rettangolo appena disegnato è sparito.
-  // Sottoscrizioni con selettore: il resto della UI non si ridisegna a ogni op.
+  // An op rejected by the server is undone locally (the optimistic change
+  // disappears from the canvas, see store/store.ts::rejectPending). A
+  // SILENT rollback is almost worse than no rollback: here is the only place
+  // where the user can understand why the rectangle they just drew vanished.
+  // Subscriptions with a selector: the rest of the UI does not redraw on every op.
   const lastError = useScene((s) => s.lastError);
   const clearError = useScene((s) => s.clearError);
-  // Il contrario di lastError: una modifica data per persa che si è invece
-  // rivelata salvata (store.ts: revoca del rollback). Va detto, e va detto in un
-  // banner DIVERSO -- annunciarlo in quello rosso, sotto la scritta "modifica
-  // non salvata e annullata", sarebbe la seconda bugia dopo la prima.
+  // The opposite of lastError: a change given up for lost that turned out
+  // to be saved (store.ts: rollback revocation). It must be said, and said in a
+  // DIFFERENT banner -- announcing it in the red one, under the text "change
+  // not saved and rolled back", would be the second lie after the first.
   const notice = useScene((s) => s.notice);
   const clearNotice = useScene((s) => s.clearNotice);
-  // Stato del collegamento (store.ts::ConnectionStatus) e il suo perché. Non è
-  // dismissibile come lastError: la condizione non passa perché l'utente chiude
-  // un avviso, e finché dura le modifiche restano ottimistiche -- deve poterlo
-  // sapere PRIMA di continuare a lavorare, non al reload successivo.
+  // The connection status (store.ts::ConnectionStatus) and its why. It is not
+  // dismissible like lastError: the condition does not pass because the user closes
+  // a notice, and while it lasts the changes stay optimistic -- they must be able to know it
+  // BEFORE continuing to work, not at the next reload.
   const connection = useScene((s) => s.connection);
   const syncError = useScene((s) => s.syncError);
-  // Il nodo che si sta scrivendo (lo accendono textTool alla creazione e il
-  // doppio click di selectTool). È l'UNICO punto in cui il campo di editing
-  // diventa raggiungibile dall'utente: senza questa riga TextEditorOverlay è
-  // codice compilato che nessuno monta, e il testo si può creare ma non
-  // scrivere. Selettore, quindi l'app si ridisegna solo quando si entra o si
-  // esce dall'editing.
+  // The node being written (turned on by textTool at creation and by selectTool's
+  // double click). It is the ONLY point where the editing field
+  // becomes reachable by the user: without this line TextEditorOverlay is
+  // compiled code that nobody mounts, and text can be created but not
+  // written. A selector, so the app redraws only when entering or
+  // leaving editing.
   const editingNodeId = useScene((s) => s.editingNodeId);
 
-  // bootstrap: documento + SyncClient + tool
+  // bootstrap: document + SyncClient + tools
   useEffect(() => {
     let cleanup = () => {};
     let cancelled = false;
-    // Il client va tenuto QUI e non dentro l'async: la cleanup deve poterlo
-    // fermare anche quando lo smontaggio arriva mentre il bootstrap è ancora a
-    // metà. Senza stop(), StrictMode (main.tsx) lascia una subscription
-    // orfana per tutta la sessione: due stream sul server e ogni record remoto
-    // applicato due volte nello stesso store.
+    // The client must be kept HERE and not inside the async: the cleanup must be able to
+    // stop it even when the unmount arrives while the bootstrap is still
+    // halfway. Without stop(), StrictMode (main.tsx) leaves an orphan subscription
+    // for the whole session: two streams on the server and every remote record
+    // applied twice in the same store.
     let sync: SyncClient | null = null;
 
     (async () => {
       try {
-        // Il link vince sul localStorage: chi riceve un invito vuole QUEL
-        // documento, non l'ultimo che aveva aperto. L'editor NON crea più
-        // documenti da solo: la Root (home/Root.tsx) lo monta solo con un
-        // `#doc=`, e i documenti nascono dalla Home. Senza id (mai in
-        // produzione) è un errore, non un documento vuoto a sorpresa.
-        const docId = docIdFromHash(location.hash) ?? localStorage.getItem(DOC_KEY);
-        if (!docId) throw new Error("nessun documento da aprire");
+        // The link wins over localStorage: whoever receives an invite wants THAT
+        // document, not the last one they had opened. The editor NO longer creates
+        // documents on its own: the Root (home/Root.tsx) mounts it only with a
+        // `/doc/<id>` route, and documents are born from Home. Without an id (never in
+        // production) it is an error, not a surprise empty document.
+        const docId = routeDocId ?? docIdFromHash(location.hash) ?? localStorage.getItem(DOC_KEY);
+        if (!docId) throw new Error("no document to open");
         localStorage.setItem(DOC_KEY, docId);
-        // Il link nella barra degli indirizzi è sempre quello da condividere.
-        history.replaceState(null, "", `#doc=${docId}`);
         sync = new SyncClient(docId, CLIENT_ID);
-        // Smontati mentre creavamo il client: fermarlo prima ancora di
-        // aprire il documento (start() su un client fermato è un no-op).
+        // Unmounted while we were creating the client: stop it before even
+        // opening the document (start() on a stopped client is a no-op).
         if (cancelled) {
           sync.stop();
           return;
         }
         await sync.start();
-        // L'effetto può essere già stato smontato (StrictMode in dev, o unmount
-        // rapido): in quel caso non agganciare listener che nessuno rimuoverà.
+        // The effect may already have been unmounted (StrictMode in dev, or quick
+        // unmount): in that case do not attach listeners nobody will remove.
         if (cancelled) return;
         const canvas = canvasRef.current;
         if (!canvas) return;
-        // Il contesto è l'unico ponte fra i tool e il resto dell'app: store,
-        // camera e la sola conversione schermo -> mondo (via canvas/camera.ts).
+        // The context is the only bridge between the tools and the rest of the app: store,
+        // camera and the sole screen -> world conversion (via canvas/camera.ts).
         const ctx: ToolContext = {
           sync,
           canvas,
-          // La scena che si VEDE: con la timeline in posa è quella derivata (così si
-          // trascina ciò che è sullo schermo, non il valore di base); altrimenti è
-          // la stessa istanza dello store (animation/posedScene.ts).
+          // The scene that is SEEN: with the timeline posed it is the derived one (so
+          // what is on screen is dragged, not the base value); otherwise it is
+          // the same instance as the store (animation/posedScene.ts).
           getScene: () => posedScene(),
           getCamera: () => useScene.getState().camera,
           setCamera: (c) => useScene.getState().setCamera(c),
@@ -227,8 +230,8 @@ export function App() {
             return screenToWorld(useScene.getState().camera, p.x, p.y);
           },
         };
-        // La presenza: chi altro c'è, e dove ho io il cursore e la selezione.
-        // Parte dopo sync.start() perché non deve mai ritardare il documento.
+        // Presence: who else is here, and where my cursor and selection are.
+        // It starts after sync.start() because it must never delay the document.
         const presence = new PresenceClient(docId, CLIENT_ID, nicknameRef.current);
         presenceRef.current = presence;
         presence.start();
@@ -241,7 +244,7 @@ export function App() {
         canvas.addEventListener("pointerleave", onLeave);
         const sendView = () => {
           const st = useScene.getState();
-          // La pagina EFFETTIVA: con currentPageId null la vista mostra la prima.
+          // The EFFECTIVE page: with currentPageId null the view shows the first.
           presence.setLocal({ selection: st.selection, pageId: st.currentPageId ?? st.scene?.pages[0]?.id ?? "" });
         };
         sendView();
@@ -249,12 +252,12 @@ export function App() {
           if (st.selection !== prev.selection || st.currentPageId !== prev.currentPageId) sendView();
         });
         const detachTools = attachTools(ctx, () => TOOLS[toolRef.current] ?? selectTool);
-        // Trascinare un'immagine sul canvas (traccia 3, task 3). Sta accanto ai
-        // tool e non dentro il registro perché non è un tool: non ha un pulsante
-        // in toolbar e non ha modo -- il rilascio funziona qualunque tool sia
-        // attivo. Il punto passa dalla STESSA conversione schermo -> mondo dei
-        // tool (ctx.toWorld); un DragEvent ha clientX/clientY come un
-        // PointerEvent, che è tutto ciò che quella conversione legge.
+        // Dragging an image onto the canvas (track 3, task 3). It sits next to the
+        // tools and not inside the registry because it is not a tool: it has no button
+        // in the toolbar and no mode -- the drop works whatever tool is
+        // active. The point goes through the SAME screen -> world conversion as the
+        // tools (ctx.toWorld); a DragEvent has clientX/clientY like a
+        // PointerEvent, which is all that conversion reads.
         const detachDrop = attachImageDrop(canvas, (e) => ctx.toWorld(e as PointerEvent));
         cleanup = () => {
           detachTools();
@@ -267,10 +270,10 @@ export function App() {
         };
       } catch (err) {
         console.error("bootstrap failed", err);
-        // Il bootstrap fallito è uno stato di collegamento come gli altri: non
-        // si riprende da solo (nessuno stream da riabbonare), quindi "error".
-        // Un documento che non esiste (link sbagliato, eliminato) ha invece la
-        // sua scheda con l'uscita verso la Home.
+        // A failed bootstrap is a connection state like the others: it does not
+        // recover on its own (no stream to resubscribe), so "error".
+        // A document that does not exist (wrong link, deleted) instead has its
+        // own card with the exit towards Home.
         if (!cancelled) {
           const ce = ConnectError.from(err);
           if (ce.code === Code.NotFound) setDocError({ notFound: true, message: ce.message });
@@ -286,26 +289,26 @@ export function App() {
     };
   }, []);
 
-  // IL CICLO DI DISEGNO, A INVALIDAZIONE. Scena e overlay sono due canvas
-  // separati (scena sotto, overlay sopra, vedi il contenitore "relative" più
-  // sotto) così l'overlay -- bbox di selezione, maniglie, marquee -- può
-  // ridisegnarsi in spazio schermo senza mai toccare i pixel della scena.
+  // THE DRAWING LOOP, ON INVALIDATION. Scene and overlay are two separate
+  // canvases (scene below, overlay above, see the "relative" container further
+  // below) so the overlay -- selection bbox, handles, marquee -- can
+  // redraw in screen space without ever touching the scene's pixels.
   //
-  // Prima girava a 60 fps SEMPRE, anche con l'editor fermo: ridisegnare la scena
-  // intera sessanta volte al secondo per niente (batteria, ventola, e un
-  // documento grande che non lascia spazio a nient'altro). Ora si disegna UN
-  // frame ogni volta che qualcosa che si vede è cambiato: la scena o la
-  // camera/selezione/anteprime (lo store), gli altri utenti (la presenza), un'
-  // immagine arrivata, un font caricato, il canvas ridimensionato. Più
-  // invalidazioni nello stesso frame se ne fanno una sola.
+  // It used to run at 60 fps ALWAYS, even with the editor idle: redrawing the whole
+  // scene sixty times a second for nothing (battery, fan, and a large
+  // document leaving no room for anything else). Now ONE frame is drawn
+  // every time something visible has changed: the scene or the
+  // camera/selection/previews (the store), other users (presence), an
+  // image that arrived, a font that loaded, the canvas resized. Several
+  // invalidations in the same frame make only one.
   //
-  // La scena passa da SceneLayerCache: un documento pesante, mentre solo la
-  // camera si muove, riusa l'ultima immagine invece di ridisegnare, e a
-  // movimento finito (SETTLE_MS) rifà il frame esatto.
+  // The scene goes through SceneLayerCache: a heavy document, while only the
+  // camera moves, reuses the last image instead of redrawing, and when
+  // the movement ends (SETTLE_MS) it redoes the exact frame.
   useEffect(() => {
-    // Il disegno vero lo fa SceneSurface: sceglie fra Canvas 2D (CPU) e CanvasKit
-    // (GPU) e ripiega sulla CPU se la GPU non va. Senza il canvas WebGL (i test
-    // sotto jsdom) disegna sempre in CPU.
+    // The real drawing is done by SceneSurface: it chooses between Canvas 2D (CPU) and CanvasKit
+    // (GPU) and falls back to the CPU if the GPU fails. Without the WebGL canvas (tests
+    // under jsdom) it always draws on the CPU.
     const surface = canvasRef.current && glRef.current
       ? new SceneSurface(canvasRef.current, glRef.current, imageCache, () => invalidate())
       : null;
@@ -315,13 +318,13 @@ export function App() {
 
     const frame = () => {
       raf = 0;
-      // In Sviluppo la tela è coperta dalla vista codice: niente da disegnare (e
-      // niente lavoro). Tornando in Design/Flussi lo store di vista invalida.
+      // In Develop the canvas is covered by the code view: nothing to draw (and
+      // no work). Going back to Design/Flows the view store invalidates.
       if (useFlowUi.getState().mode === "dev") return;
       const canvas = canvasRef.current;
       const overlay = overlayRef.current;
-      // La scena in posa quando la timeline scorre/riproduce/registra, altrimenti
-      // la scena dello store (stessa istanza: nessun costo a timeline ferma).
+      // The posed scene when the timeline scrubs/plays/records, otherwise
+      // the store's scene (same instance: no cost with the timeline idle).
       const scene = posedScene();
       if (canvas && scene) {
         resizeCanvasToDisplaySize(canvas);
@@ -342,16 +345,16 @@ export function App() {
       if (overlay && scene) {
         resizeCanvasToDisplaySize(overlay);
         const octx = overlay.getContext("2d");
-        // snapGuides: le guide di allineamento del gesto in corso (T2).
-        // penPreview: il path che il pen tool sta disegnando. Nessuno dei due è
-        // documento (il nodo vettoriale non esiste finché il path non è finito),
-        // quindi passano dallo store all'overlay come il marquee -- ed è l'UNICO
-        // modo in cui chi disegna vede quello che sta facendo.
+        // snapGuides: the alignment guides of the gesture in progress (T2).
+        // penPreview: the path the pen tool is drawing. Neither is
+        // document (the vector node does not exist until the path is finished),
+        // so they go from the store to the overlay like the marquee -- and it is the ONLY
+        // way the person drawing sees what they are doing.
         const { camera, selection, marquee, snapGuides, penPreview } = useScene.getState();
         if (octx) {
-          // Mentre la clip GIRA le maniglie non si disegnano: starebbero su una
-          // geometria che cambia a ogni frame (e la scala animata non è nel box di
-          // selezione). In pausa o scorrendo seguono la geometria in posa.
+          // While the clip PLAYS the handles are not drawn: they would sit on
+          // a geometry that changes every frame (and the animated scale is not in the
+          // selection box). Paused or scrubbing they follow the posed geometry.
           drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview);
           const peers = usePresence.getState().peers;
           if (Object.keys(peers).length > 0) {
@@ -359,7 +362,7 @@ export function App() {
           }
           const layoutDrop = useScene.getState().layoutDrop;
           if (layoutDrop) drawLayoutDrop(octx, camera, layoutDrop);
-          // Le frecce dei flussi, sopra a tutto il resto dell'overlay.
+          // The flows' arrows, above everything else of the overlay.
           const fu = useFlowUi.getState();
           if (fu.mode === "flows") {
             const flow = resolveFlow(scene, fu.currentFlowId);
@@ -386,22 +389,22 @@ export function App() {
       useScene.subscribe(invalidate),
       usePresence.subscribe(invalidate),
       useFlowUi.subscribe(invalidate),
-      // Il playhead, la posa e la bozza di registrazione: il tick di riproduzione
-      // è l'unico produttore di frame mentre si anima, a timeline ferma non arriva
-      // niente e l'editor resta a zero frame.
+      // The playhead, the pose and the recording draft: the playback tick
+      // is the only frame producer while animating, with the timeline idle nothing
+      // arrives and the editor stays at zero frames.
       useTimeline.subscribe(invalidate),
       imageCache.subscribe(invalidate),
-      // Cambiare renderer (o la sua scelta, che il guasto della GPU riporta in
-      // CPU) va ridisegnato subito.
+      // Changing renderer (or its choice, which a GPU failure brings back to
+      // CPU) must be redrawn right away.
       useRenderer.subscribe((st, prev) => {
         if (st.choice !== prev.choice) invalidate();
       }),
     ];
-    // Ridimensionare il canvas lo svuota: va ridisegnato. ResizeObserver non c'è
-    // in ogni ambiente (jsdom): lì basta il frame iniziale.
+    // Resizing the canvas empties it: it must be redrawn. ResizeObserver is not
+    // in every environment (jsdom): there the initial frame is enough.
     const observer = typeof ResizeObserver !== "undefined" ? new ResizeObserver(invalidate) : null;
     if (canvasRef.current) observer?.observe(canvasRef.current);
-    // Un font che arriva cambia le misure del testo.
+    // A font that arrives changes the text measures.
     const fonts = typeof document !== "undefined" ? document.fonts : undefined;
     fonts?.addEventListener?.("loadingdone", invalidate);
     window.addEventListener("resize", invalidate);
@@ -418,20 +421,20 @@ export function App() {
     };
   }, []);
 
-  // Scorciatoie undo/redo: sulla window (non sul canvas) perché il canvas non
-  // è focusabile -- stesso motivo per cui toolManager.ts ascolta Escape/Delete
-  // lì. Ctrl (Windows/Linux) o Cmd (Mac, e.metaKey) + Z = undo, + Shift+Z (o
-  // Ctrl+Y) = redo. Ignorate dentro un campo di testo (isTextField) e SEMPRE
-  // con preventDefault quando gestite, altrimenti Ctrl+Z fa anche l'undo
-  // nativo del browser (es. su un contentEditable) in parallelo al nostro.
+  // Undo/redo shortcuts: on the window (not on the canvas) because the canvas is
+  // not focusable -- same reason toolManager.ts listens to Escape/Delete
+  // there. Ctrl (Windows/Linux) or Cmd (Mac, e.metaKey) + Z = undo, + Shift+Z (or
+  // Ctrl+Y) = redo. Ignored inside a text field (isTextField) and ALWAYS
+  // with preventDefault when handled, otherwise Ctrl+Z also does the browser's
+  // native undo (e.g. on a contentEditable) in parallel to ours.
   //
-  // Guardia extra su useScene.getState().gesture (bug trovato in review): un
-  // gesto (drag di selectTool -- sposta/resize) resta aperto finché il
-  // pointerup non arriva, indipendentemente dalla tastiera. Se Ctrl/Cmd+Z
-  // arriva a metà drag, store.ts::undo()/redo() sono già la guardia che
-  // conta (bloccano da soli, per qualunque chiamante): questo controllo qui è
-  // difesa in profondità, non l'unica barriera. preventDefault resta comunque
-  // per evitare l'undo nativo del browser.
+  // Extra guard on useScene.getState().gesture (bug found in review): a
+  // gesture (selectTool drag -- move/resize) stays open until the
+  // pointerup arrives, regardless of the keyboard. If Ctrl/Cmd+Z
+  // arrives mid-drag, store.ts::undo()/redo() are already the guard that
+  // counts (they block by themselves, for any caller): this check here is
+  // defense in depth, not the only barrier. preventDefault stays anyway
+  // to avoid the browser's native undo.
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTextField(e.target)) return;
@@ -442,7 +445,7 @@ export function App() {
       const isUndo = key === "z" && !e.shiftKey;
       if (!isRedo && !isUndo) return;
       e.preventDefault();
-      if (useScene.getState().gesture) return; // gesto in corso: rimandato, vedi store.ts
+      if (useScene.getState().gesture) return; // gesture in progress: deferred, see store.ts
       if (isRedo) useScene.getState().redo();
       else useScene.getState().undo();
     };
@@ -450,10 +453,10 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Scorciatoie delle modalità: F alterna Design / Flussi, S apre Sviluppo (e
-  // di nuovo S torna a Design), K attiva "Collega" (entrando in Flussi se serve). Sulla finestra, come le altre, e
-  // mai dentro un campo di testo (isTextField) né con un modificatore premuto
-  // (Ctrl+Alt+K è del tool di selezione).
+  // Mode shortcuts: F toggles Design / Flows, S opens Develop (and
+  // S again goes back to Design), K activates "Connect" (entering Flows if needed). On the window, like the others, and
+  // never inside a text field (isTextField) nor with a modifier pressed
+  // (Ctrl+Alt+K belongs to the selection tool).
   useEffect(() => {
     const onKeyDown = (e: KeyboardEvent) => {
       if (isTextField(e.target) || e.ctrlKey || e.metaKey || e.altKey || e.shiftKey) return;
@@ -474,45 +477,45 @@ export function App() {
     };
     window.addEventListener("keydown", onKeyDown);
     return () => window.removeEventListener("keydown", onKeyDown);
-    // chooseTool scrive un ref e un setState: stabile quanto basta.
+    // chooseTool writes a ref and a setState: stable enough.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
 
-  // Uscire da Flussi riporta lo strumento a "Seleziona" se era "Collega"; entrare
-  // in Flussi lo fa se era uno strumento da disegno: non si disegna nei flussi.
+  // Leaving Flows brings the tool back to "Select" if it was "Connect"; entering
+  // Flows does so if it was a drawing tool: nothing is drawn in flows.
   useEffect(() => {
     const ids = toolIdsOf(mode);
     if (ids ? !ids.includes(toolRef.current) : toolRef.current === "connect") chooseTool("select");
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
 
-  // Copia / incolla / duplica (Ctrl/Cmd+C, +V, +D). Sulla finestra come le
-  // scorciatoie qui sopra e per lo stesso motivo (il canvas non è focusabile);
-  // la logica sta tutta in tools/clipboard.ts, qui c'è solo il montaggio --
-  // che però è l'unico punto in cui la funzione diventa raggiungibile.
+  // Copy / paste / duplicate (Ctrl/Cmd+C, +V, +D). On the window like the
+  // shortcuts above and for the same reason (the canvas is not focusable);
+  // the logic is all in tools/clipboard.ts, here there is only the mounting --
+  // which however is the only point where the function becomes reachable.
   useEffect(() => attachClipboardShortcuts(), []);
 
-  // M apre/chiude la timeline (ui/timeline/shortcuts.ts).
+  // M opens/closes the timeline (ui/timeline/shortcuts.ts).
   useEffect(() => attachTimelineShortcuts(), []);
 
-  // Le immagini che non si erano caricate si riprovano quando la rete torna o
-  // quando la scheda torna in primo piano (traccia 3, task 3). Senza, un
-  // disservizio di un istante lascerebbe quel nodo come segnaposto per tutta la
-  // vita della pagina, con il file ancora lì sul disco.
+  // Images that failed to load are retried when the network comes back or
+  // when the tab returns to the foreground (track 3, task 3). Without it, a
+  // momentary outage would leave that node as a placeholder for the whole
+  // life of the page, with the file still there on disk.
   useEffect(() => attachImageRecovery(), []);
 
-  // La pillola diceva "connesso" anche a stream morto: il bootstrap era andato
-  // a buon fine e nessuno rivedeva più quello stato. Adesso è SyncClient a
-  // tenere aggiornato `connection` per tutta la vita dello stream, riconnessioni
-  // comprese, e la pillola non fa che leggerlo.
+  // The pill said "connected" even with a dead stream: the bootstrap had succeeded
+  // and nobody looked at that state again. Now it is SyncClient that
+  // keeps `connection` up to date for the whole life of the stream, reconnections
+  // included, and the pill just reads it.
   const statusLabel =
     connection === "connected"
-      ? "connesso"
+      ? "connected"
       : connection === "reconnecting"
-        ? "riconnessione…"
+        ? "reconnecting…"
         : connection === "error"
-          ? "sconnesso"
-          : "connessione…";
+          ? "disconnected"
+          : "connecting…";
 
   const leftOpen = usePanels((s) => s.left);
   const rightOpen = usePanels((s) => s.right);
@@ -521,50 +524,50 @@ export function App() {
 
   return (
     <div className="flex h-screen flex-col bg-surface text-fg">
-      {/* Due avvisi diversi perché le due situazioni chiedono cose diverse: in
-          riconnessione l'utente può aspettare (le modifiche restano in coda e
-          il backlog le confermerà), a tentativi esauriti no. */}
+      {/* Two different notices because the two situations ask for different things: while
+          reconnecting the user can wait (changes stay queued and
+          the backlog will confirm them), with attempts exhausted they cannot. */}
       {connection === "reconnecting" && (
         <Banner tone="warn">
-          Connessione al server persa ({syncError}). Riconnessione in corso: le modifiche fatte
-          nel frattempo restano in attesa e verranno confermate al rientro.
+          Connection to the server lost ({syncError}). Reconnecting: changes made
+          in the meantime stay queued and will be confirmed on return.
         </Banner>
       )}
       {connection === "error" && (
         <Banner tone="warn">
-          Connessione al server persa ({syncError}). I tentativi di riconnessione sono finiti: le
-          modifiche non vengono più confermate, ricarica la pagina per riprendere.
+          Connection to the server lost ({syncError}). Reconnection attempts are over: changes
+          are no longer confirmed, reload the page to resume.
         </Banner>
       )}
       {lastError && (
-        <Banner tone="danger" onClose={clearError}>Modifica non salvata e annullata: {lastError}</Banner>
+        <Banner tone="danger" onClose={clearError}>Change not saved and rolled back: {lastError}</Banner>
       )}
       {notice && <Banner tone="info" onClose={clearNotice}>{notice}</Banner>}
-      {/* LE TRE COLONNE: pannello sinistro, tela al centro, proprietà a destra.
-          `min-h-0` sulla riga e `min-w-0` sulla colonna centrale non sono
-          decorazioni: senza, un figlio flex non scende MAI sotto la propria
-          dimensione naturale, e basta un elenco lungo perché la riga sfondi
-          l'altezza della finestra spingendo la tela fuori schermo.
-          I pannelli sono FRATELLI della tela, non le stanno sopra: non rubano
-          eventi e la larghezza che occupano la toglie al layout (la tela si
-          ridimensiona da sola: resizeCanvasToDisplaySize legge clientWidth ad
-          ogni frame e eventToCanvasPoint parte da getBoundingClientRect). */}
+      {/* THE THREE COLUMNS: left panel, canvas in the middle, properties on the right.
+          `min-h-0` on the row and `min-w-0` on the central column are not
+          decorations: without them, a flex child NEVER shrinks below its own
+          natural size, and a long list is enough for the row to burst
+          the window's height pushing the canvas off screen.
+          The panels are SIBLINGS of the canvas, they do not sit on top of it: they do not steal
+          events and the width they occupy is taken away from the layout (the canvas
+          resizes on its own: resizeCanvasToDisplaySize reads clientWidth on
+          every frame and eventToCanvasPoint starts from getBoundingClientRect). */}
       <div className="flex min-h-0 flex-1">
         {mode === "dev" ? (
-          <aside aria-label="Prontezza" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
+          <aside aria-label="Readiness" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
             <ReadinessPanel />
           </aside>
         ) : mode === "flows" ? (
-          <aside aria-label="Flussi" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
+          <aside aria-label="Flows" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
             <FlowPanel />
           </aside>
         ) : (
-          <aside aria-label="Livelli e componenti" className={`${leftOpen ? "flex" : "hidden"} w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
+          <aside aria-label="Layers and components" className={`${leftOpen ? "flex" : "hidden"} w-64 shrink-0 flex-col overflow-hidden border-r border-line bg-surface`}>
             <Tabs className="flex min-h-0 flex-1 flex-col">
-              {/* Schede e selettore di pagina nella STESSA riga: 40px in meno. */}
+              {/* Tabs and page selector in the SAME row: 40px less. */}
               <div className="flex shrink-0 items-center border-b border-line pr-1.5">
-              <TabList aria-label="Pannello" className="flex min-w-0 flex-1 gap-0.5 px-1.5 pt-1">
-                {([["layers", "Livelli", "layers"], ["components", "Componenti", "components"]] as const).map(([id, label, icon]) => (
+              <TabList aria-label="Panel" className="flex min-w-0 flex-1 gap-0.5 px-1.5 pt-1">
+                {([["layers", "Layers", "layers"], ["components", "Components", "components"]] as const).map(([id, label, icon]) => (
                   <Tab
                     key={id}
                     id={id}
@@ -578,8 +581,8 @@ export function App() {
                     {({ isSelected }) => (
                       <>
                         <Icon name={icon} size={14} />
-                        {/* Solo la scheda attiva porta il testo: la riga ospita anche il
-                            selettore di pagina. Il nome resta nell'aria-label. */}
+                        {/* Only the active tab carries the text: the row also hosts the
+                            page selector. The name stays in the aria-label. */}
                         {isSelected && label}
                       </>
                     )}
@@ -597,15 +600,15 @@ export function App() {
             </Tabs>
           </aside>
         )}
-        {/* La colonna centrale: la tela e, sotto, la timeline (solo in Design, aperta
-            con M o dal dock). La timeline è un FRATELLO della tela come i pannelli
-            laterali: la tela si ridimensiona da sola (resize -> invalidazione). */}
+        {/* The central column: the canvas and, below, the timeline (only in Design, opened
+            with M or from the dock). The timeline is a SIBLING of the canvas like the side
+            panels: the canvas resizes on its own (resize -> invalidation). */}
         <div className="flex min-h-0 min-w-0 flex-1 flex-col">
         <div className="relative min-h-0 min-w-0 flex-1 bg-canvas">
-          {/* Il cursore viene dal tool attivo; durante un pan temporaneo (spazio
-              o tasto centrale) è il tool manager a sovrascriverlo sul DOM. */}
-          {/* Il canvas WebGL della GPU: sotto, senza eventi, nascosto finché la
-              GPU non è scelta e pronta. */}
+          {/* The cursor comes from the active tool; during a temporary pan (space
+              or middle button) the tool manager overrides it on the DOM. */}
+          {/* The GPU's WebGL canvas: below, without events, hidden until the
+              GPU is chosen and ready. */}
           <canvas
             id="scene-gl"
             ref={glRef}
@@ -618,32 +621,32 @@ export function App() {
             style={{ cursor: (TOOLS[toolId] ?? selectTool).cursor }}
             className="absolute inset-0 block h-full w-full touch-none"
           />
-          {/* overlay: bbox di selezione + maniglie + marquee, in spazio schermo.
-              pointer-events-none: tutti i listener restano sul canvas "scene",
-              l'overlay è puramente visivo e non deve rubare eventi. */}
+          {/* overlay: selection bbox + handles + marquee, in screen space.
+              pointer-events-none: all listeners stay on the "scene" canvas,
+              the overlay is purely visual and must not steal events. */}
           <canvas id="overlay" ref={overlayRef} className="pointer-events-none absolute inset-0 block h-full w-full" />
-          {/* Onboarding: "Da dove parti?" a documento vuoto, poi i primi passi. Non
-              cattura gli eventi della tela fuori dalla scheda (home/CanvasOnboarding.tsx). */}
+          {/* Onboarding: "Where do you start?" on an empty document, then the first steps. It does not
+              capture the canvas's events outside the card (home/CanvasOnboarding.tsx). */}
           <CanvasOnboarding onDrawScreen={() => chooseTool("frame")} />
-          {/* Il campo di editing del testo: DENTRO questo contenitore perché si
-              posiziona in `absolute` sulle coordinate schermo del nodo, e sopra
-              i due canvas perché li deve coprire. `key`: una sessione per nodo,
-              così passare da un testo a un altro rimonta il campo invece di
-              riusarlo. */}
+          {/* The text editing field: INSIDE this container because it is
+              positioned `absolute` on the node's screen coordinates, and above
+              the two canvases because it must cover them. `key`: one session per node,
+              so going from one text to another remounts the field instead of
+              reusing it. */}
           {editingNodeId && <TextEditorOverlay key={editingNodeId} nodeId={editingNodeId} />}
-          {/* Sviluppo: la vista codice copre la tela (che resta montata: i tool e il
-              ciclo di disegno la usano) e sta SOTTO il dock (z-20). */}
+          {/* Develop: the code view covers the canvas (which stays mounted: the tools and the
+              drawing loop use it) and sits BELOW the dock (z-20). */}
           {mode === "dev" && <CodeWorkbench />}
-          <TopBar mode={mode} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => { location.hash = "#new"; }} connection={connection} statusLabel={statusLabel} />
+          <TopBar mode={mode} presence={<PresenceBar compact nickname={nickname} onNickname={(n) => { nicknameRef.current = n; setNickname(n); presenceRef.current?.setNickname(n); }} />} onNewDocument={() => navigate(HOME_TEMPLATES_PATH)} connection={connection} statusLabel={statusLabel} />
           <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} />
         </div>
         {mode === "design" && <TimelinePanel />}
         </div>
-        <aside aria-label={mode === "dev" ? "Spedisci" : "Proprietà"} className={`${rightOpen ? "block" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 overflow-hidden border-l border-line bg-surface`}>
+        <aside aria-label={mode === "dev" ? "Ship" : "Properties"} className={`${rightOpen ? "block" : "hidden"} ${mode === "dev" ? "w-72" : "w-64"} shrink-0 overflow-hidden border-l border-line bg-surface`}>
           {mode === "dev" ? (
             <ShipPanel />
           ) : mode === "flows" ? (
-            // I metadati della schermata in cima, le proprietà di sempre sotto.
+            // The screen's metadata at the top, the usual properties below.
             <div className="flex h-full flex-col">
               <ScreenMetaEditor />
               <div className="min-h-0 flex-1 overflow-y-auto">

@@ -26,8 +26,8 @@ function rect(id: string, x: number, y: number, w = 50, h = 50): NodeLite {
 
 const identityCam: Camera = { x: 0, y: 0, zoom: 1 };
 
-// La geometria è estratta apposta per essere testabile senza ctx/DOM (non c'è
-// jsdom/canvas in questo progetto, vedi renderer/canvasRenderer.test.ts).
+// The geometry is extracted on purpose to be testable without ctx/DOM (there is no
+// jsdom/canvas in this project, see renderer/canvasRenderer.test.ts).
 describe("selectionWorldBounds", () => {
   it("returns null for an empty selection (nothing to draw)", () => {
     const s = emptyScene("d", "n");
@@ -54,21 +54,21 @@ describe("selectionWorldBounds", () => {
   });
 
   it("puts a nested node's box where the node is drawn: MONDO, not local", () => {
-    // page1 > g(100,50) > h(10,20) > k(3,4): il box di "k" nel mondo parte a
-    // (113,74). Il bbox della selezione è disegnato in spazio schermo a partire
-    // da qui: se restasse locale, la cornice comparirebbe lontanissima dal nodo.
+    // page1 > g(100,50) > h(10,20) > k(3,4): the box of "k" in the world starts at
+    // (113,74). The selection bbox is drawn in screen space starting
+    // from here: if it stayed local, the frame would appear very far from the node.
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("g", { ...rect("g", 100, 50, 400, 400), parentId: "page1" });
     s.nodes = s.nodes.set("h", { ...rect("h", 10, 20, 200, 200), parentId: "g" });
     s.nodes = s.nodes.set("k", { ...rect("k", 3, 4, 50, 50), parentId: "h" });
     expect(selectionWorldBounds(s, ["k"])).toEqual({ x: 113, y: 74, width: 50, height: 50 });
-    // Unione di due nodi a profondità DIVERSE: entrambi in coordinate mondo.
+    // Union of two nodes at DIFFERENT depths: both in world coordinates.
     expect(selectionWorldBounds(s, ["g", "k"])).toEqual({ x: 100, y: 50, width: 400, height: 400 });
   });
 
-  // Un gruppo non ha un box proprio: leggerlo darebbe un rettangolo 0x0
-  // all'origine, cioè cornice e maniglie nell'angolo sbagliato dello schermo
-  // per un gruppo che si vede benissimo (vedi store/groups.ts).
+  // A group has no box of its own: reading it would give a 0x0 rectangle
+  // at the origin, that is frame and handles in the wrong corner of the screen
+  // for a group that is perfectly visible (see store/groups.ts).
   it("for a group it is the union of its CHILDREN, translated by the group", () => {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("g", { ...rect("g", 0, 0, 0, 0), kind: "group" });
@@ -76,8 +76,8 @@ describe("selectionWorldBounds", () => {
     s.nodes = s.nodes.set("c2", { ...rect("c2", 100, 0, 20, 20), parentId: "g" });
     expect(selectionWorldBounds(s, ["g"])).toEqual({ x: 10, y: 0, width: 110, height: 60 });
 
-    // Trascinato il gruppo, la cornice lo segue: la sua x/y è la traslazione
-    // dei figli.
+    // Once the group is dragged, the frame follows it: its x/y is the translation
+    // of the children.
     s.nodes = s.nodes.set("g", { ...s.nodes.at("g"), x: 5, y: 7 });
     expect(selectionWorldBounds(s, ["g"])).toEqual({ x: 15, y: 7, width: 110, height: 60 });
   });
@@ -90,10 +90,10 @@ describe("selectionWorldBounds", () => {
     expect(selectionWorldBounds(s, ["a", "g"])).toEqual({ x: 0, y: 0, width: 50, height: 50 });
   });
 
-  // Il renderer salta un nodo invisibile e tutto il suo sottoalbero
-  // (canvasRenderer.ts): la cornice della selezione deve misurare LA STESSA
-  // geometria, o cornice e maniglie si allungano su canvas vuoto -- la
-  // divergenza vedi-vs-seleziona, presa dal lato dell'overlay.
+  // The renderer skips an invisible node and its whole subtree
+  // (canvasRenderer.ts): the selection frame must measure THE SAME
+  // geometry, or frame and handles stretch over empty canvas -- the
+  // see-vs-select divergence, taken from the overlay's side.
   function groupWithHiddenChild() {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("g", { ...rect("g", 0, 0, 0, 0), kind: "group" });
@@ -104,7 +104,7 @@ describe("selectionWorldBounds", () => {
 
   it("a group frames only its VISIBLE children: a hidden one does not stretch the box", () => {
     const s = groupWithHiddenChild();
-    // Con c1 (nascosto) dentro l'unione sarebbe {10,0,110,60}.
+    // With c1 (hidden) inside the union would be {10,0,110,60}.
     expect(selectionWorldBounds(s, ["g"])).toEqual({ x: 100, y: 0, width: 20, height: 20 });
   });
 
@@ -112,12 +112,12 @@ describe("selectionWorldBounds", () => {
     const s = groupWithHiddenChild();
     const box = worldBoundsToScreen(selectionWorldBounds(s, ["g"])!, identityCam);
     const p = handlePositions(box);
-    // Il box visibile è (100,0)-(120,20): ogni maniglia ci sta sopra.
+    // The visible box is (100,0)-(120,20): every handle sits on it.
     expect(p.nw).toEqual({ x: 100, y: 0 });
     expect(p.se).toEqual({ x: 120, y: 20 });
     expect(p.n).toEqual({ x: 110, y: 0 });
     expect(p.w).toEqual({ x: 100, y: 10 });
-    // Nessuna maniglia sul figlio nascosto (che vive a sinistra, da x=10).
+    // No handle on the hidden child (which lives on the left, from x=10).
     for (const q of Object.values(p)) expect(q.x).toBeGreaterThanOrEqual(100);
   });
 
@@ -127,11 +127,11 @@ describe("selectionWorldBounds", () => {
     expect(selectionWorldBounds(s, ["g"])).toBeNull();
   });
 
-  // STESSA regola, dal lato del CLIP di un frame: il renderer non disegna (né
-  // clicca, né il marquee prende) un figlio oltre il box di un frame con
-  // clipsContent. La cornice e le 8 maniglie devono misurare quella stessa
-  // geometria, o compaiono -- e diventano AFFERRABILI -- su canvas vuoto fuori
-  // dal frame.
+  // SAME rule, from the frame's CLIP side: the renderer does not draw (nor
+  // click, nor does the marquee take) a child beyond the box of a frame with
+  // clipsContent. The frame and the 8 handles must measure that same
+  // geometry, or they appear -- and become GRABBABLE -- on empty canvas outside
+  // the frame.
   function frameWithOverflowingChild() {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("f", { ...rect("f", 10, 20, 100, 80), kind: "frame", clipsContent: true });
@@ -141,7 +141,7 @@ describe("selectionWorldBounds", () => {
 
   it("clips an overflowing child's frame to the visible region inside the frame", () => {
     const s = frameWithOverflowingChild();
-    // Solo la parte dentro f (10,20)-(110,100): (15,25)-(110,100).
+    // Only the part inside f (10,20)-(110,100): (15,25)-(110,100).
     expect(selectionWorldBounds(s, ["c"])).toEqual({ x: 15, y: 25, width: 95, height: 75 });
   });
 
@@ -149,7 +149,7 @@ describe("selectionWorldBounds", () => {
     const s = frameWithOverflowingChild();
     const box = worldBoundsToScreen(selectionWorldBounds(s, ["c"])!, identityCam);
     const p = handlePositions(box);
-    // Il frame arriva a (110,100): nessuna maniglia lo supera.
+    // The frame reaches (110,100): no handle goes beyond it.
     for (const q of Object.values(p)) {
       expect(q.x).toBeLessThanOrEqual(110);
       expect(q.y).toBeLessThanOrEqual(100);
@@ -171,12 +171,12 @@ describe("selectionWorldBounds", () => {
   });
 });
 
-// Il FRAME della selezione: un nodo solo porta la PROPRIA rotazione (e il suo
-// box in coordinate MONDO), una selezione multipla è ASSE-ALLINEATA attorno ai
-// box mondo dei nodi. La rotazione dei singoli nodi in una selezione MULTIPLA
-// non gonfia più l'unione (il fix clip-aware di T1 su selectionWorldBounds ha
-// la precedenza): il caso a un nodo, dove la rotazione conta, lo porta il
-// campo `rotation` qui sotto.
+// The selection FRAME: a single node carries ITS OWN rotation (and its
+// box in WORLD coordinates), a multiple selection is AXIS-ALIGNED around the
+// nodes' world boxes. The rotation of single nodes in a MULTIPLE selection
+// no longer inflates the union (T1's clip-aware fix on selectionWorldBounds
+// takes precedence): the one-node case, where rotation matters, is carried by the
+// `rotation` field below.
 describe("selectionFrame", () => {
   it("is null when there is nothing to frame", () => {
     const s = emptyScene("d", "n");
@@ -202,9 +202,9 @@ describe("selectionFrame", () => {
     expect(f.bounds).toEqual({ x: 0, y: 0, width: 150, height: 150 });
   });
 
-  // Un'istanza, come un gruppo, non ha un box proprio: la sua cornice è quella
-  // del contenuto del master (derivata, store/groups.ts), asse-allineata -- non
-  // il rettangolo 0x0 all'origine che il suo box grezzo darebbe.
+  // An instance, like a group, has no box of its own: its frame is that
+  // of the master's content (derived, store/groups.ts), axis-aligned -- not
+  // the 0x0 rectangle at the origin that its raw box would give.
   it("frames a single instance by its derived content bounds, axis-aligned like a group", () => {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("mr", { ...rect("mr", 10, 10, 50, 50), parentId: "components" });
@@ -242,21 +242,21 @@ describe("handlePositions", () => {
   });
 });
 
-// ctx finto che registra solo i NOMI delle chiamate: smoke test per verificare
-// che drawOverlay invochi le API canvas attese senza crashare, senza dover
-// verificare i pixel esatti (nessun canvas reale in Node qui).
+// fake ctx that records only the call NAMES: a smoke test to verify
+// that drawOverlay invokes the expected canvas APIs without crashing, without having to
+// verify the exact pixels (no real canvas in Node here).
 function fakeCtx(width: number, height: number) {
   const calls: string[] = [];
-  // Le chiamate di trasformazione con i loro argomenti: servono al caso
-  // ruotato, dove ciò che conta non è QUANTE volte si disegna ma ATTORNO A
-  // COSA (il centro del riquadro, in px schermo).
+  // The transform calls with their arguments: they serve the rotated
+  // case, where what matters is not HOW MANY times it draws but AROUND
+  // WHAT (the box center, in screen px).
   const xform: { op: string; args: number[] }[] = [];
-  // Gli archi della maniglia di ROTAZIONE, con centro e raggio: è l'unico
-  // disegno dell'overlay che non sia un rettangolo, e ciò che conta è DOVE
-  // finisce (dentro la propria zona di presa, vedi selection/handles.test.ts).
+  // The arcs of the ROTATION handle, with center and radius: it is the only
+  // overlay drawing that is not a rectangle, and what matters is WHERE
+  // it ends up (inside its own grab zone, see selection/handles.test.ts).
   const arcs: { x: number; y: number; r: number }[] = [];
-  // I SEGMENTI (moveTo + lineTo): le guide di snap sono l'unico disegno
-  // dell'overlay fatto di rette, e ciò che conta è dove cominciano e finiscono.
+  // The SEGMENTS (moveTo + lineTo): snap guides are the only
+  // overlay drawing made of straight lines, and what matters is where they start and end.
   const segments: { x0: number; y0: number; x1: number; y1: number }[] = [];
   let pen = { x: 0, y: 0 };
   const record = (op: string) => (...args: number[]) => { calls.push(op); xform.push({ op, args }); };
@@ -300,8 +300,8 @@ describe("drawOverlay smoke test", () => {
     s.nodes = s.nodes.set("a", rect("a", 0, 0));
     const { ctx, calls } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null);
-    expect(calls.filter((c) => c === "fillRect")).toHaveLength(8); // una per maniglia
-    expect(calls.filter((c) => c === "strokeRect")).toHaveLength(9); // 1 bbox + 8 bordi maniglia
+    expect(calls.filter((c) => c === "fillRect")).toHaveLength(8); // one per handle
+    expect(calls.filter((c) => c === "strokeRect")).toHaveLength(9); // 1 bbox + 8 handle borders
   });
 
   it("draws nothing for a selection whose ids no longer exist in the scene", () => {
@@ -325,8 +325,8 @@ describe("drawOverlay smoke test", () => {
     s.nodes = s.nodes.set("a", rect("a", 0, 0));
     const { ctx, calls } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], { x: 200, y: 200, width: 20, height: 20 });
-    expect(calls.filter((c) => c === "strokeRect")).toHaveLength(10); // 9 selezione + 1 marquee
-    expect(calls.filter((c) => c === "fillRect")).toHaveLength(9); // 8 maniglie + 1 marquee
+    expect(calls.filter((c) => c === "strokeRect")).toHaveLength(10); // 9 selection + 1 marquee
+    expect(calls.filter((c) => c === "fillRect")).toHaveLength(9); // 8 handles + 1 marquee
   });
 
   it("draws nothing for a group whose children are all hidden: it is an empty group", () => {
@@ -335,7 +335,7 @@ describe("drawOverlay smoke test", () => {
     s.nodes = s.nodes.set("c", { ...rect("c", 10, 10, 50, 50), parentId: "g", visible: false });
     const { ctx, calls } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["g"], null);
-    expect(calls).not.toContain("strokeRect"); // né cornice né bordi delle maniglie
+    expect(calls).not.toContain("strokeRect"); // neither frame nor handle borders
     expect(calls).not.toContain("fillRect");
   });
 
@@ -345,7 +345,7 @@ describe("drawOverlay smoke test", () => {
 
   it("turns the whole selection frame -- border AND handles -- with the node's rotation", () => {
     const s = emptyScene("d", "n");
-    // box (0,0) 100x50 -> centro schermo (50, 25) a camera identità
+    // box (0,0) 100x50 -> screen center (50, 25) at identity camera
     s.nodes = s.nodes.set("a", { ...rect("a", 0, 0, 100, 50), rotation: 90 });
     const { ctx, calls, xform } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null);
@@ -354,11 +354,11 @@ describe("drawOverlay smoke test", () => {
     expect(xform[1].args).toEqual([50, 25]);
     expect(xform[2].args[0]).toBeCloseTo(Math.PI / 2, 12);
     expect(xform[3].args).toEqual([-50, -25]);
-    // il riquadro e le 8 maniglie si disegnano come sempre: a ruotare è il
-    // contesto, non la loro geometria
+    // the box and the 8 handles are drawn as always: it is the context
+    // that rotates, not their geometry
     expect(calls.filter((c) => c === "fillRect")).toHaveLength(8);
     expect(calls.filter((c) => c === "strokeRect")).toHaveLength(9);
-    // e la trasformazione è chiusa PRIMA di ogni altra cosa
+    // and the transform is closed BEFORE anything else
     expect(calls.indexOf("restore")).toBeGreaterThan(calls.lastIndexOf("strokeRect"));
   });
 
@@ -367,15 +367,15 @@ describe("drawOverlay smoke test", () => {
     s.nodes = s.nodes.set("a", { ...rect("a", 0, 0, 100, 50), rotation: 90 });
     const { ctx, calls } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], { x: 200, y: 200, width: 20, height: 20 });
-    // le ultime due chiamate di disegno (fill + stroke del marquee) stanno DOPO
-    // il restore: il rettangolo di selezione è sempre asse-allineato
+    // the last two drawing calls (marquee fill + stroke) come AFTER
+    // the restore: the selection rectangle is always axis-aligned
     expect(calls.lastIndexOf("fillRect")).toBeGreaterThan(calls.indexOf("restore"));
     expect(calls.lastIndexOf("strokeRect")).toBeGreaterThan(calls.indexOf("restore"));
   });
 
-  // La maniglia di rotazione ESISTE sullo schermo. Prima non si disegnava
-  // affatto: il gesto c'era, ma l'unico modo di scoprirlo era passarci sopra
-  // col mouse e notare il cursore.
+  // The rotation handle EXISTS on screen. Before it was not drawn
+  // at all: the gesture was there, but the only way to discover it was hovering over it
+  // with the mouse and noticing the cursor.
   it("draws a rotate marker just outside each of the 4 corners", () => {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("a", rect("a", 0, 0, 100, 50));
@@ -389,7 +389,7 @@ describe("drawOverlay smoke test", () => {
     expect(at(100 + d, -d)).toBe(true); // ne
     expect(at(100 + d, 50 + d)).toBe(true); // se
     expect(at(-d, 50 + d)).toBe(true); // sw
-    // e non è un quadratino: i rettangoli disegnati restano quelli di prima
+    // and it is not a little square: the drawn rectangles stay the same as before
     expect(calls.filter((c) => c === "fillRect")).toHaveLength(8);
     expect(calls.filter((c) => c === "strokeRect")).toHaveLength(9);
   });
@@ -413,11 +413,11 @@ describe("drawOverlay smoke test", () => {
     const { ctx, calls, arcs } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null);
 
-    // disegnati nello spazio NON ruotato del frame (è il contesto a girare,
-    // come per il riquadro e le maniglie)...
+    // drawn in the frame's UNROTATED space (it is the context that turns,
+    // as for the box and the handles)...
     expect(arcs).toHaveLength(4);
     expect(arcs.some((a) => a.x === -ROTATE_MARKER_OFFSET && a.y === -ROTATE_MARKER_OFFSET)).toBe(true);
-    // ...e dentro il save/restore, non dopo
+    // ...and inside the save/restore, not after
     expect(calls.indexOf("restore")).toBeGreaterThan(calls.lastIndexOf("arc"));
   });
 
@@ -430,7 +430,7 @@ describe("drawOverlay smoke test", () => {
   });
 });
 
-describe("drawOverlay — guide di snap", () => {
+describe("drawOverlay — snap guides", () => {
   it("draws nothing extra when there is no active snap", () => {
     const s = emptyScene("d", "n");
     const { ctx, calls } = fakeCtx(800, 600);
@@ -442,8 +442,8 @@ describe("drawOverlay — guide di snap", () => {
     const s = emptyScene("d", "n");
     const { ctx, segments } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, [], null, [{ axis: "x", pos: 100, from: 20, to: 300 }]);
-    // +0.5 come il resto dell'overlay: un tratto da 1px cade su un confine
-    // netto invece di sbavare su due righe.
+    // +0.5 like the rest of the overlay: a 1px stroke lands on a crisp
+    // boundary instead of smearing over two rows.
     expect(segments).toEqual([{ x0: 100.5, y0: 20, x1: 100.5, y1: 300 }]);
   });
 
@@ -470,8 +470,8 @@ describe("drawOverlay — guide di snap", () => {
     s.nodes = s.nodes.set("a", { ...rect("a", 0, 0, 100, 50), rotation: 90 });
     const { ctx, calls } = fakeCtx(800, 600);
     drawOverlay(ctx, s, identityCam, ["a"], null, [{ axis: "x", pos: 10, from: 0, to: 50 }]);
-    // Il segmento cade DOPO il restore del riquadro ruotato: una guida girata
-    // di 90° non sarebbe più la retta su cui i bordi combaciano.
+    // The segment falls AFTER the rotated box's restore: a guide turned
+    // by 90° would no longer be the line on which the edges coincide.
     expect(calls.lastIndexOf("lineTo")).toBeGreaterThan(calls.lastIndexOf("restore"));
   });
 
@@ -487,11 +487,11 @@ describe("drawOverlay — guide di snap", () => {
   });
 });
 
-// --- il path in corso del PEN TOOL ------------------------------------------
+// --- the PEN TOOL's path in progress ----------------------------------------
 
-// Come fakeCtx, ma registra anche gli ARGOMENTI: l'anteprima del pen tool è
-// fatta di curve, e "ha chiamato bezierCurveTo" non basta a dire che le ha
-// disegnate nel posto giusto.
+// Like fakeCtx, but it also records the ARGUMENTS: the pen tool's preview is
+// made of curves, and "it called bezierCurveTo" is not enough to say it has
+// drawn them in the right place.
 function penCtx() {
   const calls: string[] = [];
   const args: Record<string, unknown[][]> = {};
@@ -526,74 +526,74 @@ const preview = (p: Partial<PenPreview> & Pick<PenPreview, "anchors">): PenPrevi
   next: null, active: null, closed: false, ...p,
 });
 
-describe("drawOverlay: l'anteprima del pen tool", () => {
+describe("drawOverlay: the pen tool preview", () => {
   const scene = emptyScene("d", "n");
 
-  it("senza anteprima non disegna nessun path (l'overlay resta quello di M1)", () => {
+  it("without a preview it draws no path (the overlay stays M1's)", () => {
     const { ctx, calls } = penCtx();
     drawOverlay(ctx, scene, identityCam, [], null, [], null);
     expect(calls).not.toContain("bezierCurveTo");
     expect(calls).not.toContain("fillRect");
   });
 
-  it("un'anteprima SENZA ancoraggi non disegna niente", () => {
+  it("a preview WITHOUT anchors draws nothing", () => {
     const { ctx, calls } = penCtx();
     drawOverlay(ctx, scene, identityCam, [], null, [], preview({ anchors: [] }));
     expect(calls).not.toContain("beginPath");
     expect(calls).not.toContain("fillRect");
   });
 
-  it("un solo ancoraggio: nessun segmento, solo il suo quadratino", () => {
+  it("a single anchor: no segments, only its little square", () => {
     const { ctx, count } = penCtx();
     drawOverlay(ctx, scene, identityCam, [], null, [], preview({ anchors: [corner(10, 10)] }));
-    expect(count("bezierCurveTo")).toBe(0); // niente da cui partire
+    expect(count("bezierCurveTo")).toBe(0); // nothing to start from
     expect(count("fillRect")).toBe(1);
     expect(count("strokeRect")).toBe(1);
   });
 
-  it("disegna una curva per segmento e un quadratino per ancoraggio", () => {
+  it("draws one curve per segment and one little square per anchor", () => {
     const { ctx, count } = penCtx();
     drawOverlay(ctx, scene, identityCam, [], null, [], preview({
       anchors: [corner(0, 0), corner(50, 0), corner(50, 50)],
     }));
     expect(count("bezierCurveTo")).toBe(2); // 3 ancoraggi = 2 segmenti
-    expect(count("stroke")).toBe(1); // un solo tratto per tutto il contorno
+    expect(count("stroke")).toBe(1); // a single stroke for the whole outline
     expect(count("fillRect")).toBe(3);
   });
 
-  // Il segmento di ritorno (ultimo -> primo) esiste in anteprima appena il
-  // puntatore preme sul primo ancoraggio: è quello che il trascinamento di
-  // chiusura sta modellando, e senza disegnarlo l'utente tirerebbe una maniglia
-  // di cui non vede la curva.
-  it("un'anteprima CHIUSA disegna anche il segmento di ritorno, ultimo -> primo", () => {
+  // The return segment (last -> first) exists in the preview as soon as the
+  // pointer presses on the first anchor: it is what the closing drag
+  // is shaping, and without drawing it the user would pull a handle
+  // whose curve they cannot see.
+  it("a CLOSED preview also draws the return segment, last -> first", () => {
     const { ctx, count } = penCtx();
     drawOverlay(ctx, scene, identityCam, [], null, [], preview({
       anchors: [corner(0, 0), corner(50, 0), corner(50, 50)],
       closed: true,
     }));
-    // 3 ancoraggi chiusi = 3 segmenti (2 + il ritorno), un solo tratto.
+    // 3 closed anchors = 3 segments (2 + the return), a single stroke.
     expect(count("bezierCurveTo")).toBe(3);
     expect(count("stroke")).toBe(1);
   });
 
-  it("il segmento di ritorno è disegnato dalla maniglia ENTRANTE del primo ancoraggio", () => {
+  it("the return segment is drawn by the INCOMING handle of the first anchor", () => {
     const { ctx, args } = penCtx();
     drawOverlay(ctx, scene, identityCam, [], null, [], preview({
       anchors: [
-        // La entrante del primo è ciò che il trascinamento di chiusura tira.
+        // The first's incoming handle is what the closing drag pulls.
         { x: 0, y: 0, inX: -20, inY: 10, outX: 0, outY: 0 },
         corner(50, 0),
       ],
       closed: true,
       active: 0,
     }));
-    // Ultima curva: c1 = uscente dell'ultimo ancoraggio (nulla, quindi
-    // l'ancoraggio stesso), c2 = entrante del PRIMO (-20,10 rispetto a lui),
-    // arrivo = il primo ancoraggio.
+    // Last curve: c1 = outgoing of the last anchor (null, so
+    // the anchor itself), c2 = incoming of the FIRST (-20,10 relative to it),
+    // arrival = the first anchor.
     expect(args["bezierCurveTo"].at(-1)).toEqual([50, 0, -20, 10, 0, 0]);
   });
 
-  it("due ancoraggi chiusi percorrono A->B->A: il ritorno c'è comunque", () => {
+  it("two closed anchors go A->B->A: the return is there anyway", () => {
     const { ctx, count } = penCtx();
     drawOverlay(ctx, scene, identityCam, [], null, [], preview({
       anchors: [corner(0, 0), corner(50, 0)],
@@ -602,35 +602,35 @@ describe("drawOverlay: l'anteprima del pen tool", () => {
     expect(count("bezierCurveTo")).toBe(2);
   });
 
-  it("è disegnata in spazio SCHERMO: la camera converte ogni punto di controllo", () => {
+  it("it is drawn in SCREEN space: the camera converts every control point", () => {
     const cam: Camera = { x: 10, y: 20, zoom: 2 };
     const { ctx, args } = penCtx();
     drawOverlay(ctx, scene, cam, [], null, [], preview({
-      // Il secondo ancoraggio ha una maniglia entrante: il suo punto di
-      // controllo deve passare dalla camera come tutti gli altri.
+      // The second anchor has an incoming handle: its control
+      // point must go through the camera like all the others.
       anchors: [corner(0, 0), { x: 50, y: 0, inX: -10, inY: 0, outX: 0, outY: 0 }],
     }));
     expect(args["moveTo"][0]).toEqual([10, 20]); // mondo (0,0)
-    // c1 = uscente del primo (nulla, quindi l'ancoraggio stesso), c2 =
-    // entrante del secondo (mondo 40,0), arrivo = mondo (50,0).
+    // c1 = outgoing of the first (null, so the anchor itself), c2 =
+    // incoming of the second (world 40,0), arrival = world (50,0).
     expect(args["bezierCurveTo"][0]).toEqual([10, 20, 90, 20, 110, 20]);
   });
 
-  it("il segmento PENDENTE segue il cursore ed è tratteggiato", () => {
+  it("the PENDING segment follows the cursor and is dashed", () => {
     const { ctx, count, args } = penCtx();
     drawOverlay(ctx, scene, identityCam, [], null, [], preview({
       anchors: [corner(0, 0)],
       next: { x: 60, y: 20 },
     }));
     expect(count("bezierCurveTo")).toBe(1);
-    // Il punto d'arrivo non ha maniglia: il secondo controllo cade su di lui.
+    // The endpoint has no handle: the second control falls on it.
     expect(args["bezierCurveTo"][0]).toEqual([0, 0, 60, 20, 60, 20]);
-    // Tratteggio acceso e SPENTO: lasciarlo acceso sporcherebbe il prossimo
-    // disegno dell'overlay (i quadratini qui sotto, e il frame successivo).
+    // Dash ON and OFF: leaving it on would dirty the next
+    // overlay drawing (the little squares below, and the next frame).
     expect(args["setLineDash"].map((a) => a[0])).toEqual([[4, 3], []]);
   });
 
-  it("mostra le maniglie del solo ancoraggio ATTIVO, e solo quelle esistenti", () => {
+  it("shows the handles of the ACTIVE anchor only, and only the existing ones", () => {
     const { ctx, count } = penCtx();
     drawOverlay(ctx, scene, identityCam, [], null, [], preview({
       anchors: [
@@ -639,15 +639,15 @@ describe("drawOverlay: l'anteprima del pen tool", () => {
       ],
       active: 0,
     }));
-    // Due bastoncini e due pallini per l'ancoraggio 0. Quelle dell'ancoraggio 1
-    // NON si disegnano: è geometria già decisa, e mostrarle tutte
-    // trasformerebbe l'anteprima in una ragnatela.
+    // Two sticks and two dots for anchor 0. Those of anchor 1
+    // are NOT drawn: it is already-decided geometry, and showing them all
+    // would turn the preview into a spiderweb.
     expect(count("lineTo")).toBe(2);
     expect(count("arc")).toBe(2);
     expect(count("fill")).toBe(2);
   });
 
-  it("un ancoraggio attivo d'ANGOLO non disegna maniglie a lunghezza zero", () => {
+  it("an active CORNER anchor does not draw zero-length handles", () => {
     const { ctx, count } = penCtx();
     drawOverlay(ctx, scene, identityCam, [], null, [], preview({
       anchors: [corner(0, 0)],
@@ -657,21 +657,21 @@ describe("drawOverlay: l'anteprima del pen tool", () => {
     expect(count("arc")).toBe(0);
   });
 
-  it("convive con la selezione e col marquee senza cancellarli", () => {
+  it("coexists with the selection and the marquee without erasing them", () => {
     const s = emptyScene("d", "n");
     s.nodes = s.nodes.set("a", rect("a", 0, 0));
     const { ctx, count } = penCtx();
     drawOverlay(ctx, s, identityCam, ["a"], { x: 0, y: 0, width: 10, height: 10 }, [],
       preview({ anchors: [corner(200, 200)] }));
-    // 8 maniglie + 1 marquee + 1 ancoraggio del pen
+    // 8 handles + 1 marquee + 1 pen anchor
     expect(count("fillRect")).toBe(10);
-    // 1 bbox + 8 bordi maniglia + 1 marquee + 1 ancoraggio del pen
+    // 1 bbox + 8 handle borders + 1 marquee
     expect(count("strokeRect")).toBe(11);
   });
 
-  it("le misure dell'ancoraggio sono px SCHERMO e la presa è più generosa del disegno", () => {
-    // Stessa relazione delle maniglie di resize (8px disegnati, 6px di raggio
-    // di presa): il bersaglio non è mai più piccolo di quello che si vede.
+  it("the anchor's measures are SCREEN px and the grab is more generous than the drawing", () => {
+    // Same relationship as the resize handles (8px drawn, 6px grab
+    // radius): the target is never smaller than what is seen.
     expect(PEN_ANCHOR_SIZE).toBe(6);
     expect(PEN_ANCHOR_GRAB_PX).toBeGreaterThanOrEqual(PEN_ANCHOR_SIZE / 2);
   });

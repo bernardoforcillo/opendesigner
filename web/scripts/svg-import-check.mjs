@@ -1,37 +1,37 @@
-// Verifica dell'import SVG IN UN BROWSER VERO.
+// Verification of SVG import IN A REAL BROWSER.
 //
-// Per ogni fixture di src/svg/__fixtures__/:
-//   1. apre l'editor (server Go + web/dist) su un documento nuovo;
-//   2. mette l'SVG negli appunti e preme Ctrl+V: è il percorso REALE dell'incolla
-//      (tools/clipboard.ts -> tools/svgImport.ts -> importSvg), gesto compreso;
-//   3. fotografa il canvas attorno alla radice importata (zoom 1, dpr 1: un
-//      pixel del canvas = un pixel dell'immagine);
-//   4. fa disegnare lo STESSO file al browser (un <img src=data:...> alla stessa
-//      dimensione, sullo stesso colore di fondo) e confronta i due pixel per pixel.
+// For each fixture in src/svg/__fixtures__/:
+//   1. opens the editor (Go server + web/dist) on a new document;
+//   2. puts the SVG on the clipboard and presses Ctrl+V: it is the REAL paste path
+//      (tools/clipboard.ts -> tools/svgImport.ts -> importSvg), gesture included;
+//   3. photographs the canvas around the imported root (zoom 1, dpr 1: one
+//      canvas pixel = one image pixel);
+//   4. has the browser draw the SAME file (an <img src=data:...> at the same
+//      size, on the same background colour) and compares the two pixel by pixel.
 //
-//   pnpm svg-import                       # tutto: build web, build server, avvio, confronto
-//   pnpm svg-import -- --skip-build       # riusa web/dist e il binario già pronti
-//   pnpm svg-import -- --scheme dark      # editor a tema scuro
+//   pnpm svg-import                       # everything: web build, server build, start, comparison
+//   pnpm svg-import -- --skip-build       # reuses the web/dist and the binary already built
+//   pnpm svg-import -- --scheme dark      # editor with the dark theme
 //   CHROMIUM_PATH=/usr/bin/chromium pnpm svg-import
 //
-// COSA SI TOLLERA (e perché):
-//   - un pixel è "diverso" se un suo canale differisce di più di TOL (64/255)
-//     dal pixel nello stesso punto del riferimento. Sotto, è rumore di
-//     anti-aliasing: il canvas 2D e il rasterizzatore delle immagini SVG di
-//     Chromium non dosano la copertura di un bordo allo stesso modo (misurato:
-//     tutti i pixel oltre 32 sono bordi, nessuno oltre ~110, nessuno interno).
-//     64 = una copertura che differisce di circa un quarto di pixel;
-//   - nessuna tolleranza di vicinato: un vicinato 3x3 perdonerebbe uno
-//     spostamento di un intero pixel, cioè proprio l'errore da trovare.
-//     La verifica di SENSIBILITÀ in fondo lo dimostra: lo stesso confronto,
-//     con il riferimento spostato di proposito (mezzo pixel, uno, due), deve
-//     vedere la differenza;
-//   - la percentuale è sui pixel "d'inchiostro" (diversi dal fondo in almeno una
-//     delle due immagini), non sull'area: un'icona sottile è quasi tutta fondo.
-//   - il testo è l'unico con una soglia più larga (crenatura e hinting diversi
-//     fra canvas.fillText e <text>): vedi `maxPct` nelle fixture.
+// WHAT IS TOLERATED (and why):
+//   - a pixel is "different" if one of its channels differs by more than TOL (64/255)
+//     from the pixel at the same spot in the reference. Below that, it is
+//     anti-aliasing noise: the 2D canvas and Chromium's SVG image rasterizer
+//     do not dose an edge's coverage the same way (measured:
+//     all pixels above 32 are edges, none above ~110, none interior).
+//     64 = a coverage that differs by about a quarter of a pixel;
+//   - no neighbourhood tolerance: a 3x3 neighbourhood would forgive a shift
+//     of a whole pixel, which is exactly the error to find.
+//     The SENSITIVITY check at the bottom proves it: the same comparison,
+//     with the reference shifted on purpose (half a pixel, one, two), must
+//     see the difference;
+//   - the percentage is over the "ink" pixels (different from the background in at least one
+//     of the two images), not over the area: a thin icon is almost all background.
+//   - text is the only one with a wider threshold (kerning and hinting differ
+//     between canvas.fillText and <text>): see `maxPct` in the fixtures.
 //
-// Salva editor / riferimento / differenza in web/svg-import-out/ (gitignorato).
+// It saves editor / reference / difference in web/svg-import-out/ (gitignored).
 import { spawn, execFileSync } from "node:child_process";
 import fs from "node:fs";
 import os from "node:os";
@@ -52,19 +52,19 @@ const SCHEME = opt("scheme", "light");
 const RENDERER = opt("renderer", "cpu");
 const SHOTS = opt("shots", "");
 
-// Per fixture: se confrontarla col browser e quanto margine di pixel diversi.
+// Per fixture: whether to compare it with the browser and how much margin of differing pixels.
 const CONFIG = {
-  "logo-gradient.svg": { compare: true, maxPct: 1.0 }, // contiene testo
+  "logo-gradient.svg": { compare: true, maxPct: 1.0 }, // contains text
   "icon-strokes-arcs.svg": { compare: true, maxPct: 1.0 },
   "illustration-nested.svg": { compare: true, maxPct: 1.0 },
-  // Filtri, maschere, pattern: il browser li applica, noi li segnaliamo e basta.
+  // Filters, masks, patterns: the browser applies them, we only report them.
   "hostile.svg": { compare: false, maxPct: 100 },
 };
 
 function build() {
   if (!flag("skip-build")) {
     execFileSync("npx", ["vite", "build"], { cwd: WEB, stdio: "inherit" });
-    // il build svuota dist: .gitkeep serve all'embed del frontend
+    // the build empties dist: .gitkeep is needed by the frontend embed
     try { execFileSync("git", ["checkout", "web/dist/.gitkeep"], { cwd: ROOT, stdio: "ignore" }); } catch { /* ok */ }
   }
   const bin = process.env.OD_BIN ?? path.join(os.tmpdir(), "od-svg-import");
@@ -76,10 +76,10 @@ function build() {
 
 async function waitFor(url) {
   for (let i = 0; i < 80; i++) {
-    try { if ((await fetch(url)).ok) return; } catch { /* non ancora su */ }
+    try { if ((await fetch(url)).ok) return; } catch { /* not up yet */ }
     await new Promise((r) => setTimeout(r, 250));
   }
-  throw new Error(`il server non risponde su ${url}`);
+  throw new Error(`the server does not respond on ${url}`);
 }
 
 async function createDoc(name) {
@@ -89,7 +89,7 @@ async function createDoc(name) {
   return (await res.json()).id;
 }
 
-// Il confronto vive in una pagina vuota: il browser sa già decodificare i PNG.
+// The comparison lives in an empty page: the browser already knows how to decode PNGs.
 const COMPARE = ({ a, b, tol }) => new Promise((resolve) => {
   const load = (src) => new Promise((r) => { const i = new Image(); i.onload = () => r(i); i.src = src; });
   Promise.all([load(a), load(b)]).then(([ia, ib]) => {
@@ -123,7 +123,7 @@ const bin = build();
 const ws = fs.mkdtempSync(path.join(os.tmpdir(), "od-svg-ws-"));
 fs.mkdirSync(OUT, { recursive: true });
 const server = spawn(bin, ["serve", "-addr", `:${PORT}`, "-workspace", ws, "-web", path.join(WEB, "dist")], { stdio: "ignore" });
-const stop = () => { try { server.kill(); } catch { /* già giù */ } };
+const stop = () => { try { server.kill(); } catch { /* already down */ } };
 process.on("exit", stop);
 
 let failed = false;
@@ -150,37 +150,37 @@ try {
     const name = file.replace(/\.svg$/, "");
 
     const page = await ctx.newPage();
-    page.on("pageerror", (e) => console.error(`[${file}] errore nella pagina:`, e.message));
+    page.on("pageerror", (e) => console.error(`[${file}] error in the page:`, e.message));
     const docId = await createDoc(`svg-import ${name}`);
-    await page.goto(`http://localhost:${PORT}/?renderer=${RENDERER}#doc=${docId}`);
+    await page.goto(`http://localhost:${PORT}/doc/${docId}?renderer=${RENDERER}`);
     await page.waitForFunction(() => !!document.querySelector(".bg-ok"), { timeout: 30000 });
     await page.waitForTimeout(500);
-    // La scheda "Da dove parti?" copre il centro del canvas su un documento vuoto.
-    await page.getByRole("button", { name: /Chiudi e non mostrare/ }).click({ timeout: 3000 }).catch(() => {});
+    // The "Where do you start?" card covers the centre of the canvas on an empty document.
+    await page.getByRole("button", { name: /Close and don't show/ }).click({ timeout: 3000 }).catch(() => {});
 
     const canvasRect = () => page.evaluate(() => {
       const r = (document.getElementById("overlay") ?? document.querySelector("canvas")).getBoundingClientRect();
       return { left: r.left, top: r.top, width: r.width, height: r.height };
     });
-    // L'import è CENTRATO sul centro della vista com'è PRIMA dell'avviso.
+    // The import is CENTRED on the view's centre as it is BEFORE the notice.
     const r0 = await canvasRect();
-    // L'incolla, davvero: testo negli appunti + Ctrl+V.
+    // The paste, for real: text on the clipboard + Ctrl+V.
     await page.mouse.click(720, 700);
     await page.evaluate((t) => navigator.clipboard.writeText(t), svg);
     await page.keyboard.press("Control+V");
     let notice = "";
     try {
-      const banner = page.getByText(/Importato come|Importazione SVG non riuscita/).first();
+      const banner = page.getByText(/Imported as|SVG import failed/).first();
       await banner.waitFor({ timeout: 8000 });
       notice = (await banner.textContent()) ?? "";
-    } catch { notice = "(nessun avviso)"; }
-    // Deseleziona (la selezione disegna maniglie sopra il disegno) e lascia
-    // il tempo al frame successivo.
+    } catch { notice = "(no notice)"; }
+    // Deselect (the selection draws handles above the drawing) and leave
+    // time for the next frame.
     await page.mouse.click(720, 150);
     await page.mouse.move(40, 840);
     await page.waitForTimeout(600);
 
-    // Il banner dell'avviso spinge il canvas in basso: la radice si muove con lui.
+    // The notice banner pushes the canvas down: the root moves with it.
     const r1 = await canvasRect();
     const c = { x: r1.left + r0.width / 2, y: r1.top + r0.height / 2 };
     const PAD = 8;
@@ -196,8 +196,8 @@ try {
     }
 
     if (cfg.compare) {
-      // Il riferimento: lo stesso file, disegnato dal browser, sul colore di
-      // fondo dell'editor (il pixel d'angolo dello scatto, fuori dal disegno).
+      // The reference: the same file, drawn by the browser, on the editor's background
+      // colour (the corner pixel of the shot, outside the drawing).
       const bgPage = await ctx.newPage();
       const b64 = editorPng.toString("base64");
       const bg = await bgPage.evaluate((src) => new Promise((res) => {
@@ -205,7 +205,7 @@ try {
       }), `data:image/png;base64,${b64}`);
       const dataUri = `data:image/svg+xml;base64,${Buffer.from(svg).toString("base64")}`;
       await bgPage.setViewportSize({ width: clip.width + 20, height: clip.height + 20 });
-      // `shift` (px) sposta il riferimento: serve alla verifica di sensibilità.
+      // `shift` (px) shifts the reference: it serves the sensitivity check.
       const renderRef = async (shift) => {
         await bgPage.setContent(`<html><body style="margin:0;background:${bg}"><img style="position:absolute;left:${PAD}px;top:${PAD}px;width:${natural.w}px;height:${natural.h}px;transform:translateX(${shift}px)" src="${dataUri}"></body></html>`);
         await bgPage.waitForTimeout(300);
@@ -219,12 +219,12 @@ try {
         tol: TOL,
       });
       const r = await compare(refPng);
-      // Sensibilità: se il confronto non vedesse uno spostamento di mezzo
-      // pixel o di un pixel, "ok" non direbbe niente. Si misura una volta.
+      // Sensitivity: if the comparison did not see a shift of half a
+      // pixel or of one pixel, "ok" would say nothing. It is measured once.
       if (sensitivity.length === 0) {
         for (const shift of [0.5, 1, 2]) {
           const s = await compare(await renderRef(shift));
-          sensitivity.push({ fixture: file, "spostamento riferimento (px)": shift, "% d'inchiostro diverso": Number(((s.diff / Math.max(1, s.ink)) * 100).toFixed(2)) });
+          sensitivity.push({ fixture: file, "reference shift (px)": shift, "% ink differing": Number(((s.diff / Math.max(1, s.ink)) * 100).toFixed(2)) });
         }
       }
       await bgPage.close();
@@ -233,11 +233,11 @@ try {
       const ok = pct <= cfg.maxPct;
       if (!ok) failed = true;
       rows.push({
-        fixture: file, "pixel d'inchiostro": r.ink, "diversi (strict)": r.strict, "diversi (tolleranza AA)": r.diff,
-        "% d'inchiostro": Number(pct.toFixed(3)), soglia: cfg.maxPct, "diff media/255": Number(r.mean.toFixed(3)), esito: ok ? "ok" : "FALLITO",
+        fixture: file, "ink pixels": r.ink, "differing (strict)": r.strict, "differing (AA tolerance)": r.diff,
+        "% of ink": Number(pct.toFixed(3)), threshold: cfg.maxPct, "mean diff/255": Number(r.mean.toFixed(3)), result: ok ? "ok" : "FAILED",
       });
     } else {
-      rows.push({ fixture: file, esito: "non confrontata (filtri/maschere)" });
+      rows.push({ fixture: file, result: "not compared (filters/masks)" });
     }
     console.log(`${file}: ${notice}`);
     await page.close();
@@ -247,7 +247,7 @@ try {
   stop();
 }
 console.table(rows);
-console.log("sensibilità del confronto (riferimento spostato di proposito):");
+console.log("comparison sensitivity (reference shifted on purpose):");
 console.table(sensitivity);
-console.log(`immagini in ${OUT}`);
+console.log(`images in ${OUT}`);
 process.exit(failed ? 1 : 0);

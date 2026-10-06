@@ -1,11 +1,11 @@
 <!doctype html>
-<html lang="it">
+<html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
-<title>Schermata</title>
-<!-- Esportato da opendesigner (opendesigner export): schermata "Schermata" del documento "Prova" (doc). NON modificare a mano:
-rigenerare con `opendesigner export`. L'attributo data-node-id lega ogni elemento al nodo del design. -->
+<title>Screen</title>
+<!-- Exported by opendesigner (opendesigner export): screen "Screen" of document "Test" (doc). DO NOT edit by hand:
+regenerate with `opendesigner export`. The data-node-id attribute ties every element to its design node. -->
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap">
@@ -15,13 +15,13 @@ body{margin:0}
 img,svg{display:block}
 .nav-hidden{position:absolute;left:0;top:0;z-index:50;display:flex;flex-direction:column;opacity:0}
 .nav-hidden a{display:block;width:1px;height:1px;overflow:hidden}
-.schermata-1 {
+.screen-1 {
   position: relative;
   width: 400px;
   height: 300px;
   background-color: #fff;
 }
-.ritaglio-2 {
+.clip-2 {
   position: absolute;
   left: 20px;
   top: 20px;
@@ -30,7 +30,7 @@ img,svg{display:block}
   overflow: hidden;
   background-color: #e5e5e5;
 }
-.sporge-3 {
+.overflows-3 {
   position: absolute;
   left: 90px;
   top: 50px;
@@ -38,14 +38,14 @@ img,svg{display:block}
   height: 90px;
   background-color: #e54d4d;
 }
-.senza-ritaglio-4 {
+.no-clip-4 {
   position: absolute;
   left: 200px;
   top: 20px;
   width: 140px;
   height: 100px;
 }
-.sporge-5 {
+.overflows-5 {
   position: absolute;
   left: 90px;
   top: 50px;
@@ -56,12 +56,12 @@ img,svg{display:block}
 </style>
 </head>
 <body>
-  <div class="schermata-1" data-node-id="scr">
-    <div class="ritaglio-2" data-node-id="c">
-      <div class="sporge-3" data-node-id="ck"></div>
+  <div class="screen-1" data-node-id="scr">
+    <div class="clip-2" data-node-id="c">
+      <div class="overflows-3" data-node-id="ck"></div>
     </div>
-    <div class="senza-ritaglio-4" data-node-id="nc">
-      <div class="sporge-5" data-node-id="nck"></div>
+    <div class="no-clip-4" data-node-id="nc">
+      <div class="overflows-5" data-node-id="nck"></div>
     </div>
   </div>
 </body>

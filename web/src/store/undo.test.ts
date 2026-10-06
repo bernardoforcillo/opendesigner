@@ -8,12 +8,12 @@ import { emptyScene } from "./types";
 import { vectorBounds } from "./vectorGeometry";
 import type { BoxLite } from "./vectorGeometry";
 
-// Doppio di SyncClient (vedi rpc/syncClient.ts): registra gli op che finiscono
-// SUL FILO e modella un server che accetta ed ECOA subito -- applyPending (op
-// in volo, visibile subito) seguito da apply (l'eco che lo conferma). Senza
-// l'eco ogni op resterebbe in coda per sempre e i test parlerebbero di uno
-// stato che il server non ha mai visto. Lo store dipende solo dalla superficie
-// { submit }, quindi non serve un SyncClient reale (niente rete nei test).
+// Double of SyncClient (see rpc/syncClient.ts): records the ops that end up
+// ON THE WIRE and models a server that accepts and ECHOES immediately -- applyPending (op
+// in flight, visible immediately) followed by apply (the echo that confirms it). Without
+// the echo every op would stay in the queue forever and the tests would talk about a
+// state the server has never seen. The store depends only on the surface
+// { submit }, so a real SyncClient is not needed (no network in tests).
 class FakeSync {
   sent: Op[] = [];
   submit(op: Op) {
@@ -23,11 +23,11 @@ class FakeSync {
   }
 }
 
-// Doppio del server che RIFIUTA: applyPending (l'op si vede subito, in
-// ottimistico) seguito da rejectPending (il rifiuto che lo toglie). È
-// esattamente la coppia di chiamate che SyncClient.drain fa quando la unary
-// fallisce -- InvalidArgument dal server, richiesta scaduta, o op scartato
-// perché stava dietro a uno fallito.
+// Double of the server that REJECTS: applyPending (the op shows up immediately, optimistically)
+// followed by rejectPending (the rejection that removes it). It is
+// exactly the pair of calls SyncClient.drain makes when the unary
+// fails -- InvalidArgument from the server, request timed out, or op discarded
+// because it was behind a failed one.
 class RejectingSync {
   sent: Op[] = [];
   constructor(private message = "node already exists") {}
@@ -38,14 +38,14 @@ class RejectingSync {
   }
 }
 
-// Doppio di un trasporto PILOTATO A MANO: submit fa solo l'apply ottimistico
-// (come SyncClient, che accoda e ritorna subito) e il test decide op per op
-// quale ATTERRA (`land`, l'eco da Subscribe) e quale viene RIFIUTATO
-// (`reject`). Serve a riprodurre il caso che né FakeSync né RejectingSync
-// coprono -- accettano/rifiutano *tutto* -- cioè un gruppo di op submittati
-// insieme di cui solo una PARTE arriva sul server. È esattamente ciò che
-// SyncClient.drain produce: manda un op alla volta, e quando uno fallisce
-// quelli davanti sono già passati e quelli dietro vengono scartati.
+// Double of a HAND-DRIVEN transport: submit only does the optimistic apply
+// (like SyncClient, which enqueues and returns immediately) and the test decides op by op
+// which one LANDS (`land`, the echo from Subscribe) and which is REJECTED
+// (`reject`). It is needed to reproduce the case that neither FakeSync nor RejectingSync
+// cover -- they accept/reject *everything* -- that is a group of ops submitted
+// together of which only a PART reaches the server. It is exactly what
+// SyncClient.drain produces: it sends one op at a time, and when one fails
+// those ahead have already gone through and those behind are discarded.
 class ManualSync {
   sent: Op[] = [];
   submit(op: Op) {
@@ -58,28 +58,28 @@ class ManualSync {
   reject(op: Op, message = "connection closed") {
     useScene.getState().rejectPending(op.opId, message);
   }
-  // Rifiuto con esito IGNOTO: la richiesta è morta senza risposta, ma l'op può
-  // benissimo essere già nell'op-log (Hub.Submit fa il broadcast PRIMA di
-  // rispondere). Il rollback resta quindi REVOCABILE da un eco tardivo --
-  // `land` dopo un `disown` è esattamente quella prova. Vedi store.ts::DisownedOp.
+  // Rejection with UNKNOWN outcome: the request died without a response, but the op may
+  // very well already be in the op-log (Hub.Submit broadcasts BEFORE
+  // replying). The rollback therefore stays REVOCABLE by a late echo --
+  // `land` after a `disown` is exactly that proof. See store.ts::DisownedOp.
   disown(op: Op, message = "connection closed") {
     useScene.getState().rejectPending(op.opId, message, true);
   }
 }
 
-// Doppio di un server che VALIDA il container come core.Apply: un createNode
-// (o un reparent) verso un parent che il documento confermato non contiene
-// viene RIFIUTATO con ErrParentNotFound (internal/core/apply.go); tutto il
-// resto atterra e viene ecoato subito, come FakeSync. Serve dove il rifiuto non
-// deve essere una scelta del test ma una CONSEGUENZA dell'albero: è ciò che
-// succede quando una voce di undo ricrea un nodo dentro un container che un
-// altro client ha appena cancellato.
+// Double of a server that VALIDATES the container like core.Apply: a createNode
+// (or a reparent) toward a parent that the confirmed document does not contain
+// is REJECTED with ErrParentNotFound (internal/core/apply.go); everything
+// else lands and is echoed immediately, like FakeSync. It serves where the rejection must
+// not be a choice of the test but a CONSEQUENCE of the tree: it is what
+// happens when an undo entry re-creates a node inside a container that
+// another client has just deleted.
 class ValidatingSync {
   sent: Op[] = [];
   submit(op: Op) {
     this.sent.push(op);
     const confirmed = useScene.getState().confirmed!;
-    // Le stesse due dipendenze che core.Apply valida contro l'albero (vedi
+    // The same two dependencies that core.Apply validates against the tree (see
     // requiredParent in store.ts).
     const parent =
       op.kind.case === "createNode"
@@ -96,8 +96,8 @@ class ValidatingSync {
   }
 }
 
-// Il nodo che un op di cancellazione bersaglia (null se non è un deleteNode):
-// serve a distinguere QUALE voce di undo è stata consumata.
+// The node a delete op targets (null if it is not a deleteNode):
+// it serves to distinguish WHICH undo entry was consumed.
 function deletedId(op: Op): string | null {
   return op.kind.case === "deleteNode" ? op.kind.value.id : null;
 }
@@ -144,8 +144,8 @@ function deleteOp(id: string): Op {
   });
 }
 
-// Un nodo DENTRO un altro nodo: la scena non è più piatta, e un deleteNode
-// sull'antenato porta via anche questo (cascata).
+// A node INSIDE another node: the scene is no longer flat, and a deleteNode
+// on the ancestor takes this one away too (cascade).
 function createChildOp(id: string, parentId: string, orderKey: string): Op {
   return create(OpSchema, {
     opId: "new-" + id, docId: "doc1",
@@ -157,8 +157,8 @@ function createChildOp(id: string, parentId: string, orderKey: string): Op {
   });
 }
 
-// Riordino fra pari: un CAMPO come gli altri (mask "order_key"), a differenza
-// della riparentazione, che ha un op tutto suo.
+// Reorder among peers: a FIELD like the others ("order_key" mask), unlike
+// reparenting, which has an op of its own.
 function reorderOp(id: string, orderKey: string): Op {
   return create(OpSchema, {
     opId: `ord-${id}-${orderKey}`, docId: "doc1",
@@ -204,8 +204,8 @@ function createVectorOp(id: string): Op {
   return create(OpSchema, { opId: "new-" + id, docId: "doc1", kind: { case: "createNode", value: { node } } });
 }
 
-// `x` è la sola cosa che cambia fra un'invocazione e l'altra: basta a
-// distinguere "il path è quello mio" da "il path è quello dell'altro client".
+// `x` is the only thing that changes between one invocation and the next: it is enough to
+// distinguish "the path is mine" from "the path is the other client's".
 function setVectorPathOp(id: string, x: number): Op {
   return create(OpSchema, {
     opId: `vec-${id}-${x}`, docId: "doc1",
@@ -213,24 +213,24 @@ function setVectorPathOp(id: string, x: number): Op {
   });
 }
 
-// --- un nodo vettoriale che rispetta l'INVARIANTE DEL BOX -------------------
-// Proto, su VectorNode: dopo un SetVectorPath la bbox LOCALE della geometria è
-// (0,0)-(width,height). Non è una formalità: quel box è ciò su cui
-// overlayRenderer disegna le 8 maniglie e su cui selectTool::nodesInMarquee
-// seleziona, quindi quando si scolla dall'inchiostro le maniglie non toccano
-// più il path e il marquee afferra il vuoto. I test qui sotto lo asseriscono
-// come proprietà (boxAndInk), non come conta di voci sullo stack: è il danno
-// VISIBILE, ed è ciò che deve reggere qualunque strada prenda la potatura.
+// --- a vector node that respects the BOX INVARIANT --------------------------
+// Proto, on VectorNode: after a SetVectorPath the geometry's LOCAL bbox is
+// (0,0)-(width,height). It is not a formality: that box is what
+// overlayRenderer draws the 8 handles on and what selectTool::nodesInMarquee
+// selects on, so when it detaches from the ink the handles no longer touch
+// the path and the marquee grabs empty space. The tests below assert it
+// as a property (boxAndInk), not as a count of stack entries: it is the VISIBLE
+// damage, and it is what must hold whatever road the pruning takes.
 type Anchors = { anchors: { x: number; y: number }[]; closed: boolean }[];
 
-// Un contorno rettangolare che riempie esattamente (0,0)-(w,h).
+// A rectangular outline that fills exactly (0,0)-(w,h).
 function boxPath(w: number, h: number): Anchors {
   return [{ anchors: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }], closed: true }];
 }
 
-// Stessa bbox, disegno DIVERSO: è il path rimaneggiato da un altro client
-// (un ancoraggio interno spostato). Stessa bbox di proposito -- così il record
-// remoto vale da solo, senza doversi portare dietro anche il cambio di box.
+// Same bbox, DIFFERENT drawing: it is the path reshaped by another client
+// (an inner anchor moved). Same bbox on purpose -- so the remote record
+// counts on its own, without having to carry along a box change as well.
 function triPath(w: number, h: number): Anchors {
   return [{ anchors: [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w / 2, y: h }], closed: true }];
 }
@@ -251,8 +251,8 @@ function vectorPathOp(id: string, subpaths: Anchors, tag: string): Op {
   });
 }
 
-// Il setProps che accompagna SEMPRE una riscrittura della geometria (e che
-// selectTool::resizeOps emette per ogni nodo del resize): il box per intero.
+// The setProps that ALWAYS accompanies a geometry rewrite (and that
+// selectTool::resizeOps emits for every node of the resize): the whole box.
 function boxOp(id: string, x: number, y: number, width: number, height: number): Op {
   return create(OpSchema, {
     opId: `box-${id}-${width}x${height}`, docId: "doc1",
@@ -273,9 +273,9 @@ function renameOp(id: string, name: string): Op {
   });
 }
 
-// Il box e l'inchiostro nella forma in cui vanno confrontati. `toEqual` fra i
-// due dice l'invariante per intero e, quando fallisce, stampa DI QUANTO si sono
-// scollati -- che è l'informazione utile.
+// The box and the ink in the form in which they must be compared. `toEqual` between the
+// two states the whole invariant and, when it fails, prints BY HOW MUCH they detached
+// -- which is the useful information.
 function boxAndInk(id: string): { box: BoxLite; ink: BoxLite } {
   const n = useScene.getState().scene!.nodes.at(id);
   const b = vectorBounds(n.vector!.subpaths);
@@ -285,7 +285,7 @@ function boxAndInk(id: string): { box: BoxLite; ink: BoxLite } {
   };
 }
 
-// --- op di pagina: i container RADICE, non un nodo -------------------------
+// --- page ops: the ROOT containers, not a node ------------------------------
 function createPageOp(id: string, name: string): Op {
   return create(OpSchema, {
     opId: "cp-" + id, docId: "doc1",
@@ -307,18 +307,18 @@ function renamePageOp(id: string, name: string): Op {
   });
 }
 
-// Gli id che una voce RICREA, nell'ordine in cui li ricrea.
+// The ids an entry RE-CREATES, in the order in which it re-creates them.
 function createdIds(entry: readonly Op[]): string[] {
   return entry.flatMap((op) =>
     op.kind.case === "createNode" && op.kind.value.node ? [op.kind.value.node.id] : []);
 }
 
-// L'INVARIANTE che una voce di ripristino deve soddisfare per essere
-// applicabile: ogni createNode trova il proprio parent già esistente -- la
-// pagina, un nodo che l'op remoto non ha toccato, o un nodo ricreato PRIMA
-// nella stessa voce. È esattamente ciò che core.applyCreate pretende
-// (ErrParentNotFound), quindi una voce che lo viola è una voce che il server
-// rifiuterà a metà.
+// The INVARIANT a restore entry must satisfy to be
+// applicable: every createNode finds its own parent already existing -- the
+// page, a node the remote op did not touch, or a node re-created BEFORE
+// in the same entry. It is exactly what core.applyCreate demands
+// (ErrParentNotFound), so an entry that violates it is an entry the server
+// will reject halfway.
 function expectParentsSatisfied(entry: readonly Op[]) {
   const scene = useScene.getState().scene!;
   const exists = new Set<string>([...scene.nodes.ids()]);
@@ -332,8 +332,8 @@ function expectParentsSatisfied(entry: readonly Op[]) {
   }
 }
 
-// Wrapper: apre e chiude un gesto in un colpo solo, come farebbe un tool a
-// fine drag. È la forma con cui i test costruiscono "un gesto" per lo stack.
+// Wrapper: opens and closes a gesture in one go, as a tool would at
+// the end of a drag. It is the form in which tests build "a gesture" for the stack.
 function gesture(finalOps: Op[]) {
   const st = useScene.getState();
   st.beginGesture();
@@ -352,14 +352,14 @@ describe("undo/redo", () => {
       undoStack: [],
       redoStack: [],
     });
-    // setScene e non setState({scene}): installa una scena COERENTE (vista e
-    // confermato allineati, coda vuota) -- l'invariante su cui poggia la
-    // riconciliazione confermato/pending (vedi store.ts).
+    // setScene and not setState({scene}): installs a COHERENT scene (view and
+    // confirmed aligned, empty queue) -- the invariant confirmed/pending
+    // reconciliation rests on (see store.ts).
     useScene.getState().setScene(emptyScene("doc1", "Untitled"));
     useScene.getState().setSync(sync);
   });
 
-  it("crea -> sposta -> resize: tre undo svuotano la scena, tre redo la ricostruiscono identica", () => {
+  it("create -> move -> resize: three undos empty the scene, three redos rebuild it identical", () => {
     const st = useScene.getState();
 
     gesture([createOp("n1", 0, 0)]);
@@ -392,7 +392,7 @@ describe("undo/redo", () => {
     expect(useScene.getState().undoStack).toHaveLength(3);
   });
 
-  it("undo manda l'inverso tramite sync.submit e sposta la voce nel redo stack", () => {
+  it("undo sends the inverse through sync.submit and moves the entry to the redo stack", () => {
     gesture([createOp("n1", 0, 0)]);
     sync.sent = [];
 
@@ -405,12 +405,12 @@ describe("undo/redo", () => {
     expect(useScene.getState().redoStack).toHaveLength(1);
   });
 
-  it("un op ricevuto da un altro client non altera gli stack", () => {
+  it("an op received from another client does not alter the stacks", () => {
     gesture([createOp("n1", 0, 0)]);
     expect(useScene.getState().undoStack).toHaveLength(1);
 
-    // arriva via apply() (equivalente a SyncClient.consume() per un op REMOTO):
-    // non passa da endGesture, quindi non deve toccare lo stack.
+    // arrives via apply() (equivalent to SyncClient.consume() for a REMOTE op):
+    // it does not go through endGesture, so it must not touch the stack.
     useScene.getState().apply(createOp("n2", 500, 500));
 
     expect(useScene.getState().undoStack).toHaveLength(1);
@@ -418,11 +418,11 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n2")).toBeDefined();
   });
 
-  it("un nuovo gesto dopo un undo svuota il redo stack", () => {
+  it("a new gesture after an undo empties the redo stack", () => {
     gesture([createOp("n1", 0, 0)]);
     gesture([createOp("n2", 100, 100)]);
 
-    useScene.getState().undo(); // annulla la creazione di n2
+    useScene.getState().undo(); // undoes the creation of n2
     expect(useScene.getState().redoStack).toHaveLength(1);
 
     gesture([createOp("n3", 200, 200)]);
@@ -432,7 +432,7 @@ describe("undo/redo", () => {
     expect(useScene.getState().undoStack).toHaveLength(2);
   });
 
-  it("undo/redo su uno stack vuoto sono no-op silenziosi", () => {
+  it("undo/redo on an empty stack are silent no-ops", () => {
     useScene.getState().undo();
     useScene.getState().redo();
 
@@ -441,7 +441,7 @@ describe("undo/redo", () => {
     expect(useScene.getState().redoStack).toHaveLength(0);
   });
 
-  it("un gesto senza op finali non lascia una voce nello stack undo", () => {
+  it("a gesture without final ops leaves no entry on the undo stack", () => {
     const st = useScene.getState();
     st.beginGesture();
     st.applyLocal(moveOp("n1", 7, 7));
@@ -450,72 +450,72 @@ describe("undo/redo", () => {
     expect(useScene.getState().undoStack).toHaveLength(0);
   });
 
-  // --- redo stack svuotato anche senza voce di undo (bug trovato in review) --
-  // invertChain() aborta a null al PRIMO op della catena che non si può
-  // invertire, ma gli op finali vengono submittati comunque: il documento è
-  // già cambiato per davvero. Se in quel caso il redo stack restasse pieno, un
-  // redo successivo rimetterebbe in gioco inversi calcolati su uno stato che
-  // non esiste più, riscrivendo in silenzio il lavoro appena fatto.
+  // --- redo stack emptied even without an undo entry (bug found in review) --
+  // invertChain() aborts with null at the FIRST op of the chain that cannot be
+  // inverted, but the final ops are submitted anyway: the document has
+  // already really changed. If in that case the redo stack stayed full, a
+  // subsequent redo would bring back into play inverses computed on a state that
+  // no longer exists, silently rewriting the work just done.
 
-  it("un gesto con effetto reale svuota il redo stack anche quando la voce di undo non si può costruire", () => {
+  it("a gesture with real effect empties the redo stack even when the undo entry cannot be built", () => {
     const st = useScene.getState();
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
     gesture([moveOp("n1", 40, 40)]);
 
-    st.undo(); // n1 torna a (0,0); il redo stack contiene "rimetti n1 a (40,40)"
+    st.undo(); // n1 goes back to (0,0); the redo stack contains "put n1 back at (40,40)"
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     expect(useScene.getState().redoStack).toHaveLength(1);
     expect(useScene.getState().undoStack).toHaveLength(1);
     sync.sent = [];
 
-    // Nuovo gesto: drag di n1 e n2 insieme. A metà drag un client remoto
-    // cancella n2 -> l'op arriva via apply() e fa avanzare il CONFERMATO,
-    // quindi la base ricalcolata a fine gesto non ha più n2.
+    // New gesture: drag n1 and n2 together. Mid-drag a remote client
+    // deletes n2 -> the op arrives via apply() and advances the CONFIRMED state,
+    // so the base recomputed at gesture end no longer has n2.
     st.beginGesture();
     st.apply(deleteOp("n2"));
     st.endGesture([moveOp("n1", 999, 999), moveOp("n2", 999, 0)]);
 
-    // Lo spostamento di n1 è avvenuto per davvero (è stato submittato).
+    // The move of n1 really happened (it was submitted).
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 999, y: 999 });
     expect(sync.sent).toHaveLength(2);
-    // La catena di inversi non si può costruire (n2 non c'è più): nessuna voce
-    // di undo nuova -- annullare a metà sarebbe peggio.
+    // The chain of inverses cannot be built (n2 is gone): no new undo
+    // entry -- undoing halfway would be worse.
     expect(useScene.getState().undoStack).toHaveLength(1);
-    // ...ma il redo stack DEVE essere vuoto lo stesso.
+    // ...but the redo stack MUST be empty all the same.
     expect(useScene.getState().redoStack).toHaveLength(0);
     expect(useScene.getState().canRedo).toBe(false);
 
-    // E un redo() non deve poter riportare n1 a (40,40).
+    // And a redo() must not be able to bring n1 back to (40,40).
     st.redo();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 999, y: 999 });
     expect(useScene.getState().redoStack).toHaveLength(0);
   });
 
-  // --- undo/redo con un gesto aperto (bug trovato in review) ---------------
-  // sync.submit farebbe entrare l'inverso nella BASE del gesto (il confermato
-  // più gli op in volo), quella da cui endGesture ricostruisce la scena al
-  // pointerup, corrompendo sia il drag in corso sia lo stack.
-  // undo()/redo() devono quindi essere no-op finché
-  // il gesto non chiude.
+  // --- undo/redo with an open gesture (bug found in review) ----------------
+  // sync.submit would make the inverse enter the gesture's BASE (the confirmed
+  // plus the in-flight ops), the one from which endGesture rebuilds the scene at
+  // pointerup, corrupting both the drag in progress and the stack.
+  // undo()/redo() must therefore be no-ops until
+  // the gesture closes.
 
-  it("undo() durante un gesto aperto è un no-op: non tocca lo stack né manda nulla", () => {
-    gesture([createOp("n1", 0, 0)]); // E1 = deleteNode, in cima allo stack
+  it("undo() during an open gesture is a no-op: it touches neither the stack nor sends anything", () => {
+    gesture([createOp("n1", 0, 0)]); // E1 = deleteNode, on top of the stack
     sync.sent = [];
 
     const st = useScene.getState();
-    st.beginGesture(); // il drag di selectTool apre il gesto
-    st.applyLocal(moveOp("n1", 999, 999)); // anteprima a metà drag
+    st.beginGesture(); // selectTool's drag opens the gesture
+    st.applyLocal(moveOp("n1", 999, 999)); // mid-drag preview
 
-    st.undo(); // Ctrl+Z premuto mentre il mouse è ancora giù
+    st.undo(); // Ctrl+Z pressed while the mouse is still down
 
-    expect(sync.sent).toHaveLength(0); // niente inviato: né l'inverso, né altro
-    expect(useScene.getState().undoStack).toHaveLength(1); // E1 ancora lì
+    expect(sync.sent).toHaveLength(0); // nothing sent: neither the inverse nor anything else
+    expect(useScene.getState().undoStack).toHaveLength(1); // E1 still there
     expect(useScene.getState().redoStack).toHaveLength(0);
-    expect(useScene.getState().gesture).not.toBeNull(); // il gesto resta aperto
+    expect(useScene.getState().gesture).not.toBeNull(); // the gesture stays open
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 999, y: 999 }); // anteprima intatta
 
-    // il drag prosegue e chiude normalmente: deve produrre una voce di undo
-    // corretta per lo SPOSTAMENTO, non per la creazione (E1 va ancora bene).
+    // the drag continues and closes normally: it must produce a correct
+    // undo entry for the MOVE, not for the creation (E1 is still fine).
     st.endGesture([moveOp("n1", 40, 40)]);
 
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
@@ -523,71 +523,71 @@ describe("undo/redo", () => {
     expect(sync.sent).toHaveLength(1);
     expect(sync.sent[0].kind.case).toBe("setProps");
 
-    // e i due undo funzionano nell'ordine giusto: prima disfa il move, poi la creazione.
+    // and the two undos work in the right order: first it undoes the move, then the creation.
     st.undo();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     st.undo();
     expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
   });
 
-  it("redo() durante un gesto aperto è un no-op: non tocca lo stack né manda nulla", () => {
+  it("redo() during an open gesture is a no-op: it touches neither the stack nor sends anything", () => {
     gesture([createOp("n1", 0, 0)]);
-    useScene.getState().undo(); // n1 sparisce, E1 va nel redo stack
+    useScene.getState().undo(); // n1 disappears, E1 goes to the redo stack
     sync.sent = [];
 
     const st = useScene.getState();
-    st.beginGesture(); // un altro gesto (es. su un nodo diverso) è aperto
-    st.redo(); // Ctrl+Shift+Z premuto a metà drag
+    st.beginGesture(); // another gesture (e.g. on a different node) is open
+    st.redo(); // Ctrl+Shift+Z pressed mid-drag
 
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().redoStack).toHaveLength(1); // voce ancora lì
+    expect(useScene.getState().redoStack).toHaveLength(1); // entry still there
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().gesture).not.toBeNull();
 
     st.cancelGesture();
-    st.redo(); // fuori dal gesto torna a funzionare
+    st.redo(); // outside the gesture it works again
     expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().redoStack).toHaveLength(0);
   });
 
-  it("un gesto multi-nodo (drag di due nodi) si annulla in UN SOLO undo", () => {
+  it("a multi-node gesture (drag of two nodes) is undone in A SINGLE undo", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
     gesture([moveOp("n1", 10, 10), moveOp("n2", 310, 10)]);
 
     expect(useScene.getState().undoStack).toHaveLength(2);
 
-    useScene.getState().undo(); // annulla il drag di ENTRAMBI i nodi in un colpo
+    useScene.getState().undo(); // undoes the drag of BOTH nodes in one stroke
 
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
   });
 
-  // --- rollback e storia (bug trovato in review) -----------------------------
-  // endGesture spinge la voce di undo e svuota il redo PRIMA che gli op siano
-  // stati accettati -- deve, altrimenti Ctrl+Z subito dopo un drag dovrebbe
-  // aspettare il giro di rete. Se poi il server li rifiuta, quella voce resta
-  // sullo stack con inversi calcolati su uno stato che il server non ha MAI
-  // raggiunto: il rollback toglieva la modifica dalla vista e lasciava intatta
-  // la storia.
+  // --- rollback and history (bug found in review) ----------------------------
+  // endGesture pushes the undo entry and empties redo BEFORE the ops are
+  // accepted -- it must, otherwise Ctrl+Z right after a drag would have to
+  // wait for the network round trip. If the server then rejects them, that entry stays
+  // on the stack with inverses computed on a state the server NEVER
+  // reached: the rollback removed the change from the view and left the history
+  // intact.
 
-  it("un gesto RIFIUTATO non lascia una voce di undo fantasma", () => {
-    gesture([createOp("n1", 0, 0)]); // gesto VERO, accettato ed ecoato
+  it("a REJECTED gesture leaves no phantom undo entry", () => {
+    gesture([createOp("n1", 0, 0)]); // REAL gesture, accepted and echoed
     expect(useScene.getState().undoStack).toHaveLength(1);
 
     useScene.getState().setSync(new RejectingSync());
-    gesture([createOp("n5", 10, 10)]); // il server lo rifiuta
+    gesture([createOp("n5", 10, 10)]); // the server rejects it
 
-    // La modifica sparisce dalla vista (già così) E dalla storia (il fix): la
-    // sua voce sarebbe [deleteNode n5], e n5 sul server non è mai esistito.
+    // The change vanishes from the view (already so) AND from the history (the fix): its
+    // entry would be [deleteNode n5], and n5 never existed on the server.
     expect(useScene.getState().scene!.nodes.at("n5")).toBeUndefined();
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
     expect(useScene.getState().lastError).toContain("node already exists");
 
-    // Il Ctrl+Z successivo deve annullare il gesto VERO. Senza la riparazione
-    // consumerebbe la voce fantasma mandando deleteNode n5 -> ErrNodeNotFound
-    // -> InvalidArgument -> altro rollback e altro banner, e il gesto
-    // precedente resterebbe NON annullato.
+    // The next Ctrl+Z must undo the REAL gesture. Without the repair it
+    // would consume the phantom entry by sending deleteNode n5 -> ErrNodeNotFound
+    // -> InvalidArgument -> another rollback and another banner, and the
+    // previous gesture would remain NOT undone.
     useScene.getState().setSync(sync);
     sync.sent = [];
     useScene.getState().undo();
@@ -597,15 +597,15 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
   });
 
-  it("il redo svuotato da un gesto RIFIUTATO torna disponibile", () => {
+  it("the redo emptied by a REJECTED gesture becomes available again", () => {
     gesture([createOp("n1", 0, 0)]);
-    useScene.getState().undo(); // il "futuro" (ricrea n1) entra nel redo stack
+    useScene.getState().undo(); // the "future" (re-creates n1) enters the redo stack
     expect(useScene.getState().redoStack).toHaveLength(1);
 
     useScene.getState().setSync(new RejectingSync());
-    gesture([createOp("n5", 10, 10)]); // svuota il redo... e viene rifiutato
+    gesture([createOp("n5", 10, 10)]); // empties the redo... and is rejected
 
-    // Il redo era stato invalidato da una modifica MAI avvenuta: deve tornare.
+    // The redo had been invalidated by a change that NEVER happened: it must come back.
     expect(useScene.getState().scene!.nodes.at("n5")).toBeUndefined();
     expect(useScene.getState().redoStack).toHaveLength(1);
     expect(useScene.getState().canRedo).toBe(true);
@@ -615,52 +615,52 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
   });
 
-  it("un undo RIFIUTATO non consuma la sua voce", () => {
+  it("a REJECTED undo does not consume its entry", () => {
     gesture([createOp("n1", 0, 0)]);
 
     useScene.getState().setSync(new RejectingSync("disk full"));
-    useScene.getState().undo(); // l'inverso non arriva mai al documento
+    useScene.getState().undo(); // the inverse never reaches the document
 
-    // La vista è tornata indietro (n1 c'è ancora), quindi anche la storia deve:
-    // la voce va rimessa dov'era e il redo non ha guadagnato niente.
+    // The view went back (n1 is still there), so the history must too:
+    // the entry must be put back where it was and the redo has gained nothing.
     expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
     expect(useScene.getState().redoStack).toHaveLength(0);
     expect(useScene.getState().canRedo).toBe(false);
 
-    // ...e riprovare deve funzionare: il rifiuto non brucia l'annullamento.
+    // ...and retrying must work: the rejection does not burn the undo.
     useScene.getState().setSync(sync);
     useScene.getState().undo();
     expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
   });
 
-  it("un gesto CONFERMATO non è più annullabile da un rifiuto successivo", () => {
+  it("a CONFIRMED gesture is no longer undoable by a later rejection", () => {
     gesture([createOp("n1", 0, 0)]); // confermato dall'eco di FakeSync
 
     useScene.getState().setSync(new RejectingSync());
     gesture([moveOp("n1", 40, 40)]); // rifiutato
 
-    // Solo la transizione rifiutata viene riavvolta: quella confermata resta.
+    // Only the rejected transition is rewound: the confirmed one stays.
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
   });
 
-  // --- gesti MULTI-OP atterrati a metà (bug trovato in review round 2) --------
-  // Un gesto è il pezzo unitario dell'undo, ma NON del trasporto: l'outbox
-  // manda un op alla volta e un fallimento scarta solo la coda dietro
-  // (rpc/syncClient.ts). E i gesti multi-op sono la norma, non un caso limite:
-  // selectTool emette un setProps per nodo selezionato sul drag e sul resize, e
-  // un deleteNode per nodo su Canc. Riavvolgere l'INTERA voce di undo perché
-  // l'ultimo op del gruppo è caduto cancella l'annullabilità della metà che
-  // invece si è persistita.
+  // --- MULTI-OP gestures landed halfway (bug found in review round 2) --------
+  // A gesture is the undo's unit piece, but NOT the transport's: the outbox
+  // sends one op at a time and a failure discards only the tail behind it
+  // (rpc/syncClient.ts). And multi-op gestures are the norm, not an edge case:
+  // selectTool emits one setProps per selected node on drag and on resize, and
+  // one deleteNode per node on Delete. Rewinding the WHOLE undo entry because
+  // the group's last op fell wipes out the undoability of the half that
+  // was instead persisted.
 
-  it("un gesto multi-op atterrato a METÀ tiene la voce di undo della parte passata", () => {
+  it("a multi-op gesture landed HALFWAY keeps the undo entry for the part that went through", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
     expect(useScene.getState().undoStack).toHaveLength(1);
 
-    // Drag di n1+n2: due setProps, un solo gesto, una sola voce di undo.
+    // Drag of n1+n2: two setProps, one gesture, one undo entry.
     const manual = new ManualSync();
     useScene.getState().setSync(manual);
     const mv1 = moveOp("n1", 40, 40);
@@ -668,27 +668,27 @@ describe("undo/redo", () => {
     gesture([mv1, mv2]);
     expect(useScene.getState().undoStack).toHaveLength(2);
 
-    // mv1 passa (200 OK) ma il suo eco non è ancora arrivato; mv2 muore.
+    // mv1 goes through (200 OK) but its echo has not arrived yet; mv2 dies.
     manual.reject(mv2);
 
-    // La vista: n1 è rimasto spostato (ottimistico, in volo), n2 è tornato.
+    // The view: n1 stayed moved (optimistic, in flight), n2 came back.
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
     expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
-    // La voce di undo NON sparisce: coprirebbe uno spostamento che sul server
-    // è avvenuto per davvero, e senza di lei n1 resta mosso e non annullabile.
-    // Resta però ristretta alla sola metà atterrata.
+    // The undo entry does NOT vanish: it would cover a move that on the server
+    // really happened, and without it n1 stays moved and not undoable.
+    // It remains, however, narrowed to the landed half only.
     expect(useScene.getState().undoStack).toHaveLength(2);
     expect(useScene.getState().undoStack[1]).toHaveLength(1);
     expect(useScene.getState().canUndo).toBe(true);
 
-    // ...e l'eco che arriva DOPO il rifiuto non la cancella (prima del fix il
-    // mark era già sparito e confirmHistory era un no-op).
+    // ...and the echo that arrives AFTER the rejection does not erase it (before the fix the
+    // mark was already gone and confirmHistory was a no-op).
     manual.land(mv1);
     expect(useScene.getState().undoStack).toHaveLength(2);
     expect(useScene.getState().pending).toHaveLength(0);
 
-    // Ctrl+Z annulla esattamente la metà che è passata: un solo op sul filo,
-    // n1 torna al punto di partenza, n2 non viene toccato.
+    // Ctrl+Z undoes exactly the half that went through: a single op on the wire,
+    // n1 goes back to the starting point, n2 is not touched.
     useScene.getState().setSync(sync);
     sync.sent = [];
     useScene.getState().undo();
@@ -698,23 +698,23 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
   });
 
-  it("una CANCELLAZIONE multi-nodo atterrata a metà resta annullabile per il nodo cancellato", () => {
+  it("a multi-node DELETE landed halfway stays undoable for the deleted node", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
 
-    // Canc con due nodi selezionati: un deleteNode per nodo, un solo gesto.
+    // Delete with two nodes selected: one deleteNode per node, one gesture.
     const manual = new ManualSync();
     useScene.getState().setSync(manual);
     const del1 = deleteOp("n1");
     const del2 = deleteOp("n2");
     gesture([del1, del2]);
 
-    manual.land(del1); // il primo è nell'op-log: n1 è cancellato per davvero
-    manual.reject(del2); // il secondo no
+    manual.land(del1); // the first is in the op-log: n1 is really deleted
+    manual.reject(del2); // the second is not
 
     expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
     expect(useScene.getState().scene!.nodes.at("n2")).toBeDefined();
-    // Senza la riparazione la voce [createNode n1, createNode n2] veniva
-    // buttata via intera: n1 cancellato per sempre, nessun Ctrl+Z possibile.
+    // Without the repair the entry [createNode n1, createNode n2] was
+    // thrown away whole: n1 deleted forever, no Ctrl+Z possible.
     expect(useScene.getState().undoStack).toHaveLength(2);
     expect(useScene.getState().undoStack[1]).toHaveLength(1);
 
@@ -727,24 +727,24 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
   });
 
-  it("un gesto atterrato a metà NON riarma il redo stack che aveva svuotato", () => {
+  it("a gesture landed halfway does NOT rearm the redo stack it had emptied", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
     gesture([moveOp("n1", 40, 40)]);
-    useScene.getState().undo(); // n1 torna a (0,0); il redo ha "rimettilo a (40,40)"
+    useScene.getState().undo(); // n1 goes back to (0,0); the redo has "put it back at (40,40)"
     expect(useScene.getState().redoStack).toHaveLength(1);
 
     const manual = new ManualSync();
     useScene.getState().setSync(manual);
     const mv1 = moveOp("n1", 999, 999);
     const mv2 = moveOp("n2", 999, 0);
-    gesture([mv1, mv2]); // svuota il redo; mv1 passa, mv2 no
+    gesture([mv1, mv2]); // empties the redo; mv1 goes through, mv2 does not
     manual.land(mv1);
     manual.reject(mv2);
 
-    // Il documento è cambiato per davvero (n1 è a 999,999 sul server): la voce
-    // di redo inverte uno stato che non esiste più. Riarmarla è la stessa
-    // sovrascrittura silenziosa che lo svuotamento incondizionato esiste per
-    // impedire (vedi endGesture) -- un redo rimetterebbe n1 a (40,40).
+    // The document really changed (n1 is at 999,999 on the server): the redo
+    // entry inverts a state that no longer exists. Rearming it is the same
+    // silent overwrite that the unconditional emptying exists to
+    // prevent (see endGesture) -- a redo would put n1 back at (40,40).
     expect(useScene.getState().redoStack).toHaveLength(0);
     expect(useScene.getState().canRedo).toBe(false);
 
@@ -753,7 +753,7 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 999, y: 999 });
   });
 
-  it("un gesto multi-op rifiutato dal PRIMO op riavvolge tutta la voce", () => {
+  it("a multi-op gesture rejected from the FIRST op rewinds the whole entry", () => {
     gesture([createOp("n1", 0, 0)]);
 
     const manual = new ManualSync();
@@ -763,12 +763,12 @@ describe("undo/redo", () => {
     gesture([c2, c3]);
     expect(useScene.getState().undoStack).toHaveLength(2);
 
-    // Nessuno dei due è atterrato: il drain annulla la coda DAL FONDO.
+    // Neither of the two landed: the drain cancels the queue FROM THE BOTTOM.
     manual.reject(c3);
     manual.reject(c2);
 
-    // Qui il riavvolgimento totale è quello giusto: la transizione non è mai
-    // avvenuta, quindi la voce sparisce e il redo torna com'era.
+    // Here the total rewind is the right one: the transition never
+    // happened, so the entry vanishes and the redo is back as it was.
     expect(useScene.getState().scene!.nodes.at("n2")).toBeUndefined();
     expect(useScene.getState().scene!.nodes.at("n3")).toBeUndefined();
     expect(useScene.getState().undoStack).toHaveLength(1);
@@ -776,12 +776,12 @@ describe("undo/redo", () => {
     useScene.getState().setSync(sync);
     sync.sent = [];
     useScene.getState().undo();
-    expect(deletedId(sync.sent[0])).toBe("n1"); // il gesto VERO
+    expect(deletedId(sync.sent[0])).toBe("n1"); // the REAL gesture
   });
 
-  it("un undo atterrato a metà lascia sullo stack solo la parte non disfatta", () => {
+  it("an undo landed halfway leaves on the stack only the part not undone", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
-    // La voce è [deleteNode n2, deleteNode n1]: si disfa nell'ordine inverso.
+    // The entry is [deleteNode n2, deleteNode n1]: it is undone in reverse order.
     expect(useScene.getState().undoStack[0]).toHaveLength(2);
 
     const manual = new ManualSync();
@@ -789,17 +789,17 @@ describe("undo/redo", () => {
     useScene.getState().undo();
     const [first, second] = manual.sent;
 
-    manual.land(first); // n2 è cancellato sul server
+    manual.land(first); // n2 is deleted on the server
     manual.reject(second); // n1 no
 
     expect(useScene.getState().scene!.nodes.at("n2")).toBeUndefined();
     expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
-    // Rimettere la voce INTERA (com'era prima del fix) significherebbe che il
-    // Ctrl+Z successivo rimanda deleteNode n2 su un nodo che il server ha già
-    // cancellato -> ErrNodeNotFound -> altro rollback, voce bruciata.
+    // Putting the WHOLE entry back (as it was before the fix) would mean that the
+    // next Ctrl+Z resends deleteNode n2 on a node the server has already
+    // deleted -> ErrNodeNotFound -> another rollback, burned entry.
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().undoStack[0]).toHaveLength(1);
-    // ...e la metà DISFATTA è ridiventata rifacibile.
+    // ...and the UNDONE half has become redoable again.
     expect(useScene.getState().redoStack).toHaveLength(1);
     expect(useScene.getState().redoStack[0]).toHaveLength(1);
 
@@ -811,46 +811,46 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
   });
 
-  // --- PIÙ transizioni in dubbio INSIEME (bug trovato in review round 3) ------
-  // Ogni test qui sopra tiene UNA sola transizione in dubbio alla volta, quindi
-  // `history` ha sempre al massimo un mark e la COMPOSIZIONE fra mark non viene
-  // mai esercitata -- ed è proprio la composizione la proprietà che il replay
-  // esiste per garantire ("la riparazione non dipende dall'ordine in cui i
-  // rifiuti arrivano"). Due mark insieme non sono un caso limite: basta un
-  // SubmitOp lento (deadline 10s, vedi rpc/syncClient.ts) perché tutto quello
-  // che l'utente fa nel frattempo si accodi dietro, ancora in dubbio.
+  // --- MORE transitions in doubt TOGETHER (bug found in review round 3) -------
+  // Every test above keeps only ONE transition in doubt at a time, so
+  // `history` always has at most one mark and the COMPOSITION between marks is
+  // never exercised -- and composition is precisely the property the replay
+  // exists to guarantee ("the repair does not depend on the order in which
+  // rejections arrive"). Two marks together are not an edge case: a slow
+  // SubmitOp is enough (10s deadline, see rpc/syncClient.ts) for everything
+  // the user does in the meantime to queue up behind it, still in doubt.
 
-  it("un gesto e il suo undo entrambi in dubbio, entrambi rifiutati: nessuna voce fantasma", () => {
-    gesture([createOp("n0", 0, 0)]); // gesto VERO, confermato dall'eco
+  it("a gesture and its undo both in doubt, both rejected: no phantom entry", () => {
+    gesture([createOp("n0", 0, 0)]); // REAL gesture, confirmed by the echo
     expect(useScene.getState().undoStack).toHaveLength(1);
 
-    // Disegna un rettangolo e premi subito Ctrl+Z, con la create ancora in
-    // volo: due transizioni in dubbio insieme, [gesto, undo].
+    // Draw a rectangle and immediately hit Ctrl+Z, with the create still in
+    // flight: two transitions in doubt together, [gesture, undo].
     const manual = new ManualSync();
     useScene.getState().setSync(manual);
     const c1 = createOp("n1", 100, 100);
     gesture([c1]);
     useScene.getState().undo();
     const [, undoOp] = manual.sent;
-    expect(useScene.getState().undoStack).toHaveLength(1); // consumata la voce di n1
+    expect(useScene.getState().undoStack).toHaveLength(1); // n1's entry consumed
     expect(useScene.getState().redoStack).toHaveLength(1);
 
-    // La create fallisce; il drain scarta la coda DAL FONDO, quindi il rifiuto
-    // dell'op dell'undo arriva per primo.
+    // The create fails; the drain discards the queue FROM THE BOTTOM, so the rejection
+    // of the undo's op arrives first.
     manual.reject(undoOp);
     manual.reject(c1);
 
-    // n1 non è mai esistito sul server: né la sua voce di undo né il suo redo
-    // devono sopravvivere, e la voce del gesto VERO deve essere ancora lì.
+    // n1 never existed on the server: neither its undo entry nor its redo
+    // must survive, and the entry of the REAL gesture must still be there.
     expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(deletedId(useScene.getState().undoStack[0][0])).toBe("n0");
     expect(useScene.getState().redoStack).toHaveLength(0);
     expect(useScene.getState().canRedo).toBe(false);
 
-    // Il Ctrl+Z successivo annulla il gesto vero. Con la voce fantasma manderebbe
-    // deleteNode n1 -> ErrNodeNotFound -> altro rollback e altro banner, e n0
-    // resterebbe non annullato.
+    // The next Ctrl+Z undoes the real gesture. With the phantom entry it would send
+    // deleteNode n1 -> ErrNodeNotFound -> another rollback and another banner, and n0
+    // would remain not undone.
     useScene.getState().setSync(sync);
     sync.sent = [];
     useScene.getState().undo();
@@ -860,13 +860,13 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n0")).toBeUndefined();
   });
 
-  it("due undo in dubbio, entrambi rifiutati: nessuna voce persa né duplicata", () => {
+  it("two undos in doubt, both rejected: no entry lost or duplicated", () => {
     gesture([createOp("n1", 0, 0)]);
     gesture([createOp("n2", 300, 0)]);
     expect(useScene.getState().undoStack).toHaveLength(2);
 
-    // Due Ctrl+Z mentre il trasporto è fermo: due mark di undo insieme, il
-    // secondo consuma la voce che sta SOTTO quella consumata dal primo.
+    // Two Ctrl+Z while the transport is stalled: two undo marks together, the
+    // second consumes the entry that sits UNDER the one consumed by the first.
     const manual = new ManualSync();
     useScene.getState().setSync(manual);
     useScene.getState().undo(); // consuma E2 (deleteNode n2)
@@ -874,24 +874,24 @@ describe("undo/redo", () => {
     const [first, second] = manual.sent;
     expect(useScene.getState().undoStack).toHaveLength(0);
 
-    // Il trasporto muore: entrambi rifiutati, dal fondo.
+    // The transport dies: both rejected, from the bottom.
     manual.reject(second);
     manual.reject(first);
 
     expect(useScene.getState().scene!.nodes.at("n1")).toBeDefined();
     expect(useScene.getState().scene!.nodes.at("n2")).toBeDefined();
-    // Gli stack tornano ESATTAMENTE com'erano: due voci DIVERSE, nell'ordine
-    // giusto. Con la riparazione rotta si otteneva [E1, E1] -- la voce del gesto
-    // più recente persa, quella più vecchia duplicata.
+    // The stacks go back EXACTLY as they were: two DIFFERENT entries, in the
+    // right order. With the repair broken you got [E1, E1] -- the entry of the more
+    // recent gesture lost, the older one duplicated.
     const stack = useScene.getState().undoStack;
     expect(stack).toHaveLength(2);
     expect(stack.map((e) => deletedId(e[0]))).toEqual(["n1", "n2"]);
     expect(useScene.getState().redoStack).toHaveLength(0);
     expect(useScene.getState().canRedo).toBe(false);
 
-    // E riprovare disfa i due gesti, non due volte lo stesso: con lo stack
-    // duplicato il secondo Ctrl+Z rimandava deleteNode n1 su un nodo già
-    // cancellato, e n2 restava per sempre.
+    // And retrying undoes the two gestures, not the same one twice: with the duplicated
+    // stack the second Ctrl+Z resent deleteNode n1 on an already
+    // deleted node, and n2 stayed forever.
     useScene.getState().setSync(sync);
     sync.sent = [];
     useScene.getState().undo();
@@ -902,11 +902,11 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n2")).toBeUndefined();
   });
 
-  it("un gesto riavvolto solo a METÀ mentre il suo undo è in dubbio tiene la metà atterrata", () => {
+  it("a gesture rewound only HALFWAY while its undo is in doubt keeps the landed half", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]); // confermato
 
-    // Drag di n1+n2 (due setProps, una sola voce) e subito Ctrl+Z: il mark del
-    // gesto e quello dell'undo sono in dubbio insieme.
+    // Drag of n1+n2 (two setProps, one entry) and immediately Ctrl+Z: the gesture's
+    // mark and the undo's are in doubt together.
     const manual = new ManualSync();
     useScene.getState().setSync(manual);
     const mv1 = moveOp("n1", 40, 40);
@@ -915,19 +915,19 @@ describe("undo/redo", () => {
     useScene.getState().undo();
     const [, , inv2, inv1] = manual.sent;
 
-    // L'undo non passa affatto; del gesto passa solo il primo op.
+    // The undo does not go through at all; of the gesture only the first op goes through.
     manual.reject(inv1);
     manual.reject(inv2);
     manual.land(mv1);
     manual.reject(mv2);
 
-    // Sul server è successo solo mv1: n1 è mosso e va ancora annullato, n2 no.
+    // On the server only mv1 happened: n1 is moved and must still be undone, n2 must not.
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 40, y: 40 });
     expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
     expect(useScene.getState().undoStack).toHaveLength(2);
-    // La voce del gesto resta RISTRETTA alla metà atterrata: il replay dell'undo
-    // non deve poterla riportare intera (rimanderebbe l'inverso di un mv2 mai
-    // avvenuto).
+    // The gesture's entry stays NARROWED to the landed half: the undo's replay
+    // must not be able to bring it back whole (it would resend the inverse of an mv2 that never
+    // happened).
     expect(useScene.getState().undoStack[1]).toHaveLength(1);
     expect(useScene.getState().redoStack).toHaveLength(0);
 
@@ -940,7 +940,7 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n2")).toMatchObject({ x: 300, y: 0 });
   });
 
-  it("un undo atterrato a metà trova la sua voce anche sotto il replay del gesto che la aveva prodotta", () => {
+  it("an undo landed halfway finds its entry even under the replay of the gesture that had produced it", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]); // confermato
 
     const manual = new ManualSync();
@@ -948,17 +948,17 @@ describe("undo/redo", () => {
     const mv1 = moveOp("n1", 40, 40);
     const mv2 = moveOp("n2", 340, 40);
     gesture([mv1, mv2]);
-    manual.land(mv1); // il gesto resta in dubbio (mv2 non è ancora deciso)
-    useScene.getState().undo(); // mark dell'undo: consuma la voce del gesto
+    manual.land(mv1); // the gesture stays in doubt (mv2 is not decided yet)
+    useScene.getState().undo(); // undo mark: consumes the gesture's entry
     const [, , inv2, inv1] = manual.sent;
 
-    // L'undo atterra a metà: il replay deve ritrovare la voce consumata anche
-    // se il mark del gesto l'ha appena RICOSTRUITA (non è più lo stesso array).
+    // The undo lands halfway: the replay must find the consumed entry again even
+    // if the gesture's mark has just REBUILT it (it is no longer the same array).
     manual.land(inv2);
     manual.reject(inv1);
 
-    // Solo l'annullamento di mv2 è avvenuto: resta da annullare mv1, cioè UN
-    // solo op.
+    // Only the undo of mv2 happened: mv1 remains to be undone, that is ONE
+    // single op.
     expect(useScene.getState().undoStack).toHaveLength(2);
     expect(useScene.getState().undoStack[1]).toHaveLength(1);
 
@@ -970,60 +970,60 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 0, y: 0 });
   });
 
-  // --- voci rese STALE da un op REMOTO (finding parcheggiata a fine M1a) -----
-  // Una voce di undo/redo è fatta di inversi ASSOLUTI -- un setProps porta i
-  // valori per intero, non un delta -- calcolati su uno stato preciso. Resta
-  // valida finché i nodi che tocca non li cambia QUALCUN ALTRO. Dopo non c'è
-  // nessun rebase sensato: due scritture assolute sullo stesso campo non si
-  // fondono, una delle due vince. E mandarla comunque ha due esiti, tutti e due
-  // silenziosi -- riscrive la modifica remota (il nodo c'è ancora) o viene
-  // scartata dal server (il nodo non c'è più) e la voce evapora senza che
-  // nessuno sappia perché. Quindi l'op stale esce dalla voce, e l'utente lo
-  // legge dal banner.
+  // --- entries made STALE by a REMOTE op (finding parked at the end of M1a) ---
+  // An undo/redo entry is made of ABSOLUTE inverses -- a setProps carries the
+  // values in full, not a delta -- computed on a precise state. It stays
+  // valid as long as the nodes it touches are not changed by SOMEONE ELSE. Afterwards there is
+  // no sensible rebase: two absolute writes on the same field do not
+  // merge, one of the two wins. And sending it anyway has two outcomes, both
+  // silent -- it rewrites the remote change (the node is still there) or is
+  // discarded by the server (the node is gone) and the entry evaporates without
+  // anyone knowing why. So the stale op leaves the entry, and the user
+  // reads it from the banner.
 
-  it("uno spostamento REMOTO invalida il redo in coda: ripeti non riscrive la modifica altrui", () => {
+  it("a REMOTE move invalidates the queued redo: redo does not rewrite someone else's change", () => {
     gesture([createOp("n1", 0, 0)]);
     gesture([moveOp("n1", 40, 40)]);
 
-    useScene.getState().undo(); // n1 torna a (0,0); il redo ha "rimettilo a (40,40)"
+    useScene.getState().undo(); // n1 goes back to (0,0); the redo has "put it back at (40,40)"
     expect(useScene.getState().redoStack).toHaveLength(1);
     expect(useScene.getState().canRedo).toBe(true);
 
-    // Un altro client sposta n1 a (500,500): arriva via apply(), come ogni
-    // record di Subscribe che non è un nostro eco.
+    // Another client moves n1 to (500,500): it arrives via apply(), like every
+    // Subscribe record that is not an echo of ours.
     useScene.getState().apply(moveOp("n1", 500, 500));
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 500, y: 500 });
 
-    // La voce di redo scriveva x,y dello STESSO nodo: non è più valida.
+    // The redo entry wrote x,y of the SAME node: it is no longer valid.
     expect(useScene.getState().redoStack).toHaveLength(0);
     expect(useScene.getState().canRedo).toBe(false);
-    // E nemmeno la voce di undo della creazione lo è: annullarla vuol dire
-    // cancellare il nodo, cioè buttare via la modifica remota per intero.
+    // And neither is the creation's undo entry: undoing it means
+    // deleting the node, that is throwing away the remote change entirely.
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().canUndo).toBe(false);
-    // Sparire in silenzio sarebbe l'altra metà del bug: va detto.
+    // Vanishing silently would be the other half of the bug: it must be said.
     expect(useScene.getState().notice).not.toBeNull();
 
-    // Ctrl+Shift+Z adesso non manda niente, e soprattutto non riporta n1 a
-    // (40,40) sopra la modifica di un altro.
+    // Ctrl+Shift+Z now sends nothing, and above all does not bring n1 back to
+    // (40,40) on top of someone else's change.
     sync.sent = [];
     useScene.getState().redo();
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({ x: 500, y: 500 });
   });
 
-  it("una CANCELLAZIONE remota invalida la voce: il ripeti non evapora in silenzio", () => {
+  it("a REMOTE DELETE invalidates the entry: redo does not evaporate silently", () => {
     gesture([createOp("n1", 0, 0)]);
     gesture([moveOp("n1", 40, 40)]);
     useScene.getState().undo();
     expect(useScene.getState().redoStack).toHaveLength(1);
 
-    // Un altro client cancella n1.
+    // Another client deletes n1.
     useScene.getState().apply(deleteOp("n1"));
 
-    // Il redo era [setProps n1 x=40,y=40]: sul server ErrNodeNotFound, in
-    // locale un no-op di applyOp. Mandato lo stesso, la voce sarebbe sparita
-    // dallo stack senza fare niente e senza dire niente.
+    // The redo was [setProps n1 x=40,y=40]: on the server ErrNodeNotFound, locally
+    // a no-op of applyOp. Sent anyway, the entry would have vanished
+    // from the stack without doing anything and without saying anything.
     expect(useScene.getState().redoStack).toHaveLength(0);
     expect(useScene.getState().canRedo).toBe(false);
     expect(useScene.getState().undoStack).toHaveLength(0);
@@ -1035,21 +1035,21 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("n1")).toBeUndefined();
   });
 
-  // setText è un op DEDICATO (il contenuto vive dentro il oneof `shape`, non in
-  // un path della mask), quindi ha bisogno del suo bersaglio: senza, un
-  // setText remoto non renderebbe stale NIENTE e una voce di undo che contiene
-  // un setText non verrebbe MAI invalidata -- il Ctrl+Z successivo
-  // riscriverebbe in silenzio il testo appena scritto da un altro.
-  it("un setText REMOTO invalida la voce di undo di un editing sullo stesso nodo", () => {
+  // setText is a DEDICATED op (the content lives inside the `shape` oneof, not in
+  // a mask path), so it needs its own target: without it, a remote
+  // setText would make NOTHING stale and an undo entry containing
+  // a setText would NEVER be invalidated -- the next Ctrl+Z
+  // would silently rewrite the text just written by someone else.
+  it("a REMOTE setText invalidates the undo entry of an edit on the same node", () => {
     gesture([createTextOp("t1", "ciao")]);
-    gesture([setTextOp("t1", "ciao mondo")]); // una sessione di editing = una voce
+    gesture([setTextOp("t1", "hello world")]); // an editing session = one entry
     expect(useScene.getState().undoStack).toHaveLength(2);
 
-    // Un altro client riscrive il testo di t1.
-    useScene.getState().apply(setTextOp("t1", "scritto da un altro"));
+    // Another client rewrites t1's text.
+    useScene.getState().apply(setTextOp("t1", "written by someone else"));
 
-    // La voce dell'editing scriveva il contenuto dello STESSO nodo; quella
-    // della creazione cancellerebbe t1 (e con lui la modifica remota).
+    // The editing entry wrote the content of the SAME node; the creation's
+    // would delete t1 (and with it the remote change).
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().canUndo).toBe(false);
     expect(useScene.getState().notice).not.toBeNull();
@@ -1057,16 +1057,16 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(0);
-    expect(useScene.getState().scene!.nodes.at("t1").text!.content).toBe("scritto da un altro");
+    expect(useScene.getState().scene!.nodes.at("t1").text!.content).toBe("written by someone else");
   });
 
-  // Stessa ragione di setText, sul campo che questa traccia introduce: senza un
-  // bersaglio per setVectorPath, un op remoto sulla geometria non renderebbe
-  // stale niente e il Ctrl+Z successivo cancellerebbe in silenzio il path
-  // appena disegnato da un altro.
-  it("un setVectorPath REMOTO invalida la voce di undo di un editing sullo stesso path", () => {
+  // Same reason as setText, on the field this track introduces: without a
+  // target for setVectorPath, a remote op on the geometry would make nothing
+  // stale and the next Ctrl+Z would silently delete the path
+  // just drawn by someone else.
+  it("a REMOTE setVectorPath invalidates the undo entry of an edit on the same path", () => {
     gesture([createVectorOp("v1")]);
-    gesture([setVectorPathOp("v1", 1)]); // un trascinamento di ancoraggio = una voce
+    gesture([setVectorPathOp("v1", 1)]); // an anchor drag = one entry
     expect(useScene.getState().undoStack).toHaveLength(2);
 
     useScene.getState().apply(setVectorPathOp("v1", 2));
@@ -1081,62 +1081,62 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("v1").vector!.subpaths[0].anchors[0].x).toBe(2);
   });
 
-  // --- il box e la geometria sono DUE METÀ DELLO STESSO VALORE --------------
-  // Per un nodo vettoriale il box È la bbox del path (invariante del proto su
-  // VectorNode), quindi width/height/x/y e subpaths non sono campi
-  // indipendenti. Ma un resize è UN gesto con DUE op, e la potatura degli op
-  // stale lavora per op: se un record remoto ne pota uno solo, la voce
-  // sopravvive a metà e il Ctrl+Z successivo rimette UNA delle due metà --
-  // l'inchiostro nel box sbagliato, o il box intorno all'inchiostro sbagliato.
-  // I due test qui sotto sono le due direzioni dello stesso difetto.
+  // --- the box and the geometry are TWO HALVES OF THE SAME VALUE ------------
+  // For a vector node the box IS the path's bbox (proto invariant on
+  // VectorNode), so width/height/x/y and subpaths are not independent
+  // fields. But a resize is ONE gesture with TWO ops, and the pruning of stale
+  // ops works per op: if a remote record prunes only one of them, the entry
+  // survives halfway and the next Ctrl+Z puts back ONE of the two halves --
+  // the ink in the wrong box, or the box around the wrong ink.
+  // The two tests below are the two directions of the same defect.
 
-  it("un DRAG remoto non lascia annullare METÀ di un resize vettoriale (la geometria senza il box)", () => {
+  it("a remote DRAG does not allow undoing HALF of a vector resize (the geometry without the box)", () => {
     gesture([createVectorBoxOp("v1", 100, 80)]);
-    // UN gesto, DUE op: è esattamente ciò che selectTool::resizeOps emette per
-    // un nodo vettoriale (il box + la geometria riscritta perché continui a
-    // riempirlo). Voce: [inv(setVectorPath), inv(setProps x,y,width,height)].
+    // ONE gesture, TWO ops: it is exactly what selectTool::resizeOps emits for
+    // a vector node (the box + the geometry rewritten so it keeps
+    // filling it). Entry: [inv(setVectorPath), inv(setProps x,y,width,height)].
     gesture([boxOp("v1", 0, 0, 200, 160), vectorPathOp("v1", boxPath(200, 160), "resize")]);
     expect(boxAndInk("v1").ink).toEqual(boxAndInk("v1").box);
 
-    // Un altro client si limita a SPOSTARE lo stesso nodo: scrive solo x,y.
-    // Non tocca né la geometria né la misura del box, quindi l'invariante
-    // regge -- ed è la voce di undo locale a doverla continuare a rispettare.
+    // Another client merely MOVES the same node: writes only x,y.
+    // It touches neither the geometry nor the box size, so the invariant
+    // holds -- and it is the local undo entry that must keep respecting it.
     useScene.getState().apply(moveOp("v1", 40, 40));
 
     sync.sent = [];
     useScene.getState().undo();
 
-    // IL DANNO: prima del fix inv(setProps) veniva potato (condivide x,y) e
-    // inv(setVectorPath) restava (bersaglio "subpaths", disgiunto), quindi
-    // Ctrl+Z rimetteva la geometria 100x80 dentro il box 200x160 -- maniglie
-    // di resize che non toccano il path e marquee che afferra il vuoto.
+    // THE DAMAGE: before the fix inv(setProps) was pruned (it shares x,y) and
+    // inv(setVectorPath) stayed (target "subpaths", disjoint), so
+    // Ctrl+Z put the 100x80 geometry inside the 200x160 box -- resize
+    // handles that do not touch the path and a marquee that grabs empty space.
     const g = boxAndInk("v1");
     expect(g.ink).toEqual(g.box);
-    // ...e la forma con cui ci si arriva: la voce del resize cade INTERA (con
-    // lei quella della creazione, che cancellerebbe il nodo). Niente da
-    // annullare, quindi niente sul filo.
+    // ...and the shape in which we get there: the resize's entry falls WHOLE (and with
+    // it the creation's, which would delete the node). Nothing to
+    // undo, so nothing on the wire.
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(sync.sent).toHaveLength(0);
     expect(useScene.getState().notice).not.toBeNull();
   });
 
-  it("un setVectorPath remoto non lascia annullare l'ALTRA metà del resize (il box senza la geometria)", () => {
+  it("a remote setVectorPath does not allow undoing the OTHER half of the resize (the box without the geometry)", () => {
     gesture([createVectorBoxOp("v1", 100, 80)]);
     gesture([boxOp("v1", 0, 0, 200, 160), vectorPathOp("v1", boxPath(200, 160), "resize")]);
 
-    // Un altro client rimaneggia il path spostandone un ancoraggio INTERNO: la
-    // bbox non cambia, quindi il record vale da solo. (Anche quando il gesto
-    // remoto porta pure il suo setProps, i record di Subscribe arrivano UNO
-    // ALLA VOLTA e markStale gira per record: la finestra fra i due è
-    // osservabile da un Ctrl+Z.)
-    useScene.getState().apply(vectorPathOp("v1", triPath(200, 160), "altro"));
+    // Another client reshapes the path by moving an INNER anchor: the
+    // bbox does not change, so the record counts on its own. (Even when the remote
+    // gesture also carries its setProps, Subscribe records arrive ONE
+    // AT A TIME and markStale runs per record: the window between the two is
+    // observable by a Ctrl+Z.)
+    useScene.getState().apply(vectorPathOp("v1", triPath(200, 160), "other"));
 
     sync.sent = [];
     useScene.getState().undo();
 
-    // IL DANNO SPECULARE: prima del fix il record remoto potava
-    // inv(setVectorPath) e lasciava inv(setProps), quindi Ctrl+Z rimetteva il
-    // box 100x80 intorno all'inchiostro 200x160 dell'altro.
+    // THE MIRROR DAMAGE: before the fix the remote record pruned
+    // inv(setVectorPath) and left inv(setProps), so Ctrl+Z put the
+    // 100x80 box around the other's 200x160 ink.
     const g = boxAndInk("v1");
     expect(g.ink).toEqual(g.box);
     expect(useScene.getState().undoStack).toHaveLength(0);
@@ -1144,25 +1144,25 @@ describe("undo/redo", () => {
     expect(useScene.getState().notice).not.toBeNull();
   });
 
-  // Questo test diceva "un setVectorPath remoto non tocca una voce che scrive
-  // campi DISGIUNTI" e lo dimostrava su uno SPOSTAMENTO -- l'unico setProps per
-  // cui box e geometria sono davvero indipendenti (gli ancoraggi sono locali,
-  // quindi l'inchiostro viaggia col nodo) -- generalizzandolo però a TUTTI i
-  // setProps, resize compreso, dove indipendenti non sono. Era l'assunzione
-  // sbagliata scritta come garanzia, ed è la ragione per cui i due test qui
-  // sopra passavano inosservati.
+  // This test used to say "a remote setVectorPath does not touch an entry that writes
+  // DISJOINT fields" and proved it on a MOVE -- the only setProps for
+  // which box and geometry are truly independent (anchors are local,
+  // so the ink travels with the node) -- while generalizing it to ALL
+  // setProps, resize included, where they are not independent. It was the wrong
+  // assumption written as a guarantee, and it is the reason the two tests above
+  // passed unnoticed.
   //
-  // La versione giusta è questa, e non costa un passo di annulla che non stesse
-  // già per cadere: chi riscrive i subpath manda nello STESSO gesto il
-  // setProps{x,y,width,height} che rinormalizza il box (l'invariante è dello
-  // scrittore), quindi quel record avrebbe potato la voce dello spostamento un
-  // istante dopo comunque. Anticipare la potatura non toglie niente in più --
-  // toglie la FINESTRA in cui metà voce sopravvive.
-  it("un setVectorPath remoto invalida ANCHE la voce che ha solo SPOSTATO il nodo", () => {
+  // The right version is this one, and it does not cost an undo step that was not
+  // already about to fall: whoever rewrites the subpaths sends in the SAME gesture the
+  // setProps{x,y,width,height} that renormalizes the box (the invariant belongs to the
+  // writer), so that record would have pruned the move's entry an
+  // instant later anyway. Anticipating the pruning removes nothing more --
+  // it removes the WINDOW in which half an entry survives.
+  it("a remote setVectorPath ALSO invalidates the entry that only MOVED the node", () => {
     gesture([createVectorBoxOp("v1", 100, 80)]);
-    gesture([moveOp("v1", 40, 40)]); // voce: [setProps x,y]
+    gesture([moveOp("v1", 40, 40)]); // entry: [setProps x,y]
 
-    useScene.getState().apply(vectorPathOp("v1", triPath(100, 80), "altro"));
+    useScene.getState().apply(vectorPathOp("v1", triPath(100, 80), "other"));
 
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().canUndo).toBe(false);
@@ -1170,78 +1170,78 @@ describe("undo/redo", () => {
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(0);
-    // Il nodo resta dove l'ha lasciato l'ULTIMA scrittura di ciascuna metà:
-    // spostato da noi, ridisegnato dall'altro. Nessuna delle due sovrascrive
-    // l'altra in silenzio.
+    // The node stays where the LAST write of each half left it:
+    // moved by us, redrawn by the other. Neither of the two silently overwrites
+    // the other.
     expect(useScene.getState().scene!.nodes.at("v1")).toMatchObject({ x: 40, y: 40 });
     expect(useScene.getState().scene!.nodes.at("v1").vector!.subpaths[0].anchors).toHaveLength(3);
   });
 
-  // Il complemento del test qui sopra, e la metà LEGITTIMA di quello che ha
-  // sostituito: il taglio per campo esiste ancora. Allargare il bersaglio di
-  // setVectorPath al box non lo degrada in "un op remoto su questo nodo
-  // brucia tutta la sua storia" -- un rename resta un rename.
-  it("un setVectorPath remoto NON tocca una voce che scrive campi davvero disgiunti", () => {
+  // The complement of the test above, and the LEGITIMATE half of the one it
+  // replaced: the per-field cut still exists. Widening the target of
+  // setVectorPath to the box does not degrade it into "a remote op on this node
+  // burns its whole history" -- a rename remains a rename.
+  it("a remote setVectorPath does NOT touch an entry that writes truly disjoint fields", () => {
     gesture([createVectorBoxOp("v1", 100, 80)]);
-    gesture([renameOp("v1", "Contorno")]); // voce: [setProps name]
+    gesture([renameOp("v1", "Outline")]); // entry: [setProps name]
 
-    useScene.getState().apply(vectorPathOp("v1", triPath(100, 80), "altro"));
+    useScene.getState().apply(vectorPathOp("v1", triPath(100, 80), "other"));
 
-    // Cade solo la voce della creazione, che cancellerebbe il nodo (e con lui
-    // il path dell'altro).
+    // Only the creation's entry falls, which would delete the node (and with it
+    // the other's path).
     expect(useScene.getState().undoStack).toHaveLength(1);
     useScene.getState().undo();
     expect(useScene.getState().scene!.nodes.at("v1").name).toBe("Path");
-    // ...senza toccare la geometria remota.
+    // ...without touching the remote geometry.
     expect(useScene.getState().scene!.nodes.at("v1").vector!.subpaths[0].anchors).toHaveLength(3);
   });
 
-  it("un setText remoto non tocca una voce che scrive campi DISGIUNTI", () => {
+  it("a remote setText does not touch an entry that writes DISJOINT fields", () => {
     gesture([createTextOp("t1", "ciao")]);
-    gesture([moveOp("t1", 40, 40)]); // voce: [setProps x,y]
+    gesture([moveOp("t1", 40, 40)]); // entry: [setProps x,y]
 
-    useScene.getState().apply(setTextOp("t1", "altro"));
+    useScene.getState().apply(setTextOp("t1", "other"));
 
-    // Spostare un nodo e riscriverne il contenuto non si sovrascrivono a
-    // vicenda: annullare lo spostamento resta legittimo. Cade solo la voce
-    // della creazione, che cancellerebbe il nodo per intero.
+    // Moving a node and rewriting its content do not overwrite each
+    // other: undoing the move remains legitimate. Only the creation's
+    // entry falls, which would delete the node entirely.
     expect(useScene.getState().undoStack).toHaveLength(1);
     useScene.getState().undo();
     expect(useScene.getState().scene!.nodes.at("t1")).toMatchObject({ x: 0, y: 0 });
-    expect(useScene.getState().scene!.nodes.at("t1").text!.content).toBe("altro");
+    expect(useScene.getState().scene!.nodes.at("t1").text!.content).toBe("other");
   });
 
-  it("un op remoto su campi DISGIUNTI (o su un altro nodo) non tocca la voce", () => {
+  it("a remote op on DISJOINT fields (or on another node) does not touch the entry", () => {
     gesture([createOp("n1", 0, 0)]);
     gesture([createOp("n2", 300, 0)]);
     gesture([moveOp("n1", 40, 40)]);
     useScene.getState().undo(); // redo = [setProps n1 x=40,y=40]
     expect(useScene.getState().undoStack).toHaveLength(2);
 
-    // Un altro client RIDIMENSIONA n1: scrive width/height, non x/y.
+    // Another client RESIZES n1: writes width/height, not x/y.
     useScene.getState().apply(resizeOp("n1", 300, 300));
 
-    // La voce di redo scrive solo x,y: continua a valere -- invalidarla
-    // significherebbe buttare via la storia a ogni modifica remota di qualunque
-    // campo, e non c'è nessuna sovrascrittura da evitare.
+    // The redo entry writes only x,y: it keeps holding -- invalidating it
+    // would mean throwing away the history on every remote change of any
+    // field, and there is no overwrite to avoid.
     expect(useScene.getState().redoStack).toHaveLength(1);
     expect(useScene.getState().canRedo).toBe(true);
-    // Cade solo la voce che cancellerebbe n1; quella di n2 non c'entra nulla.
+    // Only the entry that would delete n1 falls; n2's has nothing to do with it.
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(deletedId(useScene.getState().undoStack[0][0])).toBe("n2");
 
-    // ...e il redo rimette a posto x,y SENZA disfare il resize remoto.
+    // ...and the redo puts x,y back WITHOUT undoing the remote resize.
     useScene.getState().redo();
     expect(useScene.getState().scene!.nodes.at("n1")).toMatchObject({
       x: 40, y: 40, width: 300, height: 300,
     });
   });
 
-  it("senza trasporto un gesto non invalida la PROPRIA voce", () => {
-    // Ramo senza filo di endGesture/undo/redo: l'op non viene submittato, viene
-    // applicato con apply() -- la stessa porta da cui entrano i record remoti.
-    // È nostro, quindi non può rendere stale la voce che il gesto ha appena
-    // spinto: senza la distinzione, ogni gesto si cancellerebbe da solo.
+  it("without a transport a gesture does not invalidate its OWN entry", () => {
+    // Wire-less branch of endGesture/undo/redo: the op is not submitted, it is
+    // applied with apply() -- the same door the remote records come in from.
+    // It is ours, so it cannot make stale the entry the gesture has just
+    // pushed: without the distinction, every gesture would cancel itself.
     useScene.getState().setSync(null);
 
     gesture([createOp("n1", 0, 0)]);
@@ -1258,80 +1258,80 @@ describe("undo/redo", () => {
     expect(useScene.getState().notice).toBeNull();
   });
 
-  it("un op reso stale non torna sugli stack quando un rifiuto rigioca la storia", () => {
+  it("a stale op does not come back onto the stacks when a rejection replays the history", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
-    // La voce è [deleteNode n2, deleteNode n1].
+    // The entry is [deleteNode n2, deleteNode n1].
     expect(useScene.getState().undoStack[0]).toHaveLength(2);
 
-    // Un gesto su n2 resta IN VOLO: la sua transizione è in dubbio, quindi gli
-    // stack vivi sono il replay di `history` sulla base della sua testa --
-    // una base fotografata PRIMA dell'op remoto.
+    // A gesture on n2 stays IN FLIGHT: its transition is in doubt, so the live
+    // stacks are the replay of `history` on the base of its head --
+    // a base snapshotted BEFORE the remote op.
     const manual = new ManualSync();
     useScene.getState().setSync(manual);
     const mv = moveOp("n2", 340, 40);
     gesture([mv]);
     expect(useScene.getState().undoStack).toHaveLength(2);
 
-    // Un altro client cancella n1: l'op [deleteNode n1] dentro la prima voce
-    // non è più valido (il server risponderebbe ErrNodeNotFound), ma il resto
-    // della voce sì -- n2 esiste ancora ed è ancora nostro da annullare.
+    // Another client deletes n1: the op [deleteNode n1] inside the first entry
+    // is no longer valid (the server would reply ErrNodeNotFound), but the rest
+    // of the entry is -- n2 still exists and is still ours to undo.
     useScene.getState().apply(deleteOp("n1"));
     expect(useScene.getState().undoStack[0]).toHaveLength(1);
     expect(deletedId(useScene.getState().undoStack[0][0])).toBe("n2");
 
-    // Il gesto in volo viene rifiutato: la storia si rigioca dalla base. L'op
-    // stale non deve rientrare da lì.
+    // The in-flight gesture is rejected: the history is replayed from the base. The
+    // stale op must not re-enter from there.
     manual.reject(mv);
 
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().undoStack[0]).toHaveLength(1);
     expect(deletedId(useScene.getState().undoStack[0][0])).toBe("n2");
 
-    // E l'unico op che parte sul filo è quello ancora valido.
+    // And the only op that goes out on the wire is the one that is still valid.
     useScene.getState().setSync(sync);
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent.map(deletedId)).toEqual(["n2"]);
   });
 
-  it("un op reso stale non torna nemmeno dalla REVOCA di un rollback", () => {
+  it("a stale op does not come back even from the REVOCATION of a rollback", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]); // confermato
 
     const manual = new ManualSync();
     useScene.getState().setSync(manual);
 
-    // Gesto A su n1: la richiesta muore senza risposta, quindi il rollback è
-    // visibile ma REVOCABILE (l'op può essere già nell'op-log).
+    // Gesture A on n1: the request dies without a response, so the rollback is
+    // visible but REVOCABLE (the op may already be in the op-log).
     const mvA = moveOp("n1", 40, 40);
     gesture([mvA]);
     manual.disown(mvA);
     expect(useScene.getState().undoStack).toHaveLength(1);
 
-    // L'utente continua a lavorare mentre il client si riconnette: il gesto B
-    // su n2 resta in volo, quindi la sua transizione è in dubbio.
+    // The user keeps working while the client reconnects: gesture B
+    // on n2 stays in flight, so its transition is in doubt.
     const mvB = moveOp("n2", 340, 40);
     gesture([mvB]);
     expect(useScene.getState().undoStack).toHaveLength(2);
 
-    // Un altro client cancella n2: cade la voce di B (rimetterebbe n2 a (300,0))
-    // e cade l'op [deleteNode n2] dentro la voce della creazione.
+    // Another client deletes n2: B's entry falls (it would put n2 back at (300,0))
+    // and the [deleteNode n2] op falls inside the creation's entry.
     useScene.getState().apply(deleteOp("n2"));
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().undoStack[0]).toHaveLength(1);
 
-    // Il backlog rigioca mvA: il rollback era una bugia, e la sua voce di undo
-    // torna dentro la BASE della storia (restoreRevoked). Quel replay riparte da
-    // stack fotografati prima della cancellazione remota: gli op stale non
-    // devono rientrare da lì.
+    // The backlog replays mvA: the rollback was a lie, and its undo entry
+    // goes back into the history's BASE (restoreRevoked). That replay restarts from
+    // stacks snapshotted before the remote delete: stale ops must
+    // not re-enter from there.
     manual.land(mvA);
 
     const stack = useScene.getState().undoStack;
-    expect(stack).toHaveLength(2); // la creazione (ridotta) + la voce revocata
+    expect(stack).toHaveLength(2); // the creation (reduced) + the revoked entry
     expect(stack.flat().some((op) => op.kind.case === "setProps" && op.kind.value.id === "n2")).toBe(false);
     expect(stack.flat().some((op) => deletedId(op) === "n2")).toBe(false);
 
-    // ...e i due Ctrl+Z che restano fanno solo cose ancora valide: rimettono n1
-    // al suo posto e poi lo cancellano. n2 non viene mai toccato.
+    // ...and the two Ctrl+Z that remain do only still-valid things: they put n1
+    // back in its place and then delete it. n2 is never touched.
     useScene.getState().setSync(sync);
     sync.sent = [];
     useScene.getState().undo();
@@ -1341,9 +1341,9 @@ describe("undo/redo", () => {
     expect(sync.sent).toHaveLength(2);
   });
 
-  it("un redo atterrato a metà lascia sullo stack solo la parte non rifatta", () => {
+  it("a redo landed halfway leaves on the stack only the part not redone", () => {
     gesture([createOp("n1", 0, 0), createOp("n2", 300, 0)]);
-    useScene.getState().undo(); // entrambi spariscono; il redo li ricrea
+    useScene.getState().undo(); // both disappear; the redo re-creates them
     expect(useScene.getState().redoStack[0]).toHaveLength(2);
 
     const manual = new ManualSync();
@@ -1351,12 +1351,12 @@ describe("undo/redo", () => {
     useScene.getState().redo();
     const [first, second] = manual.sent;
 
-    manual.land(first); // il primo nodo è di nuovo nell'op-log
-    manual.reject(second); // il secondo no
+    manual.land(first); // the first node is back in the op-log
+    manual.reject(second); // the second does not
 
     expect(useScene.getState().redoStack).toHaveLength(1);
     expect(useScene.getState().redoStack[0]).toHaveLength(1);
-    // ...e la metà rifatta è di nuovo annullabile.
+    // ...and the redone half is undoable again.
     expect(useScene.getState().undoStack).toHaveLength(1);
     expect(useScene.getState().undoStack[0]).toHaveLength(1);
 
@@ -1364,13 +1364,13 @@ describe("undo/redo", () => {
     useScene.getState().redo();
     expect([...useScene.getState().scene!.nodes.ids()].sort()).toEqual(["n1", "n2"]);
   });
-  // --- l'albero: cascata e storia -------------------------------------------
-  // deleteNode cancella un SOTTOALBERO (core.applyDelete / applyOp), quindi
-  // l'inverso di UN op sono molte createNode. È l'unico caso in cui la voce di
-  // undo è più lunga del gesto che l'ha prodotta, e il posto dove si rompeva
-  // l'ipotesi "un op diretto, un inverso" su cui poggiava invertChain.
+  // --- the tree: cascade and history ----------------------------------------
+  // deleteNode deletes a SUBTREE (core.applyDelete / applyOp), so
+  // the inverse of ONE op is many createNodes. It is the only case where the undo
+  // entry is longer than the gesture that produced it, and the place where the
+  // "one direct op, one inverse" hypothesis that invertChain rested on broke.
 
-  it("un gesto che cancella un gruppo si annulla in UNA voce, con tutto il sottoalbero", () => {
+  it("a gesture that deletes a group is undone in ONE entry, with the whole subtree", () => {
     gesture([
       createChildOp("g1", "page1", "a1"),
       createChildOp("c1", "g1", "a1"),
@@ -1379,10 +1379,10 @@ describe("undo/redo", () => {
     ]);
     const before = useScene.getState().scene;
 
-    gesture([deleteOp("g1")]); // un op solo: il server cascata da sé
+    gesture([deleteOp("g1")]); // a single op: the server cascades on its own
     expect([...useScene.getState().scene!.nodes.ids()]).toEqual([]);
 
-    // Una voce sola (un gesto = un Ctrl+Z), fatta di quattro createNode.
+    // A single entry (one gesture = one Ctrl+Z), made of four createNodes.
     const entry = useScene.getState().undoStack[1];
     expect(entry).toHaveLength(4);
     expect(entry.every((op) => op.kind.case === "createNode")).toBe(true);
@@ -1390,25 +1390,25 @@ describe("undo/redo", () => {
     useScene.getState().undo();
     expect(useScene.getState().scene).toEqual(before);
 
-    // ...e il redo ricancella tutto con l'op singolo di partenza.
+    // ...and the redo deletes everything again with the starting single op.
     useScene.getState().redo();
     expect([...useScene.getState().scene!.nodes.ids()]).toEqual([]);
   });
 
-  it("una cancellazione REMOTA a cascata invalida anche le voci che toccano i DISCENDENTI", () => {
+  it("a REMOTE cascading delete also invalidates the entries that touch the DESCENDANTS", () => {
     gesture([
       createChildOp("g1", "page1", "a1"),
       createChildOp("c1", "g1", "a1"),
     ]);
-    gesture([moveOp("c1", 40, 40)]); // voce: [setProps c1 x,y]
+    gesture([moveOp("c1", 40, 40)]); // entry: [setProps c1 x,y]
     expect(useScene.getState().undoStack).toHaveLength(2);
 
-    // Un altro client cancella il GRUPPO: l'op nomina g1, ma porta via c1.
+    // Another client deletes the GROUP: the op names g1, but takes c1 away.
     useScene.getState().apply(deleteOp("g1"));
 
-    // Senza l'espansione della cascata la voce su c1 resterebbe lì, e il
-    // Ctrl+Z successivo manderebbe un setProps su un nodo che non esiste più
-    // (rifiuto dal server, banner rosso, voce bruciata).
+    // Without the cascade expansion the entry on c1 would stay there, and the
+    // next Ctrl+Z would send a setProps on a node that no longer exists
+    // (server rejection, red banner, burned entry).
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().canUndo).toBe(false);
     expect(useScene.getState().notice).not.toBeNull();
@@ -1418,24 +1418,24 @@ describe("undo/redo", () => {
     expect(sync.sent).toHaveLength(0);
   });
 
-  // Una voce che RIPRISTINA una cascata ([createNode g1, c1, d1]) vale solo
-  // finché ogni createNode trova il proprio parent già ricreato. Filtrarla
-  // op-per-op contro gli op resi stale la spezza: un op remoto tocca UN nodo,
-  // quindi marca la sua createNode e non quelle dei suoi figli. Vedi pruneEntry
+  // An entry that RESTORES a cascade ([createNode g1, c1, d1]) is valid only
+  // as long as every createNode finds its own parent already re-created. Filtering it
+  // op by op against the ops made stale breaks it: a remote op touches ONE node,
+  // so it marks its createNode and not those of its children. See pruneEntry
   // in store.ts.
 
-  it("un op remoto su un DISCENDENTE porta via dalla voce di ripristino anche i suoi figli", () => {
+  it("a remote op on a DESCENDANT also takes its children away from the restore entry", () => {
     gesture([
       createChildOp("g1", "page1", "a1"),
       createChildOp("c1", "g1", "a1"),
       createChildOp("d1", "c1", "a1"),
     ]);
-    gesture([deleteOp("g1")]); // voce: [createNode g1, createNode c1, createNode d1]
+    gesture([deleteOp("g1")]); // entry: [createNode g1, createNode c1, createNode d1]
     expect(useScene.getState().undoStack[1]).toHaveLength(3);
 
-    // Un altro client aveva mosso c1 PRIMA della nostra delete: l'op arriva
-    // ora e rende stale la createNode di c1 -- ma non quella di d1, che ha un
-    // bersaglio diverso e resterebbe nella voce come ORFANA.
+    // Another client had moved c1 BEFORE our delete: the op arrives
+    // now and makes c1's createNode stale -- but not d1's, which has a
+    // different target and would stay in the entry as an ORPHAN.
     useScene.getState().apply(moveOp("c1", 5, 5));
 
     const stack = useScene.getState().undoStack;
@@ -1443,10 +1443,10 @@ describe("undo/redo", () => {
     expect(createdIds(entry)).toEqual(["g1"]);
     expectParentsSatisfied(entry);
 
-    // E l'undo passa PER INTERO: un solo op sul filo, atterrato, con la sua
-    // voce di redo. Senza la potatura invertChain ritornava null su createNode
-    // d1 (nessun redo registrato) e il server rifiutava l'op con
-    // ErrParentNotFound -- banner rosso e documento a metà.
+    // And the undo goes through WHOLE: a single op on the wire, landed, with its
+    // redo entry. Without the pruning invertChain returned null on createNode
+    // d1 (no redo recorded) and the server rejected the op with
+    // ErrParentNotFound -- red banner and half-done document.
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(1);
@@ -1454,7 +1454,7 @@ describe("undo/redo", () => {
     expect(useScene.getState().canRedo).toBe(true);
   });
 
-  it("un op remoto sulla RADICE della cascata porta via l'intera voce di ripristino", () => {
+  it("a remote op on the ROOT of the cascade takes away the whole restore entry", () => {
     gesture([
       createChildOp("g1", "page1", "a1"),
       createChildOp("c1", "g1", "a1"),
@@ -1463,82 +1463,82 @@ describe("undo/redo", () => {
     gesture([deleteOp("g1")]);
     const before = useScene.getState().undoStack.length;
 
-    // Stale sulla sola createNode di g1: c1 e d1 non sono bersagli dell'op
-    // remoto, e senza propagazione la voce resterebbe fatta di due createNode
-    // senza il loro container.
+    // Stale on g1's createNode only: c1 and d1 are not targets of the remote
+    // op, and without propagation the entry would stay made of two createNodes
+    // without their container.
     useScene.getState().apply(moveOp("g1", 5, 5));
 
     const stack = useScene.getState().undoStack;
     expect(stack).toHaveLength(before - 1);
     for (const entry of stack) expectParentsSatisfied(entry);
 
-    // Niente da annullare per quella cancellazione: il Ctrl+Z successivo tocca
-    // il gesto PRECEDENTE (la creazione), non manda mezzo sottoalbero al server.
+    // Nothing to undo for that delete: the next Ctrl+Z touches
+    // the PREVIOUS gesture (the creation), it does not send half a subtree to the server.
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent.every((op) => op.kind.case === "deleteNode")).toBe(true);
   });
 
-  it("un reparent REMOTO invalida un riordino locale dello stesso nodo, non uno spostamento", () => {
+  it("a REMOTE reparent invalidates a local reorder of the same node, not a move", () => {
     gesture([
       createChildOp("g1", "page1", "a1"),
       createChildOp("c1", "g1", "a1"),
     ]);
-    gesture([moveOp("c1", 40, 40)]);        // voce: [setProps c1 x,y]
-    gesture([reorderOp("c1", "a5")]);       // voce: [setProps c1 order_key]
+    gesture([moveOp("c1", 40, 40)]);        // entry: [setProps c1 x,y]
+    gesture([reorderOp("c1", "a5")]);       // entry: [setProps c1 order_key]
     expect(useScene.getState().undoStack).toHaveLength(3);
 
     useScene.getState().apply(reparentOp("c1", "page1", "a7"));
 
-    // Cade il riordino (scrive order_key, che il reparent riscrive) e cade il
-    // [deleteNode c1] della voce di creazione (cancellerebbe il nodo appena
-    // spostato da un altro). Restano lo spostamento -- x/y non c'entrano con la
-    // riparentazione -- e il [deleteNode g1] della creazione: DOPO il reparent
-    // il gruppo è vuoto, quindi cancellarlo non porta più via c1.
+    // The reorder falls (it writes order_key, which the reparent rewrites) and the
+    // [deleteNode c1] of the creation entry falls (it would delete the node just
+    // moved by another). The move stays -- x/y have nothing to do with
+    // reparenting -- and the creation's [deleteNode g1]: AFTER the reparent
+    // the group is empty, so deleting it no longer takes c1 away.
     const stack = useScene.getState().undoStack;
     expect(stack).toHaveLength(2);
     expect(stack[0].map(deletedId)).toEqual(["g1"]);
     expect(stack[1][0].kind.case === "setProps" && stack[1][0].kind.value.mask?.paths).toEqual(["x", "y"]);
   });
 
-  // La cascata guarda in DUE direzioni, e le due vogliono due scene diverse
-  // (vedi markStale). Un op remoto che INFILA un nodo in un sottoalbero non
-  // tocca nessun nodo che il documento precedente contenesse: misurata su
-  // quello, una voce che cancella il container non confligge con niente e
-  // sopravvive -- e il Ctrl+Z successivo porta via il nodo dell'altro client
-  // in silenzio, senza nemmeno il banner STALE.
+  // The cascade looks in TWO directions, and the two want two different scenes
+  // (see markStale). A remote op that INSERTS a node into a subtree does not
+  // touch any node the previous document contained: measured on
+  // that, an entry that deletes the container conflicts with nothing and
+  // survives -- and the next Ctrl+Z silently takes away the other client's node,
+  // without even the STALE banner.
 
-  it("un createNode REMOTO dentro un gruppo invalida la voce che cancellerebbe il gruppo", () => {
-    gesture([createChildOp("g1", "page1", "a1")]); // voce: [deleteNode g1]
+  it("a REMOTE createNode inside a group invalidates the entry that would delete the group", () => {
+    gesture([createChildOp("g1", "page1", "a1")]); // entry: [deleteNode g1]
     expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
 
-    // Un altro client crea un nodo DENTRO g1.
+    // Another client creates a node INSIDE g1.
     useScene.getState().apply(createChildOp("c1", "g1", "a1"));
     expect(useScene.getState().scene!.nodes.at("c1")).toBeDefined();
 
-    // Da adesso [deleteNode g1] cascata su c1: non è più annullabile.
+    // From now on [deleteNode g1] cascades onto c1: it is no longer undoable.
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().canUndo).toBe(false);
     expect(useScene.getState().notice).not.toBeNull();
 
-    // Ctrl+Z non manda niente, e soprattutto non distrugge il nodo altrui.
+    // Ctrl+Z sends nothing, and above all does not destroy the other's node.
     sync.sent = [];
     useScene.getState().undo();
     expect(sync.sent).toHaveLength(0);
     expect([...useScene.getState().scene!.nodes.ids()].sort()).toEqual(["c1", "g1"]);
   });
 
-  it("un reparent REMOTO che INFILA un nodo nel gruppo invalida la voce che lo cancellerebbe", () => {
-    gesture([createChildOp("g1", "page1", "a1")]); // voce: [deleteNode g1]
+  it("a REMOTE reparent that INSERTS a node into the group invalidates the entry that would delete it", () => {
+    gesture([createChildOp("g1", "page1", "a1")]); // entry: [deleteNode g1]
 
-    // Il nodo dell'altro client nasce FUORI da g1: la nostra voce cancella un
-    // gruppo vuoto e resta legittima (invalidarla qui sarebbe buttare via un
-    // passo di annulla per niente).
+    // The other client's node is born OUTSIDE g1: our entry deletes an
+    // empty group and stays legitimate (invalidating it here would be throwing away an
+    // undo step for nothing).
     useScene.getState().apply(createChildOp("c1", "page1", "a9"));
     expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
     expect(useScene.getState().notice).toBeNull();
 
-    // ...poi lo INFILA dentro g1, e da lì la voce distruggerebbe il suo lavoro.
+    // ...then INSERTS it inside g1, and from there the entry would destroy its work.
     useScene.getState().apply(reparentOp("c1", "g1", "a1"));
     expect(useScene.getState().undoStack).toHaveLength(0);
     expect(useScene.getState().notice).not.toBeNull();
@@ -1549,17 +1549,17 @@ describe("undo/redo", () => {
     expect([...useScene.getState().scene!.nodes.ids()].sort()).toEqual(["c1", "g1"]);
   });
 
-  it("un reparent REMOTO che PORTA VIA un nodo dal gruppo lascia in piedi la voce che lo cancella", () => {
+  it("a REMOTE reparent that TAKES a node AWAY from the group leaves standing the entry that deletes it", () => {
     gesture([createChildOp("g1", "page1", "a1")]);
     gesture([createChildOp("c1", "g1", "a1")]);
     expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"], ["c1"]]);
 
-    // Il verso opposto: un altro client tira c1 FUORI da g1.
+    // The opposite direction: another client pulls c1 OUT of g1.
     useScene.getState().apply(reparentOp("c1", "page1", "a7"));
 
-    // La voce su c1 muore (il reparent ne riscrive parent e order_key), quella
-    // su g1 no: sul documento NUOVO cancellare g1 non tocca più c1, quindi non
-    // c'è nessun lavoro altrui da riscrivere e il passo di annulla resta.
+    // The entry on c1 dies (the reparent rewrites its parent and order_key), the one
+    // on g1 does not: on the NEW document deleting g1 no longer touches c1, so there is
+    // no one else's work to rewrite and the undo step stays.
     expect(useScene.getState().undoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
 
     useScene.getState().undo();
@@ -1567,13 +1567,13 @@ describe("undo/redo", () => {
     expect(useScene.getState().scene!.nodes.at("c1")).toMatchObject({ parentId: "page1" });
   });
 
-  it("una voce di REDO che ricancella un gruppo cade se un remoto ci ha messo dentro qualcosa", () => {
+  it("a REDO entry that re-deletes a group falls if a remote put something inside it", () => {
     gesture([createChildOp("g1", "page1", "a1")]);
-    gesture([deleteOp("g1")]);   // voce di undo: [createNode g1]
-    useScene.getState().undo();  // g1 torna; il redo ha "ricancellalo"
+    gesture([deleteOp("g1")]);   // undo entry: [createNode g1]
+    useScene.getState().undo();  // g1 comes back; the redo has "delete it again"
     expect(useScene.getState().redoStack.map((e) => e.map(deletedId))).toEqual([["g1"]]);
 
-    // Un altro client lavora dentro g1 mentre il redo è in coda.
+    // Another client works inside g1 while the redo is queued.
     useScene.getState().apply(createChildOp("c1", "g1", "a1"));
 
     expect(useScene.getState().redoStack).toHaveLength(0);
@@ -1586,53 +1586,53 @@ describe("undo/redo", () => {
     expect([...useScene.getState().scene!.nodes.ids()].sort()).toEqual(["c1", "g1"]);
   });
 
-  // --- la cascata remota porta via anche le DIPENDENZE, non solo i bersagli --
-  // Il confronto per bersaglio guarda il nodo che un op NOMINA. Da quando la
-  // scena è un albero, un op può dipendere da un nodo che non nomina: una
-  // createNode pretende che il proprio CONTAINER esista (ErrParentNotFound), e
-  // quel container può essere finito dentro la cascata di una delete remota
-  // senza che nessun bersaglio lo dica. Vedi requiredParent/markStale in
+  // --- the remote cascade takes away the DEPENDENCIES too, not just the targets --
+  // The comparison by target looks at the node an op NAMES. Since the
+  // scene became a tree, an op can depend on a node it does not name: a
+  // createNode requires its own CONTAINER to exist (ErrParentNotFound), and
+  // that container may have ended up inside the cascade of a remote delete
+  // without any target saying so. See requiredParent/markStale in
   // store.ts.
 
-  it("una cancellazione remota del PARENT invalida la voce che ricreerebbe il figlio", () => {
+  it("a remote deletion of the PARENT invalidates the entry that would re-create the child", () => {
     const strict = new ValidatingSync();
     useScene.getState().setSync(strict);
 
-    gesture([createChildOp("g1", "page1", "a1")]); // A: voce [deleteNode g1]
-    gesture([createChildOp("c1", "g1", "a1")]);    // B: voce [deleteNode c1]
-    gesture([deleteOp("c1")]);                     // C: voce [createNode c1 SOTTO g1]
+    gesture([createChildOp("g1", "page1", "a1")]); // A: entry [deleteNode g1]
+    gesture([createChildOp("c1", "g1", "a1")]);    // B: entry [deleteNode c1]
+    gesture([deleteOp("c1")]);                     // C: entry [createNode c1 UNDER g1]
     expect(useScene.getState().undoStack).toHaveLength(3);
     expect(useScene.getState().undoStack.flatMap(createdIds)).toEqual(["c1"]);
 
-    // Un altro client cancella il GRUPPO. La cascata, misurata sul documento su
-    // cui l'op remoto atterra, è il solo g1: c1 lì dentro non c'è già più
-    // (l'abbiamo cancellato noi), quindi nessun bersaglio dell'op remoto NOMINA
-    // c1 -- e la voce C non nomina g1 da nessuna parte.
+    // Another client deletes the GROUP. The cascade, measured on the document on
+    // which the remote op lands, is only g1: c1 is no longer in there
+    // (we deleted it), so no target of the remote op NAMES
+    // c1 -- and entry C names g1 nowhere.
     useScene.getState().apply(deleteOp("g1"));
 
-    // ...ma C ricrea c1 DENTRO g1, e g1 non esiste più: la voce non può più
-    // atterrare, quindi non deve restare sullo stack.
+    // ...but C re-creates c1 INSIDE g1, and g1 no longer exists: the entry can no longer
+    // land, so it must not stay on the stack.
     expect(useScene.getState().undoStack.flatMap(createdIds)).toEqual([]);
     for (const entry of useScene.getState().undoStack) expectParentsSatisfied(entry);
     expect(useScene.getState().notice).not.toBeNull();
 
-    // E lo stack DRENA. Senza l'invalidazione, Ctrl+Z mandava createNode c1
-    // sotto un g1 inesistente: il server rifiutava (ErrParentNotFound), il
-    // banner rosso compariva, invertOp ritornava null (nessun redo registrato)
-    // e revertHistory rimetteva C sullo stack -- il Ctrl+Z successivo la
-    // ripescava, per sempre.
+    // And the stack DRAINS. Without the invalidation, Ctrl+Z sent createNode c1
+    // under a nonexistent g1: the server rejected (ErrParentNotFound), the red
+    // banner appeared, invertOp returned null (no redo recorded)
+    // and revertHistory put C back on the stack -- the next Ctrl+Z
+    // picked it up again, forever.
     strict.sent = [];
     for (let i = 0; i < 5 && useScene.getState().canUndo; i++) useScene.getState().undo();
     expect(useScene.getState().undoStack).toEqual([]);
     expect(useScene.getState().lastError).toBeNull();
   });
 
-  // Il verso opposto della stessa regola: potare una voce SENZA causa perde in
-  // silenzio un passo di annulla dell'utente, che è un difetto pari all'altro.
-  // Solo una delete fa SPARIRE dei nodi; un reparent li lascia tutti in piedi,
-  // solo altrove, quindi ogni container che una voce pretende c'è ancora.
+  // The opposite direction of the same rule: pruning an entry WITHOUT cause silently loses
+  // an undo step of the user, which is a defect equal to the other.
+  // Only a delete makes nodes DISAPPEAR; a reparent leaves them all standing,
+  // only elsewhere, so every container an entry requires is still there.
 
-  it("un reparent REMOTO che sposta il container non invalida la voce che ricrea il figlio", () => {
+  it("a REMOTE reparent that moves the container does not invalidate the entry that re-creates the child", () => {
     const strict = new ValidatingSync();
     useScene.getState().setSync(strict);
 
@@ -1641,23 +1641,23 @@ describe("undo/redo", () => {
       createChildOp("f1", "page1", "a2"),
       createChildOp("c1", "g1", "a1"),
     ]);
-    gesture([deleteOp("c1")]); // voce: [createNode c1 sotto g1]
+    gesture([deleteOp("c1")]); // entry: [createNode c1 under g1]
 
-    // Un altro client infila g1 dentro f1: il container della voce esiste
-    // ancora, ha solo cambiato casa.
+    // Another client puts g1 inside f1: the entry's container still
+    // exists, it has just changed home.
     useScene.getState().apply(reparentOp("g1", "f1", "a1"));
 
     const stack = useScene.getState().undoStack;
     expect(stack.flatMap(createdIds)).toEqual(["c1"]);
     for (const entry of stack) expectParentsSatisfied(entry);
 
-    // ...e il Ctrl+Z ricrea c1 per davvero, sotto g1, dove g1 si trova ADESSO.
+    // ...and Ctrl+Z re-creates c1 for real, under g1, where g1 is NOW.
     useScene.getState().undo();
     expect(useScene.getState().scene!.nodes.at("c1")).toMatchObject({ parentId: "g1" });
     expect(useScene.getState().lastError).toBeNull();
   });
 
-  it("una cancellazione remota ALTROVE non tocca la voce che ricrea sotto un altro container", () => {
+  it("a remote deletion ELSEWHERE does not touch the entry that re-creates under another container", () => {
     const strict = new ValidatingSync();
     useScene.getState().setSync(strict);
 
@@ -1666,10 +1666,10 @@ describe("undo/redo", () => {
       createChildOp("g2", "page1", "a2"),
       createChildOp("c1", "g1", "a1"),
     ]);
-    gesture([deleteOp("c1")]); // voce: [createNode c1 sotto g1]
+    gesture([deleteOp("c1")]); // entry: [createNode c1 under g1]
 
-    // La cascata remota si porta via g2, che con c1 non c'entra nulla: la voce
-    // resta esattamente com'era.
+    // The remote cascade takes away g2, which has nothing to do with c1: the entry
+    // stays exactly as it was.
     useScene.getState().apply(deleteOp("g2"));
 
     expect(useScene.getState().undoStack.flatMap(createdIds)).toEqual(["c1"]);
@@ -1680,15 +1680,15 @@ describe("undo/redo", () => {
   });
 });
 
-// --- undo/redo delle AZIONI DI PAGINA --------------------------------------
-// Le pagine sono i container RADICE (un parentId può essere l'id di un nodo o
-// quello di una Page): crearle, rinominarle e cancellarle passa dallo stesso
-// percorso di gesto dei tool (PageBar -> beginGesture/endGesture), quindi vale
-// la stessa regola di tutti gli altri pannelli -- un gesto = una voce di undo.
-// La cancellazione è la più insidiosa: come deleteNode porta via a CASCATA un
-// intero sottoalbero, e senza voce di undo la pagina e i suoi nodi sparirebbero
-// per sempre.
-describe("undo/redo delle azioni di pagina", () => {
+// --- undo/redo of PAGE ACTIONS ---------------------------------------------
+// Pages are the ROOT containers (a parentId can be the id of a node or
+// that of a Page): creating, renaming and deleting them goes through the same
+// gesture path as the tools (PageBar -> beginGesture/endGesture), so the
+// same rule as all the other panels holds -- one gesture = one undo entry.
+// Deletion is the most insidious: like deleteNode it takes away a whole
+// subtree in CASCADE, and without an undo entry the page and its nodes would vanish
+// forever.
+describe("undo/redo of page actions", () => {
   let sync: FakeSync;
 
   beforeEach(() => {
@@ -1704,9 +1704,9 @@ describe("undo/redo delle azioni di pagina", () => {
     useScene.getState().setSync(sync);
   });
 
-  it("eliminare una pagina è annullabile: Ctrl+Z ripristina la pagina E i suoi nodi", () => {
+  it("deleting a page is undoable: Ctrl+Z restores the page AND its nodes", () => {
     const st = useScene.getState();
-    // page2 con 3 rettangoli, esattamente lo scenario del finding.
+    // page2 with 3 rectangles, exactly the finding's scenario.
     gesture([createPageOp("page2", "Page 2")]);
     gesture([createChildOp("r1", "page2", "a1")]);
     gesture([createChildOp("r2", "page2", "a2")]);
@@ -1717,43 +1717,43 @@ describe("undo/redo delle azioni di pagina", () => {
     expect(["r1", "r2", "r3"].every((id) => before!.nodes.at(id))).toBe(true);
     expect(useScene.getState().undoStack).toHaveLength(4);
 
-    // Elimina page2: la cascata porta via page2 e i suoi 3 nodi.
+    // Delete page2: the cascade takes away page2 and its 3 nodes.
     gesture([deletePageOp("page2")]);
     expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1"]);
     for (const id of ["r1", "r2", "r3"]) expect(useScene.getState().scene!.nodes.at(id)).toBeUndefined();
-    // La voce di undo del gesto ESISTE: prima del fix invertChain cadeva su null
-    // e il gesto non lasciava nessuna voce, mentre l'op partiva lo stesso.
+    // The gesture's undo entry EXISTS: before the fix invertChain fell to null
+    // and the gesture left no entry, while the op went out anyway.
     expect(useScene.getState().undoStack).toHaveLength(5);
 
-    // Ctrl+Z: page2 e i 3 rettangoli tornano, identici a com'erano.
+    // Ctrl+Z: page2 and the 3 rectangles come back, identical to how they were.
     st.undo();
     expect(useScene.getState().scene).toEqual(before);
     expect(useScene.getState().lastError).toBeNull();
 
-    // ...e il redo li ri-cancella (simmetria del gesto).
+    // ...and the redo deletes them again (gesture symmetry).
     st.redo();
     expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1"]);
     for (const id of ["r1", "r2", "r3"]) expect(useScene.getState().scene!.nodes.at(id)).toBeUndefined();
   });
 
-  it("l'inverso di una eliminazione ricrea la PAGINA prima dei nodi, ogni parent prima dei figli", () => {
+  it("the inverse of a deletion re-creates the PAGE before the nodes, every parent before the children", () => {
     gesture([createPageOp("page2", "Page 2")]);
     gesture([createChildOp("g1", "page2", "a1")]);
     gesture([createChildOp("c1", "g1", "a1")]);
     gesture([createChildOp("d1", "c1", "a1")]);
 
     gesture([deletePageOp("page2")]);
-    // La voce di undo è createPage + 3 createNode, in ordine parent-prima:
-    // applicandola, ogni createNode trova il proprio container già ricreato.
-    // (expectParentsSatisfied non serve qui: presuppone la pagina già presente
-    // nella scena, mentre questa voce la RICREA -- la prova che i parent reggono
-    // è il vero Ctrl+Z del test qui sopra, che ricompone la scena senza errori.)
+    // The undo entry is createPage + 3 createNode, in parent-first order:
+    // applying it, every createNode finds its own container already re-created.
+    // (expectParentsSatisfied is not needed here: it presupposes the page already present
+    // in the scene, while this entry RE-CREATES it -- the proof that the parents hold
+    // is the real Ctrl+Z of the test above, which recomposes the scene without errors.)
     const entry = useScene.getState().undoStack[useScene.getState().undoStack.length - 1];
     expect(entry[0].kind.case).toBe("createPage");
     expect(createdIds(entry)).toEqual(["g1", "c1", "d1"]);
   });
 
-  it("creare una pagina è annullabile: Ctrl+Z la rimuove", () => {
+  it("creating a page is undoable: Ctrl+Z removes it", () => {
     gesture([createPageOp("page2", "Page 2")]);
     expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1", "page2"]);
     expect(useScene.getState().undoStack).toHaveLength(1);
@@ -1766,14 +1766,14 @@ describe("undo/redo delle azioni di pagina", () => {
     expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1", "page2"]);
   });
 
-  it("rinominare una pagina è annullabile: Ctrl+Z ripristina il nome precedente", () => {
-    gesture([renamePageOp("page1", "Copertina")]);
-    expect(useScene.getState().scene!.pages[0].name).toBe("Copertina");
+  it("renaming a page is undoable: Ctrl+Z restores the previous name", () => {
+    gesture([renamePageOp("page1", "Cover")]);
+    expect(useScene.getState().scene!.pages[0].name).toBe("Cover");
 
     useScene.getState().undo();
     expect(useScene.getState().scene!.pages[0].name).toBe("Page 1");
 
     useScene.getState().redo();
-    expect(useScene.getState().scene!.pages[0].name).toBe("Copertina");
+    expect(useScene.getState().scene!.pages[0].name).toBe("Cover");
   });
 });

@@ -7,10 +7,10 @@ import { screenOf } from "../../flow/screens";
 import { assignRoutesOps, computeReadiness, setStartsOps, type Readiness, type ReadinessFix } from "../../dev/readiness";
 import type { SceneState } from "../../store/types";
 
-// Il ponte fra lo stato dell'app e la checklist pura (dev/readiness.ts). I tre
-// pannelli di Sviluppo (checklist, stepper, Spedisci) leggono lo STESSO calcolo:
-// una memoria a un posto, chiave = identità di scena e report, così il costo non
-// si triplica a ogni modifica.
+// The bridge between the app state and the pure checklist (dev/readiness.ts). The three
+// Develop panels (checklist, stepper, Ship) read the SAME computation:
+// a one-slot memo, key = scene identity and report, so the cost is not
+// tripled on every edit.
 
 let memo: { scene: SceneState; reports: unknown; value: Readiness } | null = null;
 
@@ -21,17 +21,17 @@ export function readinessFor(scene: SceneState, reports: Parameters<typeof compu
   return value;
 }
 
-/** La checklist del documento corrente; null finché non c'è un documento. */
+/** The current document's checklist; null until there is a document. */
 export function useReadiness(): Readiness | null {
   const scene = useScene((s) => s.scene);
   const reports = useAnalysis((s) => s.reports);
   const analyzed = useAnalysis((s) => s.docId);
-  // Prima risposta del server non ancora arrivata (o di un altro documento): "pending".
+  // The server's first response has not arrived yet (or belongs to another document): "pending".
   const usable = scene && analyzed === scene.id ? reports : null;
   return useMemo(() => (scene ? readinessFor(scene, usable) : null), [scene, usable]);
 }
 
-/** Porta in vista una schermata: cambia pagina se serve e la seleziona (la vista Sviluppo ne mostra il file). */
+/** Brings a screen into view: changes page if needed and selects it (the Develop view shows its file). */
 export function selectScreen(scene: SceneState, nodeId: string): void {
   const n = scene.nodes.at(nodeId);
   if (!n) return;
@@ -42,7 +42,7 @@ export function selectScreen(scene: SceneState, nodeId: string): void {
   st.setSelection([nodeId]);
 }
 
-/** Applica una correzione a un click. Gli op vanno in UN gesto: un Ctrl+Z li annulla tutti. */
+/** Applies a fix in one click. The ops go in ONE gesture: a single Ctrl+Z undoes them all. */
 export function applyFix(scene: SceneState, fix: ReadinessFix): void {
   switch (fix.kind) {
     case "assign-routes":

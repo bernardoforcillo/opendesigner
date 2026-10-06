@@ -6,30 +6,30 @@ import (
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
 
-// AUTO LAYOUT -- la metà Go (l'autorità) di web/src/store/layout.ts.
+// AUTO LAYOUT -- the Go half (the authority) of web/src/store/layout.ts.
 //
-// Un frame con `auto_layout` dispone i figli in fila. Il risultato non è uno
-// stato a parte: sono x/y dei figli (e width/height del frame, se hug) scritti
-// nel documento come qualunque altro campo, dopo OGNI op che può cambiarli. Così
-// un client che non sa nulla di auto layout -- un agente MCP, uno strumento di
-// export -- legge posizioni già giuste.
+// A frame with `auto_layout` arranges its children in a row. The result is not
+// a separate state: it is the children's x/y (and the frame's width/height, if
+// hug) written into the document like any other field, after EVERY op that can
+// change them. This way a client that knows nothing about auto layout -- an MCP
+// agent, an export tool -- reads positions that are already right.
 //
-// Le due implementazioni (Go e TS) devono dare gli STESSI numeri: sono float64
-// da entrambe le parti, quindi basta fare le stesse operazioni nello stesso
-// ordine. Due precauzioni lo rendono vero:
-//   - nessuna moltiplicazione sommata a qualcos'altro nella stessa espressione:
-//     su alcune architetture il compilatore Go può FONDERLE (FMA), cambiando
-//     l'ultimo bit rispetto a JS. Ogni prodotto passa da float64() esplicito,
-//     che per la spec vieta la fusione;
-//   - l'ordine dei figli è quello di ChildrenOf (order_key, poi id).
-// La fixture testdata/golden/auto_layout.json, eseguita da entrambi i lati, lo
-// fissa.
+// The two implementations (Go and TS) must produce the SAME numbers: they are
+// float64 on both sides, so it is enough to perform the same operations in the
+// same order. Two precautions make it true:
+//   - no multiplication summed with something else in the same expression:
+//     on some architectures the Go compiler may FUSE them (FMA), changing the
+//     last bit compared to JS. Every product goes through an explicit float64(),
+//     which the spec says forbids fusion;
+//   - the children's order is that of ChildrenOf (order_key, then id).
+// The fixture testdata/golden/auto_layout.json, executed on both sides, pins it.
 //
-// Cosa partecipa: i figli VISIBILI con una misura propria -- rettangolo,
-// ellisse, testo, immagine, vettoriale, frame. Gruppi e istanze restano dove
-// sono: i loro bounds sono derivati dai figli e non c'è una misura da disporre.
+// What participates: the VISIBLE children with a measure of their own --
+// rectangle, ellipse, text, image, vector, frame. Groups and instances stay
+// where they are: their bounds are derived from the children and there is no
+// measure to lay out.
 
-// layoutKind riporta se il nodo ha una misura propria da disporre.
+// layoutKind reports whether the node has a measure of its own to lay out.
 func participates(n *opendesignerv1.Node) bool {
 	if !n.GetVisible() {
 		return false
@@ -50,8 +50,8 @@ func autoLayoutOf(n *opendesignerv1.Node) *opendesignerv1.AutoLayout {
 	return n.GetFrame().GetAutoLayout()
 }
 
-// layoutFrame ridispone i figli di UN frame e, se hug, ne ridimensiona gli assi.
-// Non fa nulla per un nodo che non è un frame con auto layout.
+// layoutFrame re-lays-out the children of ONE frame and, if hug, resizes its axes.
+// It does nothing for a node that is not a frame with auto layout.
 func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 	frame := doc.GetNodes()[id]
 	al := autoLayoutOf(frame)
@@ -69,8 +69,8 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 		}
 	}
 
-	// Gli assi nello spazio del frame: "main" è quello della direzione.
-	// padMain*/padCross* sono i margini lungo ciascun asse.
+	// The axes in the frame's space: "main" is the one of the direction.
+	// padMain*/padCross* are the margins along each axis.
 	padL, padT, padR, padB := al.GetPaddingLeft(), al.GetPaddingTop(), al.GetPaddingRight(), al.GetPaddingBottom()
 	var padMainStart, padMainEnd, padCrossStart, padCrossEnd float64
 	var hugMain, hugCross bool
@@ -132,8 +132,8 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_END:
 		pos = padMainStart + free
 	case opendesignerv1.LayoutAlign_LAYOUT_ALIGN_SPACE_BETWEEN:
-		// Con meno di due figli non c'è fra cosa distribuire: resta a inizio.
-		// Se lo spazio non basta (free < 0) non si comprime sotto `spacing`.
+		// With fewer than two children there is nothing to distribute between: it stays at the start.
+		// If the space is not enough (free < 0) it does not compress below `spacing`.
 		if len(kids) > 1 && free > 0 {
 			step = spacing + free/float64(len(kids)-1)
 		}
@@ -156,11 +156,11 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 	}
 }
 
-// layoutTargets elenca i frame il cui layout può cambiare per effetto di `op`,
-// letti dallo stato `doc` (che per questo si interroga PRIMA e DOPO l'op: un
-// nodo cancellato o spostato lascia il vecchio parent solo nello stato di
-// prima). Può contenere id che non sono frame con auto layout o che non
-// esistono più: layoutFrame li ignora.
+// layoutTargets lists the frames whose layout may change because of `op`,
+// read from state `doc` (which is therefore queried BEFORE and AFTER the op: a
+// deleted or moved node leaves the old parent only in the state from
+// before). It may contain ids that are not frames with auto layout or that no
+// longer exist: layoutFrame ignores them.
 func layoutTargets(doc *opendesignerv1.Document, op *opendesignerv1.Op) []string {
 	parentOf := func(id string) []string {
 		if n := doc.GetNodes()[id]; n != nil {
@@ -184,12 +184,12 @@ func layoutTargets(doc *opendesignerv1.Document, op *opendesignerv1.Op) []string
 	return nil
 }
 
-// relayout ridispone i frame toccati e risale: un frame che cambia misura (hug)
-// sposta i suoi fratelli, quindi il layout del suo parent va rifatto, e così via
-// finché il parent non è un frame con auto layout.
+// relayout re-lays-out the touched frames and climbs up: a frame that changes size (hug)
+// moves its siblings, so its parent's layout must be redone, and so on
+// until the parent is not a frame with auto layout.
 //
-// Ordine: dal PIÙ PROFONDO. Un frame hug dentro un altro deve avere la misura
-// giusta PRIMA che il contenitore la legga.
+// Order: from the DEEPEST. A hug frame inside another must have the right
+// measure BEFORE the container reads it.
 func relayout(doc *opendesignerv1.Document, ids []string, cow *Shared) {
 	seen := map[string]bool{}
 	depth := func(id string) int {
@@ -206,7 +206,7 @@ func relayout(doc *opendesignerv1.Document, ids []string, cow *Shared) {
 			frames = append(frames, id)
 		}
 	}
-	// Anche gli antenati con auto layout: la misura di un hug li riguarda.
+	// Also the ancestors with auto layout: a hug's measure affects them.
 	for _, id := range append([]string(nil), frames...) {
 		cur := doc.GetNodes()[id]
 		for guard := 0; cur != nil && guard <= len(doc.GetNodes()); guard++ {

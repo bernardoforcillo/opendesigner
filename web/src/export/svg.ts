@@ -6,41 +6,41 @@ import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
 
-// EXPORT SVG — markup a partire dai NODI.
+// SVG EXPORT — markup from the NODES.
 //
-// Funzione pura: nodi dentro, testo fuori. Nessun DOM, nessun canvas, nessuna
-// camera. È la ragione per cui la correttezza dell'export SVG è verificabile a
-// tavolino, mentre quella del PNG richiede dei pixel.
+// Pure function: nodes in, text out. No DOM, no canvas, no
+// camera. It is the reason the correctness of the SVG export is verifiable on
+// paper, while that of the PNG requires pixels.
 //
-// Il testo esce come <text> VERO e non come tracciato: un testo convertito in
-// path non è più né selezionabile né modificabile né cercabile in nessuno
-// strumento a valle, e l'unico vantaggio (l'indipendenza dal font installato)
-// non vale quella perdita in un editor di design.
+// Text comes out as a REAL <text> and not as a path: text converted to
+// a path is no longer selectable, editable or searchable in any
+// downstream tool, and the only advantage (independence from the installed font)
+// is not worth that loss in a design editor.
 
-// La misura del testo è un PARAMETRO e non un dettaglio interno perché misurare
-// i glifi richiede un contesto 2D: in produzione arriva da un canvas (vedi
-// export/exportScene.ts), così l'andata a capo dell'SVG è ESATTAMENTE quella del
-// canvas; nei test arriva una misura finta e deterministica. Il tipo sta in
-// renderer/text.ts (lo condivide con export/region.ts) e si ri-esporta da qui
-// perché è parte della firma di nodesToSvg.
+// The text measure is a PARAMETER and not an internal detail because measuring
+// glyphs requires a 2D context: in production it comes from a canvas (see
+// export/exportScene.ts), so the SVG's wrapping is EXACTLY the
+// canvas's; in tests a fake, deterministic measure comes in. The type lives in
+// renderer/text.ts (it shares it with export/region.ts) and is re-exported from here
+// because it is part of nodesToSvg's signature.
 export type { MeasureText };
 
-// Cifre decimali tenute nel markup. 3 sono ampiamente sotto il pixel a ogni
-// scala ragionevole, e tolgono di mezzo le code della virgola mobile
-// (0.1 + 0.2 non deve finire nel file come 0.30000000000000004).
+// Decimal digits kept in the markup. 3 is amply below a pixel at every
+// reasonable scale, and removes floating-point tails
+// (0.1 + 0.2 must not end up in the file as 0.30000000000000004).
 const DECIMALS = 3;
 
 function fmt(v: number): string {
   if (!Number.isFinite(v)) return "0";
   const p = 10 ** DECIMALS;
-  // + 0 normalizza lo zero negativo: Math.round(-0.0001 * p) / p è -0, e
-  // String(-0) è "-0", che è valido ma è rumore in un file di testo.
+  // + 0 normalizes negative zero: Math.round(-0.0001 * p) / p is -0, and
+  // String(-0) is "-0", which is valid but is noise in a text file.
   return String(Math.round(v * p) / p + 0);
 }
 
-// I cinque caratteri che in XML non possono comparire come sé stessi. Si
-// escapano anche negli attributi e non solo nel contenuto: `font-family` arriva
-// dal modello, quindi da una stringa che l'utente può scrivere.
+// The five characters that cannot appear as themselves in XML. They are
+// escaped in attributes too and not only in content: `font-family` comes
+// from the model, so from a string the user can write.
 function esc(s: string): string {
   return s
     .replace(/&/g, "&amp;")
@@ -51,9 +51,9 @@ function esc(s: string): string {
 }
 
 function channel(v: number): number {
-  // Il clamp non serve ai valori del modello (RGBA float 0..1) ma protegge il
-  // FILE: un rgb() fuori scala è markup invalido, e un documento che non si
-  // apre è peggio di un colore approssimato.
+  // The clamp is not needed for the model's values (RGBA float 0..1) but protects
+  // the FILE: an out-of-range rgb() is invalid markup, and a document that does not
+  // open is worse than an approximated color.
   return Math.round(Math.min(1, Math.max(0, v)) * 255);
 }
 
@@ -70,26 +70,26 @@ function attr(name: string, value: string | number): Attr {
   return { name, value: typeof value === "number" ? fmt(value) : esc(value) };
 }
 
-// Gli attributi di riempimento di un nodo: colore, alfa della tinta e opacità
-// del nodo.
+// A node's fill attributes: color, tint alpha and node
+// opacity.
 //
-// Sono TRE cose distinte e restano distinte, come nel modello e come nel
-// canvas: `fill-opacity` è l'alfa della tinta e `opacity` è quella del nodo, e
-// il visualizzatore le moltiplica esattamente come ctx moltiplica globalAlpha
-// per l'alfa di fillStyle. Le due opacità si omettono quando valgono 1, che è
-// il loro valore di default in SVG: attributi neutri in ogni elemento sono solo
-// rumore in un file che qualcuno leggerà.
+// They are THREE distinct things and stay distinct, as in the model and in the
+// canvas: `fill-opacity` is the tint's alpha and `opacity` is the node's, and
+// the viewer multiplies them exactly as ctx multiplies globalAlpha
+// by fillStyle's alpha. The two opacities are omitted when they are 1, which is
+// their default value in SVG: neutral attributes on every element are just
+// noise in a file someone will read.
 function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   const opacity = n.opacity === 1 ? null : attr("opacity", n.opacity);
-  // Un frame senza riempimento è trasparente (come nel canvas), non grigio: il
-  // grigio di default di resolvedFill è per le forme.
+  // A frame without a fill is transparent (as in the canvas), not gray: the
+  // default gray of resolvedFill is for shapes.
   if (n.kind === "frame" && n.fills.length === 0) {
     const fx = effectsRef(n, defs);
     return [fx === null ? null : attr("filter", fx), attr("fill", "none"), opacity];
   }
   const f = resolvedFill(n);
-  // Il gradiente prima dell'effetto: gli id in <defs> seguono l'ordine di
-  // creazione, e un file stabile è più facile da leggere e da confrontare.
+  // The gradient before the effect: ids in <defs> follow the order of
+  // creation, and a stable file is easier to read and to compare.
   const ref = gradientRef(n, f, defs);
   const fx = effectsRef(n, defs);
   return [
@@ -100,17 +100,17 @@ function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   ];
 }
 
-// Gli effetti diventano UN <filter> in <defs>: la prima ombra (feDropShadow) e
-// poi la prima sfocatura (feGaussianBlur), nello stesso ordine in cui il canvas
-// li applica -- la sfocatura vale anche per l'ombra. Come nel canvas, il
-// renderer sceglie la prima ombra e la prima sfocatura del nodo
+// Effects become ONE <filter> in <defs>: the first shadow (feDropShadow) and
+// then the first blur (feGaussianBlur), in the same order in which the canvas
+// applies them -- the blur applies to the shadow too. As in the canvas, the
+// renderer picks the node's first shadow and first blur
 // (renderer/canvasRenderer.ts::firstShadow).
 //
-// `blur` dell'ombra è il raggio del canvas 2D, di cui la deviazione standard è
-// la metà (feDropShadow vuole la deviazione); `radius` della sfocatura è già una
-// deviazione standard. La regione del filtro è in coordinate del documento,
-// larga abbastanza da contenere offset e sfocatura: il default (-10%/120%)
-// ritaglierebbe un'ombra distante.
+// The shadow's `blur` is the canvas 2D radius, whose standard deviation is
+// half of it (feDropShadow wants the deviation); the blur's `radius` is already a
+// standard deviation. The filter region is in document coordinates,
+// wide enough to contain offset and blur: the default (-10%/120%)
+// would crop a distant shadow.
 function effectsRef(n: NodeLite, defs: string[]): string | null {
   const shadow = firstShadow(n);
   const blur = firstBlur(n);
@@ -137,11 +137,11 @@ function effectsRef(n: NodeLite, defs: string[]): string | null {
   return `url(#${id})`;
 }
 
-// Un gradiente diventa un <linearGradient>/<radialGradient> in <defs>, con le
-// stesse coordinate MONDO che il canvas calcola in renderer/canvasRenderer.ts::
-// paintStyle (userSpaceOnUse): niente bbox, quindi nessuna deformazione. Ritorna
-// il riferimento `url(#id)` da mettere in `fill`, oppure null per le tinte
-// piatte e per i gradienti degeneri (stessi casi del canvas).
+// A gradient becomes a <linearGradient>/<radialGradient> in <defs>, with the
+// same WORLD coordinates that the canvas computes in renderer/canvasRenderer.ts::
+// paintStyle (userSpaceOnUse): no bbox, hence no deformation. It returns
+// the `url(#id)` reference to put in `fill`, or null for flat tints
+// and for degenerate gradients (same cases as the canvas).
 function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
   const g = f.gradient;
   if (!g || g.stops.length < 2) return null;
@@ -165,9 +165,9 @@ function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
   return `url(#${id})`;
 }
 
-// Il TRATTO di un nodo: il primo con peso positivo (come il canvas ne disegna
-// uno per strokes[i], ma l'SVG ne ha uno solo per elemento). Solo allineamento
-// centrato: è l'unico che SVG sa esprimere senza ritagli.
+// A node's STROKE: the first with positive weight (as the canvas draws
+// one per strokes[i], but SVG has only one per element). Only centered
+// alignment: it is the only one SVG can express without clips.
 function strokeAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   const s = n.strokes.find((st) => st.weight > 0);
   if (!s) return [];
@@ -185,9 +185,9 @@ function strokeAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   ];
 }
 
-// Un vettoriale come <path>. Il canvas riempie SOLO i contorni chiusi, mentre
-// SVG riempie anche gli aperti (chiudendoli): per restare identici i contorni
-// aperti vanno in un <path> a parte, senza riempimento.
+// A vector as <path>. The canvas fills ONLY closed outlines, while
+// SVG also fills open ones (closing them): to stay identical open
+// outlines go in a separate <path>, without a fill.
 function vectorElement(n: NodeLite, defs: string[]): string {
   const subs = n.vector?.subpaths ?? [];
   const vs = vectorStyleOf(n);
@@ -209,10 +209,10 @@ function vectorElement(n: NodeLite, defs: string[]): string {
 }
 
 function rectElement(n: NodeLite, defs: string[]): string {
-  // Il raggio si clampa a metà del lato più corto, come fa CanvasRenderingContext2D
-  // .roundRect: senza, la stessa forma verrebbe disegnata in modo diverso dal
-  // canvas e dal visualizzatore SVG. (Anche la specifica SVG clampa rx, ma
-  // scriverlo esplicitamente rende il file indipendente da quel dettaglio.)
+  // The radius is clamped to half the shorter side, as CanvasRenderingContext2D
+  // .roundRect does: without it, the same shape would be drawn differently by the
+  // canvas and by the SVG viewer. (The SVG spec also clamps rx, but
+  // writing it explicitly makes the file independent of that detail.)
   const r = Math.min(n.cornerRadius, n.width / 2, n.height / 2);
   return `<rect${attrs([
     attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height),
@@ -231,15 +231,15 @@ function ellipseElement(n: NodeLite, defs: string[]): string {
   ])}/>`;
 }
 
-// Il testo: un <text> con un <tspan> per riga, ognuno con la SUA x e y assolute.
+// Text: a <text> with a <tspan> per line, each with ITS OWN absolute x and y.
 //
-// Le righe (contenuto, andata a capo, allineamento, baseline) le calcola
-// placeTextLines, cioè la stessa funzione che usa il canvas: il testo
-// esportato sta dove sta quello disegnato, per costruzione.
+// The lines (content, wrapping, alignment, baseline) are computed by
+// placeTextLines, that is the same function the canvas uses: the exported
+// text sits where the drawn one sits, by construction.
 //
-// Ritorna "" per un testo vuoto -- il canvas in quel caso non disegna niente
-// (drawText esce subito), e un <text> vuoto nel file sarebbe un elemento in
-// più che non rappresenta nulla.
+// Returns "" for an empty text -- the canvas in that case draws nothing
+// (drawText exits immediately), and an empty <text> in the file would be one more
+// element that represents nothing.
 function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string {
   const style = n.text?.style;
   if (!style) return "";
@@ -248,10 +248,10 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
   const spans = lines
     .map((l) => `<tspan${attrs([attr("x", l.x), attr("y", l.y)])}>${esc(l.text)}</tspan>`)
     .join("");
-  // xml:space="preserve" serve agli spazi INIZIALI di una riga, che il canvas
-  // disegna e che l'SVG altrimenti collasserebbe. Il prezzo è che ogni spazio
-  // bianco DENTRO <text> diventa disegnato: per questo i tspan sono attaccati
-  // l'uno all'altro, senza a capo né rientri.
+  // xml:space="preserve" serves a line's LEADING spaces, which the canvas
+  // draws and which SVG would otherwise collapse. The price is that every whitespace
+  // INSIDE <text> becomes drawn: that is why the tspans are attached
+  // to one another, with no newlines or indentation.
   return `<text${attrs([
     attr("font-family", fontFamilyOf(style)),
     attr("font-size", fontSizeOf(style)),
@@ -261,31 +261,31 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
 }
 
 /**
- * Da un hash di asset all'URI da scrivere nell'href, oppure null quando i byte
- * non sono raggiungibili.
+ * From an asset hash to the URI to write in the href, or null when the bytes
+ * are not reachable.
  *
- * In produzione è un `data:` (vedi export/exportScene.ts): un SVG che
- * riferisse `/assets-api/...` sarebbe rotto appena il file esce da questa
- * macchina, cioè sempre, visto che esportare vuol dire proprio mandarlo
- * altrove.
+ * In production it is a `data:` (see export/exportScene.ts): an SVG that
+ * referenced `/assets-api/...` would be broken as soon as the file leaves this
+ * machine, that is always, since exporting means precisely sending it
+ * elsewhere.
  */
 export type ResolveImageHref = (assetHash: string) => string | null;
 
-// I colori del segnaposto. Sono di proposito gli stessi valori del segnaposto
-// del canvas (renderer/canvasRenderer.ts): un'immagine mancante deve avere lo
-// stesso aspetto sullo schermo e nel file.
+// The placeholder's colors. They are on purpose the same values as the canvas's
+// placeholder (renderer/canvasRenderer.ts): a missing image must look
+// the same on screen and in the file.
 const PLACEHOLDER_FILL = "rgb(0,0,0)";
 const PLACEHOLDER_FILL_OPACITY = 0.06;
 const PLACEHOLDER_LINE = "rgb(0,0,0)";
 const PLACEHOLDER_LINE_OPACITY = 0.35;
 
-// Un'immagine che c'è: <image> sul box del nodo.
+// An image that is there: <image> on the node's box.
 //
-// `preserveAspectRatio="none"` non è un dettaglio: il canvas disegna con
-// `drawImage` a quattro coordinate, cioè TIRA l'immagine sul box del nodo,
-// mentre il default SVG ("xMidYMid meet") la adatterebbe dentro lasciando dei
-// margini. Senza questo attributo lo stesso documento avrebbe due aspetti
-// diversi a seconda di dove lo si guarda.
+// `preserveAspectRatio="none"` is not a detail: the canvas draws with
+// `drawImage` with four coordinates, that is it STRETCHES the image onto the node's box,
+// while the SVG default ("xMidYMid meet") would fit it inside leaving
+// margins. Without this attribute the same document would have two different looks
+// depending on where it is viewed.
 function imageElement(n: NodeLite, href: string, defs: string[]): string {
   const fx = effectsRef(n, defs);
   return `<image${attrs([
@@ -297,13 +297,13 @@ function imageElement(n: NodeLite, href: string, defs: string[]): string {
   ])}/>`;
 }
 
-// Un'immagine che NON c'è: lo stesso segnaposto del canvas -- rettangolo
-// tenue, bordo, croce -- invece del <rect> grigio in cui cadeva prima.
+// An image that is NOT there: the same placeholder as the canvas -- faint rectangle,
+// border, cross -- instead of the gray <rect> it used to fall into.
 //
-// Un rettangolo pieno sarebbe la forma sbagliata due volte: non dice che lì
-// c'era un'immagine, e si confonde con un rettangolo VERO che l'utente ha
-// disegnato. Lo spessore del tratto è in unità del documento (un SVG non ha uno
-// zoom da cui dedurre un pixel) e resta sottile su qualunque figura.
+// A solid rectangle would be the wrong shape twice: it does not say that an image
+// was there, and it is confused with a REAL rectangle the user drew.
+// The stroke thickness is in document units (an SVG has no zoom from which to infer a
+// pixel) and stays thin on any figure.
 function imagePlaceholderElement(n: NodeLite): string {
   const w = n.width;
   const h = n.height;
@@ -334,24 +334,24 @@ function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs
 }
 
 /**
- * Il markup SVG di `nodes` dentro la regione `bounds`.
+ * The SVG markup of `nodes` inside the region `bounds`.
  *
- * `nodes` arriva già filtrato e ORDINATO (dal fondo alla cima) da
- * export/region.ts: l'ordine degli elementi in un SVG è l'ordine di
- * sovrapposizione, quindi è lo stesso di quello del canvas.
+ * `nodes` arrives already filtered and ORDERED (from bottom to top) by
+ * export/region.ts: the order of elements in an SVG is the stacking
+ * order, so it is the same as the canvas's.
  *
- * `bounds` finisce nel viewBox e NON nelle coordinate: i nodi restano scritti
- * con le coordinate del modello, e a spostare l'origine ci pensa il viewBox. È
- * il motivo per cui un export non porta dentro nessuna traccia di dove fosse la
- * camera -- e per cui il file resta leggibile accanto al documento.
+ * `bounds` ends up in the viewBox and NOT in the coordinates: nodes stay written
+ * with the model's coordinates, and moving the origin is the viewBox's job. It is
+ * the reason an export carries no trace of where the camera was
+ * -- and why the file stays readable next to the document.
  */
 export function nodesToSvg(
   nodes: readonly NodeLite[],
   bounds: Bounds,
   measure: MeasureText,
-  // Il default è "nessun asset risolvibile", cioè il segnaposto: un chiamante
-  // che si dimentica di passare il risolutore ottiene un file ONESTO invece di
-  // uno che riferisce URL locali destinati a rompersi altrove.
+  // The default is "no resolvable asset", that is the placeholder: a caller
+  // who forgets to pass the resolver gets an HONEST file instead of
+  // one that references local URLs destined to break elsewhere.
   href: ResolveImageHref = () => null,
 ): string {
   const defs: string[] = [];

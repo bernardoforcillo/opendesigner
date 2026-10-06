@@ -7,17 +7,17 @@ import { useScene } from "../store/store";
 import type { SceneState } from "../store/types";
 import type { Tool, ToolContext } from "./types";
 
-// "COLLEGA" (tasto K). Si trascina da una schermata (un frame di primo livello)
-// a un'altra: al rilascio nasce una transizione `click` nel flusso corrente.
-// Partire da un ELEMENTO dentro la schermata (un bottone) lo fa diventare
-// l'hotspot (`elementId`) della transizione; `fromId` è sempre la sua schermata.
+// "CONNECT" (K key). Drag from one screen (a top-level frame)
+// to another: on release a `click` transition is born in the current flow.
+// Starting from an ELEMENT inside the screen (a button) makes it the
+// hotspot (`elementId`) of the transition; `fromId` is always its screen.
 //
-// Tutto ciò che si vede durante il drag (il rubber band) è stato di vista in
-// useFlowUi.connectPreview, come la marquee di shapeTool: non è documento. L'unico
-// op arriva al rilascio, in UN gesto -- compresa l'eventuale creazione del primo
-// flusso ("Flusso 1") e dell'ingresso -- così un solo Ctrl+Z annulla tutto.
+// Everything shown during the drag (the rubber band) is view state in
+// useFlowUi.connectPreview, like the marquee of shapeTool: it is not document. The only
+// op arrives on release, in ONE gesture -- including the possible creation of the first
+// flow ("Flow 1") and of the entry -- so a single Ctrl+Z undoes everything.
 
-// Sotto questa distanza (px SCHERMO) un drag è un click: nessuna transizione.
+// Under this distance (SCREEN px) a drag is a click: no transition.
 const CLICK_SLOP_PX = 4;
 
 function screenAt(scene: SceneState, ctx: ToolContext, x: number, y: number): string | null {
@@ -49,7 +49,7 @@ export function createConnectTool(): Tool {
       const fromNode = scene.nodes.at(src.elementId || src.screenId);
       if (!fromNode) return;
       drag = { ...src, sx: e.clientX, sy: e.clientY, moved: false };
-      // Il primo frame del rubber band: nasce dal punto di partenza.
+      // The first frame of the rubber band: it starts at the starting point.
       useFlowUi.getState().setConnectPreview({
         fromScreenId: src.screenId,
         elementId: src.elementId,
@@ -79,8 +79,8 @@ export function createConnectTool(): Tool {
       const w = ctx.toWorld(e);
       const target = screenAt(scene, ctx, w.x, w.y);
       if (!target) return;
-      // Una schermata verso se stessa ha senso solo da un elemento ("ricarica",
-      // "apri il menu"): senza hotspot sarebbe un anello inutile.
+      // A screen towards itself only makes sense from an element ("reload",
+      // "open the menu"): without a hotspot it would be a useless loop.
       if (target === d.screenId && d.elementId === "") return;
       const ui = useFlowUi.getState();
       const r = connectOps(scene, ui.currentFlowId, d.screenId, target, d.elementId);
@@ -93,7 +93,7 @@ export function createConnectTool(): Tool {
       if (e.key === "Escape" && drag) clear();
     },
 
-    // Cambio tool, pointercancel, smontaggio: il gesto a metà si abbandona.
+    // Tool change, pointercancel, unmount: the half-done gesture is abandoned.
     onDeactivate() {
       if (drag) clear();
     },

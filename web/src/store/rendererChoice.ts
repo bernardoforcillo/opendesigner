@@ -1,18 +1,18 @@
 import { create } from "zustand";
 
-// Qual è il renderer della scena. È una PREFERENZA dell'utente e uno stato di
-// vista: non è documento e non passa dagli op, quindi sta in uno store a parte
-// (come la presenza).
+// Which renderer draws the scene. It is a USER PREFERENCE and a view state:
+// it is not document, and does not go through ops, so it lives in a separate store
+// (like presence).
 //
-//  - "cpu": Canvas 2D (renderer/canvasRenderer.ts). Il predefinito: usa i font del
-//    sistema e non scarica niente.
-//  - "gpu": CanvasKit su WebGL (renderer/ck). Si carica a richiesta (~7 MB di
-//    WebAssembly) e disegna il testo con Inter.
+//  - "cpu": Canvas 2D (renderer/canvasRenderer.ts). The default: it uses system
+//    fonts and downloads nothing.
+//  - "gpu": CanvasKit on WebGL (renderer/ck). Loaded on demand (~7 MB of
+//    WebAssembly) and draws text with Inter.
 //
-// `status` dice cosa sta DAVVERO disegnando, che può differire dalla scelta: la
-// GPU si sta ancora caricando ("loading") o ha fallito ("error", e si disegna in
-// CPU). `frameMs` è il tempo dell'ultimo disegno, per confrontare i due sulla
-// propria macchina -- è l'unico modo onesto di sapere quale è più veloce lì.
+// `status` says what is ACTUALLY drawing, which may differ from the choice: the
+// GPU is still loading ("loading") or has failed ("error", and drawing falls back to
+// CPU). `frameMs` is the time of the last draw, to compare the two on
+// your own machine -- it is the only honest way to know which is faster there.
 export type RendererChoice = "cpu" | "gpu";
 export type RendererStatus = "cpu" | "loading" | "gpu" | "error";
 
@@ -24,7 +24,7 @@ export function loadRendererChoice(): RendererChoice {
     if (q === "gpu" || q === "cpu") return q;
     const saved = localStorage.getItem(KEY);
     if (saved === "gpu" || saved === "cpu") return saved;
-  } catch { /* storage non disponibile: predefinito */ }
+  } catch { /* storage unavailable: default */ }
   return "cpu";
 }
 

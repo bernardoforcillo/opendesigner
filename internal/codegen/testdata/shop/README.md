@@ -1,48 +1,48 @@
-# Negozio
+# Shop
 
-<!-- Esportato da opendesigner (opendesigner export): README del documento "Negozio" (shop). NON modificare a mano:
-rigenerare con `opendesigner export`. L'attributo data-node-id lega ogni elemento al nodo del design. -->
+<!-- Exported by opendesigner (opendesigner export): README of document "Shop" (shop). DO NOT edit by hand:
+regenerate with `opendesigner export`. The data-node-id attribute ties every element to its design node. -->
 
-Progetto React + TypeScript + Tailwind v4 generato dal design con `opendesigner export`.
+React + TypeScript + Tailwind v4 project generated from the design with `opendesigner export`.
 
-## Come si avvia
+## Getting started
 
 ```sh
 npm install
 npm run dev      # http://localhost:5173
-npm run build    # controllo dei tipi + build di produzione
-npx playwright install chromium   # solo la prima volta
-npm test         # i test e2e generati dai flussi (playwright test)
+npm run build    # type check + production build
+npx playwright install chromium   # first time only
+npm test         # the e2e tests generated from the flows (playwright test)
 ```
 
-## Come il design diventa codice
+## How the design becomes code
 
-- Ogni **schermata** (frame di primo livello) è un componente in `src/screens/<Nome>.tsx`; `src/App.tsx` ne monta le rotte (`meta["code.route"]` del frame, altrimenti lo slug del nome). La schermata iniziale del flusso è montata anche su `/`.
-- **Auto layout** -> flexbox (`flex`, `gap`, `padding`, `justify-*`, `items-*`); tutto il resto è posizionato in modo assoluto (`absolute left-[..] top-[..]`) dentro il contenitore, con le coordinate del design. `hug` -> `fit-content`.
-- Riempimenti, tratti (interno/centro/esterno -> anelli di `box-shadow`), ombre, sfocature, rotazione, ritaglio, testo e vettori seguono **ciò che disegna il canvas dell'editor** (primo riempimento, prima ombra, prima sfocatura).
-- Le **immagini** sono copiate in `public/assets/<hash>.<ext>`; se mancano compare il segnaposto del canvas.
-- Ogni elemento porta `data-node-id="<id del nodo>"`: è il legame fra il design e il codice.
-- Le **istanze** dei componenti sono espanse inline (non c'è ancora l'estrazione in componenti React).
-- Le schermate hanno dimensione fissa (niente responsive).
+- Each **screen** (top-level frame) is a component in `src/screens/<Name>.tsx`; `src/App.tsx` mounts its routes (the frame's `meta["code.route"]`, otherwise the name's slug). The flow's start screen is also mounted on `/`.
+- **Auto layout** -> flexbox (`flex`, `gap`, `padding`, `justify-*`, `items-*`); everything else is positioned absolutely (`absolute left-[..] top-[..]`) inside the container, using the design's coordinates. `hug` -> `fit-content`.
+- Fills, strokes (inside/center/outside -> `box-shadow` rings), shadows, blurs, rotation, clipping, text and vectors follow **what the editor's canvas draws** (first fill, first shadow, first blur).
+- **Images** are copied to `public/assets/<hash>.<ext>`; if missing, the canvas placeholder appears.
+- Every element carries `data-node-id="<node id>"`: it is the link between the design and the code.
+- Component **instances** are expanded inline (there is no extraction into React components yet).
+- Screens have a fixed size (no responsiveness).
 
-## Flussi e test
+## Flows and tests
 
-Per ogni transizione l'elemento che la innesca (`elementId`) è cliccabile (`onClick` -> `navigate(...)`, `role="button"`, `aria-label` = etichetta, `data-testid` dal meta `test.id`). Le transizioni senza elemento sono pulsanti visivamente nascosti in un `<nav>` trasparente (1px, in alto a sinistra). Le righe `// flow: <id>`, `// guard:` e `// effect:` indicano la transizione del design.
+For each transition, the element that fires it (`elementId`) is clickable (`onClick` -> `navigate(...)`, `role="button"`, `aria-label` = label, `data-testid` from the `test.id` meta). Transitions without an element are visually hidden buttons in a transparent `<nav>` (1px, top-left). The `// flow: <id>`, `// guard:` and `// effect:` lines indicate the design's transition.
 
-`tests/flows.spec.ts` è prodotto da `opendesigner flow tests` e percorre tutti i percorsi dei flussi con Playwright.
+`tests/flows.spec.ts` is produced by `opendesigner flow tests` and walks all the flows' paths with Playwright.
 
-## Schermate
+## Screens
 
-| Componente | Rotta | Nodo del design |
+| Component | Route | Design node |
 |---|---|---|
 | `Login` | `/login` | `login` (Login) |
 | `Home` | `/home` | `home` (Home) |
-| `Dettaglio` | `/dettaglio` | `detail` (Dettaglio) |
+| `Detail` | `/detail` | `detail` (Detail) |
 
-## Rigenerare
+## Regenerating
 
 ```sh
 opendesigner export -doc shop -target react -out . -force
 ```
 
-I file generati non vanno modificati a mano: la prossima esportazione li sovrascrive. Per far evolvere il progetto a mano, esporta una volta e da lì in poi lavora sul codice (la rigenerazione non fa merge).
+The generated files must not be edited by hand: the next export overwrites them. To evolve the project by hand, export once and work on the code from then on (regeneration does not merge).

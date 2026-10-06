@@ -1,13 +1,13 @@
-# immagine pubblicata su Docker Hub: docker compose up -d
-# (per aggiornarla: docker compose pull). Per compilare dai sorgenti: compose.dev.yaml
+# image published on Docker Hub: docker compose up -d
+# (to update it: docker compose pull). To build from source: compose.dev.yaml
 services:
   opendesigner:
     image: bernardoforcillo/opendesigner:latest
-    # la porta pubblicata ascolta su tutte le interfacce dell'host:
-    # il servizio è raggiungibile anche dalla rete locale
+    # the published port listens on all of the host's interfaces:
+    # the service is also reachable from the local network
     ports:
       - "${OPENDESIGNER_PORT:-51234}:${OPENDESIGNER_PORT:-51234}"
-    # gira con l'utente dell'host, così può scrivere nella cartella montata
+    # runs as the host's user, so it can write to the mounted directory
     user: "${OPENDESIGNER_UID:-1000}:${OPENDESIGNER_GID:-1000}"
     entrypoint:
       - /opendesigner

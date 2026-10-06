@@ -4,8 +4,8 @@ import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
 import type { Camera } from "../canvas/camera";
 import { emptyScene, type NodeLite } from "../store/types";
 
-// Lo stile extra dei nodi vettoriali (import SVG): capi/giunti/tratteggio e
-// regola di riempimento in `meta`, tratto vero da `strokes`.
+// The extra style of vector nodes (SVG import): caps/joins/dashing and
+// fill rule in `meta`, real stroke from `strokes`.
 
 class FakePath2D {
   moveTo() {}
@@ -35,7 +35,7 @@ function node(over: Partial<NodeLite> = {}): NodeLite {
   };
 }
 
-// Un contesto che registra le assegnazioni alle proprietà e le chiamate.
+// A context that records property assignments and calls.
 function recorder() {
   const calls: { fn: string; args: unknown[]; state: Record<string, unknown> }[] = [];
   const state: Record<string, unknown> = {};
@@ -70,12 +70,12 @@ function draw(n: NodeLite) {
 }
 
 describe("vectorStyleOf", () => {
-  it("senza meta: i default storici (even-odd lo decide il renderer, filo acceso)", () => {
+  it("without meta: the historical defaults (even-odd is decided by the renderer, hairline on)", () => {
     expect(vectorStyleOf({})).toEqual({
       fillRule: null, hairline: true, cap: "butt", join: "miter", miter: 10, dash: [], dashOffset: 0,
     });
   });
-  it("legge tutte le chiavi e ignora i valori sconosciuti", () => {
+  it("reads all the keys and ignores unknown values", () => {
     expect(vectorStyleOf({
       meta: {
         "vector.fillRule": "nonzero", "vector.hairline": "0", "stroke.cap": "round", "stroke.join": "bevel",
@@ -85,10 +85,10 @@ describe("vectorStyleOf", () => {
     expect(vectorStyleOf({ meta: { "vector.fillRule": "boh", "stroke.cap": "x", "stroke.join": "y", "stroke.miter": "abc", "stroke.dash": "a,b" } }))
       .toEqual({ fillRule: null, hairline: true, cap: "butt", join: "miter", miter: 10, dash: [], dashOffset: 0 });
   });
-  it("un tratteggio di soli zeri non esiste", () => {
+  it("a dash of only zeros does not exist", () => {
     expect(vectorStyleOf({ meta: { "stroke.dash": "0,0" } }).dash).toEqual([]);
   });
-  it("hasRealStroke: serve un peso positivo", () => {
+  it("hasRealStroke: needs a positive weight", () => {
     const s = { color: { r: 0, g: 0, b: 0, a: 1 }, align: "center" as const };
     expect(hasRealStroke({ strokes: [] })).toBe(false);
     expect(hasRealStroke({ strokes: [{ ...s, weight: 0 }] })).toBe(false);
@@ -96,26 +96,26 @@ describe("vectorStyleOf", () => {
   });
 });
 
-describe("drawVector con stile", () => {
-  it("la regola di riempimento viene dai meta (nonzero) e di default è even-odd", () => {
+describe("drawVector with style", () => {
+  it("the fill rule comes from meta (nonzero) and defaults to even-odd", () => {
     const a = draw(node()).find((c) => c.fn === "fill")!;
     expect(a.args[1]).toBe("evenodd");
     const b = draw(node({ meta: { "vector.fillRule": "nonzero" } })).find((c) => c.fn === "fill")!;
     expect(b.args[1]).toBe("nonzero");
   });
 
-  it("senza tratto vero il filo da 1.5px resta (il pen tool lo vuole)", () => {
+  it("without a real stroke the 1.5px hairline stays (the pen tool wants it)", () => {
     const strokes = draw(node()).filter((c) => c.fn === "stroke");
     expect(strokes.length).toBe(1);
     expect(strokes[0].state.lineWidth).toBeCloseTo(1.5, 6);
     expect(strokes[0].state.lineCap).toBe("round");
   });
 
-  it("vector.hairline=0 toglie il filo: un path riempito di un SVG non si gonfia", () => {
+  it("vector.hairline=0 removes the hairline: a filled SVG path does not swell", () => {
     expect(draw(node({ meta: { "vector.hairline": "0" } })).filter((c) => c.fn === "stroke")).toEqual([]);
   });
 
-  it("con un tratto vero: peso in unità mondo, colore proprio, capi/giunti/miter/tratteggio dai meta", () => {
+  it("with a real stroke: weight in world units, own color, caps/joins/miter/dashing from meta", () => {
     const calls = draw(node({
       strokes: [{ color: { r: 0, g: 0, b: 1, a: 0.5 }, weight: 3, align: "center" }],
       meta: {
@@ -130,11 +130,11 @@ describe("drawVector con stile", () => {
       strokeStyle: "rgba(0, 0, 255, 0.5)",
     });
     expect(strokes[0].state.dash).toEqual([6, 2]);
-    // e il tratteggio non resta attivo per il nodo dopo
+    // and the dashing does not stay active for the node afterwards
     expect(calls.filter((c) => c.fn === "setLineDash").pop()!.args[0]).toEqual([]);
   });
 
-  it("il tratto vero NON dipende dallo zoom (è in unità mondo, come il peso di un rect)", () => {
+  it("the real stroke does NOT depend on zoom (it is in world units, like a rect's weight)", () => {
     vi.stubGlobal("Path2D", FakePath2D);
     try {
       const s = emptyScene("d", "n");
@@ -149,7 +149,7 @@ describe("drawVector con stile", () => {
     }
   });
 
-  it("più tratti: uno per tratto, nell'ordine", () => {
+  it("several strokes: one per stroke, in order", () => {
     const calls = draw(node({
       strokes: [
         { color: { r: 1, g: 0, b: 0, a: 1 }, weight: 6, align: "center" },

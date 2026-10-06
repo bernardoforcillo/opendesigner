@@ -33,12 +33,12 @@ func TestApplyCreatePage(t *testing.T) {
 		t.Fatalf("Apply createPage: %v", err)
 	}
 	if got := pageIDs(doc); len(got) != 2 || got[1] != "page2" {
-		t.Fatalf("pagina non aggiunta in coda: %v", got)
+		t.Fatalf("page not appended at the end: %v", got)
 	}
-	// La pagina nuova è un container VALIDO: un nodo può nascerci dentro
-	// (parentExists guarda le pagine oltre ai nodi).
+	// The new page is a VALID container: a node can be born inside it
+	// (parentExists looks at pages as well as nodes).
 	if err := Apply(doc, createOp(childOf("n1", "page2", "a0"))); err != nil {
-		t.Fatalf("createNode sotto la pagina nuova: %v", err)
+		t.Fatalf("createNode under the new page: %v", err)
 	}
 }
 
@@ -48,48 +48,48 @@ func TestApplyCreatePageRejectsEmptyAndDuplicate(t *testing.T) {
 		page *opendesignerv1.Page
 	}{
 		{"nil", nil},
-		{"id vuoto", &opendesignerv1.Page{Name: "senza id"}},
-		// Un id già preso da una PAGINA: la seconda renderebbe la prima
-		// irraggiungibile e i nodi di entrambe indistinguibili.
-		{"id di una pagina esistente", &opendesignerv1.Page{Id: "page1", Name: "doppione"}},
+		{"empty id", &opendesignerv1.Page{Name: "no id"}},
+		// An id already taken by a PAGE: the second would make the first
+		// unreachable and the nodes of both indistinguishable.
+		{"id of an existing page", &opendesignerv1.Page{Id: "page1", Name: "duplicate"}},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			doc := NewDocument("doc1", "Untitled")
 			before := len(doc.GetPages())
 			if err := Apply(doc, createPageOp(tc.page)); err == nil {
-				t.Fatal("createPage accettata: doveva essere rifiutata")
+				t.Fatal("createPage accepted: it should have been rejected")
 			}
 			if len(doc.GetPages()) != before {
-				t.Fatalf("pagina aggiunta nonostante il rifiuto: %v", pageIDs(doc))
+				t.Fatalf("page added despite the rejection: %v", pageIDs(doc))
 			}
 		})
 	}
 }
 
-// Un id già preso da un NODO è altrettanto inammissibile: parentExists risponde
-// "sì" sia per i nodi sia per le pagine (internal/core/tree.go), quindi due
-// container omonimi renderebbero ambiguo il parent di chiunque li nomini -- e
-// cancellare il nodo lascerebbe in piedi una pagina con lo stesso id.
+// An id already taken by a NODE is just as inadmissible: parentExists answers
+// "yes" for both nodes and pages (internal/core/tree.go), so two
+// containers with the same id would make the parent of anyone naming them
+// ambiguous -- and deleting the node would leave a page with the same id standing.
 func TestApplyCreatePageRejectsNodeIDCollision(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	if err := Apply(doc, createOp(rectNode("n1", 0, 0))); err != nil {
 		t.Fatalf("setup: %v", err)
 	}
 	if err := Apply(doc, createPageOp(&opendesignerv1.Page{Id: "n1", Name: "collide"})); err == nil {
-		t.Fatal("createPage con l'id di un nodo accettata: doveva essere rifiutata")
+		t.Fatal("createPage with a node's id accepted: it should have been rejected")
 	}
 	if len(doc.GetPages()) != 1 {
-		t.Fatalf("pagina aggiunta nonostante il rifiuto: %v", pageIDs(doc))
+		t.Fatalf("page added despite the rejection: %v", pageIDs(doc))
 	}
 }
 
 func TestApplyRenamePage(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
-	if err := Apply(doc, renamePageOp("page1", "Copertina")); err != nil {
+	if err := Apply(doc, renamePageOp("page1", "Cover")); err != nil {
 		t.Fatalf("Apply renamePage: %v", err)
 	}
-	if got := doc.GetPages()[0].GetName(); got != "Copertina" {
-		t.Fatalf("nome non scritto: %q", got)
+	if got := doc.GetPages()[0].GetName(); got != "Cover" {
+		t.Fatalf("name not written: %q", got)
 	}
 }
 
@@ -100,10 +100,10 @@ func TestApplyRenamePageMissing(t *testing.T) {
 	}
 }
 
-// La cascata di DeletePage è quella di DeleteNode portata alla radice: la pagina
-// se ne va con TUTTO ciò che le pende sotto, a qualunque profondità. Senza,
-// resterebbero nodi con un parent_id che non esiste più -- gli stessi orfani che
-// applyCreate rifiuta di creare.
+// DeletePage's cascade is DeleteNode's carried to the root: the page
+// goes away with EVERYTHING hanging under it, at any depth. Without it,
+// nodes would remain with a parent_id that no longer exists -- the same
+// orphans applyCreate refuses to create.
 func TestApplyDeletePageCascadesOverItsNodes(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	mustApply(t, doc, createPageOp(&opendesignerv1.Page{Id: "page2", Name: "Page 2"}))
@@ -116,23 +116,23 @@ func TestApplyDeletePageCascadesOverItsNodes(t *testing.T) {
 		t.Fatalf("Apply deletePage: %v", err)
 	}
 	if got := pageIDs(doc); len(got) != 1 || got[0] != "page2" {
-		t.Fatalf("pagina non rimossa: %v", got)
+		t.Fatalf("page not removed: %v", got)
 	}
 	for _, id := range []string{"g1", "c1", "d1"} {
 		if _, ok := doc.Nodes[id]; ok {
-			t.Fatalf("nodo %s sopravvissuto alla cancellazione della sua pagina", id)
+			t.Fatalf("node %s survived the deletion of its page", id)
 		}
 	}
 	if _, ok := doc.Nodes["keep"]; !ok {
-		t.Fatal("la cascata ha portato via un nodo di un'ALTRA pagina")
+		t.Fatal("the cascade took away a node of ANOTHER page")
 	}
 }
 
-// L'ULTIMA pagina non si cancella: un documento senza pagine non ha nessun posto
-// in cui creare un nodo (applyCreate rifiuterebbe ogni parent), quindi sarebbe
-// un documento in cui non si può più disegnare -- e nessun op potrebbe più
-// ripararlo se non un createPage, che l'utente non ha modo di chiedere quando il
-// selettore è vuoto.
+// The LAST page is not deleted: a document without pages has nowhere to
+// create a node (applyCreate would reject every parent), so it would be
+// a document in which you can no longer draw -- and no op could repair
+// it except a createPage, which the user has no way to ask for when the
+// selector is empty.
 func TestApplyDeletePageRefusesTheLastOne(t *testing.T) {
 	doc := NewDocument("doc1", "Untitled")
 	mustApply(t, doc, createOp(rectNode("n1", 0, 0)))
@@ -140,10 +140,10 @@ func TestApplyDeletePageRefusesTheLastOne(t *testing.T) {
 		t.Fatalf("expected ErrLastPage, got %v", err)
 	}
 	if len(doc.GetPages()) != 1 {
-		t.Fatal("pagina rimossa nonostante il rifiuto")
+		t.Fatal("page removed despite the rejection")
 	}
 	if _, ok := doc.Nodes["n1"]; !ok {
-		t.Fatal("cascata eseguita nonostante il rifiuto")
+		t.Fatal("cascade performed despite the rejection")
 	}
 }
 
@@ -154,6 +154,6 @@ func TestApplyDeletePageMissing(t *testing.T) {
 		t.Fatalf("expected ErrPageNotFound, got %v", err)
 	}
 	if len(doc.GetPages()) != 2 {
-		t.Fatalf("pagine toccate da un op rifiutato: %v", pageIDs(doc))
+		t.Fatalf("pages touched by a rejected op: %v", pageIDs(doc))
 	}
 }

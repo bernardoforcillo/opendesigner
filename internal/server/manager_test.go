@@ -19,7 +19,7 @@ func TestFreshManagerListsDocumentsOnDisk(t *testing.T) {
 	ws := t.TempDir()
 
 	m1 := NewManager(ws)
-	info, err := m1.Create("Progetto Alfa")
+	info, err := m1.Create("Project Alpha")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -44,8 +44,8 @@ func TestFreshManagerListsDocumentsOnDisk(t *testing.T) {
 	if docs[0].GetId() != info.GetId() {
 		t.Fatalf("List()[0].id = %q, want %q", docs[0].GetId(), info.GetId())
 	}
-	if docs[0].GetName() != "Progetto Alfa" {
-		t.Fatalf("List()[0].name = %q, want %q", docs[0].GetName(), "Progetto Alfa")
+	if docs[0].GetName() != "Project Alpha" {
+		t.Fatalf("List()[0].name = %q, want %q", docs[0].GetName(), "Project Alpha")
 	}
 
 	// And it must open under its real name, at the seq it was left at.
@@ -54,8 +54,8 @@ func TestFreshManagerListsDocumentsOnDisk(t *testing.T) {
 		t.Fatal(err)
 	}
 	doc, seq := h2.Snapshot()
-	if doc.GetName() != "Progetto Alfa" {
-		t.Fatalf("reopened document name = %q, want %q", doc.GetName(), "Progetto Alfa")
+	if doc.GetName() != "Project Alpha" {
+		t.Fatalf("reopened document name = %q, want %q", doc.GetName(), "Project Alpha")
 	}
 	if seq != 1 {
 		t.Fatalf("reopened seq = %d, want 1", seq)
@@ -73,7 +73,7 @@ func TestListDocumentsAfterARestartOverTheWire(t *testing.T) {
 	ctx := context.Background()
 
 	first := newTestClientOn(t, ws)
-	info, err := first.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Progetto Alfa"}))
+	info, err := first.CreateDocument(ctx, connect.NewRequest(&opendesignerv1.CreateDocumentRequest{Name: "Project Alpha"}))
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -84,17 +84,17 @@ func TestListDocumentsAfterARestartOverTheWire(t *testing.T) {
 		t.Fatal(err)
 	}
 	docs := list.Msg.GetDocs()
-	if len(docs) != 1 || docs[0].GetId() != info.Msg.GetId() || docs[0].GetName() != "Progetto Alfa" {
+	if len(docs) != 1 || docs[0].GetId() != info.Msg.GetId() || docs[0].GetName() != "Project Alpha" {
 		t.Fatalf("ListDocuments after a restart = %v, want the one document %q named %q",
-			docs, info.Msg.GetId(), "Progetto Alfa")
+			docs, info.Msg.GetId(), "Project Alpha")
 	}
 
 	open, err := second.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: docs[0].GetId()}))
 	if err != nil {
 		t.Fatal(err)
 	}
-	if open.Msg.GetSnapshot().GetName() != "Progetto Alfa" {
-		t.Fatalf("OpenDocument after a restart: name = %q, want %q", open.Msg.GetSnapshot().GetName(), "Progetto Alfa")
+	if open.Msg.GetSnapshot().GetName() != "Project Alpha" {
+		t.Fatalf("OpenDocument after a restart: name = %q, want %q", open.Msg.GetSnapshot().GetName(), "Project Alpha")
 	}
 }
 

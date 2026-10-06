@@ -5,19 +5,19 @@ import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle
 import { isValidClip } from "../animation/validate";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
-// Primitive di undo: dato lo stato PRIMA di un op, l'op che lo annulla.
+// Undo primitives: given the state BEFORE an op, the op that undoes it.
 //
-// L'undo in opendesigner non è un rewind dell'op-log: è altro lavoro in avanti
-// (l'inverso viene submittato come un op qualsiasi). Quindi l'inverso è un Op
-// vero, con:
-//  - un opId NUOVO (il server deduplica per opId: riusare quello dell'op
-//    diretto lo farebbe scartare come replay);
-//  - il docId dell'op diretto, non quello del documento "corrente" -- l'op che
-//    sto invertendo può essere arrivato dal filo.
+// Undo in opendesigner is not a rewind of the op-log: it is more forward work
+// (the inverse is submitted like any other op). So the inverse is a real
+// Op, with:
+//  - a NEW opId (the server deduplicates by opId: reusing that of the
+//    direct op would make it be discarded as a replay);
+//  - the docId of the direct op, not that of the "current" document -- the op
+//    I am inverting may have arrived from the wire.
 function newOpId(): string {
-  // Stesso generatore di tools/ops.ts::uuid, ma chiamato direttamente: history
-  // sta sotto store/ e store.ts importerà invertOp (Task 12), mentre ops.ts
-  // importa store.ts. Passare da ops.ts chiuderebbe un ciclo di moduli.
+  // Same generator as tools/ops.ts::uuid, but called directly: history
+  // sits under store/ and store.ts will import invertOp (Task 12), while ops.ts
+  // imports store.ts. Going through ops.ts would close a module cycle.
   return crypto.randomUUID();
 }
 
@@ -25,53 +25,53 @@ function createNodeOp(docId: string, node: PbNode): Op {
   return create(OpSchema, { opId: newOpId(), docId, kind: { case: "createNode", value: { node } } });
 }
 
-// invertOp va chiamato PRIMA che op venga applicato: l'inverso è fatto dei
-// valori che l'op sta per sovrascrivere (o del nodo che sta per sparire), e
-// dopo l'apply quello stato non esiste più.
-// Ritorna null quando un inverso non esiste: op che applyOp -- e prima ancora
-// core.Apply (Go), che è l'autorità -- scarterebbero comunque (id inesistente,
-// createNode senza nodo o su un id già preso, kind sconosciuto). In quei casi
-// l'op diretto non cambia la scena, quindi "nessun inverso" è corretto, non una
-// perdita.
+// invertOp must be called BEFORE op is applied: the inverse is made of the
+// values the op is about to overwrite (or of the node about to disappear), and
+// after the apply that state no longer exists.
+// Returns null when an inverse does not exist: ops that applyOp -- and before it
+// core.Apply (Go), which is the authority -- would discard anyway (nonexistent id,
+// createNode without a node or on an id already taken, unknown kind). In those cases
+// the direct op does not change the scene, so "no inverse" is correct, not a
+// loss.
 //
-// Ritorna una LISTA da applicare IN ORDINE, mai vuota (è null in quel caso).
-// Quasi sempre è di uno, ma non può esserlo per costruzione: un `deleteNode`
-// cancella tutto il sottoalbero (core.applyDelete) e l'op inverso di una
-// creazione è UNA createNode per nodo -- il proto non ha un op che ne crei
-// molti, e non deve averlo: sono ops indipendenti, ognuna con i suoi
-// invarianti. L'ordine è quello che RI-SODDISFA l'invariante del parent
-// (parent prima dei figli): al contrario, ogni figlio verrebbe rifiutato con
+// Returns a LIST to apply IN ORDER, never empty (it is null in that case).
+// Almost always it has one element, but it cannot be by construction: a `deleteNode`
+// deletes the whole subtree (core.applyDelete) and the inverse op of a
+// creation is ONE createNode per node -- the proto has no op that creates
+// many, and must not have one: they are independent ops, each with its own
+// invariants. The order is the one that RE-SATISFIES the parent invariant
+// (parent before children): the other way round, every child would be rejected with
 // ErrParentNotFound.
 export function invertOp(scene: SceneState, op: Op): Op[] | null {
   switch (op.kind.case) {
     case "createNode": {
       const node = op.kind.value.node;
       if (!node || node.id === "") return null;
-      // Parent inesistente: core.applyCreate risponde ErrParentNotFound e
-      // applyOp lo mirrora. L'op diretto non cambia niente, quindi non c'è
-      // niente da annullare -- e una deleteNode inventata qui andrebbe sul
-      // filo a cancellare un nodo che il server non ha mai creato.
+      // Nonexistent parent: core.applyCreate replies ErrParentNotFound and
+      // applyOp mirrors it. The direct op changes nothing, so there is
+      // nothing to undo -- and a deleteNode invented here would go over the
+      // wire to delete a node the server never created.
       if (!parentExists(scene, node.parentId)) return null;
-      // Id già presente: core.applyCreate (Go) risponde ErrNodeExists e applyOp
-      // fa lo stesso: l'op diretto viene RIFIUTATO, la scena non cambia, quindi
-      // non c'è niente da annullare. Inventare qui un inverso (una delete, o la
-      // ri-creazione del nodo precedente) manderebbe al server l'undo di un op
-      // che il server non ha mai accettato -- cioè una vera divergenza.
+      // Id already present: core.applyCreate (Go) replies ErrNodeExists and applyOp
+      // does the same: the direct op is REJECTED, the scene does not change, so
+      // there is nothing to undo. Inventing an inverse here (a delete, or the
+      // re-creation of the previous node) would send the server the undo of an op
+      // the server never accepted -- that is, a real divergence.
       if (scene.nodes.at(node.id)) return null;
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "deleteNode", value: { id: node.id } },
       })];
     }
-    // L'inverso di una delete è la ricreazione di TUTTO il sottoalbero che la
-    // delete porta via (core.applyDelete cascata): il nodo e ogni discendente,
-    // una createNode ciascuno.
+    // The inverse of a delete is the re-creation of the WHOLE subtree that the
+    // delete takes away (core.applyDelete cascade): the node and every descendant,
+    // one createNode each.
     //
-    // L'ORDINE è la parte che conta: subtreeOf visita in pre-ordine, quindi
-    // ogni nodo arriva DOPO il proprio parent e ogni createNode trova il suo
-    // container già ricreato. Nell'ordine opposto la prima ricreazione di un
-    // figlio verrebbe respinta con ErrParentNotFound, e l'undo lascerebbe la
-    // scena a metà -- peggio di un undo che non si può fare.
+    // The ORDER is the part that matters: subtreeOf visits in pre-order, so
+    // every node arrives AFTER its own parent and every createNode finds its
+    // container already re-created. In the opposite order the first re-creation of a
+    // child would be rejected with ErrParentNotFound, and the undo would leave the
+    // scene half done -- worse than an undo that cannot be done.
     case "deleteNode": {
       const sub = subtreeOf(scene, op.kind.value.id);
       if (sub.length === 0) return null;
@@ -81,10 +81,10 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         ...restoreClipsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
       ];
     }
-    // Simmetrico a se stesso: rimette il nodo dov'era, con la order key che
-    // aveva fra i vecchi pari. Null quando l'op diretto sarebbe rifiutato --
-    // nodo o parent inesistente, ciclo -- perché in quel caso la scena non
-    // cambia e non c'è niente da annullare (vedi applyOp: reparentNode).
+    // Symmetric to itself: puts the node back where it was, with the order key it
+    // had among its old peers. Null when the direct op would be rejected --
+    // nonexistent node or parent, cycle -- because in that case the scene does not
+    // change and there is nothing to undo (see applyOp: reparentNode).
     case "reparentNode": {
       const { id, newParentId } = op.kind.value;
       const prev = scene.nodes.at(id);
@@ -97,20 +97,20 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       })];
     }
     case "setProps": {
-      // Il patch dell'op diretto non serve: l'inverso è fatto dei valori
-      // PRECEDENTI. E attenzione, un op SENZA patch non è un no-op — Go lo
-      // legge con i getter nil-safe e azzera i campi in mask (applyOp fa
-      // altrettanto, vedi NIL_PATCH), quindi ha un inverso come tutti gli
-      // altri: rimettere a posto quei campi.
+      // The direct op's patch is not needed: the inverse is made of the
+      // PREVIOUS values. And note, an op WITHOUT a patch is not a no-op — Go
+      // reads it with nil-safe getters and zeroes the fields in the mask (applyOp does
+      // the same, see NIL_PATCH), so it has an inverse like all the
+      // others: putting those fields back.
       const { id, mask } = op.kind.value;
       const prev = scene.nodes.at(id);
       if (!prev) return null;
-      // Patch = il nodo com'era, mask = la STESSA dell'op diretto. La mask è il
-      // contratto -- TS e Go leggono solo i path elencati e ignorano il resto
-      // del patch -- quindi ricopiare qui la tabella dei path duplicherebbe (e
-      // prima o poi farebbe divergere) applyOp. Bonus: se la mask contiene un
-      // path non supportato, l'op diretto viene rifiutato in blocco e l'inverso
-      // pure, quindi il round-trip resta l'identità anche in quel caso.
+      // Patch = the node as it was, mask = the SAME as the direct op. The mask is the
+      // contract -- TS and Go read only the listed paths and ignore the rest
+      // of the patch -- so copying the path table here again would duplicate (and
+      // sooner or later make diverge) applyOp. Bonus: if the mask contains an
+      // unsupported path, the direct op is rejected as a whole and the inverse
+      // too, so the round-trip remains the identity in that case as well.
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: {
@@ -120,17 +120,17 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       })];
     }
     case "setText": {
-      // Stessa forma dell'inverso di setProps: i valori PRECEDENTI, non il
-      // payload dell'op diretto. Null quando l'op diretto sarebbe rifiutato --
-      // id inesistente o nodo non di testo (ErrNotTextNode in Go): la scena non
-      // cambierebbe, quindi non c'è niente da annullare.
+      // Same shape as the inverse of setProps: the PREVIOUS values, not the
+      // payload of the direct op. Null when the direct op would be rejected --
+      // nonexistent id or non-text node (ErrNotTextNode in Go): the scene would not
+      // change, so there is nothing to undo.
       const { id } = op.kind.value;
       const prev = scene.nodes.at(id);
       if (!prev || prev.kind !== "text" || !prev.text) return null;
-      // stylePresent SEMPRE true, anche quando l'op diretto non toccava lo
-      // stile: rimettere lo stile precedente è un no-op in quel caso, mentre
-      // ometterlo lascerebbe in piedi lo stile NUOVO dopo l'undo di un op che
-      // l'aveva cambiato. Un solo ramo, sempre esatto.
+      // stylePresent ALWAYS true, even when the direct op did not touch the
+      // style: putting back the previous style is a no-op in that case, while
+      // omitting it would leave the NEW style standing after the undo of an op that
+      // had changed it. A single branch, always exact.
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: {
@@ -144,23 +144,23 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         },
       })];
     }
-    // --- pagine -------------------------------------------------------------
-    // Le pagine sono i container RADICE (un parentId può essere l'id di un nodo
-    // o quello di una Page). Il loro inverso è speculare a quello dei nodi: una
-    // createPage si annulla con una deletePage, una renamePage rimettendo il
-    // nome precedente, una deletePage -- che come deleteNode porta via a CASCATA
-    // un intero sottoalbero (vedi applyOp) -- ricreando prima la pagina e poi
-    // ogni nodo che le pendeva sotto, parent prima dei figli.
+    // --- pages --------------------------------------------------------------
+    // Pages are the ROOT containers (a parentId can be the id of a node
+    // or that of a Page). Their inverse mirrors that of nodes: a
+    // createPage is undone with a deletePage, a renamePage by putting back the
+    // previous name, a deletePage -- which like deleteNode takes away a whole subtree
+    // in a CASCADE (see applyOp) -- by re-creating first the page and then
+    // every node that hung under it, parent before children.
     //
-    // La regola del null resta quella dei nodi: si ritorna null ESATTAMENTE
-    // quando l'op diretto sarebbe rifiutato (parità con applyOp e core), perché
-    // in quel caso la scena non cambia e non c'è niente da annullare -- e un
-    // inverso inventato manderebbe al server l'undo di un op mai accettato.
+    // The null rule remains that of nodes: null is returned EXACTLY
+    // when the direct op would be rejected (parity with applyOp and core), because
+    // in that case the scene does not change and there is nothing to undo -- and an
+    // invented inverse would send the server the undo of an op never accepted.
     case "createPage": {
       const page = op.kind.value.page;
-      // Pagina assente o senza id (ErrNilPage), o id GIÀ PRESO -- da un'altra
-      // pagina o da un NODO: parentExists risponde "sì" per entrambi, e la
-      // collisione con un nodo conta quanto quella con una pagina (ErrPageExists).
+      // Page absent or without id (ErrNilPage), or id ALREADY TAKEN -- by another
+      // page or by a NODE: parentExists answers "yes" for both, and the
+      // collision with a node counts as much as that with a page (ErrPageExists).
       if (!page || page.id === "" || parentExists(scene, page.id)) return null;
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
@@ -170,17 +170,17 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     case "deletePage": {
       const { id } = op.kind.value;
       const page = scene.pages.find((p) => p.id === id);
-      // Pagina inesistente (ErrPageNotFound) o ULTIMA pagina (ErrLastPage): in
-      // entrambi i casi applyOp lascia la scena invariata.
+      // Nonexistent page (ErrPageNotFound) or LAST page (ErrLastPage): in
+      // both cases applyOp leaves the scene unchanged.
       if (!page || scene.pages.length === 1) return null;
-      // Prima la pagina, poi ogni nodo che la cascata sta per portare via. Uso
-      // lo `scene` PRE-apply che invertOp riceve per enumerare quei nodi con la
-      // STESSA visita di applyDeletePage (childrenOf per i root della pagina,
-      // subtreeOf in pre-ordine per ciascuno): ogni createNode trova così il
-      // proprio container -- la pagina appena ricreata o un nodo ricreato prima
-      // -- già esistente. Nell'ordine opposto la prima ricreazione di un root
-      // verrebbe respinta con ErrParentNotFound e l'undo lascerebbe la scena a
-      // metà, peggio di un undo che non si può fare.
+      // First the page, then every node the cascade is about to take away. I use
+      // the PRE-apply `scene` that invertOp receives to enumerate those nodes with the
+      // SAME visit as applyDeletePage (childrenOf for the page roots,
+      // subtreeOf in pre-order for each): every createNode thus finds its
+      // own container -- the just re-created page or a previously re-created node
+      // -- already existing. In the opposite order the first re-creation of a root
+      // would be rejected with ErrParentNotFound and the undo would leave the scene
+      // half done, worse than an undo that cannot be done.
       const ops: Op[] = [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "createPage", value: { page: { id: page.id, name: page.name } } },
@@ -196,69 +196,69 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     case "renamePage": {
       const { id } = op.kind.value;
       const page = scene.pages.find((p) => p.id === id);
-      // Pagina inesistente: ErrPageNotFound, applyOp no-op.
+      // Nonexistent page: ErrPageNotFound, applyOp no-op.
       if (!page) return null;
-      // Il nome PRECEDENTE (letto dallo scene pre-apply), non quello dell'op
-      // diretto: simmetrico a se stesso. Scritto SEMPRE, anche vuoto, come
-      // applyOp -- il ripiego per un nome vuoto è della UI, non del modello.
+      // The PREVIOUS name (read from the pre-apply scene), not that of the direct
+      // op: symmetric to itself. ALWAYS written, even empty, like
+      // applyOp -- the fallback for an empty name belongs to the UI, not the model.
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "renamePage", value: { id, name: page.name } },
       })];
     }
     case "setVectorPath": {
-      // Stessa forma dell'inverso di setText: i subpath PRECEDENTI per intero,
-      // non il payload dell'op diretto. È tutto ciò che serve proprio perché
-      // SetVectorPath sostituisce in blocco -- se l'op fosse incrementale
-      // ("sposta l'ancoraggio i-esimo") l'inverso dovrebbe ricostruire quale
-      // pezzo è stato toccato, e ogni caso in più sarebbe un caso in più da
-      // tenere identico fra Go e TS.
+      // Same shape as the inverse of setText: the PREVIOUS subpaths in full,
+      // not the payload of the direct op. It is all that is needed precisely because
+      // SetVectorPath replaces wholesale -- if the op were incremental
+      // ("move the i-th anchor") the inverse would have to reconstruct which
+      // piece was touched, and every extra case would be one more case to
+      // keep identical between Go and TS.
       //
-      // Senza questo ramo l'editing di un path non produrrebbe NESSUNA voce di
-      // undo (invertOp null => il gesto non entra nello stack), che per una
-      // traccia il cui punto è la geometria modificabile sarebbe il difetto
-      // peggiore possibile.
+      // Without this branch editing a path would produce NO undo entry
+      // (invertOp null => the gesture does not enter the stack), which for a
+      // track whose point is editable geometry would be the worst possible
+      // defect.
       const { id } = op.kind.value;
       const prev = scene.nodes.at(id);
-      // Null quando l'op diretto sarebbe rifiutato -- id inesistente o nodo non
-      // vettoriale (ErrNotVectorNode in Go): la scena non cambierebbe, quindi
-      // non c'è niente da annullare.
+      // Null when the direct op would be rejected -- nonexistent id or non-
+      // vector node (ErrNotVectorNode in Go): the scene would not change, so
+      // there is nothing to undo.
       if (!prev || prev.kind !== "vector" || !prev.vector) return null;
-      // Una lista vuota è un inverso legittimo come un'altra: annullare il
-      // riempimento di un path prima vuoto lo rimette vuoto. Lista di UN
-      // elemento e non un Op nudo: invertOp ritorna Op[] da quando l'inverso di
-      // una delete è una cascata (T1) -- appiattire qui a un bare Op romperebbe
-      // il tipo e chi lo consuma (invertChain).
+      // An empty list is a legitimate inverse like any other: undoing the
+      // fill of a previously empty path puts it back empty. A list of ONE
+      // element and not a bare Op: invertOp returns Op[] since the inverse of
+      // a delete is a cascade (T1) -- flattening here to a bare Op would break
+      // the type and whoever consumes it (invertChain).
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "setVectorPath", value: { id, subpaths: toPbSubPaths(prev.vector.subpaths) } },
       })];
     }
-    // --- componenti / istanze (M4) ------------------------------------------
+    // --- components / instances (M4) ----------------------------------------
     case "createComponent":
-      // NON annullabile in M4 (minimo): il proto non ha un op DeleteComponent,
-      // quindi non esiste un inverso da restituire. Ritorna null -- come un op
-      // che non cambia la scena -- finché una traccia futura non aggiunge la
-      // cancellazione di un componente. (Registrare un componente non tocca
-      // `nodes`: il master era già lì, quindi l'undo della sua create resta
-      // quello del nodo, non del componente.)
+      // NOT undoable in M4 (minimum): the proto has no DeleteComponent op,
+      // so there is no inverse to return. Returns null -- like an op
+      // that does not change the scene -- until a future track adds
+      // the deletion of a component. (Registering a component does not touch
+      // `nodes`: the master was already there, so the undo of its create remains
+      // that of the node, not of the component.)
       return null;
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;
       const prev = scene.nodes.at(instanceId);
-      // Null quando l'op diretto sarebbe rifiutato (parità con applyOp/core):
-      // nodo inesistente, non-istanza, o master_node_id vuoto -- la scena non
-      // cambia, quindi non c'è niente da annullare.
+      // Null when the direct op would be rejected (parity with applyOp/core):
+      // nonexistent node, non-instance, or empty master_node_id -- the scene does not
+      // change, so there is nothing to undo.
       if (!prev || prev.kind !== "instance" || !prev.instance) return null;
       if (!override || override.masterNodeId === "") return null;
-      // L'inverso RI-IMPOSTA l'override PRECEDENTE per quel master_node_id, letto
-      // dallo scene pre-apply: se ce n'era uno, l'undo lo rimette (i flag
-      // *_present si ricavano dalla presenza dei campi Lite, vedi
-      // toPbInstanceOverride, ed è LOSSLESS); se non ce n'era, l'inverso è una
-      // RIMOZIONE -- un SetInstanceOverride con nessun *_present, che toglie
-      // esattamente ciò che l'op diretto aveva aggiunto. In entrambi i casi il
-      // master_node_id resta quello dell'op diretto (già verificato non vuoto),
-      // quindi l'inverso non viene a sua volta rifiutato.
+      // The inverse RE-SETS the PREVIOUS override for that master_node_id, read
+      // from the pre-apply scene: if there was one, the undo puts it back (the
+      // *_present flags are derived from the presence of the Lite fields, see
+      // toPbInstanceOverride, and it is LOSSLESS); if there was none, the inverse is a
+      // REMOVAL -- a SetInstanceOverride with no *_present, which removes
+      // exactly what the direct op had added. In both cases the
+      // master_node_id stays that of the direct op (already verified non-empty),
+      // so the inverse is not itself rejected.
       const existing = prev.instance.overrides.find((o) => o.masterNodeId === override.masterNodeId);
       const invOverride = existing
         ? toPbInstanceOverride(existing)
@@ -268,10 +268,10 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         kind: { case: "setInstanceOverride", value: { instanceId, override: invOverride } },
       })];
     }
-    // --- flussi -------------------------------------------------------------
-    // Upsert assoluti: l'inverso è lo stato PRECEDENTE (un setFlow/setTransition
-    // con il valore vecchio se esisteva, una delete se l'op diretto creava).
-    // Null quando l'op diretto sarebbe rifiutato (parità con applyOp/core).
+    // --- flows --------------------------------------------------------------
+    // Absolute upserts: the inverse is the PREVIOUS state (a setFlow/setTransition
+    // with the old value if it existed, a delete if the direct op created).
+    // Null when the direct op would be rejected (parity with applyOp/core).
     case "setFlow": {
       const f = op.kind.value.flow;
       if (!f || f.id === "") return null;
@@ -288,7 +288,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const { id } = op.kind.value;
       const prev = scene.flows[id];
       if (!prev) return null;
-      // Prima il flusso, poi le sue transizioni (richiedono che il flusso esista).
+      // First the flow, then its transitions (they require the flow to exist).
       return [
         create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setFlow", value: { flow: toPbFlow(prev) } } }),
         ...Object.values(scene.transitions).filter((t) => t.flowId === id).sort(byId).map((t) =>
@@ -317,9 +317,9 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         kind: { case: "setTransition", value: { transition: toPbTransition(prev) } },
       })];
     }
-    // --- animazione ---------------------------------------------------------
-    // Upsert assoluti, come i flussi: l'inverso è la clip PRECEDENTE (o una
-    // delete se l'op la creava). Null quando l'op diretto sarebbe rifiutato.
+    // --- animation ----------------------------------------------------------
+    // Absolute upserts, like flows: the inverse is the PREVIOUS clip (or a
+    // delete if the op created it). Null when the direct op would be rejected.
     case "setClip": {
       const c = op.kind.value.clip;
       if (!c || c.id === "") return null;
@@ -344,10 +344,10 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
 
 const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);
 
-// Dopo aver RICREATO i nodi cancellati, rimette ciò che la cascata aveva tolto ai
-// flussi: lo `startId` dei flussi che ne partivano e le transizioni che li
-// attraversavano (o che li usavano come hotspot). Vanno DOPO le createNode: i
-// riferimenti devono esistere (parità con core.applySetFlow/applySetTransition).
+// After RE-CREATING the deleted nodes, puts back what the cascade had taken from
+// the flows: the `startId` of the flows that started from them and the transitions that
+// crossed them (or that used them as hotspot). They go AFTER the createNodes: the
+// references must exist (parity with core.applySetFlow/applySetTransition).
 function restoreFlowsOps(scene: SceneState, docId: string, gone: ReadonlySet<string>): Op[] {
   const ops: Op[] = [];
   for (const f of Object.values(scene.flows).sort(byId)) {
@@ -363,11 +363,11 @@ function restoreFlowsOps(scene: SceneState, docId: string, gone: ReadonlySet<str
   return ops;
 }
 
-// Dopo aver RICREATO i nodi cancellati, rimette le clip che la cascata aveva
-// toccato (core.cascadeClips): quelle col target sparito (cancellate) e quelle
-// che avevano tracce sui nodi spariti (le tracce erano state tolte). Si
-// ripristina la clip INTERA com'era nello scene pre-apply -- un setClip assoluto
-// -- e va DOPO le createNode: target e nodi delle tracce devono esistere.
+// After RE-CREATING the deleted nodes, puts back the clips the cascade had
+// touched (core.cascadeClips): those whose target vanished (deleted) and those
+// that had tracks on the vanished nodes (the tracks had been removed). The
+// WHOLE clip is restored as it was in the pre-apply scene -- an absolute setClip --
+// and it goes AFTER the createNodes: targets and track nodes must exist.
 function restoreClipsOps(scene: SceneState, docId: string, gone: ReadonlySet<string>): Op[] {
   const ops: Op[] = [];
   for (const c of Object.values(scene.clips).sort(byId)) {

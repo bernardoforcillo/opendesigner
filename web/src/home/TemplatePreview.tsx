@@ -2,10 +2,10 @@ import { useMemo } from "react";
 import type { Template } from "../templates/catalog";
 import type { FillLite, NodeLite } from "../store/types";
 
-// L'ANTEPRIMA DI UN TEMPLATE: lo stesso BuiltTemplate che finirà nel documento,
-// disegnato come schema in miniatura (le schermate, i loro elementi come campi
-// pieni, il testo come barrette) con le frecce del flusso. Niente canvas e
-// niente rete: un SVG calcolato dai dati, quindi sempre fedele al template.
+// A TEMPLATE'S PREVIEW: the same BuiltTemplate that will end up in the document,
+// drawn as a miniature diagram (the screens, their elements as solid
+// fields, the text as little bars) with the flow arrows. No canvas and
+// no network: an SVG computed from the data, so always faithful to the template.
 
 const css = (f: FillLite | undefined): string =>
   f ? `rgb(${Math.round(f.r * 255)} ${Math.round(f.g * 255)} ${Math.round(f.b * 255)})` : "none";
@@ -18,7 +18,7 @@ function layout(t: Template) {
   let i = 0;
   const built = t.build("page", () => `p${++i}`);
   const byId = new Map<string, NodeLite>(built.nodes.map((n) => [n.id, n]));
-  // Posizioni ASSOLUTE: le coordinate dei nodi sono relative al parent.
+  // ABSOLUTE positions: node coordinates are relative to the parent.
   const abs = new Map<string, Box>();
   for (const n of built.nodes) {
     const p = abs.get(n.parentId);
@@ -41,9 +41,9 @@ export function TemplatePreview({ template, className = "" }: { template: Templa
   }, [template]);
 
   if (L.screens.length === 0) {
-    // "Vuoto": una tavola tratteggiata, con un segno più.
+    // "Blank": a dashed board, with a plus sign.
     return (
-      <svg viewBox="0 0 120 80" className={className} role="img" aria-label="Tavola vuota">
+      <svg viewBox="0 0 120 80" className={className} role="img" aria-label="Blank board">
         <rect x="34" y="12" width="52" height="56" rx="6" fill="none" stroke="var(--line-strong)" strokeWidth="1.5" strokeDasharray="4 3" />
         <path d="M60 33v14M53 40h14" stroke="var(--fg-subtle)" strokeWidth="2" strokeLinecap="round" />
       </svg>
@@ -63,7 +63,7 @@ export function TemplatePreview({ template, className = "" }: { template: Templa
       {L.built.nodes.filter((n) => n.parentId !== "page").map((n) => {
         const b = L.abs.get(n.id)!;
         if (n.kind === "text") {
-          // Il testo come barretta: lunghezza ~ numero di caratteri, mai oltre il box.
+          // The text as a little bar: length ~ number of characters, never beyond the box.
           const size = n.text?.style.fontSize ?? 14;
           const len = Math.min(b.w, (n.text?.content.length ?? 4) * size * 0.52);
           const align = n.text?.style.align ?? "left";
@@ -79,14 +79,14 @@ export function TemplatePreview({ template, className = "" }: { template: Templa
       {L.built.transitions.map((t) => {
         const a = L.abs.get(t.fromId), z = L.abs.get(t.toId);
         if (!a || !z || a.id === z.id) return null;
-        // Dal bordo destro/sinistro (o alto/basso) di una schermata all'altra,
-        // con una curva: solo un'indicazione di dove va il flusso.
+        // From the right/left (or top/bottom) edge of a screen to the other,
+        // with a curve: just an indication of where the flow goes.
         const forward = z.x > a.x;
         const sameRow = Math.abs(z.y - a.y) < 1;
         if (!sameRow) return null;
         const x1 = forward ? a.x + a.w : a.x;
         const x2 = forward ? z.x : z.x + z.w;
-        // Le frecce "indietro" corrono in basso per non coprire quelle in avanti.
+        // The "back" arrows run along the bottom so as not to cover the forward ones.
         const y = a.y + (forward ? a.h * 0.9 : a.h * 0.96);
         return (
           <path key={t.id} d={`M${x1} ${y} C${x1 + (x2 - x1) * 0.4} ${y} ${x1 + (x2 - x1) * 0.6} ${y} ${x2} ${y}`}

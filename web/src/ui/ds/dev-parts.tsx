@@ -1,9 +1,9 @@
 import type { SVGProps } from "react";
 
-// LE ICONE (e i pezzetti) DELLA MODALITA' SVILUPPO. Stesso disegno di ds/Icon.tsx
-// -- griglia 16x16, tratto 1.5, estremi tondi, currentColor -- ma in un file a
-// parte per non toccare il set condiviso. Decorative (aria-hidden): il nome
-// accessibile lo porta il pulsante che le contiene.
+// THE ICONS (and small pieces) OF DEVELOPMENT MODE. Same design as ds/Icon.tsx
+// -- 16x16 grid, 1.5 stroke, round caps, currentColor -- but in a separate
+// file so as not to touch the shared set. Decorative (aria-hidden): the
+// accessible name comes from the button that contains them.
 const P = {
   terminal: "M3 3h10a1 1 0 011 1v8a1 1 0 01-1 1H3a1 1 0 01-1-1V4a1 1 0 011-1zM4.8 6.2L7 8.2l-2.2 2M8.6 10.4h2.6",
   rocket: "M9.6 2.4c2.2-.2 3.8.2 4 .4.2.2.6 1.8.4 4-.2 1.7-1.6 3-3 3.9l-3.2-3.2c.9-1.4 2.2-2.8 3.8-3.1zM6.8 6.4L4.4 6.8 2.8 8.6 5.2 9M9.6 9.2L9.2 11.6 7.4 13.2 7 10.8M4.6 11.4c-.9.2-1.6.9-1.8 2 1.1-.2 1.8-.9 2-1.8",

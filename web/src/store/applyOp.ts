@@ -8,18 +8,18 @@ import { layoutTargets, relayout } from "./layout";
 import { recordDelta } from "./sceneDelta";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
-// Un SetProperties SENZA patch NON è un no-op. Go legge il patch con i getter
-// nil-safe di protobuf (`p.GetX()` su un *Node nil ritorna lo zero del campo),
-// quindi applySetProps AZZERA i campi elencati nella mask. Questo nodo
-// tutto-a-zero rende esplicito quel comportamento invece di divergere in
-// silenzio dal server. Condiviso fra le chiamate: applyOp è puro e non lo muta.
+// A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
+// nil-safe getters (`p.GetX()` on a nil *Node returns the field's zero),
+// so applySetProps ZEROES the fields listed in the mask. This all-zero
+// node makes that behavior explicit instead of silently diverging
+// from the server. Shared across calls: applyOp is pure and does not mutate it.
 const NIL_PATCH: PbNode = create(NodeSchema, {});
 
-// applyOp è puro: NON muta state, ritorna un nuovo oggetto. Parità con core.Apply (Go).
+// applyOp is pure: it does NOT mutate state, it returns a new object. Parity with core.Apply (Go).
 //
-// Dopo l'op ridispone i frame con auto layout che può aver toccato, come fa
-// core.Apply: i frame interessati si leggono sia PRIMA dell'op (il vecchio
-// parent di un nodo cancellato o spostato) sia DOPO (il nuovo). Vedi
+// After the op it re-lays out the auto layout frames it may have touched, as
+// core.Apply does: the affected frames are read both BEFORE the op (the old
+// parent of a deleted or moved node) and AFTER (the new one). See
 // store/layout.ts.
 export function applyOp(state: SceneState, op: Op): SceneState {
   const before = layoutTargets(state, op);
@@ -27,16 +27,16 @@ export function applyOp(state: SceneState, op: Op): SceneState {
   if (next === state) return state;
   const touchedByLayout: string[] = [];
   const laidOut = relayout(next, [...before, ...layoutTargets(next, op)], touchedByLayout);
-  // Gli op che toccano un solo nodo noto dichiarano quale: chi mantiene
-  // strutture derivate (renderer/sceneIndex.ts) non deve confrontare tutta la
-  // scena per scoprirlo. Gli altri (cancellare, riparentare, pagine,
-  // componenti) non la registrano e ricadono sul confronto completo.
+  // Ops that touch a single known node declare which one: whoever maintains derived
+  // structures (renderer/sceneIndex.ts) need not compare the whole
+  // scene to find out. The others (delete, reparent, pages,
+  // components) do not record it and fall back to the full comparison.
   const id = singleTouchedNode(op);
   if (id !== null) recordDelta(laidOut, state, [id, ...touchedByLayout]);
   return laidOut;
 }
 
-// L'unico nodo che l'op scrive, se ne scrive esattamente uno.
+// The only node the op writes, if it writes exactly one.
 function singleTouchedNode(op: Op): string | null {
   const k = op.kind;
   switch (k.case) {
@@ -52,69 +52,69 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
   switch (op.kind.case) {
     case "createNode": {
       const pb = op.kind.value.node;
-      // Parità con core.applyCreate (Go): nodo assente o con id vuoto =
-      // ErrNilNode, id GIÀ PRESENTE = ErrNodeExists. Il server rifiuta l'op in
-      // blocco in entrambi i casi, quindi qui non si crea e soprattutto non si
-      // SOVRASCRIVE: un client che sovrascrive in locale diverge in silenzio
-      // dal documento autorevole (e l'undo di quell'op sarebbe l'undo di
-      // qualcosa che il server non ha mai accettato).
+      // Parity with core.applyCreate (Go): absent node or empty id =
+      // ErrNilNode, id ALREADY PRESENT = ErrNodeExists. The server rejects the op
+      // as a whole in both cases, so here we do not create and above all do not
+      // OVERWRITE: a client that overwrites locally silently diverges
+      // from the authoritative document (and the undo of that op would be the undo of
+      // something the server never accepted).
       if (!pb || pb.id === "" || state.nodes.at(pb.id)) return state;
-      // Il parent deve ESISTERE (un altro nodo, o una Page per i root):
-      // ErrParentNotFound in core.applyCreate (Go). Un nodo con un parent
-      // inesistente non è raggiungibile da nessuna pagina -- invisibile sul
-      // canvas e nel pannello livelli, ma presente nella mappa -- e il server
-      // l'ha comunque rifiutato: crearlo qui è la solita divergenza silenziosa.
+      // The parent must EXIST (another node, or a Page for roots):
+      // ErrParentNotFound in core.applyCreate (Go). A node with a nonexistent
+      // parent is not reachable from any page -- invisible on the
+      // canvas and in the layers panel, but present in the map -- and the server
+      // rejected it anyway: creating it here is the usual silent divergence.
       if (!parentExists(state, pb.parentId)) return state;
-      // Un'ISTANZA deve referenziare un componente ESISTENTE: parità con
-      // core.applyCreate (Go), che risponde ErrComponentNotFound. Senza, l'istanza
-      // renderebbe il vuoto -- il suo sottoalbero è derivato dal master -- e il
-      // server l'ha comunque rifiutata: crearla qui è la stessa divergenza
-      // silenziosa dei rami parent/id-già-preso. Ordine come in Go: prima il
-      // parent, poi il componente.
+      // An INSTANCE must reference an EXISTING component: parity with
+      // core.applyCreate (Go), which replies ErrComponentNotFound. Without it, the instance
+      // would render nothing -- its subtree is derived from the master -- and the
+      // server rejected it anyway: creating it here is the same silent divergence
+      // as the parent/id-already-taken branches. Order as in Go: first the
+      // parent, then the component.
       if (pb.shape.case === "instance" && !state.components[pb.shape.value.componentId]) return state;
       return { ...state, nodes: state.nodes.set(pb.id, toNodeLite(pb)) };
     }
     case "setProps": {
       const { id, patch, mask } = op.kind.value;
       const cur = state.nodes.at(id);
-      // Nodo inesistente = ErrNodeNotFound in Go: op rifiutato, scena
-      // invariata. Il patch mancante invece NON ferma l'op (vedi NIL_PATCH).
+      // Nonexistent node = ErrNodeNotFound in Go: op rejected, scene
+      // unchanged. A missing patch instead does NOT stop the op (see NIL_PATCH).
       if (!cur) return state;
       const p = patch ?? NIL_PATCH;
       const paths = mask?.paths ?? [];
-      // Parità con core.applySetProps (Go): valida l'INTERA mask prima di
-      // mutare qualsiasi campo. Se anche un solo path non è supportato,
-      // l'intero op viene rifiutato (stato invariato) -- non applicato
-      // parzialmente. Una mask mista (es. ["x","someFutureField"]) non deve
-      // mai mutare "x" mentre scarta silenziosamente il path sconosciuto.
-      // isMaskPath viene da ./maskPaths -- l'UNICA fonte di verità, condivisa
-      // con tools/ops.ts::makeSetPropsOp, che rispecchia lo switch di
-      // core.applySetProps (Go). paths qui è quello che arriva DA UN Op già
-      // decodificato (locale o dal filo via Subscribe): un controllo runtime
-      // resta necessario anche col tipo MaskPath a compile-time ai punti di
-      // costruzione, perché nulla garantisce a runtime che un Op ricevuto dal
-      // filo rispetti quel tipo.
+      // Parity with core.applySetProps (Go): validates the WHOLE mask before
+      // mutating any field. If even a single path is unsupported,
+      // the whole op is rejected (state unchanged) -- not partially
+      // applied. A mixed mask (e.g. ["x","someFutureField"]) must never
+      // mutate "x" while silently discarding the unknown path.
+      // isMaskPath comes from ./maskPaths -- the ONLY source of truth, shared
+      // with tools/ops.ts::makeSetPropsOp, which mirrors the switch of
+      // core.applySetProps (Go). paths here is what arrives FROM AN already
+      // decoded Op (local or from the wire via Subscribe): a runtime check
+      // remains necessary even with the compile-time MaskPath type at the
+      // construction points, because nothing guarantees at runtime that an Op received
+      // from the wire respects that type.
       if (!paths.every(isMaskPath)) return state;
-      // Seconda validazione PREVENTIVA, per lo stesso motivo della prima:
-      // "corner_radius" è l'unico path che indirizza un campo DENTRO il oneof
-      // `shape` (RectNode.corner_radius), quindi è l'unico che può trovare il
-      // nodo della forma sbagliata. Go risponde ErrNotRectNode e rifiuta l'op
-      // INTERO (internal/core/apply.go), quindi una mask mista
-      // (es. ["x","corner_radius"]) su un'ellisse non deve muovere nemmeno la
-      // x. Nota che kind "rect" comprende anche il nodo SENZA shape (vedi
-      // toNodeLite): Go lo accetta allo stesso modo, materializzando il
-      // rettangolo implicito.
+      // Second PREVENTIVE validation, for the same reason as the first:
+      // "corner_radius" is the only path that addresses a field INSIDE the `shape`
+      // oneof (RectNode.corner_radius), so it is the only one that can find the
+      // node of the wrong shape. Go replies ErrNotRectNode and rejects the WHOLE
+      // op (internal/core/apply.go), so a mixed mask
+      // (e.g. ["x","corner_radius"]) on an ellipse must not even move
+      // x. Note that kind "rect" also includes the node WITHOUT a shape (see
+      // toNodeLite): Go accepts it the same way, materializing the
+      // implicit rectangle.
       //
-      // Ed è una WHITELIST esattamente come quella di Go, non "tutto tranne
-      // ellisse e testo": kindOf (store/types.ts) mappa su "unknown" ogni forma
-      // che questo modello non conosce, quindi una forma aggiunta da un'altra
-      // traccia è rifiutata di default QUI come lo è di là. Con il vecchio
-      // ripiego "sconosciuto => rect" questa riga la lasciava passare e Go
-      // rispondeva ErrNotRectNode: la divergenza client/documento autorevole che
-      // la whitelist esiste per impedire, solo dall'altro lato del filo.
+      // And it is a WHITELIST exactly like Go's, not "everything except
+      // ellipse and text": kindOf (store/types.ts) maps to "unknown" every shape
+      // this model does not know, so a shape added by another track
+      // is rejected by default HERE as it is over there. With the old
+      // "unknown => rect" fallback this line let it through and Go
+      // replied ErrNotRectNode: the client/authoritative document divergence
+      // the whitelist exists to prevent, only from the other side of the wire.
       if (cur.kind !== "rect" && paths.includes("corner_radius")) return state;
-      // Stessa validazione preventiva per auto_layout, che vale solo su un
-      // frame (ErrNotFrameNode in Go): op rifiutato in blocco.
+      // Same preventive validation for auto_layout, which only applies to a
+      // frame (ErrNotFrameNode in Go): op rejected as a whole.
       if (cur.kind !== "frame" && paths.includes("auto_layout")) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
@@ -128,53 +128,53 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "name": next.name = p.name; break;
           case "visible": next.visible = p.visible; break;
           case "fills": next.fills = toNodeLite(p).fills; break;
-          // SOSTITUZIONE dell'intera lista, come "fills" e come `n.Strokes =
-          // p.GetStrokes()` in core.applySetProps (Go): mai una fusione
-          // elemento per elemento. Un patch SENZA strokes azzera la lista --
-          // è il getter nil-safe di Go, ed è anche il modo in cui il pannello
-          // proprietà toglie il tratto da un nodo (vedi NIL_PATCH qui sopra).
+          // REPLACEMENT of the whole list, like "fills" and like `n.Strokes =
+          // p.GetStrokes()` in core.applySetProps (Go): never a merge
+          // element by element. A patch WITHOUT strokes zeroes the list --
+          // it is Go's nil-safe getter, and it is also how the properties
+          // panel removes the stroke from a node (see NIL_PATCH above).
           case "strokes": next.strokes = toNodeLite(p).strokes; break;
-          // Sostituzione dell'intera lista come `n.Effects = p.GetEffects()` in
-          // Go. Una lista vuota TOGLIE il campo (NodeLite.effects è assente, non
-          // vuoto, quando non ci sono effetti).
+          // Replacement of the whole list like `n.Effects = p.GetEffects()` in
+          // Go. An empty list REMOVES the field (NodeLite.effects is absent, not
+          // empty, when there are no effects).
           case "effects": {
             const fx = toNodeLite(p).effects;
             if (fx) next.effects = fx; else delete next.effects;
             break;
           }
-          // Il path è snake_case (la convenzione del .proto e di Go), il campo
-          // del modello è camelCase: le due forme coincidevano per tutti i path
-          // monoparola di M0/M1a, questo è il primo in cui divergono.
+          // The path is snake_case (the .proto and Go convention), the model's
+          // field is camelCase: the two forms coincided for all the single-word
+          // paths of M0/M1a, this is the first where they diverge.
           case "order_key": next.orderKey = p.orderKey; break;
-          // Sostituisce l'intera mappa (come `n.Meta = p.GetMeta()` in Go); una
-          // mappa vuota TOGLIE il campo (NodeLite.meta è assente, non vuoto).
+          // Replaces the whole map (like `n.Meta = p.GetMeta()` in Go); an empty
+          // map REMOVES the field (NodeLite.meta is absent, not empty).
           case "meta": {
             const m = toNodeLite(p).meta;
             if (m) next.meta = m; else delete next.meta;
             break;
           }
-          // Come per "fills", il valore si estrae dal patch passando da
-          // toNodeLite invece di leggerlo a mano: è la STESSA funzione che
-          // traduce un Node del filo, quindi il patch senza rect ricade sullo
-          // zero esattamente come fa il getter nil-safe `p.GetRect()
-          // .GetCornerRadius()` in Go, senza una seconda regola da tenere
-          // allineata.
+          // As for "fills", the value is extracted from the patch by going through
+          // toNodeLite instead of reading it by hand: it is the SAME function that
+          // translates a wire Node, so a patch without rect falls back to
+          // zero exactly as Go's nil-safe getter `p.GetRect()
+          // .GetCornerRadius()` does, without a second rule to keep
+          // aligned.
           case "corner_radius": next.cornerRadius = toNodeLite(p).cornerRadius; break;
-          // Il valore viene dal patch NIDIFICATO nella forma frame, passando da
-          // toNodeLite come per corner_radius. Un patch senza frame (o senza
-          // auto_layout) lo spegne -- come il getter nil-safe di Go -- e il campo
-          // sparisce dal nodo invece di restare "spento".
+          // The value comes from the patch NESTED in the frame shape, going through
+          // toNodeLite as for corner_radius. A patch without frame (or without
+          // auto_layout) turns it off -- like Go's nil-safe getter -- and the field
+          // disappears from the node instead of staying "off".
           case "auto_layout": {
             const al = toNodeLite(p).autoLayout;
             if (al) next.autoLayout = al; else delete next.autoLayout;
             break;
           }
           default: {
-            // Guardia a compile-time: se MASK_PATHS guadagna un membro senza
-            // un case qui sopra, questa riga smette di compilare invece di
-            // scartare in silenzio il nuovo path a runtime. "Impossibile
-            // dimenticare un caso" è il complemento di "impossibile costruire
-            // un path non valido" (quello è ops.ts::makeSetPropsOp).
+            // Compile-time guard: if MASK_PATHS gains a member without
+            // a case above, this line stops compiling instead of
+            // silently discarding the new path at runtime. "Impossible to
+            // forget a case" is the complement of "impossible to build
+            // an invalid path" (that one is ops.ts::makeSetPropsOp).
             const exhaustive: never = path;
             return exhaustive;
           }
@@ -182,114 +182,114 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       }
       return { ...state, nodes: state.nodes.set(id, next) };
     }
-    // Op dedicato e non un path della mask di setProps: il contenuto vive
-    // DENTRO il oneof `shape` del Node, mentre la mask indirizza campi di primo
-    // livello. Parità con core.applySetText (Go).
+    // Dedicated op and not a setProps mask path: the content lives
+    // INSIDE the Node's `shape` oneof, while the mask addresses top-level
+    // fields. Parity with core.applySetText (Go).
     case "setText": {
       const { id, content, style, stylePresent } = op.kind.value;
       const cur = state.nodes.at(id);
-      // Nodo inesistente = ErrNodeNotFound in Go.
+      // Nonexistent node = ErrNodeNotFound in Go.
       if (!cur) return state;
-      // Nodo non di testo = ErrNotTextNode in Go: l'op è rifiutato in blocco.
-      // Scriverci dentro un `text` trasformerebbe la forma del nodo in locale
-      // (un rettangolo diventato testo) mentre il server l'ha respinto.
+      // Non-text node = ErrNotTextNode in Go: the op is rejected as a whole.
+      // Writing a `text` into it would turn the node's shape locally
+      // (a rectangle turned into text) while the server rejected it.
       if (cur.kind !== "text" || !cur.text) return state;
-      // Il contenuto si scrive SEMPRE (anche vuoto: è il testo cancellato).
-      // Lo stile solo se stylePresent: il flag distingue "non specificato" da
-      // "azzera" (in proto3 uno stile assente e uno tutto a zero non si
-      // distinguono dopo il round-trip protojson, quindi senza il flag ogni
-      // battuta di tasto porterebbe il font a 0). Il flag ha la precedenza
-      // sulla presenza del sotto-messaggio: uno `style` con stylePresent=false
-      // va ignorato, esattamente come fa Go che legge solo GetStylePresent().
+      // The content is ALWAYS written (even empty: it is the deleted text).
+      // The style only if stylePresent: the flag distinguishes "unspecified" from
+      // "reset" (in proto3 an absent style and an all-zero one are not
+      // distinguishable after the protojson round-trip, so without the flag every
+      // keystroke would bring the font to 0). The flag takes precedence
+      // over the presence of the sub-message: a `style` with stylePresent=false
+      // must be ignored, exactly as Go does, reading only GetStylePresent().
       const text = {
         content,
         style: stylePresent ? toTextStyleLite(style) : cur.text.style,
       };
       return { ...state, nodes: state.nodes.set(id, { ...cur, text }) };
     }
-    // Op dedicato e non un path della mask, per la stessa ragione di setText: la
-    // geometria vive DENTRO il oneof `shape`. Parità con core.applySetVectorPath (Go).
+    // Dedicated op and not a mask path, for the same reason as setText: the
+    // geometry lives INSIDE the `shape` oneof. Parity with core.applySetVectorPath (Go).
     case "setVectorPath": {
       const { id, subpaths } = op.kind.value;
       const cur = state.nodes.at(id);
-      // Nodo inesistente = ErrNodeNotFound in Go.
+      // Nonexistent node = ErrNodeNotFound in Go.
       if (!cur) return state;
-      // Nodo non vettoriale = ErrNotVectorNode in Go: l'op è rifiutato in
-      // blocco. Nota che qui NON vale il ripiego "kind rect comprende anche il
-      // nodo senza shape" di corner_radius: quel nodo è un RETTANGOLO per
-      // entrambi i lati, quindi è esattamente il caso da rifiutare.
+      // Non-vector node = ErrNotVectorNode in Go: the op is rejected as a
+      // whole. Note that the "kind rect also includes the node without
+      // shape" fallback of corner_radius does NOT apply here: that node is a RECTANGLE for
+      // both sides, so it is exactly the case to reject.
       if (cur.kind !== "vector" || !cur.vector) return state;
-      // La lista si scrive SEMPRE, anche vuota: è il path che l'utente ha
-      // svuotato, non un "non specificato" da ignorare. Nessun flag `present`
-      // come stylePresent -- là serviva perché un setText porta due cose e una
-      // doveva poter restare intatta; qui l'op È i subpath.
+      // The list is ALWAYS written, even empty: it is the path the user
+      // emptied, not an "unspecified" to ignore. No `present` flag
+      // like stylePresent -- there it was needed because a setText carries two things and one
+      // had to be able to stay intact; here the op IS the subpaths.
       return {
         ...state,
         nodes: state.nodes.set(id, { ...cur, vector: { subpaths: toSubPathsLite(subpaths) } }),
       };
     }
-    // Cancella il nodo E TUTTO il suo sottoalbero. Parità con core.applyDelete
-    // (Go): senza la cascata i figli resterebbero nella mappa con un parentId
-    // che non esiste più -- gli stessi orfani che il ramo createNode qui sopra
-    // rifiuta di creare.
+    // Deletes the node AND ITS WHOLE subtree. Parity with core.applyDelete
+    // (Go): without the cascade the children would stay in the map with a parentId
+    // that no longer exists -- the same orphans the createNode branch above
+    // refuses to create.
     case "deleteNode": {
       const { id } = op.kind.value;
-      // Id inesistente = ErrNodeNotFound in Go: op rifiutato, scena invariata
-      // (e nessun oggetto nuovo, così i selettori non si svegliano a vuoto).
+      // Nonexistent id = ErrNodeNotFound in Go: op rejected, scene unchanged
+      // (and no new object, so selectors do not wake up for nothing).
       if (!state.nodes.at(id)) return state;
       const nodes = state.nodes.edit();
       const gone = new Set<string>();
       for (const n of subtreeOf(state, id)) { nodes.delete(n.id); gone.add(n.id); }
       return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone), ...cascadeClips(state, gone) };
     }
-    // Op dedicato e non un path della mask di setProps (a differenza di
-    // `order_key`) perché ha una validazione che nessun campo ha: il nuovo
-    // parent deve esistere e non può essere il nodo stesso né un suo
-    // discendente. Parità con core.applyReparent (Go).
+    // Dedicated op and not a setProps mask path (unlike
+    // `order_key`) because it has a validation no field has: the new
+    // parent must exist and cannot be the node itself nor one of its
+    // descendants. Parity with core.applyReparent (Go).
     case "reparentNode": {
       const { id, newParentId, orderKey } = op.kind.value;
       const cur = state.nodes.at(id);
       if (!cur) return state;                                   // ErrNodeNotFound
       if (!parentExists(state, newParentId)) return state;      // ErrParentNotFound
-      // Un ciclo staccherebbe il sottoalbero dal documento (nessuna pagina ci
-      // arriverebbe più) lasciandolo però nella mappa: invisibile e non
-      // cancellabile. Il nodo stesso è il caso degenere -- isAncestorOf è
-      // stretta -- quindi va escluso a parte. ErrCycle in Go.
+      // A cycle would detach the subtree from the document (no page would
+      // reach it anymore) while leaving it in the map: invisible and not
+      // deletable. The node itself is the degenerate case -- isAncestorOf is
+      // strict -- so it must be excluded separately. ErrCycle in Go.
       if (newParentId === id || isAncestorOf(state, id, newParentId)) return state;
       return {
         ...state,
-        // Il sottoalbero segue il nodo senza essere riscritto: i figli puntano
-        // al nodo, non al nonno.
+        // The subtree follows the node without being rewritten: children point
+        // to the node, not to the grandparent.
         nodes: state.nodes.set(id, { ...cur, parentId: newParentId, orderKey }),
       };
     }
-    // --- pagine -------------------------------------------------------------
-    // Le pagine sono i container RADICE (un parentId può essere l'id di un nodo
-    // o quello di una Page): un op che le tocca cambia dove i nodi possono
-    // vivere, non un nodo. Parità con core.applyCreatePage / applyDeletePage /
+    // --- pages --------------------------------------------------------------
+    // Pages are the ROOT containers (a parentId can be the id of a node
+    // or that of a Page): an op that touches them changes where nodes can
+    // live, not a node. Parity with core.applyCreatePage / applyDeletePage /
     // applyRenamePage (Go).
     case "createPage": {
       const page = op.kind.value.page;
-      // Pagina assente o senza id = ErrNilPage; id GIÀ PRESO -- da un'altra
-      // pagina o da un NODO -- = ErrPageExists. La collisione con un nodo conta
-      // quanto quella con una pagina: parentExists risponde "sì" per entrambi,
-      // quindi due container omonimi renderebbero ambiguo il parent di chiunque
-      // li nomini.
+      // Page absent or without id = ErrNilPage; id ALREADY TAKEN -- by another
+      // page or by a NODE -- = ErrPageExists. The collision with a node counts
+      // as much as that with a page: parentExists answers "yes" for both,
+      // so two homonymous containers would make the parent of whoever
+      // names them ambiguous.
       if (!page || page.id === "" || parentExists(state, page.id)) return state;
-      // In CODA, come Go: la posizione nell'elenco è l'ordine del selettore di
-      // pagina, non una proprietà del documento.
+      // At the END, like Go: the position in the list is the order of the page
+      // selector, not a property of the document.
       return { ...state, pages: [...state.pages, { id: page.id, name: page.name }] };
     }
-    // Cancella la pagina E TUTTI i nodi che le pendono sotto. Stessa cascata di
-    // deleteNode portata alla radice: ciò che non è raggiungibile da nessuna
-    // pagina non fa parte del documento, quindi lasciarne i nodi nella mappa
-    // sarebbero gli orfani che createNode rifiuta di creare.
+    // Deletes the page AND ALL the nodes hanging under it. Same cascade as
+    // deleteNode brought to the root: what is not reachable from any
+    // page is not part of the document, so leaving its nodes in the map
+    // would be the orphans that createNode refuses to create.
     case "deletePage": {
       const { id } = op.kind.value;
       const i = state.pages.findIndex((p) => p.id === id);
       if (i < 0) return state;                    // ErrPageNotFound
-      // L'ULTIMA pagina non si cancella: senza pagine non esiste nessun parent
-      // valido, quindi nessun nodo potrebbe più essere creato. ErrLastPage.
+      // The LAST page is not deleted: without pages no valid parent
+      // exists, so no node could be created anymore. ErrLastPage.
       if (state.pages.length === 1) return state;
       const nodes = state.nodes.edit();
       const gone = new Set<string>();
@@ -306,28 +306,28 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const i = state.pages.findIndex((p) => p.id === id);
       if (i < 0) return state;                    // ErrPageNotFound
       const pages = [...state.pages];
-      // Scritto SEMPRE, anche vuoto: il valore che arriva è il valore finale, e
-      // il ripiego per un nome vuoto è della UI (come per Node.name).
+      // Written ALWAYS, even empty: the incoming value is the final value, and
+      // the fallback for an empty name belongs to the UI (as for Node.name).
       pages[i] = { ...pages[i], name };
       return { ...state, pages };
     }
-    // --- componenti / istanze (M4) ------------------------------------------
-    // Parità con core.applyCreateComponent / applySetInstanceOverride (Go).
+    // --- components / instances (M4) ----------------------------------------
+    // Parity with core.applyCreateComponent / applySetInstanceOverride (Go).
     case "createComponent": {
       const { componentId, rootNodeId, name } = op.kind.value;
-      // id vuoto (Go risponde ErrComponentNotFound "(empty id)"), id GIÀ PRESO
-      // (ErrComponentExists) o radice non in `nodes` (ErrNodeNotFound): in tutti
-      // e tre i casi il server rifiuta l'op e non registra nulla, quindi qui la
-      // scena resta invariata (stesso oggetto, così i selettori non si svegliano
-      // a vuoto).
+      // empty id (Go replies ErrComponentNotFound "(empty id)"), id ALREADY TAKEN
+      // (ErrComponentExists) or root not in `nodes` (ErrNodeNotFound): in all
+      // three cases the server rejects the op and registers nothing, so here the
+      // scene stays unchanged (same object, so selectors do not wake up
+      // for nothing).
       if (componentId === "" || state.components[componentId] || !state.nodes.at(rootNodeId)) return state;
-      // Non copia il sottoalbero: lo referenzia. Il master resta vivo in `nodes`,
-      // e la propagazione master->istanze è quindi gratis.
+      // It does not copy the subtree: it references it. The master stays alive in `nodes`,
+      // and master->instances propagation is therefore free.
       return { ...state, components: { ...state.components, [componentId]: { rootNodeId, name } } };
     }
-    // --- flussi -------------------------------------------------------------
-    // Parità con core.applySetFlow / applyDeleteFlow / applySetTransition /
-    // applyDeleteTransition (Go, internal/core/flows.go). Upsert ASSOLUTI.
+    // --- flows --------------------------------------------------------------
+    // Parity with core.applySetFlow / applyDeleteFlow / applySetTransition /
+    // applyDeleteTransition (Go, internal/core/flows.go). ABSOLUTE upserts.
     case "setFlow": {
       const f = op.kind.value.flow;
       if (!f || f.id === "") return state;                                  // ErrNilFlow
@@ -358,10 +358,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       delete transitions[id];
       return { ...state, transitions };
     }
-    // --- animazione ---------------------------------------------------------
-    // Parità con core.applySetClip / applyDeleteClip (Go, internal/core/animation.go).
-    // Upsert ASSOLUTO dell'intera clip; la validazione è isValidClip (stessa
-    // logica di core.validateClip: un op non valido lascia la scena invariata).
+    // --- animation ----------------------------------------------------------
+    // Parity with core.applySetClip / applyDeleteClip (Go, internal/core/animation.go).
+    // ABSOLUTE upsert of the whole clip; validation is isValidClip (same
+    // logic as core.validateClip: an invalid op leaves the scene unchanged).
     case "setClip": {
       const c = op.kind.value.clip;
       if (!c || c.id === "") return state;                                  // ErrNilClip
@@ -379,17 +379,17 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;
       const cur = state.nodes.at(instanceId);
-      // Nodo inesistente = ErrNodeNotFound; nodo NON-istanza = ErrNotInstanceNode
-      // (un override su un rettangolo è un op sul nodo sbagliato, non un campo da
-      // riempire); master_node_id vuoto = rifiutato in Go. In tutti i casi scena
-      // invariata.
+      // Nonexistent node = ErrNodeNotFound; NON-instance node = ErrNotInstanceNode
+      // (an override on a rectangle is an op on the wrong node, not a field to
+      // fill); empty master_node_id = rejected in Go. In all cases scene
+      // unchanged.
       if (!cur) return state;
       if (cur.kind !== "instance" || !cur.instance) return state;
       if (!override || override.masterNodeId === "") return state;
-      // Upsert per master_node_id, ESATTAMENTE come core.applySetInstanceOverride:
-      // togli l'override con lo stesso master, poi rimetti quello nuovo SOLO se
-      // sovrascrive davvero qualcosa (fills_present || text_present). Altrimenti
-      // l'op È una rimozione -- il nodo del master torna a ereditare dal master.
+      // Upsert by master_node_id, EXACTLY like core.applySetInstanceOverride:
+      // remove the override with the same master, then put the new one back ONLY if it
+      // really overrides something (fills_present || text_present). Otherwise
+      // the op IS a removal -- the master's node goes back to inheriting from the master.
       const kept = cur.instance.overrides.filter((o) => o.masterNodeId !== override.masterNodeId);
       if (override.fillsPresent || override.textPresent) kept.push(toInstanceOverrideLite(override));
       return {
@@ -402,10 +402,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
   }
 }
 
-// Toglie dalle clip ciò che animava i nodi appena cancellati (parità con
-// core.cascadeClips in Go): le tracce sui nodi spariti si tolgono e le clip il
-// cui TARGET è sparito si cancellano. Una clip rimasta senza tracce ma col
-// target vivo si tiene. Le voci toccate sono sostituite, mai mutate.
+// Removes from clips what animated the just-deleted nodes (parity with
+// core.cascadeClips in Go): tracks on vanished nodes are removed and clips whose
+// TARGET vanished are deleted. A clip left without tracks but with a live
+// target is kept. The touched entries are replaced, never mutated.
 export function cascadeClips(
   state: SceneState, gone: ReadonlySet<string>,
 ): Partial<Pick<SceneState, "clips">> {
@@ -423,11 +423,11 @@ export function cascadeClips(
   return changed ? { clips } : {};
 }
 
-// Toglie dai flussi ciò che riferiva i nodi appena cancellati (parità con
-// core.cascadeFlows in Go): le transizioni che li attraversano spariscono, il
-// `startId` dei flussi che partivano da loro si svuota e l'`elementId` delle
-// transizioni che li usavano come hotspot si azzera. Ritorna solo i campi
-// cambiati, così una scena senza flussi resta con gli stessi oggetti.
+// Removes from flows what referenced the just-deleted nodes (parity with
+// core.cascadeFlows in Go): transitions that cross them disappear, the
+// `startId` of flows that started from them is emptied and the `elementId` of
+// transitions that used them as hotspot is reset. Returns only the changed
+// fields, so a scene without flows keeps the same objects.
 export function cascadeFlows(
   state: SceneState, gone: ReadonlySet<string>,
 ): Partial<Pick<SceneState, "flows" | "transitions">> {

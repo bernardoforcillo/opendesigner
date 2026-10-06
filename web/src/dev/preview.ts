@@ -1,16 +1,16 @@
 import type { CodeFile } from "./codegen";
 import { textOf } from "./codegen";
 
-// L'ANTEPRIMA: la schermata generata (target HTML) dentro un iframe `srcdoc`
-// sandboxed, accanto al codice. Un file HTML del target html è AUTOCONTENUTO (CSS
-// nel <style>), ma due cose non funzionano da srcdoc e qui si sistemano:
-//  - le immagini (`assets/<hash>.png`) sono percorsi relativi a una cartella che
-//    nel srcdoc non esiste -> si riscrivono come data: URI coi byte già in mano;
-//  - i link fra schermate (`<a href="pagamento.html">`) navigherebbero l'iframe
-//    verso il nulla -> un micro-script li intercetta e avvisa la pagina madre con
-//    postMessage, che cambia la schermata mostrata.
-// Il sandbox è `allow-scripts` SENZA allow-same-origin: lo script è nostro, ma il
-// contenuto non può toccare la pagina madre né il suo storage.
+// THE PREVIEW: the generated screen (html target) inside a sandboxed
+// `srcdoc` iframe, next to the code. An HTML file of the html target is SELF-CONTAINED (CSS
+// in the <style>), but two things do not work from srcdoc and are fixed here:
+//  - images (`assets/<hash>.png`) are paths relative to a folder that
+//    does not exist in srcdoc -> they are rewritten as data: URIs with the bytes already in hand;
+//  - links between screens (`<a href="payment.html">`) would navigate the iframe
+//    to nowhere -> a micro-script intercepts them and notifies the parent page with
+//    postMessage, which changes the screen shown.
+// The sandbox is `allow-scripts` WITHOUT allow-same-origin: the script is ours, but the
+// content cannot touch the parent page or its storage.
 
 export const PREVIEW_MSG = "odPreviewNav";
 
@@ -31,7 +31,7 @@ const INTERCEPT =
   `if(!a)return;var h=a.getAttribute("href")||"";e.preventDefault();` +
   `if(h&&!/^([a-z][a-z0-9+.-]*:|#)/i.test(h))parent.postMessage({${PREVIEW_MSG}:h},"*")},true)</script>`;
 
-/** Il documento da mettere in `srcdoc` per il file HTML `path` (null se non esiste). */
+/** The document to put in `srcdoc` for the HTML file `path` (null if it does not exist). */
 export function previewDoc(files: readonly CodeFile[], path: string): string | null {
   const page = files.find((f) => f.path === path);
   if (!page) return null;
@@ -46,7 +46,7 @@ export function previewDoc(files: readonly CodeFile[], path: string): string | n
   return i >= 0 ? html.slice(0, i) + INTERCEPT + html.slice(i) : html + INTERCEPT;
 }
 
-/** Il file a cui punta un href dell'anteprima (relativo, senza ./ né query), o null. */
+/** The file an href in the preview points to (relative, without ./ or query), or null. */
 export function resolvePreviewHref(files: readonly CodeFile[], href: string): string | null {
   const clean = href.replace(/^\.\//, "").replace(/[?#].*$/, "");
   return files.some((f) => f.path === clean) ? clean : null;

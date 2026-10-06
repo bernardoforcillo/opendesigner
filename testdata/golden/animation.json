@@ -1,16 +1,16 @@
 {
  "_comment": [
-  "Clip di animazione (op 25 SetClip, op 26 DeleteClip). Eseguita da ENTRAMBI i lati:",
-  "internal/core/golden_test.go e web/src/store/golden.test.ts.",
+  "Animation clips (op 25 SetClip, op 26 DeleteClip). Run from BOTH sides:",
+  "internal/core/golden_test.go and web/src/store/golden.test.ts.",
   "",
-  "c1/c2/c3 sono validi (spring e cubic-bezier con spazi, trigger vuoto = manual,",
-  "keyframe con lo stesso tempo = scatto, draw su un vector e su un'ellisse).",
-  "Poi ogni op in `rejected` viola UNA invarianza (durata, ritardo, repeat, trigger,",
-  "target, nodo, proprieta', keyframe mancanti, tempi, valori NaN/fuori range,",
-  "easing, bezier con ascisse fuori [0,1], traccia duplicata, draw su un testo,",
-  "clip nil, id vuoto, delete di una clip inesistente): la scena DEVE restare",
-  "invariata, sia in Go sia in TS. Infine upsert assoluto (c2 sostituita per",
-  "intero), delete di c3 e una clip vuota con target vivo (c4)."
+  "c1/c2/c3 are valid (spring and cubic-bezier with spaces, empty trigger = manual,",
+  "keyframes with the same time = jump, draw on a vector and on an ellipse).",
+  "Then every op in `rejected` violates ONE invariant (duration, delay, repeat, trigger,",
+  "target, node, property, missing keyframes, times, NaN/out-of-range values,",
+  "easing, bezier with x values outside [0,1], duplicate track, draw on a text,",
+  "nil clip, empty id, delete of a nonexistent clip): the scene MUST stay",
+  "unchanged, in both Go and TS. Finally absolute upsert (c2 replaced",
+  "entirely), delete of c3 and an empty clip with a live target (c4)."
  ],
  "docId": "doc1",
  "ops": [
@@ -984,7 +984,7 @@
    "setClip": {
     "clip": {
      "id": "c4",
-     "name": "vuota",
+     "name": "empty",
      "duration": 1,
      "trigger": "manual",
      "targetId": "e1"
@@ -1234,7 +1234,7 @@
    },
    "c4": {
     "id": "c4",
-    "name": "vuota",
+    "name": "empty",
     "duration": 1,
     "trigger": "manual",
     "targetId": "e1"
