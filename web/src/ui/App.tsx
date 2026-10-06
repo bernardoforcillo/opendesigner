@@ -8,7 +8,9 @@ import { usePanels } from "./shell/panels";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
 import { usePresence, loadNickname } from "../store/presence";
-import { drawLayoutDrop, drawPeers } from "../renderer/peersRenderer";
+import { useFacilitation, tally } from "../store/facilitation";
+import { FacilitationBar } from "./FacilitationBar";
+import { drawLayoutDrop, drawPeers, drawVotes } from "../renderer/peersRenderer";
 import { drawCommentPins } from "../renderer/commentsRenderer";
 import { draftWorld, pinsOf } from "../comments/pins";
 import { useCommentsUi } from "../store/commentsUi";
@@ -59,6 +61,7 @@ import { handTool } from "../tools/handTool";
 import { connectTool } from "../tools/connectTool";
 import { linkTool } from "../tools/linkTool";
 import { stickyTool } from "../tools/stickyTool";
+import { voteTool } from "../tools/voteTool";
 import { withFlowArrows } from "../tools/flowSelect";
 
 // Registry of the available tools: the toolbar picks a key, attachTools
@@ -83,6 +86,7 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
   comment: commentTool,
   sticky: stickyTool,
   link: linkTool,
+  vote: voteTool,
 };
 
 export const TOOL_LABELS: { id: ToolId; label: string }[] = [
@@ -90,6 +94,7 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "connect", label: "Connect" },
   { id: "sticky", label: "Sticky note" },
   { id: "link", label: "Link" },
+  { id: "vote", label: "Vote" },
   { id: "frame", label: "Frame" },
   { id: "rect", label: "Rectangle" },
   { id: "ellipse", label: "Ellipse" },
@@ -105,9 +110,9 @@ const FLOW_TOOL_IDS: readonly ToolId[] = ["select", "connect", "hand"];
 // In Develop the canvas is read-only: you look, you do not draw.
 const DEV_TOOL_IDS: readonly ToolId[] = ["select", "hand"];
 // The Board: notes, text, arrows and free drawing on an infinite page; no frames, no shapes of a layout.
-const BOARD_TOOL_IDS: readonly ToolId[] = ["select", "sticky", "text", "link", "pen", "hand", "comment"];
+const BOARD_TOOL_IDS: readonly ToolId[] = ["select", "sticky", "text", "link", "vote", "pen", "hand", "comment"];
 // Only the Board has these two.
-const BOARD_ONLY: readonly ToolId[] = ["sticky", "link"];
+const BOARD_ONLY: readonly ToolId[] = ["sticky", "link", "vote"];
 function toolIdsOf(mode: EditorMode): readonly ToolId[] | null {
   return mode === "flows" ? FLOW_TOOL_IDS : mode === "dev" ? DEV_TOOL_IDS : mode === "board" ? BOARD_TOOL_IDS : null;
 }
@@ -277,6 +282,36 @@ export function App() {
         const unsubView = useScene.subscribe((st, prev) => {
           if (st.selection !== prev.selection || st.currentPageId !== prev.currentPageId) sendView();
         });
+        // Facilitation: my dots, timer, chat and reaction, and where my view is (the WORLD point at the
+        // center of the canvas, so someone following with another window size sees the same thing).
+        const sendFacilitation = () => {
+          const f = useFacilitation.getState();
+          presence.setLocal({
+            chat: f.chat, reaction: f.reaction, emoteSeq: f.emoteSeq, votes: f.votes,
+            timerStartedMs: f.timer?.startedMs ?? 0, timerEndMs: f.timer?.endMs ?? 0, timerLabel: f.timer?.label ?? "",
+          });
+        };
+        const sendCamera = () => {
+          const cam = useScene.getState().camera;
+          const c = screenToWorld(cam, canvas.clientWidth / 2, canvas.clientHeight / 2);
+          presence.setLocal({ hasView: true, viewX: c.x, viewY: c.y, viewZoom: cam.zoom });
+        };
+        sendFacilitation();
+        sendCamera();
+        const unsubFac = useFacilitation.subscribe(sendFacilitation);
+        const unsubCam = useScene.subscribe((st, prev) => { if (st.camera !== prev.camera) sendCamera(); });
+        // Follow mode: while someone is followed, my camera takes theirs on every update they send;
+        // if they leave, I stop following.
+        const unsubFollow = usePresence.subscribe((st) => {
+          const id = useFacilitation.getState().following;
+          if (!id) return;
+          const p = st.peers[id];
+          if (!p) { useFacilitation.getState().follow(null); return; }
+          if (!p.hasView) return;
+          const cur = useScene.getState().camera;
+          const next = { x: canvas.clientWidth / 2 - p.viewX * p.viewZoom, y: canvas.clientHeight / 2 - p.viewY * p.viewZoom, zoom: p.viewZoom };
+          if (Math.abs(next.x - cur.x) > 0.5 || Math.abs(next.y - cur.y) > 0.5 || next.zoom !== cur.zoom) useScene.getState().setCamera(next);
+        });
         const detachTools = attachTools(ctx, () => TOOLS[toolRef.current] ?? selectTool);
         // Dragging an image onto the canvas (track 3, task 3). It sits next to the
         // tools and not inside the registry because it is not a tool: it has no button
@@ -291,6 +326,9 @@ export function App() {
           canvas.removeEventListener("pointermove", onMove);
           canvas.removeEventListener("pointerleave", onLeave);
           unsubView();
+          unsubFac();
+          unsubCam();
+          unsubFollow();
           presence.stop();
           presenceRef.current = null;
         };
@@ -386,6 +424,10 @@ export function App() {
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
           }
+          {
+            const votes = tally(peers, useFacilitation.getState().votes);
+            if (Object.keys(votes).length > 0) drawVotes(octx, scene, camera, votes, useFacilitation.getState().votes);
+          }
           // Comment pins (all modes): the threads of this page, plus the pin being placed.
           {
             const cu = useCommentsUi.getState();
@@ -423,6 +465,7 @@ export function App() {
     const unsubs = [
       useScene.subscribe(invalidate),
       usePresence.subscribe(invalidate),
+      useFacilitation.subscribe(invalidate),
       useFlowUi.subscribe(invalidate),
       useCommentsUi.subscribe(invalidate),
       // The playhead, the pose and the recording draft: the playback tick
@@ -683,6 +726,7 @@ export function App() {
           {/* Develop: the code view covers the canvas (which stays mounted: the tools and the
               drawing loop use it) and sits BELOW the dock (z-20). */}
           {mode === "dev" && <CodeWorkbench />}
+          {mode === "board" && <FacilitationBar myId={CLIENT_ID} />}
           <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} />
         </div>
         {mode === "design" && <TimelinePanel />}

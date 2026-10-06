@@ -27,7 +27,8 @@ Legend: [x] done · [ ] to do
 - [x] Live boolean groups (union, subtract, intersect, exclude; flatten on demand), outline stroke, masks (canvas, GPU, SVG, code, hit-test); see docs/vector.md
 - [x] Presentation mode: the playable prototype (Present)
 - [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
-- [ ] Diagrams: connectors that follow the shapes, `subgraph`, ER, notes in class and state diagrams
+- [x] Connectors that follow the shapes (Link tool and panel; derived path, see docs/whiteboard.md)
+- [ ] Diagrams: `subgraph`, ER, notes in class and state diagrams
 - [x] SVG import (paste, drop, import tool)
 - [ ] .fig import
 - [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
@@ -47,10 +48,10 @@ Legend: [x] done · [ ] to do
 
 ## 1c. Whiteboard (Miro parity)
 - [x] Sticky notes (six colors) and arrows (flow and user-flow templates) as plain nodes; see docs/whiteboard.md
-- [ ] A whiteboard mode (infinite board without frames), quick text, arrows that follow the shapes
+- [x] A Board mode (infinite board without frames: sticky, text, link, vote), arrows that follow the shapes
 - [x] Tables, kanban boards and mind maps, drawn as groups of plain nodes (editor dialog, `RenderBoard` RPC, `create_board_object` MCP tool)
 - [x] Templates: brainstorm, retrospective, user flow, customer journey
-- [ ] Cursor chat, reactions, timer, voting, follow mode
+- [x] Cursor chat, reactions, timer, dot voting, follow mode (ephemeral, through presence)
 - [ ] Mermaid import/export in both directions
 
 ## 2. Collaboration

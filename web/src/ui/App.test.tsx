@@ -78,6 +78,7 @@ describe("tool registry", () => {
       "Connect",
       "Sticky note",
       "Link",
+      "Vote",
       "Frame",
       "Rectangle",
       "Ellipse",
@@ -88,7 +89,7 @@ describe("tool registry", () => {
     ]);
     // The two board tools exist only in the Board.
     expect(toolsForMode("design").map((t) => t.label)).not.toContain("Link");
-    expect(toolsForMode("board").map((t) => t.label)).toEqual(["Select", "Sticky note", "Link", "Text", "Pen", "Hand", "Comment"]);
+    expect(toolsForMode("board").map((t) => t.label)).toEqual(["Select", "Sticky note", "Link", "Vote", "Text", "Pen", "Hand", "Comment"]);
   });
 
   it("the frame tool is registered and is the real frameTool", () => {

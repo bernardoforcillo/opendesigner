@@ -16,14 +16,14 @@ import { isTextField } from "../../tools/toolManager";
 // semantics, and the one the tests query).
 const ICON: Record<string, IconName> = {
   select: "select", connect: "connect", frame: "frame", rect: "rect",
-  ellipse: "ellipse", text: "text", pen: "pen", hand: "hand", comment: "comment", sticky: "page", link: "route",
+  ellipse: "ellipse", text: "text", pen: "pen", hand: "hand", comment: "comment", sticky: "page", link: "route", vote: "flag",
 };
 
 // Single-key shortcuts. F (toggles Design/Flows) and K (Connect) live in
 // App; here are the drawing ones. Never inside a text field nor with a
 // modifier pressed.
 export const TOOL_KEYS: Partial<Record<ToolId, string>> = {
-  select: "V", frame: "A", rect: "R", ellipse: "O", text: "T", pen: "P", hand: "H", connect: "K", comment: "C", sticky: "N", link: "L",
+  select: "V", frame: "A", rect: "R", ellipse: "O", text: "T", pen: "P", hand: "H", connect: "K", comment: "C", sticky: "N", link: "L", vote: "Y",
 };
 
 // SHAPE tools live in a single place in the dock: the button shows

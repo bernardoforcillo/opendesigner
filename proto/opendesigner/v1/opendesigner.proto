@@ -908,6 +908,23 @@ message PresenceState {
   double cursor_y = 5;
   string page_id = 6;
   repeated string selection = 7;
+  // FACILITATION. Everything below is as ephemeral as the cursor: whoever leaves takes it along.
+  // The camera, so that others can follow (zoom and the world point at the canvas's top-left).
+  bool has_view = 8;
+  double view_x = 9;
+  double view_y = 10;
+  double view_zoom = 11;
+  // Cursor chat and a reaction (an emoji). emote_seq grows with every one sent, so
+  // that sending the same text twice is still noticed.
+  string chat = 12;
+  string reaction = 13;
+  uint32 emote_seq = 14;
+  // The nodes this peer voted for, one entry per dot (the same id twice = two dots).
+  repeated string votes = 15;
+  // A countdown this peer started: wall-clock milliseconds, 0 = none.
+  int64 timer_started_ms = 16;
+  int64 timer_end_ms = 17;
+  string timer_label = 18;
 }
 message PresenceEvent {
   oneof kind {
