@@ -148,6 +148,22 @@ describe("runExport — SVG", () => {
   });
 });
 
+describe("runExport — PDF", () => {
+  it("hands the SVG markup and its size to the print step, and downloads nothing", async () => {
+    install(sceneWith("Untitled", node({ id: "a", x: 10, y: 20, width: 30, height: 40 })));
+    const d = deps();
+    const printed: { svg: string; w: number; h: number }[] = [];
+    const ok = await runExport({ format: "pdf", scope: "page", scale: 1 }, {
+      ...d, printSvg: (svg, b) => { printed.push({ svg, w: b.width, h: b.height }); },
+    });
+    expect(ok).toBe(true);
+    expect(d.saved).toHaveLength(0);
+    expect(printed).toHaveLength(1);
+    expect(printed[0]).toMatchObject({ w: 30, h: 40 });
+    expect(printed[0].svg).toContain('viewBox="10 20 30 40"');
+  });
+});
+
 describe("runExport — PNG", () => {
   it("goes through the offscreen canvas and delivers the PNG bytes", async () => {
     install(sceneWith("Untitled", node({ id: "a", width: 30, height: 40 })));

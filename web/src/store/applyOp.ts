@@ -8,6 +8,7 @@ import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
 import { cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
+import { areValidLayoutGrids } from "./layoutGrids";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
@@ -132,6 +133,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // The enums are closed: an out-of-range number is rejected whole (core.applySetProps).
       if (paths.includes("constraint_x") && !(p.constraintX >= 0 && p.constraintX <= 5)) return state;
       if (paths.includes("constraint_y") && !(p.constraintY >= 0 && p.constraintY <= 5)) return state;
+      if (paths.includes("layout_grids") && (cur.kind !== "frame" || !areValidLayoutGrids(p.layoutGrids))) return state;
       if (paths.includes("blend_mode") && !(p.blendMode >= 0 && p.blendMode <= 15)) return state;
       if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
       if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;
@@ -146,6 +148,11 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "opacity": next.opacity = p.opacity; break;
           case "name": next.name = p.name; break;
           case "visible": next.visible = p.visible; break;
+          case "layout_grids": {
+            const g = toNodeLite(p).layoutGrids;
+            if (g) next.layoutGrids = g; else delete next.layoutGrids;
+            break;
+          }
           case "is_mask": if (p.isMask) next.isMask = true; else delete next.isMask; break;
           case "fills": next.fills = toNodeLite(p).fills; break;
           // REPLACEMENT of the whole list, like "fills" and like `n.Strokes =

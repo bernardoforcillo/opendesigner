@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, BlendMode, Constraint, LayoutSizing, StrokeAlign, VariableType, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
+import { OpSchema, NodeSchema, BlendMode, LayoutGridKind, Constraint, LayoutSizing, StrokeAlign, VariableType, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, type NodeLite } from "./types";
@@ -68,7 +68,7 @@ function textScene() {
   ].reduce(applyOp, emptyScene("doc1", "Untitled"));
 }
 const sceneFor = (path: string) =>
-  path === "auto_layout" ? frameScene()
+  path === "auto_layout" || path === "layout_grids" ? frameScene()
     : path === "bindings" || path === "modes" ? themedScene()
     : path === "text_style_id" ? textScene()
     : baseScene();
@@ -301,6 +301,11 @@ const PROBE: Probe = {
   constraint_y: { patch: { constraintY: Constraint.SCALE }, expected: "scale" },
   layout_sizing_x: { patch: { layoutSizingX: LayoutSizing.FILL }, expected: "fill" },
   layout_sizing_y: { patch: { layoutSizingY: LayoutSizing.FILL }, expected: "fill" },
+  // Layout grids only apply to a frame (sceneFor).
+  layout_grids: {
+    patch: { layoutGrids: [{ kind: LayoutGridKind.COLUMNS, count: 4, gutter: 8, margin: 16, size: 0, color: { r: 1, g: 0, b: 0, a: 0.1 } }] },
+    expected: [{ kind: "columns", count: 4, gutter: 8, margin: 16, size: 0, color: { r: 1, g: 0, b: 0, a: 0.1 } }],
+  },
   is_mask: { patch: { isMask: true }, expected: true },
   blend_mode: { patch: { blendMode: BlendMode.MULTIPLY }, expected: "multiply" },
 };

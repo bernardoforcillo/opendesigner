@@ -488,6 +488,27 @@ message Node {
   // A MASK node is not drawn: its outline clips every sibling ABOVE it in the same parent.
   // Only shapes with an outline (rect, ellipse, frame, vector) mask. The "is_mask" mask path writes it.
   bool is_mask = 49;
+  // Layout grids of a FRAME (see LayoutGrid): editor guides and snap targets, never exported.
+  // The "layout_grids" mask path REPLACES the whole list; only frames take one.
+  repeated LayoutGrid layout_grids = 50;
+}
+
+enum LayoutGridKind {
+  LAYOUT_GRID_KIND_UNSPECIFIED = 0;
+  LAYOUT_GRID_KIND_GRID = 1;     // square cells of `size`
+  LAYOUT_GRID_KIND_COLUMNS = 2;  // `count` columns between the margins, `gutter` apart
+  LAYOUT_GRID_KIND_ROWS = 3;     // `count` rows between the margins, `gutter` apart
+}
+
+// A grid drawn over a frame, in the frame's own coordinates (its origin is the frame's
+// top-left corner). Its lines are snap targets for the nodes dragged inside the frame.
+message LayoutGrid {
+  LayoutGridKind kind = 1;
+  double size = 2;    // GRID: cell side, > 0
+  int32 count = 3;    // COLUMNS / ROWS: how many, 1..1000
+  double gutter = 4;  // COLUMNS / ROWS: space between two, >= 0
+  double margin = 5;  // COLUMNS / ROWS: space at both ends, >= 0
+  Color color = 6;    // tint of the overlay (alpha included)
 }
 
 message Page { string id = 1; string name = 2; }

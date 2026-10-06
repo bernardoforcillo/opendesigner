@@ -87,3 +87,13 @@ clamped (`STRETCH` below zero) and the scaled (`SCALE`) cases.
 - Constraints for a rotated or scaled parent frame (the move is in its own axes).
 - Exporting constraints to responsive CSS (they are an editing behavior; the export is the
   laid-out result).
+
+## Layout grids
+
+A frame can carry any number of **layout grids** (`Node.layout_grids`, the `layout_grids` mask path replaces the list; only frames take them): `columns` and `rows` (`count`, `gutter`, `margin`) and a square `grid` (`size`). They are editor guides, drawn under the selection and never exported.
+
+Their lines are **snap targets**: a node dragged or resized near a column edge, a row edge or a grid line snaps to it and shows the guide. Frames that are rotated do not offer snap lines. The panel's **Layout grid** section (single selected frame) adds, edits and removes them; the core rejects a list with a bad kind, `count` outside 1..1000, `size` <= 0, a negative gutter or margin, or a non-frame node (golden fixture `testdata/golden/layout_grids.json`).
+
+## PDF export
+
+The export section offers **PDF**: the exported region as SVG is printed from a hidden frame whose `@page` is the region's size, so "Save as PDF" in the print dialog gives one vector page. Fonts and images are the browser's.

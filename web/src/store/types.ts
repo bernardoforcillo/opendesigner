@@ -1,8 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, LayoutGridKind, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
+  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -63,6 +63,12 @@ export interface AutoLayoutLite {
 export type BlendModeLite =
   | "multiply" | "screen" | "overlay" | "darken" | "lighten" | "color-dodge" | "color-burn"
   | "hard-light" | "soft-light" | "difference" | "exclusion" | "hue" | "saturation" | "color" | "luminosity";
+// A layout grid of a frame (see LayoutGrid in the proto).
+export interface LayoutGridLite {
+  kind: "grid" | "columns" | "rows";
+  size: number; count: number; gutter: number; margin: number;
+  color: { r: number; g: number; b: number; a: number };
+}
 export type ConstraintLite = "min" | "max" | "stretch" | "center" | "scale";
 
 // A node effect. Shadow and blur are in WORLD coordinates, like a stroke's
@@ -253,6 +259,8 @@ export interface NodeLite {
   blendMode?: BlendModeLite;
   // A mask is not drawn: its outline clips the siblings above it. Absent = not a mask.
   isMask?: true;
+  // Layout grids (frames only); absent when none.
+  layoutGrids?: LayoutGridLite[];
   // TRANSIENT animation FIELDS: written ONLY by animation/pose.ts when it
   // derives the scene to show while a clip runs or is scrubbed. They are not
   // document: toPbNode does not read them, no op carries them, and a snapshot never
@@ -656,6 +664,26 @@ const CONSTRAINT_TO_PB: Record<ConstraintLite, Constraint> = {
   min: Constraint.MIN, max: Constraint.MAX, stretch: Constraint.STRETCH, center: Constraint.CENTER, scale: Constraint.SCALE,
 };
 
+const GRID_KIND_TO_LITE: Partial<Record<LayoutGridKind, LayoutGridLite["kind"]>> = {
+  [LayoutGridKind.GRID]: "grid", [LayoutGridKind.COLUMNS]: "columns", [LayoutGridKind.ROWS]: "rows",
+};
+const GRID_KIND_TO_PB: Record<LayoutGridLite["kind"], LayoutGridKind> = {
+  grid: LayoutGridKind.GRID, columns: LayoutGridKind.COLUMNS, rows: LayoutGridKind.ROWS,
+};
+export function toLayoutGridLite(g: PbLayoutGrid): LayoutGridLite {
+  const c = g.color;
+  return {
+    kind: GRID_KIND_TO_LITE[g.kind] ?? "grid",
+    size: g.size, count: g.count, gutter: g.gutter, margin: g.margin,
+    color: { r: c?.r ?? 1, g: c?.g ?? 0, b: c?.b ?? 0, a: c?.a ?? 0.1 },
+  };
+}
+export function toPbLayoutGrids(grids: readonly LayoutGridLite[]) {
+  return grids.map((g) => ({
+    kind: GRID_KIND_TO_PB[g.kind], size: g.size, count: g.count, gutter: g.gutter, margin: g.margin, color: { ...g.color },
+  }));
+}
+
 export const BLEND_MODES: readonly BlendModeLite[] = [
   "multiply", "screen", "overlay", "darken", "lighten", "color-dodge", "color-burn",
   "hard-light", "soft-light", "difference", "exclusion", "hue", "saturation", "color", "luminosity",
@@ -693,6 +721,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(n.layoutSizingY === LayoutSizing.FILL ? { layoutSizingY: "fill" as const } : {}),
     ...(blendToLite(n.blendMode) ? { blendMode: blendToLite(n.blendMode) } : {}),
     ...(n.isMask ? { isMask: true as const } : {}),
+    ...(n.layoutGrids.length > 0 ? { layoutGrids: n.layoutGrids.map(toLayoutGridLite) } : {}),
   };
 }
 
@@ -719,6 +748,7 @@ export function toPbNode(n: NodeLite): PbNode {
     layoutSizingY: n.layoutSizingY === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
     blendMode: toPbBlend(n.blendMode),
     isMask: n.isMask === true,
+    layoutGrids: n.layoutGrids ? toPbLayoutGrids(n.layoutGrids) : [],
     shape: n.kind === "unknown"
       // The unknown shape cannot be BUILT (there is no oneof branch to
       // name), so it is put back where it was right after the create. Leaving it

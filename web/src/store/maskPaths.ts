@@ -99,6 +99,8 @@ export const MASK_PATHS = [
   "blend_mode",
   // Mask: the node is not drawn, its outline clips the siblings above it.
   "is_mask",
+  // Layout grids of a frame (replaces the list; frames only).
+  "layout_grids",
 ] as const;
 
 // The ONLY type a mask path can have at an op's construction points

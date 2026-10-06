@@ -30,6 +30,7 @@ import { ColorField } from "./fields/ColorField";
 import { GradientControls } from "./GradientControls";
 import { BooleanControls } from "./BooleanControls";
 import { EffectsControls } from "./EffectsControls";
+import { LayoutGridControls } from "./LayoutGridControls";
 import { StrokeStyleControls } from "./StrokeStyleControls";
 import { AutoLayoutControls, WrapInAutoLayoutButton } from "./AutoLayoutControls";
 import type { RgbLite } from "./fields/ColorField";
@@ -1018,6 +1019,9 @@ export function PropertiesPanel() {
           {stroke && !strokesMixed && stroke.weight > 0 && <StrokeStyleControls run={runGesture} />}
         </div>
       </Section>
+
+      {/* LAYOUT GRIDS of a single selected frame (renders nothing otherwise). */}
+      <LayoutGridControls run={runGesture} />
 
       {/* THE EFFECTS: shadow and blur. Its own section like the stroke: they are
           controls of a different nature than the basic appearance. */}

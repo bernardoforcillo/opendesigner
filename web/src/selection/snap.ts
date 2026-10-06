@@ -1,6 +1,7 @@
 import type { Camera } from "../canvas/camera";
 import { type Bounds, worldAabbOfNode } from "../canvas/geometry";
 import type { SceneState } from "../store/types";
+import { snapPositions } from "../store/layoutGrids";
 
 // SNAP — AUTOMATIC ALIGNMENT DURING A GESTURE.
 //
@@ -313,6 +314,14 @@ export function snapTargets(scene: SceneState, exclude: readonly string[]): Boun
   for (const n of [...scene.nodes.values()]) {
     if (!n.visible || skip.has(n.id)) continue;
     out.push(worldAabbOfNode(n));
+    // The layout grid of a frame offers its lines too, as degenerate boxes (a line is a box
+    // of zero width or height), so the guide drawn for a snap spans the frame.
+    if (n.kind === "frame" && n.layoutGrids && n.layoutGrids.length > 0 && n.rotation % 360 === 0) {
+      const f = worldAabbOfNode(n);
+      const pos = snapPositions(n);
+      for (const x of pos.x) out.push({ x: f.x + x, y: f.y, width: 0, height: f.height });
+      for (const y of pos.y) out.push({ x: f.x, y: f.y + y, width: f.width, height: 0 });
+    }
   }
   return out;
 }

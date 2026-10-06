@@ -28,9 +28,11 @@ Legend: [x] done · [ ] to do
 - [ ] Prototyping and presentation mode
 - [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
 - [ ] Diagrams: connectors that follow the shapes, `subgraph`, ER, notes in class and state diagrams
-- [ ] SVG import (then .fig)
+- [x] SVG import (paste, drop, import tool)
+- [ ] .fig import
 - [ ] Prototyping: transitions between frames, smart animate, interactions on top of the existing animation engine
-- [ ] Multiple artboards, grids, smart guides and snapping
+- [x] Multiple artboards (frames), smart guides and snapping to nodes, layout grids on frames (columns, rows, square grid) that guide and snap; see docs/layout.md
+- [ ] Snap to a pixel grid, spacing guides (equal distances)
 
 ## 1b. Vector (Illustrator parity)
 - [ ] Pen tool: node editing, handles, join, smooth
@@ -38,7 +40,8 @@ Legend: [x] done · [ ] to do
 - [x] Strokes: cap, join, miter limit and dashes on every shape (panel, canvas, GPU, SVG)
 - [ ] Advanced strokes: variable width profiles, brushes, arrowheads
 - [ ] Gradient mesh
-- [ ] SVG and PDF export; later AI/EPS
+- [x] SVG export and PDF (the SVG through the browser's print dialog, Save as PDF)
+- [ ] AI/EPS export
 - [ ] Color: CMYK and ICC profiles (print)
 
 ## 1c. Whiteboard (Miro parity)

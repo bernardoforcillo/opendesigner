@@ -18,6 +18,7 @@ import { SEGMENT, SEGMENTED_TRACK } from "./ds/flow-parts";
 const FORMATS: readonly { value: ExportFormat; label: string }[] = [
   { value: "png", label: "PNG" },
   { value: "svg", label: "SVG" },
+  { value: "pdf", label: "PDF" },
 ];
 
 const ROW_CLASS = "flex items-center gap-2";
@@ -70,7 +71,7 @@ export function ExportSection({
       )}
 
       <Button variant="primary" icon="download" onPress={submit} className="h-8 w-full">
-        Download
+        {format === "pdf" ? "Print / Save as PDF" : "Download"}
       </Button>
     </div>
   );
