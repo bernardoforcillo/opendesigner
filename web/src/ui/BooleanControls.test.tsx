@@ -34,13 +34,33 @@ describe("BooleanControls", () => {
     expect(screen.queryByRole("group", { name: "Boolean operations" })).toBeNull();
   });
 
-  it("with two shapes, Union replaces them by one selected vector", () => {
+  it("with two shapes, Union makes a LIVE boolean group: the shapes stay, the group is selected", () => {
     useScene.setState({ selection: ["a", "b"] });
     render(<BooleanControls />);
     fireEvent.click(screen.getByRole("button", { name: "Union" }));
     const s = useScene.getState();
     expect(s.selection).toHaveLength(1);
+    const g = s.scene!.nodes.at(s.selection[0]);
+    expect(g).toMatchObject({ kind: "group", name: "Union", meta: { "boolean.op": "union" } });
+    expect(g.fills[0]).toMatchObject({ r: 1, g: 0, b: 0 });
+    expect(s.scene!.nodes.at("a").parentId).toBe(g.id);
+    expect(s.scene!.nodes.at("b").parentId).toBe(g.id);
+  });
+
+  it("on a live group the buttons change the operation, and Flatten makes it a plain vector", () => {
+    useScene.setState({ selection: ["a", "b"] });
+    const view = render(<BooleanControls />);
+    fireEvent.click(screen.getByRole("button", { name: "Union" }));
+    view.rerender(<BooleanControls />);
+    expect(screen.getByRole("button", { name: "Union" })).toHaveAttribute("aria-pressed", "true");
+    fireEvent.click(screen.getByRole("button", { name: "Intersect" }));
+    const id = useScene.getState().selection[0];
+    expect(useScene.getState().scene!.nodes.at(id)).toMatchObject({ name: "Intersect", meta: { "boolean.op": "intersect" } });
+    view.rerender(<BooleanControls />);
+    fireEvent.click(screen.getByRole("button", { name: "Flatten" }));
+    const s = useScene.getState();
     expect(s.scene!.nodes.at(s.selection[0]).kind).toBe("vector");
+    expect(s.scene!.nodes.at(id)).toBeUndefined();
     expect(s.scene!.nodes.at("a")).toBeUndefined();
   });
 

@@ -24,7 +24,7 @@ Legend: [x] done · [ ] to do
 - [ ] Variables: text and spacing, aliases, CSS custom properties per mode in the exported code
 - [x] Typography: uploaded fonts (TTF/OTF/WOFF/WOFF2 as content-addressed assets, drawn by the 2D and GPU renderers and exported as @font-face), shared text styles, italic; multi-line text and wrapping were already there; see docs/typography.md
 - [ ] Typography: letter spacing, decoration, case, per-range styling, kerning/shaping on the GPU
-- [x] Boolean operations (union, subtract, intersect, exclude), outline stroke, masks; see docs/vector.md
+- [x] Live boolean groups (union, subtract, intersect, exclude; flatten on demand), outline stroke, masks (canvas, GPU, SVG, code, hit-test); see docs/vector.md
 - [x] Presentation mode: the playable prototype (Present)
 - [x] Diagrams: flowchart and UML (class, sequence, state) from Mermaid text, computed by the server; editor (document menu) and MCP (`create_diagram`, `update_diagram`, `list_diagrams`), see docs/diagrams.md
 - [ ] Diagrams: connectors that follow the shapes, `subgraph`, ER, notes in class and state diagrams

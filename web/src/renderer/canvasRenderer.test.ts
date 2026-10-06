@@ -61,6 +61,18 @@ function vectorNode(id: string, subpaths: SubPathLite[], over: Partial<NodeLite>
 // whose target does not depend on the camera use.
 const Z1 = 1;
 
+describe("hitTest with masks", () => {
+  it("a node above a mask is only hit inside the mask, and the mask itself is never hit", () => {
+    const s = emptyScene("d", "n");
+    s.nodes = s.nodes.set("m", { ...rect("m", 0, 0, "a0"), isMask: true }); // 0..50
+    s.nodes = s.nodes.set("c", { ...rect("c", 0, 0, "a1"), width: 200, height: 200 }); // above the mask
+    s.nodes = s.nodes.set("under", { ...rect("under", 0, 0, "A"), width: 200, height: 200 }); // below the mask: not clipped
+    expect(hitTest(s, 25, 25, Z1)).toBe("c");
+    expect(hitTest(s, 100, 100, Z1)).toBe("under"); // outside the mask the clipped node is not there
+    expect(hitTest(s, 300, 300, Z1)).toBeNull();
+  });
+});
+
 describe("hitTest", () => {
   it("returns the topmost node under the point", () => {
     const s = emptyScene("d", "n");

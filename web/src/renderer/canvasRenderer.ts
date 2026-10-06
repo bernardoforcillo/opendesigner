@@ -950,9 +950,18 @@ function pickIn(
   // The master nodes the instance being hit-tested hides (see store/instances.ts::hiddenMasterNodes).
   hidden: ReadonlySet<string> | null = null,
 ): string | null {
+  // MASKS clip what is above them in the same list (as drawSiblings does): a node is only
+  // hit inside every visible mask below it, and a mask itself is not drawn, so not hit either.
+  // The mask's own stroke does not count: it clips by its outline.
+  const masks: { at: number; shape: NodeLite }[] = [];
+  siblings.forEach((m, at) => {
+    if (m.visible && m.isMask && isMaskShape(m)) masks.push({ at, shape: m.strokes.length ? { ...m, strokes: [] } : m });
+  });
   for (let i = siblings.length - 1; i >= 0; i--) {
     const n = siblings[i];
     if (!n.visible || seen.has(n.id) || hidden?.has(n.id)) continue;
+    if (n.isMask && isMaskShape(n)) continue;
+    if (masks.some((m) => m.at < i && !hitTestNode(m.shape, px, py, zoom))) continue;
     if (prune && n.kind !== "instance") {
       const e = prune.extent.get(n.id);
       if (!e || prune.x < e.x - prune.pad || prune.x > e.x + e.width + prune.pad ||

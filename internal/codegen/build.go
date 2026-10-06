@@ -150,6 +150,14 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 		return nil
 	}
 	var el *Element
+	// A live boolean group draws as one vector (boolean.go); the shapes under it are not drawn.
+	if _, live := booleanOpOf(n); live {
+		v := b.liveBoolean(n)
+		if v == nil {
+			return nil
+		}
+		n = v
+	}
 	switch n.GetShape().(type) {
 	case *opendesignerv1.Node_Group:
 		el = b.groupElement(n, c)
@@ -216,7 +224,23 @@ func rotation(el *Element, n *opendesignerv1.Node) {
 // children translates `n`'s children in drawing order.
 func (b *builder) children(el *Element, n *opendesignerv1.Node, c bctx) {
 	al := n.GetFrame().GetAutoLayout()
+	// MASKS: the siblings after a mask go into a wrapper (same origin as this element) that
+	// clips them with the mask's outline. Not in an auto layout (the mask would be a flow
+	// item), and not for a rotated mask: those masks are not applied (documented).
+	target := el
 	for _, k := range core.ChildrenOf(b.doc, n.GetId()) {
+		if k.GetVisible() && k.GetIsMask() && isMaskShape(k) {
+			if clip, ok := maskClip(k); ok && al == nil {
+				wrap := &Element{Tag: "div"}
+				wrap.addStyle("position", "absolute")
+				wrap.addStyle("left", "0")
+				wrap.addStyle("top", "0")
+				wrap.addStyle("clip-path", clip)
+				target.Children = append(target.Children, wrap)
+				target = wrap
+			}
+			continue
+		}
 		cc := c
 		cc.root, cc.origin = false, false
 		cc.flowChild = al != nil && participates(k)
@@ -225,9 +249,51 @@ func (b *builder) children(el *Element, n *opendesignerv1.Node, c bctx) {
 			cc.fillMain, cc.fillCross, cc.vertical = fillAxes(al, k)
 		}
 		if ce := b.element(k, cc); ce != nil {
-			el.Children = append(el.Children, ce)
+			target.Children = append(target.Children, ce)
 		}
 	}
+}
+
+// maskClip is the CSS clip-path of a mask node, in its parent's coordinates (the wrapper sits at
+// the parent's origin). ok=false for what CSS cannot say here: a rotated mask, an empty outline.
+func maskClip(m *opendesignerv1.Node) (string, bool) {
+	if rotates(m.GetRotation()) {
+		return "", false
+	}
+	x, y, w, h := m.GetX(), m.GetY(), m.GetWidth(), m.GetHeight()
+	switch m.GetShape().(type) {
+	case *opendesignerv1.Node_Ellipse:
+		return fmt.Sprintf("ellipse(%s %s at %s %s)", px(w/2), px(h/2), px(x+w/2), px(y+h/2)), w > 0 && h > 0
+	case *opendesignerv1.Node_Rect, *opendesignerv1.Node_Frame:
+		r := math.Min(m.GetRect().GetCornerRadius(), math.Min(w/2, h/2))
+		if _, isFrame := m.GetShape().(*opendesignerv1.Node_Frame); isFrame || r < 0 {
+			r = 0
+		}
+		if !(w > 0 && h > 0) {
+			return "", false
+		}
+		d := fmt.Sprintf("M%s %sH%sA%s %s 0 0 1 %s %sV%sA%s %s 0 0 1 %s %sH%sA%s %s 0 0 1 %s %sV%sA%s %s 0 0 1 %s %sZ",
+			num(x+r), num(y), num(x+w-r), num(r), num(r), num(x+w), num(y+r), num(y+h-r), num(r), num(r), num(x+w-r), num(y+h),
+			num(x+r), num(r), num(r), num(x), num(y+h-r), num(y+r), num(r), num(r), num(x+r), num(y))
+		return "path('" + d + "')", true
+	case *opendesignerv1.Node_Vector:
+		var sb strings.Builder
+		for _, sp := range m.GetVector().GetSubpaths() {
+			if !sp.GetClosed() || len(sp.GetAnchors()) < 2 {
+				continue
+			}
+			moved := &opendesignerv1.SubPath{Closed: true}
+			for _, a := range sp.GetAnchors() {
+				moved.Anchors = append(moved.Anchors, &opendesignerv1.Anchor{X: a.GetX() + x, Y: a.GetY() + y, InX: a.GetInX(), InY: a.GetInY(), OutX: a.GetOutX(), OutY: a.GetOutY()})
+			}
+			sb.WriteString(subpathData(moved))
+		}
+		if sb.Len() == 0 {
+			return "", false
+		}
+		return "path(evenodd, '" + sb.String() + "')", true
+	}
+	return "", false
 }
 
 func hasVisibleKids(doc *opendesignerv1.Document, id string) bool {

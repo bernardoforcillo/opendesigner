@@ -1,148 +1,28 @@
-import polygonClipping from "polygon-clipping";
-import type { Geom, MultiPolygon, Pair, Ring } from "polygon-clipping";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyTransform, compose, invertTransform, localTransformOf, worldTransformOf, type Transform } from "../canvas/transform";
+import { worldTransformOf } from "../canvas/transform";
 import { orderKeyBetween } from "../store/orderKey";
 import { childrenOf, documentOrder, topmostOf } from "../store/tree";
-import { normalizeVector, flattenSubpath, subpathFills } from "../store/vectorGeometry";
-import type { NodeLite, SceneState, SubPathLite } from "../store/types";
+import { normalizeVector } from "../store/vectorGeometry";
+import type { NodeLite, SceneState } from "../store/types";
 import { toPbEffects, toPbFills, toPbStrokes, toPbSubPaths } from "../store/types";
-import { makeCreateNodeOp, makeDeleteOp, uuid } from "../tools/ops";
+import { makeCreateNodeOp, makeDeleteOp, makeSetPropsOp, uuid } from "../tools/ops";
+import { groupOps } from "../tools/grouping";
+import { META_BOOLEAN, booleanOpOf } from "./regions";
+import { BEZIER_TOLERANCE, booleanRegion, isBooleanSource, localOutlines, regionOf, regionOfNode, type BooleanOp } from "./regions";
 
-// BOOLEAN OPERATIONS on shapes: union, subtract, intersect, exclude.
-//
-// The result is a plain VECTOR node (a "flatten", not a live boolean group): the
-// document model, the renderers, the exports and the Go core need nothing new, and
-// one gesture (createNode + N deleteNode) is one undo step. The price is the same
-// as in any editor's "flatten": the sources are gone, and curves are flattened into
-// straight segments (within BEZIER_TOLERANCE world units).
-//
-// The geometry is done by polygon-clipping (even-odd input, exact on shared edges).
-// Each node's region is the XOR of its closed rings, which is exactly how the vector
-// renderer fills a node with several subpaths (even-odd, see store/vectorGeometry.ts).
+export { BEZIER_TOLERANCE, booleanRegion, isBooleanSource, localOutlines, regionOfNode };
+export type { BooleanOp };
 
-export type BooleanOp = "union" | "subtract" | "intersect" | "exclude";
+// BOOLEAN OPERATIONS on shapes: union, subtract, intersect, exclude. The result is a plain VECTOR node
+// (a "flatten"): one gesture creates it and deletes the sources, so one undo brings everything back.
+// The geometry (vector/regions.ts) is done by polygon-clipping. For a result that stays editable --
+// the shapes kept as children, the result recomputed -- see store/booleans.ts (a group with `boolean.op`).
 
 export const BOOLEAN_NAMES: Record<BooleanOp, string> = {
   union: "Union", subtract: "Subtract", intersect: "Intersect", exclude: "Exclude",
 };
-
-// How far the flattened curves may stray from the true ones, in world units.
-export const BEZIER_TOLERANCE = 0.05;
-const CORNER_STEPS = 12;
-const ELLIPSE_STEPS = 96;
-
-const KINDS = new Set(["rect", "ellipse", "vector", "frame"]);
-
-/** True if the node is a shape a boolean operation can take (or a group of them). */
-export function isBooleanSource(scene: SceneState, n: NodeLite): boolean {
-  if (n.kind === "group") return childrenOf(scene, n.id).some((c) => isBooleanSource(scene, c));
-  return KINDS.has(n.kind) && n.kind !== "instance";
-}
-
-type Pt = { x: number; y: number };
-
-// The outline of a rounded rectangle in the node's local space (0,0)-(w,h).
-function rectRing(w: number, h: number, radius: number): Pt[] {
-  const r = Math.max(0, Math.min(radius, w / 2, h / 2));
-  if (r === 0) return [{ x: 0, y: 0 }, { x: w, y: 0 }, { x: w, y: h }, { x: 0, y: h }];
-  const out: Pt[] = [];
-  const corner = (cx: number, cy: number, from: number) => {
-    for (let i = 0; i <= CORNER_STEPS; i++) {
-      const a = from + (Math.PI / 2) * (i / CORNER_STEPS);
-      out.push({ x: cx + r * Math.cos(a), y: cy + r * Math.sin(a) });
-    }
-  };
-  corner(w - r, r, -Math.PI / 2);
-  corner(w - r, h - r, 0);
-  corner(r, h - r, Math.PI / 2);
-  corner(r, r, Math.PI);
-  return out;
-}
-
-function ellipseRing(w: number, h: number): Pt[] {
-  const out: Pt[] = [];
-  for (let i = 0; i < ELLIPSE_STEPS; i++) {
-    const a = (2 * Math.PI * i) / ELLIPSE_STEPS;
-    out.push({ x: w / 2 + (w / 2) * Math.cos(a), y: h / 2 + (h / 2) * Math.sin(a) });
-  }
-  return out;
-}
-
-/** Every outline of a node (closed or not) as polylines in its LOCAL space. */
-export function localOutlines(n: NodeLite, tol: number): { points: Pt[]; closed: boolean }[] {
-  switch (n.kind) {
-    case "rect": return [{ points: rectRing(n.width, n.height, n.cornerRadius), closed: true }];
-    case "frame": return [{ points: rectRing(n.width, n.height, 0), closed: true }];
-    case "ellipse": return [{ points: ellipseRing(n.width, n.height), closed: true }];
-    case "vector":
-      return (n.vector?.subpaths ?? []).filter((sp) => sp.anchors.length > 0).map((sp) => ({ points: flattenSubpath(sp, tol), closed: sp.closed }));
-    default: return [];
-  }
-}
-
-// The closed rings a node fills, in its LOCAL space.
-function localRings(n: NodeLite): Pt[][] {
-  switch (n.kind) {
-    case "rect": return [rectRing(n.width, n.height, n.cornerRadius)];
-    case "frame": return [rectRing(n.width, n.height, 0)];
-    case "ellipse": return [ellipseRing(n.width, n.height)];
-    case "vector":
-      return (n.vector?.subpaths ?? []).filter(subpathFills).map((sp) => flattenSubpath(sp, BEZIER_TOLERANCE));
-    default: return [];
-  }
-}
-
-const toRing = (pts: Pt[], t: Transform): Ring => {
-  const ring: Pair[] = pts.map((p) => {
-    const q = applyTransform(t, p.x, p.y);
-    return [q.x, q.y] as Pair;
-  });
-  // polygon-clipping closes rings itself; an explicit duplicate of the first point is harmless but unneeded.
-  const f = ring[0], l = ring[ring.length - 1];
-  if (f && l && f[0] === l[0] && f[1] === l[1]) ring.pop();
-  return ring;
-};
-
-// The region a node fills, in the space of `target` (a container's local space).
-export function regionOfNode(scene: SceneState, n: NodeLite, target: Transform): MultiPolygon {
-  return regionOf(scene, n, target);
-}
-function regionOf(scene: SceneState, n: NodeLite, target: Transform): MultiPolygon {
-  if (n.kind === "group") {
-    const parts = childrenOf(scene, n.id).filter((c) => isBooleanSource(scene, c)).map((c) => regionOf(scene, c, target));
-    return parts.length === 0 ? [] : polygonClipping.union(parts[0], ...parts.slice(1));
-  }
-  const t = compose(invertTransform(target), compose(worldTransformOf(scene, n.parentId), localTransformOf(n)));
-  const rings = localRings(n).map((r) => toRing(r, t)).filter((r) => r.length >= 3);
-  if (rings.length === 0) return [];
-  // Even-odd across the node's own rings: XOR them together.
-  const polys: Geom[] = rings.map((r) => [r]);
-  return polygonClipping.xor(polys[0], ...polys.slice(1));
-}
-
-/** The result of an operation as subpaths (every ring closed, corner anchors). */
-export function booleanRegion(op: BooleanOp, regions: readonly MultiPolygon[]): SubPathLite[] {
-  if (regions.length === 0) return [];
-  const [first, ...rest] = regions;
-  const result: MultiPolygon =
-    op === "union" ? polygonClipping.union(first, ...rest)
-    : op === "intersect" ? polygonClipping.intersection(first, ...rest)
-    : op === "subtract" ? polygonClipping.difference(first, ...rest)
-    : polygonClipping.xor(first, ...rest);
-  const out: SubPathLite[] = [];
-  for (const polygon of result) {
-    for (const ring of polygon) {
-      // polygon-clipping repeats the first point at the end of a ring.
-      const pts = ring.slice(0, ring.length - 1);
-      if (pts.length < 3) continue;
-      out.push({ anchors: pts.map(([x, y]) => ({ x, y, inX: 0, inY: 0, outX: 0, outY: 0 })), closed: true });
-    }
-  }
-  return out;
-}
 
 export interface BooleanResult { ops: Op[]; selection: string[] }
 
@@ -188,4 +68,59 @@ export function booleanOps(scene: SceneState, selection: readonly string[], op: 
   });
   const ops: Op[] = [makeCreateNodeOp(node), ...nodes.map((n) => makeDeleteOp(n.id))];
   return { ops, selection: [id] };
+}
+
+/**
+ * A LIVE boolean group over the selection: the shapes become the children of a new group whose
+ * `boolean.op` meta makes it DRAW as the result (store/booleans.ts); the group takes the bottom
+ * shape's fills, strokes and effects. One gesture. null when fewer than two shapes are selected.
+ */
+export function liveBooleanOps(scene: SceneState, selection: readonly string[], op: BooleanOp): BooleanResult | null {
+  const order = new Map<string, number>();
+  documentOrder(scene).forEach((n, i) => order.set(n.id, i));
+  const ids = topmostOf(scene, selection).filter((id) => order.has(id));
+  const nodes = ids
+    .map((id) => scene.nodes.at(id))
+    .filter((n): n is NodeLite => !!n && isBooleanSource(scene, n))
+    .sort((a, b) => (order.get(a.id) as number) - (order.get(b.id) as number));
+  if (nodes.length < 2) return null;
+  const grouped = groupOps(scene, nodes.map((n) => n.id));
+  if (!grouped) return null;
+  const bottom = nodes[0];
+  const groupId = grouped.selection[0];
+  const style = makeSetPropsOp(
+    groupId,
+    { name: BOOLEAN_NAMES[op], meta: { [META_BOOLEAN]: op }, fills: toPbFills(bottom.fills), strokes: toPbStrokes(bottom.strokes), effects: toPbEffects(bottom.effects ?? []) },
+    ["name", "meta", "fills", "strokes", "effects"],
+  );
+  // The children keep their own style (it comes back when the group is released); what is drawn is the group's.
+  return { ops: [...grouped.ops, style], selection: [groupId] };
+}
+
+/** Changes the operation of a live boolean group. */
+export function setBooleanOpOps(node: NodeLite, op: BooleanOp): Op[] {
+  if (booleanOpOf(node) === null || booleanOpOf(node) === op) return [];
+  return [makeSetPropsOp(node.id, { name: BOOLEAN_NAMES[booleanOpOf(node)!] === node.name ? BOOLEAN_NAMES[op] : node.name, meta: { ...(node.meta ?? {}), [META_BOOLEAN]: op } }, ["name", "meta"])];
+}
+
+/** Flattens a live boolean group (or any group of shapes) into a plain vector, the shapes gone. One gesture. */
+export function flattenGroupOps(scene: SceneState, groupId: string): BooleanResult | null {
+  const g = scene.nodes.at(groupId);
+  if (!g || g.kind !== "group") return null;
+  const op = booleanOpOf(g) ?? "union";
+  const subpaths = booleanRegion("union", [regionOf(scene, g, worldTransformOf(scene, g.parentId))]);
+  if (subpaths.length === 0) return null;
+  const norm = normalizeVector({ x: 0, y: 0 }, subpaths);
+  const siblings = childrenOf(scene, g.parentId);
+  const above = siblings[siblings.findIndex((s) => s.id === g.id) + 1];
+  const id = uuid();
+  const node = create(NodeSchema, {
+    id, parentId: g.parentId,
+    orderKey: orderKeyBetween(g.orderKey, above && above.orderKey > g.orderKey ? above.orderKey : null),
+    name: g.name || BOOLEAN_NAMES[op], visible: true, opacity: g.opacity,
+    x: norm.box.x, y: norm.box.y, width: norm.box.width, height: norm.box.height, rotation: 0,
+    fills: toPbFills(g.fills), strokes: toPbStrokes(g.strokes), effects: toPbEffects(g.effects ?? []),
+    shape: { case: "vector", value: { subpaths: toPbSubPaths(norm.subpaths) } },
+  });
+  return { ops: [makeCreateNodeOp(node), makeDeleteOp(g.id)], selection: [id] };
 }

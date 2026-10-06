@@ -77,3 +77,68 @@ func TestImageFillsInTheExport(t *testing.T) {
 		t.Errorf("missing asset must keep the flat grey:\n%s", html)
 	}
 }
+
+// TestMasksInTheExport: the siblings above a mask sit in a wrapper clipped by its outline;
+// the mask itself is not drawn; a rotated mask is not applied.
+func TestMasksInTheExport(t *testing.T) {
+	build := func(rot float64) *opendesignerv1.Document {
+		doc := screenDoc(func(b *B, s string) {
+			b.Add("below", s, "Below", 0, 0, 10, 10)
+			b.Add("mask", s, "Mask", 20, 20, 60, 40, Ellipse())
+			b.Add("above", s, "Above", 0, 0, 200, 200)
+		})
+		doc.Nodes["mask"].IsMask = true
+		doc.Nodes["mask"].Rotation = rot
+		return doc
+	}
+	html := string(file(t, gen(t, build(0), codegen.TargetHTML, nil), "screen.html"))
+	if !strings.Contains(html, "clip-path: ellipse(30px 20px at 50px 40px);") {
+		t.Errorf("no clip:\n%s", html)
+	}
+	if strings.Contains(html, `data-node-id="mask"`) {
+		t.Error("the mask must not be drawn")
+	}
+	wrap := strings.Index(html, `<div class="div-`)
+	if wrap < 0 || strings.Index(html, `data-node-id="above"`) < wrap || strings.Index(html, `data-node-id="below"`) > wrap {
+		t.Errorf("only what is above the mask is clipped:\n%s", html)
+	}
+	rotated := string(file(t, gen(t, build(30), codegen.TargetHTML, nil), "screen.html"))
+	if strings.Contains(rotated, "clip-path") {
+		t.Error("a rotated mask is not applied")
+	}
+	react := gen(t, build(0), codegen.TargetReact, nil)
+	for _, f := range react.Files {
+		if strings.HasSuffix(f.Path, ".tsx") && strings.Contains(string(f.Content), "clip-path") {
+			return
+		}
+	}
+	t.Error("react export lost the clip")
+}
+
+// TestLiveBooleanGroupsInTheExport: a group with boolean.op draws as ONE vector of the result
+// (its shapes are not emitted), and the operation matters.
+func TestLiveBooleanGroupsInTheExport(t *testing.T) {
+	build := func(op string) *opendesignerv1.Document {
+		doc := screenDoc(func(b *B, s string) {
+			b.Add("g", s, "Cut", 0, 0, 0, 0, Group(), Fill(Solid(C(0, 0, 1))), Meta("boolean.op", op))
+			b.Add("big", "g", "Big", 10, 10, 100, 100, Rect(0))
+			b.Add("small", "g", "Small", 30, 30, 20, 20, Rect(0))
+		})
+		return doc
+	}
+	sub := string(file(t, gen(t, build("subtract"), codegen.TargetHTML, nil), "screen.html"))
+	if !strings.Contains(sub, "<path") || strings.Contains(sub, `data-node-id="big"`) || strings.Contains(sub, `data-node-id="small"`) {
+		t.Fatalf("subtract:\n%s", sub)
+	}
+	// Subtracting the small square leaves a hole: two rings in the path (two M commands).
+	if n := strings.Count(sub, "M"); n < 2 {
+		t.Errorf("a hole needs two outlines:\n%s", sub)
+	}
+	uni := string(file(t, gen(t, build("union"), codegen.TargetHTML, nil), "screen.html"))
+	if sub == uni {
+		t.Error("the operation must change the result")
+	}
+	if !strings.Contains(uni, "width: 100px;") || !strings.Contains(uni, "height: 100px;") {
+		t.Errorf("union box:\n%s", uni)
+	}
+}
