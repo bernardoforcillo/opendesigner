@@ -4,7 +4,7 @@ import { applyOp } from "../store/applyOp";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 import {
-  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
+  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, addGradientStopOps, removeGradientStopOps, gradientStopPositionOps,
 } from "./gradientOps";
 
 function sceneWith(over: Partial<NodeLite> = {}): SceneState {
@@ -74,5 +74,20 @@ describe("gradientOps", () => {
     expect(gradientAngleOf(h.fills[0])).toBe(0);
     const d = run(s, gradientAngleOps(["a"], (id) => s.nodes.at(id), 45));
     expect(gradientAngleOf(d.fills[0])).toBe(45);
+  });
+
+  it("several stops: add, move and remove keep them sorted, and a gradient keeps two", () => {
+    let s = sceneWith();
+    s = { ...s, nodes: nodesOf({ a: run(s, fillKindOps(["a"], (id) => s.nodes.at(id), "linear")) }) };
+    const L = (st: typeof s) => (id: string) => st.nodes.at(id);
+    let n = run(s, addGradientStopOps(["a"], L(s)));
+    expect(n.fills[0].gradient?.stops.map((x) => x.position)).toEqual([0, 0.5, 1]);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, gradientStopPositionOps(["a"], L(s), 1, 2));
+    expect(n.fills[0].gradient?.stops.map((x) => x.position)).toEqual([0, 1, 1]);
+    n = run(s, removeGradientStopOps(["a"], L(s), 1));
+    expect(n.fills[0].gradient?.stops).toHaveLength(2);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    expect(removeGradientStopOps(["a"], L(s), 0)).toEqual([]);
   });
 });

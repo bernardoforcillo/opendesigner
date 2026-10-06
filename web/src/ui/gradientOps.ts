@@ -97,3 +97,57 @@ export function gradientAngleOps(ids: readonly string[], lookup: NodeLookup, deg
     return [withFirst(n, { ...cur, gradient })];
   });
 }
+
+// ---------- several stops ----------
+
+type Stop = GradientLite["stops"][number];
+
+const clamp01 = (v: number) => Math.min(1, Math.max(0, v));
+const byPosition = (a: Stop, b: Stop) => a.position - b.position;
+
+// Rewrites the stops of each node's first gradient. The result is always
+// sorted by position (the renderers draw them in order) and the fill's own
+// color follows the first stop, as in gradientStopOps.
+function editStops(ids: readonly string[], lookup: NodeLookup, edit: (stops: Stop[]) => Stop[] | null): Op[] {
+  return ids.flatMap((id) => {
+    const n = lookup(id);
+    const cur = n?.fills[0];
+    const g = cur?.gradient;
+    if (!n || !cur || !g) return [];
+    const next = edit(g.stops.map((s) => ({ ...s })));
+    if (!next || next.length < 2) return [];
+    const stops = [...next].sort(byPosition);
+    const first = stops[0].color;
+    return [withFirst(n, { r: first.r, g: first.g, b: first.b, a: first.a, gradient: { ...g, stops } })];
+  });
+}
+
+/** Adds a stop halfway through the widest gap, with the color the gradient has there. */
+export function addGradientStopOps(ids: readonly string[], lookup: NodeLookup): Op[] {
+  return editStops(ids, lookup, (stops) => {
+    const s = [...stops].sort(byPosition);
+    let at = 0, gap = -1;
+    for (let i = 0; i + 1 < s.length; i++) {
+      const d = s[i + 1].position - s[i].position;
+      if (d > gap) { gap = d; at = i; }
+    }
+    const a = s[at], b = s[at + 1];
+    const mix = (x: number, y: number) => x + (y - x) / 2;
+    const color = { r: mix(a.color.r, b.color.r), g: mix(a.color.g, b.color.g), b: mix(a.color.b, b.color.b), a: mix(a.color.a, b.color.a) };
+    return [...s, { color, position: mix(a.position, b.position) }];
+  });
+}
+
+/** Removes the stop at `index` (a gradient keeps at least two). */
+export function removeGradientStopOps(ids: readonly string[], lookup: NodeLookup, index: number): Op[] {
+  return editStops(ids, lookup, (stops) => (index < 0 || index >= stops.length || stops.length <= 2 ? null : stops.filter((_, i) => i !== index)));
+}
+
+/** Moves the stop at `index` to `position` (0..1). */
+export function gradientStopPositionOps(ids: readonly string[], lookup: NodeLookup, index: number, position: number): Op[] {
+  return editStops(ids, lookup, (stops) => {
+    if (index < 0 || index >= stops.length || !Number.isFinite(position)) return null;
+    stops[index].position = clamp01(position);
+    return stops;
+  });
+}

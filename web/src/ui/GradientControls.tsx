@@ -6,7 +6,8 @@ import { CHECKER, SegButtons } from "./ds/props-controls";
 import { ColorField } from "./fields/ColorField";
 import { NumberField } from "./fields/NumberField";
 import {
-  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, type FillKind,
+  addGradientStopOps, fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
+  gradientStopPositionOps, removeGradientStopOps, type FillKind,
 } from "./gradientOps";
 
 const KINDS: { value: FillKind; label: string }[] = [
@@ -82,20 +83,28 @@ export function GradientControls({
               ))}
             </div>
           </div>
-          <StopRow label="From" position={g.stops[0].position}>
-            <ColorField
-              label="From"
-              value={g.stops[0].color}
-              onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, 0, rgb))}
-            />
-          </StopRow>
-          <StopRow label="To" position={g.stops[last].position}>
-            <ColorField
-              label="To"
-              value={g.stops[last].color}
-              onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, last, rgb))}
-            />
-          </StopRow>
+          {g.stops.map((st, i) => (
+            <StopRow
+              key={i}
+              label={i === 0 ? "From" : i === last ? "To" : `Stop ${i + 1}`}
+              position={st.position}
+              onPosition={(v) => run((ids) => gradientStopPositionOps(ids, lookup, i, v / 100))}
+              onRemove={last > 1 ? () => run((ids) => removeGradientStopOps(ids, lookup, i)) : undefined}
+            >
+              <ColorField
+                label={i === 0 ? "From" : i === last ? "To" : `Stop ${i + 1}`}
+                value={st.color}
+                onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, i, rgb))}
+              />
+            </StopRow>
+          ))}
+          <button
+            type="button"
+            className="self-start rounded px-1.5 py-0.5 text-[11px] text-fg-subtle hover:bg-surface-hover"
+            onClick={() => run((ids) => addGradientStopOps(ids, lookup))}
+          >
+            + Add stop
+          </button>
           {g.kind === "linear" && (
             <NumberField
               label="Angle"
@@ -110,16 +119,24 @@ export function GradientControls({
   );
 }
 
-// A stop row: the position (in %, read-only) on the left and the color.
-// `label` is not repeated here as accessible text -- the color field
-// already carries it -- but it serves the viewer to understand WHICH end it is.
-function StopRow({ label, position, children }: { label: string; position: number; children: ReactNode }) {
+// A stop row: the position (in %, editable) on the left, the color and a
+// remove button. `label` names the stop for the accessible names.
+function StopRow({
+  label, position, onPosition, onRemove, children,
+}: {
+  label: string; position: number; onPosition: (percent: number) => void; onRemove?: () => void; children: ReactNode;
+}) {
   return (
     <div className="flex items-center gap-2">
-      <span className="w-10 shrink-0 text-[11px] tabular-nums text-fg-subtle" title={`${label}: ${Math.round(position * 100)}%`}>
-        {Math.round(position * 100)}%
-      </span>
+      <div className="w-14 shrink-0">
+        <NumberField label={`${label} position`} suffix="%" minValue={0} value={Math.round(position * 100)} onCommit={onPosition} />
+      </div>
       <div className="min-w-0 flex-1">{children}</div>
+      {onRemove && (
+        <button type="button" aria-label={`Remove ${label}`} className="shrink-0 rounded px-1 text-fg-subtle hover:bg-surface-hover" onClick={onRemove}>
+          ×
+        </button>
+      )}
     </div>
   );
 }
