@@ -1,6 +1,6 @@
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { makeSetPropsOp } from "../tools/ops";
-import { toPbFills } from "../store/types";
+import { toPbFills, toPbStrokes } from "../store/types";
 import type { FillLite, GradientLite, NodeLite } from "../store/types";
 import type { RgbLite } from "./fields/ColorField";
 
@@ -40,40 +40,54 @@ function toGradient(f: FillLite, kind: "linear" | "radial"): FillLite {
   return { ...from, gradient };
 }
 
-function withFirst(n: NodeLite, first: FillLite): Op {
-  return makeSetPropsOp(n.id, { fills: toPbFills([first, ...n.fills.slice(1)]) }, ["fills"]);
+/** Which paint of the node an op edits: its first fill, or the paint of its first stroke. */
+export type PaintTarget = "fill" | "stroke";
+
+const DEFAULT_STROKE_WEIGHT = 1;
+
+/** The paint being edited, or undefined when the node has none there. */
+export function paintOf(n: NodeLite, target: PaintTarget): FillLite | undefined {
+  return target === "fill" ? n.fills[0] : n.strokes[0]?.color;
+}
+
+// A stroke edit never creates a stroke out of nothing here (the panel's stroke color does that);
+// it rewrites the first stroke's paint and keeps its weight and alignment.
+function withFirst(n: NodeLite, first: FillLite, target: PaintTarget = "fill"): Op {
+  if (target === "fill") return makeSetPropsOp(n.id, { fills: toPbFills([first, ...n.fills.slice(1)]) }, ["fills"]);
+  const cur = n.strokes[0] ?? { color: first, weight: DEFAULT_STROKE_WEIGHT, align: "center" as const };
+  return makeSetPropsOp(n.id, { strokes: toPbStrokes([{ ...cur, color: first }, ...n.strokes.slice(1)]) }, ["strokes"]);
 }
 
 const BASE: FillLite = { r: 0.8, g: 0.8, b: 0.8, a: 1 };
 
 /** Changes the fill TYPE. Going back to "solid" keeps the first stop. */
-export function fillKindOps(ids: readonly string[], lookup: NodeLookup, kind: FillKind): Op[] {
+export function fillKindOps(ids: readonly string[], lookup: NodeLookup, kind: FillKind, target: PaintTarget = "fill"): Op[] {
   return ids.flatMap((id) => {
     const n = lookup(id);
     if (!n) return [];
-    const cur = n.fills[0] ?? BASE;
+    const cur = paintOf(n, target) ?? BASE;
     if (fillKindOf(cur) === kind) return [];
-    if (kind === "solid") return [withFirst(n, { r: cur.r, g: cur.g, b: cur.b, a: cur.a })];
+    if (kind === "solid") return [withFirst(n, { r: cur.r, g: cur.g, b: cur.b, a: cur.a }, target)];
     // From gradient to gradient only the shape changes: the stops stay, the
     // geometry goes back to the new type's default.
     if (cur.gradient) {
       const gradient: GradientLite = { ...cur.gradient, kind, ...defaultGeometry(kind) };
-      return [withFirst(n, { ...cur, gradient })];
+      return [withFirst(n, { ...cur, gradient }, target)];
     }
-    return [withFirst(n, toGradient(cur, kind))];
+    return [withFirst(n, toGradient(cur, kind), target)];
   });
 }
 
 /** Color (without alpha) of a stop, which keeps its OWN alpha. */
-export function gradientStopOps(ids: readonly string[], lookup: NodeLookup, index: number, rgb: RgbLite): Op[] {
+export function gradientStopOps(ids: readonly string[], lookup: NodeLookup, index: number, rgb: RgbLite, target: PaintTarget = "fill"): Op[] {
   return ids.flatMap((id) => {
     const n = lookup(id);
-    const cur = n?.fills[0];
+    const cur = n ? paintOf(n, target) : undefined;
     const g = cur?.gradient;
     if (!n || !cur || !g || index < 0 || index >= g.stops.length) return [];
     const stops = g.stops.map((st, i) => (i === index ? { ...st, color: { ...rgb, a: st.color.a } } : st));
     const first = stops[0].color;
-    return [withFirst(n, { r: first.r, g: first.g, b: first.b, a: first.a, gradient: { ...g, stops } })];
+    return [withFirst(n, { r: first.r, g: first.g, b: first.b, a: first.a, gradient: { ...g, stops } }, target)];
   });
 }
 
@@ -85,16 +99,16 @@ export function gradientAngleOf(f: FillLite | null): number {
   return Math.round(((deg % 360) + 360) % 360 * 100) / 100;
 }
 
-export function gradientAngleOps(ids: readonly string[], lookup: NodeLookup, degrees: number): Op[] {
+export function gradientAngleOps(ids: readonly string[], lookup: NodeLookup, degrees: number, target: PaintTarget = "fill"): Op[] {
   const rad = (degrees * Math.PI) / 180;
   const dx = Math.cos(rad) / 2, dy = Math.sin(rad) / 2;
   return ids.flatMap((id) => {
     const n = lookup(id);
-    const cur = n?.fills[0];
+    const cur = n ? paintOf(n, target) : undefined;
     const g = cur?.gradient;
     if (!n || !cur || !g || g.kind !== "linear") return [];
     const gradient: GradientLite = { ...g, x1: 0.5 - dx, y1: 0.5 - dy, x2: 0.5 + dx, y2: 0.5 + dy };
-    return [withFirst(n, { ...cur, gradient })];
+    return [withFirst(n, { ...cur, gradient }, target)];
   });
 }
 
@@ -108,22 +122,22 @@ const byPosition = (a: Stop, b: Stop) => a.position - b.position;
 // Rewrites the stops of each node's first gradient. The result is always
 // sorted by position (the renderers draw them in order) and the fill's own
 // color follows the first stop, as in gradientStopOps.
-function editStops(ids: readonly string[], lookup: NodeLookup, edit: (stops: Stop[]) => Stop[] | null): Op[] {
+function editStops(ids: readonly string[], lookup: NodeLookup, edit: (stops: Stop[]) => Stop[] | null, target: PaintTarget = "fill"): Op[] {
   return ids.flatMap((id) => {
     const n = lookup(id);
-    const cur = n?.fills[0];
+    const cur = n ? paintOf(n, target) : undefined;
     const g = cur?.gradient;
     if (!n || !cur || !g) return [];
     const next = edit(g.stops.map((s) => ({ ...s })));
     if (!next || next.length < 2) return [];
     const stops = [...next].sort(byPosition);
     const first = stops[0].color;
-    return [withFirst(n, { r: first.r, g: first.g, b: first.b, a: first.a, gradient: { ...g, stops } })];
+    return [withFirst(n, { r: first.r, g: first.g, b: first.b, a: first.a, gradient: { ...g, stops } }, target)];
   });
 }
 
 /** Adds a stop halfway through the widest gap, with the color the gradient has there. */
-export function addGradientStopOps(ids: readonly string[], lookup: NodeLookup): Op[] {
+export function addGradientStopOps(ids: readonly string[], lookup: NodeLookup, target: PaintTarget = "fill"): Op[] {
   return editStops(ids, lookup, (stops) => {
     const s = [...stops].sort(byPosition);
     let at = 0, gap = -1;
@@ -135,19 +149,19 @@ export function addGradientStopOps(ids: readonly string[], lookup: NodeLookup): 
     const mix = (x: number, y: number) => x + (y - x) / 2;
     const color = { r: mix(a.color.r, b.color.r), g: mix(a.color.g, b.color.g), b: mix(a.color.b, b.color.b), a: mix(a.color.a, b.color.a) };
     return [...s, { color, position: mix(a.position, b.position) }];
-  });
+  }, target);
 }
 
 /** Removes the stop at `index` (a gradient keeps at least two). */
-export function removeGradientStopOps(ids: readonly string[], lookup: NodeLookup, index: number): Op[] {
-  return editStops(ids, lookup, (stops) => (index < 0 || index >= stops.length || stops.length <= 2 ? null : stops.filter((_, i) => i !== index)));
+export function removeGradientStopOps(ids: readonly string[], lookup: NodeLookup, index: number, target: PaintTarget = "fill"): Op[] {
+  return editStops(ids, lookup, (stops) => (index < 0 || index >= stops.length || stops.length <= 2 ? null : stops.filter((_, i) => i !== index)), target);
 }
 
 /** Moves the stop at `index` to `position` (0..1). */
-export function gradientStopPositionOps(ids: readonly string[], lookup: NodeLookup, index: number, position: number): Op[] {
+export function gradientStopPositionOps(ids: readonly string[], lookup: NodeLookup, index: number, position: number, target: PaintTarget = "fill"): Op[] {
   return editStops(ids, lookup, (stops) => {
     if (index < 0 || index >= stops.length || !Number.isFinite(position)) return null;
     stops[index].position = clamp01(position);
     return stops;
-  });
+  }, target);
 }

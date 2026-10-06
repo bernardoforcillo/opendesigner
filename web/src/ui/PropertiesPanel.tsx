@@ -1016,6 +1016,8 @@ export function PropertiesPanel() {
             options={STROKE_ALIGNMENTS}
             onChange={(v) => runGesture((ids) => strokeOps(ids, { align: v as StrokeAlignLite }))}
           />
+          {/* A stroke can carry a gradient too: the same controls, aimed at the stroke's paint. */}
+          {stroke && !strokesMixed && <GradientControls fill={stroke.color} run={runGesture} target="stroke" />}
           {stroke && !strokesMixed && stroke.weight > 0 && <StrokeStyleControls run={runGesture} />}
         </div>
       </Section>

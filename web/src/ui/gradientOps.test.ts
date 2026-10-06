@@ -90,4 +90,21 @@ describe("gradientOps", () => {
     s = { ...s, nodes: nodesOf({ a: n }) };
     expect(removeGradientStopOps(["a"], L(s), 0)).toEqual([]);
   });
+
+  it("the same ops edit the first STROKE's paint, keeping its weight and alignment", () => {
+    let s = sceneWith();
+    const withStroke = { ...s.nodes.at("a"), strokes: [{ color: { r: 1, g: 0, b: 0, a: 1 }, weight: 6, align: "inside" as const }] };
+    s = { ...s, nodes: nodesOf({ a: withStroke }) };
+    const L = (st: typeof s) => (id: string) => st.nodes.at(id);
+    let n = run(s, fillKindOps(["a"], L(s), "linear", "stroke"));
+    expect(n.strokes[0]).toMatchObject({ weight: 6, align: "inside" });
+    expect(n.strokes[0].color.gradient?.kind).toBe("linear");
+    expect(n.fills).toEqual(s.nodes.at("a").fills);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, addGradientStopOps(["a"], L(s), "stroke"));
+    expect(n.strokes[0].color.gradient?.stops).toHaveLength(3);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, gradientAngleOps(["a"], L(s), 90, "stroke"));
+    expect(n.strokes[0].color.gradient).toMatchObject({ y2: expect.closeTo(1, 5) });
+  });
 });

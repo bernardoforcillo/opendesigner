@@ -6,7 +6,7 @@ import { CHECKER, SegButtons } from "./ds/props-controls";
 import { ColorField } from "./fields/ColorField";
 import { NumberField } from "./fields/NumberField";
 import {
-  addGradientStopOps, fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
+  addGradientStopOps, fillKindOf, type PaintTarget, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
   gradientStopPositionOps, removeGradientStopOps, type FillKind,
 } from "./gradientOps";
 
@@ -39,9 +39,11 @@ function css(c: { r: number; g: number; b: number; a: number }): string {
  * accessible name.
  */
 export function GradientControls({
-  fill, run, solid,
+  fill, run, solid, target = "fill",
 }: {
   fill: FillLite | null;
+  /** Which paint it edits: the first fill (default) or the first stroke's. */
+  target?: PaintTarget;
   run: (build: (ids: readonly string[]) => Op[]) => void;
   /** The SOLID fill's color field: it sits under the segments, and exists only without a gradient. */
   solid?: ReactNode;
@@ -53,10 +55,10 @@ export function GradientControls({
   return (
     <div className="flex flex-col gap-2">
       <SegButtons
-        label="Fill type"
+        label={target === "fill" ? "Fill type" : "Stroke type"}
         value={kind}
         options={KINDS}
-        onPick={(k) => run((ids) => fillKindOps(ids, lookup, k))}
+        onPick={(k) => run((ids) => fillKindOps(ids, lookup, k, target))}
       />
       {!g && solid}
       {g && (
@@ -88,20 +90,20 @@ export function GradientControls({
               key={i}
               label={i === 0 ? "From" : i === last ? "To" : `Stop ${i + 1}`}
               position={st.position}
-              onPosition={(v) => run((ids) => gradientStopPositionOps(ids, lookup, i, v / 100))}
-              onRemove={last > 1 ? () => run((ids) => removeGradientStopOps(ids, lookup, i)) : undefined}
+              onPosition={(v) => run((ids) => gradientStopPositionOps(ids, lookup, i, v / 100, target))}
+              onRemove={last > 1 ? () => run((ids) => removeGradientStopOps(ids, lookup, i, target)) : undefined}
             >
               <ColorField
                 label={i === 0 ? "From" : i === last ? "To" : `Stop ${i + 1}`}
                 value={st.color}
-                onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, i, rgb))}
+                onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, i, rgb, target))}
               />
             </StopRow>
           ))}
           <button
             type="button"
             className="self-start rounded px-1.5 py-0.5 text-[11px] text-fg-subtle hover:bg-surface-hover"
-            onClick={() => run((ids) => addGradientStopOps(ids, lookup))}
+            onClick={() => run((ids) => addGradientStopOps(ids, lookup, target))}
           >
             + Add stop
           </button>
@@ -110,7 +112,7 @@ export function GradientControls({
               label="Angle"
               suffix="°"
               value={gradientAngleOf(fill)}
-              onCommit={(v) => run((ids) => gradientAngleOps(ids, lookup, v))}
+              onCommit={(v) => run((ids) => gradientAngleOps(ids, lookup, v, target))}
             />
           )}
         </>
