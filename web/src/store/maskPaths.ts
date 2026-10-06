@@ -81,6 +81,11 @@ export const MASK_PATHS = [
   // Free-form node metadata (flow.kind, code.route, test.id, ...). Like lists,
   // the mask REPLACES the whole map. Single-word.
   "meta",
+  // Variable bindings (property -> variableId) and per-collection mode pins.
+  // Like `meta`, the mask REPLACES the whole map, and an empty patch clears it.
+  // Validated against the document's variables/collections on both sides.
+  "bindings",
+  "modes",
 ] as const;
 
 // The ONLY type a mask path can have at an op's construction points

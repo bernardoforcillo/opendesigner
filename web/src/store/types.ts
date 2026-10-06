@@ -1,8 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { ClipSchema, FlowSchema, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ClipSchema, FlowSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
+  Document, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -202,6 +202,10 @@ export interface NodeLite {
   unknownShape?: PbNode["shape"];
   // Free-form metadata (see Node.meta in the proto). Absent when empty.
   meta?: Record<string, string>;
+  // Variable bindings (property -> variableId) and mode overrides (collectionId
+  // -> modeId); see Node.bindings / Node.modes in the proto. Absent when empty.
+  bindings?: Record<string, string>;
+  modes?: Record<string, string>;
   // TRANSIENT animation FIELDS: written ONLY by animation/pose.ts when it
   // derives the scene to show while a clip runs or is scrubbed. They are not
   // document: toPbNode does not read them, no op carries them, and a snapshot never
@@ -232,6 +236,17 @@ export interface TransitionLite {
   label: string; trigger: string; elementId: string; guard: string; effect: string;
 }
 
+// VARIABLES (design tokens): see proto VariableCollection / Variable and
+// internal/core/variables.go. A value is a color (FillLite, solid) or a number.
+export interface ModeLite { id: string; name: string }
+export interface CollectionLite { id: string; name: string; modes: ModeLite[] }
+export type VariableTypeLite = "color" | "number";
+export interface VariableLite {
+  id: string; collectionId: string; name: string; type: VariableTypeLite;
+  // modeId -> value. A color is {r,g,b,a}; a number is a plain number.
+  values: Record<string, FillLite | number>;
+}
+
 // ANIMATION: the document's clips (animated properties of nodes referenced by
 // id). See proto Clip/Track/Keyframe and internal/core/animation.go.
 export interface KeyframeLite { time: number; value: number; easing: string }
@@ -247,6 +262,9 @@ export interface SceneState {
   flows: Record<string, FlowLite>;
   transitions: Record<string, TransitionLite>;
   clips: Record<string, ClipLite>;
+  // Variables, like clips: absent keys mean none (an empty record, never undefined).
+  collections: Record<string, CollectionLite>;
+  variables: Record<string, VariableLite>;
   // Only in scenes derived from playback (animation/pose.ts): see AnimInfo.
   anim?: AnimInfo;
   // M4 — components indexed by id (componentId -> master). It is part of the
@@ -256,7 +274,7 @@ export interface SceneState {
 }
 
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, components: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, components: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -543,6 +561,8 @@ export function toNodeLite(n: PbNode): NodeLite {
     // The unknown branch travels whole and intact: see NodeLite.unknownShape.
     ...(kind === "unknown" ? { unknownShape: n.shape } : {}),
     ...(Object.keys(n.meta).length > 0 ? { meta: { ...n.meta } } : {}),
+    ...(Object.keys(n.bindings).length > 0 ? { bindings: { ...n.bindings } } : {}),
+    ...(Object.keys(n.modes).length > 0 ? { modes: { ...n.modes } } : {}),
   };
 }
 
@@ -560,6 +580,8 @@ export function toPbNode(n: NodeLite): PbNode {
     strokes: toPbStrokes(n.strokes),
     effects: toPbEffects(n.effects ?? []),
     meta: n.meta ? { ...n.meta } : {},
+    bindings: n.bindings ? { ...n.bindings } : {},
+    modes: n.modes ? { ...n.modes } : {},
     shape: n.kind === "unknown"
       // The unknown shape cannot be BUILT (there is no oneof branch to
       // name), so it is put back where it was right after the create. Leaving it
@@ -642,6 +664,36 @@ export function toPbTransition(t: TransitionLite): PbTransition {
   });
 }
 
+export function toCollectionLite(c: PbCollection): CollectionLite {
+  return { id: c.id, name: c.name, modes: c.modes.map((m) => ({ id: m.id, name: m.name })) };
+}
+export function toPbCollection(c: CollectionLite): PbCollection {
+  return create(VariableCollectionSchema, { id: c.id, name: c.name, modes: c.modes.map((m) => ({ id: m.id, name: m.name })) });
+}
+export function toVariableLite(v: PbVariable): VariableLite {
+  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : "number";
+  const values: VariableLite["values"] = {};
+  for (const [mode, val] of Object.entries(v.values)) {
+    if (val.kind.case === "color") {
+      const { r, g, b, a } = val.kind.value;
+      values[mode] = { r, g, b, a };
+    } else if (val.kind.case === "number") values[mode] = val.kind.value;
+  }
+  return { id: v.id, collectionId: v.collectionId, name: v.name, type, values };
+}
+export function toPbVariable(v: VariableLite): PbVariable {
+  const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } }> = {};
+  for (const [mode, val] of Object.entries(v.values)) {
+    values[mode] = typeof val === "number"
+      ? { kind: { case: "number", value: val } }
+      : { kind: { case: "color", value: { r: val.r, g: val.g, b: val.b, a: val.a } } };
+  }
+  return create(VariableSchema, {
+    id: v.id, collectionId: v.collectionId, name: v.name,
+    type: v.type === "color" ? VariableType.COLOR : VariableType.NUMBER, values,
+  });
+}
+
 export function toClipLite(c: PbClip): ClipLite {
   return {
     id: c.id, name: c.name, duration: c.duration, trigger: c.trigger, delay: c.delay, repeat: c.repeat, yoyo: c.yoyo,
@@ -677,5 +729,7 @@ export function fromDocument(doc: Document): SceneState {
     flows: Object.fromEntries(Object.entries(doc.flows).map(([id, f]) => [id, toFlowLite(f)])),
     transitions: Object.fromEntries(Object.entries(doc.transitions).map(([id, t]) => [id, toTransitionLite(t)])),
     clips: Object.fromEntries(Object.entries(doc.clips).map(([id, c]) => [id, toClipLite(c)])),
+    collections: Object.fromEntries(Object.entries(doc.collections).map(([id, c]) => [id, toCollectionLite(c)])),
+    variables: Object.fromEntries(Object.entries(doc.variables).map(([id, v]) => [id, toVariableLite(v)])),
   };
 }

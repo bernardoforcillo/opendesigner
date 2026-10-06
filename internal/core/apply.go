@@ -107,6 +107,14 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetClip(doc, k.SetClip)
 	case *opendesignerv1.Op_DeleteClip:
 		return applyDeleteClip(doc, k.DeleteClip)
+	case *opendesignerv1.Op_SetCollection:
+		return applySetCollection(doc, k.SetCollection, cow)
+	case *opendesignerv1.Op_DeleteCollection:
+		return applyDeleteCollection(doc, k.DeleteCollection, cow)
+	case *opendesignerv1.Op_SetVariable:
+		return applySetVariable(doc, k.SetVariable)
+	case *opendesignerv1.Op_DeleteVariable:
+		return applyDeleteVariable(doc, k.DeleteVariable, cow)
 	case *opendesignerv1.Op_SetFlow:
 		return applySetFlow(doc, k.SetFlow)
 	case *opendesignerv1.Op_DeleteFlow:
@@ -347,6 +355,17 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 		switch path {
 		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta":
 			// supported
+		case "bindings":
+			// Variable bindings: every key in the grammar, every variable existing
+			// and of the property's type. Validated HERE, before any field is
+			// written, so a mixed mask does not leave the node half mutated.
+			if err := validateBindings(doc, s.GetPatch().GetBindings()); err != nil {
+				return err
+			}
+		case "modes":
+			if err := validateModes(doc, s.GetPatch().GetModes()); err != nil {
+				return err
+			}
 		case "corner_radius":
 			// The ONLY mask path that addresses a field INSIDE the `shape` oneof
 			// (RectNode.corner_radius) instead of a top-level field of the Node: the
@@ -424,6 +443,11 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.Meta = p.GetMeta()
 		case "fills":
 			n.Fills = p.GetFills()
+		case "bindings":
+			// Replaces the whole map, like meta. An empty map clears it.
+			n.Bindings = p.GetBindings()
+		case "modes":
+			n.Modes = p.GetModes()
 		case "strokes":
 			// REPLACEMENT of the whole list, exactly like `fills` above -- not an
 			// element-by-element merge. It is the REPEATED field on which the two

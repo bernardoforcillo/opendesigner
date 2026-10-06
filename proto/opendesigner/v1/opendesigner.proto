@@ -351,9 +351,48 @@ message Node {
   //   "status"          planned | implemented | tested
   // The "meta" mask REPLACES the whole map, like `fills` for lists.
   map<string, string> meta = 40;
+  // Variable bindings: property -> variableId. A bound property takes its value
+  // from the variable (resolved for the node's active mode) instead of from the
+  // literal stored on the node, which stays as the fallback. Keys:
+  //   "fills.N" | "strokes.N"   COLOR    the color of the Nth solid paint
+  //   "opacity" | "rotation"    NUMBER
+  //   "corner_radius"           NUMBER   rectangles only
+  //   "strokes.N.weight"        NUMBER
+  // The "bindings" mask REPLACES the whole map, like `meta`.
+  map<string, string> bindings = 41;
+  // Mode override: collectionId -> modeId. A node (typically a frame) can pin a
+  // collection to one of its modes; the override applies to the whole subtree
+  // and the nearest ancestor wins. Without one, the collection's first mode is
+  // used. The "modes" mask REPLACES the whole map.
+  map<string, string> modes = 42;
 }
 
 message Page { string id = 1; string name = 2; }
+
+// ---------- variables (design tokens) ----------
+// A COLLECTION groups variables that share the same MODES (e.g. "Light" and
+// "Dark"). Every variable has one value per mode. The first mode is the
+// default: it is used when nothing overrides the mode and when a variable has
+// no value for the active one.
+message VariableMode { string id = 1; string name = 2; }
+message VariableCollection {
+  string id = 1;
+  string name = 2;
+  repeated VariableMode modes = 3;    // at least one; ids unique within the collection
+}
+enum VariableType {
+  VARIABLE_TYPE_UNSPECIFIED = 0;
+  VARIABLE_TYPE_COLOR = 1;
+  VARIABLE_TYPE_NUMBER = 2;
+}
+message VariableValue { oneof kind { Color color = 1; double number = 2; } }
+message Variable {
+  string id = 1;
+  string collection_id = 2;
+  string name = 3;                    // "color/primary": '/' makes groups in the UI
+  VariableType type = 4;
+  map<string, VariableValue> values = 5; // modeId -> value
+}
 
 // ---------- flows ----------
 // A FLOW is a user path through the screens: a set of TRANSITIONS (edges)
@@ -431,6 +470,9 @@ message Document {
   map<string, Transition> transitions = 8;
   // Animations: clipId -> clip.
   map<string, Clip> clips = 9;
+  // Variables (design tokens): collectionId -> collection, variableId -> variable.
+  map<string, VariableCollection> collections = 10;
+  map<string, Variable> variables = 11;
 }
 
 // ---------- ops ----------
@@ -568,8 +610,16 @@ message Op {
     DeleteTransition delete_transition = 24;
     SetClip          set_clip          = 25; // animation — upsert of a clip
     DeleteClip       delete_clip       = 26;
+    SetCollection    set_collection    = 27; // variables — upsert of a collection
+    DeleteCollection delete_collection = 28;
+    SetVariable      set_variable      = 29; // variables — upsert of a variable
+    DeleteVariable   delete_variable   = 30;
   }
 }
+message SetCollection    { VariableCollection collection = 1; }
+message DeleteCollection { string id = 1; }
+message SetVariable      { Variable variable = 1; }
+message DeleteVariable   { string id = 1; }
 message OpRecord {
   uint64 seq = 1;
   google.protobuf.Timestamp ts = 2;

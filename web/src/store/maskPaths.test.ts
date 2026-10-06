@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, StrokeAlign, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
+import { OpSchema, NodeSchema, StrokeAlign, VariableType, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, type NodeLite } from "./types";
@@ -41,7 +41,22 @@ function frameScene() {
     opId: "op-frame", docId: "doc1", kind: { case: "createNode", value: { node } },
   }));
 }
-const sceneFor = (path: string) => (path === "auto_layout" ? frameScene() : baseScene());
+// bindings / modes are validated against the document, so their probes need a
+// collection and a variable to point to.
+function themedScene() {
+  const ops = [
+    create(OpSchema, { opId: "c", docId: "doc1", kind: { case: "setCollection", value: { collection: {
+      id: "theme", name: "Theme", modes: [{ id: "light", name: "Light" }, { id: "dark", name: "Dark" }],
+    } } } }),
+    create(OpSchema, { opId: "v", docId: "doc1", kind: { case: "setVariable", value: { variable: {
+      id: "dim", collectionId: "theme", name: "dim", type: VariableType.NUMBER,
+      values: { light: { kind: { case: "number", value: 1 } }, dark: { kind: { case: "number", value: 0.5 } } },
+    } } } }),
+  ];
+  return ops.reduce(applyOp, baseScene());
+}
+const sceneFor = (path: string) =>
+  path === "auto_layout" ? frameScene() : path === "bindings" || path === "modes" ? themedScene() : baseScene();
 
 function setPropsOp(paths: readonly string[], patch: MessageInitShape<typeof NodeSchema> = {}): Op {
   return create(OpSchema, {
@@ -261,6 +276,9 @@ const PROBE: Probe = {
   },
   // Free-form map: the mask replaces the whole map.
   meta: { patch: { meta: { "code.route": "/cart" } }, expected: { "code.route": "/cart" } },
+  // Variable bindings and mode pins: maps like meta, validated against themedScene().
+  bindings: { patch: { bindings: { opacity: "dim" } }, expected: { opacity: "dim" } },
+  modes: { patch: { modes: { theme: "dark" } }, expected: { theme: "dark" } },
 };
 
 describe("every MASK_PATHS path survives the JSON wire and is applied", () => {

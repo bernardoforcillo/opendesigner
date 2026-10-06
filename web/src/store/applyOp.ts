@@ -2,10 +2,11 @@ import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toCollectionLite, toVariableLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout } from "./layout";
 import { recordDelta } from "./sceneDelta";
+import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
@@ -116,6 +117,11 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // Same preventive validation for auto_layout, which only applies to a
       // frame (ErrNotFrameNode in Go): op rejected as a whole.
       if (cur.kind !== "frame" && paths.includes("auto_layout")) return state;
+      // Variable bindings and mode pins are validated against the document before
+      // anything is written (core.applySetProps does the same in its validation
+      // pass): a mixed mask with one bad entry must not move the other fields.
+      if (paths.includes("bindings") && !areValidBindings(state, p.bindings)) return state;
+      if (paths.includes("modes") && !areValidModes(state, p.modes)) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -151,6 +157,17 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "meta": {
             const m = toNodeLite(p).meta;
             if (m) next.meta = m; else delete next.meta;
+            break;
+          }
+          // Like meta: replaces the whole map, and an empty map removes the field.
+          case "bindings": {
+            const b = toNodeLite(p).bindings;
+            if (b) next.bindings = b; else delete next.bindings;
+            break;
+          }
+          case "modes": {
+            const m = toNodeLite(p).modes;
+            if (m) next.modes = m; else delete next.modes;
             break;
           }
           // As for "fills", the value is extracted from the patch by going through
@@ -375,6 +392,42 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const clips = { ...state.clips };
       delete clips[id];
       return { ...state, clips };
+    }
+    // --- variables ----------------------------------------------------------
+    // Parity with core.applySetCollection / applyDeleteCollection /
+    // applySetVariable / applyDeleteVariable (Go, internal/core/variables.go).
+    // ABSOLUTE upserts; the validation is variables.ts (the same rules).
+    case "setCollection": {
+      const c = op.kind.value.collection;
+      if (!isValidCollection(c)) return state;
+      const lite = toCollectionLite(c);
+      const next = { ...state, collections: { ...state.collections, [c.id]: lite } };
+      return state.collections[c.id] ? { ...next, ...dropRemovedModes(next, lite) } : next;
+    }
+    case "deleteCollection": {
+      const { id } = op.kind.value;
+      if (!state.collections[id]) return state;                             // ErrCollectionNotFound
+      const collections = { ...state.collections };
+      delete collections[id];
+      // Its variables go with it, and so do the bindings to them and the pins.
+      const variables: SceneState["variables"] = {};
+      const gone = new Set<string>();
+      for (const [vid, v] of Object.entries(state.variables)) {
+        if (v.collectionId === id) gone.add(vid); else variables[vid] = v;
+      }
+      return { ...state, collections, variables, nodes: unbindNodes(state, gone, id) };
+    }
+    case "setVariable": {
+      const v = op.kind.value.variable;
+      if (!isValidVariable(state, v)) return state;
+      return { ...state, variables: { ...state.variables, [v.id]: toVariableLite(v) } };
+    }
+    case "deleteVariable": {
+      const { id } = op.kind.value;
+      if (!state.variables[id]) return state;                               // ErrVariableNotFound
+      const variables = { ...state.variables };
+      delete variables[id];
+      return { ...state, variables, nodes: unbindNodes(state, new Set([id])) };
     }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;

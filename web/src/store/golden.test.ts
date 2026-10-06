@@ -56,6 +56,11 @@ describe("golden parity", () => {
       // Animation CLIPS (and the cascade of a delete: tracks removed, clips
       // whose target vanished deleted, rejections for easing/timing/duplicates).
       expect(scene.clips).toEqual(expected.clips);
+      // Variables: collections, variables, and the cascades (removed modes,
+      // deleted variables/collections) that rewrite node bindings -- those are
+      // compared through `nodes` above.
+      expect(scene.collections).toEqual(expected.collections);
+      expect(scene.variables).toEqual(expected.variables);
     });
   }
 });
