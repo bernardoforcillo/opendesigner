@@ -8,6 +8,7 @@ import { pickSvgFile } from "../../tools/svgImport";
 import { DiagramDialog } from "../DiagramDialog";
 import { VariablesDialog } from "../VariablesDialog";
 import { FontsDialog } from "../FontsDialog";
+import { VersionsDialog } from "../VersionsDialog";
 import { useAppNavigate } from "../../home/nav";
 
 // THE DOCUMENT MENU: the logo is the button. Inside: Home, new document,
@@ -38,6 +39,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [diagramOpen, setDiagramOpen] = useState(false);
   const [variablesOpen, setVariablesOpen] = useState(false);
   const [fontsOpen, setFontsOpen] = useState(false);
+  const [versionsOpen, setVersionsOpen] = useState(false);
   return (
     <>
     <MenuTrigger isOpen={open} onOpenChange={setOpen}>
@@ -53,6 +55,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "diagram") setDiagramOpen(true);
           else if (k === "variables") setVariablesOpen(true);
           else if (k === "fonts") setFontsOpen(true);
+          else if (k === "versions") setVersionsOpen(true);
           else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
           else if (k === "system" || k === "light" || k === "dark") setTheme(k);
         }}>
@@ -77,6 +80,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="fonts" className={ITEM}>
                 <Icon name="plus" size={14} /> Fonts…
               </MenuItem>
+              <MenuItem id="versions" className={ITEM}>
+                <Icon name="page" size={14} /> Versions…
+              </MenuItem>
               <Separator className="my-1 h-px bg-line" />
               <MenuItem id="renderer" className={ITEM}>
                 <Icon name="bolt" size={14} /> Renderer {renderer === "gpu" ? "GPU" : "CPU"}
@@ -98,6 +104,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <DiagramDialog isOpen={diagramOpen} onOpenChange={setDiagramOpen} />
     <VariablesDialog isOpen={variablesOpen} onOpenChange={setVariablesOpen} />
     <FontsDialog isOpen={fontsOpen} onOpenChange={setFontsOpen} />
+    <VersionsDialog isOpen={versionsOpen} onOpenChange={setVersionsOpen} />
     </>
   );
 }

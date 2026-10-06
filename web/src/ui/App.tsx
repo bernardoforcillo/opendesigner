@@ -9,6 +9,11 @@ import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
 import { usePresence, loadNickname } from "../store/presence";
 import { drawLayoutDrop, drawPeers } from "../renderer/peersRenderer";
+import { drawCommentPins } from "../renderer/commentsRenderer";
+import { draftWorld, pinsOf } from "../comments/pins";
+import { useCommentsUi } from "../store/commentsUi";
+import { commentTool } from "../tools/commentTool";
+import { CommentsPanel } from "./CommentsPanel";
 import { PresenceBar } from "./PresenceBar";
 import { useScene } from "../store/store";
 import { resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
@@ -73,6 +78,7 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
   text: textTool,
   pen: penTool,
   hand: handTool,
+  comment: commentTool,
 };
 
 export const TOOL_LABELS: { id: ToolId; label: string }[] = [
@@ -84,6 +90,7 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "text", label: "Text" },
   { id: "pen", label: "Pen" },
   { id: "hand", label: "Hand" },
+  { id: "comment", label: "Comment" },
 ];
 
 // The tools that make sense in Flows mode: flows do not draw, they
@@ -140,6 +147,15 @@ export function App() {
   // The nickname lives in a ref as well as in state: the bootstrap starts
   // only once and must read the CURRENT one when it opens presence.
   const [nickname, setNickname] = useState(loadNickname);
+  // The left panel's tab. The comment tool brings Comments to the front (revealRequested), and
+  // opens the left panel if it was closed.
+  const [leftTab, setLeftTab] = useState("layers");
+  const reveal = useCommentsUi((c) => c.revealRequested);
+  useEffect(() => {
+    if (reveal === 0) return;
+    setLeftTab("comments");
+    if (!usePanels.getState().left) usePanels.getState().toggle("left");
+  }, [reveal]);
   const nicknameRef = useRef(nickname);
   const presenceRef = useRef<PresenceClient | null>(null);
   const [toolId, setToolId] = useState<ToolId>("select");
@@ -360,6 +376,15 @@ export function App() {
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
           }
+          // Comment pins (all modes): the threads of this page, plus the pin being placed.
+          {
+            const cu = useCommentsUi.getState();
+            const pageId = useScene.getState().currentPageId ?? scene.pages[0]?.id ?? "";
+            const pins = Object.keys(scene.comments).length > 0 ? pinsOf(scene, pageId, cu.showResolved) : [];
+            if (pins.length > 0 || cu.draft) {
+              drawCommentPins(octx, pins, camera, cu.activeId, cu.draft ? draftWorld(scene, cu.draft) : null);
+            }
+          }
           const layoutDrop = useScene.getState().layoutDrop;
           if (layoutDrop) drawLayoutDrop(octx, camera, layoutDrop);
           // The flows' arrows, above everything else of the overlay.
@@ -389,6 +414,7 @@ export function App() {
       useScene.subscribe(invalidate),
       usePresence.subscribe(invalidate),
       useFlowUi.subscribe(invalidate),
+      useCommentsUi.subscribe(invalidate),
       // The playhead, the pose and the recording draft: the playback tick
       // is the only frame producer while animating, with the timeline idle nothing
       // arrives and the editor stays at zero frames.
@@ -566,11 +592,11 @@ export function App() {
           </aside>
         ) : (
           <aside aria-label="Layers and components" className={`${leftOpen ? "flex" : "hidden"} w-64 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
-            <Tabs className="flex min-h-0 flex-1 flex-col">
+            <Tabs className="flex min-h-0 flex-1 flex-col" selectedKey={leftTab} onSelectionChange={(k) => setLeftTab(String(k))}>
               {/* Tabs and page selector in the SAME row: 40px less. */}
               <div className="flex shrink-0 items-center border-b border-line pr-1.5">
               <TabList aria-label="Panel" className="flex min-w-0 flex-1 gap-0.5 px-1.5 pt-1">
-                {([["layers", "Layers", "layers"], ["components", "Components", "components"]] as const).map(([id, label, icon]) => (
+                {([["layers", "Layers", "layers"], ["components", "Components", "components"], ["comments", "Comments", "comment"]] as const).map(([id, label, icon]) => (
                   <Tab
                     key={id}
                     id={id}
@@ -599,6 +625,9 @@ export function App() {
               </TabPanel>
               <TabPanel id="components" className="min-h-0 flex-1 overflow-y-auto outline-none">
                 <ComponentsPanel />
+              </TabPanel>
+              <TabPanel id="comments" className="min-h-0 flex-1 overflow-hidden outline-none">
+                <CommentsPanel />
               </TabPanel>
             </Tabs>
           </aside>

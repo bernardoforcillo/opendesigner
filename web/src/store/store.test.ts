@@ -264,7 +264,7 @@ describe("per-page selection scoping (setScene: resync/snapshot)", () => {
     const snapshot: SceneState = {
       id: "doc1", name: "Untitled", schemaVersion: 1,
       pages: [{ id: "page1", name: "Page 1" }, { id: "page2", name: "Page 2" }],
-      nodes: nodesOf({ n1: rectLite("n1", "page2") }), flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, components: {}, componentSets: {},
+      nodes: nodesOf({ n1: rectLite("n1", "page2") }), flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, comments: {}, components: {}, componentSets: {},
     };
     useScene.getState().setScene(snapshot);
     expect(useScene.getState().scene?.nodes.at("n1")).toBeDefined();
@@ -278,7 +278,7 @@ describe("per-page selection scoping (setScene: resync/snapshot)", () => {
     const snapshot: SceneState = {
       id: "doc1", name: "Untitled", schemaVersion: 1,
       pages: [{ id: "page1", name: "Page 1" }],
-      nodes: nodesOf({ n1: rectLite("n1", "page1") }), flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, components: {}, componentSets: {},
+      nodes: nodesOf({ n1: rectLite("n1", "page1") }), flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, comments: {}, components: {}, componentSets: {},
     };
     useScene.getState().setScene(snapshot);
     expect(useScene.getState().selection).toEqual(["n1"]);

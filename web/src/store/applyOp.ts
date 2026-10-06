@@ -3,13 +3,14 @@ import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
 import { cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
 import { areValidLayoutGrids } from "./layoutGrids";
+import { isValidComment, withoutComment } from "./comments";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
@@ -534,6 +535,17 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     // --- typography ---------------------------------------------------------
     // Parity with core.applySetFont / applyDeleteFont / applySetTextStyleDef /
     // applyDeleteTextStyleDef (Go, internal/core/typography.go). ABSOLUTE upserts.
+    // Comments (parity with core.applySetComment / applyDeleteComment, internal/core/comments.go).
+    case "setComment": {
+      const c = op.kind.value.comment;
+      if (!isValidComment(state, c)) return state;
+      return { ...state, comments: { ...state.comments, [c.id]: toCommentLite(c) } };
+    }
+    case "deleteComment": {
+      const { id } = op.kind.value;
+      if (!state.comments[id]) return state;                                // ErrCommentNotFound
+      return { ...state, comments: withoutComment(state, id) };
+    }
     case "setFont": {
       const f = op.kind.value.font;
       if (!isValidFont(state, f)) return state;

@@ -646,6 +646,8 @@ message Document {
   map<string, TextStyleDef> text_styles = 13;
   // Variants: setId -> component set.
   map<string, ComponentSet> component_sets = 14;
+  // Comments: commentId -> comment (see Comment).
+  map<string, Comment> comments = 15;
 }
 
 // ---------- ops ----------
@@ -795,8 +797,34 @@ message Op {
     DeleteComponentSet  delete_component_set  = 36;
     SetComponentDef     set_component_def     = 37; // variants/properties — a component's set membership and properties
     SetInstanceProps    set_instance_props    = 38; // an instance's property values and variant choice
+    SetComment          set_comment           = 39; // comments — upsert of a comment
+    DeleteComment       delete_comment        = 40;
   }
 }
+// A comment pinned on the canvas. A THREAD is a root comment (parent_id empty) plus its
+// replies (parent_id = the root's id; replies do not nest). Position, node and page are the
+// root's: a reply carries none of them.
+//
+//  - attached to a node (node_id set): (x, y) is an offset from the node's top-left corner,
+//    in the node's own coordinates, so the pin follows the node;
+//  - free (node_id empty): (x, y) is in world coordinates on the page `page_id`.
+//
+// `resolved` is the root's: a resolved thread is hidden from the canvas by default.
+message Comment {
+  string id = 1;
+  string parent_id = 2;
+  string node_id = 3;
+  string page_id = 4;
+  double x = 5;
+  double y = 6;
+  string author = 7;      // display name, up to 80 characters
+  string text = 8;        // non-empty, up to 4000 characters
+  int64 created_at = 9;   // unix seconds; 0 when unknown
+  bool resolved = 10;
+}
+message SetComment    { Comment comment = 1; }
+message DeleteComment { string id = 1; }  // a root takes its replies with it
+
 message SetCollection    { VariableCollection collection = 1; }
 message DeleteCollection { string id = 1; }
 message SetVariable      { Variable variable = 1; }
@@ -943,11 +971,33 @@ message RenderDiagramResponse {
   repeated string warnings = 5;
 }
 
+// NAMED VERSIONS. A version is a frozen copy of the whole document (and nothing else is
+// shared with it): it can be listed, deleted and BRANCHED -- opened as a new, editable
+// document seeded from it (with the assets it uses).
+message VersionInfo {
+  string id = 1;
+  string name = 2;
+  int64 created_at = 3;  // unix seconds
+  uint64 seq = 4;        // the op sequence of the document when it was taken
+}
+message CreateVersionRequest { string doc_id = 1; string name = 2; }
+message ListVersionsRequest { string doc_id = 1; }
+message ListVersionsResponse { repeated VersionInfo versions = 1; }  // newest first
+message DeleteVersionRequest { string doc_id = 1; string version_id = 2; }
+message DeleteVersionResponse {}
+// A new document seeded from a version (version_id empty = the document as it is now).
+message BranchRequest { string doc_id = 1; string version_id = 2; string name = 3; }
+
 message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string nickname = 3; }
 message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
 message UpdatePresenceResponse {}
 
 service DocumentService {
+  rpc CreateVersion(CreateVersionRequest) returns (VersionInfo);
+  rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
+  rpc DeleteVersion(DeleteVersionRequest) returns (DeleteVersionResponse);
+  // Opens a version (or the current state) as a NEW document: a branch to edit without touching the original.
+  rpc BranchDocument(BranchRequest) returns (DocInfo);
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
   rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
   // Renames a document (meta.json + the hub's in-memory name).

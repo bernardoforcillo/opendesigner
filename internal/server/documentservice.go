@@ -3,6 +3,7 @@ package server
 import (
 	"context"
 	"errors"
+	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"os"
 
 	"connectrpc.com/connect"
@@ -290,4 +291,47 @@ func (s *DocumentService) RenderDiagram(_ context.Context, req *connect.Request[
 	return connect.NewResponse(&opendesignerv1.RenderDiagramResponse{
 		Nodes: res.Nodes, Kind: res.Kind, Width: res.Width, Height: res.Height, Warnings: res.Warnings,
 	}), nil
+}
+
+// versionErr maps the Manager's errors to Connect codes.
+func versionErr(err error) error {
+	switch {
+	case errors.Is(err, ErrDocNotFound), errors.Is(err, store.ErrVersionNotFound), errors.Is(err, errInvalidDocID):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, errEmptyName), errors.Is(err, errNameTooLong):
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	default:
+		return connect.NewError(connect.CodeInternal, err)
+	}
+}
+
+func (s *DocumentService) CreateVersion(_ context.Context, req *connect.Request[opendesignerv1.CreateVersionRequest]) (*connect.Response[opendesignerv1.VersionInfo], error) {
+	v, err := s.m.CreateVersion(req.Msg.GetDocId(), req.Msg.GetName())
+	if err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(v), nil
+}
+
+func (s *DocumentService) ListVersions(_ context.Context, req *connect.Request[opendesignerv1.ListVersionsRequest]) (*connect.Response[opendesignerv1.ListVersionsResponse], error) {
+	vs, err := s.m.ListVersions(req.Msg.GetDocId())
+	if err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(&opendesignerv1.ListVersionsResponse{Versions: vs}), nil
+}
+
+func (s *DocumentService) DeleteVersion(_ context.Context, req *connect.Request[opendesignerv1.DeleteVersionRequest]) (*connect.Response[opendesignerv1.DeleteVersionResponse], error) {
+	if err := s.m.DeleteVersion(req.Msg.GetDocId(), req.Msg.GetVersionId()); err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(&opendesignerv1.DeleteVersionResponse{}), nil
+}
+
+func (s *DocumentService) BranchDocument(_ context.Context, req *connect.Request[opendesignerv1.BranchRequest]) (*connect.Response[opendesignerv1.DocInfo], error) {
+	d, err := s.m.Branch(req.Msg.GetDocId(), req.Msg.GetVersionId(), req.Msg.GetName())
+	if err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(d), nil
 }

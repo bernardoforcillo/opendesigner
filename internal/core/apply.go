@@ -18,11 +18,13 @@ var (
 	// ErrNotFrameNode: auto_layout is a field of FrameNode, so writing it to a
 	// node that is not a frame is an op on the wrong node (same precedent as
 	// ErrNotRectNode for corner_radius).
-	ErrNotFrameNode = errors.New("core: not a frame node")
-	ErrConstraint   = errors.New("core: unknown constraint")
-	ErrBlendMode    = errors.New("core: unknown blend mode")
-	ErrLayoutGrid   = errors.New("core: invalid layout grid")
-	ErrLayoutSizing = errors.New("core: unknown layout sizing")
+	ErrNotFrameNode    = errors.New("core: not a frame node")
+	ErrConstraint      = errors.New("core: unknown constraint")
+	ErrBlendMode       = errors.New("core: unknown blend mode")
+	ErrComment         = errors.New("core: invalid comment")
+	ErrCommentNotFound = errors.New("core: comment not found")
+	ErrLayoutGrid      = errors.New("core: invalid layout grid")
+	ErrLayoutSizing    = errors.New("core: unknown layout sizing")
 	// ErrNotVectorNode: same precedent as ErrNotTextNode -- the `shape` oneof is
 	// the NATURE of the node, so a SetVectorPath on a rectangle is an op on the
 	// wrong node, not a missing field to fill in.
@@ -136,6 +138,10 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetComponentDef(doc, k.SetComponentDef)
 	case *opendesignerv1.Op_SetInstanceProps:
 		return applySetInstanceProps(doc, k.SetInstanceProps, cow)
+	case *opendesignerv1.Op_SetComment:
+		return applySetComment(doc, k.SetComment)
+	case *opendesignerv1.Op_DeleteComment:
+		return applyDeleteComment(doc, k.DeleteComment)
 	case *opendesignerv1.Op_SetFlow:
 		return applySetFlow(doc, k.SetFlow)
 	case *opendesignerv1.Op_DeleteFlow:

@@ -1,8 +1,8 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, LayoutGridKind, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
-  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
+  Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
@@ -301,6 +301,11 @@ export const TRANSITION_ANIMATIONS = [
 
 // VARIABLES (design tokens): see proto VariableCollection / Variable and
 // internal/core/variables.go. A value is a color (FillLite, solid) or a number.
+// A comment pinned on the canvas (see Comment in the proto and internal/core/comments.go).
+export interface CommentLite {
+  id: string; parentId: string; nodeId: string; pageId: string; x: number; y: number;
+  author: string; text: string; createdAt: number; resolved: boolean;
+}
 export interface ModeLite { id: string; name: string }
 export interface CollectionLite { id: string; name: string; modes: ModeLite[] }
 export type VariableTypeLite = "color" | "number";
@@ -336,6 +341,8 @@ export interface SceneState {
   // Typography, like variables: an empty record when there are none.
   fonts: Record<string, FontLite>;
   textStyles: Record<string, TextStyleDefLite>;
+  // Comments, like clips: an empty record when there are none.
+  comments: Record<string, CommentLite>;
   // Only in scenes derived from playback (animation/pose.ts): see AnimInfo.
   anim?: AnimInfo;
   // M4 — components indexed by id (componentId -> master). It is part of the
@@ -347,7 +354,7 @@ export interface SceneState {
 }
 
 export function emptyScene(id: string, name: string): SceneState {
-  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, components: {}, componentSets: {} };
+  return { id, name, schemaVersion: 1, pages: [{ id: "page1", name: "Page 1" }], nodes: NodeMap.empty, flows: {}, transitions: {}, clips: {}, collections: {}, variables: {}, fonts: {}, textStyles: {}, comments: {}, components: {}, componentSets: {} };
 }
 
 const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
@@ -846,6 +853,19 @@ export function toPbTransition(t: TransitionLite): PbTransition {
   });
 }
 
+export function toCommentLite(c: PbComment): CommentLite {
+  return {
+    id: c.id, parentId: c.parentId, nodeId: c.nodeId, pageId: c.pageId, x: c.x, y: c.y,
+    author: c.author, text: c.text, createdAt: Number(c.createdAt), resolved: c.resolved,
+  };
+}
+export function toPbComment(c: CommentLite): PbComment {
+  return create(CommentSchema, {
+    id: c.id, parentId: c.parentId, nodeId: c.nodeId, pageId: c.pageId, x: c.x, y: c.y,
+    author: c.author, text: c.text, createdAt: BigInt(Math.trunc(c.createdAt)), resolved: c.resolved,
+  });
+}
+
 export function toCollectionLite(c: PbCollection): CollectionLite {
   return { id: c.id, name: c.name, modes: c.modes.map((m) => ({ id: m.id, name: m.name })) };
 }
@@ -929,5 +949,6 @@ export function fromDocument(doc: Document): SceneState {
     variables: Object.fromEntries(Object.entries(doc.variables).map(([id, v]) => [id, toVariableLite(v)])),
     fonts: Object.fromEntries(Object.entries(doc.fonts).map(([id, f]) => [id, toFontLite(f)])),
     textStyles: Object.fromEntries(Object.entries(doc.textStyles).map(([id, d]) => [id, toTextStyleDefLite(d)])),
+    comments: Object.fromEntries(Object.entries(doc.comments).map(([id, c]) => [id, toCommentLite(c)])),
   };
 }

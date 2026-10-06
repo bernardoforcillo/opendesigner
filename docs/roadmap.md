@@ -56,8 +56,9 @@ Legend: [x] done · [ ] to do
 - [x] Multiplayer on the same network: nickname, avatar, others' cursors and selections, `/doc/<id>` link to join the same document (no accounts, on purpose)
 - [x] MCP agents show up as people in presence (name with `-nickname`, default "Claude"; they highlight the node they are editing)
 - [ ] Conflicts on the same property: today the last op to reach the server wins
-- [ ] Comments on the canvas
-- [ ] Named versions and branching (on the oplog), with review and merge
+- [x] Comments on the canvas: pins on a node or free on a page, threads with replies, resolve, in the Comments tab and as MCP tools (`list_comments`, `add_comment`, `resolve_comment`, `delete_comment`); see docs/collaboration.md
+- [x] Named versions and branching: frozen copies of the document, opened as a branch (a new document)
+- [ ] Review and merge of a branch back into its source
 - [ ] Property-level merge (CRDT or equivalent) instead of last-write-wins
 - [ ] Accounts, permissions, read-only and comment-only links (optional; local-first stays the default)
 - [ ] Optional relay/cloud for use beyond the LAN, still self-hostable

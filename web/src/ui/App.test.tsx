@@ -82,6 +82,7 @@ describe("tool registry", () => {
       "Text",
       "Pen",
       "Hand",
+      "Comment",
     ]);
   });
 
