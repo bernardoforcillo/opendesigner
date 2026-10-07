@@ -1,11 +1,18 @@
 import { create } from "@bufbuild/protobuf";
 import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, type NodeLite, type TransitionLite, toFlowLite, toClipLite, toTransitionLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
-import { layoutTargets, relayout } from "./layout";
+import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
+import { cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
+import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
+import { areValidLayoutGrids } from "./layoutGrids";
+import { arePaintsValid } from "./paints";
+import { isValidComment, withoutComment } from "./comments";
+import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
@@ -31,17 +38,21 @@ export function applyOp(state: SceneState, op: Op): SceneState {
   // structures (renderer/sceneIndex.ts) need not compare the whole
   // scene to find out. The others (delete, reparent, pages,
   // components) do not record it and fall back to the full comparison.
-  const id = singleTouchedNode(op);
+  const id = singleTouchedNode(op, state);
   if (id !== null) recordDelta(laidOut, state, [id, ...touchedByLayout]);
   return laidOut;
 }
 
 // The only node the op writes, if it writes exactly one.
-function singleTouchedNode(op: Op): string | null {
+function singleTouchedNode(op: Op, state: SceneState): string | null {
   const k = op.kind;
   switch (k.case) {
     case "createNode": return k.value.node?.id ?? null;
-    case "setProps": return k.value.id;
+    // Resizing a frame also moves its children (constraints): no single node to name.
+    case "setProps": {
+      const resizes = (k.value.mask?.paths ?? []).some((p) => p === "width" || p === "height");
+      return resizes && state.nodes.at(k.value.id)?.kind === "frame" ? null : k.value.id;
+    }
     case "setText": return k.value.id;
     case "setVectorPath": return k.value.id;
     default: return null;
@@ -59,6 +70,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // from the authoritative document (and the undo of that op would be the undo of
       // something the server never accepted).
       if (!pb || pb.id === "" || state.nodes.at(pb.id)) return state;
+      if (!arePaintsValid(pb.fills, pb.strokes)) return state;                // ErrPaint
       // The parent must EXIST (another node, or a Page for roots):
       // ErrParentNotFound in core.applyCreate (Go). A node with a nonexistent
       // parent is not reachable from any page -- invisible on the
@@ -116,6 +128,20 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // Same preventive validation for auto_layout, which only applies to a
       // frame (ErrNotFrameNode in Go): op rejected as a whole.
       if (cur.kind !== "frame" && paths.includes("auto_layout")) return state;
+      // Variable bindings and mode pins are validated against the document before
+      // anything is written (core.applySetProps does the same in its validation
+      // pass): a mixed mask with one bad entry must not move the other fields.
+      if (paths.includes("bindings") && !areValidBindings(state, p.bindings)) return state;
+      if (paths.includes("modes") && !areValidModes(state, p.modes)) return state;
+      if (paths.includes("text_style_id") && !isValidTextStyleId(state, cur, p.textStyleId)) return state;
+      // The enums are closed: an out-of-range number is rejected whole (core.applySetProps).
+      if (paths.includes("constraint_x") && !(p.constraintX >= 0 && p.constraintX <= 5)) return state;
+      if (paths.includes("constraint_y") && !(p.constraintY >= 0 && p.constraintY <= 5)) return state;
+      if (paths.includes("layout_grids") && (cur.kind !== "frame" || !areValidLayoutGrids(p.layoutGrids))) return state;
+      if ((paths.includes("fills") || paths.includes("strokes")) && !arePaintsValid(p.fills, p.strokes)) return state;
+      if (paths.includes("blend_mode") && !(p.blendMode >= 0 && p.blendMode <= 15)) return state;
+      if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
+      if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -127,6 +153,12 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "opacity": next.opacity = p.opacity; break;
           case "name": next.name = p.name; break;
           case "visible": next.visible = p.visible; break;
+          case "layout_grids": {
+            const g = toNodeLite(p).layoutGrids;
+            if (g) next.layoutGrids = g; else delete next.layoutGrids;
+            break;
+          }
+          case "is_mask": if (p.isMask) next.isMask = true; else delete next.isMask; break;
           case "fills": next.fills = toNodeLite(p).fills; break;
           // REPLACEMENT of the whole list, like "fills" and like `n.Strokes =
           // p.GetStrokes()` in core.applySetProps (Go): never a merge
@@ -151,6 +183,47 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "meta": {
             const m = toNodeLite(p).meta;
             if (m) next.meta = m; else delete next.meta;
+            break;
+          }
+          // Like meta: replaces the whole map, and an empty map removes the field.
+          case "bindings": {
+            const b = toNodeLite(p).bindings;
+            if (b) next.bindings = b; else delete next.bindings;
+            break;
+          }
+          case "modes": {
+            const m = toNodeLite(p).modes;
+            if (m) next.modes = m; else delete next.modes;
+            break;
+          }
+          case "text_style_id": {
+            if (p.textStyleId !== "") next.textStyleId = p.textStyleId; else delete next.textStyleId;
+            break;
+          }
+          // Through toNodeLite, like the other enums: UNSPECIFIED / FIXED remove the field.
+          case "constraint_x": {
+            const c = toNodeLite(p).constraintX;
+            if (c) next.constraintX = c; else delete next.constraintX;
+            break;
+          }
+          case "constraint_y": {
+            const c = toNodeLite(p).constraintY;
+            if (c) next.constraintY = c; else delete next.constraintY;
+            break;
+          }
+          case "blend_mode": {
+            const b = toNodeLite(p).blendMode;
+            if (b) next.blendMode = b; else delete next.blendMode;
+            break;
+          }
+          case "layout_sizing_x": {
+            const c = toNodeLite(p).layoutSizingX;
+            if (c) next.layoutSizingX = c; else delete next.layoutSizingX;
+            break;
+          }
+          case "layout_sizing_y": {
+            const c = toNodeLite(p).layoutSizingY;
+            if (c) next.layoutSizingY = c; else delete next.layoutSizingY;
             break;
           }
           // As for "fills", the value is extracted from the patch by going through
@@ -180,7 +253,14 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           }
         }
       }
-      return { ...state, nodes: state.nodes.set(id, next) };
+      const written: SceneState = { ...state, nodes: state.nodes.set(id, next) };
+      // A resized frame moves and resizes its children by their constraints (a frame with
+      // auto layout decides for itself): core.applySetProps does the same.
+      if (next.width !== cur.width || next.height !== cur.height) {
+        const edit = written.nodes.edit();
+        if (resizeChildren(written, edit, id, cur.width, cur.height)) return { ...written, nodes: edit.done() };
+      }
+      return written;
     }
     // Dedicated op and not a setProps mask path: the content lives
     // INSIDE the Node's `shape` oneof, while the mask addresses top-level
@@ -240,7 +320,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const nodes = state.nodes.edit();
       const gone = new Set<string>();
       for (const n of subtreeOf(state, id)) { nodes.delete(n.id); gone.add(n.id); }
-      return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone), ...cascadeClips(state, gone) };
+      return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone), ...cascadeClips(state, gone), ...cascadeComponentTargets(state, gone) };
     }
     // Dedicated op and not a setProps mask path (unlike
     // `order_key`) because it has a validation no field has: the new
@@ -298,7 +378,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       }
       return {
         ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes: nodes.done(),
-        ...cascadeFlows(state, gone), ...cascadeClips(state, gone),
+        ...cascadeFlows(state, gone), ...cascadeClips(state, gone), ...cascadeComponentTargets(state, gone),
       };
     }
     case "renamePage": {
@@ -349,6 +429,9 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (!state.flows[t.flowId]) return state;                             // ErrFlowNotFound
       if (!state.nodes.has(t.fromId) || !state.nodes.has(t.toId)) return state; // ErrNodeNotFound
       if (t.elementId !== "" && !state.nodes.has(t.elementId)) return state;
+      // ErrTransitionAnim: a closed animation set and sane timing (parity with core.applySetTransition).
+      if (t.animation !== "" && !(TRANSITION_ANIMATIONS as readonly string[]).includes(t.animation)) return state;
+      if (t.durationMs < 0 || t.durationMs > 10000 || t.delayMs < 0 || t.delayMs > 60000 || !isValidEasing(t.easing)) return state;
       return { ...state, transitions: { ...state.transitions, [t.id]: toTransitionLite(t) } };
     }
     case "deleteTransition": {
@@ -375,6 +458,120 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const clips = { ...state.clips };
       delete clips[id];
       return { ...state, clips };
+    }
+    // --- variables ----------------------------------------------------------
+    // Parity with core.applySetCollection / applyDeleteCollection /
+    // applySetVariable / applyDeleteVariable (Go, internal/core/variables.go).
+    // ABSOLUTE upserts; the validation is variables.ts (the same rules).
+    case "setCollection": {
+      const c = op.kind.value.collection;
+      if (!isValidCollection(c)) return state;
+      const lite = toCollectionLite(c);
+      const next = { ...state, collections: { ...state.collections, [c.id]: lite } };
+      return state.collections[c.id] ? { ...next, ...dropRemovedModes(next, lite) } : next;
+    }
+    case "deleteCollection": {
+      const { id } = op.kind.value;
+      if (!state.collections[id]) return state;                             // ErrCollectionNotFound
+      const collections = { ...state.collections };
+      delete collections[id];
+      // Its variables go with it, and so do the bindings to them and the pins.
+      const variables: SceneState["variables"] = {};
+      const gone = new Set<string>();
+      for (const [vid, v] of Object.entries(state.variables)) {
+        if (v.collectionId === id) gone.add(vid); else variables[vid] = v;
+      }
+      return { ...state, collections, variables, nodes: unbindNodes(state, gone, id) };
+    }
+    case "setVariable": {
+      const v = op.kind.value.variable;
+      if (!isValidVariable(state, v)) return state;
+      return { ...state, variables: { ...state.variables, [v.id]: toVariableLite(v) } };
+    }
+    case "deleteVariable": {
+      const { id } = op.kind.value;
+      if (!state.variables[id]) return state;                               // ErrVariableNotFound
+      const variables = { ...state.variables };
+      delete variables[id];
+      return { ...state, variables, nodes: unbindNodes(state, new Set([id])) };
+    }
+    // --- component variants and properties ---------------------------------
+    // Parity with core.applySetComponentSet / applyDeleteComponentSet /
+    // applySetComponentDef / applySetInstanceProps (Go, internal/core/components.go).
+    case "setComponentSet": {
+      const set = op.kind.value.componentSet;
+      if (!isValidComponentSet(set)) return state;
+      const next = { ...state, componentSets: { ...state.componentSets, [set.id]: toComponentSetLite(set) } };
+      return { ...next, components: detachInvalidMembers(next, set.id) };
+    }
+    case "deleteComponentSet": {
+      const { id } = op.kind.value;
+      if (!state.componentSets[id]) return state;                           // ErrComponentSetNotFound
+      const componentSets = { ...state.componentSets };
+      delete componentSets[id];
+      return { ...state, componentSets, components: detachInvalidMembers({ ...state, componentSets }, id) };
+    }
+    case "setComponentDef": {
+      const d = op.kind.value;
+      if (!isValidComponentDef(state, d)) return state;
+      const cur = state.components[d.componentId];
+      const next = { rootNodeId: cur.rootNodeId, name: cur.name } as typeof cur;
+      if (d.setId !== "") next.setId = d.setId;
+      if (Object.keys(d.variant).length > 0) next.variant = { ...d.variant };
+      if (d.properties.length > 0) next.properties = d.properties.map(toComponentPropertyLite);
+      return { ...state, components: { ...state.components, [d.componentId]: next } };
+    }
+    case "setInstanceProps": {
+      const { instanceId, propertyValues, variantProps } = op.kind.value;
+      const cur = state.nodes.at(instanceId);
+      if (!cur) return state;                                               // ErrNodeNotFound
+      if (cur.kind !== "instance" || !cur.instance) return state;           // ErrNotInstanceNode
+      if (!isValidInstanceProps(state, cur.instance, propertyValues, variantProps)) return state;
+      const { propertyValues: _pv, variantProps: _vp, ...rest } = cur.instance;
+      const instance = {
+        ...rest,
+        ...(Object.keys(propertyValues).length > 0 ? { propertyValues: { ...propertyValues } } : {}),
+        ...(Object.keys(variantProps).length > 0 ? { variantProps: { ...variantProps } } : {}),
+      };
+      return { ...state, nodes: state.nodes.set(instanceId, { ...cur, instance }) };
+    }
+    // --- typography ---------------------------------------------------------
+    // Parity with core.applySetFont / applyDeleteFont / applySetTextStyleDef /
+    // applyDeleteTextStyleDef (Go, internal/core/typography.go). ABSOLUTE upserts.
+    // Comments (parity with core.applySetComment / applyDeleteComment, internal/core/comments.go).
+    case "setComment": {
+      const c = op.kind.value.comment;
+      if (!isValidComment(state, c)) return state;
+      return { ...state, comments: { ...state.comments, [c.id]: toCommentLite(c) } };
+    }
+    case "deleteComment": {
+      const { id } = op.kind.value;
+      if (!state.comments[id]) return state;                                // ErrCommentNotFound
+      return { ...state, comments: withoutComment(state, id) };
+    }
+    case "setFont": {
+      const f = op.kind.value.font;
+      if (!isValidFont(state, f)) return state;
+      return { ...state, fonts: { ...state.fonts, [f.id]: toFontLite(f) } };
+    }
+    case "deleteFont": {
+      const { id } = op.kind.value;
+      if (!state.fonts[id]) return state;                                   // ErrFontNotFound
+      const fonts = { ...state.fonts };
+      delete fonts[id];
+      return { ...state, fonts };
+    }
+    case "setTextStyleDef": {
+      const d = op.kind.value.textStyle;
+      if (!isValidTextStyleDef(d)) return state;
+      return { ...state, textStyles: { ...state.textStyles, [d.id]: toTextStyleDefLite(d) } };
+    }
+    case "deleteTextStyleDef": {
+      const { id } = op.kind.value;
+      if (!state.textStyles[id]) return state;                              // ErrTextStyleMissing
+      const textStyles = { ...state.textStyles };
+      delete textStyles[id];
+      return { ...state, textStyles, nodes: unstyleNodes(state, id) };
     }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;

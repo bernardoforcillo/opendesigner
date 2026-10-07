@@ -209,3 +209,48 @@ func TestPresenceOverTheWire(t *testing.T) {
 		t.Fatalf("a heard left=%q, want b", got)
 	}
 }
+
+func TestPresenceFacilitationIsRelayedAndBounded(t *testing.T) {
+	r := newPresenceRoom()
+	_, leaveA := r.join("a", "Ada")
+	defer leaveA()
+	bCh, leaveB := r.join("b", "Bob")
+	defer leaveB()
+	recv(t, bCh) // a's join
+
+	votes := make([]string, maxVotes+10)
+	for i := range votes {
+		votes[i] = "n"
+	}
+	r.update(&opendesignerv1.PresenceState{
+		ClientId: "a", HasView: true, ViewX: 10, ViewY: 20, ViewZoom: 2,
+		Chat: strings.Repeat("é", maxChatRunes+30), Reaction: "👍", EmoteSeq: 3, Votes: votes,
+		TimerStartedMs: 1000, TimerEndMs: 301000, TimerLabel: "Brainstorm",
+	})
+	got := recv(t, bCh).GetUpdate()
+	if !got.GetHasView() || got.GetViewX() != 10 || got.GetViewZoom() != 2 {
+		t.Fatalf("view not relayed: %v", got)
+	}
+	if n := len([]rune(got.GetChat())); n != maxChatRunes {
+		t.Fatalf("chat kept %d runes, want %d", n, maxChatRunes)
+	}
+	if got.GetReaction() != "👍" || got.GetEmoteSeq() != 3 {
+		t.Fatalf("reaction = %q/%d", got.GetReaction(), got.GetEmoteSeq())
+	}
+	if len(got.GetVotes()) != maxVotes {
+		t.Fatalf("votes kept %d, want %d", len(got.GetVotes()), maxVotes)
+	}
+	if got.GetTimerEndMs() != 301000 || got.GetTimerLabel() != "Brainstorm" {
+		t.Fatalf("timer = %d/%q", got.GetTimerEndMs(), got.GetTimerLabel())
+	}
+
+	// A timer that ends before it starts, or lasts more than a day, is dropped.
+	r.update(&opendesignerv1.PresenceState{ClientId: "a", TimerStartedMs: 5000, TimerEndMs: 1000, TimerLabel: "x"})
+	if got := recv(t, bCh).GetUpdate(); got.GetTimerEndMs() != 0 || got.GetTimerLabel() != "" {
+		t.Fatalf("a backwards timer was kept: %v", got)
+	}
+	r.update(&opendesignerv1.PresenceState{ClientId: "a", TimerStartedMs: 1, TimerEndMs: 1 + maxTimerMillis + 1})
+	if got := recv(t, bCh).GetUpdate(); got.GetTimerEndMs() != 0 {
+		t.Fatalf("a week-long timer was kept: %v", got)
+	}
+}

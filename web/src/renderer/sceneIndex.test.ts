@@ -4,6 +4,7 @@ import { create } from "@bufbuild/protobuf";
 import { OpSchema, NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "../store/applyOp";
+import { recordDelta } from "../store/sceneDelta";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 import { makeCreateNodeOp, makeDeleteOp, makeReparentOp, makeSetPropsOp } from "../tools/ops";
@@ -227,6 +228,30 @@ describe("aggiornamento incrementale", () => {
     const e1 = sceneIndexOf(s1).extent.get("i")!;
     expect(e1.width).toBeGreaterThan(e0.width);
     expect(snapshot(s1)).toEqual(fresh(s1));
+  });
+});
+
+describe("incremental update with several changed nodes", () => {
+  // The provenance does not promise an order: a derived scene lists the nodes it
+  // replaced as it found them. A changed child listed BEFORE its changed parent
+  // used to be visited twice -- the second visit saw it as `seen`, took it for a
+  // cycle and cleared its extent, so the node was no longer drawn.
+  it("a changed child listed before its changed parent keeps its extent", () => {
+    const base = sceneOf([
+      node("f", "page1", "a", { kind: "frame", width: 300, height: 200, clipsContent: true }),
+      node("k", "f", "a", { x: 10, y: 10 }),
+      node("o", "f", "b", { x: 100, y: 10 }),
+    ]);
+    sceneIndexOf(base);
+    for (const order of [["k", "f"], ["f", "k"]]) {
+      const next: SceneState = {
+        ...base,
+        nodes: base.nodes.set("f", { ...base.nodes.at("f"), fills: [{ r: 0, g: 0, b: 1, a: 1 }] }).set("k", { ...base.nodes.at("k"), fills: [{ r: 0, g: 1, b: 0, a: 1 }] }),
+      };
+      recordDelta(next, base, order);
+      expect(snapshot(next), order.join(",")).toEqual(fresh(next));
+      expect(sceneIndexOf(next).extent.get("k")).toBeTruthy();
+    }
   });
 });
 

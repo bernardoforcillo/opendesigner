@@ -3,7 +3,7 @@ import { describe, it, expect, vi } from "vitest";
 import { drawPeers } from "./peersRenderer";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
-import type { Peers, PeerLite } from "../store/presence";
+import { newPeer, type Peers, type PeerLite } from "../store/presence";
 
 const cam = { x: 0, y: 0, zoom: 1 };
 
@@ -18,7 +18,7 @@ function scene(): SceneState {
 }
 
 function peer(over: Partial<PeerLite> = {}): PeerLite {
-  return { clientId: "p", nickname: "Bea", hasCursor: true, cursorX: 40, cursorY: 60, pageId: "", selection: [], ...over };
+  return newPeer("p", "Bea", { hasCursor: true, cursorX: 40, cursorY: 60, ...over });
 }
 
 function ctxMock() {

@@ -26,7 +26,20 @@ message GradientPaint {
   repeated GradientStop stops = 1;
   double x1 = 2; double y1 = 3; double x2 = 4; double y2 = 5;
 }
-message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; } }
+// An image as a paint: `asset_hash` is a file already in the document's asset store (the same
+// content-addressed files image nodes use). FILL covers the shape and crops, FIT shows the whole
+// image inside it, TILE repeats it at its natural size.
+enum ImageScaleMode {
+  IMAGE_SCALE_MODE_UNSPECIFIED = 0;  // FILL
+  IMAGE_SCALE_MODE_FIT = 1;
+  IMAGE_SCALE_MODE_TILE = 2;
+}
+message ImagePaint { string asset_hash = 1; ImageScaleMode mode = 2; }
+// A MESH gradient: a rows x cols grid of colors spread over the node's box (row-major, the first
+// color at the top-left corner, the last at the bottom-right), blended smoothly (bilinear) between
+// the grid points. The points sit on a regular grid; they do not move.
+message MeshPaint { uint32 rows = 1; uint32 cols = 2; repeated Color colors = 3; }
+message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; ImagePaint image = 4; MeshPaint mesh = 5; } }
 
 // Alignment of the stroke relative to the shape's PERIMETER. CENTER is the
 // drawing default (half inside, half outside): it is the only one the 2D canvas
@@ -68,7 +81,46 @@ message DropShadow {
 // Layer blur: blurs the node itself. `radius` is the standard deviation of the
 // gaussian, in world coordinates.
 message LayerBlur { double radius = 1; } // >= 0
-message Effect { oneof kind { DropShadow drop_shadow = 1; LayerBlur layer_blur = 2; } }
+// Inner shadow: the shadow of everything OUTSIDE the shape, cast inward and
+// clipped to the shape. Same units as DropShadow. Drawn on rectangles,
+// ellipses and frames (the shapes that have an outline path).
+message InnerShadow {
+  Color color = 1;
+  double offset_x = 2;
+  double offset_y = 3;
+  double blur = 4;       // >= 0
+}
+// Background blur: blurs what is BEHIND the node, inside its outline (the
+// frosted-glass look). `radius` is the standard deviation, in world coordinates.
+message BackgroundBlur { double radius = 1; } // >= 0
+message Effect {
+  oneof kind {
+    DropShadow drop_shadow = 1;
+    LayerBlur layer_blur = 2;
+    InnerShadow inner_shadow = 3;
+    BackgroundBlur background_blur = 4;
+  }
+}
+
+// How a node's pixels combine with what is behind it. UNSPECIFIED is NORMAL.
+enum BlendMode {
+  BLEND_MODE_UNSPECIFIED = 0;
+  BLEND_MODE_MULTIPLY = 1;
+  BLEND_MODE_SCREEN = 2;
+  BLEND_MODE_OVERLAY = 3;
+  BLEND_MODE_DARKEN = 4;
+  BLEND_MODE_LIGHTEN = 5;
+  BLEND_MODE_COLOR_DODGE = 6;
+  BLEND_MODE_COLOR_BURN = 7;
+  BLEND_MODE_HARD_LIGHT = 8;
+  BLEND_MODE_SOFT_LIGHT = 9;
+  BLEND_MODE_DIFFERENCE = 10;
+  BLEND_MODE_EXCLUSION = 11;
+  BLEND_MODE_HUE = 12;
+  BLEND_MODE_SATURATION = 13;
+  BLEND_MODE_COLOR = 14;
+  BLEND_MODE_LUMINOSITY = 15;
+}
 
 message RectNode { double corner_radius = 1; }
 message EllipseNode {} // cx/cy/rx/ry derive from x/y/width/height, as for RectNode
@@ -139,6 +191,32 @@ message AutoLayout {
   // written in width/height. Independent of the direction.
   bool hug_width = 9;
   bool hug_height = 10;
+  // WRAP (horizontal and vertical direction alike): when the children do not fit the
+  // frame's main extent they continue on a new line. Ignored when the main axis hugs
+  // (a hugging frame is as long as its content). `cross_spacing` is the gap between lines.
+  bool wrap = 11;
+  double cross_spacing = 12;   // >= 0
+}
+
+// How a node is sized by its auto layout PARENT, per axis of the node (not of the layout).
+// FILL: the node takes the free space of that axis -- on the layout's main axis the
+// space is shared equally among the children that fill, on the cross axis the node
+// spans the whole inner extent. FIXED (default): it keeps its own width/height.
+enum LayoutSizing {
+  LAYOUT_SIZING_FIXED = 0;
+  LAYOUT_SIZING_FILL = 1;
+}
+
+// CONSTRAINTS: how a node follows its parent FRAME when that frame is resized (without auto
+// layout), per axis. MIN is left/top, MAX is right/bottom, STRETCH keeps both margins,
+// CENTER keeps the distance from the center, SCALE scales position and size with the frame.
+enum Constraint {
+  CONSTRAINT_UNSPECIFIED = 0;   // same as MIN
+  CONSTRAINT_MIN = 1;
+  CONSTRAINT_MAX = 2;
+  CONSTRAINT_STRETCH = 3;
+  CONSTRAINT_CENTER = 4;
+  CONSTRAINT_SCALE = 5;
 }
 
 message FrameNode {
@@ -170,6 +248,7 @@ message TextStyle {
   string font_weight = 3;    // "400" | "700" | ...
   double line_height = 4;    // multiplier, 0 => 1.2
   TextAlign align = 5;       // LEFT | CENTER | RIGHT
+  bool italic = 6;           // false => upright; draws the family's italic face when it has one
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is
@@ -288,6 +367,41 @@ message VectorNode { repeated SubPath subpaths = 1; }
 message Component {
   string root_node_id = 1; // root of the master, inside Document.nodes
   string name = 2;
+  // VARIANTS: the component set this component is a variant of ("" = standalone) and its
+  // value on every axis of the set (axis name -> option). See ComponentSet.
+  string set_id = 3;
+  map<string, string> variant = 4;
+  // PROPERTIES an instance can set (see ComponentProperty).
+  repeated ComponentProperty properties = 5;
+}
+
+enum ComponentPropertyType {
+  COMPONENT_PROPERTY_TYPE_UNSPECIFIED = 0;
+  COMPONENT_PROPERTY_TYPE_BOOLEAN = 1;  // shows/hides the target nodes
+  COMPONENT_PROPERTY_TYPE_TEXT = 2;     // sets the content of the target text nodes
+}
+
+// A property of a component: a named knob that an instance turns without editing the
+// master's nodes. It controls nodes INSIDE the master's subtree. Instances store
+// their values by property NAME (InstanceNode.property_values), so the same
+// property can exist on every variant of a set and survive a variant switch.
+message ComponentProperty {
+  string name = 1;                      // unique within the component
+  ComponentPropertyType type = 2;
+  string default_value = 3;             // BOOLEAN: "true" | "false"; TEXT: the text
+  repeated string target_node_ids = 4;  // master nodes it controls (text nodes for TEXT)
+}
+
+// A COMPONENT SET groups the variants of a component. Each AXIS is a named choice
+// (e.g. "State": default | hover | disabled); every member component assigns one
+// option per axis, and no two members assign the same combination. An instance picks
+// a variant by setting options (InstanceNode.variant_props); the axes it does not set
+// keep the values of the component it was created from.
+message VariantAxis { string name = 1; repeated string options = 2; }
+message ComponentSet {
+  string id = 1;
+  string name = 2;
+  repeated VariantAxis axes = 3;
 }
 
 // A per-instance override on ONE node of the master. Minimal (design M4): fill
@@ -309,6 +423,10 @@ message InstanceOverride {
 message InstanceNode {
   string component_id = 1;
   repeated InstanceOverride overrides = 2;
+  // Values of the component's properties, by property name; absent = the default.
+  map<string, string> property_values = 3;
+  // Variant choice, axis name -> option; absent axes keep the base component's value.
+  map<string, string> variant_props = 4;
 }
 
 message Node {
@@ -351,9 +469,102 @@ message Node {
   //   "status"          planned | implemented | tested
   // The "meta" mask REPLACES the whole map, like `fills` for lists.
   map<string, string> meta = 40;
+  // Variable bindings: property -> variableId. A bound property takes its value
+  // from the variable (resolved for the node's active mode) instead of from the
+  // literal stored on the node, which stays as the fallback. Keys:
+  //   "fills.N" | "strokes.N"   COLOR    the color of the Nth solid paint
+  //   "opacity" | "rotation"    NUMBER
+  //   "corner_radius"           NUMBER   rectangles only
+  //   "strokes.N.weight"        NUMBER
+  // The "bindings" mask REPLACES the whole map, like `meta`.
+  map<string, string> bindings = 41;
+  // Mode override: collectionId -> modeId. A node (typically a frame) can pin a
+  // collection to one of its modes; the override applies to the whole subtree
+  // and the nearest ancestor wins. Without one, the collection's first mode is
+  // used. The "modes" mask REPLACES the whole map.
+  map<string, string> modes = 42;
+  // Shared text style (see TextStyleDef). On a text node, the node draws with the
+  // style's values instead of its own `style`, which stays as the fallback
+  // (detaching gives it back). The "text_style_id" mask path writes it; empty
+  // detaches. Only text nodes take one.
+  string text_style_id = 43;
+  // Constraints (see Constraint): how this node follows its parent frame's resize, per axis.
+  // The "constraint_x" / "constraint_y" mask paths write them.
+  Constraint constraint_x = 44;
+  Constraint constraint_y = 45;
+  // Sizing by an auto layout parent (see LayoutSizing), per axis of THIS node.
+  // The "layout_sizing_x" / "layout_sizing_y" mask paths write them.
+  LayoutSizing layout_sizing_x = 46;
+  LayoutSizing layout_sizing_y = 47;
+  // Blend mode against what is behind the node (see BlendMode). The "blend_mode" mask path writes it.
+  BlendMode blend_mode = 48;
+  // A MASK node is not drawn: its outline clips every sibling ABOVE it in the same parent.
+  // Only shapes with an outline (rect, ellipse, frame, vector) mask. The "is_mask" mask path writes it.
+  bool is_mask = 49;
+  // Layout grids of a FRAME (see LayoutGrid): editor guides and snap targets, never exported.
+  // The "layout_grids" mask path REPLACES the whole list; only frames take one.
+  repeated LayoutGrid layout_grids = 50;
+}
+
+enum LayoutGridKind {
+  LAYOUT_GRID_KIND_UNSPECIFIED = 0;
+  LAYOUT_GRID_KIND_GRID = 1;     // square cells of `size`
+  LAYOUT_GRID_KIND_COLUMNS = 2;  // `count` columns between the margins, `gutter` apart
+  LAYOUT_GRID_KIND_ROWS = 3;     // `count` rows between the margins, `gutter` apart
+}
+
+// A grid drawn over a frame, in the frame's own coordinates (its origin is the frame's
+// top-left corner). Its lines are snap targets for the nodes dragged inside the frame.
+message LayoutGrid {
+  LayoutGridKind kind = 1;
+  double size = 2;    // GRID: cell side, > 0
+  int32 count = 3;    // COLUMNS / ROWS: how many, 1..1000
+  double gutter = 4;  // COLUMNS / ROWS: space between two, >= 0
+  double margin = 5;  // COLUMNS / ROWS: space at both ends, >= 0
+  Color color = 6;    // tint of the overlay (alpha included)
 }
 
 message Page { string id = 1; string name = 2; }
+
+// ---------- typography ----------
+// A FONT FACE is an uploaded font file: one weight/style of one family. The bytes
+// are a content-addressed asset (like images); the document only references them.
+// A TextStyle.font_family that names `family` draws with this file, in the
+// editor, in PNG/SVG export and in generated code (@font-face).
+message FontFace {
+  string id = 1;
+  string family = 2;       // the CSS family name text styles refer to
+  string weight = 3;       // "100".."900"
+  string style = 4;        // "normal" | "italic"
+  string asset_hash = 5;   // sha256 hex of the TTF/OTF/WOFF/WOFF2 bytes
+}
+// A named, reusable text style. Text nodes point to it with Node.text_style_id.
+message TextStyleDef { string id = 1; string name = 2; TextStyle style = 3; }
+
+// ---------- variables (design tokens) ----------
+// A COLLECTION groups variables that share the same MODES (e.g. "Light" and
+// "Dark"). Every variable has one value per mode. The first mode is the
+// default: it is used when nothing overrides the mode and when a variable has
+// no value for the active one.
+message VariableMode { string id = 1; string name = 2; }
+message VariableCollection {
+  string id = 1;
+  string name = 2;
+  repeated VariableMode modes = 3;    // at least one; ids unique within the collection
+}
+enum VariableType {
+  VARIABLE_TYPE_UNSPECIFIED = 0;
+  VARIABLE_TYPE_COLOR = 1;
+  VARIABLE_TYPE_NUMBER = 2;
+}
+message VariableValue { oneof kind { Color color = 1; double number = 2; } }
+message Variable {
+  string id = 1;
+  string collection_id = 2;
+  string name = 3;                    // "color/primary": '/' makes groups in the UI
+  VariableType type = 4;
+  map<string, VariableValue> values = 5; // modeId -> value
+}
 
 // ---------- flows ----------
 // A FLOW is a user path through the screens: a set of TRANSITIONS (edges)
@@ -384,6 +595,15 @@ message Transition {
   // ("cart not empty" / "cart=empty").
   string guard = 8;
   string effect = 9;
+  // How the prototype player goes from `from_id` to `to_id`: "" (cut) | "dissolve" |
+  // "slide-left|right|up|down" (the new screen slides over the old one) |
+  // "push-left|right|up|down" (both move) | "smart" (nodes with the same name in both
+  // screens move and fade into place). Closed set: see core.TransitionAnimations.
+  string animation = 10;
+  int32 duration_ms = 11;  // 0..10000; 0 = the player's default (300)
+  string easing = 12;      // the animation easing grammar (core.ValidEasing); "" = easeInOut
+  // For trigger "auto": how long the player waits on the screen before following it (0..60000).
+  int32 delay_ms = 13;
 }
 
 // ---------- animation ----------
@@ -431,6 +651,16 @@ message Document {
   map<string, Transition> transitions = 8;
   // Animations: clipId -> clip.
   map<string, Clip> clips = 9;
+  // Variables (design tokens): collectionId -> collection, variableId -> variable.
+  map<string, VariableCollection> collections = 10;
+  map<string, Variable> variables = 11;
+  // Typography: fontId -> uploaded font file, textStyleId -> shared text style.
+  map<string, FontFace> fonts = 12;
+  map<string, TextStyleDef> text_styles = 13;
+  // Variants: setId -> component set.
+  map<string, ComponentSet> component_sets = 14;
+  // Comments: commentId -> comment (see Comment).
+  map<string, Comment> comments = 15;
 }
 
 // ---------- ops ----------
@@ -568,7 +798,69 @@ message Op {
     DeleteTransition delete_transition = 24;
     SetClip          set_clip          = 25; // animation — upsert of a clip
     DeleteClip       delete_clip       = 26;
+    SetCollection    set_collection    = 27; // variables — upsert of a collection
+    DeleteCollection delete_collection = 28;
+    SetVariable      set_variable      = 29; // variables — upsert of a variable
+    DeleteVariable   delete_variable   = 30;
+    SetFont             set_font              = 31; // typography — upsert of a font face
+    DeleteFont          delete_font           = 32;
+    SetTextStyleDef     set_text_style_def    = 33; // typography — upsert of a text style
+    DeleteTextStyleDef  delete_text_style_def = 34;
+    SetComponentSet     set_component_set     = 35; // variants — upsert of a component set
+    DeleteComponentSet  delete_component_set  = 36;
+    SetComponentDef     set_component_def     = 37; // variants/properties — a component's set membership and properties
+    SetInstanceProps    set_instance_props    = 38; // an instance's property values and variant choice
+    SetComment          set_comment           = 39; // comments — upsert of a comment
+    DeleteComment       delete_comment        = 40;
   }
+}
+// A comment pinned on the canvas. A THREAD is a root comment (parent_id empty) plus its
+// replies (parent_id = the root's id; replies do not nest). Position, node and page are the
+// root's: a reply carries none of them.
+//
+//  - attached to a node (node_id set): (x, y) is an offset from the node's top-left corner,
+//    in the node's own coordinates, so the pin follows the node;
+//  - free (node_id empty): (x, y) is in world coordinates on the page `page_id`.
+//
+// `resolved` is the root's: a resolved thread is hidden from the canvas by default.
+message Comment {
+  string id = 1;
+  string parent_id = 2;
+  string node_id = 3;
+  string page_id = 4;
+  double x = 5;
+  double y = 6;
+  string author = 7;      // display name, up to 80 characters
+  string text = 8;        // non-empty, up to 4000 characters
+  int64 created_at = 9;   // unix seconds; 0 when unknown
+  bool resolved = 10;
+}
+message SetComment    { Comment comment = 1; }
+message DeleteComment { string id = 1; }  // a root takes its replies with it
+
+message SetCollection    { VariableCollection collection = 1; }
+message DeleteCollection { string id = 1; }
+message SetVariable      { Variable variable = 1; }
+message DeleteVariable   { string id = 1; }
+message SetFont            { FontFace font = 1; }
+message DeleteFont         { string id = 1; }
+message SetTextStyleDef    { TextStyleDef text_style = 1; }
+message DeleteTextStyleDef { string id = 1; }
+message SetComponentSet    { ComponentSet component_set = 1; }
+message DeleteComponentSet { string id = 1; }
+// Replaces a component's set membership, variant assignment and properties WHOLESALE
+// (name and root are not touched).
+message SetComponentDef {
+  string component_id = 1;
+  string set_id = 2;
+  map<string, string> variant = 3;
+  repeated ComponentProperty properties = 4;
+}
+// Replaces an instance's property values and variant choice WHOLESALE.
+message SetInstanceProps {
+  string instance_id = 1;
+  map<string, string> property_values = 2;
+  map<string, string> variant_props = 3;
 }
 message OpRecord {
   uint64 seq = 1;
@@ -620,6 +912,23 @@ message PresenceState {
   double cursor_y = 5;
   string page_id = 6;
   repeated string selection = 7;
+  // FACILITATION. Everything below is as ephemeral as the cursor: whoever leaves takes it along.
+  // The camera, so that others can follow (zoom and the world point at the canvas's top-left).
+  bool has_view = 8;
+  double view_x = 9;
+  double view_y = 10;
+  double view_zoom = 11;
+  // Cursor chat and a reaction (an emoji). emote_seq grows with every one sent, so
+  // that sending the same text twice is still noticed.
+  string chat = 12;
+  string reaction = 13;
+  uint32 emote_seq = 14;
+  // The nodes this peer voted for, one entry per dot (the same id twice = two dots).
+  repeated string votes = 15;
+  // A countdown this peer started: wall-clock milliseconds, 0 = none.
+  int64 timer_started_ms = 16;
+  int64 timer_end_ms = 17;
+  string timer_label = 18;
 }
 message PresenceEvent {
   oneof kind {
@@ -692,11 +1001,150 @@ message RenderDiagramResponse {
   repeated string warnings = 5;
 }
 
+// NAMED VERSIONS. A version is a frozen copy of the whole document (and nothing else is
+// shared with it): it can be listed, deleted and BRANCHED -- opened as a new, editable
+// document seeded from it (with the assets it uses).
+message VersionInfo {
+  string id = 1;
+  string name = 2;
+  int64 created_at = 3;  // unix seconds
+  uint64 seq = 4;        // the op sequence of the document when it was taken
+}
+message CreateVersionRequest { string doc_id = 1; string name = 2; }
+message ListVersionsRequest { string doc_id = 1; }
+message ListVersionsResponse { repeated VersionInfo versions = 1; }  // newest first
+message DeleteVersionRequest { string doc_id = 1; string version_id = 2; }
+message DeleteVersionResponse {}
+// A new document seeded from a version (version_id empty = the document as it is now).
+message BranchRequest { string doc_id = 1; string version_id = 2; string name = 3; }
+
+// ACCESS. By default a document is open to anyone who can reach the server (local-first, trusted
+// network). A document can be PROTECTED: then every request must carry a link token
+// (Authorization: Bearer <token>, or ?k=<token> for images), and what it may do depends on the
+// link's role -- view (read), comment (read + comments), edit (everything but access and deleting),
+// owner (everything). There are no accounts: a link IS the permission, shown once when it is made.
+// The machine that runs the server (a request from loopback) and the holder of the server's
+// -admin-token can always manage access.
+message AccessLink {
+  string id = 1;
+  string role = 2;       // owner | edit | comment | view
+  string label = 3;
+  int64 created_at = 4;  // unix seconds
+}
+message GetAccessRequest { string doc_id = 1; }
+message GetAccessResponse {
+  bool enabled = 1;
+  string role = 2;               // the caller's role here: owner | edit | comment | view | open (not protected)
+  repeated AccessLink links = 3; // only for an owner
+}
+message EnableAccessRequest { string doc_id = 1; }
+message EnableAccessResponse { string owner_token = 1; }   // shown once
+message DisableAccessRequest { string doc_id = 1; }
+message DisableAccessResponse {}
+message CreateShareLinkRequest { string doc_id = 1; string role = 2; string label = 3; }
+message CreateShareLinkResponse { AccessLink link = 1; string token = 2; }  // the token is shown once
+message RevokeShareLinkRequest { string doc_id = 1; string link_id = 2; }
+message RevokeShareLinkResponse {}
+
+// IMPORTING A FIGMA FILE (internal/figimport). EXPERIMENTAL: .fig is not a public format. The file's
+// images are stored in the document's asset store; the nodes come back like a drawn diagram
+// (a wrapper group first, every node after its parent) for the editor to insert in one gesture.
+message ImportFigRequest { string doc_id = 1; bytes data = 2; string name = 3; }
+message ImportFigResponse {
+  repeated Node nodes = 1;
+  double width = 2;
+  double height = 3;
+  repeated string warnings = 4;  // what could not be carried over
+}
+
+// MERGING A BRANCH BACK. A branch remembers the document it came from and the state it started
+// from; reviewing it compares three documents (that start, the branch now, the original now) and
+// lists what the branch did. Merging applies those changes to the original as ordinary ops. A
+// change is in CONFLICT when the original changed the same property of the same thing since the
+// start: it is left out (the original's side wins) unless prefer_branch is set.
+message GetBranchOriginRequest { string doc_id = 1; }
+message GetBranchOriginResponse {
+  bool is_branch = 1;
+  string source_doc_id = 2;
+  string source_name = 3;
+  bool source_exists = 4;
+  int64 created_at = 5;  // unix seconds
+}
+message MergeChange {
+  string entity = 1;   // node | page | flow | transition | clip | collection | variable | font | text_style | component_set
+  string id = 2;
+  string name = 3;
+  string kind = 4;     // added | removed | changed
+  repeated string paths = 5;           // what changed on a node
+  bool conflict = 6;
+  repeated string conflict_paths = 7;
+}
+message ReviewMergeRequest { string doc_id = 1; }  // the branch
+message ReviewMergeResponse {
+  string source_doc_id = 1;
+  string source_name = 2;
+  repeated MergeChange changes = 3;
+  repeated string warnings = 4;  // changes that cannot be merged (and why)
+}
+message MergeBranchRequest { string doc_id = 1; bool prefer_branch = 2; }
+message MergeBranchResponse {
+  uint32 applied = 1;            // ops applied to the original
+  uint32 skipped_conflicts = 2;  // conflicting changes left as the original has them
+}
+
+// DESIGN REVIEW (internal/review): the rules that can be decided mechanically -- text contrast
+// (WCAG), tap targets and use of design tokens. Pure and deterministic.
+message ReviewIssue {
+  string rule = 1;      // contrast | touch-target | token
+  string severity = 2;  // error | warn
+  string node_id = 3;
+  string node_name = 4;
+  string message = 5;   // human-readable text (English)
+}
+message ReviewDesignRequest { string doc_id = 1; }
+message ReviewDesignResponse { repeated ReviewIssue issues = 1; }
+
+// WHITEBOARD OBJECTS (internal/board): a sticky note, a table, a kanban board, a mind map or a
+// starting template, drawn as a group of plain nodes -- the same shape of answer as RenderDiagram.
+message RenderBoardRequest {
+  string kind = 1;            // sticky | table | kanban | mindmap | brainstorm | retrospective | user-flow | customer-journey
+  repeated string items = 2;  // sticky: the text; table: header cells; kanban: column titles; mindmap: center then branches
+  int32 rows = 3;             // table
+  int32 columns = 4;          // table
+  string color = 5;           // sticky: yellow | pink | green | blue | orange | purple
+}
+message RenderBoardResponse {
+  repeated Node nodes = 1;    // pre-order: the root group first, every node after its own parent
+  double width = 2;
+  double height = 3;
+}
+
 message WatchPresenceRequest { string doc_id = 1; string client_id = 2; string nickname = 3; }
 message UpdatePresenceRequest { string doc_id = 1; PresenceState state = 2; }
 message UpdatePresenceResponse {}
 
 service DocumentService {
+  rpc RenderBoard(RenderBoardRequest) returns (RenderBoardResponse);
+  rpc ReviewDesign(ReviewDesignRequest) returns (ReviewDesignResponse);
+  rpc CreateVersion(CreateVersionRequest) returns (VersionInfo);
+  rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
+  rpc DeleteVersion(DeleteVersionRequest) returns (DeleteVersionResponse);
+  // Opens a version (or the current state) as a NEW document: a branch to edit without touching the original.
+  rpc BranchDocument(BranchRequest) returns (DocInfo);
+  // Access control (see AccessLink). Managing it needs an owner link, loopback, or the server's admin token.
+  rpc GetAccess(GetAccessRequest) returns (GetAccessResponse);
+  rpc EnableAccess(EnableAccessRequest) returns (EnableAccessResponse);
+  rpc DisableAccess(DisableAccessRequest) returns (DisableAccessResponse);
+  rpc CreateShareLink(CreateShareLinkRequest) returns (CreateShareLinkResponse);
+  rpc RevokeShareLink(RevokeShareLinkRequest) returns (RevokeShareLinkResponse);
+  // Reads a Figma .fig file into nodes (experimental).
+  rpc ImportFig(ImportFigRequest) returns (ImportFigResponse);
+  // Whether a document is a branch, and of what.
+  rpc GetBranchOrigin(GetBranchOriginRequest) returns (GetBranchOriginResponse);
+  // What merging a branch back into its original would change, conflicts included.
+  rpc ReviewMerge(ReviewMergeRequest) returns (ReviewMergeResponse);
+  // Merges a branch back into its original (as ordinary ops there, all or nothing).
+  rpc MergeBranch(MergeBranchRequest) returns (MergeBranchResponse);
   rpc ListDocuments(ListDocumentsRequest) returns (ListDocumentsResponse);
   rpc CreateDocument(CreateDocumentRequest) returns (DocInfo);
   // Renames a document (meta.json + the hub's in-memory name).

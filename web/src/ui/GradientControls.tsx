@@ -1,18 +1,23 @@
 import type { ReactNode } from "react";
+import { useRef, useState } from "react";
 import { useScene } from "../store/store";
+import { uploadAsset } from "../rpc/assets";
 import type { FillLite } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { CHECKER, SegButtons } from "./ds/props-controls";
 import { ColorField } from "./fields/ColorField";
 import { NumberField } from "./fields/NumberField";
 import {
-  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, type FillKind,
+  addGradientStopOps, imagePaintOps, fillKindOf, type PaintTarget, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
+  gradientStopPositionOps, removeGradientStopOps, type FillKind, meshPointOps, meshSizeOps,
 } from "./gradientOps";
 
 const KINDS: { value: FillKind; label: string }[] = [
   { value: "solid", label: "Solid" },
   { value: "linear", label: "Linear" },
   { value: "radial", label: "Radial" },
+  { value: "image", label: "Image" },
+  { value: "mesh", label: "Mesh" },
 ];
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
@@ -38,26 +43,61 @@ function css(c: { r: number; g: number; b: number; a: number }): string {
  * accessible name.
  */
 export function GradientControls({
-  fill, run, solid,
+  fill, run, solid, target = "fill",
 }: {
   fill: FillLite | null;
+  /** Which paint it edits: the first fill (default) or the first stroke's. */
+  target?: PaintTarget;
   run: (build: (ids: readonly string[]) => Op[]) => void;
   /** The SOLID fill's color field: it sits under the segments, and exists only without a gradient. */
   solid?: ReactNode;
 }) {
   const kind = fillKindOf(fill);
+  const fileInput = useRef<HTMLInputElement>(null);
+  const [uploadError, setUploadError] = useState<string | null>(null);
+  // The file goes up as a content-addressed asset (like an image node's); the paint stores its hash.
+  const upload = async (file: File | undefined) => {
+    const scene = useScene.getState().scene;
+    if (!file || !scene) return;
+    try {
+      const ref = await uploadAsset(scene.id, file);
+      setUploadError(null);
+      run((ids) => imagePaintOps(ids, lookup, { assetHash: ref.hash }, target));
+    } catch (e) {
+      setUploadError(e instanceof Error ? e.message : "could not upload the image");
+    }
+  };
   const g = fill?.gradient;
   const last = g ? g.stops.length - 1 : 0;
   const ordered = g ? [...g.stops].sort((a, b) => a.position - b.position) : [];
   return (
     <div className="flex flex-col gap-2">
       <SegButtons
-        label="Fill type"
+        label={target === "fill" ? "Fill type" : "Stroke type"}
         value={kind}
         options={KINDS}
-        onPick={(k) => run((ids) => fillKindOps(ids, lookup, k))}
+        wrap
+        onPick={(k) => (k === "image" ? (fill?.image ? undefined : fileInput.current?.click()) : run((ids) => fillKindOps(ids, lookup, k, target)))}
       />
-      {!g && solid}
+      <input ref={fileInput} type="file" accept="image/png,image/jpeg,image/gif,image/webp" aria-label="Image file" className="hidden"
+        onChange={(e) => { void upload(e.target.files?.[0]); e.target.value = ""; }} />
+      {fill?.image && (
+        <div className="flex items-center gap-2">
+          <select
+            aria-label="Image scale" className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-2 text-[12px]"
+            value={fill.image.mode}
+            onChange={(e) => run((ids) => imagePaintOps(ids, lookup, { mode: e.target.value as "fill" | "fit" | "tile" }, target))}
+          >
+            <option value="fill">Fill</option>
+            <option value="fit">Fit</option>
+            <option value="tile">Tile</option>
+          </select>
+          <button type="button" className="h-7 rounded-md px-2 text-[12px] text-fg-muted hover:bg-surface-3" onClick={() => fileInput.current?.click()}>Replace…</button>
+        </div>
+      )}
+      {fill?.mesh && <MeshEditor fill={fill} run={run} target={target} />}
+      {uploadError && <p role="alert" className="text-[12px] text-danger">{uploadError}</p>}
+      {!g && !fill?.image && !fill?.mesh && solid}
       {g && (
         <>
           {/* The side padding leaves room for the handles at the two ends. */}
@@ -82,26 +122,34 @@ export function GradientControls({
               ))}
             </div>
           </div>
-          <StopRow label="From" position={g.stops[0].position}>
-            <ColorField
-              label="From"
-              value={g.stops[0].color}
-              onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, 0, rgb))}
-            />
-          </StopRow>
-          <StopRow label="To" position={g.stops[last].position}>
-            <ColorField
-              label="To"
-              value={g.stops[last].color}
-              onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, last, rgb))}
-            />
-          </StopRow>
+          {g.stops.map((st, i) => (
+            <StopRow
+              key={i}
+              label={i === 0 ? "From" : i === last ? "To" : `Stop ${i + 1}`}
+              position={st.position}
+              onPosition={(v) => run((ids) => gradientStopPositionOps(ids, lookup, i, v / 100, target))}
+              onRemove={last > 1 ? () => run((ids) => removeGradientStopOps(ids, lookup, i, target)) : undefined}
+            >
+              <ColorField
+                label={i === 0 ? "From" : i === last ? "To" : `Stop ${i + 1}`}
+                value={st.color}
+                onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, i, rgb, target))}
+              />
+            </StopRow>
+          ))}
+          <button
+            type="button"
+            className="self-start rounded px-1.5 py-0.5 text-[11px] text-fg-subtle hover:bg-surface-hover"
+            onClick={() => run((ids) => addGradientStopOps(ids, lookup, target))}
+          >
+            + Add stop
+          </button>
           {g.kind === "linear" && (
             <NumberField
               label="Angle"
               suffix="°"
               value={gradientAngleOf(fill)}
-              onCommit={(v) => run((ids) => gradientAngleOps(ids, lookup, v))}
+              onCommit={(v) => run((ids) => gradientAngleOps(ids, lookup, v, target))}
             />
           )}
         </>
@@ -110,16 +158,60 @@ export function GradientControls({
   );
 }
 
-// A stop row: the position (in %, read-only) on the left and the color.
-// `label` is not repeated here as accessible text -- the color field
-// already carries it -- but it serves the viewer to understand WHICH end it is.
-function StopRow({ label, position, children }: { label: string; position: number; children: ReactNode }) {
+// A stop row: the position (in %, editable) on the left, the color and a
+// remove button. `label` names the stop for the accessible names.
+function StopRow({
+  label, position, onPosition, onRemove, children,
+}: {
+  label: string; position: number; onPosition: (percent: number) => void; onRemove?: () => void; children: ReactNode;
+}) {
   return (
     <div className="flex items-center gap-2">
-      <span className="w-10 shrink-0 text-[11px] tabular-nums text-fg-subtle" title={`${label}: ${Math.round(position * 100)}%`}>
-        {Math.round(position * 100)}%
-      </span>
+      <div className="w-14 shrink-0">
+        <NumberField label={`${label} position`} suffix="%" minValue={0} value={Math.round(position * 100)} onCommit={onPosition} />
+      </div>
       <div className="min-w-0 flex-1">{children}</div>
+      {onRemove && (
+        <button type="button" aria-label={`Remove ${label}`} className="shrink-0 rounded px-1 text-fg-subtle hover:bg-surface-hover" onClick={onRemove}>
+          ×
+        </button>
+      )}
+    </div>
+  );
+}
+
+const hex = (c: { r: number; g: number; b: number }) =>
+  `#${[c.r, c.g, c.b].map((v) => Math.round(Math.min(1, Math.max(0, v)) * 255).toString(16).padStart(2, "0")).join("")}`;
+const fromHex = (h: string) => ({ r: parseInt(h.slice(1, 3), 16) / 255, g: parseInt(h.slice(3, 5), 16) / 255, b: parseInt(h.slice(5, 7), 16) / 255 });
+
+/** A mesh's grid: its size and one color picker per point, laid out as the grid is on the shape. */
+function MeshEditor({ fill, run, target }: { fill: FillLite; run: (build: (ids: readonly string[]) => Op[]) => void; target: PaintTarget }) {
+  const m = fill.mesh!;
+  const sizes = [2, 3, 4, 5, 6];
+  const pick = (label: string, value: number, set: (v: number) => void) => (
+    <label className="flex items-center gap-1 text-[12px] text-fg-muted">
+      {label}
+      <select aria-label={label} className="h-7 rounded-md border border-line bg-surface px-1 text-[12px]" value={value} onChange={(e) => set(Number(e.target.value))}>
+        {sizes.map((s) => <option key={s} value={s}>{s}</option>)}
+      </select>
+    </label>
+  );
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-3">
+        {pick("Mesh rows", m.rows, (v) => run((ids) => meshSizeOps(ids, lookup, v, m.cols, target)))}
+        {pick("Mesh columns", m.cols, (v) => run((ids) => meshSizeOps(ids, lookup, m.rows, v, target)))}
+      </div>
+      <div role="group" aria-label="Mesh points" className="grid gap-1" style={{ gridTemplateColumns: `repeat(${m.cols}, minmax(0, 1fr))` }}>
+        {m.colors.map((c, i) => (
+          <input
+            key={i} type="color" aria-label={`Mesh point ${Math.floor(i / m.cols) + 1},${(i % m.cols) + 1}`}
+            value={hex(c)}
+            onChange={(e) => run((ids) => meshPointOps(ids, lookup, i, fromHex(e.target.value), target))}
+            className="h-7 w-full cursor-pointer rounded border border-line bg-transparent p-0"
+          />
+        ))}
+      </div>
     </div>
   );
 }

@@ -12,7 +12,7 @@ import {
 } from "../canvas/transform";
 import { sceneIndexOf } from "./sceneIndex";
 import { contentWorldBounds } from "../store/groups";
-import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../store/instances";
+import { hiddenMasterNodes, instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../store/instances";
 import {
   nodePath, hitTestNode, inkIsBox, nodeCenter, vectorPaths, hasInk, selectionBoundsOfNode,
   VECTOR_FILL_RULE, VECTOR_STROKE_PX,
@@ -21,6 +21,7 @@ import { drawText, strokeText } from "./text";
 import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
 import { drawDash, perimeterOf, vectorDrawSubpaths } from "./animDraw";
 import { imageCache, type CachedImage } from "./imageCache";
+import { MESH_BITMAP_SIZE, meshBitmap } from "./mesh";
 
 const DEG_TO_RAD = Math.PI / 180;
 
@@ -86,8 +87,15 @@ export function resolvedFill(n: NodeLite): FillLite {
 export function cssColor(n: NodeLite): string {
   // resolvedFill (track 3, gray default) + cssRgba (track 2, float->CSS):
   // the default lives in one place, the conversion in another.
-  return cssRgba(resolvedFill(n));
+  const f = resolvedFill(n);
+  // A fill object is immutable and shared between frames: its CSS string is built once. (Thousands of
+  // small nodes per frame made this conversion a visible share of the draw.)
+  let s = cssCache.get(f);
+  if (s === undefined) cssCache.set(f, (s = cssRgba(f)));
+  return s;
 }
+
+const cssCache = new WeakMap<object, string>();
 
 // RGBA float 0..1 -> CSS string. A single function for fills and strokes:
 // they are the same Color in the proto, and two independent conversions would diverge
@@ -102,7 +110,9 @@ export function cssRgba(c: FillLite): string {
 // the node's rotation is already in the context, so the gradient rotates
 // with the shape. A degenerate gradient (null axis or radius, fewer than two stops)
 // falls back to the flat color, which is always valid.
-export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasGradient {
+export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasGradient | CanvasPattern {
+  if (f.mesh) return meshPattern(ctx, f, n);
+  if (f.image) return imagePattern(ctx, f, n);
   const g = f.gradient;
   if (!g || g.stops.length < 2) return cssRgba(f);
   const x1 = n.x + g.x1 * n.width, y1 = n.y + g.y1 * n.height;
@@ -114,6 +124,68 @@ export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLi
     : ctx.createRadialGradient(x1, y1, 0, x1, y1, len);
   for (const st of g.stops) grad.addColorStop(Math.min(1, Math.max(0, st.position)), cssRgba(st.color));
   return grad;
+}
+
+// A MESH paint: the grid rasterized once (renderer/mesh.ts) into a small canvas that the pattern stretches
+// over the node's box -- the browser's smoothing does the blend. Where no canvas can be made (a test
+// environment) it is the average color, which every mesh carries.
+const meshCanvases = new WeakMap<object, HTMLCanvasElement | null>();
+
+function meshCanvas(f: FillLite): HTMLCanvasElement | null {
+  const mesh = f.mesh!;
+  if (meshCanvases.has(mesh)) return meshCanvases.get(mesh) ?? null;
+  let out: HTMLCanvasElement | null = null;
+  if (typeof document !== "undefined" && typeof ImageData !== "undefined") {
+    const c = document.createElement("canvas");
+    const total = MESH_BITMAP_SIZE + 2;
+    c.width = c.height = total;
+    const g = c.getContext("2d");
+    if (g) {
+      g.putImageData(new ImageData(meshBitmap(mesh, MESH_BITMAP_SIZE, 1) as unknown as Uint8ClampedArray<ArrayBuffer>, total, total), 0, 0);
+      out = c;
+    }
+  }
+  meshCanvases.set(mesh, out);
+  return out;
+}
+
+function meshPattern(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasPattern {
+  const flat = cssRgba(f);
+  const tex = meshCanvas(f);
+  if (!tex || typeof ctx.createPattern !== "function") return flat;
+  const pattern = ctx.createPattern(tex, "no-repeat");
+  if (!pattern || typeof pattern.setTransform !== "function" || typeof DOMMatrix === "undefined") return pattern ?? flat;
+  const sx = n.width / MESH_BITMAP_SIZE, sy = n.height / MESH_BITMAP_SIZE;
+  // The texture has a one-pixel border outside the box on every side.
+  pattern.setTransform(new DOMMatrix([sx, 0, 0, sy, n.x - sx, n.y - sy]));
+  return pattern;
+}
+
+// An IMAGE paint. The images come from the same cache image nodes use; drawScene tells this module
+// which one and for which document (the paint functions are called from many places and
+// drawing is synchronous). Until the file has arrived the paint is the flat base color, so the
+// shape is seen; the cache invalidates the view when the image lands.
+let paintImages: ImageSource | null = null;
+let paintDocId = "";
+
+// FILL covers the node's box (centered, the overflow is cropped by the shape itself), FIT shows the
+// whole image inside it (once, no repeat), TILE repeats it at its natural size from the box's corner.
+function imagePattern(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasPattern {
+  const flat = cssRgba(f);
+  const entry = paintImages?.get(paintDocId, f.image!.assetHash);
+  const img = entry?.status === "ready" ? entry.image : null;
+  if (!img || !(img.width > 0) || !(img.height > 0) || typeof ctx.createPattern !== "function") return flat;
+  const pattern = ctx.createPattern(img, f.image!.mode === "tile" ? "repeat" : "no-repeat");
+  if (!pattern || typeof pattern.setTransform !== "function" || typeof DOMMatrix === "undefined") return pattern ?? flat;
+  const scale =
+    f.image!.mode === "tile" ? 1
+    : f.image!.mode === "fit" ? Math.min(n.width / img.width, n.height / img.height)
+    : Math.max(n.width / img.width, n.height / img.height);
+  const w = img.width * scale, h = img.height * scale;
+  const ox = f.image!.mode === "tile" ? n.x : n.x + (n.width - w) / 2;
+  const oy = f.image!.mode === "tile" ? n.y : n.y + (n.height - h) / 2;
+  pattern.setTransform(new DOMMatrix([scale, 0, 0, scale, ox, oy]));
+  return pattern;
 }
 
 // --- THE EFFECTS ---------------------------------------------------------------
@@ -161,6 +233,83 @@ function applyEffects(ctx: CanvasRenderingContext2D, n: NodeLite, scale: number)
   // `radius` is the standard deviation of the gaussian, as in CSS blur().
   if (blur) ctx.filter = `blur(${blur.radius * scale}px)`;
   return true;
+}
+
+// --- BLEND MODE, SEVERAL SHADOWS, INNER SHADOW, BACKGROUND BLUR -------------------
+//
+// The blend mode is the context's globalCompositeOperation: the CSS names are the
+// model's names. It applies to what THE NODE draws against what is already on
+// the canvas (children are not isolated into a group of their own).
+//
+// The shadow state is single, so the shadows after the first are drawn BEFORE the
+// node with the usual trick: the shape is drawn far off the canvas
+// (SHADOW_PARK device px to the left) and the shadow offset brings the shadow
+// back, so only the shadow shows. Inner shadows and background blur need the
+// node's outline, so they apply to rect, ellipse and frame only.
+const SHADOW_PARK = 100000;
+
+type InnerShadowLite = Extract<EffectLite, { kind: "innerShadow" }>;
+type BackgroundBlurLite = Extract<EffectLite, { kind: "backgroundBlur" }>;
+
+function extraShadows(n: NodeLite): DropShadowLite[] {
+  return (n.effects?.filter((e): e is DropShadowLite => e.kind === "dropShadow") ?? []).slice(1);
+}
+function innerShadows(n: NodeLite): InnerShadowLite[] {
+  return n.effects?.filter((e): e is InnerShadowLite => e.kind === "innerShadow") ?? [];
+}
+function backdropBlur(n: NodeLite): BackgroundBlurLite | undefined {
+  return n.effects?.find((e): e is BackgroundBlurLite => e.kind === "backgroundBlur" && e.radius > 0);
+}
+const hasOutline = (n: NodeLite) => n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame";
+
+// Blurs what is already drawn behind the node, inside its outline.
+function drawBackdropBlur(ctx: CanvasRenderingContext2D, path: Path2D, radius: number, scale: number): void {
+  ctx.save();
+  ctx.clip(path);
+  ctx.setTransform(1, 0, 0, 1, 0, 0);
+  ctx.globalAlpha = 1;
+  ctx.globalCompositeOperation = "source-over";
+  ctx.filter = `blur(${radius * scale}px)`;
+  ctx.drawImage(ctx.canvas, 0, 0);
+  ctx.restore();
+}
+
+// Draws `body` once per extra drop shadow, parked off canvas (see above).
+function drawExtraShadows(ctx: CanvasRenderingContext2D, n: NodeLite, scale: number, body: () => void): void {
+  const extras = extraShadows(n);
+  // The last shadow is the lowest, as in a design editor's list.
+  for (let i = extras.length - 1; i >= 0; i--) {
+    const sh = extras[i];
+    const m = ctx.getTransform();
+    ctx.save();
+    ctx.setTransform(1, 0, 0, 1, -SHADOW_PARK, 0);
+    ctx.transform(m.a, m.b, m.c, m.d, m.e, m.f);
+    ctx.shadowColor = cssRgba(sh.color);
+    ctx.shadowOffsetX = sh.offsetX * scale + SHADOW_PARK;
+    ctx.shadowOffsetY = sh.offsetY * scale;
+    ctx.shadowBlur = Math.max(0, sh.blur) * scale;
+    body();
+    ctx.restore();
+  }
+}
+
+// The shadow of everything outside the outline, cast inward and clipped to it.
+function drawInnerShadows(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, scale: number): void {
+  for (const sh of innerShadows(n)) {
+    const margin = Math.max(Math.abs(sh.offsetX), Math.abs(sh.offsetY)) + Math.max(0, sh.blur) * 2 + 8;
+    const ring = new Path2D();
+    ring.rect(n.x - margin, n.y - margin, n.width + margin * 2, n.height + margin * 2);
+    ring.addPath(path);
+    ctx.save();
+    ctx.clip(path);
+    ctx.shadowColor = cssRgba(sh.color);
+    ctx.shadowOffsetX = sh.offsetX * scale;
+    ctx.shadowOffsetY = sh.offsetY * scale;
+    ctx.shadowBlur = Math.max(0, sh.blur) * scale;
+    ctx.fillStyle = "#000";
+    ctx.fill(ring, "evenodd");
+    ctx.restore();
+  }
 }
 
 // The camera always stays in CSS pixels: devicePixelRatio must never
@@ -285,6 +434,8 @@ export function drawScene(
   const { canvas } = ctx;
   const dpr = opts.dpr ?? devicePixelRatio();
   const images = opts.images ?? imageCache;
+  paintImages = images;
+  paintDocId = state.id;
   const currentPageId = opts.currentPageId ?? null;
   // One screen pixel in world units, for strokes that must stay the
   // same thickness at every zoom (today: the placeholder's border).
@@ -336,6 +487,8 @@ interface Cull {
 // rectangle of its color, which at that size is indistinguishable.
 export const SKIP_SUBTREE_PX = 0.3;
 export const LOD_FLAT_PX = 4;
+// Below this size on screen a plain box takes the fast path (a bigger one is few enough to afford the general one).
+export const FAST_BOX_PX = 32;
 // A clipping frame smaller than this (screen px) does not clip: what
 // overflows by a few pixels is indistinguishable, and creating a Path2D + clip for every
 // frame costs more than the rest of the frame.
@@ -381,8 +534,19 @@ function drawSiblings(
   visited: ReadonlySet<string>,
   cull: Cull | null,
 ): void {
+  // A MASK clips the siblings drawn after it: each one opens a save() that is closed
+  // when the siblings are done (the clip lives in the context's state).
+  let masks = 0;
   for (const n of siblings) {
-    if (!n.visible || seen.has(n.id)) continue;
+    // `hidden`: a boolean component property turned this master node off for this instance.
+    if (!n.visible || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
+    if (n.isMask && isMaskShape(n)) {
+      seen.add(n.id);
+      ctx.save();
+      masks++;
+      clipByMask(ctx, n);
+      continue;
+    }
     // Out of view, or too small to be seen: skip the WHOLE subtree.
     // `cull` is null inside an instance -- the master's nodes have their extent
     // at their place of origin, not where the instance draws them.
@@ -436,6 +600,30 @@ function drawSiblings(
     drawSiblings(ctx, state, children, kids, cam, px, images, seen, overrides, visited, anim?.scaled.has(n.id) ? null : cull);
     ctx.restore();
   }
+  while (masks-- > 0) ctx.restore();
+}
+
+// Only shapes with an outline can mask (the same set as the boolean operations).
+export function isMaskShape(n: NodeLite): boolean {
+  return n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector";
+}
+
+// Clips the context by the mask node's outline, in the PARENT's space (where the
+// node's own x/y live), turned by the node's own rotation around its box center.
+// The transform is put back afterwards: the clip stays, the matrix does not.
+function clipByMask(ctx: CanvasRenderingContext2D, n: NodeLite): void {
+  const path = n.kind === "vector" ? vectorPaths(n).fill : nodePath(n);
+  if (!path) return;
+  const rotated = n.rotation % 360 !== 0;
+  const m = rotated && typeof ctx.getTransform === "function" ? ctx.getTransform() : null;
+  if (rotated) {
+    const c = nodeCenter(n);
+    ctx.translate(c.x, c.y);
+    ctx.rotate(n.rotation * DEG_TO_RAD);
+    ctx.translate(-c.x, -c.y);
+  }
+  ctx.clip(path, n.kind === "vector" ? (vectorStyleOf(n).fillRule ?? VECTOR_FILL_RULE) : "nonzero");
+  if (m) ctx.setTransform(m);
 }
 
 // The VIRTUAL subtree of an instance. As for a normal container the
@@ -465,7 +653,7 @@ function drawInstance(
   const resolved = resolveInstance(state, n);
   if (!resolved) return;
   const nextVisited = new Set(visited).add(n.instance.componentId);
-  const overrides = instanceOverrideMap(n);
+  const overrides = instanceOverrideMap(state, n);
   ctx.save();
   const t = instanceDescentLocal(n, resolved.masterRoot);
   ctx.transform(t.a, t.b, t.c, t.d, t.e, t.f);
@@ -477,6 +665,22 @@ function drawInstance(
 // The PER-NODE body of the four tracks: size guard (shapes.ts::
 // inkIsBox), rotation of the CONTEXT around the center (track 2), and the if-chain
 // text/image/vector/shape with their respective strokes (tracks 2/3/4).
+/**
+ * A box or ellipse of one flat color (or none), no stroke, effect, blend, rotation or animation: what
+ * the fast path can draw without a Path2D. A rectangle's corners count as sharp when they are
+ * under ~1.5 screen pixels, which is when nobody can tell. null for anything else.
+ */
+export function plainShape(n: NodeLite, px: number): "box" | "ellipse" | null {
+  const kind = n.kind === "rect" ? (n.cornerRadius / px < 1.5 ? "box" : null) : n.kind === "frame" ? "box" : n.kind === "ellipse" ? "ellipse" : null;
+  if (kind === null) return null;
+  if (n.rotation % 360 !== 0 || n.animScale !== undefined || n.animDraw !== undefined || n.blendMode !== undefined) return null;
+  if (n.effects !== undefined && n.effects.length > 0) return null;
+  for (const s of n.strokes) if (s.weight > 0) return null;
+  if (n.fills.length > 1) return null;
+  const f = n.fills[0];
+  return f === undefined || (!f.gradient && !f.image && !f.mesh) ? kind : null;
+}
+
 function drawNode(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -519,6 +723,24 @@ function drawNode(
     ctx.fillRect(eff.x, eff.y, eff.width, eff.height);
     return;
   }
+  // THE FAST PATH. Most of what fills a big page is a plain box: a sharp rectangle or a frame with one
+  // flat color, no stroke, no effect, no rotation. For those a single fillRect does what the general
+  // path does with a Path2D, a save/restore, effect checks and a paint-style lookup -- on tens of
+  // thousands of nodes that difference is the frame.
+  const plain = flatSize / px < FAST_BOX_PX ? plainShape(eff, px) : null;
+  if (plain !== null) {
+    if (eff.kind === "frame" && eff.fills.length === 0) return;
+    ctx.globalAlpha = eff.opacity;
+    ctx.fillStyle = cssColor(eff);
+    if (plain === "box") {
+      ctx.fillRect(eff.x, eff.y, eff.width, eff.height);
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(eff.x + eff.width / 2, eff.y + eff.height / 2, eff.width / 2, eff.height / 2, 0, 0, 2 * Math.PI);
+      ctx.fill();
+    }
+    return;
+  }
   // ROTATION (track 2): it is the CONTEXT that rotates around the box center
   // (nodeCenter, the same function hit-test uses in the opposite direction), not
   // the geometry -- nodePath and drawText stay axis-aligned. The node is
@@ -539,41 +761,57 @@ function drawNode(
     ctx.translate(-c.x, -c.y);
   }
   ctx.globalAlpha = eff.opacity;
+  const blended = eff.blendMode !== undefined;
+  if (blended) ctx.globalCompositeOperation = eff.blendMode as GlobalCompositeOperation;
   const color = cssColor(eff);
   ctx.fillStyle = paintStyle(ctx, resolvedFill(eff), eff);
+  const scale = deviceScale(ctx, cam);
+  const outline = hasOutline(eff) ? nodePath(eff) : null;
+  const bb = backdropBlur(eff);
+  if (bb && outline) drawBackdropBlur(ctx, outline, bb.radius, scale);
+  let castsShadow = false;
+  const body = () => {
+    if (eff.kind === "text") {
+      drawText(ctx, eff);
+      drawStrokes(ctx, eff, null);
+    } else if (eff.kind === "image") {
+      // An image draws itself on its own box (track 3): no
+      // fill underneath, and the stroke is not part of its design.
+      drawImageNode(ctx, state, eff, px, images);
+    } else if (eff.kind === "vector") {
+      // The vector has its double pass (even-odd fill + stroke of
+      // every outline): it is NOT the model's box, so it does not go through the
+      // rectangle branch below. The vector stroke is drawVector's, not
+      // drawStrokes' (which is for a box's perimeter).
+      drawVector(ctx, eff, color, cam.zoom);
+    } else {
+      // rect / ellipse / FRAME. A frame is drawn like a rectangle with its
+      // fills (nodePath keeps it sharp-cornered even with a cornerRadius), behind
+      // its own content -- drawNode runs BEFORE the descent into the children. A SINGLE
+      // Path2D per node: the fill's is also the stroke's.
+      const path = outline ?? nodePath(eff);
+      // A FRAME without a fill is transparent: it is a container, and the default gray
+      // (resolvedFill) is for shapes. Without this exception a frame
+      // just wrapped around a selection would hide it under a
+      // gray rectangle.
+      if (!(eff.kind === "frame" && eff.fills.length === 0)) ctx.fill(path);
+      // With a visible fill the shadow has already been given by it: giving it again from the stroke
+      // would overlap two shadows on the edge and darken it.
+      if (castsShadow && eff.fills.length > 0) ctx.shadowColor = "transparent";
+      drawStrokes(ctx, eff, path);
+    }
+  };
+  // Shadows after the first go underneath, parked off canvas (see above).
+  castsShadow = true;
+  if (extraShadows(eff).length > 0) drawExtraShadows(ctx, eff, scale, body);
   // Effects apply to everything the node draws below: shape, text,
   // image, vector.
-  const fx = applyEffects(ctx, eff, deviceScale(ctx, cam));
-  if (eff.kind === "text") {
-    drawText(ctx, eff);
-    drawStrokes(ctx, eff, null);
-  } else if (eff.kind === "image") {
-    // An image draws itself on its own box (track 3): no
-    // fill underneath, and the stroke is not part of its design.
-    drawImageNode(ctx, state, eff, px, images);
-  } else if (eff.kind === "vector") {
-    // The vector has its double pass (even-odd fill + stroke of
-    // every outline): it is NOT the model's box, so it does not go through the
-    // rectangle branch below. The vector stroke is drawVector's, not
-    // drawStrokes' (which is for a box's perimeter).
-    drawVector(ctx, eff, color, cam.zoom);
-  } else {
-    // rect / ellipse / FRAME. A frame is drawn like a rectangle with its
-    // fills (nodePath keeps it sharp-cornered even with a cornerRadius), behind
-    // its own content -- drawNode runs BEFORE the descent into the children. A SINGLE
-    // Path2D per node: the fill's is also the stroke's.
-    const path = nodePath(eff);
-    // A FRAME without a fill is transparent: it is a container, and the default gray
-    // (resolvedFill) is for shapes. Without this exception a frame
-    // just wrapped around a selection would hide it under a
-    // gray rectangle.
-    if (!(eff.kind === "frame" && eff.fills.length === 0)) ctx.fill(path);
-    // With a visible fill the shadow has already been given by it: giving it again from the stroke
-    // would overlap two shadows on the edge and darken it.
-    if (fx && eff.fills.length > 0) ctx.shadowColor = "transparent";
-    drawStrokes(ctx, eff, path);
-  }
+  const fx = applyEffects(ctx, eff, scale);
+  castsShadow = fx;
+  body();
   if (fx) ctx.restore();
+  if (outline && innerShadows(eff).length > 0) drawInnerShadows(ctx, eff, outline, scale);
+  if (blended) ctx.globalCompositeOperation = "source-over";
   if (rotated) ctx.restore();
 }
 
@@ -600,6 +838,18 @@ function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | 
   // perimeter. At 1 it is the whole stroke, without dashing (no observable
   // difference and no cost). Text has no perimeter: it ignores `draw`.
   const dashed = n.animDraw !== undefined && n.animDraw < 1 && path !== null;
+  // The stroke STYLE (cap, join, miter limit, dash) from the node's meta; a draw-on animation
+  // owns the dash while it runs.
+  const vs = n.meta ? vectorStyleOf(n) : null;
+  if (vs) {
+    ctx.lineCap = vs.cap;
+    ctx.lineJoin = vs.join;
+    ctx.miterLimit = vs.miter;
+    if (!dashed) {
+      ctx.setLineDash(vs.dash);
+      ctx.lineDashOffset = vs.dashOffset;
+    }
+  }
   if (dashed) ctx.setLineDash(drawDash(perimeterOf(n), n.animDraw as number));
   for (const s of n.strokes) {
     // A non-positive weight is NOT a very thin stroke: it is not a stroke. Canvas
@@ -615,7 +865,13 @@ function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | 
     }
     strokeShape(ctx, n, path, s);
   }
-  if (dashed) ctx.setLineDash([]);
+  if (dashed || vs) ctx.setLineDash([]);
+  if (vs) {
+    ctx.lineCap = "butt";
+    ctx.lineJoin = "miter";
+    ctx.miterLimit = 10;
+    ctx.lineDashOffset = 0;
+  }
 }
 
 function strokeShape(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s: StrokeLite): void {
@@ -771,10 +1027,21 @@ function pickIn(
   seen: Set<string>,
   visited: ReadonlySet<string>,
   prune: Prune | null,
+  // The master nodes the instance being hit-tested hides (see store/instances.ts::hiddenMasterNodes).
+  hidden: ReadonlySet<string> | null = null,
 ): string | null {
+  // MASKS clip what is above them in the same list (as drawSiblings does): a node is only
+  // hit inside every visible mask below it, and a mask itself is not drawn, so not hit either.
+  // The mask's own stroke does not count: it clips by its outline.
+  const masks: { at: number; shape: NodeLite }[] = [];
+  siblings.forEach((m, at) => {
+    if (m.visible && m.isMask && isMaskShape(m)) masks.push({ at, shape: m.strokes.length ? { ...m, strokes: [] } : m });
+  });
   for (let i = siblings.length - 1; i >= 0; i--) {
     const n = siblings[i];
-    if (!n.visible || seen.has(n.id)) continue;
+    if (!n.visible || seen.has(n.id) || hidden?.has(n.id)) continue;
+    if (n.isMask && isMaskShape(n)) continue;
+    if (masks.some((m) => m.at < i && !hitTestNode(m.shape, px, py, zoom))) continue;
     if (prune && n.kind !== "instance") {
       const e = prune.extent.get(n.id);
       if (!e || prune.x < e.x - prune.pad || prune.x > e.x + e.width + prune.pad ||
@@ -804,7 +1071,7 @@ function pickIn(
         n.kind === "frame" && n.clipsContent &&
         !(inner.x >= 0 && inner.x <= n.width && inner.y >= 0 && inner.y <= n.height);
       if (!clipsAway) {
-        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited, prune);
+        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited, prune, hidden);
         if (hit) return hit;
       }
     }
@@ -833,7 +1100,7 @@ function hitInstance(
   if (!resolved) return false;
   const inner = applyTransform(invertTransform(instanceDescentLocal(n, resolved.masterRoot)), px, py);
   const nextVisited = new Set(visited).add(n.instance.componentId);
-  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null) !== null;
+  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null, hiddenMasterNodes(state, n)) !== null;
 }
 
 // The nodes whose WORLD box intersects `bounds`, in DRAW order. It is the

@@ -1,10 +1,12 @@
-import type { FillLite, NodeLite } from "../store/types";
+import type { EffectLite, FillLite, NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
+import { meshBitmap } from "../renderer/mesh";
+import { encodePng, pngDataUri } from "./rawPng";
 
 // SVG EXPORT — markup from the NODES.
 //
@@ -80,12 +82,15 @@ function attr(name: string, value: string | number): Attr {
 // their default value in SVG: neutral attributes on every element are just
 // noise in a file someone will read.
 function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
+  // Opacity and blend mode travel together: mix-blend-mode is a CSS property, so
+  // it goes in `style` (SVG viewers that support blend modes read it from there).
   const opacity = n.opacity === 1 ? null : attr("opacity", n.opacity);
+  const blend = n.blendMode ? attr("style", `mix-blend-mode:${n.blendMode}`) : null;
   // A frame without a fill is transparent (as in the canvas), not gray: the
   // default gray of resolvedFill is for shapes.
   if (n.kind === "frame" && n.fills.length === 0) {
     const fx = effectsRef(n, defs);
-    return [fx === null ? null : attr("filter", fx), attr("fill", "none"), opacity];
+    return [fx === null ? null : attr("filter", fx), attr("fill", "none"), opacity, blend];
   }
   const f = resolvedFill(n);
   // The gradient before the effect: ids in <defs> follow the order of
@@ -97,6 +102,7 @@ function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
     attr("fill", ref ?? `rgb(${channel(f.r)},${channel(f.g)},${channel(f.b)})`),
     f.a === 1 || ref !== null ? null : attr("fill-opacity", f.a),
     opacity,
+    blend,
   ];
 }
 
@@ -112,20 +118,50 @@ function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
 // wide enough to contain offset and blur: the default (-10%/120%)
 // would crop a distant shadow.
 function effectsRef(n: NodeLite, defs: string[]): string | null {
+  const shadows = n.effects?.filter((e): e is Extract<EffectLite, { kind: "dropShadow" }> => e.kind === "dropShadow") ?? [];
   const shadow = firstShadow(n);
   const blur = firstBlur(n);
-  if (!shadow && !blur) return null;
+  const inners = n.effects?.filter((e): e is Extract<EffectLite, { kind: "innerShadow" }> => e.kind === "innerShadow") ?? [];
+  if (!shadow && !blur && inners.length === 0) return null;
   const id = `f${defs.length}`;
+  const named = inners.length > 0 ? "base" : null; // the stage the inner shadows go on top of
   const pad =
-    (shadow ? Math.max(Math.abs(shadow.offsetX), Math.abs(shadow.offsetY)) + shadow.blur * 1.5 : 0) +
-    (blur ? blur.radius * 3 : 0) + 1;
+    shadows.reduce((m, sh) => Math.max(m, Math.max(Math.abs(sh.offsetX), Math.abs(sh.offsetY)) + sh.blur * 1.5), 0) +
+    (blur ? blur.radius * 3 : 0) + inners.reduce((m, sh) => Math.max(m, Math.max(Math.abs(sh.offsetX), Math.abs(sh.offsetY)) + sh.blur * 1.5), 0) + 1;
+  const rgb = (c: { r: number; g: number; b: number }) => `rgb(${channel(c.r)},${channel(c.g)},${channel(c.b)})`;
+  // Several shadows: each one is a blurred, offset, flooded copy of the alpha, all
+  // merged UNDER the source (the last one lowest).
+  const stacked = shadows.length > 1
+    ? [...shadows].reverse().map((sh, k) =>
+        `<feGaussianBlur${attrs([attr("in", "SourceAlpha"), attr("stdDeviation", sh.blur / 2), attr("result", `b${k}`)])}/>` +
+        `<feOffset${attrs([attr("in", `b${k}`), attr("dx", sh.offsetX), attr("dy", sh.offsetY), attr("result", `o${k}`)])}/>` +
+        `<feFlood${attrs([attr("flood-color", rgb(sh.color)), attr("flood-opacity", sh.color.a), attr("result", `c${k}`)])}/>` +
+        `<feComposite${attrs([attr("in", `c${k}`), attr("in2", `o${k}`), attr("operator", "in"), attr("result", `s${k}`)])}/>`,
+      ).join("") +
+      `<feMerge${named ? ` result="${named}"` : ""}>${shadows.map((_, k) => `<feMergeNode in="s${k}"/>`).join("")}<feMergeNode in="SourceGraphic"/></feMerge>`
+    : "";
   const prims =
-    (shadow
+    (stacked !== "" ? stacked : shadow
       ? `<feDropShadow${attrs([
           attr("dx", shadow.offsetX), attr("dy", shadow.offsetY), attr("stdDeviation", shadow.blur / 2),
           attr("flood-color", `rgb(${channel(shadow.color.r)},${channel(shadow.color.g)},${channel(shadow.color.b)})`),
           shadow.color.a === 1 ? null : attr("flood-opacity", shadow.color.a),
+          named ? attr("result", named) : null,
         ])}/>`
+      : "") +
+    // Inner shadows: the alpha inverted, blurred, offset and flooded, kept only where the shape
+    // is, merged ABOVE the shape (and its drop shadows). Inner shadows and the layer blur
+    // come after, in the order the canvas applies them.
+    (inners.length > 0
+      ? inners.map((sh, k) =>
+          `<feComponentTransfer${attrs([attr("in", "SourceAlpha"), attr("result", `iv${k}`)])}><feFuncA type="table" tableValues="1 0"/></feComponentTransfer>` +
+          `<feGaussianBlur${attrs([attr("in", `iv${k}`), attr("stdDeviation", sh.blur / 2), attr("result", `ib${k}`)])}/>` +
+          `<feOffset${attrs([attr("in", `ib${k}`), attr("dx", sh.offsetX), attr("dy", sh.offsetY), attr("result", `io${k}`)])}/>` +
+          `<feFlood${attrs([attr("flood-color", rgb(sh.color)), attr("flood-opacity", sh.color.a), attr("result", `ic${k}`)])}/>` +
+          `<feComposite${attrs([attr("in", `ic${k}`), attr("in2", `io${k}`), attr("operator", "in"), attr("result", `is${k}`)])}/>` +
+          `<feComposite${attrs([attr("in", `is${k}`), attr("in2", "SourceAlpha"), attr("operator", "in"), attr("result", `ii${k}`)])}/>`,
+        ).join("") +
+        `<feMerge><feMergeNode in="${shadow || stacked !== "" ? "base" : "SourceGraphic"}"/>${inners.map((_, k) => `<feMergeNode in="ii${k}"/>`).join("")}</feMerge>`
       : "") +
     (blur ? `<feGaussianBlur${attrs([attr("stdDeviation", blur.radius)])}/>` : "");
   defs.push(
@@ -137,12 +173,55 @@ function effectsRef(n: NodeLite, defs: string[]): string | null {
   return `url(#${id})`;
 }
 
+// An image paint becomes a <pattern> over the node's box holding the image: `slice` (cover) for FILL,
+// `meet` (contain) for FIT. TILE needs the image's natural size, which a pure generator does not
+// have, so it is drawn as FILL. With no resolvable file the paint is the flat base color, like
+// the canvas before the image arrives.
+let svgHref: ResolveImageHref = () => null;
+
+function imagePatternRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  const uri = svgHref(f.image!.assetHash);
+  if (uri === null) return null;
+  const id = `p${defs.length}`;
+  defs.push(
+    `<pattern${attrs([attr("id", id), attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height)])} patternUnits="userSpaceOnUse">` +
+    `<image${attrs([
+      attr("href", uri), attr("x", 0), attr("y", 0), attr("width", n.width), attr("height", n.height),
+      { name: "preserveAspectRatio", value: f.image!.mode === "fit" ? "xMidYMid meet" : "xMidYMid slice" },
+    ])}/></pattern>`,
+  );
+  return `url(#${id})`;
+}
+
+// A MESH paint becomes a <pattern> holding its bitmap as an embedded PNG (the grid blended, renderer/
+// mesh.ts), stretched over the node's box by the viewer's own smoothing. 32 pixels a side is plenty
+// for a smooth blend and keeps the file small; a one-pixel border repeats the edge.
+const MESH_SVG_SIZE = 32;
+
+function meshPatternRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  if (!(n.width > 0) || !(n.height > 0)) return null;
+  const total = MESH_SVG_SIZE + 2;
+  const uri = pngDataUri(encodePng(total, total, meshBitmap(f.mesh!, MESH_SVG_SIZE, 1)));
+  const id = `p${defs.length}`;
+  const sx = n.width / MESH_SVG_SIZE, sy = n.height / MESH_SVG_SIZE;
+  defs.push(
+    `<pattern${attrs([attr("id", id), attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height)])} patternUnits="userSpaceOnUse">` +
+    `<image${attrs([
+      attr("href", uri), attr("x", -sx), attr("y", -sy), attr("width", n.width + 2 * sx), attr("height", n.height + 2 * sy),
+      { name: "preserveAspectRatio", value: "none" },
+    ])}/></pattern>`,
+  );
+  return `url(#${id})`;
+}
+
 // A gradient becomes a <linearGradient>/<radialGradient> in <defs>, with the
 // same WORLD coordinates that the canvas computes in renderer/canvasRenderer.ts::
 // paintStyle (userSpaceOnUse): no bbox, hence no deformation. It returns
 // the `url(#id)` reference to put in `fill`, or null for flat tints
 // and for degenerate gradients (same cases as the canvas).
 function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  if (f.mesh) return meshPatternRef(n, f, defs);
+  if (f.image) return imagePatternRef(n, f, defs);
   const g = f.gradient;
   if (!g || g.stops.length < 2) return null;
   const x1 = n.x + g.x1 * n.width, y1 = n.y + g.y1 * n.height;
@@ -172,7 +251,7 @@ function strokeAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   const s = n.strokes.find((st) => st.weight > 0);
   if (!s) return [];
   const ref = gradientRef(n, s.color, defs);
-  const vs = n.kind === "vector" ? vectorStyleOf(n) : null;
+  const vs = n.kind === "vector" || n.meta ? vectorStyleOf(n) : null;
   return [
     attr("stroke", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
     s.color.a === 1 || ref !== null ? null : attr("stroke-opacity", s.color.a),
@@ -256,6 +335,7 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
     attr("font-family", fontFamilyOf(style)),
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
+    ...(style.italic ? [attr("font-style", "italic")] : []),
     ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }
@@ -294,6 +374,7 @@ function imageElement(n: NodeLite, href: string, defs: string[]): string {
     attr("href", href),
     { name: "preserveAspectRatio", value: "none" },
     n.opacity === 1 ? null : attr("opacity", n.opacity),
+    n.blendMode ? attr("style", `mix-blend-mode:${n.blendMode}`) : null,
   ])}/>`;
 }
 
@@ -333,6 +414,23 @@ function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs
   return rectElement(n, defs);
 }
 
+// The shape of a mask, geometry only (it goes inside a <clipPath>); null for a node that cannot mask.
+function maskGeometry(n: NodeLite): string | null {
+  if (n.kind === "ellipse") {
+    return `<ellipse${attrs([attr("cx", n.x + n.width / 2), attr("cy", n.y + n.height / 2), attr("rx", n.width / 2), attr("ry", n.height / 2)])}/>`;
+  }
+  if (n.kind === "rect" || n.kind === "frame") {
+    const r = n.kind === "rect" ? Math.min(n.cornerRadius, n.width / 2, n.height / 2) : 0;
+    return `<rect${attrs([attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height), r > 0 ? attr("rx", r) : null])}/>`;
+  }
+  if (n.kind === "vector") {
+    const closed = (n.vector?.subpaths ?? []).filter((sp) => sp.closed && sp.anchors.length >= 2);
+    if (closed.length === 0) return null;
+    return `<path${attrs([attr("d", subPathsToD(closed, n.x, n.y, DECIMALS)), attr("clip-rule", vectorStyleOf(n).fillRule ?? "evenodd")])}/>`;
+  }
+  return null;
+}
+
 /**
  * The SVG markup of `nodes` inside the region `bounds`.
  *
@@ -354,9 +452,26 @@ export function nodesToSvg(
   // one that references local URLs destined to break elsewhere.
   href: ResolveImageHref = () => null,
 ): string {
+  svgHref = href;
   const defs: string[] = [];
+  // MASKS: a mask node is not drawn; its outline becomes a <clipPath> and the nodes
+  // above it under the same parent are wrapped in a <g clip-path>.
+  const clipOf = new Map<string, string>();
   const body = nodes
-    .map((n) => element(n, measure, href, defs))
+    .map((n) => {
+      if (n.isMask) {
+        const geometry = maskGeometry(n);
+        if (geometry !== null) {
+          const id = `m${defs.length}`;
+          defs.push(`<clipPath${attrs([attr("id", id)])}>${geometry}</clipPath>`);
+          clipOf.set(n.parentId, id);
+          return "";
+        }
+      }
+      const out = element(n, measure, href, defs);
+      const clip = clipOf.get(n.parentId);
+      return out !== "" && clip ? `<g clip-path="url(#${clip})">${out}</g>` : out;
+    })
     .filter((s) => s !== "")
     .map((s) => `  ${s}`)
     .join("\n");

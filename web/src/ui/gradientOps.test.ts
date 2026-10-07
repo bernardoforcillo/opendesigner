@@ -4,7 +4,7 @@ import { applyOp } from "../store/applyOp";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
 import {
-  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps,
+  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, imagePaintOps, addGradientStopOps, removeGradientStopOps, gradientStopPositionOps, meshPointOps, meshSizeOps,
 } from "./gradientOps";
 
 function sceneWith(over: Partial<NodeLite> = {}): SceneState {
@@ -74,5 +74,76 @@ describe("gradientOps", () => {
     expect(gradientAngleOf(h.fills[0])).toBe(0);
     const d = run(s, gradientAngleOps(["a"], (id) => s.nodes.at(id), 45));
     expect(gradientAngleOf(d.fills[0])).toBe(45);
+  });
+
+  it("several stops: add, move and remove keep them sorted, and a gradient keeps two", () => {
+    let s = sceneWith();
+    s = { ...s, nodes: nodesOf({ a: run(s, fillKindOps(["a"], (id) => s.nodes.at(id), "linear")) }) };
+    const L = (st: typeof s) => (id: string) => st.nodes.at(id);
+    let n = run(s, addGradientStopOps(["a"], L(s)));
+    expect(n.fills[0].gradient?.stops.map((x) => x.position)).toEqual([0, 0.5, 1]);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, gradientStopPositionOps(["a"], L(s), 1, 2));
+    expect(n.fills[0].gradient?.stops.map((x) => x.position)).toEqual([0, 1, 1]);
+    n = run(s, removeGradientStopOps(["a"], L(s), 1));
+    expect(n.fills[0].gradient?.stops).toHaveLength(2);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    expect(removeGradientStopOps(["a"], L(s), 0)).toEqual([]);
+  });
+
+  it("the same ops edit the first STROKE's paint, keeping its weight and alignment", () => {
+    let s = sceneWith();
+    const withStroke = { ...s.nodes.at("a"), strokes: [{ color: { r: 1, g: 0, b: 0, a: 1 }, weight: 6, align: "inside" as const }] };
+    s = { ...s, nodes: nodesOf({ a: withStroke }) };
+    const L = (st: typeof s) => (id: string) => st.nodes.at(id);
+    let n = run(s, fillKindOps(["a"], L(s), "linear", "stroke"));
+    expect(n.strokes[0]).toMatchObject({ weight: 6, align: "inside" });
+    expect(n.strokes[0].color.gradient?.kind).toBe("linear");
+    expect(n.fills).toEqual(s.nodes.at("a").fills);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, addGradientStopOps(["a"], L(s), "stroke"));
+    expect(n.strokes[0].color.gradient?.stops).toHaveLength(3);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, gradientAngleOps(["a"], L(s), 90, "stroke"));
+    expect(n.strokes[0].color.gradient).toMatchObject({ y2: expect.closeTo(1, 5) });
+  });
+
+  it("image paints: set from a hash, change the mode, back to a flat color; nothing without a hash", () => {
+    let s = sceneWith();
+    const L = (st: typeof s) => (id: string) => st.nodes.at(id);
+    const hash = "e".repeat(64);
+    expect(imagePaintOps(["a"], L(s), { mode: "fit" })).toEqual([]);
+    let n = run(s, imagePaintOps(["a"], L(s), { assetHash: hash }));
+    expect(n.fills[0].image).toEqual({ assetHash: hash, mode: "fill" });
+    expect(fillKindOf(n.fills[0])).toBe("image");
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, imagePaintOps(["a"], L(s), { mode: "tile" }));
+    expect(n.fills[0].image).toEqual({ assetHash: hash, mode: "tile" });
+    expect(imagePaintOps(["a"], L(s), { mode: "fill" })).toEqual([]);
+    expect(run(s, fillKindOps(["a"], L(s), "solid")).fills[0].image).toBeUndefined();
+    expect(run(s, fillKindOps(["a"], L(s), "linear")).fills[0].gradient?.kind).toBe("linear");
+  });
+
+  it("mesh paints: made from the fill, a point's color changes, the grid resizes, back to flat keeps the average", () => {
+    let s = sceneWith();
+    const L = (st: typeof s) => (id: string) => st.nodes.at(id);
+    let n = run(s, fillKindOps(["a"], L(s), "mesh", "fill"));
+    expect(fillKindOf(n.fills[0])).toBe("mesh");
+    expect(n.fills[0].mesh).toMatchObject({ rows: 3, cols: 3 });
+    expect(n.fills[0].mesh!.colors).toHaveLength(9);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, meshPointOps(["a"], L(s), 4, { r: 0, g: 0, b: 1 }));
+    expect(n.fills[0].mesh!.colors[4]).toMatchObject({ r: 0, g: 0, b: 1 });
+    expect(meshPointOps(["a"], L(s), 99, { r: 0, g: 0, b: 1 })).toEqual([]);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    n = run(s, meshSizeOps(["a"], L(s), 2, 4));
+    expect(n.fills[0].mesh).toMatchObject({ rows: 2, cols: 4 });
+    expect(n.fills[0].mesh!.colors).toHaveLength(8);
+    expect(meshSizeOps(["a"], L(s), 3, 3)).toEqual([]);
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    expect(meshSizeOps(["a"], L(s), 2, 4)).toEqual([]);
+    const flat = run(s, fillKindOps(["a"], L(s), "solid"));
+    expect(flat.fills[0].mesh).toBeUndefined();
+    expect(flat.fills[0].a).toBe(1);
   });
 });

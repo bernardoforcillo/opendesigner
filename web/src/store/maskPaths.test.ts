@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, StrokeAlign, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
+import { OpSchema, NodeSchema, BlendMode, LayoutGridKind, Constraint, LayoutSizing, StrokeAlign, VariableType, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, type NodeLite } from "./types";
@@ -41,7 +41,37 @@ function frameScene() {
     opId: "op-frame", docId: "doc1", kind: { case: "createNode", value: { node } },
   }));
 }
-const sceneFor = (path: string) => (path === "auto_layout" ? frameScene() : baseScene());
+// bindings / modes are validated against the document, so their probes need a
+// collection and a variable to point to.
+function themedScene() {
+  const ops = [
+    create(OpSchema, { opId: "c", docId: "doc1", kind: { case: "setCollection", value: { collection: {
+      id: "theme", name: "Theme", modes: [{ id: "light", name: "Light" }, { id: "dark", name: "Dark" }],
+    } } } }),
+    create(OpSchema, { opId: "v", docId: "doc1", kind: { case: "setVariable", value: { variable: {
+      id: "dim", collectionId: "theme", name: "dim", type: VariableType.NUMBER,
+      values: { light: { kind: { case: "number", value: 1 } }, dark: { kind: { case: "number", value: 0.5 } } },
+    } } } }),
+  ];
+  return ops.reduce(applyOp, baseScene());
+}
+// text_style_id only applies to a TEXT node and needs a style to point to.
+function textScene() {
+  const node = create(NodeSchema, {
+    id: "n1", parentId: "page1", orderKey: "a0", name: "Text", visible: true, opacity: 1,
+    x: 0, y: 0, width: 100, height: 20,
+    shape: { case: "text", value: { content: "Hi", style: { fontSize: 16 } } },
+  });
+  return [
+    create(OpSchema, { opId: "t", docId: "doc1", kind: { case: "createNode", value: { node } } }),
+    create(OpSchema, { opId: "s", docId: "doc1", kind: { case: "setTextStyleDef", value: { textStyle: { id: "h", name: "Heading", style: { fontSize: 32 } } } } }),
+  ].reduce(applyOp, emptyScene("doc1", "Untitled"));
+}
+const sceneFor = (path: string) =>
+  path === "auto_layout" || path === "layout_grids" ? frameScene()
+    : path === "bindings" || path === "modes" ? themedScene()
+    : path === "text_style_id" ? textScene()
+    : baseScene();
 
 function setPropsOp(paths: readonly string[], patch: MessageInitShape<typeof NodeSchema> = {}): Op {
   return create(OpSchema, {
@@ -261,6 +291,23 @@ const PROBE: Probe = {
   },
   // Free-form map: the mask replaces the whole map.
   meta: { patch: { meta: { "code.route": "/cart" } }, expected: { "code.route": "/cart" } },
+  // Variable bindings and mode pins: maps like meta, validated against themedScene().
+  bindings: { patch: { bindings: { opacity: "dim" } }, expected: { opacity: "dim" } },
+  modes: { patch: { modes: { theme: "dark" } }, expected: { theme: "dark" } },
+  // Shared text style: validated against textScene().
+  text_style_id: { patch: { textStyleId: "h" }, expected: "h" },
+  // Constraints and layout sizing: plain enums on any node.
+  constraint_x: { patch: { constraintX: Constraint.MAX }, expected: "max" },
+  constraint_y: { patch: { constraintY: Constraint.SCALE }, expected: "scale" },
+  layout_sizing_x: { patch: { layoutSizingX: LayoutSizing.FILL }, expected: "fill" },
+  layout_sizing_y: { patch: { layoutSizingY: LayoutSizing.FILL }, expected: "fill" },
+  // Layout grids only apply to a frame (sceneFor).
+  layout_grids: {
+    patch: { layoutGrids: [{ kind: LayoutGridKind.COLUMNS, count: 4, gutter: 8, margin: 16, size: 0, color: { r: 1, g: 0, b: 0, a: 0.1 } }] },
+    expected: [{ kind: "columns", count: 4, gutter: 8, margin: 16, size: 0, color: { r: 1, g: 0, b: 0, a: 0.1 } }],
+  },
+  is_mask: { patch: { isMask: true }, expected: true },
+  blend_mode: { patch: { blendMode: BlendMode.MULTIPLY }, expected: "multiply" },
 };
 
 describe("every MASK_PATHS path survives the JSON wire and is applied", () => {

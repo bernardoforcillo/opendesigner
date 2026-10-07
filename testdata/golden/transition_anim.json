@@ -1,0 +1,257 @@
+{
+ "_comment": [
+  "Transition animation fields: valid ones are stored; an unknown animation, an out-of-range duration or delay or a bad easing rejects the op (scene unchanged, an existing transition keeps its value). Run from BOTH sides."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "nodes": {
+   "s1": {
+    "id": "s1",
+    "parentId": "page1",
+    "orderKey": "a1",
+    "name": "s1",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {
+     "cornerRadius": 0
+    }
+   },
+   "s2": {
+    "id": "s2",
+    "parentId": "page1",
+    "orderKey": "a2",
+    "name": "s2",
+    "visible": true,
+    "opacity": 1,
+    "x": 100,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {
+     "cornerRadius": 0
+    }
+   }
+  },
+  "flows": {
+   "f1": {
+    "id": "f1",
+    "name": "F",
+    "startId": "s1"
+   }
+  },
+  "transitions": {
+   "t1": {
+    "id": "t1",
+    "flowId": "f1",
+    "fromId": "s1",
+    "toId": "s2",
+    "trigger": "click",
+    "animation": "smart",
+    "durationMs": 400,
+    "easing": "cubic-bezier(0.2,0,0,1)"
+   },
+   "t2": {
+    "id": "t2",
+    "flowId": "f1",
+    "fromId": "s1",
+    "toId": "s2",
+    "trigger": "auto",
+    "animation": "push-left",
+    "delayMs": 1500
+   }
+  }
+ },
+ "ops": [
+  {
+   "opId": "o0",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "s1",
+     "parentId": "page1",
+     "orderKey": "a1",
+     "name": "s1",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "o1",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "s2",
+     "parentId": "page1",
+     "orderKey": "a2",
+     "name": "s2",
+     "visible": true,
+     "opacity": 1,
+     "x": 100,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {
+      "cornerRadius": 0
+     }
+    }
+   }
+  },
+  {
+   "opId": "o2",
+   "docId": "doc1",
+   "setFlow": {
+    "flow": {
+     "id": "f1",
+     "name": "F",
+     "startId": "s1"
+    }
+   }
+  },
+  {
+   "opId": "o3",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t1",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "animation": "smart",
+     "durationMs": 400,
+     "easing": "cubic-bezier(0.2,0,0,1)"
+    }
+   }
+  },
+  {
+   "opId": "o4",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t2",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "auto",
+     "animation": "push-left",
+     "delayMs": 1500
+    }
+   }
+  },
+  {
+   "opId": "o5",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t3",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "animation": "wipe"
+    }
+   }
+  },
+  {
+   "opId": "o6",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t4",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "animation": "dissolve",
+     "durationMs": 20000
+    }
+   }
+  },
+  {
+   "opId": "o7",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t5",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "durationMs": -1
+    }
+   }
+  },
+  {
+   "opId": "o8",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t6",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "easing": "bounce"
+    }
+   }
+  },
+  {
+   "opId": "o9",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t7",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "delayMs": 70000
+    }
+   }
+  },
+  {
+   "opId": "o10",
+   "docId": "doc1",
+   "setTransition": {
+    "transition": {
+     "id": "t1",
+     "flowId": "f1",
+     "fromId": "s1",
+     "toId": "s2",
+     "trigger": "click",
+     "animation": "dissolve",
+     "durationMs": -5
+    }
+   }
+  }
+ ],
+ "rejected": [
+  5,
+  6,
+  7,
+  8,
+  9,
+  10
+ ]
+}

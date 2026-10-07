@@ -8,7 +8,17 @@ import { usePanels } from "./shell/panels";
 import { SyncClient } from "../rpc/syncClient";
 import { PresenceClient } from "../rpc/presence";
 import { usePresence, loadNickname } from "../store/presence";
-import { drawLayoutDrop, drawPeers } from "../renderer/peersRenderer";
+import { PageCameras } from "../canvas/pageView";
+import { captureLinkToken, useAccess, canComment, canWrite, type Role } from "../rpc/access";
+import { docClient } from "../rpc/client";
+import { useFacilitation, tally } from "../store/facilitation";
+import { FacilitationBar } from "./FacilitationBar";
+import { drawLayoutDrop, drawPeers, drawVotes } from "../renderer/peersRenderer";
+import { drawCommentPins } from "../renderer/commentsRenderer";
+import { draftWorld, pinsOf } from "../comments/pins";
+import { useCommentsUi } from "../store/commentsUi";
+import { commentTool } from "../tools/commentTool";
+import { CommentsPanel } from "./CommentsPanel";
 import { PresenceBar } from "./PresenceBar";
 import { useScene } from "../store/store";
 import { resizeCanvasToDisplaySize } from "../renderer/canvasRenderer";
@@ -16,7 +26,7 @@ import { attachImageRecovery, imageCache } from "../renderer/imageCache";
 import { SETTLE_MS } from "../renderer/layerCache";
 import { SceneSurface } from "../renderer/sceneSurface";
 import { useRenderer } from "../store/rendererChoice";
-import { drawOverlay } from "../renderer/overlayRenderer";
+import { drawOverlay, drawNodeEdit } from "../renderer/overlayRenderer";
 import { screenToWorld } from "../canvas/camera";
 import { attachTools, eventToCanvasPoint } from "../tools/toolManager";
 import { attachClipboardShortcuts } from "../tools/clipboard";
@@ -52,6 +62,10 @@ import { textTool } from "../tools/textTool";
 import { penTool } from "../tools/penTool";
 import { handTool } from "../tools/handTool";
 import { connectTool } from "../tools/connectTool";
+import { linkTool } from "../tools/linkTool";
+import { stickyTool } from "../tools/stickyTool";
+import { voteTool } from "../tools/voteTool";
+import { nodeTool } from "../tools/nodeTool";
 import { withFlowArrows } from "../tools/flowSelect";
 
 // Registry of the available tools: the toolbar picks a key, attachTools
@@ -73,17 +87,27 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
   text: textTool,
   pen: penTool,
   hand: handTool,
+  comment: commentTool,
+  sticky: stickyTool,
+  link: linkTool,
+  vote: voteTool,
+  node: nodeTool,
 };
 
 export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "select", label: "Select" },
   { id: "connect", label: "Connect" },
+  { id: "sticky", label: "Sticky note" },
+  { id: "link", label: "Link" },
+  { id: "vote", label: "Vote" },
   { id: "frame", label: "Frame" },
   { id: "rect", label: "Rectangle" },
   { id: "ellipse", label: "Ellipse" },
   { id: "text", label: "Text" },
   { id: "pen", label: "Pen" },
+  { id: "node", label: "Node" },
   { id: "hand", label: "Hand" },
+  { id: "comment", label: "Comment" },
 ];
 
 // The tools that make sense in Flows mode: flows do not draw, they
@@ -91,14 +115,22 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
 const FLOW_TOOL_IDS: readonly ToolId[] = ["select", "connect", "hand"];
 // In Develop the canvas is read-only: you look, you do not draw.
 const DEV_TOOL_IDS: readonly ToolId[] = ["select", "hand"];
+// The Board: notes, text, arrows and free drawing on an infinite page; no frames, no shapes of a layout.
+const BOARD_TOOL_IDS: readonly ToolId[] = ["select", "sticky", "text", "link", "vote", "pen", "node", "hand", "comment"];
+// Only the Board has these two.
+const BOARD_ONLY: readonly ToolId[] = ["sticky", "link", "vote"];
 function toolIdsOf(mode: EditorMode): readonly ToolId[] | null {
-  return mode === "flows" ? FLOW_TOOL_IDS : mode === "dev" ? DEV_TOOL_IDS : null;
+  return mode === "flows" ? FLOW_TOOL_IDS : mode === "dev" ? DEV_TOOL_IDS : mode === "board" ? BOARD_TOOL_IDS : null;
 }
 // Which tools the toolbar shows in a mode: in Design all except
 // "Connect", in Flows and in Develop only those listed above.
-export function toolsForMode(mode: EditorMode): { id: ToolId; label: string }[] {
+export function toolsForMode(mode: EditorMode, role: Role | null = null): { id: ToolId; label: string }[] {
   const ids = toolIdsOf(mode);
-  return TOOL_LABELS.filter((t) => (ids ? ids.includes(t.id) : t.id !== "connect"));
+  const inMode = TOOL_LABELS.filter((t) => (ids ? ids.includes(t.id) : t.id !== "connect" && !BOARD_ONLY.includes(t.id)));
+  // A link that cannot edit gets the tools that do not edit (the server refuses the rest anyway).
+  if (canWrite(role)) return inMode;
+  const allowed: readonly ToolId[] = canComment(role) ? ["select", "hand", "comment", "vote"] : ["select", "hand", "vote"];
+  return inMode.filter((t) => allowed.includes(t.id));
 }
 
 const CLIENT_ID = crypto.randomUUID();
@@ -140,6 +172,15 @@ export function App() {
   // The nickname lives in a ref as well as in state: the bootstrap starts
   // only once and must read the CURRENT one when it opens presence.
   const [nickname, setNickname] = useState(loadNickname);
+  // The left panel's tab. The comment tool brings Comments to the front (revealRequested), and
+  // opens the left panel if it was closed.
+  const [leftTab, setLeftTab] = useState("layers");
+  const reveal = useCommentsUi((c) => c.revealRequested);
+  useEffect(() => {
+    if (reveal === 0) return;
+    setLeftTab("comments");
+    if (!usePanels.getState().left) usePanels.getState().toggle("left");
+  }, [reveal]);
   const nicknameRef = useRef(nickname);
   const presenceRef = useRef<PresenceClient | null>(null);
   const [toolId, setToolId] = useState<ToolId>("select");
@@ -148,10 +189,12 @@ export function App() {
   // The mode (Design | Flows) and the prototype: view state in useFlowUi.
   const mode = useFlowUi((st) => st.mode);
   const presenting = useFlowUi((st) => st.presenting);
+  const role = useAccess((st) => st.role);
   // Changes the active tool: the ref is read by the tool manager, the state by the toolbar.
   const chooseTool = (id: ToolId) => {
     toolRef.current = id;
     setToolId(id);
+    useScene.getState().enterNodeEdit(id === "node");
   };
   // An op rejected by the server is undone locally (the optimistic change
   // disappears from the canvas, see store/store.ts::rejectPending). A
@@ -201,7 +244,13 @@ export function App() {
         const docId = routeDocId ?? docIdFromHash(location.hash) ?? localStorage.getItem(DOC_KEY);
         if (!docId) throw new Error("no document to open");
         localStorage.setItem(DOC_KEY, docId);
+        // A protected document is opened from a link (?k=...): take its token before the first request.
+        captureLinkToken(docId);
         sync = new SyncClient(docId, CLIENT_ID);
+        // What this link may do here (the interface hides what the server would refuse). Best effort: no answer means no restriction shown.
+        try {
+          void docClient.getAccess({ docId }).then((r) => useAccess.getState().setRole(r.role as Role), () => useAccess.getState().setRole(null));
+        } catch { useAccess.getState().setRole(null); }
         // Unmounted while we were creating the client: stop it before even
         // opening the document (start() on a stopped client is a no-op).
         if (cancelled) {
@@ -251,6 +300,36 @@ export function App() {
         const unsubView = useScene.subscribe((st, prev) => {
           if (st.selection !== prev.selection || st.currentPageId !== prev.currentPageId) sendView();
         });
+        // Facilitation: my dots, timer, chat and reaction, and where my view is (the WORLD point at the
+        // center of the canvas, so someone following with another window size sees the same thing).
+        const sendFacilitation = () => {
+          const f = useFacilitation.getState();
+          presence.setLocal({
+            chat: f.chat, reaction: f.reaction, emoteSeq: f.emoteSeq, votes: f.votes,
+            timerStartedMs: f.timer?.startedMs ?? 0, timerEndMs: f.timer?.endMs ?? 0, timerLabel: f.timer?.label ?? "",
+          });
+        };
+        const sendCamera = () => {
+          const cam = useScene.getState().camera;
+          const c = screenToWorld(cam, canvas.clientWidth / 2, canvas.clientHeight / 2);
+          presence.setLocal({ hasView: true, viewX: c.x, viewY: c.y, viewZoom: cam.zoom });
+        };
+        sendFacilitation();
+        sendCamera();
+        const unsubFac = useFacilitation.subscribe(sendFacilitation);
+        const unsubCam = useScene.subscribe((st, prev) => { if (st.camera !== prev.camera) sendCamera(); });
+        // Follow mode: while someone is followed, my camera takes theirs on every update they send;
+        // if they leave, I stop following.
+        const unsubFollow = usePresence.subscribe((st) => {
+          const id = useFacilitation.getState().following;
+          if (!id) return;
+          const p = st.peers[id];
+          if (!p) { useFacilitation.getState().follow(null); return; }
+          if (!p.hasView) return;
+          const cur = useScene.getState().camera;
+          const next = { x: canvas.clientWidth / 2 - p.viewX * p.viewZoom, y: canvas.clientHeight / 2 - p.viewY * p.viewZoom, zoom: p.viewZoom };
+          if (Math.abs(next.x - cur.x) > 0.5 || Math.abs(next.y - cur.y) > 0.5 || next.zoom !== cur.zoom) useScene.getState().setCamera(next);
+        });
         const detachTools = attachTools(ctx, () => TOOLS[toolRef.current] ?? selectTool);
         // Dragging an image onto the canvas (track 3, task 3). It sits next to the
         // tools and not inside the registry because it is not a tool: it has no button
@@ -265,6 +344,9 @@ export function App() {
           canvas.removeEventListener("pointermove", onMove);
           canvas.removeEventListener("pointerleave", onLeave);
           unsubView();
+          unsubFac();
+          unsubCam();
+          unsubFollow();
           presence.stop();
           presenceRef.current = null;
         };
@@ -315,6 +397,21 @@ export function App() {
     let raf = 0;
     let settle: ReturnType<typeof setTimeout> | null = null;
     let force = false;
+    // Changing page is a different picture, not a small change: the frame is redrawn in full (never a
+    // reused snapshot), and the view goes where that page was left (or onto its content).
+    const pageCameras = new PageCameras();
+    let shownPage = useScene.getState().currentPageId;
+    const onPage = () => {
+      const st = useScene.getState();
+      if (st.currentPageId === shownPage) return;
+      if (shownPage !== null) pageCameras.save(shownPage, st.camera);
+      shownPage = st.currentPageId;
+      force = true;
+      if (st.scene && shownPage !== null && canvasRef.current) {
+        const c = canvasRef.current;
+        st.setCamera(pageCameras.restore(st.scene, shownPage, c.clientWidth, c.clientHeight, st.camera));
+      }
+    };
 
     const frame = () => {
       raf = 0;
@@ -325,7 +422,7 @@ export function App() {
       const overlay = overlayRef.current;
       // The posed scene when the timeline scrubs/plays/records, otherwise
       // the store's scene (same instance: no cost with the timeline idle).
-      const scene = posedScene();
+      const scene = posedScene(true);
       if (canvas && scene) {
         resizeCanvasToDisplaySize(canvas);
         const ctx = canvas.getContext("2d");
@@ -350,15 +447,32 @@ export function App() {
         // document (the vector node does not exist until the path is finished),
         // so they go from the store to the overlay like the marquee -- and it is the ONLY
         // way the person drawing sees what they are doing.
-        const { camera, selection, marquee, snapGuides, penPreview } = useScene.getState();
+        const { camera, selection, marquee, snapGuides, penPreview, linkPreview } = useScene.getState();
         if (octx) {
           // While the clip PLAYS the handles are not drawn: they would sit on
           // a geometry that changes every frame (and the animated scale is not in the
           // selection box). Paused or scrubbing they follow the posed geometry.
-          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview);
+          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview);
           const peers = usePresence.getState().peers;
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
+          }
+          {
+            const ne = useScene.getState().nodeEdit;
+            if (ne) drawNodeEdit(octx, scene, camera, selection, ne.sel);
+          }
+          {
+            const votes = tally(peers, useFacilitation.getState().votes);
+            if (Object.keys(votes).length > 0) drawVotes(octx, scene, camera, votes, useFacilitation.getState().votes);
+          }
+          // Comment pins (all modes): the threads of this page, plus the pin being placed.
+          {
+            const cu = useCommentsUi.getState();
+            const pageId = useScene.getState().currentPageId ?? scene.pages[0]?.id ?? "";
+            const pins = Object.keys(scene.comments).length > 0 ? pinsOf(scene, pageId, cu.showResolved) : [];
+            if (pins.length > 0 || cu.draft) {
+              drawCommentPins(octx, pins, camera, cu.activeId, cu.draft ? draftWorld(scene, cu.draft) : null);
+            }
           }
           const layoutDrop = useScene.getState().layoutDrop;
           if (layoutDrop) drawLayoutDrop(octx, camera, layoutDrop);
@@ -386,9 +500,12 @@ export function App() {
     };
 
     const unsubs = [
+      useScene.subscribe(onPage),
       useScene.subscribe(invalidate),
       usePresence.subscribe(invalidate),
+      useFacilitation.subscribe(invalidate),
       useFlowUi.subscribe(invalidate),
+      useCommentsUi.subscribe(invalidate),
       // The playhead, the pose and the recording draft: the playback tick
       // is the only frame producer while animating, with the timeline idle nothing
       // arrives and the editor stays at zero frames.
@@ -453,7 +570,7 @@ export function App() {
     return () => window.removeEventListener("keydown", onKeyDown);
   }, []);
 
-  // Mode shortcuts: F toggles Design / Flows, S opens Develop (and
+  // Mode shortcuts: F toggles Design / Flows, B opens the Board (and back), S opens Develop (and
   // S again goes back to Design), K activates "Connect" (entering Flows if needed). On the window, like the others, and
   // never inside a text field (isTextField) nor with a modifier pressed
   // (Ctrl+Alt+K belongs to the selection tool).
@@ -469,6 +586,10 @@ export function App() {
         e.preventDefault();
         const fu = useFlowUi.getState();
         fu.setMode(fu.mode === "dev" ? "design" : "dev");
+      } else if (key === "b") {
+        e.preventDefault();
+        const fu = useFlowUi.getState();
+        fu.setMode(fu.mode === "board" ? "design" : "board");
       } else if (key === "k") {
         e.preventDefault();
         useFlowUi.getState().setMode("flows");
@@ -485,9 +606,10 @@ export function App() {
   // Flows does so if it was a drawing tool: nothing is drawn in flows.
   useEffect(() => {
     const ids = toolIdsOf(mode);
-    if (ids ? !ids.includes(toolRef.current) : toolRef.current === "connect") chooseTool("select");
+    if (!toolsForMode(mode, role).some((t) => t.id === toolRef.current)) { chooseTool("select"); return; }
+    if (ids ? !ids.includes(toolRef.current) : toolRef.current === "connect" || BOARD_ONLY.includes(toolRef.current)) chooseTool("select");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
+  }, [mode, role]);
 
   // Copy / paste / duplicate (Ctrl/Cmd+C, +V, +D). On the window like the
   // shortcuts above and for the same reason (the canvas is not focusable);
@@ -566,11 +688,11 @@ export function App() {
           </aside>
         ) : (
           <aside aria-label="Layers and components" className={`${leftOpen ? "flex" : "hidden"} w-64 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
-            <Tabs className="flex min-h-0 flex-1 flex-col">
+            <Tabs className="flex min-h-0 flex-1 flex-col" selectedKey={leftTab} onSelectionChange={(k) => setLeftTab(String(k))}>
               {/* Tabs and page selector in the SAME row: 40px less. */}
               <div className="flex shrink-0 items-center border-b border-line pr-1.5">
               <TabList aria-label="Panel" className="flex min-w-0 flex-1 gap-0.5 px-1.5 pt-1">
-                {([["layers", "Layers", "layers"], ["components", "Components", "components"]] as const).map(([id, label, icon]) => (
+                {([["layers", "Layers", "layers"], ["components", "Components", "components"], ["comments", "Comments", "comment"]] as const).map(([id, label, icon]) => (
                   <Tab
                     key={id}
                     id={id}
@@ -586,7 +708,7 @@ export function App() {
                         <Icon name={icon} size={14} />
                         {/* Only the active tab carries the text: the row also hosts the
                             page selector. The name stays in the aria-label. */}
-                        {isSelected && label}
+                        {isSelected && id !== "comments" && label}
                       </>
                     )}
                   </Tab>
@@ -599,6 +721,9 @@ export function App() {
               </TabPanel>
               <TabPanel id="components" className="min-h-0 flex-1 overflow-y-auto outline-none">
                 <ComponentsPanel />
+              </TabPanel>
+              <TabPanel id="comments" className="min-h-0 flex-1 overflow-hidden outline-none">
+                <CommentsPanel />
               </TabPanel>
             </Tabs>
           </aside>
@@ -640,7 +765,8 @@ export function App() {
           {/* Develop: the code view covers the canvas (which stays mounted: the tools and the
               drawing loop use it) and sits BELOW the dock (z-20). */}
           {mode === "dev" && <CodeWorkbench />}
-          <ToolDock tools={toolsForMode(mode)} toolId={toolId} onChoose={chooseTool} mode={mode} />
+          {mode === "board" && <FacilitationBar myId={CLIENT_ID} />}
+          <ToolDock tools={toolsForMode(mode, role)} toolId={toolId} onChoose={chooseTool} mode={mode} />
         </div>
         {mode === "design" && <TimelinePanel />}
         </div>

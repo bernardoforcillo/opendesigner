@@ -318,3 +318,22 @@ func TestAssetPutLeavesNoTemporaryFiles(t *testing.T) {
 type errReader struct{}
 
 func (errReader) Read([]byte) (int, error) { return 0, errors.New("disk went away") }
+
+func TestFontFilesAreAcceptedWithTheirOwnContentType(t *testing.T) {
+	for want, head := range map[string]string{
+		"font/ttf":   "\x00\x01\x00\x00rest",
+		"font/otf":   "OTTOrest",
+		"font/woff":  "wOFFrest",
+		"font/woff2": "wOF2rest",
+	} {
+		if got := DetectImageType([]byte(head)); got != want {
+			t.Errorf("%q: got %q want %q", head[:4], got, want)
+		}
+	}
+	// Anything else that could be served back from the same origin stays out.
+	for _, head := range []string{"<!doctype html>", "<svg xmlns", "<script>", "%PDF-1.4"} {
+		if got := DetectImageType([]byte(head)); got != "" {
+			t.Errorf("%q must not be accepted, got %q", head, got)
+		}
+	}
+}

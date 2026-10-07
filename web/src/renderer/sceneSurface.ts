@@ -5,6 +5,8 @@ import { type ImageSource, resizeCanvasToDisplaySize } from "./canvasRenderer";
 import { CanvasKitRenderer } from "./ck/ckRenderer";
 import { FontBook, loadCanvasKit } from "./ck/canvaskit";
 import { SceneLayerCache } from "./layerCache";
+import { syncDocumentFonts } from "./fontRegistry";
+import { fontFamiliesOnPage } from "./pageFonts";
 
 // THE GPU RENDERER, PACKAGED: CanvasKit + the fonts + the renderer, with the
 // same call surface as the CPU drawing.
@@ -33,6 +35,8 @@ export class GpuSceneRenderer {
   }
 
   draw(scene: SceneState, cam: Camera, pageId: string | null): void {
+    // The uploaded fonts: loaded into CanvasKit's own font book (it cannot see document.fonts).
+    this.fonts.setDocumentFonts(scene.id, scene.fonts, fontFamiliesOnPage(scene, pageId));
     this.renderer.draw(scene, cam, pageId);
   }
 
@@ -71,6 +75,8 @@ export class SceneSurface {
    * must be scheduled.
    */
   draw(scene: SceneState, cam: Camera, pageId: string | null, force: boolean): boolean {
+    // The uploaded fonts of the document, as CSS fonts for the 2D canvas.
+    syncDocumentFonts(scene.id, scene.fonts, fontFamiliesOnPage(scene, pageId));
     const choice: RendererChoice = useRenderer.getState().choice;
     // The stroke being drawn (`draw`) is canvas 2D dashing: the GPU renderer
     // cannot do it. As long as a playback-derived scene contains it, drawing happens

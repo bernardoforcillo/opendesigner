@@ -101,6 +101,13 @@ type documentBundle interface {
 	Snapshot(doc *opendesignerv1.Document, seq uint64) error
 }
 
+// versionStore returns the bundle that keeps the document's named versions (always a
+// *store.Bundle in production; a hub over a test double has none).
+func (h *Hub) versionStore() (*store.Bundle, bool) {
+	b, ok := h.bundle.(*store.Bundle)
+	return b, ok
+}
+
 // Hub serializes the Ops of ONE document and rebroadcasts them to the subscribers.
 type Hub struct {
 	// writeMu admits one submitter at a time and is held for the whole of
@@ -563,6 +570,47 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 		next.Clips = make(map[string]*opendesignerv1.Clip, len(d.GetClips()))
 		for k, c := range d.GetClips() {
 			next.Clips[k] = proto.Clone(c).(*opendesignerv1.Clip)
+		}
+	}
+	// Variables: few, deep-cloned (setCollection drops the values of removed
+	// modes from the variables in place).
+	if len(d.GetCollections()) > 0 {
+		next.Collections = make(map[string]*opendesignerv1.VariableCollection, len(d.GetCollections()))
+		for k, c := range d.GetCollections() {
+			next.Collections[k] = proto.Clone(c).(*opendesignerv1.VariableCollection)
+		}
+	}
+	if len(d.GetVariables()) > 0 {
+		next.Variables = make(map[string]*opendesignerv1.Variable, len(d.GetVariables()))
+		for k, v := range d.GetVariables() {
+			next.Variables[k] = proto.Clone(v).(*opendesignerv1.Variable)
+		}
+	}
+	// Typography: few, deep-cloned.
+	if len(d.GetFonts()) > 0 {
+		next.Fonts = make(map[string]*opendesignerv1.FontFace, len(d.GetFonts()))
+		for k, f := range d.GetFonts() {
+			next.Fonts[k] = proto.Clone(f).(*opendesignerv1.FontFace)
+		}
+	}
+	if len(d.GetTextStyles()) > 0 {
+		next.TextStyles = make(map[string]*opendesignerv1.TextStyleDef, len(d.GetTextStyles()))
+		for k, t := range d.GetTextStyles() {
+			next.TextStyles[k] = proto.Clone(t).(*opendesignerv1.TextStyleDef)
+		}
+	}
+	// Comments: few, deep-cloned.
+	if len(d.GetComments()) > 0 {
+		next.Comments = make(map[string]*opendesignerv1.Comment, len(d.GetComments()))
+		for k, c := range d.GetComments() {
+			next.Comments[k] = proto.Clone(c).(*opendesignerv1.Comment)
+		}
+	}
+	// Component sets: few, deep-cloned.
+	if len(d.GetComponentSets()) > 0 {
+		next.ComponentSets = make(map[string]*opendesignerv1.ComponentSet, len(d.GetComponentSets()))
+		for k, c := range d.GetComponentSets() {
+			next.ComponentSets[k] = proto.Clone(c).(*opendesignerv1.ComponentSet)
 		}
 	}
 	if len(d.GetComponents()) > 0 {

@@ -1,8 +1,13 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import type { NodeLite } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
+import { applyOp } from "./applyOp";
+import { isValidCollection, isValidVariable } from "./variables";
+import { isValidFont, isValidTextStyleDef } from "./typography";
+import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
@@ -79,6 +84,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         ...sub.map((n) => createNodeOp(op.docId, toPbNode(n))),
         ...restoreFlowsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
         ...restoreClipsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
+        ...restoreComponentDefsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
       ];
     }
     // Symmetric to itself: puts the node back where it was, with the order key it
@@ -111,13 +117,14 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // sooner or later make diverge) applyOp. Bonus: if the mask contains an
       // unsupported path, the direct op is rejected as a whole and the inverse
       // too, so the round-trip remains the identity in that case as well.
-      return [create(OpSchema, {
+      const inverse = create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: {
           case: "setProps",
           value: { id, patch: toPbNode(prev), mask: { paths: [...(mask?.paths ?? [])] } },
         },
-      })];
+      });
+      return [inverse, ...restoreResizedDescendants(scene, op, prev)];
     }
     case "setText": {
       // Same shape as the inverse of setProps: the PREVIOUS values, not the
@@ -337,9 +344,218 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       if (!prev) return null;
       return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setClip", value: { clip: toPbClip(prev) } } })];
     }
+    // --- variables ----------------------------------------------------------
+    // Absolute upserts, like clips: the inverse is the PREVIOUS state. The
+    // cascades (removed modes, deleted variables/collections) are undone by
+    // restoring what they took: values, bindings and mode pins.
+    case "setCollection": {
+      const c = op.kind.value.collection;
+      if (!isValidCollection(c)) return null;
+      const prev = scene.collections[c.id];
+      if (!prev) return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "deleteCollection", value: { id: c.id } } })];
+      const keep = new Set(c.modes.map((m) => m.id));
+      const lost = (m: string) => !keep.has(m);
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setCollection", value: { collection: toPbCollection(prev) } } }),
+        // The variables that had values for the removed modes get them back...
+        ...Object.values(scene.variables).sort(byId)
+          .filter((v) => v.collectionId === c.id && Object.keys(v.values).some(lost))
+          .map((v) => setVariableOp(op.docId, toPbVariable(v))),
+        // ...and so do the nodes pinned to a removed mode.
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.modes?.[c.id] !== undefined && lost(n.modes[c.id]), ["modes"]),
+      ];
+    }
+    case "deleteCollection": {
+      const { id } = op.kind.value;
+      const prev = scene.collections[id];
+      if (!prev) return null;
+      const vars = Object.values(scene.variables).filter((v) => v.collectionId === id).sort(byId);
+      const gone = new Set(vars.map((v) => v.id));
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setCollection", value: { collection: toPbCollection(prev) } } }),
+        ...vars.map((v) => setVariableOp(op.docId, toPbVariable(v))),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => bindsAny(n, gone), ["bindings"]),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.modes?.[id] !== undefined, ["modes"]),
+      ];
+    }
+    case "setVariable": {
+      const v = op.kind.value.variable;
+      if (!isValidVariable(scene, v)) return null;
+      const prev = scene.variables[v.id];
+      return [prev
+        ? setVariableOp(op.docId, toPbVariable(prev))
+        : create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "deleteVariable", value: { id: v.id } } })];
+    }
+    case "deleteVariable": {
+      const { id } = op.kind.value;
+      const prev = scene.variables[id];
+      if (!prev) return null;
+      return [
+        setVariableOp(op.docId, toPbVariable(prev)),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => bindsAny(n, new Set([id])), ["bindings"]),
+      ];
+    }
+    // --- component variants and properties ---------------------------------
+    // Absolute upserts: the inverse is the PREVIOUS set / definition / props. The
+    // cascades (members detached by a set change or delete) are restored after the set.
+    case "setComponentSet": {
+      const set = op.kind.value.componentSet;
+      if (!isValidComponentSet(set)) return null;
+      const prev = scene.componentSets[set.id];
+      if (!prev) return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "deleteComponentSet", value: { id: set.id } } })];
+      const next = { ...scene, componentSets: { ...scene.componentSets, [set.id]: { id: set.id, name: set.name, axes: set.axes.map((a) => ({ name: a.name, options: [...a.options] })) } } };
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentSet", value: { componentSet: toPbComponentSet(prev) } } }),
+        ...Object.entries(scene.components)
+          .filter(([, c]) => c.setId === set.id && !assignmentValid(next.componentSets[set.id], c.variant))
+          .sort(([a], [b]) => (a < b ? -1 : 1))
+          .map(([id]) => componentDefOp(scene, op.docId, id)),
+      ];
+    }
+    case "deleteComponentSet": {
+      const { id } = op.kind.value;
+      const prev = scene.componentSets[id];
+      if (!prev) return null;
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentSet", value: { componentSet: toPbComponentSet(prev) } } }),
+        ...Object.entries(scene.components).filter(([, c]) => c.setId === id).sort(([a], [b]) => (a < b ? -1 : 1))
+          .map(([cid]) => componentDefOp(scene, op.docId, cid)),
+      ];
+    }
+    case "setComponentDef": {
+      const d = op.kind.value;
+      if (!isValidComponentDef(scene, d)) return null;
+      return [componentDefOp(scene, op.docId, d.componentId)];
+    }
+    case "setInstanceProps": {
+      const { instanceId, propertyValues, variantProps } = op.kind.value;
+      const cur = scene.nodes.at(instanceId);
+      if (!cur || cur.kind !== "instance" || !cur.instance) return null;
+      if (!isValidInstanceProps(scene, cur.instance, propertyValues, variantProps)) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setInstanceProps", value: {
+          instanceId, propertyValues: { ...(cur.instance.propertyValues ?? {}) }, variantProps: { ...(cur.instance.variantProps ?? {}) },
+        } },
+      })];
+    }
+    // --- typography ---------------------------------------------------------
+    // Absolute upserts: the inverse is the PREVIOUS font / style (or a delete if
+    // the op created it). Deleting a style also cleared it on the nodes that used
+    // it: they get it back after the style itself.
+    case "setFont": {
+      const f = op.kind.value.font;
+      if (!isValidFont(scene, f)) return null;
+      const prev = scene.fonts[f.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev ? { case: "setFont", value: { font: toPbFont(prev) } } : { case: "deleteFont", value: { id: f.id } },
+      })];
+    }
+    case "deleteFont": {
+      const prev = scene.fonts[op.kind.value.id];
+      if (!prev) return null;
+      return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setFont", value: { font: toPbFont(prev) } } })];
+    }
+    case "setTextStyleDef": {
+      const d = op.kind.value.textStyle;
+      if (!isValidTextStyleDef(d)) return null;
+      const prev = scene.textStyles[d.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(prev) } }
+          : { case: "deleteTextStyleDef", value: { id: d.id } },
+      })];
+    }
+    case "deleteTextStyleDef": {
+      const { id } = op.kind.value;
+      const prev = scene.textStyles[id];
+      if (!prev) return null;
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(prev) } } }),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.textStyleId === id, ["text_style_id"]),
+      ];
+    }
     default:
       return null;
   }
+}
+
+// Resizing a frame moves and resizes its children by their constraints, and putting the frame
+// back to its old size would apply the constraints backwards: exact for most modes but not
+// for the clamped (stretch below zero) or the scaled (rounding). So the inverse also writes
+// back, EXACTLY, every descendant the op changed -- parents first, so a restored frame's
+// own cascade is overwritten by its children's restores that follow.
+function restoreResizedDescendants(scene: SceneState, op: Op, prev: NodeLite): Op[] {
+  if (op.kind.case !== "setProps" || prev.kind !== "frame") return [];
+  const paths = op.kind.value.mask?.paths ?? [];
+  if (!paths.includes("width") && !paths.includes("height")) return [];
+  const after = applyOp(scene, op);
+  if (after === scene) return [];
+  const changed = subtreeOf(scene, prev.id)
+    .filter((n) => n.id !== prev.id)
+    .filter((n) => {
+      const a = after.nodes.at(n.id);
+      return a && (a.x !== n.x || a.y !== n.y || a.width !== n.width || a.height !== n.height);
+    });
+  const depth = (n: NodeLite) => {
+    let d = 0;
+    for (let cur: NodeLite | undefined = n; cur && cur.id !== prev.id && d < 10000; cur = scene.nodes.at(cur.parentId)) d++;
+    return d;
+  };
+  return changed.sort((a, b) => depth(a) - depth(b) || (a.id < b.id ? -1 : 1)).map((n) =>
+    create(OpSchema, {
+      opId: newOpId(), docId: op.docId,
+      kind: { case: "setProps", value: { id: n.id, patch: toPbNode(n), mask: { paths: ["x", "y", "width", "height"] } } },
+    }));
+}
+
+// A setComponentDef writing the component's CURRENT set membership, variant and properties.
+function componentDefOp(scene: SceneState, docId: string, componentId: string): Op {
+  const c = scene.components[componentId];
+  return create(OpSchema, {
+    opId: newOpId(), docId,
+    kind: { case: "setComponentDef", value: {
+      componentId, setId: c?.setId ?? "", variant: { ...(c?.variant ?? {}) },
+      properties: (c?.properties ?? []).map(toPbComponentProperty),
+    } },
+  });
+}
+
+// After RE-CREATING the deleted nodes, puts back the property targets the cascade had
+// taken (core.cascadeComponentTargets): the whole definition of every component that
+// had a target in the deleted subtree, as it was in the pre-apply scene. It goes AFTER
+// the createNodes: the targets must exist.
+function restoreComponentDefsOps(scene: SceneState, docId: string, gone: ReadonlySet<string>): Op[] {
+  return Object.entries(scene.components)
+    .filter(([, c]) => c.properties?.some((p) => p.targetNodeIds.some((t) => gone.has(t))))
+    .sort(([a], [b]) => (a < b ? -1 : 1))
+    .map(([id]) => componentDefOp(scene, docId, id));
+}
+
+function setVariableOp(docId: string, variable: ReturnType<typeof toPbVariable>): Op {
+  return create(OpSchema, { opId: newOpId(), docId, kind: { case: "setVariable", value: { variable } } });
+}
+
+const bindsAny = (n: { bindings?: Record<string, string> }, vars: ReadonlySet<string>) =>
+  !!n.bindings && Object.values(n.bindings).some((id) => vars.has(id));
+
+// A setProps per node the cascade rewrote, writing back the PRE-cascade maps
+// (the mask replaces the whole map). They go AFTER the variables/collections
+// they point to are restored: bindings and pins are validated against them.
+function restoreNodeMapsOps(
+  scene: SceneState, docId: string, hit: (n: SceneState["nodes"] extends { values(): IterableIterator<infer N> } ? N : never) => boolean,
+  paths: string[],
+): Op[] {
+  const ops: Op[] = [];
+  for (const n of [...scene.nodes.values()].filter(hit).sort(byId)) {
+    ops.push(create(OpSchema, {
+      opId: newOpId(), docId,
+      kind: { case: "setProps", value: { id: n.id, patch: toPbNode(n), mask: { paths } } },
+    }));
+  }
+  return ops;
 }
 
 const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);

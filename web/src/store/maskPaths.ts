@@ -81,6 +81,26 @@ export const MASK_PATHS = [
   // Free-form node metadata (flow.kind, code.route, test.id, ...). Like lists,
   // the mask REPLACES the whole map. Single-word.
   "meta",
+  // Variable bindings (property -> variableId) and per-collection mode pins.
+  // Like `meta`, the mask REPLACES the whole map, and an empty patch clears it.
+  // Validated against the document's variables/collections on both sides.
+  "bindings",
+  "modes",
+  // Shared text style: only a text node takes one, and it must exist (or be empty
+  // to detach). Multi-word like order_key: on the JSON wire it is "textStyleId".
+  "text_style_id",
+  // Constraints (how a node follows its parent frame's resize) and layout sizing (how an
+  // auto layout parent sizes it), per axis. The enums are closed: an out-of-range number is rejected.
+  "constraint_x",
+  "constraint_y",
+  "layout_sizing_x",
+  "layout_sizing_y",
+  // Blend mode against what is behind the node. Closed enum: out of range is rejected.
+  "blend_mode",
+  // Mask: the node is not drawn, its outline clips the siblings above it.
+  "is_mask",
+  // Layout grids of a frame (replaces the list; frames only).
+  "layout_grids",
 ] as const;
 
 // The ONLY type a mask path can have at an op's construction points

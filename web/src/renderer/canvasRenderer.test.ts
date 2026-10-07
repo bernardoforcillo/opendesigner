@@ -1,9 +1,10 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { hitTest, nodesIntersecting, resizeCanvasToDisplaySize, drawScene } from "./canvasRenderer";
+import { hitTest, nodesIntersecting, resizeCanvasToDisplaySize, drawScene, paintStyle, plainShape } from "./canvasRenderer";
 import type { CachedImage } from "./imageCache";
 import { VECTOR_STROKE_PX } from "./shapes";
 import type { Camera } from "../canvas/camera";
 import { emptyScene } from "../store/types";
+import { contentWorldBounds } from "../store/groups";
 import type { FillLite, NodeLite, SceneState, AnchorLite, SubPathLite } from "../store/types";
 
 function frameNode(id: string, parentId: string, x: number, y: number, w: number, h: number, clips: boolean, order = "a0"): NodeLite {
@@ -59,6 +60,18 @@ function vectorNode(id: string, subpaths: SubPathLite[], over: Partial<NodeLite>
 // px and a world unit coincide, and that is what the tests on shapes
 // whose target does not depend on the camera use.
 const Z1 = 1;
+
+describe("hitTest with masks", () => {
+  it("a node above a mask is only hit inside the mask, and the mask itself is never hit", () => {
+    const s = emptyScene("d", "n");
+    s.nodes = s.nodes.set("m", { ...rect("m", 0, 0, "a0"), isMask: true }); // 0..50
+    s.nodes = s.nodes.set("c", { ...rect("c", 0, 0, "a1"), width: 200, height: 200 }); // above the mask
+    s.nodes = s.nodes.set("under", { ...rect("under", 0, 0, "A"), width: 200, height: 200 }); // below the mask: not clipped
+    expect(hitTest(s, 25, 25, Z1)).toBe("c");
+    expect(hitTest(s, 100, 100, Z1)).toBe("under"); // outside the mask the clipped node is not there
+    expect(hitTest(s, 300, 300, Z1)).toBeNull();
+  });
+});
 
 describe("hitTest", () => {
   it("returns the topmost node under the point", () => {
@@ -1353,5 +1366,150 @@ describe("instance cycle guard", () => {
     expect(() => drawScene(f.ctx, s, identityCam)).not.toThrow();
     expect(hitTest(s, 10, 10, Z1)).toBeNull();
     expect(nodesIntersecting(s, { x: 0, y: 0, width: 100, height: 100 })).toEqual([]);
+  });
+});
+
+// VARIANTS AND PROPERTIES: an instance renders the variant it has chosen, a text property
+// sets the content of its text target, and a false boolean property hides its target --
+// in drawing, hit-test and bounds alike (see-vs-select).
+describe("an instance with variants and properties", () => {
+  // The masters hold rectangles, which need Path2D (jsdom has none).
+  beforeEach(() => { vi.stubGlobal("Path2D", FakePath2D); });
+  afterEach(() => { vi.unstubAllGlobals(); });
+  // Two masters outside page1: "Button" (default) and "Button hover", in the set "s"
+  // (axis State), both with a text property Label and a boolean ShowIcon.
+  function variants(): SceneState {
+    const s = emptyScene("d", "n");
+    const root = (id: string): NodeLite => ({ ...rect(id, 0, 0, "a0"), kind: "group", parentId: "components", width: 0, height: 0 });
+    s.nodes = s.nodes
+      .set("m1", root("m1")).set("l1", textAt("l1", "m1", 0, 0, "a0")).set("i1", { ...rect("i1", 300, 0, "a1"), parentId: "m1" })
+      .set("m2", root("m2")).set("l2", textAt("l2", "m2", 0, 0, "a0")).set("i2", { ...rect("i2", 300, 0, "a1"), parentId: "m2" });
+    s.componentSets = { s: { id: "s", name: "Button", axes: [{ name: "State", options: ["default", "hover"] }] } };
+    const props = (label: string, icon: string) => [
+      { name: "Label", type: "text" as const, defaultValue: "Button", targetNodeIds: [label] },
+      { name: "ShowIcon", type: "boolean" as const, defaultValue: "true", targetNodeIds: [icon] },
+    ];
+    s.components = {
+      c1: { rootNodeId: "m1", name: "Button", setId: "s", variant: { State: "default" }, properties: props("l1", "i1") },
+      c2: { rootNodeId: "m2", name: "Button hover", setId: "s", variant: { State: "hover" }, properties: props("l2", "i2") },
+    };
+    return s;
+  }
+  const withInstance = (s: SceneState, instance: Partial<NonNullable<NodeLite["instance"]>>) => {
+    s.nodes = s.nodes.set("i", { ...instanceNode("i", "c1", 0, 0), instance: { componentId: "c1", overrides: [], ...instance } });
+    return s;
+  };
+
+  it("draws the master of the chosen variant", () => {
+    const f = fakeCtx();
+    drawScene(f.ctx, withInstance(variants(), {}), identityCam);
+    expect(f.fillText.map((c) => c.text)).toEqual(["Button"]);
+    const g = fakeCtx();
+    // The label is the property's text, so both variants draw "Button"; tell them apart by the box.
+    const s = withInstance(variants(), { variantProps: { State: "hover" } });
+    s.nodes = s.nodes.set("l2", { ...s.nodes.at("l2"), x: 7 });
+    drawScene(g.ctx, s, identityCam);
+    expect(g.fillText[0].x).toBe(7);
+  });
+
+  it("a text property sets the content of the master's text node, by property name across variants", () => {
+    const f = fakeCtx();
+    drawScene(f.ctx, withInstance(variants(), { propertyValues: { Label: "Save" }, variantProps: { State: "hover" } }), identityCam);
+    expect(f.fillText.map((c) => c.text)).toEqual(["Save"]);
+  });
+
+  it("an explicit override wins over the property", () => {
+    const f = fakeCtx();
+    drawScene(f.ctx, withInstance(variants(), { propertyValues: { Label: "Save" }, overrides: [{ masterNodeId: "l1", text: "Explicit" }] }), identityCam);
+    expect(f.fillText.map((c) => c.text)).toEqual(["Explicit"]);
+  });
+
+  it("a false boolean property hides its target: not drawn, not hit, not in the bounds", () => {
+    const shown = withInstance(variants(), {});
+    const hidden = withInstance(variants(), { propertyValues: { ShowIcon: "false" } });
+    // The icon is a 50x50 rect at (300,0) in the master, clear of the 200x40 label at (0,0).
+    const a = fillStyleCtx();
+    drawScene(a.ctx, shown, identityCam);
+    const b = fillStyleCtx();
+    drawScene(b.ctx, hidden, identityCam);
+    expect(a.fills.length - b.fills.length).toBe(1);
+    expect(hitTest(shown, 320, 20, Z1)).toBe("i");
+    expect(hitTest(hidden, 320, 20, Z1)).toBeNull();
+    expect(nodesIntersecting(shown, { x: 330, y: 10, width: 10, height: 10 })).toEqual(["i"]);
+    expect(nodesIntersecting(hidden, { x: 330, y: 10, width: 10, height: 10 })).toEqual([]);
+    expect(contentWorldBounds(shown, shown.nodes.at("i"))!.width).toBe(350);
+    expect(contentWorldBounds(hidden, hidden.nodes.at("i"))!.width).toBe(200);
+  });
+
+  it("an invalid stored value falls back to the default instead of hiding", () => {
+    const f = fakeCtx();
+    drawScene(f.ctx, withInstance(variants(), { propertyValues: { ShowIcon: "perhaps", Label: "x".repeat(2000) } }), identityCam);
+    expect(f.fillText.map((c) => c.text)).toEqual(["Button"]);
+  });
+});
+
+describe("mesh paints", () => {
+  it("fall back to the average color where no canvas can be made", () => {
+    const mesh = { rows: 2, cols: 2, colors: [{ r: 1, g: 0, b: 0, a: 1 }, { r: 1, g: 0, b: 0, a: 1 }, { r: 0, g: 0, b: 1, a: 1 }, { r: 0, g: 0, b: 1, a: 1 }] };
+    const fill = { r: 0.5, g: 0, b: 0.5, a: 1, mesh };
+    const n = { id: "n", x: 0, y: 0, width: 10, height: 10 } as NodeLite;
+    expect(paintStyle({} as CanvasRenderingContext2D, fill, n)).toBe("rgba(128, 0, 128, 1)");
+  });
+});
+
+// THE FAST PATH for small plain shapes: one fillRect (or one ellipse) instead of the general path.
+describe("drawScene: the fast path for small plain shapes", () => {
+  // jsdom has no Path2D: the general path (which these tests contrast with) needs one.
+  beforeEach(() => { (globalThis as { Path2D?: unknown }).Path2D = class { rect() {} ellipse() {} roundRect() {} addPath() {} moveTo() {} lineTo() {} closePath() {} }; });
+  afterEach(() => { delete (globalThis as { Path2D?: unknown }).Path2D; });
+
+  const box = (over: Partial<NodeLite>): NodeLite => ({
+    id: "s", parentId: "page1", orderKey: "a", name: "s", visible: true, opacity: 0.5, x: 3, y: 4, width: 20, height: 10, rotation: 0,
+    fills: [{ r: 1, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false, ...over,
+  });
+  const run = (n: NodeLite, zoom = 1) => {
+    const calls: string[] = [];
+    const rects: number[][] = [];
+    const seen = { style: "", alpha: -1 };
+    const ctx = {
+      canvas: { width: 800, height: 600 }, fillStyle: "", globalAlpha: 1,
+      setTransform: () => {}, clearRect: () => {}, save: () => calls.push("save"), restore: () => {}, transform: () => {},
+      getTransform: () => ({ a: 1 }), translate: () => {}, rotate: () => {}, scale: () => {},
+      fillRect: function (this: { fillStyle: string; globalAlpha: number }, ...a: number[]) { calls.push("fillRect"); rects.push(a); seen.style = this.fillStyle; seen.alpha = this.globalAlpha; },
+      beginPath: () => calls.push("beginPath"), ellipse: () => calls.push("ellipse"), fill: () => calls.push("fill"),
+    } as unknown as CanvasRenderingContext2D;
+    // Anything else the general path calls (stroke, clip, setLineDash...) is a no-op.
+    const loose = new Proxy(ctx as object, { get: (t, k) => (k in t ? (t as Record<string | symbol, unknown>)[k] : () => {}), set: (t, k, v) => { (t as Record<string | symbol, unknown>)[k] = v; return true; } }) as unknown as CanvasRenderingContext2D;
+    const s = emptyScene("d", "t");
+    s.nodes = s.nodes.set("s", n);
+    drawScene(loose, s, { x: 0, y: 0, zoom } as Camera);
+    return { calls, rects, seen };
+  };
+
+  it("a small sharp rectangle is one fillRect with its color and opacity", () => {
+    const r = run(box({}));
+    expect(r.calls).toEqual(["fillRect"]);
+    expect(r.rects).toEqual([[3, 4, 20, 10]]);
+    expect(r.seen).toEqual({ style: "rgba(255, 0, 0, 1)", alpha: 0.5 });
+  });
+
+  it("a small ellipse is one path fill, and a frame with no fill draws nothing", () => {
+    expect(run(box({ kind: "ellipse" })).calls).toEqual(["beginPath", "ellipse", "fill"]);
+    expect(run(box({ kind: "frame", fills: [] })).calls).toEqual([]);
+  });
+
+  it("corners under a pixel and a half count as sharp; bigger ones, strokes, effects and rotation do not", () => {
+    expect(run(box({ cornerRadius: 1 }), 1).calls).toEqual(["fillRect"]);
+    expect(run(box({ cornerRadius: 6 }), 1).calls).not.toEqual(["fillRect"]);
+    expect(run(box({ strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 1, align: "center" }] })).calls).not.toEqual(["fillRect"]);
+  });
+
+  it("plainShape: gradients, blends, effects and animations are never plain", () => {
+    expect(plainShape(box({}), 1)).toBe("box");
+    expect(plainShape(box({ fills: [{ r: 0, g: 0, b: 0, a: 1, gradient: { kind: "linear", stops: [], x1: 0, y1: 0, x2: 1, y2: 1 } }] }), 1)).toBeNull();
+    expect(plainShape(box({ blendMode: "multiply" }), 1)).toBeNull();
+    expect(plainShape(box({ effects: [{ kind: "layerBlur", radius: 2 }] }), 1)).toBeNull();
+    expect(plainShape(box({ rotation: 15 }), 1)).toBeNull();
+    expect(plainShape(box({ kind: "text" }), 1)).toBeNull();
   });
 });

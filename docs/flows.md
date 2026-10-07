@@ -195,3 +195,18 @@ A "Purchase" flow: Home -> Login -> Cart -> Payment -> Thanks.
 5. `opendesigner flow coverage -doc Shop -repo . -min 80` says which screens
    are missing in the code and which edges have no test; `opendesigner flow tasks -doc
    Shop` turns that into a checklist to paste into an issue.
+
+## Transition animations in the player
+
+A transition can animate how the player (**Present**) goes from its source screen to its destination:
+
+| Field | Meaning |
+|---|---|
+| `animation` | `""` (a cut), `dissolve`, `slide-left` / `slide-right` / `slide-up` / `slide-down` (the new screen comes in over the old one, from the right / left / bottom / top), `push-left|right|up|down` (both move), `smart` |
+| `duration_ms` | 0..10000; 0 means the default, 300 ms |
+| `easing` | the animation grammar: `linear`, `easeIn`, `easeOut`, `easeInOut` (default), `spring` or `cubic-bezier(x1,y1,x2,y2)` |
+| `delay_ms` | for `trigger: auto`: the player follows the transition by itself after this long on the screen (0..60000) |
+
+**Smart animate** matches nodes of the two screens by name along the same path (`card` inside `A` with `card` inside `B`; several nodes with the same name match in order). Matched nodes move, resize, turn, fade and change fill color from the source's values to the destination's; nodes only in the destination fade in and nodes only in the source fade out in place.
+
+The values are validated by the core (an unknown animation, a duration or delay out of range or a bad easing rejects the op; golden fixture `testdata/golden/transition_anim.json`). They are edited in the Flows panel (transition editor) or with the MCP tool `set_transition` (`animation`, `durationMs`, `easing`, `delayMs`). Exported code does not animate screen changes.

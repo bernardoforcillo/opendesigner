@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import {
-  connectOps, createFlowOp, deleteFlowOp, deleteTransitionOp, editTransitionOp, nextFlowName, renameFlowOp,
+  connectOps, createFlowOp, deleteFlowOp, deleteTransitionOp, editTransitionAnimationOp, editTransitionOp, nextFlowName, renameFlowOp,
   setMetaOp, setStartOp, submit,
 } from "./commands";
 import { baseScene, flowOf, frame, transition, withFlows } from "./testSupport";
@@ -122,6 +122,18 @@ describe("operations on flows and transitions", () => {
     expect(editTransitionOp(t, "label", "Vai")).toBeNull();
     const op = editTransitionOp(t, "guard", "x=1")!;
     expect((op.kind.value as unknown as { transition: Record<string, string> }).transition).toMatchObject({ id: "t1", label: "Vai", guard: "x=1", toId: "B" });
+  });
+
+  it("editTransitionAnimationOp: sets, clamps, clears with the empty value, and skips no-ops", () => {
+    const tr = (op: ReturnType<typeof editTransitionAnimationOp>) =>
+      (op!.kind.value as unknown as { transition: Record<string, unknown> }).transition;
+    expect(editTransitionAnimationOp(t, { animation: "" })).toBeNull();
+    expect(tr(editTransitionAnimationOp(t, { animation: "smart", durationMs: 99999.4, delayMs: -5, easing: "linear" }))).toMatchObject({
+      animation: "smart", durationMs: 10000, easing: "linear", delayMs: 0,
+    });
+    const withAnim = { ...t, animation: "dissolve", durationMs: 200 };
+    expect(editTransitionAnimationOp(withAnim, { durationMs: 200 })).toBeNull();
+    expect(tr(editTransitionAnimationOp(withAnim, { animation: "" }))).toMatchObject({ animation: "" });
   });
 
   it("createFlowOp / deleteFlowOp / deleteTransitionOp", () => {

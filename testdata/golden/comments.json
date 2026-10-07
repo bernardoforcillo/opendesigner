@@ -1,0 +1,267 @@
+{
+ "_comment": [
+  "Comments: a root pinned to a node, a free root, a reply, an edit; the invalid ones (empty or long text, unknown node or page, nested reply, positioned reply, changing thread, node and page together, unknown delete) are rejected and leave the scene unchanged. Deleting a root takes its replies along; deleting the node leaves its comments (orphans). Run from BOTH sides."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "comments": {
+   "c1": {
+    "id": "c1",
+    "nodeId": "R",
+    "x": 10,
+    "y": 5,
+    "author": "Ada",
+    "text": "Check the radius again",
+    "createdAt": "1700000000",
+    "resolved": true
+   },
+   "c3": {
+    "id": "c3",
+    "parentId": "c1",
+    "author": "Bo",
+    "text": "Done",
+    "createdAt": "1700000200"
+   }
+  }
+ },
+ "ops": [
+  {
+   "opId": "o0",
+   "docId": "doc1",
+   "createNode": {
+    "node": {
+     "id": "R",
+     "parentId": "page1",
+     "orderKey": "a1",
+     "name": "R",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {}
+    }
+   }
+  },
+  {
+   "opId": "o1",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "c1",
+     "nodeId": "R",
+     "x": 10,
+     "y": 5,
+     "author": "Ada",
+     "text": "Check the radius",
+     "createdAt": "1700000000"
+    }
+   }
+  },
+  {
+   "opId": "o2",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "c2",
+     "pageId": "page1",
+     "x": 300,
+     "y": -40,
+     "author": "Bo",
+     "text": "Move this up",
+     "createdAt": "1700000100"
+    }
+   }
+  },
+  {
+   "opId": "o3",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "c3",
+     "parentId": "c1",
+     "author": "Bo",
+     "text": "Done",
+     "createdAt": "1700000200"
+    }
+   }
+  },
+  {
+   "opId": "o4",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "c1",
+     "nodeId": "R",
+     "x": 10,
+     "y": 5,
+     "author": "Ada",
+     "text": "Check the radius again",
+     "createdAt": "1700000000",
+     "resolved": true
+    }
+   }
+  },
+  {
+   "opId": "o5",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "bad1",
+     "nodeId": "R",
+     "x": 10,
+     "y": 5,
+     "author": "Ada",
+     "text": "",
+     "createdAt": "1700000000"
+    }
+   }
+  },
+  {
+   "opId": "o6",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "bad2",
+     "nodeId": "ghost",
+     "x": 10,
+     "y": 5,
+     "author": "Ada",
+     "text": "Check the radius",
+     "createdAt": "1700000000"
+    }
+   }
+  },
+  {
+   "opId": "o7",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "bad3",
+     "pageId": "nope",
+     "x": 300,
+     "y": -40,
+     "author": "Bo",
+     "text": "Move this up",
+     "createdAt": "1700000100"
+    }
+   }
+  },
+  {
+   "opId": "o8",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "bad4",
+     "parentId": "c3",
+     "author": "Bo",
+     "text": "Done",
+     "createdAt": "1700000200"
+    }
+   }
+  },
+  {
+   "opId": "o9",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "bad5",
+     "parentId": "c1",
+     "author": "Bo",
+     "text": "Done",
+     "createdAt": "1700000200",
+     "x": 4
+    }
+   }
+  },
+  {
+   "opId": "o10",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "c1",
+     "nodeId": "R",
+     "x": 10,
+     "y": 5,
+     "author": "Ada",
+     "text": "Check the radius",
+     "createdAt": "1700000000",
+     "parentId": "c2"
+    }
+   }
+  },
+  {
+   "opId": "o11",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "bad6",
+     "nodeId": "R",
+     "x": 10,
+     "y": 5,
+     "author": "Ada",
+     "text": "Check the radius",
+     "createdAt": "1700000000",
+     "pageId": "page1"
+    }
+   }
+  },
+  {
+   "opId": "o12",
+   "docId": "doc1",
+   "setComment": {
+    "comment": {
+     "id": "c4",
+     "nodeId": "R",
+     "x": 10,
+     "y": 5,
+     "author": "Ada",
+     "text": "xxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxxx",
+     "createdAt": "1700000000"
+    }
+   }
+  },
+  {
+   "opId": "o13",
+   "docId": "doc1",
+   "deleteComment": {
+    "id": "ghost"
+   }
+  },
+  {
+   "opId": "o14",
+   "docId": "doc1",
+   "deleteComment": {
+    "id": "c2"
+   }
+  },
+  {
+   "opId": "o15",
+   "docId": "doc1",
+   "deleteNode": {
+    "id": "R"
+   }
+  }
+ ],
+ "rejected": [
+  5,
+  6,
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13
+ ]
+}

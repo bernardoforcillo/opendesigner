@@ -44,6 +44,7 @@ function fakeCanvas(): { canvas: HTMLCanvasElement; rec: Recorded } {
     measureText: (s: string) => ({ width: s.length * 10 }),
     fillText: (t: string) => { rec.texts.push(t); },
     fill: () => { rec.fills++; },
+    fillRect: () => { rec.fills++; }, // small plain shapes take the fast path (one fillRect)
   } as unknown as CanvasRenderingContext2D;
   return { canvas, rec };
 }

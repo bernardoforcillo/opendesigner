@@ -3,7 +3,8 @@ import { type Camera, worldToScreen } from "../canvas/camera";
 import { type Bounds, unionBounds, worldBoundsToScreen } from "../canvas/geometry";
 import { contentWorldBounds, isGroup } from "../store/groups";
 import { isInstance } from "../store/instances";
-import { worldBoundsOfNode } from "../canvas/transform";
+import { applyTransform, worldBoundsOfNode, worldTransformOf } from "../canvas/transform";
+import { gridBands, gridLines } from "../store/layoutGrids";
 import type { SnapGuide } from "../selection/snap";
 import {
   CORNER_IDS,
@@ -293,6 +294,62 @@ export function selectionFrame(state: SceneState, selection: string[]): Selectio
 // last and OUTSIDE any frame rotation: a guide is by
 // definition a line of the screen -- it is the line on which the edges coincide
 // -- and rotating it with the node would make it just any line.
+// The layout grids of every frame that has them, drawn under the selection. They are editor
+// guides: nothing here is exported. Coordinates are the frame's own, taken to the screen
+// through its world transform, so a frame inside a rotated parent shows its grid turned too.
+function drawLayoutGrids(ctx: CanvasRenderingContext2D, state: SceneState, cam: Camera): void {
+  const dpr = devicePixelRatio();
+  const viewW = ctx.canvas.width / dpr;
+  const viewH = ctx.canvas.height / dpr;
+  for (const n of state.nodes.values()) {
+    if (n.kind !== "frame" || !n.visible || !n.layoutGrids || n.layoutGrids.length === 0) continue;
+    const t = worldTransformOf(state, n.id);
+    const px = (x: number, y: number) => {
+      const w = applyTransform(t, x, y);
+      return worldToScreen(cam, w.x, w.y);
+    };
+    const box = worldBoundsToScreen(worldBoundsOfNode(state, n), cam);
+    if (box.x > viewW || box.y > viewH || box.x + box.width < 0 || box.y + box.height < 0) continue;
+    const quad = (x0: number, y0: number, x1: number, y1: number) => {
+      const a = px(x0, y0), b = px(x1, y0), c = px(x1, y1), d = px(x0, y1);
+      ctx.beginPath();
+      ctx.moveTo(a.x, a.y);
+      ctx.lineTo(b.x, b.y);
+      ctx.lineTo(c.x, c.y);
+      ctx.lineTo(d.x, d.y);
+      ctx.closePath();
+    };
+    for (const g of n.layoutGrids) {
+      const css = `rgb(${Math.round(g.color.r * 255)} ${Math.round(g.color.g * 255)} ${Math.round(g.color.b * 255)} / ${g.color.a})`;
+      if (g.kind === "grid") {
+        // Lines closer than 4 screen px are noise: the grid is not drawn that small.
+        if (g.size * cam.zoom < 4) continue;
+        ctx.strokeStyle = css;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        for (const x of gridLines(g, n.width)) {
+          const a = px(x, 0), b = px(x, n.height);
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+        }
+        for (const y of gridLines(g, n.height)) {
+          const a = px(0, y), b = px(n.width, y);
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+        }
+        ctx.stroke();
+        continue;
+      }
+      ctx.fillStyle = css;
+      for (const band of gridBands(g, g.kind === "columns" ? n.width : n.height)) {
+        if (g.kind === "columns") quad(band.start, 0, band.end, n.height);
+        else quad(0, band.start, n.width, band.end);
+        ctx.fill();
+      }
+    }
+  }
+}
+
 export function drawOverlay(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -304,6 +361,8 @@ export function drawOverlay(
   // PREVIEW and not document: whoever is not drawing has none, and callers that
   // do not know the pen tool remain valid.
   pen: PenPreview | null = null,
+  // The Link tool's rubber band, also PREVIEW: a dashed line from the node it starts from.
+  link: { from: Bounds; x: number; y: number } | null = null,
 ): void {
   const { canvas } = ctx;
   const dpr = devicePixelRatio();
@@ -311,6 +370,8 @@ export function drawOverlay(
   ctx.clearRect(0, 0, canvas.width, canvas.height);
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const { accent: ACCENT, guide: SNAP_GUIDE_COLOR } = themeColors();
+
+  drawLayoutGrids(ctx, state, cam);
 
   const frame = selectionFrame(state, selection);
   if (frame) {
@@ -393,4 +454,62 @@ export function drawOverlay(
   // coexist -- the pen tool does not select until it has finished -- but when
   // it happens it is the drawing in progress that must stay legible).
   if (pen) drawPenPreview(ctx, cam, pen);
+  if (link) {
+    const a = worldToScreen(cam, link.from.x + link.from.width / 2, link.from.y + link.from.height / 2);
+    const b = worldToScreen(cam, link.x, link.y);
+    ctx.save();
+    ctx.lineWidth = 2;
+    ctx.strokeStyle = ACCENT;
+    ctx.setLineDash([6, 4]);
+    ctx.beginPath();
+    ctx.moveTo(a.x, a.y);
+    ctx.lineTo(b.x, b.y);
+    ctx.stroke();
+    ctx.restore();
+  }
+}
+
+const NODE_SIZE = 7;
+
+/**
+ * The node tool's view of the selected vector: every anchor as a small square (the selected one
+ * filled), the handles of the selected anchor as lines ending in dots. Drawn above everything else
+ * while the tool is active; the geometry is read from the node, never stored.
+ */
+export function drawNodeEdit(
+  ctx: CanvasRenderingContext2D, state: SceneState, cam: Camera, selection: readonly string[], sel: { sub: number; index: number } | null,
+): void {
+  if (selection.length !== 1) return;
+  const n = state.nodes.get(selection[0]);
+  if (!n || n.kind !== "vector" || !n.vector || n.rotation % 360 !== 0) return;
+  const dpr = devicePixelRatio();
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  const { accent } = themeColors();
+  const at = (x: number, y: number) => worldToScreen(cam, n.x + x, n.y + y);
+  ctx.lineWidth = 1;
+  n.vector.subpaths.forEach((sp, si) => {
+    sp.anchors.forEach((a, ai) => {
+      const p = at(a.x, a.y);
+      const selected = sel !== null && sel.sub === si && sel.index === ai;
+      if (selected) {
+        ctx.strokeStyle = accent;
+        ctx.fillStyle = accent;
+        for (const [hx, hy] of [[a.inX, a.inY], [a.outX, a.outY]] as const) {
+          if (hx === 0 && hy === 0) continue;
+          const h = at(a.x + hx, a.y + hy);
+          ctx.beginPath();
+          ctx.moveTo(p.x, p.y);
+          ctx.lineTo(h.x, h.y);
+          ctx.stroke();
+          ctx.beginPath();
+          ctx.arc(h.x, h.y, 3.5, 0, Math.PI * 2);
+          ctx.fill();
+        }
+      }
+      ctx.fillStyle = selected ? accent : "#ffffff";
+      ctx.strokeStyle = accent;
+      ctx.fillRect(p.x - NODE_SIZE / 2, p.y - NODE_SIZE / 2, NODE_SIZE, NODE_SIZE);
+      ctx.strokeRect(p.x - NODE_SIZE / 2 + 0.5, p.y - NODE_SIZE / 2 + 0.5, NODE_SIZE - 1, NODE_SIZE - 1);
+    });
+  });
 }

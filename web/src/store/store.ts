@@ -8,6 +8,12 @@ import { recordFinal, recordPreview } from "../animation/recordHook";
 import { isReachableFrom, subtreeOf } from "./tree";
 import type { PageLite, SceneState } from "./types";
 import type { PenPreview } from "./vectorGeometry";
+
+/** The node tool's state: the selected anchor (subpath, index). */
+export interface NodeEdit { sel: { sub: number; index: number } | null }
+
+/** The Link tool's rubber band: the box it starts from, the pointer (world), and the node under it. */
+export interface LinkPreview { from: { x: number; y: number; width: number; height: number }; x: number; y: number; targetId: string | null }
 import type { Camera } from "../canvas/camera";
 import type { Bounds } from "../canvas/geometry";
 import type { SnapGuide } from "../selection/snap";
@@ -1006,6 +1012,10 @@ interface SceneStore {
   // creation is one gesture and produces a single op -- so the path in progress
   // cannot go through `scene`, and the overlay is the only place where it can be seen.
   penPreview: PenPreview | null;
+  // The Link tool's rubber band (view state, like the marquee): from a node's box to the pointer.
+  linkPreview: LinkPreview | null;
+  // The node tool's state while it is the active tool (null otherwise): which anchor is selected.
+  nodeEdit: NodeEdit | null;
   // Transport to the server: null until SyncClient registers (isolated
   // tests, bootstrap not yet completed).
   sync: OpSink | null;
@@ -1066,6 +1076,10 @@ interface SceneStore {
   setSnapGuides: (g: SnapGuide[]) => void;
   setLayoutDrop: (d: LayoutDropPreview | null) => void;
   setPenPreview: (p: PenPreview | null) => void;
+  setLinkPreview: (p: LinkPreview | null) => void;
+  /** Turns the node tool's state on or off (the dock does it when the tool is chosen or left). */
+  enterNodeEdit: (on: boolean) => void;
+  setNodeEdit: (patch: Partial<NodeEdit>) => void;
   // Changes the displayed page. RESETS the selection (nodes of another
   // page do not stay selected) and is NOT an undo entry -- it is view
   // state, like moving the camera. No-op if the page is already the current one
@@ -1132,6 +1146,8 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   snapGuides: [],
   layoutDrop: null,
   penPreview: null,
+  linkPreview: null,
+  nodeEdit: null,
   sync: null,
   gesture: null,
   editingNodeId: null,
@@ -1596,6 +1612,9 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     set((st) => (g.length === 0 && st.snapGuides.length === 0 ? st : { snapGuides: g })),
   setLayoutDrop: (d) => set((st) => (d === null && st.layoutDrop === null ? st : { layoutDrop: d })),
   setPenPreview: (p) => set({ penPreview: p }),
+  setLinkPreview: (p) => set({ linkPreview: p }),
+  enterNodeEdit: (on) => set((st) => (on ? (st.nodeEdit ? st : { nodeEdit: { sel: null } }) : st.nodeEdit ? { nodeEdit: null } : st)),
+  setNodeEdit: (patch) => set((st) => (st.nodeEdit ? { nodeEdit: { ...st.nodeEdit, ...patch } } : st)),
 
   // Changes the displayed page. It is NOT an op and NOT an undo entry: it is
   // view state, like setCamera. Resets the selection (nodes of the other

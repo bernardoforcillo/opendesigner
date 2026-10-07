@@ -61,6 +61,15 @@ func applyDeleteFlow(doc *opendesignerv1.Document, d *opendesignerv1.DeleteFlow)
 	return nil
 }
 
+// TransitionAnimations is the closed set of Transition.animation (the empty string is a cut).
+var TransitionAnimations = []string{
+	"dissolve", "slide-left", "slide-right", "slide-up", "slide-down",
+	"push-left", "push-right", "push-up", "push-down", "smart",
+}
+
+// ValidTransitionAnimation: "" (a cut) or one of TransitionAnimations.
+func ValidTransitionAnimation(a string) bool { return a == "" || inSet(TransitionAnimations, a) }
+
 func applySetTransition(doc *opendesignerv1.Document, s *opendesignerv1.SetTransition) error {
 	t := s.GetTransition()
 	if t == nil || t.GetId() == "" {
@@ -76,6 +85,12 @@ func applySetTransition(doc *opendesignerv1.Document, s *opendesignerv1.SetTrans
 	}
 	if t.GetElementId() != "" && !nodeExists(doc, t.GetElementId()) {
 		return fmt.Errorf("%w: %s (transition %s element)", ErrNodeNotFound, t.GetElementId(), t.GetId())
+	}
+	if t.GetAnimation() != "" && !inSet(TransitionAnimations, t.GetAnimation()) {
+		return fmt.Errorf("%w: %q (transition %s)", ErrTransitionAnim, t.GetAnimation(), t.GetId())
+	}
+	if t.GetDurationMs() < 0 || t.GetDurationMs() > 10000 || t.GetDelayMs() < 0 || t.GetDelayMs() > 60000 || !ValidEasing(t.GetEasing()) {
+		return fmt.Errorf("%w: timing (transition %s)", ErrTransitionAnim, t.GetId())
 	}
 	if doc.Transitions == nil {
 		doc.Transitions = map[string]*opendesignerv1.Transition{}

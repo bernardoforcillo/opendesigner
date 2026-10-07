@@ -1,5 +1,5 @@
-import { useContext, type ReactNode } from "react";
-import { ColorField as AriaColorField, ColorFieldStateContext, Input, Label } from "react-aria-components";
+import type { ReactNode } from "react";
+import { ColorField as AriaColorField, Input, Label } from "react-aria-components";
 import type { Color } from "react-aria-components";
 import type { FillLite } from "../../store/types";
 import { Swatch } from "../ds/props-controls";
@@ -93,29 +93,14 @@ export interface ColorFieldProps {
   placeholder?: string;
 }
 
-// The field's <Input>, separated ONLY so that ColorFieldStateContext can be read:
-// the context is published by AriaColorField, so it must be consumed by a
-// descendant of it.
-//
-// It exists because react-aria-components commits the color only on BLUR
-// (useColorField: `onBlur: commit`, and no Enter handler anywhere
-// -- unlike NumberField, which handles Enter on its own). In a
-// properties panel that is the wrong behavior: you type a
-// color, press Enter and expect to see it applied, not to have to
-// leave the field. Without this line the typed color would stay in the field
-// and would never become an op.
+// The field's <Input>. Enter commits through react-aria's own handler
+// (useColorField, `Enter: commit`): an older release only committed on blur and
+// this component added its own Enter handler to cover it. Both fired on the newer
+// release -- two identical ops for every Enter -- so ours is gone.
 function HexInput({ placeholder }: { placeholder?: string }) {
-  const state = useContext(ColorFieldStateContext);
   return (
     <Input
       placeholder={placeholder}
-      onKeyDown={(e) => {
-        if (e.key !== "Enter") return;
-        // The field may sit inside a <form> (today it does not, but it is the
-        // reason this default exists): Enter must not submit it.
-        e.preventDefault();
-        state?.commit();
-      }}
       className="h-full w-full min-w-0 bg-transparent px-2 text-[13px] uppercase tabular-nums text-fg outline-none placeholder:normal-case placeholder:text-fg-subtle focus-visible:shadow-none"
     />
   );

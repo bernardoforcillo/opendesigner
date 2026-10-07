@@ -1,0 +1,195 @@
+{
+ "_comment": [
+  "Blend mode and the effect list (several drop shadows, inner shadow, background blur). Run from BOTH sides.",
+  "The last two ops are rejected (blend mode out of range, also inside a mixed mask): scene unchanged."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "R": {
+    "id": "R",
+    "parentId": "page1",
+    "orderKey": "a0",
+    "name": "R",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 100,
+    "height": 50,
+    "rect": {},
+    "blendMode": "BLEND_MODE_MULTIPLY",
+    "effects": [
+     {
+      "dropShadow": {
+       "color": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 0.5
+       },
+       "offsetX": 2,
+       "offsetY": 4,
+       "blur": 6
+      }
+     },
+     {
+      "innerShadow": {
+       "color": {
+        "r": 1,
+        "g": 1,
+        "b": 1,
+        "a": 1
+       },
+       "offsetX": 0,
+       "offsetY": 3,
+       "blur": 4
+      }
+     },
+     {
+      "backgroundBlur": {
+       "radius": 12
+      }
+     },
+     {
+      "dropShadow": {
+       "color": {
+        "r": 0,
+        "g": 0,
+        "b": 0,
+        "a": 0.5
+       },
+       "offsetX": 8,
+       "offsetY": 4,
+       "blur": 6
+      }
+     }
+    ]
+   }
+  },
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ]
+ },
+ "ops": [
+  {
+   "docId": "doc1",
+   "opId": "o0",
+   "createNode": {
+    "node": {
+     "id": "R",
+     "parentId": "page1",
+     "orderKey": "a0",
+     "name": "R",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 100,
+     "height": 50,
+     "rect": {}
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o1",
+   "setProps": {
+    "id": "R",
+    "mask": "blendMode",
+    "patch": {
+     "blendMode": "BLEND_MODE_MULTIPLY"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o2",
+   "setProps": {
+    "id": "R",
+    "mask": "effects",
+    "patch": {
+     "effects": [
+      {
+       "dropShadow": {
+        "color": {
+         "r": 0,
+         "g": 0,
+         "b": 0,
+         "a": 0.5
+        },
+        "offsetX": 2,
+        "offsetY": 4,
+        "blur": 6
+       }
+      },
+      {
+       "innerShadow": {
+        "color": {
+         "r": 1,
+         "g": 1,
+         "b": 1,
+         "a": 1
+        },
+        "offsetX": 0,
+        "offsetY": 3,
+        "blur": 4
+       }
+      },
+      {
+       "backgroundBlur": {
+        "radius": 12
+       }
+      },
+      {
+       "dropShadow": {
+        "color": {
+         "r": 0,
+         "g": 0,
+         "b": 0,
+         "a": 0.5
+        },
+        "offsetX": 8,
+        "offsetY": 4,
+        "blur": 6
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setProps": {
+    "id": "R",
+    "mask": "blendMode",
+    "patch": {
+     "blendMode": 99
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setProps": {
+    "id": "R",
+    "mask": "width,blendMode",
+    "patch": {
+     "width": 999,
+     "blendMode": 16
+    }
+   }
+  }
+ ],
+ "rejected": [
+  3,
+  4
+ ]
+}

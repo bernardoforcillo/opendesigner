@@ -4,6 +4,7 @@ import { useScene } from "../../store/store";
 import type { Progress, ReadinessItem } from "../../dev/readiness";
 import { Badge, Button, EmptyState, Icon, cls } from "../ds";
 import { DevIcon, type DevIconName } from "../ds/dev-parts";
+import { ReviewSection } from "./ReviewSection";
 import { applyFix, selectScreen, useReadiness } from "./useReadiness";
 
 // "READINESS" (left column of Develop): the checklist that says whether the
@@ -143,6 +144,7 @@ export function ReadinessPanel() {
             <ul className="pb-2">{rest.map((i) => <ItemRow key={i.id} item={i} />)}</ul>
           </section>
         )}
+        <ReviewSection />
       </div>
     </div>
   );

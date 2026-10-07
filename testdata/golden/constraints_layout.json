@@ -1,0 +1,1355 @@
+{
+ "_comment": [
+  "Constraints, layout sizing (fill), wrap and instances in auto layout. Run from BOTH sides:",
+  "internal/core/golden_test.go and web/src/store/golden.test.ts.",
+  "",
+  "F: a frame with a child for every constraint (min, max, stretch, center, scale, none), a nested",
+  "stretching frame whose child scales, and a vector that can only move, resized 200x100 -\u003e 300x150 -\u003e",
+  "150x150, then moved (no resize: nothing follows). AL: auto layout ignores constraints.",
+  "L: a horizontal auto layout where children FILL: they share the free main-axis space, a cross fill",
+  "child spans the inner height, a child frame with auto layout is laid out again with its new size;",
+  "then hugging the main axis turns fill back into fixed. W/V: WRAP in both directions with alignment",
+  "per line, cross spacing and hugging the cross axis. IL: an instance is laid out with its own box.",
+  "The last ops are rejected (out-of-range enums, also inside a mixed mask): scene unchanged."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "components": {
+   "c1": {
+    "name": "C",
+    "rootNodeId": "M"
+   }
+  },
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "AL": {
+    "frame": {
+     "autoLayout": {
+      "spacing": 4
+     }
+    },
+    "height": 50,
+    "id": "AL",
+    "name": "AL",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "page1",
+    "visible": true,
+    "width": 200,
+    "y": 200
+   },
+   "F": {
+    "frame": {},
+    "height": 150,
+    "id": "F",
+    "name": "F",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "page1",
+    "visible": true,
+    "width": 150,
+    "x": 40,
+    "y": 40
+   },
+   "IL": {
+    "frame": {
+     "autoLayout": {
+      "spacing": 5
+     }
+    },
+    "height": 50,
+    "id": "IL",
+    "name": "IL",
+    "opacity": 1,
+    "orderKey": "a7",
+    "parentId": "page1",
+    "visible": true,
+    "width": 200,
+    "y": 700
+   },
+   "L": {
+    "frame": {
+     "autoLayout": {
+      "hugWidth": true,
+      "paddingBottom": 10,
+      "paddingLeft": 10,
+      "paddingRight": 10,
+      "paddingTop": 10,
+      "spacing": 10
+     }
+    },
+    "height": 100,
+    "id": "L",
+    "name": "L",
+    "opacity": 1,
+    "orderKey": "a3",
+    "parentId": "page1",
+    "visible": true,
+    "width": 400,
+    "y": 300
+   },
+   "M": {
+    "frame": {},
+    "height": 10,
+    "id": "M",
+    "name": "M",
+    "opacity": 1,
+    "orderKey": "a6",
+    "parentId": "page1",
+    "visible": true,
+    "width": 10,
+    "x": 900
+   },
+   "V": {
+    "frame": {
+     "autoLayout": {
+      "crossSpacing": 6,
+      "direction": "LAYOUT_DIRECTION_VERTICAL",
+      "hugWidth": true,
+      "spacing": 4,
+      "wrap": true
+     }
+    },
+    "height": 50,
+    "id": "V",
+    "name": "V",
+    "opacity": 1,
+    "orderKey": "a5",
+    "parentId": "page1",
+    "visible": true,
+    "width": 46,
+    "x": 300,
+    "y": 500
+   },
+   "W": {
+    "frame": {
+     "autoLayout": {
+      "crossAlign": "LAYOUT_ALIGN_CENTER",
+      "crossSpacing": 5,
+      "hugHeight": true,
+      "mainAlign": "LAYOUT_ALIGN_CENTER",
+      "paddingBottom": 5,
+      "paddingLeft": 5,
+      "paddingRight": 5,
+      "paddingTop": 5,
+      "spacing": 10,
+      "wrap": true
+     }
+    },
+    "height": 70,
+    "id": "W",
+    "name": "W",
+    "opacity": 1,
+    "orderKey": "a4",
+    "parentId": "page1",
+    "visible": true,
+    "width": 150,
+    "y": 500
+   },
+   "alk": {
+    "constraintX": "CONSTRAINT_STRETCH",
+    "height": 20,
+    "id": "alk",
+    "name": "alk",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "AL",
+    "rect": {},
+    "visible": true,
+    "width": 30
+   },
+   "center": {
+    "constraintX": "CONSTRAINT_CENTER",
+    "constraintY": "CONSTRAINT_CENTER",
+    "height": 20,
+    "id": "center",
+    "name": "center",
+    "opacity": 1,
+    "orderKey": "a3",
+    "parentId": "F",
+    "rect": {},
+    "visible": true,
+    "width": 50,
+    "x": 50,
+    "y": 65
+   },
+   "deep": {
+    "constraintX": "CONSTRAINT_SCALE",
+    "constraintY": "CONSTRAINT_MAX",
+    "height": 10,
+    "id": "deep",
+    "name": "deep",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "inner",
+    "rect": {},
+    "visible": true,
+    "width": 10,
+    "x": 5,
+    "y": 60
+   },
+   "fillx": {
+    "height": 30,
+    "id": "fillx",
+    "layoutSizingX": "LAYOUT_SIZING_FILL",
+    "name": "fillx",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "L",
+    "rect": {},
+    "visible": true,
+    "width": 100,
+    "x": 70,
+    "y": 10
+   },
+   "fillxy": {
+    "height": 80,
+    "id": "fillxy",
+    "layoutSizingX": "LAYOUT_SIZING_FILL",
+    "layoutSizingY": "LAYOUT_SIZING_FILL",
+    "name": "fillxy",
+    "opacity": 1,
+    "orderKey": "a3",
+    "parentId": "L",
+    "rect": {},
+    "visible": true,
+    "width": 100,
+    "x": 180,
+    "y": 10
+   },
+   "fixed": {
+    "height": 30,
+    "id": "fixed",
+    "name": "fixed",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "L",
+    "rect": {},
+    "visible": true,
+    "width": 50,
+    "x": 10,
+    "y": 10
+   },
+   "i1": {
+    "height": 25,
+    "id": "i1",
+    "instance": {
+     "componentId": "c1"
+    },
+    "name": "i1",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "IL",
+    "visible": true,
+    "width": 40
+   },
+   "i2": {
+    "height": 20,
+    "id": "i2",
+    "name": "i2",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "IL",
+    "rect": {},
+    "visible": true,
+    "width": 30,
+    "x": 45
+   },
+   "inner": {
+    "constraintX": "CONSTRAINT_STRETCH",
+    "constraintY": "CONSTRAINT_STRETCH",
+    "frame": {},
+    "height": 90,
+    "id": "inner",
+    "name": "inner",
+    "opacity": 1,
+    "orderKey": "b1",
+    "parentId": "F",
+    "visible": true,
+    "width": 50,
+    "x": 20,
+    "y": 20
+   },
+   "max": {
+    "constraintX": "CONSTRAINT_MAX",
+    "constraintY": "CONSTRAINT_MAX",
+    "height": 20,
+    "id": "max",
+    "name": "max",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "F",
+    "rect": {},
+    "visible": true,
+    "width": 50,
+    "x": 90,
+    "y": 120
+   },
+   "min": {
+    "constraintX": "CONSTRAINT_MIN",
+    "constraintY": "CONSTRAINT_MIN",
+    "height": 20,
+    "id": "min",
+    "name": "min",
+    "opacity": 1,
+    "orderKey": "a0",
+    "parentId": "F",
+    "rect": {},
+    "visible": true,
+    "width": 50,
+    "x": 10,
+    "y": 10
+   },
+   "plain": {
+    "height": 10,
+    "id": "plain",
+    "name": "plain",
+    "opacity": 1,
+    "orderKey": "a5",
+    "parentId": "F",
+    "rect": {},
+    "visible": true,
+    "width": 10,
+    "x": 5,
+    "y": 5
+   },
+   "scale": {
+    "constraintX": "CONSTRAINT_SCALE",
+    "constraintY": "CONSTRAINT_SCALE",
+    "height": 75,
+    "id": "scale",
+    "name": "scale",
+    "opacity": 1,
+    "orderKey": "a4",
+    "parentId": "F",
+    "rect": {},
+    "visible": true,
+    "width": 75,
+    "x": 15,
+    "y": 15
+   },
+   "stretch": {
+    "constraintX": "CONSTRAINT_STRETCH",
+    "constraintY": "CONSTRAINT_STRETCH",
+    "height": 70,
+    "id": "stretch",
+    "name": "stretch",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "F",
+    "rect": {},
+    "visible": true,
+    "width": 130,
+    "x": 10,
+    "y": 40
+   },
+   "sub": {
+    "frame": {
+     "autoLayout": {
+      "crossAlign": "LAYOUT_ALIGN_END",
+      "spacing": 2
+     }
+    },
+    "height": 80,
+    "id": "sub",
+    "layoutSizingX": "LAYOUT_SIZING_FILL",
+    "layoutSizingY": "LAYOUT_SIZING_FILL",
+    "name": "sub",
+    "opacity": 1,
+    "orderKey": "a5",
+    "parentId": "L",
+    "visible": true,
+    "width": 100,
+    "x": 290,
+    "y": 10
+   },
+   "subk": {
+    "height": 15,
+    "id": "subk",
+    "name": "subk",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "sub",
+    "rect": {},
+    "visible": true,
+    "width": 15,
+    "y": 65
+   },
+   "v0": {
+    "height": 20,
+    "id": "v0",
+    "name": "v0",
+    "opacity": 1,
+    "orderKey": "a0",
+    "parentId": "V",
+    "rect": {},
+    "visible": true,
+    "width": 20
+   },
+   "v1": {
+    "height": 20,
+    "id": "v1",
+    "name": "v1",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "V",
+    "rect": {},
+    "visible": true,
+    "width": 30,
+    "y": 24
+   },
+   "v2": {
+    "height": 20,
+    "id": "v2",
+    "name": "v2",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "V",
+    "rect": {},
+    "visible": true,
+    "width": 10,
+    "x": 36
+   },
+   "vec": {
+    "constraintX": "CONSTRAINT_STRETCH",
+    "constraintY": "CONSTRAINT_MAX",
+    "height": 10,
+    "id": "vec",
+    "name": "vec",
+    "opacity": 1,
+    "orderKey": "b2",
+    "parentId": "F",
+    "vector": {
+     "subpaths": [
+      {
+       "anchors": [
+        {},
+        {
+         "x": 10,
+         "y": 10
+        }
+       ]
+      }
+     ]
+    },
+    "visible": true,
+    "width": 10,
+    "x": 150,
+    "y": 60
+   },
+   "w0": {
+    "height": 20,
+    "id": "w0",
+    "name": "w0",
+    "opacity": 1,
+    "orderKey": "a0",
+    "parentId": "W",
+    "rect": {},
+    "visible": true,
+    "width": 40,
+    "x": 10,
+    "y": 10
+   },
+   "w1": {
+    "height": 30,
+    "id": "w1",
+    "name": "w1",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "W",
+    "rect": {},
+    "visible": true,
+    "width": 40,
+    "x": 60,
+    "y": 5
+   },
+   "w2": {
+    "height": 10,
+    "id": "w2",
+    "name": "w2",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "W",
+    "rect": {},
+    "visible": true,
+    "width": 30,
+    "x": 110,
+    "y": 15
+   },
+   "w3": {
+    "height": 20,
+    "id": "w3",
+    "name": "w3",
+    "opacity": 1,
+    "orderKey": "a3",
+    "parentId": "W",
+    "rect": {},
+    "visible": true,
+    "width": 40,
+    "x": 37.5,
+    "y": 42.5
+   },
+   "w4": {
+    "height": 25,
+    "id": "w4",
+    "name": "w4",
+    "opacity": 1,
+    "orderKey": "a4",
+    "parentId": "W",
+    "rect": {},
+    "visible": true,
+    "width": 25,
+    "x": 87.5,
+    "y": 40
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "frame": {},
+     "height": 100,
+     "id": "F",
+     "name": "F",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "page1",
+     "visible": true,
+     "width": 200,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o0"
+  },
+  {
+   "createNode": {
+    "node": {
+     "constraintX": "CONSTRAINT_MIN",
+     "constraintY": "CONSTRAINT_MIN",
+     "height": 20,
+     "id": "min",
+     "name": "min",
+     "opacity": 1,
+     "orderKey": "a0",
+     "parentId": "F",
+     "rect": {},
+     "visible": true,
+     "width": 50,
+     "x": 10,
+     "y": 10
+    }
+   },
+   "docId": "doc1",
+   "opId": "o1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "constraintX": "CONSTRAINT_MAX",
+     "constraintY": "CONSTRAINT_MAX",
+     "height": 20,
+     "id": "max",
+     "name": "max",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "F",
+     "rect": {},
+     "visible": true,
+     "width": 50,
+     "x": 140,
+     "y": 70
+    }
+   },
+   "docId": "doc1",
+   "opId": "o2"
+  },
+  {
+   "createNode": {
+    "node": {
+     "constraintX": "CONSTRAINT_STRETCH",
+     "constraintY": "CONSTRAINT_STRETCH",
+     "height": 20,
+     "id": "stretch",
+     "name": "stretch",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "F",
+     "rect": {},
+     "visible": true,
+     "width": 180,
+     "x": 10,
+     "y": 40
+    }
+   },
+   "docId": "doc1",
+   "opId": "o3"
+  },
+  {
+   "createNode": {
+    "node": {
+     "constraintX": "CONSTRAINT_CENTER",
+     "constraintY": "CONSTRAINT_CENTER",
+     "height": 20,
+     "id": "center",
+     "name": "center",
+     "opacity": 1,
+     "orderKey": "a3",
+     "parentId": "F",
+     "rect": {},
+     "visible": true,
+     "width": 50,
+     "x": 75,
+     "y": 40
+    }
+   },
+   "docId": "doc1",
+   "opId": "o4"
+  },
+  {
+   "createNode": {
+    "node": {
+     "constraintX": "CONSTRAINT_SCALE",
+     "constraintY": "CONSTRAINT_SCALE",
+     "height": 50,
+     "id": "scale",
+     "name": "scale",
+     "opacity": 1,
+     "orderKey": "a4",
+     "parentId": "F",
+     "rect": {},
+     "visible": true,
+     "width": 100,
+     "x": 20,
+     "y": 10
+    }
+   },
+   "docId": "doc1",
+   "opId": "o5"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10,
+     "id": "plain",
+     "name": "plain",
+     "opacity": 1,
+     "orderKey": "a5",
+     "parentId": "F",
+     "rect": {},
+     "visible": true,
+     "width": 10,
+     "x": 5,
+     "y": 5
+    }
+   },
+   "docId": "doc1",
+   "opId": "o6"
+  },
+  {
+   "createNode": {
+    "node": {
+     "constraintX": "CONSTRAINT_STRETCH",
+     "constraintY": "CONSTRAINT_STRETCH",
+     "frame": {},
+     "height": 40,
+     "id": "inner",
+     "name": "inner",
+     "opacity": 1,
+     "orderKey": "b1",
+     "parentId": "F",
+     "visible": true,
+     "width": 100,
+     "x": 20,
+     "y": 20
+    }
+   },
+   "docId": "doc1",
+   "opId": "o7"
+  },
+  {
+   "createNode": {
+    "node": {
+     "constraintX": "CONSTRAINT_SCALE",
+     "constraintY": "CONSTRAINT_MAX",
+     "height": 10,
+     "id": "deep",
+     "name": "deep",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "inner",
+     "rect": {},
+     "visible": true,
+     "width": 20,
+     "x": 10,
+     "y": 10
+    }
+   },
+   "docId": "doc1",
+   "opId": "o8"
+  },
+  {
+   "createNode": {
+    "node": {
+     "constraintX": "CONSTRAINT_STRETCH",
+     "constraintY": "CONSTRAINT_MAX",
+     "height": 10,
+     "id": "vec",
+     "name": "vec",
+     "opacity": 1,
+     "orderKey": "b2",
+     "parentId": "F",
+     "vector": {
+      "subpaths": [
+       {
+        "anchors": [
+         {
+          "x": 0,
+          "y": 0
+         },
+         {
+          "x": 10,
+          "y": 10
+         }
+        ],
+        "closed": false
+       }
+      ]
+     },
+     "visible": true,
+     "width": 10,
+     "x": 150,
+     "y": 10
+    }
+   },
+   "docId": "doc1",
+   "opId": "o9"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o10",
+   "setProps": {
+    "id": "F",
+    "mask": "width,height",
+    "patch": {
+     "height": 150,
+     "width": 300
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o11",
+   "setProps": {
+    "id": "F",
+    "mask": "width",
+    "patch": {
+     "width": 150
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o12",
+   "setProps": {
+    "id": "F",
+    "mask": "x,y",
+    "patch": {
+     "x": 40,
+     "y": 40
+    }
+   }
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "spacing": 4
+      }
+     },
+     "height": 50,
+     "id": "AL",
+     "name": "AL",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "page1",
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 200
+    }
+   },
+   "docId": "doc1",
+   "opId": "o13"
+  },
+  {
+   "createNode": {
+    "node": {
+     "constraintX": "CONSTRAINT_STRETCH",
+     "height": 20,
+     "id": "alk",
+     "name": "alk",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "AL",
+     "rect": {},
+     "visible": true,
+     "width": 30,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o14"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o15",
+   "setProps": {
+    "id": "AL",
+    "mask": "width",
+    "patch": {
+     "width": 200
+    }
+   }
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "paddingBottom": 10,
+       "paddingLeft": 10,
+       "paddingRight": 10,
+       "paddingTop": 10,
+       "spacing": 10
+      }
+     },
+     "height": 100,
+     "id": "L",
+     "name": "L",
+     "opacity": 1,
+     "orderKey": "a3",
+     "parentId": "page1",
+     "visible": true,
+     "width": 300,
+     "x": 0,
+     "y": 300
+    }
+   },
+   "docId": "doc1",
+   "opId": "o16"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 30,
+     "id": "fixed",
+     "name": "fixed",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "L",
+     "rect": {},
+     "visible": true,
+     "width": 50,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o17"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 30,
+     "id": "fillx",
+     "layoutSizingX": "LAYOUT_SIZING_FILL",
+     "name": "fillx",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "L",
+     "rect": {},
+     "visible": true,
+     "width": 10,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o18"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10,
+     "id": "fillxy",
+     "layoutSizingX": "LAYOUT_SIZING_FILL",
+     "layoutSizingY": "LAYOUT_SIZING_FILL",
+     "name": "fillxy",
+     "opacity": 1,
+     "orderKey": "a3",
+     "parentId": "L",
+     "rect": {},
+     "visible": true,
+     "width": 10,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o19"
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "crossAlign": "LAYOUT_ALIGN_END",
+       "spacing": 2
+      }
+     },
+     "height": 20,
+     "id": "sub",
+     "layoutSizingX": "LAYOUT_SIZING_FILL",
+     "layoutSizingY": "LAYOUT_SIZING_FILL",
+     "name": "sub",
+     "opacity": 1,
+     "orderKey": "a5",
+     "parentId": "L",
+     "visible": true,
+     "width": 20,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o20"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 15,
+     "id": "subk",
+     "name": "subk",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "sub",
+     "rect": {},
+     "visible": true,
+     "width": 15,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o21"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o22",
+   "setProps": {
+    "id": "L",
+    "mask": "width",
+    "patch": {
+     "width": 400
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o23",
+   "setProps": {
+    "id": "L",
+    "mask": "autoLayout",
+    "patch": {
+     "frame": {
+      "autoLayout": {
+       "hugWidth": true,
+       "paddingBottom": 10,
+       "paddingLeft": 10,
+       "paddingRight": 10,
+       "paddingTop": 10,
+       "spacing": 10
+      }
+     }
+    }
+   }
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "crossAlign": "LAYOUT_ALIGN_CENTER",
+       "crossSpacing": 5,
+       "hugHeight": true,
+       "mainAlign": "LAYOUT_ALIGN_CENTER",
+       "paddingBottom": 5,
+       "paddingLeft": 5,
+       "paddingRight": 5,
+       "paddingTop": 5,
+       "spacing": 10,
+       "wrap": true
+      }
+     },
+     "height": 10,
+     "id": "W",
+     "name": "W",
+     "opacity": 1,
+     "orderKey": "a4",
+     "parentId": "page1",
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 500
+    }
+   },
+   "docId": "doc1",
+   "opId": "o24"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20,
+     "id": "w0",
+     "name": "w0",
+     "opacity": 1,
+     "orderKey": "a0",
+     "parentId": "W",
+     "rect": {},
+     "visible": true,
+     "width": 40,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o25"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 30,
+     "id": "w1",
+     "name": "w1",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "W",
+     "rect": {},
+     "visible": true,
+     "width": 40,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o26"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10,
+     "id": "w2",
+     "name": "w2",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "W",
+     "rect": {},
+     "visible": true,
+     "width": 30,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o27"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20,
+     "id": "w3",
+     "name": "w3",
+     "opacity": 1,
+     "orderKey": "a3",
+     "parentId": "W",
+     "rect": {},
+     "visible": true,
+     "width": 40,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o28"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 25,
+     "id": "w4",
+     "name": "w4",
+     "opacity": 1,
+     "orderKey": "a4",
+     "parentId": "W",
+     "rect": {},
+     "visible": true,
+     "width": 25,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o29"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o30",
+   "setProps": {
+    "id": "W",
+    "mask": "width",
+    "patch": {
+     "width": 150
+    }
+   }
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "crossSpacing": 6,
+       "direction": "LAYOUT_DIRECTION_VERTICAL",
+       "hugWidth": true,
+       "spacing": 4,
+       "wrap": true
+      }
+     },
+     "height": 50,
+     "id": "V",
+     "name": "V",
+     "opacity": 1,
+     "orderKey": "a5",
+     "parentId": "page1",
+     "visible": true,
+     "width": 60,
+     "x": 300,
+     "y": 500
+    }
+   },
+   "docId": "doc1",
+   "opId": "o31"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20,
+     "id": "v0",
+     "name": "v0",
+     "opacity": 1,
+     "orderKey": "a0",
+     "parentId": "V",
+     "rect": {},
+     "visible": true,
+     "width": 20,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o32"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20,
+     "id": "v1",
+     "name": "v1",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "V",
+     "rect": {},
+     "visible": true,
+     "width": 30,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o33"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20,
+     "id": "v2",
+     "name": "v2",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "V",
+     "rect": {},
+     "visible": true,
+     "width": 10,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o34"
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {},
+     "height": 10,
+     "id": "M",
+     "name": "M",
+     "opacity": 1,
+     "orderKey": "a6",
+     "parentId": "page1",
+     "visible": true,
+     "width": 10,
+     "x": 900,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o35"
+  },
+  {
+   "createComponent": {
+    "componentId": "c1",
+    "name": "C",
+    "rootNodeId": "M"
+   },
+   "docId": "doc1",
+   "opId": "o36"
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "spacing": 5
+      }
+     },
+     "height": 50,
+     "id": "IL",
+     "name": "IL",
+     "opacity": 1,
+     "orderKey": "a7",
+     "parentId": "page1",
+     "visible": true,
+     "width": 200,
+     "x": 0,
+     "y": 700
+    }
+   },
+   "docId": "doc1",
+   "opId": "o37"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 25,
+     "id": "i1",
+     "instance": {
+      "componentId": "c1"
+     },
+     "name": "i1",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "IL",
+     "visible": true,
+     "width": 40,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o38"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20,
+     "id": "i2",
+     "name": "i2",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "IL",
+     "rect": {},
+     "visible": true,
+     "width": 30,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o39"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o40",
+   "setProps": {
+    "id": "F",
+    "mask": "constraintX",
+    "patch": {
+     "constraintX": 99
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o41",
+   "setProps": {
+    "id": "F",
+    "mask": "constraintY",
+    "patch": {
+     "constraintY": -1
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o42",
+   "setProps": {
+    "id": "F",
+    "mask": "layoutSizingX",
+    "patch": {
+     "layoutSizingX": 7
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o43",
+   "setProps": {
+    "id": "F",
+    "mask": "width,constraintX",
+    "patch": {
+     "constraintX": 42,
+     "width": 999
+    }
+   }
+  }
+ ],
+ "rejected": [
+  40,
+  41,
+  42,
+  43
+ ]
+}

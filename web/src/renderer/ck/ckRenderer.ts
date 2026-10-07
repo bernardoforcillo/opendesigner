@@ -5,12 +5,13 @@ import type { Camera } from "../../canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "../../canvas/geometry";
 import { type Transform, localTransformOf } from "../../canvas/transform";
 import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../../store/instances";
-import type { EffectLite, FillLite, InstanceOverrideLite, NodeLite, SceneState, StrokeLite } from "../../store/types";
+import type { EffectLite, FillLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite } from "../../store/types";
 import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "../../store/vectorGeometry";
 import {
   CLIP_MIN_PX, LOD_FLAT_PX, SKIP_SUBTREE_PX, type ImageSource, resolvedFill, rootsOf, withOverride,
 } from "../canvasRenderer";
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
+import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
 import { fontSizeOf, placeTextLines } from "../text";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
@@ -154,8 +155,17 @@ export class CanvasKitRenderer {
     cull: boolean,
   ): void {
     const f = this.frame as Frame;
+    // Masks clip the siblings after them: one save() each, closed at the end.
+    let masks = 0;
     for (const n of siblings) {
-      if (!n.visible || seen.has(n.id)) continue;
+      if (!n.visible || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
+      if (n.isMask && (n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector")) {
+        seen.add(n.id);
+        sk.save();
+        masks++;
+        this.clipByMask(sk, n);
+        continue;
+      }
       if (cull && f.extent && f.view) {
         const e = f.extent.get(n.id);
         if (!e || !boundsIntersect(e, f.view)) continue;
@@ -177,6 +187,31 @@ export class CanvasKitRenderer {
       this.drawSiblings(sk, kids, children, seen, overrides, visited, cull);
       sk.restore();
     }
+    while (masks-- > 0) sk.restore();
+  }
+
+  // Clips by the mask node's outline in the parent's space (see the 2D renderer).
+  private clipByMask(sk: Canvas, n: NodeLite): void {
+    const CK = this.CK;
+    const f = this.frame as Frame;
+    const c = nodeCenter(n);
+    const rotated = n.rotation % 360 !== 0;
+    if (rotated) {
+      // The clip is made under the rotation, then the matrix is put back by hand:
+      // Skia keeps the clip, not the matrix, across a counter-rotation.
+      sk.rotate(n.rotation * DEG, c.x, c.y);
+    }
+    if (n.kind === "vector") {
+      const b = new CK.PathBuilder();
+      for (const sp of n.vector?.subpaths ?? []) if (sp.anchors.length > 0 && subpathFills(sp)) trace(b, n, sp);
+      b.setFillType(vectorStyleOf(n).fillRule === "nonzero" ? CK.FillType.Winding : CK.FillType.EvenOdd);
+      const path = b.detachAndDelete();
+      f.garbage.push(path);
+      sk.clipPath(path, CK.ClipOp.Intersect, true);
+    } else {
+      this.clipShape(sk, this.shapeOf(n), CK.ClipOp.Intersect);
+    }
+    if (rotated) sk.rotate(-n.rotation * DEG, c.x, c.y);
   }
 
   private drawInstance(sk: Canvas, children: Map<string, NodeLite[]>, n: NodeLite, visited: ReadonlySet<string>): void {
@@ -189,7 +224,7 @@ export class CanvasKitRenderer {
     concat(sk, instanceDescentLocal(n, resolved.masterRoot));
     // Inside the instance the master's nodes have their extent at the place of origin, not
     // where the instance draws them: no discarding (cull = false).
-    this.drawSiblings(sk, [resolved.masterRoot], children, new Set(), instanceOverrideMap(n), next, false);
+    this.drawSiblings(sk, [resolved.masterRoot], children, new Set(), instanceOverrideMap(f.scene, n), next, false);
     sk.restore();
   }
 
@@ -229,6 +264,9 @@ export class CanvasKitRenderer {
         sk.translate(-c.x, -c.y);
       }
     }
+    const outline = eff.kind === "rect" || eff.kind === "ellipse" || eff.kind === "frame" ? this.shapeOf(eff) : null;
+    const bb = eff.effects?.find((e): e is Extract<EffectLite, { kind: "backgroundBlur" }> => e.kind === "backgroundBlur" && e.radius > 0);
+    if (bb && outline) this.drawBackdropBlur(sk, outline, bb.radius);
     const layered = this.beginEffects(sk, eff);
 
     if (eff.kind === "text") {
@@ -247,16 +285,62 @@ export class CanvasKitRenderer {
     }
 
     if (layered) sk.restore();
+    if (outline) this.drawInnerShadows(sk, eff, outline);
     if (rotated) sk.restore();
+  }
+
+  // The frosted glass: what is already drawn, inside the outline, blurred.
+  private drawBackdropBlur(sk: Canvas, shape: Shape, radius: number): void {
+    const CK = this.CK;
+    const backdrop = CK.ImageFilter.MakeBlur(radius, radius, CK.TileMode.Clamp, null);
+    (this.frame as Frame).garbage.push(backdrop);
+    sk.save();
+    this.clipShape(sk, shape, CK.ClipOp.Intersect);
+    sk.saveLayer(undefined, null, backdrop);
+    sk.restore();
+    sk.restore();
+  }
+
+  // The shadow of everything outside the outline, cast inward: the shadow-only
+  // filter over a ring (a big rectangle with the outline cut out), inside a clip.
+  private drawInnerShadows(sk: Canvas, n: NodeLite, shape: Shape): void {
+    const inner = n.effects?.filter((e): e is Extract<EffectLite, { kind: "innerShadow" }> => e.kind === "innerShadow");
+    if (!inner || inner.length === 0) return;
+    const CK = this.CK;
+    const f = this.frame as Frame;
+    for (const sh of inner) {
+      const m = Math.max(Math.abs(sh.offsetX), Math.abs(sh.offsetY)) + Math.max(0, sh.blur) * 2 + 8;
+      const b = new CK.PathBuilder();
+      b.addRect(CK.XYWHRect(n.x - m, n.y - m, n.width + m * 2, n.height + m * 2));
+      if (shape.kind === "rect") b.addRect(shape.rect);
+      else if (shape.kind === "rrect") b.addRRect(shape.rr);
+      else b.addOval(shape.rect);
+      b.setFillType(CK.FillType.EvenOdd);
+      const ring: Path = b.detachAndDelete();
+      f.garbage.push(ring);
+      const s = Math.max(0, sh.blur) / 2;
+      const filter = CK.ImageFilter.MakeDropShadowOnly(sh.offsetX, sh.offsetY, s, s, CK.Color4f(sh.color.r, sh.color.g, sh.color.b, sh.color.a), null);
+      f.garbage.push(filter);
+      const p = new CK.Paint();
+      p.setColor(CK.BLACK);
+      p.setImageFilter(filter);
+      sk.save();
+      this.clipShape(sk, shape, CK.ClipOp.Intersect);
+      sk.drawPath(ring, p);
+      sk.restore();
+      p.delete();
+    }
   }
 
   // --- effects: a layer saved with a filter, for the whole node ---------------
 
   private beginEffects(sk: Canvas, n: NodeLite): boolean {
     const filter = this.effectsFilter(n.effects);
-    if (!filter) return false;
+    const blend = n.blendMode ? this.blendModeOf(n.blendMode) : null;
+    if (!filter && !blend) return false;
     const lp = new this.CK.Paint();
-    lp.setImageFilter(filter);
+    if (filter) lp.setImageFilter(filter);
+    if (blend) lp.setBlendMode(blend);
     // A bound on the layer, in local coordinates: without it, every node with an
     // effect allocates a layer as large as the whole surface.
     const bounds = n.kind === "text" ? null : inflateBounds(boundsOfNode(n), effectsOutset(n) + strokeOutsetOfNode(n) + 1);
@@ -265,17 +349,40 @@ export class CanvasKitRenderer {
     return true;
   }
 
-  // The FIRST shadow and the FIRST blur, as in the 2D renderer. The shadow then the
+  private blendModeOf(b: NonNullable<NodeLite["blendMode"]>) {
+    const BM = this.CK.BlendMode;
+    const table = {
+      multiply: BM.Multiply, screen: BM.Screen, overlay: BM.Overlay, darken: BM.Darken, lighten: BM.Lighten,
+      "color-dodge": BM.ColorDodge, "color-burn": BM.ColorBurn, "hard-light": BM.HardLight, "soft-light": BM.SoftLight,
+      difference: BM.Difference, exclusion: BM.Exclusion, hue: BM.Hue, saturation: BM.Saturation, color: BM.Color,
+      luminosity: BM.Luminosity,
+    };
+    return table[b];
+  }
+
+  // The drop shadows (the first alone is MakeDropShadow; several are shadow-only
+  // filters stacked under the content, the last lowest) and the FIRST blur. The shadow then the
   // blur: the blur applies to the shadow too, in the same order as the
   // canvas. The shadow's `blur` is the canvas radius (sigma = blur / 2).
   private effectsFilter(effects: readonly EffectLite[] | undefined): ImageFilter | null {
     if (!effects) return null;
     const CK = this.CK;
     const f = this.frame as Frame;
-    const shadow = effects.find((e): e is Extract<EffectLite, { kind: "dropShadow" }> => e.kind === "dropShadow");
+    const shadows = effects.filter((e): e is Extract<EffectLite, { kind: "dropShadow" }> => e.kind === "dropShadow");
+    const shadow = shadows[0];
     const blur = effects.find((e): e is Extract<EffectLite, { kind: "layerBlur" }> => e.kind === "layerBlur" && e.radius > 0);
     let filter: ImageFilter | null = null;
-    if (shadow) {
+    if (shadows.length > 1) {
+      for (let i = shadows.length - 1; i >= 0; i--) {
+        const sh = shadows[i];
+        const s = Math.max(0, sh.blur) / 2;
+        const only = CK.ImageFilter.MakeDropShadowOnly(
+          sh.offsetX, sh.offsetY, s, s, CK.Color4f(sh.color.r, sh.color.g, sh.color.b, sh.color.a), null,
+        );
+        filter = CK.ImageFilter.MakeBlend(CK.BlendMode.SrcOver, only, filter);
+        f.garbage.push(only, filter);
+      }
+    } else if (shadow) {
       const s = Math.max(0, shadow.blur) / 2;
       filter = CK.ImageFilter.MakeDropShadow(
         shadow.offsetX, shadow.offsetY, s, s, CK.Color4f(shadow.color.r, shadow.color.g, shadow.color.b, shadow.color.a), null,
@@ -333,6 +440,39 @@ export class CanvasKitRenderer {
     const g = fill.gradient;
     p.setImageFilter(null);
     p.setShader(null);
+    if (fill.mesh) {
+      const img = this.meshImage(fill.mesh);
+      if (img) {
+        const f = this.frame as Frame;
+        const sx = n.width / MESH_BITMAP_SIZE, sy = n.height / MESH_BITMAP_SIZE;
+        const shader: Shader = img.makeShaderOptions(CK.TileMode.Clamp, CK.TileMode.Clamp, CK.FilterMode.Linear, CK.MipmapMode.None, [sx, 0, n.x - sx, 0, sy, n.y - sy, 0, 0, 1]);
+        f.garbage.push(shader);
+        p.setColor(CK.BLACK);
+        p.setShader(shader);
+        p.setAlphaf(opacity);
+        return p;
+      }
+    }
+    if (fill.image) {
+      const f = this.frame as Frame;
+      const entry = this.images.get(f.scene.id, fill.image.assetHash);
+      const img = entry.status === "ready" && entry.image ? this.skImage(entry.image) : null;
+      if (img && img.width() > 0 && img.height() > 0) {
+        const mode = fill.image.mode;
+        const iw = img.width(), ih = img.height();
+        const scale = mode === "tile" ? 1 : mode === "fit" ? Math.min(n.width / iw, n.height / ih) : Math.max(n.width / iw, n.height / ih);
+        const ox = mode === "tile" ? n.x : n.x + (n.width - iw * scale) / 2;
+        const oy = mode === "tile" ? n.y : n.y + (n.height - ih * scale) / 2;
+        const tile = mode === "tile" ? CK.TileMode.Repeat : CK.TileMode.Decal;
+        const shader: Shader = img.makeShaderOptions(tile, tile, CK.FilterMode.Linear, CK.MipmapMode.None, [scale, 0, ox, 0, scale, oy, 0, 0, 1]);
+        f.garbage.push(shader);
+        p.setColor(CK.BLACK);
+        p.setShader(shader);
+        p.setAlphaf(opacity);
+        return p;
+      }
+      // The image has not arrived: the flat base color, like the 2D renderer.
+    }
     if (g && g.stops.length >= 2) {
       const x1 = n.x + g.x1 * n.width;
       const y1 = n.y + g.y1 * n.height;
@@ -366,9 +506,18 @@ export class CanvasKitRenderer {
       if (!(s.weight > 0)) continue;
       const p = this.paintFor(this.strokeP, s.color, n, n.opacity);
       p.setStyle(CK.PaintStyle.Stroke);
-      p.setStrokeCap(CK.StrokeCap.Butt);
-      p.setStrokeJoin(CK.StrokeJoin.Miter);
+      const vs = n.meta ? vectorStyleOf(n) : null;
+      p.setStrokeCap(vs?.cap === "round" ? CK.StrokeCap.Round : vs?.cap === "square" ? CK.StrokeCap.Square : CK.StrokeCap.Butt);
+      p.setStrokeJoin(vs?.join === "round" ? CK.StrokeJoin.Round : vs?.join === "bevel" ? CK.StrokeJoin.Bevel : CK.StrokeJoin.Miter);
+      if (vs) p.setStrokeMiter(vs.miter);
+      if (vs && vs.dash.length > 0) {
+        const intervals = vs.dash.length % 2 === 0 ? vs.dash : [...vs.dash, ...vs.dash];
+        const fx = CK.PathEffect.MakeDash(intervals, vs.dashOffset);
+        (this.frame as Frame).garbage.push(fx);
+        p.setPathEffect(fx);
+      }
       this.strokeOne(sk, n, shape, s, p);
+      p.setPathEffect(null);
     }
   }
 
@@ -423,7 +572,7 @@ export class CanvasKitRenderer {
   private paintText(sk: Canvas, n: NodeLite, paint: Paint): void {
     const t = n.text;
     if (n.kind !== "text" || !t || t.content === "") return;
-    const font = this.fonts.fontFor(t.style.fontWeight, fontSizeOf(t.style));
+    const font = this.fonts.fontFor(t.style.fontWeight, fontSizeOf(t.style), t.style.fontFamily, t.style.italic === true);
     if (!font) return;
     let lines = this.textLines.get(n);
     if (!lines) {
@@ -431,6 +580,22 @@ export class CanvasKitRenderer {
       this.textLines.set(n, lines);
     }
     for (const line of lines) sk.drawText(line.text, line.x, line.y, paint, font);
+  }
+
+  // --- mesh gradients ----------------------------------------------------------
+  private readonly meshImages = new WeakMap<MeshLite, SkImage | null>();
+
+  // The mesh's bitmap (renderer/mesh.ts) as a GPU image, made once per mesh.
+  private meshImage(mesh: MeshLite): SkImage | null {
+    if (this.meshImages.has(mesh)) return this.meshImages.get(mesh) ?? null;
+    const CK = this.CK;
+    const total = MESH_BITMAP_SIZE + 2;
+    const img = CK.MakeImage(
+      { width: total, height: total, alphaType: CK.AlphaType.Unpremul, colorType: CK.ColorType.RGBA_8888, colorSpace: CK.ColorSpace.SRGB },
+      meshBitmap(mesh, MESH_BITMAP_SIZE, 1), total * 4,
+    );
+    this.meshImages.set(mesh, img);
+    return img;
   }
 
   // --- images ----------------------------------------------------------------

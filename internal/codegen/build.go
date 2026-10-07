@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
@@ -49,11 +50,16 @@ type bctx struct {
 	root bool
 	// flowChild: the node is an in-flow child of an auto layout frame.
 	flowChild bool
+	// fillMain / fillCross: the node FILLS that axis of its auto layout parent (LayoutSizing)
+	// and `vertical` is the parent's direction, to know which of width/height is which.
+	fillMain, fillCross, vertical bool
 	// origin: the node is placed at left:0/top:0 (root of an instance's master:
 	// descending into the instance subtracts the master's origin).
 	origin bool
 	// overrides: the overrides of the instance being descended into.
 	overrides map[string]*opendesignerv1.InstanceOverride
+	// hidden: the master nodes that instance hides (a false boolean component property).
+	hidden map[string]bool
 	// idPrefix: path of the instances traversed, for data-node-id.
 	idPrefix string
 	// visited: components being expanded on this branch (a master that
@@ -70,10 +76,48 @@ func participates(n *opendesignerv1.Node) bool {
 	}
 	switch n.GetShape().(type) {
 	case nil, *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Text,
-		*opendesignerv1.Node_Image, *opendesignerv1.Node_Vector, *opendesignerv1.Node_Frame:
+		*opendesignerv1.Node_Image, *opendesignerv1.Node_Vector, *opendesignerv1.Node_Frame,
+		*opendesignerv1.Node_Instance:
 		return true
 	}
 	return false
+}
+
+// fillAxes: which axes of an auto layout parent the child fills. Like the core, fill is
+// ignored on an axis the parent hugs and everywhere in a wrapping parent.
+func fillAxes(al *opendesignerv1.AutoLayout, k *opendesignerv1.Node) (main, cross, vertical bool) {
+	vertical = al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL
+	hugMain, hugCross := al.GetHugWidth(), al.GetHugHeight()
+	fx := k.GetLayoutSizingX() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL
+	fy := k.GetLayoutSizingY() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL
+	main, cross = fx, fy
+	if vertical {
+		hugMain, hugCross = hugCross, hugMain
+		main, cross = fy, fx
+	}
+	if al.GetWrap() && !hugMain {
+		return false, false, vertical
+	}
+	return main && !hugMain, cross && !hugCross, vertical
+}
+
+// applyFill turns a filling child's fixed size into CSS that fills: `flex: 1 1 0` on the main
+// axis (the core shares the free space equally, which is what equal flex-grow does) and
+// `align-self: stretch` across. The fixed length on that axis is dropped.
+func applyFill(el *Element, c bctx) {
+	mainSize, crossSize := "width", "height"
+	if c.vertical {
+		mainSize, crossSize = "height", "width"
+	}
+	if c.fillMain {
+		el.delStyle(mainSize)
+		el.addStyle("flex", "1 1 0")
+		el.addStyle("min-"+mainSize, "0")
+	}
+	if c.fillCross {
+		el.delStyle(crossSize)
+		el.addStyle("align-self", "stretch")
+	}
 }
 
 func (b *builder) warn(format string, a ...any) {
@@ -90,10 +134,30 @@ func (b *builder) buildScreen(n *opendesignerv1.Node) *Element {
 
 // element translates a node (and its subtree). nil = nothing to emit.
 func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
+	if c.hidden[n.GetId()] {
+		return nil
+	}
+	// Variables: what is exported is what the canvas draws, so a bound property
+	// takes the value of the node's active mode. (A master descended into through
+	// an instance resolves in the master's own modes, not the instance's.)
+	n = core.ResolveNode(b.doc, n)
 	if !n.GetVisible() {
 		return nil
 	}
+	// A mask is not drawn. (What it clips is not exported: the code shows the
+	// siblings unclipped -- documented in docs/vector.md.)
+	if n.GetIsMask() && isMaskShape(n) {
+		return nil
+	}
 	var el *Element
+	// A live boolean group draws as one vector (boolean.go); the shapes under it are not drawn.
+	if _, live := booleanOpOf(n); live {
+		v := b.liveBoolean(n)
+		if v == nil {
+			return nil
+		}
+		n = v
+	}
 	switch n.GetShape().(type) {
 	case *opendesignerv1.Node_Group:
 		el = b.groupElement(n, c)
@@ -104,6 +168,9 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	}
 	if el == nil {
 		return nil
+	}
+	if c.fillMain || c.fillCross {
+		applyFill(el, c)
 	}
 	el.NodeID = n.GetId()
 	el.NodeName = n.GetName()
@@ -157,14 +224,76 @@ func rotation(el *Element, n *opendesignerv1.Node) {
 // children translates `n`'s children in drawing order.
 func (b *builder) children(el *Element, n *opendesignerv1.Node, c bctx) {
 	al := n.GetFrame().GetAutoLayout()
+	// MASKS: the siblings after a mask go into a wrapper (same origin as this element) that
+	// clips them with the mask's outline. Not in an auto layout (the mask would be a flow
+	// item), and not for a rotated mask: those masks are not applied (documented).
+	target := el
 	for _, k := range core.ChildrenOf(b.doc, n.GetId()) {
+		if k.GetVisible() && k.GetIsMask() && isMaskShape(k) {
+			if clip, ok := maskClip(k); ok && al == nil {
+				wrap := &Element{Tag: "div"}
+				wrap.addStyle("position", "absolute")
+				wrap.addStyle("left", "0")
+				wrap.addStyle("top", "0")
+				wrap.addStyle("clip-path", clip)
+				target.Children = append(target.Children, wrap)
+				target = wrap
+			}
+			continue
+		}
 		cc := c
 		cc.root, cc.origin = false, false
 		cc.flowChild = al != nil && participates(k)
+		cc.fillMain, cc.fillCross, cc.vertical = false, false, false
+		if cc.flowChild {
+			cc.fillMain, cc.fillCross, cc.vertical = fillAxes(al, k)
+		}
 		if ce := b.element(k, cc); ce != nil {
-			el.Children = append(el.Children, ce)
+			target.Children = append(target.Children, ce)
 		}
 	}
+}
+
+// maskClip is the CSS clip-path of a mask node, in its parent's coordinates (the wrapper sits at
+// the parent's origin). ok=false for what CSS cannot say here: a rotated mask, an empty outline.
+func maskClip(m *opendesignerv1.Node) (string, bool) {
+	if rotates(m.GetRotation()) {
+		return "", false
+	}
+	x, y, w, h := m.GetX(), m.GetY(), m.GetWidth(), m.GetHeight()
+	switch m.GetShape().(type) {
+	case *opendesignerv1.Node_Ellipse:
+		return fmt.Sprintf("ellipse(%s %s at %s %s)", px(w/2), px(h/2), px(x+w/2), px(y+h/2)), w > 0 && h > 0
+	case *opendesignerv1.Node_Rect, *opendesignerv1.Node_Frame:
+		r := math.Min(m.GetRect().GetCornerRadius(), math.Min(w/2, h/2))
+		if _, isFrame := m.GetShape().(*opendesignerv1.Node_Frame); isFrame || r < 0 {
+			r = 0
+		}
+		if !(w > 0 && h > 0) {
+			return "", false
+		}
+		d := fmt.Sprintf("M%s %sH%sA%s %s 0 0 1 %s %sV%sA%s %s 0 0 1 %s %sH%sA%s %s 0 0 1 %s %sV%sA%s %s 0 0 1 %s %sZ",
+			num(x+r), num(y), num(x+w-r), num(r), num(r), num(x+w), num(y+r), num(y+h-r), num(r), num(r), num(x+w-r), num(y+h),
+			num(x+r), num(r), num(r), num(x), num(y+h-r), num(y+r), num(r), num(r), num(x+r), num(y))
+		return "path('" + d + "')", true
+	case *opendesignerv1.Node_Vector:
+		var sb strings.Builder
+		for _, sp := range m.GetVector().GetSubpaths() {
+			if !sp.GetClosed() || len(sp.GetAnchors()) < 2 {
+				continue
+			}
+			moved := &opendesignerv1.SubPath{Closed: true}
+			for _, a := range sp.GetAnchors() {
+				moved.Anchors = append(moved.Anchors, &opendesignerv1.Anchor{X: a.GetX() + x, Y: a.GetY() + y, InX: a.GetInX(), InY: a.GetInY(), OutX: a.GetOutX(), OutY: a.GetOutY()})
+			}
+			sb.WriteString(subpathData(moved))
+		}
+		if sb.Len() == 0 {
+			return "", false
+		}
+		return "path(evenodd, '" + sb.String() + "')", true
+	}
+	return "", false
 }
 
 func hasVisibleKids(doc *opendesignerv1.Document, id string) bool {
@@ -198,7 +327,9 @@ func (b *builder) groupElement(n *opendesignerv1.Node, c bctx) *Element {
 // subtree at origin 0,0, with the per-node overrides applied.
 func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 	inst := n.GetInstance()
-	comp := b.doc.GetComponents()[inst.GetComponentId()]
+	// The variant the instance has chosen (core.EffectiveComponentID): the base component
+	// when it is not part of a set.
+	comp := b.doc.GetComponents()[core.EffectiveComponentID(b.doc, inst)]
 	master := b.doc.GetNodes()[comp.GetRootNodeId()]
 	if comp == nil || master == nil || c.visited[inst.GetComponentId()] {
 		// Like the canvas: missing (or recursive) component or master = nothing.
@@ -213,15 +344,14 @@ func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 	el.addStyle("height", px(n.GetHeight()))
 	rotation(el, n)
 
-	ov := map[string]*opendesignerv1.InstanceOverride{}
-	for _, o := range inst.GetOverrides() {
-		ov[o.GetMasterNodeId()] = o
-	}
+	// What the instance changes in its master: the overrides derived from the component's
+	// properties under its explicit overrides, and the nodes a false boolean hides.
+	ov, hidden := core.EffectiveOverrides(b.doc, inst)
 	visited := map[string]bool{inst.GetComponentId(): true}
 	for k := range c.visited {
 		visited[k] = true
 	}
-	cc := bctx{origin: true, overrides: ov, idPrefix: c.idPrefix + n.GetId() + "/", visited: visited}
+	cc := bctx{origin: true, overrides: ov, hidden: hidden, idPrefix: c.idPrefix + n.GetId() + "/", visited: visited}
 	if ce := b.element(master, cc); ce != nil {
 		el.Children = append(el.Children, ce)
 	}
@@ -309,13 +439,19 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 	rotation(el, eff)
 	dropShadow := ""
 	if paintable {
-		dropShadow = boxPaint(el, eff, isFrame, isEllipse, mul, container)
+		dropShadow = boxPaint(el, eff, isFrame, isEllipse, mul, container, b.assetURL)
 	}
 	if !bake && eff.GetOpacity() != 1 {
 		el.addStyle("opacity", num(eff.GetOpacity()))
 	}
 	if paintable {
 		setFilter(el, dropShadow, firstBlur(eff.GetEffects()))
+		if bb := backgroundBlur(eff.GetEffects()); bb != nil && (isFrame || isEllipse || eff.GetRect() != nil) {
+			el.addStyle("backdrop-filter", "blur("+px(bb.GetRadius())+")")
+		}
+	}
+	if mode := blendNames[eff.GetBlendMode()]; mode != "" {
+		el.addStyle("mix-blend-mode", mode)
 	}
 	b.children(el, n, c)
 	return el
@@ -342,7 +478,21 @@ func flexProps(el *Element, al *opendesignerv1.AutoLayout) {
 	}
 	el.addStyle("justify-content", alignCSS(al.GetMainAlign(), true))
 	el.addStyle("align-items", alignCSS(al.GetCrossAlign(), false))
-	if al.GetSpacing() > 0 {
+	// WRAP (the core ignores it when the main axis hugs): the lines are `cross_spacing` apart, and
+	// `gap` takes row-gap then column-gap, so the two spacings swap with the direction.
+	wrap := al.GetWrap() && !((al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL && al.GetHugHeight()) ||
+		(al.GetDirection() != opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL && al.GetHugWidth()))
+	if wrap {
+		el.addStyle("flex-wrap", "wrap")
+		el.addStyle("align-content", "flex-start")
+		if al.GetSpacing() > 0 || al.GetCrossSpacing() > 0 {
+			row, col := al.GetCrossSpacing(), al.GetSpacing()
+			if al.GetDirection() == opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL {
+				row, col = al.GetSpacing(), al.GetCrossSpacing()
+			}
+			el.addStyle("gap", px(row)+" "+px(col))
+		}
+	} else if al.GetSpacing() > 0 {
 		el.addStyle("gap", px(al.GetSpacing()))
 	}
 	if p := paddingCSS(al); p != "" {
@@ -417,7 +567,7 @@ func translucent(f fill, opacity float64) bool {
 // boxPaint: fill, radius, strokes, shadow of rect/ellipse/frame. It returns the
 // drop-shadow() to put in the `filter` when the shadow cannot be a
 // box-shadow (see below), "" otherwise.
-func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul float64, container bool) string {
+func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul float64, container bool, assetURL func(string) (string, bool)) string {
 	w, h := n.GetWidth(), n.GetHeight()
 	switch {
 	case isEllipse:
@@ -432,7 +582,25 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 	hasFill := !(isFrame && len(n.GetFills()) == 0)
 	if hasFill {
 		f := resolvedFill(n.GetFills())
-		if f.grad != nil {
+		if f.image != nil {
+			// FILL covers, FIT contains, TILE repeats at the natural size: the same three the canvas draws.
+			el.addStyle("background-color", colorCSS(f.color, mul))
+			if url, ok := assetURL(f.image.GetAssetHash()); ok {
+				el.addStyle("background-image", "url("+url+")")
+				el.addStyle("background-position", "center")
+				switch f.image.GetMode() {
+				case opendesignerv1.ImageScaleMode_IMAGE_SCALE_MODE_FIT:
+					el.addStyle("background-size", "contain")
+					el.addStyle("background-repeat", "no-repeat")
+				case opendesignerv1.ImageScaleMode_IMAGE_SCALE_MODE_TILE:
+					el.addStyle("background-position", "0 0")
+					el.addStyle("background-repeat", "repeat")
+				default:
+					el.addStyle("background-size", "cover")
+					el.addStyle("background-repeat", "no-repeat")
+				}
+			}
+		} else if f.grad != nil {
 			if g, ok := gradientCSS(f.grad, f.radial, w, h, mul); ok {
 				el.addStyle("background-image", g)
 			} else {
@@ -457,6 +625,11 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 			shadows = append(shadows, shadowCSS(sh, mul))
 		}
 	}
+	// The other drop shadows (box-shadow only: they cast from the box) and the inner ones.
+	if hasFill {
+		shadows = append(shadows, extraShadows(n.GetEffects(), mul)...)
+	}
+	shadows = append(shadows, innerShadows(n.GetEffects(), mul)...)
 	if len(shadows) > 0 {
 		el.addStyle("box-shadow", strings.Join(shadows, ","))
 	}
@@ -568,6 +741,9 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	el.addStyle("font-family", fontFamilyCSS(st.GetFontFamily()))
 	el.addStyle("font-size", px(size))
 	el.addStyle("font-weight", weight)
+	if st.GetItalic() {
+		el.addStyle("font-style", "italic")
+	}
 	el.addStyle("line-height", num(lh))
 	switch st.GetAlign() {
 	case opendesignerv1.TextAlign_TEXT_ALIGN_CENTER:
@@ -708,6 +884,9 @@ func sniffExt(b []byte) string {
 		return ".gif"
 	case len(b) >= 12 && string(b[:4]) == "RIFF" && string(b[8:12]) == "WEBP":
 		return ".webp"
+	}
+	if ext, _ := fontExt(b); ext != "" {
+		return ext
 	}
 	return ".bin"
 }
@@ -926,4 +1105,73 @@ func vectorGradient(id string, f fill, w, h float64) (*Element, string) {
 	}
 	defs := &Element{Tag: "defs", Children: []*Element{gr}}
 	return defs, "url(#" + id + ")"
+}
+
+// fontExt recognises a font container from its magic bytes (the same list the
+// asset store accepts) and returns its file extension and CSS format() name.
+func fontExt(b []byte) (ext, format string) {
+	switch {
+	case len(b) >= 4 && string(b[:4]) == "wOF2":
+		return ".woff2", "woff2"
+	case len(b) >= 4 && string(b[:4]) == "wOFF":
+		return ".woff", "woff"
+	case len(b) >= 4 && string(b[:4]) == "OTTO":
+		return ".otf", "opentype"
+	case len(b) >= 4 && (string(b[:4]) == "\x00\x01\x00\x00" || string(b[:4]) == "true"):
+		return ".ttf", "truetype"
+	}
+	return "", ""
+}
+
+// fontFaceCSS writes one @font-face per font of the document and copies the files
+// next to the images, so a text whose family is an uploaded font draws with it in
+// the exported code. A font whose file cannot be read is skipped with a warning:
+// the text falls back to the next family of its stack.
+func (b *builder) fontFaceCSS() string {
+	if len(b.doc.GetFonts()) == 0 {
+		return ""
+	}
+	ids := make([]string, 0, len(b.doc.GetFonts()))
+	for id := range b.doc.GetFonts() {
+		ids = append(ids, id)
+	}
+	sort.Slice(ids, func(i, j int) bool {
+		a, c := b.doc.GetFonts()[ids[i]], b.doc.GetFonts()[ids[j]]
+		if a.GetFamily() != c.GetFamily() {
+			return a.GetFamily() < c.GetFamily()
+		}
+		if a.GetWeight() != c.GetWeight() {
+			return a.GetWeight() < c.GetWeight()
+		}
+		return a.GetStyle() < c.GetStyle()
+	})
+	var sb strings.Builder
+	for _, id := range ids {
+		f := b.doc.GetFonts()[id]
+		if b.assets == nil {
+			b.warn("font %q: no asset source, the text falls back to another font", f.GetFamily())
+			continue
+		}
+		data, err := b.assets.Asset(f.GetAssetHash())
+		ext, format := fontExt(data)
+		if err != nil || ext == "" {
+			b.warn("font %q (%s) not found, the text falls back to another font", f.GetFamily(), shortHash(f.GetAssetHash()))
+			continue
+		}
+		name := f.GetAssetHash() + ext
+		b.files[b.fileDir+name] = data
+		// The family is validated by the document (letters, digits, space, _ . -), so it is safe to quote.
+		fmt.Fprintf(&sb, "@font-face {\n  font-family: \"%s\";\n  src: url(%s%s) format(\"%s\");\n  font-weight: %s;\n  font-style: %s;\n  font-display: swap;\n}\n",
+			f.GetFamily(), b.urlPrefix, name, format, f.GetWeight(), f.GetStyle())
+	}
+	return sb.String()
+}
+
+// isMaskShape: the shapes with an outline, the only ones that can mask.
+func isMaskShape(n *opendesignerv1.Node) bool {
+	switch n.GetShape().(type) {
+	case *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Frame, *opendesignerv1.Node_Vector:
+		return true
+	}
+	return false
 }

@@ -1,0 +1,118 @@
+{
+ "_comment": [
+  "is_mask: set on one node, set then cleared on another (the cleared field is absent). Run from BOTH sides."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "nodes": {
+   "M": {
+    "id": "M",
+    "parentId": "page1",
+    "orderKey": "a0",
+    "name": "M",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {},
+    "isMask": true
+   },
+   "N": {
+    "id": "N",
+    "parentId": "page1",
+    "orderKey": "a1",
+    "name": "N",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {}
+   }
+  }
+ },
+ "ops": [
+  {
+   "docId": "doc1",
+   "opId": "o0",
+   "createNode": {
+    "node": {
+     "id": "M",
+     "parentId": "page1",
+     "orderKey": "a0",
+     "name": "M",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {}
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o1",
+   "createNode": {
+    "node": {
+     "id": "N",
+     "parentId": "page1",
+     "orderKey": "a1",
+     "name": "N",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {}
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o2",
+   "setProps": {
+    "id": "M",
+    "mask": "isMask",
+    "patch": {
+     "isMask": true
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setProps": {
+    "id": "N",
+    "mask": "isMask",
+    "patch": {
+     "isMask": true
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setProps": {
+    "id": "N",
+    "mask": "isMask",
+    "patch": {}
+   }
+  }
+ ],
+ "rejected": []
+}

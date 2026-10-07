@@ -40,13 +40,13 @@ func oneLine(s string) string {
 	return strings.Join(strings.Fields(strings.ReplaceAll(s, "--", "-")), " ")
 }
 
-func renderHTML(d *opendesignerv1.Document, screens []*Screen, opts Options, files map[string][]byte) {
+func renderHTML(d *opendesignerv1.Document, screens []*Screen, opts Options, files map[string][]byte, fontCSS string) {
 	hasStart := false
 	for _, s := range screens {
 		if s.File == "index.html" {
 			hasStart = true
 		}
-		files[s.File] = []byte(htmlPage(d, s, screens))
+		files[s.File] = []byte(htmlPage(d, s, screens, fontCSS))
 	}
 	if !hasStart {
 		files["index.html"] = []byte(htmlIndex(d, screens))
@@ -63,7 +63,7 @@ type htmlWriter struct {
 	anim    htmlAnim
 }
 
-func htmlPage(d *opendesignerv1.Document, s *Screen, all []*Screen) string {
+func htmlPage(d *opendesignerv1.Document, s *Screen, all []*Screen, fontCSS string) string {
 	w := &htmlWriter{used: map[string]bool{}, self: s, d: d}
 	w.element(s.Root, 1, true)
 	w.finishAnim()
@@ -72,7 +72,7 @@ func htmlPage(d *opendesignerv1.Document, s *Screen, all []*Screen) string {
 	b.WriteString("<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">\n")
 	fmt.Fprintf(&b, "<title>%s</title>\n", html.EscapeString(d.GetNodes()[s.NodeID].GetName()))
 	fmt.Fprintf(&b, "<!-- %s -->\n", generatedHeader(d, "screen \""+oneLine(d.GetNodes()[s.NodeID].GetName())+"\""))
-	b.WriteString(interLink + "\n<style>\n" + htmlBaseCSS + "\n" + w.css.String() + "</style>\n</head>\n<body>\n")
+	b.WriteString(interLink + "\n<style>\n" + htmlBaseCSS + "\n" + fontCSS + w.css.String() + "</style>\n</head>\n<body>\n")
 	b.WriteString(w.sb.String())
 	b.WriteString("</body>\n</html>\n")
 	return b.String()

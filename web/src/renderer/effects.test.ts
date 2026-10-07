@@ -4,7 +4,7 @@ import { drawScene, firstBlur, firstShadow } from "./canvasRenderer";
 import { emptyScene } from "../store/types";
 import type { EffectLite, NodeLite, SceneState } from "../store/types";
 
-class FakePath2D { rect() {} roundRect() {} ellipse() {} }
+class FakePath2D { rect() {} roundRect() {} ellipse() {} addPath() {} }
 
 function rectNode(effects?: EffectLite[], over: Partial<NodeLite> = {}): NodeLite {
   return {
@@ -23,7 +23,8 @@ function sceneOf(n: NodeLite): SceneState {
 // Records the shadow/filter state AT THE TIME of fill and stroke, and how many
 // save/restores were left open.
 function recCtx(scale = 1) {
-  const log: { at: string; shadowBlur: number; shadowColor: string; ox: number; oy: number; filter: string }[] = [];
+  const drawn: string[] = [];
+  const log: { at: string; op?: string; shadowBlur: number; shadowColor: string; ox: number; oy: number; filter: string }[] = [];
   let depth = 0;
   const stack: Record<string, unknown>[] = [];
   const ctx: Record<string, unknown> = {
@@ -34,7 +35,7 @@ function recCtx(scale = 1) {
     setTransform: () => {}, clearRect: () => {}, translate: () => {}, rotate: () => {}, transform: () => {},
     getTransform: () => ({ a: scale, b: 0 }),
     measureText: (s: string) => ({ width: s.length * 10 }),
-    clip: () => {}, fillText: () => {}, strokeText: () => {},
+    clip: () => {}, drawImage: () => { drawn.push(String(ctx.filter)); }, globalCompositeOperation: "source-over", fillText: () => {}, strokeText: () => {},
     save: () => {
       depth++;
       stack.push({ shadowBlur: ctx.shadowBlur, shadowColor: ctx.shadowColor, shadowOffsetX: ctx.shadowOffsetX, shadowOffsetY: ctx.shadowOffsetY, filter: ctx.filter });
@@ -42,12 +43,12 @@ function recCtx(scale = 1) {
     restore: () => { depth--; Object.assign(ctx, stack.pop()); },
   };
   const snap = (at: string) => log.push({
-    at, shadowBlur: ctx.shadowBlur as number, shadowColor: ctx.shadowColor as string,
+    at, op: ctx.globalCompositeOperation as string, shadowBlur: ctx.shadowBlur as number, shadowColor: ctx.shadowColor as string,
     ox: ctx.shadowOffsetX as number, oy: ctx.shadowOffsetY as number, filter: ctx.filter as string,
   });
-  ctx.fill = () => snap("fill");
+  ctx.fill = (_p?: unknown, rule?: string) => snap(rule === "evenodd" ? "evenodd" : "fill");
   ctx.stroke = () => snap("stroke");
-  return { ctx: ctx as unknown as CanvasRenderingContext2D, log, depth: () => depth, raw: ctx };
+  return { ctx: ctx as unknown as CanvasRenderingContext2D, log, drawn, depth: () => depth, raw: ctx };
 }
 
 const cam = (zoom: number) => ({ x: 0, y: 0, zoom });
@@ -153,5 +154,98 @@ describe("frames without a fill", () => {
     const r = recCtx();
     drawScene(r.ctx, sceneOf(rectNode(undefined, { kind: "frame" })), cam(1));
     expect(r.log.filter((l) => l.at === "fill")).toHaveLength(1);
+  });
+
+  it("the blend mode is the composite operation while the node draws, then back to normal", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    drawScene(r.ctx, sceneOf(rectNode(undefined, { blendMode: "multiply" })), cam(1));
+    expect(r.log[0].op).toBe("multiply");
+    expect(r.raw.globalCompositeOperation).toBe("source-over");
+  });
+
+  it("several drop shadows: the extra ones are drawn first, parked off canvas", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    drawScene(r.ctx, sceneOf(rectNode([shadow(), shadow({ offsetX: 8, blur: 2 })])), cam(1));
+    const fills = r.log.filter((l) => l.at === "fill");
+    expect(fills).toHaveLength(2);
+    expect(fills[0]).toMatchObject({ ox: 100008, shadowBlur: 2 });
+    expect(fills[1]).toMatchObject({ ox: 2, shadowBlur: 6 });
+    expect(r.depth()).toBe(0);
+  });
+
+  it("an inner shadow is an even-odd ring filled inside the clip, after the node", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    const inner: EffectLite = { kind: "innerShadow", color: { r: 1, g: 1, b: 1, a: 1 }, offsetX: 0, offsetY: 3, blur: 4 };
+    drawScene(r.ctx, sceneOf(rectNode([inner])), cam(1));
+    expect(r.log.map((l) => l.at)).toEqual(["fill", "evenodd"]);
+    expect(r.log[1]).toMatchObject({ oy: 3, shadowBlur: 4 });
+    expect(r.depth()).toBe(0);
+  });
+
+  it("a background blur redraws the canvas blurred under the node", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx(2);
+    drawScene(r.ctx, sceneOf(rectNode([{ kind: "backgroundBlur", radius: 5 }])), cam(2));
+    expect(r.drawn).toEqual(["blur(10px)"]);
+    expect(r.depth()).toBe(0);
+  });
+
+  it("a mask is not drawn: it clips what comes after it, and the clip ends with its siblings", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    const clips: number[] = [];
+    (r.raw as Record<string, unknown>).clip = () => clips.push((r.log.length));
+    const s = emptyScene("d", "t");
+    s.nodes = s.nodes.set("m", rectNode(undefined, { id: "m", orderKey: "a0", isMask: true }));
+    s.nodes = s.nodes.set("a", rectNode(undefined, { id: "a", orderKey: "a1" }));
+    drawScene(r.ctx, s, cam(1));
+    // One fill (the node above the mask, not the mask) and the clip came BEFORE it.
+    expect(r.log.filter((l) => l.at === "fill")).toHaveLength(1);
+    expect(clips).toEqual([0]);
+    expect(r.depth()).toBe(0);
+  });
+
+  it("the stroke style in the meta (cap, join, dash) is set while stroking and put back after", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const r = recCtx();
+    const seen: { cap: unknown; join: unknown; dash: number[] }[] = [];
+    let dash: number[] = [];
+    (r.raw as Record<string, unknown>).setLineDash = (d: number[]) => { dash = d; };
+    (r.raw as Record<string, unknown>).stroke = () => seen.push({ cap: r.raw.lineCap, join: r.raw.lineJoin, dash });
+    const n = rectNode(undefined, {
+      strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 2, align: "center" }],
+      meta: { "stroke.cap": "round", "stroke.join": "bevel", "stroke.dash": "4,2" },
+    });
+    drawScene(r.ctx, sceneOf(n), cam(1));
+    expect(seen).toEqual([{ cap: "round", join: "bevel", dash: [4, 2] }]);
+    expect(r.raw.lineCap).toBe("butt");
+    expect(dash).toEqual([]);
+  });
+
+  it("an image fill is a pattern scaled by its mode (cover for fill, contain for fit, natural for tile); flat until it arrives", () => {
+    vi.stubGlobal("Path2D", FakePath2D);
+    const transforms: number[][] = [];
+    vi.stubGlobal("DOMMatrix", class { constructor(public v: number[]) { transforms.push(v); } });
+    const img = { width: 100, height: 50 } as unknown as HTMLImageElement;
+    const run = (mode: "fill" | "fit" | "tile", status: "ready" | "loading") => {
+      const r = recCtx();
+      const made: string[] = [];
+      (r.raw as Record<string, unknown>).createPattern = (_i: unknown, rep: string) => { made.push(rep); return { setTransform() {} }; };
+      const n = rectNode(undefined, { width: 200, height: 200, fills: [{ r: 0.8, g: 0.8, b: 0.8, a: 1, image: { assetHash: "a".repeat(64), mode } }] });
+      drawScene(r.ctx, sceneOf(n), cam(1), { images: { get: () => ({ status, image: status === "ready" ? img : null }) } as never });
+      return { made, fill: r.raw.fillStyle };
+    };
+    expect(run("fill", "ready").made).toEqual(["no-repeat"]);
+    expect(transforms.at(-1)).toEqual([4, 0, 0, 4, -100, 0]); // cover 200x200 with 100x50: scale 4, centered in x
+    run("fit", "ready");
+    expect(transforms.at(-1)).toEqual([2, 0, 0, 2, 0, 50]);
+    expect(run("tile", "ready").made).toEqual(["repeat"]);
+    expect(transforms.at(-1)).toEqual([1, 0, 0, 1, 0, 0]);
+    const waiting = run("fill", "loading");
+    expect(waiting.made).toEqual([]);
+    expect(String(waiting.fill)).toContain("rgba");
   });
 });

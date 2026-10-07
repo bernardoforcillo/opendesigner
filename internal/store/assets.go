@@ -81,6 +81,15 @@ var imageTypes = []struct {
 		mask:        []byte("\xff\xff\xff\xff\x00\x00\x00\x00\xff\xff\xff\xff"),
 		contentType: "image/webp",
 	},
+	// Font files (typography: FontFace.asset_hash). Same closed-allowlist logic as
+	// the images: the type is read from the container's signature and the handler
+	// serves it with nosniff, so uploading one never makes the route a host for
+	// anything executable. A font is data the browser parses, not a document.
+	{prefix: []byte("\x00\x01\x00\x00"), contentType: "font/ttf"},
+	{prefix: []byte("true"), contentType: "font/ttf"},
+	{prefix: []byte("OTTO"), contentType: "font/otf"},
+	{prefix: []byte("wOFF"), contentType: "font/woff"},
+	{prefix: []byte("wOF2"), contentType: "font/woff2"},
 }
 
 // DetectImageType returns the Content-Type of an asset's initial bytes, or ""

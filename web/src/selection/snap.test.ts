@@ -6,6 +6,7 @@ import {
   snapLines,
   snapMoving,
   snapTargets,
+  spacingSnap,
   worldThreshold,
 } from "./snap";
 import { emptyScene } from "../store/types";
@@ -206,5 +207,41 @@ describe("snapTargets", () => {
   it("returns an empty list when everything is selected", () => {
     const scene = sceneWith([node({ id: "a" })]);
     expect(snapTargets(scene, ["a"])).toEqual([]);
+  });
+});
+
+describe("spacingSnap", () => {
+  const b = (x: number, y: number, w = 20, h = 20) => ({ x, y, width: w, height: h });
+
+  it("centers a box between two neighbors (equal gaps)", () => {
+    // left neighbor ends at 20, right starts at 100: free space 80, box 20 wide -> 30 each side -> x = 50
+    const r = spacingSnap(b(53, 0), [b(0, 0), b(100, 0)], 6);
+    expect(r.dx).toBe(-3);
+    expect(r.guides).toEqual([
+      { axis: "x", from: 20, to: 50, at: 10 },
+      { axis: "x", from: 70, to: 100, at: 10 },
+    ]);
+  });
+
+  it("repeats the gap the neighbors beside it already have", () => {
+    // A (0..20), B (40..60): gap 20. A box dragged to the right of B lands at 80 (gap 20).
+    const r = spacingSnap(b(83, 0), [b(0, 0), b(40, 0)], 6);
+    expect(r.dx).toBe(-3);
+    expect(r.guides[1]).toEqual({ axis: "x", from: 60, to: 80, at: 10 });
+    // and on the left of A: the box ends 20 before A
+    const l = spacingSnap(b(-42, 0), [b(0, 0), b(40, 0)], 6);
+    expect(l.dx).toBe(2); // target x = 0 - 20 - 20 = -40
+  });
+
+  it("works on the vertical axis too, and only looks at neighbors the box faces", () => {
+    const r = spacingSnap(b(0, 52), [b(0, 0), b(0, 100)], 6);
+    expect(r.dy).toBe(-2);
+    // A node that does not overlap the box on the other axis is not a neighbor.
+    expect(spacingSnap(b(53, 0), [b(0, 500), b(100, 500)], 6)).toEqual({ dx: 0, dy: 0, guides: [] });
+  });
+
+  it("does nothing beyond the threshold or with one neighbor", () => {
+    expect(spacingSnap(b(60, 0), [b(0, 0), b(100, 0)], 6).dx).toBe(0); // 10 away from equal gaps
+    expect(spacingSnap(b(50, 0), [b(0, 0)], 6)).toEqual({ dx: 0, dy: 0, guides: [] });
   });
 });

@@ -118,18 +118,20 @@ export function SegRadio<T extends string>({
  * of auto layout). Same look as SegRadio.
  */
 export function SegButtons<T extends string>({
-  label, value, options, onPick, showLabel = false,
+  label, value, options, onPick, showLabel = false, wrap = false,
 }: {
   label: string;
   value: T | undefined;
   options: readonly SegOption<T>[];
   onPick: (v: T) => void;
   showLabel?: boolean;
+  /** Lays the options out in rows of three instead of one row (for five or more). */
+  wrap?: boolean;
 }) {
   return (
     <div className="flex flex-col gap-1">
       {showLabel && <span className="text-[11px] font-medium text-fg-subtle">{label}</span>}
-      <div role="group" aria-label={label} className={SEG_WRAP}>
+      <div role="group" aria-label={label} className={wrap ? "grid w-full grid-cols-3 gap-0.5 rounded-md bg-surface-2 p-0.5" : SEG_WRAP}>
         {options.map((o) => (
           <button
             key={o.value}
@@ -138,7 +140,7 @@ export function SegButtons<T extends string>({
             aria-label={o.icon ? o.label : undefined}
             title={o.label}
             onClick={() => onPick(o.value)}
-            className={`${SEG_ITEM} ${value === o.value ? SEG_ON : ""}`}
+            className={`${SEG_ITEM} ${wrap ? "h-6" : ""} ${value === o.value ? SEG_ON : ""}`}
           >
             <SegContent o={o} />
           </button>

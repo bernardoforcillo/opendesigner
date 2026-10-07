@@ -18,7 +18,14 @@ var (
 	// ErrNotFrameNode: auto_layout is a field of FrameNode, so writing it to a
 	// node that is not a frame is an op on the wrong node (same precedent as
 	// ErrNotRectNode for corner_radius).
-	ErrNotFrameNode = errors.New("core: not a frame node")
+	ErrNotFrameNode    = errors.New("core: not a frame node")
+	ErrConstraint      = errors.New("core: unknown constraint")
+	ErrBlendMode       = errors.New("core: unknown blend mode")
+	ErrComment         = errors.New("core: invalid comment")
+	ErrPaint           = errors.New("core: invalid paint")
+	ErrCommentNotFound = errors.New("core: comment not found")
+	ErrLayoutGrid      = errors.New("core: invalid layout grid")
+	ErrLayoutSizing    = errors.New("core: unknown layout sizing")
 	// ErrNotVectorNode: same precedent as ErrNotTextNode -- the `shape` oneof is
 	// the NATURE of the node, so a SetVectorPath on a rectangle is an op on the
 	// wrong node, not a missing field to fill in.
@@ -37,6 +44,7 @@ var (
 	ErrNilFlow            = errors.New("core: nil flow")
 	ErrFlowNotFound       = errors.New("core: flow not found")
 	ErrNilTransition      = errors.New("core: nil transition")
+	ErrTransitionAnim     = errors.New("core: invalid transition animation")
 	ErrTransitionNotFound = errors.New("core: transition not found")
 )
 
@@ -107,6 +115,34 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetClip(doc, k.SetClip)
 	case *opendesignerv1.Op_DeleteClip:
 		return applyDeleteClip(doc, k.DeleteClip)
+	case *opendesignerv1.Op_SetCollection:
+		return applySetCollection(doc, k.SetCollection, cow)
+	case *opendesignerv1.Op_DeleteCollection:
+		return applyDeleteCollection(doc, k.DeleteCollection, cow)
+	case *opendesignerv1.Op_SetVariable:
+		return applySetVariable(doc, k.SetVariable)
+	case *opendesignerv1.Op_DeleteVariable:
+		return applyDeleteVariable(doc, k.DeleteVariable, cow)
+	case *opendesignerv1.Op_SetFont:
+		return applySetFont(doc, k.SetFont)
+	case *opendesignerv1.Op_DeleteFont:
+		return applyDeleteFont(doc, k.DeleteFont)
+	case *opendesignerv1.Op_SetTextStyleDef:
+		return applySetTextStyleDef(doc, k.SetTextStyleDef)
+	case *opendesignerv1.Op_DeleteTextStyleDef:
+		return applyDeleteTextStyleDef(doc, k.DeleteTextStyleDef, cow)
+	case *opendesignerv1.Op_SetComponentSet:
+		return applySetComponentSet(doc, k.SetComponentSet)
+	case *opendesignerv1.Op_DeleteComponentSet:
+		return applyDeleteComponentSet(doc, k.DeleteComponentSet)
+	case *opendesignerv1.Op_SetComponentDef:
+		return applySetComponentDef(doc, k.SetComponentDef)
+	case *opendesignerv1.Op_SetInstanceProps:
+		return applySetInstanceProps(doc, k.SetInstanceProps, cow)
+	case *opendesignerv1.Op_SetComment:
+		return applySetComment(doc, k.SetComment)
+	case *opendesignerv1.Op_DeleteComment:
+		return applyDeleteComment(doc, k.DeleteComment)
 	case *opendesignerv1.Op_SetFlow:
 		return applySetFlow(doc, k.SetFlow)
 	case *opendesignerv1.Op_DeleteFlow:
@@ -162,6 +198,9 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode, cow
 			return fmt.Errorf("%w: %s (node %s)", ErrComponentNotFound, inst.GetComponentId(), n.GetId())
 		}
 	}
+	if err := validateNodePaints(n.GetFills(), n.GetStrokes()); err != nil {
+		return fmt.Errorf("%w (node %s)", err, n.GetId())
+	}
 	if doc.Nodes == nil {
 		// Apply is the authoritative mutator for any *opendesignerv1.Document, not
 		// only ones built via NewDocument. proto.Unmarshal resets the
@@ -203,6 +242,7 @@ func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) err
 	}
 	cascadeFlows(doc, gone)
 	cascadeClips(doc, gone)
+	cascadeComponentTargets(doc, gone)
 	return nil
 }
 
@@ -316,6 +356,7 @@ func applyDeletePage(doc *opendesignerv1.Document, d *opendesignerv1.DeletePage)
 	}
 	cascadeFlows(doc, gone)
 	cascadeClips(doc, gone)
+	cascadeComponentTargets(doc, gone)
 	doc.Pages = append(doc.Pages[:i], doc.Pages[i+1:]...)
 	return nil
 }
@@ -344,9 +385,59 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 	}
 	paths := s.GetMask().GetPaths()
 	for _, path := range paths {
+		if path == "fills" || path == "strokes" {
+			if err := validateNodePaints(s.GetPatch().GetFills(), s.GetPatch().GetStrokes()); err != nil {
+				return err
+			}
+		}
 		switch path {
-		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta":
+		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta", "is_mask":
 			// supported
+		case "constraint_x", "constraint_y":
+			// The enum is closed: an unknown number would never be read as a constraint.
+			c := s.GetPatch().GetConstraintX()
+			if path == "constraint_y" {
+				c = s.GetPatch().GetConstraintY()
+			}
+			if c < opendesignerv1.Constraint_CONSTRAINT_UNSPECIFIED || c > opendesignerv1.Constraint_CONSTRAINT_SCALE {
+				return fmt.Errorf("%w: %v", ErrConstraint, c)
+			}
+		case "layout_grids":
+			if n.GetFrame() == nil {
+				return fmt.Errorf("%w: only frames take layout grids", ErrLayoutGrid)
+			}
+			if err := validateLayoutGrids(s.GetPatch().GetLayoutGrids()); err != nil {
+				return err
+			}
+		case "blend_mode":
+			// Closed enum, like constraints.
+			if b := s.GetPatch().GetBlendMode(); b < opendesignerv1.BlendMode_BLEND_MODE_UNSPECIFIED || b > opendesignerv1.BlendMode_BLEND_MODE_LUMINOSITY {
+				return fmt.Errorf("%w: %v", ErrBlendMode, b)
+			}
+		case "layout_sizing_x", "layout_sizing_y":
+			sz := s.GetPatch().GetLayoutSizingX()
+			if path == "layout_sizing_y" {
+				sz = s.GetPatch().GetLayoutSizingY()
+			}
+			if sz < opendesignerv1.LayoutSizing_LAYOUT_SIZING_FIXED || sz > opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL {
+				return fmt.Errorf("%w: %v", ErrLayoutSizing, sz)
+			}
+		case "bindings":
+			// Variable bindings: every key in the grammar, every variable existing
+			// and of the property's type. Validated HERE, before any field is
+			// written, so a mixed mask does not leave the node half mutated.
+			if err := validateBindings(doc, s.GetPatch().GetBindings()); err != nil {
+				return err
+			}
+		case "modes":
+			if err := validateModes(doc, s.GetPatch().GetModes()); err != nil {
+				return err
+			}
+		case "text_style_id":
+			// Only a text node takes a shared style, and it must exist (or be empty).
+			if err := validateTextStyleID(doc, n, s.GetPatch().GetTextStyleId()); err != nil {
+				return err
+			}
 		case "corner_radius":
 			// The ONLY mask path that addresses a field INSIDE the `shape` oneof
 			// (RectNode.corner_radius) instead of a top-level field of the Node: the
@@ -400,6 +491,7 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 		}
 	}
 	p := s.GetPatch()
+	oldW, oldH := n.GetWidth(), n.GetHeight()
 	for _, path := range paths {
 		switch path {
 		case "x":
@@ -418,12 +510,33 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.Name = p.GetName()
 		case "visible":
 			n.Visible = p.GetVisible()
+		case "is_mask":
+			n.IsMask = p.GetIsMask()
 		case "meta":
 			// Replaces the whole map (like lists). An empty map clears it:
 			// nil and {} are the same state after the proto3 round-trip.
 			n.Meta = p.GetMeta()
 		case "fills":
 			n.Fills = p.GetFills()
+		case "bindings":
+			// Replaces the whole map, like meta. An empty map clears it.
+			n.Bindings = p.GetBindings()
+		case "modes":
+			n.Modes = p.GetModes()
+		case "text_style_id":
+			n.TextStyleId = p.GetTextStyleId()
+		case "constraint_x":
+			n.ConstraintX = p.GetConstraintX()
+		case "constraint_y":
+			n.ConstraintY = p.GetConstraintY()
+		case "layout_grids":
+			n.LayoutGrids = p.GetLayoutGrids()
+		case "blend_mode":
+			n.BlendMode = p.GetBlendMode()
+		case "layout_sizing_x":
+			n.LayoutSizingX = p.GetLayoutSizingX()
+		case "layout_sizing_y":
+			n.LayoutSizingY = p.GetLayoutSizingY()
 		case "strokes":
 			// REPLACEMENT of the whole list, exactly like `fills` above -- not an
 			// element-by-element merge. It is the REPEATED field on which the two
@@ -467,6 +580,11 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			}
 			r.CornerRadius = p.GetRect().GetCornerRadius()
 		}
+	}
+	// A resized frame moves and resizes its children by their constraints (the frames with
+	// auto layout decide for themselves, see resizeChildren).
+	if n.GetWidth() != oldW || n.GetHeight() != oldH {
+		resizeChildren(doc, n.GetId(), oldW, oldH, cow)
 	}
 	return nil
 }
