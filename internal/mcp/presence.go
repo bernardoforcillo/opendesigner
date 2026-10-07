@@ -2,9 +2,12 @@ package mcp
 
 import (
 	"context"
+	"errors"
+	"fmt"
 	"sort"
 	"strings"
 	"time"
+	"unicode/utf8"
 
 	"connectrpc.com/connect"
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
@@ -22,13 +25,30 @@ func (s *Session) PresenceLoop(ctx context.Context, nickname string) {
 	if nickname == "" {
 		nickname = DefaultNickname
 	}
+	s.mu.Lock()
+	s.nickname = nickname
+	s.mu.Unlock()
 	backoff := minBackoff
 	for ctx.Err() == nil {
 		started := time.Now()
-		err := s.watchOnce(ctx, nickname)
+		// Each stream has its own context, so a name change can end it and the loop rejoins under the new name.
+		sctx, cancel := context.WithCancel(ctx)
+		s.mu.Lock()
+		s.restart = cancel
+		name := s.nickname
+		s.mu.Unlock()
+		err := s.watchOnce(sctx, name)
+		cancel()
 		s.setJoined(false)
 		if ctx.Err() != nil {
 			return
+		}
+		s.mu.Lock()
+		renamed := s.nickname != name
+		s.mu.Unlock()
+		if renamed {
+			backoff = minBackoff
+			continue // a deliberate rejoin: no waiting
 		}
 		s.logf("presence stream ended: %v (reconnecting)", err)
 		if time.Since(started) > maxBackoff {
@@ -209,4 +229,41 @@ func (s *Session) PresenceJoined() bool {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	return s.joined
+}
+
+// maxNicknameRunes matches the server's limit (internal/server/presence.go).
+const maxNicknameRunes = 32
+
+// SetNicknameInput is the set_nickname tool's input.
+type SetNicknameInput struct {
+	Nickname string `json:"nickname" jsonschema:"the name to show to the other people in the document (1 to 32 characters)"`
+}
+
+// SetNicknameOutput says what name is now in use.
+type SetNicknameOutput struct {
+	Nickname string `json:"nickname"`
+	Joined   bool   `json:"joined" jsonschema:"whether the presence stream is open: the new name is visible to others only once it is"`
+}
+
+// SetNickname changes the name this agent shows in the document. The server fixes a name when a
+// client joins the room, so the agent leaves and rejoins under the new one (a moment in which it
+// is not listed). People change theirs in the top bar; this is the same for an agent.
+func (s *Session) SetNickname(_ context.Context, in SetNicknameInput) (SetNicknameOutput, error) {
+	name := strings.TrimSpace(in.Nickname)
+	if name == "" {
+		return SetNicknameOutput{}, errors.New("the nickname cannot be empty")
+	}
+	if n := utf8.RuneCountInString(name); n > maxNicknameRunes {
+		return SetNicknameOutput{}, fmt.Errorf("the nickname is too long (%d characters, at most %d)", n, maxNicknameRunes)
+	}
+	s.mu.Lock()
+	changed := s.nickname != name
+	s.nickname = name
+	restart := s.restart
+	joined := s.joined
+	s.mu.Unlock()
+	if changed && restart != nil {
+		restart()
+	}
+	return SetNicknameOutput{Nickname: name, Joined: joined && !changed}, nil
 }

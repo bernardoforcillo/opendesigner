@@ -80,6 +80,10 @@ type Session struct {
 	joined bool
 	// peers is the roster the presence stream has delivered, by client id.
 	peers map[string]*opendesignerv1.PresenceState
+	// nickname is the name the agent shows under; restart ends the current presence stream
+	// so the loop rejoins under the new one (presence.go::SetNickname).
+	nickname string
+	restart  context.CancelFunc
 }
 
 // NewSession builds a Session over an already-constructed client. logger may be

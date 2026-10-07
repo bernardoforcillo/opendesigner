@@ -865,6 +865,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "get_document", "Return the whole document: id, name, seq, pages, components and all nodes.", s.GetDocument)
 	addTool(srv, "list_pages", "List the document's pages.", s.ListPages)
 	addTool(srv, "list_nodes", "List nodes, optionally filtered to one page's subtree.", s.ListNodes)
+	addTool(srv, "set_nickname", "Change the name you show to the other people in the document (1 to 32 characters). You leave and rejoin the room under the new name.", s.SetNickname)
 	addTool(srv, "list_peers", "List the other people and agents in the document and the nodes each has selected or just edited. Use it to avoid editing what someone else is working on.", s.ListPeers)
 	addTool(srv, "list_components", "List the document's components.", s.ListComponents)
 	registerFlowTools(srv, s)
