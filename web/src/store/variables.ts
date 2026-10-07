@@ -3,6 +3,7 @@ import { VariableType } from "../gen/opendesigner/v1/opendesigner_pb";
 import { recordDelta } from "./sceneDelta";
 import { deriveBooleans } from "./booleans";
 import { deriveConnectors } from "./connectors";
+import { taggedOf } from "./tagged";
 import { resolveTextStyleNode } from "./typography";
 import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "./types";
 
@@ -234,8 +235,9 @@ export function resolveScene(raw: SceneState): SceneState {
   if (hit) return hit;
   let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
   const changed: string[] = [];
-  for (const n of scene.nodes.values()) {
-    if (!n.bindings && !n.textStyleId) continue;
+  for (const id of taggedOf(scene).bound) {
+    const n = scene.nodes.get(id);
+    if (!n || (!n.bindings && !n.textStyleId)) continue;
     const r = resolveNode(scene, n);
     if (r === n) continue;
     (edit ??= scene.nodes.edit()).set(n.id, r);

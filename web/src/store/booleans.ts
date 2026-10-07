@@ -1,6 +1,7 @@
 import { worldTransformOf } from "../canvas/transform";
-import { booleanOpOf, booleanRegion, regionOf } from "../vector/regions";
+import { booleanRegion, regionOf } from "../vector/regions";
 import { recordDelta } from "./sceneDelta";
+import { taggedOf } from "./tagged";
 import { subtreeOf } from "./tree";
 import { normalizeVector } from "./vectorGeometry";
 import type { NodeLite, SceneState } from "./types";
@@ -14,8 +15,7 @@ import type { NodeLite, SceneState } from "./types";
 
 /** The live boolean groups of a scene that are not themselves inside another one. */
 export function liveBooleanRoots(scene: SceneState): NodeLite[] {
-  const live = new Set<string>();
-  for (const n of scene.nodes.values()) if (booleanOpOf(n)) live.add(n.id);
+  const live = taggedOf(scene).booleans;
   if (live.size === 0) return [];
   const inside = (n: NodeLite): boolean => {
     for (let cur = scene.nodes.get(n.parentId), guard = 0; cur && guard < 10000; cur = scene.nodes.get(cur.parentId), guard++) {

@@ -87,8 +87,15 @@ export function resolvedFill(n: NodeLite): FillLite {
 export function cssColor(n: NodeLite): string {
   // resolvedFill (track 3, gray default) + cssRgba (track 2, float->CSS):
   // the default lives in one place, the conversion in another.
-  return cssRgba(resolvedFill(n));
+  const f = resolvedFill(n);
+  // A fill object is immutable and shared between frames: its CSS string is built once. (Thousands of
+  // small nodes per frame made this conversion a visible share of the draw.)
+  let s = cssCache.get(f);
+  if (s === undefined) cssCache.set(f, (s = cssRgba(f)));
+  return s;
 }
+
+const cssCache = new WeakMap<object, string>();
 
 // RGBA float 0..1 -> CSS string. A single function for fills and strokes:
 // they are the same Color in the proto, and two independent conversions would diverge
@@ -480,6 +487,8 @@ interface Cull {
 // rectangle of its color, which at that size is indistinguishable.
 export const SKIP_SUBTREE_PX = 0.3;
 export const LOD_FLAT_PX = 4;
+// Below this size on screen a plain box takes the fast path (a bigger one is few enough to afford the general one).
+export const FAST_BOX_PX = 32;
 // A clipping frame smaller than this (screen px) does not clip: what
 // overflows by a few pixels is indistinguishable, and creating a Path2D + clip for every
 // frame costs more than the rest of the frame.
@@ -656,6 +665,22 @@ function drawInstance(
 // The PER-NODE body of the four tracks: size guard (shapes.ts::
 // inkIsBox), rotation of the CONTEXT around the center (track 2), and the if-chain
 // text/image/vector/shape with their respective strokes (tracks 2/3/4).
+/**
+ * A box or ellipse of one flat color (or none), no stroke, effect, blend, rotation or animation: what
+ * the fast path can draw without a Path2D. A rectangle's corners count as sharp when they are
+ * under ~1.5 screen pixels, which is when nobody can tell. null for anything else.
+ */
+export function plainShape(n: NodeLite, px: number): "box" | "ellipse" | null {
+  const kind = n.kind === "rect" ? (n.cornerRadius / px < 1.5 ? "box" : null) : n.kind === "frame" ? "box" : n.kind === "ellipse" ? "ellipse" : null;
+  if (kind === null) return null;
+  if (n.rotation % 360 !== 0 || n.animScale !== undefined || n.animDraw !== undefined || n.blendMode !== undefined) return null;
+  if (n.effects !== undefined && n.effects.length > 0) return null;
+  for (const s of n.strokes) if (s.weight > 0) return null;
+  if (n.fills.length > 1) return null;
+  const f = n.fills[0];
+  return f === undefined || (!f.gradient && !f.image && !f.mesh) ? kind : null;
+}
+
 function drawNode(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -696,6 +721,24 @@ function drawNode(
     ctx.globalAlpha = eff.kind === "text" ? eff.opacity * 0.5 : eff.opacity;
     ctx.fillStyle = cssColor(eff);
     ctx.fillRect(eff.x, eff.y, eff.width, eff.height);
+    return;
+  }
+  // THE FAST PATH. Most of what fills a big page is a plain box: a sharp rectangle or a frame with one
+  // flat color, no stroke, no effect, no rotation. For those a single fillRect does what the general
+  // path does with a Path2D, a save/restore, effect checks and a paint-style lookup -- on tens of
+  // thousands of nodes that difference is the frame.
+  const plain = flatSize / px < FAST_BOX_PX ? plainShape(eff, px) : null;
+  if (plain !== null) {
+    if (eff.kind === "frame" && eff.fills.length === 0) return;
+    ctx.globalAlpha = eff.opacity;
+    ctx.fillStyle = cssColor(eff);
+    if (plain === "box") {
+      ctx.fillRect(eff.x, eff.y, eff.width, eff.height);
+    } else {
+      ctx.beginPath();
+      ctx.ellipse(eff.x + eff.width / 2, eff.y + eff.height / 2, eff.width / 2, eff.height / 2, 0, 0, 2 * Math.PI);
+      ctx.fill();
+    }
     return;
   }
   // ROTATION (track 2): it is the CONTEXT that rotates around the box center

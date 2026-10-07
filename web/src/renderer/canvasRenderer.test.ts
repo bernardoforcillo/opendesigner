@@ -1,5 +1,5 @@
 import { describe, it, expect, afterEach, beforeEach, vi } from "vitest";
-import { hitTest, nodesIntersecting, resizeCanvasToDisplaySize, drawScene, paintStyle } from "./canvasRenderer";
+import { hitTest, nodesIntersecting, resizeCanvasToDisplaySize, drawScene, paintStyle, plainShape } from "./canvasRenderer";
 import type { CachedImage } from "./imageCache";
 import { VECTOR_STROKE_PX } from "./shapes";
 import type { Camera } from "../canvas/camera";
@@ -1454,5 +1454,62 @@ describe("mesh paints", () => {
     const fill = { r: 0.5, g: 0, b: 0.5, a: 1, mesh };
     const n = { id: "n", x: 0, y: 0, width: 10, height: 10 } as NodeLite;
     expect(paintStyle({} as CanvasRenderingContext2D, fill, n)).toBe("rgba(128, 0, 128, 1)");
+  });
+});
+
+// THE FAST PATH for small plain shapes: one fillRect (or one ellipse) instead of the general path.
+describe("drawScene: the fast path for small plain shapes", () => {
+  // jsdom has no Path2D: the general path (which these tests contrast with) needs one.
+  beforeEach(() => { (globalThis as { Path2D?: unknown }).Path2D = class { rect() {} ellipse() {} roundRect() {} addPath() {} moveTo() {} lineTo() {} closePath() {} }; });
+  afterEach(() => { delete (globalThis as { Path2D?: unknown }).Path2D; });
+
+  const box = (over: Partial<NodeLite>): NodeLite => ({
+    id: "s", parentId: "page1", orderKey: "a", name: "s", visible: true, opacity: 0.5, x: 3, y: 4, width: 20, height: 10, rotation: 0,
+    fills: [{ r: 1, g: 0, b: 0, a: 1 }], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false, ...over,
+  });
+  const run = (n: NodeLite, zoom = 1) => {
+    const calls: string[] = [];
+    const rects: number[][] = [];
+    const seen = { style: "", alpha: -1 };
+    const ctx = {
+      canvas: { width: 800, height: 600 }, fillStyle: "", globalAlpha: 1,
+      setTransform: () => {}, clearRect: () => {}, save: () => calls.push("save"), restore: () => {}, transform: () => {},
+      getTransform: () => ({ a: 1 }), translate: () => {}, rotate: () => {}, scale: () => {},
+      fillRect: function (this: { fillStyle: string; globalAlpha: number }, ...a: number[]) { calls.push("fillRect"); rects.push(a); seen.style = this.fillStyle; seen.alpha = this.globalAlpha; },
+      beginPath: () => calls.push("beginPath"), ellipse: () => calls.push("ellipse"), fill: () => calls.push("fill"),
+    } as unknown as CanvasRenderingContext2D;
+    // Anything else the general path calls (stroke, clip, setLineDash...) is a no-op.
+    const loose = new Proxy(ctx as object, { get: (t, k) => (k in t ? (t as Record<string | symbol, unknown>)[k] : () => {}), set: (t, k, v) => { (t as Record<string | symbol, unknown>)[k] = v; return true; } }) as unknown as CanvasRenderingContext2D;
+    const s = emptyScene("d", "t");
+    s.nodes = s.nodes.set("s", n);
+    drawScene(loose, s, { x: 0, y: 0, zoom } as Camera);
+    return { calls, rects, seen };
+  };
+
+  it("a small sharp rectangle is one fillRect with its color and opacity", () => {
+    const r = run(box({}));
+    expect(r.calls).toEqual(["fillRect"]);
+    expect(r.rects).toEqual([[3, 4, 20, 10]]);
+    expect(r.seen).toEqual({ style: "rgba(255, 0, 0, 1)", alpha: 0.5 });
+  });
+
+  it("a small ellipse is one path fill, and a frame with no fill draws nothing", () => {
+    expect(run(box({ kind: "ellipse" })).calls).toEqual(["beginPath", "ellipse", "fill"]);
+    expect(run(box({ kind: "frame", fills: [] })).calls).toEqual([]);
+  });
+
+  it("corners under a pixel and a half count as sharp; bigger ones, strokes, effects and rotation do not", () => {
+    expect(run(box({ cornerRadius: 1 }), 1).calls).toEqual(["fillRect"]);
+    expect(run(box({ cornerRadius: 6 }), 1).calls).not.toEqual(["fillRect"]);
+    expect(run(box({ strokes: [{ color: { r: 0, g: 0, b: 0, a: 1 }, weight: 1, align: "center" }] })).calls).not.toEqual(["fillRect"]);
+  });
+
+  it("plainShape: gradients, blends, effects and animations are never plain", () => {
+    expect(plainShape(box({}), 1)).toBe("box");
+    expect(plainShape(box({ fills: [{ r: 0, g: 0, b: 0, a: 1, gradient: { kind: "linear", stops: [], x1: 0, y1: 0, x2: 1, y2: 1 } }] }), 1)).toBeNull();
+    expect(plainShape(box({ blendMode: "multiply" }), 1)).toBeNull();
+    expect(plainShape(box({ effects: [{ kind: "layerBlur", radius: 2 }] }), 1)).toBeNull();
+    expect(plainShape(box({ rotation: 15 }), 1)).toBeNull();
+    expect(plainShape(box({ kind: "text" }), 1)).toBeNull();
   });
 });

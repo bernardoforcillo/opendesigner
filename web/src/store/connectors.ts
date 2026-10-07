@@ -1,6 +1,7 @@
 import { invertTransform, mapBounds, worldBoundsOfNode, worldTransformOf } from "../canvas/transform";
 import { connectorOf, connectorSubpaths } from "../vector/connector";
 import { recordDelta } from "./sceneDelta";
+import { taggedOf } from "./tagged";
 import { normalizeVector } from "./vectorGeometry";
 import type { SceneState } from "./types";
 
@@ -17,9 +18,12 @@ export function deriveConnectors(scene: SceneState): SceneState {
   if (hit) return hit;
   let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
   const changed: string[] = [];
-  for (const n of scene.nodes.values()) {
-    const spec = connectorOf(n);
-    if (!spec) continue;
+  const ids = taggedOf(scene).connectors;
+  if (ids.size === 0) { derived.set(scene, scene); return scene; }
+  for (const id of ids) {
+    const n = scene.nodes.get(id);
+    const spec = n ? connectorOf(n) : null;
+    if (!n || !spec) continue;
     const a = scene.nodes.get(spec.from);
     const b = scene.nodes.get(spec.to);
     if (!a || !b || !a.visible || !b.visible) continue;
