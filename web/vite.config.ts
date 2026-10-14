@@ -14,7 +14,7 @@ export default defineConfig({
     // The panels (M1b) are React components: they need DOM + jest-dom matchers.
     // The tests so far are on pure functions and run unchanged under jsdom.
     environment: "jsdom",
-    setupFiles: ["@testing-library/jest-dom/vitest"],
+    setupFiles: ["@testing-library/jest-dom/vitest", "./src/test/setup.ts"],
     // Vitest's default 5s is below the REAL cost of the component tests, and
     // produced INTERMITTENT false reds: files green in isolation that, running
     // together with the others with the workers in parallel, exceeded the limit on a
