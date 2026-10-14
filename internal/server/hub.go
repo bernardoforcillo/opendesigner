@@ -565,6 +565,16 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 			next.Clips[k] = proto.Clone(c).(*opendesignerv1.Clip)
 		}
 	}
+	// Design tokens: few, deep-cloned like clips (setVariable writes the op's pointer).
+	if len(d.GetVariables()) > 0 {
+		next.Variables = make(map[string]*opendesignerv1.Variable, len(d.GetVariables()))
+		for k, v := range d.GetVariables() {
+			next.Variables[k] = proto.Clone(v).(*opendesignerv1.Variable)
+		}
+	}
+	for _, m := range d.GetModes() {
+		next.Modes = append(next.Modes, proto.Clone(m).(*opendesignerv1.Mode))
+	}
 	if len(d.GetComponents()) > 0 {
 		next.Components = make(map[string]*opendesignerv1.Component, len(d.GetComponents()))
 		for k, c := range d.GetComponents() {

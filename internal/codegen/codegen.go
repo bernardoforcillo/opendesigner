@@ -94,6 +94,10 @@ func Generate(doc *opendesignerv1.Document, opts Options, assets AssetSource) (*
 	// the caller's document.
 	d := proto.Clone(doc).(*opendesignerv1.Document)
 
+	// Variable paints become literal colours (and, for fills, a recorded
+	// custom property) BEFORE any element is built; see variables.go.
+	vars := bindVariables(d)
+
 	out := &Output{}
 	screens := collectScreens(d, opts.FlowID, &out.Warnings)
 	if len(screens) == 0 {
@@ -113,9 +117,9 @@ func Generate(doc *opendesignerv1.Document, opts Options, assets AssetSource) (*
 
 	switch opts.Target {
 	case TargetHTML:
-		renderHTML(d, screens, opts, files)
+		renderHTML(d, screens, opts, files, tokensCSS(d, vars, false))
 	default:
-		if err := renderReact(d, screens, opts, files, &out.Warnings); err != nil {
+		if err := renderReact(d, screens, opts, files, &out.Warnings, tokensCSS(d, vars, true)); err != nil {
 			return nil, err
 		}
 	}

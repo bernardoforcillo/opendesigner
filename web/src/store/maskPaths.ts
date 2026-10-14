@@ -64,6 +64,8 @@ export const MASK_PATHS = [
   // "orderKey" and comes back as it is -- it is the whole reason this
   // file exists, see the comment at the top.
   "order_key",
+  // Property -> variable bindings (number/text variables). Replaces the whole map, like meta.
+  "bindings",
   // M1b, Task 10 (properties panel, appearance). The ONLY mask path that
   // addresses a field INSIDE the `shape` oneof -- RectNode.corner_radius --
   // instead of a top-level field of the Node: the patch carries it nested

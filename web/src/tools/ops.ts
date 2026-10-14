@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbClip, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
-import type { ClipLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import { toPbClip, toPbFlow, toPbVariable, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { ModeLite, VariableLite, ClipLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -215,6 +215,15 @@ export function makeInstanceNode(p: InstanceNodeParams): Node {
 // Absolute upsert of the whole clip (id supplied by the caller) and deletion.
 export function makeSetClipOp(clip: ClipLite): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setClip", value: { clip: toPbClip(clip) } } });
+}
+export function makeSetVariableOp(v: VariableLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setVariable", value: { variable: toPbVariable(v) } } });
+}
+export function makeDeleteVariableOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteVariable", value: { id } } });
+}
+export function makeSetModesOp(modes: readonly ModeLite[]): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setModes", value: { modes: modes.map((m) => ({ id: m.id, name: m.name })) } } });
 }
 export function makeDeleteClipOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteClip", value: { id } } });

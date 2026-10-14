@@ -29,6 +29,7 @@ import { CanvasOnboarding } from "../home/CanvasOnboarding";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { LayersPanel } from "./LayersPanel";
 import { ComponentsPanel } from "./ComponentsPanel";
+import { VariablesPanel } from "./VariablesPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { PageBar } from "./PageBar";
 import { FlowPanel } from "./FlowPanel";
@@ -570,11 +571,13 @@ export function App() {
               {/* Tabs and page selector in the SAME row: 40px less. */}
               <div className="flex shrink-0 items-center border-b border-line pr-1.5">
               <TabList aria-label="Panel" className="flex min-w-0 flex-1 gap-0.5 px-1.5 pt-1">
-                {([["layers", "Layers", "layers"], ["components", "Components", "components"]] as const).map(([id, label, icon]) => (
+                {([["layers", "Layers", "layers"], ["components", "Components", "components"], ["variables", "Variables", "palette"]] as const).map(([id, label, icon]) => (
                   <Tab
                     key={id}
                     id={id}
                     aria-label={label}
+                    // Hover name for the icon-only state (not-selected tabs and Variables).
+                    {...{ title: label }}
                     className={({ isSelected }) =>
                       `flex h-9 cursor-default items-center gap-1.5 border-b-2 px-1.5 text-[13px] font-medium outline-none ` +
                       `focus-visible:shadow-[var(--ring)] ` +
@@ -586,7 +589,8 @@ export function App() {
                         <Icon name={icon} size={14} />
                         {/* Only the active tab carries the text: the row also hosts the
                             page selector. The name stays in the aria-label. */}
-                        {isSelected && label}
+                        {/* "Variables" does not fit next to the page selector: icon only. */}
+                        {isSelected && id !== "variables" && label}
                       </>
                     )}
                   </Tab>
@@ -599,6 +603,9 @@ export function App() {
               </TabPanel>
               <TabPanel id="components" className="min-h-0 flex-1 overflow-y-auto outline-none">
                 <ComponentsPanel />
+              </TabPanel>
+              <TabPanel id="variables" className="flex min-h-0 flex-1 flex-col outline-none">
+                <VariablesPanel />
               </TabPanel>
             </Tabs>
           </aside>

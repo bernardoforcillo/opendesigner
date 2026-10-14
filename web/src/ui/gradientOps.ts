@@ -71,7 +71,8 @@ export function gradientStopOps(ids: readonly string[], lookup: NodeLookup, inde
     const cur = n?.fills[0];
     const g = cur?.gradient;
     if (!n || !cur || !g || index < 0 || index >= g.stops.length) return [];
-    const stops = g.stops.map((st, i) => (i === index ? { ...st, color: { ...rgb, a: st.color.a } } : st));
+    // Typing a colour unbinds the stop (a literal colour wins), like the plain fill.
+    const stops = g.stops.map((st, i) => (i === index ? { color: { ...rgb, a: st.color.a }, position: st.position } : st));
     const first = stops[0].color;
     return [withFirst(n, { r: first.r, g: first.g, b: first.b, a: first.a, gradient: { ...g, stops } })];
   });
@@ -95,5 +96,25 @@ export function gradientAngleOps(ids: readonly string[], lookup: NodeLookup, deg
     if (!n || !cur || !g || g.kind !== "linear") return [];
     const gradient: GradientLite = { ...g, x1: 0.5 - dx, y1: 0.5 - dy, x2: 0.5 + dx, y2: 0.5 + dy };
     return [withFirst(n, { ...cur, gradient })];
+  });
+}
+
+/**
+ * Binds a stop of the first fill's gradient to a COLOR variable, or (null)
+ * unbinds it keeping the colour it shows. A bound stop takes the variable's
+ * colour whole, alpha included, like any other bound paint.
+ */
+export function gradientStopBindOps(ids: readonly string[], lookup: NodeLookup, index: number, varId: string | null): Op[] {
+  return ids.flatMap((id) => {
+    const n = lookup(id);
+    const cur = n?.fills[0];
+    const g = cur?.gradient;
+    if (!n || !cur || !g || index < 0 || index >= g.stops.length) return [];
+    const stops = g.stops.map((st, i) => {
+      if (i !== index) return st;
+      const { varId: _drop, ...flat } = st;
+      return varId === null ? flat : { ...flat, varId };
+    });
+    return [withFirst(n, { ...cur, gradient: { ...g, stops } })];
   });
 }

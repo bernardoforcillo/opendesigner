@@ -138,7 +138,7 @@ func TestStrokeRings(t *testing.T) {
 		}, "0 0 0 4px #f00|inset 0 0 0 6px #000"},
 		{"zero weight is not a stroke", []*opendesignerv1.Stroke{st(0, opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE, k)}, ""},
 	} {
-		if got := strings.Join(strokeRings(c.strokes, 1), "|"); got != c.want {
+		if got := strings.Join(strokeRings(c.strokes, 1, nil), "|"); got != c.want {
 			t.Errorf("%s: got %q, want %q", c.name, got, c.want)
 		}
 	}

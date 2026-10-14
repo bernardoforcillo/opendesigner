@@ -311,7 +311,9 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 	if paintable {
 		dropShadow = boxPaint(el, eff, isFrame, isEllipse, mul, container)
 	}
-	if !bake && eff.GetOpacity() != 1 {
+	if name := propVar(eff, "opacity"); name != "" && !bake {
+		el.addStyle("opacity", "var("+name+")")
+	} else if !bake && eff.GetOpacity() != 1 {
 		el.addStyle("opacity", num(eff.GetOpacity()))
 	}
 	if paintable {
@@ -424,7 +426,10 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 		el.addStyle("border-radius", "50%")
 	case !isFrame:
 		// The radius is clamped to half the shorter side, like roundRect.
-		if r := math.Min(n.GetRect().GetCornerRadius(), math.Min(w/2, h/2)); r > 0 {
+		if name := propVar(n, "corner_radius"); name != "" {
+			// The same clamp as below, kept as CSS so the radius can follow the variable.
+			el.addStyle("border-radius", fmt.Sprintf("min(calc(var(%s) * 1px), %s)", name, px(math.Min(w/2, h/2))))
+		} else if r := math.Min(n.GetRect().GetCornerRadius(), math.Min(w/2, h/2)); r > 0 {
 			el.addStyle("border-radius", px(r))
 		}
 	}
@@ -436,13 +441,13 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 			if g, ok := gradientCSS(f.grad, f.radial, w, h, mul); ok {
 				el.addStyle("background-image", g)
 			} else {
-				el.addStyle("background-color", colorCSS(f.color, mul))
+				el.addStyle("background-color", colorOrVar(f, fillVar(n, mul), mul))
 			}
 		} else {
-			el.addStyle("background-color", colorCSS(f.color, mul))
+			el.addStyle("background-color", colorOrVar(f, fillVar(n, mul), mul))
 		}
 	}
-	shadows := strokeRings(n.GetStrokes(), mul)
+	shadows := strokeRings(n.GetStrokes(), mul, strokeVars(n, mul))
 	dropShadow := ""
 	// The shadow follows the fill: without one, the canvas would cast it from the
 	// stroke alone, and box-shadow cannot do that (it shades the whole box). Documented.
@@ -566,7 +571,11 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 		lh = defaultLineHeight
 	}
 	el.addStyle("font-family", fontFamilyCSS(st.GetFontFamily()))
-	el.addStyle("font-size", px(size))
+	if name := propVar(eff, "font_size"); name != "" {
+		el.addStyle("font-size", "calc(var("+name+") * 1px)")
+	} else {
+		el.addStyle("font-size", px(size))
+	}
 	el.addStyle("font-weight", weight)
 	el.addStyle("line-height", num(lh))
 	switch st.GetAlign() {
@@ -581,13 +590,13 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 		el.addStyle("-webkit-background-clip", "text")
 		el.addStyle("color", "transparent")
 	} else {
-		el.addStyle("color", colorCSS(f.color, 1))
+		el.addStyle("color", colorOrVar(f, fillVar(eff, 1), 1))
 	}
 	// A text's stroke is ALWAYS centred on the glyph outline (like
 	// strokeText in the canvas); CSS can only do one, the first.
-	for _, s := range eff.GetStrokes() {
+	for si, s := range eff.GetStrokes() {
 		if s.GetWeight() > 0 {
-			el.addStyle("-webkit-text-stroke", px(s.GetWeight())+" "+colorCSS(toFill(s.GetPaint()).color, 1))
+			el.addStyle("-webkit-text-stroke", px(s.GetWeight())+" "+colorOrVar(toFill(s.GetPaint()), varAt(strokeVars(eff, 1), si), 1))
 			break
 		}
 	}
@@ -804,7 +813,7 @@ func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	}
 	meta := eff.GetMeta()
 	if real {
-		for _, st := range eff.GetStrokes() {
+		for si, st := range eff.GetStrokes() {
 			if !(st.GetWeight() > 0) {
 				continue
 			}
@@ -814,7 +823,7 @@ func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 			}
 			p.addAttr("d", strings.Join(strokeD, " "))
 			p.addAttr("fill", "none")
-			p.addAttr("stroke", colorCSS(toFill(st.GetPaint()).color, 1))
+			p.addAttr("stroke", colorOrVar(toFill(st.GetPaint()), varAt(strokeVars(eff, 1), si), 1))
 			p.addAttr("stroke-width", num(st.GetWeight()))
 			p.addAttr("stroke-linecap", pick(meta["stroke.cap"], "butt", "round", "square"))
 			p.addAttr("stroke-linejoin", pick(meta["stroke.join"], "miter", "round", "bevel"))

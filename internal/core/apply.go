@@ -107,6 +107,12 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetClip(doc, k.SetClip)
 	case *opendesignerv1.Op_DeleteClip:
 		return applyDeleteClip(doc, k.DeleteClip)
+	case *opendesignerv1.Op_SetVariable:
+		return applySetVariable(doc, k.SetVariable, cow)
+	case *opendesignerv1.Op_DeleteVariable:
+		return applyDeleteVariable(doc, k.DeleteVariable)
+	case *opendesignerv1.Op_SetModes:
+		return applySetModes(doc, k.SetModes, cow)
 	case *opendesignerv1.Op_SetFlow:
 		return applySetFlow(doc, k.SetFlow)
 	case *opendesignerv1.Op_DeleteFlow:
@@ -162,6 +168,9 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode, cow
 			return fmt.Errorf("%w: %s (node %s)", ErrComponentNotFound, inst.GetComponentId(), n.GetId())
 		}
 	}
+	if err := validateBindings(doc, n, n.GetBindings()); err != nil {
+		return err
+	}
 	if doc.Nodes == nil {
 		// Apply is the authoritative mutator for any *opendesignerv1.Document, not
 		// only ones built via NewDocument. proto.Unmarshal resets the
@@ -175,6 +184,7 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode, cow
 	if cow != nil {
 		cow.owned[n.GetId()] = struct{}{}
 	}
+	applyBindings(doc, n)
 	return nil
 }
 
@@ -388,6 +398,12 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			default:
 				return fmt.Errorf("%w: %s", ErrNotRectNode, s.GetId())
 			}
+		case "bindings":
+			// Property -> variable. Validated against the node as it is NOW (the
+			// shape is not changed by this op) and the document's variables.
+			if err := validateBindings(doc, n, s.GetPatch().GetBindings()); err != nil {
+				return err
+			}
 		case "auto_layout":
 			// Like corner_radius, a field INSIDE the `shape` oneof: it only applies to
 			// a frame. The whole op is rejected, so a mixed mask
@@ -418,6 +434,10 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.Name = p.GetName()
 		case "visible":
 			n.Visible = p.GetVisible()
+		case "bindings":
+			// Replaces the whole map, like meta. Empty = unbound (values stay as
+			// the last binding left them).
+			n.Bindings = p.GetBindings()
 		case "meta":
 			// Replaces the whole map (like lists). An empty map clears it:
 			// nil and {} are the same state after the proto3 round-trip.
@@ -468,6 +488,9 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			r.CornerRadius = p.GetRect().GetCornerRadius()
 		}
 	}
+	// A bound property follows its variable: an explicit write to it in the
+	// same op loses to the binding (unbind first to set it by hand).
+	applyBindings(doc, n)
 	return nil
 }
 
@@ -507,6 +530,7 @@ func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText, cow *
 	if s.GetStylePresent() {
 		t.Text.Style = s.GetStyle()
 	}
+	applyBindings(doc, n) // a bound text/font size keeps following its variable
 	return nil
 }
 

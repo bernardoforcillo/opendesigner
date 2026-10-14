@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, StrokeAlign, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
+import { OpSchema, NodeSchema, StrokeAlign, LayoutAlign, LayoutDirection, SetVariableSchema, VariableSchema, VariableType } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, type NodeLite } from "./types";
@@ -41,7 +41,15 @@ function frameScene() {
     opId: "op-frame", docId: "doc1", kind: { case: "createNode", value: { node } },
   }));
 }
-const sceneFor = (path: string) => (path === "auto_layout" ? frameScene() : baseScene());
+// bindings needs a NUMBER variable to point at. Its value equals n1's opacity (1),
+// so applying the binding changes `bindings` and nothing else.
+function boundScene() {
+  return applyOp(baseScene(), create(OpSchema, {
+    opId: "op-var", docId: "doc1",
+    kind: { case: "setVariable", value: create(SetVariableSchema, { variable: create(VariableSchema, { id: "v", name: "n", type: VariableType.NUMBER, numbers: { m: 1 } }) }) },
+  }));
+}
+const sceneFor = (path: string) => (path === "auto_layout" ? frameScene() : path === "bindings" ? boundScene() : baseScene());
 
 function setPropsOp(paths: readonly string[], patch: MessageInitShape<typeof NodeSchema> = {}): Op {
   return create(OpSchema, {
@@ -261,6 +269,7 @@ const PROBE: Probe = {
   },
   // Free-form map: the mask replaces the whole map.
   meta: { patch: { meta: { "code.route": "/cart" } }, expected: { "code.route": "/cart" } },
+  bindings: { patch: { bindings: { opacity: "v" } }, expected: { opacity: "v" } },
 };
 
 describe("every MASK_PATHS path survives the JSON wire and is applied", () => {

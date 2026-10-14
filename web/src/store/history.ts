@@ -1,8 +1,9 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, toPbVariable, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
+import { applyVariableOp } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
@@ -336,6 +337,45 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const prev = scene.clips[op.kind.value.id];
       if (!prev) return null;
       return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setClip", value: { clip: toPbClip(prev) } } })];
+    }
+    // --- design variables ---------------------------------------------------
+    // Absolute upserts, like clips. A rejected op has no inverse (null).
+    case "setVariable": {
+      const v = op.kind.value.variable;
+      if (!v || applyVariableOp(scene, op) === scene) return null;
+      const prev = scene.variables?.[v.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setVariable", value: { variable: toPbVariable(prev) } }
+          : { case: "deleteVariable", value: { id: v.id } },
+      })];
+    }
+    case "deleteVariable": {
+      const prev = scene.variables?.[op.kind.value.id];
+      if (!prev) return null;
+      // Paints that referenced it keep their binding (they drew black meanwhile),
+      // so restoring the variable is enough to bring their colour back.
+      return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setVariable", value: { variable: toPbVariable(prev) } } })];
+    }
+    case "setModes": {
+      if (applyVariableOp(scene, op) === scene) return null;
+      // Replacing the modes may drop variable values keyed by a removed mode:
+      // restore the mode list FIRST (the values must name known modes), then
+      // every variable that lost something, whole, as it was.
+      const kept = new Set(op.kind.value.modes.map((m) => m.id));
+      const ops: Op[] = [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setModes", value: { modes: (scene.modes ?? []).map((m) => ({ id: m.id, name: m.name })) } },
+      })];
+      if (kept.size > 0) {
+        for (const v of Object.values(scene.variables ?? {}).sort(byId)) {
+          if (Object.keys(v.values).some((mode) => !kept.has(mode))) {
+            ops.push(create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setVariable", value: { variable: toPbVariable(v) } } }));
+          }
+        }
+      }
+      return ops;
     }
     default:
       return null;

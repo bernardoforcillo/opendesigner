@@ -6,6 +6,7 @@ import { type SceneState, type ClipLite, type NodeLite, type TransitionLite, toF
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout } from "./layout";
 import { recordDelta } from "./sceneDelta";
+import { applyVariableOp, resolveAfterNodeOp, validBindings } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
@@ -23,7 +24,13 @@ const NIL_PATCH: PbNode = create(NodeSchema, {});
 // store/layout.ts.
 export function applyOp(state: SceneState, op: Op): SceneState {
   const before = layoutTargets(state, op);
-  const next = applyOpRaw(state, op);
+  const variableOp = applyVariableOp(state, op);
+  let next = variableOp;
+  if (next === undefined) {
+    next = applyOpRaw(state, op);
+    if (next === state) return state;               // rejected: nothing to resolve
+    next = resolveAfterNodeOp(next, op);
+  }
   if (next === state) return state;
   const touchedByLayout: string[] = [];
   const laidOut = relayout(next, [...before, ...layoutTargets(next, op)], touchedByLayout);
@@ -72,7 +79,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // as the parent/id-already-taken branches. Order as in Go: first the
       // parent, then the component.
       if (pb.shape.case === "instance" && !state.components[pb.shape.value.componentId]) return state;
-      return { ...state, nodes: state.nodes.set(pb.id, toNodeLite(pb)) };
+      // Bindings must name existing variables of the right kind (core.validateBindings).
+      const created = toNodeLite(pb);
+      if (!validBindings(state, created, created.bindings)) return state;
+      return { ...state, nodes: state.nodes.set(pb.id, created) };
     }
     case "setProps": {
       const { id, patch, mask } = op.kind.value;
@@ -116,6 +126,9 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // Same preventive validation for auto_layout, which only applies to a
       // frame (ErrNotFrameNode in Go): op rejected as a whole.
       if (cur.kind !== "frame" && paths.includes("auto_layout")) return state;
+      // Bindings: known property, node of the right nature, existing variable of the
+      // right kind (ErrBadBinding in Go), validated against the node as it is now.
+      if (paths.includes("bindings") && !validBindings(state, cur, toNodeLite(p).bindings)) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -146,6 +159,14 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           // field is camelCase: the two forms coincided for all the single-word
           // paths of M0/M1a, this is the first where they diverge.
           case "order_key": next.orderKey = p.orderKey; break;
+          // Replaces the whole map like `n.Bindings = p.GetBindings()` in Go; an
+          // empty map removes the field. The values the binding drives are
+          // written by store/variables.ts::resolveAfterNodeOp right after.
+          case "bindings": {
+            const b = toNodeLite(p).bindings;
+            if (b) next.bindings = b; else delete next.bindings;
+            break;
+          }
           // Replaces the whole map (like `n.Meta = p.GetMeta()` in Go); an empty
           // map REMOVES the field (NodeLite.meta is absent, not empty).
           case "meta": {

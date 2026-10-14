@@ -2,6 +2,7 @@ import { create as createStore } from "zustand";
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import { withActiveMode } from "./variables";
 import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
 import { recordFinal, recordPreview } from "../animation/recordHook";
@@ -1060,6 +1061,9 @@ interface SceneStore {
   endGesture: (finalOps: Op[]) => void;
   cancelGesture: () => void;
   setSelection: (ids: string[]) => void;
+  // Previews another mode of the design variables on the canvas. View state:
+  // NOT an op, not undoable, never sent. See store/variables.ts::withActiveMode.
+  setActiveMode: (modeId: string) => void;
   toggleSelection: (id: string) => void;
   clearSelection: () => void;
   setMarquee: (b: Bounds | null) => void;
@@ -1580,6 +1584,13 @@ export const useScene = createStore<SceneStore>((set, get) => ({
     }),
 
   setSelection: (ids) => set({ selection: ids }),
+  // Both the confirmed document and the view carry it, so the next rebuild
+  // (an op arriving, a rollback) keeps the mode the user is previewing.
+  setActiveMode: (modeId) =>
+    set((st) => {
+      if (!st.scene || !st.confirmed || st.scene.activeMode === modeId) return st;
+      return { scene: withActiveMode(st.scene, modeId), confirmed: withActiveMode(st.confirmed, modeId) };
+    }),
   toggleSelection: (id) =>
     set((st) => ({
       selection: st.selection.includes(id)

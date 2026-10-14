@@ -101,6 +101,10 @@ func tailwindFor(p Prop) []string {
 	case "border-radius":
 		return []string{"rounded-[" + arb(p.Value) + "]"}
 	case "background-color":
+		// A custom property is ambiguous to Tailwind (colour or image?): say which.
+		if strings.HasPrefix(p.Value, "var(") {
+			return []string{"bg-[color:" + arb(p.Value) + "]"}
+		}
 		return []string{"bg-[" + arb(p.Value) + "]"}
 	case "background-image":
 		if strings.Contains(p.Value, "-gradient(") {
@@ -109,7 +113,16 @@ func tailwindFor(p Prop) []string {
 	case "box-shadow":
 		return []string{"shadow-[" + arb(p.Value) + "]"}
 	case "color":
+		if strings.HasPrefix(p.Value, "var(") {
+			return []string{"text-[color:" + arb(p.Value) + "]"}
+		}
 		return []string{"text-[" + arb(p.Value) + "]"}
+	case "font-size":
+		// text-[...] is font size or colour; a variable-driven size cannot be told
+		// apart by its value, so name the type.
+		if strings.Contains(p.Value, "var(") {
+			return []string{"text-[length:" + arb(p.Value) + "]"}
+		}
 	case "transform":
 		if v, ok := unwrap(p.Value, "rotate("); ok && !strings.ContainsAny(v, "() ") {
 			return []string{"rotate-[" + v + "]"}

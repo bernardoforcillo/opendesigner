@@ -629,6 +629,9 @@ type DocumentView struct {
 	Components []ComponentView `json:"components"`
 	Clips      []ClipView      `json:"clips"`
 	Nodes      []NodeView      `json:"nodes"`
+	// Design tokens: see list_variables.
+	Modes     []ModeIO       `json:"modes,omitempty"`
+	Variables []VariableView `json:"variables,omitempty"`
 }
 
 // GetDocument returns the whole synced document: pages, components and every
@@ -650,6 +653,9 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 		out.Nodes = append(out.Nodes, toNodeView(n))
 	}
 	out.Clips = clipViews(doc)
+	if vv := variablesView(doc); len(vv.Variables) > 0 || len(vv.Modes) > 0 {
+		out.Modes, out.Variables = vv.Modes, vv.Variables
+	}
 	return out, nil
 }
 
@@ -756,6 +762,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "list_components", "List the document's components.", s.ListComponents)
 	registerFlowTools(srv, s)
 	registerAnimationTools(srv, s)
+	registerVariableTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerDiagramTools(srv, s)
 }

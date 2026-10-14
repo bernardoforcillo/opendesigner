@@ -12,7 +12,10 @@ message SolidPaint { Color color = 1; }
 // A color stop of a gradient. `position` is in 0..1 along the gradient axis;
 // the writer keeps stops in ascending position order (the canvas and the SVG
 // read them in the given order).
-message GradientStop { Color color = 1; double position = 2; }
+// `variable_id`, when set, binds the stop to a COLOR variable: `color` is then
+// the value last resolved for it (the server and the clients keep it in sync
+// with the variable, like a plain fill), and a missing variable keeps it.
+message GradientStop { Color color = 1; double position = 2; string variable_id = 3; }
 
 // A gradient is defined in NORMALIZED coordinates of the node's box: (0,0) is
 // the top-left corner, (1,1) the bottom-right. This way it stays valid when the
@@ -26,7 +29,46 @@ message GradientPaint {
   repeated GradientStop stops = 1;
   double x1 = 2; double y1 = 3; double x2 = 4; double y2 = 5;
 }
-message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; } }
+// A paint bound to a design variable (token) instead of a literal colour. The
+// colour is read live from Document.variables at the ACTIVE mode, so changing
+// a variable (or the mode) restyles every node that references it, exactly as
+// instances read the live master. An unknown id draws as opaque black, like a
+// paint without `kind`.
+message VariableRef { string variable_id = 1; }
+message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; VariableRef variable = 4; } }
+
+// A mode is a named set of values for the variables (Light, Dark, ...). The
+// FIRST mode of Document.modes is the default: a variable with no value for a
+// mode falls back to its value in the default mode.
+message Mode { string id = 1; string name = 2; }
+
+// The kind of value a Variable holds. COLOR is 0 so every variable written
+// before the other kinds existed stays a colour.
+enum VariableType {
+  VARIABLE_TYPE_COLOR = 0;
+  VARIABLE_TYPE_NUMBER = 1;
+  VARIABLE_TYPE_STRING = 2;
+}
+
+// A design variable (token). Exactly ONE of `values` (COLOR), `numbers`
+// (NUMBER) or `strings` (STRING) is used, chosen by `type`; each maps a Mode id
+// to the value in that mode. `name` is a
+// slash-separated path ("color/brand/primary") that the code export turns into
+// a CSS custom property.
+message Variable {
+  string id = 1;
+  string name = 2;
+  map<string, Color> values = 3;
+  // Alias: when set, this variable has no values of its own and reads the
+  // target's value in every mode (a "semantic" token pointing at a "primitive"
+  // one). The target must exist when the alias is written and a chain may not
+  // loop; deleting the target later leaves the alias dangling, which reads as
+  // opaque black like a dangling paint.
+  string alias_of = 4;
+  VariableType type = 5;
+  map<string, double> numbers = 6;
+  map<string, string> strings = 7;
+}
 
 // Alignment of the stroke relative to the shape's PERIMETER. CENTER is the
 // drawing default (half inside, half outside): it is the only one the 2D canvas
@@ -351,6 +393,13 @@ message Node {
   //   "status"          planned | implemented | tested
   // The "meta" mask REPLACES the whole map, like `fills` for lists.
   map<string, string> meta = 40;
+  // Property -> id of the NUMBER/STRING variable it follows. Allowed properties:
+  // opacity, corner_radius (rect), font_size and text (text node). The server
+  // writes the variable's DEFAULT-mode value into the property whenever the
+  // variable, the modes or this map change, the same way it writes auto layout
+  // results, so every reader still sees plain values. Colour bindings are not
+  // here: they are a Paint case (VariableRef).
+  map<string, string> bindings = 41;
 }
 
 message Page { string id = 1; string name = 2; }
@@ -431,6 +480,8 @@ message Document {
   map<string, Transition> transitions = 8;
   // Animations: clipId -> clip.
   map<string, Clip> clips = 9;
+  map<string, Variable> variables = 10;  // design tokens, see Variable
+  repeated Mode modes = 11;              // first = default mode; empty = no modes defined
 }
 
 // ---------- ops ----------
@@ -542,6 +593,11 @@ message DeleteTransition { string id = 1; }
 
 // Clip: ABSOLUTE upsert of the whole clip (the inverse is the previous state).
 message SetClip { Clip clip = 1; }
+// Variables: absolute upsert of one variable, delete (paints that referenced it
+// draw black), and replacement of the whole mode list.
+message SetVariable { Variable variable = 1; }
+message DeleteVariable { string id = 1; }
+message SetModes { repeated Mode modes = 1; }
 message DeleteClip { string id = 1; }
 
 message Op {
@@ -568,6 +624,9 @@ message Op {
     DeleteTransition delete_transition = 24;
     SetClip          set_clip          = 25; // animation — upsert of a clip
     DeleteClip       delete_clip       = 26;
+    SetVariable      set_variable      = 27; // design tokens: upsert of a variable
+    DeleteVariable   delete_variable   = 28;
+    SetModes         set_modes         = 29; // design tokens: replaces the mode list
   }
 }
 message OpRecord {

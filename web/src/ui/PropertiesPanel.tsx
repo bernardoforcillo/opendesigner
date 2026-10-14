@@ -20,6 +20,8 @@ import type { IconName } from "./ds";
 import { SegRadio, type SegOption } from "./ds/props-controls";
 import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
+import { bindPropOps, bindVariableOps, bindablePropsOf, boundProp, boundVariable } from "./variableOps";
+import { PropVariablePicker } from "./VariablePickers";
 import { GradientControls } from "./GradientControls";
 import { EffectsControls } from "./EffectsControls";
 import { AutoLayoutControls, WrapInAutoLayoutButton } from "./AutoLayoutControls";
@@ -150,6 +152,70 @@ function numericOps(ids: readonly string[], field: NumericField, value: number):
 
 function opacityOps(ids: readonly string[], value: number): Op[] {
   return ids.map((id) => makeSetPropsOp(id, { opacity: value }, ["opacity"]));
+}
+
+// "Variable" picker of the Fill and Stroke sections: binds the first fill (or
+// stroke) of the whole selection to a design variable, or unbinds it. It is not
+// drawn when the document has no variables, so whoever does not use them pays
+// nothing for the control.
+const MIXED_VAR = "__mixed__";
+const NO_VAR = "__none__";
+
+function VariablePicker({ slot, label, run }: { slot: "fill" | "stroke"; label: string; run: (build: (ids: readonly string[]) => Op[]) => void }) {
+  const scene = useScene((s) => s.scene);
+  const selection = useScene((s) => s.selection);
+  const variables = Object.values(scene?.variables ?? {}).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
+  if (!scene || variables.length === 0) return null;
+  const bound = boundVariable(scene, selection, slot);
+  const value = bound === "mixed" ? MIXED_VAR : (bound ?? NO_VAR);
+  // A binding to a variable that no longer exists still shows, so it can be undone from here.
+  const dangling = typeof bound === "string" && bound !== "mixed" && !scene.variables?.[bound];
+  return (
+    <select
+      aria-label={label}
+      className={cls.select}
+      value={value}
+      onChange={(e) => {
+        const v = e.target.value;
+        if (v === MIXED_VAR) return;
+        run((ids) => bindVariableOps(useScene.getState().scene!, ids, slot, v === NO_VAR ? null : v));
+      }}
+    >
+      {bound === "mixed" && <option value={MIXED_VAR}>{MIXED_LABEL}</option>}
+      <option value={NO_VAR}>Fixed colour</option>
+      {dangling && <option value={bound as string}>Missing variable</option>}
+      {variables.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
+    </select>
+  );
+}
+
+// "Variables" section: binds the opacity (and, by node kind, the corner radius,
+// the font size and the text) of the selection to a NUMBER/TEXT variable. Only
+// the properties every selected node has are offered, and the whole section is
+// absent when the document has no such variable and nothing is bound.
+function BindingsSection({ run }: { run: (build: (ids: readonly string[]) => Op[]) => void }) {
+  const scene = useScene((s) => s.scene);
+  const selection = useScene((s) => s.selection);
+  if (!scene || selection.length === 0) return null;
+  const kinds = selection.map((id) => scene.nodes.get(id)?.kind).filter((k): k is NonNullable<typeof k> => !!k);
+  if (kinds.length === 0) return null;
+  const props = bindablePropsOf(kinds[0]).filter((p) => kinds.every((k) => bindablePropsOf(k).some((q) => q.prop === p.prop)));
+  const rows = props
+    .map((p) => ({ ...p, bound: boundProp(scene, selection, p.prop) }))
+    .filter((r) => r.bound !== null || Object.values(scene.variables ?? {}).some((v) => v.kind === r.kind));
+  if (rows.length === 0) return null;
+  return (
+    <Section title="Variables">
+      <div className="flex flex-col gap-1.5">
+        {rows.map((r) => (
+          <PropVariablePicker
+            key={r.prop} label={r.label} kind={r.kind} bound={r.bound}
+            onPick={(v) => run((ids) => bindPropOps(useScene.getState().scene!, ids, r.prop, v))}
+          />
+        ))}
+      </div>
+    </Section>
+  );
 }
 
 // Fill op. The color arrives WITHOUT alpha (see ColorField): alpha is
@@ -943,6 +1009,7 @@ export function PropertiesPanel() {
             onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
           />
         )}
+        <div className="mt-1.5"><VariablePicker slot="fill" label="Fill variable" run={runGesture} /></div>
       </Section>
 
       {/* THE STROKE. Its own section and not inside "Appearance": they are three controls
@@ -991,8 +1058,11 @@ export function PropertiesPanel() {
             options={STROKE_ALIGNMENTS}
             onChange={(v) => runGesture((ids) => strokeOps(ids, { align: v as StrokeAlignLite }))}
           />
+          <VariablePicker slot="stroke" label="Stroke variable" run={runGesture} />
         </div>
       </Section>
+
+      <BindingsSection run={runGesture} />
 
       {/* THE EFFECTS: shadow and blur. Its own section like the stroke: they are
           controls of a different nature than the basic appearance. */}

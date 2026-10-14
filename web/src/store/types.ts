@@ -1,15 +1,18 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { ClipSchema, FlowSchema, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { resolveScene } from "./variables";
+import { ClipSchema, FlowSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
-  InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
+  InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride, Variable as PbVariable,
 } from "../gen/opendesigner/v1/opendesigner_pb";
 
 export interface PageLite { id: string; name: string; }
-export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
+// `varId`: the stop follows a COLOR variable; `color` is then its resolved value
+// (store/variables.ts keeps it in sync), like FillLite.varId.
+export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; varId?: string; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
 // world coordinates.
@@ -22,7 +25,13 @@ export interface GradientLite {
 // color, for a gradient they are the first stop. All code that only knows
 // flat tints (text, strokes, panels) keeps working without knowing about
 // gradients; whoever can draw them looks at `gradient`.
-export interface FillLite { r: number; g: number; b: number; a: number; gradient?: GradientLite; }
+export interface FillLite {
+  r: number; g: number; b: number; a: number; gradient?: GradientLite;
+  // Bound to a design variable: r,g,b,a are then the variable's colour at the
+  // active mode, kept in sync by store/variables.ts (resolve at ingest and on
+  // every variable/mode change), so renderers keep reading flat colours.
+  varId?: string;
+}
 
 // The stroke alignment as a string, for the same reason as
 // TextAlignLite: the in-memory model is what renderer and panels read, and
@@ -202,6 +211,9 @@ export interface NodeLite {
   unknownShape?: PbNode["shape"];
   // Free-form metadata (see Node.meta in the proto). Absent when empty.
   meta?: Record<string, string>;
+  // Property -> id of the NUMBER/STRING variable it follows (see Node.bindings in
+  // the proto). The bound property itself holds the resolved value. Absent when empty.
+  bindings?: Record<string, string>;
   // TRANSIENT animation FIELDS: written ONLY by animation/pose.ts when it
   // derives the scene to show while a clip runs or is scrubbed. They are not
   // document: toPbNode does not read them, no op carries them, and a snapshot never
@@ -253,6 +265,23 @@ export interface SceneState {
   // document as much as `nodes` and `pages`: a CreateComponent populates it, and
   // fromDocument rebuilds it from the snapshot.
   components: Record<string, ComponentLite>;
+  // Design variables (tokens) and their modes. Optional: a scene without any
+  // reads as no variables. `activeMode` is VIEW state (never sent to the
+  // server): which mode the canvas previews; absent = the first mode.
+  variables?: Record<string, VariableLite>;
+  modes?: ModeLite[];
+  activeMode?: string;
+}
+
+export interface ModeLite { id: string; name: string }
+export type VariableKind = "color" | "number" | "string";
+/** One variable; exactly one of values / numbers / strings is used (by `kind`), or none when `aliasOf` is set. */
+export interface VariableLite {
+  id: string; name: string; kind: VariableKind;
+  values: Record<string, { r: number; g: number; b: number; a: number }>;
+  numbers?: Record<string, number>;
+  strings?: Record<string, string>;
+  aliasOf?: string;
 }
 
 export function emptyScene(id: string, name: string): SceneState {
@@ -435,10 +464,11 @@ export function toEffectLite(e: PbEffect): EffectLite {
 }
 
 function toPbPaint(c: FillLite) {
+  if (c.varId) return { kind: { case: "variable" as const, value: { variableId: c.varId } } };
   const g = c.gradient;
   if (g) {
     const value = {
-      stops: g.stops.map((st) => ({ color: { ...st.color }, position: st.position })),
+      stops: g.stops.map((st) => ({ color: { ...st.color }, position: st.position, ...(st.varId ? { variableId: st.varId } : {}) })),
       x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2,
     };
     return g.kind === "linear"
@@ -477,6 +507,7 @@ function toFillLite(p: PbPaint | undefined): FillLite {
     const stops = g.stops.map((st) => ({
       color: { r: st.color?.r ?? 0, g: st.color?.g ?? 0, b: st.color?.b ?? 0, a: st.color?.a ?? 1 },
       position: st.position,
+      ...(st.variableId !== "" ? { varId: st.variableId } : {}),
     }));
     const first = stops[0]?.color ?? { r: 0, g: 0, b: 0, a: 1 };
     return {
@@ -484,6 +515,9 @@ function toFillLite(p: PbPaint | undefined): FillLite {
       gradient: { kind: k.case, stops, x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2 },
     };
   }
+  // A variable paint travels as a binding; its colour is filled in by
+  // store/variables.ts::resolveScene once the scene's variables are known.
+  if (k?.case === "variable") return { r: 0, g: 0, b: 0, a: 1, varId: k.value.variableId };
   const c = k?.case === "solid" ? k.value.color : undefined;
   return c ? { r: c.r, g: c.g, b: c.b, a: c.a } : { r: 0, g: 0, b: 0, a: 1 };
 }
@@ -543,6 +577,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     // The unknown branch travels whole and intact: see NodeLite.unknownShape.
     ...(kind === "unknown" ? { unknownShape: n.shape } : {}),
     ...(Object.keys(n.meta).length > 0 ? { meta: { ...n.meta } } : {}),
+    ...(Object.keys(n.bindings).length > 0 ? { bindings: { ...n.bindings } } : {}),
   };
 }
 
@@ -560,6 +595,7 @@ export function toPbNode(n: NodeLite): PbNode {
     strokes: toPbStrokes(n.strokes),
     effects: toPbEffects(n.effects ?? []),
     meta: n.meta ? { ...n.meta } : {},
+    bindings: n.bindings ? { ...n.bindings } : {},
     shape: n.kind === "unknown"
       // The unknown shape cannot be BUILT (there is no oneof branch to
       // name), so it is put back where it was right after the create. Leaving it
@@ -671,11 +707,38 @@ export function fromDocument(doc: Document): SceneState {
   // but referenced by rootNodeId (see ComponentLite).
   const components: Record<string, ComponentLite> = {};
   for (const [id, c] of Object.entries(doc.components)) components[id] = { rootNodeId: c.rootNodeId, name: c.name };
-  return {
+  const scene: SceneState = {
     id: doc.id, name: doc.name, schemaVersion: doc.schemaVersion,
     pages: doc.pages.map((p) => ({ id: p.id, name: p.name })), nodes, components,
     flows: Object.fromEntries(Object.entries(doc.flows).map(([id, f]) => [id, toFlowLite(f)])),
     transitions: Object.fromEntries(Object.entries(doc.transitions).map(([id, t]) => [id, toTransitionLite(t)])),
     clips: Object.fromEntries(Object.entries(doc.clips).map(([id, c]) => [id, toClipLite(c)])),
+    variables: Object.fromEntries(Object.entries(doc.variables).map(([id, v]) => [id, toVariableLite(v)])),
+    modes: doc.modes.map((m) => ({ id: m.id, name: m.name })),
   };
+  // Bound fills come off the wire as black placeholders: fill in their colours.
+  return resolveScene(scene);
+}
+
+const KIND_OF: Record<number, VariableKind> = { [VariableType.COLOR]: "color", [VariableType.NUMBER]: "number", [VariableType.STRING]: "string" };
+const TYPE_OF: Record<VariableKind, VariableType> = { color: VariableType.COLOR, number: VariableType.NUMBER, string: VariableType.STRING };
+
+export function toVariableLite(v: PbVariable): VariableLite {
+  return {
+    id: v.id, name: v.name, kind: KIND_OF[v.type] ?? "color",
+    values: Object.fromEntries(Object.entries(v.values).map(([mode, c]) => [mode, { r: c.r, g: c.g, b: c.b, a: c.a }])),
+    ...(Object.keys(v.numbers).length > 0 ? { numbers: { ...v.numbers } } : {}),
+    ...(Object.keys(v.strings).length > 0 ? { strings: { ...v.strings } } : {}),
+    ...(v.aliasOf !== "" ? { aliasOf: v.aliasOf } : {}),
+  };
+}
+
+export function toPbVariable(v: VariableLite): PbVariable {
+  return create(VariableSchema, {
+    id: v.id, name: v.name, type: TYPE_OF[v.kind],
+    values: Object.fromEntries(Object.entries(v.values).map(([m, c]) => [m, { ...c }])),
+    numbers: v.numbers ? { ...v.numbers } : {},
+    strings: v.strings ? { ...v.strings } : {},
+    aliasOf: v.aliasOf ?? "",
+  });
 }

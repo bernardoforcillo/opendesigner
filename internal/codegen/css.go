@@ -262,14 +262,14 @@ func strokeAlign(a opendesignerv1.StrokeAlign) opendesignerv1.StrokeAlign {
 // A stroke with weight <= 0 is not a stroke (same rule as the canvas). A
 // stroke with a gradient falls back to the first colour: a box-shadow ring
 // cannot be shaded.
-func strokeRings(strokes []*opendesignerv1.Stroke, mul float64) []string {
+func strokeRings(strokes []*opendesignerv1.Stroke, mul float64, vars []string) []string {
 	var rings []string
 	for i := len(strokes) - 1; i >= 0; i-- {
 		s := strokes[i]
 		if !(s.GetWeight() > 0) {
 			continue
 		}
-		col := colorCSS(toFill(s.GetPaint()).color, mul)
+		col := colorOrVar(toFill(s.GetPaint()), varAt(vars, i), mul)
 		w := s.GetWeight()
 		switch strokeAlign(s.GetAlign()) {
 		case opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE:

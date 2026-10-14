@@ -4,9 +4,10 @@ import type { FillLite } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { CHECKER, SegButtons } from "./ds/props-controls";
 import { ColorField } from "./fields/ColorField";
+import { StopVariablePicker } from "./VariablePickers";
 import { NumberField } from "./fields/NumberField";
 import {
-  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, type FillKind,
+  fillKindOf, fillKindOps, gradientAngleOf, gradientAngleOps, gradientStopOps, gradientStopBindOps, type FillKind,
 } from "./gradientOps";
 
 const KINDS: { value: FillKind; label: string }[] = [
@@ -88,6 +89,7 @@ export function GradientControls({
               value={g.stops[0].color}
               onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, 0, rgb))}
             />
+            <StopVariablePicker label="From variable" bound={g.stops[0].varId ?? null} onPick={(v) => run((ids) => gradientStopBindOps(ids, lookup, 0, v))} />
           </StopRow>
           <StopRow label="To" position={g.stops[last].position}>
             <ColorField
@@ -95,6 +97,7 @@ export function GradientControls({
               value={g.stops[last].color}
               onCommit={(rgb) => run((ids) => gradientStopOps(ids, lookup, last, rgb))}
             />
+            <StopVariablePicker label="To variable" bound={g.stops[last].varId ?? null} onPick={(v) => run((ids) => gradientStopBindOps(ids, lookup, last, v))} />
           </StopRow>
           {g.kind === "linear" && (
             <NumberField
