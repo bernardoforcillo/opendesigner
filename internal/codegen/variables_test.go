@@ -258,3 +258,21 @@ func TestBoundGradientStopExportsItsDefaultColour(t *testing.T) {
 		t.Errorf("the bound stop must export the variable's default-mode colour:\n%s", page)
 	}
 }
+
+// An instance of a variant exports with the component and the combination, so
+// the markup can be mapped back to the design component and its props.
+func TestInstanceExportsItsVariant(t *testing.T) {
+	doc := varDoc()
+	doc.Components = map[string]*opendesignerv1.Component{
+		"c": {RootNodeId: "r", Name: "Button/L", SetId: "s", Variant: map[string]string{"Size": "L", "State": "Default"}},
+	}
+	doc.ComponentSets = map[string]*opendesignerv1.ComponentSet{"s": {Id: "s", Name: "Button"}}
+	doc.Nodes["i"] = &opendesignerv1.Node{
+		Id: "i", ParentId: "s", OrderKey: "c", Name: "Inst", Visible: true, Opacity: 1, X: 200, Y: 10, Width: 50, Height: 50,
+		Shape: &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{ComponentId: "c"}},
+	}
+	page := htmlWith(t, doc, "data-component")
+	if !strings.Contains(page, `data-component="Button/L"`) || !strings.Contains(page, `data-variant="Size=L;State=Default"`) {
+		t.Errorf("instance lacks its component/variant markers:\n%s", page)
+	}
+}

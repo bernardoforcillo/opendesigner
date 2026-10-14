@@ -555,9 +555,11 @@ type PageView struct {
 }
 
 type ComponentView struct {
-	Id         string `json:"id"`
-	RootNodeId string `json:"rootNodeId"`
-	Name       string `json:"name"`
+	Id         string            `json:"id"`
+	RootNodeId string            `json:"rootNodeId"`
+	Name       string            `json:"name"`
+	SetId      string            `json:"setId,omitempty" jsonschema:"the variant set this component belongs to; see list_component_sets"`
+	Variant    map[string]string `json:"variant,omitempty" jsonschema:"its combination: property -> value"`
 }
 
 type NodeView struct {
@@ -632,6 +634,8 @@ type DocumentView struct {
 	// Design tokens: see list_variables.
 	Modes     []ModeIO       `json:"modes,omitempty"`
 	Variables []VariableView `json:"variables,omitempty"`
+	// Variant sets: see list_component_sets.
+	ComponentSets []ComponentSetView `json:"componentSets,omitempty"`
 }
 
 // GetDocument returns the whole synced document: pages, components and every
@@ -647,7 +651,7 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName()})
 	}
 	for id, c := range doc.GetComponents() {
-		out.Components = append(out.Components, ComponentView{Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName()})
+		out.Components = append(out.Components, ComponentView{Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName(), SetId: c.GetSetId(), Variant: c.GetVariant()})
 	}
 	for _, n := range doc.GetNodes() {
 		out.Nodes = append(out.Nodes, toNodeView(n))
@@ -656,6 +660,7 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 	if vv := variablesView(doc); len(vv.Variables) > 0 || len(vv.Modes) > 0 {
 		out.Modes, out.Variables = vv.Modes, vv.Variables
 	}
+	out.ComponentSets = componentSetViews(doc)
 	return out, nil
 }
 
@@ -712,7 +717,7 @@ func (s *Session) ListComponents(ctx context.Context, _ struct{}) (ListComponent
 	defer s.mu.Unlock()
 	var out ListComponentsOutput
 	for id, c := range s.doc.GetComponents() {
-		out.Components = append(out.Components, ComponentView{Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName()})
+		out.Components = append(out.Components, ComponentView{Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName(), SetId: c.GetSetId(), Variant: c.GetVariant()})
 	}
 	return out, nil
 }
@@ -763,6 +768,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerFlowTools(srv, s)
 	registerAnimationTools(srv, s)
 	registerVariableTools(srv, s)
+	registerVariantTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerDiagramTools(srv, s)
 }

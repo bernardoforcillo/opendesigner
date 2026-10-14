@@ -22,6 +22,8 @@ import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
 import { bindPropOps, bindVariableOps, bindablePropsOf, boundProp, boundVariable } from "./variableOps";
 import { PropVariablePicker } from "./VariablePickers";
+import { switchInstanceOps } from "./variantOps";
+import { variantWith } from "../store/variants";
 import { GradientControls } from "./GradientControls";
 import { EffectsControls } from "./EffectsControls";
 import { AutoLayoutControls, WrapInAutoLayoutButton } from "./AutoLayoutControls";
@@ -186,6 +188,41 @@ function VariablePicker({ slot, label, run }: { slot: "fill" | "stroke"; label: 
       {dangling && <option value={bound as string}>Missing variable</option>}
       {variables.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
     </select>
+  );
+}
+
+// "Variant" section of a single selected INSTANCE whose component belongs to a
+// set: one select per property. Values whose combination does not exist (with
+// the other properties as they are) are disabled; picking one swaps the
+// instance to that member.
+function VariantSection({ run }: { run: (build: (ids: readonly string[]) => Op[]) => void }) {
+  const scene = useScene((s) => s.scene);
+  const selection = useScene((s) => s.selection);
+  if (!scene || selection.length !== 1) return null;
+  const n = scene.nodes.get(selection[0]);
+  const comp = n?.instance ? scene.components[n.instance.componentId] : undefined;
+  const set = comp?.setId ? scene.componentSets?.[comp.setId] : undefined;
+  if (!n || !comp || !set) return null;
+  return (
+    <Section title="Variant">
+      <div className="flex flex-col gap-1.5">
+        {set.properties.map((p) => (
+          <label key={p.name} className="flex items-center gap-2">
+            <span className="w-20 shrink-0 truncate text-[11px] text-fg-subtle" title={p.name}>{p.name}</span>
+            <select
+              aria-label={`${p.name} variant`}
+              className={cls.select}
+              value={comp.variant?.[p.name] ?? ""}
+              onChange={(e) => run(() => switchInstanceOps(useScene.getState().scene!, n.id, p.name, e.target.value))}
+            >
+              {p.values.map((v) => (
+                <option key={v} value={v} disabled={v !== comp.variant?.[p.name] && !variantWith(scene, n.instance!.componentId, p.name, v)}>{v}</option>
+              ))}
+            </select>
+          </label>
+        ))}
+      </div>
+    </Section>
   );
 }
 
@@ -1062,6 +1099,7 @@ export function PropertiesPanel() {
         </div>
       </Section>
 
+      <VariantSection run={runGesture} />
       <BindingsSection run={runGesture} />
 
       {/* THE EFFECTS: shadow and blur. Its own section like the stroke: they are

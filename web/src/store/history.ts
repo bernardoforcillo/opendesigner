@@ -1,9 +1,10 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, toPbVariable, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, toPbVariable, toPbComponentSet, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
 import { applyVariableOp } from "./variables";
+import { applyVariantOp } from "./variants";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
@@ -337,6 +338,56 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const prev = scene.clips[op.kind.value.id];
       if (!prev) return null;
       return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setClip", value: { clip: toPbClip(prev) } } })];
+    }
+    // --- component variants -------------------------------------------------
+    // Null whenever the direct op would be rejected (nothing changes, nothing to undo).
+    case "setComponentSet": {
+      const set = op.kind.value.set;
+      if (!set || applyVariantOp(scene, op) === scene) return null;
+      const prev = scene.componentSets?.[set.id];
+      if (!prev) return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "deleteComponentSet", value: { id: set.id } } })];
+      // The previous set, then every member's original combination (the edit migrated them).
+      const ops: Op[] = [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentSet", value: { set: toPbComponentSet(prev) } } })];
+      const after = applyVariantOp(scene, op)!;
+      for (const [cid, c] of Object.entries(scene.components).sort(([a], [b]) => (a < b ? -1 : 1))) {
+        if (c.setId === set.id && JSON.stringify(c.variant) !== JSON.stringify(after.components[cid].variant)) {
+          ops.push(create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentVariant", value: { componentId: cid, setId: set.id, variant: { ...c.variant } } } }));
+        }
+      }
+      return ops;
+    }
+    case "deleteComponentSet": {
+      const { id } = op.kind.value;
+      const prev = scene.componentSets?.[id];
+      if (!prev) return null;
+      // The set first, then every member's combination back (deleting detached them).
+      const ops: Op[] = [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentSet", value: { set: toPbComponentSet(prev) } } })];
+      for (const [cid, c] of Object.entries(scene.components).sort(([a], [b]) => (a < b ? -1 : 1))) {
+        if (c.setId === id) {
+          ops.push(create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentVariant", value: { componentId: cid, setId: id, variant: { ...c.variant } } } }));
+        }
+      }
+      return ops;
+    }
+    case "setComponentVariant": {
+      const { componentId } = op.kind.value;
+      const prev = scene.components[componentId];
+      if (!prev || applyVariantOp(scene, op) === scene) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setComponentVariant", value: { componentId, setId: prev.setId ?? "", variant: { ...(prev.variant ?? {}) } } },
+      })];
+    }
+    case "swapInstance": {
+      const { instanceId } = op.kind.value;
+      const prev = scene.nodes.at(instanceId);
+      if (!prev || prev.kind !== "instance" || !prev.instance || applyVariantOp(scene, op) === scene) return null;
+      // Swap back, then put every original override back (the swap remapped or dropped them).
+      const ops: Op[] = [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "swapInstance", value: { instanceId, componentId: prev.instance.componentId } } })];
+      for (const o of prev.instance.overrides) {
+        ops.push(create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setInstanceOverride", value: { instanceId, override: toPbInstanceOverride(o) } } }));
+      }
+      return ops;
     }
     // --- design variables ---------------------------------------------------
     // Absolute upserts, like clips. A rejected op has no inverse (null).

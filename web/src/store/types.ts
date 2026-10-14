@@ -1,12 +1,12 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
 import { resolveScene } from "./variables";
-import { ClipSchema, FlowSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ClipSchema, ComponentSetSchema, FlowSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
-  InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride, Variable as PbVariable,
+  InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride, Variable as PbVariable, ComponentSet as PbComponentSet,
 } from "../gen/opendesigner/v1/opendesigner_pb";
 
 export interface PageLite { id: string; name: string; }
@@ -152,6 +152,16 @@ export interface InstanceLite {
 export interface ComponentLite {
   rootNodeId: string;
   name: string;
+  // Variants: the set this component belongs to and its full combination
+  // (property -> value). Absent when the component is in no set.
+  setId?: string;
+  variant?: Record<string, string>;
+}
+
+/** A variant set: the properties and their allowed values; members say which combination they are. */
+export interface ComponentSetLite {
+  id: string; name: string;
+  properties: { name: string; values: string[] }[];
 }
 
 export interface NodeLite {
@@ -270,6 +280,7 @@ export interface SceneState {
   // server): which mode the canvas previews; absent = the first mode.
   variables?: Record<string, VariableLite>;
   modes?: ModeLite[];
+  componentSets?: Record<string, ComponentSetLite>;
   activeMode?: string;
 }
 
@@ -706,7 +717,12 @@ export function fromDocument(doc: Document): SceneState {
   // Components are part of the document as much as nodes: a master not copied
   // but referenced by rootNodeId (see ComponentLite).
   const components: Record<string, ComponentLite> = {};
-  for (const [id, c] of Object.entries(doc.components)) components[id] = { rootNodeId: c.rootNodeId, name: c.name };
+  for (const [id, c] of Object.entries(doc.components)) {
+    components[id] = {
+      rootNodeId: c.rootNodeId, name: c.name,
+      ...(c.setId !== "" ? { setId: c.setId, variant: { ...c.variant } } : {}),
+    };
+  }
   const scene: SceneState = {
     id: doc.id, name: doc.name, schemaVersion: doc.schemaVersion,
     pages: doc.pages.map((p) => ({ id: p.id, name: p.name })), nodes, components,
@@ -715,6 +731,7 @@ export function fromDocument(doc: Document): SceneState {
     clips: Object.fromEntries(Object.entries(doc.clips).map(([id, c]) => [id, toClipLite(c)])),
     variables: Object.fromEntries(Object.entries(doc.variables).map(([id, v]) => [id, toVariableLite(v)])),
     modes: doc.modes.map((m) => ({ id: m.id, name: m.name })),
+    componentSets: Object.fromEntries(Object.entries(doc.componentSets).map(([id, cs]) => [id, toComponentSetLite(cs)])),
   };
   // Bound fills come off the wire as black placeholders: fill in their colours.
   return resolveScene(scene);
@@ -722,6 +739,14 @@ export function fromDocument(doc: Document): SceneState {
 
 const KIND_OF: Record<number, VariableKind> = { [VariableType.COLOR]: "color", [VariableType.NUMBER]: "number", [VariableType.STRING]: "string" };
 const TYPE_OF: Record<VariableKind, VariableType> = { color: VariableType.COLOR, number: VariableType.NUMBER, string: VariableType.STRING };
+
+export function toComponentSetLite(cs: PbComponentSet): ComponentSetLite {
+  return { id: cs.id, name: cs.name, properties: cs.properties.map((p) => ({ name: p.name, values: [...p.values] })) };
+}
+
+export function toPbComponentSet(cs: ComponentSetLite): PbComponentSet {
+  return create(ComponentSetSchema, { id: cs.id, name: cs.name, properties: cs.properties.map((p) => ({ name: p.name, values: [...p.values] })) });
+}
 
 export function toVariableLite(v: PbVariable): VariableLite {
   return {

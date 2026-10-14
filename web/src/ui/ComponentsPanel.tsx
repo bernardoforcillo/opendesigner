@@ -3,6 +3,7 @@ import { Button, EmptyState, Icon, IconButton, cls } from "./ds";
 import { useScene } from "../store/store";
 import { contentWorldBounds } from "../store/groups";
 import { nextOrderKey } from "../store/orderKey";
+import { VariantSets } from "./VariantSets";
 import { makeCreateComponentOp, makeCreateNodeOp, makeInstanceNode, uuid } from "../tools/ops";
 
 // COMPONENTS PANEL (M4) — lists the document's components (SceneState.
@@ -135,6 +136,11 @@ export function ComponentsPanel() {
                     <Icon name="components" size={15} />
                   </span>
                   <span className="min-w-0 flex-1 truncate font-medium">{label}</span>
+                  {comp.variant && Object.keys(comp.variant).length > 0 && (
+                    <span className="max-w-[40%] shrink-0 truncate rounded bg-surface-3 px-1.5 py-0.5 text-[10px] font-medium text-fg-muted" title={Object.entries(comp.variant).map(([k, v]) => `${k}: ${v}`).join(", ")}>
+                      {Object.values(comp.variant).join(" · ")}
+                    </span>
+                  )}
                   <span
                     aria-hidden
                     className="flex shrink-0 items-center gap-1 text-[11px] font-medium text-fg-subtle opacity-0 transition-opacity group-hover:opacity-100 group-data-[focus-visible]:opacity-100"
@@ -148,6 +154,7 @@ export function ComponentsPanel() {
           })}
         </ul>
       )}
+      <VariantSets />
     </div>
   );
 }

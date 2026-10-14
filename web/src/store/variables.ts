@@ -169,6 +169,7 @@ export function resolveAfterNodeOp(s: SceneState, op: Op): SceneState {
     k.case === "createNode" ? k.value.node?.id
     : k.case === "setProps" ? k.value.id
     : k.case === "setInstanceOverride" ? k.value.instanceId
+    : k.case === "swapInstance" ? k.value.instanceId
     : k.case === "setText" ? k.value.id
     : undefined;
   if (!id) return s;

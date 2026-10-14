@@ -7,6 +7,7 @@ import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout } from "./layout";
 import { recordDelta } from "./sceneDelta";
 import { applyVariableOp, resolveAfterNodeOp, validBindings } from "./variables";
+import { applyVariantOp } from "./variants";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
@@ -24,8 +25,12 @@ const NIL_PATCH: PbNode = create(NodeSchema, {});
 // store/layout.ts.
 export function applyOp(state: SceneState, op: Op): SceneState {
   const before = layoutTargets(state, op);
-  const variableOp = applyVariableOp(state, op);
-  let next = variableOp;
+  let next = applyVariableOp(state, op);
+  if (next === undefined) {
+    // Variant ops; a swap brings bound override fills in under a new master: resolve them.
+    const v = applyVariantOp(state, op);
+    if (v !== undefined) next = v === state ? v : resolveAfterNodeOp(v, op);
+  }
   if (next === undefined) {
     next = applyOpRaw(state, op);
     if (next === state) return state;               // rejected: nothing to resolve

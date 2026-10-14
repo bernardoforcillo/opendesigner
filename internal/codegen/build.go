@@ -4,6 +4,7 @@ import (
 	"fmt"
 	"math"
 	"regexp"
+	"sort"
 	"strings"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
@@ -212,6 +213,23 @@ func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 	el.addStyle("width", px(n.GetWidth()))
 	el.addStyle("height", px(n.GetHeight()))
 	rotation(el, n)
+	// An instance of a VARIANT says which component and combination it shows, so
+	// the markup can be mapped back to the design component and its props.
+	// Instances of plain components are left as they were (existing exports and
+	// their goldens do not change).
+	if v := comp.GetVariant(); comp.GetSetId() != "" {
+		el.addAttr("data-component", comp.GetName())
+		keys := make([]string, 0, len(v))
+		for k := range v {
+			keys = append(keys, k)
+		}
+		sort.Strings(keys)
+		parts := make([]string, len(keys))
+		for i, k := range keys {
+			parts[i] = k + "=" + v[k]
+		}
+		el.addAttr("data-variant", strings.Join(parts, ";"))
+	}
 
 	ov := map[string]*opendesignerv1.InstanceOverride{}
 	for _, o := range inst.GetOverrides() {

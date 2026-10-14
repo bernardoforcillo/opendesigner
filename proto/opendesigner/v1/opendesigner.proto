@@ -330,6 +330,27 @@ message VectorNode { repeated SubPath subpaths = 1; }
 message Component {
   string root_node_id = 1; // root of the master, inside Document.nodes
   string name = 2;
+  // VARIANTS. A component can belong to a ComponentSet (a "variant set": one
+  // master per combination of the set's properties, e.g. Size=Small|Large x
+  // State=Default|Hover). `variant` gives this component's value for EVERY
+  // property of the set; no two components of a set share a combination.
+  string set_id = 3;
+  map<string, string> variant = 4;
+}
+
+message VariantProperty {
+  string name = 1;             // e.g. "Size"
+  repeated string values = 2;  // e.g. ["Small", "Large"]; at least one, unique
+}
+
+// A set of components that are variants of one another. The set only names the
+// properties and their allowed values; each member component says which
+// combination it is (Component.variant). An INSTANCE picks a variant by
+// pointing at the matching member (SwapInstance).
+message ComponentSet {
+  string id = 1;
+  string name = 2;
+  repeated VariantProperty properties = 3;
 }
 
 // A per-instance override on ONE node of the master. Minimal (design M4): fill
@@ -482,6 +503,7 @@ message Document {
   map<string, Clip> clips = 9;
   map<string, Variable> variables = 10;  // design tokens, see Variable
   repeated Mode modes = 11;              // first = default mode; empty = no modes defined
+  map<string, ComponentSet> component_sets = 12;  // variant sets, see Component.set_id
 }
 
 // ---------- ops ----------
@@ -593,6 +615,21 @@ message DeleteTransition { string id = 1; }
 
 // Clip: ABSOLUTE upsert of the whole clip (the inverse is the previous state).
 message SetClip { Clip clip = 1; }
+// Variants. SetComponentSet upserts a set (names and allowed values); it is
+// refused if a member's variant would no longer be valid. DeleteComponentSet
+// removes the set and detaches its members (they stay components).
+// SetComponentVariant assigns a component to a set with a full combination, or
+// (set_id empty) detaches it. SwapInstance points an instance at another
+// component; overrides follow the master nodes by name path, those with no
+// counterpart are dropped.
+message SetComponentSet { ComponentSet set = 1; }
+message DeleteComponentSet { string id = 1; }
+message SetComponentVariant {
+  string component_id = 1;
+  string set_id = 2;
+  map<string, string> variant = 3;
+}
+message SwapInstance { string instance_id = 1; string component_id = 2; }
 // Variables: absolute upsert of one variable, delete (paints that referenced it
 // draw black), and replacement of the whole mode list.
 message SetVariable { Variable variable = 1; }
@@ -627,6 +664,10 @@ message Op {
     SetVariable      set_variable      = 27; // design tokens: upsert of a variable
     DeleteVariable   delete_variable   = 28;
     SetModes         set_modes         = 29; // design tokens: replaces the mode list
+    SetComponentSet     set_component_set     = 30; // variants: upsert of a set
+    DeleteComponentSet  delete_component_set  = 31;
+    SetComponentVariant set_component_variant = 32; // variants: puts a component in (or out of) a set
+    SwapInstance        swap_instance         = 33; // variants: an instance switches component
   }
 }
 message OpRecord {
