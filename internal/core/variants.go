@@ -99,6 +99,28 @@ func migrateVariant(set *opendesignerv1.ComponentSet, variant map[string]string)
 	return out
 }
 
+// renameVariant carries a member's combination over the renames: property keys
+// first, then the values of each (new-named) property.
+func renameVariant(variant map[string]string, props map[string]string, vals []*opendesignerv1.ValueRename) map[string]string {
+	if len(props) == 0 && len(vals) == 0 {
+		return variant
+	}
+	out := make(map[string]string, len(variant))
+	for k, v := range variant {
+		if nk, ok := props[k]; ok {
+			k = nk
+		}
+		for _, vr := range vals {
+			if vr.GetProperty() == k && vr.GetFrom() == v {
+				v = vr.GetTo()
+				break
+			}
+		}
+		out[k] = v
+	}
+	return out
+}
+
 // applySetComponentSet upserts a set. Members are migrated onto the new
 // properties (see migrateVariant), so adding a property or a value never
 // strands them; the op is refused if the migration would make two members the
@@ -107,6 +129,29 @@ func applySetComponentSet(doc *opendesignerv1.Document, s *opendesignerv1.SetCom
 	set := s.GetSet()
 	if err := validateSetShape(set); err != nil {
 		return err
+	}
+	// Renames must point at something that exists in the new set.
+	newProps := map[string]*opendesignerv1.VariantProperty{}
+	for _, p := range set.GetProperties() {
+		newProps[p.GetName()] = p
+	}
+	for old, nw := range s.GetPropertyRenames() {
+		if newProps[nw] == nil {
+			return fmt.Errorf("%w: property %q is renamed to %q, which the set does not have (old name %q)", ErrBadVariant, old, nw, old)
+		}
+	}
+	for _, vr := range s.GetValueRenames() {
+		p := newProps[vr.GetProperty()]
+		if p == nil {
+			return fmt.Errorf("%w: value rename on unknown property %q", ErrBadVariant, vr.GetProperty())
+		}
+		ok := false
+		for _, v := range p.GetValues() {
+			ok = ok || v == vr.GetTo()
+		}
+		if !ok {
+			return fmt.Errorf("%w: value %q is renamed to %q, which property %q does not have", ErrBadVariant, vr.GetFrom(), vr.GetTo(), vr.GetProperty())
+		}
 	}
 	migrated := map[string]map[string]string{}
 	var ids []string
@@ -117,7 +162,7 @@ func applySetComponentSet(doc *opendesignerv1.Document, s *opendesignerv1.SetCom
 	}
 	sort.Strings(ids)
 	for i, id := range ids {
-		m := migrateVariant(set, doc.GetComponents()[id].GetVariant())
+		m := migrateVariant(set, renameVariant(doc.GetComponents()[id].GetVariant(), s.GetPropertyRenames(), s.GetValueRenames()))
 		for _, other := range ids[:i] {
 			if sameCombination(migrated[other], m) {
 				return fmt.Errorf("%w: components %s and %s would become the same variant", ErrBadVariant, other, id)

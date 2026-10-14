@@ -60,6 +60,9 @@ type bctx struct {
 	// visited: components being expanded on this branch (a master that
 	// contains an instance of itself must not recurse forever).
 	visited map[string]bool
+	// visible: master nodes that component properties force shown or hidden
+	// while descending into an instance (node id -> visible).
+	visible map[string]bool
 }
 
 func (c bctx) inInstance() bool { return c.idPrefix != "" }
@@ -91,7 +94,11 @@ func (b *builder) buildScreen(n *opendesignerv1.Node) *Element {
 
 // element translates a node (and its subtree). nil = nothing to emit.
 func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
-	if !n.GetVisible() {
+	visible := n.GetVisible()
+	if v, ok := c.visible[n.GetId()]; ok {
+		visible = v
+	}
+	if !visible {
 		return nil
 	}
 	var el *Element
@@ -235,15 +242,43 @@ func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 	for _, o := range inst.GetOverrides() {
 		ov[o.GetMasterNodeId()] = o
 	}
+	// Component properties: a text one writes the node's content, a boolean one
+	// shows or hides the node. They win over a per-node override.
+	fx := core.EffectsOf(b.doc, inst)
+	for node, text := range fx.Text {
+		o := &opendesignerv1.InstanceOverride{MasterNodeId: node}
+		if prev := ov[node]; prev != nil {
+			o.Fills, o.FillsPresent = prev.GetFills(), prev.GetFillsPresent()
+		}
+		o.Text, o.TextPresent = text, true
+		ov[node] = o
+	}
 	visited := map[string]bool{inst.GetComponentId(): true}
 	for k := range c.visited {
 		visited[k] = true
 	}
-	cc := bctx{origin: true, overrides: ov, idPrefix: c.idPrefix + n.GetId() + "/", visited: visited}
+	cc := bctx{origin: true, overrides: ov, idPrefix: c.idPrefix + n.GetId() + "/", visited: visited, visible: fx.Visible}
 	if ce := b.element(master, cc); ce != nil {
 		el.Children = append(el.Children, ce)
 	}
+	// An instance of a variant, with no overrides and nothing animated or wired
+	// inside, can be a component call in the React target. Overrides change the
+	// content of one instance and have no prop to carry them, so those stay inline.
+	if comp.GetSetId() != "" && len(inst.GetOverrides()) == 0 && len(inst.GetPropertyValues()) == 0 && isStatic(el) {
+		el.Use = &ComponentUse{SetID: comp.GetSetId(), ComponentID: inst.GetComponentId(), Variant: comp.GetVariant()}
+	}
 	return el
+}
+
+// isStatic: no animation and no flow wiring anywhere in the subtree.
+func isStatic(e *Element) bool {
+	static := true
+	e.walk(func(x *Element) {
+		if x.Anim != nil || len(x.Triggers) > 0 || len(x.NavTriggers) > 0 || len(x.KeyTriggers) > 0 {
+			static = false
+		}
+	})
+	return static
 }
 
 // withOverride: the master's node with the instance's override applied

@@ -23,6 +23,7 @@ import { ColorField } from "./fields/ColorField";
 import { bindPropOps, bindVariableOps, bindablePropsOf, boundProp, boundVariable } from "./variableOps";
 import { PropVariablePicker } from "./VariablePickers";
 import { switchInstanceOps } from "./variantOps";
+import { ComponentPropertiesSection, InstancePropertiesSection } from "./ComponentProperties";
 import { variantWith } from "../store/variants";
 import { GradientControls } from "./GradientControls";
 import { EffectsControls } from "./EffectsControls";
@@ -1100,6 +1101,8 @@ export function PropertiesPanel() {
       </Section>
 
       <VariantSection run={runGesture} />
+      <InstancePropertiesSection />
+      <ComponentPropertiesSection />
       <BindingsSection run={runGesture} />
 
       {/* THE EFFECTS: shadow and blur. Its own section like the stroke: they are

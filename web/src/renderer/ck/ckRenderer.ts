@@ -4,7 +4,7 @@ import type {
 import type { Camera } from "../../canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "../../canvas/geometry";
 import { type Transform, localTransformOf } from "../../canvas/transform";
-import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../../store/instances";
+import { instanceDescentLocal, renderOverrideMap, resolveInstance, visibleUnder } from "../../store/instances";
 import type { EffectLite, FillLite, InstanceOverrideLite, NodeLite, SceneState, StrokeLite } from "../../store/types";
 import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "../../store/vectorGeometry";
 import {
@@ -155,7 +155,7 @@ export class CanvasKitRenderer {
   ): void {
     const f = this.frame as Frame;
     for (const n of siblings) {
-      if (!n.visible || seen.has(n.id)) continue;
+      if (!visibleUnder(n, overrides) || seen.has(n.id)) continue;
       if (cull && f.extent && f.view) {
         const e = f.extent.get(n.id);
         if (!e || !boundsIntersect(e, f.view)) continue;
@@ -189,7 +189,7 @@ export class CanvasKitRenderer {
     concat(sk, instanceDescentLocal(n, resolved.masterRoot));
     // Inside the instance the master's nodes have their extent at the place of origin, not
     // where the instance draws them: no discarding (cull = false).
-    this.drawSiblings(sk, [resolved.masterRoot], children, new Set(), instanceOverrideMap(n), next, false);
+    this.drawSiblings(sk, [resolved.masterRoot], children, new Set(), renderOverrideMap(f.scene, n), next, false);
     sk.restore();
   }
 

@@ -1,10 +1,11 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, toPbVariable, toPbComponentSet, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, toPbVariable, toPbComponentSet, toPbComponentProperty, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
 import { applyVariableOp } from "./variables";
 import { applyVariantOp } from "./variants";
+import { applyPropertyOp } from "./properties";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
@@ -346,11 +347,22 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       if (!set || applyVariantOp(scene, op) === scene) return null;
       const prev = scene.componentSets?.[set.id];
       if (!prev) return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "deleteComponentSet", value: { id: set.id } } })];
-      // The previous set, then every member's original combination (the edit migrated them).
-      const ops: Op[] = [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentSet", value: { set: toPbComponentSet(prev) } } })];
-      const after = applyVariantOp(scene, op)!;
+      // The previous set with the renames reversed, then every member's original
+      // combination (the edit migrated them, and a reversed rename cannot undo a fallback).
+      const fwd = op.kind.value;
+      const reverseProps = Object.fromEntries(Object.entries(fwd.propertyRenames).map(([from, to]) => [to, from]));
+      const reverseValues = fwd.valueRenames.map((vr) => {
+        const oldProp = Object.entries(fwd.propertyRenames).find(([, nw]) => nw === vr.property)?.[0] ?? vr.property;
+        return { property: oldProp, from: vr.to, to: vr.from };
+      });
+      const invSet = create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setComponentSet", value: { set: toPbComponentSet(prev), propertyRenames: reverseProps, valueRenames: reverseValues } },
+      });
+      const ops: Op[] = [invSet];
+      const restored = applyVariantOp(applyVariantOp(scene, op)!, invSet);
       for (const [cid, c] of Object.entries(scene.components).sort(([a], [b]) => (a < b ? -1 : 1))) {
-        if (c.setId === set.id && JSON.stringify(c.variant) !== JSON.stringify(after.components[cid].variant)) {
+        if (c.setId === set.id && JSON.stringify(c.variant) !== JSON.stringify(restored?.components[cid]?.variant)) {
           ops.push(create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentVariant", value: { componentId: cid, setId: set.id, variant: { ...c.variant } } } }));
         }
       }
@@ -388,6 +400,25 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         ops.push(create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setInstanceOverride", value: { instanceId, override: toPbInstanceOverride(o) } } }));
       }
       return ops;
+    }
+    // --- component properties -----------------------------------------------
+    case "setComponentProperties": {
+      const { componentId } = op.kind.value;
+      const prev = scene.components[componentId];
+      if (!prev || applyPropertyOp(scene, op) === scene) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setComponentProperties", value: { componentId, properties: (prev.properties ?? []).map(toPbComponentProperty) } },
+      })];
+    }
+    case "setInstanceProperty": {
+      const { instanceId, name } = op.kind.value;
+      const prev = scene.nodes.at(instanceId);
+      if (!prev?.instance || applyPropertyOp(scene, op) === scene) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setInstanceProperty", value: { instanceId, name, value: prev.instance.propertyValues?.[name] ?? "" } },
+      })];
     }
     // --- design variables ---------------------------------------------------
     // Absolute upserts, like clips. A rejected op has no inverse (null).

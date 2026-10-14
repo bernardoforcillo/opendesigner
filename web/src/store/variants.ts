@@ -31,6 +31,21 @@ export function validCombination(set: ComponentSetLite, variant: Record<string, 
   return set.properties.every((p) => v[p.name] !== undefined && p.values.includes(v[p.name]));
 }
 
+/** A member's combination carried over renames: property keys first, then the values of each (new-named) property. */
+export function renameVariant(
+  variant: Record<string, string> | undefined,
+  props: Record<string, string>,
+  vals: readonly { property: string; from: string; to: string }[],
+): Record<string, string> | undefined {
+  if (!variant || (Object.keys(props).length === 0 && vals.length === 0)) return variant;
+  const out: Record<string, string> = {};
+  for (const [k0, v0] of Object.entries(variant)) {
+    const k = props[k0] ?? k0;
+    out[k] = vals.find((vr) => vr.property === k && vr.from === v0)?.to ?? v0;
+  }
+  return out;
+}
+
 /** A member's combination mapped onto a changed set: dropped properties go, a value no longer allowed (or never given) becomes the property's FIRST value. */
 export function migrateVariant(set: ComponentSetLite, variant: Record<string, string> | undefined): Record<string, string> {
   return Object.fromEntries(set.properties.map((p) => [p.name, p.values.includes(variant?.[p.name] ?? "") ? variant![p.name] : p.values[0]]));
@@ -85,10 +100,16 @@ export function applyVariantOp(s: SceneState, op: Op): SceneState | undefined {
       if (!validSetShape(set)) return s;
       // Members are migrated onto the new properties (core.migrateVariant); the op is
       // refused if that would make two of them the same variant.
+      const propRenames = op.kind.value.propertyRenames;
+      const valueRenames = op.kind.value.valueRenames;
+      // Renames must point at something the new set has (core.applySetComponentSet).
+      const newProp = (name: string) => set.properties.find((p) => p.name === name);
+      for (const nw of Object.values(propRenames)) if (!newProp(nw)) return s;
+      for (const vr of valueRenames) if (!newProp(vr.property)?.values.includes(vr.to)) return s;
       const ids = Object.keys(s.components).filter((id) => s.components[id].setId === set.id).sort();
       const migrated: Record<string, Record<string, string>> = {};
       for (const id of ids) {
-        const m = migrateVariant(set, s.components[id].variant);
+        const m = migrateVariant(set, renameVariant(s.components[id].variant, propRenames, valueRenames));
         if (Object.values(migrated).some((o) => sameCombination(o, m))) return s;
         migrated[id] = m;
       }

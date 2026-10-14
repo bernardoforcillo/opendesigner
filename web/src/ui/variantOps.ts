@@ -45,6 +45,38 @@ export function addPropertyOps(set: ComponentSetLite, name: string): Op[] {
   return [makeSetComponentSetOp({ ...set, properties: [...set.properties, { name: t, values: ["Default"] }] })];
 }
 
+/** Renames a property; members keep their choice (the server carries it over). */
+export function renamePropertyOps(set: ComponentSetLite, from: string, to: string): Op[] {
+  const t = to.trim();
+  if (t === "" || t === from || set.properties.some((p) => p.name === t)) return [];
+  return [makeSetComponentSetOp(
+    { ...set, properties: set.properties.map((p) => (p.name === from ? { ...p, name: t } : p)) },
+    { properties: { [from]: t } },
+  )];
+}
+
+/** Renames one value of a property; members that had it keep it under the new name. */
+export function renameValueOps(set: ComponentSetLite, property: string, from: string, to: string): Op[] {
+  const t = to.trim();
+  const p = set.properties.find((x) => x.name === property);
+  if (!p || t === "" || t === from || p.values.includes(t)) return [];
+  return [makeSetComponentSetOp(
+    { ...set, properties: set.properties.map((x) => (x.name === property ? { ...x, values: x.values.map((v) => (v === from ? t : v)) } : x)) },
+    { values: [{ property, from, to: t }] },
+  )];
+}
+
+/** Removes a value (members that had it move to the property's first value; refused by the server if that merges two variants). */
+export function removeValueOps(set: ComponentSetLite, property: string, value: string): Op[] {
+  const p = set.properties.find((x) => x.name === property);
+  if (!p || p.values.length <= 1) return [];
+  return [makeSetComponentSetOp({ ...set, properties: set.properties.map((x) => (x.name === property ? { ...x, values: x.values.filter((v) => v !== value) } : x)) })];
+}
+
+export function removePropertyOps(set: ComponentSetLite, property: string): Op[] {
+  return [makeSetComponentSetOp({ ...set, properties: set.properties.filter((p) => p.name !== property) })];
+}
+
 export function addValueOps(set: ComponentSetLite, property: string, value: string): Op[] {
   const t = value.trim();
   const p = set.properties.find((x) => x.name === property);

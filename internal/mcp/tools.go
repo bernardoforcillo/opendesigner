@@ -555,11 +555,12 @@ type PageView struct {
 }
 
 type ComponentView struct {
-	Id         string            `json:"id"`
-	RootNodeId string            `json:"rootNodeId"`
-	Name       string            `json:"name"`
-	SetId      string            `json:"setId,omitempty" jsonschema:"the variant set this component belongs to; see list_component_sets"`
-	Variant    map[string]string `json:"variant,omitempty" jsonschema:"its combination: property -> value"`
+	Id         string                `json:"id"`
+	RootNodeId string                `json:"rootNodeId"`
+	Name       string                `json:"name"`
+	SetId      string                `json:"setId,omitempty" jsonschema:"the variant set this component belongs to; see list_component_sets"`
+	Variant    map[string]string     `json:"variant,omitempty" jsonschema:"its combination: property -> value"`
+	Properties []ComponentPropertyIO `json:"properties,omitempty" jsonschema:"the controls an instance can set; see set_component_properties"`
 }
 
 type NodeView struct {
@@ -651,7 +652,7 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName()})
 	}
 	for id, c := range doc.GetComponents() {
-		out.Components = append(out.Components, ComponentView{Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName(), SetId: c.GetSetId(), Variant: c.GetVariant()})
+		out.Components = append(out.Components, ComponentView{Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName(), SetId: c.GetSetId(), Variant: c.GetVariant(), Properties: propertyViews(c)})
 	}
 	for _, n := range doc.GetNodes() {
 		out.Nodes = append(out.Nodes, toNodeView(n))
@@ -717,7 +718,7 @@ func (s *Session) ListComponents(ctx context.Context, _ struct{}) (ListComponent
 	defer s.mu.Unlock()
 	var out ListComponentsOutput
 	for id, c := range s.doc.GetComponents() {
-		out.Components = append(out.Components, ComponentView{Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName(), SetId: c.GetSetId(), Variant: c.GetVariant()})
+		out.Components = append(out.Components, ComponentView{Id: id, RootNodeId: c.GetRootNodeId(), Name: c.GetName(), SetId: c.GetSetId(), Variant: c.GetVariant(), Properties: propertyViews(c)})
 	}
 	return out, nil
 }

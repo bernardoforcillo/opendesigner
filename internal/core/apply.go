@@ -119,6 +119,10 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applyDeleteComponentSet(doc, k.DeleteComponentSet)
 	case *opendesignerv1.Op_SetComponentVariant:
 		return applySetComponentVariant(doc, k.SetComponentVariant)
+	case *opendesignerv1.Op_SetComponentProperties:
+		return applySetComponentProperties(doc, k.SetComponentProperties)
+	case *opendesignerv1.Op_SetInstanceProperty:
+		return applySetInstanceProperty(doc, k.SetInstanceProperty, cow)
 	case *opendesignerv1.Op_SwapInstance:
 		return applySwapInstance(doc, k.SwapInstance, cow)
 	case *opendesignerv1.Op_SetFlow:

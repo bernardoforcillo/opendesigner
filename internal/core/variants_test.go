@@ -165,3 +165,40 @@ func TestSetEditMigratesMembers(t *testing.T) {
 		t.Fatalf("a = %v", v)
 	}
 }
+
+func renameOp(set *opendesignerv1.ComponentSet, props map[string]string, vals ...*opendesignerv1.ValueRename) *opendesignerv1.Op {
+	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentSet{SetComponentSet: &opendesignerv1.SetComponentSet{Set: set, PropertyRenames: props, ValueRenames: vals}}}
+}
+
+func TestRenamesKeepMembersChoices(t *testing.T) {
+	doc := NewDocument("d", "d")
+	button(t, doc, "a", "a")
+	button(t, doc, "b", "b")
+	applyAll(t, doc, setOp("s", "Button", prop("Size", "S", "L")),
+		variantOp("a", "s", map[string]string{"Size": "S"}), variantOp("b", "s", map[string]string{"Size": "L"}))
+
+	// Rename the property and one value: members follow instead of falling back to the first value.
+	renamed := &opendesignerv1.ComponentSet{Id: "s", Name: "Button", Properties: []*opendesignerv1.VariantProperty{prop("Scale", "Small", "L")}}
+	applyAll(t, doc, renameOp(renamed, map[string]string{"Size": "Scale"}, &opendesignerv1.ValueRename{Property: "Scale", From: "S", To: "Small"}))
+	if v := doc.Components["a"].Variant; len(v) != 1 || v["Scale"] != "Small" {
+		t.Fatalf("a = %v", v)
+	}
+	if v := doc.Components["b"].Variant; len(v) != 1 || v["Scale"] != "L" {
+		t.Fatalf("b = %v", v)
+	}
+
+	// A rename to something the new set does not have is refused, and nothing changes.
+	bad := &opendesignerv1.ComponentSet{Id: "s", Name: "Button", Properties: []*opendesignerv1.VariantProperty{prop("Scale", "Small", "L")}}
+	for name, op := range map[string]*opendesignerv1.Op{
+		"property to nothing": renameOp(bad, map[string]string{"Scale": "Ghost"}),
+		"value to nothing":    renameOp(bad, nil, &opendesignerv1.ValueRename{Property: "Scale", From: "Small", To: "Huge"}),
+		"unknown property":    renameOp(bad, nil, &opendesignerv1.ValueRename{Property: "Ghost", From: "a", To: "b"}),
+	} {
+		if err := Apply(doc, op); !errors.Is(err, ErrBadVariant) {
+			t.Errorf("%s: want ErrBadVariant, got %v", name, err)
+		}
+	}
+	if doc.Components["a"].Variant["Scale"] != "Small" {
+		t.Fatal("a rejected rename changed a member")
+	}
+}

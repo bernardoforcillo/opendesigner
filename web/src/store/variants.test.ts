@@ -188,3 +188,33 @@ describe("undo", () => {
     expect(invertOp(s, delSet("ghost"))).toBeNull();
   });
 });
+
+describe("renames", () => {
+  const renameSet = (id: string, name: string, props: Record<string, string>, values: { property: string; from: string; to: string }[], ...properties: ReturnType<typeof prop>[]) =>
+    op({ case: "setComponentSet", value: create(SetComponentSetSchema, {
+      set: create(ComponentSetSchema, { id, name, properties }), propertyRenames: props, valueRenames: values,
+    }) });
+
+  it("keeps members' choices through a property and a value rename (parity with core)", () => {
+    const s = applyOp(scene(), renameSet("s", "Button", { Size: "Scale" }, [{ property: "Scale", from: "S", to: "Small" }], prop("Scale", "Small", "L")));
+    expect(s.components.a.variant).toEqual({ Scale: "Small" });
+    expect(s.components.b.variant).toEqual({ Scale: "L" });
+  });
+
+  it("refuses a rename to something the new set lacks", () => {
+    const s = scene();
+    expect(applyOp(s, renameSet("s", "Button", { Size: "Ghost" }, [], prop("Scale", "S", "L")))).toBe(s);
+    expect(applyOp(s, renameSet("s", "Button", {}, [{ property: "Size", from: "S", to: "Huge" }], prop("Size", "S", "L")))).toBe(s);
+    expect(applyOp(s, renameSet("s", "Button", {}, [{ property: "Ghost", from: "a", to: "b" }], prop("Size", "S", "L")))).toBe(s);
+  });
+
+  it("is undone: the old names and each member's choice come back", () => {
+    const before = scene();
+    const o = renameSet("s", "Button", { Size: "Scale" }, [{ property: "Scale", from: "S", to: "Small" }], prop("Scale", "Small", "L"));
+    const inv = invertOp(before, o)!;
+    const back = inv.reduce(applyOp, applyOp(before, o));
+    expect(back.componentSets!.s.properties).toEqual([{ name: "Size", values: ["S", "L"] }]);
+    expect(back.components.a.variant).toEqual({ Size: "S" });
+    expect(back.components.b.variant).toEqual({ Size: "L" });
+  });
+});

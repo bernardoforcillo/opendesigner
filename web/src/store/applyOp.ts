@@ -8,6 +8,7 @@ import { layoutTargets, relayout } from "./layout";
 import { recordDelta } from "./sceneDelta";
 import { applyVariableOp, resolveAfterNodeOp, validBindings } from "./variables";
 import { applyVariantOp } from "./variants";
+import { applyPropertyOp } from "./properties";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
@@ -31,6 +32,7 @@ export function applyOp(state: SceneState, op: Op): SceneState {
     const v = applyVariantOp(state, op);
     if (v !== undefined) next = v === state ? v : resolveAfterNodeOp(v, op);
   }
+  if (next === undefined) next = applyPropertyOp(state, op);
   if (next === undefined) {
     next = applyOpRaw(state, op);
     if (next === state) return state;               // rejected: nothing to resolve

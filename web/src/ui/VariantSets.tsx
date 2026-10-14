@@ -5,7 +5,8 @@ import type { ComponentSetLite, SceneState } from "../store/types";
 import { membersOf } from "../store/variants";
 import { CommitField } from "./fields/CommitField";
 import {
-  addMemberOps, addPropertyOps, addValueOps, deleteSetOps, firstFreeCombination, freeValues, newSetOps, removeMemberOps, renameSetOps, setMemberValueOps,
+  addMemberOps, addPropertyOps, addValueOps, deleteSetOps, firstFreeCombination, freeValues, newSetOps, removeMemberOps, removePropertyOps, removeValueOps,
+  renamePropertyOps, renameSetOps, renameValueOps, setMemberValueOps,
 } from "./variantOps";
 
 // VARIANT SETS: groups of components that are variants of one another (Size,
@@ -59,18 +60,28 @@ function SetCard({ set, scene }: { set: ComponentSetLite; scene: SceneState }) {
         <IconButton icon="trash" label={`Delete set ${set.name}`} size={24} onPress={() => run(() => deleteSetOps(set.id))} />
       </div>
 
-      <div className="flex flex-col gap-1">
+      <div className="flex flex-col gap-1.5">
         {set.properties.map((p) => (
-          <div key={p.name} className="grid grid-cols-[4.5rem_1fr] items-center gap-1.5">
-            <span className="truncate text-[11px] font-medium text-fg-subtle" title={p.name}>{p.name}</span>
-            <CommitField
-              key={`${p.name}:${p.values.length}`}   // remount after an add: the field empties itself
-              label={`Add value to ${p.name}`}
-              value=""
-              placeholder={p.values.join(", ")}
-              title={`Values: ${p.values.join(", ")}. Type a new one and press Enter.`}
-              onCommit={(v) => run(() => addValueOps(set, p.name, v))}
-            />
+          <div key={p.name} className="flex flex-col gap-1 rounded-md bg-surface-2 p-1.5">
+            <div className="flex items-center gap-1">
+              <CommitField key={`pn:${p.name}`} label={`Property name ${p.name}`} value={p.name} onCommit={(n) => run(() => renamePropertyOps(set, p.name, n))} />
+              <IconButton icon="trash" label={`Remove property ${p.name}`} size={22} onPress={() => run(() => removePropertyOps(set, p.name))} />
+            </div>
+            {p.values.map((v) => (
+              <div key={v} className="flex items-center gap-1 pl-3">
+                <CommitField key={`pv:${p.name}:${v}`} label={`Value ${v} of ${p.name}`} value={v} onCommit={(n) => run(() => renameValueOps(set, p.name, v, n))} />
+                <IconButton icon="minus" label={`Remove value ${v} of ${p.name}`} size={22} isDisabled={p.values.length <= 1} onPress={() => run(() => removeValueOps(set, p.name, v))} />
+              </div>
+            ))}
+            <div className="pl-3">
+              <CommitField
+                key={`${p.name}:${p.values.length}`}   // remount after an add: the field empties itself
+                label={`Add value to ${p.name}`}
+                value=""
+                placeholder="+ Value"
+                onCommit={(v) => run(() => addValueOps(set, p.name, v))}
+              />
+            </div>
           </div>
         ))}
         <CommitField key={`prop:${set.properties.length}`} label={`Add property to ${set.name}`} value="" placeholder="+ Property" onCommit={(n) => run(() => addPropertyOps(set, n))} />

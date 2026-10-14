@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbClip, toPbFlow, toPbVariable, toPbComponentSet, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
-import type { ComponentSetLite, ModeLite, VariableLite, ClipLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import { toPbClip, toPbFlow, toPbVariable, toPbComponentSet, toPbComponentProperty, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { ComponentPropertyLite, ComponentSetLite, ModeLite, VariableLite, ClipLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -225,14 +225,25 @@ export function makeDeleteVariableOp(id: string): Op {
 export function makeSetModesOp(modes: readonly ModeLite[]): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setModes", value: { modes: modes.map((m) => ({ id: m.id, name: m.name })) } } });
 }
-export function makeSetComponentSetOp(set: ComponentSetLite): Op {
-  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentSet", value: { set: toPbComponentSet(set) } } });
+/** Renames say which old properties/values are the same thing under a new name (members keep their choices). */
+export interface SetRenames { properties?: Record<string, string>; values?: { property: string; from: string; to: string }[] }
+export function makeSetComponentSetOp(set: ComponentSetLite, renames: SetRenames = {}): Op {
+  return create(OpSchema, {
+    opId: uuid(), docId: docId(),
+    kind: { case: "setComponentSet", value: { set: toPbComponentSet(set), propertyRenames: renames.properties ?? {}, valueRenames: renames.values ?? [] } },
+  });
 }
 export function makeDeleteComponentSetOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteComponentSet", value: { id } } });
 }
 export function makeSetComponentVariantOp(componentId: string, setId: string, variant: Record<string, string>): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentVariant", value: { componentId, setId, variant } } });
+}
+export function makeSetComponentPropertiesOp(componentId: string, properties: readonly ComponentPropertyLite[]): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentProperties", value: { componentId, properties: properties.map(toPbComponentProperty) } } });
+}
+export function makeSetInstancePropertyOp(instanceId: string, name: string, value: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setInstanceProperty", value: { instanceId, name, value } } });
 }
 export function makeSwapInstanceOp(instanceId: string, componentId: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "swapInstance", value: { instanceId, componentId } } });

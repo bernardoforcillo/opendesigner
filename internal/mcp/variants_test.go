@@ -88,3 +88,54 @@ func TestVariantToolsEndToEnd(t *testing.T) {
 		t.Fatal("deleting twice must fail")
 	}
 }
+
+// TestComponentPropertyTools: an agent declares a text and a boolean property on a
+// component, sets them on an instance, and meets the refusals.
+func TestComponentPropertyTools(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	s := startSession(t, url, docID, "agent")
+	ctx := context.Background()
+
+	btn := frame(t, s, "Button")
+	label, err := s.CreateText(ctx, odmcp.CreateTextInput{ParentId: btn, Content: "Click", X: 2, Y: 2})
+	if err != nil {
+		t.Fatal(err)
+	}
+	icon := rect(t, s, btn, "Icon")
+	comp, err := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: btn, Name: "Button"})
+	if err != nil {
+		t.Fatal(err)
+	}
+
+	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: comp.ComponentId, Properties: []odmcp.ComponentPropertyIO{
+		{Name: "Label", Type: "text", NodeId: label.NodeId, Default: "Hello"},
+		{Name: "Show icon", Type: "boolean", NodeId: icon, Default: "false"},
+	}}); err != nil {
+		t.Fatalf("SetComponentProperties: %v", err)
+	}
+	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: comp.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "X", Type: "number", NodeId: icon}}}); err == nil || !strings.Contains(err.Error(), "boolean or text") {
+		t.Fatalf("an unknown type must be refused with the choices named, got %v", err)
+	}
+	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: comp.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "X", Type: "text", NodeId: icon}}}); err == nil || !strings.Contains(err.Error(), "text node") {
+		t.Fatalf("a text property on a rectangle must be refused, got %v", err)
+	}
+
+	inst, err := s.CreateInstance(ctx, odmcp.CreateInstanceInput{ComponentId: comp.ComponentId, X: 50, Y: 50})
+	if err != nil {
+		t.Fatal(err)
+	}
+	if _, err := s.SetInstanceProperty(ctx, odmcp.SetInstancePropertyInput{InstanceId: inst.NodeId, Name: "Show icon", Value: "true"}); err != nil {
+		t.Fatalf("SetInstanceProperty: %v", err)
+	}
+	if _, err := s.SetInstanceProperty(ctx, odmcp.SetInstancePropertyInput{InstanceId: inst.NodeId, Name: "Show icon", Value: "maybe"}); err == nil || !strings.Contains(err.Error(), "true or false") {
+		t.Fatalf("a bad boolean must be refused, got %v", err)
+	}
+	if _, err := s.SetInstanceProperty(ctx, odmcp.SetInstancePropertyInput{InstanceId: inst.NodeId, Name: "Nope", Value: "x"}); err == nil || !strings.Contains(err.Error(), "declare that property") {
+		t.Fatalf("an unknown property must be refused, got %v", err)
+	}
+	comps, _ := s.ListComponents(ctx, struct{}{})
+	if len(comps.Components) != 1 || len(comps.Components[0].Properties) != 2 || comps.Components[0].Properties[0].Type == "" {
+		t.Fatalf("list_components must show the properties: %+v", comps.Components)
+	}
+}

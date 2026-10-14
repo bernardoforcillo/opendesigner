@@ -1,12 +1,12 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
 import { resolveScene } from "./variables";
-import { ClipSchema, ComponentSetSchema, FlowSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ClipSchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
   SubPath as PbSubPath, VectorNode as PbVectorNode,
-  InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride, Variable as PbVariable, ComponentSet as PbComponentSet,
+  InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride, Variable as PbVariable, ComponentSet as PbComponentSet, ComponentProperty as PbComponentProperty,
 } from "../gen/opendesigner/v1/opendesigner_pb";
 
 export interface PageLite { id: string; name: string; }
@@ -135,6 +135,9 @@ export interface InstanceOverrideLite {
   masterNodeId: string;
   fills?: FillLite[];
   text?: string;
+  // RENDER-ONLY, never stored or sent: set by store/instances.ts::renderOverrideMap
+  // when a component property forces the master node shown or hidden.
+  visible?: boolean;
 }
 
 // M4 — an instance of a component: the componentId it renders, plus the per-node
@@ -143,6 +146,8 @@ export interface InstanceOverrideLite {
 export interface InstanceLite {
   componentId: string;
   overrides: InstanceOverrideLite[];
+  // This instance's values for the component's properties (name -> value). Absent when none.
+  propertyValues?: Record<string, string>;
 }
 
 // M4 — a component indexed in SceneState.components (componentId ->
@@ -156,6 +161,16 @@ export interface ComponentLite {
   // (property -> value). Absent when the component is in no set.
   setId?: string;
   variant?: Record<string, string>;
+  // Component properties: controls an instance can set. Absent when none.
+  properties?: ComponentPropertyLite[];
+}
+
+/** A boolean (shows/hides one master node) or text (sets one master text node) control of a component. */
+export interface ComponentPropertyLite {
+  name: string;
+  type: "boolean" | "text";
+  nodeId: string;
+  defaultValue: string;
 }
 
 /** A variant set: the properties and their allowed values; members say which combination they are. */
@@ -373,7 +388,18 @@ export function toInstanceOverrideLite(o: PbInstanceOverride): InstanceOverrideL
 }
 
 export function toInstanceLite(n: PbInstanceNode): InstanceLite {
-  return { componentId: n.componentId, overrides: n.overrides.map(toInstanceOverrideLite) };
+  return {
+    componentId: n.componentId, overrides: n.overrides.map(toInstanceOverrideLite),
+    ...(Object.keys(n.propertyValues).length > 0 ? { propertyValues: { ...n.propertyValues } } : {}),
+  };
+}
+
+export function toComponentPropertyLite(p: PbComponentProperty): ComponentPropertyLite {
+  return { name: p.name, type: p.type === ComponentPropertyType.TEXT ? "text" : "boolean", nodeId: p.nodeId, defaultValue: p.defaultValue };
+}
+
+export function toPbComponentProperty(p: ComponentPropertyLite) {
+  return { name: p.name, type: p.type === "text" ? ComponentPropertyType.TEXT : ComponentPropertyType.BOOLEAN, nodeId: p.nodeId, defaultValue: p.defaultValue };
 }
 
 // Inverse of toSubPathsLite. Like toPbTextStyle it returns the INIT shape (not created
@@ -641,6 +667,7 @@ export function toPbNode(n: NodeLite): PbNode {
         ? { case: "instance" as const, value: {
             componentId: n.instance?.componentId ?? "",
             overrides: (n.instance?.overrides ?? []).map(toPbInstanceOverride),
+            propertyValues: { ...(n.instance?.propertyValues ?? {}) },
           } }
       // A group has no fields of its own: what makes it a group is the oneof case
       // (plus the children pointing to it). The branch exists anyway, and it is not
@@ -721,6 +748,7 @@ export function fromDocument(doc: Document): SceneState {
     components[id] = {
       rootNodeId: c.rootNodeId, name: c.name,
       ...(c.setId !== "" ? { setId: c.setId, variant: { ...c.variant } } : {}),
+      ...(c.properties.length > 0 ? { properties: c.properties.map(toComponentPropertyLite) } : {}),
     };
   }
   const scene: SceneState = {

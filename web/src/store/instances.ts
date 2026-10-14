@@ -1,5 +1,6 @@
 import { type Transform, compose, localTransformOf, translation } from "../canvas/transform";
 import type { InstanceOverrideLite, NodeLite, SceneState } from "./types";
+import { propertyEffects } from "./properties";
 
 // INSTANCES: the VIRTUAL subtree of a component, and how to descend into it.
 //
@@ -48,6 +49,24 @@ export function instanceOverrideMap(n: NodeLite): Map<string, InstanceOverrideLi
   const map = new Map<string, InstanceOverrideLite>();
   if (n.instance) for (const o of n.instance.overrides) map.set(o.masterNodeId, o);
   return map;
+}
+
+// The overrides the RENDERERS descend with: the explicit per-node ones plus what the
+// instance's component PROPERTIES do (a text property writes a node's content, a
+// boolean one forces it shown or hidden via `visible`). A property wins over an
+// explicit override of the same node. The properties panel keeps reading the
+// explicit map (instanceOverrideMap) -- that is what the user edits.
+export function renderOverrideMap(scene: SceneState, n: NodeLite): Map<string, InstanceOverrideLite> {
+  const map = instanceOverrideMap(n);
+  const fx = propertyEffects(scene, n);
+  for (const [node, text] of fx.text) map.set(node, { ...(map.get(node) ?? { masterNodeId: node }), text });
+  for (const [node, visible] of fx.visible) map.set(node, { ...(map.get(node) ?? { masterNodeId: node }), visible });
+  return map;
+}
+
+/** Is `n` drawn, hit and measured, given the overrides of the instance being descended into? */
+export function visibleUnder(n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): boolean {
+  return overrides?.get(n.id)?.visible ?? n.visible;
 }
 
 // The transform that PLACES the master's subtree at the instance, in the

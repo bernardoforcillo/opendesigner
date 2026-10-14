@@ -336,6 +336,28 @@ message Component {
   // property of the set; no two components of a set share a combination.
   string set_id = 3;
   map<string, string> variant = 4;
+  // COMPONENT PROPERTIES: named controls an instance can set. A BOOLEAN property
+  // shows or hides one master node, a TEXT property sets one master text node's
+  // content. See ComponentProperty.
+  repeated ComponentProperty properties = 5;
+}
+
+enum ComponentPropertyType {
+  COMPONENT_PROPERTY_TYPE_UNSPECIFIED = 0;
+  COMPONENT_PROPERTY_TYPE_BOOLEAN = 1;
+  COMPONENT_PROPERTY_TYPE_TEXT = 2;
+}
+
+// `node_id` is a node INSIDE the component's master subtree. `default_value` is
+// "true"/"false" for a BOOLEAN and the text for a TEXT. An instance's value
+// (InstanceNode.property_values[name]) wins over the default, and a property
+// wins over a per-node InstanceOverride of the same node: it is the instance's
+// declared way to vary that node.
+message ComponentProperty {
+  string name = 1;
+  ComponentPropertyType type = 2;
+  string node_id = 3;
+  string default_value = 4;
 }
 
 message VariantProperty {
@@ -372,6 +394,10 @@ message InstanceOverride {
 message InstanceNode {
   string component_id = 1;
   repeated InstanceOverride overrides = 2;
+  // Values of the component's properties for THIS instance (name -> value). A
+  // property with no entry uses its default; names the component does not have
+  // (after a swap to another variant) are ignored.
+  map<string, string> property_values = 3;
 }
 
 message Node {
@@ -622,7 +648,16 @@ message SetClip { Clip clip = 1; }
 // (set_id empty) detaches it. SwapInstance points an instance at another
 // component; overrides follow the master nodes by name path, those with no
 // counterpart are dropped.
-message SetComponentSet { ComponentSet set = 1; }
+// `property_renames` (old name -> new name) and `value_renames` say which
+// properties and values of the OLD set are the same thing under a new name, so
+// members keep their choices instead of falling back to the first value.
+// `ValueRename.property` is the property's NEW name.
+message ValueRename { string property = 1; string from = 2; string to = 3; }
+message SetComponentSet {
+  ComponentSet set = 1;
+  map<string, string> property_renames = 2;
+  repeated ValueRename value_renames = 3;
+}
 message DeleteComponentSet { string id = 1; }
 message SetComponentVariant {
   string component_id = 1;
@@ -630,6 +665,12 @@ message SetComponentVariant {
   map<string, string> variant = 3;
 }
 message SwapInstance { string instance_id = 1; string component_id = 2; }
+// Component properties. SetComponentProperties replaces the WHOLE property list
+// of a component (names unique, targets inside its master, kinds matching the
+// node). SetInstanceProperty sets one instance's value; an empty value goes
+// back to the default.
+message SetComponentProperties { string component_id = 1; repeated ComponentProperty properties = 2; }
+message SetInstanceProperty { string instance_id = 1; string name = 2; string value = 3; }
 // Variables: absolute upsert of one variable, delete (paints that referenced it
 // draw black), and replacement of the whole mode list.
 message SetVariable { Variable variable = 1; }
@@ -668,6 +709,8 @@ message Op {
     DeleteComponentSet  delete_component_set  = 31;
     SetComponentVariant set_component_variant = 32; // variants: puts a component in (or out of) a set
     SwapInstance        swap_instance         = 33; // variants: an instance switches component
+    SetComponentProperties set_component_properties = 34; // component properties: the definitions
+    SetInstanceProperty    set_instance_property    = 35; // component properties: one instance's value
   }
 }
 message OpRecord {

@@ -119,7 +119,7 @@ func Generate(doc *opendesignerv1.Document, opts Options, assets AssetSource) (*
 	case TargetHTML:
 		renderHTML(d, screens, opts, files, tokensCSS(d, vars, false))
 	default:
-		if err := renderReact(d, screens, opts, files, &out.Warnings, tokensCSS(d, vars, true)); err != nil {
+		if err := renderReact(d, b, screens, opts, files, &out.Warnings, tokensCSS(d, vars, true)); err != nil {
 			return nil, err
 		}
 	}

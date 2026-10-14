@@ -92,6 +92,42 @@ describe("VariantSets in the Components panel", () => {
     expect(screen.getByRole("textbox", { name: "Add value to Size" })).toHaveValue("");  // the field emptied itself
   });
 
+  it("renames a property and a value without losing the members' choices, and removes a value", async () => {
+    install({
+      components: {
+        a: { ...components.a, setId: "s", variant: { Size: "S" } },
+        b: { ...components.b, setId: "s", variant: { Size: "L" } },
+      },
+      componentSets: { s: { id: "s", name: "Button", properties: [{ name: "Size", values: ["S", "L", "XL"] }] } },
+    }, ...masters);
+    render(<ComponentsPanel />);
+    const user = userEvent.setup();
+
+    const prop = screen.getByRole("textbox", { name: "Property name Size" });
+    await user.clear(prop);
+    await user.type(prop, "Scale{Enter}");
+    let s = useScene.getState().scene!;
+    expect(s.componentSets!.s.properties[0].name).toBe("Scale");
+    expect(s.components.a.variant).toEqual({ Scale: "S" });
+    expect(s.components.b.variant).toEqual({ Scale: "L" });
+
+    const val = screen.getByRole("textbox", { name: "Value S of Scale" });
+    await user.clear(val);
+    await user.type(val, "Small{Enter}");
+    s = useScene.getState().scene!;
+    expect(s.componentSets!.s.properties[0].values).toEqual(["Small", "L", "XL"]);
+    expect(s.components.a.variant).toEqual({ Scale: "Small" });          // a kept its value under the new name
+
+    await user.click(screen.getByRole("button", { name: "Remove value XL of Scale" }));
+    expect(useScene.getState().scene!.componentSets!.s.properties[0].values).toEqual(["Small", "L"]);
+    // A name another value already has is ignored, not sent.
+    const before = sync.sent.length;
+    const clash = screen.getByRole("textbox", { name: "Value L of Scale" });
+    await user.clear(clash);
+    await user.type(clash, "Small{Enter}");
+    expect(sync.sent.length).toBe(before);
+  });
+
   it("deleting a set keeps its components", async () => {
     install({
       components: { a: { ...components.a, setId: "s", variant: { Size: "S" } }, b: components.b },
