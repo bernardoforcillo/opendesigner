@@ -82,6 +82,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
         ...sub.map((n) => createNodeOp(op.docId, toPbNode(n))),
         ...restoreFlowsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
         ...restoreClipsOps(scene, op.docId, new Set(sub.map((n) => n.id))),
+        ...restorePropertiesOps(scene, op.docId, new Set(sub.map((n) => n.id))),
       ];
     }
     // Symmetric to itself: puts the node back where it was, with the order key it
@@ -194,6 +195,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       }
       ops.push(...restoreFlowsOps(scene, op.docId, gone));
       ops.push(...restoreClipsOps(scene, op.docId, gone));
+      ops.push(...restorePropertiesOps(scene, op.docId, gone));
       return ops;
     }
     case "renamePage": {
@@ -490,6 +492,19 @@ function restoreFlowsOps(scene: SceneState, docId: string, gone: ReadonlySet<str
 // that had tracks on the vanished nodes (the tracks had been removed). The
 // WHOLE clip is restored as it was in the pre-apply scene -- an absolute setClip --
 // and it goes AFTER the createNodes: targets and track nodes must exist.
+// After RE-CREATING the deleted nodes, puts back the component properties that
+// targeted them (core.cascadeProperties dropped them): the component's whole
+// ORIGINAL list, which setComponentProperties validates against the restored nodes.
+function restorePropertiesOps(scene: SceneState, docId: string, gone: ReadonlySet<string>): Op[] {
+  const ops: Op[] = [];
+  for (const [componentId, c] of Object.entries(scene.components).sort(([a], [b]) => (a < b ? -1 : 1))) {
+    if (c.properties?.some((p) => gone.has(p.nodeId))) {
+      ops.push(create(OpSchema, { opId: newOpId(), docId, kind: { case: "setComponentProperties", value: { componentId, properties: c.properties.map(toPbComponentProperty) } } }));
+    }
+  }
+  return ops;
+}
+
 function restoreClipsOps(scene: SceneState, docId: string, gone: ReadonlySet<string>): Op[] {
   const ops: Op[] = [];
   for (const c of Object.values(scene.clips).sort(byId)) {

@@ -8,7 +8,7 @@ import { layoutTargets, relayout } from "./layout";
 import { recordDelta } from "./sceneDelta";
 import { applyVariableOp, resolveAfterNodeOp, validBindings } from "./variables";
 import { applyVariantOp } from "./variants";
-import { applyPropertyOp } from "./properties";
+import { applyPropertyOp, cascadeProperties } from "./properties";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
@@ -268,7 +268,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const nodes = state.nodes.edit();
       const gone = new Set<string>();
       for (const n of subtreeOf(state, id)) { nodes.delete(n.id); gone.add(n.id); }
-      return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone), ...cascadeClips(state, gone) };
+      return { ...state, nodes: nodes.done(), ...cascadeFlows(state, gone), ...cascadeClips(state, gone), ...cascadeProperties(state, gone) };
     }
     // Dedicated op and not a setProps mask path (unlike
     // `order_key`) because it has a validation no field has: the new
@@ -326,7 +326,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       }
       return {
         ...state, pages: [...state.pages.slice(0, i), ...state.pages.slice(i + 1)], nodes: nodes.done(),
-        ...cascadeFlows(state, gone), ...cascadeClips(state, gone),
+        ...cascadeFlows(state, gone), ...cascadeClips(state, gone), ...cascadeProperties(state, gone),
       };
     }
     case "renamePage": {

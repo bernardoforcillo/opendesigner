@@ -242,6 +242,8 @@ type jsxWriter struct {
 	sb strings.Builder
 	// reg: the variant components (nil = every instance is written inline).
 	reg *compRegistry
+	// propIdent: inside a component, the TS identifier of a component property.
+	propIdent func(name string) string
 }
 
 func reactScreen(d *opendesignerv1.Document, s *Screen, reg *compRegistry) (string, []string) {
@@ -390,6 +392,15 @@ func navigateExpr(t Trigger) string {
 // These are the three ways the generated tests (getByTestId / getByText /
 // getByRole('button', { name })) find the element in the real DOM.
 func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.Document) {
+	// A layer a component property shows or hides: `{prop && (<.../>)}`.
+	if e.ShowIf != "" && w.propIdent != nil {
+		inner := *e
+		inner.ShowIf = ""
+		w.line(depth, "{"+w.propIdent(e.ShowIf)+" && (")
+		w.element(&inner, depth+1, root, d)
+		w.line(depth, ")}")
+		return
+	}
 	type kv struct{ k, v string }
 	var attrs []kv
 	var comments []string
@@ -484,7 +495,11 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 	}
 
 	if e.HasText {
-		w.line(depth+1, "{"+tsString(e.Text)+"}")
+		if e.TextProp != "" && w.propIdent != nil {
+			w.line(depth+1, "{"+w.propIdent(e.TextProp)+"}")
+		} else {
+			w.line(depth+1, "{"+tsString(e.Text)+"}")
+		}
 	}
 	if useChild {
 		w.line(depth+1, w.reg.jsx(e.Use))

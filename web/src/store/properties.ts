@@ -84,3 +84,18 @@ export function applyPropertyOp(s: SceneState, op: Op): SceneState | undefined {
       return undefined;
   }
 }
+
+/** Drops the properties whose target node was just deleted (parity with core.cascadeProperties). */
+export function cascadeProperties(state: SceneState, gone: ReadonlySet<string>): Partial<Pick<SceneState, "components">> {
+  let changed = false;
+  const components = { ...state.components };
+  for (const [id, c] of Object.entries(state.components)) {
+    if (!c.properties?.some((p) => gone.has(p.nodeId))) continue;
+    changed = true;
+    const kept = c.properties.filter((p) => !gone.has(p.nodeId));
+    const next = { ...c };
+    if (kept.length > 0) next.properties = kept; else delete next.properties;
+    components[id] = next;
+  }
+  return changed ? { components } : {};
+}

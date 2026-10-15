@@ -101,3 +101,16 @@ func TestPropertyValuesSurviveASwapAndOnlyApplyWhereDefined(t *testing.T) {
 		t.Fatalf("component b has no such property: %+v", fx)
 	}
 }
+
+func TestDeletingATargetLayerDropsItsProperty(t *testing.T) {
+	doc := NewDocument("d", "d")
+	_, label := button(t, doc, "a", "a")
+	applyAll(t, doc, propsOp("a",
+		&opendesignerv1.ComponentProperty{Name: "Label", Type: pText, NodeId: label, DefaultValue: "Hi"},
+		&opendesignerv1.ComponentProperty{Name: "Root", Type: pBool, NodeId: "a-root"}))
+	applyAll(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteNode{DeleteNode: &opendesignerv1.DeleteNode{Id: label}}})
+	got := doc.Components["a"].Properties
+	if len(got) != 1 || got[0].Name != "Root" {
+		t.Fatalf("the property of the deleted layer must go, the other stay: %v", got)
+	}
+}

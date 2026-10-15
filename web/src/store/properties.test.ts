@@ -137,3 +137,21 @@ describe("undo", () => {
     expect(invertOp(s, defineProps("ghost"))).toBeNull();
   });
 });
+
+describe("deleting a target layer", () => {
+  const del = (id: string) => op({ case: "deleteNode", value: { id } as never });
+
+  it("drops the property that pointed at it and keeps the others", () => {
+    const s = applyOp(scene(), del("icon"));
+    expect(s.components.c.properties!.map((p) => p.name)).toEqual(["Label"]);
+    expect(applyOp(s, del("label")).components.c.properties).toBeUndefined();
+  });
+
+  it("is undone: the nodes and the properties come back", () => {
+    const s = scene();
+    const o = del("icon");
+    const back = invertOp(s, o)!.reduce(applyOp, applyOp(s, o));
+    expect(back.nodes.get("icon")).toBeDefined();
+    expect(back.components.c.properties).toEqual(s.components.c.properties);
+  });
+});

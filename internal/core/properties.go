@@ -144,3 +144,22 @@ func EffectsWith(comp *opendesignerv1.Component, values map[string]string) Insta
 	}
 	return e
 }
+
+// cascadeProperties drops the properties whose target node was just deleted: a
+// property pointing at nothing could neither show nor hide anything.
+func cascadeProperties(doc *opendesignerv1.Document, gone map[string]bool) {
+	if len(gone) == 0 {
+		return
+	}
+	for _, c := range doc.GetComponents() {
+		kept := c.GetProperties()[:0:0]
+		for _, p := range c.GetProperties() {
+			if !gone[p.GetNodeId()] {
+				kept = append(kept, p)
+			}
+		}
+		if len(kept) != len(c.GetProperties()) {
+			c.Properties = kept
+		}
+	}
+}

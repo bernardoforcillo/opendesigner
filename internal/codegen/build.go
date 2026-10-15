@@ -63,7 +63,13 @@ type bctx struct {
 	// visible: master nodes that component properties force shown or hidden
 	// while descending into an instance (node id -> visible).
 	visible map[string]bool
+	// bind: while building a variant COMPONENT, the master nodes driven by a
+	// component property (node id -> property names), so they export as
+	// `{prop && ...}` / `{prop}` instead of a fixed value.
+	bind map[string]propBind
 }
+
+type propBind struct{ show, text string }
 
 func (c bctx) inInstance() bool { return c.idPrefix != "" }
 
@@ -116,6 +122,9 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	el.NodeID = n.GetId()
 	el.NodeName = n.GetName()
 	el.Meta = n.GetMeta()
+	if pb, ok := c.bind[n.GetId()]; ok {
+		el.ShowIf, el.TextProp = pb.show, pb.text
+	}
 	id := c.idPrefix + n.GetId()
 	el.Attrs = append([]Attr{{"data-node-id", id}}, el.Attrs...)
 	if tid := n.GetMeta()["test.id"]; tid != "" && !c.inInstance() { // a test.id in the master would be duplicated in every instance
@@ -262,10 +271,11 @@ func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 		el.Children = append(el.Children, ce)
 	}
 	// An instance of a variant, with no overrides and nothing animated or wired
-	// inside, can be a component call in the React target. Overrides change the
-	// content of one instance and have no prop to carry them, so those stay inline.
-	if comp.GetSetId() != "" && len(inst.GetOverrides()) == 0 && len(inst.GetPropertyValues()) == 0 && isStatic(el) {
-		el.Use = &ComponentUse{SetID: comp.GetSetId(), ComponentID: inst.GetComponentId(), Variant: comp.GetVariant()}
+	// inside, can be a component call in the React target; its component
+	// properties travel as props. Overrides change the content of one instance and
+	// have no prop to carry them, so those stay inline.
+	if comp.GetSetId() != "" && len(inst.GetOverrides()) == 0 && isStatic(el) {
+		el.Use = &ComponentUse{SetID: comp.GetSetId(), ComponentID: inst.GetComponentId(), Variant: comp.GetVariant(), Values: inst.GetPropertyValues()}
 	}
 	return el
 }

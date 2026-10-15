@@ -167,19 +167,51 @@ func TestComponentPropertiesApplyInTheInlineExport(t *testing.T) {
 	}
 }
 
-func TestComponentPropertiesInReactComponents(t *testing.T) {
+func TestComponentPropertiesBecomeReactProps(t *testing.T) {
 	out := gen(t, propsDoc(), codegen.TargetReact, nil)
 	comp := string(file(t, out, "src/components/Button.tsx"))
-	// The component renders its defaults: default text, hidden icon.
-	if !strings.Contains(comp, `{"Click"}`) || strings.Contains(comp, "cmp-a/ma-icon") {
-		t.Errorf("the component must render the defaults:\n%s", comp)
+	for _, want := range []string{
+		"  /** Label (text) */\n  label?: string;",
+		"  /** Icon (show/hide) */\n  icon?: boolean;",
+		`label = "Click", icon = false }: ButtonProps`, // defaults from the design
+		"{icon && (", // the layer a boolean property drives
+		"{label}",    // the text a text property drives
+	} {
+		if !strings.Contains(comp, want) {
+			t.Errorf("Button.tsx lacks %q:\n%s", want, comp)
+		}
+	}
+	if strings.Contains(comp, "Master ma") {
+		t.Errorf("a property-driven text must print the prop, not the master's literal:\n%s", comp)
 	}
 	screen := string(file(t, out, "src/screens/Home.tsx"))
-	// i1 (defaults, no overrides) is a component call; i2 sets properties and stays inline with them applied.
-	if strings.Count(screen, "<Button ") != 1 {
-		t.Errorf("only the instance with default properties may call the component:\n%s", screen)
+	for _, want := range []string{
+		`<Button size="S" defaultProp="yes" />`,                  // i1: defaults, nothing passed
+		`<Button size="L" defaultProp="yes" label="Buy" icon />`, // i2: its property values travel as props
+	} {
+		if !strings.Contains(screen, want) {
+			t.Errorf("Home.tsx lacks %q:\n%s", want, screen)
+		}
 	}
-	if !strings.Contains(screen, `{"Buy"}`) || !strings.Contains(screen, "i2/mb-icon") {
-		t.Errorf("the inline instance must carry its property values:\n%s", screen)
+	// Only the instance with an OVERRIDE stays inline now (i3); property values no longer force it.
+	if strings.Count(screen, "<Button ") != 2 || !strings.Contains(screen, "i3/ma") {
+		t.Errorf("i1 and i2 call the component, i3 (an override) stays inline:\n%s", screen)
+	}
+}
+
+func TestFalseBooleanPropIsPassedExplicitly(t *testing.T) {
+	doc := propsDoc()
+	// A component whose icon is ON by default, and an instance that turns it off.
+	for _, id := range []string{"a", "b"} {
+		doc.Components[id].Properties[1].DefaultValue = "true"
+	}
+	doc.Nodes["i2"].GetInstance().PropertyValues = map[string]string{"Icon": "false"}
+	screen := string(file(t, gen(t, doc, codegen.TargetReact, nil), "src/screens/Home.tsx"))
+	if !strings.Contains(screen, "icon={false}") {
+		t.Errorf("turning a default-on layer off must pass icon={false}:\n%s", screen)
+	}
+	comp := string(file(t, gen(t, doc, codegen.TargetReact, nil), "src/components/Button.tsx"))
+	if !strings.Contains(comp, "icon = true") {
+		t.Errorf("the default must come from the design:\n%s", comp)
 	}
 }

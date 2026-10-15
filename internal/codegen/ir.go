@@ -73,12 +73,20 @@ type Element struct {
 	// renders it as `<Button size="L" />` inside this element instead of its
 	// inline Children (which stay filled for the HTML target).
 	Use *ComponentUse
+
+	// ShowIf / TextProp: inside a variant component, this element is shown only
+	// when the component property of that NAME is true (ShowIf), or its text is
+	// that property's value (TextProp). Empty everywhere else.
+	ShowIf   string
+	TextProp string
 }
 
 // ComponentUse identifies the variant an instance shows.
 type ComponentUse struct {
 	SetID, ComponentID string
 	Variant            map[string]string
+	// Values: the instance's component-property values (name -> value).
+	Values map[string]string
 }
 
 // Screen is an exported screen: a top-level frame (or a node referenced by a

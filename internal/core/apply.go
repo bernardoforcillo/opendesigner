@@ -225,6 +225,7 @@ func applyDelete(doc *opendesignerv1.Document, d *opendesignerv1.DeleteNode) err
 	}
 	cascadeFlows(doc, gone)
 	cascadeClips(doc, gone)
+	cascadeProperties(doc, gone)
 	return nil
 }
 
@@ -338,6 +339,7 @@ func applyDeletePage(doc *opendesignerv1.Document, d *opendesignerv1.DeletePage)
 	}
 	cascadeFlows(doc, gone)
 	cascadeClips(doc, gone)
+	cascadeProperties(doc, gone)
 	doc.Pages = append(doc.Pages[:i], doc.Pages[i+1:]...)
 	return nil
 }
