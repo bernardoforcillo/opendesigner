@@ -15,7 +15,7 @@ import { useFlowUi, type EditorMode } from "../../store/flowUi";
 // Three zones: on the left the menu, left panel and mode; in the middle the
 // document name (renamable); on the right people, status, zoom and right panel.
 // The shared look of the islands: TopBar, side panels, canvas and timeline.
-export const ISLAND_CLS = "rounded-xl border border-line bg-surface";
+export const ISLAND_CLS = "rounded-float bg-surface shadow-bar";
 
 const TOOLTIP_CLS = "z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop";
 

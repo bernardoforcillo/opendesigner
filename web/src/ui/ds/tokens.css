@@ -134,12 +134,11 @@
   --font-mono: ui-monospace, "SF Mono", "JetBrains Mono", Menlo, monospace;
 }
 
-/* Radius scale: small controls, cards, floating surfaces. */
-:root { --radius-control: 5px; --radius-card: 8px; --radius-float: 13px; }
-@theme inline {
-  --radius-control: var(--radius-control);
-  --radius-card: var(--radius-card);
-  --radius-float: var(--radius-float);
+/* Radius scale: small controls, cards, floating surfaces (islands). */
+@theme {
+  --radius-control: 5px;
+  --radius-card: 8px;
+  --radius-float: 13px;
 }
 
 /* Base: the app body is a surface, not the browser's white. */
