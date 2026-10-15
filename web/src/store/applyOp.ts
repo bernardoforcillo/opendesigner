@@ -12,7 +12,7 @@ import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } fr
 import { areValidLayoutGrids } from "./layoutGrids";
 import { arePaintsValid } from "./paints";
 import { isValidComment, withoutComment } from "./comments";
-import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes } from "./variables";
+import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
@@ -475,12 +475,12 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (!state.collections[id]) return state;                             // ErrCollectionNotFound
       const collections = { ...state.collections };
       delete collections[id];
-      // Its variables go with it, and so do the bindings to them and the pins.
+      // Its variables go with it (and the aliases of them), and so do the bindings to them and the pins.
       const variables: SceneState["variables"] = {};
-      const gone = new Set<string>();
-      for (const [vid, v] of Object.entries(state.variables)) {
-        if (v.collectionId === id) gone.add(vid); else variables[vid] = v;
-      }
+      const own = new Set<string>();
+      for (const v of Object.values(state.variables)) if (v.collectionId === id) own.add(v.id);
+      const gone = withAliases(state, own);
+      for (const [vid, v] of Object.entries(state.variables)) if (!gone.has(vid)) variables[vid] = v;
       return { ...state, collections, variables, nodes: unbindNodes(state, gone, id) };
     }
     case "setVariable": {
@@ -491,9 +491,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     case "deleteVariable": {
       const { id } = op.kind.value;
       if (!state.variables[id]) return state;                               // ErrVariableNotFound
+      const gone = withAliases(state, new Set([id]));                       // its aliases go with it
       const variables = { ...state.variables };
-      delete variables[id];
-      return { ...state, variables, nodes: unbindNodes(state, new Set([id])) };
+      for (const g of gone) delete variables[g];
+      return { ...state, variables, nodes: unbindNodes(state, gone) };
     }
     // --- component variants and properties ---------------------------------
     // Parity with core.applySetComponentSet / applyDeleteComponentSet /

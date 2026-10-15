@@ -1,6 +1,6 @@
 # Variables (design tokens)
 
-The document has **variables**: named colors and numbers that nodes can bind
+The document has **variables**: named colors, numbers and strings that nodes can bind
 to, with one value per **mode** (Light / Dark, Compact / Comfortable, brand A /
 brand B…). Like flows and clips, they live in the document and go through the op
 log, so the editor, MCP agents and code read and write the same tokens, they
@@ -13,9 +13,9 @@ Document.collections : map<id, VariableCollection>
 Document.variables   : map<id, Variable>
 
 VariableCollection { id, name, modes[] }            // modes[0] is the default
-Variable           { id, collection_id, name, type, values: map<mode_id, value> }
-                     type  = color | number
-                     value = Color{r,g,b,a} (0..1) | double
+Variable           { id, collection_id, name, type, values: map<mode_id, value>, alias_of }
+                     type  = color | number | string
+                     value = Color{r,g,b,a} (0..1) | double | string
 
 Node.bindings : map<property, variable_id>          // what is bound to what
 Node.modes    : map<collection_id, mode_id>         // mode pinned on this subtree
@@ -42,6 +42,8 @@ Bindings and pins are written with `SetProperties`, mask paths `bindings` and
 | `opacity`, `rotation` | number | opacity is clamped to 0..1 |
 | `corner_radius` | number | rectangles only |
 | `strokes.N.weight` | number | clamped to ≥ 0 |
+| `font_size` | number | text nodes only; ignored when ≤ 0 |
+| `text` | string | text nodes only: the content |
 
 The literal stored on the node stays as the fallback: detaching a binding gives
 it back, and a binding whose variable, value or target (say `fills.3` on a node
@@ -55,11 +57,23 @@ collection's first mode. If the variable has no value for that mode it uses the
 default mode's value. Pin a frame to *Dark* and everything inside it resolves
 in dark; pin an inner frame to *Light* and that subtree goes back.
 
+### Aliases
+
+A variable may be an **alias** of another (`alias_of`): a semantic token
+(`sem/surface`) over a primitive (`prim/white`). An alias holds no values of its
+own and reads the target's. The target may be in another collection, so the
+modes are matched by id: the alias reads the target in the mode of **the alias's
+own collection** active on the node when the target's collection has a mode with
+that id (the usual case, an alias within one collection), else in the target's
+first mode. Chains resolve hop by hop the same way. Deleting a variable deletes
+the aliases of it, transitively (a dangling alias has nothing to read), and
+undo restores them after their targets.
+
 ## Invariants
 
 Enforced by `core.Apply` (Go, the authority) and mirrored in
 `web/src/store/variables.ts` (TypeScript); the shared fixture
-`testdata/golden/variables.json` runs both sides, rejections included.
+`testdata/golden/variables.json` and `variables_alias.json` run both sides, rejections included.
 
 1. A collection has a non-empty id and at least one mode; mode ids are non-empty
    and unique within it.
@@ -67,12 +81,15 @@ Enforced by `core.Apply` (Go, the authority) and mirrored in
    only for modes of that collection, each of the variable's type (colors in
    0..1, numbers finite).
 3. An existing variable cannot change type or collection: delete and recreate.
+   An alias carries no values, names an existing variable of the same type and
+   never closes a cycle.
 4. Every binding key is in the grammar above, points to an existing variable of
    the property's type. Every mode pin names an existing collection and one of
    its modes. A single bad entry rejects the whole `SetProperties`.
 5. Removing a mode from a collection drops that mode's values and the pins on
-   it; deleting a variable removes the bindings to it; deleting a collection
-   deletes its variables, their bindings and the pins on it. Undo restores
+   it; deleting a variable removes the bindings to it and deletes its aliases;
+   deleting a collection deletes its variables, their aliases, their bindings and
+   the pins on it. Undo restores
    all of it in one step.
 
 ## Where it shows up
@@ -86,16 +103,17 @@ Enforced by `core.Apply` (Go, the authority) and mirrored in
   descended into through an instance resolves in the master's own modes.
 - **Editor**: document menu → *Variables…* creates collections, modes and
   variables; the properties panel's *Variables* section binds the selection's fill,
-  stroke, opacity, rotation, radius and stroke width, and pins collections to modes.
+  stroke, opacity, rotation, radius, stroke width and (text nodes) font size and
+  text, and pins collections to modes.
   A color bound to a variable shows, read-only, what the variable resolves to (what the
   canvas draws); detach it there to edit the node's own literal again.
 - **MCP**: `list_variables`, `create_collection`, `delete_collection`,
-  `set_variable`, `delete_variable`, `bind_variable`, `set_node_mode`;
+  `set_variable` (`aliasOf`, string values), `delete_variable`, `bind_variable`, `set_node_mode`;
   `get_document` includes `variables` and each node's `bindings` / `modes`.
 
 ## Not yet
 
-- Variables for text (font size, family), spacing and auto layout, booleans and strings.
-- Aliases (a variable that points to another) and variable groups with their own settings.
+- Variables for font family, spacing and auto layout, and booleans.
+- Variable groups with their own settings.
 - Emitting CSS custom properties per mode in the exported code instead of resolved values.
 - The mode of an instance applying to its master's subtree.

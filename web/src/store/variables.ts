@@ -17,10 +17,13 @@ import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, Vari
  * grammar. Parity with core.BindingType.
  *
  *   opacity | rotation | corner_radius | strokes.N.weight   number
+ *   font_size (text nodes)                                   number
  *   fills.N | strokes.N                                      color
+ *   text (text nodes)                                        string
  */
 export function bindingType(key: string): VariableTypeLite | null {
-  if (key === "opacity" || key === "rotation" || key === "corner_radius") return "number";
+  if (key === "opacity" || key === "rotation" || key === "corner_radius" || key === "font_size") return "number";
+  if (key === "text") return "string";
   const parts = key.split(".");
   if (parts.length < 2 || parts.length > 3) return null;
   if (parts[0] !== "fills" && parts[0] !== "strokes") return null;
@@ -56,10 +59,11 @@ export function isValidVariable(state: SceneState, v: PbVariable | undefined): v
   if (!v || v.id === "") return false;
   const col = state.collections[v.collectionId];
   if (!col) return false;
-  if (v.type !== VariableType.COLOR && v.type !== VariableType.NUMBER) return false;
-  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : "number";
+  if (v.type !== VariableType.COLOR && v.type !== VariableType.NUMBER && v.type !== VariableType.STRING) return false;
+  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : "number";
   const prev = state.variables[v.id];
   if (prev && (prev.type !== type || prev.collectionId !== v.collectionId)) return false;
+  if (v.aliasOf !== "") return isValidAlias(state, v, type);
   const modes = new Set(col.modes.map((m) => m.id));
   for (const [mode, val] of Object.entries(v.values)) {
     if (!modes.has(mode)) return false;
@@ -67,9 +71,38 @@ export function isValidVariable(state: SceneState, v: PbVariable | undefined): v
       if (val.kind.case !== "color") return false;
       const { r, g, b, a } = val.kind.value;
       if (![r, g, b, a].every(unit)) return false;
+    } else if (type === "string") {
+      if (val.kind.case !== "text") return false;
     } else if (val.kind.case !== "number" || !Number.isFinite(val.kind.value)) return false;
   }
   return true;
+}
+
+// Bounds the walk along an alias chain; cycles are refused on write, so it only guards a corrupt document.
+const MAX_ALIAS_DEPTH = 32;
+
+/** Parity with core.validateAlias: no values, an existing target of the same type, no cycle. */
+function isValidAlias(state: SceneState, v: PbVariable, type: VariableTypeLite): boolean {
+  if (Object.keys(v.values).length > 0) return false;
+  let cur = state.variables[v.aliasOf];
+  if (v.aliasOf === v.id || !cur || cur.type !== type) return false;
+  for (let i = 0; cur?.aliasOf !== undefined; i++) {
+    if (cur.aliasOf === v.id || i >= MAX_ALIAS_DEPTH) return false;
+    cur = state.variables[cur.aliasOf];
+  }
+  return true;
+}
+
+/** `gone` plus every variable that aliases one of them, through any number of hops. Parity with core.withAliases. */
+export function withAliases(state: SceneState, gone: ReadonlySet<string>): Set<string> {
+  const out = new Set(gone);
+  for (let grew = true; grew;) {
+    grew = false;
+    for (const v of Object.values(state.variables)) {
+      if (!out.has(v.id) && v.aliasOf !== undefined && out.has(v.aliasOf)) { out.add(v.id); grew = true; }
+    }
+  }
+  return out;
 }
 
 /** Parity with core.validateBindings. */
@@ -169,7 +202,18 @@ export function activeMode(state: SceneState, nodeId: string, collectionId: stri
 }
 
 /** The value of `v` in `mode`, falling back to the collection's default mode. Parity with core.VariableValueIn. */
-export function variableValueIn(state: SceneState, v: VariableLite, mode: string): FillLite | number | undefined {
+export function variableValueIn(state: SceneState, v: VariableLite, mode: string): FillLite | number | string | undefined {
+  // An alias follows its chain to the variable that holds the values: at each
+  // hop `mode` is kept when the target's collection has a mode with that id,
+  // else the target's first mode is used.
+  for (let i = 0; v.aliasOf !== undefined && i < MAX_ALIAS_DEPTH; i++) {
+    const t = state.variables[v.aliasOf];
+    if (!t) return undefined;
+    const modes = state.collections[t.collectionId]?.modes ?? [];
+    if (!modes.some((m) => m.id === mode)) mode = modes[0]?.id ?? "";
+    v = t;
+  }
+  if (v.aliasOf !== undefined) return undefined;
   if (mode in v.values) return v.values[mode];
   const first = state.collections[v.collectionId]?.modes[0];
   return first ? v.values[first.id] : undefined;
@@ -194,8 +238,14 @@ export function resolveNode(state: SceneState, n: NodeLite): NodeLite {
     const val = variableValueIn(state, v, activeMode(state, n.id, v.collectionId));
     if (val === undefined) continue;
     const parts = key.split(".");
+    if (typeof val === "string") {
+      // Only "text" takes a string, and only a text node has content.
+      if (key === "text" && n.text) { const o = edit(); o.text = { ...o.text!, content: val }; }
+      continue;
+    }
     if (typeof val === "number") {
-      if (key === "opacity") edit().opacity = clamp01(val);
+      if (key === "font_size") { if (n.text && val > 0) { const o = edit(); o.text = { ...o.text!, style: { ...o.text!.style, fontSize: val } }; } }
+      else if (key === "opacity") edit().opacity = clamp01(val);
       else if (key === "rotation") edit().rotation = val;
       else if (key === "corner_radius") { if (n.kind === "rect") edit().cornerRadius = Math.max(0, val); }
       else {

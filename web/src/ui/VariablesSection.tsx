@@ -20,6 +20,8 @@ const ROWS: Row[] = [
   { key: "opacity", label: "Opacity", type: "number", applies: () => true },
   { key: "rotation", label: "Rotation", type: "number", applies: () => true },
   { key: "corner_radius", label: "Radius", type: "number", applies: (n) => n.kind === "rect" },
+  { key: "font_size", label: "Font size", type: "number", applies: (n) => n.kind === "text" },
+  { key: "text", label: "Text", type: "string", applies: (n) => n.kind === "text" },
 ];
 
 function commit(ops: ReturnType<typeof bindingOps>) {

@@ -1,11 +1,11 @@
 import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import type { NodeLite } from "./types";
+import type { NodeLite, VariableLite } from "./types";
 import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
 import { applyOp } from "./applyOp";
-import { isValidCollection, isValidVariable } from "./variables";
+import { isValidCollection, isValidVariable, withAliases } from "./variables";
 import { isValidFont, isValidTextStyleDef } from "./typography";
 import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
@@ -369,7 +369,8 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const { id } = op.kind.value;
       const prev = scene.collections[id];
       if (!prev) return null;
-      const vars = Object.values(scene.variables).filter((v) => v.collectionId === id).sort(byId);
+      const own = new Set(Object.values(scene.variables).filter((v) => v.collectionId === id).map((v) => v.id));
+      const vars = restoreOrder(scene, withAliases(scene, own));
       const gone = new Set(vars.map((v) => v.id));
       return [
         create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setCollection", value: { collection: toPbCollection(prev) } } }),
@@ -390,9 +391,12 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const { id } = op.kind.value;
       const prev = scene.variables[id];
       if (!prev) return null;
+      // Its aliases went with it: targets first, so each restore finds its target.
+      const vars = restoreOrder(scene, withAliases(scene, new Set([id])));
+      const gone = new Set(vars.map((v) => v.id));
       return [
-        setVariableOp(op.docId, toPbVariable(prev)),
-        ...restoreNodeMapsOps(scene, op.docId, (n) => bindsAny(n, new Set([id])), ["bindings"]),
+        ...vars.map((v) => setVariableOp(op.docId, toPbVariable(v))),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => bindsAny(n, gone), ["bindings"]),
       ];
     }
     // --- component variants and properties ---------------------------------
@@ -556,6 +560,17 @@ function restoreNodeMapsOps(
     }));
   }
   return ops;
+}
+
+/** The variables of `ids`, aliases after their targets (then by id), to be restored in that order. */
+function restoreOrder(scene: SceneState, ids: ReadonlySet<string>): VariableLite[] {
+  const depth = (v: VariableLite) => {
+    let d = 0;
+    for (let cur: VariableLite | undefined = v; cur?.aliasOf !== undefined && d < 64; d++) cur = scene.variables[cur.aliasOf];
+    return d;
+  };
+  return [...ids].map((id) => scene.variables[id]).filter((v): v is VariableLite => !!v)
+    .sort((a, b) => depth(a) - depth(b) || byId(a, b));
 }
 
 const byId = (a: { id: string }, b: { id: string }) => (a.id < b.id ? -1 : a.id > b.id ? 1 : 0);

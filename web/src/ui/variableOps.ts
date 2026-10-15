@@ -1,5 +1,5 @@
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { bindingType, resolveNode } from "../store/variables";
+import { bindingType, resolveNode, variableValueIn } from "../store/variables";
 import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "../store/types";
 import { makeSetCollectionOp, makeSetPropsOp, makeSetVariableOp, uuid } from "../tools/ops";
 
@@ -86,7 +86,7 @@ export function withMode(c: CollectionLite): CollectionLite {
 
 /** A new variable in `collection`, with the same default value in every mode. */
 export function newVariable(collection: CollectionLite, type: VariableTypeLite, name: string): VariableLite {
-  const value = type === "color" ? DEFAULT_COLOR : 0;
+  const value = type === "color" ? DEFAULT_COLOR : type === "string" ? "" : 0;
   return {
     id: uuid(), collectionId: collection.id, name, type,
     values: Object.fromEntries(collection.modes.map((m) => [m.id, value])),
@@ -94,8 +94,39 @@ export function newVariable(collection: CollectionLite, type: VariableTypeLite, 
 }
 
 /** `v` with `mode` set to `value`. */
-export function withValue(v: VariableLite, mode: string, value: FillLite | number): VariableLite {
+export function withValue(v: VariableLite, mode: string, value: FillLite | number | string): VariableLite {
   return { ...v, values: { ...v.values, [mode]: value } };
+}
+
+/**
+ * The variables `v` may alias: the same type, not `v` itself and none that (through
+ * its own chain) already reads `v`, so the alias can never close a cycle. Ordered
+ * like a picker. They may live in another collection.
+ */
+export function aliasCandidates(scene: SceneState, v: VariableLite): VariableLite[] {
+  const reachesV = (t: VariableLite) => {
+    for (let cur: VariableLite | undefined = t, i = 0; cur && i < 64; i++, cur = cur.aliasOf !== undefined ? scene.variables[cur.aliasOf] : undefined) {
+      if (cur.id === v.id) return true;
+    }
+    return false;
+  };
+  return variablesOfType(scene, v.type).filter((t) => !reachesV(t));
+}
+
+/** `v` as an alias of `targetId`: it holds no values of its own. */
+export function withAlias(v: VariableLite, targetId: string): VariableLite {
+  return { ...v, values: {}, aliasOf: targetId };
+}
+
+/** `v` no longer an alias: it keeps, in each mode of `col`, the value it resolved to. */
+export function withoutAlias(scene: SceneState, col: CollectionLite, v: VariableLite): VariableLite {
+  const values: VariableLite["values"] = {};
+  for (const m of col.modes) {
+    const x = variableValueIn(scene, v, m.id);
+    if (x !== undefined) values[m.id] = x;
+  }
+  const { aliasOf: _gone, ...rest } = v;
+  return { ...rest, values };
 }
 
 /**

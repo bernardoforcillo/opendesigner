@@ -8,7 +8,7 @@ import { PropertiesPanel } from "./PropertiesPanel";
 import { VariablesDialog } from "./VariablesDialog";
 import { VariablesSection } from "./VariablesSection";
 import {
-  MIXED, bindingOps, boundVariable, modeOps, newCollection, newVariable, pinnedMode, removeModeOps, variablesOfType, withMode,
+  MIXED, aliasCandidates, bindingOps, boundVariable, modeOps, newCollection, newVariable, pinnedMode, removeModeOps, variablesOfType, withAlias, withMode, withoutAlias,
 } from "./variableOps";
 
 // A server that accepts and echoes at once, like the other panel tests.
@@ -84,6 +84,20 @@ describe("variableOps", () => {
     expect(Object.keys(v.values)).toEqual(c.modes.map((m) => m.id));
     expect(removeModeOps(c, c.modes[0].id)).toHaveLength(1);
     expect(removeModeOps({ ...c, modes: [c.modes[0]] }, c.modes[0].id)).toEqual([]); // never the last mode
+  });
+});
+
+describe("aliases in variableOps", () => {
+  it("aliasCandidates offers same-type variables that cannot close a cycle, and the alias round-trips to values", () => {
+    const sem: VariableLite = withAlias({ id: "sem", collectionId: "theme", name: "sem/bg", type: "color", values: {} }, "bg");
+    const scene = install(rect("a"));
+    scene.variables = { bg: BG, dim: DIM, sem };
+    expect(aliasCandidates(scene, BG).map((v) => v.id)).toEqual([]);          // sem reads bg: it would be a cycle
+    expect(aliasCandidates(scene, sem).map((v) => v.id)).toEqual(["bg"]);                      // dim is a number, sem itself is out
+    expect(sem.values).toEqual({});
+    const flat = withoutAlias(scene, THEME, sem);
+    expect(flat.aliasOf).toBeUndefined();
+    expect(flat.values).toEqual(BG.values);                                                   // keeps what it resolved to
   });
 });
 

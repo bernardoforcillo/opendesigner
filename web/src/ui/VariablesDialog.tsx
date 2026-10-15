@@ -4,11 +4,12 @@ import { useScene } from "../store/store";
 import type { CollectionLite, FillLite, VariableLite, VariableTypeLite } from "../store/types";
 import { makeDeleteCollectionOp, makeDeleteVariableOp, makeSetCollectionOp, makeSetVariableOp } from "../tools/ops";
 import { downloadBlob } from "../export/exportScene";
-import { fromDtcg, toCssVariables, toDtcg } from "../tokens/tokens";
+import { colorToHex, fromDtcg, toCssVariables, toDtcg } from "../tokens/tokens";
 import { Button, cls, EmptyState } from "./ds";
 import { ColorField } from "./fields/ColorField";
 import { NumberField } from "./fields/NumberField";
-import { newCollection, newVariable, removeModeOps, setVariableOps, withMode, withValue } from "./variableOps";
+import { aliasCandidates, newCollection, newVariable, removeModeOps, setVariableOps, withAlias, withMode, withoutAlias, withValue } from "./variableOps";
+import { variableValueIn } from "../store/variables";
 
 // THE VARIABLES DIALOG (document menu → Variables): create and edit collections,
 // their modes and the variables with one value per mode. Binding a property to a
@@ -112,8 +113,8 @@ function CollectionEditor({ col, vars, onDeleted }: { col: CollectionLite; vars:
     if (name.trim() === "" || col.modes.find((m) => m.id === id)?.name === name) return;
     run([makeSetCollectionOp({ ...col, modes: col.modes.map((m) => (m.id === id ? { ...m, name: name.trim() } : m)) })]);
   };
-  const addVariable = (type: VariableTypeLite) => run(setVariableOps(newVariable(col, type, `${type === "color" ? "color" : "number"}/${vars.length + 1}`)));
-  const cols = `minmax(9rem,1.2fr) repeat(${col.modes.length}, minmax(7rem,1fr)) 1.75rem`;
+  const addVariable = (type: VariableTypeLite) => run(setVariableOps(newVariable(col, type, `${type}/${vars.length + 1}`)));
+  const cols = `minmax(9rem,1.2fr) repeat(${col.modes.length}, minmax(7rem,1fr)) minmax(7rem,1fr) 1.75rem`;
 
   return (
     <div className="flex flex-col gap-2">
@@ -139,6 +140,7 @@ function CollectionEditor({ col, vars, onDeleted }: { col: CollectionLite; vars:
               )}
             </span>
           ))}
+          <span role="columnheader" className={cls.label}>Alias of</span>
           <span />
         </div>
         {vars.map((v) => <VariableRow key={v.id} v={v} col={col} />)}
@@ -147,25 +149,39 @@ function CollectionEditor({ col, vars, onDeleted }: { col: CollectionLite; vars:
       <div className="flex gap-2">
         <Button icon="plus" onPress={() => addVariable("color")}>Color</Button>
         <Button icon="plus" onPress={() => addVariable("number")}>Number</Button>
+        <Button icon="plus" onPress={() => addVariable("string")}>String</Button>
       </div>
     </div>
   );
 }
 
 function VariableRow({ v, col }: { v: VariableLite; col: CollectionLite }) {
+  const scene = useScene((s) => s.scene);
   const rename = (name: string) => { if (name.trim() !== "" && name !== v.name) run(setVariableOps({ ...v, name: name.trim() })); };
+  const targets = scene ? aliasCandidates(scene, v) : [];
+  const setAlias = (id: string) => {
+    if (!scene) return;
+    run(setVariableOps(id === "" ? withoutAlias(scene, col, v) : withAlias(v, id)));
+  };
   return (
     <div role="row" className="contents">
       <input key={v.id + v.name} aria-label={`Variable name ${v.name}`} className={cls.input} defaultValue={v.name}
         onBlur={(e) => rename(e.target.value)} onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
       {col.modes.map((m) => {
         // A mode with no value of its own shows the default mode's, which is what it resolves to.
-        const val = v.values[m.id] ?? v.values[col.modes[0].id];
+        // An alias has none: it shows the target's value for this mode, read-only.
+        const val = scene && v.aliasOf !== undefined ? variableValueIn(scene, v, m.id) : (v.values[m.id] ?? v.values[col.modes[0].id]);
         return (
           <div role="cell" key={m.id}>
-            {v.type === "color" ? (
+            {v.aliasOf !== undefined ? (
+              <Resolved label={`${v.name} ${m.name}`} value={val} />
+            ) : v.type === "color" ? (
               <ColorField label={`${v.name} ${m.name}`} value={val as FillLite | undefined ?? null}
                 onCommit={(rgb) => run(setVariableOps(withValue(v, m.id, { ...rgb, a: (val as FillLite | undefined)?.a ?? 1 })))} />
+            ) : v.type === "string" ? (
+              <input key={m.id + String(val)} aria-label={`${v.name} ${m.name}`} className={cls.input} defaultValue={typeof val === "string" ? val : ""}
+                onBlur={(e) => { if (e.target.value !== val) run(setVariableOps(withValue(v, m.id, e.target.value))); }}
+                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
             ) : (
               <NumberField label={`${v.name} ${m.name}`} value={typeof val === "number" ? val : NaN}
                 onCommit={(n) => run(setVariableOps(withValue(v, m.id, n)))} />
@@ -173,8 +189,24 @@ function VariableRow({ v, col }: { v: VariableLite; col: CollectionLite }) {
           </div>
         );
       })}
+      <select aria-label={`Alias of ${v.name}`} className={cls.select} value={v.aliasOf ?? ""} onChange={(e) => setAlias(e.target.value)}>
+        <option value="">None</option>
+        {targets.map((t) => (
+          <option key={t.id} value={t.id}>{scene?.collections[t.collectionId]?.name ?? "?"} / {t.name}</option>
+        ))}
+      </select>
       <button type="button" aria-label={`Delete variable ${v.name}`} className="text-fg-subtle hover:text-danger"
         onClick={() => run([makeDeleteVariableOp(v.id)])}>×</button>
     </div>
   );
+}
+
+/** The value an alias resolves to in one mode: shown, not editable (edit the target). */
+function Resolved({ label, value }: { label: string; value: FillLite | number | string | undefined }) {
+  if (value === undefined) return <span aria-label={label} className="text-fg-subtle">–</span>;
+  if (typeof value === "object") {
+    const c = `rgba(${Math.round(value.r * 255)}, ${Math.round(value.g * 255)}, ${Math.round(value.b * 255)}, ${value.a})`;
+    return <span aria-label={label} className="flex items-center gap-1.5 text-fg-subtle"><span className="size-4 rounded border border-line" style={{ background: c }} />{colorToHex(value)}</span>;
+  }
+  return <span aria-label={label} className="text-fg-subtle">{String(value)}</span>;
 }

@@ -1,0 +1,108 @@
+{
+  "_comment": [
+    "Variable aliases and string variables (ops SetCollection, SetVariable, DeleteVariable; mask path",
+    "`bindings` with the `text` and `font_size` keys). Run from BOTH sides: internal/core/golden_test.go",
+    "and web/src/store/golden.test.ts.",
+    "",
+    "Valid: a string variable, an alias of it in the same collection, a number, text bound to the alias",
+    "and font size to the number, a number alias that lives in ANOTHER collection. Every op in `rejected`",
+    "violates ONE invariant (alias of a missing variable, of a variable of another type, a cycle, an alias",
+    "with values, a string variable holding a number, a string bound to a number key and the reverse): the",
+    "scene MUST stay unchanged. Then the cascade: deleting the primitive deletes its alias and the text",
+    "binding; the number, its cross-collection alias and their bindings stay."
+  ],
+  "docId": "doc1",
+  "ops": [
+    { "opId": "o0", "docId": "doc1", "createNode": { "node": {
+      "id": "f1", "parentId": "page1", "orderKey": "a000001", "name": "f1", "visible": true, "opacity": 1,
+      "x": 0, "y": 0, "width": 100, "height": 100, "frame": {}
+    } } },
+    { "opId": "o1", "docId": "doc1", "createNode": { "node": {
+      "id": "t1", "parentId": "f1", "orderKey": "a000001", "name": "t1", "visible": true, "opacity": 1,
+      "x": 0, "y": 0, "width": 100, "height": 20,
+      "text": { "content": "hi", "style": { "fontSize": 12 } }
+    } } },
+    { "opId": "o2", "docId": "doc1", "setCollection": { "collection": {
+      "id": "col1", "name": "Copy", "modes": [{ "id": "en", "name": "EN" }, { "id": "it", "name": "IT" }]
+    } } },
+    { "opId": "o3", "docId": "doc1", "setVariable": { "variable": {
+      "id": "p1", "collectionId": "col1", "name": "prim/greeting", "type": "VARIABLE_TYPE_STRING",
+      "values": { "en": { "text": "Hello" }, "it": { "text": "Ciao" } }
+    } } },
+    { "opId": "o4", "docId": "doc1", "setVariable": { "variable": {
+      "id": "s1", "collectionId": "col1", "name": "sem/title", "type": "VARIABLE_TYPE_STRING", "aliasOf": "p1"
+    } } },
+    { "opId": "o5", "docId": "doc1", "setVariable": { "variable": {
+      "id": "n1", "collectionId": "col1", "name": "size/title", "type": "VARIABLE_TYPE_NUMBER",
+      "values": { "en": { "number": 20 } }
+    } } },
+    { "opId": "o6", "docId": "doc1", "setProps": { "id": "t1", "mask": "bindings", "patch": {
+      "bindings": { "text": "s1", "font_size": "n1" }
+    } } },
+    { "opId": "o7", "docId": "doc1", "setVariable": { "variable": {
+      "id": "x", "collectionId": "col1", "name": "x", "type": "VARIABLE_TYPE_STRING", "aliasOf": "nope"
+    } } },
+    { "opId": "o8", "docId": "doc1", "setVariable": { "variable": {
+      "id": "x", "collectionId": "col1", "name": "x", "type": "VARIABLE_TYPE_NUMBER", "aliasOf": "p1"
+    } } },
+    { "opId": "o9", "docId": "doc1", "setVariable": { "variable": {
+      "id": "p1", "collectionId": "col1", "name": "prim/greeting", "type": "VARIABLE_TYPE_STRING", "aliasOf": "s1"
+    } } },
+    { "opId": "o10", "docId": "doc1", "setVariable": { "variable": {
+      "id": "x", "collectionId": "col1", "name": "x", "type": "VARIABLE_TYPE_STRING", "aliasOf": "p1",
+      "values": { "en": { "text": "no" } }
+    } } },
+    { "opId": "o11", "docId": "doc1", "setVariable": { "variable": {
+      "id": "x", "collectionId": "col1", "name": "x", "type": "VARIABLE_TYPE_STRING",
+      "values": { "en": { "number": 1 } }
+    } } },
+    { "opId": "o12", "docId": "doc1", "setProps": { "id": "t1", "mask": "bindings", "patch": {
+      "bindings": { "text": "n1" }
+    } } },
+    { "opId": "o13", "docId": "doc1", "setProps": { "id": "t1", "mask": "bindings", "patch": {
+      "bindings": { "font_size": "p1" }
+    } } },
+    { "opId": "o14", "docId": "doc1", "setCollection": { "collection": {
+      "id": "col2", "name": "Brand", "modes": [{ "id": "base", "name": "Base" }]
+    } } },
+    { "opId": "o15", "docId": "doc1", "setVariable": { "variable": {
+      "id": "c2", "collectionId": "col2", "name": "brand/size", "type": "VARIABLE_TYPE_NUMBER", "aliasOf": "n1"
+    } } },
+    { "opId": "o16", "docId": "doc1", "setProps": { "id": "t1", "mask": "bindings", "patch": {
+      "bindings": { "text": "s1", "font_size": "n1", "opacity": "c2" }
+    } } },
+    { "opId": "o17", "docId": "doc1", "deleteVariable": { "id": "p1" } }
+  ],
+  "rejected": [7, 8, 9, 10, 11, 12, 13],
+  "expected": {
+    "id": "doc1",
+    "name": "Untitled",
+    "schemaVersion": 1,
+    "pages": [{ "id": "page1", "name": "Page 1" }],
+    "nodes": {
+      "f1": {
+        "id": "f1", "parentId": "page1", "orderKey": "a000001", "name": "f1", "visible": true, "opacity": 1,
+        "width": 100, "height": 100, "frame": {}
+      },
+      "t1": {
+        "id": "t1", "parentId": "f1", "orderKey": "a000001", "name": "t1", "visible": true, "opacity": 1,
+        "width": 100, "height": 20,
+        "text": { "content": "hi", "style": { "fontSize": 12 } },
+        "bindings": { "font_size": "n1", "opacity": "c2" }
+      }
+    },
+    "collections": {
+      "col1": { "id": "col1", "name": "Copy", "modes": [{ "id": "en", "name": "EN" }, { "id": "it", "name": "IT" }] },
+      "col2": { "id": "col2", "name": "Brand", "modes": [{ "id": "base", "name": "Base" }] }
+    },
+    "variables": {
+      "n1": {
+        "id": "n1", "collectionId": "col1", "name": "size/title", "type": "VARIABLE_TYPE_NUMBER",
+        "values": { "en": { "number": 20 } }
+      },
+      "c2": {
+        "id": "c2", "collectionId": "col2", "name": "brand/size", "type": "VARIABLE_TYPE_NUMBER", "aliasOf": "n1"
+      }
+    }
+  }
+}

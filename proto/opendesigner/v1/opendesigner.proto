@@ -479,6 +479,8 @@ message Node {
   //   "opacity" | "rotation"    NUMBER
   //   "corner_radius"           NUMBER   rectangles only
   //   "strokes.N.weight"        NUMBER
+  //   "font_size"               NUMBER   text nodes only
+  //   "text"                    STRING   text nodes only (the content)
   // The "bindings" mask REPLACES the whole map, like `meta`.
   map<string, string> bindings = 41;
   // Mode override: collectionId -> modeId. A node (typically a frame) can pin a
@@ -559,14 +561,22 @@ enum VariableType {
   VARIABLE_TYPE_UNSPECIFIED = 0;
   VARIABLE_TYPE_COLOR = 1;
   VARIABLE_TYPE_NUMBER = 2;
+  VARIABLE_TYPE_STRING = 3;
 }
-message VariableValue { oneof kind { Color color = 1; double number = 2; } }
+message VariableValue { oneof kind { Color color = 1; double number = 2; string text = 3; } }
 message Variable {
   string id = 1;
   string collection_id = 2;
   string name = 3;                    // "color/primary": '/' makes groups in the UI
   VariableType type = 4;
   map<string, VariableValue> values = 5; // modeId -> value
+  // ALIAS: when set, this variable holds no values of its own and reads the
+  // value of the variable it names (a semantic token over a primitive). The
+  // target exists, has the same type and the chain has no cycle; it may live in
+  // another collection. The value is the target's in the mode of the alias's
+  // collection active on the node, when the target's collection has a mode with
+  // that id, else in the target's first mode.
+  string alias_of = 6;
 }
 
 // ---------- flows ----------
