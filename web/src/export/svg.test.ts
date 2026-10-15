@@ -387,4 +387,69 @@ describe("nodesToSvg — frame", () => {
     const svg = nodesToSvg([node({ id: "r", fills: [] })], FULL, measure);
     expect(svg).toContain('fill="rgb(204,204,204)"');
   });
+
+describe("nodesToSvg — masks", () => {
+  it("a mask becomes a <clipPath> and the nodes above it are wrapped; the mask is not drawn", () => {
+    const svg = nodesToSvg(
+      [node({ id: "m", isMask: true, kind: "ellipse", x: 0, y: 0, width: 20, height: 20 }), node({ id: "a", x: 5, y: 5 })],
+      FULL, measure,
+    );
+    expect(svg).toContain('<clipPath id="m0"><ellipse cx="10" cy="10" rx="10" ry="10"/></clipPath>');
+    expect(svg).toContain('<g clip-path="url(#m0)"><rect');
+    expect(svg.match(/<ellipse/g)).toHaveLength(1);
+  });
+});
+
+describe("nodesToSvg — image paints", () => {
+  const hash = "b".repeat(64);
+  const paint = (mode: "fill" | "fit" | "tile") => [{ r: 0.8, g: 0.8, b: 0.8, a: 1, image: { assetHash: hash, mode } }];
+
+  it("an image fill is a <pattern> with the image: slice for fill, meet for fit", () => {
+    const href = (h: string) => (h === hash ? "data:image/png;base64,AAA" : null);
+    const fillSvg = nodesToSvg([node({ id: "a", x: 5, y: 6, width: 40, height: 20, fills: paint("fill") })], FULL, measure, href);
+    expect(fillSvg).toContain('<pattern id="p0" x="5" y="6" width="40" height="20" patternUnits="userSpaceOnUse">');
+    expect(fillSvg).toContain('href="data:image/png;base64,AAA"');
+    expect(fillSvg).toContain('preserveAspectRatio="xMidYMid slice"');
+    expect(fillSvg).toContain('fill="url(#p0)"');
+    expect(nodesToSvg([node({ id: "a", fills: paint("fit") })], FULL, measure, href)).toContain("xMidYMid meet");
+  });
+
+  it("without a resolvable file the node keeps the flat base color", () => {
+    const svg = nodesToSvg([node({ id: "a", fills: paint("fill") })], FULL, measure);
+    expect(svg).not.toContain("<pattern");
+    expect(svg).toContain('fill="rgb(204,204,204)"');
+  });
+});
+
+describe("nodesToSvg — inner shadow", () => {
+  const inner = { kind: "innerShadow" as const, color: { r: 0, g: 0, b: 0, a: 0.5 }, offsetX: 0, offsetY: 4, blur: 8 };
+
+  it("an inner shadow is the inverted alpha, blurred, offset and clipped to the shape, merged above it", () => {
+    const svg = nodesToSvg([node({ id: "a", effects: [inner] })], FULL, measure);
+    expect(svg).toContain('<feComponentTransfer in="SourceAlpha" result="iv0"><feFuncA type="table" tableValues="1 0"/></feComponentTransfer>');
+    expect(svg).toContain('<feGaussianBlur in="iv0" stdDeviation="4" result="ib0"/>');
+    expect(svg).toContain('<feComposite in="is0" in2="SourceAlpha" operator="in" result="ii0"/>');
+    expect(svg).toContain('<feMerge><feMergeNode in="SourceGraphic"/><feMergeNode in="ii0"/></feMerge>');
+    expect(svg).toContain('filter="url(#f0)"');
+  });
+
+  it("with a drop shadow the inner one goes on top of the shape and its shadow", () => {
+    const drop = { kind: "dropShadow" as const, color: { r: 0, g: 0, b: 0, a: 1 }, offsetX: 2, offsetY: 2, blur: 4 };
+    const svg = nodesToSvg([node({ id: "a", effects: [drop, inner, { kind: "layerBlur", radius: 1 }] })], FULL, measure);
+    expect(svg).toContain('result="base"/>');
+    expect(svg.indexOf('in="base"')).toBeGreaterThan(svg.indexOf("<feDropShadow"));
+    expect(svg.indexOf("<feGaussianBlur stdDeviation=\"1\"")).toBeGreaterThan(svg.indexOf("<feMerge>"));
+  });
+});
+});
+
+describe("mesh paints", () => {
+  const mesh = { rows: 2, cols: 2, colors: [{ r: 1, g: 0, b: 0, a: 1 }, { r: 0, g: 1, b: 0, a: 1 }, { r: 0, g: 0, b: 1, a: 1 }, { r: 1, g: 1, b: 1, a: 1 }] };
+  it("becomes a pattern holding an embedded PNG over the node's box", () => {
+    const n = node({ id: "m", x: 10, y: 20, width: 100, height: 60, fills: [{ r: 0.5, g: 0.5, b: 0.5, a: 1, mesh }] });
+    const out = nodesToSvg([n], FULL, measure);
+    expect(out).toMatch(/<pattern id="p0" x="10" y="20" width="100" height="60" patternUnits="userSpaceOnUse">/);
+    expect(out).toContain('href="data:image/png;base64,iVBORw0KGgo');
+    expect(out).toContain('fill="url(#p0)"');
+  });
 });

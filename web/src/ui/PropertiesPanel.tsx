@@ -11,22 +11,30 @@ import { selectionSummary, MIXED } from "../store/selectors";
 import type { Mixed, OrMixed } from "../store/selectors";
 import { frameOriginOf } from "../store/groups";
 import { instanceOverrideMap } from "../store/instances";
+import { effectiveComponentId } from "../store/components";
 import { subtreeOf } from "../store/tree";
-import { makeSetInstanceOverrideOp, makeSetPropsOp, makeSetTextOp } from "../tools/ops";
+import { makeSetInstanceOverrideOp, makeSetPropsOp } from "../tools/ops";
 import { layerDisplayName } from "./LayersPanel";
 import { cls, EmptyState, Icon, IconButton, Section } from "./ds";
 import { ExportSection } from "./ExportSection";
+import { VariablesSection } from "./VariablesSection";
+import { boundColor } from "./variableOps";
+import { TypographyControls } from "./TypographyControls";
+import { InstanceControls } from "./InstanceControls";
+import { LayoutRelationControls } from "./LayoutRelationControls";
+import { effectiveStyle, styleOps } from "./typographyOps";
 import type { IconName } from "./ds";
 import { SegRadio, type SegOption } from "./ds/props-controls";
 import { NumberField } from "./fields/NumberField";
 import { ColorField } from "./fields/ColorField";
-import { bindPropOps, bindVariableOps, bindablePropsOf, boundProp, boundVariable } from "./variableOps";
-import { PropVariablePicker } from "./VariablePickers";
-import { switchInstanceOps } from "./variantOps";
-import { ComponentPropertiesSection, InstancePropertiesSection } from "./ComponentProperties";
-import { variantWith } from "../store/variants";
 import { GradientControls } from "./GradientControls";
+import { BooleanControls } from "./BooleanControls";
+import { ConnectorControls } from "./ConnectorControls";
+import { PathControls } from "./PathControls";
+import { CmykField } from "./fields/CmykField";
 import { EffectsControls } from "./EffectsControls";
+import { LayoutGridControls } from "./LayoutGridControls";
+import { StrokeStyleControls } from "./StrokeStyleControls";
 import { AutoLayoutControls, WrapInAutoLayoutButton } from "./AutoLayoutControls";
 import type { RgbLite } from "./fields/ColorField";
 import { toPbFills, toPbStrokes } from "../store/types";
@@ -157,105 +165,6 @@ function opacityOps(ids: readonly string[], value: number): Op[] {
   return ids.map((id) => makeSetPropsOp(id, { opacity: value }, ["opacity"]));
 }
 
-// "Variable" picker of the Fill and Stroke sections: binds the first fill (or
-// stroke) of the whole selection to a design variable, or unbinds it. It is not
-// drawn when the document has no variables, so whoever does not use them pays
-// nothing for the control.
-const MIXED_VAR = "__mixed__";
-const NO_VAR = "__none__";
-
-function VariablePicker({ slot, label, run }: { slot: "fill" | "stroke"; label: string; run: (build: (ids: readonly string[]) => Op[]) => void }) {
-  const scene = useScene((s) => s.scene);
-  const selection = useScene((s) => s.selection);
-  const variables = Object.values(scene?.variables ?? {}).sort((a, b) => (a.name < b.name ? -1 : a.name > b.name ? 1 : 0));
-  if (!scene || variables.length === 0) return null;
-  const bound = boundVariable(scene, selection, slot);
-  const value = bound === "mixed" ? MIXED_VAR : (bound ?? NO_VAR);
-  // A binding to a variable that no longer exists still shows, so it can be undone from here.
-  const dangling = typeof bound === "string" && bound !== "mixed" && !scene.variables?.[bound];
-  return (
-    <select
-      aria-label={label}
-      className={cls.select}
-      value={value}
-      onChange={(e) => {
-        const v = e.target.value;
-        if (v === MIXED_VAR) return;
-        run((ids) => bindVariableOps(useScene.getState().scene!, ids, slot, v === NO_VAR ? null : v));
-      }}
-    >
-      {bound === "mixed" && <option value={MIXED_VAR}>{MIXED_LABEL}</option>}
-      <option value={NO_VAR}>Fixed colour</option>
-      {dangling && <option value={bound as string}>Missing variable</option>}
-      {variables.map((v) => <option key={v.id} value={v.id}>{v.name}</option>)}
-    </select>
-  );
-}
-
-// "Variant" section of a single selected INSTANCE whose component belongs to a
-// set: one select per property. Values whose combination does not exist (with
-// the other properties as they are) are disabled; picking one swaps the
-// instance to that member.
-function VariantSection({ run }: { run: (build: (ids: readonly string[]) => Op[]) => void }) {
-  const scene = useScene((s) => s.scene);
-  const selection = useScene((s) => s.selection);
-  if (!scene || selection.length !== 1) return null;
-  const n = scene.nodes.get(selection[0]);
-  const comp = n?.instance ? scene.components[n.instance.componentId] : undefined;
-  const set = comp?.setId ? scene.componentSets?.[comp.setId] : undefined;
-  if (!n || !comp || !set) return null;
-  return (
-    <Section title="Variant">
-      <div className="flex flex-col gap-1.5">
-        {set.properties.map((p) => (
-          <label key={p.name} className="flex items-center gap-2">
-            <span className="w-20 shrink-0 truncate text-[11px] text-fg-subtle" title={p.name}>{p.name}</span>
-            <select
-              aria-label={`${p.name} variant`}
-              className={cls.select}
-              value={comp.variant?.[p.name] ?? ""}
-              onChange={(e) => run(() => switchInstanceOps(useScene.getState().scene!, n.id, p.name, e.target.value))}
-            >
-              {p.values.map((v) => (
-                <option key={v} value={v} disabled={v !== comp.variant?.[p.name] && !variantWith(scene, n.instance!.componentId, p.name, v)}>{v}</option>
-              ))}
-            </select>
-          </label>
-        ))}
-      </div>
-    </Section>
-  );
-}
-
-// "Variables" section: binds the opacity (and, by node kind, the corner radius,
-// the font size and the text) of the selection to a NUMBER/TEXT variable. Only
-// the properties every selected node has are offered, and the whole section is
-// absent when the document has no such variable and nothing is bound.
-function BindingsSection({ run }: { run: (build: (ids: readonly string[]) => Op[]) => void }) {
-  const scene = useScene((s) => s.scene);
-  const selection = useScene((s) => s.selection);
-  if (!scene || selection.length === 0) return null;
-  const kinds = selection.map((id) => scene.nodes.get(id)?.kind).filter((k): k is NonNullable<typeof k> => !!k);
-  if (kinds.length === 0) return null;
-  const props = bindablePropsOf(kinds[0]).filter((p) => kinds.every((k) => bindablePropsOf(k).some((q) => q.prop === p.prop)));
-  const rows = props
-    .map((p) => ({ ...p, bound: boundProp(scene, selection, p.prop) }))
-    .filter((r) => r.bound !== null || Object.values(scene.variables ?? {}).some((v) => v.kind === r.kind));
-  if (rows.length === 0) return null;
-  return (
-    <Section title="Variables">
-      <div className="flex flex-col gap-1.5">
-        {rows.map((r) => (
-          <PropVariablePicker
-            key={r.prop} label={r.label} kind={r.kind} bound={r.bound}
-            onPick={(v) => run((ids) => bindPropOps(useScene.getState().scene!, ids, r.prop, v))}
-          />
-        ))}
-      </div>
-    </Section>
-  );
-}
-
 // Fill op. The color arrives WITHOUT alpha (see ColorField): alpha is
 // put in here by each node from its OWN tint, so a selection with different
 // fill opacities does not see them flattened by a color change.
@@ -330,11 +239,8 @@ function strokeOps(ids: readonly string[], patch: StrokePatch): Op[] {
 function textStyleOps(ids: readonly string[], patch: Partial<TextStyleLite>): Op[] {
   const scene = useScene.getState().scene;
   if (!scene) return [];
-  return ids.flatMap((id) => {
-    const n = scene.nodes.at(id);
-    if (!n || n.kind !== "text" || !n.text) return [];
-    return [makeSetTextOp(id, n.text.content, { ...n.text.style, ...patch })];
-  });
+  // A text with a shared style is detached first and keeps what it was drawn with.
+  return styleOps(scene, ids, patch);
 }
 
 // Summary of the selection's STYLE, for the same reasons (and with the same
@@ -615,7 +521,10 @@ export function PropertiesPanel() {
   const selection = useScene((s) => s.selection);
   const summary = scene ? selectionSummary(scene, selection) : null;
   const nodes = scene ? selection.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined) : [];
-  const style = summary?.kind === "text" ? textStyleSummary(nodes) : null;
+  // The text controls show what is DRAWN: a shared text style overrides the node's own.
+  const style = summary?.kind === "text" && scene
+    ? textStyleSummary(nodes.map((n) => (n.text ? { ...n, text: { ...n.text, style: effectiveStyle(scene, n) ?? n.text.style } } : n)))
+    : null;
   // The opacity slider's hidden input: SliderValueText writes the ANNOUNCED
   // value into it. It sits here, before any early return, because it is a
   // hook.
@@ -694,7 +603,7 @@ export function PropertiesPanel() {
     if (!s || !inst) return;
     const master = s.nodes.at(masterNodeId);
     if (!master) return;
-    const existing = instanceOverrideMap(inst).get(masterNodeId);
+    const existing = instanceOverrideMap(s, inst).get(masterNodeId);
     const effFills = existing?.fills ?? master.fills;
     const first: FillLite = { ...rgb, a: effFills[0]?.a ?? 1 };
     const override: InstanceOverrideLite = { masterNodeId, fills: [first, ...effFills.slice(1)] };
@@ -706,8 +615,9 @@ export function PropertiesPanel() {
   // override's fills if there were any.
   function editOverrideText(masterNodeId: string, text: string) {
     const inst = currentInstance();
-    if (!inst) return;
-    const existing = instanceOverrideMap(inst).get(masterNodeId);
+    const scn = useScene.getState().scene;
+    if (!inst || !scn) return;
+    const existing = instanceOverrideMap(scn, inst).get(masterNodeId);
     const override: InstanceOverrideLite = { masterNodeId, text };
     if (existing?.fills !== undefined) override.fills = existing.fills;
     commitOverride(inst, override);
@@ -794,6 +704,11 @@ export function PropertiesPanel() {
   // center -- the state from which writing any field creates one.
   const stroke = summary.strokes === MIXED ? null : (summary.strokes[0] ?? null);
   const strokesMixed = summary.strokes === MIXED;
+  // A color bound to a variable shows (read-only) what the variable resolves to,
+  // which is what the canvas draws: editing the literal underneath would change
+  // nothing visible. Detaching is done in the Variables section.
+  const boundFill = scene ? boundColor(scene, nodes, "fills.0") : undefined;
+  const boundStroke = scene ? boundColor(scene, nodes, "strokes.0") : undefined;
 
   // W/H disappear as soon as ONE selected node is a group, not only when all
   // are (`summary.kind === "group"`): the field writes the same value
@@ -813,8 +728,8 @@ export function PropertiesPanel() {
   // overridable ones in M4. `overrideMap` indexes the instance's current overrides
   // by masterNodeId, to read each row's effective value.
   const instanceNode = nodes.length === 1 && nodes[0].kind === "instance" && nodes[0].instance ? nodes[0] : null;
-  const overrideMap = instanceNode ? instanceOverrideMap(instanceNode) : new Map<string, InstanceOverrideLite>();
-  const master = instanceNode && scene ? scene.components[instanceNode.instance!.componentId] : undefined;
+  const overrideMap = instanceNode && scene ? instanceOverrideMap(scene, instanceNode) : new Map<string, InstanceOverrideLite>();
+  const master = instanceNode && scene ? scene.components[effectiveComponentId(scene, instanceNode.instance!)] : undefined;
   const overrideRows: NodeLite[] =
     master && scene ? subtreeOf(scene, master.rootNodeId).filter((n) => n.kind === "text" || n.fills.length > 0) : [];
 
@@ -880,6 +795,11 @@ export function PropertiesPanel() {
       </div>
       )}
 
+      {/* BOOLEAN operations on two or more shapes: they replace the selection by one vector. */}
+      <BooleanControls />
+      <ConnectorControls />
+      <PathControls />
+
       {/* LAYOUT: position, size, rotation and (rectangles) radius, in a
           two-column grid of fields with the prefix INSIDE (X, Y, W, H, °, R). */}
       <Section title="Layout">
@@ -925,6 +845,9 @@ export function PropertiesPanel() {
       {/* AUTO LAYOUT: for a frame, its controls; for any other
           selection, the "+" that wraps it in a frame with auto layout. */}
       {summary.kind === "frame" ? <AutoLayoutControls run={runGesture} /> : <WrapInAutoLayoutButton />}
+
+      {/* CONSTRAINTS (in a plain frame) or SIZING (in an auto layout frame): the relation to the parent. */}
+      <LayoutRelationControls />
 
       <Section title="Appearance">
         <Slider
@@ -1011,6 +934,7 @@ export function PropertiesPanel() {
               // are those of ALIGNMENTS, which is typed TextAlignLite.
               onChange={(v) => runGesture((ids) => textStyleOps(ids, { align: v as TextAlignLite }))}
             />
+            <TypographyControls />
           </div>
         </Section>
       )}
@@ -1026,15 +950,19 @@ export function PropertiesPanel() {
             // would flatten the gradient without the user having asked for it. The
             // stops are edited in GradientControls.
             solid={
+              <>
               <ColorField
                 label="Fill"
                 // Node without tints: null, that is "no single value to
                 // show". Writing a color from there stays possible and
                 // assigns it to the whole selection, as for geometric fields.
-                value={fill}
-                placeholder="None"
+                value={boundFill !== undefined ? boundFill : fill}
+                placeholder={boundFill === null ? "Variables" : "None"}
+                isDisabled={boundFill !== undefined}
                 onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
               />
+              <CmykField value={boundFill !== undefined ? null : fill} onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))} />
+              </>
             }
           />
         ) : (
@@ -1047,7 +975,6 @@ export function PropertiesPanel() {
             onCommit={(rgb) => runGesture((ids) => fillOps(ids, rgb))}
           />
         )}
-        <div className="mt-1.5"><VariablePicker slot="fill" label="Fill variable" run={runGesture} /></div>
       </Section>
 
       {/* THE STROKE. Its own section and not inside "Appearance": they are three controls
@@ -1064,8 +991,9 @@ export function PropertiesPanel() {
               // Like the fill: null on MIXED or on "no stroke". Writing
               // a color stays possible in both cases -- and it is the way
               // a stroke is CREATED (see DEFAULT_STROKE).
-              value={stroke?.color ?? null}
-              placeholder={strokesMixed ? MIXED_LABEL : "None"}
+              value={boundStroke !== undefined ? boundStroke : (stroke?.color ?? null)}
+              isDisabled={boundStroke !== undefined}
+              placeholder={boundStroke === null ? "Variables" : strokesMixed ? MIXED_LABEL : "None"}
               // The color goes down BARE, without alpha: strokeOps puts it back
               // taking it from each node's stroke, exactly like
               // fillOps. Composing it here from `stroke` would read it from the SUMMARY
@@ -1096,18 +1024,21 @@ export function PropertiesPanel() {
             options={STROKE_ALIGNMENTS}
             onChange={(v) => runGesture((ids) => strokeOps(ids, { align: v as StrokeAlignLite }))}
           />
-          <VariablePicker slot="stroke" label="Stroke variable" run={runGesture} />
+          {/* A stroke can carry a gradient too: the same controls, aimed at the stroke's paint. */}
+          {stroke && !strokesMixed && <GradientControls fill={stroke.color} run={runGesture} target="stroke" />}
+          {stroke && !strokesMixed && stroke.weight > 0 && <StrokeStyleControls run={runGesture} />}
         </div>
       </Section>
 
-      <VariantSection run={runGesture} />
-      <InstancePropertiesSection />
-      <ComponentPropertiesSection />
-      <BindingsSection run={runGesture} />
+      {/* LAYOUT GRIDS of a single selected frame (renders nothing otherwise). */}
+      <LayoutGridControls run={runGesture} />
 
       {/* THE EFFECTS: shadow and blur. Its own section like the stroke: they are
           controls of a different nature than the basic appearance. */}
       <EffectsControls run={runGesture} />
+
+      {/* VARIANTS and PROPERTIES of a single selected instance (renders nothing otherwise). */}
+      <InstanceControls />
 
       {/* OVERRIDE: only for a SINGLE selected instance. Every row is a node
           of the master (text or with a fill) with its EFFECTIVE value and a
@@ -1165,6 +1096,8 @@ export function PropertiesPanel() {
           up) -- it is the same condition that used to live in the ToolDock's
           button as the "Scope" radio, now made superfluous by moving the
           control inside the branch that already guarantees it. */}
+      <VariablesSection />
+
       <Section title="Export">
         <ExportSection />
       </Section>

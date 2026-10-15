@@ -90,6 +90,21 @@ export function AutoLayoutControls({ run }: { run: (build: (ids: readonly string
             options={aligns(horizontal).filter((a) => a.value !== "space-between")}
             onPick={(crossAlign) => run((ids) => autoLayoutOps(ids, lookup, { crossAlign }))}
           />
+          <div className="flex flex-col gap-1.5">
+            <label className="flex cursor-pointer items-center gap-1.5 text-[12px] text-fg-muted">
+              <input
+                type="checkbox" className={checkbox} checked={al.wrap === true}
+                onChange={(e) => run((ids) => autoLayoutOps(ids, lookup, { wrap: e.target.checked }))}
+              />
+              Wrap
+            </label>
+            {al.wrap === true && (
+              <NumberField
+                label="Line spacing" value={al.crossSpacing ?? 0} minValue={0}
+                onCommit={(v) => run((ids) => autoLayoutOps(ids, lookup, { crossSpacing: v }))}
+              />
+            )}
+          </div>
           <div className="flex gap-4 text-[12px] text-fg-muted">
             <label className="flex cursor-pointer items-center gap-1.5">
               <input

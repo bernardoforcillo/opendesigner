@@ -12,6 +12,29 @@ export interface PeerLite {
   cursorY: number;
   pageId: string;
   selection: string[];
+  // Facilitation (see store/facilitation.ts): the camera, cursor chat, a reaction, votes and a timer.
+  hasView: boolean;
+  viewX: number;
+  viewY: number;
+  viewZoom: number;
+  chat: string;
+  reaction: string;
+  emoteSeq: number;
+  /** When THIS client saw chat/reaction change (ms): they show for a few seconds from then. */
+  emoteAt: number;
+  votes: string[];
+  timerStartedMs: number;
+  timerEndMs: number;
+  timerLabel: string;
+}
+
+/** A peer with nothing set but who it is: what tests and the first sight of someone start from. */
+export function newPeer(clientId: string, nickname: string, over: Partial<PeerLite> = {}): PeerLite {
+  return {
+    clientId, nickname, hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [],
+    hasView: false, viewX: 0, viewY: 0, viewZoom: 1, chat: "", reaction: "", emoteSeq: 0, emoteAt: 0,
+    votes: [], timerStartedMs: 0, timerEndMs: 0, timerLabel: "", ...over,
+  };
 }
 
 export type Peers = Record<string, PeerLite>;
@@ -19,11 +42,13 @@ export type Peers = Record<string, PeerLite>;
 // Pure function, so it can be tested without zustand: an "update" event inserts or
 // replaces the peer, "left" removes it, an EMPTY event (the server's "ready") does
 // not change anything.
-export function applyPresenceEvent(peers: Peers, ev: PresenceEvent): Peers {
+export function applyPresenceEvent(peers: Peers, ev: PresenceEvent, now: number = Date.now()): Peers {
   const k = ev.kind;
   if (k.case === "update") {
     const u = k.value;
     if (u.clientId === "") return peers;
+    const prev = peers[u.clientId];
+    const emoteAt = u.emoteSeq === 0 ? 0 : prev && prev.emoteSeq === u.emoteSeq ? prev.emoteAt : now;
     return {
       ...peers,
       [u.clientId]: {
@@ -34,6 +59,19 @@ export function applyPresenceEvent(peers: Peers, ev: PresenceEvent): Peers {
         cursorY: u.cursorY,
         pageId: u.pageId,
         selection: [...u.selection],
+        hasView: u.hasView,
+        viewX: u.viewX,
+        viewY: u.viewY,
+        viewZoom: u.viewZoom,
+        chat: u.chat,
+        reaction: u.reaction,
+        emoteSeq: u.emoteSeq,
+        // A new sequence number is a new message; the same one is the cursor moving.
+        emoteAt,
+        votes: [...u.votes],
+        timerStartedMs: Number(u.timerStartedMs),
+        timerEndMs: Number(u.timerEndMs),
+        timerLabel: u.timerLabel,
       },
     };
   }

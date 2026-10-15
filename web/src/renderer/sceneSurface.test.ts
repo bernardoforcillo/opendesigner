@@ -17,6 +17,7 @@ vi.mock("./ck/canvaskit", () => ({
   },
   FontBook: class {
     async ready() {}
+    setDocumentFonts() {}
     dispose() {}
   },
 }));

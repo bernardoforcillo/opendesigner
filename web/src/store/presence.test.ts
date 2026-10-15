@@ -1,7 +1,7 @@
 import { describe, it, expect } from "vitest";
 import { create } from "@bufbuild/protobuf";
 import { PresenceEventSchema } from "../gen/opendesigner/v1/opendesigner_pb";
-import { applyPresenceEvent, peerColor, type Peers } from "./presence";
+import { applyPresenceEvent, newPeer, peerColor, type Peers } from "./presence";
 
 const update = (clientId: string, over: Record<string, unknown> = {}) =>
   create(PresenceEventSchema, {
@@ -56,7 +56,7 @@ describe("usePresence.clear", () => {
     usePresence.getState().clear();
     usePresence.getState().clear();
     expect(calls).toBe(0);
-    usePresence.setState({ peers: { a: { clientId: "a", nickname: "A", hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [] } } });
+    usePresence.setState({ peers: { a: newPeer("a", "A") } });
     calls = 0;
     usePresence.getState().clear();
     expect(calls).toBe(1);

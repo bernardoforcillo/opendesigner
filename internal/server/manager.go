@@ -43,6 +43,10 @@ type Manager struct {
 	mu        sync.Mutex
 	workspace string
 	hubs      map[string]*Hub
+
+	// Access control (access.go).
+	access     accessState
+	adminToken string
 }
 
 func NewManager(workspace string) *Manager {

@@ -1,0 +1,799 @@
+{
+ "_comment": [
+  "Component variants and properties (ops 35-38 SetComponentSet, DeleteComponentSet,",
+  "SetComponentDef, SetInstanceProps). Run from BOTH sides: internal/core/golden_test.go",
+  "and web/src/store/golden.test.ts.",
+  "",
+  "Valid: a two-member set with two axes, properties (text and boolean) on each variant,",
+  "an instance that picks a variant and sets property values. Every op in `rejected`",
+  "violates ONE invariant (set axes/options/names; unknown component or set; incomplete,",
+  "invalid or duplicate variant assignment; variant without a set; property type, default,",
+  "targets outside the master or of the wrong kind, duplicate names; instance props on a",
+  "non-instance, unknown property, wrong value, unknown axis/option; delete of a missing",
+  "set): the scene MUST stay unchanged. Then the cascades: removing the `hover` option detaches",
+  "c2, deleting the node `icon` removes the property that only targeted it, deleting the set",
+  "detaches c1."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "components": {
+   "c1": {
+    "name": "Button/default",
+    "properties": [
+     {
+      "defaultValue": "Button",
+      "name": "Label",
+      "targetNodeIds": [
+       "label"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_TEXT"
+     }
+    ],
+    "rootNodeId": "m1"
+   },
+   "c2": {
+    "name": "Button/hover",
+    "properties": [
+     {
+      "defaultValue": "Button",
+      "name": "Label",
+      "targetNodeIds": [
+       "label2"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_TEXT"
+     },
+     {
+      "defaultValue": "true",
+      "name": "ShowIcon",
+      "targetNodeIds": [
+       "icon2"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_BOOLEAN"
+     }
+    ],
+    "rootNodeId": "m2"
+   }
+  },
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "i1": {
+    "height": 40,
+    "id": "i1",
+    "instance": {
+     "componentId": "c1",
+     "propertyValues": {
+      "Label": "Save",
+      "ShowIcon": "false"
+     },
+     "variantProps": {
+      "State": "hover"
+     }
+    },
+    "name": "i1",
+    "opacity": 1,
+    "orderKey": "a3",
+    "parentId": "page1",
+    "visible": true,
+    "width": 100
+   },
+   "icon2": {
+    "height": 40,
+    "id": "icon2",
+    "name": "icon2",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "m2",
+    "rect": {},
+    "visible": true,
+    "width": 100
+   },
+   "label": {
+    "height": 40,
+    "id": "label",
+    "name": "label",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "m1",
+    "text": {
+     "content": "Button",
+     "style": {
+      "fontSize": 14
+     }
+    },
+    "visible": true,
+    "width": 100
+   },
+   "label2": {
+    "height": 40,
+    "id": "label2",
+    "name": "label2",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "m2",
+    "text": {
+     "content": "Button",
+     "style": {
+      "fontSize": 14
+     }
+    },
+    "visible": true,
+    "width": 100
+   },
+   "m1": {
+    "frame": {},
+    "height": 40,
+    "id": "m1",
+    "name": "m1",
+    "opacity": 1,
+    "orderKey": "a1",
+    "parentId": "page1",
+    "visible": true,
+    "width": 100
+   },
+   "m2": {
+    "frame": {},
+    "height": 40,
+    "id": "m2",
+    "name": "m2",
+    "opacity": 1,
+    "orderKey": "a2",
+    "parentId": "page1",
+    "visible": true,
+    "width": 100
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "frame": {},
+     "height": 40,
+     "id": "m1",
+     "name": "m1",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "page1",
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o0"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 40,
+     "id": "label",
+     "name": "label",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "m1",
+     "text": {
+      "content": "Button",
+      "style": {
+       "fontSize": 14
+      }
+     },
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 40,
+     "id": "icon",
+     "name": "icon",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "m1",
+     "rect": {},
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o2"
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {},
+     "height": 40,
+     "id": "m2",
+     "name": "m2",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "page1",
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o3"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 40,
+     "id": "label2",
+     "name": "label2",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "m2",
+     "text": {
+      "content": "Button",
+      "style": {
+       "fontSize": 14
+      }
+     },
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o4"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 40,
+     "id": "icon2",
+     "name": "icon2",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "m2",
+     "rect": {},
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o5"
+  },
+  {
+   "createComponent": {
+    "componentId": "c1",
+    "name": "Button/default",
+    "rootNodeId": "m1"
+   },
+   "docId": "doc1",
+   "opId": "o6"
+  },
+  {
+   "createComponent": {
+    "componentId": "c2",
+    "name": "Button/hover",
+    "rootNodeId": "m2"
+   },
+   "docId": "doc1",
+   "opId": "o7"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o8",
+   "setComponentSet": {
+    "componentSet": {
+     "axes": [
+      {
+       "name": "State",
+       "options": [
+        "default",
+        "hover"
+       ]
+      },
+      {
+       "name": "Size",
+       "options": [
+        "md"
+       ]
+      }
+     ],
+     "id": "s1",
+     "name": "Button"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o9",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [
+     {
+      "defaultValue": "Button",
+      "name": "Label",
+      "targetNodeIds": [
+       "label"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_TEXT"
+     },
+     {
+      "defaultValue": "true",
+      "name": "ShowIcon",
+      "targetNodeIds": [
+       "icon"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_BOOLEAN"
+     }
+    ],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o10",
+   "setComponentDef": {
+    "componentId": "c2",
+    "properties": [
+     {
+      "defaultValue": "Button",
+      "name": "Label",
+      "targetNodeIds": [
+       "label2"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_TEXT"
+     },
+     {
+      "defaultValue": "true",
+      "name": "ShowIcon",
+      "targetNodeIds": [
+       "icon2"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_BOOLEAN"
+     }
+    ],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "hover"
+    }
+   }
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 40,
+     "id": "i1",
+     "instance": {
+      "componentId": "c1"
+     },
+     "name": "i1",
+     "opacity": 1,
+     "orderKey": "a3",
+     "parentId": "page1",
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o11"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o12",
+   "setInstanceProps": {
+    "instanceId": "i1",
+    "propertyValues": {
+     "Label": "Save",
+     "ShowIcon": "false"
+    },
+    "variantProps": {
+     "State": "hover"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o13",
+   "setComponentSet": {
+    "componentSet": {
+     "axes": [],
+     "id": "sx",
+     "name": "x"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o14",
+   "setComponentSet": {
+    "componentSet": {
+     "axes": [
+      {
+       "name": "A",
+       "options": [
+        "a",
+        "a"
+       ]
+      }
+     ],
+     "id": "sx",
+     "name": "x"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o15",
+   "setComponentSet": {
+    "componentSet": {
+     "axes": [
+      {
+       "name": "a;b",
+       "options": [
+        "a"
+       ]
+      }
+     ],
+     "id": "sx",
+     "name": "x"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o16",
+   "setComponentDef": {
+    "componentId": "ghost",
+    "properties": [],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o17",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [],
+    "setId": "nope",
+    "variant": {
+     "Size": "md",
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o18",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [],
+    "setId": "s1",
+    "variant": {
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o19",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "pressed"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o20",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [],
+    "setId": "",
+    "variant": {
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o21",
+   "setComponentDef": {
+    "componentId": "c2",
+    "properties": [],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o22",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [
+     {
+      "name": "P",
+      "targetNodeIds": [
+       "label"
+      ]
+     }
+    ],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o23",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [
+     {
+      "defaultValue": "maybe",
+      "name": "P",
+      "targetNodeIds": [
+       "icon"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_BOOLEAN"
+     }
+    ],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o24",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [
+     {
+      "defaultValue": "true",
+      "name": "P",
+      "targetNodeIds": [
+       "label2"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_BOOLEAN"
+     }
+    ],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o25",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [
+     {
+      "defaultValue": "x",
+      "name": "P",
+      "targetNodeIds": [
+       "icon"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_TEXT"
+     }
+    ],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o26",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [
+     {
+      "defaultValue": "true",
+      "name": "P",
+      "targetNodeIds": [
+       "icon"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_BOOLEAN"
+     },
+     {
+      "defaultValue": "true",
+      "name": "P",
+      "targetNodeIds": [
+       "icon"
+      ],
+      "type": "COMPONENT_PROPERTY_TYPE_BOOLEAN"
+     }
+    ],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o27",
+   "setComponentDef": {
+    "componentId": "c1",
+    "properties": [
+     {
+      "defaultValue": "true",
+      "name": "P",
+      "targetNodeIds": [],
+      "type": "COMPONENT_PROPERTY_TYPE_BOOLEAN"
+     }
+    ],
+    "setId": "s1",
+    "variant": {
+     "Size": "md",
+     "State": "default"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o28",
+   "setInstanceProps": {
+    "instanceId": "m1",
+    "propertyValues": {},
+    "variantProps": {}
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o29",
+   "setInstanceProps": {
+    "instanceId": "i1",
+    "propertyValues": {
+     "Nope": "x"
+    },
+    "variantProps": {}
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o30",
+   "setInstanceProps": {
+    "instanceId": "i1",
+    "propertyValues": {
+     "ShowIcon": "yes"
+    },
+    "variantProps": {}
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o31",
+   "setInstanceProps": {
+    "instanceId": "i1",
+    "propertyValues": {},
+    "variantProps": {
+     "Color": "red"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o32",
+   "setInstanceProps": {
+    "instanceId": "i1",
+    "propertyValues": {},
+    "variantProps": {
+     "State": "pressed"
+    }
+   }
+  },
+  {
+   "deleteComponentSet": {
+    "id": "missing"
+   },
+   "docId": "doc1",
+   "opId": "o33"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o34",
+   "setComponentSet": {
+    "componentSet": {
+     "axes": [
+      {
+       "name": "State",
+       "options": [
+        "default"
+       ]
+      },
+      {
+       "name": "Size",
+       "options": [
+        "md"
+       ]
+      }
+     ],
+     "id": "s1",
+     "name": "Button"
+    }
+   }
+  },
+  {
+   "deleteNode": {
+    "id": "icon"
+   },
+   "docId": "doc1",
+   "opId": "o35"
+  },
+  {
+   "deleteComponentSet": {
+    "id": "s1"
+   },
+   "docId": "doc1",
+   "opId": "o36"
+  }
+ ],
+ "rejected": [
+  13,
+  14,
+  15,
+  16,
+  17,
+  18,
+  19,
+  20,
+  21,
+  22,
+  23,
+  24,
+  25,
+  26,
+  27,
+  28,
+  29,
+  30,
+  31,
+  32,
+  33
+ ]
+}

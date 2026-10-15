@@ -16,6 +16,12 @@ const (
 	maxSelectionIDs  = 1000
 	presenceChanCap  = 256
 	defaultNickname  = "Guest"
+
+	maxChatRunes     = 140
+	maxReactionRunes = 8
+	maxVotes         = 50
+	maxTimerLabel    = 40
+	maxTimerMillis   = int64(24 * 60 * 60 * 1000)
 )
 
 // presenceRoom holds who is watching ONE document. It is ephemeral on purpose:
@@ -114,6 +120,22 @@ func (r *presenceRoom) update(in *opendesignerv1.PresenceState) bool {
 	cur.CursorY = in.GetCursorY()
 	cur.PageId = in.GetPageId()
 	cur.Selection = append([]string(nil), sel...)
+	// Facilitation: bounded like the rest, because it is copied to everyone.
+	cur.HasView = in.GetHasView()
+	cur.ViewX, cur.ViewY, cur.ViewZoom = in.GetViewX(), in.GetViewY(), in.GetViewZoom()
+	cur.Chat = clipRunes(in.GetChat(), maxChatRunes)
+	cur.Reaction = clipRunes(in.GetReaction(), maxReactionRunes)
+	cur.EmoteSeq = in.GetEmoteSeq()
+	votes := in.GetVotes()
+	if len(votes) > maxVotes {
+		votes = votes[:maxVotes]
+	}
+	cur.Votes = append([]string(nil), votes...)
+	cur.TimerStartedMs, cur.TimerEndMs, cur.TimerLabel = 0, 0, ""
+	if end, start := in.GetTimerEndMs(), in.GetTimerStartedMs(); end > start && start > 0 && end-start <= maxTimerMillis {
+		cur.TimerStartedMs, cur.TimerEndMs = start, end
+		cur.TimerLabel = clipRunes(in.GetTimerLabel(), maxTimerLabel)
+	}
 	r.broadcastLocked(cur.GetClientId(), &opendesignerv1.PresenceEvent{Kind: &opendesignerv1.PresenceEvent_Update{Update: proto.Clone(cur).(*opendesignerv1.PresenceState)}})
 	return true
 }
@@ -137,4 +159,11 @@ func (r *presenceRoom) sendLocked(w *presenceWatcher, ev *opendesignerv1.Presenc
 	case w.ch <- ev:
 	default:
 	}
+}
+
+func clipRunes(s string, n int) string {
+	if utf8.RuneCountInString(s) <= n {
+		return s
+	}
+	return string([]rune(s)[:n])
 }

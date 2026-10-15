@@ -10,6 +10,18 @@ export interface LocalPresence {
   cursorY: number;
   pageId: string;
   selection: string[];
+  // Facilitation (store/facilitation.ts). All optional on the way in: a patch carries what changed.
+  hasView: boolean;
+  viewX: number;
+  viewY: number;
+  viewZoom: number;
+  chat: string;
+  reaction: string;
+  emoteSeq: number;
+  votes: string[];
+  timerStartedMs: number;
+  timerEndMs: number;
+  timerLabel: string;
 }
 
 // No more than one send every 50 ms (20 Hz): a cursor does not need more, and
@@ -30,7 +42,11 @@ export class PresenceClient {
   private abort: AbortController | null = null;
   private stopped = true;
   private joined = false;
-  private local: LocalPresence = { hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [] };
+  private local: LocalPresence = {
+    hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [],
+    hasView: false, viewX: 0, viewY: 0, viewZoom: 1, chat: "", reaction: "", emoteSeq: 0, votes: [],
+    timerStartedMs: 0, timerEndMs: 0, timerLabel: "",
+  };
   private timer: ReturnType<typeof setTimeout> | null = null;
   private lastSent = 0;
   private retry: ReturnType<typeof setTimeout> | null = null;
@@ -85,6 +101,9 @@ export class PresenceClient {
         state: {
           clientId: this.clientId, nickname: "", hasCursor: l.hasCursor,
           cursorX: l.cursorX, cursorY: l.cursorY, pageId: l.pageId, selection: l.selection,
+          hasView: l.hasView, viewX: l.viewX, viewY: l.viewY, viewZoom: l.viewZoom,
+          chat: l.chat, reaction: l.reaction, emoteSeq: l.emoteSeq, votes: l.votes,
+          timerStartedMs: BigInt(l.timerStartedMs), timerEndMs: BigInt(l.timerEndMs), timerLabel: l.timerLabel,
         },
       }))
       .catch(() => { /* ephemeral: the next update replaces this one */ });

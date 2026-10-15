@@ -1,251 +1,253 @@
-import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
-import { type FillLite, type NodeLite, type SceneState, type VariableLite, toVariableLite } from "./types";
+import type { Variable as PbVariable, VariableCollection as PbCollection } from "../gen/opendesigner/v1/opendesigner_pb";
+import { VariableType } from "../gen/opendesigner/v1/opendesigner_pb";
+import { recordDelta } from "./sceneDelta";
+import { deriveBooleans } from "./booleans";
+import { deriveConnectors } from "./connectors";
+import { taggedOf } from "./tagged";
+import { resolveTextStyleNode } from "./typography";
+import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "./types";
 
-// DESIGN VARIABLES (tokens), client side. Parity with core/variables.go (Go),
-// the authority: same validation, same results.
-//
-// A fill bound to a variable (FillLite.varId) keeps a FLAT colour in r,g,b,a:
-// the colour of the variable at the active mode. Every renderer, panel and
-// exporter keeps reading flat colours and knows nothing about variables. What
-// keeps those colours true is this file: they are resolved when a node comes in
-// (createNode / setProps / snapshot) and re-resolved for ALL the bound nodes
-// when a variable, the modes or the active mode change. That re-scan is O(nodes)
-// but those ops are rare; a per-variable reverse index is the next step if a
-// bench says otherwise.
-
-const BLACK = { r: 0, g: 0, b: 0, a: 1 };
-type Rgba = { r: number; g: number; b: number; a: number };
-const MAX_ALIAS_DEPTH = 32;
-
-/** The mode the canvas previews: the chosen one if it still exists, else the first. */
-export function activeModeId(s: SceneState): string | undefined {
-  const modes = s.modes ?? [];
-  if (s.activeMode && modes.some((m) => m.id === s.activeMode)) return s.activeMode;
-  return modes[0]?.id;
-}
-
-/** The variable that actually holds the values: the alias chain followed; undefined if it dangles. */
-function effective(s: SceneState, v: VariableLite | undefined): VariableLite | undefined {
-  for (let i = 0; v && v.aliasOf && i < MAX_ALIAS_DEPTH; i++) v = s.variables?.[v.aliasOf];
-  return v && !v.aliasOf ? v : undefined;
-}
-
-/** A value of kind `kind` at the active mode; a mode with no value falls back to the default (first) mode. */
-function valueAt<T>(s: SceneState, v: VariableLite | undefined, kind: VariableLite["kind"], pick: (e: VariableLite) => Record<string, T> | undefined): T | undefined {
-  const e = effective(s, v);
-  if (!e || e.kind !== kind) return undefined;
-  const map = pick(e);
-  if (!map) return undefined;
-  const def = s.modes?.[0]?.id ?? Object.keys(map).sort()[0];
-  const mode = activeModeId(s);
-  return (mode !== undefined ? map[mode] : undefined) ?? (def !== undefined ? map[def] : undefined);
-}
+// VARIABLES (design tokens) -- the TypeScript twin of internal/core/variables.go.
+// Go is the authority; every rule here repeats one there, and the golden
+// fixture testdata/golden/variables.json runs both sides. See the invariants at
+// the top of that file.
 
 /**
- * The colour of a variable at the active mode, alias followed. A missing variable
- * (deleted, never created), a dangling alias or one with no value reads as opaque
- * black, like a paint without `kind`.
+ * The variable type a binding key accepts, or null if the key is not in the
+ * grammar. Parity with core.BindingType.
+ *
+ *   opacity | rotation | corner_radius | strokes.N.weight   number
+ *   fills.N | strokes.N                                      color
  */
-export function variableColor(s: SceneState, varId: string): Rgba {
-  return valueAt(s, s.variables?.[varId], "color", (e) => e.values) ?? BLACK;
+export function bindingType(key: string): VariableTypeLite | null {
+  if (key === "opacity" || key === "rotation" || key === "corner_radius") return "number";
+  const parts = key.split(".");
+  if (parts.length < 2 || parts.length > 3) return null;
+  if (parts[0] !== "fills" && parts[0] !== "strokes") return null;
+  if (!isIndex(parts[1])) return null;
+  if (parts.length === 2) return "color";
+  return parts[0] === "strokes" && parts[2] === "weight" ? "number" : null;
 }
 
-const sameColor = (a: Rgba, b: Rgba) => a.r === b.r && a.g === b.g && a.b === b.b && a.a === b.a;
-
-function resolveFill(s: SceneState, f: FillLite): FillLite {
-  let out = f;
-  // Gradient stops bound to a variable take its colour; the flat colour of a
-  // gradient is its first stop (see FillLite), so it follows.
-  if (f.gradient?.stops.some((st) => st.varId)) {
-    const stops = f.gradient.stops.map((st) => {
-      if (!st.varId) return st;
-      const c = variableColor(s, st.varId);
-      return sameColor(c, st.color) ? st : { ...st, color: c };
-    });
-    if (stops.some((st, i) => st !== f.gradient!.stops[i])) {
-      out = { ...out, gradient: { ...f.gradient, stops }, ...stops[0].color };
-    }
-  }
-  if (!out.varId) return out;
-  const c = variableColor(s, out.varId);
-  return sameColor(c, out) ? out : { ...out, ...c };
+// A canonical non-negative decimal: "0", "12" -- not "01", "-1", "+1", "1e2".
+function isIndex(s: string): boolean {
+  return /^(0|[1-9][0-9]*)$/.test(s);
 }
 
-/** The numeric / text properties a variable can drive, and the kind it must be (mirrors core.BindableProps). */
-export const BINDABLE_PROPS: Record<string, "number" | "string"> = {
-  opacity: "number", corner_radius: "number", font_size: "number", text: "string",
-};
+const unit = (v: number) => Number.isFinite(v) && v >= 0 && v <= 1;
 
-/** Validation of a node's bindings, as core.validateBindings does; returns false for a bad one. */
-export function validBindings(s: SceneState, n: Pick<NodeLite, "kind">, bindings: Record<string, string> | undefined): boolean {
-  for (const [prop, id] of Object.entries(bindings ?? {})) {
-    const want = BINDABLE_PROPS[prop];
-    if (!want) return false;
-    if (prop === "corner_radius" && n.kind !== "rect") return false;
-    if ((prop === "font_size" || prop === "text") && n.kind !== "text") return false;
-    const v = s.variables?.[id];
-    if (!v || v.kind !== want) return false;
+/** Parity with core.validateCollection. */
+export function isValidCollection(c: PbCollection | undefined): c is PbCollection {
+  if (!c || c.id === "" || c.modes.length === 0) return false;
+  const seen = new Set<string>();
+  for (const m of c.modes) {
+    if (m.id === "" || seen.has(m.id)) return false;
+    seen.add(m.id);
   }
   return true;
 }
 
-function resolveBindings(s: SceneState, n: NodeLite): NodeLite {
-  const b = n.bindings;
-  if (!b) return n;
-  let out = n;
-  for (const [prop, id] of Object.entries(b)) {
-    const v = s.variables?.[id];
-    switch (prop) {
-      case "opacity": {
-        const x = valueAt(s, v, "number", (e) => e.numbers);
-        if (x !== undefined) { const o = Math.max(0, Math.min(1, x)); if (o !== out.opacity) out = { ...out, opacity: o }; }
-        break;
-      }
-      case "corner_radius": {
-        const x = valueAt(s, v, "number", (e) => e.numbers);
-        if (x !== undefined && out.kind === "rect") { const r = Math.max(0, x); if (r !== out.cornerRadius) out = { ...out, cornerRadius: r }; }
-        break;
-      }
-      case "font_size": {
-        const x = valueAt(s, v, "number", (e) => e.numbers);
-        if (x !== undefined && x > 0 && out.text && out.text.style.fontSize !== x) out = { ...out, text: { ...out.text, style: { ...out.text.style, fontSize: x } } };
-        break;
-      }
-      case "text": {
-        const x = valueAt(s, v, "string", (e) => e.strings);
-        if (x !== undefined && out.text && out.text.content !== x) out = { ...out, text: { ...out.text, content: x } };
-        break;
-      }
+/**
+ * Parity with core.validateVariable. It reads the wire message, not the Lite
+ * form: a value with no `kind` is a type mismatch here (toVariableLite would
+ * silently drop it).
+ */
+export function isValidVariable(state: SceneState, v: PbVariable | undefined): v is PbVariable {
+  if (!v || v.id === "") return false;
+  const col = state.collections[v.collectionId];
+  if (!col) return false;
+  if (v.type !== VariableType.COLOR && v.type !== VariableType.NUMBER) return false;
+  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : "number";
+  const prev = state.variables[v.id];
+  if (prev && (prev.type !== type || prev.collectionId !== v.collectionId)) return false;
+  const modes = new Set(col.modes.map((m) => m.id));
+  for (const [mode, val] of Object.entries(v.values)) {
+    if (!modes.has(mode)) return false;
+    if (type === "color") {
+      if (val.kind.case !== "color") return false;
+      const { r, g, b, a } = val.kind.value;
+      if (![r, g, b, a].every(unit)) return false;
+    } else if (val.kind.case !== "number" || !Number.isFinite(val.kind.value)) return false;
+  }
+  return true;
+}
+
+/** Parity with core.validateBindings. */
+export function areValidBindings(state: SceneState, bindings: Readonly<Record<string, string>> | undefined): boolean {
+  for (const [key, id] of Object.entries(bindings ?? {})) {
+    const want = bindingType(key);
+    if (want === null || state.variables[id]?.type !== want) return false;
+  }
+  return true;
+}
+
+/** Parity with core.validateModes. */
+export function areValidModes(state: SceneState, modes: Readonly<Record<string, string>> | undefined): boolean {
+  for (const [col, mode] of Object.entries(modes ?? {})) {
+    if (!state.collections[col]?.modes.some((m) => m.id === mode)) return false;
+  }
+  return true;
+}
+
+// ---------- cascades (invariant 6) ----------
+
+/** The nodes with their entries rewritten by `fix` (which returns null to keep a node). */
+function rewriteNodes(state: SceneState, fix: (n: NodeLite) => NodeLite | null): SceneState["nodes"] {
+  let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
+  for (const n of state.nodes.values()) {
+    const next = fix(n);
+    if (next) (edit ??= state.nodes.edit()).set(n.id, next);
+  }
+  return edit ? edit.done() : state.nodes;
+}
+
+function without<T>(rec: Readonly<Record<string, T>>, drop: (k: string, v: T) => boolean): Record<string, T> | undefined {
+  const out: Record<string, T> = {};
+  for (const [k, v] of Object.entries(rec)) if (!drop(k, v)) out[k] = v;
+  return Object.keys(out).length === 0 ? undefined : out;
+}
+
+/** Removes from the nodes the bindings to `gone` variables and the mode pins of `col` (if given). */
+export function unbindNodes(state: SceneState, gone: ReadonlySet<string>, pinnedCollection?: string): SceneState["nodes"] {
+  return rewriteNodes(state, (n) => {
+    const hitsBinding = !!n.bindings && Object.values(n.bindings).some((id) => gone.has(id));
+    const hitsMode = pinnedCollection !== undefined && !!n.modes && pinnedCollection in n.modes;
+    if (!hitsBinding && !hitsMode) return null;
+    const next: NodeLite = { ...n };
+    if (hitsBinding) {
+      const b = without(n.bindings!, (_, id) => gone.has(id));
+      if (b) next.bindings = b; else delete next.bindings;
     }
-  }
-  return out;
-}
-
-/** The node with its bound paints and properties resolved; the SAME object if nothing changed. */
-export function resolveNode(s: SceneState, n: NodeLite): NodeLite {
-  const fills = n.fills.map((f) => resolveFill(s, f));
-  const strokes = n.strokes.map((st) => {
-    const color = resolveFill(s, st.color);
-    return color === st.color ? st : { ...st, color };
+    if (hitsMode) {
+      const m = without(n.modes!, (k) => k === pinnedCollection);
+      if (m) next.modes = m; else delete next.modes;
+    }
+    return next;
   });
-  // An instance's fill overrides are paints too: a bound override must follow
-  // the variable (they live outside node.fills, so they are resolved here).
-  let instance = n.instance;
-  if (instance) {
-    const overrides = instance.overrides.map((o) => {
-      if (!o.fills) return o;
-      const f = o.fills.map((x) => resolveFill(s, x));
-      return f.every((x, i) => x === o.fills![i]) ? o : { ...o, fills: f };
-    });
-    if (overrides.some((o, i) => o !== instance!.overrides[i])) instance = { ...instance, overrides };
+}
+
+/** setCollection over an existing collection: the removed modes take their values and pins with them. */
+export function dropRemovedModes(state: SceneState, col: CollectionLite): Pick<SceneState, "variables" | "nodes"> {
+  const keep = new Set(col.modes.map((m) => m.id));
+  let variables = state.variables;
+  for (const v of Object.values(state.variables)) {
+    if (v.collectionId !== col.id || Object.keys(v.values).every((m) => keep.has(m))) continue;
+    if (variables === state.variables) variables = { ...variables };
+    const values: VariableLite["values"] = {};
+    for (const [m, val] of Object.entries(v.values)) if (keep.has(m)) values[m] = val;
+    variables[v.id] = { ...v, values };
   }
-  const fillsSame = fills.every((f, i) => f === n.fills[i]);
-  const strokesSame = strokes.every((st, i) => st === n.strokes[i]);
-  const painted = fillsSame && strokesSame && instance === n.instance ? n : { ...n, fills, strokes, ...(instance ? { instance } : {}) };
-  return resolveBindings(s, painted);
-}
-
-/** Re-resolves every node; the SAME state object if no node changed. */
-export function resolveScene(s: SceneState): SceneState {
-  if (s.nodes === undefined) return s;
-  let nodes = s.nodes;
-  s.nodes.forEach((n, id) => {
-    const r = resolveNode(s, n);
-    if (r !== n) nodes = nodes.set(id, r);
+  const nodes = rewriteNodes(state, (n) => {
+    const pin = n.modes?.[col.id];
+    if (pin === undefined || keep.has(pin)) return null;
+    const next: NodeLite = { ...n };
+    const m = without(n.modes!, (k) => k === col.id);
+    if (m) next.modes = m; else delete next.modes;
+    return next;
   });
-  return nodes === s.nodes ? s : { ...s, nodes };
+  return { variables, nodes };
 }
 
-/** Switches the previewed mode (view state: never sent to the server). */
-export function withActiveMode(s: SceneState, modeId: string): SceneState {
-  if (s.activeMode === modeId) return s;
-  return resolveScene({ ...s, activeMode: modeId });
-}
-
-/** After ops that bring a node in: resolve just that node. */
-export function resolveAfterNodeOp(s: SceneState, op: Op): SceneState {
-  const k = op.kind;
-  const id =
-    k.case === "createNode" ? k.value.node?.id
-    : k.case === "setProps" ? k.value.id
-    : k.case === "setInstanceOverride" ? k.value.instanceId
-    : k.case === "swapInstance" ? k.value.instanceId
-    : k.case === "setText" ? k.value.id
-    : undefined;
-  if (!id) return s;
-  const n = s.nodes.get(id);
-  if (!n) return s;
-  const r = resolveNode(s, n);
-  return r === n ? s : { ...s, nodes: s.nodes.set(id, r) };
-}
+// ---------- resolution ----------
 
 /**
- * Same checks as core.validateVariable, on the lite variable. Pure; false = the
- * server would reject the op.
+ * The mode of `collectionId` in force for node `nodeId`: the nearest ancestor
+ * (the node itself included) that pins the collection to a mode it still has,
+ * else the collection's first mode. "" if the collection does not exist.
+ * Parity with core.ActiveMode.
  */
-export function validVariable(s: SceneState, v: VariableLite): boolean {
-  if (v.id === "" || v.name === "") return false;                              // ErrNilVariable
-  const hasValues = Object.keys(v.values).length > 0;
-  const hasNumbers = Object.keys(v.numbers ?? {}).length > 0;
-  const hasStrings = Object.keys(v.strings ?? {}).length > 0;
-  if ((v.kind !== "color" && hasValues) || (v.kind !== "number" && hasNumbers) || (v.kind !== "string" && hasStrings)) return false;
-  if (v.aliasOf) {
-    if (hasValues || hasNumbers || hasStrings) return false;                   // ErrBadAlias: alias carries no values
-    const target = s.variables?.[v.aliasOf];
-    if (!target || target.kind !== v.kind) return false;                       // unknown target / other kind
-    let cur: VariableLite | undefined = target;
-    for (let i = 0; cur && i < MAX_ALIAS_DEPTH; i++) {
-      if (cur.id === v.id) return false;                                       // cycle
-      if (!cur.aliasOf) break;
-      cur = s.variables?.[cur.aliasOf];
-    }
-    return true;
+export function activeMode(state: SceneState, nodeId: string, collectionId: string): string {
+  const col = state.collections[collectionId];
+  if (!col || col.modes.length === 0) return "";
+  let cur = state.nodes.get(nodeId);
+  for (let guard = 0; cur && guard < 10000; guard++) {
+    const m = cur.modes?.[collectionId];
+    if (m !== undefined && col.modes.some((x) => x.id === m)) return m;
+    cur = state.nodes.get(cur.parentId);
   }
-  const modeIds = new Set((s.modes ?? []).map((m) => m.id));
-  const keys = [...Object.keys(v.values), ...Object.keys(v.numbers ?? {}), ...Object.keys(v.strings ?? {})];
-  return modeIds.size === 0 || keys.every((k) => modeIds.has(k));              // ErrBadMode
+  return col.modes[0].id;
 }
 
-const keepModes = <T,>(m: Record<string, T> | undefined, keep: Set<string>): Record<string, T> | undefined =>
-  m ? Object.fromEntries(Object.entries(m).filter(([k]) => keep.has(k))) : undefined;
+/** The value of `v` in `mode`, falling back to the collection's default mode. Parity with core.VariableValueIn. */
+export function variableValueIn(state: SceneState, v: VariableLite, mode: string): FillLite | number | undefined {
+  if (mode in v.values) return v.values[mode];
+  const first = state.collections[v.collectionId]?.modes[0];
+  return first ? v.values[first.id] : undefined;
+}
 
-/** The three variable ops; undefined if `op` is not one of them. Invalid ops leave the state unchanged, like Go rejects them. */
-export function applyVariableOp(s: SceneState, op: Op): SceneState | undefined {
-  switch (op.kind.case) {
-    case "setVariable": {
-      const pb = op.kind.value.variable;
-      if (!pb) return s;                                                         // ErrNilVariable
-      if (Object.values(pb.values).some((c) => !c)) return s;                    // nil colour value
-      const v = toVariableLite(pb);
-      if (!validVariable(s, v)) return s;
-      return resolveScene({ ...s, variables: { ...s.variables, [v.id]: v } });
-    }
-    case "deleteVariable": {
-      const { id } = op.kind.value;
-      if (!s.variables?.[id]) return s;                                          // ErrVariableNotFound
-      const variables = { ...s.variables };
-      delete variables[id];
-      return resolveScene({ ...s, variables });
-    }
-    case "setModes": {
-      const modes = op.kind.value.modes;
-      const seen = new Set<string>();
-      for (const m of modes) {
-        if (m.id === "" || seen.has(m.id)) return s;                             // ErrBadMode
-        seen.add(m.id);
+const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
+
+/**
+ * `n` with its bindings replaced by the values of the active modes. A node
+ * without bindings is returned as is; the document is never touched. A binding
+ * whose variable, value or target is missing is ignored: the literal stays.
+ * Parity with core.ResolveNode.
+ */
+export function resolveNode(state: SceneState, n: NodeLite): NodeLite {
+  n = resolveTextStyleNode(state, n);
+  if (!n.bindings) return n;
+  let out: NodeLite | null = null;
+  const edit = () => (out ??= { ...n, fills: [...n.fills], strokes: [...n.strokes] });
+  for (const key of Object.keys(n.bindings).sort()) {
+    const v = state.variables[n.bindings[key]];
+    if (!v) continue;
+    const val = variableValueIn(state, v, activeMode(state, n.id, v.collectionId));
+    if (val === undefined) continue;
+    const parts = key.split(".");
+    if (typeof val === "number") {
+      if (key === "opacity") edit().opacity = clamp01(val);
+      else if (key === "rotation") edit().rotation = val;
+      else if (key === "corner_radius") { if (n.kind === "rect") edit().cornerRadius = Math.max(0, val); }
+      else {
+        const i = Number(parts[1]);
+        if (i < n.strokes.length) edit().strokes[i] = { ...n.strokes[i], weight: Math.max(0, val) };
       }
-      let variables = s.variables;
-      if (seen.size > 0 && variables) {
-        // Values of a mode that disappears are dropped (copies, never in place).
-        variables = Object.fromEntries(Object.entries(variables).map(([id, v]) => {
-          const numbers = keepModes(v.numbers, seen);
-          const strings = keepModes(v.strings, seen);
-          return [id, { ...v, values: keepModes(v.values, seen) ?? {}, ...(numbers ? { numbers } : {}), ...(strings ? { strings } : {}) }];
-        }));
-      }
-      return resolveScene({ ...s, variables, modes: modes.map((m) => ({ id: m.id, name: m.name })) });
+      continue;
     }
-    default:
-      return undefined;
+    const i = Number(parts[1]);
+    if (parts[0] === "fills") {
+      // Only a solid fill takes a color: a gradient has no single color to replace.
+      if (i < n.fills.length && !n.fills[i].gradient) edit().fills[i] = { r: val.r, g: val.g, b: val.b, a: val.a };
+    } else if (i < n.strokes.length && !n.strokes[i].color.gradient) {
+      edit().strokes[i] = { ...n.strokes[i], color: { r: val.r, g: val.g, b: val.b, a: val.a } };
+    }
   }
+  return out ?? n;
+}
+
+const resolved = new WeakMap<SceneState, SceneState>();
+
+/**
+ * The scene the canvas shows: `scene` with every bound property replaced by
+ * its variable's value for the node's active mode. It is derived, never
+ * written -- like the posed scene of an animation (animation/pose.ts): no op
+ * goes out and the document does not change.
+ *
+ * Returns `scene` itself (same identity, no work) when the document has no
+ * variables, which is every document that does not use the feature.
+ */
+export function resolveScene(raw: SceneState): SceneState {
+  // Live boolean groups first (store/booleans.ts), then connectors (store/connectors.ts), then the
+  // variables over the result.
+  const scene = deriveConnectors(deriveBooleans(raw));
+  if (Object.keys(scene.variables).length === 0 && Object.keys(scene.textStyles).length === 0) return scene;
+  const hit = resolved.get(scene);
+  if (hit) return hit;
+  let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
+  const changed: string[] = [];
+  for (const id of taggedOf(scene).bound) {
+    const n = scene.nodes.get(id);
+    if (!n || (!n.bindings && !n.textStyleId)) continue;
+    const r = resolveNode(scene, n);
+    if (r === n) continue;
+    (edit ??= scene.nodes.edit()).set(n.id, r);
+    changed.push(n.id);
+  }
+  let out = scene;
+  if (edit) {
+    out = { ...scene, nodes: edit.done() };
+    recordDelta(out, scene, changed);
+  }
+  resolved.set(scene, out);
+  return out;
 }

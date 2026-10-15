@@ -1,6 +1,6 @@
 import { type Transform, compose, localTransformOf, translation } from "../canvas/transform";
+import { effectiveComponentId, effectiveOverrides } from "./components";
 import type { InstanceOverrideLite, NodeLite, SceneState } from "./types";
-import { propertyEffects } from "./properties";
 
 // INSTANCES: the VIRTUAL subtree of a component, and how to descend into it.
 //
@@ -29,28 +29,16 @@ export interface ResolvedInstance {
   componentId: string;
 }
 
-export function resolveInstance(
-  scene: SceneState, n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null = null,
-): ResolvedInstance | null {
+export function resolveInstance(scene: SceneState, n: NodeLite): ResolvedInstance | null {
   if (n.kind !== "instance" || !n.instance) return null;
-  const componentId = effectiveComponentId(scene, n, overrides);
+  // The variant the instance has chosen (components.ts::effectiveComponentId): the
+  // base component itself when it is not part of a set or nothing matches.
+  const componentId = effectiveComponentId(scene, n.instance);
   const comp = scene.components[componentId];
   if (!comp) return null;
-  const masterRoot = scene.nodes.get(comp.rootNodeId);
+  const masterRoot = scene.nodes.at(comp.rootNodeId);
   if (!masterRoot) return null;
   return { masterRoot, componentId };
-}
-
-/**
- * The component an instance shows: its own, unless the instance it sits in (the
- * `overrides` being descended with) points it at another through a swap property
- * -- and only if that component exists.
- */
-export function effectiveComponentId(
-  scene: SceneState, n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null,
-): string {
-  const to = overrides?.get(n.id)?.componentId;
-  return to !== undefined && scene.components[to] ? to : (n.instance?.componentId ?? "");
 }
 
 // The instance's overrides indexed by master node (masterNodeId ->
@@ -60,36 +48,22 @@ export function effectiveComponentId(
 // The bounds do NOT use it: a fill or text override does not move the geometry (a
 // longer text might, but this model does not remeasure -- see the comment
 // on bounds in store/groups.ts).
-export function instanceOverrideMap(n: NodeLite): Map<string, InstanceOverrideLite> {
-  const map = new Map<string, InstanceOverrideLite>();
-  if (n.instance) for (const o of n.instance.overrides) map.set(o.masterNodeId, o);
-  return map;
+export function instanceOverrideMap(scene: SceneState, n: NodeLite): Map<string, InstanceOverrideLite> {
+  // The explicit overrides plus what the component's properties derive (a text
+  // property sets text, a false boolean property hides): components.ts::effectiveOverrides.
+  return effectiveOverrides(scene, n);
 }
 
-// The overrides the RENDERERS descend with: the explicit per-node ones plus what the
-// instance's component PROPERTIES do (a text property writes a node's content, a
-// boolean one forces it shown or hidden via `visible`). A property wins over an
-// explicit override of the same node. The properties panel keeps reading the
-// explicit map (instanceOverrideMap) -- that is what the user edits.
-export function renderOverrideMap(
-  scene: SceneState, n: NodeLite, outer: ReadonlyMap<string, InstanceOverrideLite> | null = null,
-): Map<string, InstanceOverrideLite> {
-  const map = instanceOverrideMap(n);
-  // A swapped nested instance reads the properties of the component it was swapped to.
-  const fx = propertyEffects(scene, n, effectiveComponentId(scene, n, outer));
-  const put = (node: string, patch: Partial<InstanceOverrideLite>) => map.set(node, { ...(map.get(node) ?? { masterNodeId: node }), ...patch });
-  for (const [node, text] of fx.text) put(node, { text });
-  for (const [node, visible] of fx.visible) put(node, { visible });
-  for (const [node, opacity] of fx.opacity) put(node, { opacity });
-  for (const [node, cornerRadius] of fx.cornerRadius) put(node, { cornerRadius });
-  for (const [node, fontSize] of fx.fontSize) put(node, { fontSize });
-  for (const [node, componentId] of fx.swap) put(node, { componentId });
-  return map;
-}
-
-/** Is `n` drawn, hit and measured, given the overrides of the instance being descended into? */
-export function visibleUnder(n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): boolean {
-  return overrides?.get(n.id)?.visible ?? n.visible;
+// The master nodes an instance HIDES (a boolean component property set to false), or
+// null when none -- the common case, which costs nothing. Drawing, hit-test and bounds
+// all skip them (and their subtrees), like any invisible node.
+export function hiddenMasterNodes(scene: SceneState, n: NodeLite): ReadonlySet<string> | null {
+  if (!n.instance) return null;
+  const comp = scene.components[effectiveComponentId(scene, n.instance)];
+  if (!comp?.properties) return null;
+  let out: Set<string> | null = null;
+  for (const [id, o] of effectiveOverrides(scene, n)) if (o.hidden) (out ??= new Set()).add(id);
+  return out;
 }
 
 // The transform that PLACES the master's subtree at the instance, in the

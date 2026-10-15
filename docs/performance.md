@@ -23,6 +23,20 @@ fast on large documents, how to measure it and where the limits are.
    (> 20 ms) and only the camera changes, the last image is redrawn shifted
    and scaled, and when the movement ends (120 ms) the exact frame is redone.
 
+6. **A fast path for small plain shapes** (`canvasRenderer.ts::plainShape`). A sharp rectangle,
+   a frame or an ellipse with one flat color, no stroke, effect, blend or rotation, under 32 px
+   on screen, is a single `fillRect` (or one ellipse fill) instead of a `Path2D`, a
+   save/restore and the effect checks; a rectangle's corners under 1.5 screen pixels count as
+   sharp. CSS color strings are cached per fill. A big page, zoomed out, is mostly such shapes.
+7. **Derived passes that do not scan** (`store/tagged.ts`). Live booleans, connectors and variable
+   bindings are found through short lists kept up to date from the nodes an op touched, instead of a
+   scan of every node on every change: **~15 ms per edit at 50,000 nodes became ~0.1 ms** for a
+   document that uses none of them (and proportional to the tagged nodes for one that does).
+8. **The current page only.** Drawing, hit-testing and the marquee start from the page's roots; uploaded
+   fonts are downloaded only for the families the page uses (`renderer/pageFonts.ts`), images when
+   they are drawn; each page remembers its own camera (`canvas/pageView.ts`) and changing page
+   forces a full redraw.
+
 ## Measurements
 
 Headless Chromium **without GPU** (CPU rasterization, so the absolute values
@@ -34,6 +48,17 @@ are pessimistic; the comparisons hold). Synthetic document: frames of 20 childre
 | 1,000  | 7.6 → 8 ms                   | 6.4 → 0.8 ms                     | 0.3 → ~0 ms             |
 | 5,000  | 34 → 21 ms                   | 40 → 1.3 ms                      | 1.4 → ~0 ms             |
 | 20,000 | 177 → 108 ms                 | 139 → 1.5 ms                     | 7.1 → ~0 ms             |
+
+Second pass (same machine and method, 50,000-node run added; `drawFit` = whole page framed):
+
+| nodes  | frame, framed (before → now) | derived passes per edit (before → now) |
+|--------|------------------------------|----------------------------------------|
+| 20,000 | 221 → 83 ms                  | 9.7 → ~0.1 ms                          |
+| 50,000 | 214 → 132 ms                 | 15.6 → ~0.1 ms                         |
+
+What is left at 50,000 is mostly the rasterizer (`fillRect` is ~25% of the frame) and the one-time
+index build (~100 ms when the document opens). The index is still built for every page, not only
+the one on screen; making it lazy per page is the next step if documents with many big pages need it.
 
 Cost of ONE edit (new scene, index and zoomed frame): 150 ms → 27 ms at
 20,000 nodes, 6 ms at 5,000. While panning/zooming a heavy document, a frame

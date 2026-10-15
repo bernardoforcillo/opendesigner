@@ -1,0 +1,170 @@
+{
+ "_comment": [
+  "Image paints: a well-formed hash and a known mode are stored (as a fill and as a stroke paint); a bad hash or an unknown mode rejects the op. Run from BOTH sides."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "nodes": {
+   "A": {
+    "id": "A",
+    "parentId": "page1",
+    "orderKey": "a0",
+    "name": "A",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {},
+    "fills": [
+     {
+      "image": {
+       "assetHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+       "mode": "IMAGE_SCALE_MODE_FIT"
+      }
+     }
+    ],
+    "strokes": [
+     {
+      "paint": {
+       "image": {
+        "assetHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mode": "IMAGE_SCALE_MODE_TILE"
+       }
+      },
+      "weight": 3,
+      "align": "STROKE_ALIGN_CENTER"
+     }
+    ]
+   }
+  }
+ },
+ "ops": [
+  {
+   "docId": "doc1",
+   "opId": "o0",
+   "createNode": {
+    "node": {
+     "id": "A",
+     "parentId": "page1",
+     "orderKey": "a0",
+     "name": "A",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {},
+     "fills": [
+      {
+       "image": {
+        "assetHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mode": "IMAGE_SCALE_MODE_FIT"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o1",
+   "createNode": {
+    "node": {
+     "id": "B",
+     "parentId": "page1",
+     "orderKey": "a1",
+     "name": "B",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {},
+     "fills": [
+      {
+       "image": {
+        "assetHash": "nothex",
+        "mode": "IMAGE_SCALE_MODE_FIT"
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o2",
+   "setProps": {
+    "id": "A",
+    "mask": "strokes",
+    "patch": {
+     "strokes": [
+      {
+       "paint": {
+        "image": {
+         "assetHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+         "mode": "IMAGE_SCALE_MODE_TILE"
+        }
+       },
+       "weight": 3,
+       "align": "STROKE_ALIGN_CENTER"
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setProps": {
+    "id": "A",
+    "mask": "fills",
+    "patch": {
+     "fills": [
+      {
+       "image": {
+        "assetHash": "aaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaaa",
+        "mode": 99
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setProps": {
+    "id": "A",
+    "mask": "fills",
+    "patch": {
+     "fills": [
+      {
+       "image": {
+        "assetHash": "abc"
+       }
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "rejected": [
+  1,
+  3,
+  4
+ ]
+}

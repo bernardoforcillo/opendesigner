@@ -60,7 +60,7 @@ export function fontWeightOf(style: TextStyleLite | undefined): string {
 
 // Shorthand CSS accettato da ctx.font: "<weight> <size>px <family>".
 export function fontString(style: TextStyleLite): string {
-  return `${fontWeightOf(style)} ${fontSizeOf(style)}px ${fontFamilyOf(style)}`;
+  return `${style.italic ? "italic " : ""}${fontWeightOf(style)} ${fontSizeOf(style)}px ${fontFamilyOf(style)}`;
 }
 
 // x offset of ONE line inside the box, in coordinates relative to the box.

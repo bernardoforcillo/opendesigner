@@ -1,6 +1,7 @@
 import { describe, it, expect, vi } from "vitest";
 import type { CanvasKit } from "canvaskit-wasm";
-import { FONT_WEIGHTS, FontBook, nearestWeight } from "./canvaskit";
+import { FONT_WEIGHTS, FontBook, cssWeight, firstFamily, nearestWeight } from "./canvaskit";
+import type { FontLite } from "../../store/types";
 import { skMatrix } from "./ckRenderer";
 
 describe("nearestWeight", () => {
@@ -131,5 +132,83 @@ describe("skMatrix", () => {
     const sy = m[3] * x + m[4] * y + m[5];
     expect(sx).toBeCloseTo(t.a * x + t.c * y + t.e, 12);
     expect(sy).toBeCloseTo(t.b * x + t.d * y + t.f, 12);
+  });
+});
+
+describe("uploaded fonts in FontBook", () => {
+  const face = (id: string, family: string, weight: string, style: "normal" | "italic" = "normal", hash = "a".repeat(64)): FontLite =>
+    ({ id, family, weight, style, assetHash: hash });
+  const flush = () => new Promise((r) => setTimeout(r, 0));
+
+  async function book() {
+    const { CK, faces } = fakeCK();
+    const onLoad = vi.fn();
+    const urls: string[] = [];
+    const b = new FontBook(CK, onLoad, async (u) => { urls.push(u); return enc(u); }, "/fonts/");
+    await b.ready();
+    onLoad.mockClear();
+    urls.length = 0;
+    return { b, faces, onLoad, urls };
+  }
+
+  it("parses css weights and the first family of a list", () => {
+    expect([cssWeight("bold"), cssWeight(""), cssWeight("250"), cssWeight("1200"), cssWeight("x")]).toEqual([700, 400, 250, 900, 400]);
+    expect(firstFamily(`"Brand Sans", sans-serif`)).toBe("brand sans");
+    expect(firstFamily(undefined)).toBe("");
+  });
+
+  it("downloads the document's fonts from the asset route, and draws a matching text with them", async () => {
+    const { b, faces, onLoad, urls } = await book();
+    const brand = face("f1", "Brand Sans", "400");
+    b.setDocumentFonts("doc1", { f1: brand });
+    expect(urls).toEqual([`/assets-api/doc1/${brand.assetHash}`]);
+    // Until the file arrives the text uses Inter.
+    const before = b.fontFor("400", 20, "Brand Sans, sans-serif");
+    const inter = faces.length;                          // Inter 400 from ready()
+    expect(inter).toBe(1);
+    expect(before).not.toBeNull();
+    await flush();
+    expect(faces).toHaveLength(inter + 1);
+    expect(onLoad).toHaveBeenCalled();
+    const after = b.fontFor("400", 20, "Brand Sans, sans-serif");
+    expect(after).not.toBe(before);
+    // A different family is still Inter.
+    expect(b.fontFor("400", 20, "Other")).toBe(before);
+  });
+
+  it("picks the italic face for italic text and the nearest weight", async () => {
+    const { b, faces } = await book();
+    b.setDocumentFonts("doc1", {
+      r: face("r", "Brand", "400", "normal", "1".repeat(64)),
+      b: face("b", "Brand", "700", "normal", "2".repeat(64)),
+      i: face("i", "Brand", "400", "italic", "3".repeat(64)),
+    });
+    await flush();
+    const used = (css: string, italic: boolean) => {
+      const font = b.fontFor(css, 12, "Brand", italic) as unknown as { face: { weight: string } };
+      return font.face.weight;
+    };
+    expect(used("700", false)).toContain("2".repeat(64));
+    expect(used("500", false)).toContain("1".repeat(64));
+    expect(used("400", true)).toContain("3".repeat(64));
+    expect(faces).toHaveLength(4);                       // Inter 400 + three uploads
+  });
+
+  it("frees a font that is deleted or replaced, and asks for a redraw", async () => {
+    const { b, faces, onLoad } = await book();
+    b.setDocumentFonts("doc1", { f1: face("f1", "Brand", "400") });
+    await flush();
+    const brandFace = faces[faces.length - 1];
+    b.fontFor("400", 16, "Brand");
+    onLoad.mockClear();
+    b.setDocumentFonts("doc1", {});
+    expect(brandFace.deleted).toBe(true);
+    expect(onLoad).toHaveBeenCalled();
+    // Same `fonts` object again: nothing happens.
+    onLoad.mockClear();
+    const same = {};
+    b.setDocumentFonts("doc1", same);
+    b.setDocumentFonts("doc1", same);
+    expect(onLoad).not.toHaveBeenCalled();
   });
 });

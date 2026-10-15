@@ -5,6 +5,7 @@ import { hasLayout, participates } from "../store/layout";
 import { orderKeyBetween } from "../store/orderKey";
 import { childrenOf, isAncestorOf } from "../store/tree";
 import type { NodeLite, SceneState } from "../store/types";
+import { applyTransform, invertTransform, worldTransformOf } from "../canvas/transform";
 import { makeReparentOp, makeSetPropsOp } from "./ops";
 
 // DRAG REORDERING in frames with auto layout.
@@ -28,7 +29,17 @@ export interface LayoutDrop {
   // The insertion line, in WORLD coordinates: a thin rectangle
   // crossing the layout axis, at the point where the node would be put.
   indicator: Bounds;
+  // Set when the pointer left the auto layout frame the drag started in and is over no other
+  // auto layout one: releasing TAKES THE NODES OUT of the frame, into its parent, at the point
+  // where the pointer is (`x`/`y` is that point in the PARENT's space, where the
+  // dragged nodes' center goes). `index` is meaningless then.
+  out?: { parentId: string; x: number; y: number };
 }
+
+// How far (world units) the pointer must be outside the starting frame's box before the drag
+// stops being a reorder and takes the node out: a margin, so releasing a bit outside the frame
+// still reorders (see computeLayoutDrop).
+const DETACH_MARGIN = 24;
 
 // The thickness of the insertion line, in world units.
 const INDICATOR_THICKNESS = 2;
@@ -86,10 +97,23 @@ export function computeLayoutDrop(
   p: { x: number; y: number },
 ): LayoutDrop | null {
   const dragged = new Set(draggedIds);
-  const frame = frameAt(scene, dragged, p) ?? scene.nodes.at(originId);
+  const over = frameAt(scene, dragged, p);
+  const frame = over ?? scene.nodes.at(originId);
   if (!hasLayout(frame)) return null;
   const frameBox = contentWorldBounds(scene, frame);
   if (!frameBox) return null;
+  // Over no other auto layout frame and well outside the starting one: take the nodes out of it.
+  if (!over && scene.nodes.at(originId)?.parentId !== undefined &&
+      (p.x < frameBox.x - DETACH_MARGIN || p.x > frameBox.x + frameBox.width + DETACH_MARGIN ||
+       p.y < frameBox.y - DETACH_MARGIN || p.y > frameBox.y + frameBox.height + DETACH_MARGIN)) {
+    const parentId = frame.parentId;
+    const local = applyTransform(invertTransform(worldTransformOf(scene, parentId)), p.x, p.y);
+    return {
+      frameId: frame.id, index: 0, vertical: frame.autoLayout.direction === "vertical",
+      indicator: { x: p.x, y: p.y, width: 0, height: 0 },
+      out: { parentId, x: local.x, y: local.y },
+    };
+  }
   const al = frame.autoLayout;
   const vertical = al.direction === "vertical";
 
@@ -133,6 +157,7 @@ export function computeLayoutDrop(
  * with it. Positions are NOT written: the layout computes them.
  */
 export function layoutDropOps(scene: SceneState, draggedIds: readonly string[], drop: LayoutDrop): Op[] {
+  if (drop.out) return takeOutOps(scene, draggedIds, drop.out);
   const dragged = new Set(draggedIds);
   // In the order they had in the starting row.
   const moving = draggedIds
@@ -160,6 +185,33 @@ export function layoutDropOps(scene: SceneState, draggedIds: readonly string[], 
     const key = orderKeyBetween(prev, upper);
     prev = key;
     ops.push(n.parentId === drop.frameId ? makeSetPropsOp(n.id, { orderKey: key }, ["order_key"]) : makeReparentOp(n.id, drop.frameId, key));
+  }
+  return ops;
+}
+
+// Takes the dragged nodes out of their auto layout frame: each is reparented to `out.parentId`
+// on top of its new siblings and written at an explicit position (the layout no longer
+// arranges it), keeping the dragged nodes' relative offsets with their center at the
+// pointer. (A rotated or scaled frame is not accounted for: the move is in its own axes.)
+function takeOutOps(scene: SceneState, draggedIds: readonly string[], out: { parentId: string; x: number; y: number }): Op[] {
+  const moving = draggedIds
+    .map((id) => scene.nodes.at(id))
+    .filter((n): n is NodeLite => n !== undefined)
+    .sort((a, b) => (a.orderKey < b.orderKey ? -1 : a.orderKey > b.orderKey ? 1 : a.id < b.id ? -1 : 1));
+  if (moving.length === 0) return [];
+  // The group's box in the frame's space (they are siblings, so one space). Its center must land
+  // on the pointer, which is given in the PARENT's space: the frame's own x/y cancels out, since
+  // (frame.x + n.x) + (pointer - (frame.x + center)) = n.x + pointer - center.
+  const minX = Math.min(...moving.map((n) => n.x)), minY = Math.min(...moving.map((n) => n.y));
+  const maxX = Math.max(...moving.map((n) => n.x + n.width)), maxY = Math.max(...moving.map((n) => n.y + n.height));
+  const dx = out.x - (minX + maxX) / 2, dy = out.y - (minY + maxY) / 2;
+  let prev = childrenOf(scene, out.parentId).reduce<string | null>((m, c) => (m === null || c.orderKey > m ? c.orderKey : m), null);
+  const ops: Op[] = [];
+  for (const n of moving) {
+    const key = orderKeyBetween(prev, null);
+    prev = key;
+    ops.push(makeReparentOp(n.id, out.parentId, key));
+    ops.push(makeSetPropsOp(n.id, { x: n.x + dx, y: n.y + dy }, ["x", "y"]));
   }
   return ops;
 }

@@ -4,11 +4,11 @@ import type { FlowIssue, FlowPath, FlowReport } from "../gen/opendesigner/v1/ope
 import { useScene } from "../store/store";
 import { resolveFlow, sortedFlows, useFlowUi } from "../store/flowUi";
 import { descendantsOf } from "../store/tree";
-import type { FlowLite, SceneState, TransitionLite } from "../store/types";
+import { TRANSITION_ANIMATIONS, type FlowLite, type SceneState, type TransitionLite } from "../store/types";
 import { useAnalysis, useFlowAnalysis, countByKind } from "../flow/analysis";
 import { cameraToFit, isFullyVisible } from "../flow/camera";
 import {
-  createFlowOp, deleteFlowOp, deleteTransitionOp, editTransitionOp, renameFlowOp, setStartOp, submit,
+  createFlowOp, deleteFlowOp, deleteTransitionOp, editTransitionAnimationOp, editTransitionOp, renameFlowOp, setStartOp, submit,
 } from "../flow/commands";
 import { flowLayout } from "../flow/layout";
 import { isScreenNode, screenName, screenOf } from "../flow/screens";
@@ -89,9 +89,20 @@ function focusTransition(scene: SceneState, id: string): void {
 
 // --- TRANSIZIONI -------------------------------------------------------------
 
+const ANIMATION_LABELS: Record<string, string> = {
+  dissolve: "Dissolve", "slide-left": "Slide in from the right", "slide-right": "Slide in from the left",
+  "slide-up": "Slide in from the bottom", "slide-down": "Slide in from the top",
+  "push-left": "Push left", "push-right": "Push right", "push-up": "Push up", "push-down": "Push down",
+  smart: "Smart animate",
+};
+
 function TransitionEditor({ scene, t }: { scene: SceneState; t: TransitionLite }) {
   const commit = (field: "label" | "trigger" | "guard" | "effect" | "elementId", v: string) => {
     const op = editTransitionOp(t, field, v);
+    if (op) submit([op]);
+  };
+  const commitAnim = (patch: Parameters<typeof editTransitionAnimationOp>[1]) => {
+    const op = editTransitionAnimationOp(t, patch);
     if (op) submit([op]);
   };
   // The start screen's elements that can act as hotspots: all its
@@ -122,6 +133,43 @@ function TransitionEditor({ scene, t }: { scene: SceneState; t: TransitionLite }
       <Field label="Effect" wide>
         <CommitField label="Effect" value={t.effect} onCommit={(v) => commit("effect", v)} placeholder="e.g. cart=full" className="font-mono text-[12px]" />
       </Field>
+      <Field label="Animation" wide>
+        <select
+          aria-label="Animation"
+          value={t.animation ?? ""}
+          onChange={(e) => commitAnim({ animation: e.target.value })}
+          className={cls.select}
+        >
+          <option value="">None (cut)</option>
+          {TRANSITION_ANIMATIONS.map((a) => (
+            <option key={a} value={a}>{ANIMATION_LABELS[a] ?? a}</option>
+          ))}
+        </select>
+      </Field>
+      {(t.animation ?? "") !== "" && (
+        <>
+          <Field label="Duration" wide>
+            <CommitField
+              label="Duration" value={t.durationMs ? String(t.durationMs) : ""} placeholder="300 ms"
+              onCommit={(v) => commitAnim({ durationMs: Number(v) || 0 })}
+            />
+          </Field>
+          <Field label="Easing" wide>
+            <select aria-label="Easing" value={t.easing ?? ""} onChange={(e) => commitAnim({ easing: e.target.value })} className={cls.select}>
+              <option value="">Ease in-out</option>
+              {["linear", "easeIn", "easeOut", "easeInOut", "spring"].map((v) => <option key={v} value={v}>{v}</option>)}
+            </select>
+          </Field>
+        </>
+      )}
+      {t.trigger === "auto" && (
+        <Field label="Delay" wide>
+          <CommitField
+            label="Delay" value={t.delayMs ? String(t.delayMs) : ""} placeholder="0 ms"
+            onCommit={(v) => commitAnim({ delayMs: Number(v) || 0 })}
+          />
+        </Field>
+      )}
       <Field label="Element" wide>
         <select
           aria-label="Element"

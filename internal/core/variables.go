@@ -5,178 +5,256 @@ import (
 	"fmt"
 	"math"
 	"sort"
+	"strconv"
+	"strings"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"google.golang.org/protobuf/proto"
 )
 
-// DESIGN VARIABLES (tokens). A Variable maps mode ids to colours; a paint can
-// reference one (Paint.variable) and reads the value live. This file is the
-// authority for the three ops; web/src/store/applyOp.ts mirrors it.
+// VARIABLES (design tokens) -- the Go half (the authority) of
+// web/src/store/applyOp.ts and web/src/store/variables.ts for the four ops
+// setCollection / deleteCollection / setVariable / deleteVariable and for the
+// "bindings" / "modes" mask paths of SetProperties.
+//
+// A COLLECTION owns a list of MODES; a VARIABLE belongs to one collection, has
+// a type (color or number) and one value per mode. A node BINDS a property to a
+// variable (Node.bindings) and may pin a collection to a mode (Node.modes).
+// The invariants:
+//
+//	1. a collection has a non-empty id and at least one mode; mode ids are
+//	   non-empty and unique within the collection;
+//	2. a variable has a non-empty id, an EXISTING collection, a COLOR or NUMBER
+//	   type, and values only for modes of its collection, each of the variable's
+//	   type (numbers finite, colors finite and in 0..1);
+//	3. an existing variable cannot change type or collection: its bindings and
+//	   values would stop meaning what they meant. Delete and recreate it;
+//	4. every binding key is in the closed grammar below, points to an EXISTING
+//	   variable and the variable's type matches the property's;
+//	5. every node mode override names an EXISTING collection and one of ITS modes;
+//	6. removing a mode from a collection drops that mode's values; deleting a
+//	   variable removes the bindings to it; deleting a collection deletes its
+//	   variables and removes the mode overrides that named it.
+//
+// Upserts are ABSOLUTE: the inverse of an op is the previous state (see
+// web/src/store/history.ts). Both maps may be nil and are initialized on the
+// first write.
 
 var (
-	ErrNilVariable      = errors.New("core: nil variable")
-	ErrVariableNotFound = errors.New("core: variable not found")
-	ErrBadMode          = errors.New("core: invalid mode")
-	ErrBadAlias         = errors.New("core: invalid variable alias")
-	ErrBadBinding       = errors.New("core: invalid variable binding")
+	ErrNilCollection      = errors.New("core: nil collection")
+	ErrCollectionNotFound = errors.New("core: collection not found")
+	ErrCollectionModes    = errors.New("core: a collection needs at least one mode, with unique non-empty ids")
+	ErrNilVariable        = errors.New("core: nil variable")
+	ErrVariableNotFound   = errors.New("core: variable not found")
+	ErrVariableType       = errors.New("core: variable type must be color or number")
+	ErrVariableImmutable  = errors.New("core: a variable cannot change type or collection")
+	ErrVariableValue      = errors.New("core: variable value missing, of the wrong type or out of range")
+	ErrVariableMode       = errors.New("core: variable has a value for a mode its collection does not have")
+	ErrBindingKey         = errors.New("core: unknown binding property")
+	ErrBindingVariable    = errors.New("core: binding to a missing variable or one of the wrong type")
+	ErrModeOverride       = errors.New("core: mode override names a missing collection or mode")
 )
 
-// maxAliasDepth bounds the walk along an alias chain. Cycles are refused when
-// the alias is written, so this only guards a document that got one anyway.
-const maxAliasDepth = 32
-
-// effective follows alias_of to the variable that actually holds the values.
-func effective(doc *opendesignerv1.Document, v *opendesignerv1.Variable) *opendesignerv1.Variable {
-	for i := 0; v != nil && v.GetAliasOf() != "" && i < maxAliasDepth; i++ {
-		v = doc.GetVariables()[v.GetAliasOf()]
+// BindingType returns the variable type a binding key accepts, and whether the
+// key is in the grammar:
+//
+//	opacity | rotation | corner_radius | strokes.N.weight   NUMBER
+//	fills.N | strokes.N                                      COLOR
+//
+// The TS mirror (web/src/store/variables.ts::bindingType) repeats it.
+func BindingType(key string) (opendesignerv1.VariableType, bool) {
+	switch key {
+	case "opacity", "rotation", "corner_radius":
+		return opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER, true
 	}
-	if v != nil && v.GetAliasOf() != "" {
-		return nil
-	}
-	return v
-}
-
-// defaultKey is the mode id a variable's unmoded value is read from: the first
-// mode, or, when the document defines none, the smallest key of `keys`.
-func defaultKey(doc *opendesignerv1.Document, keys []string) string {
-	if len(doc.GetModes()) > 0 {
-		return doc.GetModes()[0].GetId()
-	}
-	sort.Strings(keys)
-	if len(keys) > 0 {
-		return keys[0]
-	}
-	return ""
-}
-
-// ColorValue is the colour of a COLOR variable at the DEFAULT mode, alias
-// followed. ok=false for a missing, dangling or differently typed variable.
-func ColorValue(doc *opendesignerv1.Document, v *opendesignerv1.Variable) (*opendesignerv1.Color, bool) {
-	e := effective(doc, v)
-	if e == nil || e.GetType() != opendesignerv1.VariableType_VARIABLE_TYPE_COLOR {
-		return nil, false
-	}
-	keys := make([]string, 0, len(e.GetValues()))
-	for k := range e.GetValues() {
-		keys = append(keys, k)
-	}
-	c := e.GetValues()[defaultKey(doc, keys)]
-	return c, c != nil
-}
-
-// NumberValue: same, for NUMBER variables.
-func NumberValue(doc *opendesignerv1.Document, v *opendesignerv1.Variable) (float64, bool) {
-	e := effective(doc, v)
-	if e == nil || e.GetType() != opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER {
+	parts := strings.Split(key, ".")
+	if len(parts) < 2 || len(parts) > 3 || (parts[0] != "fills" && parts[0] != "strokes") {
 		return 0, false
 	}
-	keys := make([]string, 0, len(e.GetNumbers()))
-	for k := range e.GetNumbers() {
-		keys = append(keys, k)
+	if !isIndex(parts[1]) {
+		return 0, false
 	}
-	n, ok := e.GetNumbers()[defaultKey(doc, keys)]
-	return n, ok
+	switch {
+	case len(parts) == 2:
+		return opendesignerv1.VariableType_VARIABLE_TYPE_COLOR, true
+	case parts[0] == "strokes" && parts[2] == "weight":
+		return opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER, true
+	}
+	return 0, false
 }
 
-// StringValue: same, for STRING variables.
-func StringValue(doc *opendesignerv1.Document, v *opendesignerv1.Variable) (string, bool) {
-	e := effective(doc, v)
-	if e == nil || e.GetType() != opendesignerv1.VariableType_VARIABLE_TYPE_STRING {
-		return "", false
+// isIndex: a canonical non-negative decimal ("0", "12"; not "01", "-1", "+1").
+func isIndex(s string) bool {
+	n, err := strconv.Atoi(s)
+	return err == nil && n >= 0 && strconv.Itoa(n) == s
+}
+
+func validColor(c *opendesignerv1.Color) bool {
+	for _, v := range []float32{c.GetR(), c.GetG(), c.GetB(), c.GetA()} {
+		if math.IsNaN(float64(v)) || math.IsInf(float64(v), 0) || v < 0 || v > 1 {
+			return false
+		}
 	}
-	keys := make([]string, 0, len(e.GetStrings()))
-	for k := range e.GetStrings() {
-		keys = append(keys, k)
+	return true
+}
+
+func modeIDs(c *opendesignerv1.VariableCollection) map[string]bool {
+	ids := make(map[string]bool, len(c.GetModes()))
+	for _, m := range c.GetModes() {
+		ids[m.GetId()] = true
 	}
-	s, ok := e.GetStrings()[defaultKey(doc, keys)]
-	return s, ok
+	return ids
+}
+
+func validateCollection(c *opendesignerv1.VariableCollection) error {
+	if c == nil {
+		return ErrNilCollection
+	}
+	if c.GetId() == "" {
+		return fmt.Errorf("%w: empty id", ErrNilCollection)
+	}
+	if len(c.GetModes()) == 0 {
+		return ErrCollectionModes
+	}
+	seen := map[string]bool{}
+	for _, m := range c.GetModes() {
+		if m.GetId() == "" || seen[m.GetId()] {
+			return ErrCollectionModes
+		}
+		seen[m.GetId()] = true
+	}
+	return nil
 }
 
 func validateVariable(doc *opendesignerv1.Document, v *opendesignerv1.Variable) error {
-	if v == nil || v.GetId() == "" {
+	if v == nil {
 		return ErrNilVariable
 	}
-	if v.GetName() == "" {
-		return fmt.Errorf("%w: %s has no name", ErrNilVariable, v.GetId())
+	if v.GetId() == "" {
+		return fmt.Errorf("%w: empty id", ErrNilVariable)
 	}
-	switch v.GetType() {
-	case opendesignerv1.VariableType_VARIABLE_TYPE_COLOR, opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER, opendesignerv1.VariableType_VARIABLE_TYPE_STRING:
-	default:
-		return fmt.Errorf("%w: %s has unknown type %v", ErrNilVariable, v.GetId(), v.GetType())
+	col, ok := doc.GetCollections()[v.GetCollectionId()]
+	if !ok {
+		return fmt.Errorf("%w: %s", ErrCollectionNotFound, v.GetCollectionId())
 	}
-	// The kind decides which map holds values; the other two must be empty, so a
-	// variable never carries a value nobody can read.
-	typ := v.GetType()
-	if (typ != opendesignerv1.VariableType_VARIABLE_TYPE_COLOR && len(v.GetValues()) > 0) ||
-		(typ != opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER && len(v.GetNumbers()) > 0) ||
-		(typ != opendesignerv1.VariableType_VARIABLE_TYPE_STRING && len(v.GetStrings()) > 0) {
-		return fmt.Errorf("%w: %s has values of a kind other than its type %v", ErrNilVariable, v.GetId(), typ)
+	t := v.GetType()
+	if t != opendesignerv1.VariableType_VARIABLE_TYPE_COLOR && t != opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER {
+		return ErrVariableType
 	}
-	if v.GetAliasOf() != "" {
-		return validateAlias(doc, v)
+	if prev, ok := doc.GetVariables()[v.GetId()]; ok &&
+		(prev.GetType() != t || prev.GetCollectionId() != v.GetCollectionId()) {
+		return ErrVariableImmutable
 	}
-	modes := map[string]bool{}
-	for _, m := range doc.GetModes() {
-		modes[m.GetId()] = true
-	}
-	check := func(mode string) error {
-		// With modes defined, a value for an unknown mode is a typo that would
-		// never be read; with none defined, the key is free (it becomes the
-		// default mode's id later).
-		if len(modes) > 0 && !modes[mode] {
-			return fmt.Errorf("%w: variable %s has a value for unknown mode %q", ErrBadMode, v.GetId(), mode)
+	modes := modeIDs(col)
+	for mode, val := range v.GetValues() {
+		if !modes[mode] {
+			return fmt.Errorf("%w: %s", ErrVariableMode, mode)
 		}
+		switch t {
+		case opendesignerv1.VariableType_VARIABLE_TYPE_COLOR:
+			c, ok := val.GetKind().(*opendesignerv1.VariableValue_Color)
+			if !ok || !validColor(c.Color) {
+				return ErrVariableValue
+			}
+		case opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER:
+			n, ok := val.GetKind().(*opendesignerv1.VariableValue_Number)
+			if !ok || math.IsNaN(n.Number) || math.IsInf(n.Number, 0) {
+				return ErrVariableValue
+			}
+		}
+	}
+	return nil
+}
+
+// validateBindings checks a node's bindings against the document (invariant 4).
+func validateBindings(doc *opendesignerv1.Document, b map[string]string) error {
+	for key, id := range b {
+		want, ok := BindingType(key)
+		if !ok {
+			return fmt.Errorf("%w: %q", ErrBindingKey, key)
+		}
+		v, ok := doc.GetVariables()[id]
+		if !ok || v.GetType() != want {
+			return fmt.Errorf("%w: %q -> %q", ErrBindingVariable, key, id)
+		}
+	}
+	return nil
+}
+
+// validateModes checks a node's mode overrides against the document (invariant 5).
+func validateModes(doc *opendesignerv1.Document, m map[string]string) error {
+	for col, mode := range m {
+		c, ok := doc.GetCollections()[col]
+		if !ok || !modeIDs(c)[mode] {
+			return fmt.Errorf("%w: %s=%s", ErrModeOverride, col, mode)
+		}
+	}
+	return nil
+}
+
+func applySetCollection(doc *opendesignerv1.Document, s *opendesignerv1.SetCollection, cow *Shared) error {
+	c := s.GetCollection()
+	if err := validateCollection(c); err != nil {
+		return err
+	}
+	if doc.Collections == nil {
+		doc.Collections = map[string]*opendesignerv1.VariableCollection{}
+	}
+	prev := doc.Collections[c.GetId()]
+	doc.Collections[c.GetId()] = proto.Clone(c).(*opendesignerv1.VariableCollection)
+	if prev == nil {
 		return nil
 	}
-	for mode, c := range v.GetValues() {
-		if c == nil {
-			return fmt.Errorf("%w: %s has a nil value for mode %q", ErrNilVariable, v.GetId(), mode)
+	// Invariant 6: the modes that disappeared take their values (and the
+	// overrides that pinned them) with them.
+	keep := modeIDs(c)
+	for _, v := range doc.Variables {
+		if v.GetCollectionId() != c.GetId() {
+			continue
 		}
-		if err := check(mode); err != nil {
-			return err
+		for mode := range v.GetValues() {
+			if !keep[mode] {
+				delete(v.Values, mode)
+			}
 		}
 	}
-	for mode := range v.GetNumbers() {
-		if err := check(mode); err != nil {
-			return err
-		}
-	}
-	for mode := range v.GetStrings() {
-		if err := check(mode); err != nil {
-			return err
+	for _, id := range sortedNodeIDs(doc) {
+		n := doc.Nodes[id]
+		if mode, ok := n.GetModes()[c.GetId()]; ok && !keep[mode] {
+			n = cow.mut(doc, id)
+			delete(n.Modes, c.GetId())
 		}
 	}
 	return nil
 }
 
-// validateAlias: an alias holds no values, points at an EXISTING variable of the
-// SAME type, and the chain must not come back to this variable.
-func validateAlias(doc *opendesignerv1.Document, v *opendesignerv1.Variable) error {
-	if len(v.GetValues())+len(v.GetNumbers())+len(v.GetStrings()) > 0 {
-		return fmt.Errorf("%w: %s is an alias and must not carry values", ErrBadAlias, v.GetId())
+func applyDeleteCollection(doc *opendesignerv1.Document, d *opendesignerv1.DeleteCollection, cow *Shared) error {
+	if _, ok := doc.GetCollections()[d.GetId()]; !ok {
+		return fmt.Errorf("%w: %s", ErrCollectionNotFound, d.GetId())
 	}
-	target := doc.GetVariables()[v.GetAliasOf()]
-	if target == nil {
-		return fmt.Errorf("%w: %s points at unknown variable %q", ErrBadAlias, v.GetId(), v.GetAliasOf())
-	}
-	if target.GetType() != v.GetType() {
-		return fmt.Errorf("%w: %s (%v) cannot alias %s (%v)", ErrBadAlias, v.GetId(), v.GetType(), target.GetId(), target.GetType())
-	}
-	cur := target
-	for i := 0; cur != nil && i < maxAliasDepth; i++ {
-		if cur.GetId() == v.GetId() {
-			return fmt.Errorf("%w: %s would alias itself through %s", ErrBadAlias, v.GetId(), target.GetId())
+	gone := map[string]bool{}
+	for id, v := range doc.Variables {
+		if v.GetCollectionId() == d.GetId() {
+			gone[id] = true
 		}
-		if cur.GetAliasOf() == "" {
-			return nil
+	}
+	delete(doc.Collections, d.GetId())
+	for id := range gone {
+		delete(doc.Variables, id)
+	}
+	for _, id := range sortedNodeIDs(doc) {
+		n := doc.Nodes[id]
+		_, pinned := n.GetModes()[d.GetId()]
+		if pinned || bindsAny(n, gone) {
+			n = cow.mut(doc, id)
+			delete(n.Modes, d.GetId())
+			unbind(n, gone)
 		}
-		cur = doc.GetVariables()[cur.GetAliasOf()]
 	}
 	return nil
 }
 
-func applySetVariable(doc *opendesignerv1.Document, s *opendesignerv1.SetVariable, cow *Shared) error {
+func applySetVariable(doc *opendesignerv1.Document, s *opendesignerv1.SetVariable) error {
 	v := s.GetVariable()
 	if err := validateVariable(doc, v); err != nil {
 		return err
@@ -184,250 +262,178 @@ func applySetVariable(doc *opendesignerv1.Document, s *opendesignerv1.SetVariabl
 	if doc.Variables == nil {
 		doc.Variables = map[string]*opendesignerv1.Variable{}
 	}
-	doc.Variables[v.GetId()] = v
-	rebindAll(doc, cow)
+	doc.Variables[v.GetId()] = proto.Clone(v).(*opendesignerv1.Variable)
 	return nil
 }
 
-func applyDeleteVariable(doc *opendesignerv1.Document, d *opendesignerv1.DeleteVariable) error {
+func applyDeleteVariable(doc *opendesignerv1.Document, d *opendesignerv1.DeleteVariable, cow *Shared) error {
 	if _, ok := doc.GetVariables()[d.GetId()]; !ok {
 		return fmt.Errorf("%w: %s", ErrVariableNotFound, d.GetId())
 	}
 	delete(doc.Variables, d.GetId())
-	// Bound numbers and texts keep the last value they were given; there is
-	// nothing to recompute. (Colour paints draw black, in the readers.)
+	gone := map[string]bool{d.GetId(): true}
+	for _, id := range sortedNodeIDs(doc) {
+		if bindsAny(doc.Nodes[id], gone) {
+			unbind(cow.mut(doc, id), gone)
+		}
+	}
 	return nil
 }
 
-// applySetModes replaces the mode list. Ids must be non-empty and unique; the
-// variables' values keyed by a mode that disappears are dropped, so no variable
-// keeps a value nobody can read. Replaced variables are COPIES (the server's
-// copy-on-write clone may share the originals with a previous generation).
-func applySetModes(doc *opendesignerv1.Document, s *opendesignerv1.SetModes, cow *Shared) error {
-	if err := ValidateModes(s.GetModes()); err != nil {
-		return err
-	}
-	seen := map[string]bool{}
-	for _, m := range s.GetModes() {
-		seen[m.GetId()] = true
-	}
-	doc.Modes = s.GetModes()
-	if len(seen) > 0 {
-		for id, v := range doc.GetVariables() {
-			if !hasStale(v, seen) {
-				continue
-			}
-			next := &opendesignerv1.Variable{Id: v.GetId(), Name: v.GetName(), AliasOf: v.GetAliasOf(), Type: v.GetType()}
-			next.Values = keepModes(v.GetValues(), seen)
-			next.Numbers = keepModes(v.GetNumbers(), seen)
-			next.Strings = keepModes(v.GetStrings(), seen)
-			doc.Variables[id] = next
+func bindsAny(n *opendesignerv1.Node, vars map[string]bool) bool {
+	for _, id := range n.GetBindings() {
+		if vars[id] {
+			return true
 		}
 	}
-	rebindAll(doc, cow)
+	return false
+}
+
+func unbind(n *opendesignerv1.Node, vars map[string]bool) {
+	for key, id := range n.GetBindings() {
+		if vars[id] {
+			delete(n.Bindings, key)
+		}
+	}
+}
+
+// sortedNodeIDs makes the cascades deterministic (and the copy-on-write set
+// reproducible); the cascade touches every node only when it has to.
+func sortedNodeIDs(doc *opendesignerv1.Document) []string {
+	ids := make([]string, 0, len(doc.GetNodes()))
+	for id := range doc.GetNodes() {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	return ids
+}
+
+// ---------- resolution ----------
+
+// ActiveMode is the mode of `collectionID` in force for node `nodeID`: the
+// nearest ancestor (the node itself included) that pins the collection to a
+// mode the collection still has, else the collection's first mode. "" if the
+// collection does not exist.
+func ActiveMode(doc *opendesignerv1.Document, nodeID, collectionID string) string {
+	col, ok := doc.GetCollections()[collectionID]
+	if !ok || len(col.GetModes()) == 0 {
+		return ""
+	}
+	modes := modeIDs(col)
+	cur := doc.GetNodes()[nodeID]
+	for guard := 0; cur != nil && guard < 10000; guard++ {
+		if m, ok := cur.GetModes()[collectionID]; ok && modes[m] {
+			return m
+		}
+		cur = doc.GetNodes()[cur.GetParentId()]
+	}
+	return col.GetModes()[0].GetId()
+}
+
+// VariableValueIn is the value of `v` in `mode`, falling back to the
+// collection's default mode, or nil if neither has one.
+func VariableValueIn(doc *opendesignerv1.Document, v *opendesignerv1.Variable, mode string) *opendesignerv1.VariableValue {
+	if val, ok := v.GetValues()[mode]; ok {
+		return val
+	}
+	if col := doc.GetCollections()[v.GetCollectionId()]; len(col.GetModes()) > 0 {
+		return v.GetValues()[col.GetModes()[0].GetId()]
+	}
 	return nil
 }
 
-func keepModes[V any](in map[string]V, keep map[string]bool) map[string]V {
-	if len(in) == 0 {
-		return nil
+// ResolveNode returns `n` with its variable bindings substituted by the values
+// of the active modes. A node without bindings (the common case) is returned
+// as is; otherwise it is a clone, the document is never touched. A binding whose
+// variable, value or target paint is missing is ignored: the literal stays.
+func ResolveNode(doc *opendesignerv1.Document, n *opendesignerv1.Node) *opendesignerv1.Node {
+	n = resolveTextStyle(doc, n)
+	if len(n.GetBindings()) == 0 {
+		return n
 	}
-	out := map[string]V{}
-	for k, v := range in {
-		if keep[k] {
-			out[k] = v
+	out := proto.Clone(n).(*opendesignerv1.Node)
+	keys := make([]string, 0, len(n.GetBindings()))
+	for k := range n.GetBindings() {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	for _, key := range keys {
+		v := doc.GetVariables()[n.GetBindings()[key]]
+		if v == nil {
+			continue
 		}
+		val := VariableValueIn(doc, v, ActiveMode(doc, n.GetId(), v.GetCollectionId()))
+		if val == nil {
+			continue
+		}
+		setBound(out, key, val)
 	}
 	return out
 }
 
-func hasStale(v *opendesignerv1.Variable, keep map[string]bool) bool {
-	for k := range v.GetValues() {
-		if !keep[k] {
-			return true
-		}
-	}
-	for k := range v.GetNumbers() {
-		if !keep[k] {
-			return true
-		}
-	}
-	for k := range v.GetStrings() {
-		if !keep[k] {
-			return true
-		}
-	}
-	return false
-}
-
-// --- numeric and text bindings -------------------------------------------------
-
-// BindableProps: the node properties a variable can drive, and the kind it must be.
-var BindableProps = map[string]opendesignerv1.VariableType{
-	"opacity":       opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER,
-	"corner_radius": opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER,
-	"font_size":     opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER,
-	"text":          opendesignerv1.VariableType_VARIABLE_TYPE_STRING,
-}
-
-// validateBindings checks a node's `bindings` against the document: known
-// property, node of the right nature, existing variable of the right kind.
-func validateBindings(doc *opendesignerv1.Document, n *opendesignerv1.Node, bindings map[string]string) error {
-	for prop, id := range bindings {
-		want, ok := BindableProps[prop]
-		if !ok {
-			return fmt.Errorf("%w: %q is not a bindable property", ErrBadBinding, prop)
-		}
-		switch prop {
-		case "corner_radius":
-			switch n.GetShape().(type) {
-			case nil, *opendesignerv1.Node_Rect:
-			default:
-				return fmt.Errorf("%w: corner_radius needs a rectangle (%s)", ErrBadBinding, n.GetId())
-			}
-		case "font_size", "text":
-			if _, isText := n.GetShape().(*opendesignerv1.Node_Text); !isText {
-				return fmt.Errorf("%w: %s needs a text node (%s)", ErrBadBinding, prop, n.GetId())
-			}
-		}
-		v := doc.GetVariables()[id]
-		if v == nil {
-			return fmt.Errorf("%w: unknown variable %q for %s", ErrBadBinding, id, prop)
-		}
-		if v.GetType() != want {
-			return fmt.Errorf("%w: %s needs a %v variable, %q is %v", ErrBadBinding, prop, want, id, v.GetType())
-		}
-	}
-	return nil
-}
-
-// applyBindings writes each bound variable's default-mode value into the node
-// (already writable: the caller went through cow.mut). A variable with no value
-// leaves the property as it is.
-func applyBindings(doc *opendesignerv1.Document, n *opendesignerv1.Node) {
-	resolveStops(doc, n)
-	for prop, id := range n.GetBindings() {
-		v := doc.GetVariables()[id]
-		switch prop {
+func setBound(n *opendesignerv1.Node, key string, val *opendesignerv1.VariableValue) {
+	if num, ok := val.GetKind().(*opendesignerv1.VariableValue_Number); ok {
+		switch key {
 		case "opacity":
-			if x, ok := NumberValue(doc, v); ok {
-				n.Opacity = math.Max(0, math.Min(1, x))
-			}
+			n.Opacity = math.Min(1, math.Max(0, num.Number))
+		case "rotation":
+			n.Rotation = num.Number
 		case "corner_radius":
-			if x, ok := NumberValue(doc, v); ok {
-				if r := n.GetRect(); r != nil {
-					r.CornerRadius = math.Max(0, x)
-				} else if n.Shape == nil {
-					n.Shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: math.Max(0, x)}}
+			// An absent shape is an implicit rectangle (see applySetProps), so it
+			// takes the radius too; any other shape ignores the binding.
+			switch n.GetShape().(type) {
+			case nil:
+				n.Shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: math.Max(0, num.Number)}}
+			case *opendesignerv1.Node_Rect:
+				if n.GetRect() == nil {
+					n.GetShape().(*opendesignerv1.Node_Rect).Rect = &opendesignerv1.RectNode{}
 				}
+				n.GetRect().CornerRadius = math.Max(0, num.Number)
 			}
-		case "font_size":
-			if x, ok := NumberValue(doc, v); ok && n.GetText() != nil && x > 0 {
-				if n.GetText().Style == nil {
-					n.GetText().Style = &opendesignerv1.TextStyle{}
-				}
-				n.GetText().Style.FontSize = x
-			}
-		case "text":
-			if x, ok := StringValue(doc, v); ok && n.GetText() != nil {
-				n.GetText().Content = x
+		default: // strokes.N.weight
+			parts := strings.Split(key, ".")
+			if i, _ := strconv.Atoi(parts[1]); i < len(n.GetStrokes()) {
+				n.Strokes[i].Weight = math.Max(0, num.Number)
 			}
 		}
-	}
-}
-
-// stopBound reports whether any gradient stop of the node follows a variable.
-func stopBound(n *opendesignerv1.Node) bool {
-	check := func(p *opendesignerv1.Paint) bool {
-		for _, g := range []*opendesignerv1.GradientPaint{p.GetLinear(), p.GetRadial()} {
-			for _, st := range g.GetStops() {
-				if st.GetVariableId() != "" {
-					return true
-				}
-			}
-		}
-		return false
-	}
-	for _, p := range n.GetFills() {
-		if check(p) {
-			return true
-		}
-	}
-	for _, s := range n.GetStrokes() {
-		if check(s.GetPaint()) {
-			return true
-		}
-	}
-	return false
-}
-
-// resolveStops writes into each variable-bound gradient stop the variable's
-// DEFAULT-mode colour, so a reader that ignores variables still draws the right
-// gradient. The paints are cloned first: after SetProperties they are the op's
-// own messages, which other holders (the op log, subscribers) still reference.
-func resolveStops(doc *opendesignerv1.Document, n *opendesignerv1.Node) {
-	if !stopBound(n) {
 		return
 	}
-	fix := func(p *opendesignerv1.Paint) *opendesignerv1.Paint {
-		c := proto.Clone(p).(*opendesignerv1.Paint)
-		for _, g := range []*opendesignerv1.GradientPaint{c.GetLinear(), c.GetRadial()} {
-			for _, st := range g.GetStops() {
-				if id := st.GetVariableId(); id != "" {
-					if col, ok := ColorValue(doc, doc.GetVariables()[id]); ok {
-						st.Color = col
-					}
-				}
-			}
-		}
-		return c
+	col, ok := val.GetKind().(*opendesignerv1.VariableValue_Color)
+	if !ok {
+		return
 	}
-	// New slices and new Stroke messages: the old ones may be the op's own.
-	fills := make([]*opendesignerv1.Paint, len(n.Fills))
-	for i, p := range n.Fills {
-		fills[i] = fix(p)
+	parts := strings.Split(key, ".")
+	i, _ := strconv.Atoi(parts[1])
+	var paint *opendesignerv1.Paint
+	switch {
+	case parts[0] == "fills" && i < len(n.GetFills()):
+		paint = n.Fills[i]
+	case parts[0] == "strokes" && i < len(n.GetStrokes()):
+		paint = n.Strokes[i].GetPaint()
 	}
-	n.Fills = fills
-	strokes := make([]*opendesignerv1.Stroke, len(n.Strokes))
-	for i, s := range n.Strokes {
-		c := proto.Clone(s).(*opendesignerv1.Stroke)
-		c.Paint = fix(s.GetPaint())
-		strokes[i] = c
-	}
-	n.Strokes = strokes
-}
-
-// rebindAll re-applies every node's bindings after a variable or the modes
-// changed. Nodes are written through cow, so a shared one is cloned first.
-func rebindAll(doc *opendesignerv1.Document, cow *Shared) {
-	for id, n := range doc.GetNodes() {
-		if len(n.GetBindings()) == 0 && !stopBound(n) {
-			continue
-		}
-		applyBindings(doc, cow.mut(doc, id))
+	if s := paint.GetSolid(); s != nil {
+		s.Color = proto.Clone(col.Color).(*opendesignerv1.Color)
 	}
 }
 
-// ValidateVariable reports whether a SetVariable with this variable would be
-// accepted by the document, without applying it: the MCP tools use the same
-// logic as the authority to give the agent a clear error BEFORE sending.
+// The validators the MCP tools run BEFORE submitting, so the agent reads the
+// authority's own error instead of an opaque rejection (same pattern as
+// ValidateClip).
+
+// ValidateCollection checks a collection upsert against the invariants.
+func ValidateCollection(c *opendesignerv1.VariableCollection) error { return validateCollection(c) }
+
+// ValidateVariable checks a variable upsert against the document.
 func ValidateVariable(doc *opendesignerv1.Document, v *opendesignerv1.Variable) error {
 	return validateVariable(doc, v)
 }
 
-// ValidateModes is the same for SetModes.
-func ValidateModes(modes []*opendesignerv1.Mode) error {
-	seen := map[string]bool{}
-	for _, m := range modes {
-		if m.GetId() == "" || seen[m.GetId()] {
-			return fmt.Errorf("%w: empty or duplicate id %q", ErrBadMode, m.GetId())
-		}
-		seen[m.GetId()] = true
-	}
-	return nil
+// ValidateBindings checks a node's whole bindings map against the document.
+func ValidateBindings(doc *opendesignerv1.Document, b map[string]string) error {
+	return validateBindings(doc, b)
 }
 
-// ApplyBindings writes the bound variables' default-mode values into the node.
-// The server does it as part of every op; this export lets the code generator do
-// it for a document that was built outside the server.
-func ApplyBindings(doc *opendesignerv1.Document, n *opendesignerv1.Node) { applyBindings(doc, n) }
+// ValidateModes checks a node's whole mode-pin map against the document.
+func ValidateModes(doc *opendesignerv1.Document, m map[string]string) error {
+	return validateModes(doc, m)
+}

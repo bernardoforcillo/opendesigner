@@ -67,6 +67,7 @@ type fill struct {
 	color  *opendesignerv1.Color
 	grad   *opendesignerv1.GradientPaint
 	radial bool
+	image  *opendesignerv1.ImagePaint
 }
 
 var defaultGrey = &opendesignerv1.Color{R: 0.8, G: 0.8, B: 0.8, A: 1}
@@ -80,12 +81,37 @@ func toFill(p *opendesignerv1.Paint) fill {
 		return gradFill(k.Linear, false)
 	case *opendesignerv1.Paint_Radial:
 		return gradFill(k.Radial, true)
+	case *opendesignerv1.Paint_Image:
+		// The flat base color the canvas shows until the image arrives; the image itself is a
+		// background-image where the box can carry one (boxPaint).
+		return fill{color: defaultGrey, image: k.Image}
+	case *opendesignerv1.Paint_Mesh:
+		// CSS has no mesh gradient: the code gets the grid's AVERAGE color (what the canvas's
+		// fallback shows too); the blend itself is in the canvas, the GPU renderer and the SVG.
+		return fill{color: meshAverage(k.Mesh)}
 	case *opendesignerv1.Paint_Solid:
 		if c := k.Solid.GetColor(); c != nil {
 			return fill{color: c}
 		}
 	}
 	return fill{color: black}
+}
+
+// meshAverage is the mean of a mesh's colors (opaque black for an empty one).
+func meshAverage(m *opendesignerv1.MeshPaint) *opendesignerv1.Color {
+	cs := m.GetColors()
+	if len(cs) == 0 {
+		return black
+	}
+	var r, g, b, a float64
+	for _, c := range cs {
+		r += float64(c.GetR())
+		g += float64(c.GetG())
+		b += float64(c.GetB())
+		a += float64(c.GetA())
+	}
+	n := float64(len(cs))
+	return &opendesignerv1.Color{R: float32(r / n), G: float32(g / n), B: float32(b / n), A: float32(a / n)}
 }
 
 func gradFill(g *opendesignerv1.GradientPaint, radial bool) fill {
@@ -222,6 +248,56 @@ func shadowCSS(s *opendesignerv1.DropShadow, mul float64) string {
 	return fmt.Sprintf("%s %s %s %s", px(s.GetOffsetX()), px(s.GetOffsetY()), px(math.Max(0, s.GetBlur())), colorCSS(s.GetColor(), mul))
 }
 
+// extraShadows: the drop shadows after the first, as box-shadow entries; innerShadows:
+// the inner shadows as `inset` entries. Both are in list order, the topmost first,
+// like CSS.
+func extraShadows(effects []*opendesignerv1.Effect, mul float64) []string {
+	var out []string
+	first := true
+	for _, e := range effects {
+		if s := e.GetDropShadow(); s != nil {
+			if first {
+				first = false
+				continue
+			}
+			out = append(out, shadowCSS(s, mul))
+		}
+	}
+	return out
+}
+
+func innerShadows(effects []*opendesignerv1.Effect, mul float64) []string {
+	var out []string
+	for _, e := range effects {
+		if s := e.GetInnerShadow(); s != nil {
+			out = append(out, "inset "+fmt.Sprintf("%s %s %s %s", px(s.GetOffsetX()), px(s.GetOffsetY()), px(math.Max(0, s.GetBlur())), colorCSS(s.GetColor(), mul)))
+		}
+	}
+	return out
+}
+
+// backgroundBlur: the first background blur with radius > 0, or nil.
+func backgroundBlur(effects []*opendesignerv1.Effect) *opendesignerv1.BackgroundBlur {
+	for _, e := range effects {
+		if b := e.GetBackgroundBlur(); b != nil && b.GetRadius() > 0 {
+			return b
+		}
+	}
+	return nil
+}
+
+// blendCSS: the mix-blend-mode value of a node, "" for normal.
+var blendNames = map[opendesignerv1.BlendMode]string{
+	opendesignerv1.BlendMode_BLEND_MODE_MULTIPLY: "multiply", opendesignerv1.BlendMode_BLEND_MODE_SCREEN: "screen",
+	opendesignerv1.BlendMode_BLEND_MODE_OVERLAY: "overlay", opendesignerv1.BlendMode_BLEND_MODE_DARKEN: "darken",
+	opendesignerv1.BlendMode_BLEND_MODE_LIGHTEN: "lighten", opendesignerv1.BlendMode_BLEND_MODE_COLOR_DODGE: "color-dodge",
+	opendesignerv1.BlendMode_BLEND_MODE_COLOR_BURN: "color-burn", opendesignerv1.BlendMode_BLEND_MODE_HARD_LIGHT: "hard-light",
+	opendesignerv1.BlendMode_BLEND_MODE_SOFT_LIGHT: "soft-light", opendesignerv1.BlendMode_BLEND_MODE_DIFFERENCE: "difference",
+	opendesignerv1.BlendMode_BLEND_MODE_EXCLUSION: "exclusion", opendesignerv1.BlendMode_BLEND_MODE_HUE: "hue",
+	opendesignerv1.BlendMode_BLEND_MODE_SATURATION: "saturation", opendesignerv1.BlendMode_BLEND_MODE_COLOR: "color",
+	opendesignerv1.BlendMode_BLEND_MODE_LUMINOSITY: "luminosity",
+}
+
 // firstShadow / firstBlur: the canvas draws the FIRST shadow and the FIRST
 // blur with radius > 0 (canvasRenderer.ts::firstShadow/firstBlur).
 func firstShadow(effects []*opendesignerv1.Effect) *opendesignerv1.DropShadow {
@@ -262,14 +338,14 @@ func strokeAlign(a opendesignerv1.StrokeAlign) opendesignerv1.StrokeAlign {
 // A stroke with weight <= 0 is not a stroke (same rule as the canvas). A
 // stroke with a gradient falls back to the first colour: a box-shadow ring
 // cannot be shaded.
-func strokeRings(strokes []*opendesignerv1.Stroke, mul float64, vars []string) []string {
+func strokeRings(strokes []*opendesignerv1.Stroke, mul float64) []string {
 	var rings []string
 	for i := len(strokes) - 1; i >= 0; i-- {
 		s := strokes[i]
 		if !(s.GetWeight() > 0) {
 			continue
 		}
-		col := colorOrVar(toFill(s.GetPaint()), varAt(vars, i), mul)
+		col := colorCSS(toFill(s.GetPaint()).color, mul)
 		w := s.GetWeight()
 		switch strokeAlign(s.GetAlign()) {
 		case opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE:

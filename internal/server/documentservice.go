@@ -1,14 +1,20 @@
 package server
 
 import (
+	"bytes"
 	"context"
 	"errors"
+	"github.com/bernardoforcillo/opendesigner/internal/board"
+	"github.com/bernardoforcillo/opendesigner/internal/review"
+	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"os"
+	"strings"
 
 	"connectrpc.com/connect"
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"github.com/bernardoforcillo/opendesigner/internal/codegen"
 	"github.com/bernardoforcillo/opendesigner/internal/diagram"
+	"github.com/bernardoforcillo/opendesigner/internal/figimport"
 	"github.com/bernardoforcillo/opendesigner/internal/flow"
 )
 
@@ -16,14 +22,15 @@ type DocumentService struct{ m *Manager }
 
 func NewDocumentService(m *Manager) *DocumentService { return &DocumentService{m: m} }
 
-func (s *DocumentService) ListDocuments(_ context.Context, _ *connect.Request[opendesignerv1.ListDocumentsRequest]) (*connect.Response[opendesignerv1.ListDocumentsResponse], error) {
+func (s *DocumentService) ListDocuments(ctx context.Context, _ *connect.Request[opendesignerv1.ListDocumentsRequest]) (*connect.Response[opendesignerv1.ListDocumentsResponse], error) {
 	// List reads the workspace directory, so it can fail for reasons the
 	// caller has no part in (permissions, a missing mount).
 	docs, err := s.m.List()
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}
-	return connect.NewResponse(&opendesignerv1.ListDocumentsResponse{Docs: docs}), nil
+	// Protected documents are not advertised to whoever has no business with them.
+	return connect.NewResponse(&opendesignerv1.ListDocumentsResponse{Docs: s.m.hideProtected(docs, callerOf(ctx))}), nil
 }
 
 func (s *DocumentService) CreateDocument(_ context.Context, req *connect.Request[opendesignerv1.CreateDocumentRequest]) (*connect.Response[opendesignerv1.DocInfo], error) {
@@ -290,4 +297,178 @@ func (s *DocumentService) RenderDiagram(_ context.Context, req *connect.Request[
 	return connect.NewResponse(&opendesignerv1.RenderDiagramResponse{
 		Nodes: res.Nodes, Kind: res.Kind, Width: res.Width, Height: res.Height, Warnings: res.Warnings,
 	}), nil
+}
+
+// versionErr maps the Manager's errors to Connect codes.
+func versionErr(err error) error {
+	switch {
+	case errors.Is(err, ErrDocNotFound), errors.Is(err, store.ErrVersionNotFound), errors.Is(err, errInvalidDocID):
+		return connect.NewError(connect.CodeNotFound, err)
+	case errors.Is(err, errEmptyName), errors.Is(err, errNameTooLong):
+		return connect.NewError(connect.CodeInvalidArgument, err)
+	default:
+		return connect.NewError(connect.CodeInternal, err)
+	}
+}
+
+func (s *DocumentService) CreateVersion(_ context.Context, req *connect.Request[opendesignerv1.CreateVersionRequest]) (*connect.Response[opendesignerv1.VersionInfo], error) {
+	v, err := s.m.CreateVersion(req.Msg.GetDocId(), req.Msg.GetName())
+	if err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(v), nil
+}
+
+func (s *DocumentService) ListVersions(_ context.Context, req *connect.Request[opendesignerv1.ListVersionsRequest]) (*connect.Response[opendesignerv1.ListVersionsResponse], error) {
+	vs, err := s.m.ListVersions(req.Msg.GetDocId())
+	if err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(&opendesignerv1.ListVersionsResponse{Versions: vs}), nil
+}
+
+func (s *DocumentService) DeleteVersion(_ context.Context, req *connect.Request[opendesignerv1.DeleteVersionRequest]) (*connect.Response[opendesignerv1.DeleteVersionResponse], error) {
+	if err := s.m.DeleteVersion(req.Msg.GetDocId(), req.Msg.GetVersionId()); err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(&opendesignerv1.DeleteVersionResponse{}), nil
+}
+
+func (s *DocumentService) BranchDocument(_ context.Context, req *connect.Request[opendesignerv1.BranchRequest]) (*connect.Response[opendesignerv1.DocInfo], error) {
+	d, err := s.m.Branch(req.Msg.GetDocId(), req.Msg.GetVersionId(), req.Msg.GetName())
+	if err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(d), nil
+}
+
+func (s *DocumentService) GetBranchOrigin(_ context.Context, req *connect.Request[opendesignerv1.GetBranchOriginRequest]) (*connect.Response[opendesignerv1.GetBranchOriginResponse], error) {
+	r, err := s.m.BranchOrigin(req.Msg.GetDocId())
+	if err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(r), nil
+}
+
+func (s *DocumentService) ReviewMerge(_ context.Context, req *connect.Request[opendesignerv1.ReviewMergeRequest]) (*connect.Response[opendesignerv1.ReviewMergeResponse], error) {
+	r, err := s.m.ReviewMerge(req.Msg.GetDocId())
+	if err != nil {
+		return nil, mergeErr(err)
+	}
+	return connect.NewResponse(r), nil
+}
+
+func (s *DocumentService) MergeBranch(_ context.Context, req *connect.Request[opendesignerv1.MergeBranchRequest]) (*connect.Response[opendesignerv1.MergeBranchResponse], error) {
+	r, err := s.m.MergeBranch(req.Msg.GetDocId(), req.Msg.GetPreferBranch())
+	if err != nil {
+		return nil, mergeErr(err)
+	}
+	return connect.NewResponse(r), nil
+}
+
+func mergeErr(err error) error {
+	if errors.Is(err, errNotABranch) {
+		return connect.NewError(connect.CodeFailedPrecondition, err)
+	}
+	return versionErr(err)
+}
+
+func (s *DocumentService) ReviewDesign(_ context.Context, req *connect.Request[opendesignerv1.ReviewDesignRequest]) (*connect.Response[opendesignerv1.ReviewDesignResponse], error) {
+	if !s.m.Exists(req.Msg.GetDocId()) {
+		return nil, connect.NewError(connect.CodeNotFound, ErrDocNotFound)
+	}
+	h, err := s.m.HubFor(req.Msg.GetDocId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	doc, _ := h.Snapshot()
+	out := &opendesignerv1.ReviewDesignResponse{}
+	for _, i := range review.Review(doc) {
+		out.Issues = append(out.Issues, &opendesignerv1.ReviewIssue{
+			Rule: i.Rule, Severity: i.Severity, NodeId: i.NodeID, NodeName: i.NodeName, Message: i.Message,
+		})
+	}
+	return connect.NewResponse(out), nil
+}
+
+func (s *DocumentService) RenderBoard(_ context.Context, req *connect.Request[opendesignerv1.RenderBoardRequest]) (*connect.Response[opendesignerv1.RenderBoardResponse], error) {
+	m := req.Msg
+	res, err := board.Render(m.GetKind(), board.Params{Items: m.GetItems(), Rows: int(m.GetRows()), Columns: int(m.GetColumns()), Color: m.GetColor()})
+	if err != nil {
+		var be *board.Error
+		if errors.As(err, &be) {
+			return nil, connect.NewError(connect.CodeInvalidArgument, err)
+		}
+		return nil, connect.NewError(connect.CodeInternal, err)
+	}
+	return connect.NewResponse(&opendesignerv1.RenderBoardResponse{Nodes: res.Nodes, Width: res.Width, Height: res.Height}), nil
+}
+
+func (s *DocumentService) ImportFig(_ context.Context, req *connect.Request[opendesignerv1.ImportFigRequest]) (*connect.Response[opendesignerv1.ImportFigResponse], error) {
+	docID := req.Msg.GetDocId()
+	if !s.m.Exists(docID) {
+		return nil, connect.NewError(connect.CodeNotFound, ErrDocNotFound)
+	}
+	assets := s.m.Assets(docID)
+	res, err := figimport.Import(req.Msg.GetData(), figimport.Options{
+		Name: strings.TrimSuffix(req.Msg.GetName(), ".fig"),
+		PutAsset: func(b []byte) (string, error) {
+			ref, err := assets.Put(bytes.NewReader(b))
+			return ref.Hash, err
+		},
+	})
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	return connect.NewResponse(&opendesignerv1.ImportFigResponse{Nodes: res.Nodes, Width: res.Width, Height: res.Height, Warnings: res.Warnings}), nil
+}
+
+func (s *DocumentService) GetAccess(ctx context.Context, req *connect.Request[opendesignerv1.GetAccessRequest]) (*connect.Response[opendesignerv1.GetAccessResponse], error) {
+	r, err := s.m.GetAccess(req.Msg.GetDocId(), callerOf(ctx))
+	if err != nil {
+		return nil, versionErr(err)
+	}
+	return connect.NewResponse(r), nil
+}
+
+func (s *DocumentService) EnableAccess(_ context.Context, req *connect.Request[opendesignerv1.EnableAccessRequest]) (*connect.Response[opendesignerv1.EnableAccessResponse], error) {
+	token, err := s.m.EnableAccess(req.Msg.GetDocId())
+	if err != nil {
+		return nil, accessErr(err)
+	}
+	return connect.NewResponse(&opendesignerv1.EnableAccessResponse{OwnerToken: token}), nil
+}
+
+func (s *DocumentService) DisableAccess(_ context.Context, req *connect.Request[opendesignerv1.DisableAccessRequest]) (*connect.Response[opendesignerv1.DisableAccessResponse], error) {
+	if err := s.m.DisableAccess(req.Msg.GetDocId()); err != nil {
+		return nil, accessErr(err)
+	}
+	return connect.NewResponse(&opendesignerv1.DisableAccessResponse{}), nil
+}
+
+func (s *DocumentService) CreateShareLink(_ context.Context, req *connect.Request[opendesignerv1.CreateShareLinkRequest]) (*connect.Response[opendesignerv1.CreateShareLinkResponse], error) {
+	l, token, err := s.m.CreateShareLink(req.Msg.GetDocId(), req.Msg.GetRole(), req.Msg.GetLabel())
+	if err != nil {
+		return nil, accessErr(err)
+	}
+	return connect.NewResponse(&opendesignerv1.CreateShareLinkResponse{Link: l, Token: token}), nil
+}
+
+func (s *DocumentService) RevokeShareLink(_ context.Context, req *connect.Request[opendesignerv1.RevokeShareLinkRequest]) (*connect.Response[opendesignerv1.RevokeShareLinkResponse], error) {
+	if err := s.m.RevokeShareLink(req.Msg.GetDocId(), req.Msg.GetLinkId()); err != nil {
+		return nil, accessErr(err)
+	}
+	return connect.NewResponse(&opendesignerv1.RevokeShareLinkResponse{}), nil
+}
+
+// accessErr: a missing document is NotFound, anything else the caller did wrong is InvalidArgument.
+func accessErr(err error) error {
+	if errors.Is(err, ErrDocNotFound) || errors.Is(err, errInvalidDocID) {
+		return connect.NewError(connect.CodeNotFound, err)
+	}
+	var ce *connect.Error
+	if errors.As(err, &ce) {
+		return err
+	}
+	return connect.NewError(connect.CodeInvalidArgument, err)
 }

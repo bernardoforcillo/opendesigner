@@ -2,202 +2,136 @@ package mcp_test
 
 import (
 	"context"
-	"strings"
 	"testing"
 
+	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	odmcp "github.com/bernardoforcillo/opendesigner/internal/mcp"
 )
 
-// TestVariantToolsEndToEnd: an agent makes two button masters, groups them into
-// a set, places an instance and switches its variant, and meets the refusals it
-// must be able to act on.
+// TestVariantToolsEndToEnd: builds a two-variant "Button" set with a text and a boolean
+// property, puts an instance on the hover variant with property values, reads it all
+// back through list_components / get_document, and checks the rejections the tools
+// report before sending and the cascades.
 func TestVariantToolsEndToEnd(t *testing.T) {
 	url := serveInMemory(t)
 	docID := newDoc(t, odmcp.NewClient(url))
 	s := startSession(t, url, docID, "agent")
 	ctx := context.Background()
 
-	small, large := frame(t, s, "Button S"), frame(t, s, "Button L")
-	cs, err := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: small, Name: "Button/S"})
+	master := func(name string) (root, label, icon string) {
+		root = frame(t, s, name)
+		l, err := s.CreateText(ctx, odmcp.CreateTextInput{ParentId: root, Content: name, Width: 100, Height: 20})
+		if err != nil {
+			t.Fatal(err)
+		}
+		return root, l.NodeId, rect(t, s, root, "Icon")
+	}
+	r1, l1, i1 := master("Default")
+	r2, l2, i2 := master("Hover")
+	c1, err := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: r1, Name: "Button"})
 	if err != nil {
 		t.Fatal(err)
 	}
-	cl, err := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: large, Name: "Button/L"})
+	c2, err := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: r2, Name: "Button hover"})
 	if err != nil {
 		t.Fatal(err)
 	}
 
-	set, err := s.SetComponentSet(ctx, odmcp.SetComponentSetInput{Name: "Button", Properties: []odmcp.VariantPropertyIO{{Name: "Size", Values: []string{"S", "L"}}}})
-	if err != nil || set.SetId == "" {
-		t.Fatalf("SetComponentSet: %+v %v", set, err)
+	set, err := s.SetComponentSet(ctx, odmcp.SetComponentSetInput{Name: "Button", Axes: []odmcp.VariantAxisIO{{Name: "State", Options: []string{"default", "hover"}}}})
+	if err != nil || set.ComponentSetId == "" {
+		t.Fatalf("SetComponentSet = %+v %v", set, err)
 	}
-	if _, err := s.SetComponentSet(ctx, odmcp.SetComponentSetInput{Name: "Bad", Properties: []odmcp.VariantPropertyIO{{Name: "Size"}}}); err == nil || !strings.Contains(err.Error(), "at least one value") {
-		t.Fatalf("a property without values must be refused with the rule named, got %v", err)
+	props := func(label, icon string) []odmcp.ComponentPropertyIO {
+		return []odmcp.ComponentPropertyIO{
+			{Name: "Label", Type: "text", DefaultValue: "Button", TargetNodeIds: []string{label}},
+			{Name: "ShowIcon", Type: "boolean", DefaultValue: "true", TargetNodeIds: []string{icon}},
+		}
 	}
-	if _, err := s.SetComponentSet(ctx, odmcp.SetComponentSetInput{Id: "ghost", Name: "x"}); err == nil || !strings.Contains(err.Error(), "not found") {
-		t.Fatalf("replacing an unknown set must say not found, got %v", err)
+	if _, err := s.SetComponentDef(ctx, odmcp.SetComponentDefInput{ComponentId: c1.ComponentId, SetId: set.ComponentSetId, Variant: map[string]string{"State": "default"}, Properties: props(l1, i1)}); err != nil {
+		t.Fatal(err)
 	}
-
-	if _, err := s.SetComponentVariant(ctx, odmcp.SetComponentVariantInput{ComponentId: cs.ComponentId, SetId: set.SetId, Variant: map[string]string{"Size": "S"}}); err != nil {
-		t.Fatalf("assign S: %v", err)
-	}
-	if _, err := s.SetComponentVariant(ctx, odmcp.SetComponentVariantInput{ComponentId: cl.ComponentId, SetId: set.SetId, Variant: map[string]string{"Size": "S"}}); err == nil || !strings.Contains(err.Error(), "already") {
-		t.Fatalf("a duplicate combination must be refused, got %v", err)
-	}
-	if _, err := s.SetComponentVariant(ctx, odmcp.SetComponentVariantInput{ComponentId: cl.ComponentId, SetId: set.SetId, Variant: map[string]string{"Size": "L"}}); err != nil {
-		t.Fatalf("assign L: %v", err)
+	if _, err := s.SetComponentDef(ctx, odmcp.SetComponentDefInput{ComponentId: c2.ComponentId, SetId: set.ComponentSetId, Variant: map[string]string{"State": "hover"}, Properties: props(l2, i2)}); err != nil {
+		t.Fatal(err)
 	}
 
-	inst, err := s.CreateInstance(ctx, odmcp.CreateInstanceInput{ComponentId: cs.ComponentId, X: 10, Y: 10})
+	inst, err := s.CreateInstance(ctx, odmcp.CreateInstanceInput{ComponentId: c1.ComponentId, X: 10, Y: 10})
 	if err != nil {
 		t.Fatalf("CreateInstance: %v", err)
 	}
-	if _, err := s.SwapInstance(ctx, odmcp.SwapInstanceInput{InstanceId: inst.NodeId, ComponentId: cl.ComponentId}); err != nil {
-		t.Fatalf("SwapInstance: %v", err)
-	}
-	if _, err := s.SwapInstance(ctx, odmcp.SwapInstanceInput{InstanceId: small, ComponentId: cl.ComponentId}); err == nil || !strings.Contains(err.Error(), "not an instance") {
-		t.Fatalf("swapping a non-instance must be refused, got %v", err)
+	if _, err := s.SetInstanceProps(ctx, odmcp.SetInstancePropsInput{
+		InstanceId: inst.NodeId, PropertyValues: map[string]string{"Label": "Save", "ShowIcon": "false"}, VariantProps: map[string]string{"State": "hover"},
+	}); err != nil {
+		t.Fatal(err)
 	}
 
-	list, _ := s.ListComponentSets(ctx, struct{}{})
-	if len(list.Sets) != 1 || len(list.Sets[0].Members) != 2 || list.Sets[0].Members[0].Variant["Size"] == "" {
-		t.Fatalf("ListComponentSets = %+v", list)
+	sets, _ := s.ListComponentSets(ctx, struct{}{})
+	if len(sets.ComponentSets) != 1 || len(sets.ComponentSets[0].Members) != 2 || sets.ComponentSets[0].Axes[0].Name != "State" {
+		t.Fatalf("ListComponentSets = %+v", sets)
+	}
+	comps, _ := s.ListComponents(ctx, struct{}{})
+	var found odmcp.ComponentView
+	for _, c := range comps.Components {
+		if c.Id == c2.ComponentId {
+			found = c
+		}
+	}
+	if found.SetId != set.ComponentSetId || found.Variant["State"] != "hover" || len(found.Properties) != 2 || found.Properties[0].Type != "text" {
+		t.Fatalf("ListComponents hover = %+v", found)
 	}
 	doc, _ := s.GetDocument(ctx, struct{}{})
 	if len(doc.ComponentSets) != 1 {
-		t.Fatalf("get_document lacks the sets: %+v", doc.ComponentSets)
-	}
-	comps, _ := s.ListComponents(ctx, struct{}{})
-	for _, c := range comps.Components {
-		if c.SetId != set.SetId || c.Variant["Size"] == "" {
-			t.Errorf("list_components lacks the variant: %+v", c)
-		}
+		t.Fatalf("get_document.componentSets = %+v", doc.ComponentSets)
 	}
 
-	// Editing the set migrates members; a clash is refused.
-	if _, err := s.SetComponentSet(ctx, odmcp.SetComponentSetInput{Id: set.SetId, Name: "Button", Properties: []odmcp.VariantPropertyIO{{Name: "Size", Values: []string{"S", "L", "XL"}}}}); err != nil {
-		t.Fatalf("adding a value: %v", err)
-	}
-	if _, err := s.SetComponentSet(ctx, odmcp.SetComponentSetInput{Id: set.SetId, Name: "Button", Properties: []odmcp.VariantPropertyIO{{Name: "Size", Values: []string{"X"}}}}); err == nil || !strings.Contains(err.Error(), "same variant") {
-		t.Fatalf("a clash must be refused, got %v", err)
-	}
-	if _, err := s.DeleteComponentSet(ctx, odmcp.SetIdInput{Id: set.SetId}); err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.DeleteComponentSet(ctx, odmcp.SetIdInput{Id: set.SetId}); err == nil {
-		t.Fatal("deleting twice must fail")
-	}
-}
-
-// TestComponentPropertyTools: an agent declares a text and a boolean property on a
-// component, sets them on an instance, and meets the refusals.
-func TestComponentPropertyTools(t *testing.T) {
-	url := serveInMemory(t)
-	docID := newDoc(t, odmcp.NewClient(url))
-	s := startSession(t, url, docID, "agent")
-	ctx := context.Background()
-
-	btn := frame(t, s, "Button")
-	label, err := s.CreateText(ctx, odmcp.CreateTextInput{ParentId: btn, Content: "Click", X: 2, Y: 2})
-	if err != nil {
-		t.Fatal(err)
-	}
-	icon := rect(t, s, btn, "Icon")
-	comp, err := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: btn, Name: "Button"})
-	if err != nil {
-		t.Fatal(err)
-	}
-
-	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: comp.ComponentId, Properties: []odmcp.ComponentPropertyIO{
-		{Name: "Label", Type: "text", NodeId: label.NodeId, Default: "Hello"},
-		{Name: "Show icon", Type: "boolean", NodeId: icon, Default: "false"},
-	}}); err != nil {
-		t.Fatalf("SetComponentProperties: %v", err)
-	}
-	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: comp.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "X", Type: "date", NodeId: icon}}}); err == nil || !strings.Contains(err.Error(), "boolean, text, number or swap") {
-		t.Fatalf("an unknown type must be refused with the choices named, got %v", err)
-	}
-	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: comp.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "X", Type: "text", NodeId: icon}}}); err == nil || !strings.Contains(err.Error(), "text node") {
-		t.Fatalf("a text property on a rectangle must be refused, got %v", err)
-	}
-
-	inst, err := s.CreateInstance(ctx, odmcp.CreateInstanceInput{ComponentId: comp.ComponentId, X: 50, Y: 50})
-	if err != nil {
-		t.Fatal(err)
-	}
-	if _, err := s.SetInstanceProperty(ctx, odmcp.SetInstancePropertyInput{InstanceId: inst.NodeId, Name: "Show icon", Value: "true"}); err != nil {
-		t.Fatalf("SetInstanceProperty: %v", err)
-	}
-	if _, err := s.SetInstanceProperty(ctx, odmcp.SetInstancePropertyInput{InstanceId: inst.NodeId, Name: "Show icon", Value: "maybe"}); err == nil || !strings.Contains(err.Error(), "true or false") {
-		t.Fatalf("a bad boolean must be refused, got %v", err)
-	}
-	if _, err := s.SetInstanceProperty(ctx, odmcp.SetInstancePropertyInput{InstanceId: inst.NodeId, Name: "Nope", Value: "x"}); err == nil || !strings.Contains(err.Error(), "declare that property") {
-		t.Fatalf("an unknown property must be refused, got %v", err)
-	}
-	comps, _ := s.ListComponents(ctx, struct{}{})
-	if len(comps.Components) != 1 || len(comps.Components[0].Properties) != 2 || comps.Components[0].Properties[0].Type == "" {
-		t.Fatalf("list_components must show the properties: %+v", comps.Components)
-	}
-}
-
-// TestNumberOptionAndSwapPropertyTools: the new kinds through the tools.
-func TestNumberOptionAndSwapPropertyTools(t *testing.T) {
-	url := serveInMemory(t)
-	docID := newDoc(t, odmcp.NewClient(url))
-	s := startSession(t, url, docID, "agent")
-	ctx := context.Background()
-
-	star := frame(t, s, "Star")
-	heart := frame(t, s, "Heart")
-	cs, _ := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: star, Name: "Star"})
-	ch, _ := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: heart, Name: "Heart"})
-
-	card := frame(t, s, "Card")
-	title, _ := s.CreateText(ctx, odmcp.CreateTextInput{ParentId: card, Content: "Info"})
-	bg := rect(t, s, card, "Bg")
-	icon, err := s.CreateInstance(ctx, odmcp.CreateInstanceInput{ComponentId: cs.ComponentId, ParentId: card, Name: "Icon"})
-	if err != nil {
-		t.Fatal(err)
-	}
-	cc, _ := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: card, Name: "Card"})
-
-	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: cc.ComponentId, Properties: []odmcp.ComponentPropertyIO{
-		{Name: "Tone", Type: "text", NodeId: title.NodeId, Options: []string{"Info", "Warn"}, Default: "Info"},
-		{Name: "Radius", Type: "number", NodeId: bg, Attribute: "corner_radius", Default: "8"},
-		{Name: "Icon", Type: "swap", NodeId: icon.NodeId, Default: cs.ComponentId},
-	}}); err != nil {
-		t.Fatalf("SetComponentProperties: %v", err)
-	}
-	for name, p := range map[string]odmcp.ComponentPropertyIO{
-		"number without attribute": {Name: "X", Type: "number", NodeId: bg},
-		"swap on a rectangle":      {Name: "X", Type: "swap", NodeId: bg},
-		"swap into itself":         {Name: "X", Type: "swap", NodeId: icon.NodeId, Default: cc.ComponentId},
-		"option default off list":  {Name: "X", Type: "text", NodeId: title.NodeId, Options: []string{"A"}, Default: "B"},
+	for name, call := range map[string]func() error{
+		"set without axes": func() error {
+			_, err := s.SetComponentSet(ctx, odmcp.SetComponentSetInput{Name: "x"})
+			return err
+		},
+		"duplicate variant": func() error {
+			_, err := s.SetComponentDef(ctx, odmcp.SetComponentDefInput{ComponentId: c2.ComponentId, SetId: set.ComponentSetId, Variant: map[string]string{"State": "default"}})
+			return err
+		},
+		"incomplete variant": func() error {
+			_, err := s.SetComponentDef(ctx, odmcp.SetComponentDefInput{ComponentId: c1.ComponentId, SetId: set.ComponentSetId})
+			return err
+		},
+		"bad property type": func() error {
+			_, err := s.SetComponentDef(ctx, odmcp.SetComponentDefInput{ComponentId: c1.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "P", Type: "number", TargetNodeIds: []string{i1}}}})
+			return err
+		},
+		"target outside the master": func() error {
+			_, err := s.SetComponentDef(ctx, odmcp.SetComponentDefInput{ComponentId: c1.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "P", Type: "boolean", DefaultValue: "true", TargetNodeIds: []string{i2}}}})
+			return err
+		},
+		"instance props on a non-instance": func() error {
+			_, err := s.SetInstanceProps(ctx, odmcp.SetInstancePropsInput{InstanceId: r1})
+			return err
+		},
+		"unknown property": func() error {
+			_, err := s.SetInstanceProps(ctx, odmcp.SetInstancePropsInput{InstanceId: inst.NodeId, PropertyValues: map[string]string{"Nope": "x"}})
+			return err
+		},
+		"unknown option": func() error {
+			_, err := s.SetInstanceProps(ctx, odmcp.SetInstancePropsInput{InstanceId: inst.NodeId, VariantProps: map[string]string{"State": "pressed"}})
+			return err
+		},
+		"missing set": func() error { _, err := s.DeleteComponentSet(ctx, odmcp.IdInput{Id: "ghost"}); return err },
 	} {
-		if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: cc.ComponentId, Properties: []odmcp.ComponentPropertyIO{p}}); err == nil {
-			t.Errorf("%s: must be refused", name)
+		if err := call(); err == nil {
+			t.Errorf("%s: expected an error", name)
 		}
 	}
-	inst, err := s.CreateInstance(ctx, odmcp.CreateInstanceInput{ComponentId: cc.ComponentId, X: 10, Y: 10})
-	if err != nil {
+
+	// Deleting the set detaches both members; the instance keeps its (now ignored) choice.
+	if _, err := s.DeleteComponentSet(ctx, odmcp.IdInput{Id: set.ComponentSetId}); err != nil {
 		t.Fatal(err)
 	}
-	for _, c := range []struct{ name, value string }{{"Tone", "Warn"}, {"Radius", "12"}, {"Icon", ch.ComponentId}} {
-		if _, err := s.SetInstanceProperty(ctx, odmcp.SetInstancePropertyInput{InstanceId: inst.NodeId, Name: c.name, Value: c.value}); err != nil {
-			t.Fatalf("%s: %v", c.name, err)
-		}
-	}
-	for _, c := range []struct{ name, value, hint string }{
-		{"Tone", "Danger", "options"}, {"Radius", "wide", "number"}, {"Icon", "ghost", "existing component"},
-	} {
-		if _, err := s.SetInstanceProperty(ctx, odmcp.SetInstancePropertyInput{InstanceId: inst.NodeId, Name: c.name, Value: c.value}); err == nil || !strings.Contains(err.Error(), c.hint) {
-			t.Errorf("%s=%q must be refused naming %q, got %v", c.name, c.value, c.hint, err)
-		}
-	}
-	comps, _ := s.ListComponents(ctx, struct{}{})
+	comps, _ = s.ListComponents(ctx, struct{}{})
 	for _, c := range comps.Components {
-		if c.Id == cc.ComponentId && (len(c.Properties) != 3 || c.Properties[1].Attribute != "corner_radius" || len(c.Properties[0].Options) != 2) {
-			t.Errorf("list_components lacks the new fields: %+v", c.Properties)
+		if c.SetId != "" || len(c.Variant) != 0 {
+			t.Fatalf("component %s still in the set: %+v", c.Id, c)
 		}
 	}
+	_ = opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT
 }

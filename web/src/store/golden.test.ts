@@ -56,6 +56,18 @@ describe("golden parity", () => {
       // Animation CLIPS (and the cascade of a delete: tracks removed, clips
       // whose target vanished deleted, rejections for easing/timing/duplicates).
       expect(scene.clips).toEqual(expected.clips);
+      // Variables: collections, variables, and the cascades (removed modes,
+      // deleted variables/collections) that rewrite node bindings -- those are
+      // compared through `nodes` above.
+      expect(scene.collections).toEqual(expected.collections);
+      expect(scene.variables).toEqual(expected.variables);
+      // Typography: font faces, shared text styles and the cascade of deleting a
+      // style (compared through `nodes` above).
+      expect(scene.fonts).toEqual(expected.fonts);
+      expect(scene.textStyles).toEqual(expected.textStyles);
+      // Component sets (variants); each component's set/variant/properties are
+      // compared through `components` above, and the instance's values through `nodes`.
+      expect(scene.componentSets).toEqual(expected.componentSets);
     });
   }
 });

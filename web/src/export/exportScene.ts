@@ -1,3 +1,4 @@
+import { resolveScene } from "../store/variables";
 import { useScene } from "../store/store";
 import { fontString } from "../renderer/text";
 import { assetUrl } from "../rpc/assets";
@@ -23,7 +24,9 @@ import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "./png";
 // half-way path. The PNG goes through an offscreen canvas (export/png.ts) and
 // the SVG through a pure generator (export/svg.ts).
 
-export type ExportFormat = "png" | "svg";
+// "pdf" is the SVG handed to the browser's print dialog (Save as PDF): vector, with the
+// fonts the page has. No second renderer and no PDF writer to keep in step with the canvas.
+export type ExportFormat = "png" | "svg" | "pdf";
 
 export interface ExportRequest {
   format: ExportFormat;
@@ -39,6 +42,8 @@ export interface ExportDeps {
   createCanvas?: () => HTMLCanvasElement;
   toPngBlob?: (canvas: HTMLCanvasElement) => Promise<Blob>;
   download?: (blob: Blob, filename: string) => void;
+  // PDF: opens the print dialog on the SVG markup, sized to `bounds`.
+  printSvg?: (svg: string, bounds: { width: number; height: number }) => void;
   measure?: MeasureText;
   // The bytes of an asset as a data URI. Injectable like the others: it needs `fetch`
   // and `FileReader`, which are not there in a test. BOTH formats use it --
@@ -90,6 +95,26 @@ export function exportFileName(docName: string, req: ExportRequest): string {
  * right after the click, because the download starts asynchronously and revoking
  * the URL in the same event turn would cancel it.
  */
+/**
+ * Prints the SVG: it goes into a hidden iframe whose @page is exactly the exported region,
+ * so "Save as PDF" in the print dialog produces one page of that size, without margins.
+ */
+export function printSvgDocument(svg: string, bounds: { width: number; height: number }): void {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  Object.assign(frame.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0" });
+  const w = Math.ceil(bounds.width), h = Math.ceil(bounds.height);
+  frame.srcdoc = `<!doctype html><meta charset="utf-8"><style>@page{size:${w}px ${h}px;margin:0}html,body{margin:0}svg{display:block}</style>${svg}`;
+  frame.onload = () => {
+    const win = frame.contentWindow;
+    if (!win) { frame.remove(); return; }
+    win.addEventListener("afterprint", () => frame.remove());
+    win.focus();
+    win.print();
+  };
+  document.body.appendChild(frame);
+}
+
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -275,6 +300,11 @@ async function exportBlob(
   return new Blob([nodesToSvg(region.nodes, region.bounds, measure, assets.href)], { type: SVG_MIME });
 }
 
+// The SVG markup of a region (the PDF's source).
+function svgMarkup(region: ExportRegion, measure: MeasureText, assets: ResolvedAssets): string {
+  return nodesToSvg(region.nodes, region.bounds, measure, assets.href);
+}
+
 /**
  * Runs an export. Returns `false` (without downloading anything) when there is
  * nothing to export or when something goes wrong: in both cases the reason
@@ -285,8 +315,10 @@ async function exportBlob(
  * produces no op. It is the only function of the app that only reads the scene.
  */
 export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Promise<boolean> {
-  const { scene, selection } = useScene.getState();
-  if (!scene) return false;
+  const { scene: raw, selection } = useScene.getState();
+  if (!raw) return false;
+  // What is exported is what is drawn: variables resolved for each node's active mode.
+  const scene = resolveScene(raw);
 
   const createCanvas = deps.createCanvas ?? defaultCanvas;
   try {
@@ -305,8 +337,12 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
     }
 
     const assets = await resolveAssets(region.nodes, scene.id, req.format, deps);
-    const blob = await exportBlob(region, req, deps, createCanvas, measure, assets);
-    (deps.download ?? downloadBlob)(blob, exportFileName(scene.name, req));
+    if (req.format === "pdf") {
+      (deps.printSvg ?? printSvgDocument)(svgMarkup(region, measure, assets), region.bounds);
+    } else {
+      const blob = await exportBlob(region, req, deps, createCanvas, measure, assets);
+      (deps.download ?? downloadBlob)(blob, exportFileName(scene.name, req));
+    }
     // The file is there and is the requested one, but it contains placeholders in place of
     // photographs: an export that succeeds HALFWAY and does not say so is the
     // worst way to fail, because the user finds out from someone else.

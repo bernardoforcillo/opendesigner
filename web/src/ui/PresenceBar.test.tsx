@@ -2,7 +2,7 @@ import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { cleanup, render, screen } from "@testing-library/react";
 import userEvent from "@testing-library/user-event";
 import { PresenceBar } from "./PresenceBar";
-import { usePresence } from "../store/presence";
+import { newPeer, usePresence } from "../store/presence";
 
 describe("PresenceBar", () => {
   afterEach(cleanup);
@@ -14,8 +14,8 @@ describe("PresenceBar", () => {
   it("shows an avatar for every other person", () => {
     usePresence.setState({
       peers: {
-        a: { clientId: "a", nickname: "Ada", hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [] },
-        b: { clientId: "b", nickname: "bob", hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [] },
+        a: newPeer("a", "Ada"),
+        b: newPeer("b", "bob"),
       },
     });
     render(<PresenceBar nickname="Io" onNickname={() => {}} />);
@@ -56,7 +56,7 @@ describe("PresenceBar", () => {
 
   it("compact: a single People button with the count; nickname and link are in the popover", async () => {
     usePresence.setState({
-      peers: { a: { clientId: "a", nickname: "Ada", hasCursor: false, cursorX: 0, cursorY: 0, pageId: "", selection: [] } },
+      peers: { a: newPeer("a", "Ada") },
     });
     const onNickname = vi.fn();
     render(<PresenceBar compact nickname="Io" onNickname={onNickname} />);

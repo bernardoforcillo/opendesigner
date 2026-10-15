@@ -8,6 +8,7 @@ import (
 	"os"
 	"path/filepath"
 
+	"connectrpc.com/connect"
 	"github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1/opendesignerv1connect"
 	odmcp "github.com/bernardoforcillo/opendesigner/internal/mcp"
 	"github.com/bernardoforcillo/opendesigner/internal/server"
@@ -16,7 +17,7 @@ import (
 
 func main() {
 	if len(os.Args) < 2 {
-		log.Fatal("usage: opendesigner <serve|flow|export> ...")
+		log.Fatal("usage: opendesigner <serve|flow|export|pack|unpack> ...")
 	}
 	switch os.Args[1] {
 	case "serve":
@@ -25,8 +26,12 @@ func main() {
 		os.Exit(runFlow(os.Args[2:], os.Stdout, os.Stderr))
 	case "export":
 		os.Exit(runExport(os.Args[2:], os.Stdout, os.Stderr))
+	case "pack":
+		os.Exit(runPack(os.Args[2:], os.Stdout, os.Stderr))
+	case "unpack":
+		os.Exit(runUnpack(os.Args[2:], os.Stdout, os.Stderr))
 	default:
-		log.Fatal("usage: opendesigner <serve|flow|export> ...")
+		log.Fatal("usage: opendesigner <serve|flow|export|pack|unpack> ...")
 	}
 }
 
@@ -35,23 +40,32 @@ func runServe(args []string) {
 	addr := fs.String("addr", ":8080", "listen address")
 	workspace := fs.String("workspace", defaultWorkspace(), "documents workspace dir")
 	webDir := fs.String("web", "", "serve the frontend from this directory instead of the embedded one (development)")
+	tlsCert := fs.String("tls-cert", "", "serve HTTPS with this certificate (PEM); needs -tls-key. Use it, or a TLS-terminating proxy, before exposing the server beyond a trusted network")
+	tlsKey := fs.String("tls-key", "", "the private key (PEM) for -tls-cert")
+	adminToken := fs.String("admin-token", os.Getenv("OPENDESIGNER_ADMIN_TOKEN"), "a secret that can protect documents and manage their share links from anywhere (default: $OPENDESIGNER_ADMIN_TOKEN; without it only the machine running the server can)")
 	_ = fs.Parse(args)
+	if (*tlsCert == "") != (*tlsKey == "") {
+		log.Fatal("-tls-cert and -tls-key go together")
+	}
 
 	if err := os.MkdirAll(*workspace, 0o755); err != nil {
 		log.Fatal(err)
 	}
 	mgr := server.NewManager(*workspace)
+	mgr.SetAdminToken(*adminToken)
 	svc := server.NewDocumentService(mgr)
 
 	mux := http.NewServeMux()
-	path, handler := opendesignerv1connect.NewDocumentServiceHandler(svc)
+	// Access control (share links with roles) is enforced on every RPC and on the asset route; a
+	// document nobody protected stays open, as it always was.
+	path, handler := opendesignerv1connect.NewDocumentServiceHandler(svc, connect.WithInterceptors(server.NewAccessInterceptor(mgr)))
 	mux.Handle(path, handler)
 	// Images: POST /assets-api/{docId} to upload them, GET
 	// /assets-api/{docId}/{hash} to serve them to an <img>. Plain HTTP rather than
 	// the design's UploadAsset RPC -- the why is in internal/server/assets.go.
 	// The prefix is NOT /assets/ because underneath it the file server next to this
 	// serves Vite's bundles.
-	server.MountAssets(mux, *workspace)
+	mux.Handle(server.AssetPrefix, mgr.GuardAssets(server.NewAssetHandler(*workspace)))
 	// The editor lives INSIDE the binary (web.Dist): `opendesigner serve` alone
 	// already serves the app, with no frontend build or flag. -web remains the
 	// development route and takes precedence -- see internal/server/webui.go.
@@ -74,6 +88,13 @@ func runServe(args []string) {
 	log.Printf("opendesigner serve on %s (workspace=%s)", *addr, *workspace)
 	for _, u := range lanURLs(*addr) {
 		log.Printf("on the same network open: %s", u)
+	}
+	if *tlsCert != "" {
+		log.Printf("serving HTTPS")
+		if err := srv.ListenAndServeTLS(*tlsCert, *tlsKey); err != nil {
+			log.Fatal(err)
+		}
+		return
 	}
 	if err := srv.ListenAndServe(); err != nil {
 		log.Fatal(err)

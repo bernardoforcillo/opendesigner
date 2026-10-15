@@ -102,6 +102,26 @@ export function editTransitionOp(
   return makeSetTransitionOp({ ...t, [field]: value });
 }
 
+/**
+ * Edits the animation of a transition. The empty animation is a cut and carries no timing;
+ * numbers are brought to what the core accepts. null if nothing changes.
+ */
+export function editTransitionAnimationOp(
+  t: TransitionLite,
+  patch: { animation?: string; durationMs?: number; easing?: string; delayMs?: number },
+): Op | null {
+  const next: TransitionLite = { ...t };
+  const set = <K extends "animation" | "durationMs" | "easing" | "delayMs">(k: K, v: TransitionLite[K] | undefined) => {
+    if (v === undefined || v === "" || v === 0) delete next[k]; else next[k] = v;
+  };
+  if (patch.animation !== undefined) set("animation", patch.animation);
+  if (patch.durationMs !== undefined) set("durationMs", Math.min(10000, Math.max(0, Math.round(patch.durationMs))));
+  if (patch.easing !== undefined) set("easing", patch.easing);
+  if (patch.delayMs !== undefined) set("delayMs", Math.min(60000, Math.max(0, Math.round(patch.delayMs))));
+  const same = (["animation", "durationMs", "easing", "delayMs"] as const).every((k) => (next[k] ?? "") === (t[k] ?? ""));
+  return same ? null : makeSetTransitionOp(next);
+}
+
 export function deleteTransitionOp(id: string): Op {
   return makeDeleteTransitionOp(id);
 }

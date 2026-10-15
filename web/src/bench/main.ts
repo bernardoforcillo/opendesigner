@@ -3,6 +3,7 @@ import { applyOp } from "../store/applyOp";
 import { makeSetPropsOp } from "../tools/ops";
 import { sceneIndexOf } from "../renderer/sceneIndex";
 import { fitCamera, makeScene } from "./scene";
+import { resolveScene } from "../store/variables";
 
 const canvas = document.getElementById("c") as HTMLCanvasElement;
 const ctx = canvas.getContext("2d")!;
@@ -37,6 +38,9 @@ window.runBench = (sizes: number[]) => {
       // + index to rebuild + one zoomed frame. Every call starts from a
       // new scene, so the index cache does not help.
       index_ms: time(() => sceneIndexOf(applyOp(scene, op)), 5),
+      // What the editor really does for every change: the derived passes (booleans, connectors,
+      // variables) over the new scene, then its index.
+      resolve_ms: time(() => resolveScene(applyOp(scene, op)), 5),
       editFrame_ms: time(() => drawScene(ctx, applyOp(scene, op), zoomed, "page1"), 5),
     });
   }
@@ -79,4 +83,27 @@ window.shotPan = (n: number, mode: "blit" | "exact") => {
   cache.draw(ctx, scene, fit, "page1", true);
   const next = { x: fit.x - 40, y: fit.y - 30, zoom: fit.zoom * 1.4 };
   cache.draw(ctx, scene, next, "page1", mode === "exact");
+};
+
+// @ts-expect-error exposed to Playwright
+window.runResolve = (n: number, times: number) => {
+  const scene = makeScene(n);
+  resolveScene(scene); // the base is already derived, as in the editor
+  const op = makeSetPropsOp("n0_1", { x: 5, y: 6 }, ["x", "y"]);
+  const t0 = performance.now();
+  for (let i = 0; i < times; i++) resolveScene(applyOp(scene, op));
+  return (performance.now() - t0) / times;
+};
+
+// @ts-expect-error exposed to Playwright
+window.runIndexFull = (n: number) => {
+  const out: Record<string, number> = {};
+  const scene = makeScene(n);
+  let t = performance.now();
+  sceneIndexOf(scene);
+  out.indexFull_ms = +(performance.now() - t).toFixed(1);
+  t = performance.now();
+  resolveScene(scene);
+  out.resolveFirst_ms = +(performance.now() - t).toFixed(1);
+  return out;
 };

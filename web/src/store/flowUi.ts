@@ -8,10 +8,11 @@ import { markPresented } from "../dev/presented";
 // network and does not enter undo. Everything that is instead document (flows,
 // transitions, metadata) is written only with ops.
 
-// Three modes, the product's path: Design (you draw), Flows (you
+// Four modes, the product's path: Board (an infinite board of notes, text and arrows, no frames),
+// Design (you draw), Flows (you
 // connect screens and try the prototype), Development (you hand off:
 // readiness, generated code, export). In Development the canvas is not edited.
-export type EditorMode = "design" | "flows" | "dev";
+export type EditorMode = "design" | "flows" | "dev" | "board";
 
 /** The "Connect" drag in progress: where it starts from, where the pointer is, what is underneath. */
 export interface ConnectPreview {

@@ -5,288 +5,157 @@ import (
 	"testing"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-func col(r, g, b float32) *opendesignerv1.Color { return &opendesignerv1.Color{R: r, G: g, B: b, A: 1} }
+func mask(paths ...string) *fieldmaskpb.FieldMask { return &fieldmaskpb.FieldMask{Paths: paths} }
 
-func setVar(v *opendesignerv1.Variable) *opendesignerv1.Op {
-	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetVariable{SetVariable: &opendesignerv1.SetVariable{Variable: v}}}
+func colorVal(r, g, b float32) *opendesignerv1.VariableValue {
+	return &opendesignerv1.VariableValue{Kind: &opendesignerv1.VariableValue_Color{Color: &opendesignerv1.Color{R: r, G: g, B: b, A: 1}}}
 }
 
-func setModes(ids ...string) *opendesignerv1.Op {
-	var ms []*opendesignerv1.Mode
-	for _, id := range ids {
-		ms = append(ms, &opendesignerv1.Mode{Id: id, Name: id})
-	}
-	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetModes{SetModes: &opendesignerv1.SetModes{Modes: ms}}}
+func numVal(n float64) *opendesignerv1.VariableValue {
+	return &opendesignerv1.VariableValue{Kind: &opendesignerv1.VariableValue_Number{Number: n}}
 }
 
-func TestSetVariableUpsertAndDelete(t *testing.T) {
-	doc := NewDocument("d", "d")
-	v := &opendesignerv1.Variable{Id: "v1", Name: "color/brand", Values: map[string]*opendesignerv1.Color{"light": col(1, 0, 0)}}
-	if err := Apply(doc, setVar(v)); err != nil {
-		t.Fatal(err)
-	}
-	if doc.Variables["v1"].GetName() != "color/brand" {
-		t.Fatalf("variable not stored: %v", doc.Variables)
-	}
-	v2 := &opendesignerv1.Variable{Id: "v1", Name: "color/brand", Values: map[string]*opendesignerv1.Color{"light": col(0, 1, 0)}}
-	if err := Apply(doc, setVar(v2)); err != nil {
-		t.Fatal(err)
-	}
-	if got := doc.Variables["v1"].GetValues()["light"].GetG(); got != 1 {
-		t.Fatalf("upsert did not replace: g=%v", got)
-	}
-	del := &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteVariable{DeleteVariable: &opendesignerv1.DeleteVariable{Id: "v1"}}}
-	if err := Apply(doc, del); err != nil {
-		t.Fatal(err)
-	}
-	if err := Apply(doc, del); !errors.Is(err, ErrVariableNotFound) {
-		t.Fatalf("deleting twice: want ErrVariableNotFound, got %v", err)
-	}
-}
-
-func TestSetVariableRejectsInvalid(t *testing.T) {
-	doc := NewDocument("d", "d")
-	for name, v := range map[string]*opendesignerv1.Variable{
-		"nil":       nil,
-		"no id":     {Name: "x"},
-		"no name":   {Id: "v"},
-		"nil value": {Id: "v", Name: "x", Values: map[string]*opendesignerv1.Color{"light": nil}},
-	} {
-		if err := Apply(doc, setVar(v)); !errors.Is(err, ErrNilVariable) {
-			t.Errorf("%s: want ErrNilVariable, got %v", name, err)
-		}
-	}
-	if len(doc.Variables) != 0 {
-		t.Fatalf("rejected ops must leave the document unchanged: %v", doc.Variables)
-	}
-}
-
-func TestVariableValueForUnknownModeRejectedOnceModesExist(t *testing.T) {
-	doc := NewDocument("d", "d")
-	if err := Apply(doc, setModes("light", "dark")); err != nil {
-		t.Fatal(err)
-	}
-	v := &opendesignerv1.Variable{Id: "v", Name: "x", Values: map[string]*opendesignerv1.Color{"sepia": col(1, 1, 1)}}
-	if err := Apply(doc, setVar(v)); !errors.Is(err, ErrBadMode) {
-		t.Fatalf("want ErrBadMode, got %v", err)
-	}
-}
-
-func TestSetModesValidatesAndDropsStaleValues(t *testing.T) {
-	doc := NewDocument("d", "d")
-	if err := Apply(doc, setModes("light", "dark")); err != nil {
-		t.Fatal(err)
-	}
-	v := &opendesignerv1.Variable{Id: "v", Name: "x", Values: map[string]*opendesignerv1.Color{"light": col(1, 1, 1), "dark": col(0, 0, 0)}}
-	if err := Apply(doc, setVar(v)); err != nil {
-		t.Fatal(err)
-	}
-	orig := doc.Variables["v"]
-	if err := Apply(doc, setModes("light")); err != nil {
-		t.Fatal(err)
-	}
-	if _, ok := doc.Variables["v"].GetValues()["dark"]; ok {
-		t.Fatal("value of a removed mode must be dropped")
-	}
-	if _, ok := orig.GetValues()["dark"]; !ok {
-		t.Fatal("the original variable must not be mutated in place (copy-on-write)")
-	}
-	for _, bad := range [][]string{{"a", "a"}, {""}} {
-		if err := Apply(doc, setModes(bad...)); !errors.Is(err, ErrBadMode) {
-			t.Errorf("modes %v: want ErrBadMode, got %v", bad, err)
-		}
-	}
-	if len(doc.Modes) != 1 || doc.Modes[0].GetId() != "light" {
-		t.Fatalf("a rejected SetModes must leave the modes unchanged: %v", doc.Modes)
-	}
-}
-
-// --- kinds, aliases, bindings -----------------------------------------------------
-
-const (
-	tColor  = opendesignerv1.VariableType_VARIABLE_TYPE_COLOR
-	tNumber = opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER
-	tString = opendesignerv1.VariableType_VARIABLE_TYPE_STRING
-)
-
-func applyAll(t *testing.T, doc *opendesignerv1.Document, ops ...*opendesignerv1.Op) {
+// themed builds: frame f > frame inner > rect r (red fill, opacity 1), a "Theme"
+// collection (light, dark) and bg (color) / op (number) variables bound on r.
+func themed(t *testing.T) *opendesignerv1.Document {
 	t.Helper()
-	for _, op := range ops {
-		if err := Apply(doc, op); err != nil {
-			t.Fatalf("Apply: %v", err)
-		}
-	}
-}
-
-func numVar(id string, vals map[string]float64) *opendesignerv1.Variable {
-	return &opendesignerv1.Variable{Id: id, Name: "n/" + id, Type: tNumber, Numbers: vals}
-}
-
-func TestVariableKindsKeepToTheirOwnMap(t *testing.T) {
 	doc := NewDocument("d", "d")
-	bad := map[string]*opendesignerv1.Variable{
-		"number with colour values": {Id: "a", Name: "a", Type: tNumber, Values: map[string]*opendesignerv1.Color{"x": col(1, 1, 1)}},
-		"colour with numbers":       {Id: "b", Name: "b", Type: tColor, Numbers: map[string]float64{"x": 1}},
-		"string with numbers":       {Id: "c", Name: "c", Type: tString, Numbers: map[string]float64{"x": 1}},
+	node := func(id, parent string, shape *opendesignerv1.Node) *opendesignerv1.Op {
+		shape.Id, shape.ParentId, shape.OrderKey, shape.Visible, shape.Opacity = id, parent, "a1", true, 1
+		return &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: shape}}}
 	}
-	for name, v := range bad {
-		if err := Apply(doc, setVar(v)); !errors.Is(err, ErrNilVariable) {
-			t.Errorf("%s: want ErrNilVariable, got %v", name, err)
-		}
+	red := &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Solid{Solid: &opendesignerv1.SolidPaint{Color: &opendesignerv1.Color{R: 1, A: 1}}}}
+	mustApply(t, doc,
+		node("f", "page1", &opendesignerv1.Node{Shape: &opendesignerv1.Node_Frame{Frame: &opendesignerv1.FrameNode{}}}),
+		node("inner", "f", &opendesignerv1.Node{Shape: &opendesignerv1.Node_Frame{Frame: &opendesignerv1.FrameNode{}}}),
+		node("r", "inner", &opendesignerv1.Node{Fills: []*opendesignerv1.Paint{red}, Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}}),
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetCollection{SetCollection: &opendesignerv1.SetCollection{Collection: &opendesignerv1.VariableCollection{
+			Id: "theme", Name: "Theme", Modes: []*opendesignerv1.VariableMode{{Id: "light"}, {Id: "dark"}}}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetVariable{SetVariable: &opendesignerv1.SetVariable{Variable: &opendesignerv1.Variable{
+			Id: "bg", CollectionId: "theme", Type: opendesignerv1.VariableType_VARIABLE_TYPE_COLOR,
+			Values: map[string]*opendesignerv1.VariableValue{"light": colorVal(1, 1, 1), "dark": colorVal(0, 0, 0)}}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetVariable{SetVariable: &opendesignerv1.SetVariable{Variable: &opendesignerv1.Variable{
+			Id: "dim", CollectionId: "theme", Type: opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER,
+			Values: map[string]*opendesignerv1.VariableValue{"light": numVal(1), "dark": numVal(0.4)}}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+			Id: "r", Patch: &opendesignerv1.Node{Bindings: map[string]string{"fills.0": "bg", "opacity": "dim"}},
+			Mask: mask("bindings")}}},
+	)
+	return doc
+}
+
+func TestResolveFollowsNearestModeOverride(t *testing.T) {
+	doc := themed(t)
+	r := ResolveNode(doc, doc.Nodes["r"])
+	if got := r.GetFills()[0].GetSolid().GetColor().GetR(); got != 1 || r.GetOpacity() != 1 {
+		t.Fatalf("default mode: r=%v opacity=%v, want light values", got, r.GetOpacity())
 	}
-	applyAll(t, doc, setModes("light", "dark"), setVar(numVar("n", map[string]float64{"light": 4, "dark": 8})))
-	if err := Apply(doc, setVar(numVar("m", map[string]float64{"sepia": 1}))); !errors.Is(err, ErrBadMode) {
-		t.Fatalf("number for an unknown mode: want ErrBadMode, got %v", err)
+	// Pin the OUTER frame to dark: the whole subtree follows.
+	mustApply(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: "f", Patch: &opendesignerv1.Node{Modes: map[string]string{"theme": "dark"}}, Mask: mask("modes")}}})
+	r = ResolveNode(doc, doc.Nodes["r"])
+	if c := r.GetFills()[0].GetSolid().GetColor(); c.GetR() != 0 || r.GetOpacity() != 0.4 {
+		t.Fatalf("dark: color=%v opacity=%v", c, r.GetOpacity())
 	}
-	// Removing a mode drops numbers and strings too.
-	applyAll(t, doc, setModes("light"))
-	if _, ok := doc.Variables["n"].GetNumbers()["dark"]; ok {
-		t.Fatal("a removed mode's number must be dropped")
+	// ...and the NEAREST override wins over the outer one.
+	mustApply(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: "inner", Patch: &opendesignerv1.Node{Modes: map[string]string{"theme": "light"}}, Mask: mask("modes")}}})
+	if got := ActiveMode(doc, "r", "theme"); got != "light" {
+		t.Fatalf("nearest override: mode=%q, want light", got)
 	}
-	if doc.Variables["n"].GetType() != tNumber {
-		t.Fatal("rewriting the variable on mode removal lost its type")
+	// The document itself is never touched by resolution.
+	if doc.Nodes["r"].GetFills()[0].GetSolid().GetColor().GetR() != 1 || doc.Nodes["r"].GetOpacity() != 1 {
+		t.Fatal("ResolveNode mutated the document")
 	}
 }
 
-func TestAliases(t *testing.T) {
-	doc := NewDocument("d", "d")
-	applyAll(t, doc, setModes("light", "dark"),
-		setVar(&opendesignerv1.Variable{Id: "base", Name: "base", Values: map[string]*opendesignerv1.Color{"light": col(1, 0, 0), "dark": col(0, 0, 1)}}))
-	alias := &opendesignerv1.Variable{Id: "sem", Name: "semantic", AliasOf: "base"}
-	applyAll(t, doc, setVar(alias))
-	if c, ok := ColorValue(doc, doc.Variables["sem"]); !ok || c.GetR() != 1 {
-		t.Fatalf("alias must read the target's default-mode colour, got %v %v", c, ok)
-	}
-	// Changing the target is seen through the alias.
-	applyAll(t, doc, setVar(&opendesignerv1.Variable{Id: "base", Name: "base", Values: map[string]*opendesignerv1.Color{"light": col(0, 1, 0)}}))
-	if c, _ := ColorValue(doc, doc.Variables["sem"]); c.GetG() != 1 {
-		t.Fatalf("alias did not follow its target: %v", c)
-	}
-	cases := map[string]*opendesignerv1.Variable{
-		"unknown target":       {Id: "x", Name: "x", AliasOf: "ghost"},
-		"self":                 {Id: "x", Name: "x", AliasOf: "x"},
-		"carries values":       {Id: "x", Name: "x", AliasOf: "base", Values: map[string]*opendesignerv1.Color{"light": col(1, 1, 1)}},
-		"different kind":       {Id: "x", Name: "x", Type: tNumber, AliasOf: "base"},
-		"cycle through others": {Id: "base", Name: "base", AliasOf: "sem"},
-	}
-	for name, v := range cases {
-		if err := Apply(doc, setVar(v)); !errors.Is(err, ErrBadAlias) {
-			t.Errorf("%s: want ErrBadAlias, got %v", name, err)
-		}
-	}
-	// Deleting the target leaves a dangling alias that reads as "no value".
-	applyAll(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteVariable{DeleteVariable: &opendesignerv1.DeleteVariable{Id: "base"}}})
-	if _, ok := ColorValue(doc, doc.Variables["sem"]); ok {
-		t.Fatal("a dangling alias must not resolve")
+func TestResolveFallsBackToDefaultModeValue(t *testing.T) {
+	doc := themed(t)
+	// "spacing" only has a light value; in dark it falls back to the default mode.
+	mustApply(t, doc,
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetVariable{SetVariable: &opendesignerv1.SetVariable{Variable: &opendesignerv1.Variable{
+			Id: "rot", CollectionId: "theme", Type: opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER,
+			Values: map[string]*opendesignerv1.VariableValue{"light": numVal(15)}}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+			Id: "r", Patch: &opendesignerv1.Node{Bindings: map[string]string{"rotation": "rot"}}, Mask: mask("bindings")}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+			Id: "f", Patch: &opendesignerv1.Node{Modes: map[string]string{"theme": "dark"}}, Mask: mask("modes")}}},
+	)
+	if got := ResolveNode(doc, doc.Nodes["r"]).GetRotation(); got != 15 {
+		t.Fatalf("rotation=%v, want the default-mode value 15", got)
 	}
 }
 
-func addNode(t *testing.T, doc *opendesignerv1.Document, n *opendesignerv1.Node) {
-	t.Helper()
-	n.ParentId, n.Visible = "page1", true
-	if n.Opacity == 0 {
-		n.Opacity = 1
-	}
-	applyAll(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: n}}})
-}
-
-func bindOp(id string, b map[string]string) *opendesignerv1.Op {
-	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
-		Id: id, Patch: &opendesignerv1.Node{Bindings: b}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"bindings"}},
-	}}}
-}
-
-func TestBindingsDriveNodeProperties(t *testing.T) {
-	doc := NewDocument("d", "d")
-	text := &opendesignerv1.Node{Id: "t", OrderKey: "b", Shape: &opendesignerv1.Node_Text{Text: &opendesignerv1.TextNode{Content: "old", Style: &opendesignerv1.TextStyle{FontSize: 12}}}}
-	addNode(t, doc, &opendesignerv1.Node{Id: "r", OrderKey: "a", Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}})
-	addNode(t, doc, text)
-	applyAll(t, doc, setModes("light", "dark"),
-		setVar(numVar("radius", map[string]float64{"light": 8, "dark": 16})),
-		setVar(numVar("size", map[string]float64{"light": 20})),
-		setVar(numVar("op", map[string]float64{"light": 0.5})),
-		setVar(&opendesignerv1.Variable{Id: "copy", Name: "copy", Type: tString, Strings: map[string]string{"light": "Hello"}}))
-	applyAll(t, doc,
-		bindOp("r", map[string]string{"corner_radius": "radius", "opacity": "op"}),
-		bindOp("t", map[string]string{"font_size": "size", "text": "copy"}))
-	if doc.Nodes["r"].GetRect().GetCornerRadius() != 8 || doc.Nodes["r"].GetOpacity() != 0.5 {
-		t.Fatalf("rect not driven: %v", doc.Nodes["r"])
-	}
-	if tx := doc.Nodes["t"].GetText(); tx.GetStyle().GetFontSize() != 20 || tx.GetContent() != "Hello" {
-		t.Fatalf("text not driven: %v", tx)
-	}
-	// Changing the variable restyles the bound node, in the same op.
-	applyAll(t, doc, setVar(numVar("radius", map[string]float64{"light": 12, "dark": 16})))
-	if doc.Nodes["r"].GetRect().GetCornerRadius() != 12 {
-		t.Fatal("the bound radius did not follow the variable")
-	}
-	// A SetText on a bound text loses to the binding.
-	applyAll(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetText{SetText: &opendesignerv1.SetText{Id: "t", Content: "typed"}}})
-	if doc.Nodes["t"].GetText().GetContent() != "Hello" {
-		t.Fatal("a bound text must keep following its variable")
-	}
-	// Deleting the variable keeps the last value.
-	applyAll(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteVariable{DeleteVariable: &opendesignerv1.DeleteVariable{Id: "radius"}}})
-	if doc.Nodes["r"].GetRect().GetCornerRadius() != 12 {
-		t.Fatal("deleting the variable must leave the last value")
+func TestResolveWithoutBindingsReturnsTheSameNode(t *testing.T) {
+	doc := themed(t)
+	if n := doc.Nodes["f"]; ResolveNode(doc, n) != n {
+		t.Fatal("a node without bindings must be returned as is, not cloned")
 	}
 }
 
-func TestBindingsAreValidated(t *testing.T) {
-	doc := NewDocument("d", "d")
-	addNode(t, doc, &opendesignerv1.Node{Id: "r", OrderKey: "a", Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}})
-	applyAll(t, doc, setVar(numVar("n", map[string]float64{"x": 1})),
-		setVar(&opendesignerv1.Variable{Id: "s", Name: "s", Type: tString, Strings: map[string]string{"x": "a"}}),
-		setVar(&opendesignerv1.Variable{Id: "c", Name: "c", Values: map[string]*opendesignerv1.Color{"x": col(1, 1, 1)}}))
-	for name, b := range map[string]map[string]string{
-		"unknown property":    {"width": "n"},
-		"unknown variable":    {"opacity": "ghost"},
-		"colour for a number": {"opacity": "c"},
-		"string for a number": {"opacity": "s"},
-		"font size on a rect": {"font_size": "n"},
-		"text on a rect":      {"text": "s"},
+func TestResolveIgnoresBindingsThatNoLongerApply(t *testing.T) {
+	doc := themed(t)
+	// fills.3 does not exist: the binding is kept in the model but draws nothing.
+	mustApply(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: "r", Patch: &opendesignerv1.Node{Bindings: map[string]string{"fills.3": "bg", "corner_radius": "dim", "strokes.0.weight": "dim"}},
+		Mask: mask("bindings")}}})
+	r := ResolveNode(doc, doc.Nodes["r"])
+	if len(r.GetFills()) != 1 || r.GetFills()[0].GetSolid().GetColor().GetR() != 1 {
+		t.Fatalf("fills changed: %v", r.GetFills())
+	}
+	if r.GetRect().GetCornerRadius() != 1 {
+		t.Fatalf("corner radius=%v, want the bound 1", r.GetRect().GetCornerRadius())
+	}
+}
+
+func TestDeleteVariableAndCollectionKeepSharedNodesIntact(t *testing.T) {
+	doc := themed(t)
+	// A shallow copy sharing the nodes, as the hub does: the cascade must clone
+	// the nodes it rewrites and leave the other document untouched.
+	snap := &opendesignerv1.Document{Nodes: make(map[string]*opendesignerv1.Node, len(doc.Nodes))}
+	for k, n := range doc.Nodes {
+		snap.Nodes[k] = n
+	}
+	snap.Collections, snap.Variables = doc.Collections, doc.Variables
+	before := proto.Clone(doc.Nodes["r"])
+	cow := NewShared()
+	if err := ApplyShared(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteCollection{DeleteCollection: &opendesignerv1.DeleteCollection{Id: "theme"}}}, cow); err != nil {
+		t.Fatal(err)
+	}
+	if !proto.Equal(snap.Nodes["r"], before) {
+		t.Fatal("cascade wrote through a shared node")
+	}
+	if len(doc.Nodes["r"].GetBindings()) != 0 || len(doc.Variables) != 0 || len(doc.Collections) != 0 {
+		t.Fatalf("cascade incomplete: bindings=%v vars=%d cols=%d", doc.Nodes["r"].GetBindings(), len(doc.Variables), len(doc.Collections))
+	}
+}
+
+func TestBindingType(t *testing.T) {
+	num, col := opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER, opendesignerv1.VariableType_VARIABLE_TYPE_COLOR
+	for key, want := range map[string]opendesignerv1.VariableType{
+		"opacity": num, "rotation": num, "corner_radius": num, "strokes.0.weight": num, "fills.0": col, "strokes.12": col,
 	} {
-		if err := Apply(doc, bindOp("r", b)); !errors.Is(err, ErrBadBinding) {
-			t.Errorf("%s: want ErrBadBinding, got %v", name, err)
+		if got, ok := BindingType(key); !ok || got != want {
+			t.Errorf("%q: got %v,%v want %v", key, got, ok, want)
 		}
 	}
-	// A rejected bind must leave the node untouched, and creating a node with a
-	// bad binding is refused too.
-	if len(doc.Nodes["r"].GetBindings()) != 0 {
-		t.Fatal("a rejected binding was stored")
-	}
-	bad := &opendesignerv1.Node{Id: "z", ParentId: "page1", OrderKey: "z", Bindings: map[string]string{"opacity": "ghost"}}
-	if err := Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: bad}}}); !errors.Is(err, ErrBadBinding) {
-		t.Fatalf("create with a bad binding: want ErrBadBinding, got %v", err)
+	for _, key := range []string{"", "x", "fills", "fills.", "fills.-1", "fills.01", "fills.a", "fills.0.weight", "strokes.0.color", "strokes.0.weight.x", "opacity.0"} {
+		if _, ok := BindingType(key); ok {
+			t.Errorf("%q must not be a binding key", key)
+		}
 	}
 }
 
-func TestGradientStopsFollowTheirVariable(t *testing.T) {
-	doc := NewDocument("d", "d")
-	grad := &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Linear{Linear: &opendesignerv1.GradientPaint{
-		X2: 1, Stops: []*opendesignerv1.GradientStop{
-			{Color: col(0, 0, 0), Position: 0, VariableId: "brand"},
-			{Color: col(1, 1, 1), Position: 1},
-		}}}}
-	applyAll(t, doc, setVar(&opendesignerv1.Variable{Id: "brand", Name: "brand", Values: map[string]*opendesignerv1.Color{"x": col(1, 0, 0)}}))
-	n := &opendesignerv1.Node{Id: "r", OrderKey: "a", Fills: []*opendesignerv1.Paint{grad}, Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}}
-	addNode(t, doc, n)
-	stop := func() *opendesignerv1.Color { return doc.Nodes["r"].GetFills()[0].GetLinear().GetStops()[0].GetColor() }
-	if stop().GetR() != 1 {
-		t.Fatalf("the bound stop must take the variable's colour on create, got %v", stop())
-	}
-	applyAll(t, doc, setVar(&opendesignerv1.Variable{Id: "brand", Name: "brand", Values: map[string]*opendesignerv1.Color{"x": col(0, 0, 1)}}))
-	if stop().GetB() != 1 {
-		t.Fatalf("the bound stop did not follow the variable, got %v", stop())
-	}
-	if doc.Nodes["r"].GetFills()[0].GetLinear().GetStops()[1].GetColor().GetR() != 1 {
-		t.Fatal("an unbound stop must stay as it was")
-	}
-	// The op's own message must not have been written through.
-	if grad.GetLinear().GetStops()[0].GetColor().GetR() != 0 {
-		t.Fatal("resolveStops mutated the caller's paint instead of a copy")
+func TestSetVariableRejectsOutOfRangeColor(t *testing.T) {
+	doc := themed(t)
+	err := Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetVariable{SetVariable: &opendesignerv1.SetVariable{Variable: &opendesignerv1.Variable{
+		Id: "bg", CollectionId: "theme", Type: opendesignerv1.VariableType_VARIABLE_TYPE_COLOR,
+		Values: map[string]*opendesignerv1.VariableValue{"light": colorVal(2, 0, 0)}}}}})
+	if !errors.Is(err, ErrVariableValue) {
+		t.Fatalf("err=%v, want ErrVariableValue", err)
 	}
 }

@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbClip, toPbFlow, toPbVariable, toPbComponentSet, toPbComponentProperty, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
-import type { ComponentPropertyLite, ComponentSetLite, ModeLite, VariableLite, ClipLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import { toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -211,10 +211,13 @@ export function makeInstanceNode(p: InstanceNodeParams): Node {
   });
 }
 
-// --- animation -------------------------------------------------------------
-// Absolute upsert of the whole clip (id supplied by the caller) and deletion.
-export function makeSetClipOp(clip: ClipLite): Op {
-  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setClip", value: { clip: toPbClip(clip) } } });
+// --- variables ---------------------------------------------------------------
+// Absolute upserts of a collection / variable (id supplied by the caller) and deletions.
+export function makeSetCollectionOp(c: CollectionLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setCollection", value: { collection: toPbCollection(c) } } });
+}
+export function makeDeleteCollectionOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteCollection", value: { id } } });
 }
 export function makeSetVariableOp(v: VariableLite): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setVariable", value: { variable: toPbVariable(v) } } });
@@ -222,31 +225,53 @@ export function makeSetVariableOp(v: VariableLite): Op {
 export function makeDeleteVariableOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteVariable", value: { id } } });
 }
-export function makeSetModesOp(modes: readonly ModeLite[]): Op {
-  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setModes", value: { modes: modes.map((m) => ({ id: m.id, name: m.name })) } } });
-}
-/** Renames say which old properties/values are the same thing under a new name (members keep their choices). */
-export interface SetRenames { properties?: Record<string, string>; values?: { property: string; from: string; to: string }[] }
-export function makeSetComponentSetOp(set: ComponentSetLite, renames: SetRenames = {}): Op {
-  return create(OpSchema, {
-    opId: uuid(), docId: docId(),
-    kind: { case: "setComponentSet", value: { set: toPbComponentSet(set), propertyRenames: renames.properties ?? {}, valueRenames: renames.values ?? [] } },
-  });
+
+// --- component variants and properties ---------------------------------------
+export function makeSetComponentSetOp(set: ComponentSetLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentSet", value: { componentSet: toPbComponentSet(set) } } });
 }
 export function makeDeleteComponentSetOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteComponentSet", value: { id } } });
 }
-export function makeSetComponentVariantOp(componentId: string, setId: string, variant: Record<string, string>): Op {
-  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentVariant", value: { componentId, setId, variant } } });
+export function makeSetComponentDefOp(
+  componentId: string, setId: string, variant: Record<string, string>, properties: readonly ComponentPropertyLite[],
+): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentDef", value: {
+    componentId, setId, variant: { ...variant }, properties: properties.map(toPbComponentProperty),
+  } } });
 }
-export function makeSetComponentPropertiesOp(componentId: string, properties: readonly ComponentPropertyLite[]): Op {
-  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentProperties", value: { componentId, properties: properties.map(toPbComponentProperty) } } });
+export function makeSetInstancePropsOp(
+  instanceId: string, propertyValues: Record<string, string>, variantProps: Record<string, string>,
+): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setInstanceProps", value: {
+    instanceId, propertyValues: { ...propertyValues }, variantProps: { ...variantProps },
+  } } });
 }
-export function makeSetInstancePropertyOp(instanceId: string, name: string, value: string): Op {
-  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setInstanceProperty", value: { instanceId, name, value } } });
+
+// --- typography --------------------------------------------------------------
+export function makeSetCommentOp(c: CommentLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComment", value: { comment: toPbComment(c) } } });
 }
-export function makeSwapInstanceOp(instanceId: string, componentId: string): Op {
-  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "swapInstance", value: { instanceId, componentId } } });
+export function makeDeleteCommentOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteComment", value: { id } } });
+}
+export function makeSetFontOp(f: FontLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setFont", value: { font: toPbFont(f) } } });
+}
+export function makeDeleteFontOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteFont", value: { id } } });
+}
+export function makeSetTextStyleDefOp(d: TextStyleDefLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(d) } } });
+}
+export function makeDeleteTextStyleDefOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteTextStyleDef", value: { id } } });
+}
+
+// --- animation -------------------------------------------------------------
+// Absolute upsert of the whole clip (id supplied by the caller) and deletion.
+export function makeSetClipOp(clip: ClipLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setClip", value: { clip: toPbClip(clip) } } });
 }
 export function makeDeleteClipOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteClip", value: { id } } });

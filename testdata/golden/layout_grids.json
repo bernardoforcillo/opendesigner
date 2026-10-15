@@ -1,0 +1,286 @@
+{
+ "_comment": [
+  "Layout grids of a frame: a valid list is stored whole; invalid ones (not a frame, bad count/size/kind/gutter, also inside a mixed mask) are rejected and leave the scene unchanged. Run from BOTH sides."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "nodes": {
+   "F": {
+    "id": "F",
+    "parentId": "page1",
+    "orderKey": "a0",
+    "name": "F",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 400,
+    "height": 300,
+    "frame": {},
+    "layoutGrids": [
+     {
+      "kind": "LAYOUT_GRID_KIND_COLUMNS",
+      "count": 4,
+      "gutter": 16,
+      "margin": 24,
+      "color": {
+       "r": 1,
+       "g": 0,
+       "b": 0,
+       "a": 0.5
+      }
+     },
+     {
+      "kind": "LAYOUT_GRID_KIND_GRID",
+      "size": 8,
+      "color": {
+       "r": 0,
+       "g": 0,
+       "b": 1,
+       "a": 0.25
+      }
+     }
+    ]
+   },
+   "R": {
+    "id": "R",
+    "parentId": "page1",
+    "orderKey": "a1",
+    "name": "R",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 50,
+    "height": 50,
+    "rect": {}
+   }
+  }
+ },
+ "ops": [
+  {
+   "docId": "doc1",
+   "opId": "o0",
+   "createNode": {
+    "node": {
+     "id": "F",
+     "parentId": "page1",
+     "orderKey": "a0",
+     "name": "F",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 400,
+     "height": 300,
+     "frame": {}
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o1",
+   "createNode": {
+    "node": {
+     "id": "R",
+     "parentId": "page1",
+     "orderKey": "a1",
+     "name": "R",
+     "visible": true,
+     "opacity": 1,
+     "x": 0,
+     "y": 0,
+     "width": 50,
+     "height": 50,
+     "rect": {}
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o2",
+   "setProps": {
+    "id": "F",
+    "mask": "layoutGrids",
+    "patch": {
+     "layoutGrids": [
+      {
+       "kind": "LAYOUT_GRID_KIND_COLUMNS",
+       "count": 4,
+       "gutter": 16,
+       "margin": 24,
+       "color": {
+        "r": 1,
+        "g": 0,
+        "b": 0,
+        "a": 0.5
+       }
+      },
+      {
+       "kind": "LAYOUT_GRID_KIND_GRID",
+       "size": 8,
+       "color": {
+        "r": 0,
+        "g": 0,
+        "b": 1,
+        "a": 0.25
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setProps": {
+    "id": "R",
+    "mask": "layoutGrids",
+    "patch": {
+     "layoutGrids": [
+      {
+       "kind": "LAYOUT_GRID_KIND_COLUMNS",
+       "count": 4,
+       "gutter": 16,
+       "margin": 24,
+       "color": {
+        "r": 1,
+        "g": 0,
+        "b": 0,
+        "a": 0.5
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setProps": {
+    "id": "F",
+    "mask": "layoutGrids",
+    "patch": {
+     "layoutGrids": [
+      {
+       "kind": "LAYOUT_GRID_KIND_COLUMNS",
+       "count": 0,
+       "gutter": 16,
+       "margin": 24,
+       "color": {
+        "r": 1,
+        "g": 0,
+        "b": 0,
+        "a": 0.5
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o5",
+   "setProps": {
+    "id": "F",
+    "mask": "layoutGrids",
+    "patch": {
+     "layoutGrids": [
+      {
+       "kind": "LAYOUT_GRID_KIND_GRID",
+       "size": 0,
+       "color": {
+        "r": 0,
+        "g": 0,
+        "b": 1,
+        "a": 0.25
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o6",
+   "setProps": {
+    "id": "F",
+    "mask": "layoutGrids",
+    "patch": {
+     "layoutGrids": [
+      {
+       "kind": 99,
+       "count": 2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o7",
+   "setProps": {
+    "id": "F",
+    "mask": "layoutGrids",
+    "patch": {
+     "layoutGrids": [
+      {
+       "kind": "LAYOUT_GRID_KIND_COLUMNS",
+       "count": 4,
+       "gutter": -1,
+       "margin": 24,
+       "color": {
+        "r": 1,
+        "g": 0,
+        "b": 0,
+        "a": 0.5
+       }
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o8",
+   "setProps": {
+    "id": "F",
+    "mask": "width,layoutGrids",
+    "patch": {
+     "width": 999,
+     "layoutGrids": [
+      {
+       "kind": "LAYOUT_GRID_KIND_COLUMNS",
+       "count": 2000,
+       "gutter": 16,
+       "margin": 24,
+       "color": {
+        "r": 1,
+        "g": 0,
+        "b": 0,
+        "a": 0.5
+       }
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "rejected": [
+  3,
+  4,
+  5,
+  6,
+  7,
+  8
+ ]
+}

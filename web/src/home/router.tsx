@@ -11,7 +11,7 @@ import {
   type RouterHistory,
 } from "@tanstack/react-router";
 import { NuqsAdapter } from "nuqs/adapters/tanstack-router";
-import { parseAsBoolean, parseAsStringLiteral, useQueryState } from "nuqs";
+import { parseAsBoolean, parseAsString, parseAsStringLiteral, useQueryState } from "nuqs";
 import { App } from "../ui/App";
 import { useScene } from "../store/store";
 import { useFlowUi } from "../store/flowUi";
@@ -28,7 +28,7 @@ import { documentTitleFor } from "./title";
 export const RENDERERS = ["cpu", "gpu"] as const;
 
 type HomeSearch = { templates?: true };
-type DocSearch = { renderer?: (typeof RENDERERS)[number] };
+type DocSearch = { renderer?: (typeof RENDERERS)[number]; page?: string };
 
 export interface RouterSlots {
   /** The editor (tests pass a stand-in). */
@@ -66,8 +66,10 @@ export function createAppRouter({ editor, home, history }: RouterSlots & { histo
   const docRoute = createRoute({
     getParentRoute: () => rootRoute,
     path: "/doc/$docId",
-    validateSearch: (s: Record<string, unknown>): DocSearch =>
-      s.renderer === "cpu" || s.renderer === "gpu" ? { renderer: s.renderer } : {},
+    validateSearch: (s: Record<string, unknown>): DocSearch => ({
+      ...(s.renderer === "cpu" || s.renderer === "gpu" ? { renderer: s.renderer } : {}),
+      ...(typeof s.page === "string" && s.page !== "" ? { page: s.page } : {}),
+    }),
     // An id that is not a well-formed one is not an editor: back to Home.
     beforeLoad: ({ params }) => {
       if (!normalizeDocId(params.docId)) throw redirect({ to: "/", replace: true });
@@ -133,6 +135,7 @@ function EditorHost({ children }: { children: ReactNode }) {
   return (
     <>
       <RendererQuerySync />
+      <PageQuerySync />
       {children}
     </>
   );
@@ -160,5 +163,40 @@ function RendererQuerySync() {
     if (wanted !== param) void setParam(wanted, { history: "replace" });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [choice]);
+  return null;
+}
+
+// `?page=<pageId>` <-> the page on screen. A link with it opens that page; changing page writes it
+// (a history entry, so Back returns to the previous page). The FIRST page is the default and
+// leaves the address bar clean; an id that is not a page of the document is dropped.
+export function PageQuerySync() {
+  const [param, setParam] = useQueryState("page", parseAsString);
+  const pages = useScene((s) => s.scene?.pages);
+  const current = useScene((s) => s.currentPageId);
+  const setCurrentPage = useScene((s) => s.setCurrentPage);
+  const first = pages?.[0]?.id ?? null;
+  const ready = pages !== undefined;
+
+  // The URL wins when it names a page of this document.
+  useLayoutEffect(() => {
+    if (!ready || param === null) return;
+    if (pages!.some((p) => p.id === param)) {
+      if (param !== useScene.getState().currentPageId) setCurrentPage(param);
+    } else {
+      void setParam(null, { history: "replace" });
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [param, ready]);
+
+  // Later changes of page follow into the URL.
+  const previous = useRef(current);
+  useLayoutEffect(() => {
+    if (previous.current === current) return;
+    previous.current = current;
+    if (current === null) return;
+    const wanted = current === first ? null : current;
+    if (wanted !== param) void setParam(wanted, { history: "push" });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [current]);
   return null;
 }

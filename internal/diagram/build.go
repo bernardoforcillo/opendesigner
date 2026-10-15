@@ -305,3 +305,14 @@ func buildNodes(sc *Scene, kind, source string) []*opendesignerv1.Node {
 	}
 	return append([]*opendesignerv1.Node{root}, b.nodes...)
 }
+
+// BuildScene turns a hand-made Scene into document nodes: a root group named `name` carrying
+// `meta`, then a shape / text / vector per item, children relative to the root. It is what
+// the whiteboard objects (internal/board) draw with, so a sticky note and a flowchart are the
+// same kind of thing in the document: plain nodes.
+func BuildScene(sc *Scene, name string, meta map[string]string) *Result {
+	nodes := buildNodes(sc, "", "")
+	nodes[0].Name = name
+	nodes[0].Meta = meta
+	return &Result{Nodes: nodes, Width: r2(sc.W), Height: r2(sc.H)}
+}

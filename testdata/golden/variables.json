@@ -1,0 +1,578 @@
+{
+ "_comment": [
+  "Variables / design tokens (ops 27-30 SetCollection, DeleteCollection, SetVariable,",
+  "DeleteVariable; mask paths `bindings` and `modes`). Run from BOTH sides:",
+  "internal/core/golden_test.go and web/src/store/golden.test.ts.",
+  "",
+  "Valid: a collection with two modes, a color and a number variable, bindings on a rect,",
+  "a mode override on the frame. Every op in `rejected` violates ONE invariant (no modes,",
+  "duplicate mode, unknown collection, value for an unknown mode, value of the wrong type,",
+  "type change, unspecified type, binding of the wrong type or key, binding to a missing",
+  "variable inside a mixed mask, mode override naming a missing mode, deletes of missing",
+  "ids): the scene MUST stay unchanged. Then the cascades: removing the `dark` mode drops its",
+  "values and the frame's override, deleting v2 removes the opacity binding, deleting col2",
+  "deletes v4 and the rotation binding."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "collections": {
+   "col1": {
+    "id": "col1",
+    "modes": [
+     {
+      "id": "light",
+      "name": "Light"
+     },
+     {
+      "id": "hc",
+      "name": "High contrast"
+     }
+    ],
+    "name": "Theme"
+   }
+  },
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "f1": {
+    "frame": {},
+    "height": 100,
+    "id": "f1",
+    "name": "f1",
+    "opacity": 1,
+    "orderKey": "a000001",
+    "parentId": "page1",
+    "visible": true,
+    "width": 100
+   },
+   "r1": {
+    "bindings": {
+     "corner_radius": "v3",
+     "fills.0": "v1"
+    },
+    "fills": [
+     {
+      "solid": {
+       "color": {
+        "a": 1,
+        "r": 1
+       }
+      }
+     }
+    ],
+    "height": 100,
+    "id": "r1",
+    "name": "r1",
+    "opacity": 1,
+    "orderKey": "a000001",
+    "parentId": "f1",
+    "rect": {},
+    "visible": true,
+    "width": 100
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1,
+  "variables": {
+   "v1": {
+    "collectionId": "col1",
+    "id": "v1",
+    "name": "color/bg",
+    "type": "VARIABLE_TYPE_COLOR",
+    "values": {
+     "light": {
+      "color": {
+       "a": 1,
+       "b": 1,
+       "g": 1,
+       "r": 1
+      }
+     }
+    }
+   },
+   "v3": {
+    "collectionId": "col1",
+    "id": "v3",
+    "name": "radius/card",
+    "type": "VARIABLE_TYPE_NUMBER",
+    "values": {
+     "light": {
+      "number": 8
+     }
+    }
+   }
+  }
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "frame": {},
+     "height": 100,
+     "id": "f1",
+     "name": "f1",
+     "opacity": 1,
+     "orderKey": "a000001",
+     "parentId": "page1",
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o0"
+  },
+  {
+   "createNode": {
+    "node": {
+     "fills": [
+      {
+       "solid": {
+        "color": {
+         "a": 1,
+         "b": 0,
+         "g": 0,
+         "r": 1
+        }
+       }
+      }
+     ],
+     "height": 100,
+     "id": "r1",
+     "name": "r1",
+     "opacity": 1,
+     "orderKey": "a000001",
+     "parentId": "f1",
+     "rect": {
+      "cornerRadius": 0
+     },
+     "visible": true,
+     "width": 100,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o1"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o2",
+   "setCollection": {
+    "collection": {
+     "id": "col1",
+     "modes": [
+      {
+       "id": "light",
+       "name": "Light"
+      },
+      {
+       "id": "dark",
+       "name": "Dark"
+      }
+     ],
+     "name": "Theme"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setVariable": {
+    "variable": {
+     "collectionId": "col1",
+     "id": "v1",
+     "name": "color/bg",
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "dark": {
+       "color": {
+        "a": 1,
+        "b": 0,
+        "g": 0,
+        "r": 0
+       }
+      },
+      "light": {
+       "color": {
+        "a": 1,
+        "b": 1,
+        "g": 1,
+        "r": 1
+       }
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setVariable": {
+    "variable": {
+     "collectionId": "col1",
+     "id": "v2",
+     "name": "opacity/card",
+     "type": "VARIABLE_TYPE_NUMBER",
+     "values": {
+      "dark": {
+       "number": 0.5
+      },
+      "light": {
+       "number": 1
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o5",
+   "setProps": {
+    "id": "r1",
+    "mask": "bindings",
+    "patch": {
+     "bindings": {
+      "fills.0": "v1",
+      "opacity": "v2"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o6",
+   "setProps": {
+    "id": "f1",
+    "mask": "modes",
+    "patch": {
+     "modes": {
+      "col1": "dark"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o7",
+   "setCollection": {
+    "collection": {
+     "id": "c9",
+     "modes": [],
+     "name": "empty"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o8",
+   "setCollection": {
+    "collection": {
+     "id": "c9",
+     "modes": [
+      {
+       "id": "a"
+      },
+      {
+       "id": "a"
+      }
+     ],
+     "name": "dup"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o9",
+   "setVariable": {
+    "variable": {
+     "collectionId": "nope",
+     "id": "x",
+     "name": "x",
+     "type": "VARIABLE_TYPE_NUMBER",
+     "values": {}
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o10",
+   "setVariable": {
+    "variable": {
+     "collectionId": "col1",
+     "id": "x",
+     "name": "x",
+     "type": "VARIABLE_TYPE_NUMBER",
+     "values": {
+      "sepia": {
+       "number": 1
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o11",
+   "setVariable": {
+    "variable": {
+     "collectionId": "col1",
+     "id": "x",
+     "name": "x",
+     "type": "VARIABLE_TYPE_COLOR",
+     "values": {
+      "light": {
+       "number": 1
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o12",
+   "setVariable": {
+    "variable": {
+     "collectionId": "col1",
+     "id": "v1",
+     "name": "color/bg",
+     "type": "VARIABLE_TYPE_NUMBER",
+     "values": {
+      "light": {
+       "number": 1
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o13",
+   "setVariable": {
+    "variable": {
+     "collectionId": "col1",
+     "id": "x",
+     "name": "x",
+     "type": "VARIABLE_TYPE_UNSPECIFIED",
+     "values": {}
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o14",
+   "setProps": {
+    "id": "r1",
+    "mask": "bindings",
+    "patch": {
+     "bindings": {
+      "fills.0": "v2"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o15",
+   "setProps": {
+    "id": "r1",
+    "mask": "bindings",
+    "patch": {
+     "bindings": {
+      "bogus": "v1"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o16",
+   "setProps": {
+    "id": "r1",
+    "mask": "bindings",
+    "patch": {
+     "bindings": {
+      "fills.01": "v1"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o17",
+   "setProps": {
+    "id": "r1",
+    "mask": "x,bindings",
+    "patch": {
+     "bindings": {
+      "opacity": "missing"
+     },
+     "x": 50
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o18",
+   "setProps": {
+    "id": "f1",
+    "mask": "modes",
+    "patch": {
+     "modes": {
+      "col1": "nope"
+     }
+    }
+   }
+  },
+  {
+   "deleteVariable": {
+    "id": "missing"
+   },
+   "docId": "doc1",
+   "opId": "o19"
+  },
+  {
+   "deleteCollection": {
+    "id": "missing"
+   },
+   "docId": "doc1",
+   "opId": "o20"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o21",
+   "setVariable": {
+    "variable": {
+     "collectionId": "col1",
+     "id": "v3",
+     "name": "radius/card",
+     "type": "VARIABLE_TYPE_NUMBER",
+     "values": {
+      "light": {
+       "number": 8
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o22",
+   "setProps": {
+    "id": "r1",
+    "mask": "bindings",
+    "patch": {
+     "bindings": {
+      "corner_radius": "v3",
+      "fills.0": "v1",
+      "opacity": "v2"
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o23",
+   "setCollection": {
+    "collection": {
+     "id": "col1",
+     "modes": [
+      {
+       "id": "light",
+       "name": "Light"
+      },
+      {
+       "id": "hc",
+       "name": "High contrast"
+      }
+     ],
+     "name": "Theme"
+    }
+   }
+  },
+  {
+   "deleteVariable": {
+    "id": "v2"
+   },
+   "docId": "doc1",
+   "opId": "o24"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o25",
+   "setCollection": {
+    "collection": {
+     "id": "col2",
+     "modes": [
+      {
+       "id": "m1",
+       "name": "Default"
+      }
+     ],
+     "name": "Motion"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o26",
+   "setVariable": {
+    "variable": {
+     "collectionId": "col2",
+     "id": "v4",
+     "name": "angle",
+     "type": "VARIABLE_TYPE_NUMBER",
+     "values": {
+      "m1": {
+       "number": 3
+      }
+     }
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o27",
+   "setProps": {
+    "id": "r1",
+    "mask": "bindings",
+    "patch": {
+     "bindings": {
+      "corner_radius": "v3",
+      "fills.0": "v1",
+      "rotation": "v4"
+     }
+    }
+   }
+  },
+  {
+   "deleteCollection": {
+    "id": "col2"
+   },
+   "docId": "doc1",
+   "opId": "o28"
+  }
+ ],
+ "rejected": [
+  7,
+  8,
+  9,
+  10,
+  11,
+  12,
+  13,
+  14,
+  15,
+  16,
+  17,
+  18,
+  19,
+  20
+ ]
+}

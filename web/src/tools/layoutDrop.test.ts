@@ -95,9 +95,19 @@ describe("computeLayoutDrop", () => {
     expect(end.indicator.x).toBe(180 + 5 - 1);
   });
 
-  it("releasing outside every frame still reorders in the starting frame", () => {
+  it("releasing a bit outside every frame still reorders in the starting frame", () => {
     const s = row();
-    expect(computeLayoutDrop(s, ["a"], "f", { x: 5000, y: 5000 })!.frameId).toBe("f");
+    const drop = computeLayoutDrop(s, ["a"], "f", { x: 410, y: 160 })!;      // 10 outside the frame's corner, inside the margin
+    expect(drop.frameId).toBe("f");
+    expect(drop.out).toBeUndefined();
+  });
+
+  it("a pointer well OUTSIDE the starting frame takes the node out of it, into the frame's parent", () => {
+    const s = row();                                              // frame at (100,50) 300x100
+    expect(computeLayoutDrop(s, ["b"], "f", { x: 700, y: 400 })).toMatchObject({ out: { parentId: "page1", x: 700, y: 400 } });
+    // Within the margin it is still a reorder.
+    const near = computeLayoutDrop(s, ["b"], "f", { x: 410, y: 100 })!;
+    expect(near.out).toBeUndefined();
   });
 
   it("picks the INNERMOST auto layout frame under the pointer, never a dragged one", () => {
@@ -139,6 +149,25 @@ describe("layoutDropOps", () => {
     expect([next.nodes.at("b").x, next.nodes.at("c").x, next.nodes.at("a").x]).toEqual([0, 30, 60]);
     const back = apply(next, ["a"], 0);
     expect(order(back.next)).toEqual(["a", "b", "c"]);
+  });
+
+  it("taking nodes out reparents them on top of the frame's siblings, centered on the pointer, and the row closes up", () => {
+    let s = row();
+    const drop = computeLayoutDrop(s, ["b"], "f", { x: 700, y: 400 })!;
+    const ops = layoutDropOps(s, ["b"], drop);
+    expect(ops.map((o) => o.kind.case)).toEqual(["reparentNode", "setProps"]);
+    for (const o of ops) s = applyOp(s, o);
+    const b = s.nodes.at("b");
+    expect(b.parentId).toBe("page1");
+    // 20x10 box centered at (700,400): top-left (690,395) in the page's space.
+    expect([b.x, b.y]).toEqual([690, 395]);
+    expect(s.nodes.at("c").x).toBe(30);                              // the layout closed the gap: a at 0, c at 30
+    // Several nodes keep their offsets, with the group centered on the pointer.
+    const multi = layoutDropOps(row(), ["a", "c"], computeLayoutDrop(row(), ["a", "c"], "f", { x: 700, y: 400 })!);
+    let t = row();
+    for (const o of multi) t = applyOp(t, o);
+    expect(t.nodes.at("c").x - t.nodes.at("a").x).toBe(60);
+    expect((t.nodes.at("a").x + t.nodes.at("c").x + 20) / 2).toBe(700);
   });
 
   it("releasing where it already was produces no op", () => {

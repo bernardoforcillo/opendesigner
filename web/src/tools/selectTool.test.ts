@@ -1,5 +1,6 @@
 import { nodesOf } from "../store/nodeMap";
 import { describe, it, expect, beforeEach, vi } from "vitest";
+import { useViewPrefs } from "../store/viewPrefs";
 import { createSelectTool, pickTarget, nodesInMarquee } from "./selectTool";
 import type { ToolContext } from "./types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -1467,6 +1468,23 @@ describe("selectTool — snap", () => {
       tool.onPointerMove!(at(58, 10), ctx);
       tool.onKeyDown!({ key: "Escape" } as KeyboardEvent, ctx);
       expect(useScene.getState().snapGuides).toEqual([]);
+    });
+
+    it("the pixel grid rounds the box where no node line snaps it, and a node's snap wins over it", () => {
+      useViewPrefs.getState().setPixelSnap(8);
+      try {
+        const tool = createSelectTool();
+        const ctx = fakeCtx();
+        tool.onPointerDown!(at(10, 10), ctx);
+        tool.onPointerMove!(at(10 + 13, 10 + 21), ctx); // x 13 -> 16 (nearest multiple of 8), y 21 -> 24
+        expect(useScene.getState().scene!.nodes.at("a")).toMatchObject({ x: 16 });
+        tool.onPointerMove!(at(58, 10), ctx); // within the threshold of "b": the node's edge (50), not the grid (48)
+        expect(useScene.getState().scene!.nodes.at("a").x).toBe(50);
+        tool.onPointerMove!(atMod(58, 10, { altKey: true }), ctx); // Alt: no snapping at all
+        expect(useScene.getState().scene!.nodes.at("a").x).toBe(48);
+      } finally {
+        useViewPrefs.getState().setPixelSnap(0);
+      }
     });
 
     it("Alt turns snapping off for that drag", () => {

@@ -59,7 +59,7 @@ const createOp = (docId: string, node: Node): Op =>
  * parent, same position, same name) in the same gesture. Returns the root's id,
  * or null if it cannot be done (no document, gesture in progress).
  */
-export function insertDiagram(res: RenderDiagramResponse, at: { x: number; y: number }, replaceId?: string): string | null {
+export function insertDiagram(res: Pick<RenderDiagramResponse, "nodes" | "width" | "height">, at: { x: number; y: number }, replaceId?: string): string | null {
   const st = useScene.getState();
   const scene = st.scene;
   if (!scene || st.gesture || res.nodes.length === 0) return null;

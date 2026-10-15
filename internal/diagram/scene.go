@@ -106,6 +106,12 @@ type Scene struct {
 
 func (s *Scene) add(it ...any) { s.Items = append(s.Items, it...) }
 
+// Add appends items (Box, Text, Line, Poly) in stacking order, the first at the bottom.
+func (s *Scene) Add(it ...any) { s.add(it...) }
+
+// Rgb is a pointer to a copy of c, for the optional fields of Box and Poly.
+func Rgb(c RGB) *RGB { return rgb(c) }
+
 func rgb(c RGB) *RGB { return &c }
 
 // --- text measurement ---------------------------------------------------------

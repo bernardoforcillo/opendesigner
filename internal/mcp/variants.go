@@ -6,34 +6,66 @@ import (
 	"sort"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/core"
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
 )
 
-// The variant tools. A COMPONENT SET groups components that are variants of one
-// another (Size=Small|Large x State=Default|Hover). Each member component says which
-// combination it is; an instance switches variant by being pointed at another
-// member. The rules live in internal/core/variants.go; these tools validate with
-// the same logic before sending, so the agent reads what to fix.
+// The component variants and properties tools: the agent groups components into SETS
+// (axes such as State or Size), puts each component on one option per axis, defines the
+// PROPERTIES an instance can set and sets them on instances. The model lives in
+// internal/core/components.go and docs/components.md; the tools run the authority's own
+// validators before submitting, so the error says what to fix.
 
-const variantConventions = " Variants: a component SET names properties and their allowed values; each member component has ONE combination (a value for every property, no two members alike). " +
-	"Editing a set's properties migrates its members: a new property gives them its first value, a removed value moves its members to the property's first value; it is refused if that would make two members identical. " +
-	"swap_instance points an instance at another component (typically the member with another combination); its overrides follow the master nodes by name path and those with no counterpart are dropped."
-
-type VariantPropertyIO struct {
-	Name   string   `json:"name" jsonschema:"e.g. Size"`
-	Values []string `json:"values" jsonschema:"allowed values, at least one, unique, e.g. [Small, Large]"`
+type VariantAxisIO struct {
+	Name    string   `json:"name" jsonschema:"e.g. State"`
+	Options []string `json:"options" jsonschema:"e.g. [\"default\",\"hover\"]; at least one"`
 }
 
 type ComponentSetView struct {
-	Id         string              `json:"id"`
-	Name       string              `json:"name"`
-	Properties []VariantPropertyIO `json:"properties"`
-	Members    []ComponentView     `json:"members"`
+	Id      string          `json:"id"`
+	Name    string          `json:"name"`
+	Axes    []VariantAxisIO `json:"axes"`
+	Members []string        `json:"members" jsonschema:"ids of the components that are variants of this set"`
+}
+
+type ComponentPropertyIO struct {
+	Name          string   `json:"name" jsonschema:"unique within the component; instances store values by this name"`
+	Type          string   `json:"type" jsonschema:"boolean (shows/hides the target nodes) | text (sets the content of the target text nodes)"`
+	DefaultValue  string   `json:"defaultValue" jsonschema:"boolean: \"true\" or \"false\"; text: the default content"`
+	TargetNodeIds []string `json:"targetNodeIds" jsonschema:"nodes INSIDE the component's master that it controls (text nodes for a text property)"`
 }
 
 type ListComponentSetsOutput struct {
-	Sets []ComponentSetView `json:"sets"`
+	ComponentSets []ComponentSetView `json:"componentSets"`
+}
+
+const variantsConventions = " Components: a COMPONENT SET groups the variants of a component along named AXES (State: default | hover; Size: sm | md); each member component assigns exactly one option per axis and no two members share a combination. " +
+	"A component can define PROPERTIES: a boolean shows or hides nodes of its master, a text sets the content of its text nodes. " +
+	"An INSTANCE chooses a variant (variantProps: axis -> option; axes it leaves out keep the base component's option) and sets property values (propertyValues: property name -> value; absent = the default). " +
+	"Deleting a node removes it from the property targets; deleting a set or changing its axes detaches the members that no longer fit."
+
+func axisViews(set *opendesignerv1.ComponentSet) []VariantAxisIO {
+	out := make([]VariantAxisIO, 0, len(set.GetAxes()))
+	for _, a := range set.GetAxes() {
+		out = append(out, VariantAxisIO{Name: a.GetName(), Options: append([]string{}, a.GetOptions()...)})
+	}
+	return out
+}
+
+func propertyTypeName(t opendesignerv1.ComponentPropertyType) string {
+	if t == opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN {
+		return "boolean"
+	}
+	return "text"
+}
+
+func propertyViews(c *opendesignerv1.Component) []ComponentPropertyIO {
+	out := make([]ComponentPropertyIO, 0, len(c.GetProperties()))
+	for _, p := range c.GetProperties() {
+		out = append(out, ComponentPropertyIO{Name: p.GetName(), Type: propertyTypeName(p.GetType()), DefaultValue: p.GetDefaultValue(), TargetNodeIds: append([]string{}, p.GetTargetNodeIds()...)})
+	}
+	return out
 }
 
 func componentSetViews(doc *opendesignerv1.Document) []ComponentSetView {
@@ -42,155 +74,163 @@ func componentSetViews(doc *opendesignerv1.Document) []ComponentSetView {
 		ids = append(ids, id)
 	}
 	sort.Strings(ids)
-	var out []ComponentSetView
+	out := make([]ComponentSetView, 0, len(ids))
 	for _, id := range ids {
 		set := doc.GetComponentSets()[id]
-		v := ComponentSetView{Id: id, Name: set.GetName(), Properties: []VariantPropertyIO{}, Members: []ComponentView{}}
-		for _, p := range set.GetProperties() {
-			v.Properties = append(v.Properties, VariantPropertyIO{Name: p.GetName(), Values: p.GetValues()})
-		}
-		cids := make([]string, 0)
+		v := ComponentSetView{Id: id, Name: set.GetName(), Axes: axisViews(set), Members: []string{}}
 		for cid, c := range doc.GetComponents() {
 			if c.GetSetId() == id {
-				cids = append(cids, cid)
+				v.Members = append(v.Members, cid)
 			}
 		}
-		sort.Strings(cids)
-		for _, cid := range cids {
-			c := doc.GetComponents()[cid]
-			v.Members = append(v.Members, ComponentView{Id: cid, RootNodeId: c.GetRootNodeId(), Name: c.GetName(), SetId: id, Variant: c.GetVariant()})
-		}
+		sort.Strings(v.Members)
 		out = append(out, v)
 	}
 	return out
 }
 
-func (s *Session) ListComponentSets(ctx context.Context, _ struct{}) (ListComponentSetsOutput, error) {
+func (s *Session) ListComponentSets(_ context.Context, _ struct{}) (ListComponentSetsOutput, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
-	out := ListComponentSetsOutput{Sets: componentSetViews(s.doc)}
-	if out.Sets == nil {
-		out.Sets = []ComponentSetView{}
-	}
-	return out, nil
+	return ListComponentSetsOutput{ComponentSets: componentSetViews(s.doc)}, nil
 }
 
 type SetComponentSetInput struct {
-	Id         string              `json:"id,omitempty" jsonschema:"omit to CREATE a set; give an existing id to REPLACE its name and properties (members are migrated)"`
-	Name       string              `json:"name"`
-	Properties []VariantPropertyIO `json:"properties"`
+	Id   string          `json:"id,omitempty" jsonschema:"id of an existing set to REPLACE (members that no longer fit are detached); omit to create one"`
+	Name string          `json:"name"`
+	Axes []VariantAxisIO `json:"axes"`
 }
 
 type SetComponentSetOutput struct {
-	SetId string `json:"setId"`
-	Seq   uint64 `json:"seq"`
+	ComponentSetId string `json:"componentSetId"`
+	Seq            uint64 `json:"seq"`
 }
 
 func (s *Session) SetComponentSet(ctx context.Context, in SetComponentSetInput) (SetComponentSetOutput, error) {
 	id := in.Id
 	s.mu.Lock()
-	_, exists := s.doc.GetComponentSets()[id]
-	s.mu.Unlock()
-	switch {
-	case id == "":
+	if id == "" {
 		id = uuid.NewString()
-	case !exists:
-		return SetComponentSetOutput{}, fmt.Errorf("set_component_set: set %q not found (omit id to create a new one; list_component_sets)", id)
+	} else if _, ok := s.doc.GetComponentSets()[id]; !ok {
+		s.mu.Unlock()
+		return SetComponentSetOutput{}, fmt.Errorf("set_component_set: set %q not found (omit id to create one; list_component_sets for the ids)", id)
 	}
+	s.mu.Unlock()
 	set := &opendesignerv1.ComponentSet{Id: id, Name: in.Name}
-	for _, p := range in.Properties {
-		set.Properties = append(set.Properties, &opendesignerv1.VariantProperty{Name: p.Name, Values: p.Values})
+	for _, a := range in.Axes {
+		set.Axes = append(set.Axes, &opendesignerv1.VariantAxis{Name: a.Name, Options: a.Options})
 	}
-	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentSet{SetComponentSet: &opendesignerv1.SetComponentSet{Set: set}}})
+	if err := core.ValidateComponentSet(set); err != nil {
+		return SetComponentSetOutput{}, fmt.Errorf("set_component_set: %w", err)
+	}
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentSet{SetComponentSet: &opendesignerv1.SetComponentSet{ComponentSet: set}}})
 	if err != nil {
-		return SetComponentSetOutput{}, fmt.Errorf("set_component_set: %w (a set needs a name; property names and values must be non-empty and unique, each property with at least one value; the edit must not make two members the same variant)", err)
+		return SetComponentSetOutput{}, err
 	}
-	return SetComponentSetOutput{SetId: id, Seq: seq}, nil
+	return SetComponentSetOutput{ComponentSetId: id, Seq: seq}, nil
 }
 
-type SetIdInput struct {
-	Id string `json:"id" jsonschema:"id of the set (see list_component_sets)"`
-}
-
-func (s *Session) DeleteComponentSet(ctx context.Context, in SetIdInput) (SeqOutput, error) {
+func (s *Session) DeleteComponentSet(ctx context.Context, in IdInput) (SeqOutput, error) {
 	s.mu.Lock()
 	_, ok := s.doc.GetComponentSets()[in.Id]
 	s.mu.Unlock()
 	if !ok {
-		return SeqOutput{}, fmt.Errorf("delete_component_set: set %q not found", in.Id)
+		return SeqOutput{}, fmt.Errorf("delete_component_set: set %q not found (list_component_sets for the ids)", in.Id)
 	}
 	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_DeleteComponentSet{DeleteComponentSet: &opendesignerv1.DeleteComponentSet{Id: in.Id}}})
+	return SeqOutput{Seq: seq}, err
+}
+
+type SetComponentDefInput struct {
+	ComponentId string                `json:"componentId"`
+	SetId       string                `json:"setId,omitempty" jsonschema:"the set this component is a variant of; empty = standalone"`
+	Variant     map[string]string     `json:"variant,omitempty" jsonschema:"axis name -> option, for EVERY axis of the set (none without a set)"`
+	Properties  []ComponentPropertyIO `json:"properties,omitempty" jsonschema:"REPLACES the component's properties; read them with list_components first to edit"`
+}
+
+func (in SetComponentDefInput) toProto() (*opendesignerv1.SetComponentDef, error) {
+	def := &opendesignerv1.SetComponentDef{ComponentId: in.ComponentId, SetId: in.SetId, Variant: in.Variant}
+	for _, p := range in.Properties {
+		var t opendesignerv1.ComponentPropertyType
+		switch p.Type {
+		case "boolean":
+			t = opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN
+		case "text":
+			t = opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT
+		default:
+			return nil, fmt.Errorf("property %q: type must be boolean or text, got %q", p.Name, p.Type)
+		}
+		def.Properties = append(def.Properties, &opendesignerv1.ComponentProperty{
+			Name: p.Name, Type: t, DefaultValue: p.DefaultValue, TargetNodeIds: p.TargetNodeIds,
+		})
+	}
+	return def, nil
+}
+
+// SetComponentDef replaces a component's set membership, variant and properties
+// wholesale: read them with list_components, edit, send them all back.
+func (s *Session) SetComponentDef(ctx context.Context, in SetComponentDefInput) (SeqOutput, error) {
+	def, err := in.toProto()
+	if err == nil {
+		s.mu.Lock()
+		err = core.ValidateComponentDef(s.doc, def)
+		s.mu.Unlock()
+	}
 	if err != nil {
-		return SeqOutput{}, err
+		return SeqOutput{}, fmt.Errorf("set_component_def: %w", err)
 	}
-	return SeqOutput{Seq: seq}, nil
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentDef{SetComponentDef: def}})
+	return SeqOutput{Seq: seq}, err
 }
 
-type SetComponentVariantInput struct {
-	ComponentId string            `json:"componentId" jsonschema:"the component (see list_components)"`
-	SetId       string            `json:"setId,omitempty" jsonschema:"the set to put it in; empty = take it OUT of its set"`
-	Variant     map[string]string `json:"variant,omitempty" jsonschema:"its combination: a value for EVERY property of the set, not shared with another member"`
+type SetInstancePropsInput struct {
+	InstanceId     string            `json:"instanceId"`
+	PropertyValues map[string]string `json:"propertyValues,omitempty" jsonschema:"property name -> value, of the component the instance resolves to; REPLACES the instance's values"`
+	VariantProps   map[string]string `json:"variantProps,omitempty" jsonschema:"axis name -> option; REPLACES the instance's variant choice"`
 }
 
-func (s *Session) SetComponentVariant(ctx context.Context, in SetComponentVariantInput) (SeqOutput, error) {
+func (s *Session) SetInstanceProps(ctx context.Context, in SetInstancePropsInput) (SeqOutput, error) {
 	s.mu.Lock()
-	_, compOK := s.doc.GetComponents()[in.ComponentId]
-	set := s.doc.GetComponentSets()[in.SetId]
+	n, ok := s.doc.GetNodes()[in.InstanceId]
+	var err error
+	switch {
+	case !ok:
+		err = fmt.Errorf("node %q not found (list_nodes for the ids)", in.InstanceId)
+	case n.GetInstance() == nil:
+		err = fmt.Errorf("node %q is not a component instance", in.InstanceId)
+	default:
+		err = core.ValidateInstanceProps(s.doc, n.GetInstance(), in.PropertyValues, in.VariantProps)
+	}
 	s.mu.Unlock()
-	if !compOK {
-		return SeqOutput{}, fmt.Errorf("set_component_variant: component %q not found (list_components)", in.ComponentId)
+	if err != nil {
+		return SeqOutput{}, fmt.Errorf("set_instance_props: %w", err)
 	}
-	if in.SetId != "" && set == nil {
-		return SeqOutput{}, fmt.Errorf("set_component_variant: set %q not found (set_component_set creates one)", in.SetId)
-	}
-	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentVariant{SetComponentVariant: &opendesignerv1.SetComponentVariant{
-		ComponentId: in.ComponentId, SetId: in.SetId, Variant: in.Variant,
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetInstanceProps{SetInstanceProps: &opendesignerv1.SetInstanceProps{
+		InstanceId: in.InstanceId, PropertyValues: in.PropertyValues, VariantProps: in.VariantProps,
 	}}})
-	if err != nil {
-		return SeqOutput{}, fmt.Errorf("set_component_variant: %w (give a value for every property of the set; the combination must not belong to another member)", err)
-	}
-	return SeqOutput{Seq: seq}, nil
-}
-
-type SwapInstanceInput struct {
-	InstanceId  string `json:"instanceId" jsonschema:"the instance node"`
-	ComponentId string `json:"componentId" jsonschema:"the component it should show (for a variant switch: the member with the wanted combination)"`
-}
-
-func (s *Session) SwapInstance(ctx context.Context, in SwapInstanceInput) (SeqOutput, error) {
-	s.mu.Lock()
-	n := s.doc.GetNodes()[in.InstanceId]
-	_, compOK := s.doc.GetComponents()[in.ComponentId]
-	s.mu.Unlock()
-	if n == nil || n.GetInstance() == nil {
-		return SeqOutput{}, fmt.Errorf("swap_instance: %q is not an instance node", in.InstanceId)
-	}
-	if !compOK {
-		return SeqOutput{}, fmt.Errorf("swap_instance: component %q not found (list_components)", in.ComponentId)
-	}
-	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SwapInstance{SwapInstance: &opendesignerv1.SwapInstance{InstanceId: in.InstanceId, ComponentId: in.ComponentId}}})
-	if err != nil {
-		return SeqOutput{}, fmt.Errorf("swap_instance: %w", err)
-	}
-	return SeqOutput{Seq: seq}, nil
+	return SeqOutput{Seq: seq}, err
 }
 
 type CreateInstanceInput struct {
-	ComponentId string  `json:"componentId" jsonschema:"the component to place (see list_components)"`
+	ComponentId string  `json:"componentId" jsonschema:"the component to instantiate (see list_components)"`
 	ParentId    string  `json:"parentId,omitempty" jsonschema:"defaults to the first page"`
-	X           float64 `json:"x,omitempty"`
-	Y           float64 `json:"y,omitempty"`
-	Name        string  `json:"name,omitempty" jsonschema:"defaults to the component's name"`
+	X           float64 `json:"x"`
+	Y           float64 `json:"y"`
+	Name        string  `json:"name,omitempty"`
 }
 
-// CreateInstance places an instance of a component; it takes the master's size.
+// CreateInstance places an instance of a component: it renders the component's master
+// (or the variant it chooses, see set_instance_props) at x/y.
 func (s *Session) CreateInstance(ctx context.Context, in CreateInstanceInput) (CreateNodeOutput, error) {
 	s.mu.Lock()
-	comp := s.doc.GetComponents()[in.ComponentId]
-	master := s.doc.GetNodes()[comp.GetRootNodeId()]
+	comp, ok := s.doc.GetComponents()[in.ComponentId]
+	var root *opendesignerv1.Node
+	if ok {
+		root = s.doc.GetNodes()[comp.GetRootNodeId()]
+	}
 	s.mu.Unlock()
-	if comp == nil {
-		return CreateNodeOutput{}, fmt.Errorf("create_instance: component %q not found (list_components)", in.ComponentId)
+	if !ok || root == nil {
+		return CreateNodeOutput{}, fmt.Errorf("create_instance: component %q (or its master) not found (list_components for the ids)", in.ComponentId)
 	}
 	parent := s.resolveParent(in.ParentId)
 	if parent == "" {
@@ -200,101 +240,16 @@ func (s *Session) CreateInstance(ctx context.Context, in CreateInstanceInput) (C
 	if name == "" {
 		name = comp.GetName()
 	}
-	n := s.newBaseNode(parent, name, in.X, in.Y, master.GetWidth(), master.GetHeight())
+	n := s.newBaseNode(parent, name, in.X, in.Y, root.GetWidth(), root.GetHeight())
 	n.Shape = &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{ComponentId: in.ComponentId}}
 	return s.createNode(ctx, n)
 }
 
-// ---------------------------------------------------------------------------
-// component properties
-// ---------------------------------------------------------------------------
-
-const propertyConventions = " Component properties: a component declares named controls; an INSTANCE sets them. A boolean property shows or hides one layer of the master, a text property sets one text layer's content (optionally from an option list), a number property writes opacity / corner radius / font size of one layer, a swap property makes a nested instance show another component. " +
-	"An instance's value wins over the default, and a property wins over a per-node override of the same layer. Values survive swap_instance; properties the new component lacks are ignored."
-
-type ComponentPropertyIO struct {
-	Name      string   `json:"name" jsonschema:"e.g. Label, Show icon"`
-	Type      string   `json:"type" jsonschema:"boolean | text | number | swap"`
-	NodeId    string   `json:"nodeId" jsonschema:"a node INSIDE the component's master: the layer to show/hide (boolean), the text layer (text), the node whose attribute the number drives (number), or the NESTED INSTANCE to replace (swap)"`
-	Default   string   `json:"default,omitempty" jsonschema:"boolean: true (default) | false. text: the text (one of options if given); number: the number; swap: a component id. Empty keeps the master's own value"`
-	Attribute string   `json:"attribute,omitempty" jsonschema:"number only: opacity (0..1) | corner_radius (rectangle) | font_size (text)"`
-	Options   []string `json:"options,omitempty" jsonschema:"text only: an option list; the value must be one of them. Empty = free text"`
-}
-
-var propTypeNames = map[opendesignerv1.ComponentPropertyType]string{
-	opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:       "boolean",
-	opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:          "text",
-	opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:        "number",
-	opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP: "swap",
-}
-
-func propertyViews(c *opendesignerv1.Component) []ComponentPropertyIO {
-	var out []ComponentPropertyIO
-	for _, p := range c.GetProperties() {
-		out = append(out, ComponentPropertyIO{Name: p.GetName(), Type: propTypeNames[p.GetType()], NodeId: p.GetNodeId(), Default: p.GetDefaultValue(), Attribute: p.GetAttribute(), Options: p.GetOptions()})
-	}
-	return out
-}
-
-type SetComponentPropertiesInput struct {
-	ComponentId string                `json:"componentId"`
-	Properties  []ComponentPropertyIO `json:"properties" jsonschema:"the COMPLETE list (it replaces the current one; [] removes all)"`
-}
-
-func (s *Session) SetComponentProperties(ctx context.Context, in SetComponentPropertiesInput) (SeqOutput, error) {
-	s.mu.Lock()
-	_, ok := s.doc.GetComponents()[in.ComponentId]
-	s.mu.Unlock()
-	if !ok {
-		return SeqOutput{}, fmt.Errorf("set_component_properties: component %q not found (list_components)", in.ComponentId)
-	}
-	props := make([]*opendesignerv1.ComponentProperty, 0, len(in.Properties))
-	for _, p := range in.Properties {
-		var typ opendesignerv1.ComponentPropertyType
-		for t, n := range propTypeNames {
-			if n == p.Type {
-				typ = t
-			}
-		}
-		if typ == opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_UNSPECIFIED {
-			return SeqOutput{}, fmt.Errorf("set_component_properties: type of %q must be boolean, text, number or swap, got %q", p.Name, p.Type)
-		}
-		props = append(props, &opendesignerv1.ComponentProperty{Name: p.Name, Type: typ, NodeId: p.NodeId, DefaultValue: p.Default, Attribute: p.Attribute, Options: p.Options})
-	}
-	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentProperties{SetComponentProperties: &opendesignerv1.SetComponentProperties{ComponentId: in.ComponentId, Properties: props}}})
-	if err != nil {
-		return SeqOutput{}, fmt.Errorf("set_component_properties: %w (names unique and non-empty; nodeId must be inside the component's master; a text property needs a text node; a number needs attribute opacity, corner_radius or font_size on a fitting node; a swap needs a nested instance and an existing component as default; a boolean default is true or false)", err)
-	}
-	return SeqOutput{Seq: seq}, nil
-}
-
-type SetInstancePropertyInput struct {
-	InstanceId string `json:"instanceId"`
-	Name       string `json:"name" jsonschema:"a property of the instance's component"`
-	Value      string `json:"value,omitempty" jsonschema:"boolean: true | false. text: the text (an option if the property has options). number: a number. swap: a component id. Empty = back to the default"`
-}
-
-func (s *Session) SetInstanceProperty(ctx context.Context, in SetInstancePropertyInput) (SeqOutput, error) {
-	s.mu.Lock()
-	n := s.doc.GetNodes()[in.InstanceId]
-	s.mu.Unlock()
-	if n == nil || n.GetInstance() == nil {
-		return SeqOutput{}, fmt.Errorf("set_instance_property: %q is not an instance node", in.InstanceId)
-	}
-	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetInstanceProperty{SetInstanceProperty: &opendesignerv1.SetInstanceProperty{InstanceId: in.InstanceId, Name: in.Name, Value: in.Value}}})
-	if err != nil {
-		return SeqOutput{}, fmt.Errorf("set_instance_property: %w (the component must declare that property; list_components shows them; a boolean takes true or false, a number a number, a swap an existing component id, an option text one of its options)", err)
-	}
-	return SeqOutput{Seq: seq}, nil
-}
-
 func registerVariantTools(srv *mcp.Server, s *Session) {
-	addTool(srv, "list_component_sets", "List the variant sets with their properties, allowed values and member components (each with its combination)."+variantConventions, s.ListComponentSets)
-	addTool(srv, "set_component_set", "Create a variant set (omit id) or replace one's name and properties (give id). Returns the set id."+variantConventions, s.SetComponentSet)
-	addTool(srv, "delete_component_set", "Delete a set; its members stay components but are no longer variants."+variantConventions, s.DeleteComponentSet)
-	addTool(srv, "set_component_variant", "Put a component in a set with a full combination, or (setId empty) take it out."+variantConventions, s.SetComponentVariant)
-	addTool(srv, "set_component_properties", "Replace a component's property definitions (boolean: show/hide a layer; text: set a text layer)."+propertyConventions, s.SetComponentProperties)
-	addTool(srv, "set_instance_property", "Set one property of an instance (empty value = back to the default)."+propertyConventions, s.SetInstanceProperty)
-	addTool(srv, "create_instance", "Place an instance of a component (it shows the master and follows it). Returns the node id; use swap_instance to switch it to another variant."+variantConventions, s.CreateInstance)
-	addTool(srv, "swap_instance", "Point an instance at another component; use it to switch an instance to another variant."+variantConventions, s.SwapInstance)
+	addTool(srv, "create_instance", "Place an instance of a component at x/y (parentId defaults to the first page). Choose its variant and set its properties with set_instance_props."+variantsConventions, s.CreateInstance)
+	addTool(srv, "list_component_sets", "List the document's component sets: axes, options and the member components."+variantsConventions, s.ListComponentSets)
+	addTool(srv, "set_component_set", "Create a component set (omit id) or REPLACE one (read it with list_component_sets). Changing the axes detaches the members that no longer fit: reassign them with set_component_def."+variantsConventions, s.SetComponentSet)
+	addTool(srv, "delete_component_set", "Delete a component set; its members become standalone components.", s.DeleteComponentSet)
+	addTool(srv, "set_component_def", "Put a component in a set on one option per axis and/or define its properties. REPLACES its set membership, variant and properties wholesale (list_components shows the current ones)."+variantsConventions, s.SetComponentDef)
+	addTool(srv, "set_instance_props", "Choose the variant of an instance and set its property values. REPLACES both maps."+variantsConventions, s.SetInstanceProps)
 }

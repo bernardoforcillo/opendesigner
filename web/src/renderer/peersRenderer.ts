@@ -3,6 +3,7 @@ import { worldToScreen } from "../canvas/camera";
 import { type Bounds, worldBoundsToScreen } from "../canvas/geometry";
 import type { SceneState } from "../store/types";
 import { peerColor, type Peers } from "../store/presence";
+import { emoteOf } from "../store/facilitation";
 import { selectionWorldBounds } from "./overlayRenderer";
 import { themeColors, withAlpha } from "./themeColors";
 
@@ -80,6 +81,9 @@ export function drawPeers(
     ctx.stroke();
 
     drawLabel(ctx, p.nickname, 12, 18, color);
+    // Cursor chat and reactions: a bubble under the name for a few seconds.
+    const say = emoteOf(p, Date.now());
+    if (say !== "") drawBubble(ctx, say, 12, 38, color);
     ctx.restore();
   }
 }
@@ -116,4 +120,54 @@ export function drawLayoutDrop(
   ctx.fillStyle = DROP_COLOR;
   if (thin) ctx.fillRect(b.x + b.width / 2 - 1, b.y, 2, b.height);
   else ctx.fillRect(b.x, b.y + b.height / 2 - 1, b.width, 2);
+}
+
+// A speech bubble with its top-left corner at (x, y): the text of a cursor chat, or one emoji.
+function drawBubble(ctx: CanvasRenderingContext2D, text: string, x: number, y: number, color: string): void {
+  const shown = text.length > 60 ? `${text.slice(0, 59)}…` : text;
+  const w = ctx.measureText(shown).width + LABEL_PAD_X * 2 + 4;
+  ctx.fillStyle = withAlpha(color, 0.12);
+  ctx.strokeStyle = color;
+  ctx.lineWidth = 1;
+  ctx.beginPath();
+  ctx.roundRect(x, y, w, LABEL_H + 6, 8);
+  ctx.fill();
+  ctx.stroke();
+  ctx.fillStyle = themeColors().fg;
+  ctx.textBaseline = "middle";
+  ctx.fillText(shown, x + LABEL_PAD_X + 2, y + (LABEL_H + 6) / 2);
+}
+
+const DOT_R = 9;
+
+/**
+ * Dot voting: a badge on the top-right corner of every node that has dots, with the count (the
+ * ring is the accent when some of the dots are mine). Votes are on the node a person clicked, so the
+ * corner is that node's own box.
+ */
+export function drawVotes(
+  ctx: CanvasRenderingContext2D, scene: SceneState, cam: Camera, tally: Record<string, number>, mine: readonly string[],
+): void {
+  const dpr = typeof window !== "undefined" && window.devicePixelRatio ? window.devicePixelRatio : 1;
+  ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+  ctx.font = LABEL_FONT;
+  ctx.textAlign = "center";
+  ctx.textBaseline = "middle";
+  const mineSet = new Set(mine);
+  for (const [id, count] of Object.entries(tally)) {
+    const b = selectionWorldBounds(scene, [id]);
+    if (!b) continue;
+    const box = worldBoundsToScreen(b, cam);
+    const cx = box.x + box.width, cy = box.y;
+    ctx.beginPath();
+    ctx.arc(cx, cy, DOT_R, 0, Math.PI * 2);
+    ctx.fillStyle = "#e5484d";
+    ctx.fill();
+    ctx.lineWidth = mineSet.has(id) ? 2.5 : 1.5;
+    ctx.strokeStyle = "#ffffff";
+    ctx.stroke();
+    ctx.fillStyle = "#ffffff";
+    ctx.fillText(String(count), cx, cy + 0.5);
+  }
+  ctx.textAlign = "start";
 }

@@ -75,18 +75,19 @@ export function sceneIndexOf(scene: SceneState): SceneIndex {
 export function effectsOutset(n: NodeLite): number {
   if (!n.effects) return 0;
   let out = 0;
-  let shadowSeen = false;
+  let shadow = 0;
   let blurSeen = false;
+  // Every drop shadow counts (the widest wins); inner shadows and background
+  // blur stay inside the outline.
   for (const e of n.effects) {
-    if (e.kind === "dropShadow" && !shadowSeen) {
-      shadowSeen = true;
-      out += Math.max(Math.abs(e.offsetX), Math.abs(e.offsetY)) + e.blur * 1.5;
+    if (e.kind === "dropShadow") {
+      shadow = Math.max(shadow, Math.max(Math.abs(e.offsetX), Math.abs(e.offsetY)) + e.blur * 1.5);
     } else if (e.kind === "layerBlur" && !blurSeen && e.radius > 0) {
       blurSeen = true;
       out += e.radius * 3;
     }
   }
-  return out;
+  return out + shadow;
 }
 
 // Text is not clipped by its own box (renderer/text.ts::textPaintBounds),
@@ -321,6 +322,19 @@ function updateIndex(
     for (const k of children.get(id) ?? []) clearTree(k.id);
   };
   // 1) Subtrees of the changed nodes (their transform may be new).
+  //
+  // Shallowest first. A changed node under another changed one is covered by its
+  // ancestor's visit, but only if the ancestor is processed FIRST: the other way
+  // round the child is visited twice, and the visitor treats the second visit as a
+  // cycle (it has already `seen` the node) and clears its extent -- the node stops
+  // being drawn. The provenance does not promise any order (a derived scene lists
+  // the nodes it replaced as it found them).
+  const depthIn = (id: string): number => {
+    let d = 0;
+    for (let cur: NodeLite | undefined = nodes.at(id); cur && d < 1000; cur = nodes.at(cur.parentId)) d++;
+    return d;
+  };
+  changed.sort((a, b) => depthIn(a) - depthIn(b));
   const redone = new Set<string>();
   for (const id of changed) {
     // Already redone as a descendant of another changed one? A node under a

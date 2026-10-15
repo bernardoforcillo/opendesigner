@@ -93,12 +93,10 @@ export interface ColorFieldProps {
   placeholder?: string;
 }
 
-// The field's <Input>. react-aria 3.52 commits the color on Enter by itself
-// (useColorField's keyboard handler), besides blur. Earlier versions committed
-// only on blur and this component added its own Enter handler; with both, Enter
-// confirmed the color TWICE (two ops, two undo steps). If react-aria is ever
-// downgraded below 3.52, Enter will stop committing: the PropertiesPanel tests
-// ("emits ONE SetProperties...") will say so.
+// The field's <Input>. Enter commits through react-aria's own handler
+// (useColorField, `Enter: commit`): an older release only committed on blur and
+// this component added its own Enter handler to cover it. Both fired on the newer
+// release -- two identical ops for every Enter -- so ours is gone.
 function HexInput({ placeholder }: { placeholder?: string }) {
   return (
     <Input

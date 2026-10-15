@@ -139,7 +139,7 @@ func (h *assetHandler) upload(w http.ResponseWriter, r *http.Request, docID stri
 		case errors.Is(err, store.ErrAssetType):
 			// 415 and not 400: the request is well-formed, it is the content TYPE
 			// that is not accepted.
-			http.Error(w, "unsupported image type", http.StatusUnsupportedMediaType)
+			http.Error(w, "unsupported file type", http.StatusUnsupportedMediaType)
 		case errors.Is(err, store.ErrAssetDocID):
 			http.Error(w, "invalid doc_id", http.StatusBadRequest)
 		default:

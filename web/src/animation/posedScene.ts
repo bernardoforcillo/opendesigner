@@ -1,5 +1,6 @@
 import { useScene } from "../store/store";
 import type { SceneState } from "../store/types";
+import { resolveScene } from "../store/variables";
 import { poseScene, sampleWithDraft } from "./pose";
 import { useTimeline } from "./timelineStore";
 
@@ -18,9 +19,14 @@ let memo: {
   scene: SceneState; clipRef: unknown; playhead: number; draft: unknown; out: SceneState;
 } | null = null;
 
-export function posedScene(): SceneState | null {
-  const scene = useScene.getState().scene;
-  if (!scene) return null;
+// With `resolve` the base is the scene with the document's variables resolved
+// (store/variables.ts) -- what the canvas DRAWS. The animation is posed on top of
+// it, so an animated property wins over a bound one. Tools and panels read the
+// unresolved scene: they edit the document, not what it looks like in a mode.
+export function posedScene(resolve = false): SceneState | null {
+  const raw = useScene.getState().scene;
+  if (!raw) return null;
+  const scene = resolve ? resolveScene(raw) : raw;
   const tl = useTimeline.getState();
   if (!tl.open || !tl.posed || !tl.clipId) return scene;
   const clip = tl.draftClip ?? scene.clips[tl.clipId];

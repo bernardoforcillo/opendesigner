@@ -68,33 +68,6 @@ type Element struct {
 	// StrokePath: the <path> of a vector's stroke (the one `draw` animates),
 	// distinct from the fill path.
 	StrokePath bool
-
-	// Use: this element is an INSTANCE of a variant component. The React target
-	// renders it as `<Button size="L" />` inside this element instead of its
-	// inline Children (which stay filled for the HTML target).
-	Use *ComponentUse
-
-	// ShowIf / TextProp: inside a variant component, this element is shown only
-	// when the component property of that NAME is true (ShowIf), or its text is
-	// that property's value (TextProp). Empty everywhere else.
-	ShowIf   string
-	TextProp string
-	// Dyn: inline style entries driven by a component prop (a number attribute).
-	Dyn []DynStyle
-	// SwapProp: this nested instance is replaceable through the prop of that
-	// property name; its Children are the default content.
-	SwapProp string
-}
-
-// DynStyle: a React inline style (camelCase `Style`) whose value is the prop `Prop`.
-type DynStyle struct{ Style, Prop string }
-
-// ComponentUse identifies the variant an instance shows.
-type ComponentUse struct {
-	SetID, ComponentID string
-	Variant            map[string]string
-	// Values: the instance's component-property values (name -> value).
-	Values map[string]string
 }
 
 // Screen is an exported screen: a top-level frame (or a node referenced by a
@@ -116,6 +89,17 @@ type Screen struct {
 
 func (e *Element) addStyle(name, value string) {
 	e.Style = append(e.Style, Prop{name, value})
+}
+
+// delStyle removes every declaration of `name`.
+func (e *Element) delStyle(name string) {
+	kept := e.Style[:0:0]
+	for _, p := range e.Style {
+		if p.Name != name {
+			kept = append(kept, p)
+		}
+	}
+	e.Style = kept
 }
 
 func (e *Element) addAttr(name, value string) {

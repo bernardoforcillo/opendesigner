@@ -1,278 +1,222 @@
 package codegen_test
 
 import (
+	"bytes"
+	"os"
 	"strings"
 	"testing"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"github.com/bernardoforcillo/opendesigner/internal/codegen"
+	. "github.com/bernardoforcillo/opendesigner/internal/codegen/samples"
+	"github.com/bernardoforcillo/opendesigner/internal/core"
+	"google.golang.org/protobuf/proto"
+	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
-func varPaint(id string) *opendesignerv1.Paint {
-	return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Variable{Variable: &opendesignerv1.VariableRef{VariableId: id}}}
-}
-
-func solid(r, g, b float32) *opendesignerv1.Paint {
-	return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Solid{Solid: &opendesignerv1.SolidPaint{Color: &opendesignerv1.Color{R: r, G: g, B: b, A: 1}}}}
-}
-
-// varDoc: one screen with a rectangle filled by variable "v1" (colour/Brand,
-// red in "light", blue in "dark") and a second rectangle that references a
-// variable that does not exist.
-func varDoc() *opendesignerv1.Document {
-	return &opendesignerv1.Document{
-		Id: "doc", Name: "Tokens", SchemaVersion: 1,
-		Pages: []*opendesignerv1.Page{{Id: "page1", Name: "Page 1"}},
-		Modes: []*opendesignerv1.Mode{{Id: "light", Name: "Light"}, {Id: "dark", Name: "Dark"}},
-		Variables: map[string]*opendesignerv1.Variable{
-			"v1": {Id: "v1", Name: "colour/Brand", Values: map[string]*opendesignerv1.Color{
-				"light": {R: 1, A: 1}, "dark": {B: 1, A: 1},
-			}},
-		},
-		Nodes: map[string]*opendesignerv1.Node{
-			"s": {Id: "s", ParentId: "page1", OrderKey: "a", Name: "Home", Visible: true, Opacity: 1, Width: 400, Height: 300,
-				Fills: []*opendesignerv1.Paint{solid(1, 1, 1)},
-				Shape: &opendesignerv1.Node_Frame{Frame: &opendesignerv1.FrameNode{}}},
-			"r": {Id: "r", ParentId: "s", OrderKey: "a", Name: "Brand box", Visible: true, Opacity: 1, X: 10, Y: 10, Width: 50, Height: 50,
-				Fills: []*opendesignerv1.Paint{varPaint("v1")},
-				Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}},
-			"x": {Id: "x", ParentId: "s", OrderKey: "b", Name: "Dangling", Visible: true, Opacity: 1, X: 100, Y: 10, Width: 50, Height: 50,
-				Fills: []*opendesignerv1.Paint{varPaint("gone")},
-				Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}},
-		},
-	}
-}
-
-func TestVariableFillsExportAsCustomProperties(t *testing.T) {
-	doc := varDoc()
-	out := gen(t, doc, codegen.TargetHTML, nil)
-	var page string
-	for _, f := range out.Files {
-		if strings.HasSuffix(f.Path, ".html") && strings.Contains(string(f.Content), "Brand box") || strings.Contains(string(f.Content), "--colour-brand") {
-			page = string(f.Content)
-		}
-	}
-	if page == "" {
-		t.Fatalf("no page with the token found; files: %v", out.Files)
-	}
-	for _, want := range []string{
-		":root{--colour-brand:#f00;}",              // default mode = first mode
-		`[data-mode="dark"]{--colour-brand:#00f;}`, // other mode overrides
-		"background-color: var(--colour-brand)",
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("missing %q in:\n%s", want, page)
-		}
-	}
-	// A dangling reference draws black and must not invent a custom property.
-	if strings.Count(page, "var(--") != 1 {
-		t.Errorf("only the bound fill may use var(), got %d in:\n%s", strings.Count(page, "var(--"), page)
-	}
-	if !strings.Contains(page, "background-color: #000") {
-		t.Errorf("dangling variable must draw black:\n%s", page)
-	}
-}
-
-func TestVariableExportReactAddsTokensToIndexCSS(t *testing.T) {
-	out := gen(t, varDoc(), codegen.TargetReact, nil)
-	css := string(file(t, out, "src/index.css"))
-	if !strings.Contains(css, ":root{--colour-brand:#f00;}") || !strings.Contains(css, `[data-mode="dark"]`) {
-		t.Errorf("index.css lacks the tokens:\n%s", css)
-	}
-}
-
-func TestExportDoesNotMutateTheDocumentsVariablePaints(t *testing.T) {
-	doc := varDoc()
-	gen(t, doc, codegen.TargetHTML, nil)
-	if _, ok := doc.Nodes["r"].Fills[0].Kind.(*opendesignerv1.Paint_Variable); !ok {
-		t.Fatal("Generate rewrote the caller's paint; it must work on a clone")
-	}
-}
-
-func TestDocumentWithoutVariablesIsUnchanged(t *testing.T) {
-	doc := varDoc()
-	doc.Variables = nil
-	doc.Nodes["r"].Fills = []*opendesignerv1.Paint{solid(0, 1, 0)}
-	doc.Nodes["x"].Fills = []*opendesignerv1.Paint{solid(0, 0, 1)}
-	out := gen(t, doc, codegen.TargetHTML, nil)
-	for _, f := range out.Files {
-		if strings.Contains(string(f.Content), "var(--") || strings.Contains(string(f.Content), "data-mode") {
-			t.Fatalf("no variables, yet the output mentions tokens in %s", f.Path)
-		}
-	}
-}
-
-func TestBoundStrokesExportAsCustomProperties(t *testing.T) {
-	doc := varDoc()
-	doc.Nodes["r"].Strokes = []*opendesignerv1.Stroke{
-		{Paint: solid(0, 1, 0), Weight: 2, Align: opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE},
-		{Paint: varPaint("v1"), Weight: 3, Align: opendesignerv1.StrokeAlign_STROKE_ALIGN_OUTSIDE},
-	}
-	out := gen(t, doc, codegen.TargetHTML, nil)
-	page := ""
-	for _, f := range out.Files {
-		if strings.HasSuffix(f.Path, ".html") && strings.Contains(string(f.Content), "box-shadow") {
-			page = string(f.Content)
-		}
-	}
-	// The LAST stroke is drawn last, so it comes first in the shadow list; only
-	// the bound one uses var(), the literal one keeps its colour.
-	if !strings.Contains(page, "0 0 0 3px var(--colour-brand),0 0 0 2px #0f0") {
-		t.Errorf("stroke binding lost or misplaced:\n%s", page)
-	}
-}
-
-func TestReactTokensUseTailwindThemeForColorNames(t *testing.T) {
-	doc := varDoc()
-	doc.Variables["v1"].Name = "color/Brand"
-	doc.Variables["v2"] = &opendesignerv1.Variable{Id: "v2", Name: "surface/page", Values: map[string]*opendesignerv1.Color{"light": {R: 1, G: 1, B: 1, A: 1}}}
-	doc.Nodes["x"].Fills = []*opendesignerv1.Paint{varPaint("v2")}
-	css := string(file(t, gen(t, doc, codegen.TargetReact, nil), "src/index.css"))
-	if !strings.Contains(css, "@theme{--color-brand:#f00;}") {
-		t.Errorf("--color-* tokens belong in @theme:\n%s", css)
-	}
-	if !strings.Contains(css, ":root{--surface-page:#fff;}") {
-		t.Errorf("other tokens stay in :root (outside Tailwind's theme namespaces):\n%s", css)
-	}
-	if !strings.Contains(css, `[data-mode="dark"]{--color-brand:#00f;}`) {
-		t.Errorf("mode overrides missing:\n%s", css)
-	}
-	html := ""
-	for _, f := range gen(t, doc, codegen.TargetHTML, nil).Files {
-		if strings.HasSuffix(f.Path, ".html") && strings.Contains(string(f.Content), "--color-brand") {
-			html = string(f.Content)
-		}
-	}
-	if !strings.Contains(html, ":root{--color-brand:#f00;--surface-page:#fff;}") {
-		t.Errorf("plain HTML has no Tailwind: everything goes in :root:\n%s", html)
-	}
-}
-
-// An instance's fill override bound to a variable must export the variable's
-// colour (default mode), never the black a dangling paint draws.
-func TestBoundInstanceOverrideExportsTheVariableColour(t *testing.T) {
-	doc := varDoc()
-	doc.Components = map[string]*opendesignerv1.Component{"c": {RootNodeId: "r", Name: "Box"}}
-	doc.Nodes["i"] = &opendesignerv1.Node{
-		Id: "i", ParentId: "s", OrderKey: "c", Name: "Inst", Visible: true, Opacity: 1, X: 200, Y: 10, Width: 50, Height: 50,
-		Shape: &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{
-			ComponentId: "c",
-			Overrides:   []*opendesignerv1.InstanceOverride{{MasterNodeId: "r", FillsPresent: true, Fills: []*opendesignerv1.Paint{varPaint("v1")}}},
-		}},
-	}
-	// Make the master itself a plain colour so a red instance can only come from the override.
-	doc.Nodes["r"].Fills = []*opendesignerv1.Paint{solid(0, 1, 0)}
-	out := gen(t, doc, codegen.TargetHTML, nil)
-	for _, f := range out.Files {
-		if strings.HasSuffix(f.Path, ".html") && strings.Contains(string(f.Content), "left: 200px") {
-			if !strings.Contains(string(f.Content), "background-color: #f00") {
-				t.Fatalf("the bound override must export the variable's colour:\n%s", f.Content)
-			}
-			return
-		}
-	}
-	t.Fatal("no page with the instance")
-}
-
-// --- aliases, number/text kinds, bindings, gradient stops ---------------------------
-
-func numberVar(id, name string, vals map[string]float64) *opendesignerv1.Variable {
-	return &opendesignerv1.Variable{Id: id, Name: name, Type: opendesignerv1.VariableType_VARIABLE_TYPE_NUMBER, Numbers: vals}
-}
-
-func htmlWith(t *testing.T, doc *opendesignerv1.Document, needle string) string {
+func apply(t *testing.T, doc *opendesignerv1.Document, ops ...*opendesignerv1.Op) {
 	t.Helper()
-	for _, f := range gen(t, doc, codegen.TargetHTML, nil).Files {
-		if strings.HasSuffix(f.Path, ".html") && strings.Contains(string(f.Content), needle) {
-			return string(f.Content)
-		}
-	}
-	t.Fatalf("no page contains %q", needle)
-	return ""
-}
-
-func TestAliasExportsAsVarOfItsTarget(t *testing.T) {
-	doc := varDoc()
-	doc.Variables["sem"] = &opendesignerv1.Variable{Id: "sem", Name: "surface/accent", AliasOf: "v1"}
-	doc.Nodes["r"].Fills = []*opendesignerv1.Paint{varPaint("sem")}
-	page := htmlWith(t, doc, "--surface-accent")
-	for _, want := range []string{
-		"--colour-brand:#f00;", // the target is exported although only the alias is used
-		":root{--surface-accent:var(--colour-brand);",
-		`[data-mode="dark"]{--surface-accent:var(--colour-brand);--colour-brand:#00f;}`, // alias re-declared per mode
-		"background-color: var(--surface-accent)",
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("missing %q in:\n%s", want, page)
+	for _, op := range ops {
+		if err := core.Apply(doc, op); err != nil {
+			t.Fatal(err)
 		}
 	}
 }
 
-func TestBoundNumbersExportAsVarWithUnits(t *testing.T) {
-	doc := varDoc()
-	doc.Variables["rad"] = numberVar("rad", "space/radius", map[string]float64{"light": 8, "dark": 24})
-	doc.Variables["op"] = numberVar("op", "alpha/card", map[string]float64{"light": 0.5, "dark": 1})
-	doc.Nodes["r"].Bindings = map[string]string{"corner_radius": "rad", "opacity": "op"}
-	page := htmlWith(t, doc, "--space-radius")
-	for _, want := range []string{
-		":root{--alpha-card:0.5;--space-radius:8;",
-		`[data-mode="dark"]{--alpha-card:1;--space-radius:24;`,
-		"border-radius: min(calc(var(--space-radius) * 1px), 25px)",
-		"opacity: var(--alpha-card)",
-	} {
-		if !strings.Contains(page, want) {
-			t.Errorf("missing %q in:\n%s", want, page)
+func colorValue(r, g, b float32) *opendesignerv1.VariableValue {
+	return &opendesignerv1.VariableValue{Kind: &opendesignerv1.VariableValue_Color{Color: &opendesignerv1.Color{R: r, G: g, B: b, A: 1}}}
+}
+
+// themedDoc: a screen with a card whose fill is bound to the "surface" color
+// variable (light = pure green, dark = pure blue). The card's literal fill is red.
+func themedDoc(t *testing.T) *opendesignerv1.Document {
+	doc := screenDoc(func(b *B, s string) {
+		b.Add("card", s, "Card", 20, 20, 100, 100, Fill(Solid(C(1, 0, 0))))
+	})
+	apply(t, doc,
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetCollection{SetCollection: &opendesignerv1.SetCollection{Collection: &opendesignerv1.VariableCollection{
+			Id: "theme", Name: "Theme", Modes: []*opendesignerv1.VariableMode{{Id: "light", Name: "Light"}, {Id: "dark", Name: "Dark"}}}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetVariable{SetVariable: &opendesignerv1.SetVariable{Variable: &opendesignerv1.Variable{
+			Id: "surface", CollectionId: "theme", Name: "color/surface", Type: opendesignerv1.VariableType_VARIABLE_TYPE_COLOR,
+			Values: map[string]*opendesignerv1.VariableValue{"light": colorValue(0, 1, 0), "dark": colorValue(0, 0, 1)}}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+			Id: "card", Patch: &opendesignerv1.Node{Bindings: map[string]string{"fills.0": "surface"}},
+			Mask: &fieldmaskpb.FieldMask{Paths: []string{"bindings"}}}}},
+	)
+	return doc
+}
+
+func screenHTML(t *testing.T, doc *opendesignerv1.Document) string {
+	return string(file(t, gen(t, doc, codegen.TargetHTML, nil), "screen.html"))
+}
+
+// TestVariablesAreResolvedInTheExport: the code carries the value of the node's
+// active mode, exactly what the canvas draws -- and the document is not touched.
+func TestVariablesAreResolvedInTheExport(t *testing.T) {
+	doc := themedDoc(t)
+	before := proto.Clone(doc)
+
+	light := screenHTML(t, doc)
+	if !strings.Contains(light, "background-color: #0f0;") || strings.Contains(light, "#f00") {
+		t.Fatalf("default mode: want the light green and not the literal red:\n%s", light)
+	}
+	apply(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: "scr", Patch: &opendesignerv1.Node{Modes: map[string]string{"theme": "dark"}},
+		Mask: &fieldmaskpb.FieldMask{Paths: []string{"modes"}}}}})
+	if dark := screenHTML(t, doc); !strings.Contains(dark, "background-color: #00f;") {
+		t.Fatalf("screen pinned to dark: want the blue:\n%s", dark)
+	}
+	if !proto.Equal(before.(*opendesignerv1.Document).GetNodes()["card"], doc.GetNodes()["card"]) {
+		t.Fatal("the export modified the document")
+	}
+}
+
+// TestFontsAndTextStylesInTheExport: uploaded fonts become @font-face rules plus
+// copied files, an italic text carries font-style, and a node that applies a shared
+// text style is exported with that style's values (the same the canvas draws).
+func TestFontsAndTextStylesInTheExport(t *testing.T) {
+	ttf := append([]byte("\x00\x01\x00\x00"), []byte("fake-ttf-bytes")...)
+	hash := strings.Repeat("a", 64)
+	missing := strings.Repeat("b", 64)
+	doc := screenDoc(func(b *B, s string) {
+		b.Add("plain", s, "Plain", 10, 10, 200, 30, TextStyled("Plain", &opendesignerv1.TextStyle{FontFamily: "Inter, sans-serif", FontSize: 14, Italic: true}))
+		b.Add("title", s, "Title", 10, 60, 200, 40, TextStyled("Title", &opendesignerv1.TextStyle{FontSize: 12}))
+	})
+	apply(t, doc,
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetFont{SetFont: &opendesignerv1.SetFont{Font: &opendesignerv1.FontFace{Id: "f1", Family: "Brand Sans", Weight: "700", Style: "normal", AssetHash: hash}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetFont{SetFont: &opendesignerv1.SetFont{Font: &opendesignerv1.FontFace{Id: "f2", Family: "Gone Sans", Weight: "400", Style: "italic", AssetHash: missing}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetTextStyleDef{SetTextStyleDef: &opendesignerv1.SetTextStyleDef{TextStyle: &opendesignerv1.TextStyleDef{
+			Id: "h", Name: "Heading", Style: &opendesignerv1.TextStyle{FontFamily: "Brand Sans", FontSize: 32, FontWeight: "700"}}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+			Id: "title", Patch: &opendesignerv1.Node{TextStyleId: "h"}, Mask: &fieldmaskpb.FieldMask{Paths: []string{"text_style_id"}}}}},
+	)
+	src := codegen.FuncAssets(func(h string) ([]byte, error) {
+		if h == hash {
+			return ttf, nil
+		}
+		return nil, os.ErrNotExist
+	})
+
+	for target, dir := range map[codegen.Target]string{codegen.TargetHTML: "assets/", codegen.TargetReact: "public/assets/"} {
+		out, err := codegen.Generate(doc, codegen.Options{Target: target}, src)
+		if err != nil {
+			t.Fatal(err)
+		}
+		if got := file(t, out, dir+hash+".ttf"); !bytes.Equal(got, ttf) {
+			t.Errorf("%s: font copied with different bytes", target)
+		}
+		css := string(file(t, out, map[codegen.Target]string{codegen.TargetHTML: "screen.html", codegen.TargetReact: "src/index.css"}[target]))
+		if !strings.Contains(css, `font-family: "Brand Sans";`) || !strings.Contains(css, `format("truetype")`) || !strings.Contains(css, "font-weight: 700;") {
+			t.Errorf("%s: missing @font-face for the uploaded font:\n%s", target, css)
+		}
+		if strings.Contains(css, "Gone Sans") {
+			t.Errorf("%s: a font whose file is missing must not get a rule", target)
+		}
+		warned := false
+		for _, w := range out.Warnings {
+			warned = warned || strings.Contains(w, "Gone Sans")
+		}
+		if !warned {
+			t.Errorf("%s: no warning for the missing font file: %v", target, out.Warnings)
 		}
 	}
+
+	html := string(file(t, gen(t, doc, codegen.TargetHTML, src), "screen.html"))
+	if !strings.Contains(html, "font-style: italic;") {
+		t.Errorf("italic text lost its font-style:\n%s", html)
+	}
+	if !strings.Contains(html, "font-size: 32px;") || !strings.Contains(html, `font-family: "Brand Sans"`) {
+		t.Errorf("the shared text style was not applied to the exported text:\n%s", html)
+	}
+	react := string(file(t, gen(t, doc, codegen.TargetReact, src), "src/screens/Screen.tsx"))
+	if !strings.Contains(react, "italic") {
+		t.Errorf("react: italic text has no italic class:\n%s", react)
+	}
 }
 
-func TestBoundTextAndFontSize(t *testing.T) {
-	doc := varDoc()
-	doc.Variables["size"] = numberVar("size", "type/body", map[string]float64{"light": 18})
-	doc.Variables["copy"] = &opendesignerv1.Variable{Id: "copy", Name: "copy/title", Type: opendesignerv1.VariableType_VARIABLE_TYPE_STRING, Strings: map[string]string{"light": "Hello \"you\""}}
-	doc.Nodes["tx"] = &opendesignerv1.Node{
-		Id: "tx", ParentId: "s", OrderKey: "z", Name: "T", Visible: true, Opacity: 1, X: 5, Y: 90, Width: 100, Height: 20,
-		Shape:    &opendesignerv1.Node_Text{Text: &opendesignerv1.TextNode{Content: "stale", Style: &opendesignerv1.TextStyle{FontSize: 10}}},
-		Bindings: map[string]string{"font_size": "size", "text": "copy"},
-	}
-	page := htmlWith(t, doc, "--type-body")
-	for _, want := range []string{"font-size: calc(var(--type-body) * 1px)", `Hello &#34;you&#34;`} {
-		if !strings.Contains(page, want) {
-			t.Errorf("missing %q in:\n%s", want, page)
+// TestVariantsAndPropertiesInTheExport: the exported instance is the variant it chose,
+// a text property sets the label, and a false boolean property leaves its target out --
+// the same thing the canvas shows.
+func TestVariantsAndPropertiesInTheExport(t *testing.T) {
+	doc := screenDoc(func(b *B, s string) {
+		for _, v := range []struct{ root, label, icon, text string }{
+			{"m1", "l1", "i1", "Default button"}, {"m2", "l2", "i2", "Hover button"},
+		} {
+			b.Add(v.root, "page1", v.root, 0, 400, 200, 40, Frame(false, nil))
+			b.Add(v.label, v.root, v.label, 0, 0, 150, 20, TextStyled(v.text, &opendesignerv1.TextStyle{FontSize: 14}))
+			b.Add(v.icon, v.root, v.icon, 160, 0, 20, 20, Fill(Solid(C(1, 0, 0))))
+		}
+	})
+	boolT, textT := opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN, opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT
+	props := func(label, icon string) []*opendesignerv1.ComponentProperty {
+		return []*opendesignerv1.ComponentProperty{
+			{Name: "Label", Type: textT, DefaultValue: "Button", TargetNodeIds: []string{label}},
+			{Name: "ShowIcon", Type: boolT, DefaultValue: "true", TargetNodeIds: []string{icon}},
 		}
 	}
-	if strings.Contains(page, "stale") {
-		t.Error("a bound text must export the variable's value, not the stale content")
+	apply(t, doc,
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateComponent{CreateComponent: &opendesignerv1.CreateComponent{ComponentId: "c1", RootNodeId: "m1", Name: "Button"}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateComponent{CreateComponent: &opendesignerv1.CreateComponent{ComponentId: "c2", RootNodeId: "m2", Name: "Button hover"}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentSet{SetComponentSet: &opendesignerv1.SetComponentSet{ComponentSet: &opendesignerv1.ComponentSet{
+			Id: "s", Name: "Button", Axes: []*opendesignerv1.VariantAxis{{Name: "State", Options: []string{"default", "hover"}}}}}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentDef{SetComponentDef: &opendesignerv1.SetComponentDef{ComponentId: "c1", SetId: "s", Variant: map[string]string{"State": "default"}, Properties: props("l1", "i1")}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentDef{SetComponentDef: &opendesignerv1.SetComponentDef{ComponentId: "c2", SetId: "s", Variant: map[string]string{"State": "hover"}, Properties: props("l2", "i2")}}},
+		&opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: &opendesignerv1.Node{
+			Id: "inst", ParentId: "scr", OrderKey: "z1", Name: "Inst", Visible: true, Opacity: 1, X: 10, Y: 10, Width: 200, Height: 40,
+			Shape: &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{ComponentId: "c1"}}}}}},
+	)
+	set := func(values, variants map[string]string) {
+		apply(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetInstanceProps{SetInstanceProps: &opendesignerv1.SetInstanceProps{InstanceId: "inst", PropertyValues: values, VariantProps: variants}}})
+	}
+	// The icon is the only red-filled node: its CSS background tells whether it was exported.
+	hasIcon := func(html string) bool { return strings.Contains(html, "background-color: #f00;") }
+
+	set(nil, nil)
+	html := screenHTML(t, doc)
+	if !strings.Contains(html, "Button") || strings.Contains(html, "Hover button") || !hasIcon(html) {
+		t.Fatalf("defaults: the base variant with its default label and the icon:\n%s", html)
+	}
+	set(map[string]string{"Label": "Save", "ShowIcon": "false"}, map[string]string{"State": "hover"})
+	html = screenHTML(t, doc)
+	if !strings.Contains(html, ">Save<") || hasIcon(html) {
+		t.Fatalf("hover + properties: the label must be \"Save\" and the icon left out:\n%s", html)
+	}
+	if strings.Contains(html, "Default button") || strings.Contains(html, "Hover button") {
+		t.Fatalf("the property's text must replace the master's content:\n%s", html)
 	}
 }
 
-func TestBoundGradientStopExportsItsDefaultColour(t *testing.T) {
-	doc := varDoc()
-	doc.Nodes["r"].Fills = []*opendesignerv1.Paint{{Kind: &opendesignerv1.Paint_Linear{Linear: &opendesignerv1.GradientPaint{
-		X2: 1, Stops: []*opendesignerv1.GradientStop{
-			{Color: &opendesignerv1.Color{A: 1}, Position: 0, VariableId: "v1"},
-			{Color: &opendesignerv1.Color{R: 1, G: 1, B: 1, A: 1}, Position: 1},
-		}}}}}
-	page := htmlWith(t, doc, "linear-gradient")
-	if !strings.Contains(page, "#f00 0%") {
-		t.Errorf("the bound stop must export the variable's default-mode colour:\n%s", page)
+// TestAutoLayoutWrapFillAndInstancesInTheExport: a wrapping frame becomes a wrapping flex
+// container with the two spacings as row/column gap, a child that fills becomes a flexible
+// item without its fixed size, and an instance in an auto layout is an in-flow item.
+func TestAutoLayoutWrapFillAndInstancesInTheExport(t *testing.T) {
+	doc := screenDoc(func(b *B, s string) {
+		b.Add("row", s, "Row", 0, 0, 300, 100, Frame(false, &opendesignerv1.AutoLayout{Spacing: 8, PaddingLeft: 4, PaddingRight: 4, PaddingTop: 4, PaddingBottom: 4}))
+		b.Add("fixed", "row", "Fixed", 0, 0, 50, 30)
+		b.Add("grow", "row", "Grow", 0, 0, 10, 30)
+		b.Add("wrapper", s, "Wrapper", 0, 120, 100, 60, Frame(false, &opendesignerv1.AutoLayout{Spacing: 10, CrossSpacing: 6, Wrap: true}))
+		b.Add("w1", "wrapper", "W1", 0, 0, 40, 20)
+		b.Add("col", s, "Col", 0, 200, 100, 80, Frame(false, &opendesignerv1.AutoLayout{Direction: opendesignerv1.LayoutDirection_LAYOUT_DIRECTION_VERTICAL, Spacing: 3, Wrap: true, CrossSpacing: 9}))
+		b.Add("c1", "col", "C1", 0, 0, 20, 20)
+	})
+	apply(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetProps{SetProps: &opendesignerv1.SetProperties{
+		Id: "grow", Patch: &opendesignerv1.Node{LayoutSizingX: opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL, LayoutSizingY: opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL},
+		Mask: &fieldmaskpb.FieldMask{Paths: []string{"layout_sizing_x", "layout_sizing_y"}}}}})
+	html := screenHTML(t, doc)
+	for _, want := range []string{"flex-wrap: wrap;", "align-content: flex-start;", "gap: 6px 10px;", "gap: 3px 9px;", "flex: 1 1 0;", "min-width: 0;", "align-self: stretch;"} {
+		if !strings.Contains(html, want) {
+			t.Errorf("missing %q in the exported CSS:\n%s", want, html)
+		}
 	}
-}
-
-// An instance of a variant exports with the component and the combination, so
-// the markup can be mapped back to the design component and its props.
-func TestInstanceExportsItsVariant(t *testing.T) {
-	doc := varDoc()
-	doc.Components = map[string]*opendesignerv1.Component{
-		"c": {RootNodeId: "r", Name: "Button/L", SetId: "s", Variant: map[string]string{"Size": "L", "State": "Default"}},
+	// The wrapper (horizontal): row-gap = cross spacing 6, column-gap = spacing 10. The
+	// vertical one swaps them: row-gap = spacing 3, column-gap = cross spacing 9.
+	// The filling child lost its fixed width and height.
+	i := strings.Index(html, ".grow-")
+	if i < 0 {
+		t.Fatalf("no grow rule:\n%s", html)
 	}
-	doc.ComponentSets = map[string]*opendesignerv1.ComponentSet{"s": {Id: "s", Name: "Button"}}
-	doc.Nodes["i"] = &opendesignerv1.Node{
-		Id: "i", ParentId: "s", OrderKey: "c", Name: "Inst", Visible: true, Opacity: 1, X: 200, Y: 10, Width: 50, Height: 50,
-		Shape: &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{ComponentId: "c"}},
-	}
-	page := htmlWith(t, doc, "data-component")
-	if !strings.Contains(page, `data-component="Button/L"`) || !strings.Contains(page, `data-variant="Size=L;State=Default"`) {
-		t.Errorf("instance lacks its component/variant markers:\n%s", page)
+	rule := html[i : i+strings.Index(html[i:], "}")]
+	if strings.Contains(rule, "width: 10px") || strings.Contains(rule, "height: 30px") {
+		t.Errorf("a filling child keeps its fixed size:\n%s", rule)
 	}
 }

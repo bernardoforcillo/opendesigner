@@ -26,7 +26,8 @@ import {
   type HandleId,
   type SelectionFrame,
 } from "../selection/handles";
-import { type SnapIndex, prepareSnapTargets, snapBounds, snapMoving, snapTargets, worldThreshold, type SnapGuide } from "../selection/snap";
+import { roundToGrid, useViewPrefs } from "../store/viewPrefs";
+import { type SnapIndex, prepareSnapTargets, snapBounds, snapMoving, snapTargets, spacingSnap, worldThreshold, type SnapGuide } from "../selection/snap";
 import { useScene } from "../store/store";
 import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "../store/groups";
 import { subtreeOf, topmostOf } from "../store/tree";
@@ -392,10 +393,43 @@ export function createSelectTool(): Tool {
     const world = ctx.toWorld(e);
     const dx = world.x - dragAnchor!.x;
     const dy = world.y - dragAnchor!.y;
-    if (mods.alt || !dragBox || !dragTargets || dragTargets.targets.length === 0) return { dx, dy, guides: [] };
+    if (!dragBox) return { dx, dy, guides: [] };
+    if (mods.alt || !dragTargets || dragTargets.targets.length === 0) return onGrid({ dx, dy, guides: [] }, dragBox, mods);
     const moved = { ...dragBox, x: dragBox.x + dx, y: dragBox.y + dy };
-    const s = snapBounds(moved, dragTargets, worldThreshold(ctx.getCamera()));
-    return { dx: dx + s.dx, dy: dy + s.dy, guides: s.guides };
+    const th = worldThreshold(ctx.getCamera());
+    const s = snapBounds(moved, dragTargets, th);
+    let out = { dx: dx + s.dx, dy: dy + s.dy, guides: s.guides };
+    // Equal gaps: only on the axes where no node's line already took the box. A gap is drawn
+    // as a guide line across it (a horizontal gap is a line at `at` between `from` and `to`).
+    const free = { x: !s.guides.some((g) => g.axis === "x"), y: !s.guides.some((g) => g.axis === "y") };
+    if (free.x || free.y) {
+      const sp = spacingSnap({ ...moved, x: moved.x + s.dx, y: moved.y + s.dy }, dragTargets.targets.filter((t) => t.width > 0 && t.height > 0), th);
+      out = {
+        dx: out.dx + (free.x ? sp.dx : 0),
+        dy: out.dy + (free.y ? sp.dy : 0),
+        guides: [
+          ...out.guides,
+          ...sp.guides
+            .filter((g) => (g.axis === "x" ? free.x : free.y))
+            .map((g): SnapGuide => ({ axis: g.axis === "x" ? "y" : "x", pos: g.at, from: g.from, to: g.to })),
+        ],
+      };
+    }
+    return onGrid(out, dragBox, mods);
+  }
+
+  // The pixel grid: where no node's line took the box (no guide on that axis), its corner goes to the
+  // grid. A snap of a node always wins over the grid.
+  function onGrid(d: { dx: number; dy: number; guides: SnapGuide[] }, box: { x: number; y: number }, mods: Mods): { dx: number; dy: number; guides: SnapGuide[] } {
+    const step = useViewPrefs.getState().pixelSnap;
+    if (step <= 0 || mods.alt) return d;
+    const gx = d.guides.some((g) => g.axis === "x");
+    const gy = d.guides.some((g) => g.axis === "y");
+    return {
+      ...d,
+      dx: gx ? d.dx : roundToGrid(box.x + d.dx, step) - box.x,
+      dy: gy ? d.dy : roundToGrid(box.y + d.dy, step) - box.y,
+    };
   }
 
   // The RESIZE delta, snap included. Three cases in which the snap
@@ -418,11 +452,7 @@ export function createSelectTool(): Tool {
     const dx = world.x - resizeAnchor!.x;
     const dy = world.y - resizeAnchor!.y;
     const frame = resizeStartFrame;
-    if (
-      mods.alt || mods.shift || !frame || !resizeHandle
-      || !resizeTargets || resizeTargets.targets.length === 0
-      || frame.rotation % 360 !== 0
-    ) {
+    if (mods.alt || mods.shift || !frame || !resizeHandle || frame.rotation % 360 !== 0) {
       return { dx, dy, guides: [] };
     }
     const r = resizeFrame(frame, resizeHandle, dx, dy);
@@ -435,8 +465,17 @@ export function createSelectTool(): Tool {
     // promises not to move.
     if (r.transform.signedW < 0) lines.x = [];
     if (r.transform.signedH < 0) lines.y = [];
-    const s = snapMoving(box, lines, resizeTargets, worldThreshold(ctx.getCamera()));
-    return { dx: dx + s.dx, dy: dy + s.dy, guides: s.guides };
+    const s = resizeTargets && resizeTargets.targets.length > 0
+      ? snapMoving(box, lines, resizeTargets, worldThreshold(ctx.getCamera()))
+      : { dx: 0, dy: 0, guides: [] as SnapGuide[] };
+    // The pixel grid takes the moving edge where no node's line did.
+    const step = useViewPrefs.getState().pixelSnap;
+    let gx = 0, gy = 0;
+    if (step > 0) {
+      if (lines.x.length > 0 && !s.guides.some((g) => g.axis === "x")) gx = roundToGrid(lines.x[0] + s.dx, step) - (lines.x[0] + s.dx);
+      if (lines.y.length > 0 && !s.guides.some((g) => g.axis === "y")) gy = roundToGrid(lines.y[0] + s.dy, step) - (lines.y[0] + s.dy);
+    }
+    return { dx: dx + s.dx + gx, dy: dy + s.dy + gy, guides: s.guides };
   }
 
   // The resize ops for the current pointer position, ALWAYS recomputed

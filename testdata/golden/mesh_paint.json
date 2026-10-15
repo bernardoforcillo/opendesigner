@@ -1,0 +1,437 @@
+{
+ "_comment": [
+  "Mesh paints: a grid of 2..8 rows and columns with exactly one color per point is stored (as a fill and as a stroke paint); a wrong color count or a grid that is too thin or too big rejects the op. Run from BOTH sides."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "A": {
+    "fills": [
+     {
+      "mesh": {
+       "colors": [
+        {
+         "a": 1,
+         "r": 1
+        },
+        {
+         "a": 1,
+         "g": 1
+        },
+        {
+         "a": 1,
+         "b": 1
+        },
+        {
+         "a": 1,
+         "g": 1,
+         "r": 1
+        }
+       ],
+       "cols": 2,
+       "rows": 2
+      }
+     }
+    ],
+    "height": 50,
+    "id": "A",
+    "name": "A",
+    "opacity": 1,
+    "orderKey": "a0",
+    "parentId": "page1",
+    "rect": {},
+    "strokes": [
+     {
+      "align": "STROKE_ALIGN_CENTER",
+      "paint": {
+       "mesh": {
+        "colors": [
+         {
+          "a": 1
+         },
+         {
+          "a": 1
+         },
+         {
+          "a": 1
+         },
+         {
+          "a": 1
+         },
+         {
+          "a": 1
+         },
+         {
+          "a": 1
+         }
+        ],
+        "cols": 2,
+        "rows": 3
+       }
+      },
+      "weight": 2
+     }
+    ],
+    "visible": true,
+    "width": 50
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "fills": [
+      {
+       "mesh": {
+        "colors": [
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 1
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 1,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 1,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 1,
+          "r": 1
+         }
+        ],
+        "cols": 2,
+        "rows": 2
+       }
+      }
+     ],
+     "height": 50,
+     "id": "A",
+     "name": "A",
+     "opacity": 1,
+     "orderKey": "a0",
+     "parentId": "page1",
+     "rect": {},
+     "visible": true,
+     "width": 50,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o0"
+  },
+  {
+   "createNode": {
+    "node": {
+     "fills": [
+      {
+       "mesh": {
+        "colors": [
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 1
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 1,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 1,
+          "g": 0,
+          "r": 0
+         }
+        ],
+        "cols": 2,
+        "rows": 2
+       }
+      }
+     ],
+     "height": 50,
+     "id": "B",
+     "name": "B",
+     "opacity": 1,
+     "orderKey": "a1",
+     "parentId": "page1",
+     "rect": {},
+     "visible": true,
+     "width": 50,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "fills": [
+      {
+       "mesh": {
+        "colors": [
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 1
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 1,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 1,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 1,
+          "r": 1
+         }
+        ],
+        "cols": 4,
+        "rows": 1
+       }
+      }
+     ],
+     "height": 50,
+     "id": "C",
+     "name": "C",
+     "opacity": 1,
+     "orderKey": "a2",
+     "parentId": "page1",
+     "rect": {},
+     "visible": true,
+     "width": 50,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "o2"
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setProps": {
+    "id": "A",
+    "mask": "strokes",
+    "patch": {
+     "strokes": [
+      {
+       "align": "STROKE_ALIGN_CENTER",
+       "paint": {
+        "mesh": {
+         "colors": [
+          {
+           "a": 1,
+           "b": 0,
+           "g": 0,
+           "r": 0
+          },
+          {
+           "a": 1,
+           "b": 0,
+           "g": 0,
+           "r": 0
+          },
+          {
+           "a": 1,
+           "b": 0,
+           "g": 0,
+           "r": 0
+          },
+          {
+           "a": 1,
+           "b": 0,
+           "g": 0,
+           "r": 0
+          },
+          {
+           "a": 1,
+           "b": 0,
+           "g": 0,
+           "r": 0
+          },
+          {
+           "a": 1,
+           "b": 0,
+           "g": 0,
+           "r": 0
+          }
+         ],
+         "cols": 2,
+         "rows": 3
+        }
+       },
+       "weight": 2
+      }
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setProps": {
+    "id": "A",
+    "mask": "fills",
+    "patch": {
+     "fills": [
+      {
+       "mesh": {
+        "colors": [
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         },
+         {
+          "a": 1,
+          "b": 0,
+          "g": 0,
+          "r": 0
+         }
+        ],
+        "cols": 2,
+        "rows": 9
+       }
+      }
+     ]
+    }
+   }
+  }
+ ],
+ "rejected": [
+  1,
+  2,
+  4
+ ]
+}
