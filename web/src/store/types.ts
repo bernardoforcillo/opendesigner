@@ -157,9 +157,14 @@ export interface InstanceOverrideLite {
   masterNodeId: string;
   fills?: FillLite[];
   text?: string;
-  // DERIVED only, never stored or on the wire: set by instances.ts::instanceOverrideMap when a
-  // boolean component property hides this master node for the instance.
+  // DERIVED only, never stored or on the wire: set by instances.ts::instanceOverrideMap from
+  // the instance's component properties: a master node hidden (boolean), a number written to
+  // one of its attributes (number), or a nested instance pointed at another component (swap).
   hidden?: boolean;
+  opacity?: number;
+  cornerRadius?: number;
+  fontSize?: number;
+  componentId?: string;
 }
 
 // M4 — an instance of a component: the componentId it renders, plus the per-node
@@ -189,9 +194,14 @@ export interface ComponentLite {
 }
 export interface ComponentPropertyLite {
   name: string;
-  type: "boolean" | "text";
+  // boolean shows/hides the targets, text sets their content (free or from `options`), number
+  // writes `attribute` of them, swap points nested instances at another component (value = component id).
+  type: "boolean" | "text" | "number" | "swap";
   defaultValue: string;
   targetNodeIds: string[];
+  // number: opacity | corner_radius | font_size. text: the allowed values (absent = free text).
+  attribute?: string;
+  options?: string[];
 }
 export interface VariantAxisLite { name: string; options: string[] }
 export interface ComponentSetLite { id: string; name: string; axes: VariantAxisLite[] }
@@ -451,20 +461,33 @@ export function toInstanceLite(n: PbInstanceNode): InstanceLite {
   };
 }
 
+const PROP_KIND: Record<number, ComponentPropertyLite["type"]> = {
+  [ComponentPropertyType.BOOLEAN]: "boolean", [ComponentPropertyType.TEXT]: "text",
+  [ComponentPropertyType.NUMBER]: "number", [ComponentPropertyType.INSTANCE_SWAP]: "swap",
+};
+const PROP_TYPE: Record<ComponentPropertyLite["type"], ComponentPropertyType> = {
+  boolean: ComponentPropertyType.BOOLEAN, text: ComponentPropertyType.TEXT,
+  number: ComponentPropertyType.NUMBER, swap: ComponentPropertyType.INSTANCE_SWAP,
+};
+
 export function toComponentPropertyLite(p: PbComponentProperty): ComponentPropertyLite {
   return {
     name: p.name,
-    type: p.type === ComponentPropertyType.BOOLEAN ? "boolean" : "text",
+    type: PROP_KIND[p.type] ?? "boolean",
     defaultValue: p.defaultValue,
     targetNodeIds: [...p.targetNodeIds],
+    ...(p.attribute !== "" ? { attribute: p.attribute } : {}),
+    ...(p.options.length > 0 ? { options: [...p.options] } : {}),
   };
 }
 export function toPbComponentProperty(p: ComponentPropertyLite): PbComponentProperty {
   return create(ComponentPropertySchema, {
     name: p.name,
-    type: p.type === "boolean" ? ComponentPropertyType.BOOLEAN : ComponentPropertyType.TEXT,
+    type: PROP_TYPE[p.type],
     defaultValue: p.defaultValue,
     targetNodeIds: [...p.targetNodeIds],
+    attribute: p.attribute ?? "",
+    options: [...(p.options ?? [])],
   });
 }
 export function toComponentLite(c: PbComponent): ComponentLite {

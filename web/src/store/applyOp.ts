@@ -7,7 +7,7 @@ import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSet
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
-import { cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
+import { carryRenames, cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
 import { areValidLayoutGrids } from "./layoutGrids";
 import { arePaintsValid } from "./paints";
@@ -500,9 +500,16 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     // Parity with core.applySetComponentSet / applyDeleteComponentSet /
     // applySetComponentDef / applySetInstanceProps (Go, internal/core/components.go).
     case "setComponentSet": {
-      const set = op.kind.value.componentSet;
+      const { componentSet: set, axisRenames, optionRenames } = op.kind.value;
       if (!isValidComponentSet(set)) return state;
-      const next = { ...state, componentSets: { ...state.componentSets, [set.id]: toComponentSetLite(set) } };
+      // The renames carry the members' and the instances' choices over to the new names
+      // BEFORE the members that no longer fit are detached (ErrSetRenames when invalid).
+      const rn = makeRenamer(set, axisRenames, optionRenames);
+      if (!rn) return state;
+      const carried = rn.empty ? null : carryRenames(state, set, rn);
+      if (!rn.empty && !carried) return state;
+      const base = carried ? { ...state, components: carried.components, nodes: carried.nodes } : state;
+      const next = { ...base, componentSets: { ...base.componentSets, [set.id]: toComponentSetLite(set) } };
       return { ...next, components: detachInvalidMembers(next, set.id) };
     }
     case "deleteComponentSet": {

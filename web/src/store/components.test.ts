@@ -5,7 +5,7 @@ import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { effectiveComponentId, effectiveOverrides } from "./components";
 import { invertOp } from "./history";
-import { instanceOverrideMap, hiddenMasterNodes, resolveInstance } from "./instances";
+import { instanceOverrideMap, resolveInstance } from "./instances";
 import { emptyScene, type SceneState } from "./types";
 
 type Kind = MessageInitShape<typeof OpSchema>["kind"];
@@ -53,14 +53,14 @@ describe("resolution", () => {
     expect(ov.get("label2")?.text).toBe("Save");
     expect(ov.get("icon2")?.hidden).toBe(true);
     expect(ov.has("label")).toBe(false);
-    expect([...hiddenMasterNodes(s, s.nodes.at("i"))!]).toEqual(["icon2"]);
+    expect([...instanceOverrideMap(s, s.nodes.at("i"))].filter(([, o]) => o.hidden).map(([id]) => id)).toEqual(["icon2"]);
     s = applyOp(s, op({ case: "setInstanceOverride", value: { instanceId: "i", override: { masterNodeId: "label2", text: "Explicit", textPresent: true } } }));
     expect(instanceOverrideMap(s, s.nodes.at("i")).get("label2")?.text).toBe("Explicit");
   });
 
   it("an instance without properties pays nothing", () => {
     const s = run([node("m", "page1", "frame"), op({ case: "createComponent", value: { componentId: "c", rootNodeId: "m", name: "C" } }), node("i", "page1", "instance", "c")]);
-    expect(hiddenMasterNodes(s, s.nodes.at("i"))).toBeNull();
+    expect(instanceOverrideMap(s, s.nodes.at("i")).size).toBe(0);
   });
 });
 

@@ -382,6 +382,11 @@ enum ComponentPropertyType {
   COMPONENT_PROPERTY_TYPE_UNSPECIFIED = 0;
   COMPONENT_PROPERTY_TYPE_BOOLEAN = 1;  // shows/hides the target nodes
   COMPONENT_PROPERTY_TYPE_TEXT = 2;     // sets the content of the target text nodes
+  // A number written to ONE attribute of the target nodes (see `attribute`).
+  COMPONENT_PROPERTY_TYPE_NUMBER = 3;
+  // Makes a NESTED INSTANCE (the target nodes) show another component; the value is a
+  // component id.
+  COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP = 4;
 }
 
 // A property of a component: a named knob that an instance turns without editing the
@@ -391,8 +396,14 @@ enum ComponentPropertyType {
 message ComponentProperty {
   string name = 1;                      // unique within the component
   ComponentPropertyType type = 2;
-  string default_value = 3;             // BOOLEAN: "true" | "false"; TEXT: the text
-  repeated string target_node_ids = 4;  // master nodes it controls (text nodes for TEXT)
+  string default_value = 3;             // BOOLEAN: "true" | "false"; TEXT: the text; NUMBER: a number;
+                                        // INSTANCE_SWAP: a component id ("" = keep the nested one)
+  repeated string target_node_ids = 4;  // master nodes it controls (text nodes for TEXT, instances for INSTANCE_SWAP)
+  // NUMBER only: which attribute of the targets the number drives: "opacity" (0..1),
+  // "corner_radius" (rectangles) or "font_size" (text).
+  string attribute = 5;
+  // TEXT only: the allowed values (an option list). Empty = free text.
+  repeated string options = 6;
 }
 
 // A COMPONENT SET groups the variants of a component. Each AXIS is a named choice
@@ -859,7 +870,15 @@ message SetFont            { FontFace font = 1; }
 message DeleteFont         { string id = 1; }
 message SetTextStyleDef    { TextStyleDef text_style = 1; }
 message DeleteTextStyleDef { string id = 1; }
-message SetComponentSet    { ComponentSet component_set = 1; }
+// Replaces a component set. The renames say that an axis / option of the OLD set is the
+// same thing under a new name, so members and instances keep their choices instead of
+// being detached or reset. `OptionRename.axis` is the axis's NEW name.
+message OptionRename { string axis = 1; string from = 2; string to = 3; }
+message SetComponentSet {
+  ComponentSet component_set = 1;
+  map<string, string> axis_renames = 2;   // old axis name -> new axis name
+  repeated OptionRename option_renames = 3;
+}
 message DeleteComponentSet { string id = 1; }
 // Replaces a component's set membership, variant assignment and properties WHOLESALE
 // (name and root are not touched).

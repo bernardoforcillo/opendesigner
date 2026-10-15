@@ -3,8 +3,10 @@ package core
 import (
 	"errors"
 	"fmt"
+	"math"
 	"regexp"
 	"sort"
+	"strconv"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"google.golang.org/protobuf/proto"
@@ -17,7 +19,9 @@ import (
 // A COMPONENT SET groups the variants of a component along named AXES (State:
 // default | hover; Size: sm | md). Each member component assigns one option per
 // axis. A COMPONENT PROPERTY is a named knob (a boolean that shows/hides nodes of
-// the master, or a text that sets the content of its text nodes). An instance picks
+// the master, a text that sets the content of its text nodes -- free or from an
+// option list --, a number written to one attribute of its nodes, or a swap that
+// makes a nested instance show another component). An instance picks
 // a variant (InstanceNode.variant_props) and sets property values
 // (InstanceNode.property_values, by property NAME). The invariants:
 //
@@ -27,15 +31,24 @@ import (
 //	2. a component is either standalone (no set, no variant) or a member of an
 //	   EXISTING set with exactly one valid option per axis, and no two members of a
 //	   set share the same combination;
-//	3. a property has a unique plain name, a BOOLEAN or TEXT type, a default of the
-//	   type (BOOLEAN "true"/"false", TEXT at most 1000 bytes) and at least one target
-//	   node, each inside the master's subtree (text nodes only, for TEXT);
+//	3. a property has a unique plain name, a type, a default of the type (BOOLEAN
+//	   "true"/"false", TEXT at most 1000 bytes and one of its options when it has
+//	   any, NUMBER a number in the range of its attribute, INSTANCE_SWAP "" or an
+//	   existing component other than its own) and at least one target node, each
+//	   inside the master's subtree (text nodes for TEXT and font_size, rectangles
+//	   for corner_radius, instances for INSTANCE_SWAP); only NUMBER has an
+//	   attribute (opacity | corner_radius | font_size), only TEXT has options
+//	   (unique, non-empty);
 //	4. an instance's variant choice names axes of the set of its base component with
 //	   valid options, and its property values name properties of the component it
 //	   resolves to, with values of the property's type;
 //	5. deleting a node removes it from the property targets it was in (a property
 //	   left without targets goes away); changing a set's axes or deleting the set
-//	   detaches the members whose assignment is no longer valid.
+//	   detaches the members whose assignment is no longer valid -- after the
+//	   op's renames (axis_renames old->new, option_renames) have carried the
+//	   members' and the instances' choices over to the new names. Renames are
+//	   one-to-one, point at an axis / option the new set has, and are refused
+//	   when they would make two members the same combination.
 //
 // Upserts are ABSOLUTE: the inverse of an op is the previous state.
 
@@ -48,11 +61,40 @@ var (
 	ErrComponentProperty    = errors.New("core: invalid component property")
 	ErrPropertyTarget       = errors.New("core: property target must be a node of the master (a text node for text properties)")
 	ErrInstanceProps        = errors.New("core: invalid instance property values or variant choice")
+	ErrSetRenames           = errors.New("core: invalid axis or option renames (they must be one-to-one, point at the new set and keep members distinct)")
 )
 
 var nameRe = regexp.MustCompile(`^[\p{L}\p{N} _.\-]{1,32}$`)
 
 const maxPropertyText = 1000
+
+// numberRe is what a NUMBER value may look like (plain decimal, optional exponent): the
+// same text on both sides, so "0x10", "NaN" or "" parse nowhere.
+var numberRe = regexp.MustCompile(`^-?(\d+\.?\d*|\.\d+)([eE][+-]?\d+)?$`)
+
+// numberAttrs: the node attributes a NUMBER property can drive.
+var numberAttrs = map[string]bool{"opacity": true, "corner_radius": true, "font_size": true}
+
+// parseNumber reads a NUMBER value for `attr`: finite and in the attribute's range
+// (opacity 0..1, corner_radius >= 0, font_size > 0).
+func parseNumber(attr, v string) (float64, bool) {
+	if len(v) > 32 || !numberRe.MatchString(v) {
+		return 0, false
+	}
+	f, err := strconv.ParseFloat(v, 64)
+	if err != nil || math.IsInf(f, 0) || math.IsNaN(f) {
+		return 0, false
+	}
+	switch attr {
+	case "opacity":
+		return f, f >= 0 && f <= 1
+	case "corner_radius":
+		return f, f >= 0
+	case "font_size":
+		return f, f > 0
+	}
+	return f, false
+}
 
 func validateComponentSet(s *opendesignerv1.ComponentSet) error {
 	if s == nil || s.GetId() == "" {
@@ -121,13 +163,17 @@ func inMasterSubtree(doc *opendesignerv1.Document, id, root string) bool {
 	return false
 }
 
-func validateProperties(doc *opendesignerv1.Document, root string, props []*opendesignerv1.ComponentProperty) error {
+func validateProperties(doc *opendesignerv1.Document, componentID, root string, props []*opendesignerv1.ComponentProperty) error {
 	names := map[string]bool{}
 	for _, p := range props {
 		if p == nil || !nameRe.MatchString(p.GetName()) || names[p.GetName()] {
 			return ErrComponentProperty
 		}
 		names[p.GetName()] = true
+		if (p.GetAttribute() != "") != (p.GetType() == opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER) ||
+			(len(p.GetOptions()) > 0 && p.GetType() != opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT) {
+			return ErrComponentProperty
+		}
 		switch p.GetType() {
 		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:
 			if p.GetDefaultValue() != "true" && p.GetDefaultValue() != "false" {
@@ -135,6 +181,30 @@ func validateProperties(doc *opendesignerv1.Document, root string, props []*open
 			}
 		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:
 			if len(p.GetDefaultValue()) > maxPropertyText {
+				return ErrComponentProperty
+			}
+			if len(p.GetOptions()) > 0 {
+				seen := map[string]bool{}
+				for _, o := range p.GetOptions() {
+					if o == "" || len(o) > maxPropertyText || seen[o] {
+						return ErrComponentProperty
+					}
+					seen[o] = true
+				}
+				if !seen[p.GetDefaultValue()] {
+					return ErrComponentProperty
+				}
+			}
+		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:
+			if !numberAttrs[p.GetAttribute()] {
+				return ErrComponentProperty
+			}
+			if _, ok := parseNumber(p.GetAttribute(), p.GetDefaultValue()); !ok {
+				return ErrComponentProperty
+			}
+		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP:
+			// "" keeps the nested instance's own component.
+			if d := p.GetDefaultValue(); d != "" && (d == componentID || doc.GetComponents()[d] == nil) {
 				return ErrComponentProperty
 			}
 		default:
@@ -146,18 +216,32 @@ func validateProperties(doc *opendesignerv1.Document, root string, props []*open
 		seen := map[string]bool{}
 		for _, t := range p.GetTargetNodeIds() {
 			n := doc.GetNodes()[t]
-			if n == nil || seen[t] || !inMasterSubtree(doc, t, root) {
+			if n == nil || seen[t] || !inMasterSubtree(doc, t, root) || !targetFits(p, n) {
 				return ErrPropertyTarget
 			}
 			seen[t] = true
-			if p.GetType() == opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT {
-				if _, isText := n.GetShape().(*opendesignerv1.Node_Text); !isText {
-					return ErrPropertyTarget
-				}
-			}
 		}
 	}
 	return nil
+}
+
+// targetFits: node `n` can be driven by property `p` (text nodes for TEXT and font_size,
+// rectangles for corner_radius, instances for INSTANCE_SWAP).
+func targetFits(p *opendesignerv1.ComponentProperty, n *opendesignerv1.Node) bool {
+	switch p.GetType() {
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:
+		return n.GetText() != nil
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP:
+		return n.GetInstance() != nil
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:
+		switch p.GetAttribute() {
+		case "corner_radius":
+			return n.GetRect() != nil
+		case "font_size":
+			return n.GetText() != nil
+		}
+	}
+	return true
 }
 
 func validateComponentDef(doc *opendesignerv1.Document, s *opendesignerv1.SetComponentDef) error {
@@ -165,7 +249,7 @@ func validateComponentDef(doc *opendesignerv1.Document, s *opendesignerv1.SetCom
 	if !ok {
 		return fmt.Errorf("%w: %s", ErrComponentNotFound, s.GetComponentId())
 	}
-	if err := validateProperties(doc, comp.GetRootNodeId(), s.GetProperties()); err != nil {
+	if err := validateProperties(doc, s.GetComponentId(), comp.GetRootNodeId(), s.GetProperties()); err != nil {
 		return err
 	}
 	if s.GetSetId() == "" {
@@ -189,10 +273,41 @@ func validateComponentDef(doc *opendesignerv1.Document, s *opendesignerv1.SetCom
 	return nil
 }
 
-func applySetComponentSet(doc *opendesignerv1.Document, s *opendesignerv1.SetComponentSet) error {
+func applySetComponentSet(doc *opendesignerv1.Document, s *opendesignerv1.SetComponentSet, cow *Shared) error {
 	set := s.GetComponentSet()
 	if err := validateComponentSet(set); err != nil {
 		return err
+	}
+	rn, err := newRenamer(set, s.GetAxisRenames(), s.GetOptionRenames())
+	if err != nil {
+		return err
+	}
+	// Carry the choices over BEFORE the set is replaced: members of the OLD set and the
+	// instances whose base component is one of them.
+	if !rn.empty() {
+		members := map[string]map[string]string{}
+		for id, c := range doc.GetComponents() {
+			if c.GetSetId() == set.GetId() {
+				members[id] = rn.variant(c.GetVariant())
+			}
+		}
+		if members, err = rn.distinct(set, members); err != nil {
+			return err
+		}
+		for id, v := range members {
+			doc.Components[id].Variant = v
+		}
+		ids := make([]string, 0)
+		for id, n := range doc.GetNodes() {
+			if inst := n.GetInstance(); inst != nil && len(inst.GetVariantProps()) > 0 && hasKey(members, inst.GetComponentId()) {
+				ids = append(ids, id)
+			}
+		}
+		sort.Strings(ids)
+		for _, id := range ids {
+			inst := cow.mut(doc, id).GetInstance()
+			inst.VariantProps = rn.variant(inst.GetVariantProps())
+		}
 	}
 	if doc.ComponentSets == nil {
 		doc.ComponentSets = map[string]*opendesignerv1.ComponentSet{}
@@ -200,6 +315,96 @@ func applySetComponentSet(doc *opendesignerv1.Document, s *opendesignerv1.SetCom
 	doc.ComponentSets[set.GetId()] = proto.Clone(set).(*opendesignerv1.ComponentSet)
 	detachInvalidMembers(doc, set.GetId())
 	return nil
+}
+
+// renamer: the axis / option renames of a SetComponentSet, validated against the NEW set.
+type renamer struct {
+	axes map[string]string            // old axis name -> new
+	opts map[string]map[string]string // NEW axis name -> old option -> new option
+}
+
+func newRenamer(set *opendesignerv1.ComponentSet, axes map[string]string, opts []*opendesignerv1.OptionRename) (*renamer, error) {
+	r := &renamer{axes: axes, opts: map[string]map[string]string{}}
+	byName := map[string]*opendesignerv1.VariantAxis{}
+	for _, a := range set.GetAxes() {
+		byName[a.GetName()] = a
+	}
+	hasOption := func(a *opendesignerv1.VariantAxis, o string) bool {
+		for _, x := range a.GetOptions() {
+			if x == o {
+				return true
+			}
+		}
+		return false
+	}
+	seen := map[string]bool{}
+	for _, to := range axes {
+		if byName[to] == nil || seen[to] {
+			return nil, ErrSetRenames
+		}
+		seen[to] = true
+	}
+	taken := map[string]map[string]bool{}
+	for _, o := range opts {
+		a := byName[o.GetAxis()]
+		if a == nil || !hasOption(a, o.GetTo()) || r.opts[o.GetAxis()][o.GetFrom()] != "" {
+			return nil, ErrSetRenames
+		}
+		if taken[o.GetAxis()] == nil {
+			taken[o.GetAxis()] = map[string]bool{}
+			r.opts[o.GetAxis()] = map[string]string{}
+		}
+		if taken[o.GetAxis()][o.GetTo()] {
+			return nil, ErrSetRenames
+		}
+		taken[o.GetAxis()][o.GetTo()] = true
+		r.opts[o.GetAxis()][o.GetFrom()] = o.GetTo()
+	}
+	return r, nil
+}
+
+func hasKey(m map[string]map[string]string, k string) bool { _, ok := m[k]; return ok }
+
+func (r *renamer) empty() bool { return len(r.axes) == 0 && len(r.opts) == 0 }
+
+// variant renames the keys of a choice (axis -> option), then the option of each axis
+// under its NEW name. Choices that do not mention a renamed axis are untouched.
+func (r *renamer) variant(v map[string]string) map[string]string {
+	if len(v) == 0 {
+		return v
+	}
+	out := make(map[string]string, len(v))
+	for k, o := range v {
+		if nk, ok := r.axes[k]; ok {
+			k = nk
+		}
+		if no, ok := r.opts[k][o]; ok {
+			o = no
+		}
+		out[k] = o
+	}
+	return out
+}
+
+// distinct refuses the renames when they would make two members that stay valid in the
+// new set the same combination (the op would silently merge two variants).
+func (r *renamer) distinct(set *opendesignerv1.ComponentSet, members map[string]map[string]string) (map[string]map[string]string, error) {
+	ids := make([]string, 0, len(members))
+	for id := range members {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	for i, id := range ids {
+		if !assignmentValid(set, members[id]) {
+			continue
+		}
+		for _, other := range ids[:i] {
+			if assignmentValid(set, members[other]) && sameAssignment(members[other], members[id]) {
+				return nil, ErrSetRenames
+			}
+		}
+	}
+	return members, nil
 }
 
 // detachInvalidMembers: invariant 5 -- the members of `setID` whose assignment is
@@ -281,20 +486,33 @@ func EffectiveComponentID(doc *opendesignerv1.Document, inst *opendesignerv1.Ins
 
 // PropertyValue is the value of property `p` for an instance: its own value when it
 // is valid for the type, else the default.
-func PropertyValue(inst *opendesignerv1.InstanceNode, p *opendesignerv1.ComponentProperty) string {
+func PropertyValue(doc *opendesignerv1.Document, inst *opendesignerv1.InstanceNode, p *opendesignerv1.ComponentProperty) string {
 	v, ok := inst.GetPropertyValues()[p.GetName()]
-	if !ok || !propertyValueValid(p, v) {
+	if !ok || !propertyValueValid(doc, p, v) {
 		return p.GetDefaultValue()
 	}
 	return v
 }
 
-func propertyValueValid(p *opendesignerv1.ComponentProperty, v string) bool {
+func propertyValueValid(doc *opendesignerv1.Document, p *opendesignerv1.ComponentProperty, v string) bool {
 	switch p.GetType() {
 	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:
 		return v == "true" || v == "false"
 	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:
+		if len(p.GetOptions()) > 0 {
+			for _, o := range p.GetOptions() {
+				if o == v {
+					return true
+				}
+			}
+			return false
+		}
 		return len(v) <= maxPropertyText
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:
+		_, ok := parseNumber(p.GetAttribute(), v)
+		return ok
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP:
+		return doc.GetComponents()[v] != nil
 	}
 	return false
 }
@@ -308,7 +526,7 @@ func EffectiveOverrides(doc *opendesignerv1.Document, inst *opendesignerv1.Insta
 	var hidden map[string]bool
 	if comp := doc.GetComponents()[EffectiveComponentID(doc, inst)]; comp != nil {
 		for _, p := range comp.GetProperties() {
-			v := PropertyValue(inst, p)
+			v := PropertyValue(doc, inst, p)
 			switch p.GetType() {
 			case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:
 				if v == "false" {
@@ -379,7 +597,7 @@ func validateInstanceProps(doc *opendesignerv1.Document, inst *opendesignerv1.In
 				prop = p
 			}
 		}
-		if prop == nil || !propertyValueValid(prop, v) {
+		if prop == nil || !propertyValueValid(doc, prop, v) {
 			return ErrInstanceProps
 		}
 	}

@@ -7,7 +7,7 @@ import { isValidClip } from "../animation/validate";
 import { applyOp } from "./applyOp";
 import { isValidCollection, isValidVariable, withAliases } from "./variables";
 import { isValidFont, isValidTextStyleDef } from "./typography";
-import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps } from "./components";
+import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer, renameChoice, reverseRenames } from "./components";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
@@ -403,15 +403,22 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     // Absolute upserts: the inverse is the PREVIOUS set / definition / props. The
     // cascades (members detached by a set change or delete) are restored after the set.
     case "setComponentSet": {
-      const set = op.kind.value.componentSet;
+      const { componentSet: set, axisRenames, optionRenames } = op.kind.value;
       if (!isValidComponentSet(set)) return null;
+      const rn = makeRenamer(set, axisRenames, optionRenames);
+      if (!rn) return null;
       const prev = scene.componentSets[set.id];
       if (!prev) return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "deleteComponentSet", value: { id: set.id } } })];
       const next = { ...scene, componentSets: { ...scene.componentSets, [set.id]: { id: set.id, name: set.name, axes: set.axes.map((a) => ({ name: a.name, options: [...a.options] })) } } };
+      // The renames undo themselves (new -> old) in the SAME op, so members and instances
+      // are carried back together; the members the edit detached are written back after.
+      const back = reverseRenames(prev, rn);
       return [
-        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentSet", value: { componentSet: toPbComponentSet(prev) } } }),
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setComponentSet", value: {
+          componentSet: toPbComponentSet(prev), axisRenames: back.axes, optionRenames: back.options,
+        } } }),
         ...Object.entries(scene.components)
-          .filter(([, c]) => c.setId === set.id && !assignmentValid(next.componentSets[set.id], c.variant))
+          .filter(([, c]) => c.setId === set.id && !assignmentValid(next.componentSets[set.id], renameChoice(rn, c.variant)))
           .sort(([a], [b]) => (a < b ? -1 : 1))
           .map(([id]) => componentDefOp(scene, op.docId, id)),
       ];

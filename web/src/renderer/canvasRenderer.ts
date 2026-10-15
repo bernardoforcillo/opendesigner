@@ -12,7 +12,7 @@ import {
 } from "../canvas/transform";
 import { sceneIndexOf } from "./sceneIndex";
 import { contentWorldBounds } from "../store/groups";
-import { hiddenMasterNodes, instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../store/instances";
+import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../store/instances";
 import {
   nodePath, hitTestNode, inkIsBox, nodeCenter, vectorPaths, hasInk, selectionBoundsOfNode,
   VECTOR_FILL_RULE, VECTOR_STROKE_PX,
@@ -501,7 +501,8 @@ type OverrideMap = ReadonlyMap<string, InstanceOverrideLite> | null;
 
 // The master's node WITH its override applied, if there is one: the override's
 // `fills` in place of its own if present, and -- for a text -- the override's `text`
-// in place of its content if present. Returns the node UNTOUCHED
+// in place of its content if present; the numbers a component property writes
+// (opacity, a rectangle's corner radius, a text's font size). Returns the node UNTOUCHED
 // when there is no override (no needless copy). It never touches the geometry
 // (x/y/width/height/rotation): an override changes only what the node paints,
 // not where it sits -- the same choice as the bounds in store/groups.ts.
@@ -510,6 +511,9 @@ export function withOverride(n: NodeLite, ov: InstanceOverrideLite | undefined):
   let eff = n;
   if (ov.fills !== undefined) eff = { ...eff, fills: ov.fills };
   if (ov.text !== undefined && eff.text) eff = { ...eff, text: { ...eff.text, content: ov.text } };
+  if (ov.opacity !== undefined) eff = { ...eff, opacity: ov.opacity };
+  if (ov.cornerRadius !== undefined && eff.kind === "rect") eff = { ...eff, cornerRadius: ov.cornerRadius };
+  if (ov.fontSize !== undefined && eff.text) eff = { ...eff, text: { ...eff.text, style: { ...eff.text.style, fontSize: ov.fontSize } } };
   return eff;
 }
 
@@ -569,7 +573,7 @@ function drawSiblings(
     // it draws the master under the descent transform, with its OWN
     // overrides, and without descending further here. drawNode has already skipped its box.
     if (n.kind === "instance") {
-      drawInstance(ctx, state, children, n, cam, px, images, visited);
+      drawInstance(ctx, state, children, n, cam, px, images, visited, overrides);
       continue;
     }
     const kids = children.get(n.id);
@@ -648,12 +652,14 @@ function drawInstance(
   px: number,
   images: ImageSource,
   visited: ReadonlySet<string>,
+  outer: OverrideMap = null,
 ): void {
-  if (!n.instance || visited.has(n.instance.componentId)) return;
-  const resolved = resolveInstance(state, n);
-  if (!resolved) return;
-  const nextVisited = new Set(visited).add(n.instance.componentId);
-  const overrides = instanceOverrideMap(state, n);
+  if (!n.instance) return;
+  // A swap property of the instance this one sits in may have pointed it at another component.
+  const resolved = resolveInstance(state, n, outer);
+  if (!resolved || visited.has(resolved.componentId)) return;
+  const nextVisited = new Set(visited).add(resolved.componentId);
+  const overrides = instanceOverrideMap(state, n, outer);
   ctx.save();
   const t = instanceDescentLocal(n, resolved.masterRoot);
   ctx.transform(t.a, t.b, t.c, t.d, t.e, t.f);
@@ -1027,8 +1033,8 @@ function pickIn(
   seen: Set<string>,
   visited: ReadonlySet<string>,
   prune: Prune | null,
-  // The master nodes the instance being hit-tested hides (see store/instances.ts::hiddenMasterNodes).
-  hidden: ReadonlySet<string> | null = null,
+  // What the instance being hit-tested changes in its master (see store/instances.ts::instanceOverrideMap).
+  overrides: OverrideMap = null,
 ): string | null {
   // MASKS clip what is above them in the same list (as drawSiblings does): a node is only
   // hit inside every visible mask below it, and a mask itself is not drawn, so not hit either.
@@ -1039,7 +1045,7 @@ function pickIn(
   });
   for (let i = siblings.length - 1; i >= 0; i--) {
     const n = siblings[i];
-    if (!n.visible || seen.has(n.id) || hidden?.has(n.id)) continue;
+    if (!n.visible || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
     if (n.isMask && isMaskShape(n)) continue;
     if (masks.some((m) => m.at < i && !hitTestNode(m.shape, px, py, zoom))) continue;
     if (prune && n.kind !== "instance") {
@@ -1055,7 +1061,7 @@ function pickIn(
     // hit, `continue`: an instance has no box of its own to hit (like a
     // group), so it does not steal the click from what lies under it.
     if (n.kind === "instance") {
-      if (hitInstance(state, children, n, px, py, zoom, visited)) return n.id;
+      if (hitInstance(state, children, n, px, py, zoom, visited, overrides)) return n.id;
       continue;
     }
     const kids = children.get(n.id);
@@ -1071,11 +1077,11 @@ function pickIn(
         n.kind === "frame" && n.clipsContent &&
         !(inner.x >= 0 && inner.x <= n.width && inner.y >= 0 && inner.y <= n.height);
       if (!clipsAway) {
-        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited, prune, hidden);
+        const hit = pickIn(state, children, kids, inner.x, inner.y, zoom, seen, visited, prune, overrides);
         if (hit) return hit;
       }
     }
-    if (hitTestNode(n, px, py, zoom)) return n.id;
+    if (hitTestNode(withOverride(n, overrides?.get(n.id)), px, py, zoom)) return n.id;
   }
   return null;
 }
@@ -1094,13 +1100,14 @@ function hitInstance(
   py: number,
   zoom: number,
   visited: ReadonlySet<string>,
+  outer: OverrideMap = null,
 ): boolean {
-  if (!n.instance || visited.has(n.instance.componentId)) return false;
-  const resolved = resolveInstance(state, n);
-  if (!resolved) return false;
+  if (!n.instance) return false;
+  const resolved = resolveInstance(state, n, outer);
+  if (!resolved || visited.has(resolved.componentId)) return false;
   const inner = applyTransform(invertTransform(instanceDescentLocal(n, resolved.masterRoot)), px, py);
-  const nextVisited = new Set(visited).add(n.instance.componentId);
-  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null, hiddenMasterNodes(state, n)) !== null;
+  const nextVisited = new Set(visited).add(resolved.componentId);
+  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null, instanceOverrideMap(state, n, outer)) !== null;
 }
 
 // The nodes whose WORLD box intersects `bounds`, in DRAW order. It is the
