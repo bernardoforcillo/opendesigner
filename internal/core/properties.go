@@ -3,6 +3,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"strconv"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 )
@@ -31,11 +32,36 @@ func underNode(doc *opendesignerv1.Document, root, id string) bool {
 	return false
 }
 
-func validPropertyValue(t opendesignerv1.ComponentPropertyType, v string) bool {
-	if t == opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN {
+// numberAttrs: the node attributes a NUMBER property can drive.
+var numberAttrs = map[string]bool{"opacity": true, "corner_radius": true, "font_size": true}
+
+func isNumber(v string) bool {
+	f, err := strconv.ParseFloat(v, 64)
+	return err == nil && f == f && f < 1e15 && f > -1e15
+}
+
+// validPropertyValue checks a value against a property definition (an empty
+// value is "use the default" and is checked by the callers).
+func validPropertyValue(doc *opendesignerv1.Document, p *opendesignerv1.ComponentProperty, v string) bool {
+	switch p.GetType() {
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:
 		return v == "true" || v == "false"
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:
+		return isNumber(v)
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP:
+		return doc.GetComponents()[v] != nil
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:
+		if len(p.GetOptions()) == 0 {
+			return true
+		}
+		for _, o := range p.GetOptions() {
+			if o == v {
+				return true
+			}
+		}
+		return false
 	}
-	return true
+	return false
 }
 
 func applySetComponentProperties(doc *opendesignerv1.Document, s *opendesignerv1.SetComponentProperties) error {
@@ -54,23 +80,45 @@ func applySetComponentProperties(doc *opendesignerv1.Document, s *opendesignerv1
 		if node == nil || !underNode(doc, c.GetRootNodeId(), p.GetNodeId()) {
 			return fmt.Errorf("%w: %q targets %q, which is not in the component's master", ErrBadProperty, p.GetName(), p.GetNodeId())
 		}
+		def := p.GetDefaultValue()
 		switch p.GetType() {
 		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:
+			if def == "" {
+				def = "true"
+			}
 		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:
 			if node.GetText() == nil {
 				return fmt.Errorf("%w: text property %q needs a text node", ErrBadProperty, p.GetName())
 			}
+			if err := validOptions(p); err != nil {
+				return err
+			}
+		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:
+			if !numberAttrs[p.GetAttribute()] {
+				return fmt.Errorf("%w: number property %q needs an attribute: opacity, corner_radius or font_size", ErrBadProperty, p.GetName())
+			}
+			if (p.GetAttribute() == "corner_radius" && node.GetRect() == nil && node.GetShape() != nil) ||
+				(p.GetAttribute() == "font_size" && node.GetText() == nil) {
+				return fmt.Errorf("%w: %q cannot drive %s of this node", ErrBadProperty, p.GetName(), p.GetAttribute())
+			}
+		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP:
+			if node.GetInstance() == nil {
+				return fmt.Errorf("%w: swap property %q needs an instance node", ErrBadProperty, p.GetName())
+			}
+			if def == s.GetComponentId() {
+				return fmt.Errorf("%w: a component cannot be swapped into itself (%q)", ErrBadProperty, p.GetName())
+			}
 		default:
 			return fmt.Errorf("%w: %q has an unknown type", ErrBadProperty, p.GetName())
 		}
-		def := p.GetDefaultValue()
-		if p.GetType() == opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN && def == "" {
-			def = "true"
+		// An empty default means "keep what the master has" for everything but a boolean.
+		if def != "" && !validPropertyValue(doc, p, def) {
+			return fmt.Errorf("%w: default %q of %q is not valid for its type", ErrBadProperty, def, p.GetName())
 		}
-		if !validPropertyValue(p.GetType(), def) {
-			return fmt.Errorf("%w: default of %q must be true or false", ErrBadProperty, p.GetName())
-		}
-		props = append(props, &opendesignerv1.ComponentProperty{Name: p.GetName(), Type: p.GetType(), NodeId: p.GetNodeId(), DefaultValue: def})
+		props = append(props, &opendesignerv1.ComponentProperty{
+			Name: p.GetName(), Type: p.GetType(), NodeId: p.GetNodeId(), DefaultValue: def,
+			Attribute: p.GetAttribute(), Options: p.GetOptions(),
+		})
 	}
 	c.Properties = props
 	return nil
@@ -102,8 +150,8 @@ func applySetInstanceProperty(doc *opendesignerv1.Document, s *opendesignerv1.Se
 		delete(inst.PropertyValues, s.GetName())
 		return nil
 	}
-	if !validPropertyValue(def.GetType(), s.GetValue()) {
-		return fmt.Errorf("%w: %q takes true or false, got %q", ErrBadProperty, s.GetName(), s.GetValue())
+	if !validPropertyValue(doc, def, s.GetValue()) {
+		return fmt.Errorf("%w: %q takes %s, got %q", ErrBadProperty, s.GetName(), valueHint(def), s.GetValue())
 	}
 	if inst.PropertyValues == nil {
 		inst.PropertyValues = map[string]string{}
@@ -112,11 +160,39 @@ func applySetInstanceProperty(doc *opendesignerv1.Document, s *opendesignerv1.Se
 	return nil
 }
 
+func valueHint(p *opendesignerv1.ComponentProperty) string {
+	switch p.GetType() {
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:
+		return "true or false"
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:
+		return "a number"
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP:
+		return "the id of an existing component"
+	}
+	return "one of its options"
+}
+
+// validOptions: an option list holds unique non-empty strings.
+func validOptions(p *opendesignerv1.ComponentProperty) error {
+	seen := map[string]bool{}
+	for _, o := range p.GetOptions() {
+		if o == "" || seen[o] {
+			return fmt.Errorf("%w: %q has an empty or duplicate option %q", ErrBadProperty, p.GetName(), o)
+		}
+		seen[o] = true
+	}
+	return nil
+}
+
 // InstanceEffects is what an instance's property values do to its master, per
 // master node: a visibility to force (shown or hidden) and a text to write.
 type InstanceEffects struct {
 	Visible map[string]bool
 	Text    map[string]string
+	// Opacity, CornerRadius and FontSize: numbers written to a master node's attribute.
+	Opacity, CornerRadius, FontSize map[string]float64
+	// Swap: nested instance node -> the component id it should show.
+	Swap map[string]string
 }
 
 // EffectsOf resolves an instance's properties (value, else default) against its
@@ -127,7 +203,11 @@ func EffectsOf(doc *opendesignerv1.Document, inst *opendesignerv1.InstanceNode) 
 
 // EffectsWith is EffectsOf for a component and explicit values (nil = defaults).
 func EffectsWith(comp *opendesignerv1.Component, values map[string]string) InstanceEffects {
-	e := InstanceEffects{Visible: map[string]bool{}, Text: map[string]string{}}
+	e := InstanceEffects{
+		Visible: map[string]bool{}, Text: map[string]string{},
+		Opacity: map[string]float64{}, CornerRadius: map[string]float64{}, FontSize: map[string]float64{},
+		Swap: map[string]string{},
+	}
 	for _, p := range comp.GetProperties() {
 		v, ok := values[p.GetName()]
 		if !ok {
@@ -139,6 +219,21 @@ func EffectsWith(comp *opendesignerv1.Component, values map[string]string) Insta
 		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:
 			if v != "" { // empty = keep the master's own text
 				e.Text[p.GetNodeId()] = v
+			}
+		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:
+			if f, err := strconv.ParseFloat(v, 64); err == nil && v != "" {
+				switch p.GetAttribute() {
+				case "opacity":
+					e.Opacity[p.GetNodeId()] = f
+				case "corner_radius":
+					e.CornerRadius[p.GetNodeId()] = f
+				case "font_size":
+					e.FontSize[p.GetNodeId()] = f
+				}
+			}
+		case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP:
+			if v != "" { // empty = the nested instance keeps its own component
+				e.Swap[p.GetNodeId()] = v
 			}
 		}
 	}

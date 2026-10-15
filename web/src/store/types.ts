@@ -136,8 +136,14 @@ export interface InstanceOverrideLite {
   fills?: FillLite[];
   text?: string;
   // RENDER-ONLY, never stored or sent: set by store/instances.ts::renderOverrideMap
-  // when a component property forces the master node shown or hidden.
+  // from the instance's component properties: a node forced shown or hidden, a
+  // number written to one of its attributes, or a nested instance pointed at
+  // another component.
   visible?: boolean;
+  opacity?: number;
+  cornerRadius?: number;
+  fontSize?: number;
+  componentId?: string;
 }
 
 // M4 — an instance of a component: the componentId it renders, plus the per-node
@@ -165,12 +171,19 @@ export interface ComponentLite {
   properties?: ComponentPropertyLite[];
 }
 
-/** A boolean (shows/hides one master node) or text (sets one master text node) control of a component. */
+/**
+ * A control of a component: boolean (shows/hides a master node), text (sets a text
+ * node, optionally from an option list), number (writes opacity / corner radius /
+ * font size of a node) or swap (makes a nested instance show another component).
+ */
 export interface ComponentPropertyLite {
   name: string;
-  type: "boolean" | "text";
+  type: "boolean" | "text" | "number" | "swap";
   nodeId: string;
   defaultValue: string;
+  // number: opacity | corner_radius | font_size. text: the allowed values (absent = free text).
+  attribute?: string;
+  options?: string[];
 }
 
 /** A variant set: the properties and their allowed values; members say which combination they are. */
@@ -394,12 +407,28 @@ export function toInstanceLite(n: PbInstanceNode): InstanceLite {
   };
 }
 
+const PROP_KIND: Record<number, ComponentPropertyLite["type"]> = {
+  [ComponentPropertyType.BOOLEAN]: "boolean", [ComponentPropertyType.TEXT]: "text",
+  [ComponentPropertyType.NUMBER]: "number", [ComponentPropertyType.INSTANCE_SWAP]: "swap",
+};
+const PROP_TYPE: Record<ComponentPropertyLite["type"], ComponentPropertyType> = {
+  boolean: ComponentPropertyType.BOOLEAN, text: ComponentPropertyType.TEXT,
+  number: ComponentPropertyType.NUMBER, swap: ComponentPropertyType.INSTANCE_SWAP,
+};
+
 export function toComponentPropertyLite(p: PbComponentProperty): ComponentPropertyLite {
-  return { name: p.name, type: p.type === ComponentPropertyType.TEXT ? "text" : "boolean", nodeId: p.nodeId, defaultValue: p.defaultValue };
+  return {
+    name: p.name, type: PROP_KIND[p.type] ?? "boolean", nodeId: p.nodeId, defaultValue: p.defaultValue,
+    ...(p.attribute !== "" ? { attribute: p.attribute } : {}),
+    ...(p.options.length > 0 ? { options: [...p.options] } : {}),
+  };
 }
 
 export function toPbComponentProperty(p: ComponentPropertyLite) {
-  return { name: p.name, type: p.type === "text" ? ComponentPropertyType.TEXT : ComponentPropertyType.BOOLEAN, nodeId: p.nodeId, defaultValue: p.defaultValue };
+  return {
+    name: p.name, type: PROP_TYPE[p.type], nodeId: p.nodeId, defaultValue: p.defaultValue,
+    attribute: p.attribute ?? "", options: [...(p.options ?? [])],
+  };
 }
 
 // Inverse of toSubPathsLite. Like toPbTextStyle it returns the INIT shape (not created

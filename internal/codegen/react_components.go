@@ -3,16 +3,39 @@ package codegen
 import (
 	"fmt"
 	"sort"
+	"strconv"
 	"strings"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/core"
 )
 
-// VARIANT SETS AS REACT COMPONENTS. An instance of a variant component exports
-// as `<Button size="L" state="Default" />`, and each set becomes ONE file,
-// `src/components/Button.tsx`, whose props are the set's properties and which
-// renders the master of the matching variant. Instances with overrides, or with
-// animation or flow wiring inside, stay inline (see builder.instanceElement).
+// COMPONENTS IN THE REACT TARGET. A component that has variants (a ComponentSet),
+// or component properties, exports as ONE file, `src/components/Button.tsx`: its
+// props are the set's properties (the variant to show) and the component's
+// properties (show/hide a layer, set a text, a number, swap a nested instance),
+// and an instance becomes `<Button size="L" label="Buy" />`. Instances with
+// overrides, or with animation or flow wiring inside, stay inline (see
+// builder.instanceElement); so does everything in the HTML target.
+
+type propKind int
+
+const (
+	pkBool propKind = iota
+	pkText
+	pkNumber
+	pkSwap
+)
+
+// compProp is a COMPONENT PROPERTY exposed as a prop.
+type compProp struct {
+	name    string // the property's name in the design
+	kind    propKind
+	ident   string   // TS identifier
+	def     string   // default: "true"/"false"; the text; the number; "" for a swap (the nested content)
+	options []string // text with an option list
+	attr    string   // number: opacity | corner_radius | font_size
+}
 
 type compVariant struct {
 	id      string // component id
@@ -21,39 +44,43 @@ type compVariant struct {
 	root    *Element
 }
 
-// compProp is a COMPONENT PROPERTY (show/hide a layer, set a text) exposed as a prop.
-type compProp struct {
-	name  string // the property's name in the design
-	text  bool   // text property; otherwise boolean
-	ident string // TS identifier
-	def   string // default: "true"/"false" for a boolean, the text for a text
-}
-
-type compSet struct {
-	id       string
-	set      *opendesignerv1.ComponentSet
-	name     string   // PascalCase component name
-	props    []string // TS identifier per set property, same order
+// compUnit is one exported React component: a variant set, or a single component
+// with properties.
+type compUnit struct {
+	key      string
+	set      *opendesignerv1.ComponentSet // nil for a component outside any set
+	name     string                       // PascalCase component name
+	props    []string                     // TS identifier per set property, same order
 	cprops   []*compProp
 	variants []*compVariant
 }
 
-// identOf is the TS identifier of the component property called `name`.
-func (cs *compSet) identOf(name string) string {
-	for _, p := range cs.cprops {
+func (u *compUnit) property(name string) *compProp {
+	for _, p := range u.cprops {
 		if p.name == name {
-			return p.ident
+			return p
 		}
+	}
+	return nil
+}
+
+// identOf is the TS identifier of the component property called `name`.
+func (u *compUnit) identOf(name string) string {
+	if p := u.property(name); p != nil {
+		return p.ident
 	}
 	return propIdent(name)
 }
 
 type compRegistry struct {
-	d    *opendesignerv1.Document
-	b    *builder
-	sets map[string]*compSet
-	// order: set ids in discovery order, then sorted for stable output.
+	d     *opendesignerv1.Document
+	b     *builder
+	units map[string]*compUnit
 	order []string
+	// swapTrees: components that a swap value points at but that have no React
+	// component of their own, expanded inline (component id -> IR).
+	swapTrees map[string]*Element
+	needNode  bool // some prop is a ReactNode (swap): the component files import its type
 }
 
 var tsReserved = map[string]bool{
@@ -81,37 +108,48 @@ func propIdent(name string) string {
 	return s
 }
 
-// newCompRegistry discovers every variant set the screens use (and the ones
-// those use in turn), builds the IR of every member's master, and names things.
+// newCompRegistry discovers every component the screens use (and the ones those
+// use in turn), builds the IR of every member's master, and names things.
 func newCompRegistry(d *opendesignerv1.Document, b *builder, screens []*Screen) *compRegistry {
-	r := &compRegistry{d: d, b: b, sets: map[string]*compSet{}}
+	r := &compRegistry{d: d, b: b, units: map[string]*compUnit{}, swapTrees: map[string]*Element{}}
 	for _, s := range screens {
 		r.discover(s.Root)
 	}
 	sort.Slice(r.order, func(i, j int) bool {
-		a, c := r.sets[r.order[i]], r.sets[r.order[j]]
-		if a.set.GetName() != c.set.GetName() {
-			return a.set.GetName() < c.set.GetName()
+		a, c := r.units[r.order[i]], r.units[r.order[j]]
+		if a.title() != c.title() {
+			return a.title() < c.title()
 		}
-		return a.id < c.id
+		return a.key < c.key
 	})
 	used := map[string]bool{"App": true}
 	for _, s := range screens {
 		used[s.Name] = true
 	}
-	for _, id := range r.order {
-		cs := r.sets[id]
-		cs.name = dedupe(used, pascal(cs.set.GetName()), "")
-		used[cs.name] = true
+	for _, key := range r.order {
+		u := r.units[key]
+		u.name = dedupe(used, pascal(u.title()), "")
+		used[u.name] = true
 		propUsed := map[string]bool{}
-		for _, p := range cs.set.GetProperties() {
-			cs.props = append(cs.props, dedupe(propUsed, propIdent(p.GetName()), ""))
+		for _, p := range u.set.GetProperties() {
+			u.props = append(u.props, dedupe(propUsed, propIdent(p.GetName()), ""))
 		}
-		for _, p := range cs.cprops {
+		for _, p := range u.cprops {
 			p.ident = dedupe(propUsed, propIdent(p.name), "")
 		}
 	}
 	return r
+}
+
+// title: the name a unit's component is derived from.
+func (u *compUnit) title() string {
+	if u.set != nil {
+		return u.set.GetName()
+	}
+	if len(u.variants) > 0 {
+		return u.variants[0].name
+	}
+	return "Component"
 }
 
 // discover walks an IR tree for component uses, without descending into the
@@ -121,36 +159,78 @@ func (r *compRegistry) discover(e *Element) {
 		return
 	}
 	if e.Use != nil {
-		if r.need(e.Use.SetID) {
+		if u := r.need(e.Use.SetID); u != nil {
+			// A swap value points at another component: make sure it can be rendered.
+			for name, v := range e.Use.Values {
+				if cp := u.property(name); cp != nil && cp.kind == pkSwap {
+					r.prepareSwap(v)
+				}
+			}
 			return
 		}
-		e.Use = nil // the set vanished: keep the inline children
+		e.Use = nil // the component vanished: keep the inline children
 	}
 	for _, c := range e.Children {
 		r.discover(c)
 	}
 }
 
-// need registers a set and builds its variants; false if the set does not exist.
-func (r *compRegistry) need(setID string) bool {
-	if _, ok := r.sets[setID]; ok {
-		return true
+// prepareSwap makes the component a swap value points at renderable: as a React
+// component if it is one, otherwise as an inline tree.
+func (r *compRegistry) prepareSwap(compID string) {
+	comp := r.d.GetComponents()[compID]
+	if comp == nil {
+		return
 	}
-	set := r.d.GetComponentSets()[setID]
-	if set == nil || len(set.GetProperties()) == 0 {
-		return false
+	if key := unitKey(comp, compID); key != "" && r.need(key) != nil {
+		return
 	}
-	cs := &compSet{id: setID, set: set}
-	r.sets[setID] = cs
-	r.order = append(r.order, setID)
+	if _, ok := r.swapTrees[compID]; ok {
+		return
+	}
+	master := r.d.GetNodes()[comp.GetRootNodeId()]
+	if master == nil {
+		return
+	}
+	savedAnim, savedTriggers := r.b.anim, r.b.triggers
+	r.b.anim, r.b.triggers = nil, nil
+	defer func() { r.b.anim, r.b.triggers = savedAnim, savedTriggers }()
+	tree := r.b.element(master, bctx{origin: true, idPrefix: "swap-" + compID + "/", visited: map[string]bool{compID: true}})
+	if tree == nil {
+		return
+	}
+	r.swapTrees[compID] = tree
+	r.discover(tree)
+}
 
-	var ids []string
-	for id, c := range r.d.GetComponents() {
-		if c.GetSetId() == setID {
-			ids = append(ids, id)
-		}
+// need registers a unit and builds its variants; nil if it cannot be built.
+func (r *compRegistry) need(key string) *compUnit {
+	if u, ok := r.units[key]; ok {
+		return u
 	}
-	sort.Strings(ids)
+	var set *opendesignerv1.ComponentSet
+	var ids []string
+	if strings.HasPrefix(key, "c:") {
+		if r.d.GetComponents()[strings.TrimPrefix(key, "c:")] == nil {
+			return nil
+		}
+		ids = []string{strings.TrimPrefix(key, "c:")}
+	} else {
+		set = r.d.GetComponentSets()[key]
+		if set == nil || len(set.GetProperties()) == 0 {
+			return nil
+		}
+		for id, c := range r.d.GetComponents() {
+			if c.GetSetId() == key {
+				ids = append(ids, id)
+			}
+		}
+		sort.Strings(ids)
+	}
+	u := &compUnit{key: key, set: set}
+	r.units[key] = u
+	r.order = append(r.order, key)
+
 	// A component's master is rendered once per variant, outside any screen: no
 	// screen animation or wiring applies to it.
 	savedAnim, savedTriggers := r.b.anim, r.b.triggers
@@ -163,89 +243,166 @@ func (r *compRegistry) need(setID string) bool {
 			continue
 		}
 		// The component's properties become props: a boolean layer is built (shown)
-		// and wrapped in `{prop && ...}`, a text layer prints `{prop}`.
+		// and wrapped in `{prop && ...}`, a text prints `{prop}`, a number drives an
+		// inline style, a nested instance becomes a slot.
 		visible := map[string]bool{}
 		bind := map[string]propBind{}
+		dyn := map[string][]DynStyle{}
+		swapBind := map[string]string{}
 		for _, p := range comp.GetProperties() {
-			cp := cs.property(p.GetName())
-			isText := p.GetType() == opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT
+			cp := u.property(p.GetName())
+			kind := kindOf(p.GetType())
 			if cp == nil {
-				cp = &compProp{name: p.GetName(), text: isText, def: p.GetDefaultValue()}
-				if isText && cp.def == "" {
-					cp.def = r.d.GetNodes()[p.GetNodeId()].GetText().GetContent() // empty default = the master's own text
-				}
-				cs.cprops = append(cs.cprops, cp)
+				cp = r.newProp(p, kind)
+				u.cprops = append(u.cprops, cp)
 			}
-			if cp.text != isText {
+			if cp.kind != kind {
 				continue // the same name with another kind in another variant: first one wins
 			}
-			b := bind[p.GetNodeId()]
-			if isText {
-				b.text = p.GetName()
-			} else {
+			node := p.GetNodeId()
+			switch kind {
+			case pkBool:
+				b := bind[node]
 				b.show = p.GetName()
-				visible[p.GetNodeId()] = true
+				bind[node] = b
+				visible[node] = true
+			case pkText:
+				b := bind[node]
+				b.text = p.GetName()
+				bind[node] = b
+			case pkNumber:
+				dyn[node] = append(dyn[node], DynStyle{Style: map[string]string{"opacity": "opacity", "corner_radius": "borderRadius", "font_size": "fontSize"}[cp.attr], Prop: p.GetName()})
+			case pkSwap:
+				swapBind[node] = p.GetName()
+				r.needNode = true
 			}
-			bind[p.GetNodeId()] = b
 		}
-		cc := bctx{origin: true, idPrefix: "cmp-" + id + "/", visited: map[string]bool{id: true}, visible: visible, bind: bind}
+		// The default content of a swap slot is what the property's default shows.
+		fx := coreEffects(comp)
+		cc := bctx{
+			origin: true, idPrefix: "cmp-" + id + "/", visited: map[string]bool{id: true},
+			visible: visible, bind: bind, dyn: dyn, swapBind: swapBind, swap: fx.Swap,
+		}
 		root := r.b.element(master, cc)
 		if root == nil {
 			continue
 		}
-		cs.variants = append(cs.variants, &compVariant{id: id, name: comp.GetName(), variant: comp.GetVariant(), root: root})
+		u.variants = append(u.variants, &compVariant{id: id, name: comp.GetName(), variant: comp.GetVariant(), root: root})
 	}
-	for _, v := range cs.variants {
+	for _, v := range u.variants {
 		r.discover(v.root)
 	}
-	if len(cs.variants) == 0 {
-		delete(r.sets, setID)
+	if len(u.variants) == 0 {
+		delete(r.units, key)
 		r.order = r.order[:len(r.order)-1]
-		return false
+		return nil
 	}
-	return true
+	return u
 }
 
-func (cs *compSet) property(name string) *compProp {
-	for _, p := range cs.cprops {
-		if p.name == name {
-			return p
-		}
+func kindOf(t opendesignerv1.ComponentPropertyType) propKind {
+	switch t {
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:
+		return pkText
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:
+		return pkNumber
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP:
+		return pkSwap
 	}
-	return nil
+	return pkBool
+}
+
+// newProp: the prop a component property becomes, with its default read from
+// the design (an empty default is the master's own value).
+func (r *compRegistry) newProp(p *opendesignerv1.ComponentProperty, kind propKind) *compProp {
+	cp := &compProp{name: p.GetName(), kind: kind, def: p.GetDefaultValue(), options: p.GetOptions(), attr: p.GetAttribute()}
+	node := r.d.GetNodes()[p.GetNodeId()]
+	switch kind {
+	case pkText:
+		if cp.def == "" {
+			cp.def = node.GetText().GetContent()
+		}
+		if len(cp.options) > 0 && cp.def == "" {
+			cp.def = cp.options[0]
+		}
+	case pkNumber:
+		if cp.def == "" {
+			switch cp.attr {
+			case "opacity":
+				cp.def = num(node.GetOpacity())
+			case "corner_radius":
+				cp.def = num(node.GetRect().GetCornerRadius())
+			case "font_size":
+				cp.def = num(node.GetText().GetStyle().GetFontSize())
+			}
+		}
+	case pkSwap:
+		cp.def = ""
+	}
+	return cp
 }
 
 func (r *compRegistry) known(u *ComponentUse) bool {
-	_, ok := r.sets[u.SetID]
+	_, ok := r.units[u.SetID]
 	return ok
 }
 
-// jsx is the call: <Button size="L" state="Default" />.
+// jsx is the call: <Button size="L" label="Buy" />.
 func (r *compRegistry) jsx(u *ComponentUse) string {
-	cs := r.sets[u.SetID]
+	cu := r.units[u.SetID]
 	var b strings.Builder
-	b.WriteString("<" + cs.name)
-	for i, p := range cs.set.GetProperties() {
+	b.WriteString("<" + cu.name)
+	for i, p := range cu.set.GetProperties() {
 		if v, ok := u.Variant[p.GetName()]; ok {
-			fmt.Fprintf(&b, " %s=%s", cs.props[i], tsString(v))
+			fmt.Fprintf(&b, " %s=%s", cu.props[i], tsString(v))
 		}
 	}
 	// The instance's component-property values, as props.
-	for _, p := range cs.cprops {
+	for _, p := range cu.cprops {
 		v, ok := u.Values[p.name]
 		if !ok {
 			continue
 		}
-		if p.text {
+		switch p.kind {
+		case pkText:
 			fmt.Fprintf(&b, " %s=%s", p.ident, tsString(v))
-		} else if v == "false" {
-			fmt.Fprintf(&b, " %s={false}", p.ident)
-		} else {
-			b.WriteString(" " + p.ident)
+		case pkNumber:
+			if f, err := strconv.ParseFloat(v, 64); err == nil {
+				fmt.Fprintf(&b, " %s={%s}", p.ident, num(f))
+			}
+		case pkSwap:
+			if sw := r.swapJSX(v); sw != "" {
+				fmt.Fprintf(&b, " %s={%s}", p.ident, sw)
+			}
+		default:
+			if v == "false" {
+				fmt.Fprintf(&b, " %s={false}", p.ident)
+			} else {
+				b.WriteString(" " + p.ident)
+			}
 		}
 	}
 	b.WriteString(" />")
 	return b.String()
+}
+
+// swapJSX is the content a swap prop receives for component `compID`.
+func (r *compRegistry) swapJSX(compID string) string {
+	comp := r.d.GetComponents()[compID]
+	if comp == nil {
+		return ""
+	}
+	if key := unitKey(comp, compID); key != "" {
+		if _, ok := r.units[key]; ok {
+			return r.jsx(&ComponentUse{SetID: key, ComponentID: compID, Variant: comp.GetVariant()})
+		}
+	}
+	if tree := r.swapTrees[compID]; tree != nil {
+		w := &jsxWriter{reg: r}
+		w.element(tree, 1, false, r.d)
+		return "(\n" + strings.TrimRight(w.sb.String(), "\n") + "\n)"
+	}
+	return ""
 }
 
 // usedBy: the component names an element tree calls, sorted, deduplicated.
@@ -254,7 +411,24 @@ func (r *compRegistry) usedBy(root *Element) []string {
 	var walk func(e *Element)
 	walk = func(e *Element) {
 		if e.Use != nil && r.known(e.Use) {
-			seen[r.sets[e.Use.SetID].name] = true
+			cu := r.units[e.Use.SetID]
+			seen[cu.name] = true
+			// Swap values call other components.
+			for name, v := range e.Use.Values {
+				if p := cu.property(name); p != nil && p.kind == pkSwap {
+					if comp := r.d.GetComponents()[v]; comp != nil {
+						if k := unitKey(comp, v); k != "" {
+							if tu, ok := r.units[k]; ok {
+								seen[tu.name] = true
+							}
+						} else if t := r.swapTrees[v]; t != nil {
+							for _, n := range r.usedBy(t) {
+								seen[n] = true
+							}
+						}
+					}
+				}
+			}
 			return
 		}
 		for _, c := range e.Children {
@@ -270,21 +444,34 @@ func (r *compRegistry) usedBy(root *Element) []string {
 	return out
 }
 
-// files writes one component file per set.
+// files writes one component file per unit.
 func (r *compRegistry) files(put func(path, content string)) {
-	for _, id := range r.order {
-		cs := r.sets[id]
-		put("src/components/"+cs.name+".tsx", r.component(cs))
+	for _, key := range r.order {
+		u := r.units[key]
+		put("src/components/"+u.name+".tsx", r.component(u))
 	}
 }
 
-func (r *compRegistry) component(cs *compSet) string {
+func (r *compRegistry) component(u *compUnit) string {
 	var b strings.Builder
-	b.WriteString(tsHeader(r.d, "component \""+oneLine(cs.set.GetName())+"\" (variant set)"))
+	what := "component"
+	if u.set != nil {
+		what = "component \"" + oneLine(u.set.GetName()) + "\" (variant set)"
+	} else {
+		what = "component \"" + oneLine(u.title()) + "\""
+	}
+	b.WriteString(tsHeader(r.d, what))
+	hasSwap := false
+	for _, p := range u.cprops {
+		hasSwap = hasSwap || p.kind == pkSwap
+	}
+	if hasSwap {
+		b.WriteString("import type { ReactNode } from \"react\";\n")
+	}
 	imports := map[string]bool{}
-	for _, v := range cs.variants {
+	for _, v := range u.variants {
 		for _, n := range r.usedBy(v.root) {
-			if n != cs.name {
+			if n != u.name {
 				imports[n] = true
 			}
 		}
@@ -297,68 +484,111 @@ func (r *compRegistry) component(cs *compSet) string {
 	for _, n := range names {
 		fmt.Fprintf(&b, "import { %s } from \"./%s\";\n", n, n)
 	}
-	if len(names) > 0 {
+	if hasSwap || len(names) > 0 {
 		b.WriteString("\n")
 	}
 
-	// Props: one optional union of the property's values; a missing prop is the
-	// property's first value.
-	fmt.Fprintf(&b, "export type %sProps = {\n", cs.name)
-	for i, p := range cs.set.GetProperties() {
+	// Props: the set's properties as optional unions (a missing prop is the first
+	// value), then the component's properties.
+	fmt.Fprintf(&b, "export type %sProps = {\n", u.name)
+	for i, p := range u.set.GetProperties() {
 		vals := make([]string, len(p.GetValues()))
 		for j, v := range p.GetValues() {
 			vals[j] = tsString(v)
 		}
-		fmt.Fprintf(&b, "  /** %s */\n  %s?: %s;\n", oneLine(p.GetName()), cs.props[i], strings.Join(vals, " | "))
+		fmt.Fprintf(&b, "  /** %s */\n  %s?: %s;\n", oneLine(p.GetName()), u.props[i], strings.Join(vals, " | "))
 	}
-	for _, p := range cs.cprops {
-		if p.text {
-			fmt.Fprintf(&b, "  /** %s (text) */\n  %s?: string;\n", oneLine(p.name), p.ident)
-		} else {
+	for _, p := range u.cprops {
+		switch p.kind {
+		case pkText:
+			typ := "string"
+			if len(p.options) > 0 {
+				opts := make([]string, len(p.options))
+				for i, o := range p.options {
+					opts[i] = tsString(o)
+				}
+				typ = strings.Join(opts, " | ")
+			}
+			fmt.Fprintf(&b, "  /** %s (text) */\n  %s?: %s;\n", oneLine(p.name), p.ident, typ)
+		case pkNumber:
+			fmt.Fprintf(&b, "  /** %s (%s) */\n  %s?: number;\n", oneLine(p.name), strings.ReplaceAll(p.attr, "_", " "), p.ident)
+		case pkSwap:
+			fmt.Fprintf(&b, "  /** %s (replaces a nested component) */\n  %s?: ReactNode;\n", oneLine(p.name), p.ident)
+		default:
 			fmt.Fprintf(&b, "  /** %s (show/hide) */\n  %s?: boolean;\n", oneLine(p.name), p.ident)
 		}
 	}
 	b.WriteString("};\n\n")
 
-	params := make([]string, 0, len(cs.props)+len(cs.cprops))
-	for i, p := range cs.set.GetProperties() {
-		params = append(params, fmt.Sprintf("%s = %s", cs.props[i], tsString(p.GetValues()[0])))
+	params := make([]string, 0, len(u.props)+len(u.cprops))
+	for i, p := range u.set.GetProperties() {
+		params = append(params, fmt.Sprintf("%s = %s", u.props[i], tsString(p.GetValues()[0])))
 	}
-	for _, p := range cs.cprops {
-		if p.text {
+	for _, p := range u.cprops {
+		switch p.kind {
+		case pkText:
 			params = append(params, fmt.Sprintf("%s = %s", p.ident, tsString(p.def)))
-		} else {
+		case pkNumber:
+			if p.def != "" {
+				params = append(params, fmt.Sprintf("%s = %s", p.ident, p.def))
+			} else {
+				params = append(params, p.ident)
+			}
+		case pkSwap:
+			params = append(params, p.ident) // undefined: the default content shows
+		default:
 			params = append(params, fmt.Sprintf("%s = %v", p.ident, p.def != "false"))
 		}
 	}
-	fmt.Fprintf(&b, "export function %s({ %s }: %sProps) {\n", cs.name, strings.Join(params, ", "), cs.name)
+	destructure := "{ " + strings.Join(params, ", ") + " }"
+	if len(params) == 0 {
+		destructure = "_: " + u.name + "Props"
+		fmt.Fprintf(&b, "export function %s(%s) {\n", u.name, destructure)
+	} else {
+		fmt.Fprintf(&b, "export function %s(%s: %sProps) {\n", u.name, destructure, u.name)
+	}
 
+	body := func(v *compVariant, depth int) string {
+		w := &jsxWriter{reg: r, propIdent: u.identOf}
+		root := v.root
+		if root.ShowIf != "" {
+			// The master root itself is toggled: the component renders nothing when off.
+			cp := *root
+			cp.ShowIf = ""
+			w.line(depth, u.identOf(root.ShowIf)+" ? (")
+			w.element(&cp, depth+1, false, r.d)
+			w.line(depth, ") : null")
+		} else {
+			w.element(root, depth, false, r.d)
+		}
+		return w.sb.String()
+	}
+
+	if u.set == nil || len(u.set.GetProperties()) == 0 {
+		// One master, nothing to switch on.
+		b.WriteString("  return (\n" + body(u.variants[0], 2) + "  );\n}\n")
+		return b.String()
+	}
 	// The variant key: the property values in set order, joined.
-	keyParts := make([]string, len(cs.props))
-	for i := range cs.props {
-		keyParts[i] = "${" + cs.props[i] + "}"
+	keyParts := make([]string, len(u.props))
+	for i := range u.props {
+		keyParts[i] = "${" + u.props[i] + "}"
 	}
 	fmt.Fprintf(&b, "  switch (`%s`) {\n", strings.Join(keyParts, "|"))
-	for _, v := range cs.variants {
-		vals := make([]string, len(cs.props))
-		for i, p := range cs.set.GetProperties() {
+	for _, v := range u.variants {
+		vals := make([]string, len(u.props))
+		for i, p := range u.set.GetProperties() {
 			vals[i] = v.variant[p.GetName()]
 		}
 		fmt.Fprintf(&b, "    case %s:\n      // %s\n      return (\n", tsString(strings.Join(vals, "|")), oneLine(v.name))
-		w := &jsxWriter{reg: r, propIdent: cs.identOf}
-		if v.root.ShowIf != "" {
-			// The master root itself is toggled: the component renders nothing when off.
-			root := *v.root
-			root.ShowIf = ""
-			w.line(4, cs.identOf(v.root.ShowIf)+" ? (")
-			w.element(&root, 5, false, r.d)
-			w.line(4, ") : null")
-		} else {
-			w.element(v.root, 4, false, r.d)
-		}
-		b.WriteString(w.sb.String())
+		b.WriteString(body(v, 4))
 		b.WriteString("      );\n")
 	}
 	b.WriteString("    default:\n      return null; // this combination has no variant in the design\n  }\n}\n")
 	return b.String()
+}
+
+// coreEffects: the effects of a component's properties at their defaults.
+func coreEffects(comp *opendesignerv1.Component) core.InstanceEffects {
+	return core.EffectsWith(comp, nil)
 }

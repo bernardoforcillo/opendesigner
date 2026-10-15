@@ -424,6 +424,14 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 	if cn := className(style); cn != "" {
 		attrs = append(attrs, kv{"className", attrValue(cn)})
 	}
+	// Number attributes driven by a component prop: an inline style that beats the class.
+	if len(e.Dyn) > 0 && w.propIdent != nil {
+		parts := make([]string, len(e.Dyn))
+		for i, d := range e.Dyn {
+			parts[i] = d.Style + ": " + w.propIdent(d.Prop)
+		}
+		attrs = append(attrs, kv{"style", "{{ " + strings.Join(parts, ", ") + " }}"})
+	}
 	// Animations (Motion): the element becomes `motion.<tag>`, receives the
 	// variants of its tracks and, if it is the target of a clip, the labels that
 	// trigger them on descendants (initial/animate = mount, whileHover, whileTap).
@@ -503,6 +511,13 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 	}
 	if useChild {
 		w.line(depth+1, w.reg.jsx(e.Use))
+	} else if e.SwapProp != "" && w.propIdent != nil {
+		// A replaceable nested component: the prop's content, or the default one.
+		w.line(depth+1, "{"+w.propIdent(e.SwapProp)+" ?? (")
+		for _, c := range e.Children {
+			w.element(c, depth+2, false, d)
+		}
+		w.line(depth+1, ")}")
 	} else {
 		for _, c := range e.Children {
 			w.element(c, depth+1, false, d)

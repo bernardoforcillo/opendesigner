@@ -173,11 +173,11 @@ function accumulateMaster(
   if (!visibleUnder(node, overrides) || seen.has(node.id)) return;
   seen.add(node.id);
   if (isInstance(node)) {
-    const resolved = resolveInstance(scene, node);
+    const resolved = resolveInstance(scene, node, overrides);
     if (resolved && !visited.has(resolved.componentId)) {
       const nextVisited = new Set(visited).add(resolved.componentId);
       const inner: Bounds[] = [];
-      accumulateMaster(scene, resolved.masterRoot, IDENTITY, inner, new Set(), nextVisited, renderOverrideMap(scene, node));
+      accumulateMaster(scene, resolved.masterRoot, IDENTITY, inner, new Set(), nextVisited, renderOverrideMap(scene, node, overrides));
       const innerLocal = unionBounds(inner);
       if (innerLocal) boxes.push(mapBounds(compose(toBase, instanceDescentLocal(node, resolved.masterRoot)), innerLocal));
     }

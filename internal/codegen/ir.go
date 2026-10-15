@@ -79,7 +79,15 @@ type Element struct {
 	// that property's value (TextProp). Empty everywhere else.
 	ShowIf   string
 	TextProp string
+	// Dyn: inline style entries driven by a component prop (a number attribute).
+	Dyn []DynStyle
+	// SwapProp: this nested instance is replaceable through the prop of that
+	// property name; its Children are the default content.
+	SwapProp string
 }
+
+// DynStyle: a React inline style (camelCase `Style`) whose value is the prop `Prop`.
+type DynStyle struct{ Style, Prop string }
 
 // ComponentUse identifies the variant an instance shows.
 type ComponentUse struct {

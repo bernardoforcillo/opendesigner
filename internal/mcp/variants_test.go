@@ -114,7 +114,7 @@ func TestComponentPropertyTools(t *testing.T) {
 	}}); err != nil {
 		t.Fatalf("SetComponentProperties: %v", err)
 	}
-	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: comp.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "X", Type: "number", NodeId: icon}}}); err == nil || !strings.Contains(err.Error(), "boolean or text") {
+	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: comp.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "X", Type: "date", NodeId: icon}}}); err == nil || !strings.Contains(err.Error(), "boolean, text, number or swap") {
 		t.Fatalf("an unknown type must be refused with the choices named, got %v", err)
 	}
 	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: comp.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "X", Type: "text", NodeId: icon}}}); err == nil || !strings.Contains(err.Error(), "text node") {
@@ -137,5 +137,67 @@ func TestComponentPropertyTools(t *testing.T) {
 	comps, _ := s.ListComponents(ctx, struct{}{})
 	if len(comps.Components) != 1 || len(comps.Components[0].Properties) != 2 || comps.Components[0].Properties[0].Type == "" {
 		t.Fatalf("list_components must show the properties: %+v", comps.Components)
+	}
+}
+
+// TestNumberOptionAndSwapPropertyTools: the new kinds through the tools.
+func TestNumberOptionAndSwapPropertyTools(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	s := startSession(t, url, docID, "agent")
+	ctx := context.Background()
+
+	star := frame(t, s, "Star")
+	heart := frame(t, s, "Heart")
+	cs, _ := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: star, Name: "Star"})
+	ch, _ := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: heart, Name: "Heart"})
+
+	card := frame(t, s, "Card")
+	title, _ := s.CreateText(ctx, odmcp.CreateTextInput{ParentId: card, Content: "Info"})
+	bg := rect(t, s, card, "Bg")
+	icon, err := s.CreateInstance(ctx, odmcp.CreateInstanceInput{ComponentId: cs.ComponentId, ParentId: card, Name: "Icon"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	cc, _ := s.CreateComponent(ctx, odmcp.CreateComponentInput{RootNodeId: card, Name: "Card"})
+
+	if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: cc.ComponentId, Properties: []odmcp.ComponentPropertyIO{
+		{Name: "Tone", Type: "text", NodeId: title.NodeId, Options: []string{"Info", "Warn"}, Default: "Info"},
+		{Name: "Radius", Type: "number", NodeId: bg, Attribute: "corner_radius", Default: "8"},
+		{Name: "Icon", Type: "swap", NodeId: icon.NodeId, Default: cs.ComponentId},
+	}}); err != nil {
+		t.Fatalf("SetComponentProperties: %v", err)
+	}
+	for name, p := range map[string]odmcp.ComponentPropertyIO{
+		"number without attribute": {Name: "X", Type: "number", NodeId: bg},
+		"swap on a rectangle":      {Name: "X", Type: "swap", NodeId: bg},
+		"swap into itself":         {Name: "X", Type: "swap", NodeId: icon.NodeId, Default: cc.ComponentId},
+		"option default off list":  {Name: "X", Type: "text", NodeId: title.NodeId, Options: []string{"A"}, Default: "B"},
+	} {
+		if _, err := s.SetComponentProperties(ctx, odmcp.SetComponentPropertiesInput{ComponentId: cc.ComponentId, Properties: []odmcp.ComponentPropertyIO{p}}); err == nil {
+			t.Errorf("%s: must be refused", name)
+		}
+	}
+	inst, err := s.CreateInstance(ctx, odmcp.CreateInstanceInput{ComponentId: cc.ComponentId, X: 10, Y: 10})
+	if err != nil {
+		t.Fatal(err)
+	}
+	for _, c := range []struct{ name, value string }{{"Tone", "Warn"}, {"Radius", "12"}, {"Icon", ch.ComponentId}} {
+		if _, err := s.SetInstanceProperty(ctx, odmcp.SetInstancePropertyInput{InstanceId: inst.NodeId, Name: c.name, Value: c.value}); err != nil {
+			t.Fatalf("%s: %v", c.name, err)
+		}
+	}
+	for _, c := range []struct{ name, value, hint string }{
+		{"Tone", "Danger", "options"}, {"Radius", "wide", "number"}, {"Icon", "ghost", "existing component"},
+	} {
+		if _, err := s.SetInstanceProperty(ctx, odmcp.SetInstancePropertyInput{InstanceId: inst.NodeId, Name: c.name, Value: c.value}); err == nil || !strings.Contains(err.Error(), c.hint) {
+			t.Errorf("%s=%q must be refused naming %q, got %v", c.name, c.value, c.hint, err)
+		}
+	}
+	comps, _ := s.ListComponents(ctx, struct{}{})
+	for _, c := range comps.Components {
+		if c.Id == cc.ComponentId && (len(c.Properties) != 3 || c.Properties[1].Attribute != "corner_radius" || len(c.Properties[0].Options) != 2) {
+			t.Errorf("list_components lacks the new fields: %+v", c.Properties)
+		}
 	}
 }

@@ -35,17 +35,44 @@ function uniqueName(props: readonly ComponentPropertyLite[], base: string): stri
   return name;
 }
 
-/** A new property on the first layer that fits (a text layer for text; the first child, else the root, for boolean). */
+/** Can a number property writing `attribute` target a node of this kind? */
+export function attributeFits(attribute: string, kind: NodeLite["kind"]): boolean {
+  if (attribute === "corner_radius") return kind === "rect";
+  if (attribute === "font_size") return kind === "text";
+  return true; // opacity fits any node
+}
+
+/** The layers a property of this type (and, for a number, attribute) can target. */
+export function layersFor(layers: readonly LayerChoice[], type: ComponentPropertyLite["type"], attribute?: string): LayerChoice[] {
+  switch (type) {
+    case "text": return layers.filter((l) => l.kind === "text");
+    case "swap": return layers.filter((l) => l.kind === "instance");
+    case "number": return layers.filter((l) => attributeFits(attribute ?? "opacity", l.kind));
+    default: return [...layers];
+  }
+}
+
+export const NUMBER_ATTRIBUTES: { value: string; label: string }[] = [
+  { value: "opacity", label: "Opacity (0..1)" },
+  { value: "corner_radius", label: "Corner radius" },
+  { value: "font_size", label: "Font size" },
+];
+
+/** A new property on the first layer that fits; nothing if no layer fits (a swap needs a nested instance). */
 export function addPropertyOps(scene: SceneState, componentId: string, type: ComponentPropertyLite["type"]): Op[] {
   const c = scene.components[componentId];
   if (!c) return [];
   const layers = layersOfMaster(scene, c.rootNodeId);
-  const target = type === "text" ? layers.find((l) => l.kind === "text") : (layers[1] ?? layers[0]);
+  const fitting = layersFor(layers, type, "opacity");
+  const target = type === "boolean" ? (layers[1] ?? layers[0]) : fitting[0];
   if (!target) return [];
   const props = c.properties ?? [];
-  const p: ComponentPropertyLite = type === "text"
-    ? { name: uniqueName(props, "Text"), type, nodeId: target.id, defaultValue: "" }
-    : { name: uniqueName(props, "Show layer"), type, nodeId: target.id, defaultValue: "true" };
+  const base = { nodeId: target.id } as const;
+  const p: ComponentPropertyLite =
+    type === "text" ? { ...base, name: uniqueName(props, "Text"), type, defaultValue: "" }
+    : type === "number" ? { ...base, name: uniqueName(props, "Number"), type, defaultValue: "", attribute: "opacity" }
+    : type === "swap" ? { ...base, name: uniqueName(props, "Swap"), type, defaultValue: "" }
+    : { ...base, name: uniqueName(props, "Show layer"), type, defaultValue: "true" };
   return [makeSetComponentPropertiesOp(componentId, [...props, p])];
 }
 

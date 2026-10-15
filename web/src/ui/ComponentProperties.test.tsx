@@ -57,8 +57,8 @@ describe("defining component properties on the master", () => {
     render(<PropertiesPanel />);
     const user = userEvent.setup();
 
-    await user.click(screen.getByRole("button", { name: "Add a show/hide property" }));
-    await user.click(screen.getByRole("button", { name: "Add a text property" }));
+    await user.selectOptions(screen.getByRole("combobox", { name: "Add a property" }), "boolean");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Add a property" }), "text");
 
     expect(kinds()).toEqual(["setComponentProperties", "setComponentProperties"]);
     expect(useScene.getState().undoStack).toHaveLength(2);
@@ -107,7 +107,7 @@ describe("defining component properties on the master", () => {
     install();
     useScene.getState().setSelection(["icon"]);
     render(<PropertiesPanel />);
-    expect(screen.queryByRole("button", { name: "Add a show/hide property" })).toBeNull();
+    expect(screen.queryByRole("combobox", { name: "Add a property" })).toBeNull();
   });
 });
 
@@ -143,5 +143,84 @@ describe("setting properties on an instance", () => {
     useScene.getState().setSelection(["i"]);
     render(<PropertiesPanel />);
     expect(screen.queryByRole("textbox", { name: "Caption" })).toBeNull();
+  });
+});
+
+
+describe("the other property kinds", () => {
+  // Master group "Button": a text "Title", a rect "Icon", and a nested instance "nested" of component "c2".
+  function installRich(props?: SceneState["components"][string]["properties"], values?: Record<string, string>) {
+    install(props, values);
+    const scene = useScene.getState().scene!;
+    let nodes = scene.nodes;
+    nodes = nodes.set("nested", node("nested", { parentId: "m", orderKey: "a2", name: "Badge", kind: "instance", instance: { componentId: "c2", overrides: [] } }));
+    nodes = nodes.set("m2", node("m2", { kind: "group", name: "Spark", width: 0, height: 0, orderKey: "y" }));
+    useScene.getState().setScene({ ...scene, nodes, components: { ...scene.components, c2: { rootNodeId: "m2", name: "Spark" } } });
+  }
+
+  it("adds number and swap properties on layers that fit, and offers only fitting layers and attributes", async () => {
+    installRich();
+    useScene.getState().setSelection(["m"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    await user.selectOptions(screen.getByRole("combobox", { name: "Add a property" }), "number");
+    await user.selectOptions(screen.getByRole("combobox", { name: "Add a property" }), "swap");
+    const props = useScene.getState().scene!.components.c.properties!;
+    expect(props[0]).toMatchObject({ name: "Number", type: "number", attribute: "opacity", defaultValue: "" });
+    expect(props[1]).toMatchObject({ name: "Swap", type: "swap", nodeId: "nested" });          // the nested instance, the only fit
+
+    // Switching the attribute to font size moves the number to a text layer (the old target does not fit).
+    await user.selectOptions(screen.getByRole("combobox", { name: "Attribute of Number" }), "font_size");
+    expect(useScene.getState().scene!.components.c.properties![0]).toMatchObject({ attribute: "font_size", nodeId: "label" });
+    const layers = within(screen.getByRole("combobox", { name: "Layer of Number" })).getAllByRole("option").map((o) => o.textContent);
+    expect(layers).toEqual(["Button / Title"]);
+    const swapLayers = within(screen.getByRole("combobox", { name: "Layer of Swap" })).getAllByRole("option").map((o) => o.textContent);
+    expect(swapLayers).toEqual(["Button / Badge"]);
+  });
+
+  it("an option list turns the default into a select and the instance value into a select", async () => {
+    installRich([{ name: "Tone", type: "text", nodeId: "label", defaultValue: "", options: undefined }]);
+    useScene.getState().setSelection(["m"]);
+    const { rerender } = render(<PropertiesPanel />);
+    const user = userEvent.setup();
+
+    const opts = screen.getByRole("textbox", { name: "Options of Tone" });
+    await user.type(opts, "Info, Warn, Info{Enter}");
+    const p = () => useScene.getState().scene!.components.c.properties![0];
+    expect(p().options).toEqual(["Info", "Warn"]);          // duplicates dropped
+    expect(p().defaultValue).toBe("Info");                   // falls back to the first option
+    expect(screen.getByRole("combobox", { name: "Default of Tone" })).toHaveDisplayValue("Info");
+
+    // On an instance the value is a select of the options.
+    useScene.getState().setSelection(["i"]);
+    rerender(<PropertiesPanel />);
+    await user.selectOptions(screen.getByRole("combobox", { name: "Tone" }), "Warn");
+    expect(useScene.getState().scene!.nodes.at("i").instance!.propertyValues).toEqual({ Tone: "Warn" });
+  });
+
+  it("sets a number on an instance and ignores a non-number", async () => {
+    installRich([{ name: "Radius", type: "number", nodeId: "icon", attribute: "corner_radius", defaultValue: "8" }]);
+    useScene.getState().setSelection(["i"]);
+    render(<PropertiesPanel />);
+    const user = userEvent.setup();
+    const field = screen.getByRole("textbox", { name: "Radius" });
+    expect(field).toHaveValue("8");
+    await user.clear(field);
+    await user.type(field, "wide{Enter}");
+    expect(useScene.getState().scene!.nodes.at("i").instance!.propertyValues).toBeUndefined();
+    await user.clear(field);
+    await user.type(field, "16{Enter}");
+    expect(useScene.getState().scene!.nodes.at("i").instance!.propertyValues).toEqual({ Radius: "16" });
+  });
+
+  it("swaps the nested component from the instance", async () => {
+    installRich([{ name: "Badge", type: "swap", nodeId: "nested", defaultValue: "" }]);
+    useScene.getState().setSelection(["i"]);
+    render(<PropertiesPanel />);
+    const sel = screen.getByRole("combobox", { name: "Badge" });
+    expect(within(sel).getAllByRole("option").map((o) => o.textContent)).toEqual(["Default", "Spark"]);   // never itself
+    await userEvent.setup().selectOptions(sel, "c2");
+    expect(useScene.getState().scene!.nodes.at("i").instance!.propertyValues).toEqual({ Badge: "c2" });
   });
 });

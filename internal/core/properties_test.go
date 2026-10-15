@@ -12,6 +12,13 @@ const (
 	pText = opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT
 )
 
+// addChild creates `n` under `parent` (addNode always puts nodes on the page).
+func addChild(t *testing.T, doc *opendesignerv1.Document, parent string, n *opendesignerv1.Node) {
+	t.Helper()
+	n.ParentId, n.Visible, n.Opacity = parent, true, 1
+	applyAll(t, doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: n}}})
+}
+
 func propsOp(comp string, ps ...*opendesignerv1.ComponentProperty) *opendesignerv1.Op {
 	return &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentProperties{SetComponentProperties: &opendesignerv1.SetComponentProperties{ComponentId: comp, Properties: ps}}}
 }
@@ -112,5 +119,100 @@ func TestDeletingATargetLayerDropsItsProperty(t *testing.T) {
 	got := doc.Components["a"].Properties
 	if len(got) != 1 || got[0].Name != "Root" {
 		t.Fatalf("the property of the deleted layer must go, the other stay: %v", got)
+	}
+}
+
+const (
+	pNum  = opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER
+	pSwap = opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP
+)
+
+func TestNumberProperties(t *testing.T) {
+	doc := NewDocument("d", "d")
+	_, label := button(t, doc, "a", "a")
+	addChild(t, doc, "a-root", &opendesignerv1.Node{Id: "r", OrderKey: "q", Shape: &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{}}})
+	good := []*opendesignerv1.ComponentProperty{
+		{Name: "Radius", Type: pNum, NodeId: "r", Attribute: "corner_radius", DefaultValue: "8"},
+		{Name: "Size", Type: pNum, NodeId: label, Attribute: "font_size"},
+		{Name: "Fade", Type: pNum, NodeId: "r", Attribute: "opacity", DefaultValue: "0.5"},
+	}
+	applyAll(t, doc, propsOp("a", good...))
+	for name, p := range map[string]*opendesignerv1.ComponentProperty{
+		"no attribute":         {Name: "X", Type: pNum, NodeId: "r"},
+		"unknown attribute":    {Name: "X", Type: pNum, NodeId: "r", Attribute: "width"},
+		"radius on a text":     {Name: "X", Type: pNum, NodeId: label, Attribute: "corner_radius"},
+		"font size on a rect":  {Name: "X", Type: pNum, NodeId: "r", Attribute: "font_size"},
+		"default not a number": {Name: "X", Type: pNum, NodeId: "r", Attribute: "opacity", DefaultValue: "lots"},
+	} {
+		if err := Apply(doc, propsOp("a", p)); err == nil {
+			t.Errorf("%s: must be refused", name)
+		}
+	}
+	addNode(t, doc, &opendesignerv1.Node{Id: "i", OrderKey: "z", Shape: &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{ComponentId: "a"}}})
+	fx := EffectsOf(doc, doc.Nodes["i"].GetInstance())
+	if fx.CornerRadius["r"] != 8 || fx.Opacity["r"] != 0.5 || len(fx.FontSize) != 0 {
+		t.Fatalf("defaults: %+v (an empty default writes nothing)", fx)
+	}
+	applyAll(t, doc, instPropOp("i", "Size", "20"), instPropOp("i", "Radius", "16"))
+	fx = EffectsOf(doc, doc.Nodes["i"].GetInstance())
+	if fx.FontSize[label] != 20 || fx.CornerRadius["r"] != 16 {
+		t.Fatalf("values: %+v", fx)
+	}
+	if err := Apply(doc, instPropOp("i", "Radius", "wide")); err == nil || !errors.Is(err, ErrBadProperty) {
+		t.Fatalf("a non-number must be refused, got %v", err)
+	}
+}
+
+func TestOptionListProperties(t *testing.T) {
+	doc := NewDocument("d", "d")
+	_, label := button(t, doc, "a", "a")
+	for name, p := range map[string]*opendesignerv1.ComponentProperty{
+		"duplicate option":      {Name: "Tone", Type: pText, NodeId: label, Options: []string{"Info", "Info"}},
+		"empty option":          {Name: "Tone", Type: pText, NodeId: label, Options: []string{"Info", ""}},
+		"default not an option": {Name: "Tone", Type: pText, NodeId: label, Options: []string{"Info", "Warn"}, DefaultValue: "Danger"},
+	} {
+		if err := Apply(doc, propsOp("a", p)); err == nil {
+			t.Errorf("%s: must be refused", name)
+		}
+	}
+	applyAll(t, doc, propsOp("a", &opendesignerv1.ComponentProperty{Name: "Tone", Type: pText, NodeId: label, Options: []string{"Info", "Warn"}, DefaultValue: "Info"}))
+	addNode(t, doc, &opendesignerv1.Node{Id: "i", OrderKey: "z", Shape: &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{ComponentId: "a"}}})
+	applyAll(t, doc, instPropOp("i", "Tone", "Warn"))
+	if EffectsOf(doc, doc.Nodes["i"].GetInstance()).Text[label] != "Warn" {
+		t.Fatal("an option must write the text")
+	}
+	if err := Apply(doc, instPropOp("i", "Tone", "Danger")); err == nil {
+		t.Fatal("a value outside the option list must be refused")
+	}
+}
+
+func TestInstanceSwapProperties(t *testing.T) {
+	doc := NewDocument("d", "d")
+	button(t, doc, "a", "a") // the outer component's master is a-root
+	button(t, doc, "b", "b")
+	button(t, doc, "c", "c")
+	// "a" contains a nested instance of "b".
+	addChild(t, doc, "a-root", &opendesignerv1.Node{Id: "nested", OrderKey: "q", Name: "Icon", Shape: &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{ComponentId: "b"}}})
+	good := &opendesignerv1.ComponentProperty{Name: "Icon", Type: pSwap, NodeId: "nested", DefaultValue: "b"}
+	applyAll(t, doc, propsOp("a", good))
+	for name, p := range map[string]*opendesignerv1.ComponentProperty{
+		"node is not an instance": {Name: "X", Type: pSwap, NodeId: "a-label"},
+		"unknown default":         {Name: "X", Type: pSwap, NodeId: "nested", DefaultValue: "ghost"},
+		"into itself":             {Name: "X", Type: pSwap, NodeId: "nested", DefaultValue: "a"},
+	} {
+		if err := Apply(doc, propsOp("a", p)); err == nil {
+			t.Errorf("%s: must be refused", name)
+		}
+	}
+	addNode(t, doc, &opendesignerv1.Node{Id: "i", OrderKey: "z", Shape: &opendesignerv1.Node_Instance{Instance: &opendesignerv1.InstanceNode{ComponentId: "a"}}})
+	if EffectsOf(doc, doc.Nodes["i"].GetInstance()).Swap["nested"] != "b" {
+		t.Fatal("the default must show")
+	}
+	applyAll(t, doc, instPropOp("i", "Icon", "c"))
+	if EffectsOf(doc, doc.Nodes["i"].GetInstance()).Swap["nested"] != "c" {
+		t.Fatal("the value must win")
+	}
+	if err := Apply(doc, instPropOp("i", "Icon", "ghost")); err == nil {
+		t.Fatal("an unknown component must be refused")
 	}
 }

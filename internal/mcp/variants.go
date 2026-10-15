@@ -209,25 +209,29 @@ func (s *Session) CreateInstance(ctx context.Context, in CreateInstanceInput) (C
 // component properties
 // ---------------------------------------------------------------------------
 
-const propertyConventions = " Component properties: a component declares named controls; an INSTANCE sets them. A boolean property shows or hides one layer of the master, a text property sets one text layer's content. " +
+const propertyConventions = " Component properties: a component declares named controls; an INSTANCE sets them. A boolean property shows or hides one layer of the master, a text property sets one text layer's content (optionally from an option list), a number property writes opacity / corner radius / font size of one layer, a swap property makes a nested instance show another component. " +
 	"An instance's value wins over the default, and a property wins over a per-node override of the same layer. Values survive swap_instance; properties the new component lacks are ignored."
 
 type ComponentPropertyIO struct {
-	Name    string `json:"name" jsonschema:"e.g. Label, Show icon"`
-	Type    string `json:"type" jsonschema:"boolean | text"`
-	NodeId  string `json:"nodeId" jsonschema:"a node INSIDE the component's master: the layer to show/hide (boolean) or the text layer (text)"`
-	Default string `json:"default,omitempty" jsonschema:"boolean: true (default) | false. text: the text; empty keeps the master's own text"`
+	Name      string   `json:"name" jsonschema:"e.g. Label, Show icon"`
+	Type      string   `json:"type" jsonschema:"boolean | text | number | swap"`
+	NodeId    string   `json:"nodeId" jsonschema:"a node INSIDE the component's master: the layer to show/hide (boolean), the text layer (text), the node whose attribute the number drives (number), or the NESTED INSTANCE to replace (swap)"`
+	Default   string   `json:"default,omitempty" jsonschema:"boolean: true (default) | false. text: the text (one of options if given); number: the number; swap: a component id. Empty keeps the master's own value"`
+	Attribute string   `json:"attribute,omitempty" jsonschema:"number only: opacity (0..1) | corner_radius (rectangle) | font_size (text)"`
+	Options   []string `json:"options,omitempty" jsonschema:"text only: an option list; the value must be one of them. Empty = free text"`
 }
 
 var propTypeNames = map[opendesignerv1.ComponentPropertyType]string{
-	opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN: "boolean",
-	opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:    "text",
+	opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:       "boolean",
+	opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:          "text",
+	opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:        "number",
+	opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP: "swap",
 }
 
 func propertyViews(c *opendesignerv1.Component) []ComponentPropertyIO {
 	var out []ComponentPropertyIO
 	for _, p := range c.GetProperties() {
-		out = append(out, ComponentPropertyIO{Name: p.GetName(), Type: propTypeNames[p.GetType()], NodeId: p.GetNodeId(), Default: p.GetDefaultValue()})
+		out = append(out, ComponentPropertyIO{Name: p.GetName(), Type: propTypeNames[p.GetType()], NodeId: p.GetNodeId(), Default: p.GetDefaultValue(), Attribute: p.GetAttribute(), Options: p.GetOptions()})
 	}
 	return out
 }
@@ -253,13 +257,13 @@ func (s *Session) SetComponentProperties(ctx context.Context, in SetComponentPro
 			}
 		}
 		if typ == opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_UNSPECIFIED {
-			return SeqOutput{}, fmt.Errorf("set_component_properties: type of %q must be boolean or text, got %q", p.Name, p.Type)
+			return SeqOutput{}, fmt.Errorf("set_component_properties: type of %q must be boolean, text, number or swap, got %q", p.Name, p.Type)
 		}
-		props = append(props, &opendesignerv1.ComponentProperty{Name: p.Name, Type: typ, NodeId: p.NodeId, DefaultValue: p.Default})
+		props = append(props, &opendesignerv1.ComponentProperty{Name: p.Name, Type: typ, NodeId: p.NodeId, DefaultValue: p.Default, Attribute: p.Attribute, Options: p.Options})
 	}
 	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentProperties{SetComponentProperties: &opendesignerv1.SetComponentProperties{ComponentId: in.ComponentId, Properties: props}}})
 	if err != nil {
-		return SeqOutput{}, fmt.Errorf("set_component_properties: %w (names unique and non-empty; nodeId must be inside the component's master; a text property needs a text node; a boolean default is true or false)", err)
+		return SeqOutput{}, fmt.Errorf("set_component_properties: %w (names unique and non-empty; nodeId must be inside the component's master; a text property needs a text node; a number needs attribute opacity, corner_radius or font_size on a fitting node; a swap needs a nested instance and an existing component as default; a boolean default is true or false)", err)
 	}
 	return SeqOutput{Seq: seq}, nil
 }
@@ -267,7 +271,7 @@ func (s *Session) SetComponentProperties(ctx context.Context, in SetComponentPro
 type SetInstancePropertyInput struct {
 	InstanceId string `json:"instanceId"`
 	Name       string `json:"name" jsonschema:"a property of the instance's component"`
-	Value      string `json:"value,omitempty" jsonschema:"boolean: true | false. text: the text. Empty = back to the default"`
+	Value      string `json:"value,omitempty" jsonschema:"boolean: true | false. text: the text (an option if the property has options). number: a number. swap: a component id. Empty = back to the default"`
 }
 
 func (s *Session) SetInstanceProperty(ctx context.Context, in SetInstancePropertyInput) (SeqOutput, error) {
@@ -279,7 +283,7 @@ func (s *Session) SetInstanceProperty(ctx context.Context, in SetInstancePropert
 	}
 	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetInstanceProperty{SetInstanceProperty: &opendesignerv1.SetInstanceProperty{InstanceId: in.InstanceId, Name: in.Name, Value: in.Value}}})
 	if err != nil {
-		return SeqOutput{}, fmt.Errorf("set_instance_property: %w (the component must declare that property; list_components shows them; a boolean takes true or false)", err)
+		return SeqOutput{}, fmt.Errorf("set_instance_property: %w (the component must declare that property; list_components shows them; a boolean takes true or false, a number a number, a swap an existing component id, an option text one of its options)", err)
 	}
 	return SeqOutput{Seq: seq}, nil
 }

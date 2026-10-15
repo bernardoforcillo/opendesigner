@@ -357,6 +357,10 @@ export function withOverride(n: NodeLite, ov: InstanceOverrideLite | undefined):
   let eff = n;
   if (ov.fills !== undefined) eff = { ...eff, fills: ov.fills };
   if (ov.text !== undefined && eff.text) eff = { ...eff, text: { ...eff.text, content: ov.text } };
+  // Number attributes written by component properties.
+  if (ov.opacity !== undefined) eff = { ...eff, opacity: ov.opacity };
+  if (ov.cornerRadius !== undefined && eff.kind === "rect") eff = { ...eff, cornerRadius: ov.cornerRadius };
+  if (ov.fontSize !== undefined && eff.text) eff = { ...eff, text: { ...eff.text, style: { ...eff.text.style, fontSize: ov.fontSize } } };
   return eff;
 }
 
@@ -405,7 +409,7 @@ function drawSiblings(
     // it draws the master under the descent transform, with its OWN
     // overrides, and without descending further here. drawNode has already skipped its box.
     if (n.kind === "instance") {
-      drawInstance(ctx, state, children, n, cam, px, images, visited);
+      drawInstance(ctx, state, children, n, cam, px, images, visited, overrides);
       continue;
     }
     const kids = children.get(n.id);
@@ -460,12 +464,14 @@ function drawInstance(
   px: number,
   images: ImageSource,
   visited: ReadonlySet<string>,
+  outer: OverrideMap = null,
 ): void {
-  if (!n.instance || visited.has(n.instance.componentId)) return;
-  const resolved = resolveInstance(state, n);
-  if (!resolved) return;
-  const nextVisited = new Set(visited).add(n.instance.componentId);
-  const overrides = renderOverrideMap(state, n);
+  if (!n.instance) return;
+  // A swap property of the instance this one sits in may have pointed it at another component.
+  const resolved = resolveInstance(state, n, outer);
+  if (!resolved || visited.has(resolved.componentId)) return;
+  const nextVisited = new Set(visited).add(resolved.componentId);
+  const overrides = renderOverrideMap(state, n, outer);
   ctx.save();
   const t = instanceDescentLocal(n, resolved.masterRoot);
   ctx.transform(t.a, t.b, t.c, t.d, t.e, t.f);
@@ -789,7 +795,7 @@ function pickIn(
     // hit, `continue`: an instance has no box of its own to hit (like a
     // group), so it does not steal the click from what lies under it.
     if (n.kind === "instance") {
-      if (hitInstance(state, children, n, px, py, zoom, visited)) return n.id;
+      if (hitInstance(state, children, n, px, py, zoom, visited, overrides)) return n.id;
       continue;
     }
     const kids = children.get(n.id);
@@ -828,13 +834,14 @@ function hitInstance(
   py: number,
   zoom: number,
   visited: ReadonlySet<string>,
+  outer: OverrideMap = null,
 ): boolean {
-  if (!n.instance || visited.has(n.instance.componentId)) return false;
-  const resolved = resolveInstance(state, n);
-  if (!resolved) return false;
+  if (!n.instance) return false;
+  const resolved = resolveInstance(state, n, outer);
+  if (!resolved || visited.has(resolved.componentId)) return false;
   const inner = applyTransform(invertTransform(instanceDescentLocal(n, resolved.masterRoot)), px, py);
-  const nextVisited = new Set(visited).add(n.instance.componentId);
-  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null, renderOverrideMap(state, n)) !== null;
+  const nextVisited = new Set(visited).add(resolved.componentId);
+  return pickIn(state, children, [resolved.masterRoot], inner.x, inner.y, zoom, new Set(), nextVisited, null, renderOverrideMap(state, n, outer)) !== null;
 }
 
 // The nodes whose WORLD box intersects `bounds`, in DRAW order. It is the

@@ -29,13 +29,28 @@ export interface ResolvedInstance {
   componentId: string;
 }
 
-export function resolveInstance(scene: SceneState, n: NodeLite): ResolvedInstance | null {
+export function resolveInstance(
+  scene: SceneState, n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null = null,
+): ResolvedInstance | null {
   if (n.kind !== "instance" || !n.instance) return null;
-  const comp = scene.components[n.instance.componentId];
+  const componentId = effectiveComponentId(scene, n, overrides);
+  const comp = scene.components[componentId];
   if (!comp) return null;
-  const masterRoot = scene.nodes.at(comp.rootNodeId);
+  const masterRoot = scene.nodes.get(comp.rootNodeId);
   if (!masterRoot) return null;
-  return { masterRoot, componentId: n.instance.componentId };
+  return { masterRoot, componentId };
+}
+
+/**
+ * The component an instance shows: its own, unless the instance it sits in (the
+ * `overrides` being descended with) points it at another through a swap property
+ * -- and only if that component exists.
+ */
+export function effectiveComponentId(
+  scene: SceneState, n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null,
+): string {
+  const to = overrides?.get(n.id)?.componentId;
+  return to !== undefined && scene.components[to] ? to : (n.instance?.componentId ?? "");
 }
 
 // The instance's overrides indexed by master node (masterNodeId ->
@@ -56,11 +71,19 @@ export function instanceOverrideMap(n: NodeLite): Map<string, InstanceOverrideLi
 // boolean one forces it shown or hidden via `visible`). A property wins over an
 // explicit override of the same node. The properties panel keeps reading the
 // explicit map (instanceOverrideMap) -- that is what the user edits.
-export function renderOverrideMap(scene: SceneState, n: NodeLite): Map<string, InstanceOverrideLite> {
+export function renderOverrideMap(
+  scene: SceneState, n: NodeLite, outer: ReadonlyMap<string, InstanceOverrideLite> | null = null,
+): Map<string, InstanceOverrideLite> {
   const map = instanceOverrideMap(n);
-  const fx = propertyEffects(scene, n);
-  for (const [node, text] of fx.text) map.set(node, { ...(map.get(node) ?? { masterNodeId: node }), text });
-  for (const [node, visible] of fx.visible) map.set(node, { ...(map.get(node) ?? { masterNodeId: node }), visible });
+  // A swapped nested instance reads the properties of the component it was swapped to.
+  const fx = propertyEffects(scene, n, effectiveComponentId(scene, n, outer));
+  const put = (node: string, patch: Partial<InstanceOverrideLite>) => map.set(node, { ...(map.get(node) ?? { masterNodeId: node }), ...patch });
+  for (const [node, text] of fx.text) put(node, { text });
+  for (const [node, visible] of fx.visible) put(node, { visible });
+  for (const [node, opacity] of fx.opacity) put(node, { opacity });
+  for (const [node, cornerRadius] of fx.cornerRadius) put(node, { cornerRadius });
+  for (const [node, fontSize] of fx.fontSize) put(node, { fontSize });
+  for (const [node, componentId] of fx.swap) put(node, { componentId });
   return map;
 }
 

@@ -346,6 +346,11 @@ enum ComponentPropertyType {
   COMPONENT_PROPERTY_TYPE_UNSPECIFIED = 0;
   COMPONENT_PROPERTY_TYPE_BOOLEAN = 1;
   COMPONENT_PROPERTY_TYPE_TEXT = 2;
+  // A number written to ONE attribute of a master node (see `attribute`).
+  COMPONENT_PROPERTY_TYPE_NUMBER = 3;
+  // Makes a NESTED INSTANCE in the master show another component; the value is a
+  // component id.
+  COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP = 4;
 }
 
 // `node_id` is a node INSIDE the component's master subtree. `default_value` is
@@ -358,6 +363,11 @@ message ComponentProperty {
   ComponentPropertyType type = 2;
   string node_id = 3;
   string default_value = 4;
+  // NUMBER only: which attribute of `node_id` the number drives:
+  // "opacity" (0..1), "corner_radius" (rectangle) or "font_size" (text).
+  string attribute = 5;
+  // TEXT only: the allowed values (an option list). Empty = free text.
+  repeated string options = 6;
 }
 
 message VariantProperty {
