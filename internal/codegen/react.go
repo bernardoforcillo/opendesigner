@@ -45,7 +45,7 @@ func tsHeader(d *opendesignerv1.Document, what string) string {
 	return "// " + strings.ReplaceAll(generatedHeader(d, what), "\n", "\n// ") + "\n"
 }
 
-func renderReact(d *opendesignerv1.Document, screens []*Screen, opts Options, files map[string][]byte, warnings *[]string, fontCSS string) error {
+func renderReact(d *opendesignerv1.Document, b *builder, screens []*Screen, opts Options, files map[string][]byte, warnings *[]string, fontCSS string) error {
 	put := func(path, content string) { files[path] = []byte(content) }
 
 	pkgName := slug(d.GetName())
@@ -205,8 +205,13 @@ createRoot(document.getElementById("root")!).render(
 	app.WriteString("      </Routes>\n    </BrowserRouter>\n  );\n}\n")
 	put("src/App.tsx", app.String())
 
+	// Component sets and components with properties that the screens use become
+	// components (src/components).
+	reg := newCompRegistry(d, b, screens)
+	reg.files(put)
+
 	for _, s := range screens {
-		code, w := reactScreen(d, s)
+		code, w := reactScreen(d, s, reg)
 		*warnings = append(*warnings, w...)
 		put("src/screens/"+s.Name+".tsx", code)
 	}
@@ -222,7 +227,7 @@ createRoot(document.getElementById("root")!).render(
 		put("tests/flows.spec.ts", spec)
 	}
 
-	put("README.md", reactReadme(d, screens, opts, hasFlows, home, hasAnim))
+	put("README.md", reactReadme(d, screens, opts, hasFlows, home, hasAnim, reg))
 	return nil
 }
 
@@ -236,9 +241,13 @@ func escapeHTML(s string) string {
 
 type jsxWriter struct {
 	sb strings.Builder
+	// reg: the components the design exports (nil = every instance is written inline).
+	reg *compRegistry
+	// propIdent: inside a component, the TS identifier of a component property.
+	propIdent func(name string) string
 }
 
-func reactScreen(d *opendesignerv1.Document, s *Screen) (string, []string) {
+func reactScreen(d *opendesignerv1.Document, s *Screen, reg *compRegistry) (string, []string) {
 	animCode, warns := reactAnimations(s.Root)
 	// What the component needs: navigate (at least one wiring with a destination)
 	// and effect (keys).
@@ -276,7 +285,11 @@ func reactScreen(d *opendesignerv1.Document, s *Screen) (string, []string) {
 	if needNavigate {
 		b.WriteString("import { useNavigate } from \"react-router-dom\";\n")
 	}
-	if needNavigate || needEffect || len(collectAnimated(s.Root)) > 0 {
+	used := reg.usedBy(s.Root)
+	for _, n := range used {
+		fmt.Fprintf(&b, "import { %s } from \"../components/%s\";\n", n, n)
+	}
+	if needNavigate || needEffect || len(collectAnimated(s.Root)) > 0 || len(used) > 0 {
 		b.WriteString("\n")
 	}
 	b.WriteString(animCode)
@@ -308,7 +321,7 @@ func reactScreen(d *opendesignerv1.Document, s *Screen) (string, []string) {
 		}
 	}
 	b.WriteString("  return (\n")
-	w := &jsxWriter{}
+	w := &jsxWriter{reg: reg}
 	w.element(s.Root, 2, true, d)
 	b.WriteString(w.sb.String())
 	b.WriteString("  );\n}\n")
@@ -381,6 +394,15 @@ func navigateExpr(t Trigger) string {
 // These are the three ways the generated tests (getByTestId / getByText /
 // getByRole('button', { name })) find the element in the real DOM.
 func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.Document) {
+	// A layer a component property shows or hides: `{prop && (<.../>)}`.
+	if e.ShowIf != "" && w.propIdent != nil {
+		inner := *e
+		inner.ShowIf = ""
+		w.line(depth, "{"+w.propIdent(e.ShowIf)+" && (")
+		w.element(&inner, depth+1, root, d)
+		w.line(depth, ")}")
+		return
+	}
 	type kv struct{ k, v string }
 	var attrs []kv
 	var comments []string
@@ -403,6 +425,14 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 	}
 	if cn := className(style); cn != "" {
 		attrs = append(attrs, kv{"className", attrValue(cn)})
+	}
+	// Number attributes driven by a component prop: an inline style, which beats the class.
+	if len(e.Dyn) > 0 && w.propIdent != nil {
+		parts := make([]string, len(e.Dyn))
+		for i, dy := range e.Dyn {
+			parts[i] = dy.Style + ": " + w.propIdent(dy.Prop)
+		}
+		attrs = append(attrs, kv{"style", "{{ " + strings.Join(parts, ", ") + " }}"})
 	}
 	// Animations (Motion): the element becomes `motion.<tag>`, receives the
 	// variants of its tracks and, if it is the target of a clip, the labels that
@@ -448,7 +478,8 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 	if len(ind)+len(tag)+one.Len() > 110 {
 		multi = true
 	}
-	kids := len(e.Children) > 0 || e.HasText || (root && (hasNav(e) || false))
+	useChild := e.Use != nil && w.reg != nil && w.reg.known(e.Use)
+	kids := len(e.Children) > 0 || e.HasText || (root && (hasNav(e) || false)) || useChild
 
 	if multi {
 		w.line(depth, "<"+tag)
@@ -474,10 +505,31 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 	}
 
 	if e.HasText {
-		w.line(depth+1, "{"+tsString(e.Text)+"}")
+		if e.TextProp != "" && w.propIdent != nil {
+			w.line(depth+1, "{"+w.propIdent(e.TextProp)+"}")
+		} else {
+			w.line(depth+1, "{"+tsString(e.Text)+"}")
+		}
 	}
-	for _, c := range e.Children {
-		w.element(c, depth+1, false, d)
+	switch {
+	case e.SwapProp != "" && w.propIdent != nil:
+		// A replaceable nested component: the prop's content, or the default one.
+		w.line(depth+1, "{"+w.propIdent(e.SwapProp)+" ?? (")
+		if useChild {
+			w.line(depth+2, w.reg.jsx(e.Use))
+		}
+		for _, c := range e.Children {
+			if !useChild {
+				w.element(c, depth+2, false, d)
+			}
+		}
+		w.line(depth+1, ")}")
+	case useChild:
+		w.line(depth+1, w.reg.jsx(e.Use))
+	default:
+		for _, c := range e.Children {
+			w.element(c, depth+1, false, d)
+		}
 	}
 	if root {
 		w.nav(e, depth+1, d)
@@ -540,7 +592,7 @@ func jsxText(s string) string {
 // README
 // ---------------------------------------------------------------------------
 
-func reactReadme(d *opendesignerv1.Document, screens []*Screen, opts Options, hasFlows bool, home *Screen, hasAnim bool) string {
+func reactReadme(d *opendesignerv1.Document, screens []*Screen, opts Options, hasFlows bool, home *Screen, hasAnim bool, reg *compRegistry) string {
 	var b strings.Builder
 	fmt.Fprintf(&b, "# %s\n\n", d.GetName())
 	fmt.Fprintf(&b, "<!-- %s -->\n\n", generatedHeader(d, "README"))
@@ -556,7 +608,12 @@ func reactReadme(d *opendesignerv1.Document, screens []*Screen, opts Options, ha
 	b.WriteString("- Fills, strokes (inside/center/outside -> `box-shadow` rings), shadows, blurs, rotation, clipping, text and vectors follow **what the editor's canvas draws** (first fill, first shadow, first blur).\n")
 	b.WriteString("- **Images** are copied to `public/assets/<hash>.<ext>`; if missing, the canvas placeholder appears.\n")
 	b.WriteString("- Every element carries `data-node-id=\"<node id>\"`: it is the link between the design and the code.\n")
-	b.WriteString("- Component **instances** are expanded inline (there is no extraction into React components yet).\n")
+	if len(reg.order) > 0 {
+		b.WriteString("- A **component set** (variants) is ONE component in `src/components/<Name>.tsx`: its props are the set's axes (string unions of the options) and the **component properties** (boolean = show/hide, text = string, number = an inline style on the target attribute, instance swap = a `ReactNode` slot with the default content as fallback). An instance becomes `<Name axis=\"option\" prop={...} />`; what it leaves out is the component's default. Instances with overrides, or with animation or flow wiring inside, are expanded inline.\n")
+		b.WriteString("- Other component **instances** are expanded inline.\n")
+	} else {
+		b.WriteString("- Component **instances** are expanded inline (there is no extraction into React components yet).\n")
+	}
 	b.WriteString("- Screens have a fixed size (no responsiveness).\n\n")
 	if hasFlows {
 		b.WriteString("## Flows and tests\n\n")

@@ -1,5 +1,7 @@
 package codegen
 
+import opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+
 // IR -- the intermediate representation between the document and the code
 // renderers.
 //
@@ -68,6 +70,22 @@ type Element struct {
 	// StrokePath: the <path> of a vector's stroke (the one `draw` animates),
 	// distinct from the fill path.
 	StrokePath bool
+
+	// Use: this element is an INSTANCE of a component that exports as a React
+	// component. The React target renders it as `<Button size="L" />` inside this
+	// element instead of its inline Children (which stay filled for the HTML target).
+	Use *ComponentUse
+
+	// ShowIf / TextProp: inside a React component, this element is shown only when
+	// the component property of that NAME is true (ShowIf), or its text is that
+	// property's value (TextProp). Empty everywhere else.
+	ShowIf   string
+	TextProp string
+	// Dyn: inline style entries driven by a component prop (a number attribute).
+	Dyn []DynStyle
+	// SwapProp: this nested instance is replaceable through the prop of that
+	// property name; it (or its Use) is the default content.
+	SwapProp string
 }
 
 // Screen is an exported screen: a top-level frame (or a node referenced by a
@@ -85,6 +103,18 @@ type Screen struct {
 
 	Width, Height float64
 	Root          *Element
+}
+
+// DynStyle: a React inline style (camelCase `Style`) whose value is the prop `Prop`.
+type DynStyle struct{ Style, Prop string }
+
+// ComponentUse identifies the component an instance shows.
+type ComponentUse struct {
+	// UnitKey is the key of the React component (the set id, or "c:<id>").
+	UnitKey string
+	// ComponentID is the member the instance resolves to; Inst carries its choices.
+	ComponentID string
+	Inst        *opendesignerv1.InstanceNode
 }
 
 func (e *Element) addStyle(name, value string) {

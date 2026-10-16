@@ -204,7 +204,7 @@ export function propertyValue(state: SceneState, inst: Pick<InstanceLite, "prope
  * corner radius / font size of its targets, a swap property points its nested instances
  * at another component) under the instance's explicit overrides, which win. `swappedTo`
  * is the component a swap property of the OUTER instance pointed this one at. Parity with
- * core.EffectiveOverrides for what Go derives (text, hidden).
+ * core.EffectsOf (overrides, hidden, the number attributes and the swaps).
  */
 export function effectiveOverrides(state: SceneState, n: NodeLite, swappedTo?: string): Map<string, InstanceOverrideLite> {
   const map = new Map<string, InstanceOverrideLite>();

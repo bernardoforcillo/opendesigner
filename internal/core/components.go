@@ -457,7 +457,18 @@ func applySetComponentDef(doc *opendesignerv1.Document, s *opendesignerv1.SetCom
 // its base component's set that matches the instance's variant choice over the base
 // assignment, or the base component itself when it has no set or nothing matches.
 func EffectiveComponentID(doc *opendesignerv1.Document, inst *opendesignerv1.InstanceNode) string {
+	return EffectiveComponentIDSwapped(doc, inst, "")
+}
+
+// EffectiveComponentIDSwapped is EffectiveComponentID for an instance that a swap
+// property of the instance it sits in pointed at component `swappedTo` ("" = not
+// swapped; an unknown component is ignored). The instance's variant choice applies
+// over the swapped component. Parity with effectiveComponentId (web/src/store/components.ts).
+func EffectiveComponentIDSwapped(doc *opendesignerv1.Document, inst *opendesignerv1.InstanceNode, swappedTo string) string {
 	base := inst.GetComponentId()
+	if swappedTo != "" && doc.GetComponents()[swappedTo] != nil {
+		base = swappedTo
+	}
 	comp := doc.GetComponents()[base]
 	if comp == nil || comp.GetSetId() == "" || len(inst.GetVariantProps()) == 0 {
 		return base
@@ -517,29 +528,72 @@ func propertyValueValid(doc *opendesignerv1.Document, p *opendesignerv1.Componen
 	return false
 }
 
+// InstanceEffects is what an instance changes in its master, by master node id.
+type InstanceEffects struct {
+	// Overrides: the ones derived from the component's properties (a text property sets
+	// the content of its text targets) under the instance's explicit overrides.
+	Overrides map[string]*opendesignerv1.InstanceOverride
+	// Hidden: the nodes a false boolean property hides.
+	Hidden map[string]bool
+	// Opacity, CornerRadius, FontSize: the attribute a NUMBER property writes on its targets.
+	Opacity, CornerRadius, FontSize map[string]float64
+	// Swap: the component a swap property points a nested instance at (node id -> component id).
+	Swap map[string]string
+}
+
 // EffectiveOverrides merges what an instance changes in its master: the overrides
 // derived from the component's properties (a text property sets the content of its
 // text targets) under the instance's explicit overrides (which win), and the set of
-// master nodes a false boolean property hides.
+// master nodes a false boolean property hides. The number and swap effects are in
+// EffectsOf.
 func EffectiveOverrides(doc *opendesignerv1.Document, inst *opendesignerv1.InstanceNode) (map[string]*opendesignerv1.InstanceOverride, map[string]bool) {
-	out := map[string]*opendesignerv1.InstanceOverride{}
-	var hidden map[string]bool
-	if comp := doc.GetComponents()[EffectiveComponentID(doc, inst)]; comp != nil {
+	fx := EffectsOf(doc, inst, "")
+	return fx.Overrides, fx.Hidden
+}
+
+// EffectsOf is everything an instance changes in its master. `swappedTo` is the
+// component a swap property of the OUTER instance pointed this one at ("" = none).
+// Parity with effectiveOverrides in web/src/store/components.ts.
+func EffectsOf(doc *opendesignerv1.Document, inst *opendesignerv1.InstanceNode, swappedTo string) InstanceEffects {
+	fx := InstanceEffects{Overrides: map[string]*opendesignerv1.InstanceOverride{}}
+	out := fx.Overrides
+	if comp := doc.GetComponents()[EffectiveComponentIDSwapped(doc, inst, swappedTo)]; comp != nil {
 		for _, p := range comp.GetProperties() {
 			v := PropertyValue(doc, inst, p)
-			switch p.GetType() {
-			case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:
-				if v == "false" {
-					if hidden == nil {
-						hidden = map[string]bool{}
+			for _, t := range p.GetTargetNodeIds() {
+				switch p.GetType() {
+				case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:
+					if v == "false" {
+						if fx.Hidden == nil {
+							fx.Hidden = map[string]bool{}
+						}
+						fx.Hidden[t] = true
 					}
-					for _, t := range p.GetTargetNodeIds() {
-						hidden[t] = true
-					}
-				}
-			case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:
-				for _, t := range p.GetTargetNodeIds() {
+				case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT:
 					out[t] = &opendesignerv1.InstanceOverride{MasterNodeId: t, Text: v, TextPresent: true}
+				case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:
+					f, ok := parseNumber(p.GetAttribute(), v)
+					if !ok {
+						continue
+					}
+					dst := &fx.FontSize
+					switch p.GetAttribute() {
+					case "opacity":
+						dst = &fx.Opacity
+					case "corner_radius":
+						dst = &fx.CornerRadius
+					}
+					if *dst == nil {
+						*dst = map[string]float64{}
+					}
+					(*dst)[t] = f
+				case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP:
+					if v != "" {
+						if fx.Swap == nil {
+							fx.Swap = map[string]string{}
+						}
+						fx.Swap[t] = v
+					}
 				}
 			}
 		}
@@ -559,7 +613,7 @@ func EffectiveOverrides(doc *opendesignerv1.Document, inst *opendesignerv1.Insta
 		}
 		out[o.GetMasterNodeId()] = merged
 	}
-	return out, hidden
+	return fx
 }
 
 func validateInstanceProps(doc *opendesignerv1.Document, inst *opendesignerv1.InstanceNode, values, variants map[string]string) error {
