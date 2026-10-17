@@ -4,15 +4,19 @@ import { useScene } from "../store/store";
 import { makeSetComponentSetOp } from "../tools/ops";
 import { Button, cls } from "./ds";
 import {
-  addAxisOps, addOptionOps, addPropertyOps, createSetOps, duplicateVariantOps, leaveSetOps, membersOf, removePropertyOps,
-  selectionInMaster, setPropertyDefaultOps, setVariantOps,
+  NUMBER_ATTRIBUTES, addAxisOps, addOptionOps, addPropertyOps, createSetOps, duplicateVariantOps, leaveSetOps, membersOf, removePropertyOps,
+  renameAxisOps, renameOptionOps, selectionInMaster, setPropertyDefaultOps, setPropertyOptionsOps, setVariantOps, swapChoices,
 } from "./componentOps";
+import type { ComponentPropertyLite } from "../store/types";
 
 // THE COMPONENT DIALOG (Components panel → edit): turns a component into one variant of a
-// SET (axes such as State or Size, one option per axis for each variant) and defines the
+// SET (axes such as State or Size, one option per axis for each variant; axes and options
+// can be renamed without losing the members' and instances' choices) and defines the
 // PROPERTIES an instance can set (a boolean that shows/hides nodes of the master, a text
-// that sets the content of its text nodes). Instances pick variants and set values in the
-// properties panel (InstanceControls). Every action is ONE gesture = one undo step.
+// that sets the content of its text nodes -- free or from an option list --, a number that
+// writes opacity / corner radius / font size, a swap that points a nested instance at
+// another component). Instances pick variants and set values in the properties panel
+// (InstanceControls). Every action is ONE gesture = one undo step.
 
 type Ops = Parameters<ReturnType<typeof useScene.getState>["endGesture"]>[0];
 function run(ops: Ops) {
@@ -47,7 +51,8 @@ function Body({ scene, componentId, selection, onClose }: {
   const [newAxisOption, setNewAxisOption] = useState("");
   const [newOption, setNewOption] = useState<Record<string, string>>({});
   const [propName, setPropName] = useState("");
-  const [propType, setPropType] = useState<"boolean" | "text">("boolean");
+  const [propType, setPropType] = useState<ComponentPropertyLite["type"]>("boolean");
+  const [propAttribute, setPropAttribute] = useState<string>("opacity");
   const [note, setNote] = useState<string | null>(null);
   const targets = selectionInMaster(scene, componentId, selection);
 
@@ -70,8 +75,16 @@ function Body({ scene, componentId, selection, onClose }: {
               onBlur={(e) => { const v = e.target.value.trim(); if (v && v !== set.name) run([makeSetComponentSetOp({ ...set, name: v })]); }}
               onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
             {set.axes.map((a) => (
-              <div key={a.name} className="grid grid-cols-[6rem_1fr_auto] items-center gap-2">
-                <span className={cls.label}>{a.name}</span>
+              <div key={a.name} className="flex flex-col gap-1">
+              <div className="grid grid-cols-[6rem_1fr_auto] items-center gap-2">
+                <input key={a.name} aria-label={`Rename ${a.name} axis`} className={cls.input} defaultValue={a.name}
+                  onBlur={(e) => {
+                    if (e.target.value.trim() === a.name) { e.target.value = a.name; return; }
+                    const ops = renameAxisOps(scene, set.id, a.name, e.target.value);
+                    setNote(ops.length === 0 ? "that axis name is empty or already used" : null);
+                    if (ops.length > 0) run(ops); else e.target.value = a.name;
+                  }}
+                  onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
                 <select aria-label={`${a.name} of this variant`} className={cls.select} value={comp.variant?.[a.name] ?? ""}
                   onChange={(e) => {
                     const ops = setVariantOps(scene, componentId, a.name, e.target.value);
@@ -89,6 +102,19 @@ function Body({ scene, componentId, selection, onClose }: {
                     if (ops.length > 0) { run(ops); setNewOption({ ...newOption, [a.name]: "" }); }
                   }}>Add</Button>
                 </span>
+              </div>
+              <div className="flex flex-wrap items-center gap-1 pl-[6.5rem]">
+                {a.options.map((o) => (
+                  <input key={o} aria-label={`Rename ${a.name} option ${o}`} className={`${cls.input} w-24`} defaultValue={o}
+                    onBlur={(e) => {
+                      if (e.target.value.trim() === o) { e.target.value = o; return; }
+                      const ops = renameOptionOps(scene, set.id, a.name, o, e.target.value);
+                      setNote(ops.length === 0 ? "that option name is empty or already used" : null);
+                      if (ops.length > 0) run(ops); else e.target.value = o;
+                    }}
+                    onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+                ))}
+              </div>
               </div>
             ))}
             <div className="flex items-center gap-2">
@@ -123,30 +149,59 @@ function Body({ scene, componentId, selection, onClose }: {
         {(comp.properties ?? []).map((p) => (
           <div key={p.name} className="grid grid-cols-[8rem_5rem_1fr_auto] items-center gap-2">
             <span className="truncate">{p.name}</span>
-            <span className="text-fg-subtle">{p.type} · {p.targetNodeIds.length}</span>
+            <span className="text-fg-subtle">{p.type === "number" ? p.attribute : p.type} · {p.targetNodeIds.length}</span>
             {p.type === "boolean" ? (
               <select aria-label={`${p.name} default`} className={cls.select} value={p.defaultValue}
                 onChange={(e) => run(setPropertyDefaultOps(scene, componentId, p.name, e.target.value))}>
                 <option value="true">Shown</option><option value="false">Hidden</option>
               </select>
+            ) : p.type === "swap" ? (
+              <select aria-label={`${p.name} default`} className={cls.select} value={p.defaultValue}
+                onChange={(e) => run(setPropertyDefaultOps(scene, componentId, p.name, e.target.value))}>
+                <option value="">Keep the nested component</option>
+                {swapChoices(scene, componentId).map((c) => <option key={c.id} value={c.id}>{c.name}</option>)}
+              </select>
+            ) : p.type === "text" && p.options?.length ? (
+              <select aria-label={`${p.name} default`} className={cls.select} value={p.defaultValue}
+                onChange={(e) => run(setPropertyDefaultOps(scene, componentId, p.name, e.target.value))}>
+                {p.options.map((o) => <option key={o} value={o}>{o}</option>)}
+              </select>
             ) : (
-              <input key={p.name + p.defaultValue} aria-label={`${p.name} default`} className={cls.input} defaultValue={p.defaultValue} maxLength={200}
-                onBlur={(e) => { if (e.target.value !== p.defaultValue) run(setPropertyDefaultOps(scene, componentId, p.name, e.target.value)); }}
+              <input key={p.name + p.defaultValue} aria-label={`${p.name} default`} className={cls.input} defaultValue={p.defaultValue}
+                maxLength={p.type === "number" ? 32 : 200}
+                onBlur={(e) => {
+                  if (e.target.value === p.defaultValue) return;
+                  const ops = setPropertyDefaultOps(scene, componentId, p.name, e.target.value);
+                  setNote(ops.length === 0 ? `not a valid value for ${p.name}` : null);
+                  if (ops.length > 0) run(ops); else e.target.value = p.defaultValue;
+                }}
                 onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
             )}
             <button type="button" aria-label={`Remove ${p.name}`} className="text-fg-subtle hover:text-danger"
               onClick={() => run(removePropertyOps(scene, componentId, p.name))}>×</button>
+            {p.type === "text" && (
+              <input key={p.name + (p.options ?? []).join("\n")} aria-label={`${p.name} options`} className={`${cls.input} col-span-full`}
+                placeholder="Allowed values, comma separated (empty = free text)" defaultValue={(p.options ?? []).join(", ")}
+                onBlur={(e) => run(setPropertyOptionsOps(scene, componentId, p.name, e.target.value.split(",")))}
+                onKeyDown={(e) => { if (e.key === "Enter") e.currentTarget.blur(); }} />
+            )}
           </div>
         ))}
         <div className="flex items-center gap-2">
           <input aria-label="Property name" className={`${cls.input} w-36`} placeholder="Property name" value={propName} onChange={(e) => setPropName(e.target.value)} />
-          <select aria-label="Property type" className={`${cls.select} w-32`} value={propType} onChange={(e) => setPropType(e.target.value as "boolean" | "text")}>
+          <select aria-label="Property type" className={`${cls.select} w-32`} value={propType} onChange={(e) => setPropType(e.target.value as ComponentPropertyLite["type"])}>
             <option value="boolean">Show / hide</option><option value="text">Text</option>
+            <option value="number">Number</option><option value="swap">Instance swap</option>
           </select>
+          {propType === "number" && (
+            <select aria-label="Property attribute" className={`${cls.select} w-36`} value={propAttribute} onChange={(e) => setPropAttribute(e.target.value)}>
+              {NUMBER_ATTRIBUTES.map((a) => <option key={a.value} value={a.value}>{a.label}</option>)}
+            </select>
+          )}
           <Button onPress={() => {
-            const ops = addPropertyOps(scene, componentId, propType, propName, targets);
+            const ops = addPropertyOps(scene, componentId, propType, propName, targets, propAttribute);
             setNote(ops.length === 0
-              ? "select, on the canvas, the nodes of this component the property controls (text nodes for a text property), and give it a unique name"
+              ? "select, on the canvas, the nodes of this component the property controls (text nodes for a text or font size property, rectangles for a corner radius, nested instances for a swap), and give it a unique name"
               : null);
             if (ops.length > 0) { run(ops); setPropName(""); }
           }}>Add from selection</Button>

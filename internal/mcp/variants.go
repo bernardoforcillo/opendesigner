@@ -31,9 +31,11 @@ type ComponentSetView struct {
 
 type ComponentPropertyIO struct {
 	Name          string   `json:"name" jsonschema:"unique within the component; instances store values by this name"`
-	Type          string   `json:"type" jsonschema:"boolean (shows/hides the target nodes) | text (sets the content of the target text nodes)"`
-	DefaultValue  string   `json:"defaultValue" jsonschema:"boolean: \"true\" or \"false\"; text: the default content"`
-	TargetNodeIds []string `json:"targetNodeIds" jsonschema:"nodes INSIDE the component's master that it controls (text nodes for a text property)"`
+	Type          string   `json:"type" jsonschema:"boolean (shows/hides the target nodes) | text (sets the content of the target text nodes) | number (writes one attribute of the target nodes) | swap (makes the target nested instances show another component)"`
+	DefaultValue  string   `json:"defaultValue" jsonschema:"boolean: \"true\" or \"false\"; text: the default content (one of options, if any); number: a number (opacity 0..1, cornerRadius >= 0, fontSize > 0); swap: a component id, or empty to keep the nested one"`
+	TargetNodeIds []string `json:"targetNodeIds" jsonschema:"nodes INSIDE the component's master that it controls (text nodes for text and fontSize, rectangles for cornerRadius, nested instances for swap)"`
+	Attribute     string   `json:"attribute,omitempty" jsonschema:"number only: opacity | corner_radius | font_size"`
+	Options       []string `json:"options,omitempty" jsonschema:"text only: the allowed values (unique, non-empty); empty = free text"`
 }
 
 type ListComponentSetsOutput struct {
@@ -41,7 +43,7 @@ type ListComponentSetsOutput struct {
 }
 
 const variantsConventions = " Components: a COMPONENT SET groups the variants of a component along named AXES (State: default | hover; Size: sm | md); each member component assigns exactly one option per axis and no two members share a combination. " +
-	"A component can define PROPERTIES: a boolean shows or hides nodes of its master, a text sets the content of its text nodes. " +
+	"A component can define PROPERTIES: a boolean shows or hides nodes of its master, a text sets the content of its text nodes (free, or one of an option list), a number writes the opacity / corner radius / font size of its nodes, a swap makes a nested instance show another component (value = component id). " +
 	"An INSTANCE chooses a variant (variantProps: axis -> option; axes it leaves out keep the base component's option) and sets property values (propertyValues: property name -> value; absent = the default). " +
 	"Deleting a node removes it from the property targets; deleting a set or changing its axes detaches the members that no longer fit."
 
@@ -54,8 +56,13 @@ func axisViews(set *opendesignerv1.ComponentSet) []VariantAxisIO {
 }
 
 func propertyTypeName(t opendesignerv1.ComponentPropertyType) string {
-	if t == opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN {
+	switch t {
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN:
 		return "boolean"
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER:
+		return "number"
+	case opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP:
+		return "swap"
 	}
 	return "text"
 }
@@ -63,7 +70,7 @@ func propertyTypeName(t opendesignerv1.ComponentPropertyType) string {
 func propertyViews(c *opendesignerv1.Component) []ComponentPropertyIO {
 	out := make([]ComponentPropertyIO, 0, len(c.GetProperties()))
 	for _, p := range c.GetProperties() {
-		out = append(out, ComponentPropertyIO{Name: p.GetName(), Type: propertyTypeName(p.GetType()), DefaultValue: p.GetDefaultValue(), TargetNodeIds: append([]string{}, p.GetTargetNodeIds()...)})
+		out = append(out, ComponentPropertyIO{Name: p.GetName(), Type: propertyTypeName(p.GetType()), DefaultValue: p.GetDefaultValue(), TargetNodeIds: append([]string{}, p.GetTargetNodeIds()...), Attribute: p.GetAttribute(), Options: append([]string(nil), p.GetOptions()...)})
 	}
 	return out
 }
@@ -99,6 +106,15 @@ type SetComponentSetInput struct {
 	Id   string          `json:"id,omitempty" jsonschema:"id of an existing set to REPLACE (members that no longer fit are detached); omit to create one"`
 	Name string          `json:"name"`
 	Axes []VariantAxisIO `json:"axes"`
+	// Renames keep members' and instances' choices when the axes are edited.
+	AxisRenames   map[string]string `json:"axisRenames,omitempty" jsonschema:"old axis name -> new axis name: members and instances keep their choices on the renamed axis"`
+	OptionRenames []OptionRenameIO  `json:"optionRenames,omitempty" jsonschema:"options renamed in this edit; axis is the axis's NEW name"`
+}
+
+type OptionRenameIO struct {
+	Axis string `json:"axis" jsonschema:"the axis's NEW name"`
+	From string `json:"from" jsonschema:"the option's old name"`
+	To   string `json:"to" jsonschema:"the option's new name, which the new axis must have"`
 }
 
 type SetComponentSetOutput struct {
@@ -123,7 +139,11 @@ func (s *Session) SetComponentSet(ctx context.Context, in SetComponentSetInput) 
 	if err := core.ValidateComponentSet(set); err != nil {
 		return SetComponentSetOutput{}, fmt.Errorf("set_component_set: %w", err)
 	}
-	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentSet{SetComponentSet: &opendesignerv1.SetComponentSet{ComponentSet: set}}})
+	msg := &opendesignerv1.SetComponentSet{ComponentSet: set, AxisRenames: in.AxisRenames}
+	for _, r := range in.OptionRenames {
+		msg.OptionRenames = append(msg.OptionRenames, &opendesignerv1.OptionRename{Axis: r.Axis, From: r.From, To: r.To})
+	}
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetComponentSet{SetComponentSet: msg}})
 	if err != nil {
 		return SetComponentSetOutput{}, err
 	}
@@ -157,11 +177,16 @@ func (in SetComponentDefInput) toProto() (*opendesignerv1.SetComponentDef, error
 			t = opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_BOOLEAN
 		case "text":
 			t = opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_TEXT
+		case "number":
+			t = opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_NUMBER
+		case "swap":
+			t = opendesignerv1.ComponentPropertyType_COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP
 		default:
-			return nil, fmt.Errorf("property %q: type must be boolean or text, got %q", p.Name, p.Type)
+			return nil, fmt.Errorf("property %q: type must be boolean, text, number or swap, got %q", p.Name, p.Type)
 		}
 		def.Properties = append(def.Properties, &opendesignerv1.ComponentProperty{
 			Name: p.Name, Type: t, DefaultValue: p.DefaultValue, TargetNodeIds: p.TargetNodeIds,
+			Attribute: p.Attribute, Options: p.Options,
 		})
 	}
 	return def, nil
@@ -248,7 +273,7 @@ func (s *Session) CreateInstance(ctx context.Context, in CreateInstanceInput) (C
 func registerVariantTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_instance", "Place an instance of a component at x/y (parentId defaults to the first page). Choose its variant and set its properties with set_instance_props."+variantsConventions, s.CreateInstance)
 	addTool(srv, "list_component_sets", "List the document's component sets: axes, options and the member components."+variantsConventions, s.ListComponentSets)
-	addTool(srv, "set_component_set", "Create a component set (omit id) or REPLACE one (read it with list_component_sets). Changing the axes detaches the members that no longer fit: reassign them with set_component_def."+variantsConventions, s.SetComponentSet)
+	addTool(srv, "set_component_set", "Create a component set (omit id) or REPLACE one (read it with list_component_sets). Changing the axes detaches the members that no longer fit: reassign them with set_component_def -- or, when you RENAME an axis or option, pass axisRenames (old->new) / optionRenames so members and instances keep their choices."+variantsConventions, s.SetComponentSet)
 	addTool(srv, "delete_component_set", "Delete a component set; its members become standalone components.", s.DeleteComponentSet)
 	addTool(srv, "set_component_def", "Put a component in a set on one option per axis and/or define its properties. REPLACES its set membership, variant and properties wholesale (list_components shows the current ones)."+variantsConventions, s.SetComponentDef)
 	addTool(srv, "set_instance_props", "Choose the variant of an instance and set its property values. REPLACES both maps."+variantsConventions, s.SetInstanceProps)

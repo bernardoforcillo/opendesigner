@@ -75,7 +75,7 @@ canvas, not like what you would expect.
 | Text | `div` with `font-family` (the document's family + generic fallback; default `Inter, sans-serif`), `font-size` (16), `font-weight` (400), `line-height` (multiplier, 1.2), `text-align`, colour, `white-space: pre-wrap`, fixed width. Gradient -> `background-clip: text`; stroke -> `-webkit-text-stroke` |
 | Image | `<img>` with `object-fit: fill` (the canvas stretches it onto the box) pointing to the copied asset; if missing, the canvas **placeholder** (faint box, border, cross) |
 | Vector | inline `<svg>`: path with cubics (the `in`/`out` handles are offsets relative to the anchor; without handles `L`), even-odd fill of closed outlines and a 1.5px round stroke, like the canvas |
-| Instance | **inline** expansion of the master's subtree, with the overrides (fills / text per master node) |
+| Instance | **inline** expansion of the master's subtree, with the overrides (fills / text per master node) and the component properties' effects (hidden layers, text, number attributes, swapped nested components); in react a component set, or a component with properties, is a React component instead (see below) |
 | Hidden node | skipped (with the whole subtree) |
 
 **Gradients.** The model gives them in normalised box coordinates; the canvas
@@ -87,6 +87,27 @@ from the centre: on a non-square box the "(0,0)->(1,1)" diagonal is not
 (yellow -> transparent pink goes through pinkish yellows), CSS premultiplied:
 where two stops have different alphas the segment is split into 8 points
 already interpolated the canvas way.
+
+## Components (react)
+
+A **component set** exports as ONE file, `src/components/<Name>.tsx`, and so does a
+single component that has **properties**. Its props are:
+
+| Design | Prop |
+|---|---|
+| set axis | optional string union of the axis' options; missing = the first option |
+| BOOLEAN property | `boolean`: shows / hides the target layers (`{prop && (...)}`) |
+| TEXT property | `string` (a union when it has `options`), printed in the target texts |
+| NUMBER property | `number`, written as an inline style (`opacity`, `borderRadius`, `fontSize`) on the targets, beating the class |
+| INSTANCE_SWAP property | `ReactNode` slot: `{prop ?? (default content)}`; the default is the nested component (or the property's default component) |
+
+The component `switch`es on the axes and renders the markup of the matching member
+(a combination with no member renders `null`). Defaults come from the design: the
+property's `default_value`. An instance in a screen becomes `<Button size="L"
+label="Buy" />` from its `variant_props` and `property_values`, leaving out what
+equals the default. Instances with overrides, or with animation or flow wiring inside,
+stay inline, and so does everything in the html target. The same properties still
+apply in the inline expansion (`core.EffectsOf`).
 
 ## Flow wiring
 
@@ -324,8 +345,10 @@ generated Playwright tests against the app in Chromium: they pass. It needs the 
   canvas it does not.
 - **Vectors**: like the canvas, the model's `strokes` are not drawn; the
   outline is always the 1.5px stroke in the fill's colour.
-- **Instances**: expanded inline, no extraction into React components. The master's
-  `test.id`s are not carried into the instances (they would be duplicated).
+- **Instances**: expanded inline (html always), except in react an instance of a
+  component set or of a component with properties, which calls a React component
+  (next section). The master's `test.id`s are not carried into the instances (they
+  would be duplicated).
 - **No constraints/responsive**: screens have a fixed size.
 - Only **top-level** nodes can be screens; a nested flow node
   is omitted (with a warning).

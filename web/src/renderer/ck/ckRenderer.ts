@@ -174,7 +174,7 @@ export class CanvasKitRenderer {
       seen.add(n.id);
       this.drawNode(sk, n, overrides);
       if (n.kind === "instance") {
-        this.drawInstance(sk, children, n, visited);
+        this.drawInstance(sk, children, n, visited, overrides);
         continue;
       }
       const kids = children.get(n.id);
@@ -214,17 +214,21 @@ export class CanvasKitRenderer {
     if (rotated) sk.rotate(-n.rotation * DEG, c.x, c.y);
   }
 
-  private drawInstance(sk: Canvas, children: Map<string, NodeLite[]>, n: NodeLite, visited: ReadonlySet<string>): void {
+  private drawInstance(
+    sk: Canvas, children: Map<string, NodeLite[]>, n: NodeLite, visited: ReadonlySet<string>,
+    outer: ReadonlyMap<string, InstanceOverrideLite> | null,
+  ): void {
     const f = this.frame as Frame;
-    if (!n.instance || visited.has(n.instance.componentId)) return;
-    const resolved = resolveInstance(f.scene, n);
-    if (!resolved) return;
-    const next = new Set(visited).add(n.instance.componentId);
+    if (!n.instance) return;
+    // A swap property of the instance this one sits in may have pointed it at another component.
+    const resolved = resolveInstance(f.scene, n, outer);
+    if (!resolved || visited.has(resolved.componentId)) return;
+    const next = new Set(visited).add(resolved.componentId);
     sk.save();
     concat(sk, instanceDescentLocal(n, resolved.masterRoot));
     // Inside the instance the master's nodes have their extent at the place of origin, not
     // where the instance draws them: no discarding (cull = false).
-    this.drawSiblings(sk, [resolved.masterRoot], children, new Set(), instanceOverrideMap(f.scene, n), next, false);
+    this.drawSiblings(sk, [resolved.masterRoot], children, new Set(), instanceOverrideMap(f.scene, n, outer), next, false);
     sk.restore();
   }
 

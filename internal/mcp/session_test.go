@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -410,6 +411,62 @@ func TestAgentAppearsInPresence(t *testing.T) {
 	case <-time.After(3 * time.Second):
 		t.Fatal("the agent never left the room")
 	}
+}
+
+// TestSetNicknameRenamesTheAgentInTheRoom: the agent leaves and rejoins under the new name, and a bad
+// name is refused without disturbing the old one.
+func TestSetNicknameRenamesTheAgentInTheRoom(t *testing.T) {
+	url := serveInMemory(t)
+	direct := odmcp.NewClient(url)
+	docID := newDoc(t, direct)
+	sess := startSession(t, url, docID, "")
+	ctx := context.Background()
+	pctx, stop := context.WithCancel(ctx)
+	defer stop()
+	go sess.PresenceLoop(pctx, "Ada")
+	waitFor(t, "agent to be in the room", sess.PresenceJoined)
+
+	// The roster the agent sees is the OTHER people; watch the room as a person does.
+	watch, err := direct.WatchPresence(ctx, connect.NewRequest(&opendesignerv1.WatchPresenceRequest{DocId: docID, ClientId: "web-1", Nickname: "Bea"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	defer watch.Close()
+	seen := make(chan string, 16)
+	go func() {
+		for watch.Receive() {
+			if u := watch.Msg().GetUpdate(); u != nil && u.GetClientId() == sess.ClientID() {
+				seen <- u.GetNickname()
+			}
+		}
+	}()
+	waitName := func(want string) {
+		t.Helper()
+		deadline := time.After(4 * time.Second)
+		for {
+			select {
+			case n := <-seen:
+				if n == want {
+					return
+				}
+			case <-deadline:
+				t.Fatalf("never saw the agent as %q", want)
+			}
+		}
+	}
+	waitName("Ada")
+
+	for _, bad := range []string{"", "   ", strings.Repeat("x", 33)} {
+		if _, err := sess.SetNickname(ctx, odmcp.SetNicknameInput{Nickname: bad}); err == nil {
+			t.Fatalf("%q must be refused", bad)
+		}
+	}
+	out, err := sess.SetNickname(ctx, odmcp.SetNicknameInput{Nickname: "  Grace  "})
+	if err != nil || out.Nickname != "Grace" {
+		t.Fatalf("SetNickname = %v, %v", out, err)
+	}
+	waitName("Grace")
+	waitFor(t, "agent to be back in the room", sess.PresenceJoined)
 }
 
 // TestTwoAgentsShareOneDocument: two MCP sessions on the same document each see

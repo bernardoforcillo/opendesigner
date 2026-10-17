@@ -1,5 +1,6 @@
 import { parseColor } from "../svg/color";
 import { uuid } from "../tools/ops";
+import { variableValueIn } from "../store/variables";
 import type { CollectionLite, FillLite, SceneState, VariableLite } from "../store/types";
 
 // DESIGN TOKENS in and out. The variables of the document leave as
@@ -9,6 +10,8 @@ import type { CollectionLite, FillLite, SceneState, VariableLite } from "../stor
 //    own) -- that Style Dictionary, Tokens Studio and Figma's token plugins read;
 //  - CSS custom properties: `:root` carries the first mode of every collection and a
 //    `[data-theme="<mode>"]` block overrides what the other modes change.
+// An alias leaves as the value it resolves to in each mode (the formats here have no portable
+// alias across our collections); a string variable leaves as a "string" token.
 // A DTCG file comes back in as new collections of variables. Pure: scene in, text out and the
 // reverse, never touching the store.
 
@@ -21,8 +24,11 @@ export function colorToHex(c: { r: number; g: number; b: number; a: number }): s
   return `#${channel(c.r)}${channel(c.g)}${channel(c.b)}${c.a >= 1 ? "" : channel(c.a)}`;
 }
 
-function valueOf(v: VariableLite, mode: string, fallbackMode: string): FillLite | number | undefined {
-  return v.values[mode] ?? v.values[fallbackMode];
+type Value = FillLite | number | string;
+
+/** The value of `v` in `mode` (an alias resolved, a mode with no value falling back to the default). */
+function valueOf(scene: SceneState, v: VariableLite, mode: string): Value | undefined {
+  return variableValueIn(scene, v, mode);
 }
 
 type Json = { [k: string]: unknown };
@@ -45,11 +51,11 @@ export function toDtcg(scene: SceneState): string {
     const vars = Object.values(scene.variables).filter((v) => v.collectionId === col.id).sort((a, b) => a.name.localeCompare(b.name));
     const first = col.modes[0]?.id ?? "";
     for (const v of vars) {
-      const fmt = (x: FillLite | number | undefined) => (typeof x === "number" ? x : x ? colorToHex(x) : undefined);
-      const leaf: Json = { $type: v.type === "color" ? "color" : "number", $value: fmt(valueOf(v, first, first)) };
+      const fmt = (x: Value | undefined) => (typeof x === "number" || typeof x === "string" ? x : x ? colorToHex(x) : undefined);
+      const leaf: Json = { $type: v.type, $value: fmt(valueOf(scene, v, first)) };
       const extra: Json = {};
       for (const m of col.modes.slice(1)) {
-        const x = fmt(v.values[m.id]);
+        const x = fmt(v.aliasOf !== undefined || m.id in v.values ? valueOf(scene, v, m.id) : undefined);
         if (x !== undefined) extra[m.name] = x;
       }
       if (Object.keys(extra).length > 0) leaf.$extensions = { [EXT]: { modes: extra } };
@@ -72,15 +78,15 @@ export function toCssVariables(scene: SceneState): string {
     const vars = Object.values(scene.variables).filter((v) => v.collectionId === col.id).sort((a, b) => a.name.localeCompare(b.name));
     const first = col.modes[0]?.id ?? "";
     const name = (v: VariableLite) => `--${v.name.split("/").map(cssIdent).join("-")}`;
-    const css = (x: FillLite | number | undefined) => (typeof x === "number" ? String(x) : x ? colorToHex(x) : undefined);
+    const css = (x: Value | undefined) => (typeof x === "number" ? String(x) : typeof x === "string" ? JSON.stringify(x) : x ? colorToHex(x) : undefined);
     for (const v of vars) {
-      const x = css(valueOf(v, first, first));
+      const x = css(valueOf(scene, v, first));
       if (x !== undefined) rootLines.push(`  ${name(v)}: ${x};`);
     }
     for (const m of col.modes.slice(1)) {
       const lines = vars.flatMap((v) => {
-        const x = css(v.values[m.id]);
-        const base = css(valueOf(v, first, first));
+        const x = css(v.aliasOf !== undefined || m.id in v.values ? valueOf(scene, v, m.id) : undefined);
+        const base = css(valueOf(scene, v, first));
         return x !== undefined && x !== base ? [`  ${name(v)}: ${x};`] : [];
       });
       if (lines.length > 0) blocks.push(`[data-theme="${cssIdent(m.name)}"] {\n${lines.join("\n")}\n}`);

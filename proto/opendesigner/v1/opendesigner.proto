@@ -12,7 +12,10 @@ message SolidPaint { Color color = 1; }
 // A color stop of a gradient. `position` is in 0..1 along the gradient axis;
 // the writer keeps stops in ascending position order (the canvas and the SVG
 // read them in the given order).
-message GradientStop { Color color = 1; double position = 2; }
+// `variable_id`, when set, binds the stop to a COLOR variable: `color` is then
+// the value last resolved for it (the server and the clients keep it in sync
+// with the variable, like a plain fill), and a missing variable keeps it.
+message GradientStop { Color color = 1; double position = 2; string variable_id = 3; }
 
 // A gradient is defined in NORMALIZED coordinates of the node's box: (0,0) is
 // the top-left corner, (1,1) the bottom-right. This way it stays valid when the
@@ -379,6 +382,11 @@ enum ComponentPropertyType {
   COMPONENT_PROPERTY_TYPE_UNSPECIFIED = 0;
   COMPONENT_PROPERTY_TYPE_BOOLEAN = 1;  // shows/hides the target nodes
   COMPONENT_PROPERTY_TYPE_TEXT = 2;     // sets the content of the target text nodes
+  // A number written to ONE attribute of the target nodes (see `attribute`).
+  COMPONENT_PROPERTY_TYPE_NUMBER = 3;
+  // Makes a NESTED INSTANCE (the target nodes) show another component; the value is a
+  // component id.
+  COMPONENT_PROPERTY_TYPE_INSTANCE_SWAP = 4;
 }
 
 // A property of a component: a named knob that an instance turns without editing the
@@ -388,8 +396,14 @@ enum ComponentPropertyType {
 message ComponentProperty {
   string name = 1;                      // unique within the component
   ComponentPropertyType type = 2;
-  string default_value = 3;             // BOOLEAN: "true" | "false"; TEXT: the text
-  repeated string target_node_ids = 4;  // master nodes it controls (text nodes for TEXT)
+  string default_value = 3;             // BOOLEAN: "true" | "false"; TEXT: the text; NUMBER: a number;
+                                        // INSTANCE_SWAP: a component id ("" = keep the nested one)
+  repeated string target_node_ids = 4;  // master nodes it controls (text nodes for TEXT, instances for INSTANCE_SWAP)
+  // NUMBER only: which attribute of the targets the number drives: "opacity" (0..1),
+  // "corner_radius" (rectangles) or "font_size" (text).
+  string attribute = 5;
+  // TEXT only: the allowed values (an option list). Empty = free text.
+  repeated string options = 6;
 }
 
 // A COMPONENT SET groups the variants of a component. Each AXIS is a named choice
@@ -476,6 +490,8 @@ message Node {
   //   "opacity" | "rotation"    NUMBER
   //   "corner_radius"           NUMBER   rectangles only
   //   "strokes.N.weight"        NUMBER
+  //   "font_size"               NUMBER   text nodes only
+  //   "text"                    STRING   text nodes only (the content)
   // The "bindings" mask REPLACES the whole map, like `meta`.
   map<string, string> bindings = 41;
   // Mode override: collectionId -> modeId. A node (typically a frame) can pin a
@@ -556,14 +572,22 @@ enum VariableType {
   VARIABLE_TYPE_UNSPECIFIED = 0;
   VARIABLE_TYPE_COLOR = 1;
   VARIABLE_TYPE_NUMBER = 2;
+  VARIABLE_TYPE_STRING = 3;
 }
-message VariableValue { oneof kind { Color color = 1; double number = 2; } }
+message VariableValue { oneof kind { Color color = 1; double number = 2; string text = 3; } }
 message Variable {
   string id = 1;
   string collection_id = 2;
   string name = 3;                    // "color/primary": '/' makes groups in the UI
   VariableType type = 4;
   map<string, VariableValue> values = 5; // modeId -> value
+  // ALIAS: when set, this variable holds no values of its own and reads the
+  // value of the variable it names (a semantic token over a primitive). The
+  // target exists, has the same type and the chain has no cycle; it may live in
+  // another collection. The value is the target's in the mode of the alias's
+  // collection active on the node, when the target's collection has a mode with
+  // that id, else in the target's first mode.
+  string alias_of = 6;
 }
 
 // ---------- flows ----------
@@ -846,7 +870,15 @@ message SetFont            { FontFace font = 1; }
 message DeleteFont         { string id = 1; }
 message SetTextStyleDef    { TextStyleDef text_style = 1; }
 message DeleteTextStyleDef { string id = 1; }
-message SetComponentSet    { ComponentSet component_set = 1; }
+// Replaces a component set. The renames say that an axis / option of the OLD set is the
+// same thing under a new name, so members and instances keep their choices instead of
+// being detached or reset. `OptionRename.axis` is the axis's NEW name.
+message OptionRename { string axis = 1; string from = 2; string to = 3; }
+message SetComponentSet {
+  ComponentSet component_set = 1;
+  map<string, string> axis_renames = 2;   // old axis name -> new axis name
+  repeated OptionRename option_renames = 3;
+}
 message DeleteComponentSet { string id = 1; }
 // Replaces a component's set membership, variant assignment and properties WHOLESALE
 // (name and root are not touched).

@@ -157,9 +157,14 @@ export interface InstanceOverrideLite {
   masterNodeId: string;
   fills?: FillLite[];
   text?: string;
-  // DERIVED only, never stored or on the wire: set by instances.ts::instanceOverrideMap when a
-  // boolean component property hides this master node for the instance.
+  // DERIVED only, never stored or on the wire: set by instances.ts::instanceOverrideMap from
+  // the instance's component properties: a master node hidden (boolean), a number written to
+  // one of its attributes (number), or a nested instance pointed at another component (swap).
   hidden?: boolean;
+  opacity?: number;
+  cornerRadius?: number;
+  fontSize?: number;
+  componentId?: string;
 }
 
 // M4 — an instance of a component: the componentId it renders, plus the per-node
@@ -189,9 +194,14 @@ export interface ComponentLite {
 }
 export interface ComponentPropertyLite {
   name: string;
-  type: "boolean" | "text";
+  // boolean shows/hides the targets, text sets their content (free or from `options`), number
+  // writes `attribute` of them, swap points nested instances at another component (value = component id).
+  type: "boolean" | "text" | "number" | "swap";
   defaultValue: string;
   targetNodeIds: string[];
+  // number: opacity | corner_radius | font_size. text: the allowed values (absent = free text).
+  attribute?: string;
+  options?: string[];
 }
 export interface VariantAxisLite { name: string; options: string[] }
 export interface ComponentSetLite { id: string; name: string; axes: VariantAxisLite[] }
@@ -309,7 +319,7 @@ export const TRANSITION_ANIMATIONS = [
 ] as const;
 
 // VARIABLES (design tokens): see proto VariableCollection / Variable and
-// internal/core/variables.go. A value is a color (FillLite, solid) or a number.
+// internal/core/variables.go. A value is a color (FillLite, solid), a number or a string.
 // A comment pinned on the canvas (see Comment in the proto and internal/core/comments.go).
 export interface CommentLite {
   id: string; parentId: string; nodeId: string; pageId: string; x: number; y: number;
@@ -317,11 +327,13 @@ export interface CommentLite {
 }
 export interface ModeLite { id: string; name: string }
 export interface CollectionLite { id: string; name: string; modes: ModeLite[] }
-export type VariableTypeLite = "color" | "number";
+export type VariableTypeLite = "color" | "number" | "string";
 export interface VariableLite {
   id: string; collectionId: string; name: string; type: VariableTypeLite;
-  // modeId -> value. A color is {r,g,b,a}; a number is a plain number.
-  values: Record<string, FillLite | number>;
+  // modeId -> value. A color is {r,g,b,a}; a number is a plain number; a string is a string.
+  values: Record<string, FillLite | number | string>;
+  // Present for an alias: the variable it reads (then `values` is empty).
+  aliasOf?: string;
 }
 
 // TYPOGRAPHY: uploaded font faces and shared text styles. See proto FontFace /
@@ -449,20 +461,33 @@ export function toInstanceLite(n: PbInstanceNode): InstanceLite {
   };
 }
 
+const PROP_KIND: Record<number, ComponentPropertyLite["type"]> = {
+  [ComponentPropertyType.BOOLEAN]: "boolean", [ComponentPropertyType.TEXT]: "text",
+  [ComponentPropertyType.NUMBER]: "number", [ComponentPropertyType.INSTANCE_SWAP]: "swap",
+};
+const PROP_TYPE: Record<ComponentPropertyLite["type"], ComponentPropertyType> = {
+  boolean: ComponentPropertyType.BOOLEAN, text: ComponentPropertyType.TEXT,
+  number: ComponentPropertyType.NUMBER, swap: ComponentPropertyType.INSTANCE_SWAP,
+};
+
 export function toComponentPropertyLite(p: PbComponentProperty): ComponentPropertyLite {
   return {
     name: p.name,
-    type: p.type === ComponentPropertyType.BOOLEAN ? "boolean" : "text",
+    type: PROP_KIND[p.type] ?? "boolean",
     defaultValue: p.defaultValue,
     targetNodeIds: [...p.targetNodeIds],
+    ...(p.attribute !== "" ? { attribute: p.attribute } : {}),
+    ...(p.options.length > 0 ? { options: [...p.options] } : {}),
   };
 }
 export function toPbComponentProperty(p: ComponentPropertyLite): PbComponentProperty {
   return create(ComponentPropertySchema, {
     name: p.name,
-    type: p.type === "boolean" ? ComponentPropertyType.BOOLEAN : ComponentPropertyType.TEXT,
+    type: PROP_TYPE[p.type],
     defaultValue: p.defaultValue,
     targetNodeIds: [...p.targetNodeIds],
+    attribute: p.attribute ?? "",
+    options: [...(p.options ?? [])],
   });
 }
 export function toComponentLite(c: PbComponent): ComponentLite {
@@ -899,26 +924,29 @@ export function toPbCollection(c: CollectionLite): PbCollection {
   return create(VariableCollectionSchema, { id: c.id, name: c.name, modes: c.modes.map((m) => ({ id: m.id, name: m.name })) });
 }
 export function toVariableLite(v: PbVariable): VariableLite {
-  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : "number";
+  const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : "number";
   const values: VariableLite["values"] = {};
   for (const [mode, val] of Object.entries(v.values)) {
     if (val.kind.case === "color") {
       const { r, g, b, a } = val.kind.value;
       values[mode] = { r, g, b, a };
     } else if (val.kind.case === "number") values[mode] = val.kind.value;
+    else if (val.kind.case === "text") values[mode] = val.kind.value;
   }
-  return { id: v.id, collectionId: v.collectionId, name: v.name, type, values };
+  return { id: v.id, collectionId: v.collectionId, name: v.name, type, values, ...(v.aliasOf !== "" ? { aliasOf: v.aliasOf } : {}) };
 }
 export function toPbVariable(v: VariableLite): PbVariable {
-  const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } }> = {};
+  const values: Record<string, { kind: { case: "color"; value: { r: number; g: number; b: number; a: number } } | { case: "number"; value: number } | { case: "text"; value: string } }> = {};
   for (const [mode, val] of Object.entries(v.values)) {
     values[mode] = typeof val === "number"
       ? { kind: { case: "number", value: val } }
-      : { kind: { case: "color", value: { r: val.r, g: val.g, b: val.b, a: val.a } } };
+      : typeof val === "string"
+        ? { kind: { case: "text", value: val } }
+        : { kind: { case: "color", value: { r: val.r, g: val.g, b: val.b, a: val.a } } };
   }
   return create(VariableSchema, {
-    id: v.id, collectionId: v.collectionId, name: v.name,
-    type: v.type === "color" ? VariableType.COLOR : VariableType.NUMBER, values,
+    id: v.id, collectionId: v.collectionId, name: v.name, aliasOf: v.aliasOf ?? "",
+    type: v.type === "color" ? VariableType.COLOR : v.type === "string" ? VariableType.STRING : VariableType.NUMBER, values,
   });
 }
 

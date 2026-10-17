@@ -9,6 +9,7 @@ import (
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"github.com/bernardoforcillo/opendesigner/internal/core"
+	"google.golang.org/protobuf/proto"
 )
 
 // Document -> IR. All the drawing SEMANTICS live here (what the canvas
@@ -60,11 +61,42 @@ type bctx struct {
 	overrides map[string]*opendesignerv1.InstanceOverride
 	// hidden: the master nodes that instance hides (a false boolean component property).
 	hidden map[string]bool
+	// nums: the attributes number component properties write on master nodes of the
+	// instance being descended into (node id -> values).
+	nums map[string]nodeNums
+	// swap: the nested instances that swap properties point at another component
+	// (node id -> component id).
+	swap map[string]string
+	// bind / dyn / swapBind: while building a COMPONENT's master for the React target,
+	// the nodes driven by a component property, so they export as `{prop && ...}` /
+	// `{prop}` / an inline style / a slot instead of a fixed value.
+	bind     map[string]propBind
+	dyn      map[string][]DynStyle
+	swapBind map[string]string
 	// idPrefix: path of the instances traversed, for data-node-id.
 	idPrefix string
 	// visited: components being expanded on this branch (a master that
 	// contains an instance of itself must not recurse forever).
 	visited map[string]bool
+}
+
+// propBind: the component properties that show / write the text of a master node.
+type propBind struct{ show, text string }
+
+// nodeNums: number attributes written to a node by component properties (nil = untouched).
+type nodeNums struct{ opacity, radius, fontSize *float64 }
+
+// unitKey is the key of the React component an instance of `comp` can call: its
+// component set, or "c:<id>" for a component outside any set that has properties;
+// "" when the component has no React component (it is expanded inline).
+func unitKey(comp *opendesignerv1.Component, compID string) string {
+	if comp.GetSetId() != "" {
+		return comp.GetSetId()
+	}
+	if len(comp.GetProperties()) > 0 {
+		return "c:" + compID
+	}
+	return ""
 }
 
 func (c bctx) inInstance() bool { return c.idPrefix != "" }
@@ -172,6 +204,11 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	if c.fillMain || c.fillCross {
 		applyFill(el, c)
 	}
+	if pb, ok := c.bind[n.GetId()]; ok {
+		el.ShowIf, el.TextProp = pb.show, pb.text
+	}
+	el.Dyn = c.dyn[n.GetId()]
+	el.SwapProp = c.swapBind[n.GetId()]
 	el.NodeID = n.GetId()
 	el.NodeName = n.GetName()
 	el.Meta = n.GetMeta()
@@ -327,11 +364,17 @@ func (b *builder) groupElement(n *opendesignerv1.Node, c bctx) *Element {
 // subtree at origin 0,0, with the per-node overrides applied.
 func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 	inst := n.GetInstance()
-	// The variant the instance has chosen (core.EffectiveComponentID): the base component
-	// when it is not part of a set.
-	comp := b.doc.GetComponents()[core.EffectiveComponentID(b.doc, inst)]
+	// A swap property of the instance this one sits in can point it at another
+	// component; the variant it has chosen applies over that (core.EffectiveComponentID):
+	// the base component when it is not part of a set.
+	base := inst.GetComponentId()
+	if to := c.swap[n.GetId()]; to != "" && b.doc.GetComponents()[to] != nil {
+		base = to
+	}
+	compID := core.EffectiveComponentIDSwapped(b.doc, inst, c.swap[n.GetId()])
+	comp := b.doc.GetComponents()[compID]
 	master := b.doc.GetNodes()[comp.GetRootNodeId()]
-	if comp == nil || master == nil || c.visited[inst.GetComponentId()] {
+	if comp == nil || master == nil || c.visited[base] {
 		// Like the canvas: missing (or recursive) component or master = nothing.
 		if comp == nil || master == nil {
 			b.warn("instance %q: component %q or its master not found, omitted", n.GetName(), inst.GetComponentId())
@@ -346,16 +389,75 @@ func (b *builder) instanceElement(n *opendesignerv1.Node, c bctx) *Element {
 
 	// What the instance changes in its master: the overrides derived from the component's
 	// properties under its explicit overrides, and the nodes a false boolean hides.
-	ov, hidden := core.EffectiveOverrides(b.doc, inst)
-	visited := map[string]bool{inst.GetComponentId(): true}
+	fx := core.EffectsOf(b.doc, inst, c.swap[n.GetId()])
+	visited := map[string]bool{base: true}
 	for k := range c.visited {
 		visited[k] = true
 	}
-	cc := bctx{origin: true, overrides: ov, hidden: hidden, idPrefix: c.idPrefix + n.GetId() + "/", visited: visited}
+	cc := bctx{origin: true, overrides: fx.Overrides, hidden: fx.Hidden, nums: numsOf(fx), swap: fx.Swap, idPrefix: c.idPrefix + n.GetId() + "/", visited: visited}
 	if ce := b.element(master, cc); ce != nil {
 		el.Children = append(el.Children, ce)
 	}
+	// An instance of a component that exports as a React component is a call in the
+	// React target, its choices travelling as props. Overrides change the content of
+	// one instance and have no prop to carry them, and animation or flow wiring inside
+	// cannot live in a shared component, so those stay inline.
+	if key := unitKey(comp, compID); key != "" && len(inst.GetOverrides()) == 0 && isStatic(el) {
+		el.Use = &ComponentUse{UnitKey: key, ComponentID: compID, Inst: inst}
+	}
 	return el
+}
+
+// numsOf folds the number effects of an instance into per-node attributes.
+func numsOf(fx core.InstanceEffects) map[string]nodeNums {
+	out := map[string]nodeNums{}
+	set := func(m map[string]float64, f func(*nodeNums, *float64)) {
+		for node, v := range m {
+			v := v
+			nn := out[node]
+			f(&nn, &v)
+			out[node] = nn
+		}
+	}
+	set(fx.Opacity, func(n *nodeNums, v *float64) { n.opacity = v })
+	set(fx.CornerRadius, func(n *nodeNums, v *float64) { n.radius = v })
+	set(fx.FontSize, func(n *nodeNums, v *float64) { n.fontSize = v })
+	return out
+}
+
+// withNums: the node with the number attributes component properties write
+// (opacity on any node, the radius on a rectangle, the size on a text).
+func withNums(n *opendesignerv1.Node, nn nodeNums) *opendesignerv1.Node {
+	if nn.opacity == nil && nn.radius == nil && nn.fontSize == nil {
+		return n
+	}
+	// A real clone, unlike cloneShallow: the node keeps everything else it draws with
+	// (blend mode, ...). Only the nodes a number property targets get here.
+	eff := proto.Clone(n).(*opendesignerv1.Node)
+	if nn.opacity != nil {
+		eff.Opacity = *nn.opacity
+	}
+	if r := eff.GetRect(); r != nil && nn.radius != nil {
+		r.CornerRadius = *nn.radius
+	}
+	if t := eff.GetText(); t != nil && nn.fontSize != nil {
+		if t.Style == nil {
+			t.Style = &opendesignerv1.TextStyle{}
+		}
+		t.Style.FontSize = *nn.fontSize
+	}
+	return eff
+}
+
+// isStatic: no animation and no flow wiring anywhere in the subtree.
+func isStatic(e *Element) bool {
+	static := true
+	e.walk(func(x *Element) {
+		if x.Anim != nil || len(x.Triggers) > 0 || len(x.NavTriggers) > 0 || len(x.KeyTriggers) > 0 {
+			static = false
+		}
+	})
+	return static
 }
 
 // withOverride: the master's node with the instance's override applied
@@ -394,7 +496,7 @@ func cloneShallow(n *opendesignerv1.Node) *opendesignerv1.Node {
 
 // shapeElement: rect, ellipse, frame, text, image, vector.
 func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
-	eff := withOverride(n, c.overrides[n.GetId()])
+	eff := withNums(withOverride(n, c.overrides[n.GetId()]), c.nums[n.GetId()])
 	switch eff.GetShape().(type) {
 	case *opendesignerv1.Node_Text:
 		return b.textElement(n, eff, c)
@@ -700,8 +802,8 @@ func genericFor(family string) string {
 // depends on the font metrics (for Inter ~1px at 16px).
 func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	t := eff.GetText()
-	if t.GetContent() == "" {
-		return nil // the canvas does not draw empty text
+	if t.GetContent() == "" && c.bind[n.GetId()].text == "" {
+		return nil // the canvas does not draw empty text (unless a component prop fills it)
 	}
 	st := t.GetStyle()
 	el := &Element{Tag: "div", Text: t.GetContent(), HasText: true}

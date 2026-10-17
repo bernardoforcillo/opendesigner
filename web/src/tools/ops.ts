@@ -227,8 +227,16 @@ export function makeDeleteVariableOp(id: string): Op {
 }
 
 // --- component variants and properties ---------------------------------------
-export function makeSetComponentSetOp(set: ComponentSetLite): Op {
-  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentSet", value: { componentSet: toPbComponentSet(set) } } });
+/**
+ * Replaces a set. `renames` says which axes / options of the OLD set are the same thing under a
+ * new name (axes old -> new; options by the axis's NEW name), so members and instances keep their
+ * choices instead of being detached or reset.
+ */
+export interface SetRenames { axes?: Record<string, string>; options?: { axis: string; from: string; to: string }[] }
+export function makeSetComponentSetOp(set: ComponentSetLite, renames: SetRenames = {}): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentSet", value: {
+    componentSet: toPbComponentSet(set), axisRenames: { ...(renames.axes ?? {}) }, optionRenames: (renames.options ?? []).map((o) => ({ ...o })),
+  } } });
 }
 export function makeDeleteComponentSetOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteComponentSet", value: { id } } });

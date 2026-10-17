@@ -84,6 +84,10 @@ func (h *httpMount) serverFor(req *http.Request) *mcp.Server {
 		h.logger.Printf("sync loop stopped for document %s (client %s)", docID, sess.ClientID())
 	}()
 
+	// The agent shows up in the document like another person, under ?nickname= (default "Claude");
+	// the set_nickname tool changes it later.
+	go sess.PresenceLoop(ctx, req.URL.Query().Get("nickname"))
+
 	srv := mcp.NewServer(&mcp.Implementation{Name: "opendesigner", Version: serverVersion}, &mcp.ServerOptions{
 		// The session object does not exist until initialization completes, so
 		// this is the earliest point at which its end can be watched. A client

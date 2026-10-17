@@ -13,6 +13,10 @@ In the editor, the **Comment tool** (C) drops a pin (a click on an existing pin 
 
 For agents: `list_comments` (open threads, or `includeResolved`), `add_comment` (new thread on a node, or `replyTo` a root), `resolve_comment`, `delete_comment`. Comments written by an agent are signed "Claude" unless `author` is given.
 
+## Agents in the room, and their names
+
+An MCP session joins the document's presence like a person: it is listed, and outlines the nodes it is working on. It appears as **Claude** unless the MCP URL says otherwise (`/mcp?nickname=Ada`), and the **`set_nickname`** tool changes it at any time (1 to 32 characters): the agent leaves and rejoins the room under the new name. People change theirs from the people button in the top bar.
+
 ## Named versions and branches
 
 **Document menu → Versions…** saves a **version**: a frozen copy of the whole document with a name, kept in `<bundle>/versions/` next to the oplog (so copying a bundle copies its history). A version never changes.

@@ -132,7 +132,7 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 	case *opendesignerv1.Op_DeleteTextStyleDef:
 		return applyDeleteTextStyleDef(doc, k.DeleteTextStyleDef, cow)
 	case *opendesignerv1.Op_SetComponentSet:
-		return applySetComponentSet(doc, k.SetComponentSet)
+		return applySetComponentSet(doc, k.SetComponentSet, cow)
 	case *opendesignerv1.Op_DeleteComponentSet:
 		return applyDeleteComponentSet(doc, k.DeleteComponentSet)
 	case *opendesignerv1.Op_SetComponentDef:

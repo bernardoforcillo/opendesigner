@@ -1,8 +1,8 @@
 import { intersectBounds, unionBounds, worldAabbOfNode, type Bounds } from "../canvas/geometry";
 import { IDENTITY, compose, localTransformOf, mapBounds, type Transform, worldBoundsOfNode, worldToLocal, worldTransformOf } from "../canvas/transform";
 import { ancestorsOf, childrenOf } from "./tree";
-import { hiddenMasterNodes, instanceDescentLocal, isInstance, resolveInstance } from "./instances";
-import type { NodeLite, SceneState } from "./types";
+import { instanceDescentLocal, instanceOverrideMap, isInstance, resolveInstance } from "./instances";
+import type { InstanceOverrideLite, NodeLite, SceneState } from "./types";
 
 // GROUPS: what they are, where their bounds end up and which node a
 // click selects.
@@ -144,7 +144,7 @@ function instanceContentBounds(scene: SceneState, n: NodeLite, visited: Set<stri
   if (visited.has(resolved.componentId)) return null;
   const nextVisited = new Set(visited).add(resolved.componentId);
   const boxes: Bounds[] = [];
-  accumulateMaster(scene, resolved.masterRoot, IDENTITY, boxes, new Set(), nextVisited, hiddenMasterNodes(scene, n));
+  accumulateMaster(scene, resolved.masterRoot, IDENTITY, boxes, new Set(), nextVisited, instanceOverrideMap(scene, n));
   const local = unionBounds(boxes);
   if (!local) return null;
   const descentWorld = compose(worldTransformOf(scene, n.parentId), instanceDescentLocal(n, resolved.masterRoot));
@@ -168,17 +168,18 @@ function accumulateMaster(
   boxes: Bounds[],
   seen: Set<string>,
   visited: ReadonlySet<string>,
-  // Master nodes the instance being measured hides (boolean component property).
-  hidden: ReadonlySet<string> | null = null,
+  // What the instance being measured changes in its master: the nodes a boolean component
+  // property hides, and the component a swap property points a nested instance at.
+  overrides: ReadonlyMap<string, InstanceOverrideLite> | null = null,
 ): void {
-  if (!node.visible || seen.has(node.id) || hidden?.has(node.id)) return;
+  if (!node.visible || seen.has(node.id) || overrides?.get(node.id)?.hidden) return;
   seen.add(node.id);
   if (isInstance(node)) {
-    const resolved = resolveInstance(scene, node);
+    const resolved = resolveInstance(scene, node, overrides);
     if (resolved && !visited.has(resolved.componentId)) {
       const nextVisited = new Set(visited).add(resolved.componentId);
       const inner: Bounds[] = [];
-      accumulateMaster(scene, resolved.masterRoot, IDENTITY, inner, new Set(), nextVisited, hiddenMasterNodes(scene, node));
+      accumulateMaster(scene, resolved.masterRoot, IDENTITY, inner, new Set(), nextVisited, instanceOverrideMap(scene, node, overrides));
       const innerLocal = unionBounds(inner);
       if (innerLocal) boxes.push(mapBounds(compose(toBase, instanceDescentLocal(node, resolved.masterRoot)), innerLocal));
     }
@@ -188,7 +189,7 @@ function accumulateMaster(
   // Group: no box of its own (its bounds are the union of the children, below).
   if (!isGroup(node)) boxes.push(mapBounds(toBase, worldAabbOfNode(node)));
   const childBase = compose(toBase, localTransformOf(node));
-  for (const c of childrenOf(scene, node.id)) accumulateMaster(scene, c, childBase, boxes, seen, visited, hidden);
+  for (const c of childrenOf(scene, node.id)) accumulateMaster(scene, c, childBase, boxes, seen, visited, overrides);
 }
 
 // The TOP-LEFT corner of a node's frame, in the PARENT's space --

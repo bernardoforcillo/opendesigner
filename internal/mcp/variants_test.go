@@ -97,7 +97,7 @@ func TestVariantToolsEndToEnd(t *testing.T) {
 			return err
 		},
 		"bad property type": func() error {
-			_, err := s.SetComponentDef(ctx, odmcp.SetComponentDefInput{ComponentId: c1.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "P", Type: "number", TargetNodeIds: []string{i1}}}})
+			_, err := s.SetComponentDef(ctx, odmcp.SetComponentDefInput{ComponentId: c1.ComponentId, Properties: []odmcp.ComponentPropertyIO{{Name: "P", Type: "bogus", TargetNodeIds: []string{i1}}}})
 			return err
 		},
 		"target outside the master": func() error {
@@ -121,6 +121,46 @@ func TestVariantToolsEndToEnd(t *testing.T) {
 		if err := call(); err == nil {
 			t.Errorf("%s: expected an error", name)
 		}
+	}
+
+	// Number, option-list and swap properties go through the same tools.
+	if _, err := s.SetComponentDef(ctx, odmcp.SetComponentDefInput{ComponentId: c1.ComponentId, SetId: set.ComponentSetId, Variant: map[string]string{"State": "default"}, Properties: []odmcp.ComponentPropertyIO{
+		{Name: "Radius", Type: "number", DefaultValue: "4", Attribute: "corner_radius", TargetNodeIds: []string{i1}},
+		{Name: "Tone", Type: "text", DefaultValue: "a", Options: []string{"a", "b"}, TargetNodeIds: []string{l1}},
+	}}); err != nil {
+		t.Fatalf("number/option properties: %v", err)
+	}
+	if _, err := s.SetInstanceProps(ctx, odmcp.SetInstancePropsInput{InstanceId: inst.NodeId, VariantProps: map[string]string{"State": "default"}, PropertyValues: map[string]string{"Radius": "9", "Tone": "b"}}); err != nil {
+		t.Fatalf("number/option values: %v", err)
+	}
+	if _, err := s.SetInstanceProps(ctx, odmcp.SetInstancePropsInput{InstanceId: inst.NodeId, VariantProps: map[string]string{"State": "default"}, PropertyValues: map[string]string{"Tone": "c"}}); err == nil {
+		t.Error("a value outside the option list was accepted")
+	}
+	comps, _ = s.ListComponents(ctx, struct{}{})
+	for _, c := range comps.Components {
+		if c.Id == c1.ComponentId && (len(c.Properties) != 2 || c.Properties[0].Attribute != "corner_radius" || len(c.Properties[1].Options) != 2) {
+			t.Fatalf("ListComponents lost attribute/options: %+v", c.Properties)
+		}
+	}
+
+	// Renaming an axis and an option keeps the members and the instance on their choices.
+	if _, err := s.SetComponentSet(ctx, odmcp.SetComponentSetInput{
+		Id: set.ComponentSetId, Name: "Button", Axes: []odmcp.VariantAxisIO{{Name: "Mode", Options: []string{"default", "pressed"}}},
+		AxisRenames: map[string]string{"State": "Mode"}, OptionRenames: []odmcp.OptionRenameIO{{Axis: "Mode", From: "hover", To: "pressed"}},
+	}); err != nil {
+		t.Fatalf("rename: %v", err)
+	}
+	comps, _ = s.ListComponents(ctx, struct{}{})
+	for _, c := range comps.Components {
+		if c.Id == c2.ComponentId && (c.SetId != set.ComponentSetId || c.Variant["Mode"] != "pressed") {
+			t.Fatalf("renamed member = %+v", c)
+		}
+	}
+	if _, err := s.SetComponentSet(ctx, odmcp.SetComponentSetInput{
+		Id: set.ComponentSetId, Name: "Button", Axes: []odmcp.VariantAxisIO{{Name: "Mode", Options: []string{"default", "pressed"}}},
+		AxisRenames: map[string]string{"Mode": "Ghost"},
+	}); err == nil {
+		t.Error("a rename to an axis the set does not have was accepted")
 	}
 
 	// Deleting the set detaches both members; the instance keeps its (now ignored) choice.
