@@ -80,6 +80,7 @@ export function overlay(base: TextStyleLite, over: TextStyleLite): TextStyleLite
   if (over.noKerning || base.noKerning) out.noKerning = true;
   const color = over.color ?? base.color;
   if (color) out.color = color;
+  if (over.fontFeatures || base.fontFeatures) out.fontFeatures = over.fontFeatures || base.fontFeatures;
   return out;
 }
 
@@ -92,11 +93,12 @@ export interface FlatStyle {
   tabStops: TabStopLite[];
   dropCapLines: number; dropCapChars: number;
   nestedStyles: NestedStyleLite[];
+  outlineLevel: number;
 }
 
 const featuresOf = (d: TextStyleDefLite) => ({
   hyphenate: d.hyphenate === true, listKind: d.listKind, listMarker: d.listMarker ?? "", listNumberStyle: d.listNumberStyle ?? "", listIndent: d.listIndent ?? 0,
-  tabStops: d.tabStops ?? [], dropCapLines: d.dropCapLines ?? 0, dropCapChars: d.dropCapChars ?? 0, nestedStyles: d.nestedStyles ?? [],
+  tabStops: d.tabStops ?? [], dropCapLines: d.dropCapLines ?? 0, dropCapChars: d.dropCapChars ?? 0, nestedStyles: d.nestedStyles ?? [], outlineLevel: d.outlineLevel ?? 0,
 });
 
 /** A style with its `basedOn` chain folded in (root first), or null when it does not exist. A loop stops at the loop. */
@@ -132,6 +134,7 @@ export function flattenStyle(textStyles: Readonly<Record<string, TextStyleDefLit
     out.dropCapLines = f.dropCapLines || out.dropCapLines;
     out.dropCapChars = f.dropCapChars || out.dropCapChars;
     if (f.nestedStyles.length > 0) out.nestedStyles = f.nestedStyles;
+    out.outlineLevel = f.outlineLevel || out.outlineLevel;
   }
   return out;
 }
@@ -181,7 +184,7 @@ function nestedRuns(state: SceneState, content: string, flats: readonly (FlatSty
  * The drawable form of a text's formatting, or null when it has none that resolves (no paragraph style
  * that exists, no run whose style exists): the text is then laid out as plain text, exactly as before.
  */
-export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite, boxY = 0): RichText | null {
+export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite, boxY = 0, exclusions: readonly { x: number; y: number; width: number; height: number }[] = []): RichText | null {
   const ids = t.paragraphStyles ?? [];
   const count = paragraphCount(t.content);
   const paragraphs: ResolvedParagraph[] = [];
@@ -225,11 +228,11 @@ export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite,
   const nested = nestedRuns(state, t.content, flats, runs);
   if (nested.length > 0) { runs.push(...nested); runs.sort((a, b) => a.start - b.start); }
   // Small capitals and super/subscript on the node's own style also need the formatted layout.
-  if (!any && runs.length === 0 && !base.smallCaps && !base.script) return null;
+  if (!any && runs.length === 0 && !base.smallCaps && !base.script && exclusions.length === 0) return null;
   // The baseline grid matters only to paragraphs that ask for it, and only when the document has one.
   const inc = state.settings?.baselineIncrement ?? 0;
   const grid = inc > 0 && paragraphs.some((p) => p.alignToGrid) ? { increment: inc, start: state.settings?.baselineStart ?? 0, boxY } : undefined;
-  return { paragraphs, runs, ...(grid ? { grid } : {}) };
+  return { paragraphs, runs, ...(grid ? { grid } : {}), ...(exclusions.length > 0 ? { exclusions: exclusions.map((e) => ({ ...e })) } : {}) };
 }
 
 /** Does the text carry any formatting at all (resolvable or not)? Decides whether the resolve pass looks at it. */

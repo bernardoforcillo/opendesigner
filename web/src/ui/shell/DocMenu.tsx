@@ -15,6 +15,9 @@ import { VariablesDialog } from "../VariablesDialog";
 import { FontsDialog } from "../FontsDialog";
 import { StylesDialog } from "../StylesDialog";
 import { PageSetupDialog } from "../PageSetupDialog";
+import { FindReplaceDialog } from "../FindReplaceDialog";
+import { InsertTableDialog } from "../InsertTableDialog";
+import { generateContentsOps } from "../../tools/contents";
 import { VersionsDialog } from "../VersionsDialog";
 import { PluginsDialog } from "../PluginsDialog";
 import { ShareDialog } from "../ShareDialog";
@@ -59,6 +62,8 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [tableOpen, setTableOpen] = useState(false);
   // What this kind of document needs: entries of other kinds of work are tucked away, not removed.
   const vertical = useScene((s) => verticalOf(s.scene));
   const show = (id: string) => menuShows(vertical, id);
@@ -99,6 +104,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "variables") setVariablesOpen(true);
           else if (k === "fonts") setFontsOpen(true);
           else if (k === "styles") setStylesOpen(true);
+          else if (k === "find") setFindOpen(true);
+          else if (k === "table") setTableOpen(true);
+          else if (k === "contents" || k === "index") generateContents(k === "contents" ? "toc" : "index");
           else if (k === "versions") setVersionsOpen(true);
           else if (k === "plugins") setPluginsOpen(true);
           else if (k === "share") setShareOpen(true);
@@ -174,6 +182,22 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="styles" className={ITEM}>
                 <Icon name="plus" size={14} /> Styles (paragraph, character)…
               </MenuItem>
+              <MenuItem id="find" className={ITEM}>
+                <Icon name="search" size={14} /> Find and change…
+              </MenuItem>
+              <MenuItem id="table" className={ITEM}>
+                <Icon name="plus" size={14} /> Insert table…
+              </MenuItem>
+              {show("contents") && (
+                <>
+                  <MenuItem id="contents" className={ITEM}>
+                    <Icon name="page" size={14} /> Table of contents <span className="ml-auto text-[11px] text-fg-subtle">from heading styles</span>
+                  </MenuItem>
+                  <MenuItem id="index" className={ITEM}>
+                    <Icon name="page" size={14} /> Index <span className="ml-auto text-[11px] text-fg-subtle">from [#term] marks</span>
+                  </MenuItem>
+                </>
+              )}
               <MenuItem id="versions" className={ITEM}>
                 <Icon name="page" size={14} /> Versions…
               </MenuItem>
@@ -226,8 +250,29 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <PluginsDialog isOpen={pluginsOpen} onOpenChange={setPluginsOpen} />
     <ShareDialog isOpen={shareOpen} onOpenChange={setShareOpen} />
     <BoardDialog isOpen={boardOpen} onOpenChange={setBoardOpen} />
+    <FindReplaceDialog isOpen={findOpen} onOpenChange={setFindOpen} />
+    <InsertTableDialog isOpen={tableOpen} onOpenChange={setTableOpen} />
     </>
   );
+}
+
+// Writes (or refreshes) the contents or the index of the document into its frame on the page on screen.
+function generateContents(kind: "toc" | "index"): void {
+  const st = useScene.getState();
+  const scene = st.scene;
+  const pageId = st.currentPageId ?? scene?.pages[0]?.id;
+  if (!scene || !pageId) return;
+  const made = generateContentsOps(scene, kind, pageId);
+  if (!made) {
+    useScene.setState({ notice: kind === "toc"
+      ? "No headings yet: give a paragraph style a heading level (Styles… → Heading level) and use it."
+      : "No index terms yet: mark a word in the text with [#term]." });
+    return;
+  }
+  st.beginGesture();
+  st.endGesture(made.ops);
+  st.setSelection(made.selection);
+  useScene.setState({ notice: `${kind === "toc" ? "Contents" : "Index"} written: ${made.lines} ${made.lines === 1 ? "line" : "lines"}.` });
 }
 
 const ITEM =

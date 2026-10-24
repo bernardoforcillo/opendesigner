@@ -163,6 +163,13 @@ func TestTypesettingStyleFields(t *testing.T) {
 		d.DropCapLines, d.DropCapChars = 3, 1
 		d.NestedStyles = []*opendesignerv1.NestedStyle{{StyleId: "bold", Delimiter: ":", Count: 1, Inclusive: true}}
 	}))
+	ok(para("heading", func(d *opendesignerv1.TextStyleDef) {
+		d.OutlineLevel = 2
+		d.Style.FontFeatures = "liga off, onum, ss01 2"
+	}))
+	bad("outline level 10", para("b0", func(d *opendesignerv1.TextStyleDef) { d.OutlineLevel = 10 }))
+	bad("font feature with a long tag", para("b0b", func(d *opendesignerv1.TextStyleDef) { d.Style.FontFeatures = "ligature" }))
+	bad("font feature value", para("b0c", func(d *opendesignerv1.TextStyleDef) { d.Style.FontFeatures = "liga maybe" }))
 	bad("unknown number style", para("b1", func(d *opendesignerv1.TextStyleDef) { d.ListNumberStyle = "x" }))
 	bad("marker with a newline", para("b2", func(d *opendesignerv1.TextStyleDef) { d.ListMarker = "a\nb" }))
 	bad("tabs not ascending", para("b3", func(d *opendesignerv1.TextStyleDef) {

@@ -59,6 +59,14 @@ export function fontWeightOf(style: TextStyleLite | undefined): string {
   return style && style.fontWeight !== "" ? style.fontWeight : DEFAULT_FONT_WEIGHT;
 }
 
+/** OpenType feature settings ("liga off, onum, ss01 2") as the CSS `font-feature-settings` value ('"liga" 0, "onum" 1, "ss01" 2'). */
+export function cssFeatureSettings(features: string): string {
+  return features.split(",").map((item) => item.trim()).filter((item) => /^[A-Za-z0-9]{4}( (on|off|[0-9]{1,3}))?$/.test(item)).map((item) => {
+    const [tag, value] = item.split(/\s+/);
+    return `"${tag}" ${value === "off" ? 0 : value === undefined || value === "on" ? 1 : value}`;
+  }).join(", ");
+}
+
 // Shorthand CSS accettato da ctx.font: "<weight> <size>px <family>".
 export function fontString(style: TextStyleLite): string {
   return `${style.italic ? "italic " : ""}${fontWeightOf(style)} ${fontSizeOf(style)}px ${fontFamilyOf(style)}`;
@@ -202,7 +210,8 @@ export type MeasureText = (text: string, style: TextStyleLite) => number;
 // RICH lines (paragraph / character styles, see layoutRich) also carry `segments`: the pieces of the
 // line with their own style and x, in world coordinates. `text` is then the whole line, and `x` the
 // start of the first piece.
-export interface PlacedSegment { text: string; x: number; width: number; style: TextStyleLite }
+/** `y` (instead of the line's baseline) and `angle` (radians, around (x, y)) are set for glyphs placed along a path. */
+export interface PlacedSegment { text: string; x: number; width: number; style: TextStyleLite; y?: number; angle?: number }
 export interface PlacedLine { text: string; x: number; y: number; width: number; segments?: PlacedSegment[] }
 
 /** A measure that can be asked for any style: `measureFor(style)(text)` is the width in world units. */
@@ -250,6 +259,7 @@ export function trackedOffsets(text: string, x: number, spacing: number, measure
 export function placeTextLines(measure: (s: string) => number, n: NodeLite, measureFor?: MeasureFor): PlacedLine[] {
   const t = n.text;
   if (n.kind !== "text" || !t || t.content === "") return [];
+  if (t.onPath && t.onPath.length >= 2 && measureFor) return placeOnPath(trackedMeasureFor(measureFor), n, t);
   // Formatted text needs to measure with several styles; without that it is laid out as plain text.
   if (t.rich && measureFor) {
     const tracked = trackedMeasureFor(measureFor);
@@ -363,6 +373,7 @@ function drawDecorations(ctx: CanvasRenderingContext2D, n: NodeLite): void {
   for (const line of lines) {
     const pieces = line.segments ?? [{ text: line.text, x: line.x, width: line.width, style: t.style }];
     for (const seg of pieces) {
+      if ((seg as PlacedSegment).angle !== undefined) continue; // no underline along a path
       for (const bar of decorationBars(seg.style, line.y - (seg.style.baselineShift ?? 0))) ctx.fillRect(seg.x, bar.y, seg.width, bar.height);
     }
   }
@@ -435,16 +446,17 @@ function paintText(
   const raw = (s: string) => ctx.measureText(s).width;
   // One piece: raised/lowered by its baseline shift, stretched by its horizontal scale, in its own colour;
   // with letter spacing it is drawn character by character.
-  const piece = (text: string, x: number, y: number, style: TextStyleLite) => {
+  const piece = (text: string, x: number, y: number, style: TextStyleLite, angle = 0) => {
     const ls = style.letterSpacing ?? 0;
     const sx = style.horizontalScale ?? 1;
     const py = y - (style.baselineShift ?? 0);
     setKerning(ctx, style.noKerning ? "none" : "auto");
     const prevFill = ctx.fillStyle;
     if (style.color) ctx.fillStyle = `rgba(${Math.round(style.color.r * 255)},${Math.round(style.color.g * 255)},${Math.round(style.color.b * 255)},${style.color.a})`;
-    if (sx !== 1) {
+    if (sx !== 1 || angle) {
       ctx.save();
       ctx.translate(x, py);
+      if (angle) ctx.rotate(angle);
       ctx.scale(sx, 1);
       if (ls === 0) paintLine(text, 0, 0);
       else for (const c of trackedOffsets(text, 0, ls / sx, raw)) paintLine(c.ch, c.x, 0);
@@ -457,7 +469,7 @@ function paintText(
     if (!line.segments) { piece(line.text, line.x, line.y, t.style); continue; }
     for (const seg of line.segments) {
       ctx.font = fontString(seg.style);
-      if (seg.text !== "") piece(seg.text, seg.x, line.y, seg.style);
+      if (seg.text !== "") piece(seg.text, seg.x, seg.y ?? line.y, seg.style, seg.angle);
     }
   }
 }
@@ -642,11 +654,36 @@ export function layoutRich(
     }
 
     const listed = pr.marker !== undefined;
-    // Where line `i` of this paragraph starts, from the box's left edge.
-    const leftOf = (i: number) => pr.indentLeft + (listed ? pr.listIndent ?? 0 : i === 0 ? pr.indentFirst : 0) + (drop && i < dropLines ? drop.width : 0);
-    const limitAt = (i: number) => (maxWidth > 0 ? maxWidth - leftOf(i) : Infinity);
+    // Where line `i` of this paragraph starts, and how much room it has, from the box's left edge. Objects that wrap
+    // the text take a bite out of the band the line sits in (its top is estimated from the paragraph's line height).
+    const plainLeft = (i: number) => pr.indentLeft + (listed ? pr.listIndent ?? 0 : i === 0 ? pr.indentFirst : 0) + (drop && i < dropLines ? drop.width : 0);
+    const exclusions = rich.exclusions ?? [];
+    const bands = new Map<number, { left: number; room: number }>();
+    const bandAt = (i: number) => {
+      const hit = bands.get(i);
+      if (hit) return hit;
+      const left0 = plainLeft(i);
+      let spans: [number, number][] = [[left0, maxWidth > 0 ? maxWidth : Infinity]];
+      if (exclusions.length > 0 && maxWidth > 0) {
+        const top = paraTop + i * lh0, bottom = top + lh0;
+        for (const o of exclusions) {
+          if (o.y >= bottom || o.y + o.height <= top) continue;
+          spans = spans.flatMap(([a, b]) => [[a, Math.min(b, o.x)], [Math.max(a, o.x + o.width), b]].filter(([x, z]) => z - x > 0) as [number, number][]);
+        }
+      }
+      // The wider side of what is left.
+      const best = spans.reduce<[number, number] | null>((w, sp) => (!w || sp[1] - sp[0] > w[1] - w[0] ? sp : w), null);
+      const out = best ? { left: best[0], room: best[1] - best[0] } : { left: left0, room: 0 };
+      bands.set(i, out);
+      return out;
+    };
+    const leftOf = (i: number) => (exclusions.length > 0 ? bandAt(i).left : plainLeft(i));
+    const limitAt = (i: number) => (maxWidth > 0 ? (exclusions.length > 0 ? bandAt(i).room : maxWidth - plainLeft(i)) : Infinity);
+    // A line with no room for even a couple of letters is left empty: the text jumps over the object.
+    const minRoom = fontSizeOf(pr.style) * 1.5;
+    const blocked = exclusions.length > 0 && maxWidth > 0 ? (i: number) => limitAt(i) < minRoom : undefined;
 
-    const built = wrapPieces(measureFor, expandPieces(pieces), pr, limitAt, leftOf);
+    const built = wrapPieces(measureFor, expandPieces(pieces), pr, limitAt, leftOf, blocked);
     // An empty paragraph is an empty line: it keeps its height.
     if (built.length === 0) built.push({ frags: [], width: 0 });
     // Justified: every line but the paragraph's last gets its spaces widened to fill the line.
@@ -704,6 +741,7 @@ function overlayStyle(base: TextStyleLite, over: TextStyleLite): TextStyleLite {
   if (over.horizontalScale) out.horizontalScale = over.horizontalScale;
   if (over.noKerning) out.noKerning = true;
   if (over.color) out.color = over.color;
+  if (over.fontFeatures) out.fontFeatures = over.fontFeatures;
   return out;
 }
 
@@ -726,7 +764,7 @@ function splitFrags(frags: Frag[], n: number): [Frag[], Frag[]] {
 
 // Greedy wrap of one paragraph's pieces. `limitAt(i)` is the room of line i (after its indents) and
 // `leftOf(i)` where it starts, which tab stops need.
-function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: ParagraphLite, limitAt: (i: number) => number, leftOf: (i: number) => number): Built[] {
+function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: ParagraphLite, limitAt: (i: number) => number, leftOf: (i: number) => number, blocked?: (i: number) => boolean): Built[] {
   if (pieces.length === 0) return [];
   const width = (f: Frag) => (f.w !== undefined ? f.w : f.text === "" ? 0 : measureFor(f.style)(f.text));
   // Words: runs of non-space characters, each with the style of its characters; the space before a
@@ -757,7 +795,11 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: ParagraphLite, l
       line.width += width(f);
     }
   };
-  const newLine = () => { out.push({ frags: [], width: 0 }); };
+  const newLine = () => {
+    out.push({ frags: [], width: 0 });
+    // Lines hidden behind an object stay empty (bounded: an object is not taller than the page).
+    for (let guard = 0; blocked && blocked(out.length - 1) && guard < 500; guard++) out.push({ frags: [], width: 0 });
+  };
   const tabs = pr.tabs ?? [];
 
   // Width of the text after word `i` up to the next tab: what a right or centre tab has to make room for.
@@ -888,4 +930,50 @@ function placeRichLines(measureFor: MeasureFor, n: NodeLite, layout: RichLayout)
     });
   }
   return out;
+}
+
+// --- text on a path -------------------------------------------------------------------------------
+
+// The first paragraph of the text set on a single line along the polyline `t.onPath` (the derived field
+// of store/textPath.ts): every character is placed at its advance along the path and turned to follow it.
+// Alignment moves the start (centre / right of the path's length); characters past its end are dropped.
+function placeOnPath(measureFor: MeasureFor, n: NodeLite, t: TextLite): PlacedLine[] {
+  const pts = t.onPath!;
+  const cum = [0];
+  for (let i = 1; i < pts.length; i++) cum.push(cum[i - 1] + Math.hypot(pts[i].x - pts[i - 1].x, pts[i].y - pts[i - 1].y));
+  const length = cum[cum.length - 1];
+  if (!(length > 0)) return [];
+  // The glyphs with their styles: from the formatted layout of one unbounded line, or the node's own style.
+  const pieces: { text: string; style: TextStyleLite }[] = t.rich
+    ? (layoutRich(measureFor, t.content, t.style, t.rich, 0).lines[0]?.frags ?? []).filter((f) => f.w === undefined).map((f) => ({ text: f.text, style: f.style }))
+    : [{ text: t.content.replace(/\r\n?/g, "\n").split("\n")[0], style: t.style }];
+  const glyphs = pieces.flatMap((p) => Array.from(p.text).map((ch) => ({ ch, style: p.style, w: measureFor(p.style)(ch) })));
+  const total = glyphs.reduce((s, g) => s + g.w, 0);
+  const align = t.rich?.paragraphs[0]?.style.align ?? t.style.align;
+  let s = align === "center" ? (length - total) / 2 : align === "right" ? length - total : 0;
+  s = Math.max(0, s);
+  const at = (d: number) => {
+    let i = 1;
+    while (i < cum.length - 1 && cum[i] < d) i++;
+    const seg = cum[i] - cum[i - 1] || 1;
+    const f = (d - cum[i - 1]) / seg;
+    return { x: pts[i - 1].x + (pts[i].x - pts[i - 1].x) * f, y: pts[i - 1].y + (pts[i].y - pts[i - 1].y) * f, angle: Math.atan2(pts[i].y - pts[i - 1].y, pts[i].x - pts[i - 1].x) };
+  };
+  const segments: PlacedSegment[] = [];
+  for (const g of glyphs) {
+    const mid = s + g.w / 2;
+    if (mid > length) break;
+    const p = at(mid);
+    const shift = g.style.baselineShift ?? 0;
+    // The origin of the glyph: half its advance back along the tangent, raised by its baseline shift.
+    const x = p.x - (g.w / 2) * Math.cos(p.angle) + shift * Math.sin(p.angle);
+    const y = p.y - (g.w / 2) * Math.sin(p.angle) - shift * Math.cos(p.angle);
+    const { baselineShift: _b, ...style } = g.style;
+    void _b;
+    if (g.ch.trim() !== "") segments.push({ text: g.ch, x, y, width: g.w, style, angle: p.angle });
+    s += g.w;
+  }
+  void n;
+  if (segments.length === 0) return [];
+  return [{ text: segments.map((g) => g.text).join(""), x: segments[0].x, y: segments[0].y!, width: total, segments }];
 }

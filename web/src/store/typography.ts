@@ -30,16 +30,24 @@ export function isValidFont(state: SceneState, f: PbFont | undefined): f is PbFo
   return true;
 }
 
+const FEATURE_RE = /^[A-Za-z0-9]{4}( (on|off|[0-9]{1,3}))?$/;
+/** Parity with core.validFontFeatures: comma-separated OpenType feature settings. */
+export function validFontFeatures(s: string): boolean {
+  if (s === "") return true;
+  return s.length <= 128 && s.split(",").every((item) => FEATURE_RE.test(item.trim()));
+}
+
 const NUMBER_STYLES = new Set(["", "i", "I", "a", "A"]);
 const inRange = (v: number, lo: number, hi: number) => Number.isFinite(v) && v >= lo && v <= hi;
 
 /** Parity with core.validateParagraphFeatures: lists, tab stops, drop caps and nested styles; a character style has none. */
 function validParagraphFeatures(state: SceneState, d: PbTextStyleDef): boolean {
-  const any = d.hyphenate || d.listKind !== ListKind.NONE || d.listMarker !== "" || d.listNumberStyle !== "" || d.listIndent !== 0 ||
+  const any = d.hyphenate || d.listKind !== ListKind.NONE || d.listMarker !== "" || d.listNumberStyle !== "" || d.listIndent !== 0 || d.outlineLevel !== 0 ||
     d.tabStops.length > 0 || d.dropCapLines !== 0 || d.dropCapChars !== 0 || d.nestedStyles.length > 0;
   if (d.kind === TextStyleKind.CHARACTER) return !any;
   if (d.listKind < 0 || d.listKind > ListKind.NUMBER || !NUMBER_STYLES.has(d.listNumberStyle) || d.listMarker.length > 16 ||
     /[\r\n]/.test(d.listMarker) || !(d.listIndent === 0 || inRange(d.listIndent, 0, 1000))) return false;
+  if (d.outlineLevel > 9) return false;
   if ((d.dropCapLines !== 0 && (d.dropCapLines < 2 || d.dropCapLines > 10)) || d.dropCapChars > 10) return false;
   if (d.tabStops.length > 32) return false;
   let prev = -1;
@@ -64,6 +72,7 @@ export function isValidTextStyleDef(state: SceneState, d: PbTextStyleDef | undef
   if (!(w === "" || WEIGHT_RE.test(w) || w === "normal" || w === "bold")) return false;
   if (!Number.isFinite(st.letterSpacing) || Math.abs(st.letterSpacing) > 1000) return false;
   if (!(st.horizontalScale === 0 || (st.horizontalScale >= 0.1 && st.horizontalScale <= 10))) return false;
+  if (!validFontFeatures(st.fontFeatures)) return false;
   if (st.script < 0 || st.script > TextScript.SUBSCRIPT) return false;
   if (st.color && ![st.color.r, st.color.g, st.color.b, st.color.a].every((v) => v >= 0 && v <= 1)) return false;
   if (d.kind !== TextStyleKind.PARAGRAPH && d.kind !== TextStyleKind.CHARACTER) return false;

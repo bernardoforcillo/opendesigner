@@ -61,7 +61,7 @@ Rules (the same in Go `internal/core/typography.go` and TS `store/typography.ts`
 
 ## MCP
 
-`set_text_style` takes `letterSpacing`, `alignToGrid`, `kind` (`paragraph` | `character`), `basedOn`, `nextStyleId`, `spaceBefore`, `spaceAfter`, `indentFirst`, `indentLeft`, `underline`, `strikethrough`, `smallCaps`, `script`, `horizontalScale`, `noKerning`, `color`, `hyphenate`, `listKind`, `listMarker`, `listNumberStyle`, `listIndent`, `tabStops`, `dropCapLines`, `dropCapChars`, `nestedStyles`, and `align: justify`; `list_text_styles` returns them. `format_text { nodeId, paragraphStyles, runs }` sets a text node's formatting; `get_document` / `list_nodes` return `paragraphStyles` and `runs`. `set_text` keeps the formatting (adjusted to the new content).
+`set_text_style` takes `letterSpacing`, `alignToGrid`, `kind` (`paragraph` | `character`), `basedOn`, `nextStyleId`, `spaceBefore`, `spaceAfter`, `indentFirst`, `indentLeft`, `underline`, `strikethrough`, `smallCaps`, `script`, `horizontalScale`, `noKerning`, `color`, `hyphenate`, `listKind`, `listMarker`, `listNumberStyle`, `listIndent`, `tabStops`, `dropCapLines`, `dropCapChars`, `nestedStyles`, `outlineLevel`, `fontFeatures` and `align: justify`; `list_text_styles` returns them. `format_text { nodeId, paragraphStyles, runs }` sets a text node's formatting; `get_document` / `list_nodes` return `paragraphStyles` and `runs`. `set_text` keeps the formatting (adjusted to the new content).
 
 ## Not yet
 

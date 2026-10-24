@@ -5,6 +5,7 @@ import { paragraphCount, resolveRich } from "./richText";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { makeSetPropsOp, makeSetTextOp } from "../tools/ops";
 import { recordDelta } from "./sceneDelta";
+import { wrapRectsOf } from "./wrap";
 import type { NodeLite, SceneState, TextLite, TextRunLite, TextStyleLite } from "./types";
 
 // THREADED TEXT FRAMES. Text frames can be chained: the text of the chain's FIRST frame (its "story")
@@ -149,18 +150,19 @@ export function flowStory(
  */
 function flowRich(scene: SceneState, chain: NodeLite[]): { texts: TextLite[]; overset: boolean } | null {
   const head = chain[0].text!;
-  if (!head.rich || head.content.includes("\r")) return null;
+  const wrapRects = chain.map((f) => wrapRectsOf(scene, f));
+  if ((!head.rich && wrapRects.every((r) => r.length === 0)) || head.content.includes("\r")) return null;
   const base = head.style;
   const mf = trackedMeasureFor((injected ?? defaultMeasureFor) as (style: TextStyleLite) => (s: string) => number);
   let content = head.content;
   let paras = head.paragraphStyles ?? [];
   let runs: TextRunLite[] = head.runs ?? [];
   const texts: TextLite[] = [];
-  for (const frame of chain) {
+  for (const [fi, frame] of chain.entries()) {
     if (content === "") { texts.push({ content: "", style: base }); continue; }
     const boxY = frame.y + worldTransformOf(scene, frame.parentId).f;
     const whole: TextLite = { content, style: base, paragraphStyles: paras, runs };
-    const rich = resolveRich(scene, whole, base, boxY);
+    const rich = resolveRich(scene, whole, base, boxY, wrapRects[fi]);
     let end = 0;
     if (rich && frame.width > 0) {
       const lay = layoutRich(mf, content, base, rich, frame.width);
@@ -170,7 +172,7 @@ function flowRich(scene: SceneState, chain: NodeLite[]): { texts: TextLite[]; ov
     const slice = content.slice(0, end);
     const sliceParas = paras.slice(0, paragraphCount(slice));
     const sliceRuns = runs.filter((r) => r.start < end).map((r) => ({ ...r, end: Math.min(r.end, end) }));
-    const sliceRich = resolveRich(scene, { content: slice, style: base, paragraphStyles: sliceParas, runs: sliceRuns }, base, boxY);
+    const sliceRich = resolveRich(scene, { content: slice, style: base, paragraphStyles: sliceParas, runs: sliceRuns }, base, boxY, wrapRects[fi]);
     texts.push({
       content: slice, style: base,
       ...(sliceParas.some((p) => p !== "") ? { paragraphStyles: sliceParas } : {}),

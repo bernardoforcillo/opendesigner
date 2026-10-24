@@ -89,10 +89,13 @@ Text
 - [x] Hyphenation and justification, drop caps
 - [ ] Widows/orphans, keep-with-next
 - [x] Bullets and numbered lists, tabs, indents
-- [ ] Text wrap around objects, anchored (inline) objects
-- [ ] Footnotes, tables with cell and table styles, table of contents, index
-- [ ] Find/change, spell check, text variables (running headers, page numbers)
-- [ ] Text on a path; OpenType features (ligatures, stylistic sets, tabular figures)
+- [x] Text wrap around objects (bounding box, gap); see docs/text-frames.md
+- [ ] Anchored (inline) objects
+- [x] Footnotes, tables (rows, columns, header), table of contents, index; see docs/text-frames.md
+- [ ] Table and cell styles, cell spanning, index sub-entries
+- [x] Find/change (text, word, regex), browser spell check, text variables (running headers, page count, document name)
+- [x] Text on a path
+- [x] OpenType feature settings per style (SVG output and editing field; not drawn on the canvas)
 
 Graphics and colour
 - [ ] Placed (linked) images with update-on-change, fitting options, image frames, effective resolution

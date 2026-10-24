@@ -20,6 +20,7 @@ import { ExportSection } from "./ExportSection";
 import { VariablesSection } from "./VariablesSection";
 import { boundColor } from "./variableOps";
 import { TypographyControls } from "./TypographyControls";
+import { TableControls, TextOnPathControls, WrapControls } from "./TextLayoutControls";
 import { ThreadControls } from "./ThreadControls";
 import { InstanceControls } from "./InstanceControls";
 import { LayoutRelationControls } from "./LayoutRelationControls";
@@ -801,6 +802,9 @@ export function PropertiesPanel() {
       <BooleanControls />
       <ConnectorControls />
       <PathControls />
+      <TextOnPathControls />
+      <TableControls />
+      <WrapControls />
 
       {/* LAYOUT: position, size, rotation and (rectangles) radius, in a
           two-column grid of fields with the prefix INSIDE (X, Y, W, H, °, R). */}

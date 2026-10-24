@@ -1,5 +1,6 @@
 import { isValidPageSetup } from "./docSettings";
 import { isRightPage, pageNumbers } from "./pageNumbers";
+import { runningHeads, substituteVariables } from "./textTokens";
 import { recordDelta } from "./sceneDelta";
 import { childrenOf, subtreeOf } from "./tree";
 import { toPageLite, type GuideLite, type NodeLite, type PageLite, type SceneState } from "./types";
@@ -121,10 +122,12 @@ export function deriveMasters(scene: SceneState): SceneState {
   if (users.length === 0) { derived.set(scene, scene); return scene; }
 
   const numbers = pageNumbers(scene.pages);
+  const total = numbers.size;
   let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
   const changed: string[] = [];
   for (const page of users) {
     const number = numbers.get(page.id)?.label ?? "";
+    const heads = runningHeads(scene).get(page.id);
     const hidden = new Set(page.hiddenMasterItems);
     const chain = masterChain(scene.pages, masterOfPage(scene, page, numbers));
     for (const [depth, master] of chain.entries()) {
@@ -140,8 +143,8 @@ export function deriveMasters(scene: SceneState): SceneState {
             parentId: top ? page.id : masterCopyId(page.id, n.parentId),
             orderKey: top ? BEHIND.repeat(chain.length - depth) + n.orderKey : n.orderKey,
             fromMaster: true,
-            ...(n.text && n.text.content.includes(PAGE_NUMBER_TOKEN)
-              ? { text: { ...n.text, content: n.text.content.split(PAGE_NUMBER_TOKEN).join(number) } }
+            ...(n.text && n.text.content.includes("<")
+              ? { text: { ...n.text, content: substituteVariables(n.text.content, scene, number, total, heads) } }
               : {}),
           };
           (edit ??= scene.nodes.edit()).set(copy.id, copy);

@@ -1,7 +1,7 @@
 import type { EffectLite, FillLite, NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
-import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
+import { cssFeatureSettings, fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
@@ -332,11 +332,14 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
         const own = l.segments !== undefined;
         const decoration = [seg.style.underline ? "underline" : "", seg.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
         return `<tspan${attrs([
-          attr("x", seg.x), attr("y", l.y - (seg.style.baselineShift ?? 0)),
+          attr("x", seg.x), attr("y", (seg.y ?? l.y) - (seg.style.baselineShift ?? 0)),
+          ...(seg.angle !== undefined ? [attr("rotate", Math.round((seg.angle * 180 / Math.PI) * 100) / 100)] : []),
           ...(seg.style.color ? [attr("fill", `rgb(${Math.round(seg.style.color.r * 255)},${Math.round(seg.style.color.g * 255)},${Math.round(seg.style.color.b * 255)})`)] : []),
           ...(seg.style.color && seg.style.color.a < 1 ? [attr("fill-opacity", seg.style.color.a)] : []),
           ...(seg.style.horizontalScale && seg.style.horizontalScale !== 1 && seg.text !== "" ? [attr("textLength", seg.width), attr("lengthAdjust", "spacingAndGlyphs")] : []),
-          ...(seg.style.noKerning ? [attr("style", "font-kerning:none")] : []),
+          ...(seg.style.noKerning || seg.style.fontFeatures
+            ? [attr("style", [seg.style.noKerning ? "font-kerning:none" : "", seg.style.fontFeatures ? `font-feature-settings:${cssFeatureSettings(seg.style.fontFeatures)}` : ""].filter(Boolean).join(";"))]
+            : []),
           ...(own && fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
           ...(own && fontSizeOf(seg.style) !== fontSizeOf(style) ? [attr("font-size", fontSizeOf(seg.style))] : []),
           ...(own && fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),
@@ -357,6 +360,7 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
     attr("font-weight", fontWeightOf(style)),
     ...(style.italic ? [attr("font-style", "italic")] : []),
     ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
+    ...(style.fontFeatures ? [attr("style", `font-feature-settings:${cssFeatureSettings(style.fontFeatures)}`)] : []),
     ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }

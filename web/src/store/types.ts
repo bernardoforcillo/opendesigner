@@ -139,6 +139,8 @@ export interface TextStyleLite {
   noKerning?: boolean;
   /** Text colour of the style; absent => the node's fill. */
   color?: { r: number; g: number; b: number; a: number };
+  /** OpenType features, "liga off, onum": shown in SVG / HTML output and the editing field (the canvas has no way to apply them). */
+  fontFeatures?: string;
   /** DERIVED by the layout, never stored: px a piece is raised above its line's baseline (negative = lowered). */
   baselineShift?: number;
 }
@@ -165,12 +167,16 @@ export interface RichText {
   paragraphs: ResolvedParagraph[]; runs: ResolvedRun[];
   /** The baseline grid, with the world y of the text box: present when a paragraph aligns to it. */
   grid?: { increment: number; start: number; boxY: number };
+  /** Boxes (relative to the text box's top-left) the lines avoid: objects that wrap the text (store/wrap.ts). */
+  exclusions?: { x: number; y: number; width: number; height: number }[];
 }
 
 export interface TabStopLite { position: number; align?: "center" | "right"; leader?: string }
 export interface NestedStyleLite { styleId: string; delimiter: string; count: number; inclusive?: boolean }
 
 export interface TextLite {
+  /** DERIVED (store/textPath.ts): the polyline the text runs along, in the text's parent space. */
+  onPath?: { x: number; y: number }[];
   content: string; style: TextStyleLite;
   paragraphStyles?: string[];
   runs?: TextRunLite[];
@@ -423,6 +429,8 @@ export interface TextStyleDefLite {
   tabStops?: TabStopLite[];
   dropCapLines?: number; dropCapChars?: number;
   nestedStyles?: NestedStyleLite[];
+  /** 1..9: the paragraphs appear in the table of contents and give running headers; absent = body text. */
+  outlineLevel?: number;
 }
 
 // ANIMATION: the document's clips (animated properties of nodes referenced by
@@ -544,6 +552,7 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     ...(s?.horizontalScale && s.horizontalScale !== 1 ? { horizontalScale: s.horizontalScale } : {}),
     ...(s?.noKerning ? { noKerning: true } : {}),
     ...(s?.color ? { color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a } } : {}),
+    ...(s?.fontFeatures ? { fontFeatures: s.fontFeatures } : {}),
   };
 }
 
@@ -667,6 +676,7 @@ export function toPbTextStyle(s: TextStyleLite) {
     script: s.script === "super" ? TextScript.SUPERSCRIPT : s.script === "sub" ? TextScript.SUBSCRIPT : TextScript.NORMAL,
     horizontalScale: s.horizontalScale ?? 0,
     noKerning: s.noKerning === true,
+    fontFeatures: s.fontFeatures ?? "",
     ...(s.color ? { color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a } } : {}),
   };
 }
@@ -1125,6 +1135,7 @@ export function toTextStyleDefLite(d: PbTextStyleDef): TextStyleDefLite {
     } : {}),
     ...(d.dropCapLines ? { dropCapLines: d.dropCapLines } : {}),
     ...(d.dropCapChars ? { dropCapChars: d.dropCapChars } : {}),
+    ...(d.outlineLevel ? { outlineLevel: d.outlineLevel } : {}),
     ...(d.nestedStyles.length > 0 ? {
       nestedStyles: d.nestedStyles.map((n) => ({ styleId: n.styleId, delimiter: n.delimiter, count: n.count, ...(n.inclusive ? { inclusive: true } : {}) })),
     } : {}),
@@ -1143,7 +1154,7 @@ export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
     tabStops: (d.tabStops ?? []).map((t) => ({
       position: t.position, align: t.align === "center" ? TabAlign.CENTER : t.align === "right" ? TabAlign.RIGHT : TabAlign.LEFT, leader: t.leader ?? "",
     })),
-    dropCapLines: d.dropCapLines ?? 0, dropCapChars: d.dropCapChars ?? 0,
+    dropCapLines: d.dropCapLines ?? 0, dropCapChars: d.dropCapChars ?? 0, outlineLevel: d.outlineLevel ?? 0,
     nestedStyles: (d.nestedStyles ?? []).map((n) => ({ styleId: n.styleId, delimiter: n.delimiter, count: n.count, inclusive: n.inclusive === true })),
   });
 }

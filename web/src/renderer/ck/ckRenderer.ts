@@ -584,7 +584,7 @@ export class CanvasKitRenderer {
       this.textLines.set(n, lines);
     }
     // A piece with letter spacing goes character by character, as on the 2D canvas.
-    const put = (text: string, x: number, y0: number, f: Font, style: TextStyleLite) => {
+    const put = (text: string, x: number, y0: number, f: Font, style: TextStyleLite, angle = 0) => {
       if (text === "") return;
       const spacing = style.letterSpacing ?? 0, sx = style.horizontalScale ?? 1;
       const y = y0 - (style.baselineShift ?? 0);
@@ -592,9 +592,10 @@ export class CanvasKitRenderer {
       const own = style.color ? paint.copy() : null;
       if (own && style.color) own.setColor(this.CK.Color4f(style.color.r, style.color.g, style.color.b, style.color.a));
       const p = own ?? paint;
-      if (sx !== 1) {
+      if (sx !== 1 || angle) {
         sk.save();
         sk.translate(x, y);
+        if (angle) sk.rotate((angle * 180) / Math.PI, 0, 0);
         sk.scale(sx, 1);
         if (!spacing) sk.drawText(text, 0, 0, p, f);
         else for (const c of trackedOffsets(text, 0, spacing / sx, this.measureFor(f))) sk.drawText(c.ch, c.x, 0, p, f);
@@ -612,7 +613,7 @@ export class CanvasKitRenderer {
       // Rich text: every piece in its own font, on the line's baseline.
       for (const seg of line.segments) {
         const f = this.fonts.fontFor(seg.style.fontWeight, fontSizeOf(seg.style), seg.style.fontFamily, seg.style.italic === true) ?? font;
-        put(seg.text, seg.x, line.y, f, seg.style);
+        put(seg.text, seg.x, seg.y ?? line.y, f, seg.style, seg.angle);
       }
       this.drawBars(sk, line.segments, line.y, paint);
     }
@@ -625,8 +626,9 @@ export class CanvasKitRenderer {
   };
 
   // Underline / strikethrough bars under pieces whose style asks for them.
-  private drawBars(sk: Canvas, pieces: readonly { x: number; width: number; style: Parameters<typeof decorationBars>[0] }[], baseline: number, paint: Paint): void {
+  private drawBars(sk: Canvas, pieces: readonly { x: number; width: number; style: Parameters<typeof decorationBars>[0]; angle?: number }[], baseline: number, paint: Paint): void {
     for (const piece of pieces) {
+      if (piece.angle !== undefined) continue; // no underline along a path
       for (const bar of decorationBars(piece.style, baseline - (piece.style.baselineShift ?? 0))) sk.drawRect(this.CK.XYWHRect(piece.x, bar.y, piece.width, bar.height), paint);
     }
   }

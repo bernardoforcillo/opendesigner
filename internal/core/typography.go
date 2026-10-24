@@ -106,7 +106,28 @@ func validateTextStyleDef(doc *opendesignerv1.Document, d *opendesignerv1.TextSt
 }
 
 // validateStyleGlyphs checks the character-level fields added for typesetting: horizontal scale, script and colour.
+var featureRe = regexp.MustCompile(`^[A-Za-z0-9]{4}( (on|off|[0-9]{1,3}))?$`)
+
+// validFontFeatures reports whether s is a comma-separated list of OpenType feature settings.
+func validFontFeatures(s string) bool {
+	if s == "" {
+		return true
+	}
+	if len(s) > 128 {
+		return false
+	}
+	for _, item := range strings.Split(s, ",") {
+		if !featureRe.MatchString(strings.TrimSpace(item)) {
+			return false
+		}
+	}
+	return true
+}
+
 func validateStyleGlyphs(st *opendesignerv1.TextStyle) error {
+	if !validFontFeatures(st.GetFontFeatures()) {
+		return fmt.Errorf("%w: font features %q", ErrTextStyleValue, st.GetFontFeatures())
+	}
 	if hs := st.GetHorizontalScale(); hs != 0 && !(hs >= 0.1 && hs <= 10) {
 		return fmt.Errorf("%w: horizontal scale %v", ErrTextStyleValue, hs)
 	}
@@ -129,7 +150,7 @@ var numberStyles = map[string]bool{"": true, "i": true, "I": true, "a": true, "A
 // A character style has none of them.
 func validateParagraphFeatures(doc *opendesignerv1.Document, d *opendesignerv1.TextStyleDef) error {
 	any := d.GetHyphenate() || d.GetListKind() != opendesignerv1.ListKind_LIST_KIND_NONE || d.GetListMarker() != "" || d.GetListNumberStyle() != "" ||
-		d.GetListIndent() != 0 || len(d.GetTabStops()) > 0 || d.GetDropCapLines() != 0 || d.GetDropCapChars() != 0 || len(d.GetNestedStyles()) > 0
+		d.GetListIndent() != 0 || d.GetOutlineLevel() != 0 || len(d.GetTabStops()) > 0 || d.GetDropCapLines() != 0 || d.GetDropCapChars() != 0 || len(d.GetNestedStyles()) > 0
 	if d.GetKind() == opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER {
 		if any {
 			return fmt.Errorf("%w: a character style has no paragraph features", ErrTextStyleValue)
@@ -139,6 +160,9 @@ func validateParagraphFeatures(doc *opendesignerv1.Document, d *opendesignerv1.T
 	if d.GetListKind() < 0 || d.GetListKind() > opendesignerv1.ListKind_LIST_KIND_NUMBER || !numberStyles[d.GetListNumberStyle()] ||
 		len(d.GetListMarker()) > 16 || strings.ContainsAny(d.GetListMarker(), "\n\r") || !(d.GetListIndent() == 0 || finiteIn(d.GetListIndent(), 0, 1000)) {
 		return fmt.Errorf("%w: list", ErrTextStyleValue)
+	}
+	if d.GetOutlineLevel() > 9 {
+		return fmt.Errorf("%w: outline level", ErrTextStyleValue)
 	}
 	if n := d.GetDropCapLines(); n != 0 && (n < 2 || n > 10) || d.GetDropCapChars() > 10 {
 		return fmt.Errorf("%w: drop cap", ErrTextStyleValue)

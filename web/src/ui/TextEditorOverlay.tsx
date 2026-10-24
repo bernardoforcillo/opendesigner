@@ -7,6 +7,7 @@ import { cssColor } from "../renderer/canvasRenderer";
 import {
   DEFAULT_FONT_FAMILY,
   DEFAULT_FONT_WEIGHT,
+  cssFeatureSettings,
   fontSizeOf,
   lineHeightOf,
 } from "../renderer/text";
@@ -291,7 +292,8 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
       ref={ref}
       aria-label="Text content"
       value={value}
-      spellCheck={false}
+      // The browser's own spell checker underlines misspellings as you type (it uses the language of the page).
+      spellCheck
       onChange={(e) => change(e.target.value)}
       // Click outside (the pointerdown on the canvas removes focus) and Tab: it
       // commits. It is also the safety net for the cases nobody handles --
@@ -341,6 +343,8 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
         textAlign: style?.align ?? "left",
         // Tracking, so the field wraps where the canvas will.
         letterSpacing: style?.letterSpacing ? `${style.letterSpacing * camera.zoom}px` : undefined,
+        fontFeatureSettings: style?.fontFeatures ? cssFeatureSettings(style.fontFeatures) : undefined,
+        fontKerning: style?.noKerning ? "none" : undefined,
         color: cssColor(node),
         // The node's OPACITY is NOT carried over here: it would make
         // the whole field semi-transparent, background included, and the text drawn

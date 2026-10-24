@@ -41,6 +41,7 @@ function tidy(d: TextStyleDefLite): TextStyleDefLite {
   if (d.tabStops && d.tabStops.length > 0) out.tabStops = d.tabStops;
   if (d.dropCapLines) out.dropCapLines = d.dropCapLines;
   if (d.dropCapChars) out.dropCapChars = d.dropCapChars;
+  if (d.outlineLevel) out.outlineLevel = d.outlineLevel;
   if (d.nestedStyles && d.nestedStyles.length > 0) out.nestedStyles = d.nestedStyles;
   return out;
 }
@@ -177,6 +178,8 @@ export function StylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpen
                       <option value="sub">Subscript</option>
                     </select>
                   </div>
+                  <input aria-label="OpenType features" className={cls.input} placeholder="OpenType: liga off, onum, ss01" defaultValue={cur.style.fontFeatures ?? ""} key={cur.id + ":features"} maxLength={128}
+                    onBlur={(e) => { const v = e.target.value.trim(); if (v !== (cur.style.fontFeatures ?? "")) patchStyle({ fontFeatures: v === "" ? undefined : v }); }} />
                   <div className="grid grid-cols-2 items-end gap-2">
                     <NumberField label="Width" minValue={10} suffix="%" value={Math.round((cur.style.horizontalScale ?? 1) * 100)}
                       onCommit={(v) => patchStyle({ horizontalScale: v === 100 ? undefined : v / 100 })} />
@@ -211,6 +214,8 @@ export function StylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpen
                         <NumberField label="First line" minValue={0} value={cur.indentFirst ?? 0} onCommit={(v) => patchDef({ indentFirst: v })} />
                         <NumberField label="Left indent" minValue={0} value={cur.indentLeft ?? 0} onCommit={(v) => patchDef({ indentLeft: v })} />
                       </div>
+                      <NumberField label="Heading level (contents, running heads)" minValue={0} value={cur.outlineLevel ?? 0}
+                        onCommit={(v) => patchDef({ outlineLevel: v === 0 ? undefined : Math.min(9, Math.round(v)) })} />
                       <span className={cls.label}>List</span>
                       <div className="grid grid-cols-2 gap-2">
                         <select aria-label="List" className={cls.select} value={cur.listKind ?? ""}

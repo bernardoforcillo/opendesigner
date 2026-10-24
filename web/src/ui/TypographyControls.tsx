@@ -55,6 +55,7 @@ export function TypographyControls() {
   const script = same(styles.map((s) => s.script ?? ""));
   const hscale = same(styles.map((s) => Math.round((s.horizontalScale ?? 1) * 100)));
   const noKerning = same(styles.map((s) => s.noKerning === true));
+  const features = same(styles.map((s) => s.fontFeatures ?? ""));
   const paragraphValue = paragraphStyleOf(scene, selection);
   const characterValue = characterStyleOf(scene, selection);
   const single = nodes.length === 1 ? nodes[0] : null;
@@ -121,6 +122,9 @@ export function TypographyControls() {
           onCommit={(v) => run(styleOps(scene, selection, { lineHeight: v }))}
         />
       </div>
+      <input aria-label="OpenType features" className={cls.input} placeholder={features === MIXED ? "Mixed" : "OpenType: liga off, onum"} maxLength={128}
+        key={String(features)} defaultValue={features === MIXED ? "" : features}
+        onBlur={(e) => { const v = e.target.value.trim(); if (features !== MIXED && v !== features) run(styleOps(scene, selection, { fontFeatures: v === "" ? undefined : v })); }} />
       <div className="flex flex-col gap-1.5">
         <select aria-label="Text style" className={cls.select}
           value={shared === undefined ? MIXED : (shared ?? "")}

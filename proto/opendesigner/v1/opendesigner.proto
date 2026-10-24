@@ -267,6 +267,7 @@ message TextStyle {
   double horizontal_scale = 12; // glyph width multiplier; 0 = 1 (normal)
   bool no_kerning = 13;      // true switches the font's pair kerning off
   Color color = 14;          // text colour of the style; absent => the node's fill
+  string font_features = 15; // OpenType features, e.g. "liga off, onum, ss01 2": tags of 4 characters, each optionally followed by on | off | a number
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is
@@ -653,6 +654,9 @@ message TextStyleDef {
   uint32 drop_cap_lines = 18; // 0 = none, 2..10 lines tall
   uint32 drop_cap_chars = 19; // how many characters are the drop cap; 0 => 1
   repeated NestedStyle nested_styles = 20;
+  // The heading level of the paragraphs in this style: 0 = body text, 1..9 = they appear in the table of
+  // contents and give the running headers (<h1>..<h3>).
+  uint32 outline_level = 21;
 }
 
 enum ListKind {

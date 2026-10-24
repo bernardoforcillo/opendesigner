@@ -8,6 +8,9 @@ import { deriveThreads } from "./threads";
 import { taggedOf } from "./tagged";
 import { resolveTextStyleNode } from "./typography";
 import { hasRich, resolveRichNode } from "./richText";
+import { deriveTextTokens } from "./textTokens";
+import { deriveWrap } from "./wrap";
+import { deriveTextPaths } from "./textPath";
 import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "./types";
 
 // VARIABLES (design tokens) -- the TypeScript twin of internal/core/variables.go.
@@ -285,14 +288,14 @@ const resolved = new WeakMap<SceneState, SceneState>();
  */
 export function resolveScene(raw: SceneState): SceneState {
   // Threaded text flows last, over the final styles.
-  return deriveThreads(resolveBase(raw));
+  return deriveThreads(deriveTextPaths(deriveWrap(resolveBase(raw))));
 }
 
 function resolveBase(raw: SceneState): SceneState {
   // Master pages' copies first (so the passes below also see them), then live boolean groups (store/booleans.ts), then connectors (store/connectors.ts), then the
   // variables over the result.
-  const scene = deriveConnectors(deriveBooleans(deriveMasters(raw)));
-  if (Object.keys(scene.variables).length === 0 && Object.keys(scene.textStyles).length === 0) return scene;
+  const scene = deriveConnectors(deriveBooleans(deriveTextTokens(deriveMasters(raw))));
+  if (Object.keys(scene.variables).length === 0 && Object.keys(scene.textStyles).length === 0 && taggedOf(scene).bound.size === 0) return scene;
   const hit = resolved.get(scene);
   if (hit) return hit;
   let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
