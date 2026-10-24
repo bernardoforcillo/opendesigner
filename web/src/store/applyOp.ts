@@ -22,6 +22,9 @@ import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 // from the server. Shared across calls: applyOp is pure and does not mutate it.
 const NIL_PATCH: PbNode = create(NodeSchema, {});
 
+// The size-limit mask paths and the NodeLite / Node field each one writes.
+const camelLimit = { min_width: "minWidth", max_width: "maxWidth", min_height: "minHeight", max_height: "maxHeight" } as const;
+
 // applyOp is pure: it does NOT mutate state, it returns a new object. Parity with core.Apply (Go).
 //
 // After the op it re-lays out the auto layout frames it may have touched, as
@@ -142,6 +145,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (paths.includes("blend_mode") && !(p.blendMode >= 0 && p.blendMode <= 15)) return state;
       if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
       if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;
+      for (const lim of ["min_width", "max_width", "min_height", "max_height"] as const) {
+        if (paths.includes(lim) && !(Number.isFinite(p[camelLimit[lim]]) && p[camelLimit[lim]] >= 0)) return state;
+      }
+      if (paths.includes("layout_positioning") && !(p.layoutPositioning >= 0 && p.layoutPositioning <= 1)) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -224,6 +231,18 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "layout_sizing_y": {
             const c = toNodeLite(p).layoutSizingY;
             if (c) next.layoutSizingY = c; else delete next.layoutSizingY;
+            break;
+          }
+          // The limits and the positioning go through toNodeLite too: 0 / AUTO remove the field.
+          case "min_width": case "max_width": case "min_height": case "max_height": {
+            const key = camelLimit[path];
+            const v = toNodeLite(p)[key];
+            if (v) next[key] = v; else delete next[key];
+            break;
+          }
+          case "layout_positioning": {
+            const c = toNodeLite(p).layoutPositioning;
+            if (c) next.layoutPositioning = c; else delete next.layoutPositioning;
             break;
           }
           // As for "fills", the value is extracted from the patch by going through

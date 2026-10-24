@@ -45,6 +45,35 @@ extent) and the lines are `cross_spacing` apart. Hugging the cross axis fits the
 the lines; wrap is ignored when the main axis hugs. In the exported CSS it is
 `flex-wrap: wrap` with `gap: <row> <column>` (the two spacings swap with the direction).
 
+### Size limits
+
+`Node.min_width`, `max_width`, `min_height` and `max_height` (0 = no limit) bound the size the
+layout computes:
+
+- a **fixed** child is clamped to its limits (the clamped size is what is stored, so the next
+  sibling follows it);
+- **fill** children share the free space the way flexbox does: a child whose even share
+  falls outside its limits is frozen at the limit and the others share the rest, until nobody
+  violates. When a max leaves space unused, the main alignment distributes it;
+- a **hugging** auto layout frame stays within its own limits (the content may be smaller or
+  larger); an auto layout frame's own limits also bound a size typed into it;
+- wrapping frames cut their lines from the clamped sizes;
+- when `min > max` the min wins. Written with the `min_width`, `max_width`, `min_height`,
+  `max_height` mask paths (finite, >= 0; anything else rejects the op).
+
+The limits are read by the layout, so they only act on children of (and on) an auto layout
+frame; a node in a plain frame is not clamped. Removing a limit does not bring back the size
+it had before it clamped, but undo does (the inverse also writes the previous size).
+
+### Absolute children
+
+`Node.layout_positioning = ABSOLUTE` takes a child out of its auto layout parent's flow: it
+takes no room, is not hugged or aligned, ignores size limits and fill, and keeps its own x/y.
+It stays **constrained to the frame**: when the frame changes size (typed, hugging, a limit)
+the child follows by its `constraint_x`/`constraint_y`, like a child of a plain frame. Back to
+`AUTO` it rejoins the flow (undo also restores its old x/y). The mask path is
+`layout_positioning`; the exported code gives it `position: absolute` at its x/y.
+
 ## Constraints
 
 A frame **without** auto layout keeps its children where their x/y put them, and when it
@@ -73,10 +102,14 @@ clamped (`STRETCH` below zero) and the scaled (`SCALE`) cases.
 - **Properties panel**: *Constraints* (horizontal/vertical selects) for a node inside a
   frame without auto layout; *Sizing* (fixed / fill container, per axis) for a node inside
   an auto layout frame; *Wrap* and *Line spacing* in the *Auto layout* section.
+- **Properties panel, more**: in an auto layout frame, *Position* (auto / absolute; an
+  absolute node shows its constraints instead of its sizing) and *Min/Max width/height*; an
+  auto layout frame elsewhere shows *Size limits* too.
 - **Drag**: reordering a child inside an auto layout frame already worked; dragging it
   more than a margin outside its frame, over no other auto layout frame, now **takes it
   out** into the frame's parent, centered on the pointer (the row closes up).
-- **MCP**: `set_constraints`, `set_layout_sizing`; `create_frame` / `set_auto_layout` take
+- **MCP**: `set_constraints`, `set_layout_sizing`, `set_layout_limits`,
+  `set_layout_positioning` (node views report `minWidth`.., `layoutPositioning`); `create_frame` / `set_auto_layout` take
   `wrap` and `crossSpacing`; node views report `constraintX/Y` and `layoutSizingX/Y`.
 
 ## Not yet

@@ -427,17 +427,10 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			}
 		case "min_width", "max_width", "min_height", "max_height":
 			// A size limit is a finite length; 0 clears it.
-			var v float64
-			switch path {
-			case "min_width":
-				v = s.GetPatch().GetMinWidth()
-			case "max_width":
-				v = s.GetPatch().GetMaxWidth()
-			case "min_height":
-				v = s.GetPatch().GetMinHeight()
-			default:
-				v = s.GetPatch().GetMaxHeight()
-			}
+			v := map[string]float64{
+				"min_width": s.GetPatch().GetMinWidth(), "max_width": s.GetPatch().GetMaxWidth(),
+				"min_height": s.GetPatch().GetMinHeight(), "max_height": s.GetPatch().GetMaxHeight(),
+			}[path]
 			if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
 				return fmt.Errorf("%w: %s %v", ErrSizeLimit, path, v)
 			}

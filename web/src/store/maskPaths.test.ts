@@ -2,7 +2,7 @@ import { describe, it, expect } from "vitest";
 import { readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { create, toJson, fromJson, type MessageInitShape } from "@bufbuild/protobuf";
-import { OpSchema, NodeSchema, BlendMode, LayoutGridKind, Constraint, LayoutSizing, StrokeAlign, VariableType, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
+import { OpSchema, NodeSchema, BlendMode, LayoutGridKind, Constraint, LayoutSizing, LayoutPositioning, StrokeAlign, VariableType, LayoutAlign, LayoutDirection } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { applyOp } from "./applyOp";
 import { emptyScene, type NodeLite } from "./types";
@@ -301,6 +301,12 @@ const PROBE: Probe = {
   constraint_y: { patch: { constraintY: Constraint.SCALE }, expected: "scale" },
   layout_sizing_x: { patch: { layoutSizingX: LayoutSizing.FILL }, expected: "fill" },
   layout_sizing_y: { patch: { layoutSizingY: LayoutSizing.FILL }, expected: "fill" },
+  // Size limits and the opt-out of the auto layout flow: plain fields on any node.
+  min_width: { patch: { minWidth: 10 }, expected: 10 },
+  max_width: { patch: { maxWidth: 500 }, expected: 500 },
+  min_height: { patch: { minHeight: 20 }, expected: 20 },
+  max_height: { patch: { maxHeight: 600 }, expected: 600 },
+  layout_positioning: { patch: { layoutPositioning: LayoutPositioning.ABSOLUTE }, expected: "absolute" },
   // Layout grids only apply to a frame (sceneFor).
   layout_grids: {
     patch: { layoutGrids: [{ kind: LayoutGridKind.COLUMNS, count: 4, gutter: 8, margin: 16, size: 0, color: { r: 1, g: 0, b: 0, a: 0.1 } }] },

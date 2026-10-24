@@ -1,6 +1,6 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ImageScaleMode, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, ImageScaleMode, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
@@ -274,6 +274,13 @@ export interface NodeLite {
   constraintY?: ConstraintLite;
   layoutSizingX?: "fill";
   layoutSizingY?: "fill";
+  // Size limits enforced by the auto layout engine (absent = no limit) and the opt-out of the
+  // flow of an auto layout parent; see Node.min_width and Node.layout_positioning in the proto.
+  minWidth?: number;
+  maxWidth?: number;
+  minHeight?: number;
+  maxHeight?: number;
+  layoutPositioning?: "absolute";
   // Blend mode against what is behind; absent = normal.
   blendMode?: BlendModeLite;
   // A mask is not drawn: its outline clips the siblings above it. Absent = not a mask.
@@ -785,6 +792,11 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(n.constraintY !== Constraint.UNSPECIFIED ? { constraintY: CONSTRAINT_TO_LITE[n.constraintY] } : {}),
     ...(n.layoutSizingX === LayoutSizing.FILL ? { layoutSizingX: "fill" as const } : {}),
     ...(n.layoutSizingY === LayoutSizing.FILL ? { layoutSizingY: "fill" as const } : {}),
+    ...(n.minWidth ? { minWidth: n.minWidth } : {}),
+    ...(n.maxWidth ? { maxWidth: n.maxWidth } : {}),
+    ...(n.minHeight ? { minHeight: n.minHeight } : {}),
+    ...(n.maxHeight ? { maxHeight: n.maxHeight } : {}),
+    ...(n.layoutPositioning === LayoutPositioning.ABSOLUTE ? { layoutPositioning: "absolute" as const } : {}),
     ...(blendToLite(n.blendMode) ? { blendMode: blendToLite(n.blendMode) } : {}),
     ...(n.isMask ? { isMask: true as const } : {}),
     ...(n.layoutGrids.length > 0 ? { layoutGrids: n.layoutGrids.map(toLayoutGridLite) } : {}),
@@ -812,6 +824,8 @@ export function toPbNode(n: NodeLite): PbNode {
     constraintY: n.constraintY ? CONSTRAINT_TO_PB[n.constraintY] : Constraint.UNSPECIFIED,
     layoutSizingX: n.layoutSizingX === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
     layoutSizingY: n.layoutSizingY === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
+    minWidth: n.minWidth ?? 0, maxWidth: n.maxWidth ?? 0, minHeight: n.minHeight ?? 0, maxHeight: n.maxHeight ?? 0,
+    layoutPositioning: n.layoutPositioning === "absolute" ? LayoutPositioning.ABSOLUTE : LayoutPositioning.AUTO,
     blendMode: toPbBlend(n.blendMode),
     isMask: n.isMask === true,
     layoutGrids: n.layoutGrids ? toPbLayoutGrids(n.layoutGrids) : [],

@@ -1,0 +1,286 @@
+{
+ "_comment": [
+  "Size limits and absolute children of an auto layout frame: a fill child capped by max_width hands its share to the others, a min_width bigger than the share pushes the others down, a frame that hugs honours its own min_width, and an ABSOLUTE child keeps its x/y and follows the frame by its constraints. The negative limit is rejected."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "a": {
+    "height": 17.9,
+    "id": "a",
+    "layoutSizingX": "LAYOUT_SIZING_FILL",
+    "maxWidth": 40.5,
+    "name": "a",
+    "opacity": 1,
+    "orderKey": "a",
+    "parentId": "f1",
+    "rect": {},
+    "visible": true,
+    "width": 40.5,
+    "x": 3.7,
+    "y": 129.29999999999998
+   },
+   "b": {
+    "height": 12.4,
+    "id": "b",
+    "layoutPositioning": "LAYOUT_POSITIONING_ABSOLUTE",
+    "layoutSizingX": "LAYOUT_SIZING_FILL",
+    "maxHeight": 9.5,
+    "name": "b",
+    "opacity": 1,
+    "orderKey": "b",
+    "parentId": "f1",
+    "rect": {},
+    "visible": true,
+    "width": 219,
+    "x": 51.5,
+    "y": 134.79999999999998
+   },
+   "c": {
+    "height": 14.2,
+    "id": "c",
+    "layoutSizingX": "LAYOUT_SIZING_FILL",
+    "minWidth": 120.25,
+    "name": "c",
+    "opacity": 1,
+    "orderKey": "c",
+    "parentId": "f1",
+    "rect": {},
+    "visible": true,
+    "width": 445.3,
+    "x": 51.5,
+    "y": 133
+   },
+   "d": {
+    "constraintX": "CONSTRAINT_MAX",
+    "constraintY": "CONSTRAINT_STRETCH",
+    "height": 109.6,
+    "id": "d",
+    "layoutPositioning": "LAYOUT_POSITIONING_ABSOLUTE",
+    "maxHeight": 45.5,
+    "minHeight": 20,
+    "name": "d",
+    "opacity": 1,
+    "orderKey": "d",
+    "parentId": "f1",
+    "rect": {},
+    "visible": true,
+    "width": 11.1,
+    "x": 451,
+    "y": 70.25
+   },
+   "f1": {
+    "frame": {
+     "autoLayout": {
+      "crossAlign": "LAYOUT_ALIGN_END",
+      "direction": "LAYOUT_DIRECTION_HORIZONTAL",
+      "mainAlign": "LAYOUT_ALIGN_CENTER",
+      "paddingBottom": 2.9,
+      "paddingLeft": 3.7,
+      "paddingRight": 3.7,
+      "paddingTop": 2.9,
+      "spacing": 7.3
+     },
+     "clipsContent": true
+    },
+    "height": 150.1,
+    "id": "f1",
+    "minHeight": 40,
+    "minWidth": 500.5,
+    "name": "f1",
+    "opacity": 1,
+    "orderKey": "a0",
+    "parentId": "page1",
+    "visible": true,
+    "width": 500.5
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "crossAlign": "LAYOUT_ALIGN_END",
+       "direction": "LAYOUT_DIRECTION_HORIZONTAL",
+       "mainAlign": "LAYOUT_ALIGN_CENTER",
+       "paddingBottom": 2.9,
+       "paddingLeft": 3.7,
+       "paddingRight": 3.7,
+       "paddingTop": 2.9,
+       "spacing": 7.3
+      },
+      "clipsContent": true
+     },
+     "height": 100.5,
+     "id": "f1",
+     "name": "f1",
+     "opacity": 1,
+     "orderKey": "a0",
+     "parentId": "page1",
+     "visible": true,
+     "width": 300
+    }
+   },
+   "docId": "doc1",
+   "opId": "op1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 17.9,
+     "id": "a",
+     "layoutSizingX": "LAYOUT_SIZING_FILL",
+     "maxWidth": 40.5,
+     "name": "a",
+     "opacity": 1,
+     "orderKey": "a",
+     "parentId": "f1",
+     "rect": {},
+     "visible": true,
+     "width": 33.3,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op2"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 12.4,
+     "id": "b",
+     "layoutSizingX": "LAYOUT_SIZING_FILL",
+     "name": "b",
+     "opacity": 1,
+     "orderKey": "b",
+     "parentId": "f1",
+     "rect": {},
+     "visible": true,
+     "width": 20.1,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op3"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 14.2,
+     "id": "c",
+     "layoutSizingX": "LAYOUT_SIZING_FILL",
+     "minWidth": 120.25,
+     "name": "c",
+     "opacity": 1,
+     "orderKey": "c",
+     "parentId": "f1",
+     "rect": {},
+     "visible": true,
+     "width": 25.7,
+     "x": 999,
+     "y": 999
+    }
+   },
+   "docId": "doc1",
+   "opId": "op4"
+  },
+  {
+   "createNode": {
+    "node": {
+     "constraintX": "CONSTRAINT_MAX",
+     "constraintY": "CONSTRAINT_STRETCH",
+     "height": 60,
+     "id": "d",
+     "layoutPositioning": "LAYOUT_POSITIONING_ABSOLUTE",
+     "maxHeight": 45.5,
+     "minHeight": 20,
+     "name": "d",
+     "opacity": 1,
+     "orderKey": "d",
+     "parentId": "f1",
+     "rect": {},
+     "visible": true,
+     "width": 11.1,
+     "x": 250.5,
+     "y": 70.25
+    }
+   },
+   "docId": "doc1",
+   "opId": "op5"
+  },
+  {
+   "docId": "doc1",
+   "opId": "op6",
+   "setProps": {
+    "id": "f1",
+    "mask": "width,height",
+    "patch": {
+     "height": 150.1,
+     "width": 412.9
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op7",
+   "setProps": {
+    "id": "f1",
+    "mask": "minWidth,minHeight",
+    "patch": {
+     "minHeight": 40,
+     "minWidth": 500.5
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op8",
+   "setProps": {
+    "id": "a",
+    "mask": "minWidth",
+    "patch": {
+     "minWidth": -1
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op9",
+   "setProps": {
+    "id": "b",
+    "mask": "maxHeight,layoutPositioning",
+    "patch": {
+     "layoutPositioning": "LAYOUT_POSITIONING_ABSOLUTE",
+     "maxHeight": 9.5
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op10",
+   "setProps": {
+    "id": "c",
+    "mask": "layoutPositioning",
+    "patch": {
+     "layoutPositioning": "LAYOUT_POSITIONING_AUTO"
+    }
+   }
+  }
+ ],
+ "rejected": [
+  7
+ ]
+}

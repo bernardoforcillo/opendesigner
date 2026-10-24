@@ -663,6 +663,12 @@ type NodeView struct {
 	ConstraintY   string `json:"constraintY,omitempty"`
 	LayoutSizingX string `json:"layoutSizingX,omitempty" jsonschema:"fill when an auto layout parent fills its width; see set_layout_sizing"`
 	LayoutSizingY string `json:"layoutSizingY,omitempty"`
+	// Size limits and the opt-out of the auto layout flow (see set_layout_limits, set_layout_positioning).
+	MinWidth          float64 `json:"minWidth,omitempty"`
+	MaxWidth          float64 `json:"maxWidth,omitempty"`
+	MinHeight         float64 `json:"minHeight,omitempty"`
+	MaxHeight         float64 `json:"maxHeight,omitempty"`
+	LayoutPositioning string  `json:"layoutPositioning,omitempty" jsonschema:"absolute when the node is out of its auto layout parent's flow; see set_layout_positioning"`
 }
 
 // nodeKind derives the compact kind label from the shape oneof. A node with no
@@ -719,6 +725,10 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 	}
 	if n.GetLayoutSizingY() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL {
 		v.LayoutSizingY = "fill"
+	}
+	v.MinWidth, v.MaxWidth, v.MinHeight, v.MaxHeight = n.GetMinWidth(), n.GetMaxWidth(), n.GetMinHeight(), n.GetMaxHeight()
+	if n.GetLayoutPositioning() == opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
+		v.LayoutPositioning = "absolute"
 	}
 	return v
 }
@@ -877,6 +887,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerBoardTools(srv, s)
 	registerVariantTools(srv, s)
 	registerConstraintTools(srv, s)
+	registerLayoutLimitTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerDiagramTools(srv, s)
 }

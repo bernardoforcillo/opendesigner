@@ -117,11 +117,18 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // sooner or later make diverge) applyOp. Bonus: if the mask contains an
       // unsupported path, the direct op is rejected as a whole and the inverse
       // too, so the round-trip remains the identity in that case as well.
+      // The layout writes its results into the node: a size limit clamps the stored size and
+      // taking a node back into the flow overwrites its x/y, so the inverse of those paths also
+      // writes the previous size / position back (the mask only ever lists known paths).
+      const paths = [...(mask?.paths ?? [])];
+      const widen = (extra: string[]) => { for (const e of extra) if (!paths.includes(e)) paths.push(e); };
+      if (paths.some((p) => p === "min_width" || p === "max_width" || p === "min_height" || p === "max_height")) widen(["width", "height"]);
+      if (paths.includes("layout_positioning")) widen(["x", "y"]);
       const inverse = create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: {
           case: "setProps",
-          value: { id, patch: toPbNode(prev), mask: { paths: [...(mask?.paths ?? [])] } },
+          value: { id, patch: toPbNode(prev), mask: { paths } },
         },
       });
       return [inverse, ...restoreResizedDescendants(scene, op, prev)];

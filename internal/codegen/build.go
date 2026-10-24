@@ -103,7 +103,8 @@ func (c bctx) inInstance() bool { return c.idPrefix != "" }
 
 // participates: the children that the core lays out in a row (core/layout.go).
 func participates(n *opendesignerv1.Node) bool {
-	if !n.GetVisible() {
+	// An absolute child is out of the flow: position:absolute at its own x/y.
+	if !n.GetVisible() || n.GetLayoutPositioning() == opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
 		return false
 	}
 	switch n.GetShape().(type) {

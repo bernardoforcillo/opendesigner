@@ -16,7 +16,8 @@ Legend: [x] done · [ ] to do
 - [x] Auto layout: direction, spacing, padding, alignments, hug; computed by the server (Shift+A wraps the selection, Frame tool, panel, MCP `create_frame`/`set_auto_layout`)
 - [x] Auto layout: reordering by dragging children (also into another auto layout), with insertion line and outline; a single undo step
 - [x] Auto layout: children that fill the space (fill), wrapping onto several lines, dragging a child OUT of the frame, instances as children; see docs/layout.md
-- [ ] Auto layout: groups as children, min/max sizes, absolute children
+- [x] Auto layout: min/max sizes (fill children redistribute around them) and absolute children that stay constrained to the frame; see docs/layout.md
+- [ ] Auto layout: groups as children
 - [x] Constraints and responsive resize (min/max/stretch/center/scale per axis, recursive, exact undo); see docs/layout.md
 - [x] Variants and component properties: component sets with axes, instances that choose a variant, boolean (show/hide) and text properties, editor dialog and instance controls, MCP tools, exported code; see docs/components.md
 - [ ] Shared libraries across documents, instance swap, detach instance
