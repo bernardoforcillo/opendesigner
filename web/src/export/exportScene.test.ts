@@ -1,6 +1,7 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
 import { runExport, exportFileName, downloadBlob } from "./exportScene";
-import type { ExportDeps } from "./exportScene";
+import type { ExportDeps, DocumentExportDeps } from "./exportScene";
+import { runDocumentExport } from "./exportScene";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
@@ -504,5 +505,53 @@ describe("runExport — PNG and images", () => {
     expect(useScene.getState().notice).toBe(pngNotice);
     expect(await d.saved[1].blob.text()).not.toContain("<image");
     expect(crosses).toBe(1); // the PNG drew the same cross
+  });
+});
+
+describe("runDocumentExport", () => {
+  const fakeDeps = (): DocumentExportDeps & { saved: { blob: Blob; filename: string }[]; printed: unknown[][] } => {
+    const saved: { blob: Blob; filename: string }[] = [];
+    const printed: unknown[][] = [];
+    return {
+      saved, printed,
+      measure: (s) => s.length * 10,
+      download: (blob, filename) => { saved.push({ blob, filename }); },
+      printPages: (pages) => { printed.push(pages); },
+      now: () => new Date("2026-01-01T00:00:00Z"),
+    };
+  };
+
+  function twoPages(): SceneState {
+    const s = sceneWith("Book", node({ id: "a", parentId: "page1", width: 100, height: 50 }), node({ id: "b", parentId: "p2", width: 30, height: 40 }));
+    s.pages = [...s.pages, { id: "p2", name: "Second" }];
+    return s;
+  }
+
+  it("prints every non-empty page with its own size", async () => {
+    install(twoPages());
+    const d = fakeDeps();
+    expect(await runDocumentExport("pdf", d)).toBe(true);
+    expect(d.printed).toHaveLength(1);
+    expect(d.printed[0].map((p) => [(p as { width: number }).width, (p as { height: number }).height])).toEqual([[100, 50], [30, 40]]);
+  });
+
+  it("downloads an EPUB with one spine item per page", async () => {
+    install(twoPages());
+    const d = fakeDeps();
+    expect(await runDocumentExport("epub", d)).toBe(true);
+    expect(d.saved[0].filename).toBe("Book.epub");
+    const text = new TextDecoder().decode(new Uint8Array(await d.saved[0].blob.arrayBuffer()));
+    expect(text).toContain("page-001.xhtml");
+    expect(text).toContain("page-002.xhtml");
+    expect(text).toContain("Second");
+  });
+
+  it("skips empty pages and refuses an entirely empty document", async () => {
+    const empty = sceneWith("E");
+    install(empty);
+    const d = fakeDeps();
+    expect(await runDocumentExport("epub", d)).toBe(false);
+    expect(useScene.getState().notice).toMatch(/every page is empty/);
+    expect(d.saved).toHaveLength(0);
   });
 });

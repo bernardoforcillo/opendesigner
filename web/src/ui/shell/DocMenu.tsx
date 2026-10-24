@@ -8,6 +8,8 @@ import { useTheme } from "./theme";
 import { useDocNameEditing } from "./DocName";
 import { pickSvgFile } from "../../tools/svgImport";
 import { importFigFile, pickFigFile } from "../../fig/importFig";
+import { importPdfFile, pickPdfFile } from "../../pdf/importPdf";
+import { runDocumentExport } from "../../export/exportScene";
 import { DiagramDialog } from "../DiagramDialog";
 import { VariablesDialog } from "../VariablesDialog";
 import { FontsDialog } from "../FontsDialog";
@@ -71,6 +73,16 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               useScene.setState({ notice: r.ok ? `${r.message}${left}` : `.fig import failed: ${r.message}` });
             });
           }
+          else if (k === "import-pdf") {
+            void pickPdfFile().then(async (f) => {
+              if (!f) return;
+              useScene.setState({ notice: `Importing ${f.name}…` });
+              const r = await importPdfFile(f);
+              useScene.setState({ notice: r.ok ? r.message : `PDF import failed: ${r.message}` });
+            });
+          }
+          else if (k === "export-pdf") void runDocumentExport("pdf");
+          else if (k === "export-epub") void runDocumentExport("epub");
           else if (k === "diagram") setDiagramOpen(true);
           else if (k === "variables") setVariablesOpen(true);
           else if (k === "fonts") setFontsOpen(true);
@@ -96,6 +108,15 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuItem>
               <MenuItem id="import-fig" className={ITEM}>
                 <Icon name="image" size={14} /> Import .fig file… <span className="ml-auto text-[11px] text-fg-subtle">experimental</span>
+              </MenuItem>
+              <MenuItem id="import-pdf" className={ITEM}>
+                <Icon name="page" size={14} /> Import PDF… <span className="ml-auto text-[11px] text-fg-subtle">one page per PDF page</span>
+              </MenuItem>
+              <MenuItem id="export-pdf" className={ITEM}>
+                <Icon name="download" size={14} /> Export all pages as PDF…
+              </MenuItem>
+              <MenuItem id="export-epub" className={ITEM}>
+                <Icon name="download" size={14} /> Export all pages as EPUB
               </MenuItem>
               <MenuItem id="diagram" className={ITEM}>
                 <Icon name="plus" size={14} /> Diagram (Mermaid, UML)…
