@@ -68,7 +68,7 @@ export function StylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpen
 
   const patchStyle = (patch: Partial<TextStyleLite>) => cur && save({ ...cur, style: { ...cur.style, ...patch } });
   const patchDef = (patch: Partial<TextStyleDefLite>) => cur && save({ ...cur, ...patch });
-  const choices = scene ? familyChoices(scene) : [];
+  const choices = isOpen && scene ? familyChoices(scene) : [];
   const bases = all.filter((d) => cur && d.id !== cur.id && (d.kind === "character") === isChar);
 
   return (

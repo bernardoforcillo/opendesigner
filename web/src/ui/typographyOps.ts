@@ -19,7 +19,7 @@ export const BUILTIN_FAMILIES: readonly { label: string; value: string }[] = [
 
 /** The family choices for a picker: the built-in stacks, then each uploaded family once. */
 export function familyChoices(scene: SceneState): { label: string; value: string }[] {
-  const uploaded = [...new Set(Object.values(scene.fonts).map((f) => f.family))].sort((a, b) => a.localeCompare(b));
+  const uploaded = [...new Set(Object.values(scene.fonts ?? {}).map((f) => f.family))].sort((a, b) => a.localeCompare(b));
   return [...BUILTIN_FAMILIES, ...uploaded.map((family) => ({ label: family, value: family }))];
 }
 
