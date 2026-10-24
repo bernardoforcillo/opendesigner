@@ -115,7 +115,7 @@ export function swapInstance(state: SceneState, id: string, componentId: string)
   const old = n?.instance;
   if (!n || !old) return null;
   const base = state.components[componentId];
-  if (!base) return null;
+  if (!base || instanceCycle(state, id, componentId)) return null;
   let next: InstanceLite;
   if (componentId === old.componentId) {
     next = { ...old, overrides: [...old.overrides] };

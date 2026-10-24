@@ -33,6 +33,7 @@ import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsO
 import { subtreeOf, topmostOf } from "../store/tree";
 import { groupOps, ungroupOps } from "./grouping";
 import { wrapSelectionInFrame } from "./wrapFrame";
+import { detachSelectedInstances } from "./instanceActions";
 import { computeLayoutDrop, layoutDropOps, reorderableParent, type LayoutDrop } from "./layoutDrop";
 import { makeCreateComponentOp, makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp, uuid } from "./ops";
 import type { SceneState } from "../store/types";
@@ -946,6 +947,14 @@ export function createSelectTool(): Tool {
         e.preventDefault();
         cancelActiveGesture();
         wrapSelectionInFrame(wrapAuto);
+        return;
+      }
+      // Ctrl/Cmd+Alt+B detaches the selected instances into plain nodes (e.code: with Alt
+      // held many layouts map "b" to another character).
+      if ((e.ctrlKey || e.metaKey) && e.altKey && e.code === "KeyB") {
+        e.preventDefault();
+        cancelActiveGesture();
+        detachSelectedInstances();
         return;
       }
       if ((e.ctrlKey || e.metaKey) && e.key.toLowerCase() === "g") {

@@ -89,10 +89,43 @@ sides, rejections included.
   `delete_component_set`, `set_component_def`, `set_instance_props`;
   `list_components` and `get_document` include the set, variant and properties.
 
+## Swap, reset, detach, go to main component
+
+One more op, **`SetInstance { instance_id, instance }` (70)**, replaces an instance's whole
+payload (component, overrides, property values, variant choice); its inverse is the previous
+payload. The node's own transform is untouched, so a swap also writes the new size with a
+`SetProperties`. It is validated like the rest: the component and its master exist, every
+override names a node of that master (or of a variant of its set) and overrides something,
+the property values and variant choice are valid for the component it resolves to, and the
+instance may not show a component that contains it (directly, through nested instances or
+through the variants of a set).
+
+- **Swap** (`SwapInstance` in `internal/core/instances.go`, `swapInstance` in
+  `web/src/store/instanceOps.ts`): the instance points at another component and keeps what
+  still fits. Overrides follow the layers the two masters have in common (same kind and name
+  at the same place among the siblings, from the roots down; a text override only on a text
+  layer); property values stay when the new component defines a property of that name and type
+  and the value is valid; variant choices stay when the new component's set has that axis and
+  option. The instance takes the new master's size.
+- **Reset**: *all* is a `SetInstance` with the lists emptied (same component); *one layer* is
+  the existing `SetInstanceOverride` with nothing present.
+- **Detach** has no op of its own: the instance is deleted and the master it renders (the
+  variant it chose) is copied in its place under the **same id**, with overrides baked in (text,
+  fills), boolean properties that were off as hidden nodes, number properties written into the
+  nodes, swap properties applied to the nested instances. The new root keeps the instance's
+  name, place, size, layout settings and mode pins; nested instances stay instances. As it is a
+  delete plus creates, flow transitions that pointed at the instance go with the old node.
+- **Go to main component**: selects the master's root, switching to its page.
+
+In the editor: the *Instance* section of the properties panel (component select, one *Reset*
+per override, *Reset all changes*, *Detach instance*, *Go to main component*) and Ctrl/Cmd+Alt+B
+for detach; each is one gesture, one undo step. MCP: `swap_instance`, `reset_instance_overrides`,
+`detach_instance`, `get_main_component`.
+
 ## Not yet
 
 - Instance-swap and number properties, and properties that set fills or sizes.
 - Shared libraries across documents.
-- Detaching an instance (turning it into plain nodes) and pushing overrides back to
-  the master.
+- Pushing overrides back to the master.
+- A context menu for the instance commands (the editor has none yet).
 - Per-variant property defaults beyond what each variant defines for itself.

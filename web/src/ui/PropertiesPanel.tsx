@@ -21,6 +21,7 @@ import { VariablesSection } from "./VariablesSection";
 import { boundColor } from "./variableOps";
 import { TypographyControls } from "./TypographyControls";
 import { InstanceControls } from "./InstanceControls";
+import { InstanceActions } from "./InstanceActions";
 import { LayoutRelationControls } from "./LayoutRelationControls";
 import { effectiveStyle, styleOps } from "./typographyOps";
 import type { IconName } from "./ds";
@@ -1038,6 +1039,7 @@ export function PropertiesPanel() {
       <EffectsControls run={runGesture} />
 
       {/* VARIANTS and PROPERTIES of a single selected instance (renders nothing otherwise). */}
+      <InstanceActions />
       <InstanceControls />
 
       {/* OVERRIDE: only for a SINGLE selected instance. Every row is a node
