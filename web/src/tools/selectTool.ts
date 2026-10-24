@@ -673,7 +673,7 @@ export function createSelectTool(): Tool {
         resizeStartFrame = frameOfSelection(ctx);
         resizeStartNodes = start;
         resizeStartVectors = startVectors;
-        resizeTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, store.selection)));
+        resizeTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, store.selection), store.currentPageId));
         resizeStarted = false;
         setCursor(ctx, cursorForHandle(overlay.handle));
         return;
@@ -782,7 +782,7 @@ export function createSelectTool(): Tool {
       // It is the selection BOX that snaps, not the individual nodes: with a
       // multiple selection each node pulled by its own guide would break it apart.
       dragBox = selectionWorldBounds(scene, selection);
-      dragTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, selection)));
+      dragTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, selection), useScene.getState().currentPageId));
     },
 
     onPointerMove(e, ctx) {

@@ -3,7 +3,7 @@ import { useScene } from "../store/store";
 import { fontString } from "../renderer/text";
 import { assetUrl } from "../rpc/assets";
 import type { ImageSource } from "../renderer/canvasRenderer";
-import type { NodeLite, SceneState } from "../store/types";
+import type { NodeLite, PageLite, SceneState } from "../store/types";
 import { NodeMap } from "../store/nodeMap";
 import { isReachableFrom } from "../store/tree";
 import { exportRegion, type ExportRegion, type ExportScope } from "./region";
@@ -88,6 +88,14 @@ export function exportFileName(docName: string, req: ExportRequest): string {
   const scope = req.scope === "selection" ? "-selection" : "";
   const scale = req.format === "png" && req.scale !== 1 ? `@${req.scale}x` : "";
   return `${base}${scope}${scale}.${req.format}`;
+}
+
+/** The sheet of a sized page as a rectangle at the origin, or null for an unbounded page. */
+export function sheetOf(page: PageLite | undefined, bleed = false): { x: number; y: number; width: number; height: number } | null {
+  const w = page?.width ?? 0, h = page?.height ?? 0;
+  if (!(w > 0) || !(h > 0)) return null;
+  const b = bleed ? page?.bleed ?? 0 : 0;
+  return { x: -b, y: -b, width: w + 2 * b, height: h + 2 * b };
 }
 
 /** `scene` reduced to the nodes that hang from page `pageId` (master copies included). */
@@ -365,7 +373,9 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
     // export can fail, and it goes through the channel of all the others.
     const measure = deps.measure ?? canvasMeasure(createCanvas);
 
-    const region = exportRegion(scene, selection, req.scope, measure);
+    // A sized page exports as its sheet (see PageSetupDialog); an unbounded one as what is drawn on it.
+    const page = resolved.pages.find((p) => p.id === (currentPageId ?? resolved.pages[0]?.id));
+    const region = exportRegion(scene, selection, req.scope, measure, sheetOf(page));
     if (!region) {
       useScene.setState({ notice: req.scope === "selection" ? NOTHING_SELECTED : EMPTY_PAGE });
       return false;
@@ -415,6 +425,8 @@ export function documentFileName(docName: string, format: DocumentExportFormat):
 export async function runDocumentExport(
   format: DocumentExportFormat,
   deps: DocumentExportDeps = {},
+  // `bleed`: for a PDF going to a printer, each sheet is exported with its bleed area around it.
+  opts: { bleed?: boolean } = {},
 ): Promise<boolean> {
   const { scene: raw } = useScene.getState();
   if (!raw) return false;
@@ -425,7 +437,7 @@ export async function runDocumentExport(
     // Master pages are templates, not pages of the output: their content already shows through
     // the pages that apply them.
     for (const page of scene.pages.filter((p) => !p.isMaster)) {
-      const region = exportRegion(onPage(scene, page.id), [], "page", measure);
+      const region = exportRegion(onPage(scene, page.id), [], "page", measure, sheetOf(page, opts.bleed === true && format === "pdf"));
       if (region) pages.push({ name: page.name, svg: "", width: region.bounds.width, height: region.bounds.height, region });
     }
     if (pages.length === 0) {

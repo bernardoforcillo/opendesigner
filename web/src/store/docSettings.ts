@@ -1,4 +1,5 @@
 import type { DocSettingsLite, PageLite, SceneState, Vertical } from "./types";
+import type { Bounds } from "../canvas/geometry";
 
 // DOCUMENT SETTINGS and PAGE SETUP -- the twin of internal/core/docsettings.go (Go is the authority).
 //
@@ -89,5 +90,36 @@ export function setupOf(p: PageLite | undefined): PageSetupFields {
   for (const k of ["width", "height", "marginTop", "marginRight", "marginBottom", "marginLeft", "columns", "gutter", "bleed"] as const) {
     if (p[k]) out[k] = p[k];
   }
+  return out;
+}
+
+/** Most baseline lines ever produced (a 1 px grid on a long page would otherwise make thousands of snap targets). */
+export const MAX_BASELINE_LINES = 800;
+
+/** The y of each baseline grid line over a sheet of `height` (the page's, or `fallback` for an unbounded page). */
+export function baselineLines(settings: DocSettingsLite | undefined, height: number): number[] {
+  const inc = settings?.baselineIncrement ?? 0;
+  if (!(inc > 0) || !(height > 0)) return [];
+  const out: number[] = [];
+  for (let y = settings?.baselineStart ?? 0, i = 0; y <= height && i < MAX_BASELINE_LINES; y += inc, i++) out.push(y);
+  return out;
+}
+
+/**
+ * The guides of a sized page as degenerate boxes (a line is a box of zero width or height), the form the
+ * snap targets take: the sheet's edges, the margins, the edges of every column and the baseline grid.
+ */
+export function pageGuideBoxes(page: PageLite | undefined, settings: DocSettingsLite | undefined): Bounds[] {
+  const w = page?.width ?? 0, h = page?.height ?? 0;
+  if (!page || !(w > 0) || !(h > 0)) return [];
+  const area = pageTextArea(page);
+  const v = (x: number, y: number, height: number): Bounds => ({ x, y, width: 0, height });
+  const hz = (x: number, y: number, width: number): Bounds => ({ x, y, width, height: 0 });
+  const out: Bounds[] = [v(0, 0, h), v(w, 0, h), hz(0, 0, w), hz(0, h, w)];
+  if (area.x > 0 || area.y > 0 || area.width < w || area.height < h) {
+    out.push(v(area.x, area.y, area.height), v(area.x + area.width, area.y, area.height), hz(area.x, area.y, area.width), hz(area.x, area.y + area.height, area.width));
+  }
+  for (const c of pageColumns(page)) out.push(v(c.x, area.y, area.height), v(c.x + c.width, area.y, area.height));
+  for (const y of baselineLines(settings, h)) out.push(hz(0, y, w));
   return out;
 }

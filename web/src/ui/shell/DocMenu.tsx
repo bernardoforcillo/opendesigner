@@ -14,11 +14,15 @@ import { DiagramDialog } from "../DiagramDialog";
 import { VariablesDialog } from "../VariablesDialog";
 import { FontsDialog } from "../FontsDialog";
 import { StylesDialog } from "../StylesDialog";
+import { PageSetupDialog } from "../PageSetupDialog";
 import { VersionsDialog } from "../VersionsDialog";
 import { PluginsDialog } from "../PluginsDialog";
 import { ShareDialog } from "../ShareDialog";
 import { BoardDialog } from "../BoardDialog";
 import { useAppNavigate } from "../../home/nav";
+import { verticalOf } from "../../store/docSettings";
+import { makeSetDocSettingsOp } from "../../tools/ops";
+import { menuShows, VERTICAL_LIST } from "../../verticals";
 
 // THE DOCUMENT MENU: the logo is the button. Inside: Home, new document,
 // rename, theme, renderer. The document name and the panel buttons sit
@@ -50,10 +54,14 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [variablesOpen, setVariablesOpen] = useState(false);
   const [fontsOpen, setFontsOpen] = useState(false);
   const [stylesOpen, setStylesOpen] = useState(false);
+  const [pageSetupOpen, setPageSetupOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  // What this kind of document needs: entries of other kinds of work are tucked away, not removed.
+  const vertical = useScene((s) => verticalOf(s.scene));
+  const show = (id: string) => menuShows(vertical, id);
   return (
     <>
     <MenuTrigger isOpen={open} onOpenChange={setOpen}>
@@ -84,6 +92,8 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
             });
           }
           else if (k === "export-pdf") void runDocumentExport("pdf");
+          else if (k === "export-pdf-bleed") void runDocumentExport("pdf", {}, { bleed: true });
+          else if (k === "page-setup") setPageSetupOpen(true);
           else if (k === "export-epub") void runDocumentExport("epub");
           else if (k === "diagram") setDiagramOpen(true);
           else if (k === "variables") setVariablesOpen(true);
@@ -93,6 +103,13 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "plugins") setPluginsOpen(true);
           else if (k === "share") setShareOpen(true);
           else if (k === "board") setBoardOpen(true);
+          else if (typeof k === "string" && k.startsWith("vertical:")) {
+            const v = k.slice("vertical:".length) as (typeof VERTICAL_LIST)[number]["id"];
+            const st = useScene.getState();
+            const cur = st.scene?.settings ?? {};
+            st.beginGesture();
+            st.endGesture([makeSetDocSettingsOp({ ...cur, vertical: v === "product" ? undefined : v })]);
+          }
           else if (k === "pixel-snap") useViewPrefs.getState().cyclePixelSnap();
           else if (k === "renderer") setRenderer(renderer === "gpu" ? "cpu" : "gpu");
           else if (k === "system" || k === "light" || k === "dark") setTheme(k);
@@ -109,9 +126,11 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="import-svg" className={ITEM}>
                 <Icon name="image" size={14} /> Import SVG…
               </MenuItem>
-              <MenuItem id="import-fig" className={ITEM}>
+              {show("import-fig") && (
+                <MenuItem id="import-fig" className={ITEM}>
                 <Icon name="image" size={14} /> Import .fig file… <span className="ml-auto text-[11px] text-fg-subtle">experimental</span>
               </MenuItem>
+              )}
               <MenuItem id="import-pdf" className={ITEM}>
                 <Icon name="page" size={14} /> Import PDF… <span className="ml-auto text-[11px] text-fg-subtle">editable text and shapes</span>
               </MenuItem>
@@ -121,18 +140,34 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="export-pdf" className={ITEM}>
                 <Icon name="download" size={14} /> Export all pages as PDF…
               </MenuItem>
-              <MenuItem id="export-epub" className={ITEM}>
-                <Icon name="download" size={14} /> Export all pages as EPUB
-              </MenuItem>
+              {show("export-pdf-bleed") && (
+                <MenuItem id="export-pdf-bleed" className={ITEM}>
+                  <Icon name="download" size={14} /> Export PDF for print (with bleed)…
+                </MenuItem>
+              )}
+              {show("export-epub") && (
+                <MenuItem id="export-epub" className={ITEM}>
+                  <Icon name="download" size={14} /> Export all pages as EPUB
+                </MenuItem>
+              )}
+              {show("page-setup") && (
+                <MenuItem id="page-setup" className={ITEM}>
+                  <Icon name="page" size={14} /> Page setup…
+                </MenuItem>
+              )}
               <MenuItem id="diagram" className={ITEM}>
                 <Icon name="plus" size={14} /> Diagram (Mermaid, UML)…
               </MenuItem>
-              <MenuItem id="board" className={ITEM}>
+              {show("board") && (
+                <MenuItem id="board" className={ITEM}>
                 <Icon name="plus" size={14} /> Whiteboard (sticky, table, kanban…)…
               </MenuItem>
-              <MenuItem id="variables" className={ITEM}>
+              )}
+              {show("variables") && (
+                <MenuItem id="variables" className={ITEM}>
                 <Icon name="plus" size={14} /> Variables…
               </MenuItem>
+              )}
               <MenuItem id="fonts" className={ITEM}>
                 <Icon name="plus" size={14} /> Fonts…
               </MenuItem>
@@ -145,9 +180,11 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="share" className={ITEM}>
                 <Icon name="share" size={14} /> Share…
               </MenuItem>
-              <MenuItem id="plugins" className={ITEM}>
+              {show("plugins") && (
+                <MenuItem id="plugins" className={ITEM}>
                 <Icon name="code" size={14} /> Plugins…
               </MenuItem>
+              )}
               <Separator className="my-1 h-px bg-line" />
               <MenuItem id="pixel-snap" className={ITEM}>
                 <Icon name="plus" size={14} /> Pixel snap {pixelSnap > 0 ? `${pixelSnap} px` : "off"}
@@ -157,6 +194,16 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                 <Icon name="bolt" size={14} /> Renderer {renderer === "gpu" ? "GPU" : "CPU"}
                 <span className="ml-auto text-[11px] text-fg-subtle">switch to {renderer === "gpu" ? "CPU" : "GPU"}</span>
               </MenuItem>
+              <Separator className="my-1 h-px bg-line" />
+              <MenuSection>
+              <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Document type</Header>
+              {VERTICAL_LIST.map((v) => (
+                <MenuItem key={v.id} id={`vertical:${v.id}`} className={ITEM}>
+                  <Icon name={v.icon} size={14} /> {v.name}
+                  {vertical === v.id && <Icon name="check" size={14} className="ml-auto text-accent" />}
+                </MenuItem>
+              ))}
+              </MenuSection>
               <Separator className="my-1 h-px bg-line" />
               <MenuSection>
               <Header className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Theme</Header>
@@ -174,6 +221,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <VariablesDialog isOpen={variablesOpen} onOpenChange={setVariablesOpen} />
     <FontsDialog isOpen={fontsOpen} onOpenChange={setFontsOpen} />
     <StylesDialog isOpen={stylesOpen} onOpenChange={setStylesOpen} />
+    <PageSetupDialog isOpen={pageSetupOpen} onOpenChange={setPageSetupOpen} />
     <VersionsDialog isOpen={versionsOpen} onOpenChange={setVersionsOpen} />
     <PluginsDialog isOpen={pluginsOpen} onOpenChange={setPluginsOpen} />
     <ShareDialog isOpen={shareOpen} onOpenChange={setShareOpen} />

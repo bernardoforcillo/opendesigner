@@ -7,6 +7,8 @@ import { DocMenu } from "./DocMenu";
 import { DocName } from "./DocName";
 import { usePanels } from "./panels";
 import { useFlowUi, type EditorMode } from "../../store/flowUi";
+import { verticalOf } from "../../store/docSettings";
+import { verticalDef } from "../../verticals";
 
 // THE TOP BAR: document identity, mode, people and status -- the
 // things that concern THE DOCUMENT, not the hand on the canvas (that stays in the
@@ -36,6 +38,10 @@ export function TopBar({
 }) {
   const zoom = useScene((s) => s.camera.zoom);
   const accessRole = useAccess((s) => s.role);
+  const vertical = useScene((s) => verticalOf(s.scene));
+  const def = verticalDef(vertical);
+  // Only the modes this kind of document needs (a book has no flows to connect).
+  const modes = MODES.filter(([id]) => def.modes.includes(id));
   const left = usePanels((s) => s.left);
   const right = usePanels((s) => s.right);
   const dot =
@@ -60,7 +66,9 @@ export function TopBar({
           useFlowUi.getState().setMode((keys.values().next().value as EditorMode | undefined) ?? "design");
         }}
       >
-        {MODES.map(([id, label, icon, key, hint]) => (
+        {modes.map(([id, defaultLabel, icon, key, hint]) => {
+          const label = def.modeLabels[id] ?? defaultLabel;
+          return (
           <TooltipTrigger key={id} delay={300} closeDelay={0}>
             <ToggleButton
               id={id}
@@ -80,7 +88,8 @@ export function TopBar({
               <Kbd inverted>{key}</Kbd>
             </Tooltip>
           </TooltipTrigger>
-        ))}
+          );
+        })}
       </ToggleButtonGroup>
       </span>
       <span className="flex min-w-0 items-center justify-center gap-2">

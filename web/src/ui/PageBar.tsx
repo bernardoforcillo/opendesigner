@@ -4,6 +4,7 @@ import { Button, Icon, IconButton, cls } from "./ds";
 import { useScene } from "../store/store";
 import { makeCreatePageWithMasterOp, makeDeletePageOp, makeRenamePageOp, makeUpdatePageOp, uuid } from "../tools/ops";
 import { regularPages } from "../store/masters";
+import { PageSetupDialog } from "./PageSetupDialog";
 import { setupOf } from "../store/docSettings";
 import type { PageLite } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -124,6 +125,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   const current = pages.find((p) => p.id === currentPageId) ?? pages[0];
   const pageLabel = (name: string) => (name.trim() !== "" ? name : "Unnamed page");
 
+  const [setupOpen, setSetupOpen] = useState(false);
   const masters = pages.filter((p) => p.isMaster);
   const normal = pages.filter((p) => !p.isMaster);
 
@@ -323,6 +325,13 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                   Add a page
                 </Button>
                 <Button
+                  onPress={() => { setOpen(false); setSetupOpen(true); }}
+                  className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
+                >
+                  <Icon name="page" size={13} />
+                  Page setup…
+                </Button>
+                <Button
                   onPress={createMaster}
                   className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
                 >
@@ -334,6 +343,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
           </Popover>
         </DialogTrigger>
       )}
+      <PageSetupDialog isOpen={setupOpen} onOpenChange={setSetupOpen} />
       {!compact && <IconButton icon="plus" label="New page" onPress={createPage} />}
       {!compact && (
         <IconButton

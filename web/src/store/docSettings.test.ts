@@ -93,3 +93,37 @@ describe("page setup", () => {
     expect(setupOf(undefined)).toEqual({});
   });
 });
+
+import { baselineLines, MAX_BASELINE_LINES, pageGuideBoxes } from "./docSettings";
+import { snapTargets } from "../selection/snap";
+
+describe("page guides", () => {
+  const page = { id: "p", name: "p", width: 400, height: 600, marginTop: 50, marginBottom: 50, marginLeft: 40, marginRight: 40, columns: 2, gutter: 20 };
+
+  it("lists the baseline lines from the start down the sheet", () => {
+    expect(baselineLines({ baselineIncrement: 100, baselineStart: 50 }, 600)).toEqual([50, 150, 250, 350, 450, 550]);
+    expect(baselineLines(undefined, 600)).toEqual([]);
+    expect(baselineLines({ baselineIncrement: 10 }, 0)).toEqual([]);
+    expect(baselineLines({ baselineIncrement: 0.5 }, 1e6)).toHaveLength(MAX_BASELINE_LINES);
+  });
+
+  it("offers the sheet, margins, columns and baselines as degenerate boxes", () => {
+    const boxes = pageGuideBoxes(page, { baselineIncrement: 200, baselineStart: 100 });
+    const vertical = boxes.filter((b) => b.width === 0).map((b) => b.x).sort((a, b) => a - b);
+    const horizontal = boxes.filter((b) => b.height === 0).map((b) => b.y).sort((a, b) => a - b);
+    // Sheet edges 0 and 400, margins 40 and 360, the two columns' edges 40, 190, 210, 360.
+    expect(new Set(vertical)).toEqual(new Set([0, 400, 40, 360, 190, 210]));
+    // Sheet 0 and 600, margins 50 and 550, baselines 100, 300, 500.
+    expect(new Set(horizontal)).toEqual(new Set([0, 600, 50, 550, 100, 300, 500]));
+    expect(pageGuideBoxes({ id: "p", name: "p" }, { baselineIncrement: 10 })).toEqual([]);
+    expect(pageGuideBoxes(undefined, undefined)).toEqual([]);
+  });
+
+  it("makes the guides of the current page snap targets", () => {
+    const s = { ...emptyScene("d", "d"), pages: [page, { id: "free", name: "free" }], settings: { baselineIncrement: 200 } };
+    const onPage = snapTargets(s, [], "p");
+    expect(onPage.some((b) => b.width === 0 && b.x === 190)).toBe(true);
+    expect(onPage.some((b) => b.height === 0 && b.y === 200)).toBe(true);
+    expect(snapTargets(s, [], "free")).toEqual([]);
+  });
+});

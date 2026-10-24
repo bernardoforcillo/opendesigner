@@ -50,6 +50,8 @@ import { ShipPanel } from "./dev/ShipPanel";
 import { TimelinePanel } from "./timeline/TimelinePanel";
 import { useTimeline } from "../animation/timelineStore";
 import { posedScene } from "../animation/posedScene";
+import { verticalOf } from "../store/docSettings";
+import { modeFor } from "../verticals";
 import { attachTimelineShortcuts } from "./timeline/shortcuts";
 import { resolveFlow, useFlowUi, type EditorMode } from "../store/flowUi";
 import { drawFlows } from "../renderer/flowRenderer";
@@ -452,7 +454,8 @@ export function App() {
           // While the clip PLAYS the handles are not drawn: they would sit on
           // a geometry that changes every frame (and the animated scale is not in the
           // selection box). Paused or scrubbing they follow the posed geometry.
-          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview);
+          const pageNow = scene.pages.find((p) => p.id === useScene.getState().currentPageId) ?? scene.pages[0];
+          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview, pageNow ? { page: pageNow, settings: scene.settings } : null);
           const peers = usePresence.getState().peers;
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);
@@ -601,6 +604,14 @@ export function App() {
     // chooseTool writes a ref and a setState: stable enough.
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, []);
+
+  // A document of a vertical only has its modes (a book has no flows): if the one on screen is not
+  // among them -- the document was just opened, or its vertical changed -- go to the vertical's first.
+  const vertical = useScene((s) => verticalOf(s.scene));
+  useEffect(() => {
+    const wanted = modeFor(vertical, useFlowUi.getState().mode);
+    if (wanted !== useFlowUi.getState().mode) useFlowUi.getState().setMode(wanted);
+  }, [vertical, mode]);
 
   // Leaving Flows brings the tool back to "Select" if it was "Connect"; entering
   // Flows does so if it was a drawing tool: nothing is drawn in flows.

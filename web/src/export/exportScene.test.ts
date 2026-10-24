@@ -604,3 +604,32 @@ describe("threaded text frames in the export", () => {
     expect(svg).toContain(">cccc dddd<");
   });
 });
+
+describe("sized pages in the export", () => {
+  function sheetScene(): SceneState {
+    const s = sceneWith("Book", node({ id: "a", parentId: "page1", x: 50, y: 60, width: 10, height: 10 }), node({ id: "off", parentId: "page1", x: 900, y: 900, width: 10, height: 10 }));
+    s.pages = [{ id: "page1", name: "One", width: 400, height: 600, bleed: 9 }, { id: "p2", name: "Empty sheet", width: 400, height: 600, bleed: 9 }, { id: "free", name: "Free" }];
+    return s;
+  }
+
+  it("exports a sized page as its sheet, cropping what lies outside and not its bounding box", async () => {
+    install(sheetScene());
+    useScene.setState({ currentPageId: "page1" });
+    const d = deps();
+    expect(await runExport({ format: "svg", scope: "page", scale: 1 }, d)).toBe(true);
+    const svg = await d.saved[0].blob.text();
+    expect(svg).toContain('viewBox="0 0 400 600"');
+  });
+
+  it("keeps an empty sheet as a page of the document export, and adds the bleed for print", async () => {
+    install(sheetScene());
+    const printed: { svg: string; width: number; height: number }[][] = [];
+    const printPages = (p: { svg: string; width: number; height: number }[]) => { printed.push(p); };
+    expect(await runDocumentExport("pdf", { measure: (t) => t.length * 10, printPages })).toBe(true);
+    // Two sheets (the empty one counts); the unbounded page is empty and is left out.
+    expect(printed[0].map((p) => [p.width, p.height])).toEqual([[400, 600], [400, 600]]);
+    expect(await runDocumentExport("pdf", { measure: (t) => t.length * 10, printPages }, { bleed: true })).toBe(true);
+    expect(printed[1].map((p) => [p.width, p.height])).toEqual([[418, 618], [418, 618]]);
+    expect(printed[1][0].svg).toContain('viewBox="-9 -9 418 618"');
+  });
+});
