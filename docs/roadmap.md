@@ -58,6 +58,11 @@ Legend: [x] done · [ ] to do
 
 ## 1d. Publishing (InDesign parity)
 
+Verticals (docs/publishing.md): a document is for publishing, design or design × development, and the editor, the Home and the templates follow.
+- [x] Verticals per document (publishing, design, design × development): modes, menu, Home and templates; document type switch
+- [x] Publishing templates (book, magazine, report) and design templates (poster, brand sheet); Pages panel with thumbnails
+
+
 Multi-page documents, long text and print output. Already there: pages, layout grids (columns, rows), uploaded fonts and shared text styles, PDF import with editable text, PDF/EPUB export of all pages (docs/pdf-epub.md).
 
 Pages and structure
@@ -65,7 +70,8 @@ Pages and structure
 - [ ] Facing pages and spreads, page numbering styles
 - [x] Master pages: template pages drawn behind the pages that apply them, `<#>` page-number token, editor, MCP (`update_page`), export; see docs/master-pages.md
 - [ ] Master pages: overrides per page, left/right masters, a master based on another, section markers
-- [ ] Pages panel: reorder, duplicate, insert, sections with their own numbering
+- [x] Pages panel with thumbnails (open, add page / master, setup)
+- [ ] Pages panel: reorder, duplicate, sections with their own numbering
 - [x] Page size, margins, columns, gutter and bleed per page (Page setup…), drawn on the sheet, snapped to, and exported as the sheet; PDF for print with bleed
 - [ ] Slug areas, guides per page / spread, different margins for left and right pages
 - [ ] Layers shared across pages

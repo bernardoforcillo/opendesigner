@@ -30,7 +30,7 @@ const LOREM = [
   "A good page is quiet. The reader should notice the words, not the machinery. Leading that breathes, a measure that is neither too wide nor too narrow, margins that give the text room to be read.",
 ];
 
-class Pager {
+export class Pager {
   readonly b: DocBuilder;
   readonly pages: PageLite[] = [];
   constructor(readonly firstPageId: string, readonly newId: IdGen) {
@@ -86,7 +86,8 @@ function styles(newId: IdGen, o: { bodySize: number; bodyLeading: number; headSi
   const folio: TextStyleDefLite = {
     id: newId(), name: "Folio", style: { fontFamily: SANS, fontSize: 9, fontWeight: "500", lineHeight: 1.2, align: "center", letterSpacing: 1 },
   };
-  return { heading, body, bodyFirst, emphasis, folio, all: [heading, body, bodyFirst, emphasis, folio] };
+  // In the order the document accepts them: a style that names another (next style, base) comes after it.
+  return { heading, body, bodyFirst, emphasis, folio, all: [body, bodyFirst, heading, emphasis, folio] };
 }
 
 /** The story: paragraph i gets the first-paragraph style, the others the body style; one phrase in italics. */

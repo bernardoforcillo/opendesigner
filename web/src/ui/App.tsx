@@ -39,6 +39,7 @@ import { CanvasOnboarding } from "../home/CanvasOnboarding";
 import { TextEditorOverlay } from "./TextEditorOverlay";
 import { LayersPanel } from "./LayersPanel";
 import { ComponentsPanel } from "./ComponentsPanel";
+import { PagesPanel } from "./PagesPanel";
 import { PropertiesPanel } from "./PropertiesPanel";
 import { PageBar } from "./PageBar";
 import { FlowPanel } from "./FlowPanel";
@@ -612,6 +613,11 @@ export function App() {
     const wanted = modeFor(vertical, useFlowUi.getState().mode);
     if (wanted !== useFlowUi.getState().mode) useFlowUi.getState().setMode(wanted);
   }, [vertical, mode]);
+  // A publication opens on its pages; another kind of document has no Pages tab to stay on.
+  useEffect(() => {
+    if (vertical === "publishing") setLeftTab((t) => (t === "layers" ? "pages" : t));
+    else setLeftTab((t) => (t === "pages" ? "layers" : t));
+  }, [vertical]);
 
   // Leaving Flows brings the tool back to "Select" if it was "Connect"; entering
   // Flows does so if it was a drawing tool: nothing is drawn in flows.
@@ -703,7 +709,7 @@ export function App() {
               {/* Tabs and page selector in the SAME row: 40px less. */}
               <div className="flex shrink-0 items-center border-b border-line pr-1.5">
               <TabList aria-label="Panel" className="flex min-w-0 flex-1 gap-0.5 px-1.5 pt-1">
-                {([["layers", "Layers", "layers"], ["components", "Components", "components"], ["comments", "Comments", "comment"]] as const).map(([id, label, icon]) => (
+                {([...(vertical === "publishing" ? [["pages", "Pages", "page"] as const] : []), ["layers", "Layers", "layers"], ["components", "Components", "components"], ["comments", "Comments", "comment"]] as const).map(([id, label, icon]) => (
                   <Tab
                     key={id}
                     id={id}
@@ -727,6 +733,9 @@ export function App() {
               </TabList>
               <PageBar compact />
               </div>
+              <TabPanel id="pages" className="min-h-0 flex-1 overflow-hidden outline-none">
+                <PagesPanel />
+              </TabPanel>
               <TabPanel id="layers" className="min-h-0 flex-1 overflow-hidden outline-none">
                 <LayersPanel />
               </TabPanel>

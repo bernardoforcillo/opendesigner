@@ -146,3 +146,62 @@ describe("linking", () => {
     expect(unlinkOps(next, "A")).toBeNull();
   });
 });
+
+describe("formatted stories", () => {
+  // Size 10 at line height 1: every line is 10 tall; 10 characters of 10 units fill a 100-wide frame.
+  const base10: TextStyleLite = { ...STYLE, fontSize: 10, lineHeight: 1 };
+  const withStyles = (s: SceneState): SceneState => ({
+    ...s,
+    textStyles: {
+      body: { id: "body", name: "Body", style: { ...base10, fontSize: 0, lineHeight: 0 }, spaceAfter: 5 },
+      em: { id: "em", name: "Em", kind: "character", style: { ...base10, fontSize: 0, lineHeight: 0, italic: true } },
+    },
+  });
+  const story = (extra: object = {}) =>
+    frame("A", { meta: { [META_NEXT]: "B" }, height: 20, text: { content: "aaaa bbbb cccc dddd\neeee ffff", style: base10, paragraphStyles: ["body", "body"], ...extra } as never });
+
+  it("flows paragraphs through the frames, each with the formatting that goes with its text", () => {
+    const s = resolveScene(withStyles(scene(story(), link(frame("B", { x: 200, height: 40, text: { content: "", style: base10 } }), "C"), frame("C", { x: 400, height: 20 }))));
+    expect(text(s, "A")).toBe("aaaa bbbb cccc dddd");
+    expect(s.nodes.get("A")!.text!.paragraphStyles).toEqual(["body"]);
+    expect(s.nodes.get("A")!.text!.rich!.paragraphs[0].spaceAfter).toBe(5);
+    // The second paragraph went on to B with its style.
+    expect(text(s, "B")).toBe("eeee ffff");
+    expect(s.nodes.get("B")!.text!.paragraphStyles).toEqual(["body"]);
+    expect(s.nodes.get("B")!.text!.rich).toBeDefined();
+    expect(text(s, "C")).toBe("");
+    expect(s.nodes.get("C")!.overset).toBeUndefined();
+  });
+
+  it("carries character styles to the frame where their text lands, shifted", () => {
+    // "eeee" is at 20..24 of the story: it lands at 0..4 in frame B.
+    const s = resolveScene(withStyles(scene(story({ runs: [{ start: 20, end: 24, styleId: "em" }] }), frame("B", { x: 200, height: 40, text: { content: "", style: base10 } }))));
+    expect(s.nodes.get("A")!.text!.runs).toBeUndefined();
+    expect(s.nodes.get("B")!.text!.runs).toEqual([{ start: 0, end: 4, styleId: "em" }]);
+    expect(s.nodes.get("B")!.text!.rich!.runs[0].style.italic).toBe(true);
+  });
+
+  it("flags overset text when the last frame cannot hold the rest", () => {
+    const s = resolveScene(withStyles(scene(story(), frame("B", { x: 200, height: 10, text: { content: "", style: base10 } }))));
+    expect(text(s, "B")).toBe("eeee ffff");
+    // "eeee ffff" is one line of 10: it fits; shrink B to nothing to overset.
+    const tiny = resolveScene(withStyles(scene(story(), frame("B", { x: 200, height: 5, text: { content: "", style: base10 } }))));
+    expect(text(tiny, "B")).toBe("");
+    expect(tiny.nodes.get("B")!.overset).toBe(true);
+  });
+
+  it("never loses or repeats a word", () => {
+    const words = Array.from({ length: 40 }, (_, i) => `w${i}`);
+    const content = words.slice(0, 20).join(" ") + "\n" + words.slice(20).join(" ");
+    const head = frame("A", { meta: { [META_NEXT]: "B" }, width: 60, height: 30, text: { content, style: base10, paragraphStyles: ["body", "body"] } as never });
+    const s = resolveScene(withStyles(scene(head, link(frame("B", { x: 100, width: 90, height: 40 }), "C"), frame("C", { x: 200, width: 120, height: 400 }))));
+    const all = ["A", "B", "C"].map((id) => text(s, id)).join(" ").split(/\s+/).filter(Boolean);
+    expect(all).toEqual(words);
+  });
+
+  it("falls back to plain flow when the formatting resolves to nothing", () => {
+    const gone = frame("A", { meta: { [META_NEXT]: "B" }, height: 20, text: { content: "aaaa bbbb cccc dddd", style: base10, paragraphStyles: ["missing"] } as never });
+    const s = resolveScene(scene(gone, frame("B", { x: 200, height: 40 })));
+    expect(text(s, "A")).toBe("aaaa bbbb\ncccc dddd");
+  });
+});

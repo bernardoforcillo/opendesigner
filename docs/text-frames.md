@@ -15,6 +15,8 @@ On the canvas, a frame that flows into another shows a filled square at its bott
 
 Editing any frame of a chain (double click) edits the **story**, which lives in the first frame. All frames are laid out with the first frame's text style; each frame keeps its own width and height, and lines break to the width of the frame they land in.
 
+A story with **paragraph and character styles** (docs/rich-text.md) keeps them as it flows: each frame is laid out with its own width and the paragraphs' spacing, indents and baseline-grid alignment, as many lines go in as the frame's height holds, and the rest of the text moves on to the next frame together with the formatting that belongs to it. A paragraph that breaks across frames keeps its style on the continuation (its first-line indent is applied again there).
+
 ## Model
 
 Nothing is added to the document format. The link is a node meta key on every frame but the last:
@@ -27,7 +29,7 @@ A frame links to a text node other than itself that no other frame flows into, a
 
 ## How it is drawn
 
-The flow is **derived** (`web/src/store/threads.ts`, last step of `resolveScene`): each frame is drawn with the slice of the story that fits in it (`floor(height / line height)` lines, wrapped to its width with the same measure the canvas uses) and the last frame is flagged `overset` when text is left over. The canvas, GPU renderer, SVG/PNG/PDF/EPUB export and the prototype all see the sliced text. The slices are the frames' lines joined with newlines, so a soft wrap becomes a line break in the derived node only.
+The flow is **derived** (`web/src/store/threads.ts`, last step of `resolveScene`): each frame is drawn with the slice of the story that fits in it (`floor(height / line height)` lines for plain text, the lines that fit its height for a formatted story, wrapped to its width with the same measure the canvas uses) and the last frame is flagged `overset` when text is left over. The canvas, GPU renderer, SVG/PNG/PDF/EPUB export and the prototype all see the sliced text. The slices are the frames' lines joined with newlines, so a soft wrap becomes a line break in the derived node only.
 
 If a font loads after the layout was computed, the flow settles on the next change to the document.
 

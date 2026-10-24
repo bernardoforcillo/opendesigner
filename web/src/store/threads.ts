@@ -1,9 +1,11 @@
 import { withMeta } from "../flow/meta";
-import { fontString, layoutText, lineHeightOf, fontSizeOf, trackedMeasure } from "../renderer/text";
+import { fontString, layoutRich, layoutText, lineHeightOf, fontSizeOf, trackedMeasure, trackedMeasureFor } from "../renderer/text";
+import { worldTransformOf } from "../canvas/transform";
+import { paragraphCount, resolveRich } from "./richText";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { makeSetPropsOp, makeSetTextOp } from "../tools/ops";
 import { recordDelta } from "./sceneDelta";
-import type { NodeLite, SceneState, TextStyleLite } from "./types";
+import type { NodeLite, SceneState, TextLite, TextRunLite, TextStyleLite } from "./types";
 
 // THREADED TEXT FRAMES. Text frames can be chained: the text of the chain's FIRST frame (its "story")
 // flows from one frame into the next as each one fills up, across pages if they are on different
@@ -137,6 +139,55 @@ export function flowStory(
   return { slices, overset: rest.trim() !== "" };
 }
 
+/**
+ * The text of each frame of a chain whose story is FORMATTED (paragraph styles, character styles, a
+ * baseline grid): every frame is laid out with its own width and the paragraph settings, as many lines as
+ * its height holds go in, and the rest of the story -- text, and the formatting that goes with it --
+ * moves on to the next frame. A paragraph that breaks across frames keeps its style on the continuation
+ * (its first-line indent is applied again there). Returns null when the story has no formatting that
+ * resolves, or uses carriage returns: the caller then flows it as plain text.
+ */
+function flowRich(scene: SceneState, chain: NodeLite[]): { texts: TextLite[]; overset: boolean } | null {
+  const head = chain[0].text!;
+  if (!head.rich || head.content.includes("\r")) return null;
+  const base = head.style;
+  const mf = trackedMeasureFor((injected ?? defaultMeasureFor) as (style: TextStyleLite) => (s: string) => number);
+  let content = head.content;
+  let paras = head.paragraphStyles ?? [];
+  let runs: TextRunLite[] = head.runs ?? [];
+  const texts: TextLite[] = [];
+  for (const frame of chain) {
+    if (content === "") { texts.push({ content: "", style: base }); continue; }
+    const boxY = frame.y + worldTransformOf(scene, frame.parentId).f;
+    const whole: TextLite = { content, style: base, paragraphStyles: paras, runs };
+    const rich = resolveRich(scene, whole, base, boxY);
+    let end = 0;
+    if (rich && frame.width > 0) {
+      const lay = layoutRich(mf, content, base, rich, frame.width);
+      const fits = lay.lines.filter((l) => l.top + l.height <= frame.height + 1e-6);
+      end = fits.length === lay.lines.length ? content.length : fits.length > 0 ? fits[fits.length - 1].end : 0;
+    }
+    const slice = content.slice(0, end);
+    const sliceParas = paras.slice(0, paragraphCount(slice));
+    const sliceRuns = runs.filter((r) => r.start < end).map((r) => ({ ...r, end: Math.min(r.end, end) }));
+    const sliceRich = resolveRich(scene, { content: slice, style: base, paragraphStyles: sliceParas, runs: sliceRuns }, base, boxY);
+    texts.push({
+      content: slice, style: base,
+      ...(sliceParas.some((p) => p !== "") ? { paragraphStyles: sliceParas } : {}),
+      ...(sliceRuns.length > 0 ? { runs: sliceRuns } : {}),
+      ...(sliceRich ? { rich: sliceRich } : {}),
+    });
+    // The rest: past the line break (one space, or the newline that ended the paragraph).
+    let cursor = end;
+    if (end > 0 && end < content.length && (content[cursor] === " " || content[cursor] === "\n")) cursor++;
+    const breaks = content.slice(0, cursor).split("\n").length - 1;
+    paras = paras.slice(breaks);
+    runs = runs.filter((r) => r.end > cursor).map((r) => ({ ...r, start: Math.max(r.start, cursor) - cursor, end: r.end - cursor }));
+    content = content.slice(cursor);
+  }
+  return { texts, overset: content.trim() !== "" };
+}
+
 const derived = new WeakMap<SceneState, SceneState>();
 
 /** `scene` with each chain's story flowed through its frames; `scene` itself when there are no chains. */
@@ -148,6 +199,17 @@ export function deriveThreads(scene: SceneState): SceneState {
   let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
   const changed: string[] = [];
   for (const chain of chains) {
+    // A formatted story keeps its paragraph and character styles as it flows.
+    const rich = flowRich(scene, chain);
+    if (rich) {
+      for (const [i, n] of chain.entries()) {
+        (edit ??= scene.nodes.edit()).set(n.id, {
+          ...n, text: rich.texts[i], ...(i === chain.length - 1 && rich.overset ? { overset: true } : {}),
+        });
+        changed.push(n.id);
+      }
+      continue;
+    }
     const style = chain[0].text!.style;
     const m = trackedMeasure((injected ?? defaultMeasureFor)(style), style);
     const { slices, overset } = flowStory(chain[0].text!.content, chain, style, m);

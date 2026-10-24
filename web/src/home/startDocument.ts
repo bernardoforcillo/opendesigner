@@ -10,7 +10,7 @@ import type { Template } from "../templates/catalog";
 
 /** The part of the RPC client needed here: tests pass a fake one. */
 export interface StartClient {
-  createDocument(req: { name: string }): Promise<{ id: string }>;
+  createDocument(req: { name: string; vertical?: string }): Promise<{ id: string }>;
   openDocument(req: { docId: string }): Promise<{ snapshot?: { pages: { id: string }[] } }>;
   submitOp(req: { docId: string; clientId: string; op: Op }): Promise<unknown>;
 }
@@ -50,7 +50,8 @@ export async function applyTemplate(
 export async function startDocument(client: StartClient, t: Template, opts: StartOptions = {}): Promise<string> {
   let docId: string | null = null;
   try {
-    docId = (await client.createDocument({ name: t.docName })).id;
+    // The document is born with its vertical (the default, product, is not sent).
+    docId = (await client.createDocument({ name: t.docName, ...(t.vertical && t.vertical !== "product" ? { vertical: t.vertical } : {}) })).id;
     if (t.id === "blank") return docId;
     const snap = (await client.openDocument({ docId })).snapshot;
     const pageId = snap?.pages[0]?.id ?? "page1";

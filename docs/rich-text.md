@@ -43,5 +43,4 @@ The style ids are resolved into drawable values by the same derived pass as vari
 ## Not yet
 
 - **Colour** in styles (a character style cannot change the fill), small caps, super/subscript, nested styles, bullets and numbering, tabs.
-- **Threaded frames** lay a story out as plain text: the formatting of a threaded story is kept in the document but not drawn.
 - The editing field shows plain text (the canvas shows the result once you leave it), and generated code (`opendesigner export`) exports the text's own style.

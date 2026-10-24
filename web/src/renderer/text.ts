@@ -448,7 +448,9 @@ function paintText(
 // tallest piece, pieces sit on one baseline, and paragraphs add their spacing and indents.
 // Text without `rich` never comes through here: plain text keeps the layout above, unchanged.
 
-interface Frag { text: string; style: TextStyleLite }
+// `at` is where the piece starts in the (newline-normalized) content: it is what lets a caller know how
+// much of the text a set of lines used (threaded frames flow the rest into the next frame).
+interface Frag { text: string; style: TextStyleLite; at: number }
 export interface RichLine {
   /** The pieces, in order. */
   frags: Frag[];
@@ -461,10 +463,12 @@ export interface RichLine {
   ascent: number;
   /** Left edge of the first piece, from the box's left edge. */
   left: number;
+  /** Where the line ends in the normalized content (just after its last character). */
+  end: number;
 }
 export interface RichLayout { lines: RichLine[]; height: number }
 
-const frag = (text: string, style: TextStyleLite): Frag => ({ text, style });
+const frag = (text: string, style: TextStyleLite, at: number): Frag => ({ text, style, at });
 
 // Run boundaries in the NORMALIZED content ("\r\n" and "\r" are one "\n"): runs index the raw content.
 function normalizedOffsets(raw: string): ((i: number) => number) | null {
@@ -510,9 +514,10 @@ export function layoutRich(
     while (pos < end) {
       const run = runs.find((r) => r.start <= pos && pos < r.end);
       const next = Math.min(end, run ? run.end : Math.min(...runs.filter((r) => r.start > pos).map((r) => r.start), end));
-      pieces.push(frag(text.slice(pos, next), run ? overlayStyle(pr.style, run.style) : pr.style));
+      pieces.push(frag(text.slice(pos, next), run ? overlayStyle(pr.style, run.style) : pr.style, pos));
       pos = next;
     }
+    const paraStart = offset;
     offset = end + 1;
 
     if (pi > 0) y += pr.spaceBefore;
@@ -532,7 +537,8 @@ export function layoutRich(
       }
       const lineWidth = maxWidth > 0 ? maxWidth - pr.indentLeft - (li === 0 ? pr.indentFirst : 0) : 0;
       const left = pr.indentLeft + (li === 0 ? pr.indentFirst : 0) + alignOffsetX(pr.style.align, l.width, lineWidth);
-      lines.push({ frags: l.frags, width: l.width, top: y, height, ascent: m.ascent, left });
+      const last = l.frags[l.frags.length - 1];
+      lines.push({ frags: l.frags, width: l.width, top: y, height, ascent: m.ascent, left, end: last ? last.at + last.text.length : paraStart });
       y += height;
     }
     if (pi < paragraphs.length - 1) y += pr.spaceAfter;
@@ -567,10 +573,11 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: NonNullable<Text
   const words: Word[] = [];
   let cur: Word = { frags: [], sep: null };
   for (const piece of pieces) {
-    const parts = piece.text.split(" ");
-    parts.forEach((part, i) => {
-      if (i > 0) { words.push(cur); cur = { frags: [], sep: frag(" ", piece.style) }; }
-      if (part !== "") cur.frags.push(frag(part, piece.style));
+    let off = piece.at;
+    piece.text.split(" ").forEach((part, i) => {
+      if (i > 0) { words.push(cur); cur = { frags: [], sep: frag(" ", piece.style, off) }; off += 1; }
+      if (part !== "") cur.frags.push(frag(part, piece.style, off));
+      off += part.length;
     });
   }
   words.push(cur);
@@ -583,7 +590,7 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: NonNullable<Text
     for (const f of frags) {
       const line = tail();
       const last = line.frags[line.frags.length - 1];
-      if (last && last.style === f.style) last.text += f.text; else line.frags.push(frag(f.text, f.style));
+      if (last && last.style === f.style && last.at + last.text.length === f.at) last.text += f.text; else line.frags.push(frag(f.text, f.style, f.at));
       line.width += width(f);
     }
   };
@@ -601,10 +608,12 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: NonNullable<Text
     if (ww <= limit(out.length === 1) || w.frags.length === 0) { place(w.frags); continue; }
     // Too wide alone: break it by characters; a single character is never refused.
     for (const f of w.frags) {
+      let at = f.at;
       for (const ch of Array.from(f.text)) {
         const cw = measureFor(f.style)(ch);
         if (tail().frags.length > 0 && tail().width + cw > limit(out.length === 1)) newLine();
-        place([frag(ch, f.style)]);
+        place([frag(ch, f.style, at)]);
+        at += ch.length;
       }
     }
   }

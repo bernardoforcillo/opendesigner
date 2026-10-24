@@ -5,7 +5,9 @@ import { useScene } from "../store/store";
 import { useFlowUi } from "../store/flowUi";
 import { docClient } from "../rpc/client";
 import type { SceneState } from "../store/types";
-import { TEMPLATES } from "../templates/catalog";
+import { templatesFor } from "../templates/catalog";
+import { verticalOf } from "../store/docSettings";
+import type { Vertical } from "../store/types";
 import type { Template } from "../templates/catalog";
 import { checklistSteps, onboardingMode, screenNodes, type ChecklistStep } from "./checklist";
 import { loadDocPrefs, saveDocPrefs, SHIPPED_EVENT, type DocPrefs } from "./docPrefs";
@@ -116,7 +118,10 @@ function Live({
   // While the template is being applied the big card STAYS: the first op that
   // arrives would already make "Draw" done and switch it to the
   // compact one, inviting to close it (or to reload) with the template half applied.
-  const mode = busy ? "empty" : onboardingMode(scene, prefs.dismissed, steps);
+  // The checklist (screens, flows, prototype, code) is the product vertical's journey. A book or a poster
+  // just gets the templates of its kind on an empty document.
+  const vertical = verticalOf(scene);
+  const mode = busy ? "empty" : vertical !== "product" ? (scene && !prefs.dismissed && scene.nodes.size === 0 ? "empty" : "none") : onboardingMode(scene, prefs.dismissed, steps);
 
   // All four steps done: the card has done its job, forever.
   useEffect(() => {
@@ -152,7 +157,7 @@ function Live({
 
   if (mode === "none") return null;
   if (mode === "progress") return <ProgressCard steps={steps} onClose={() => update({ dismissed: true })} />;
-  return <EmptyCard steps={steps} busy={busy} error={error} onPick={(t) => void pick(t)} onDraw={onDrawScreen} onClose={() => update({ dismissed: true })} />;
+  return <EmptyCard vertical={vertical} steps={steps} busy={busy} error={error} onPick={(t) => void pick(t)} onDraw={onDrawScreen} onClose={() => update({ dismissed: true })} />;
 }
 
 function Check({ done, n }: { done: boolean; n: number }) {
@@ -179,13 +184,22 @@ function CloseButton({ onClose, label }: { onClose: () => void; label: string })
   );
 }
 
+const START_COPY: Record<Vertical, string> = {
+  product: "A template gives you screens that are already connected, ready to try; or draw your own.",
+  publishing: "A template gives you sheets with margins, a master and styles, with text that already flows; or start from the blank page.",
+  design: "A template gives you a sheet to work on; or start drawing on the canvas.",
+};
+
 function EmptyCard({
-  steps, busy, error, onPick, onDraw, onClose,
+  vertical, steps, busy, error, onPick, onDraw, onClose,
 }: {
+  vertical: Vertical;
   steps: ChecklistStep[]; busy: { id: string; done: number; total: number } | null; error: string | null;
   onPick: (t: Template) => void; onDraw: () => void; onClose: () => void;
 }) {
-  const choices = TEMPLATES.filter((t) => t.id !== "blank");
+  // The first template of each vertical is its blank one: "start from nothing" is the canvas itself.
+  const choices = templatesFor(vertical).filter((t) => !t.id.startsWith("blank"));
+  const product = vertical === "product";
   return (
     <div className="absolute inset-0 flex items-center justify-center p-4">
       <section
@@ -194,7 +208,7 @@ function EmptyCard({
       >
         <CloseButton onClose={onClose} label="Close and don't show again for this document" />
         <h2 className="pr-6 text-[16px] font-semibold tracking-[-0.01em]">Where do you want to start?</h2>
-        <p className="mt-0.5 text-[13px] text-fg-muted">A template gives you screens that are already connected, ready to try; or draw your own.</p>
+        <p className="mt-0.5 text-[13px] text-fg-muted">{START_COPY[vertical]}</p>
 
         <div className="mt-3.5 grid grid-cols-2 gap-2">
           {choices.map((t) => (
@@ -217,6 +231,7 @@ function EmptyCard({
         </div>
         {error && <p role="alert" className="mt-2 text-[12px] text-danger">{error}</p>}
 
+        {product && (
         <RacButton
           onPress={onDraw}
           isDisabled={!!busy}
@@ -224,8 +239,9 @@ function EmptyCard({
         >
           <Icon name="frame" size={14} /> Draw a screen <Kbd>A</Kbd>
         </RacButton>
+        )}
 
-        <ol aria-label="Steps" className="mt-4 flex items-center justify-between gap-1 border-t border-line pt-3.5">
+        {product && <ol aria-label="Steps" className="mt-4 flex items-center justify-between gap-1 border-t border-line pt-3.5">
           {steps.map((s, i) => (
             <li key={s.id} data-done={s.done} className="flex items-center gap-1.5 text-[12px] text-fg-muted">
               <Check done={s.done} n={i + 1} />
@@ -233,7 +249,7 @@ function EmptyCard({
               {i < steps.length - 1 && <Icon name="chevronRight" size={10} className="ml-0.5 text-fg-subtle" />}
             </li>
           ))}
-        </ol>
+        </ol>}
       </section>
     </div>
   );

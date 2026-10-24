@@ -27,6 +27,10 @@ export interface VerticalDef {
   hiddenMenu: readonly string[];
   /** What a "New document" of this vertical starts as. */
   blank: { docName: string };
+  /** The Home's headline and the steps of the journey this kind of work follows. */
+  headline: string;
+  intro: string;
+  journey: readonly { label: string; icon: IconName }[];
 }
 
 export const VERTICAL_DEFS: Readonly<Record<Vertical, VerticalDef>> = {
@@ -39,6 +43,9 @@ export const VERTICAL_DEFS: Readonly<Record<Vertical, VerticalDef>> = {
     modeLabels: { design: "Layout" },
     hiddenMenu: ["board", "import-fig", "plugins", "variables"],
     blank: { docName: "Untitled publication" },
+    headline: "What do you want to publish?",
+    intro: "Start from a template or a blank page: set the sheet, lay out the text so it flows, style it once, and take a PDF or an EPUB home.",
+    journey: [{ label: "Setup", icon: "page" }, { label: "Layout", icon: "frame" }, { label: "Styles", icon: "text" }, { label: "Flow", icon: "layers" }, { label: "Export", icon: "download" }],
   },
   design: {
     id: "design",
@@ -49,6 +56,9 @@ export const VERTICAL_DEFS: Readonly<Record<Vertical, VerticalDef>> = {
     modeLabels: {},
     hiddenMenu: ["export-epub", "export-pdf-bleed", "page-setup"],
     blank: { docName: "Untitled design" },
+    headline: "What do you want to design today?",
+    intro: "Start from a template or an open canvas: draw with vector tools, build components and tokens, and export what you made.",
+    journey: [{ label: "Sketch", icon: "pen" }, { label: "Refine", icon: "rect" }, { label: "Tokens", icon: "components" }, { label: "Export", icon: "download" }],
   },
   product: {
     id: "product",
@@ -59,6 +69,9 @@ export const VERTICAL_DEFS: Readonly<Record<Vertical, VerticalDef>> = {
     modeLabels: {},
     hiddenMenu: ["export-epub", "export-pdf-bleed", "page-setup"],
     blank: { docName: "Untitled" },
+    headline: "What do you want to design today?",
+    intro: "Start from a template or a blank board: draw the screens, connect them in a flow, try them out as a prototype and take the code home.",
+    journey: [{ label: "Design", icon: "frame" }, { label: "Flows", icon: "flow" }, { label: "Try", icon: "play" }, { label: "Develop", icon: "code" }, { label: "Export", icon: "download" }],
   },
 };
 

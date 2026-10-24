@@ -40,6 +40,9 @@ export function TemplatePreview({ template, className = "" }: { template: Templa
     return c;
   }, [template]);
 
+  // Publishing and design templates are sheets, not screens.
+  if (L.built.pages && L.built.pages.some((p) => (p.width ?? 0) > 0)) return <SheetsPreview built={L.built} className={className} name={template.name} />;
+
   if (L.screens.length === 0) {
     // "Blank": a dashed board, with a plus sign.
     return (
@@ -93,6 +96,49 @@ export function TemplatePreview({ template, className = "" }: { template: Templa
             fill="none" stroke="var(--flow)" strokeWidth={forward ? 7 : 5} strokeLinecap="round" opacity={forward ? 0.85 : 0.4} />
         );
       })}
+    </svg>
+  );
+}
+
+
+// SHEETS: the pages of a publishing / design template side by side (masters are not pages: their
+// content is drawn under the pages that apply them), each as paper with its text as little bars.
+function SheetsPreview({ built, className, name }: { built: NonNullable<ReturnType<typeof layout>["built"]>; className: string; name: string }) {
+  const pages = (built.pages ?? []).filter((p) => !p.isMaster).slice(0, 4);
+  const byParent = new Map<string, NodeLite[]>();
+  for (const n of built.nodes) byParent.set(n.parentId, [...(byParent.get(n.parentId) ?? []), n]);
+  const GAP = 50;
+  let x = 0;
+  const drawn = pages.map((p) => {
+    const w = p.width ?? 400, h = p.height ?? 560;
+    const at = x;
+    x += w + GAP;
+    return { p, w, h, at };
+  });
+  const totalW = Math.max(1, x - GAP);
+  const maxH = Math.max(...drawn.map((d) => d.h), 1);
+  const bar = (n: NodeLite, ox: number) => {
+    const size = n.text?.style.fontSize ?? 14;
+    const lines = Math.max(1, Math.min(Math.round(n.height / (size * 1.3)), 14));
+    const len = Math.min(n.width, (n.text?.content.split("\n")[0].length ?? 4) * size * 0.52);
+    const h = Math.max(size * 0.5, 5);
+    return Array.from({ length: Math.min(lines, 10) }, (_, i) => (
+      <rect key={`${n.id}-${i}`} x={ox + n.x} y={n.y + i * size * 1.5} width={i === 0 ? len : n.width * (i % 3 === 2 ? 0.7 : 1)} height={h} rx={h / 2} fill={css(n.fills[0])} opacity={0.45} />
+    ));
+  };
+  return (
+    <svg viewBox={`-20 -20 ${totalW + 40} ${maxH + 40}`} preserveAspectRatio="xMidYMid meet" className={className} role="img" aria-label={`Preview: ${name}`}>
+      {drawn.map(({ p, w, h, at }) => (
+        <g key={p.id}>
+          <rect x={at} y={0} width={w} height={h} fill="#ffffff" stroke="var(--line-strong)" strokeWidth={3} />
+          {[...(p.masterId ? byParent.get(p.masterId) ?? [] : []), ...(byParent.get(p.id) ?? [])].map((n) => {
+            if (n.kind === "text") return <g key={n.id}>{bar(n, at)}</g>;
+            const fill = n.fills.length > 0 ? css(n.fills[0]) : "none";
+            if (n.kind === "ellipse") return <ellipse key={n.id} cx={at + n.x + n.width / 2} cy={n.y + n.height / 2} rx={n.width / 2} ry={n.height / 2} fill={fill} />;
+            return <rect key={n.id} x={at + n.x} y={n.y} width={n.width} height={n.height} fill={fill} />;
+          })}
+        </g>
+      ))}
     </svg>
   );
 }
