@@ -1,5 +1,6 @@
 import { worldTransformOf } from "../canvas/transform";
-import type { NodeLite, ResolvedParagraph, ResolvedRun, RichText, SceneState, TextLite, TextRunLite, TextStyleDefLite, TextStyleLite } from "./types";
+import { formatPageNumber } from "./pageNumbers";
+import type { NestedStyleLite, NodeLite, ResolvedParagraph, ResolvedRun, RichText, SceneState, TabStopLite, TextLite, TextRunLite, TextStyleDefLite, TextStyleLite } from "./types";
 
 // RICH TEXT -- paragraph styles per paragraph and character styles over ranges. The TypeScript twin
 // of internal/core/richtext.go (Go is the authority) plus what only the editor needs: resolving the
@@ -71,6 +72,14 @@ export function overlay(base: TextStyleLite, over: TextStyleLite): TextStyleLite
   if (over.italic || base.italic) out.italic = true;
   if (over.underline || base.underline) out.underline = true;
   if (over.strikethrough || base.strikethrough) out.strikethrough = true;
+  if (over.smallCaps || base.smallCaps) out.smallCaps = true;
+  const script = over.script ?? base.script;
+  if (script) out.script = script;
+  const scale = over.horizontalScale || base.horizontalScale;
+  if (scale) out.horizontalScale = scale;
+  if (over.noKerning || base.noKerning) out.noKerning = true;
+  const color = over.color ?? base.color;
+  if (color) out.color = color;
   return out;
 }
 
@@ -78,7 +87,17 @@ export interface FlatStyle {
   style: TextStyleLite;
   spaceBefore: number; spaceAfter: number; indentFirst: number; indentLeft: number;
   alignToGrid: boolean;
+  hyphenate: boolean;
+  listKind?: "bullet" | "number"; listMarker: string; listNumberStyle: string; listIndent: number;
+  tabStops: TabStopLite[];
+  dropCapLines: number; dropCapChars: number;
+  nestedStyles: NestedStyleLite[];
 }
+
+const featuresOf = (d: TextStyleDefLite) => ({
+  hyphenate: d.hyphenate === true, listKind: d.listKind, listMarker: d.listMarker ?? "", listNumberStyle: d.listNumberStyle ?? "", listIndent: d.listIndent ?? 0,
+  tabStops: d.tabStops ?? [], dropCapLines: d.dropCapLines ?? 0, dropCapChars: d.dropCapChars ?? 0, nestedStyles: d.nestedStyles ?? [],
+});
 
 /** A style with its `basedOn` chain folded in (root first), or null when it does not exist. A loop stops at the loop. */
 export function flattenStyle(textStyles: Readonly<Record<string, TextStyleDefLite>>, id: string): FlatStyle | null {
@@ -92,9 +111,9 @@ export function flattenStyle(textStyles: Readonly<Record<string, TextStyleDefLit
   // A style without a base is returned as it is, so the node-wide path keeps its exact values.
   if (chain.length === 1) {
     const d = chain[0];
-    return { style: d.style, spaceBefore: d.spaceBefore ?? 0, spaceAfter: d.spaceAfter ?? 0, indentFirst: d.indentFirst ?? 0, indentLeft: d.indentLeft ?? 0, alignToGrid: d.alignToGrid === true };
+    return { style: d.style, spaceBefore: d.spaceBefore ?? 0, spaceAfter: d.spaceAfter ?? 0, indentFirst: d.indentFirst ?? 0, indentLeft: d.indentLeft ?? 0, alignToGrid: d.alignToGrid === true, ...featuresOf(d) };
   }
-  const out: FlatStyle = { style: EMPTY, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0, alignToGrid: false };
+  const out: FlatStyle = { style: EMPTY, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0, alignToGrid: false, ...featuresOf({ id: "", name: "", style: EMPTY }) };
   for (const d of chain) {
     out.style = overlay(out.style, d.style);
     out.spaceBefore = d.spaceBefore || out.spaceBefore;
@@ -102,6 +121,58 @@ export function flattenStyle(textStyles: Readonly<Record<string, TextStyleDefLit
     out.indentFirst = d.indentFirst || out.indentFirst;
     out.indentLeft = d.indentLeft || out.indentLeft;
     out.alignToGrid = d.alignToGrid === true || out.alignToGrid;
+    // The features: what a style sets wins over its base.
+    const f = featuresOf(d);
+    out.hyphenate = f.hyphenate || out.hyphenate;
+    out.listKind = f.listKind ?? out.listKind;
+    out.listMarker = f.listMarker || out.listMarker;
+    out.listNumberStyle = f.listNumberStyle || out.listNumberStyle;
+    out.listIndent = f.listIndent || out.listIndent;
+    if (f.tabStops.length > 0) out.tabStops = f.tabStops;
+    out.dropCapLines = f.dropCapLines || out.dropCapLines;
+    out.dropCapChars = f.dropCapChars || out.dropCapChars;
+    if (f.nestedStyles.length > 0) out.nestedStyles = f.nestedStyles;
+  }
+  return out;
+}
+
+/** Distance from a list marker to its text when the style does not say. */
+export const DEFAULT_LIST_INDENT = 18;
+
+/**
+ * The runs the nested styles of the paragraphs produce: each nested style covers the paragraph from where
+ * the previous one stopped up to its `count`-th `delimiter` (the delimiter included when `inclusive`; the
+ * rest of the paragraph when there are fewer). What an explicit run covers stays the explicit run's.
+ */
+function nestedRuns(state: SceneState, content: string, flats: readonly (FlatStyle | null)[], explicit: readonly ResolvedRun[]): ResolvedRun[] {
+  if (!flats.some((f) => f && f.nestedStyles.length > 0)) return [];
+  const out: ResolvedRun[] = [];
+  const re = /\r\n|\r|\n/g;
+  let start = 0, index = 0;
+  const paragraphs: [number, number][] = [];
+  for (let m = re.exec(content); m; m = re.exec(content)) { paragraphs.push([start, m.index]); start = m.index + m[0].length; }
+  paragraphs.push([start, content.length]);
+  for (const [from, to] of paragraphs) {
+    const flat = flats[index++];
+    if (!flat) continue;
+    let cursor = from;
+    for (const n of flat.nestedStyles) {
+      const def = state.textStyles[n.styleId];
+      const style = def && def.kind === "character" ? flattenStyle(state.textStyles, def.id)?.style : undefined;
+      if (!style || cursor >= to) continue;
+      let at = cursor - n.delimiter.length, found = -1;
+      for (let k = 0; k < n.count; k++) {
+        at = content.indexOf(n.delimiter, at + n.delimiter.length);
+        if (at < 0 || at >= to) { found = -1; break; }
+        found = at;
+      }
+      const end = found < 0 ? to : found + (n.inclusive ? n.delimiter.length : 0);
+      // Minus what explicit runs cover.
+      let pieces: [number, number][] = [[cursor, end]];
+      for (const r of explicit) pieces = pieces.flatMap(([a, b]) => (r.end <= a || r.start >= b ? [[a, b] as [number, number]] : [[a, Math.min(b, r.start)], [Math.max(a, r.end), b]].filter(([x, y]) => y > x) as [number, number][]));
+      for (const [a, b] of pieces) out.push({ start: a, end: b, style });
+      cursor = found < 0 ? to : found + n.delimiter.length;
+    }
   }
   return out;
 }
@@ -114,17 +185,34 @@ export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite,
   const ids = t.paragraphStyles ?? [];
   const count = paragraphCount(t.content);
   const paragraphs: ResolvedParagraph[] = [];
+  const flats: (FlatStyle | null)[] = [];
   let any = false;
+  // List numbers count consecutive paragraphs of the same numbered style.
+  let counter = 0, counting = "";
   for (let i = 0; i < count; i++) {
     const def = ids[i] ? state.textStyles[ids[i]] : undefined;
     const flat = def && def.kind !== "character" ? flattenStyle(state.textStyles, def.id) : null;
+    flats.push(flat);
     if (flat) {
       any = true;
+      let marker: string | undefined;
+      if (flat.listKind === "bullet") marker = flat.listMarker || "•";
+      else if (flat.listKind === "number") {
+        counter = counting === ids[i] ? counter + 1 : 1;
+        counting = ids[i];
+        marker = (flat.listMarker || "#.").replace("#", formatPageNumber(counter, flat.listNumberStyle as "i" | "I" | "a" | "A" | undefined));
+      }
+      if (flat.listKind !== "number") counting = "";
       paragraphs.push({
         style: overlay(base, flat.style), spaceBefore: flat.spaceBefore, spaceAfter: flat.spaceAfter, indentFirst: flat.indentFirst, indentLeft: flat.indentLeft,
         ...(flat.alignToGrid ? { alignToGrid: true } : {}),
+        ...(flat.hyphenate ? { hyphenate: true } : {}),
+        ...(marker !== undefined ? { marker, listIndent: flat.listIndent || DEFAULT_LIST_INDENT } : {}),
+        ...(flat.tabStops.length > 0 ? { tabs: flat.tabStops } : {}),
+        ...(flat.dropCapLines >= 2 ? { dropLines: flat.dropCapLines, dropChars: flat.dropCapChars || 1 } : {}),
       });
     } else {
+      counting = "";
       paragraphs.push({ style: base, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 });
     }
   }
@@ -134,7 +222,10 @@ export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite,
     const flat = def && def.kind === "character" ? flattenStyle(state.textStyles, def.id) : null;
     if (flat) runs.push({ start: r.start, end: r.end, style: flat.style });
   }
-  if (!any && runs.length === 0) return null;
+  const nested = nestedRuns(state, t.content, flats, runs);
+  if (nested.length > 0) { runs.push(...nested); runs.sort((a, b) => a.start - b.start); }
+  // Small capitals and super/subscript on the node's own style also need the formatted layout.
+  if (!any && runs.length === 0 && !base.smallCaps && !base.script) return null;
   // The baseline grid matters only to paragraphs that ask for it, and only when the document has one.
   const inc = state.settings?.baselineIncrement ?? 0;
   const grid = inc > 0 && paragraphs.some((p) => p.alignToGrid) ? { increment: inc, start: state.settings?.baselineStart ?? 0, boxY } : undefined;
@@ -144,7 +235,7 @@ export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite,
 /** Does the text carry any formatting at all (resolvable or not)? Decides whether the resolve pass looks at it. */
 export function hasRich(n: NodeLite): boolean {
   const t = n.text;
-  return !!t && ((t.paragraphStyles?.length ?? 0) > 0 || (t.runs?.length ?? 0) > 0);
+  return !!t && ((t.paragraphStyles?.length ?? 0) > 0 || (t.runs?.length ?? 0) > 0 || t.style.smallCaps === true || !!t.style.script);
 }
 
 /** `n` with its formatting resolved into `text.rich` (a derived field). */

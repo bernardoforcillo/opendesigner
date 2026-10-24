@@ -1,6 +1,6 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ImageScaleMode, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, ImageScaleMode, ListKind, TabAlign, TextScript, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
@@ -114,7 +114,7 @@ export type EffectLite =
 // string is readable (and writable in a test) without importing the generated code.
 // TEXT_ALIGN_UNSPECIFIED collapses to "left" -- it is the default the renderer
 // should apply anyway, so the distinction is not observable.
-export type TextAlignLite = "left" | "center" | "right";
+export type TextAlignLite = "left" | "center" | "right" | "justify";
 
 // No default is resolved here: `lineHeight: 0` stays 0 and does not become 1.2.
 // The default belongs to the RENDERER (see the comment in the proto), and applying it in
@@ -129,6 +129,18 @@ export interface TextStyleLite {
   strikethrough?: boolean;
   /** px added after every character (tracking); absent at 0, may be negative. */
   letterSpacing?: number;
+  /** Lowercase letters drawn as smaller capitals. */
+  smallCaps?: boolean;
+  /** Smaller and raised / lowered. */
+  script?: "super" | "sub";
+  /** Glyph width multiplier (1 = normal); absent at 1. */
+  horizontalScale?: number;
+  /** The font's pair kerning is off. */
+  noKerning?: boolean;
+  /** Text colour of the style; absent => the node's fill. */
+  color?: { r: number; g: number; b: number; a: number };
+  /** DERIVED by the layout, never stored: px a piece is raised above its line's baseline (negative = lowered). */
+  baselineShift?: number;
 }
 
 // RICH TEXT (store/richText.ts). `paragraphStyles` / `runs` are the document's; `rich` is DERIVED by
@@ -139,6 +151,13 @@ export interface ResolvedParagraph {
   spaceBefore: number; spaceAfter: number; indentFirst: number; indentLeft: number;
   /** The lines sit on the baseline grid (see RichText.grid). */
   alignToGrid?: boolean;
+  hyphenate?: boolean;
+  /** The list marker in front of the paragraph ("•", "3."), numbers already counted; absent for no list. */
+  marker?: string;
+  /** Distance from the marker to the text (a list paragraph's text sits at indentLeft + listIndent). */
+  listIndent?: number;
+  tabs?: TabStopLite[];
+  dropLines?: number; dropChars?: number;
 }
 /** A character style resolved to the fields it overrides (unset fields are 0 / "" / absent). */
 export interface ResolvedRun { start: number; end: number; style: TextStyleLite }
@@ -147,6 +166,9 @@ export interface RichText {
   /** The baseline grid, with the world y of the text box: present when a paragraph aligns to it. */
   grid?: { increment: number; start: number; boxY: number };
 }
+
+export interface TabStopLite { position: number; align?: "center" | "right"; leader?: string }
+export interface NestedStyleLite { styleId: string; delimiter: string; count: number; inclusive?: boolean }
 
 export interface TextLite {
   content: string; style: TextStyleLite;
@@ -395,6 +417,12 @@ export interface TextStyleDefLite {
   basedOn?: string; nextStyleId?: string;
   spaceBefore?: number; spaceAfter?: number; indentFirst?: number; indentLeft?: number;
   alignToGrid?: boolean;
+  // Paragraph styles only (docs/rich-text.md): hyphenation, lists, tabs, drop caps, nested styles.
+  hyphenate?: boolean;
+  listKind?: "bullet" | "number"; listMarker?: string; listNumberStyle?: NumberStyle; listIndent?: number;
+  tabStops?: TabStopLite[];
+  dropCapLines?: number; dropCapChars?: number;
+  nestedStyles?: NestedStyleLite[];
 }
 
 // ANIMATION: the document's clips (animated properties of nodes referenced by
@@ -475,11 +503,13 @@ const ALIGN_TO_LITE: Record<TextAlign, TextAlignLite> = {
   [TextAlign.LEFT]: "left",
   [TextAlign.CENTER]: "center",
   [TextAlign.RIGHT]: "right",
+  [TextAlign.JUSTIFY]: "justify",
 };
 const ALIGN_TO_PB: Record<TextAlignLite, TextAlign> = {
   left: TextAlign.LEFT,
   center: TextAlign.CENTER,
   right: TextAlign.RIGHT,
+  justify: TextAlign.JUSTIFY,
 };
 
 const STROKE_ALIGN_TO_LITE: Record<StrokeAlign, StrokeAlignLite> = {
@@ -509,6 +539,11 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     ...(s?.underline ? { underline: true } : {}),
     ...(s?.strikethrough ? { strikethrough: true } : {}),
     ...(s?.letterSpacing ? { letterSpacing: s.letterSpacing } : {}),
+    ...(s?.smallCaps ? { smallCaps: true } : {}),
+    ...(s?.script === TextScript.SUPERSCRIPT ? { script: "super" as const } : s?.script === TextScript.SUBSCRIPT ? { script: "sub" as const } : {}),
+    ...(s?.horizontalScale && s.horizontalScale !== 1 ? { horizontalScale: s.horizontalScale } : {}),
+    ...(s?.noKerning ? { noKerning: true } : {}),
+    ...(s?.color ? { color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a } } : {}),
   };
 }
 
@@ -628,6 +663,11 @@ export function toPbTextStyle(s: TextStyleLite) {
     underline: s.underline === true,
     strikethrough: s.strikethrough === true,
     letterSpacing: s.letterSpacing ?? 0,
+    smallCaps: s.smallCaps === true,
+    script: s.script === "super" ? TextScript.SUPERSCRIPT : s.script === "sub" ? TextScript.SUBSCRIPT : TextScript.NORMAL,
+    horizontalScale: s.horizontalScale ?? 0,
+    noKerning: s.noKerning === true,
+    ...(s.color ? { color: { r: s.color.r, g: s.color.g, b: s.color.b, a: s.color.a } } : {}),
   };
 }
 
@@ -1072,6 +1112,22 @@ export function toTextStyleDefLite(d: PbTextStyleDef): TextStyleDefLite {
     ...(d.indentFirst ? { indentFirst: d.indentFirst } : {}),
     ...(d.indentLeft ? { indentLeft: d.indentLeft } : {}),
     ...(d.alignToGrid ? { alignToGrid: true } : {}),
+    ...(d.hyphenate ? { hyphenate: true } : {}),
+    ...(d.listKind === ListKind.BULLET ? { listKind: "bullet" as const } : d.listKind === ListKind.NUMBER ? { listKind: "number" as const } : {}),
+    ...(d.listMarker ? { listMarker: d.listMarker } : {}),
+    ...(d.listNumberStyle === "i" || d.listNumberStyle === "I" || d.listNumberStyle === "a" || d.listNumberStyle === "A" ? { listNumberStyle: d.listNumberStyle } : {}),
+    ...(d.listIndent ? { listIndent: d.listIndent } : {}),
+    ...(d.tabStops.length > 0 ? {
+      tabStops: d.tabStops.map((t) => ({
+        position: t.position, ...(t.align === TabAlign.CENTER ? { align: "center" as const } : t.align === TabAlign.RIGHT ? { align: "right" as const } : {}),
+        ...(t.leader ? { leader: t.leader } : {}),
+      })),
+    } : {}),
+    ...(d.dropCapLines ? { dropCapLines: d.dropCapLines } : {}),
+    ...(d.dropCapChars ? { dropCapChars: d.dropCapChars } : {}),
+    ...(d.nestedStyles.length > 0 ? {
+      nestedStyles: d.nestedStyles.map((n) => ({ styleId: n.styleId, delimiter: n.delimiter, count: n.count, ...(n.inclusive ? { inclusive: true } : {}) })),
+    } : {}),
   };
 }
 export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
@@ -1081,6 +1137,14 @@ export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
     basedOn: d.basedOn ?? "", nextStyleId: d.nextStyleId ?? "",
     spaceBefore: d.spaceBefore ?? 0, spaceAfter: d.spaceAfter ?? 0, indentFirst: d.indentFirst ?? 0, indentLeft: d.indentLeft ?? 0,
     alignToGrid: d.alignToGrid === true,
+    hyphenate: d.hyphenate === true,
+    listKind: d.listKind === "bullet" ? ListKind.BULLET : d.listKind === "number" ? ListKind.NUMBER : ListKind.NONE,
+    listMarker: d.listMarker ?? "", listNumberStyle: d.listNumberStyle ?? "", listIndent: d.listIndent ?? 0,
+    tabStops: (d.tabStops ?? []).map((t) => ({
+      position: t.position, align: t.align === "center" ? TabAlign.CENTER : t.align === "right" ? TabAlign.RIGHT : TabAlign.LEFT, leader: t.leader ?? "",
+    })),
+    dropCapLines: d.dropCapLines ?? 0, dropCapChars: d.dropCapChars ?? 0,
+    nestedStyles: (d.nestedStyles ?? []).map((n) => ({ styleId: n.styleId, delimiter: n.delimiter, count: n.count, inclusive: n.inclusive === true })),
   });
 }
 

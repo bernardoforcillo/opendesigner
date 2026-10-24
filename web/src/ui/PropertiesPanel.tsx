@@ -285,6 +285,7 @@ const ALIGNMENTS: readonly SegOption<TextAlignLite>[] = [
   { value: "left", label: "Left", icon: "textLeft" },
   { value: "center", label: "Center", icon: "textCenter" },
   { value: "right", label: "Right", icon: "textRight" },
+  { value: "justify", label: "Justify", icon: "textJustify" },
 ];
 
 // The stroke's POSITION relative to the perimeter. The group is called

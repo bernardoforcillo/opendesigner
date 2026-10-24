@@ -33,7 +33,7 @@ type TextStyleBody struct {
 	FontWeight string  `json:"fontWeight,omitempty" jsonschema:"100..900, normal or bold"`
 	LineHeight float64 `json:"lineHeight,omitempty" jsonschema:"multiplier; 0 means the default 1.2"`
 	Italic     bool    `json:"italic,omitempty"`
-	Align      string  `json:"align,omitempty" jsonschema:"left (default) | center | right"`
+	Align      string  `json:"align,omitempty" jsonschema:"left (default) | center | right | justify"`
 	// Rich text (see docs/rich-text.md).
 	Underline     bool    `json:"underline,omitempty"`
 	Strikethrough bool    `json:"strikethrough,omitempty"`
@@ -46,6 +46,36 @@ type TextStyleBody struct {
 	IndentLeft    float64 `json:"indentLeft,omitempty" jsonschema:"px of indent on every line"`
 	LetterSpacing float64 `json:"letterSpacing,omitempty" jsonschema:"tracking: px added after every character; negative tightens"`
 	AlignToGrid   bool    `json:"alignToGrid,omitempty" jsonschema:"paragraph styles only: the lines sit on the document's baseline grid (set_document_settings)"`
+	// Typesetting (see docs/rich-text.md).
+	SmallCaps       bool        `json:"smallCaps,omitempty" jsonschema:"lowercase letters drawn as smaller capitals"`
+	Script          string      `json:"script,omitempty" jsonschema:"superscript | subscript (smaller, raised / lowered); empty = normal"`
+	HorizontalScale float64     `json:"horizontalScale,omitempty" jsonschema:"glyph width multiplier 0.1..10; 0 = 1"`
+	NoKerning       bool        `json:"noKerning,omitempty" jsonschema:"switch the font's pair kerning off"`
+	Color           *RGBA       `json:"color,omitempty" jsonschema:"text colour of the style; absent = the node's fill"`
+	Hyphenate       bool        `json:"hyphenate,omitempty" jsonschema:"paragraph styles: long words break at a syllable with a hyphen"`
+	ListKind        string      `json:"listKind,omitempty" jsonschema:"paragraph styles: bullet | number"`
+	ListMarker      string      `json:"listMarker,omitempty" jsonschema:"bullet: the character (default •); number: a template, # is the number (default #.)"`
+	ListNumberStyle string      `json:"listNumberStyle,omitempty" jsonschema:"numbered lists: empty (1,2,3) | i | I | a | A"`
+	ListIndent      float64     `json:"listIndent,omitempty" jsonschema:"distance from the marker to the text (default 18)"`
+	TabStops        []TabStopIO `json:"tabStops,omitempty" jsonschema:"paragraph styles: tab stops from the left edge, ascending"`
+	DropCapLines    uint32      `json:"dropCapLines,omitempty" jsonschema:"paragraph styles: a drop cap this many lines tall (2..10); 0 = none"`
+	DropCapChars    uint32      `json:"dropCapChars,omitempty" jsonschema:"how many characters make the drop cap (default 1)"`
+	NestedStyles    []NestedIO  `json:"nestedStyles,omitempty" jsonschema:"paragraph styles: character styles applied to the start of every paragraph"`
+}
+
+// TabStopIO is a tab stop: the text after a tab starts at (left), is centred on (center) or ends at (right) position.
+type TabStopIO struct {
+	Position float64 `json:"position"`
+	Align    string  `json:"align,omitempty" jsonschema:"left (default) | center | right"`
+	Leader   string  `json:"leader,omitempty" jsonschema:"one character that fills the gap before the stop, e.g. a dot"`
+}
+
+// NestedIO applies a character style up to the count-th delimiter of each paragraph (" " counts words).
+type NestedIO struct {
+	StyleId   string `json:"styleId" jsonschema:"a character style"`
+	Delimiter string `json:"delimiter"`
+	Count     uint32 `json:"count"`
+	Inclusive bool   `json:"inclusive,omitempty" jsonschema:"the delimiter itself is styled too"`
 }
 
 type TextStyleView struct {
@@ -71,6 +101,8 @@ func alignName(a opendesignerv1.TextAlign) string {
 		return "center"
 	case opendesignerv1.TextAlign_TEXT_ALIGN_RIGHT:
 		return "right"
+	case opendesignerv1.TextAlign_TEXT_ALIGN_JUSTIFY:
+		return "justify"
 	}
 	return "left"
 }
@@ -83,8 +115,10 @@ func alignEnum(s string) (opendesignerv1.TextAlign, error) {
 		return opendesignerv1.TextAlign_TEXT_ALIGN_CENTER, nil
 	case "right":
 		return opendesignerv1.TextAlign_TEXT_ALIGN_RIGHT, nil
+	case "justify":
+		return opendesignerv1.TextAlign_TEXT_ALIGN_JUSTIFY, nil
 	}
-	return 0, fmt.Errorf("align must be left, center or right, got %q", s)
+	return 0, fmt.Errorf("align must be left, center, right or justify, got %q", s)
 }
 
 func fontViews(doc *opendesignerv1.Document) []FontView {
@@ -115,6 +149,10 @@ func textStyleViews(doc *opendesignerv1.Document) []TextStyleView {
 			BasedOn: d.GetBasedOn(), NextStyleId: d.GetNextStyleId(), SpaceBefore: d.GetSpaceBefore(), SpaceAfter: d.GetSpaceAfter(),
 			IndentFirst: d.GetIndentFirst(), IndentLeft: d.GetIndentLeft(),
 			LetterSpacing: st.GetLetterSpacing(), AlignToGrid: d.GetAlignToGrid(),
+			SmallCaps: st.GetSmallCaps(), Script: scriptName(st.GetScript()), HorizontalScale: st.GetHorizontalScale(), NoKerning: st.GetNoKerning(),
+			Color: rgbaOf(st.GetColor()), Hyphenate: d.GetHyphenate(), ListKind: listKindName(d.GetListKind()), ListMarker: d.GetListMarker(),
+			ListNumberStyle: d.GetListNumberStyle(), ListIndent: d.GetListIndent(), TabStops: tabStopViews(d.GetTabStops()),
+			DropCapLines: d.GetDropCapLines(), DropCapChars: d.GetDropCapChars(), NestedStyles: nestedViews(d.GetNestedStyles()),
 		}})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -136,11 +174,122 @@ func (b TextStyleBody) toProto(id string) (*opendesignerv1.TextStyleDef, error) 
 	default:
 		return nil, fmt.Errorf("kind must be paragraph or character, got %q", b.Kind)
 	}
-	return &opendesignerv1.TextStyleDef{Id: id, Name: b.Name, Style: &opendesignerv1.TextStyle{
+	script, err := scriptEnum(b.Script)
+	if err != nil {
+		return nil, err
+	}
+	listKind, err := listKindEnum(b.ListKind)
+	if err != nil {
+		return nil, err
+	}
+	d := &opendesignerv1.TextStyleDef{Id: id, Name: b.Name, Style: &opendesignerv1.TextStyle{
 		FontFamily: b.FontFamily, FontSize: b.FontSize, FontWeight: b.FontWeight, LineHeight: b.LineHeight, Italic: b.Italic, Align: align,
 		Underline: b.Underline, Strikethrough: b.Strikethrough, LetterSpacing: b.LetterSpacing,
+		SmallCaps: b.SmallCaps, Script: script, HorizontalScale: b.HorizontalScale, NoKerning: b.NoKerning,
 	}, AlignToGrid: b.AlignToGrid, Kind: kind, BasedOn: b.BasedOn, NextStyleId: b.NextStyleId, SpaceBefore: b.SpaceBefore, SpaceAfter: b.SpaceAfter,
-		IndentFirst: b.IndentFirst, IndentLeft: b.IndentLeft}, nil
+		IndentFirst: b.IndentFirst, IndentLeft: b.IndentLeft,
+		Hyphenate: b.Hyphenate, ListKind: listKind, ListMarker: b.ListMarker, ListNumberStyle: b.ListNumberStyle, ListIndent: b.ListIndent,
+		DropCapLines: b.DropCapLines, DropCapChars: b.DropCapChars}
+	if b.Color != nil {
+		d.Style.Color = &opendesignerv1.Color{R: float32(b.Color.R), G: float32(b.Color.G), B: float32(b.Color.B), A: float32(b.Color.A)}
+	}
+	for _, t := range b.TabStops {
+		a, err := tabAlignEnum(t.Align)
+		if err != nil {
+			return nil, err
+		}
+		d.TabStops = append(d.TabStops, &opendesignerv1.TabStop{Position: t.Position, Align: a, Leader: t.Leader})
+	}
+	for _, n := range b.NestedStyles {
+		d.NestedStyles = append(d.NestedStyles, &opendesignerv1.NestedStyle{StyleId: n.StyleId, Delimiter: n.Delimiter, Count: n.Count, Inclusive: n.Inclusive})
+	}
+	return d, nil
+}
+
+func scriptName(s opendesignerv1.TextScript) string {
+	switch s {
+	case opendesignerv1.TextScript_TEXT_SCRIPT_SUPERSCRIPT:
+		return "superscript"
+	case opendesignerv1.TextScript_TEXT_SCRIPT_SUBSCRIPT:
+		return "subscript"
+	}
+	return ""
+}
+
+func scriptEnum(s string) (opendesignerv1.TextScript, error) {
+	switch s {
+	case "", "normal":
+		return opendesignerv1.TextScript_TEXT_SCRIPT_NORMAL, nil
+	case "superscript":
+		return opendesignerv1.TextScript_TEXT_SCRIPT_SUPERSCRIPT, nil
+	case "subscript":
+		return opendesignerv1.TextScript_TEXT_SCRIPT_SUBSCRIPT, nil
+	}
+	return 0, fmt.Errorf("script must be superscript or subscript, got %q", s)
+}
+
+func listKindName(k opendesignerv1.ListKind) string {
+	switch k {
+	case opendesignerv1.ListKind_LIST_KIND_BULLET:
+		return "bullet"
+	case opendesignerv1.ListKind_LIST_KIND_NUMBER:
+		return "number"
+	}
+	return ""
+}
+
+func listKindEnum(s string) (opendesignerv1.ListKind, error) {
+	switch s {
+	case "":
+		return opendesignerv1.ListKind_LIST_KIND_NONE, nil
+	case "bullet":
+		return opendesignerv1.ListKind_LIST_KIND_BULLET, nil
+	case "number":
+		return opendesignerv1.ListKind_LIST_KIND_NUMBER, nil
+	}
+	return 0, fmt.Errorf("listKind must be bullet or number, got %q", s)
+}
+
+func tabAlignEnum(s string) (opendesignerv1.TabAlign, error) {
+	switch s {
+	case "", "left":
+		return opendesignerv1.TabAlign_TAB_ALIGN_LEFT, nil
+	case "center":
+		return opendesignerv1.TabAlign_TAB_ALIGN_CENTER, nil
+	case "right":
+		return opendesignerv1.TabAlign_TAB_ALIGN_RIGHT, nil
+	}
+	return 0, fmt.Errorf("tab align must be left, center or right, got %q", s)
+}
+
+func rgbaOf(c *opendesignerv1.Color) *RGBA {
+	if c == nil {
+		return nil
+	}
+	return &RGBA{R: float64(c.GetR()), G: float64(c.GetG()), B: float64(c.GetB()), A: float64(c.GetA())}
+}
+
+func tabStopViews(ts []*opendesignerv1.TabStop) []TabStopIO {
+	var out []TabStopIO
+	for _, t := range ts {
+		a := ""
+		switch t.GetAlign() {
+		case opendesignerv1.TabAlign_TAB_ALIGN_CENTER:
+			a = "center"
+		case opendesignerv1.TabAlign_TAB_ALIGN_RIGHT:
+			a = "right"
+		}
+		out = append(out, TabStopIO{Position: t.GetPosition(), Align: a, Leader: t.GetLeader()})
+	}
+	return out
+}
+
+func nestedViews(ns []*opendesignerv1.NestedStyle) []NestedIO {
+	var out []NestedIO
+	for _, n := range ns {
+		out = append(out, NestedIO{StyleId: n.GetStyleId(), Delimiter: n.GetDelimiter(), Count: n.GetCount(), Inclusive: n.GetInclusive()})
+	}
+	return out
 }
 
 func kindName(k opendesignerv1.TextStyleKind) string {

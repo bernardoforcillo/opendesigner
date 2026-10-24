@@ -51,6 +51,10 @@ export function TypographyControls() {
   const underline = same(styles.map((s) => s.underline === true));
   const strike = same(styles.map((s) => s.strikethrough === true));
   const tracking = same(styles.map((s) => s.letterSpacing ?? 0));
+  const smallCaps = same(styles.map((s) => s.smallCaps === true));
+  const script = same(styles.map((s) => s.script ?? ""));
+  const hscale = same(styles.map((s) => Math.round((s.horizontalScale ?? 1) * 100)));
+  const noKerning = same(styles.map((s) => s.noKerning === true));
   const paragraphValue = paragraphStyleOf(scene, selection);
   const characterValue = characterStyleOf(scene, selection);
   const single = nodes.length === 1 ? nodes[0] : null;
@@ -80,6 +84,30 @@ export function TypographyControls() {
             <span className="line-through">S</span>
           </Button>
         </div>
+        <div className="col-span-2 flex gap-1.5">
+          <Button aria-label="Small caps" aria-pressed={smallCaps === true} variant={smallCaps === true ? "primary" : "secondary"}
+            onPress={() => run(styleOps(scene, selection, { smallCaps: smallCaps !== true ? true : undefined }))}>
+            <span className="text-[10px] font-semibold">Aa</span>
+          </Button>
+          <Button aria-label="Superscript" aria-pressed={script === "super"} variant={script === "super" ? "primary" : "secondary"}
+            onPress={() => run(styleOps(scene, selection, { script: script === "super" ? undefined : "super" }))}>
+            <span>x<sup className="text-[9px]">2</sup></span>
+          </Button>
+          <Button aria-label="Subscript" aria-pressed={script === "sub"} variant={script === "sub" ? "primary" : "secondary"}
+            onPress={() => run(styleOps(scene, selection, { script: script === "sub" ? undefined : "sub" }))}>
+            <span>x<sub className="text-[9px]">2</sub></span>
+          </Button>
+          <Button aria-label="Kerning off" aria-pressed={noKerning === true} variant={noKerning === true ? "primary" : "secondary"}
+            onPress={() => run(styleOps(scene, selection, { noKerning: noKerning !== true ? true : undefined }))}>
+            <span className="text-[10px]">AV</span>
+          </Button>
+        </div>
+        <NumberField
+          label="Width" minValue={10} suffix="%"
+          value={hscale === MIXED ? NaN : hscale}
+          placeholder={hscale === MIXED ? "Mixed" : undefined}
+          onCommit={(v) => run(styleOps(scene, selection, { horizontalScale: v === 100 ? undefined : v / 100 }))}
+        />
         <NumberField
           label="Tracking" suffix="px"
           value={tracking === MIXED ? NaN : tracking}

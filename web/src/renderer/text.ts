@@ -1,4 +1,5 @@
 import type { NodeLite, TextAlignLite, TextLite, TextStyleLite } from "../store/types";
+import { hyphenPoints } from "./hyphenate";
 import type { Bounds } from "../canvas/geometry";
 
 // The text defaults live HERE and nowhere else. The model keeps
@@ -215,7 +216,9 @@ const charCount = (s: string) => Array.from(s).length;
 /** `measure` plus the style's letter spacing (the measure itself when there is none). */
 export function trackedMeasure(measure: (s: string) => number, style: TextStyleLite | undefined): (s: string) => number {
   const ls = style?.letterSpacing ?? 0;
-  return ls === 0 ? measure : (s) => measure(s) + ls * charCount(s);
+  const sx = style?.horizontalScale ?? 1;
+  if (ls === 0 && sx === 1) return measure;
+  return (s) => measure(s) * sx + ls * charCount(s);
 }
 
 export function trackedMeasureFor(measureFor: MeasureFor): MeasureFor {
@@ -226,9 +229,9 @@ export function trackedMeasureFor(measureFor: MeasureFor): MeasureFor {
  * The x of each character of `text` starting at `x`, for a style with letter spacing: where it would be
  * without spacing (so kerning inside the string is kept) plus `spacing` for each character before it.
  */
-export function trackedOffsets(text: string, x: number, spacing: number, measure: (s: string) => number): { ch: string; x: number }[] {
+export function trackedOffsets(text: string, x: number, spacing: number, measure: (s: string) => number, scale = 1): { ch: string; x: number }[] {
   const chars = Array.from(text);
-  return chars.map((ch, i) => ({ ch, x: x + (i === 0 ? 0 : measure(chars.slice(0, i).join(""))) + i * spacing }));
+  return chars.map((ch, i) => ({ ch, x: x + (i === 0 ? 0 : measure(chars.slice(0, i).join("")) * scale) + i * spacing }));
 }
 
 // The lines a text node produces, with their position: exactly
@@ -318,6 +321,7 @@ export function textPaintBounds(measure: MeasureText, n: NodeLite): Bounds {
     for (const line of placeRichLines(mf, n, layout)) {
       minX = Math.min(minX, line.x);
       maxX = Math.max(maxX, line.x + line.width);
+      for (const seg of line.segments ?? []) { minX = Math.min(minX, seg.x); maxX = Math.max(maxX, seg.x + seg.width); }
     }
     return { x: minX, y: n.y, width: maxX - minX, height: Math.max(n.height, layout.height) };
   }
@@ -359,7 +363,7 @@ function drawDecorations(ctx: CanvasRenderingContext2D, n: NodeLite): void {
   for (const line of lines) {
     const pieces = line.segments ?? [{ text: line.text, x: line.x, width: line.width, style: t.style }];
     for (const seg of pieces) {
-      for (const bar of decorationBars(seg.style, line.y)) ctx.fillRect(seg.x, bar.y, seg.width, bar.height);
+      for (const bar of decorationBars(seg.style, line.y - (seg.style.baselineShift ?? 0))) ctx.fillRect(seg.x, bar.y, seg.width, bar.height);
     }
   }
 }
@@ -374,11 +378,17 @@ export function decorationBars(style: TextStyleLite, baseline: number): { y: num
   return bars;
 }
 
+// ctx.fontKerning exists in current browsers; elsewhere (and in tests) kerning is simply the font's.
+function setKerning(ctx: CanvasRenderingContext2D, value: "auto" | "none"): void {
+  if ("fontKerning" in ctx) ctx.fontKerning = value;
+}
+
 /** A MeasureFor on a 2D context: it sets the font before every measure, so styles can alternate freely. */
 export function ctxMeasureFor(ctx: CanvasRenderingContext2D): MeasureFor {
   return (style) => {
     const font = fontString(style);
-    return (s) => { ctx.font = font; return ctx.measureText(s).width; };
+    const kerning = style.noKerning ? "none" : "auto";
+    return (s) => { ctx.font = font; setKerning(ctx, kerning); return ctx.measureText(s).width; };
   };
 }
 
@@ -423,17 +433,31 @@ function paintText(
   // fill or stroke: the two tracks compose here without a second
   // measure of the layout.
   const raw = (s: string) => ctx.measureText(s).width;
-  // A piece with letter spacing is drawn character by character; one without, in one go.
+  // One piece: raised/lowered by its baseline shift, stretched by its horizontal scale, in its own colour;
+  // with letter spacing it is drawn character by character.
   const piece = (text: string, x: number, y: number, style: TextStyleLite) => {
     const ls = style.letterSpacing ?? 0;
-    if (ls === 0) { paintLine(text, x, y); return; }
-    for (const c of trackedOffsets(text, x, ls, raw)) paintLine(c.ch, c.x, y);
+    const sx = style.horizontalScale ?? 1;
+    const py = y - (style.baselineShift ?? 0);
+    setKerning(ctx, style.noKerning ? "none" : "auto");
+    const prevFill = ctx.fillStyle;
+    if (style.color) ctx.fillStyle = `rgba(${Math.round(style.color.r * 255)},${Math.round(style.color.g * 255)},${Math.round(style.color.b * 255)},${style.color.a})`;
+    if (sx !== 1) {
+      ctx.save();
+      ctx.translate(x, py);
+      ctx.scale(sx, 1);
+      if (ls === 0) paintLine(text, 0, 0);
+      else for (const c of trackedOffsets(text, 0, ls / sx, raw)) paintLine(c.ch, c.x, 0);
+      ctx.restore();
+    } else if (ls === 0) paintLine(text, x, py);
+    else for (const c of trackedOffsets(text, x, ls, raw)) paintLine(c.ch, c.x, py);
+    if (style.color) ctx.fillStyle = prevFill;
   };
   for (const line of placeTextLines(raw, n, ctxMeasureFor(ctx))) {
     if (!line.segments) { piece(line.text, line.x, line.y, t.style); continue; }
     for (const seg of line.segments) {
       ctx.font = fontString(seg.style);
-      piece(seg.text, seg.x, line.y, seg.style);
+      if (seg.text !== "") piece(seg.text, seg.x, line.y, seg.style);
     }
   }
 }
@@ -446,11 +470,15 @@ function paintText(
 // line broken by characters, trailing spaces hanging -- but every character has its own style: the
 // paragraph's, overridden by the character style of the run it falls in. A line is as tall as its
 // tallest piece, pieces sit on one baseline, and paragraphs add their spacing and indents.
+// On top of that, formatted text knows: small capitals and super/subscript (pieces re-styled before
+// wrapping), tab stops with leaders, hyphenation, justified lines, list markers and drop caps.
 // Text without `rich` never comes through here: plain text keeps the layout above, unchanged.
 
 // `at` is where the piece starts in the (newline-normalized) content: it is what lets a caller know how
 // much of the text a set of lines used (threaded frames flow the rest into the next frame).
-interface Frag { text: string; style: TextStyleLite; at: number }
+// `w` is a width fixed by the layout (a tab), `synthetic` a character that is not in the content (the
+// hyphen at a break), `leader` what fills a tab.
+interface Frag { text: string; style: TextStyleLite; at: number; w?: number; synthetic?: boolean; leader?: string }
 export interface RichLine {
   /** The pieces, in order. */
   frags: Frag[];
@@ -465,10 +493,23 @@ export interface RichLine {
   left: number;
   /** Where the line ends in the normalized content (just after its last character). */
   end: number;
+  /** Extra width added to every space of a justified line. */
+  justify?: number;
+  /** The list marker in front of the first line of a list paragraph, with its x from the box's left edge. */
+  marker?: { text: string; style: TextStyleLite; x: number };
+  /** The drop cap of the paragraph (on its first line), with its x from the box's left edge and its width. */
+  drop?: { text: string; style: TextStyleLite; x: number; width: number };
 }
 export interface RichLayout { lines: RichLine[]; height: number }
 
 const frag = (text: string, style: TextStyleLite, at: number): Frag => ({ text, style, at });
+
+/** Tab stops past the last explicit one fall on multiples of this. */
+export const DEFAULT_TAB = 36;
+const SMALL_CAPS_SCALE = 0.8;
+const SCRIPT_SCALE = 0.58;
+const DROP_CAP_HEIGHT = 0.7;
+const DROP_CAP_GAP = 0.15;
 
 // Run boundaries in the NORMALIZED content ("\r\n" and "\r" are one "\n"): runs index the raw content.
 function normalizedOffsets(raw: string): ((i: number) => number) | null {
@@ -491,6 +532,58 @@ function metricsOf(style: TextStyleLite) {
   return { ascent, descent: lh - ascent };
 }
 
+type ParagraphLite = NonNullable<TextLite["rich"]>["paragraphs"][number];
+
+// Styles derived from a piece's (small caps lowercase, super/subscript), cached so equal pieces share one
+// object and neighbours merge into one segment.
+function derivedStyles() {
+  const cache = new Map<TextStyleLite, Map<string, TextStyleLite>>();
+  return (style: TextStyleLite, lower: boolean): TextStyleLite => {
+    const key = lower ? "l" : "n";
+    let per = cache.get(style);
+    if (!per) { per = new Map(); cache.set(style, per); }
+    const hit = per.get(key);
+    if (hit) return hit;
+    const { smallCaps: _c, script: _s, ...rest } = style;
+    void _c; void _s;
+    let out: TextStyleLite = rest;
+    if (lower) out = { ...out, fontSize: fontSizeOf(style) * SMALL_CAPS_SCALE };
+    if (style.script) {
+      const size = fontSizeOf(out);
+      out = { ...out, fontSize: size * SCRIPT_SCALE, baselineShift: (out.baselineShift ?? 0) + (style.script === "super" ? size * 0.36 : -size * 0.14) };
+    }
+    per.set(key, out);
+    return out;
+  };
+}
+
+// Pieces re-styled for what the layout must do itself: tabs become their own piece, small capitals are
+// split into lowercase (drawn as smaller capitals) and the rest, super/subscript shrink and shift.
+function expandPieces(pieces: Frag[]): Frag[] {
+  const derive = derivedStyles();
+  const out: Frag[] = [];
+  for (const piece of pieces) {
+    let off = piece.at;
+    for (const part of piece.text.split(/(\t)/)) {
+      if (part === "") continue;
+      if (part === "\t") { out.push(frag("\t", piece.style, off)); off += 1; continue; }
+      const st = piece.style;
+      if (!st.smallCaps && !st.script) { out.push(frag(part, st, off)); off += part.length; continue; }
+      let chunk = "", lower = false, chunkAt = off;
+      const flush = () => { if (chunk !== "") out.push(frag(chunk, derive(st, lower && !!st.smallCaps), chunkAt)); chunk = ""; };
+      for (const ch of Array.from(part)) {
+        const up = st.smallCaps ? ch.toUpperCase() : ch;
+        const isLower = !!st.smallCaps && up !== ch && up.length === ch.length;
+        if (isLower !== lower) { flush(); lower = isLower; chunkAt = off; }
+        chunk += isLower ? up : ch;
+        off += ch.length;
+      }
+      flush();
+    }
+  }
+  return out;
+}
+
 export function layoutRich(
   measureFor: MeasureFor,
   content: string,
@@ -506,9 +599,9 @@ export function layoutRich(
   let offset = 0;
   const paragraphs = text.split("\n");
   paragraphs.forEach((para, pi) => {
-    const pr = rich.paragraphs[pi] ?? { style: base, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 };
+    const pr: ParagraphLite = rich.paragraphs[pi] ?? { style: base, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 };
     // The pieces of the paragraph: split at run boundaries.
-    const pieces: Frag[] = [];
+    let pieces: Frag[] = [];
     const end = offset + para.length;
     let pos = offset;
     while (pos < end) {
@@ -521,9 +614,50 @@ export function layoutRich(
     offset = end + 1;
 
     if (pi > 0) y += pr.spaceBefore;
-    const built = wrapPieces(measureFor, pieces, pr, maxWidth);
+    const paraTop = y;
+    const lh0 = metricsOf(pr.style).ascent + metricsOf(pr.style).descent;
+
+    // Drop cap: the first characters, large, spanning `dropLines` lines; those lines make room for it.
+    let drop: RichLine["drop"];
+    let dropLen = 0;
+    const dropLines = pr.dropLines && pr.dropLines >= 2 ? pr.dropLines : 0;
+    if (dropLines > 0 && pieces.length > 0 && pieces[0].text !== "" && !/^\s/.test(pieces[0].text)) {
+      let want = pr.dropChars && pr.dropChars > 0 ? pr.dropChars : 1;
+      let taken = "";
+      const rest: Frag[] = [];
+      for (const pc of pieces) {
+        if (want <= 0) { rest.push(pc); continue; }
+        let cut = 0;
+        for (const ch of Array.from(pc.text)) { if (want <= 0) break; taken += ch; cut += ch.length; want--; }
+        if (cut < pc.text.length) rest.push(frag(pc.text.slice(cut), pc.style, pc.at + cut));
+      }
+      if (taken !== "" && !/\s/.test(taken)) {
+        const size = fontSizeOf(pieces[0].style);
+        const bigSize = ((dropLines - 1) * lh0 + DROP_CAP_HEIGHT * size) / DROP_CAP_HEIGHT;
+        const style: TextStyleLite = { ...pieces[0].style, fontSize: bigSize, lineHeight: 1, baselineShift: -((dropLines - 1) * lh0) };
+        dropLen = taken.length;
+        drop = { text: taken, style, x: pr.indentLeft, width: measureFor(style)(taken) + size * DROP_CAP_GAP };
+        pieces = rest;
+      }
+    }
+
+    const listed = pr.marker !== undefined;
+    // Where line `i` of this paragraph starts, from the box's left edge.
+    const leftOf = (i: number) => pr.indentLeft + (listed ? pr.listIndent ?? 0 : i === 0 ? pr.indentFirst : 0) + (drop && i < dropLines ? drop.width : 0);
+    const limitAt = (i: number) => (maxWidth > 0 ? maxWidth - leftOf(i) : Infinity);
+
+    const built = wrapPieces(measureFor, expandPieces(pieces), pr, limitAt, leftOf);
     // An empty paragraph is an empty line: it keeps its height.
     if (built.length === 0) built.push({ frags: [], width: 0 });
+    // Justified: every line but the paragraph's last gets its spaces widened to fill the line.
+    if (pr.style.align === "justify" && maxWidth > 0) {
+      built.forEach((l, li) => {
+        if (li === built.length - 1) return;
+        const spaces = l.frags.reduce((n, f) => (f.w === undefined ? n + (f.text.split(" ").length - 1) : n), 0);
+        const room = limitAt(li) - l.width;
+        if (spaces > 0 && room > 0) { l.justify = room / spaces; l.width = limitAt(li); }
+      });
+    }
     for (const [li, l] of built.entries()) {
       const empty = l.frags.length === 0;
       const m = empty ? metricsOf(pr.style) : l.frags.map((f) => metricsOf(f.style)).reduce((a, b) => ({ ascent: Math.max(a.ascent, b.ascent), descent: Math.max(a.descent, b.descent) }));
@@ -535,12 +669,19 @@ export function layoutRich(
         const target = g.start + Math.ceil((baseline - g.start) / g.increment - 1e-9) * g.increment;
         if (target > baseline) y += target - baseline;
       }
-      const lineWidth = maxWidth > 0 ? maxWidth - pr.indentLeft - (li === 0 ? pr.indentFirst : 0) : 0;
-      const left = pr.indentLeft + (li === 0 ? pr.indentFirst : 0) + alignOffsetX(pr.style.align, l.width, lineWidth);
-      const last = l.frags[l.frags.length - 1];
-      lines.push({ frags: l.frags, width: l.width, top: y, height, ascent: m.ascent, left, end: last ? last.at + last.text.length : paraStart });
+      const lineWidth = maxWidth > 0 ? limitAt(li) : 0;
+      const left = leftOf(li) + alignOffsetX(pr.style.align, l.width, lineWidth);
+      const last = [...l.frags].reverse().find((f) => !f.synthetic);
+      lines.push({
+        frags: l.frags, width: l.width, top: y, height, ascent: m.ascent, left, end: last ? last.at + last.text.length : paraStart + dropLen,
+        ...(l.justify ? { justify: l.justify } : {}),
+        ...(li === 0 && listed ? { marker: { text: pr.marker!, style: pr.style, x: pr.indentLeft } } : {}),
+        ...(li === 0 && drop ? { drop } : {}),
+      });
       y += height;
     }
+    // A drop cap taller than the paragraph keeps its room.
+    if (drop && y < paraTop + dropLines * lh0) y = paraTop + dropLines * lh0;
     if (pi < paragraphs.length - 1) y += pr.spaceAfter;
   });
   return { lines, height: y };
@@ -558,21 +699,43 @@ function overlayStyle(base: TextStyleLite, over: TextStyleLite): TextStyleLite {
   if (over.underline) out.underline = true;
   if (over.strikethrough) out.strikethrough = true;
   if (over.letterSpacing) out.letterSpacing = over.letterSpacing;
+  if (over.smallCaps) out.smallCaps = true;
+  if (over.script) out.script = over.script;
+  if (over.horizontalScale) out.horizontalScale = over.horizontalScale;
+  if (over.noKerning) out.noKerning = true;
+  if (over.color) out.color = over.color;
   return out;
 }
 
-interface Built { frags: Frag[]; width: number }
+interface Built { frags: Frag[]; width: number; justify?: number }
 
-// Greedy wrap of one paragraph's pieces.
-function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: NonNullable<TextLite["rich"]>["paragraphs"][number], maxWidth: number): Built[] {
+// Splits the frags of a word after `n` UTF-16 units.
+function splitFrags(frags: Frag[], n: number): [Frag[], Frag[]] {
+  const head: Frag[] = [], tail: Frag[] = [];
+  let used = 0;
+  for (const f of frags) {
+    if (used + f.text.length <= n) { head.push(f); used += f.text.length; continue; }
+    if (used >= n) { tail.push(f); used += f.text.length; continue; }
+    const cut = n - used;
+    head.push(frag(f.text.slice(0, cut), f.style, f.at));
+    tail.push(frag(f.text.slice(cut), f.style, f.at + cut));
+    used += f.text.length;
+  }
+  return [head, tail];
+}
+
+// Greedy wrap of one paragraph's pieces. `limitAt(i)` is the room of line i (after its indents) and
+// `leftOf(i)` where it starts, which tab stops need.
+function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: ParagraphLite, limitAt: (i: number) => number, leftOf: (i: number) => number): Built[] {
   if (pieces.length === 0) return [];
-  const width = (f: Frag) => (f.text === "" ? 0 : measureFor(f.style)(f.text));
+  const width = (f: Frag) => (f.w !== undefined ? f.w : f.text === "" ? 0 : measureFor(f.style)(f.text));
   // Words: runs of non-space characters, each with the style of its characters; the space before a
-  // word is its separator and has its own style.
-  interface Word { frags: Frag[]; sep: Frag | null }
+  // word is its separator and has its own style. A tab is a word of its own.
+  interface Word { frags: Frag[]; sep: Frag | null; tab?: Frag }
   const words: Word[] = [];
   let cur: Word = { frags: [], sep: null };
   for (const piece of pieces) {
+    if (piece.text === "\t") { words.push(cur); words.push({ frags: [], sep: null, tab: piece }); cur = { frags: [], sep: null }; continue; }
     let off = piece.at;
     piece.text.split(" ").forEach((part, i) => {
       if (i > 0) { words.push(cur); cur = { frags: [], sep: frag(" ", piece.style, off) }; off += 1; }
@@ -582,7 +745,6 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: NonNullable<Text
   }
   words.push(cur);
 
-  const limit = (first: boolean) => (maxWidth > 0 ? maxWidth - pr.indentLeft - (first ? pr.indentFirst : 0) : Infinity);
   const out: Built[] = [];
   const wordWidth = (w: Word) => w.frags.reduce((n, f) => n + width(f), 0);
   const tail = () => out[out.length - 1];
@@ -590,33 +752,97 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: NonNullable<Text
     for (const f of frags) {
       const line = tail();
       const last = line.frags[line.frags.length - 1];
-      if (last && last.style === f.style && last.at + last.text.length === f.at) last.text += f.text; else line.frags.push(frag(f.text, f.style, f.at));
+      const plain = f.w === undefined && !f.synthetic && !!last && last.w === undefined && !last.synthetic;
+      if (plain && last.style === f.style && last.at + last.text.length === f.at) last.text += f.text; else line.frags.push({ ...f });
       line.width += width(f);
     }
   };
   const newLine = () => { out.push({ frags: [], width: 0 }); };
-  for (const w of words) {
-    const ww = wordWidth(w);
-    if (out.length === 0) {
-      newLine();
-    } else {
-      const sepW = w.sep ? width(w.sep) : 0;
-      if (tail().width + sepW + ww <= limit(out.length === 1)) { if (w.sep) place([w.sep]); place(w.frags); continue; }
-      newLine();
+  const tabs = pr.tabs ?? [];
+
+  // Width of the text after word `i` up to the next tab: what a right or centre tab has to make room for.
+  const followWidth = (i: number) => {
+    let n = 0;
+    for (let k = i + 1; k < words.length && !words[k].tab; k++) n += (words[k].sep ? width(words[k].sep!) : 0) + wordWidth(words[k]);
+    return n;
+  };
+  // The first stop beyond x (absolute, from the box's left edge): an explicit one, else the default grid.
+  const stopAfter = (x: number) => tabs.find((t) => t.position > x + 0.5) ?? { position: (Math.floor(x / DEFAULT_TAB) + 1) * DEFAULT_TAB, align: undefined, leader: undefined };
+
+  // The room for `head` + a hyphen on a line with `room` left, and the split that fits (the latest one).
+  const hyphenSplit = (w: Word, room: number): { head: Frag[]; tail: Frag[]; hyphen: Frag } | null => {
+    if (!pr.hyphenate) return null;
+    const textOf = w.frags.map((f) => f.text).join("");
+    const points = hyphenPoints(textOf);
+    if (points.length === 0) return null;
+    const units: number[] = [0];
+    for (const ch of Array.from(textOf)) units.push(units[units.length - 1] + ch.length);
+    for (let k = points.length - 1; k >= 0; k--) {
+      const [head, rest] = splitFrags(w.frags, units[points[k]]);
+      const lastHead = head[head.length - 1];
+      if (!lastHead) continue;
+      const hyphen: Frag = { text: "-", style: lastHead.style, at: lastHead.at + lastHead.text.length, synthetic: true };
+      if (head.reduce((n, f) => n + width(f), 0) + width(hyphen) <= room) return { head, tail: rest, hyphen };
     }
-    // First word on a line (the separator is dropped at a soft break).
-    if (ww <= limit(out.length === 1) || w.frags.length === 0) { place(w.frags); continue; }
-    // Too wide alone: break it by characters; a single character is never refused.
-    for (const f of w.frags) {
-      let at = f.at;
-      for (const ch of Array.from(f.text)) {
-        const cw = measureFor(f.style)(ch);
-        if (tail().frags.length > 0 && tail().width + cw > limit(out.length === 1)) newLine();
-        place([frag(ch, f.style, at)]);
-        at += ch.length;
+    return null;
+  };
+
+  words.forEach((w0, wi) => {
+    if (w0.tab) {
+      if (out.length === 0) newLine();
+      const li = out.length - 1;
+      const at = leftOf(li) + tail().width;
+      const stop = stopAfter(at);
+      const follow = stop.align === "right" ? followWidth(wi) : stop.align === "center" ? followWidth(wi) / 2 : 0;
+      const tw = Math.max(0, stop.position - at - follow);
+      // A tab that would run past the line is dropped at the break.
+      if (tail().width + tw > limitAt(li) && tail().frags.length > 0) { newLine(); return; }
+      place([{ ...w0.tab, w: tw, ...(stop.leader ? { leader: stop.leader } : {}) }]);
+      return;
+    }
+    let w: Word | null = w0;
+    while (w) {
+      const ww = wordWidth(w);
+      if (out.length === 0) {
+        newLine();
+      } else {
+        const li = out.length - 1;
+        const sepW: number = w.sep ? width(w.sep) : 0;
+        if (tail().width + sepW + ww <= limitAt(li)) { if (w.sep) place([w.sep]); place(w.frags); w = null; break; }
+        // Does not fit: a hyphen may let the start of it stay on this line.
+        const split: ReturnType<typeof hyphenSplit> = tail().frags.length > 0 ? hyphenSplit(w, limitAt(li) - tail().width - sepW) : null;
+        if (split) {
+          if (w.sep) place([w.sep]);
+          place([...split.head, split.hyphen]);
+          newLine();
+          w = { frags: split.tail, sep: null };
+          continue;
+        }
+        newLine();
       }
+      // First word on a line (the separator is dropped at a soft break).
+      const li = out.length - 1;
+      if (w.frags.length === 0 || ww <= limitAt(li)) { place(w.frags); w = null; break; }
+      const split: ReturnType<typeof hyphenSplit> = hyphenSplit(w, limitAt(li));
+      if (split) {
+        place([...split.head, split.hyphen]);
+        newLine();
+        w = { frags: split.tail, sep: null };
+        continue;
+      }
+      // Too wide alone: break it by characters; a single character is never refused.
+      for (const f of w.frags) {
+        let at = f.at;
+        for (const ch of Array.from(f.text)) {
+          const cw = measureFor(f.style)(ch);
+          if (tail().frags.length > 0 && tail().width + cw > limitAt(out.length - 1)) newLine();
+          place([frag(ch, f.style, at)]);
+          at += ch.length;
+        }
+      }
+      w = null;
     }
-  }
+  });
   // Trailing spaces hang: they are not part of the painted width (they were never placed).
   return out;
 }
@@ -625,16 +851,36 @@ function wrapPieces(measureFor: MeasureFor, pieces: Frag[], pr: NonNullable<Text
 function placeRichLines(measureFor: MeasureFor, n: NodeLite, layout: RichLayout): PlacedLine[] {
   const out: PlacedLine[] = [];
   for (const l of layout.lines) {
-    if (l.frags.length === 0 || l.frags.every((f) => f.text === "")) continue;
+    const hasText = l.frags.some((f) => f.text !== "" || f.w !== undefined);
+    if (!hasText && !l.marker && !l.drop) continue;
     let x = n.x + l.left;
     const segments: PlacedSegment[] = [];
+    const body: PlacedSegment[] = [];
     for (const f of l.frags) {
-      const w = measureFor(f.style)(f.text);
-      segments.push({ text: f.text, x, width: w, style: f.style });
-      x += w;
+      const m = measureFor(f.style);
+      if (f.w !== undefined) {
+        // A tab: its leader repeated to fill it, or nothing.
+        const lw = f.leader ? m(f.leader) : 0;
+        const fill = f.leader && lw > 0 ? f.leader.repeat(Math.max(0, Math.floor(f.w / lw))) : "";
+        body.push({ text: fill, x, width: f.w, style: f.style });
+        x += f.w;
+      } else if (l.justify) {
+        // Justified: the words and the (widened) spaces are pieces of their own.
+        f.text.split(" ").forEach((part, i) => {
+          if (i > 0) { const sw = m(" ") + l.justify!; body.push({ text: " ", x, width: sw, style: f.style }); x += sw; }
+          if (part !== "") { const w = m(part); body.push({ text: part, x, width: w, style: f.style }); x += w; }
+        });
+      } else {
+        const w = m(f.text);
+        body.push({ text: f.text, x, width: w, style: f.style });
+        x += w;
+      }
     }
+    if (l.marker) segments.push({ text: l.marker.text, x: n.x + l.marker.x, width: measureFor(l.marker.style)(l.marker.text), style: l.marker.style });
+    if (l.drop) segments.push({ text: l.drop.text, x: n.x + l.drop.x, width: l.drop.width, style: l.drop.style });
+    segments.push(...body);
     out.push({
-      text: segments.map((s) => s.text).join(""),
+      text: body.map((s) => s.text).join(""),
       x: n.x + l.left,
       y: n.y + l.top + l.ascent,
       width: l.width,

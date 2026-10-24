@@ -7,6 +7,7 @@ import (
 	"regexp"
 	"sort"
 	"strings"
+	"unicode/utf8"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"google.golang.org/protobuf/proto"
@@ -98,7 +99,72 @@ func validateTextStyleDef(doc *opendesignerv1.Document, d *opendesignerv1.TextSt
 	if ls := st.GetLetterSpacing(); math.IsNaN(ls) || math.IsInf(ls, 0) || ls < -1000 || ls > 1000 {
 		return ErrTextStyleValue
 	}
+	if err := validateStyleGlyphs(st); err != nil {
+		return err
+	}
 	return validateStyleRelations(doc, d)
+}
+
+// validateStyleGlyphs checks the character-level fields added for typesetting: horizontal scale, script and colour.
+func validateStyleGlyphs(st *opendesignerv1.TextStyle) error {
+	if hs := st.GetHorizontalScale(); hs != 0 && !(hs >= 0.1 && hs <= 10) {
+		return fmt.Errorf("%w: horizontal scale %v", ErrTextStyleValue, hs)
+	}
+	if sc := st.GetScript(); sc < 0 || sc > opendesignerv1.TextScript_TEXT_SCRIPT_SUBSCRIPT {
+		return fmt.Errorf("%w: script", ErrTextStyleValue)
+	}
+	if c := st.GetColor(); c != nil {
+		for _, v := range []float32{c.GetR(), c.GetG(), c.GetB(), c.GetA()} {
+			if math.IsNaN(float64(v)) || v < 0 || v > 1 {
+				return fmt.Errorf("%w: colour", ErrTextStyleValue)
+			}
+		}
+	}
+	return nil
+}
+
+var numberStyles = map[string]bool{"": true, "i": true, "I": true, "a": true, "A": true}
+
+// validateParagraphFeatures checks the paragraph-only settings: lists, tab stops, drop caps, nested styles.
+// A character style has none of them.
+func validateParagraphFeatures(doc *opendesignerv1.Document, d *opendesignerv1.TextStyleDef) error {
+	any := d.GetHyphenate() || d.GetListKind() != opendesignerv1.ListKind_LIST_KIND_NONE || d.GetListMarker() != "" || d.GetListNumberStyle() != "" ||
+		d.GetListIndent() != 0 || len(d.GetTabStops()) > 0 || d.GetDropCapLines() != 0 || d.GetDropCapChars() != 0 || len(d.GetNestedStyles()) > 0
+	if d.GetKind() == opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER {
+		if any {
+			return fmt.Errorf("%w: a character style has no paragraph features", ErrTextStyleValue)
+		}
+		return nil
+	}
+	if d.GetListKind() < 0 || d.GetListKind() > opendesignerv1.ListKind_LIST_KIND_NUMBER || !numberStyles[d.GetListNumberStyle()] ||
+		len(d.GetListMarker()) > 16 || strings.ContainsAny(d.GetListMarker(), "\n\r") || !(d.GetListIndent() == 0 || finiteIn(d.GetListIndent(), 0, 1000)) {
+		return fmt.Errorf("%w: list", ErrTextStyleValue)
+	}
+	if n := d.GetDropCapLines(); n != 0 && (n < 2 || n > 10) || d.GetDropCapChars() > 10 {
+		return fmt.Errorf("%w: drop cap", ErrTextStyleValue)
+	}
+	if len(d.GetTabStops()) > 32 {
+		return fmt.Errorf("%w: too many tab stops", ErrTextStyleValue)
+	}
+	prev := -1.0
+	for _, t := range d.GetTabStops() {
+		if t == nil || !finiteIn(t.GetPosition(), 0, 100000) || t.GetPosition() <= prev || t.GetAlign() < 0 || t.GetAlign() > opendesignerv1.TabAlign_TAB_ALIGN_RIGHT ||
+			utf8.RuneCountInString(t.GetLeader()) > 1 || strings.ContainsAny(t.GetLeader(), "\n\r\t") {
+			return fmt.Errorf("%w: tab stops must ascend", ErrTextStyleValue)
+		}
+		prev = t.GetPosition()
+	}
+	if len(d.GetNestedStyles()) > 8 {
+		return fmt.Errorf("%w: too many nested styles", ErrTextStyleValue)
+	}
+	for _, n := range d.GetNestedStyles() {
+		c, ok := doc.GetTextStyles()[n.GetStyleId()]
+		if n == nil || !ok || c.GetKind() != opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER || n.GetDelimiter() == "" || len(n.GetDelimiter()) > 8 ||
+			n.GetCount() < 1 || n.GetCount() > 50 {
+			return fmt.Errorf("%w: nested style", ErrTextStyleValue)
+		}
+	}
+	return nil
 }
 
 // validateStyleRelations checks what a style says about OTHER styles and about paragraphs: spacing and
@@ -113,6 +179,9 @@ func validateStyleRelations(doc *opendesignerv1.Document, d *opendesignerv1.Text
 		if !finiteNonNeg(v) {
 			return ErrTextStyleValue
 		}
+	}
+	if err := validateParagraphFeatures(doc, d); err != nil {
+		return err
 	}
 	character := d.GetKind() == opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER
 	if character && d.GetAlignToGrid() {

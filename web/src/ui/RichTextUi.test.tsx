@@ -206,3 +206,53 @@ describe("tracking and the baseline grid in the UI", () => {
     expect(screen.queryByRole("checkbox", { name: "Align to baseline grid" })).toBeNull();
   });
 });
+
+describe("typesetting controls", () => {
+  beforeEach(() => install("one\ntwo"));
+  const styles = () => useScene.getState().scene!.textStyles;
+
+  it("toggles small caps, superscript and the width of a text", () => {
+    useScene.getState().setSelection(["t1"]);
+    render(<TypographyControls />);
+    fireEvent.click(screen.getByRole("button", { name: "Small caps" }));
+    expect(text().style.smallCaps).toBe(true);
+    fireEvent.click(screen.getByRole("button", { name: "Superscript" }));
+    expect(text().style.script).toBe("super");
+    fireEvent.click(screen.getByRole("button", { name: "Subscript" }));
+    expect(text().style.script).toBe("sub");
+    fireEvent.click(screen.getByRole("button", { name: "Subscript" }));
+    expect(text().style.script).toBeUndefined();
+    const width = screen.getByRole("textbox", { name: "Width" });
+    fireEvent.change(width, { target: { value: "120" } });
+    fireEvent.blur(width);
+    expect(text().style.horizontalScale).toBeCloseTo(1.2);
+    fireEvent.click(screen.getByRole("button", { name: "Small caps" }));
+    expect(text().style.smallCaps).toBeUndefined();
+  });
+
+  it("the Styles dialog edits lists, tabs, drop caps, hyphenation and nested styles", () => {
+    render(<StylesDialog isOpen onOpenChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Heading" }));
+    fireEvent.change(screen.getByLabelText("Alignment"), { target: { value: "justify" } });
+    fireEvent.click(screen.getByRole("checkbox", { name: "Hyphenate" }));
+    fireEvent.change(screen.getByLabelText("List"), { target: { value: "number" } });
+    fireEvent.change(screen.getByLabelText("Number style"), { target: { value: "i" } });
+    const tabs = screen.getByLabelText("Tab stops");
+    fireEvent.change(tabs, { target: { value: "300 right ., 40" } });
+    fireEvent.blur(tabs);
+    const lines = screen.getByRole("textbox", { name: "Drop cap lines" });
+    fireEvent.change(lines, { target: { value: "3" } });
+    fireEvent.blur(lines);
+    fireEvent.click(screen.getByRole("button", { name: "Add a nested style" }));
+    const h1 = styles().h1;
+    expect(h1).toMatchObject({ listKind: "number", listNumberStyle: "i", hyphenate: true, dropCapLines: 3 });
+    expect(h1.style.align).toBe("justify");
+    expect(h1.tabStops).toEqual([{ position: 40 }, { position: 300, align: "right", leader: "." }]);
+    expect(h1.nestedStyles).toEqual([{ styleId: "em", delimiter: ":", count: 1, inclusive: true }]);
+    // A character style gets the glyph fields but no paragraph features.
+    fireEvent.click(screen.getByRole("button", { name: "Emphasis" }));
+    fireEvent.click(screen.getByRole("checkbox", { name: "Small caps" }));
+    expect(styles().em.style.smallCaps).toBe(true);
+    expect(screen.queryByLabelText("List")).toBeNull();
+  });
+});

@@ -332,7 +332,11 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
         const own = l.segments !== undefined;
         const decoration = [seg.style.underline ? "underline" : "", seg.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
         return `<tspan${attrs([
-          attr("x", seg.x), attr("y", l.y),
+          attr("x", seg.x), attr("y", l.y - (seg.style.baselineShift ?? 0)),
+          ...(seg.style.color ? [attr("fill", `rgb(${Math.round(seg.style.color.r * 255)},${Math.round(seg.style.color.g * 255)},${Math.round(seg.style.color.b * 255)})`)] : []),
+          ...(seg.style.color && seg.style.color.a < 1 ? [attr("fill-opacity", seg.style.color.a)] : []),
+          ...(seg.style.horizontalScale && seg.style.horizontalScale !== 1 && seg.text !== "" ? [attr("textLength", seg.width), attr("lengthAdjust", "spacingAndGlyphs")] : []),
+          ...(seg.style.noKerning ? [attr("style", "font-kerning:none")] : []),
           ...(own && fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
           ...(own && fontSizeOf(seg.style) !== fontSizeOf(style) ? [attr("font-size", fontSizeOf(seg.style))] : []),
           ...(own && fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),

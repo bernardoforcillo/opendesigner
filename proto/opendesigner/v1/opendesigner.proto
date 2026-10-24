@@ -243,6 +243,13 @@ enum TextAlign {
   TEXT_ALIGN_LEFT = 1;
   TEXT_ALIGN_CENTER = 2;
   TEXT_ALIGN_RIGHT = 3;
+  TEXT_ALIGN_JUSTIFY = 4; // every line but the last of a paragraph fills the width (formatted text)
+}
+
+enum TextScript {
+  TEXT_SCRIPT_NORMAL = 0;
+  TEXT_SCRIPT_SUPERSCRIPT = 1;
+  TEXT_SCRIPT_SUBSCRIPT = 2;
 }
 
 message TextStyle {
@@ -255,6 +262,11 @@ message TextStyle {
   bool underline = 7;
   bool strikethrough = 8;
   double letter_spacing = 9; // px added after every character (tracking); 0 = none, may be negative
+  bool small_caps = 10;      // lowercase letters drawn as smaller capitals
+  TextScript script = 11;    // superscript / subscript: smaller and raised / lowered
+  double horizontal_scale = 12; // glyph width multiplier; 0 = 1 (normal)
+  bool no_kerning = 13;      // true switches the font's pair kerning off
+  Color color = 14;          // text colour of the style; absent => the node's fill
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is
@@ -631,7 +643,34 @@ message TextStyleDef {
   // Paragraph styles only: the lines of the paragraph sit on the document's baseline grid
   // (DocSettings.baseline_*), moving down to the next grid line when they would fall between two.
   bool align_to_grid = 11;
+  // Paragraph styles only (formatted text):
+  bool hyphenate = 12;       // long words may break at a syllable with a hyphen
+  ListKind list_kind = 13;   // bullets or numbers in front of every paragraph
+  string list_marker = 14;   // bullet: the character ("" => "•"); number: a template with "#" for the number ("" => "#.")
+  string list_number_style = 15; // "" (1,2,3) | "i" | "I" | "a" | "A"
+  double list_indent = 16;   // how far the text sits from the marker; 0 => 18
+  repeated TabStop tab_stops = 17; // from the paragraph's left edge, ascending; the default stops follow the last one
+  uint32 drop_cap_lines = 18; // 0 = none, 2..10 lines tall
+  uint32 drop_cap_chars = 19; // how many characters are the drop cap; 0 => 1
+  repeated NestedStyle nested_styles = 20;
 }
+
+enum ListKind {
+  LIST_KIND_NONE = 0;
+  LIST_KIND_BULLET = 1;
+  LIST_KIND_NUMBER = 2;
+}
+enum TabAlign {
+  TAB_ALIGN_LEFT = 0;
+  TAB_ALIGN_CENTER = 1;
+  TAB_ALIGN_RIGHT = 2;
+}
+// A tab stop: the text after a tab begins (left), is centred on (center) or ends (right) at `position`.
+// `leader` (at most one character) fills the gap before it, e.g. "." in a table of contents.
+message TabStop { double position = 1; TabAlign align = 2; string leader = 3; }
+// A character style applied to the start of every paragraph: up to the `count`-th occurrence of
+// `delimiter` (" " counts words, ":" a label), the delimiter itself included when `inclusive`.
+message NestedStyle { string style_id = 1; string delimiter = 2; uint32 count = 3; bool inclusive = 4; }
 
 // ---------- variables (design tokens) ----------
 // A COLLECTION groups variables that share the same MODES (e.g. "Light" and

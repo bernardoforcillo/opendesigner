@@ -345,6 +345,44 @@ func TestPageStructure(t *testing.T) {
 	}
 }
 
+// TestTypesettingStyles covers the paragraph and glyph fields of set_text_style.
+func TestTypesettingStyles(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	em, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Label", Kind: "character", SmallCaps: true, Script: "superscript", Color: &odmcp.RGBA{R: 1, A: 1}}})
+	if err != nil {
+		t.Fatalf("character style: %v", err)
+	}
+	list, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{
+		Name: "Item", FontSize: 12, Align: "justify", Hyphenate: true, ListKind: "number", ListMarker: "#)", ListNumberStyle: "a", ListIndent: 20,
+		TabStops: []odmcp.TabStopIO{{Position: 100}, {Position: 300, Align: "right", Leader: "."}}, DropCapLines: 3,
+		NestedStyles: []odmcp.NestedIO{{StyleId: em.TextStyleId, Delimiter: ":", Count: 1, Inclusive: true}},
+	}})
+	if err != nil {
+		t.Fatalf("paragraph style: %v", err)
+	}
+	out, _ := sess.ListTextStyles(ctx, struct{}{})
+	var got odmcp.TextStyleView
+	for _, s := range out.TextStyles {
+		if s.Id == list.TextStyleId {
+			got = s
+		}
+	}
+	if got.Align != "justify" || !got.Hyphenate || got.ListKind != "number" || got.ListNumberStyle != "a" || len(got.TabStops) != 2 || got.TabStops[1].Align != "right" ||
+		got.DropCapLines != 3 || len(got.NestedStyles) != 1 {
+		t.Fatalf("style = %+v", got)
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Bad", FontSize: 12, ListKind: "dots"}}); err == nil {
+		t.Fatal("an unknown list kind should be refused")
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Bad", FontSize: 12, TabStops: []odmcp.TabStopIO{{Position: 5}, {Position: 5}}}}); err == nil {
+		t.Fatal("tab stops that do not ascend should be refused")
+	}
+}
+
 // TestThreadTextFrames covers thread_text_frames / unlink_text_frame.
 func TestThreadTextFrames(t *testing.T) {
 	url := serveInMemory(t)
