@@ -56,6 +56,44 @@ Legend: [x] done · [ ] to do
 - [x] Cursor chat, reactions, timer, dot voting, follow mode (ephemeral, through presence)
 - [ ] Mermaid import/export in both directions
 
+## 1d. Publishing (InDesign parity)
+
+Multi-page documents, long text and print output. Already there: pages, layout grids (columns, rows), uploaded fonts and shared text styles, PDF import with editable text, PDF/EPUB export of all pages (docs/pdf-epub.md).
+
+Pages and structure
+- [ ] Page sizes and presets (A4, Letter, custom), facing pages and spreads, page numbering
+- [ ] Master pages (parent pages) with page-number and section markers; overrides per page
+- [ ] Pages panel: reorder, duplicate, insert, sections with their own numbering
+- [ ] Margins, columns and gutters per page; bleed and slug areas; guides per page / spread
+- [ ] Layers shared across pages
+
+Text
+- [ ] Text frames with columns, inset and vertical alignment
+- [ ] Threaded frames (text flows from one frame to the next, across pages), overset indicator
+- [ ] Paragraph styles and character styles (based-on, next style), nested styles
+- [ ] Baseline grid and snapping text to it
+- [ ] Letter spacing (tracking), kerning, horizontal scale, small caps, super/subscript, underline/strike
+- [ ] Hyphenation and justification, widows/orphans, keep-with-next, drop caps
+- [ ] Bullets and numbered lists, tabs, indents
+- [ ] Text wrap around objects, anchored (inline) objects
+- [ ] Footnotes, tables with cell and table styles, table of contents, index
+- [ ] Find/change, spell check, text variables (running headers, page numbers)
+- [ ] Text on a path; OpenType features (ligatures, stylistic sets, tabular figures)
+
+Graphics and colour
+- [ ] Placed (linked) images with update-on-change, fitting options, image frames, effective resolution
+- [ ] Swatches (spot, tint, gradient), CMYK document mode, overprint, ICC profiles (see section 1b)
+- [ ] Object styles, anchored and nested frames, frame fitting
+- [ ] Transparency flattening for print, drop shadows and effects in PDF output
+
+Output
+- [ ] Print-ready PDF writer (PDF/X-1a, PDF/X-4): fonts embedded, bleed, crop marks, colour bars, CMYK
+- [ ] Preflight panel (missing fonts, low-res images, overset text, RGB in CMYK documents)
+- [ ] Package (document + fonts + links)
+- [ ] EPUB: reflowable export from threaded text and styles (today: fixed layout), with a table of contents
+- [ ] Interactive PDF (links, bookmarks, forms), HTML export of text
+- [ ] Data merge (variable data from CSV), book (several documents with shared styles and numbering)
+
 ## 2. Collaboration
 - [x] Multiplayer on the same network: nickname, avatar, others' cursors and selections, `/doc/<id>` link to join the same document (no accounts, on purpose)
 - [x] MCP agents show up as people in presence (name with `-nickname`, default "Claude"; they highlight the node they are editing)
