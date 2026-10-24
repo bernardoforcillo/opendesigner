@@ -687,6 +687,9 @@ type NodeView struct {
 	Height   float64 `json:"height"`
 	Visible  bool    `json:"visible"`
 	Text     string  `json:"text,omitempty" jsonschema:"content, for text nodes"`
+	// Rich text of a text node (see format_text).
+	ParagraphStyles []string       `json:"paragraphStyles,omitempty" jsonschema:"paragraph style id per paragraph; empty string = the node's own style"`
+	Runs            []TextRunInput `json:"runs,omitempty" jsonschema:"character styles over ranges of the content (UTF-16 units)"`
 	// AutoLayout is set for a frame that lays out its children. Their x/y and, for
 	// a hugging frame, its width/height are already the computed result.
 	AutoLayout *AutoLayoutSpec `json:"autoLayout,omitempty"`
@@ -740,6 +743,10 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 	}
 	if t := n.GetText(); t != nil {
 		v.Text = t.GetContent()
+		v.ParagraphStyles = t.GetParagraphStyles()
+		for _, r := range t.GetRuns() {
+			v.Runs = append(v.Runs, TextRunInput{Start: int(r.GetStart()), End: int(r.GetEnd()), StyleId: r.GetStyleId()})
+		}
 	}
 	v.AutoLayout = autoLayoutView(n.GetFrame().GetAutoLayout())
 	if len(n.GetMeta()) > 0 {

@@ -72,7 +72,8 @@ Text
 - [ ] Text frames with columns, inset and vertical alignment
 - [x] Threaded frames (text flows from one frame to the next, across pages), overset indicator; thread/unlink/add next frame, MCP (`thread_text_frames`); see docs/text-frames.md
 - [ ] Threading by dragging from a frame's port, a story editor, columns in a single frame
-- [ ] Paragraph styles and character styles (based-on, next style), nested styles
+- [x] Paragraph styles and character styles (based-on, next style, space before/after, indents), underline and strikethrough, editor pickers, MCP (`format_text`); see docs/rich-text.md
+- [ ] Nested styles, colour in styles, bullets and numbering, tabs
 - [ ] Baseline grid and snapping text to it
 - [ ] Letter spacing (tracking), kerning, horizontal scale, small caps, super/subscript, underline/strike
 - [ ] Hyphenation and justification, widows/orphans, keep-with-next, drop caps

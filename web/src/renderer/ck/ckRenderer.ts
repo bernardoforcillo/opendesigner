@@ -13,7 +13,7 @@ import {
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
 import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
-import { fontSizeOf, placeTextLines } from "../text";
+import { decorationBars, fontSizeOf, placeTextLines, type MeasureFor } from "../text";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
 
@@ -580,10 +580,35 @@ export class CanvasKitRenderer {
     if (!font) return;
     let lines = this.textLines.get(n);
     if (!lines) {
-      lines = placeTextLines(this.measureFor(font), n);
+      lines = placeTextLines(this.measureFor(font), n, this.styleMeasure);
       this.textLines.set(n, lines);
     }
-    for (const line of lines) sk.drawText(line.text, line.x, line.y, paint, font);
+    for (const line of lines) {
+      if (!line.segments) {
+        sk.drawText(line.text, line.x, line.y, paint, font);
+        this.drawBars(sk, [{ x: line.x, width: line.width, style: t.style }], line.y, paint);
+        continue;
+      }
+      // Rich text: every piece in its own font, on the line's baseline.
+      for (const seg of line.segments) {
+        const f = this.fonts.fontFor(seg.style.fontWeight, fontSizeOf(seg.style), seg.style.fontFamily, seg.style.italic === true) ?? font;
+        sk.drawText(seg.text, seg.x, line.y, paint, f);
+      }
+      this.drawBars(sk, line.segments, line.y, paint);
+    }
+  }
+
+  // The measure of any style (rich text lays out pieces in several fonts); no font -> an estimate.
+  private readonly styleMeasure: MeasureFor = (style) => {
+    const f = this.fonts.fontFor(style.fontWeight, fontSizeOf(style), style.fontFamily, style.italic === true);
+    return f ? this.measureFor(f) : (s) => s.length * fontSizeOf(style) * 0.55;
+  };
+
+  // Underline / strikethrough bars under pieces whose style asks for them.
+  private drawBars(sk: Canvas, pieces: readonly { x: number; width: number; style: Parameters<typeof decorationBars>[0] }[], baseline: number, paint: Paint): void {
+    for (const piece of pieces) {
+      for (const bar of decorationBars(piece.style, baseline)) sk.drawRect(this.CK.XYWHRect(piece.x, bar.y, piece.width, bar.height), paint);
+    }
   }
 
   // --- mesh gradients ----------------------------------------------------------

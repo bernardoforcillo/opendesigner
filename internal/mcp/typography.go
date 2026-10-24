@@ -34,6 +34,16 @@ type TextStyleBody struct {
 	LineHeight float64 `json:"lineHeight,omitempty" jsonschema:"multiplier; 0 means the default 1.2"`
 	Italic     bool    `json:"italic,omitempty"`
 	Align      string  `json:"align,omitempty" jsonschema:"left (default) | center | right"`
+	// Rich text (see docs/rich-text.md).
+	Underline     bool    `json:"underline,omitempty"`
+	Strikethrough bool    `json:"strikethrough,omitempty"`
+	Kind          string  `json:"kind,omitempty" jsonschema:"paragraph (default) | character. A character style overrides only the fields that are set (fontFamily, fontSize, fontWeight, italic, underline, strikethrough) over a range of characters; fontSize 0 keeps the size"`
+	BasedOn       string  `json:"basedOn,omitempty" jsonschema:"id of a style of the same kind whose unset fields this one inherits"`
+	NextStyleId   string  `json:"nextStyleId,omitempty" jsonschema:"paragraph style a new paragraph gets after one in this style"`
+	SpaceBefore   float64 `json:"spaceBefore,omitempty" jsonschema:"px above a paragraph (paragraph styles only)"`
+	SpaceAfter    float64 `json:"spaceAfter,omitempty" jsonschema:"px below a paragraph"`
+	IndentFirst   float64 `json:"indentFirst,omitempty" jsonschema:"extra px of indent on the first line"`
+	IndentLeft    float64 `json:"indentLeft,omitempty" jsonschema:"px of indent on every line"`
 }
 
 type TextStyleView struct {
@@ -49,7 +59,7 @@ type ListTextStylesOutput struct {
 	TextStyles []TextStyleView `json:"textStyles"`
 }
 
-const typographyConventions = " Typography: a TEXT STYLE is a named, reusable style; a text node that applies one is drawn with the style's values (its own style stays as the fallback). " +
+const typographyConventions = " Rich text: a PARAGRAPH style (kind paragraph) also sets spacing and indents and can be basedOn another and name a nextStyleId; a CHARACTER style (kind character) overrides a few fields over a range of characters; both are applied with format_text. Typography: a TEXT STYLE is a named, reusable style; a text node that applies one is drawn with the style's values (its own style stays as the fallback). " +
 	"Editing a text style changes every node that uses it; deleting one detaches the nodes (they keep their own style). " +
 	"An uploaded FONT is a file in the document's assets (upload it in the editor: document menu → Fonts…) registered with a family, weight and style; a text style whose fontFamily is that family draws with it."
 
@@ -99,6 +109,9 @@ func textStyleViews(doc *opendesignerv1.Document) []TextStyleView {
 		out = append(out, TextStyleView{Id: id, TextStyleBody: TextStyleBody{
 			Name: d.GetName(), FontFamily: st.GetFontFamily(), FontSize: st.GetFontSize(), FontWeight: st.GetFontWeight(),
 			LineHeight: st.GetLineHeight(), Italic: st.GetItalic(), Align: alignName(st.GetAlign()),
+			Underline: st.GetUnderline(), Strikethrough: st.GetStrikethrough(), Kind: kindName(d.GetKind()),
+			BasedOn: d.GetBasedOn(), NextStyleId: d.GetNextStyleId(), SpaceBefore: d.GetSpaceBefore(), SpaceAfter: d.GetSpaceAfter(),
+			IndentFirst: d.GetIndentFirst(), IndentLeft: d.GetIndentLeft(),
 		}})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -112,9 +125,26 @@ func (b TextStyleBody) toProto(id string) (*opendesignerv1.TextStyleDef, error) 
 	if err != nil {
 		return nil, err
 	}
+	kind := opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_PARAGRAPH
+	switch b.Kind {
+	case "", "paragraph":
+	case "character":
+		kind = opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER
+	default:
+		return nil, fmt.Errorf("kind must be paragraph or character, got %q", b.Kind)
+	}
 	return &opendesignerv1.TextStyleDef{Id: id, Name: b.Name, Style: &opendesignerv1.TextStyle{
 		FontFamily: b.FontFamily, FontSize: b.FontSize, FontWeight: b.FontWeight, LineHeight: b.LineHeight, Italic: b.Italic, Align: align,
-	}}, nil
+		Underline: b.Underline, Strikethrough: b.Strikethrough,
+	}, Kind: kind, BasedOn: b.BasedOn, NextStyleId: b.NextStyleId, SpaceBefore: b.SpaceBefore, SpaceAfter: b.SpaceAfter,
+		IndentFirst: b.IndentFirst, IndentLeft: b.IndentLeft}, nil
+}
+
+func kindName(k opendesignerv1.TextStyleKind) string {
+	if k == opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER {
+		return "character"
+	}
+	return "paragraph"
 }
 
 func (s *Session) ListFonts(_ context.Context, _ struct{}) (ListFontsOutput, error) {
@@ -148,11 +178,12 @@ func (s *Session) SetTextStyle(ctx context.Context, in SetTextStyleInput) (SetTe
 		s.mu.Unlock()
 		return SetTextStyleOutput{}, fmt.Errorf("set_text_style: text style %q not found (omit id to create one; list_text_styles for the ids)", id)
 	}
-	s.mu.Unlock()
+	doc := s.doc
 	def, err := in.TextStyleBody.toProto(id)
 	if err == nil {
-		err = core.ValidateTextStyleDef(def)
+		err = core.ValidateTextStyleDef(doc, def)
 	}
+	s.mu.Unlock()
 	if err != nil {
 		return SetTextStyleOutput{}, fmt.Errorf("set_text_style: %w", err)
 	}
@@ -272,7 +303,45 @@ func (s *Session) DeleteFont(ctx context.Context, in IdInput) (SeqOutput, error)
 	return SeqOutput{Seq: seq}, err
 }
 
+type TextRunInput struct {
+	Start   int    `json:"start" jsonschema:"first character, UTF-16 code units from the start of the content"`
+	End     int    `json:"end" jsonschema:"one past the last character"`
+	StyleId string `json:"styleId" jsonschema:"a CHARACTER style (set_text_style kind=character)"`
+}
+
+type FormatTextInput struct {
+	NodeId          string         `json:"nodeId" jsonschema:"a text node"`
+	ParagraphStyles []string       `json:"paragraphStyles,omitempty" jsonschema:"one PARAGRAPH style id per paragraph (paragraphs are separated by newlines); empty string = the node's own style. Replaces the current list"`
+	Runs            []TextRunInput `json:"runs,omitempty" jsonschema:"character styles over ranges; sorted, non-overlapping. Replaces the current runs"`
+}
+
+// FormatText sets the paragraph styles and character-style runs of a text node, keeping its content.
+func (s *Session) FormatText(ctx context.Context, in FormatTextInput) (SeqOutput, error) {
+	s.mu.Lock()
+	n := s.doc.GetNodes()[in.NodeId]
+	t, isText := n.GetShape().(*opendesignerv1.Node_Text)
+	if n == nil || !isText || t.Text == nil {
+		s.mu.Unlock()
+		return SeqOutput{}, fmt.Errorf("format_text: %q is not a text node", in.NodeId)
+	}
+	content := t.Text.GetContent()
+	runs := make([]*opendesignerv1.TextRun, 0, len(in.Runs))
+	for _, r := range in.Runs {
+		runs = append(runs, &opendesignerv1.TextRun{Start: int32(r.Start), End: int32(r.End), StyleId: r.StyleId})
+	}
+	err := core.ValidateRichText(s.doc, content, in.ParagraphStyles, runs)
+	s.mu.Unlock()
+	if err != nil {
+		return SeqOutput{}, fmt.Errorf("format_text: %w", err)
+	}
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_SetText{SetText: &opendesignerv1.SetText{
+		Id: in.NodeId, Content: content, ParagraphStyles: in.ParagraphStyles, Runs: runs, RichPresent: true,
+	}}})
+	return SeqOutput{Seq: seq}, err
+}
+
 func registerTypographyTools(srv *mcp.Server, s *Session) {
+	addTool(srv, "format_text", "Set a text node's paragraph styles (one per paragraph) and character-style runs (ranges of characters), keeping its text. Create the styles with set_text_style (kind paragraph or character) first."+typographyConventions, s.FormatText)
 	addTool(srv, "list_text_styles", "List the document's shared text styles."+typographyConventions, s.ListTextStyles)
 	addTool(srv, "set_text_style", "Create a text style (omit id) or REPLACE one entirely (read it with list_text_styles, edit, send it all back)."+typographyConventions, s.SetTextStyle)
 	addTool(srv, "delete_text_style", "Delete a text style; the nodes that used it keep their own style.", s.DeleteTextStyle)

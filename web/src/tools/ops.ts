@@ -55,15 +55,38 @@ export function makeSetPropsOp(
 // says "touch the style too". Passing it without a style would zero the font;
 // passing a style without the flag would make both
 // implementations ignore it. Here the two cases are not even expressible.
-export function makeSetTextOp(id: string, content: string, style?: TextStyleLite): Op {
+//
+// With `rich` the node's paragraph styles and character-style runs are replaced too (richPresent);
+// without it they stay, adjusted to the new content by the core.
+export function trimEmpty(list: readonly string[]): string[] {
+  let n = list.length;
+  while (n > 0 && list[n - 1] === "") n--;
+  return list.slice(0, n);
+}
+
+export function makeSetTextOp(
+  id: string,
+  content: string,
+  style?: TextStyleLite,
+  rich?: { paragraphStyles: readonly string[]; runs: readonly { start: number; end: number; styleId: string }[] },
+): Op {
   return create(OpSchema, {
     opId: uuid(),
     docId: docId(),
     kind: {
       case: "setText",
-      value: style
-        ? { id, content, style: toPbTextStyle(style), stylePresent: true }
-        : { id, content },
+      value: {
+        id, content,
+        ...(style ? { style: toPbTextStyle(style), stylePresent: true } : {}),
+        ...(rich
+          ? {
+              richPresent: true,
+              // Trailing "" entries mean nothing: they are left out.
+              paragraphStyles: trimEmpty(rich.paragraphStyles),
+              runs: rich.runs.map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })),
+            }
+          : {}),
+      },
     },
   });
 }

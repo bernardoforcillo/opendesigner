@@ -14,6 +14,7 @@ import { arePaintsValid } from "./paints";
 import { isValidComment, withoutComment } from "./comments";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
+import { clampRich, isValidRich, richFields } from "./richText";
 import { deletePageAllowed, masterFieldsValid, pageOf, updatePageAllowed } from "./masters";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
@@ -282,10 +283,17 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // keystroke would bring the font to 0). The flag takes precedence
       // over the presence of the sub-message: a `style` with stylePresent=false
       // must be ignored, exactly as Go does, reading only GetStylePresent().
-      const text = {
+      const { paragraphStyles, runs, richPresent } = op.kind.value;
+      // Rich text (parity with core.applySetText): with richPresent the lists replace the node's and are
+      // validated first -- a rejection changes nothing; without it they follow the new content.
+      if (richPresent && !isValidRich(state, content, paragraphStyles, runs)) return state;
+      const base = {
         content,
         style: stylePresent ? toTextStyleLite(style) : cur.text.style,
       };
+      const text = richPresent
+        ? { ...base, ...richFields(paragraphStyles, runs) }
+        : clampRich({ ...base, ...(cur.text.paragraphStyles ? { paragraphStyles: cur.text.paragraphStyles } : {}), ...(cur.text.runs ? { runs: cur.text.runs } : {}) });
       return { ...state, nodes: state.nodes.set(id, { ...cur, text }) };
     }
     // Dedicated op and not a mask path, for the same reason as setText: the
@@ -582,7 +590,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     }
     case "setTextStyleDef": {
       const d = op.kind.value.textStyle;
-      if (!isValidTextStyleDef(d)) return state;
+      if (!isValidTextStyleDef(state, d)) return state;
       return { ...state, textStyles: { ...state.textStyles, [d.id]: toTextStyleDefLite(d) } };
     }
     case "deleteTextStyleDef": {

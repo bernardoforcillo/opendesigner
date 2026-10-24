@@ -2,6 +2,7 @@ import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { resolveNode } from "../store/variables";
 import type { FontLite, NodeLite, SceneState, TextStyleDefLite, TextStyleLite } from "../store/types";
 import { DEFAULT_FONT_FAMILY } from "../renderer/text";
+import { applyParagraphRange, applyRun, paragraphCount, richFields } from "../store/richText";
 import { makeSetFontOp, makeSetPropsOp, makeSetTextOp, makeSetTextStyleDefOp, uuid } from "../tools/ops";
 
 // The pure half of the typography UI (TypographyControls, FontsDialog): it reads a
@@ -82,6 +83,54 @@ export function updateStyleOps(scene: SceneState, styleId: string, node: NodeLit
   const def = scene.textStyles[styleId];
   if (!def || node.kind !== "text" || !node.text) return [];
   return [makeSetTextStyleDefOp({ ...def, style: effectiveStyle(scene, node) ?? node.text.style })];
+}
+
+// ---------- paragraph and character styles ----------
+
+/** Text nodes of `ids` (others are skipped). */
+function textNodes(scene: SceneState, ids: readonly string[]): NodeLite[] {
+  return ids.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => !!n && n.kind === "text" && !!n.text);
+}
+
+/**
+ * Applies a paragraph style to EVERY paragraph and / or a character style to the WHOLE text of each node
+ * in `ids` ("" detaches). The editing overlay does the same on a selection; this is for a selected node.
+ */
+export function formatOps(scene: SceneState, ids: readonly string[], f: { paragraph?: string; character?: string }): Op[] {
+  return textNodes(scene, ids).flatMap((n) => {
+    const t = n.text!;
+    const count = paragraphCount(t.content);
+    const paras = f.paragraph === undefined ? t.paragraphStyles ?? [] : applyParagraphRange(t.paragraphStyles ?? [], count, 0, count - 1, f.paragraph);
+    const runs = f.character === undefined ? t.runs ?? [] : applyRun(t.runs ?? [], 0, t.content.length, f.character);
+    const same = JSON.stringify(paras) === JSON.stringify(t.paragraphStyles ?? []) && JSON.stringify(runs) === JSON.stringify(t.runs ?? []);
+    return same ? [] : [makeSetTextOp(n.id, t.content, undefined, { paragraphStyles: richFields(paras, runs).paragraphStyles ?? [], runs: richFields(paras, runs).runs ?? [] })];
+  });
+}
+
+/** The paragraph style on every paragraph of every node ("" none), or `undefined` when they differ. */
+export function paragraphStyleOf(scene: SceneState, ids: readonly string[]): string | undefined {
+  let seen: string | undefined;
+  for (const n of textNodes(scene, ids)) {
+    const count = paragraphCount(n.text!.content);
+    for (let i = 0; i < count; i++) {
+      const v = n.text!.paragraphStyles?.[i] ?? "";
+      if (seen === undefined) seen = v;
+      else if (seen !== v) return undefined;
+    }
+  }
+  return seen ?? "";
+}
+
+/** The character style that covers a whole text ("" when none does), or `undefined` when nodes differ. */
+export function characterStyleOf(scene: SceneState, ids: readonly string[]): string | undefined {
+  let seen: string | undefined;
+  for (const n of textNodes(scene, ids)) {
+    const whole = n.text!.runs?.length === 1 && n.text!.runs[0].start === 0 && n.text!.runs[0].end === n.text!.content.length;
+    const v = whole ? n.text!.runs![0].styleId : "";
+    if (seen === undefined) seen = v;
+    else if (seen !== v) return undefined;
+  }
+  return seen ?? "";
 }
 
 // ---------- uploaded fonts ----------

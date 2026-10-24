@@ -337,6 +337,61 @@ func TestThreadTextFrames(t *testing.T) {
 	}
 }
 
+// TestRichText covers the paragraph / character styles and format_text.
+func TestRichText(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	para, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Heading", FontSize: 32, FontWeight: "700", SpaceAfter: 8}})
+	if err != nil {
+		t.Fatalf("SetTextStyle paragraph: %v", err)
+	}
+	em, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Emphasis", Kind: "character", Italic: true, Underline: true}})
+	if err != nil {
+		t.Fatalf("SetTextStyle character: %v", err)
+	}
+	// A character style with paragraph settings, a loop and a missing base are refused with a reason.
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "bad", Kind: "character", SpaceAfter: 4}}); err == nil {
+		t.Fatal("a character style with spacing should be refused")
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "bad", FontSize: 12, BasedOn: "nope"}}); err == nil {
+		t.Fatal("a style based on a missing style should be refused")
+	}
+
+	txt, err := sess.CreateText(ctx, odmcp.CreateTextInput{Width: 200, Height: 40, Content: "Title\nSome text"})
+	if err != nil {
+		t.Fatalf("CreateText: %v", err)
+	}
+	if _, err := sess.FormatText(ctx, odmcp.FormatTextInput{
+		NodeId: txt.NodeId, ParagraphStyles: []string{para.TextStyleId},
+		Runs: []odmcp.TextRunInput{{Start: 6, End: 10, StyleId: em.TextStyleId}},
+	}); err != nil {
+		t.Fatalf("FormatText: %v", err)
+	}
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	n, _ := nodeByID(doc, txt.NodeId)
+	if len(n.ParagraphStyles) != 1 || n.ParagraphStyles[0] != para.TextStyleId || len(n.Runs) != 1 || n.Runs[0].End != 10 {
+		t.Fatalf("formatting = %v / %v", n.ParagraphStyles, n.Runs)
+	}
+	// Bad formatting is refused before it is sent.
+	if _, err := sess.FormatText(ctx, odmcp.FormatTextInput{NodeId: txt.NodeId, Runs: []odmcp.TextRunInput{{Start: 0, End: 99, StyleId: em.TextStyleId}}}); err == nil {
+		t.Fatal("a run past the end should be refused")
+	}
+	if _, err := sess.FormatText(ctx, odmcp.FormatTextInput{NodeId: txt.NodeId, ParagraphStyles: []string{em.TextStyleId}}); err == nil {
+		t.Fatal("a character style as a paragraph style should be refused")
+	}
+	// Editing the text keeps the formatting attached (clamped to the new content).
+	if _, err := sess.SetText(ctx, odmcp.SetTextInput{Id: txt.NodeId, Content: "Title\nSome"}); err != nil {
+		t.Fatalf("SetText: %v", err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if n, _ = nodeByID(doc, txt.NodeId); len(n.Runs) != 1 || n.Runs[0].End != 10 {
+		t.Fatalf("runs after SetText = %v", n.Runs)
+	}
+}
+
 func hasPage(pages []odmcp.PageView, id, name string) bool {
 	for _, p := range pages {
 		if p.Id == id && p.Name == name {

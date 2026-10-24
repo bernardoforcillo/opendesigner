@@ -700,9 +700,21 @@ func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText, cow *
 	if !isText || t.Text == nil {
 		return fmt.Errorf("%w: %s", ErrNotTextNode, s.GetId())
 	}
+	// Validated BEFORE writing anything: a rejection leaves the node as it was.
+	if s.GetRichPresent() {
+		if err := validateRich(doc, s.GetContent(), s.GetParagraphStyles(), s.GetRuns()); err != nil {
+			return err
+		}
+	}
 	t.Text.Content = s.GetContent()
 	if s.GetStylePresent() {
 		t.Text.Style = s.GetStyle()
+	}
+	if s.GetRichPresent() {
+		t.Text.ParagraphStyles = append([]string(nil), s.GetParagraphStyles()...)
+		t.Text.Runs = s.GetRuns()
+	} else {
+		clampRich(t.Text)
 	}
 	return nil
 }

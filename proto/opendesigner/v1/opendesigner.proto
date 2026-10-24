@@ -252,11 +252,26 @@ message TextStyle {
   double line_height = 4;    // multiplier, 0 => 1.2
   TextAlign align = 5;       // LEFT | CENTER | RIGHT
   bool italic = 6;           // false => upright; draws the family's italic face when it has one
+  bool underline = 7;
+  bool strikethrough = 8;
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is
 // the wrap width, height the one measured by the layout.
-message TextNode { string content = 1; TextStyle style = 2; }
+//
+// RICH TEXT. `style` is the text's own style. `paragraph_styles[i]` names a paragraph style
+// (a TextStyleDef of kind PARAGRAPH) for paragraph i, a paragraph being a "\n"-separated piece of
+// content; missing or "" => the text's own style. `runs` apply character styles (kind CHARACTER)
+// over ranges of `content`: sorted, non-overlapping, 0 <= start < end <= length of content, in UTF-16
+// code units (the unit of JavaScript strings, which is what the editor indexes). A style id that no
+// longer exists is ignored when drawing.
+message TextNode {
+  string content = 1;
+  TextStyle style = 2;
+  repeated string paragraph_styles = 3;
+  repeated TextRun runs = 4;
+}
+message TextRun { int32 start = 1; int32 end = 2; string style_id = 3; }
 
 // The image is a REFERENCE, never bytes. `asset_hash` is the sha256 of the
 // bytes in lowercase hex; the bytes live ONCE in
@@ -564,7 +579,28 @@ message FontFace {
   string asset_hash = 5;   // sha256 hex of the TTF/OTF/WOFF/WOFF2 bytes
 }
 // A named, reusable text style. Text nodes point to it with Node.text_style_id.
-message TextStyleDef { string id = 1; string name = 2; TextStyle style = 3; }
+//
+// A PARAGRAPH style sets the look of whole paragraphs; a CHARACTER style (kind CHARACTER) overrides
+// only some fields (family, size, weight, italic, underline, strikethrough: those that are set) over a
+// range of characters. `based_on` inherits the fields that are unset from another style of the same
+// kind; `next_style_id` is the paragraph style a new paragraph gets after one in this style. Spacing
+// and indents (px) are for paragraph styles only.
+enum TextStyleKind {
+  TEXT_STYLE_KIND_PARAGRAPH = 0;
+  TEXT_STYLE_KIND_CHARACTER = 1;
+}
+message TextStyleDef {
+  string id = 1;
+  string name = 2;
+  TextStyle style = 3;
+  TextStyleKind kind = 4;
+  string based_on = 5;
+  string next_style_id = 6;
+  double space_before = 7;
+  double space_after = 8;
+  double indent_first = 9; // extra indent of the first line
+  double indent_left = 10;
+}
 
 // ---------- variables (design tokens) ----------
 // A COLLECTION groups variables that share the same MODES (e.g. "Light" and
@@ -719,6 +755,12 @@ message SetText {
   string content = 2;
   TextStyle style = 3;
   bool style_present = 4;
+  // Rich text. With rich_present the two lists below REPLACE the node's paragraph styles and
+  // runs (validated, see TextNode); without it they stay, adjusted to the new content: runs are
+  // clamped to its length (dropped when empty) and paragraph_styles cut to the paragraph count.
+  repeated string paragraph_styles = 5;
+  repeated TextRun runs = 6;
+  bool rich_present = 7;
 }
 // Replaces the subpaths of a VectorNode WHOLESALE. Dedicated op instead of a
 // SetProperties mask path for the same reason as SetText: the geometry lives

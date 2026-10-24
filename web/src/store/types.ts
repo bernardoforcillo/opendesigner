@@ -1,6 +1,6 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ImageScaleMode, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, ImageScaleMode, TextStyleKind, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
@@ -108,8 +108,27 @@ export interface TextStyleLite {
   lineHeight: number; align: TextAlignLite;
   // Absent when upright (not `false`): a style that never had it stays identical, field by field.
   italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
 }
-export interface TextLite { content: string; style: TextStyleLite; }
+
+// RICH TEXT (store/richText.ts). `paragraphStyles` / `runs` are the document's; `rich` is DERIVED by
+// resolveScene (never written, never in an op) and carries them resolved, so the layout needs no scene.
+export interface TextRunLite { start: number; end: number; styleId: string }
+export interface ResolvedParagraph {
+  style: TextStyleLite;
+  spaceBefore: number; spaceAfter: number; indentFirst: number; indentLeft: number;
+}
+/** A character style resolved to the fields it overrides (unset fields are 0 / "" / absent). */
+export interface ResolvedRun { start: number; end: number; style: TextStyleLite }
+export interface RichText { paragraphs: ResolvedParagraph[]; runs: ResolvedRun[] }
+
+export interface TextLite {
+  content: string; style: TextStyleLite;
+  paragraphStyles?: string[];
+  runs?: TextRunLite[];
+  rich?: RichText;
+}
 
 // An image is a REFERENCE, never bytes: `assetHash` is the sha256
 // (lowercase hex) of the bytes, which live in <doc>.opendesigner/assets/ and are
@@ -344,7 +363,13 @@ export interface VariableLite {
 // TYPOGRAPHY: uploaded font faces and shared text styles. See proto FontFace /
 // TextStyleDef and internal/core/typography.go.
 export interface FontLite { id: string; family: string; weight: string; style: "normal" | "italic"; assetHash: string }
-export interface TextStyleDefLite { id: string; name: string; style: TextStyleLite }
+// Optional fields are absent at their default (paragraph kind, no base, no next style, zeros).
+export interface TextStyleDefLite {
+  id: string; name: string; style: TextStyleLite;
+  kind?: "character";
+  basedOn?: string; nextStyleId?: string;
+  spaceBefore?: number; spaceAfter?: number; indentFirst?: number; indentLeft?: number;
+}
 
 // ANIMATION: the document's clips (animated properties of nodes referenced by
 // id). See proto Clip/Track/Keyframe and internal/core/animation.go.
@@ -419,11 +444,18 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     lineHeight: s?.lineHeight ?? 0,
     align: ALIGN_TO_LITE[s?.align ?? TextAlign.UNSPECIFIED] ?? "left",
     ...(s?.italic ? { italic: true } : {}),
+    ...(s?.underline ? { underline: true } : {}),
+    ...(s?.strikethrough ? { strikethrough: true } : {}),
   };
 }
 
 export function toTextLite(t: PbTextNode): TextLite {
-  return { content: t.content, style: toTextStyleLite(t.style) };
+  const paras = t.paragraphStyles.some((p) => p !== "") ? [...t.paragraphStyles] : undefined;
+  return {
+    content: t.content, style: toTextStyleLite(t.style),
+    ...(paras ? { paragraphStyles: paras } : {}),
+    ...(t.runs.length > 0 ? { runs: t.runs.map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })) } : {}),
+  };
 }
 
 // The wire's subpaths in the model's shape. Field by field and not a spread:
@@ -530,6 +562,8 @@ export function toPbTextStyle(s: TextStyleLite) {
     fontFamily: s.fontFamily, fontSize: s.fontSize, fontWeight: s.fontWeight,
     lineHeight: s.lineHeight, align: ALIGN_TO_PB[s.align] ?? TextAlign.LEFT,
     italic: s.italic === true,
+    underline: s.underline === true,
+    strikethrough: s.strikethrough === true,
   };
 }
 
@@ -878,6 +912,8 @@ export function toPbNode(n: NodeLite): PbNode {
         ? { case: "text" as const, value: {
             content: n.text?.content ?? "",
             style: toPbTextStyle(n.text?.style ?? toTextStyleLite(undefined)),
+            paragraphStyles: n.text?.paragraphStyles ?? [],
+            runs: (n.text?.runs ?? []).map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })),
           } }
         : { case: "rect" as const, value: { cornerRadius: n.cornerRadius } },
   });
@@ -962,10 +998,24 @@ export function toPbFont(f: FontLite): PbFont {
   return create(FontFaceSchema, { id: f.id, family: f.family, weight: f.weight, style: f.style, assetHash: f.assetHash });
 }
 export function toTextStyleDefLite(d: PbTextStyleDef): TextStyleDefLite {
-  return { id: d.id, name: d.name, style: toTextStyleLite(d.style) };
+  return {
+    id: d.id, name: d.name, style: toTextStyleLite(d.style),
+    ...(d.kind === TextStyleKind.CHARACTER ? { kind: "character" as const } : {}),
+    ...(d.basedOn ? { basedOn: d.basedOn } : {}),
+    ...(d.nextStyleId ? { nextStyleId: d.nextStyleId } : {}),
+    ...(d.spaceBefore ? { spaceBefore: d.spaceBefore } : {}),
+    ...(d.spaceAfter ? { spaceAfter: d.spaceAfter } : {}),
+    ...(d.indentFirst ? { indentFirst: d.indentFirst } : {}),
+    ...(d.indentLeft ? { indentLeft: d.indentLeft } : {}),
+  };
 }
 export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
-  return create(TextStyleDefSchema, { id: d.id, name: d.name, style: toPbTextStyle(d.style) });
+  return create(TextStyleDefSchema, {
+    id: d.id, name: d.name, style: toPbTextStyle(d.style),
+    kind: d.kind === "character" ? TextStyleKind.CHARACTER : TextStyleKind.PARAGRAPH,
+    basedOn: d.basedOn ?? "", nextStyleId: d.nextStyleId ?? "",
+    spaceBefore: d.spaceBefore ?? 0, spaceAfter: d.spaceAfter ?? 0, indentFirst: d.indentFirst ?? 0, indentLeft: d.indentLeft ?? 0,
+  });
 }
 
 export function toClipLite(c: PbClip): ClipLite {

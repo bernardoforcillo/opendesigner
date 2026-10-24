@@ -13,6 +13,7 @@ import { runDocumentExport } from "../../export/exportScene";
 import { DiagramDialog } from "../DiagramDialog";
 import { VariablesDialog } from "../VariablesDialog";
 import { FontsDialog } from "../FontsDialog";
+import { StylesDialog } from "../StylesDialog";
 import { VersionsDialog } from "../VersionsDialog";
 import { PluginsDialog } from "../PluginsDialog";
 import { ShareDialog } from "../ShareDialog";
@@ -48,6 +49,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [diagramOpen, setDiagramOpen] = useState(false);
   const [variablesOpen, setVariablesOpen] = useState(false);
   const [fontsOpen, setFontsOpen] = useState(false);
+  const [stylesOpen, setStylesOpen] = useState(false);
   const [versionsOpen, setVersionsOpen] = useState(false);
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
@@ -86,6 +88,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "diagram") setDiagramOpen(true);
           else if (k === "variables") setVariablesOpen(true);
           else if (k === "fonts") setFontsOpen(true);
+          else if (k === "styles") setStylesOpen(true);
           else if (k === "versions") setVersionsOpen(true);
           else if (k === "plugins") setPluginsOpen(true);
           else if (k === "share") setShareOpen(true);
@@ -133,6 +136,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="fonts" className={ITEM}>
                 <Icon name="plus" size={14} /> Fonts…
               </MenuItem>
+              <MenuItem id="styles" className={ITEM}>
+                <Icon name="plus" size={14} /> Styles (paragraph, character)…
+              </MenuItem>
               <MenuItem id="versions" className={ITEM}>
                 <Icon name="page" size={14} /> Versions…
               </MenuItem>
@@ -167,6 +173,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <DiagramDialog isOpen={diagramOpen} onOpenChange={setDiagramOpen} />
     <VariablesDialog isOpen={variablesOpen} onOpenChange={setVariablesOpen} />
     <FontsDialog isOpen={fontsOpen} onOpenChange={setFontsOpen} />
+    <StylesDialog isOpen={stylesOpen} onOpenChange={setStylesOpen} />
     <VersionsDialog isOpen={versionsOpen} onOpenChange={setVersionsOpen} />
     <PluginsDialog isOpen={pluginsOpen} onOpenChange={setPluginsOpen} />
     <ShareDialog isOpen={shareOpen} onOpenChange={setShareOpen} />

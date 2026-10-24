@@ -1,4 +1,6 @@
+import { TextStyleKind } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { FontFace as PbFont, TextStyleDef as PbTextStyleDef } from "../gen/opendesigner/v1/opendesigner_pb";
+import { flattenStyle } from "./richText";
 import type { NodeLite, SceneState } from "./types";
 
 // TYPOGRAPHY -- the TypeScript twin of internal/core/typography.go. Go is the
@@ -28,27 +30,45 @@ export function isValidFont(state: SceneState, f: PbFont | undefined): f is PbFo
   return true;
 }
 
-/** Parity with core.validateTextStyleDef. */
-export function isValidTextStyleDef(d: PbTextStyleDef | undefined): d is PbTextStyleDef {
+/** Parity with core.validateTextStyleDef (including validateStyleRelations). */
+export function isValidTextStyleDef(state: SceneState, d: PbTextStyleDef | undefined): d is PbTextStyleDef {
   if (!d || d.id === "") return false;
   const st = d.style;
   if (!st || !finiteNonNeg(st.fontSize) || !finiteNonNeg(st.lineHeight) || !FAMILY_LIST_RE.test(st.fontFamily)) return false;
   const w = st.fontWeight;
-  return w === "" || WEIGHT_RE.test(w) || w === "normal" || w === "bold";
+  if (!(w === "" || WEIGHT_RE.test(w) || w === "normal" || w === "bold")) return false;
+  if (d.kind !== TextStyleKind.PARAGRAPH && d.kind !== TextStyleKind.CHARACTER) return false;
+  if (![d.spaceBefore, d.spaceAfter, d.indentFirst, d.indentLeft].every(finiteNonNeg)) return false;
+  const character = d.kind === TextStyleKind.CHARACTER;
+  if (character && (d.nextStyleId !== "" || d.spaceBefore !== 0 || d.spaceAfter !== 0 || d.indentFirst !== 0 || d.indentLeft !== 0)) return false;
+  if (d.nextStyleId !== "" && d.nextStyleId !== d.id) {
+    const n = state.textStyles[d.nextStyleId];
+    if (!n || n.kind === "character") return false;
+  }
+  const wantCharacter = character;
+  const total = Object.keys(state.textStyles).length;
+  for (let cur = d.basedOn, hops = 0; cur !== ""; hops++) {
+    const b = state.textStyles[cur];
+    if (cur === d.id || !b || (b.kind === "character") !== wantCharacter || hops > total + 1) return false;
+    cur = b.basedOn ?? "";
+  }
+  return true;
 }
 
-/** Parity with core.validateTextStyleID: only a text node, and an existing style (or none). */
+/** Parity with core.validateTextStyleID: only a text node, and an existing PARAGRAPH style (or none). */
 export function isValidTextStyleId(state: SceneState, n: NodeLite, id: string): boolean {
   if (n.kind !== "text") return false;
-  return id === "" || !!state.textStyles[id];
+  return id === "" || (!!state.textStyles[id] && state.textStyles[id].kind !== "character");
 }
 
 /** `n` with its shared text style applied (the node's own style stays as the fallback). Parity with core.resolveTextStyle. */
 export function resolveTextStyleNode(state: SceneState, n: NodeLite): NodeLite {
   if (n.kind !== "text" || !n.text || !n.textStyleId) return n;
   const def = state.textStyles[n.textStyleId];
-  if (!def) return n;
-  return { ...n, text: { ...n.text, style: def.style } };
+  if (!def || def.kind === "character") return n;
+  // With a `basedOn` chain the style is the chain folded in; without one, exactly the style's own values.
+  const flat = flattenStyle(state.textStyles, def.id);
+  return flat ? { ...n, text: { ...n.text, style: flat.style } } : n;
 }
 
 /** Text nodes that use a shared style, to clear when it is deleted. */

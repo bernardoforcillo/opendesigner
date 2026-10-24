@@ -7,6 +7,7 @@ import { deriveMasters } from "./masters";
 import { deriveThreads } from "./threads";
 import { taggedOf } from "./tagged";
 import { resolveTextStyleNode } from "./typography";
+import { hasRich, resolveRichNode } from "./richText";
 import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "./types";
 
 // VARIABLES (design tokens) -- the TypeScript twin of internal/core/variables.go.
@@ -230,7 +231,11 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
  * Parity with core.ResolveNode.
  */
 export function resolveNode(state: SceneState, n: NodeLite): NodeLite {
-  n = resolveTextStyleNode(state, n);
+  // Formatting last: its paragraphs build on the node's final style (shared style and bindings applied).
+  return resolveRichNode(state, resolveBindings(state, resolveTextStyleNode(state, n)));
+}
+
+function resolveBindings(state: SceneState, n: NodeLite): NodeLite {
   if (!n.bindings) return n;
   let out: NodeLite | null = null;
   const edit = () => (out ??= { ...n, fills: [...n.fills], strokes: [...n.strokes] });
@@ -294,7 +299,7 @@ function resolveBase(raw: SceneState): SceneState {
   const changed: string[] = [];
   for (const id of taggedOf(scene).bound) {
     const n = scene.nodes.get(id);
-    if (!n || (!n.bindings && !n.textStyleId)) continue;
+    if (!n || (!n.bindings && !n.textStyleId && !hasRich(n))) continue;
     const r = resolveNode(scene, n);
     if (r === n) continue;
     (edit ??= scene.nodes.edit()).set(n.id, r);

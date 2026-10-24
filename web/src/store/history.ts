@@ -148,6 +148,10 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
             content: prev.text.content,
             style: toPbTextStyle(prev.text.style),
             stylePresent: true,
+            // The formatting too, always: an op that changed the content may have clamped it.
+            paragraphStyles: prev.text.paragraphStyles ?? [],
+            runs: (prev.text.runs ?? []).map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })),
+            richPresent: true,
           },
         },
       })];
@@ -483,7 +487,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     }
     case "setTextStyleDef": {
       const d = op.kind.value.textStyle;
-      if (!isValidTextStyleDef(d)) return null;
+      if (!isValidTextStyleDef(scene, d)) return null;
       const prev = scene.textStyles[d.id];
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,

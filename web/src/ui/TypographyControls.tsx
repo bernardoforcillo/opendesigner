@@ -4,7 +4,7 @@ import { Button, cls } from "./ds";
 import { NumberField } from "./fields/NumberField";
 import { DEFAULT_LINE_HEIGHT } from "../renderer/text";
 import {
-  applyStyleOps, createStyleOps, effectiveStyle, familyChoices, sharedStyleOf, styleOps, updateStyleOps,
+  applyStyleOps, characterStyleOf, createStyleOps, effectiveStyle, familyChoices, formatOps, paragraphStyleOf, sharedStyleOf, styleOps, updateStyleOps,
 } from "./typographyOps";
 import { makeDeleteTextStyleDefOp } from "../tools/ops";
 
@@ -44,7 +44,14 @@ export function TypographyControls() {
   const italic = same(styles.map((s) => s.italic === true));
   const lineHeight = same(styles.map((s) => (s.lineHeight > 0 ? s.lineHeight : DEFAULT_LINE_HEIGHT)));
   const shared = sharedStyleOf(scene, selection);
-  const styleList = Object.values(scene.textStyles).sort((a, b) => a.name.localeCompare(b.name));
+  const allStyles = Object.values(scene.textStyles).sort((a, b) => a.name.localeCompare(b.name));
+  // The node-wide "Text style" and the paragraph styles are the same kind; character styles are separate.
+  const styleList = allStyles.filter((d) => d.kind !== "character");
+  const characterList = allStyles.filter((d) => d.kind === "character");
+  const underline = same(styles.map((s) => s.underline === true));
+  const strike = same(styles.map((s) => s.strikethrough === true));
+  const paragraphValue = paragraphStyleOf(scene, selection);
+  const characterValue = characterStyleOf(scene, selection);
   const single = nodes.length === 1 ? nodes[0] : null;
   // A family that is neither built in nor uploaded (set by an agent or imported): still shown, so it is not lost.
   const known = family === MIXED || choices.some((c) => c.value === family);
@@ -62,6 +69,16 @@ export function TypographyControls() {
           onPress={() => run(styleOps(scene, selection, { italic: italic !== true }))}>
           <span className="italic">I</span>
         </Button>
+        <div className="col-span-2 flex gap-1.5">
+          <Button aria-label="Underline" aria-pressed={underline === true} variant={underline === true ? "primary" : "secondary"}
+            onPress={() => run(styleOps(scene, selection, { underline: underline !== true }))}>
+            <span className="underline">U</span>
+          </Button>
+          <Button aria-label="Strikethrough" aria-pressed={strike === true} variant={strike === true ? "primary" : "secondary"}
+            onPress={() => run(styleOps(scene, selection, { strikethrough: strike !== true }))}>
+            <span className="line-through">S</span>
+          </Button>
+        </div>
         <NumberField
           label="Line" minValue={0.5} suffix="×"
           value={lineHeight === MIXED ? NaN : lineHeight}
@@ -77,6 +94,24 @@ export function TypographyControls() {
           <option value="">No text style</option>
           {styleList.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
         </select>
+        {(styleList.length > 0 || characterList.length > 0) && (
+          <>
+            <select aria-label="Paragraph style" className={cls.select}
+              value={paragraphValue === undefined ? MIXED : paragraphValue}
+              onChange={(e) => run(formatOps(scene, selection, { paragraph: e.target.value }))}>
+              {paragraphValue === undefined && <option value={MIXED} disabled>Mixed</option>}
+              <option value="">No paragraph style</option>
+              {styleList.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+            <select aria-label="Character style" className={cls.select}
+              value={characterValue === undefined ? MIXED : characterValue}
+              onChange={(e) => run(formatOps(scene, selection, { character: e.target.value }))}>
+              {characterValue === undefined && <option value={MIXED} disabled>Mixed</option>}
+              <option value="">No character style</option>
+              {characterList.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+            </select>
+          </>
+        )}
         <div className="flex flex-wrap gap-1.5">
           {single && !single.textStyleId && (
             <Button onPress={() => {
