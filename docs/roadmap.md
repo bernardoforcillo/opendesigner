@@ -67,13 +67,14 @@ Multi-page documents, long text and print output. Already there: pages, layout g
 
 Pages and structure
 - [x] Page sizes and presets (A3-A6, Letter, Legal, Tabloid, book, square, custom)
-- [ ] Facing pages and spreads, page numbering styles
+- [x] Facing pages and spreads (inside/outside margins, left/right pages), numbering sections with styles 1, i, I, a, A; see docs/publishing.md
 - [x] Master pages: template pages drawn behind the pages that apply them, `<#>` page-number token, editor, MCP (`update_page`), export; see docs/master-pages.md
-- [ ] Master pages: overrides per page, left/right masters, a master based on another, section markers
+- [x] Master pages: overrides per page, left/right masters, a master based on another (chains), ruler guides from the master
 - [x] Pages panel with thumbnails (open, add page / master, setup)
-- [ ] Pages panel: reorder, duplicate, sections with their own numbering
+- [x] Pages panel: reorder, duplicate, spreads, sections with their own numbering
 - [x] Page size, margins, columns, gutter and bleed per page (Page setup…), drawn on the sheet, snapped to, and exported as the sheet; PDF for print with bleed
-- [ ] Slug areas, guides per page / spread, different margins for left and right pages
+- [x] Slug areas, ruler guides per page, different margins for left and right pages
+- [ ] Slug and spreads in the PDF/EPUB export
 - [ ] Layers shared across pages
 
 Text

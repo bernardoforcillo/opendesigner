@@ -3,9 +3,10 @@ import { Dialog, DialogTrigger, Popover } from "react-aria-components";
 import { Button, Icon, IconButton, cls } from "./ds";
 import { useScene } from "../store/store";
 import { makeCreatePageWithMasterOp, makeDeletePageOp, makeRenamePageOp, makeUpdatePageOp, uuid } from "../tools/ops";
-import { regularPages } from "../store/masters";
+import { masterFieldsValid, regularPages } from "../store/masters";
 import { PageSetupDialog } from "./PageSetupDialog";
 import { setupOf } from "../store/docSettings";
+import { detachMasterOps } from "../tools/pageOps";
 import type { PageLite } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
@@ -127,6 +128,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
 
   const [setupOpen, setSetupOpen] = useState(false);
   const masters = pages.filter((p) => p.isMaster);
+  const facing = useScene((st) => st.scene?.settings?.facingPages === true);
   const normal = pages.filter((p) => !p.isMaster);
 
   function createPage() {
@@ -155,16 +157,15 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   const canDelete = (id: string | null) => id !== null && pages.some((p) => p.id === id) && regularPages(pages, id).length > 0;
   function deletePage(id: string | null) {
     if (!canDelete(id) || id === null) return;
-    const detach = pages
-      .filter((p) => p.masterId === id)
-      .map((p) => makeUpdatePageOp(withoutMaster(p)));
-    submit(...detach, makeDeletePageOp(id));
+    submit(...detachMasterOps(pages, id), makeDeletePageOp(id));
   }
 
-  function setMaster(pageId: string, masterId: string) {
+  // The master a page applies (`masterId`), the one for its left-hand pages of a spread (`leftMasterId`), or the
+  // master a master is based on (`masterId` of a master). Each keeps the rest of the page.
+  function setMaster(pageId: string, masterId: string, field: "masterId" | "leftMasterId" = "masterId") {
     const page = pages.find((p) => p.id === pageId);
-    if (!page || page.isMaster || (page.masterId ?? "") === masterId) return;
-    submit(makeUpdatePageOp({ ...withoutMaster(page), ...(masterId ? { masterId } : {}) }));
+    if (!page || (page[field] ?? "") === masterId) return;
+    submit(makeUpdatePageOp({ ...page, [field]: masterId || undefined }));
   }
 
   // A page becomes a master (or a master a normal page) in place, content included.
@@ -173,10 +174,9 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
     const page = pages.find((p) => p.id === pageId);
     if (!page) return;
     if (page.isMaster) {
-      const detach = pages.filter((p) => p.masterId === pageId).map((p) => makeUpdatePageOp(withoutMaster(p)));
-      submit(...detach, makeUpdatePageOp(withoutMaster(page, true)));
+      submit(...detachMasterOps(pages, pageId), makeUpdatePageOp(withoutMaster(page, true)));
     } else if (regularPages(pages, pageId).length > 0) {
-      submit(makeUpdatePageOp({ ...withoutMaster(page), isMaster: true }));
+      submit(makeUpdatePageOp({ ...withoutMaster(page), isMaster: true, leftMasterId: undefined }));
     }
   }
 
@@ -290,22 +290,56 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
               {current && (
                 <div className="flex flex-col gap-1 border-t border-line p-2 text-[12px] text-fg-muted">
                   {current.isMaster ? (
-                    <span>Master page: its content is drawn behind the pages that apply it. Use <code>&lt;#&gt;</code> in a text for the page number.</span>
+                    <>
+                      <span>Master page: its content is drawn behind the pages that apply it. Use <code>&lt;#&gt;</code> in a text for the page number.</span>
+                      <label className="flex items-center gap-2">
+                        <span className="shrink-0">Based on</span>
+                        <select
+                          aria-label="Master this master is based on"
+                          value={current.masterId ?? ""}
+                          onChange={(e) => setMaster(current.id, e.target.value)}
+                          className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-1 text-[13px] text-fg"
+                        >
+                          <option value="">None</option>
+                          {masters.filter((m) => m.id !== current.id && masterFieldsValid(pages, { ...current, masterId: m.id })).map((m) => (
+                            <option key={m.id} value={m.id}>{pageLabel(m.name)}</option>
+                          ))}
+                        </select>
+                      </label>
+                    </>
                   ) : (
-                    <label className="flex items-center gap-2">
-                      <span className="shrink-0">Master</span>
-                      <select
-                        aria-label="Master for this page"
-                        value={current.masterId ?? ""}
-                        onChange={(e) => setMaster(current.id, e.target.value)}
-                        className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-1 text-[13px] text-fg"
-                      >
-                        <option value="">None</option>
-                        {masters.map((m) => (
-                          <option key={m.id} value={m.id}>{pageLabel(m.name)}</option>
-                        ))}
-                      </select>
-                    </label>
+                    <>
+                      <label className="flex items-center gap-2">
+                        <span className="shrink-0">Master</span>
+                        <select
+                          aria-label="Master for this page"
+                          value={current.masterId ?? ""}
+                          onChange={(e) => setMaster(current.id, e.target.value)}
+                          className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-1 text-[13px] text-fg"
+                        >
+                          <option value="">None</option>
+                          {masters.map((m) => (
+                            <option key={m.id} value={m.id}>{pageLabel(m.name)}</option>
+                          ))}
+                        </select>
+                      </label>
+                      {facing && (
+                        <label className="flex items-center gap-2">
+                          <span className="shrink-0">Left pages</span>
+                          <select
+                            aria-label="Master for left-hand pages"
+                            value={current.leftMasterId ?? ""}
+                            onChange={(e) => setMaster(current.id, e.target.value, "leftMasterId")}
+                            className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-1 text-[13px] text-fg"
+                          >
+                            <option value="">Same as the master</option>
+                            {masters.map((m) => (
+                              <option key={m.id} value={m.id}>{pageLabel(m.name)}</option>
+                            ))}
+                          </select>
+                        </label>
+                      )}
+                    </>
                   )}
                   <Button
                     onPress={() => toggleMaster(current.id)}

@@ -90,4 +90,29 @@ describe("PagesPanel", () => {
     const { container } = render(<PagesPanel />);
     expect(container).toBeEmptyDOMElement();
   });
+
+  it("duplicates the page on screen right after it and opens the copy", () => {
+    render(<PagesPanel />);
+    fireEvent.click(screen.getByRole("button", { name: "Duplicate" }));
+    const pages = useScene.getState().scene!.pages;
+    expect(pages.map((p) => p.name)).toEqual(["Cover", "Cover copy", "A-Master", "Chapter", "Next"]);
+    expect(useScene.getState().currentPageId).toBe(pages[1].id);
+  });
+
+  it("moves the page on screen later and earlier", () => {
+    render(<PagesPanel />);
+    expect(screen.getByRole("button", { name: "Move page earlier" })).toBeDisabled();
+    fireEvent.click(screen.getByRole("button", { name: "Move page later" }));
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["m1", "page1", "p2", "p3"]);
+    fireEvent.click(screen.getByRole("button", { name: "Move page earlier" }));
+    expect(useScene.getState().scene!.pages.map((p) => p.id)).toEqual(["page1", "m1", "p2", "p3"]);
+  });
+
+  it("lays the pages out as spreads with facing pages, numbered by section", () => {
+    cleanup();
+    install({ ...book(), settings: { vertical: "publishing", facingPages: true } });
+    render(<PagesPanel />);
+    const spreads = screen.getAllByRole("listitem").filter((li) => li.getAttribute("aria-label")?.startsWith("Spread"));
+    expect(spreads.map((li) => li.getAttribute("aria-label"))).toEqual(["Spread 1", "Spread 2–3"]);
+  });
 });

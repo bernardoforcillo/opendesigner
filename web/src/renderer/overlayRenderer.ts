@@ -26,7 +26,7 @@ import type { PenPreview, PointLite } from "../store/vectorGeometry";
 import { themeColors, withAlpha } from "./themeColors";
 import { META_NEXT, nextOf } from "../store/threads";
 import { baselineLines, pageColumns, pageTextArea } from "../store/docSettings";
-import type { DocSettingsLite, PageLite } from "../store/types";
+import type { DocSettingsLite, GuideLite, PageLite } from "../store/types";
 
 // The handles' geometry (positions, hit-test, resize) is ONE only and lives
 // in selection/handles.ts: here we only draw. Re-exported because the
@@ -356,7 +356,7 @@ function drawLayoutGrids(ctx: CanvasRenderingContext2D, state: SceneState, cam: 
 // THE SHEET of a sized page and its guides (store/docSettings.ts), editor-only like the layout grids:
 // the area outside the sheet is dimmed so the sheet reads as paper, the bleed is a dashed red outline,
 // the margins are magenta, the column edges violet, and the baseline grid light blue lines.
-export function drawPageSheet(ctx: CanvasRenderingContext2D, page: PageLite, settings: DocSettingsLite | undefined, cam: Camera): void {
+export function drawPageSheet(ctx: CanvasRenderingContext2D, page: PageLite, settings: DocSettingsLite | undefined, cam: Camera, side: { left?: boolean; guides?: readonly GuideLite[] } = {}): void {
   const w = page.width ?? 0, h = page.height ?? 0;
   if (!(w > 0) || !(h > 0)) return;
   const dpr = devicePixelRatio();
@@ -393,13 +393,13 @@ export function drawPageSheet(ctx: CanvasRenderingContext2D, page: PageLite, set
     }
     ctx.stroke();
   }
-  const area = pageTextArea(page);
+  const area = pageTextArea(page, side.left);
   if (area.x > 0 || area.y > 0 || area.width < w || area.height < h) {
     const m1 = at(area.x, area.y), m2 = at(area.x + area.width, area.y + area.height);
     ctx.strokeStyle = "#d6409f";
     ctx.strokeRect(m1.x + 0.5, m1.y + 0.5, m2.x - m1.x, m2.y - m1.y);
   }
-  const cols = pageColumns(page);
+  const cols = pageColumns(page, side.left);
   if (cols.length > 0) {
     ctx.strokeStyle = "#7c5cff";
     ctx.beginPath();
@@ -407,6 +407,26 @@ export function drawPageSheet(ctx: CanvasRenderingContext2D, page: PageLite, set
       const p1 = at(c.x, area.y), p2 = at(c.x + c.width, area.y + area.height);
       ctx.moveTo(p1.x + 0.5, p1.y); ctx.lineTo(p1.x + 0.5, p2.y);
       ctx.moveTo(p2.x + 0.5, p1.y); ctx.lineTo(p2.x + 0.5, p2.y);
+    }
+    ctx.stroke();
+  }
+  // The slug: the area beyond the bleed for printer's marks and notes, a dashed grey outline.
+  const slug = page.slug ?? 0;
+  if (slug > 0) {
+    const e = bleed + slug;
+    const s1 = at(-e, -e), s2 = at(w + e, h + e);
+    ctx.strokeStyle = "rgba(90,90,100,0.7)";
+    ctx.setLineDash([2, 3]);
+    ctx.strokeRect(s1.x + 0.5, s1.y + 0.5, s2.x - s1.x, s2.y - s1.y);
+    ctx.setLineDash([]);
+  }
+  // Ruler guides (the page's own and those of its master), cyan.
+  if (side.guides && side.guides.length > 0) {
+    ctx.strokeStyle = "#17b3c8";
+    ctx.beginPath();
+    for (const g of side.guides) {
+      if (g.vertical) { const p = at(g.position, 0); ctx.moveTo(Math.round(p.x) + 0.5, a.y); ctx.lineTo(Math.round(p.x) + 0.5, b.y); }
+      else { const p = at(0, g.position); ctx.moveTo(a.x, Math.round(p.y) + 0.5); ctx.lineTo(b.x, Math.round(p.y) + 0.5); }
     }
     ctx.stroke();
   }
@@ -480,7 +500,7 @@ export function drawOverlay(
   // The Link tool's rubber band, also PREVIEW: a dashed line from the node it starts from.
   link: { from: Bounds; x: number; y: number } | null = null,
   // The page on screen with its sheet (size, margins, columns, bleed) and the document's baseline grid.
-  sheet: { page: PageLite; settings?: DocSettingsLite } | null = null,
+  sheet: { page: PageLite; settings?: DocSettingsLite; left?: boolean; guides?: readonly GuideLite[] } | null = null,
 ): void {
   const { canvas } = ctx;
   const dpr = devicePixelRatio();
@@ -489,7 +509,7 @@ export function drawOverlay(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const { accent: ACCENT, guide: SNAP_GUIDE_COLOR } = themeColors();
 
-  if (sheet) drawPageSheet(ctx, sheet.page, sheet.settings, cam);
+  if (sheet) drawPageSheet(ctx, sheet.page, sheet.settings, cam, sheet);
   drawLayoutGrids(ctx, state, cam);
   drawThreadPorts(ctx, state, cam, selection, ACCENT);
 

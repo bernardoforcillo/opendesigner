@@ -158,11 +158,16 @@ export function makeUpdatePageOp(p: PageLite): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "updatePage", value: { page: pageToPb(p) } } });
 }
 
+/** Moves a page to `index` of the page order. */
+export function makeMovePageOp(id: string, index: number): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "movePage", value: { id, index } } });
+}
+
 /** Absolute upsert of the document settings (vertical, baseline grid). */
 export function makeSetDocSettingsOp(s: DocSettingsLite): Op {
   return create(OpSchema, {
     opId: uuid(), docId: docId(),
-    kind: { case: "setDocSettings", value: { settings: { vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0 } } },
+    kind: { case: "setDocSettings", value: { settings: { vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0, facingPages: s.facingPages === true } } },
   });
 }
 

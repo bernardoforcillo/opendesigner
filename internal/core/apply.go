@@ -167,6 +167,8 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applyRenamePage(doc, k.RenamePage)
 	case *opendesignerv1.Op_UpdatePage:
 		return applyUpdatePage(doc, k.UpdatePage)
+	case *opendesignerv1.Op_MovePage:
+		return applyMovePage(doc, k.MovePage)
 	case *opendesignerv1.Op_SetDocSettings:
 		return applySetDocSettings(doc, k.SetDocSettings)
 	case *opendesignerv1.Op_CreateComponent:
@@ -342,20 +344,56 @@ func applyCreatePage(doc *opendesignerv1.Document, c *opendesignerv1.CreatePage)
 	return nil
 }
 
+// maxMasterChain bounds how many masters a page can inherit through (page -> master -> base...).
+const maxMasterChain = 4
+
 // checkPageMaster validates the master fields of page p against the document (p itself may not
-// be in doc.Pages yet): a master applies no master, and the master applied must be an existing
-// master page other than p.
+// be in doc.Pages yet). The master applied (and the left-hand one) must be existing master pages
+// other than p; a master may be based on another master, without cycles and within
+// maxMasterChain; only regular pages have a left-hand master.
 func checkPageMaster(doc *opendesignerv1.Document, p *opendesignerv1.Page) error {
+	if p.GetLeftMasterId() != "" {
+		if p.GetIsMaster() {
+			return fmt.Errorf("%w: a master page has no left master (%s)", ErrBadMaster, p.GetId())
+		}
+		i := pageIndex(doc, p.GetLeftMasterId())
+		if i < 0 || !doc.Pages[i].GetIsMaster() || p.GetLeftMasterId() == p.GetId() {
+			return fmt.Errorf("%w: %s is not a master page", ErrBadMaster, p.GetLeftMasterId())
+		}
+	}
 	if p.GetMasterId() == "" {
 		return nil
 	}
-	if p.GetIsMaster() {
-		return fmt.Errorf("%w: a master page cannot apply a master (%s)", ErrBadMaster, p.GetId())
+	cur := p.GetMasterId()
+	for depth := 0; ; depth++ {
+		if cur == p.GetId() || depth >= maxMasterChain {
+			return fmt.Errorf("%w: master chain of %s is cyclic or too deep", ErrBadMaster, p.GetId())
+		}
+		i := pageIndex(doc, cur)
+		if i < 0 || !doc.Pages[i].GetIsMaster() {
+			return fmt.Errorf("%w: %s is not a master page", ErrBadMaster, cur)
+		}
+		cur = doc.Pages[i].GetMasterId()
+		if cur == "" {
+			return nil
+		}
 	}
-	i := pageIndex(doc, p.GetMasterId())
-	if i < 0 || !doc.Pages[i].GetIsMaster() || p.GetMasterId() == p.GetId() {
-		return fmt.Errorf("%w: %s is not a master page", ErrBadMaster, p.GetMasterId())
+}
+
+// applyMovePage moves a page to `index` in the page order (index < len(pages)).
+func applyMovePage(doc *opendesignerv1.Document, m *opendesignerv1.MovePage) error {
+	i := pageIndex(doc, m.GetId())
+	if i < 0 {
+		return fmt.Errorf("%w: %s", ErrPageNotFound, m.GetId())
 	}
+	to := int(m.GetIndex())
+	if to >= len(doc.Pages) {
+		return fmt.Errorf("%w: index %d", ErrBadPageSetup, to)
+	}
+	pg := doc.Pages[i]
+	rest := append(append([]*opendesignerv1.Page{}, doc.Pages[:i]...), doc.Pages[i+1:]...)
+	out := append(append(append([]*opendesignerv1.Page{}, rest[:to]...), pg), rest[to:]...)
+	doc.Pages = out
 	return nil
 }
 
@@ -373,7 +411,7 @@ func regularPages(doc *opendesignerv1.Document, skip string) int {
 // mastersInUse reports whether any page other than `except` applies the master `id`.
 func masterInUse(doc *opendesignerv1.Document, id string) bool {
 	for _, p := range doc.GetPages() {
-		if p.GetMasterId() == id {
+		if p.GetMasterId() == id || p.GetLeftMasterId() == id {
 			return true
 		}
 	}
@@ -451,7 +489,7 @@ func applyUpdatePage(doc *opendesignerv1.Document, u *opendesignerv1.UpdatePage)
 		if regularPages(doc, np.GetId()) == 0 {
 			return fmt.Errorf("%w: %s", ErrLastPage, np.GetId())
 		}
-		if cur.GetMasterId() != "" && np.GetMasterId() != "" {
+		if np.GetLeftMasterId() != "" {
 			return fmt.Errorf("%w: %s", ErrBadMaster, np.GetId())
 		}
 	}

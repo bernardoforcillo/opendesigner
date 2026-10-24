@@ -22,6 +22,7 @@ type SetDocumentSettingsInput struct {
 	Vertical          *string  `json:"vertical,omitempty" jsonschema:"publishing (books, magazines, reports: pages, masters, text frames, PDF/EPUB) | design (illustration, UI design, boards) | product (design and development together: flows, prototype, code). Shapes the editor, never limits what the document can hold"`
 	BaselineIncrement *float64 `json:"baselineIncrement,omitempty" jsonschema:"distance between baseline grid lines, 0..1000; 0 = no grid"`
 	BaselineStart     *float64 `json:"baselineStart,omitempty" jsonschema:"where the first baseline grid line sits, from the top of the page"`
+	FacingPages       *bool    `json:"facingPages,omitempty" jsonschema:"pages are laid out as spreads (odd page numbers on the right): margins left/right become inside/outside"`
 }
 
 // SetDocumentSettings changes the vertical and / or the baseline grid; fields left out keep their value.
@@ -44,6 +45,9 @@ func (s *Session) SetDocumentSettings(ctx context.Context, in SetDocumentSetting
 	}
 	if in.BaselineStart != nil {
 		next.BaselineStart = *in.BaselineStart
+	}
+	if in.FacingPages != nil {
+		next.FacingPages = *in.FacingPages
 	}
 	if err := core.ValidateDocSettings(next); err != nil {
 		return SeqOutput{}, fmt.Errorf("set_document_settings: %w", err)

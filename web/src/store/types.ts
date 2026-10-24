@@ -15,12 +15,18 @@ export interface PageLite {
   width?: number; height?: number;
   marginTop?: number; marginRight?: number; marginBottom?: number; marginLeft?: number;
   columns?: number; gutter?: number; bleed?: number;
+  // PAGE STRUCTURE (store/pageNumbers.ts, store/masters.ts), absent at the default.
+  sectionStart?: boolean; numberStart?: number; numberStyle?: NumberStyle;
+  leftMasterId?: string; hiddenMasterItems?: string[]; slug?: number; guides?: GuideLite[];
 }
+export type NumberStyle = "i" | "I" | "a" | "A";
+/** A ruler guide of a page: a vertical one at x = position, else a horizontal one at y = position. */
+export interface GuideLite { vertical: boolean; position: number }
 
 /** The kind of work a document is for: it shapes the editor, never limits the document. Absent = "product". */
 export type Vertical = "publishing" | "design" | "product";
 /** Document-wide settings, each absent at its default. */
-export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number }
+export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
@@ -426,7 +432,12 @@ export interface SceneState {
 }
 
 /** A page from its message: setup and master fields only when they are not at their default. */
-export function toPageLite(p: { id: string; name: string; isMaster: boolean; masterId: string; width: number; height: number; marginTop: number; marginRight: number; marginBottom: number; marginLeft: number; columns: number; gutter: number; bleed: number }): PageLite {
+export function toPageLite(p: {
+  id: string; name: string; isMaster: boolean; masterId: string; width: number; height: number; marginTop: number; marginRight: number;
+  marginBottom: number; marginLeft: number; columns: number; gutter: number; bleed: number;
+  sectionStart?: boolean; numberStart?: number; numberStyle?: string; leftMasterId?: string;
+  hiddenMasterItems?: readonly string[]; slug?: number; guides?: readonly { vertical: boolean; position: number }[];
+}): PageLite {
   return {
     id: p.id, name: p.name,
     ...(p.isMaster ? { isMaster: true } : {}), ...(p.masterId ? { masterId: p.masterId } : {}),
@@ -434,15 +445,23 @@ export function toPageLite(p: { id: string; name: string; isMaster: boolean; mas
     ...(p.marginTop ? { marginTop: p.marginTop } : {}), ...(p.marginRight ? { marginRight: p.marginRight } : {}),
     ...(p.marginBottom ? { marginBottom: p.marginBottom } : {}), ...(p.marginLeft ? { marginLeft: p.marginLeft } : {}),
     ...(p.columns ? { columns: p.columns } : {}), ...(p.gutter ? { gutter: p.gutter } : {}), ...(p.bleed ? { bleed: p.bleed } : {}),
+    ...(p.sectionStart ? { sectionStart: true } : {}), ...(p.numberStart ? { numberStart: p.numberStart } : {}),
+    // Passed through as is: an unknown style is invalid (isValidPageStructure), not silently dropped.
+    ...(p.numberStyle ? { numberStyle: p.numberStyle as NumberStyle } : {}),
+    ...(p.leftMasterId ? { leftMasterId: p.leftMasterId } : {}),
+    ...(p.hiddenMasterItems?.length ? { hiddenMasterItems: [...p.hiddenMasterItems] } : {}),
+    ...(p.slug ? { slug: p.slug } : {}),
+    ...(p.guides?.length ? { guides: p.guides.map((g) => ({ vertical: g.vertical, position: g.position })) } : {}),
   };
 }
 
 /** `{ settings }` for a scene when the message has any non-default setting, else `{}`. */
-export function settingsField(s: { vertical: string; baselineIncrement: number; baselineStart: number }): { settings?: DocSettingsLite } {
+export function settingsField(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean }): { settings?: DocSettingsLite } {
   const out: DocSettingsLite = {
     ...(s.vertical === "publishing" || s.vertical === "design" ? { vertical: s.vertical } : {}),
     ...(s.baselineIncrement ? { baselineIncrement: s.baselineIncrement } : {}),
     ...(s.baselineStart ? { baselineStart: s.baselineStart } : {}),
+    ...(s.facingPages ? { facingPages: true } : {}),
   };
   return Object.keys(out).length > 0 ? { settings: out } : {};
 }

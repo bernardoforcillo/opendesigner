@@ -3,6 +3,8 @@ import { Button } from "./ds";
 import { useScene } from "../store/store";
 import { resolveScene } from "../store/variables";
 import { makeCreatePageWithMasterOp, uuid } from "../tools/ops";
+import { duplicatePageOps, movePageBy } from "../tools/pageOps";
+import { isRightPage, pageNumbers } from "../store/pageNumbers";
 import { setupOf } from "../store/docSettings";
 import type { FillLite, NodeLite, PageLite } from "../store/types";
 import { PageSetupDialog } from "./PageSetupDialog";
@@ -10,7 +12,8 @@ import { PageSetupDialog } from "./PageSetupDialog";
 // THE PAGES PANEL (Publishing): every page of the document as a thumbnail with its number, the master
 // it applies and its size; click to open it. Masters are listed apart, under the pages. It shows the
 // same document as the page list in the bar (ui/PageBar.tsx), but all at once, like the pages panel of a
-// layout tool. Pages are numbered as the master's <#> token counts them: masters are not pages.
+// layout tool. Pages are numbered as the master's <#> token counts them (sections and numbering styles
+// included): masters are not pages. With facing pages the pages are laid out as spreads, odd pages right.
 
 const css = (f: FillLite | undefined): string => (f ? `rgb(${Math.round(f.r * 255)} ${Math.round(f.g * 255)} ${Math.round(f.b * 255)})` : "none");
 
@@ -61,6 +64,15 @@ export function PagesPanel() {
   const normal = pages.filter((p) => !p.isMaster);
   const masters = pages.filter((p) => p.isMaster);
   const current = pages.find((p) => p.id === currentPageId) ?? pages[0];
+  const numbers = pageNumbers(pages);
+  const facing = scene.settings?.facingPages === true;
+  // Spreads: a left-hand page with the right-hand page after it; the first page of a section is often alone.
+  const spreads: PageLite[][] = [];
+  for (const p of normal) {
+    const last = spreads[spreads.length - 1];
+    if (isRightPage(numbers.get(p.id)) && last?.length === 1 && !isRightPage(numbers.get(last[0].id))) last.push(p);
+    else spreads.push([p]);
+  }
 
   function submit(...ops: Parameters<ReturnType<typeof useScene.getState>["endGesture"]>[0]) {
     const store = useScene.getState();
@@ -78,12 +90,22 @@ export function PagesPanel() {
     useScene.getState().setCurrentPage(id);
   }
 
+  function duplicate() {
+    if (!current) return;
+    const id = uuid();
+    submit(...duplicatePageOps(scene!, current.id, id));
+    useScene.getState().setCurrentPage(id);
+  }
+  function move(delta: number) {
+    if (current) submit(...movePageBy(pages, current.id, delta));
+  }
+
   const card = (p: PageLite, label: string) => {
     const w = p.width ?? 400, h = p.height ?? 560;
     const master = p.masterId ? pages.find((m) => m.id === p.masterId) : undefined;
     const active = p.id === current?.id;
     return (
-      <li key={p.id}>
+      <div key={p.id}>
         <button
           type="button"
           aria-label={`Open ${p.name || "page"}`}
@@ -102,21 +124,29 @@ export function PagesPanel() {
             {master && <span className="shrink-0 rounded-sm bg-surface-3 px-1 font-mono text-[10px] text-fg-subtle">{master.name.slice(0, 1)}</span>}
           </span>
         </button>
-      </li>
+      </div>
     );
   };
+  const item = (p: PageLite, label: string) => <li key={p.id}>{card(p, label)}</li>;
 
   return (
     <div className="flex h-full min-h-0 flex-col" role="region" aria-label="Pages">
       <div className="min-h-0 flex-1 overflow-y-auto p-1.5">
         <ul aria-label="Pages" className="flex flex-col gap-1">
-          {normal.map((p, i) => card(p, String(i + 1)))}
+          {facing
+            ? spreads.map((row) => (
+              <li key={row[0].id} aria-label={`Spread ${row.map((p) => numbers.get(p.id)?.label).join("–")}`} className="grid grid-cols-2 gap-1">
+                {isRightPage(numbers.get(row[0].id)) && <div aria-hidden="true" />}
+                {row.map((p) => card(p, numbers.get(p.id)?.label ?? ""))}
+              </li>
+            ))
+            : normal.map((p) => item(p, numbers.get(p.id)?.label ?? ""))}
         </ul>
         {masters.length > 0 && (
           <>
             <h3 className="mt-3 px-1.5 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-subtle">Masters</h3>
             <ul aria-label="Masters" className="mt-1 flex flex-col gap-1">
-              {masters.map((p) => card(p, p.name.slice(0, 1)))}
+              {masters.map((p) => item(p, p.name.slice(0, 1)))}
             </ul>
           </>
         )}
@@ -125,6 +155,9 @@ export function PagesPanel() {
         <Button icon="plus" onPress={() => add(false)}>Page</Button>
         <Button icon="plus" onPress={() => add(true)}>Master</Button>
         <Button icon="page" onPress={() => setSetupOpen(true)}>Setup…</Button>
+        <Button onPress={duplicate} isDisabled={!current}>Duplicate</Button>
+        <Button aria-label="Move page earlier" onPress={() => move(-1)} isDisabled={!current || pages.indexOf(current) === 0}>Earlier</Button>
+        <Button aria-label="Move page later" onPress={() => move(1)} isDisabled={!current || pages.indexOf(current) === pages.length - 1}>Later</Button>
       </div>
       <PageSetupDialog isOpen={setupOpen} onOpenChange={setSetupOpen} />
     </div>

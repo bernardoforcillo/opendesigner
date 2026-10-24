@@ -20,18 +20,25 @@ A text on a master that contains `<#>` shows the page's number on each page that
 ## Model
 
 ```
-Page { id, name, is_master, master_id }
-UpdatePage { page }   // op 41: absolute upsert of name / is_master / master_id; the inverse is the previous page
+Page { id, name, is_master, master_id, left_master_id, hidden_master_items, ... }
+UpdatePage { page }   // op 41: absolute upsert of the page; the inverse is the previous page
 ```
 
 Rules, enforced the same way by the Go core and the editor:
 
-- a master applies no master (`master_id` must be empty on a master);
-- `master_id` names an existing master page other than the page itself;
-- a master that pages apply cannot be deleted or demoted (detach them first);
+- `master_id` names an existing master page other than the page itself; a master may be **based on** another master (`master_id` on a master), through a chain of at most 4 with no cycle, and draws the base behind its own items;
+- `left_master_id` (regular pages only) names the master of the left-hand pages of a spread, used when the document has facing pages;
+- a master that pages (or masters) apply cannot be deleted or demoted (detach them first);
 - the document always keeps at least one page that is not a master (a master cannot be the last page, and the last normal page cannot be deleted or turned into a master).
 
 `CreatePage` carries the same fields. Merge treats a page change as one unit (name and master together).
+
+## Based-on masters, left and right masters, overrides
+
+- **Based on** (under the list, on a master) makes a master inherit another one: *B-Master* based on *A-Master* shows A's items and then its own.
+- With **facing pages** (Page setup) a page can have a **Left pages** master: odd page numbers are right-hand pages and use *Master*, even ones use *Left pages* when set.
+- **Override**: Ctrl/Cmd+Shift+click a master item on a page. The page gets its own editable copy and the master's item is hidden there (`hidden_master_items`, the master item's id); one undo puts it back.
+- Ruler guides on a master (`guides`) apply to every page that uses it.
 
 ## How it is drawn
 
@@ -44,8 +51,8 @@ Nothing is copied into the document. Like live booleans and variables the master
 
 ## MCP
 
-`create_page` takes `isMaster` and `masterId`; `update_page` changes the name, `isMaster` and `masterId` (empty string detaches); `list_pages` / `get_document` report `isMaster` and `masterId`.
+`create_page` takes `isMaster` and `masterId`; `update_page` changes the name, `isMaster`, `masterId` (empty string detaches), `leftMasterId`, `hiddenMasterItems` and the numbering and guide fields (see docs/publishing.md); `list_pages` / `get_document` report them.
 
 ## Not yet
 
-Facing pages and spreads, different masters for left and right pages, overriding a master item on one page, several masters per page, and a master that applies another master are not supported.
+Several masters per page, and overriding a nested item of a master (only top-level master items can be overridden).

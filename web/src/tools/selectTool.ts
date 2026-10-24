@@ -32,6 +32,7 @@ import { useScene } from "../store/store";
 import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "../store/groups";
 import { subtreeOf, topmostOf } from "../store/tree";
 import { groupOps, ungroupOps } from "./grouping";
+import { creatingId, masterItemAt, overrideMasterItemOps } from "./pageOps";
 import { wrapSelectionInFrame } from "./wrapFrame";
 import { computeLayoutDrop, layoutDropOps, reorderableParent, type LayoutDrop } from "./layoutDrop";
 import { makeCreateComponentOp, makeDeleteOp, makeSetPropsOp, makeSetVectorPathOp, uuid } from "./ops";
@@ -697,6 +698,22 @@ export function createSelectTool(): Tool {
           rotateStarted = false;
           setCursor(ctx, ROTATING_CURSOR);
           return;
+        }
+      }
+
+      // Ctrl/Cmd+Shift+click on an item drawn from a MASTER: overrides it on this page (the page gets its own
+      // editable copy, the master's is hidden there) and selects the copy. Only top-level master items.
+      if (e.shiftKey && (e.ctrlKey || e.metaKey) && store.currentPageId) {
+        const page = scene.pages.find((p) => p.id === store.currentPageId);
+        const from = page && !page.isMaster ? masterItemAt(scene, page.id, world.x, world.y, ctx.getCamera().zoom) : null;
+        if (page && from) {
+          const ops = overrideMasterItemOps(scene, page, from);
+          if (ops.length > 0) {
+            store.beginGesture();
+            store.endGesture(ops);
+            store.setSelection([ops[1] ? creatingId(ops[1]) : ""].filter(Boolean));
+            return;
+          }
         }
       }
 

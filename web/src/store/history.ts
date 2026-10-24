@@ -188,8 +188,15 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const prev = scene.settings ?? {};
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
-        kind: { case: "setDocSettings", value: { settings: { vertical: prev.vertical ?? "", baselineIncrement: prev.baselineIncrement ?? 0, baselineStart: prev.baselineStart ?? 0 } } },
+        kind: { case: "setDocSettings", value: { settings: { vertical: prev.vertical ?? "", baselineIncrement: prev.baselineIncrement ?? 0, baselineStart: prev.baselineStart ?? 0, facingPages: prev.facingPages === true } } },
       })];
+    }
+    // The inverse of a move is moving the page back to where it was.
+    case "movePage": {
+      const { id, index } = op.kind.value;
+      const from = scene.pages.findIndex((p) => p.id === id);
+      if (from < 0 || index >= scene.pages.length) return null;
+      return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "movePage", value: { id, index: from } } })];
     }
     // The inverse of an upsert is the previous page. null when applyOp would reject the op.
     case "updatePage": {

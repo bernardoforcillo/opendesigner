@@ -373,6 +373,14 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (!isValidPageSetup(created)) return state;               // ErrBadPageSetup
       return { ...state, pages: [...state.pages, created] };
     }
+    // Moves a page to `index` of the page order. Parity with core.applyMovePage.
+    case "movePage": {
+      const { id, index } = op.kind.value;
+      const i = state.pages.findIndex((p) => p.id === id);
+      if (i < 0 || index >= state.pages.length) return state;
+      const rest = state.pages.filter((p) => p.id !== id);
+      return { ...state, pages: [...rest.slice(0, index), state.pages[i], ...rest.slice(index)] };
+    }
     // Absolute upsert of the document settings (vertical, baseline grid). Parity with core.applySetDocSettings.
     case "setDocSettings": {
       const s = op.kind.value.settings;

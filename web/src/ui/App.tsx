@@ -1,3 +1,4 @@
+import { effectiveGuides, isLeftPage } from "../store/masters";
 import { useEffect, useRef, useState } from "react";
 import { Code, ConnectError } from "@connectrpc/connect";
 import { Tab, TabList, TabPanel, Tabs } from "react-aria-components";
@@ -456,7 +457,7 @@ export function App() {
           // a geometry that changes every frame (and the animated scale is not in the
           // selection box). Paused or scrubbing they follow the posed geometry.
           const pageNow = scene.pages.find((p) => p.id === useScene.getState().currentPageId) ?? scene.pages[0];
-          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview, pageNow ? { page: pageNow, settings: scene.settings } : null);
+          drawOverlay(octx, scene, camera, useTimeline.getState().playing ? [] : selection, marquee, snapGuides, penPreview, linkPreview, pageNow ? { page: pageNow, settings: scene.settings, left: isLeftPage(scene, pageNow), guides: effectiveGuides(scene, pageNow) } : null);
           const peers = usePresence.getState().peers;
           if (Object.keys(peers).length > 0) {
             drawPeers(octx, scene, camera, peers, useScene.getState().currentPageId ?? null);

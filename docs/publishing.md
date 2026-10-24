@@ -47,9 +47,11 @@ The original path: Board, Design, Flows (connect screens, try the prototype), De
 ## Model and API
 
 ```
-Document.settings : DocSettings { vertical, baseline_increment, baseline_start }
+Document.settings : DocSettings { vertical, baseline_increment, baseline_start, facing_pages }
 SetDocSettings    : absolute upsert of the settings (op 42; the inverse is the previous settings)
-Page              + width, height, margin_top/right/bottom/left, columns, gutter, bleed
+Page              + width, height, margin_top/right/bottom/left, columns, gutter, bleed, slug
+Page              + section_start, number_start, number_style, left_master_id, hidden_master_items, guides
+MovePage          : moves a page to an index in the page order (op 43; the inverse moves it back)
 CreateDocumentRequest.vertical, DocInfo.vertical
 ```
 
@@ -57,6 +59,16 @@ Rules (Go `internal/core/docsettings.go` is the authority; `web/src/store/docSet
 
 MCP: `set_document_settings`, `create_page` / `update_page` with the page-setup fields, and `get_document` / `list_pages` reporting them. Code: `web/src/verticals/index.ts` (what each vertical shows), `web/src/templates/{publishing,design,catalog}.ts` (templates as pure data: nodes, pages, styles, settings), `web/src/ui/{PageSetupDialog,PagesPanel}.tsx`.
 
+## Pages, spreads and numbering
+
+- **Facing pages** (Page setup): odd page numbers are right-hand pages; the left and right margins become **Inside** and **Outside**, so on a left-hand page the margins swap sides (margins, columns, snap guides and the drawn sheet follow). The Pages panel lays the pages out as spreads.
+- **Numbering sections**: a page can *start a new section* with its own start number and style (`1`, `i`, `I`, `a`, `A`); the first page is always a section start. The number is what `<#>` shows on a master and what decides the side of a spread.
+- **Slug**: extra area beyond the bleed, drawn as a dashed outline.
+- **Guides**: vertical and horizontal ruler guides per page (Page setup, comma-separated), drawn in cyan and snapped to; guides of a master apply to its pages.
+- **Pages panel**: *Duplicate* (a copy with new ids right after the page, text threads inside the page stay linked), *Earlier* / *Later* to reorder.
+
+Rules (same in Go and TS): number style is empty or one of `i I a A`; number start ≤ 100 000; slug 0 – 1000; at most 200 guides with |position| ≤ 100 000; hidden master item ids are non-empty.
+
 ## Not yet
 
-Facing pages and spreads (and different margins for left and right pages), slug areas and guides per page, section-aware page numbering, reordering and duplicating pages from the Pages panel, and a fixed `Align to grid` for text that has no paragraph style.
+Slug is drawn but not yet exported (PDF/EPUB use the bleed box), the PDF/EPUB export does not lay facing pages out as spreads, and a fixed `Align to grid` for text that has no paragraph style.

@@ -512,6 +512,20 @@ type PageSetup struct {
 	Columns      *uint32  `json:"columns,omitempty" jsonschema:"text columns inside the margins (0 or 1 = one)"`
 	Gutter       *float64 `json:"gutter,omitempty" jsonschema:"space between columns"`
 	Bleed        *float64 `json:"bleed,omitempty" jsonschema:"extra area around the sheet that is printed and trimmed"`
+	Slug         *float64 `json:"slug,omitempty" jsonschema:"extra area beyond the bleed for printer's marks and notes"`
+	// Numbering and structure.
+	SectionStart      *bool        `json:"sectionStart,omitempty" jsonschema:"this page starts a numbering section (the first page always does)"`
+	NumberStart       *uint32      `json:"numberStart,omitempty" jsonschema:"the number this section starts at (0 = 1)"`
+	NumberStyle       *string      `json:"numberStyle,omitempty" jsonschema:"page number style of the section: empty = 1,2,3 | i | I | a | A"`
+	LeftMasterId      *string      `json:"leftMasterId,omitempty" jsonschema:"master applied on the left-hand pages of a spread (facing pages); empty = the same as masterId"`
+	HiddenMasterItems *[]string    `json:"hiddenMasterItems,omitempty" jsonschema:"ids of master items not drawn on this page"`
+	Guides            *[]GuideSpec `json:"guides,omitempty" jsonschema:"ruler guides of the page (a master's guides apply to its pages)"`
+}
+
+// GuideSpec is a ruler guide: a vertical one at x = position, else a horizontal one at y = position.
+type GuideSpec struct {
+	Vertical bool    `json:"vertical,omitempty"`
+	Position float64 `json:"position"`
 }
 
 // apply writes the fields that are set onto p.
@@ -543,12 +557,36 @@ func (s PageSetup) apply(p *opendesignerv1.Page) {
 	if s.Bleed != nil {
 		p.Bleed = *s.Bleed
 	}
+	if s.Slug != nil {
+		p.Slug = *s.Slug
+	}
+	if s.SectionStart != nil {
+		p.SectionStart = *s.SectionStart
+	}
+	if s.NumberStart != nil {
+		p.NumberStart = *s.NumberStart
+	}
+	if s.NumberStyle != nil {
+		p.NumberStyle = *s.NumberStyle
+	}
+	if s.LeftMasterId != nil {
+		p.LeftMasterId = *s.LeftMasterId
+	}
+	if s.HiddenMasterItems != nil {
+		p.HiddenMasterItems = append([]string(nil), (*s.HiddenMasterItems)...)
+	}
+	if s.Guides != nil {
+		p.Guides = nil
+		for _, g := range *s.Guides {
+			p.Guides = append(p.Guides, &opendesignerv1.Guide{Vertical: g.Vertical, Position: g.Position})
+		}
+	}
 }
 
 type CreatePageInput struct {
 	Name     string `json:"name,omitempty"`
 	IsMaster bool   `json:"isMaster,omitempty" jsonschema:"create a MASTER page (a template drawn behind the pages that apply it)"`
-	MasterId string `json:"masterId,omitempty" jsonschema:"id of a master page this page applies"`
+	MasterId string `json:"masterId,omitempty" jsonschema:"id of a master page this page applies (or, for a master, the master it is based on)"`
 	PageSetup
 }
 
@@ -635,6 +673,20 @@ func (s *Session) UpdatePage(ctx context.Context, in UpdatePageInput) (SeqOutput
 	return SeqOutput{Seq: seq}, nil
 }
 
+type MovePageInput struct {
+	Id    string `json:"id"`
+	Index uint32 `json:"index" jsonschema:"the position in the page order, 0 = first (masters count too)"`
+}
+
+// MovePage moves a page to a position in the page order.
+func (s *Session) MovePage(ctx context.Context, in MovePageInput) (SeqOutput, error) {
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_MovePage{MovePage: &opendesignerv1.MovePage{Id: in.Id, Index: in.Index}}})
+	if err != nil {
+		return SeqOutput{}, err
+	}
+	return SeqOutput{Seq: seq}, nil
+}
+
 // ---------------------------------------------------------------------------
 // components
 // ---------------------------------------------------------------------------
@@ -713,10 +765,24 @@ type PageView struct {
 	Columns      uint32  `json:"columns,omitempty"`
 	Gutter       float64 `json:"gutter,omitempty"`
 	Bleed        float64 `json:"bleed,omitempty"`
+	Slug         float64 `json:"slug,omitempty"`
+	// Numbering and structure (omitted at their defaults).
+	SectionStart      bool        `json:"sectionStart,omitempty"`
+	NumberStart       uint32      `json:"numberStart,omitempty"`
+	NumberStyle       string      `json:"numberStyle,omitempty"`
+	LeftMasterId      string      `json:"leftMasterId,omitempty"`
+	HiddenMasterItems []string    `json:"hiddenMasterItems,omitempty"`
+	Guides            []GuideSpec `json:"guides,omitempty"`
 }
 
 func pageView(p *opendesignerv1.Page) PageView {
+	var guides []GuideSpec
+	for _, g := range p.GetGuides() {
+		guides = append(guides, GuideSpec{Vertical: g.GetVertical(), Position: g.GetPosition()})
+	}
 	return PageView{
+		Slug: p.GetSlug(), SectionStart: p.GetSectionStart(), NumberStart: p.GetNumberStart(), NumberStyle: p.GetNumberStyle(),
+		LeftMasterId: p.GetLeftMasterId(), HiddenMasterItems: p.GetHiddenMasterItems(), Guides: guides,
 		Id: p.GetId(), Name: p.GetName(), IsMaster: p.GetIsMaster(), MasterId: p.GetMasterId(),
 		Width: p.GetWidth(), Height: p.GetHeight(), MarginTop: p.GetMarginTop(), MarginRight: p.GetMarginRight(),
 		MarginBottom: p.GetMarginBottom(), MarginLeft: p.GetMarginLeft(), Columns: p.GetColumns(), Gutter: p.GetGutter(), Bleed: p.GetBleed(),
@@ -976,7 +1042,8 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)
 	addTool(srv, "create_page", "Create a new page (optionally a master page, or one that applies a master). Returns the new page id.", s.CreatePage)
-	addTool(srv, "update_page", "Change a page: turn it into a master page, apply or detach a master (masterId), or rename it. A master page is a template: its content is drawn behind every page that applies it, and a text with the token <#> shows the page number there. A master cannot apply another master; a master in use cannot be deleted or demoted.", s.UpdatePage)
+	addTool(srv, "update_page", "Change a page: turn it into a master page, apply or detach a master (masterId), or rename it. A master page is a template: its content is drawn behind every page that applies it, and a text with the token <#> shows the page number there. A master may be based on another master (a chain, no cycles); leftMasterId gives the left-hand pages of a spread their own master. A master in use cannot be deleted or demoted. Also sets numbering (sectionStart / numberStart / numberStyle), slug, ruler guides and the master items hidden on the page.", s.UpdatePage)
+	addTool(srv, "move_page", "Move a page to a position in the page order.", s.MovePage)
 	addTool(srv, "delete_page", "Delete a page and every node under it. The last page cannot be deleted.", s.DeletePage)
 	addTool(srv, "rename_page", "Rename a page.", s.RenamePage)
 	addTool(srv, "create_component", "Register an existing node subtree as a component master. Returns the new component id.", s.CreateComponent)

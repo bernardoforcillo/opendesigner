@@ -577,7 +577,22 @@ message Page {
   uint32 columns = 11;   // 0 or 1 = a single column
   double gutter = 12;    // space between columns
   double bleed = 13;     // extra area around the sheet that is printed and trimmed
+  // PAGE NUMBERS. A page with section_start begins a numbering section: its number is number_start
+  // (0 = 1) in number_style ("" = 1 2 3, "i", "I", "a", "A"); the pages after it continue the count
+  // until the next section. Masters are not numbered. The first page is a section start by default.
+  bool section_start = 14;
+  uint32 number_start = 15;
+  string number_style = 16;
+  // With facing pages a page can use another master on the left-hand side.
+  string left_master_id = 17;
+  // Ids of master nodes this page has OVERRIDDEN: it does not show them (its own copy, if any, is an
+  // ordinary node of the page).
+  repeated string hidden_master_items = 18;
+  double slug = 19;      // area beyond the bleed for printer's marks and notes
+  repeated Guide guides = 20;
 }
+// A ruler guide: a vertical line at x = position, or a horizontal one at y = position.
+message Guide { bool vertical = 1; double position = 2; }
 
 // ---------- typography ----------
 // A FONT FACE is an uploaded font file: one weight/style of one family. The bytes
@@ -761,6 +776,9 @@ message DocSettings {
   string vertical = 1;
   double baseline_increment = 2;
   double baseline_start = 3;
+  // Facing pages: pages are read in spreads (the first alone, on the right; then pairs). For the margins
+  // of a page, margin_left is the INSIDE (towards the fold) and margin_right the OUTSIDE.
+  bool facing_pages = 4;
 }
 
 // ---------- ops ----------
@@ -852,6 +870,8 @@ message DeletePage { string id = 1; }
 message RenamePage { string id = 1; string name = 2; }
 // ABSOLUTE upsert of an existing page's name / is_master / master_id (the inverse is the previous page).
 message UpdatePage { Page page = 1; }
+// Moves a page to a position in the page list (0-based; the others shift). The inverse moves it back.
+message MovePage { string id = 1; uint32 index = 2; }
 // ABSOLUTE upsert of the document settings (the inverse is the previous settings).
 message SetDocSettings { DocSettings settings = 1; }
 
@@ -924,6 +944,7 @@ message Op {
     DeleteComment       delete_comment        = 40;
     UpdatePage          update_page           = 41; // master pages — a page's name, master flag and applied master
     SetDocSettings      set_doc_settings      = 42; // vertical and baseline grid (absolute upsert)
+    MovePage            move_page             = 43; // reorder pages
   }
 }
 // A comment pinned on the canvas. A THREAD is a root comment (parent_id empty) plus its

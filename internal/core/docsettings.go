@@ -89,5 +89,31 @@ func validatePageSetup(p *opendesignerv1.Page) error {
 			return ErrBadPageSetup
 		}
 	}
+	return validatePageStructure(p)
+}
+
+// validatePageStructure checks the numbering, slug, guides and hidden master items of p.
+func validatePageStructure(p *opendesignerv1.Page) error {
+	switch p.GetNumberStyle() {
+	case "", "i", "I", "a", "A":
+	default:
+		return ErrBadPageSetup
+	}
+	if p.GetNumberStart() > 100000 || !finiteIn(p.GetSlug(), 0, 1000) {
+		return ErrBadPageSetup
+	}
+	if len(p.GetGuides()) > 200 || len(p.GetHiddenMasterItems()) > 1000 {
+		return ErrBadPageSetup
+	}
+	for _, g := range p.GetGuides() {
+		if !finiteIn(g.GetPosition(), -100000, 100000) {
+			return ErrBadPageSetup
+		}
+	}
+	for _, id := range p.GetHiddenMasterItems() {
+		if id == "" {
+			return ErrBadPageSetup
+		}
+	}
 	return nil
 }

@@ -3,6 +3,7 @@ import { type Bounds, worldAabbOfNode } from "../canvas/geometry";
 import type { SceneState } from "../store/types";
 import { snapPositions } from "../store/layoutGrids";
 import { pageGuideBoxes } from "../store/docSettings";
+import { effectiveGuides, isLeftPage } from "../store/masters";
 
 // SNAP — AUTOMATIC ALIGNMENT DURING A GESTURE.
 //
@@ -312,7 +313,8 @@ export function prepareSnapTargets(targets: readonly Bounds[]): SnapIndex {
 export function snapTargets(scene: SceneState, exclude: readonly string[], pageId?: string | null): Bounds[] {
   const skip = new Set(exclude);
   // The guides of the page on screen (sheet edges, margins, columns, baseline grid) are snap targets too.
-  const out: Bounds[] = pageGuideBoxes(scene.pages.find((p) => p.id === (pageId ?? scene.pages[0]?.id)), scene.settings);
+  const page = scene.pages.find((p) => p.id === (pageId ?? scene.pages[0]?.id));
+  const out: Bounds[] = page ? pageGuideBoxes(page, scene.settings, { left: isLeftPage(scene, page), guides: effectiveGuides(scene, page) }) : [];
   for (const n of [...scene.nodes.values()]) {
     if (!n.visible || skip.has(n.id)) continue;
     out.push(worldAabbOfNode(n));

@@ -290,6 +290,61 @@ func TestMasterPages(t *testing.T) {
 	}
 }
 
+// TestPageStructure covers master chains, numbering, guides, facing pages and move_page.
+func TestPageStructure(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	base, _ := sess.CreatePage(ctx, odmcp.CreatePageInput{Name: "Base", IsMaster: true})
+	left, err := sess.CreatePage(ctx, odmcp.CreatePageInput{Name: "Left", IsMaster: true, MasterId: base.PageId})
+	if err != nil {
+		t.Fatalf("a master based on a master: %v", err)
+	}
+	style, start, slug, lm := "i", uint32(3), 9.0, left.PageId
+	guides := []odmcp.GuideSpec{{Vertical: true, Position: 40}}
+	hidden := []string{"logo"}
+	sec := true
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: "page1", PageSetup: odmcp.PageSetup{
+		NumberStyle: &style, NumberStart: &start, Slug: &slug, LeftMasterId: &lm, Guides: &guides, HiddenMasterItems: &hidden, SectionStart: &sec,
+	}}); err != nil {
+		t.Fatalf("UpdatePage structure: %v", err)
+	}
+	pages, _ := sess.ListPages(ctx, struct{}{})
+	var p1 odmcp.PageView
+	for _, p := range pages.Pages {
+		if p.Id == "page1" {
+			p1 = p
+		}
+	}
+	if p1.NumberStyle != "i" || p1.NumberStart != 3 || p1.Slug != 9 || p1.LeftMasterId != left.PageId || len(p1.Guides) != 1 || !p1.Guides[0].Vertical || p1.HiddenMasterItems[0] != "logo" || !p1.SectionStart {
+		t.Fatalf("page1 = %+v", p1)
+	}
+	bad := "x"
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: "page1", PageSetup: odmcp.PageSetup{NumberStyle: &bad}}); err == nil {
+		t.Fatal("an unknown number style should be refused")
+	}
+	// The base master is in use by the left master.
+	if _, err := sess.DeletePage(ctx, odmcp.PageIdInput{Id: base.PageId}); err == nil {
+		t.Fatal("a base master in use should not be deleted")
+	}
+	facing := true
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{FacingPages: &facing}); err != nil {
+		t.Fatalf("facing pages: %v", err)
+	}
+	if _, err := sess.MovePage(ctx, odmcp.MovePageInput{Id: "page1", Index: 2}); err != nil {
+		t.Fatalf("MovePage: %v", err)
+	}
+	pages, _ = sess.ListPages(ctx, struct{}{})
+	if pages.Pages[2].Id != "page1" {
+		t.Fatalf("order after move: %+v", pages.Pages)
+	}
+	if _, err := sess.MovePage(ctx, odmcp.MovePageInput{Id: "page1", Index: 9}); err == nil {
+		t.Fatal("an index out of range should be refused")
+	}
+}
+
 // TestThreadTextFrames covers thread_text_frames / unlink_text_frame.
 func TestThreadTextFrames(t *testing.T) {
 	url := serveInMemory(t)

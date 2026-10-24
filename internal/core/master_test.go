@@ -47,7 +47,9 @@ func TestMasterPageRules(t *testing.T) {
 		op   *opendesignerv1.Op
 		want error
 	}{
-		"master applying a master":   {createPageOp(&opendesignerv1.Page{Id: "m2", IsMaster: true, MasterId: "m1"}), ErrBadMaster},
+		"master chain cycle":         {updatePageOp(&opendesignerv1.Page{Id: "m1", IsMaster: true, MasterId: "m1"}), ErrBadMaster},
+		"left master not a master":   {createPageOp(&opendesignerv1.Page{Id: "p3", LeftMasterId: "page1"}), ErrBadMaster},
+		"master with a left master":  {createPageOp(&opendesignerv1.Page{Id: "m3", IsMaster: true, LeftMasterId: "m1"}), ErrBadMaster},
 		"master_id of a normal page": {createPageOp(&opendesignerv1.Page{Id: "p2", MasterId: "page1"}), ErrBadMaster},
 		"master_id that is missing":  {updatePageOp(&opendesignerv1.Page{Id: "page1", MasterId: "nope"}), ErrBadMaster},
 		"update of a missing page":   {updatePageOp(&opendesignerv1.Page{Id: "nope"}), ErrPageNotFound},
@@ -61,5 +63,59 @@ func TestMasterPageRules(t *testing.T) {
 	// Deleting the only regular page is refused even though a master remains.
 	if err := Apply(doc, deletePageOp("page1")); !errors.Is(err, ErrLastPage) {
 		t.Errorf("delete of the last regular page: %v", err)
+	}
+}
+
+func TestMasterChainsAndStructure(t *testing.T) {
+	doc := NewDocument("doc1", "Book")
+	mustApply(t, doc,
+		createPageOp(&opendesignerv1.Page{Id: "m1", IsMaster: true}),
+		createPageOp(&opendesignerv1.Page{Id: "m2", IsMaster: true, MasterId: "m1"}),
+		createPageOp(&opendesignerv1.Page{Id: "p2", MasterId: "m2", LeftMasterId: "m1", NumberStyle: "i", NumberStart: 3,
+			Slug: 12, Guides: []*opendesignerv1.Guide{{Vertical: true, Position: 40}}, HiddenMasterItems: []string{"x"}}),
+	)
+	// m1 is the base of m2 and the left master of p2; m2 is applied by p2.
+	if err := Apply(doc, deletePageOp("m1")); !errors.Is(err, ErrMasterInUse) {
+		t.Fatalf("base master delete: %v", err)
+	}
+	// A cycle m1 -> m2 -> m1 is refused.
+	if err := Apply(doc, updatePageOp(&opendesignerv1.Page{Id: "m1", IsMaster: true, MasterId: "m2"})); !errors.Is(err, ErrBadMaster) {
+		t.Fatalf("cycle: %v", err)
+	}
+	bad := []*opendesignerv1.Page{
+		{Id: "p4", NumberStyle: "x"},
+		{Id: "p4", Slug: -1},
+		{Id: "p4", HiddenMasterItems: []string{""}},
+		{Id: "p4", Guides: []*opendesignerv1.Guide{{Position: 1e12}}},
+	}
+	for i, p := range bad {
+		if err := Apply(doc, createPageOp(p)); !errors.Is(err, ErrBadPageSetup) {
+			t.Errorf("bad structure %d: %v", i, err)
+		}
+	}
+}
+
+func TestMovePage(t *testing.T) {
+	doc := NewDocument("doc1", "Book")
+	mustApply(t, doc,
+		createPageOp(&opendesignerv1.Page{Id: "b"}),
+		createPageOp(&opendesignerv1.Page{Id: "c"}),
+	)
+	mv := func(id string, i uint32) *opendesignerv1.Op {
+		return &opendesignerv1.Op{Kind: &opendesignerv1.Op_MovePage{MovePage: &opendesignerv1.MovePage{Id: id, Index: i}}}
+	}
+	mustApply(t, doc, mv("c", 0))
+	if got := pageIDs(doc); got[0] != "c" || got[1] != "page1" || got[2] != "b" {
+		t.Fatalf("order after move: %v", got)
+	}
+	mustApply(t, doc, mv("c", 2))
+	if got := pageIDs(doc); got[2] != "c" {
+		t.Fatalf("order after move back: %v", got)
+	}
+	if err := Apply(doc, mv("c", 3)); !errors.Is(err, ErrBadPageSetup) {
+		t.Fatalf("index out of range: %v", err)
+	}
+	if err := Apply(doc, mv("zz", 0)); !errors.Is(err, ErrPageNotFound) {
+		t.Fatalf("missing page: %v", err)
 	}
 }

@@ -90,7 +90,7 @@ describe("page ops with masters", () => {
     const pages = book().pages;
     expect(masterFieldsValid(pages, { id: "x", name: "x", masterId: "m1" })).toBe(true);
     expect(masterFieldsValid(pages, { id: "x", name: "x", masterId: "page2" })).toBe(false);
-    expect(masterFieldsValid(pages, { id: "x", name: "x", isMaster: true, masterId: "m1" })).toBe(false);
+    expect(masterFieldsValid(pages, { id: "x", name: "x", isMaster: true, masterId: "m1" })).toBe(true);
     expect(masterFieldsValid(pages, { id: "m1", name: "x", masterId: "m1" })).toBe(false);
   });
 
@@ -121,7 +121,7 @@ describe("page ops with masters", () => {
       upd({ id: "page3", name: "x", masterId: "page2" }),
       upd({ id: "m1", name: "A-Master" }),
       op({ case: "deletePage", value: { id: "m1" } } as Op["kind"]),
-      op({ case: "createPage", value: { page: { id: "z", name: "z", isMaster: true, masterId: "m1" } } } as Op["kind"]),
+      op({ case: "createPage", value: { page: { id: "z", name: "z", masterId: "z" } } } as Op["kind"]),
     ]) {
       expect(applyOp(s, o)).toBe(s);
       expect(invertOp(s, o)).toBeNull();
