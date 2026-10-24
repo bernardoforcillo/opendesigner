@@ -908,3 +908,58 @@ func TestAutoLayoutThroughTools(t *testing.T) {
 		t.Error("auto layout on a rectangle was accepted")
 	}
 }
+
+// TestDocumentSettingsAndPageSetup covers set_document_settings and the page setup fields.
+func TestDocumentSettingsAndPageSetup(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	if doc.Vertical != "product" {
+		t.Fatalf("default vertical = %q, want product", doc.Vertical)
+	}
+	v, inc := "publishing", 14.0
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Vertical: &v, BaselineIncrement: &inc}); err != nil {
+		t.Fatalf("SetDocumentSettings: %v", err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if doc.Vertical != "publishing" || doc.BaselineIncrement != 14 {
+		t.Fatalf("settings = %q / %v", doc.Vertical, doc.BaselineIncrement)
+	}
+	// A field left out keeps its value; "product" goes back to the default.
+	prod := "product"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Vertical: &prod}); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if doc.Vertical != "product" || doc.BaselineIncrement != 14 {
+		t.Fatalf("after going back to product: %q / %v", doc.Vertical, doc.BaselineIncrement)
+	}
+	bad := "cinema"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Vertical: &bad}); err == nil {
+		t.Fatal("an unknown vertical should be refused")
+	}
+
+	w, h, mt, cols, gut := 420.0, 595.0, 40.0, uint32(2), 18.0
+	pg, err := sess.CreatePage(ctx, odmcp.CreatePageInput{Name: "A5", PageSetup: odmcp.PageSetup{Width: &w, Height: &h, MarginTop: &mt, Columns: &cols, Gutter: &gut}})
+	if err != nil {
+		t.Fatalf("CreatePage with a setup: %v", err)
+	}
+	bleed := 9.0
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: pg.PageId, PageSetup: odmcp.PageSetup{Bleed: &bleed}}); err != nil {
+		t.Fatalf("UpdatePage: %v", err)
+	}
+	pages, _ := sess.ListPages(ctx, struct{}{})
+	for _, p := range pages.Pages {
+		if p.Id == pg.PageId && (p.Width != 420 || p.Height != 595 || p.MarginTop != 40 || p.Columns != 2 || p.Gutter != 18 || p.Bleed != 9) {
+			t.Fatalf("page = %+v", p)
+		}
+	}
+	// A setup the document refuses is refused by the hub (margins larger than the sheet).
+	big := 500.0
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: pg.PageId, PageSetup: odmcp.PageSetup{MarginLeft: &big}}); err == nil {
+		t.Fatal("margins larger than the sheet should be refused")
+	}
+}

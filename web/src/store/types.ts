@@ -9,7 +9,18 @@ import type {
 } from "../gen/opendesigner/v1/opendesigner_pb";
 
 // `isMaster` / `masterId` are absent (not false / "") on a plain page: see store/masters.ts.
-export interface PageLite { id: string; name: string; isMaster?: boolean; masterId?: string }
+export interface PageLite {
+  id: string; name: string; isMaster?: boolean; masterId?: string;
+  // PAGE SETUP (store/docSettings.ts), absent at 0: a page with a size is a sheet at the origin.
+  width?: number; height?: number;
+  marginTop?: number; marginRight?: number; marginBottom?: number; marginLeft?: number;
+  columns?: number; gutter?: number; bleed?: number;
+}
+
+/** The kind of work a document is for: it shapes the editor, never limits the document. Absent = "product". */
+export type Vertical = "publishing" | "design" | "product";
+/** Document-wide settings, each absent at its default. */
+export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
@@ -382,6 +393,7 @@ export interface ClipLite {
 
 export interface SceneState {
   id: string; name: string; schemaVersion: number;
+  settings?: DocSettingsLite;
   pages: PageLite[]; nodes: NodeMap;
   flows: Record<string, FlowLite>;
   transitions: Record<string, TransitionLite>;
@@ -402,6 +414,28 @@ export interface SceneState {
   components: Record<string, ComponentLite>;
   // Component sets (variants), like components: an empty record when there are none.
   componentSets: Record<string, ComponentSetLite>;
+}
+
+/** A page from its message: setup and master fields only when they are not at their default. */
+export function toPageLite(p: { id: string; name: string; isMaster: boolean; masterId: string; width: number; height: number; marginTop: number; marginRight: number; marginBottom: number; marginLeft: number; columns: number; gutter: number; bleed: number }): PageLite {
+  return {
+    id: p.id, name: p.name,
+    ...(p.isMaster ? { isMaster: true } : {}), ...(p.masterId ? { masterId: p.masterId } : {}),
+    ...(p.width ? { width: p.width } : {}), ...(p.height ? { height: p.height } : {}),
+    ...(p.marginTop ? { marginTop: p.marginTop } : {}), ...(p.marginRight ? { marginRight: p.marginRight } : {}),
+    ...(p.marginBottom ? { marginBottom: p.marginBottom } : {}), ...(p.marginLeft ? { marginLeft: p.marginLeft } : {}),
+    ...(p.columns ? { columns: p.columns } : {}), ...(p.gutter ? { gutter: p.gutter } : {}), ...(p.bleed ? { bleed: p.bleed } : {}),
+  };
+}
+
+/** `{ settings }` for a scene when the message has any non-default setting, else `{}`. */
+export function settingsField(s: { vertical: string; baselineIncrement: number; baselineStart: number }): { settings?: DocSettingsLite } {
+  const out: DocSettingsLite = {
+    ...(s.vertical === "publishing" || s.vertical === "design" ? { vertical: s.vertical } : {}),
+    ...(s.baselineIncrement ? { baselineIncrement: s.baselineIncrement } : {}),
+    ...(s.baselineStart ? { baselineStart: s.baselineStart } : {}),
+  };
+  return Object.keys(out).length > 0 ? { settings: out } : {};
 }
 
 export function emptyScene(id: string, name: string): SceneState {
@@ -1049,7 +1083,8 @@ export function fromDocument(doc: Document): SceneState {
   for (const [id, c] of Object.entries(doc.components)) components[id] = toComponentLite(c);
   return {
     id: doc.id, name: doc.name, schemaVersion: doc.schemaVersion,
-    pages: doc.pages.map((p) => ({ id: p.id, name: p.name, ...(p.isMaster ? { isMaster: true } : {}), ...(p.masterId ? { masterId: p.masterId } : {}) })), nodes, components,
+    pages: doc.pages.map(toPageLite), nodes, components,
+    ...(doc.settings ? settingsField(doc.settings) : {}),
     componentSets: Object.fromEntries(Object.entries(doc.componentSets).map(([id, c]) => [id, toComponentSetLite(c)])),
     flows: Object.fromEntries(Object.entries(doc.flows).map(([id, f]) => [id, toFlowLite(f)])),
     transitions: Object.fromEntries(Object.entries(doc.transitions).map(([id, t]) => [id, toTransitionLite(t)])),

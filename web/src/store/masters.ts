@@ -1,6 +1,7 @@
+import { isValidPageSetup } from "./docSettings";
 import { recordDelta } from "./sceneDelta";
 import { childrenOf, subtreeOf } from "./tree";
-import type { NodeLite, PageLite, SceneState } from "./types";
+import { toPageLite, type NodeLite, type PageLite, type SceneState } from "./types";
 
 // MASTER PAGES. A master is a page flagged `isMaster`: a template. Every page that applies it
 // (`masterId`) draws the master's nodes BEHIND its own, and the page number token "<#>" in a master's
@@ -33,7 +34,7 @@ export function masterFieldsValid(pages: readonly PageLite[], p: PageLite): bool
 /** Would `updatePage` with `next` be accepted? (null/false = rejected, the scene does not change.) */
 export function updatePageAllowed(pages: readonly PageLite[], next: PageLite): boolean {
   const cur = pages.find((p) => p.id === next.id);
-  if (!cur || !masterFieldsValid(pages, next)) return false;
+  if (!cur || !masterFieldsValid(pages, next) || !isValidPageSetup(next)) return false;
   if (cur.isMaster && !next.isMaster && masterInUse(pages, next.id)) return false;
   if (!cur.isMaster && next.isMaster) {
     if (regularPages(pages, next.id).length === 0) return false;
@@ -48,8 +49,12 @@ export function deletePageAllowed(pages: readonly PageLite[], id: string): boole
 }
 
 /** Canonical page object: default flags are absent, not `false` / "". */
-export function pageOf(p: { id: string; name: string; isMaster?: boolean; masterId?: string }): PageLite {
-  return { id: p.id, name: p.name, ...(p.isMaster ? { isMaster: true } : {}), ...(p.masterId ? { masterId: p.masterId } : {}) };
+export function pageOf(p: { id: string; name: string; isMaster?: boolean; masterId?: string } & Partial<Record<"width" | "height" | "marginTop" | "marginRight" | "marginBottom" | "marginLeft" | "columns" | "gutter" | "bleed", number>>): PageLite {
+  return toPageLite({
+    id: p.id, name: p.name, isMaster: p.isMaster === true, masterId: p.masterId ?? "",
+    width: p.width ?? 0, height: p.height ?? 0, marginTop: p.marginTop ?? 0, marginRight: p.marginRight ?? 0,
+    marginBottom: p.marginBottom ?? 0, marginLeft: p.marginLeft ?? 0, columns: p.columns ?? 0, gutter: p.gutter ?? 0, bleed: p.bleed ?? 0,
+  });
 }
 
 // The id of the copy of master node `nodeId` on page `pageId`. The `~` cannot appear in a uuid.
@@ -97,4 +102,14 @@ export function deriveMasters(scene: SceneState): SceneState {
   recordDelta(out, scene, changed);
   derived.set(scene, out);
   return out;
+}
+
+/** The init shape of a Page message for `p` (every setup field written, 0 when absent). */
+export function pageToPb(p: PageLite) {
+  return {
+    id: p.id, name: p.name, isMaster: p.isMaster === true, masterId: p.masterId ?? "",
+    width: p.width ?? 0, height: p.height ?? 0,
+    marginTop: p.marginTop ?? 0, marginRight: p.marginRight ?? 0, marginBottom: p.marginBottom ?? 0, marginLeft: p.marginLeft ?? 0,
+    columns: p.columns ?? 0, gutter: p.gutter ?? 0, bleed: p.bleed ?? 0,
+  };
 }

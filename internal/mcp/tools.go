@@ -501,10 +501,55 @@ func (s *Session) ReparentNode(ctx context.Context, in ReparentNodeInput) (SeqOu
 // pages
 // ---------------------------------------------------------------------------
 
+// PageSetup is the sheet of a page: size, margins, columns and bleed, all in world units.
+type PageSetup struct {
+	Width        *float64 `json:"width,omitempty" jsonschema:"sheet width; 0 = an unbounded canvas page"`
+	Height       *float64 `json:"height,omitempty" jsonschema:"sheet height; 0 = unbounded"`
+	MarginTop    *float64 `json:"marginTop,omitempty"`
+	MarginRight  *float64 `json:"marginRight,omitempty"`
+	MarginBottom *float64 `json:"marginBottom,omitempty"`
+	MarginLeft   *float64 `json:"marginLeft,omitempty"`
+	Columns      *uint32  `json:"columns,omitempty" jsonschema:"text columns inside the margins (0 or 1 = one)"`
+	Gutter       *float64 `json:"gutter,omitempty" jsonschema:"space between columns"`
+	Bleed        *float64 `json:"bleed,omitempty" jsonschema:"extra area around the sheet that is printed and trimmed"`
+}
+
+// apply writes the fields that are set onto p.
+func (s PageSetup) apply(p *opendesignerv1.Page) {
+	if s.Width != nil {
+		p.Width = *s.Width
+	}
+	if s.Height != nil {
+		p.Height = *s.Height
+	}
+	if s.MarginTop != nil {
+		p.MarginTop = *s.MarginTop
+	}
+	if s.MarginRight != nil {
+		p.MarginRight = *s.MarginRight
+	}
+	if s.MarginBottom != nil {
+		p.MarginBottom = *s.MarginBottom
+	}
+	if s.MarginLeft != nil {
+		p.MarginLeft = *s.MarginLeft
+	}
+	if s.Columns != nil {
+		p.Columns = *s.Columns
+	}
+	if s.Gutter != nil {
+		p.Gutter = *s.Gutter
+	}
+	if s.Bleed != nil {
+		p.Bleed = *s.Bleed
+	}
+}
+
 type CreatePageInput struct {
 	Name     string `json:"name,omitempty"`
 	IsMaster bool   `json:"isMaster,omitempty" jsonschema:"create a MASTER page (a template drawn behind the pages that apply it)"`
 	MasterId string `json:"masterId,omitempty" jsonschema:"id of a master page this page applies"`
+	PageSetup
 }
 
 type CreatePageOutput struct {
@@ -515,9 +560,9 @@ type CreatePageOutput struct {
 // CreatePage appends a new page (id auto-generated) and returns its id.
 func (s *Session) CreatePage(ctx context.Context, in CreatePageInput) (CreatePageOutput, error) {
 	id := uuid.NewString()
-	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreatePage{CreatePage: &opendesignerv1.CreatePage{
-		Page: &opendesignerv1.Page{Id: id, Name: in.Name, IsMaster: in.IsMaster, MasterId: in.MasterId},
-	}}})
+	page := &opendesignerv1.Page{Id: id, Name: in.Name, IsMaster: in.IsMaster, MasterId: in.MasterId}
+	in.PageSetup.apply(page)
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreatePage{CreatePage: &opendesignerv1.CreatePage{Page: page}}})
 	if err != nil {
 		return CreatePageOutput{}, err
 	}
@@ -557,6 +602,7 @@ type UpdatePageInput struct {
 	Name     *string `json:"name,omitempty"`
 	IsMaster *bool   `json:"isMaster,omitempty" jsonschema:"turn the page into a master page (or back into a normal one)"`
 	MasterId *string `json:"masterId,omitempty" jsonschema:"master page this page applies; empty string detaches"`
+	PageSetup
 }
 
 // UpdatePage changes a page's name, master flag and applied master; fields left out keep their value.
@@ -581,6 +627,7 @@ func (s *Session) UpdatePage(ctx context.Context, in UpdatePageInput) (SeqOutput
 	if in.MasterId != nil {
 		cur.MasterId = *in.MasterId
 	}
+	in.PageSetup.apply(cur)
 	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_UpdatePage{UpdatePage: &opendesignerv1.UpdatePage{Page: cur}}})
 	if err != nil {
 		return SeqOutput{}, err
@@ -656,6 +703,24 @@ type PageView struct {
 	Name     string `json:"name"`
 	IsMaster bool   `json:"isMaster,omitempty"`
 	MasterId string `json:"masterId,omitempty"`
+	// Page setup (0 / absent = none): a sized page is a sheet at the origin.
+	Width        float64 `json:"width,omitempty"`
+	Height       float64 `json:"height,omitempty"`
+	MarginTop    float64 `json:"marginTop,omitempty"`
+	MarginRight  float64 `json:"marginRight,omitempty"`
+	MarginBottom float64 `json:"marginBottom,omitempty"`
+	MarginLeft   float64 `json:"marginLeft,omitempty"`
+	Columns      uint32  `json:"columns,omitempty"`
+	Gutter       float64 `json:"gutter,omitempty"`
+	Bleed        float64 `json:"bleed,omitempty"`
+}
+
+func pageView(p *opendesignerv1.Page) PageView {
+	return PageView{
+		Id: p.GetId(), Name: p.GetName(), IsMaster: p.GetIsMaster(), MasterId: p.GetMasterId(),
+		Width: p.GetWidth(), Height: p.GetHeight(), MarginTop: p.GetMarginTop(), MarginRight: p.GetMarginRight(),
+		MarginBottom: p.GetMarginBottom(), MarginLeft: p.GetMarginLeft(), Columns: p.GetColumns(), Gutter: p.GetGutter(), Bleed: p.GetBleed(),
+	}
 }
 
 type ComponentView struct {
@@ -785,6 +850,10 @@ type DocumentView struct {
 	Fonts         []FontView         `json:"fonts"`
 	TextStyles    []TextStyleView    `json:"textStyles"`
 	Nodes         []NodeView         `json:"nodes"`
+	// Settings: the vertical and the baseline grid; see set_document_settings.
+	Vertical          string  `json:"vertical" jsonschema:"publishing | design | product"`
+	BaselineIncrement float64 `json:"baselineIncrement,omitempty"`
+	BaselineStart     float64 `json:"baselineStart,omitempty"`
 }
 
 // GetDocument returns the whole synced document: pages, components and every
@@ -796,8 +865,10 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 	defer s.mu.Unlock()
 	doc := s.doc
 	out := DocumentView{Id: doc.GetId(), Name: doc.GetName(), Seq: s.seq}
+	out.Vertical = verticalName(doc.GetSettings().GetVertical())
+	out.BaselineIncrement, out.BaselineStart = doc.GetSettings().GetBaselineIncrement(), doc.GetSettings().GetBaselineStart()
 	for _, p := range doc.GetPages() {
-		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName(), IsMaster: p.GetIsMaster(), MasterId: p.GetMasterId()})
+		out.Pages = append(out.Pages, pageView(p))
 	}
 	for id, c := range doc.GetComponents() {
 		out.Components = append(out.Components, componentView(id, c))
@@ -823,7 +894,7 @@ func (s *Session) ListPages(ctx context.Context, _ struct{}) (ListPagesOutput, e
 	defer s.mu.Unlock()
 	var out ListPagesOutput
 	for _, p := range s.doc.GetPages() {
-		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName(), IsMaster: p.GetIsMaster(), MasterId: p.GetMasterId()})
+		out.Pages = append(out.Pages, pageView(p))
 	}
 	return out, nil
 }
@@ -919,6 +990,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "list_components", "List the document's components.", s.ListComponents)
 	registerFlowTools(srv, s)
 	registerThreadTools(srv, s)
+	registerDocSettingsTools(srv, s)
 	registerAnimationTools(srv, s)
 	registerVariableTools(srv, s)
 	registerTypographyTools(srv, s)

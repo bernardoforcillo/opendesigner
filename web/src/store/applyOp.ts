@@ -15,6 +15,7 @@ import { isValidComment, withoutComment } from "./comments";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 import { clampRich, isValidRich, richFields } from "./richText";
+import { isValidDocSettings, isValidPageSetup, toDocSettings } from "./docSettings";
 import { deletePageAllowed, masterFieldsValid, pageOf, updatePageAllowed } from "./masters";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
@@ -369,9 +370,19 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // selector, not a property of the document.
       const created = pageOf(page);
       if (!masterFieldsValid(state.pages, created)) return state; // ErrBadMaster
+      if (!isValidPageSetup(created)) return state;               // ErrBadPageSetup
       return { ...state, pages: [...state.pages, created] };
     }
-    // Absolute upsert of a page's name / master flag / applied master. Parity with core.applyUpdatePage.
+    // Absolute upsert of the document settings (vertical, baseline grid). Parity with core.applySetDocSettings.
+    case "setDocSettings": {
+      const s = op.kind.value.settings;
+      if (!s || !isValidDocSettings(s)) return state;
+      const settings = toDocSettings(s);
+      const { settings: _drop, ...rest } = state;
+      void _drop;
+      return Object.keys(settings).length > 0 ? { ...rest, settings } : rest;
+    }
+    // Absolute upsert of a page's name / master flag / applied master / sheet setup. Parity with core.applyUpdatePage.
     case "updatePage": {
       const page = op.kind.value.page;
       if (!page || page.id === "") return state;

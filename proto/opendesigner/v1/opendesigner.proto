@@ -564,6 +564,18 @@ message Page {
   string name = 2;
   bool is_master = 3;
   string master_id = 4; // a master page's id, or empty
+  // PAGE SETUP. A page with a size is a sheet: width x height world units at the origin (0, 0); 0 means
+  // an unbounded canvas page (the default). Margins, columns and bleed are guides drawn on the sheet;
+  // exports of a sized page are the sheet (plus bleed when asked), not the bounding box of its content.
+  double width = 5;
+  double height = 6;
+  double margin_top = 7;
+  double margin_right = 8;
+  double margin_bottom = 9;
+  double margin_left = 10;
+  uint32 columns = 11;   // 0 or 1 = a single column
+  double gutter = 12;    // space between columns
+  double bleed = 13;     // extra area around the sheet that is printed and trimmed
 }
 
 // ---------- typography ----------
@@ -730,6 +742,21 @@ message Document {
   map<string, ComponentSet> component_sets = 14;
   // Comments: commentId -> comment (see Comment).
   map<string, Comment> comments = 15;
+  DocSettings settings = 16;
+}
+
+// Settings of the document as a whole.
+//  - vertical: the kind of work the document is for. It shapes the editor (which modes, tools and menu
+//    entries are offered) and the templates; it never limits what the document can hold. "" is "product".
+//      "publishing" -- books, magazines, reports: pages, masters, text frames, styles, PDF / EPUB
+//      "design"     -- illustration, UI design, boards: vector, components, variables
+//      "product"    -- design and development together: flows, prototype, handoff, code
+//  - baseline_increment: distance between the lines of the baseline grid (0 = no grid); baseline_start
+//    is where the first line sits, from the top of the page.
+message DocSettings {
+  string vertical = 1;
+  double baseline_increment = 2;
+  double baseline_start = 3;
 }
 
 // ---------- ops ----------
@@ -821,6 +848,8 @@ message DeletePage { string id = 1; }
 message RenamePage { string id = 1; string name = 2; }
 // ABSOLUTE upsert of an existing page's name / is_master / master_id (the inverse is the previous page).
 message UpdatePage { Page page = 1; }
+// ABSOLUTE upsert of the document settings (the inverse is the previous settings).
+message SetDocSettings { DocSettings settings = 1; }
 
 // op 16 (M4): registers an EXISTING subtree (root root_node_id) as the master
 // of a component. It copies nothing: the master stays where it is in `nodes`,
@@ -890,6 +919,7 @@ message Op {
     SetComment          set_comment           = 39; // comments — upsert of a comment
     DeleteComment       delete_comment        = 40;
     UpdatePage          update_page           = 41; // master pages — a page's name, master flag and applied master
+    SetDocSettings      set_doc_settings      = 42; // vertical and baseline grid (absolute upsert)
   }
 }
 // A comment pinned on the canvas. A THREAD is a root comment (parent_id empty) plus its
@@ -958,10 +988,10 @@ message OpRecord {
 // ---------- service ----------
 message OpenRequest  { string doc_id = 1; }
 message OpenResponse { Document snapshot = 1; uint64 seq = 2; }
-message CreateDocumentRequest { string name = 1; }
+message CreateDocumentRequest { string name = 1; string vertical = 2; }
 // updated_at (unix seconds, 0 = unknown), screens (top-level frames) and
 // flows are for the Home page: a document's card shows them without opening it.
-message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; }
+message DocInfo { string id = 1; string name = 2; int64 updated_at = 3; uint32 screens = 4; uint32 flows = 5; string vertical = 6; }
 message RenameDocumentRequest { string doc_id = 1; string name = 2; }
 message DeleteDocumentRequest { string doc_id = 1; }
 message DeleteDocumentResponse {}

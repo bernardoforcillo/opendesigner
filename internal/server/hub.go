@@ -661,6 +661,13 @@ func (h *Hub) Counts() (screens, flows int) {
 	return countDoc(h.doc)
 }
 
+// Vertical: the kind of work the document is for ("" = product); it serves the Home.
+func (h *Hub) Vertical() string {
+	h.mu.Lock()
+	defer h.mu.Unlock()
+	return h.doc.GetSettings().GetVertical()
+}
+
 // countDoc: screen = frame that is a direct child of a page (like
 // web/src/flow/screens.ts).
 func countDoc(d *opendesignerv1.Document) (screens, flows int) {

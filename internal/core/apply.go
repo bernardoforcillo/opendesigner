@@ -167,6 +167,8 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applyRenamePage(doc, k.RenamePage)
 	case *opendesignerv1.Op_UpdatePage:
 		return applyUpdatePage(doc, k.UpdatePage)
+	case *opendesignerv1.Op_SetDocSettings:
+		return applySetDocSettings(doc, k.SetDocSettings)
 	case *opendesignerv1.Op_CreateComponent:
 		return applyCreateComponent(doc, k.CreateComponent)
 	case *opendesignerv1.Op_SetInstanceOverride:
@@ -333,6 +335,9 @@ func applyCreatePage(doc *opendesignerv1.Document, c *opendesignerv1.CreatePage)
 	if err := checkPageMaster(doc, p); err != nil {
 		return err
 	}
+	if err := validatePageSetup(p); err != nil {
+		return err
+	}
 	doc.Pages = append(doc.Pages, p)
 	return nil
 }
@@ -435,6 +440,9 @@ func applyUpdatePage(doc *opendesignerv1.Document, u *opendesignerv1.UpdatePage)
 	if err := checkPageMaster(doc, np); err != nil {
 		return err
 	}
+	if err := validatePageSetup(np); err != nil {
+		return err
+	}
 	cur := doc.Pages[i]
 	if cur.GetIsMaster() && !np.GetIsMaster() && masterInUse(doc, np.GetId()) {
 		return fmt.Errorf("%w: %s", ErrMasterInUse, np.GetId())
@@ -447,7 +455,8 @@ func applyUpdatePage(doc *opendesignerv1.Document, u *opendesignerv1.UpdatePage)
 			return fmt.Errorf("%w: %s", ErrBadMaster, np.GetId())
 		}
 	}
-	doc.Pages[i] = &opendesignerv1.Page{Id: np.GetId(), Name: np.GetName(), IsMaster: np.GetIsMaster(), MasterId: np.GetMasterId()}
+	// A clone: the op's message is not shared with the document.
+	doc.Pages[i] = proto.Clone(np).(*opendesignerv1.Page)
 	return nil
 }
 

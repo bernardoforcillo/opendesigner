@@ -3,6 +3,8 @@ import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import { toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import { pageToPb } from "../store/masters";
+import type { DocSettingsLite, PageLite } from "../store/types";
 import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
@@ -143,14 +145,25 @@ export function makeCreatePageOp(id: string, name: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: { id, name } } } });
 }
 
-/** A master page (a template other pages apply), or a page that already applies a master. */
-export function makeCreatePageWithMasterOp(id: string, name: string, opts: { isMaster?: boolean; masterId?: string }): Op {
-  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: { id, name, isMaster: opts.isMaster === true, masterId: opts.masterId ?? "" } } } });
+/** A page with its master and sheet setup (see store/masters.ts, store/docSettings.ts). */
+export function makeCreatePageWithMasterOp(id: string, name: string, opts: Omit<PageLite, "id" | "name">): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: pageToPb({ id, name, ...opts }) } } });
 }
 
-/** Absolute upsert of a page's name, master flag and applied master. */
-export function makeUpdatePageOp(p: { id: string; name: string; isMaster?: boolean; masterId?: string }): Op {
-  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "updatePage", value: { page: { id: p.id, name: p.name, isMaster: p.isMaster === true, masterId: p.masterId ?? "" } } } });
+/**
+ * Absolute upsert of a page: name, master flag, applied master AND sheet setup. It replaces the whole
+ * page, so callers pass the page as it is with their change applied -- `{ ...page, masterId }`.
+ */
+export function makeUpdatePageOp(p: PageLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "updatePage", value: { page: pageToPb(p) } } });
+}
+
+/** Absolute upsert of the document settings (vertical, baseline grid). */
+export function makeSetDocSettingsOp(s: DocSettingsLite): Op {
+  return create(OpSchema, {
+    opId: uuid(), docId: docId(),
+    kind: { case: "setDocSettings", value: { settings: { vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0 } } },
+  });
 }
 
 export function makeDeletePageOp(id: string): Op {

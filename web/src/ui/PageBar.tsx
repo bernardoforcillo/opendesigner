@@ -4,6 +4,8 @@ import { Button, Icon, IconButton, cls } from "./ds";
 import { useScene } from "../store/store";
 import { makeCreatePageWithMasterOp, makeDeletePageOp, makeRenamePageOp, makeUpdatePageOp, uuid } from "../tools/ops";
 import { regularPages } from "../store/masters";
+import { setupOf } from "../store/docSettings";
+import type { PageLite } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
 // PAGE SELECTOR (nesting track, client part). The canvas shows ONE
@@ -28,6 +30,14 @@ function submit(...ops: Op[]): void {
   const store = useScene.getState();
   store.beginGesture();
   store.endGesture(ops);
+}
+
+// A page without its master link (and, with `master`, without the master flag): the rest -- name and
+// sheet setup -- stays, because UpdatePage replaces the whole page.
+function withoutMaster(p: PageLite, master = false): PageLite {
+  const { masterId: _m, isMaster: _i, ...rest } = p;
+  void _m; void _i;
+  return master ? rest : { ...rest, ...(p.isMaster ? { isMaster: true } : {}) };
 }
 
 const RENAME_LABEL = "Page name";
@@ -122,7 +132,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
     // the echo (the op was already applied optimistically by endGesture).
     // A new page applies the master of the page it is created from.
     const id = uuid();
-    submit(makeCreatePageWithMasterOp(id, `Page ${normal.length + 1}`, { masterId: current && !current.isMaster ? current.masterId : undefined }));
+    submit(makeCreatePageWithMasterOp(id, `Page ${normal.length + 1}`, { ...setupOf(current), masterId: current && !current.isMaster ? current.masterId : undefined }));
     useScene.getState().setCurrentPage(id);
     setOpen(false);
   }
@@ -131,7 +141,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   function createMaster() {
     const id = uuid();
     const letter = String.fromCharCode(65 + (masters.length % 26));
-    submit(makeCreatePageWithMasterOp(id, `${letter}-Master`, { isMaster: true }));
+    submit(makeCreatePageWithMasterOp(id, `${letter}-Master`, { ...setupOf(current), isMaster: true }));
     useScene.getState().setCurrentPage(id);
     setOpen(false);
   }
@@ -145,14 +155,14 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
     if (!canDelete(id) || id === null) return;
     const detach = pages
       .filter((p) => p.masterId === id)
-      .map((p) => makeUpdatePageOp({ id: p.id, name: p.name }));
+      .map((p) => makeUpdatePageOp(withoutMaster(p)));
     submit(...detach, makeDeletePageOp(id));
   }
 
   function setMaster(pageId: string, masterId: string) {
     const page = pages.find((p) => p.id === pageId);
     if (!page || page.isMaster || (page.masterId ?? "") === masterId) return;
-    submit(makeUpdatePageOp({ id: page.id, name: page.name, masterId }));
+    submit(makeUpdatePageOp({ ...withoutMaster(page), ...(masterId ? { masterId } : {}) }));
   }
 
   // A page becomes a master (or a master a normal page) in place, content included.
@@ -161,10 +171,10 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
     const page = pages.find((p) => p.id === pageId);
     if (!page) return;
     if (page.isMaster) {
-      const detach = pages.filter((p) => p.masterId === pageId).map((p) => makeUpdatePageOp({ id: p.id, name: p.name }));
-      submit(...detach, makeUpdatePageOp({ id: page.id, name: page.name }));
+      const detach = pages.filter((p) => p.masterId === pageId).map((p) => makeUpdatePageOp(withoutMaster(p)));
+      submit(...detach, makeUpdatePageOp(withoutMaster(page, true)));
     } else if (regularPages(pages, pageId).length > 0) {
-      submit(makeUpdatePageOp({ id: page.id, name: page.name, isMaster: true }));
+      submit(makeUpdatePageOp({ ...withoutMaster(page), isMaster: true }));
     }
   }
 
