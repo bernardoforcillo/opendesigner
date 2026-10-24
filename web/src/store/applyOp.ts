@@ -3,7 +3,7 @@ import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite, toInstanceLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
@@ -14,6 +14,7 @@ import { arePaintsValid } from "./paints";
 import { isValidComment, withoutComment } from "./comments";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
+import { isValidInstanceBody } from "./instanceOps";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
 // nil-safe getters (`p.GetX()` on a nil *Node returns the field's zero),
@@ -599,6 +600,15 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const textStyles = { ...state.textStyles };
       delete textStyles[id];
       return { ...state, textStyles, nodes: unstyleNodes(state, id) };
+    }
+    // Replaces an instance's payload wholesale (swap, reset). Parity with core.applySetInstance.
+    case "setInstance": {
+      const { instanceId, instance } = op.kind.value;
+      const cur = state.nodes.at(instanceId);
+      if (!cur) return state;                                               // ErrNodeNotFound
+      if (cur.kind !== "instance" || !cur.instance) return state;           // ErrNotInstanceNode
+      if (!isValidInstanceBody(state, instanceId, instance)) return state;
+      return { ...state, nodes: state.nodes.set(instanceId, { ...cur, instance: toInstanceLite(instance) }) };
     }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;

@@ -2,13 +2,14 @@ import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { NodeLite, VariableLite } from "./types";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, toPbInstance, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
 import { applyOp } from "./applyOp";
 import { isValidCollection, isValidVariable, withAliases } from "./variables";
 import { isValidFont, isValidTextStyleDef } from "./typography";
 import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer, renameChoice, reverseRenames } from "./components";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
+import { isValidInstanceBody } from "./instanceOps";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
 //
@@ -444,6 +445,17 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const d = op.kind.value;
       if (!isValidComponentDef(scene, d)) return null;
       return [componentDefOp(scene, op.docId, d.componentId)];
+    }
+    // Absolute: the inverse is the previous payload. Null when the op would be rejected.
+    case "setInstance": {
+      const { instanceId, instance } = op.kind.value;
+      const cur = scene.nodes.at(instanceId);
+      if (!cur || cur.kind !== "instance" || !cur.instance) return null;
+      if (!isValidInstanceBody(scene, instanceId, instance)) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setInstance", value: { instanceId, instance: toPbInstance(cur.instance) } },
+      })];
     }
     case "setInstanceProps": {
       const { instanceId, propertyValues, variantProps } = op.kind.value;

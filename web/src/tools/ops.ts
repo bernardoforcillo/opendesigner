@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
-import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import { toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbInstance, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -247,6 +247,10 @@ export function makeSetComponentDefOp(
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setComponentDef", value: {
     componentId, setId, variant: { ...variant }, properties: properties.map(toPbComponentProperty),
   } } });
+}
+/** Replaces an instance's payload wholesale: swap it to another component, or reset it. */
+export function makeSetInstanceOp(instanceId: string, instance: InstanceLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setInstance", value: { instanceId, instance: toPbInstance(instance) } } });
 }
 export function makeSetInstancePropsOp(
   instanceId: string, propertyValues: Record<string, string>, variantProps: Record<string, string>,

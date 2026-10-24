@@ -652,6 +652,16 @@ function toPbPaint(c: FillLite) {
 // round-trip with toInstanceOverrideLite is LOSSLESS: a fill-only override
 // does not gain an empty text passing through here, nor lose the distinction between
 // "absent fill" and "emptied fill".
+/** An InstanceLite as the wire InstanceNode init. */
+export function toPbInstance(i: InstanceLite) {
+  return {
+    componentId: i.componentId,
+    overrides: i.overrides.map(toPbInstanceOverride),
+    propertyValues: { ...(i.propertyValues ?? {}) },
+    variantProps: { ...(i.variantProps ?? {}) },
+  };
+}
+
 export function toPbInstanceOverride(o: InstanceOverrideLite) {
   return {
     masterNodeId: o.masterNodeId,

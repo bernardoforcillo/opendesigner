@@ -888,6 +888,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerVariantTools(srv, s)
 	registerConstraintTools(srv, s)
 	registerLayoutLimitTools(srv, s)
+	registerInstanceTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerDiagramTools(srv, s)
 }

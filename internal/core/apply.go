@@ -170,6 +170,8 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applyCreateComponent(doc, k.CreateComponent)
 	case *opendesignerv1.Op_SetInstanceOverride:
 		return applySetInstanceOverride(doc, k.SetInstanceOverride, cow)
+	case *opendesignerv1.Op_SetInstance:
+		return applySetInstance(doc, k.SetInstance, cow)
 	default:
 		return fmt.Errorf("core: unknown op kind %T", op.GetKind())
 	}
