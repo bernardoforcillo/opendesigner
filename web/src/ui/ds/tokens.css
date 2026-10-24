@@ -9,27 +9,29 @@
  * The choices, in a few lines:
  *  - light and minimal: panels share one white, the canvas is a step below,
  *    structure comes from hairlines and space rather than tints or shadows;
- *  - ONE accent color (a calm teal) for selection, primary actions and focus;
+ *  - industrial: docked panels split by 1px rules, near-square corners, mono
+ *    micro-labels and figures, a single signal-orange accent;
+ *  - ONE accent color (signal orange) for selection, primary actions and focus;
  *  - a second color (violet) reserved for Flows mode: it tells you WHERE you are;
  *  - three-level text (primary, secondary, muted), never gray on gray
  *    below 4.5:1.
  */
 :root {
   color-scheme: light;
-  --canvas: #f6f6f4;          /* the work surface: a step below the panels */
-  --canvas-dot: #e3e3df;
+  --canvas: #eef0f1;          /* the work surface: a step below the panels */
+  --canvas-dot: #d5d8db;
   --surface: #ffffff;         /* panels share one white: depth by hairline, not by tint */
-  --surface-2: #f6f6f4;       /* rows, fields, inset sections */
-  --surface-3: #ecece8;       /* hover, inactive segments */
+  --surface-2: #f4f5f6;       /* rows, fields, inset sections */
+  --surface-3: #e8eaec;       /* hover, inactive segments */
   --raised: #ffffff;          /* menus, popovers, floating bar */
-  --line: #ebebe8;
-  --line-strong: #d6d6d1;
-  --fg: #1a1a19;
-  --fg-muted: #5e5e5a;
-  --fg-subtle: #85857f;
-  --accent: #0b8579;
-  --accent-hover: #096b62;
-  --accent-soft: #e3f3f1;
+  --line: #dfe2e5;
+  --line-strong: #c4c9ce;
+  --fg: #16181b;
+  --fg-muted: #555b62;
+  --fg-subtle: #7b8188;
+  --accent: #d4440b;
+  --accent-hover: #b53a09;
+  --accent-soft: #fdeee5;
   --accent-fg: #ffffff;
   --flow: #6d3df5;
   --flow-soft: #f1ecff;
@@ -40,29 +42,29 @@
   --danger: #cc2a36;
   --danger-soft: #fdecee;
   /* One strategy: hairline ring + a soft lift that only floating things get. */
-  --shadow-pop: 0 0 0 1px rgb(20 20 18 / 0.06), 0 6px 20px -8px rgb(20 20 18 / 0.14);
-  --shadow-bar: 0 0 0 1px rgb(20 20 18 / 0.06), 0 3px 12px -6px rgb(20 20 18 / 0.12);
-  --ring: 0 0 0 2px var(--surface), 0 0 0 4px color-mix(in srgb, var(--accent) 55%, transparent);
+  --shadow-pop: 0 0 0 1px rgb(16 18 20 / 0.10), 0 4px 14px -6px rgb(16 18 20 / 0.18);
+  --shadow-bar: 0 0 0 1px rgb(16 18 20 / 0.10);
+  --ring: 0 0 0 1px var(--surface), 0 0 0 2px var(--accent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --canvas: #141413;
-    --canvas-dot: #262624;
-    --surface: #1d1d1b;
-    --surface-2: #272725;
-    --surface-3: #32322f;
-    --raised: #242422;
-    --line: #302f2d;
-    --line-strong: #43423f;
-    --fg: #f3f3f0;
-    --fg-muted: #b0b0aa;
-    --fg-subtle: #85857f;
-    --accent: #2fbfab;
-    --accent-hover: #55d0bf;
-    --accent-soft: #123a35;
-    --accent-fg: #06201c;
+    --canvas: #0f1012;
+    --canvas-dot: #24262a;
+    --surface: #17181b;
+    --surface-2: #1f2124;
+    --surface-3: #292c30;
+    --raised: #1d1f22;
+    --line: #2a2d31;
+    --line-strong: #3b3f44;
+    --fg: #eceef0;
+    --fg-muted: #a3a9b0;
+    --fg-subtle: #7a8087;
+    --accent: #ff7a3d;
+    --accent-hover: #ff9560;
+    --accent-soft: #3d2012;
+    --accent-fg: #1a0a02;
     --flow: #9a78ff;
     --flow-soft: #2a2250;
     --ok: #3ccb92;
@@ -78,21 +80,21 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #141413;
-  --canvas-dot: #262624;
-  --surface: #1d1d1b;
-  --surface-2: #272725;
-  --surface-3: #32322f;
-  --raised: #242422;
-  --line: #302f2d;
-  --line-strong: #43423f;
-  --fg: #f3f3f0;
-  --fg-muted: #b0b0aa;
-  --fg-subtle: #85857f;
-  --accent: #2fbfab;
-  --accent-hover: #55d0bf;
-  --accent-soft: #123a35;
-  --accent-fg: #06201c;
+  --canvas: #0f1012;
+  --canvas-dot: #24262a;
+  --surface: #17181b;
+  --surface-2: #1f2124;
+  --surface-3: #292c30;
+  --raised: #1d1f22;
+  --line: #2a2d31;
+  --line-strong: #3b3f44;
+  --fg: #eceef0;
+  --fg-muted: #a3a9b0;
+  --fg-subtle: #7a8087;
+  --accent: #ff7a3d;
+  --accent-hover: #ff9560;
+  --accent-soft: #3d2012;
+  --accent-fg: #1a0a02;
   --flow: #9a78ff;
   --flow-soft: #2a2250;
   --ok: #3ccb92;
@@ -136,9 +138,15 @@
 
 /* Radius scale: small controls, cards, floating surfaces (islands). */
 @theme {
-  --radius-control: 5px;
-  --radius-card: 8px;
-  --radius-float: 12px;
+  --radius-control: 3px;
+  --radius-card: 4px;
+  --radius-float: 0px;
+  /* Industrial: tight, near-square corners everywhere (round only for dots). */
+  --radius-sm: 2px;
+  --radius-md: 3px;
+  --radius-lg: 4px;
+  --radius-xl: 4px;
+  --radius-2xl: 6px;
 }
 
 /* Base: the app body is a surface, not the browser's white. */
@@ -150,7 +158,7 @@ body {
   font-family: var(--font-sans);
   font-size: 12px;
   line-height: 1.4;
-  letter-spacing: 0.005em;
+  letter-spacing: 0;
   -webkit-font-smoothing: antialiased;
   font-feature-settings: "cv11", "ss01", "tnum";
   text-wrap: pretty;
@@ -165,7 +173,7 @@ body {
 ::selection { background: var(--accent-soft); }
 
 /* Visible focus everywhere, keyboard only. */
-:focus-visible { outline: none; box-shadow: var(--ring); border-radius: 6px; }
+:focus-visible { outline: none; box-shadow: var(--ring); }
 
 /* Thin scrollbars, tinted. */
 * { scrollbar-width: thin; scrollbar-color: var(--line-strong) transparent; }
