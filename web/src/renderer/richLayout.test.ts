@@ -69,7 +69,7 @@ describe("layoutRich", () => {
 
   it("maps run offsets through \\r\\n line endings", () => {
     const l = layoutRich(mf, "a\r\nbc", base, { paragraphs: [para(), para()], runs: [{ start: 3, end: 5, style: bold }] }, 1000);
-    expect(l.lines[1].frags).toEqual([{ text: "bc", style: { ...base, fontWeight: "700" } }]);
+    expect(l.lines[1].frags).toEqual([{ text: "bc", at: 2, style: { ...base, fontWeight: "700" } }]);
   });
 });
 
