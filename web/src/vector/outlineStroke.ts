@@ -122,7 +122,7 @@ export interface OutlineResult { ops: Op[]; selection: string[] }
 
 /** True if the node has a stroke that can be outlined. */
 export function canOutlineStroke(n: NodeLite): boolean {
-  return (n.kind === "rect" || n.kind === "ellipse" || n.kind === "vector" || n.kind === "frame") && n.strokes.some((s) => s.weight > 0);
+  return (n.kind === "rect" || n.kind === "ellipse" || n.kind === "vector" || n.kind === "frame" || n.kind === "polygon" || n.kind === "star") && n.strokes.some((s) => s.weight > 0);
 }
 
 /**

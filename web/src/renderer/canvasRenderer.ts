@@ -22,6 +22,9 @@ import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
 import { drawDash, perimeterOf, vectorDrawSubpaths } from "./animDraw";
 import { imageCache, type CachedImage } from "./imageCache";
 import { MESH_BITMAP_SIZE, meshBitmap } from "./mesh";
+import { hasComputedOutline, traceCommands } from "./shapeGeometry";
+import { hasArrowheads, strokeHeads } from "./arrowheads";
+import { sideBandRects } from "./strokeSides";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "./gradientBitmap";
 
 const DEG_TO_RAD = Math.PI / 180;
@@ -294,7 +297,7 @@ function innerShadows(n: NodeLite): InnerShadowLite[] {
 function backdropBlur(n: NodeLite): BackgroundBlurLite | undefined {
   return n.effects?.find((e): e is BackgroundBlurLite => e.kind === "backgroundBlur" && e.radius > 0);
 }
-const hasOutline = (n: NodeLite) => n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame";
+const hasOutline = (n: NodeLite) => n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "polygon" || n.kind === "star";
 
 // Blurs what is already drawn behind the node, inside its outline.
 function drawBackdropBlur(ctx: CanvasRenderingContext2D, path: Path2D, radius: number, scale: number): void {
@@ -643,7 +646,7 @@ function drawSiblings(
 
 // Only shapes with an outline can mask (the same set as the boolean operations).
 export function isMaskShape(n: NodeLite): boolean {
-  return n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector";
+  return n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector" || n.kind === "polygon" || n.kind === "star";
 }
 
 // Clips the context by the mask node's outline, in the PARENT's space (where the
@@ -711,6 +714,7 @@ function drawInstance(
  * under ~1.5 screen pixels, which is when nobody can tell. null for anything else.
  */
 export function plainShape(n: NodeLite, px: number): "box" | "ellipse" | null {
+  if (hasComputedOutline(n)) return null;
   const kind = n.kind === "rect" ? (n.cornerRadius / px < 1.5 ? "box" : null) : n.kind === "frame" ? "box" : n.kind === "ellipse" ? "ellipse" : null;
   if (kind === null) return null;
   if (n.rotation % 360 !== 0 || n.animScale !== undefined || n.animDraw !== undefined || n.blendMode !== undefined) return null;
@@ -915,6 +919,10 @@ function drawStrokes(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D | 
 }
 
 function strokeShape(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s: StrokeLite): void {
+  if (s.sides && (n.kind === "rect" || n.kind === "frame")) {
+    strokeSides(ctx, n, path, s);
+    return;
+  }
   if (s.align === "center") {
     ctx.lineWidth = s.weight;
     ctx.stroke(path);
@@ -925,6 +933,22 @@ function strokeShape(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s
   else ctx.clip(outsideClip(n, path, s.weight), "evenodd");
   ctx.lineWidth = s.weight * 2;
   ctx.stroke(path);
+  ctx.restore();
+}
+
+// PER-SIDE weights (a rectangle or frame whose border is thicker at the bottom, say): the stroke is a band
+// between two rectangles, filled with the stroke's paint. INSIDE and OUTSIDE are clipped by the outline like
+// the uniform stroke, so a rounded corner still follows the shape.
+function strokeSides(ctx: CanvasRenderingContext2D, n: NodeLite, path: Path2D, s: StrokeLite): void {
+  const band = new Path2D();
+  const { outer, inner } = sideBandRects(n, s);
+  band.rect(outer.x, outer.y, outer.width, outer.height);
+  band.rect(inner.x, inner.y, inner.width, inner.height);
+  ctx.save();
+  if (s.align === "inside") ctx.clip(path);
+  else if (s.align === "outside") ctx.clip(outsideClip(n, path, Math.max(s.sides!.top, s.sides!.right, s.sides!.bottom, s.sides!.left)), "evenodd");
+  ctx.fillStyle = ctx.strokeStyle;
+  ctx.fill(band, "evenodd");
   ctx.restore();
 }
 
@@ -992,6 +1016,7 @@ function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, z
       ctx.stroke(stroke);
     }
     ctx.setLineDash([]);
+    if (hasArrowheads(n)) drawArrowheads(ctx, n);
   } else if (stroke && vs.hairline) {
     ctx.strokeStyle = color;
     // The ctx is in WORLD transform (drawScene applies zoom * dpr), so
@@ -1005,6 +1030,32 @@ function drawVector(ctx: CanvasRenderingContext2D, n: NodeLite, color: string, z
     ctx.lineJoin = "round";
     ctx.lineCap = "round";
     ctx.stroke(stroke);
+  }
+}
+
+// The arrowheads of a vector's strokes (renderer/arrowheads.ts): filled shapes in the stroke's paint, and the
+// arrow's open V stroked with it, undashed and with sharp joins.
+function drawArrowheads(ctx: CanvasRenderingContext2D, n: NodeLite): void {
+  ctx.lineJoin = "miter";
+  ctx.lineCap = "butt";
+  for (const s of n.strokes) {
+    if (!(s.weight > 0) || (!s.startCap && !s.endCap)) continue;
+    const style = paintStyle(ctx, s.color, n);
+    ctx.fillStyle = style;
+    ctx.strokeStyle = style;
+    ctx.lineWidth = s.weight;
+    for (const g of strokeHeads(n, s.startCap, s.endCap, s.weight)) {
+      if (g.filled.length > 0) {
+        const p = new Path2D();
+        traceCommands(p, g.filled);
+        ctx.fill(p);
+      }
+      if (g.open.length > 0) {
+        const p = new Path2D();
+        traceCommands(p, g.open);
+        ctx.stroke(p);
+      }
+    }
   }
 }
 

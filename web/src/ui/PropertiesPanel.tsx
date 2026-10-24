@@ -35,6 +35,8 @@ import { CmykField } from "./fields/CmykField";
 import { EffectsControls } from "./EffectsControls";
 import { LayoutGridControls } from "./LayoutGridControls";
 import { StrokeStyleControls } from "./StrokeStyleControls";
+import { EffectStyleControls, PaintStyleControls, usesPaintStyleFor } from "./StyleControls";
+import { ArrowheadControls, ShapeControls, StrokeSidesControls } from "./ShapeControls";
 import { AutoLayoutControls, WrapInAutoLayoutButton } from "./AutoLayoutControls";
 import type { RgbLite } from "./fields/ColorField";
 import { toPbFills, toPbStrokes } from "../store/types";
@@ -521,6 +523,11 @@ export function PropertiesPanel() {
   const selection = useScene((s) => s.selection);
   const summary = scene ? selectionSummary(scene, selection) : null;
   const nodes = scene ? selection.map((id) => scene.nodes.at(id)).filter((n): n is NodeLite => n !== undefined) : [];
+  // A rectangle with independent corners ignores the single radius: the Corners section edits the four.
+  const selectionHasRadii = nodes.some((n) => n.radii !== undefined);
+  // A node drawn with a shared paint style shows the style's paints (read-only) until it is detached.
+  const fillStyled = usesPaintStyleFor(scene, nodes, "fill");
+  const strokeStyled = usesPaintStyleFor(scene, nodes, "stroke");
   // The text controls show what is DRAWN: a shared text style overrides the node's own.
   const style = summary?.kind === "text" && scene
     ? textStyleSummary(nodes.map((n) => (n.text ? { ...n, text: { ...n.text, style: effectiveStyle(scene, n) ?? n.text.style } } : n)))
@@ -828,7 +835,7 @@ export function PropertiesPanel() {
               implementations of apply (ErrNotRectNode). A MIXED selection has
               kind === MIXED, so it does not show the field -- there is no radius to
               write that holds for all. */}
-          {summary.kind === "rect" && (
+          {summary.kind === "rect" && !selectionHasRadii && (
             <NumberField
               label={CORNER_RADIUS_FIELD.label}
               minValue={CORNER_RADIUS_FIELD.minValue}
@@ -841,6 +848,10 @@ export function PropertiesPanel() {
           )}
         </div>
       </Section>
+
+      {/* THE PARAMETRIC SHAPE: polygon sides, star points, ellipse arc / ring, rectangle corner smoothing and
+          independent radii (renders nothing for other shapes). */}
+      <ShapeControls run={runGesture} />
 
       {/* AUTO LAYOUT: for a frame, its controls; for any other
           selection, the "+" that wraps it in a frame with auto layout. */}
@@ -942,7 +953,8 @@ export function PropertiesPanel() {
       {/* THE FILL: the type (solid / linear / radial) and below the color,
           or the gradient preview with its ends. */}
       <Section title="Fill">
-        {summary.fills !== MIXED ? (
+        <PaintStyleControls target="fill" />
+        {fillStyled ? null : summary.fills !== MIXED ? (
           <GradientControls
             fill={fill}
             run={runGesture}
@@ -985,6 +997,7 @@ export function PropertiesPanel() {
           section is always there, text included. */}
       <Section title="Stroke">
         <div className="flex flex-col gap-2">
+          <PaintStyleControls target="stroke" />
           <div className="grid grid-cols-[1fr_7.5rem] gap-1.5">
             <ColorField
               label="Stroke"
@@ -992,7 +1005,7 @@ export function PropertiesPanel() {
               // a color stays possible in both cases -- and it is the way
               // a stroke is CREATED (see DEFAULT_STROKE).
               value={boundStroke !== undefined ? boundStroke : (stroke?.color ?? null)}
-              isDisabled={boundStroke !== undefined}
+              isDisabled={boundStroke !== undefined || strokeStyled}
               placeholder={boundStroke === null ? "Variables" : strokesMixed ? MIXED_LABEL : "None"}
               // The color goes down BARE, without alpha: strokeOps puts it back
               // taking it from each node's stroke, exactly like
@@ -1025,8 +1038,10 @@ export function PropertiesPanel() {
             onChange={(v) => runGesture((ids) => strokeOps(ids, { align: v as StrokeAlignLite }))}
           />
           {/* A stroke can carry a gradient too: the same controls, aimed at the stroke's paint. */}
-          {stroke && !strokesMixed && <GradientControls fill={stroke.color} run={runGesture} target="stroke" />}
+          {stroke && !strokesMixed && !strokeStyled && <GradientControls fill={stroke.color} run={runGesture} target="stroke" />}
           {stroke && !strokesMixed && stroke.weight > 0 && <StrokeStyleControls run={runGesture} />}
+          <ArrowheadControls run={runGesture} />
+          <StrokeSidesControls run={runGesture} />
         </div>
       </Section>
 
@@ -1035,6 +1050,7 @@ export function PropertiesPanel() {
 
       {/* THE EFFECTS: shadow and blur. Its own section like the stroke: they are
           controls of a different nature than the basic appearance. */}
+      <EffectStyleControls />
       <EffectsControls run={runGesture} />
 
       {/* VARIANTS and PROPERTIES of a single selected instance (renders nothing otherwise). */}

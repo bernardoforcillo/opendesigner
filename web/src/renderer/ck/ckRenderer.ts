@@ -12,6 +12,9 @@ import {
 } from "../canvasRenderer";
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
 import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
+import { outlineCommands, type PathCmd } from "../shapeGeometry";
+import { hasArrowheads, strokeHeads } from "../arrowheads";
+import { sideBandRects } from "../strokeSides";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "../gradientBitmap";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
 import { fontSizeOf, placeTextLines } from "../text";
@@ -52,7 +55,9 @@ interface Frame {
 type Shape =
   | { kind: "rect"; rect: Float32Array }
   | { kind: "rrect"; rr: Float32Array }
-  | { kind: "oval"; rect: Float32Array };
+  | { kind: "oval"; rect: Float32Array }
+  // The computed outlines (polygon, star, arc / ring, smoothed or independent-corner rectangle).
+  | { kind: "path"; path: Path };
 
 export class CanvasKitRenderer {
   private surface: Surface | null = null;
@@ -160,7 +165,7 @@ export class CanvasKitRenderer {
     let masks = 0;
     for (const n of siblings) {
       if (!n.visible || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
-      if (n.isMask && (n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector")) {
+      if (n.isMask && (n.kind === "rect" || n.kind === "ellipse" || n.kind === "frame" || n.kind === "vector" || n.kind === "polygon" || n.kind === "star")) {
         seen.add(n.id);
         sk.save();
         masks++;
@@ -269,7 +274,7 @@ export class CanvasKitRenderer {
         sk.translate(-c.x, -c.y);
       }
     }
-    const outline = eff.kind === "rect" || eff.kind === "ellipse" || eff.kind === "frame" ? this.shapeOf(eff) : null;
+    const outline = eff.kind === "rect" || eff.kind === "ellipse" || eff.kind === "frame" || eff.kind === "polygon" || eff.kind === "star" ? this.shapeOf(eff) : null;
     const bb = eff.effects?.find((e): e is Extract<EffectLite, { kind: "backgroundBlur" }> => e.kind === "backgroundBlur" && e.radius > 0);
     if (bb && outline) this.drawBackdropBlur(sk, outline, bb.radius);
     const layered = this.beginEffects(sk, eff);
@@ -319,6 +324,7 @@ export class CanvasKitRenderer {
       b.addRect(CK.XYWHRect(n.x - m, n.y - m, n.width + m * 2, n.height + m * 2));
       if (shape.kind === "rect") b.addRect(shape.rect);
       else if (shape.kind === "rrect") b.addRRect(shape.rr);
+      else if (shape.kind === "path") b.addPath(shape.path);
       else b.addOval(shape.rect);
       b.setFillType(CK.FillType.EvenOdd);
       const ring: Path = b.detachAndDelete();
@@ -406,6 +412,8 @@ export class CanvasKitRenderer {
   private shapeOf(n: NodeLite): Shape {
     const CK = this.CK;
     const rect = CK.XYWHRect(n.x, n.y, n.width, n.height);
+    const cmds = outlineCommands(n);
+    if (cmds) return { kind: "path", path: this.pathOf(cmds) };
     if (n.kind === "ellipse") return { kind: "oval", rect };
     if (n.kind === "rect" && n.cornerRadius > 0) {
       const r = Math.min(n.cornerRadius, n.width / 2, n.height / 2);
@@ -414,9 +422,27 @@ export class CanvasKitRenderer {
     return { kind: "rect", rect };
   }
 
+  // Path commands (renderer/shapeGeometry.ts) as a Skia path, freed with the frame. Even-odd, like the
+  // 2D canvas's rings and holes (an arc's ring is two opposite circles).
+  private pathOf(cmds: readonly PathCmd[]): Path {
+    const CK = this.CK;
+    const b = new CK.PathBuilder();
+    for (const c of cmds) {
+      if (c[0] === "M") b.moveTo(c[1], c[2]);
+      else if (c[0] === "L") b.lineTo(c[1], c[2]);
+      else if (c[0] === "C") b.cubicTo(c[1], c[2], c[3], c[4], c[5], c[6]);
+      else b.close();
+    }
+    b.setFillType(CK.FillType.EvenOdd);
+    const path: Path = b.detachAndDelete();
+    (this.frame as Frame).garbage.push(path);
+    return path;
+  }
+
   private drawShape(sk: Canvas, s: Shape, paint: Paint): void {
     if (s.kind === "rect") sk.drawRect(s.rect, paint);
     else if (s.kind === "rrect") sk.drawRRect(s.rr, paint);
+    else if (s.kind === "path") sk.drawPath(s.path, paint);
     else sk.drawOval(s.rect, paint);
   }
 
@@ -424,6 +450,7 @@ export class CanvasKitRenderer {
     const CK = this.CK;
     if (s.kind === "rect") sk.clipRect(s.rect, op, true);
     else if (s.kind === "rrect") sk.clipRRect(s.rr, op, true);
+    else if (s.kind === "path") sk.clipPath(s.path, op, true);
     else {
       const b = new CK.PathBuilder();
       b.addOval(s.rect);
@@ -552,6 +579,10 @@ export class CanvasKitRenderer {
       this.paintText(sk, n, p);
       return;
     }
+    if (s.sides && (n.kind === "rect" || n.kind === "frame")) {
+      this.strokeSides(sk, n, shape, s);
+      return;
+    }
     if (s.align === "center") {
       p.setStrokeWidth(s.weight);
       this.drawShape(sk, shape, p);
@@ -563,6 +594,44 @@ export class CanvasKitRenderer {
     p.setStrokeWidth(s.weight * 2);
     this.drawShape(sk, shape, p);
     sk.restore();
+  }
+
+  // Per-side weights: the band between two rectangles (renderer/strokeSides.ts), filled even-odd with the
+  // stroke's paint; inside and outside are clipped by the outline like the uniform stroke.
+  private strokeSides(sk: Canvas, n: NodeLite, shape: Shape, s: StrokeLite): void {
+    const CK = this.CK;
+    const { outer, inner } = sideBandRects(n, s);
+    const b = new CK.PathBuilder();
+    b.addRect(CK.XYWHRect(outer.x, outer.y, outer.width, outer.height));
+    b.addRect(CK.XYWHRect(inner.x, inner.y, inner.width, inner.height));
+    b.setFillType(CK.FillType.EvenOdd);
+    const band: Path = b.detachAndDelete();
+    (this.frame as Frame).garbage.push(band);
+    const p = this.paintFor(this.fillP, s.color, n, n.opacity);
+    sk.save();
+    if (s.align !== "center") this.clipShape(sk, shape, s.align === "inside" ? CK.ClipOp.Intersect : CK.ClipOp.Difference);
+    sk.drawPath(band, p);
+    sk.restore();
+  }
+
+  // The arrowheads of a vector's strokes (renderer/arrowheads.ts).
+  private drawArrowheads(sk: Canvas, n: NodeLite): void {
+    const CK = this.CK;
+    for (const s of n.strokes) {
+      if (!(s.weight > 0) || (!s.startCap && !s.endCap)) continue;
+      for (const g of strokeHeads(n, s.startCap, s.endCap, s.weight)) {
+        if (g.filled.length > 0) sk.drawPath(this.pathOf(g.filled), this.paintFor(this.fillP, s.color, n, n.opacity));
+        if (g.open.length > 0) {
+          const p = this.paintFor(this.strokeP, s.color, n, n.opacity);
+          p.setStyle(CK.PaintStyle.Stroke);
+          p.setStrokeWidth(s.weight);
+          p.setStrokeCap(CK.StrokeCap.Butt);
+          p.setStrokeJoin(CK.StrokeJoin.Miter);
+          p.setPathEffect(null);
+          sk.drawPath(this.pathOf(g.open), p);
+        }
+      }
+    }
   }
 
   // --- testo -----------------------------------------------------------------
@@ -741,6 +810,7 @@ export class CanvasKitRenderer {
         sk.drawPath(strokePath, p);
         p.setPathEffect(null);
       }
+      if (hasArrowheads(n)) this.drawArrowheads(sk, n);
     } else if (hasStroke && vs.hairline) {
       const p = this.strokeP;
       p.setShader(null);

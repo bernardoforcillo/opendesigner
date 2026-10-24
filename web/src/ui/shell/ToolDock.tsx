@@ -16,7 +16,7 @@ import { isTextField } from "../../tools/toolManager";
 // semantics, and the one the tests query).
 const ICON: Record<string, IconName> = {
   select: "select", connect: "connect", frame: "frame", rect: "rect",
-  ellipse: "ellipse", text: "text", pen: "pen", hand: "hand", comment: "comment", sticky: "page", link: "route", vote: "flag", node: "node",
+  ellipse: "ellipse", polygon: "polygon", star: "star", text: "text", pen: "pen", hand: "hand", comment: "comment", sticky: "page", link: "route", vote: "flag", node: "node",
 };
 
 // Single-key shortcuts. F (toggles Design/Flows) and K (Connect) live in
@@ -27,15 +27,15 @@ export const TOOL_KEYS: Partial<Record<ToolId, string>> = {
 };
 
 // SHAPE tools live in a single place in the dock: the button shows
-// the last shape used and the chevron opens the others (Rectangle, Ellipse). Fewer
+// the last shape used and the chevron opens the others (Rectangle, Ellipse, Polygon, Star). Fewer
 // fixed icons, same speed: R and O remain the shortcuts.
-const SHAPE_IDS: readonly ToolId[] = ["rect", "ellipse"];
+const SHAPE_IDS: readonly ToolId[] = ["rect", "ellipse", "polygon", "star"];
 const LAST_SHAPE_KEY = "od.lastShape";
 
 function readLastShape(): ToolId {
   try {
     const v = localStorage.getItem(LAST_SHAPE_KEY);
-    return v === "ellipse" ? "ellipse" : "rect";
+    return v === "ellipse" || v === "polygon" || v === "star" ? v : "rect";
   } catch { return "rect"; }
 }
 

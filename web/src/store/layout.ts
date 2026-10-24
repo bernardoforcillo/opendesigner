@@ -20,7 +20,7 @@ import type { NodeLite, SceneState } from "./types";
 // children onto lines, a child can FILL the free space of its axis, and a frame WITHOUT auto
 // layout resizes its children by their CONSTRAINTS when it is resized (resizeChildren).
 
-const LAYOUT_KINDS: ReadonlySet<NodeLite["kind"]> = new Set(["rect", "ellipse", "text", "image", "vector", "frame", "instance"]);
+const LAYOUT_KINDS: ReadonlySet<NodeLite["kind"]> = new Set(["rect", "ellipse", "text", "image", "vector", "frame", "instance", "polygon", "star"]);
 
 export function participates(n: NodeLite): boolean {
   return n.visible && LAYOUT_KINDS.has(n.kind);

@@ -58,6 +58,8 @@ import { selectTool } from "../tools/selectTool";
 import { rectTool } from "../tools/rectTool";
 import { frameTool } from "../tools/frameTool";
 import { ellipseTool } from "../tools/ellipseTool";
+import { polygonTool } from "../tools/polygonTool";
+import { starTool } from "../tools/starTool";
 import { textTool } from "../tools/textTool";
 import { penTool } from "../tools/penTool";
 import { handTool } from "../tools/handTool";
@@ -84,6 +86,8 @@ export const TOOLS: Partial<Record<ToolId, Tool>> = {
   frame: frameTool,
   rect: rectTool,
   ellipse: ellipseTool,
+  polygon: polygonTool,
+  star: starTool,
   text: textTool,
   pen: penTool,
   hand: handTool,
@@ -103,6 +107,8 @@ export const TOOL_LABELS: { id: ToolId; label: string }[] = [
   { id: "frame", label: "Frame" },
   { id: "rect", label: "Rectangle" },
   { id: "ellipse", label: "Ellipse" },
+  { id: "polygon", label: "Polygon" },
+  { id: "star", label: "Star" },
   { id: "text", label: "Text" },
   { id: "pen", label: "Pen" },
   { id: "node", label: "Node" },

@@ -42,7 +42,9 @@ export function worldAabbOfNode(n: NodeLite): Bounds {
 export function strokeOutset(s: StrokeLite): number {
   if (!(s.weight > 0)) return 0;
   if (s.align === "inside") return 0;
-  return s.align === "outside" ? s.weight : s.weight / 2;
+  // Per-side weights: the widest side overhangs the most.
+  const w = s.sides ? Math.max(s.sides.top, s.sides.right, s.sides.bottom, s.sides.left) : s.weight;
+  return s.align === "outside" ? w : w / 2;
 }
 
 // The node's overhang: the MAXIMUM among its strokes, not the sum. Strokes

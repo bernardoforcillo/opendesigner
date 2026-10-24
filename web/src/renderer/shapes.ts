@@ -6,6 +6,7 @@ import {
   hasAnyAnchor,
 } from "../store/vectorGeometry";
 import { lineHeightOf } from "./text";
+import { flattenCommands, hasComputedOutline, outlineCommands, pointInRings, traceCommands } from "./shapeGeometry";
 
 // The center around which the node ROTATES: the center of its UNROTATED box.
 // A single function, used by the renderer (which applies ctx.rotate around it) and
@@ -30,6 +31,13 @@ export function nodeCenter(n: NodeLite): Point {
 // this side can only treat as a rectangle.
 export function nodePath(n: NodeLite): Path2D {
   const path = new Path2D();
+  // The computed outlines (polygon, star, ellipse arc / ring, rectangle with smoothed or independent
+  // corners) are one function shared with the GPU renderer, the SVG export and hit-testing.
+  const cmds = outlineCommands(n);
+  if (cmds) {
+    traceCommands(path, cmds);
+    return path;
+  }
   if (n.kind === "ellipse") {
     const cx = n.x + n.width / 2;
     const cy = n.y + n.height / 2;
@@ -338,6 +346,13 @@ function hitTestLocal(n: NodeLite, wx: number, wy: number, zoom: number): boolea
       VECTOR_FLATTEN_PX / zoom,
     );
   }
+  if (hasComputedOutline(n)) {
+    // Polygon, star, arc / ring and smoothed or independent-corner rectangles are hit on their true outline,
+    // widened by the stroke overhang (the point may also be within `outset` of the edge).
+    const rings = flattenCommands(outlineCommands(n) ?? []);
+    if (pointInRings(rings, wx, wy)) return true;
+    return outset > 0 && distanceToRings(rings, wx, wy) <= outset;
+  }
   if (n.kind === "ellipse") {
     // The overhang is added to the RADII, not to the AABB: an ellipse's stroke is
     // a ring, not a square frame, so the corner of the widened
@@ -351,6 +366,20 @@ function hitTestLocal(n: NodeLite, wx: number, wy: number, zoom: number): boolea
     return nx * nx + ny * ny <= 1;
   }
   return insideBox(inflateBounds(boundsOfNode(n), outset), wx, wy);
+}
+
+function distanceToRings(rings: readonly (readonly [number, number][])[], x: number, y: number): number {
+  let best = Infinity;
+  for (const ring of rings) {
+    for (let i = 0; i < ring.length; i++) {
+      const [ax, ay] = ring[i], [bx, by] = ring[(i + 1) % ring.length];
+      const dx = bx - ax, dy = by - ay;
+      const len2 = dx * dx + dy * dy;
+      const t = len2 > 0 ? Math.min(1, Math.max(0, ((x - ax) * dx + (y - ay) * dy) / len2)) : 0;
+      best = Math.min(best, Math.hypot(x - (ax + t * dx), y - (ay + t * dy)));
+    }
+  }
+  return best;
 }
 
 export interface Box { x: number; y: number; width: number; height: number }

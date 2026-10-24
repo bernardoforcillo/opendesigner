@@ -82,6 +82,8 @@ describe("tool registry", () => {
       "Frame",
       "Rectangle",
       "Ellipse",
+      "Polygon",
+      "Star",
       "Text",
       "Pen",
       "Node",
@@ -112,7 +114,7 @@ describe("toolbar", () => {
     // The shapes sit in a single button (the last used, by default
     // Rectangle) with the others behind "More shapes".
     for (const { id, label } of toolsForMode("design")) {
-      if (id === "ellipse") continue;
+      if (id === "ellipse" || id === "polygon" || id === "star") continue;
       expect(screen.getByRole("radio", { name: label })).toBeInTheDocument();
     }
     expect(screen.getByRole("button", { name: "More shapes" })).toBeInTheDocument();
@@ -127,6 +129,15 @@ describe("toolbar", () => {
     const ellipse = screen.getByRole("radio", { name: "Ellipse" });
     expect(ellipse).toHaveAttribute("aria-checked", "true");
     expect(screen.queryByRole("radio", { name: "Rectangle" })).not.toBeInTheDocument();
+  });
+
+  it("Polygon and Star are in the shapes menu too, and register their real tools", async () => {
+    expect(TOOLS.polygon).toBeDefined();
+    expect(TOOLS.star).toBeDefined();
+    render(<App />);
+    fireEvent.click(screen.getByRole("button", { name: "More shapes" }));
+    fireEvent.click(await screen.findByRole("menuitem", { name: /Star/ }));
+    expect(screen.getByRole("radio", { name: "Star" })).toHaveAttribute("aria-checked", "true");
   });
 
   it("pressing Text really activates the text tool (the canvas cursor proves it)", () => {

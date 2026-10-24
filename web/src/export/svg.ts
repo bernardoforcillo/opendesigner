@@ -1,5 +1,8 @@
 import type { EffectLite, FillLite, GradientLite, NodeLite } from "../store/types";
 import { gradientBitmap } from "../renderer/gradientBitmap";
+import { commandsToD, outlineCommands } from "../renderer/shapeGeometry";
+import { strokeHeads } from "../renderer/arrowheads";
+import { sideBandRects } from "../renderer/strokeSides";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
@@ -264,7 +267,7 @@ function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
 // alignment: it is the only one SVG can express without clips.
 function strokeAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   const s = n.strokes.find((st) => st.weight > 0);
-  if (!s) return [];
+  if (!s || s.sides) return []; // per-side weights go out as a band (sideBands)
   const ref = gradientRef(n, s.color, defs);
   const vs = n.kind === "vector" || n.meta ? vectorStyleOf(n) : null;
   return [
@@ -302,6 +305,56 @@ function vectorElement(n: NodeLite, defs: string[]): string {
   return out.join("");
 }
 
+// PER-SIDE stroke weights have no SVG attribute: the stroke goes out as the band between two rectangles
+// (the same one the canvas fills, renderer/strokeSides.ts), filled even-odd with the stroke's paint. The
+// band is not clipped to rounded corners (SVG has no cheap inside/outside clip), so on a rounded rectangle
+// it keeps square corners.
+function sideBands(n: NodeLite, defs: string[]): string {
+  const s = n.strokes.find((st) => st.weight > 0 && st.sides);
+  if (!s) return "";
+  const { outer, inner } = sideBandRects(n, s);
+  const rect = (r: { x: number; y: number; width: number; height: number }) => `M${fmt(r.x)} ${fmt(r.y)}h${fmt(r.width)}v${fmt(r.height)}h${fmt(-r.width)}z`;
+  const ref = gradientRef(n, s.color, defs);
+  return `<path${attrs([
+    attr("d", rect(outer) + rect(inner)), attr("fill-rule", "evenodd"),
+    attr("fill", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
+    s.color.a === 1 || ref !== null ? null : attr("fill-opacity", s.color.a),
+    n.opacity === 1 ? null : attr("opacity", n.opacity),
+  ])}/>`;
+}
+
+// The arrowheads of a vector's strokes (renderer/arrowheads.ts): filled shapes in the stroke's paint and the
+// arrow's open V stroked with it.
+function arrowheadElements(n: NodeLite, defs: string[]): string {
+  let out = "";
+  for (const s of n.strokes) {
+    if (!(s.weight > 0) || (!s.startCap && !s.endCap)) continue;
+    const ref = gradientRef(n, s.color, defs);
+    const color = ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`;
+    const alpha = s.color.a === 1 || ref !== null ? null : s.color.a;
+    for (const g of strokeHeads(n, s.startCap, s.endCap, s.weight)) {
+      if (g.filled.length > 0) {
+        out += `<path${attrs([attr("d", commandsToD(g.filled, DECIMALS)), attr("fill", color), alpha === null ? null : attr("fill-opacity", alpha), n.opacity === 1 ? null : attr("opacity", n.opacity)])}/>`;
+      }
+      if (g.open.length > 0) {
+        out += `<path${attrs([
+          attr("d", commandsToD(g.open, DECIMALS)), attr("fill", "none"), attr("stroke", color), alpha === null ? null : attr("stroke-opacity", alpha),
+          attr("stroke-width", s.weight), n.opacity === 1 ? null : attr("opacity", n.opacity),
+        ])}/>`;
+      }
+    }
+  }
+  return out;
+}
+
+// Polygon, star, ellipse arc / ring and rectangle with smoothed or independent corners: one <path> of the
+// computed outline (renderer/shapeGeometry.ts), the same one the canvas draws.
+function computedElement(n: NodeLite, defs: string[]): string | null {
+  const cmds = outlineCommands(n);
+  if (!cmds) return null;
+  return `<path${attrs([attr("d", commandsToD(cmds, DECIMALS)), attr("fill-rule", "evenodd"), ...paintAttrs(n, defs), ...strokeAttrs(n, defs)])}/>` + sideBands(n, defs);
+}
+
 function rectElement(n: NodeLite, defs: string[]): string {
   // The radius is clamped to half the shorter side, as CanvasRenderingContext2D
   // .roundRect does: without it, the same shape would be drawn differently by the
@@ -313,7 +366,7 @@ function rectElement(n: NodeLite, defs: string[]): string {
     r > 0 ? attr("rx", r) : null,
     ...paintAttrs(n, defs),
     ...strokeAttrs(n, defs),
-  ])}/>`;
+  ])}/>` + sideBands(n, defs);
 }
 
 function ellipseElement(n: NodeLite, defs: string[]): string {
@@ -420,8 +473,10 @@ function imagePlaceholderElement(n: NodeLite): string {
 
 function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs: string[]): string {
   if (n.kind === "text") return textElement(n, measure, defs);
+  const computed = computedElement(n, defs);
+  if (computed !== null) return computed;
   if (n.kind === "ellipse") return ellipseElement(n, defs);
-  if (n.kind === "vector") return vectorElement(n, defs);
+  if (n.kind === "vector") return vectorElement(n, defs) + arrowheadElements(n, defs);
   if (n.kind === "image") {
     const uri = href(n.image?.assetHash ?? "");
     return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri, defs);
@@ -431,6 +486,8 @@ function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs
 
 // The shape of a mask, geometry only (it goes inside a <clipPath>); null for a node that cannot mask.
 function maskGeometry(n: NodeLite): string | null {
+  const cmds = outlineCommands(n);
+  if (cmds) return `<path${attrs([attr("d", commandsToD(cmds, DECIMALS)), attr("clip-rule", "evenodd")])}/>`;
   if (n.kind === "ellipse") {
     return `<ellipse${attrs([attr("cx", n.x + n.width / 2), attr("cy", n.y + n.height / 2), attr("rx", n.width / 2), attr("ry", n.height / 2)])}/>`;
   }
