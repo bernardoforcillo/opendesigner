@@ -13,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"github.com/bernardoforcillo/opendesigner/internal/codegen"
+	"github.com/bernardoforcillo/opendesigner/internal/devmode"
 	"github.com/bernardoforcillo/opendesigner/internal/diagram"
 	"github.com/bernardoforcillo/opendesigner/internal/figimport"
 	"github.com/bernardoforcillo/opendesigner/internal/flow"
@@ -258,6 +259,27 @@ func (s *DocumentService) AnalyzeFlows(_ context.Context, req *connect.Request[o
 	doc, _ := h.Snapshot()
 	// empty flow_id = all flows; an unknown id gives zero reports, not an error.
 	return connect.NewResponse(&opendesignerv1.AnalyzeFlowsResponse{Reports: flow.Analyze(doc, req.Msg.GetFlowId())}), nil
+}
+
+// CompareReady: Compare changes of Dev Mode -- a frame marked ready for dev against its snapshot
+// (internal/devmode). A frame that was never marked is InvalidArgument.
+func (s *DocumentService) CompareReady(_ context.Context, req *connect.Request[opendesignerv1.CompareReadyRequest]) (*connect.Response[opendesignerv1.CompareReadyResponse], error) {
+	h, err := s.m.HubFor(req.Msg.GetDocId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeNotFound, err)
+	}
+	doc, _ := h.Snapshot()
+	cmp, err := devmode.Compare(doc, req.Msg.GetNodeId())
+	if err != nil {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
+	resp := &opendesignerv1.CompareReadyResponse{NodeId: cmp.NodeID, MarkedAt: cmp.MarkedAt}
+	for _, c := range cmp.Changes {
+		resp.Changes = append(resp.Changes, &opendesignerv1.ReadyChange{
+			NodeId: c.NodeID, NodeName: c.NodeName, Kind: c.Kind, Property: c.Property, Before: c.Before, After: c.After,
+		})
+	}
+	return connect.NewResponse(resp), nil
 }
 
 // ExportCode: the real generation lives in internal/codegen; here the hub is

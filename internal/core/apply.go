@@ -143,6 +143,14 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetComment(doc, k.SetComment)
 	case *opendesignerv1.Op_DeleteComment:
 		return applyDeleteComment(doc, k.DeleteComment)
+	case *opendesignerv1.Op_SetAnnotation:
+		return applySetAnnotation(doc, k.SetAnnotation)
+	case *opendesignerv1.Op_DeleteAnnotation:
+		return applyDeleteAnnotation(doc, k.DeleteAnnotation)
+	case *opendesignerv1.Op_SetReadyForDev:
+		return applySetReadyForDev(doc, k.SetReadyForDev)
+	case *opendesignerv1.Op_ClearReadyForDev:
+		return applyClearReadyForDev(doc, k.ClearReadyForDev)
 	case *opendesignerv1.Op_SetFlow:
 		return applySetFlow(doc, k.SetFlow)
 	case *opendesignerv1.Op_DeleteFlow:

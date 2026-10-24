@@ -197,6 +197,9 @@ func (w *swWriter) view(e *Element, parent *nbox, root bool) []string {
 		core = withMods(core, mods{fmt.Sprintf(".offset(x: %s, y: %s)", lit(n.x), lit(n.y))})
 	}
 	head := []string{"// " + nodeLabel(e)}
+	for _, n := range e.Notes {
+		head = append(head, "// "+n)
+	}
 	for _, c := range comments {
 		head = append(head, "// "+c)
 	}

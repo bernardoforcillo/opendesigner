@@ -606,6 +606,20 @@ func cowClone(d *opendesignerv1.Document) *opendesignerv1.Document {
 			next.Comments[k] = proto.Clone(c).(*opendesignerv1.Comment)
 		}
 	}
+	// Dev mode: annotations are few and deep-cloned; a ready entry carries a snapshot of a
+	// whole frame, so entries are shared (core replaces them, it never edits one in place).
+	if len(d.GetAnnotations()) > 0 {
+		next.Annotations = make(map[string]*opendesignerv1.Annotation, len(d.GetAnnotations()))
+		for k, a := range d.GetAnnotations() {
+			next.Annotations[k] = proto.Clone(a).(*opendesignerv1.Annotation)
+		}
+	}
+	if len(d.GetReadyForDev()) > 0 {
+		next.ReadyForDev = make(map[string]*opendesignerv1.ReadyForDev, len(d.GetReadyForDev()))
+		for k, r := range d.GetReadyForDev() {
+			next.ReadyForDev[k] = r
+		}
+	}
 	// Component sets: few, deep-cloned.
 	if len(d.GetComponentSets()) > 0 {
 		next.ComponentSets = make(map[string]*opendesignerv1.ComponentSet, len(d.GetComponentSets()))

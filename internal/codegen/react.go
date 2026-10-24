@@ -409,6 +409,7 @@ func (w *jsxWriter) element(e *Element, depth int, root bool, d *opendesignerv1.
 	style := e.Style
 
 	var trig *Trigger
+	comments = append(comments, e.Notes...)
 	for i := range e.Triggers {
 		t := e.Triggers[i]
 		comments = append(comments, flowComments(t)...)

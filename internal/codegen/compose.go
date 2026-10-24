@@ -204,6 +204,9 @@ func (w *kwWriter) view(e *Element, parent *nbox, root bool, extra []string) []s
 		core = w.box(e, n, parent, base, chain, shape, trig)
 	}
 	head := []string{"// " + nodeLabel(e)}
+	for _, n := range e.Notes {
+		head = append(head, "// "+n)
+	}
 	for _, c := range comments {
 		head = append(head, "// "+c)
 	}
