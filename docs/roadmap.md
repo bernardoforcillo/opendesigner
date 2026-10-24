@@ -70,7 +70,8 @@ Pages and structure
 
 Text
 - [ ] Text frames with columns, inset and vertical alignment
-- [ ] Threaded frames (text flows from one frame to the next, across pages), overset indicator
+- [x] Threaded frames (text flows from one frame to the next, across pages), overset indicator; thread/unlink/add next frame, MCP (`thread_text_frames`); see docs/text-frames.md
+- [ ] Threading by dragging from a frame's port, a story editor, columns in a single frame
 - [ ] Paragraph styles and character styles (based-on, next style), nested styles
 - [ ] Baseline grid and snapping text to it
 - [ ] Letter spacing (tracking), kerning, horizontal scale, small caps, super/subscript, underline/strike

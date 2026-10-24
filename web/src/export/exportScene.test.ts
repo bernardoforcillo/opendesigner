@@ -590,3 +590,17 @@ describe("master pages in the export", () => {
     expect(svg).not.toContain("510");
   });
 });
+
+describe("threaded text frames in the export", () => {
+  it("exports each frame with the part of the story that flows into it", async () => {
+    const style = { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 1.25, align: "left" as const };
+    const a = node({ id: "A", kind: "text", x: 0, y: 0, width: 100, height: 20, meta: { "text.next": "B" }, text: { content: "aaaa bbbb cccc dddd", style } });
+    const b = node({ id: "B", kind: "text", x: 200, y: 0, width: 100, height: 40, text: { content: "", style } });
+    install(sceneWith("Story", a, b));
+    const d = deps();
+    expect(await runExport({ format: "svg", scope: "page", scale: 1 }, d)).toBe(true);
+    const svg = await d.saved[0].blob.text();
+    expect(svg).toContain(">aaaa bbbb<");
+    expect(svg).toContain(">cccc dddd<");
+  });
+});

@@ -290,6 +290,53 @@ func TestMasterPages(t *testing.T) {
 	}
 }
 
+// TestThreadTextFrames covers thread_text_frames / unlink_text_frame.
+func TestThreadTextFrames(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	mk := func(content string) string {
+		o, err := sess.CreateText(ctx, odmcp.CreateTextInput{Width: 100, Height: 40, Content: content})
+		if err != nil {
+			t.Fatalf("CreateText: %v", err)
+		}
+		return o.NodeId
+	}
+	a, b, c := mk("alpha"), mk("beta"), mk("")
+	out, err := sess.ThreadTextFrames(ctx, odmcp.ThreadTextFramesInput{Ids: []string{a, b, c}})
+	if err != nil || out.Linked != 2 {
+		t.Fatalf("ThreadTextFrames = %+v, %v", out, err)
+	}
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	na, _ := nodeByID(doc, a)
+	nb, _ := nodeByID(doc, b)
+	if na.Meta["text.next"] != b || nb.Meta["text.next"] != c {
+		t.Fatalf("links = %v / %v, want %s / %s", na.Meta, nb.Meta, b, c)
+	}
+	if na.Text != "alpha\nbeta" || nb.Text != "" {
+		t.Fatalf("stories = %q / %q, want the text gathered in the first frame", na.Text, nb.Text)
+	}
+	// Closing the chain on itself, or linking a frame that is already followed, links nothing.
+	if _, err := sess.ThreadTextFrames(ctx, odmcp.ThreadTextFramesInput{Ids: []string{c, a}}); err == nil {
+		t.Fatal("a link that closes a cycle should be refused")
+	}
+	if _, err := sess.UnlinkTextFrame(ctx, odmcp.PageIdInput{Id: a}); err != nil {
+		t.Fatalf("UnlinkTextFrame: %v", err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if na, _ = nodeByID(doc, a); na.Meta["text.next"] != "" {
+		t.Fatalf("link not cut: %v", na.Meta)
+	}
+	if _, err := sess.UnlinkTextFrame(ctx, odmcp.PageIdInput{Id: a}); err == nil {
+		t.Fatal("unlinking a frame without a next should fail")
+	}
+	if _, err := sess.ThreadTextFrames(ctx, odmcp.ThreadTextFramesInput{Ids: []string{a, "missing"}}); err == nil {
+		t.Fatal("a non-text id should fail")
+	}
+}
+
 func hasPage(pages []odmcp.PageView, id, name string) bool {
 	for _, p := range pages {
 		if p.Id == id && p.Name == name {

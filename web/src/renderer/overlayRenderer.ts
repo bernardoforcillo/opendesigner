@@ -24,6 +24,7 @@ import {
 } from "../store/vectorGeometry";
 import type { PenPreview, PointLite } from "../store/vectorGeometry";
 import { themeColors, withAlpha } from "./themeColors";
+import { META_NEXT, nextOf } from "../store/threads";
 
 // The handles' geometry (positions, hit-test, resize) is ONE only and lives
 // in selection/handles.ts: here we only draw. Re-exported because the
@@ -350,6 +351,58 @@ function drawLayoutGrids(ctx: CanvasRenderingContext2D, state: SceneState, cam: 
   }
 }
 
+// THREAD PORTS of text frames (store/threads.ts), editor-only like the layout grids: a hollow square at the
+// top-left of a frame that receives text from another, a filled one at the bottom-right of a frame that
+// flows into the next, and a red "+" there when the last frame has text left over. When a frame of the
+// chain is selected, a dashed line joins each out-port to the next frame's in-port.
+const PORT = 8;
+function drawThreadPorts(ctx: CanvasRenderingContext2D, state: SceneState, cam: Camera, selection: readonly string[], accent: string): void {
+  const dpr = devicePixelRatio();
+  const viewW = ctx.canvas.width / dpr, viewH = ctx.canvas.height / dpr;
+  const linked = new Set<string>();
+  const outs: { from: ReturnType<typeof worldBoundsToScreen>; to: ReturnType<typeof worldBoundsToScreen>; hot: boolean }[] = [];
+  for (const n of state.nodes.values()) {
+    if (!n.visible || n.kind !== "text" || (n.meta?.[META_NEXT] === undefined && !n.overset)) continue;
+    const next = n.meta?.[META_NEXT] !== undefined ? nextOf(state, n) : null;
+    const b = worldBoundsToScreen(worldBoundsOfNode(state, n), cam);
+    if (b.x > viewW || b.y > viewH || b.x + b.width < 0 || b.y + b.height < 0) continue;
+    if (next) {
+      linked.add(next.id);
+      outs.push({ from: b, to: worldBoundsToScreen(worldBoundsOfNode(state, next), cam), hot: selection.includes(n.id) || selection.includes(next.id) });
+    }
+    const px = b.x + b.width - PORT, py = b.y + b.height - PORT;
+    if (n.overset) {
+      ctx.fillStyle = "#e5484d";
+      ctx.fillRect(px, py, PORT, PORT);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(px + 2, py + PORT / 2 - 0.5, PORT - 4, 1);
+      ctx.fillRect(px + PORT / 2 - 0.5, py + 2, 1, PORT - 4);
+    } else {
+      ctx.fillStyle = accent;
+      ctx.fillRect(px, py, PORT, PORT);
+    }
+  }
+  for (const id of linked) {
+    const n = state.nodes.get(id);
+    if (!n || !n.visible) continue;
+    const b = worldBoundsToScreen(worldBoundsOfNode(state, n), cam);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(b.x + 0.5, b.y + 0.5, PORT, PORT);
+  }
+  ctx.save();
+  ctx.strokeStyle = accent;
+  ctx.setLineDash([4, 3]);
+  for (const o of outs) {
+    if (!o.hot) continue;
+    ctx.beginPath();
+    ctx.moveTo(o.from.x + o.from.width - PORT / 2, o.from.y + o.from.height - PORT / 2);
+    ctx.lineTo(o.to.x + PORT / 2, o.to.y + PORT / 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 export function drawOverlay(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -372,6 +425,7 @@ export function drawOverlay(
   const { accent: ACCENT, guide: SNAP_GUIDE_COLOR } = themeColors();
 
   drawLayoutGrids(ctx, state, cam);
+  drawThreadPorts(ctx, state, cam, selection, ACCENT);
 
   const frame = selectionFrame(state, selection);
   if (frame) {

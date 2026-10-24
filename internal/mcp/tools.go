@@ -911,6 +911,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "list_peers", "List the other people and agents in the document and the nodes each has selected or just edited. Use it to avoid editing what someone else is working on.", s.ListPeers)
 	addTool(srv, "list_components", "List the document's components.", s.ListComponents)
 	registerFlowTools(srv, s)
+	registerThreadTools(srv, s)
 	registerAnimationTools(srv, s)
 	registerVariableTools(srv, s)
 	registerTypographyTools(srv, s)

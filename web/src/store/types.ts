@@ -210,6 +210,8 @@ export interface ComponentSetLite { id: string; name: string; axes: VariantAxisL
 export interface NodeLite {
   // DERIVED only (store/masters.ts), never in a document: a copy of a master page's node drawn on a page that applies it.
   fromMaster?: boolean;
+  // DERIVED only (store/threads.ts): the last frame of a text thread that has text left over.
+  overset?: boolean;
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
