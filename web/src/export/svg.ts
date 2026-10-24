@@ -1,7 +1,7 @@
 import type { EffectLite, FillLite, NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
-import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
+import { fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, placeTextLines, segmentsOfLine } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
@@ -324,9 +324,14 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
   if (!style) return "";
   const lines = placeTextLines((s) => measure(s, style), n);
   if (lines.length === 0) return "";
+  // A line made of runs (small caps, scripts, a list marker) is one tspan per run, at its
+  // own size; a plain line stays a single tspan.
   const spans = lines
-    .map((l) => `<tspan${attrs([attr("x", l.x), attr("y", l.y)])}>${esc(l.text)}</tspan>`)
+    .flatMap((l) => l.segments
+      ? segmentsOfLine(l).map((g) => `<tspan${attrs([attr("x", g.x), attr("y", g.y), g.scale === 1 ? null : attr("font-size", fontSizeOf(style) * g.scale)])}>${esc(g.text)}</tspan>`)
+      : [`<tspan${attrs([attr("x", l.x), attr("y", l.y)])}>${esc(l.text)}</tspan>`])
     .join("");
+  const features = fontFeaturesOf(style);
   // xml:space="preserve" serves a line's LEADING spaces, which the canvas
   // draws and which SVG would otherwise collapse. The price is that every whitespace
   // INSIDE <text> becomes drawn: that is why the tspans are attached
@@ -336,6 +341,7 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
     ...(style.italic ? [attr("font-style", "italic")] : []),
+    features === "" ? null : attr("style", `font-feature-settings:${features}`),
     ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }

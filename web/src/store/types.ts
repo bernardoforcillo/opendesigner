@@ -1,6 +1,6 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { BlendMode, ImageScaleMode, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, ImageScaleMode, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
@@ -107,7 +107,20 @@ export interface TextStyleLite {
   lineHeight: number; align: TextAlignLite;
   // Absent when upright (not `false`): a style that never had it stays identical, field by field.
   italic?: boolean;
+  // Type extras (proto TextStyle 20..26). All absent when unset, like `italic`.
+  textCase?: TextCaseLite;
+  textScript?: TextScriptLite;
+  listKind?: ListKindLite;
+  indent?: number;
+  // CSS font-feature-settings value; see core.ValidFontFeatures.
+  fontFeatures?: string;
+  verticalAlign?: TextVAlignLite;
+  inset?: number;
 }
+export type TextCaseLite = "upper" | "lower" | "title" | "smallCaps";
+export type TextScriptLite = "super" | "sub";
+export type ListKindLite = "bullet" | "numbered";
+export type TextVAlignLite = "middle" | "bottom";
 export interface TextLite { content: string; style: TextStyleLite; }
 
 // An image is a REFERENCE, never bytes: `assetHash` is the sha256
@@ -406,7 +419,24 @@ const STROKE_ALIGN_TO_PB: Record<StrokeAlignLite, StrokeAlign> = {
 // returns the zeros of every field (and it is exactly what remains after a
 // SetText with style_present=true and no style). Here the counterpart is an
 // all-zero style, so the two implementations remain indistinguishable.
+const CASE_TO_LITE: Partial<Record<TextCase, TextCaseLite>> = {
+  [TextCase.UPPER]: "upper", [TextCase.LOWER]: "lower", [TextCase.TITLE]: "title", [TextCase.SMALL_CAPS]: "smallCaps",
+};
+const CASE_TO_PB: Record<TextCaseLite, TextCase> = {
+  upper: TextCase.UPPER, lower: TextCase.LOWER, title: TextCase.TITLE, smallCaps: TextCase.SMALL_CAPS,
+};
+const SCRIPT_TO_LITE: Partial<Record<TextScript, TextScriptLite>> = { [TextScript.SUPER]: "super", [TextScript.SUB]: "sub" };
+const SCRIPT_TO_PB: Record<TextScriptLite, TextScript> = { super: TextScript.SUPER, sub: TextScript.SUB };
+const LIST_TO_LITE: Partial<Record<ListKind, ListKindLite>> = { [ListKind.BULLET]: "bullet", [ListKind.NUMBERED]: "numbered" };
+const LIST_TO_PB: Record<ListKindLite, ListKind> = { bullet: ListKind.BULLET, numbered: ListKind.NUMBERED };
+const VALIGN_TO_LITE: Partial<Record<TextVAlign, TextVAlignLite>> = { [TextVAlign.MIDDLE]: "middle", [TextVAlign.BOTTOM]: "bottom" };
+const VALIGN_TO_PB: Record<TextVAlignLite, TextVAlign> = { middle: TextVAlign.MIDDLE, bottom: TextVAlign.BOTTOM };
+
 export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
+  const tc = CASE_TO_LITE[s?.textCase ?? TextCase.UNSPECIFIED];
+  const ts = SCRIPT_TO_LITE[s?.textScript ?? TextScript.UNSPECIFIED];
+  const lk = LIST_TO_LITE[s?.listKind ?? ListKind.UNSPECIFIED];
+  const va = VALIGN_TO_LITE[s?.verticalAlign ?? TextVAlign.UNSPECIFIED];
   return {
     fontFamily: s?.fontFamily ?? "",
     fontSize: s?.fontSize ?? 0,
@@ -414,6 +444,13 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     lineHeight: s?.lineHeight ?? 0,
     align: ALIGN_TO_LITE[s?.align ?? TextAlign.UNSPECIFIED] ?? "left",
     ...(s?.italic ? { italic: true } : {}),
+    ...(tc ? { textCase: tc } : {}),
+    ...(ts ? { textScript: ts } : {}),
+    ...(lk ? { listKind: lk } : {}),
+    ...(s && s.indent > 0 ? { indent: s.indent } : {}),
+    ...(s && s.fontFeatures !== "" ? { fontFeatures: s.fontFeatures } : {}),
+    ...(va ? { verticalAlign: va } : {}),
+    ...(s && s.inset > 0 ? { inset: s.inset } : {}),
   };
 }
 
@@ -525,6 +562,13 @@ export function toPbTextStyle(s: TextStyleLite) {
     fontFamily: s.fontFamily, fontSize: s.fontSize, fontWeight: s.fontWeight,
     lineHeight: s.lineHeight, align: ALIGN_TO_PB[s.align] ?? TextAlign.LEFT,
     italic: s.italic === true,
+    textCase: s.textCase ? CASE_TO_PB[s.textCase] : TextCase.UNSPECIFIED,
+    textScript: s.textScript ? SCRIPT_TO_PB[s.textScript] : TextScript.UNSPECIFIED,
+    listKind: s.listKind ? LIST_TO_PB[s.listKind] : ListKind.UNSPECIFIED,
+    indent: s.indent ?? 0,
+    fontFeatures: s.fontFeatures ?? "",
+    verticalAlign: s.verticalAlign ? VALIGN_TO_PB[s.verticalAlign] : TextVAlign.UNSPECIFIED,
+    inset: s.inset ?? 0,
   };
 }
 

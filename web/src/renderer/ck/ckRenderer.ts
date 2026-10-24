@@ -13,7 +13,7 @@ import {
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
 import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
-import { fontSizeOf, placeTextLines } from "../text";
+import { fontSizeOf, placeTextLines, segmentsOfLine } from "../text";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
 
@@ -583,7 +583,14 @@ export class CanvasKitRenderer {
       lines = placeTextLines(this.measureFor(font), n);
       this.textLines.set(n, lines);
     }
-    for (const line of lines) sk.drawText(line.text, line.x, line.y, paint, font);
+    for (const line of lines) {
+      for (const seg of segmentsOfLine(line)) {
+        // Small caps and scripts are runs at another size; the font is cached per size.
+        const f = seg.scale === 1 ? font
+          : this.fonts.fontFor(t.style.fontWeight, fontSizeOf(t.style) * seg.scale, t.style.fontFamily, t.style.italic === true);
+        if (f) sk.drawText(seg.text, seg.x, seg.y, paint, f);
+      }
+    }
   }
 
   // --- mesh gradients ----------------------------------------------------------

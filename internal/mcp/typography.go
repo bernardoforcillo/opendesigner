@@ -34,6 +34,7 @@ type TextStyleBody struct {
 	LineHeight float64 `json:"lineHeight,omitempty" jsonschema:"multiplier; 0 means the default 1.2"`
 	Italic     bool    `json:"italic,omitempty"`
 	Align      string  `json:"align,omitempty" jsonschema:"left (default) | center | right"`
+	TextFormat
 }
 
 type TextStyleView struct {
@@ -99,6 +100,7 @@ func textStyleViews(doc *opendesignerv1.Document) []TextStyleView {
 		out = append(out, TextStyleView{Id: id, TextStyleBody: TextStyleBody{
 			Name: d.GetName(), FontFamily: st.GetFontFamily(), FontSize: st.GetFontSize(), FontWeight: st.GetFontWeight(),
 			LineHeight: st.GetLineHeight(), Italic: st.GetItalic(), Align: alignName(st.GetAlign()),
+			TextFormat: formatOf(st),
 		}})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -112,9 +114,13 @@ func (b TextStyleBody) toProto(id string) (*opendesignerv1.TextStyleDef, error) 
 	if err != nil {
 		return nil, err
 	}
-	return &opendesignerv1.TextStyleDef{Id: id, Name: b.Name, Style: &opendesignerv1.TextStyle{
+	style := &opendesignerv1.TextStyle{
 		FontFamily: b.FontFamily, FontSize: b.FontSize, FontWeight: b.FontWeight, LineHeight: b.LineHeight, Italic: b.Italic, Align: align,
-	}}, nil
+	}
+	if err := b.TextFormat.apply(style); err != nil {
+		return nil, err
+	}
+	return &opendesignerv1.TextStyleDef{Id: id, Name: b.Name, Style: style}, nil
 }
 
 func (s *Session) ListFonts(_ context.Context, _ struct{}) (ListFontsOutput, error) {

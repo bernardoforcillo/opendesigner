@@ -13,7 +13,9 @@ import {
   type StrokeLite,
   type TextAlignLite,
   type TextLite,
+  type TextStyleLite,
 } from "../store/types";
+import { isValidFontFeatures } from "../store/typography";
 import { makeCreateNodeOp, uuid } from "./ops";
 import { isTextField } from "./toolManager";
 import { importSvgAt, looksLikeSvg, viewportCenter } from "./svgImport";
@@ -210,6 +212,25 @@ function toAlign(v: unknown): TextAlignLite {
 // written or truncated payload, and an EMPTY text is the honest reconstruction (the
 // same default that toTextStyleLite gives an absent style). Rejecting here
 // would mean throwing away the healthy nodes next to it as well.
+// The type extras of a pasted style: only well-formed values survive (same shapes as store/types.ts).
+function pickTextExtras(s: Record<string, unknown>): Partial<TextStyleLite> {
+  const oneOf = <T extends string>(v: unknown, allowed: readonly T[]): T | undefined =>
+    allowed.includes(v as T) ? (v as T) : undefined;
+  const textCase = oneOf(s.textCase, ["upper", "lower", "title", "smallCaps"] as const);
+  const textScript = oneOf(s.textScript, ["super", "sub"] as const);
+  const listKind = oneOf(s.listKind, ["bullet", "numbered"] as const);
+  const verticalAlign = oneOf(s.verticalAlign, ["middle", "bottom"] as const);
+  return {
+    ...(textCase ? { textCase } : {}),
+    ...(textScript ? { textScript } : {}),
+    ...(listKind ? { listKind } : {}),
+    ...(verticalAlign ? { verticalAlign } : {}),
+    ...(typeof s.indent === "number" && s.indent > 0 && Number.isFinite(s.indent) ? { indent: s.indent } : {}),
+    ...(typeof s.inset === "number" && s.inset > 0 && Number.isFinite(s.inset) ? { inset: s.inset } : {}),
+    ...(typeof s.fontFeatures === "string" && isValidFontFeatures(s.fontFeatures) && s.fontFeatures !== "" ? { fontFeatures: s.fontFeatures } : {}),
+  };
+}
+
 function toText(v: unknown): TextLite {
   const o = (v ?? {}) as Record<string, unknown>;
   const s = (o.style ?? {}) as Record<string, unknown>;
@@ -223,6 +244,7 @@ function toText(v: unknown): TextLite {
       lineHeight: num(s.lineHeight, zero.lineHeight),
       align: toAlign(s.align),
       ...(s.italic === true ? { italic: true } : {}),
+      ...pickTextExtras(s),
     },
   };
 }

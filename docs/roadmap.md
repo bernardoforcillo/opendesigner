@@ -23,6 +23,7 @@ Legend: [x] done · [ ] to do
 - [x] Variables / design tokens with modes: color and number variables in collections with modes, bound to fills, strokes, opacity, rotation, radius and stroke width, pinned per subtree; editor dialog and panel, MCP tools, resolved in canvas/export/code, see docs/variables.md
 - [ ] Variables: text and spacing, aliases, CSS custom properties per mode in the exported code
 - [x] Typography: uploaded fonts (TTF/OTF/WOFF/WOFF2 as content-addressed assets, drawn by the 2D and GPU renderers and exported as @font-face), shared text styles, italic; multi-line text and wrapping were already there; see docs/typography.md
+- [x] Type extras: text case (upper, lower, title, small caps), super/subscript, bulleted and numbered lists with indent, OpenType feature string, vertical alignment and inset in text boxes (canvas, CanvasKit, SVG, CSS, panel, MCP); see docs/typography.md
 - [ ] Typography: letter spacing, decoration, case, per-range styling, kerning/shaping on the GPU
 - [x] Live boolean groups (union, subtract, intersect, exclude; flatten on demand), outline stroke, masks (canvas, GPU, SVG, code, hit-test); see docs/vector.md
 - [x] Presentation mode: the playable prototype (Present)

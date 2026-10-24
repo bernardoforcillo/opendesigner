@@ -252,6 +252,45 @@ message TextStyle {
   double line_height = 4;    // multiplier, 0 => 1.2
   TextAlign align = 5;       // LEFT | CENTER | RIGHT
   bool italic = 6;           // false => upright; draws the family's italic face when it has one
+
+  // Fields 20..39 are the type-and-effects range (case, scripts, lists, OpenType).
+  TextCase text_case = 20;       // UNSPECIFIED => as typed
+  TextScript text_script = 21;   // UNSPECIFIED => baseline
+  ListKind list_kind = 22;       // UNSPECIFIED => no list; applies to every paragraph of the node
+  double indent = 23;            // >= 0, world px added to the left of every paragraph (and of a list's marker)
+  // CSS font-feature-settings value ("liga" 0, "tnum", "ss01"); "" => the font's defaults.
+  // Plain characters only: it ends up in ctx.fontVariant*, SVG and CSS.
+  string font_features = 24;
+  TextVAlign vertical_align = 25; // where the text sits inside a box taller than it
+  double inset = 26;              // >= 0, padding between the box and the text on every side
+}
+
+// Text case: a transform of what is DRAWN, the content keeps its capitalisation.
+enum TextCase {
+  TEXT_CASE_UNSPECIFIED = 0;
+  TEXT_CASE_UPPER = 1;
+  TEXT_CASE_LOWER = 2;
+  TEXT_CASE_TITLE = 3;       // first letter of every word upper, the rest lower
+  TEXT_CASE_SMALL_CAPS = 4;  // lowercase letters drawn as smaller capitals
+}
+
+enum TextScript {
+  TEXT_SCRIPT_UNSPECIFIED = 0;
+  TEXT_SCRIPT_SUPER = 1;
+  TEXT_SCRIPT_SUB = 2;
+}
+
+// Paragraph list: every paragraph (line break in the content) is an item.
+enum ListKind {
+  LIST_KIND_UNSPECIFIED = 0;
+  LIST_KIND_BULLET = 1;
+  LIST_KIND_NUMBERED = 2;
+}
+
+enum TextVAlign {
+  TEXT_V_ALIGN_UNSPECIFIED = 0; // TOP
+  TEXT_V_ALIGN_MIDDLE = 1;
+  TEXT_V_ALIGN_BOTTOM = 2;
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is

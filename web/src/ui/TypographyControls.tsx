@@ -6,6 +6,8 @@ import { DEFAULT_LINE_HEIGHT } from "../renderer/text";
 import {
   applyStyleOps, createStyleOps, effectiveStyle, familyChoices, sharedStyleOf, styleOps, updateStyleOps,
 } from "./typographyOps";
+import { featureValue, withFeature } from "./fontFeatures";
+import { isValidFontFeatures } from "../store/typography";
 import { makeDeleteTextStyleDefOp } from "../tools/ops";
 
 // THE TYPOGRAPHY CONTROLS of the properties panel's Text section: font family
@@ -43,6 +45,23 @@ export function TypographyControls() {
   const family = same(styles.map((s) => s.fontFamily === "" ? choices[0].value : s.fontFamily));
   const italic = same(styles.map((s) => s.italic === true));
   const lineHeight = same(styles.map((s) => (s.lineHeight > 0 ? s.lineHeight : DEFAULT_LINE_HEIGHT)));
+  const textCase = same(styles.map((s) => s.textCase ?? ""));
+  const script = same(styles.map((s) => s.textScript ?? ""));
+  const list = same(styles.map((s) => s.listKind ?? ""));
+  const valign = same(styles.map((s) => s.verticalAlign ?? ""));
+  const indent = same(styles.map((s) => s.indent ?? 0));
+  const inset = same(styles.map((s) => s.inset ?? 0));
+  const features = same(styles.map((s) => s.fontFeatures ?? ""));
+  const ligatures = same(styles.map((s) => featureValue(s.fontFeatures, "liga") !== 0));
+  const tabular = same(styles.map((s) => featureValue(s.fontFeatures, "tnum") === 1));
+  // Applies the toggled feature to each node's own feature string (they may differ).
+  const toggleFeature = (tag: string, value: number | null) => {
+    run(selection.flatMap((id) => {
+      const n = scene.nodes.at(id);
+      const cur = n ? effectiveStyle(scene, n)?.fontFeatures : undefined;
+      return styleOps(scene, [id], { fontFeatures: withFeature(cur, tag, value) });
+    }));
+  };
   const shared = sharedStyleOf(scene, selection);
   const styleList = Object.values(scene.textStyles).sort((a, b) => a.name.localeCompare(b.name));
   const single = nodes.length === 1 ? nodes[0] : null;
@@ -68,6 +87,60 @@ export function TypographyControls() {
           placeholder={lineHeight === MIXED ? "Mixed" : undefined}
           onCommit={(v) => run(styleOps(scene, selection, { lineHeight: v }))}
         />
+      </div>
+      <div className="grid grid-cols-2 gap-1.5">
+        <select aria-label="Text case" className={cls.select} value={textCase}
+          onChange={(e) => run(styleOps(scene, selection, { textCase: e.target.value === "" ? undefined : e.target.value as TextStyleLite["textCase"] }))}>
+          {textCase === MIXED && <option value={MIXED} disabled>Mixed</option>}
+          <option value="">As typed</option>
+          <option value="upper">UPPER</option>
+          <option value="lower">lower</option>
+          <option value="title">Title Case</option>
+          <option value="smallCaps">Small caps</option>
+        </select>
+        <select aria-label="Script" className={cls.select} value={script}
+          onChange={(e) => run(styleOps(scene, selection, { textScript: e.target.value === "" ? undefined : e.target.value as TextStyleLite["textScript"] }))}>
+          {script === MIXED && <option value={MIXED} disabled>Mixed</option>}
+          <option value="">Baseline</option>
+          <option value="super">Superscript</option>
+          <option value="sub">Subscript</option>
+        </select>
+        <select aria-label="List" className={cls.select} value={list}
+          onChange={(e) => run(styleOps(scene, selection, { listKind: e.target.value === "" ? undefined : e.target.value as TextStyleLite["listKind"] }))}>
+          {list === MIXED && <option value={MIXED} disabled>Mixed</option>}
+          <option value="">No list</option>
+          <option value="bullet">Bulleted</option>
+          <option value="numbered">Numbered</option>
+        </select>
+        <select aria-label="Vertical align" className={cls.select} value={valign}
+          onChange={(e) => run(styleOps(scene, selection, { verticalAlign: e.target.value === "" ? undefined : e.target.value as TextStyleLite["verticalAlign"] }))}>
+          {valign === MIXED && <option value={MIXED} disabled>Mixed</option>}
+          <option value="">Align top</option>
+          <option value="middle">Align middle</option>
+          <option value="bottom">Align bottom</option>
+        </select>
+        <NumberField label="Indent" minValue={0} value={indent === MIXED ? NaN : indent}
+          placeholder={indent === MIXED ? "Mixed" : undefined}
+          onCommit={(v) => run(styleOps(scene, selection, { indent: v > 0 ? v : undefined }))} />
+        <NumberField label="Inset" minValue={0} value={inset === MIXED ? NaN : inset}
+          placeholder={inset === MIXED ? "Mixed" : undefined}
+          onCommit={(v) => run(styleOps(scene, selection, { inset: v > 0 ? v : undefined }))} />
+      </div>
+      <div className="flex flex-col gap-1.5">
+        <div className="flex gap-1.5">
+          <Button aria-label="Ligatures" aria-pressed={ligatures === true} variant={ligatures === true ? "primary" : "secondary"}
+            onPress={() => toggleFeature("liga", ligatures === true ? 0 : null)}>fi</Button>
+          <Button aria-label="Tabular figures" aria-pressed={tabular === true} variant={tabular === true ? "primary" : "secondary"}
+            onPress={() => toggleFeature("tnum", tabular === true ? null : 1)}>123</Button>
+        </div>
+        <input aria-label="OpenType features" className={cls.input} placeholder={'"ss01", "cv05" 1'}
+          key={String(features)} defaultValue={features === MIXED ? "" : features}
+          onBlur={(e) => {
+            const v = e.target.value.trim();
+            const cur = features === MIXED ? "" : String(features);
+            if (v === cur || !isValidFontFeatures(v)) { e.target.value = cur; return; }
+            run(styleOps(scene, selection, { fontFeatures: v === "" ? undefined : v }));
+          }} />
       </div>
       <div className="flex flex-col gap-1.5">
         <select aria-label="Text style" className={cls.select}
