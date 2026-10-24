@@ -4,7 +4,7 @@ import { insertDiagram } from "../diagram/insert";
 import { useScene } from "../store/store";
 import { viewportCenter } from "../tools/svgImport";
 
-// IMPORTING A FIGMA FILE (document menu → Import Figma file…). EXPERIMENTAL: .fig is not a public
+// IMPORTING A FIGMA FILE (document menu → Import .fig file…). EXPERIMENTAL: .fig is not a public
 // format, so the server reads it with a best-effort reader (internal/figimport) and says what it
 // could not carry over. The nodes come back like a drawn diagram -- a wrapper group first, one
 // gesture, one undo step -- and the warnings are shown to the person.

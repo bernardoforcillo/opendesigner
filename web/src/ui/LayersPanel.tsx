@@ -55,7 +55,7 @@ export interface LayerRow {
 
 // The page's tree in PRE-ORDER, descending only into expanded containers. Each
 // level of siblings is in REVERSE draw order -- foreground on top,
-// like the old flat list and like Figma -- so childrenOf (ascending,
+// like the old flat list -- so childrenOf (ascending,
 // background→foreground) is walked backwards.
 //
 // A `seen` as in tree.ts::subtreeOf: a malformed document (a node that is its

@@ -68,7 +68,7 @@ export function alignDelta(b: Bounds, target: Bounds, kind: AlignKind): Delta {
 // The difference shows as soon as the boxes have different sizes: equidistant
 // centers leave visibly unequal gaps between a wide box and a narrow one,
 // while equal spaces is what the eye reads as "distributed". It is
-// also the choice of design editors (Figma calls it "distribute
+// also the choice of design editors (usually called "distribute
 // spacing").
 //
 // The two EXTREMES do not move: they define the space to be shared out.
@@ -130,7 +130,7 @@ export function distributeDeltas(boxes: readonly Bounds[], axis: "x" | "y"): Del
 //
 // A SINGLE NODE does not move, and that is intended: its common box is itself,
 // so all six alignments are the identity and alignOps produces
-// no op. It is Figma's behavior for a single object on the canvas.
+// no op. It is the usual behavior for a single object on the canvas.
 //
 // There is NO page to align it against. `opendesigner.v1.Page` today carries only
 // `id` and `name`: the model has no page geometry (and it is the job

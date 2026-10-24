@@ -9,27 +9,27 @@
  * The choices, in a few lines:
  *  - light and minimal: panels share one white, the canvas is a step below,
  *    structure comes from hairlines and space rather than tints or shadows;
- *  - ONE accent color (a Figma-style azure) for selection, primary actions and focus;
+ *  - ONE accent color (a calm teal) for selection, primary actions and focus;
  *  - a second color (violet) reserved for Flows mode: it tells you WHERE you are;
  *  - three-level text (primary, secondary, muted), never gray on gray
  *    below 4.5:1.
  */
 :root {
   color-scheme: light;
-  --canvas: #f5f5f5;          /* the work surface: a step below the panels */
-  --canvas-dot: #e1e1e1;
+  --canvas: #f6f6f4;          /* the work surface: a step below the panels */
+  --canvas-dot: #e3e3df;
   --surface: #ffffff;         /* panels share one white: depth by hairline, not by tint */
-  --surface-2: #f5f5f5;       /* rows, fields, inset sections */
-  --surface-3: #ebebeb;       /* hover, inactive segments */
+  --surface-2: #f6f6f4;       /* rows, fields, inset sections */
+  --surface-3: #ecece8;       /* hover, inactive segments */
   --raised: #ffffff;          /* menus, popovers, floating bar */
-  --line: #e6e6e6;
-  --line-strong: #d1d1d1;
-  --fg: #1e1e1e;
-  --fg-muted: #5c5c5c;
-  --fg-subtle: #858585;
-  --accent: #0c8ee8;
-  --accent-hover: #0a7bcb;
-  --accent-soft: #e5f4ff;
+  --line: #ebebe8;
+  --line-strong: #d6d6d1;
+  --fg: #1a1a19;
+  --fg-muted: #5e5e5a;
+  --fg-subtle: #85857f;
+  --accent: #0b8579;
+  --accent-hover: #096b62;
+  --accent-soft: #e3f3f1;
   --accent-fg: #ffffff;
   --flow: #6d3df5;
   --flow-soft: #f1ecff;
@@ -40,29 +40,29 @@
   --danger: #cc2a36;
   --danger-soft: #fdecee;
   /* One strategy: hairline ring + a soft lift that only floating things get. */
-  --shadow-pop: 0 0 0 1px rgb(16 24 40 / 0.06), 0 1px 2px -1px rgb(16 24 40 / 0.08), 0 8px 24px -8px rgb(16 24 40 / 0.14);
-  --shadow-bar: 0 0 0 1px rgb(16 24 40 / 0.06), 0 1px 2px -1px rgb(16 24 40 / 0.06), 0 4px 14px -6px rgb(16 24 40 / 0.12);
+  --shadow-pop: 0 0 0 1px rgb(20 20 18 / 0.06), 0 6px 20px -8px rgb(20 20 18 / 0.14);
+  --shadow-bar: 0 0 0 1px rgb(20 20 18 / 0.06), 0 3px 12px -6px rgb(20 20 18 / 0.12);
   --ring: 0 0 0 2px var(--surface), 0 0 0 4px color-mix(in srgb, var(--accent) 55%, transparent);
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     color-scheme: dark;
-    --canvas: #1e1e1e;
-    --canvas-dot: #303030;
-    --surface: #2c2c2c;
-    --surface-2: #383838;
-    --surface-3: #444444;
-    --raised: #2c2c2c;
-    --line: #3d3d3d;
-    --line-strong: #4f4f4f;
-    --fg: #ffffff;
-    --fg-muted: #b3b3b3;
-    --fg-subtle: #8c8c8c;
-    --accent: #0d99ff;
-    --accent-hover: #3fb0ff;
-    --accent-soft: #0b3a5c;
-    --accent-fg: #ffffff;
+    --canvas: #141413;
+    --canvas-dot: #262624;
+    --surface: #1d1d1b;
+    --surface-2: #272725;
+    --surface-3: #32322f;
+    --raised: #242422;
+    --line: #302f2d;
+    --line-strong: #43423f;
+    --fg: #f3f3f0;
+    --fg-muted: #b0b0aa;
+    --fg-subtle: #85857f;
+    --accent: #2fbfab;
+    --accent-hover: #55d0bf;
+    --accent-soft: #123a35;
+    --accent-fg: #06201c;
     --flow: #9a78ff;
     --flow-soft: #2a2250;
     --ok: #3ccb92;
@@ -78,21 +78,21 @@
 
 :root[data-theme="dark"] {
   color-scheme: dark;
-  --canvas: #1e1e1e;
-  --canvas-dot: #303030;
-  --surface: #2c2c2c;
-  --surface-2: #383838;
-  --surface-3: #444444;
-  --raised: #2c2c2c;
-  --line: #3d3d3d;
-  --line-strong: #4f4f4f;
-  --fg: #ffffff;
-  --fg-muted: #b3b3b3;
-  --fg-subtle: #8c8c8c;
-  --accent: #0d99ff;
-  --accent-hover: #3fb0ff;
-  --accent-soft: #0b3a5c;
-  --accent-fg: #ffffff;
+  --canvas: #141413;
+  --canvas-dot: #262624;
+  --surface: #1d1d1b;
+  --surface-2: #272725;
+  --surface-3: #32322f;
+  --raised: #242422;
+  --line: #302f2d;
+  --line-strong: #43423f;
+  --fg: #f3f3f0;
+  --fg-muted: #b0b0aa;
+  --fg-subtle: #85857f;
+  --accent: #2fbfab;
+  --accent-hover: #55d0bf;
+  --accent-soft: #123a35;
+  --accent-fg: #06201c;
   --flow: #9a78ff;
   --flow-soft: #2a2250;
   --ok: #3ccb92;
@@ -138,7 +138,7 @@
 @theme {
   --radius-control: 5px;
   --radius-card: 8px;
-  --radius-float: 13px;
+  --radius-float: 12px;
 }
 
 /* Base: the app body is a surface, not the browser's white. */
