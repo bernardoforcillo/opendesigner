@@ -43,11 +43,20 @@ const (
 	// TargetReact: Vite + React + TypeScript + Tailwind v4 +
 	// react-router-dom project, with the flows' Playwright tests.
 	TargetReact Target = "react"
+	// TargetSwiftUI: Swift sources for an iOS / macOS app (views, components
+	// with parameters, a NavigationStack router).
+	TargetSwiftUI Target = "swiftui"
+	// TargetCompose: Kotlin sources for a Jetpack Compose app (composables,
+	// components with parameters, a NavHost).
+	TargetCompose Target = "compose"
 )
+
+// native reports whether the target is a native UI one (swiftui, compose).
+func (t Target) native() bool { return t == TargetSwiftUI || t == TargetCompose }
 
 // Options configures generation.
 type Options struct {
-	// Target: html or react (default react).
+	// Target: html, react, swiftui or compose (default react).
 	Target Target
 	// FlowID limits the wiring (and the tests) to one flow; empty = all.
 	FlowID string
@@ -81,8 +90,8 @@ func Generate(doc *opendesignerv1.Document, opts Options, assets AssetSource) (*
 	if opts.Target == "" {
 		opts.Target = TargetReact
 	}
-	if opts.Target != TargetHTML && opts.Target != TargetReact {
-		return nil, fmt.Errorf("unknown target %q: use %q or %q", opts.Target, TargetReact, TargetHTML)
+	if opts.Target != TargetHTML && opts.Target != TargetReact && !opts.Target.native() {
+		return nil, fmt.Errorf("unknown target %q: use %q, %q, %q or %q", opts.Target, TargetReact, TargetHTML, TargetSwiftUI, TargetCompose)
 	}
 	if opts.FlowID != "" {
 		if _, ok := doc.GetFlows()[opts.FlowID]; !ok {
@@ -106,16 +115,26 @@ func Generate(doc *opendesignerv1.Document, opts Options, assets AssetSource) (*
 	switch opts.Target {
 	case TargetHTML:
 		b.fileDir, b.urlPrefix = "assets/", "assets/"
+	case TargetSwiftUI, TargetCompose:
+		// Moved into the platform's resource layout by the native renderer.
+		b.fileDir, b.urlPrefix = nativeAssetDir, ""
 	default:
 		b.fileDir, b.urlPrefix = "public/assets/", "/assets/"
 	}
 	wireFlows(d, screens, opts, b, &out.Warnings)
 	// Uploaded fonts: @font-face rules plus the copied files.
-	fontCSS := b.fontFaceCSS()
+	fontCSS := ""
+	if !opts.Target.native() {
+		fontCSS = b.fontFaceCSS()
+	}
 
 	switch opts.Target {
 	case TargetHTML:
 		renderHTML(d, screens, opts, files, fontCSS)
+	case TargetSwiftUI:
+		renderSwiftUI(d, b, screens, opts, files, &out.Warnings)
+	case TargetCompose:
+		renderCompose(d, b, screens, opts, files, &out.Warnings)
 	default:
 		if err := renderReact(d, b, screens, opts, files, &out.Warnings, fontCSS); err != nil {
 			return nil, err
@@ -268,7 +287,7 @@ func assignNames(d *opendesignerv1.Document, screens []*Screen, opts Options) {
 			base = n.GetName()
 		}
 		name := pascal(base)
-		if reservedNames[name] {
+		if reservedNames[name] || (opts.Target == TargetSwiftUI && swiftReservedTypes[name]) || (opts.Target == TargetCompose && kotlinReservedTypes[name]) {
 			name += "Screen"
 		}
 		s.Name = dedupe(compUsed, name, "")

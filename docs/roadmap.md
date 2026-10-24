@@ -68,6 +68,8 @@ Legend: [x] done · [ ] to do
 
 ## 3. Handoff and ecosystem
 - [x] Dev mode: CSS/Tailwind/React and measurements (size, position, gaps to parent and siblings of the selection, in the Ship panel)
+- [x] SwiftUI and Jetpack Compose code (screens, auto layout, fills, gradients, strokes, shadows, text, vectors, images, components with properties as parameters, flows as navigation); format picker in Develop and Ship, `export_code` target; docs/codegen.md
+- [ ] Leptos (Rust) code target
 - [x] Plugin API (sandboxed scripts with a read/write bridge; docs/handoff.md)
 - [x] Tokens in and out: W3C Design Tokens (DTCG) JSON and CSS custom properties, with modes; import of a DTCG file as collections (variables dialog); see docs/handoff.md
 - [ ] Syncing components with the code

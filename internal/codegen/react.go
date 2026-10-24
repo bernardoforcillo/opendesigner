@@ -207,7 +207,7 @@ createRoot(document.getElementById("root")!).render(
 
 	// Component sets and components with properties that the screens use become
 	// components (src/components).
-	reg := newCompRegistry(d, b, screens)
+	reg := newCompRegistry(d, b, screens, nil)
 	reg.files(put)
 
 	for _, s := range screens {
