@@ -5,13 +5,14 @@ import type { Camera } from "../../canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "../../canvas/geometry";
 import { type Transform, localTransformOf } from "../../canvas/transform";
 import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../../store/instances";
-import type { EffectLite, FillLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite } from "../../store/types";
+import type { EffectLite, FillLite, GradientLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite } from "../../store/types";
 import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "../../store/vectorGeometry";
 import {
   CLIP_MIN_PX, LOD_FLAT_PX, SKIP_SUBTREE_PX, type ImageSource, resolvedFill, rootsOf, withOverride,
 } from "../canvasRenderer";
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
 import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
+import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "../gradientBitmap";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
 import { fontSizeOf, placeTextLines } from "../text";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
@@ -487,10 +488,28 @@ export class CanvasKitRenderer {
         const stops = [...g.stops].sort((a, b) => a.position - b.position);
         const colors = stops.map((s) => CK.Color4f(s.color.r, s.color.g, s.color.b, s.color.a));
         const pos = stops.map((s) => Math.min(1, Math.max(0, s.position)));
-        const shader: Shader =
-          g.kind === "linear"
-            ? CK.Shader.MakeLinearGradient([x1, y1], [x2, y2], colors, pos, CK.TileMode.Clamp)
-            : CK.Shader.MakeRadialGradient([x1, y1], len, colors, pos, CK.TileMode.Clamp);
+        if (g.kind === "diamond") {
+          // No native diamond shader: the bitmap (renderer/gradientBitmap.ts), stretched over the box like a mesh.
+          const img = this.diamondImage(g, n.width, n.height);
+          if (img) {
+            const sx = n.width / GRADIENT_BITMAP_SIZE, sy = n.height / GRADIENT_BITMAP_SIZE;
+            const ds: Shader = img.makeShaderOptions(CK.TileMode.Clamp, CK.TileMode.Clamp, CK.FilterMode.Linear, CK.MipmapMode.None, [sx, 0, n.x - sx, 0, sy, n.y - sy, 0, 0, 1]);
+            (this.frame as Frame).garbage.push(ds);
+            p.setColor(CK.BLACK);
+            p.setShader(ds);
+            p.setAlphaf(opacity);
+            return p;
+          }
+          p.setColor(CK.Color4f(fill.r, fill.g, fill.b, fill.a * opacity));
+          return p;
+        }
+        let shader: Shader;
+        if (g.kind === "linear") shader = CK.Shader.MakeLinearGradient([x1, y1], [x2, y2], colors, pos, CK.TileMode.Clamp);
+        else if (g.kind === "angular") {
+          // A sweep gradient starts at +x and runs clockwise (y points down), like the 2D canvas's conic one.
+          const start = (angularStart(g, n.width, n.height) * 180) / Math.PI;
+          shader = CK.Shader.MakeSweepGradient(x1, y1, colors, pos, CK.TileMode.Clamp, null, 0, start, start + 360);
+        } else shader = CK.Shader.MakeRadialGradient([x1, y1], len, colors, pos, CK.TileMode.Clamp);
         (this.frame as Frame).garbage.push(shader);
         p.setColor(CK.BLACK);
         p.setShader(shader);
@@ -599,6 +618,23 @@ export class CanvasKitRenderer {
       meshBitmap(mesh, MESH_BITMAP_SIZE, 1), total * 4,
     );
     this.meshImages.set(mesh, img);
+    return img;
+  }
+
+  private readonly diamondImages = new WeakMap<GradientLite, { key: string; img: SkImage | null }>();
+
+  // A diamond gradient's bitmap as a GPU image; it depends on the box's size, so it is remade when that changes.
+  private diamondImage(g: GradientLite, w: number, h: number): SkImage | null {
+    const key = `${w}x${h}`;
+    const hit = this.diamondImages.get(g);
+    if (hit && hit.key === key) return hit.img;
+    const CK = this.CK;
+    const total = GRADIENT_BITMAP_SIZE + 2;
+    const img = CK.MakeImage(
+      { width: total, height: total, alphaType: CK.AlphaType.Unpremul, colorType: CK.ColorType.RGBA_8888, colorSpace: CK.ColorSpace.SRGB },
+      gradientBitmap(g, w, h, GRADIENT_BITMAP_SIZE, 1), total * 4,
+    );
+    this.diamondImages.set(g, { key, img });
     return img;
   }
 

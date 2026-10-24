@@ -12,9 +12,10 @@ export interface PageLite { id: string; name: string; }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
-// world coordinates.
+// world coordinates. Angular (conic): center (x1,y1), the 0% direction points toward (x2,y2), sweeping
+// clockwise. Diamond: center (x1,y1), 100% where |dx|+|dy| in world units equals |p2-p1|.
 export interface GradientLite {
-  kind: "linear" | "radial";
+  kind: "linear" | "radial" | "angular" | "diamond";
   stops: GradientStopLite[];
   x1: number; y1: number; x2: number; y2: number;
 }
@@ -630,9 +631,7 @@ function toPbPaint(c: FillLite) {
       stops: g.stops.map((st) => ({ color: { ...st.color }, position: st.position })),
       x1: g.x1, y1: g.y1, x2: g.x2, y2: g.y2,
     };
-    return g.kind === "linear"
-      ? { kind: { case: "linear" as const, value } }
-      : { kind: { case: "radial" as const, value } };
+    return { kind: { case: g.kind, value } };
   }
   return { kind: { case: "solid" as const, value: { color: { r: c.r, g: c.g, b: c.b, a: c.a } } } };
 }
@@ -661,7 +660,7 @@ export function toPbInstanceOverride(o: InstanceOverrideLite) {
 // the only case is an ABSENT paint, but the `kind` oneof exists to grow).
 function toFillLite(p: PbPaint | undefined): FillLite {
   const k = p?.kind;
-  if (k?.case === "linear" || k?.case === "radial") {
+  if (k?.case === "linear" || k?.case === "radial" || k?.case === "angular" || k?.case === "diamond") {
     const g = k.value;
     const stops = g.stops.map((st) => ({
       color: { r: st.color?.r ?? 0, g: st.color?.g ?? 0, b: st.color?.b ?? 0, a: st.color?.a ?? 1 },

@@ -1,4 +1,5 @@
-import type { EffectLite, FillLite, NodeLite } from "../store/types";
+import type { EffectLite, FillLite, GradientLite, NodeLite } from "../store/types";
+import { gradientBitmap } from "../renderer/gradientBitmap";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
@@ -199,11 +200,24 @@ function imagePatternRef(n: NodeLite, f: FillLite, defs: string[]): string | nul
 const MESH_SVG_SIZE = 32;
 
 function meshPatternRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
+  return bitmapPatternRef(n, MESH_SVG_SIZE, meshBitmap(f.mesh!, MESH_SVG_SIZE, 1), defs);
+}
+
+// ANGULAR and DIAMOND gradients have no SVG element: they go out as the same kind of embedded bitmap
+// (renderer/gradientBitmap.ts, the geometry the canvas and the GPU use), 64 pixels a side.
+const GRADIENT_SVG_SIZE = 64;
+
+function bitmapGradientRef(n: NodeLite, g: GradientLite, defs: string[]): string | null {
   if (!(n.width > 0) || !(n.height > 0)) return null;
-  const total = MESH_SVG_SIZE + 2;
-  const uri = pngDataUri(encodePng(total, total, meshBitmap(f.mesh!, MESH_SVG_SIZE, 1)));
+  return bitmapPatternRef(n, GRADIENT_SVG_SIZE, gradientBitmap(g, n.width, n.height, GRADIENT_SVG_SIZE, 1), defs);
+}
+
+function bitmapPatternRef(n: NodeLite, size: number, rgba: Uint8ClampedArray, defs: string[]): string | null {
+  if (!(n.width > 0) || !(n.height > 0)) return null;
+  const total = size + 2;
+  const uri = pngDataUri(encodePng(total, total, rgba));
   const id = `p${defs.length}`;
-  const sx = n.width / MESH_SVG_SIZE, sy = n.height / MESH_SVG_SIZE;
+  const sx = n.width / size, sy = n.height / size;
   defs.push(
     `<pattern${attrs([attr("id", id), attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height)])} patternUnits="userSpaceOnUse">` +
     `<image${attrs([
@@ -228,6 +242,7 @@ function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
   const x2 = n.x + g.x2 * n.width, y2 = n.y + g.y2 * n.height;
   const len = Math.hypot(x2 - x1, y2 - y1);
   if (!(len > 0)) return null;
+  if (g.kind === "angular" || g.kind === "diamond") return bitmapGradientRef(n, g, defs);
   const id = `g${defs.length}`;
   const stops = g.stops
     .map((st) => `<stop${attrs([

@@ -147,3 +147,27 @@ describe("gradientOps", () => {
     expect(flat.fills[0].a).toBe(1);
   });
 });
+
+describe("angular and diamond gradients", () => {
+  const L = (s: SceneState) => (id: string) => s.nodes.at(id);
+  it("a solid becomes an angular gradient centered, 0% pointing right; the stops are kept switching to diamond", () => {
+    let s = sceneWith();
+    const n = run(s, fillKindOps(["a"], L(s), "angular"));
+    expect(fillKindOf(n.fills[0])).toBe("angular");
+    expect(n.fills[0].gradient).toMatchObject({ x1: 0.5, y1: 0.5, x2: 1, y2: 0.5 });
+    s = { ...s, nodes: nodesOf({ a: n }) };
+    const d = run(s, fillKindOps(["a"], L(s), "diamond"));
+    expect(d.fills[0].gradient?.kind).toBe("diamond");
+    expect(d.fills[0].gradient?.stops).toHaveLength(2);
+  });
+
+  it("the angle of an angular gradient turns the 0% direction in world units, on a non-square box", () => {
+    let s = sceneWith({ width: 200, height: 100 });
+    s = { ...s, nodes: nodesOf({ a: run(s, fillKindOps(["a"], L(s), "angular")) }) };
+    const n = run(s, gradientAngleOps(["a"], L(s), 90));
+    const g = n.fills[0].gradient!;
+    expect(g.x2).toBeCloseTo(g.x1, 6);
+    expect(g.y2).toBeCloseTo(g.y1 + 0.5, 6); // half the short side, down
+    expect(gradientAngleOf(n.fills[0], { width: 200, height: 100 })).toBe(90);
+  });
+});

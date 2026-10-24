@@ -159,7 +159,7 @@ function toEffects(v: unknown): EffectLite[] {
 function toGradient(v: unknown): GradientLite | undefined {
   if (typeof v !== "object" || v === null) return undefined;
   const o = v as Record<string, unknown>;
-  if ((o.kind !== "linear" && o.kind !== "radial") || !Array.isArray(o.stops)) return undefined;
+  if ((o.kind !== "linear" && o.kind !== "radial" && o.kind !== "angular" && o.kind !== "diamond") || !Array.isArray(o.stops)) return undefined;
   const stops = o.stops.map((st) => {
     const so = (st ?? {}) as Record<string, unknown>;
     const c = (so.color ?? {}) as Record<string, unknown>;

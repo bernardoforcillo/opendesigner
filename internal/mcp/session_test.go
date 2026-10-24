@@ -322,8 +322,29 @@ func TestGradientFillThroughTools(t *testing.T) {
 		t.Fatalf("fill = %v, want a linear gradient with 2 stops ending blue", got)
 	}
 
+	// Angular and diamond gradients are accepted and stored as their own paint kinds.
+	for _, kind := range []string{"angular", "diamond"} {
+		g := odmcp.RGBA{Gradient: &odmcp.GradientSpec{Kind: kind, X1: 0.5, Y1: 0.5, X2: 1, Y2: 0.5, Stops: grad.Gradient.Stops}}
+		if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: created.NodeId, Fills: []odmcp.RGBA{g}}); err != nil {
+			t.Fatalf("SetProperties %s gradient: %v", kind, err)
+		}
+		open, err := direct.OpenDocument(ctx, connect.NewRequest(&opendesignerv1.OpenRequest{DocId: docID}))
+		if err != nil {
+			t.Fatalf("OpenDocument: %v", err)
+		}
+		var p *opendesignerv1.Paint
+		for _, n := range open.Msg.GetSnapshot().GetNodes() {
+			if n.GetId() == created.NodeId && len(n.GetFills()) == 1 {
+				p = n.GetFills()[0]
+			}
+		}
+		if (kind == "angular" && p.GetAngular() == nil) || (kind == "diamond" && p.GetDiamond() == nil) {
+			t.Errorf("%s gradient stored as %v", kind, p)
+		}
+	}
+
 	bad := []odmcp.RGBA{
-		{Gradient: &odmcp.GradientSpec{Kind: "conic", X2: 1, Stops: grad.Gradient.Stops}},
+		{Gradient: &odmcp.GradientSpec{Kind: "sweep", X2: 1, Stops: grad.Gradient.Stops}},
 		{Gradient: &odmcp.GradientSpec{Kind: "linear", X2: 1, Stops: grad.Gradient.Stops[:1]}},
 		{Gradient: &odmcp.GradientSpec{Kind: "radial", Stops: grad.Gradient.Stops}},
 	}

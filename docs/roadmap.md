@@ -9,6 +9,7 @@ Legend: [x] done · [ ] to do
 - [x] Shapes, text, images, vector, groups, frames, pages
 - [x] Components with instances and overrides
 - [x] Linear and radial gradients (canvas, SVG, panel, MCP)
+- [x] Angular (conic) and diamond gradients (canvas, GPU, SVG export, CSS conic-gradient, panel, MCP; docs/shapes.md)
 - [x] More stops per gradient (add, move, remove from the panel)
 - [x] Gradient on strokes from the panel; image as a fill or stroke paint (fill / fit / tile; canvas, GPU, SVG, code)
 - [x] Effects: drop shadow and layer blur (canvas, SVG, panel, MCP, copy/paste; one per type per node is drawn)

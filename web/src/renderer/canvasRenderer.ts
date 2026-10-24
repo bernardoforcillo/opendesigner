@@ -22,6 +22,7 @@ import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
 import { drawDash, perimeterOf, vectorDrawSubpaths } from "./animDraw";
 import { imageCache, type CachedImage } from "./imageCache";
 import { MESH_BITMAP_SIZE, meshBitmap } from "./mesh";
+import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "./gradientBitmap";
 
 const DEG_TO_RAD = Math.PI / 180;
 
@@ -119,11 +120,44 @@ export function paintStyle(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLi
   const x2 = n.x + g.x2 * n.width, y2 = n.y + g.y2 * n.height;
   const len = Math.hypot(x2 - x1, y2 - y1);
   if (!(len > 0)) return cssRgba(f);
-  const grad = g.kind === "linear"
-    ? ctx.createLinearGradient(x1, y1, x2, y2)
-    : ctx.createRadialGradient(x1, y1, 0, x1, y1, len);
+  if (g.kind === "diamond") return diamondPattern(ctx, f, n);
+  let grad: CanvasGradient;
+  if (g.kind === "angular") {
+    // No conic gradient in this environment (an old browser, a test canvas): the flat color.
+    if (typeof ctx.createConicGradient !== "function") return cssRgba(f);
+    grad = ctx.createConicGradient(angularStart(g, n.width, n.height), x1, y1);
+  } else {
+    grad = g.kind === "linear" ? ctx.createLinearGradient(x1, y1, x2, y2) : ctx.createRadialGradient(x1, y1, 0, x1, y1, len);
+  }
   for (const st of g.stops) grad.addColorStop(Math.min(1, Math.max(0, st.position)), cssRgba(st.color));
   return grad;
+}
+
+// A DIAMOND gradient has no native canvas form: it is rasterized (renderer/gradientBitmap.ts) over the box
+// and drawn as a pattern, like a mesh. The bitmap depends on the box's size, so it is rebuilt when that changes.
+const diamondCanvases = new WeakMap<object, { key: string; canvas: HTMLCanvasElement | null }>();
+
+function diamondPattern(ctx: CanvasRenderingContext2D, f: FillLite, n: NodeLite): string | CanvasPattern {
+  const flat = cssRgba(f);
+  const g = f.gradient!;
+  if (typeof document === "undefined" || typeof ImageData === "undefined" || typeof ctx.createPattern !== "function") return flat;
+  const key = `${n.width}x${n.height}`;
+  let entry = diamondCanvases.get(g);
+  if (!entry || entry.key !== key) {
+    const c = document.createElement("canvas");
+    const total = GRADIENT_BITMAP_SIZE + 2;
+    c.width = c.height = total;
+    const gc = c.getContext("2d");
+    if (gc) gc.putImageData(new ImageData(gradientBitmap(g, n.width, n.height, GRADIENT_BITMAP_SIZE, 1) as unknown as Uint8ClampedArray<ArrayBuffer>, total, total), 0, 0);
+    entry = { key, canvas: gc ? c : null };
+    diamondCanvases.set(g, entry);
+  }
+  if (!entry.canvas) return flat;
+  const pattern = ctx.createPattern(entry.canvas, "no-repeat");
+  if (!pattern || typeof pattern.setTransform !== "function" || typeof DOMMatrix === "undefined") return pattern ?? flat;
+  const sx = n.width / GRADIENT_BITMAP_SIZE, sy = n.height / GRADIENT_BITMAP_SIZE;
+  pattern.setTransform(new DOMMatrix([sx, 0, 0, sy, n.x - sx, n.y - sy]));
+  return pattern;
 }
 
 // A MESH paint: the grid rasterized once (renderer/mesh.ts) into a small canvas that the pattern stretches

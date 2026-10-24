@@ -16,11 +16,20 @@ const KINDS: { value: FillKind; label: string }[] = [
   { value: "solid", label: "Solid" },
   { value: "linear", label: "Linear" },
   { value: "radial", label: "Radial" },
+  { value: "angular", label: "Angular" },
+  { value: "diamond", label: "Diamond" },
   { value: "image", label: "Image" },
   { value: "mesh", label: "Mesh" },
 ];
 
 const lookup = (id: string) => useScene.getState().scene?.nodes.at(id);
+
+// The first selected node's box, for the angle of an angular gradient (measured in world units).
+function selectedBox(): { width: number; height: number } | undefined {
+  const st = useScene.getState();
+  const n = st.selection[0] ? st.scene?.nodes.at(st.selection[0]) : undefined;
+  return n ? { width: n.width, height: n.height } : undefined;
+}
 
 // A model color (float 0..1, alpha included) as a CSS value. Here and not
 // in ColorField because it serves ONLY to draw the strip: the hexadecimal field
@@ -31,7 +40,7 @@ function css(c: { r: number; g: number; b: number; a: number }): string {
 }
 
 /**
- * The fill type (solid / linear / radial) and, for a gradient,
+ * The fill type (solid / linear / radial / angular / diamond) and, for a gradient,
  * the preview, the two colors at the ends and the angle. It does not know gestures: it emits
  * ops through `run`, the same `runGesture` as the panel, so a type change
  * is ONE undo step like any other change.
@@ -144,11 +153,11 @@ export function GradientControls({
           >
             + Add stop
           </button>
-          {g.kind === "linear" && (
+          {(g.kind === "linear" || g.kind === "angular") && (
             <NumberField
               label="Angle"
               suffix="°"
-              value={gradientAngleOf(fill)}
+              value={gradientAngleOf(fill, selectedBox())}
               onCommit={(v) => run((ids) => gradientAngleOps(ids, lookup, v, target))}
             />
           )}

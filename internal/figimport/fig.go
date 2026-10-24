@@ -616,10 +616,11 @@ func (c *converter) paints(v any, isLine bool) []*opendesignerv1.Paint {
 			if g := gradient(pm, op, t); g != nil {
 				if t == "GRADIENT_LINEAR" {
 					out = append(out, &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Linear{Linear: g}})
+				} else if t == "GRADIENT_ANGULAR" {
+					out = append(out, &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Angular{Angular: g}})
+				} else if t == "GRADIENT_DIAMOND" {
+					out = append(out, &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Diamond{Diamond: g}})
 				} else {
-					if t != "GRADIENT_RADIAL" {
-						c.warn("%s gradients were imported as radial gradients", strings.ToLower(strings.TrimPrefix(t, "GRADIENT_")))
-					}
 					out = append(out, &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Radial{Radial: g}})
 				}
 			}

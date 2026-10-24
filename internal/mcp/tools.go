@@ -27,7 +27,7 @@ type RGBA struct {
 	A float64 `json:"a" jsonschema:"alpha channel, 0..1"`
 	// Gradient, when set, turns this entry into a gradient fill and r/g/b/a are
 	// ignored. A separate stop type keeps the JSON schema non-recursive.
-	Gradient *GradientSpec `json:"gradient,omitempty" jsonschema:"makes this fill a linear or radial gradient instead of a solid colour"`
+	Gradient *GradientSpec `json:"gradient,omitempty" jsonschema:"makes this fill a linear, radial, angular or diamond gradient instead of a solid colour"`
 }
 
 // StopColor is a gradient stop's colour; same channels as RGBA, without the
@@ -48,11 +48,11 @@ type GradientStopSpec struct {
 // GradientSpec is a gradient in coordinates NORMALISED to the node's box: (0,0)
 // is its top-left corner and (1,1) its bottom-right.
 type GradientSpec struct {
-	Kind  string             `json:"kind" jsonschema:"linear or radial"`
+	Kind  string             `json:"kind" jsonschema:"linear, radial, angular or diamond"`
 	Stops []GradientStopSpec `json:"stops" jsonschema:"at least two stops, ordered by position"`
-	X1    float64            `json:"x1" jsonschema:"linear: axis start x; radial: centre x"`
-	Y1    float64            `json:"y1" jsonschema:"linear: axis start y; radial: centre y"`
-	X2    float64            `json:"x2" jsonschema:"linear: axis end x; radial: a point on the edge (radius = distance from x1,y1)"`
+	X1    float64            `json:"x1" jsonschema:"linear: axis start x; radial/angular/diamond: centre x"`
+	Y1    float64            `json:"y1" jsonschema:"linear: axis start y; radial/angular/diamond: centre y"`
+	X2    float64            `json:"x2" jsonschema:"linear: axis end x; radial: a point on the edge (radius = distance from x1,y1); angular: a point in the direction of the 0% stop (the stops sweep clockwise); diamond: a point on a diamond corner (|dx|+|dy| from the centre = distance to it)"`
 	Y2    float64            `json:"y2" jsonschema:"linear: axis end y; radial: a point on the edge"`
 }
 
@@ -65,8 +65,13 @@ func toGradientPaint(g *GradientSpec) *opendesignerv1.Paint {
 		})
 	}
 	gp := &opendesignerv1.GradientPaint{Stops: stops, X1: g.X1, Y1: g.Y1, X2: g.X2, Y2: g.Y2}
-	if g.Kind == "radial" {
+	switch g.Kind {
+	case "radial":
 		return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Radial{Radial: gp}}
+	case "angular":
+		return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Angular{Angular: gp}}
+	case "diamond":
+		return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Diamond{Diamond: gp}}
 	}
 	return &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Linear{Linear: gp}}
 }
@@ -79,8 +84,10 @@ func validateFills(colors []RGBA) error {
 		if g == nil {
 			continue
 		}
-		if g.Kind != "linear" && g.Kind != "radial" {
-			return fmt.Errorf("fills[%d].gradient.kind must be \"linear\" or \"radial\", got %q", i, g.Kind)
+		switch g.Kind {
+		case "linear", "radial", "angular", "diamond":
+		default:
+			return fmt.Errorf("fills[%d].gradient.kind must be \"linear\", \"radial\", \"angular\" or \"diamond\", got %q", i, g.Kind)
 		}
 		if len(g.Stops) < 2 {
 			return fmt.Errorf("fills[%d].gradient needs at least two stops", i)
@@ -852,7 +859,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_frame", "Create a frame: a container with its own box. Optionally clipsContent, and autoLayout to have the server arrange its children in a row or column (the children's x/y are then computed for you). parentId defaults to the first page.", s.CreateFrame)
 	addTool(srv, "set_auto_layout", "Turn auto layout on, change it, or (autoLayout omitted) off for a frame. After every change the server repositions the frame's children; reposition by editing the layout, not the children's x/y, which it overrides.", s.SetAutoLayout)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
-	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}]. blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
+	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}]. blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial|angular|diamond,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
 	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style.", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)

@@ -703,7 +703,7 @@ func boxPaint(el *Element, n *opendesignerv1.Node, isFrame, isEllipse bool, mul 
 				}
 			}
 		} else if f.grad != nil {
-			if g, ok := gradientCSS(f.grad, f.radial, w, h, mul); ok {
+			if g, ok := fillGradientCSS(f, w, h, mul); ok {
 				el.addStyle("background-image", g)
 			} else {
 				el.addStyle("background-color", colorCSS(f.color, mul))
@@ -811,7 +811,7 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	f := resolvedFill(eff.GetFills())
 	gradient := ""
 	if f.grad != nil {
-		if g, ok := gradientCSS(f.grad, f.radial, eff.GetWidth(), eff.GetHeight(), 1); ok {
+		if g, ok := fillGradientCSS(f, eff.GetWidth(), eff.GetHeight(), 1); ok {
 			gradient = g
 		}
 	}
@@ -1176,8 +1176,8 @@ func subpathData(sp *opendesignerv1.SubPath) string {
 // like export/svg.ts::gradientRef.
 func vectorGradient(id string, f fill, w, h float64) (*Element, string) {
 	g := f.grad
-	if len(g.GetStops()) < 2 {
-		return nil, ""
+	if len(g.GetStops()) < 2 || f.angular {
+		return nil, "" // SVG has no conic gradient: the flat first-stop colour
 	}
 	x1, y1 := g.GetX1()*w, g.GetY1()*h
 	x2, y2 := g.GetX2()*w, g.GetY2()*h
@@ -1187,7 +1187,11 @@ func vectorGradient(id string, f fill, w, h float64) (*Element, string) {
 	}
 	gr := &Element{Tag: "linearGradient"}
 	gr.addAttr("id", id)
-	if f.radial {
+	if f.diamond {
+		// Approximation: a circle through the diamond's edge midpoints (see fillGradientCSS).
+		length /= math.Sqrt2
+	}
+	if f.radial || f.diamond {
 		gr.Tag = "radialGradient"
 		gr.addAttr("cx", num(x1))
 		gr.addAttr("cy", num(y1))

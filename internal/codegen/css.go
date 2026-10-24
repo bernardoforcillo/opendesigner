@@ -67,7 +67,9 @@ type fill struct {
 	color  *opendesignerv1.Color
 	grad   *opendesignerv1.GradientPaint
 	radial bool
-	image  *opendesignerv1.ImagePaint
+	// angular (conic) and diamond gradients reuse `grad`; radial stays false for them.
+	angular, diamond bool
+	image            *opendesignerv1.ImagePaint
 }
 
 var defaultGrey = &opendesignerv1.Color{R: 0.8, G: 0.8, B: 0.8, A: 1}
@@ -81,6 +83,14 @@ func toFill(p *opendesignerv1.Paint) fill {
 		return gradFill(k.Linear, false)
 	case *opendesignerv1.Paint_Radial:
 		return gradFill(k.Radial, true)
+	case *opendesignerv1.Paint_Angular:
+		f := gradFill(k.Angular, false)
+		f.angular = true
+		return f
+	case *opendesignerv1.Paint_Diamond:
+		f := gradFill(k.Diamond, false)
+		f.diamond = true
+		return f
 	case *opendesignerv1.Paint_Image:
 		// The flat base color the canvas shows until the image arrives; the image itself is a
 		// background-image where the box can carry one (boxPaint).
@@ -186,6 +196,63 @@ func gradientCSS(g *opendesignerv1.GradientPaint, radial bool, w, h, mul float64
 		parts = append(parts, colorCSS(st.c, mul)+" "+pct(at*100))
 	}
 	return fmt.Sprintf("linear-gradient(%sdeg,%s)", num(round3(deg)), strings.Join(parts, ",")), true
+}
+
+// fillGradientCSS is gradientCSS for any gradient fill: linear and radial as above, ANGULAR as a
+// conic-gradient() and DIAMOND as a radial-gradient() approximation (CSS has no diamond; the circle
+// touches the diamond's edges at their midpoints, so the corners of the diamond are the part that differs).
+func fillGradientCSS(f fill, w, h, mul float64) (string, bool) {
+	switch {
+	case f.angular:
+		return conicCSS(f.grad, w, h, mul)
+	case f.diamond:
+		return diamondCSS(f.grad, w, h, mul)
+	}
+	return gradientCSS(f.grad, f.radial, w, h, mul)
+}
+
+// conicCSS: centre P1, the 0% direction from P1 toward P2 (CSS angles start at the top and grow
+// clockwise, like the canvas's conic gradient once the direction is turned a quarter), stops as a
+// percentage of the full turn.
+func conicCSS(g *opendesignerv1.GradientPaint, w, h, mul float64) (string, bool) {
+	stops := g.GetStops()
+	if len(stops) < 2 {
+		return "", false
+	}
+	x1, y1 := g.GetX1()*w, g.GetY1()*h
+	dx, dy := g.GetX2()*w-x1, g.GetY2()*h-y1
+	if !(math.Hypot(dx, dy) > 0) {
+		return "", false
+	}
+	deg := math.Atan2(dx, -dy) * 180 / math.Pi
+	if deg < 0 {
+		deg += 360
+	}
+	clamp := func(p float64) float64 { return math.Min(1, math.Max(0, p)) }
+	var parts []string
+	for _, st := range expandStops(stops, clamp) {
+		parts = append(parts, colorCSS(st.c, mul)+" "+pct(st.pos*100))
+	}
+	return fmt.Sprintf("conic-gradient(from %sdeg at %s %s,%s)", num(round3(deg)), px(x1), px(y1), strings.Join(parts, ",")), true
+}
+
+// diamondCSS: a circle of radius |P2-P1|/sqrt(2) centred on P1 (see fillGradientCSS).
+func diamondCSS(g *opendesignerv1.GradientPaint, w, h, mul float64) (string, bool) {
+	stops := g.GetStops()
+	if len(stops) < 2 {
+		return "", false
+	}
+	x1, y1 := g.GetX1()*w, g.GetY1()*h
+	length := math.Hypot(g.GetX2()*w-x1, g.GetY2()*h-y1) / math.Sqrt2
+	if !(length > 0) {
+		return "", false
+	}
+	clamp := func(p float64) float64 { return math.Min(1, math.Max(0, p)) }
+	var parts []string
+	for _, st := range expandStops(stops, clamp) {
+		parts = append(parts, colorCSS(st.c, mul)+" "+pct(st.pos*100))
+	}
+	return fmt.Sprintf("radial-gradient(circle %s at %s %s,%s)", px(length), px(x1), px(y1), strings.Join(parts, ",")), true
 }
 
 type stopPoint struct {

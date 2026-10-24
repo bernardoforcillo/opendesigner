@@ -13,14 +13,15 @@ import type { RgbLite } from "./fields/ColorField";
 // so they can be tested without mounting anything.
 export type NodeLookup = (id: string) => NodeLite | undefined;
 
-export type FillKind = "solid" | "linear" | "radial" | "image" | "mesh";
+export type GradientKind = GradientLite["kind"];
+export type FillKind = "solid" | GradientKind | "image" | "mesh";
 
 export function fillKindOf(f: FillLite | null): FillKind {
   return f?.mesh ? "mesh" : f?.image ? "image" : (f?.gradient?.kind ?? "solid");
 }
 
-// Default axis: linear from top to bottom, radial from center to edge.
-function defaultGeometry(kind: "linear" | "radial") {
+// Default axis: linear from top to bottom; radial, angular and diamond from the center, the 0% / edge toward the right.
+function defaultGeometry(kind: GradientKind) {
   return kind === "linear"
     ? { x1: 0.5, y1: 0, x2: 0.5, y2: 1 }
     : { x1: 0.5, y1: 0.5, x2: 1, y2: 0.5 };
@@ -29,7 +30,7 @@ function defaultGeometry(kind: "linear" | "radial") {
 // From the flat color to a gradient that GOES from the color to itself transparent:
 // it is a starting point that visibly looks different right away, without inventing a
 // second color the user did not choose.
-function toGradient(f: FillLite, kind: "linear" | "radial"): FillLite {
+function toGradient(f: FillLite, kind: GradientKind): FillLite {
   const from = { r: f.r, g: f.g, b: f.b, a: f.a };
   const gradient: GradientLite = {
     kind,
@@ -122,11 +123,17 @@ export function gradientStopOps(ids: readonly string[], lookup: NodeLookup, inde
   });
 }
 
-/** Angle (degrees, 0 = left to right, 90 = top to bottom) of a linear gradient. */
-export function gradientAngleOf(f: FillLite | null): number {
+/**
+ * Angle (degrees, 0 = left to right, 90 = top to bottom) of a linear gradient, or of the 0% direction of an
+ * angular one. The angular one is measured in world units, so it needs the node's box (`box`); without it
+ * the box is taken as square.
+ */
+export function gradientAngleOf(f: FillLite | null, box: { width: number; height: number } = { width: 1, height: 1 }): number {
   const g = f?.gradient;
-  if (!g || g.kind !== "linear") return 0;
-  const deg = (Math.atan2(g.y2 - g.y1, g.x2 - g.x1) * 180) / Math.PI;
+  if (!g || (g.kind !== "linear" && g.kind !== "angular")) return 0;
+  const deg = g.kind === "angular"
+    ? (Math.atan2((g.y2 - g.y1) * box.height, (g.x2 - g.x1) * box.width) * 180) / Math.PI
+    : (Math.atan2(g.y2 - g.y1, g.x2 - g.x1) * 180) / Math.PI;
   return Math.round(((deg % 360) + 360) % 360 * 100) / 100;
 }
 
@@ -137,8 +144,15 @@ export function gradientAngleOps(ids: readonly string[], lookup: NodeLookup, deg
     const n = lookup(id);
     const cur = n ? paintOf(n, target) : undefined;
     const g = cur?.gradient;
-    if (!n || !cur || !g || g.kind !== "linear") return [];
-    const gradient: GradientLite = { ...g, x1: 0.5 - dx, y1: 0.5 - dy, x2: 0.5 + dx, y2: 0.5 + dy };
+    if (!n || !cur || !g || (g.kind !== "linear" && g.kind !== "angular")) return [];
+    let gradient: GradientLite;
+    if (g.kind === "angular") {
+      // Turn the 0% direction about the center (kept), in world units: the point stays half a short side away.
+      const r = Math.min(n.width, n.height) / 2;
+      gradient = { ...g, x2: g.x1 + (Math.cos(rad) * r) / (n.width || 1), y2: g.y1 + (Math.sin(rad) * r) / (n.height || 1) };
+    } else {
+      gradient = { ...g, x1: 0.5 - dx, y1: 0.5 - dy, x2: 0.5 + dx, y2: 0.5 + dy };
+    }
     return [withFirst(n, { ...cur, gradient }, target)];
   });
 }

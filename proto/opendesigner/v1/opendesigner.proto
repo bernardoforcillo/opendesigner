@@ -25,6 +25,10 @@ message GradientStop { Color color = 1; double position = 2; string variable_id 
 // RADIAL: the center is (x1,y1) and the radius is the distance between (x1,y1)
 // and (x2,y2), measured in WORLD coordinates after denormalization (a circle,
 // not an ellipse).
+// ANGULAR (conic): the center is (x1,y1); the 0% direction points from it toward (x2,y2) and the
+// stops sweep clockwise once around (360 degrees). Only the direction of (x1,y1)->(x2,y2) matters.
+// DIAMOND: the center is (x1,y1); the 100% stop sits where |dx|+|dy| (in WORLD units) equals the
+// distance between (x1,y1) and (x2,y2), so the bands are axis-aligned diamonds.
 message GradientPaint {
   repeated GradientStop stops = 1;
   double x1 = 2; double y1 = 3; double x2 = 4; double y2 = 5;
@@ -42,7 +46,9 @@ message ImagePaint { string asset_hash = 1; ImageScaleMode mode = 2; }
 // color at the top-left corner, the last at the bottom-right), blended smoothly (bilinear) between
 // the grid points. The points sit on a regular grid; they do not move.
 message MeshPaint { uint32 rows = 1; uint32 cols = 2; repeated Color colors = 3; }
-message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; ImagePaint image = 4; MeshPaint mesh = 5; } }
+message Paint { oneof kind { SolidPaint solid = 1; GradientPaint linear = 2; GradientPaint radial = 3; ImagePaint image = 4; MeshPaint mesh = 5;
+  // Fields 20-29 are the shapes-and-paints track's (both reuse GradientPaint's stops).
+  GradientPaint angular = 20; GradientPaint diamond = 21; } }
 
 // Alignment of the stroke relative to the shape's PERIMETER. CENTER is the
 // drawing default (half inside, half outside): it is the only one the 2D canvas

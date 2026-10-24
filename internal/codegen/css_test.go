@@ -96,6 +96,35 @@ func TestGradientCSS(t *testing.T) {
 	}
 }
 
+// Angular and diamond gradients: a conic-gradient() turned to the 0% direction, and the radial
+// approximation for the diamond.
+func TestFillGradientCSS(t *testing.T) {
+	a, b := col(1, 0, 0, 1), col(0, 0, 1, 1)
+	g := grad(0.5, 0.5, 1, 0.5, stop(0, a), stop(1, b))
+	for _, c := range []struct {
+		name string
+		f    fill
+		want string
+	}{
+		{"angular, 0% pointing right", fill{color: a, grad: g, angular: true}, "conic-gradient(from 90deg at 50px 40px,#f00 0%,#00f 100%)"},
+		{"angular, 0% pointing up", fill{color: a, grad: grad(0.5, 0.5, 0.5, 0, stop(0, a), stop(1, b)), angular: true}, "conic-gradient(from 0deg at 50px 40px,#f00 0%,#00f 100%)"},
+		{"diamond: circle through the edge midpoints", fill{color: a, grad: g, diamond: true}, "radial-gradient(circle 35.355px at 50px 40px,#f00 0%,#00f 100%)"},
+		{"linear still goes through gradientCSS", fill{color: a, grad: grad(0, 0.5, 1, 0.5, stop(0, a), stop(1, b))}, "linear-gradient(90deg,#f00 0%,#00f 100%)"},
+	} {
+		got, ok := fillGradientCSS(c.f, 100, 80, 1)
+		if !ok || got != c.want {
+			t.Errorf("%s:\n got  %q (ok=%v)\n want %q", c.name, got, ok, c.want)
+		}
+	}
+	if _, ok := fillGradientCSS(fill{color: a, grad: grad(0.5, 0.5, 0.5, 0.5, stop(0, a), stop(1, b)), angular: true}, 100, 80, 1); ok {
+		t.Error("angular gradient with a null direction should fall back to the flat colour")
+	}
+	p := &opendesignerv1.Paint{Kind: &opendesignerv1.Paint_Angular{Angular: g}}
+	if f := toFill(p); !f.angular || f.grad == nil {
+		t.Errorf("toFill(angular) = %+v", f)
+	}
+}
+
 // The canvas interpolates non-premultiplied: a segment with different alphas is
 // split into already-interpolated points.
 func TestGradientAlphaSubdivision(t *testing.T) {
