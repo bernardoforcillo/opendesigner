@@ -109,3 +109,27 @@ func TestStyleRelations(t *testing.T) {
 		t.Errorf("paragraph styles after deleting the style: %v", got)
 	}
 }
+
+func TestLetterSpacingAndGridAlignment(t *testing.T) {
+	doc := richDoc(t)
+	mustApply(t, doc, styleOp(&opendesignerv1.TextStyleDef{
+		Id: "tight", Name: "Tight", AlignToGrid: true,
+		Style: &opendesignerv1.TextStyle{FontSize: 12, LetterSpacing: -0.5},
+	}))
+	if d := doc.GetTextStyles()["tight"]; d.GetStyle().GetLetterSpacing() != -0.5 || !d.GetAlignToGrid() {
+		t.Fatalf("style not stored: %v", d)
+	}
+	// A character style may track, but not align to the grid.
+	mustApply(t, doc, styleOp(&opendesignerv1.TextStyleDef{
+		Id: "wide", Name: "Wide", Kind: opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER,
+		Style: &opendesignerv1.TextStyle{LetterSpacing: 2},
+	}))
+	for name, d := range map[string]*opendesignerv1.TextStyleDef{
+		"a character style on the grid": {Id: "x", Name: "x", AlignToGrid: true, Kind: opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER, Style: &opendesignerv1.TextStyle{}},
+		"huge tracking":                 {Id: "x", Name: "x", Style: &opendesignerv1.TextStyle{LetterSpacing: 5000}},
+	} {
+		if err := Apply(doc, styleOp(d)); err == nil {
+			t.Errorf("%s: should be rejected", name)
+		}
+	}
+}

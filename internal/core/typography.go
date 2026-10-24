@@ -95,6 +95,9 @@ func validateTextStyleDef(doc *opendesignerv1.Document, d *opendesignerv1.TextSt
 	if w := st.GetFontWeight(); w != "" && !fontWeightRe.MatchString(w) && w != "normal" && w != "bold" {
 		return ErrTextStyleValue
 	}
+	if ls := st.GetLetterSpacing(); math.IsNaN(ls) || math.IsInf(ls, 0) || ls < -1000 || ls > 1000 {
+		return ErrTextStyleValue
+	}
 	return validateStyleRelations(doc, d)
 }
 
@@ -112,6 +115,9 @@ func validateStyleRelations(doc *opendesignerv1.Document, d *opendesignerv1.Text
 		}
 	}
 	character := d.GetKind() == opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER
+	if character && d.GetAlignToGrid() {
+		return fmt.Errorf("%w: a character style cannot align to the grid", ErrTextStyleValue)
+	}
 	if character && (d.GetNextStyleId() != "" || d.GetSpaceBefore() != 0 || d.GetSpaceAfter() != 0 || d.GetIndentFirst() != 0 || d.GetIndentLeft() != 0) {
 		return fmt.Errorf("%w: a character style has no paragraph settings", ErrTextStyleValue)
 	}

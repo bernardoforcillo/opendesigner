@@ -254,6 +254,7 @@ message TextStyle {
   bool italic = 6;           // false => upright; draws the family's italic face when it has one
   bool underline = 7;
   bool strikethrough = 8;
+  double letter_spacing = 9; // px added after every character (tracking); 0 = none, may be negative
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is
@@ -612,6 +613,9 @@ message TextStyleDef {
   double space_after = 8;
   double indent_first = 9; // extra indent of the first line
   double indent_left = 10;
+  // Paragraph styles only: the lines of the paragraph sit on the document's baseline grid
+  // (DocSettings.baseline_*), moving down to the next grid line when they would fall between two.
+  bool align_to_grid = 11;
 }
 
 // ---------- variables (design tokens) ----------
