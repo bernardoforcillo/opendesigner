@@ -8,7 +8,8 @@ import type {
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
 } from "../gen/opendesigner/v1/opendesigner_pb";
 
-export interface PageLite { id: string; name: string; }
+// `isMaster` / `masterId` are absent (not false / "") on a plain page: see store/masters.ts.
+export interface PageLite { id: string; name: string; isMaster?: boolean; masterId?: string }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
@@ -207,6 +208,8 @@ export interface VariantAxisLite { name: string; options: string[] }
 export interface ComponentSetLite { id: string; name: string; axes: VariantAxisLite[] }
 
 export interface NodeLite {
+  // DERIVED only (store/masters.ts), never in a document: a copy of a master page's node drawn on a page that applies it.
+  fromMaster?: boolean;
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
@@ -994,7 +997,7 @@ export function fromDocument(doc: Document): SceneState {
   for (const [id, c] of Object.entries(doc.components)) components[id] = toComponentLite(c);
   return {
     id: doc.id, name: doc.name, schemaVersion: doc.schemaVersion,
-    pages: doc.pages.map((p) => ({ id: p.id, name: p.name })), nodes, components,
+    pages: doc.pages.map((p) => ({ id: p.id, name: p.name, ...(p.isMaster ? { isMaster: true } : {}), ...(p.masterId ? { masterId: p.masterId } : {}) })), nodes, components,
     componentSets: Object.fromEntries(Object.entries(doc.componentSets).map(([id, c]) => [id, toComponentSetLite(c)])),
     flows: Object.fromEntries(Object.entries(doc.flows).map(([id, f]) => [id, toFlowLite(f)])),
     transitions: Object.fromEntries(Object.entries(doc.transitions).map(([id, t]) => [id, toTransitionLite(t)])),

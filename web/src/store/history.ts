@@ -9,6 +9,7 @@ import { isValidCollection, isValidVariable, withAliases } from "./variables";
 import { isValidFont, isValidTextStyleDef } from "./typography";
 import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer, renameChoice, reverseRenames } from "./components";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
+import { deletePageAllowed, masterFieldsValid, pageOf, updatePageAllowed } from "./masters";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
 //
@@ -169,9 +170,21 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // page or by a NODE: parentExists answers "yes" for both, and the
       // collision with a node counts as much as that with a page (ErrPageExists).
       if (!page || page.id === "" || parentExists(scene, page.id)) return null;
+      if (!masterFieldsValid(scene.pages, pageOf(page))) return null; // ErrBadMaster
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "deletePage", value: { id: page.id } },
+      })];
+    }
+    // The inverse of an upsert is the previous page. null when applyOp would reject the op.
+    case "updatePage": {
+      const page = op.kind.value.page;
+      if (!page || page.id === "") return null;
+      const prev = scene.pages.find((p) => p.id === page.id);
+      if (!prev || !updatePageAllowed(scene.pages, pageOf(page))) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "updatePage", value: { page: { id: prev.id, name: prev.name, isMaster: prev.isMaster === true, masterId: prev.masterId ?? "" } } },
       })];
     }
     case "deletePage": {
@@ -179,7 +192,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const page = scene.pages.find((p) => p.id === id);
       // Nonexistent page (ErrPageNotFound) or LAST page (ErrLastPage): in
       // both cases applyOp leaves the scene unchanged.
-      if (!page || scene.pages.length === 1) return null;
+      if (!page || !deletePageAllowed(scene.pages, id)) return null;
       // First the page, then every node the cascade is about to take away. I use
       // the PRE-apply `scene` that invertOp receives to enumerate those nodes with the
       // SAME visit as applyDeletePage (childrenOf for the page roots,
@@ -190,7 +203,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // half done, worse than an undo that cannot be done.
       const ops: Op[] = [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
-        kind: { case: "createPage", value: { page: { id: page.id, name: page.name } } },
+        kind: { case: "createPage", value: { page: { id: page.id, name: page.name, isMaster: page.isMaster === true, masterId: page.masterId ?? "" } } },
       })];
       const gone = new Set<string>();
       for (const root of childrenOf(scene, id)) {

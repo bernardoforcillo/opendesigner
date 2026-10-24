@@ -62,7 +62,8 @@ Multi-page documents, long text and print output. Already there: pages, layout g
 
 Pages and structure
 - [ ] Page sizes and presets (A4, Letter, custom), facing pages and spreads, page numbering
-- [ ] Master pages (parent pages) with page-number and section markers; overrides per page
+- [x] Master pages: template pages drawn behind the pages that apply them, `<#>` page-number token, editor, MCP (`update_page`), export; see docs/master-pages.md
+- [ ] Master pages: overrides per page, left/right masters, a master based on another, section markers
 - [ ] Pages panel: reorder, duplicate, insert, sections with their own numbering
 - [ ] Margins, columns and gutters per page; bleed and slug areas; guides per page / spread
 - [ ] Layers shared across pages

@@ -253,6 +253,43 @@ func TestTextAndPagesAndComponents(t *testing.T) {
 	}
 }
 
+// TestMasterPages covers create_page(isMaster) and update_page.
+func TestMasterPages(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	m, err := sess.CreatePage(ctx, odmcp.CreatePageInput{Name: "A-Master", IsMaster: true})
+	if err != nil {
+		t.Fatalf("CreatePage master: %v", err)
+	}
+	apply := m.PageId
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: "page1", MasterId: &apply}); err != nil {
+		t.Fatalf("UpdatePage apply: %v", err)
+	}
+	pages, _ := sess.ListPages(ctx, struct{}{})
+	for _, p := range pages.Pages {
+		if p.Id == "page1" && p.MasterId != apply {
+			t.Fatalf("page1 = %+v, want master %s", p, apply)
+		}
+		if p.Id == apply && (!p.IsMaster || p.Name != "A-Master") {
+			t.Fatalf("master = %+v", p)
+		}
+	}
+	// A master in use cannot be deleted: the hub rejects it.
+	if _, err := sess.DeletePage(ctx, odmcp.PageIdInput{Id: apply}); err == nil {
+		t.Fatal("deleting a master in use should fail")
+	}
+	none := ""
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: "page1", MasterId: &none}); err != nil {
+		t.Fatalf("UpdatePage detach: %v", err)
+	}
+	if _, err := sess.DeletePage(ctx, odmcp.PageIdInput{Id: apply}); err != nil {
+		t.Fatalf("delete of a detached master: %v", err)
+	}
+}
+
 func hasPage(pages []odmcp.PageView, id, name string) bool {
 	for _, p := range pages {
 		if p.Id == id && p.Name == name {

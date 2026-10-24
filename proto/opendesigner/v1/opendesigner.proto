@@ -540,7 +540,16 @@ message LayoutGrid {
   Color color = 6;    // tint of the overlay (alpha included)
 }
 
-message Page { string id = 1; string name = 2; }
+// A page. A MASTER page (is_master) is a template: its nodes are drawn behind the nodes of every
+// page that applies it (master_id), they cannot be selected from those pages, and a text with the
+// token "<#>" shows the page's number there. A master cannot apply another master, and a document
+// always keeps at least one page that is not a master.
+message Page {
+  string id = 1;
+  string name = 2;
+  bool is_master = 3;
+  string master_id = 4; // a master page's id, or empty
+}
 
 // ---------- typography ----------
 // A FONT FACE is an uploaded font file: one weight/style of one family. The bytes
@@ -768,6 +777,8 @@ message CreatePage { Page page = 1; }
 // has nowhere to create a node.
 message DeletePage { string id = 1; }
 message RenamePage { string id = 1; string name = 2; }
+// ABSOLUTE upsert of an existing page's name / is_master / master_id (the inverse is the previous page).
+message UpdatePage { Page page = 1; }
 
 // op 16 (M4): registers an EXISTING subtree (root root_node_id) as the master
 // of a component. It copies nothing: the master stays where it is in `nodes`,
@@ -836,6 +847,7 @@ message Op {
     SetInstanceProps    set_instance_props    = 38; // an instance's property values and variant choice
     SetComment          set_comment           = 39; // comments — upsert of a comment
     DeleteComment       delete_comment        = 40;
+    UpdatePage          update_page           = 41; // master pages — a page's name, master flag and applied master
   }
 }
 // A comment pinned on the canvas. A THREAD is a root comment (parent_id empty) plus its

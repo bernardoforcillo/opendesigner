@@ -3,7 +3,7 @@ import { useScene } from "../store/store";
 import { fontString } from "../renderer/text";
 import { assetUrl } from "../rpc/assets";
 import type { ImageSource } from "../renderer/canvasRenderer";
-import type { NodeLite } from "../store/types";
+import type { NodeLite, SceneState } from "../store/types";
 import { NodeMap } from "../store/nodeMap";
 import { isReachableFrom } from "../store/tree";
 import { exportRegion, type ExportRegion, type ExportScope } from "./region";
@@ -88,6 +88,12 @@ export function exportFileName(docName: string, req: ExportRequest): string {
   const scope = req.scope === "selection" ? "-selection" : "";
   const scale = req.format === "png" && req.scale !== 1 ? `@${req.scale}x` : "";
   return `${base}${scope}${scale}.${req.format}`;
+}
+
+/** `scene` reduced to the nodes that hang from page `pageId` (master copies included). */
+function onPage(scene: SceneState, pageId: string): SceneState {
+  const own = [...scene.nodes.values()].filter((n) => isReachableFrom(scene, n.id, pageId));
+  return { ...scene, nodes: NodeMap.from(own.map((n) => [n.id, n] as const)) };
 }
 
 /**
@@ -342,10 +348,12 @@ function svgMarkup(region: ExportRegion, measure: MeasureText, assets: ResolvedA
  * produces no op. It is the only function of the app that only reads the scene.
  */
 export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Promise<boolean> {
-  const { scene: raw, selection } = useScene.getState();
+  const { scene: raw, selection, currentPageId } = useScene.getState();
   if (!raw) return false;
-  // What is exported is what is drawn: variables resolved for each node's active mode.
-  const scene = resolveScene(raw);
+  // What is exported is what is drawn: variables resolved for each node's active mode, the
+  // master page's content in place, and only the page on screen.
+  const resolved = resolveScene(raw);
+  const scene = onPage(resolved, currentPageId ?? resolved.pages[0]?.id ?? "");
 
   const createCanvas = deps.createCanvas ?? defaultCanvas;
   try {
@@ -414,10 +422,10 @@ export async function runDocumentExport(
   try {
     const measure = deps.measure ?? canvasMeasure(deps.createCanvas ?? defaultCanvas);
     const pages: (EpubPage & { region: ExportRegion })[] = [];
-    for (const page of scene.pages) {
-      const own = [...scene.nodes.values()].filter((n) => isReachableFrom(scene, n.id, page.id));
-      const sub = { ...scene, nodes: NodeMap.from(own.map((n) => [n.id, n] as const)) };
-      const region = exportRegion(sub, [], "page", measure);
+    // Master pages are templates, not pages of the output: their content already shows through
+    // the pages that apply them.
+    for (const page of scene.pages.filter((p) => !p.isMaster)) {
+      const region = exportRegion(onPage(scene, page.id), [], "page", measure);
       if (region) pages.push({ name: page.name, svg: "", width: region.bounds.width, height: region.bounds.height, region });
     }
     if (pages.length === 0) {

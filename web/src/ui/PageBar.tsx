@@ -1,8 +1,9 @@
-import { useEffect, useRef, useState } from "react";
+import { Fragment, useEffect, useRef, useState } from "react";
 import { Dialog, DialogTrigger, Popover } from "react-aria-components";
 import { Button, Icon, IconButton, cls } from "./ds";
 import { useScene } from "../store/store";
-import { makeCreatePageOp, makeDeletePageOp, makeRenamePageOp, uuid } from "../tools/ops";
+import { makeCreatePageWithMasterOp, makeDeletePageOp, makeRenamePageOp, makeUpdatePageOp, uuid } from "../tools/ops";
+import { regularPages } from "../store/masters";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
 // PAGE SELECTOR (nesting track, client part). The canvas shows ONE
@@ -23,10 +24,10 @@ import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 // One op = one gesture = one send over the network (the M1b brief's rule, the same one
 // the tools and LayersPanel follow): even a single page action goes through
 // beginGesture/endGesture, so it travels on the wire like any other change.
-function submit(op: Op): void {
+function submit(...ops: Op[]): void {
   const store = useScene.getState();
   store.beginGesture();
-  store.endGesture([op]);
+  store.endGesture(ops);
 }
 
 const RENAME_LABEL = "Page name";
@@ -113,21 +114,58 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
   const current = pages.find((p) => p.id === currentPageId) ?? pages[0];
   const pageLabel = (name: string) => (name.trim() !== "" ? name : "Unnamed page");
 
+  const masters = pages.filter((p) => p.isMaster);
+  const normal = pages.filter((p) => !p.isMaster);
+
   function createPage() {
     // id known BEFORE the submit: we move onto it right away, without waiting for
     // the echo (the op was already applied optimistically by endGesture).
+    // A new page applies the master of the page it is created from.
     const id = uuid();
-    submit(makeCreatePageOp(id, `Page ${pages.length + 1}`));
+    submit(makeCreatePageWithMasterOp(id, `Page ${normal.length + 1}`, { masterId: current && !current.isMaster ? current.masterId : undefined }));
     useScene.getState().setCurrentPage(id);
     setOpen(false);
   }
 
-  // The cascade, the refusal of the last page etc. belong to the core: here we only avoid
-  // SENDING an op already known to be rejected (the last page cannot be
-  // deleted), which is also why the buttons are disabled below.
+  // Masters are named A-Master, B-Master... and opened for editing right away.
+  function createMaster() {
+    const id = uuid();
+    const letter = String.fromCharCode(65 + (masters.length % 26));
+    submit(makeCreatePageWithMasterOp(id, `${letter}-Master`, { isMaster: true }));
+    useScene.getState().setCurrentPage(id);
+    setOpen(false);
+  }
+
+  // The refusal of the last regular page etc. belongs to the core: here we only avoid
+  // SENDING an op already known to be rejected, which is also why the buttons are
+  // disabled below. A master that pages apply is detached from them in the SAME gesture
+  // (one undo brings everything back).
+  const canDelete = (id: string | null) => id !== null && pages.some((p) => p.id === id) && regularPages(pages, id).length > 0;
   function deletePage(id: string | null) {
-    if (pages.length <= 1 || id === null) return;
-    submit(makeDeletePageOp(id));
+    if (!canDelete(id) || id === null) return;
+    const detach = pages
+      .filter((p) => p.masterId === id)
+      .map((p) => makeUpdatePageOp({ id: p.id, name: p.name }));
+    submit(...detach, makeDeletePageOp(id));
+  }
+
+  function setMaster(pageId: string, masterId: string) {
+    const page = pages.find((p) => p.id === pageId);
+    if (!page || page.isMaster || (page.masterId ?? "") === masterId) return;
+    submit(makeUpdatePageOp({ id: page.id, name: page.name, masterId }));
+  }
+
+  // A page becomes a master (or a master a normal page) in place, content included.
+  // Pages applying a master are detached first when it stops being one.
+  function toggleMaster(pageId: string) {
+    const page = pages.find((p) => p.id === pageId);
+    if (!page) return;
+    if (page.isMaster) {
+      const detach = pages.filter((p) => p.masterId === pageId).map((p) => makeUpdatePageOp({ id: p.id, name: p.name }));
+      submit(...detach, makeUpdatePageOp({ id: page.id, name: page.name }));
+    } else if (regularPages(pages, pageId).length > 0) {
+      submit(makeUpdatePageOp({ id: page.id, name: page.name, isMaster: true }));
+    }
   }
 
   function commitRename(id: string, raw: string) {
@@ -185,10 +223,14 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
           >
             <Dialog aria-label="Page list" className="flex flex-col outline-none">
               <ul className="flex max-h-64 flex-col gap-px overflow-auto p-1">
-                {pages.map((p) => {
+                {[...normal, ...masters].map((p, at) => {
                   const active = p.id === currentPageId;
                   return (
-                    <li key={p.id} className="group/page flex items-center gap-0.5">
+                    <Fragment key={p.id}>
+                    {p.isMaster && at === normal.length && (
+                      <li aria-hidden="true" className="px-2 pb-0.5 pt-1.5 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Masters</li>
+                    )}
+                    <li className="group/page flex items-center gap-0.5">
                       <Button
                         aria-current={active ? "page" : undefined}
                         onPress={() => {
@@ -203,6 +245,9 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                       >
                         <Icon name="check" size={13} className={active ? "shrink-0" : "shrink-0 opacity-0"} />
                         <span className="min-w-0 flex-1 truncate">{pageLabel(p.name)}</span>
+                        {p.masterId && (
+                          <span className="shrink-0 text-[11px] text-fg-subtle">{pages.find((m) => m.id === p.masterId)?.name.slice(0, 1) ?? ""}</span>
+                        )}
                       </Button>
                       <span className="flex shrink-0 opacity-0 transition-opacity focus-within:opacity-100 group-hover/page:opacity-100">
                         <IconButton
@@ -221,14 +266,44 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                           icon="trash"
                           label={`Delete ${pageLabel(p.name)}`}
                           size={24}
-                          isDisabled={pages.length <= 1}
+                          isDisabled={!canDelete(p.id)}
                           onPress={() => deletePage(p.id)}
                         />
                       </span>
                     </li>
+                    </Fragment>
                   );
                 })}
               </ul>
+              {current && (
+                <div className="flex flex-col gap-1 border-t border-line p-2 text-[12px] text-fg-muted">
+                  {current.isMaster ? (
+                    <span>Master page: its content is drawn behind the pages that apply it. Use <code>&lt;#&gt;</code> in a text for the page number.</span>
+                  ) : (
+                    <label className="flex items-center gap-2">
+                      <span className="shrink-0">Master</span>
+                      <select
+                        aria-label="Master for this page"
+                        value={current.masterId ?? ""}
+                        onChange={(e) => setMaster(current.id, e.target.value)}
+                        className="h-7 min-w-0 flex-1 rounded-md border border-line bg-surface px-1 text-[13px] text-fg"
+                      >
+                        <option value="">None</option>
+                        {masters.map((m) => (
+                          <option key={m.id} value={m.id}>{pageLabel(m.name)}</option>
+                        ))}
+                      </select>
+                    </label>
+                  )}
+                  <Button
+                    onPress={() => toggleMaster(current.id)}
+                    isDisabled={!current.isMaster && regularPages(pages, current.id).length === 0}
+                    className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[disabled]:opacity-50 data-[focus-visible]:shadow-[var(--ring)]"
+                  >
+                    {current.isMaster ? "Convert to a normal page" : "Convert to a master"}
+                  </Button>
+                </div>
+              )}
               <div className="border-t border-line p-1">
                 <Button
                   onPress={createPage}
@@ -236,6 +311,13 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
                 >
                   <Icon name="plus" size={13} />
                   Add a page
+                </Button>
+                <Button
+                  onPress={createMaster}
+                  className="flex h-7 w-full items-center gap-2 rounded-md px-2 text-left text-[13px] text-fg-muted outline-none hover:bg-surface-3 hover:text-fg data-[focus-visible]:shadow-[var(--ring)]"
+                >
+                  <Icon name="plus" size={13} />
+                  Add a master page
                 </Button>
               </div>
             </Dialog>
@@ -249,7 +331,7 @@ export function PageBar({ compact = false }: { compact?: boolean } = {}) {
           label="Delete page"
           // The LAST page cannot be deleted (ErrLastPage in the core): the button is
           // disabled instead of sending an op known to be rejected.
-          isDisabled={pages.length <= 1}
+          isDisabled={!canDelete(currentPageId)}
           onPress={() => deletePage(currentPageId)}
         />
       )}

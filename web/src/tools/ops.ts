@@ -120,6 +120,16 @@ export function makeCreatePageOp(id: string, name: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: { id, name } } } });
 }
 
+/** A master page (a template other pages apply), or a page that already applies a master. */
+export function makeCreatePageWithMasterOp(id: string, name: string, opts: { isMaster?: boolean; masterId?: string }): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: { id, name, isMaster: opts.isMaster === true, masterId: opts.masterId ?? "" } } } });
+}
+
+/** Absolute upsert of a page's name, master flag and applied master. */
+export function makeUpdatePageOp(p: { id: string; name: string; isMaster?: boolean; masterId?: string }): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "updatePage", value: { page: { id: p.id, name: p.name, isMaster: p.isMaster === true, masterId: p.masterId ?? "" } } } });
+}
+
 export function makeDeletePageOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deletePage", value: { id } } });
 }

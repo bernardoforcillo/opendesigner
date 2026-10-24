@@ -3,6 +3,7 @@ import { VariableType } from "../gen/opendesigner/v1/opendesigner_pb";
 import { recordDelta } from "./sceneDelta";
 import { deriveBooleans } from "./booleans";
 import { deriveConnectors } from "./connectors";
+import { deriveMasters } from "./masters";
 import { taggedOf } from "./tagged";
 import { resolveTextStyleNode } from "./typography";
 import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "./types";
@@ -277,9 +278,9 @@ const resolved = new WeakMap<SceneState, SceneState>();
  * variables, which is every document that does not use the feature.
  */
 export function resolveScene(raw: SceneState): SceneState {
-  // Live boolean groups first (store/booleans.ts), then connectors (store/connectors.ts), then the
+  // Master pages' copies first (so the passes below also see them), then live boolean groups (store/booleans.ts), then connectors (store/connectors.ts), then the
   // variables over the result.
-  const scene = deriveConnectors(deriveBooleans(raw));
+  const scene = deriveConnectors(deriveBooleans(deriveMasters(raw)));
   if (Object.keys(scene.variables).length === 0 && Object.keys(scene.textStyles).length === 0) return scene;
   const hit = resolved.get(scene);
   if (hit) return hit;

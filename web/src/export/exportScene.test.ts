@@ -555,3 +555,38 @@ describe("runDocumentExport", () => {
     expect(d.saved).toHaveLength(0);
   });
 });
+
+describe("master pages in the export", () => {
+  it("draws a master's content on each page that applies it and skips the master itself", async () => {
+    const s = sceneWith("Book",
+      node({ id: "body", parentId: "page1", x: 100, y: 100, width: 20, height: 20 }),
+      node({ id: "band", parentId: "m1", x: 0, y: 0, width: 400, height: 10 }),
+      node({ id: "n", parentId: "m1", kind: "text", x: 0, y: 20, width: 100, height: 20, text: { content: "No. <#>", style: { fontFamily: "", fontSize: 16, fontWeight: "", lineHeight: 0, align: "left" } } }),
+      node({ id: "b2", parentId: "p2", x: 0, y: 0, width: 5, height: 5 }),
+    );
+    s.pages = [{ id: "page1", name: "One", masterId: "m1" }, { id: "m1", name: "A-Master", isMaster: true }, { id: "p2", name: "Two", masterId: "m1" }];
+    install(s);
+    const printed: { svg: string; width: number }[][] = [];
+    expect(await runDocumentExport("pdf", { measure: (t) => t.length * 10, printPages: (p) => { printed.push(p); } })).toBe(true);
+    // Two output pages (the master is not one), each with the master's band at width 400.
+    expect(printed[0]).toHaveLength(2);
+    expect(printed[0].every((p) => p.width === 400)).toBe(true);
+    expect(printed[0][0].svg).toContain("No. 1");
+    expect(printed[0][1].svg).toContain("No. 2");
+  });
+
+  it("exports only the page on screen, master content included", async () => {
+    const s = sceneWith("Book",
+      node({ id: "a", parentId: "page1", width: 10, height: 10 }),
+      node({ id: "other", parentId: "p2", x: 500, y: 500, width: 10, height: 10 }),
+    );
+    s.pages = [{ id: "page1", name: "One" }, { id: "p2", name: "Two" }];
+    install(s);
+    useScene.setState({ currentPageId: "page1" });
+    const d = deps();
+    await runExport({ format: "svg", scope: "page", scale: 1 }, d);
+    const svg = await d.saved[0].blob.text();
+    expect(svg).toContain('width="10"');
+    expect(svg).not.toContain("510");
+  });
+});

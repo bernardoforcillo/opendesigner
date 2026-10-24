@@ -14,6 +14,7 @@ import { arePaintsValid } from "./paints";
 import { isValidComment, withoutComment } from "./comments";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
+import { deletePageAllowed, masterFieldsValid, pageOf, updatePageAllowed } from "./masters";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
 // nil-safe getters (`p.GetX()` on a nil *Node returns the field's zero),
@@ -358,7 +359,17 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (!page || page.id === "" || parentExists(state, page.id)) return state;
       // At the END, like Go: the position in the list is the order of the page
       // selector, not a property of the document.
-      return { ...state, pages: [...state.pages, { id: page.id, name: page.name }] };
+      const created = pageOf(page);
+      if (!masterFieldsValid(state.pages, created)) return state; // ErrBadMaster
+      return { ...state, pages: [...state.pages, created] };
+    }
+    // Absolute upsert of a page's name / master flag / applied master. Parity with core.applyUpdatePage.
+    case "updatePage": {
+      const page = op.kind.value.page;
+      if (!page || page.id === "") return state;
+      const next = pageOf(page);
+      if (!updatePageAllowed(state.pages, next)) return state;
+      return { ...state, pages: state.pages.map((p) => (p.id === next.id ? next : p)) };
     }
     // Deletes the page AND ALL the nodes hanging under it. Same cascade as
     // deleteNode brought to the root: what is not reachable from any
@@ -368,9 +379,9 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const { id } = op.kind.value;
       const i = state.pages.findIndex((p) => p.id === id);
       if (i < 0) return state;                    // ErrPageNotFound
-      // The LAST page is not deleted: without pages no valid parent
-      // exists, so no node could be created anymore. ErrLastPage.
-      if (state.pages.length === 1) return state;
+      // The LAST regular page is not deleted (without pages no valid parent exists), and a master
+      // that pages still apply is not deleted either: ErrLastPage / ErrMasterInUse.
+      if (!deletePageAllowed(state.pages, id)) return state;
       const nodes = state.nodes.edit();
       const gone = new Set<string>();
       for (const root of childrenOf(state, id)) {

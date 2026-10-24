@@ -10,6 +10,7 @@ import (
 	"github.com/bernardoforcillo/opendesigner/internal/core"
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -501,7 +502,9 @@ func (s *Session) ReparentNode(ctx context.Context, in ReparentNodeInput) (SeqOu
 // ---------------------------------------------------------------------------
 
 type CreatePageInput struct {
-	Name string `json:"name,omitempty"`
+	Name     string `json:"name,omitempty"`
+	IsMaster bool   `json:"isMaster,omitempty" jsonschema:"create a MASTER page (a template drawn behind the pages that apply it)"`
+	MasterId string `json:"masterId,omitempty" jsonschema:"id of a master page this page applies"`
 }
 
 type CreatePageOutput struct {
@@ -513,7 +516,7 @@ type CreatePageOutput struct {
 func (s *Session) CreatePage(ctx context.Context, in CreatePageInput) (CreatePageOutput, error) {
 	id := uuid.NewString()
 	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreatePage{CreatePage: &opendesignerv1.CreatePage{
-		Page: &opendesignerv1.Page{Id: id, Name: in.Name},
+		Page: &opendesignerv1.Page{Id: id, Name: in.Name, IsMaster: in.IsMaster, MasterId: in.MasterId},
 	}}})
 	if err != nil {
 		return CreatePageOutput{}, err
@@ -543,6 +546,42 @@ type RenamePageInput struct {
 // RenamePage sets a page's name.
 func (s *Session) RenamePage(ctx context.Context, in RenamePageInput) (SeqOutput, error) {
 	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_RenamePage{RenamePage: &opendesignerv1.RenamePage{Id: in.Id, Name: in.Name}}})
+	if err != nil {
+		return SeqOutput{}, err
+	}
+	return SeqOutput{Seq: seq}, nil
+}
+
+type UpdatePageInput struct {
+	Id       string  `json:"id"`
+	Name     *string `json:"name,omitempty"`
+	IsMaster *bool   `json:"isMaster,omitempty" jsonschema:"turn the page into a master page (or back into a normal one)"`
+	MasterId *string `json:"masterId,omitempty" jsonschema:"master page this page applies; empty string detaches"`
+}
+
+// UpdatePage changes a page's name, master flag and applied master; fields left out keep their value.
+func (s *Session) UpdatePage(ctx context.Context, in UpdatePageInput) (SeqOutput, error) {
+	s.mu.Lock()
+	var cur *opendesignerv1.Page
+	for _, p := range s.doc.GetPages() {
+		if p.GetId() == in.Id {
+			cur = proto.Clone(p).(*opendesignerv1.Page)
+		}
+	}
+	s.mu.Unlock()
+	if cur == nil {
+		return SeqOutput{}, fmt.Errorf("page %q not found", in.Id)
+	}
+	if in.Name != nil {
+		cur.Name = *in.Name
+	}
+	if in.IsMaster != nil {
+		cur.IsMaster = *in.IsMaster
+	}
+	if in.MasterId != nil {
+		cur.MasterId = *in.MasterId
+	}
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_UpdatePage{UpdatePage: &opendesignerv1.UpdatePage{Page: cur}}})
 	if err != nil {
 		return SeqOutput{}, err
 	}
@@ -613,8 +652,10 @@ func (s *Session) SetInstanceOverride(ctx context.Context, in SetInstanceOverrid
 // ---------------------------------------------------------------------------
 
 type PageView struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
+	Id       string `json:"id"`
+	Name     string `json:"name"`
+	IsMaster bool   `json:"isMaster,omitempty"`
+	MasterId string `json:"masterId,omitempty"`
 }
 
 type ComponentView struct {
@@ -749,7 +790,7 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 	doc := s.doc
 	out := DocumentView{Id: doc.GetId(), Name: doc.GetName(), Seq: s.seq}
 	for _, p := range doc.GetPages() {
-		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName()})
+		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName(), IsMaster: p.GetIsMaster(), MasterId: p.GetMasterId()})
 	}
 	for id, c := range doc.GetComponents() {
 		out.Components = append(out.Components, componentView(id, c))
@@ -775,7 +816,7 @@ func (s *Session) ListPages(ctx context.Context, _ struct{}) (ListPagesOutput, e
 	defer s.mu.Unlock()
 	var out ListPagesOutput
 	for _, p := range s.doc.GetPages() {
-		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName()})
+		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName(), IsMaster: p.GetIsMaster(), MasterId: p.GetMasterId()})
 	}
 	return out, nil
 }
@@ -856,7 +897,8 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style.", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)
-	addTool(srv, "create_page", "Create a new page. Returns the new page id.", s.CreatePage)
+	addTool(srv, "create_page", "Create a new page (optionally a master page, or one that applies a master). Returns the new page id.", s.CreatePage)
+	addTool(srv, "update_page", "Change a page: turn it into a master page, apply or detach a master (masterId), or rename it. A master page is a template: its content is drawn behind every page that applies it, and a text with the token <#> shows the page number there. A master cannot apply another master; a master in use cannot be deleted or demoted.", s.UpdatePage)
 	addTool(srv, "delete_page", "Delete a page and every node under it. The last page cannot be deleted.", s.DeletePage)
 	addTool(srv, "rename_page", "Rename a page.", s.RenamePage)
 	addTool(srv, "create_component", "Register an existing node subtree as a component master. Returns the new component id.", s.CreateComponent)
