@@ -1,5 +1,6 @@
 import { describe, it, expect, beforeEach, vi } from "vitest";
-import { importPdfFile, isPdfFile, MAX_PDF_PAGES, type PdfImportDeps, type PdfRenderer } from "./importPdf";
+import { loadFixtureFonts } from "./testFonts";
+import { importPdfFile, isPdfFile, shareTextStyles, MAX_PDF_PAGES, type PdfImportDeps, type PdfRenderer } from "./importPdf";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
@@ -117,6 +118,59 @@ describe("editable import", () => {
     const { deps } = withExtract(extract);
     await importPdfFile(pdf(), deps, "image");
     expect(extract).not.toHaveBeenCalled();
+  });
+});
+
+describe("fonts and shared text styles", () => {
+  const para = (id: number, y: number) =>
+    `<text x="10" y="${y}" font-family="DejaVu Sans, sans-serif" font-size="12" font-weight="700" fill="#000">Title è ${id}</text>`;
+  const svg = `<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200">${para(1, 20)}${para(2, 60)}<text x="10" y="120" font-family="Other" font-size="30" fill="#000">Solo</text></svg>`;
+
+  async function run(fontText: string | null) {
+    const fonts = await loadFixtureFonts();
+    const bold = fonts.find((f) => /DejaVuSans-Bold/.test(f.name))!;
+    const { deps, upload } = fakeDeps(1, {
+      open: async () => ({
+        numPages: 1,
+        renderPage: async () => ({ png: new Blob(["x"], { type: "image/png" }), width: 300, height: 200 }),
+        extractPage: async () => ({ svg, warnings: [], width: 300, height: 200, fonts: [{ ...bold, text: fontText ?? bold.text }] }),
+        destroy() {},
+      }),
+    });
+    const r = await importPdfFile(pdf(), deps);
+    return { r, upload };
+  }
+
+  it("registers an embedded font that covers its text, uploaded as a font file", async () => {
+    const { r, upload } = await run(null);
+    expect(r.ok).toBe(true);
+    expect(upload).toHaveBeenCalledTimes(1);
+    expect((upload.mock.calls[0][1] as Blob).type).toBe("font/ttf");
+    const fonts = Object.values(useScene.getState().scene!.fonts);
+    expect(fonts).toEqual([expect.objectContaining({ family: "DejaVu Sans", weight: "700", style: "normal" })]);
+    expect(r.message).toContain("1 embedded font was added");
+  });
+
+  it("keeps the font by name when the subset cannot draw the text", async () => {
+    const { r, upload } = await run("日本語");
+    expect(upload).not.toHaveBeenCalled();
+    expect(Object.keys(useScene.getState().scene!.fonts)).toHaveLength(0);
+    expect(r.message).toContain("fonts matched by name only: DejaVu Sans");
+  });
+
+  it("makes a shared text style for texts that look alike, and none for a lone one", async () => {
+    await run(null);
+    const { scene } = useScene.getState();
+    const defs = Object.values(scene!.textStyles);
+    expect(defs).toHaveLength(1);
+    expect(defs[0].name).toBe("DejaVu Sans 12 Bold");
+    const texts = [...scene!.nodes.values()].filter((n) => n.kind === "text");
+    expect(texts.filter((n) => n.textStyleId === defs[0].id)).toHaveLength(2);
+    expect(texts.filter((n) => n.textStyleId === "" || n.textStyleId === undefined)).toHaveLength(1);
+  });
+
+  it("shareTextStyles leaves unique styles alone", () => {
+    expect(shareTextStyles([])).toEqual([]);
   });
 });
 

@@ -6,7 +6,10 @@ import { nextOrderKey } from "../store/orderKey";
 import { uploadAsset, type AssetRef } from "../rpc/assets";
 import { makeCreateNodeOp, makeCreatePageOp, uuid } from "../tools/ops";
 import { importSvg } from "../svg/importSvg";
-import { pdfPageToSvg } from "./pdfToSvg";
+import { describeFont, pdfPageToSvg } from "./pdfToSvg";
+import { coversText, sfntKind } from "./sfnt";
+import { makeSetFontOp, makeSetTextStyleDefOp } from "../tools/ops";
+import { toTextStyleLite, type TextStyleLite } from "../store/types";
 
 // IMPORTING A PDF (document menu → Import PDF…).
 //
@@ -32,7 +35,19 @@ export interface RenderedPage {
   height: number;
 }
 
+/** A font embedded in the PDF (a subset), as pdf.js repaired it. */
+export interface ExtractedFont {
+  /** pdf.js font id, stable across the pages of one file. */
+  id: string;
+  /** The PDF's BaseFont name, e.g. "ABCDEF+Arial-BoldMT". */
+  name: string;
+  data: Uint8Array;
+  /** The text this page draws with the font (to check the subset covers it). */
+  text: string;
+}
+
 export interface ExtractedPage {
+  fonts?: ExtractedFont[];
   /** The page described as SVG (see pdf/pdfToSvg.ts). */
   svg: string;
   warnings: string[];
@@ -66,7 +81,7 @@ export async function openWithPdfjs(data: Uint8Array): Promise<PdfRenderer> {
   const pdfjs = await import("pdfjs-dist");
   const worker = (await import("pdfjs-dist/build/pdf.worker.min.mjs?url")).default;
   pdfjs.GlobalWorkerOptions.workerSrc = worker;
-  const doc = await pdfjs.getDocument({ data }).promise;
+  const doc = await pdfjs.getDocument({ data, fontExtraProperties: true }).promise;
   return {
     numPages: doc.numPages,
     async renderPage(index) {
@@ -112,10 +127,16 @@ export async function openWithPdfjs(data: Uint8Array): Promise<PdfRenderer> {
       }
 
       const fontNames: Record<string, string> = {};
+      const fonts: ExtractedFont[] = [];
       const runs = content.items.filter((it): it is Extract<typeof it, { str: string }> => "str" in it);
       for (const name of new Set(runs.map((t) => t.fontName))) {
         try {
-          if (page.commonObjs.has(name)) fontNames[name] = String((page.commonObjs.get(name) as { name?: string }).name ?? "");
+          if (!page.commonObjs.has(name)) continue;
+          const f = page.commonObjs.get(name) as { name?: string; data?: Uint8Array; isType3Font?: boolean; missingFile?: boolean };
+          fontNames[name] = String(f.name ?? "");
+          if (f.data && !f.isType3Font && !f.missingFile) {
+            fonts.push({ id: name, name: fontNames[name], data: f.data, text: runs.filter((t) => t.fontName === name).map((t) => t.str).join("") });
+          }
         } catch { /* font not loaded: the generic family from the style is used */ }
       }
       const t = viewport.transform as [number, number, number, number, number, number];
@@ -126,7 +147,7 @@ export async function openWithPdfjs(data: Uint8Array): Promise<PdfRenderer> {
         fontNames, images,
       });
       page.cleanup();
-      return { ...res, width: viewport.width, height: viewport.height };
+      return { ...res, fonts, width: viewport.width, height: viewport.height };
     },
     destroy: () => void doc.destroy(),
   };
@@ -195,11 +216,18 @@ export async function importPdfFile(
     const done: Done[] = [];
     const notes = new Set<string>();
     let fallbacks = 0;
+    // Embedded fonts, merged over the pages (one file per id, all the text it draws).
+    const embedded = new Map<string, { name: string; data: Uint8Array; text: string }>();
     for (let i = 0; i < count; i++) {
       if (mode === "editable" && renderer.extractPage) {
         try {
           const ex = await renderer.extractPage(i);
           ex.warnings.forEach((w) => notes.add(w));
+          for (const f of ex.fonts ?? []) {
+            const have = embedded.get(f.id);
+            if (have) have.text += f.text;
+            else embedded.set(f.id, { name: f.name, data: f.data, text: f.text });
+          }
           done.push({ kind: "nodes", width: ex.width, height: ex.height, svg: ex.svg });
           continue;
         } catch {
@@ -210,6 +238,40 @@ export async function importPdfFile(
       done.push({ kind: "image", rendered, ref: await deps.upload(docId, rendered.png) });
     }
 
+    // EMBEDDED FONTS. A PDF font is a subset: it is registered as a document font only when its
+    // character map covers every character the PDF draws with it (pdf.js sometimes remaps
+    // glyphs to private codes, and then the text could not find them). Otherwise the text
+    // keeps the font's name and falls back to a system font, and the notice says so.
+    const fontOps: Op[] = [];
+    {
+      const existing = Object.values(useScene.getState().scene?.fonts ?? {});
+      const skipped: string[] = [];
+      let registered = 0;
+      for (const f of embedded.values()) {
+        const d = describeFont(f.name, "sans-serif");
+        const family = d.family.split(",")[0].trim();
+        const weight = d.bold ? "700" : "400";
+        const style = d.italic ? "italic" : "normal";
+        const kind = sfntKind(f.data);
+        if (!kind || !coversText(f.data, f.text)) { skipped.push(family); continue; }
+        if (existing.some((x) => x.family === family && x.weight === weight && x.style === style)) {
+          skipped.push(`${family} (already in the document)`);
+          continue;
+        }
+        try {
+          const buf = new Uint8Array(f.data).buffer as ArrayBuffer;
+          const ref = await deps.upload(docId, new Blob([buf], { type: kind === "otf" ? "font/otf" : "font/ttf" }));
+          fontOps.push(makeSetFontOp({ id: uuid(), family, weight, style, assetHash: ref.hash }));
+          existing.push({ id: "", family, weight, style, assetHash: ref.hash });
+          registered++;
+        } catch {
+          skipped.push(family);
+        }
+      }
+      if (registered > 0) notes.add(`${registered} embedded ${registered === 1 ? "font was" : "fonts were"} added (subsets: they only have the characters the PDF uses; check the licence)`);
+      if (skipped.length > 0) notes.add(`fonts matched by name only: ${[...new Set(skipped)].join(", ")}`);
+    }
+
     // The store is read NOW: the user kept working while pages rendered.
     const store = useScene.getState();
     const scene = store.scene;
@@ -218,7 +280,7 @@ export async function importPdfFile(
     }
 
     const name = baseName(file.name);
-    const ops: Op[] = [];
+    const ops: Op[] = [...fontOps];
     const pageIds: string[] = [];
     const key = nextOrderKey(scene);
     for (const [i, d] of done.entries()) {
@@ -269,6 +331,7 @@ export async function importPdfFile(
         );
       }
     }
+    ops.unshift(...shareTextStyles(ops));
     // The store may have changed during the uploads above.
     if (useScene.getState().gesture || useScene.getState().scene?.id !== docId) {
       return { ok: false, message: "The document changed during the import: try again.", pages: 0 };
@@ -288,6 +351,39 @@ export async function importPdfFile(
   } finally {
     renderer?.destroy();
   }
+}
+
+/**
+ * SHARED TEXT STYLES from the imported text: texts that look the same (family, size, weight,
+ * italic, line height, alignment) and appear at least twice share one style, so editing it
+ * restyles all of them. Returns the style ops to put before the nodes; the nodes are updated
+ * in place to point at their style.
+ */
+export function shareTextStyles(ops: readonly Op[]): Op[] {
+  const groups = new Map<string, { style: TextStyleLite; nodes: { textStyleId: string }[] }>();
+  for (const op of ops) {
+    const node = op.kind.case === "createNode" ? op.kind.value.node : undefined;
+    if (!node || node.shape.case !== "text" || !node.shape.value.style) continue;
+    const style = toTextStyleLite(node.shape.value.style);
+    const key = JSON.stringify([style.fontFamily, style.fontSize, style.fontWeight, style.lineHeight, style.align, style.italic === true]);
+    const g = groups.get(key) ?? { style, nodes: [] };
+    g.nodes.push(node);
+    groups.set(key, g);
+  }
+  const used = new Map<string, number>();
+  const out: Op[] = [];
+  // Biggest groups first: they get the plainest names.
+  for (const g of [...groups.values()].sort((a, b) => b.nodes.length - a.nodes.length)) {
+    if (g.nodes.length < 2) continue;
+    const family = g.style.fontFamily.split(",")[0].trim() || "Text";
+    const base = `${family} ${Math.round(g.style.fontSize * 10) / 10}${g.style.fontWeight === "700" ? " Bold" : ""}${g.style.italic ? " Italic" : ""}`;
+    const n = (used.get(base) ?? 0) + 1;
+    used.set(base, n);
+    const id = uuid();
+    out.push(makeSetTextStyleDefOp({ id, name: n === 1 ? base : `${base} (${n})`, style: g.style }));
+    for (const node of g.nodes) node.textStyleId = id;
+  }
+  return out;
 }
 
 /** The file picker for PDFs. */

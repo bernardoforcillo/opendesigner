@@ -97,7 +97,11 @@ export function describeFont(name: string | undefined, fallbackFamily: string): 
   const clean = (name ?? "").replace(/^[A-Z]{6}\+/, "");
   const bold = /bold|black|heavy|semibold|demi/i.test(clean);
   const italic = /italic|oblique/i.test(clean);
-  const base = clean.split(/[-,]/)[0].replace(/(MT|PS)$/, "").replace(/([a-z])([A-Z])/g, "$1 $2").trim();
+  // Word breaks only at known words ("DejaVuSans" -> "DejaVu Sans", "TimesNewRoman" -> "Times New Roman"):
+  // splitting at every capital would turn "DejaVu" into "Deja Vu".
+  const base = clean.split(/[-,]/)[0].replace(/(MT|PS)$/, "")
+    .replace(/([a-z])(Sans|Serif|Mono|Condensed|Narrow|Display|Slab|Rounded|New|Roman|Black|Light|Text|Code|Pro)/g, "$1 $2")
+    .replace(/([a-z])(Roman)/g, "$1 $2").trim();
   const generic = /mono|courier/i.test(clean) ? "monospace" : /times|serif(?!.*sans)|georgia|garamond|minion/i.test(clean) ? "serif" : fallbackFamily || "sans-serif";
   return { family: base ? `${base}, ${generic}` : generic, bold, italic };
 }
@@ -272,19 +276,59 @@ export function pdfPageToSvg(page: PdfPageInput): PdfSvgResult {
   // by order -- only when the counts agree, otherwise every run is black rather than wrong.
   const runs = page.text.filter((t) => t.str.trim() !== "");
   const colorsOk = fillColors.length === runs.length;
-  const rendered = runs.map((t, idx) => {
+  // Each run in device space. Horizontal runs are then grouped into BLOCKS (consecutive lines of
+  // one paragraph / label): same font, size and colour, a steady line step, and a shared left,
+  // right or centre edge. A block becomes ONE text node with a line per row.
+  interface Placed { t: PdfTextRun; idx: number; x: number; y: number; w: number; size: number; rot: number; color: string }
+  const scaleV = Math.hypot(V[0], V[1]) || 1;
+  const placed: Placed[] = runs.map((t, idx) => {
     const m = mul(V, t.transform as unknown as Matrix);
-    const size = Math.hypot(m[0], m[1]);
-    if (size < 0.01) return "";
-    const font = describeFont(page.fontNames?.[t.fontName], "sans-serif");
-    const color = colorsOk ? fillColors[idx] : "#000000";
-    const rot = (Math.atan2(m[1], m[0]) * 180) / Math.PI;
-    const place = Math.abs(rot) < 0.01 ? `x="${r(m[4])}" y="${r(m[5])}"` : `x="0" y="0" transform="translate(${r(m[4])} ${r(m[5])}) rotate(${r(rot)})"`;
-    return (
-      `<text ${place} font-family="${esc(font.family)}" font-size="${r(size)}"` +
-        `${font.bold ? ' font-weight="700"' : ""}${font.italic ? ' font-style="italic"' : ""} fill="${color}" xml:space="preserve">${esc(t.str)}</text>`
-    );
-  });
+    return {
+      t, idx, x: m[4], y: m[5], w: t.width * scaleV, size: Math.hypot(m[0], m[1]),
+      rot: (Math.atan2(m[1], m[0]) * 180) / Math.PI, color: colorsOk ? fillColors[idx] : "#000000",
+    };
+  }).filter((p) => p.size >= 0.01);
+
+  type Align = "start" | "middle" | "end";
+  const edge = (p: Placed, a: Align) => (a === "start" ? p.x : a === "middle" ? p.x + p.w / 2 : p.x + p.w);
+  const rendered: string[] = runs.map(() => "");
+  let at = 0;
+  while (at < placed.length) {
+    const first = placed[at];
+    const block: Placed[] = [first];
+    let aligns: Align[] = ["start", "middle", "end"];
+    if (Math.abs(first.rot) < 0.01) {
+      for (let j = at + 1; j < placed.length; j++) {
+        const prev = block[block.length - 1], next = placed[j];
+        const tol = Math.max(1.5, first.size * 0.15);
+        const dy = next.y - prev.y;
+        const step = block.length > 1 ? prev.y - block[block.length - 2].y : 0;
+        const stepOk = dy > first.size * 0.9 && dy < first.size * 2.4 && (step === 0 || Math.abs(dy - step) <= Math.max(1, step * 0.2));
+        const keep = aligns.filter((a) => Math.abs(edge(next, a) - edge(first, a)) <= tol);
+        if (Math.abs(next.rot) >= 0.01 || next.t.fontName !== first.t.fontName || Math.abs(next.size - first.size) > 0.01 ||
+            next.color !== first.color || !stepOk || keep.length === 0) break;
+        aligns = keep;
+        block.push(next);
+      }
+    }
+    // A single line keeps its own left edge; a block uses the edge its lines share.
+    const align: Align = block.length === 1 ? "start" : aligns[0];
+    const font = describeFont(page.fontNames?.[first.t.fontName], "sans-serif");
+    const anchorX = align === "start" ? Math.min(...block.map((p) => p.x)) : align === "middle"
+      ? block.reduce((n, p) => n + edge(p, "middle"), 0) / block.length
+      : Math.max(...block.map((p) => edge(p, "end")));
+    const attrs =
+      `font-family="${esc(font.family)}" font-size="${r(first.size)}"` +
+      `${font.bold ? ' font-weight="700"' : ""}${font.italic ? ' font-style="italic"' : ""} fill="${first.color}"` +
+      `${align !== "start" ? ` text-anchor="${align}"` : ""} xml:space="preserve"`;
+    const rotated = Math.abs(first.rot) >= 0.01;
+    const place = rotated ? `x="0" y="0" transform="translate(${r(first.x)} ${r(first.y)}) rotate(${r(first.rot)})"` : `x="${r(anchorX)}" y="${r(first.y)}"`;
+    const body = block.length === 1
+      ? esc(first.t.str)
+      : block.map((p) => `<tspan x="${r(anchorX)}" y="${r(p.y)}">${esc(p.t.str.replace(/\s+$/, ""))}</tspan>`).join("");
+    rendered[first.idx] = `<text ${place} ${attrs}>${body}</text>`;
+    at += block.length;
+  }
   // Counts agree: each run sits where its showText was. Otherwise they go on top.
   const body = colorsOk
     ? out.map((e) => e.replace(/^@@T(\d+)@@$/, (_m, n) => rendered[Number(n)] ?? "")).join("")

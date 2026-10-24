@@ -103,6 +103,48 @@ describe("pdfPageToSvg", () => {
   });
 });
 
+describe("text blocks", () => {
+  const run = (str: string, x: number, y: number, extra: Partial<{ width: number; fontName: string }> = {}) => ({
+    str, transform: [12, 0, 0, 12, x, y], width: extra.width ?? 100, fontName: extra.fontName ?? "f",
+  });
+  const showText = (n: number): [number, unknown[]][] => Array.from({ length: n }, () => [OPS.showText, []]);
+
+  it("merges lines with a steady step and a shared left edge into one text with a row each", () => {
+    const { svg } = pdfPageToSvg(page(showText(3), { text: [run("one", 30, 100, { width: 80 }), run("two", 30, 86, { width: 90 }), run("three", 30, 72, { width: 40 })] }));
+    expect(svg.match(/<text/g)).toHaveLength(1);
+    expect(svg.match(/<tspan/g)).toHaveLength(3);
+    expect(svg).toContain('<tspan x="30" y="100">one</tspan><tspan x="30" y="114">two</tspan>');
+    expect(svg).not.toContain("text-anchor");
+  });
+
+  it("detects centred and right-aligned blocks", () => {
+    const centred = pdfPageToSvg(page(showText(2), { text: [run("aa", 100, 50, { width: 100 }), run("b", 130, 36, { width: 40 })] })).svg;
+    expect(centred).toContain('text-anchor="middle"');
+    expect(centred).toContain('<tspan x="150"');
+    const right = pdfPageToSvg(page(showText(2), { text: [run("aa", 100, 50, { width: 100 }), run("b", 160, 36, { width: 40 })] })).svg;
+    expect(right).toContain('text-anchor="end"');
+    expect(right).toContain('<tspan x="200"');
+  });
+
+  it("does not merge across fonts, colours, big gaps or unaligned lines", () => {
+    const count = (svg: string) => svg.match(/<text/g)?.length ?? 0;
+    expect(count(pdfPageToSvg(page(showText(2), { text: [run("a", 10, 50), run("b", 10, 36, { fontName: "g" })] })).svg)).toBe(2);
+    expect(count(pdfPageToSvg(page(showText(2), { text: [run("a", 10, 150), run("b", 10, 50)] })).svg)).toBe(2);
+    expect(count(pdfPageToSvg(page(showText(2), { text: [run("a", 10, 50, { width: 100 }), run("b", 90, 36, { width: 100 })] })).svg)).toBe(2);
+    const colored = pdfPageToSvg(page([[OPS.setFillRGBColor, [255, 0, 0]], [OPS.showText, []], [OPS.setFillRGBColor, [0, 0, 255]], [OPS.showText, []]], { text: [run("a", 10, 50), run("b", 10, 36)] })).svg;
+    expect(count(colored)).toBe(2);
+  });
+
+  it("imports a merged block as one multi-line text node with its line height", () => {
+    const { svg } = pdfPageToSvg(page(showText(3), { text: [run("one", 30, 100, { width: 80 }), run("two", 30, 85, { width: 90 }), run("three", 30, 70, { width: 40 })] }));
+    const res = importSvg(svg, { scale: 1, at: { x: 0, y: 0 }, parentId: "pg", docId: "d" });
+    const text = res.ops.map((o) => (o.kind.case === "createNode" ? o.kind.value.node : undefined)).find((n) => n?.shape.case === "text");
+    const t = text!.shape.value as { content: string; style: { lineHeight: number } };
+    expect(t.content).toBe("one\ntwo\nthree");
+    expect(t.style.lineHeight).toBeCloseTo(1.25);
+  });
+});
+
 describe("helpers", () => {
   it("composes matrices with the new transform applied first", () => {
     expect(mul([1, 0, 0, 1, 10, 0], [2, 0, 0, 2, 0, 0])).toEqual([2, 0, 0, 2, 10, 0]);
@@ -133,5 +175,26 @@ describe("with real pdf.js on a generated PDF", () => {
     expect(kinds).toEqual(expect.arrayContaining(["rect", "text"]));
     expect(kinds.filter((k) => k === "vector").length).toBeGreaterThanOrEqual(2);
     expect(res.size).toEqual({ width: 300, height: 200 });
+  });
+});
+
+describe("fonts and blocks on a real PDF", () => {
+  it("merges the paragraph, keeps italic and the font family", async () => {
+    const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+    const doc = await pdfjs.getDocument({ data: new Uint8Array(readFileSync(join(process.cwd(), "src/pdf/__fixtures__/fonts.pdf"))), fontExtraProperties: true, useWorkerFetch: false, isEvalSupported: false, verbosity: 0 }).promise;
+    const p = await doc.getPage(1);
+    const vp = p.getViewport({ scale: 1 });
+    const ops = await p.getOperatorList();
+    const content = await p.getTextContent();
+    const runs = content.items.filter((i) => "str" in i) as { str: string; fontName: string }[];
+    const fontNames = Object.fromEntries([...new Set(runs.map((r) => r.fontName))].map((id) => [id, (p.commonObjs.get(id) as { name: string }).name]));
+    const { svg } = pdfPageToSvg({ width: vp.width, height: vp.height, viewTransform: vp.transform as never, fnArray: ops.fnArray, argsArray: ops.argsArray, OPS: pdfjs.OPS as never, text: runs as never, fontNames });
+    expect(svg).toContain('font-family="DejaVu Sans, sans-serif"');
+    expect(svg).toContain('font-weight="700"');
+    expect(svg).toContain('font-style="italic"');
+    // Title (1) + paragraph of 3 rows (1) + two single lines.
+    expect(svg.match(/<text/g)).toHaveLength(4);
+    expect(svg.match(/<tspan/g)).toHaveLength(3);
+    expect(svg).toContain(">First line of a paragraph that</tspan>");
   });
 });
