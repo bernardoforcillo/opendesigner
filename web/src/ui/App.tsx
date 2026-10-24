@@ -645,7 +645,7 @@ export function App() {
   if (docError) return <DocUnavailable notFound={docError.notFound} message={docError.message} />;
 
   return (
-    <div className="flex h-screen flex-col gap-2 bg-surface-3 p-2 text-fg">
+    <div className="flex h-screen flex-col gap-px bg-line text-fg">
       {/* Two different notices because the two situations ask for different things: while
           reconnecting the user can wait (changes stay queued and
           the backlog will confirm them), with attempts exhausted they cannot. */}
@@ -677,7 +677,7 @@ export function App() {
           resizes on its own: resizeCanvasToDisplaySize reads clientWidth on
           every frame and eventToCanvasPoint starts from getBoundingClientRect).
           Each column is an island (ISLAND_CLS) set apart from the others by the gap. */}
-      <div className="flex min-h-0 flex-1 gap-2">
+      <div className="flex min-h-0 flex-1 gap-px">
         {mode === "dev" ? (
           <aside aria-label="Readiness" className={`${leftOpen ? "flex" : "hidden"} w-72 shrink-0 flex-col overflow-hidden ${ISLAND_CLS}`}>
             <ReadinessPanel />
@@ -731,8 +731,8 @@ export function App() {
         {/* The central column: the canvas and, below, the timeline (only in Design, opened
             with M or from the dock). The timeline is a SIBLING of the canvas like the side
             panels: the canvas resizes on its own (resize -> invalidation). */}
-        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-2">
-        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden rounded-xl border border-line bg-canvas">
+        <div className="flex min-h-0 min-w-0 flex-1 flex-col gap-px">
+        <div className="relative min-h-0 min-w-0 flex-1 overflow-hidden bg-canvas">
           {/* The cursor comes from the active tool; during a temporary pan (space
               or middle button) the tool manager overrides it on the DOM. */}
           {/* The GPU's WebGL canvas: below, without events, hidden until the

@@ -139,7 +139,7 @@ export function Home({
           <ol aria-label="The journey" className="mt-4 flex flex-wrap items-center gap-1.5 text-[12px] text-fg-muted">
             {JOURNEY.map((s, i) => (
               <li key={s.label} className="flex items-center gap-1.5">
-                <span className="flex h-6 items-center gap-1.5 rounded-full bg-surface px-2.5 shadow-[0_0_0_1px_var(--line)]">
+                <span className="flex h-6 items-center gap-1.5 rounded-sm bg-surface px-2.5 shadow-[0_0_0_1px_var(--line)]">
                   <Icon name={s.icon} size={12} className="text-fg-subtle" /> {s.label}
                 </span>
                 {i < JOURNEY.length - 1 && <Icon name="chevronRight" size={10} className="text-fg-subtle" />}
@@ -148,7 +148,7 @@ export function Home({
           </ol>
 
           <section ref={templatesRef} aria-labelledby="home-templates" className="mt-9">
-            <h2 id="home-templates" className="text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">Start from a template</h2>
+            <h2 id="home-templates" className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-subtle">Start from a template</h2>
             <div className="mt-3 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(188px,1fr))]">
               {TEMPLATES.map((t) => (
                 <TemplateCard key={t.id} template={t} busy={starting?.id === t.id ? starting : null} disabled={!!starting} onPick={() => void start(t)} />
@@ -157,7 +157,7 @@ export function Home({
           </section>
 
           <section aria-labelledby="home-docs" className="mt-10">
-            <h2 id="home-docs" className="flex items-baseline gap-2 text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle">
+            <h2 id="home-docs" className="flex items-baseline gap-2 font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-subtle">
               Your documents
               {docs && docs.length > 0 && <span className="tabular-nums">{docs.length}</span>}
             </h2>

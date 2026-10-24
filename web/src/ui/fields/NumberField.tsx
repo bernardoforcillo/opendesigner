@@ -3,7 +3,7 @@ import { NumberField as AriaNumberField, Label, Input } from "react-aria-compone
 
 // GENERIC NUMERIC FIELD (Task 9): a value that is committed by typing (Enter
 // or blur, native behavior of react-aria-components) OR by dragging its
-// LABEL -- expected behavior in a design editor (Figma, Sketch...),
+// LABEL -- expected behavior in a design editor,
 // where a numeric field's label is itself a scrub handle.
 //
 // It knows nothing of gestures, ops or masks: whoever uses it (PropertiesPanel) decides WHAT to do

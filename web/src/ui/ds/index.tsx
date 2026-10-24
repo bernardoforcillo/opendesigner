@@ -16,18 +16,18 @@ const FOCUS = "outline-none focus-visible:shadow-[var(--ring)]";
 export const cls = {
   // Text / numeric field: inset, height 28, border that lights up on focus.
   input:
-    "h-7 w-full min-w-0 rounded-md border border-transparent bg-surface-2 px-2 text-[13px] text-fg " +
+    "h-7 w-full min-w-0 rounded-md border border-line bg-surface-2 px-2 font-mono text-[12px] text-fg " +
     "placeholder:text-fg-subtle hover:border-line-strong focus:border-accent focus:bg-surface " +
     "focus:outline-none disabled:opacity-50 tabular-nums",
   // Native <select> but dressed up (appearance-none + arrow from the background chevron).
   select:
-    "h-7 w-full min-w-0 appearance-none rounded-md border border-transparent bg-surface-2 pl-2 pr-6 text-[13px] text-fg " +
+    "h-7 w-full min-w-0 appearance-none rounded-md border border-line bg-surface-2 pl-2 pr-6 text-[12px] text-fg " +
     "hover:border-line-strong focus:border-accent focus:outline-none " +
     "bg-[length:12px] bg-[right_6px_center] bg-no-repeat " +
     "bg-[url(\"data:image/svg+xml;utf8,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 16 16' fill='none' stroke='%237b8291' stroke-width='1.6' stroke-linecap='round' stroke-linejoin='round'><path d='M4.2 6.2L8 10l3.8-3.8'/></svg>\")]",
-  label: "text-[11px] font-medium text-fg-subtle",
+  label: "font-mono text-[10px] uppercase tracking-[0.05em] text-fg-subtle",
   // Section heading (discreet small caps), the same in every panel.
-  sectionTitle: "text-[11px] font-semibold uppercase tracking-[0.06em] text-fg-subtle",
+  sectionTitle: "font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-subtle",
   row: "flex items-center gap-2 px-3",
   panel: "bg-surface text-fg",
   divider: "border-line",
@@ -38,7 +38,7 @@ type Variant = "primary" | "secondary" | "ghost" | "danger" | "flow";
 const VARIANT: Record<Variant, string> = {
   primary: "bg-accent text-accent-fg hover:bg-accent-hover",
   flow: "bg-flow text-white hover:brightness-110",
-  secondary: "bg-surface-2 text-fg border border-line hover:bg-surface-3",
+  secondary: "bg-surface text-fg border border-line-strong hover:bg-surface-3",
   ghost: "text-fg-muted hover:bg-surface-3 hover:text-fg",
   danger: "text-danger hover:bg-danger-soft",
 };
@@ -97,7 +97,7 @@ export function Tip({ label, shortcut }: { label: string; shortcut?: string }) {
 
 export function Kbd({ children, inverted }: { children: ReactNode; inverted?: boolean }) {
   return (
-    <kbd className={`rounded px-1 font-sans text-[11px] font-medium ${inverted ? "bg-white/15 text-surface" : "bg-surface-3 text-fg-muted"}`}>
+    <kbd className={`rounded-sm px-1 font-mono text-[10px] font-medium ${inverted ? "bg-white/15 text-surface" : "bg-surface-3 text-fg-muted"}`}>
       {children}
     </kbd>
   );
@@ -114,7 +114,7 @@ export function Badge({
     warn: "bg-warn-soft text-warn",
     danger: "bg-danger-soft text-danger",
   }[tone];
-  return <span className={`inline-flex h-[18px] items-center rounded-full px-2 text-[11px] font-medium ${t} ${className}`}>{children}</span>;
+  return <span className={`inline-flex h-[18px] items-center rounded-sm px-1.5 font-mono text-[10px] font-medium uppercase tracking-[0.04em] ${t} ${className}`}>{children}</span>;
 }
 
 // Which sections are closed survives a reload (by title). Without

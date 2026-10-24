@@ -15,7 +15,7 @@ import { useFlowUi, type EditorMode } from "../../store/flowUi";
 // Three zones: on the left the menu, left panel and mode; in the middle the
 // document name (renamable); on the right people, status, zoom and right panel.
 // The shared look of the islands: TopBar, side panels, canvas and timeline.
-export const ISLAND_CLS = "rounded-float bg-surface shadow-bar";
+export const ISLAND_CLS = "bg-surface";
 
 const TOOLTIP_CLS = "z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop";
 
@@ -45,7 +45,7 @@ export function TopBar({
     <div
       role="toolbar"
       aria-label="Document"
-      className={`grid shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 p-1 ${ISLAND_CLS}`}
+      className={`grid h-11 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 ${ISLAND_CLS}`}
     >
       <span className="flex min-w-0 items-center gap-0.5">
       <DocMenu onNewDocument={onNewDocument} />
@@ -55,7 +55,7 @@ export function TopBar({
         selectionMode="single"
         disallowEmptySelection
         selectedKeys={[mode]}
-        className="mx-1 flex gap-0.5 rounded-lg bg-surface-3 p-0.5"
+        className="mx-1 flex gap-px rounded-md border border-line bg-surface-2 p-0.5"
         onSelectionChange={(keys) => {
           useFlowUi.getState().setMode((keys.values().next().value as EditorMode | undefined) ?? "design");
         }}
@@ -65,10 +65,10 @@ export function TopBar({
             <ToggleButton
               id={id}
               className={({ isSelected }) =>
-                `flex h-8 items-center gap-1.5 rounded-md px-2.5 text-[13px] font-medium outline-none transition-colors ` +
+                `flex h-7 items-center gap-1.5 rounded-[2px] px-2.5 text-[12px] font-medium outline-none transition-colors ` +
                 `focus-visible:shadow-[var(--ring)] ` +
                 (isSelected
-                  ? id === "flows" ? "bg-flow text-white shadow-sm" : id === "dev" ? "bg-accent text-accent-fg shadow-sm" : "bg-raised text-fg shadow-sm"
+                  ? id === "flows" ? "bg-flow text-white" : id === "dev" ? "bg-accent text-accent-fg" : "bg-fg text-surface"
                   : "text-fg-muted hover:text-fg")
               }
             >
@@ -86,14 +86,14 @@ export function TopBar({
       <span className="flex min-w-0 items-center justify-center gap-2">
         <DocName />
         {accessRole === "view" || accessRole === "comment" ? (
-          <span title="Your link does not allow editing" className="shrink-0 rounded-full bg-surface-3 px-2 py-0.5 text-[11px] font-semibold text-fg-muted">
+          <span title="Your link does not allow editing" className="shrink-0 rounded-sm bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-fg-muted">
             {accessRole === "view" ? "View only" : "Comment only"}
           </span>
         ) : null}
       </span>
       <span className="flex min-w-0 items-center justify-end gap-2">
         {presence}
-        <span className="flex items-center gap-2 px-2 text-[12px] text-fg-muted tabular-nums" aria-live="polite">
+        <span className="flex items-center gap-2 px-2 font-mono text-[11px] text-fg-muted tabular-nums" aria-live="polite">
           <span title={statusLabel} className="flex items-center gap-1.5">
             <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
             <span className="max-[1600px]:hidden">{statusLabel}</span>

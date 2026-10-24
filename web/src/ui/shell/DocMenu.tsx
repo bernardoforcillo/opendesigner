@@ -68,7 +68,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               const r = await importFigFile(f);
               // The banner the SVG import uses: what came across, or why nothing did, and what was left out.
               const left = r.warnings.length > 0 ? ` Not carried over: ${r.warnings.join("; ")}.` : "";
-              useScene.setState({ notice: r.ok ? `${r.message}${left}` : `Figma import failed: ${r.message}` });
+              useScene.setState({ notice: r.ok ? `${r.message}${left}` : `.fig import failed: ${r.message}` });
             });
           }
           else if (k === "diagram") setDiagramOpen(true);
@@ -95,7 +95,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                 <Icon name="image" size={14} /> Import SVG…
               </MenuItem>
               <MenuItem id="import-fig" className={ITEM}>
-                <Icon name="image" size={14} /> Import Figma file… <span className="ml-auto text-[11px] text-fg-subtle">experimental</span>
+                <Icon name="image" size={14} /> Import .fig file… <span className="ml-auto text-[11px] text-fg-subtle">experimental</span>
               </MenuItem>
               <MenuItem id="diagram" className={ITEM}>
                 <Icon name="plus" size={14} /> Diagram (Mermaid, UML)…

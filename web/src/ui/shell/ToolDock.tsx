@@ -40,7 +40,7 @@ function readLastShape(): ToolId {
 }
 
 const TOOL_BTN = (selected: boolean, flow: boolean) =>
-  `flex h-9 w-9 items-center justify-center rounded-lg outline-none transition-colors focus-visible:shadow-[var(--ring)] ` +
+  `flex h-9 w-9 items-center justify-center rounded-md outline-none transition-colors focus-visible:shadow-[var(--ring)] ` +
   (selected ? (flow ? "bg-flow text-white" : "bg-accent text-accent-fg") : "text-fg-muted hover:bg-surface-3 hover:text-fg");
 
 const TOOLTIP_CLS = "z-50 flex items-center gap-2 rounded-md bg-fg px-2 py-1 text-[12px] font-medium text-surface shadow-pop";
@@ -128,7 +128,7 @@ export function ToolDock({
               >
                 <Icon name="chevronUp" size={10} />
               </RacButton>
-              <Popover placement="top" offset={10} className="z-50 min-w-[170px] rounded-xl bg-raised p-1 text-[13px] text-fg shadow-pop">
+              <Popover placement="top" offset={10} className="z-50 min-w-[170px] rounded-lg bg-raised p-1 text-[12px] text-fg shadow-pop">
                 <Menu className="outline-none" onAction={(k) => choose(k as ToolId)}>
                   {shapes.map((s) => (
                     <MenuItem key={s.id} id={s.id} className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[focused]:bg-surface-3 data-[hovered]:bg-surface-3">
@@ -152,7 +152,7 @@ export function ToolDock({
     <div
       role="toolbar"
       aria-label="Tools"
-      className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-xl bg-raised p-1 shadow-bar"
+      className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-lg border border-line-strong bg-raised p-1 shadow-bar"
     >
       {mode === "design" && (
         <AnimIconButton icon="timeline" label="Animation" shortcut="M" size={32} selected={timelineOpen} onPress={() => useTimeline.getState().toggleOpen()} />

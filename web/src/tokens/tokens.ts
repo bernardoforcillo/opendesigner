@@ -7,7 +7,7 @@ import type { CollectionLite, FillLite, SceneState, VariableLite } from "../stor
 //  - a W3C Design Tokens (DTCG) JSON file -- one top-level group per collection, a nested
 //    group for every "/" in a variable's name, `$type` and `$value` for the first mode and the
 //    other modes under `$extensions."com.opendesigner".modes` (the format has no modes of its
-//    own) -- that Style Dictionary, Tokens Studio and Figma's token plugins read;
+//    own) -- that Style Dictionary, Tokens Studio and other token tools read;
 //  - CSS custom properties: `:root` carries the first mode of every collection and a
 //    `[data-theme="<mode>"]` block overrides what the other modes change.
 // An alias leaves as the value it resolves to in each mode (the formats here have no portable

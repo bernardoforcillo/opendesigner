@@ -8,7 +8,7 @@ import type { Bounds } from "../canvas/geometry";
 // The arrow is a cubic bézier that leaves from the midpoint of the closest side
 // of the starting screen and enters at the midpoint of the closest side of
 // the destination one, with tangents PERPENDICULAR to the sides (the curve "leaves"
-// straight from the edge, like Figma/FigJam connectors).
+// straight from the edge, like diagram connectors).
 
 export interface Pt { x: number; y: number }
 
