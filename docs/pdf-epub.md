@@ -4,9 +4,20 @@ All three commands live in the **document menu** and work on the pages of the op
 
 ## Import PDF…
 
-Every page of the PDF becomes a **page** of the document, holding one image node: the PDF page rasterised (long side up to 2000 px) and uploaded like a dropped image, with the node sized in PDF points (1/72 in) so the proportions are real. A one-page PDF gives a page named after the file; longer ones `<file> 1`, `<file> 2`, … The whole import is one gesture: a single undo removes every imported page. At most 200 pages are taken per import; the notice says how many were left out. A password-protected or broken file is reported and leaves the document untouched.
+Every page of the PDF becomes a **page** of the document, sized in PDF points (1/72 in). The page is read with [pdf.js](https://mozilla.github.io/pdf.js/) (loaded only when the command runs), described as SVG (`web/src/pdf/pdfToSvg.ts`) and handed to the normal SVG importer, so what comes across is **native, editable nodes**:
 
-The PDF is read in the browser with [pdf.js](https://mozilla.github.io/pdf.js/) (loaded only when the command runs); the server sees nothing but the PNG assets.
+| In the PDF | In the document |
+|---|---|
+| filled / stroked paths | rect nodes (axis-aligned rectangles) and vector nodes, with fill rule, colour, opacity, line width, caps, joins, miter limit and dashes |
+| text | one text node per run: position, size, bold / italic, colour; the font is matched **by name** (not embedded), with a generic fallback |
+| embedded images | image nodes (uploaded as assets) |
+| the paper | a white `page-background` rect |
+
+Not carried over, and said in the notice: clipping, gradients and patterns (the previous solid colour is kept), soft masks. Text colour is matched to its text run by order and falls back to black if the counts disagree; stacking between text and shapes follows the PDF. A page the SVG importer refuses (too many shapes) is imported as a picture, and the notice says how many.
+
+**Import PDF as pictures…** keeps the old behaviour: each page is rasterised (long side up to 2000 px) into one image node, a faithful picture to annotate or trace over.
+
+Both are one gesture (one undo removes every imported page); at most 200 pages per import. A password-protected or broken file is reported and leaves the document untouched.
 
 ## Export all pages as PDF…
 
@@ -18,4 +29,4 @@ Downloads `<name>.epub` (EPUB 3, **fixed layout**): one XHTML spine item per non
 
 Empty pages are skipped; if every page is empty nothing is exported and a notice says so.
 
-Code: `web/src/pdf/importPdf.ts`, `web/src/export/epub.ts`, `web/src/export/zip.ts`, `runDocumentExport` in `web/src/export/exportScene.ts`.
+Code: `web/src/pdf/importPdf.ts`, `web/src/pdf/pdfToSvg.ts`, `web/src/export/epub.ts`, `web/src/export/zip.ts`, `runDocumentExport` in `web/src/export/exportScene.ts`.

@@ -73,11 +73,11 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               useScene.setState({ notice: r.ok ? `${r.message}${left}` : `.fig import failed: ${r.message}` });
             });
           }
-          else if (k === "import-pdf") {
+          else if (k === "import-pdf" || k === "import-pdf-image") {
             void pickPdfFile().then(async (f) => {
               if (!f) return;
               useScene.setState({ notice: `Importing ${f.name}…` });
-              const r = await importPdfFile(f);
+              const r = await importPdfFile(f, undefined, k === "import-pdf" ? "editable" : "image");
               useScene.setState({ notice: r.ok ? r.message : `PDF import failed: ${r.message}` });
             });
           }
@@ -110,7 +110,10 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                 <Icon name="image" size={14} /> Import .fig file… <span className="ml-auto text-[11px] text-fg-subtle">experimental</span>
               </MenuItem>
               <MenuItem id="import-pdf" className={ITEM}>
-                <Icon name="page" size={14} /> Import PDF… <span className="ml-auto text-[11px] text-fg-subtle">one page per PDF page</span>
+                <Icon name="page" size={14} /> Import PDF… <span className="ml-auto text-[11px] text-fg-subtle">editable text and shapes</span>
+              </MenuItem>
+              <MenuItem id="import-pdf-image" className={ITEM}>
+                <Icon name="image" size={14} /> Import PDF as pictures…
               </MenuItem>
               <MenuItem id="export-pdf" className={ITEM}>
                 <Icon name="download" size={14} /> Export all pages as PDF…

@@ -44,7 +44,7 @@ Legend: [x] done · [ ] to do
 - [ ] Advanced strokes: variable width profiles, brushes, arrowheads
 - [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
 - [x] SVG export and PDF (the SVG through the browser's print dialog, Save as PDF)
-- [x] PDF import (one page per PDF page), and export of all pages as PDF or EPUB (fixed layout); see docs/pdf-epub.md
+- [x] PDF import (editable text, shapes and images, one page per PDF page), and export of all pages as PDF or EPUB (fixed layout); see docs/pdf-epub.md
 - [ ] AI/EPS export
 - [ ] Color: ICC profiles and color-managed print (CMYK read-out/entry exists, plain conversion only)
 

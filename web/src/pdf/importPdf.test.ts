@@ -75,6 +75,51 @@ describe("importPdfFile", () => {
   });
 });
 
+describe("editable import", () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="300" height="200" viewBox="0 0 300 200"><rect width="300" height="200" fill="#fff"/><rect x="20" y="20" width="100" height="60" fill="#f80"/><text x="30" y="100" font-size="18" fill="#080">Hello</text></svg>';
+  const withExtract = (extract: PdfRenderer["extractPage"]) =>
+    fakeDeps(2, {
+      open: async () => ({
+        numPages: 2,
+        renderPage: async () => ({ png: new Blob(["x"], { type: "image/png" }), width: 300, height: 200 }),
+        extractPage: extract,
+        destroy() {},
+      }),
+    });
+
+  it("makes real nodes (rect, text) instead of one picture", async () => {
+    const { deps, upload } = withExtract(async () => ({ svg, warnings: ["clipping was not carried over"], width: 300, height: 200 }));
+    const r = await importPdfFile(pdf(), deps);
+    expect(r.ok).toBe(true);
+    expect(r.message).toContain("Not carried over: clipping was not carried over");
+    expect(upload).not.toHaveBeenCalled();
+    const kinds = [...useScene.getState().scene!.nodes.values()].map((n) => n.kind);
+    expect(kinds).toEqual(expect.arrayContaining(["rect", "text"]));
+    expect(kinds).not.toContain("image");
+  });
+
+  it("falls back to a picture for a page it cannot extract", async () => {
+    let n = 0;
+    const { deps, upload } = withExtract(async () => {
+      if (n++ === 0) throw new Error("boom");
+      return { svg, warnings: [], width: 300, height: 200 };
+    });
+    const r = await importPdfFile(pdf(), deps);
+    expect(r.message).toContain("1 page was imported as a picture");
+    expect(upload).toHaveBeenCalledTimes(1);
+    const kinds = [...useScene.getState().scene!.nodes.values()].map((n) => n.kind);
+    expect(kinds).toContain("image");
+    expect(kinds).toContain("text");
+  });
+
+  it("image mode never extracts", async () => {
+    const extract = vi.fn();
+    const { deps } = withExtract(extract);
+    await importPdfFile(pdf(), deps, "image");
+    expect(extract).not.toHaveBeenCalled();
+  });
+});
+
 describe("isPdfFile", () => {
   it("accepts by mime type or extension", () => {
     expect(isPdfFile(pdf())).toBe(true);
