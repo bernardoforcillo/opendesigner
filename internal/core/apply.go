@@ -390,6 +390,11 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 				return err
 			}
 		}
+		if path == "effects" {
+			if err := validateEffects(s.GetPatch().GetEffects()); err != nil {
+				return err
+			}
+		}
 		switch path {
 		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta", "is_mask":
 			// supported

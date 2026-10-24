@@ -14,6 +14,7 @@ import { effectsOutset, sceneIndexOf } from "../sceneIndex";
 import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
 import { fontSizeOf, placeTextLines, segmentsOfLine } from "../text";
+import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "../effectsFx";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
 
@@ -237,7 +238,7 @@ export class CanvasKitRenderer {
   private drawNode(sk: Canvas, n: NodeLite, overrides: ReadonlyMap<string, InstanceOverrideLite> | null): void {
     if (n.kind === "group" || n.kind === "instance") return;
     const f = this.frame as Frame;
-    const eff = withOverride(n, overrides?.get(n.id));
+    const eff = withExpandedGlass(withOverride(n, overrides?.get(n.id)));
     if (inkIsBox(eff) && (eff.width <= 0 || eff.height <= 0)) return;
 
     // Level of detail: as in the 2D renderer, at a few pixels a node is a
@@ -271,26 +272,98 @@ export class CanvasKitRenderer {
     const outline = eff.kind === "rect" || eff.kind === "ellipse" || eff.kind === "frame" ? this.shapeOf(eff) : null;
     const bb = eff.effects?.find((e): e is Extract<EffectLite, { kind: "backgroundBlur" }> => e.kind === "backgroundBlur" && e.radius > 0);
     if (bb && outline) this.drawBackdropBlur(sk, outline, bb.radius);
-    const layered = this.beginEffects(sk, eff);
-
-    if (eff.kind === "text") {
-      this.drawText(sk, eff);
-    } else if (eff.kind === "image") {
-      this.drawImage(sk, eff);
-    } else if (eff.kind === "vector") {
-      this.drawVector(sk, eff);
-    } else {
-      const shape = this.shapeOf(eff);
-      // A frame without a fill is transparent (the default gray belongs to shapes).
-      if (!(eff.kind === "frame" && eff.fills.length === 0)) {
-        this.drawShape(sk, shape, this.fillPaint(resolvedFill(eff), eff, eff.opacity));
+    // A progressive backdrop blur: the same blur in bands, each of its own radius.
+    const pbb = progressiveBlur(eff, true);
+    if (pbb && outline) {
+      for (const band of blurBands(eff, pbb, 1 / f.px)) {
+        sk.save();
+        this.clipPolygon(sk, band.polygon);
+        this.drawBackdropBlur(sk, outline, band.radius);
+        sk.restore();
       }
-      this.drawStrokes(sk, eff, shape);
     }
 
-    if (layered) sk.restore();
+    const drawBody = () => {
+      if (eff.kind === "text") {
+        this.drawText(sk, eff);
+      } else if (eff.kind === "image") {
+        this.drawImage(sk, eff);
+      } else if (eff.kind === "vector") {
+        this.drawVector(sk, eff);
+      } else {
+        const shape = this.shapeOf(eff);
+        // A frame without a fill is transparent (the default gray belongs to shapes).
+        if (!(eff.kind === "frame" && eff.fills.length === 0)) {
+          this.drawShape(sk, shape, this.fillPaint(resolvedFill(eff), eff, eff.opacity));
+        }
+        this.drawStrokes(sk, eff, shape);
+      }
+    };
+    const pb = progressiveBlur(eff, false);
+    if (pb) {
+      // A progressive layer blur: the node once per band, clipped to it, with the band's radius.
+      for (const band of blurBands(eff, pb, 1 / f.px)) {
+        sk.save();
+        this.clipPolygon(sk, band.polygon);
+        const layered = this.beginEffects(sk, withBandBlur(eff, pb, band.radius));
+        drawBody();
+        if (layered) sk.restore();
+        sk.restore();
+      }
+    } else {
+      const layered = this.beginEffects(sk, eff);
+      drawBody();
+      if (layered) sk.restore();
+    }
     if (outline) this.drawInnerShadows(sk, eff, outline);
+    if (outline || eff.kind === "image") this.drawOverlays(sk, eff, outline);
     if (rotated) sk.restore();
+  }
+
+  private clipPolygon(sk: Canvas, pts: readonly (readonly [number, number])[]): void {
+    const CK = this.CK;
+    const b = new CK.PathBuilder();
+    pts.forEach(([x, y], i) => (i === 0 ? b.moveTo(x, y) : b.lineTo(x, y)));
+    b.close();
+    const path: Path = b.detachAndDelete();
+    (this.frame as Frame).garbage.push(path);
+    sk.clipPath(path, CK.ClipOp.Intersect, true);
+  }
+
+  // Noise and texture: the seeded tile (effectsFx.ts, the same grain as the 2D renderer) as a
+  // repeating image shader in world space, anchored at the node's corner, over its box and
+  // clipped to its outline.
+  private readonly overlayImages = new WeakMap<object, SkImage | null>();
+
+  private overlayImage(e: Parameters<typeof overlayTile>[0]): SkImage | null {
+    if (this.overlayImages.has(e)) return this.overlayImages.get(e) ?? null;
+    const CK = this.CK;
+    const img = CK.MakeImage(
+      { width: FX_TILE, height: FX_TILE, alphaType: CK.AlphaType.Unpremul, colorType: CK.ColorType.RGBA_8888, colorSpace: CK.ColorSpace.SRGB },
+      overlayTile(e), FX_TILE * 4,
+    );
+    this.overlayImages.set(e, img);
+    return img;
+  }
+
+  private drawOverlays(sk: Canvas, n: NodeLite, shape: Shape | null): void {
+    const CK = this.CK;
+    const f = this.frame as Frame;
+    for (const e of overlayEffects(n)) {
+      const img = this.overlayImage(e);
+      if (!img) continue;
+      const u = tileUnit(e);
+      const shader: Shader = img.makeShaderOptions(CK.TileMode.Repeat, CK.TileMode.Repeat, CK.FilterMode.Nearest, CK.MipmapMode.None, [u, 0, n.x, 0, u, n.y, 0, 0, 1]);
+      f.garbage.push(shader);
+      const p = new CK.Paint();
+      p.setShader(shader);
+      p.setAlphaf(n.opacity);
+      sk.save();
+      if (shape) this.clipShape(sk, shape, CK.ClipOp.Intersect);
+      sk.drawRect(CK.XYWHRect(n.x, n.y, n.width, n.height), p);
+      sk.restore();
+      p.delete();
+    }
   }
 
   // The frosted glass: what is already drawn, inside the outline, blurred.

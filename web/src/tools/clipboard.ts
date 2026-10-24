@@ -153,6 +153,28 @@ function toEffects(v: unknown): EffectLite[] {
       });
     } else if (e.kind === "layerBlur") {
       out.push({ kind: "layerBlur", radius: Math.max(0, num(e.radius, 0)) });
+    } else if (e.kind === "progressiveBlur") {
+      out.push({
+        kind: "progressiveBlur", startRadius: Math.max(0, num(e.startRadius, 0)), endRadius: Math.max(0, num(e.endRadius, 0)),
+        x1: num(e.x1, 0.5), y1: num(e.y1, 0), x2: num(e.x2, 0.5), y2: num(e.y2, 1), background: e.background === true,
+      });
+    } else if (e.kind === "noise") {
+      const rgba = (v: unknown, d: number) => {
+        const c = (v ?? {}) as Record<string, unknown>;
+        return { r: num(c.r, d), g: num(c.g, d), b: num(c.b, d), a: num(c.a, 1) };
+      };
+      const mode = e.mode === "duo" || e.mode === "multi" ? e.mode : "mono";
+      out.push({
+        kind: "noise", mode, size: Math.max(0, num(e.size, 1)), density: Math.min(1, Math.max(0, num(e.density, 0.5))),
+        opacity: Math.min(1, Math.max(0, num(e.opacity, 0.25))), color: rgba(e.color, 0), color2: rgba(e.color2, 1), seed: Math.max(0, Math.round(num(e.seed, 1))),
+      });
+    } else if (e.kind === "texture") {
+      out.push({ kind: "texture", scale: Math.max(0, num(e.scale, 8)), intensity: Math.min(1, Math.max(0, num(e.intensity, 0.4))), seed: Math.max(0, Math.round(num(e.seed, 1))) });
+    } else if (e.kind === "glass") {
+      out.push({
+        kind: "glass", frost: Math.max(0, num(e.frost, 12)), light: Math.min(1, Math.max(0, num(e.light, 0.5))),
+        lightAngle: num(e.lightAngle, 45), noise: Math.min(1, Math.max(0, num(e.noise, 0.25))),
+      });
     }
   }
   return out;

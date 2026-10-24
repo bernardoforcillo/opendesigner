@@ -496,7 +496,7 @@ func cloneShallow(n *opendesignerv1.Node) *opendesignerv1.Node {
 
 // shapeElement: rect, ellipse, frame, text, image, vector.
 func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
-	eff := withNums(withOverride(n, c.overrides[n.GetId()]), c.nums[n.GetId()])
+	eff := withGlassExpanded(withNums(withOverride(n, c.overrides[n.GetId()]), c.nums[n.GetId()]))
 	switch eff.GetShape().(type) {
 	case *opendesignerv1.Node_Text:
 		return b.textElement(n, eff, c)

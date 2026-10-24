@@ -57,7 +57,7 @@ var (
 	// fontFeaturesRe is a CSS font-feature-settings value: quoted four-letter tags with an
 	// optional integer, e.g. `"liga" 0, "tnum", "ss01" 1`. The shape is checked at the call site.
 	fontFeaturesRe = regexp.MustCompile(`^[A-Za-z0-9 ,"]{0,128}$`)
-	assetHashRe      = regexp.MustCompile(`^[0-9a-f]{64}$`)
+	assetHashRe    = regexp.MustCompile(`^[0-9a-f]{64}$`)
 )
 
 func validateFont(doc *opendesignerv1.Document, f *opendesignerv1.FontFace) error {

@@ -96,12 +96,13 @@ func validateFills(colors []RGBA) error {
 // EffectSpec is one node effect. Any number of dropShadow and innerShadow effects
 // are drawn; the canvas applies the FIRST layerBlur and the FIRST backgroundBlur.
 type EffectSpec struct {
-	Kind    string    `json:"kind" jsonschema:"dropShadow, innerShadow, layerBlur or backgroundBlur"`
+	Kind    string    `json:"kind" jsonschema:"dropShadow, innerShadow, layerBlur, backgroundBlur, progressiveBlur, noise, texture or glass"`
 	Color   StopColor `json:"color,omitempty" jsonschema:"shadows only; alpha 0..1"`
 	OffsetX float64   `json:"offsetX,omitempty" jsonschema:"shadows only, in world units"`
 	OffsetY float64   `json:"offsetY,omitempty" jsonschema:"shadows only, in world units"`
 	Blur    float64   `json:"blur,omitempty" jsonschema:"shadows only, >= 0, in world units"`
 	Radius  float64   `json:"radius,omitempty" jsonschema:"layerBlur and backgroundBlur only, >= 0, in world units"`
+	EffectFx
 }
 
 // blendModes maps the tool's names (CSS names) to the document's enum.
@@ -136,8 +137,12 @@ func validateEffects(effects []EffectSpec) error {
 			if e.Radius < 0 {
 				return fmt.Errorf("effects[%d].radius must be >= 0", i)
 			}
+		case "progressiveBlur", "noise", "texture", "glass":
+			if _, err := e.fxProto(); err != nil {
+				return fmt.Errorf("effects[%d] (%s): %w", i, e.Kind, err)
+			}
 		default:
-			return fmt.Errorf("effects[%d].kind must be dropShadow, innerShadow, layerBlur or backgroundBlur, got %q", i, e.Kind)
+			return fmt.Errorf("effects[%d].kind must be dropShadow, innerShadow, layerBlur, backgroundBlur, progressiveBlur, noise, texture or glass, got %q", i, e.Kind)
 		}
 	}
 	return nil
@@ -146,6 +151,12 @@ func validateEffects(effects []EffectSpec) error {
 func toEffects(effects []EffectSpec) []*opendesignerv1.Effect {
 	out := make([]*opendesignerv1.Effect, 0, len(effects))
 	for _, e := range effects {
+		if isFxKind(e.Kind) {
+			if fx, err := e.fxProto(); err == nil { // validateEffects has already vetted it
+				out = append(out, fx)
+			}
+			continue
+		}
 		if e.Kind == "layerBlur" {
 			out = append(out, &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_LayerBlur{LayerBlur: &opendesignerv1.LayerBlur{Radius: e.Radius}}})
 			continue
@@ -662,6 +673,8 @@ type NodeView struct {
 	Height   float64 `json:"height"`
 	Visible  bool    `json:"visible"`
 	Text     string  `json:"text,omitempty" jsonschema:"content, for text nodes"`
+	// EffectKinds: the kinds of the node's effects, in order (dropShadow, layerBlur, noise, glass...).
+	EffectKinds []string `json:"effectKinds,omitempty" jsonschema:"kinds of the node's effects in order; set them with set_properties effects"`
 	// Format: the text node's case / script / list / OpenType / box settings; absent when none is set.
 	Format *TextFormat `json:"format,omitempty" jsonschema:"text case, script, list, indent, fontFeatures, verticalAlign and inset of a text node; see set_text"`
 	// AutoLayout is set for a frame that lays out its children. Their x/y and, for
@@ -732,6 +745,7 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 		v.Modes = n.GetModes()
 	}
 	v.TextStyleId = n.GetTextStyleId()
+	v.EffectKinds = effectKinds(n.GetEffects())
 	v.BlendMode = blendModeName(n.GetBlendMode())
 	v.IsMask = n.GetIsMask()
 	v.ConstraintX, v.ConstraintY = constraintNames[n.GetConstraintX()], constraintNames[n.GetConstraintY()]
@@ -873,7 +887,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_frame", "Create a frame: a container with its own box. Optionally clipsContent, and autoLayout to have the server arrange its children in a row or column (the children's x/y are then computed for you). parentId defaults to the first page.", s.CreateFrame)
 	addTool(srv, "set_auto_layout", "Turn auto layout on, change it, or (autoLayout omitted) off for a frame. After every change the server repositions the frame's children; reposition by editing the layout, not the children's x/y, which it overrides.", s.SetAutoLayout)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
-	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}]. blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
+	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}|{kind:progressiveBlur,startRadius,endRadius,x1,y1,x2,y2,background}|{kind:noise,mode:mono|duo|multi,size,density,opacity,color,color2,seed}|{kind:texture,scale,intensity,seed}|{kind:glass,frost,light,lightAngle,noise}] (progressive blur, noise, texture and glass are described in docs/effects.md; noise, texture and glass draw on rect/ellipse/frame/image). blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
 	addTool(srv, "set_text", "Set a text node's content, and optionally change its style (only the fields you give change: size, family, weight, italic, lineHeight, textCase, script, list, indent, fontFeatures, verticalAlign, inset).", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)

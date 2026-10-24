@@ -96,12 +96,65 @@ message InnerShadow {
 // Background blur: blurs what is BEHIND the node, inside its outline (the
 // frosted-glass look). `radius` is the standard deviation, in world coordinates.
 message BackgroundBlur { double radius = 1; } // >= 0
+// Progressive blur: the radius ramps linearly from start_radius at (x1, y1) to
+// end_radius at (x2, y2), points in the node's unit box (0..1 across and down, like a
+// gradient's handles); before the start and past the end it stays. `background` false
+// blurs the node itself, true what is behind it (inside the outline, like BackgroundBlur).
+message ProgressiveBlur {
+  double start_radius = 1; // >= 0, standard deviation in world units
+  double end_radius = 2;   // >= 0
+  double x1 = 3;
+  double y1 = 4;
+  double x2 = 5;
+  double y2 = 6;
+  bool background = 7;
+}
+
+enum NoiseMode {
+  NOISE_MODE_UNSPECIFIED = 0; // MONO
+  NOISE_MODE_MONO = 1;        // grey grains
+  NOISE_MODE_DUO = 2;         // grains of `color` and `color2`
+  NOISE_MODE_MULTI = 3;       // grains of random colours
+}
+
+// Film grain drawn over the node, inside its outline (its box for other shapes).
+message Noise {
+  NoiseMode mode = 1;
+  double size = 2;    // grain size in world units, > 0 (0 => 1)
+  double density = 3; // 0..1, share of the grains that show
+  double opacity = 4; // 0..1
+  Color color = 5;    // DUO: first colour (MONO and MULTI ignore it)
+  Color color2 = 6;   // DUO: second colour
+  uint32 seed = 7;
+}
+
+// A soft mottled relief (paper, plaster) drawn over the node, light and dark in turn.
+message Texture {
+  double scale = 1;     // blob size in world units, > 0 (0 => 8)
+  double intensity = 2; // 0..1
+  uint32 seed = 3;
+}
+
+// Simplified glass: a frosted backdrop (background blur), a fine grain and a light
+// edge on the side facing `light_angle`. Drawn as those three effects.
+message Glass {
+  double frost = 1;       // >= 0, background blur radius in world units
+  double light = 2;       // 0..1, strength of the light edge
+  double light_angle = 3; // degrees, where the light comes from: 0 = the left, 90 = the top (y grows down)
+  double noise = 4;       // 0..1, strength of the grain
+}
+
 message Effect {
   oneof kind {
     DropShadow drop_shadow = 1;
     LayerBlur layer_blur = 2;
     InnerShadow inner_shadow = 3;
     BackgroundBlur background_blur = 4;
+    // 20..29 are the type-and-effects range.
+    ProgressiveBlur progressive_blur = 20;
+    Noise noise = 21;
+    Texture texture = 22;
+    Glass glass = 23;
   }
 }
 
