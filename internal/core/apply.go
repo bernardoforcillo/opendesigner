@@ -4,6 +4,7 @@ package core
 import (
 	"errors"
 	"fmt"
+	"math"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"google.golang.org/protobuf/proto"
@@ -18,14 +19,16 @@ var (
 	// ErrNotFrameNode: auto_layout is a field of FrameNode, so writing it to a
 	// node that is not a frame is an op on the wrong node (same precedent as
 	// ErrNotRectNode for corner_radius).
-	ErrNotFrameNode    = errors.New("core: not a frame node")
-	ErrConstraint      = errors.New("core: unknown constraint")
-	ErrBlendMode       = errors.New("core: unknown blend mode")
-	ErrComment         = errors.New("core: invalid comment")
-	ErrPaint           = errors.New("core: invalid paint")
-	ErrCommentNotFound = errors.New("core: comment not found")
-	ErrLayoutGrid      = errors.New("core: invalid layout grid")
-	ErrLayoutSizing    = errors.New("core: unknown layout sizing")
+	ErrNotFrameNode      = errors.New("core: not a frame node")
+	ErrConstraint        = errors.New("core: unknown constraint")
+	ErrBlendMode         = errors.New("core: unknown blend mode")
+	ErrComment           = errors.New("core: invalid comment")
+	ErrPaint             = errors.New("core: invalid paint")
+	ErrCommentNotFound   = errors.New("core: comment not found")
+	ErrLayoutGrid        = errors.New("core: invalid layout grid")
+	ErrLayoutSizing      = errors.New("core: unknown layout sizing")
+	ErrSizeLimit         = errors.New("core: a size limit must be a finite number >= 0")
+	ErrLayoutPositioning = errors.New("core: unknown layout positioning")
 	// ErrNotVectorNode: same precedent as ErrNotTextNode -- the `shape` oneof is
 	// the NATURE of the node, so a SetVectorPath on a rectangle is an op on the
 	// wrong node, not a missing field to fill in.
@@ -422,6 +425,27 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			if sz < opendesignerv1.LayoutSizing_LAYOUT_SIZING_FIXED || sz > opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL {
 				return fmt.Errorf("%w: %v", ErrLayoutSizing, sz)
 			}
+		case "min_width", "max_width", "min_height", "max_height":
+			// A size limit is a finite length; 0 clears it.
+			var v float64
+			switch path {
+			case "min_width":
+				v = s.GetPatch().GetMinWidth()
+			case "max_width":
+				v = s.GetPatch().GetMaxWidth()
+			case "min_height":
+				v = s.GetPatch().GetMinHeight()
+			default:
+				v = s.GetPatch().GetMaxHeight()
+			}
+			if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
+				return fmt.Errorf("%w: %s %v", ErrSizeLimit, path, v)
+			}
+		case "layout_positioning":
+			// Closed enum, like constraints.
+			if p := s.GetPatch().GetLayoutPositioning(); p < opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_AUTO || p > opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
+				return fmt.Errorf("%w: %v", ErrLayoutPositioning, p)
+			}
 		case "bindings":
 			// Variable bindings: every key in the grammar, every variable existing
 			// and of the property's type. Validated HERE, before any field is
@@ -537,6 +561,16 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.LayoutSizingX = p.GetLayoutSizingX()
 		case "layout_sizing_y":
 			n.LayoutSizingY = p.GetLayoutSizingY()
+		case "min_width":
+			n.MinWidth = p.GetMinWidth()
+		case "max_width":
+			n.MaxWidth = p.GetMaxWidth()
+		case "min_height":
+			n.MinHeight = p.GetMinHeight()
+		case "max_height":
+			n.MaxHeight = p.GetMaxHeight()
+		case "layout_positioning":
+			n.LayoutPositioning = p.GetLayoutPositioning()
 		case "strokes":
 			// REPLACEMENT of the whole list, exactly like `fills` above -- not an
 			// element-by-element merge. It is the REPEATED field on which the two

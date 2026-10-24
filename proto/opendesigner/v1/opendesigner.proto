@@ -520,6 +520,23 @@ message Node {
   // Layout grids of a FRAME (see LayoutGrid): editor guides and snap targets, never exported.
   // The "layout_grids" mask path REPLACES the whole list; only frames take one.
   repeated LayoutGrid layout_grids = 50;
+  // Size limits, enforced by the layout engine when the node sits in an auto layout frame (or
+  // is an auto layout frame that hugs): the computed size is clamped to [min, max]. 0 = no
+  // limit; when min > max the min wins. Written by the "min_width", "max_width",
+  // "min_height" and "max_height" mask paths; each is finite and >= 0.
+  double min_width = 70;
+  double max_width = 71;
+  double min_height = 72;
+  double max_height = 73;
+  // ABSOLUTE: inside an auto layout frame the node leaves the flow (no room taken, not
+  // hugged, not aligned) and keeps its x/y, following the frame's size by its constraints.
+  // The "layout_positioning" mask path writes it.
+  LayoutPositioning layout_positioning = 74;
+}
+
+enum LayoutPositioning {
+  LAYOUT_POSITIONING_AUTO = 0;      // takes part in the flow (default)
+  LAYOUT_POSITIONING_ABSOLUTE = 1;  // out of the flow, positioned by x/y and constraints
 }
 
 enum LayoutGridKind {
@@ -836,6 +853,7 @@ message Op {
     SetInstanceProps    set_instance_props    = 38; // an instance's property values and variant choice
     SetComment          set_comment           = 39; // comments — upsert of a comment
     DeleteComment       delete_comment        = 40;
+    SetInstance         set_instance          = 70; // components — swap or reset an instance (absolute payload)
   }
 }
 // A comment pinned on the canvas. A THREAD is a root comment (parent_id empty) plus its
@@ -861,6 +879,16 @@ message Comment {
 }
 message SetComment    { Comment comment = 1; }
 message DeleteComment { string id = 1; }  // a root takes its replies with it
+
+// Replaces an instance's payload WHOLESALE: which component it points at, its overrides,
+// property values and variant choice. A swap is the same op with another `component_id`
+// (the client carries over the overrides that still fit); "reset all overrides" is the
+// same op with the lists emptied. Everything is validated against the component it
+// resolves to; the node's own transform is untouched (write width/height with SetProperties).
+message SetInstance {
+  string instance_id = 1;
+  InstanceNode instance = 2;
+}
 
 message SetCollection    { VariableCollection collection = 1; }
 message DeleteCollection { string id = 1; }
