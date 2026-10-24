@@ -72,6 +72,8 @@ const UNSUPPORTED_NOTICE =
 const KNOWN_KINDS: Record<NodeLite["kind"], boolean> = {
   rect: true,
   ellipse: true,
+  polygon: true,
+  star: true,
   text: true,
   image: true,
   vector: false,
@@ -273,6 +275,7 @@ export function parseClipboard(text: string): ClipboardParse {
       ...(toEffects(n.effects).length > 0 ? { effects: toEffects(n.effects) } : {}),
       kind,
       cornerRadius: num(n.cornerRadius, 0),
+      ...parametricShape(kind, n),
       // Always false: KNOWN_KINDS rejects frames wholesale (this side does not
       // reconstruct containers), so here `kind` is only rect/ellipse/text/image.
       clipsContent: false,
@@ -287,6 +290,32 @@ export function parseClipboard(text: string): ClipboardParse {
     });
   }
   return { ok: true, nodes };
+}
+
+// The parametric shape fields (docs/shapes.md) a payload may carry, re-read defensively: a missing or
+// crooked one falls back to the shape's default.
+function parametricShape(kind: NodeLite["kind"], n: Record<string, unknown>): Partial<NodeLite> {
+  const obj = (v: unknown) => (typeof v === "object" && v !== null ? (v as Record<string, unknown>) : {});
+  const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+  if (kind === "polygon") return { sides: clamp(Math.round(num(n.sides, 3)), 3, 60) };
+  if (kind === "star") return { points: clamp(Math.round(num(n.points, 5)), 3, 60), innerRatio: clamp(num(n.innerRatio, 0.5), 0.05, 0.95) };
+  if (kind === "ellipse") {
+    const out: Partial<NodeLite> = {};
+    if (num(n.arcStart, 0) !== 0) out.arcStart = num(n.arcStart, 0);
+    if (num(n.arcSweep, 0) !== 0) out.arcSweep = clamp(num(n.arcSweep, 0), -360, 360);
+    if (num(n.innerRatio, 0) > 0) out.innerRatio = clamp(num(n.innerRatio, 0), 0, 0.99);
+    return out;
+  }
+  if (kind === "rect") {
+    const out: Partial<NodeLite> = {};
+    if (num(n.cornerSmoothing, 0) > 0) out.cornerSmoothing = clamp(num(n.cornerSmoothing, 0), 0, 1);
+    if (n.radii) {
+      const r = obj(n.radii);
+      out.radii = { topLeft: Math.max(0, num(r.topLeft, 0)), topRight: Math.max(0, num(r.topRight, 0)), bottomRight: Math.max(0, num(r.bottomRight, 0)), bottomLeft: Math.max(0, num(r.bottomLeft, 0)) };
+    }
+    return out;
+  }
+  return {};
 }
 
 // --- the paste ops ----------------------------------------------------------

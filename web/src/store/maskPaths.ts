@@ -101,6 +101,21 @@ export const MASK_PATHS = [
   "is_mask",
   // Layout grids of a frame (replaces the list; frames only).
   "layout_grids",
+  // Parametric shape fields (docs/shapes.md), each inside the `shape` oneof and valid only on the shapes
+  // that own it (Go: ErrNotRectNode / ErrNotEllipse / ErrNotPolygon / ErrNotStar, whole op rejected):
+  // rectangles take corner_smoothing and radii; ellipses arc_start, arc_sweep and inner_ratio (the ring's
+  // hole); polygons sides; stars points and inner_ratio (the notch depth).
+  "corner_smoothing",
+  "radii",
+  "arc_start",
+  "arc_sweep",
+  "inner_ratio",
+  "sides",
+  "points",
+  // Shared paint / effect styles a node draws with (empty detaches; otherwise the style must exist).
+  "fill_style_id",
+  "stroke_style_id",
+  "effect_style_id",
 ] as const;
 
 // The ONLY type a mask path can have at an op's construction points

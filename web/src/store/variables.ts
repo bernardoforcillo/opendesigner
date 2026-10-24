@@ -5,6 +5,7 @@ import { deriveBooleans } from "./booleans";
 import { deriveConnectors } from "./connectors";
 import { taggedOf } from "./tagged";
 import { resolveTextStyleNode } from "./typography";
+import { resolvePaintStylesNode, usesPaintStyle } from "./paintStyles";
 import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "./types";
 
 // VARIABLES (design tokens) -- the TypeScript twin of internal/core/variables.go.
@@ -228,7 +229,7 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
  * Parity with core.ResolveNode.
  */
 export function resolveNode(state: SceneState, n: NodeLite): NodeLite {
-  n = resolveTextStyleNode(state, n);
+  n = resolvePaintStylesNode(state, resolveTextStyleNode(state, n));
   if (!n.bindings) return n;
   let out: NodeLite | null = null;
   const edit = () => (out ??= { ...n, fills: [...n.fills], strokes: [...n.strokes] });
@@ -280,14 +281,15 @@ export function resolveScene(raw: SceneState): SceneState {
   // Live boolean groups first (store/booleans.ts), then connectors (store/connectors.ts), then the
   // variables over the result.
   const scene = deriveConnectors(deriveBooleans(raw));
-  if (Object.keys(scene.variables).length === 0 && Object.keys(scene.textStyles).length === 0) return scene;
+  if (Object.keys(scene.variables).length === 0 && Object.keys(scene.textStyles).length === 0
+    && Object.keys(scene.paintStyles).length === 0 && Object.keys(scene.effectStyles).length === 0) return scene;
   const hit = resolved.get(scene);
   if (hit) return hit;
   let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
   const changed: string[] = [];
   for (const id of taggedOf(scene).bound) {
     const n = scene.nodes.get(id);
-    if (!n || (!n.bindings && !n.textStyleId)) continue;
+    if (!n || (!n.bindings && !n.textStyleId && !usesPaintStyle(n))) continue;
     const r = resolveNode(scene, n);
     if (r === n) continue;
     (edit ??= scene.nodes.edit()).set(n.id, r);

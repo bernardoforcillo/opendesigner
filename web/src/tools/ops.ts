@@ -2,8 +2,8 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
-import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import { toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbPaintStyleDef, toPbEffectStyleDef, toPbFlow, toPbInstanceOverride, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, PaintStyleDefLite, EffectStyleDefLite, VariableLite, FlowLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -274,6 +274,18 @@ export function makeSetTextStyleDefOp(d: TextStyleDefLite): Op {
 }
 export function makeDeleteTextStyleDefOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteTextStyleDef", value: { id } } });
+}
+export function makeSetPaintStyleDefOp(d: PaintStyleDefLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setPaintStyleDef", value: { paintStyle: toPbPaintStyleDef(d) } } });
+}
+export function makeDeletePaintStyleDefOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deletePaintStyleDef", value: { id } } });
+}
+export function makeSetEffectStyleDefOp(d: EffectStyleDefLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setEffectStyleDef", value: { effectStyle: toPbEffectStyleDef(d) } } });
+}
+export function makeDeleteEffectStyleDefOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteEffectStyleDef", value: { id } } });
 }
 
 // --- animation -------------------------------------------------------------

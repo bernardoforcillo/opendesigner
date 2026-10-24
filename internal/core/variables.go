@@ -423,6 +423,7 @@ func VariableValueIn(doc *opendesignerv1.Document, v *opendesignerv1.Variable, m
 // variable, value or target paint is missing is ignored: the literal stays.
 func ResolveNode(doc *opendesignerv1.Document, n *opendesignerv1.Node) *opendesignerv1.Node {
 	n = resolveTextStyle(doc, n)
+	n = resolvePaintStyles(doc, n)
 	if len(n.GetBindings()) == 0 {
 		return n
 	}

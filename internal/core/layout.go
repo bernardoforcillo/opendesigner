@@ -43,7 +43,7 @@ func participates(n *opendesignerv1.Node) bool {
 	case nil,
 		*opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Text,
 		*opendesignerv1.Node_Image, *opendesignerv1.Node_Vector, *opendesignerv1.Node_Frame,
-		*opendesignerv1.Node_Instance:
+		*opendesignerv1.Node_Instance, *opendesignerv1.Node_Polygon, *opendesignerv1.Node_Star:
 		return true
 	}
 	return false

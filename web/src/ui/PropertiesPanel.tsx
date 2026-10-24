@@ -299,11 +299,11 @@ const STROKE_ALIGNMENTS: readonly SegOption<StrokeAlignLite>[] = [
 // The inspector's header: icon and name of the node's TYPE.
 const KIND_ICON: Record<NodeLite["kind"], IconName> = {
   rect: "rect", ellipse: "ellipse", text: "text", image: "image", vector: "pen",
-  unknown: "rect", group: "layers", frame: "frame", instance: "components",
+  unknown: "rect", group: "layers", frame: "frame", instance: "components", polygon: "polygon", star: "star",
 };
 const KIND_LABEL: Record<NodeLite["kind"], string> = {
   rect: "Rectangle", ellipse: "Ellipse", text: "Text", image: "Image", vector: "Vector",
-  unknown: "Element", group: "Group", frame: "Frame", instance: "Instance",
+  unknown: "Element", group: "Group", frame: "Frame", instance: "Instance", polygon: "Polygon", star: "Star",
 };
 
 // A summarized value ready for a CONTROLLED RadioGroup: null (and not

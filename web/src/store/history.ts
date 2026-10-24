@@ -2,11 +2,12 @@ import { create } from "@bufbuild/protobuf";
 import { OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { NodeLite, VariableLite } from "./types";
-import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
+import { toPbNode, toPbFlow, toPbClip, toClipLite, toPbTransition, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbPaintStyleDef, toPbEffectStyleDef, toPbComponentProperty, toPbComponentSet, toPbTextStyle, toPbSubPaths, toPbInstanceOverride, type SceneState } from "./types";
 import { isValidClip } from "../animation/validate";
 import { applyOp } from "./applyOp";
 import { isValidCollection, isValidVariable, withAliases } from "./variables";
 import { isValidFont, isValidTextStyleDef } from "./typography";
+import { isValidEffectStyleDef, isValidPaintStyleDef } from "./paintStyles";
 import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer, renameChoice, reverseRenames } from "./components";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 
@@ -486,6 +487,49 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       return [
         create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(prev) } } }),
         ...restoreNodeMapsOps(scene, op.docId, (n) => n.textStyleId === id, ["text_style_id"]),
+      ];
+    }
+    // Shared paint / effect styles: the same shape as text styles. Deleting one also cleared the id on the
+    // nodes that used it, so they get it back after the style.
+    case "setPaintStyleDef": {
+      const d = op.kind.value.paintStyle;
+      if (!isValidPaintStyleDef(d)) return null;
+      const prev = scene.paintStyles[d.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setPaintStyleDef", value: { paintStyle: toPbPaintStyleDef(prev) } }
+          : { case: "deletePaintStyleDef", value: { id: d.id } },
+      })];
+    }
+    case "deletePaintStyleDef": {
+      const { id } = op.kind.value;
+      const prev = scene.paintStyles[id];
+      if (!prev) return null;
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setPaintStyleDef", value: { paintStyle: toPbPaintStyleDef(prev) } } }),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.fillStyleId === id, ["fill_style_id"]),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.strokeStyleId === id, ["stroke_style_id"]),
+      ];
+    }
+    case "setEffectStyleDef": {
+      const d = op.kind.value.effectStyle;
+      if (!isValidEffectStyleDef(d)) return null;
+      const prev = scene.effectStyles[d.id];
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: prev
+          ? { case: "setEffectStyleDef", value: { effectStyle: toPbEffectStyleDef(prev) } }
+          : { case: "deleteEffectStyleDef", value: { id: d.id } },
+      })];
+    }
+    case "deleteEffectStyleDef": {
+      const { id } = op.kind.value;
+      const prev = scene.effectStyles[id];
+      if (!prev) return null;
+      return [
+        create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "setEffectStyleDef", value: { effectStyle: toPbEffectStyleDef(prev) } } }),
+        ...restoreNodeMapsOps(scene, op.docId, (n) => n.effectStyleId === id, ["effect_style_id"]),
       ];
     }
     default:

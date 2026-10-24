@@ -67,8 +67,33 @@ function textScene() {
     create(OpSchema, { opId: "s", docId: "doc1", kind: { case: "setTextStyleDef", value: { textStyle: { id: "h", name: "Heading", style: { fontSize: 32 } } } } }),
   ].reduce(applyOp, emptyScene("doc1", "Untitled"));
 }
+// The parametric shape paths only apply to the shape that owns the field; the style paths need a style.
+function shapeScene(shape: MessageInitShape<typeof NodeSchema>["shape"]) {
+  const node = create(NodeSchema, {
+    id: "n1", parentId: "page1", orderKey: "a0", name: "Shape", visible: true, opacity: 1,
+    x: 0, y: 0, width: 100, height: 80, shape,
+  });
+  return applyOp(emptyScene("doc1", "Untitled"), create(OpSchema, {
+    opId: "op-shape", docId: "doc1", kind: { case: "createNode", value: { node } },
+  }));
+}
+function stylesScene() {
+  return [
+    create(OpSchema, { opId: "ps", docId: "doc1", kind: { case: "setPaintStyleDef", value: { paintStyle: {
+      id: "brand", name: "Brand", paints: [{ kind: { case: "solid", value: { color: { r: 1, g: 0, b: 0, a: 1 } } } }],
+    } } } }),
+    create(OpSchema, { opId: "es", docId: "doc1", kind: { case: "setEffectStyleDef", value: { effectStyle: {
+      id: "soft", name: "Soft", effects: [{ kind: { case: "layerBlur", value: { radius: 2 } } }],
+    } } } }),
+  ].reduce(applyOp, baseScene());
+}
 const sceneFor = (path: string) =>
-  path === "auto_layout" || path === "layout_grids" ? frameScene()
+  path === "arc_start" || path === "arc_sweep" ? shapeScene({ case: "ellipse", value: {} })
+    : path === "inner_ratio" ? shapeScene({ case: "ellipse", value: {} })
+    : path === "sides" ? shapeScene({ case: "polygon", value: { sides: 5 } })
+    : path === "points" ? shapeScene({ case: "star", value: { points: 5, innerRatio: 0.5 } })
+    : path === "fill_style_id" || path === "stroke_style_id" || path === "effect_style_id" ? stylesScene()
+    : path === "auto_layout" || path === "layout_grids" ? frameScene()
     : path === "bindings" || path === "modes" ? themedScene()
     : path === "text_style_id" ? textScene()
     : baseScene();
@@ -306,6 +331,21 @@ const PROBE: Probe = {
     patch: { layoutGrids: [{ kind: LayoutGridKind.COLUMNS, count: 4, gutter: 8, margin: 16, size: 0, color: { r: 1, g: 0, b: 0, a: 0.1 } }] },
     expected: [{ kind: "columns", count: 4, gutter: 8, margin: 16, size: 0, color: { r: 1, g: 0, b: 0, a: 0.1 } }],
   },
+  // Parametric shapes: nested in the shape, each valid only on the shape that owns the field.
+  corner_smoothing: { patch: { shape: { case: "rect", value: { cornerSmoothing: 0.6 } } }, expected: 0.6 },
+  radii: {
+    patch: { shape: { case: "rect", value: { radii: { topLeft: 1, topRight: 2, bottomRight: 3, bottomLeft: 4 } } } },
+    expected: { topLeft: 1, topRight: 2, bottomRight: 3, bottomLeft: 4 },
+  },
+  arc_start: { patch: { shape: { case: "ellipse", value: { arcStart: 30 } } }, expected: 30 },
+  arc_sweep: { patch: { shape: { case: "ellipse", value: { arcSweep: 120 } } }, expected: 120 },
+  inner_ratio: { patch: { shape: { case: "ellipse", value: { innerRatio: 0.4 } } }, expected: 0.4 },
+  sides: { patch: { shape: { case: "polygon", value: { sides: 8 } } }, expected: 8 },
+  points: { patch: { shape: { case: "star", value: { points: 7 } } }, expected: 7 },
+  // Shared paint / effect styles: validated against stylesScene().
+  fill_style_id: { patch: { fillStyleId: "brand" }, expected: "brand" },
+  stroke_style_id: { patch: { strokeStyleId: "brand" }, expected: "brand" },
+  effect_style_id: { patch: { effectStyleId: "soft" }, expected: "soft" },
   is_mask: { patch: { isMask: true }, expected: true },
   blend_mode: { patch: { blendMode: BlendMode.MULTIPLY }, expected: "multiply" },
 };

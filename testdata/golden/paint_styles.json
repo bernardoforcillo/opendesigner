@@ -1,0 +1,33 @@
+{
+ "_comment": [
+  "Shared paint and effect styles: upserts are absolute, a node may only name an existing style (rejected otherwise), a paint style needs a name and at least one valid paint, and deleting a style clears the id on the nodes that used it (they keep their own fills / strokes / effects). Run from BOTH sides."
+ ],
+ "docId": "doc1",
+ "ops": [
+  { "opId": "o0", "docId": "doc1", "setPaintStyleDef": { "paintStyle": { "id": "brand", "name": "Brand", "paints": [ { "solid": { "color": { "r": 1, "a": 1 } } } ] } } },
+  { "opId": "o1", "docId": "doc1", "setEffectStyleDef": { "effectStyle": { "id": "soft", "name": "Soft", "effects": [ { "layerBlur": { "radius": 2 } } ] } } },
+  { "opId": "o2", "docId": "doc1", "setPaintStyleDef": { "paintStyle": { "id": "gone", "name": "Gone", "paints": [ { "solid": { "color": { "b": 1, "a": 1 } } } ] } } },
+  { "opId": "o3", "docId": "doc1", "createNode": { "node": { "id": "A", "parentId": "page1", "orderKey": "a0", "name": "A", "visible": true, "opacity": 1, "width": 10, "height": 10, "rect": {}, "fillStyleId": "brand", "effectStyleId": "soft" } } },
+  { "opId": "o4", "docId": "doc1", "createNode": { "node": { "id": "B", "parentId": "page1", "orderKey": "a1", "name": "B", "visible": true, "opacity": 1, "width": 10, "height": 10, "rect": {}, "fills": [ { "solid": { "color": { "g": 1, "a": 1 } } } ] } } },
+  { "opId": "o5", "docId": "doc1", "setProps": { "id": "B", "mask": "fillStyleId,strokeStyleId", "patch": { "fillStyleId": "gone", "strokeStyleId": "brand" } } },
+  { "opId": "o6", "docId": "doc1", "deletePaintStyleDef": { "id": "gone" } },
+  { "opId": "r7", "docId": "doc1", "setProps": { "id": "B", "mask": "fillStyleId", "patch": { "fillStyleId": "nope" } } },
+  { "opId": "r8", "docId": "doc1", "setPaintStyleDef": { "paintStyle": { "id": "empty", "name": "Empty" } } },
+  { "opId": "r9", "docId": "doc1", "createNode": { "node": { "id": "C", "parentId": "page1", "orderKey": "a2", "name": "C", "visible": true, "opacity": 1, "width": 10, "height": 10, "rect": {}, "effectStyleId": "missing" } } },
+  { "opId": "r10", "docId": "doc1", "deleteEffectStyleDef": { "id": "missing" } },
+  { "opId": "r11", "docId": "doc1", "setPaintStyleDef": { "paintStyle": { "id": "bad", "name": "Bad", "paints": [ { "mesh": { "rows": 1, "cols": 1 } } ] } } }
+ ],
+ "rejected": [7, 8, 9, 10, 11],
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "schemaVersion": 1,
+  "pages": [{ "id": "page1", "name": "Page 1" }],
+  "paintStyles": { "brand": { "id": "brand", "name": "Brand", "paints": [ { "solid": { "color": { "r": 1, "a": 1 } } } ] } },
+  "effectStyles": { "soft": { "id": "soft", "name": "Soft", "effects": [ { "layerBlur": { "radius": 2 } } ] } },
+  "nodes": {
+   "A": { "id": "A", "parentId": "page1", "orderKey": "a0", "name": "A", "visible": true, "opacity": 1, "width": 10, "height": 10, "rect": {}, "fillStyleId": "brand", "effectStyleId": "soft" },
+   "B": { "id": "B", "parentId": "page1", "orderKey": "a1", "name": "B", "visible": true, "opacity": 1, "width": 10, "height": 10, "rect": {}, "fills": [ { "solid": { "color": { "g": 1, "a": 1 } } } ], "strokeStyleId": "brand" }
+  }
+ }
+}

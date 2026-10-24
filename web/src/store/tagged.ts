@@ -2,6 +2,7 @@ import { booleanOpOf } from "../vector/regions";
 import { connectorOf } from "../vector/connector";
 import { deltaOf } from "./sceneDelta";
 import type { NodeLite, SceneState } from "./types";
+import { usesPaintStyle } from "./paintStyles";
 
 // WHICH NODES THE DERIVED PASSES CARE ABOUT. Live booleans, connectors and variable bindings are
 // rare, but finding them used to mean scanning every node on every change: 10 ms at 20,000
@@ -20,7 +21,7 @@ const cache = new WeakMap<SceneState, Tagged>();
 
 const isBoolean = (n: NodeLite) => booleanOpOf(n) !== null;
 const isConnector = (n: NodeLite) => connectorOf(n) !== null;
-const isBound = (n: NodeLite) => !!n.bindings || !!n.textStyleId;
+const isBound = (n: NodeLite) => !!n.bindings || !!n.textStyleId || usesPaintStyle(n);
 
 function scan(scene: SceneState): Tagged {
   const t = { booleans: new Set<string>(), connectors: new Set<string>(), bound: new Set<string>() };

@@ -65,6 +65,9 @@ describe("golden parity", () => {
       // style (compared through `nodes` above).
       expect(scene.fonts).toEqual(expected.fonts);
       expect(scene.textStyles).toEqual(expected.textStyles);
+      // Shared paint and effect styles, and the cascade of deleting one (compared through `nodes`).
+      expect(scene.paintStyles).toEqual(expected.paintStyles);
+      expect(scene.effectStyles).toEqual(expected.effectStyles);
       // Component sets (variants); each component's set/variant/properties are
       // compared through `components` above, and the instance's values through `nodes`.
       expect(scene.componentSets).toEqual(expected.componentSets);

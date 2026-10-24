@@ -3,7 +3,7 @@ import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
+import { type SceneState, type ClipLite, toPaintStyleDefLite, toEffectStyleDefLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, toFlowLite, toClipLite, toTransitionLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
@@ -11,6 +11,8 @@ import { carryRenames, cascadeComponentTargets, detachInvalidMembers, isValidCom
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
 import { areValidLayoutGrids } from "./layoutGrids";
 import { arePaintsValid } from "./paints";
+import { areStrokeExtrasValid, isValidShape, isValidShapePath, SHAPE_PATHS, writeShapePath } from "./shapes";
+import { isValidEffectStyleDef, isValidPaintStyleDef, isValidStyleId, STYLE_PATHS, unstyleNodesByPaint } from "./paintStyles";
 import { isValidComment, withoutComment } from "./comments";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
@@ -71,12 +73,15 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // something the server never accepted).
       if (!pb || pb.id === "" || state.nodes.at(pb.id)) return state;
       if (!arePaintsValid(pb.fills, pb.strokes)) return state;                // ErrPaint
+      if (!isValidShape(pb) || !areStrokeExtrasValid(pb.strokes)) return state;  // ErrShapeValue / ErrStrokeExtra
       // The parent must EXIST (another node, or a Page for roots):
       // ErrParentNotFound in core.applyCreate (Go). A node with a nonexistent
       // parent is not reachable from any page -- invisible on the
       // canvas and in the layers panel, but present in the map -- and the server
       // rejected it anyway: creating it here is the usual silent divergence.
       if (!parentExists(state, pb.parentId)) return state;
+      if (!isValidStyleId(state, "fill_style_id", pb.fillStyleId) || !isValidStyleId(state, "stroke_style_id", pb.strokeStyleId)
+        || !isValidStyleId(state, "effect_style_id", pb.effectStyleId)) return state;   // ErrPaintStyleMissing
       // An INSTANCE must reference an EXISTING component: parity with
       // core.applyCreate (Go), which replies ErrComponentNotFound. Without it, the instance
       // would render nothing -- its subtree is derived from the master -- and the
@@ -139,6 +144,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (paths.includes("constraint_y") && !(p.constraintY >= 0 && p.constraintY <= 5)) return state;
       if (paths.includes("layout_grids") && (cur.kind !== "frame" || !areValidLayoutGrids(p.layoutGrids))) return state;
       if ((paths.includes("fills") || paths.includes("strokes")) && !arePaintsValid(p.fills, p.strokes)) return state;
+      // Shape-parameter paths apply only to the shape that owns the field (core.checkShapePath).
+      if (paths.some((path) => SHAPE_PATHS.has(path) && !isValidShapePath(cur, p, path))) return state;
+      if (paths.includes("strokes") && !areStrokeExtrasValid(p.strokes)) return state;
+      if (paths.some((path) => STYLE_PATHS.has(path) && !isValidStyleId(state, path, path === "fill_style_id" ? p.fillStyleId : path === "stroke_style_id" ? p.strokeStyleId : p.effectStyleId))) return state;
       if (paths.includes("blend_mode") && !(p.blendMode >= 0 && p.blendMode <= 15)) return state;
       if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
       if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;
@@ -200,6 +209,12 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
             if (p.textStyleId !== "") next.textStyleId = p.textStyleId; else delete next.textStyleId;
             break;
           }
+          case "fill_style_id": if (p.fillStyleId !== "") next.fillStyleId = p.fillStyleId; else delete next.fillStyleId; break;
+          case "stroke_style_id": if (p.strokeStyleId !== "") next.strokeStyleId = p.strokeStyleId; else delete next.strokeStyleId; break;
+          case "effect_style_id": if (p.effectStyleId !== "") next.effectStyleId = p.effectStyleId; else delete next.effectStyleId; break;
+          case "corner_smoothing": case "radii": case "arc_start": case "arc_sweep": case "inner_ratio": case "sides": case "points":
+            writeShapePath(next, p, path);
+            break;
           // Through toNodeLite, like the other enums: UNSPECIFIED / FIXED remove the field.
           case "constraint_x": {
             const c = toNodeLite(p).constraintX;
@@ -580,6 +595,31 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const textStyles = { ...state.textStyles };
       delete textStyles[id];
       return { ...state, textStyles, nodes: unstyleNodes(state, id) };
+    }
+    // Shared paint / effect styles (parity with core.applySetPaintStyleDef & co, internal/core/styles.go).
+    case "setPaintStyleDef": {
+      const d = op.kind.value.paintStyle;
+      if (!isValidPaintStyleDef(d)) return state;
+      return { ...state, paintStyles: { ...state.paintStyles, [d.id]: toPaintStyleDefLite(d) } };
+    }
+    case "deletePaintStyleDef": {
+      const { id } = op.kind.value;
+      if (!state.paintStyles[id]) return state;                             // ErrPaintStyleMissing
+      const paintStyles = { ...state.paintStyles };
+      delete paintStyles[id];
+      return { ...state, paintStyles, nodes: unstyleNodesByPaint(state, id, "paint") };
+    }
+    case "setEffectStyleDef": {
+      const d = op.kind.value.effectStyle;
+      if (!isValidEffectStyleDef(d)) return state;
+      return { ...state, effectStyles: { ...state.effectStyles, [d.id]: toEffectStyleDefLite(d) } };
+    }
+    case "deleteEffectStyleDef": {
+      const { id } = op.kind.value;
+      if (!state.effectStyles[id]) return state;                            // ErrEffectStyleMissing
+      const effectStyles = { ...state.effectStyles };
+      delete effectStyles[id];
+      return { ...state, effectStyles, nodes: unstyleNodesByPaint(state, id, "effect") };
     }
     case "setInstanceOverride": {
       const { instanceId, override } = op.kind.value;

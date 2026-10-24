@@ -131,6 +131,14 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applySetTextStyleDef(doc, k.SetTextStyleDef)
 	case *opendesignerv1.Op_DeleteTextStyleDef:
 		return applyDeleteTextStyleDef(doc, k.DeleteTextStyleDef, cow)
+	case *opendesignerv1.Op_SetPaintStyleDef:
+		return applySetPaintStyleDef(doc, k.SetPaintStyleDef)
+	case *opendesignerv1.Op_DeletePaintStyleDef:
+		return applyDeletePaintStyleDef(doc, k.DeletePaintStyleDef, cow)
+	case *opendesignerv1.Op_SetEffectStyleDef:
+		return applySetEffectStyleDef(doc, k.SetEffectStyleDef)
+	case *opendesignerv1.Op_DeleteEffectStyleDef:
+		return applyDeleteEffectStyleDef(doc, k.DeleteEffectStyleDef, cow)
 	case *opendesignerv1.Op_SetComponentSet:
 		return applySetComponentSet(doc, k.SetComponentSet, cow)
 	case *opendesignerv1.Op_DeleteComponentSet:
@@ -199,6 +207,15 @@ func applyCreate(doc *opendesignerv1.Document, c *opendesignerv1.CreateNode, cow
 		}
 	}
 	if err := validateNodePaints(n.GetFills(), n.GetStrokes()); err != nil {
+		return fmt.Errorf("%w (node %s)", err, n.GetId())
+	}
+	if err := validateShape(n); err != nil {
+		return fmt.Errorf("%w (node %s)", err, n.GetId())
+	}
+	if err := validateStrokeExtras(n.GetStrokes()); err != nil {
+		return fmt.Errorf("%w (node %s)", err, n.GetId())
+	}
+	if err := validateStyleRefs(doc, n); err != nil {
 		return fmt.Errorf("%w (node %s)", err, n.GetId())
 	}
 	if doc.Nodes == nil {
@@ -390,6 +407,11 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 				return err
 			}
 		}
+		if path == "strokes" {
+			if err := validateStrokeExtras(s.GetPatch().GetStrokes()); err != nil {
+				return err
+			}
+		}
 		switch path {
 		case "x", "y", "width", "height", "rotation", "opacity", "name", "visible", "fills", "strokes", "effects", "order_key", "meta", "is_mask":
 			// supported
@@ -401,6 +423,16 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			}
 			if c < opendesignerv1.Constraint_CONSTRAINT_UNSPECIFIED || c > opendesignerv1.Constraint_CONSTRAINT_SCALE {
 				return fmt.Errorf("%w: %v", ErrConstraint, c)
+			}
+		case "corner_smoothing", "radii", "arc_start", "arc_sweep", "inner_ratio", "sides", "points":
+			// Parametric shape fields: each only on the shapes that own it (see shapes.go).
+			if err := checkShapePath(n, s.GetPatch(), path); err != nil {
+				return err
+			}
+		case "fill_style_id", "stroke_style_id", "effect_style_id":
+			// Shared paint / effect styles: empty detaches, otherwise the style must exist (styles.go).
+			if err := checkStylePath(doc, path, s.GetPatch()); err != nil {
+				return err
 			}
 		case "layout_grids":
 			if n.GetFrame() == nil {
@@ -533,6 +565,10 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.LayoutGrids = p.GetLayoutGrids()
 		case "blend_mode":
 			n.BlendMode = p.GetBlendMode()
+		case "corner_smoothing", "radii", "arc_start", "arc_sweep", "inner_ratio", "sides", "points":
+			applyShapePath(n, p, path)
+		case "fill_style_id", "stroke_style_id", "effect_style_id":
+			applyStylePath(n, p, path)
 		case "layout_sizing_x":
 			n.LayoutSizingX = p.GetLayoutSizingX()
 		case "layout_sizing_y":
