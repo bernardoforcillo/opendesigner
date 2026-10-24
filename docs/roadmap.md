@@ -61,11 +61,13 @@ Legend: [x] done · [ ] to do
 Multi-page documents, long text and print output. Already there: pages, layout grids (columns, rows), uploaded fonts and shared text styles, PDF import with editable text, PDF/EPUB export of all pages (docs/pdf-epub.md).
 
 Pages and structure
-- [ ] Page sizes and presets (A4, Letter, custom), facing pages and spreads, page numbering
+- [x] Page sizes and presets (A3-A6, Letter, Legal, Tabloid, book, square, custom)
+- [ ] Facing pages and spreads, page numbering styles
 - [x] Master pages: template pages drawn behind the pages that apply them, `<#>` page-number token, editor, MCP (`update_page`), export; see docs/master-pages.md
 - [ ] Master pages: overrides per page, left/right masters, a master based on another, section markers
 - [ ] Pages panel: reorder, duplicate, insert, sections with their own numbering
-- [ ] Margins, columns and gutters per page; bleed and slug areas; guides per page / spread
+- [x] Page size, margins, columns, gutter and bleed per page (Page setup…), drawn on the sheet, snapped to, and exported as the sheet; PDF for print with bleed
+- [ ] Slug areas, guides per page / spread, different margins for left and right pages
 - [ ] Layers shared across pages
 
 Text
@@ -74,8 +76,9 @@ Text
 - [ ] Threading by dragging from a frame's port, a story editor, columns in a single frame
 - [x] Paragraph styles and character styles (based-on, next style, space before/after, indents), underline and strikethrough, editor pickers, MCP (`format_text`); see docs/rich-text.md
 - [ ] Nested styles, colour in styles, bullets and numbering, tabs
-- [ ] Baseline grid and snapping text to it
-- [ ] Letter spacing (tracking), kerning, horizontal scale, small caps, super/subscript, underline/strike
+- [x] Baseline grid (document setting, drawn on the page, snap target) and paragraphs that align to it; see docs/rich-text.md
+- [x] Letter spacing (tracking) and underline / strikethrough
+- [ ] Kerning control, horizontal scale, small caps, super/subscript
 - [ ] Hyphenation and justification, widows/orphans, keep-with-next, drop caps
 - [ ] Bullets and numbered lists, tabs, indents
 - [ ] Text wrap around objects, anchored (inline) objects

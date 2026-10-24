@@ -32,6 +32,7 @@ function tidy(d: TextStyleDefLite): TextStyleDefLite {
   if (d.basedOn) out.basedOn = d.basedOn;
   if (d.nextStyleId) out.nextStyleId = d.nextStyleId;
   for (const k of ["spaceBefore", "spaceAfter", "indentFirst", "indentLeft"] as const) if (d[k]) out[k] = d[k];
+  if (d.alignToGrid) out.alignToGrid = true;
   return out;
 }
 
@@ -130,8 +131,14 @@ export function StylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpen
                       </label>
                     ))}
                   </div>
+                  <NumberField label="Tracking" suffix="px" value={cur.style.letterSpacing ?? 0}
+                    onCommit={(v) => patchStyle({ letterSpacing: v === 0 ? undefined : v })} />
                   {!isChar && (
                     <>
+                      <label className="flex items-center gap-1.5">
+                        <input type="checkbox" aria-label="Align to baseline grid" checked={cur.alignToGrid === true}
+                          onChange={(e) => patchDef({ alignToGrid: e.target.checked ? true : undefined })} /> Align to baseline grid
+                      </label>
                       <div className="grid grid-cols-2 gap-2">
                         <NumberField label="Line" minValue={0} suffix="×" value={cur.style.lineHeight} placeholder="Inherit" onCommit={(v) => patchStyle({ lineHeight: v })} />
                         <select aria-label="Alignment" className={cls.select} value={cur.style.align} onChange={(e) => patchStyle({ align: e.target.value as TextStyleLite["align"] })}>

@@ -1,3 +1,4 @@
+import { worldTransformOf } from "../canvas/transform";
 import type { NodeLite, ResolvedParagraph, ResolvedRun, RichText, SceneState, TextLite, TextRunLite, TextStyleDefLite, TextStyleLite } from "./types";
 
 // RICH TEXT -- paragraph styles per paragraph and character styles over ranges. The TypeScript twin
@@ -66,6 +67,7 @@ export function overlay(base: TextStyleLite, over: TextStyleLite): TextStyleLite
     lineHeight: over.lineHeight > 0 ? over.lineHeight : base.lineHeight,
     align: over.align !== "left" ? over.align : base.align,
   };
+  if (over.letterSpacing || base.letterSpacing) out.letterSpacing = over.letterSpacing || base.letterSpacing;
   if (over.italic || base.italic) out.italic = true;
   if (over.underline || base.underline) out.underline = true;
   if (over.strikethrough || base.strikethrough) out.strikethrough = true;
@@ -75,6 +77,7 @@ export function overlay(base: TextStyleLite, over: TextStyleLite): TextStyleLite
 export interface FlatStyle {
   style: TextStyleLite;
   spaceBefore: number; spaceAfter: number; indentFirst: number; indentLeft: number;
+  alignToGrid: boolean;
 }
 
 /** A style with its `basedOn` chain folded in (root first), or null when it does not exist. A loop stops at the loop. */
@@ -89,15 +92,16 @@ export function flattenStyle(textStyles: Readonly<Record<string, TextStyleDefLit
   // A style without a base is returned as it is, so the node-wide path keeps its exact values.
   if (chain.length === 1) {
     const d = chain[0];
-    return { style: d.style, spaceBefore: d.spaceBefore ?? 0, spaceAfter: d.spaceAfter ?? 0, indentFirst: d.indentFirst ?? 0, indentLeft: d.indentLeft ?? 0 };
+    return { style: d.style, spaceBefore: d.spaceBefore ?? 0, spaceAfter: d.spaceAfter ?? 0, indentFirst: d.indentFirst ?? 0, indentLeft: d.indentLeft ?? 0, alignToGrid: d.alignToGrid === true };
   }
-  const out: FlatStyle = { style: EMPTY, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 };
+  const out: FlatStyle = { style: EMPTY, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0, alignToGrid: false };
   for (const d of chain) {
     out.style = overlay(out.style, d.style);
     out.spaceBefore = d.spaceBefore || out.spaceBefore;
     out.spaceAfter = d.spaceAfter || out.spaceAfter;
     out.indentFirst = d.indentFirst || out.indentFirst;
     out.indentLeft = d.indentLeft || out.indentLeft;
+    out.alignToGrid = d.alignToGrid === true || out.alignToGrid;
   }
   return out;
 }
@@ -106,7 +110,7 @@ export function flattenStyle(textStyles: Readonly<Record<string, TextStyleDefLit
  * The drawable form of a text's formatting, or null when it has none that resolves (no paragraph style
  * that exists, no run whose style exists): the text is then laid out as plain text, exactly as before.
  */
-export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite): RichText | null {
+export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite, boxY = 0): RichText | null {
   const ids = t.paragraphStyles ?? [];
   const count = paragraphCount(t.content);
   const paragraphs: ResolvedParagraph[] = [];
@@ -116,7 +120,10 @@ export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite)
     const flat = def && def.kind !== "character" ? flattenStyle(state.textStyles, def.id) : null;
     if (flat) {
       any = true;
-      paragraphs.push({ style: overlay(base, flat.style), spaceBefore: flat.spaceBefore, spaceAfter: flat.spaceAfter, indentFirst: flat.indentFirst, indentLeft: flat.indentLeft });
+      paragraphs.push({
+        style: overlay(base, flat.style), spaceBefore: flat.spaceBefore, spaceAfter: flat.spaceAfter, indentFirst: flat.indentFirst, indentLeft: flat.indentLeft,
+        ...(flat.alignToGrid ? { alignToGrid: true } : {}),
+      });
     } else {
       paragraphs.push({ style: base, spaceBefore: 0, spaceAfter: 0, indentFirst: 0, indentLeft: 0 });
     }
@@ -127,7 +134,11 @@ export function resolveRich(state: SceneState, t: TextLite, base: TextStyleLite)
     const flat = def && def.kind === "character" ? flattenStyle(state.textStyles, def.id) : null;
     if (flat) runs.push({ start: r.start, end: r.end, style: flat.style });
   }
-  return any || runs.length > 0 ? { paragraphs, runs } : null;
+  if (!any && runs.length === 0) return null;
+  // The baseline grid matters only to paragraphs that ask for it, and only when the document has one.
+  const inc = state.settings?.baselineIncrement ?? 0;
+  const grid = inc > 0 && paragraphs.some((p) => p.alignToGrid) ? { increment: inc, start: state.settings?.baselineStart ?? 0, boxY } : undefined;
+  return { paragraphs, runs, ...(grid ? { grid } : {}) };
 }
 
 /** Does the text carry any formatting at all (resolvable or not)? Decides whether the resolve pass looks at it. */
@@ -139,7 +150,9 @@ export function hasRich(n: NodeLite): boolean {
 /** `n` with its formatting resolved into `text.rich` (a derived field). */
 export function resolveRichNode(state: SceneState, n: NodeLite): NodeLite {
   if (n.kind !== "text" || !n.text || !hasRich(n)) return n;
-  const rich = resolveRich(state, n.text, n.text.style);
+  // The text box's top in the world: the grid is the page's, not the box's.
+  const boxY = n.y + worldTransformOf(state, n.parentId).f;
+  const rich = resolveRich(state, n.text, n.text.style, boxY);
   return rich ? { ...n, text: { ...n.text, rich } } : n;
 }
 

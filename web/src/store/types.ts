@@ -121,6 +121,8 @@ export interface TextStyleLite {
   italic?: boolean;
   underline?: boolean;
   strikethrough?: boolean;
+  /** px added after every character (tracking); absent at 0, may be negative. */
+  letterSpacing?: number;
 }
 
 // RICH TEXT (store/richText.ts). `paragraphStyles` / `runs` are the document's; `rich` is DERIVED by
@@ -129,10 +131,16 @@ export interface TextRunLite { start: number; end: number; styleId: string }
 export interface ResolvedParagraph {
   style: TextStyleLite;
   spaceBefore: number; spaceAfter: number; indentFirst: number; indentLeft: number;
+  /** The lines sit on the baseline grid (see RichText.grid). */
+  alignToGrid?: boolean;
 }
 /** A character style resolved to the fields it overrides (unset fields are 0 / "" / absent). */
 export interface ResolvedRun { start: number; end: number; style: TextStyleLite }
-export interface RichText { paragraphs: ResolvedParagraph[]; runs: ResolvedRun[] }
+export interface RichText {
+  paragraphs: ResolvedParagraph[]; runs: ResolvedRun[];
+  /** The baseline grid, with the world y of the text box: present when a paragraph aligns to it. */
+  grid?: { increment: number; start: number; boxY: number };
+}
 
 export interface TextLite {
   content: string; style: TextStyleLite;
@@ -380,6 +388,7 @@ export interface TextStyleDefLite {
   kind?: "character";
   basedOn?: string; nextStyleId?: string;
   spaceBefore?: number; spaceAfter?: number; indentFirst?: number; indentLeft?: number;
+  alignToGrid?: boolean;
 }
 
 // ANIMATION: the document's clips (animated properties of nodes referenced by
@@ -480,6 +489,7 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     ...(s?.italic ? { italic: true } : {}),
     ...(s?.underline ? { underline: true } : {}),
     ...(s?.strikethrough ? { strikethrough: true } : {}),
+    ...(s?.letterSpacing ? { letterSpacing: s.letterSpacing } : {}),
   };
 }
 
@@ -598,6 +608,7 @@ export function toPbTextStyle(s: TextStyleLite) {
     italic: s.italic === true,
     underline: s.underline === true,
     strikethrough: s.strikethrough === true,
+    letterSpacing: s.letterSpacing ?? 0,
   };
 }
 
@@ -1041,6 +1052,7 @@ export function toTextStyleDefLite(d: PbTextStyleDef): TextStyleDefLite {
     ...(d.spaceAfter ? { spaceAfter: d.spaceAfter } : {}),
     ...(d.indentFirst ? { indentFirst: d.indentFirst } : {}),
     ...(d.indentLeft ? { indentLeft: d.indentLeft } : {}),
+    ...(d.alignToGrid ? { alignToGrid: true } : {}),
   };
 }
 export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
@@ -1049,6 +1061,7 @@ export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
     kind: d.kind === "character" ? TextStyleKind.CHARACTER : TextStyleKind.PARAGRAPH,
     basedOn: d.basedOn ?? "", nextStyleId: d.nextStyleId ?? "",
     spaceBefore: d.spaceBefore ?? 0, spaceAfter: d.spaceAfter ?? 0, indentFirst: d.indentFirst ?? 0, indentLeft: d.indentLeft ?? 0,
+    alignToGrid: d.alignToGrid === true,
   });
 }
 

@@ -338,6 +338,7 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
           ...(own && fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),
           ...(own && !!seg.style.italic !== !!style.italic ? [attr("font-style", seg.style.italic ? "italic" : "normal")] : []),
           ...(decoration ? [attr("text-decoration", decoration)] : []),
+          ...(own && (seg.style.letterSpacing ?? 0) !== (style.letterSpacing ?? 0) ? [attr("letter-spacing", seg.style.letterSpacing ?? 0)] : []),
         ])}>${esc(seg.text)}</tspan>`;
       }),
     )
@@ -351,6 +352,7 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
     ...(style.italic ? [attr("font-style", "italic")] : []),
+    ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
     ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }

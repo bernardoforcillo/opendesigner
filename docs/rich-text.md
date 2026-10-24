@@ -8,6 +8,11 @@ Text can now have more than one look. A **paragraph style** sets the look of who
 - **Editing a text** (double click): a small bar above the field has a *Paragraph style* picker (applies to the paragraphs the selection or caret touches) and a *Character style* picker (applies to the selected characters; it needs a selection). Formatting stays attached to its characters while you type: text typed at the end of a styled run joins it, a run you delete disappears, and Enter at the end of a paragraph starts the next paragraph in the style's *Next style*. Everything done in one editing session is one undo step.
 - **Properties panel → Text** applies a paragraph style to every paragraph, or a character style to the whole text, of the selected nodes; **U** and **S** toggle underline and strikethrough on the text's own style. (The panel's *Text style* is different: it replaces the look of the whole node, as before.)
 
+## Tracking and the baseline grid
+
+- **Tracking** (letter spacing) is a field of every style, in px added after each character; negative tightens. It is set on the text itself (properties panel, *Tracking*), in a paragraph style, or in a character style over a range. Layout measures with it, so lines wrap where they will be drawn; drawing places the characters one by one (a string with tracking loses its kerning pairs), and the SVG export writes `letter-spacing`. As with other fields, `0` means "not set" and inherits.
+- **Align to baseline grid** (paragraph styles): the document has a baseline grid (*Page setup…* → *Baseline grid*, or `set_document_settings`); a paragraph in a style with this option puts every line on a grid line, moving it down to the next one when its baseline falls between two. The grid counts from the top of the page, so it follows the text box when you move it. Only text with a paragraph style can align (the text's own style cannot).
+
 ## How styles combine
 
 For a character: the node's own style (or its shared *Text style*), then the **paragraph style** of its paragraph on top, then the **character style** of its run on top. A field counts as *set* when it is non-empty / non-zero: font family `""`, size `0`, weight `""`, line height `0`, italic / underline / strikethrough off and alignment *left* are "not set" and inherit. So a paragraph style can centre or right-align but cannot force *left* over a centred text, and a character style cannot turn italic *off*. Spacing and indents of a child style override only when non-zero.
@@ -33,10 +38,10 @@ The style ids are resolved into drawable values by the same derived pass as vari
 
 ## MCP
 
-`set_text_style` takes `kind` (`paragraph` | `character`), `basedOn`, `nextStyleId`, `spaceBefore`, `spaceAfter`, `indentFirst`, `indentLeft`, `underline`, `strikethrough`; `list_text_styles` returns them. `format_text { nodeId, paragraphStyles, runs }` sets a text node's formatting; `get_document` / `list_nodes` return `paragraphStyles` and `runs`. `set_text` keeps the formatting (adjusted to the new content).
+`set_text_style` takes `letterSpacing`, `alignToGrid`, `kind` (`paragraph` | `character`), `basedOn`, `nextStyleId`, `spaceBefore`, `spaceAfter`, `indentFirst`, `indentLeft`, `underline`, `strikethrough`; `list_text_styles` returns them. `format_text { nodeId, paragraphStyles, runs }` sets a text node's formatting; `get_document` / `list_nodes` return `paragraphStyles` and `runs`. `set_text` keeps the formatting (adjusted to the new content).
 
 ## Not yet
 
-- **Colour** in styles (a character style cannot change the fill), letter spacing, small caps, super/subscript, nested styles, bullets and numbering, tabs, a baseline grid.
+- **Colour** in styles (a character style cannot change the fill), small caps, super/subscript, nested styles, bullets and numbering, tabs.
 - **Threaded frames** lay a story out as plain text: the formatting of a threaded story is kept in the document but not drawn.
 - The editing field shows plain text (the canvas shows the result once you leave it), and generated code (`opendesigner export`) exports the text's own style.

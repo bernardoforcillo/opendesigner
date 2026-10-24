@@ -50,6 +50,7 @@ export function TypographyControls() {
   const characterList = allStyles.filter((d) => d.kind === "character");
   const underline = same(styles.map((s) => s.underline === true));
   const strike = same(styles.map((s) => s.strikethrough === true));
+  const tracking = same(styles.map((s) => s.letterSpacing ?? 0));
   const paragraphValue = paragraphStyleOf(scene, selection);
   const characterValue = characterStyleOf(scene, selection);
   const single = nodes.length === 1 ? nodes[0] : null;
@@ -79,6 +80,12 @@ export function TypographyControls() {
             <span className="line-through">S</span>
           </Button>
         </div>
+        <NumberField
+          label="Tracking" suffix="px"
+          value={tracking === MIXED ? NaN : tracking}
+          placeholder={tracking === MIXED ? "Mixed" : undefined}
+          onCommit={(v) => run(styleOps(scene, selection, { letterSpacing: v === 0 ? undefined : v }))}
+        />
         <NumberField
           label="Line" minValue={0.5} suffix="×"
           value={lineHeight === MIXED ? NaN : lineHeight}

@@ -37,9 +37,11 @@ export function isValidTextStyleDef(state: SceneState, d: PbTextStyleDef | undef
   if (!st || !finiteNonNeg(st.fontSize) || !finiteNonNeg(st.lineHeight) || !FAMILY_LIST_RE.test(st.fontFamily)) return false;
   const w = st.fontWeight;
   if (!(w === "" || WEIGHT_RE.test(w) || w === "normal" || w === "bold")) return false;
+  if (!Number.isFinite(st.letterSpacing) || Math.abs(st.letterSpacing) > 1000) return false;
   if (d.kind !== TextStyleKind.PARAGRAPH && d.kind !== TextStyleKind.CHARACTER) return false;
   if (![d.spaceBefore, d.spaceAfter, d.indentFirst, d.indentLeft].every(finiteNonNeg)) return false;
   const character = d.kind === TextStyleKind.CHARACTER;
+  if (character && d.alignToGrid) return false;
   if (character && (d.nextStyleId !== "" || d.spaceBefore !== 0 || d.spaceAfter !== 0 || d.indentFirst !== 0 || d.indentLeft !== 0)) return false;
   if (d.nextStyleId !== "" && d.nextStyleId !== d.id) {
     const n = state.textStyles[d.nextStyleId];

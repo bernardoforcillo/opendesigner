@@ -352,6 +352,20 @@ func TestRichText(t *testing.T) {
 	if err != nil {
 		t.Fatalf("SetTextStyle character: %v", err)
 	}
+	// Tracking and the baseline grid travel through the tools too.
+	grid, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Gridded", FontSize: 12, LetterSpacing: -0.4, AlignToGrid: true}})
+	if err != nil {
+		t.Fatalf("SetTextStyle gridded: %v", err)
+	}
+	styles, _ := sess.ListTextStyles(ctx, struct{}{})
+	for _, st := range styles.TextStyles {
+		if st.Id == grid.TextStyleId && (st.LetterSpacing != -0.4 || !st.AlignToGrid) {
+			t.Fatalf("listed style = %+v", st)
+		}
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "bad", Kind: "character", AlignToGrid: true}}); err == nil {
+		t.Fatal("a character style on the grid should be refused")
+	}
 	// A character style with paragraph settings, a loop and a missing base are refused with a reason.
 	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "bad", Kind: "character", SpaceAfter: 4}}); err == nil {
 		t.Fatal("a character style with spacing should be refused")

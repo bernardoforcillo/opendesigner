@@ -175,3 +175,34 @@ describe("StylesDialog", () => {
     expect(styles().h1).toBeDefined();
   });
 });
+
+describe("tracking and the baseline grid in the UI", () => {
+  beforeEach(() => install("one\ntwo"));
+
+  it("sets and clears tracking on the text's own style", () => {
+    useScene.getState().setSelection(["t1"]);
+    render(<TypographyControls />);
+    const field = screen.getByRole("textbox", { name: "Tracking" });
+    fireEvent.change(field, { target: { value: "2" } });
+    fireEvent.blur(field);
+    expect(text().style.letterSpacing).toBe(2);
+    fireEvent.change(field, { target: { value: "0" } });
+    fireEvent.blur(field);
+    expect(text().style.letterSpacing).toBeUndefined();
+  });
+
+  it("the Styles dialog edits a style's tracking and its grid alignment", () => {
+    render(<StylesDialog isOpen onOpenChange={() => {}} />);
+    fireEvent.click(screen.getByRole("button", { name: "Heading" }));
+    const tracking = screen.getByRole("textbox", { name: "Tracking" });
+    fireEvent.change(tracking, { target: { value: "-1" } });
+    fireEvent.blur(tracking);
+    fireEvent.click(screen.getByRole("checkbox", { name: "Align to baseline grid" }));
+    const stored = useScene.getState().scene!.textStyles.h1;
+    expect(stored.style.letterSpacing).toBe(-1);
+    expect(stored.alignToGrid).toBe(true);
+    // A character style has no grid option.
+    fireEvent.click(screen.getByRole("button", { name: "Emphasis" }));
+    expect(screen.queryByRole("checkbox", { name: "Align to baseline grid" })).toBeNull();
+  });
+});

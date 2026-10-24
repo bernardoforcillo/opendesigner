@@ -207,6 +207,30 @@ export interface PlacedLine { text: string; x: number; y: number; width: number;
 /** A measure that can be asked for any style: `measureFor(style)(text)` is the width in world units. */
 export type MeasureFor = (style: TextStyleLite) => (s: string) => number;
 
+// LETTER SPACING (tracking): `style.letterSpacing` px are added after every character. Layout
+// measures with it, and painting places the characters one by one (see paintTracked) so that every
+// renderer -- canvas, GPU, and the SVG's `letter-spacing` -- agrees on where each one goes.
+const charCount = (s: string) => Array.from(s).length;
+
+/** `measure` plus the style's letter spacing (the measure itself when there is none). */
+export function trackedMeasure(measure: (s: string) => number, style: TextStyleLite | undefined): (s: string) => number {
+  const ls = style?.letterSpacing ?? 0;
+  return ls === 0 ? measure : (s) => measure(s) + ls * charCount(s);
+}
+
+export function trackedMeasureFor(measureFor: MeasureFor): MeasureFor {
+  return (style) => trackedMeasure(measureFor(style), style);
+}
+
+/**
+ * The x of each character of `text` starting at `x`, for a style with letter spacing: where it would be
+ * without spacing (so kerning inside the string is kept) plus `spacing` for each character before it.
+ */
+export function trackedOffsets(text: string, x: number, spacing: number, measure: (s: string) => number): { ch: string; x: number }[] {
+  const chars = Array.from(text);
+  return chars.map((ch, i) => ({ ch, x: x + (i === 0 ? 0 : measure(chars.slice(0, i).join(""))) + i * spacing }));
+}
+
 // The lines a text node produces, with their position: exactly
 // those the canvas paints, and in the same place.
 //
@@ -224,8 +248,12 @@ export function placeTextLines(measure: (s: string) => number, n: NodeLite, meas
   const t = n.text;
   if (n.kind !== "text" || !t || t.content === "") return [];
   // Formatted text needs to measure with several styles; without that it is laid out as plain text.
-  if (t.rich && measureFor) return placeRichLines(measureFor, n, layoutRich(measureFor, t.content, t.style, t.rich, n.width));
-  return placeLines(measure, n, t.style, layoutText(measure, t.content, t.style, n.width));
+  if (t.rich && measureFor) {
+    const tracked = trackedMeasureFor(measureFor);
+    return placeRichLines(tracked, n, layoutRich(tracked, t.content, t.style, t.rich, n.width));
+  }
+  const m = trackedMeasure(measure, t.style);
+  return placeLines(m, n, t.style, layoutText(m, t.content, t.style, n.width));
 }
 
 // The real placement, starting from an ALREADY computed layout: it is private because
@@ -284,7 +312,7 @@ export function textPaintBounds(measure: MeasureText, n: NodeLite): Bounds {
   const t = n.text;
   if (n.kind !== "text" || !t || t.content === "") return box;
   if (t.rich) {
-    const mf: MeasureFor = (style) => (s) => measure(s, style);
+    const mf: MeasureFor = trackedMeasureFor((style) => (s) => measure(s, style));
     const layout = layoutRich(mf, t.content, t.style, t.rich, n.width);
     let minX = n.x, maxX = n.x + n.width;
     for (const line of placeRichLines(mf, n, layout)) {
@@ -294,7 +322,7 @@ export function textPaintBounds(measure: MeasureText, n: NodeLite): Bounds {
     return { x: minX, y: n.y, width: maxX - minX, height: Math.max(n.height, layout.height) };
   }
 
-  const m = (s: string) => measure(s, t.style);
+  const m = trackedMeasure((s: string) => measure(s, t.style), t.style);
   const layout = layoutText(m, t.content, t.style, n.width);
   let minX = n.x;
   let maxX = n.x + n.width;
@@ -394,11 +422,18 @@ function paintText(
   // the same one the SVG export consumes -- and paintLine (track 2) chooses
   // fill or stroke: the two tracks compose here without a second
   // measure of the layout.
-  for (const line of placeTextLines((s) => ctx.measureText(s).width, n, ctxMeasureFor(ctx))) {
-    if (!line.segments) { paintLine(line.text, line.x, line.y); continue; }
+  const raw = (s: string) => ctx.measureText(s).width;
+  // A piece with letter spacing is drawn character by character; one without, in one go.
+  const piece = (text: string, x: number, y: number, style: TextStyleLite) => {
+    const ls = style.letterSpacing ?? 0;
+    if (ls === 0) { paintLine(text, x, y); return; }
+    for (const c of trackedOffsets(text, x, ls, raw)) paintLine(c.ch, c.x, y);
+  };
+  for (const line of placeTextLines(raw, n, ctxMeasureFor(ctx))) {
+    if (!line.segments) { piece(line.text, line.x, line.y, t.style); continue; }
     for (const seg of line.segments) {
       ctx.font = fontString(seg.style);
-      paintLine(seg.text, seg.x, line.y);
+      piece(seg.text, seg.x, line.y, seg.style);
     }
   }
 }
@@ -488,6 +523,13 @@ export function layoutRich(
       const empty = l.frags.length === 0;
       const m = empty ? metricsOf(pr.style) : l.frags.map((f) => metricsOf(f.style)).reduce((a, b) => ({ ascent: Math.max(a.ascent, b.ascent), descent: Math.max(a.descent, b.descent) }));
       const height = m.ascent + m.descent;
+      // On the baseline grid: the line moves down to the next grid line when its baseline falls between two.
+      if (pr.alignToGrid && rich.grid) {
+        const g = rich.grid;
+        const baseline = g.boxY + y + m.ascent;
+        const target = g.start + Math.ceil((baseline - g.start) / g.increment - 1e-9) * g.increment;
+        if (target > baseline) y += target - baseline;
+      }
       const lineWidth = maxWidth > 0 ? maxWidth - pr.indentLeft - (li === 0 ? pr.indentFirst : 0) : 0;
       const left = pr.indentLeft + (li === 0 ? pr.indentFirst : 0) + alignOffsetX(pr.style.align, l.width, lineWidth);
       lines.push({ frags: l.frags, width: l.width, top: y, height, ascent: m.ascent, left });
@@ -509,6 +551,7 @@ function overlayStyle(base: TextStyleLite, over: TextStyleLite): TextStyleLite {
   if (over.italic) out.italic = true;
   if (over.underline) out.underline = true;
   if (over.strikethrough) out.strikethrough = true;
+  if (over.letterSpacing) out.letterSpacing = over.letterSpacing;
   return out;
 }
 

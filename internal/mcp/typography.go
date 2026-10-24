@@ -44,6 +44,8 @@ type TextStyleBody struct {
 	SpaceAfter    float64 `json:"spaceAfter,omitempty" jsonschema:"px below a paragraph"`
 	IndentFirst   float64 `json:"indentFirst,omitempty" jsonschema:"extra px of indent on the first line"`
 	IndentLeft    float64 `json:"indentLeft,omitempty" jsonschema:"px of indent on every line"`
+	LetterSpacing float64 `json:"letterSpacing,omitempty" jsonschema:"tracking: px added after every character; negative tightens"`
+	AlignToGrid   bool    `json:"alignToGrid,omitempty" jsonschema:"paragraph styles only: the lines sit on the document's baseline grid (set_document_settings)"`
 }
 
 type TextStyleView struct {
@@ -112,6 +114,7 @@ func textStyleViews(doc *opendesignerv1.Document) []TextStyleView {
 			Underline: st.GetUnderline(), Strikethrough: st.GetStrikethrough(), Kind: kindName(d.GetKind()),
 			BasedOn: d.GetBasedOn(), NextStyleId: d.GetNextStyleId(), SpaceBefore: d.GetSpaceBefore(), SpaceAfter: d.GetSpaceAfter(),
 			IndentFirst: d.GetIndentFirst(), IndentLeft: d.GetIndentLeft(),
+			LetterSpacing: st.GetLetterSpacing(), AlignToGrid: d.GetAlignToGrid(),
 		}})
 	}
 	sort.Slice(out, func(i, j int) bool {
@@ -135,8 +138,8 @@ func (b TextStyleBody) toProto(id string) (*opendesignerv1.TextStyleDef, error) 
 	}
 	return &opendesignerv1.TextStyleDef{Id: id, Name: b.Name, Style: &opendesignerv1.TextStyle{
 		FontFamily: b.FontFamily, FontSize: b.FontSize, FontWeight: b.FontWeight, LineHeight: b.LineHeight, Italic: b.Italic, Align: align,
-		Underline: b.Underline, Strikethrough: b.Strikethrough,
-	}, Kind: kind, BasedOn: b.BasedOn, NextStyleId: b.NextStyleId, SpaceBefore: b.SpaceBefore, SpaceAfter: b.SpaceAfter,
+		Underline: b.Underline, Strikethrough: b.Strikethrough, LetterSpacing: b.LetterSpacing,
+	}, AlignToGrid: b.AlignToGrid, Kind: kind, BasedOn: b.BasedOn, NextStyleId: b.NextStyleId, SpaceBefore: b.SpaceBefore, SpaceAfter: b.SpaceAfter,
 		IndentFirst: b.IndentFirst, IndentLeft: b.IndentLeft}, nil
 }
 

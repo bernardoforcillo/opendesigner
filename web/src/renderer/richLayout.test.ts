@@ -133,3 +133,68 @@ describe("decorationBars", () => {
     expect(decorationBars(base, 100)).toEqual([]);
   });
 });
+
+import { trackedMeasure, trackedOffsets } from "./text";
+
+describe("letter spacing", () => {
+  const base5 = (s: string) => s.length * 5;
+
+  it("adds the spacing after every character (a negative one tightens), and nothing without it", () => {
+    expect(trackedMeasure(base5, { ...base, letterSpacing: 2 })("abcd")).toBe(28);
+    expect(trackedMeasure(base5, { ...base, letterSpacing: -1 })("abcd")).toBe(16);
+    expect(trackedMeasure(base5, base)).toBe(base5);
+    // Characters, not UTF-16 units: an emoji is one.
+    expect(trackedMeasure(() => 10, { ...base, letterSpacing: 3 })("a😀")).toBe(16);
+  });
+
+  it("wraps plain text with the tracking included", () => {
+    const n = node({ content: "aaa bbb", style: { ...base, letterSpacing: 5 } }, { width: 40 });
+    // "aaa" = 3 x (5 + 5) = 30, "aaa bbb" = 70 > 40: two lines.
+    const lines = placeTextLines(base5, n);
+    expect(lines.map((l) => l.text)).toEqual(["aaa", "bbb"]);
+    expect(lines[0].width).toBe(30);
+    const untracked = placeTextLines(base5, node({ content: "aaa bbb", style: base }, { width: 40 }));
+    expect(untracked.map((l) => l.text)).toEqual(["aaa bbb"]);
+  });
+
+  it("measures rich pieces with their own tracking and reports where each character goes", () => {
+    const loose: TextStyleLite = { ...bold, fontWeight: "", letterSpacing: 4 };
+    const n = node(rich("aa bb", [para()], [{ start: 3, end: 5, style: loose }]));
+    const [line] = placeTextLines((s) => s.length * 5, n, mf);
+    // "aa " (15, no tracking) then "bb" at the base size 10 -> 2 x 5 + 2 x 4.
+    expect(line.segments!.map((s) => [s.text, s.width])).toEqual([["aa ", 15], ["bb", 18]]);
+    expect(trackedOffsets("abc", 100, 4, (s) => s.length * 5)).toEqual([{ ch: "a", x: 100 }, { ch: "b", x: 109 }, { ch: "c", x: 118 }]);
+    expect(trackedOffsets("", 0, 4, base5)).toEqual([]);
+  });
+});
+
+describe("the baseline grid", () => {
+  // Lines are 10 tall (size 10, line height 1); the grid is every 12 starting at 0; the box is at world y 0.
+  const grid = { increment: 12, start: 0, boxY: 0 };
+  const onGrid = (extra: Partial<ResolvedParagraph> = {}) => para({ alignToGrid: true, ...extra });
+
+  it("moves each line down to the next grid line and carries the shift to what follows", () => {
+    const l = layoutRich(mf, "a\nb\nc", base, { paragraphs: [onGrid(), onGrid(), onGrid()], runs: [], grid }, 100);
+    // ascent of a line = (10 - 10)/2 + 8 = 8: baselines at 8, then grid lines 12, 24, 36.
+    const baselines = l.lines.map((x) => x.top + x.ascent);
+    expect(baselines).toEqual([12, 24, 36]);
+  });
+
+  it("leaves paragraphs that do not ask for it alone, and skips the grid when the document has none", () => {
+    const a = layoutRich(mf, "a\nb", base, { paragraphs: [onGrid(), para()], runs: [], grid }, 100);
+    expect(a.lines.map((x) => x.top + x.ascent)).toEqual([12, 22]); // b follows the shifted line at its natural spacing (10 below)
+    const b = layoutRich(mf, "a\nb", base, { paragraphs: [onGrid(), onGrid()], runs: [] }, 100);
+    expect(b.lines.map((x) => x.top)).toEqual([0, 10]);
+  });
+
+  it("counts from where the text box is on the page", () => {
+    const l = layoutRich(mf, "a", base, { paragraphs: [onGrid()], runs: [], grid: { ...grid, boxY: 5 } }, 100);
+    // Baseline at 5 + 8 = 13 -> the next grid line is 24, so the line moves down by 11.
+    expect(l.lines[0].top + l.lines[0].ascent).toBe(19);
+  });
+
+  it("leaves a line that is already on a grid line where it is", () => {
+    const l = layoutRich(mf, "a", base, { paragraphs: [onGrid()], runs: [], grid: { increment: 8, start: 0, boxY: 0 } }, 100);
+    expect(l.lines[0].top).toBe(0);
+  });
+});

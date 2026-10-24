@@ -6,7 +6,7 @@ import { applyOp } from "./applyOp";
 import { invertOp } from "./history";
 import { clampRich, isValidRich, paragraphCount, reconcileRich, richFields } from "./richText";
 import { resolveScene } from "./variables";
-import { emptyScene, toPbTextStyle, type NodeLite, type SceneState, type TextLite, type TextStyleDefLite } from "./types";
+import { emptyScene, toPbTextStyle, toPbTextStyleDef, type NodeLite, type SceneState, type TextLite, type TextStyleDefLite } from "./types";
 
 const STYLE = { fontFamily: "", fontSize: 12, fontWeight: "", lineHeight: 0, align: "left" as const };
 const def = (over: Partial<TextStyleDefLite> & { id: string }): TextStyleDefLite => ({ name: over.id, style: { ...STYLE, fontSize: 0 }, ...over });
@@ -161,5 +161,46 @@ describe("reconcileRich", () => {
   it("does nothing to text without formatting", () => {
     expect(rec(t("abc"), "abcd")).toEqual({});
     expect(paragraphCount("a\r\nb\rc")).toBe(3);
+  });
+});
+
+describe("letter spacing and the baseline grid in styles", () => {
+  const def2 = (over: Partial<TextStyleDefLite> & { id: string }): TextStyleDefLite => ({ name: over.id, style: { ...STYLE }, ...over });
+  const upsert = (d: TextStyleDefLite) => op({ case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(d) } } as Op["kind"]);
+
+  it("stores tracking and the grid flag, and rejects what Go rejects", () => {
+    const s = doc();
+    const tight = def2({ id: "tight", alignToGrid: true, style: { ...STYLE, letterSpacing: -0.5 } });
+    const next = applyOp(s, upsert(tight));
+    expect(next.textStyles.tight).toMatchObject({ alignToGrid: true, style: { letterSpacing: -0.5 } });
+    expect(applyOp(s, upsert(def2({ id: "x", style: { ...STYLE, letterSpacing: 5000 } })))).toBe(s);
+    expect(applyOp(s, upsert(def2({ id: "x", kind: "character", alignToGrid: true })))).toBe(s);
+    expect(applyOp(s, upsert(def2({ id: "wide", kind: "character", style: { ...STYLE, fontSize: 0, letterSpacing: 2 } })))).not.toBe(s);
+  });
+
+  it("a character style tracks over its range and a based-on style inherits tracking", () => {
+    let s = doc("abc");
+    s.textStyles = {
+      ...s.textStyles,
+      wide: def2({ id: "wide", kind: "character", style: { ...STYLE, fontSize: 0, letterSpacing: 3 } }),
+      a: def2({ id: "a", style: { ...STYLE, fontSize: 0, letterSpacing: 1 } }),
+      b: def2({ id: "b", basedOn: "a", style: { ...STYLE, fontSize: 20 } }),
+    };
+    s = applyOp(s, setText({ content: "abc", richPresent: true, paragraphStyles: ["b"], runs: [{ start: 1, end: 2, styleId: "wide" }] }));
+    const r = resolveScene(s).nodes.at("t")!.text!.rich!;
+    expect(r.paragraphs[0].style).toMatchObject({ fontSize: 20, letterSpacing: 1 });
+    expect(r.runs[0].style.letterSpacing).toBe(3);
+  });
+
+  it("builds the grid for paragraphs that align to it, with the box's place on the page", () => {
+    let s = doc("a");
+    s.textStyles = { ...s.textStyles, g: def2({ id: "g", alignToGrid: true, style: { ...STYLE } }) };
+    s.settings = { baselineIncrement: 14, baselineStart: 6 };
+    s.nodes = s.nodes.set("t", { ...s.nodes.at("t")!, y: 30 });
+    s = applyOp(s, setText({ content: "a", richPresent: true, paragraphStyles: ["g"] }));
+    expect(resolveScene(s).nodes.at("t")!.text!.rich!.grid).toEqual({ increment: 14, start: 6, boxY: 30 });
+    // No grid in the document: nothing to align to.
+    const bare = { ...s, settings: undefined };
+    expect(resolveScene(bare).nodes.at("t")!.text!.rich!.grid).toBeUndefined();
   });
 });

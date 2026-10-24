@@ -13,7 +13,7 @@ import {
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
 import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
-import { decorationBars, fontSizeOf, placeTextLines, type MeasureFor } from "../text";
+import { decorationBars, fontSizeOf, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
 
@@ -583,16 +583,21 @@ export class CanvasKitRenderer {
       lines = placeTextLines(this.measureFor(font), n, this.styleMeasure);
       this.textLines.set(n, lines);
     }
+    // A piece with letter spacing goes character by character, as on the 2D canvas.
+    const put = (text: string, x: number, y: number, f: Font, spacing: number) => {
+      if (!spacing) { sk.drawText(text, x, y, paint, f); return; }
+      for (const c of trackedOffsets(text, x, spacing, this.measureFor(f))) sk.drawText(c.ch, c.x, y, paint, f);
+    };
     for (const line of lines) {
       if (!line.segments) {
-        sk.drawText(line.text, line.x, line.y, paint, font);
+        put(line.text, line.x, line.y, font, t.style.letterSpacing ?? 0);
         this.drawBars(sk, [{ x: line.x, width: line.width, style: t.style }], line.y, paint);
         continue;
       }
       // Rich text: every piece in its own font, on the line's baseline.
       for (const seg of line.segments) {
         const f = this.fonts.fontFor(seg.style.fontWeight, fontSizeOf(seg.style), seg.style.fontFamily, seg.style.italic === true) ?? font;
-        sk.drawText(seg.text, seg.x, line.y, paint, f);
+        put(seg.text, seg.x, line.y, f, seg.style.letterSpacing ?? 0);
       }
       this.drawBars(sk, line.segments, line.y, paint);
     }

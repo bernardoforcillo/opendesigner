@@ -1,5 +1,5 @@
 import { withMeta } from "../flow/meta";
-import { fontString, layoutText, lineHeightOf, fontSizeOf } from "../renderer/text";
+import { fontString, layoutText, lineHeightOf, fontSizeOf, trackedMeasure } from "../renderer/text";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { makeSetPropsOp, makeSetTextOp } from "../tools/ops";
 import { recordDelta } from "./sceneDelta";
@@ -149,7 +149,7 @@ export function deriveThreads(scene: SceneState): SceneState {
   const changed: string[] = [];
   for (const chain of chains) {
     const style = chain[0].text!.style;
-    const m = (injected ?? defaultMeasureFor)(style);
+    const m = trackedMeasure((injected ?? defaultMeasureFor)(style), style);
     const { slices, overset } = flowStory(chain[0].text!.content, chain, style, m);
     for (const [i, n] of chain.entries()) {
       const last = i === chain.length - 1;

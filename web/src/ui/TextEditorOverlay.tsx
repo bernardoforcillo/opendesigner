@@ -339,6 +339,8 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
         fontSize: `${fontSize}px`,
         lineHeight: `${lineHeight}px`,
         textAlign: style?.align ?? "left",
+        // Tracking, so the field wraps where the canvas will.
+        letterSpacing: style?.letterSpacing ? `${style.letterSpacing * camera.zoom}px` : undefined,
         color: cssColor(node),
         // The node's OPACITY is NOT carried over here: it would make
         // the whole field semi-transparent, background included, and the text drawn
