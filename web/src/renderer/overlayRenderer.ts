@@ -390,11 +390,12 @@ function drawThreadPorts(ctx: CanvasRenderingContext2D, state: SceneState, cam: 
     ctx.lineWidth = 1;
     ctx.strokeRect(b.x + 0.5, b.y + 0.5, PORT, PORT);
   }
+  const hot = outs.filter((o) => o.hot);
+  if (hot.length === 0) return;
   ctx.save();
   ctx.strokeStyle = accent;
   ctx.setLineDash([4, 3]);
-  for (const o of outs) {
-    if (!o.hot) continue;
+  for (const o of hot) {
     ctx.beginPath();
     ctx.moveTo(o.from.x + o.from.width - PORT / 2, o.from.y + o.from.height - PORT / 2);
     ctx.lineTo(o.to.x + PORT / 2, o.to.y + PORT / 2);
