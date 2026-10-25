@@ -94,6 +94,21 @@ message Stroke {
   ArrowHead start_cap = 20;   // the first anchor of the first open subpath
   ArrowHead end_cap = 21;     // the last anchor of the last open subpath
   StrokeSides sides = 22;     // per-side weights (rect / frame); absent = `weight` on every side
+  // Fields 30-49 are the vector track's.
+  // VARIABLE WIDTH (vectors): the width along the path, as points sorted by position. Empty = the uniform
+  // stroke. Between points the widths are interpolated linearly; before the first and after the last
+  // they stay. See WidthPoint.
+  repeated WidthPoint width_profile = 30;
+}
+
+// One point of a variable-width stroke. `position` runs 0..1 along each subpath's length. `left` and
+// `right` are the half-widths on the left and right of the direction of travel, as MULTIPLES of
+// half the stroke weight (1 / 1 = the uniform stroke; 0 / 0 = a point), so changing the weight scales
+// the whole profile.
+message WidthPoint {
+  double position = 1; // 0..1
+  double left = 2;     // 0..16
+  double right = 3;    // 0..16
 }
 
 // Drop shadow. Offset and blur are in WORLD coordinates (like font_size): they
