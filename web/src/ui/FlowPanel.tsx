@@ -128,10 +128,10 @@ function TransitionEditor({ scene, t }: { scene: SceneState; t: TransitionLite }
         </select>
       </Field>
       <Field label="Guard" wide>
-        <CommitField label="Guard" value={t.guard} onCommit={(v) => commit("guard", v)} placeholder="e.g. user=guest" className="font-mono text-[12px]" />
+        <CommitField label="Guard" value={t.guard} onCommit={(v) => commit("guard", v)} placeholder="e.g. count >= 3, or else" className="font-mono text-[12px]" />
       </Field>
       <Field label="Effect" wide>
-        <CommitField label="Effect" value={t.effect} onCommit={(v) => commit("effect", v)} placeholder="e.g. cart=full" className="font-mono text-[12px]" />
+        <CommitField label="Effect" value={t.effect} onCommit={(v) => commit("effect", v)} placeholder="e.g. count = count + 1" className="font-mono text-[12px]" />
       </Field>
       <Field label="Animation" wide>
         <select
