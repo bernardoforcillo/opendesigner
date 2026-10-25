@@ -49,13 +49,17 @@ img,svg{display:block}
   background-color: #4db266;
 }
 .group-5 {
-  position: absolute;
-  left: 5px;
-  top: 5px;
-  width: 0;
-  height: 0;
+  position: relative;
+  flex-shrink: 0;
+  width: 10px;
+  height: 10px;
 }
-.inside-6 {
+.div-6 {
+  position: absolute;
+  left: 0;
+  top: 0;
+}
+.inside-7 {
   position: absolute;
   left: 0;
   top: 0;
@@ -63,7 +67,7 @@ img,svg{display:block}
   height: 10px;
   background-color: #3366e5;
 }
-.hug-column-7 {
+.hug-column-8 {
   position: absolute;
   left: 10px;
   top: 100px;
@@ -77,21 +81,21 @@ img,svg{display:block}
   padding: 8px 16px;
   background-color: #e5e5e5;
 }
-.c-8 {
+.c-9 {
   position: relative;
   flex-shrink: 0;
   width: 60px;
   height: 24px;
   background-color: #e54d4d;
 }
-.d-9 {
+.d-10 {
   position: relative;
   flex-shrink: 0;
   width: 90px;
   height: 24px;
   background-color: #3366e5;
 }
-.between-10 {
+.between-11 {
   position: absolute;
   left: 10px;
   top: 220px;
@@ -104,21 +108,21 @@ img,svg{display:block}
   padding: 6px 10px;
   background-color: #e5e5e5;
 }
-.e-11 {
+.e-12 {
   position: relative;
   flex-shrink: 0;
   width: 40px;
   height: 30px;
   background-color: #e54d4d;
 }
-.f-12 {
+.f-13 {
   position: relative;
   flex-shrink: 0;
   width: 40px;
   height: 20px;
   background-color: #3366e5;
 }
-.in-flow-text-13 {
+.in-flow-text-14 {
   position: relative;
   flex-shrink: 0;
   width: 100px;
@@ -139,17 +143,19 @@ img,svg{display:block}
       <div class="a-3" data-node-id="h1"></div>
       <div class="b-4" data-node-id="h2"></div>
       <div class="group-5" data-node-id="hg">
-        <div class="inside-6" data-node-id="hgr"></div>
+        <div class="div-6">
+          <div class="inside-7" data-node-id="hgr"></div>
+        </div>
       </div>
     </div>
-    <div class="hug-column-7" data-node-id="v">
-      <div class="c-8" data-node-id="v1"></div>
-      <div class="d-9" data-node-id="v2"></div>
+    <div class="hug-column-8" data-node-id="v">
+      <div class="c-9" data-node-id="v1"></div>
+      <div class="d-10" data-node-id="v2"></div>
     </div>
-    <div class="between-10" data-node-id="bt">
-      <div class="e-11" data-node-id="bt1"></div>
-      <div class="f-12" data-node-id="bt2"></div>
-      <div class="in-flow-text-13" data-node-id="tx">Hello</div>
+    <div class="between-11" data-node-id="bt">
+      <div class="e-12" data-node-id="bt1"></div>
+      <div class="f-13" data-node-id="bt2"></div>
+      <div class="in-flow-text-14" data-node-id="tx">Hello</div>
     </div>
   </div>
 </body>

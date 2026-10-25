@@ -11,9 +11,9 @@ view gives the same numbers, bit for bit, and the golden fixtures
 ## Auto layout
 
 A frame with `auto_layout` arranges its visible children that have a measure of their
-own -- rectangle, ellipse, text, image, vector, frame and **instance** (laid out with the
-width/height of its own node) -- in a row or a column. Groups stay where they are: their
-bounds are derived from their children.
+own -- rectangle, ellipse, text, image, vector, frame, **instance** (laid out with the
+width/height of its own node) and **group** (see below) -- in a row or a column, or in the cells of a
+grid.
 
 ```
 AutoLayout { direction, spacing, padding_*, main_align, cross_align,
@@ -87,6 +87,71 @@ the child follows by its `constraint_x`/`constraint_y`, like a child of a plain 
 `AUTO` it rejoins the flow (undo also restores its old x/y). The mask path is
 `layout_positioning`; the exported code gives it `position: absolute` at its x/y.
 
+## Groups as children
+
+A visible group in an auto layout frame (row, column or grid) acts as **one box**: the union of its
+visible children (nested groups included, rotation ignored), `Node.width`/`height` are rewritten to
+it and the layout puts that box where the flow says, by **translating the group** (the group's x/y are
+the translation it contributes to its children, so the children keep their own x/y). A child that grows,
+moves, hides or leaves the group re-lays the frame out. A group never fills (its size is its content's)
+and has no size limits; an **empty** group has no box and stays where it is. Moving or resizing the
+children by hand works as before (the gesture touches the leaves); the next layout puts the group's box back
+in its slot. Exported code gives the group a flow box of the union's size with its children hanging from a
+zero-size anchor at the box's corner.
+
+## Grid mode
+
+`AutoLayout.mode = GRID` turns the frame into rows x columns of **tracks** instead of a row. The Go engine
+(`internal/core/layout_grid.go`) is the authority; `web/src/store/layoutGrid.ts` repeats it, and the golden
+fixtures `testdata/golden/layout_grid.json` and `layout_group.json` run both.
+
+```
+AutoLayout { mode, columns[], rows[], column_gap, row_gap,   // plus padding, hug_width/hug_height, main/cross_align
+             ... }                                           // direction, spacing, wrap, cross_spacing are ignored
+GridTrack  { kind: FIXED | HUG | FR, size }                  // px / - / weight
+Node.grid_cell { column, column_span, row, row_span }        // 1-based; 0 = auto / one cell
+```
+
+- **Tracks**: FIXED has its size; HUG is as big as the biggest child in it (a child spanning several tracks
+  widens the HUG ones among them by what is missing, smallest spans first); FR tracks share what is left
+  after the fixed and hug tracks and the gaps by weight (a weight <= 0 counts as 1) and ignore their content.
+  When the frame **hugs** an axis its FR tracks hug too, and the frame is the tracks plus gaps plus padding
+  (within the frame's own limits). Columns or rows no definition covers are HUG.
+- **Placement**: children with both a column and a row go to that cell (they may overlap). The others flow
+  row by row into the first free cells in document order (a span wider than the grid is cut to it); a child with
+  only a column or only a row takes the first free line along the other axis.
+- **In the cell**: a child keeps its size, or fills the cell on an axis when its sizing says `fill` (min/max
+  limits apply). `main_align` aligns it horizontally and `cross_align` vertically (center and end; anything else
+  is the start), whatever `direction` was. The tracks do not stretch to a bigger frame without FR tracks.
+- **Panel**: *Layout mode* (Flex / Grid) in the Auto layout section; switching starts from two FR columns and a
+  hug row (gaps from the spacing, the tracks are remembered when you go back to Flex). Each column and row has a
+  kind, a size or weight and a remove button; *Column gap* / *Row gap*; alignments are horizontal / vertical.
+  A child of a grid shows a *Grid cell* section (column, row, spans).
+- **MCP**: `create_frame` / `set_auto_layout` take `mode: "grid"`, `columns`, `rows` (`{kind, size}`),
+  `columnGap`, `rowGap`; `set_grid_cell` places nodes; node views report `gridCell`.
+- **Code**: `display:grid` with `grid-template-columns/rows` (`<n>px`, `max-content`, `<w>fr`), `gap`,
+  `justify-items`/`align-items`, and `grid-column`/`grid-row` per child (`2 / span 2`). CSS auto-placement is the
+  browser's (it matches ours for ordinary grids; with mixed explicit and auto cells it can differ). SwiftUI and
+  Compose have no grid export: their children are not placed.
+- A bad track kind, a negative or non-finite size or gap, more than 100 tracks, an unknown mode or a cell number
+  outside 0..1000 rejects the whole op.
+
+## Context menu
+
+Right click on the canvas (Design mode, with write access) or on a layer opens one shared menu
+(`ui/ContextMenu.tsx`, state in `ui/contextMenuStore.ts`, entries in `ui/contextMenuItems.ts`). The node under the
+pointer becomes the selection unless it is already part of it; right click on empty canvas opens nothing. Entries,
+each one gesture = one undo step:
+
+- for a selection of **instances**: *Swap instance* (a submenu of the document's components), *Reset all changes*
+  (disabled without overrides), *Detach instance*, *Go to main component* (one instance);
+- for any selection: *Group selection*, *Ungroup*, *Bring to front / forward*, *Send backward / to back*
+  (`tools/arrange.ts`: an `order_key` write on the nodes that move, per parent; disabled at the end of the line),
+  *Duplicate*, *Delete*.
+
+The menu closes on Escape, a click elsewhere, scroll, resize or after an entry runs; arrows move, Right opens a
+submenu, Left closes it.
+
 ## Constraints
 
 A frame **without** auto layout keeps its children where their x/y put them, and when it
@@ -127,9 +192,8 @@ clamped (`STRETCH` below zero) and the scaled (`SCALE`) cases.
 
 ## Not yet
 
-- Min/max sizes, absolute-positioned children inside an auto layout frame, per-child
-  alignment overriding the frame's.
-- Groups as auto layout children, and constraints relative to a group.
+- Per-child alignment overriding the frame's.
+- Constraints relative to a group.
 - Constraints for a rotated or scaled parent frame (the move is in its own axes).
 - Exporting constraints to responsive CSS (they are an editing behavior; the export is the
   laid-out result).

@@ -14,7 +14,7 @@ import (
 // x/y, so an agent reads positions that are already correct and never computes
 // layout itself.
 type AutoLayoutSpec struct {
-	Direction     string  `json:"direction" jsonschema:"horizontal or vertical"`
+	Direction     string  `json:"direction,omitempty" jsonschema:"horizontal or vertical (required unless mode is grid)"`
 	Spacing       float64 `json:"spacing,omitempty" jsonschema:"gap between consecutive children, >= 0"`
 	PaddingLeft   float64 `json:"paddingLeft,omitempty"`
 	PaddingTop    float64 `json:"paddingTop,omitempty"`
@@ -26,6 +26,44 @@ type AutoLayoutSpec struct {
 	HugHeight     bool    `json:"hugHeight,omitempty" jsonschema:"the frame's height fits its content"`
 	Wrap          bool    `json:"wrap,omitempty" jsonschema:"children that do not fit the main axis continue on a new line (ignored when the main axis hugs)"`
 	CrossSpacing  float64 `json:"crossSpacing,omitempty" jsonschema:"gap between lines when wrapping, >= 0"`
+	// GRID mode: columns x rows of tracks instead of a row. direction, spacing, wrap and crossSpacing are ignored.
+	Mode      string          `json:"mode,omitempty" jsonschema:"flex (a row or column, default) or grid (rows x columns of tracks; place children with set_grid_cell)"`
+	Columns   []GridTrackSpec `json:"columns,omitempty" jsonschema:"grid only: the column tracks; columns beyond them are hug"`
+	Rows      []GridTrackSpec `json:"rows,omitempty" jsonschema:"grid only: the row tracks"`
+	ColumnGap float64         `json:"columnGap,omitempty" jsonschema:"grid only: space between columns, >= 0"`
+	RowGap    float64         `json:"rowGap,omitempty" jsonschema:"grid only: space between rows, >= 0"`
+}
+
+// GridTrackSpec is one track of a grid: fixed pixels, hug (as big as the biggest child in it) or
+// fr (a weighted share of the free space; size is the weight, 1 when 0).
+type GridTrackSpec struct {
+	Kind string  `json:"kind" jsonschema:"fixed, hug or fr"`
+	Size float64 `json:"size,omitempty" jsonschema:"fixed: pixels; fr: weight; hug: unused"`
+}
+
+var (
+	gridTrackKinds = map[string]opendesignerv1.GridTrackKind{
+		"fixed": opendesignerv1.GridTrackKind_GRID_TRACK_KIND_FIXED, "hug": opendesignerv1.GridTrackKind_GRID_TRACK_KIND_HUG, "fr": opendesignerv1.GridTrackKind_GRID_TRACK_KIND_FR,
+	}
+	gridTrackNames = map[opendesignerv1.GridTrackKind]string{
+		opendesignerv1.GridTrackKind_GRID_TRACK_KIND_FIXED: "fixed", opendesignerv1.GridTrackKind_GRID_TRACK_KIND_HUG: "hug", opendesignerv1.GridTrackKind_GRID_TRACK_KIND_FR: "fr",
+	}
+)
+
+func tracksToProto(in []GridTrackSpec) []*opendesignerv1.GridTrack {
+	var out []*opendesignerv1.GridTrack
+	for _, t := range in {
+		out = append(out, &opendesignerv1.GridTrack{Kind: gridTrackKinds[t.Kind], Size: t.Size})
+	}
+	return out
+}
+
+func tracksView(in []*opendesignerv1.GridTrack) []GridTrackSpec {
+	var out []GridTrackSpec
+	for _, t := range in {
+		out = append(out, GridTrackSpec{Kind: gridTrackNames[t.GetKind()], Size: t.GetSize()})
+	}
+	return out
 }
 
 var (
@@ -57,6 +95,25 @@ var (
 )
 
 func (a *AutoLayoutSpec) validate() error {
+	if a.Mode != "" && a.Mode != "flex" && a.Mode != "grid" {
+		return fmt.Errorf("autoLayout.mode must be \"flex\" or \"grid\", got %q", a.Mode)
+	}
+	for name, tracks := range map[string][]GridTrackSpec{"columns": a.Columns, "rows": a.Rows} {
+		for i, t := range tracks {
+			if _, ok := gridTrackKinds[t.Kind]; !ok {
+				return fmt.Errorf("autoLayout.%s[%d].kind must be fixed, hug or fr, got %q", name, i, t.Kind)
+			}
+			if t.Size < 0 {
+				return fmt.Errorf("autoLayout.%s[%d].size must be >= 0", name, i)
+			}
+		}
+	}
+	if a.ColumnGap < 0 || a.RowGap < 0 {
+		return fmt.Errorf("autoLayout.columnGap and rowGap must be >= 0")
+	}
+	if a.Mode == "grid" && a.Direction == "" {
+		a.Direction = "horizontal"
+	}
 	if _, ok := directions[a.Direction]; !ok {
 		return fmt.Errorf("autoLayout.direction must be \"horizontal\" or \"vertical\", got %q", a.Direction)
 	}
@@ -78,7 +135,12 @@ func (a *AutoLayoutSpec) validate() error {
 }
 
 func (a *AutoLayoutSpec) toProto() *opendesignerv1.AutoLayout {
+	mode := opendesignerv1.LayoutMode_LAYOUT_MODE_FLEX
+	if a.Mode == "grid" {
+		mode = opendesignerv1.LayoutMode_LAYOUT_MODE_GRID
+	}
 	return &opendesignerv1.AutoLayout{
+		Mode: mode, Columns: tracksToProto(a.Columns), Rows: tracksToProto(a.Rows), ColumnGap: a.ColumnGap, RowGap: a.RowGap,
 		Direction: directions[a.Direction], Spacing: a.Spacing,
 		PaddingLeft: a.PaddingLeft, PaddingTop: a.PaddingTop, PaddingRight: a.PaddingRight, PaddingBottom: a.PaddingBottom,
 		MainAlign: aligns[a.MainAlign], CrossAlign: aligns[a.CrossAlign],
@@ -90,7 +152,12 @@ func autoLayoutView(a *opendesignerv1.AutoLayout) *AutoLayoutSpec {
 	if a == nil {
 		return nil
 	}
+	mode := ""
+	if a.GetMode() == opendesignerv1.LayoutMode_LAYOUT_MODE_GRID {
+		mode = "grid"
+	}
 	return &AutoLayoutSpec{
+		Mode: mode, Columns: tracksView(a.GetColumns()), Rows: tracksView(a.GetRows()), ColumnGap: a.GetColumnGap(), RowGap: a.GetRowGap(),
 		Direction: directionNames[a.GetDirection()], Spacing: a.GetSpacing(),
 		PaddingLeft: a.GetPaddingLeft(), PaddingTop: a.GetPaddingTop(), PaddingRight: a.GetPaddingRight(), PaddingBottom: a.GetPaddingBottom(),
 		MainAlign: alignNames[a.GetMainAlign()], CrossAlign: alignNames[a.GetCrossAlign()],

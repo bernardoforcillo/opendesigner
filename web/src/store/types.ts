@@ -1,6 +1,6 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode } from "../gen/opendesigner/v1/opendesigner_pb";
+import { AnnotationSchema, ReadyForDevSchema, BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutPositioning, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode, LayoutMode, GridTrackKind } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Annotation as PbAnnotation, ReadyForDev as PbReady,
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, PaintStyleDef as PbPaintStyleDef, EffectStyleDef as PbEffectStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
@@ -91,7 +91,19 @@ export interface AutoLayoutLite {
   // `crossSpacing` is the gap between the lines.
   wrap?: true;
   crossSpacing?: number;
+  // GRID mode (docs/layout.md): the children sit in the cells of `columns` x `rows` instead of a
+  // row. Absent = flex. `columnGap` / `rowGap` replace `spacing`.
+  mode?: "grid";
+  columns?: GridTrackLite[];
+  rows?: GridTrackLite[];
+  columnGap?: number;
+  rowGap?: number;
 }
+// A track of a grid: fixed pixels, as big as its content (hug) or a weighted share of the rest (fr).
+export type GridTrackKindLite = "fixed" | "hug" | "fr";
+export interface GridTrackLite { kind: GridTrackKindLite; size: number }
+// The cell a child occupies in a grid parent (1-based; absent number = auto / one cell).
+export interface GridCellLite { column?: number; columnSpan?: number; row?: number; rowSpan?: number }
 
 // How a node follows its parent frame's resize (CONSTRAINTS), and how an auto layout parent
 // sizes it (LAYOUT SIZING), per axis. Absent = the proto default: "min" / fixed.
@@ -377,6 +389,8 @@ export interface NodeLite {
   minHeight?: number;
   maxHeight?: number;
   layoutPositioning?: "absolute";
+  // The cell of a GRID auto layout parent; absent = auto-placed, one cell.
+  gridCell?: GridCellLite;
   // Blend mode against what is behind; absent = normal.
   blendMode?: BlendModeLite;
   // A mask is not drawn: its outline clips the siblings above it. Absent = not a mask.
@@ -802,6 +816,26 @@ export function toAutoLayoutLite(a: PbAutoLayout): AutoLayoutLite {
     hugWidth: a.hugWidth, hugHeight: a.hugHeight,
     ...(a.wrap ? { wrap: true as const } : {}),
     ...(a.crossSpacing ? { crossSpacing: a.crossSpacing } : {}),
+    ...(a.mode === LayoutMode.GRID ? { mode: "grid" as const } : {}),
+    ...(a.columns.length > 0 ? { columns: a.columns.map(toTrackLite) } : {}),
+    ...(a.rows.length > 0 ? { rows: a.rows.map(toTrackLite) } : {}),
+    ...(a.columnGap ? { columnGap: a.columnGap } : {}),
+    ...(a.rowGap ? { rowGap: a.rowGap } : {}),
+  };
+}
+
+const TRACK_TO_LITE: Record<GridTrackKind, GridTrackKindLite> = {
+  [GridTrackKind.FIXED]: "fixed", [GridTrackKind.HUG]: "hug", [GridTrackKind.FR]: "fr",
+};
+const TRACK_TO_PB: Record<GridTrackKindLite, GridTrackKind> = { fixed: GridTrackKind.FIXED, hug: GridTrackKind.HUG, fr: GridTrackKind.FR };
+const toTrackLite = (t: { kind: GridTrackKind; size: number }): GridTrackLite => ({ kind: TRACK_TO_LITE[t.kind] ?? "fixed", size: t.size });
+const toPbTrack = (t: GridTrackLite) => ({ kind: TRACK_TO_PB[t.kind], size: t.size });
+
+export function toGridCellLite(c: { column: number; columnSpan: number; row: number; rowSpan: number } | undefined): GridCellLite | undefined {
+  if (!c || (!c.column && !c.columnSpan && !c.row && !c.rowSpan)) return undefined;
+  return {
+    ...(c.column ? { column: c.column } : {}), ...(c.columnSpan ? { columnSpan: c.columnSpan } : {}),
+    ...(c.row ? { row: c.row } : {}), ...(c.rowSpan ? { rowSpan: c.rowSpan } : {}),
   };
 }
 
@@ -813,6 +847,9 @@ export function toPbAutoLayout(a: AutoLayoutLite) {
     mainAlign: LAYOUT_ALIGN_TO_PB[a.mainAlign], crossAlign: LAYOUT_ALIGN_TO_PB[a.crossAlign],
     hugWidth: a.hugWidth, hugHeight: a.hugHeight,
     wrap: a.wrap === true, crossSpacing: a.crossSpacing ?? 0,
+    mode: a.mode === "grid" ? LayoutMode.GRID : LayoutMode.FLEX,
+    columns: (a.columns ?? []).map(toPbTrack), rows: (a.rows ?? []).map(toPbTrack),
+    columnGap: a.columnGap ?? 0, rowGap: a.rowGap ?? 0,
   };
 }
 
@@ -1054,6 +1091,7 @@ export function toNodeLite(n: PbNode): NodeLite {
     ...(n.minHeight ? { minHeight: n.minHeight } : {}),
     ...(n.maxHeight ? { maxHeight: n.maxHeight } : {}),
     ...(n.layoutPositioning === LayoutPositioning.ABSOLUTE ? { layoutPositioning: "absolute" as const } : {}),
+    ...(toGridCellLite(n.gridCell) ? { gridCell: toGridCellLite(n.gridCell) } : {}),
     ...(blendToLite(n.blendMode) ? { blendMode: blendToLite(n.blendMode) } : {}),
     ...(n.isMask ? { isMask: true as const } : {}),
     ...(n.layoutGrids.length > 0 ? { layoutGrids: n.layoutGrids.map(toLayoutGridLite) } : {}),
@@ -1086,6 +1124,7 @@ export function toPbNode(n: NodeLite): PbNode {
     layoutSizingY: n.layoutSizingY === "fill" ? LayoutSizing.FILL : LayoutSizing.FIXED,
     minWidth: n.minWidth ?? 0, maxWidth: n.maxWidth ?? 0, minHeight: n.minHeight ?? 0, maxHeight: n.maxHeight ?? 0,
     layoutPositioning: n.layoutPositioning === "absolute" ? LayoutPositioning.ABSOLUTE : LayoutPositioning.AUTO,
+    ...(n.gridCell ? { gridCell: { column: n.gridCell.column ?? 0, columnSpan: n.gridCell.columnSpan ?? 0, row: n.gridCell.row ?? 0, rowSpan: n.gridCell.rowSpan ?? 0 } } : {}),
     blendMode: toPbBlend(n.blendMode),
     isMask: n.isMask === true,
     layoutGrids: n.layoutGrids ? toPbLayoutGrids(n.layoutGrids) : [],

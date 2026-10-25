@@ -7,6 +7,8 @@ import { orderKeyBetween } from "../store/orderKey";
 import { ancestorsOf, childIndexOf, childrenOf, isAncestorOf, subtreeOf, topmostOf } from "../store/tree";
 import { sceneIndexOf } from "../renderer/sceneIndex";
 import { makeDeleteOp, makeReparentOp, makeSetPropsOp } from "../tools/ops";
+import { canWrite, useAccess } from "../rpc/access";
+import { openContextMenu } from "./contextMenuItems";
 import type { NodeLite, SceneState } from "../store/types";
 
 // LAYERS PANEL — TREE of the current page, with selection, visibility,
@@ -674,6 +676,12 @@ export function LayersPanel() {
             textValue={label}
             data-depth={row.depth}
             data-drop-invalid={invalidTarget ? "true" : undefined}
+            // Right click on a layer: the same menu as on the canvas, for this layer (or the
+            // selection it is part of).
+            onContextMenu={(e: React.MouseEvent) => {
+              e.preventDefault();
+              if (canWrite(useAccess.getState().role)) openContextMenu(e.clientX, e.clientY, n.id);
+            }}
             // Indentation by depth: the same space the renderer
             // expresses going down the tree, here rendered as a left indent.
             style={{ paddingLeft: BASE_PAD + row.depth * INDENT }}

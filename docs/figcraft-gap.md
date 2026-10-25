@@ -11,7 +11,10 @@ and which it did not.
   corner smoothing and independent radii, arrowheads, per-side stroke weights, shared paint and effect styles.
 - **Layout and components**: min/max sizes, absolute children, baseline alignment, swap / detach /
   reset overrides / go to main component, boolean variables and layout bindings (docs/layout.md,
-  docs/components.md, docs/variables.md).
+  docs/components.md, docs/variables.md); auto layout grid mode, groups as auto layout children and
+  the right-click context menu (docs/layout.md).
+- **Grid layout, groups in auto layout, context menu** (docs/layout.md): grid mode with fixed / hug / fr
+  tracks and spans, groups as auto layout children, a right-click menu with the instance actions.
 - **Dev Mode and code** (docs/codegen.md, docs/handoff.md, docs/flows.md): SwiftUI and Jetpack Compose
   export, ready-for-dev and annotations, compare changes, device frames and hotspot hints in Present,
   prototype expressions and `else` guards.
@@ -24,7 +27,6 @@ and which it did not.
 
 ## Not ported
 
-- Auto layout grid mode (fixed / hug / fr tracks, spans); groups as auto layout children.
 - Leptos code export; ordered `else if` chains in prototypes.
 - Vector-network editing tools, noise/glass refraction.
 - Accessibility tree, accounts and teams.

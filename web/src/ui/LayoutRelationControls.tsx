@@ -3,6 +3,7 @@ import type { ConstraintLite, NodeLite } from "../store/types";
 import { cls, Section } from "./ds";
 import { NumberField } from "./fields/NumberField";
 import { limitOf, limitOps, positioningOf, positioningOps, type LimitField } from "./layoutLimitOps";
+import { cellOf, cellOps, type CellField } from "./gridTrackOps";
 import { constraintOf, constraintOps, parentKind, sizingOf, sizingOps } from "./layoutRelationOps";
 
 // CONSTRAINTS and SIZING of the selection, i.e. its relation to the parent frame:
@@ -32,6 +33,11 @@ const V: { value: ConstraintLite; label: string }[] = [
 const LIMITS: { field: LimitField; label: string }[] = [
   { field: "minWidth", label: "Min width" }, { field: "maxWidth", label: "Max width" },
   { field: "minHeight", label: "Min height" }, { field: "maxHeight", label: "Max height" },
+];
+
+const CELLS: { field: CellField; label: string }[] = [
+  { field: "column", label: "Column" }, { field: "row", label: "Row" },
+  { field: "columnSpan", label: "Column span" }, { field: "rowSpan", label: "Row span" },
 ];
 
 export function LayoutRelationControls() {
@@ -86,6 +92,8 @@ export function LayoutRelationControls() {
       );
     };
     const pos = positioningOf(nodes);
+    // The cell controls need a grid parent (0 = auto-placed / one cell).
+    const inGrid = nodes.every((n) => scene.nodes.at(n.parentId)?.autoLayout?.mode === "grid");
     return (
       <>
         <Section title="Sizing">
@@ -103,6 +111,16 @@ export function LayoutRelationControls() {
             <LimitFields nodes={nodes} />
           </div>
         </Section>
+        {inGrid && pos !== "absolute" && (
+          <Section title="Grid cell">
+            <div className="grid grid-cols-2 gap-1.5">
+              {CELLS.map(({ field, label }) => (
+                <NumberField key={field} label={label} value={cellOf(nodes, field) ?? NaN} minValue={0}
+                  onCommit={(v) => run(cellOps(scene, selection, field, v))} />
+              ))}
+            </div>
+          </Section>
+        )}
       </>
     );
   }

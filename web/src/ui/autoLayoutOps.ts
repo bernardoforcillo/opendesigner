@@ -1,7 +1,7 @@
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { makeSetPropsOp } from "../tools/ops";
 import { toPbAutoLayout } from "../store/types";
-import type { AutoLayoutLite, NodeLite } from "../store/types";
+import type { AutoLayoutLite, GridTrackLite, NodeLite } from "../store/types";
 import type { NodeLookup } from "./gradientOps";
 
 // The Auto layout panel's ops. They write ONLY the frame's auto_layout field:
@@ -16,7 +16,12 @@ export const DEFAULT_AUTO_LAYOUT: AutoLayoutLite = {
 };
 
 // `wrap` is a plain boolean in a patch (false turns it off); the model only keeps `true`.
-export type AutoLayoutPatch = (Partial<Omit<AutoLayoutLite, "wrap">> & { wrap?: boolean }) | { enabled: boolean };
+// `mode` is "flex" or "grid" in a patch; the model keeps only "grid" (and the grid fields only when set).
+export type AutoLayoutPatch = (Partial<Omit<AutoLayoutLite, "wrap" | "mode">> & { wrap?: boolean; mode?: "flex" | "grid" }) | { enabled: boolean };
+
+// What switching a flex layout to a grid starts from: two equal columns, one row that hugs.
+const DEFAULT_COLUMNS: GridTrackLite[] = [{ kind: "fr", size: 1 }, { kind: "fr", size: 1 }];
+const DEFAULT_ROWS: GridTrackLite[] = [{ kind: "hug", size: 0 }];
 
 function write(n: NodeLite, layout: AutoLayoutLite | null): Op {
   const frame = { clipsContent: n.clipsContent, ...(layout ? { autoLayout: toPbAutoLayout(layout) } : {}) };
@@ -25,7 +30,7 @@ function write(n: NodeLite, layout: AutoLayoutLite | null): Op {
 
 function clampNonNegative<T extends Partial<AutoLayoutLite> | { crossSpacing?: number }>(p: T): T {
   const out = { ...p } as Record<string, unknown>;
-  for (const k of ["spacing", "paddingLeft", "paddingTop", "paddingRight", "paddingBottom", "crossSpacing"] as const) {
+  for (const k of ["spacing", "paddingLeft", "paddingTop", "paddingRight", "paddingBottom", "crossSpacing", "columnGap", "rowGap"] as const) {
     if (out[k] !== undefined) out[k] = Math.max(0, out[k] as number);
   }
   return out as T;
@@ -45,10 +50,23 @@ export function autoLayoutOps(ids: readonly string[], lookup: NodeLookup, patch:
       return n.autoLayout ? [] : [write(n, DEFAULT_AUTO_LAYOUT)];
     }
     const base = n.autoLayout ?? DEFAULT_AUTO_LAYOUT;
-    const merged = { ...base, ...clampNonNegative(patch) } as AutoLayoutLite & { wrap?: boolean };
-    // The model keeps `wrap` only when true and `crossSpacing` only when non-zero, like the proto's defaults.
-    const { wrap, crossSpacing, ...rest } = merged;
-    const next: AutoLayoutLite = { ...rest, ...(wrap ? { wrap: true as const } : {}), ...(crossSpacing ? { crossSpacing } : {}) };
+    const merged = { ...base, ...clampNonNegative(patch) } as Omit<AutoLayoutLite, "mode"> & { wrap?: boolean; mode?: "flex" | "grid" };
+    // Flex to grid: start from a usable grid (the gaps from the spacing) unless the patch brings its own.
+    if (patch.mode === "grid" && base.mode !== "grid") {
+      merged.columns ??= DEFAULT_COLUMNS;
+      merged.rows ??= DEFAULT_ROWS;
+      merged.columnGap ??= base.spacing;
+      merged.rowGap ??= base.spacing;
+    }
+    // The model keeps `wrap` only when true, `crossSpacing` and the gaps only when non-zero, the mode
+    // only when grid and the tracks only when there are some, like the proto's defaults.
+    const { wrap, crossSpacing, mode, columns, rows, columnGap, rowGap, ...rest } = merged;
+    const next: AutoLayoutLite = {
+      ...rest, ...(wrap ? { wrap: true as const } : {}), ...(crossSpacing ? { crossSpacing } : {}),
+      ...(mode === "grid" ? { mode: "grid" as const } : {}),
+      ...(columns && columns.length > 0 ? { columns } : {}), ...(rows && rows.length > 0 ? { rows } : {}),
+      ...(columnGap ? { columnGap } : {}), ...(rowGap ? { rowGap } : {}),
+    };
     if (n.autoLayout && JSON.stringify(next) === JSON.stringify(n.autoLayout)) return [];
     return [write(n, next)];
   });

@@ -892,6 +892,16 @@ type NodeView struct {
 	MinHeight         float64 `json:"minHeight,omitempty"`
 	MaxHeight         float64 `json:"maxHeight,omitempty"`
 	LayoutPositioning string  `json:"layoutPositioning,omitempty" jsonschema:"absolute when the node is out of its auto layout parent's flow; see set_layout_positioning"`
+	// GridCell: the cell in a GRID auto layout parent, when it has one (see set_grid_cell).
+	GridCell *GridCellView `json:"gridCell,omitempty"`
+}
+
+// GridCellView is a node's cell in a grid parent; 0 = auto / one.
+type GridCellView struct {
+	Column     int32 `json:"column,omitempty"`
+	ColumnSpan int32 `json:"columnSpan,omitempty"`
+	Row        int32 `json:"row,omitempty"`
+	RowSpan    int32 `json:"rowSpan,omitempty"`
 }
 
 // nodeKind derives the compact kind label from the shape oneof. A node with no
@@ -966,6 +976,9 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 	v.MinWidth, v.MaxWidth, v.MinHeight, v.MaxHeight = n.GetMinWidth(), n.GetMaxWidth(), n.GetMinHeight(), n.GetMaxHeight()
 	if n.GetLayoutPositioning() == opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
 		v.LayoutPositioning = "absolute"
+	}
+	if c := n.GetGridCell(); c.GetColumn() != 0 || c.GetColumnSpan() != 0 || c.GetRow() != 0 || c.GetRowSpan() != 0 {
+		v.GridCell = &GridCellView{Column: c.GetColumn(), ColumnSpan: c.GetColumnSpan(), Row: c.GetRow(), RowSpan: c.GetRowSpan()}
 	}
 	return v
 }

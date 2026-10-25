@@ -3,6 +3,7 @@ import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { childrenOf, subtreeOf } from "./tree";
 import type { NodeLite, SceneState } from "./types";
 import { isLayoutKey, resolveNode } from "./variables";
+import { groupBox, layoutGrid, type Box } from "./layoutGrid";
 
 // AUTO LAYOUT -- the TypeScript half of internal/core/layout.go, which is
 // the AUTHORITY. This copy exists only because the client applies ops
@@ -94,7 +95,24 @@ function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?:
   // Spacing and padding bound to variables are read in the frame's active mode.
   const al = (frame.bindings ? resolveNode(view, frame).autoLayout : undefined) ?? frame.autoLayout;
   const vertical = al.direction === "vertical";
-  const kids = childrenOf(view, id).filter((c) => participatesIn(view, c) && !isAbsolute(c));
+  // A GROUP child is one box: the union of its children (its width/height become it), placed by
+  // translating the group so the union's corner lands where the box goes. `orig` keeps the
+  // stored node to tell what changed.
+  const groupAt = new Map<string, Box>();
+  const orig0 = new Map<string, NodeLite>();
+  const kids: NodeLite[] = [];
+  for (const c of childrenOf(view, id)) {
+    if (isAbsolute(c)) continue;
+    if (participatesIn(view, c)) kids.push(c);
+    else if (c.kind === "group" && (c.bindings?.visible ? resolveNode(view, c) : c).visible) {
+      const b = groupBox(view, c.id);
+      if (b) {
+        groupAt.set(c.id, b);
+        orig0.set(c.id, c);
+        kids.push({ ...c, width: b.maxX - b.minX, height: b.maxY - b.minY });
+      }
+    }
+  }
 
   const padL = al.paddingLeft, padT = al.paddingTop, padR = al.paddingRight, padB = al.paddingBottom;
   const [padMainStart, padMainEnd, padCrossStart, padCrossEnd] = vertical ? [padT, padB, padL, padR] : [padL, padR, padT, padB];
@@ -105,10 +123,10 @@ function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?:
     crossOf: (n) => (vertical ? n.width : n.height),
     withMain: (n, v) => (vertical ? { ...n, height: v } : { ...n, width: v }),
     withCross: (n, v) => (vertical ? { ...n, width: v } : { ...n, height: v }),
-    fillMain: (n) => (vertical ? n.layoutSizingY : n.layoutSizingX) === "fill",
-    fillCross: (n) => (vertical ? n.layoutSizingX : n.layoutSizingY) === "fill",
-    clampMain: (n, v) => (vertical ? clampH(n, v) : clampW(n, v)),
-    clampCross: (n, v) => (vertical ? clampW(n, v) : clampH(n, v)),
+    fillMain: (n) => n.kind !== "group" && (vertical ? n.layoutSizingY : n.layoutSizingX) === "fill",
+    fillCross: (n) => n.kind !== "group" && (vertical ? n.layoutSizingX : n.layoutSizingY) === "fill",
+    clampMain: (n, v) => (n.kind === "group" ? v : vertical ? clampH(n, v) : clampW(n, v)),
+    clampCross: (n, v) => (n.kind === "group" ? v : vertical ? clampW(n, v) : clampH(n, v)),
   };
 
   const spacing = al.spacing;
@@ -118,10 +136,18 @@ function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?:
   // The children and the frame, as laid out: id -> node with the new geometry.
   const placed = new Map<string, NodeLite>();
   let frameNow: NodeLite = frame;
-  if (wrap) {
+  if (al.mode === "grid") {
+    frameNow = layoutGrid(kids, frame, al, { w: clampW, h: clampH }, placed);
+  } else if (wrap) {
     frameNow = layoutWrapped(kids, frame, al, m, innerMainFrame, padMainStart, padCrossStart, padCrossEnd, hugCross, placed);
   } else {
     frameNow = layoutLine(kids, frame, al, m, hugMain, hugCross, padMainStart, padMainEnd, padCrossStart, padCrossEnd, spacing, placed);
+  }
+
+  // A group was placed by its box: translate it so the union's corner is there.
+  for (const [gid, b] of groupAt) {
+    const g = placed.get(gid)!;
+    placed.set(gid, { ...g, x: g.x - b.minX, y: g.y - b.minY });
   }
 
   let changed = false;
@@ -131,7 +157,8 @@ function layoutFrame(scene: SceneState, nodes: NodeEditor, id: string, touched?:
     changed = true;
   }
   const resized: { id: string; oldW: number; oldH: number }[] = [];
-  for (const k of kids) {
+  for (const k0 of kids) {
+    const k = orig0.get(k0.id) ?? k0;
     const next = placed.get(k.id)!;
     if (k.x !== next.x || k.y !== next.y || k.width !== next.width || k.height !== next.height) {
       nodes.set(k.id, next);
@@ -499,7 +526,13 @@ export function layoutTargets(scene: SceneState, op: Op): string[] {
 // a nested hug frame must have the right size BEFORE the container
 // reads it. Returns the SAME scene if nothing changes, so whoever compares it by
 // identity does not redraw for nothing.
-export function relayout(scene: SceneState, ids: readonly string[], touchedOut?: string[]): SceneState {
+export function relayout(scene: SceneState, ids0: readonly string[], touchedOut?: string[]): SceneState {
+  // A group has no layout of its own: what changes in (or under) one changes the box its auto
+  // layout parent lays out, so the ids climb through the groups to that parent.
+  const ids = [...ids0];
+  for (const id of ids0) {
+    for (let cur = scene.nodes.get(id); cur !== undefined && cur.kind === "group"; cur = scene.nodes.get(cur.parentId)) ids.push(cur.parentId);
+  }
   const seen = new Set<string>();
   const frames: string[] = [];
   for (const id of ids) {

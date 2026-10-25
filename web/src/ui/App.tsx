@@ -59,7 +59,9 @@ import { attachTimelineShortcuts } from "./timeline/shortcuts";
 import { resolveFlow, useFlowUi, type EditorMode } from "../store/flowUi";
 import { drawFlows } from "../renderer/flowRenderer";
 import type { Tool, ToolContext, ToolId } from "../tools/types";
-import { selectTool } from "../tools/selectTool";
+import { pickTarget, selectTool } from "../tools/selectTool";
+import { ContextMenuHost } from "./ContextMenu";
+import { openContextMenu } from "./contextMenuItems";
 import { rectTool } from "../tools/rectTool";
 import { frameTool } from "../tools/frameTool";
 import { ellipseTool } from "../tools/ellipseTool";
@@ -682,6 +684,7 @@ export function App() {
 
   return (
     <div className="flex h-screen flex-col gap-px bg-line text-fg">
+      <ContextMenuHost />
       {/* Two different notices because the two situations ask for different things: while
           reconnecting the user can wait (changes stay queued and
           the backlog will confirm them), with attempts exhausted they cannot. */}
@@ -787,6 +790,18 @@ export function App() {
             ref={canvasRef}
             style={{ cursor: (TOOLS[toolId] ?? selectTool).cursor }}
             className="absolute inset-0 block h-full w-full touch-none"
+            // Right click: the menu of the node under the pointer (it becomes the selection unless it
+            // already is part of it). Design mode, with write access, like every edit.
+            onContextMenu={(e) => {
+              e.preventDefault();
+              const st = useScene.getState();
+              if (!st.scene || mode !== "design" || !canWrite(role)) return;
+              const p = eventToCanvasPoint(e.currentTarget, e);
+              const world = screenToWorld(st.camera, p.x, p.y);
+              const pick = pickTarget(st.scene, world, false, st.selection, st.camera.zoom, st.currentPageId);
+              if (pick.mode === "marquee") return;
+              openContextMenu(e.clientX, e.clientY, pick.mode === "single" ? pick.id : undefined);
+            }}
           />
           {/* overlay: selection bbox + handles + marquee, in screen space.
               pointer-events-none: all listeners stay on the "scene" canvas,
