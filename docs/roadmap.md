@@ -56,7 +56,9 @@ Legend: [x] done · [ ] to do
 - [ ] Live corners
 - [x] Strokes: cap, join, miter limit and dashes on every shape (panel, canvas, GPU, SVG)
 - [x] Arrowheads on open vector strokes (arrow, triangle, circle, square, diamond at either end; panel, canvas, GPU, SVG, code, MCP `set_stroke`)
-- [ ] Advanced strokes: variable width profiles, brushes
+- [x] Variable-width strokes on vectors (width points with a left and right width along the path, presets, a Variable width tool and panel; canvas, GPU, SVG as a filled outline, outline stroke, MCP `set_stroke`); see docs/vector.md
+- [ ] Advanced strokes: brushes
+- [x] Shape builder tool: click or drag across the regions of overlapping shapes to merge them into one vector (Alt removes); see docs/vector.md
 - [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
 - [x] SVG export and PDF (the SVG through the browser's print dialog, Save as PDF)
 - [x] PDF import (editable text with embedded fonts and shared text styles, shapes and images, one page per PDF page), and export of all pages as PDF or EPUB (fixed layout); see docs/pdf-epub.md

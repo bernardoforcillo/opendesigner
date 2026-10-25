@@ -14,6 +14,7 @@ and which it did not.
 - **Dev Mode and code** (docs/codegen.md, docs/handoff.md, docs/flows.md): SwiftUI and Jetpack Compose
   export, ready-for-dev and annotations, compare changes, device frames and hotspot hints in Present,
   prototype expressions and `else` guards.
+- **Vector** (docs/vector.md): variable-width strokes (width profile, presets, tool, panel, SVG as a filled outline) and the shape builder tool.
 - **Type and effects** (docs/typography.md, docs/effects.md): text case, super/subscript, lists, indent,
   OpenType features, vertical alignment and inset, progressive blur, noise, texture and glass.
 
@@ -22,7 +23,7 @@ and which it did not.
 - Auto layout grid mode (fixed / hug / fr tracks, spans); groups as auto layout children.
 - Horizontal text scale; rich-text runs do not use the new case, list, script and inset features.
 - Leptos code export; ordered `else if` chains in prototypes.
-- Shape builder, variable-width strokes, vector-network editing tools, noise/glass refraction.
+- Vector-network editing tools, noise/glass refraction.
 - Plugins in WebAssembly, localization catalogs, accessibility tree, accounts and teams.
 - Real-file `.fig` fidelity, Display P3, `.fig` export.
 

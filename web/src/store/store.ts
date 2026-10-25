@@ -11,6 +11,10 @@ import type { PenPreview } from "./vectorGeometry";
 
 /** The node tool's state: the selected anchor (subpath, index). */
 export interface NodeEdit { sel: { sub: number; index: number } | null }
+/** The Shape builder's preview (view state): the faces under the pointer / drag, in world rings, and whether they will be merged or removed. */
+export interface BuilderPreview { faces: [number, number][][][]; mode: "merge" | "remove" }
+/** The Variable width tool's state while it is the active tool: which width point is selected. */
+export interface WidthEdit { sel: number | null }
 
 /** The Link tool's rubber band: the box it starts from, the pointer (world), and the node under it. */
 export interface LinkPreview { from: { x: number; y: number; width: number; height: number }; x: number; y: number; targetId: string | null }
@@ -1017,6 +1021,8 @@ interface SceneStore {
   linkPreview: LinkPreview | null;
   // The node tool's state while it is the active tool (null otherwise): which anchor is selected.
   nodeEdit: NodeEdit | null;
+  widthEdit: WidthEdit | null;
+  builderPreview: BuilderPreview | null;
   // Transport to the server: null until SyncClient registers (isolated
   // tests, bootstrap not yet completed).
   sync: OpSink | null;
@@ -1081,6 +1087,9 @@ interface SceneStore {
   /** Turns the node tool's state on or off (the dock does it when the tool is chosen or left). */
   enterNodeEdit: (on: boolean) => void;
   setNodeEdit: (patch: Partial<NodeEdit>) => void;
+  enterWidthEdit: (on: boolean) => void;
+  setBuilderPreview: (p: BuilderPreview | null) => void;
+  setWidthEdit: (patch: Partial<WidthEdit>) => void;
   // Changes the displayed page. RESETS the selection (nodes of another
   // page do not stay selected) and is NOT an undo entry -- it is view
   // state, like moving the camera. No-op if the page is already the current one
@@ -1149,6 +1158,8 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   penPreview: null,
   linkPreview: null,
   nodeEdit: null,
+  widthEdit: null,
+  builderPreview: null,
   sync: null,
   gesture: null,
   editingNodeId: null,
@@ -1616,6 +1627,9 @@ export const useScene = createStore<SceneStore>((set, get) => ({
   setLinkPreview: (p) => set({ linkPreview: p }),
   enterNodeEdit: (on) => set((st) => (on ? (st.nodeEdit ? st : { nodeEdit: { sel: null } }) : st.nodeEdit ? { nodeEdit: null } : st)),
   setNodeEdit: (patch) => set((st) => (st.nodeEdit ? { nodeEdit: { ...st.nodeEdit, ...patch } } : st)),
+  setBuilderPreview: (p) => set((st) => (p === null && st.builderPreview === null ? st : { builderPreview: p })),
+  enterWidthEdit: (on) => set((st) => (on ? (st.widthEdit ? st : { widthEdit: { sel: null } }) : st.widthEdit ? { widthEdit: null } : st)),
+  setWidthEdit: (patch) => set((st) => (st.widthEdit ? { widthEdit: { ...st.widthEdit, ...patch } } : st)),
 
   // Changes the displayed page. It is NOT an op and NOT an undo entry: it is
   // view state, like setCamera. Resets the selection (nodes of the other

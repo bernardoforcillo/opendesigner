@@ -73,7 +73,7 @@ const ARC_STEPS = 12;
 const ringOf = (pts: Pt[]): Ring => pts.map((p) => [p.x, p.y] as Pair);
 const poly = (pts: Pt[]): MultiPolygon => [[ringOf(pts)]];
 
-function dedupe(pts: Pt[], closed: boolean): Pt[] {
+export function dedupe(pts: Pt[], closed: boolean): Pt[] {
   const out: Pt[] = [];
   for (const p of pts) {
     const l = out[out.length - 1];
