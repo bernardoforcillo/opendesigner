@@ -332,6 +332,7 @@ const PROBE: Probe = {
   min_height: { patch: { minHeight: 20 }, expected: 20 },
   max_height: { patch: { maxHeight: 600 }, expected: 600 },
   layout_positioning: { patch: { layoutPositioning: LayoutPositioning.ABSOLUTE }, expected: "absolute" },
+  grid_cell: { patch: { gridCell: { column: 2, columnSpan: 3, row: 0, rowSpan: 0 } }, expected: { column: 2, columnSpan: 3 } },
   // Layout grids only apply to a frame (sceneFor).
   layout_grids: {
     patch: { layoutGrids: [{ kind: LayoutGridKind.COLUMNS, count: 4, gutter: 8, margin: 16, size: 0, color: { r: 1, g: 0, b: 0, a: 0.1 } }] },

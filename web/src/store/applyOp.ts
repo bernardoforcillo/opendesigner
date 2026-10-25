@@ -10,6 +10,7 @@ import { recordDelta } from "./sceneDelta";
 import { carryRenames, cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
 import { areValidLayoutGrids } from "./layoutGrids";
+import { isValidGridCell, isValidGridLayout } from "./layoutGrid";
 import { areValidEffects } from "./effects";
 import { arePaintsValid } from "./paints";
 import { areStrokeExtrasValid, isValidShape, isValidShapePath, SHAPE_PATHS, writeShapePath } from "./shapes";
@@ -165,6 +166,8 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
         if (paths.includes(lim) && !(Number.isFinite(p[camelLimit[lim]]) && p[camelLimit[lim]] >= 0)) return state;
       }
       if (paths.includes("layout_positioning") && !(p.layoutPositioning >= 0 && p.layoutPositioning <= 1)) return state;
+      if (paths.includes("grid_cell") && !isValidGridCell(p.gridCell)) return state;
+      if (paths.includes("auto_layout") && !isValidGridLayout(p.shape.case === "frame" ? p.shape.value.autoLayout : undefined)) return state;
       const next: NodeLite = { ...cur };
       for (const path of paths as readonly MaskPath[]) {
         switch (path) {
@@ -265,6 +268,11 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "layout_positioning": {
             const c = toNodeLite(p).layoutPositioning;
             if (c) next.layoutPositioning = c; else delete next.layoutPositioning;
+            break;
+          }
+          case "grid_cell": {
+            const c = toNodeLite(p).gridCell;
+            if (c) next.gridCell = c; else delete next.gridCell;
             break;
           }
           // As for "fills", the value is extracted from the patch by going through

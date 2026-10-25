@@ -316,9 +316,9 @@ enum LayoutMode {
 }
 
 enum GridTrackKind {
-  GRID_TRACK_FIXED = 0;  // `size` pixels (default)
-  GRID_TRACK_HUG = 1;    // as big as the biggest child that sits in it
-  GRID_TRACK_FR = 2;     // a share of the free space, `size` is the weight (<= 0 counts as 1)
+  GRID_TRACK_KIND_FIXED = 0;  // `size` pixels (default)
+  GRID_TRACK_KIND_HUG = 1;    // as big as the biggest child that sits in it
+  GRID_TRACK_KIND_FR = 2;     // a share of the free space, `size` is the weight (<= 0 counts as 1)
 }
 
 message GridTrack {

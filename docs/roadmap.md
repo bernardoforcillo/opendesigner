@@ -23,9 +23,10 @@ Legend: [x] done · [ ] to do
 - [x] Auto layout: reordering by dragging children (also into another auto layout), with insertion line and outline; a single undo step
 - [x] Auto layout: children that fill the space (fill), wrapping onto several lines, dragging a child OUT of the frame, instances as children; see docs/layout.md
 - [x] Auto layout: min/max sizes (fill children redistribute around them) and absolute children that stay constrained to the frame; see docs/layout.md
-- [ ] Auto layout: groups as children
+- [x] Auto layout: groups as children (one box of the union of their children, in rows, columns and grid cells); see docs/layout.md
 - [x] Auto layout: baseline alignment on the cross axis of a row (estimated from font size and line height)
-- [ ] Auto layout: grid mode (rows / columns tracks with fixed, hug and fr sizes, cell spans)
+- [x] Auto layout: grid mode (rows / columns tracks with fixed, hug and fr sizes, gaps, cell spans; panel, MCP `set_grid_cell`, `display:grid` export); see docs/layout.md
+- [x] Context menu (right click on the canvas or a layer): swap, reset overrides, detach, go to main component, group / ungroup, bring forward / back, duplicate, delete; see docs/layout.md
 - [x] Constraints and responsive resize (min/max/stretch/center/scale per axis, recursive, exact undo); see docs/layout.md
 - [x] Variants and component properties: component sets with axes, instances that choose a variant, boolean (show/hide) and text properties, editor dialog and instance controls, MCP tools, exported code; see docs/components.md
 - [x] Instance swap (carrying over the overrides that fit), detach instance, reset overrides (all / per layer), go to main component; see docs/components.md

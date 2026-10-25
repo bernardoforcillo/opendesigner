@@ -102,6 +102,8 @@ export const MASK_PATHS = [
   "min_height",
   "max_height",
   "layout_positioning",
+  // The cell of a grid auto layout parent (docs/layout.md): column / row / spans, each 0..1000.
+  "grid_cell",
   // Blend mode against what is behind the node. Closed enum: out of range is rejected.
   "blend_mode",
   // Mask: the node is not drawn, its outline clips the siblings above it.

@@ -111,11 +111,11 @@
         "size": 100.5
        },
        {
-        "kind": "GRID_TRACK_FR",
+        "kind": "GRID_TRACK_KIND_FR",
         "size": 1
        },
        {
-        "kind": "GRID_TRACK_FR",
+        "kind": "GRID_TRACK_KIND_FR",
         "size": 2
        }
       ],
@@ -132,7 +132,7 @@
         "size": 50.5
        },
        {
-        "kind": "GRID_TRACK_HUG"
+        "kind": "GRID_TRACK_KIND_HUG"
        }
       ]
      }
@@ -152,10 +152,10 @@
       "columnGap": 4.4,
       "columns": [
        {
-        "kind": "GRID_TRACK_HUG"
+        "kind": "GRID_TRACK_KIND_HUG"
        },
        {
-        "kind": "GRID_TRACK_FR",
+        "kind": "GRID_TRACK_KIND_FR",
         "size": 1
        }
       ],
@@ -169,7 +169,7 @@
       "rowGap": 2.2,
       "rows": [
        {
-        "kind": "GRID_TRACK_HUG"
+        "kind": "GRID_TRACK_KIND_HUG"
        }
       ]
      }
@@ -189,11 +189,11 @@
      "autoLayout": {
       "columns": [
        {
-        "kind": "GRID_TRACK_FR",
+        "kind": "GRID_TRACK_KIND_FR",
         "size": 1
        },
        {
-        "kind": "GRID_TRACK_FR",
+        "kind": "GRID_TRACK_KIND_FR",
         "size": 1
        }
       ],
@@ -339,15 +339,15 @@
        "columnGap": 10.3,
        "columns": [
         {
-         "kind": "GRID_TRACK_FIXED",
+         "kind": "GRID_TRACK_KIND_FIXED",
          "size": 100.5
         },
         {
-         "kind": "GRID_TRACK_FR",
+         "kind": "GRID_TRACK_KIND_FR",
          "size": 1
         },
         {
-         "kind": "GRID_TRACK_FR",
+         "kind": "GRID_TRACK_KIND_FR",
          "size": 2
         }
        ],
@@ -361,11 +361,11 @@
        "rowGap": 5.7,
        "rows": [
         {
-         "kind": "GRID_TRACK_FIXED",
+         "kind": "GRID_TRACK_KIND_FIXED",
          "size": 50.5
         },
         {
-         "kind": "GRID_TRACK_HUG",
+         "kind": "GRID_TRACK_KIND_HUG",
          "size": 0
         }
        ]
@@ -547,11 +547,11 @@
        "columnGap": 4.4,
        "columns": [
         {
-         "kind": "GRID_TRACK_HUG",
+         "kind": "GRID_TRACK_KIND_HUG",
          "size": 0
         },
         {
-         "kind": "GRID_TRACK_FR",
+         "kind": "GRID_TRACK_KIND_FR",
          "size": 1
         }
        ],
@@ -565,7 +565,7 @@
        "rowGap": 2.2,
        "rows": [
         {
-         "kind": "GRID_TRACK_HUG",
+         "kind": "GRID_TRACK_KIND_HUG",
          "size": 0
         }
        ]
@@ -683,7 +683,7 @@
        "columnGap": 2,
        "columns": [
         {
-         "kind": "GRID_TRACK_FIXED",
+         "kind": "GRID_TRACK_KIND_FIXED",
          "size": 50
         }
        ],
@@ -811,11 +811,11 @@
       "autoLayout": {
        "columns": [
         {
-         "kind": "GRID_TRACK_FR",
+         "kind": "GRID_TRACK_KIND_FR",
          "size": 1
         },
         {
-         "kind": "GRID_TRACK_FR",
+         "kind": "GRID_TRACK_KIND_FR",
          "size": 1
         }
        ],
@@ -858,7 +858,7 @@
       "autoLayout": {
        "columns": [
         {
-         "kind": "GRID_TRACK_FIXED",
+         "kind": "GRID_TRACK_KIND_FIXED",
          "size": -1
         }
        ],

@@ -119,7 +119,7 @@ through the variants of a set).
 
 In the editor: the *Instance* section of the properties panel (component select, one *Reset*
 per override, *Reset all changes*, *Detach instance*, *Go to main component*) and Ctrl/Cmd+Alt+B
-for detach; each is one gesture, one undo step. MCP: `swap_instance`, `reset_instance_overrides`,
+for detach, and the right-click context menu (docs/layout.md); each is one gesture, one undo step. MCP: `swap_instance`, `reset_instance_overrides`,
 `detach_instance`, `get_main_component`.
 
 ## Not yet
@@ -127,5 +127,4 @@ for detach; each is one gesture, one undo step. MCP: `swap_instance`, `reset_ins
 - Instance-swap and number properties, and properties that set fills or sizes.
 - Shared libraries across documents.
 - Pushing overrides back to the master.
-- A context menu for the instance commands (the editor has none yet).
 - Per-variant property defaults beyond what each variant defines for itself.

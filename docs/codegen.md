@@ -64,7 +64,8 @@ canvas, not like what you would expect.
 |---|---|
 | Frame with **auto layout** | `display:flex`, `flex-direction`, `gap`, `padding`, `justify-content` / `align-items` from main/cross alignment (also `space-between`); **hug** -> `fit-content`, otherwise fixed size. Children are in flow (`relative shrink-0`): the core has already written x/y, here CSS is told to redo the same arrangement |
 | Everything else | positioned container, `absolute` children at `left`/`top` = x/y (relative to the parent, as in the model) |
-| Group | positioned wrapper **without paint** |
+| Group | positioned wrapper **without paint** | (in the flow of an auto layout parent: a flow box of the union of its children, which hang from a zero-size anchor)
+| Frame with **grid** auto layout | `display:grid`, `grid-template-columns/rows`, `gap: <row> <column>`, `justify-items` / `align-items`; children get `grid-column` / `grid-row`; HTML and React only (see docs/layout.md) |
 | `clipsContent` | `overflow: hidden` |
 | Rotation | `transform: rotate(Ndeg)`, origin at the centre (same clockwise convention as the canvas) |
 | Rectangle | `border-radius` clamped to half the shorter side |

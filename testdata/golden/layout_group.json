@@ -159,14 +159,14 @@
         "size": 80
        },
        {
-        "kind": "GRID_TRACK_HUG"
+        "kind": "GRID_TRACK_KIND_HUG"
        }
       ],
       "mainAlign": "LAYOUT_ALIGN_CENTER",
       "mode": "LAYOUT_MODE_GRID",
       "rows": [
        {
-        "kind": "GRID_TRACK_HUG"
+        "kind": "GRID_TRACK_KIND_HUG"
        }
       ]
      }
@@ -577,18 +577,18 @@
        "columnGap": 5,
        "columns": [
         {
-         "kind": "GRID_TRACK_FIXED",
+         "kind": "GRID_TRACK_KIND_FIXED",
          "size": 80
         },
         {
-         "kind": "GRID_TRACK_HUG"
+         "kind": "GRID_TRACK_KIND_HUG"
         }
        ],
        "mainAlign": "LAYOUT_ALIGN_CENTER",
        "mode": "LAYOUT_MODE_GRID",
        "rows": [
         {
-         "kind": "GRID_TRACK_HUG"
+         "kind": "GRID_TRACK_KIND_HUG"
         }
        ]
       }

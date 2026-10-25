@@ -53,7 +53,7 @@ func validateGridLayout(al *opendesignerv1.AutoLayout) error {
 			return fmt.Errorf("%w: at most %d tracks", ErrGridLayout, maxGridTracks)
 		}
 		for _, t := range tracks {
-			if t.GetKind() < opendesignerv1.GridTrackKind_GRID_TRACK_FIXED || t.GetKind() > opendesignerv1.GridTrackKind_GRID_TRACK_FR {
+			if t.GetKind() < opendesignerv1.GridTrackKind_GRID_TRACK_KIND_FIXED || t.GetKind() > opendesignerv1.GridTrackKind_GRID_TRACK_KIND_FR {
 				return fmt.Errorf("%w: unknown track kind %v", ErrGridLayout, t.GetKind())
 			}
 			if v := t.GetSize(); math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
@@ -228,14 +228,14 @@ func gridTrackSizes(defs []*opendesignerv1.GridTrack, n int, starts, spans []int
 	content := make([]bool, n) // sized by its children
 	fr := make([]float64, n)   // weight of an FR track, 0 for the others
 	for t := 0; t < n; t++ {
-		kind, v := opendesignerv1.GridTrackKind_GRID_TRACK_HUG, 0.0
+		kind, v := opendesignerv1.GridTrackKind_GRID_TRACK_KIND_HUG, 0.0
 		if t < len(defs) {
 			kind, v = defs[t].GetKind(), defs[t].GetSize()
 		}
 		switch {
-		case kind == opendesignerv1.GridTrackKind_GRID_TRACK_FIXED:
+		case kind == opendesignerv1.GridTrackKind_GRID_TRACK_KIND_FIXED:
 			size[t] = v
-		case kind == opendesignerv1.GridTrackKind_GRID_TRACK_FR && !hug:
+		case kind == opendesignerv1.GridTrackKind_GRID_TRACK_KIND_FR && !hug:
 			fr[t] = v
 			if !(v > 0) {
 				fr[t] = 1

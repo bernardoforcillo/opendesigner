@@ -191,7 +191,7 @@ export function detachInstance(state: SceneState, id: string, newId: () => strin
         ...c, id, parentId: n.parentId, orderKey: n.orderKey, name: n.name,
         x: n.x, y: n.y, width: n.width, height: n.height, rotation: n.rotation, visible: n.visible, opacity: n.opacity,
       };
-      for (const k of ["constraintX", "constraintY", "layoutSizingX", "layoutSizingY", "minWidth", "maxWidth", "minHeight", "maxHeight", "layoutPositioning", "blendMode", "isMask", "meta"] as const) {
+      for (const k of ["constraintX", "constraintY", "layoutSizingX", "layoutSizingY", "minWidth", "maxWidth", "minHeight", "maxHeight", "layoutPositioning", "gridCell", "blendMode", "isMask", "meta"] as const) {
         const bag = c as unknown as Record<string, unknown>;
         if (n[k] !== undefined) bag[k] = n[k]; else delete bag[k];
       }

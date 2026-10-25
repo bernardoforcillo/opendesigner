@@ -18,9 +18,9 @@ func gridTracksCSS(tracks []*opendesignerv1.GridTrack, hug bool) string {
 			out += " "
 		}
 		switch {
-		case t.GetKind() == opendesignerv1.GridTrackKind_GRID_TRACK_FIXED:
+		case t.GetKind() == opendesignerv1.GridTrackKind_GRID_TRACK_KIND_FIXED:
 			out += px(t.GetSize())
-		case t.GetKind() == opendesignerv1.GridTrackKind_GRID_TRACK_FR && !hug:
+		case t.GetKind() == opendesignerv1.GridTrackKind_GRID_TRACK_KIND_FR && !hug:
 			w := t.GetSize()
 			if !(w > 0) {
 				w = 1
