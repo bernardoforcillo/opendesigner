@@ -28,12 +28,12 @@ Both are one gesture (one undo removes every imported page); at most 200 pages p
 
 ## Export all pages as PDF…
 
-Like the single-page PDF export, it hands the SVG to the browser's print dialog (**Save as PDF**), but for **every non-empty page** in one job: each page is a CSS named page with its own `@page` size, so the PDF has one page per document page, each the exact size of its content and vector. There is no PDF writer to keep in step with the canvas.
+A real PDF written by the editor itself (`web/src/pdf/write/*`), one PDF page per non-empty page of the document, vector, with the document's fonts embedded, the original bytes of its JPEG and PNG images, gradients, opacity, blend modes, masks and CMYK / spot colours. Text stays text (searchable and selectable). The options for print, preflight, package, reflowable EPUB and data merge are in [output.md](output.md). The single-page export in the properties panel (**Download PDF**) uses the same writer for the selection or the page on screen.
 
 ## Export all pages as EPUB
 
-Downloads `<name>.epub` (EPUB 3, **fixed layout**): one XHTML spine item per non-empty page containing that page's SVG, a navigation document listing the page names, and the document id as identifier. Fixed layout keeps the geometry of the design instead of reflowing it as text. Images are embedded in the SVG, as in the SVG export. The container is a store-only zip written by `web/src/export/zip.ts`, no extra dependency.
+Downloads `<name>.epub` (EPUB 3, **fixed layout**; the reflowable export is in [output.md](output.md)): one XHTML spine item per non-empty page containing that page's SVG, a navigation document listing the page names, and the document id as identifier. Fixed layout keeps the geometry of the design instead of reflowing it as text. Images are embedded in the SVG, as in the SVG export. The container is a store-only zip written by `web/src/export/zip.ts`, no extra dependency.
 
 Empty pages are skipped; if every page is empty nothing is exported and a notice says so.
 
-Code: `web/src/pdf/importPdf.ts`, `web/src/pdf/pdfToSvg.ts`, `web/src/pdf/sfnt.ts`, `web/src/export/epub.ts`, `web/src/export/zip.ts`, `runDocumentExport` in `web/src/export/exportScene.ts`.
+Code: `web/src/pdf/importPdf.ts`, `web/src/pdf/pdfToSvg.ts`, `web/src/pdf/sfnt.ts`, `web/src/export/epub.ts`, `web/src/export/zip.ts`, `web/src/pdf/write/*`, `web/src/export/printPdf.ts`, `runDocumentExport` in `web/src/export/exportScene.ts`.

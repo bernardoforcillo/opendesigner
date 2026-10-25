@@ -8,8 +8,14 @@ import { NodeMap } from "../store/nodeMap";
 import { isReachableFrom } from "../store/tree";
 import { exportRegion, type ExportRegion, type ExportScope } from "./region";
 import { buildEpub, type EpubPage } from "./epub";
+import { buildReflowEpub, type ReflowImage } from "./epubReflow";
+import { dataUrlBytes } from "../pdf/write/pdfImages";
 import { nodesToSvg, type MeasureText, type ResolveImageHref } from "./svg";
 import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "./png";
+import { hasErrors, preflightReport, preflightScene } from "./preflight";
+import { buildPackage } from "./packageForPrint";
+import { buildDocumentPdf, buildRegionPdf, canvasRasterize, type PrintPdfOptions } from "./printPdf";
+import type { Rasterize } from "../pdf/write/pdfImages";
 
 // EXPORT — the command.
 //
@@ -27,8 +33,8 @@ import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "./png";
 // half-way path. The PNG goes through an offscreen canvas (export/png.ts) and
 // the SVG through a pure generator (export/svg.ts).
 
-// "pdf" is the SVG handed to the browser's print dialog (Save as PDF): vector, with the
-// fonts the page has. No second renderer and no PDF writer to keep in step with the canvas.
+// "pdf" is a real PDF written by pdf/write: vector, fonts embedded, images as the original bytes,
+// CMYK/spot paints kept, the document's pages and boxes. It draws from the same nodes as the SVG.
 export type ExportFormat = "png" | "svg" | "pdf";
 
 export interface ExportRequest {
@@ -45,8 +51,8 @@ export interface ExportDeps {
   createCanvas?: () => HTMLCanvasElement;
   toPngBlob?: (canvas: HTMLCanvasElement) => Promise<Blob>;
   download?: (blob: Blob, filename: string) => void;
-  // PDF: opens the print dialog on the SVG markup, sized to `bounds`.
-  printSvg?: (svg: string, bounds: { width: number; height: number }) => void;
+  // PDF only: how to rasterize an image the writer cannot place as it is (alpha PNG, WebP...).
+  rasterize?: Rasterize;
   measure?: MeasureText;
   // The bytes of an asset as a data URI. Injectable like the others: it needs `fetch`
   // and `FileReader`, which are not there in a test. BOTH formats use it --
@@ -112,50 +118,6 @@ function onPage(scene: SceneState, pageId: string): SceneState {
  * right after the click, because the download starts asynchronously and revoking
  * the URL in the same event turn would cancel it.
  */
-/**
- * Prints the SVG: it goes into a hidden iframe whose @page is exactly the exported region,
- * so "Save as PDF" in the print dialog produces one page of that size, without margins.
- */
-export function printSvgDocument(svg: string, bounds: { width: number; height: number }): void {
-  const frame = document.createElement("iframe");
-  frame.setAttribute("aria-hidden", "true");
-  Object.assign(frame.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0" });
-  const w = Math.ceil(bounds.width), h = Math.ceil(bounds.height);
-  frame.srcdoc = `<!doctype html><meta charset="utf-8"><style>@page{size:${w}px ${h}px;margin:0}html,body{margin:0}svg{display:block}</style>${svg}`;
-  frame.onload = () => {
-    const win = frame.contentWindow;
-    if (!win) { frame.remove(); return; }
-    win.addEventListener("afterprint", () => frame.remove());
-    win.focus();
-    win.print();
-  };
-  document.body.appendChild(frame);
-}
-
-/**
- * Prints several SVG pages in one print job: every page is a CSS named page with its own
- * `@page` size, so "Save as PDF" yields one PDF page per document page, each of the
- * exact size of its content (Chromium and Firefox honour named pages).
- */
-export function printSvgPages(pages: readonly { svg: string; width: number; height: number }[]): void {
-  const frame = document.createElement("iframe");
-  frame.setAttribute("aria-hidden", "true");
-  Object.assign(frame.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0" });
-  const css = pages
-    .map((p, i) => `@page p${i}{size:${Math.ceil(p.width)}px ${Math.ceil(p.height)}px;margin:0}.p${i}{page:p${i}}`)
-    .join("");
-  const body = pages.map((p, i) => `<div class="pg p${i}">${p.svg}</div>`).join("");
-  frame.srcdoc = `<!doctype html><meta charset="utf-8"><style>${css}html,body{margin:0}.pg{break-after:page;overflow:hidden}.pg:last-child{break-after:auto}svg{display:block}</style>${body}`;
-  frame.onload = () => {
-    const win = frame.contentWindow;
-    if (!win) { frame.remove(); return; }
-    win.addEventListener("afterprint", () => frame.remove());
-    win.focus();
-    win.print();
-  };
-  document.body.appendChild(frame);
-}
-
 export function downloadBlob(blob: Blob, filename: string): void {
   const url = URL.createObjectURL(blob);
   const a = document.createElement("a");
@@ -381,13 +343,16 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
       return false;
     }
 
-    const assets = await resolveAssets(region.nodes, scene.id, req.format, deps);
     if (req.format === "pdf") {
-      (deps.printSvg ?? printSvgDocument)(svgMarkup(region, measure, assets), region.bounds);
-    } else {
-      const blob = await exportBlob(region, req, deps, createCanvas, measure, assets);
-      (deps.download ?? downloadBlob)(blob, exportFileName(scene.name, req));
+      const pdf = await buildRegionPdf(scene, region, printDeps(deps, measure));
+      (deps.download ?? downloadBlob)(new Blob([pdf.bytes as BlobPart], { type: PDF_MIME }), exportFileName(scene.name, req));
+      const holes = pdf.missingImages;
+      if (holes > 0) useScene.setState({ notice: missingImagesNotice(holes) });
+      return true;
     }
+    const assets = await resolveAssets(region.nodes, scene.id, req.format, deps);
+    const blob = await exportBlob(region, req, deps, createCanvas, measure, assets);
+    (deps.download ?? downloadBlob)(blob, exportFileName(scene.name, req));
     // The file is there and is the requested one, but it contains placeholders in place of
     // photographs: an export that succeeds HALFWAY and does not say so is the
     // worst way to fail, because the user finds out from someone else.
@@ -403,41 +368,85 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
 // ---------------------------------------------------------------------------
 // THE WHOLE DOCUMENT: every page, as one PDF (print dialog) or one EPUB (file).
 
-export type DocumentExportFormat = "pdf" | "epub";
+export type DocumentExportFormat = "pdf" | "epub" | "epub-reflow";
 
 export interface DocumentExportDeps extends ExportDeps {
-  printPages?: (pages: { svg: string; width: number; height: number }[]) => void;
   now?: () => Date;
 }
 
 const EPUB_MIME = "application/epub+zip";
+const PDF_MIME = "application/pdf";
+
+function printDeps(deps: ExportDeps, measure: MeasureText) {
+  return { measure, loadAssetDataUrl: deps.loadAssetDataUrl ?? fetchAssetDataUrl, rasterize: deps.rasterize ?? canvasRasterize };
+}
 
 /** The download name of a whole-document export (`<name>.epub`). */
 export function documentFileName(docName: string, format: DocumentExportFormat): string {
-  return exportFileName(docName, { format: "svg", scope: "page", scale: 1 }).replace(/\.svg$/, `.${format}`);
+  return exportFileName(docName, { format: "svg", scope: "page", scale: 1 }).replace(/\.svg$/, `.${format === "epub-reflow" ? "epub" : format}`);
 }
 
 /**
  * Exports EVERY page of the open document. Empty pages are skipped (and not counted as an
  * error); if all are empty there is nothing to export. Same channels as `runExport`:
  * `false` plus a `notice` when nothing was produced.
+ *
+ * `opts` shapes a PDF for print (see export/printPdf.ts): bleed, marks, slug, spreads, a PDF/X mode.
+ * The EPUB ignores them -- it is a screen format.
  */
 export async function runDocumentExport(
   format: DocumentExportFormat,
   deps: DocumentExportDeps = {},
-  // `bleed`: for a PDF going to a printer, each sheet is exported with its bleed area around it.
-  opts: { bleed?: boolean } = {},
+  opts: PrintPdfOptions = {},
 ): Promise<boolean> {
   const { scene: raw } = useScene.getState();
   if (!raw) return false;
   const scene = resolveScene(raw);
   try {
     const measure = deps.measure ?? canvasMeasure(deps.createCanvas ?? defaultCanvas);
+
+    if (format === "pdf") {
+      const pdf = await buildDocumentPdf(
+        scene,
+        (pageId, sheet) => exportRegion(onPage(scene, pageId), [], "page", measure, sheet ?? sheetOf(scene.pages.find((p) => p.id === pageId))),
+        opts,
+        { ...printDeps(deps, measure), now: deps.now },
+      );
+      if (!pdf) {
+        useScene.setState({ notice: "nothing to export: every page is empty" });
+        return false;
+      }
+      (deps.download ?? downloadBlob)(new Blob([pdf.bytes as BlobPart], { type: PDF_MIME }), documentFileName(scene.name, "pdf"));
+      // What the writer saw while writing -- resolution, glyphs, effects it could not reproduce -- as one line.
+      const found = preflightReport(pdf.report, opts, pdf.missingImages, pdf.missingFonts);
+      if (found.length > 0) {
+        const worst = hasErrors(found) ? "with problems" : "with warnings";
+        useScene.setState({ notice: `PDF written ${worst}: ${found.slice(0, 3).map((i) => i.message).join(" ")}${found.length > 3 ? ` (+${found.length - 3} more)` : ""}` });
+      }
+      return true;
+    }
+
+    if (format === "epub-reflow") {
+      // Stories flow as text: the RAW scene is read (footnote markers are still in the content), images by hash.
+      const load = deps.loadAssetDataUrl ?? fetchAssetDataUrl;
+      const images = new Map<string, ReflowImage>();
+      await Promise.all([...new Set([...raw.nodes.values()].filter((n) => n.kind === "image" && n.image?.assetHash).map((n) => n.image!.assetHash))].map(async (hash) => {
+        try {
+          const uri = await load(raw.id, hash);
+          const d = uri === null ? null : dataUrlBytes(uri);
+          if (d) images.set(hash, { bytes: d.bytes, mime: d.mime });
+        } catch { /* an unreachable image is left out of the book */ }
+      }));
+      const data = buildReflowEpub(raw, { title: scene.name || FALLBACK_NAME, identifier: `urn:opendesigner:${scene.id}`, modified: (deps.now?.() ?? new Date()).toISOString() }, images);
+      (deps.download ?? downloadBlob)(new Blob([data as BlobPart], { type: EPUB_MIME }), documentFileName(scene.name, "epub").replace(/\.epub$/, "-reflow.epub"));
+      return true;
+    }
+
     const pages: (EpubPage & { region: ExportRegion })[] = [];
     // Master pages are templates, not pages of the output: their content already shows through
     // the pages that apply them.
     for (const page of scene.pages.filter((p) => !p.isMaster)) {
-      const region = exportRegion(onPage(scene, page.id), [], "page", measure, sheetOf(page, opts.bleed === true && format === "pdf"));
+      const region = exportRegion(onPage(scene, page.id), [], "page", measure, sheetOf(page));
       if (region) pages.push({ name: page.name, svg: "", width: region.bounds.width, height: region.bounds.height, region });
     }
     if (pages.length === 0) {
@@ -448,13 +457,36 @@ export async function runDocumentExport(
     const assets = await resolveAssets(all, scene.id, "svg", deps);
     for (const p of pages) p.svg = svgMarkup(p.region, measure, assets);
 
-    if (format === "pdf") {
-      (deps.printPages ?? printSvgPages)(pages);
-    } else {
-      const data = buildEpub(pages, { title: scene.name || FALLBACK_NAME, identifier: `urn:opendesigner:${scene.id}`, modified: (deps.now?.() ?? new Date()).toISOString() });
-      (deps.download ?? downloadBlob)(new Blob([data as BlobPart], { type: EPUB_MIME }), documentFileName(scene.name, "epub"));
-    }
+    const data = buildEpub(pages, { title: scene.name || FALLBACK_NAME, identifier: `urn:opendesigner:${scene.id}`, modified: (deps.now?.() ?? new Date()).toISOString() });
+    (deps.download ?? downloadBlob)(new Blob([data as BlobPart], { type: EPUB_MIME }), documentFileName(scene.name, "epub"));
     if (assets.missing > 0) useScene.setState({ notice: missingImagesNotice(assets.missing) });
+    return true;
+  } catch (err) {
+    useScene.setState({ notice: `export failed: ${err instanceof Error ? err.message : String(err)}` });
+    return false;
+  }
+}
+
+/**
+ * Exports the document as a PACKAGE FOR PRINT (see export/packageForPrint.ts): the PDF with the chosen
+ * options, the uploaded fonts, the placed image files and a text report, in one zip.
+ */
+export async function runPackage(deps: DocumentExportDeps = {}, opts: PrintPdfOptions = {}): Promise<boolean> {
+  const { scene: raw } = useScene.getState();
+  if (!raw) return false;
+  const scene = resolveScene(raw);
+  try {
+    const measure = deps.measure ?? canvasMeasure(deps.createCanvas ?? defaultCanvas);
+    const pd = { ...printDeps(deps, measure), now: deps.now };
+    const pdf = await buildDocumentPdf(scene, (pageId, sheet) => exportRegion(onPage(scene, pageId), [], "page", measure, sheet ?? sheetOf(scene.pages.find((p) => p.id === pageId))), opts, pd);
+    if (!pdf) {
+      useScene.setState({ notice: "nothing to export: every page is empty" });
+      return false;
+    }
+    const issues = [...preflightScene(scene, opts, measure), ...preflightReport(pdf.report, opts, pdf.missingImages, pdf.missingFonts)];
+    const pkg = await buildPackage({ scene, pdf: pdf.bytes, report: pdf.report, issues, now: deps.now?.() ?? new Date() }, { loadAssetDataUrl: pd.loadAssetDataUrl });
+    (deps.download ?? downloadBlob)(new Blob([pkg.bytes as BlobPart], { type: "application/zip" }), documentFileName(scene.name, "pdf").replace(/\.pdf$/, "-package.zip"));
+    if (pkg.missing.length > 0) useScene.setState({ notice: `Package written without: ${pkg.missing.join(", ")} (not reachable).` });
     return true;
   } catch (err) {
     useScene.setState({ notice: `export failed: ${err instanceof Error ? err.message : String(err)}` });

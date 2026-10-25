@@ -1,7 +1,7 @@
-import { describe, it, expect, beforeEach, vi } from "vitest";
+import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import { runExport, exportFileName, downloadBlob } from "./exportScene";
 import type { ExportDeps, DocumentExportDeps } from "./exportScene";
-import { runDocumentExport } from "./exportScene";
+import { runDocumentExport, runPackage } from "./exportScene";
 import { useScene } from "../store/store";
 import { emptyScene } from "../store/types";
 import type { NodeLite, SceneState } from "../store/types";
@@ -28,6 +28,17 @@ function overflowingText(id: string): NodeLite {
     },
   });
 }
+
+afterEach(() => vi.unstubAllGlobals());
+
+/** A PDF blob read back with pdf.js. */
+async function openPdf(blob: Blob) {
+  const pdfjs = await import("pdfjs-dist/legacy/build/pdf.mjs");
+  const data = new Uint8Array(await blob.arrayBuffer());
+  return pdfjs.getDocument({ data, useWorkerFetch: false, isEvalSupported: false, verbosity: 0 }).promise;
+}
+const textOf = async (doc: Awaited<ReturnType<typeof openPdf>>, page: number) =>
+  (await (await doc.getPage(page)).getTextContent()).items.map((i) => ("str" in i ? i.str : "")).join("");
 
 function install(scene: SceneState | null, selection: string[] = []): void {
   useScene.setState({ scene, selection, gesture: null, notice: null, camera: { x: 0, y: 0, zoom: 1 } });
@@ -150,18 +161,24 @@ describe("runExport — SVG", () => {
 });
 
 describe("runExport — PDF", () => {
-  it("hands the SVG markup and its size to the print step, and downloads nothing", async () => {
+  it("downloads a real PDF sized to the region, and opens no print dialog", async () => {
     install(sceneWith("Untitled", node({ id: "a", x: 10, y: 20, width: 30, height: 40 })));
     const d = deps();
-    const printed: { svg: string; w: number; h: number }[] = [];
-    const ok = await runExport({ format: "pdf", scope: "page", scale: 1 }, {
-      ...d, printSvg: (svg, b) => { printed.push({ svg, w: b.width, h: b.height }); },
-    });
+    const ok = await runExport({ format: "pdf", scope: "page", scale: 1 }, d);
     expect(ok).toBe(true);
-    expect(d.saved).toHaveLength(0);
-    expect(printed).toHaveLength(1);
-    expect(printed[0]).toMatchObject({ w: 30, h: 40 });
-    expect(printed[0].svg).toContain('viewBox="10 20 30 40"');
+    expect(d.saved).toHaveLength(1);
+    expect(d.saved[0].filename).toBe("Untitled.pdf");
+    expect(d.saved[0].blob.type).toBe("application/pdf");
+    const doc = await openPdf(d.saved[0].blob);
+    expect(doc.numPages).toBe(1);
+    expect((await doc.getPage(1)).view).toEqual([0, 0, 22.5, 30]); // 30 x 40 px at 0.75 pt
+  });
+
+  it("keeps text as text", async () => {
+    install(sceneWith("Untitled", overflowingText("t")));
+    const d = deps();
+    await runExport({ format: "pdf", scope: "page", scale: 1 }, d);
+    expect(await textOf(await openPdf(d.saved[0].blob), 1)).toContain("abcdefghij");
   });
 });
 
@@ -509,14 +526,12 @@ describe("runExport — PNG and images", () => {
 });
 
 describe("runDocumentExport", () => {
-  const fakeDeps = (): DocumentExportDeps & { saved: { blob: Blob; filename: string }[]; printed: unknown[][] } => {
+  const fakeDeps = (): DocumentExportDeps & { saved: { blob: Blob; filename: string }[] } => {
     const saved: { blob: Blob; filename: string }[] = [];
-    const printed: unknown[][] = [];
     return {
-      saved, printed,
+      saved,
       measure: (s) => s.length * 10,
       download: (blob, filename) => { saved.push({ blob, filename }); },
-      printPages: (pages) => { printed.push(pages); },
       now: () => new Date("2026-01-01T00:00:00Z"),
     };
   };
@@ -527,12 +542,15 @@ describe("runDocumentExport", () => {
     return s;
   }
 
-  it("prints every non-empty page with its own size", async () => {
+  it("writes every non-empty page with its own size", async () => {
     install(twoPages());
     const d = fakeDeps();
     expect(await runDocumentExport("pdf", d)).toBe(true);
-    expect(d.printed).toHaveLength(1);
-    expect(d.printed[0].map((p) => [(p as { width: number }).width, (p as { height: number }).height])).toEqual([[100, 50], [30, 40]]);
+    expect(d.saved[0].filename).toBe("Book.pdf");
+    const doc = await openPdf(d.saved[0].blob);
+    expect(doc.numPages).toBe(2);
+    expect((await (await doc.getPage(1)).view)).toEqual([0, 0, 75, 37.5]);
+    expect((await (await doc.getPage(2)).view)).toEqual([0, 0, 22.5, 30]);
   });
 
   it("downloads an EPUB with one spine item per page", async () => {
@@ -556,6 +574,11 @@ describe("runDocumentExport", () => {
   });
 });
 
+function fakeDeps2(): DocumentExportDeps & { saved: { blob: Blob; filename: string }[] } {
+  const saved: { blob: Blob; filename: string }[] = [];
+  return { saved, measure: (s) => s.length * 10, download: (blob, filename) => { saved.push({ blob, filename }); } };
+}
+
 describe("master pages in the export", () => {
   it("draws a master's content on each page that applies it and skips the master itself", async () => {
     const s = sceneWith("Book",
@@ -566,13 +589,14 @@ describe("master pages in the export", () => {
     );
     s.pages = [{ id: "page1", name: "One", masterId: "m1" }, { id: "m1", name: "A-Master", isMaster: true }, { id: "p2", name: "Two", masterId: "m1" }];
     install(s);
-    const printed: { svg: string; width: number }[][] = [];
-    expect(await runDocumentExport("pdf", { measure: (t) => t.length * 10, printPages: (p) => { printed.push(p); } })).toBe(true);
+    const d = fakeDeps2();
+    expect(await runDocumentExport("pdf", d)).toBe(true);
     // Two output pages (the master is not one), each with the master's band at width 400.
-    expect(printed[0]).toHaveLength(2);
-    expect(printed[0].every((p) => p.width === 400)).toBe(true);
-    expect(printed[0][0].svg).toContain("No. 1");
-    expect(printed[0][1].svg).toContain("No. 2");
+    const doc = await openPdf(d.saved[0].blob);
+    expect(doc.numPages).toBe(2);
+    expect((await doc.getPage(1)).view[2]).toBe(300); // 400 px
+    expect(await textOf(doc, 1)).toContain("No. 1");
+    expect(await textOf(doc, 2)).toContain("No. 2");
   });
 
   it("exports only the page on screen, master content included", async () => {
@@ -623,13 +647,45 @@ describe("sized pages in the export", () => {
 
   it("keeps an empty sheet as a page of the document export, and adds the bleed for print", async () => {
     install(sheetScene());
-    const printed: { svg: string; width: number; height: number }[][] = [];
-    const printPages = (p: { svg: string; width: number; height: number }[]) => { printed.push(p); };
-    expect(await runDocumentExport("pdf", { measure: (t) => t.length * 10, printPages })).toBe(true);
+    const d = fakeDeps2();
+    expect(await runDocumentExport("pdf", d)).toBe(true);
     // Two sheets (the empty one counts); the unbounded page is empty and is left out.
-    expect(printed[0].map((p) => [p.width, p.height])).toEqual([[400, 600], [400, 600]]);
-    expect(await runDocumentExport("pdf", { measure: (t) => t.length * 10, printPages }, { bleed: true })).toBe(true);
-    expect(printed[1].map((p) => [p.width, p.height])).toEqual([[418, 618], [418, 618]]);
-    expect(printed[1][0].svg).toContain('viewBox="-9 -9 418 618"');
+    const plain = await openPdf(d.saved[0].blob);
+    expect(plain.numPages).toBe(2);
+    expect((await plain.getPage(1)).view).toEqual([0, 0, 300, 450]);
+    expect(await runDocumentExport("pdf", d, { bleed: true })).toBe(true);
+    const bled = await openPdf(d.saved[1].blob);
+    expect((await bled.getPage(1)).view).toEqual([0, 0, 313.5, 463.5]); // 418 x 618 px
+    const raw = Buffer.from(await d.saved[1].blob.arrayBuffer()).toString("latin1");
+    expect(raw).toContain("/TrimBox[6.75 6.75 306.75 456.75]");
+  });
+});
+
+describe("runPackage", () => {
+  it("zips the PDF, the uploaded fonts, the placed images and a report", async () => {
+    const s = sceneWith("Print job", node({ id: "a", parentId: "page1", width: 100, height: 50 }), node({ id: "im", parentId: "page1", kind: "image", x: 0, y: 60, width: 40, height: 40, image: { assetHash: "h1", originalName: "photo.png" } } as Partial<NodeLite> & { id: string }));
+    s.fonts = { f1: { id: "f1", family: "Acme Sans", weight: "700", style: "normal", assetHash: "fh" } };
+    install(s);
+    const saved: { blob: Blob; filename: string }[] = [];
+    const bytes = (b: number[]) => `data:application/octet-stream;base64,${btoa(String.fromCharCode(...b))}`;
+    const ok = await runPackage({
+      measure: (t) => t.length * 10, download: (blob, filename) => { saved.push({ blob, filename }); },
+      loadAssetDataUrl: async (_d, hash) => (hash === "fh" ? bytes([0, 1, 0, 0, 9, 9, 9, 9, 9, 9, 9, 9]) : hash === "h1" ? bytes([1, 2, 3]) : null),
+      now: () => new Date("2026-01-01T00:00:00Z"),
+    });
+    expect(ok).toBe(true);
+    expect(saved[0].filename).toBe("Print job-package.zip");
+    const raw = Buffer.from(await saved[0].blob.arrayBuffer()).toString("latin1");
+    for (const name of ["Print job/Print job.pdf", "Print job/Fonts/Acme Sans-700.ttf", "Print job/Links/photo.png", "Print job/Report.txt"]) expect(raw).toContain(name);
+    const utf8 = Buffer.from(await saved[0].blob.arrayBuffer()).toString("utf8");
+    expect(utf8).toContain("Acme Sans 700 → Fonts/Acme Sans-700.ttf");
+    expect(utf8).toContain("photo.png → Links/photo.png");
+  });
+
+  it("says what could not be packed", async () => {
+    install(sceneWith("P", node({ id: "a", parentId: "page1", width: 100, height: 50 }), node({ id: "im", parentId: "page1", kind: "image", y: 60, image: { assetHash: "gone" } } as Partial<NodeLite> & { id: string })));
+    const saved: unknown[] = [];
+    await runPackage({ measure: (t) => t.length * 10, download: (b) => { saved.push(b); }, loadAssetDataUrl: async () => null });
+    expect(useScene.getState().notice).toMatch(/Package written without: image gone/);
   });
 });

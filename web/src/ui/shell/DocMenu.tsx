@@ -20,6 +20,8 @@ import { SwatchesDialog } from "../SwatchesDialog";
 import { ObjectStylesDialog } from "../ObjectStylesDialog";
 import { LayersDialog } from "../LayersDialog";
 import { LinksDialog } from "../LinksDialog";
+import { PrintPdfDialog } from "../PrintPdfDialog";
+import { DataMergeDialog } from "../DataMergeDialog";
 import { InsertTableDialog } from "../InsertTableDialog";
 import { generateContentsOps } from "../../tools/contents";
 import { VersionsDialog } from "../VersionsDialog";
@@ -71,6 +73,8 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [objectStylesOpen, setObjectStylesOpen] = useState(false);
   const [layersOpen, setLayersOpen] = useState(false);
   const [linksOpen, setLinksOpen] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
   const [tableOpen, setTableOpen] = useState(false);
   // What this kind of document needs: entries of other kinds of work are tucked away, not removed.
   const vertical = useScene((s) => verticalOf(s.scene));
@@ -105,9 +109,10 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
             });
           }
           else if (k === "export-pdf") void runDocumentExport("pdf");
-          else if (k === "export-pdf-bleed") void runDocumentExport("pdf", {}, { bleed: true });
+          else if (k === "export-pdf-bleed") setPrintOpen(true);
           else if (k === "page-setup") setPageSetupOpen(true);
           else if (k === "export-epub") void runDocumentExport("epub");
+          else if (k === "export-epub-reflow") void runDocumentExport("epub-reflow");
           else if (k === "diagram") setDiagramOpen(true);
           else if (k === "variables") setVariablesOpen(true);
           else if (k === "fonts") setFontsOpen(true);
@@ -117,6 +122,7 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
           else if (k === "object-styles") setObjectStylesOpen(true);
           else if (k === "layers") setLayersOpen(true);
           else if (k === "links") setLinksOpen(true);
+          else if (k === "data-merge") setMergeOpen(true);
           else if (k === "table") setTableOpen(true);
           else if (k === "contents" || k === "index") generateContents(k === "contents" ? "toc" : "index");
           else if (k === "versions") setVersionsOpen(true);
@@ -162,12 +168,17 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuItem>
               {show("export-pdf-bleed") && (
                 <MenuItem id="export-pdf-bleed" className={ITEM}>
-                  <Icon name="download" size={14} /> Export PDF for print (with bleed)…
+                  <Icon name="download" size={14} /> Export PDF for print (options, preflight)…
                 </MenuItem>
               )}
               {show("export-epub") && (
                 <MenuItem id="export-epub" className={ITEM}>
-                  <Icon name="download" size={14} /> Export all pages as EPUB
+                  <Icon name="download" size={14} /> Export all pages as EPUB (fixed layout)
+                </MenuItem>
+              )}
+              {show("export-epub") && (
+                <MenuItem id="export-epub-reflow" className={ITEM}>
+                  <Icon name="download" size={14} /> Export text as EPUB (reflowable)
                 </MenuItem>
               )}
               {show("page-setup") && (
@@ -205,6 +216,9 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuItem>
               <MenuItem id="links" className={ITEM}>
                 <Icon name="link" size={14} /> Links (images)…
+              </MenuItem>
+              <MenuItem id="data-merge" className={ITEM}>
+                <Icon name="plus" size={14} /> Data merge (CSV)…
               </MenuItem>
               <MenuItem id="find" className={ITEM}>
                 <Icon name="search" size={14} /> Find and change…
@@ -279,6 +293,8 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <ObjectStylesDialog isOpen={objectStylesOpen} onOpenChange={setObjectStylesOpen} />
     <LayersDialog isOpen={layersOpen} onOpenChange={setLayersOpen} />
     <LinksDialog isOpen={linksOpen} onOpenChange={setLinksOpen} />
+    <PrintPdfDialog isOpen={printOpen} onOpenChange={setPrintOpen} />
+    <DataMergeDialog isOpen={mergeOpen} onOpenChange={setMergeOpen} />
     <InsertTableDialog isOpen={tableOpen} onOpenChange={setTableOpen} />
     </>
   );
