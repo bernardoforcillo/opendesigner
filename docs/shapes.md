@@ -1,6 +1,6 @@
 # Shapes and paints: gradients, polygons and stars, arcs, corners, arrowheads, per-side strokes, shared styles
 
-Everything here lives in the document (the proto, `internal/core`, the op log), is drawn by the 2D canvas and the GPU renderer, goes out through the SVG export and the generated code, and is reachable from the Properties panel and from the MCP tools. New proto fields use the numbers reserved for this area (`Paint` 20-29, `Node` shape cases 60-69, `Stroke` 20-29, `RectNode` 20-29, `Document` 60-69, `Op` 60-69; `Node` style ids 70-72).
+Everything here lives in the document (the proto, `internal/core`, the op log), is drawn by the 2D canvas and the GPU renderer, goes out through the SVG export and the generated code, and is reachable from the Properties panel and from the MCP tools. New proto fields use the numbers reserved for this area (`Paint` 20-29, `Node` shape cases 60-69, `Stroke` 20-29, `RectNode` 20-29, `Document` 60-69, `Op` 60-69; `Node` style ids 90-92).
 
 ## Angular and diamond gradients
 

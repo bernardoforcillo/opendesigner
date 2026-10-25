@@ -571,10 +571,10 @@ message Node {
   // Shared paint / effect styles (see PaintStyleDef, EffectStyleDef): a node that names one draws with the
   // style's paints / effects instead of its own `fills` / `strokes` paints / `effects`, which stay as the
   // fallback. The "fill_style_id" / "stroke_style_id" / "effect_style_id" mask paths write them; empty detaches.
-  // (Numbers 70-79 are the shapes-and-paints track's.)
-  string fill_style_id = 70;
-  string stroke_style_id = 71;
-  string effect_style_id = 72;
+  // (Numbers 90-92 are the shapes-and-paints track's.)
+  string fill_style_id = 90;
+  string stroke_style_id = 91;
+  string effect_style_id = 92;
 }
 
 enum LayoutGridKind {
