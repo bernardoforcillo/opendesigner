@@ -1,7 +1,7 @@
 import type { EffectLite, FillLite, NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
-import { fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, placeTextLines, segmentsOfLine } from "../renderer/text";
+import { fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
@@ -327,14 +327,32 @@ function ellipseElement(n: NodeLite, defs: string[]): string {
 function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string {
   const style = n.text?.style;
   if (!style) return "";
-  const lines = placeTextLines((s) => measure(s, style), n);
+  const lines = placeTextLines((s) => measure(s, style), n, (st) => (s) => measure(s, st));
   if (lines.length === 0) return "";
-  // A line made of runs (small caps, scripts, a list marker) is one tspan per run, at its
-  // own size; a plain line stays a single tspan.
+  // A rich line is one <tspan> per piece (each with its own x, font and decoration); the first
+  // carries the line's y, and so does every other: an absolute y per piece keeps the baseline shared.
+  // A plain line made of runs (small caps, scripts, a list marker) is one tspan per piece, at its own size.
+  const plainDecoration = [style.underline ? "underline" : "", style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
   const spans = lines
-    .flatMap((l) => l.segments
-      ? segmentsOfLine(l).map((g) => `<tspan${attrs([attr("x", g.x), attr("y", g.y), g.scale === 1 ? null : attr("font-size", fontSizeOf(style) * g.scale)])}>${esc(g.text)}</tspan>`)
-      : [`<tspan${attrs([attr("x", l.x), attr("y", l.y)])}>${esc(l.text)}</tspan>`])
+    .flatMap((l) => l.pieces
+      ? l.pieces.map((g) => `<tspan${attrs([
+          attr("x", g.x), attr("y", g.y), g.scale === 1 ? null : attr("font-size", fontSizeOf(style) * g.scale),
+          plainDecoration ? attr("text-decoration", plainDecoration) : null,
+        ])}>${esc(g.text)}</tspan>`)
+      : (l.segments ?? [{ text: l.text, x: l.x, width: l.width, style }]).map((seg) => {
+        const own = l.segments !== undefined;
+        const decoration = [seg.style.underline ? "underline" : "", seg.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
+        return `<tspan${attrs([
+          attr("x", seg.x), attr("y", l.y),
+          ...(own && fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
+          ...(own && fontSizeOf(seg.style) !== fontSizeOf(style) ? [attr("font-size", fontSizeOf(seg.style))] : []),
+          ...(own && fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),
+          ...(own && !!seg.style.italic !== !!style.italic ? [attr("font-style", seg.style.italic ? "italic" : "normal")] : []),
+          ...(decoration ? [attr("text-decoration", decoration)] : []),
+          ...(own && (seg.style.letterSpacing ?? 0) !== (style.letterSpacing ?? 0) ? [attr("letter-spacing", seg.style.letterSpacing ?? 0)] : []),
+        ])}>${esc(seg.text)}</tspan>`;
+      }),
+    )
     .join("");
   const features = fontFeaturesOf(style);
   // xml:space="preserve" serves a line's LEADING spaces, which the canvas
@@ -347,6 +365,7 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
     attr("font-weight", fontWeightOf(style)),
     ...(style.italic ? [attr("font-style", "italic")] : []),
     features === "" ? null : attr("style", `font-feature-settings:${features}`),
+    ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
     ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }

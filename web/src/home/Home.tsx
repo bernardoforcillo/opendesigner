@@ -2,7 +2,9 @@ import { useCallback, useEffect, useRef, useState } from "react";
 import { Button as RacButton, Dialog, Heading, Modal, ModalOverlay } from "react-aria-components";
 import { Banner, Button, EmptyState, Icon } from "../ui/ds";
 import { Logo } from "../ui/shell/DocMenu";
-import { TEMPLATES } from "../templates/catalog";
+import { blankFor, templatesFor } from "../templates/catalog";
+import { VERTICAL_LIST, verticalDef } from "../verticals";
+import type { Vertical } from "../store/types";
 import type { Template } from "../templates/catalog";
 import { docClient } from "../rpc/client";
 import { DocCard, type DocSummary } from "./DocCard";
@@ -18,18 +20,23 @@ import { startDocument, StartError, type StartClient } from "./startDocument";
 
 /** The part of the RPC client the Home needs (tests pass a fake one). */
 export interface HomeClient extends StartClient {
-  listDocuments(req: Record<string, never>): Promise<{ docs: { id: string; name: string; updatedAt: bigint | number; screens: number; flows: number }[] }>;
+  listDocuments(req: Record<string, never>): Promise<{ docs: { id: string; name: string; updatedAt: bigint | number; screens: number; flows: number; vertical?: string }[] }>;
   renameDocument(req: { docId: string; name: string }): Promise<unknown>;
   deleteDocument(req: { docId: string }): Promise<unknown>;
 }
 
-const JOURNEY = [
-  { label: "Design", icon: "frame" },
-  { label: "Flows", icon: "flow" },
-  { label: "Try", icon: "play" },
-  { label: "Develop", icon: "code" },
-  { label: "Export", icon: "download" },
-] as const;
+
+const VERTICAL_KEY = "od.homeVertical";
+function readVertical(): Vertical {
+  try {
+    const v = localStorage.getItem(VERTICAL_KEY);
+    if (v === "publishing" || v === "design" || v === "product") return v;
+  } catch { /* no storage */ }
+  return "product";
+}
+function saveVertical(v: Vertical): void {
+  try { localStorage.setItem(VERTICAL_KEY, v); } catch { /* no storage */ }
+}
 
 const errText = (e: unknown) => (e instanceof Error ? e.message : String(e));
 
@@ -54,12 +61,17 @@ export function Home({
   const [toDelete, setToDelete] = useState<DocSummary | null>(null);
   const [deleteError, setDeleteError] = useState<string | null>(null);
   const templatesRef = useRef<HTMLElement>(null);
+  // The kind of work the new document is for. It decides the templates offered and what a blank
+  // document is; the choice is remembered.
+  const [vertical, setVertical] = useState<Vertical>(readVertical);
+  const def = verticalDef(vertical);
+  const templates = templatesFor(vertical);
 
   const load = useCallback(async () => {
     try {
       const res = await client.listDocuments({});
       setDocs(sortRecent(res.docs.map((d) => ({
-        id: d.id, name: d.name, updatedAt: Number(d.updatedAt), screens: d.screens, flows: d.flows,
+        id: d.id, name: d.name, updatedAt: Number(d.updatedAt), screens: d.screens, flows: d.flows, vertical: d.vertical || undefined,
       }))));
       setLoadError(null);
     } catch (e) {
@@ -120,7 +132,7 @@ export function Home({
         </div>
         <div className="ml-auto flex items-center gap-2">
           <JoinField navigate={navigate} />
-          <Button variant="primary" icon="plus" onPress={() => void start(TEMPLATES[0])} isDisabled={!!starting} className="h-8">
+          <Button variant="primary" icon="plus" onPress={() => void start(blankFor(vertical))} isDisabled={!!starting} className="h-8">
             New document
           </Button>
         </div>
@@ -131,18 +143,32 @@ export function Home({
 
       <main className="min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto w-full max-w-[1040px] px-4 pb-16 pt-8 sm:px-6">
-          <h1 className="text-[22px] font-semibold tracking-[-0.02em]">What do you want to design today?</h1>
-          <p className="mt-1 max-w-[560px] text-[13px] leading-relaxed text-fg-muted">
-            Start from a template or a blank board: draw the screens, connect them in a flow, try them out
-            as a prototype and take the code home.
-          </p>
+          <div role="radiogroup" aria-label="Kind of document" className="mb-5 flex flex-wrap gap-2">
+            {VERTICAL_LIST.map((v) => (
+              <button
+                type="button"
+                key={v.id}
+                role="radio"
+                aria-checked={vertical === v.id}
+                onClick={() => { setVertical(v.id); saveVertical(v.id); }}
+                className={
+                  "flex items-center gap-2 rounded-lg border px-3 py-2 text-left text-[13px] outline-none focus-visible:shadow-[var(--ring)] " +
+                  (vertical === v.id ? "border-accent bg-accent-soft text-accent" : "border-line bg-surface text-fg-muted hover:border-line-strong hover:text-fg")
+                }
+              >
+                <Icon name={v.icon} size={14} /> <span className="font-medium">{v.name}</span>
+              </button>
+            ))}
+          </div>
+          <h1 className="text-[22px] font-semibold tracking-[-0.02em]">{def.headline}</h1>
+          <p className="mt-1 max-w-[560px] text-[13px] leading-relaxed text-fg-muted">{def.intro}</p>
           <ol aria-label="The journey" className="mt-4 flex flex-wrap items-center gap-1.5 text-[12px] text-fg-muted">
-            {JOURNEY.map((s, i) => (
+            {def.journey.map((s, i) => (
               <li key={s.label} className="flex items-center gap-1.5">
                 <span className="flex h-6 items-center gap-1.5 rounded-sm bg-surface px-2.5 shadow-[0_0_0_1px_var(--line)]">
                   <Icon name={s.icon} size={12} className="text-fg-subtle" /> {s.label}
                 </span>
-                {i < JOURNEY.length - 1 && <Icon name="chevronRight" size={10} className="text-fg-subtle" />}
+                {i < def.journey.length - 1 && <Icon name="chevronRight" size={10} className="text-fg-subtle" />}
               </li>
             ))}
           </ol>
@@ -150,7 +176,7 @@ export function Home({
           <section ref={templatesRef} aria-labelledby="home-templates" className="mt-9">
             <h2 id="home-templates" className="font-mono text-[10px] font-semibold uppercase tracking-[0.08em] text-fg-subtle">Start from a template</h2>
             <div className="mt-3 grid gap-3 [grid-template-columns:repeat(auto-fill,minmax(188px,1fr))]">
-              {TEMPLATES.map((t) => (
+              {templates.map((t) => (
                 <TemplateCard key={t.id} template={t} busy={starting?.id === t.id ? starting : null} disabled={!!starting} onPick={() => void start(t)} />
               ))}
             </div>

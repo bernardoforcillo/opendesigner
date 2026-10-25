@@ -2,12 +2,14 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"strings"
 	"sync"
 	"unicode/utf8"
 
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
+	"github.com/bernardoforcillo/opendesigner/internal/core"
 	"github.com/bernardoforcillo/opendesigner/internal/store"
 	"github.com/google/uuid"
 )
@@ -53,7 +55,11 @@ func NewManager(workspace string) *Manager {
 	return &Manager{workspace: workspace, hubs: map[string]*Hub{}}
 }
 
-func (m *Manager) Create(name string) (*opendesignerv1.DocInfo, error) {
+func (m *Manager) Create(name string, vertical ...string) (*opendesignerv1.DocInfo, error) {
+	// Checked before anything is created: a refused request leaves no document behind.
+	if len(vertical) > 0 && !core.ValidVertical(vertical[0]) {
+		return nil, fmt.Errorf("%w: %q", core.ErrBadVertical, vertical[0])
+	}
 	m.mu.Lock()
 	defer m.mu.Unlock()
 	id := uuid.NewString()
@@ -69,8 +75,22 @@ func (m *Manager) Create(name string) (*opendesignerv1.DocInfo, error) {
 		return nil, err
 	}
 	m.hubs[id] = h
+	// The vertical is part of the document from its first op, so it is durable and shared like any other
+	// setting. "" (and "product") leave the document without settings.
+	v := ""
+	if len(vertical) > 0 {
+		v = vertical[0]
+	}
+	if v != "" {
+		if _, err := h.Submit("server", &opendesignerv1.Op{
+			OpId: uuid.NewString(), DocId: id,
+			Kind: &opendesignerv1.Op_SetDocSettings{SetDocSettings: &opendesignerv1.SetDocSettings{Settings: &opendesignerv1.DocSettings{Vertical: v}}},
+		}); err != nil {
+			return nil, err
+		}
+	}
 	meta := b.Meta()
-	return &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name, UpdatedAt: meta.UpdatedAt.Unix()}, nil
+	return &opendesignerv1.DocInfo{Id: meta.ID, Name: meta.Name, UpdatedAt: meta.UpdatedAt.Unix(), Vertical: v}, nil
 }
 
 // Exists says whether the document really exists (in memory or as a bundle on
@@ -169,11 +189,13 @@ func (m *Manager) info(meta store.Meta) *opendesignerv1.DocInfo {
 	if h != nil {
 		s, f := h.Counts()
 		di.Screens, di.Flows = uint32(s), uint32(f)
+		di.Vertical = h.Vertical()
 		return di
 	}
 	if doc, _, err := store.LoadReadOnly(m.workspace, meta.ID); err == nil {
 		s, f := countDoc(doc)
 		di.Screens, di.Flows = uint32(s), uint32(f)
+		di.Vertical = doc.GetSettings().GetVertical()
 	}
 	return di
 }

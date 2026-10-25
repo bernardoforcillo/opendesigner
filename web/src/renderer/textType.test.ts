@@ -1,6 +1,6 @@
 import { describe, it, expect } from "vitest";
 import {
-  BULLET, caseText, fontFeaturesOf, isSmallCaps, layoutText, ligaturesOff, placeTextLines, runsOf, segmentsOfLine, styledMeasure, textPaintBounds,
+  BULLET, caseText, fontFeaturesOf, isSmallCaps, layoutText, ligaturesOff, placeTextLines, runsOf, piecesOfLine, styledMeasure, textPaintBounds,
 } from "./text";
 import { isValidFontFeatures } from "../store/typography";
 import { toPbTextStyle, toTextStyleLite } from "../store/types";
@@ -59,14 +59,14 @@ describe("super and subscript", () => {
     const down = placeTextLines(measure, node("ab", style({ textScript: "sub" })))[0];
     const plain = placeTextLines(measure, node("ab", style()))[0];
     expect(up.width).toBeCloseTo(13);
-    const [seg] = segmentsOfLine(up);
+    const [seg] = piecesOfLine(up);
     expect(seg.scale).toBe(0.65);
     expect(seg.y).toBeLessThan(plain.y);
-    expect(segmentsOfLine(down)[0].y).toBeGreaterThan(plain.y);
+    expect(piecesOfLine(down)[0].y).toBeGreaterThan(plain.y);
   });
 
   it("keeps a plain line free of segments", () => {
-    expect(placeTextLines(measure, node("ab", style()))[0].segments).toBeUndefined();
+    expect(placeTextLines(measure, node("ab", style()))[0].pieces).toBeUndefined();
   });
 });
 
@@ -75,7 +75,7 @@ describe("lists and indent", () => {
     const lines = placeTextLines(measure, node("a\nb", style({ listKind: "bullet" })));
     expect(lines).toHaveLength(2);
     for (const l of lines) {
-      const [marker, text] = segmentsOfLine(l);
+      const [marker, text] = piecesOfLine(l);
       expect(marker.text).toBe(BULLET);
       expect(marker.x).toBe(100);
       // marker column: max(0.9em, marker width 10) + 0.4em gap

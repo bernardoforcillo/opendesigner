@@ -24,6 +24,9 @@ import {
 } from "../store/vectorGeometry";
 import type { PenPreview, PointLite } from "../store/vectorGeometry";
 import { themeColors, withAlpha } from "./themeColors";
+import { META_NEXT, nextOf } from "../store/threads";
+import { baselineLines, pageColumns, pageTextArea } from "../store/docSettings";
+import type { DocSettingsLite, GuideLite, PageLite } from "../store/types";
 
 // The handles' geometry (positions, hit-test, resize) is ONE only and lives
 // in selection/handles.ts: here we only draw. Re-exported because the
@@ -350,6 +353,139 @@ function drawLayoutGrids(ctx: CanvasRenderingContext2D, state: SceneState, cam: 
   }
 }
 
+// THE SHEET of a sized page and its guides (store/docSettings.ts), editor-only like the layout grids:
+// the area outside the sheet is dimmed so the sheet reads as paper, the bleed is a dashed red outline,
+// the margins are magenta, the column edges violet, and the baseline grid light blue lines.
+export function drawPageSheet(ctx: CanvasRenderingContext2D, page: PageLite, settings: DocSettingsLite | undefined, cam: Camera, side: { left?: boolean; guides?: readonly GuideLite[] } = {}): void {
+  const w = page.width ?? 0, h = page.height ?? 0;
+  if (!(w > 0) || !(h > 0)) return;
+  const dpr = devicePixelRatio();
+  const viewW = ctx.canvas.width / dpr, viewH = ctx.canvas.height / dpr;
+  const at = (x: number, y: number) => worldToScreen(cam, x, y);
+  const a = at(0, 0), b = at(w, h);
+  ctx.save();
+  // Dim everything but the sheet.
+  ctx.fillStyle = "rgba(120,120,130,0.16)";
+  ctx.beginPath();
+  ctx.rect(0, 0, viewW, viewH);
+  ctx.rect(a.x, a.y, b.x - a.x, b.y - a.y);
+  ctx.fill("evenodd");
+  ctx.lineWidth = 1;
+  ctx.strokeStyle = "rgba(90,90,100,0.7)";
+  ctx.strokeRect(a.x + 0.5, a.y + 0.5, b.x - a.x, b.y - a.y);
+  const bleed = page.bleed ?? 0;
+  if (bleed > 0) {
+    const c = at(-bleed, -bleed), d = at(w + bleed, h + bleed);
+    ctx.strokeStyle = "#e5484d";
+    ctx.setLineDash([5, 4]);
+    ctx.strokeRect(c.x + 0.5, c.y + 0.5, d.x - c.x, d.y - c.y);
+    ctx.setLineDash([]);
+  }
+  // Baseline grid, only when its lines are far enough apart to read as lines.
+  const inc = settings?.baselineIncrement ?? 0;
+  if (inc * cam.zoom >= 4) {
+    ctx.strokeStyle = "rgba(60,160,230,0.35)";
+    ctx.beginPath();
+    for (const y of baselineLines(settings, h)) {
+      const p = at(0, y);
+      ctx.moveTo(a.x, Math.round(p.y) + 0.5);
+      ctx.lineTo(b.x, Math.round(p.y) + 0.5);
+    }
+    ctx.stroke();
+  }
+  const area = pageTextArea(page, side.left);
+  if (area.x > 0 || area.y > 0 || area.width < w || area.height < h) {
+    const m1 = at(area.x, area.y), m2 = at(area.x + area.width, area.y + area.height);
+    ctx.strokeStyle = "#d6409f";
+    ctx.strokeRect(m1.x + 0.5, m1.y + 0.5, m2.x - m1.x, m2.y - m1.y);
+  }
+  const cols = pageColumns(page, side.left);
+  if (cols.length > 0) {
+    ctx.strokeStyle = "#7c5cff";
+    ctx.beginPath();
+    for (const c of cols) {
+      const p1 = at(c.x, area.y), p2 = at(c.x + c.width, area.y + area.height);
+      ctx.moveTo(p1.x + 0.5, p1.y); ctx.lineTo(p1.x + 0.5, p2.y);
+      ctx.moveTo(p2.x + 0.5, p1.y); ctx.lineTo(p2.x + 0.5, p2.y);
+    }
+    ctx.stroke();
+  }
+  // The slug: the area beyond the bleed for printer's marks and notes, a dashed grey outline.
+  const slug = page.slug ?? 0;
+  if (slug > 0) {
+    const e = bleed + slug;
+    const s1 = at(-e, -e), s2 = at(w + e, h + e);
+    ctx.strokeStyle = "rgba(90,90,100,0.7)";
+    ctx.setLineDash([2, 3]);
+    ctx.strokeRect(s1.x + 0.5, s1.y + 0.5, s2.x - s1.x, s2.y - s1.y);
+    ctx.setLineDash([]);
+  }
+  // Ruler guides (the page's own and those of its master), cyan.
+  if (side.guides && side.guides.length > 0) {
+    ctx.strokeStyle = "#17b3c8";
+    ctx.beginPath();
+    for (const g of side.guides) {
+      if (g.vertical) { const p = at(g.position, 0); ctx.moveTo(Math.round(p.x) + 0.5, a.y); ctx.lineTo(Math.round(p.x) + 0.5, b.y); }
+      else { const p = at(0, g.position); ctx.moveTo(a.x, Math.round(p.y) + 0.5); ctx.lineTo(b.x, Math.round(p.y) + 0.5); }
+    }
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
+// THREAD PORTS of text frames (store/threads.ts), editor-only like the layout grids: a hollow square at the
+// top-left of a frame that receives text from another, a filled one at the bottom-right of a frame that
+// flows into the next, and a red "+" there when the last frame has text left over. When a frame of the
+// chain is selected, a dashed line joins each out-port to the next frame's in-port.
+const PORT = 8;
+function drawThreadPorts(ctx: CanvasRenderingContext2D, state: SceneState, cam: Camera, selection: readonly string[], accent: string): void {
+  const dpr = devicePixelRatio();
+  const viewW = ctx.canvas.width / dpr, viewH = ctx.canvas.height / dpr;
+  const linked = new Set<string>();
+  const outs: { from: ReturnType<typeof worldBoundsToScreen>; to: ReturnType<typeof worldBoundsToScreen>; hot: boolean }[] = [];
+  for (const n of state.nodes.values()) {
+    if (!n.visible || n.kind !== "text" || (n.meta?.[META_NEXT] === undefined && !n.overset)) continue;
+    const next = n.meta?.[META_NEXT] !== undefined ? nextOf(state, n) : null;
+    const b = worldBoundsToScreen(worldBoundsOfNode(state, n), cam);
+    if (b.x > viewW || b.y > viewH || b.x + b.width < 0 || b.y + b.height < 0) continue;
+    if (next) {
+      linked.add(next.id);
+      outs.push({ from: b, to: worldBoundsToScreen(worldBoundsOfNode(state, next), cam), hot: selection.includes(n.id) || selection.includes(next.id) });
+    }
+    const px = b.x + b.width - PORT, py = b.y + b.height - PORT;
+    if (n.overset) {
+      ctx.fillStyle = "#e5484d";
+      ctx.fillRect(px, py, PORT, PORT);
+      ctx.fillStyle = "#fff";
+      ctx.fillRect(px + 2, py + PORT / 2 - 0.5, PORT - 4, 1);
+      ctx.fillRect(px + PORT / 2 - 0.5, py + 2, 1, PORT - 4);
+    } else {
+      ctx.fillStyle = accent;
+      ctx.fillRect(px, py, PORT, PORT);
+    }
+  }
+  for (const id of linked) {
+    const n = state.nodes.get(id);
+    if (!n || !n.visible) continue;
+    const b = worldBoundsToScreen(worldBoundsOfNode(state, n), cam);
+    ctx.strokeStyle = accent;
+    ctx.lineWidth = 1;
+    ctx.strokeRect(b.x + 0.5, b.y + 0.5, PORT, PORT);
+  }
+  const hot = outs.filter((o) => o.hot);
+  if (hot.length === 0) return;
+  ctx.save();
+  ctx.strokeStyle = accent;
+  ctx.setLineDash([4, 3]);
+  for (const o of hot) {
+    ctx.beginPath();
+    ctx.moveTo(o.from.x + o.from.width - PORT / 2, o.from.y + o.from.height - PORT / 2);
+    ctx.lineTo(o.to.x + PORT / 2, o.to.y + PORT / 2);
+    ctx.stroke();
+  }
+  ctx.restore();
+}
+
 export function drawOverlay(
   ctx: CanvasRenderingContext2D,
   state: SceneState,
@@ -363,6 +499,8 @@ export function drawOverlay(
   pen: PenPreview | null = null,
   // The Link tool's rubber band, also PREVIEW: a dashed line from the node it starts from.
   link: { from: Bounds; x: number; y: number } | null = null,
+  // The page on screen with its sheet (size, margins, columns, bleed) and the document's baseline grid.
+  sheet: { page: PageLite; settings?: DocSettingsLite; left?: boolean; guides?: readonly GuideLite[] } | null = null,
 ): void {
   const { canvas } = ctx;
   const dpr = devicePixelRatio();
@@ -371,7 +509,9 @@ export function drawOverlay(
   ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
   const { accent: ACCENT, guide: SNAP_GUIDE_COLOR } = themeColors();
 
+  if (sheet) drawPageSheet(ctx, sheet.page, sheet.settings, cam, sheet);
   drawLayoutGrids(ctx, state, cam);
+  drawThreadPorts(ctx, state, cam, selection, ACCENT);
 
   const frame = selectionFrame(state, selection);
   if (frame) {

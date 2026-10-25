@@ -186,6 +186,9 @@ func collectScreens(d *opendesignerv1.Document, flowID string, warnings *[]strin
 	var screens []*Screen
 	seen := map[string]bool{}
 	for _, p := range d.GetPages() {
+		if p.GetIsMaster() {
+			continue // a master page is a template, not a screen
+		}
 		for _, n := range core.ChildrenOf(d, p.GetId()) {
 			if !n.GetVisible() || seen[n.GetId()] {
 				continue
@@ -203,6 +206,9 @@ func collectScreens(d *opendesignerv1.Document, flowID string, warnings *[]strin
 	// exported as a page of its own, sized to its content.
 	if len(screens) == 0 {
 		for _, p := range d.GetPages() {
+			if p.GetIsMaster() {
+				continue
+			}
 			for _, n := range core.ChildrenOf(d, p.GetId()) {
 				if !n.GetVisible() || seen[n.GetId()] || masters[n.GetId()] {
 					continue

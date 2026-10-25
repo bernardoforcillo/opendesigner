@@ -13,7 +13,7 @@ import {
 import { effectsOutset, sceneIndexOf } from "../sceneIndex";
 import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
-import { fontSizeOf, placeTextLines, segmentsOfLine } from "../text";
+import { decorationBars, fontSizeOf, piecesOfLine, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
 import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "../effectsFx";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
@@ -653,16 +653,44 @@ export class CanvasKitRenderer {
     if (!font) return;
     let lines = this.textLines.get(n);
     if (!lines) {
-      lines = placeTextLines(this.measureFor(font), n);
+      lines = placeTextLines(this.measureFor(font), n, this.styleMeasure);
       this.textLines.set(n, lines);
     }
+    // A piece with letter spacing goes character by character, as on the 2D canvas.
+    const put = (text: string, x: number, y: number, f: Font, spacing: number) => {
+      if (!spacing) { sk.drawText(text, x, y, paint, f); return; }
+      for (const c of trackedOffsets(text, x, spacing, this.measureFor(f))) sk.drawText(c.ch, c.x, y, paint, f);
+    };
     for (const line of lines) {
-      for (const seg of segmentsOfLine(line)) {
-        // Small caps and scripts are runs at another size; the font is cached per size.
-        const f = seg.scale === 1 ? font
-          : this.fonts.fontFor(t.style.fontWeight, fontSizeOf(t.style) * seg.scale, t.style.fontFamily, t.style.italic === true);
-        if (f) sk.drawText(seg.text, seg.x, seg.y, paint, f);
+      if (!line.segments) {
+        for (const p of piecesOfLine(line)) {
+          // Small caps and scripts are runs at another size; the font is cached per size.
+          const f = p.scale === 1 ? font
+            : this.fonts.fontFor(t.style.fontWeight, fontSizeOf(t.style) * p.scale, t.style.fontFamily, t.style.italic === true) ?? font;
+          put(p.text, p.x, p.y, f, t.style.letterSpacing ?? 0);
+        }
+        this.drawBars(sk, [{ x: line.x, width: line.width, style: t.style }], line.y, paint);
+        continue;
       }
+      // Rich text: every piece in its own font, on the line's baseline.
+      for (const seg of line.segments) {
+        const f = this.fonts.fontFor(seg.style.fontWeight, fontSizeOf(seg.style), seg.style.fontFamily, seg.style.italic === true) ?? font;
+        put(seg.text, seg.x, line.y, f, seg.style.letterSpacing ?? 0);
+      }
+      this.drawBars(sk, line.segments, line.y, paint);
+    }
+  }
+
+  // The measure of any style (rich text lays out pieces in several fonts); no font -> an estimate.
+  private readonly styleMeasure: MeasureFor = (style) => {
+    const f = this.fonts.fontFor(style.fontWeight, fontSizeOf(style), style.fontFamily, style.italic === true);
+    return f ? this.measureFor(f) : (s) => s.length * fontSizeOf(style) * 0.55;
+  };
+
+  // Underline / strikethrough bars under pieces whose style asks for them.
+  private drawBars(sk: Canvas, pieces: readonly { x: number; width: number; style: Parameters<typeof decorationBars>[0] }[], baseline: number, paint: Paint): void {
+    for (const piece of pieces) {
+      for (const bar of decorationBars(piece.style, baseline)) sk.drawRect(this.CK.XYWHRect(piece.x, bar.y, piece.width, bar.height), paint);
     }
   }
 

@@ -86,7 +86,7 @@ func validateFont(doc *opendesignerv1.Document, f *opendesignerv1.FontFace) erro
 
 func finiteNonNeg(v float64) bool { return !math.IsNaN(v) && !math.IsInf(v, 0) && v >= 0 }
 
-func validateTextStyleDef(d *opendesignerv1.TextStyleDef) error {
+func validateTextStyleDef(doc *opendesignerv1.Document, d *opendesignerv1.TextStyleDef) error {
 	if d == nil || d.GetId() == "" {
 		return ErrNilTextStyle
 	}
@@ -98,7 +98,49 @@ func validateTextStyleDef(d *opendesignerv1.TextStyleDef) error {
 	if w := st.GetFontWeight(); w != "" && !fontWeightRe.MatchString(w) && w != "normal" && w != "bold" {
 		return ErrTextStyleValue
 	}
-	return validateTextExtras(st)
+	if ls := st.GetLetterSpacing(); math.IsNaN(ls) || math.IsInf(ls, 0) || ls < -1000 || ls > 1000 {
+		return ErrTextStyleValue
+	}
+	if err := validateTextExtras(st); err != nil {
+		return err
+	}
+	return validateStyleRelations(doc, d)
+}
+
+// validateStyleRelations checks what a style says about OTHER styles and about paragraphs: spacing and
+// indents are finite and non-negative; based_on names an existing style of the same kind and never
+// loops back; next_style_id names an existing paragraph style (itself included); a character style has
+// no paragraph settings and no next style.
+func validateStyleRelations(doc *opendesignerv1.Document, d *opendesignerv1.TextStyleDef) error {
+	if d.GetKind() != opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_PARAGRAPH && d.GetKind() != opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER {
+		return ErrTextStyleValue
+	}
+	for _, v := range []float64{d.GetSpaceBefore(), d.GetSpaceAfter(), d.GetIndentFirst(), d.GetIndentLeft()} {
+		if !finiteNonNeg(v) {
+			return ErrTextStyleValue
+		}
+	}
+	character := d.GetKind() == opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER
+	if character && d.GetAlignToGrid() {
+		return fmt.Errorf("%w: a character style cannot align to the grid", ErrTextStyleValue)
+	}
+	if character && (d.GetNextStyleId() != "" || d.GetSpaceBefore() != 0 || d.GetSpaceAfter() != 0 || d.GetIndentFirst() != 0 || d.GetIndentLeft() != 0) {
+		return fmt.Errorf("%w: a character style has no paragraph settings", ErrTextStyleValue)
+	}
+	if next := d.GetNextStyleId(); next != "" && next != d.GetId() {
+		n, ok := doc.GetTextStyles()[next]
+		if !ok || n.GetKind() != opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_PARAGRAPH {
+			return fmt.Errorf("%w: next style %q", ErrTextStyleMissing, next)
+		}
+	}
+	for cur, hops := d.GetBasedOn(), 0; cur != ""; hops++ {
+		b, ok := doc.GetTextStyles()[cur]
+		if cur == d.GetId() || !ok || b.GetKind() != d.GetKind() || hops > len(doc.GetTextStyles())+1 {
+			return fmt.Errorf("%w: based on %q", ErrTextStyleValue, cur)
+		}
+		cur = b.GetBasedOn()
+	}
+	return nil
 }
 
 // validateTextExtras checks the case / script / list / OpenType / box fields of a
@@ -173,7 +215,7 @@ func applyDeleteFont(doc *opendesignerv1.Document, d *opendesignerv1.DeleteFont)
 
 func applySetTextStyleDef(doc *opendesignerv1.Document, s *opendesignerv1.SetTextStyleDef) error {
 	d := s.GetTextStyle()
-	if err := validateTextStyleDef(d); err != nil {
+	if err := validateTextStyleDef(doc, d); err != nil {
 		return err
 	}
 	if doc.TextStyles == nil {
@@ -220,7 +262,9 @@ func ValidateFont(doc *opendesignerv1.Document, f *opendesignerv1.FontFace) erro
 	return validateFont(doc, f)
 }
 
-func ValidateTextStyleDef(d *opendesignerv1.TextStyleDef) error { return validateTextStyleDef(d) }
+func ValidateTextStyleDef(doc *opendesignerv1.Document, d *opendesignerv1.TextStyleDef) error {
+	return validateTextStyleDef(doc, d)
+}
 
 // resolveTextStyle returns n with its shared text style applied: the style's
 // values replace the node's own (which stay in the document as the fallback).

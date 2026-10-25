@@ -11,6 +11,8 @@ import { useAppNavigate } from "./nav";
 
 export interface DocSummary {
   id: string; name: string; updatedAt: number; screens: number; flows: number;
+  /** "publishing" | "design"; absent for the default (design × development). */
+  vertical?: string;
 }
 
 /**
@@ -102,7 +104,10 @@ export function DocCard({
           <p className="mt-0.5 truncate text-[12px] text-fg-subtle">
             <span title={doc.updatedAt ? new Date(doc.updatedAt * 1000).toLocaleString("en-US") : undefined}>Edited {relativeTime(doc.updatedAt, now)}</span>
           </p>
-          <p className="truncate text-[12px] text-fg-muted">{meta}</p>
+          <p className="truncate text-[12px] text-fg-muted">
+            {doc.vertical === "publishing" || doc.vertical === "design" ? <span className="mr-1.5 rounded-sm bg-surface-3 px-1 font-mono text-[10px] font-semibold uppercase text-fg-muted">{doc.vertical}</span> : null}
+            {doc.vertical === "publishing" ? "Publication" : meta}
+          </p>
         </div>
       </a>
 

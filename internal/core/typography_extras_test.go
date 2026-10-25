@@ -17,7 +17,7 @@ func TestTextExtrasAreValidated(t *testing.T) {
 		}
 		return &opendesignerv1.TextStyleDef{Id: "x", Name: "x", Style: st}
 	}
-	if err := ValidateTextStyleDef(def(nil)); err != nil {
+	if err := ValidateTextStyleDef(NewDocument("d", "d"), def(nil)); err != nil {
 		t.Fatal(err)
 	}
 	for name, mod := range map[string]func(*opendesignerv1.TextStyle){
@@ -33,7 +33,7 @@ func TestTextExtrasAreValidated(t *testing.T) {
 		"bad value":  func(s *opendesignerv1.TextStyle) { s.FontFeatures = `"liga" x` },
 		"empty item": func(s *opendesignerv1.TextStyle) { s.FontFeatures = `"liga",,"tnum"` },
 	} {
-		if ValidateTextStyleDef(def(mod)) == nil {
+		if ValidateTextStyleDef(NewDocument("d", "d"), def(mod)) == nil {
 			t.Errorf("%s must be rejected", name)
 		}
 	}

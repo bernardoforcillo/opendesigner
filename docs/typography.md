@@ -3,7 +3,7 @@
 The document has **uploaded fonts** and **shared text styles**. Like variables,
 flows and clips they live in the document and go through the op log: the editor,
 MCP agents and code read and write the same ones, and every change is one undo step.
-(Multi-line text, wrapping and alignment were already in the text node.)
+(Multi-line text, wrapping and alignment were already in the text node. Per-paragraph and per-character styles: docs/rich-text.md.)
 
 ## Model
 

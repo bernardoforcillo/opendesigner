@@ -36,6 +36,8 @@ var (
 	ErrPageExists     = errors.New("core: page id already taken")
 	ErrPageNotFound   = errors.New("core: page not found")
 	ErrLastPage       = errors.New("core: cannot delete the last page")
+	ErrBadMaster      = errors.New("core: invalid master page")
+	ErrMasterInUse    = errors.New("core: master page is applied by other pages")
 	// M4 — components.
 	ErrComponentExists   = errors.New("core: component id already taken")
 	ErrComponentNotFound = errors.New("core: component not found")
@@ -163,6 +165,12 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applyDeletePage(doc, k.DeletePage)
 	case *opendesignerv1.Op_RenamePage:
 		return applyRenamePage(doc, k.RenamePage)
+	case *opendesignerv1.Op_UpdatePage:
+		return applyUpdatePage(doc, k.UpdatePage)
+	case *opendesignerv1.Op_MovePage:
+		return applyMovePage(doc, k.MovePage)
+	case *opendesignerv1.Op_SetDocSettings:
+		return applySetDocSettings(doc, k.SetDocSettings)
 	case *opendesignerv1.Op_CreateComponent:
 		return applyCreateComponent(doc, k.CreateComponent)
 	case *opendesignerv1.Op_SetInstanceOverride:
@@ -326,8 +334,88 @@ func applyCreatePage(doc *opendesignerv1.Document, c *opendesignerv1.CreatePage)
 	if parentExists(doc, p.GetId()) {
 		return fmt.Errorf("%w: %s", ErrPageExists, p.GetId())
 	}
+	if err := checkPageMaster(doc, p); err != nil {
+		return err
+	}
+	if err := validatePageSetup(p); err != nil {
+		return err
+	}
 	doc.Pages = append(doc.Pages, p)
 	return nil
+}
+
+// maxMasterChain bounds how many masters a page can inherit through (page -> master -> base...).
+const maxMasterChain = 4
+
+// checkPageMaster validates the master fields of page p against the document (p itself may not
+// be in doc.Pages yet). The master applied (and the left-hand one) must be existing master pages
+// other than p; a master may be based on another master, without cycles and within
+// maxMasterChain; only regular pages have a left-hand master.
+func checkPageMaster(doc *opendesignerv1.Document, p *opendesignerv1.Page) error {
+	if p.GetLeftMasterId() != "" {
+		if p.GetIsMaster() {
+			return fmt.Errorf("%w: a master page has no left master (%s)", ErrBadMaster, p.GetId())
+		}
+		i := pageIndex(doc, p.GetLeftMasterId())
+		if i < 0 || !doc.Pages[i].GetIsMaster() || p.GetLeftMasterId() == p.GetId() {
+			return fmt.Errorf("%w: %s is not a master page", ErrBadMaster, p.GetLeftMasterId())
+		}
+	}
+	if p.GetMasterId() == "" {
+		return nil
+	}
+	cur := p.GetMasterId()
+	for depth := 0; ; depth++ {
+		if cur == p.GetId() || depth >= maxMasterChain {
+			return fmt.Errorf("%w: master chain of %s is cyclic or too deep", ErrBadMaster, p.GetId())
+		}
+		i := pageIndex(doc, cur)
+		if i < 0 || !doc.Pages[i].GetIsMaster() {
+			return fmt.Errorf("%w: %s is not a master page", ErrBadMaster, cur)
+		}
+		cur = doc.Pages[i].GetMasterId()
+		if cur == "" {
+			return nil
+		}
+	}
+}
+
+// applyMovePage moves a page to `index` in the page order (index < len(pages)).
+func applyMovePage(doc *opendesignerv1.Document, m *opendesignerv1.MovePage) error {
+	i := pageIndex(doc, m.GetId())
+	if i < 0 {
+		return fmt.Errorf("%w: %s", ErrPageNotFound, m.GetId())
+	}
+	to := int(m.GetIndex())
+	if to >= len(doc.Pages) {
+		return fmt.Errorf("%w: index %d", ErrBadPageSetup, to)
+	}
+	pg := doc.Pages[i]
+	rest := append(append([]*opendesignerv1.Page{}, doc.Pages[:i]...), doc.Pages[i+1:]...)
+	out := append(append(append([]*opendesignerv1.Page{}, rest[:to]...), pg), rest[to:]...)
+	doc.Pages = out
+	return nil
+}
+
+// regularPages counts the pages that are not masters, ignoring the page `skip` ("" = none).
+func regularPages(doc *opendesignerv1.Document, skip string) int {
+	n := 0
+	for _, p := range doc.GetPages() {
+		if !p.GetIsMaster() && p.GetId() != skip {
+			n++
+		}
+	}
+	return n
+}
+
+// mastersInUse reports whether any page other than `except` applies the master `id`.
+func masterInUse(doc *opendesignerv1.Document, id string) bool {
+	for _, p := range doc.GetPages() {
+		if p.GetMasterId() == id || p.GetLeftMasterId() == id {
+			return true
+		}
+	}
+	return false
 }
 
 // applyDeletePage deletes the page AND ALL the nodes hanging under it.
@@ -341,8 +429,13 @@ func applyDeletePage(doc *opendesignerv1.Document, d *opendesignerv1.DeletePage)
 	if i < 0 {
 		return fmt.Errorf("%w: %s", ErrPageNotFound, d.GetId())
 	}
-	if len(doc.GetPages()) == 1 {
+	// A document keeps at least one page that is not a master, and a master that pages still
+	// apply is not deleted (detach them first: the editor does it in the same gesture).
+	if regularPages(doc, d.GetId()) == 0 {
 		return fmt.Errorf("%w: %s", ErrLastPage, d.GetId())
+	}
+	if masterInUse(doc, d.GetId()) {
+		return fmt.Errorf("%w: %s", ErrMasterInUse, d.GetId())
 	}
 	// Everything validated BEFORE writing anything, as with a mixed mask: a
 	// rejection must not leave the page removed and the nodes in place (or vice
@@ -369,6 +462,39 @@ func applyRenamePage(doc *opendesignerv1.Document, r *opendesignerv1.RenamePage)
 	// Written ALWAYS, even if empty: as with Node.name, the incoming value is the
 	// final value, and the fallback for an empty name belongs to the UI.
 	doc.Pages[i].Name = r.GetName()
+	return nil
+}
+
+// applyUpdatePage replaces the name, master flag and applied master of an existing page.
+func applyUpdatePage(doc *opendesignerv1.Document, u *opendesignerv1.UpdatePage) error {
+	np := u.GetPage()
+	if np == nil || np.GetId() == "" {
+		return ErrNilPage
+	}
+	i := pageIndex(doc, np.GetId())
+	if i < 0 {
+		return fmt.Errorf("%w: %s", ErrPageNotFound, np.GetId())
+	}
+	if err := checkPageMaster(doc, np); err != nil {
+		return err
+	}
+	if err := validatePageSetup(np); err != nil {
+		return err
+	}
+	cur := doc.Pages[i]
+	if cur.GetIsMaster() && !np.GetIsMaster() && masterInUse(doc, np.GetId()) {
+		return fmt.Errorf("%w: %s", ErrMasterInUse, np.GetId())
+	}
+	if !cur.GetIsMaster() && np.GetIsMaster() {
+		if regularPages(doc, np.GetId()) == 0 {
+			return fmt.Errorf("%w: %s", ErrLastPage, np.GetId())
+		}
+		if np.GetLeftMasterId() != "" {
+			return fmt.Errorf("%w: %s", ErrBadMaster, np.GetId())
+		}
+	}
+	// A clone: the op's message is not shared with the document.
+	doc.Pages[i] = proto.Clone(np).(*opendesignerv1.Page)
 	return nil
 }
 
@@ -626,9 +752,21 @@ func applySetText(doc *opendesignerv1.Document, s *opendesignerv1.SetText, cow *
 	if !isText || t.Text == nil {
 		return fmt.Errorf("%w: %s", ErrNotTextNode, s.GetId())
 	}
+	// Validated BEFORE writing anything: a rejection leaves the node as it was.
+	if s.GetRichPresent() {
+		if err := validateRich(doc, s.GetContent(), s.GetParagraphStyles(), s.GetRuns()); err != nil {
+			return err
+		}
+	}
 	t.Text.Content = s.GetContent()
 	if s.GetStylePresent() {
 		t.Text.Style = s.GetStyle()
+	}
+	if s.GetRichPresent() {
+		t.Text.ParagraphStyles = append([]string(nil), s.GetParagraphStyles()...)
+		t.Text.Runs = s.GetRuns()
+	} else {
+		clampRich(t.Text)
 	}
 	return nil
 }
