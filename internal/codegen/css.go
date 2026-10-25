@@ -414,6 +414,11 @@ func strokeRings(strokes []*opendesignerv1.Stroke, mul float64) []string {
 		}
 		col := colorCSS(toFill(s.GetPaint()).color, mul)
 		w := s.GetWeight()
+		if sd := s.GetSides(); sd != nil {
+			// Per-side weights: one band per side (codegen/shapes.go).
+			rings = append(rings, sideRings(sd, strokeAlign(s.GetAlign()), col)...)
+			continue
+		}
 		switch strokeAlign(s.GetAlign()) {
 		case opendesignerv1.StrokeAlign_STROKE_ALIGN_INSIDE:
 			rings = append(rings, fmt.Sprintf("inset 0 0 0 %s %s", px(w), col))

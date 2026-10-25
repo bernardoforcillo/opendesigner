@@ -172,7 +172,7 @@ func toF(v any) float64 {
 
 func testDefs() []td {
 	return []td{
-		{"NodeType", kindEnum, []tf{{"DOCUMENT", "", false, 1}, {"CANVAS", "", false, 2}, {"FRAME", "", false, 3}, {"RECTANGLE", "", false, 4}, {"TEXT", "", false, 5}, {"ELLIPSE", "", false, 6}, {"VECTOR", "", false, 7}, {"GROUP", "", false, 8}, {"INSTANCE", "", false, 9}, {"SLICE", "", false, 10}}},
+		{"NodeType", kindEnum, []tf{{"DOCUMENT", "", false, 1}, {"CANVAS", "", false, 2}, {"FRAME", "", false, 3}, {"RECTANGLE", "", false, 4}, {"TEXT", "", false, 5}, {"ELLIPSE", "", false, 6}, {"VECTOR", "", false, 7}, {"GROUP", "", false, 8}, {"INSTANCE", "", false, 9}, {"SLICE", "", false, 10}, {"STAR", "", false, 11}, {"REGULAR_POLYGON", "", false, 12}}},
 		{"PaintType", kindEnum, []tf{{"SOLID", "", false, 1}, {"GRADIENT_LINEAR", "", false, 2}, {"IMAGE", "", false, 3}}},
 		{"GUID", kindStruct, []tf{{"sessionID", "uint", false, 1}, {"localID", "uint", false, 2}}},
 		{"Vector", kindStruct, []tf{{"x", "float", false, 1}, {"y", "float", false, 2}}},
@@ -184,6 +184,7 @@ func testDefs() []td {
 		{"Paint", kindMessage, []tf{{"type", "PaintType", false, 1}, {"color", "Color", false, 2}, {"opacity", "float", false, 3}, {"visible", "bool", false, 4}, {"stops", "ColorStop", true, 5}, {"transform", "Matrix", false, 6}, {"image", "Image", false, 7}, {"imageScaleMode", "string", false, 8}}},
 		{"TextData", kindMessage, []tf{{"characters", "string", false, 1}}},
 		{"FontName", kindMessage, []tf{{"family", "string", false, 1}, {"style", "string", false, 2}}},
+		{"ArcData", kindMessage, []tf{{"startingAngle", "float", false, 1}, {"endingAngle", "float", false, 2}, {"innerRadius", "float", false, 3}}},
 		{"Geometry", kindMessage, []tf{{"commandsBlob", "uint", false, 1}}},
 		{"NodeChange", kindMessage, []tf{
 			{"guid", "GUID", false, 1}, {"parentIndex", "ParentIndex", false, 2}, {"type", "NodeType", false, 3}, {"name", "string", false, 4},
@@ -191,7 +192,7 @@ func testDefs() []td {
 			{"fillPaints", "Paint", true, 9}, {"strokePaints", "Paint", true, 10}, {"strokeWeight", "float", false, 11}, {"cornerRadius", "float", false, 12},
 			{"textData", "TextData", false, 13}, {"fontSize", "float", false, 14}, {"fontName", "FontName", false, 15}, {"stackMode", "string", false, 16},
 			{"stackSpacing", "float", false, 17}, {"stackPaddingLeft", "float", false, 18}, {"fillGeometry", "Geometry", true, 19}, {"mask", "bool", false, 20},
-			{"horizontalConstraint", "string", false, 21},
+			{"horizontalConstraint", "string", false, 21}, {"count", "uint", false, 22}, {"starInnerScale", "float", false, 23}, {"arcData", "ArcData", false, 24},
 		}},
 		{"Blob", kindMessage, []tf{{"bytes", "byte", true, 1}}},
 		{"Message", kindMessage, []tf{{"nodeChanges", "NodeChange", true, 1}, {"blobs", "Blob", true, 2}}},
@@ -302,6 +303,16 @@ func fixture() map[string]any {
 						map[string]any{"color": map[string]any{"r": 0, "g": 0, "b": 1, "a": 1}, "position": 1},
 					}}},
 			}),
+			change(9, 2, "d", "STAR", "Spark", map[string]any{
+				"size": map[string]any{"x": 60, "y": 60}, "transform": mat(0, 100), "fillPaints": []any{solid(1, 1, 0)}, "count": 6, "starInnerScale": 0.5,
+			}),
+			change(10, 2, "e", "REGULAR_POLYGON", "Hex", map[string]any{
+				"size": map[string]any{"x": 60, "y": 60}, "transform": mat(80, 100), "fillPaints": []any{solid(0, 1, 1)}, "count": 6,
+			}),
+			change(11, 2, "f", "ELLIPSE", "Donut", map[string]any{
+				"size": map[string]any{"x": 60, "y": 60}, "transform": mat(160, 100), "fillPaints": []any{solid(1, 0, 1)},
+				"arcData": map[string]any{"startingAngle": 0, "endingAngle": 3.14159265358979, "innerRadius": 0.5},
+			}),
 			change(7, 1, "c", "SLICE", "Slice", nil),
 			change(8, 1, "d", "INSTANCE", "Inst", map[string]any{"size": map[string]any{"x": 10, "y": 10}, "transform": mat(700, 700)}),
 		},
@@ -380,6 +391,17 @@ func TestImportsAFigFile(t *testing.T) {
 			}
 			if g := dot.Fills[0].GetLinear(); g == nil || len(g.Stops) != 2 || g.X1 != 0 || g.Y1 != 0.5 || g.X2 != 1 || g.Y2 != 0.5 {
 				t.Fatalf("dot gradient = %v", dot.Fills)
+			}
+
+			// A star, a polygon and an arc keep their parameters instead of becoming paths.
+			if st := find(res, "Spark").GetStar(); st == nil || st.GetPoints() != 6 || st.GetInnerRatio() != 0.5 {
+				t.Fatalf("star = %v", find(res, "Spark"))
+			}
+			if pg := find(res, "Hex").GetPolygon(); pg == nil || pg.GetSides() != 6 {
+				t.Fatalf("polygon = %v", find(res, "Hex"))
+			}
+			if el := find(res, "Donut").GetEllipse(); el == nil || el.GetArcSweep() != 180 || el.GetInnerRatio() != 0.5 || el.GetArcStart() != 0 {
+				t.Fatalf("arc = %v", find(res, "Donut"))
 			}
 
 			if find(res, "Slice") != nil {

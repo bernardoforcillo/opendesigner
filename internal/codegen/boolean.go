@@ -150,6 +150,17 @@ func subpathRing(m affine, sp *opendesignerv1.SubPath) ring {
 	return out
 }
 
+// computedRings: the rings of a computed outline (codegen/shapes.go) in the target space.
+func computedRings(m affine, cmds []cmd) []ring {
+	var rings []ring
+	for _, sp := range cmdsToSubpaths(cmds) {
+		if r := subpathRing(m, sp); len(r) >= 3 {
+			rings = append(rings, r)
+		}
+	}
+	return rings
+}
+
 // regionOf is the area a node fills, in the space its transform `m` maps to (m maps the node's
 // PARENT space to the target; the node's own local transform is applied here).
 func (b *builder) regionOf(n *opendesignerv1.Node, m affine) polyclip.Polygon {
@@ -160,11 +171,21 @@ func (b *builder) regionOf(n *opendesignerv1.Node, m affine) polyclip.Polygon {
 	var rings []ring
 	switch s := n.GetShape().(type) {
 	case *opendesignerv1.Node_Rect:
-		rings = []ring{roundedRing(own, n.GetWidth(), n.GetHeight(), s.Rect.GetCornerRadius())}
+		if cmds := computedCmds(n); cmds != nil {
+			rings = computedRings(own, cmds)
+		} else {
+			rings = []ring{roundedRing(own, n.GetWidth(), n.GetHeight(), s.Rect.GetCornerRadius())}
+		}
 	case *opendesignerv1.Node_Frame:
 		rings = []ring{roundedRing(own, n.GetWidth(), n.GetHeight(), 0)}
 	case *opendesignerv1.Node_Ellipse:
-		rings = []ring{ellipseRing(own, n.GetWidth(), n.GetHeight())}
+		if cmds := computedCmds(n); cmds != nil {
+			rings = computedRings(own, cmds)
+		} else {
+			rings = []ring{ellipseRing(own, n.GetWidth(), n.GetHeight())}
+		}
+	case *opendesignerv1.Node_Polygon, *opendesignerv1.Node_Star:
+		rings = computedRings(own, computedCmds(n))
 	case *opendesignerv1.Node_Vector:
 		for _, sp := range s.Vector.GetSubpaths() {
 			if r := subpathRing(own, sp); len(r) >= 3 {

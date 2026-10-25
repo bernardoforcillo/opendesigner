@@ -59,6 +59,8 @@ export function nodeKindIcon(n: Pick<NodeLite, "kind"> | undefined): IconName | 
   switch (n?.kind) {
     case "rect": return "rect";
     case "ellipse": return "ellipse";
+    case "polygon": return "polygon";
+    case "star": return "star";
     case "text": return "text";
     case "image": return "image";
     case "frame": return "frame";

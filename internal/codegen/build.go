@@ -109,7 +109,7 @@ func participates(n *opendesignerv1.Node) bool {
 	switch n.GetShape().(type) {
 	case nil, *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Text,
 		*opendesignerv1.Node_Image, *opendesignerv1.Node_Vector, *opendesignerv1.Node_Frame,
-		*opendesignerv1.Node_Instance:
+		*opendesignerv1.Node_Instance, *opendesignerv1.Node_Polygon, *opendesignerv1.Node_Star:
 		return true
 	}
 	return false
@@ -298,6 +298,17 @@ func maskClip(m *opendesignerv1.Node) (string, bool) {
 		return "", false
 	}
 	x, y, w, h := m.GetX(), m.GetY(), m.GetWidth(), m.GetHeight()
+	// Polygon, star, arc / ring and smoothed corners clip by their computed outline.
+	if cmds := computedCmds(m); cmds != nil && w > 0 && h > 0 {
+		moved := make([]cmd, len(cmds))
+		for i, c := range cmds {
+			moved[i] = c
+			for k := 0; k+1 < 6 && c.op != 'Z'; k += 2 {
+				moved[i].v[k], moved[i].v[k+1] = c.v[k]+x, c.v[k+1]+y
+			}
+		}
+		return "path(evenodd, '" + cmdsD(moved) + "')", true
+	}
 	switch m.GetShape().(type) {
 	case *opendesignerv1.Node_Ellipse:
 		return fmt.Sprintf("ellipse(%s %s at %s %s)", px(w/2), px(h/2), px(x+w/2), px(y+h/2)), w > 0 && h > 0
@@ -504,6 +515,11 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 		return b.vectorElement(n, eff, c)
 	case *opendesignerv1.Node_Image:
 		return b.imageElement(n, eff, c)
+	}
+	// Polygon, star, ellipse arc / ring, rectangle with smoothed or independent corners: an inline <svg> path
+	// (codegen/shapes.go).
+	if v := computedVector(eff); v != nil && eff.GetWidth() > 0 && eff.GetHeight() > 0 {
+		return b.vectorElement(n, v, c)
 	}
 	// rect / ellipse / frame. A box with a side <= 0 leaves no pixels (guard
 	// of drawNode); a FRAME like that still stays a container of its children.
@@ -1110,6 +1126,7 @@ func (b *builder) vectorElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 			}
 			el.Children = append(el.Children, p)
 		}
+		el.Children = append(el.Children, arrowheadElements(eff, eff.GetOpacity())...)
 		return el
 	}
 	if meta["vector.hairline"] == "0" {
@@ -1276,7 +1293,8 @@ func (b *builder) fontFaceCSS() string {
 // isMaskShape: the shapes with an outline, the only ones that can mask.
 func isMaskShape(n *opendesignerv1.Node) bool {
 	switch n.GetShape().(type) {
-	case *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Frame, *opendesignerv1.Node_Vector:
+	case *opendesignerv1.Node_Rect, *opendesignerv1.Node_Ellipse, *opendesignerv1.Node_Frame, *opendesignerv1.Node_Vector,
+		*opendesignerv1.Node_Polygon, *opendesignerv1.Node_Star:
 		return true
 	}
 	return false

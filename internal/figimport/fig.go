@@ -387,6 +387,10 @@ func (c *converter) newNode(parent, name string, shape any) *opendesignerv1.Node
 		n.Shape = s
 	case *opendesignerv1.Node_Ellipse:
 		n.Shape = s
+	case *opendesignerv1.Node_Polygon:
+		n.Shape = s
+	case *opendesignerv1.Node_Star:
+		n.Shape = s
 	case *opendesignerv1.Node_Text:
 		n.Shape = s
 	case *opendesignerv1.Node_Vector:
@@ -396,6 +400,42 @@ func (c *converter) newNode(parent, name string, shape any) *opendesignerv1.Node
 		c.nodes = append(c.nodes, n)
 	}
 	return n
+}
+
+// ellipseNode reads an ellipse's arc: Figma's arcData holds the start and end angles (radians, clockwise from
+// +x) and the ring's inner radius as a fraction.
+func ellipseNode(raw map[string]any) *opendesignerv1.EllipseNode {
+	e := &opendesignerv1.EllipseNode{}
+	arc := asMap(raw["arcData"])
+	if arc == nil {
+		return e
+	}
+	start, end := num(arc, "startingAngle", 0), num(arc, "endingAngle", 2*math.Pi)
+	sweep := end - start
+	if sweep < 0 {
+		sweep += 2 * math.Pi
+	}
+	if sweep < 2*math.Pi-1e-3 {
+		e.ArcStart = round2(start * 180 / math.Pi)
+		e.ArcSweep = round2(sweep * 180 / math.Pi)
+	}
+	if r := num(arc, "innerRadius", 0); r > 0 && r < 1 {
+		e.InnerRatio = math.Min(0.99, r)
+	}
+	return e
+}
+
+// polygonOrStar: a REGULAR_POLYGON or STAR with a readable count (3..60); nil otherwise.
+func polygonOrStar(raw map[string]any, typ string) any {
+	count := int(num(raw, "count", 0))
+	if count < 3 || count > 60 {
+		return nil
+	}
+	if typ == "REGULAR_POLYGON" {
+		return &opendesignerv1.Node_Polygon{Polygon: &opendesignerv1.PolygonNode{Sides: uint32(count)}}
+	}
+	ratio := num(raw, "starInnerScale", 0.382)
+	return &opendesignerv1.Node_Star{Star: &opendesignerv1.StarNode{Points: uint32(count), InnerRatio: math.Min(0.95, math.Max(0.05, ratio))}}
 }
 
 // convertNode converts one Figma node (and its children) under `parent`.
@@ -421,10 +461,18 @@ func (c *converter) convertNode(f *fnode, parent string) {
 	case "RECTANGLE", "ROUNDED_RECTANGLE":
 		shape = &opendesignerv1.Node_Rect{Rect: &opendesignerv1.RectNode{CornerRadius: cornerRadius(f.raw)}}
 	case "ELLIPSE":
-		shape = &opendesignerv1.Node_Ellipse{Ellipse: &opendesignerv1.EllipseNode{}}
+		shape = &opendesignerv1.Node_Ellipse{Ellipse: ellipseNode(f.raw)}
+	case "STAR", "REGULAR_POLYGON":
+		// Figma keeps the point / side count and the star's inner scale: the shape stays editable instead of
+		// becoming a path. A node without a readable count falls through to its geometry below.
+		if sh := polygonOrStar(f.raw, typ); sh != nil {
+			shape = sh
+			break
+		}
+		fallthrough
 	case "TEXT":
 		shape = &opendesignerv1.Node_Text{Text: c.text(f.raw, w)}
-	case "VECTOR", "STAR", "REGULAR_POLYGON", "LINE", "BOOLEAN_OPERATION":
+	case "VECTOR", "LINE", "BOOLEAN_OPERATION":
 		if v := c.vector(f.raw, typ, w, h); v != nil {
 			shape = &opendesignerv1.Node_Vector{Vector: v}
 		} else {

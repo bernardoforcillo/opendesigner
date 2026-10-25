@@ -10,6 +10,10 @@ Legend: [x] done · [ ] to do
 - [x] Components with instances and overrides
 - [x] Linear and radial gradients (canvas, SVG, panel, MCP)
 - [x] Angular (conic) and diamond gradients (canvas, GPU, SVG export, CSS conic-gradient, panel, MCP; docs/shapes.md)
+- [x] Polygon and star shapes (sides / points / inner ratio) and arcs, pies and rings on ellipses (tool dock, panel, canvas, GPU, SVG, code, hit-test, MCP `create_polygon` / `create_star` / `set_properties`; `.fig` import keeps them; docs/shapes.md)
+- [x] Rectangle corner smoothing (squircle) and independent corner radii (panel, canvas, GPU, SVG, code, MCP)
+- [x] Per-side stroke weights on rectangles and frames (panel, canvas, GPU, SVG, CSS, MCP `set_stroke`)
+- [x] Shared paint styles and effect styles: named, applied to fills / strokes / effects, resolved like text styles (panel, ops, MCP, merge; docs/shapes.md)
 - [x] More stops per gradient (add, move, remove from the panel)
 - [x] Gradient on strokes from the panel; image as a fill or stroke paint (fill / fit / tile; canvas, GPU, SVG, code)
 - [x] Effects: drop shadow and layer blur (canvas, SVG, panel, MCP, copy/paste; one per type per node is drawn)
@@ -42,7 +46,8 @@ Legend: [x] done · [ ] to do
 - [x] Path offset (grow/shrink) and simplification; pathfinder = the live boolean groups
 - [ ] Live corners
 - [x] Strokes: cap, join, miter limit and dashes on every shape (panel, canvas, GPU, SVG)
-- [ ] Advanced strokes: variable width profiles, brushes, arrowheads
+- [x] Arrowheads on open vector strokes (arrow, triangle, circle, square, diamond at either end; panel, canvas, GPU, SVG, code, MCP `set_stroke`)
+- [ ] Advanced strokes: variable width profiles, brushes
 - [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
 - [x] SVG export and PDF (the SVG through the browser's print dialog, Save as PDF)
 - [ ] AI/EPS export
