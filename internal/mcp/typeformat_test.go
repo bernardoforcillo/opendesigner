@@ -35,13 +35,13 @@ func TestTextFormatThroughTheTools(t *testing.T) {
 
 	made, err := s.CreateText(ctx, odmcp.CreateTextInput{
 		ParentId: home, Content: "one\ntwo", Width: 200, Height: 60,
-		TextFormat: odmcp.TextFormat{TextCase: "title", List: "numbered", Indent: ptr(8.0), FontFeatures: ptr(`"tnum", "liga" 0`), VerticalAlign: "middle", Inset: ptr(4.0)},
+		TextFormat: odmcp.TextFormat{TextCase: "title", List: "numbered", Indent: ptr(8.0), FontFeatures: ptr(`"tnum", "liga" 0`), VerticalAlign: "middle", Inset: ptr(4.0), TextScale: ptr(120.0)},
 	})
 	if err != nil {
 		t.Fatal(err)
 	}
 	f := format(made.NodeId)
-	if f == nil || f.TextCase != "title" || f.List != "numbered" || *f.Indent != 8 || *f.FontFeatures != `"tnum", "liga" 0` || f.VerticalAlign != "middle" || *f.Inset != 4 {
+	if f == nil || f.TextCase != "title" || f.List != "numbered" || *f.Indent != 8 || *f.FontFeatures != `"tnum", "liga" 0` || f.VerticalAlign != "middle" || *f.Inset != 4 || *f.TextScale != 120 {
 		t.Fatalf("created format = %+v", f)
 	}
 
@@ -54,7 +54,7 @@ func TestTextFormatThroughTheTools(t *testing.T) {
 		t.Fatalf("overlaid format = %+v", f)
 	}
 	// "none" clears.
-	if _, err := s.SetText(ctx, odmcp.SetTextInput{Id: made.NodeId, Content: "x", TextFormat: odmcp.TextFormat{TextCase: "none", Script: "none", List: "none", VerticalAlign: "top", Indent: ptr(0.0), Inset: ptr(0.0), FontFeatures: ptr("")}}); err != nil {
+	if _, err := s.SetText(ctx, odmcp.SetTextInput{Id: made.NodeId, Content: "x", TextFormat: odmcp.TextFormat{TextCase: "none", Script: "none", List: "none", VerticalAlign: "top", Indent: ptr(0.0), Inset: ptr(0.0), FontFeatures: ptr(""), TextScale: ptr(0.0)}}); err != nil {
 		t.Fatal(err)
 	}
 	if f := format(made.NodeId); f != nil {
@@ -68,6 +68,7 @@ func TestTextFormatThroughTheTools(t *testing.T) {
 		"valign":   {VerticalAlign: "center"},
 		"indent":   {Indent: ptr(-1.0)},
 		"inset":    {Inset: ptr(-1.0)},
+		"scale":    {TextScale: ptr(2000.0)},
 		"features": {FontFeatures: ptr(`"liga";x`)},
 	} {
 		if _, err := s.SetText(ctx, odmcp.SetTextInput{Id: made.NodeId, Content: "x", TextFormat: bad}); err == nil {

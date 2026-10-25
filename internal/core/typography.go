@@ -124,6 +124,12 @@ func validateStyleRelations(doc *opendesignerv1.Document, d *opendesignerv1.Text
 	if character && d.GetAlignToGrid() {
 		return fmt.Errorf("%w: a character style cannot align to the grid", ErrTextStyleValue)
 	}
+	// List, indent, vertical alignment and inset belong to a paragraph or to the whole box: a character
+	// style over a range could never apply them.
+	if st := d.GetStyle(); character && (st.GetListKind() != opendesignerv1.ListKind_LIST_KIND_UNSPECIFIED || st.GetIndent() != 0 ||
+		st.GetVerticalAlign() != opendesignerv1.TextVAlign_TEXT_V_ALIGN_UNSPECIFIED || st.GetInset() != 0) {
+		return fmt.Errorf("%w: a character style has no list, indent, vertical alignment or inset", ErrTextStyleValue)
+	}
 	if character && (d.GetNextStyleId() != "" || d.GetSpaceBefore() != 0 || d.GetSpaceAfter() != 0 || d.GetIndentFirst() != 0 || d.GetIndentLeft() != 0) {
 		return fmt.Errorf("%w: a character style has no paragraph settings", ErrTextStyleValue)
 	}
@@ -160,6 +166,10 @@ func validateTextExtras(st *opendesignerv1.TextStyle) error {
 		return ErrTextStyleValue
 	}
 	if !finiteNonNeg(st.GetIndent()) || !finiteNonNeg(st.GetInset()) || !ValidFontFeatures(st.GetFontFeatures()) {
+		return ErrTextStyleValue
+	}
+	// text_scale: unset (0) or a percentage in 1..1000.
+	if sc := st.GetTextScale(); sc != 0 && !(sc >= 1 && sc <= 1000) {
 		return ErrTextStyleValue
 	}
 	return nil

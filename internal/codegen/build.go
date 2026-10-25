@@ -886,7 +886,7 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	case opendesignerv1.TextAlign_TEXT_ALIGN_RIGHT:
 		el.addStyle("text-align", "right")
 	}
-	textExtras(el, st, size, lh, eff.GetHeight(), c.bind[n.GetId()].text == "")
+	textExtras(el, st, size, lh, eff.GetHeight(), c.bind[n.GetId()].text == "", rotates(eff.GetRotation()))
 	if gradient != "" {
 		el.addStyle("background-image", gradient)
 		el.addStyle("background-clip", "text")
