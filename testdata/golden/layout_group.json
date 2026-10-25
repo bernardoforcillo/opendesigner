@@ -1,0 +1,743 @@
+{
+ "_comment": [
+  "Groups as children of auto layout frames: a group is one box of the union of its children (nested groups included, hidden children not), placed by translating the group; it takes part in rows, hugging columns and grid cells, never fills, and the frame follows when a child inside the group is resized, moved, hidden or leaves it. An empty group stays where it is."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "c1": {
+    "height": 10.5,
+    "id": "c1",
+    "name": "c1",
+    "opacity": 1,
+    "orderKey": "a011",
+    "parentId": "col",
+    "rect": {},
+    "visible": true,
+    "width": 30.5,
+    "x": 2.5,
+    "y": 2.5
+   },
+   "cg": {
+    "group": {},
+    "height": 47,
+    "id": "cg",
+    "name": "cg",
+    "opacity": 1,
+    "orderKey": "a012",
+    "parentId": "col",
+    "visible": true,
+    "width": 43,
+    "x": -0.5,
+    "y": 13.5
+   },
+   "cga": {
+    "height": 20.5,
+    "id": "cga",
+    "name": "cga",
+    "opacity": 1,
+    "orderKey": "a013",
+    "parentId": "cg",
+    "rect": {},
+    "visible": true,
+    "width": 20.5,
+    "x": 3,
+    "y": 3
+   },
+   "cgb": {
+    "height": 5.5,
+    "id": "cgb",
+    "name": "cgb",
+    "opacity": 1,
+    "orderKey": "a014",
+    "parentId": "cg",
+    "rect": {},
+    "visible": true,
+    "width": 5.5,
+    "x": 40.5,
+    "y": 44.5
+   },
+   "col": {
+    "frame": {
+     "autoLayout": {
+      "direction": "LAYOUT_DIRECTION_VERTICAL",
+      "hugHeight": true,
+      "hugWidth": true,
+      "paddingBottom": 2.5,
+      "paddingLeft": 2.5,
+      "paddingRight": 2.5,
+      "paddingTop": 2.5,
+      "spacing": 3.5
+     }
+    },
+    "height": 66,
+    "id": "col",
+    "name": "col",
+    "opacity": 1,
+    "orderKey": "a010",
+    "parentId": "page1",
+    "visible": true,
+    "width": 48,
+    "x": 400
+   },
+   "empty": {
+    "group": {},
+    "id": "empty",
+    "name": "empty",
+    "opacity": 1,
+    "orderKey": "a009",
+    "parentId": "row",
+    "visible": true
+   },
+   "g": {
+    "group": {},
+    "height": 41,
+    "id": "g",
+    "name": "g",
+    "opacity": 1,
+    "orderKey": "a003",
+    "parentId": "row",
+    "visible": true,
+    "width": 141.25,
+    "x": 84,
+    "y": 29.5
+   },
+   "ga": {
+    "height": 10.75,
+    "id": "ga",
+    "name": "ga",
+    "opacity": 1,
+    "orderKey": "zz",
+    "parentId": "page1",
+    "rect": {},
+    "width": 30.25,
+    "x": 5.5,
+    "y": 7.5
+   },
+   "gb": {
+    "height": 10.5,
+    "id": "gb",
+    "name": "gb",
+    "opacity": 1,
+    "orderKey": "a005",
+    "parentId": "g",
+    "rect": {},
+    "visible": true,
+    "width": 60.5,
+    "x": 50.25,
+    "y": 30.5
+   },
+   "gc": {
+    "height": 10.5,
+    "id": "gc",
+    "name": "gc",
+    "opacity": 1,
+    "orderKey": "a007",
+    "parentId": "gg",
+    "rect": {},
+    "visible": true,
+    "width": 10.5,
+    "x": -30.5
+   },
+   "gg": {
+    "group": {},
+    "id": "gg",
+    "name": "gg",
+    "opacity": 1,
+    "orderKey": "a006",
+    "parentId": "g",
+    "visible": true
+   },
+   "grid": {
+    "frame": {
+     "autoLayout": {
+      "columnGap": 5,
+      "columns": [
+       {
+        "size": 80
+       },
+       {
+        "kind": "GRID_TRACK_HUG"
+       }
+      ],
+      "mainAlign": "LAYOUT_ALIGN_CENTER",
+      "mode": "LAYOUT_MODE_GRID",
+      "rows": [
+       {
+        "kind": "GRID_TRACK_HUG"
+       }
+      ]
+     }
+    },
+    "height": 100,
+    "id": "grid",
+    "name": "grid",
+    "opacity": 1,
+    "orderKey": "a015",
+    "parentId": "page1",
+    "visible": true,
+    "width": 200,
+    "y": 300
+   },
+   "r1": {
+    "height": 20.5,
+    "id": "r1",
+    "name": "r1",
+    "opacity": 1,
+    "orderKey": "a002",
+    "parentId": "row",
+    "rect": {},
+    "visible": true,
+    "width": 40.5,
+    "x": 5.5,
+    "y": 39.75
+   },
+   "r2": {
+    "height": 25.5,
+    "id": "r2",
+    "name": "r2",
+    "opacity": 1,
+    "orderKey": "a008",
+    "parentId": "row",
+    "rect": {},
+    "visible": true,
+    "width": 25.5,
+    "x": 202.25,
+    "y": 37.25
+   },
+   "row": {
+    "frame": {
+     "autoLayout": {
+      "crossAlign": "LAYOUT_ALIGN_CENTER",
+      "direction": "LAYOUT_DIRECTION_HORIZONTAL",
+      "paddingBottom": 4.5,
+      "paddingLeft": 5.5,
+      "paddingRight": 5.5,
+      "paddingTop": 4.5,
+      "spacing": 7.5
+     }
+    },
+    "height": 100,
+    "id": "row",
+    "name": "row",
+    "opacity": 1,
+    "orderKey": "a001",
+    "parentId": "page1",
+    "visible": true,
+    "width": 300
+   },
+   "xa": {
+    "height": 10.5,
+    "id": "xa",
+    "name": "xa",
+    "opacity": 1,
+    "orderKey": "a017",
+    "parentId": "xg",
+    "rect": {},
+    "visible": true,
+    "width": 10.5,
+    "x": 1,
+    "y": 1
+   },
+   "xb": {
+    "height": 10.5,
+    "id": "xb",
+    "name": "xb",
+    "opacity": 1,
+    "orderKey": "a018",
+    "parentId": "xg",
+    "rect": {},
+    "visible": true,
+    "width": 10.5,
+    "x": 30,
+    "y": 20
+   },
+   "xg": {
+    "gridCell": {
+     "column": 2,
+     "row": 1
+    },
+    "group": {},
+    "height": 29.5,
+    "id": "xg",
+    "name": "xg",
+    "opacity": 1,
+    "orderKey": "a016",
+    "parentId": "grid",
+    "visible": true,
+    "width": 39.5,
+    "x": 84,
+    "y": -1
+   }
+  },
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1
+ },
+ "ops": [
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "crossAlign": "LAYOUT_ALIGN_CENTER",
+       "direction": "LAYOUT_DIRECTION_HORIZONTAL",
+       "paddingBottom": 4.5,
+       "paddingLeft": 5.5,
+       "paddingRight": 5.5,
+       "paddingTop": 4.5,
+       "spacing": 7.5
+      }
+     },
+     "height": 100,
+     "id": "row",
+     "name": "row",
+     "opacity": 1,
+     "orderKey": "a001",
+     "parentId": "page1",
+     "visible": true,
+     "width": 300,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "op1"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20.5,
+     "id": "r1",
+     "name": "r1",
+     "opacity": 1,
+     "orderKey": "a002",
+     "parentId": "row",
+     "rect": {},
+     "visible": true,
+     "width": 40.5,
+     "x": 99,
+     "y": 99
+    }
+   },
+   "docId": "doc1",
+   "opId": "op2"
+  },
+  {
+   "createNode": {
+    "node": {
+     "group": {},
+     "height": 0,
+     "id": "g",
+     "name": "g",
+     "opacity": 1,
+     "orderKey": "a003",
+     "parentId": "row",
+     "visible": true,
+     "width": 0,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "op3"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10.75,
+     "id": "ga",
+     "name": "ga",
+     "opacity": 1,
+     "orderKey": "a004",
+     "parentId": "g",
+     "rect": {},
+     "visible": true,
+     "width": 30.25,
+     "x": 5.5,
+     "y": 7.5
+    }
+   },
+   "docId": "doc1",
+   "opId": "op4"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 40.5,
+     "id": "gb",
+     "name": "gb",
+     "opacity": 1,
+     "orderKey": "a005",
+     "parentId": "g",
+     "rect": {},
+     "visible": true,
+     "width": 20.5,
+     "x": 50.25,
+     "y": 30.5
+    }
+   },
+   "docId": "doc1",
+   "opId": "op5"
+  },
+  {
+   "createNode": {
+    "node": {
+     "group": {},
+     "height": 0,
+     "id": "gg",
+     "name": "gg",
+     "opacity": 1,
+     "orderKey": "a006",
+     "parentId": "g",
+     "visible": true,
+     "width": 0,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "op6"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10.5,
+     "id": "gc",
+     "name": "gc",
+     "opacity": 1,
+     "orderKey": "a007",
+     "parentId": "gg",
+     "rect": {},
+     "visible": true,
+     "width": 10.5,
+     "x": -20,
+     "y": -4
+    }
+   },
+   "docId": "doc1",
+   "opId": "op7"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 25.5,
+     "id": "r2",
+     "name": "r2",
+     "opacity": 1,
+     "orderKey": "a008",
+     "parentId": "row",
+     "rect": {},
+     "visible": true,
+     "width": 25.5,
+     "x": 99,
+     "y": 99
+    }
+   },
+   "docId": "doc1",
+   "opId": "op8"
+  },
+  {
+   "createNode": {
+    "node": {
+     "group": {},
+     "height": 0,
+     "id": "empty",
+     "name": "empty",
+     "opacity": 1,
+     "orderKey": "a009",
+     "parentId": "row",
+     "visible": true,
+     "width": 0,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "op9"
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "direction": "LAYOUT_DIRECTION_VERTICAL",
+       "hugHeight": true,
+       "hugWidth": true,
+       "paddingBottom": 2.5,
+       "paddingLeft": 2.5,
+       "paddingRight": 2.5,
+       "paddingTop": 2.5,
+       "spacing": 3.5
+      }
+     },
+     "height": 50,
+     "id": "col",
+     "name": "col",
+     "opacity": 1,
+     "orderKey": "a010",
+     "parentId": "page1",
+     "visible": true,
+     "width": 50,
+     "x": 400,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "op10"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10.5,
+     "id": "c1",
+     "name": "c1",
+     "opacity": 1,
+     "orderKey": "a011",
+     "parentId": "col",
+     "rect": {},
+     "visible": true,
+     "width": 30.5,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "op11"
+  },
+  {
+   "createNode": {
+    "node": {
+     "group": {},
+     "height": 0,
+     "id": "cg",
+     "layoutSizingX": "LAYOUT_SIZING_FILL",
+     "name": "cg",
+     "opacity": 1,
+     "orderKey": "a012",
+     "parentId": "col",
+     "visible": true,
+     "width": 0,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "op12"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 20.5,
+     "id": "cga",
+     "name": "cga",
+     "opacity": 1,
+     "orderKey": "a013",
+     "parentId": "cg",
+     "rect": {},
+     "visible": true,
+     "width": 20.5,
+     "x": 3,
+     "y": 3
+    }
+   },
+   "docId": "doc1",
+   "opId": "op13"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 5.5,
+     "id": "cgb",
+     "name": "cgb",
+     "opacity": 1,
+     "orderKey": "a014",
+     "parentId": "cg",
+     "rect": {},
+     "visible": true,
+     "width": 5.5,
+     "x": 40.5,
+     "y": 44.5
+    }
+   },
+   "docId": "doc1",
+   "opId": "op14"
+  },
+  {
+   "createNode": {
+    "node": {
+     "frame": {
+      "autoLayout": {
+       "columnGap": 5,
+       "columns": [
+        {
+         "kind": "GRID_TRACK_FIXED",
+         "size": 80
+        },
+        {
+         "kind": "GRID_TRACK_HUG"
+        }
+       ],
+       "mainAlign": "LAYOUT_ALIGN_CENTER",
+       "mode": "LAYOUT_MODE_GRID",
+       "rows": [
+        {
+         "kind": "GRID_TRACK_HUG"
+        }
+       ]
+      }
+     },
+     "height": 100,
+     "id": "grid",
+     "name": "grid",
+     "opacity": 1,
+     "orderKey": "a015",
+     "parentId": "page1",
+     "visible": true,
+     "width": 200,
+     "x": 0,
+     "y": 300
+    }
+   },
+   "docId": "doc1",
+   "opId": "op15"
+  },
+  {
+   "createNode": {
+    "node": {
+     "gridCell": {
+      "column": 2,
+      "columnSpan": 0,
+      "row": 1,
+      "rowSpan": 0
+     },
+     "group": {},
+     "height": 0,
+     "id": "xg",
+     "name": "xg",
+     "opacity": 1,
+     "orderKey": "a016",
+     "parentId": "grid",
+     "visible": true,
+     "width": 0,
+     "x": 0,
+     "y": 0
+    }
+   },
+   "docId": "doc1",
+   "opId": "op16"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10.5,
+     "id": "xa",
+     "name": "xa",
+     "opacity": 1,
+     "orderKey": "a017",
+     "parentId": "xg",
+     "rect": {},
+     "visible": true,
+     "width": 10.5,
+     "x": 1,
+     "y": 1
+    }
+   },
+   "docId": "doc1",
+   "opId": "op17"
+  },
+  {
+   "createNode": {
+    "node": {
+     "height": 10.5,
+     "id": "xb",
+     "name": "xb",
+     "opacity": 1,
+     "orderKey": "a018",
+     "parentId": "xg",
+     "rect": {},
+     "visible": true,
+     "width": 10.5,
+     "x": 30,
+     "y": 20
+    }
+   },
+   "docId": "doc1",
+   "opId": "op18"
+  },
+  {
+   "docId": "doc1",
+   "opId": "op19",
+   "setProps": {
+    "id": "gb",
+    "mask": "width,height",
+    "patch": {
+     "height": 10.5,
+     "width": 60.5
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op20",
+   "setProps": {
+    "id": "gc",
+    "mask": "x,y",
+    "patch": {
+     "x": -30.5,
+     "y": 0
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op21",
+   "setProps": {
+    "id": "ga",
+    "mask": "visible",
+    "patch": {
+     "visible": false
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op22",
+   "setProps": {
+    "id": "g",
+    "mask": "x,y",
+    "patch": {
+     "x": 500,
+     "y": 500
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op23",
+   "setProps": {
+    "id": "cg",
+    "mask": "layoutSizingX",
+    "patch": {
+     "layoutSizingX": "LAYOUT_SIZING_FIXED"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "op24",
+   "reparentNode": {
+    "id": "ga",
+    "newParentId": "page1",
+    "orderKey": "zz"
+   }
+  }
+ ],
+ "rejected": []
+}

@@ -169,10 +169,23 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 	startW, startH := frame.GetWidth(), frame.GetHeight()
 	frame.Width, frame.Height = clampW(frame, frame.GetWidth()), clampH(frame, frame.GetHeight())
 
+	// A GROUP child is one box: the union of its children (its stored width/height are rewritten
+	// to it), placed by translating the group so the union's corner lands where the box goes.
 	var kids []*opendesignerv1.Node
+	groupAt := map[string]box{}
 	for _, c := range ChildrenOf(doc, id) {
-		if participatesIn(doc, c) && !isAbsolute(c) {
+		if isAbsolute(c) {
+			continue
+		}
+		if participatesIn(doc, c) {
 			kids = append(kids, cow.mut(doc, c.GetId()))
+		} else if isGroupNode(c) && ResolveNode(doc, c).GetVisible() {
+			if b, ok := groupBox(doc, c.GetId()); ok {
+				g := cow.mut(doc, c.GetId())
+				g.Width, g.Height = b.maxX-b.minX, b.maxY-b.minY
+				groupAt[c.GetId()] = b
+				kids = append(kids, g)
+			}
 		}
 	}
 
@@ -215,12 +228,18 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 		}
 	}
 	fillMain := func(n *opendesignerv1.Node) bool {
+		if isGroupNode(n) {
+			return false
+		}
 		if vertical {
 			return n.GetLayoutSizingY() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL
 		}
 		return n.GetLayoutSizingX() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL
 	}
 	fillCross := func(n *opendesignerv1.Node) bool {
+		if isGroupNode(n) {
+			return false
+		}
 		if vertical {
 			return n.GetLayoutSizingX() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL
 		}
@@ -230,15 +249,15 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 	// The size limits along each axis (see Node.min_width and friends).
 	clampMain := func(n *opendesignerv1.Node, v float64) float64 {
 		if vertical {
-			return clampH(n, v)
+			return clampHK(n, v)
 		}
-		return clampW(n, v)
+		return clampWK(n, v)
 	}
 	clampCross := func(n *opendesignerv1.Node, v float64) float64 {
 		if vertical {
-			return clampW(n, v)
+			return clampWK(n, v)
 		}
-		return clampH(n, v)
+		return clampHK(n, v)
 	}
 
 	// What each child measured BEFORE the layout, to know which child frames to follow up.
@@ -252,13 +271,21 @@ func layoutFrame(doc *opendesignerv1.Document, id string, cow *Shared) {
 	wrap := al.GetWrap() && !hugMain
 	innerMain := mainOf(frame) - padMainStart - padMainEnd
 
-	if wrap {
+	if al.GetMode() == opendesignerv1.LayoutMode_LAYOUT_MODE_GRID {
+		layoutGrid(kids, frame, al)
+	} else if wrap {
 		layoutWrapped(kids, frame, al, vertical, innerMain, padMainStart, padCrossStart, padCrossEnd, hugCross, mainOf, crossOf, setMain, setCross, clampMain, clampCross)
 	} else {
 		layoutLine(kids, frame, al, vertical, hugMain, hugCross, padMainStart, padMainEnd, padCrossStart, padCrossEnd, spacing,
 			mainOf, crossOf, setMain, setCross, fillMain, fillCross, clampMain, clampCross)
 	}
 
+	// A group was placed by its box: translate it so the union's corner is there.
+	for _, k := range kids {
+		if b, ok := groupAt[k.GetId()]; ok {
+			k.X, k.Y = k.X-b.minX, k.Y-b.minY
+		}
+	}
 	// Follow up the child frames whose size the layout changed.
 	for i, k := range kids {
 		if (k.GetWidth() != before[i].w || k.GetHeight() != before[i].h) && isFrame(k) {
@@ -745,6 +772,13 @@ func layoutBoundIn(doc *opendesignerv1.Document, subtree []*opendesignerv1.Node)
 // Order: from the DEEPEST. A hug frame inside another must have the right
 // measure BEFORE the container reads it.
 func relayout(doc *opendesignerv1.Document, ids []string, cow *Shared) {
+	// A group has no layout of its own: what changes in (or under) one changes the box its auto
+	// layout parent lays out, so the ids climb through the groups to that parent.
+	for _, id := range append([]string(nil), ids...) {
+		for cur := doc.GetNodes()[id]; cur != nil && isGroupNode(cur); cur = doc.GetNodes()[cur.GetParentId()] {
+			ids = append(ids, cur.GetParentId())
+		}
+	}
 	seen := map[string]bool{}
 	depth := func(id string) int {
 		d := 0

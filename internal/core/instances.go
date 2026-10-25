@@ -351,7 +351,7 @@ func DetachInstance(doc *opendesignerv1.Document, id string, newID func() string
 			c.ConstraintX, c.ConstraintY = n.GetConstraintX(), n.GetConstraintY()
 			c.LayoutSizingX, c.LayoutSizingY = n.GetLayoutSizingX(), n.GetLayoutSizingY()
 			c.MinWidth, c.MaxWidth, c.MinHeight, c.MaxHeight = n.GetMinWidth(), n.GetMaxWidth(), n.GetMinHeight(), n.GetMaxHeight()
-			c.LayoutPositioning = n.GetLayoutPositioning()
+			c.LayoutPositioning, c.GridCell = n.GetLayoutPositioning(), n.GetGridCell()
 			c.BlendMode, c.IsMask = n.GetBlendMode(), n.GetIsMask()
 			c.Meta = n.GetMeta()
 			if len(n.GetModes()) > 0 {

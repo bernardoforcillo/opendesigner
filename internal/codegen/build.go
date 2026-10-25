@@ -54,6 +54,8 @@ type bctx struct {
 	// fillMain / fillCross: the node FILLS that axis of its auto layout parent (LayoutSizing)
 	// and `vertical` is the parent's direction, to know which of width/height is which.
 	fillMain, fillCross, vertical bool
+	// grid: the parent is a GRID auto layout (fillMain/fillCross are then its width/height).
+	grid bool
 	// origin: the node is placed at left:0/top:0 (root of an instance's master:
 	// descending into the instance subtracts the master's origin).
 	origin bool
@@ -138,6 +140,17 @@ func fillAxes(al *opendesignerv1.AutoLayout, k *opendesignerv1.Node) (main, cros
 // axis (the core shares the free space equally, which is what equal flex-grow does) and
 // `align-self: stretch` across. The fixed length on that axis is dropped.
 func applyFill(el *Element, c bctx) {
+	if c.grid {
+		if c.fillMain {
+			el.delStyle("width")
+			el.addStyle("justify-self", "stretch")
+		}
+		if c.fillCross {
+			el.delStyle("height")
+			el.addStyle("align-self", "stretch")
+		}
+		return
+	}
 	mainSize, crossSize := "width", "height"
 	if c.vertical {
 		mainSize, crossSize = "height", "width"
@@ -208,6 +221,9 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	}
 	if c.fillMain || c.fillCross {
 		applyFill(el, c)
+	}
+	if c.grid && c.flowChild {
+		gridCellCSS(el, n)
 	}
 	if pb, ok := c.bind[n.GetId()]; ok {
 		el.ShowIf, el.TextProp = pb.show, pb.text
@@ -288,10 +304,15 @@ func (b *builder) children(el *Element, n *opendesignerv1.Node, c bctx) {
 		}
 		cc := c
 		cc.root, cc.origin = false, false
-		cc.flowChild = al != nil && participates(k)
-		cc.fillMain, cc.fillCross, cc.vertical = false, false, false
+		cc.flowChild = al != nil && (participates(k) || b.groupFlows(k))
+		cc.fillMain, cc.fillCross, cc.vertical, cc.grid = false, false, false, false
 		if cc.flowChild {
 			cc.fillMain, cc.fillCross, cc.vertical = fillAxes(al, k)
+			if al.GetMode() == opendesignerv1.LayoutMode_LAYOUT_MODE_GRID {
+				cc.grid = true
+				cc.fillMain = k.GetLayoutSizingX() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL && !isGroupNode(k)
+				cc.fillCross = k.GetLayoutSizingY() == opendesignerv1.LayoutSizing_LAYOUT_SIZING_FILL && !isGroupNode(k)
+			}
 		}
 		if ce := b.element(k, cc); ce != nil {
 			target.Children = append(target.Children, ce)
@@ -371,11 +392,39 @@ func hasVisibleKids(doc *opendesignerv1.Document, id string) bool {
 func (b *builder) groupElement(n *opendesignerv1.Node, c bctx) *Element {
 	el := &Element{Tag: "div"}
 	placement(el, n, c)
+	// A group in the flow of an auto layout parent is one box of the union of its children
+	// (core.GroupBounds); they hang from a zero-size anchor at the box's corner.
+	if bx, ok := core.GroupBounds(b.doc, n.GetId()); ok && c.flowChild {
+		el.addStyle("width", px(bx[2]-bx[0]))
+		el.addStyle("height", px(bx[3]-bx[1]))
+		rotation(el, n)
+		anchor := &Element{Tag: "div"}
+		anchor.addStyle("position", "absolute")
+		anchor.addStyle("left", px(-bx[0]))
+		anchor.addStyle("top", px(-bx[1]))
+		b.children(anchor, n, c)
+		el.Children = append(el.Children, anchor)
+		return el
+	}
 	el.addStyle("width", px(n.GetWidth()))
 	el.addStyle("height", px(n.GetHeight()))
 	rotation(el, n)
 	b.children(el, n, c)
 	return el
+}
+
+func isGroupNode(n *opendesignerv1.Node) bool {
+	_, ok := n.GetShape().(*opendesignerv1.Node_Group)
+	return ok
+}
+
+// groupFlows: a visible group with something to show sits in the flow of an auto layout parent.
+func (b *builder) groupFlows(k *opendesignerv1.Node) bool {
+	if !isGroupNode(k) || !core.ResolveNode(b.doc, k).GetVisible() || k.GetLayoutPositioning() == opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
+		return false
+	}
+	_, ok := core.GroupBounds(b.doc, k.GetId())
+	return ok
 }
 
 // instanceElement expands the instance's master INLINE (no component
@@ -557,7 +606,11 @@ func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
 	el.addStyle("height", sizeOf(eff, false))
 	al := eff.GetFrame().GetAutoLayout()
 	if al != nil {
-		flexProps(el, al)
+		if al.GetMode() == opendesignerv1.LayoutMode_LAYOUT_MODE_GRID {
+			gridProps(el, al)
+		} else {
+			flexProps(el, al)
+		}
 	}
 	if isFrame && eff.GetFrame().GetClipsContent() {
 		el.addStyle("overflow", "hidden")

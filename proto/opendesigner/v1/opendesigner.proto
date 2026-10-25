@@ -301,6 +301,37 @@ message AutoLayout {
   // (a hugging frame is as long as its content). `cross_spacing` is the gap between lines.
   bool wrap = 11;
   double cross_spacing = 12;   // >= 0
+  // GRID mode (see docs/layout.md): `direction`, `spacing`, `wrap` and `cross_spacing` are
+  // ignored; the children sit in the cells of `columns` x `rows` instead. Unset = FLEX.
+  LayoutMode mode = 20;
+  repeated GridTrack columns = 21;   // declared column tracks (implicit ones are hug)
+  repeated GridTrack rows = 22;      // declared row tracks
+  double column_gap = 23;            // >= 0, between two columns
+  double row_gap = 24;               // >= 0, between two rows
+}
+
+enum LayoutMode {
+  LAYOUT_MODE_FLEX = 0;  // a row / column (default)
+  LAYOUT_MODE_GRID = 1;  // rows x columns of tracks
+}
+
+enum GridTrackKind {
+  GRID_TRACK_FIXED = 0;  // `size` pixels (default)
+  GRID_TRACK_HUG = 1;    // as big as the biggest child that sits in it
+  GRID_TRACK_FR = 2;     // a share of the free space, `size` is the weight (<= 0 counts as 1)
+}
+
+message GridTrack {
+  GridTrackKind kind = 1;
+  double size = 2;  // >= 0, finite
+}
+
+// Where a child sits in its GRID parent. 1-based; 0 start = auto-placed (row-major), 0 span = 1.
+message GridPlacement {
+  int32 column = 1;
+  int32 column_span = 2;
+  int32 row = 3;
+  int32 row_span = 4;
 }
 
 // How a node is sized by its auto layout PARENT, per axis of the node (not of the layout).
@@ -703,6 +734,9 @@ message Node {
   // hugged, not aligned) and keeps its x/y, following the frame's size by its constraints.
   // The "layout_positioning" mask path writes it.
   LayoutPositioning layout_positioning = 74;
+  // The cell of a GRID auto layout parent the node occupies; absent = auto-placed, one cell.
+  // The "grid_cell" mask path writes it.
+  GridPlacement grid_cell = 100;
 }
 
 enum LayoutPositioning {

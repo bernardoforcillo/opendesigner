@@ -607,6 +607,10 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			if math.IsNaN(v) || math.IsInf(v, 0) || v < 0 {
 				return fmt.Errorf("%w: %s %v", ErrSizeLimit, path, v)
 			}
+		case "grid_cell":
+			if err := validateGridCell(s.GetPatch().GetGridCell()); err != nil {
+				return err
+			}
 		case "layout_positioning":
 			// Closed enum, like constraints.
 			if p := s.GetPatch().GetLayoutPositioning(); p < opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_AUTO || p > opendesignerv1.LayoutPositioning_LAYOUT_POSITIONING_ABSOLUTE {
@@ -676,6 +680,9 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			if _, ok := n.GetShape().(*opendesignerv1.Node_Frame); !ok {
 				return fmt.Errorf("%w: %s", ErrNotFrameNode, s.GetId())
 			}
+			if err := validateGridLayout(s.GetPatch().GetFrame().GetAutoLayout()); err != nil {
+				return err
+			}
 		default:
 			return fmt.Errorf("core: unsupported mask path %q", path)
 		}
@@ -741,6 +748,8 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.MaxHeight = p.GetMaxHeight()
 		case "layout_positioning":
 			n.LayoutPositioning = p.GetLayoutPositioning()
+		case "grid_cell":
+			n.GridCell = proto.Clone(p.GetGridCell()).(*opendesignerv1.GridPlacement)
 		case "strokes":
 			// REPLACEMENT of the whole list, exactly like `fills` above -- not an
 			// element-by-element merge. It is the REPEATED field on which the two
