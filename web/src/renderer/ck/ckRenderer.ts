@@ -15,6 +15,7 @@ import { MESH_BITMAP_SIZE, meshBitmap } from "../mesh";
 import { outlineCommands, type PathCmd } from "../shapeGeometry";
 import { hasArrowheads, strokeHeads } from "../arrowheads";
 import { sideBandRects } from "../strokeSides";
+import { variableStrokeCommands } from "../../vector/widthProfile";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "../gradientBitmap";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
 import { decorationBars, fontSizeOf, piecesOfLine, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
@@ -903,6 +904,12 @@ export class CanvasKitRenderer {
       const join = vs.join === "round" ? CK.StrokeJoin.Round : vs.join === "bevel" ? CK.StrokeJoin.Bevel : CK.StrokeJoin.Miter;
       for (const s of n.strokes) {
         if (!(s.weight > 0)) continue;
+        if (s.widthProfile && s.widthProfile.length > 0) {
+          // VARIABLE WIDTH: the stroke's region (vector/widthProfile.ts), filled with its paint.
+          const region = this.pathOf(variableStrokeCommands(n, s));
+          sk.drawPath(region, this.paintFor(this.fillP, s.color, n, n.opacity));
+          continue;
+        }
         const p = this.paintFor(this.strokeP, s.color, n, n.opacity);
         p.setStyle(CK.PaintStyle.Stroke);
         p.setStrokeWidth(s.weight);

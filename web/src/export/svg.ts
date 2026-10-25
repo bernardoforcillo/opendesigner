@@ -1,8 +1,10 @@
 import type { EffectLite, FillLite, GradientLite, NodeLite } from "../store/types";
 import { gradientBitmap } from "../renderer/gradientBitmap";
 import { commandsToD, outlineCommands } from "../renderer/shapeGeometry";
+import type { PathCmd } from "../renderer/shapeGeometry";
 import { strokeHeads } from "../renderer/arrowheads";
 import { sideBandRects } from "../renderer/strokeSides";
+import { variableStrokeCommands } from "../vector/widthProfile";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
 import { fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
@@ -273,6 +275,7 @@ function gradientRef(n: NodeLite, f: FillLite, defs: string[]): string | null {
 function strokeAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
   const s = n.strokes.find((st) => st.weight > 0);
   if (!s || s.sides) return []; // per-side weights go out as a band (sideBands)
+  if (s.widthProfile && s.widthProfile.length > 0) return []; // variable width goes out as a filled outline (variableStrokeElement)
   const ref = gradientRef(n, s.color, defs);
   const vs = n.kind === "vector" || n.meta ? vectorStyleOf(n) : null;
   return [
@@ -326,6 +329,25 @@ function sideBands(n: NodeLite, defs: string[]): string {
     s.color.a === 1 || ref !== null ? null : attr("fill-opacity", s.color.a),
     n.opacity === 1 ? null : attr("opacity", n.opacity),
   ])}/>`;
+}
+
+// A VARIABLE-WIDTH stroke has no SVG attribute: it goes out as a filled <path> of the stroke's region
+// (vector/widthProfile.ts, the same one the canvas fills), in the stroke's paint.
+function variableStrokeElement(n: NodeLite, defs: string[]): string {
+  let out = "";
+  for (const s of n.strokes) {
+    if (!(s.weight > 0) || !s.widthProfile || s.widthProfile.length === 0) continue;
+    const cmds = variableStrokeCommands(n, s);
+    if (cmds.length === 0) continue;
+    const ref = gradientRef(n, s.color, defs);
+    out += `<path${attrs([
+      attr("d", commandsToD(cmds.map((c): PathCmd => (c[0] === "M" ? ["M", c[1] + n.x, c[2] + n.y] : c[0] === "L" ? ["L", c[1] + n.x, c[2] + n.y] : c)), DECIMALS)), attr("fill-rule", "evenodd"),
+      attr("fill", ref ?? `rgb(${channel(s.color.r)},${channel(s.color.g)},${channel(s.color.b)})`),
+      s.color.a === 1 || ref !== null ? null : attr("fill-opacity", s.color.a),
+      n.opacity === 1 ? null : attr("opacity", n.opacity),
+    ])}/>`;
+  }
+  return out;
 }
 
 // The arrowheads of a vector's strokes (renderer/arrowheads.ts): filled shapes in the stroke's paint and the
@@ -538,7 +560,7 @@ function elementBody(n: NodeLite, measure: MeasureText, href: ResolveImageHref, 
   const computed = computedElement(n, defs);
   if (computed !== null) return computed;
   if (n.kind === "ellipse") return ellipseElement(n, defs);
-  if (n.kind === "vector") return vectorElement(n, defs) + arrowheadElements(n, defs);
+  if (n.kind === "vector") return vectorElement(n, defs) + variableStrokeElement(n, defs) + arrowheadElements(n, defs);
   if (n.kind === "image") {
     const uri = href(n.image?.assetHash ?? "");
     return uri === null ? imagePlaceholderElement(n) : imageElement(n, uri, defs);

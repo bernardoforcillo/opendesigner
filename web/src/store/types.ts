@@ -70,7 +70,9 @@ export type StrokeAlignLite = "center" | "inside" | "outside";
 // rectangle / frame stroke (see StrokeSides). All absent by default, so a stroke without them is what it was.
 export type ArrowHeadLite = "arrow" | "triangle" | "circle" | "square" | "diamond";
 export interface StrokeSidesLite { top: number; right: number; bottom: number; left: number }
-export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlignLite; startCap?: ArrowHeadLite; endCap?: ArrowHeadLite; sides?: StrokeSidesLite; }
+// A variable-width stroke's profile (see WidthPoint in the proto and vector/widthProfile.ts); absent = uniform.
+export interface WidthPointLite { position: number; left: number; right: number }
+export interface StrokeLite { color: FillLite; weight: number; align: StrokeAlignLite; startCap?: ArrowHeadLite; endCap?: ArrowHeadLite; sides?: StrokeSidesLite; widthProfile?: WidthPointLite[]; }
 
 // Auto layout of a frame (see AutoLayout in the proto and store/layout.ts). As
 // for StrokeAlignLite, enums are strings: UNSPECIFIED collapses to
@@ -748,6 +750,7 @@ export function toPbStrokes(strokes: readonly StrokeLite[]) {
     ...(s.startCap ? { startCap: ARROW_TO_PB[s.startCap] } : {}),
     ...(s.endCap ? { endCap: ARROW_TO_PB[s.endCap] } : {}),
     ...(s.sides ? { sides: { ...s.sides } } : {}),
+    ...(s.widthProfile && s.widthProfile.length > 0 ? { widthProfile: s.widthProfile.map((p) => ({ ...p })) } : {}),
   }));
 }
 
@@ -936,6 +939,7 @@ export function toStrokeLite(s: PbStroke): StrokeLite {
     ...(ARROW_TO_LITE[s.startCap] ? { startCap: ARROW_TO_LITE[s.startCap] } : {}),
     ...(ARROW_TO_LITE[s.endCap] ? { endCap: ARROW_TO_LITE[s.endCap] } : {}),
     ...(s.sides ? { sides: { top: s.sides.top, right: s.sides.right, bottom: s.sides.bottom, left: s.sides.left } } : {}),
+    ...(s.widthProfile.length > 0 ? { widthProfile: s.widthProfile.map((p) => ({ position: p.position, left: p.left, right: p.right })) } : {}),
   };
 }
 

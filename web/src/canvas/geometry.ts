@@ -41,6 +41,8 @@ export function worldAabbOfNode(n: NodeLite): Bounds {
 // box SMALLER than the node must not come out).
 export function strokeOutset(s: StrokeLite): number {
   if (!(s.weight > 0)) return 0;
+  // A variable-width stroke reaches (its widest side multiple) * weight / 2 from the path, always centred.
+  if (s.widthProfile && s.widthProfile.length > 0) return Math.max(...s.widthProfile.map((p) => Math.max(p.left, p.right))) * s.weight / 2;
   if (s.align === "inside") return 0;
   // Per-side weights: the widest side overhangs the most.
   const w = s.sides ? Math.max(s.sides.top, s.sides.right, s.sides.bottom, s.sides.left) : s.weight;
