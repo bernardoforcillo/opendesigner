@@ -250,8 +250,12 @@ func kSize(chain *[]string, n *nbox, parent *nbox, weightOK bool) {
 }
 
 func (w *kwWriter) box(e *Element, n *nbox, parent *nbox, base string, chain []string, shape string, trig *Trigger) []string {
-	var kids []string
+	var kids, abs []string
 	useChild := e.Use != nil && w.reg != nil && w.reg.known(e.Use)
+	grid := n.grid // the children carry their cells only when they are the element's own
+	if useChild || (e.SwapProp != "" && w.ident != nil) {
+		grid = nil
+	}
 	switch {
 	case e.SwapProp != "" && w.ident != nil:
 		sw := w.ident(e.SwapProp)
@@ -269,9 +273,16 @@ func (w *kwWriter) box(e *Element, n *nbox, parent *nbox, base string, chain []s
 	case useChild:
 		kids = strings.Split(w.call(e.Use), "\n")
 	default:
-		for i, c := range e.Children {
-			_ = i
-			kids = append(kids, w.view(c, n, false, nil)...)
+		for _, c := range e.Children {
+			if grid != nil && c.Cell == nil {
+				abs = append(abs, w.view(c, n, false, nil)...) // out of the grid's flow
+				continue
+			}
+			var extra []string
+			if grid != nil {
+				extra = gridModifier(c)
+			}
+			kids = append(kids, w.view(c, n, false, extra)...)
 		}
 	}
 	if n.wrap {
@@ -295,15 +306,21 @@ func (w *kwWriter) box(e *Element, n *nbox, parent *nbox, base string, chain []s
 		}
 		out = append(out, fmt.Sprintf(".border(%s, %s, %s)", dp(s.w), kColor(s.c), shape))
 	}
-	if p := n.pad; p != [4]float64{} && len(kids) > 0 {
+	if p := n.pad; p != [4]float64{} && len(kids)+len(abs) > 0 {
 		if p[0] == p[1] && p[1] == p[2] && p[2] == p[3] {
 			out = append(out, ".padding("+dp(p[0])+")")
 		} else {
 			out = append(out, fmt.Sprintf(".padding(start = %s, top = %s, end = %s, bottom = %s)", dp(p[3]), dp(p[0]), dp(p[1]), dp(p[2])))
 		}
 	}
-	if len(kids) == 0 {
+	if len(kids) == 0 && len(abs) == 0 {
 		return kcall("Box", nil, base, out, nil)
+	}
+	if grid != nil {
+		if len(kids) > 0 {
+			return kGrid(grid, base, out, kids, abs)
+		}
+		kids = abs // only out-of-flow children: a plain Box
 	}
 	if !n.flex {
 		return kcall("Box", nil, base, out, kids)
@@ -695,6 +712,12 @@ func renderCompose(d *opendesignerv1.Document, b *builder, screens []*Screen, op
 	for _, s := range screens {
 		put(src+"screens/"+s.Name+".kt", kotlinScreen(d, s, reg, unsup))
 		anim = anim || hasAnimation(s.Root)
+	}
+	for _, c := range files {
+		if strings.Contains(string(c), "DesignGrid(") {
+			put(src+"components/DesignGrid.kt", tsHeader(d, "grid layout helper")+designGridKt)
+			break
+		}
 	}
 	moveNativeAssets(files, func(name, ext string, data []byte) map[string][]byte {
 		return map[string][]byte{"app/src/main/res/drawable-nodpi/" + name + ext: data}

@@ -289,7 +289,22 @@ func (b *builder) children(el *Element, n *opendesignerv1.Node, c bctx) {
 	// clips them with the mask's outline. Not in an auto layout (the mask would be a flow
 	// item), and not for a rotated mask: those masks are not applied (documented).
 	target := el
-	for _, k := range core.ChildrenOf(b.doc, n.GetId()) {
+	kids := core.ChildrenOf(b.doc, n.GetId())
+	// GRID: the cells of the in-flow children, for the targets that cannot auto-place (native_grid.go).
+	cells := map[string]GridCell{}
+	if al.GetMode() == opendesignerv1.LayoutMode_LAYOUT_MODE_GRID {
+		var flow []*opendesignerv1.Node
+		for _, k := range kids {
+			if !(k.GetVisible() && k.GetIsMask() && isMaskShape(k)) && (participates(k) || b.groupFlows(k)) {
+				flow = append(flow, k)
+			}
+		}
+		cs, _, _ := core.GridCells(flow, al)
+		for i, k := range flow {
+			cells[k.GetId()] = GridCell{Col: cs[i].Col, Row: cs[i].Row, ColSpan: cs[i].ColSpan, RowSpan: cs[i].RowSpan, X: k.GetX(), Y: k.GetY(), W: k.GetWidth(), H: k.GetHeight()}
+		}
+	}
+	for _, k := range kids {
 		if k.GetVisible() && k.GetIsMask() && isMaskShape(k) {
 			if clip, ok := maskClip(k); ok && al == nil {
 				wrap := &Element{Tag: "div"}
@@ -315,6 +330,9 @@ func (b *builder) children(el *Element, n *opendesignerv1.Node, c bctx) {
 			}
 		}
 		if ce := b.element(k, cc); ce != nil {
+			if g, ok := cells[k.GetId()]; ok && cc.flowChild {
+				ce.Cell = &g
+			}
 			target.Children = append(target.Children, ce)
 		}
 	}
