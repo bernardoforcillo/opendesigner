@@ -1151,6 +1151,7 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerLayoutLimitTools(srv, s)
 	registerInstanceTools(srv, s)
 	registerArrangeTools(srv, s)
+	registerShapeBuilderTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerDiagramTools(srv, s)
 	registerDevTools(srv, s)
