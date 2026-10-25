@@ -114,6 +114,37 @@ describe("CanvasOnboarding", () => {
   });
 });
 
+describe("CanvasOnboarding in the other verticals", () => {
+  beforeEach(() => {
+    localStorage.clear();
+    useScene.getState().setScene(null);
+  });
+  afterEach(cleanup);
+
+  it("a publication offers publishing templates, with no screen to draw and no checklist", () => {
+    install({ ...emptyScene("doc-1", "Doc"), settings: { vertical: "publishing" } });
+    render(<CanvasOnboarding onDrawScreen={() => {}} client={client()} />);
+    expect(screen.getByRole("region", { name: "Where do you want to start?" })).toBeInTheDocument();
+    for (const n of ["Book", "Magazine", "Report"]) expect(screen.getByRole("button", { name: `Apply the ${n} template` })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Apply the Onboarding template" })).toBeNull();
+    expect(screen.queryByRole("button", { name: /Draw a screen/ })).toBeNull();
+    expect(screen.queryByRole("list", { name: "Steps" })).toBeNull();
+  });
+
+  it("a design document offers the design templates", () => {
+    install({ ...emptyScene("doc-1", "Doc"), settings: { vertical: "design" } });
+    render(<CanvasOnboarding onDrawScreen={() => {}} client={client()} />);
+    for (const n of ["Poster", "Brand sheet"]) expect(screen.getByRole("button", { name: `Apply the ${n} template` })).toBeInTheDocument();
+  });
+
+  it("never shows the screens checklist once there is content", () => {
+    const scene = emptyScene("doc-1", "Doc");
+    install({ ...scene, settings: { vertical: "publishing" }, nodes: scene.nodes.set("r", { id: "r", parentId: "page1", orderKey: "a0", name: "r", visible: true, opacity: 1, x: 0, y: 0, width: 5, height: 5, rotation: 0, fills: [], strokes: [], kind: "rect", cornerRadius: 0, clipsContent: false }) });
+    render(<CanvasOnboarding onDrawScreen={() => {}} client={client()} />);
+    expect(screen.queryByRole("region")).toBeNull();
+  });
+});
+
 describe("fitCameraToScreens", () => {
   it("frames all the screens, never beyond 1:1, centered", () => {
     const cam = fitCameraToScreens(baseScene(), 1000, 600)!;

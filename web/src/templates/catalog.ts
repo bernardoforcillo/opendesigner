@@ -2,6 +2,9 @@ import type { IconName } from "../ui/ds/Icon";
 import { builtToOps, DocBuilder, PALETTE, SCREEN_W } from "./builder";
 import type { BuiltTemplate, IdGen } from "./builder";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
+import type { Vertical } from "../store/types";
+import { buildPoster, buildBrandSheet } from "./design";
+import { buildBook, buildMagazine, buildReport } from "./publishing";
 
 // THE TEMPLATE CATALOG. Each one is a REAL starting point: 390x844 mobile
 // screens with a plausible interface (titles, fields, buttons), an already
@@ -13,6 +16,8 @@ import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 
 export interface Template {
   id: string;
+  /** The kind of work this template is for (default "product"). The document is created with it. */
+  vertical?: Vertical;
   name: string;
   /** One line: what it contains. */
   tagline: string;
@@ -248,8 +253,58 @@ const saas: Template = {
 
 export const TEMPLATES: readonly Template[] = [blank, onboarding, auth, checkout, saas];
 
+// ---------------------------------------------------------------------------
+// The other verticals (see verticals/index.ts)
+// ---------------------------------------------------------------------------
+const blankPublishing: Template = {
+  id: "blank-publishing", vertical: "publishing", name: "Blank publication", tagline: "An A4 sheet with margins: you lay it out.", icon: "page",
+  docName: "Untitled publication",
+  build: (pageId) => ({
+    nodes: [], flows: [], transitions: [],
+    pages: [{ id: pageId, name: "Page 1", width: 595, height: 842, marginTop: 54, marginBottom: 54, marginLeft: 54, marginRight: 54 }],
+    settings: { vertical: "publishing" },
+  }),
+};
+const blankDesign: Template = {
+  id: "blank-design", vertical: "design", name: "Blank canvas", tagline: "An open canvas: you draw.", icon: "plus", docName: "Untitled design",
+  build: () => ({ nodes: [], flows: [], transitions: [], settings: { vertical: "design" } }),
+};
+const book: Template = {
+  id: "book", vertical: "publishing", name: "Book", tagline: "6 × 9 in: cover, master, a chapter flowing over three pages.", icon: "page", docName: "Untitled book",
+  build: buildBook,
+};
+const magazine: Template = {
+  id: "magazine", vertical: "publishing", name: "Magazine", tagline: "A4 in three columns: cover and an article that flows.", icon: "layers", docName: "Untitled magazine",
+  build: buildMagazine,
+};
+const report: Template = {
+  id: "report", vertical: "publishing", name: "Report", tagline: "US Letter: title page, summary and findings on a master.", icon: "doc", docName: "Untitled report",
+  build: buildReport,
+};
+const poster: Template = {
+  id: "poster", vertical: "design", name: "Poster", tagline: "An A3 sheet with bleed: big type and shapes.", icon: "sparkle", docName: "Untitled poster",
+  build: buildPoster,
+};
+const brandSheet: Template = {
+  id: "brand-sheet", vertical: "design", name: "Brand sheet", tagline: "Logo, palette and type specimen on an open canvas.", icon: "pen", docName: "Brand sheet",
+  build: buildBrandSheet,
+};
+
+export const PUBLISHING_TEMPLATES: readonly Template[] = [blankPublishing, book, magazine, report];
+export const DESIGN_TEMPLATES: readonly Template[] = [blankDesign, poster, brandSheet];
+
+/** The templates the Home offers for a vertical (product documents keep the original set). */
+export function templatesFor(v: Vertical): readonly Template[] {
+  return v === "publishing" ? PUBLISHING_TEMPLATES : v === "design" ? DESIGN_TEMPLATES : TEMPLATES;
+}
+
+/** A vertical's "new blank document". */
+export function blankFor(v: Vertical): Template {
+  return templatesFor(v)[0];
+}
+
 export function templateById(id: string): Template | undefined {
-  return TEMPLATES.find((t) => t.id === id);
+  return [...TEMPLATES, ...PUBLISHING_TEMPLATES, ...DESIGN_TEMPLATES].find((t) => t.id === id);
 }
 
 /** The Ops that bring a just-created document to the template's state. */

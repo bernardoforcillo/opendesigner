@@ -32,6 +32,7 @@ import { useScene } from "../store/store";
 import { enterTargetOf, selectionTargetOf, selectionTargetsOf, transformTargetsOf } from "../store/groups";
 import { subtreeOf, topmostOf } from "../store/tree";
 import { groupOps, ungroupOps } from "./grouping";
+import { creatingId, masterItemAt, overrideMasterItemOps } from "./pageOps";
 import { wrapSelectionInFrame } from "./wrapFrame";
 import { detachSelectedInstances } from "./instanceActions";
 import { computeLayoutDrop, layoutDropOps, reorderableParent, type LayoutDrop } from "./layoutDrop";
@@ -674,7 +675,7 @@ export function createSelectTool(): Tool {
         resizeStartFrame = frameOfSelection(ctx);
         resizeStartNodes = start;
         resizeStartVectors = startVectors;
-        resizeTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, store.selection)));
+        resizeTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, store.selection), store.currentPageId));
         resizeStarted = false;
         setCursor(ctx, cursorForHandle(overlay.handle));
         return;
@@ -698,6 +699,22 @@ export function createSelectTool(): Tool {
           rotateStarted = false;
           setCursor(ctx, ROTATING_CURSOR);
           return;
+        }
+      }
+
+      // Ctrl/Cmd+Shift+click on an item drawn from a MASTER: overrides it on this page (the page gets its own
+      // editable copy, the master's is hidden there) and selects the copy. Only top-level master items.
+      if (e.shiftKey && (e.ctrlKey || e.metaKey) && store.currentPageId) {
+        const page = scene.pages.find((p) => p.id === store.currentPageId);
+        const from = page && !page.isMaster ? masterItemAt(scene, page.id, world.x, world.y, ctx.getCamera().zoom) : null;
+        if (page && from) {
+          const ops = overrideMasterItemOps(scene, page, from);
+          if (ops.length > 0) {
+            store.beginGesture();
+            store.endGesture(ops);
+            store.setSelection([ops[1] ? creatingId(ops[1]) : ""].filter(Boolean));
+            return;
+          }
         }
       }
 
@@ -783,7 +800,7 @@ export function createSelectTool(): Tool {
       // It is the selection BOX that snaps, not the individual nodes: with a
       // multiple selection each node pulled by its own guide would break it apart.
       dragBox = selectionWorldBounds(scene, selection);
-      dragTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, selection)));
+      dragTargets = prepareSnapTargets(snapTargets(scene, snapExclude(scene, selection), useScene.getState().currentPageId));
     },
 
     onPointerMove(e, ctx) {

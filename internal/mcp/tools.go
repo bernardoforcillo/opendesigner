@@ -10,6 +10,7 @@ import (
 	"github.com/bernardoforcillo/opendesigner/internal/core"
 	"github.com/google/uuid"
 	"github.com/modelcontextprotocol/go-sdk/mcp"
+	"google.golang.org/protobuf/proto"
 	"google.golang.org/protobuf/types/known/fieldmaskpb"
 )
 
@@ -95,12 +96,13 @@ func validateFills(colors []RGBA) error {
 // EffectSpec is one node effect. Any number of dropShadow and innerShadow effects
 // are drawn; the canvas applies the FIRST layerBlur and the FIRST backgroundBlur.
 type EffectSpec struct {
-	Kind    string    `json:"kind" jsonschema:"dropShadow, innerShadow, layerBlur or backgroundBlur"`
+	Kind    string    `json:"kind" jsonschema:"dropShadow, innerShadow, layerBlur, backgroundBlur, progressiveBlur, noise, texture or glass"`
 	Color   StopColor `json:"color,omitempty" jsonschema:"shadows only; alpha 0..1"`
 	OffsetX float64   `json:"offsetX,omitempty" jsonschema:"shadows only, in world units"`
 	OffsetY float64   `json:"offsetY,omitempty" jsonschema:"shadows only, in world units"`
 	Blur    float64   `json:"blur,omitempty" jsonschema:"shadows only, >= 0, in world units"`
 	Radius  float64   `json:"radius,omitempty" jsonschema:"layerBlur and backgroundBlur only, >= 0, in world units"`
+	EffectFx
 }
 
 // blendModes maps the tool's names (CSS names) to the document's enum.
@@ -135,8 +137,12 @@ func validateEffects(effects []EffectSpec) error {
 			if e.Radius < 0 {
 				return fmt.Errorf("effects[%d].radius must be >= 0", i)
 			}
+		case "progressiveBlur", "noise", "texture", "glass":
+			if _, err := e.fxProto(); err != nil {
+				return fmt.Errorf("effects[%d] (%s): %w", i, e.Kind, err)
+			}
 		default:
-			return fmt.Errorf("effects[%d].kind must be dropShadow, innerShadow, layerBlur or backgroundBlur, got %q", i, e.Kind)
+			return fmt.Errorf("effects[%d].kind must be dropShadow, innerShadow, layerBlur, backgroundBlur, progressiveBlur, noise, texture or glass, got %q", i, e.Kind)
 		}
 	}
 	return nil
@@ -145,6 +151,12 @@ func validateEffects(effects []EffectSpec) error {
 func toEffects(effects []EffectSpec) []*opendesignerv1.Effect {
 	out := make([]*opendesignerv1.Effect, 0, len(effects))
 	for _, e := range effects {
+		if isFxKind(e.Kind) {
+			if fx, err := e.fxProto(); err == nil { // validateEffects has already vetted it
+				out = append(out, fx)
+			}
+			continue
+		}
 		if e.Kind == "layerBlur" {
 			out = append(out, &opendesignerv1.Effect{Kind: &opendesignerv1.Effect_LayerBlur{LayerBlur: &opendesignerv1.LayerBlur{Radius: e.Radius}}})
 			continue
@@ -224,6 +236,7 @@ type CreateTextInput struct {
 	FontWeight *string  `json:"fontWeight,omitempty" jsonschema:"e.g. 400 or 700"`
 	Italic     *bool    `json:"italic,omitempty"`
 	LineHeight *float64 `json:"lineHeight,omitempty" jsonschema:"multiplier; defaults to 1.2"`
+	TextFormat
 }
 
 // newBaseNode builds the common Node scaffold for a created shape.
@@ -293,6 +306,9 @@ func (s *Session) CreateText(ctx context.Context, in CreateTextInput) (CreateNod
 	}
 	if in.LineHeight != nil {
 		style.LineHeight = *in.LineHeight
+	}
+	if err := in.TextFormat.apply(style); err != nil {
+		return CreateNodeOutput{}, fmt.Errorf("create_text: %w", err)
 	}
 	n.Shape = &opendesignerv1.Node_Text{Text: &opendesignerv1.TextNode{Content: in.Content, Style: style}}
 	return s.createNode(ctx, n)
@@ -414,8 +430,8 @@ func (s *Session) SetProperties(ctx context.Context, in SetPropertiesInput) (Seq
 // ---------------------------------------------------------------------------
 
 // SetTextInput sets a text node's content and, if any style field is given,
-// REPLACES its whole style (style_present). Omit all style fields to keep the
-// node's existing style intact.
+// overlays those fields on the node's style (written with style_present). Omit all
+// style fields to keep the node's existing style intact.
 type SetTextInput struct {
 	Id         string   `json:"id"`
 	Content    string   `json:"content"`
@@ -424,14 +440,22 @@ type SetTextInput struct {
 	FontWeight *string  `json:"fontWeight,omitempty"`
 	Italic     *bool    `json:"italic,omitempty"`
 	LineHeight *float64 `json:"lineHeight,omitempty"`
+	TextFormat
 }
 
 // SetText rewrites a text node's content (and optionally its style).
 func (s *Session) SetText(ctx context.Context, in SetTextInput) (SeqOutput, error) {
 	st := &opendesignerv1.SetText{Id: in.Id, Content: in.Content}
-	if in.FontSize != nil || in.FontFamily != nil || in.FontWeight != nil || in.Italic != nil || in.LineHeight != nil {
+	if in.FontSize != nil || in.FontFamily != nil || in.FontWeight != nil || in.Italic != nil || in.LineHeight != nil || in.TextFormat.given() {
 		st.StylePresent = true
 		style := &opendesignerv1.TextStyle{}
+		// Start from the node's current style and overlay what was given, so a
+		// format-only edit (case, lists, ...) does not zero the font size.
+		s.mu.Lock()
+		if cur, ok := s.doc.GetNodes()[in.Id]; ok && cur.GetText().GetStyle() != nil {
+			style = proto.Clone(cur.GetText().GetStyle()).(*opendesignerv1.TextStyle)
+		}
+		s.mu.Unlock()
 		if in.FontSize != nil {
 			style.FontSize = *in.FontSize
 		}
@@ -446,6 +470,9 @@ func (s *Session) SetText(ctx context.Context, in SetTextInput) (SeqOutput, erro
 		}
 		if in.LineHeight != nil {
 			style.LineHeight = *in.LineHeight
+		}
+		if err := in.TextFormat.apply(style); err != nil {
+			return SeqOutput{}, fmt.Errorf("set_text: %w", err)
 		}
 		st.Style = style
 	}
@@ -500,8 +527,93 @@ func (s *Session) ReparentNode(ctx context.Context, in ReparentNodeInput) (SeqOu
 // pages
 // ---------------------------------------------------------------------------
 
+// PageSetup is the sheet of a page: size, margins, columns and bleed, all in world units.
+type PageSetup struct {
+	Width        *float64 `json:"width,omitempty" jsonschema:"sheet width; 0 = an unbounded canvas page"`
+	Height       *float64 `json:"height,omitempty" jsonschema:"sheet height; 0 = unbounded"`
+	MarginTop    *float64 `json:"marginTop,omitempty"`
+	MarginRight  *float64 `json:"marginRight,omitempty"`
+	MarginBottom *float64 `json:"marginBottom,omitempty"`
+	MarginLeft   *float64 `json:"marginLeft,omitempty"`
+	Columns      *uint32  `json:"columns,omitempty" jsonschema:"text columns inside the margins (0 or 1 = one)"`
+	Gutter       *float64 `json:"gutter,omitempty" jsonschema:"space between columns"`
+	Bleed        *float64 `json:"bleed,omitempty" jsonschema:"extra area around the sheet that is printed and trimmed"`
+	Slug         *float64 `json:"slug,omitempty" jsonschema:"extra area beyond the bleed for printer's marks and notes"`
+	// Numbering and structure.
+	SectionStart      *bool        `json:"sectionStart,omitempty" jsonschema:"this page starts a numbering section (the first page always does)"`
+	NumberStart       *uint32      `json:"numberStart,omitempty" jsonschema:"the number this section starts at (0 = 1)"`
+	NumberStyle       *string      `json:"numberStyle,omitempty" jsonschema:"page number style of the section: empty = 1,2,3 | i | I | a | A"`
+	LeftMasterId      *string      `json:"leftMasterId,omitempty" jsonschema:"master applied on the left-hand pages of a spread (facing pages); empty = the same as masterId"`
+	HiddenMasterItems *[]string    `json:"hiddenMasterItems,omitempty" jsonschema:"ids of master items not drawn on this page"`
+	Guides            *[]GuideSpec `json:"guides,omitempty" jsonschema:"ruler guides of the page (a master's guides apply to its pages)"`
+}
+
+// GuideSpec is a ruler guide: a vertical one at x = position, else a horizontal one at y = position.
+type GuideSpec struct {
+	Vertical bool    `json:"vertical,omitempty"`
+	Position float64 `json:"position"`
+}
+
+// apply writes the fields that are set onto p.
+func (s PageSetup) apply(p *opendesignerv1.Page) {
+	if s.Width != nil {
+		p.Width = *s.Width
+	}
+	if s.Height != nil {
+		p.Height = *s.Height
+	}
+	if s.MarginTop != nil {
+		p.MarginTop = *s.MarginTop
+	}
+	if s.MarginRight != nil {
+		p.MarginRight = *s.MarginRight
+	}
+	if s.MarginBottom != nil {
+		p.MarginBottom = *s.MarginBottom
+	}
+	if s.MarginLeft != nil {
+		p.MarginLeft = *s.MarginLeft
+	}
+	if s.Columns != nil {
+		p.Columns = *s.Columns
+	}
+	if s.Gutter != nil {
+		p.Gutter = *s.Gutter
+	}
+	if s.Bleed != nil {
+		p.Bleed = *s.Bleed
+	}
+	if s.Slug != nil {
+		p.Slug = *s.Slug
+	}
+	if s.SectionStart != nil {
+		p.SectionStart = *s.SectionStart
+	}
+	if s.NumberStart != nil {
+		p.NumberStart = *s.NumberStart
+	}
+	if s.NumberStyle != nil {
+		p.NumberStyle = *s.NumberStyle
+	}
+	if s.LeftMasterId != nil {
+		p.LeftMasterId = *s.LeftMasterId
+	}
+	if s.HiddenMasterItems != nil {
+		p.HiddenMasterItems = append([]string(nil), (*s.HiddenMasterItems)...)
+	}
+	if s.Guides != nil {
+		p.Guides = nil
+		for _, g := range *s.Guides {
+			p.Guides = append(p.Guides, &opendesignerv1.Guide{Vertical: g.Vertical, Position: g.Position})
+		}
+	}
+}
+
 type CreatePageInput struct {
-	Name string `json:"name,omitempty"`
+	Name     string `json:"name,omitempty"`
+	IsMaster bool   `json:"isMaster,omitempty" jsonschema:"create a MASTER page (a template drawn behind the pages that apply it)"`
+	MasterId string `json:"masterId,omitempty" jsonschema:"id of a master page this page applies (or, for a master, the master it is based on)"`
+	PageSetup
 }
 
 type CreatePageOutput struct {
@@ -512,9 +624,9 @@ type CreatePageOutput struct {
 // CreatePage appends a new page (id auto-generated) and returns its id.
 func (s *Session) CreatePage(ctx context.Context, in CreatePageInput) (CreatePageOutput, error) {
 	id := uuid.NewString()
-	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreatePage{CreatePage: &opendesignerv1.CreatePage{
-		Page: &opendesignerv1.Page{Id: id, Name: in.Name},
-	}}})
+	page := &opendesignerv1.Page{Id: id, Name: in.Name, IsMaster: in.IsMaster, MasterId: in.MasterId}
+	in.PageSetup.apply(page)
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreatePage{CreatePage: &opendesignerv1.CreatePage{Page: page}}})
 	if err != nil {
 		return CreatePageOutput{}, err
 	}
@@ -543,6 +655,58 @@ type RenamePageInput struct {
 // RenamePage sets a page's name.
 func (s *Session) RenamePage(ctx context.Context, in RenamePageInput) (SeqOutput, error) {
 	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_RenamePage{RenamePage: &opendesignerv1.RenamePage{Id: in.Id, Name: in.Name}}})
+	if err != nil {
+		return SeqOutput{}, err
+	}
+	return SeqOutput{Seq: seq}, nil
+}
+
+type UpdatePageInput struct {
+	Id       string  `json:"id"`
+	Name     *string `json:"name,omitempty"`
+	IsMaster *bool   `json:"isMaster,omitempty" jsonschema:"turn the page into a master page (or back into a normal one)"`
+	MasterId *string `json:"masterId,omitempty" jsonschema:"master page this page applies; empty string detaches"`
+	PageSetup
+}
+
+// UpdatePage changes a page's name, master flag and applied master; fields left out keep their value.
+func (s *Session) UpdatePage(ctx context.Context, in UpdatePageInput) (SeqOutput, error) {
+	s.mu.Lock()
+	var cur *opendesignerv1.Page
+	for _, p := range s.doc.GetPages() {
+		if p.GetId() == in.Id {
+			cur = proto.Clone(p).(*opendesignerv1.Page)
+		}
+	}
+	s.mu.Unlock()
+	if cur == nil {
+		return SeqOutput{}, fmt.Errorf("page %q not found", in.Id)
+	}
+	if in.Name != nil {
+		cur.Name = *in.Name
+	}
+	if in.IsMaster != nil {
+		cur.IsMaster = *in.IsMaster
+	}
+	if in.MasterId != nil {
+		cur.MasterId = *in.MasterId
+	}
+	in.PageSetup.apply(cur)
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_UpdatePage{UpdatePage: &opendesignerv1.UpdatePage{Page: cur}}})
+	if err != nil {
+		return SeqOutput{}, err
+	}
+	return SeqOutput{Seq: seq}, nil
+}
+
+type MovePageInput struct {
+	Id    string `json:"id"`
+	Index uint32 `json:"index" jsonschema:"the position in the page order, 0 = first (masters count too)"`
+}
+
+// MovePage moves a page to a position in the page order.
+func (s *Session) MovePage(ctx context.Context, in MovePageInput) (SeqOutput, error) {
+	seq, err := s.submit(ctx, &opendesignerv1.Op{Kind: &opendesignerv1.Op_MovePage{MovePage: &opendesignerv1.MovePage{Id: in.Id, Index: in.Index}}})
 	if err != nil {
 		return SeqOutput{}, err
 	}
@@ -613,8 +777,42 @@ func (s *Session) SetInstanceOverride(ctx context.Context, in SetInstanceOverrid
 // ---------------------------------------------------------------------------
 
 type PageView struct {
-	Id   string `json:"id"`
-	Name string `json:"name"`
+	Id       string `json:"id"`
+	Name     string `json:"name"`
+	IsMaster bool   `json:"isMaster,omitempty"`
+	MasterId string `json:"masterId,omitempty"`
+	// Page setup (0 / absent = none): a sized page is a sheet at the origin.
+	Width        float64 `json:"width,omitempty"`
+	Height       float64 `json:"height,omitempty"`
+	MarginTop    float64 `json:"marginTop,omitempty"`
+	MarginRight  float64 `json:"marginRight,omitempty"`
+	MarginBottom float64 `json:"marginBottom,omitempty"`
+	MarginLeft   float64 `json:"marginLeft,omitempty"`
+	Columns      uint32  `json:"columns,omitempty"`
+	Gutter       float64 `json:"gutter,omitempty"`
+	Bleed        float64 `json:"bleed,omitempty"`
+	Slug         float64 `json:"slug,omitempty"`
+	// Numbering and structure (omitted at their defaults).
+	SectionStart      bool        `json:"sectionStart,omitempty"`
+	NumberStart       uint32      `json:"numberStart,omitempty"`
+	NumberStyle       string      `json:"numberStyle,omitempty"`
+	LeftMasterId      string      `json:"leftMasterId,omitempty"`
+	HiddenMasterItems []string    `json:"hiddenMasterItems,omitempty"`
+	Guides            []GuideSpec `json:"guides,omitempty"`
+}
+
+func pageView(p *opendesignerv1.Page) PageView {
+	var guides []GuideSpec
+	for _, g := range p.GetGuides() {
+		guides = append(guides, GuideSpec{Vertical: g.GetVertical(), Position: g.GetPosition()})
+	}
+	return PageView{
+		Slug: p.GetSlug(), SectionStart: p.GetSectionStart(), NumberStart: p.GetNumberStart(), NumberStyle: p.GetNumberStyle(),
+		LeftMasterId: p.GetLeftMasterId(), HiddenMasterItems: p.GetHiddenMasterItems(), Guides: guides,
+		Id: p.GetId(), Name: p.GetName(), IsMaster: p.GetIsMaster(), MasterId: p.GetMasterId(),
+		Width: p.GetWidth(), Height: p.GetHeight(), MarginTop: p.GetMarginTop(), MarginRight: p.GetMarginRight(),
+		MarginBottom: p.GetMarginBottom(), MarginLeft: p.GetMarginLeft(), Columns: p.GetColumns(), Gutter: p.GetGutter(), Bleed: p.GetBleed(),
+	}
 }
 
 type ComponentView struct {
@@ -646,6 +844,13 @@ type NodeView struct {
 	Height   float64 `json:"height"`
 	Visible  bool    `json:"visible"`
 	Text     string  `json:"text,omitempty" jsonschema:"content, for text nodes"`
+	// EffectKinds: the kinds of the node's effects, in order (dropShadow, layerBlur, noise, glass...).
+	EffectKinds []string `json:"effectKinds,omitempty" jsonschema:"kinds of the node's effects in order; set them with set_properties effects"`
+	// Format: the text node's case / script / list / OpenType / box settings; absent when none is set.
+	Format *TextFormat `json:"format,omitempty" jsonschema:"text case, script, list, indent, fontFeatures, verticalAlign and inset of a text node; see set_text"`
+	// Rich text of a text node (see format_text).
+	ParagraphStyles []string       `json:"paragraphStyles,omitempty" jsonschema:"paragraph style id per paragraph; empty string = the node's own style"`
+	Runs            []TextRunInput `json:"runs,omitempty" jsonschema:"character styles over ranges of the content (UTF-16 units)"`
 	// AutoLayout is set for a frame that lays out its children. Their x/y and, for
 	// a hugging frame, its width/height are already the computed result.
 	AutoLayout *AutoLayoutSpec `json:"autoLayout,omitempty"`
@@ -705,6 +910,13 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 	}
 	if t := n.GetText(); t != nil {
 		v.Text = t.GetContent()
+		v.ParagraphStyles = t.GetParagraphStyles()
+		for _, r := range t.GetRuns() {
+			v.Runs = append(v.Runs, TextRunInput{Start: int(r.GetStart()), End: int(r.GetEnd()), StyleId: r.GetStyleId()})
+		}
+		if f := formatOf(t.GetStyle()); f.given() {
+			v.Format = &f
+		}
 	}
 	v.AutoLayout = autoLayoutView(n.GetFrame().GetAutoLayout())
 	if len(n.GetMeta()) > 0 {
@@ -717,6 +929,7 @@ func toNodeView(n *opendesignerv1.Node) NodeView {
 		v.Modes = n.GetModes()
 	}
 	v.TextStyleId = n.GetTextStyleId()
+	v.EffectKinds = effectKinds(n.GetEffects())
 	v.BlendMode = blendModeName(n.GetBlendMode())
 	v.IsMask = n.GetIsMask()
 	v.ConstraintX, v.ConstraintY = constraintNames[n.GetConstraintX()], constraintNames[n.GetConstraintY()]
@@ -747,6 +960,10 @@ type DocumentView struct {
 	Fonts         []FontView         `json:"fonts"`
 	TextStyles    []TextStyleView    `json:"textStyles"`
 	Nodes         []NodeView         `json:"nodes"`
+	// Settings: the vertical and the baseline grid; see set_document_settings.
+	Vertical          string  `json:"vertical" jsonschema:"publishing | design | product"`
+	BaselineIncrement float64 `json:"baselineIncrement,omitempty"`
+	BaselineStart     float64 `json:"baselineStart,omitempty"`
 }
 
 // GetDocument returns the whole synced document: pages, components and every
@@ -758,8 +975,10 @@ func (s *Session) GetDocument(ctx context.Context, _ struct{}) (DocumentView, er
 	defer s.mu.Unlock()
 	doc := s.doc
 	out := DocumentView{Id: doc.GetId(), Name: doc.GetName(), Seq: s.seq}
+	out.Vertical = verticalName(doc.GetSettings().GetVertical())
+	out.BaselineIncrement, out.BaselineStart = doc.GetSettings().GetBaselineIncrement(), doc.GetSettings().GetBaselineStart()
 	for _, p := range doc.GetPages() {
-		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName()})
+		out.Pages = append(out.Pages, pageView(p))
 	}
 	for id, c := range doc.GetComponents() {
 		out.Components = append(out.Components, componentView(id, c))
@@ -785,7 +1004,7 @@ func (s *Session) ListPages(ctx context.Context, _ struct{}) (ListPagesOutput, e
 	defer s.mu.Unlock()
 	var out ListPagesOutput
 	for _, p := range s.doc.GetPages() {
-		out.Pages = append(out.Pages, PageView{Id: p.GetId(), Name: p.GetName()})
+		out.Pages = append(out.Pages, pageView(p))
 	}
 	return out, nil
 }
@@ -862,11 +1081,13 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "create_frame", "Create a frame: a container with its own box. Optionally clipsContent, and autoLayout to have the server arrange its children in a row or column (the children's x/y are then computed for you). parentId defaults to the first page.", s.CreateFrame)
 	addTool(srv, "set_auto_layout", "Turn auto layout on, change it, or (autoLayout omitted) off for a frame. After every change the server repositions the frame's children; reposition by editing the layout, not the children's x/y, which it overrides.", s.SetAutoLayout)
 	addTool(srv, "create_text", "Create a text node with the given content. parentId defaults to the first page. Returns the new node id.", s.CreateText)
-	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}]. blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
-	addTool(srv, "set_text", "Set a text node's content, and optionally replace its style.", s.SetText)
+	addTool(srv, "set_properties", "Set absolute properties on a node (x/y/width/height/opacity/rotation/name/visible/cornerRadius/fills/effects). Effects (any number of shadows): [{kind:dropShadow|innerShadow,color,offsetX,offsetY,blur}|{kind:layerBlur|backgroundBlur,radius}|{kind:progressiveBlur,startRadius,endRadius,x1,y1,x2,y2,background}|{kind:noise,mode:mono|duo|multi,size,density,opacity,color,color2,seed}|{kind:texture,scale,intensity,seed}|{kind:glass,frost,light,lightAngle,noise}] (progressive blur, noise, texture and glass are described in docs/effects.md; noise, texture and glass draw on rect/ellipse/frame/image). blendMode: normal|multiply|screen|overlay|... (CSS names). isMask: true makes the shape a mask for the siblings above it. A fill is a solid {r,g,b,a} or a {gradient:{kind:linear|radial,stops,x1,y1,x2,y2}} in box-normalised coordinates. Only provided fields change.", s.SetProperties)
+	addTool(srv, "set_text", "Set a text node's content, and optionally change its style (only the fields you give change: size, family, weight, italic, lineHeight, textCase, script, list, indent, fontFeatures, verticalAlign, inset).", s.SetText)
 	addTool(srv, "delete_node", "Delete a node and its whole subtree.", s.DeleteNode)
 	addTool(srv, "reparent_node", "Move a node under a new parent (node or page), with an optional order key.", s.ReparentNode)
-	addTool(srv, "create_page", "Create a new page. Returns the new page id.", s.CreatePage)
+	addTool(srv, "create_page", "Create a new page (optionally a master page, or one that applies a master). Returns the new page id.", s.CreatePage)
+	addTool(srv, "update_page", "Change a page: turn it into a master page, apply or detach a master (masterId), or rename it. A master page is a template: its content is drawn behind every page that applies it, and a text with the token <#> shows the page number there. A master may be based on another master (a chain, no cycles); leftMasterId gives the left-hand pages of a spread their own master. A master in use cannot be deleted or demoted. Also sets numbering (sectionStart / numberStart / numberStyle), slug, ruler guides and the master items hidden on the page.", s.UpdatePage)
+	addTool(srv, "move_page", "Move a page to a position in the page order.", s.MovePage)
 	addTool(srv, "delete_page", "Delete a page and every node under it. The last page cannot be deleted.", s.DeletePage)
 	addTool(srv, "rename_page", "Rename a page.", s.RenamePage)
 	addTool(srv, "create_component", "Register an existing node subtree as a component master. Returns the new component id.", s.CreateComponent)
@@ -879,6 +1100,8 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "list_peers", "List the other people and agents in the document and the nodes each has selected or just edited. Use it to avoid editing what someone else is working on.", s.ListPeers)
 	addTool(srv, "list_components", "List the document's components.", s.ListComponents)
 	registerFlowTools(srv, s)
+	registerThreadTools(srv, s)
+	registerDocSettingsTools(srv, s)
 	registerAnimationTools(srv, s)
 	registerVariableTools(srv, s)
 	registerTypographyTools(srv, s)

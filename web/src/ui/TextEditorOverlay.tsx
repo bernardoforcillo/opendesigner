@@ -2,7 +2,7 @@ import { useCallback, useEffect, useLayoutEffect, useRef, useState } from "react
 import { useScene } from "../store/store";
 import { worldToScreen } from "../canvas/camera";
 import { applyTransform, worldTransformOf } from "../canvas/transform";
-import { makeSetTextOp } from "../tools/ops";
+import { makeSetTextOp, trimEmpty } from "../tools/ops";
 import { cssColor } from "../renderer/canvasRenderer";
 import {
   DEFAULT_FONT_FAMILY,
@@ -10,7 +10,10 @@ import {
   fontSizeOf,
   lineHeightOf,
 } from "../renderer/text";
-import type { NodeLite } from "../store/types";
+import type { NodeLite, TextRunLite } from "../store/types";
+import { applyParagraphRange, applyRun, paragraphsTouched, reconcileRich } from "../store/richText";
+import { isThreaded } from "../store/threads";
+import { cls } from "./ds";
 
 // TEXT EDITING — a DOM <textarea> overlaid on the node.
 //
@@ -98,16 +101,23 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   // content -- photographed on entry and never re-read from the store, which in the
   // meantime contains the previews.
   const [value, setValue] = useState(() => contentOf(node));
-  const session = useRef({ id: nodeId, start: value, value });
+  // The formatting travels with the text: paragraph styles and character-style runs, kept attached to
+  // their characters while the text changes (store/richText.ts::reconcileRich).
+  const richOf = (n: NodeLite | undefined) => ({ paragraphStyles: [...(n?.text?.paragraphStyles ?? [])], runs: (n?.text?.runs ?? []).map((r) => ({ ...r })) });
+  const session = useRef({ id: nodeId, start: value, value, startRich: richOf(node), rich: richOf(node) });
   if (session.current.id !== nodeId) {
     // The parent reused the overlay for ANOTHER node instead of remounting it.
     // Today it does not happen (the blur always closes the session before a new
     // one opens), but a session that continues with another's starting
     // text would write the wrong content on the wrong node.
     const start = contentOf(node);
-    session.current = { id: nodeId, start, value: start };
+    session.current = { id: nodeId, start, value: start, startRich: richOf(node), rich: richOf(node) };
     setValue(start);
   }
+  const [selection, setSelection] = useState({ start: 0, end: 0 });
+  const bar = useRef<HTMLDivElement | null>(null);
+  const scene = useScene((s) => s.scene);
+  const [, bump] = useState(0);
 
   // Closes the session. `commit` = write (normal exit), otherwise cancel
   // (Escape). In both cases the gesture closes and is ONE undo entry: the
@@ -117,11 +127,13 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
       if (done.current) return;
       done.current = true;
       const store = useScene.getState();
-      const { start, value: text } = session.current;
+      const { start, value: text, rich, startRich } = session.current;
       if (commit) {
         // No change = no op: entering a text and leaving it without
         // touching it must neither travel on the network nor consume a Ctrl+Z.
-        store.endGesture(text === start ? [] : [makeSetTextOp(nodeId, text)]);
+        const same = (r: typeof rich) => JSON.stringify({ p: trimEmpty(r.paragraphStyles), r: r.runs });
+        const richChanged = same(rich) !== same(startRich);
+        store.endGesture(text === start && !richChanged ? [] : [makeSetTextOp(nodeId, text, undefined, rich)]);
       } else {
         store.cancelGesture();
       }
@@ -176,14 +188,54 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
     el.style.height = `${Math.max(minHeight, el.scrollHeight)}px`;
   });
 
+  // LIVE preview on the canvas (and in everything that reads the scene: panels,
+  // handles). It does not go on the wire: it is the gesture that sends the final op, a single one.
+  // setText previews coalesce per node (store.ts::previewKey),
+  // so a long session does not accumulate an op per key.
+  const preview = () => {
+    const { value: v, rich } = session.current;
+    useScene.getState().applyLocal(makeSetTextOp(nodeId, v, undefined, rich));
+  };
+
   const change = (next: string) => {
-    session.current.value = next;
+    const cur = session.current;
+    if (scene && node?.text && (cur.rich.paragraphStyles.length > 0 || cur.rich.runs.length > 0)) {
+      const r = reconcileRich(scene, { content: cur.value, style: node.text.style, paragraphStyles: cur.rich.paragraphStyles, runs: cur.rich.runs }, next);
+      cur.rich = { paragraphStyles: r.paragraphStyles ?? [], runs: r.runs ?? [] };
+    }
+    cur.value = next;
     setValue(next);
-    // LIVE preview on the canvas (and in everything that reads the scene: panels,
-    // handles). It does not go on the wire: it is the gesture that sends the final op, a single one.
-    // setText previews coalesce per node (store.ts::previewKey),
-    // so a long session does not accumulate an op per key.
-    useScene.getState().applyLocal(makeSetTextOp(nodeId, next));
+    preview();
+  };
+
+  // The style pickers act on the selection (or the caret's paragraph). The textarea keeps its
+  // selection while a picker has the focus; it gets the focus back after the choice.
+  const refocus = (a: number, b: number) => {
+    const el = ref.current;
+    if (!el) return;
+    el.focus();
+    el.setSelectionRange(a, b);
+  };
+  const pickParagraph = (styleId: string) => {
+    const cur = session.current;
+    const t = paragraphsTouched(cur.value, selection.start, selection.end);
+    cur.rich = { ...cur.rich, paragraphStyles: applyParagraphRange(cur.rich.paragraphStyles, cur.value.replace(/\r\n?/g, "\n").split("\n").length, t.from, t.to, styleId) };
+    bump((n) => n + 1);
+    preview();
+    refocus(selection.start, selection.end);
+  };
+  const pickCharacter = (styleId: string) => {
+    const cur = session.current;
+    if (selection.end <= selection.start) return;
+    cur.rich = { ...cur.rich, runs: applyRun(cur.rich.runs, selection.start, selection.end, styleId) as TextRunLite[] };
+    bump((n) => n + 1);
+    preview();
+    refocus(selection.start, selection.end);
+  };
+  const leaves = (e: { relatedTarget: EventTarget | null }) => {
+    const to = e.relatedTarget as Node | null;
+    if (to && (ref.current?.contains(to) || bar.current?.contains(to))) return;
+    finish(true);
   };
 
   if (!node || !editable) return null;
@@ -205,7 +257,36 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
   // In px from the field's top-left corner, which is the node's origin.
   const transformOrigin = `${width / 2}px ${minHeight / 2}px`;
 
+  const paragraphDefs = scene ? Object.values(scene.textStyles).filter((d) => d.kind !== "character").sort((a, b) => a.name.localeCompare(b.name)) : [];
+  const characterDefs = scene ? Object.values(scene.textStyles).filter((d) => d.kind === "character").sort((a, b) => a.name.localeCompare(b.name)) : [];
+  // A threaded story is laid out as plain text (the flow is derived from its content alone).
+  const showBar = !!scene && (paragraphDefs.length > 0 || characterDefs.length > 0) && !isThreaded(scene, nodeId);
+  const touched = paragraphsTouched(value, selection.start, selection.end);
+  const paraValue = session.current.rich.paragraphStyles[touched.from] ?? "";
+  const charValue = session.current.rich.runs.find((r) => r.start <= selection.start && selection.start < r.end)?.styleId ?? "";
+
   return (
+    <>
+    {showBar && (
+      <div
+        ref={bar}
+        role="group"
+        aria-label="Text styles"
+        onBlur={leaves}
+        className="absolute z-10 flex items-center gap-1.5 rounded-md border border-line bg-raised p-1 shadow-pop"
+        style={{ left: `${origin.x}px`, top: `${Math.max(0, origin.y - 38)}px` }}
+      >
+        <select aria-label="Paragraph style" className={cls.select} value={paraValue} onChange={(e) => pickParagraph(e.target.value)}>
+          <option value="">No paragraph style</option>
+          {paragraphDefs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+        <select aria-label="Character style" className={cls.select} value={charValue} disabled={selection.end <= selection.start}
+          onChange={(e) => pickCharacter(e.target.value)}>
+          <option value="">No character style</option>
+          {characterDefs.map((d) => <option key={d.id} value={d.id}>{d.name}</option>)}
+        </select>
+      </div>
+    )}
     <textarea
       ref={ref}
       aria-label="Text content"
@@ -216,7 +297,8 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
       // commits. It is also the safety net for the cases nobody handles --
       // the window losing focus must not be able to lose what the
       // user wrote.
-      onBlur={() => finish(true)}
+      onBlur={leaves}
+      onSelect={(e) => setSelection({ start: e.currentTarget.selectionStart, end: e.currentTarget.selectionEnd })}
       // IME composition (Japanese, Chinese, Korean, but also mobile
       // predictive keyboards): between compositionstart and compositionend the keys
       // belong to the IME, not to us. See the guard in onKeyDown.
@@ -257,6 +339,8 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
         fontSize: `${fontSize}px`,
         lineHeight: `${lineHeight}px`,
         textAlign: style?.align ?? "left",
+        // Tracking, so the field wraps where the canvas will.
+        letterSpacing: style?.letterSpacing ? `${style.letterSpacing * camera.zoom}px` : undefined,
         color: cssColor(node),
         // The node's OPACITY is NOT carried over here: it would make
         // the whole field semi-transparent, background included, and the text drawn
@@ -279,5 +363,6 @@ export function TextEditorOverlay({ nodeId }: TextEditorOverlayProps) {
         outlineOffset: "0px",
       }}
     />
+    </>
   );
 }

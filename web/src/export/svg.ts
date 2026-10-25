@@ -1,12 +1,13 @@
 import type { EffectLite, FillLite, NodeLite } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
-import { fontFamilyOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
+import { fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
 import { meshBitmap } from "../renderer/mesh";
 import { encodePng, pngDataUri } from "./rawPng";
+import { FX_TILE, overlayEffects, overlayTile, progressiveBlur, tileUnit, withExpandedGlass } from "../renderer/effectsFx";
 
 // SVG EXPORT — markup from the NODES.
 //
@@ -117,10 +118,14 @@ function paintAttrs(n: NodeLite, defs: string[]): (Attr | null)[] {
 // standard deviation. The filter region is in document coordinates,
 // wide enough to contain offset and blur: the default (-10%/120%)
 // would crop a distant shadow.
+//
+// A progressive layer blur cannot be a filter (SVG blurs are uniform): it is exported as a
+// uniform blur of the mean radius of its ramp. Background blur has no standalone-SVG form.
 function effectsRef(n: NodeLite, defs: string[]): string | null {
   const shadows = n.effects?.filter((e): e is Extract<EffectLite, { kind: "dropShadow" }> => e.kind === "dropShadow") ?? [];
   const shadow = firstShadow(n);
-  const blur = firstBlur(n);
+  const prog = progressiveBlur(n, false);
+  const blur = firstBlur(n) ?? (prog ? { kind: "layerBlur" as const, radius: (prog.startRadius + prog.endRadius) / 2 } : undefined);
   const inners = n.effects?.filter((e): e is Extract<EffectLite, { kind: "innerShadow" }> => e.kind === "innerShadow") ?? [];
   if (!shadow && !blur && inners.length === 0) return null;
   const id = `f${defs.length}`;
@@ -322,11 +327,34 @@ function ellipseElement(n: NodeLite, defs: string[]): string {
 function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string {
   const style = n.text?.style;
   if (!style) return "";
-  const lines = placeTextLines((s) => measure(s, style), n);
+  const lines = placeTextLines((s) => measure(s, style), n, (st) => (s) => measure(s, st));
   if (lines.length === 0) return "";
+  // A rich line is one <tspan> per piece (each with its own x, font and decoration); the first
+  // carries the line's y, and so does every other: an absolute y per piece keeps the baseline shared.
+  // A plain line made of runs (small caps, scripts, a list marker) is one tspan per piece, at its own size.
+  const plainDecoration = [style.underline ? "underline" : "", style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
   const spans = lines
-    .map((l) => `<tspan${attrs([attr("x", l.x), attr("y", l.y)])}>${esc(l.text)}</tspan>`)
+    .flatMap((l) => l.pieces
+      ? l.pieces.map((g) => `<tspan${attrs([
+          attr("x", g.x), attr("y", g.y), g.scale === 1 ? null : attr("font-size", fontSizeOf(style) * g.scale),
+          plainDecoration ? attr("text-decoration", plainDecoration) : null,
+        ])}>${esc(g.text)}</tspan>`)
+      : (l.segments ?? [{ text: l.text, x: l.x, width: l.width, style }]).map((seg) => {
+        const own = l.segments !== undefined;
+        const decoration = [seg.style.underline ? "underline" : "", seg.style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
+        return `<tspan${attrs([
+          attr("x", seg.x), attr("y", l.y),
+          ...(own && fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
+          ...(own && fontSizeOf(seg.style) !== fontSizeOf(style) ? [attr("font-size", fontSizeOf(seg.style))] : []),
+          ...(own && fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),
+          ...(own && !!seg.style.italic !== !!style.italic ? [attr("font-style", seg.style.italic ? "italic" : "normal")] : []),
+          ...(decoration ? [attr("text-decoration", decoration)] : []),
+          ...(own && (seg.style.letterSpacing ?? 0) !== (style.letterSpacing ?? 0) ? [attr("letter-spacing", seg.style.letterSpacing ?? 0)] : []),
+        ])}>${esc(seg.text)}</tspan>`;
+      }),
+    )
     .join("");
+  const features = fontFeaturesOf(style);
   // xml:space="preserve" serves a line's LEADING spaces, which the canvas
   // draws and which SVG would otherwise collapse. The price is that every whitespace
   // INSIDE <text> becomes drawn: that is why the tspans are attached
@@ -336,6 +364,8 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
     ...(style.italic ? [attr("font-style", "italic")] : []),
+    features === "" ? null : attr("style", `font-feature-settings:${features}`),
+    ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
     ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans}</text>`;
 }
@@ -403,7 +433,39 @@ function imagePlaceholderElement(n: NodeLite): string {
   return `<g${attrs([n.opacity === 1 ? null : attr("opacity", n.opacity)])}>${body}</g>`;
 }
 
-function element(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs: string[]): string {
+// Noise and texture: the same seeded tile the canvas draws (renderer/effectsFx.ts), embedded as a
+// PNG <pattern> (pixelated, one tile pixel = one grain) over a copy of the node's outline.
+function overlayElements(n: NodeLite, defs: string[]): string {
+  if (!(n.width > 0) || !(n.height > 0)) return "";
+  const r = n.kind === "rect" ? Math.min(n.cornerRadius, n.width / 2, n.height / 2) : 0;
+  return overlayEffects(n).map((e) => {
+    const u = tileUnit(e);
+    const id = `p${defs.length}`;
+    const side = FX_TILE * u;
+    defs.push(
+      `<pattern${attrs([attr("id", id), attr("x", n.x), attr("y", n.y), attr("width", side), attr("height", side)])} patternUnits="userSpaceOnUse">` +
+      `<image${attrs([
+        attr("href", pngDataUri(encodePng(FX_TILE, FX_TILE, overlayTile(e)))), attr("x", 0), attr("y", 0), attr("width", side), attr("height", side),
+        { name: "preserveAspectRatio", value: "none" }, attr("style", "image-rendering:pixelated"),
+      ])}/></pattern>`,
+    );
+    const paint = [attr("fill", `url(#${id})`), n.opacity === 1 ? null : attr("opacity", n.opacity)];
+    return n.kind === "ellipse"
+      ? `<ellipse${attrs([attr("cx", n.x + n.width / 2), attr("cy", n.y + n.height / 2), attr("rx", n.width / 2), attr("ry", n.height / 2), ...paint])}/>`
+      : `<rect${attrs([attr("x", n.x), attr("y", n.y), attr("width", n.width), attr("height", n.height), r > 0 ? attr("rx", r) : null, ...paint])}/>`;
+  }).join("");
+}
+
+function element(node: NodeLite, measure: MeasureText, href: ResolveImageHref, defs: string[]): string {
+  // Glass is exported as the effects it is made of; noise and texture are drawn on top of
+  // boxes, ellipses, frames and images (not text or vectors, which have no outline).
+  const n = withExpandedGlass(node);
+  const base = elementBody(n, measure, href, defs);
+  const overlay = base !== "" && n.kind !== "text" && n.kind !== "vector" ? overlayElements(n, defs) : "";
+  return overlay === "" ? base : base + overlay;
+}
+
+function elementBody(n: NodeLite, measure: MeasureText, href: ResolveImageHref, defs: string[]): string {
   if (n.kind === "text") return textElement(n, measure, defs);
   if (n.kind === "ellipse") return ellipseElement(n, defs);
   if (n.kind === "vector") return vectorElement(n, defs);

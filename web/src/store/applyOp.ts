@@ -10,11 +10,15 @@ import { recordDelta } from "./sceneDelta";
 import { carryRenames, cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
 import { areValidLayoutGrids } from "./layoutGrids";
+import { areValidEffects } from "./effects";
 import { arePaintsValid } from "./paints";
 import { isValidComment, withoutComment } from "./comments";
 import { areValidBindings, areValidModes, dropRemovedModes, isValidCollection, isValidVariable, unbindNodes, withAliases } from "./variables";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 import { isValidInstanceBody } from "./instanceOps";
+import { clampRich, isValidRich, richFields } from "./richText";
+import { isValidDocSettings, isValidPageSetup, toDocSettings } from "./docSettings";
+import { deletePageAllowed, masterFieldsValid, pageOf, updatePageAllowed } from "./masters";
 
 // A SetProperties WITHOUT a patch is NOT a no-op. Go reads the patch with protobuf's
 // nil-safe getters (`p.GetX()` on a nil *Node returns the field's zero),
@@ -144,6 +148,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (paths.includes("layout_grids") && (cur.kind !== "frame" || !areValidLayoutGrids(p.layoutGrids))) return state;
       if ((paths.includes("fills") || paths.includes("strokes")) && !arePaintsValid(p.fills, p.strokes)) return state;
       if (paths.includes("blend_mode") && !(p.blendMode >= 0 && p.blendMode <= 15)) return state;
+      if (paths.includes("effects") && !areValidEffects(p.effects)) return state;
       if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
       if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;
       for (const lim of ["min_width", "max_width", "min_height", "max_height"] as const) {
@@ -301,10 +306,17 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       // keystroke would bring the font to 0). The flag takes precedence
       // over the presence of the sub-message: a `style` with stylePresent=false
       // must be ignored, exactly as Go does, reading only GetStylePresent().
-      const text = {
+      const { paragraphStyles, runs, richPresent } = op.kind.value;
+      // Rich text (parity with core.applySetText): with richPresent the lists replace the node's and are
+      // validated first -- a rejection changes nothing; without it they follow the new content.
+      if (richPresent && !isValidRich(state, content, paragraphStyles, runs)) return state;
+      const base = {
         content,
         style: stylePresent ? toTextStyleLite(style) : cur.text.style,
       };
+      const text = richPresent
+        ? { ...base, ...richFields(paragraphStyles, runs) }
+        : clampRich({ ...base, ...(cur.text.paragraphStyles ? { paragraphStyles: cur.text.paragraphStyles } : {}), ...(cur.text.runs ? { runs: cur.text.runs } : {}) });
       return { ...state, nodes: state.nodes.set(id, { ...cur, text }) };
     }
     // Dedicated op and not a mask path, for the same reason as setText: the
@@ -378,7 +390,35 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (!page || page.id === "" || parentExists(state, page.id)) return state;
       // At the END, like Go: the position in the list is the order of the page
       // selector, not a property of the document.
-      return { ...state, pages: [...state.pages, { id: page.id, name: page.name }] };
+      const created = pageOf(page);
+      if (!masterFieldsValid(state.pages, created)) return state; // ErrBadMaster
+      if (!isValidPageSetup(created)) return state;               // ErrBadPageSetup
+      return { ...state, pages: [...state.pages, created] };
+    }
+    // Moves a page to `index` of the page order. Parity with core.applyMovePage.
+    case "movePage": {
+      const { id, index } = op.kind.value;
+      const i = state.pages.findIndex((p) => p.id === id);
+      if (i < 0 || index >= state.pages.length) return state;
+      const rest = state.pages.filter((p) => p.id !== id);
+      return { ...state, pages: [...rest.slice(0, index), state.pages[i], ...rest.slice(index)] };
+    }
+    // Absolute upsert of the document settings (vertical, baseline grid). Parity with core.applySetDocSettings.
+    case "setDocSettings": {
+      const s = op.kind.value.settings;
+      if (!s || !isValidDocSettings(s)) return state;
+      const settings = toDocSettings(s);
+      const { settings: _drop, ...rest } = state;
+      void _drop;
+      return Object.keys(settings).length > 0 ? { ...rest, settings } : rest;
+    }
+    // Absolute upsert of a page's name / master flag / applied master / sheet setup. Parity with core.applyUpdatePage.
+    case "updatePage": {
+      const page = op.kind.value.page;
+      if (!page || page.id === "") return state;
+      const next = pageOf(page);
+      if (!updatePageAllowed(state.pages, next)) return state;
+      return { ...state, pages: state.pages.map((p) => (p.id === next.id ? next : p)) };
     }
     // Deletes the page AND ALL the nodes hanging under it. Same cascade as
     // deleteNode brought to the root: what is not reachable from any
@@ -388,9 +428,9 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const { id } = op.kind.value;
       const i = state.pages.findIndex((p) => p.id === id);
       if (i < 0) return state;                    // ErrPageNotFound
-      // The LAST page is not deleted: without pages no valid parent
-      // exists, so no node could be created anymore. ErrLastPage.
-      if (state.pages.length === 1) return state;
+      // The LAST regular page is not deleted (without pages no valid parent exists), and a master
+      // that pages still apply is not deleted either: ErrLastPage / ErrMasterInUse.
+      if (!deletePageAllowed(state.pages, id)) return state;
       const nodes = state.nodes.edit();
       const gone = new Set<string>();
       for (const root of childrenOf(state, id)) {
@@ -591,7 +631,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     }
     case "setTextStyleDef": {
       const d = op.kind.value.textStyle;
-      if (!isValidTextStyleDef(d)) return state;
+      if (!isValidTextStyleDef(state, d)) return state;
       return { ...state, textStyles: { ...state.textStyles, [d.id]: toTextStyleDefLite(d) } };
     }
     case "deleteTextStyleDef": {

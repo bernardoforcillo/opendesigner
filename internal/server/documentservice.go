@@ -13,6 +13,7 @@ import (
 	"connectrpc.com/connect"
 	opendesignerv1 "github.com/bernardoforcillo/opendesigner/gen/opendesigner/v1"
 	"github.com/bernardoforcillo/opendesigner/internal/codegen"
+	"github.com/bernardoforcillo/opendesigner/internal/core"
 	"github.com/bernardoforcillo/opendesigner/internal/diagram"
 	"github.com/bernardoforcillo/opendesigner/internal/figimport"
 	"github.com/bernardoforcillo/opendesigner/internal/flow"
@@ -38,7 +39,10 @@ func (s *DocumentService) CreateDocument(_ context.Context, req *connect.Request
 	if name == "" {
 		name = "Untitled"
 	}
-	info, err := s.m.Create(name)
+	info, err := s.m.Create(name, req.Msg.GetVertical())
+	if errors.Is(err, core.ErrBadVertical) {
+		return nil, connect.NewError(connect.CodeInvalidArgument, err)
+	}
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInternal, err)
 	}

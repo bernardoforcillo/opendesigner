@@ -3,6 +3,8 @@ import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import { toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbFlow, toPbInstanceOverride, toPbInstance, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import { pageToPb } from "../store/masters";
+import type { DocSettingsLite, PageLite } from "../store/types";
 import type { CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, VariableLite, FlowLite, InstanceLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
@@ -55,15 +57,38 @@ export function makeSetPropsOp(
 // says "touch the style too". Passing it without a style would zero the font;
 // passing a style without the flag would make both
 // implementations ignore it. Here the two cases are not even expressible.
-export function makeSetTextOp(id: string, content: string, style?: TextStyleLite): Op {
+//
+// With `rich` the node's paragraph styles and character-style runs are replaced too (richPresent);
+// without it they stay, adjusted to the new content by the core.
+export function trimEmpty(list: readonly string[]): string[] {
+  let n = list.length;
+  while (n > 0 && list[n - 1] === "") n--;
+  return list.slice(0, n);
+}
+
+export function makeSetTextOp(
+  id: string,
+  content: string,
+  style?: TextStyleLite,
+  rich?: { paragraphStyles: readonly string[]; runs: readonly { start: number; end: number; styleId: string }[] },
+): Op {
   return create(OpSchema, {
     opId: uuid(),
     docId: docId(),
     kind: {
       case: "setText",
-      value: style
-        ? { id, content, style: toPbTextStyle(style), stylePresent: true }
-        : { id, content },
+      value: {
+        id, content,
+        ...(style ? { style: toPbTextStyle(style), stylePresent: true } : {}),
+        ...(rich
+          ? {
+              richPresent: true,
+              // Trailing "" entries mean nothing: they are left out.
+              paragraphStyles: trimEmpty(rich.paragraphStyles),
+              runs: rich.runs.map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })),
+            }
+          : {}),
+      },
     },
   });
 }
@@ -118,6 +143,32 @@ export function makeDeleteOp(id: string): Op {
 // it (setCurrentPage), without waiting for the echo.
 export function makeCreatePageOp(id: string, name: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: { id, name } } } });
+}
+
+/** A page with its master and sheet setup (see store/masters.ts, store/docSettings.ts). */
+export function makeCreatePageWithMasterOp(id: string, name: string, opts: Omit<PageLite, "id" | "name">): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "createPage", value: { page: pageToPb({ id, name, ...opts }) } } });
+}
+
+/**
+ * Absolute upsert of a page: name, master flag, applied master AND sheet setup. It replaces the whole
+ * page, so callers pass the page as it is with their change applied -- `{ ...page, masterId }`.
+ */
+export function makeUpdatePageOp(p: PageLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "updatePage", value: { page: pageToPb(p) } } });
+}
+
+/** Moves a page to `index` of the page order. */
+export function makeMovePageOp(id: string, index: number): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "movePage", value: { id, index } } });
+}
+
+/** Absolute upsert of the document settings (vertical, baseline grid). */
+export function makeSetDocSettingsOp(s: DocSettingsLite): Op {
+  return create(OpSchema, {
+    opId: uuid(), docId: docId(),
+    kind: { case: "setDocSettings", value: { settings: { vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0, facingPages: s.facingPages === true } } },
+  });
 }
 
 export function makeDeletePageOp(id: string): Op {

@@ -2,6 +2,8 @@ import type { Camera } from "../canvas/camera";
 import { type Bounds, worldAabbOfNode } from "../canvas/geometry";
 import type { SceneState } from "../store/types";
 import { snapPositions } from "../store/layoutGrids";
+import { pageGuideBoxes } from "../store/docSettings";
+import { effectiveGuides, isLeftPage } from "../store/masters";
 
 // SNAP — AUTOMATIC ALIGNMENT DURING A GESTURE.
 //
@@ -308,9 +310,11 @@ export function prepareSnapTargets(targets: readonly Bounds[]): SnapIndex {
 // The rectangles that can be snapped to: every VISIBLE node that is not being
 // moved. Invisible means not seen, and snapping to a line that
 // is not there is indistinguishable from a snap for no reason.
-export function snapTargets(scene: SceneState, exclude: readonly string[]): Bounds[] {
+export function snapTargets(scene: SceneState, exclude: readonly string[], pageId?: string | null): Bounds[] {
   const skip = new Set(exclude);
-  const out: Bounds[] = [];
+  // The guides of the page on screen (sheet edges, margins, columns, baseline grid) are snap targets too.
+  const page = scene.pages.find((p) => p.id === (pageId ?? scene.pages[0]?.id));
+  const out: Bounds[] = page ? pageGuideBoxes(page, scene.settings, { left: isLeftPage(scene, page), guides: effectiveGuides(scene, page) }) : [];
   for (const n of [...scene.nodes.values()]) {
     if (!n.visible || skip.has(n.id)) continue;
     out.push(worldAabbOfNode(n));

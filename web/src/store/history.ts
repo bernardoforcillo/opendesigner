@@ -10,6 +10,8 @@ import { isValidFont, isValidTextStyleDef } from "./typography";
 import { assignmentValid, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer, renameChoice, reverseRenames } from "./components";
 import { childrenOf, isAncestorOf, parentExists, subtreeOf } from "./tree";
 import { isValidInstanceBody } from "./instanceOps";
+import { deletePageAllowed, masterFieldsValid, pageOf, pageToPb, updatePageAllowed } from "./masters";
+import { isValidDocSettings, isValidPageSetup } from "./docSettings";
 
 // Undo primitives: given the state BEFORE an op, the op that undoes it.
 //
@@ -155,6 +157,10 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
             content: prev.text.content,
             style: toPbTextStyle(prev.text.style),
             stylePresent: true,
+            // The formatting too, always: an op that changed the content may have clamped it.
+            paragraphStyles: prev.text.paragraphStyles ?? [],
+            runs: (prev.text.runs ?? []).map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })),
+            richPresent: true,
           },
         },
       })];
@@ -177,9 +183,38 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // page or by a NODE: parentExists answers "yes" for both, and the
       // collision with a node counts as much as that with a page (ErrPageExists).
       if (!page || page.id === "" || parentExists(scene, page.id)) return null;
+      if (!masterFieldsValid(scene.pages, pageOf(page)) || !isValidPageSetup(pageOf(page))) return null; // ErrBadMaster / ErrBadPageSetup
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
         kind: { case: "deletePage", value: { id: page.id } },
+      })];
+    }
+    // The inverse of an upsert is the previous settings.
+    case "setDocSettings": {
+      const s = op.kind.value.settings;
+      if (!s || !isValidDocSettings(s)) return null;
+      const prev = scene.settings ?? {};
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "setDocSettings", value: { settings: { vertical: prev.vertical ?? "", baselineIncrement: prev.baselineIncrement ?? 0, baselineStart: prev.baselineStart ?? 0, facingPages: prev.facingPages === true } } },
+      })];
+    }
+    // The inverse of a move is moving the page back to where it was.
+    case "movePage": {
+      const { id, index } = op.kind.value;
+      const from = scene.pages.findIndex((p) => p.id === id);
+      if (from < 0 || index >= scene.pages.length) return null;
+      return [create(OpSchema, { opId: newOpId(), docId: op.docId, kind: { case: "movePage", value: { id, index: from } } })];
+    }
+    // The inverse of an upsert is the previous page. null when applyOp would reject the op.
+    case "updatePage": {
+      const page = op.kind.value.page;
+      if (!page || page.id === "") return null;
+      const prev = scene.pages.find((p) => p.id === page.id);
+      if (!prev || !updatePageAllowed(scene.pages, pageOf(page))) return null;
+      return [create(OpSchema, {
+        opId: newOpId(), docId: op.docId,
+        kind: { case: "updatePage", value: { page: pageToPb(prev) } },
       })];
     }
     case "deletePage": {
@@ -187,7 +222,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       const page = scene.pages.find((p) => p.id === id);
       // Nonexistent page (ErrPageNotFound) or LAST page (ErrLastPage): in
       // both cases applyOp leaves the scene unchanged.
-      if (!page || scene.pages.length === 1) return null;
+      if (!page || !deletePageAllowed(scene.pages, id)) return null;
       // First the page, then every node the cascade is about to take away. I use
       // the PRE-apply `scene` that invertOp receives to enumerate those nodes with the
       // SAME visit as applyDeletePage (childrenOf for the page roots,
@@ -198,7 +233,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
       // half done, worse than an undo that cannot be done.
       const ops: Op[] = [create(OpSchema, {
         opId: newOpId(), docId: op.docId,
-        kind: { case: "createPage", value: { page: { id: page.id, name: page.name } } },
+        kind: { case: "createPage", value: { page: pageToPb(page) } },
       })];
       const gone = new Set<string>();
       for (const root of childrenOf(scene, id)) {
@@ -489,7 +524,7 @@ export function invertOp(scene: SceneState, op: Op): Op[] | null {
     }
     case "setTextStyleDef": {
       const d = op.kind.value.textStyle;
-      if (!isValidTextStyleDef(d)) return null;
+      if (!isValidTextStyleDef(scene, d)) return null;
       const prev = scene.textStyles[d.id];
       return [create(OpSchema, {
         opId: newOpId(), docId: op.docId,

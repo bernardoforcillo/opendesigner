@@ -253,6 +253,214 @@ func TestTextAndPagesAndComponents(t *testing.T) {
 	}
 }
 
+// TestMasterPages covers create_page(isMaster) and update_page.
+func TestMasterPages(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	m, err := sess.CreatePage(ctx, odmcp.CreatePageInput{Name: "A-Master", IsMaster: true})
+	if err != nil {
+		t.Fatalf("CreatePage master: %v", err)
+	}
+	apply := m.PageId
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: "page1", MasterId: &apply}); err != nil {
+		t.Fatalf("UpdatePage apply: %v", err)
+	}
+	pages, _ := sess.ListPages(ctx, struct{}{})
+	for _, p := range pages.Pages {
+		if p.Id == "page1" && p.MasterId != apply {
+			t.Fatalf("page1 = %+v, want master %s", p, apply)
+		}
+		if p.Id == apply && (!p.IsMaster || p.Name != "A-Master") {
+			t.Fatalf("master = %+v", p)
+		}
+	}
+	// A master in use cannot be deleted: the hub rejects it.
+	if _, err := sess.DeletePage(ctx, odmcp.PageIdInput{Id: apply}); err == nil {
+		t.Fatal("deleting a master in use should fail")
+	}
+	none := ""
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: "page1", MasterId: &none}); err != nil {
+		t.Fatalf("UpdatePage detach: %v", err)
+	}
+	if _, err := sess.DeletePage(ctx, odmcp.PageIdInput{Id: apply}); err != nil {
+		t.Fatalf("delete of a detached master: %v", err)
+	}
+}
+
+// TestPageStructure covers master chains, numbering, guides, facing pages and move_page.
+func TestPageStructure(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	base, _ := sess.CreatePage(ctx, odmcp.CreatePageInput{Name: "Base", IsMaster: true})
+	left, err := sess.CreatePage(ctx, odmcp.CreatePageInput{Name: "Left", IsMaster: true, MasterId: base.PageId})
+	if err != nil {
+		t.Fatalf("a master based on a master: %v", err)
+	}
+	style, start, slug, lm := "i", uint32(3), 9.0, left.PageId
+	guides := []odmcp.GuideSpec{{Vertical: true, Position: 40}}
+	hidden := []string{"logo"}
+	sec := true
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: "page1", PageSetup: odmcp.PageSetup{
+		NumberStyle: &style, NumberStart: &start, Slug: &slug, LeftMasterId: &lm, Guides: &guides, HiddenMasterItems: &hidden, SectionStart: &sec,
+	}}); err != nil {
+		t.Fatalf("UpdatePage structure: %v", err)
+	}
+	pages, _ := sess.ListPages(ctx, struct{}{})
+	var p1 odmcp.PageView
+	for _, p := range pages.Pages {
+		if p.Id == "page1" {
+			p1 = p
+		}
+	}
+	if p1.NumberStyle != "i" || p1.NumberStart != 3 || p1.Slug != 9 || p1.LeftMasterId != left.PageId || len(p1.Guides) != 1 || !p1.Guides[0].Vertical || p1.HiddenMasterItems[0] != "logo" || !p1.SectionStart {
+		t.Fatalf("page1 = %+v", p1)
+	}
+	bad := "x"
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: "page1", PageSetup: odmcp.PageSetup{NumberStyle: &bad}}); err == nil {
+		t.Fatal("an unknown number style should be refused")
+	}
+	// The base master is in use by the left master.
+	if _, err := sess.DeletePage(ctx, odmcp.PageIdInput{Id: base.PageId}); err == nil {
+		t.Fatal("a base master in use should not be deleted")
+	}
+	facing := true
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{FacingPages: &facing}); err != nil {
+		t.Fatalf("facing pages: %v", err)
+	}
+	if _, err := sess.MovePage(ctx, odmcp.MovePageInput{Id: "page1", Index: 2}); err != nil {
+		t.Fatalf("MovePage: %v", err)
+	}
+	pages, _ = sess.ListPages(ctx, struct{}{})
+	if pages.Pages[2].Id != "page1" {
+		t.Fatalf("order after move: %+v", pages.Pages)
+	}
+	if _, err := sess.MovePage(ctx, odmcp.MovePageInput{Id: "page1", Index: 9}); err == nil {
+		t.Fatal("an index out of range should be refused")
+	}
+}
+
+// TestThreadTextFrames covers thread_text_frames / unlink_text_frame.
+func TestThreadTextFrames(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	mk := func(content string) string {
+		o, err := sess.CreateText(ctx, odmcp.CreateTextInput{Width: 100, Height: 40, Content: content})
+		if err != nil {
+			t.Fatalf("CreateText: %v", err)
+		}
+		return o.NodeId
+	}
+	a, b, c := mk("alpha"), mk("beta"), mk("")
+	out, err := sess.ThreadTextFrames(ctx, odmcp.ThreadTextFramesInput{Ids: []string{a, b, c}})
+	if err != nil || out.Linked != 2 {
+		t.Fatalf("ThreadTextFrames = %+v, %v", out, err)
+	}
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	na, _ := nodeByID(doc, a)
+	nb, _ := nodeByID(doc, b)
+	if na.Meta["text.next"] != b || nb.Meta["text.next"] != c {
+		t.Fatalf("links = %v / %v, want %s / %s", na.Meta, nb.Meta, b, c)
+	}
+	if na.Text != "alpha\nbeta" || nb.Text != "" {
+		t.Fatalf("stories = %q / %q, want the text gathered in the first frame", na.Text, nb.Text)
+	}
+	// Closing the chain on itself, or linking a frame that is already followed, links nothing.
+	if _, err := sess.ThreadTextFrames(ctx, odmcp.ThreadTextFramesInput{Ids: []string{c, a}}); err == nil {
+		t.Fatal("a link that closes a cycle should be refused")
+	}
+	if _, err := sess.UnlinkTextFrame(ctx, odmcp.PageIdInput{Id: a}); err != nil {
+		t.Fatalf("UnlinkTextFrame: %v", err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if na, _ = nodeByID(doc, a); na.Meta["text.next"] != "" {
+		t.Fatalf("link not cut: %v", na.Meta)
+	}
+	if _, err := sess.UnlinkTextFrame(ctx, odmcp.PageIdInput{Id: a}); err == nil {
+		t.Fatal("unlinking a frame without a next should fail")
+	}
+	if _, err := sess.ThreadTextFrames(ctx, odmcp.ThreadTextFramesInput{Ids: []string{a, "missing"}}); err == nil {
+		t.Fatal("a non-text id should fail")
+	}
+}
+
+// TestRichText covers the paragraph / character styles and format_text.
+func TestRichText(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	para, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Heading", FontSize: 32, FontWeight: "700", SpaceAfter: 8}})
+	if err != nil {
+		t.Fatalf("SetTextStyle paragraph: %v", err)
+	}
+	em, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Emphasis", Kind: "character", Italic: true, Underline: true}})
+	if err != nil {
+		t.Fatalf("SetTextStyle character: %v", err)
+	}
+	// Tracking and the baseline grid travel through the tools too.
+	grid, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Gridded", FontSize: 12, LetterSpacing: -0.4, AlignToGrid: true}})
+	if err != nil {
+		t.Fatalf("SetTextStyle gridded: %v", err)
+	}
+	styles, _ := sess.ListTextStyles(ctx, struct{}{})
+	for _, st := range styles.TextStyles {
+		if st.Id == grid.TextStyleId && (st.LetterSpacing != -0.4 || !st.AlignToGrid) {
+			t.Fatalf("listed style = %+v", st)
+		}
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "bad", Kind: "character", AlignToGrid: true}}); err == nil {
+		t.Fatal("a character style on the grid should be refused")
+	}
+	// A character style with paragraph settings, a loop and a missing base are refused with a reason.
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "bad", Kind: "character", SpaceAfter: 4}}); err == nil {
+		t.Fatal("a character style with spacing should be refused")
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "bad", FontSize: 12, BasedOn: "nope"}}); err == nil {
+		t.Fatal("a style based on a missing style should be refused")
+	}
+
+	txt, err := sess.CreateText(ctx, odmcp.CreateTextInput{Width: 200, Height: 40, Content: "Title\nSome text"})
+	if err != nil {
+		t.Fatalf("CreateText: %v", err)
+	}
+	if _, err := sess.FormatText(ctx, odmcp.FormatTextInput{
+		NodeId: txt.NodeId, ParagraphStyles: []string{para.TextStyleId},
+		Runs: []odmcp.TextRunInput{{Start: 6, End: 10, StyleId: em.TextStyleId}},
+	}); err != nil {
+		t.Fatalf("FormatText: %v", err)
+	}
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	n, _ := nodeByID(doc, txt.NodeId)
+	if len(n.ParagraphStyles) != 1 || n.ParagraphStyles[0] != para.TextStyleId || len(n.Runs) != 1 || n.Runs[0].End != 10 {
+		t.Fatalf("formatting = %v / %v", n.ParagraphStyles, n.Runs)
+	}
+	// Bad formatting is refused before it is sent.
+	if _, err := sess.FormatText(ctx, odmcp.FormatTextInput{NodeId: txt.NodeId, Runs: []odmcp.TextRunInput{{Start: 0, End: 99, StyleId: em.TextStyleId}}}); err == nil {
+		t.Fatal("a run past the end should be refused")
+	}
+	if _, err := sess.FormatText(ctx, odmcp.FormatTextInput{NodeId: txt.NodeId, ParagraphStyles: []string{em.TextStyleId}}); err == nil {
+		t.Fatal("a character style as a paragraph style should be refused")
+	}
+	// Editing the text keeps the formatting attached (clamped to the new content).
+	if _, err := sess.SetText(ctx, odmcp.SetTextInput{Id: txt.NodeId, Content: "Title\nSome"}); err != nil {
+		t.Fatalf("SetText: %v", err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if n, _ = nodeByID(doc, txt.NodeId); len(n.Runs) != 1 || n.Runs[0].End != 10 {
+		t.Fatalf("runs after SetText = %v", n.Runs)
+	}
+}
+
 func hasPage(pages []odmcp.PageView, id, name string) bool {
 	for _, p := range pages {
 		if p.Id == id && p.Name == name {
@@ -767,5 +975,60 @@ func TestAutoLayoutThroughTools(t *testing.T) {
 	}
 	if _, err := sess.SetAutoLayout(ctx, odmcp.SetAutoLayoutInput{Id: kids[0], AutoLayout: &odmcp.AutoLayoutSpec{Direction: "vertical"}}); err == nil {
 		t.Error("auto layout on a rectangle was accepted")
+	}
+}
+
+// TestDocumentSettingsAndPageSetup covers set_document_settings and the page setup fields.
+func TestDocumentSettingsAndPageSetup(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	doc, _ := sess.GetDocument(ctx, struct{}{})
+	if doc.Vertical != "product" {
+		t.Fatalf("default vertical = %q, want product", doc.Vertical)
+	}
+	v, inc := "publishing", 14.0
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Vertical: &v, BaselineIncrement: &inc}); err != nil {
+		t.Fatalf("SetDocumentSettings: %v", err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if doc.Vertical != "publishing" || doc.BaselineIncrement != 14 {
+		t.Fatalf("settings = %q / %v", doc.Vertical, doc.BaselineIncrement)
+	}
+	// A field left out keeps its value; "product" goes back to the default.
+	prod := "product"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Vertical: &prod}); err != nil {
+		t.Fatal(err)
+	}
+	doc, _ = sess.GetDocument(ctx, struct{}{})
+	if doc.Vertical != "product" || doc.BaselineIncrement != 14 {
+		t.Fatalf("after going back to product: %q / %v", doc.Vertical, doc.BaselineIncrement)
+	}
+	bad := "cinema"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Vertical: &bad}); err == nil {
+		t.Fatal("an unknown vertical should be refused")
+	}
+
+	w, h, mt, cols, gut := 420.0, 595.0, 40.0, uint32(2), 18.0
+	pg, err := sess.CreatePage(ctx, odmcp.CreatePageInput{Name: "A5", PageSetup: odmcp.PageSetup{Width: &w, Height: &h, MarginTop: &mt, Columns: &cols, Gutter: &gut}})
+	if err != nil {
+		t.Fatalf("CreatePage with a setup: %v", err)
+	}
+	bleed := 9.0
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: pg.PageId, PageSetup: odmcp.PageSetup{Bleed: &bleed}}); err != nil {
+		t.Fatalf("UpdatePage: %v", err)
+	}
+	pages, _ := sess.ListPages(ctx, struct{}{})
+	for _, p := range pages.Pages {
+		if p.Id == pg.PageId && (p.Width != 420 || p.Height != 595 || p.MarginTop != 40 || p.Columns != 2 || p.Gutter != 18 || p.Bleed != 9) {
+			t.Fatalf("page = %+v", p)
+		}
+	}
+	// A setup the document refuses is refused by the hub (margins larger than the sheet).
+	big := 500.0
+	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: pg.PageId, PageSetup: odmcp.PageSetup{MarginLeft: &big}}); err == nil {
+		t.Fatal("margins larger than the sheet should be refused")
 	}
 }

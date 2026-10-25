@@ -3,8 +3,11 @@ import { useScene } from "../store/store";
 import { fontString } from "../renderer/text";
 import { assetUrl } from "../rpc/assets";
 import type { ImageSource } from "../renderer/canvasRenderer";
-import type { NodeLite } from "../store/types";
+import type { NodeLite, PageLite, SceneState } from "../store/types";
+import { NodeMap } from "../store/nodeMap";
+import { isReachableFrom } from "../store/tree";
 import { exportRegion, type ExportRegion, type ExportScope } from "./region";
+import { buildEpub, type EpubPage } from "./epub";
 import { nodesToSvg, type MeasureText, type ResolveImageHref } from "./svg";
 import { canvasToPngBlob, renderRegionToCanvas, type ExportScale } from "./png";
 
@@ -87,6 +90,20 @@ export function exportFileName(docName: string, req: ExportRequest): string {
   return `${base}${scope}${scale}.${req.format}`;
 }
 
+/** The sheet of a sized page as a rectangle at the origin, or null for an unbounded page. */
+export function sheetOf(page: PageLite | undefined, bleed = false): { x: number; y: number; width: number; height: number } | null {
+  const w = page?.width ?? 0, h = page?.height ?? 0;
+  if (!(w > 0) || !(h > 0)) return null;
+  const b = bleed ? page?.bleed ?? 0 : 0;
+  return { x: -b, y: -b, width: w + 2 * b, height: h + 2 * b };
+}
+
+/** `scene` reduced to the nodes that hang from page `pageId` (master copies included). */
+function onPage(scene: SceneState, pageId: string): SceneState {
+  const own = [...scene.nodes.values()].filter((n) => isReachableFrom(scene, n.id, pageId));
+  return { ...scene, nodes: NodeMap.from(own.map((n) => [n.id, n] as const)) };
+}
+
 /**
  * Hands the blob to the user as a download.
  *
@@ -105,6 +122,30 @@ export function printSvgDocument(svg: string, bounds: { width: number; height: n
   Object.assign(frame.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0" });
   const w = Math.ceil(bounds.width), h = Math.ceil(bounds.height);
   frame.srcdoc = `<!doctype html><meta charset="utf-8"><style>@page{size:${w}px ${h}px;margin:0}html,body{margin:0}svg{display:block}</style>${svg}`;
+  frame.onload = () => {
+    const win = frame.contentWindow;
+    if (!win) { frame.remove(); return; }
+    win.addEventListener("afterprint", () => frame.remove());
+    win.focus();
+    win.print();
+  };
+  document.body.appendChild(frame);
+}
+
+/**
+ * Prints several SVG pages in one print job: every page is a CSS named page with its own
+ * `@page` size, so "Save as PDF" yields one PDF page per document page, each of the
+ * exact size of its content (Chromium and Firefox honour named pages).
+ */
+export function printSvgPages(pages: readonly { svg: string; width: number; height: number }[]): void {
+  const frame = document.createElement("iframe");
+  frame.setAttribute("aria-hidden", "true");
+  Object.assign(frame.style, { position: "fixed", right: "0", bottom: "0", width: "0", height: "0", border: "0" });
+  const css = pages
+    .map((p, i) => `@page p${i}{size:${Math.ceil(p.width)}px ${Math.ceil(p.height)}px;margin:0}.p${i}{page:p${i}}`)
+    .join("");
+  const body = pages.map((p, i) => `<div class="pg p${i}">${p.svg}</div>`).join("");
+  frame.srcdoc = `<!doctype html><meta charset="utf-8"><style>${css}html,body{margin:0}.pg{break-after:page;overflow:hidden}.pg:last-child{break-after:auto}svg{display:block}</style>${body}`;
   frame.onload = () => {
     const win = frame.contentWindow;
     if (!win) { frame.remove(); return; }
@@ -315,10 +356,12 @@ function svgMarkup(region: ExportRegion, measure: MeasureText, assets: ResolvedA
  * produces no op. It is the only function of the app that only reads the scene.
  */
 export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Promise<boolean> {
-  const { scene: raw, selection } = useScene.getState();
+  const { scene: raw, selection, currentPageId } = useScene.getState();
   if (!raw) return false;
-  // What is exported is what is drawn: variables resolved for each node's active mode.
-  const scene = resolveScene(raw);
+  // What is exported is what is drawn: variables resolved for each node's active mode, the
+  // master page's content in place, and only the page on screen.
+  const resolved = resolveScene(raw);
+  const scene = onPage(resolved, currentPageId ?? resolved.pages[0]?.id ?? "");
 
   const createCanvas = deps.createCanvas ?? defaultCanvas;
   try {
@@ -330,7 +373,9 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
     // export can fail, and it goes through the channel of all the others.
     const measure = deps.measure ?? canvasMeasure(createCanvas);
 
-    const region = exportRegion(scene, selection, req.scope, measure);
+    // A sized page exports as its sheet (see PageSetupDialog); an unbounded one as what is drawn on it.
+    const page = resolved.pages.find((p) => p.id === (currentPageId ?? resolved.pages[0]?.id));
+    const region = exportRegion(scene, selection, req.scope, measure, sheetOf(page));
     if (!region) {
       useScene.setState({ notice: req.scope === "selection" ? NOTHING_SELECTED : EMPTY_PAGE });
       return false;
@@ -351,6 +396,68 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
   } catch (err) {
     const reason = err instanceof Error ? err.message : String(err);
     useScene.setState({ notice: `export failed: ${reason}` });
+    return false;
+  }
+}
+
+// ---------------------------------------------------------------------------
+// THE WHOLE DOCUMENT: every page, as one PDF (print dialog) or one EPUB (file).
+
+export type DocumentExportFormat = "pdf" | "epub";
+
+export interface DocumentExportDeps extends ExportDeps {
+  printPages?: (pages: { svg: string; width: number; height: number }[]) => void;
+  now?: () => Date;
+}
+
+const EPUB_MIME = "application/epub+zip";
+
+/** The download name of a whole-document export (`<name>.epub`). */
+export function documentFileName(docName: string, format: DocumentExportFormat): string {
+  return exportFileName(docName, { format: "svg", scope: "page", scale: 1 }).replace(/\.svg$/, `.${format}`);
+}
+
+/**
+ * Exports EVERY page of the open document. Empty pages are skipped (and not counted as an
+ * error); if all are empty there is nothing to export. Same channels as `runExport`:
+ * `false` plus a `notice` when nothing was produced.
+ */
+export async function runDocumentExport(
+  format: DocumentExportFormat,
+  deps: DocumentExportDeps = {},
+  // `bleed`: for a PDF going to a printer, each sheet is exported with its bleed area around it.
+  opts: { bleed?: boolean } = {},
+): Promise<boolean> {
+  const { scene: raw } = useScene.getState();
+  if (!raw) return false;
+  const scene = resolveScene(raw);
+  try {
+    const measure = deps.measure ?? canvasMeasure(deps.createCanvas ?? defaultCanvas);
+    const pages: (EpubPage & { region: ExportRegion })[] = [];
+    // Master pages are templates, not pages of the output: their content already shows through
+    // the pages that apply them.
+    for (const page of scene.pages.filter((p) => !p.isMaster)) {
+      const region = exportRegion(onPage(scene, page.id), [], "page", measure, sheetOf(page, opts.bleed === true && format === "pdf"));
+      if (region) pages.push({ name: page.name, svg: "", width: region.bounds.width, height: region.bounds.height, region });
+    }
+    if (pages.length === 0) {
+      useScene.setState({ notice: "nothing to export: every page is empty" });
+      return false;
+    }
+    const all = pages.flatMap((p) => p.region.nodes);
+    const assets = await resolveAssets(all, scene.id, "svg", deps);
+    for (const p of pages) p.svg = svgMarkup(p.region, measure, assets);
+
+    if (format === "pdf") {
+      (deps.printPages ?? printSvgPages)(pages);
+    } else {
+      const data = buildEpub(pages, { title: scene.name || FALLBACK_NAME, identifier: `urn:opendesigner:${scene.id}`, modified: (deps.now?.() ?? new Date()).toISOString() });
+      (deps.download ?? downloadBlob)(new Blob([data as BlobPart], { type: EPUB_MIME }), documentFileName(scene.name, "epub"));
+    }
+    if (assets.missing > 0) useScene.setState({ notice: missingImagesNotice(assets.missing) });
+    return true;
+  } catch (err) {
+    useScene.setState({ notice: `export failed: ${err instanceof Error ? err.message : String(err)}` });
     return false;
   }
 }

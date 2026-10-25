@@ -1134,6 +1134,7 @@ function emitText(
     fontWeight: weight,
     lineHeight: r4(lhMult),
     align: anchor === "middle" ? "center" : anchor === "end" ? "right" : "left",
+    ...(/^(italic|oblique)/.test(style.get("font-style")?.trim() ?? "") ? { italic: true } : {}),
   };
   const mult = lhMult > 0 ? lhMult : 1.2;
   const lh = fs * mult;

@@ -22,6 +22,7 @@ import { hasRealStroke, vectorStyleOf } from "./vectorStyle";
 import { drawDash, perimeterOf, vectorDrawSubpaths } from "./animDraw";
 import { imageCache, type CachedImage } from "./imageCache";
 import { MESH_BITMAP_SIZE, meshBitmap } from "./mesh";
+import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "./effectsFx";
 
 const DEG_TO_RAD = Math.PI / 180;
 
@@ -272,6 +273,60 @@ function drawBackdropBlur(ctx: CanvasRenderingContext2D, path: Path2D, radius: n
   ctx.filter = `blur(${radius * scale}px)`;
   ctx.drawImage(ctx.canvas, 0, 0);
   ctx.restore();
+}
+
+function clipPolygon(ctx: CanvasRenderingContext2D, pts: readonly (readonly [number, number])[]): void {
+  const path = new Path2D();
+  pts.forEach(([x, y], i) => (i === 0 ? path.moveTo(x, y) : path.lineTo(x, y)));
+  path.closePath();
+  ctx.clip(path);
+}
+
+// NOISE AND TEXTURE: a repeating tile of grain (effectsFx.ts, seeded, so every renderer draws
+// the same grain) used as a pattern in WORLD space, anchored at the node's corner so it moves
+// with the node, filled over the node's box and clipped to its outline.
+const overlayTiles = new WeakMap<object, CanvasImageSource | null>();
+
+function overlayTileCanvas(e: Extract<EffectLite, { kind: "noise" | "texture" }>): CanvasImageSource | null {
+  if (overlayTiles.has(e)) return overlayTiles.get(e) ?? null;
+  let tile: CanvasImageSource | null = null;
+  try {
+    const c: HTMLCanvasElement | OffscreenCanvas = typeof OffscreenCanvas !== "undefined"
+      ? new OffscreenCanvas(FX_TILE, FX_TILE)
+      : Object.assign(document.createElement("canvas"), { width: FX_TILE, height: FX_TILE });
+    const c2 = c.getContext("2d") as CanvasRenderingContext2D | null;
+    if (c2) {
+      c2.putImageData(new ImageData(overlayTile(e) as Uint8ClampedArray<ArrayBuffer>, FX_TILE, FX_TILE), 0, 0);
+      tile = c;
+    }
+  } catch {
+    tile = null; // no canvas here (a test double): the overlay is skipped
+  }
+  overlayTiles.set(e, tile);
+  return tile;
+}
+
+function drawOverlays(ctx: CanvasRenderingContext2D, n: NodeLite, outline: Path2D | null): void {
+  for (const e of overlayEffects(n)) {
+    const tile = overlayTileCanvas(e);
+    if (!tile) continue;
+    let pattern: CanvasPattern | null = null;
+    try {
+      pattern = ctx.createPattern(tile, "repeat");
+      const u = tileUnit(e);
+      pattern?.setTransform(new DOMMatrix([u, 0, 0, u, n.x, n.y]));
+    } catch {
+      pattern = null;
+    }
+    if (!pattern) continue;
+    ctx.save();
+    if (outline) ctx.clip(outline);
+    ctx.globalAlpha = n.opacity;
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = pattern;
+    ctx.fillRect(n.x, n.y, n.width, n.height);
+    ctx.restore();
+  }
 }
 
 // Draws `body` once per extra drop shadow, parked off canvas (see above).
@@ -708,7 +763,7 @@ function drawNode(
   // overrides it: from here on `eff` is drawn, not `n`. The override touches only
   // fills/text -- the geometry (box, rotation) stays the master's, so
   // the guards and rotation centers below are identical with or without it.
-  const eff = withOverride(n, overrides?.get(n.id));
+  const eff = withExpandedGlass(withOverride(n, overrides?.get(n.id)));
   // The size guard only applies to shapes whose ink IS the box
   // (rect, ellipse, image, frame): for text and vector a zero side is
   // a legitimate, drawable state. The list of exceptions lives in ONE place
@@ -775,6 +830,16 @@ function drawNode(
   const outline = hasOutline(eff) ? nodePath(eff) : null;
   const bb = backdropBlur(eff);
   if (bb && outline) drawBackdropBlur(ctx, outline, bb.radius, scale);
+  // A progressive backdrop blur: the same blur in bands, each of its own radius.
+  const pbb = progressiveBlur(eff, true);
+  if (pbb && outline) {
+    for (const band of blurBands(eff, pbb, 1 / scale)) {
+      ctx.save();
+      clipPolygon(ctx, band.polygon);
+      drawBackdropBlur(ctx, outline, band.radius, scale);
+      ctx.restore();
+    }
+  }
   let castsShadow = false;
   const body = () => {
     if (eff.kind === "text") {
@@ -812,11 +877,26 @@ function drawNode(
   if (extraShadows(eff).length > 0) drawExtraShadows(ctx, eff, scale, body);
   // Effects apply to everything the node draws below: shape, text,
   // image, vector.
-  const fx = applyEffects(ctx, eff, scale);
-  castsShadow = fx;
-  body();
-  if (fx) ctx.restore();
+  const pb = progressiveBlur(eff, false);
+  if (pb) {
+    // A progressive layer blur: the node drawn once per band, clipped to it, with the band's radius.
+    for (const band of blurBands(eff, pb, 1 / scale)) {
+      ctx.save();
+      clipPolygon(ctx, band.polygon);
+      const bandFx = applyEffects(ctx, withBandBlur(eff, pb, band.radius), scale);
+      castsShadow = bandFx;
+      body();
+      if (bandFx) ctx.restore();
+      ctx.restore();
+    }
+  } else {
+    const fx = applyEffects(ctx, eff, scale);
+    castsShadow = fx;
+    body();
+    if (fx) ctx.restore();
+  }
   if (outline && innerShadows(eff).length > 0) drawInnerShadows(ctx, eff, outline, scale);
+  if (outline || eff.kind === "image") drawOverlays(ctx, eff, outline);
   if (blended) ctx.globalCompositeOperation = "source-over";
   if (rotated) ctx.restore();
 }
@@ -1045,7 +1125,8 @@ function pickIn(
   });
   for (let i = siblings.length - 1; i >= 0; i--) {
     const n = siblings[i];
-    if (!n.visible || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
+    // A master page's copy is drawn but not hit: it belongs to the master, not to this page.
+    if (!n.visible || n.fromMaster || seen.has(n.id) || overrides?.get(n.id)?.hidden) continue;
     if (n.isMask && isMaskShape(n)) continue;
     if (masks.some((m) => m.at < i && !hitTestNode(m.shape, px, py, zoom))) continue;
     if (prune && n.kind !== "instance") {
@@ -1157,7 +1238,7 @@ function collectIn(
   prune: { extent: { get(id: string): Bounds | undefined }; probe: Bounds } | null,
 ): void {
   for (const n of siblings) {
-    if (!n.visible || seen.has(n.id)) continue;
+    if (!n.visible || n.fromMaster || seen.has(n.id)) continue;
     // The subtree whose extent does not even touch the widened band has
     // nothing to offer. Not inside an instance (extent in the place of origin) and not
     // for an instance itself, which has its derived bounds below. `probe` is
