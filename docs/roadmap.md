@@ -43,6 +43,7 @@ Legend: [x] done · [ ] to do
 - [ ] Diagrams: `subgraph`, ER, notes in class and state diagrams
 - [x] SVG import (paste, drop, import tool)
 - [x] .fig import (experimental: read from the documented layout, tested on generated files; components and instances are not kept; docs/handoff.md)
+- [x] .fig import tail: connectors (saved, straight, elbowed, curved), tables and cells, sticky notes and other frame-like layers with their text, a variable-use warning and per-kind counts (synthetic files only; docs/handoff.md)
 - [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
 - [ ] Prototyping: hover and drag interactions, overlays, scroll, component state changes in the player
 - [x] Present: device frames (generic, phone, tablet, desktop browser, none) and hotspot hints (flash on a missed click, a "Show hotspots" toggle); see docs/flows.md
