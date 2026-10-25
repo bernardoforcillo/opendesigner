@@ -14,7 +14,7 @@ and which it did not.
   docs/components.md, docs/variables.md); auto layout grid mode, groups as auto layout children and
   the right-click context menu (docs/layout.md).
 - **Grid layout, groups in auto layout, context menu** (docs/layout.md): grid mode with fixed / hug / fr
-  tracks and spans, groups as auto layout children, a right-click menu with the instance actions.
+  tracks and spans (also exported to SwiftUI `Grid` and a generated Compose `DesignGrid`), groups as auto layout children, a right-click menu with the instance actions.
 - **Dev Mode and code** (docs/codegen.md, docs/handoff.md, docs/flows.md): SwiftUI and Jetpack Compose
   export, ready-for-dev and annotations, compare changes, device frames and hotspot hints in Present,
   prototype expressions and `else` guards.

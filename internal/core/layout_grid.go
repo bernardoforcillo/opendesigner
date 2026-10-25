@@ -359,3 +359,18 @@ func clampHK(n *opendesignerv1.Node, v float64) float64 {
 	}
 	return clampH(n, v)
 }
+
+// GridCell is a grid child's resolved cell: 0-based column and row and the spans, after the
+// placement of gridCells (what codegen needs for targets that cannot auto-place).
+type GridCell struct{ Col, Row, ColSpan, RowSpan int }
+
+// GridCells resolves the cells of the in-flow children `kids` (document order) of a GRID auto layout,
+// and the number of columns and rows the grid ends up with.
+func GridCells(kids []*opendesignerv1.Node, al *opendesignerv1.AutoLayout) (cells []GridCell, ncols, nrows int) {
+	col, row, cs, rs, ncols, nrows := gridCells(kids, al)
+	cells = make([]GridCell, len(kids))
+	for i := range kids {
+		cells[i] = GridCell{col[i], row[i], cs[i], rs[i]}
+	}
+	return cells, ncols, nrows
+}

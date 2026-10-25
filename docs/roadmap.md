@@ -25,7 +25,7 @@ Legend: [x] done · [ ] to do
 - [x] Auto layout: min/max sizes (fill children redistribute around them) and absolute children that stay constrained to the frame; see docs/layout.md
 - [x] Auto layout: groups as children (one box of the union of their children, in rows, columns and grid cells); see docs/layout.md
 - [x] Auto layout: baseline alignment on the cross axis of a row (estimated from font size and line height)
-- [x] Auto layout: grid mode (rows / columns tracks with fixed, hug and fr sizes, gaps, cell spans; panel, MCP `set_grid_cell`, `display:grid` export); see docs/layout.md
+- [x] Auto layout: grid mode (rows / columns tracks with fixed, hug and fr sizes, gaps, cell spans; panel, MCP `set_grid_cell`, `display:grid` export, SwiftUI `Grid` and Compose `DesignGrid` export); see docs/layout.md
 - [x] Context menu (right click on the canvas or a layer): swap, reset overrides, detach, go to main component, group / ungroup, bring forward / back, duplicate, delete; see docs/layout.md
 - [x] Constraints and responsive resize (min/max/stretch/center/scale per axis, recursive, exact undo); see docs/layout.md
 - [x] Variants and component properties: component sets with axes, instances that choose a variant, boolean (show/hide) and text properties, editor dialog and instance controls, MCP tools, exported code; see docs/components.md

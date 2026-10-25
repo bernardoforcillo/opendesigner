@@ -59,6 +59,8 @@ type nbox struct {
 	x, y          float64
 	absolute      bool
 	flex          bool
+	grid          *ngrid // a GRID auto layout (flex is then false)
+	fillX         bool   // justify-self: stretch, a grid child filling its cell horizontally
 	vertical      bool
 	main, cross   string // start | center | end | between
 	gap           float64
@@ -306,6 +308,10 @@ func parseNative(e *Element) *nbox {
 			n.cross = "start"
 		}
 	}
+	if e.style("display") == "grid" {
+		n.grid = parseGrid(e)
+	}
+	n.fillX = e.style("justify-self") == "stretch"
 	n.wrap = e.style("flex-wrap") == "wrap"
 	if g := e.style("gap"); g != "" {
 		f := strings.Fields(g)

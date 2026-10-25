@@ -66,7 +66,7 @@ canvas, not like what you would expect.
 | Frame with **auto layout** | `display:flex`, `flex-direction`, `gap`, `padding`, `justify-content` / `align-items` from main/cross alignment (also `space-between`); **hug** -> `fit-content`, otherwise fixed size. Children are in flow (`relative shrink-0`): the core has already written x/y, here CSS is told to redo the same arrangement |
 | Everything else | positioned container, `absolute` children at `left`/`top` = x/y (relative to the parent, as in the model) |
 | Group | positioned wrapper **without paint** | (in the flow of an auto layout parent: a flow box of the union of its children, which hang from a zero-size anchor)
-| Frame with **grid** auto layout | `display:grid`, `grid-template-columns/rows`, `gap: <row> <column>`, `justify-items` / `align-items`; children get `grid-column` / `grid-row`; HTML and React only (see docs/layout.md) |
+| Frame with **grid** auto layout | `display:grid`, `grid-template-columns/rows`, `gap: <row> <column>`, `justify-items` / `align-items`; children get `grid-column` / `grid-row`; HTML and React (SwiftUI and Compose: see below, docs/layout.md) |
 | `clipsContent` | `overflow: hidden` |
 | Rotation | `transform: rotate(Ndeg)`, origin at the centre (same clockwise convention as the canvas) |
 | Rectangle | `border-radius` clamped to half the shorter side |
@@ -132,6 +132,7 @@ therefore decided once, in `build.go`, exactly as for html and react.
 |---|---|---|
 | Screen (top-level frame) | `struct Name: View` in `Sources/Screens/` | `@Composable fun Name(onNavigate, onBack)` in `screens/` |
 | Auto layout | `VStack` / `HStack` (`spacing`, `.padding(EdgeInsets)`, `alignment`); `space-between` = `Spacer(minLength: 0)` between children; main-axis centre / end = the frame's alignment | `Column` / `Row` (`Arrangement.spacedBy`, `SpaceBetween`, `Modifier.padding`, `Alignment`) |
+| **Grid** auto layout | `Grid` / `GridRow` (iOS 16+), `gridCellColumns` for column spans, fixed tracks as `.frame(width:height:)` on the cell, fr tracks as `.frame(maxWidth: .infinity)`; row spans / overlapping cells fall back to `ZStack` + the core's computed `.offset` (warning) | `DesignGrid(columns, rows, columnGap, rowGap, ...)`, a generated `components/DesignGrid.kt` (a custom `Layout`: fixed, hug and fr tracks, gaps, spans, in-cell alignment); children carry `Modifier.gridCell(col, row, colSpan, rowSpan, fillX, fillY)` |
 | Everything else | `ZStack(alignment: .topLeading)`, children `.frame(...)` + `.offset(x:y:)` | `Box`, children `Modifier.size(...)` + `.offset(x, y)` |
 | hug | no fixed `.frame` on that axis | no fixed size on that axis |
 | fill the parent (`LayoutSizing` fill) | `.frame(maxWidth: .infinity)` / `maxHeight` | `Modifier.weight(1f)` / `fillMaxWidth()` / `fillMaxHeight()` |
@@ -158,6 +159,11 @@ slot with the default content as fallback). The body `switch`es / `when`s on the
 accessibility action on the screen's root. Key and auto triggers are left as comments (with the `// flow:`,
 guard and effect lines). Every element is preceded by a `// Name (data-node-id="...")` comment: the link
 between design and code, which is also how the editor finds a screen's file.
+
+**Grid**: the cells are resolved by the core's own placement (the CSS leaves auto-placement to the browser),
+so both targets get explicit cells. `Grid` shares spare room between fr columns equally: different fr weights,
+and cells spanning fixed or fr tracks, are approximated (warnings). Compose honours all of it. Children out of
+the flow (absolute) sit over the grid.
 
 **Not exported** (reported as warnings and in the generated README): animation clips, blend modes,
 background blur, inner shadows, wrapping auto layout, vector gradient fills and gradient text (first stop

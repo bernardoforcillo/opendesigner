@@ -40,6 +40,13 @@ type Trigger struct {
 }
 
 // Element is a node of the IR tree.
+// GridCell is an Element's place in its grid parent: 0-based column and row, the spans, and the
+// position and size the core computed (the last-resort absolute fallback of the SwiftUI export).
+type GridCell struct {
+	Col, Row, ColSpan, RowSpan int
+	X, Y, W, H                 float64
+}
+
 type Element struct {
 	Tag   string
 	Attrs []Attr
@@ -76,6 +83,10 @@ type Element struct {
 	// StrokePath: the <path> of a vector's stroke (the one `draw` animates),
 	// distinct from the fill path.
 	StrokePath bool
+
+	// Cell: the resolved grid cell of an in-flow child of a GRID auto layout (nil elsewhere). The CSS
+	// leaves auto-placement to the browser; the native targets need it spelled out (native_grid.go).
+	Cell *GridCell
 
 	// Use: this element is an INSTANCE of a component that exports as a React
 	// component. The React target renders it as `<Button size="L" />` inside this
