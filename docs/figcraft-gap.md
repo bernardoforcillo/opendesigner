@@ -16,6 +16,8 @@ and which it did not.
   prototype expressions and `else` guards.
 - **Type and effects** (docs/typography.md, docs/effects.md): text case, super/subscript, lists, indent,
   OpenType features, vertical alignment and inset, progressive blur, noise, texture and glass.
+- **Localization** (docs/localization.md): typed catalogs with plurals, live language switch, language from
+  the browser; first surfaces translated into seven languages (machine drafts).
 
 ## Not ported
 
@@ -23,7 +25,7 @@ and which it did not.
 - Horizontal text scale; rich-text runs do not use the new case, list, script and inset features.
 - Leptos code export; ordered `else if` chains in prototypes.
 - Shape builder, variable-width strokes, vector-network editing tools, noise/glass refraction.
-- Plugins in WebAssembly, localization catalogs, accessibility tree, accounts and teams.
+- Plugins in WebAssembly, accessibility tree, accounts and teams.
 - Real-file `.fig` fidelity, Display P3, `.fig` export.
 
 ## Unverified

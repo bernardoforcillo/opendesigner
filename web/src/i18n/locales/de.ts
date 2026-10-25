@@ -1,0 +1,42 @@
+import type { Message } from "../core";
+import type { MessageKey } from "./en";
+
+// German, formal address (Sie). MACHINE DRAFT: waiting for a native speaker's review (docs/localization.md).
+export const de: Record<MessageKey, Message> = {
+  "Document": "Dokument", "Mode": "Modus", "Open left panel": "Linkes Panel öffnen", "Close left panel": "Linkes Panel schließen",
+  "Open right panel": "Rechtes Panel öffnen", "Close right panel": "Rechtes Panel schließen",
+  "Board": "Board", "Design": "Design", "Flows": "Abläufe", "Develop": "Entwickeln",
+  "An infinite board: sticky notes, text and arrows": "Ein unendliches Board: Haftnotizen, Text und Pfeile",
+  "Draw the screens": "Bildschirme zeichnen",
+  "Connect the screens and try the prototype": "Bildschirme verbinden und den Prototyp ausprobieren",
+  "Readiness, generated code, export": "Übergabestatus, generierter Code, Export",
+  "Your link does not allow editing": "Ihr Link erlaubt kein Bearbeiten", "View only": "Nur ansehen", "Comment only": "Nur kommentieren", "Zoom": "Zoom",
+  "Tools": "Werkzeuge", "More shapes": "Weitere Formen", "Animation": "Animation", "Undo": "Rückgängig", "Redo": "Wiederholen", "Present": "Präsentieren",
+  "Select": "Auswählen", "Connect": "Verbinden", "Sticky note": "Haftnotiz", "Link": "Link", "Vote": "Abstimmen", "Frame": "Rahmen",
+  "Rectangle": "Rechteck", "Ellipse": "Ellipse", "Polygon": "Polygon", "Star": "Stern",
+  "Text": "Text", "Pen": "Stift", "Node": "Knoten", "Hand": "Hand", "Comment": "Kommentar",
+  "Document menu": "Dokumentmenü", "Home": "Startseite", "New document": "Neues Dokument", "Rename document": "Dokument umbenennen",
+  "Import SVG…": "SVG importieren…", "Import .fig file…": ".fig-Datei importieren…", "experimental": "experimentell",
+  "Import PDF…": "PDF importieren…", "editable text and shapes": "bearbeitbarer Text und Formen", "Import PDF as pictures…": "PDF als Bilder importieren…",
+  "Export all pages as PDF…": "Alle Seiten als PDF exportieren…",
+  "Export PDF for print (with bleed)…": "PDF für den Druck exportieren (mit Beschnitt)…", "Export all pages as EPUB": "Alle Seiten als EPUB exportieren",
+  "Page setup…": "Seite einrichten…", "Diagram (Mermaid, UML)…": "Diagramm (Mermaid, UML)…",
+  "Whiteboard (sticky, table, kanban…)…": "Whiteboard (Notiz, Tabelle, Kanban…)…", "Variables…": "Variablen…", "Fonts…": "Schriften…",
+  "Styles (paragraph, character)…": "Stile (Absatz, Zeichen)…", "Versions…": "Versionen…", "Share…": "Teilen…", "Plugins…": "Plugins…",
+  "Pixel snap {n} px": "Pixelraster {n} px", "Pixel snap off": "Pixelraster aus", "cycles 1 / 4 / 8 / off": "wechselt 1 / 4 / 8 / aus",
+  "Renderer {name}": "Renderer {name}", "switch to {name}": "zu {name} wechseln", "Document type": "Dokumenttyp", "Theme": "Darstellung",
+  "System": "System", "Light": "Hell", "Dark": "Dunkel", "Language": "Sprache", "machine draft": "maschineller Entwurf",
+  "Kind of document": "Art des Dokuments", "Start from a template": "Mit einer Vorlage beginnen", "Your documents": "Ihre Dokumente",
+  "Loading documents…": "Dokumente werden geladen…", "No documents yet": "Noch keine Dokumente",
+  "Pick a template above: in one click you get screens that are already connected, ready to try.":
+    "Wählen Sie oben eine Vorlage: Mit einem Klick erhalten Sie bereits verbundene Bildschirme zum Ausprobieren.",
+  "Cancel": "Abbrechen", "Join": "Beitreten", "Paste a link to join": "Link zum Beitreten einfügen", "Link to a shared document": "Link zu einem geteilten Dokument",
+  "That is not a valid opendesigner link.": "Das ist kein gültiger opendesigner-Link.",
+  "Could not read the documents ({error}).": "Die Dokumente konnten nicht gelesen werden ({error}).", "Open {name}": "{name} öffnen",
+  "Size limits": "Größenbegrenzung", "Variables": "Variablen", "Transitions": "Übergänge", "Stroke": "Kontur", "Sizing": "Größe", "Paths": "Pfade",
+  "Override": "Überschreibung", "Layout": "Layout", "Instance": "Instanz", "Fill": "Füllung", "Export": "Exportieren", "Effect style": "Effektstil",
+  "Current flow": "Aktueller Ablauf", "Corners": "Ecken", "Constraints": "Einschränkungen", "Component": "Komponente", "Arc": "Bogen", "Appearance": "Darstellung",
+  "{n} documents": { one: "{n} Dokument", other: "{n} Dokumente" },
+  "{n} screens": { one: "{n} Bildschirm", other: "{n} Bildschirme" },
+  "{n} flows": { one: "{n} Ablauf", other: "{n} Abläufe" },
+};

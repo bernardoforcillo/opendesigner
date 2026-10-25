@@ -1,0 +1,42 @@
+import type { Message } from "../core";
+import type { MessageKey } from "./en";
+
+// Spanish. MACHINE DRAFT: waiting for a native speaker's review (docs/localization.md).
+export const es: Record<MessageKey, Message> = {
+  "Document": "Documento", "Mode": "Modo", "Open left panel": "Abrir panel izquierdo", "Close left panel": "Cerrar panel izquierdo",
+  "Open right panel": "Abrir panel derecho", "Close right panel": "Cerrar panel derecho",
+  "Board": "Pizarra", "Design": "Diseño", "Flows": "Flujos", "Develop": "Desarrollo",
+  "An infinite board: sticky notes, text and arrows": "Una pizarra infinita: notas adhesivas, texto y flechas",
+  "Draw the screens": "Dibuja las pantallas",
+  "Connect the screens and try the prototype": "Conecta las pantallas y prueba el prototipo",
+  "Readiness, generated code, export": "Estado de entrega, código generado, exportación",
+  "Your link does not allow editing": "Tu enlace no permite editar", "View only": "Solo lectura", "Comment only": "Solo comentar", "Zoom": "Zoom",
+  "Tools": "Herramientas", "More shapes": "Más formas", "Animation": "Animación", "Undo": "Deshacer", "Redo": "Rehacer", "Present": "Presentar",
+  "Select": "Seleccionar", "Connect": "Conectar", "Sticky note": "Nota adhesiva", "Link": "Enlace", "Vote": "Votar", "Frame": "Marco",
+  "Rectangle": "Rectángulo", "Ellipse": "Elipse", "Polygon": "Polígono", "Star": "Estrella",
+  "Text": "Texto", "Pen": "Pluma", "Node": "Nodo", "Hand": "Mano", "Comment": "Comentario",
+  "Document menu": "Menú del documento", "Home": "Inicio", "New document": "Nuevo documento", "Rename document": "Renombrar documento",
+  "Import SVG…": "Importar SVG…", "Import .fig file…": "Importar archivo .fig…", "experimental": "experimental",
+  "Import PDF…": "Importar PDF…", "editable text and shapes": "texto y formas editables", "Import PDF as pictures…": "Importar PDF como imágenes…",
+  "Export all pages as PDF…": "Exportar todas las páginas como PDF…",
+  "Export PDF for print (with bleed)…": "Exportar PDF para imprenta (con sangrado)…", "Export all pages as EPUB": "Exportar todas las páginas como EPUB",
+  "Page setup…": "Configurar página…", "Diagram (Mermaid, UML)…": "Diagrama (Mermaid, UML)…",
+  "Whiteboard (sticky, table, kanban…)…": "Pizarra (notas, tabla, kanban…)…", "Variables…": "Variables…", "Fonts…": "Fuentes…",
+  "Styles (paragraph, character)…": "Estilos (párrafo, carácter)…", "Versions…": "Versiones…", "Share…": "Compartir…", "Plugins…": "Plugins…",
+  "Pixel snap {n} px": "Ajuste a píxel {n} px", "Pixel snap off": "Ajuste a píxel desactivado", "cycles 1 / 4 / 8 / off": "alterna 1 / 4 / 8 / no",
+  "Renderer {name}": "Renderizador {name}", "switch to {name}": "cambiar a {name}", "Document type": "Tipo de documento", "Theme": "Tema",
+  "System": "Sistema", "Light": "Claro", "Dark": "Oscuro", "Language": "Idioma", "machine draft": "borrador automático",
+  "Kind of document": "Tipo de documento", "Start from a template": "Empezar desde una plantilla", "Your documents": "Tus documentos",
+  "Loading documents…": "Cargando documentos…", "No documents yet": "Aún no hay documentos",
+  "Pick a template above: in one click you get screens that are already connected, ready to try.":
+    "Elige una plantilla arriba: con un clic obtienes pantallas ya conectadas, listas para probar.",
+  "Cancel": "Cancelar", "Join": "Unirse", "Paste a link to join": "Pega un enlace para unirte", "Link to a shared document": "Enlace a un documento compartido",
+  "That is not a valid opendesigner link.": "Ese no es un enlace válido de opendesigner.",
+  "Could not read the documents ({error}).": "No se pudieron leer los documentos ({error}).", "Open {name}": "Abrir {name}",
+  "Size limits": "Límites de tamaño", "Variables": "Variables", "Transitions": "Transiciones", "Stroke": "Trazo", "Sizing": "Tamaño", "Paths": "Trazados",
+  "Override": "Sobrescritura", "Layout": "Disposición", "Instance": "Instancia", "Fill": "Relleno", "Export": "Exportar", "Effect style": "Estilo de efecto",
+  "Current flow": "Flujo actual", "Corners": "Esquinas", "Constraints": "Restricciones", "Component": "Componente", "Arc": "Arco", "Appearance": "Apariencia",
+  "{n} documents": { one: "{n} documento", other: "{n} documentos" },
+  "{n} screens": { one: "{n} pantalla", other: "{n} pantallas" },
+  "{n} flows": { one: "{n} flujo", other: "{n} flujos" },
+};

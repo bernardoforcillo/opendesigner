@@ -141,6 +141,8 @@ Output
 - [x] Plugin API (sandboxed scripts with a read/write bridge; docs/handoff.md)
 - [x] Tokens in and out: W3C Design Tokens (DTCG) JSON and CSS custom properties, with modes; import of a DTCG file as collections (variables dialog); see docs/handoff.md
 - [ ] Syncing components with the code
+- [x] Localization layer: typed catalogs, live language switch, language from the browser or the document menu / Home, plurals; menus, tool dock, Home and panel headings translated into es, fr, de, it, pt-BR, ja, zh-Hans (machine drafts); see docs/localization.md
+- [ ] Localization: translate the remaining dialogs and panels, review the drafts with native speakers, dates and numbers by locale
 
 ## 4. Performance
 - [x] Invalidation-driven rendering, incremental scene index, discarding what is not visible, levels of detail, image reuse during pan/zoom; test bench on 20,000 nodes (see docs/performance.md)
