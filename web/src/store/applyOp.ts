@@ -10,6 +10,7 @@ import { recordDelta } from "./sceneDelta";
 import { carryRenames, cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
 import { areValidLayoutGrids } from "./layoutGrids";
+import { areValidEffects } from "./effects";
 import { arePaintsValid } from "./paints";
 import { areStrokeExtrasValid, isValidShape, isValidShapePath, SHAPE_PATHS, writeShapePath } from "./shapes";
 import { isValidEffectStyleDef, isValidPaintStyleDef, isValidStyleId, STYLE_PATHS, unstyleNodesByPaint } from "./paintStyles";
@@ -152,6 +153,7 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (paths.includes("strokes") && !areStrokeExtrasValid(p.strokes)) return state;
       if (paths.some((path) => STYLE_PATHS.has(path) && !isValidStyleId(state, path, path === "fill_style_id" ? p.fillStyleId : path === "stroke_style_id" ? p.strokeStyleId : p.effectStyleId))) return state;
       if (paths.includes("blend_mode") && !(p.blendMode >= 0 && p.blendMode <= 15)) return state;
+      if (paths.includes("effects") && !areValidEffects(p.effects)) return state;
       if (paths.includes("layout_sizing_x") && !(p.layoutSizingX >= 0 && p.layoutSizingX <= 1)) return state;
       if (paths.includes("layout_sizing_y") && !(p.layoutSizingY >= 0 && p.layoutSizingY <= 1)) return state;
       const next: NodeLite = { ...cur };

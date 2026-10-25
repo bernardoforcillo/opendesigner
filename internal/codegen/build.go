@@ -507,7 +507,7 @@ func cloneShallow(n *opendesignerv1.Node) *opendesignerv1.Node {
 
 // shapeElement: rect, ellipse, frame, text, image, vector.
 func (b *builder) shapeElement(n *opendesignerv1.Node, c bctx) *Element {
-	eff := withNums(withOverride(n, c.overrides[n.GetId()]), c.nums[n.GetId()])
+	eff := withGlassExpanded(withNums(withOverride(n, c.overrides[n.GetId()]), c.nums[n.GetId()]))
 	switch eff.GetShape().(type) {
 	case *opendesignerv1.Node_Text:
 		return b.textElement(n, eff, c)
@@ -857,7 +857,7 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 		lh = defaultLineHeight
 	}
 	el.addStyle("font-family", fontFamilyCSS(st.GetFontFamily()))
-	el.addStyle("font-size", px(size))
+	el.addStyle("font-size", px(size*scriptScale(st)))
 	el.addStyle("font-weight", weight)
 	if st.GetItalic() {
 		el.addStyle("font-style", "italic")
@@ -869,6 +869,7 @@ func (b *builder) textElement(n, eff *opendesignerv1.Node, c bctx) *Element {
 	case opendesignerv1.TextAlign_TEXT_ALIGN_RIGHT:
 		el.addStyle("text-align", "right")
 	}
+	textExtras(el, st, size, lh, eff.GetHeight(), c.bind[n.GetId()].text == "")
 	if gradient != "" {
 		el.addStyle("background-image", gradient)
 		el.addStyle("background-clip", "text")

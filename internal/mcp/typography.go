@@ -46,6 +46,7 @@ type TextStyleBody struct {
 	IndentLeft    float64 `json:"indentLeft,omitempty" jsonschema:"px of indent on every line"`
 	LetterSpacing float64 `json:"letterSpacing,omitempty" jsonschema:"tracking: px added after every character; negative tightens"`
 	AlignToGrid   bool    `json:"alignToGrid,omitempty" jsonschema:"paragraph styles only: the lines sit on the document's baseline grid (set_document_settings)"`
+	TextFormat
 }
 
 type TextStyleView struct {
@@ -111,7 +112,8 @@ func textStyleViews(doc *opendesignerv1.Document) []TextStyleView {
 		out = append(out, TextStyleView{Id: id, TextStyleBody: TextStyleBody{
 			Name: d.GetName(), FontFamily: st.GetFontFamily(), FontSize: st.GetFontSize(), FontWeight: st.GetFontWeight(),
 			LineHeight: st.GetLineHeight(), Italic: st.GetItalic(), Align: alignName(st.GetAlign()),
-			Underline: st.GetUnderline(), Strikethrough: st.GetStrikethrough(), Kind: kindName(d.GetKind()),
+			TextFormat: formatOf(st),
+			Underline:  st.GetUnderline(), Strikethrough: st.GetStrikethrough(), Kind: kindName(d.GetKind()),
 			BasedOn: d.GetBasedOn(), NextStyleId: d.GetNextStyleId(), SpaceBefore: d.GetSpaceBefore(), SpaceAfter: d.GetSpaceAfter(),
 			IndentFirst: d.GetIndentFirst(), IndentLeft: d.GetIndentLeft(),
 			LetterSpacing: st.GetLetterSpacing(), AlignToGrid: d.GetAlignToGrid(),
@@ -136,10 +138,14 @@ func (b TextStyleBody) toProto(id string) (*opendesignerv1.TextStyleDef, error) 
 	default:
 		return nil, fmt.Errorf("kind must be paragraph or character, got %q", b.Kind)
 	}
-	return &opendesignerv1.TextStyleDef{Id: id, Name: b.Name, Style: &opendesignerv1.TextStyle{
+	style := &opendesignerv1.TextStyle{
 		FontFamily: b.FontFamily, FontSize: b.FontSize, FontWeight: b.FontWeight, LineHeight: b.LineHeight, Italic: b.Italic, Align: align,
 		Underline: b.Underline, Strikethrough: b.Strikethrough, LetterSpacing: b.LetterSpacing,
-	}, AlignToGrid: b.AlignToGrid, Kind: kind, BasedOn: b.BasedOn, NextStyleId: b.NextStyleId, SpaceBefore: b.SpaceBefore, SpaceAfter: b.SpaceAfter,
+	}
+	if err := b.TextFormat.apply(style); err != nil {
+		return nil, err
+	}
+	return &opendesignerv1.TextStyleDef{Id: id, Name: b.Name, Style: style, AlignToGrid: b.AlignToGrid, Kind: kind, BasedOn: b.BasedOn, NextStyleId: b.NextStyleId, SpaceBefore: b.SpaceBefore, SpaceAfter: b.SpaceAfter,
 		IndentFirst: b.IndentFirst, IndentLeft: b.IndentLeft}, nil
 }
 

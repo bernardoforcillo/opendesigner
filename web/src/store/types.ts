@@ -1,6 +1,6 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { ArrowHead, BlendMode, ImageScaleMode, TextStyleKind, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { BlendMode, ImageScaleMode, TextStyleKind, ArrowHead, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign, TextCase, TextScript, ListKind, TextVAlign, NoiseMode } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, PaintStyleDef as PbPaintStyleDef, EffectStyleDef as PbEffectStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
@@ -111,7 +111,15 @@ export type EffectLite =
   | { kind: "dropShadow"; color: { r: number; g: number; b: number; a: number }; offsetX: number; offsetY: number; blur: number }
   | { kind: "layerBlur"; radius: number }
   | { kind: "innerShadow"; color: { r: number; g: number; b: number; a: number }; offsetX: number; offsetY: number; blur: number }
-  | { kind: "backgroundBlur"; radius: number };
+  | { kind: "backgroundBlur"; radius: number }
+  // The radius ramps from startRadius at (x1,y1) to endRadius at (x2,y2), points in the node's unit box.
+  | { kind: "progressiveBlur"; startRadius: number; endRadius: number; x1: number; y1: number; x2: number; y2: number; background: boolean }
+  | { kind: "noise"; mode: NoiseModeLite; size: number; density: number; opacity: number; color: RgbaLite; color2: RgbaLite; seed: number }
+  | { kind: "texture"; scale: number; intensity: number; seed: number }
+  // Frosted backdrop + grain + light edge; drawn as those effects (renderer/effectsFx.ts::expandGlass).
+  | { kind: "glass"; frost: number; light: number; lightAngle: number; noise: number };
+export type NoiseModeLite = "mono" | "duo" | "multi";
+type RgbaLite = { r: number; g: number; b: number; a: number };
 
 // The alignment as a string and not as a numeric enum, for the same reason
 // that `kind` is "rect" | "ellipse" | "text" instead of the oneof's
@@ -134,7 +142,20 @@ export interface TextStyleLite {
   strikethrough?: boolean;
   /** px added after every character (tracking); absent at 0, may be negative. */
   letterSpacing?: number;
+  // Type extras (proto TextStyle 20..26). All absent when unset, like `italic`.
+  textCase?: TextCaseLite;
+  textScript?: TextScriptLite;
+  listKind?: ListKindLite;
+  indent?: number;
+  // CSS font-feature-settings value; see core.ValidFontFeatures.
+  fontFeatures?: string;
+  verticalAlign?: TextVAlignLite;
+  inset?: number;
 }
+export type TextCaseLite = "upper" | "lower" | "title" | "smallCaps";
+export type TextScriptLite = "super" | "sub";
+export type ListKindLite = "bullet" | "numbered";
+export type TextVAlignLite = "middle" | "bottom";
 
 // RICH TEXT (store/richText.ts). `paragraphStyles` / `runs` are the document's; `rich` is DERIVED by
 // resolveScene (never written, never in an op) and carries them resolved, so the layout needs no scene.
@@ -526,7 +547,24 @@ const STROKE_ALIGN_TO_PB: Record<StrokeAlignLite, StrokeAlign> = {
 // returns the zeros of every field (and it is exactly what remains after a
 // SetText with style_present=true and no style). Here the counterpart is an
 // all-zero style, so the two implementations remain indistinguishable.
+const CASE_TO_LITE: Partial<Record<TextCase, TextCaseLite>> = {
+  [TextCase.UPPER]: "upper", [TextCase.LOWER]: "lower", [TextCase.TITLE]: "title", [TextCase.SMALL_CAPS]: "smallCaps",
+};
+const CASE_TO_PB: Record<TextCaseLite, TextCase> = {
+  upper: TextCase.UPPER, lower: TextCase.LOWER, title: TextCase.TITLE, smallCaps: TextCase.SMALL_CAPS,
+};
+const SCRIPT_TO_LITE: Partial<Record<TextScript, TextScriptLite>> = { [TextScript.SUPER]: "super", [TextScript.SUB]: "sub" };
+const SCRIPT_TO_PB: Record<TextScriptLite, TextScript> = { super: TextScript.SUPER, sub: TextScript.SUB };
+const LIST_TO_LITE: Partial<Record<ListKind, ListKindLite>> = { [ListKind.BULLET]: "bullet", [ListKind.NUMBERED]: "numbered" };
+const LIST_TO_PB: Record<ListKindLite, ListKind> = { bullet: ListKind.BULLET, numbered: ListKind.NUMBERED };
+const VALIGN_TO_LITE: Partial<Record<TextVAlign, TextVAlignLite>> = { [TextVAlign.MIDDLE]: "middle", [TextVAlign.BOTTOM]: "bottom" };
+const VALIGN_TO_PB: Record<TextVAlignLite, TextVAlign> = { middle: TextVAlign.MIDDLE, bottom: TextVAlign.BOTTOM };
+
 export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
+  const tc = CASE_TO_LITE[s?.textCase ?? TextCase.UNSPECIFIED];
+  const ts = SCRIPT_TO_LITE[s?.textScript ?? TextScript.UNSPECIFIED];
+  const lk = LIST_TO_LITE[s?.listKind ?? ListKind.UNSPECIFIED];
+  const va = VALIGN_TO_LITE[s?.verticalAlign ?? TextVAlign.UNSPECIFIED];
   return {
     fontFamily: s?.fontFamily ?? "",
     fontSize: s?.fontSize ?? 0,
@@ -534,6 +572,13 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     lineHeight: s?.lineHeight ?? 0,
     align: ALIGN_TO_LITE[s?.align ?? TextAlign.UNSPECIFIED] ?? "left",
     ...(s?.italic ? { italic: true } : {}),
+    ...(tc ? { textCase: tc } : {}),
+    ...(ts ? { textScript: ts } : {}),
+    ...(lk ? { listKind: lk } : {}),
+    ...(s && s.indent > 0 ? { indent: s.indent } : {}),
+    ...(s && s.fontFeatures !== "" ? { fontFeatures: s.fontFeatures } : {}),
+    ...(va ? { verticalAlign: va } : {}),
+    ...(s && s.inset > 0 ? { inset: s.inset } : {}),
     ...(s?.underline ? { underline: true } : {}),
     ...(s?.strikethrough ? { strikethrough: true } : {}),
     ...(s?.letterSpacing ? { letterSpacing: s.letterSpacing } : {}),
@@ -653,6 +698,13 @@ export function toPbTextStyle(s: TextStyleLite) {
     fontFamily: s.fontFamily, fontSize: s.fontSize, fontWeight: s.fontWeight,
     lineHeight: s.lineHeight, align: ALIGN_TO_PB[s.align] ?? TextAlign.LEFT,
     italic: s.italic === true,
+    textCase: s.textCase ? CASE_TO_PB[s.textCase] : TextCase.UNSPECIFIED,
+    textScript: s.textScript ? SCRIPT_TO_PB[s.textScript] : TextScript.UNSPECIFIED,
+    listKind: s.listKind ? LIST_TO_PB[s.listKind] : ListKind.UNSPECIFIED,
+    indent: s.indent ?? 0,
+    fontFeatures: s.fontFeatures ?? "",
+    verticalAlign: s.verticalAlign ? VALIGN_TO_PB[s.verticalAlign] : TextVAlign.UNSPECIFIED,
+    inset: s.inset ?? 0,
     underline: s.underline === true,
     strikethrough: s.strikethrough === true,
     letterSpacing: s.letterSpacing ?? 0,
@@ -695,6 +747,14 @@ export function toPbEffects(effects: readonly EffectLite[]) {
         return { kind: { case: "innerShadow" as const, value: { color: { ...e.color }, offsetX: e.offsetX, offsetY: e.offsetY, blur: e.blur } } };
       case "backgroundBlur":
         return { kind: { case: "backgroundBlur" as const, value: { radius: e.radius } } };
+      case "progressiveBlur":
+        return { kind: { case: "progressiveBlur" as const, value: { startRadius: e.startRadius, endRadius: e.endRadius, x1: e.x1, y1: e.y1, x2: e.x2, y2: e.y2, background: e.background } } };
+      case "noise":
+        return { kind: { case: "noise" as const, value: { mode: NOISE_TO_PB[e.mode], size: e.size, density: e.density, opacity: e.opacity, color: { ...e.color }, color2: { ...e.color2 }, seed: e.seed } } };
+      case "texture":
+        return { kind: { case: "texture" as const, value: { scale: e.scale, intensity: e.intensity, seed: e.seed } } };
+      case "glass":
+        return { kind: { case: "glass" as const, value: { frost: e.frost, light: e.light, lightAngle: e.lightAngle, noise: e.noise } } };
       default:
         return { kind: { case: "layerBlur" as const, value: { radius: e.radius } } };
     }
@@ -734,6 +794,11 @@ export function toPbAutoLayout(a: AutoLayoutLite) {
   };
 }
 
+const NOISE_TO_LITE: Partial<Record<NoiseMode, NoiseModeLite>> = {
+  [NoiseMode.MONO]: "mono", [NoiseMode.DUO]: "duo", [NoiseMode.MULTI]: "multi",
+};
+const NOISE_TO_PB: Record<NoiseModeLite, NoiseMode> = { mono: NoiseMode.MONO, duo: NoiseMode.DUO, multi: NoiseMode.MULTI };
+
 export function toEffectLite(e: PbEffect): EffectLite {
   const k = e.kind;
   if (k.case === "dropShadow" || k.case === "innerShadow") {
@@ -745,6 +810,17 @@ export function toEffectLite(e: PbEffect): EffectLite {
     };
   }
   if (k.case === "backgroundBlur") return { kind: "backgroundBlur", radius: k.value.radius };
+  if (k.case === "progressiveBlur") {
+    const v = k.value;
+    return { kind: "progressiveBlur", startRadius: v.startRadius, endRadius: v.endRadius, x1: v.x1, y1: v.y1, x2: v.x2, y2: v.y2, background: v.background };
+  }
+  if (k.case === "noise") {
+    const v = k.value;
+    const col = (c: typeof v.color) => ({ r: c?.r ?? 0, g: c?.g ?? 0, b: c?.b ?? 0, a: c?.a ?? 1 });
+    return { kind: "noise", mode: NOISE_TO_LITE[v.mode] ?? "mono", size: v.size, density: v.density, opacity: v.opacity, color: col(v.color), color2: col(v.color2), seed: v.seed };
+  }
+  if (k.case === "texture") return { kind: "texture", scale: k.value.scale, intensity: k.value.intensity, seed: k.value.seed };
+  if (k.case === "glass") return { kind: "glass", frost: k.value.frost, light: k.value.light, lightAngle: k.value.lightAngle, noise: k.value.noise };
   // An effect without `kind` (wire from a future version) reads as a
   // null blur: harmless to draw and keeps the position in the list.
   return { kind: "layerBlur", radius: k.case === "layerBlur" ? k.value.radius : 0 };

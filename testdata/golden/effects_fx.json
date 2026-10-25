@@ -1,0 +1,94 @@
+{
+ "_comment": [
+  "Progressive blur, noise, texture and glass on the effects mask path. Run from BOTH sides.",
+  "Op 2 writes all four; ops 3..6 are rejected (density, radius, glass frost, noise mode out of range): scene unchanged."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "nodes": {
+   "R": {
+    "id": "R",
+    "parentId": "page1",
+    "orderKey": "a0",
+    "name": "R",
+    "visible": true,
+    "opacity": 1,
+    "x": 0,
+    "y": 0,
+    "width": 100,
+    "height": 50,
+    "rect": {},
+    "effects": [
+     {"progressiveBlur": {"endRadius": 20, "x1": 0.5, "x2": 0.5, "y2": 1, "background": true}},
+     {"noise": {"mode": "NOISE_MODE_DUO", "size": 2, "density": 0.5, "opacity": 0.25, "color": {"a": 1}, "color2": {"r": 1, "g": 1, "b": 1, "a": 1}, "seed": 7}},
+     {"texture": {"scale": 8, "intensity": 0.4}},
+     {"glass": {"frost": 12, "light": 0.5, "lightAngle": 45, "noise": 0.25}}
+    ]
+   }
+  },
+  "schemaVersion": 1,
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ]
+ },
+ "ops": [
+  {
+   "docId": "doc1",
+   "opId": "o0",
+   "createNode": {
+    "node": {"id": "R", "parentId": "page1", "orderKey": "a0", "name": "R", "visible": true, "opacity": 1, "x": 0, "y": 0, "width": 100, "height": 50, "rect": {}}
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o1",
+   "setProps": {
+    "id": "R",
+    "mask": "effects",
+    "patch": {"effects": [{"layerBlur": {"radius": 3}}]}
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o2",
+   "setProps": {
+    "id": "R",
+    "mask": "effects",
+    "patch": {
+     "effects": [
+      {"progressiveBlur": {"endRadius": 20, "x1": 0.5, "x2": 0.5, "y2": 1, "background": true}},
+      {"noise": {"mode": "NOISE_MODE_DUO", "size": 2, "density": 0.5, "opacity": 0.25, "color": {"a": 1}, "color2": {"r": 1, "g": 1, "b": 1, "a": 1}, "seed": 7}},
+      {"texture": {"scale": 8, "intensity": 0.4}},
+      {"glass": {"frost": 12, "light": 0.5, "lightAngle": 45, "noise": 0.25}}
+     ]
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setProps": {"id": "R", "mask": "effects", "patch": {"effects": [{"noise": {"density": 2}}]}}
+  },
+  {
+   "docId": "doc1",
+   "opId": "o4",
+   "setProps": {"id": "R", "mask": "effects", "patch": {"effects": [{"progressiveBlur": {"endRadius": -1}}]}}
+  },
+  {
+   "docId": "doc1",
+   "opId": "o5",
+   "setProps": {"id": "R", "mask": "effects", "patch": {"effects": [{"glass": {"frost": -1}}]}}
+  },
+  {
+   "docId": "doc1",
+   "opId": "o6",
+   "setProps": {"id": "R", "mask": "effects", "patch": {"effects": [{"noise": {"mode": 9}}]}}
+  }
+ ],
+ "rejected": [3, 4, 5, 6]
+}

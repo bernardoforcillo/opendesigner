@@ -121,12 +121,65 @@ message InnerShadow {
 // Background blur: blurs what is BEHIND the node, inside its outline (the
 // frosted-glass look). `radius` is the standard deviation, in world coordinates.
 message BackgroundBlur { double radius = 1; } // >= 0
+// Progressive blur: the radius ramps linearly from start_radius at (x1, y1) to
+// end_radius at (x2, y2), points in the node's unit box (0..1 across and down, like a
+// gradient's handles); before the start and past the end it stays. `background` false
+// blurs the node itself, true what is behind it (inside the outline, like BackgroundBlur).
+message ProgressiveBlur {
+  double start_radius = 1; // >= 0, standard deviation in world units
+  double end_radius = 2;   // >= 0
+  double x1 = 3;
+  double y1 = 4;
+  double x2 = 5;
+  double y2 = 6;
+  bool background = 7;
+}
+
+enum NoiseMode {
+  NOISE_MODE_UNSPECIFIED = 0; // MONO
+  NOISE_MODE_MONO = 1;        // grey grains
+  NOISE_MODE_DUO = 2;         // grains of `color` and `color2`
+  NOISE_MODE_MULTI = 3;       // grains of random colours
+}
+
+// Film grain drawn over the node, inside its outline (its box for other shapes).
+message Noise {
+  NoiseMode mode = 1;
+  double size = 2;    // grain size in world units, > 0 (0 => 1)
+  double density = 3; // 0..1, share of the grains that show
+  double opacity = 4; // 0..1
+  Color color = 5;    // DUO: first colour (MONO and MULTI ignore it)
+  Color color2 = 6;   // DUO: second colour
+  uint32 seed = 7;
+}
+
+// A soft mottled relief (paper, plaster) drawn over the node, light and dark in turn.
+message Texture {
+  double scale = 1;     // blob size in world units, > 0 (0 => 8)
+  double intensity = 2; // 0..1
+  uint32 seed = 3;
+}
+
+// Simplified glass: a frosted backdrop (background blur), a fine grain and a light
+// edge on the side facing `light_angle`. Drawn as those three effects.
+message Glass {
+  double frost = 1;       // >= 0, background blur radius in world units
+  double light = 2;       // 0..1, strength of the light edge
+  double light_angle = 3; // degrees, where the light comes from: 0 = the left, 90 = the top (y grows down)
+  double noise = 4;       // 0..1, strength of the grain
+}
+
 message Effect {
   oneof kind {
     DropShadow drop_shadow = 1;
     LayerBlur layer_blur = 2;
     InnerShadow inner_shadow = 3;
     BackgroundBlur background_blur = 4;
+    // 20..29 are the type-and-effects range.
+    ProgressiveBlur progressive_blur = 20;
+    Noise noise = 21;
+    Texture texture = 22;
+    Glass glass = 23;
   }
 }
 
@@ -300,6 +353,45 @@ message TextStyle {
   bool underline = 7;
   bool strikethrough = 8;
   double letter_spacing = 9; // px added after every character (tracking); 0 = none, may be negative
+
+  // Fields 20..39 are the type-and-effects range (case, scripts, lists, OpenType).
+  TextCase text_case = 20;       // UNSPECIFIED => as typed
+  TextScript text_script = 21;   // UNSPECIFIED => baseline
+  ListKind list_kind = 22;       // UNSPECIFIED => no list; applies to every paragraph of the node
+  double indent = 23;            // >= 0, world px added to the left of every paragraph (and of a list's marker)
+  // CSS font-feature-settings value ("liga" 0, "tnum", "ss01"); "" => the font's defaults.
+  // Plain characters only: it ends up in ctx.fontVariant*, SVG and CSS.
+  string font_features = 24;
+  TextVAlign vertical_align = 25; // where the text sits inside a box taller than it
+  double inset = 26;              // >= 0, padding between the box and the text on every side
+}
+
+// Text case: a transform of what is DRAWN, the content keeps its capitalisation.
+enum TextCase {
+  TEXT_CASE_UNSPECIFIED = 0;
+  TEXT_CASE_UPPER = 1;
+  TEXT_CASE_LOWER = 2;
+  TEXT_CASE_TITLE = 3;       // first letter of every word upper, the rest lower
+  TEXT_CASE_SMALL_CAPS = 4;  // lowercase letters drawn as smaller capitals
+}
+
+enum TextScript {
+  TEXT_SCRIPT_UNSPECIFIED = 0;
+  TEXT_SCRIPT_SUPER = 1;
+  TEXT_SCRIPT_SUB = 2;
+}
+
+// Paragraph list: every paragraph (line break in the content) is an item.
+enum ListKind {
+  LIST_KIND_UNSPECIFIED = 0;
+  LIST_KIND_BULLET = 1;
+  LIST_KIND_NUMBERED = 2;
+}
+
+enum TextVAlign {
+  TEXT_V_ALIGN_UNSPECIFIED = 0; // TOP
+  TEXT_V_ALIGN_MIDDLE = 1;
+  TEXT_V_ALIGN_BOTTOM = 2;
 }
 
 // The text box is x/y/width/height of the Node (as for rect/ellipse): width is
