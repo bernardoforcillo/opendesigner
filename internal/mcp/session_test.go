@@ -2,8 +2,12 @@ package mcp_test
 
 import (
 	"context"
+	"encoding/json"
 	"net/http"
 	"net/http/httptest"
+	"os"
+	"path/filepath"
+	"reflect"
 	"strings"
 	"sync"
 	"testing"
@@ -342,6 +346,78 @@ func TestPageStructure(t *testing.T) {
 	}
 	if _, err := sess.MovePage(ctx, odmcp.MovePageInput{Id: "page1", Index: 9}); err == nil {
 		t.Fatal("an index out of range should be refused")
+	}
+}
+
+// TestTypesettingStyles covers the paragraph and glyph fields of set_text_style.
+func TestTypesettingStyles(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	em, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Label", Kind: "character", SmallCaps: true, TextFormat: odmcp.TextFormat{Script: "superscript"}, Color: &odmcp.RGBA{R: 1, A: 1}}})
+	if err != nil {
+		t.Fatalf("character style: %v", err)
+	}
+	list, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{
+		Name: "Item", FontSize: 12, Align: "justify", Hyphenate: true, ListKind: "number", ListMarker: "#)", ListNumberStyle: "a", ListIndent: 20,
+		TabStops: []odmcp.TabStopIO{{Position: 100}, {Position: 300, Align: "right", Leader: "."}}, DropCapLines: 3,
+		NestedStyles: []odmcp.NestedIO{{StyleId: em.TextStyleId, Delimiter: ":", Count: 1, Inclusive: true}},
+	}})
+	if err != nil {
+		t.Fatalf("paragraph style: %v", err)
+	}
+	out, _ := sess.ListTextStyles(ctx, struct{}{})
+	var got odmcp.TextStyleView
+	for _, s := range out.TextStyles {
+		if s.Id == list.TextStyleId {
+			got = s
+		}
+	}
+	if got.Align != "justify" || !got.Hyphenate || got.ListKind != "number" || got.ListNumberStyle != "a" || len(got.TabStops) != 2 || got.TabStops[1].Align != "right" ||
+		got.DropCapLines != 3 || len(got.NestedStyles) != 1 {
+		t.Fatalf("style = %+v", got)
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Bad", FontSize: 12, ListKind: "dots"}}); err == nil {
+		t.Fatal("an unknown list kind should be refused")
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Bad", FontSize: 12, TabStops: []odmcp.TabStopIO{{Position: 5}, {Position: 5}}}}); err == nil {
+		t.Fatal("tab stops that do not ascend should be refused")
+	}
+}
+
+// TestParagraphLookStyles covers keeps, rules, shading, border and variable axes of set_text_style.
+func TestParagraphLookStyles(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	made, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{
+		Name: "Pull quote", FontSize: 18, FontVariations: "wght 650", OutlineLevel: 2, KeepWithNext: true, KeepFirstLines: 2, KeepLastLines: 2,
+		RuleAbove: &odmcp.RuleIO{Weight: 1, Offset: 4, ColumnWidth: true}, Shading: &odmcp.RGBA{R: 0.9, G: 0.9, B: 0.9, A: 1}, ShadingOffset: 6,
+		BorderColor: &odmcp.RGBA{A: 1}, BorderWeight: 1, OpticalMargin: true,
+	}})
+	if err != nil {
+		t.Fatalf("paragraph look: %v", err)
+	}
+	out, _ := sess.ListTextStyles(ctx, struct{}{})
+	var got odmcp.TextStyleView
+	for _, s := range out.TextStyles {
+		if s.Id == made.TextStyleId {
+			got = s
+		}
+	}
+	if !got.KeepWithNext || got.KeepFirstLines != 2 || got.KeepLastLines != 2 || got.RuleAbove == nil || !got.RuleAbove.ColumnWidth || got.Shading == nil ||
+		got.BorderWeight != 1 || !got.OpticalMargin || got.FontVariations != "wght 650" || got.OutlineLevel != 2 {
+		t.Fatalf("style = %+v", got)
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Bad", FontSize: 12, KeepFirstLines: 9}}); err == nil {
+		t.Fatal("more than 6 kept lines should be refused")
+	}
+	if _, err := sess.SetTextStyle(ctx, odmcp.SetTextStyleInput{TextStyleBody: odmcp.TextStyleBody{Name: "Bad", Kind: "character", FontSize: 12, KeepWithNext: true}}); err == nil {
+		t.Fatal("a character style cannot keep with next")
 	}
 }
 
@@ -1076,4 +1152,609 @@ func TestDocumentSettingsAndPageSetup(t *testing.T) {
 	if _, err := sess.UpdatePage(ctx, odmcp.UpdatePageInput{Id: pg.PageId, PageSetup: odmcp.PageSetup{MarginLeft: &big}}); err == nil {
 		t.Fatal("margins larger than the sheet should be refused")
 	}
+}
+
+// TestGraphicsTools covers object styles, layers and swatches.
+func TestGraphicsTools(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	rect, err := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{Width: 100, Height: 50, Name: "card"})
+	if err != nil {
+		t.Fatalf("CreateRect: %v", err)
+	}
+	// Object styles: from a node, applied, listed, deleted.
+	st, err := sess.SetObjectStyle(ctx, odmcp.SetObjectStyleInput{Name: "Card", Sets: []string{"fills", "opacity"}, FromNodeId: rect.NodeId})
+	if err != nil {
+		t.Fatalf("SetObjectStyle: %v", err)
+	}
+	if _, err := sess.SetObjectStyle(ctx, odmcp.SetObjectStyleInput{Name: "Bad", Sets: []string{"width"}}); err == nil {
+		t.Fatal("an unknown property should be refused")
+	}
+	if out, err := sess.ApplyObjectStyle(ctx, odmcp.ApplyObjectStyleInput{NodeIds: []string{rect.NodeId}, ObjectStyleId: st.ObjectStyleId}); err != nil || out.Changed != 1 {
+		t.Fatalf("ApplyObjectStyle = %+v, %v", out, err)
+	}
+	if _, err := sess.ApplyObjectStyle(ctx, odmcp.ApplyObjectStyleInput{NodeIds: []string{rect.NodeId}, ObjectStyleId: "nope"}); err == nil {
+		t.Fatal("a missing style should be refused")
+	}
+	styles, _ := sess.ListObjectStyles(ctx, struct{}{})
+	if len(styles.ObjectStyles) != 1 || styles.ObjectStyles[0].Name != "Card" || styles.ObjectStyles[0].Opacity != 1 {
+		t.Fatalf("styles = %+v", styles)
+	}
+	if _, err := sess.DeleteObjectStyle(ctx, odmcp.IdInput{Id: st.ObjectStyleId}); err != nil {
+		t.Fatalf("DeleteObjectStyle: %v", err)
+	}
+
+	// Layers.
+	art, err := sess.SetLayer(ctx, odmcp.SetLayerInput{Name: "Art"})
+	if err != nil {
+		t.Fatalf("SetLayer: %v", err)
+	}
+	notes, _ := sess.SetLayer(ctx, odmcp.SetLayerInput{Name: "Notes", Locked: true, Position: 1})
+	if _, err := sess.AssignLayer(ctx, odmcp.AssignLayerInput{NodeIds: []string{rect.NodeId}, LayerId: art.LayerId}); err != nil {
+		t.Fatalf("AssignLayer: %v", err)
+	}
+	layers, _ := sess.ListLayers(ctx, struct{}{})
+	if len(layers.Layers) != 2 || layers.Layers[0].Id != notes.LayerId || !layers.Layers[0].Locked || layers.Layers[1].Nodes != 1 {
+		t.Fatalf("layers = %+v", layers)
+	}
+	if _, err := sess.AssignLayer(ctx, odmcp.AssignLayerInput{NodeIds: []string{rect.NodeId}, LayerId: "nope"}); err == nil {
+		t.Fatal("a missing layer should be refused")
+	}
+	if _, err := sess.DeleteLayer(ctx, odmcp.IdInput{Id: art.LayerId}); err != nil {
+		t.Fatalf("DeleteLayer: %v", err)
+	}
+
+	// Swatches and colour mode.
+	red, err := sess.SetSwatch(ctx, odmcp.SetSwatchInput{Name: "Red", Cmyk: &odmcp.CmykIO{M: 100, Y: 100}})
+	if err != nil {
+		t.Fatalf("SetSwatch: %v", err)
+	}
+	if _, err := sess.SetSwatch(ctx, odmcp.SetSwatchInput{Name: "Red 50", TintOf: red.SwatchId, Tint: 50}); err != nil {
+		t.Fatalf("tint: %v", err)
+	}
+	if _, err := sess.SetSwatch(ctx, odmcp.SetSwatchInput{Name: "x", TintOf: "nope", Tint: 50}); err == nil {
+		t.Fatal("a tint of nothing should be refused")
+	}
+	mode, profile := "cmyk", "FOGRA39"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{ColorMode: &mode, IccProfile: &profile}); err != nil {
+		t.Fatalf("colour mode: %v", err)
+	}
+	bad := "lab"
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{ColorMode: &bad}); err == nil {
+		t.Fatal("an unknown colour mode should be refused")
+	}
+	sw, _ := sess.ListSwatches(ctx, struct{}{})
+	if len(sw.Swatches) != 2 || sw.ColorMode != "cmyk" || sw.Profile != "FOGRA39" || sw.Swatches[0].Name != "Red" || sw.Swatches[0].Cmyk == nil || sw.Swatches[1].Tint != 50 {
+		t.Fatalf("swatches = %+v", sw)
+	}
+	if sw.Swatches[1].Color.G < 0.49 || sw.Swatches[1].Color.G > 0.51 {
+		t.Fatalf("tint colour = %+v", sw.Swatches[1].Color)
+	}
+	// A swatch used by a node can be deleted: the node is detached.
+	if _, err := sess.DeleteSwatch(ctx, odmcp.IdInput{Id: red.SwatchId}); err != nil {
+		t.Fatalf("DeleteSwatch: %v", err)
+	}
+	sw, _ = sess.ListSwatches(ctx, struct{}{})
+	if len(sw.Swatches) != 1 || sw.Swatches[0].TintOf != "" {
+		t.Fatalf("after delete = %+v", sw)
+	}
+}
+
+// TestBookMetadata covers the book record of set_document_settings.
+func TestBookMetadata(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	_, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Book: &odmcp.BookIO{
+		Isbn13: "9788804668237", Title: "Il nome della rosa", Language: "ita", PublicationDate: "20240229",
+		Contributors: []odmcp.ContributorIO{{Role: "A01", PersonName: "Umberto Eco"}}, Prices: []odmcp.PriceIO{{PriceType: "02", Amount: "9.99", Currency: "EUR"}},
+	}})
+	if err != nil {
+		t.Fatalf("book: %v", err)
+	}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Book: &odmcp.BookIO{Isbn13: "9788804668238"}}); err == nil {
+		t.Fatal("a wrong ISBN check digit should be refused")
+	}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Book: &odmcp.BookIO{}}); err != nil {
+		t.Fatalf("an empty book clears the record: %v", err)
+	}
+}
+
+// fakeEditor plays an editor that has the document open: it answers each job with answer(job).
+func fakeEditor(t *testing.T, url, docID string, answer func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest) {
+	t.Helper()
+	client := odmcp.NewClient(url)
+	stream, err := client.WatchJobs(context.Background(), connect.NewRequest(&opendesignerv1.WatchJobsRequest{DocId: docID, ClientId: "fake-editor"}))
+	if err != nil {
+		t.Fatal(err)
+	}
+	if !stream.Receive() { // the server's "ready"
+		t.Fatalf("watch_jobs: %v", stream.Err())
+	}
+	go func() {
+		for stream.Receive() {
+			job := stream.Msg()
+			done := answer(job)
+			done.DocId, done.JobId, done.ClientId = docID, job.GetJobId(), "fake-editor"
+			_, _ = client.CompleteJob(context.Background(), connect.NewRequest(done))
+		}
+	}()
+	t.Cleanup(func() { _ = stream.Close() })
+}
+
+// TestEditorMadeOutputs covers export_pdf, export_epub, export_image and preflight, which an editor produces.
+func TestEditorMadeOutputs(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	if _, err := sess.ExportPdf(ctx, odmcp.ExportPdfInput{}); err == nil || !strings.Contains(err.Error(), "no editor has this document open") {
+		t.Fatalf("with no editor: %v", err)
+	}
+
+	var seen []string
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		seen = append(seen, job.GetKind()+" "+job.GetOptionsJson())
+		switch job.GetKind() {
+		case "preflight":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"issues":[{"severity":"warning","code":"no-bleed","message":"Page has no bleed"}],"errors":0,"warnings":1}`}
+		case "export_epub_reflow":
+			return &opendesignerv1.CompleteJobRequest{Ok: false, Message: "nothing to export: no text or images to flow"}
+		case "export_png":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Filename: "page.png", ContentType: "image/png", Data: []byte("PNG")}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Message: "PDF written with warnings", Filename: "Book.pdf", ContentType: "application/pdf", Data: []byte("%PDF-fake")}
+	})
+
+	dir := t.TempDir()
+	yes := true
+	out, err := sess.ExportPdf(ctx, odmcp.ExportPdfInput{OutPath: dir, PrintOptionsIn: odmcp.PrintOptionsIn{Standard: "x4", Marks: &yes}})
+	if err != nil {
+		t.Fatalf("export_pdf: %v", err)
+	}
+	if out.Path != filepath.Join(dir, "Book.pdf") || out.Size != 9 || out.Note != "PDF written with warnings" || !strings.HasPrefix(out.DownloadPath, "/export-api/"+docID+"/") {
+		t.Fatalf("out = %+v", out)
+	}
+	if b, _ := os.ReadFile(out.Path); string(b) != "%PDF-fake" {
+		t.Fatalf("file = %q", b)
+	}
+	if seen[0] != `export_pdf {"marks":true,"standard":"x4"}` {
+		t.Fatalf("job = %q", seen[0])
+	}
+
+	// An explicit file name wins over the editor's.
+	exact := filepath.Join(dir, "sub", "mine.pdf")
+	if out, err = sess.ExportPdf(ctx, odmcp.ExportPdfInput{OutPath: exact}); err != nil || out.Path != exact {
+		t.Fatalf("exact: %+v %v", out, err)
+	}
+	// No outPath: nothing written, a download path returned.
+	if out, _ = sess.ExportPackage(ctx, odmcp.ExportPdfInput{}); out.Path != "" || out.DownloadPath == "" {
+		t.Fatalf("no outPath: %+v", out)
+	}
+
+	if _, err := sess.ExportEpub(ctx, odmcp.ExportEpubInput{Mode: "reflowable"}); err == nil || !strings.Contains(err.Error(), "nothing to export") {
+		t.Fatalf("editor failure should surface: %v", err)
+	}
+	if _, err := sess.ExportEpub(ctx, odmcp.ExportEpubInput{Mode: "weird"}); err == nil {
+		t.Fatal("an unknown mode should be refused")
+	}
+	img, err := sess.ExportImage(ctx, odmcp.ExportImageInput{OutPath: dir, PageId: "page1", Scale: 2})
+	if err != nil || img.Path != filepath.Join(dir, "page.png") {
+		t.Fatalf("image: %+v %v", img, err)
+	}
+	if _, err := sess.ExportImage(ctx, odmcp.ExportImageInput{Format: "gif"}); err == nil {
+		t.Fatal("an unknown format should be refused")
+	}
+
+	pf, err := sess.Preflight(ctx, odmcp.PreflightInput{})
+	if err != nil || pf.Warnings != 1 || len(pf.Issues) != 1 || pf.Issues[0].Code != "no-bleed" {
+		t.Fatalf("preflight: %+v %v", pf, err)
+	}
+}
+
+// TestExportOnix covers export_onix, which the server makes by itself.
+func TestExportOnix(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	if _, err := sess.ExportOnix(ctx, odmcp.ExportOnixInput{}); err == nil || !strings.Contains(err.Error(), "No ISBN-13") {
+		t.Fatalf("without a record: %v", err)
+	}
+	if _, err := sess.SetDocumentSettings(ctx, odmcp.SetDocumentSettingsInput{Book: &odmcp.BookIO{Isbn13: "9788804668237", Title: "Rosa", PublisherName: "Bompiani"}}); err != nil {
+		t.Fatal(err)
+	}
+	out, err := sess.ExportOnix(ctx, odmcp.ExportOnixInput{})
+	if err != nil || !strings.Contains(out.Xml, `<ONIXMessage release="3.1"`) || !strings.Contains(out.Xml, "<IDValue>9788804668237</IDValue>") || len(out.Problems) == 0 {
+		t.Fatalf("out = %+v err = %v", out, err)
+	}
+	dir := t.TempDir()
+	out, err = sess.ExportOnix(ctx, odmcp.ExportOnixInput{OutPath: dir, Release: "3.0"})
+	if err != nil || out.Path != filepath.Join(dir, "9788804668237.onix.xml") || out.Xml != "" {
+		t.Fatalf("out = %+v err = %v", out, err)
+	}
+	if b, _ := os.ReadFile(out.Path); !strings.Contains(string(b), `release="3.0"`) {
+		t.Fatalf("file = %s", b)
+	}
+	if _, err := sess.ExportOnix(ctx, odmcp.ExportOnixInput{Release: "2.1"}); err == nil {
+		t.Fatal("an unknown release should be refused")
+	}
+}
+
+// TestDuplicatePageAndDataMerge covers duplicate_page and data_merge.
+func TestDuplicatePageAndDataMerge(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	pages, _ := sess.ListPages(ctx, struct{}{})
+	first := pages.Pages[0].Id
+	_, err := sess.CreateText(ctx, odmcp.CreateTextInput{ParentId: first, Width: 200, Height: 30, Name: "greeting", Content: "Dear {{Name}}, welcome"})
+	if err != nil {
+		t.Fatal(err)
+	}
+	link, _ := sess.CreateRectangle(ctx, odmcp.CreateShapeInput{ParentId: first, Width: 10, Height: 10, Name: "link"})
+	if _, err := sess.SetNodeMeta(ctx, odmcp.SetNodeMetaInput{Id: link.NodeId, Meta: map[string]string{"link.url": "https://x.test/{{Id}}"}}); err != nil {
+		t.Fatal(err)
+	}
+
+	dup, err := sess.DuplicatePage(ctx, odmcp.DuplicatePageInput{Id: first, Copies: 2, Name: "Copy"})
+	if err != nil || len(dup.PageIds) != 2 {
+		t.Fatalf("duplicate: %+v %v", dup, err)
+	}
+	list, _ := sess.ListPages(ctx, struct{}{})
+	if len(list.Pages) != 3 || list.Pages[1].Name != "Copy 1" || list.Pages[2].Name != "Copy 2" || list.Pages[1].Id != dup.PageIds[0] {
+		t.Fatalf("pages after duplicate = %+v", list.Pages)
+	}
+	if _, err := sess.DuplicatePage(ctx, odmcp.DuplicatePageInput{Id: "nope"}); err == nil {
+		t.Fatal("an unknown page should be refused")
+	}
+	if _, err := sess.DuplicatePage(ctx, odmcp.DuplicatePageInput{Id: first, Copies: 99}); err == nil {
+		t.Fatal("too many copies should be refused")
+	}
+
+	merged, err := sess.DataMerge(ctx, odmcp.DataMergeInput{PageId: first, Table: "Name;Id;Extra\nAda;7;x\n\"Grace Hopper\";8;y"})
+	if err != nil || len(merged.PageIds) != 2 || len(merged.MissingFields) != 0 || len(merged.UnusedFields) != 1 || merged.UnusedFields[0] != "Extra" {
+		t.Fatalf("merge: %+v %v", merged, err)
+	}
+	nodes, _ := sess.ListNodes(ctx, odmcp.ListNodesInput{PageId: merged.PageIds[1]})
+	var texts, urls []string
+	for _, n := range nodes.Nodes {
+		if n.Kind == "text" {
+			texts = append(texts, n.Text)
+		}
+		if u := n.Meta["link.url"]; u != "" {
+			urls = append(urls, u)
+		}
+	}
+	if len(texts) != 1 || texts[0] != "Dear Grace Hopper, welcome" || len(urls) != 1 || urls[0] != "https://x.test/8" {
+		t.Fatalf("texts=%v urls=%v", texts, urls)
+	}
+	// The template is untouched and the merged pages sit right after it.
+	list, _ = sess.ListPages(ctx, struct{}{})
+	if list.Pages[0].Id != first || list.Pages[1].Id != merged.PageIds[0] || list.Pages[2].Id != merged.PageIds[1] {
+		t.Fatalf("order = %+v", list.Pages)
+	}
+	if _, err := sess.DataMerge(ctx, odmcp.DataMergeInput{PageId: first, Table: "Name"}); err == nil {
+		t.Fatal("a table with no records should be refused")
+	}
+	miss, err := sess.DataMerge(ctx, odmcp.DataMergeInput{PageId: first, Table: "Other\n1"})
+	if err != nil || len(miss.MissingFields) != 2 {
+		t.Fatalf("missing: %+v %v", miss, err)
+	}
+}
+
+// TestEditorCommands covers the tools whose work the editor does: contents, tables, find and change, master overrides.
+func TestEditorCommands(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	var cmds []map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		var o map[string]any
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &o)
+		cmds = append(cmds, o)
+		if job.GetKind() != "command" {
+			return &opendesignerv1.CompleteJobRequest{Ok: false, Message: "unexpected kind " + job.GetKind()}
+		}
+		switch o["name"] {
+		case "generate_contents":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"lines":4,"nodeIds":["toc1"]}`}
+		case "insert_table":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"tableId":"tbl","cells":6}`}
+		case "find_change":
+			if o["replace"] != nil {
+				return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"replaced":3}`}
+			}
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"count":1,"matches":[{"nodeId":"n","pageId":"p","start":2,"end":5,"text":"abc","context":"xxabcxx"}]}`}
+		case "edit_table":
+			return &opendesignerv1.CompleteJobRequest{Ok: false, Message: "nothing to do (index out of range)"}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"copiedNodeIds":["a","b"]}`}
+	})
+
+	gc, err := sess.GenerateContents(ctx, odmcp.GenerateContentsInput{Kind: "toc", MaxLevel: 2})
+	if err != nil || gc.Lines != 4 || gc.NodeIds[0] != "toc1" {
+		t.Fatalf("contents: %+v %v", gc, err)
+	}
+	if cmds[0]["name"] != "generate_contents" || cmds[0]["kind"] != "toc" || cmds[0]["maxLevel"] != float64(2) {
+		t.Fatalf("sent %v", cmds[0])
+	}
+	hdr := 0
+	tb, err := sess.InsertTable(ctx, odmcp.InsertTableInput{Rows: 3, Cols: 2, CellWidth: 90, HeaderRows: &hdr})
+	if err != nil || tb.TableId != "tbl" || tb.Cells != 6 || cmds[1]["headerRows"] != float64(0) || cmds[1]["cellWidth"] != float64(90) {
+		t.Fatalf("table: %+v %v sent %v", tb, err, cmds[1])
+	}
+	if _, err := sess.EditTable(ctx, odmcp.EditTableInput{TableId: "tbl", Action: "delete_row", Index: 9}); err == nil || !strings.Contains(err.Error(), "nothing to do") {
+		t.Fatalf("an editor refusal should surface: %v", err)
+	}
+	list, err := sess.FindChange(ctx, odmcp.FindChangeInput{Query: "abc", Regex: true})
+	if err != nil || list.Count != 1 || list.Matches[0].Context != "xxabcxx" {
+		t.Fatalf("find: %+v %v", list, err)
+	}
+	repl := "x"
+	ch, err := sess.FindChange(ctx, odmcp.FindChangeInput{Query: "abc", Replace: &repl})
+	if err != nil || ch.Replaced != 3 {
+		t.Fatalf("change: %+v %v", ch, err)
+	}
+	ov, err := sess.OverrideMasterItem(ctx, odmcp.OverrideMasterItemInput{PageId: "p", MasterNodeId: "m"})
+	if err != nil || len(ov.CopiedNodeIds) != 2 {
+		t.Fatalf("override: %+v %v", ov, err)
+	}
+}
+
+// TestEditorCommandsWithFiles covers the tools that send a file from disk to the editor.
+func TestEditorCommandsWithFiles(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	var got struct {
+		name    string
+		payload string
+		opts    map[string]any
+	}
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		got.name, got.payload = job.GetPayloadName(), string(job.GetPayload())
+		got.opts = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &got.opts)
+		switch got.opts["name"] {
+		case "import_pdf":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"pages":3,"message":"Imported 3 pages"}`}
+		case "upload_font":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"fontId":"f1","assetHash":"` + strings.Repeat("a", 64) + `"}`}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"nodeId":"n1","message":"ok"}`}
+	})
+
+	dir := t.TempDir()
+	file := filepath.Join(dir, "logo.png")
+	if err := os.WriteFile(file, []byte("PNGDATA"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pl, err := sess.PlaceImage(ctx, odmcp.FileAtInput{Path: file, PageId: "p1", X: 50, Y: 60})
+	if err != nil || pl.NodeId != "n1" {
+		t.Fatalf("place: %+v %v", pl, err)
+	}
+	if got.name != "logo.png" || got.payload != "PNGDATA" || got.opts["name"] != "place_image" || got.opts["pageId"] != "p1" || got.opts["x"] != float64(50) {
+		t.Fatalf("editor saw %+v", got)
+	}
+	pdf := filepath.Join(dir, "a.pdf")
+	_ = os.WriteFile(pdf, []byte("%PDF"), 0o644)
+	ip, err := sess.ImportPdf(ctx, odmcp.ImportPdfInput{Path: pdf, Mode: "image"})
+	if err != nil || ip.Pages != 3 || got.opts["mode"] != "image" {
+		t.Fatalf("pdf: %+v %v %v", ip, err, got.opts)
+	}
+	font := filepath.Join(dir, "acme.ttf")
+	_ = os.WriteFile(font, []byte("TTF"), 0o644)
+	uf, err := sess.UploadFont(ctx, odmcp.UploadFontInput{Path: font, Family: "Acme", Weight: "700", Italic: true})
+	if err != nil || uf.FontId != "f1" || got.opts["family"] != "Acme" || got.opts["weight"] != "700" || got.opts["italic"] != true {
+		t.Fatalf("font: %+v %v %v", uf, err, got.opts)
+	}
+	if _, err := sess.PlaceImage(ctx, odmcp.FileAtInput{Path: filepath.Join(dir, "missing.png")}); err == nil {
+		t.Fatal("a missing file should be refused before asking the editor")
+	}
+	if _, err := sess.PlaceImage(ctx, odmcp.FileAtInput{Path: dir}); err == nil {
+		t.Fatal("a directory should be refused")
+	}
+	if _, err := sess.RelinkImage(ctx, odmcp.RelinkImageInput{NodeId: "img", Path: file}); err != nil || got.opts["nodeId"] != "img" {
+		t.Fatalf("relink: %v %v", err, got.opts)
+	}
+}
+
+// TestDocumentsVersionsAndBranches covers the document-level tools.
+func TestDocumentsVersionsAndBranches(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	made, err := sess.CreateDocument(ctx, odmcp.CreateDocumentInput{Name: "Brochure", Vertical: "publishing"})
+	if err != nil || made.Vertical != "publishing" || made.Id == "" {
+		t.Fatalf("create: %+v %v", made, err)
+	}
+	if _, err := sess.RenameDocument(ctx, odmcp.RenameDocumentInput{DocId: made.Id, Name: "Brochure 2"}); err != nil {
+		t.Fatal(err)
+	}
+	list, _ := sess.ListDocuments(ctx, struct{}{})
+	names := map[string]bool{}
+	for _, d := range list.Documents {
+		names[d.Name] = true
+	}
+	if !names["Brochure 2"] || len(list.Documents) < 2 {
+		t.Fatalf("documents = %+v", list.Documents)
+	}
+	if _, err := sess.DeleteDocument(ctx, odmcp.DeleteDocumentInput{DocId: made.Id}); err == nil {
+		t.Fatal("a delete without confirm must be refused")
+	}
+	if _, err := sess.DeleteDocument(ctx, odmcp.DeleteDocumentInput{Confirm: true}); err == nil {
+		t.Fatal("a delete without a docId must be refused (never the session's own)")
+	}
+	if _, err := sess.DeleteDocument(ctx, odmcp.DeleteDocumentInput{DocId: made.Id, Confirm: true}); err != nil {
+		t.Fatalf("delete: %v", err)
+	}
+
+	v, err := sess.CreateVersion(ctx, odmcp.CreateVersionInput{Name: "v1"})
+	if err != nil || v.Name != "v1" {
+		t.Fatalf("version: %+v %v", v, err)
+	}
+	vs, _ := sess.ListVersions(ctx, struct{}{})
+	if len(vs.Versions) != 1 || vs.Versions[0].Id != v.Id {
+		t.Fatalf("versions = %+v", vs)
+	}
+
+	branch, err := sess.BranchDocument(ctx, odmcp.BranchInput{VersionId: v.Id, Name: "Branch"})
+	if err != nil || branch.Name != "Branch" {
+		t.Fatalf("branch: %+v %v", branch, err)
+	}
+	bs := startSession(t, url, branch.Id, "branch")
+	if o, _ := bs.GetBranchOrigin(ctx, struct{}{}); !o.IsBranch || o.SourceDocId != docID || !o.SourceExists {
+		t.Fatalf("origin = %+v", o)
+	}
+	if o, _ := sess.GetBranchOrigin(ctx, struct{}{}); o.IsBranch {
+		t.Fatalf("the original is not a branch: %+v", o)
+	}
+	if _, err := bs.CreatePage(ctx, odmcp.CreatePageInput{Name: "Added on the branch"}); err != nil {
+		t.Fatal(err)
+	}
+	rev, err := bs.ReviewMerge(ctx, struct{}{})
+	if err != nil || rev.SourceDocId != docID || len(rev.Changes) == 0 {
+		t.Fatalf("review: %+v %v", rev, err)
+	}
+	merged, err := bs.MergeBranch(ctx, odmcp.MergeBranchInput{})
+	if err != nil || merged.Applied == 0 {
+		t.Fatalf("merge: %+v %v", merged, err)
+	}
+	if _, err := sess.DeleteVersion(ctx, odmcp.DeleteVersionInput{VersionId: v.Id}); err != nil {
+		t.Fatal(err)
+	}
+	acc, err := sess.GetAccess(ctx, struct{}{})
+	if err != nil || acc.Protected || acc.Role != "open" {
+		t.Fatalf("access = %+v %v", acc, err)
+	}
+}
+
+// TestStrokesAndLayoutGrids covers the strokes and layoutGrids of set_properties, and the structure commands' wiring.
+func TestStrokesAndLayoutGrids(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	fr, err := sess.CreateFrame(ctx, odmcp.CreateFrameInput{Width: 200, Height: 100})
+	if err != nil {
+		t.Fatal(err)
+	}
+	three := int32(3)
+	_ = three
+	_, err = sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId,
+		Strokes:     []odmcp.StrokeSpec{{Color: odmcp.RGBA{R: 1, A: 1}, Weight: 2, Align: "inside"}},
+		LayoutGrids: []odmcp.GridSpec{{Kind: "columns", Count: 3, Gutter: 8, Margin: 4}, {Kind: "grid", Size: 8}},
+	})
+	if err != nil {
+		t.Fatalf("set: %v", err)
+	}
+	nodes, _ := sess.ListNodes(ctx, odmcp.ListNodesInput{})
+	var found bool
+	for _, n := range nodes.Nodes {
+		if n.Id == fr.NodeId {
+			found = true
+		}
+	}
+	if !found {
+		t.Fatal("frame missing")
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId, Strokes: []odmcp.StrokeSpec{{Weight: -1}}}); err == nil {
+		t.Fatal("a negative weight should be refused")
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId, Strokes: []odmcp.StrokeSpec{{Weight: 1, Align: "around"}}}); err == nil {
+		t.Fatal("an unknown align should be refused")
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId, LayoutGrids: []odmcp.GridSpec{{Kind: "hexagons"}}}); err == nil {
+		t.Fatal("an unknown grid kind should be refused")
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId, LayoutGrids: []odmcp.GridSpec{{Kind: "columns", Count: 0}}}); err == nil {
+		t.Fatal("zero columns should be refused by the document")
+	}
+	if _, err := sess.SetProperties(ctx, odmcp.SetPropertiesInput{Id: fr.NodeId, Strokes: []odmcp.StrokeSpec{}, LayoutGrids: []odmcp.GridSpec{}}); err != nil {
+		t.Fatalf("empty lists clear: %v", err)
+	}
+}
+
+// TestStructureAndVectorCommandsAreWired checks the names and arguments the structure and vector tools send.
+func TestStructureAndVectorCommandsAreWired(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	var last map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		last = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &last)
+		text := `{"nodeId":"v","groupId":"g","nodeIds":["c"],"selection":["s"],"width":60,"moved":true}`
+		if last["name"] == "align_nodes" {
+			text = `{"moved":2}`
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Text: text}
+	})
+	check := func(name string, want map[string]any) {
+		t.Helper()
+		if last["name"] != name {
+			t.Fatalf("command = %v, want %s", last["name"], name)
+		}
+		for k, v := range want {
+			if !reflect.DeepEqual(last[k], v) {
+				t.Fatalf("%s: %s = %#v, want %#v", name, k, last[k], v)
+			}
+		}
+	}
+	if a, err := sess.AlignNodes(ctx, odmcp.AlignNodesInput{NodeIds: []string{"a", "b"}, Command: "hcenter"}); err != nil || a.Moved != 2 {
+		t.Fatalf("align: %+v %v", a, err)
+	}
+	check("align_nodes", map[string]any{"command": "hcenter"})
+	if g, err := sess.BooleanOperation(ctx, odmcp.BooleanInput{NodeIds: []string{"a", "b"}, Op: "subtract"}); err != nil || g.GroupId != "g" {
+		t.Fatalf("boolean: %+v %v", g, err)
+	}
+	check("boolean_operation", map[string]any{"op": "subtract"})
+	if _, err := sess.FlattenBoolean(ctx, odmcp.FlattenInput{GroupId: "g"}); err != nil {
+		t.Fatal(err)
+	}
+	check("flatten_boolean", map[string]any{"groupId": "g"})
+	if _, err := sess.OutlineStroke(ctx, odmcp.OutlineStrokeInput{NodeId: "n"}); err != nil {
+		t.Fatal(err)
+	}
+	check("outline_stroke", map[string]any{"nodeId": "n"})
+	if _, err := sess.ReorderNode(ctx, odmcp.ReorderInput{NodeId: "a", To: "front"}); err != nil {
+		t.Fatal(err)
+	}
+	check("reorder_node", map[string]any{"to": "front"})
+	v, err := sess.CreateVector(ctx, odmcp.CreateVectorInput{
+		Name:  "Tri",
+		Paths: []odmcp.PathIO{{Closed: true, Anchors: []odmcp.AnchorIO{{X: 0, Y: 0}, {X: 60, Y: 0, OutY: 5}, {X: 30, Y: 60}}}},
+		Fill:  &odmcp.RGBA{R: 1, A: 1}, Stroke: &odmcp.StrokeIO{Color: odmcp.RGBA{A: 1}, Weight: 2},
+	})
+	if err != nil || v.NodeId != "v" || v.Width != 60 {
+		t.Fatalf("vector: %+v %v", v, err)
+	}
+	check("create_vector", map[string]any{"nodeName": "Tri"})
+	paths := last["paths"].([]any)[0].(map[string]any)
+	if paths["closed"] != true || len(paths["anchors"].([]any)) != 3 {
+		t.Fatalf("paths sent = %v", paths)
+	}
+	if _, err := sess.SetVectorPath(ctx, odmcp.SetVectorPathInput{NodeId: "v", Paths: []odmcp.PathIO{{Anchors: []odmcp.AnchorIO{{X: 1, Y: 1}}}}}); err != nil {
+		t.Fatal(err)
+	}
+	check("set_vector_path", map[string]any{"nodeId": "v"})
 }

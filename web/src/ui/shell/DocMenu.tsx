@@ -16,6 +16,16 @@ import { VariablesDialog } from "../VariablesDialog";
 import { FontsDialog } from "../FontsDialog";
 import { StylesDialog } from "../StylesDialog";
 import { PageSetupDialog } from "../PageSetupDialog";
+import { FindReplaceDialog } from "../FindReplaceDialog";
+import { SwatchesDialog } from "../SwatchesDialog";
+import { ObjectStylesDialog } from "../ObjectStylesDialog";
+import { LayersDialog } from "../LayersDialog";
+import { LinksDialog } from "../LinksDialog";
+import { PrintPdfDialog } from "../PrintPdfDialog";
+import { DataMergeDialog } from "../DataMergeDialog";
+import { BookMetadataDialog } from "../BookMetadataDialog";
+import { InsertTableDialog } from "../InsertTableDialog";
+import { generateContentsOps } from "../../tools/contents";
 import { VersionsDialog } from "../VersionsDialog";
 import { PluginsDialog } from "../PluginsDialog";
 import { ShareDialog } from "../ShareDialog";
@@ -62,6 +72,15 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
   const [pluginsOpen, setPluginsOpen] = useState(false);
   const [shareOpen, setShareOpen] = useState(false);
   const [boardOpen, setBoardOpen] = useState(false);
+  const [findOpen, setFindOpen] = useState(false);
+  const [swatchesOpen, setSwatchesOpen] = useState(false);
+  const [objectStylesOpen, setObjectStylesOpen] = useState(false);
+  const [layersOpen, setLayersOpen] = useState(false);
+  const [linksOpen, setLinksOpen] = useState(false);
+  const [printOpen, setPrintOpen] = useState(false);
+  const [mergeOpen, setMergeOpen] = useState(false);
+  const [bookOpen, setBookOpen] = useState(false);
+  const [tableOpen, setTableOpen] = useState(false);
   // What this kind of document needs: entries of other kinds of work are tucked away, not removed.
   const vertical = useScene((s) => verticalOf(s.scene));
   const show = (id: string) => menuShows(vertical, id);
@@ -95,13 +114,23 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
             });
           }
           else if (k === "export-pdf") void runDocumentExport("pdf");
-          else if (k === "export-pdf-bleed") void runDocumentExport("pdf", {}, { bleed: true });
+          else if (k === "export-pdf-bleed") setPrintOpen(true);
           else if (k === "page-setup") setPageSetupOpen(true);
           else if (k === "export-epub") void runDocumentExport("epub");
+          else if (k === "export-epub-reflow") void runDocumentExport("epub-reflow");
           else if (k === "diagram") setDiagramOpen(true);
           else if (k === "variables") setVariablesOpen(true);
           else if (k === "fonts") setFontsOpen(true);
           else if (k === "styles") setStylesOpen(true);
+          else if (k === "find") setFindOpen(true);
+          else if (k === "swatches") setSwatchesOpen(true);
+          else if (k === "object-styles") setObjectStylesOpen(true);
+          else if (k === "layers") setLayersOpen(true);
+          else if (k === "links") setLinksOpen(true);
+          else if (k === "data-merge") setMergeOpen(true);
+          else if (k === "book-metadata") setBookOpen(true);
+          else if (k === "table") setTableOpen(true);
+          else if (k === "contents" || k === "index") generateContents(k === "contents" ? "toc" : "index");
           else if (k === "versions") setVersionsOpen(true);
           else if (k === "plugins") setPluginsOpen(true);
           else if (k === "share") setShareOpen(true);
@@ -154,6 +183,11 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
                   <Icon name="download" size={14} /> {t("Export all pages as EPUB")}
                 </MenuItem>
               )}
+              {show("export-epub") && (
+                <MenuItem id="export-epub-reflow" className={ITEM}>
+                  <Icon name="download" size={14} /> Export text as EPUB (reflowable)
+                </MenuItem>
+              )}
               {show("page-setup") && (
                 <MenuItem id="page-setup" className={ITEM}>
                   <Icon name="page" size={14} /> {t("Page setup…")}
@@ -178,6 +212,40 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               <MenuItem id="styles" className={ITEM}>
                 <Icon name="plus" size={14} /> {t("Styles (paragraph, character)…")}
               </MenuItem>
+              <MenuItem id="swatches" className={ITEM}>
+                <Icon name="grid" size={14} /> Swatches and colour mode…
+              </MenuItem>
+              <MenuItem id="object-styles" className={ITEM}>
+                <Icon name="plus" size={14} /> Object styles…
+              </MenuItem>
+              <MenuItem id="layers" className={ITEM}>
+                <Icon name="layers" size={14} /> Layers (shared by all pages)…
+              </MenuItem>
+              <MenuItem id="links" className={ITEM}>
+                <Icon name="link" size={14} /> Links (images)…
+              </MenuItem>
+              <MenuItem id="book-metadata" className={ITEM}>
+                <Icon name="plus" size={14} /> Book metadata (ONIX)…
+              </MenuItem>
+              <MenuItem id="data-merge" className={ITEM}>
+                <Icon name="plus" size={14} /> Data merge (CSV)…
+              </MenuItem>
+              <MenuItem id="find" className={ITEM}>
+                <Icon name="search" size={14} /> Find and change…
+              </MenuItem>
+              <MenuItem id="table" className={ITEM}>
+                <Icon name="plus" size={14} /> Insert table…
+              </MenuItem>
+              {show("contents") && (
+                <>
+                  <MenuItem id="contents" className={ITEM}>
+                    <Icon name="page" size={14} /> Table of contents <span className="ml-auto text-[11px] text-fg-subtle">from heading styles</span>
+                  </MenuItem>
+                  <MenuItem id="index" className={ITEM}>
+                    <Icon name="page" size={14} /> Index <span className="ml-auto text-[11px] text-fg-subtle">from [#term] marks</span>
+                  </MenuItem>
+                </>
+              )}
               <MenuItem id="versions" className={ITEM}>
                 <Icon name="page" size={14} /> {t("Versions…")}
               </MenuItem>
@@ -245,8 +313,36 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
     <PluginsDialog isOpen={pluginsOpen} onOpenChange={setPluginsOpen} />
     <ShareDialog isOpen={shareOpen} onOpenChange={setShareOpen} />
     <BoardDialog isOpen={boardOpen} onOpenChange={setBoardOpen} />
+    <FindReplaceDialog isOpen={findOpen} onOpenChange={setFindOpen} />
+    <SwatchesDialog isOpen={swatchesOpen} onOpenChange={setSwatchesOpen} />
+    <ObjectStylesDialog isOpen={objectStylesOpen} onOpenChange={setObjectStylesOpen} />
+    <LayersDialog isOpen={layersOpen} onOpenChange={setLayersOpen} />
+    <LinksDialog isOpen={linksOpen} onOpenChange={setLinksOpen} />
+    <PrintPdfDialog isOpen={printOpen} onOpenChange={setPrintOpen} />
+    <DataMergeDialog isOpen={mergeOpen} onOpenChange={setMergeOpen} />
+    <BookMetadataDialog isOpen={bookOpen} onOpenChange={setBookOpen} />
+    <InsertTableDialog isOpen={tableOpen} onOpenChange={setTableOpen} />
     </>
   );
+}
+
+// Writes (or refreshes) the contents or the index of the document into its frame on the page on screen.
+function generateContents(kind: "toc" | "index"): void {
+  const st = useScene.getState();
+  const scene = st.scene;
+  const pageId = st.currentPageId ?? scene?.pages[0]?.id;
+  if (!scene || !pageId) return;
+  const made = generateContentsOps(scene, kind, pageId);
+  if (!made) {
+    useScene.setState({ notice: kind === "toc"
+      ? "No headings yet: give a paragraph style a heading level (Styles… → Heading level) and use it."
+      : "No index terms yet: mark a word in the text with [#term]." });
+    return;
+  }
+  st.beginGesture();
+  st.endGesture(made.ops);
+  st.setSelection(made.selection);
+  useScene.setState({ notice: `${kind === "toc" ? "Contents" : "Index"} written: ${made.lines} ${made.lines === 1 ? "line" : "lines"}.` });
 }
 
 const ITEM =

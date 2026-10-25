@@ -87,6 +87,13 @@ function stylesScene() {
     } } } }),
   ].reduce(applyOp, baseScene());
 }
+// object_style_id / layer_id need a style / layer to point to.
+function styledScene() {
+  return [
+    create(OpSchema, { opId: "o", docId: "doc1", kind: { case: "setObjectStyleDef", value: { objectStyle: { id: "card", name: "Card", sets: ["opacity"], opacity: 0.5 } } } }),
+    create(OpSchema, { opId: "l", docId: "doc1", kind: { case: "setLayer", value: { layer: { id: "art", name: "Art" } } } }),
+  ].reduce(applyOp, baseScene());
+}
 const sceneFor = (path: string) =>
   path === "arc_start" || path === "arc_sweep" ? shapeScene({ case: "ellipse", value: {} })
     : path === "inner_ratio" ? shapeScene({ case: "ellipse", value: {} })
@@ -96,6 +103,7 @@ const sceneFor = (path: string) =>
     : path === "auto_layout" || path === "layout_grids" ? frameScene()
     : path === "bindings" || path === "modes" ? themedScene()
     : path === "text_style_id" ? textScene()
+    : path === "object_style_id" || path === "layer_id" ? styledScene()
     : baseScene();
 
 function setPropsOp(paths: readonly string[], patch: MessageInitShape<typeof NodeSchema> = {}): Op {
@@ -321,6 +329,9 @@ const PROBE: Probe = {
   modes: { patch: { modes: { theme: "dark" } }, expected: { theme: "dark" } },
   // Shared text style: validated against textScene().
   text_style_id: { patch: { textStyleId: "h" }, expected: "h" },
+  // Shared object style and layer: validated against styledScene().
+  object_style_id: { patch: { objectStyleId: "card" }, expected: "card" },
+  layer_id: { patch: { layerId: "art" }, expected: "art" },
   // Constraints and layout sizing: plain enums on any node.
   constraint_x: { patch: { constraintX: Constraint.MAX }, expected: "max" },
   constraint_y: { patch: { constraintY: Constraint.SCALE }, expected: "scale" },

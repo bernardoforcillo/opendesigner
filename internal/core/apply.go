@@ -186,6 +186,16 @@ func applyOp(doc *opendesignerv1.Document, op *opendesignerv1.Op, cow *Shared) e
 		return applyRenamePage(doc, k.RenamePage)
 	case *opendesignerv1.Op_UpdatePage:
 		return applyUpdatePage(doc, k.UpdatePage)
+	case *opendesignerv1.Op_SetObjectStyleDef:
+		return applySetObjectStyleDef(doc, k.SetObjectStyleDef)
+	case *opendesignerv1.Op_DeleteObjectStyleDef:
+		return applyDeleteObjectStyleDef(doc, k.DeleteObjectStyleDef, cow)
+	case *opendesignerv1.Op_SetLayer:
+		return applySetLayer(doc, k.SetLayer)
+	case *opendesignerv1.Op_DeleteLayer:
+		return applyDeleteLayer(doc, k.DeleteLayer, cow)
+	case *opendesignerv1.Op_SetImage:
+		return applySetImage(doc, k.SetImage, cow)
 	case *opendesignerv1.Op_MovePage:
 		return applyMovePage(doc, k.MovePage)
 	case *opendesignerv1.Op_SetDocSettings:
@@ -632,6 +642,14 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			if err := validateTextStyleID(doc, n, s.GetPatch().GetTextStyleId()); err != nil {
 				return err
 			}
+		case "object_style_id":
+			if err := validateObjectStyleID(doc, n, s.GetPatch().GetObjectStyleId()); err != nil {
+				return err
+			}
+		case "layer_id":
+			if err := validateLayerID(doc, s.GetPatch().GetLayerId()); err != nil {
+				return err
+			}
 		case "corner_radius":
 			// The ONLY mask path that addresses a field INSIDE the `shape` oneof
 			// (RectNode.corner_radius) instead of a top-level field of the Node: the
@@ -722,6 +740,10 @@ func applySetProps(doc *opendesignerv1.Document, s *opendesignerv1.SetProperties
 			n.Modes = p.GetModes()
 		case "text_style_id":
 			n.TextStyleId = p.GetTextStyleId()
+		case "object_style_id":
+			n.ObjectStyleId = p.GetObjectStyleId()
+		case "layer_id":
+			n.LayerId = p.GetLayerId()
 		case "constraint_x":
 			n.ConstraintX = p.GetConstraintX()
 		case "constraint_y":

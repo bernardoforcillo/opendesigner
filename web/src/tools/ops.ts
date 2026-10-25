@@ -2,10 +2,10 @@ import { create, type MessageInitShape } from "@bufbuild/protobuf";
 import { NodeSchema, OpSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
-import { toPbAnnotation, toPbReady, toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbPaintStyleDef, toPbEffectStyleDef, toPbFlow, toPbInstanceOverride, toPbInstance, toPbSubPaths, toPbTextStyle, toPbTransition } from "../store/types";
+import { toPbAnnotation, toPbReady, toPbComment, toPbClip, toPbComponentProperty, toPbComponentSet, toPbCollection, toPbVariable, toPbFont, toPbTextStyleDef, toPbPaintStyleDef, toPbEffectStyleDef, toPbFlow, toPbInstanceOverride, toPbInstance, toPbSubPaths, toPbTextStyle, toPbTransition, settingsToMsg, toPbObjectStyleDef, toPbLayer } from "../store/types";
 import { pageToPb } from "../store/masters";
 import type { DocSettingsLite, PageLite } from "../store/types";
-import type { AnnotationLite, ReadyLite, CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, PaintStyleDefLite, EffectStyleDefLite, VariableLite, FlowLite, InstanceLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite } from "../store/types";
+import type { AnnotationLite, ReadyLite, CommentLite, ClipLite, CollectionLite, ComponentPropertyLite, ComponentSetLite, FontLite, TextStyleDefLite, PaintStyleDefLite, EffectStyleDefLite, VariableLite, FlowLite, InstanceLite, InstanceOverrideLite, SubPathLite, TextStyleLite, TransitionLite, LayerLite, ObjectStyleLite } from "../store/types";
 import type { MaskPath } from "../store/maskPaths";
 
 // Centralized construction of Ops: every tool goes through here, so opId and docId
@@ -163,11 +163,19 @@ export function makeMovePageOp(id: string, index: number): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "movePage", value: { id, index } } });
 }
 
+/** Replaces what an image node shows (relink): the asset and what is known about the file it came from. */
+export function makeSetImageOp(id: string, image: { assetHash: string; originalName?: string; pixelWidth?: number; pixelHeight?: number }): Op {
+  return create(OpSchema, {
+    opId: uuid(), docId: docId(),
+    kind: { case: "setImage", value: { id, image: { assetHash: image.assetHash, originalName: image.originalName ?? "", pixelWidth: image.pixelWidth ?? 0, pixelHeight: image.pixelHeight ?? 0 } } },
+  });
+}
+
 /** Absolute upsert of the document settings (vertical, baseline grid, facing pages, Present device frame). */
 export function makeSetDocSettingsOp(s: DocSettingsLite): Op {
   return create(OpSchema, {
     opId: uuid(), docId: docId(),
-    kind: { case: "setDocSettings", value: { settings: { vertical: s.vertical ?? "", baselineIncrement: s.baselineIncrement ?? 0, baselineStart: s.baselineStart ?? 0, facingPages: s.facingPages === true, presentDevice: s.presentDevice ?? "" } } },
+    kind: { case: "setDocSettings", value: { settings: settingsToMsg(s) } },
   });
 }
 
@@ -340,6 +348,18 @@ export function makeDeleteFontOp(id: string): Op {
 }
 export function makeSetTextStyleDefOp(d: TextStyleDefLite): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setTextStyleDef", value: { textStyle: toPbTextStyleDef(d) } } });
+}
+export function makeSetObjectStyleDefOp(d: ObjectStyleLite): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setObjectStyleDef", value: { objectStyle: toPbObjectStyleDef(d) } } });
+}
+export function makeDeleteObjectStyleDefOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteObjectStyleDef", value: { id } } });
+}
+export function makeSetLayerOp(l: LayerLite, position = 0): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "setLayer", value: { layer: toPbLayer(l), position } } });
+}
+export function makeDeleteLayerOp(id: string): Op {
+  return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteLayer", value: { id } } });
 }
 export function makeDeleteTextStyleDefOp(id: string): Op {
   return create(OpSchema, { opId: uuid(), docId: docId(), kind: { case: "deleteTextStyleDef", value: { id } } });

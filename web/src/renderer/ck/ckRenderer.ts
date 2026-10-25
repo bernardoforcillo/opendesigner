@@ -5,7 +5,7 @@ import type { Camera } from "../../canvas/camera";
 import { type Bounds, boundsIntersect, boundsOfNode, inflateBounds, strokeOutsetOfNode } from "../../canvas/geometry";
 import { type Transform, localTransformOf } from "../../canvas/transform";
 import { instanceDescentLocal, instanceOverrideMap, resolveInstance } from "../../store/instances";
-import type { EffectLite, FillLite, GradientLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite } from "../../store/types";
+import type { EffectLite, FillLite, GradientLite, InstanceOverrideLite, MeshLite, NodeLite, SceneState, StrokeLite, TextStyleLite } from "../../store/types";
 import { anchorPoint, inHandlePoint, outHandlePoint, subpathFills } from "../../store/vectorGeometry";
 import {
   CLIP_MIN_PX, LOD_FLAT_PX, SKIP_SUBTREE_PX, type ImageSource, resolvedFill, rootsOf, withOverride,
@@ -19,7 +19,7 @@ import { variableStrokeCommands } from "../../vector/widthProfile";
 import { brushStrokeCommands } from "../../vector/brush";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "../gradientBitmap";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
-import { decorationBars, fontSizeOf, hscaleOf, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
+import { decorationBars, fontSizeOf, hscaleOf, paragraphDecorations, piecesOfLine, piecesOfSegment, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
 import { FX_TILE, blurBands, overlayEffects, overlayTile, progressiveBlur, tileUnit, withBandBlur, withExpandedGlass } from "../effectsFx";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
@@ -733,6 +733,17 @@ export class CanvasKitRenderer {
   }
 
   private drawText(sk: Canvas, n: NodeLite): void {
+    const font = n.text ? this.fonts.fontFor(n.text.style.fontWeight, fontSizeOf(n.text.style), n.text.style.fontFamily, n.text.style.italic === true) : null;
+    if (font && n.text?.rich) {
+      for (const d of paragraphDecorations(this.styleMeasure, n)) {
+        const p = new this.CK.Paint();
+        p.setAntiAlias(true);
+        p.setColor(this.CK.Color4f(d.color.r, d.color.g, d.color.b, d.color.a));
+        if (d.kind === "border") { p.setStyle(this.CK.PaintStyle.Stroke); p.setStrokeWidth(d.weight ?? 1); }
+        sk.drawRect(this.CK.XYWHRect(d.x, d.y, d.width, d.height), p);
+        p.delete();
+      }
+    }
     this.paintText(sk, n, this.fillPaint(resolvedFill(n), n, n.opacity));
     this.drawStrokes(sk, n, null);
   }
@@ -747,13 +758,26 @@ export class CanvasKitRenderer {
       lines = placeTextLines(this.measureFor(font), n, this.styleMeasure);
       this.textLines.set(n, lines);
     }
-    // A piece with letter spacing goes character by character, as on the 2D canvas; one with a horizontal
-    // scale is stretched about its start.
-    const put = (text: string, x: number, y: number, f: Font, spacing: number, hscale: number) => {
-      if (hscale !== 1) { sk.save(); sk.translate(x, 0); sk.scale(hscale, 1); sk.translate(-x, 0); }
-      if (!spacing) sk.drawText(text, x, y, paint, f);
-      else for (const c of trackedOffsets(text, x, spacing, this.measureFor(f))) sk.drawText(c.ch, c.x, y, paint, f);
-      if (hscale !== 1) sk.restore();
+    // A piece with letter spacing goes character by character, as on the 2D canvas.
+    const put = (text: string, x: number, y0: number, f: Font, style: TextStyleLite, angle = 0) => {
+      if (text === "") return;
+      const spacing = style.letterSpacing ?? 0, sx = (style.horizontalScale ?? 1) * hscaleOf(style);
+      const y = y0 - (style.baselineShift ?? 0);
+      // A piece with its own colour is painted with a copy of the node's paint.
+      const own = style.color ? paint.copy() : null;
+      if (own && style.color) own.setColor(this.CK.Color4f(style.color.r, style.color.g, style.color.b, style.color.a));
+      const p = own ?? paint;
+      if (sx !== 1 || angle) {
+        sk.save();
+        sk.translate(x, y);
+        if (angle) sk.rotate((angle * 180) / Math.PI, 0, 0);
+        sk.scale(sx, 1);
+        if (!spacing) sk.drawText(text, 0, 0, p, f);
+        else for (const c of trackedOffsets(text, 0, spacing / sx, this.measureFor(f))) sk.drawText(c.ch, c.x, 0, p, f);
+        sk.restore();
+      } else if (!spacing) sk.drawText(text, x, y, p, f);
+      else for (const c of trackedOffsets(text, x, spacing, this.measureFor(f))) sk.drawText(c.ch, c.x, y, p, f);
+      own?.delete();
     };
     for (const line of lines) {
       if (!line.segments) {
@@ -761,7 +785,7 @@ export class CanvasKitRenderer {
           // Small caps and scripts are runs at another size; the font is cached per size.
           const f = p.scale === 1 ? font
             : this.fonts.fontFor(t.style.fontWeight, fontSizeOf(t.style) * p.scale, t.style.fontFamily, t.style.italic === true) ?? font;
-          put(p.text, p.x, p.y, f, t.style.letterSpacing ?? 0, hscaleOf(t.style));
+          put(p.text, p.x, p.y, f, t.style);
         }
         this.drawBars(sk, [{ x: line.x, width: line.width, style: t.style }], line.y, paint);
         continue;
@@ -770,7 +794,7 @@ export class CanvasKitRenderer {
       for (const seg of line.segments) {
         for (const p of piecesOfSegment(seg, line.y)) {
           const f = this.fonts.fontFor(seg.style.fontWeight, fontSizeOf(seg.style) * p.scale, seg.style.fontFamily, seg.style.italic === true) ?? font;
-          put(p.text, p.x, p.y, f, seg.style.letterSpacing ?? 0, hscaleOf(seg.style));
+          put(p.text, p.x, p.y, f, seg.style, seg.angle);
         }
       }
       this.drawBars(sk, line.segments, line.y, paint);
@@ -784,9 +808,10 @@ export class CanvasKitRenderer {
   };
 
   // Underline / strikethrough bars under pieces whose style asks for them.
-  private drawBars(sk: Canvas, pieces: readonly { x: number; width: number; style: Parameters<typeof decorationBars>[0] }[], baseline: number, paint: Paint): void {
+  private drawBars(sk: Canvas, pieces: readonly { x: number; width: number; style: Parameters<typeof decorationBars>[0]; angle?: number }[], baseline: number, paint: Paint): void {
     for (const piece of pieces) {
-      for (const bar of decorationBars(piece.style, baseline)) sk.drawRect(this.CK.XYWHRect(piece.x, bar.y, piece.width, bar.height), paint);
+      if (piece.angle !== undefined) continue; // no underline along a path
+      for (const bar of decorationBars(piece.style, baseline - (piece.style.baselineShift ?? 0))) sk.drawRect(this.CK.XYWHRect(piece.x, bar.y, piece.width, bar.height), paint);
     }
   }
 

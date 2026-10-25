@@ -9,6 +9,11 @@ import { taggedOf } from "./tagged";
 import { resolveTextStyleNode } from "./typography";
 import { resolvePaintStylesNode, usesPaintStyle } from "./paintStyles";
 import { hasRich, resolveRichNode } from "./richText";
+import { deriveTextTokens } from "./textTokens";
+import { deriveWrap } from "./wrap";
+import { deriveLayers, isValidSwatch, resolveObjectStyleNode } from "./graphics";
+import { deriveTextPaths } from "./textPath";
+import { deriveAnchored } from "./anchored";
 import type { CollectionLite, FillLite, NodeLite, SceneState, VariableLite, VariableTypeLite } from "./types";
 
 // VARIABLES (design tokens) -- the TypeScript twin of internal/core/variables.go.
@@ -77,6 +82,7 @@ export function isValidVariable(state: SceneState, v: PbVariable | undefined): v
   const type: VariableTypeLite = v.type === VariableType.COLOR ? "color" : v.type === VariableType.STRING ? "string" : v.type === VariableType.BOOLEAN ? "boolean" : "number";
   const prev = state.variables[v.id];
   if (prev && (prev.type !== type || prev.collectionId !== v.collectionId)) return false;
+  if (!isValidSwatch(state, v)) return false;
   if (v.aliasOf !== "") return isValidAlias(state, v, type);
   const modes = new Set(col.modes.map((m) => m.id));
   for (const [mode, val] of Object.entries(v.values)) {
@@ -245,7 +251,7 @@ const clamp01 = (n: number) => Math.min(1, Math.max(0, n));
  */
 export function resolveNode(state: SceneState, n: NodeLite): NodeLite {
   // Formatting last: its paragraphs build on the node's final style (shared style and bindings applied).
-  return resolveRichNode(state, resolveBindings(state, resolvePaintStylesNode(state, resolveTextStyleNode(state, n))));
+  return resolveRichNode(state, resolveBindings(state, resolveObjectStyleNode(state, resolvePaintStylesNode(state, resolveTextStyleNode(state, n)))));
 }
 
 function resolveBindings(state: SceneState, n: NodeLite): NodeLite {
@@ -316,22 +322,21 @@ const resolved = new WeakMap<SceneState, SceneState>();
  */
 export function resolveScene(raw: SceneState): SceneState {
   // Threaded text flows last, over the final styles.
-  return deriveThreads(resolveBase(raw));
+  return deriveAnchored(deriveThreads(deriveTextPaths(deriveWrap(resolveBase(raw)))));
 }
 
 function resolveBase(raw: SceneState): SceneState {
   // Master pages' copies first (so the passes below also see them), then live boolean groups (store/booleans.ts), then connectors (store/connectors.ts), then the
   // variables over the result.
-  const scene = deriveConnectors(deriveBooleans(deriveMasters(raw)));
-  if (Object.keys(scene.variables).length === 0 && Object.keys(scene.textStyles).length === 0
-    && Object.keys(scene.paintStyles).length === 0 && Object.keys(scene.effectStyles).length === 0) return scene;
+  const scene = deriveConnectors(deriveBooleans(deriveLayers(deriveTextTokens(deriveMasters(raw)))));
+  if (Object.keys(scene.variables).length === 0 && Object.keys(scene.textStyles).length === 0 && taggedOf(scene).bound.size === 0) return scene;
   const hit = resolved.get(scene);
   if (hit) return hit;
   let edit: ReturnType<SceneState["nodes"]["edit"]> | null = null;
   const changed: string[] = [];
   for (const id of taggedOf(scene).bound) {
     const n = scene.nodes.get(id);
-    if (!n || (!n.bindings && !n.textStyleId && !hasRich(n) && !usesPaintStyle(n))) continue;
+    if (!n || (!n.bindings && !n.textStyleId && !n.objectStyleId && !hasRich(n) && !usesPaintStyle(n))) continue;
     const r = resolveNode(scene, n);
     if (r === n) continue;
     (edit ??= scene.nodes.edit()).set(n.id, r);

@@ -1,0 +1,179 @@
+{
+ "_comment": [
+  "Data merge cases, checked from BOTH sides: internal/datamerge/datamerge_test.go and web/src/tools/dataMerge.test.ts.",
+  "tables: a CSV/TSV text and the headers and rows read from it. substitutions: a text with {{placeholders}}, the record, the text after, and where some offsets (UTF-16 units) land."
+ ],
+ "tables": [
+  {
+   "in": "Name,Note\r\n\"Smith, J.\",\"said \"\"hi\"\"\"\r\nLee,\"two\nlines\"\r\n",
+   "headers": [
+    "Name",
+    "Note"
+   ],
+   "rows": [
+    [
+     "Smith, J.",
+     "said \"hi\""
+    ],
+    [
+     "Lee",
+     "two\nlines"
+    ]
+   ]
+  },
+  {
+   "in": "﻿a;b\n1;2\n\n3;4",
+   "headers": [
+    "a",
+    "b"
+   ],
+   "rows": [
+    [
+     "1",
+     "2"
+    ],
+    [
+     "3",
+     "4"
+    ]
+   ]
+  },
+  {
+   "in": "a\tb\n1\t2",
+   "headers": [
+    "a",
+    "b"
+   ],
+   "rows": [
+    [
+     "1",
+     "2"
+    ]
+   ]
+  },
+  {
+   "in": " Name , City \nAda,London",
+   "headers": [
+    "Name",
+    "City"
+   ],
+   "rows": [
+    [
+     "Ada",
+     "London"
+    ]
+   ]
+  },
+  {
+   "in": "",
+   "headers": [],
+   "rows": []
+  },
+  {
+   "in": "a,b\n1",
+   "headers": [
+    "a",
+    "b"
+   ],
+   "rows": [
+    [
+     "1"
+    ]
+   ]
+  }
+ ],
+ "substitutions": [
+  {
+   "content": "Hi {{Name}}, see {{Nope}}!",
+   "record": {
+    "Name": "Bernardo"
+   },
+   "text": "Hi Bernardo, see {{Nope}}!",
+   "maps": [
+    [
+     0,
+     0
+    ],
+    [
+     13,
+     13
+    ],
+    [
+     11,
+     11
+    ],
+    [
+     8,
+     11
+    ]
+   ]
+  },
+  {
+   "content": "{{A}}",
+   "record": {
+    "A": "x\ny"
+   },
+   "text": "x y",
+   "maps": [
+    [
+     0,
+     0
+    ],
+    [
+     5,
+     3
+    ]
+   ]
+  },
+  {
+   "content": "Dear {{ Name }}, ok",
+   "record": {
+    "Name": "Grace Hopper"
+   },
+   "text": "Dear Grace Hopper, ok",
+   "maps": [
+    [
+     5,
+     5
+    ],
+    [
+     7,
+     17
+    ],
+    [
+     14,
+     17
+    ],
+    [
+     15,
+     17
+    ]
+   ]
+  },
+  {
+   "content": "😀 {{A}} é",
+   "record": {
+    "A": "😀😀"
+   },
+   "text": "😀 😀😀 é",
+   "maps": [
+    [
+     3,
+     3
+    ],
+    [
+     4,
+     7
+    ],
+    [
+     9,
+     8
+    ],
+    [
+     13,
+     12
+    ]
+   ]
+  }
+ ]
+}

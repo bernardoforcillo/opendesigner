@@ -70,7 +70,7 @@ Legend: [x] done · [ ] to do
 - [x] Shape builder tool: click or drag across the regions of overlapping shapes to merge them into one vector (Alt removes); see docs/vector.md
 - [x] Shape builder over MCP (`list_shape_builder_faces`, `shape_builder`; Go port of the arrangement, areas golden-tested against the editor); see docs/vector.md
 - [x] Gradient mesh (a color grid blended over the box; the points do not move; code export uses the average color)
-- [x] SVG export and PDF (the SVG through the browser's print dialog, Save as PDF)
+- [x] SVG export and PDF (a real PDF writer, docs/output.md)
 - [x] PDF import (editable text with embedded fonts and shared text styles, shapes and images, one page per PDF page), and export of all pages as PDF or EPUB (fixed layout); see docs/pdf-epub.md
 - [ ] AI/EPS export
 - [ ] Color: ICC profiles and color-managed print (CMYK read-out/entry exists, plain conversion only)
@@ -90,7 +90,7 @@ Verticals (docs/publishing.md): a document is for publishing, design or design �
 - [x] Publishing templates (book, magazine, report) and design templates (poster, brand sheet); Pages panel with thumbnails
 
 
-Multi-page documents, long text and print output. Already there: pages, layout grids (columns, rows), uploaded fonts and shared text styles, PDF import with editable text, PDF/EPUB export of all pages (docs/pdf-epub.md).
+Multi-page documents, long text and print output. Already there: pages, layout grids (columns, rows), uploaded fonts and shared text styles, PDF import with editable text, PDF/EPUB export (docs/pdf-epub.md, docs/output.md).
 
 Pages and structure
 - [x] Page sizes and presets (A3-A6, Letter, Legal, Tabloid, book, square, custom)
@@ -101,38 +101,52 @@ Pages and structure
 - [x] Pages panel: reorder, duplicate, spreads, sections with their own numbering
 - [x] Page size, margins, columns, gutter and bleed per page (Page setup…), drawn on the sheet, snapped to, and exported as the sheet; PDF for print with bleed
 - [x] Slug areas, ruler guides per page, different margins for left and right pages
-- [ ] Slug and spreads in the PDF/EPUB export
-- [ ] Layers shared across pages
+- [x] Slug and spreads in the PDF export (the EPUB has no print areas; fixed-layout spreads are not written)
+- [x] Layers shared across pages (hide, lock, keep out of print); see docs/graphics-colour.md
 
 Text
 - [ ] Text frames with columns, inset and vertical alignment
 - [x] Threaded frames (text flows from one frame to the next, across pages), overset indicator; thread/unlink/add next frame, MCP (`thread_text_frames`); see docs/text-frames.md
 - [ ] Threading by dragging from a frame's port, a story editor, columns in a single frame
 - [x] Paragraph styles and character styles (based-on, next style, space before/after, indents), underline and strikethrough, editor pickers, MCP (`format_text`); see docs/rich-text.md
-- [ ] Nested styles, colour in styles, bullets and numbering, tabs
+- [x] Nested styles, colour in styles, bullets and numbering, tabs (with leaders); see docs/rich-text.md
 - [x] Baseline grid (document setting, drawn on the page, snap target) and paragraphs that align to it; see docs/rich-text.md
 - [x] Letter spacing (tracking) and underline / strikethrough
-- [ ] Kerning control, horizontal scale, small caps, super/subscript
-- [ ] Hyphenation and justification, widows/orphans, keep-with-next, drop caps
-- [ ] Bullets and numbered lists, tabs, indents
-- [ ] Text wrap around objects, anchored (inline) objects
-- [ ] Footnotes, tables with cell and table styles, table of contents, index
-- [ ] Find/change, spell check, text variables (running headers, page numbers)
-- [ ] Text on a path; OpenType features (ligatures, stylistic sets, tabular figures)
+- [x] Kerning on/off, horizontal scale, small caps, super/subscript
+- [x] Hyphenation and justification, drop caps
+- [x] Widows/orphans, keep-with-next, keep lines together (between threaded frames); see docs/rich-text.md
+- [x] Paragraph rules above/below, shading and border, optical margin alignment, variable-font axes (SVG and editing field only)
+- [x] Bullets and numbered lists, tabs, indents
+- [x] Text wrap around objects (bounding box, gap); see docs/text-frames.md
+- [x] Anchored (inline) objects, tied to a place in the text; see docs/graphics-colour.md
+- [x] Footnotes, tables (rows, columns, header), table of contents, index; see docs/text-frames.md
+- [ ] Table and cell styles, cell spanning, index sub-entries
+- [x] Find/change (text, word, regex), browser spell check, text variables (running headers, page count, document name)
+- [x] Text on a path
+- [x] OpenType feature settings per style (SVG output and editing field; not drawn on the canvas)
 
 Graphics and colour
-- [ ] Placed (linked) images with update-on-change, fitting options, image frames, effective resolution
-- [ ] Swatches (spot, tint, gradient), CMYK document mode, overprint, ICC profiles (see section 1b)
-- [ ] Object styles, anchored and nested frames, frame fitting
-- [ ] Transparency flattening for print, drop shadows and effects in PDF output
+- [x] Linked images: file name and pixel size, effective resolution with a low-resolution warning, fitting from pixel size, relink, Links panel
+- [ ] Update-on-change from disk, image frames with fitting inside them
+- [x] Swatches (process CMYK, RGB, spot, tints that follow their base), CMYK document mode and a recorded output profile
+- [ ] Gradient swatches, overprint, profile-managed conversion
+- [x] Object styles (fill, stroke, effects, opacity, corner radius, blend mode; based-on)
+- [ ] Nested frames, frame fitting
+- [ ] Transparency flattening for print, blur and inner shadows in PDF output (opacity, blend modes and hard-edged drop shadows are written; blur is reported by the preflight)
 
-Output
-- [ ] Print-ready PDF writer (PDF/X-1a, PDF/X-4): fonts embedded, bleed, crop marks, colour bars, CMYK
-- [ ] Preflight panel (missing fonts, low-res images, overset text, RGB in CMYK documents)
-- [ ] Package (document + fonts + links)
-- [ ] EPUB: reflowable export from threaded text and styles (today: fixed layout), with a table of contents
-- [ ] Interactive PDF (links, bookmarks, forms), HTML export of text
-- [ ] Data merge (variable data from CSV), book (several documents with shared styles and numbering)
+Output (docs/output.md)
+- [x] PDF writer: fonts embedded (uploaded fonts, whole, no subsetting), original JPEG/PNG bytes, gradients as true shadings, opacity and blend modes, masks, CMYK and spot paints (Separation), page boxes, layers that do not print left out
+- [x] Print options: bleed, crop marks and page information, slug, spreads, PDF/X-1a / X-3 / X-4 identification with an output intent ("ready", not validated: no ICC profile is embedded)
+- [x] Preflight (missing fonts, overset text, no bleed, low-resolution images, missing glyphs, transparency under X-1a/X-3, RGB under X-1a, effects the PDF cannot reproduce)
+- [x] Package for print: PDF, fonts, placed images and a text report in one zip
+- [x] EPUB: reflowable export from the stories (headings, paragraph and character styles as CSS, footnotes as notes, images, nested navigation); the fixed-layout export stays
+- [x] Interactive PDF: bookmarks from headings, link annotations (URL in a node's `link.url`, prototype transitions between pages); no forms
+- [x] Data merge from a CSV/TSV table (`{{Field}}` in text and link URLs, one page per record); no image fields
+- [x] ONIX 3.0 book metadata: record in the document, ONIX message export, EPUB and PDF metadata; see docs/onix.md (not validated against the schema or code lists)
+- [x] Everything available over MCP: outputs, imports and editing commands run by an editor on request, ONIX / data merge / duplicate page by the server; see docs/mcp-editor.md
+- [ ] HTML export of text
+- [ ] Book (several documents with shared styles and continuous numbering): not built. A document already holds sections with their own numbering; a multi-document book needs a server-side entity and cross-document style sync
+- [ ] PDF/X validation and an embedded ICC profile; font subsetting; OpenType layout (ligatures, alternates) in the PDF; blur and inner shadows; gradient transparency stops
 
 ## 2. Collaboration
 - [x] Multiplayer on the same network: nickname, avatar, others' cursors and selections, `/doc/<id>` link to join the same document (no accounts, on purpose)

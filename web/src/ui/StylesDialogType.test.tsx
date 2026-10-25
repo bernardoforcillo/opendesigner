@@ -33,8 +33,8 @@ describe("StylesDialog — type settings", () => {
     open();
     fireEvent.click(screen.getByRole("button", { name: "Body" }));
     fireEvent.change(screen.getByLabelText("Text case"), { target: { value: "smallCaps" } });
-    fireEvent.change(screen.getByLabelText("Script"), { target: { value: "super" } });
-    fireEvent.change(screen.getByLabelText("List"), { target: { value: "numbered" } });
+    fireEvent.change(screen.getByLabelText("Position"), { target: { value: "super" } });
+    fireEvent.change(screen.getByLabelText("Text list"), { target: { value: "numbered" } });
     const scale = screen.getByLabelText("Scale %");
     fireEvent.change(scale, { target: { value: "120" } });
     fireEvent.blur(scale);

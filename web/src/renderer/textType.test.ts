@@ -125,7 +125,7 @@ describe("inset and vertical alignment", () => {
 describe("OpenType features", () => {
   it("validates the feature string and ignores a malformed one", () => {
     for (const ok of ["", '"liga" 0', '"liga" 0, "tnum", "ss01" 1']) expect(isValidFontFeatures(ok)).toBe(true);
-    for (const bad of ["liga", '"liga";color:red', '"ligature"', '"liga" x', '"a","", "b"']) expect(isValidFontFeatures(bad)).toBe(false);
+    for (const bad of ['"liga";color:red', '"ligature"', '"liga" x', '"a","", "b"']) expect(isValidFontFeatures(bad)).toBe(false);
     expect(fontFeaturesOf(style({ fontFeatures: '"tnum"' }))).toBe('"tnum"');
     expect(fontFeaturesOf(style({ fontFeatures: "a;b" }))).toBe("");
     expect(ligaturesOff(style({ fontFeatures: '"liga" 0' }))).toBe(true);

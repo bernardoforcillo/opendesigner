@@ -78,7 +78,7 @@ export function measureImage(file: Blob): Promise<NaturalSize> {
   });
 }
 
-const defaultDeps: ImageDropDeps = {
+export const defaultDeps: ImageDropDeps = {
   measure: measureImage,
   upload: (docId, file) => uploadAsset(docId, file),
 };
@@ -226,7 +226,7 @@ export async function dropImages(
           opacity: 1,
           ...box,
           // The HASH, not the bytes: it is the invariant of the whole path.
-          shape: { case: "image", value: { assetHash: ref.hash } },
+          shape: { case: "image", value: { assetHash: ref.hash, originalName: files[index]?.name ?? "", pixelWidth: size.width, pixelHeight: size.height } },
         }),
       ),
     );

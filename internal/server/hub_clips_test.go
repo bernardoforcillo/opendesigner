@@ -45,3 +45,24 @@ func TestCowCloneClipsAreIndependent(t *testing.T) {
 		t.Fatal("the previous generation was mutated")
 	}
 }
+
+// The live document is rebuilt from cowClone on every Submit: a field it forgets to copy is lost at the next
+// op. Every document-level field the editor can set must survive it.
+func TestCowCloneKeepsEveryDocumentLevelField(t *testing.T) {
+	doc := core.NewDocument("d", "Doc")
+	for _, op := range []*opendesignerv1.Op{
+		{Kind: &opendesignerv1.Op_SetDocSettings{SetDocSettings: &opendesignerv1.SetDocSettings{Settings: &opendesignerv1.DocSettings{Vertical: "publishing", BaselineIncrement: 12, FacingPages: true, ColorMode: "cmyk", IccProfile: "FOGRA39"}}}},
+		{Kind: &opendesignerv1.Op_SetLayer{SetLayer: &opendesignerv1.SetLayer{Layer: &opendesignerv1.Layer{Id: "l", Name: "Guides", Locked: true}}}},
+		{Kind: &opendesignerv1.Op_SetObjectStyleDef{SetObjectStyleDef: &opendesignerv1.SetObjectStyleDef{ObjectStyle: &opendesignerv1.ObjectStyleDef{Id: "o", Name: "Card", Sets: []string{"opacity"}, Opacity: 0.5}}}},
+		{Kind: &opendesignerv1.Op_SetTextStyleDef{SetTextStyleDef: &opendesignerv1.SetTextStyleDef{TextStyle: &opendesignerv1.TextStyleDef{Id: "t", Name: "Body", Style: &opendesignerv1.TextStyle{FontSize: 12}}}}},
+		{Kind: &opendesignerv1.Op_SetCollection{SetCollection: &opendesignerv1.SetCollection{Collection: &opendesignerv1.VariableCollection{Id: "c", Name: "Swatches", Modes: []*opendesignerv1.VariableMode{{Id: "m", Name: "Default"}}}}}},
+		{Kind: &opendesignerv1.Op_UpdatePage{UpdatePage: &opendesignerv1.UpdatePage{Page: &opendesignerv1.Page{Id: "page1", Name: "One", Width: 300, Height: 400, Guides: []*opendesignerv1.Guide{{Position: 10}}}}}},
+	} {
+		if err := core.Apply(doc, op); err != nil {
+			t.Fatal(err)
+		}
+	}
+	if got := cowClone(doc); !proto.Equal(got, doc) {
+		t.Fatalf("cowClone lost something:\n got  %v\n want %v", got, doc)
+	}
+}

@@ -3,12 +3,13 @@ import { NodeSchema } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { Node as PbNode, Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { isValidEasing } from "../animation/engine";
 import { isValidClip } from "../animation/validate";
-import { type SceneState, type ClipLite, toPaintStyleDefLite, toEffectStyleDefLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, MAX_TRANSITION_ORDER, toFlowLite, toClipLite, toTransitionLite, toAnnotationLite, toReadyLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite, toInstanceLite } from "./types";
+import { type SceneState, type ClipLite, toPaintStyleDefLite, toEffectStyleDefLite, toComponentPropertyLite, toComponentSetLite, toCollectionLite, toVariableLite, toFontLite, toTextStyleDefLite, type NodeLite, type TransitionLite, TRANSITION_ANIMATIONS, MAX_TRANSITION_ORDER, toFlowLite, toClipLite, toTransitionLite, toAnnotationLite, toReadyLite, toCommentLite, toNodeLite, toTextStyleLite, toSubPathsLite, toInstanceOverrideLite, toInstanceLite, toObjectStyleLite, toLayerLite } from "./types";
 import { type MaskPath, isMaskPath } from "./maskPaths";
 import { layoutTargets, relayout, resizeChildren } from "./layout";
 import { recordDelta } from "./sceneDelta";
 import { carryRenames, cascadeComponentTargets, detachInvalidMembers, isValidComponentDef, isValidComponentSet, isValidInstanceProps, makeRenamer } from "./components";
 import { isValidFont, isValidTextStyleDef, isValidTextStyleId, unstyleNodes } from "./typography";
+import { detachNodes, isValidLayer, isValidLayerId, isValidObjectStyle, isValidObjectStyleId } from "./graphics";
 import { areValidLayoutGrids } from "./layoutGrids";
 import { isValidGridCell, isValidGridLayout } from "./layoutGrid";
 import { areValidEffects } from "./effects";
@@ -67,6 +68,7 @@ function singleTouchedNode(op: Op, state: SceneState): string | null {
     }
     case "setText": return k.value.id;
     case "setVectorPath": return k.value.id;
+    case "setImage": return k.value.id;
     default: return null;
   }
 }
@@ -149,6 +151,8 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       if (paths.includes("bindings") && !areValidBindings(state, p.bindings)) return state;
       if (paths.includes("modes") && !areValidModes(state, p.modes)) return state;
       if (paths.includes("text_style_id") && !isValidTextStyleId(state, cur, p.textStyleId)) return state;
+      if (paths.includes("object_style_id") && !isValidObjectStyleId(state, cur, p.objectStyleId)) return state;
+      if (paths.includes("layer_id") && !isValidLayerId(state, p.layerId)) return state;
       // The enums are closed: an out-of-range number is rejected whole (core.applySetProps).
       if (paths.includes("constraint_x") && !(p.constraintX >= 0 && p.constraintX <= 5)) return state;
       if (paths.includes("constraint_y") && !(p.constraintY >= 0 && p.constraintY <= 5)) return state;
@@ -232,6 +236,14 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
           case "corner_smoothing": case "radii": case "arc_start": case "arc_sweep": case "inner_ratio": case "sides": case "points":
             writeShapePath(next, p, path);
             break;
+          case "object_style_id": {
+            if (p.objectStyleId !== "") next.objectStyleId = p.objectStyleId; else delete next.objectStyleId;
+            break;
+          }
+          case "layer_id": {
+            if (p.layerId !== "") next.layerId = p.layerId; else delete next.layerId;
+            break;
+          }
           // Through toNodeLite, like the other enums: UNSPECIFIED / FIXED remove the field.
           case "constraint_x": {
             const c = toNodeLite(p).constraintX;
@@ -345,6 +357,15 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
     }
     // Dedicated op and not a mask path, for the same reason as setText: the
     // geometry lives INSIDE the `shape` oneof. Parity with core.applySetVectorPath (Go).
+    // Relink: the source of an image node. Parity with core.applySetImage.
+    case "setImage": {
+      const { id, image } = op.kind.value;
+      const cur = state.nodes.at(id);
+      if (!cur || cur.kind !== "image" || !image) return state;                // ErrNodeNotFound / ErrNotImageNode
+      // eslint-disable-next-line no-control-regex
+      if (image.originalName.length > 255 || /[\u0000-\u001f\u007f]/.test(image.originalName) || image.pixelWidth > 1048576 || image.pixelHeight > 1048576) return state;
+      return { ...state, nodes: state.nodes.set(id, { ...cur, image: toNodeLite(create(NodeSchema, { shape: { case: "image", value: image } })).image }) };
+    }
     case "setVectorPath": {
       const { id, subpaths } = op.kind.value;
       const cur = state.nodes.at(id);
@@ -579,6 +600,10 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const gone = withAliases(state, new Set([id]));                       // its aliases go with it
       const variables = { ...state.variables };
       for (const g of gone) delete variables[g];
+      // A tint of a swatch that went stays a swatch of the color it shows, no longer a tint.
+      for (const v of Object.values(variables)) {
+        if (v.tintOf !== undefined && gone.has(v.tintOf)) { const { tintOf: _t, tint: _n, ...rest } = v; void _t; void _n; variables[v.id] = rest; }
+      }
       return { ...state, variables, nodes: unbindNodes(state, gone) };
     }
     // --- component variants and properties ---------------------------------
@@ -686,6 +711,43 @@ function applyOpRaw(state: SceneState, op: Op): SceneState {
       const d = op.kind.value.textStyle;
       if (!isValidTextStyleDef(state, d)) return state;
       return { ...state, textStyles: { ...state.textStyles, [d.id]: toTextStyleDefLite(d) } };
+    }
+    // Parity with core.applySetObjectStyleDef / applyDeleteObjectStyleDef / applySetLayer / applyDeleteLayer.
+    case "setObjectStyleDef": {
+      const d = op.kind.value.objectStyle;
+      if (!isValidObjectStyle(state, d)) return state;
+      return { ...state, objectStyles: { ...state.objectStyles, [d.id]: toObjectStyleLite(d) } };
+    }
+    case "deleteObjectStyleDef": {
+      const { id } = op.kind.value;
+      if (!state.objectStyles[id]) return state;                            // ErrObjectStyleMissing
+      const objectStyles: SceneState["objectStyles"] = {};
+      for (const [k, d] of Object.entries(state.objectStyles)) {
+        if (k === id) continue;
+        if (d.basedOn === id) { const { basedOn: _b, ...rest } = d; void _b; objectStyles[k] = rest; } else objectStyles[k] = d;
+      }
+      return { ...state, objectStyles, nodes: detachNodes(state, "objectStyleId", id) };
+    }
+    case "setLayer": {
+      const l = op.kind.value.layer;
+      if (!isValidLayer(state, l)) return state;
+      const next = toLayerLite(l);
+      const at = state.layers.findIndex((x) => x.id === l.id);
+      const layers = at >= 0 ? state.layers.map((x, i) => (i === at ? next : x)) : [...state.layers, next];
+      const pos = op.kind.value.position;
+      if (pos > 0) {
+        // Moved to that (1-based) place; beyond the end means last.
+        const from = layers.findIndex((x) => x.id === l.id);
+        const rest = layers.filter((_, i) => i !== from);
+        const to = Math.min(pos - 1, rest.length);
+        return { ...state, layers: [...rest.slice(0, to), next, ...rest.slice(to)] };
+      }
+      return { ...state, layers };
+    }
+    case "deleteLayer": {
+      const { id } = op.kind.value;
+      if (!state.layers.some((l) => l.id === id)) return state;             // ErrLayerMissing
+      return { ...state, layers: state.layers.filter((l) => l.id !== id), nodes: detachNodes(state, "layerId", id) };
     }
     case "deleteTextStyleDef": {
       const { id } = op.kind.value;

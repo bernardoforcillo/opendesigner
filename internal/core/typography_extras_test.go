@@ -32,7 +32,6 @@ func TestTextExtrasAreValidated(t *testing.T) {
 		"valign":     func(s *opendesignerv1.TextStyle) { s.VerticalAlign = 9 },
 		"indent":     func(s *opendesignerv1.TextStyle) { s.Indent = -1 },
 		"inset":      func(s *opendesignerv1.TextStyle) { s.Inset = math.NaN() },
-		"unquoted":   func(s *opendesignerv1.TextStyle) { s.FontFeatures = "liga" },
 		"semicolon":  func(s *opendesignerv1.TextStyle) { s.FontFeatures = `"liga";color:red` },
 		"long tag":   func(s *opendesignerv1.TextStyle) { s.FontFeatures = `"ligature"` },
 		"bad value":  func(s *opendesignerv1.TextStyle) { s.FontFeatures = `"liga" x` },

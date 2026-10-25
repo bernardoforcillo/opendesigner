@@ -1,0 +1,58 @@
+{
+ "_comment": [
+  "Document colour mode and output profile (DocSettings.color_mode, icc_profile). Run from BOTH sides. Valid: cmyk with",
+  "a profile name. Rejected: an unknown mode, a profile name with surrounding spaces. The settings MUST stay unchanged."
+ ],
+ "docId": "doc1",
+ "expected": {
+  "id": "doc1",
+  "name": "Untitled",
+  "pages": [
+   {
+    "id": "page1",
+    "name": "Page 1"
+   }
+  ],
+  "schemaVersion": 1,
+  "settings": {
+   "colorMode": "cmyk",
+   "iccProfile": "FOGRA39",
+   "vertical": "publishing"
+  }
+ },
+ "ops": [
+  {
+   "docId": "doc1",
+   "opId": "o1",
+   "setDocSettings": {
+    "settings": {
+     "colorMode": "cmyk",
+     "iccProfile": "FOGRA39",
+     "vertical": "publishing"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o2",
+   "setDocSettings": {
+    "settings": {
+     "colorMode": "lab"
+    }
+   }
+  },
+  {
+   "docId": "doc1",
+   "opId": "o3",
+   "setDocSettings": {
+    "settings": {
+     "iccProfile": " padded "
+    }
+   }
+  }
+ ],
+ "rejected": [
+  1,
+  2
+ ]
+}

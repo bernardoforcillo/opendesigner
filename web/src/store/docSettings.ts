@@ -1,6 +1,7 @@
-import type { DocSettingsLite, GuideLite, PageLite, SceneState, Vertical } from "./types";
+import type { BookMsg, DocSettingsLite, DocSettingsMsg, GuideLite, PageLite, SceneState, Vertical } from "./types";
 import type { Bounds } from "../canvas/geometry";
 import { DEVICES } from "../flow/devices";
+import { settingsOf } from "./types";
 
 // DOCUMENT SETTINGS and PAGE SETUP -- the twin of internal/core/docsettings.go (Go is the authority).
 //
@@ -26,22 +27,60 @@ export function verticalOf(scene: Pick<SceneState, "settings"> | null | undefine
 const finiteIn = (v: number, lo: number, hi: number) => Number.isFinite(v) && v >= lo && v <= hi;
 
 /** Parity with core.validateDocSettings (the message form: vertical "" for the default). */
-export function isValidDocSettings(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; presentDevice?: string } | undefined): boolean {
+export function isValidDocSettings(s: DocSettingsMsg | undefined): boolean {
   if (!s) return false;
   if (s.vertical !== "" && !isVertical(s.vertical)) return false;
   if (s.presentDevice && !DEVICES.some((d) => d.id === s.presentDevice)) return false;
-  return finiteIn(s.baselineIncrement, 0, 1000) && Number.isFinite(s.baselineStart) && s.baselineStart >= 0;
+  if (s.colorMode !== undefined && s.colorMode !== "" && s.colorMode !== "cmyk") return false;
+  const icc = s.iccProfile ?? "";
+  // eslint-disable-next-line no-control-regex
+  if (icc.length > 64 || icc.trim() !== icc || /[\u0000-\u001f\u007f]/.test(icc)) return false;
+  return finiteIn(s.baselineIncrement, 0, 1000) && Number.isFinite(s.baselineStart) && s.baselineStart >= 0 && isValidBook(s.book);
 }
 
-/** A DocSettingsLite from the message form, or null when invalid. */
-export function toDocSettings(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean; presentDevice?: string }): DocSettingsLite {
-  return {
-    ...(s.vertical === "publishing" || s.vertical === "design" ? { vertical: s.vertical } : {}),
-    ...(s.baselineIncrement ? { baselineIncrement: s.baselineIncrement } : {}),
-    ...(s.baselineStart ? { baselineStart: s.baselineStart } : {}),
-    ...(s.facingPages ? { facingPages: true } : {}),
-    ...(s.presentDevice && s.presentDevice !== "generic" ? { presentDevice: s.presentDevice } : {}),
-  };
+/** Parity with core.ValidISBN13: 13 digits with a correct check digit. */
+export function validIsbn13(s: string): boolean {
+  if (!/^[0-9]{13}$/.test(s)) return false;
+  let sum = 0;
+  for (let i = 0; i < 13; i++) sum += Number(s[i]) * (i % 2 === 1 ? 3 : 1);
+  return sum % 10 === 0;
+}
+
+// eslint-disable-next-line no-control-regex
+const CONTROL = /[\u0000-\u0009\u000b-\u001f\u007f-\u009f]/;
+const bookText = (s: string, max: number) => new TextEncoder().encode(s).length <= max && s.trim() === s && !CONTROL.test(s);
+const oneLine = (s: string, max: number) => bookText(s, max) && !s.includes("\n");
+
+function validYmd(s: string): boolean {
+  const y = Number(s.slice(0, 4)), m = Number(s.slice(4, 6)), d = Number(s.slice(6, 8));
+  if (y < 1000 || m < 1 || m > 12 || d < 1) return false;
+  const days = [31, 28, 31, 30, 31, 30, 31, 31, 30, 31, 30, 31];
+  const max = m === 2 && ((y % 4 === 0 && y % 100 !== 0) || y % 400 === 0) ? 29 : days[m - 1]!;
+  return d <= max;
+}
+
+/** Parity with core.validateBook. */
+export function isValidBook(b: BookMsg | undefined): boolean {
+  if (!b) return true;
+  if (b.isbn13 !== "" && !validIsbn13(b.isbn13)) return false;
+  if (![b.title, b.subtitle, b.seriesName, b.seriesNumber, b.publisherName, b.imprint, b.senderName].every((v) => oneLine(v, 300))) return false;
+  if (!bookText(b.description, 20000)) return false;
+  if (b.editionNumber !== "" && !/^[0-9]{1,3}$/.test(b.editionNumber)) return false;
+  if (b.language !== "" && !/^[a-z]{3}$/.test(b.language)) return false;
+  if (b.publicationDate !== "" && !(/^[0-9]{8}$/.test(b.publicationDate) && validYmd(b.publicationDate))) return false;
+  if (b.senderEmail !== "" && (b.senderEmail.length > 200 || !/^[^@\s<>&]+@[^@\s<>&]+\.[^@\s<>&]+$/.test(b.senderEmail))) return false;
+  if (b.productForm !== "" && !/^[A-Z]{2}$/.test(b.productForm)) return false;
+  if (b.pageCount > 100000) return false;
+  if (b.contributors.length > 50 || b.subjects.length > 50 || b.prices.length > 50) return false;
+  for (const c of b.contributors) if (!/^[A-Z][0-9]{2}$/.test(c.role) || c.personName === "" || !oneLine(c.personName, 200) || !bookText(c.biography, 5000)) return false;
+  for (const x of b.subjects) if (!/^[0-9]{2}$/.test(x.scheme) || !/^[A-Za-z0-9.\-_ ]{1,20}$/.test(x.code) || !oneLine(x.heading, 200)) return false;
+  for (const x of b.prices) if (!/^[0-9]{2}$/.test(x.priceType) || !/^[0-9]{1,8}(\.[0-9]{1,4})?$/.test(x.amount) || !/^[A-Z]{3}$/.test(x.currency)) return false;
+  return true;
+}
+
+/** A DocSettingsLite from the message form. */
+export function toDocSettings(s: DocSettingsMsg): DocSettingsLite {
+  return settingsOf(s);
 }
 
 type PageSetupFields = Pick<PageLite, "width" | "height" | "marginTop" | "marginRight" | "marginBottom" | "marginLeft" | "columns" | "gutter" | "bleed" | "slug" | "numberStyle" | "numberStart" | "slug" | "guides" | "hiddenMasterItems">;

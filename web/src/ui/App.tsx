@@ -7,6 +7,7 @@ import { ToolDock } from "./shell/ToolDock";
 import { ISLAND_CLS, TopBar } from "./shell/TopBar";
 import { usePanels } from "./shell/panels";
 import { SyncClient } from "../rpc/syncClient";
+import { JobsClient } from "../rpc/jobs";
 import { PresenceClient } from "../rpc/presence";
 import { usePresence, loadNickname } from "../store/presence";
 import { PageCameras } from "../canvas/pageView";
@@ -304,6 +305,9 @@ export function App() {
         const presence = new PresenceClient(docId, CLIENT_ID, nicknameRef.current);
         presenceRef.current = presence;
         presence.start();
+        // Jobs an agent asks for over MCP that only this editor can make (PDF, EPUB, ...): see rpc/jobs.ts.
+        const jobs = new JobsClient(docId, CLIENT_ID);
+        jobs.start();
         const onMove = (e: PointerEvent) => {
           const w = ctx.toWorld(e);
           presence.setLocal({ hasCursor: true, cursorX: w.x, cursorY: w.y });
@@ -368,6 +372,7 @@ export function App() {
           unsubCam();
           unsubFollow();
           presence.stop();
+          jobs.stop();
           presenceRef.current = null;
         };
       } catch (err) {

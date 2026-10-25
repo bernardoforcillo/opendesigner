@@ -44,14 +44,23 @@ func (f TextFormat) apply(style *opendesignerv1.TextStyle) error {
 	}
 	switch f.Script {
 	case "":
-	case "none":
+	case "none", "normal":
 		style.TextScript = opendesignerv1.TextScript_TEXT_SCRIPT_UNSPECIFIED
+		style.Script = opendesignerv1.TextScript_TEXT_SCRIPT_NORMAL
 	case "super":
 		style.TextScript = opendesignerv1.TextScript_TEXT_SCRIPT_SUPER
+		style.Script = opendesignerv1.TextScript_TEXT_SCRIPT_NORMAL
 	case "sub":
 		style.TextScript = opendesignerv1.TextScript_TEXT_SCRIPT_SUB
+		style.Script = opendesignerv1.TextScript_TEXT_SCRIPT_NORMAL
+	case "superscript":
+		style.Script = opendesignerv1.TextScript_TEXT_SCRIPT_SUPERSCRIPT
+		style.TextScript = opendesignerv1.TextScript_TEXT_SCRIPT_UNSPECIFIED
+	case "subscript":
+		style.Script = opendesignerv1.TextScript_TEXT_SCRIPT_SUBSCRIPT
+		style.TextScript = opendesignerv1.TextScript_TEXT_SCRIPT_UNSPECIFIED
 	default:
-		return fmt.Errorf("script must be none, super or sub, got %q", f.Script)
+		return fmt.Errorf("script must be none, super, sub, superscript or subscript, got %q", f.Script)
 	}
 	switch f.List {
 	case "":
@@ -120,6 +129,9 @@ func formatOf(st *opendesignerv1.TextStyle) TextFormat {
 		f.Script = "super"
 	case opendesignerv1.TextScript_TEXT_SCRIPT_SUB:
 		f.Script = "sub"
+	}
+	if n := scriptName(st.GetScript()); n != "" {
+		f.Script = n
 	}
 	switch st.GetListKind() {
 	case opendesignerv1.ListKind_LIST_KIND_BULLET:

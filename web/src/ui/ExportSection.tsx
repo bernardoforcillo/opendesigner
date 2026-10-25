@@ -71,7 +71,7 @@ export function ExportSection({
       )}
 
       <Button variant="primary" icon="download" onPress={submit} className="h-8 w-full">
-        {format === "pdf" ? "Print / Save as PDF" : "Download"}
+        {format === "pdf" ? "Download PDF" : "Download"}
       </Button>
     </div>
   );

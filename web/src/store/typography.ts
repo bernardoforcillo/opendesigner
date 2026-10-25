@@ -1,4 +1,4 @@
-import { TextStyleKind } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ListKind, TabAlign, TextScript, TextStyleKind } from "../gen/opendesigner/v1/opendesigner_pb";
 import type { FontFace as PbFont, TextStyleDef as PbTextStyleDef } from "../gen/opendesigner/v1/opendesigner_pb";
 import { flattenStyle } from "./richText";
 import type { NodeLite, SceneState } from "./types";
@@ -21,6 +21,10 @@ const FEATURES_RE = /^[A-Za-z0-9 ,"]{0,128}$/;
 
 /** Parity with core.ValidFontFeatures: "" or comma-separated `"tag"` / `"tag" N` items. */
 export function isValidFontFeatures(s: string): boolean {
+  return isCssFontFeatures(s) || validFontFeatures(s);
+}
+
+function isCssFontFeatures(s: string): boolean {
   if (s === "") return true;
   if (!FEATURES_RE.test(s)) return false;
   for (const item of s.split(",")) {
@@ -45,6 +49,54 @@ export function isValidFont(state: SceneState, f: PbFont | undefined): f is PbFo
   return true;
 }
 
+const FEATURE_RE = /^[A-Za-z0-9]{4}( (on|off|[0-9]{1,3}))?$/;
+/** Parity with core.validFontFeatures: comma-separated OpenType feature settings. */
+export function validFontFeatures(s: string): boolean {
+  if (s === "") return true;
+  return s.length <= 128 && s.split(",").every((item) => FEATURE_RE.test(item.trim()));
+}
+
+const VARIATION_RE = /^[A-Za-z0-9]{4} -?[0-9]{1,4}(\.[0-9]{1,3})?$/;
+/** Parity with core.validFontVariations: comma-separated variable-font axis settings. */
+export function validFontVariations(s: string): boolean {
+  if (s === "") return true;
+  return s.length <= 128 && s.split(",").every((item) => VARIATION_RE.test(item.trim()));
+}
+
+const colorOk = (c: { r: number; g: number; b: number; a: number } | undefined) => !c || [c.r, c.g, c.b, c.a].every((v) => Number.isFinite(v) && v >= 0 && v <= 1);
+const ruleOk = (r: PbTextStyleDef["ruleAbove"]) =>
+  !r || (inRange(r.weight, 0, 100) && inRange(r.offset, -1000, 1000) && inRange(r.indentLeft, 0, 100000) && inRange(r.indentRight, 0, 100000) && colorOk(r.color));
+
+const NUMBER_STYLES = new Set(["", "i", "I", "a", "A"]);
+const inRange = (v: number, lo: number, hi: number) => Number.isFinite(v) && v >= lo && v <= hi;
+
+/** Parity with core.validateParagraphFeatures: lists, tab stops, drop caps and nested styles; a character style has none. */
+function validParagraphFeatures(state: SceneState, d: PbTextStyleDef): boolean {
+  const any = d.hyphenate || d.listKind !== ListKind.NONE || d.listMarker !== "" || d.listNumberStyle !== "" || d.listIndent !== 0 || d.outlineLevel !== 0 ||
+    d.tabStops.length > 0 || d.dropCapLines !== 0 || d.dropCapChars !== 0 || d.nestedStyles.length > 0;
+  const look = d.keepWithNext || d.keepLinesTogether || d.keepFirstLines !== 0 || d.keepLastLines !== 0 || !!d.ruleAbove || !!d.ruleBelow ||
+    !!d.shading || d.shadingOffset !== 0 || !!d.borderColor || d.borderWeight !== 0 || d.opticalMargin;
+  if (d.kind === TextStyleKind.CHARACTER) return !any && !look;
+  if (d.keepFirstLines > 6 || d.keepLastLines > 6 || !ruleOk(d.ruleAbove) || !ruleOk(d.ruleBelow) || !colorOk(d.shading) || !colorOk(d.borderColor) ||
+    !inRange(d.shadingOffset, 0, 1000) || !inRange(d.borderWeight, 0, 100)) return false;
+  if (d.listKind < 0 || d.listKind > ListKind.NUMBER || !NUMBER_STYLES.has(d.listNumberStyle) || d.listMarker.length > 16 ||
+    /[\r\n]/.test(d.listMarker) || !(d.listIndent === 0 || inRange(d.listIndent, 0, 1000))) return false;
+  if (d.outlineLevel > 9) return false;
+  if ((d.dropCapLines !== 0 && (d.dropCapLines < 2 || d.dropCapLines > 10)) || d.dropCapChars > 10) return false;
+  if (d.tabStops.length > 32) return false;
+  let prev = -1;
+  for (const t of d.tabStops) {
+    if (!inRange(t.position, 0, 100000) || t.position <= prev || t.align < 0 || t.align > TabAlign.RIGHT || Array.from(t.leader).length > 1 || /[\r\n\t]/.test(t.leader)) return false;
+    prev = t.position;
+  }
+  if (d.nestedStyles.length > 8) return false;
+  for (const n of d.nestedStyles) {
+    const c = state.textStyles[n.styleId];
+    if (!c || c.kind !== "character" || n.delimiter === "" || new TextEncoder().encode(n.delimiter).length > 8 || n.count < 1 || n.count > 50) return false;
+  }
+  return true;
+}
+
 /** Parity with core.validateTextStyleDef (including validateStyleRelations). */
 export function isValidTextStyleDef(state: SceneState, d: PbTextStyleDef | undefined): d is PbTextStyleDef {
   if (!d || d.id === "") return false;
@@ -55,10 +107,16 @@ export function isValidTextStyleDef(state: SceneState, d: PbTextStyleDef | undef
   // core.validateTextExtras: enums in range, finite non-negative indent/inset, a well-formed feature string.
   if (!(st.textCase >= 0 && st.textCase <= 4 && st.textScript >= 0 && st.textScript <= 2 &&
     st.listKind >= 0 && st.listKind <= 2 && st.verticalAlign >= 0 && st.verticalAlign <= 2 &&
-    finiteNonNeg(st.indent) && finiteNonNeg(st.inset) && isValidFontFeatures(st.fontFeatures) &&
+    finiteNonNeg(st.indent) && finiteNonNeg(st.inset) &&
     (st.textScale === 0 || (st.textScale >= 1 && st.textScale <= 1000)))) return false;
   if (!Number.isFinite(st.letterSpacing) || Math.abs(st.letterSpacing) > 1000) return false;
+  if (!(st.horizontalScale === 0 || (st.horizontalScale >= 0.1 && st.horizontalScale <= 10))) return false;
+  if (!isValidFontFeatures(st.fontFeatures)) return false;
+  if (!validFontVariations(st.fontVariations)) return false;
+  if (st.script < 0 || st.script > TextScript.SUBSCRIPT) return false;
+  if (st.color && ![st.color.r, st.color.g, st.color.b, st.color.a].every((v) => v >= 0 && v <= 1)) return false;
   if (d.kind !== TextStyleKind.PARAGRAPH && d.kind !== TextStyleKind.CHARACTER) return false;
+  if (!validParagraphFeatures(state, d)) return false;
   if (![d.spaceBefore, d.spaceAfter, d.indentFirst, d.indentLeft].every(finiteNonNeg)) return false;
   const character = d.kind === TextStyleKind.CHARACTER;
   if (character && d.alignToGrid) return false;

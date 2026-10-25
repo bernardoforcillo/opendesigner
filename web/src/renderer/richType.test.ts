@@ -123,7 +123,7 @@ describe("rich text honours the type extras", () => {
     const lay = layoutRich(mf, t.content, base, t.rich!, 60);
     // lead = 6 + (max(9, 10) + 4) = 20 -> 40 left: one word per line.
     expect(lay.lines.map((l) => l.frags.map((f) => f.text).join(""))).toEqual(["aaaa", "bbbb"]);
-    expect(lay.lines[0].marker).toMatchObject({ text: BULLET, left: 6 });
+    expect(lay.lines[0].marker).toMatchObject({ text: BULLET, x: 6 });
     expect(lay.lines[1].marker).toBeUndefined();
     expect(lay.lines[0].left).toBe(20);
   });

@@ -75,6 +75,10 @@ describe("golden parity", () => {
       // server's, so the client keeps only the mark -- fromDocument drops it the same way).
       const dev = (s: typeof scene) => ({ annotations: s.dev?.annotations ?? {}, ready: s.dev?.ready ?? {} });
       expect(dev(scene)).toEqual(dev(expected));
+      // Object styles, layers and the document settings (colour mode, profile ...).
+      expect(scene.objectStyles).toEqual(expected.objectStyles);
+      expect(scene.layers).toEqual(expected.layers);
+      expect(scene.settings).toEqual(expected.settings);
     });
   }
 });

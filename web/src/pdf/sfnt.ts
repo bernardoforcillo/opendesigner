@@ -96,3 +96,4 @@ export function coversText(data: Uint8Array, text: string): boolean {
   }
   return true;
 }
+export { tables as sfntTables };

@@ -41,3 +41,36 @@ describe("buildEpub", () => {
     expect(xmlEscape('a<b>&"')).toBe("a&lt;b&gt;&amp;&quot;");
   });
 });
+
+describe("book metadata in the package", () => {
+  const book = {
+    isbn13: "9788804668237", title: "Rosa", subtitle: "Romanzo", language: "ita", publisherName: "Bompiani", publicationDate: "20240229", description: "A & B",
+    contributors: [{ role: "A01", personName: "Umberto Eco" }, { role: "B06", personName: "W. Weaver" }], subjects: [{ scheme: "10", code: "FIC014000", heading: "Historical" }],
+    seriesName: "Classics", seriesNumber: "3",
+  };
+  const opf = (meta: Parameters<typeof buildEpub>[1]) => {
+    const text = new TextDecoder().decode(buildEpub([{ name: "P", svg: "<svg/>", width: 10, height: 10 }], meta));
+    return text.slice(text.indexOf("<package"), text.indexOf("</package>"));
+  };
+  it("uses the ISBN as the package identifier and writes creators, publisher, date, subjects and series", () => {
+    const x = opf({ title: "Doc", identifier: "urn:x", modified: "2026-01-01T00:00:00Z", book });
+    expect(x).toContain('<dc:identifier id="uid">urn:isbn:9788804668237</dc:identifier>');
+    expect(x).toContain('<dc:title id="t1">Rosa</dc:title>');
+    expect(x).toContain('property="title-type">subtitle');
+    expect(x).toContain('<dc:creator id="c1">Umberto Eco</dc:creator>');
+    expect(x).toContain('<dc:contributor id="c2">W. Weaver</dc:contributor>');
+    expect(x).toContain('property="role" scheme="marc:relators">trl');
+    expect(x).toContain("<dc:publisher>Bompiani</dc:publisher>");
+    expect(x).toContain("<dc:date>2024-02-29</dc:date>");
+    expect(x).toContain("<dc:description>A &amp; B</dc:description>");
+    expect(x).toContain("<dc:subject>Historical</dc:subject>");
+    expect(x).toContain('property="group-position">3');
+    expect(x).toContain("<dc:language>ita</dc:language>");
+    expect(x).toContain("pre-paginated");
+  });
+  it("is unchanged when there is no book record", () => {
+    const x = opf({ title: "Doc", identifier: "urn:x", modified: "2026-01-01T00:00:00Z" });
+    expect(x).toContain('<dc:identifier id="uid">urn:x</dc:identifier><dc:title id="t1">Doc</dc:title><dc:language>en</dc:language>');
+    expect(x).not.toContain("dc:creator");
+  });
+});

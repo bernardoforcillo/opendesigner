@@ -8,7 +8,7 @@ import { variableStrokeCommands } from "../vector/widthProfile";
 import { brushStrokeCommands } from "../vector/brush";
 import type { Bounds } from "../canvas/geometry";
 import { firstBlur, firstShadow, resolvedFill } from "../renderer/canvasRenderer";
-import { fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, hscaleOf, piecesOfSegment, placeTextLines } from "../renderer/text";
+import { cssFeatureSettings, cssVariationSettings, fontFamilyOf, fontFeaturesOf, fontSizeOf, fontWeightOf, hscaleOf, paragraphDecorations, piecesOfSegment, placeTextLines } from "../renderer/text";
 import type { MeasureText } from "../renderer/text";
 import { hasRealStroke, vectorStyleOf } from "../renderer/vectorStyle";
 import { subPathsToD } from "../svg/pathData";
@@ -442,6 +442,13 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
   if (!style) return "";
   const lines = placeTextLines((s) => measure(s, style), n, (st) => (s) => measure(s, st));
   if (lines.length === 0) return "";
+  // Shading, borders and rules behind the paragraphs.
+  const boxes = paragraphDecorations((st) => (s) => measure(s, st), n).map((d) => {
+    const c = `rgb(${channel(d.color.r)},${channel(d.color.g)},${channel(d.color.b)})`;
+    return d.kind === "border"
+      ? `<rect${attrs([attr("x", d.x), attr("y", d.y), attr("width", d.width), attr("height", d.height), attr("fill", "none"), attr("stroke", c), d.color.a === 1 ? null : attr("stroke-opacity", d.color.a), attr("stroke-width", d.weight ?? 1)])}/>`
+      : `<rect${attrs([attr("x", d.x), attr("y", d.y), attr("width", d.width), attr("height", d.height), attr("fill", c), d.color.a === 1 ? null : attr("fill-opacity", d.color.a)])}/>`;
+  }).join("");
   // A rich line is one <tspan> per piece (each with its own x, font and decoration); the first
   // carries the line's y, and so does every other: an absolute y per piece keeps the baseline shared.
   // A plain line made of runs (small caps, scripts, a list marker) is one tspan per piece, at its own size;
@@ -450,6 +457,8 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
   // scales x, and their x is divided by it.
   const plainDecoration = [style.underline ? "underline" : "", style.strikethrough ? "line-through" : ""].filter(Boolean).join(" ");
   const rootFeatures = fontFeaturesOf(style);
+  const rgb = (c: { r: number; g: number; b: number }) => `rgb(${Math.round(c.r * 255)},${Math.round(c.g * 255)},${Math.round(c.b * 255)})`;
+  const declarations = (decls: string[]) => (decls.length > 0 ? [attr("style", decls.join(";"))] : []);
   interface Span { h: number; xml: string }
   const spans: Span[] = lines.flatMap((l): Span[] => {
     if (l.pieces) {
@@ -470,12 +479,20 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
       return piecesOfSegment(seg, l.y).map((p): Span => {
         const size = fontSizeOf(seg.style) * p.scale;
         return { h, xml: `<tspan${attrs([
-          attr("x", p.x / h), attr("y", p.y),
+          attr("x", p.x / h), attr("y", p.y - (seg.style.baselineShift ?? 0)),
+          ...(seg.angle !== undefined ? [attr("rotate", Math.round((seg.angle * 180 / Math.PI) * 100) / 100)] : []),
+          ...(seg.style.color ? [attr("fill", rgb(seg.style.color))] : []),
+          ...(seg.style.color && seg.style.color.a < 1 ? [attr("fill-opacity", seg.style.color.a)] : []),
+          ...(seg.style.horizontalScale && seg.style.horizontalScale !== 1 && p.text !== "" ? [attr("textLength", seg.width), attr("lengthAdjust", "spacingAndGlyphs")] : []),
           ...(fontFamilyOf(seg.style) !== fontFamilyOf(style) ? [attr("font-family", fontFamilyOf(seg.style))] : []),
           ...(size !== fontSizeOf(style) ? [attr("font-size", size)] : []),
           ...(fontWeightOf(seg.style) !== fontWeightOf(style) ? [attr("font-weight", fontWeightOf(seg.style))] : []),
           ...(!!seg.style.italic !== !!style.italic ? [attr("font-style", seg.style.italic ? "italic" : "normal")] : []),
-          ...(features !== rootFeatures ? [attr("style", `font-feature-settings:${features === "" ? "normal" : features}`)] : []),
+          ...declarations([
+            seg.style.noKerning ? "font-kerning:none" : "",
+            features !== rootFeatures ? `font-feature-settings:${features === "" ? "normal" : cssFeatureSettings(features) || "normal"}` : "",
+            seg.style.fontVariations ? `font-variation-settings:${cssVariationSettings(seg.style.fontVariations)}` : "",
+          ].filter(Boolean)),
           ...(decoration ? [attr("text-decoration", decoration)] : []),
           ...((seg.style.letterSpacing ?? 0) !== (style.letterSpacing ?? 0) ? [attr("letter-spacing", seg.style.letterSpacing ?? 0)] : []),
         ])}>${esc(p.text)}</tspan>` };
@@ -487,14 +504,17 @@ function textElement(n: NodeLite, measure: MeasureText, defs: string[]): string 
   // INSIDE <text> becomes drawn: that is why the tspans are attached
   // to one another, with no newlines or indentation.
   const scales = [...new Set(spans.map((sp) => sp.h))];
-  return scales.map((h) => `<text${attrs([
+  return boxes + scales.map((h) => `<text${attrs([
     attr("font-family", fontFamilyOf(style)),
     attr("font-size", fontSizeOf(style)),
     attr("font-weight", fontWeightOf(style)),
     ...(style.italic ? [attr("font-style", "italic")] : []),
-    rootFeatures === "" ? null : attr("style", `font-feature-settings:${rootFeatures}`),
     ...(style.letterSpacing ? [attr("letter-spacing", style.letterSpacing)] : []),
     h === 1 ? null : attr("transform", `scale(${h} 1)`),
+    ...declarations([
+      rootFeatures === "" ? "" : `font-feature-settings:${cssFeatureSettings(rootFeatures) || "normal"}`,
+      style.fontVariations ? `font-variation-settings:${cssVariationSettings(style.fontVariations)}` : "",
+    ].filter(Boolean)),
     ...paintAttrs(n, defs),
   ])} xml:space="preserve">${spans.filter((sp) => sp.h === h).map((sp) => sp.xml).join("")}</text>`).join("");
 }

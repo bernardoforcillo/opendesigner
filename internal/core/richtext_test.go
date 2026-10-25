@@ -133,3 +133,63 @@ func TestLetterSpacingAndGridAlignment(t *testing.T) {
 		}
 	}
 }
+
+func TestTypesettingStyleFields(t *testing.T) {
+	doc := richDoc(t)
+	ok := func(d *opendesignerv1.TextStyleDef) {
+		t.Helper()
+		if err := Apply(doc, styleOp(d)); err != nil {
+			t.Errorf("%s: %v", d.GetId(), err)
+		}
+	}
+	bad := func(name string, d *opendesignerv1.TextStyleDef) {
+		t.Helper()
+		if err := Apply(doc, styleOp(d)); !errors.Is(err, ErrTextStyleValue) {
+			t.Errorf("%s: got %v, want ErrTextStyleValue", name, err)
+		}
+	}
+	para := func(id string, mod func(*opendesignerv1.TextStyleDef)) *opendesignerv1.TextStyleDef {
+		d := &opendesignerv1.TextStyleDef{Id: id, Name: id, Style: &opendesignerv1.TextStyle{FontSize: 12}}
+		mod(d)
+		return d
+	}
+	ok(para("list", func(d *opendesignerv1.TextStyleDef) {
+		d.ListKind, d.ListMarker, d.ListNumberStyle, d.ListIndent = opendesignerv1.ListKind_LIST_KIND_NUMBER, "#)", "a", 20
+		d.Hyphenate = true
+		d.Style.Align = opendesignerv1.TextAlign_TEXT_ALIGN_JUSTIFY
+		d.Style.SmallCaps, d.Style.HorizontalScale, d.Style.Script = true, 1.2, opendesignerv1.TextScript_TEXT_SCRIPT_SUPERSCRIPT
+		d.Style.Color = &opendesignerv1.Color{R: 1, A: 1}
+		d.TabStops = []*opendesignerv1.TabStop{{Position: 100}, {Position: 300, Align: opendesignerv1.TabAlign_TAB_ALIGN_RIGHT, Leader: "."}}
+		d.DropCapLines, d.DropCapChars = 3, 1
+		d.NestedStyles = []*opendesignerv1.NestedStyle{{StyleId: "bold", Delimiter: ":", Count: 1, Inclusive: true}}
+	}))
+	ok(para("heading", func(d *opendesignerv1.TextStyleDef) {
+		d.OutlineLevel = 2
+		d.Style.FontFeatures = "liga off, onum, ss01 2"
+	}))
+	bad("outline level 10", para("b0", func(d *opendesignerv1.TextStyleDef) { d.OutlineLevel = 10 }))
+	bad("font feature with a long tag", para("b0b", func(d *opendesignerv1.TextStyleDef) { d.Style.FontFeatures = "ligature" }))
+	bad("font feature value", para("b0c", func(d *opendesignerv1.TextStyleDef) { d.Style.FontFeatures = "liga maybe" }))
+	bad("unknown number style", para("b1", func(d *opendesignerv1.TextStyleDef) { d.ListNumberStyle = "x" }))
+	bad("marker with a newline", para("b2", func(d *opendesignerv1.TextStyleDef) { d.ListMarker = "a\nb" }))
+	bad("tabs not ascending", para("b3", func(d *opendesignerv1.TextStyleDef) {
+		d.TabStops = []*opendesignerv1.TabStop{{Position: 100}, {Position: 100}}
+	}))
+	bad("two-character leader", para("b4", func(d *opendesignerv1.TextStyleDef) {
+		d.TabStops = []*opendesignerv1.TabStop{{Position: 9, Leader: ".."}}
+	}))
+	bad("drop cap of one line", para("b5", func(d *opendesignerv1.TextStyleDef) { d.DropCapLines = 1 }))
+	bad("nested style that is a paragraph style", para("b6", func(d *opendesignerv1.TextStyleDef) {
+		d.NestedStyles = []*opendesignerv1.NestedStyle{{StyleId: "body", Delimiter: ":", Count: 1}}
+	}))
+	bad("nested style without delimiter", para("b7", func(d *opendesignerv1.TextStyleDef) {
+		d.NestedStyles = []*opendesignerv1.NestedStyle{{StyleId: "bold", Count: 1}}
+	}))
+	bad("horizontal scale 0.01", para("b8", func(d *opendesignerv1.TextStyleDef) { d.Style.HorizontalScale = 0.01 }))
+	bad("colour out of range", para("b9", func(d *opendesignerv1.TextStyleDef) { d.Style.Color = &opendesignerv1.Color{R: 2} }))
+	bad("a character style with a list", &opendesignerv1.TextStyleDef{Id: "c1", Name: "c", Kind: opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER,
+		Style: &opendesignerv1.TextStyle{}, ListKind: opendesignerv1.ListKind_LIST_KIND_BULLET})
+	// A character style may carry the glyph-level fields.
+	ok(&opendesignerv1.TextStyleDef{Id: "c2", Name: "c", Kind: opendesignerv1.TextStyleKind_TEXT_STYLE_KIND_CHARACTER,
+		Style: &opendesignerv1.TextStyle{SmallCaps: true, Color: &opendesignerv1.Color{G: 0.5, A: 1}}})
+}
