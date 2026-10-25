@@ -168,6 +168,20 @@ describe("ShipPanel", () => {
     expect(script).toContain("opendesigner flow coverage");
   });
 
+  it("offers SwiftUI and Compose zips, generated from their own target", async () => {
+    const spy = vi.fn(ok);
+    setCodeFetcher(spy);
+    withReport();
+    render(<ShipPanel />);
+    fireEvent.click(screen.getByRole("button", { name: /^or t-swiftui\.zip \(SwiftUI\)$/ }));
+    await waitFor(() => expect(downloads).toHaveLength(1));
+    expect(downloads[0].name).toBe("t-swiftui.zip");
+    expect(spy).toHaveBeenCalledWith("doc", "swiftui", expect.anything());
+    fireEvent.click(screen.getByRole("button", { name: /^or t-compose\.zip \(Jetpack Compose\)$/ }));
+    await waitFor(() => expect(downloads).toHaveLength(2));
+    expect(spy).toHaveBeenCalledWith("doc", "compose", expect.anything());
+  });
+
   it("without screens the zip button is disabled", () => {
     useScene.getState().setScene(emptyScene("doc", "t"));
     render(<ShipPanel />);

@@ -12,6 +12,8 @@ describe("zipName", () => {
     ["Shop Café", "react", "shop-cafe-react.zip"],
     ["  ", "html", "design-html.zip"],
     ["My/doc: v2!", "react", "my-doc-v2-react.zip"],
+    ["Checkout", "swiftui", "checkout-swiftui.zip"],
+    ["Checkout", "compose", "checkout-compose.zip"],
   ] as const)("%j (%s) -> %s", (name, target, want) => expect(zipName(name, target)).toBe(want));
 });
 

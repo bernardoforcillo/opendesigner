@@ -1114,4 +1114,5 @@ func RegisterTools(srv *mcp.Server, s *Session) {
 	registerInstanceTools(srv, s)
 	registerCodegenTools(srv, s)
 	registerDiagramTools(srv, s)
+	registerDevTools(srv, s)
 }

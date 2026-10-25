@@ -75,6 +75,17 @@ func (u *compUnit) identOf(name string) string {
 	return propIdent(name)
 }
 
+// regNaming: the type and identifier names a native target must not use.
+type regNaming struct{ types, idents map[string]bool }
+
+// ident renames a reserved identifier; a nil receiver (react) keeps it.
+func (n *regNaming) ident(s string) string {
+	if n != nil && n.idents[s] {
+		return s + "Prop"
+	}
+	return s
+}
+
 type compRegistry struct {
 	d     *opendesignerv1.Document
 	b     *builder
@@ -112,7 +123,9 @@ func propIdent(name string) string {
 
 // newCompRegistry discovers every component the screens use (and the ones those
 // use in turn), builds the IR of every member's master, and names things.
-func newCompRegistry(d *opendesignerv1.Document, b *builder, screens []*Screen) *compRegistry {
+//
+// naming adds the names a native target's language reserves (nil for react).
+func newCompRegistry(d *opendesignerv1.Document, b *builder, screens []*Screen, naming *regNaming) *compRegistry {
 	r := &compRegistry{d: d, b: b, units: map[string]*compUnit{}, swapTrees: map[string]*Element{}}
 	for _, s := range screens {
 		r.discover(s.Root)
@@ -125,6 +138,11 @@ func newCompRegistry(d *opendesignerv1.Document, b *builder, screens []*Screen) 
 		return a.key < c.key
 	})
 	used := map[string]bool{"App": true}
+	if naming != nil {
+		for t := range naming.types {
+			used[t] = true
+		}
+	}
 	for _, s := range screens {
 		used[s.Name] = true
 	}
@@ -133,10 +151,10 @@ func newCompRegistry(d *opendesignerv1.Document, b *builder, screens []*Screen) 
 		u.name = dedupe(used, pascal(u.title()), "")
 		propUsed := map[string]bool{}
 		for _, ax := range u.set.GetAxes() {
-			u.axes = append(u.axes, dedupe(propUsed, propIdent(ax.GetName()), ""))
+			u.axes = append(u.axes, dedupe(propUsed, naming.ident(propIdent(ax.GetName())), ""))
 		}
 		for _, p := range u.cprops {
-			p.ident = dedupe(propUsed, propIdent(p.name), "")
+			p.ident = dedupe(propUsed, naming.ident(propIdent(p.name)), "")
 		}
 	}
 	return r

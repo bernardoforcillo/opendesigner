@@ -879,6 +879,10 @@ message Document {
   map<string, ComponentSet> component_sets = 14;
   // Comments: commentId -> comment (see Comment).
   map<string, Comment> comments = 15;
+  // Dev mode (fields 70-79 are reserved for it): annotations by id, and the frames marked
+  // ready for dev by the frame's node id (see Annotation, ReadyForDev).
+  map<string, Annotation> annotations = 70;
+  map<string, ReadyForDev> ready_for_dev = 71;
   DocSettings settings = 16;
 }
 
@@ -1061,6 +1065,11 @@ message Op {
     SetComment          set_comment           = 39; // comments — upsert of a comment
     DeleteComment       delete_comment        = 40;
     SetInstance         set_instance          = 70; // components — swap or reset an instance (absolute payload)
+    // Dev mode (80-89 are reserved for it).
+    SetAnnotation       set_annotation        = 80; // upsert of an annotation
+    DeleteAnnotation    delete_annotation     = 81;
+    SetReadyForDev      set_ready_for_dev     = 82; // marks a frame ready (or re-marks it: a new baseline)
+    ClearReadyForDev    clear_ready_for_dev   = 83;
     UpdatePage          update_page           = 41; // master pages — a page's name, master flag and applied master
     SetDocSettings      set_doc_settings      = 42; // vertical and baseline grid (absolute upsert)
     MovePage            move_page             = 43; // reorder pages
@@ -1098,6 +1107,52 @@ message DeleteComment { string id = 1; }  // a root takes its replies with it
 message SetInstance {
   string instance_id = 1;
   InstanceNode instance = 2;
+}
+
+// ---------- dev mode ----------
+// An ANNOTATION is a note for the developer attached to a node: what the picture does not
+// say (an interaction, an accessibility label, a content rule...). `category` is one of
+// note | interaction | accessibility | content | animation | layout and gives the colour the
+// editor draws it with. Annotations are shown in Dev Mode and written as comments into the
+// exported code (internal/devmode, internal/codegen). Like comments, a node that disappears
+// leaves its annotations in the document (undoing the deletion brings them back).
+message Annotation {
+  string id = 1;
+  string node_id = 2;      // an existing node
+  string category = 3;
+  string text = 4;         // non-empty, up to 2000 characters
+  string author = 5;       // display name, up to 80 characters
+  int64 created_at = 6;    // unix seconds; 0 when unknown
+}
+// A FRAME marked ready for development. `snapshot` is the frame and its descendants as they were
+// when it was marked: the baseline "Compare changes" diffs the live frame against. The server
+// FILLS it when it applies the op (a client never sends one), so replaying the op log reproduces it.
+message ReadyForDev {
+  string node_id = 1;      // a frame
+  string note = 2;         // up to 500 characters
+  string marked_by = 3;    // display name, up to 80 characters
+  int64 marked_at = 4;     // unix seconds; 0 when unknown
+  repeated Node snapshot = 5;
+}
+message SetAnnotation    { Annotation annotation = 1; }
+message DeleteAnnotation { string id = 1; }
+message SetReadyForDev   { ReadyForDev ready = 1; }
+message ClearReadyForDev { string node_id = 1; }
+
+// Compare changes: the property-level differences between a ready frame and its snapshot.
+message ReadyChange {
+  string node_id = 1;
+  string node_name = 2;
+  string kind = 3;         // added | removed | changed
+  string property = 4;     // "width", "fills[0]", "text.content", "meta.status"... empty for added / removed
+  string before = 5;       // readable value ("" when the property was not set)
+  string after = 6;
+}
+message CompareReadyRequest  { string doc_id = 1; string node_id = 2; }
+message CompareReadyResponse {
+  string node_id = 1;
+  int64 marked_at = 2;
+  repeated ReadyChange changes = 3;
 }
 
 message SetCollection    { VariableCollection collection = 1; }
@@ -1241,8 +1296,9 @@ message ExportFile {
   bytes content = 2;
 }
 // target: "react" (default: Vite + React + TypeScript + Tailwind v4 + Playwright
-// flow tests) or "html" (one file per screen). empty flow_id = wires up and
-// tests all flows.
+// flow tests), "html" (one file per screen), "swiftui" (Swift views for an
+// iOS/macOS app) or "compose" (Kotlin composables for an Android app). empty
+// flow_id = wires up and tests all flows.
 message ExportCodeRequest {
   string doc_id = 1;
   string target = 2;
@@ -1396,6 +1452,8 @@ message UpdatePresenceResponse {}
 service DocumentService {
   rpc RenderBoard(RenderBoardRequest) returns (RenderBoardResponse);
   rpc ReviewDesign(ReviewDesignRequest) returns (ReviewDesignResponse);
+  // Compare changes: a frame marked ready for dev against its state when it was marked.
+  rpc CompareReady(CompareReadyRequest) returns (CompareReadyResponse);
   rpc CreateVersion(CreateVersionRequest) returns (VersionInfo);
   rpc ListVersions(ListVersionsRequest) returns (ListVersionsResponse);
   rpc DeleteVersion(DeleteVersionRequest) returns (DeleteVersionResponse);

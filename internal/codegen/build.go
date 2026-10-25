@@ -162,7 +162,11 @@ func (b *builder) warn(format string, a ...any) {
 // buildScreen builds the IR tree of screen `n`.
 func (b *builder) buildScreen(n *opendesignerv1.Node) *Element {
 	b.planAnimations(n)
-	return b.element(n, bctx{root: true, visited: map[string]bool{}})
+	el := b.element(n, bctx{root: true, visited: map[string]bool{}})
+	if el != nil {
+		el.Notes = append(b.readyNote(n.GetId()), el.Notes...)
+	}
+	return el
 }
 
 // element translates a node (and its subtree). nil = nothing to emit.
@@ -213,6 +217,9 @@ func (b *builder) element(n *opendesignerv1.Node, c bctx) *Element {
 	el.NodeID = n.GetId()
 	el.NodeName = n.GetName()
 	el.Meta = n.GetMeta()
+	if !c.inInstance() {
+		el.Notes = b.notes(n.GetId())
+	}
 	id := c.idPrefix + n.GetId()
 	el.Attrs = append([]Attr{{"data-node-id", id}}, el.Attrs...)
 	if tid := n.GetMeta()["test.id"]; tid != "" && !c.inInstance() { // a test.id in the master would be duplicated in every instance
