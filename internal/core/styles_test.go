@@ -93,14 +93,22 @@ func TestStyleAndShapeRejections(t *testing.T) {
 		t.Fatal("x moved despite the rejected mask")
 	}
 	// Creating a polygon or star out of range is rejected too.
-	for _, sh := range []opendesignerv1.Node{
-		{Shape: &opendesignerv1.Node_Polygon{Polygon: &opendesignerv1.PolygonNode{Sides: 2}}},
-		{Shape: &opendesignerv1.Node_Star{Star: &opendesignerv1.StarNode{Points: 5, InnerRatio: 1}}},
-		{Shape: &opendesignerv1.Node_Ellipse{Ellipse: &opendesignerv1.EllipseNode{ArcSweep: 500}}},
+	for _, shape := range []any{
+		&opendesignerv1.Node_Polygon{Polygon: &opendesignerv1.PolygonNode{Sides: 2}},
+		&opendesignerv1.Node_Star{Star: &opendesignerv1.StarNode{Points: 5, InnerRatio: 1}},
+		&opendesignerv1.Node_Ellipse{Ellipse: &opendesignerv1.EllipseNode{ArcSweep: 500}},
 	} {
-		n := &opendesignerv1.Node{Id: "bad", ParentId: "page1", OrderKey: "a9", Visible: true, Opacity: 1, Shape: sh.Shape}
+		n := &opendesignerv1.Node{Id: "bad", ParentId: "page1", OrderKey: "a9", Visible: true, Opacity: 1}
+		switch s := shape.(type) {
+		case *opendesignerv1.Node_Polygon:
+			n.Shape = s
+		case *opendesignerv1.Node_Star:
+			n.Shape = s
+		case *opendesignerv1.Node_Ellipse:
+			n.Shape = s
+		}
 		if err := Apply(doc, &opendesignerv1.Op{Kind: &opendesignerv1.Op_CreateNode{CreateNode: &opendesignerv1.CreateNode{Node: n}}}); !errors.Is(err, ErrShapeValue) {
-			t.Errorf("create %T: %v", sh.Shape, err)
+			t.Errorf("create %T: %v", shape, err)
 		}
 	}
 }
