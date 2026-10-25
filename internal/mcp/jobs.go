@@ -111,6 +111,8 @@ type PrintOptionsIn struct {
 	Slug        *bool  `json:"slug,omitempty" jsonschema:"include each page's slug area"`
 	Spreads     *bool  `json:"spreads,omitempty" jsonschema:"facing pages as one wide page per spread (needs facingPages in set_document_settings)"`
 	Interactive *bool  `json:"interactive,omitempty" jsonschema:"bookmarks from headings and link annotations (default true)"`
+	Booklet     *bool  `json:"booklet,omitempty" jsonschema:"booklet imposition: two pages per sheet side in saddle-stitch order (N-1|1, 2|N-2, ...), padded with blanks to a multiple of 4; overrides spreads"`
+	Tagged      *bool  `json:"tagged,omitempty" jsonschema:"tagged PDF: marked content and a structure tree (headings from outline-level styles, paragraphs, figures with alt text from the node's meta alt or name), document language from the book metadata. Not validated as PDF/UA"`
 }
 
 type ExportPdfInput struct {
@@ -123,7 +125,7 @@ func (in PrintOptionsIn) json() map[string]any {
 	if in.Standard != "" {
 		m["standard"] = in.Standard
 	}
-	for k, v := range map[string]*bool{"bleed": in.Bleed, "marks": in.Marks, "slug": in.Slug, "spreads": in.Spreads, "interactive": in.Interactive} {
+	for k, v := range map[string]*bool{"bleed": in.Bleed, "marks": in.Marks, "slug": in.Slug, "spreads": in.Spreads, "interactive": in.Interactive, "booklet": in.Booklet, "tagged": in.Tagged} {
 		if v != nil {
 			m[k] = *v
 		}
@@ -155,6 +157,25 @@ func (s *Session) ExportEpub(ctx context.Context, in ExportEpubInput) (JobOutput
 		return s.runFileJob(ctx, "export_epub", "export_epub_reflow", in.OutPath, nil)
 	}
 	return JobOutput{}, fmt.Errorf("export_epub: mode must be fixed or reflowable, got %q", in.Mode)
+}
+
+type ExportFileInput struct {
+	OutPath string `json:"outPath,omitempty" jsonschema:"file path, or a directory to put the file in; empty = do not write, return downloadPath"`
+}
+
+// ExportHtml makes the document as one HTML file (every page as inline SVG) in an editor.
+func (s *Session) ExportHtml(ctx context.Context, in ExportFileInput) (JobOutput, error) {
+	return s.runFileJob(ctx, "export_html", "export_html", in.OutPath, nil)
+}
+
+// ExportPptx makes the document as a PowerPoint deck (one slide per page) in an editor.
+func (s *Session) ExportPptx(ctx context.Context, in ExportFileInput) (JobOutput, error) {
+	return s.runFileJob(ctx, "export_pptx", "export_pptx", in.OutPath, nil)
+}
+
+// ExportIdml makes the document as an InDesign IDML package in an editor.
+func (s *Session) ExportIdml(ctx context.Context, in ExportFileInput) (JobOutput, error) {
+	return s.runFileJob(ctx, "export_idml", "export_idml", in.OutPath, nil)
 }
 
 type ExportImageInput struct {
@@ -228,6 +249,9 @@ const jobNote = " Made by an editor: the document must be open in the editor (it
 func registerJobTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "export_pdf", "Export the whole document as a real PDF (embedded fonts, images as uploaded, gradients, transparency, CMYK and spot colours, bookmarks and links). Options for print: standard (x4 | x3 | x1a, 'ready' not validated), bleed, marks, slug, spreads."+jobNote+"Writes to outPath."+" Run `preflight` with the same options first to see what a printer would flag.", s.ExportPdf)
 	addTool(srv, "export_package", "Export a print package (zip): the PDF with the chosen options, the uploaded fonts, the placed image files and Report.txt (pages, standard, colours, fonts, links, preflight). Not an editable copy of the document."+jobNote+"Writes to outPath.", s.ExportPackage)
+	addTool(srv, "export_html", "Export the document as ONE HTML file: every page as inline SVG (text stays selectable, images embedded, fonts not embedded). For text that reflows use export_epub mode reflowable."+jobNote+"Writes to outPath.", s.ExportHtml)
+	addTool(srv, "export_pptx", "Export the document as a PowerPoint deck, one slide per page: rectangles, ellipses, vectors, text boxes, PNG/JPEG images, solid and linear-gradient fills, strokes, opacity, rotation. Effects, masks, auto layout and rich-text styles are not carried over; fonts are named, not embedded."+jobNote+"Writes to outPath.", s.ExportPptx)
+	addTool(srv, "export_idml", "Export the document as an InDesign IDML package: one spread per page with rectangles, ellipses, vectors (bezier), text frames (font, size, bold/italic, colour, alignment) and RGB swatches. Images, effects, master pages' items, character styles and tables are not carried over. The structure follows the IDML specification but was checked by reading it back with import_idml, not by opening it in InDesign."+jobNote+"Writes to outPath.", s.ExportIdml)
 	addTool(srv, "export_epub", "Export the document as EPUB 3: mode fixed (default, every page as it looks) or reflowable (the stories as text with headings, CSS from the styles, footnotes, navigation). Book metadata (set_document_settings book) fills the package metadata."+jobNote+"Writes to outPath.", s.ExportEpub)
 	addTool(srv, "export_image", "Export a page, or some nodes of it, as PNG (scale 1-3) or SVG."+jobNote+"Writes to outPath.", s.ExportImage)
 	addTool(srv, "preflight", "Check the document for print: fonts that cannot be embedded, overset text, pages without size or bleed, images under 150 ppi, missing glyphs, transparency under X-1a / X-3, RGB under X-1a, effects a PDF cannot reproduce. A checklist of known problems, not a PDF/X validator."+jobNote, s.Preflight)

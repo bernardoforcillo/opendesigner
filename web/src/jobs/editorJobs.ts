@@ -29,7 +29,7 @@ function printOptions(o: Record<string, unknown>): PrintPdfOptions | string {
     if (typeof o.standard !== "string" || !STANDARDS.has(o.standard)) return `standard must be none, x1a, x3 or x4`;
     out.pdfx = o.standard as PrintPdfOptions["pdfx"];
   }
-  for (const k of ["bleed", "marks", "slug", "spreads", "interactive"] as const) {
+  for (const k of ["bleed", "marks", "slug", "spreads", "interactive", "booklet", "tagged"] as const) {
     if (o[k] === undefined) continue;
     if (typeof o[k] !== "boolean") return `${k} must be true or false`;
     out[k] = o[k] as boolean;
@@ -66,6 +66,15 @@ export async function executeJob(kind: string, optionsJson: string, deps: Docume
       }
       case "export_epub":
         ok = await runDocumentExport("epub", capture);
+        break;
+      case "export_pptx":
+        ok = await runDocumentExport("pptx", capture);
+        break;
+      case "export_idml":
+        ok = await runDocumentExport("idml", capture);
+        break;
+      case "export_html":
+        ok = await runDocumentExport("html", capture);
         break;
       case "export_epub_reflow":
         ok = await runDocumentExport("epub-reflow", capture);

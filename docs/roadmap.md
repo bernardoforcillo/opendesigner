@@ -156,3 +156,7 @@ Output (docs/output.md)
 ## Object tools (block 8)
 - [x] Step and Repeat, Gap tool, frame fitting, clipping path, QR code, find/change objects, snippets (see docs/object-tools.md; all over MCP)
 - [ ] Gradient feather, InDesign-style GREP dialect, shared object library
+
+## Formats (block 9)
+- [x] HTML, PowerPoint and IDML export; IDML import; place Word, RTF and Excel; tagged PDF; booklet imposition (see docs/formats.md; all over MCP)
+- [ ] INDD (not feasible), images in IDML/PPTX-other-types, PDF/UA validation, creep for booklets

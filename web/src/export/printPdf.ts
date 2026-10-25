@@ -1,3 +1,4 @@
+import { flattenStyle } from "../store/richText";
 import type { FontLite, NodeLite, PageLite, SceneState } from "../store/types";
 import type { Bounds } from "../canvas/geometry";
 import { headingsOf } from "../store/textTokens";
@@ -25,6 +26,10 @@ export interface PrintPdfOptions {
   spreads?: boolean;
   /** Bookmarks from headings and link annotations (default on). */
   interactive?: boolean;
+  /** Booklet imposition: two pages per sheet side in saddle-stitch order (padded with blanks to a multiple of 4); overrides `spreads`. */
+  booklet?: boolean;
+  /** Tagged PDF: marked content and a structure tree (headings, paragraphs, figures with alt text). */
+  tagged?: boolean;
 }
 
 export interface PrintPdfDeps {
@@ -110,6 +115,27 @@ export function groupPages(scene: SceneState, spreads: boolean): PageLite[][] {
   return out;
 }
 
+/** The id prefix of a blank page added by booklet imposition. */
+export const BLANK_PAGE = "blank:";
+
+/**
+ * Saddle-stitch imposition: the pages (padded with blanks to a multiple of 4) paired as they sit on the sheet, left then right:
+ * N-1|1, 2|N-2, N-3|3, 4|N-4, ... Folded and nested, the sheets read in order.
+ */
+export function bookletGroups(scene: SceneState): PageLite[][] {
+  const pages = scene.pages.filter((p) => !p.isMaster);
+  if (pages.length === 0) return [];
+  const ref = pages[0]!;
+  const n = Math.ceil(pages.length / 4) * 4;
+  const at = (i: number): PageLite => pages[i] ?? { id: `${BLANK_PAGE}${i}`, name: "Blank", width: ref.width, height: ref.height, bleed: ref.bleed, slug: ref.slug };
+  const out: PageLite[][] = [];
+  for (let s = 0; s < n / 4; s++) {
+    out.push([at(n - 1 - 2 * s), at(2 * s)]);
+    out.push([at(2 * s + 1), at(n - 2 - 2 * s)]);
+  }
+  return out;
+}
+
 /**
  * The whole document as a PDF, or null when every page is empty. `regionOf(pageId, sheet)` returns the page's
  * region for a given sheet rectangle (null sheet = the bounds of what is drawn), as export/region.ts builds it.
@@ -126,7 +152,7 @@ export async function buildDocumentPdf(
   const noPrint = new Set(scene.layers.filter((l) => l.noPrint).map((l) => l.id));
   const regions: ExportRegion[] = [];
 
-  for (const group of groupPages(scene, opts.spreads === true)) {
+  for (const group of opts.booklet ? bookletGroups(scene) : groupPages(scene, opts.spreads === true)) {
     const w = group.reduce((s, p) => s + (p.width ?? 0), 0);
     const h = Math.max(...group.map((p) => p.height ?? 0));
     const sized = group.every((p) => (p.width ?? 0) > 0 && (p.height ?? 0) > 0);
@@ -138,6 +164,7 @@ export async function buildDocumentPdf(
     const nodes: NodeLite[] = [];
     let trim: Bounds | null = sized ? { x: 0, y: 0, width: w, height: h } : null;
     for (const p of group) {
+      if (p.id.startsWith(BLANK_PAGE)) { x += p.width ?? 0; continue; }
       // An unbounded page is exported as what is drawn on it (its bounds become the trim).
       const probe = sized ? null : regionOf(p.id, null);
       if (!sized && !probe) continue;
@@ -151,6 +178,7 @@ export async function buildDocumentPdf(
       x += p.width ?? 0;
     }
     if (!trim || nodes.length === 0 && !sized) continue;
+    if (opts.booklet && nodes.length === 0 && group.every((p) => p.id.startsWith(BLANK_PAGE))) continue;
     specs.push({
       name: group.map((p) => p.name).join(" + "),
       trim, bleed,
@@ -175,10 +203,16 @@ export async function buildDocumentPdf(
     title: scene.settings?.book?.title || scene.name || "opendesigner", created: (deps.now?.() ?? new Date()),
     author: contributorNames(scene.settings?.book).join(", ") || undefined, subject: scene.settings?.book?.description,
     cmyk: scene.settings?.colorMode === "cmyk", pdfx: opts.pdfx ?? "none", condition: scene.settings?.iccProfile,
-    marks: opts.marks === true, outline, docId: scene.id,
+    marks: opts.marks === true, outline, docId: scene.id, tagged: opts.tagged === true, language: scene.settings?.book?.language || undefined, headingOf: (n) => headingLevelOf(scene, n),
     skip: (n) => !!n.layerId && noPrint.has(n.layerId),
   });
   return { bytes, report, missingImages: missing, missingFonts };
+}
+
+/** The outline level (1..9) of a text node's first paragraph style, 0 for body text. */
+function headingLevelOf(scene: SceneState, n: NodeLite): number {
+  const id = n.text?.paragraphStyles?.[0];
+  return id ? flattenStyle(scene.textStyles, id)?.outlineLevel ?? 0 : 0;
 }
 
 /** Link annotations: URLs from a node's `link.url`, and prototype transitions from an element to another page. */

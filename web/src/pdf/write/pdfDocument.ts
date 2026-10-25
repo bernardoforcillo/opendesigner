@@ -51,6 +51,10 @@ export interface PdfBuild {
   outline?: readonly PdfOutlineItem[];
   skip?: (n: NodeLite) => boolean;
   docId?: string;
+  /** Tagged PDF (marked content, structure tree, document language); `headingOf` gives a text node's outline level. */
+  tagged?: boolean;
+  headingOf?: (n: NodeLite) => number;
+  language?: string;
 }
 
 export interface PdfReport {
@@ -112,7 +116,7 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
   let usesMarks = false;
 
   const rendered = b.pages.map((spec) => {
-    const r = renderPage({ file, fonts, colors, measure: b.measure, images: b.images, imageObjs }, spec.nodes, spec.media, b.skip);
+    const r = renderPage({ file, fonts, colors, measure: b.measure, images: b.images, imageObjs, ...(b.tagged ? { tagged: { headingOf: b.headingOf ?? (() => 0) } } : {}) }, spec.nodes, spec.media, b.skip);
     transparency ||= r.transparency;
     flattened.push(...r.flattened);
     for (const pl of r.placed) {
@@ -148,7 +152,7 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
       pageIds[i]!,
       `<</Type/Page/Parent ${pagesNode} 0 R/MediaBox${media}${xBoxes}/Contents ${contentId} 0 R` +
       `/Resources<<${r.resources.replace("/XObject", "/XObject")}${fontRes ? `/Font<<${fontRes}>>` : ""}${csRes ? `/ColorSpace<<${csRes}>>` : ""}>>` +
-      `${transparency && mode !== "x1a" ? "/Group<</S/Transparency/CS/DeviceRGB>>" : ""}${annots.length ? `/Annots[${annots.join(" ")}]` : ""}>>`,
+      `${transparency && mode !== "x1a" ? "/Group<</S/Transparency/CS/DeviceRGB>>" : ""}${annots.length ? `/Annots[${annots.join(" ")}]` : ""}${b.tagged ? `/Tabs/S/StructParents ${i}` : ""}>>`,
     );
   });
   file.set(pagesNode, `<</Type/Pages/Count ${pageIds.length}/Kids[${pageIds.map((id) => `${id} 0 R`).join(" ")}]>>`);
@@ -183,6 +187,28 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
     outlines = `/Outlines ${top} 0 R/PageMode/UseOutlines`;
   }
 
+  // TAGGED PDF: Document > one element per marked item (headings, paragraphs, figures), read top to bottom, left to right on each page.
+  let tagged = "";
+  if (b.tagged) {
+    const docElem = file.alloc(), treeRoot = file.alloc(), parentTree = file.alloc();
+    const kids: number[] = [];
+    const nums: string[] = [];
+    rendered.forEach(({ r }, i) => {
+      const byMcid: number[] = [];
+      for (const t of r.tags) {
+        const id = file.add(`<</Type/StructElem/S/${t.role}/P ${docElem} 0 R/Pg ${pageIds[i]} 0 R/K ${t.mcid}${t.alt !== undefined ? `/Alt${pdfText(t.alt)}` : ""}>>`);
+        byMcid[t.mcid] = id;
+      }
+      nums.push(`${i}[${byMcid.map((id) => `${id} 0 R`).join(" ")}]`);
+      const order = [...r.tags].sort((a, c) => a.y - c.y || a.x - c.x);
+      for (const t of order) kids.push(byMcid[t.mcid]!);
+    });
+    file.set(docElem, `<</Type/StructElem/S/Document/P ${treeRoot} 0 R/K[${kids.map((k) => `${k} 0 R`).join(" ")}]>>`);
+    file.set(parentTree, `<</Nums[${nums.join(" ")}]>>`);
+    file.set(treeRoot, `<</Type/StructTreeRoot/K ${docElem} 0 R/ParentTree ${parentTree} 0 R/ParentTreeNextKey ${rendered.length}>>`);
+    tagged = `/MarkInfo<</Marked true>>/StructTreeRoot ${treeRoot} 0 R/Lang${pdfText(b.language || "en")}/ViewerPreferences<</DisplayDocTitle true>>`;
+  }
+
   const intent = mode === "none" ? "" :
     `/OutputIntents[<</Type/OutputIntent/S/GTS_PDFX/OutputConditionIdentifier${pdfText(b.condition || "Custom")}/Info${pdfText(b.condition || "Custom")}/RegistryName(http://www.color.org)>>]`;
   const xmp = mode === "none" ? "" : `/Metadata ${file.stream(
@@ -190,7 +216,7 @@ export async function buildPdf(b: PdfBuild): Promise<{ bytes: Uint8Array; report
     `<?xpacket begin="﻿" id="W5M0MpCehiHzreSzNTczkc9d"?><x:xmpmeta xmlns:x="adobe:ns:meta/"><rdf:RDF xmlns:rdf="http://www.w3.org/1999/02/22-rdf-syntax-ns#"><rdf:Description rdf:about="" xmlns:pdfxid="http://www.npes.org/pdfx/ns/id/" xmlns:pdfx="http://ns.adobe.com/pdfx/1.3/" xmlns:dc="http://purl.org/dc/elements/1.1/"><pdfxid:GTS_PDFXVersion>${PDFX_NAME[mode]}</pdfxid:GTS_PDFXVersion><pdfx:GTS_PDFXVersion>${PDFX_NAME[mode]}</pdfx:GTS_PDFXVersion><dc:title>${escapeXml(b.title)}</dc:title></rdf:Description></rdf:RDF></x:xmpmeta><?xpacket end="w"?>`,
     false,
   )} 0 R`;
-  file.set(root, `<</Type/Catalog/Pages ${pagesNode} 0 R${outlines}${intent}${xmp}>>`);
+  file.set(root, `<</Type/Catalog/Pages ${pagesNode} 0 R${outlines}${tagged}${intent}${xmp}>>`);
   file.set(
     info,
     `<</Title${pdfText(b.title)}${b.author ? `/Author${pdfText(b.author)}` : ""}${b.subject ? `/Subject${pdfText(b.subject.slice(0, 2000))}` : ""}/Producer(OpenDesigner)/Creator(OpenDesigner)/CreationDate(${pdfDate(b.created)})/ModDate(${pdfDate(b.created)})` +

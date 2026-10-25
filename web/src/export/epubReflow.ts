@@ -3,7 +3,7 @@ import { flattenStyle, type FlatStyle } from "../store/richText";
 import { destinationsOf, textNodesInReadingOrder, tokensOf, visibleText } from "../store/textTokens";
 import { pageNumbers } from "../store/pageNumbers";
 import { zipStore, type ZipEntry } from "./zip";
-import { opfMetadata, xmlEscape, type EpubMeta } from "./epub";
+import { accessibilityMeta, opfMetadata, xmlEscape, type EpubMeta } from "./epub";
 
 // EPUB 3, REFLOWABLE: the document's stories in reading order as real text -- headings, paragraphs,
 // character styling, footnotes as notes, images -- with the paragraph and character styles turned into
@@ -45,7 +45,7 @@ function cssOf(s: TextStyleLite, f?: FlatStyle): string {
 }
 
 interface Block { kind: "p"; level: number; cls: string; html: string; text: string; hid?: string }
-interface Fig { kind: "img"; src: string; alt: string }
+interface Fig { kind: "img"; src: string; alt: string; described: boolean }
 interface Chapter { title: string; blocks: (Block | Fig)[]; headings: { level: number; text: string; id: string }[] }
 
 /** The EPUB, ready to download. `images` holds the bytes of each image asset by hash. */
@@ -90,7 +90,7 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
       const hash = n.image!.assetHash;
       let f = assetFiles.get(hash);
       if (!f) { const img = images.get(hash)!; f = { href: `images/img-${assetFiles.size + 1}.${EXT[img.mime] ?? "bin"}`, mime: img.mime }; assetFiles.set(hash, f); }
-      (chapters[chapters.length - 1] ?? open(scene.pages.filter((p) => !p.isMaster)[page]?.name || "Start")).blocks.push({ kind: "img", src: f.href, alt: n.name });
+      (chapters[chapters.length - 1] ?? open(scene.pages.filter((p) => !p.isMaster)[page]?.name || "Start")).blocks.push({ kind: "img", src: f.href, alt: n.meta?.["alt"] ?? (/\.(png|jpe?g|gif|webp|svg)$/i.test(n.name) ? "" : n.name), described: (n.meta?.["alt"] ?? (/\.(png|jpe?g|gif|webp|svg)$/i.test(n.name) ? "" : n.name)).trim() !== "" });
       continue;
     }
     const t = visibleText(scene, n.text!);
@@ -119,7 +119,7 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
           if (tok.kind === "footnote" || tok.kind === "endnote") {
             const num = ++footnoteCount;
             (notes[notes.length - 1] ?? (open("Start"), notes[notes.length - 1]!)).push({ id: `fn${num}`, num, text: tok.text });
-            html += `<a epub:type="noteref" id="r${num}" href="#fn${num}"><sup>${num}</sup></a>`;
+            html += `<a epub:type="noteref" role="doc-noteref" id="r${num}" href="#fn${num}"><sup>${num}</sup></a>`;
           }
           i = tok.end;
           continue;
@@ -147,6 +147,7 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
   }
   if (chapters.length === 0) throw new Error("nothing to export: no text or images to flow");
 
+  const figs = chapters.flatMap((c) => c.blocks.filter((b): b is Fig => b.kind === "img"));
   const fileOf = (i: number) => `chapter-${String(i + 1).padStart(3, "0")}.xhtml`;
   const entries: ZipEntry[] = [
     { name: "mimetype", data: bytes("application/epub+zip") },
@@ -155,15 +156,15 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
   ];
   chapters.forEach((ch, i) => {
     const body = ch.blocks.map((b) => {
-      if (b.kind === "img") return `<figure><img src="${b.src}" alt="${xmlEscape(b.alt)}"/></figure>`;
+      if (b.kind === "img") return `<figure><img src="${b.src}" alt="${xmlEscape(b.alt)}"${b.alt === "" ? ' role="presentation"' : ""}/></figure>`;
       const c = b.cls, hid = b.hid;
       const tag = b.level > 0 ? `h${Math.min(b.level, 6)}` : "p";
       return `<${tag}${c ? ` class="${c}"` : ""}${hid ? ` id="${hid}"` : ""}>${b.html}</${tag}>`;
     }).join("\n");
-    const foot = notes[i]!.map((x) => `<aside epub:type="footnote" class="note" id="${x.id}"><p><a href="#r${x.num}">${x.num}</a> ${xmlEscape(x.text)}</p></aside>`).join("\n");
+    const foot = notes[i]!.map((x) => `<aside epub:type="footnote" role="doc-footnote" class="note" id="${x.id}"><p><a href="#r${x.num}">${x.num}</a> ${xmlEscape(x.text)}</p></aside>`).join("\n");
     entries.push({
       name: `OEBPS/${fileOf(i)}`,
-      data: bytes(`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${xmlEscape(lang)}"><head><meta charset="utf-8"/><title>${xmlEscape(ch.title)}</title><link rel="stylesheet" href="style.css"/></head><body>\n${body}\n${foot}\n</body></html>`),
+      data: bytes(`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${xmlEscape(lang)}"><head><meta charset="utf-8"/><title>${xmlEscape(ch.title)}</title><link rel="stylesheet" href="style.css"/></head><body><section epub:type="chapter" role="doc-chapter">\n${body}\n</section>\n${foot}\n</body></html>`),
     });
   });
   for (const [hash, f] of assetFiles) entries.push({ name: `OEBPS/${f.href}`, data: images.get(hash)!.bytes });
@@ -181,7 +182,7 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
   });
   const ol = (list: Nav[]): string => `<ol>${list.map((n) => `<li><a href="${n.href}">${xmlEscape(n.text)}</a>${n.kids.length ? ol(n.kids) : ""}</li>`).join("")}</ol>`;
   const title = xmlEscape(meta.title);
-  entries.push({ name: "OEBPS/nav.xhtml", data: bytes(`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${xmlEscape(lang)}"><head><meta charset="utf-8"/><title>${title}</title></head><body><nav epub:type="toc">${ol(roots)}</nav></body></html>`) });
+  entries.push({ name: "OEBPS/nav.xhtml", data: bytes(`<?xml version="1.0" encoding="UTF-8"?>\n<!DOCTYPE html>\n<html xmlns="http://www.w3.org/1999/xhtml" xmlns:epub="http://www.idpf.org/2007/ops" lang="${xmlEscape(lang)}"><head><meta charset="utf-8"/><title>${title}</title></head><body><nav epub:type="toc" role="doc-toc">${ol(roots)}</nav><nav epub:type="landmarks" hidden=""><ol><li><a epub:type="bodymatter" href="${fileOf(0)}">Start of content</a></li></ol></nav></body></html>`) });
 
   const manifest = [
     `<item id="nav" href="nav.xhtml" media-type="application/xhtml+xml" properties="nav"/>`, `<item id="css" href="style.css" media-type="text/css"/>`,
@@ -190,7 +191,7 @@ export function buildReflowEpub(scene: SceneState, meta: EpubMeta, images: Reado
   ];
   entries.splice(2, 0, {
     name: "OEBPS/content.opf",
-    data: bytes(`<?xml version="1.0" encoding="UTF-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">${opfMetadata(meta)}</metadata><manifest>${manifest.join("")}</manifest><spine>${chapters.map((_, i) => `<itemref idref="c${i + 1}"/>`).join("")}</spine></package>`),
+    data: bytes(`<?xml version="1.0" encoding="UTF-8"?>\n<package xmlns="http://www.idpf.org/2007/opf" version="3.0" unique-identifier="uid"><metadata xmlns:dc="http://purl.org/dc/elements/1.1/">${opfMetadata(meta, accessibilityMeta({ fixedLayout: false, hasImages: figs.length > 0, allImagesDescribed: figs.every((f) => f.described), hasHeadings: chapters.some((c) => c.headings.length > 0), hasText: true }))}</metadata><manifest>${manifest.join("")}</manifest><spine>${chapters.map((_, i) => `<itemref idref="c${i + 1}"/>`).join("")}</spine></package>`),
   });
   return zipStore(entries);
 }

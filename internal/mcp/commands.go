@@ -206,6 +206,44 @@ func (s *Session) ImportSvg(ctx context.Context, in FileAtInput) (NodeIdOutput, 
 	return out, s.runCommandWith(ctx, "import_svg", "import_svg", in.args(), in.Path, &out)
 }
 
+type PlaceDocumentInput struct {
+	FileAtInput
+	Width float64 `json:"width,omitempty" jsonschema:"width of the text frame for .docx/.rtf (default 400)"`
+}
+
+type PlaceDocumentOutput struct {
+	NodeId     string `json:"nodeId"`
+	Kind       string `json:"kind" jsonschema:"text (Word, RTF) | table (Excel)"`
+	Paragraphs int    `json:"paragraphs,omitempty"`
+	Message    string `json:"message,omitempty"`
+}
+
+// PlaceDocument places a Word, RTF or Excel file: text with headings and bold/italic, or a table.
+func (s *Session) PlaceDocument(ctx context.Context, in PlaceDocumentInput) (PlaceDocumentOutput, error) {
+	a := in.args()
+	if in.Width != 0 {
+		a["width"] = in.Width
+	}
+	var out PlaceDocumentOutput
+	return out, s.runCommandWith(ctx, "place_document", "place_document", a, in.Path, &out)
+}
+
+type ImportIdmlInput struct {
+	Path string `json:"path" jsonschema:"an .idml file on the machine the MCP server runs on, at most 32 MiB"`
+}
+
+type ImportIdmlOutput struct {
+	Pages   int    `json:"pages"`
+	Nodes   int    `json:"nodes"`
+	Message string `json:"message,omitempty"`
+}
+
+// ImportIdml adds the pages of an InDesign IDML file to the document.
+func (s *Session) ImportIdml(ctx context.Context, in ImportIdmlInput) (ImportIdmlOutput, error) {
+	var out ImportIdmlOutput
+	return out, s.runCommandWith(ctx, "import_idml", "import_idml", map[string]any{}, in.Path, &out)
+}
+
 type RelinkImageInput struct {
 	NodeId string `json:"nodeId" jsonschema:"an image node"`
 	Path   string `json:"path" jsonschema:"the new image file; the node keeps its width and takes the new image's shape"`
@@ -759,6 +797,8 @@ func registerCommandTools(srv *mcp.Server, s *Session) {
 	addTool(srv, "find_change", "Find (and optionally change) text across every text of the document, master pages included, in reading order: plain, whole word or regular expression, with or without case. Without `replace` it lists the matches; with it, it replaces them all in one undo step and keeps the formatting."+jobNote, s.FindChange)
 	addTool(srv, "place_image", "Upload an image file (PNG, JPEG, GIF, WebP) and place it as an image node, scaled down to at most 512 px on its long side. An SVG is imported as editable nodes instead (import_svg)."+jobNote, s.PlaceImage)
 	addTool(srv, "import_svg", "Import an SVG file as editable nodes (shapes, text, gradients, embedded images), centred at x, y."+jobNote, s.ImportSvg)
+	addTool(srv, "place_document", "Place a Word (.docx), RTF or Excel (.xlsx) file: Word/RTF become one text frame with paragraph styles (Heading 1-3 get an outline level, so the contents list them) and bold/italic runs; the first Excel sheet becomes a table. Images, tables and footnotes inside Word files, fonts, colours and formulas are not carried over (Excel gives cached values)."+jobNote, s.PlaceDocument)
+	addTool(srv, "import_idml", "Import an InDesign IDML file: its pages (with their sizes) are added to the document with rectangles, ovals, polygons, lines (as vectors with their handles) and text frames with their story text, solid fills and strokes (CMYK converted to RGB, naively). Images, effects, styles, master pages, tables and gradients are not carried over; rotation of boxes is not kept. INDD files cannot be opened."+jobNote, s.ImportIdml)
 	addTool(srv, "relink_image", "Point an image node at another file (the document's 'Relink'): the node keeps its width and takes the new image's shape."+jobNote, s.RelinkImage)
 	addTool(srv, "import_pdf", "Import a PDF: every page becomes a page of the document; mode editable (default) turns text, shapes and images into nodes and extracts the embedded fonts, mode image makes one picture per page. Up to 200 pages."+jobNote, s.ImportPdf)
 	addTool(srv, "import_fig", "Import a Figma .fig file (experimental reader; says what it could not carry over)."+jobNote, s.ImportFig)

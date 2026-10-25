@@ -67,8 +67,8 @@ describe("buildReflowEpub", () => {
     const files = unzip(buildReflowEpub(book(), { title: "Book" }, new Map()));
     const c1 = files.get("OEBPS/chapter-001.xhtml")!;
     expect(c1).toContain('<span class="c1">*stress*</span>');
-    expect(c1).toContain('<a epub:type="noteref" id="r1" href="#fn1"><sup>1</sup></a>');
-    expect(c1).toContain('<aside epub:type="footnote" class="note" id="fn1">');
+    expect(c1).toContain('<a epub:type="noteref" role="doc-noteref" id="r1" href="#fn1"><sup>1</sup></a>');
+    expect(c1).toContain('<aside epub:type="footnote" role="doc-footnote" class="note" id="fn1">');
     expect(c1).toContain("the note text");
     expect(c1).not.toContain("[^");
   });

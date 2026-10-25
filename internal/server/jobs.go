@@ -196,7 +196,7 @@ func (s *DocumentService) WatchJobs(ctx context.Context, req *connect.Request[op
 }
 
 var jobKinds = map[string]bool{
-	"export_pdf": true, "export_package": true, "export_epub": true, "export_epub_reflow": true, "export_png": true, "export_svg": true, "preflight": true, "command": true,
+	"export_pdf": true, "export_package": true, "export_epub": true, "export_epub_reflow": true, "export_html": true, "export_pptx": true, "export_idml": true, "export_png": true, "export_svg": true, "preflight": true, "command": true,
 }
 
 // RunJob: runs `kind` in an editor and returns what it produced.

@@ -363,3 +363,39 @@ describe("object-tool commands", () => {
     expect((await cmd({ name: "fit_frame", nodeId: "r1", mode: "stretch" })).message).toMatch(/mode must be/);
   });
 });
+
+describe("place_document", () => {
+  const fx = async (n: string, type: string) => {
+    const { readFileSync } = await import("node:fs");
+    const { join } = await import("node:path");
+    return { name: n, data: new Uint8Array(readFileSync(join(process.cwd(), "src/tools/__fixtures__", n))), type };
+  };
+  it("places a Word file as styled text and an Excel sheet as a table", async () => {
+    const d = await fx("sample.docx", "");
+    const r = await cmd({ name: "place_document", x: 10, y: 10, width: 300 }, d);
+    expect(r.ok).toBe(true);
+    expect(r.data.paragraphs).toBe(4);
+    expect(useScene.getState().scene!.nodes.get(r.data.nodeId)!.text!.content).toContain("Chapter One");
+    const x = await fx("sample.xlsx", "");
+    const t = await cmd({ name: "place_document" }, x);
+    expect(t.data.kind).toBe("table");
+    expect((await cmd({ name: "place_document" }, { name: "a.txt", data: new Uint8Array([65]) })).message).toMatch(/\.docx, \.rtf and \.xlsx/);
+    expect((await cmd({ name: "place_document" }, { name: "bad.docx", data: new Uint8Array([1, 2, 3]) })).message).toMatch(/not a \.docx/);
+  });
+});
+
+describe("import_idml", () => {
+  it("adds the pages and items of an IDML file made by export_idml", async () => {
+    const { buildIdml } = await import("../export/idml");
+    const before = useScene.getState().scene!;
+    const pkg = buildIdml(before, "Doc")!;
+    const pagesBefore = useScene.getState().scene!.pages.length;
+    const r = await cmd({ name: "import_idml" }, { name: "x.idml", data: pkg.bytes });
+    expect(r.ok).toBe(true);
+    expect(r.data.pages).toBe(1);
+    expect(useScene.getState().scene!.pages.length).toBe(pagesBefore + 1);
+    expect((await cmd({ name: "import_idml" }, { name: "x.idml", data: new Uint8Array([1, 2, 3, 4]) })).message).toMatch(/not an IDML/);
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.pages.length).toBe(pagesBefore);
+  });
+});

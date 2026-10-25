@@ -9,6 +9,8 @@ import { useDocNameEditing } from "./DocName";
 import { pickSvgFile } from "../../tools/svgImport";
 import { importFigFile, pickFigFile } from "../../fig/importFig";
 import { importPdfFile, pickPdfFile } from "../../pdf/importPdf";
+import { pickFile } from "../pickFile";
+import { runCommand } from "../../jobs/commands";
 import { runDocumentExport } from "../../export/exportScene";
 import { DiagramDialog } from "../DiagramDialog";
 import { VariablesDialog } from "../VariablesDialog";
@@ -114,6 +116,18 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               useScene.setState({ notice: r.ok ? r.message : `PDF import failed: ${r.message}` });
             });
           }
+          else if (k === "import-idml" || k === "place-document") {
+            void pickFile(k === "import-idml" ? ".idml" : ".docx,.rtf,.xlsx").then(async (f) => {
+              if (!f) return;
+              useScene.setState({ notice: `Reading ${f.name}…` });
+              const r = await runCommand({ name: k === "import-idml" ? "import_idml" : "place_document" }, f);
+              const data = r.ok && r.text ? (JSON.parse(r.text) as { message?: string }) : null;
+              useScene.setState({ notice: r.ok ? data?.message ?? "Done." : `${f.name}: ${r.message}` });
+            });
+          }
+          else if (k === "export-html") void runDocumentExport("html");
+          else if (k === "export-pptx") void runDocumentExport("pptx");
+          else if (k === "export-idml") void runDocumentExport("idml");
           else if (k === "export-pdf") void runDocumentExport("pdf");
           else if (k === "export-pdf-bleed") setPrintOpen(true);
           else if (k === "page-setup") setPageSetupOpen(true);
@@ -171,6 +185,21 @@ export function DocMenu({ onNewDocument }: { onNewDocument: () => void }) {
               </MenuItem>
               <MenuItem id="import-pdf-image" className={ITEM}>
                 <Icon name="image" size={14} /> Import PDF as pictures…
+              </MenuItem>
+              <MenuItem id="import-idml" className={ITEM}>
+                <Icon name="page" size={14} /> Import InDesign IDML… <span className="ml-auto text-[11px] text-fg-subtle">shapes and text</span>
+              </MenuItem>
+              <MenuItem id="place-document" className={ITEM}>
+                <Icon name="page" size={14} /> Place Word, RTF or Excel…
+              </MenuItem>
+              <MenuItem id="export-html" className={ITEM}>
+                <Icon name="download" size={14} /> Export all pages as HTML
+              </MenuItem>
+              <MenuItem id="export-pptx" className={ITEM}>
+                <Icon name="download" size={14} /> Export as PowerPoint (.pptx)
+              </MenuItem>
+              <MenuItem id="export-idml" className={ITEM}>
+                <Icon name="download" size={14} /> Export as InDesign IDML
               </MenuItem>
               <MenuItem id="export-pdf" className={ITEM}>
                 <Icon name="download" size={14} /> Export all pages as PDF…

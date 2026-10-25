@@ -25,6 +25,8 @@ import { toPbFills, toPbStrokes, toPbSubPaths, type FillLite, type SubPathLite }
 import { makeCreateNodeOp, makeSetVectorPathOp, uuid } from "../tools/ops";
 import { changeObjectsOps, clipWithShapeOps, exportSnippet, findObjects, fitOps, gapOps, placeSnippetOps, qrOps, releaseClipOps, stepRepeatOps, type FitMode, type ObjectChange, type ObjectQuery } from "../tools/objectTools";
 import { QR_LEVELS, type QrLevel } from "../tools/qrcode";
+import { PlaceError, parseDocx, parseRtf, parseXlsx, placeTableOps, placeTextOps } from "../tools/placeDocument";
+import { IdmlError, idmlOps, parseIdml } from "../export/idml";
 import { applyTableStyleOps } from "../tools/tableOps";
 import { CHECK_CODES, checkText, type CheckCode } from "../tools/textChecks";
 import { editorialNotes } from "../store/textTokens";
@@ -99,7 +101,7 @@ function pageIdFrom(o: Record<string, unknown>): string | string[] {
 }
 
 /** Commands that read an input file sent with the job. */
-const FILE_COMMANDS = new Set(["place_image", "relink_image", "import_svg", "import_pdf", "import_fig", "upload_font"]);
+const FILE_COMMANDS = new Set(["place_image", "relink_image", "import_svg", "import_pdf", "import_fig", "upload_font", "place_document", "import_idml"]);
 
 /** The page a placed or imported thing lands on: the importers use the editor's current page, so it is set to the one asked for. */
 function aimAt(o: Record<string, unknown>): string | null {
@@ -145,6 +147,42 @@ async function runFileCommand(o: Record<string, unknown>, file: File): Promise<J
       if (bad) return fail(bad);
       const r = await importFigFile(file);
       return r.ok ? ok({ message: r.message, warnings: r.warnings }) : fail(r.message);
+    }
+    case "import_idml": {
+      try {
+        const { pages, notes } = await parseIdml(new Uint8Array(await file.arrayBuffer()));
+        const made = idmlOps(useScene.getState().scene!, pages);
+        commit(made.ops);
+        useScene.getState().setCurrentPage(made.pageIds[0]!);
+        const left = notes.length > 0 ? ` Not carried over: ${notes.join(", ")}.` : "";
+        return ok({ pages: made.pageIds.length, nodes: made.nodes, message: `Imported ${made.pageIds.length} page(s) with rectangles, ovals, polygons, lines and text. Images, effects, styles and master pages are not carried over.${left}` });
+      } catch (e) {
+        return fail(e instanceof IdmlError ? e.message : "the IDML file could not be read");
+      }
+    }
+    case "place_document": {
+      const bad = aimAt(o);
+      if (bad) return fail(bad);
+      const ext = /\.([a-z0-9]+)$/i.exec(file.name)?.[1]?.toLowerCase() ?? "";
+      if (!["docx", "rtf", "xlsx"].includes(ext)) return fail("place_document reads .docx, .rtf and .xlsx files");
+      const scene = useScene.getState().scene!;
+      const page = useScene.getState().currentPageId ?? scene.pages.find((p) => !p.isMaster)?.id ?? scene.pages[0]!.id;
+      try {
+        const bytes = new Uint8Array(await file.arrayBuffer());
+        if (ext === "xlsx") {
+          const made = placeTableOps(scene, await parseXlsx(bytes), page, point.x, point.y);
+          if (typeof made === "string") return fail(made);
+          commit(made.ops);
+          return ok({ nodeId: made.tableId, kind: "table" });
+        }
+        const paragraphs = ext === "docx" ? await parseDocx(bytes) : parseRtf(new TextDecoder().decode(bytes));
+        const made = placeTextOps(scene, paragraphs, page, point.x, point.y, isNum(o.width) ? o.width : 400);
+        if (typeof made === "string") return fail(made);
+        commit(made.ops);
+        return ok({ nodeId: made.nodeId, kind: "text", paragraphs: made.paragraphs, message: "Text and headings (bold, italic) were placed; images, tables, footnotes, fonts and colours of the file were not carried over." });
+      } catch (e) {
+        return fail(e instanceof PlaceError ? e.message : "the file could not be read");
+      }
     }
     case "upload_font": {
       if (!isStr(o.family) || o.family.trim() === "") return fail("family is required");

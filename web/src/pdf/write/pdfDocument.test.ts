@@ -223,3 +223,40 @@ describe("images", () => {
     expect(report.lowResolution[0]).toMatchObject({ hash: "h", ppi: 10 });
   });
 });
+
+describe("buildPdf — tagged", () => {
+  const tagged = (over: Partial<PdfBuild> = {}) => build([
+    page([
+      node({ id: "h", kind: "text", x: 10, y: 10, width: 180, height: 20, text: { content: "Title", style: style({ fontSize: 24 }) } }),
+      node({ id: "box", x: 5, y: 5, width: 190, height: 90 }),
+      node({ id: "p", kind: "text", x: 10, y: 40, width: 180, height: 20, text: { content: "Body text", style: style() } }),
+      node({ id: "img", kind: "image", name: "Cat", meta: { alt: "A cat" }, x: 10, y: 70, width: 20, height: 20, image: { assetHash: "a".repeat(64), originalName: "", pixelWidth: 1, pixelHeight: 1 } }),
+    ]),
+  ], { tagged: true, headingOf: (n) => (n.id === "h" ? 1 : 0), language: "it", ...over });
+
+  it("marks the content and builds a structure tree in reading order, read back with pdf.js", async () => {
+    const { bytes } = await tagged();
+    const text = Buffer.from(bytes).toString("latin1");
+    expect(text).toContain("/MarkInfo<</Marked true>>");
+    expect(text).toContain("/Lang(it)");
+    expect(text).toContain("/StructTreeRoot");
+    const content = await contentOf(bytes);
+    expect(content).toContain("/H1 <</MCID 0>> BDC");
+    expect(content).toContain("/P <</MCID 1>> BDC");
+    expect(content).toContain("/Figure <</MCID 2>> BDC");
+    expect(content).toContain("/Artifact BMC");
+    expect((content.match(/BDC|BMC/g) ?? []).length).toBe((content.match(/EMC/g) ?? []).length);
+    const doc = await read(bytes);
+    const tree = await (await doc.getPage(1)).getStructTree();
+    const roles = (function walk(n: { role: string; children?: unknown[] }): string[] { return [n.role, ...(n.children ?? []).flatMap((c) => walk(c as never))]; })(tree as never);
+    expect(roles).toContain("H1");
+    expect(roles).toContain("P");
+    expect(roles).toContain("Figure");
+  });
+
+  it("writes none of it unless asked", async () => {
+    const { bytes } = await tagged({ tagged: false });
+    expect(Buffer.from(bytes).toString("latin1")).not.toContain("StructTreeRoot");
+    expect(await contentOf(bytes)).not.toContain("BDC");
+  });
+});

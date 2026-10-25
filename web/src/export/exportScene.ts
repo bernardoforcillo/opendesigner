@@ -7,6 +7,10 @@ import type { NodeLite, PageLite, SceneState } from "../store/types";
 import { NodeMap } from "../store/nodeMap";
 import { isReachableFrom } from "../store/tree";
 import { exportRegion, type ExportRegion, type ExportScope } from "./region";
+import { buildHtml } from "./htmlExport";
+import { pageImageAlts, pageReadingText } from "./readingText";
+import { buildIdml } from "./idml";
+import { buildPptx, type PptxImage } from "./pptx";
 import { buildEpub, type EpubPage } from "./epub";
 import { buildReflowEpub, type ReflowImage } from "./epubReflow";
 import { dataUrlBytes } from "../pdf/write/pdfImages";
@@ -375,7 +379,7 @@ export async function runExport(req: ExportRequest, deps: ExportDeps = {}): Prom
 // ---------------------------------------------------------------------------
 // THE WHOLE DOCUMENT: every page, as one PDF (print dialog) or one EPUB (file).
 
-export type DocumentExportFormat = "pdf" | "epub" | "epub-reflow";
+export type DocumentExportFormat = "pdf" | "epub" | "epub-reflow" | "html" | "pptx" | "idml";
 
 export interface DocumentExportDeps extends ExportDeps {
   now?: () => Date;
@@ -383,6 +387,8 @@ export interface DocumentExportDeps extends ExportDeps {
 
 const EPUB_MIME = "application/epub+zip";
 const PDF_MIME = "application/pdf";
+const IDML_MIME = "application/vnd.adobe.indesign-idml-package";
+const PPTX_MIME = "application/vnd.openxmlformats-officedocument.presentationml.presentation";
 
 function printDeps(deps: ExportDeps, measure: MeasureText) {
   return { measure, loadAssetDataUrl: deps.loadAssetDataUrl ?? fetchAssetDataUrl, rasterize: deps.rasterize ?? canvasRasterize };
@@ -433,6 +439,38 @@ export async function runDocumentExport(
       return true;
     }
 
+    if (format === "pptx") {
+      const load = deps.loadAssetDataUrl ?? fetchAssetDataUrl;
+      const images = new Map<string, PptxImage>();
+      await Promise.all([...new Set([...raw.nodes.values()].filter((n) => n.kind === "image" && n.image?.assetHash).map((n) => n.image!.assetHash))].map(async (hash) => {
+        try {
+          const uri = await load(raw.id, hash);
+          const d = uri === null ? null : dataUrlBytes(uri);
+          if (d) images.set(hash, { bytes: d.bytes, mime: d.mime });
+        } catch { /* an unreachable image is left out of the deck */ }
+      }));
+      const deck = buildPptx(scene, images, scene.name || FALLBACK_NAME);
+      if (!deck) {
+        useScene.setState({ notice: "nothing to export: the document has no pages" });
+        return false;
+      }
+      (deps.download ?? downloadBlob)(new Blob([deck.bytes as BlobPart], { type: PPTX_MIME }), documentFileName(scene.name, "pptx"));
+      const lost = deck.skipped.length > 0 ? ` Not carried over: ${deck.skipped.join(", ")}.` : "";
+      useScene.setState({ notice: `PowerPoint file written (${deck.slides} slide${deck.slides === 1 ? "" : "s"}). Effects, masks, auto layout and rich-text styles are not carried over; fonts are named, not embedded.${lost}` });
+      return true;
+    }
+
+    if (format === "idml") {
+      const pkg = buildIdml(scene, scene.name || FALLBACK_NAME);
+      if (!pkg) {
+        useScene.setState({ notice: "nothing to export: the document has no pages" });
+        return false;
+      }
+      (deps.download ?? downloadBlob)(new Blob([pkg.bytes as BlobPart], { type: IDML_MIME }), documentFileName(scene.name, "idml"));
+      useScene.setState({ notice: `IDML written (${pkg.pages} page${pkg.pages === 1 ? "" : "s"}). Not carried over: images, effects, master pages' items, character styles, tables.${pkg.skipped.length ? ` Also left out here: ${pkg.skipped.join(", ")}.` : ""}` });
+      return true;
+    }
+
     if (format === "epub-reflow") {
       // Stories flow as text: the RAW scene is read (footnote markers are still in the content), images by hash.
       const load = deps.loadAssetDataUrl ?? fetchAssetDataUrl;
@@ -454,7 +492,7 @@ export async function runDocumentExport(
     // the pages that apply them.
     for (const page of scene.pages.filter((p) => !p.isMaster)) {
       const region = exportRegion(onPage(scene, page.id), [], "page", measure, sheetOf(page));
-      if (region) pages.push({ name: page.name, svg: "", width: region.bounds.width, height: region.bounds.height, region });
+      if (region) pages.push({ name: page.name, svg: "", width: region.bounds.width, height: region.bounds.height, region, text: pageReadingText(scene, page.id), imageAlts: pageImageAlts(scene, page.id) });
     }
     if (pages.length === 0) {
       useScene.setState({ notice: "nothing to export: every page is empty" });
@@ -463,6 +501,13 @@ export async function runDocumentExport(
     const all = pages.flatMap((p) => p.region.nodes);
     const assets = await resolveAssets(all, scene.id, "svg", deps);
     for (const p of pages) p.svg = svgMarkup(p.region, measure, assets);
+
+    if (format === "html") {
+      const html = buildHtml(pages, { title: scene.name || FALLBACK_NAME, language: scene.settings?.book?.language });
+      (deps.download ?? downloadBlob)(new Blob([html], { type: "text/html" }), documentFileName(scene.name, "html"));
+      if (assets.missing > 0) useScene.setState({ notice: missingImagesNotice(assets.missing) });
+      return true;
+    }
 
     const data = buildEpub(pages, { title: scene.name || FALLBACK_NAME, identifier: `urn:opendesigner:${scene.id}`, modified: (deps.now?.() ?? new Date()).toISOString(), book: scene.settings?.book });
     (deps.download ?? downloadBlob)(new Blob([data as BlobPart], { type: EPUB_MIME }), documentFileName(scene.name, "epub"));

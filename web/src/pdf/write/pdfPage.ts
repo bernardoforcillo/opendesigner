@@ -39,7 +39,12 @@ export interface PageDeps {
   images: Map<string, PreparedImage>;
   /** Image XObjects already written (shared across pages). */
   imageObjs: Map<string, number>;
+  /** Tagged PDF: text and images are wrapped in marked content, everything else is an artifact. `headingOf` = outline level of a text node. */
+  tagged?: { headingOf: (n: NodeLite) => number };
 }
+
+/** One marked-content item of a tagged page, in the page's drawing order. */
+export interface PdfTag { mcid: number; role: string; nodeId: string; alt?: string; x: number; y: number }
 
 export interface Placed { assetHash: string; width: number; height: number }
 
@@ -51,6 +56,8 @@ export interface PageRender {
   transparency: boolean;
   /** Effects the PDF cannot reproduce, by node id. */
   flattened: string[];
+  /** Tagged PDF only: the marked content on the page. */
+  tags: PdfTag[];
 }
 
 class Page {
@@ -332,6 +339,7 @@ export function renderPage(deps: PageDeps, nodes: readonly NodeLite[], bounds: B
   const pg = new Page(deps);
   const clipOf = new Map<string, string>();
   const clipOpen = new Set<string>();
+  const tags: PdfTag[] = [];
   // y flipped, origin at the bounds' top-left, scaled to points.
   pg.out.push(`${num(PT)} 0 0 ${num(-PT)} ${num(-bounds.x * PT)} ${num((bounds.y + bounds.height) * PT)} cm\n`);
   for (const n of nodes) {
@@ -341,6 +349,16 @@ export function renderPage(deps: PageDeps, nodes: readonly NodeLite[], bounds: B
       if (path !== null) { clipOf.set(n.parentId, path); continue; }
     }
     const clip = clipOf.get(n.parentId);
+    // Tagged PDF: a text or image is a structure element; any other drawing is an artifact (not part of the reading content).
+    const tagged = deps.tagged && (n.kind === "text" ? (n.text?.content ?? "").trim() !== "" : n.kind === "image");
+    if (deps.tagged) {
+      if (tagged) {
+        const level = n.kind === "text" ? deps.tagged.headingOf(n) : 0;
+        const tag: PdfTag = { mcid: tags.length, role: n.kind === "image" ? "Figure" : level > 0 ? `H${Math.min(6, level)}` : "P", nodeId: n.id, x: n.x, y: n.y, ...(n.kind === "image" ? { alt: String(n.meta?.["alt"] ?? n.name ?? "") } : {}) };
+        tags.push(tag);
+        pg.out.push(`/${tag.role} <</MCID ${tag.mcid}>> BDC\n`);
+      } else pg.out.push("/Artifact BMC\n");
+    }
     pg.out.push("q\n");
     if (clip && !clipOpen.has(n.id)) pg.out.push(`${clip}W* n\n`);
     // Node opacity and blend mode wrap the whole node; the paint's own alpha is applied inside.
@@ -349,10 +367,11 @@ export function renderPage(deps: PageDeps, nodes: readonly NodeLite[], bounds: B
     else if (n.kind === "image") drawImage(pg, n);
     else drawShape(pg, n);
     pg.out.push("Q\n");
+    if (deps.tagged) pg.out.push("EMC\n");
   }
   const res: string[] = [];
   if (pg.xobjects.size) res.push(`/XObject<<${[...pg.xobjects].map(([k, v]) => `${pdfName(k)} ${v} 0 R`).join(" ")}>>`);
   if (pg.gstates.length) res.push(`/ExtGState<<${pg.gstates.join(" ")}>>`);
   if (pg.shadings.length) res.push(`/Shading<<${pg.shadings.join(" ")}>>`);
-  return { content: pg.out.join(""), resources: res.join(""), placed: pg.placed, transparency: pg.transparency, flattened: [...new Set(pg.flattened)] };
+  return { content: pg.out.join(""), resources: res.join(""), placed: pg.placed, transparency: pg.transparency, flattened: [...new Set(pg.flattened)], tags };
 }

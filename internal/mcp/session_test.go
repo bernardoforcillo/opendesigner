@@ -1837,3 +1837,57 @@ func TestObjectToolCommands(t *testing.T) {
 		t.Fatalf("place: %+v %v", r, err)
 	}
 }
+
+// TestFormatJobs covers the HTML, PowerPoint and IDML exports, IDML import and placing Word/RTF/Excel files.
+func TestFormatJobs(t *testing.T) {
+	url := serveInMemory(t)
+	docID := newDoc(t, odmcp.NewClient(url))
+	sess := startSession(t, url, docID, "mcp")
+	ctx := context.Background()
+
+	var kinds []string
+	var last map[string]any
+	fakeEditor(t, url, docID, func(job *opendesignerv1.EditorJob) *opendesignerv1.CompleteJobRequest {
+		kinds = append(kinds, job.GetKind())
+		last = nil
+		_ = json.Unmarshal([]byte(job.GetOptionsJson()), &last)
+		switch last["name"] {
+		case "import_idml":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"pages":2,"nodes":7,"message":"Imported"}`}
+		case "place_document":
+			return &opendesignerv1.CompleteJobRequest{Ok: true, Text: `{"nodeId":"n","kind":"text","paragraphs":4}`}
+		}
+		return &opendesignerv1.CompleteJobRequest{Ok: true, Filename: "Book.out", ContentType: "application/octet-stream", Data: []byte("DATA")}
+	})
+	dir := t.TempDir()
+	for _, tc := range []struct {
+		kind string
+		call func() (odmcp.JobOutput, error)
+	}{
+		{"export_html", func() (odmcp.JobOutput, error) { return sess.ExportHtml(ctx, odmcp.ExportFileInput{OutPath: dir}) }},
+		{"export_pptx", func() (odmcp.JobOutput, error) { return sess.ExportPptx(ctx, odmcp.ExportFileInput{OutPath: dir}) }},
+		{"export_idml", func() (odmcp.JobOutput, error) { return sess.ExportIdml(ctx, odmcp.ExportFileInput{OutPath: dir}) }},
+	} {
+		out, err := tc.call()
+		if err != nil || out.Size != 4 || kinds[len(kinds)-1] != tc.kind {
+			t.Fatalf("%s: %+v %v %v", tc.kind, out, err, kinds)
+		}
+	}
+
+	src := filepath.Join(dir, "in.idml")
+	if err := os.WriteFile(src, []byte("PK"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	im, err := sess.ImportIdml(ctx, odmcp.ImportIdmlInput{Path: src})
+	if err != nil || im.Pages != 2 || im.Nodes != 7 || last["name"] != "import_idml" {
+		t.Fatalf("idml: %+v %v %v", im, err, last)
+	}
+	doc := filepath.Join(dir, "in.docx")
+	if err := os.WriteFile(doc, []byte("PK"), 0o644); err != nil {
+		t.Fatal(err)
+	}
+	pd, err := sess.PlaceDocument(ctx, odmcp.PlaceDocumentInput{FileAtInput: odmcp.FileAtInput{Path: doc, X: 5}, Width: 300})
+	if err != nil || pd.Kind != "text" || pd.Paragraphs != 4 || last["width"] != float64(300) || last["x"] != float64(5) {
+		t.Fatalf("place: %+v %v %v", pd, err, last)
+	}
+}

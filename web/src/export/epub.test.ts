@@ -74,3 +74,34 @@ describe("book metadata in the package", () => {
     expect(x).not.toContain("dc:creator");
   });
 });
+
+describe("accessible EPUB (fixed layout)", () => {
+  const svg = '<svg xmlns="http://www.w3.org/2000/svg" width="10" height="10"/>';
+  const read = async (pages: Parameters<typeof buildEpub>[0]) => {
+    const { openZip, readZipText } = await import("./zipRead");
+    const z = openZip(buildEpub(pages, { title: "T", language: "it", modified: "2026-01-01T00:00:00Z" }));
+    return { opf: (await readZipText(z, "OEBPS/content.opf"))!, page: (await readZipText(z, "OEBPS/page-001.xhtml"))!, nav: (await readZipText(z, "OEBPS/nav.xhtml"))! };
+  };
+  it("repeats the page text as real headings and paragraphs, hides the picture from screen readers, and claims only what is true", async () => {
+    const { opf, page, nav } = await read([{ name: "P1", svg, width: 10, height: 10, text: [{ level: 1, text: "Title & more" }, { level: 0, text: "Body" }], imageAlts: ["A cat", ""] }]);
+    expect(page).toContain('<svg aria-hidden="true"');
+    expect(page).toContain('<div class="sr-only"><h1>Title &amp; more</h1><p>Body</p></div>');
+    expect(opf).toContain('<meta property="schema:accessMode">textual</meta>');
+    expect(opf).toContain('<meta property="schema:accessModeSufficient">textual,visual</meta>'); // one image has no alt
+    expect(opf).toContain("structuralNavigation");
+    expect(opf).not.toContain("alternativeText");
+    expect(opf).toContain("not checked against EPUB Accessibility conformance");
+    expect(nav).toContain('role="doc-toc"');
+    expect(nav).toContain('epub:type="landmarks"');
+  });
+  it("claims alternative text only when every image has some", async () => {
+    const { opf } = await read([{ name: "P1", svg, width: 10, height: 10, text: [{ level: 0, text: "x" }], imageAlts: ["A cat"] }]);
+    expect(opf).toContain("alternativeText");
+    expect(opf).toContain('accessModeSufficient">textual<');
+  });
+  it("keeps a page without text data as before (no hidden layer)", async () => {
+    const { page, opf } = await read([{ name: "P1", svg, width: 10, height: 10 }]);
+    expect(page).not.toContain("sr-only\">");
+    expect(opf).toContain('accessModeSufficient">visual<');
+  });
+});

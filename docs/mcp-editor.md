@@ -48,3 +48,6 @@ Documents, versions and branches: `list_documents`, `create_document`, `rename_d
 
 ## Object-tool commands
 `step_and_repeat`, `set_gap`, `fit_frame`, `clip_with_shape`, `create_qr_code`, `find_objects`, `change_objects`, `export_snippet`, `place_snippet`; see object-tools.md.
+
+## Format jobs
+`export_html`, `export_pptx`, `export_idml` (files), `import_idml`, `place_document` (commands with an input file), and the `booklet` / `tagged` options of `export_pdf`; see formats.md.
