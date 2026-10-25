@@ -1,6 +1,6 @@
 import { NodeMap } from "./nodeMap";
 import { create } from "@bufbuild/protobuf";
-import { ArrowHead, BlendMode, ImageScaleMode, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
+import { ArrowHead, BlendMode, ImageScaleMode, TextStyleKind, PaintStyleDefSchema, EffectStyleDefSchema, LayoutGridKind, CommentSchema, ClipSchema, Constraint, LayoutSizing, ComponentPropertySchema, ComponentPropertyType, ComponentSetSchema, FlowSchema, FontFaceSchema, TextStyleDefSchema, VariableCollectionSchema, VariableSchema, VariableType, TransitionSchema, LayoutAlign, LayoutDirection, NodeSchema, StrokeAlign, TextAlign } from "../gen/opendesigner/v1/opendesigner_pb";
 import type {
   Document, Component as PbComponent, ComponentProperty as PbComponentProperty, ComponentSet as PbComponentSet, FontFace as PbFont, TextStyleDef as PbTextStyleDef, PaintStyleDef as PbPaintStyleDef, EffectStyleDef as PbEffectStyleDef, VariableCollection as PbCollection, Variable as PbVariable, Clip as PbClip, Flow as PbFlow, Transition as PbTransition, Node as PbNode, Comment as PbComment, LayoutGrid as PbLayoutGrid, Paint as PbPaint, Stroke as PbStroke, Effect as PbEffect, AutoLayout as PbAutoLayout,
   TextNode as PbTextNode, TextStyle as PbTextStyle,
@@ -8,7 +8,25 @@ import type {
   InstanceNode as PbInstanceNode, InstanceOverride as PbInstanceOverride,
 } from "../gen/opendesigner/v1/opendesigner_pb";
 
-export interface PageLite { id: string; name: string; }
+// `isMaster` / `masterId` are absent (not false / "") on a plain page: see store/masters.ts.
+export interface PageLite {
+  id: string; name: string; isMaster?: boolean; masterId?: string;
+  // PAGE SETUP (store/docSettings.ts), absent at 0: a page with a size is a sheet at the origin.
+  width?: number; height?: number;
+  marginTop?: number; marginRight?: number; marginBottom?: number; marginLeft?: number;
+  columns?: number; gutter?: number; bleed?: number;
+  // PAGE STRUCTURE (store/pageNumbers.ts, store/masters.ts), absent at the default.
+  sectionStart?: boolean; numberStart?: number; numberStyle?: NumberStyle;
+  leftMasterId?: string; hiddenMasterItems?: string[]; slug?: number; guides?: GuideLite[];
+}
+export type NumberStyle = "i" | "I" | "a" | "A";
+/** A ruler guide of a page: a vertical one at x = position, else a horizontal one at y = position. */
+export interface GuideLite { vertical: boolean; position: number }
+
+/** The kind of work a document is for: it shapes the editor, never limits the document. Absent = "product". */
+export type Vertical = "publishing" | "design" | "product";
+/** Document-wide settings, each absent at its default. */
+export interface DocSettingsLite { vertical?: Exclude<Vertical, "product">; baselineIncrement?: number; baselineStart?: number; facingPages?: boolean }
 export interface GradientStopLite { color: { r: number; g: number; b: number; a: number }; position: number; }
 // A gradient in NORMALIZED box coordinates (see GradientPaint in the proto).
 // Linear: axis (x1,y1)->(x2,y2). Radial: center (x1,y1), radius = |p2-p1| in
@@ -112,8 +130,35 @@ export interface TextStyleLite {
   lineHeight: number; align: TextAlignLite;
   // Absent when upright (not `false`): a style that never had it stays identical, field by field.
   italic?: boolean;
+  underline?: boolean;
+  strikethrough?: boolean;
+  /** px added after every character (tracking); absent at 0, may be negative. */
+  letterSpacing?: number;
 }
-export interface TextLite { content: string; style: TextStyleLite; }
+
+// RICH TEXT (store/richText.ts). `paragraphStyles` / `runs` are the document's; `rich` is DERIVED by
+// resolveScene (never written, never in an op) and carries them resolved, so the layout needs no scene.
+export interface TextRunLite { start: number; end: number; styleId: string }
+export interface ResolvedParagraph {
+  style: TextStyleLite;
+  spaceBefore: number; spaceAfter: number; indentFirst: number; indentLeft: number;
+  /** The lines sit on the baseline grid (see RichText.grid). */
+  alignToGrid?: boolean;
+}
+/** A character style resolved to the fields it overrides (unset fields are 0 / "" / absent). */
+export interface ResolvedRun { start: number; end: number; style: TextStyleLite }
+export interface RichText {
+  paragraphs: ResolvedParagraph[]; runs: ResolvedRun[];
+  /** The baseline grid, with the world y of the text box: present when a paragraph aligns to it. */
+  grid?: { increment: number; start: number; boxY: number };
+}
+
+export interface TextLite {
+  content: string; style: TextStyleLite;
+  paragraphStyles?: string[];
+  runs?: TextRunLite[];
+  rich?: RichText;
+}
 
 // An image is a REFERENCE, never bytes: `assetHash` is the sha256
 // (lowercase hex) of the bytes, which live in <doc>.opendesigner/assets/ and are
@@ -212,6 +257,10 @@ export interface VariantAxisLite { name: string; options: string[] }
 export interface ComponentSetLite { id: string; name: string; axes: VariantAxisLite[] }
 
 export interface NodeLite {
+  // DERIVED only (store/masters.ts), never in a document: a copy of a master page's node drawn on a page that applies it.
+  fromMaster?: boolean;
+  // DERIVED only (store/threads.ts): the last frame of a text thread that has text left over.
+  overset?: boolean;
   id: string; parentId: string; orderKey: string; name: string;
   visible: boolean; opacity: number;
   x: number; y: number; width: number; height: number; rotation: number;
@@ -360,7 +409,14 @@ export interface VariableLite {
 // TYPOGRAPHY: uploaded font faces and shared text styles. See proto FontFace /
 // TextStyleDef and internal/core/typography.go.
 export interface FontLite { id: string; family: string; weight: string; style: "normal" | "italic"; assetHash: string }
-export interface TextStyleDefLite { id: string; name: string; style: TextStyleLite }
+// Optional fields are absent at their default (paragraph kind, no base, no next style, zeros).
+export interface TextStyleDefLite {
+  id: string; name: string; style: TextStyleLite;
+  kind?: "character";
+  basedOn?: string; nextStyleId?: string;
+  spaceBefore?: number; spaceAfter?: number; indentFirst?: number; indentLeft?: number;
+  alignToGrid?: boolean;
+}
 // SHARED PAINT AND EFFECT STYLES (docs/shapes.md; proto PaintStyleDef / EffectStyleDef).
 export interface PaintStyleDefLite { id: string; name: string; paints: FillLite[] }
 export interface EffectStyleDefLite { id: string; name: string; effects: EffectLite[] }
@@ -377,6 +433,7 @@ export interface ClipLite {
 
 export interface SceneState {
   id: string; name: string; schemaVersion: number;
+  settings?: DocSettingsLite;
   pages: PageLite[]; nodes: NodeMap;
   flows: Record<string, FlowLite>;
   transitions: Record<string, TransitionLite>;
@@ -400,6 +457,41 @@ export interface SceneState {
   components: Record<string, ComponentLite>;
   // Component sets (variants), like components: an empty record when there are none.
   componentSets: Record<string, ComponentSetLite>;
+}
+
+/** A page from its message: setup and master fields only when they are not at their default. */
+export function toPageLite(p: {
+  id: string; name: string; isMaster: boolean; masterId: string; width: number; height: number; marginTop: number; marginRight: number;
+  marginBottom: number; marginLeft: number; columns: number; gutter: number; bleed: number;
+  sectionStart?: boolean; numberStart?: number; numberStyle?: string; leftMasterId?: string;
+  hiddenMasterItems?: readonly string[]; slug?: number; guides?: readonly { vertical: boolean; position: number }[];
+}): PageLite {
+  return {
+    id: p.id, name: p.name,
+    ...(p.isMaster ? { isMaster: true } : {}), ...(p.masterId ? { masterId: p.masterId } : {}),
+    ...(p.width ? { width: p.width } : {}), ...(p.height ? { height: p.height } : {}),
+    ...(p.marginTop ? { marginTop: p.marginTop } : {}), ...(p.marginRight ? { marginRight: p.marginRight } : {}),
+    ...(p.marginBottom ? { marginBottom: p.marginBottom } : {}), ...(p.marginLeft ? { marginLeft: p.marginLeft } : {}),
+    ...(p.columns ? { columns: p.columns } : {}), ...(p.gutter ? { gutter: p.gutter } : {}), ...(p.bleed ? { bleed: p.bleed } : {}),
+    ...(p.sectionStart ? { sectionStart: true } : {}), ...(p.numberStart ? { numberStart: p.numberStart } : {}),
+    // Passed through as is: an unknown style is invalid (isValidPageStructure), not silently dropped.
+    ...(p.numberStyle ? { numberStyle: p.numberStyle as NumberStyle } : {}),
+    ...(p.leftMasterId ? { leftMasterId: p.leftMasterId } : {}),
+    ...(p.hiddenMasterItems?.length ? { hiddenMasterItems: [...p.hiddenMasterItems] } : {}),
+    ...(p.slug ? { slug: p.slug } : {}),
+    ...(p.guides?.length ? { guides: p.guides.map((g) => ({ vertical: g.vertical, position: g.position })) } : {}),
+  };
+}
+
+/** `{ settings }` for a scene when the message has any non-default setting, else `{}`. */
+export function settingsField(s: { vertical: string; baselineIncrement: number; baselineStart: number; facingPages?: boolean }): { settings?: DocSettingsLite } {
+  const out: DocSettingsLite = {
+    ...(s.vertical === "publishing" || s.vertical === "design" ? { vertical: s.vertical } : {}),
+    ...(s.baselineIncrement ? { baselineIncrement: s.baselineIncrement } : {}),
+    ...(s.baselineStart ? { baselineStart: s.baselineStart } : {}),
+    ...(s.facingPages ? { facingPages: true } : {}),
+  };
+  return Object.keys(out).length > 0 ? { settings: out } : {};
 }
 
 export function emptyScene(id: string, name: string): SceneState {
@@ -442,11 +534,19 @@ export function toTextStyleLite(s: PbTextStyle | undefined): TextStyleLite {
     lineHeight: s?.lineHeight ?? 0,
     align: ALIGN_TO_LITE[s?.align ?? TextAlign.UNSPECIFIED] ?? "left",
     ...(s?.italic ? { italic: true } : {}),
+    ...(s?.underline ? { underline: true } : {}),
+    ...(s?.strikethrough ? { strikethrough: true } : {}),
+    ...(s?.letterSpacing ? { letterSpacing: s.letterSpacing } : {}),
   };
 }
 
 export function toTextLite(t: PbTextNode): TextLite {
-  return { content: t.content, style: toTextStyleLite(t.style) };
+  const paras = t.paragraphStyles.some((p) => p !== "") ? [...t.paragraphStyles] : undefined;
+  return {
+    content: t.content, style: toTextStyleLite(t.style),
+    ...(paras ? { paragraphStyles: paras } : {}),
+    ...(t.runs.length > 0 ? { runs: t.runs.map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })) } : {}),
+  };
 }
 
 // The wire's subpaths in the model's shape. Field by field and not a spread:
@@ -553,6 +653,9 @@ export function toPbTextStyle(s: TextStyleLite) {
     fontFamily: s.fontFamily, fontSize: s.fontSize, fontWeight: s.fontWeight,
     lineHeight: s.lineHeight, align: ALIGN_TO_PB[s.align] ?? TextAlign.LEFT,
     italic: s.italic === true,
+    underline: s.underline === true,
+    strikethrough: s.strikethrough === true,
+    letterSpacing: s.letterSpacing ?? 0,
   };
 }
 
@@ -932,6 +1035,8 @@ export function toPbNode(n: NodeLite): PbNode {
         ? { case: "text" as const, value: {
             content: n.text?.content ?? "",
             style: toPbTextStyle(n.text?.style ?? toTextStyleLite(undefined)),
+            paragraphStyles: n.text?.paragraphStyles ?? [],
+            runs: (n.text?.runs ?? []).map((r) => ({ start: r.start, end: r.end, styleId: r.styleId })),
           } }
         : { case: "rect" as const, value: {
             cornerRadius: n.cornerRadius,
@@ -1020,10 +1125,26 @@ export function toPbFont(f: FontLite): PbFont {
   return create(FontFaceSchema, { id: f.id, family: f.family, weight: f.weight, style: f.style, assetHash: f.assetHash });
 }
 export function toTextStyleDefLite(d: PbTextStyleDef): TextStyleDefLite {
-  return { id: d.id, name: d.name, style: toTextStyleLite(d.style) };
+  return {
+    id: d.id, name: d.name, style: toTextStyleLite(d.style),
+    ...(d.kind === TextStyleKind.CHARACTER ? { kind: "character" as const } : {}),
+    ...(d.basedOn ? { basedOn: d.basedOn } : {}),
+    ...(d.nextStyleId ? { nextStyleId: d.nextStyleId } : {}),
+    ...(d.spaceBefore ? { spaceBefore: d.spaceBefore } : {}),
+    ...(d.spaceAfter ? { spaceAfter: d.spaceAfter } : {}),
+    ...(d.indentFirst ? { indentFirst: d.indentFirst } : {}),
+    ...(d.indentLeft ? { indentLeft: d.indentLeft } : {}),
+    ...(d.alignToGrid ? { alignToGrid: true } : {}),
+  };
 }
 export function toPbTextStyleDef(d: TextStyleDefLite): PbTextStyleDef {
-  return create(TextStyleDefSchema, { id: d.id, name: d.name, style: toPbTextStyle(d.style) });
+  return create(TextStyleDefSchema, {
+    id: d.id, name: d.name, style: toPbTextStyle(d.style),
+    kind: d.kind === "character" ? TextStyleKind.CHARACTER : TextStyleKind.PARAGRAPH,
+    basedOn: d.basedOn ?? "", nextStyleId: d.nextStyleId ?? "",
+    spaceBefore: d.spaceBefore ?? 0, spaceAfter: d.spaceAfter ?? 0, indentFirst: d.indentFirst ?? 0, indentLeft: d.indentLeft ?? 0,
+    alignToGrid: d.alignToGrid === true,
+  });
 }
 export function toPaintStyleDefLite(d: PbPaintStyleDef): PaintStyleDefLite {
   return { id: d.id, name: d.name, paints: d.paints.map(toFillLite) };
@@ -1072,7 +1193,8 @@ export function fromDocument(doc: Document): SceneState {
   for (const [id, c] of Object.entries(doc.components)) components[id] = toComponentLite(c);
   return {
     id: doc.id, name: doc.name, schemaVersion: doc.schemaVersion,
-    pages: doc.pages.map((p) => ({ id: p.id, name: p.name })), nodes, components,
+    pages: doc.pages.map(toPageLite), nodes, components,
+    ...(doc.settings ? settingsField(doc.settings) : {}),
     componentSets: Object.fromEntries(Object.entries(doc.componentSets).map(([id, c]) => [id, toComponentSetLite(c)])),
     flows: Object.fromEntries(Object.entries(doc.flows).map(([id, f]) => [id, toFlowLite(f)])),
     transitions: Object.fromEntries(Object.entries(doc.transitions).map(([id, t]) => [id, toTransitionLite(t)])),

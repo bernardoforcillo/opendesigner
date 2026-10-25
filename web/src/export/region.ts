@@ -73,13 +73,16 @@ export function exportRegion(
   selection: readonly string[],
   scope: ExportScope,
   measure: MeasureText,
+  // The sheet of a sized page: exporting the page is exporting THIS rectangle (content outside it is
+  // cropped, an empty sheet is still a page), not the bounding box of what is drawn on it.
+  sheet: Bounds | null = null,
 ): ExportRegion | null {
   const drawn = sortedVisible(scene).filter(isPaintable);
   // The ALREADY sorted list is filtered instead of mapping the selection: the draw
   // order is that of orderKey, not the one in which the user clicked.
   const nodes =
     scope === "selection" ? drawn.filter((n) => selection.includes(n.id)) : drawn;
-  const bounds = unionBounds(nodes.map((n) => exportBounds(n, measure)));
+  const bounds = scope === "page" && sheet ? sheet : unionBounds(nodes.map((n) => exportBounds(n, measure)));
   if (bounds === null) return null;
   return {
     scope,

@@ -17,7 +17,7 @@ import { hasArrowheads, strokeHeads } from "../arrowheads";
 import { sideBandRects } from "../strokeSides";
 import { GRADIENT_BITMAP_SIZE, angularStart, gradientBitmap } from "../gradientBitmap";
 import { VECTOR_STROKE_PX, inkIsBox, nodeCenter } from "../shapes";
-import { fontSizeOf, placeTextLines } from "../text";
+import { decorationBars, fontSizeOf, placeTextLines, trackedOffsets, type MeasureFor } from "../text";
 import { hasRealStroke, vectorStyleOf } from "../vectorStyle";
 import type { FontBook } from "./canvaskit";
 
@@ -668,10 +668,40 @@ export class CanvasKitRenderer {
     if (!font) return;
     let lines = this.textLines.get(n);
     if (!lines) {
-      lines = placeTextLines(this.measureFor(font), n);
+      lines = placeTextLines(this.measureFor(font), n, this.styleMeasure);
       this.textLines.set(n, lines);
     }
-    for (const line of lines) sk.drawText(line.text, line.x, line.y, paint, font);
+    // A piece with letter spacing goes character by character, as on the 2D canvas.
+    const put = (text: string, x: number, y: number, f: Font, spacing: number) => {
+      if (!spacing) { sk.drawText(text, x, y, paint, f); return; }
+      for (const c of trackedOffsets(text, x, spacing, this.measureFor(f))) sk.drawText(c.ch, c.x, y, paint, f);
+    };
+    for (const line of lines) {
+      if (!line.segments) {
+        put(line.text, line.x, line.y, font, t.style.letterSpacing ?? 0);
+        this.drawBars(sk, [{ x: line.x, width: line.width, style: t.style }], line.y, paint);
+        continue;
+      }
+      // Rich text: every piece in its own font, on the line's baseline.
+      for (const seg of line.segments) {
+        const f = this.fonts.fontFor(seg.style.fontWeight, fontSizeOf(seg.style), seg.style.fontFamily, seg.style.italic === true) ?? font;
+        put(seg.text, seg.x, line.y, f, seg.style.letterSpacing ?? 0);
+      }
+      this.drawBars(sk, line.segments, line.y, paint);
+    }
+  }
+
+  // The measure of any style (rich text lays out pieces in several fonts); no font -> an estimate.
+  private readonly styleMeasure: MeasureFor = (style) => {
+    const f = this.fonts.fontFor(style.fontWeight, fontSizeOf(style), style.fontFamily, style.italic === true);
+    return f ? this.measureFor(f) : (s) => s.length * fontSizeOf(style) * 0.55;
+  };
+
+  // Underline / strikethrough bars under pieces whose style asks for them.
+  private drawBars(sk: Canvas, pieces: readonly { x: number; width: number; style: Parameters<typeof decorationBars>[0] }[], baseline: number, paint: Paint): void {
+    for (const piece of pieces) {
+      for (const bar of decorationBars(piece.style, baseline)) sk.drawRect(this.CK.XYWHRect(piece.x, bar.y, piece.width, bar.height), paint);
+    }
   }
 
   // --- mesh gradients ----------------------------------------------------------
