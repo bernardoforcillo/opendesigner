@@ -446,7 +446,7 @@ func (s *DocumentService) ImportFig(_ context.Context, req *connect.Request[open
 	if err != nil {
 		return nil, connect.NewError(connect.CodeInvalidArgument, err)
 	}
-	return connect.NewResponse(&opendesignerv1.ImportFigResponse{Nodes: res.Nodes, Width: res.Width, Height: res.Height, Warnings: res.Warnings}), nil
+	return connect.NewResponse(&opendesignerv1.ImportFigResponse{Nodes: res.Nodes, Width: res.Width, Height: res.Height, Warnings: res.Warnings, Collections: res.Collections, Variables: res.Variables}), nil
 }
 
 func (s *DocumentService) GetAccess(ctx context.Context, req *connect.Request[opendesignerv1.GetAccessRequest]) (*connect.Response[opendesignerv1.GetAccessResponse], error) {
