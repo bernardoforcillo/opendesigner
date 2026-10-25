@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Dialog, Modal, ModalOverlay } from "react-aria-components";
 import { EXAMPLE_PLUGIN, loadPlugins, parsePlugin, savePlugins, type Plugin } from "../plugins/manifest";
 import { runPlugin } from "../plugins/run";
+import { exampleWasmPlugin } from "../plugins/wasmExample";
 import { Button, cls, EmptyState } from "./ds";
 
 // PLUGINS (document menu → Plugins…): small scripts that edit the document through a narrow API, run in
@@ -61,7 +62,7 @@ export function PluginsDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpe
                   <span className="min-w-0 flex-1">
                     <span className="block truncate font-medium">{p.name} <span className="font-normal text-fg-subtle">{p.version}</span></span>
                     <span className="block truncate text-[11px] text-fg-subtle">
-                      {p.description || "No description."} · can {p.permissions.join(" and ")}
+                      {p.wasm !== undefined ? "WebAssembly · " : ""}{p.description || "No description."} · can {p.permissions.join(" and ")}
                     </span>
                   </span>
                   <Button isDisabled={running !== null} onPress={() => void run(p)} aria-label={`Run ${p.name}`}>{running === p.id ? "Running…" : "Run"}</Button>
@@ -84,6 +85,9 @@ export function PluginsDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpe
             </label>
             <button type="button" className="rounded-md px-2 py-1 text-fg-muted hover:bg-surface-3" onClick={() => setText(JSON.stringify(EXAMPLE_PLUGIN, null, 2))}>
               Show an example
+            </button>
+            <button type="button" className="rounded-md px-2 py-1 text-fg-muted hover:bg-surface-3" onClick={() => setText(JSON.stringify(exampleWasmPlugin(), null, 2))}>
+              Show a WebAssembly example
             </button>
           </div>
 

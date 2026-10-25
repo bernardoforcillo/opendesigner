@@ -6,6 +6,7 @@ import type { TextStyleDefLite, TextStyleLite } from "../store/types";
 import { Button, cls } from "./ds";
 import { NumberField } from "./fields/NumberField";
 import { familyChoices } from "./typographyOps";
+import { isValidFontFeatures } from "../store/typography";
 
 // THE STYLES DIALOG (document menu → Styles…): create and edit PARAGRAPH styles (the look of whole
 // paragraphs: font, size, spacing, indents, alignment, based-on and next style) and CHARACTER styles (a
@@ -24,6 +25,10 @@ function run(ops: Ops) {
   store.beginGesture();
   store.endGesture(ops);
 }
+
+// JSON with sorted keys: the stored style lists its fields in the converter's order, not the edit's.
+const canon = (v: unknown) => JSON.stringify(v, (_k, x: unknown) =>
+  x && typeof x === "object" && !Array.isArray(x) ? Object.fromEntries(Object.entries(x).sort(([a], [b]) => a.localeCompare(b))) : x);
 
 /** `d` without the optional fields that are at their default (the model keeps them absent). */
 function tidy(d: TextStyleDefLite): TextStyleDefLite {
@@ -64,7 +69,7 @@ export function StylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpen
     const fixed = tidy(next);
     run([makeSetTextStyleDefOp(fixed)]);
     const stored = useScene.getState().scene?.textStyles[fixed.id];
-    setError(JSON.stringify(stored) === JSON.stringify(fixed) ? null : "The document did not accept this style (a loop in “Based on”, or a bad value).");
+    setError(canon(stored) === canon(fixed) ? null : "The document did not accept this style (a loop in “Based on”, or a bad value).");
   }
 
   const patchStyle = (patch: Partial<TextStyleLite>) => cur && save({ ...cur, style: { ...cur.style, ...patch } });
@@ -133,12 +138,46 @@ export function StylesDialog({ isOpen, onOpenChange }: { isOpen: boolean; onOpen
                   </div>
                   <NumberField label="Tracking" suffix="px" value={cur.style.letterSpacing ?? 0}
                     onCommit={(v) => patchStyle({ letterSpacing: v === 0 ? undefined : v })} />
+                  <div className="grid grid-cols-2 gap-2">
+                    <select aria-label="Text case" className={cls.select} value={cur.style.textCase ?? ""}
+                      onChange={(e) => patchStyle({ textCase: e.target.value === "" ? undefined : e.target.value as TextStyleLite["textCase"] })}>
+                      <option value="">Case as typed</option>
+                      <option value="upper">UPPER</option>
+                      <option value="lower">lower</option>
+                      <option value="title">Title Case</option>
+                      <option value="smallCaps">Small caps</option>
+                    </select>
+                    <select aria-label="Script" className={cls.select} value={cur.style.textScript ?? ""}
+                      onChange={(e) => patchStyle({ textScript: e.target.value === "" ? undefined : e.target.value as TextStyleLite["textScript"] })}>
+                      <option value="">Baseline</option>
+                      <option value="super">Superscript</option>
+                      <option value="sub">Subscript</option>
+                    </select>
+                  </div>
+                  <NumberField label="Scale %" minValue={1} value={cur.style.textScale ?? 100}
+                    onCommit={(v) => patchStyle({ textScale: v > 0 && v !== 100 ? Math.min(1000, v) : undefined })} />
+                  <input aria-label="OpenType features" className={cls.input} placeholder={'"ss01", "cv05" 1'} key={cur.id + ":features"}
+                    defaultValue={cur.style.fontFeatures ?? ""}
+                    onBlur={(e) => {
+                      const v = e.target.value.trim();
+                      if (isValidFontFeatures(v) && v !== (cur.style.fontFeatures ?? "")) patchStyle({ fontFeatures: v === "" ? undefined : v });
+                    }} />
                   {!isChar && (
                     <>
                       <label className="flex items-center gap-1.5">
                         <input type="checkbox" aria-label="Align to baseline grid" checked={cur.alignToGrid === true}
                           onChange={(e) => patchDef({ alignToGrid: e.target.checked ? true : undefined })} /> Align to baseline grid
                       </label>
+                      <div className="grid grid-cols-2 gap-2">
+                        <select aria-label="List" className={cls.select} value={cur.style.listKind ?? ""}
+                          onChange={(e) => patchStyle({ listKind: e.target.value === "" ? undefined : e.target.value as TextStyleLite["listKind"] })}>
+                          <option value="">No list</option>
+                          <option value="bullet">Bulleted</option>
+                          <option value="numbered">Numbered</option>
+                        </select>
+                        <NumberField label="Indent" minValue={0} value={cur.style.indent ?? 0}
+                          onCommit={(v) => patchStyle({ indent: v > 0 ? v : undefined })} />
+                      </div>
                       <div className="grid grid-cols-2 gap-2">
                         <NumberField label="Line" minValue={0} suffix="×" value={cur.style.lineHeight} placeholder="Inherit" onCommit={(v) => patchStyle({ lineHeight: v })} />
                         <select aria-label="Alignment" className={cls.select} value={cur.style.align} onChange={(e) => patchStyle({ align: e.target.value as TextStyleLite["align"] })}>

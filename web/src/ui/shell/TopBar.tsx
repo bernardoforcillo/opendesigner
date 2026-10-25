@@ -9,6 +9,7 @@ import { usePanels } from "./panels";
 import { useFlowUi, type EditorMode } from "../../store/flowUi";
 import { verticalOf } from "../../store/docSettings";
 import { verticalDef } from "../../verticals";
+import { useT } from "../../i18n";
 
 // THE TOP BAR: document identity, mode, people and status -- the
 // things that concern THE DOCUMENT, not the hand on the canvas (that stays in the
@@ -36,6 +37,7 @@ export function TopBar({
   mode: EditorMode; presence: ReactNode; onNewDocument: () => void;
   connection: string; statusLabel: string;
 }) {
+  const { t } = useT();
   const zoom = useScene((s) => s.camera.zoom);
   const accessRole = useAccess((s) => s.role);
   const vertical = useScene((s) => verticalOf(s.scene));
@@ -50,14 +52,14 @@ export function TopBar({
   return (
     <div
       role="toolbar"
-      aria-label="Document"
+      aria-label={t("Document")}
       className={`grid h-11 shrink-0 grid-cols-[1fr_auto_1fr] items-center gap-2 px-2 ${ISLAND_CLS}`}
     >
       <span className="flex min-w-0 items-center gap-0.5">
       <DocMenu onNewDocument={onNewDocument} />
-      <IconButton icon="panelLeft" label={left ? "Close left panel" : "Open left panel"} shortcut="[" size={32} onPress={() => usePanels.getState().toggle("left")} />
+      <IconButton icon="panelLeft" label={left ? t("Close left panel") : t("Open left panel")} shortcut="[" size={32} onPress={() => usePanels.getState().toggle("left")} />
       <ToggleButtonGroup
-        aria-label="Mode"
+        aria-label={t("Mode")}
         selectionMode="single"
         disallowEmptySelection
         selectedKeys={[mode]}
@@ -67,7 +69,7 @@ export function TopBar({
         }}
       >
         {modes.map(([id, defaultLabel, icon, key, hint]) => {
-          const label = def.modeLabels[id] ?? defaultLabel;
+          const label = def.modeLabels[id] ?? t(defaultLabel);
           return (
           <TooltipTrigger key={id} delay={300} closeDelay={0}>
             <ToggleButton
@@ -84,7 +86,7 @@ export function TopBar({
               {label}
             </ToggleButton>
             <Tooltip offset={10} className={TOOLTIP_CLS}>
-              {hint}
+              {t(hint)}
               <Kbd inverted>{key}</Kbd>
             </Tooltip>
           </TooltipTrigger>
@@ -95,8 +97,8 @@ export function TopBar({
       <span className="flex min-w-0 items-center justify-center gap-2">
         <DocName />
         {accessRole === "view" || accessRole === "comment" ? (
-          <span title="Your link does not allow editing" className="shrink-0 rounded-sm bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-fg-muted">
-            {accessRole === "view" ? "View only" : "Comment only"}
+          <span title={t("Your link does not allow editing")} className="shrink-0 rounded-sm bg-surface-3 px-1.5 py-0.5 font-mono text-[10px] font-semibold uppercase text-fg-muted">
+            {accessRole === "view" ? t("View only") : t("Comment only")}
           </span>
         ) : null}
       </span>
@@ -107,9 +109,9 @@ export function TopBar({
             <span className={`h-1.5 w-1.5 rounded-full ${dot}`} />
             <span className="max-[1600px]:hidden">{statusLabel}</span>
           </span>
-          <span title="Zoom">{Math.round(zoom * 100)}%</span>
+          <span title={t("Zoom")}>{Math.round(zoom * 100)}%</span>
         </span>
-        <IconButton icon="panelRight" label={right ? "Close right panel" : "Open right panel"} shortcut="]" size={32} onPress={() => usePanels.getState().toggle("right")} />
+        <IconButton icon="panelRight" label={right ? t("Close right panel") : t("Open right panel")} shortcut="]" size={32} onPress={() => usePanels.getState().toggle("right")} />
       </span>
     </div>
   );

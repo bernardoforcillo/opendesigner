@@ -51,6 +51,7 @@ export function TypographyControls() {
   const valign = same(styles.map((s) => s.verticalAlign ?? ""));
   const indent = same(styles.map((s) => s.indent ?? 0));
   const inset = same(styles.map((s) => s.inset ?? 0));
+  const textScale = same(styles.map((s) => s.textScale ?? 100));
   const features = same(styles.map((s) => s.fontFeatures ?? ""));
   const ligatures = same(styles.map((s) => featureValue(s.fontFeatures, "liga") !== 0));
   const tabular = same(styles.map((s) => featureValue(s.fontFeatures, "tnum") === 1));
@@ -149,6 +150,9 @@ export function TypographyControls() {
         <NumberField label="Inset" minValue={0} value={inset === MIXED ? NaN : inset}
           placeholder={inset === MIXED ? "Mixed" : undefined}
           onCommit={(v) => run(styleOps(scene, selection, { inset: v > 0 ? v : undefined }))} />
+        <NumberField label="Scale %" minValue={1} value={textScale === MIXED ? NaN : textScale}
+          placeholder={textScale === MIXED ? "Mixed" : undefined}
+          onCommit={(v) => run(styleOps(scene, selection, { textScale: v > 0 && v !== 100 ? Math.min(1000, v) : undefined }))} />
       </div>
       <div className="flex flex-col gap-1.5">
         <div className="flex gap-1.5">

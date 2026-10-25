@@ -383,6 +383,11 @@ message TextStyle {
   string font_features = 24;
   TextVAlign vertical_align = 25; // where the text sits inside a box taller than it
   double inset = 26;              // >= 0, padding between the box and the text on every side
+
+  // Fields 30..49 are the text-scale range.
+  // Horizontal scale of the glyphs in percent: 0 => 100 (unscaled), otherwise 1..1000. Widens or narrows
+  // every glyph (and so the layout) without changing the height of the line.
+  double text_scale = 30;
 }
 
 // Text case: a transform of what is DRAWN, the content keeps its capitalisation.

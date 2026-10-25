@@ -9,6 +9,7 @@ import { useTimeline } from "../../animation/timelineStore";
 import { AnimIconButton } from "../ds/anim-parts";
 import type { ToolId } from "../../tools/types";
 import { isTextField } from "../../tools/toolManager";
+import { useT } from "../../i18n";
 
 // THE TOOL DOCK: a floating bar at the bottom center of the canvas,
 // as in every design editor -- tools sit where the hand is, not in
@@ -59,6 +60,7 @@ export function ToolDock({
   tools: readonly { id: ToolId; label: string }[]; toolId: ToolId; onChoose: (id: ToolId) => void;
   mode: EditorMode;
 }) {
+  const i18n = useT();
   const canUndo = useScene((s) => s.undoStack.length > 0);
   const canRedo = useScene((s) => s.redoStack.length > 0);
   const timelineOpen = useTimeline((s) => s.open);
@@ -101,11 +103,11 @@ export function ToolDock({
     <span key={t.id} className="flex items-center">
       {(t.id === "hand" || (t.id === "connect" && i > 0)) && i > 0 && SEP}
       <TooltipTrigger delay={300} closeDelay={0}>
-        <ToggleButton id={t.id} aria-label={t.label} className={({ isSelected }) => TOOL_BTN(isSelected, t.id === "connect")}>
+        <ToggleButton id={t.id} aria-label={i18n.tx(t.label)} className={({ isSelected }) => TOOL_BTN(isSelected, t.id === "connect")}>
           <Icon name={ICON[t.id] ?? "select"} size={18} />
         </ToggleButton>
         <Tooltip offset={10} className={TOOLTIP_CLS}>
-          {t.label}
+          {i18n.tx(t.label)}
           {TOOL_KEYS[t.id] && <Kbd inverted>{TOOL_KEYS[t.id]}</Kbd>}
         </Tooltip>
       </TooltipTrigger>
@@ -123,7 +125,7 @@ export function ToolDock({
             {renderTool(shapeTool, n++)}
             <MenuTrigger>
               <RacButton
-                aria-label="More shapes"
+                aria-label={i18n.t("More shapes")}
                 className="-ml-1 flex h-9 w-4 items-center justify-center rounded-md text-fg-subtle outline-none hover:bg-surface-3 hover:text-fg focus-visible:shadow-[var(--ring)]"
               >
                 <Icon name="chevronUp" size={10} />
@@ -132,7 +134,7 @@ export function ToolDock({
                 <Menu className="outline-none" onAction={(k) => choose(k as ToolId)}>
                   {shapes.map((s) => (
                     <MenuItem key={s.id} id={s.id} className="flex cursor-default items-center gap-2 rounded-md px-2 py-1.5 outline-none data-[focused]:bg-surface-3 data-[hovered]:bg-surface-3">
-                      <Icon name={ICON[s.id] ?? "rect"} size={14} /> {s.label}
+                      <Icon name={ICON[s.id] ?? "rect"} size={14} /> {i18n.tx(s.label)}
                       <span className="ml-auto text-[11px] text-fg-subtle">{TOOL_KEYS[s.id]}</span>
                     </MenuItem>
                   ))}
@@ -151,15 +153,15 @@ export function ToolDock({
   return (
     <div
       role="toolbar"
-      aria-label="Tools"
+      aria-label={i18n.t("Tools")}
       className="absolute bottom-4 left-1/2 z-20 flex max-w-[calc(100%-1.5rem)] -translate-x-1/2 items-center gap-0.5 overflow-x-auto rounded-lg border border-line-strong bg-raised p-1 shadow-bar"
     >
       {mode === "design" && (
-        <AnimIconButton icon="timeline" label="Animation" shortcut="M" size={32} selected={timelineOpen} onPress={() => useTimeline.getState().toggleOpen()} />
+        <AnimIconButton icon="timeline" label={i18n.t("Animation")} shortcut="M" size={32} selected={timelineOpen} onPress={() => useTimeline.getState().toggleOpen()} />
       )}
       {SEP}
-      <IconButton icon="undo" label="Undo" shortcut="⌘Z" size={32} isDisabled={!canUndo} onPress={() => useScene.getState().undo()} />
-      <IconButton icon="redo" label="Redo" shortcut="⇧⌘Z" size={32} isDisabled={!canRedo} onPress={() => useScene.getState().redo()} />
+      <IconButton icon="undo" label={i18n.t("Undo")} shortcut="⌘Z" size={32} isDisabled={!canUndo} onPress={() => useScene.getState().undo()} />
+      <IconButton icon="redo" label={i18n.t("Redo")} shortcut="⇧⌘Z" size={32} isDisabled={!canRedo} onPress={() => useScene.getState().redo()} />
       {SEP}
       <ToggleButtonGroup
         selectionMode="single"
@@ -172,8 +174,8 @@ export function ToolDock({
       </ToggleButtonGroup>
       {SEP}
       {mode === "flows" && (
-        <Button variant="flow" icon="play" aria-label="Present" className="mr-0.5 h-9" onPress={() => useFlowUi.getState().setPresenting(true)}>
-          Present
+        <Button variant="flow" icon="play" aria-label={i18n.t("Present")} className="mr-0.5 h-9" onPress={() => useFlowUi.getState().setPresenting(true)}>
+          {i18n.t("Present")}
         </Button>
       )}
     </div>

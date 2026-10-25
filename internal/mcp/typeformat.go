@@ -18,10 +18,11 @@ type TextFormat struct {
 	FontFeatures  *string  `json:"fontFeatures,omitempty" jsonschema:"OpenType features as a CSS font-feature-settings value, e.g. \"liga\" 0, \"tnum\", \"ss01\" (ligatures off, tabular figures, stylistic set 1); \"\" clears. Canvas honours liga/smcp, the CSS and SVG exports all of them"`
 	VerticalAlign string   `json:"verticalAlign,omitempty" jsonschema:"top (default) | middle | bottom: where the text sits in a box taller than it"`
 	Inset         *float64 `json:"inset,omitempty" jsonschema:"padding between the text box and the text, on every side (>= 0)"`
+	TextScale     *float64 `json:"textScale,omitempty" jsonschema:"horizontal scale of the glyphs in percent (1..1000, 100 = unscaled); 0 clears"`
 }
 
 func (f TextFormat) given() bool {
-	return f.TextCase != "" || f.Script != "" || f.List != "" || f.Indent != nil || f.FontFeatures != nil || f.VerticalAlign != "" || f.Inset != nil
+	return f.TextCase != "" || f.Script != "" || f.List != "" || f.Indent != nil || f.FontFeatures != nil || f.VerticalAlign != "" || f.Inset != nil || f.TextScale != nil
 }
 
 // apply overlays the given fields onto style, rejecting a bad name or value.
@@ -86,6 +87,12 @@ func (f TextFormat) apply(style *opendesignerv1.TextStyle) error {
 		}
 		style.Inset = *f.Inset
 	}
+	if f.TextScale != nil {
+		if *f.TextScale != 0 && !(*f.TextScale >= 1 && *f.TextScale <= 1000) {
+			return fmt.Errorf("textScale must be 0 or between 1 and 1000 percent, got %v", *f.TextScale)
+		}
+		style.TextScale = *f.TextScale
+	}
 	if f.FontFeatures != nil {
 		if !core.ValidFontFeatures(*f.FontFeatures) {
 			return fmt.Errorf(`fontFeatures must look like "liga" 0, "tnum", "ss01" 1, got %q`, *f.FontFeatures)
@@ -134,6 +141,9 @@ func formatOf(st *opendesignerv1.TextStyle) TextFormat {
 	}
 	if v := st.GetFontFeatures(); v != "" {
 		f.FontFeatures = &v
+	}
+	if v := st.GetTextScale(); v > 0 {
+		f.TextScale = &v
 	}
 	return f
 }

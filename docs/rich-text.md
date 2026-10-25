@@ -40,7 +40,9 @@ The style ids are resolved into drawable values by the same derived pass as vari
 
 `set_text_style` takes `letterSpacing`, `alignToGrid`, `kind` (`paragraph` | `character`), `basedOn`, `nextStyleId`, `spaceBefore`, `spaceAfter`, `indentFirst`, `indentLeft`, `underline`, `strikethrough`; `list_text_styles` returns them. `format_text { nodeId, paragraphStyles, runs }` sets a text node's formatting; `get_document` / `list_nodes` return `paragraphStyles` and `runs`. `set_text` keeps the formatting (adjusted to the new content).
 
+Case, super/subscript, small caps, OpenType features, horizontal scale, lists, indent, inset and vertical alignment work in formatted text too: see "Rich text" in docs/typography.md.
+
 ## Not yet
 
-- **Colour** in styles (a character style cannot change the fill), small caps, super/subscript, nested styles, bullets and numbering, tabs.
+- **Colour** in styles (a character style cannot change the fill), nested styles, tabs.
 - The editing field shows plain text (the canvas shows the result once you leave it), and generated code (`opendesigner export`) exports the text's own style.

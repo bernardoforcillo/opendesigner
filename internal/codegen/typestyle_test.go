@@ -75,3 +75,23 @@ func TestListsInTheExport(t *testing.T) {
 		t.Errorf("react: list items missing:\n%s", react)
 	}
 }
+
+// TestTextScaleInTheExport: a horizontal scale becomes scaleX about the edge the text hangs from, with the
+// width divided so the box keeps its size; a rotated text keeps its rotation alone.
+func TestTextScaleInTheExport(t *testing.T) {
+	html := typeHTML(t, "wide", &opendesignerv1.TextStyle{FontSize: 20, TextScale: 200})
+	for _, w := range []string{"transform: scaleX(2);", "transform-origin: left top;", "width: 100px;"} {
+		if !strings.Contains(html, w) {
+			t.Errorf("missing %q in:\n%s", w, html)
+		}
+	}
+	centered := typeHTML(t, "wide", &opendesignerv1.TextStyle{FontSize: 20, TextScale: 50, Align: opendesignerv1.TextAlign_TEXT_ALIGN_CENTER})
+	if !strings.Contains(centered, "transform-origin: center top;") || !strings.Contains(centered, "scaleX(0.5)") {
+		t.Errorf("centred scale:\n%s", centered)
+	}
+	for _, no := range []string{"scaleX"} {
+		if h := typeHTML(t, "x", &opendesignerv1.TextStyle{FontSize: 20, TextScale: 100}); strings.Contains(h, no) {
+			t.Errorf("100%% must emit nothing:\n%s", h)
+		}
+	}
+}

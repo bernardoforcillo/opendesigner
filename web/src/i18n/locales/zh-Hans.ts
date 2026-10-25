@@ -1,0 +1,42 @@
+import type { Message } from "../core";
+import type { MessageKey } from "./en";
+
+// Simplified Chinese, concise, full-width punctuation, no plural forms. MACHINE DRAFT: waiting for a native speaker's review (docs/localization.md).
+export const zhHans: Record<MessageKey, Message> = {
+  "Document": "文档", "Mode": "模式", "Open left panel": "打开左侧面板", "Close left panel": "关闭左侧面板",
+  "Open right panel": "打开右侧面板", "Close right panel": "关闭右侧面板",
+  "Board": "白板", "Design": "设计", "Flows": "流程", "Develop": "开发",
+  "An infinite board: sticky notes, text and arrows": "无限白板：便签、文字和箭头",
+  "Draw the screens": "绘制界面",
+  "Connect the screens and try the prototype": "连接界面并试用原型",
+  "Readiness, generated code, export": "交付状态、生成代码、导出",
+  "Your link does not allow editing": "你的链接不允许编辑", "View only": "仅查看", "Comment only": "仅评论", "Zoom": "缩放",
+  "Tools": "工具", "More shapes": "更多形状", "Animation": "动画", "Undo": "撤销", "Redo": "重做", "Present": "演示",
+  "Select": "选择", "Connect": "连接", "Sticky note": "便签", "Link": "链接", "Vote": "投票", "Frame": "画框",
+  "Rectangle": "矩形", "Ellipse": "椭圆", "Polygon": "多边形", "Star": "星形",
+  "Text": "文字", "Pen": "钢笔", "Node": "节点", "Hand": "抓手", "Comment": "评论",
+  "Document menu": "文档菜单", "Home": "首页", "New document": "新建文档", "Rename document": "重命名文档",
+  "Import SVG…": "导入 SVG…", "Import .fig file…": "导入 .fig 文件…", "experimental": "实验性",
+  "Import PDF…": "导入 PDF…", "editable text and shapes": "可编辑的文字和形状", "Import PDF as pictures…": "将 PDF 作为图片导入…",
+  "Export all pages as PDF…": "将所有页面导出为 PDF…",
+  "Export PDF for print (with bleed)…": "导出印刷用 PDF（含出血）…", "Export all pages as EPUB": "将所有页面导出为 EPUB",
+  "Page setup…": "页面设置…", "Diagram (Mermaid, UML)…": "图表（Mermaid、UML）…",
+  "Whiteboard (sticky, table, kanban…)…": "白板（便签、表格、看板…）…", "Variables…": "变量…", "Fonts…": "字体…",
+  "Styles (paragraph, character)…": "样式（段落、字符）…", "Versions…": "版本…", "Share…": "分享…", "Plugins…": "插件…",
+  "Pixel snap {n} px": "像素对齐 {n} px", "Pixel snap off": "像素对齐 关", "cycles 1 / 4 / 8 / off": "循环切换 1 / 4 / 8 / 关",
+  "Renderer {name}": "渲染器 {name}", "switch to {name}": "切换到 {name}", "Document type": "文档类型", "Theme": "主题",
+  "System": "跟随系统", "Light": "浅色", "Dark": "深色", "Language": "语言", "machine draft": "机器翻译草稿",
+  "Kind of document": "文档类型", "Start from a template": "从模板开始", "Your documents": "你的文档",
+  "Loading documents…": "正在加载文档…", "No documents yet": "还没有文档",
+  "Pick a template above: in one click you get screens that are already connected, ready to try.":
+    "选择上方的模板：一键获得已连接好的界面，可直接试用。",
+  "Cancel": "取消", "Join": "加入", "Paste a link to join": "粘贴链接以加入", "Link to a shared document": "共享文档的链接",
+  "That is not a valid opendesigner link.": "这不是有效的 opendesigner 链接。",
+  "Could not read the documents ({error}).": "无法读取文档（{error}）。", "Open {name}": "打开 {name}",
+  "Size limits": "尺寸限制", "Variables": "变量", "Transitions": "转场", "Stroke": "描边", "Sizing": "尺寸", "Paths": "路径",
+  "Override": "覆盖", "Layout": "布局", "Instance": "实例", "Fill": "填充", "Export": "导出", "Effect style": "效果样式",
+  "Current flow": "当前流程", "Corners": "圆角", "Constraints": "约束", "Component": "组件", "Arc": "弧形", "Appearance": "外观",
+  "{n} documents": { other: "{n} 个文档" },
+  "{n} screens": { other: "{n} 个界面" },
+  "{n} flows": { other: "{n} 个流程" },
+};
