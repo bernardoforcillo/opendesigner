@@ -171,3 +171,71 @@ describe("if / else on one hotspot", () => {
     expect(enabled(s, { x: "1" })).toContain("els");
   });
 });
+
+describe("ordered if / else if / else chains (Transition.order)", () => {
+  const flow = flowOf("f", "A");
+  // The conditions OVERLAP on purpose (>= 50 and >= 100): only the order tells them apart.
+  const chain = withFlows(baseScene(), [flow], [
+    transition("big", "f", "A", "B", { label: "Pay", elementId: "btn", guard: "total >= 100", order: 1 }),
+    transition("mid", "f", "A", "C", { label: "Pay", elementId: "btn", guard: "total >= 50", order: 2 }),
+    transition("small", "f", "A", "A", { label: "Pay", elementId: "btn", guard: "else", order: 3 }),
+  ]);
+  const on = (s: typeof chain, vars: Record<string, string>) =>
+    optionsFrom(s, "f", { ...startState(s, flow, "page1")!, vars }).filter((o) => o.enabled).map((o) => o.transition.id).sort();
+
+  it("the first branch whose guard holds applies, later overlapping ones give way", () => {
+    expect(on(chain, { total: "150" })).toEqual(["big"]);
+    expect(on(chain, { total: "70" })).toEqual(["mid"]);
+    expect(on(chain, { total: "10" })).toEqual(["small"]);
+  });
+
+  it("the branch that gave way says which one took the click", () => {
+    const st = { ...startState(chain, flow, "page1")!, vars: { total: "150" } };
+    expect(guardFor(chain, st, chain.transitions.mid)).toMatchObject({ ok: false, reason: "Not when total >= 100" });
+  });
+
+  it("the order, not the id, decides: swapping the numbers swaps the winner", () => {
+    const swapped = withFlows(baseScene(), [flow], [
+      transition("big", "f", "A", "B", { elementId: "btn", guard: "total >= 100", order: 2 }),
+      transition("mid", "f", "A", "C", { elementId: "btn", guard: "total >= 50", order: 1 }),
+    ]);
+    expect(on(swapped, { total: "150" })).toEqual(["mid"]);
+  });
+
+  it("an unguarded branch always holds, so it shadows the ones after it", () => {
+    const s = withFlows(baseScene(), [flow], [
+      transition("a", "f", "A", "B", { elementId: "btn", guard: "x", order: 1 }),
+      transition("always", "f", "A", "C", { elementId: "btn", order: 2 }),
+      transition("never", "f", "A", "A", { elementId: "btn", guard: "y", order: 3 }),
+    ]);
+    expect(on(s, { y: "1" })).toEqual(["always"]);
+    expect(on(s, { x: "1", y: "1" })).toEqual(["a"]);
+  });
+
+  it("transitions without an order stay independent of the chain (and of each other)", () => {
+    const s = withFlows(baseScene(), [flow], [
+      transition("c1", "f", "A", "B", { elementId: "btn", guard: "x", order: 1 }),
+      transition("c2", "f", "A", "C", { elementId: "btn", guard: "x", order: 2 }),
+      transition("free", "f", "A", "A", { elementId: "btn", guard: "x" }),
+    ]);
+    expect(on(s, { x: "1" })).toEqual(["c1", "free"]);
+  });
+
+  it("a chain only looks at its own screen, trigger and hotspot", () => {
+    const s = withFlows(baseScene(), [flow], [
+      transition("first", "f", "A", "B", { elementId: "loose", guard: "x", order: 1 }),
+      transition("second", "f", "A", "C", { elementId: "btn", guard: "x", order: 2 }),
+    ]);
+    expect(on(s, { x: "1" })).toEqual(["first", "second"]);
+  });
+
+  it("following a branch that gave way does nothing; the winner applies its effect", () => {
+    const s = withFlows(baseScene(), [flow], [
+      transition("hi", "f", "A", "B", { elementId: "btn", guard: "n >= 1", effect: "n = 0", order: 1 }),
+      transition("lo", "f", "A", "C", { elementId: "btn", guard: "n >= 0", effect: "n = n + 1", order: 2 }),
+    ]);
+    const st = { ...startState(s, flow, "page1")!, vars: { n: "5" } };
+    expect(follow(s, st, s.transitions.lo)).toBe(st);
+    expect(follow(s, st, s.transitions.hi)).toMatchObject({ screenId: "B", vars: { n: "0" } });
+  });
+});

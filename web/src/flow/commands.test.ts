@@ -2,8 +2,8 @@ import { describe, it, expect, beforeEach } from "vitest";
 import type { Op } from "../gen/opendesigner/v1/opendesigner_pb";
 import { useScene } from "../store/store";
 import {
-  connectOps, createFlowOp, deleteFlowOp, deleteTransitionOp, editTransitionAnimationOp, editTransitionOp, nextFlowName, renameFlowOp,
-  setMetaOp, setStartOp, submit,
+  connectOps, createFlowOp, deleteFlowOp, deleteTransitionOp, editTransitionAnimationOp, editTransitionOp, joinChainOps, leaveChainOps,
+  moveInChainOps, nextFlowName, renameFlowOp, setMetaOp, setStartOp, submit,
 } from "./commands";
 import { baseScene, flowOf, frame, transition, withFlows } from "./testSupport";
 
@@ -172,5 +172,53 @@ describe("setMetaOp (read-modify-write of the meta map)", () => {
     // the undo of a single write restores exactly the previous map
     useScene.getState().undo();
     expect(useScene.getState().scene!.nodes.at("A").meta).toEqual({ "code.route": "/home", status: "implemented" });
+  });
+});
+
+describe("if / else if / else chains", () => {
+  const sc = () => withFlows(baseScene(), [flowOf("f", "A")], [
+    transition("t1", "f", "A", "B", { elementId: "btn", guard: "x > 1" }),
+    transition("t2", "f", "A", "C", { elementId: "btn", guard: "x > 0" }),
+    transition("t3", "f", "A", "A", { elementId: "btn", guard: "else" }),
+  ]);
+  const chained = () => {
+    const s = sc();
+    return { ...s, transitions: {
+      t1: { ...s.transitions.t1, order: 1 }, t2: { ...s.transitions.t2, order: 2 }, t3: { ...s.transitions.t3, order: 3 },
+    } };
+  };
+  const orders = (ops: Op[]) => ops.map((o) => {
+    const t = (o.kind.value as { transition: { id: string; order: number } }).transition;
+    return `${t.id}:${t.order}`;
+  });
+
+  it("joining puts the transition at the end of the chain, one op each", () => {
+    expect(orders(joinChainOps(sc(), sc().transitions.t1))).toEqual(["t1:1"]);
+    const s = sc();
+    const half = { ...s, transitions: { ...s.transitions, t1: { ...s.transitions.t1, order: 1 } } };
+    expect(orders(joinChainOps(half, half.transitions.t2))).toEqual(["t2:2"]);
+    expect(joinChainOps(half, half.transitions.t1)).toEqual([]); // already in a chain
+  });
+
+  it("moving swaps neighbours and renumbers; the ends do not move further", () => {
+    const s = chained();
+    expect(orders(moveInChainOps(s, s.transitions.t2, -1))).toEqual(["t2:1", "t1:2"]);
+    expect(orders(moveInChainOps(s, s.transitions.t2, 1))).toEqual(["t3:2", "t2:3"]);
+    expect(moveInChainOps(s, s.transitions.t1, -1)).toEqual([]);
+    expect(moveInChainOps(s, s.transitions.t3, 1)).toEqual([]);
+  });
+
+  it("leaving clears the order and closes the gap", () => {
+    const s = chained();
+    expect(orders(leaveChainOps(s, s.transitions.t1))).toEqual(["t1:0", "t2:1", "t3:2"]);
+  });
+
+  it("applied to the document: the order is stored and undone with one gesture", () => {
+    const s0 = withFlows(baseScene(), [flowOf("f", "A")], [transition("t1", "f", "A", "B", { elementId: "btn" })]);
+    useScene.getState().setScene(s0);
+    submit(joinChainOps(s0, s0.transitions.t1));
+    expect(useScene.getState().scene!.transitions.t1.order).toBe(1);
+    useScene.getState().undo();
+    expect(useScene.getState().scene!.transitions.t1.order).toBeUndefined();
   });
 });

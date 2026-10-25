@@ -347,7 +347,7 @@ func wireFlows(d *opendesignerv1.Document, screens []*Screen, opts Options, b *b
 		for _, t := range perScreen[s.NodeID] {
 			tr := Trigger{
 				TransitionID: t.GetId(), FlowID: t.GetFlowId(), Label: t.GetLabel(), Kind: t.GetTrigger(),
-				Guard: t.GetGuard(), Effect: t.GetEffect(), Dest: byNode[t.GetToId()],
+				Guard: t.GetGuard(), Effect: t.GetEffect(), Order: int(t.GetOrder()), Dest: byNode[t.GetToId()],
 			}
 			if tr.Dest == nil && tr.Kind != "back" {
 				*warnings = append(*warnings, fmt.Sprintf("transition %s: the destination %q is not an exported screen", t.GetId(), nameOrID(d, t.GetToId())))

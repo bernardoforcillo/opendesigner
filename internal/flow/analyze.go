@@ -69,6 +69,9 @@ func analyzeFlow(g *graph, id string) *opendesignerv1.FlowReport {
 				first[k] = t
 				continue
 			}
+			if prev.GetOrder() > 0 && t.GetOrder() > 0 && prev.GetOrder() != t.GetOrder() {
+				continue // in an ordered chain the earlier one wins: reported below as a shadowed branch
+			}
 			what := "without a condition (guard)"
 			if k.guard != "" {
 				what = fmt.Sprintf("with the same condition %q", k.guard)
@@ -79,10 +82,87 @@ func analyzeFlow(g *graph, id string) *opendesignerv1.FlowReport {
 		}
 	}
 
+	chainIssues(g, issue)
+
 	if start != "" {
 		r.Paths, r.PathsTruncated = enumeratePaths(g, start)
 	}
 	return r
+}
+
+// chainIssues checks the if / else if / else shape of every hotspot (the exits of one screen that
+// share a trigger and an element). The player reads the transitions like this: an `else` guard holds
+// when no other transition of the hotspot does; the transitions with `order > 0` form a chain
+// evaluated in order, the first whose guard holds applying. Reported:
+//
+//   - else_orphan: an `else` with no other transition on its hotspot, so nothing to be the else of;
+//   - shadowed: a chain member that can never fire because an earlier one has no condition (it always
+//     holds) or the very same condition;
+//   - ambiguous: two chain members with the same position, so the order does not tell them apart.
+func chainIssues(g *graph, issue func(kind, node, trans, msg string)) {
+	type hotspot struct{ trigger, element string }
+	for _, s := range g.screens {
+		groups := map[hotspot][]*opendesignerv1.Transition{}
+		var keys []hotspot
+		for _, t := range sortedByID(g.out[s]) {
+			k := hotspot{t.GetTrigger(), t.GetElementId()}
+			if _, ok := groups[k]; !ok {
+				keys = append(keys, k)
+			}
+			groups[k] = append(groups[k], t)
+		}
+		for _, k := range keys {
+			ts := groups[k]
+			where := triggerDesc(k.trigger, k.element, g.doc)
+			ifs := 0
+			for _, t := range ts {
+				if !IsElseGuard(t.GetGuard()) {
+					ifs++
+				}
+			}
+			for _, t := range ts {
+				if IsElseGuard(t.GetGuard()) && ifs == 0 {
+					issue(IssueElseOrphan, s, t.GetId(), fmt.Sprintf(
+						"From screen %q, transition %q is an else (%s) but no other transition has that trigger, so there is nothing for it to be the else of.",
+						nodeName(g.doc, s), label(t), where))
+				}
+			}
+			var chain []*opendesignerv1.Transition
+			for _, t := range ts {
+				if t.GetOrder() > 0 {
+					chain = append(chain, t)
+				}
+			}
+			sort.SliceStable(chain, func(i, j int) bool { return chain[i].GetOrder() < chain[j].GetOrder() })
+			var always *opendesignerv1.Transition // the first member with no condition
+			seen := map[string]*opendesignerv1.Transition{}
+			for i, t := range chain {
+				if i > 0 && chain[i-1].GetOrder() == t.GetOrder() {
+					issue(IssueAmbiguous, s, t.GetId(), fmt.Sprintf(
+						"From screen %q, transitions %q and %q have the same position %d in the if / else if chain of %s: the order does not tell them apart.",
+						nodeName(g.doc, s), label(chain[i-1]), label(t), t.GetOrder(), where))
+					continue
+				}
+				guard := t.GetGuard()
+				switch {
+				case always != nil:
+					issue(IssueShadowed, s, t.GetId(), fmt.Sprintf(
+						"From screen %q, transition %q can never fire: the earlier branch %q of the chain (%s) has no condition, so it always applies.",
+						nodeName(g.doc, s), label(t), label(always), where))
+				case seen[guard] != nil && guard != "" && !IsElseGuard(guard):
+					issue(IssueShadowed, s, t.GetId(), fmt.Sprintf(
+						"From screen %q, transition %q can never fire: the earlier branch %q of the chain (%s) has the same condition %q.",
+						nodeName(g.doc, s), label(t), label(seen[guard]), where, guard))
+				}
+				if guard == "" && always == nil {
+					always = t
+				}
+				if seen[guard] == nil {
+					seen[guard] = t
+				}
+			}
+		}
+	}
 }
 
 func sortedByID(ts []*opendesignerv1.Transition) []*opendesignerv1.Transition {

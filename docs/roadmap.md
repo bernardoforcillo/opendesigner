@@ -46,7 +46,8 @@ Legend: [x] done · [ ] to do
 - [x] Prototyping: animated transitions between frames (dissolve, slide, push, smart animate) with duration and easing, and `auto` transitions after a delay; see docs/flows.md
 - [ ] Prototyping: hover and drag interactions, overlays, scroll, component state changes in the player
 - [x] Present: device frames (generic, phone, tablet, desktop browser, none) and hotspot hints (flash on a missed click, a "Show hotspots" toggle); see docs/flows.md
-- [x] Prototype variables with expressions (`count = count + 1`, `count >= 3 || paid`) and an `else` guard for if / else on a hotspot; an ORDERED else-if chain is not there (needs a transition order field), see docs/flows.md
+- [x] Prototype variables with expressions (`count = count + 1`, `count >= 3 || paid`) and an `else` guard for if / else on a hotspot; see docs/flows.md
+- [x] Ordered if / else if / else chains in prototypes: `Transition.order` (proto), evaluated in sequence by the player, a Chain row in the Flows panel, MCP `set_transition` `order`, analysis rules (`else_orphan`, `shadowed`); docs/flows.md
 - [x] Multiple artboards (frames), smart guides and snapping to nodes, layout grids on frames (columns, rows, square grid) that guide and snap; see docs/layout.md
 - [x] Snap to a pixel grid (document menu: 1 / 4 / 8 px, per person) and spacing guides (equal gaps between neighbours, drawn while dragging)
 

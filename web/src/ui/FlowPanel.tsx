@@ -8,8 +8,10 @@ import { TRANSITION_ANIMATIONS, type FlowLite, type SceneState, type TransitionL
 import { useAnalysis, useFlowAnalysis, countByKind } from "../flow/analysis";
 import { cameraToFit, isFullyVisible } from "../flow/camera";
 import {
-  createFlowOp, deleteFlowOp, deleteTransitionOp, editTransitionAnimationOp, editTransitionOp, renameFlowOp, setStartOp, submit,
+  createFlowOp, deleteFlowOp, deleteTransitionOp, editTransitionAnimationOp, editTransitionOp, joinChainOps, leaveChainOps, moveInChainOps,
+  renameFlowOp, setStartOp, submit,
 } from "../flow/commands";
+import { chainOf } from "../flow/prototype";
 import { flowLayout } from "../flow/layout";
 import { isScreenNode, screenName, screenOf } from "../flow/screens";
 import { worldBoundsOfNode } from "../canvas/transform";
@@ -45,11 +47,13 @@ const ISSUE_LABELS: Record<string, string> = {
   no_exit: "no exit",
   ambiguous: "ambiguous",
   empty: "empty",
+  else_orphan: "else with no if",
+  shadowed: "unreachable branch",
 };
 
-// Severity of a problem, for the color: ambiguity and empty are warnings (the
-// flow works, but needs review); the rest breaks the path (error).
-const WARN_KINDS = new Set(["ambiguous", "empty"]);
+// Severity of a problem, for the color: ambiguity, empty and the if / else chain problems are
+// warnings (the flow works, but needs review); the rest breaks the path (error).
+const WARN_KINDS = new Set(["ambiguous", "empty", "else_orphan", "shadowed"]);
 const toneOf = (kind: string): "warn" | "danger" => (WARN_KINDS.has(kind) ? "warn" : "danger");
 
 // A clickable row: same base for flows, transitions, problems, paths.
@@ -96,6 +100,29 @@ const ANIMATION_LABELS: Record<string, string> = {
   smart: "Smart animate",
 };
 
+// The if / else if / else chain of a hotspot (Transition.order): the branches the player tries in
+// sequence, the first whose guard holds applying. Outside a chain a transition is independent.
+function ChainRow({ scene, t }: { scene: SceneState; t: TransitionLite }) {
+  const chain = chainOf(scene, t);
+  const at = chain.findIndex((o) => o.id === t.id);
+  if (at < 0) {
+    return (
+      <Field label="Chain" wide>
+        <Button aria-label="Add to if / else chain" onPress={() => submit(joinChainOps(scene, t))}>Add to if / else chain</Button>
+      </Field>
+    );
+  }
+  const role = /^(else|otherwise)$/i.test(t.guard.trim()) ? "else" : at === 0 ? "if" : t.guard.trim() === "" ? "else (no condition)" : "else if";
+  return (
+    <Field label="Chain" wide className="flex-wrap">
+      <span className="text-[12px] text-fg-muted" aria-label="Chain position">{`${role}, ${at + 1} of ${chain.length}`}</span>
+      <Button aria-label="Earlier in the chain" isDisabled={at === 0} onPress={() => submit(moveInChainOps(scene, t, -1))}>Earlier</Button>
+      <Button aria-label="Later in the chain" isDisabled={at === chain.length - 1} onPress={() => submit(moveInChainOps(scene, t, 1))}>Later</Button>
+      <Button aria-label="Leave the chain" onPress={() => submit(leaveChainOps(scene, t))}>Leave</Button>
+    </Field>
+  );
+}
+
 function TransitionEditor({ scene, t }: { scene: SceneState; t: TransitionLite }) {
   const commit = (field: "label" | "trigger" | "guard" | "effect" | "elementId", v: string) => {
     const op = editTransitionOp(t, field, v);
@@ -130,6 +157,7 @@ function TransitionEditor({ scene, t }: { scene: SceneState; t: TransitionLite }
       <Field label="Guard" wide>
         <CommitField label="Guard" value={t.guard} onCommit={(v) => commit("guard", v)} placeholder="e.g. count >= 3, or else" className="font-mono text-[12px]" />
       </Field>
+      <ChainRow scene={scene} t={t} />
       <Field label="Effect" wide>
         <CommitField label="Effect" value={t.effect} onCommit={(v) => commit("effect", v)} placeholder="e.g. count = count + 1" className="font-mono text-[12px]" />
       </Field>

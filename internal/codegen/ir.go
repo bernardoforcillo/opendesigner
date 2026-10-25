@@ -32,6 +32,8 @@ type Trigger struct {
 	Kind         string // click | submit | auto | key | back | free text
 	Guard        string
 	Effect       string
+	// Order: position in the hotspot's if / else if / else chain (0 = not in one).
+	Order int
 	// Dest is the destination screen (nil if the destination is not among the
 	// generated screens: the link stays a comment).
 	Dest *Screen

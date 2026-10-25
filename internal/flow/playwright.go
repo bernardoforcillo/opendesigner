@@ -120,6 +120,9 @@ func writeTest(b *strings.Builder, g *graph, byID map[string]*opendesignerv1.Tra
 		if t.GetGuard() != "" {
 			fmt.Fprintf(&steps, "    // guard: %s\n", oneLine(t.GetGuard()))
 		}
+		if t.GetOrder() > 0 {
+			fmt.Fprintf(&steps, "    // chain: position %d of the hotspot's if / else if chain\n", t.GetOrder())
+		}
 		if t.GetEffect() != "" {
 			fmt.Fprintf(&steps, "    // effect: %s\n", oneLine(t.GetEffect()))
 		}
